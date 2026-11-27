@@ -1,35 +1,37 @@
-// Снимок формы из настоящих виджетов Qt в заданном стиле — исполнитель
-// режима `qt` помощника `rexon-theme-shot` (src/bin/theme_shot/).
+// A snapshot of a form made of real Qt widgets in a given style — the
+// executor of the `qt` mode of the `rexon-theme-shot` helper
+// (src/bin/theme_shot/).
 //
-// Что снимать, палитру, подписи, размеры решает ядро
-// (rexon_core::widget_shot) — здесь только то, чего из Rust не достать:
-// QApplication, QStyleFactory, QWidget и его раскладки, QWidget::render().
-// Виджетов в cxx-qt-lib нет вовсе.
+// What to capture, the palette, labels and sizes are decided by the core
+// (rexon_core::widget_shot) — here there is only what cannot be reached
+// from Rust: QApplication, QStyleFactory, QWidget and its layouts,
+// QWidget::render(). cxx-qt-lib has no widgets at all.
 #pragma once
 
 #include <cstdint>
 
 extern "C" {
 
-// Коды возврата.
+// Return codes.
 enum {
     REXON_SHOT_OK = 0,
-    // Стиль с таким ключом не загрузился.
+    // The style with this key did not load.
     REXON_SHOT_NO_STYLE = 3,
-    // Снимок не записался.
+    // The snapshot was not written.
     REXON_SHOT_SAVE_FAILED = 4,
 };
 
-// Поднять QApplication, собрать форму размером form_w×form_h, назначить
-// всем виджетам стиль `style` и палитру, нарисовать в `scale` раз крупнее
-// (rexon_core::widget_shot::render_scale), вписать с сохранением сторон
-// в прозрачный кадр out_w×out_h и записать PNG в `out`.
+// Bring up QApplication, build a form of size form_w×form_h, give all
+// widgets the style `style` and the palette, draw it `scale` times larger
+// (rexon_core::widget_shot::render_scale), fit it with the aspect ratio
+// preserved into a transparent out_w×out_h frame and write a PNG to `out`.
 //
-// Палитра — `count` пар имя роли `QPalette::ColorRole` (с приставкой
-// "Disabled:" — только для группы «недоступно», иначе для всех групп) и
-// цвет "#rrggbb"; count == 0 — родная палитра стиля. Подписи `texts` — по
-// порядку: две вкладки, главная и вторая кнопка, флажок, переключатель,
-// список, текст поля (text_count == 8).
+// The palette is `count` pairs of a `QPalette::ColorRole` role name (with
+// the "Disabled:" prefix — only for the "disabled" group, otherwise for
+// all groups) and a "#rrggbb" colour; count == 0 means the style's native
+// palette. The labels `texts` go in order: two tabs, the main and the
+// second button, a check box, a radio button, a list, the field text
+// (text_count == 8).
 int rexon_qt_style_shot(const char *style, const char *const *roles,
                         const char *const *colors, int32_t count,
                         const char *const *texts, int32_t text_count,

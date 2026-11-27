@@ -1,15 +1,16 @@
-// Подвкладка «Витрины профиля» вкладки «Steam»: своя картинка нарезается
-// под витрину профиля Steam, предпросмотр показывает профиль с выбранным
-// фоном, готовые части ложатся в папку.
+// The "Profile showcases" sub-tab of the "Steam" tab: your own picture is
+// cut to fit a Steam profile showcase, the preview shows the profile with
+// the selected background, and the finished parts go into a folder.
 //
-// Только разметка. Решения (виды, геометрия, проверка, нарезка, сжатие,
-// краски макета профиля) — ядро `rexon_core::steam_showcase`; исполнитель —
-// `SteamShowcaseActions` (rust/rexon-gui/src/steam_showcase_actions.rs).
+// Markup only. Decisions (kinds, geometry, validation, cutting,
+// compression, profile mock-up colours) — the core
+// `rexon_core::steam_showcase`; the executor is `SteamShowcaseActions`
+// (rust/rexon-gui/src/steam_showcase_actions.rs).
 //
-// ⛔ В Steam ничего не загружается и не меняется: помощник под кнопкой
-// «Сохранить части» только открывает человеку страницы Steam, копирует
-// названия в буфер обмена, показывает папку и читает публичную страницу
-// профиля. Всё на страницах Steam нажимает сам человек.
+// Never: nothing is uploaded to or changed in Steam: the helper behind the
+// "Save parts" button only opens Steam pages for the user, copies names to
+// the clipboard, shows the folder and reads the public profile page.
+// Everything on the Steam pages is clicked by the user.
 
 pragma ComponentBehavior: Bound
 
@@ -23,19 +24,19 @@ Rectangle {
     RexonBidi { id: bidi }
 
     property var pal: ({})
-    /// Оформление вкладки (`SteamModel.styles`): группа, кнопки.
+    /// Tab styling (`SteamModel.styles`): group, buttons.
     property var sty: ({})
-    /// Фоны профиля из вкладки (`SteamModel.bgChoices`).
+    /// Profile backgrounds from the tab (`SteamModel.bgChoices`).
     property var backgrounds: []
-    /// Краска предупреждений и ошибок — готовая от ядра вкладки
+    /// Colour for warnings and errors — ready from the tab core
     /// (`SteamModel.goldColor`).
     property color warnColor: section.pal.text_primary
 
     signal message(string text)
-    /// Просьба показать картинки крупно (общий просмотр живёт у вкладки).
+    /// Request to show pictures large (the shared viewer lives in the tab).
     signal zoomRequested(var items, int index)
 
-    // ── Состояние ──────────────────────────────────────────────────────
+    // ── State ──────────────────────────────────────────────────────────
 
     property var kinds: []
     property string kind: "artwork"
@@ -49,13 +50,15 @@ Rectangle {
     property real zoom: 1.0
     property real panX: 0.5
     property real panY: 0.5
-    /// Сдвиг витрины вниз (витрины выше неё в профиле), px Steam.
+    /// Downward offset of the showcase (showcases above it in the profile),
+    /// Steam px.
     property int shiftY: 0
 
     property var lay: null
     property var layWarnings: []
 
-    /// Выбранный фон: id фона Steam, "custom" — свой файл, "" — без фона.
+    /// Selected background: a Steam background id, "custom" — own file,
+    /// "" — no background.
     property string bgKey: ""
     property string bgCustomPath: ""
     property string bgUrl: ""
@@ -69,11 +72,11 @@ Rectangle {
     property var result: null
     property string sliceError: ""
 
-    // ── Помощник загрузки ──────────────────────────────────────────────
+    // ── Upload helper ──────────────────────────────────────────────────
 
-    /// Набор, который ведёт помощник (ответ `actions.wizard`), или null.
+    /// The set the helper is guiding (the `actions.wizard` answer), or null.
     property var wiz: null
-    /// Недавние наборы — к ним можно вернуться.
+    /// Recent sets — one can return to them.
     property var recent: []
     property bool checkBusy: false
     property var checkReport: null
@@ -112,7 +115,7 @@ Rectangle {
         poll.start();
     }
 
-    /// Карточки частей для крупного просмотра: «в профиле» и «расчёт».
+    /// Part cards for the large view: "in the profile" and "computed".
     function partViewerItems(fromProfile) {
         const out = [];
         if (fromProfile) {
@@ -130,7 +133,7 @@ Rectangle {
         return out;
     }
 
-    // ── Макет (без картинки — заглушка на ту же раскладку) ─────────────
+    // ── Mock-up (without a picture — a placeholder with the same layout) ─
 
     readonly property var geo: section.lay ? section.lay : section.placeholderLayout
     readonly property var placeholderLayout: JSON.parse(actions.layout(JSON.stringify({
@@ -214,8 +217,9 @@ Rectangle {
     onZoomChanged: section.relayout()
     onPanXChanged: section.relayout()
     onPanYChanged: section.relayout()
-    // Фоны приезжают из сети позже раздела: как только список пришёл,
-    // ставим надетый фон (если человек ещё ничего не выбрал сам).
+    // Backgrounds arrive from the network later than the section: as soon as
+    // the list arrives, we select the equipped background (if the user has
+    // not chosen anything yet).
     onBackgroundsChanged: {
         if (section.bgKey !== "" || !section.backgrounds)
             return;
@@ -262,8 +266,8 @@ Rectangle {
                 section.checkBusy = false;
                 if (c.ok) {
                     section.checkReport = c.report;
-                    // Сошлось — шаг закрыт; состояние уже записано рядом с
-                    // частями, остаётся перечитать его.
+                    // It matches — the step is done; the state has already been written next
+                    // to the parts, all that is left is to re-read it.
                     if (section.wiz)
                         section.setWizard(JSON.parse(actions.wizard(section.wiz.dir)));
                 } else {
@@ -318,7 +322,7 @@ Rectangle {
             text: bidi.arg(qsTranslate("rexon", "Showcases are available from Steam level %1."), section.geo.minLevel || 10)
         }
 
-        // ── Картинка ──────────────────────────────────────────────────
+        // ── Picture ───────────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
             spacing: 12
@@ -349,7 +353,7 @@ Rectangle {
             }
         }
 
-        // ── Вид витрины ───────────────────────────────────────────────
+        // ── Showcase kind ─────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
@@ -378,7 +382,7 @@ Rectangle {
             text: (section.kinds.find(k => k.key === section.kind) || {}).hint || ""
         }
 
-        // ── Фон профиля ───────────────────────────────────────────────
+        // ── Profile background ────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
@@ -401,8 +405,8 @@ Rectangle {
                     for (const b of (section.backgrounds || []))
                         m.push({
                             key: b.id,
-                            // Анимированный фон — с той же отметкой, что на
-                            // карточке в сетке фонов.
+                            // An animated background gets the same badge as on its card in the
+                            // background grid.
                             label: (b.mark ? b.mark + " " : "")
                                    + (b.equipped ? bidi.arg(qsTranslate("rexon", "%1 (on your profile)"), b.name) : b.name)
                         });
@@ -433,7 +437,7 @@ Rectangle {
             text: section.bgBusy ? qsTranslate("rexon", "Loading the background…") : section.bgError
         }
 
-        // ── Положение картинки ────────────────────────────────────────
+        // ── Picture position ──────────────────────────────────────────
         GridLayout {
             Layout.fillWidth: true
             columns: 3
@@ -515,7 +519,7 @@ Rectangle {
             }
         }
 
-        // ── Предпросмотр профиля ──────────────────────────────────────
+        // ── Profile preview ───────────────────────────────────────────
         RexonText {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
@@ -529,11 +533,11 @@ Rectangle {
             Layout.preferredHeight: preview.viewHeight * preview.s
             clip: true
 
-            // Физическая зона: снимок страницы профиля Steam. Части витрины
-            // нарезаны из одной картинки по её настоящим координатам и стоят
-            // на фоне профиля ручными `x` — зеркалить их нельзя, иначе левая
-            // часть картинки уедет в правую ячейку. При языке справа налево
-            // зона остаётся как есть.
+            // Physical zone: a snapshot of the Steam profile page. The showcase parts
+            // are cut from one picture by its real coordinates and placed on the
+            // profile background with manual `x` — they must not be mirrored,
+            // otherwise the left part of the picture would move into the right cell.
+            // For right-to-left languages the zone stays as it is.
             LayoutMirroring.enabled: false
             LayoutMirroring.childrenInherit: true
 
@@ -543,7 +547,7 @@ Rectangle {
             readonly property real showTop: (g.showcaseY || 256) + section.shiftY
             readonly property var lay: g.layout || ({ parts: [], frame_width: 615, frame_height: 400, crop: { x: 0, y: 0, w: 1, h: 1 } })
             readonly property real viewHeight: Math.max(1080, showTop + lay.frame_height + 60)
-            // px исходника → px предпросмотра.
+            // source px → preview px.
             readonly property real k: lay.frame_width * s / Math.max(lay.crop.w, 1)
 
             Rectangle {
@@ -562,7 +566,7 @@ Rectangle {
                 visible: section.bgUrl !== ""
             }
 
-            // Шапка профиля — заглушка.
+            // Profile header — a placeholder.
             Rectangle {
                 x: ((preview.g.columnX || 480) - preview.vx) * preview.s
                 y: 24 * preview.s
@@ -593,7 +597,7 @@ Rectangle {
                 }
             }
 
-            // Подложка витрины с заголовком.
+            // Showcase backing with a title.
             Rectangle {
                 x: ((preview.g.showcaseX || 495) - 11 - preview.vx) * preview.s
                 y: (preview.showTop - 44) * preview.s
@@ -614,8 +618,8 @@ Rectangle {
                 }
             }
 
-            // Части витрины: каждая — окно в общую картинку. Две копии GIF
-            // идут каждая своим ходом — как и в Steam.
+            // Showcase parts: each one is a window into the shared picture. The two
+            // GIF copies each run at their own pace — just as in Steam.
             Repeater {
                 model: preview.lay.parts
                 delegate: Item {
@@ -666,7 +670,7 @@ Rectangle {
             }
         }
 
-        // ── Сохранить ─────────────────────────────────────────────────
+        // ── Save ──────────────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
             spacing: 12
@@ -722,7 +726,7 @@ Rectangle {
                 text: "⚠️ " + modelData
             }
         }
-        // ── Вернуться к набору, начатому раньше ───────────────────────
+        // ── Return to a set started earlier ───────────────────────────
         Flow {
             Layout.fillWidth: true
             spacing: 8
@@ -747,7 +751,7 @@ Rectangle {
             }
         }
 
-        // ── Помощник: загрузить и выставить в витрине ─────────────────
+        // ── Helper: upload and put into the showcase ──────────────────
         ColumnLayout {
             objectName: "showcaseWizard"
             Layout.fillWidth: true
@@ -777,7 +781,7 @@ Rectangle {
                     radius: section.sty.card.radius
                     color: section.sty.card.background
                     border.width: 1
-                    // Шаг, на котором человек сейчас, — рамкой акцента.
+                    // The step the user is on right now — with an accent frame.
                     border.color: stepCard.modelData.current ? section.pal.accent : section.sty.card.border
 
                     ColumnLayout {
@@ -807,7 +811,7 @@ Rectangle {
                             }
                         }
 
-                        // ── Шаг 1: загрузить части ────────────────────
+                        // ── Step 1: upload the parts ──────────────────
                         RexonButton {
                             objectName: "showcaseOpenUpload"
                             visible: stepCard.key === "upload"
@@ -892,7 +896,7 @@ Rectangle {
                             }
                         }
 
-                        // ── Шаг 2: выставить в витрине ────────────────
+                        // ── Step 2: put them into the showcase ────────
                         RowLayout {
                             visible: stepCard.key === "place"
                             Layout.fillWidth: true
@@ -916,7 +920,7 @@ Rectangle {
                             Item { Layout.fillWidth: true }
                         }
 
-                        // ── Шаг 3: проверить ──────────────────────────
+                        // ── Step 3: check ─────────────────────────────
                         RowLayout {
                             visible: stepCard.key === "check"
                             Layout.fillWidth: true
@@ -950,8 +954,8 @@ Rectangle {
                                 text: "• " + modelData
                             }
                         }
-                        // «Как у вас в профиле» рядом с расчётным: те же части
-                        // в одном масштабе, с тем же зазором.
+                        // "As in your profile" next to the computed one: the same parts at the
+                        // same scale, with the same gap.
                         RowLayout {
                             id: compareRow
                             objectName: "showcaseCompare"
@@ -977,11 +981,10 @@ Rectangle {
                                         text: side.modelData ? qsTranslate("rexon", "On your profile")
                                                              : qsTranslate("rexon", "Calculated")
                                     }
-                                    // Физическая зона: части витрины — куски одной
-                                    // картинки, стоят рядом, как в профиле Steam
-                                    // (большая слева, боковая справа). Справа
-                                    // налево их не переставлять, иначе картинка
-                                    // распадётся; подписи над рядом зеркалятся.
+                                    // Physical zone: the showcase parts are pieces of one picture, placed
+                                    // side by side as in the Steam profile (the large one on the left, the
+                                    // side one on the right). Do not swap them for right to left, otherwise
+                                    // the picture falls apart; the labels above the row are mirrored.
                                     Row {
                                         id: cmpParts
                                         LayoutMirroring.enabled: false
@@ -1016,9 +1019,8 @@ Rectangle {
                                                     anchors.fill: parent
                                                     pal: section.pal
                                                     onActivated: {
-                                                        // «В профиле» в просмотр идут только
-                                                        // найденные части: место в списке
-                                                        // ищем по ключу, а не по номеру.
+                                                        // Only the found parts go into the "In the profile" view: the place in
+                                                        // the list is looked up by key, not by number.
                                                         const items = section.partViewerItems(cmpPart.fromProfile);
                                                         const key = "profile-" + cmpPart.modelData.role;
                                                         const at = cmpPart.fromProfile

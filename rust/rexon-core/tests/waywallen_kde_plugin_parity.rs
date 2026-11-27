@@ -1,10 +1,11 @@
-//! Сверка порта `rexon/waywallen_kde_plugin.py` с живым Python.
+//! Check of the `rexon/waywallen_kde_plugin.py` port against live Python.
 //!
-//! Эталон `golden/waywallen_kde_plugin_cases.json` снят read-only из чистого
-//! Python: subprocess/shutil.which монкейпатчились — РЕАЛЬНЫЙ kpackagetool6/
-//! dbus-send/qdbus6/systemctl НЕ исполнялся, только argv/таймауты/решения.
-//! Абсолютный путь забандленного пакета в argv токенизирован как `{BUNDLE}`
-//! (машинно-зависимый) — тест подаёт тот же токен и сверяет литерально.
+//! The reference `golden/waywallen_kde_plugin_cases.json` was captured
+//! read-only from pure Python: subprocess/shutil.which were monkeypatched — the
+//! REAL kpackagetool6/dbus-send/qdbus6/systemctl were NOT executed, only
+//! argv/timeouts/decisions. The absolute path of the bundled package in argv
+//! is tokenised as `{BUNDLE}` (machine-dependent) — the test passes the same
+//! token and compares literally.
 
 use rexon_core::waywallen_kde_plugin as w;
 use serde_json::Value;
@@ -23,10 +24,10 @@ fn strvec(v: &Value) -> Vec<String> {
         .collect()
 }
 
-/// Токен `{BUNDLE}` в тесте вместо машинно-зависимого пути пакета.
+/// The `{BUNDLE}` token in the test instead of the machine-dependent package path.
 const BUNDLE: &str = "{BUNDLE}";
 
-// ── окружение / константы / пути ─────────────────────────────────────────
+// ── environment / constants / paths ─────────────────────────────────────────
 
 #[test]
 fn is_kde_matches_python() {
@@ -44,32 +45,32 @@ fn constants_match_python() {
     assert_eq!(w::PLUGIN_TYPE, c["PLUGIN_TYPE"].as_str().unwrap());
     assert_eq!(w::RUNTIME_SO_NAME, c["RUNTIME_SO_NAME"].as_str().unwrap());
     assert_eq!(w::RUNTIME_SO_REL, c["RUNTIME_SO_REL"].as_str().unwrap());
-    // Запасной путь обязан оканчиваться именем, по которому идёт поиск,
-    // иначе две ветки поиска рантайма разъедутся.
+    // The fallback path must end with the name being searched for, otherwise the
+    // two runtime search branches would diverge.
     assert!(w::RUNTIME_SO_REL.ends_with(w::RUNTIME_SO_NAME));
 }
 
-/// Выбор рантайма среди находок: раскладка бандла в приоритете, иначе —
-/// самый неглубокий путь, при равенстве — лексикографически меньший.
+/// Choosing the runtime among the finds: the bundle layout has priority,
+/// otherwise the shallowest path, on a tie — the lexicographically smaller one.
 #[test]
 fn pick_runtime_so_rel_logic() {
     let old = "contents/ui/WaywallenDisplayEmbed/libwaywallen-display-qml.so".to_string();
     let new = "contents/ui/Plugin/WaywallenDisplayEmbed/libwaywallen-display-qml.so".to_string();
 
-    // Ничего не нашли — ответа нет.
+    // Nothing found — no answer.
     assert_eq!(w::pick_runtime_so_rel(&[], Some(&new)), None);
-    // Единственная находка — она же и ответ, независимо от предпочтения.
+    // The only find is the answer, regardless of the preference.
     assert_eq!(w::pick_runtime_so_rel(&[old.clone()], Some(&new)).as_ref(), Some(&old));
-    // Обе раскладки рядом (апгрейд поверх старой установки не подчистил
-    // прежний каталог) — берём ту, что в нашем бандле.
+    // Both layouts side by side (an upgrade over an old install did not clean up
+    // the former directory) — take the one in our bundle.
     let both = vec![old.clone(), new.clone()];
     assert_eq!(w::pick_runtime_so_rel(&both, Some(&new)).as_ref(), Some(&new));
     assert_eq!(w::pick_runtime_so_rel(&both, Some(&old)).as_ref(), Some(&old));
-    // Предпочтения нет (или оно не встретилось) — самый неглубокий путь.
+    // No preference (or it was not found) — the shallowest path.
     assert_eq!(w::pick_runtime_so_rel(&both, None).as_ref(), Some(&old));
     assert_eq!(w::pick_runtime_so_rel(&both, Some("contents/x.so")).as_ref(), Some(&old));
-    // Равная глубина — лексикографический порядок, чтобы выбор не зависел
-    // от порядка обхода каталога.
+    // Equal depth — lexicographic order, so the choice does not depend on the
+    // directory traversal order.
     let a = "contents/ui/A/libwaywallen-display-qml.so".to_string();
     let b = "contents/ui/B/libwaywallen-display-qml.so".to_string();
     assert_eq!(w::pick_runtime_so_rel(&[b.clone(), a.clone()], None).as_ref(), Some(&a));
@@ -85,12 +86,12 @@ fn paths_match_python() {
     assert_eq!(w::version_marker(home), p["version_marker_expected"].as_str().unwrap());
 }
 
-// ── file_sha (версия рантайм-.so) ────────────────────────────────────────
+// ── file_sha (runtime .so version) ────────────────────────────────────────
 
 #[test]
 fn file_sha_matches_python_vectors() {
     for (_name, c) in golden()["file_sha_vectors"].as_object().unwrap() {
-        // data сериализован через latin1 (байты 1:1); ASCII-векторы — как есть.
+        // data is serialised via latin1 (bytes 1:1); ASCII vectors — as is.
         let data = c["data"].as_str().unwrap().as_bytes();
         let want = c["sha"].as_str().unwrap();
         assert_eq!(w::file_sha(data), want, "file_sha({data:?})");
@@ -99,19 +100,19 @@ fn file_sha_matches_python_vectors() {
 
 #[test]
 fn file_sha_known_vectors() {
-    // sha256("") = e3b0c442..., sha256("abc") = ba7816bf... → первые 16 hex.
+    // sha256("") = e3b0c442..., sha256("abc") = ba7816bf... → the first 16 hex.
     assert_eq!(w::file_sha(b""), "e3b0c44298fc1c14");
     assert_eq!(w::file_sha(b"abc"), "ba7816bf8f01cfea");
 }
 
 #[test]
 fn resolve_installed_version_logic() {
-    // marker непустой → его текст (после strip).
+    // marker non-empty → its text (after strip).
     assert_eq!(w::resolve_installed_version(Some("  abc  "), Some("zzz")).as_deref(), Some("abc"));
-    // marker пустой/None → хэш установленного .so.
+    // marker empty/None → hash of the installed .so.
     assert_eq!(w::resolve_installed_version(Some("   "), Some("zzz")).as_deref(), Some("zzz"));
     assert_eq!(w::resolve_installed_version(None, Some("zzz")).as_deref(), Some("zzz"));
-    // ни marker, ни .so → None.
+    // neither marker nor .so → None.
     assert_eq!(w::resolve_installed_version(None, None), None);
 }
 
@@ -121,7 +122,7 @@ fn resolve_installed_version_logic() {
 fn select_plugin_dbus_argv_matches_python() {
     let g = &golden()["select_plugin_call"];
     assert_eq!(w::evaluate_script_argv(&w::select_plugin_js()), strvec(&g["argv"]));
-    // таймаут dbus-send = 15 (у нас — контракт исполнителя, сверяем эталон).
+    // dbus-send timeout = 15 (for us — an executor contract, we compare with the reference).
     assert_eq!(g["timeout"].as_u64().unwrap(), 15);
 }
 
@@ -162,7 +163,7 @@ fn restart_plasmashell_cmds_match_python() {
     }
 }
 
-// ── install_or_upgrade (полный конвейер kpackagetool6) ───────────────────
+// ── install_or_upgrade (the full kpackagetool6 pipeline) ───────────────────
 
 struct Case {
     name: &'static str,
@@ -173,7 +174,7 @@ struct Case {
     rcs: Vec<i32>,
 }
 
-/// Сценарии-входы совпадают с extract_golden.py; выходы сверяются с golden.
+/// Input scenarios match extract_golden.py; outputs are compared with golden.
 fn install_cases() -> Vec<Case> {
     let bv = "0123456789abcdef";
     vec![
@@ -200,7 +201,7 @@ fn install_or_upgrade_matches_python() {
     let cases = &g["install_cases"];
     for case in install_cases() {
         let exp = &cases[case.name];
-        // Очередь rc, как отдавал монкейпатченный subprocess.run (stderr="boom").
+        // rc queue, as the monkeypatched subprocess.run returned it (stderr="boom").
         let mut queue = case.rcs.iter().copied();
         let mut run = |_argv: &[String]| {
             let rc = queue.next().unwrap_or(0);
@@ -211,7 +212,7 @@ fn install_or_upgrade_matches_python() {
             case.installed_ver, case.bundle_ver, &mut run,
         );
 
-        // argv + таймауты выполненных вызовов.
+        // argv + timeouts of executed calls.
         let want_argv: Vec<Vec<String>> = exp["argv"]
             .as_array().unwrap().iter().map(strvec).collect();
         let got_argv: Vec<Vec<String>> = out.calls.iter().map(|c| c.argv.clone()).collect();
@@ -246,24 +247,24 @@ fn install_no_tool_matches_python() {
 
 #[test]
 fn install_bundle_invalid_message() {
-    // Не покрыто golden (bundle реальный существует), но логика Python явная.
+    // Not covered by golden (the real bundle exists), but the Python logic is explicit.
     let mut run = |_argv: &[String]| w::RunOutput {
         rc: 0, stderr: String::new(), stdout: String::new(),
     };
     let out = w::install_or_upgrade(Some("kpackagetool6"), "/x/pkg", false,
                                     false, None, None, &mut run);
     assert!(!out.ok);
-    assert_eq!(out.message, "забандленный пакет не найден: /x/pkg");
+    assert_eq!(out.message, "the bundled plugin package was not found: /x/pkg");
     assert!(out.calls.is_empty());
 }
 
-// ── оркестрация ensure (чистые решения) ──────────────────────────────────
+// ── ensure orchestration (pure decisions) ──────────────────────────────────
 
 #[test]
 fn should_reselect_logic() {
-    assert!(w::should_reselect(true, true));   // свежая установка → всегда
-    assert!(w::should_reselect(false, false)); // не на всех выбран → да
-    assert!(!w::should_reselect(false, true)); // уже выбран, не ставили → нет
+    assert!(w::should_reselect(true, true));   // fresh install → always
+    assert!(w::should_reselect(false, false)); // not selected everywhere → yes
+    assert!(!w::should_reselect(false, true)); // already selected, not installed → no
 }
 
 #[test]
@@ -277,7 +278,7 @@ fn ensure_message_logic() {
                "плагин уже установлен (актуальная версия); plasmashell перезапущен");
 }
 
-// ── назначение плагина только по применению (дефект 30.10.2026) ─────────
+// ── assigning the plugin only on apply (defect of 30.10.2026) ─────────
 
 #[test]
 fn only_apply_selects_plugin() {
@@ -290,7 +291,7 @@ fn requests_that_show_wallpaper() {
     for f in ["wallpaper_apply", "playlist_activate", "playlist_jump_to"] {
         assert!(w::request_shows_wallpaper(f), "{f}");
     }
-    // Портал ставит картинку мимо дисплея waywallen; остальное обоев не показывает.
+    // The portal sets a picture bypassing the waywallen display; the rest does not show wallpapers.
     for f in ["wallpaper_apply_via_portal", "wallpaper_list", "display_list", "playlist_list", "health"] {
         assert!(!w::request_shows_wallpaper(f), "{f}");
     }
@@ -304,9 +305,9 @@ fn restart_only_after_upgrading_plugin_in_use() {
     assert!(!w::restart_after_install(false, true, true), "ничего не ставили — без перезапуска");
 }
 
-// ── тихое освежение установленного плагина (дефект 12.11.2026) ───────────
+// ── quiet refresh of the installed plugin (defect of 12.11.2026) ───────────
 
-/// Плагин 0.4.x от 06.10 у человека, бандл 0.4.5, демон 0.6.0.
+/// Plugin 0.4.x of 06.10 on the person's machine, bundle 0.4.5, daemon 0.6.0.
 fn refresh_check(present: bool, installed_sha: &str) -> w::PluginCheck {
     w::PluginCheck {
         bundle_version: Some("0.4.5".into()),
@@ -331,7 +332,7 @@ fn refresh_upgrades_installed_outdated_plugin() {
     let d = w::refresh_decision(&refresh_check(true, "aaaaaaaaaaaaaaaa"), true, true);
     assert_eq!(d, w::RefreshDecision::Upgrade);
     assert!(d.upgrades());
-    // Демон ещё не известен (старт Rexon) — сторож не мешает обновить.
+    // The daemon is not known yet (Rexon start) — the guard does not prevent the update.
     let mut c = refresh_check(true, "aaaaaaaaaaaaaaaa");
     c.daemon_version = None;
     assert_eq!(w::refresh_decision(&c, true, true), w::RefreshDecision::Upgrade);
@@ -348,7 +349,7 @@ fn refresh_never_installs_missing_plugin() {
 
 #[test]
 fn refresh_keeps_matching_plugin() {
-    // Тот же рантайм — ничего, даже без инструмента и бандла (дешёвый путь).
+    // The same runtime — nothing, even without the tool and the bundle (the cheap path).
     for (tool, bundle) in [(true, true), (false, false)] {
         let d = w::refresh_decision(&refresh_check(true, "bbbbbbbbbbbbbbbb"), tool, bundle);
         assert_eq!(d, w::RefreshDecision::UpToDate, "инструмент {tool}, бандл {bundle}");
@@ -364,16 +365,16 @@ fn refresh_skips_without_kpackagetool_or_bundle() {
 
 #[test]
 fn refresh_respects_version_guard() {
-    // Установленный новее бандла — не трогаем.
+    // The installed one is newer than the bundle — leave it alone.
     let mut c = refresh_check(true, "aaaaaaaaaaaaaaaa");
     c.installed.vendor_version = Some("0.4.9".into());
     assert_eq!(w::refresh_decision(&c, true, true), w::RefreshDecision::Skip(w::PluginAction::KeepNewer));
-    // Чужой неизвестной версии — молча не меняем (спрашивает вкладка).
+    // A foreign one of unknown version — not changed silently (the tab asks).
     let mut c = refresh_check(true, "aaaaaaaaaaaaaaaa");
     c.installed.vendor_version = None;
     c.installed.marker = false;
     assert_eq!(w::refresh_decision(&c, true, true), w::RefreshDecision::Skip(w::PluginAction::AskForeign));
-    // Согласие из прошлой проверки молчаливое освежение не расширяет.
+    // Consent from a past check does not extend to a silent refresh.
     c.consent = true;
     assert_eq!(w::refresh_decision(&c, true, true), w::RefreshDecision::Skip(w::PluginAction::AskForeign));
 }
@@ -406,16 +407,16 @@ fn apply_gate_holds_only_on_kde_without_displays() {
 
 #[test]
 fn apply_enabled_without_displays_only_when_frame_is_held() {
-    // Дефект 30.10.2026: «Применить» была серой при нуле дисплеев, а дисплей
-    // появляется только после применения. На KDE кнопка доступна — кадр
-    // придержится, плагин назначится.
+    // Defect of 30.10.2026: «Apply» was greyed out with zero displays, and a
+    // display appears only after applying. On KDE the button is enabled — the
+    // frame will be held, the plugin will be assigned.
     assert!(w::apply_without_displays(true));
     assert_eq!(
         w::apply_without_displays(true),
         w::apply_gate(true, "wallpaper_apply", 0) == w::ApplyGate::HoldAndSelect,
         "кнопка и транспорт решают одно и то же"
     );
-    // Не KDE — придержки нет, кнопку не включаем: демон всё равно откажет.
+    // Not KDE — no holding, the button is not enabled: the daemon would refuse anyway.
     assert!(!w::apply_without_displays(false));
     assert_eq!(w::apply_gate(false, "wallpaper_apply", 0), w::ApplyGate::Send);
 }
@@ -423,22 +424,22 @@ fn apply_enabled_without_displays_only_when_frame_is_held() {
 #[test]
 fn no_displays_hint_follows_apply_without_displays() {
     use rexon_core::wallpaper_backend::DisplaySetup;
-    // Подписи кнопок сверяются по-английски: язык окружения прогона не
-    // должен решать исход (в русском окружении тест краснел).
+    // Button labels are compared in English: the language of the run environment
+    // must not decide the outcome (in a Russian environment the test went red).
     let _lang = i18n_pin::en();
     let hint = w::no_displays_hint(DisplaySetup::KdePlugin);
     assert!(!hint.is_empty(), "на KDE вместо «ставьте руками» — наша подсказка");
     assert!(!hint.contains("GitHub") && !hint.contains("KDE Store"), "никаких ручных установок: {hint}");
     assert!(w::no_displays_hint(DisplaySetup::None).is_empty(), "дисплей поднимает не Rexon — страница показывает своё");
-    // X11 (MATE, XFCE, Cinnamon X11 — дефект 30.10.2026): вместо голого
-    // «Мониторы не зарегистрированы» — что нажать; про Plasma ни слова.
+    // X11 (MATE, XFCE, Cinnamon X11 — defect of 30.10.2026): instead of a bare
+    // «No monitors registered» — what to press; not a word about Plasma.
     let x11 = w::no_displays_hint(DisplaySetup::RexonHost);
     assert!(x11.contains("“Apply”") && x11.contains("“Play playlist”"), "{x11}");
     assert!(!x11.contains("Plasma"), "на MATE Plasma не при чём: {x11}");
     assert_ne!(x11, hint);
-    // Оба пути без дисплеев (512c9536): «Применить» у обоев и запуск
-    // плейлиста — подписи как у вендорных кнопок (qsTr "Apply",
-    // подсказка кнопки «Play playlist» в PlaylistListSheet.qml).
+    // Both paths without displays (512c9536): wallpaper «Apply» and starting a
+    // playlist — labels as on the vendor buttons (qsTr "Apply", the tooltip of
+    // the «Play playlist» button in PlaylistListSheet.qml).
     assert!(w::play_without_displays(true), "плейлист тоже запускается без дисплеев");
     assert!(hint.contains("“Apply”"), "кнопка обоев названа: {hint}");
     assert!(hint.contains("playlist") && hint.contains("“Play playlist”"), "плейлист назван: {hint}");
@@ -469,14 +470,14 @@ fn track_displays_follows_daemon_events() {
     assert_eq!(ids.into_iter().collect::<Vec<_>>(), vec![5]);
 }
 
-// ── откат: живые обои не запустились (риск после 66a2dd5b) ──────────────
+// ── rollback: live wallpapers did not start (risk after 66a2dd5b) ──────────────
 
 #[test]
 fn select_state_for_log_does_not_claim_false_while_pending() {
     assert_eq!(w::select_state_for_log(false, false), "подъём вывода ещё не отчитался");
     assert_eq!(w::select_state_for_log(true, true), "вывод поднят только что");
     assert!(w::select_state_for_log(true, false).contains("не поднимался"));
-    // Слова общие для KDE и X11: про плагин Plasma на MATE журнал не врёт.
+    // Words shared by KDE and X11: the log does not lie about the Plasma plugin on MATE.
     for (done, ok) in [(false, false), (true, true), (true, false)] {
         assert!(!w::select_state_for_log(done, ok).contains("назнач"), "{done} {ok}");
     }
@@ -508,11 +509,11 @@ fn revert_only_what_we_selected() {
     assert!(js.contains("'1': 'org.kde.image'") && js.contains("'3': 'org.kde.color'"), "{js}");
     assert!(!js.contains("'2'"), "стол, где плагин стоял и до того, не трогается: {js}");
     assert!(js.contains("wallpaperPlugin == 'org.waywallen.kde'"), "только столы с нашим плагином: {js}");
-    // Плагин стоял до «Применить» — ничего не откатываем.
+    // The plugin was there before «Apply» — nothing is rolled back.
     assert_eq!(w::revert_plugins_js(false, Some(&before)), None);
     assert_eq!(w::revert_plugins_js(true, Some(&prev(&[(1, "org.waywallen.kde")]))), None);
     assert_eq!(w::revert_plugins_js(true, None), None, "снимка нет — не гадаем");
-    // Странное имя плагина в JS не попадает.
+    // A strange plugin name does not get into JS.
     assert_eq!(w::revert_plugins_js(true, Some(&prev(&[(1, "x'; evil()")]))), None);
 }
 
@@ -541,7 +542,7 @@ fn apply_watch_stops_on_new_apply_or_timeout() {
     assert_eq!(watch.on_tick(w::HOLD_TIMEOUT_MS + w::FIRST_FRAME_WATCH_MS), w::WatchVerdict::Done);
 }
 
-// ── сторож плейлиста: рендерер в ответе не назван ───────────────────────
+// ── playlist guard: the renderer is not named in the response ───────────────────────
 
 mod playlist_watch {
     use super::w;
@@ -551,7 +552,7 @@ mod playlist_watch {
         pb::Event { payload: Some(p) }
     }
 
-    /// Дисплей `id`, на котором показаны рендереры `renderers`.
+    /// Display `id` on which the renderers `renderers` are shown.
     fn display(id: u64, renderers: &[&str]) -> pb::Event {
         let links = renderers
             .iter()
@@ -587,9 +588,9 @@ mod playlist_watch {
         }))
     }
 
-    /// ВМ, llvmpipe: плейлист запущен, демон ответил OK, рендерер первого
-    /// элемента упал. Демон снимает рендерер РАНЬШЕ, чем шлёт новый список
-    /// дисплеев (`on_renderer_process_exit`).
+    /// VM, llvmpipe: the playlist started, the daemon answered OK, the renderer of
+    /// the first item crashed. The daemon removes the renderer BEFORE it sends the
+    /// new display list (`on_renderer_process_exit`).
     #[test]
     fn renderer_dies_after_ok_reverts() {
         let mut watch = w::ApplyWatch::new(7);
@@ -599,7 +600,7 @@ mod playlist_watch {
         assert_eq!(watch.on_event(&removed("r-1")), w::WatchVerdict::Revert, "рендерер упал — стол чёрный");
     }
 
-    /// Тот же сбой, но список дисплеев без связи пришёл до снятия.
+    /// The same failure, but the display list without the link arrived before the removal.
     #[test]
     fn order_of_events_does_not_matter() {
         let mut watch = w::ApplyWatch::new(7);
@@ -609,7 +610,7 @@ mod playlist_watch {
         assert_eq!(watch.on_event(&removed("r-1")), w::WatchVerdict::Revert);
     }
 
-    /// Рендерер упал ещё до ответа демона — решает ответ.
+    /// The renderer crashed even before the daemon's response — the response decides.
     #[test]
     fn renderer_dies_before_ok_reverts_on_response() {
         let mut watch = w::ApplyWatch::new(7);
@@ -618,7 +619,7 @@ mod playlist_watch {
         assert_eq!(watch.on_response(7, true, ""), w::WatchVerdict::Revert);
     }
 
-    /// Плейлист сменил обои: прежний рендерер снят, новый уже объявлен.
+    /// The playlist changed the wallpaper: the former renderer was removed, the new one already announced.
     #[test]
     fn playlist_switch_is_not_a_failure() {
         let mut watch = w::ApplyWatch::new(7);
@@ -629,7 +630,7 @@ mod playlist_watch {
         assert_eq!(watch.on_tick(w::FIRST_FRAME_WATCH_MS), w::WatchVerdict::Done, "окно прошло — показано");
     }
 
-    /// Два стола: упал один рендерер, другой живёт — обои на столе есть.
+    /// Two desktops: one renderer crashed, the other lives — there is a wallpaper on the desktop.
     #[test]
     fn other_live_renderer_keeps_wallpaper() {
         let mut watch = w::ApplyWatch::new(7);
@@ -639,19 +640,19 @@ mod playlist_watch {
         assert_eq!(watch.on_event(&removed("r-2")), w::WatchVerdict::Revert, "не осталось ни одного");
     }
 
-    /// Снятие рендерера, не показанного на дисплеях после отправки, —
-    /// чужое (например, сирота от прошлого показа).
+    /// Removal of a renderer not shown on the displays after sending is foreign
+    /// (e.g. an orphan from a past show).
     #[test]
     fn foreign_renderer_removal_is_ignored() {
         let mut watch = w::ApplyWatch::new(7);
         watch.on_response(7, true, "");
         assert_eq!(watch.on_event(&removed("old")), w::WatchVerdict::Keep);
-        // Плейлист ждёт подходящих обоев — рендерера нет вовсе, откатывать нечего.
+        // The playlist is waiting for suitable wallpapers — there is no renderer at all, nothing to roll back.
         assert_eq!(watch.on_tick(w::FIRST_FRAME_WATCH_MS), w::WatchVerdict::Done);
     }
 
-    /// Рендерер назван в ответе (`wallpaper_apply`) — следим ровно за ним,
-    /// как прежде.
+    /// The renderer is named in the response (`wallpaper_apply`) — we watch exactly
+    /// it, as before.
     #[test]
     fn named_renderer_path_unchanged() {
         let mut watch = w::ApplyWatch::new(7);
@@ -664,8 +665,8 @@ mod playlist_watch {
 
 #[test]
 fn play_without_displays_follows_apply_gate() {
-    // Дефект 30.10.2026: плейлист на свежей KDE не запускался — без дисплея
-    // кнопка серая, а пустые цели давали «уже играет».
+    // Defect of 30.10.2026: a playlist on a fresh KDE did not start — without a
+    // display the button was grey, and empty targets gave «already playing».
     assert!(w::play_without_displays(true));
     assert_eq!(
         w::play_without_displays(true),
@@ -685,11 +686,11 @@ fn revert_texts_are_plain() {
     }
 }
 
-// ── сторож версии (дефект 02.10.2026) ────────────────────────────────────
+// ── version guard (defect of 02.10.2026) ────────────────────────────────────
 //
-// Rexon r1062 с вложенным плагином 0.3.3 (протокол вывода v8) поставил его
-// поверх 0.4.0, и демон waywallen 0.4.3 (принимает только v9) остался без
-// мониторов. Случаи — в эталоне `version_guard_cases`.
+// Rexon r1062 with the bundled plugin 0.3.3 (output protocol v8) installed it
+// over 0.4.0, and the waywallen 0.4.3 daemon (accepts only v9) was left
+// without monitors. The cases are in the `version_guard_cases` reference.
 
 fn opt_str(v: &Value) -> Option<String> {
     v.as_str().map(str::to_string)
@@ -739,8 +740,8 @@ fn version_guard_cases_match_golden() {
     }
 }
 
-/// Главное правило отдельно от эталона: старое поверх нового — никогда,
-/// ни при каком демоне и ни при каком маркере.
+/// The main rule separately from the reference: old over new — never, with
+/// any daemon and any marker.
 #[test]
 fn never_installs_older_over_newer() {
     for daemon in [None, Some("0.3.9"), Some("0.4.3"), Some("9.9.9")] {
@@ -781,7 +782,9 @@ fn protocol_tables_follow_upstream_tags() {
     assert_eq!(w::daemon_protocols("0.5.0"), Some((9, 9)));
     assert_eq!(w::daemon_protocols("0.5.1"), Some((9, 9)));
     assert_eq!(w::daemon_protocols("0.6.0"), Some((9, 9)));
-    assert_eq!(w::daemon_protocols("0.6.1"), None);
+    assert_eq!(w::daemon_protocols("0.6.1"), Some((9, 9)));
+    assert_eq!(w::daemon_protocols("0.6.2"), None);
+    assert_eq!(w::compatible_with_daemon(Some("0.4.5"), Some("0.6.1")), Some(true));
     assert_eq!(w::compatible_with_daemon(Some("0.4.3"), Some("0.5.0")), Some(true));
     assert_eq!(w::compatible_with_daemon(Some("0.4.5"), Some("0.6.0")), Some(true));
     assert_eq!(w::daemon_protocols("0.2.6"), None);
@@ -792,9 +795,9 @@ fn protocol_tables_follow_upstream_tags() {
     assert_eq!(w::compare_versions("", "0.1"), None);
 }
 
-/// Сторож вендоринга: вложенный плагин обязан быть в проверенной таблице
-/// протоколов, иначе сверка с демоном молча выключится. Обновили плагин —
-/// допишите строку в `PLUGIN_DISPLAY_PROTOCOLS` по тегу апстрима.
+/// Vendoring guard: the bundled plugin must be in the verified protocol
+/// table, otherwise the check against the daemon silently turns off. Updated
+/// the plugin — add a line to `PLUGIN_DISPLAY_PROTOCOLS` by the upstream tag.
 #[test]
 fn bundled_plugin_version_is_in_protocol_table() {
     let toml = include_str!("../../../data/kpackage/org.waywallen.kde/vendor.toml");
@@ -804,10 +807,10 @@ fn bundled_plugin_version_is_in_protocol_table() {
         "плагин {v} вне таблицы протоколов (проверена до {})",
         w::PLUGIN_PROTOCOLS_CHECKED_UP_TO
     );
-    // Хэш рантайма бандла узнаётся — чужая копия того же релиза не станет
-    // «неизвестной версии». Плазмоида в git нет (архив выпуска качает
-    // пакет); в дереве он есть, только если его распаковал
-    // `vendor-check --выкачать`, — иначе говорим «не проверено» вслух.
+    // The bundle runtime hash is recognised — a foreign copy of the same release
+    // will not become «unknown version». The plasmoid is not in git (the package
+    // downloads the release archive); it is in the tree only if
+    // `vendor-check --fetch` unpacked it — otherwise we say «not checked» out loud.
     let so_path = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../data/kpackage/org.waywallen.kde/contents/ui/Plugin/WaywallenDisplayEmbed/libwaywallen-display-qml.so"
@@ -829,7 +832,7 @@ fn parse_vendor_version_cases() {
     assert_eq!(w::parse_vendor_version("не toml ["), None);
 }
 
-/// Тексты для человека: английский исходник с подставленными версиями.
+/// Texts for the person: the English source with versions substituted.
 #[test]
 fn notice_texts_name_versions() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -852,7 +855,7 @@ fn notice_texts_name_versions() {
     assert_eq!(w::install_rexon_version_label(), "Install Rexon's Version");
 }
 
-/// Каждая новая строка сторожа переведена на русский и немецкий.
+/// Every new guard string is translated into Russian and German.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po настоящим msgfmt")]
 fn notice_texts_translated_ru_de() {
@@ -894,8 +897,8 @@ fn notice_texts_translated_ru_de() {
     }
 }
 
-/// Хост-клиент вывода на X11 находит элемент вывода в том же пакете, что
-/// Rexon везёт для Plasma: вшитый — первым, установленный — запасным.
+/// The X11 output host client finds the output element in the same package
+/// Rexon ships for Plasma: the bundled one first, the installed one as a fallback.
 #[test]
 fn display_item_found_next_to_runtime() {
     let so = "/usr/lib/rexon/rexon/kpackage/org.waywallen.kde/contents/ui/Plugin/WaywallenDisplayEmbed/libwaywallen-display-qml.so";
@@ -911,7 +914,7 @@ fn display_item_found_next_to_runtime() {
         ]
     );
     assert!(w::display_package_candidates(None, "").is_empty());
-    // Вшитый пакет дерева разработчика: обёртка и модуль на месте.
+    // The bundled package of the developer tree: the wrapper and the module are in place.
     let tree = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data");
     let base = w::display_package_candidates(Some(tree), "")[0].clone();
     if let Some(so) = w::find_runtime_so(&base, Some(w::RUNTIME_SO_REL)) {
@@ -920,9 +923,10 @@ fn display_item_found_next_to_runtime() {
     }
 }
 
-/// Серая «Применить» без вывода для сцен — с объяснением (GNOME без
-/// расширения waywallen, Cinnamon Wayland без layer-shell, незнакомый
-/// композитор); где дисплей поднимает Rexon или движок — прежние слова.
+/// A grey «Apply» without output for scenes — with an explanation (GNOME
+/// without the waywallen extension, Cinnamon Wayland without layer-shell, an
+/// unfamiliar compositor); where Rexon or the engine brings up the display —
+/// the former words.
 #[test]
 fn no_displays_hint_explains_missing_output() {
     use rexon_core::wallpaper_backend::{DisplaySetup, WallpaperBackend as B};

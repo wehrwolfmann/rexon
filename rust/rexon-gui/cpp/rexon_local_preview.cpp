@@ -19,14 +19,14 @@
 
 namespace {
 
-// Холст живёт между вызовами: кадр рисуется по одной операции за раз.
-// Рисуется QImage, а не QPixmap: QImage можно рисовать в любом потоке, а
-// кадры плиток готовятся вне потока интерфейса.
+// The canvas lives between calls: a frame is drawn one operation at a
+// time. A QImage is drawn rather than a QPixmap: a QImage can be drawn in
+// any thread, and tile frames are prepared outside the interface thread.
 struct Canvas {
     QImage image;
     QPainter painter;
-    // Рамка из рисунка SVG — это девять отрисовок одного файла: разбирать
-    // его каждый раз заново незачем.
+    // A frame from an SVG drawing means nine renderings of one file: there is
+    // no reason to parse it anew every time.
     QHash<QString, std::shared_ptr<QSvgRenderer>> svgs;
 
     QSvgRenderer *svg(const char *path)
@@ -39,8 +39,8 @@ struct Canvas {
         return found.value()->isValid() ? found.value().get() : nullptr;
     }
 
-    // Сколько отсечений открыто: лишнее закрытие не должно снять состояние,
-    // которого холст не сохранял.
+    // How many clips are open: an extra close must not pop a state the canvas
+    // did not save.
     int clips = 0;
 
     Canvas(int width, int height, const char *base_hex)
@@ -53,7 +53,7 @@ struct Canvas {
     }
 };
 
-// Выравнивание текста — одно на все текстовые операции.
+// Text alignment — one for all text operations.
 constexpr int kTextAlign = Qt::AlignHCenter | Qt::AlignVCenter;
 
 } // namespace
@@ -112,8 +112,8 @@ void rexon_lp_image(void *canvas, const char *path, double x, double y,
 {
     auto *c = static_cast<Canvas *>(canvas);
     QImageReader reader(QString::fromUtf8(path));
-    // Рисунок SVG читается сразу в нужном размере — иначе его растянуло бы
-    // из родного, обычно крошечного.
+    // An SVG drawing is read right away at the needed size — otherwise it
+    // would be stretched from its native, usually tiny, size.
     reader.setScaledSize(QSize(qRound(w), qRound(h)));
     const QImage image = reader.read();
     if (image.isNull()) {
@@ -137,8 +137,9 @@ void rexon_lp_image_tiled(void *canvas, const char *path, double x, double y,
     const QRectF rect(x, y, w, h);
     c->painter.save();
     c->painter.setClipRect(rect);
-    // Кисть-картинка кладётся от начала координат холста: сдвигаем её
-    // начало в угол прямоугольника, иначе плитка шла бы «с середины».
+    // An image brush is laid from the canvas origin: we move its origin to the
+    // corner of the rectangle, otherwise the tiling would start "from the
+    // middle".
     c->painter.setBrushOrigin(rect.topLeft());
     c->painter.fillRect(rect, QBrush(image));
     c->painter.restore();
@@ -206,8 +207,8 @@ void rexon_lp_clip_push(void *canvas, double x, double y, double w, double h,
         c->painter.setClipRect(rect, Qt::IntersectClip);
         return;
     }
-    // Очертание со своим радиусом у каждого угла: по часовой стрелке от
-    // левого верхнего.
+    // An outline with its own radius for each corner: clockwise from the top
+    // left.
     QPainterPath path;
     path.moveTo(rect.left() + top_left, rect.top());
     path.lineTo(rect.right() - top_right, rect.top());
@@ -242,7 +243,7 @@ void rexon_lp_line(void *canvas, double x1, double y1, double x2, double y2,
     c->painter.save();
     c->painter.setPen(QPen(QColor(r, g, b, a), width, Qt::SolidLine,
                            Qt::FlatCap));
-    // Координаты называют точки, линия идёт через их середины.
+    // The coordinates name points; the line goes through their centres.
     c->painter.drawLine(QPointF(x1 + 0.5, y1 + 0.5),
                         QPointF(x2 + 0.5, y2 + 0.5));
     c->painter.restore();
@@ -253,8 +254,8 @@ void rexon_lp_arc(void *canvas, double x, double y, double w, double h,
                   uint8_t g, uint8_t b, uint8_t a)
 {
     auto *c = static_cast<Canvas *>(canvas);
-    // У Qt углы идут против часовой стрелки от «трёх часов» в 1/16 градуса;
-    // сюда приходят по часовой от «двенадцати».
+    // In Qt angles go counter-clockwise from "three o'clock" in 1/16 of a
+    // degree; here they arrive clockwise from "twelve".
     const int qt_start = qRound((90.0 - start) * 16.0);
     const int qt_span = qRound(-extent * 16.0);
     c->painter.save();
@@ -277,7 +278,7 @@ void rexon_lp_shade(void *canvas, double x, double y, double w, double h,
     if (count < 2) {
         return;
     }
-    // 0 — слева направо, 1 — сверху вниз, 2 — из угла в угол.
+    // 0 — left to right, 1 — top to bottom, 2 — corner to corner.
     const QPointF from(x, y);
     const QPointF to(direction == 1 ? x : x + w, direction == 0 ? y : y + h);
     QLinearGradient grad(from, to);
@@ -296,7 +297,7 @@ void rexon_lp_picture(void *canvas, const char *path, double x, double y,
     auto *c = static_cast<Canvas *>(canvas);
     QImageReader reader(QString::fromUtf8(path));
     if (!tile) {
-        // Рисунок SVG читается сразу в нужном размере.
+        // The SVG drawing is read right away at the needed size.
         reader.setScaledSize(QSize(qMax(1, qRound(w)), qMax(1, qRound(h))));
     }
     QImage image = reader.read();
@@ -304,8 +305,8 @@ void rexon_lp_picture(void *canvas, const char *path, double x, double y,
         return;
     }
     if (colorize) {
-        // Яркость точки ведёт от чёрного через названный цвет к белому;
-        // прозрачность точки остаётся своей.
+        // The pixel brightness leads from black through the named colour to
+        // white; the pixel's opacity stays its own.
         image = image.convertToFormat(QImage::Format_ARGB32);
         const int target[3] = {r, g, b};
         for (int row = 0; row < image.height(); ++row) {
@@ -348,8 +349,8 @@ void rexon_lp_label(void *canvas, double x, double y, double w, double h,
     font.setPixelSize(qMax(1, pixel_size));
     font.setBold(bold);
     const QString line = QString::fromUtf8(text);
-    // Место под строку рассчитано без настоящего шрифта: если строка вышла
-    // шире, шрифт уменьшается так, чтобы она в него вошла.
+    // The room for the line was computed without the real font: if the line
+    // came out wider, the font is reduced so that it fits.
     const double natural = QFontMetricsF(font).horizontalAdvance(line);
     if (w > 0.0 && natural > w) {
         font.setPixelSize(qMax(6, int(pixel_size * w / natural)));
@@ -357,7 +358,8 @@ void rexon_lp_label(void *canvas, double x, double y, double w, double h,
     c->painter.save();
     c->painter.setFont(font);
     c->painter.setPen(QColor(r, g, b, a));
-    // Строка может оказаться шире расчётного места — не обрезаем её им.
+    // The line may turn out wider than the computed room — we do not clip it
+    // to it.
     c->painter.drawText(QRectF(x, y, w, h),
                         kTextAlign | Qt::TextDontClip | Qt::TextSingleLine,
                         line);

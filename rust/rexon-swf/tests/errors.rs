@@ -1,22 +1,22 @@
-//! Ошибки запуска без окна и без GPU: перечисление и коды выхода, никаких panic.
+//! Startup errors without a window and without a GPU: enum and exit codes, no panics.
 
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 
 use rexon_swf::{Error, GpuContext, MmapSpec, OutputTarget, Settings, Wallpaper};
 
-/// ⚠️ Проверки идут по очереди, и это не аккуратность ради аккуратности.
-/// libtest запускает их параллельно, каждая заводит свой `VkInstance` — и
-/// драйвер Vulkan падает по SIGSEGV внутри себя на одновременном создании
-/// нескольких инстансов (замер 16.09.2026: `--test-threads=1` — зелено,
-/// без него — signal 11 на второй же проверке). Падение libtest выглядит как
-/// «Flash сломан», хотя ломается стенд, — поэтому Vulkan здесь берётся под
-/// общим замком.
+/// ⚠️ The checks run one after another, and this is not neatness for its own sake.
+/// libtest runs them in parallel, each creates its own `VkInstance` — and
+/// the Vulkan driver crashes with SIGSEGV inside itself when several instances
+/// are created at once (measured on 16.09.2026: `--test-threads=1` — green,
+/// without it — signal 11 on the very second check). A libtest crash looks like
+/// "Flash is broken", although it is the bench that breaks, — so Vulkan here is taken under
+/// a shared lock.
 static VULKAN: Mutex<()> = Mutex::new(());
 
 fn vulkan() -> MutexGuard<'static, ()> {
-    // Отравленный замок — след ЧУЖОГО упавшего теста; свой ход от этого не
-    // портится, и прятать его новым падением незачем.
+    // A poisoned lock is the trace of SOMEONE ELSE's failed test; our own run is not
+    // spoiled by it, and there is no point hiding it behind a new failure.
     VULKAN.lock().unwrap_or_else(|e| e.into_inner())
 }
 

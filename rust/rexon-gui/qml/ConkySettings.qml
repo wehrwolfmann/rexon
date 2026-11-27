@@ -1,12 +1,14 @@
-// Настройки виджета Conky в карточке раздела «Виджеты Conky»: положение и
-// размер, фон, окно, экран, частота обновления, часы и сеть.
+// Conky widget settings in the card of the "Conky widgets" section:
+// position and size, background, window, screen, update rate, clock and
+// network.
 //
-// Файл автора не меняется: каждое изменение пишет накладку Rexon
-// (rexon_core::conky_overlay), запущенный виджет перечитывает её сам —
-// правка видна сразу, без «Применить». «Как у автора» удаляет накладку.
+// The author's file is not changed: every change writes a Rexon overlay
+// (rexon_core::conky_overlay), and the running widget re-reads it by
+// itself — the edit is visible at once, without "Apply". "As the author
+// made it" deletes the overlay.
 //
-// Только разметка: значения, подписи и запись — объект действий страницы
-// (`conkySettings`, `setConkySetting`, `resetConkySettings` в
+// Markup only: values, labels and writing — the page's actions object
+// (`conkySettings`, `setConkySetting`, `resetConkySettings` in
 // rust/rexon-gui/src/appearance_actions.rs).
 
 pragma ComponentBehavior: Bound
@@ -21,7 +23,7 @@ ColumnLayout {
     property var pal: null
     property var actions: null
     property string itemId: ""
-    /// Файл настроек (часть виджета), к которому относятся настройки.
+    /// The settings file (part of the widget) these settings belong to.
     property string conf: ""
     property bool busy: false
 
@@ -65,7 +67,7 @@ ColumnLayout {
     onItemIdChanged: reload()
     Component.onCompleted: reload()
 
-    // Ползунок прозрачности пишет не на каждый шаг, а после паузы.
+    // The opacity slider writes not on every step but after a pause.
     Timer {
         id: opacityTimer
         interval: 350
@@ -111,7 +113,7 @@ ColumnLayout {
         enabled: !box.busy
         spacing: 6
 
-        // ── Положение и размер ────────────────────────────────────────
+        // ── Position and size ─────────────────────────────────────────
         RexonText { text: box.t.position || ""; color: box.colText; font.bold: true }
 
         RowLayout {
@@ -121,9 +123,10 @@ ColumnLayout {
                 objectName: "conkyAlignmentGrid"
                 columns: 3
                 spacing: 2
-                // Физическая зона: сетка 3×3 — углы и края экрана, где встанет
-                // виджет (у кнопок стрелки ↖ ↑ ↗). Левый верхний угол экрана —
-                // левый при любом языке, поэтому сетка не зеркалится.
+                // Physical zone: a 3×3 grid — the screen corners and edges where the
+                // widget will be placed (the buttons have arrows ↖ ↑ ↗). The top left
+                // corner of the screen is on the left in any language, so the grid is
+                // not mirrored.
                 LayoutMirroring.enabled: false
                 LayoutMirroring.childrenInherit: true
                 Repeater {
@@ -187,7 +190,7 @@ ColumnLayout {
             }
         }
 
-        // Мини-карта экрана: тот же виджет перетаскиванием (conky_layout).
+        // Mini map of the screen: the same widget by dragging (conky_layout).
         ConkyScreenMap {
             objectName: "conkyCardScreenMap"
             Layout.fillWidth: true
@@ -199,7 +202,7 @@ ColumnLayout {
             onMoved: box.reload()
         }
 
-        // ── Фон ───────────────────────────────────────────────────────
+        // ── Background ────────────────────────────────────────────────
         RexonText { text: box.t.background || ""; color: box.colText; font.bold: true; Layout.topMargin: 4 }
 
         RowLayout {
@@ -261,7 +264,7 @@ ColumnLayout {
             wrapMode: Text.WordWrap
         }
 
-        // ── Окно и экран ──────────────────────────────────────────────
+        // ── Window and screen ─────────────────────────────────────────
         RexonText { text: box.t.window || ""; color: box.colText; font.bold: true; Layout.topMargin: 4 }
 
         RexonCheckBox {
@@ -324,7 +327,7 @@ ColumnLayout {
             }
         }
 
-        // ── Часы и сеть (в тексте виджета) ────────────────────────────
+        // ── Clock and network (in the widget text) ────────────────────
         RexonCheckBox {
             objectName: "conkyClock24"
             visible: box.view.clock !== null && box.view.clock !== undefined

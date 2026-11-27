@@ -1,10 +1,10 @@
-//! Константы системы расширений — порт `rexon/extensions/constants.py`.
+//! Constants of the extension system: a port of `rexon/extensions/constants.py`.
 //!
-//! Чистые данные: типы расширений, пути установки, метки, иконки, градиенты,
-//! форматы обоев, поддерживаемые форматы файлов, рекомендуемые расширения.
-//! Python-множества (`set`) неупорядочены, поэтому порядок массивов здесь
-//! несущественен; байтовая сверка нужна только для `RECOMMENDED_EXTENSIONS`
-//! (сериализуемые данные — golden-тест `constants_parity.rs`).
+//! Pure data: extension types, install paths, labels, icons, gradients,
+//! wallpaper formats, supported file formats, recommended extensions.
+//! Python sets (`set`) are unordered, so the order of the arrays here does not
+//! matter; a byte-for-byte comparison is needed only for
+//! `RECOMMENDED_EXTENSIONS` (serialized data, golden test `constants_parity.rs`).
 
 use std::path::PathBuf;
 
@@ -12,86 +12,87 @@ use serde::Serialize;
 
 use crate::i18n::{n_, tr};
 
-// ── Версии ───────────────────────────────────────────────────────────
+// ── Versions ─────────────────────────────────────────────────────────
 
 pub const REXON_VERSION: (u32, u32, u32) = (0, 1, 1);
 pub const FORMAT_VERSION: u32 = 3;
 
-// ── Типы расширений ──────────────────────────────────────────────────
+// ── Extension types ──────────────────────────────────────────────────
 //
-// ⚠️ Списка типов здесь БОЛЬШЕ НЕТ. Единственный источник правды —
-// матрица `de_customization::ROWS`: она одна знает и куда класть файл, и в
-// каких окружениях тип имеет смысл. Раньше «безопасное оформление» жило
-// вторым списком прямо тут, и две таблицы про одно и то же неизбежно
-// расходились (правило #12). Новый тип заводится СТРОКОЙ В МАТРИЦЕ —
-// `VALID_TYPES`, категория «Оформление» и путь установки подхватываются
-// сами; здесь остаются только подпись, значок и градиент карточки, то есть
-// чистое отображение (нужное и скриптовым типам, которых в матрице нет).
+// Warning: there is NO list of types here ANY MORE. The single source of
+// truth is the matrix `de_customization::ROWS`: only it knows both where to
+// put a file and in which environments a type makes sense. The "safe
+// appearance" types used to live in a second list right here, and two tables
+// about the same thing inevitably drifted apart (rule #12). A new type is
+// added as a ROW IN THE MATRIX: `VALID_TYPES`, the "Appearance" category and
+// the install path pick it up on their own; only the label, the icon and the
+// card gradient remain here, i.e. pure presentation (also needed by the
+// script types, which are not in the matrix).
 
-/// Категория «Оформление»: всё, что Rexon ставит сам, — из матрицы.
+/// The "Appearance" category: everything Rexon installs itself, from the matrix.
 pub fn category_appearance() -> Vec<&'static str> {
     crate::de_customization::kinds()
 }
 
-/// Все допустимые типы расширений (`VALID_TYPES`) — оформление из матрицы
-/// плюс скриптовые расширения.
+/// All allowed extension types (`VALID_TYPES`): appearance types from the
+/// matrix plus script extensions.
 pub fn valid_types() -> Vec<&'static str> {
     let mut v = category_appearance();
     v.extend_from_slice(CATEGORY_EXTENSIONS);
     v
 }
 
-/// Категория «Расширения» (со скриптами).
+/// The "Extensions" category (with scripts).
 pub const CATEGORY_EXTENSIONS: &[&str] = &["desktop-tool", "plugin"];
 
-/// Типы, требующие install.sh/uninstall.sh (запускают код).
+/// Types that require install.sh/uninstall.sh (they run code).
 pub const SCRIPTED_TYPES: &[&str] = &["desktop-tool", "plugin"];
 
-/// Тип допустим?
+/// Is the type allowed?
 pub fn is_valid_type(t: &str) -> bool {
     is_appearance(t) || is_extension(t)
 }
 
-/// Тип относится к категории «Оформление»?
+/// Does the type belong to the "Appearance" category?
 pub fn is_appearance(t: &str) -> bool {
     crate::de_customization::row(t).is_some()
 }
 
-/// Тип относится к категории «Расширения»?
+/// Does the type belong to the "Extensions" category?
 pub fn is_extension(t: &str) -> bool {
     CATEGORY_EXTENSIONS.contains(&t)
 }
 
-/// Тип запускает скрипты (install.sh/uninstall.sh)?
+/// Does the type run scripts (install.sh/uninstall.sh)?
 pub fn is_scripted(t: &str) -> bool {
     SCRIPTED_TYPES.contains(&t)
 }
 
-// ── Пути установки (безопасные типы) ─────────────────────────────────
+// ── Install paths (safe types) ───────────────────────────────────────
 
-/// Суффикс пути установки относительно `$HOME` — прямо из матрицы (её же
-/// читает планировщик `ext_manager`, чтобы не держать вторую копию).
+/// The install path suffix relative to `$HOME`, taken straight from the
+/// matrix (the `ext_manager` planner reads it too, so there is no second copy).
 ///
-/// `None` — типа в матрице нет (скриптовые расширения) либо каталога
-/// установки у него нет вовсе: набор обоев применяется прямо из пакета, как
-/// и было в `INSTALL_PATHS` оригинала.
+/// `None` means the type is not in the matrix (script extensions) or has no
+/// install directory at all: a wallpaper pack is applied straight from the
+/// package, as it was in the original's `INSTALL_PATHS`.
 pub fn install_path_suffix(t: &str) -> Option<&'static str> {
     crate::de_customization::dest_suffix(t)
 }
 
-/// Путь установки для типа (раскрытый от дома пользователя), либо `None`,
-/// если тип не в `INSTALL_PATHS`.
+/// The install path for a type (expanded from the user's home), or `None` if
+/// the type is not in `INSTALL_PATHS`.
 ///
-/// ⚠️ Починка: раньше путь собирался из голого `$HOME`, минуя `XDG_*`.
-/// Питоновская сторона строит те же пути через `expand_user`, то есть
-/// XDG-осведомлённо, — и при заданном `XDG_DATA_HOME` таблицы расходились
-/// в 27 ключах из 30. Цена была не в красном тесте: самопроверка
-/// `rexon/extensions/constants.py` сверяет КАЖДУЮ таблицу с ядром и при
-/// расхождении молча откатывает ВСЕ 21 таблицу на питоновские литералы —
-/// мост констант отключался целиком, а установка оформления двух десятков
-/// типов уезжала мимо каталога, который читает система. Путь теперь
-/// считается каноническим [`crate::utils::expand_user_xdg`], как и все
-/// остальные пути пользователя.
+/// Warning — a fix: the path used to be built from bare `$HOME`, bypassing
+/// `XDG_*`. The Python side builds the same paths via `expand_user`, i.e.
+/// XDG-aware, and with `XDG_DATA_HOME` set the tables differed in 27 keys out
+/// of 30. The cost was not a red test: the self-check in
+/// `rexon/extensions/constants.py` compares EVERY table with the core and on
+/// a mismatch silently falls back for ALL 21 tables to the Python literals —
+/// the constants bridge was switched off entirely, and installing appearance
+/// items of two dozen types went past the directory the system reads. The
+/// path is now computed by the canonical [`crate::utils::expand_user_xdg`],
+/// like all other user paths.
 pub fn install_path(t: &str) -> Option<PathBuf> {
     install_path_suffix(t).map(|suffix| {
         PathBuf::from(crate::utils::expand_user_xdg(
@@ -103,7 +104,7 @@ pub fn install_path(t: &str) -> Option<PathBuf> {
     })
 }
 
-// ── Команды применения KDE-тем ───────────────────────────────────────
+// ── KDE theme apply commands ─────────────────────────────────────────
 
 const KDE_APPLY_COMMANDS: &[(&str, &str)] = &[
     ("theme-kde-global", "plasma-apply-lookandfeel"),
@@ -112,24 +113,24 @@ const KDE_APPLY_COMMANDS: &[(&str, &str)] = &[
     ("theme-kvantum", "kvantummanager"),
 ];
 
-/// Команда применения KDE-темы для типа, либо `None`.
+/// The KDE theme apply command for a type, or `None`.
 pub fn kde_apply_command(t: &str) -> Option<&'static str> {
     lookup(KDE_APPLY_COMMANDS, t)
 }
 
-// ── Отображение ──────────────────────────────────────────────────────
+// ── Presentation ─────────────────────────────────────────────────────
 //
-// Подпись, значок и градиент карточки — про ПОКАЗ, а не про механику
-// установки, и нужны в том числе скриптовым типам (`desktop-tool`,
-// `plugin`), которых в матрице нет и не будет. Поэтому они остаются здесь, а
-// не переезжают в строку матрицы: иначе таблица типов снова разъехалась бы
-// на две части. От расхождения защищает тест
-// `every_matrix_kind_is_registered_everywhere`: у каждого типа матрицы
-// обязаны быть все три значения.
+// The label, the icon and the card gradient are about DISPLAY, not about the
+// install mechanics, and they are needed by script types too (`desktop-tool`,
+// `plugin`), which are not and will not be in the matrix. That is why they
+// stay here instead of moving into the matrix row: otherwise the type table
+// would split in two again. The test
+// `every_matrix_kind_is_registered_everywhere` guards against drift: every
+// matrix type must have all three values.
 //
-// Подписи — английские `msgid` под маркером `n_` (русский — в `po/ru.po`);
-// переводит их место показа: [`type_label`] сразу, а владельцы
-// [`type_labels_ordered`] — через `i18n::tr`.
+// Labels are English `msgid`s under the `n_` marker (Russian is in
+// `po/ru.po`); they are translated where they are shown: [`type_label`]
+// immediately, and the owners of [`type_labels_ordered`] via `i18n::tr`.
 
 const TYPE_LABELS: &[(&str, &str)] = &[
     ("theme-gtk", n_("GTK Theme")),
@@ -170,21 +171,22 @@ const TYPE_LABELS: &[(&str, &str)] = &[
     ("plugin", n_("Plugin")),
 ];
 
-/// Человекочитаемая метка типа на языке интерфейса, либо `None`.
+/// The human-readable type label in the interface language, or `None`.
 pub fn type_label(t: &str) -> Option<String> {
     lookup(TYPE_LABELS, t).map(tr)
 }
 
-/// Таблица подписей ЦЕЛИКОМ, в порядке объявления.
+/// The WHOLE label table, in declaration order.
 ///
-/// Порядок тут — продуктовое решение: в этом же порядке вкладка «Расширения»
-/// расставляет кнопки фильтров и группы режима «список» (там это была
-/// итерация по `TYPE_LABELS.keys()` словаря Python). `valid_types()` для
-/// этого не годится — она собрана из матрицы кастомизации и идёт другим
-/// порядком, а два разных порядка на одной витрине покупатель заметит.
+/// The order here is a product decision: the "Extensions" tab lays out its
+/// filter buttons and the groups of the "list" mode in this same order (there
+/// it was an iteration over the Python dict's `TYPE_LABELS.keys()`).
+/// `valid_types()` is not suitable for this: it is built from the
+/// customization matrix and comes in a different order, and a customer would
+/// notice two different orders in one storefront.
 ///
-/// ⚠️ Подписи здесь — НЕПЕРЕВЕДЁННЫЕ `msgid`: показывать их можно только
-/// через `i18n::tr`.
+/// Warning: the labels here are UNTRANSLATED `msgid`s: they may only be shown
+/// via `i18n::tr`.
 pub fn type_labels_ordered() -> &'static [(&'static str, &'static str)] {
     TYPE_LABELS
 }
@@ -228,12 +230,12 @@ const TYPE_ICONS: &[(&str, &str)] = &[
     ("plugin", "🧩"),
 ];
 
-/// Emoji-иконка типа, либо `None`.
+/// The emoji icon of a type, or `None`.
 pub fn type_icon(t: &str) -> Option<&'static str> {
     lookup(TYPE_ICONS, t)
 }
 
-/// Градиент карточки типа: две RGB-тройки (0.0-1.0), либо `None`.
+/// The card gradient of a type: two RGB triples (0.0–1.0), or `None`.
 const TYPE_GRADIENT_COLORS: &[(&str, [[f64; 3]; 2])] = &[
     ("theme-gtk", [[0.55, 0.24, 0.78], [0.28, 0.10, 0.50]]),
     ("theme-icons", [[0.50, 0.30, 0.70], [0.25, 0.15, 0.40]]),
@@ -273,7 +275,7 @@ const TYPE_GRADIENT_COLORS: &[(&str, [[f64; 3]; 2])] = &[
     ("plugin", [[0.20, 0.70, 0.40], [0.10, 0.40, 0.22]]),
 ];
 
-/// Градиент карточки для типа, либо `None`.
+/// The card gradient for a type, or `None`.
 pub fn type_gradient(t: &str) -> Option<[[f64; 3]; 2]> {
     TYPE_GRADIENT_COLORS
         .iter()
@@ -281,7 +283,7 @@ pub fn type_gradient(t: &str) -> Option<[[f64; 3]; 2]> {
         .map(|(_, v)| *v)
 }
 
-// ── Форматы обоев (wallpaper-pack) ───────────────────────────────────
+// ── Wallpaper formats (wallpaper-pack) ───────────────────────────────
 
 pub const WALLPAPER_FORMATS: &[&str] = &[
     "static",
@@ -303,7 +305,7 @@ const WALLPAPER_FORMAT_LABELS: &[(&str, &str)] = &[
     ("application", n_("Application")),
 ];
 
-/// Метка формата обоев на языке интерфейса, либо `None`.
+/// The wallpaper format label in the interface language, or `None`.
 pub fn wallpaper_format_label(f: &str) -> Option<String> {
     lookup(WALLPAPER_FORMAT_LABELS, f).map(tr)
 }
@@ -318,12 +320,12 @@ const WALLPAPER_FORMAT_ICONS: &[(&str, &str)] = &[
     ("application", "⚙️"),
 ];
 
-/// Иконка формата обоев, либо `None`.
+/// The wallpaper format icon, or `None`.
 pub fn wallpaper_format_icon(f: &str) -> Option<&'static str> {
     lookup(WALLPAPER_FORMAT_ICONS, f)
 }
 
-// ── Поддерживаемые форматы файлов (расширения в нижнем регистре) ──────
+// ── Supported file formats (lowercase extensions) ────────────────────
 
 pub const SUPPORTED_IMAGE_FORMATS: &[&str] =
     &[".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff"];
@@ -336,31 +338,32 @@ pub const SUPPORTED_FLASH_FORMATS: &[&str] = &[".swf"];
 pub const SUPPORTED_AUDIO_FORMATS: &[&str] =
     &[".mp3", ".ogg", ".wav", ".flac", ".opus", ".m4a"];
 pub const SUPPORTED_FONT_FORMATS: &[&str] = &[
-    ".ttf", ".otf", ".woff", ".woff2", // современные
+    ".ttf", ".otf", ".woff", ".woff2", // modern
     ".ttc", // TrueType Collection (CJK, Noto)
     ".pfb", ".pfm", ".pfa", // PostScript Type 1 (Adobe legacy)
-    ".bdf", ".pcf", ".pcf.gz", // Bitmap (Terminus, ретро-терминалы)
+    ".bdf", ".pcf", ".pcf.gz", // Bitmap (Terminus, retro terminals)
     ".fon", ".fnt", // Windows bitmap (Win 3.1/95/XP legacy)
 ];
 
-/// Совпадает ли имя файла с одним из `SUPPORTED_FONT_FORMATS` по суффиксу
-/// ЦЕЛИКОМ. Корректно матчит СОСТАВНЫЕ суффиксы (`.pcf.gz`) и односоставные
-/// (`.ttf`), без ложных совпадений (`.woff2` не считается `.woff`).
+/// Whether a file name matches one of `SUPPORTED_FONT_FORMATS` by the WHOLE
+/// suffix. Correctly matches COMPOUND suffixes (`.pcf.gz`) and simple ones
+/// (`.ttf`), without false matches (`.woff2` does not count as `.woff`).
 ///
-/// Починен баг оригинала: сравнивался только последний dotted-компонент имени
-/// (`os.path.splitext(f)[1]` → для `x.pcf.gz` даёт `.gz`), из-за чего запись
-/// `.pcf.gz` в наборе была мёртвой и gzip-PCF шрифты (Terminus и пр.) молча не
-/// устанавливались, занижая `font_count`.
+/// Fixes a bug of the original: only the last dotted component of the name
+/// was compared (`os.path.splitext(f)[1]` gives `.gz` for `x.pcf.gz`), so the
+/// `.pcf.gz` entry in the set was dead and gzip-compressed PCF fonts
+/// (Terminus and others) were silently not installed, understating
+/// `font_count`.
 pub fn is_supported_font(name: &str) -> bool {
     let lower = name.to_lowercase();
     SUPPORTED_FONT_FORMATS.iter().any(|fmt| lower.ends_with(fmt))
 }
 
-// ── Рекомендуемые расширения (каталог-заглушка) ──────────────────────
+// ── Recommended extensions (placeholder catalog) ─────────────────────
 
-/// Одна запись каталога-заглушки `RECOMMENDED_EXTENSIONS`. Порядок полей и
-/// пропуск отсутствующего `github_repo` (`skip_serializing_if`) повторяют
-/// Python-dict — сериализация сверяется побайтово.
+/// One entry of the placeholder catalog `RECOMMENDED_EXTENSIONS`. The field
+/// order and omitting a missing `github_repo` (`skip_serializing_if`) follow
+/// the Python dict: the serialization is compared byte for byte.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RecommendedExtension {
     pub id: &'static str,
@@ -377,7 +380,7 @@ pub struct RecommendedExtension {
     pub github_repo: Option<&'static str>,
 }
 
-/// Рекомендуемые расширения (каталог-заглушка) — как `RECOMMENDED_EXTENSIONS`.
+/// Recommended extensions (placeholder catalog), like `RECOMMENDED_EXTENSIONS`.
 pub fn recommended_extensions() -> Vec<RecommendedExtension> {
     vec![
         RecommendedExtension {
@@ -491,14 +494,14 @@ pub fn recommended_extensions() -> Vec<RecommendedExtension> {
     ]
 }
 
-// ── Внутренние хелперы ───────────────────────────────────────────────
+// ── Internal helpers ─────────────────────────────────────────────────
 
-/// Поиск значения по ключу в массиве пар (аналог dict.get → Option).
+/// Looks up a value by key in an array of pairs (the counterpart of dict.get → Option).
 fn lookup(table: &[(&str, &'static str)], key: &str) -> Option<&'static str> {
     table.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
 }
 
-/// Домашний каталог из `$HOME` (fallback — текущий каталог).
+/// The home directory from `$HOME` (falls back to the current directory).
 fn home_dir() -> PathBuf {
     std::env::var_os("HOME")
         .map(PathBuf::from)

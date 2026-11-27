@@ -1,17 +1,18 @@
-//! Картинка плитки местной темы, у которой нет ни своей картинки, ни
-//! картинки из записи магазина (вкладка «Оформление»).
+//! The tile picture of a local theme that has neither its own picture nor a
+//! picture from a store entry (the "Appearance" tab).
 //!
-//! Здесь всё детерминированное (вход → выход): что нарисовать на плитке —
-//! образец из содержимого самой темы по таблице видов [`PREVIEW_RULES`] либо
-//! заглушку вида — и готовый список операций отрисовки ([`DrawOp`]): что
-//! залить, каким цветом, какую картинку или часть рисунка темы куда
-//! поставить. Сам рендер — у окна (`rexon-gui`, `local_preview_render.rs`):
-//! он исполняет операции по порядку и ничего не решает.
+//! Everything here is deterministic (input → output): what to draw on the tile —
+//! a sample from the theme's own contents by the table of kinds
+//! [`PREVIEW_RULES`] or the kind's placeholder — and the ready list of drawing
+//! operations ([`DrawOp`]): what to fill, with what color, which picture or part
+//! of the theme's image to put where. The rendering itself belongs to the window
+//! (`rexon-gui`, `local_preview_render.rs`): it executes the operations in order
+//! and decides nothing.
 //!
-//! Разбор характерных цветов схемы KDE ([`parse_scheme_colors`]) сверен с
-//! эталоном на настоящих схемах — `tests/local_preview_parity.rs`.
-//! Компоненты цвета вне 0..=255 отбрасываются целиком: запись с мусором
-//! пропускается, а не рисуется чёрной полосой.
+//! Parsing of the characteristic colors of a KDE scheme ([`parse_scheme_colors`])
+//! is checked against a reference on real schemes —
+//! `tests/local_preview_parity.rs`. Color components outside 0..=255 are dropped
+//! entirely: an entry with garbage is skipped rather than drawn as a black strip.
 
 mod metacity;
 pub use metacity::{marco_failure, marco_theme_problem, MarcoProblem};
@@ -22,35 +23,35 @@ pub use scheme::{
     TONE_ALL, TONE_DARK, TONE_FOLLOWS, TONE_LIGHT,
 };
 
-// ── размер кадра и общая подложка ──────────────────────────────────────────
+// ── frame size and the shared background ───────────────────────────────────
 
-/// Ширина картинки плитки.
+/// Width of the tile picture.
 pub const PREVIEW_WIDTH: i64 = 300;
-/// Высота картинки плитки.
+/// Height of the tile picture.
 pub const PREVIEW_HEIGHT: i64 = 170;
-/// Сколько характерных цветов схемы берётся самое большее.
+/// How many characteristic scheme colors are taken at most.
 pub const MAX_SCHEME_COLORS: usize = 6;
-/// Ключи характерных цветов схемы — ищутся во всех группах файла в порядке
-/// появления.
+/// Keys of the characteristic scheme colors — searched for in all groups of the
+/// file in order of appearance.
 pub const SCHEME_COLOR_KEYS: &[&str] = &["BackgroundNormal", "DecorationFocus", "ForegroundNormal"];
-/// Заливка-основа кадра.
+/// The base fill of the frame.
 pub const BASE_BACKGROUND: &str = "#1e2d3d";
-/// Верх перехода общей подложки.
+/// Top of the shared background's gradient.
 pub const GRADIENT_TOP: &str = "#263d52";
-/// Низ перехода общей подложки.
+/// Bottom of the shared background's gradient.
 pub const GRADIENT_BOTTOM: &str = "#16202d";
 
-// ── разбор .colors ─────────────────────────────────────────────────────────
+// ── parsing .colors ────────────────────────────────────────────────────────
 
-/// Характерные цвета схемы KDE из текста `.colors` (нечитаемый файл — пустой
-/// текст → `[]`).
+/// Characteristic colors of a KDE scheme from the text of a `.colors` file (an
+/// unreadable file — empty text → `[]`).
 ///
-/// По строкам: без `=` — мимо; ключ не из [`SCHEME_COLOR_KEYS`] — мимо
-/// (точное совпадение, значение после первого `=`); меньше трёх компонент
-/// через запятую — мимо; нечисловая компонента (пробелы по краям и знак
-/// допустимы) — мимо. Повторы отбрасываются, самое большее
-/// [`MAX_SCHEME_COLORS`] цветов в порядке появления. Компоненты вне 0..=255
-/// отбрасываются целиком.
+/// Line by line: without `=` — skipped; a key not from [`SCHEME_COLOR_KEYS`] —
+/// skipped (exact match, the value after the first `=`); fewer than three
+/// comma-separated components — skipped; a non-numeric component (surrounding
+/// spaces and a sign are allowed) — skipped. Duplicates are dropped, at most
+/// [`MAX_SCHEME_COLORS`] colors in order of appearance. Components outside
+/// 0..=255 are dropped entirely.
 pub fn parse_scheme_colors(text: &str) -> Vec<(u8, u8, u8)> {
     let mut out: Vec<(u8, u8, u8)> = Vec::new();
     for line in text.lines() {
@@ -79,19 +80,19 @@ pub fn parse_scheme_colors(text: &str) -> Vec<(u8, u8, u8)> {
     out
 }
 
-/// Три компоненты цвета, каждая в 0..=255.
+/// Three color components, each in 0..=255.
 fn parse_rgb(r: &str, g: &str, b: &str) -> Option<(u8, u8, u8)> {
     Some((color_byte(r)?, color_byte(g)?, color_byte(b)?))
 }
 
-/// Целое в 0..=255; пробелы по краям и знак допустимы.
+/// An integer in 0..=255; surrounding spaces and a sign are allowed.
 fn color_byte(s: &str) -> Option<u8> {
     let v = s.trim().parse::<i64>().ok()?;
     u8::try_from(v).ok()
 }
 
-/// Знак вида темы из подписи плитки: первое слово (в подписи лежит
-/// «💎 Global Theme · …»). Пустая подпись → пустая строка, знак не рисуется.
+/// The theme kind glyph from the tile label: the first word (the label holds
+/// "💎 Global Theme · …"). An empty label → an empty string, no glyph is drawn.
 pub fn type_emoji(author: &str) -> String {
     if author.is_empty() {
         return String::new();
@@ -103,135 +104,133 @@ pub fn type_emoji(author: &str) -> String {
     }
 }
 
-// ── размеры и цвета ───────────────────────────────────────────────────────
+// ── sizes and colors ──────────────────────────────────────────────────────
 
-/// Прямоугольник `(x, y, ширина, высота)`.
+/// A rectangle `(x, y, width, height)`.
 pub type Rect = (f64, f64, f64, f64);
-/// Цвет с прозрачностью `(r, g, b, a)`.
+/// A color with transparency `(r, g, b, a)`.
 pub type Rgba = (u8, u8, u8, u8);
 
-/// Кегль знака вида на заглушке.
+/// Font size of the kind glyph on the placeholder.
 pub const GLYPH_POINT_SIZE: i64 = 48;
-/// Цвет знака вида на заглушке.
+/// Color of the kind glyph on the placeholder.
 pub const GLYPH_COLOR: Rgba = (255, 255, 255, 255);
 
-// ── план отрисовки ────────────────────────────────────────────────────────
+// ── drawing plan ──────────────────────────────────────────────────────────
 
-/// Одна операция отрисовки картинки плитки.
+/// One drawing operation of the tile picture.
 ///
-/// Исполнитель выполняет операции подряд и НИЧЕГО не решает: ни геометрии,
-/// ни цветов, ни того, что именно нарисовать.
+/// The executor performs the operations one after another and decides NOTHING:
+/// neither geometry, nor colors, nor what exactly to draw.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DrawOp {
-    /// Заливка прямоугольника цветом.
+    /// Fill a rectangle with a color.
     Fill { rect: Rect, color: Rgba },
-    /// Заливка прямоугольника переходом сверху вниз: `top` → `bottom`
-    /// (цвета записью `#rrggbb`).
+    /// Fill a rectangle with a top-to-bottom gradient: `top` → `bottom` (colors as
+    /// `#rrggbb`).
     Gradient {
         rect: Rect,
         top: &'static str,
         bottom: &'static str,
     },
-    /// Текст по центру прямоугольника шрифтом кегля `point_size`.
+    /// Text in the center of a rectangle with a font of size `point_size`.
     Text {
         rect: Rect,
         text: String,
         point_size: i64,
         color: Rgba,
     },
-    /// Картинка из файла (PNG, JPEG, SVG) в прямоугольнике, с сохранением
-    /// сторон: целиком по центру либо, при `cover`, во весь прямоугольник с
-    /// обрезкой лишнего.
+    /// A picture from a file (PNG, JPEG, SVG) in a rectangle, keeping the aspect
+    /// ratio: entirely in the center or, with `cover`, filling the whole rectangle
+    /// with the excess cropped.
     Image { rect: Rect, path: String, cover: bool },
-    /// Картинка из файла в своём размере, повторённая по всему
-    /// прямоугольнику от его левого верхнего угла (лишнее обрезается). Так
-    /// собирают рамку темы xfwm4: её стороны — узкие рисунки-плитки.
+    /// A picture from a file at its own size, repeated over the whole rectangle from
+    /// its top left corner (the excess is cropped). That is how an xfwm4 theme frame
+    /// is assembled: its sides are narrow tile images.
     Tiled { rect: Rect, path: String },
-    /// Рамка из девяти частей рисунка SVG (`<prefix>-topleft`, `…-top`, …,
-    /// `…-center`; пустой `prefix` — просто `topleft`, …): углы в своём
-    /// размере, стороны и середина растянуты. Так хранят свои рамки стили
-    /// Plasma и темы Aurorae. Берётся первый из `prefixes`, чья середина есть
-    /// в файле; нет ни одного — рамка не рисуется.
+    /// A frame of nine parts of an SVG image (`<prefix>-topleft`, `…-top`, …,
+    /// `…-center`; an empty `prefix` — just `topleft`, …): corners at their own
+    /// size, sides and the middle stretched. Plasma styles and Aurorae themes store
+    /// their frames this way. The first of `prefixes` whose middle is in the file is
+    /// taken; if there is none, the frame is not drawn.
     SvgFrame { rect: Rect, path: String, prefixes: Vec<String> },
-    /// Одна часть рисунка SVG по имени, растянутая на прямоугольник.
+    /// One part of an SVG image by name, stretched over a rectangle.
     SvgElement { rect: Rect, path: String, element: String },
-    /// Готовые точки RGBA8888 (не умноженные на прозрачность) левым верхним
-    /// углом в `(x, y)`.
+    /// Ready RGBA8888 pixels (not premultiplied by alpha) with the top left corner
+    /// at `(x, y)`.
     Pixels { x: f64, y: f64, width: u32, height: u32, rgba: Vec<u8> },
-    /// Отсечение: всё до парной [`DrawOp::Unclip`] рисуется только внутри
-    /// прямоугольника со скруглёнными углами (радиусы: левый верхний, правый
-    /// верхний, левый нижний, правый нижний) и внутри уже открытых отсечений.
+    /// Clipping: everything up to the paired [`DrawOp::Unclip`] is drawn only inside
+    /// a rectangle with rounded corners (radii: top left, top right, bottom left,
+    /// bottom right) and inside the already opened clips.
     Clip { rect: Rect, radii: [f64; 4] },
-    /// Конец последнего открытого отсечения.
+    /// End of the last opened clip.
     Unclip,
-    /// Отрезок толщиной `width` между серединами двух точек.
+    /// A segment of thickness `width` between the centers of two points.
     Line { from: (f64, f64), to: (f64, f64), width: f64, color: Rgba },
-    /// Дуга эллипса, вписанного в прямоугольник: от угла `start` на `extent`
-    /// градусов по часовой стрелке, ноль — вверх. При `filled` — закрашенный
-    /// сектор, иначе линия в одну точку.
+    /// An arc of the ellipse inscribed into a rectangle: from angle `start` for
+    /// `extent` degrees clockwise, zero — up. With `filled` — a filled sector,
+    /// otherwise a one-point line.
     Arc { rect: Rect, start: f64, extent: f64, filled: bool, color: Rgba },
-    /// Заливка прямоугольника переходом через несколько цветов равными
-    /// долями.
+    /// Fill a rectangle with a gradient through several colors in equal shares.
     Shade { rect: Rect, direction: ShadeDirection, colors: Vec<Rgba> },
-    /// Картинка из файла, растянутая на прямоугольник без сохранения сторон
-    /// либо, при `tile`, повторённая в своём размере; `alpha` — непрозрачность
-    /// (0–1). При `colorize` картинка перекрашивается: её яркость ведёт от
-    /// чёрного через названный цвет к белому.
+    /// A picture from a file stretched over a rectangle without keeping the aspect
+    /// ratio or, with `tile`, repeated at its own size; `alpha` — opacity (0–1).
+    /// With `colorize` the picture is recolored: its brightness goes from black
+    /// through the named color to white.
     Picture { rect: Rect, path: String, tile: bool, alpha: f64, colorize: Option<Rgba> },
-    /// Строка текста по центру прямоугольника шрифтом высотой `pixel_size`
-    /// точек экрана; строка шире прямоугольника рисуется шрифтом мельче —
-    /// так, чтобы войти в него по ширине.
+    /// A line of text in the center of a rectangle with a font `pixel_size` screen
+    /// pixels high; a line wider than the rectangle is drawn with a smaller font —
+    /// so that it fits by width.
     Label { rect: Rect, text: String, pixel_size: i64, bold: bool, color: Rgba },
 }
 
-/// Куда идёт переход [`DrawOp::Shade`].
+/// Where the [`DrawOp::Shade`] gradient goes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShadeDirection {
-    /// Слева направо.
+    /// Left to right.
     Horizontal,
-    /// Сверху вниз.
+    /// Top to bottom.
     Vertical,
-    /// Из левого верхнего угла в правый нижний.
+    /// From the top left corner to the bottom right.
     Diagonal,
 }
 
-// ── единая цепочка картинки плитки местной темы ──────────────────────────
+// ── the single chain of a local theme's tile picture ───────────────────────
 //
-// Картинка плитки берётся по одной цепочке для ЛЮБОГО вида темы и любого
-// раздела («Активные», «Загруженные», «Системные», «Избранное», разделы по
-// видам):
-//   1. своя картинка темы — файл в её каталоге либо названный её
-//      метаданными (`installed_scan::find_preview`);
-//   2. картинка из записи магазина — положенная при установке рядом с темой,
-//      найденная по реестру KNewStuff или по кешу магазина
+// The tile picture is obtained by one chain for ANY theme kind and any section
+// ("Active", "Downloaded", "System", "Favorites", the sections by kind):
+//   1. the theme's own picture — a file in its directory or one named by its
+//      metadata (`installed_scan::find_preview`);
+//   2. a picture from a store entry — put next to the theme at installation,
+//      found through the KNewStuff registry or the store cache
 //      (`installed_scan::resolve_preview`);
-//   3. образец, нарисованный из содержимого самой темы, — таблица
-//      [`PREVIEW_RULES`];
-//   4. заглушка вида: знак вида на общей подложке, без названия (оно стоит
-//      под картинкой).
-// Шаги 1–2 отдаёт скан диска полем `preview_local`; шаги 3–4 — [`card_picture`].
-// Новый вид подключается одной строкой [`PREVIEW_RULES`]: ни окно, ни
-// исполнитель о видах тем не знают.
+//   3. a sample drawn from the theme's own contents — the [`PREVIEW_RULES`]
+//      table;
+//   4. the kind's placeholder: the kind glyph on the shared background, without
+//      a name (it stands under the picture).
+// Steps 1–2 are given by the disk scan in the `preview_local` field; steps 3–4
+// by [`card_picture`]. A new kind is connected with one line of
+// [`PREVIEW_RULES`]: neither the window nor the executor knows about theme kinds.
 
-/// Отметка вида нарисованных картинок: входит в ключ кеша, чтобы кадры,
-/// нарисованные прежними правилами, не отдавались вместо нынешних.
+/// A mark of the kind of drawn pictures: it is part of the cache key, so that
+/// frames drawn by previous rules are not served instead of the current ones.
 pub const PICTURE_STYLE: &str = "v6";
 
-/// Откуда взята картинка плитки.
+/// Where the tile picture came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PreviewSource {
-    /// Своя картинка темы.
+    /// The theme's own picture.
     Own,
-    /// Картинка из записи магазина.
+    /// A picture from a store entry.
     Store,
-    /// Образец, нарисованный из содержимого темы.
+    /// A sample drawn from the theme's contents.
     Sample,
-    /// Заглушка вида.
+    /// The kind's placeholder.
     Placeholder,
 }
 
 impl PreviewSource {
-    /// Короткое слово для журнала и стенда.
+    /// A short word for the log and the test stand.
     pub fn label(self) -> &'static str {
         match self {
             PreviewSource::Own => "своя",
@@ -242,8 +241,9 @@ impl PreviewSource {
     }
 }
 
-/// Чья картинка лежит в `preview_local` скана: своя (файл внутри каталога
-/// темы) или из записи магазина (положенная при установке, кеш магазина).
+/// Whose picture lies in the scan's `preview_local`: the theme's own (a file
+/// inside the theme directory) or from a store entry (put at installation, the
+/// store cache).
 pub fn file_source(preview_path: &str, install_path: &str) -> PreviewSource {
     let inside = !install_path.is_empty()
         && preview_path.starts_with(&format!("{}/", install_path.trim_end_matches('/')));
@@ -255,25 +255,27 @@ pub fn file_source(preview_path: &str, install_path: &str) -> PreviewSource {
     }
 }
 
-/// Что известно о теме, когда рисуется её образец.
+/// What is known about the theme when its sample is drawn.
 #[derive(Debug, Clone, Copy)]
 pub struct SampleInput<'a> {
-    /// Вид применения (`local:<вид>:<имя>`).
+    /// The apply kind (`local:<kind>:<name>`).
     pub kind: &'a str,
-    /// Каталог темы; у цветовой схемы — её файл (с окончанием или без).
+    /// The theme directory; for a color scheme — its file (with or without the
+    /// extension).
     pub install_path: &'a str,
-    /// Каталоги тем значков, где искать значок пакета по имени
+    /// Icon theme directories in which to look for a package icon by name
     /// ([`icon_theme_dirs`]).
     pub icon_themes: &'a [String],
 }
 
-/// Строка таблицы образцов: вид темы и чем рисуется её образец.
+/// A row of the sample table: the theme kind and what its sample is drawn with.
 pub struct PreviewRule {
-    /// Вид применения.
+    /// The apply kind.
     pub kind: &'static str,
-    /// Что нарисовано — для журнала и стенда.
+    /// What is drawn — for the log and the test stand.
     pub what: &'static str,
-    /// Операции образца поверх общей подложки; `None` — из темы взять нечего.
+    /// The sample's operations on top of the shared background; `None` — there is
+    /// nothing to take from the theme.
     pub sample: fn(&SampleInput) -> Option<Vec<DrawOp>>,
 }
 
@@ -285,7 +287,7 @@ const fn rule(
     PreviewRule { kind, what, sample }
 }
 
-/// Образцы по видам тем. Вида здесь нет — у него шаги 1, 2 и 4.
+/// Samples by theme kind. A kind that is not here gets steps 1, 2 and 4.
 pub const PREVIEW_RULES: &[PreviewRule] = &[
     rule("colors", "окно цветами схемы", scheme::colors_sample),
     rule("cursor", "указатели темы", cursor_sample),
@@ -311,29 +313,31 @@ pub const PREVIEW_RULES: &[PreviewRule] = &[
     rule("nemoactions", "значок действия", package_icon_sample),
 ];
 
-/// Готовая картинка плитки: источник и операции отрисовки.
+/// A ready tile picture: the source and the drawing operations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardPicture {
-    /// [`PreviewSource::Sample`] или [`PreviewSource::Placeholder`].
+    /// [`PreviewSource::Sample`] or [`PreviewSource::Placeholder`].
     pub source: PreviewSource,
-    /// Что нарисовано (пусто у заглушки) — для журнала и стенда.
+    /// What is drawn (empty for a placeholder) — for the log and the test stand.
     pub what: &'static str,
-    /// Ширина кадра.
+    /// Frame width.
     pub width: i64,
-    /// Высота кадра.
+    /// Frame height.
     pub height: i64,
-    /// Заливка-основа.
+    /// The base fill.
     pub base: &'static str,
-    /// Операции в порядке исполнения.
+    /// Operations in execution order.
     pub ops: Vec<DrawOp>,
 }
 
-/// Картинка плитки темы без своей картинки и без записи магазина: образец из
-/// её содержимого, а если взять нечего — заглушка вида со знаком `glyph`.
+/// The tile picture of a theme without its own picture and without a store
+/// entry: a sample from its contents, and if there is nothing to take — the
+/// kind's placeholder with glyph `glyph`.
 pub fn card_picture(input: &SampleInput, glyph: &str) -> CardPicture {
     let mut ops = vec![backdrop()];
-    // Свои миниатюры темы (рамка окна и элементы GTK) честнее нарисованного
-    // образца — но в своём размере, вписанными, а не растянутыми на плитку.
+    // The theme's own thumbnails (the window frame and GTK widgets) are more
+    // honest than a drawn sample — but at their own size, fitted in, not
+    // stretched over the tile.
     let sampled = thumbnails_sample(input).map(|sample| ("миниатюры темы", sample)).or_else(|| {
         PREVIEW_RULES
             .iter()
@@ -367,27 +371,28 @@ pub fn card_picture(input: &SampleInput, glyph: &str) -> CardPicture {
     }
 }
 
-// ── мелкие миниатюры тем ──────────────────────────────────────────────────
+// ── small theme thumbnails ────────────────────────────────────────────────
 //
-// Темы GTK и рамок кладут в подкаталоги крошечные `thumbnail.png`: у
-// B00merang — 120×35 (кнопка и флажки) и 100×32 (заголовок окна), у Dracula
-// — 133×32. Растянутые «во всю плитку с обрезкой» они превращались в огромное
-// размытое «tton» и галочку. Такие миниатюры не годятся как картинка плитки
-// целиком: из них собирается кадр — заголовок окна над элементами, каждая в
-// своих пропорциях и не крупнее двух своих размеров, на общей подложке.
+// GTK and frame themes put tiny `thumbnail.png` files into subdirectories:
+// B00merang has 120×35 (a button and checkboxes) and 100×32 (a window title
+// bar), Dracula 133×32. Stretched "over the whole tile with cropping" they
+// turned into a huge blurry "tton" and a check mark. Such thumbnails are no
+// good as the whole tile picture: a frame is assembled from them — the window
+// title bar above the widgets, each in its own proportions and no larger than
+// twice its size, on the shared background.
 
-/// Миниатюра мельче этого по ширине или высоте — «мелкая»: плитку целиком
-/// ею не покрыть (плитка — [`PREVIEW_WIDTH`]×[`PREVIEW_HEIGHT`]).
+/// A thumbnail smaller than this in width or height is "small": it cannot cover
+/// the whole tile (the tile is [`PREVIEW_WIDTH`]×[`PREVIEW_HEIGHT`]).
 pub const SMALL_THUMB_WIDTH: f64 = 200.0;
-/// См. [`SMALL_THUMB_WIDTH`].
+/// See [`SMALL_THUMB_WIDTH`].
 pub const SMALL_THUMB_HEIGHT: f64 = 100.0;
-/// Во сколько раз самое большее увеличивается мелкая миниатюра: дальше она
-/// размывается в кашу.
+/// By how many times at most a small thumbnail is enlarged: beyond that it blurs
+/// into mush.
 pub const SMALL_THUMB_MAX_SCALE: f64 = 2.0;
 
-/// Миниатюры рамки окна в подкаталогах темы — по порядку предпочтения.
+/// Window frame thumbnails in the theme's subdirectories — in order of preference.
 const FRAME_THUMBS: &[&str] = &["metacity-1/thumbnail.png", "xfwm4/thumbnail.png"];
-/// Миниатюры элементов (кнопки, флажки, панель) — по порядку предпочтения.
+/// Widget thumbnails (buttons, checkboxes, a panel) — in order of preference.
 const WIDGET_THUMBS: &[&str] = &[
     "gtk-3.0/thumbnail.png",
     "gtk-3.20/thumbnail.png",
@@ -396,30 +401,31 @@ const WIDGET_THUMBS: &[&str] = &[
     "cinnamon/thumbnail.png",
     "gnome-shell/thumbnail.png",
 ];
-/// Виды тем, чья плитка собирается из миниатюр подкаталогов.
+/// Theme kinds whose tile is assembled from subdirectory thumbnails.
 const THUMB_KINDS: &[&str] = &["gtk", "marco", "xfwm4", "cinnamontheme", "gnomeshell"];
 
-/// Мелкая ли миниатюра подкаталога темы (`…/<подкаталог>/thumbnail.png`).
+/// Whether a theme subdirectory's thumbnail (`…/<subdir>/thumbnail.png`) is small.
 pub fn is_small_thumbnail(path: &str) -> bool {
     path.ends_with("/thumbnail.png")
         && image_size(std::path::Path::new(path))
             .is_some_and(|(w, h)| w < SMALL_THUMB_WIDTH || h < SMALL_THUMB_HEIGHT)
 }
 
-/// Снять с местных плиток мелкие миниатюры: такой плитке окно соберёт кадр
-/// из миниатюр ([`card_picture`]), а не растянет одну во весь размер.
+/// Remove small thumbnails from local tiles: for such a tile the window will
+/// assemble a frame from the thumbnails ([`card_picture`]) rather than stretch a
+/// single one over the whole size.
 pub fn drop_small_thumbnails(items: &mut [crate::models::ThemeItem]) {
     for it in items.iter_mut() {
-        // Местная плитка — по номеру `local:…`: вид (`local_kind`) скан ставит
-        // не всем, окно дописывает его позже.
+        // A local tile — by the `local:…` id: the scan does not set the kind
+        // (`local_kind`) for all, the window adds it later.
         if it.id.starts_with("local:") && is_small_thumbnail(&it.preview_local) {
             it.preview_local.clear();
         }
     }
 }
 
-/// Кадр из миниатюр темы: рамка окна сверху, элементы под ней. `None` —
-/// миниатюр нет или вид темы не тот.
+/// A frame from the theme's thumbnails: the window frame on top, widgets below
+/// it. `None` — there are no thumbnails or the theme kind is not the right one.
 fn thumbnails_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     if !THUMB_KINDS.contains(&input.kind) {
         return None;
@@ -457,7 +463,7 @@ fn thumbnails_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     Some(ops)
 }
 
-/// Общая подложка нарисованных картинок.
+/// The shared background of drawn pictures.
 fn backdrop() -> DrawOp {
     backdrop_sized(PREVIEW_WIDTH as f64, PREVIEW_HEIGHT as f64)
 }
@@ -466,12 +472,13 @@ fn backdrop_sized(w: f64, h: f64) -> DrawOp {
     DrawOp::Gradient { rect: (0.0, 0.0, w, h), top: GRADIENT_TOP, bottom: GRADIENT_BOTTOM }
 }
 
-/// Картинка плитки из готового снимка (рамку окна KDE рисует сам её модуль
-/// — [`crate::kdecoration::take_shot`], стиль Qt и тему GTK — помощник
-/// [`crate::widget_shot::take_shot`]): снимок с прозрачностью поверх общей
-/// подложки, как прочие образцы. Кадр — размером со снимок, но не меньше
-/// плитки: крупный снимок (виджеты снимаются под картинку подробностей)
-/// сжатием до плитки не теряется, и в подробностях не растягивается.
+/// A tile picture from a ready snapshot (a KDE window frame is drawn by its own
+/// module — [`crate::kdecoration::take_shot`], a Qt style and a GTK theme by the
+/// helper [`crate::widget_shot::take_shot`]): the snapshot with transparency on
+/// top of the shared background, like the other samples. The frame is the size
+/// of the snapshot, but no smaller than the tile: a large snapshot (widgets are
+/// captured for the details picture) does not lose anything by being shrunk to
+/// the tile and is not stretched in the details.
 pub fn shot_picture(path: &str, what: &'static str) -> CardPicture {
     let (w, h) = image_size(std::path::Path::new(path))
         .filter(|(w, h)| *w >= PREVIEW_WIDTH as f64 && *h >= PREVIEW_HEIGHT as f64)
@@ -486,9 +493,9 @@ pub fn shot_picture(path: &str, what: &'static str) -> CardPicture {
     }
 }
 
-// ── чтение файлов тем ─────────────────────────────────────────────────────
+// ── reading theme files ───────────────────────────────────────────────────
 
-/// Текст файла темы, не больше 4 МБ (темы носят и огромные таблицы стилей).
+/// Text of a theme file, no more than 4 MB (themes also carry huge stylesheets).
 fn read_text(path: &std::path::Path) -> Option<String> {
     const LIMIT: u64 = 4 << 20;
     let meta = std::fs::metadata(path).ok()?;
@@ -498,7 +505,7 @@ fn read_text(path: &std::path::Path) -> Option<String> {
     std::fs::read(path).ok().map(|b| String::from_utf8_lossy(&b).into_owned())
 }
 
-/// Значение `key` в группе `[group]` текста вида ini (первое найденное).
+/// Value of `key` in group `[group]` of ini-like text (the first one found).
 fn ini_value<'t>(text: &'t str, group: &str, key: &str) -> Option<&'t str> {
     let mut inside = false;
     for line in text.lines() {
@@ -519,7 +526,7 @@ fn ini_value<'t>(text: &'t str, group: &str, key: &str) -> Option<&'t str> {
     None
 }
 
-/// Файл `<stem>.svgz` или `<stem>.svg` в каталоге темы.
+/// The `<stem>.svgz` or `<stem>.svg` file in the theme directory.
 fn svg_file(dir: &std::path::Path, stem: &str) -> Option<String> {
     ["svgz", "svg"]
         .iter()
@@ -528,17 +535,17 @@ fn svg_file(dir: &std::path::Path, stem: &str) -> Option<String> {
         .map(|p| p.to_string_lossy().into_owned())
 }
 
-// ── цвета ────────────────────────────────────────────────────────────────
+// ── colors ───────────────────────────────────────────────────────────────
 
 type Rgb = (u8, u8, u8);
 
-/// Цвет вида `r,g,b` (файлы цветов KDE).
+/// A color of the form `r,g,b` (KDE color files).
 fn kde_color(value: &str) -> Option<Rgb> {
     let mut parts = value.split(',');
     parse_rgb(parts.next()?, parts.next()?, parts.next()?)
 }
 
-/// Цвет таблицы стилей: `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb(…)`, `rgba(…)`,
+/// A stylesheet color: `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb(…)`, `rgba(…)`,
 /// `white`, `black`.
 fn css_color(value: &str) -> Option<Rgb> {
     let v = value.trim();
@@ -568,33 +575,33 @@ fn css_color(value: &str) -> Option<Rgb> {
     }
 }
 
-/// Смесь двух цветов: `t` — доля второго.
+/// A mix of two colors: `t` — the share of the second.
 fn mix(a: Rgb, b: Rgb, t: f64) -> Rgb {
     let ch = |x: u8, y: u8| (x as f64 + (y as f64 - x as f64) * t).round() as u8;
     (ch(a.0, b.0), ch(a.1, b.1), ch(a.2, b.2))
 }
 
-/// Цвета окна, из которых рисуется образец темы приложений.
+/// Window colors from which a sample of an application theme is drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Palette {
-    /// Фон окна.
+    /// Window background.
     pub window: (u8, u8, u8),
-    /// Фон поля со списком.
+    /// Background of a list view.
     pub view: (u8, u8, u8),
-    /// Текст.
+    /// Text.
     pub text: (u8, u8, u8),
-    /// Выделение.
+    /// Selection.
     pub selection: (u8, u8, u8),
-    /// Текст на выделении.
+    /// Text on the selection.
     pub selection_text: (u8, u8, u8),
-    /// Кнопка.
+    /// Button.
     pub button: (u8, u8, u8),
-    /// Заголовок окна.
+    /// Window title bar.
     pub titlebar: (u8, u8, u8),
 }
 
-/// Образец окна в цветах темы: заголовок, список с выделенной строкой,
-/// строки текста, кнопка.
+/// A sample window in the theme's colors: a title bar, a list with a selected
+/// row, lines of text, a button.
 pub fn window_sample(p: &Palette) -> Vec<DrawOp> {
     let fill = |x: f64, y: f64, w: f64, h: f64, c: Rgb, a: u8| DrawOp::Fill {
         rect: (x, y, w, h),
@@ -604,17 +611,17 @@ pub fn window_sample(p: &Palette) -> Vec<DrawOp> {
     let edge = mix(p.window, p.text, 0.35);
     let title_text = if contrast(p.titlebar, p.text) { p.text } else { p.selection_text };
     vec![
-        // Тень и кайма окна.
+        // The window's shadow and border.
         fill(x + 3.0, y + 4.0, w, h, (0, 0, 0), 70),
         fill(x - 1.0, y - 1.0, w + 2.0, h + 2.0, edge, 255),
         fill(x, y, w, h, p.window, 255),
-        // Заголовок с тремя кнопками.
+        // A title bar with three buttons.
         fill(x, y, w, 22.0, p.titlebar, 255),
         fill(x + 10.0, y + 8.0, 70.0, 6.0, title_text, 220),
         fill(x + w - 18.0, y + 7.0, 8.0, 8.0, title_text, 220),
         fill(x + w - 32.0, y + 7.0, 8.0, 8.0, title_text, 150),
         fill(x + w - 46.0, y + 7.0, 8.0, 8.0, title_text, 150),
-        // Список с выделенной строкой.
+        // A list with a selected row.
         fill(x + 10.0, y + 32.0, 104.0, 96.0, edge, 255),
         fill(x + 11.0, y + 33.0, 102.0, 94.0, p.view, 255),
         fill(x + 18.0, y + 42.0, 70.0, 6.0, p.text, 220),
@@ -622,28 +629,29 @@ pub fn window_sample(p: &Palette) -> Vec<DrawOp> {
         fill(x + 18.0, y + 60.0, 60.0, 6.0, p.selection_text, 235),
         fill(x + 18.0, y + 80.0, 78.0, 6.0, p.text, 220),
         fill(x + 18.0, y + 96.0, 52.0, 6.0, p.text, 220),
-        // Строки текста справа.
+        // Lines of text on the right.
         fill(x + 126.0, y + 36.0, 88.0, 6.0, p.text, 220),
         fill(x + 126.0, y + 50.0, 64.0, 6.0, p.text, 150),
         fill(x + 126.0, y + 64.0, 76.0, 6.0, p.text, 150),
-        // Ход выполнения в цвете выделения.
+        // A progress bar in the selection color.
         fill(x + 126.0, y + 82.0, 88.0, 6.0, edge, 255),
         fill(x + 126.0, y + 82.0, 52.0, 6.0, p.selection, 255),
-        // Кнопка.
+        // A button.
         fill(x + 148.0, y + 104.0, 66.0, 24.0, edge, 255),
         fill(x + 149.0, y + 105.0, 64.0, 22.0, p.button, 255),
         fill(x + 164.0, y + 113.0, 34.0, 6.0, p.text, 220),
     ]
 }
 
-/// Различимы ли два цвета настолько, чтобы писать одним по другому.
+/// Whether two colors differ enough to write one over the other.
 fn contrast(a: Rgb, b: Rgb) -> bool {
     let luma = |c: Rgb| 0.299 * c.0 as f64 + 0.587 * c.1 as f64 + 0.114 * c.2 as f64;
     (luma(a) - luma(b)).abs() > 80.0
 }
 
-/// Цвета окна из файла цветов KDE (схема `.colors`, файл `colors` стиля
-/// Plasma). `None` — в файле нет ни фона, ни текста окна.
+/// Window colors from a KDE color file (a `.colors` scheme, the `colors` file of
+/// a Plasma style). `None` — the file has neither a window background nor window
+/// text.
 pub fn kde_palette(text: &str) -> Option<Palette> {
     let get = |group: &str, key: &str| ini_value(text, group, key).and_then(kde_color);
     let window = get("Colors:Window", "BackgroundNormal")?;
@@ -662,7 +670,7 @@ pub fn kde_palette(text: &str) -> Option<Palette> {
     })
 }
 
-/// Цвета окна из настроек темы Kvantum (группа `GeneralColors`).
+/// Window colors from the settings of a Kvantum theme (the `GeneralColors` group).
 pub fn kvantum_palette(text: &str) -> Option<Palette> {
     let get = |key: &str| ini_value(text, "GeneralColors", key).and_then(css_color);
     let window = get("window.color")?;
@@ -678,9 +686,9 @@ pub fn kvantum_palette(text: &str) -> Option<Palette> {
     })
 }
 
-/// Именованные цвета таблицы стилей GTK: `@define-color имя значение;`.
-/// Значение-ссылка (`@другое`) и значение-функция (`shade(@другое, 0.9)`)
-/// раскрываются до первого названного в них цвета.
+/// Named colors of a GTK stylesheet: `@define-color name value;`. A reference
+/// value (`@other`) and a function value (`shade(@other, 0.9)`) are expanded to
+/// the first color named in them.
 fn gtk_defined_colors(css: &str) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
     for chunk in css.split("@define-color").skip(1) {
@@ -699,7 +707,7 @@ fn gtk_resolve(colors: &std::collections::HashMap<String, String>, value: &str, 
     if depth == 0 {
         return None;
     }
-    // Ссылка либо функция над ссылкой: берём первый названный цвет.
+    // A reference or a function over a reference: we take the first named color.
     let at = value.find(['@', '#'])?;
     let rest = &value[at..];
     if rest.starts_with('#') {
@@ -712,8 +720,9 @@ fn gtk_resolve(colors: &std::collections::HashMap<String, String>, value: &str, 
     gtk_resolve(colors, colors.get(&name)?, depth - 1)
 }
 
-/// Цвета окна из именованных цветов таблицы стилей GTK. Имена — принятые в
-/// темах GTK 3 и 4; у части тем к имени дописано окончание (`_breeze`).
+/// Window colors from the named colors of a GTK stylesheet. The names are those
+/// accepted in GTK 3 and 4 themes; some themes add a suffix to the name
+/// (`_breeze`).
 pub fn gtk_css_palette(css: &str) -> Option<Palette> {
     let colors = gtk_defined_colors(css);
     let pick = |names: &[&str]| -> Option<Rgb> {
@@ -744,15 +753,16 @@ pub fn gtk_css_palette(css: &str) -> Option<Palette> {
     })
 }
 
-/// Цвета окна из настроек темы GTK 2: строка `gtk-color-scheme` с парами
-/// `имя:цвет`.
+/// Window colors from the settings of a GTK 2 theme: the `gtk-color-scheme` line
+/// with `name:color` pairs.
 pub fn gtk2_palette(gtkrc: &str) -> Option<Palette> {
     let get = |key: &str| -> Option<Rgb> {
         let marker = format!("{key}:");
         gtkrc.match_indices(&marker).find_map(|(at, _)| {
-            // Имя целиком, а не хвост другого (`bg_color` в `selected_bg_color`).
-            // Пары в строке разделены записанным буквами переводом строки
-            // (`\n`) — его `n` частью имени не считается.
+            // The whole name, not the tail of another one (`bg_color` in
+            // `selected_bg_color`). The pairs in the line are separated by a line
+            // break written out as letters (`\n`) — its `n` is not considered part of
+            // the name.
             let head = &gtkrc[..at];
             let inside_name = head.chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_');
             if inside_name && !head.ends_with("\\n") {
@@ -774,9 +784,9 @@ pub fn gtk2_palette(gtkrc: &str) -> Option<Palette> {
     })
 }
 
-// ── образцы по видам ─────────────────────────────────────────────────────
+// ── samples by kind ──────────────────────────────────────────────────────
 
-/// Тема Kvantum: окно в цветах её настроек (`<имя>.kvconfig`).
+/// A Kvantum theme: a window in the colors of its settings (`<name>.kvconfig`).
 fn kvantum_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let dir = std::path::Path::new(input.install_path);
     let named = dir.file_name().map(|n| dir.join(format!("{}.kvconfig", n.to_string_lossy())));
@@ -793,8 +803,8 @@ fn kvantum_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     Some(window_sample(&kvantum_palette(&read_text(&config)?)?))
 }
 
-/// Таблица стилей GTK вместе с теми, что она подключает (`@import`), —
-/// именованные цвета темы часто лежат в соседнем файле.
+/// A GTK stylesheet together with those it imports (`@import`) — the theme's
+/// named colors often lie in a neighboring file.
 fn gtk_css_text(dir: &std::path::Path) -> Option<String> {
     let main = read_text(&dir.join("gtk.css"))?;
     let mut text = String::new();
@@ -813,13 +823,14 @@ fn gtk_css_text(dir: &std::path::Path) -> Option<String> {
             text.push('\n');
         }
     }
-    // Свои определения главного файла — последними: они перекрывают подключённые.
+    // The main file's own definitions come last: they override the imported ones.
     text.push_str(&main);
     Some(text)
 }
 
-/// Тема GTK: окно в её цветах — из таблицы стилей GTK 3/4, а если цвета там
-/// не названы (тема собрана в один двоичный файл) — из настроек GTK 2.
+/// A GTK theme: a window in its colors — from the GTK 3/4 stylesheet, and if the
+/// colors are not named there (the theme is compiled into one binary file) —
+/// from the GTK 2 settings.
 fn gtk_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let dir = std::path::Path::new(input.install_path);
     let from_css = ["gtk-3.0", "gtk-4.0", "gtk-3.20"]
@@ -829,8 +840,8 @@ fn gtk_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     Some(window_sample(&palette))
 }
 
-/// Стиль Plasma: окно и панель из его собственных рисунков; у стиля из одних
-/// цветов — окно в этих цветах.
+/// A Plasma style: a window and a panel from its own images; for a style made of
+/// colors only — a window in those colors.
 fn plasma_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let dir = std::path::Path::new(input.install_path);
     let frame = |path: String, prefixes: &[&str], rect: Rect| DrawOp::SvgFrame {
@@ -847,8 +858,8 @@ fn plasma_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let mut ops = Vec::new();
     if let Some(path) = dialog {
         ops.push(frame(path, &[""], (38.0, 10.0, 224.0, 112.0)));
-        // Цвет текста стиля известен только из его файла цветов; без него —
-        // нейтральный серый, различимый и на светлом, и на тёмном.
+        // The style's text color is known only from its color file; without it —
+        // a neutral gray, distinguishable on both light and dark.
         let ink = read_text(&dir.join("colors"))
             .and_then(|t| ini_value(&t, "Colors:Window", "ForegroundNormal").and_then(kde_color))
             .unwrap_or((128, 128, 128));
@@ -863,15 +874,15 @@ fn plasma_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
         }
     }
     if let Some(path) = panel {
-        // Панель у нижнего края экрана — своя рамка (`south`), у части
-        // стилей она одна на все края.
+        // A panel at the bottom edge of the screen — its own frame (`south`);
+        // some styles have one for all edges.
         ops.push(frame(path, &["south", ""], (8.0, 128.0, 284.0, 36.0)));
     }
     Some(ops)
 }
 
-/// Тема рамок окон Aurorae: рамка из её рисунка и кнопки заголовка на местах,
-/// названных её настройками (`<имя>rc`).
+/// An Aurorae window frame theme: a frame from its image and title bar buttons in
+/// the places named by its settings (`<name>rc`).
 fn aurorae_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let dir = std::path::Path::new(input.install_path);
     let decoration = svg_file(dir, "decoration")?;
@@ -898,7 +909,8 @@ fn aurorae_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     Some(ops)
 }
 
-/// Число из имени кадра (`animation-0012` → 12) и имя без числа.
+/// The number from a frame name (`animation-0012` → 12) and the name without the
+/// number.
 fn frame_number(stem: &str) -> Option<(&str, u32)> {
     let digits = stem.chars().rev().take_while(|c| c.is_ascii_digit()).count();
     if digits == 0 || digits == stem.len() {
@@ -908,8 +920,9 @@ fn frame_number(stem: &str) -> Option<(&str, u32)> {
     Some((series.trim_end_matches(['-', '_']), number.parse().ok()?))
 }
 
-/// Заставка загрузки Plymouth: фон её цвета и главный рисунок — знак
-/// (`watermark`, `logo`), а если его нет — кадр самой длинной анимации.
+/// A Plymouth boot splash: a background in its color and the main image — the
+/// emblem (`watermark`, `logo`), and if there is none — a frame of the longest
+/// animation.
 fn plymouth_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let dir = std::path::Path::new(input.install_path);
     let conf = dir
@@ -932,8 +945,8 @@ fn plymouth_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let named = |want: &[&str]| {
         want.iter().find_map(|w| names.iter().find(|n| stem(n).eq_ignore_ascii_case(w)).cloned())
     };
-    // Самая длинная нумерованная серия; у «анимации» берём последний кадр
-    // (на нём рисунок собран целиком), у прочих — средний.
+    // The longest numbered series; for an "animation" we take the last frame
+    // (the image is fully assembled on it), for the others — the middle one.
     let mut series: std::collections::BTreeMap<String, Vec<(u32, String)>> = Default::default();
     for n in &names {
         if let Some((name, number)) = frame_number(&stem(n)) {
@@ -975,7 +988,8 @@ fn plymouth_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     Some(ops)
 }
 
-/// Тема экрана входа SDDM без снимка: её фоновая картинка (`theme.conf`).
+/// An SDDM login screen theme without a snapshot: its background picture
+/// (`theme.conf`).
 fn sddm_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let dir = std::path::Path::new(input.install_path);
     let conf = read_text(&dir.join("theme.conf"))?;
@@ -993,18 +1007,19 @@ fn sddm_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     }])
 }
 
-// ── рамка окна xfwm4 ──────────────────────────────────────────────────────
+// ── xfwm4 window frame ────────────────────────────────────────────────────
 //
-// Тема рамок XFCE — каталог рисунков частей рамки (описание — «Xfwm4 theme
-// how-to» в документации XFCE): углы `top-left`, `top-right`, `bottom-left`,
-// `bottom-right`, стороны `left`, `right`, `bottom`, пять частей заголовка
-// `title-1` … `title-5` и кнопки `close`, `maximize`, `hide`, `menu`, `stick`,
-// `shade`; у каждой части состояния `-active`, `-inactive` и т. д. Рисунок
-// части — точечный `.xpm`, поверх которого кладётся одноимённый `.png` либо
-// `.svg`. Стороны и части заголовка — плитки: повторяются на всю длину.
+// An XFCE frame theme is a directory of images of the frame parts (described in
+// the "Xfwm4 theme how-to" in the XFCE documentation): corners `top-left`,
+// `top-right`, `bottom-left`, `bottom-right`, sides `left`, `right`, `bottom`,
+// five title bar parts `title-1` … `title-5` and buttons `close`, `maximize`,
+// `hide`, `menu`, `stick`, `shade`; each part has states `-active`,
+// `-inactive` and so on. A part's image is a bitmap `.xpm`, on top of which a
+// `.png` or `.svg` of the same name is laid. Sides and title bar parts are
+// tiles: they repeat over the whole length.
 
-/// Размер картинки в точках по заголовку файла: XPM (первая строка данных),
-/// PNG (блок IHDR), SVG (`width`/`height` корня либо `viewBox`).
+/// Size of a picture in pixels from the file header: XPM (the first data line),
+/// PNG (the IHDR block), SVG (`width`/`height` of the root or `viewBox`).
 pub fn image_size(path: &std::path::Path) -> Option<(f64, f64)> {
     use std::io::Read;
     let mut head = vec![0u8; 4096];
@@ -1017,7 +1032,7 @@ pub fn image_size(path: &std::path::Path) -> Option<(f64, f64)> {
     }
     let text = String::from_utf8_lossy(&head);
     if text.trim_start().starts_with("/* XPM */") {
-        // Первая строка в кавычках: «ширина высота цветов знаков-на-точку».
+        // The first quoted line: "width height colors chars-per-pixel".
         let values = text.split('"').nth(1)?;
         let mut nums = values.split_whitespace().map(|v| v.parse::<f64>().ok());
         return ok(nums.next()??, nums.next()??);
@@ -1039,32 +1054,32 @@ pub fn image_size(path: &std::path::Path) -> Option<(f64, f64)> {
     ok(w, h)
 }
 
-/// Часть рамки xfwm4: слои её рисунка снизу вверх и размер.
+/// An xfwm4 frame part: the layers of its image from bottom to top, and the size.
 struct FramePart {
     layers: Vec<String>,
     width: f64,
     height: f64,
 }
 
-/// Часть `name` активного окна в каталоге темы; `None` — рисунка нет.
+/// Part `name` of the active window in the theme directory; `None` — no image.
 fn xfwm4_part(dir: &std::path::Path, name: &str) -> Option<FramePart> {
     let file = |ext: &str| Some(dir.join(format!("{name}-active.{ext}"))).filter(|p| p.is_file());
     let base = file("xpm");
     let over = ["png", "svg"].iter().find_map(|ext| file(ext));
-    // Размер части задаёт её точечный рисунок, а без него — накладка.
+    // The part's size is set by its bitmap, and without it — by the overlay.
     let (width, height) = base.iter().chain(over.iter()).find_map(|p| image_size(p))?;
     let layers = base.into_iter().chain(over).map(|p| p.to_string_lossy().into_owned()).collect();
     Some(FramePart { layers, width, height })
 }
 
-/// Рисунок части в своём размере левым верхним углом в `(x, y)`.
+/// A part's image at its own size with the top left corner at `(x, y)`.
 fn part_at(ops: &mut Vec<DrawOp>, part: &FramePart, x: f64, y: f64) {
     for path in &part.layers {
         ops.push(DrawOp::Image { rect: (x, y, part.width, part.height), path: path.clone(), cover: false });
     }
 }
 
-/// Рисунок части плиткой на прямоугольник.
+/// A part's image as a tile over a rectangle.
 fn part_tiled(ops: &mut Vec<DrawOp>, part: &FramePart, rect: Rect) {
     if rect.2 <= 0.0 || rect.3 <= 0.0 {
         return;
@@ -1074,7 +1089,7 @@ fn part_tiled(ops: &mut Vec<DrawOp>, part: &FramePart, rect: Rect) {
     }
 }
 
-/// Значение `key=значение` в настройках темы xfwm4 (`themerc`, без групп).
+/// A `key=value` value in the xfwm4 theme settings (`themerc`, without groups).
 fn themerc_value<'t>(text: &'t str, key: &str) -> Option<&'t str> {
     text.lines().map(str::trim).filter(|l| !l.starts_with('#')).find_map(|l| {
         let (k, v) = l.split_once('=')?;
@@ -1082,15 +1097,15 @@ fn themerc_value<'t>(text: &'t str, key: &str) -> Option<&'t str> {
     })
 }
 
-/// Кнопки заголовка xfwm4 по буквам раскладки (`button_layout` в `themerc`).
+/// xfwm4 title bar buttons by the letters of the layout (`button_layout` in `themerc`).
 const XFWM4_BUTTONS: &[(char, &str)] =
     &[('O', "menu"), ('T', "stick"), ('S', "shade"), ('H', "hide"), ('M', "maximize"), ('C', "close")];
-/// Раскладка кнопок xfwm4, когда тема своей не задаёт: слева меню окна,
-/// справа «свернуть в заголовок», «свернуть», «развернуть», «закрыть».
+/// The xfwm4 button layout when the theme sets none of its own: the window menu
+/// on the left, "shade", "minimize", "maximize", "close" on the right.
 const XFWM4_DEFAULT_LAYOUT: &str = "O|SHMC";
 
-/// Тема рамок XFCE: окно в её рамке — углы, стороны, заголовок и кнопки из
-/// её собственных рисунков, в их настоящем размере.
+/// An XFCE frame theme: a window in its frame — corners, sides, title bar and
+/// buttons from its own images, at their real size.
 fn xfwm4_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let dir = std::path::Path::new(input.install_path).join("xfwm4");
     let part = |name: &str| xfwm4_part(&dir, name);
@@ -1098,7 +1113,8 @@ fn xfwm4_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let number = |key: &str| themerc_value(&rc, key).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
     let (top_left, top_right) = (part("top-left"), part("top-right"));
     let titles: Vec<Option<FramePart>> = (1..=5).map(|n| part(&format!("title-{n}"))).collect();
-    // Без заголовка рамки нет: тема пуста либо собрана не из рисунков.
+    // Without a title bar there is no frame: the theme is empty or not built from
+    // images.
     let title_h = titles.iter().flatten().map(|p| p.height).fold(0.0, f64::max);
     if title_h < 1.0 {
         return None;
@@ -1113,16 +1129,16 @@ fn xfwm4_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let bottom_h = height_of(&bottom).max(height_of(&bottom_left)).max(height_of(&bottom_right));
 
     let mut ops = vec![
-        // Тень и содержимое окна: нейтральное, у темы рамок своего нет.
+        // The window's shadow and contents: neutral, a frame theme has none of its own.
         DrawOp::Fill { rect: (x + 3.0, y + 4.0, w, h), color: (0, 0, 0, 70) },
         DrawOp::Fill { rect: (x, y + title_h, w, h - title_h), color: (236, 236, 236, 255) },
     ];
     for (line_y, line_w) in [(18.0, 120.0), (34.0, 86.0), (50.0, 104.0)] {
         ops.push(DrawOp::Fill { rect: (x + left_w + 14.0, y + title_h + line_y, line_w, 6.0), color: (120, 120, 120, 200) });
     }
-    // Заголовок: углы, между ними — пять частей. Первая и пятая тянутся
-    // плиткой до середины, третья лежит под названием окна, вторая и
-    // четвёртая — переходы к ней.
+    // The title bar: the corners, five parts between them. The first and the
+    // fifth stretch as tiles to the middle, the third lies under the window
+    // title, the second and fourth are transitions to it.
     let (corner_l, corner_r) = (width_of(&top_left), width_of(&top_right));
     let (span_x, span_w) = (x + corner_l, w - corner_l - corner_r);
     let (t2, t4) = (width_of(&titles[1]), width_of(&titles[3]));
@@ -1150,7 +1166,7 @@ fn xfwm4_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     if let Some(p) = &top_right {
         part_at(&mut ops, p, x + w - corner_r, y);
     }
-    // Стороны и низ.
+    // Sides and the bottom.
     if let Some(p) = &left {
         part_tiled(&mut ops, p, (x, y + title_h, left_w, h - title_h - bottom_h));
     }
@@ -1167,8 +1183,8 @@ fn xfwm4_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     if let Some(p) = &bottom_right {
         part_at(&mut ops, p, x + w - br_w, y + h - p.height.min(bottom_h));
     }
-    // Название окна — полоской цвета текста заголовка, если тема назвала его
-    // числом (а не именем цвета темы GTK).
+    // The window title — as a strip of the title text color, if the theme
+    // named it as a number (rather than a GTK theme color name).
     if let Some(ink) = themerc_value(&rc, "active_text_color").and_then(css_color) {
         if text_w >= 40.0 {
             ops.push(DrawOp::Fill {
@@ -1177,7 +1193,7 @@ fn xfwm4_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
             });
         }
     }
-    // Кнопки: до черты раскладки — слева направо, после — справа налево.
+    // Buttons: before the layout's bar — left to right, after it — right to left.
     let layout = themerc_value(&rc, "button_layout").filter(|l| !l.is_empty()).unwrap_or(XFWM4_DEFAULT_LAYOUT);
     let (offset, spacing) = (number("button_offset").clamp(0.0, 20.0), number("button_spacing").clamp(-4.0, 12.0));
     let button = |letter: char| {
@@ -1198,16 +1214,16 @@ fn xfwm4_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     Some(ops)
 }
 
-// ── рамки Openbox и labwc ─────────────────────────────────────────────────
+// ── Openbox and labwc frames ──────────────────────────────────────────────
 //
-// Тема Openbox — `themerc` (строки `ключ: значение`, комментарии `!` и `#`)
-// и рисунки кнопок `.xbm` рядом. labwc читает тот же формат, свою копию
-// темы ищет в `<тема>/labwc/` раньше, чем `<тема>/openbox-3/`
-// (labwc-theme(5)). Своей картинки у таких тем почти никогда нет, и образец
-// рисуется из цветов: активное окно поверх неактивного — заголовок с
-// переходом цвета, название, кнопки и рамка.
+// An Openbox theme is a `themerc` (lines `key: value`, comments `!` and `#`) and
+// `.xbm` button images next to it. labwc reads the same format and looks for its
+// copy of the theme in `<theme>/labwc/` before `<theme>/openbox-3/`
+// (labwc-theme(5)). Such themes almost never have a picture of their own, and
+// the sample is drawn from colors: an active window over an inactive one — a
+// title bar with a color gradient, the title, buttons and the frame.
 
-/// `themerc` темы для образца: `labwc/`, затем `openbox-3/`.
+/// The theme's `themerc` for the sample: `labwc/`, then `openbox-3/`.
 fn openbox_themerc(theme: &std::path::Path) -> Option<(std::path::PathBuf, String)> {
     ["labwc", "openbox-3"]
         .iter()
@@ -1215,8 +1231,8 @@ fn openbox_themerc(theme: &std::path::Path) -> Option<(std::path::PathBuf, Strin
         .find_map(|dir| read_text(&dir.join("themerc")).map(|t| (dir, t)))
 }
 
-/// Совпадает ли ключ с образцом из `themerc`, где `*` — одна или
-/// несколько частей имени (`window.*.button.*.image.color`).
+/// Whether a key matches a pattern from `themerc`, where `*` is one or several
+/// name parts (`window.*.button.*.image.color`).
 fn ob_key_matches(pattern: &[&str], key: &[&str]) -> bool {
     match (pattern.first(), key.first()) {
         (None, None) => true,
@@ -1226,8 +1242,9 @@ fn ob_key_matches(pattern: &[&str], key: &[&str]) -> bool {
     }
 }
 
-/// Значение ключа темы Openbox: точный ключ важнее образцов с `*`, из
-/// образцов — с меньшим числом `*`, при равенстве — последний в файле.
+/// Value of an Openbox theme key: an exact key is more important than patterns
+/// with `*`; among patterns — the one with fewer `*`, on a tie — the last in the
+/// file.
 fn ob_value<'t>(text: &'t str, key: &str) -> Option<&'t str> {
     let key: Vec<&str> = key.split('.').collect();
     let mut best: Option<(usize, &'t str)> = None;
@@ -1248,8 +1265,8 @@ fn ob_value<'t>(text: &'t str, key: &str) -> Option<&'t str> {
     best.map(|(_, v)| v)
 }
 
-/// Цвет в записи X11, как его пишут темы Openbox: `#rgb`, `#rrggbb`,
-/// `rgb:r/g/b` (1–4 цифры на канал), `grey40`/`gray40`, несколько имён.
+/// A color in X11 notation, as Openbox themes write it: `#rgb`, `#rrggbb`,
+/// `rgb:r/g/b` (1–4 digits per channel), `grey40`/`gray40`, several names.
 fn ob_color(value: &str) -> Option<Rgb> {
     let v = value.trim();
     let low = v.to_ascii_lowercase();
@@ -1282,7 +1299,7 @@ fn ob_color(value: &str) -> Option<Rgb> {
     }
 }
 
-/// Рисунок `.xbm`: ширина, высота и точки построчно (`true` — закрашена).
+/// An `.xbm` image: width, height and pixels row by row (`true` — filled).
 fn xbm_bits(text: &str) -> Option<(u32, u32, Vec<bool>)> {
     let define = |suffix: &str| {
         text.lines().find_map(|l| {
@@ -1316,8 +1333,8 @@ fn xbm_bits(text: &str) -> Option<(u32, u32, Vec<bool>)> {
     Some((width, height, bits))
 }
 
-/// Кнопка заголовка Openbox: рисунок `.xbm` темы цветом `color`, вдвое
-/// крупнее; нет рисунка — простой знак линиями.
+/// An Openbox title bar button: the theme's `.xbm` image in color `color`, twice
+/// as large; no image — a simple glyph made of lines.
 fn ob_button(ops: &mut Vec<DrawOp>, dir: &std::path::Path, name: &str, cx: f64, cy: f64, color: Rgb) {
     let ink = (color.0, color.1, color.2, 255);
     if let Some((w, h, bits)) = read_text(&dir.join(format!("{name}.xbm"))).and_then(|t| xbm_bits(&t)) {
@@ -1351,7 +1368,7 @@ fn ob_button(ops: &mut Vec<DrawOp>, dir: &std::path::Path, name: &str, cx: f64, 
     }
 }
 
-/// Одно окно образца Openbox: `state` — `active` или `inactive`.
+/// One window of an Openbox sample: `state` — `active` or `inactive`.
 fn ob_window(ops: &mut Vec<DrawOp>, dir: &std::path::Path, rc: &str, state: &str, rect: Rect) {
     let (x, y, w, h) = rect;
     let get = |key: &str| ob_value(rc, &format!("window.{state}.{key}"));
@@ -1381,17 +1398,17 @@ fn ob_window(ops: &mut Vec<DrawOp>, dir: &std::path::Path, rc: &str, state: &str
         ops.push(DrawOp::Fill { rect: title_rect, color: (title.0, title.1, title.2, 255) });
     }
     ops.push(DrawOp::Fill { rect: (ix, iy + th, iw, h - th - 2.0 * bw), color: (client.0, client.1, client.2, 255) });
-    // Название окна — полоской цвета текста заголовка, по середине.
+    // The window title — as a strip of the title text color, in the middle.
     ops.push(DrawOp::Fill { rect: (ix + (iw - 64.0) / 2.0, iy + th / 2.0 - 3.0, 64.0, 6.0), color: (label.0, label.1, label.2, 230) });
-    // Строки «содержимого» — цветом, отличимым от фона окна.
+    // Lines of "contents" — in a color distinguishable from the window background.
     let ink = mix(client, (128, 128, 128), 0.7);
     for (dy, lw) in [(14.0, 0.5), (28.0, 0.36), (42.0, 0.44)] {
         if dy + 8.0 < h - th {
             ops.push(DrawOp::Fill { rect: (ix + 12.0, iy + th + dy, (iw * lw).round(), 6.0), color: (ink.0, ink.1, ink.2, 200) });
         }
     }
-    // Кнопки раскладки Openbox по умолчанию (`NLIMC`): справа «свернуть»,
-    // «развернуть», «закрыть».
+    // The default Openbox button layout (`NLIMC`): "minimize", "maximize", "close"
+    // on the right.
     let cy = iy + th / 2.0;
     let mut cx = ix + iw - 12.0;
     for name in ["close", "max", "iconify"] {
@@ -1400,10 +1417,11 @@ fn ob_window(ops: &mut Vec<DrawOp>, dir: &std::path::Path, rc: &str, state: &str
     }
 }
 
-/// Тема рамок Openbox и labwc: активное окно поверх неактивного в её цветах.
+/// An Openbox and labwc frame theme: an active window over an inactive one in
+/// its colors.
 fn openbox_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let (dir, rc) = openbox_themerc(std::path::Path::new(input.install_path))?;
-    // Тема без единого цвета заголовка — не тема рамок (пустой файл).
+    // A theme without a single title bar color is not a frame theme (an empty file).
     ob_value(&rc, "window.active.title.bg.color")?;
     let mut ops = Vec::new();
     ob_window(&mut ops, &dir, &rc, "inactive", (14.0, 12.0, 196.0, 96.0));
@@ -1411,16 +1429,15 @@ fn openbox_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     Some(ops)
 }
 
-// ── оболочки GNOME и Cinnamon ─────────────────────────────────────────────
+// ── GNOME and Cinnamon shells ─────────────────────────────────────────────
 //
-// Тема оболочки — таблица стилей её частей. Именованных цветов, как у GTK, в
-// ней нет: цвета стоят прямо в правилах. Образцу нужны два места, которые
-// человек видит первыми, — панель и открытое меню; их правила называются
-// одинаково у обеих оболочек (`#panel`, `.popup-menu…`, у Cinnamon ещё
-// `.menu`).
+// A shell theme is a stylesheet of its parts. It has no named colors like GTK:
+// the colors stand right in the rules. The sample needs the two places a person
+// sees first — the panel and an open menu; their rules are named the same in
+// both shells (`#panel`, `.popup-menu…`, Cinnamon also has `.menu`).
 
-/// Цвет с прозрачностью из значения таблицы стилей ([`css_color`] плюс
-/// четвёртое число `rgba(…)` и две последние цифры `#rrggbbaa`).
+/// A color with transparency from a stylesheet value ([`css_color`] plus the
+/// fourth number of `rgba(…)` and the last two digits of `#rrggbbaa`).
 fn css_color_alpha(value: &str) -> Option<Rgba> {
     let (r, g, b) = css_color(value)?;
     let v = value.trim();
@@ -1441,13 +1458,13 @@ fn css_color_alpha(value: &str) -> Option<Rgba> {
     Some((r, g, b, alpha))
 }
 
-/// Правила таблицы стилей: список селекторов и объявления каждого.
-/// Вложенных блоков в таблицах оболочек нет; комментарии отбрасываются.
+/// Stylesheet rules: the list of selectors and the declarations of each. Shell
+/// stylesheets have no nested blocks; comments are dropped.
 fn css_rules(css: &str) -> Vec<(Vec<String>, Vec<(&str, &str)>)> {
     let mut rules = Vec::new();
     for chunk in css.split('}') {
         let Some((selectors, body)) = chunk.split_once('{') else { continue };
-        // Комментарий перед правилом остаётся в его «селекторе» — срезаем.
+        // A comment before a rule stays in its "selector" — we cut it off.
         let selectors = selectors.rsplit("*/").next().unwrap_or(selectors);
         let selectors: Vec<String> =
             selectors.split(',').map(|s| s.split_whitespace().collect::<Vec<_>>().join(" ")).collect();
@@ -1461,9 +1478,10 @@ fn css_rules(css: &str) -> Vec<(Vec<String>, Vec<(&str, &str)>)> {
     rules
 }
 
-/// Цвет свойства из `properties` у первого правила, чей селектор — один из
-/// `selectors`: сперва точное совпадение, затем правило потомка (`… .имя`).
-/// Почти прозрачный цвет (меньше трети) цветом места не считается.
+/// The color of a property from `properties` in the first rule whose selector is
+/// one of `selectors`: first an exact match, then a descendant rule (`… .name`).
+/// An almost transparent color (less than a third) does not count as the place's
+/// color.
 fn css_rule_color(rules: &[(Vec<String>, Vec<(&str, &str)>)], selectors: &[&str], properties: &[&str]) -> Option<Rgba> {
     selectors.iter().find_map(|want| {
         let nested = format!(" {want}");
@@ -1481,23 +1499,23 @@ fn css_rule_color(rules: &[(Vec<String>, Vec<(&str, &str)>)], selectors: &[&str]
     })
 }
 
-/// Цвета оболочки, из которых рисуется её образец.
+/// Shell colors from which its sample is drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShellPalette {
-    /// Фон панели.
+    /// Panel background.
     pub panel: Rgba,
-    /// Текст на панели.
+    /// Text on the panel.
     pub panel_text: (u8, u8, u8),
-    /// Фон меню.
+    /// Menu background.
     pub menu: Rgba,
-    /// Текст меню.
+    /// Menu text.
     pub menu_text: (u8, u8, u8),
-    /// Фон выбранной строки меню.
+    /// Background of the selected menu row.
     pub selected: Rgba,
 }
 
-/// Цвета панели и меню из таблицы стилей оболочки GNOME или Cinnamon.
-/// `None` — в таблице нет фона ни панели, ни меню.
+/// Panel and menu colors from the stylesheet of a GNOME or Cinnamon shell.
+/// `None` — the stylesheet has a background for neither the panel nor the menu.
 pub fn shell_palette(css: &str) -> Option<ShellPalette> {
     let rules = css_rules(css);
     const BACKGROUND: &[&str] = &["background-color", "background-gradient-start", "background"];
@@ -1511,8 +1529,9 @@ pub fn shell_palette(css: &str) -> Option<ShellPalette> {
         return None;
     }
     let solid = |c: Rgba| (c.0, c.1, c.2);
-    // Чего таблица не называет, берётся от соседа; текст, неразличимый на
-    // своём фоне (взят у другого правила), заменяется белым либо чёрным.
+    // What the stylesheet does not name is taken from the neighbor; text
+    // indistinguishable on its background (taken from another rule) is replaced
+    // with white or black.
     let menu = menu.or(panel)?;
     let panel = panel.unwrap_or(menu);
     let readable = |text: Option<Rgba>, on: Rgba| {
@@ -1534,7 +1553,7 @@ pub fn shell_palette(css: &str) -> Option<ShellPalette> {
     Some(ShellPalette { panel, panel_text, menu, menu_text, selected })
 }
 
-/// Образец оболочки: панель у края экрана и открытое меню рядом с ней.
+/// A shell sample: a panel at the edge of the screen and an open menu next to it.
 pub fn shell_sample(p: &ShellPalette, panel_at_bottom: bool) -> Vec<DrawOp> {
     let fill = |x: f64, y: f64, w: f64, h: f64, c: Rgba| DrawOp::Fill { rect: (x, y, w, h), color: c };
     let ink = |c: (u8, u8, u8), a: u8| (c.0, c.1, c.2, a);
@@ -1542,8 +1561,9 @@ pub fn shell_sample(p: &ShellPalette, panel_at_bottom: bool) -> Vec<DrawOp> {
     let panel_h = 24.0;
     let panel_y = if panel_at_bottom { height - panel_h } else { 0.0 };
     let (menu_w, menu_h) = (132.0, 116.0);
-    // Меню раскрыто от панели: у верхней — справа под ней (меню состояния
-    // GNOME), у нижней — слева над ней (главное меню Cinnamon).
+    // The menu opens from the panel: for a top one — on the right under it
+    // (the GNOME status menu), for a bottom one — on the left above it (the
+    // Cinnamon main menu).
     let (menu_x, menu_y) = if panel_at_bottom { (10.0, panel_y - menu_h - 6.0) } else { (width - menu_w - 10.0, panel_h + 6.0) };
     let text_y = panel_y + 9.0;
     let mut ops = vec![
@@ -1566,27 +1586,27 @@ pub fn shell_sample(p: &ShellPalette, panel_at_bottom: bool) -> Vec<DrawOp> {
     ops
 }
 
-/// Образец оболочки по её таблице стилей `<тема>/<rel>`.
+/// A shell sample from its stylesheet `<theme>/<rel>`.
 fn shell_theme_sample(input: &SampleInput, rel: &str, panel_at_bottom: bool) -> Option<Vec<DrawOp>> {
     let css = read_text(&std::path::Path::new(input.install_path).join(rel))?;
     Some(shell_sample(&shell_palette(&css)?, panel_at_bottom))
 }
 
-/// Тема оболочки GNOME: верхняя панель и меню в её цветах.
+/// A GNOME shell theme: the top panel and a menu in its colors.
 fn gnome_shell_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     shell_theme_sample(input, "gnome-shell/gnome-shell.css", false)
 }
 
-/// Тема Cinnamon: нижняя панель и меню в её цветах.
+/// A Cinnamon theme: the bottom panel and a menu in its colors.
 fn cinnamon_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     shell_theme_sample(input, "cinnamon/cinnamon.css", true)
 }
 
-// ── значки ────────────────────────────────────────────────────────────────
+// ── icons ────────────────────────────────────────────────────────────────
 
-/// Каталоги значков темы из её `index.theme`, от самого подходящего размера
-/// к наименее подходящему (ближе к `want` точек, при равенстве — крупнее).
-/// Каталоги удвоенного масштаба пропускаются: рисунок там тот же.
+/// Icon directories of a theme from its `index.theme`, from the most suitable
+/// size to the least suitable (closer to `want` pixels, on a tie — larger).
+/// Double-scale directories are skipped: the image there is the same.
 fn icon_dirs(theme_dir: &std::path::Path, want: i64) -> Vec<String> {
     let Some(index) = read_text(&theme_dir.join("index.theme")) else {
         return Vec::new();
@@ -1624,7 +1644,7 @@ fn icon_dirs(theme_dir: &std::path::Path, want: i64) -> Vec<String> {
     dirs.into_iter().map(|(_, _, name)| name).collect()
 }
 
-/// Файл значка `name` в каталогах `dirs` темы (первый найденный).
+/// The file of icon `name` in the theme's directories `dirs` (the first one found).
 fn icon_file(theme_dir: &std::path::Path, dirs: &[String], name: &str) -> Option<String> {
     dirs.iter().find_map(|d| {
         ["svg", "png", "svgz"]
@@ -1635,8 +1655,8 @@ fn icon_file(theme_dir: &std::path::Path, dirs: &[String], name: &str) -> Option
     })
 }
 
-/// Какие значки показать на образце темы: в каждой строке — имена одного и
-/// того же значка от принятого сейчас к прежним.
+/// Which icons to show on a theme sample: each row holds names of the same icon
+/// from the currently accepted one to the older ones.
 const ICON_SAMPLE_NAMES: &[&[&str]] = &[
     &["folder", "inode-directory"],
     &["user-home", "folder-home"],
@@ -1658,8 +1678,8 @@ const ICON_SAMPLE_COLUMNS: usize = 4;
 const ICON_SAMPLE_MAX: usize = 8;
 const ICON_SAMPLE_SIZE: f64 = 56.0;
 
-/// Тема значков: её собственные значки сеткой. Берутся только файлы самой
-/// темы — без тем, от которых она наследует: образец показывает её, а не их.
+/// An icon theme: its own icons in a grid. Only the theme's own files are taken
+/// — without the themes it inherits from: the sample shows it, not them.
 fn icons_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let theme = std::path::Path::new(input.install_path);
     let dirs = icon_dirs(theme, 64);
@@ -1672,8 +1692,8 @@ fn icons_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
             files.push(file);
         }
     }
-    // Тема без привычных имён (только значки программ): добираем первыми
-    // по порядку файлами её лучших каталогов.
+    // A theme without the usual names (only application icons): we fill
+    // up with the first files of its best directories in order.
     for d in dirs.iter().take(12) {
         if files.len() >= ICON_SAMPLE_MAX {
             break;
@@ -1708,7 +1728,7 @@ fn icons_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
             .enumerate()
             .map(|(i, path)| {
                 let (col, row) = (i % ICON_SAMPLE_COLUMNS, i / ICON_SAMPLE_COLUMNS);
-                // Последний неполный ряд — по центру.
+                // The last incomplete row — centered.
                 let in_row = if row == rows - 1 { total - row * ICON_SAMPLE_COLUMNS } else { ICON_SAMPLE_COLUMNS };
                 let shift = (PREVIEW_WIDTH as f64 - in_row as f64 * cell_w) / 2.0;
                 DrawOp::Image {
@@ -1726,8 +1746,8 @@ fn icons_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     )
 }
 
-/// Каталоги тем значков, в которых ищется значок пакета по имени: темы,
-/// поставляемые с окружениями, в каталогах пользователя и системы.
+/// Icon theme directories in which a package icon is looked for by name: themes
+/// shipped with the environments, in the user and system directories.
 pub fn icon_theme_dirs(home: &str, usr_root: &str) -> Vec<String> {
     let roots = [
         format!("{home}/.local/share/icons"),
@@ -1746,10 +1766,10 @@ pub fn icon_theme_dirs(home: &str, usr_root: &str) -> Vec<String> {
     out
 }
 
-/// Пакет (переключатель окон, эффект и скрипт KWin, расширение, апплет) либо
-/// действие Nemo: его значок — файл `icon.png` в пакете либо значок,
-/// названный метаданными (`metadata.json`, `metadata.desktop`, у действия —
-/// ключ `Icon-Name` самого файла `.nemo_action`).
+/// A package (a window switcher, a KWin effect and script, an extension, an
+/// applet) or a Nemo action: its icon is the `icon.png` file in the package or an
+/// icon named by the metadata (`metadata.json`, `metadata.desktop`, for an action
+/// — the `Icon-Name` key of the `.nemo_action` file itself).
 fn package_icon_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let dir = std::path::Path::new(input.install_path);
     let own = dir.join("icon.png");
@@ -1764,7 +1784,7 @@ fn package_icon_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
                 ini_value(&text, "Desktop Entry", "Icon").map(str::to_string)
             })
             .or_else(|| {
-                // Действие Nemo — один файл: метаданные лежат в нём самом.
+                // A Nemo action is a single file: the metadata lies in it.
                 let text = read_text(dir)?;
                 ini_value(&text, "Nemo Action", "Icon-Name").map(str::to_string)
             })
@@ -1779,8 +1799,8 @@ fn package_icon_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     };
     let path = if own.is_file() { own.to_string_lossy().into_owned() } else { named()? };
     let mut ops = Vec::new();
-    // Одноцветный значок (`…-symbolic`) нарисован тёмным по прозрачному: на
-    // тёмной подложке его не видно — под него кладётся светлая плашка.
+    // A monochrome icon (`…-symbolic`) is drawn dark on transparent: it cannot be
+    // seen on a dark background — a light plate is put under it.
     if path.rsplit('/').next().is_some_and(|file| file.contains("-symbolic.")) {
         ops.push(DrawOp::Fill { rect: (94.0, 29.0, 112.0, 112.0), color: (236, 236, 236, 255) });
     }
@@ -1788,17 +1808,17 @@ fn package_icon_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     Some(ops)
 }
 
-// ── образец темы курсоров ─────────────────────────────────────────────────
+// ── cursor theme sample ───────────────────────────────────────────────────
 //
-// У темы курсоров своей картинки обычно нет, и плитка стояла с общим знаком
-// мыши — темы в сетке не отличались друг от друга (приёмка 10.10.2026).
-// Образец собирается из самих курсоров темы: несколько главных указателей
-// на фоне заглушки. Формат Xcursor — по описанию Xcursor(3): подпись `Xcur`,
-// оглавление, блоки-картинки вида 0xfffd0002 с точками ARGB (умноженными на
-// прозрачность).
+// A cursor theme usually has no picture of its own, and the tile stood with the
+// generic mouse glyph — the themes in the grid did not differ from each other
+// (acceptance check 10.10.2026). The sample is assembled from the theme's own
+// cursors: several main pointers on the placeholder background. The Xcursor
+// format per Xcursor(3): the `Xcur` signature, a table of contents, image chunks
+// of type 0xfffd0002 with ARGB pixels (premultiplied by alpha).
 
-/// Какие указатели показать на образце: первое найденное имя из каждой пары
-/// (новое имя и прежнее), не больше шести.
+/// Which pointers to show on the sample: the first found name of each pair (the
+/// new name and the old one), no more than six.
 const CURSOR_SHEET_NAMES: &[&[&str]] = &[
     &["default", "left_ptr", "arrow"],
     &["pointer", "hand2", "hand1"],
@@ -1810,15 +1830,15 @@ const CURSOR_SHEET_NAMES: &[&[&str]] = &[
     &["not-allowed", "crossed_circle"],
 ];
 
-/// Сколько указателей на образце и как они стоят.
+/// How many pointers are on the sample and how they stand.
 const CURSOR_SHEET_COLUMNS: u32 = 3;
 const CURSOR_SHEET_MAX: usize = 6;
-/// Размер указателя, который ищем в файле (ближайший из записанных).
+/// The pointer size we look for in the file (the nearest of those recorded).
 const CURSOR_SHEET_NOMINAL: u32 = 48;
 
-/// Первый кадр указателя из файла Xcursor: ширина, высота и точки RGBA
-/// (уже не умноженные на прозрачность). Берётся размер, ближайший к
-/// `nominal`. `None` — файл не Xcursor или обрезан.
+/// The first frame of a pointer from an Xcursor file: width, height and RGBA
+/// pixels (already not premultiplied by alpha). The size nearest to `nominal` is
+/// taken. `None` — the file is not Xcursor or is truncated.
 pub fn xcursor_first_frame(data: &[u8], nominal: u32) -> Option<(u32, u32, Vec<u8>)> {
     const IMAGE: u32 = 0xfffd_0002;
     let u32_at = |at: usize| -> Option<u32> {
@@ -1857,8 +1877,8 @@ pub fn xcursor_first_frame(data: &[u8], nominal: u32) -> Option<(u32, u32, Vec<u
     Some((width, height, rgba))
 }
 
-/// Тема курсоров: её главные указатели сеткой. `None` — в теме не нашлось ни
-/// одного читаемого указателя.
+/// A cursor theme: its main pointers in a grid. `None` — not a single readable
+/// pointer was found in the theme.
 fn cursor_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
     let cursors = std::path::Path::new(input.install_path).join("cursors");
     let mut frames: Vec<(u32, u32, Vec<u8>)> = Vec::new();
@@ -1887,7 +1907,7 @@ fn cursor_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
             .enumerate()
             .map(|(i, (fw, fh, rgba))| {
                 let (col, row) = (i as u32 % CURSOR_SHEET_COLUMNS, i as u32 / CURSOR_SHEET_COLUMNS);
-                // Последний неполный ряд — по центру.
+                // The last incomplete row — centered.
                 let in_row = if row == rows - 1 { total - row * CURSOR_SHEET_COLUMNS } else { CURSOR_SHEET_COLUMNS };
                 let shift = (w - in_row * cell_w) / 2;
                 DrawOp::Pixels {
@@ -1906,7 +1926,7 @@ fn cursor_sample(input: &SampleInput) -> Option<Vec<DrawOp>> {
 mod cursor_sheet_tests {
     use super::*;
 
-    /// Файл Xcursor с одним указателем `size`×`size` заданного цвета ARGB.
+    /// An Xcursor file with one `size`×`size` pointer of a given ARGB color.
     fn xcursor(size: u32, argb: [u8; 4]) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(b"Xcur");
@@ -1927,7 +1947,7 @@ mod cursor_sheet_tests {
 
     #[test]
     fn xcursor_frame_is_read_and_unpremultiplied() {
-        // Полупрозрачный красный, умноженный на прозрачность: A=128, R=128.
+        // Semi-transparent red, premultiplied by alpha: A=128, R=128.
         let data = xcursor(4, [128, 128, 0, 0]);
         let (w, h, rgba) = xcursor_first_frame(&data, 48).expect("кадр читается");
         assert_eq!((w, h), (4, 4));
@@ -1945,7 +1965,7 @@ mod cursor_sheet_tests {
         let theme = root.join("theme").to_string_lossy().into_owned();
         let picture = card_picture(&SampleInput { kind: "cursor", install_path: &theme, icon_themes: &[] }, "🖱️");
         assert_eq!(picture.source, PreviewSource::Sample);
-        // Подложка и единственный указатель — по центру, белый.
+        // The background and the single pointer — centered, white.
         assert_eq!(picture.ops.len(), 2);
         let DrawOp::Pixels { x, y, width, height, rgba } = &picture.ops[1] else {
             panic!("указатель рисуется точками: {:?}", picture.ops[1]);
@@ -1953,7 +1973,7 @@ mod cursor_sheet_tests {
         assert_eq!((*width, *height), (24, 24));
         assert_eq!((*x, *y), (150.0 - 12.0, 85.0 - 12.0));
         assert_eq!(&rgba[..4], &[255, 255, 255, 255]);
-        // Тема без курсоров образца не даёт — остаётся заглушка вида.
+        // A theme without cursors gives no sample — the kind's placeholder remains.
         std::fs::create_dir_all(root.join("empty")).unwrap();
         let empty = root.join("empty").to_string_lossy().into_owned();
         let stub = card_picture(&SampleInput { kind: "cursor", install_path: &empty, icon_themes: &[] }, "🖱️");
@@ -1967,7 +1987,7 @@ mod card_picture_tests {
     use super::*;
     use std::path::{Path, PathBuf};
 
-    /// Свой каталог сверки.
+    /// Our own check directory.
     fn tmp(tag: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("rexon-card-picture-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -1985,9 +2005,9 @@ mod card_picture_tests {
         card_picture(&SampleInput { kind, install_path: &path, icon_themes: &[] }, "🎨")
     }
 
-    /// Виды местных тем, которым образец сознательно не рисуется: взять из
-    /// темы нечего либо это отдельная работа. У них остаются своя картинка,
-    /// запись магазина и заглушка вида.
+    /// Kinds of local themes for which a sample is deliberately not drawn: there is
+    /// nothing to take from the theme, or it is separate work. They keep their own
+    /// picture, the store entry and the kind's placeholder.
     const NO_SAMPLE: &[(&str, &str)] = &[
         ("global", "снимок несёт сама тема"),
         ("splash", "снимок несёт сама тема"),
@@ -1998,9 +2018,9 @@ mod card_picture_tests {
         ("conky", "картинку виджета несёт только его набор"),
     ];
 
-    /// Каждый вид местной темы либо имеет строку в таблице образцов, либо
-    /// назван в списке «без образца» с причиной. Новый вид без решения эту
-    /// сверку роняет — молча остаться с заглушкой он не может.
+    /// Every kind of local theme either has a row in the sample table or is named in
+    /// the "no sample" list with a reason. A new kind without a decision fails this
+    /// check — it cannot silently stay with a placeholder.
     #[test]
     fn every_local_kind_is_decided() {
         let mut kinds: Vec<&str> = crate::installed_scan::types_for("/h", "/usr")
@@ -2019,8 +2039,9 @@ mod card_picture_tests {
         }
     }
 
-    /// Заглушка — знак вида на подложке и больше ничего: названия темы на
-    /// ней нет (оно стоит под картинкой), вид одинаков для любого вида темы.
+    /// The placeholder is the kind glyph on the background and nothing else: there
+    /// is no theme name on it (it stands under the picture), and it looks the same
+    /// for any theme kind.
     #[test]
     fn placeholder_is_glyph_without_name() {
         let root = tmp("stub");
@@ -2052,15 +2073,16 @@ mod card_picture_tests {
             "[Colors:Window]\nBackgroundNormal=10,20,30\nForegroundNormal=200,210,220\n\
              [Colors:Selection]\nBackgroundNormal=1,2,3\n[WM]\nactiveBackground=40,50,60\n",
         );
-        // Скан отдаёт путь схемы без окончания.
+        // The scan gives the scheme path without the extension.
         let got = picture("colors", &root.join("Mine"));
         assert_eq!(got.source, PreviewSource::Sample);
-        // Подложка, затем фон окна во весь кадр, заголовок, выделение.
+        // The background, then the window background over the whole frame, the title
+        // bar, the selection.
         assert_eq!(got.ops[1], DrawOp::Fill { rect: (0.0, 0.0, 300.0, 170.0), color: (10, 20, 30, 255) });
         assert_eq!(got.ops[2], DrawOp::Fill { rect: (0.0, 0.0, 300.0, 26.0), color: (40, 50, 60, 255) });
         assert!(got.ops.iter().any(|op| matches!(op, DrawOp::Fill { color: (1, 2, 3, 255), .. })));
         assert!(!got.ops.iter().any(|op| matches!(op, DrawOp::Text { .. })), "названия на картинке нет");
-        // Файл без групп цветов — заглушка, а не окно цветами Breeze.
+        // A file without color groups — a placeholder, not a window in Breeze colors.
         put(&root.join("Empty.colors"), "[General]\nName=Empty\n");
         assert_eq!(picture("colors", &root.join("Empty")).source, PreviewSource::Placeholder);
         let _ = std::fs::remove_dir_all(&root);
@@ -2079,7 +2101,8 @@ mod card_picture_tests {
         let kv = kvantum_palette("[GeneralColors]\nwindow.color=#fafafa\nbase.color=#ffffff\nhighlight.color=#4285f420\ntext.color=#444444\n").unwrap();
         assert_eq!((kv.window, kv.view, kv.selection, kv.text), ((250, 250, 250), (255, 255, 255), (66, 133, 244), (68, 68, 68)));
 
-        // Имена с окончанием темы, ссылка на другой цвет и функция над ссылкой.
+        // Names with the theme's suffix, a reference to another color and a function
+        // over a reference.
         let gtk = gtk_css_palette(
             "@define-color theme_bg_color_breeze #eff0f1;\n@define-color theme_fg_color_breeze rgb(35, 38, 41);\n\
              @define-color theme_selected_bg_color_breeze @accent;\n@define-color accent #3daee9;\n\
@@ -2116,7 +2139,7 @@ mod card_picture_tests {
                 "{dir}: окно залито цветом темы"
             );
         }
-        // Тема, собранная в двоичный файл, цветов не называет — заглушка.
+        // A theme compiled into a binary file names no colors — a placeholder.
         assert_eq!(picture("gtk", &root.join("Binary")).source, PreviewSource::Placeholder);
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -2143,10 +2166,10 @@ mod card_picture_tests {
                 _ => None,
             })
             .collect();
-        // Привычные имена — из каталога ближайшего размера, остальное
-        // добирается файлами темы по порядку; удвоенный масштаб не берётся.
+        // The usual names — from the directory of the nearest size, the rest is
+        // filled up with the theme's files in order; double scale is not taken.
         assert_eq!(files, ["places/64/folder.svg", "places/64/user-home.png", "apps/48/alpha.svg", "apps/48/zeta.png"]);
-        // Тема без значков (одни ссылки на другие темы) образца не даёт.
+        // A theme without icons (only links to other themes) gives no sample.
         put(&root.join("Empty/index.theme"), "[Icon Theme]\nName=Empty\nInherits=Mine\n");
         assert_eq!(picture("icons", &root.join("Empty")).source, PreviewSource::Placeholder);
         let _ = std::fs::remove_dir_all(&root);
@@ -2181,8 +2204,8 @@ mod card_picture_tests {
         let got = picture("aurorae", &aurorae);
         assert_eq!(got.source, PreviewSource::Sample);
         assert!(matches!(&got.ops[1], DrawOp::SvgFrame { prefixes, .. } if prefixes == &["decoration"]));
-        // Кнопки справа налево от правого края рамки: поле, край заголовка,
-        // ширина кнопки и промежуток — из настроек темы.
+        // Buttons right to left from the frame's right edge: the margin, the
+        // title bar edge, the button width and the gap — from the theme settings.
         let buttons: Vec<(Rect, &str)> = got
             .ops
             .iter()
@@ -2216,17 +2239,17 @@ mod card_picture_tests {
         assert_eq!(got.ops[1], DrawOp::Fill { rect: (0.0, 0.0, 300.0, 85.0), color: (16, 32, 48, 255) });
         let DrawOp::Image { path, cover, .. } = got.ops.last().unwrap() else { panic!("кадр заставки") };
         assert!(path.ends_with("/animation-11.png") && !cover, "{path}");
-        // Знак темы важнее кадра анимации.
+        // The theme's emblem is more important than an animation frame.
         put(&theme.join("watermark.png"), "");
         let DrawOp::Image { path, .. } = picture("plymouth", &theme).ops.last().unwrap().clone() else { panic!() };
         assert!(path.ends_with("/watermark.png"), "{path}");
-        // Тема без картинок (текстовая) образца не даёт.
+        // A theme without pictures (a text one) gives no sample.
         put(&root.join("text/text.plymouth"), "[Plymouth Theme]\nModuleName=text\n");
         assert_eq!(picture("plymouth", &root.join("text")).source, PreviewSource::Placeholder);
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Точечный рисунок XPM заданного размера (одна краска).
+    /// A bitmap XPM image of a given size (one color).
     fn xpm(width: u32, height: u32) -> String {
         let row = format!("\"{}\",\n", ".".repeat(width as usize));
         format!("/* XPM */\nstatic char * part_xpm[] = {{\n\"{width} {height} 1 1\",\n\".\tc #C0C0FF s active_color_1\",\n{}}};\n", row.repeat(height as usize))
@@ -2262,7 +2285,7 @@ mod card_picture_tests {
         ] {
             put(&dir.join(format!("{name}-active.xpm")), &xpm(w, h));
         }
-        // Накладка поверх точечного рисунка и состояния, которые не берутся.
+        // An overlay on top of the bitmap, and states that are not taken.
         put(&dir.join("close-active.png"), "");
         put(&dir.join("close-inactive.xpm"), &xpm(16, 16));
         put(&dir.join("themerc"), "# рамка\nbutton_layout=O|HC\nbutton_offset=2\nbutton_spacing=1\nactive_text_color=#ffffff\n");
@@ -2277,18 +2300,19 @@ mod card_picture_tests {
                 _ => None,
             })
             .collect();
-        // Углы — в своём размере по углам рамки (30, 16, 240×138).
+        // Corners — at their own size at the frame's corners (30, 16, 240×138).
         assert!(placed.contains(&("top-left-active.xpm".into(), (30.0, 16.0, 6.0, 20.0))), "{placed:?}");
         assert!(placed.contains(&("top-right-active.xpm".into(), (264.0, 16.0, 6.0, 20.0))), "{placed:?}");
         assert!(placed.contains(&("bottom-right-active.xpm".into(), (264.0, 150.0, 6.0, 4.0))), "{placed:?}");
-        // Кнопки: меню слева после стороны и отступа; справа — «закрыть» у
-        // края, левее «свернуть»; по высоте — посередине заголовка.
+        // Buttons: the menu on the left after the side and the padding; on the
+        // right — "close" at the edge, "minimize" to its left; vertically — in
+        // the middle of the title bar.
         assert!(placed.contains(&("menu-active.xpm".into(), (35.0, 18.0, 16.0, 16.0))), "{placed:?}");
         assert!(placed.contains(&("close-active.xpm".into(), (249.0, 18.0, 16.0, 16.0))), "{placed:?}");
         assert!(placed.contains(&("close-active.png".into(), (249.0, 18.0, 16.0, 16.0))), "накладка поверх: {placed:?}");
         assert!(placed.contains(&("hide-active.xpm".into(), (232.0, 18.0, 16.0, 16.0))), "{placed:?}");
         assert!(!placed.iter().any(|(f, _)| f.contains("inactive")));
-        // Стороны и заголовок — плиткой на всю длину.
+        // Sides and the title bar — as tiles over the whole length.
         let tiled: Vec<(String, Rect)> = got
             .ops
             .iter()
@@ -2301,7 +2325,7 @@ mod card_picture_tests {
         assert!(tiled.contains(&("bottom-active.xpm".into(), (36.0, 150.0, 228.0, 4.0))), "{tiled:?}");
         assert!(tiled.iter().any(|(f, r)| f == "title-3-active.xpm" && r.1 == 16.0 && r.3 == 20.0), "{tiled:?}");
         assert!(tiled.iter().any(|(f, r)| f == "title-1-active.xpm" && r.0 == 36.0), "{tiled:?}");
-        // Каталог без рисунков заголовка рамки не даёт.
+        // A directory without title bar images gives no frame.
         put(&root.join("Empty/xfwm4/themerc"), "button_layout=O|HC\n");
         assert_eq!(picture("xfwm4", &root.join("Empty")).source, PreviewSource::Placeholder);
         let _ = std::fs::remove_dir_all(&root);
@@ -2320,8 +2344,9 @@ mod card_picture_tests {
         assert_eq!(p.panel_text, (255, 255, 255), "правило потомка панели");
         assert_eq!((p.menu, p.menu_text), ((255, 255, 255, 255), (0, 0, 0)));
         assert_eq!(p.selected, (61, 174, 233, 255), "прозрачный фон выбранной строки пропущен");
-        // Таблица с одной панелью: меню берёт её цвет, выбранная строка —
-        // смесь фона с текстом, а текст, неразличимый на фоне, заменяется.
+        // A stylesheet with only a panel: the menu takes its color, the selected
+        // row — a mix of the background with the text, and text indistinguishable
+        // on its background is replaced.
         let bare = shell_palette("#panel { background-color: #202020; color: #212121; }").unwrap();
         assert_eq!((bare.menu, bare.panel_text), ((32, 32, 32, 255), (255, 255, 255)));
         assert_ne!(bare.selected, bare.menu);
@@ -2339,7 +2364,8 @@ mod card_picture_tests {
                 ref other => panic!("панель: {other:?}"),
             }
         };
-        // GNOME — панель сверху, Cinnamon — снизу; цвет — из таблицы.
+        // GNOME — the panel on top, Cinnamon — at the bottom; the color comes from the
+        // stylesheet.
         assert_eq!(panel_rect("gnomeshell", "G"), ((0.0, 0.0, 300.0, 24.0), (26, 27, 35, 242)));
         assert_eq!(panel_rect("cinnamontheme", "C"), ((0.0, 146.0, 300.0, 24.0), (26, 27, 35, 242)));
         assert_eq!(picture("gnomeshell", &root.join("Bare")).source, PreviewSource::Placeholder);
@@ -2361,7 +2387,7 @@ mod card_picture_tests {
             let path = root.join(file).to_string_lossy().into_owned();
             card_picture(&SampleInput { kind: "nemoactions", install_path: &path, icon_themes: &themes }, "⚡")
         };
-        // Одноцветный значок — на светлой плашке, цветной — без неё.
+        // A monochrome icon — on a light plate, a colored one — without it.
         let symbolic = of("add.nemo_action");
         assert_eq!(symbolic.ops.len(), 3);
         assert!(matches!(symbolic.ops[1], DrawOp::Fill { color: (236, 236, 236, 255), .. }));
@@ -2380,7 +2406,7 @@ mod card_picture_tests {
         let got = picture("cinnamonapplets", &root.join("applet@x"));
         assert!(matches!(got.ops.last(), Some(DrawOp::Image { path, .. }) if path.ends_with("/applet@x/icon.png")));
 
-        // Значок, названный метаданными, ищется в темах значков по имени.
+        // An icon named by the metadata is looked for in icon themes by name.
         let theme = root.join("icons/breeze");
         put(&theme.join("index.theme"), "[Icon Theme]\nDirectories=applets/64\n\n[applets/64]\nSize=64\n");
         put(&theme.join("applets/64/effect-x.svg"), "");

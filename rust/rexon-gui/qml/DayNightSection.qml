@@ -1,9 +1,9 @@
-// Блок «Светлое и тёмное» над сетками «Глобальных тем» (Plasma) и
-// «Цветовых схем»: «Светлое», «Тёмное» или «Автоматически» — по времени либо
-// от заката до рассвета, — и что переключать (пары тем, обои, режим
-// программ).
+// The "Light and dark" block above the "Global themes" (Plasma) and
+// "Colour schemes" grids: "Light", "Dark" or "Automatic" — by time or from
+// sunset to sunrise — and what to switch (theme pairs, wallpaper, the
+// application mode).
 //
-// Только разметка: снимок, подписи, проверка, запись и применение —
+// Markup only: snapshot, labels, validation, writing and applying —
 // `DayNightActions` (rust/rexon-gui/src/day_night_actions.rs →
 // rexon_core::day_night).
 
@@ -21,13 +21,14 @@ Rectangle {
     property var sty: ({})
 
     property var st: ({})
-    // Рабочая копия настройки: правки копятся здесь до «Сохранить».
+    // Working copy of the setting: edits accumulate here until "Save".
     property var cfg: ({})
     property string message: ""
     property bool failed: false
-    // Раскрыт ли блок — из снимка ядра; щелчок по шапке меняет и запоминает.
+    // Whether the block is expanded — from the core snapshot; a click on the
+    // header changes and remembers it.
     property bool expanded: false
-    // Часть, для которой открыт выбор файла, и сторона (light/dark).
+    // The part the file picker is open for, and the side (light/dark).
     property string pickPart: ""
     property string pickSide: ""
 
@@ -38,7 +39,7 @@ Rectangle {
             section.st = ({});
         }
         const c = JSON.parse(JSON.stringify(section.st.config || {}));
-        // Подсказанные пары (по именам) — в рабочую копию.
+        // Suggested pairs (by name) — into the working copy.
         for (const p of (section.st.parts || [])) {
             if (c[p.id] === undefined)
                 c[p.id] = ({ on: false, light: "", dark: "" });
@@ -93,9 +94,9 @@ Rectangle {
     }
 
     Component.onCompleted: section.reload()
-    // Перечитывать — после обработчика, а не в нём: `visible` у раздела на
-    // странице сам зависит от `st`, и новый `st` посреди смены `visible`
-    // давал «Binding loop detected for property "visible"».
+    // Re-read after the handler, not inside it: the section's `visible` on the
+    // page itself depends on `st`, and a new `st` in the middle of a `visible`
+    // change gave "Binding loop detected for property "visible"".
     onVisibleChanged: if (section.visible) Qt.callLater(section.reload)
 
     color: section.sty.group.background
@@ -113,10 +114,10 @@ Rectangle {
         height: implicitHeight
         spacing: section.sty.group.spacing
 
-        // Шапка: свёрнутым блок — одна строка с тем, что выбрано сейчас, и
-        // стрелкой; щелчок (или Enter/пробел) раскрывает. Раскрыт ли —
-        // помнит ядро (`settings.json`), по умолчанию свёрнут, чтобы сетка
-        // тем не уезжала вниз.
+        // Header: when collapsed, the block is one line showing what is selected
+        // now, plus an arrow; a click (or Enter/Space) expands it. Whether it is
+        // expanded is remembered by the core (`settings.json`); collapsed by
+        // default so the theme grid does not slide down.
         Item {
             id: header
             objectName: "dayNightHeader"
@@ -136,7 +137,7 @@ Rectangle {
                 spacing: 8
 
                 RexonText {
-                    // Свёрнуто — шеврон к концу строки: справа налево «◂».
+                    // Collapsed — chevron towards the end of the line: "◂" for right to left.
                     readonly property RexonArrows arrows: RexonArrows {
                         mirrored: headerRow.LayoutMirroring.enabled
                     }
@@ -170,7 +171,7 @@ Rectangle {
             spacing: section.sty.group.spacing
 
 
-            // Светлое / Тёмное / Автоматически.
+            // Light / Dark / Automatic.
             Flow {
                 Layout.fillWidth: true
                 spacing: 8
@@ -190,8 +191,7 @@ Rectangle {
                         onClicked: {
                             const id = modeButton.modelData.id;
                             section.edit(c => { c.mode = id; });
-                            // «Светлое» и «Тёмное» — сразу; у «Автоматически»
-                            // сначала расписание.
+                            // "Light" and "Dark" apply at once; "Automatic" needs a schedule first.
                             if (id !== "auto")
                                 section.save();
                         }
@@ -199,7 +199,7 @@ Rectangle {
                 }
             }
 
-            // ── Расписание ───────────────────────────────────────────────────
+            // ── Schedule ─────────────────────────────────────────────────────
             ColumnLayout {
                 Layout.fillWidth: true
                 visible: section.cfg.mode === "auto"
@@ -315,7 +315,7 @@ Rectangle {
                 }
             }
 
-            // ── Что переключать ──────────────────────────────────────────────
+            // ── What to switch ───────────────────────────────────────────────
             Repeater {
                 model: section.st.parts || []
 

@@ -1,19 +1,20 @@
-//! Сверка палитры в обе стороны между Rexon и чужим шеллом
+//! Check of the palette in both directions between Rexon and a foreign shell
 //! (`rexon_core::shell_palette`).
 //!
-//! ⛔ Ни Noctalia, ни DankMaterialShell на машине не установлены, и ставить
-//! их запрещено. Поэтому сверка идёт на подставных домашних каталогах: в них
-//! лежат настройки шеллов ровно того вида, что пишут сами шеллы (форматы
-//! сверены по исходникам noctalia v5.2.0 и DMS v1.6.2). Проверяется:
-//!   * запись трогает ТОЛЬКО наши ключи, остальной файл байт в байт;
-//!   * повтор того же — без изменений (ни записи, ни новой резервной копии);
-//!   * «Вернуть как было» возвращает файл бит в бит, а если шелл успел его
-//!     переписать — только наши ключи;
-//!   * файл, устроенный не так, как мы умеем править, не портится, а
-//!     отказ говорится словами;
-//!   * обратная сторона: цвета шелла читаются из его файлов и становятся
-//!     схемой KDE, повтор не применяет схему заново.
-//! Живьём шелл не перечитывал ни одного файла — граница сверки.
+//! ⛔ Neither Noctalia nor DankMaterialShell is installed on the machine, and
+//! installing them is forbidden. So the check runs on mocked home
+//! directories: they hold shell settings exactly in the form the shells
+//! themselves write (formats checked against the sources of noctalia v5.2.0
+//! and DMS v1.6.2). Checked:
+//!   * a write touches ONLY our keys, the rest of the file byte for byte;
+//!   * repeating the same — no changes (neither a write nor a new backup);
+//!   * «Restore as it was» returns the file bit for bit, and if the shell
+//!     managed to rewrite it — only our keys;
+//!   * a file structured differently from what we can edit is not damaged,
+//!     and the refusal is stated in words;
+//!   * the other direction: the shell's colours are read from its files and
+//!     become a KDE scheme, a repeat does not apply the scheme again.
+//! The shell did not reread a single file live — the boundary of the check.
 
 mod i18n_pin;
 
@@ -24,7 +25,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use rexon_core::shell_palette::{self as sp, Lead, Palette, PaletteHome, PullError, Rgb};
 use rexon_core::system::DesktopShell;
 
-// ── Подставной дом ──────────────────────────────────────────────────────
+// ── Mock home ──────────────────────────────────────────────────────
 
 fn fresh_home(tag: &str) -> (PathBuf, PaletteHome) {
     static N: AtomicUsize = AtomicUsize::new(0);
@@ -46,7 +47,7 @@ fn read(path: &Path) -> Option<String> {
     fs::read_to_string(path).ok()
 }
 
-/// Все файлы под корнем — снимок «как было» для сверки бит в бит.
+/// All files under the root — an «as it was» snapshot for a bit-for-bit check.
 fn snapshot(root: &Path) -> Vec<(String, Vec<u8>)> {
     fn walk(dir: &Path, root: &Path, out: &mut Vec<(String, Vec<u8>)>) {
         let Ok(rd) = fs::read_dir(dir) else { return };
@@ -65,14 +66,14 @@ fn snapshot(root: &Path) -> Vec<(String, Vec<u8>)> {
     out
 }
 
-/// Снимок без памятки Rexon (её «вернуть» не убирает: в ней живёт выбор
-/// «кто ведёт палитру»).
+/// A snapshot without the Rexon memo («restore» does not remove it: it holds
+/// the choice «who leads the palette»).
 fn snapshot_without_memo(root: &Path) -> Vec<(String, Vec<u8>)> {
     snapshot(root).into_iter().filter(|(p, _)| !p.contains("rexon/shell-palette")).collect()
 }
 
-/// Схема Breeze Dark в том виде, как её кладёт `plasma-apply-colorscheme`
-/// в `kdeglobals` (фрагмент).
+/// The Breeze Dark scheme as `plasma-apply-colorscheme` puts it into
+/// `kdeglobals` (a fragment).
 const KDEGLOBALS_DARK: &str = "[ColorEffects:Disabled]\nColor=56,56,56\n\n\
 [Colors:Button]\nBackgroundNormal=41,44,48\nForegroundNormal=252,252,252\n\n\
 [Colors:Selection]\nBackgroundNormal=61,174,233\nForegroundNormal=252,252,252\n\n\
@@ -89,17 +90,17 @@ fn dark_palette() -> Palette {
     sp::palette_from_kde(KDEGLOBALS_DARK).unwrap()
 }
 
-/// Конфигурация Noctalia с комментариями и чужими таблицами — всё это
-/// обязано остаться на месте.
+/// A Noctalia configuration with comments and foreign tables — all of this
+/// must stay in place.
 const NOCTALIA_STATE: &str = "# written by noctalia settings\n\
 [wallpaper]\nenabled = true # keep\n\n[theme]\nsource = \"builtin\" # my choice\nbuiltin = \"Nord\"\n\n\
 [bar]\nposition = \"top\"\n";
 
-/// Настройки DMS — как их пишет `JSON.stringify(…, null, 2)`.
+/// DMS settings — as `JSON.stringify(…, null, 2)` writes them.
 const DMS_SETTINGS: &str = "{\n  \"currentThemeName\": \"purple\",\n  \"cornerRadius\": 16,\n  \"screenPreferences\": {\n    \"wallpaper\": [\n      \"all\"\n    ]\n  },\n  \"popupTransparency\": 0.9\n}\n";
 
 // ============================================================================
-// Цвета и схема KDE
+// Colours and the KDE scheme
 // ============================================================================
 
 #[test]
@@ -128,11 +129,11 @@ fn палитра_из_kdeglobals() {
     let light = sp::palette_from_kde(KDEGLOBALS_LIGHT).unwrap();
     assert!(!light.dark);
 
-    // Свой цвет акцента Plasma главнее выделения.
+    // Plasma's own accent colour beats the selection.
     let with_accent = format!("{KDEGLOBALS_DARK}\n[General]\nAccentColor=233,100,61\n");
     assert_eq!(sp::palette_from_kde(&with_accent).unwrap().primary, Rgb(233, 100, 61));
 
-    // Схема не применялась — палитры нет, а не выдуманная.
+    // The scheme was not applied — there is no palette, not an invented one.
     assert_eq!(sp::palette_from_kde("[General]\nColorScheme=X\n"), None);
 }
 
@@ -173,14 +174,14 @@ fn файлы_палитр_шеллов_читаются_обратно() {
     assert_eq!(back.surface_variant, p.surface_variant);
 }
 
-/// Шаблон Noctalia после подстановки — правильный JSON того же вида, что
-/// `dms-colors.json`, и читается одним читателем.
+/// The Noctalia template after substitution is valid JSON of the same form as
+/// `dms-colors.json`, and is read by one reader.
 #[test]
 fn шаблон_noctalia_после_подстановки_читается() {
     let t = sp::noctalia_bridge_template();
     assert!(t.contains("\"primary\": \"{{ colors.primary.dark.hex }}\""));
     assert!(t.contains("\"mode\": \"{{ mode }}\""));
-    // Подставляем, как это сделал бы шелл: тёмный режим, светлые — белые.
+    // Substitute as the shell would: dark mode, light ones white.
     let mut out = String::new();
     let mut rest = t.as_str();
     while let Some(i) = rest.find("{{") {
@@ -205,7 +206,7 @@ fn шаблон_noctalia_после_подстановки_читается() {
 }
 
 // ============================================================================
-// Точечная правка
+// Targeted edit
 // ============================================================================
 
 #[test]
@@ -217,23 +218,23 @@ fn toml_правится_одной_строкой() {
         NOCTALIA_STATE.replace("builtin = \"Nord\"\n", "builtin = \"Nord\"\nmode = \"light\"\n"),
         "новая строка — в конец своей таблицы, остальное байт в байт"
     );
-    // Замена существующей строки — на месте.
+    // Replacing an existing line — in place.
     let edits = [sp::TomlEdit { table: "theme".into(), key: "source".into(), line: Some("source = \"custom\"".into()) }];
     let out = sp::toml_apply(NOCTALIA_STATE, &edits, &[]).unwrap();
     assert_eq!(out, NOCTALIA_STATE.replace("source = \"builtin\" # my choice", "source = \"custom\""));
-    // Таблицы нет — дописывается в конец.
+    // No table — appended at the end.
     let edits = [sp::TomlEdit { table: "theme".into(), key: "mode".into(), line: Some("mode = \"dark\"".into()) }];
     assert_eq!(sp::toml_apply("[bar]\nx = 1", &edits, &[]).unwrap(), "[bar]\nx = 1\n\n[theme]\nmode = \"dark\"\n");
 }
 
 #[test]
 fn toml_в_чужом_виде_не_правится() {
-    // Ключ темы записан точками в корне: наш `[theme]` дал бы второе
-    // определение — отказ, а не порча.
+    // The theme key is written with dots at the root: our `[theme]` would give a
+    // second definition — refusal, not damage.
     let text = "theme.mode = \"light\"\n";
     let edits = [sp::TomlEdit { table: "theme".into(), key: "source".into(), line: Some("source = \"custom\"".into()) }];
     assert!(sp::toml_apply(text, &edits, &[]).is_err());
-    // Битый файл не трогается вовсе.
+    // A broken file is not touched at all.
     assert!(matches!(sp::toml_apply("[theme\n", &edits, &[]), Err(sp::EditError::Unparsable(_))));
 }
 
@@ -246,21 +247,21 @@ fn json_правится_членом_верхнего_уровня() {
         added,
         DMS_SETTINGS.replace("\"popupTransparency\": 0.9\n", "\"popupTransparency\": 0.9,\n  \"customThemeFile\": \"/x/y.json\"\n")
     );
-    // Убрать добавленное — ровно исходный текст.
+    // Removing what was added — exactly the original text.
     assert_eq!(sp::json_set_member(&added, "customThemeFile", None).unwrap(), DMS_SETTINGS);
-    // Вложенный ключ с тем же именем — не наш, правится только верхний.
+    // A nested key with the same name is not ours, only the top one is edited.
     let nested = "{\n  \"a\": {\"currentThemeName\": 1},\n  \"currentThemeName\": \"x\"\n}\n";
     let out = sp::json_set_member(nested, "currentThemeName", Some("\"y\"")).unwrap();
     assert_eq!(out, nested.replace("\"x\"", "\"y\""));
-    // Пустой объект.
+    // An empty object.
     assert_eq!(sp::json_set_member("{}\n", "k", Some("true")).unwrap(), "{\n  \"k\": true\n}\n");
-    // Не объект и битый текст — отказ.
+    // Not an object and broken text — refusal.
     assert!(sp::json_set_member("[1]", "k", Some("1")).is_err());
     assert!(sp::json_set_member("{\"a\": ", "k", Some("1")).is_err());
 }
 
 // ============================================================================
-// Из Rexon в шелл
+// From Rexon to the shell
 // ============================================================================
 
 #[test]
@@ -277,7 +278,7 @@ fn noctalia_запись_повтор_и_возврат_бит_в_бит() {
     assert!(msg.starts_with("Palette passed to Noctalia."), "{msg}");
     assert!(msg.contains("light"), "{msg}");
 
-    // Свой файл палитры и три наших ключа — больше ничего.
+    // Our own palette file and three of our keys — nothing else.
     let palette = read(&home.noctalia_palette_file("Rexon")).unwrap();
     assert_eq!(palette, sp::noctalia_palette_json(&p));
     let written = read(&state).unwrap();
@@ -290,13 +291,13 @@ fn noctalia_запись_повтор_и_возврат_бит_в_бит() {
     assert_eq!(read(&sp::backup_path(&state)).as_deref(), Some(NOCTALIA_STATE), "резервная копия — прежний файл");
     assert_eq!(sp::shell_dark(DesktopShell::Noctalia, &home), Some(false), "режим шелла — как у схемы");
 
-    // Повтор — без изменений: ни записи, ни новой копии.
+    // A repeat — no changes: neither a write nor a new copy.
     let after_first = snapshot(&root);
     let again = sp::push_palette(DesktopShell::Noctalia, &p, &home).unwrap();
     assert_eq!(again, "Noctalia already has this palette — nothing to change.");
     assert_eq!(snapshot(&root), after_first);
 
-    // Возврат — бит в бит.
+    // Restore — bit for bit.
     let out = sp::revert(&home).unwrap();
     assert_eq!(out.message, "The palette of Noctalia is back as it was before Rexon.");
     assert!(out.skipped.is_empty());
@@ -316,8 +317,8 @@ fn noctalia_без_файла_состояния_возврат_убирает_�
     assert_eq!(snapshot_without_memo(&root), before);
 }
 
-/// Тёмная схема и тёмный шелл по умолчанию: ключ режима не пишется вовсе —
-/// правим только то, что разошлось.
+/// A dark scheme and a dark shell by default: the mode key is not written at
+/// all — we edit only what diverged.
 #[test]
 fn noctalia_режим_не_пишется_без_нужды() {
     let (_root, home) = fresh_home("noct-mode");
@@ -326,8 +327,8 @@ fn noctalia_режим_не_пишется_без_нужды() {
     assert!(!state.contains("mode"), "{state}");
 }
 
-/// Шелл переписал файл после нас (свой ключ поменял): возврат снимает
-/// только наши ключи, чужую правку оставляет.
+/// The shell rewrote the file after us (changed its own key): restore removes
+/// only our keys, the foreign edit stays.
 #[test]
 fn noctalia_возврат_после_правки_шелла_только_наши_ключи() {
     let (_root, home) = fresh_home("noct-foreign");
@@ -398,8 +399,8 @@ fn dms_битый_файл_отказ_без_порчи() {
     assert_eq!(snapshot(&root), before);
 }
 
-/// DMS переписал настройки целиком (у него свой порядок и свой ключ
-/// поменян): наши ключи возвращаются по одному, чужое остаётся.
+/// DMS rewrote the settings entirely (it has its own order and changed its
+/// own key): our keys are restored one by one, the foreign stays.
 #[test]
 fn dms_возврат_после_правки_шелла_только_наши_ключи() {
     let (_root, home) = fresh_home("dms-foreign");
@@ -418,7 +419,7 @@ fn dms_возврат_после_правки_шелла_только_наши_�
 }
 
 // ============================================================================
-// Из шелла в Rexon
+// From the shell to Rexon
 // ============================================================================
 
 const DMS_COLORS: &str = r##"{
@@ -443,12 +444,12 @@ fn dms_цвета_берутся_из_файла_matugen_по_режиму_ше�
     assert!(p.dark);
     assert_eq!(p.primary, Rgb(0xd0, 0xbc, 0xff));
     assert_eq!(p.hover, Rgb(0x2b, 0x29, 0x2f));
-    // Шелл в светлом режиме — светлая половина файла.
+    // The shell in light mode — the light half of the file.
     put(&home.dms_session_file(), "{\"isLightMode\": true}");
     let p = sp::shell_palette(DesktopShell::DankMaterialShell, &home).unwrap();
     assert!(!p.dark);
     assert_eq!(p.primary, Rgb(0x67, 0x50, 0xa4));
-    // Своя тема DMS главнее файла matugen.
+    // DMS's own theme beats the matugen file.
     put(&home.dms_settings_file(), "{\"currentThemeName\": \"custom\", \"customThemeFile\": \"~/t.json\"}");
     put(&Path::new(&home.home).join("t.json"), "{\"light\": {\"primary\": \"#ff0000\", \"surface\": \"#ffffff\", \"surfaceText\": \"#000000\"}}");
     assert_eq!(sp::shell_palette(DesktopShell::DankMaterialShell, &home).unwrap().primary, Rgb(255, 0, 0));
@@ -477,18 +478,18 @@ fn noctalia_цвета_через_шаблон_и_возврат() {
     assert_eq!(read(&tpl).unwrap(), sp::noctalia_bridge_template());
     assert_eq!(sp::shell_palette(DesktopShell::Noctalia, &home), Err(PullError::BridgePending));
 
-    // Повторное подключение — без изменений.
+    // Reconnecting — no changes.
     let snap = snapshot(&root);
     sp::connect_bridge(&home).unwrap();
     assert_eq!(snapshot(&root), snap);
 
-    // Шелл заполнил шаблон.
+    // The shell filled in the template.
     put(&outp, DMS_COLORS);
     let p = sp::shell_palette(DesktopShell::Noctalia, &home).unwrap();
     assert_eq!(p.primary, Rgb(0xd0, 0xbc, 0xff));
 
-    // Возврат снимает шаблон бит в бит (выходной файл заполнял шелл — он
-    // наш каталог, его не трогаем).
+    // Restore removes the template bit for bit (the output file was filled by
+    // the shell — it is our directory, we do not touch it).
     sp::revert(&home).unwrap();
     let after: Vec<_> = snapshot_without_memo(&root);
     assert_eq!(after, before);
@@ -513,7 +514,7 @@ fn схема_с_цветами_шелла_чередует_имя_и_не_по�
     let (id, path, text) = sp::shell_scheme_file(&home, &p).unwrap();
     assert_eq!(id, "RexonShell");
     sp::write_shell_scheme(&home, &path, &text).unwrap();
-    // Как будто `plasma-apply-colorscheme RexonShell` отработал.
+    // As if `plasma-apply-colorscheme RexonShell` had run.
     put(&home.kdeglobals(), &KDEGLOBALS_DARK.replace("ColorScheme=BreezeDark", "ColorScheme=RexonShell"));
     assert_eq!(sp::shell_scheme_file(&home, &p), None, "те же цвета — применять нечего");
     let other = Palette { primary: Rgb(1, 2, 3), ..p };
@@ -536,7 +537,7 @@ fn схема_с_цветами_шелла_чередует_имя_и_не_по�
 }
 
 // ============================================================================
-// Полоса и «кто ведёт»
+// The bar and «who leads»
 // ============================================================================
 
 #[test]
@@ -580,12 +581,12 @@ fn после_схемы_rexon_ведёт_значит_передаём_сраз
     sp::set_lead(&home, Lead::Shell).unwrap();
     let msg = sp::after_scheme_applied(Some(DesktopShell::Noctalia), &home).unwrap();
     assert!(msg.starts_with("The palette is led by Noctalia"), "{msg}");
-    // Выбор переживает возврат.
+    // The choice survives a restore.
     sp::revert(&home).unwrap();
     assert_eq!(sp::read_memo(&home).lead, Some(Lead::Shell));
 }
 
-/// По-русски: подписи берутся из настоящего `po/ru.po`.
+/// In Russian: the labels are taken from the real `po/ru.po`.
 #[test]
 fn подписи_по_русски() {
     let _lang = i18n_pin::ru();
@@ -595,11 +596,11 @@ fn подписи_по_русски() {
 }
 
 // ============================================================================
-// Ход действий целиком (применение схемы — подставное)
+// The whole action flow (applying the scheme is mocked)
 // ============================================================================
 
-/// «Применить схему» как это делает `plasma-apply-colorscheme`: имя схемы в
-/// `kdeglobals`. Возвращает счётчик вызовов.
+/// «Apply scheme» the way `plasma-apply-colorscheme` does it: the scheme name
+/// in `kdeglobals`. Returns the call counter.
 fn fake_apply(home: &PaletteHome, calls: &mut Vec<String>, scheme: &str) -> (bool, String) {
     calls.push(scheme.to_string());
     let text = fs::read_to_string(home.kdeglobals()).unwrap_or_default();
@@ -624,13 +625,13 @@ fn взять_цвета_dms_повтор_и_возврат() {
     let scheme = read(&home.color_scheme_file("RexonShell")).unwrap();
     assert_eq!(sp::palette_from_kde(&scheme).unwrap().primary, Rgb(0xd0, 0xbc, 0xff));
 
-    // Повтор без перемен у шелла — схема заново не применяется.
+    // A repeat without changes in the shell — the scheme is not applied again.
     let (ok, msg) = sp::pull_flow(shell, &home, &mut || {}, 0, &mut |s| fake_apply(&home, &mut calls, s));
     assert!(ok);
     assert_eq!(msg, "The colors of DankMaterialShell are already applied — nothing to change.");
     assert_eq!(calls.len(), 1);
 
-    // Возврат: прежняя схема применяется обратно, наши файлы схем уходят.
+    // Restore: the former scheme is applied back, our scheme files go away.
     let (ok, msg) = sp::revert_flow(&home, &mut |s| fake_apply(&home, &mut calls, s));
     assert!(ok, "{msg}");
     assert_eq!(calls.last().map(String::as_str), Some("BreezeDark"));
@@ -639,8 +640,8 @@ fn взять_цвета_dms_повтор_и_возврат() {
     assert!(!sp::read_memo(&home).has_changes());
 }
 
-/// Noctalia без шаблона: подключаем, «шелл» заполняет файл по толчку —
-/// и цвета берутся тем же нажатием.
+/// Noctalia without a template: we connect, the «shell» fills the file on a
+/// nudge — and the colours are taken by the same press.
 #[test]
 fn взять_цвета_noctalia_подключает_шаблон_и_ждёт() {
     let _lang = i18n_pin::en();
@@ -663,13 +664,13 @@ fn взять_цвета_noctalia_подключает_шаблон_и_ждёт(
     assert_eq!(nudged, 1);
     assert!(sp::bridge_connected(&home));
 
-    // Шелл молчит — честно сказать, а не ждать вечно.
+    // The shell is silent — say so honestly instead of waiting forever.
     let (_r2, home2) = fresh_home("pull-noct-silent");
     let (ok, msg) = sp::pull_flow(Some(DesktopShell::Noctalia), &home2, &mut || {}, 0, &mut |_| (true, String::new()));
     assert!(!ok);
     assert!(msg.contains("Take Shell Colors"), "{msg}");
 
-    // Шелла нет вовсе.
+    // No shell at all.
     let (ok, msg) = sp::pull_flow(None, &home2, &mut || {}, 0, &mut |_| (true, String::new()));
     assert!(!ok);
     assert!(msg.starts_with("No running desktop shell"), "{msg}");
@@ -686,8 +687,7 @@ fn передать_без_схемы_честный_отказ() {
     assert_eq!(snapshot(&root), before);
 }
 
-/// Немецкий — из настоящего `po/de.po`: кнопки и полоса не остаются
-/// английскими.
+/// German from the real `po/de.po`: buttons and the bar do not stay in English.
 #[test]
 fn подписи_по_немецки() {
     let _lang = i18n_pin::en();
@@ -702,11 +702,11 @@ fn подписи_по_немецки() {
     }
 }
 
-// ── Цветовая схема KDE вне Plasma ──────────────────────────────────────
+// ── KDE colour scheme outside Plasma ──────────────────────────────────────
 //
-// Подставной дом и подставная машина: ни одна команда не запускается
-// (`plasma-apply-colorscheme`, `gsettings`, `dbus-send` только
-// записываются), файлы пишутся под `CARGO_TARGET_TMPDIR`.
+// A mock home and a mock machine: no command is run
+// (`plasma-apply-colorscheme`, `gsettings`, `dbus-send` are only recorded),
+// files are written under `CARGO_TARGET_TMPDIR`.
 
 use rexon_core::animations::LookIo;
 use std::cell::RefCell;
@@ -744,8 +744,8 @@ impl LookIo for FakeIo {
     }
 }
 
-/// Схема с заголовком и его неактивной подгруппой, без подсказок и
-/// без своего `[WM]`.
+/// A scheme with a header and its inactive subgroup, without tooltips and
+/// without its own `[WM]`.
 const NIGHT_SCHEME: &str = "[ColorEffects:Disabled]\nColor=56,56,56\nContrastAmount=0.5\nContrastEffect=1\n\n\
 [Colors:Button]\nBackgroundNormal=40,40,50\nForegroundNormal=230,230,230\n\n\
 [Colors:Header]\nBackgroundNormal=10,10,20\nForegroundNormal=250,250,250\n\n\
@@ -767,7 +767,7 @@ fn scheme_home(tag: &str, de: &str) -> (PathBuf, sp::SchemeCtx) {
     let ctx = sp::SchemeCtx {
         de_id: de.to_string(),
         home,
-        // Системных схем в подставном доме нет.
+        // There are no system schemes in the mock home.
         data_dirs: vec![root.join("no-system").to_string_lossy().to_string()],
         session_platform_theme: String::new(),
     };
@@ -790,7 +790,7 @@ fn ini_edit_keeps_foreign_lines_and_nested_groups() {
         "# comment\n[General]\nfont=Noto Sans,10\nColorScheme=New\n\n[Icons]\nTheme=Papirus\n\n[UiSettings]\nColorScheme=New\n"
     );
     assert_eq!(sp::ini_get(&out, "General", "font").as_deref(), Some("Noto Sans,10"));
-    // Снять последний ключ последней группы — группа уходит без хвоста.
+    // Removing the last key of the last group — the group goes away without a tail.
     let back = sp::ini_apply(Some(&out), &[sp::IniEdit { group: "UiSettings".into(), key: "ColorScheme".into(), value: None }]);
     assert_eq!(back, "# comment\n[General]\nfont=Noto Sans,10\nColorScheme=New\n\n[Icons]\nTheme=Papirus\n");
 }
@@ -800,22 +800,22 @@ fn kdeglobals_gets_the_same_groups_plasma_writes() {
     let before = "[General]\nfont=Noto Sans,10\n\n[Colors:View]\nBackgroundNormal=1,1,1\nStaleKey=9,9,9\n";
     let edits = sp::scheme_kdeglobals_edits(before, NIGHT_SCHEME, "Night", "abc", true);
     let out = sp::ini_apply(Some(before), &edits);
-    // Старая группа заменена целиком (лишний ключ ушёл), чужое осталось.
+    // The old group is replaced entirely (the extra key went away), the foreign stayed.
     assert_eq!(sp::ini_get(&out, "Colors:View", "StaleKey"), None);
     assert_eq!(sp::ini_get(&out, "Colors:View", "BackgroundNormal").as_deref(), Some("20,20,30"));
     assert_eq!(sp::ini_get(&out, "General", "font").as_deref(), Some("Noto Sans,10"));
     assert_eq!(sp::ini_get(&out, "General", "ColorScheme").as_deref(), Some("Night"));
     assert_eq!(sp::ini_get(&out, "General", "ColorSchemeHash").as_deref(), Some("abc"));
     assert_eq!(sp::ini_get(&out, "UiSettings", "ColorScheme").as_deref(), Some("Night"));
-    // Неактивный заголовок, как у Plasma, — с фона окна, не из схемы.
+    // The inactive header, as in Plasma, — from the window background, not from the scheme.
     assert_eq!(sp::ini_get(&out, "Colors:Header][Inactive", "BackgroundNormal").as_deref(), Some("30,30,40"));
-    // [WM] без своего раздела в схеме — из заголовка.
+    // [WM] without its own section in the scheme — from the header.
     assert_eq!(sp::ini_get(&out, "WM", "activeBackground").as_deref(), Some("10,10,20"));
     assert_eq!(sp::ini_get(&out, "WM", "inactiveBackground").as_deref(), Some("99,99,99"));
     assert_eq!(sp::ini_get(&out, "KDE", "contrast").as_deref(), Some("5"));
     assert_eq!(sp::ini_get(&out, "KDE", "frameContrast").as_deref(), Some("0.2"));
     assert_eq!(sp::ini_get(&out, "ColorEffects:Disabled", "ContrastAmount").as_deref(), Some("0.5"));
-    // Схема без заголовка: группы заголовка нет вовсе.
+    // A scheme without a header: there is no header group at all.
     let day = sp::ini_apply(Some(&out), &sp::scheme_kdeglobals_edits(&out, DAY_SCHEME, "Day", "", false));
     assert!(!day.contains("[Colors:Header]"), "{day}");
     assert_eq!(sp::ini_get(&day, "UiSettings", "ColorScheme").as_deref(), Some("Night"), "pin=false не трогает ключ");
@@ -836,7 +836,7 @@ fn qtct_palette_follows_kde_roles() {
     assert_eq!(active[12], "#ff0078d7", "Highlight — выделение");
     assert_eq!(active[14], "#ff50a0ff", "Link");
     assert_eq!(active[20], "#ff9696a0", "PlaceholderText — неактивный текст View");
-    // Выключенный текст выцветает к фону, фон остаётся.
+    // Disabled text fades towards the background, the background stays.
     let disabled = roles("disabled_colors=");
     assert_ne!(disabled[6], active[6]);
     assert_eq!(disabled[9], active[9]);
@@ -872,25 +872,26 @@ fn layer_outside_plasma_writes_kde_qt_and_env_and_reverts_bit_for_bit() {
         Some("QT_QPA_PLATFORMTHEME=qt6ct\n")
     );
     assert!(msg.contains("GTK"), "{msg}");
-    // Ни одной команды, кроме уведомления по шине (значки известны из qt6ct
-    // не нужны — gsettings спрашивать можно, запускать plasma-* — нельзя).
+    // Not a single command except a bus notification (icons known from qt6ct
+    // are not needed — gsettings may be queried, plasma-* may not be run).
     assert!(io.calls.borrow().iter().all(|c| c[0] == "dbus-send" || c[0] == "gsettings"), "{:?}", io.calls.borrow());
 
-    // Вторая схема: прежний файл палитры убран, переменная не дублируется.
+    // The second scheme: the former palette file is removed, the variable is not duplicated.
     let (ok, _, out2) = sp::apply_scheme(&io, &ctx, "Day");
     assert!(ok);
     assert!(!out2.env_added);
     assert!(read(&palette).is_none(), "палитра прежней схемы осталась");
     assert!(read(&root.join(".config/qt6ct/colors/Day.conf")).is_some());
 
-    // Возврат — бит в бит, памятки не остаётся.
+    // Restore — bit for bit, no memo remains.
     sp::revert_scheme_layer(&ctx.home).unwrap();
     assert_eq!(snapshot(&root), before);
 }
 
-/// Шаг 5а: план слоёв собирается без единой записи, а сбой записи посреди
-/// нажатия (каталог палитр qt6ct закрыт) возвращает ВСЁ побайтно —
-/// `kdeglobals`, `qt6ct.conf`, файл переменных и саму памятку «что было».
+/// Step 5a: the layer plan is built without a single write, and a write
+/// failure in the middle of a press (the qt6ct palette directory is closed)
+/// restores EVERYTHING byte for byte — `kdeglobals`, `qt6ct.conf`, the
+/// variables file and the «what was» memo itself.
 #[test]
 fn layer_press_plans_without_writes_and_failure_rolls_back_bit_for_bit() {
     use std::os::unix::fs::PermissionsExt;
@@ -934,7 +935,7 @@ fn layer_revert_after_foreign_edit_returns_only_our_keys() {
     assert!(ok, "{msg}");
     assert!(!out.qt_layer, "без qt6ct палитры Qt нет");
     assert!(msg.contains("qt6ct"), "честно сказано, почему: {msg}");
-    // Кто-то дописал свой ключ после нас.
+    // Someone appended their own key after us.
     let kg = root.join(".config/kdeglobals");
     let edited = sp::ini_apply(read(&kg).as_deref(), &[sp::IniEdit { group: "Icons".into(), key: "Theme".into(), value: Some("Papirus".into()) }]);
     put(&kg, &edited);
@@ -964,7 +965,7 @@ fn plasma_uses_its_tool_and_releases_our_pin() {
     let (root, mut ctx) = scheme_home("plasma", "gnome");
     let io = FakeIo::new(&["qt6ct"]);
     assert!(sp::apply_scheme(&io, &ctx, "Night").0);
-    // Тот же дом, теперь сеанс Plasma.
+    // The same home, now a Plasma session.
     ctx.de_id = "kde".into();
     io.calls.borrow_mut().clear();
     let (ok, _, _) = sp::apply_scheme(&io, &ctx, "Day");

@@ -19,20 +19,22 @@ namespace {
 RexonWeTimerTick g_tick = nullptr;
 RexonWeSockErrorHook g_error_hook = nullptr;
 
-/// Номер таймера → сам таймер. Номера раздаёт Rust (`we_socket.rs`), здесь
-/// только исполнение: своего смысла у номера тут нет. Таймеры транспорта
-/// живут в главном потоке — там же, где сокет вкладки.
+/// Timer number → the timer itself. The numbers are handed out by Rust
+/// (`we_socket.rs`), here there is only execution: the number has no meaning
+/// of its own here. The transport's timers live in the main thread — the
+/// same place as the tab's socket.
 QHash<int, QPointer<QTimer>>& timers()
 {
     static QHash<int, QPointer<QTimer>> map;
     return map;
 }
 
-/// Вложенный цикл событий синхронной остановки обоев.
+/// The nested event loop of the synchronous wallpaper stop.
 ///
-/// thread_local, а не один на процесс: остановку зовёт установщик статичных
-/// обоев, а он работает в своём потоке (QThread-воркер операций с рабочими
-/// столами) — цикл обязан крутиться там же, где создан сокет прогона.
+/// thread_local rather than one per process: the stop is called by the
+/// static wallpaper installer, and it works in its own thread (the QThread
+/// worker of desktop operations) — the loop must spin in the same place
+/// where the run's socket was created.
 QEventLoop*& nested_loop()
 {
     static thread_local QEventLoop* loop = nullptr;
@@ -61,27 +63,28 @@ QString rexon_we_sock_daemon_property(const QString& service, const QString& pat
         return {};
 
     QVariant value = reply.arguments().constFirst();
-    // Properties.Get отдаёт QDBusVariant — развернуть до значения, иначе
-    // toString() отдаёт пустую строку на живом демоне.
+    // Properties.Get gives a QDBusVariant — unwrap it to the value, otherwise
+    // toString() gives an empty string on a live daemon.
     if (value.canConvert<QDBusVariant>())
         value = value.value<QDBusVariant>().variant();
     ok = true;
     return value.toString();
 }
 
-// ── сокет ─────────────────────────────────────────────────────────────────
+// ── socket ────────────────────────────────────────────────────────────────
 
 QWebSocket* rexon_we_sock_new()
 {
-    // Диспетчер событий — ДО сокета. Разовые сокеты (снятие живых обоев,
-    // сторож пакета движка) открываются из рабочих потоков std::thread, у
-    // которых своего диспетчера ещё нет. Сокет, открытый в таком потоке, не
-    // заводит уведомителей: ответ на подключение никто не слышит, рукопожатие
-    // WebSocket не уходит, и вложенный цикл выходит по сторожу с ошибкой, а
-    // close() пишет кадр закрытия в неподключённый сокет («QNativeSocketEngine::
-    // write() was not called in QAbstractSocket::ConnectedState»; демон видит
-    // «Handshake not finished»). Пустой QEventLoop создаёт диспетчер на весь
-    // поток; в главном потоке он уже есть, и это ничего не меняет.
+    // The event dispatcher goes BEFORE the socket. One-off sockets (removing
+    // live wallpapers, the engine package watcher) are opened from std::thread
+    // worker threads that do not have a dispatcher of their own yet. A socket
+    // opened in such a thread sets up no notifiers: nobody hears the answer to
+    // the connection, the WebSocket handshake does not go out, and the nested
+    // loop exits by the watchdog with an error, while close() writes a close
+    // frame into an unconnected socket («QNativeSocketEngine::write() was not
+    // called in QAbstractSocket::ConnectedState»; the daemon sees «Handshake
+    // not finished»). An empty QEventLoop creates a dispatcher for the whole
+    // thread; in the main thread one already exists, and this changes nothing.
     if (QCoreApplication::instance() != nullptr
         && QAbstractEventDispatcher::instance(QThread::currentThread()) == nullptr) {
         QEventLoop warm;
@@ -89,7 +92,7 @@ QWebSocket* rexon_we_sock_new()
     }
     if (QAbstractEventDispatcher::instance(QThread::currentThread()) == nullptr)
         return nullptr;
-    // Без родителя: владеет транспорт, снимает rexon_we_sock_destroy().
+    // No parent: the transport owns it, rexon_we_sock_destroy() removes it.
     return new QWebSocket();
 }
 
@@ -108,7 +111,8 @@ void rexon_we_sock_shutdown(QWebSocket* socket)
 {
     if (socket == nullptr)
         return;
-    // Рукопожатие не завершено — кадра закрытия слать некуда: рвём связь.
+    // The handshake is not finished — there is nowhere to send a close frame:
+    // we cut the link.
     if (socket->state() == QAbstractSocket::ConnectedState)
         socket->close();
     else
@@ -119,8 +123,8 @@ void rexon_we_sock_quit_loop_on_error(QWebSocket* socket)
 {
     if (socket == nullptr)
         return;
-    // Отказ в подключении и обрыв до рукопожатия — сразу из цикла, а не по
-    // сторожу через несколько секунд.
+    // A connection refusal and a disconnection before the handshake — out of
+    // the loop at once, not by the watchdog a few seconds later.
     QObject::connect(socket, &QWebSocket::errorOccurred, socket,
                      [](QAbstractSocket::SocketError) { rexon_we_sock_quit_loop(); });
 }
@@ -142,8 +146,9 @@ void rexon_we_sock_watch_error(QWebSocket* socket)
 {
     if (socket == nullptr)
         return;
-    // Контекст соединения — сам сокет: подписка умрёт вместе с ним, и
-    // лямбда не переживёт объект, чей errorString() читает.
+    // The connection context is the socket itself: the subscription dies with
+    // it, and the lambda will not outlive the object whose errorString() it
+    // reads.
     QObject::connect(socket, &QWebSocket::errorOccurred, socket,
                      [socket](QAbstractSocket::SocketError) {
                          if (g_error_hook == nullptr)
@@ -154,7 +159,7 @@ void rexon_we_sock_watch_error(QWebSocket* socket)
                      });
 }
 
-// ── таймеры ───────────────────────────────────────────────────────────────
+// ── timers ────────────────────────────────────────────────────────────────
 
 void rexon_we_sock_set_timer_tick(RexonWeTimerTick tick)
 {
@@ -170,8 +175,8 @@ void rexon_we_sock_timer_start(int id, int interval_ms, bool single_shot)
 {
     QPointer<QTimer>& slot = timers()[id];
     if (slot.isNull()) {
-        // Родитель — приложение: транспорт живёт столько же, а без родителя
-        // таймер утёк бы при выходе.
+        // The parent is the application: the transport lives as long, and without
+        // a parent the timer would leak on exit.
         auto* timer = new QTimer(QCoreApplication::instance());
         QObject::connect(timer, &QTimer::timeout, timer, [id]() {
             if (g_tick != nullptr)
@@ -204,19 +209,19 @@ void rexon_we_sock_post_tick(int id)
         Qt::QueuedConnection);
 }
 
-// ── окружение ─────────────────────────────────────────────────────────────
+// ── environment ───────────────────────────────────────────────────────────
 
 bool rexon_we_sock_qt_available()
 {
     return QCoreApplication::instance() != nullptr;
 }
 
-// ── вложенный цикл событий ────────────────────────────────────────────────
+// ── nested event loop ─────────────────────────────────────────────────────
 
 int rexon_we_sock_run_loop(int ms)
 {
     if (nested_loop() != nullptr)
-        return 1;                       // вложенность запрещена — см. шапку
+        return 1;                       // nesting is forbidden — see the header
     QEventLoop loop;
     nested_loop() = &loop;
 

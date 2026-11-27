@@ -1,17 +1,18 @@
-//! Сверка МЕНЮ главного окна: ядро `rexon_core::window_menu` (пункты,
-//! «О программе», «Восстановить тему KDE», «Удалить Rexon») и его разметка
-//! в `rexon-gui`.
+//! Check of the main window MENU: the core `rexon_core::window_menu` (items,
+//! «About», «Restore KDE theme», «Uninstall Rexon») and its markup in `rexon-gui`.
 //!
-//! ЧТО ЗДЕСЬ ЭТАЛОН (с 02.10.2026). Python в Rexon — только архив: он не
-//! эталон и не мост. Прежде каждая строка ядра обязана была стоять в живом
-//! `rexon/qt_main/window.py`; теперь эталон — текущие тексты и строй самого
-//! ядра, записанные здесь дословно, и снимок каркаса
-//! `golden/qt_main_cases.json` (пункты меню). Правка текста ядра красит
-//! сверку, пока эталон не поправлен осознанно.
+//! WHAT THE REFERENCE IS HERE (since 02.10.2026). Python in Rexon is only an
+//! archive: it is neither a reference nor a bridge. Formerly every core string
+//! had to be present in the live `rexon/qt_main/window.py`; now the reference
+//! is the current texts and structure of the core itself, written here
+//! verbatim, and the skeleton snapshot `golden/qt_main_cases.json` (menu
+//! items). Editing a core text turns the check red until the reference is
+//! deliberately updated.
 //!
-//! ЧЕГО СВЕРКА НЕ МЕРИТ. Вид меню: открылось ли оно, построились ли делегаты,
-//! ходит ли по нему клавиатура. Это мерит прогон окна
-//! (`rexon-main-window --selftest`, строки `REXON-MAINWINDOW-MENU*`) и глаз.
+//! WHAT THE CHECK DOES NOT MEASURE. The menu look: whether it opened, whether
+//! the delegates were built, whether the keyboard moves through it. That is
+//! measured by the window run (`rexon-main-window --selftest`, the
+//! `REXON-MAINWINDOW-MENU*` lines) and by eye.
 
 use std::fs;
 use std::path::Path;
@@ -27,7 +28,7 @@ fn source(rel: &str) -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("нет исходника {path:?}: {e}"))
 }
 
-/// Убрать всё, что различается только записью: пробелы и переводы строк.
+/// Remove everything that differs only in notation: spaces and line breaks.
 fn squash(text: &str) -> String {
     text.chars().filter(|c| !c.is_whitespace()).collect()
 }
@@ -37,10 +38,10 @@ fn golden() -> Value {
 }
 
 // ============================================================================
-// Состав меню
+// Menu contents
 // ============================================================================
 
-/// Кнопка «☰» и четыре пункта в порядке продукта.
+/// The «☰» button and four items in product order.
 #[test]
 fn menu_items_match_the_product() {
     let _lang = i18n_pin::ru();
@@ -51,8 +52,8 @@ fn menu_items_match_the_product() {
     let shortcuts: Vec<&str> = items.iter().map(|i| i.shortcut).collect();
     assert_eq!(shortcuts, ["", "", "", "Ctrl+Q"], "горячие клавиши пунктов меню");
 
-    // Порядок — не вкусовщина: «Выход» стоит последним, за разделителем,
-    // потому что это единственный необратимый пункт без вопроса.
+    // The order is not a matter of taste: «Quit» is last, behind a separator,
+    // because it is the only irreversible item without a question.
     let ids: Vec<&str> = items.iter().map(|i| i.id).collect();
     assert_eq!(
         ids,
@@ -60,8 +61,8 @@ fn menu_items_match_the_product() {
         "порядок пунктов меню разошёлся с продуктом"
     );
 
-    // Со снимком каркаса тоже: расхождение здесь означает, что ядро и
-    // эталон каркаса описывают разное меню.
+    // With the skeleton snapshot too: a divergence here means that the core and
+    // the skeleton reference describe different menus.
     let g = golden();
     let snapshot = g["menu"]["actions"].as_array().unwrap();
     let snapshot_labels: Vec<&str> = snapshot
@@ -80,7 +81,7 @@ fn menu_items_match_the_product() {
     );
 }
 
-/// Второй копии «Выхода» в проекте нет: подпись со значком собирает лоток.
+/// There is no second copy of «Quit» in the project: the tray builds the label with the icon.
 #[test]
 fn quit_label_has_no_second_copy() {
     for pin in [i18n_pin::ru as fn() -> std::sync::MutexGuard<'static, ()>, i18n_pin::en] {
@@ -97,7 +98,7 @@ fn quit_label_has_no_second_copy() {
     }
 }
 
-/// Разделитель ровно один и стоит перед «Выходом» — как в `_build_menubar`.
+/// There is exactly one separator, and it stands before «Quit» — as in `_build_menubar`.
 #[test]
 fn the_only_separator_stands_before_quit() {
     let _lang = i18n_pin::ru();
@@ -109,19 +110,19 @@ fn the_only_separator_stands_before_quit() {
     assert_eq!(with_sep, vec![wm::ID_QUIT]);
 }
 
-/// Кнопка «☰» стоит СПРАВА, а подменю под ней раскладывается слева направо.
+/// The «☰» button stands on the RIGHT, and the submenu under it is laid out left to right.
 ///
-/// Место кнопки не косметика: слева от неё вплотную начинается полоса
-/// разделов, и кнопка, поставленная там же, читается как первый раздел.
-/// Решение живёт в `qml/WindowMenu.qml`: `contentItem` полосы меню
-/// раскладывается `Qt.RightToLeft`, а подменю — отдельное окно — раскладки
-/// полосы не наследует и остаётся слева направо.
+/// The button's place is not cosmetic: the section bar starts right to its
+/// left, and a button placed there too reads as the first section. The
+/// decision lives in `qml/WindowMenu.qml`: the menu bar's `contentItem` is laid
+/// out `Qt.RightToLeft`, and the submenu — a separate window — does not
+/// inherit the bar's layout and stays left to right.
 ///
-/// Язык справа налево: зеркалирование включает КОРЕНЬ окна
-/// (`MainWindow.qml`, сторож `rtl_parity.rs`), и при нём переворачиваются
-/// полоса и подменю вместе — так и задумано. Запрещено здесь МЕСТНОЕ
-/// `LayoutMirroring` в самом `WindowMenu.qml`: оно развернуло бы подменю и
-/// при языке слева направо.
+/// Right-to-left language: mirroring is turned on by the window ROOT
+/// (`MainWindow.qml`, guard `rtl_parity.rs`), and with it the bar and the
+/// submenu flip together — that is by design. What is forbidden here is a
+/// LOCAL `LayoutMirroring` in `WindowMenu.qml` itself: it would flip the
+/// submenu even with a left-to-right language.
 #[test]
 fn menu_button_stands_on_the_right_and_the_popup_reads_left_to_right() {
     let qml = source("rust/rexon-gui/qml/WindowMenu.qml");
@@ -141,7 +142,7 @@ fn menu_button_stands_on_the_right_and_the_popup_reads_left_to_right() {
     );
 }
 
-/// Недоступных пунктов в продукте нет — и выдумывать их нельзя.
+/// There are no disabled items in the product — and they must not be invented.
 #[test]
 fn no_menu_item_is_disabled_in_the_product() {
     let _lang = i18n_pin::ru();
@@ -151,7 +152,7 @@ fn no_menu_item_is_disabled_in_the_product() {
 }
 
 // ============================================================================
-// «О программе»
+// «About»
 // ============================================================================
 
 #[test]
@@ -175,9 +176,9 @@ fn about_text_matches_the_product() {
     );
 }
 
-/// Абзац о возможностях переписан 01.10.2026 с жаргона («настройка DE…
-/// (вкл. …) SDDM/Plymouth… — через единый интерфейс») обычными словами: те
-/// же разделы в том же порядке, без сокращений.
+/// The capabilities paragraph was rewritten on 01.10.2026 from jargon («DE
+/// setup… (incl. …) SDDM/Plymouth… — through a single interface») into plain
+/// words: the same sections in the same order, without abbreviations.
 #[test]
 fn about_features_reworded_on_purpose() {
     let _lang = i18n_pin::ru();
@@ -195,10 +196,10 @@ fn about_features_reworded_on_purpose() {
     assert!(!html.contains(" DE,") && !html.contains("вкл."), "жаргон вернулся: {html}");
 }
 
-/// Атрибуция LGPL — юридический текст, а не украшение интерфейса: обе
-/// библиотеки берутся динамической линковкой, и указать это — условие их
-/// использования при распространении Rexon. Пропажа этого абзаца из справки —
-/// нарушение лицензии, а не косметика.
+/// The LGPL attribution is legal text, not interface decoration: both
+/// libraries are used via dynamic linking, and stating this is a condition of
+/// their use when distributing Rexon. Losing this paragraph from the about
+/// box is a licence violation, not a cosmetic issue.
 #[test]
 fn about_keeps_the_lgpl_attribution() {
     let _lang = i18n_pin::ru();
@@ -209,11 +210,11 @@ fn about_keeps_the_lgpl_attribution() {
 }
 
 // ============================================================================
-// «О программе»: благодарности против NOTICE и README
+// «About»: credits versus NOTICE and README
 // ============================================================================
 
-/// Разделы NOTICE: (заголовок, текст до следующего заголовка). Заголовок —
-/// строка, под которой стоит черта из одних «-».
+/// NOTICE sections: (heading, text up to the next heading). A heading is a
+/// line under which stands a rule made only of «-».
 fn notice_sections() -> Vec<(String, String)> {
     let text = source("NOTICE");
     let lines: Vec<&str> = text.lines().collect();
@@ -234,8 +235,8 @@ fn notice_sections() -> Vec<(String, String)> {
         .collect()
 }
 
-/// Подходит ли заголовок раздела NOTICE к записи таблицы: `notice_heading`
-/// с «\n» на конце — заголовок целиком, иначе — начало заголовка.
+/// Whether a NOTICE section heading fits a table entry: a `notice_heading`
+/// ending in «\n» is the whole heading, otherwise the start of the heading.
 fn heading_matches(heading: &str, key: &str) -> bool {
     match key.strip_suffix('\n') {
         Some(exact) => heading == exact,
@@ -243,9 +244,10 @@ fn heading_matches(heading: &str, key: &str) -> bool {
     }
 }
 
-/// Разделы NOTICE, которых в благодарностях нет НАМЕРЕННО — с причиной.
-/// Новый раздел NOTICE без записи здесь или в `THIRD_PARTY` красит сверку:
-/// значит, в поставке появилась чужая программа, а справка о ней молчит.
+/// NOTICE sections that are DELIBERATELY absent from the credits — with a reason.
+/// A new NOTICE section without an entry here or in `THIRD_PARTY` turns the
+/// check red: it means a foreign program appeared in the shipped build, and
+/// the about box is silent about it.
 const NOTICE_NOT_IN_ABOUT: &[(&str, &str)] = &[
     ("gemmology ", "часть fxtranslate, благодарность — fxtranslate"),
     ("xsimd ", "часть fxtranslate, благодарность — fxtranslate"),
@@ -253,9 +255,9 @@ const NOTICE_NOT_IN_ABOUT: &[(&str, &str)] = &[
     ("Снимки рабочих столов", "картинки карусели, не программа"),
 ];
 
-/// Таблица благодарностей и NOTICE не расходятся: у каждой записи таблицы
-/// есть раздел NOTICE с той же ссылкой и той же лицензией, и у каждого
-/// раздела NOTICE есть запись в таблице (или причина, почему её нет).
+/// The credits table and NOTICE do not diverge: every table entry has a NOTICE
+/// section with the same link and the same licence, and every NOTICE section
+/// has an entry in the table (or a reason why it does not).
 #[test]
 fn about_credits_match_notice() {
     let sections = notice_sections();
@@ -285,7 +287,7 @@ fn about_credits_match_notice() {
     }
 }
 
-/// Тот же список стоит в разделе «Credits» README — имена не разошлись.
+/// The same list stands in the README «Credits» section — the names did not diverge.
 #[test]
 fn about_credits_match_readme() {
     let readme = source("README.md");
@@ -297,8 +299,8 @@ fn about_credits_match_readme() {
     }
 }
 
-/// Благодарности в справке: каждая программа — ссылкой и с лицензией, а
-/// тело окна — справка целиком и благодарности под ней.
+/// Credits in the about box: every program as a link and with a licence, and
+/// the window body is the whole about text with the credits under it.
 #[test]
 fn about_credits_show_links_and_licenses() {
     let _lang = i18n_pin::en();
@@ -312,10 +314,10 @@ fn about_credits_show_links_and_licenses() {
     assert_eq!(wm::about_dialog_html(), format!("{}{}", wm::about_html(), html));
 }
 
-/// Отказ от связи с Wallpaper Engine и Valve стоит в «О программе» и
-/// дословно совпадает с README: марка «Wallpaper Engine» есть в интерфейсе,
-/// и без оговорки её можно принять за знак партнёрства. Строка одна
-/// (`window_menu::not_affiliated_text`), копии нет.
+/// The disclaimer of affiliation with Wallpaper Engine and Valve stands in
+/// «About» and matches the README verbatim: the «Wallpaper Engine» mark is in
+/// the interface, and without the disclaimer it could be taken for a sign of
+/// partnership. There is one string (`window_menu::not_affiliated_text`), no copy.
 #[test]
 fn about_and_readme_carry_the_same_disclaimer() {
     let _lang = i18n_pin::en();
@@ -333,9 +335,10 @@ fn about_and_readme_carry_the_same_disclaimer() {
     assert!(readme.contains(&line), "в README нет той же строки отказа от связи: «{line}»");
 }
 
-/// Версия в справке — та же, что у крейта (`version` рабочего пространства
-/// в `rust/Cargo.toml`, её же берёт пакет): две копии номера разошлись бы
-/// молча, а по номеру в справке человек сообщает о дефекте.
+/// The version in the about box is the same as the crate's (the workspace
+/// `version` in `rust/Cargo.toml`, the package takes it too): two copies of
+/// the number would drift silently, and people report defects by the number
+/// in the about box.
 #[test]
 fn about_version_matches_the_crate() {
     assert_eq!(
@@ -346,7 +349,7 @@ fn about_version_matches_the_crate() {
 }
 
 // ============================================================================
-// «Восстановить тему KDE»
+// «Restore KDE theme»
 // ============================================================================
 
 #[test]
@@ -373,9 +376,9 @@ fn recover_kde_texts_match_the_product() {
     assert_eq!(wm::recover_failed_text(""), "Не удалось запустить rexon: ");
 }
 
-/// Про обои предупреждает САМ вопрос. Сброс темы останавливает живые и
-/// видео-обои; человек, не предупреждённый об этом, примет пропавшие обои за
-/// поломку Rexon (правило #13).
+/// The question ITSELF warns about wallpapers. A theme reset stops live and
+/// video wallpapers; a person not warned about this will take the vanished
+/// wallpaper for a Rexon breakage (rule #13).
 #[test]
 fn recover_question_warns_about_wallpapers() {
     let _lang = i18n_pin::ru();
@@ -384,8 +387,8 @@ fn recover_question_warns_about_wallpapers() {
     assert!(q.contains("Breeze"), "вопрос не назвал тему: {q}");
 }
 
-/// Команда сброса — тот же CLI-флаг, которым пользуется продукт, но зовётся
-/// им СВОЙ бинарь окна (маршрут целиком на Rust), а не Python-вход.
+/// The reset command is the same CLI flag the product uses, but it is called
+/// by the window's OWN binary (the route is entirely in Rust), not the Python entry.
 #[test]
 fn recover_uses_the_same_cli_flag() {
     assert_eq!(
@@ -394,20 +397,21 @@ fn recover_uses_the_same_cli_flag() {
     );
 }
 
-/// Перед сбросом темы окно проверяет пакеты-замены частей Plasma и идёт по
-/// шагам ядра: окно с тремя кнопками, следующий шаг по кнопке, последний
-/// вопрос с командой, итог. Своих слов и своих решений у разметки нет.
+/// Before a theme reset the window checks packages replacing Plasma parts and
+/// follows the core's steps: a window with three buttons, the next step by
+/// button, the last question with the command, the outcome. The markup has no
+/// words or decisions of its own.
 #[test]
 fn plasma_forks_steps_come_from_the_core() {
     let _lang = i18n_pin::ru();
-    // Окно спрашивает следующий шаг у ядра.
+    // The window asks the core for the next step.
     let qml = source("rust/rexon-gui/qml/WindowMenuDialogs.qml");
     assert!(qml.contains("menuModel.forksNext("), "Rust-окно решает шаг само");
     for id in [wm::FORKS_BUTTON_REMOVE, wm::FORKS_BUTTON_THEME, wm::FORKS_BUTTON_CANCEL] {
         assert!(qml.contains(&format!("forksChoice(\"{id}\")")), "кнопка «{id}» без шага");
     }
-    // Человеку — без жаргона: ни «форков», ни «стока», ни имени менеджера
-    // пакетов в словах окна (команда в вопросе — отдельное поле).
+    // For the person — without jargon: no «forks», no «stock», no package manager
+    // name in the window's words (the command in the question is a separate field).
     let prompt = wm::forks_prompt(&["x".into()]).unwrap();
     let mut words = vec![prompt.title, wm::forks_text(&["x".into()]), wm::forks_done_text()];
     words.extend(prompt.buttons.into_iter().map(|b| b.label));
@@ -417,8 +421,8 @@ fn plasma_forks_steps_come_from_the_core() {
             assert!(!lower.contains(jargon), "жаргон «{jargon}» в окне замен Plasma: {text}");
         }
     }
-    // Смысл последнего вопроса тот же: один пароль, нужен повторный вход,
-    // панель Win7 пропадёт.
+    // The meaning of the last question is the same: one password, a re-login is
+    // needed, the Win7 panel will disappear.
     let confirm = wm::forks_confirm_text("cmd");
     for fact in ["пароль", "войти", "SevenStart"] {
         assert!(confirm.contains(fact), "вопрос перед удалением молчит про «{fact}»");
@@ -432,8 +436,8 @@ fn recover_backup_path_is_built_from_home() {
         wm::recover_backup_path("/home/кто-то", None),
         "/home/кто-то/.config/rexon/last_kde_lookandfeel.txt"
     );
-    // Нестандартный XDG уводит копию за собой — вшитый `~/.config` читал бы
-    // не тот файл и называл бы человеку не ту тему.
+    // A non-standard XDG takes the copy along — a hard-coded `~/.config` would
+    // read the wrong file and name the wrong theme to the person.
     assert_eq!(
         wm::recover_backup_path("/home/кто-то", Some("/подстава/конфиг")),
         "/подстава/конфиг/rexon/last_kde_lookandfeel.txt"
@@ -441,7 +445,7 @@ fn recover_backup_path_is_built_from_home() {
 }
 
 // ============================================================================
-// «Удалить Rexon»
+// «Uninstall Rexon»
 // ============================================================================
 
 #[test]
@@ -449,9 +453,9 @@ fn uninstall_dialog_texts_match_the_product() {
     let _lang = i18n_pin::ru();
     assert_eq!(wm::uninstall_title(), "Удалить Rexon");
     assert_eq!(wm::uninstall_text(), "Будут удалены файлы и директории Rexon");
-    // Решение Wehrwolfmann 15.09.2026: «сохранить» оставляет настройки
-    // вместе с резервными копиями, и слова ядра это говорят. Старые подписи
-    // («сохранить бэкапы» — настройки при этом сносились) вернуться не должны.
+    // Wehrwolfmann's decision of 15.09.2026: «keep» leaves the settings together
+    // with the backups, and the core's words say so. The old labels («keep
+    // backups» — while the settings were wiped) must not come back.
     for old in ["Удалить (сохранить бэкапы)", "Сохранить резервные копии DE?"] {
         assert!(
             !wm::uninstall_keep_label().contains(old) && !wm::uninstall_informative(&[], &[]).contains(old),
@@ -464,8 +468,8 @@ fn uninstall_dialog_texts_match_the_product() {
     assert_eq!(wm::uninstall_failed_title(), "Ошибка удаления");
     let informative = wm::uninstall_informative(&["/tmp/rexon".to_string()], &[]);
     assert!(informative.contains(&wm::uninstall_keep_hint()), "{informative}");
-    // Блок путей — переносимый <pre> (`ui_base::dialog_pre`): в голом
-    // длинный путь уходил за правый край окна (снимок 30.09.2026).
+    // The path block is a wrapping <pre> (`ui_base::dialog_pre`): in a bare one a
+    // long path went past the right edge of the window (snapshot of 30.09.2026).
     assert!(
         informative.contains(&rexon_core::ui_base::dialog_pre("  • /tmp/rexon")),
         "перечень удаляемого не в переносимом блоке: {informative}"
@@ -492,7 +496,7 @@ fn uninstall_dialog_texts_match_the_product() {
     assert_eq!(wm::uninstall_done_text(""), "\n\nПриложение будет закрыто.");
 }
 
-/// Перечень режется на том же числе, что в продукте, и остаток считается.
+/// The list is cut at the same number as in the product, and the remainder is counted.
 #[test]
 fn uninstall_file_list_is_cut_like_the_product() {
     let _lang = i18n_pin::ru();
@@ -508,9 +512,9 @@ fn uninstall_file_list_is_cut_like_the_product() {
     assert!(text.ends_with("  • … ещё 3"), "остаток не посчитан: {text}");
 }
 
-/// Кнопка по умолчанию — «Отмена». Защита от дурака: случайный Enter не
-/// должен снести программу с машины покупателя. Решает ядро, разметка
-/// получает решение полем `defaultId`.
+/// The default button is «Cancel». Foolproofing: an accidental Enter must not
+/// wipe the program off the buyer's machine. The core decides, the markup
+/// gets the decision as the `defaultId` field.
 #[test]
 fn cancel_is_the_default_button() {
     assert_eq!(wm::UNINSTALL_DEFAULT_ID, "cancel");
@@ -521,9 +525,9 @@ fn cancel_is_the_default_button() {
     );
 }
 
-/// Удаление ходит через ядро: детект владельца файла, `pkexec pacman -R`
-/// для пакета дистрибутива и перечень путей. Второго движка удаления в
-/// проекте нет.
+/// Uninstalling goes through the core: detecting the file owner, `pkexec
+/// pacman -R` for a distro package and the path list. There is no second
+/// removal engine in the project.
 #[test]
 fn uninstall_reuses_the_core_installer_engine() {
     use rexon_core::installer;
@@ -544,13 +548,13 @@ fn uninstall_reuses_the_core_installer_engine() {
 }
 
 // ============================================================================
-// Перевод: русский «как было» и английский
+// Translation: Russian «as it was» and English
 // ============================================================================
 //
-// Тексты меню и его окон были зашиты по-русски; теперь исходный язык
-// английский, русский живёт в `po/ru.po`. Ниже — русский каталог целиком
-// (окно удаления 15-16.09, перечень остатка), английский — отдельной
-// проверкой.
+// The texts of the menu and its windows were hard-coded in Russian; now the
+// source language is English, Russian lives in `po/ru.po`. Below — the whole
+// Russian catalog (the uninstall window of 15-16.09, the remainder list),
+// English — as a separate check.
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
@@ -704,8 +708,8 @@ fn english_menu_has_no_russian() {
     }
 }
 
-/// Английский — витрина: пункты меню и кнопки в Title Case, атрибуция LGPL
-/// на месте, кнопки названы в пояснениях дословно.
+/// English is the showcase: menu items and buttons in Title Case, the LGPL
+/// attribution in place, buttons named verbatim in explanations.
 #[test]
 fn english_phrases_read_naturally() {
     let _lang = i18n_pin::en();

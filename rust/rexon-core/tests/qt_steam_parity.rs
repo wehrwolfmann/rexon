@@ -1,19 +1,19 @@
-//! Сверка порта `qt_steam.rs` с оригиналом — виджетной вкладкой
+//! Check of the `qt_steam.rs` port against the original — the widget tab
 //! `rexon/qt_steam/window.py`.
 //!
-//! Эталон здесь не снимок, а сами строки и числа оригинала, выписанные в
-//! тесты: тексты вкладки набраны прямо в постройке виджетов, и пока обе
-//! версии живут рядом, только эта сверка держит их одинаковыми.
+//! The golden here is not a snapshot but the original's strings and numbers themselves, written into
+//! the tests: the tab's texts are typed right into the widget construction, and while both
+//! versions live side by side, only this check keeps them the same.
 //!
-//! Санкционированные расхождения с оригиналом названы явно:
-//!   1. пути кэшей и конфига вкладки уважают `$XDG_CACHE_HOME` и
-//!      `$XDG_CONFIG_HOME` (в оригинале — литералы `~/.cache`/`~/.config`);
-//!   2. мёртвая пара `_THUMB_W, _THUMB_H = 96, 54` не перенесена;
-//!   3. у скачивания появилось имя временного файла отдельным ответом
-//!      ([`qt_steam::part_path`]) — оригинал собирал его на месте и не убирал
-//!      при неудаче;
-//!   4. `bg_card` отдаёт ПОЛНОЕ название, а обрезку по ширине делает вид: у
-//!      ядра нет метрик шрифта. Ширины обрезки — константами.
+//! Sanctioned deviations from the original are named explicitly:
+//!   1. the tab's cache and config paths respect `$XDG_CACHE_HOME` and
+//!      `$XDG_CONFIG_HOME` (in the original — the literals `~/.cache`/`~/.config`);
+//!   2. the dead pair `_THUMB_W, _THUMB_H = 96, 54` was not carried over;
+//!   3. the download got the temporary file name as a separate answer
+//!      ([`qt_steam::part_path`]) — the original assembled it in place and did not clean it up
+//!      on failure;
+//!   4. `bg_card` returns the FULL title, and truncation by width is done by the view: the
+//!      core has no font metrics. The truncation widths are constants.
 
 mod i18n_pin;
 
@@ -24,7 +24,7 @@ use rexon_core::steam_profile_items::ProfileBackgroundItem;
 use rexon_core::ui_base;
 use serde_json::{json, Value};
 
-// ── Окно и шапка ────────────────────────────────────────────────────────
+// ── Window and header ───────────────────────────────────────────────────
 
 #[test]
 fn window_texts_match_python() {
@@ -72,11 +72,11 @@ fn segments_match_python() {
     assert_eq!(qs::segment_index(qs::SEG_SCREENSAVER), 3);
     assert!(qs::is_segment(qs::SEG_SCREENSAVER));
     assert!(qs::is_segment(qs::SEG_SHOWCASE) && !qs::is_segment("что-то ещё"));
-    // Незнакомый ключ ведёт себя как в оригинале: `0 if key == "splash" else 1`.
+    // An unknown key behaves as in the original: `0 if key == "splash" else 1`.
     assert_eq!(qs::segment_index("что-то ещё"), 1);
 }
 
-// ── Размеры сеток ───────────────────────────────────────────────────────
+// ── Grid sizes ──────────────────────────────────────────────────────────
 
 #[test]
 fn grid_sizes_match_python() {
@@ -96,7 +96,7 @@ fn grid_sizes_match_python() {
     assert_eq!((qs::BG_MIN_COLS, qs::BG_MAX_COLS), (2, 16));
 }
 
-// ── Витрина заставок ────────────────────────────────────────────────────
+// ── Splash screen storefront ────────────────────────────────────────────
 
 fn movie(path: &str, title: &str, game: &str, origin: &str, appid: i64) -> Value {
     json!({
@@ -124,7 +124,7 @@ fn meta_with_event(appid: i64, event: &str, source: &str) -> qs::MetaMap {
     m
 }
 
-/// `_sv_badge_text`: событие важнее игры, игра важнее происхождения.
+/// `_sv_badge_text`: an event beats a game, a game beats the origin.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn badge_text_priority_matches_python() {
@@ -139,7 +139,7 @@ fn badge_text_priority_matches_python() {
     assert_eq!(qs::badge_text(&builtin, &empty), "Встроенная в Steam");
 }
 
-/// `_sv_source_text`: строка «Видеозаставка из X» и её запасные варианты.
+/// `_sv_source_text`: the «Video splash from X» line and its fallback variants.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn source_text_matches_python() {
@@ -165,8 +165,8 @@ fn source_text_matches_python() {
     );
 }
 
-/// `_sv_group_keys` + `_sv_rebuild_groups`: порядок появления, «Все» первым,
-/// «★ Избранное» последним, строка прячется, когда выбора нет.
+/// `_sv_group_keys` + `_sv_rebuild_groups`: order of appearance, «All» first,
+/// «★ Favorites» last, the row hides when there is no choice.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn group_chips_match_python() {
@@ -191,7 +191,7 @@ fn group_chips_match_python() {
     assert!(chips.last().unwrap().checked);
 }
 
-/// Выбранная группа исчезла — молча возвращаемся к «Все».
+/// The selected group vanished — we silently go back to «All».
 #[test]
 fn vanished_group_falls_back_to_all() {
     let items = vec![movie("/a.webm", "A", "Игра 1", ss::ORIGIN_SHOP, 1)];
@@ -208,7 +208,7 @@ fn vanished_group_falls_back_to_all() {
     );
 }
 
-/// `_sv_matches`: поиск по названию, игре, источнику и событию.
+/// `_sv_matches`: search by title, game, source and event.
 #[test]
 fn search_covers_all_python_fields() {
     let items = vec![
@@ -222,9 +222,9 @@ fn search_covers_all_python_fields() {
         let shown = qs::sv_shown(&items, needle, "", &favs, &meta);
         assert_eq!(shown.len(), 1, "поиск «{needle}» должен найти ровно один ролик");
     }
-    // Пустой запрос — весь список.
+    // An empty query — the whole list.
     assert_eq!(qs::sv_shown(&items, "", "", &favs, &meta).len(), 2);
-    // Фильтр группы режет так же, как в оригинале.
+    // The group filter cuts the same way as in the original.
     let shown = qs::sv_shown(&items, "", "Летняя распродажа", &favs, &meta);
     assert_eq!(shown.len(), 1);
 }
@@ -255,7 +255,7 @@ fn hero_matches_python() {
     assert_eq!(h.star_text, "☆ В избранное");
     assert_eq!(h.status, "");
 
-    // Наведение на чужую карточку — честная подпись «предпросмотр».
+    // Hovering over another card — an honest «preview» label.
     let h = qs::hero(Some(&other), Some(&cur), &[], &meta);
     assert_eq!(h.status, qs::sv_hero_preview_hint());
     assert_eq!(h.labels, "");
@@ -295,7 +295,7 @@ fn state_chip_matches_python() {
             qs::CHIP_OK
         )
     );
-    // Избранных меньше двух — крутятся все найденные.
+    // Fewer than two favorites — all found ones rotate.
     assert_eq!(
         qs::state_chip(Some(&cur), true, true, 1, 5).0,
         "✅ Готово: при следующем входе — случайный ролик из всех (5 шт.), \
@@ -308,7 +308,7 @@ fn state_chip_matches_python() {
     );
 }
 
-// ── Сетка фонов профиля ─────────────────────────────────────────────────
+// ── Grid of profile backgrounds ─────────────────────────────────────────
 
 fn bg(id: &str, name: &str, game: &str, animated: bool, equipped: bool) -> ProfileBackgroundItem {
     ProfileBackgroundItem {
@@ -334,7 +334,7 @@ fn bg_search_matches_python() {
     assert_eq!(qs::bg_filtered(&items, "нет такого").len(), 0);
 }
 
-/// Анимированный фон с адресом ролика — каким его отдаёт Steam.
+/// An animated background with a clip address — as Steam returns it.
 fn bg_movie(id: &str, name: &str, game: &str) -> ProfileBackgroundItem {
     ProfileBackgroundItem {
         url: format!("https://cdn/{id}.webm"),
@@ -343,13 +343,13 @@ fn bg_movie(id: &str, name: &str, game: &str) -> ProfileBackgroundItem {
     }
 }
 
-/// Признак «анимированный» — один на карточку, отметку, фильтр и
-/// «Применить»: ролик от Steam либо адрес, который применится видео-обоями.
+/// The "animated" flag is one for the card, the mark, the filter and
+/// «Apply»: a clip from Steam or an address that will be applied as a video wallpaper.
 #[test]
 fn bg_animated_is_one_decision() {
     let still = bg("1", "Ночь", "Portal 2", false, false);
     let movie = bg_movie("2", "Дождь", "Portal 2");
-    // Публичный инвентарь флага не ставит, но адрес ведёт на ролик.
+    // The public inventory does not set the flag, but the address leads to a clip.
     let by_url = ProfileBackgroundItem {
         url: "https://cdn/3.webm?t=1".into(),
         ..bg("3", "Снег", "Half-Life", false, false)
@@ -357,12 +357,12 @@ fn bg_animated_is_one_decision() {
     assert!(!qs::bg_is_animated(&still));
     assert!(qs::bg_is_animated(&movie));
     assert!(qs::bg_is_animated(&by_url));
-    // То же самое решит «Применить» по скачанному файлу.
+    // «Apply» will decide the same from the downloaded file.
     for it in [&still, &movie, &by_url] {
         let file = qs::bg_cache_file_name(&it.id, &it.url);
         assert_eq!(qs::bg_is_animated(it), qs::apply_format(&file) != "static", "{file}");
     }
-    // Карточка несёт признак и отметку; у статичной отметки нет.
+    // The card carries the flag and the mark; a static one has no mark.
     assert!(qs::bg_card(&movie).animated);
     assert_eq!(qs::bg_card(&movie).mark, qs::BG_ANIMATED_MARK);
     assert!(qs::bg_card(&by_url).animated);
@@ -370,8 +370,8 @@ fn bg_animated_is_one_decision() {
     assert!(!qs::bg_card(&still).animated);
 }
 
-/// Фильтр вида: остаются только нужные карточки, счётчики верны, поиск и
-/// фильтр работают вместе.
+/// The kind filter: only the needed cards remain, the counters are correct, search and
+/// filter work together.
 #[test]
 fn bg_kind_filter_and_counters() {
     let items = vec![
@@ -387,16 +387,16 @@ fn bg_kind_filter_and_counters() {
     assert_eq!(ids("", qs::BG_KIND_ALL), ["1", "2", "3", "4", "5"]);
     assert_eq!(ids("", qs::BG_KIND_STATIC), ["1", "3", "5"]);
     assert_eq!(ids("", qs::BG_KIND_ANIMATED), ["2", "4"]);
-    // Поиск и фильтр вместе.
+    // Search and filter together.
     assert_eq!(ids("half-life", qs::BG_KIND_ANIMATED), ["4"]);
     assert_eq!(ids("half-life", qs::BG_KIND_STATIC), ["3", "5"]);
     assert_eq!(ids("portal", qs::BG_KIND_ALL), ["1", "2"]);
     assert!(ids("нет такого", qs::BG_KIND_ANIMATED).is_empty());
-    // Незнакомый ключ — «все», а не пустая сетка.
+    // An unknown key — «all», not an empty grid.
     assert_eq!(ids("", "что-то новое").len(), 5);
     assert_eq!(qs::normalize_bg_kind("что-то новое"), qs::BG_KIND_ALL);
 
-    // Счётчики на кнопках: без поиска — по всему инвентарю…
+    // Counters on the buttons: without search — over the whole inventory…
     let chips = qs::bg_kind_chips(&items, "", qs::BG_KIND_ANIMATED);
     let keys: Vec<&str> = chips.iter().map(|c| c.key.as_str()).collect();
     assert_eq!(keys, [qs::BG_KIND_ALL, qs::BG_KIND_STATIC, qs::BG_KIND_ANIMATED]);
@@ -404,8 +404,8 @@ fn bg_kind_filter_and_counters() {
     assert!(chips[1].label.ends_with("(3)"), "{}", chips[1].label);
     assert!(chips[2].label.ends_with("(2)"), "{}", chips[2].label);
     assert_eq!(chips.iter().map(|c| c.checked).collect::<Vec<_>>(), [false, false, true]);
-    // …а с поиском — по найденному: число на кнопке равно числу карточек,
-    // которые человек увидит, нажав её.
+    // …and with search — over what was found: the number on the button equals the number of cards
+    // the person will see after pressing it.
     let chips = qs::bg_kind_chips(&items, "half-life", qs::BG_KIND_ALL);
     assert!(chips[0].label.ends_with("(3)"), "{}", chips[0].label);
     assert!(chips[1].label.ends_with("(2)"), "{}", chips[1].label);
@@ -414,14 +414,14 @@ fn bg_kind_filter_and_counters() {
         let shown = qs::bg_filtered_by(&items, "half-life", &chip.key).len();
         assert!(chip.label.ends_with(&format!("({shown})")), "{}", chip.label);
     }
-    // Фонов нет вовсе — переключателя нет.
+    // No backgrounds at all — no switch.
     assert!(qs::bg_kind_chips(&[], "", "").is_empty());
-    // Анимированных нет — кнопка остаётся и честно показывает ноль.
+    // No animated ones — the button stays and honestly shows zero.
     let only_still = vec![bg("1", "Ночь", "Portal 2", false, false)];
     assert!(qs::bg_kind_chips(&only_still, "", "")[2].label.ends_with("(0)"));
 }
 
-/// Подпись секции учитывает фильтр вида так же, как поиск.
+/// The section label takes the kind filter into account the same way as search.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn bg_section_text_counts_the_kind_filter() {
@@ -442,7 +442,7 @@ fn bg_card_matches_python() {
     assert_eq!(c.icon, "📼");
     assert_eq!(c.sub, "🎮 надет в профиле");
     assert_eq!(c.thumb_tooltip, qs::bg_animated_tooltip());
-    // preview пуст — тянем сам фон, как `it.get("preview") or it.get("url")`.
+    // preview is empty — we fetch the background itself, like `it.get("preview") or it.get("url")`.
     assert_eq!(c.preview_url, "https://cdn/1.jpg");
 
     let plain = bg("2", "День", "Half-Life", false, false);
@@ -464,17 +464,17 @@ fn bg_status_texts_match_python() {
     assert_eq!(qs::bg_status_text(202, 12, "порт"), "Показано 12 из 202");
     assert_eq!(qs::bg_status_text(202, 202, ""), "Найдено фонов: 202");
 
-    // Причина важнее счёта, и пишется она В ЭТУ ЖЕ подпись — как в
-    // оригинале (`_start_inventory_load` → `_bg_status`). Раньше обе
-    // причины уезжали всплывающим сообщением поверх соседней секции
-    // «Видеозаставки» и пропадали вместе с ним.
+    // The reason beats the count, and it is written INTO THE SAME label — as in
+    // the original (`_start_inventory_load` → `_bg_status`). Previously both
+    // reasons went off as a pop-up message over the neighbouring
+    // «Video splashes» section and disappeared together with it.
     assert_eq!(qs::bg_section_text(&qs::bg_no_steam(), 0, 0, ""), "Steam не найден.");
     assert_eq!(
         qs::bg_section_text(&qs::bg_no_account(), 0, 0, ""),
         "Не удалось определить аккаунт Steam (нет userdata)."
     );
-    // Те же места: пока инвентарь едет, подпись секции — «загружаю», а не
-    // счёт «0», и не тост над соседней секцией.
+    // The same places: while the inventory is loading, the section label is «loading», not
+    // a count of «0», and not a toast over the neighbouring section.
     assert_eq!(
         qs::bg_section_text(&qs::bg_loading_text(), 0, 0, ""),
         "⏳ Загружаю инвентарь Steam…"
@@ -489,7 +489,7 @@ fn bg_status_texts_match_python() {
     );
     assert!(qs::bg_section_text(&qs::bg_error_text("403"), 0, 0, "")
         .starts_with("⚠️ Не удалось загрузить инвентарь"));
-    // Причины нет — подпись прежняя, счётом.
+    // No reason — the label is as before, with the count.
     assert_eq!(qs::bg_section_text("", 0, 0, ""), "Найдено фонов: 0");
     assert_eq!(qs::bg_section_text("", 202, 12, "порт"), "Показано 12 из 202");
     assert_eq!(qs::bg_section_text("", 202, 202, ""), "Найдено фонов: 202");
@@ -500,8 +500,8 @@ fn bg_status_texts_match_python() {
     assert_eq!(qs::bg_apply_error_text("нет сети"), "❌ нет сети");
 }
 
-/// `error[:160]` оригинала — по СИМВОЛАМ, а не по байтам: русская ошибка
-/// иначе резалась бы посреди буквы.
+/// The original's `error[:160]` — by CHARACTERS, not bytes: otherwise a Russian error
+/// would be cut in the middle of a letter.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn bg_error_text_clips_by_chars() {
@@ -512,7 +512,7 @@ fn bg_error_text_clips_by_chars() {
     assert!(!out.ends_with(&"я".repeat(161)));
 }
 
-/// Пагинация — тот же движок, что у остальных сеток продукта.
+/// Pagination — the same engine as the product's other grids.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn pager_agrees_with_grid_engine() {
@@ -528,8 +528,8 @@ fn pager_agrees_with_grid_engine() {
     }
 }
 
-/// Столбцы сетки фонов: окно 1920 (сетка ~1828 точек) — девять, как их и
-/// рисовала сетка; страница — девять целых рядов по пять.
+/// Columns of the background grid: a 1920 window (a grid of ~1828 points) — nine, as
+/// the grid drew them; a page is nine full rows of five.
 #[test]
 fn bg_columns_fill_the_grid_width() {
     // 9 × 180 + 8 × 10 = 1700 ≤ 1828 < 10 × 180 + 9 × 10 = 1890.
@@ -542,22 +542,22 @@ fn bg_columns_fill_the_grid_width() {
     assert_eq!(p.end - p.start, 45);
 }
 
-/// Смена числа столбцов не должна терять место: первый элемент прежней
-/// страницы остаётся на экране.
+/// Changing the number of columns must not lose the place: the first element of the previous
+/// page stays on the screen.
 #[test]
 fn page_after_resize_keeps_first_item() {
-    // 5 столбцов, страница 3 → первый элемент 75; при 3 столбцах (15 на
-    // страницу) он лежит на странице 5.
+    // 5 columns, page 3 → the first element is 75; with 3 columns (15 per
+    // page) it lies on page 5.
     assert_eq!(qs::bg_page_after_resize(3, 5, 3), 5);
     assert_eq!(qs::bg_page_after_resize(0, 5, 8), 0);
 }
 
-// ── Инвентарь ───────────────────────────────────────────────────────────
+// ── Inventory ───────────────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn inventory_urls_match_python() {
-    // Русский интерфейс — русский ответ Steam, как у оригинала.
+    // Russian interface — Steam's Russian answer, as in the original.
     {
         let _lang = i18n_pin::ru();
         assert_eq!(
@@ -569,7 +569,7 @@ fn inventory_urls_match_python() {
             "https://steamcommunity.com/inventory/765/753/6?l=russian&count=2000&start_assetid=123"
         );
     }
-    // Английский интерфейс — английские названия и метки инвентаря.
+    // English interface — English titles and inventory tags.
     {
         let _lang = i18n_pin::en();
         assert_eq!(
@@ -582,8 +582,8 @@ fn inventory_urls_match_python() {
     assert_eq!(qs::USER_AGENT, "Rexon/5.0");
 }
 
-/// Починка №4 оригинала (2026-07-28) обязана жить и здесь: страницы идут,
-/// пока Steam говорит `more_items`, а не «первые 2000 предметов».
+/// The original's fix No. 4 (2026-07-28) must live here too: pages keep coming
+/// while Steam says `more_items`, not "the first 2000 items".
 #[test]
 fn inventory_paging_follows_more_items() {
     let page = json!({"more_items": 1, "last_assetid": "42"});
@@ -626,7 +626,7 @@ fn item_labels_match_python() {
             "Нельзя продать"
         ]
     );
-    // Повторы схлопываются, порядок первого появления сохраняется.
+    // Repeats are collapsed, the order of first appearance is kept.
     let dup = json!({
         "tags": [
             {"category": "droprate", "localized_tag_name": "X"},
@@ -654,9 +654,9 @@ fn splash_item_meta_matches_python() {
             "tradable": 1,
             "marketable": 1,
         }),
-        // Не заставка — пропускается.
+        // Not a splash — skipped.
         json!({"tags": [{"internal_name": "item_class_3"}], "market_fee_app": 7}),
-        // Заставка без market_fee_app — пропускается.
+        // A splash without market_fee_app — skipped.
         json!({"tags": [{"internal_name": "item_class_17"}], "market_fee_app": 0}),
     ];
     let meta = qs::splash_item_meta(&descs);
@@ -667,7 +667,7 @@ fn splash_item_meta_matches_python() {
     assert_eq!(m.event, "Летняя распродажа");
     assert_eq!(m.labels, vec!["Видеозаставка"]);
 
-    // Кэш меток переживает круг «записали → прочитали».
+    // The tag cache survives the "written → read" round.
     let json_text = qs::meta_cache_json(&meta);
     let back = qs::parse_meta_cache(&serde_json::from_str::<Value>(&json_text).unwrap());
     assert_eq!(back, meta);
@@ -684,8 +684,8 @@ fn steamid64_matches_python() {
     assert_eq!(qs::steamid64_from_accountid("абв"), None);
 }
 
-/// Регулярка оригинала не должна цепляться за похожие ключи и обязана
-/// брать значение до кавычки перед переводом строки.
+/// The original's regex must not catch similar keys and must
+/// take the value up to the quote before the newline.
 #[test]
 fn equipped_extraction_is_precise() {
     let vdf = concat!(
@@ -701,18 +701,18 @@ fn equipped_extraction_is_precise() {
     assert_eq!(bgv["image_large"], json!("images/a.jpg"));
     assert_eq!(bgv["movie_webm"], json!("images/a.webm"));
 
-    // Ключа нет вовсе.
+    // No key at all.
     assert_eq!(qs::extract_equipped_json("\"Другое\"\t\"1\"\n"), None);
-    // Ключ без цифр — не тот ключ.
+    // A key without digits is not that key.
     assert_eq!(
         qs::extract_equipped_json("\"GetEquippedProfileItemsForUser\"\t\"{}\"\n"),
         None
     );
 }
 
-// ── Кэши и конфиги ──────────────────────────────────────────────────────
+// ── Caches and configs ──────────────────────────────────────────────────
 
-/// Расхождение №1: XDG уважается. Умолчание совпадает с оригиналом.
+/// Deviation No. 1: XDG is respected. The default matches the original.
 #[test]
 fn cache_paths_respect_xdg() {
     assert_eq!(
@@ -745,7 +745,7 @@ fn cache_paths_respect_xdg() {
     );
 }
 
-/// Имя файла кэша: id с «/» обезврежен, расширение берётся из адреса.
+/// The cache file name: an id with "/" is defused, the extension is taken from the address.
 #[test]
 fn cache_file_names_match_python() {
     assert_eq!(qs::bg_cache_file_name("123", "https://h/a/b.png"), "123.png");
@@ -769,9 +769,9 @@ fn inventory_cache_roundtrip() {
     assert_eq!(data["ts"], json!(1700000000));
 
     assert_eq!(qs::parse_inventory_cache(&data, "765"), Some(items));
-    // Кэш чужого аккаунта не берётся.
+    // Another account's cache is not taken.
     assert_eq!(qs::parse_inventory_cache(&data, "999"), None);
-    // Пустой список — как будто кэша нет.
+    // An empty list — as if there were no cache.
     let empty = serde_json::from_str::<Value>(
         &qs::inventory_cache_json("765", &[], 0),
     )
@@ -788,9 +788,9 @@ fn applied_config_roundtrip() {
     assert_eq!(qs::parse_applied_config(&json!({})), "");
 }
 
-// ── Стили ───────────────────────────────────────────────────────────────
+// ── Styles ──────────────────────────────────────────────────────────────
 
-/// QSS оригинала обязан совпасть строкой в строку.
+/// The original's QSS must match line for line.
 #[test]
 fn qss_matches_python() {
     assert_eq!(
@@ -832,9 +832,9 @@ border-radius: 12px; padding: 5px 12px; font-weight: 600; }"
     );
 }
 
-/// Признак «решение утекло в разметку» — цвет, набранный в .qml руками.
-/// Поэтому у каждой QSS-краски есть сестра, отдающая голый цвет, и они
-/// обязаны показывать ОДНУ И ТУ ЖЕ краску (тот же сторож, что у «Сравнения»).
+/// A sign that "the decision leaked into the layout" is a colour typed into the .qml by hand.
+/// So every QSS colour has a sister returning the bare colour, and they
+/// must show ONE AND THE SAME colour (the same guard as for «Comparison»).
 #[test]
 fn widget_qss_and_qml_colors_agree() {
     for (rgb, name) in [
@@ -845,64 +845,64 @@ fn widget_qss_and_qml_colors_agree() {
         let h = qs::hex(rgb);
         let expected = format!("#{:02x}{:02x}{:02x}", rgb.0, rgb.1, rgb.2);
         assert_eq!(h, expected, "цвет «{name}» разошёлся");
-        // Та же тройка обязана стоять и в QSS.
+        // The same triple must be in the QSS too.
         let qss = qs::primary_btn_qss();
         if rgb == qs::ACCENT_RGB {
             assert!(qss.contains(&format!("rgba({},{},{},", rgb.0, rgb.1, rgb.2)));
         }
     }
-    // Звёздочка: включена — золотая, выключена — нейтральный серый ядра.
+    // The star: on — golden, off — the core's neutral grey.
     assert_eq!(qs::star_color(true), "rgba(234,179,8,1.0)");
     assert_eq!(qs::star_color(false), ui_base::neutral_rgba(0.45));
-    // Чип «выключено» берёт вторичный текст ядра, а не свой серый.
+    // The «off» chip takes the core's secondary text, not its own grey.
     let (_, _, fg) = qs::chip_colors(qs::CHIP_OFF, true);
     assert_eq!(fg, ui_base::secondary_text_color(true));
-    // Нейтральный бейдж берёт основной текст ядра.
+    // The neutral badge takes the core's main text.
     let (_, fg) = qs::badge_colors(qs::BADGE_NEUTRAL, false);
     assert_eq!(fg, ui_base::primary_text_color(false));
 }
 
-/// Отказ «сначала выбери заставку» — ОДНА строка на весь продукт.
+/// The «choose a splash first» refusal is ONE string for the whole product.
 ///
-/// Копий было три (замер 07.09.2026): здесь, в `session_splash` и в хозяине
-/// QML-вкладки на Python. Витрина и автозапуск отказывают по одной и той же
-/// причине, и расходиться этим словам нельзя.
+/// There were three copies (measured on 07.09.2026): here, in `session_splash` and in the
+/// Python host of the QML tab. The storefront and autostart refuse for one and the same
+/// reason, and these words must not diverge.
 #[test]
 fn choose_first_refusal_has_a_single_source() {
     assert_eq!(qs::SV_TEST_NO_ITEM, ss::MSG_CHOOSE_FIRST);
 }
 
-/// Свой ролик из конфига доклеивается к витрине ровно тогда, когда он
-/// выбран, лежит на диске и в скан Steam не попал.
+/// A custom clip from the config is appended to the storefront exactly when it is
+/// selected, lies on disk and did not get into the Steam scan.
 #[test]
 fn a_custom_movie_is_added_only_when_the_scan_missed_it() {
     let scan = vec![
         "/steam/movies/a.webm".to_string(),
         "/steam/movies/b.webm".to_string(),
     ];
-    // Обычный случай: файл выбран человеком со стороны.
+    // The ordinary case: the file was chosen by a person from outside.
     assert!(qs::needs_custom_movie("/home/w/своё.mp4", &scan, true));
-    // Ролик уже есть в витрине — второй карточки быть не должно.
+    // The clip is already in the storefront — there must be no second card.
     assert!(!qs::needs_custom_movie("/steam/movies/a.webm", &scan, true));
-    // Ролик не выбран вовсе.
+    // No clip selected at all.
     assert!(!qs::needs_custom_movie("", &scan, true));
-    // Конфиг пережил удаление файла — карточки в никуда не рисуем.
+    // The config outlived the file's removal — we do not draw a card into nowhere.
     assert!(!qs::needs_custom_movie("/home/w/снесённое.mp4", &scan, false));
-    // Пустой скан — витрина состоит из одного своего ролика.
+    // An empty scan — the storefront consists of one custom clip.
     assert!(qs::needs_custom_movie("/home/w/своё.mp4", &[], true));
 }
 
-/// Страница обязана лежать в области прокрутки, а плашка — снаружи неё.
+/// The page must lie in a scroll area, and the banner outside it.
 ///
-/// Без внешней полосы вкладка теряла всё, что не влезло в окно: длинный путь
-/// к Steam в шапке не сжимается и делает страницу шире окна, а на
-/// собственном минимуме главного окна ей не хватает и высоты — правый край
-/// секции с кнопкой «Свой файл…» и нижняя строка просто срезались. У
-/// оригинала полоса есть (`rexon/qt_steam/window.py:797`), и это не
-/// украшение, а единственный способ до них добраться.
+/// Without the outer scroll bar the tab lost everything that did not fit in the window: a long path
+/// to Steam in the header does not shrink and makes the page wider than the window, and at
+/// the main window's own minimum it lacks height too — the right edge of
+/// the section with the «Custom file…» button and the bottom line were simply cut off. The
+/// original has the scroll bar (`rexon/qt_steam/window.py:797`), and it is not
+/// decoration but the only way to reach them.
 ///
-/// ⛔ Плашка состояния внутрь полосы попасть не должна: она накладка ПОВЕРХ
-/// страницы и, уехав внутрь, ездила бы вместе с содержимым.
+/// ⛔ The status banner must not get inside the scroll area: it is an overlay ON TOP of
+/// the page and, having moved inside, would scroll together with the content.
 #[test]
 fn steam_page_scrolls_and_toast_stays_outside() {
     const QML: &str = include_str!("../../rexon-gui/qml/SteamPage.qml");
@@ -912,8 +912,8 @@ fn steam_page_scrolls_and_toast_stays_outside() {
         "страница «Steam» вынута из области прокрутки: длинный путь к Steam \
 снова уведёт правый край секции за край окна"
     );
-    // Отступ в четыре пробела = плашка лежит прямо в корне страницы. Внутри
-    // полосы у неё был бы отступ глубже.
+    // An indent of four spaces = the banner lies right in the page root. Inside
+    // the scroll area it would have a deeper indent.
     assert!(
         QML.contains("\n    RexonToast {"),
         "плашка состояния уехала внутрь области прокрутки — она накладка \
@@ -922,17 +922,17 @@ fn steam_page_scrolls_and_toast_stays_outside() {
 }
 
 // ============================================================================
-// Перевод: русский как было, английский — без единой русской буквы
+// Translation: Russian as before, English without a single Russian letter
 // ============================================================================
 
-/// Снимок русских текстов вкладки до переноса строк в каталог.
+/// A snapshot of the tab's Russian texts before moving the strings into the catalog.
 fn ru_before() -> Value {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/qt_steam_ru_before.json");
     let text = std::fs::read_to_string(path).expect("снимок qt_steam_ru_before.json читается");
     serde_json::from_str(&text).expect("снимок не разбирается как JSON")
 }
 
-/// Подписи-константы вкладки по их прежним именам (ключи снимка).
+/// The tab's constant labels by their former names (snapshot keys).
 fn constant_texts() -> Vec<(&'static str, String)> {
     vec![
         ("SPLASH_GROUP_TITLE", qs::splash_group_title()),
@@ -989,7 +989,7 @@ fn constant_texts() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// Собранные фразы вкладки на тех же входах, что и в снимке.
+/// The tab's assembled phrases on the same inputs as in the snapshot.
 fn phrase_texts() -> Vec<(&'static str, Value)> {
     let it = json!({"path":"/a","title":"T","game":"G","origin":"shop","appid":1});
     let b = json!({"path":"/b","title":"T","origin":"builtin","appid":0});
@@ -1049,9 +1049,9 @@ fn other_texts() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// ⭐ Для русского интерфейса НИЧЕГО не поменялось: каждая подпись, каждая
-/// собранная фраза вкладки «Steam» и соседних модулей слово в
-/// слово те же, что стояли в коде до переноса (снимок снят с HEAD 28.09).
+/// ⭐ For the Russian interface NOTHING changed: every label, every
+/// assembled phrase of the «Steam» tab and the neighbouring modules is word for
+/// word the same as stood in the code before the move (the snapshot was taken from HEAD on 28.09).
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn russian_catalog_keeps_old_texts() {
@@ -1060,7 +1060,7 @@ fn russian_catalog_keeps_old_texts() {
 
     let consts = before["constants"].as_object().unwrap();
     let got = constant_texts();
-    // Сегменты — отдельной строкой снимка, остальное — поимённо.
+    // Segments are a separate snapshot line, the rest — by name.
     assert_eq!(consts.len(), got.len() + qs::SEGMENTS.len(), "состав подписей разошёлся со снимком");
     for (key, text) in &got {
         assert_eq!(Some(text.as_str()), consts[*key].as_str(), "подпись {key}");
@@ -1086,12 +1086,12 @@ fn cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Английский интерфейс вкладки: ни одной русской буквы в подписях и
-/// собранных фразах — забытая строка видна здесь, а не покупателю.
+/// The tab's English interface: not a single Russian letter in labels and
+/// assembled phrases — a forgotten string shows up here, not to the buyer.
 ///
-/// Исключения названы: ответ «сначала выберите заставку» и подпись
-/// происхождения ролика живут в `session_splash` (не в этом заходе), поэтому
-/// входы здесь их не задевают.
+/// The exceptions are named: the «choose a splash first» answer and the clip's origin
+/// label live in `session_splash` (not in this pass), so
+/// the inputs here do not touch them.
 #[test]
 fn english_tab_has_no_russian() {
     let _lang = i18n_pin::en();
@@ -1125,7 +1125,7 @@ fn english_tab_has_no_russian() {
     }
 }
 
-/// Английские фразы, собранные из частей, читаются как фразы.
+/// English phrases assembled from parts read as phrases.
 #[test]
 fn english_phrases_read_naturally() {
     let _lang = i18n_pin::en();
@@ -1151,7 +1151,7 @@ fn english_phrases_read_naturally() {
     );
 }
 
-/// Язык ответов Steam следует языку интерфейса; незнакомый — английский.
+/// The language of Steam's answers follows the interface language; an unknown one means English.
 #[test]
 fn steam_language_follows_the_interface() {
     for (ui, steam) in [
@@ -1173,14 +1173,14 @@ fn steam_language_follows_the_interface() {
     }
 }
 
-/// Владеемые фоны: порядок «ключ → запрос → при отказе свежий ключ и один
-/// повтор» и приговор, почему анимированных нет.
+/// Owned backgrounds: the order "key → request → on refusal a fresh key and one
+/// retry" and the verdict on why there are no animated ones.
 #[test]
 fn owned_backgrounds_retry_once_and_name_the_gap() {
     use qs::{AnimatedGap, OwnedError};
     use std::cell::RefCell;
 
-    // Ключа нет — в сеть не ходим вовсе, причина доходит до человека.
+    // No key — we do not go to the network at all, the reason reaches the person.
     let asked = RefCell::new(Vec::<String>::new());
     let (items, gap) = qs::owned_backgrounds_with::<u32>(
         |_force| (String::new(), "войдите в Steam".to_string()),
@@ -1193,13 +1193,13 @@ fn owned_backgrounds_retry_once_and_name_the_gap() {
     assert_eq!(gap, AnimatedGap::NoKey("войдите в Steam".to_string()));
     assert!(asked.borrow().is_empty(), "без ключа запроса быть не должно");
 
-    // Ключ есть, Steam ответил — пробела нет.
+    // There is a key, Steam answered — no gap.
     let (items, gap) =
         qs::owned_backgrounds_with(|_| ("k1".to_string(), String::new()), |_| Ok(vec![7u32, 8]));
     assert_eq!(items, [7, 8]);
     assert_eq!(gap, AnimatedGap::None);
 
-    // Ключ протух: отказ → свежий ключ (force) → повтор удался.
+    // The key went stale: refusal → a fresh key (force) → the retry succeeded.
     let forces = RefCell::new(Vec::<bool>::new());
     let asked = RefCell::new(Vec::<String>::new());
     let (items, gap) = qs::owned_backgrounds_with(
@@ -1217,7 +1217,7 @@ fn owned_backgrounds_retry_once_and_name_the_gap() {
     assert_eq!(*forces.borrow(), [false, true]);
     assert_eq!(*asked.borrow(), ["старый", "новый"]);
 
-    // Отказ и со свежим ключом — повтор ровно один, не петля.
+    // A refusal even with a fresh key — exactly one retry, not a loop.
     let count = RefCell::new(0u32);
     let (items, gap) = qs::owned_backgrounds_with::<u32>(
         |_| ("k".to_string(), String::new()),
@@ -1230,14 +1230,14 @@ fn owned_backgrounds_retry_once_and_name_the_gap() {
     assert_eq!(gap, AnimatedGap::Refused);
     assert_eq!(*count.borrow(), 2);
 
-    // После отказа свежего ключа не дали — это «нет ключа», а не «отказал».
+    // After a refusal no fresh key was given — this is "no key", not "refused".
     let (_, gap) = qs::owned_backgrounds_with::<u32>(
         |force| if force { (String::new(), "ключа нет".to_string()) } else { ("k".to_string(), String::new()) },
         |_| Err(OwnedError::Refused),
     );
     assert_eq!(gap, AnimatedGap::NoKey("ключа нет".to_string()));
 
-    // Сеть не ответила — без повтора (свежий ключ тут не поможет).
+    // The network did not answer — no retry (a fresh key will not help here).
     let count = RefCell::new(0u32);
     let (_, gap) = qs::owned_backgrounds_with::<u32>(
         |_| ("k".to_string(), String::new()),
@@ -1249,15 +1249,15 @@ fn owned_backgrounds_retry_once_and_name_the_gap() {
     assert_eq!(gap, AnimatedGap::NoAnswer);
     assert_eq!(*count.borrow(), 1);
 
-    // «Ключ не принят» — только 401 и 403.
+    // «Key not accepted» — only 401 and 403.
     assert_eq!(qs::owned_error_of_status(Some(401)), OwnedError::Refused);
     assert_eq!(qs::owned_error_of_status(Some(403)), OwnedError::Refused);
     assert_eq!(qs::owned_error_of_status(Some(500)), OwnedError::NoAnswer);
     assert_eq!(qs::owned_error_of_status(None), OwnedError::NoAnswer);
 }
 
-/// Строка «почему анимированных нет»: молчит, когда пробела нет, и всегда
-/// говорит, что делать, когда он есть.
+/// The «why there are no animated ones» line: silent when there is no gap, and always
+/// says what to do when there is one.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn animated_gap_text_says_what_to_do() {

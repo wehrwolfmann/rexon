@@ -7,6 +7,9 @@ import waywallen.ui as W
 MD.Page {
     id: root
 
+    property string artistId: ""
+    property Component browserHeading
+    readonly property bool artistMode: artistId.length > 0
     property bool detailOpen: false
     property RemoteDetailPanel detailPanel: RemoteDetailPanel {
         details: detailsQuery
@@ -22,8 +25,21 @@ MD.Page {
         downloadAction: root.detailRow ? root.sourceInfo(root.detailRow.sourceId)?.downloadAction ?? null : null
         subscriptionState: Number(root.detailRow?.acquisitionState ?? 0)
         tagOptions: root.detailRow ? root.sourceFilterOptions(root.detailRow.sourceId) : []
+        typeLabels: pluginQuery.typeLabels || ({})
 
         onBack: detailPresenter.dismiss()
+        onArtistRequested: (id, name, avatarUrl, avatarHeaders, webUrl) => {
+            if (!root.detailRow || id === root.artistId)
+                return;
+            root.MD.MProp.page.pushItem('waywallen.ui/ArtistPage', {
+                sourceId: root.detailRow.sourceId,
+                artistId: id,
+                artistName: name,
+                artistAvatarUrl: avatarUrl,
+                artistAvatarHeaders: avatarHeaders,
+                artistUrl: webUrl
+            });
+        }
         onDownloadRequested: {
             if (root.detailRow)
                 dlQuery.start(root.detailRow.sourceId, root.detailRow.itemId);
@@ -37,6 +53,7 @@ MD.Page {
         onSubscriptionRefreshRequested: root.refreshDetailSubscription()
     }
     readonly property var detailRow: detailOpen ? detailStore.item : null
+    readonly property QtObject discoverState: W.DiscoverState
     property var discoverTweakSheet: null
     property W.TweakState discoverTweakState: discoverTweakStateComponent.createObject(root, {
         settingsCategory: "DiscoverView"
@@ -44,7 +61,9 @@ MD.Page {
     property var infoPresentation: null
     property var managePresentation: null
     property int sortIndex: 0
+    property int sortChoiceIndex: 0
     property var sortOptions: []
+    readonly property var sortChoices: sortOptions[sortIndex]?.options ?? []
     property string sourceId: ""
 
     function closeDetail() {
@@ -66,7 +85,7 @@ MD.Page {
         const actions = c && c.actions ? c.actions : [];
         for (let i = 0; i < actions.length; ++i) {
             const kind = Number(actions[i].kind);
-            if ((kind === 2 || kind === 3) && actions[i].requiredForBrowsing === true && (actions[i].visible === undefined || actions[i].visible))
+            if ((kind === 2 || kind === 3 || kind === 4) && actions[i].requiredForBrowsing === true && (actions[i].visible === undefined || actions[i].visible))
                 return actions[i];
         }
         return null;
@@ -140,8 +159,19 @@ MD.Page {
     function pickSort(idx) {
         if (idx < 0 || idx >= sortOptions.length)
             return;
+        if (sortIndex !== idx)
+            sortChoiceIndex = 0;
         sortIndex = idx;
-        searchQuery.sortKey = sortOptions[idx].key;
+        applySort();
+    }
+    function pickSortChoice(idx) {
+        if (idx < 0 || idx >= sortChoices.length)
+            return;
+        sortChoiceIndex = idx;
+        applySort();
+    }
+    function applySort() {
+        searchQuery.sortKey = sortChoices.length > 0 ? sortChoices[sortChoiceIndex].key : sortOptions[sortIndex]?.key ?? "";
     }
     function pruneTags(tags, filters) {
         const allowed = {};
@@ -206,32 +236,51 @@ MD.Page {
         const sourceChanged = sourceId !== id;
         const currentSortKey = searchQuery.sortKey;
         sourceId = id;
-        discoverState.setSelectedSourceId(id);
-        if (sourceChanged)
-            loadDiscoverTweakState(id);
-        sortOptions = s.sorts ?? [];
+        if (root.artistMode && s.artistOptions?.searchText === false) {
+            searchQuery.query = "";
+            m_search_field.text = "";
+        }
+        if (!root.artistMode)
+            discoverState.setSelectedSourceId(id);
+        loadDiscoverTweakState(id);
+        sortOptions = (root.artistMode ? s.artistOptions?.sorts ?? s.sorts : s.sorts) ?? [];
         sortIndex = 0;
+        sortChoiceIndex = 0;
         if (!sourceChanged && currentSortKey.length > 0) {
             for (let i = 0; i < sortOptions.length; ++i) {
-                if (sortOptions[i].key === currentSortKey) {
+                const choices = sortOptions[i].options ?? [];
+                const choiceIndex = choices.findIndex(option => option.key === currentSortKey);
+                if (choiceIndex >= 0 || (choices.length === 0 && sortOptions[i].key === currentSortKey)) {
                     sortIndex = i;
+                    sortChoiceIndex = Math.max(0, choiceIndex);
                     break;
                 }
             }
         }
         const canBrowse = currentSourceLoginAction() === null;
         searchQuery.browsingEnabled = canBrowse;
-        const candidateTags = sourceChanged ? discoverState.filterValuesFor(id) : searchQuery.tags;
-        const nextTags = pruneTags(candidateTags, s.filters ?? []);
+        syncFilters();
+        searchQuery.sourceId = id;
+        detailsQuery.sourceId = id;
+        applySort();
+        if (sourceChanged || !canBrowse) {
+            detailOpen = false;
+            detailsQuery.itemId = "";
+            m_grid.currentIndex = -1;
+        }
+    }
+    function syncFilters() {
+        const s = currentSourceConfig();
+        if (!s)
+            return;
+        const id = root.sourceId;
+        const nextTags = pruneTags(discoverState.filterValuesFor(id), s.filters ?? []);
         if (!sameList(searchQuery.tags, nextTags))
             searchQuery.tags = nextTags;
-        discoverState.setFilterValuesFor(id, nextTags);
-        const candidateExcluded = sourceChanged ? discoverState.excludedTagsFor(id) : searchQuery.excludedTags;
         const exclusionFilters = (s.filters ?? []).filter(filter => filter.supportsExclusion);
-        const nextExcluded = pruneTags(candidateExcluded, exclusionFilters).filter(tag => nextTags.indexOf(tag) < 0);
+        const nextExcluded = pruneTags(discoverState.excludedTagsFor(id), exclusionFilters).filter(tag => nextTags.indexOf(tag) < 0);
         searchQuery.excludedTags = nextExcluded;
-        discoverState.setExcludedTagsFor(id, nextExcluded);
-        const savedModes = sourceChanged ? discoverState.matchModesFor(id) : searchQuery.filterMatchModes;
+        const savedModes = discoverState.matchModesFor(id);
         const modes = {};
         for (const filter of s.filters ?? []) {
             const allowed = filter.matchModes ?? [];
@@ -241,18 +290,6 @@ MD.Page {
             }
         }
         searchQuery.filterMatchModes = modes;
-        discoverState.setMatchModesFor(id, modes);
-        searchQuery.sourceId = id;
-        detailsQuery.sourceId = id;
-        searchQuery.sortKey = sortOptions.length > 0 ? sortOptions[sortIndex].key : "";
-        if (sourceChanged || !canBrowse) {
-            detailOpen = false;
-            detailsQuery.itemId = "";
-            m_grid.currentIndex = -1;
-        }
-        function onPluginChanged() {
-            pluginQuery.reload();
-        }
     }
     function sortLabel() {
         if (sortOptions.length === 0)
@@ -321,6 +358,14 @@ MD.Page {
             contentItem: ColumnLayout {
                 spacing: 0
 
+                Loader {
+                    Layout.fillWidth: true
+                    Layout.margins: active ? 16 : 0
+                    active: root.browserHeading !== null
+                    visible: active
+                    sourceComponent: root.browserHeading
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.leftMargin: 16
@@ -334,7 +379,7 @@ MD.Page {
                         mdState.borderWidth: 1
                         text: root.sourceName(root.sourceId)
                         trailingIconName: MD.Token.icon.arrow_drop_down
-                        visible: availabilityQuery.sources.length > 1
+                        visible: !root.artistMode && availabilityQuery.sources.length > 1
 
                         onClicked: sourceMenu.open()
 
@@ -389,11 +434,48 @@ MD.Page {
                             }
                         }
                     }
+                    MD.EmbedChip {
+                        id: sortChoiceChip
+
+                        mdState.borderWidth: 1
+                        text: W.I18n.tr(root.sortChoices[root.sortChoiceIndex]?.labelText ?? "")
+                        trailingIconName: MD.Token.icon.arrow_drop_down
+                        visible: root.sortChoices.length > 0
+
+                        onClicked: sortChoiceMenu.open()
+
+                        MD.Menu {
+                            id: sortChoiceMenu
+
+                            model: root.sortChoices
+                            parent: sortChoiceChip
+                            y: parent.height
+
+                            contentDelegate: MD.MenuItem {
+                                required property int index
+                                required property var modelData
+
+                                icon.name: index === root.sortChoiceIndex ? MD.Token.icon.check : ' '
+                                text: W.I18n.tr(modelData.labelText)
+
+                                onClicked: {
+                                    root.pickSortChoice(index);
+                                    sortChoiceMenu.close();
+                                }
+                            }
+                        }
+                    }
                     W.SearchChip {
                         id: m_search_field
 
                         Layout.preferredWidth: 120
                         placeholderText: qsTr("Search")
+                        visible: {
+                            if (!root.artistMode)
+                                return true;
+                            const source = root.currentSourceConfig();
+                            return source !== null && (source.artistOptions?.searchText ?? true);
+                        }
 
                         onTextEdited: searchQuery.query = text
                     }
@@ -421,6 +503,7 @@ MD.Page {
                         tweak: root.discoverTweakState
 
                         delegate: RemoteCard {
+                            badgeTexts: W.DiscoverState.visibleBadges(root.sourceId, item.badges, root.currentSourceConfig()?.badges ?? [])
                             fallbackAspectRatio: root.discoverTweakState.itemAspectRatio
                             itemHeight: masonry ? height : m_grid.displayItemHeight
                             itemWidth: m_grid.displayItemWidth
@@ -447,7 +530,8 @@ MD.Page {
                         onClicked: searchQuery.retry()
                     }
                     ColumnLayout {
-                        readonly property bool hasError: !searchQuery.querying && searchQuery.errorText.length > 0
+                        readonly property bool sourceUnavailable: root.artistMode && !root.sourceInfo(root.sourceId) && !availabilityQuery.querying
+                        readonly property bool hasError: sourceUnavailable || (!searchQuery.querying && searchQuery.errorText.length > 0)
                         readonly property var loginAction: root.currentSourceLoginAction()
                         readonly property string loginButtonLabel: {
                             const label = loginAction ? W.I18n.tr(loginAction.browseButtonLabelText).trim() : "";
@@ -499,7 +583,7 @@ MD.Page {
                             font.capitalization: Font.MixedCase
                             horizontalAlignment: Text.AlignHCenter
                             maximumLineCount: 4
-                            text: parent.needsLogin ? parent.loginDescription : searchQuery.errorText
+                            text: parent.needsLogin ? parent.loginDescription : parent.sourceUnavailable ? qsTr("This source is no longer available.") : searchQuery.errorText
                             typescale: MD.Token.typescale.body_medium
                             visible: parent.needsLogin || parent.hasError
                             wrapMode: Text.WordWrap
@@ -517,14 +601,14 @@ MD.Page {
                             text: qsTr("Retry")
                             visible: parent.hasError && !parent.needsLogin
 
-                            onClicked: searchQuery.retry()
+                            onClicked: parent.sourceUnavailable ? root.reloadAll() : searchQuery.retry()
                         }
                         MD.Label {
                             Layout.alignment: Qt.AlignHCenter
                             color: MD.Token.color.on_surface_variant
                             text: qsTr("No wallpapers found")
                             typescale: MD.Token.typescale.body_large
-                            visible: !searchQuery.querying && !parent.needsLogin && searchQuery.errorText.length === 0
+                            visible: !searchQuery.querying && !parent.needsLogin && !parent.hasError
                         }
                     }
                 }
@@ -556,9 +640,6 @@ MD.Page {
         id: discoverTweakStateComponent
 
         W.TweakState {}
-    }
-    W.DiscoverState {
-        id: discoverState
     }
     W.RemoteStoreItem {
         id: detailStore
@@ -600,6 +681,9 @@ MD.Page {
 
         onTriggered: searchQuery.reload()
     }
+    W.RendererPluginListQuery {
+        id: pluginQuery
+    }
     W.RemoteAvailabilityQuery {
         id: availabilityQuery
 
@@ -609,6 +693,10 @@ MD.Page {
                 return;
             }
             let nextSourceId = root.sourceId;
+            if (root.artistMode && !root.sourceInfo(nextSourceId)) {
+                searchQuery.browsingEnabled = false;
+                return;
+            }
             if (!root.sourceInfo(nextSourceId)) {
                 const savedSourceId = discoverState.selectedSourceId();
                 if (root.sourceInfo(savedSourceId))
@@ -624,6 +712,15 @@ MD.Page {
     }
     W.RemoteSearchQuery {
         id: searchQuery
+        artistId: root.artistId
+    }
+    Connections {
+        target: root.discoverState
+
+        function onFiltersChanged(sourceId) {
+            if (sourceId === root.sourceId)
+                root.syncFilters();
+        }
     }
     W.RemoteFilterDialog {
         id: m_filter_dialog
@@ -639,19 +736,14 @@ MD.Page {
         y: (overlayHeight - height) / 2
 
         onApply: function (values) {
-            searchQuery.tags = values;
             discoverState.setFilterValuesFor(root.sourceId, values);
         }
         onApplyBoth: function (values, excluded) {
-            searchQuery.tags = values;
-            searchQuery.excludedTags = excluded;
-            discoverState.setFilterValuesFor(root.sourceId, values);
-            discoverState.setExcludedTagsFor(root.sourceId, excluded);
+            discoverState.setFilterSelectionFor(root.sourceId, values, excluded);
         }
         onApplyMatchMode: function (filterId, mode) {
             const modes = Object.assign({}, searchQuery.filterMatchModes);
             modes[filterId] = mode;
-            searchQuery.filterMatchModes = modes;
             discoverState.setMatchModesFor(root.sourceId, modes);
         }
     }
@@ -716,6 +808,9 @@ MD.Page {
         function onSettingsChanged() {
             availabilityQuery.reload();
         }
+        function onPluginChanged() {
+            pluginQuery.reload();
+        }
 
         target: W.Notify
     }
@@ -752,6 +847,8 @@ MD.Page {
         W.TweakSheet {
             popupParent: root
             tweak: root.discoverTweakState
+            badgeOptions: root.currentSourceConfig()?.badges ?? []
+            badgeSourceId: root.sourceId
         }
     }
 }

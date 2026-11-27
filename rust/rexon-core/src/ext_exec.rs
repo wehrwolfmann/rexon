@@ -1,30 +1,30 @@
-//! Исполнитель менеджера расширений на живой файловой системе.
+//! The extension manager's executor on the live file system.
 //!
-//! ЗАЧЕМ. Планировщик расширений давно на Rust — `ext_manager.rs` умеет всё
-//! РЕШАТЬ: проверить .rxn, вывести id, собрать план установки/удаления
-//! оформления шагами [`ExtStep`]. Но ДЕЛАТЬ он не умеет ничего: вход у него —
-//! снимок `FsSnap`, настоящей файловой системы в нём нет вовсе. Исполнителем
-//! этого плана до сих пор был Python (`_exec_plan` в
-//! `rexon/extensions/manager.py`), и из-за этого объект побочных действий
-//! вкладки «Расширения» приходилось держать на PySide6.
+//! WHY. The extension planner has long been in Rust — `ext_manager.rs` can
+//! DECIDE everything: check a .rxn, derive the id, build an install/uninstall plan for
+//! appearance with [`ExtStep`] steps. But it cannot DO anything: its input is
+//! an `FsSnap` snapshot, there is no real file system in it at all. The executor
+//! of this plan was until now Python (`_exec_plan` in
+//! `rexon/extensions/manager.py`), and because of that the side-effects object
+//! of the «Extensions» tab had to be kept on PySide6.
 //!
-//! Здесь дописан исполнитель: те же побочные вызовы, что делал Python
-//! (`shutil`/`os`/`subprocess`/`pkexec`), но на Rust. Разделение прежнее и
-//! оно принципиально — **планировщик решает, исполнитель делает**:
-//!   * что копировать, что писать, что запускать — [`ext_manager`];
-//!   * снимок ФС для планировщика — [`plan_snapshot`] (порт `_plan_snapshot`);
-//!   * прогон шагов — [`exec_plan`] (порт `_exec_plan`);
-//!   * конвейеры целиком — [`install_from_file`], [`uninstall`], [`toggle`].
+//! The executor is written here: the same side calls Python made
+//! (`shutil`/`os`/`subprocess`/`pkexec`), but in Rust. The split is the same and
+//! it is fundamental — **the planner decides, the executor does**:
+//!   * what to copy, what to write, what to run — [`ext_manager`];
+//!   * the FS snapshot for the planner — [`plan_snapshot`] (port of `_plan_snapshot`);
+//!   * running the steps — [`exec_plan`] (port of `_exec_plan`);
+//!   * whole pipelines — [`install_from_file`], [`uninstall`], [`toggle`].
 //!
-//! ⭐ ИМПОРТЁРЫ ЧУЖИХ ФОРМАТОВ ПОДКЛЮЧЕНЫ (07.09.2026). Прежняя граница —
-//! «понимаю только `.rxn`» — снята: живой исполнитель трейта `ImpIo` переехал
-//! из моста `rexon-py` в ядро ([`crate::imp_live`]), и [`install_from_file`]
-//! снова делает то же, что делал Python: `.themepack`/`.deskthemepack` и
-//! Windows-темы (`.theme`/`.msstyles`/`.wmv`/`.dream`/`.gadget`) сначала
-//! конвертируются в `.rxn` во временном каталоге, а ставится уже результат.
-//! Иначе вкладка обманывала бы своим же фильтром окна выбора файла
-//! (`qt_extensions::FILE_DIALOG_FILTER` предлагает Windows-темы прямым
-//! текстом).
+//! ⭐ IMPORTERS OF FOREIGN FORMATS ARE CONNECTED (07.09.2026). The old boundary —
+//! "I understand only `.rxn`" — is lifted: the live executor of the `ImpIo` trait moved
+//! from the `rexon-py` bridge into the core ([`crate::imp_live`]), and [`install_from_file`]
+//! again does what Python did: `.themepack`/`.deskthemepack` and
+//! Windows themes (`.theme`/`.msstyles`/`.wmv`/`.dream`/`.gadget`) are first
+//! converted to `.rxn` in a temporary directory, and the result is what gets installed.
+//! Otherwise the tab would deceive with its own file chooser filter
+//! (`qt_extensions::FILE_DIALOG_FILTER` offers Windows themes in so many
+//! words).
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -41,10 +41,10 @@ use crate::i18n::{tr, trf};
 use crate::qt_extensions;
 
 // ============================================================================
-// Мелочи
+// Odds and ends
 // ============================================================================
 
-/// `$HOME` — тот же, что подставляет Python (`os.path.expanduser("~")`).
+/// `$HOME` — the same one Python substitutes (`os.path.expanduser("~")`).
 fn home() -> String {
     std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
 }
@@ -53,8 +53,8 @@ fn s(p: &Path) -> String {
     p.to_string_lossy().into_owned()
 }
 
-/// Ошибка исполнителя — уже готовая строка для человека: её показывает
-/// строка состояния вкладки, как показывала `str(e)` из Python.
+/// An executor error is a ready string for the person: the tab's status
+/// line shows it, as it showed `str(e)` from Python.
 pub type ExecResult<T> = Result<T, String>;
 
 fn err<T>(text: impl Into<String>) -> ExecResult<T> {
@@ -62,10 +62,10 @@ fn err<T>(text: impl Into<String>) -> ExecResult<T> {
 }
 
 // ============================================================================
-// Снимки файловой системы для планировщика
+// File system snapshots for the planner
 // ============================================================================
 
-/// Собиратель снимка: те же четыре слоя, что у Python (`_plan_snapshot`).
+/// The snapshot collector: the same four layers as Python's (`_plan_snapshot`).
 #[derive(Default)]
 struct SnapBuilder {
     dirs: Map<String, Value>,
@@ -73,9 +73,9 @@ struct SnapBuilder {
     links: Vec<Value>,
     pre_dirs: Vec<Value>,
     pre_files: Vec<Value>,
-    /// Файлы, которые общий журнал записал за пакетом (`FsSnap::owns_file`).
+    /// Files the shared log recorded for the package (`FsSnap::owns_file`).
     owned_files: Vec<Value>,
-    /// Пары `[файл пакета, файл на месте]`, равные байт в байт
+    /// `[package file, file in place]` pairs that are equal byte for byte
     /// (`FsSnap::same_bytes`).
     same_files: Vec<Value>,
 }
@@ -93,10 +93,10 @@ impl SnapBuilder {
         Value::Object(out)
     }
 
-    /// Одиночные файлы пакета, которые уже лежат в каталогах назначения
-    /// под тем же именем: какие из них — байт в байт файлы пакета
-    /// (правило владельца для файлов, `ext_manager::put_owned_file`).
-    /// Сравниваются только обычные файлы (не ссылки) одного размера.
+    /// Single files of the package that already lie in the destination directories
+    /// under the same name: which of them are byte-for-byte the package's files
+    /// (the owner rule for files, `ext_manager::put_owned_file`).
+    /// Only regular files (not links) of the same size are compared.
     fn same_files_in(&mut self, ext_dir: &Path, bases: &[PathBuf]) {
         let prefix = format!("{}/", s(ext_dir));
         let mut by_name: std::collections::BTreeMap<String, Vec<String>> = Default::default();
@@ -143,10 +143,10 @@ impl SnapBuilder {
         self.files.insert(s(path), Value::Object(m));
     }
 
-    /// Имена каталога в порядке чтения. `read_dir` отдаёт их в порядке ФС, а
-    /// `os.scandir` Python — в своём; порядок влияет на выбор «первого
-    /// подходящего» файла в плане, поэтому имена сортируются — так витрина и
-    /// план ведут себя одинаково от машины к машине (тот же довод, что у
+    /// Directory names in reading order. `read_dir` returns them in FS order, and
+    /// Python's `os.scandir` in its own; the order affects choosing "the first
+    /// matching" file in the plan, so the names are sorted — this way the storefront and
+    /// the plan behave the same from machine to machine (the same argument as for
     /// [`qt_extensions::installed_in`]).
     fn names_of(dir: &Path) -> Vec<String> {
         let Ok(entries) = std::fs::read_dir(dir) else {
@@ -160,13 +160,13 @@ impl SnapBuilder {
         names
     }
 
-    /// Глубокий обход (порт `deep`): дерево целиком, с текстами
-    /// `metadata.json`/`metadata.desktop` — по ним планировщик достаёт
-    /// plugin-id плазмоида.
+    /// A deep traversal (port of `deep`): the whole tree, with the texts of
+    /// `metadata.json`/`metadata.desktop` — from them the planner gets
+    /// the plasmoid's plugin-id.
     ///
-    /// `observed_only = true` — записи идут только в слой наблюдений: это то,
-    /// что оригинал видел ПОСЛЕ собственных шагов, и решениями «существовало
-    /// ли до нас» становиться не должно.
+    /// `observed_only = true` — the records go only into the observations layer: this is what
+    /// the original saw AFTER its own steps, and it must not become decisions about "did it exist
+    /// before us".
     fn deep(&mut self, root: &Path, observed_only: bool) {
         let key = s(root);
         if self.dirs.contains_key(&key) && observed_only {
@@ -191,8 +191,8 @@ impl SnapBuilder {
             let is_dir = path.is_dir();
             if is_dir {
                 if link {
-                    // как os.walk(followlinks=False): в классификации каталог
-                    // есть, внутрь не идём
+                    // like os.walk(followlinks=False): the directory is in the classification,
+                    // we do not go inside
                     self.dirs.entry(s(&path)).or_insert_with(|| Value::Array(Vec::new()));
                     if !observed_only {
                         self.pre_dirs.push(Value::String(s(&path)));
@@ -215,7 +215,7 @@ impl SnapBuilder {
         }
     }
 
-    /// Файл с текстом (небольшие файлы настроек: LightDM).
+    /// A file with its text (small settings files: LightDM).
     fn text_file(&mut self, path: &Path) {
         if self.files.contains_key(&s(path)) || !path.is_file() {
             return;
@@ -225,9 +225,9 @@ impl SnapBuilder {
         self.pre_files.push(Value::String(s(path)));
     }
 
-    /// Каталог файлов настроек с текстами — только имена с `suffix`
-    /// (`.conf`, `.desktop`); ссылки читаются по цели (у Debian описание
-    /// приветствия — ссылка на настоящее).
+    /// A directory of settings files with texts — only names with `suffix`
+    /// (`.conf`, `.desktop`); links are read by target (on Debian the greeter
+    /// description is a link to the real one).
     fn texts_of(&mut self, dir: &Path, suffix: &str) {
         if self.dirs.contains_key(&s(dir)) || !dir.is_dir() {
             return;
@@ -240,10 +240,10 @@ impl SnapBuilder {
         }
     }
 
-    /// Мелкий обход целевого каталога (порт `shallow`): присутствие,
-    /// классификация и симлинки детей — без рекурсии. Планировщику этого
-    /// хватает для решений `exists`/`isdir`, а обходить `~/.local/share/icons`
-    /// целиком значило бы читать десятки тысяч файлов на каждую установку.
+    /// A shallow traversal of the target directory (port of `shallow`): presence,
+    /// classification and symlinks of the children — without recursion. This is enough for
+    /// the planner's `exists`/`isdir` decisions, while traversing the whole `~/.local/share/icons`
+    /// would mean reading tens of thousands of files on every installation.
     fn shallow(&mut self, base: &Path) {
         if self.dirs.contains_key(&s(base)) || !base.is_dir() {
             return;
@@ -271,9 +271,9 @@ impl SnapBuilder {
         }
     }
 
-    /// Дерево `src_root`, перекорнёванное в `dest_root`, — в наблюдения
-    /// (порт `project`). Так планировщик видит содержимое СВОЕГО же
-    /// копирования: conky ищет конфиг уже в целевом каталоге.
+    /// The tree of `src_root` re-rooted into `dest_root` — into the observations
+    /// (port of `project`). This way the planner sees the contents of ITS OWN
+    /// copying: conky looks for the config in the target directory already.
     fn project(&mut self, src_root: &Path, dest_root: &Path) {
         let names = Self::names_of(src_root);
         self.dirs.insert(
@@ -300,24 +300,24 @@ impl SnapBuilder {
     }
 }
 
-/// Снимок дерева для валидационного конвейера `.rxn` (порт `_snap_tree`).
+/// A tree snapshot for the `.rxn` validation pipeline (port of `_snap_tree`).
 ///
-/// Распакованный архив планировщик читает слоем НАБЛЮДЕНИЙ (`obs_is_file`) —
-/// он появился в ходе прогона, а не до него. Поэтому pre-слои остаются
-/// пустыми: `FsSnap::from_json` без них считал бы всё пре-состоянием.
+/// The planner reads the unpacked archive as an OBSERVATIONS layer (`obs_is_file`) —
+/// it appeared during the run, not before it. So the pre-layers stay
+/// empty: `FsSnap::from_json` without them would consider everything pre-state.
 pub fn snap_tree(root: &Path) -> Value {
     let mut b = SnapBuilder::default();
     b.deep(root, true);
     b.into_value()
 }
 
-/// Каталоги, куда Rexon ставит оформление, — те же, что видит планировщик.
+/// Directories where Rexon installs appearance — the same ones the planner sees.
 ///
-/// ⚠️ Берутся ДВУМЯ наборами намеренно. Планировщик строит путь как
-/// `{HOME}/{суффикс}` (`ExtEnv::install_path`), а продуктовая таблица —
-/// XDG-осведомлённо (`constants::install_path`). На машине с заданным
-/// `XDG_DATA_HOME` это разные каталоги, и снимок обязан покрыть оба: иначе
-/// решение «уже существует» принималось бы по пустому месту.
+/// ⚠️ They are taken as TWO sets deliberately. The planner builds a path as
+/// `{HOME}/{suffix}` (`ExtEnv::install_path`), while the product table does it
+/// XDG-aware (`constants::install_path`). On a machine with
+/// `XDG_DATA_HOME` set these are different directories, and the snapshot must cover both: otherwise
+/// the "already exists" decision would be made on an empty place.
 fn target_dirs(home: &str) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
     for t in constants::valid_types() {
@@ -339,9 +339,9 @@ fn target_dirs(home: &str) -> Vec<PathBuf> {
     out
 }
 
-/// Архив `.plasmoid`, который выберет план в каталоге `dir`: первый по
-/// порядку имён, если раньше него не встретился каталог с описанием
-/// плазмоида (тогда ставится каталог, архив не понадобится).
+/// The `.plasmoid` archive the plan will choose in the directory `dir`: the first by
+/// name order, unless a directory with a plasmoid description came before it
+/// (then the directory is installed, the archive is not needed).
 fn first_plasmoid_archive(dir: &Path) -> Option<PathBuf> {
     for name in SnapBuilder::names_of(dir) {
         let full = dir.join(&name);
@@ -355,8 +355,8 @@ fn first_plasmoid_archive(dir: &Path) -> Option<PathBuf> {
     None
 }
 
-/// Каталоги, где план ищет плазмоид пакета: `data/` у типа плазмоида,
-/// подкаталог части `theme-plasmoid` у комплекта.
+/// Directories where the plan looks for the package's plasmoid: `data/` for the plasmoid type,
+/// the `theme-plasmoid` part subdirectory for a bundle.
 fn plasmoid_dirs(ext: &Extension) -> Vec<PathBuf> {
     match ext.ext_type() {
         "theme-plasmoid" => vec![ext.dir.join("data")],
@@ -372,7 +372,7 @@ fn plasmoid_dirs(ext: &Extension) -> Vec<PathBuf> {
     }
 }
 
-/// Снимок ФС для генерации плана установки/удаления (порт `_plan_snapshot`).
+/// The FS snapshot for generating the install/uninstall plan (port of `_plan_snapshot`).
 pub fn plan_snapshot(ext: &Extension, tmp_base: &Path, install: bool) -> Value {
     let home = home();
     let mut b = SnapBuilder::default();
@@ -380,19 +380,19 @@ pub fn plan_snapshot(ext: &Extension, tmp_base: &Path, install: bool) -> Value {
     for base in target_dirs(&home) {
         b.shallow(&base);
     }
-    // Существующий каталог темы (основная копия, `~/.themes/<тема>` у
-    // рамок, подпапки комплекта и Conky) план трогает только по метке
-    // владельца — её текст нужен и установке (обновить своё, не тронуть
-    // чужое), и удалению. Имя каталога у части типов берётся из метаданных
-    // (uuid, KPlugin.Id), поэтому метка читается у каждого каталога базы.
+    // An existing theme directory (the main copy, `~/.themes/<theme>` for
+    // frames, bundle subfolders and Conky) is touched by the plan only by the owner
+    // mark — its text is needed both by installation (update our own, do not touch
+    // foreign) and by removal. For some types the directory name comes from the metadata
+    // (uuid, KPlugin.Id), so the mark is read for every base directory.
     for base in target_dirs(&home) {
         for name in SnapBuilder::names_of(&base) {
             b.text_file(&base.join(&name).join(ext_manager::OWNER_MARK));
         }
     }
-    // Одиночные файлы (цветовые схемы, действия Nemo, шрифты комплекта)
-    // метки не несут — свой ли файл на месте, план узнаёт по общему журналу
-    // (записан за этим пакетом) либо по совпадению байт в байт.
+    // Single files (color schemes, Nemo actions, bundle fonts)
+    // carry no mark — whether the file in place is ours, the plan learns from the shared log
+    // (recorded for this package) or by a byte-for-byte match.
     let journal = crate::install_journal::view_at(&rexon_config_dir());
     let key = crate::install_journal::key_of(crate::install_journal::Source::Rxn, ext.ext_id());
     if let Some(entry) = journal.items.get(&key) {
@@ -403,10 +403,10 @@ pub fn plan_snapshot(ext: &Extension, tmp_base: &Path, install: bool) -> Value {
         }
     }
     b.same_files_in(&ext.dir, &target_dirs(&home));
-    // .plasmoid: id плазмоида — внутри архива. Снимок распаковывает его
-    // заранее (`ext_manager::PLASMOID_PROBE_DIR`), чтобы план решил «на месте
-    // чужой плазмоид с тем же id — не трогать» ДО запуска kpackagetool, а
-    // удаление снимало каталог настоящего id.
+    // .plasmoid: the plasmoid id is inside the archive. The snapshot unpacks it
+    // in advance (`ext_manager::PLASMOID_PROBE_DIR`) so that the plan decides "a foreign
+    // plasmoid with the same id is in place — do not touch" BEFORE starting kpackagetool, and
+    // removal takes away the directory of the real id.
     for dir in plasmoid_dirs(ext) {
         if let Some(file) = first_plasmoid_archive(&dir) {
             let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -417,24 +417,24 @@ pub fn plan_snapshot(ext: &Extension, tmp_base: &Path, install: bool) -> Value {
         }
     }
     if !install {
-        // Удаление темы экрана входа или заставки: план смотрит, лежит ли
-        // она в системном каталоге (снимает её помощник от root).
+        // Removing a login screen or splash theme: the plan looks at whether
+        // it lies in the system directory (the root helper removes it).
         for base in ["/usr/share/sddm/themes", crate::system_plan::PLYMOUTH_THEMES_DIR] {
             b.shallow(Path::new(base));
         }
     }
 
     if install {
-        // Экран входа LightDM: какое приветствие стоит, план решает по
-        // файлам настроек LightDM и описаниям приветствий — тексты их нужны.
+        // The LightDM login screen: which greeter is installed, the plan decides by
+        // the LightDM settings files and the greeter descriptions — their texts are needed.
         for dir in ext_manager::LIGHTDM_CONF_DIRS {
             b.texts_of(Path::new(dir), ".conf");
         }
         b.texts_of(Path::new(ext_manager::XGREETERS_DIR), ".desktop");
         b.text_file(Path::new(ext_manager::LIGHTDM_CONF));
 
-        // conky: планировщик ищет конфиг в целевом каталоге ПОСЛЕ копирования
-        // — проецируем источник (dest после rmtree+copytree равен ему 1-в-1).
+        // conky: the planner looks for the config in the target directory AFTER copying
+        // — we project the source (dest after rmtree+copytree equals it one to one).
         let conky_dest = PathBuf::from(crate::utils::expand_user(
             "~/.config/conky",
             &home,
@@ -460,10 +460,10 @@ pub fn plan_snapshot(ext: &Extension, tmp_base: &Path, install: bool) -> Value {
             _ => {}
         }
 
-        // .plasmoid: ручная ветка планировщика (kpackagetool нет либо не
-        // сработал) читает дерево РАСПАКОВАННОГО архива. Распаковываем заранее
-        // в тот путь, который выдаст первый mkdtemp плана, — иначе ветка
-        // увидела бы пустоту.
+        // .plasmoid: the planner's manual branch (no kpackagetool or it did not
+        // work) reads the tree of the UNPACKED archive. We unpack in advance
+        // into the path the plan's first mkdtemp will give — otherwise the branch
+        // would see emptiness.
         if ext.ext_type() == "theme-plasmoid" {
             if let Some(file) = first_plasmoid_archive(&ext.dir.join("data")) {
                 let tmp0 = tmp_base.join("rexon_plasmoid_0");
@@ -480,25 +480,25 @@ pub fn plan_snapshot(ext: &Extension, tmp_base: &Path, install: bool) -> Value {
 }
 
 // ============================================================================
-// План: планировщик решает
+// The plan: the planner decides
 // ============================================================================
 
-/// Готовый план вместе с тем, что уже успело выполниться при его сборке.
+/// A ready plan together with what has already been executed while building it.
 pub struct Plan {
     pub steps: Vec<ExtStep>,
-    /// Пробы, ИСПОЛНЕННЫЕ колбэком `run_ok` прямо во время генерации, — их
-    /// одноимённые шаги исполнитель пропустит по очереди.
+    /// Probes EXECUTED by the `run_ok` callback right during generation — the executor
+    /// will skip their same-named steps in turn.
     pub pre_ran: Vec<Vec<String>>,
-    /// Рабочий каталог плана под `/tmp`; сносится в конце прогона.
+    /// The plan's working directory under `/tmp`; removed at the end of the run.
     pub tmp_base: PathBuf,
-    /// План установки (`true`) или удаления: от этого зависит, что делать с
-    /// системной частью на SteamOS — см. [`exec_plan`].
+    /// An install plan (`true`) or an uninstall one: this decides what to do with
+    /// the system part on SteamOS — see [`exec_plan`].
     pub install: bool,
 }
 
-/// `tempfile.mkdtemp(prefix=…, dir=…)` без внешних крейтов: имя из времени и
-/// счётчика, создание — `create_dir` (падает, если имя занято, — значит
-/// каталог наш и только наш).
+/// `tempfile.mkdtemp(prefix=…, dir=…)` without external crates: the name from the time and
+/// a counter, creation — `create_dir` (fails if the name is taken — so the
+/// directory is ours and ours only).
 pub(crate) fn mkdtemp(dir: &Path, prefix: &str) -> ExecResult<PathBuf> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -518,22 +518,22 @@ pub(crate) fn mkdtemp(dir: &Path, prefix: &str) -> ExecResult<PathBuf> {
     err(tr("couldn't create a temporary folder: all names are taken"))
 }
 
-/// Собрать план установки либо удаления (порт `_plan_steps`).
+/// Build an install or uninstall plan (port of `_plan_steps`).
 ///
-/// ⚠️ Колбэк `run_ok` ЗАПУСКАЕТ пробы уже здесь, в том же порядке, в каком их
-/// звал оригинал (`kpackagetool -u`/`-i`, `systemctl is-active`), — иначе
-/// планировщик не узнает, какую ветку выбрать. Их шаги исполнитель потом
-/// пропустит по списку `pre_ran`.
+/// ⚠️ The `run_ok` callback RUNS the probes already here, in the same order in which
+/// the original called them (`kpackagetool -u`/`-i`, `systemctl is-active`) — otherwise
+/// the planner will not know which branch to choose. The executor then skips their steps
+/// by the `pre_ran` list.
 pub fn make_plan(ext: &Extension, install: bool) -> ExecResult<Plan> {
-    // dir="/tmp" обязателен: staged-пути плана обязаны пройти realpath-проверку
-    // stage-helper'а (как `mkdtemp(dir="/tmp")` у оригинала).
+    // dir="/tmp" is mandatory: the plan's staged paths must pass the stage-helper's realpath
+    // check (like the original's `mkdtemp(dir="/tmp")`).
     let tmp_base = mkdtemp(Path::new("/tmp"), "rexon_plan_")?;
     let built = build_plan(ext, install, &tmp_base);
     match built {
         Ok((steps, pre_ran)) => Ok(Plan { steps, pre_ran, tmp_base, install }),
         Err(e) => {
-            // Временный каталог за собой убираем, а ошибку отдаём наверх:
-            // план либо есть, либо установку начинать нельзя.
+            // We clean up the temporary directory after ourselves and pass the error up:
+            // either there is a plan or the installation must not start.
             let _ = std::fs::remove_dir_all(&tmp_base);
             Err(e)
         }
@@ -557,8 +557,8 @@ fn build_plan(
         if argv.is_empty() {
             return false;
         }
-        // kpackagetool -i: оригинал запускает -u непосредственно перед -i —
-        // исполняем пару в исходном порядке.
+        // kpackagetool -i: the original runs -u right before -i —
+        // we execute the pair in the original order.
         if argv.len() == 3 && argv[1] == "-i" {
             let u_argv = vec![argv[0].clone(), "-u".to_string(), argv[2].clone()];
             pre_ran.borrow_mut().push(u_argv.clone());
@@ -577,8 +577,8 @@ fn build_plan(
         run_capture(&argv, timeout) == Some(0)
     };
 
-    // Помощник ищется в обоих законных каталогах (пакет — `/usr/lib`,
-    // ручная установка — `/usr/local/lib`), как и остальные помощники.
+    // The helper is looked for in both legitimate directories (a package — `/usr/lib`,
+    // a manual install — `/usr/local/lib`), like the other helpers.
     let system_helper_path = crate::installer::system_helper_path();
     let system_helper_exists = crate::system_plan::is_exec_file(system_helper_path);
     let family = if crate::system::DistroDetector::detect_live().family_live()
@@ -614,18 +614,18 @@ fn build_plan(
     Ok((steps, pre_ran.into_inner()))
 }
 
-/// Задеплоен ли helper (порт `_helper_available`): бинарь и его polkit-правило
-/// оба на месте.
+/// Whether the helper is deployed (port of `_helper_available`): the binary and its polkit rule
+/// are both in place.
 fn helper_available(helper_path: &str, policy_path: &str) -> bool {
     Path::new(helper_path).exists() && Path::new(policy_path).exists()
 }
 
 // ============================================================================
-// Исполнитель: исполнитель делает
+// The executor: the executor does
 // ============================================================================
 
-/// `subprocess.run(argv, capture_output=True, timeout=…)` — код возврата либо
-/// `None` (не запустилось / таймаут / убито сигналом).
+/// `subprocess.run(argv, capture_output=True, timeout=…)` — the return code or
+/// `None` (did not start / timeout / killed by a signal).
 fn run_capture(argv: &[String], timeout_secs: u64) -> Option<i32> {
     if argv.is_empty() {
         return None;
@@ -643,8 +643,8 @@ fn run_capture(argv: &[String], timeout_secs: u64) -> Option<i32> {
             Ok(Some(status)) => return status.code(),
             Ok(None) => {
                 if Instant::now() >= deadline {
-                    // Таймаут у Python убивает процесс и поднимает исключение;
-                    // здесь тот же итог одним значением: «успеха не было».
+                    // In Python a timeout kills the process and raises an exception;
+                    // here the same outcome as a single value: "there was no success".
                     let _ = child.kill();
                     let _ = child.wait();
                     return None;
@@ -656,43 +656,43 @@ fn run_capture(argv: &[String], timeout_secs: u64) -> Option<i32> {
     }
 }
 
-// Копирование — общее с прочими путями установки (`install_plan`).
+// Copying is shared with the other install paths (`install_plan`).
 use crate::install_plan::copy_file;
 
 // ============================================================================
-// Системная часть плана (всё, что идёт через pkexec)
+// The system part of the plan (everything that goes through pkexec)
 // ============================================================================
 //
-// ⭐ Починка 28.09.2026 — молчаливый отказ. Прежде исполнитель ЗВАЛ pkexec и
-// ВЫБРАСЫВАЛ ответ: и у скрипта-обёртки, и у помощника Rexon. Отказ в
-// пароле, «файловая система только для чтения» (SteamOS), любая ошибка
-// записи в `/usr` — человек нажимал «Установить», видел «установлено», а
-// тема экрана входа или загрузки так и не появлялась. Теперь любой
-// ненулевой ответ становится ошибкой шага с текстом для человека, и
-// конвейер установки откатывается так же, как при любой другой ошибке.
+// ⭐ Fix of 28.09.2026 — a silent refusal. Previously the executor CALLED pkexec and
+// THREW AWAY the answer: both for the wrapper script and for the Rexon helper. A password
+// refusal, "read-only file system" (SteamOS), any error
+// writing to `/usr` — the person pressed «Install», saw "installed", and
+// the login or boot screen theme never appeared. Now any
+// non-zero answer becomes a step error with text for the person, and
+// the install pipeline rolls back just as with any other error.
 
-/// Чем кончился привилегированный шаг.
+/// How a privileged step ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrivOutcome {
-    /// Код 0.
+    /// Code 0.
     Done,
-    /// pkexec вернул код возврата ≠ 0; `stderr` — что сказала команда.
+    /// pkexec returned a return code ≠ 0; `stderr` — what the command said.
     Failed { code: i32, stderr: String },
-    /// Не уложились во время — процесс остановлен.
+    /// Did not fit into the time — the process was stopped.
     TimedOut,
-    /// pkexec не запустился вовсе (его нет в системе).
+    /// pkexec did not start at all (it is not on the system).
     NotStarted,
 }
 
-// Какие шаги системные и что они пишут (SteamOS, проверка темы до пароля) —
-// решает общий исполнитель (`install_plan`); здесь — только сам запуск.
+// Which steps are system ones and what they write (SteamOS, checking the theme before the password) is
+// decided by the shared executor (`install_plan`); here — only the launch itself.
 
-/// Текст для человека по исходу привилегированного шага; `None` — успех.
+/// The text for the person by the privileged step's outcome; `None` — success.
 ///
-/// Отказ в пароле узнаётся так же, как во всех прочих системных действиях
-/// Rexon ([`crate::system_plan::pkexec_auth_denied`]). У прочих отказов в
-/// текст идёт последняя строка ответа команды — там и «только для чтения»,
-/// и «нет места», и что угодно ещё, чего мы заранее не знаем.
+/// A password refusal is recognized the same way as in all other system actions of
+/// Rexon ([`crate::system_plan::pkexec_auth_denied`]). For other refusals the
+/// text gets the last line of the command's answer — "read-only",
+/// "no space" and anything else we cannot know in advance are all there.
 pub fn privileged_failure_text(outcome: &PrivOutcome) -> Option<String> {
     match outcome {
         PrivOutcome::Done => None,
@@ -724,10 +724,10 @@ pub fn privileged_failure_text(outcome: &PrivOutcome) -> Option<String> {
     }
 }
 
-/// Запустить привилегированную команду, сохранив её ответ об ошибке.
+/// Run a privileged command, keeping its error answer.
 ///
-/// Поток ошибок уходит в файл, а не в канал: канал переполнился бы на
-/// многословной пересборке загрузочного образа, и процесс встал бы.
+/// The error stream goes to a file, not a pipe: a pipe would overflow on
+/// a verbose boot image rebuild, and the process would stall.
 fn run_privileged(argv: &[String], timeout_secs: u64, work: &Path) -> PrivOutcome {
     crate::log_info!("privileged", "запуск: {}", crate::applog::redact_argv(argv));
     let started = Instant::now();
@@ -750,10 +750,10 @@ fn run_privileged(argv: &[String], timeout_secs: u64, work: &Path) -> PrivOutcom
     outcome
 }
 
-/// Прежний путь системного шага — общим исполнителем команд
-/// ([`crate::utils::run`]: читатели каналов в своих потоках, многословная
-/// пересборка образа ядра процесс не подвесит). Своего `Command::new` для
-/// `pkexec` здесь нет (сторож `no_raw_pkexec_spawn_outside_privilege`).
+/// The old path of a system step — via the shared command executor
+/// ([`crate::utils::run`]: pipe readers in their own threads, a verbose
+/// kernel image rebuild will not hang the process). There is no `Command::new` of our own for
+/// `pkexec` here (the guard `no_raw_pkexec_spawn_outside_privilege`).
 fn run_privileged_inner(argv: &[String], timeout_secs: u64, _work: &Path) -> PrivOutcome {
     let report = crate::utils::run(
         &crate::utils::RunSpec {
@@ -769,7 +769,7 @@ fn run_privileged_inner(argv: &[String], timeout_secs: u64, _work: &Path) -> Pri
         Ro::Ok => PrivOutcome::Done,
         Ro::Timeout => PrivOutcome::TimedOut,
         Ro::Error => PrivOutcome::NotStarted,
-        // Убит сигналом — кода нет; для человека это такой же отказ.
+        // Killed by a signal — there is no code; for the person it is the same refusal.
         Ro::Failed => PrivOutcome::Failed {
             code: report.returncode.unwrap_or(-1),
             stderr: crate::utils::decode_text(&report.stderr),
@@ -777,12 +777,12 @@ fn run_privileged_inner(argv: &[String], timeout_secs: u64, _work: &Path) -> Pri
     }
 }
 
-/// Операция сеанса прав для системного шага плана `.rxn` и её файлы
-/// (каталоги раскладки). argv строит ядро (`ext_manager`: помощники
-/// раскладки и системных тем); операция принимается, ТОЛЬКО если её путь
-/// «как сейчас» ([`PrivOp::pkexec_argv`]) даёт ровно этот argv — второй
-/// правды о флагах и путях помощников нет. `None` — шаг идёт прежним путём
-/// (скрипт-обёртка, иной помощник).
+/// The privilege session operation for a system step of a `.rxn` plan and its files
+/// (the layout directories). The core builds the argv (`ext_manager`: the layout
+/// and system theme helpers); the operation is accepted ONLY if its "as now" path
+/// ([`PrivOp::pkexec_argv`]) gives exactly this argv — there is no second
+/// truth about the helpers' flags and paths. `None` — the step goes the old way
+/// (the wrapper script, another helper).
 pub(crate) fn step_priv_op(step: &ExtStep) -> Option<(crate::privilege::op::PrivOp, Vec<String>)> {
     use crate::privilege::op::{Helpers, LocalFile, PrivOp, SystemThemeKind, SystemThemeOp, ThemeFamily};
     let ExtStep::Run { argv, .. } = step else { return None };
@@ -823,11 +823,11 @@ pub(crate) fn step_priv_op(step: &ExtStep) -> Option<(crate::privilege::op::Priv
     (op.pkexec_argv(&helpers).as_ref() == Some(argv)).then_some((op, files))
 }
 
-/// Системная команда помощника тем и раскладок (argv ядра) через сеанс
-/// прав окна — для исполнителей, у которых нет плана `.rxn`, а есть argv
-/// (магазин оформления: установка, «Применить», «Удалить» системной темы).
-/// `None` — команда не из этих или сеанса нет: исполнитель запускает её
-/// прежним путём. Ответ помощника — в виде отчёта обычного запуска.
+/// A system command of the themes and layouts helper (the core's argv) through the window's
+/// privilege session — for executors that have no `.rxn` plan but have an argv
+/// (the appearance store: installing, «Apply», «Remove» of a system theme).
+/// `None` — the command is not one of these or there is no session: the executor runs it
+/// the old way. The helper's answer is in the form of an ordinary launch report.
 pub(crate) fn run_system_argv_session(argv: &[String], timeout_secs: Option<u64>) -> Option<crate::utils::RunReport> {
     let (op, files) = step_priv_op(&ExtStep::Run { argv: argv.to_vec(), timeout_secs })?;
     let out = crate::privilege::run::run_live(&op, &files, None, &mut |_| {})?;
@@ -842,7 +842,7 @@ pub(crate) fn run_system_argv_session(argv: &[String], timeout_secs: Option<u64>
     })
 }
 
-/// Итог сеанса прав в виде итога системного шага.
+/// The privilege session's result in the form of a system step result.
 fn priv_outcome_of(out: &crate::system_exec::RunOut) -> PrivOutcome {
     use crate::utils::RunOutcome as Ro;
     match (out.outcome, out.returncode) {
@@ -851,18 +851,18 @@ fn priv_outcome_of(out: &crate::system_exec::RunOut) -> PrivOutcome {
         (Ro::Error, _) => PrivOutcome::NotStarted,
         (_, code) => PrivOutcome::Failed {
             code: code.unwrap_or(-1),
-            // Пояснение помощника — строками хода (`stdout`), отказы клиента — в `stderr`.
+            // The helper's explanation — as progress lines (`stdout`), client refusals — in `stderr`.
             stderr: if out.stderr.trim().is_empty() { out.stdout.clone() } else { out.stderr.clone() },
         },
     }
 }
 
-/// Живой исполнитель привилегированного шага: скрипт-обёртка —
-/// `pkexec bash <файл>` (таймаут 60 с, как у оригинала), помощник — его argv.
+/// The live executor of a privileged step: the wrapper script —
+/// `pkexec bash <file>` (timeout 60 s, as in the original), the helper — its argv.
 fn run_privileged_step_live(step: &ExtStep) -> PrivOutcome {
     use std::os::unix::fs::PermissionsExt;
-    // Сеанс прав окна (один пароль); его нет или шаг ему не по силам —
-    // прежний путь. Отказ помощника прежним путём не повторяется (З5).
+    // The window's privilege session (one password); if there is none or the step is beyond it —
+    // the old path. A helper refusal is not repeated via the old path (Z5).
     if let Some((op, files)) = step_priv_op(step) {
         if let Some(out) = crate::privilege::run::run_live(&op, &files, None, &mut |_| {}) {
             let outcome = priv_outcome_of(&out);
@@ -904,23 +904,23 @@ fn run_privileged_step_live(step: &ExtStep) -> PrivOutcome {
     outcome
 }
 
-/// Исполнить план ядра (порт `_exec_plan`): те же побочные вызовы, что делал
-/// Python. Ошибка шага пробрасывается — семантика оригинала: сбой установки
-/// приводит к откату в [`install_from_file`].
+/// Execute the core's plan (port of `_exec_plan`): the same side calls Python
+/// made. A step error is propagated — the original's semantics: an install failure
+/// leads to a rollback in [`install_from_file`].
 ///
-/// Системная часть (шаги через pkexec) на SteamOS не исполняется вовсе:
-/// системный раздел там закрыт, а обновление стёрло бы записанное. Установка
-/// с такой частью ОТКАЗЫВАЕТ целиком ещё до первого шага — с причиной для
-/// человека; удаление системную часть пропускает (снести её там нечем, а
-/// пользовательскую часть человек убрать вправе).
+/// The system part (steps through pkexec) is not executed on SteamOS at all:
+/// the system partition is closed there, and an update would erase what was written. An installation
+/// with such a part REFUSES entirely even before the first step — with a reason for
+/// the person; uninstalling skips the system part (there is nothing to remove it with there, and
+/// the person has the right to remove the user part).
 pub fn exec_plan(plan: Plan) -> ExecResult<()> {
     exec_plan_noted(plan).map(|_| ())
 }
 
-/// То же, с заметками для человека: что из плана сделано не было и почему
-/// ([`ExtStep::Notice`], неудавшийся [`ExtStep::RunNoted`]).
+/// The same, with notes for the person: what of the plan was not done and why
+/// ([`ExtStep::Notice`], a failed [`ExtStep::RunNoted`]).
 ///
-/// План установки при сбое откатывается целиком (`install_plan::exec`).
+/// On failure the install plan is rolled back entirely (`install_plan::exec`).
 pub fn exec_plan_noted(plan: Plan) -> ExecResult<Vec<String>> {
     let mut undo = if plan.install { crate::install_plan::Undo::new() } else { crate::install_plan::Undo::off() };
     let outcome = exec_plan_noted_undo(plan, &mut undo);
@@ -928,9 +928,9 @@ pub fn exec_plan_noted(plan: Plan) -> ExecResult<Vec<String>> {
     outcome
 }
 
-/// То же, но откат копится в `undo` вызывающего и не исполняется: так
-/// установка `.rxn` снимает при сбое и план, и копию пакета, и то, что
-/// сорвалось уже после плана (запись состояния).
+/// The same, but the rollback accumulates in the caller's `undo` and is not executed: this way
+/// a `.rxn` installation on failure removes the plan, the package copy, and whatever
+/// broke after the plan (writing the state).
 fn exec_plan_noted_undo(plan: Plan, undo: &mut crate::install_plan::Undo) -> ExecResult<Vec<String>> {
     let Plan { steps, mut pre_ran, tmp_base, install } = plan;
     let ctx = ExecCtx {
@@ -944,7 +944,7 @@ fn exec_plan_noted_undo(plan: Plan, undo: &mut crate::install_plan::Undo) -> Exe
     outcome.map(|()| notes)
 }
 
-/// Внешнее для прогона плана: где мы и чем исполнять системные шаги.
+/// The externals for a plan run: where we are and what to execute system steps with.
 struct ExecCtx<'a> {
     steamos: bool,
     install: bool,
@@ -970,11 +970,11 @@ fn exec_steps_noted(
 }
 
 // ============================================================================
-// Скриптовые расширения и .desktop
+// Script extensions and .desktop
 // ============================================================================
 
-/// Запустить `install.sh`/`uninstall.sh` расширения (порт `_run_script`):
-/// `bash <скрипт>` из каталога расширения, таймаут 120 с.
+/// Run an extension's `install.sh`/`uninstall.sh` (port of `_run_script`):
+/// `bash <script>` from the extension directory, timeout 120 s.
 fn run_script(ext: &Extension, name: &str) -> bool {
     use std::os::unix::fs::PermissionsExt;
     let script = ext.dir.join(name);
@@ -1009,7 +1009,7 @@ fn run_script(ext: &Extension, name: &str) -> bool {
     }
 }
 
-/// Путь `.desktop`-файла расширения в меню пользователя.
+/// The path of the extension's `.desktop` file in the user menu.
 fn desktop_entry_path(ext_id: &str) -> PathBuf {
     PathBuf::from(crate::utils::expand_user_xdg(
         "~/.local/share/applications",
@@ -1020,11 +1020,11 @@ fn desktop_entry_path(ext_id: &str) -> PathBuf {
     .join(format!("rexon-{ext_id}.desktop"))
 }
 
-/// Порт `install_desktop_entry`: копия `.desktop` в меню плюс дописанная
-/// категория, если её в файле не было.
+/// Port of `install_desktop_entry`: a copy of the `.desktop` in the menu plus an appended
+/// category if the file did not have one.
 fn install_desktop_entry(ext: &Extension) -> bool {
-    // Имя файла фиксировано (`Extension.desktop_file` — это `<каталог>/app.desktop`),
-    // манифест его не задаёт.
+    // The file name is fixed (`Extension.desktop_file` is `<dir>/app.desktop`),
+    // the manifest does not set it.
     let src = ext.dir.join("app.desktop");
     if !src.is_file() {
         return false;
@@ -1044,7 +1044,7 @@ fn install_desktop_entry(ext: &Extension) -> bool {
     }
 }
 
-/// Порт `remove_desktop_entry`.
+/// Port of `remove_desktop_entry`.
 fn remove_desktop_entry(ext_id: &str) {
     let dest = desktop_entry_path(ext_id);
     if dest.exists() {
@@ -1053,50 +1053,50 @@ fn remove_desktop_entry(ext_id: &str) {
 }
 
 // ============================================================================
-// Состояние вкл/выкл
+// On/off state
 // ============================================================================
 
-/// Отметить расширение `ext_id` включённым/выключенным (`Some`) или забыть
-/// его (`None` — снято). Пишется только общий журнал установки (шаг 5б
-/// слияния установщиков); карта состояний `extensions_state.json` — его
-/// зеркало тем же текстом, что писал прежний `_save_state`
+/// Mark the extension `ext_id` as enabled/disabled (`Some`) or forget
+/// it (`None` — removed). Only the shared install log is written (step 5b
+/// of merging the installers); the state map `extensions_state.json` is its
+/// mirror with the same text the old `_save_state` wrote
 /// (`install_journal::set_rxn_enabled_at`).
 fn save_state_with(ext_id: &str, set: Option<bool>) -> ExecResult<()> {
     crate::install_journal::set_rxn_enabled_at(&rexon_config_dir(), ext_id, set)
         .map_err(|e| trf("couldn't save the state: %1", &[&e]))
 }
 
-/// Каталог конфигов Rexon, где лежат карта состояний и общий журнал.
+/// The Rexon config directory where the state map and the shared log are.
 fn rexon_config_dir() -> PathBuf {
     qt_extensions::state_file().parent().map(Path::to_path_buf).unwrap_or_default()
 }
 
 // ============================================================================
-// Конвейеры вкладки
+// The tab's pipelines
 // ============================================================================
 
-/// Итог установки: имя расширения плюс то, о чём человек обязан узнать.
+/// The install result: the extension name plus what the person must learn about.
 pub struct Installed {
-    /// ИМЯ установленного расширения — ровно то, что показывала строка
-    /// состояния вкладки (`ext.name` из Python-воркера).
+    /// The NAME of the installed extension — exactly what the tab's status
+    /// line showed (`ext.name` from the Python worker).
     pub name: String,
-    /// Предупреждения о ПРОПУЩЕННЫХ необязательных шагах: установка прошла,
-    /// но что-то сделано упрощённо, и молчать об этом нельзя.
+    /// Warnings about SKIPPED optional steps: the installation succeeded,
+    /// but something was done in a simplified way, and that must not be kept silent.
     pub notes: Vec<String>,
 }
 
-/// Установить расширение из файла: `.rxn` напрямую, чужой формат — через
-/// конвертацию.
+/// Install an extension from a file: a `.rxn` directly, a foreign format — via
+/// conversion.
 pub fn install_from_file(rxn_path: &str) -> ExecResult<Installed> {
     let path = Path::new(rxn_path);
     if !path.is_file() {
         return err(trf("File not found: %1", &[&rxn_path]));
     }
 
-    // Чужой формат — сначала конвертация в .rxn, потом обычная установка.
-    // Порядок проверок и имена временных каталогов — как у оригинала
-    // (`_install_from_file_unlocked`): сперва .themepack, затем остальные
-    // форматы Windows.
+    // A foreign format — first conversion to .rxn, then a regular installation.
+    // The order of checks and the names of temporary directories — as in the original
+    // (`_install_from_file_unlocked`): first .themepack, then the other
+    // Windows formats.
     if let Some(converted) = import_foreign(rxn_path)? {
         let outcome = install_rxn(Path::new(&converted.rxn_path));
         let _ = std::fs::remove_dir_all(&converted.tmp_dir);
@@ -1106,20 +1106,20 @@ pub fn install_from_file(rxn_path: &str) -> ExecResult<Installed> {
     install_rxn(path).map(|(name, notes)| Installed { name, notes })
 }
 
-/// Установка готового `.rxn` (порт `_install_rxn`).
+/// Installing a ready `.rxn` (port of `_install_rxn`).
 ///
-/// ⚠️ Весть мосту живёт ЗДЕСЬ, а не у вызывающих: через эту функцию идут и
-/// `.rxn`, и сконвертированные темы Windows, и оба окна, которые ставят
-/// расширения («Расширения» и импорт тем в «Настройках»). Оригинал слал
-/// `extension_installed` из того же места (`_install_rxn`), а Rust-окно не
-/// слало вовсе — внешнее приложение моста об установке не узнавало.
+/// ⚠️ The message to the bridge lives HERE, not with the callers: this function handles both
+/// `.rxn` and converted Windows themes, and both windows that install
+/// extensions («Extensions» and theme import in «Settings»). The original sent
+/// `extension_installed` from the same place (`_install_rxn`), while the Rust window did not
+/// send it at all — the bridge's external application never learned about the installation.
 fn install_rxn(path: &Path) -> ExecResult<(String, Vec<String>)> {
     let tmp = mkdtemp(&std::env::temp_dir(), "rexon_rxn_")?;
     let mut outcome = install_unpacked(path, &tmp);
     let _ = std::fs::remove_dir_all(&tmp);
-    // Любой пакет мог положить значки или курсоры: заодно проверить общий
-    // набор `hicolor` профиля — урезанный `index.theme` в нём прячет значки
-    // всего стола ([`crate::icon_hygiene`]). Проверка — одно чтение файла.
+    // Any package might have put icons or cursors: also check the profile's shared
+    // `hicolor` set — a truncated `index.theme` in it hides the icons of
+    // the whole desktop ([`crate::icon_hygiene`]). The check is one file read.
     if let Ok((_, notes)) = &mut outcome {
         if let Some(line) = crate::icon_hygiene::heal_live() {
             notes.push(line);
@@ -1128,20 +1128,20 @@ fn install_rxn(path: &Path) -> ExecResult<(String, Vec<String>)> {
     if let Ok((name, _)) = &outcome {
         let bridge = crate::rexon_bridge::RexonBridge::new_default();
         if let Err(e) = announce_installed(&bridge, name, std::time::SystemTime::now()) {
-            // Мост вспомогательный: его отказ установку не отменяет.
+            // The bridge is auxiliary: its refusal does not cancel the installation.
             crate::log_warn!("bridge", "весть об установке «{name}» не отправлена — {e}");
         }
     }
     outcome
 }
 
-/// Сказать мосту, что расширение установлено (порт
+/// Tell the bridge that the extension is installed (port of
 /// `rexon_bridge.notify("notify_extension_installed", …)`).
 ///
-/// Уборка старше 5 минут — как у `notify` оригинала: кто сорит событиями,
-/// тот и подметает. Подметается и при сбое отправки: старые файлы от этого
-/// нужнее не становятся. Удаление расширения вести не шлёт — у оригинала
-/// такого события нет, и у слушателя на него нет реплик.
+/// Cleaning up files older than 5 minutes — as in the original's `notify`: whoever litters with events
+/// sweeps up. It sweeps up on a send failure too: old files do not become
+/// more needed because of it. Uninstalling an extension sends no message — the original has
+/// no such event, and the listener has no lines for it.
 pub fn announce_installed(
     bridge: &crate::rexon_bridge::RexonBridge,
     name: &str,
@@ -1157,15 +1157,15 @@ pub fn announce_installed(
     sent
 }
 
-/// Готовый `.rxn` из чужого формата, временный каталог и что пропущено.
+/// A ready `.rxn` from a foreign format, the temporary directory and what was skipped.
 struct Converted {
     rxn_path: String,
     tmp_dir: String,
     notes: Vec<String>,
 }
 
-/// Семейство пакетного менеджера этой машины — чтобы называть пакеты
-/// ЕЁ именами, а не арчевыми.
+/// The package manager family of this machine — to name packages
+/// by ITS names, not by Arch ones.
 fn pkg_family() -> String {
     crate::system::DistroDetector::detect_live()
         .family_live()
@@ -1173,24 +1173,24 @@ fn pkg_family() -> String {
         .to_string()
 }
 
-/// Конвертировать чужой формат в `.rxn`. `Ok(None)` — формат не чужой,
-/// файл ставится как есть.
+/// Convert a foreign format to `.rxn`. `Ok(None)` — the format is not foreign,
+/// the file is installed as is.
 ///
-/// ⭐ ДВА МОЛЧАНИЯ ЗАКРЫТЫ ЗДЕСЬ.
+/// ⭐ TWO SILENCES ARE CLOSED HERE.
 ///
-/// Первое — конвертеры. Импорт держится на посторонних программах
-/// (`cabextract`, `convert`, `7z`, `wrestool`…). Обязательной нет — отказ
-/// по-русски с именем пакета ЭТОГО дистрибутива, ещё до первого побочного
-/// действия. Необязательной нет — импорт идёт упрощённо, и это записывается
-/// в предупреждения. Оригинал (`_require_tools` в `extensions/importers.py`)
-/// такие предупреждения только клал в журнал: покупатель их не видел никогда,
-/// и это тот же молчаливый отказ, только с записью в файл (правило #16 —
-/// баг оригинала чиним в порте).
+/// The first is the converters. Import relies on third-party programs
+/// (`cabextract`, `convert`, `7z`, `wrestool`…). A mandatory one is missing — a refusal
+/// in Russian with the package name of THIS distribution, even before the first side
+/// action. An optional one is missing — the import goes in a simplified way, and that is recorded
+/// in the warnings. The original (`_require_tools` in `extensions/importers.py`)
+/// only put such warnings into the log: the buyer never saw them,
+/// and it is the same silent refusal, only with a record in a file (rule #16 —
+/// the original's bug is fixed in the port).
 ///
-/// Второе — апскейл маленьких обоев (хвост импорта тем XP/Vista). Он
-/// подключён живым исполнителем [`crate::imp_live::upscale_hook`] — тем
-/// самым, что в процессе с Python подставлял мост. Если размер картинки
-/// определить нечем, шаг пропускается — но опять же вслух.
+/// The second is upscaling small wallpapers (the tail of importing XP/Vista themes). It
+/// is connected with the live executor [`crate::imp_live::upscale_hook`] — the very one
+/// the bridge substituted in a process with Python. If the picture size
+/// cannot be determined, the step is skipped — but again out loud.
 fn import_foreign(src: &str) -> ExecResult<Option<Converted>> {
     use crate::importers as imp;
 
@@ -1203,7 +1203,7 @@ fn import_foreign(src: &str) -> ExecResult<Option<Converted>> {
         return Ok(None);
     };
 
-    // Проверка конвертеров ДО первого побочного действия — как в оригинале.
+    // Checking the converters BEFORE the first side action — as in the original.
     let family = pkg_family();
     let tools_kind = if themepack {
         "themepack"
@@ -1229,8 +1229,8 @@ fn import_foreign(src: &str) -> ExecResult<Option<Converted>> {
         imp::windows_theme_import_to_rxn(&mut io, src, Some(&tmp_s))
     };
     notes.extend(crate::imp_live::take_notes(&skipped));
-    // Сбой РЕАЛЬНОЙ файловой операции важнее семантического исхода: в Python
-    // на этом месте улетал бы OSError и установка прекращалась.
+    // A failure of a REAL file operation matters more than the semantic outcome: in Python
+    // an OSError would fly at this place and the installation would stop.
     if let Some(message) = io.io_err {
         let _ = std::fs::remove_dir_all(&tmp);
         return err(message);
@@ -1239,7 +1239,7 @@ fn import_foreign(src: &str) -> ExecResult<Option<Converted>> {
         Ok(rxn_path) => Ok(Some(Converted { rxn_path, tmp_dir: tmp_s, notes })),
         Err(e) => {
             let _ = std::fs::remove_dir_all(&tmp);
-            // Текст ошибки — с именем пакета ЭТОЙ системы, а не арчевым.
+            // The error text — with the package name of THIS system, not the Arch one.
             err(imp::friendly_error_text(&e.message, &family)
                 .unwrap_or(e.message))
         }
@@ -1279,8 +1279,8 @@ fn install_unpacked(rxn_path: &Path, tmp: &Path) -> ExecResult<(String, Vec<Stri
     )
     .map_err(|e| e.message)?;
 
-    // Планировщик мог переписать манифест (вывод id у v4, миграция типов) —
-    // кладём его текст обратно ДО копирования, как делал оригинал.
+    // The planner might have rewritten the manifest (deriving the id for v4, type migration) —
+    // we put its text back BEFORE copying, as the original did.
     if let Some(rewritten) = &check.rewritten_manifest_text {
         std::fs::write(&manifest_path, rewritten)
             .map_err(|e| trf("couldn't write manifest.json: %1", &[&e]))?;
@@ -1289,9 +1289,9 @@ fn install_unpacked(rxn_path: &Path, tmp: &Path) -> ExecResult<(String, Vec<Stri
     let dest_dir = extensions_dir.join(&check.ext_id);
     std::fs::create_dir_all(&extensions_dir)
         .map_err(|e| trf("couldn't create the extensions folder: %1", &[&e]))?;
-    // Один откат на всю установку — копию пакета, план и запись состояния
-    // (шаг 4 слияния установщиков): сбой в любом месте снимает положенное
-    // этой установкой и возвращает замещённое, профиль — как до неё.
+    // One rollback for the whole installation — the package copy, the plan and the state record
+    // (step 4 of merging the installers): a failure anywhere removes what this
+    // installation placed and returns what it displaced, the profile is as before it.
     let mut undo = crate::install_plan::Undo::new();
     if let Err(e) = crate::install_plan::copy_tree(Path::new(&src_dir), &dest_dir, &mut undo) {
         undo.finish(false);
@@ -1304,8 +1304,8 @@ fn install_unpacked(rxn_path: &Path, tmp: &Path) -> ExecResult<(String, Vec<Stri
         let ext = Extension::load_from_dir(&dest_dir, &state)
             .map_err(|e| trf("the extension manifest was not accepted: %1", &[&e]))?;
         let mut notes = Vec::new();
-        // Что положит план — для общего журнала, до исполнения (у скриптовых
-        // пакетов пути знает только их скрипт).
+        // What the plan will place — for the shared log, before execution (for script
+        // packages only their script knows the paths).
         let mut placed = None;
         if check.is_scripted {
             run_script(&ext, "install.sh");
@@ -1318,8 +1318,8 @@ fn install_unpacked(rxn_path: &Path, tmp: &Path) -> ExecResult<(String, Vec<Stri
                 std::fs::symlink_metadata(p).is_ok()
             }));
             notes = exec_plan_noted_undo(plan, &mut undo)?;
-            // Набор виджетов из файла: положение виджетов — накладкой,
-            // заметки «где набор» и «каких шрифтов нет».
+            // A widget set from a file: the widgets' position — as an overlay,
+            // the notes "where the set is" and "which fonts are missing".
             if let Some(set) = crate::conky_sets::set_of_manifest(&ext.manifest) {
                 let ctx = crate::de_apply::Ctx::live();
                 let state = std::env::var("XDG_STATE_HOME").ok().filter(|v| !v.is_empty());
@@ -1338,17 +1338,17 @@ fn install_unpacked(rxn_path: &Path, tmp: &Path) -> ExecResult<(String, Vec<Stri
         Ok((name, notes, ext, placed))
     };
     let outcome = finish();
-    // Откат: снять положенное этой установкой (копию пакета и файлы плана)
-    // и вернуть замещённое. Общий журнал пишется только после успеха.
+    // Rollback: remove what this installation placed (the package copy and the plan's files)
+    // and return what was displaced. The shared log is written only after success.
     undo.finish(outcome.is_ok());
     let (name, notes, ext, placed) = outcome?;
     record_in_journal(&ext, placed);
     Ok((name, notes))
 }
 
-/// Записать установку в общий журнал установки (после её успеха). Сбой
-/// журнала установку не отменяет: «включено» пакета уже записано
-/// ([`save_state_with`]), а без путей пакет снимается прежним путём, по плану.
+/// Write the installation into the shared install log (after its success). A log
+/// failure does not cancel the installation: the package's "enabled" is already recorded
+/// ([`save_state_with`]), and without paths the package is removed the old way, by the plan.
 fn record_in_journal(ext: &Extension, placed: Option<Vec<crate::install_journal::Placed>>) {
     use crate::install_journal as journal;
     let known = placed.is_some();
@@ -1362,32 +1362,32 @@ fn record_in_journal(ext: &Extension, placed: Option<Vec<crate::install_journal:
 }
 
 // ============================================================================
-// Курсоры из Windows: перевод заново из оригиналов — только по исправлению
+// Cursors from Windows: converting again from the originals — only for a fix
 // ============================================================================
 //
-// Решение Wehrwolfmann 14.11.2026: при открытии раздела «Курсоры» установленные
-// темы «из Windows», переведённые версией переводчика ниже текущей, в фоне
-// переводятся заново из оригиналов, сохранённых в пакете, — но только если
-// хотя бы одно исправление между их версией и текущей касается их
-// ([`imp::CURSOR_CONVERTER_CHANGES`]). Вышло побайтно то же — файлы не
-// заменяются, в manifest пишется только версия. Без оригиналов — пропуск без
-// шума. Ошибки — в журнал; человеку — только «Курсоры X обновлены».
+// Wehrwolfmann's decision of 14.11.2026: when the «Cursors» section is opened, installed
+// themes «from Windows» converted by a converter version lower than the current one are
+// converted again in the background from the originals kept in the package — but only if
+// at least one fix between their version and the current one concerns them
+// ([`imp::CURSOR_CONVERTER_CHANGES`]). If the result is byte for byte the same, the files are not
+// replaced, only the version is written to the manifest. Without originals — a skip without
+// noise. Errors go to the log; the person only gets "Cursors X updated".
 
 use crate::importers as imp;
 
-/// Итог прохода по установленным темам курсоров «из Windows».
+/// The result of a pass over installed cursor themes «from Windows».
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct CursorRefresh {
-    /// Заменены файлы: (имя темы, каталог темы в `data/` — имя для применения).
+    /// Files replaced: (theme name, the theme directory in `data/` — the name for applying).
     pub replaced: Vec<(String, String)>,
-    /// Перевод вышел тем же — записана только версия (id пакетов).
+    /// The conversion came out the same — only the version was written (package ids).
     pub version_only: Vec<String>,
-    /// Что не вышло (уже в журнале).
+    /// What did not work (already in the log).
     pub errors: Vec<String>,
 }
 
-/// Одинаковы ли два дерева: те же имена, файлы байт в байт, ссылки с теми же
-/// целями.
+/// Whether two trees are the same: the same names, files byte for byte, links with the same
+/// targets.
 fn same_tree(a: &Path, b: &Path) -> bool {
     let names = |d: &Path| -> Option<Vec<std::ffi::OsString>> {
         let mut v: Vec<_> = std::fs::read_dir(d).ok()?.flatten().map(|e| e.file_name()).collect();
@@ -1417,7 +1417,7 @@ fn same_tree(a: &Path, b: &Path) -> bool {
     })
 }
 
-/// Байты курсоров-оригиналов пакета (обычные файлы `.cur`/`.ani`).
+/// The bytes of the package's original cursors (regular `.cur`/`.ani` files).
 fn original_cursor_bytes(originals: &Path) -> Vec<Vec<u8>> {
     let Ok(rd) = std::fs::read_dir(originals) else {
         return Vec::new();
@@ -1439,14 +1439,14 @@ fn write_manifest(path: &Path, m: &Value) -> std::io::Result<()> {
     std::fs::write(path, imp::dumps_indent2(m))
 }
 
-/// Пройти установленные пакеты в `extensions_dir` и перевести заново темы
-/// курсоров «из Windows», которых касается исправление переводчика.
+/// Go through the installed packages in `extensions_dir` and convert again the cursor
+/// themes «from Windows» that a converter fix concerns.
 ///
-/// `current`/`changes` — версия и таблица переводчика (в живом пути —
-/// [`imp::CURSOR_CONVERTER_VERSION`] и [`imp::CURSOR_CONVERTER_CHANGES`]);
-/// `reinstall(id, новое дерево)` — поставить новое дерево пакета на место
-/// прежнего (в живом пути — [`replace_installed`]). Манифест нового дерева
-/// уже несёт версию `current`.
+/// `current`/`changes` — the converter's version and table (on the live path —
+/// [`imp::CURSOR_CONVERTER_VERSION`] and [`imp::CURSOR_CONVERTER_CHANGES`]);
+/// `reinstall(id, new tree)` — put the package's new tree in place of
+/// the previous one (on the live path — [`replace_installed`]). The new tree's manifest
+/// already carries the `current` version.
 pub fn refresh_windows_cursors_in(
     extensions_dir: &Path,
     current: u32,
@@ -1477,7 +1477,7 @@ pub fn refresh_windows_cursors_in(
         if from >= current {
             continue;
         }
-        // Старые темы без оригиналов перевести нечем — молча мимо.
+        // Old themes without originals have nothing to be converted from — silently skipped.
         let originals = dir.join("originals");
         if !originals.is_dir() {
             continue;
@@ -1512,7 +1512,7 @@ pub fn refresh_windows_cursors_in(
             imp::set_cursor_manifest_converter(&mut m, current);
             write_manifest(&fresh_manifest, &m).map_err(|e| e.to_string())?;
             if same_tree(&dir.join("data"), &fresh.join("data")) {
-                // Побайтно то же: файлы на месте, только версия.
+                // Byte for byte the same: the files are in place, only the version.
                 imp::set_cursor_manifest_converter(&mut manifest, current);
                 write_manifest(&manifest_path, &manifest).map_err(|e| e.to_string())?;
                 return Ok(None);
@@ -1536,16 +1536,16 @@ pub fn refresh_windows_cursors_in(
     out
 }
 
-/// Поставить новое дерево `fresh` пакета `ext_id` на место установленного —
-/// тем же планом, что обычная установка (копия темы в каталог курсоров
-/// заменяется по метке владельца). Сбой — всё как было.
+/// Put the new tree `fresh` of the package `ext_id` in place of the installed one —
+/// with the same plan as a regular installation (the theme copy in the cursors directory
+/// is replaced by the owner mark). On failure — everything as it was.
 pub fn replace_installed(ext_id: &str, fresh: &Path) -> ExecResult<()> {
     let extensions_dir = qt_extensions::extensions_dir();
     let dest = extensions_dir.join(ext_id);
     if !dest.is_dir() {
         return err(trf("Extension '%1' not found", &[&ext_id]));
     }
-    // Прежний пакет — в сторону на той же ФС (переименование), вернуть при сбое.
+    // The previous package — set aside on the same FS (a rename), restored on failure.
     let backup = rexon_config_dir().join(format!("extensions-old-{ext_id}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&backup);
     std::fs::rename(&dest, &backup).map_err(|e| trf("couldn't copy the extension: %1", &[&e]))?;
@@ -1587,11 +1587,11 @@ pub fn replace_installed(ext_id: &str, fresh: &Path) -> ExecResult<()> {
     }
 }
 
-/// Живой проход «Курсоров» ([`refresh_windows_cursors_in`] по каталогу
-/// расширений). Отдаёт строки для человека — только про реально
-/// заменённое; пусто — сказать нечего. Активная тема применяется заново
-/// тем же планом, что «Применить», и подпись честно говорит, где новый вид
-/// виден сразу, а где — после повторного входа.
+/// The live «Cursors» pass ([`refresh_windows_cursors_in`] over the extensions
+/// directory). Returns lines for the person — only about what was really
+/// replaced; empty — nothing to say. The active theme is applied again
+/// with the same plan as «Apply», and the label honestly says where the new look
+/// is visible right away and where — after logging in again.
 pub fn refresh_windows_cursors_live() -> Vec<String> {
     let report = refresh_windows_cursors_in(
         &qt_extensions::extensions_dir(),
@@ -1626,22 +1626,22 @@ pub fn refresh_windows_cursors_live() -> Vec<String> {
         .collect()
 }
 
-// ── Второй виджет обычного пакета Conky (дефект 14.11.2026) ─────────────
+// ── A second widget of a regular Conky package (defect of 14.11.2026) ────
 //
-// Прежняя установка обычного виджета Conky (`theme-conky`, не набор) клала
-// всю `data/` в `<корень Conky>/<id>`, а каждую подпапку `data/<подпапка>`
-// ещё и в `<корень Conky>/<подпапка>` (с меткой владельца). Вторая копия —
-// второй виджет с тем же файлом настроек: в списке он виден дважды и
-// запускается дважды. Новая установка вторую копию не кладёт
-// (`ext_manager::safe_install_into`); уже лежащие убирает проход ниже — и
-// только те, что Rexon положил сам и что с тех пор никто не менял.
+// The old installation of a regular Conky widget (`theme-conky`, not a set) put
+// the whole `data/` into `<Conky root>/<id>`, and each subfolder `data/<subfolder>`
+// also into `<Conky root>/<subfolder>` (with an owner mark). The second copy is
+// a second widget with the same settings file: it is visible twice in the list and
+// starts twice. A new installation does not put the second copy
+// (`ext_manager::safe_install_into`); the pass below removes those already there — and
+// only those Rexon put itself and nobody has changed since.
 
-/// Копия `dup` — то, что положил Rexon из `src`: только обычные файлы и
-/// папки (без ссылок), каждый файл есть в `src` с теми же байтами либо в
-/// том виде, в каком его оставила починка путей перед запуском
-/// ([`crate::de_apply::conky_repair_text`] для папки `widget`). Метка
-/// владельца в корне не в счёт. Лишний файл (виджет что-то записал сам,
-/// человек поправил) — не наша копия, она остаётся.
+/// The copy `dup` is what Rexon put from `src`: only regular files and
+/// folders (no links), each file is in `src` with the same bytes or in
+/// the form the path repair before launch left it in
+/// ([`crate::de_apply::conky_repair_text`] for the `widget` folder). The owner
+/// mark in the root does not count. An extra file (the widget wrote something itself,
+/// the person edited it) — not our copy, it stays.
 fn conky_copy_is_pristine(src: &Path, dup: &Path, home: &str, widget: &str, top: bool) -> bool {
     let Ok(entries) = std::fs::read_dir(dup) else { return false };
     let exists = |p: &str| Path::new(p).exists();
@@ -1682,17 +1682,17 @@ fn conky_copy_is_pristine(src: &Path, dup: &Path, home: &str, widget: &str, top:
     true
 }
 
-/// Убрать вторые копии обычных виджетов Conky у пакетов из
-/// `extensions_dir` (см. заметку выше). Копия `<корень>/<подпапка>`
-/// снимается, только если: пакет — обычный виджет (не набор: у набора
-/// подпапки и есть виджеты), его каталог `<корень>/<id>/<подпапка>` на
-/// месте (виджет никуда не пропадает), метка владельца — id этого пакета,
-/// содержимое — нетронутая копия ([`conky_copy_is_pristine`]). Работающая
-/// вторая копия при неработающей основной не снимается (виджет не исчезнет
-/// со стола посреди сеанса — снимется в следующий раз). Перед снятием
-/// процессы копии гасятся, её автозапуск переходит на тот же виджет в
-/// основном каталоге (вложенный `<id>/<подпапка>` у пакета из нескольких
-/// виджетов, иначе `<id>`), если у того своего нет. Возвращает снятые пути.
+/// Remove the second copies of regular Conky widgets for packages from
+/// `extensions_dir` (see the note above). The copy `<root>/<subfolder>`
+/// is removed only if: the package is a regular widget (not a set: in a set the
+/// subfolders are the widgets), its directory `<root>/<id>/<subfolder>` is in
+/// place (the widget does not go missing), the owner mark is this package's id,
+/// the contents are an untouched copy ([`conky_copy_is_pristine`]). A running
+/// second copy with a non-running main one is not removed (the widget will not vanish
+/// from the desktop in the middle of a session — it will be removed next time). Before removal
+/// the copy's processes are stopped, its autostart moves to the same widget in
+/// the main directory (a nested `<id>/<subfolder>` for a package of several
+/// widgets, otherwise `<id>`), if that one has none of its own. Returns the removed paths.
 pub fn heal_conky_duplicates(io: &dyn crate::animations::LookIo, ctx: &crate::de_apply::Ctx, extensions_dir: &Path) -> Vec<String> {
     let mut removed = Vec::new();
     let Ok(rd) = std::fs::read_dir(extensions_dir) else { return removed };
@@ -1740,8 +1740,8 @@ pub fn heal_conky_duplicates(io: &dyn crate::animations::LookIo, ctx: &crate::de
                 crate::log_info!("conky", "вторая копия «{dup}» пакета «{id}» изменена — оставлена");
                 continue;
             }
-            // Куда переходит этот виджет: вложенный `<id>/<подпапка>` у
-            // пакета из нескольких виджетов, иначе сам `<id>`.
+            // Where this widget moves to: a nested `<id>/<subfolder>` for
+            // a package of several widgets, otherwise `<id>` itself.
             let nested = format!("{id}/{name}");
             let target = if crate::de_apply::conky_nested_widgets(io, ctx, &id).contains(&nested) { nested } else { id.clone() };
             let running = running.get_or_insert_with(|| crate::de_apply::conky_running_ids(io, ctx));
@@ -1765,8 +1765,8 @@ pub fn heal_conky_duplicates(io: &dyn crate::animations::LookIo, ctx: &crate::de
     removed
 }
 
-/// Живой проход [`heal_conky_duplicates`] (старт Rexon). Проверки модулей
-/// живой профиль не трогают.
+/// The live pass of [`heal_conky_duplicates`] (Rexon start). Module checks
+/// do not touch the live profile.
 pub fn heal_conky_duplicates_live() {
     if cfg!(test) {
         return;
@@ -1775,7 +1775,7 @@ pub fn heal_conky_duplicates_live() {
     heal_conky_duplicates(&crate::animations::SystemIo, &ctx, &qt_extensions::extensions_dir());
 }
 
-/// Удалить расширение (порт `uninstall`).
+/// Uninstall an extension (port of `uninstall`).
 pub fn uninstall(ext_id: &str) -> ExecResult<()> {
     let state = qt_extensions::load_state();
     let Some(ext) = qt_extensions::installed_in(&qt_extensions::extensions_dir(), &state)
@@ -1792,12 +1792,12 @@ pub fn uninstall(ext_id: &str) -> ExecResult<()> {
         }
     } else {
         if ext.ext_type() == "theme-conky" {
-            // Погасить виджет (по номерам процессов) и снять его автозапуск.
+            // Stop the widget (by process ids) and remove its autostart.
             let ctx = crate::de_apply::Ctx::live();
             let dir = format!("{}/{ext_id}", crate::de_apply::conky_root(&ctx));
             crate::de_apply::conky_forget_widget(&crate::animations::SystemIo, &ctx, &dir);
-            // Набор виджетов из файла: виджеты — свои папки (только с меткой
-            // этого пакета; чужую одноимённую не трогаем).
+            // A widget set from a file: the widgets are their own folders (only with this
+            // package's mark; we do not touch a foreign one with the same name).
             if let Some(set) = crate::conky_sets::set_of_manifest(&ext.manifest) {
                 for w in &set.widgets {
                     let wdir = format!("{}/{}", crate::de_apply::conky_root(&ctx), w.folder);
@@ -1809,10 +1809,10 @@ pub fn uninstall(ext_id: &str) -> ExecResult<()> {
             }
         }
         let plan = make_plan(&ext, false)?;
-        // Файлы, которые положила установка, снимает общий журнал (шаг 3г
-        // слияния установщиков): только записанное и только своё. Выключение
-        // и перезагрузка оболочки — шаги плана вокруг него; пакет, поставленный
-        // до журнала (путей нет), — прежним планом целиком.
+        // Files the installation placed are removed by the shared log (step 3d
+        // of merging the installers): only what was recorded and only our own. Disabling
+        // and reloading the shell are plan steps around it; a package installed
+        // before the log (no paths) — with the old plan entirely.
         let journal = crate::install_journal::view_at(&rexon_config_dir());
         let key = crate::install_journal::key_of(crate::install_journal::Source::Rxn, ext_id);
         let by_journal = journal
@@ -1831,15 +1831,15 @@ pub fn uninstall(ext_id: &str) -> ExecResult<()> {
     save_state_with(ext_id, None)
 }
 
-/// Забыть расширения, чьи темы человек снял с плитки «Оформления».
+/// Forget extensions whose themes the person removed from an «Appearance» tile.
 ///
-/// Тема курсоров или значков из файла Windows встаёт расширением: копия
-/// пакета лежит в каталоге расширений, а сама тема — в каталоге тем.
-/// «Удалить» на плитке снимает только каталог темы, и запись расширения
-/// оставалась навсегда — с исходными файлами и пометкой «включено»
-/// (приёмка 10.10.2026). `removed` — снятые пути. Расширение забывается,
-/// когда снята хоть одна его тема и на диске не осталось ни одной.
-/// Возвращает номера забытых расширений.
+/// A cursor or icon theme from a Windows file is installed as an extension: a copy of the
+/// package lies in the extensions directory, and the theme itself — in the themes directory.
+/// «Remove» on a tile removes only the theme directory, and the extension record
+/// stayed forever — with the source files and the "enabled" mark
+/// (acceptance of 10.10.2026). `removed` — the removed paths. The extension is forgotten
+/// when at least one of its themes was removed and none is left on disk.
+/// Returns the ids of the forgotten extensions.
 pub fn forget_extensions_of_removed_themes(removed: &[String]) -> Vec<String> {
     if removed.is_empty() {
         return Vec::new();
@@ -1872,8 +1872,8 @@ pub fn forget_extensions_of_removed_themes(removed: &[String]) -> Vec<String> {
     forgotten
 }
 
-/// Объекты дополнения окружения в пакете (имена, как на диске после
-/// установки). Пусто — пакет не дополнение окружения.
+/// The desktop add-on's objects in the package (names, as on disk after
+/// installation). Empty — the package is not a desktop add-on.
 pub fn de_addon_objects(ext: &Extension) -> Vec<String> {
     let kind = ext.ext_type().to_string();
     if !matches!(crate::de_apply::mode(&kind), Some(crate::de_apply::Mode::Addon(_))) {
@@ -1904,8 +1904,8 @@ pub fn de_addon_objects(ext: &Extension) -> Vec<String> {
     crate::ext_manager::de_object_names(&env, &ExtInfo { dir: &dir, manifest: &ext.manifest })
 }
 
-/// Включено ли дополнение окружения сейчас — по правде окружения, а не по
-/// отметке Rexon (её человек мог обойти настройками самого стола).
+/// Whether the desktop add-on is enabled now — by the desktop's truth, not by
+/// Rexon's mark (the person may have bypassed it with the desktop's own settings).
 pub fn de_addon_enabled(ext: &Extension) -> bool {
     let io = crate::animations::SystemIo;
     let ctx = crate::de_apply::Ctx::live();
@@ -1914,12 +1914,12 @@ pub fn de_addon_enabled(ext: &Extension) -> bool {
         .any(|n| crate::de_apply::addon_enabled(&io, &ctx, ext.ext_type(), n))
 }
 
-/// Переключить расширение (порт `toggle`). Возвращает НОВОЕ состояние.
+/// Toggle an extension (port of `toggle`). Returns the NEW state.
 ///
-/// Дополнение окружения (скрипт KWin, расширение GNOME, апплет Cinnamon…)
-/// включается и выключается по-настоящему — тем же путём, что кнопка
-/// «Включить»/«Выключить» вкладки «Оформление» (`de_apply`); установка его
-/// больше не включает (решение 04.10.2026).
+/// A desktop add-on (a KWin script, a GNOME extension, a Cinnamon applet…)
+/// is enabled and disabled for real — the same way as the «Enable»/«Disable»
+/// button of the «Appearance» tab (`de_apply`); installation no longer
+/// enables it (decision of 04.10.2026).
 pub fn toggle(ext_id: &str) -> ExecResult<bool> {
     let state = qt_extensions::load_state();
     if let Some(ext) = qt_extensions::installed_in(&qt_extensions::extensions_dir(), &state)
@@ -1941,7 +1941,7 @@ pub fn toggle(ext_id: &str) -> ExecResult<bool> {
     toggle_flag(ext_id)
 }
 
-/// Переключить отметку «включено» скриптового расширения.
+/// Toggle the "enabled" mark of a script extension.
 fn toggle_flag(ext_id: &str) -> ExecResult<bool> {
     let state = qt_extensions::load_state();
     let Some(ext) = qt_extensions::installed_in(&qt_extensions::extensions_dir(), &state)
@@ -1962,7 +1962,7 @@ mod tests {
     use super::*;
     use crate::install_plan::steamos_block_of;
 
-    // ── Системная часть плана: отказ доходит до человека ─────────────────
+    // ── The system part of the plan: the refusal reaches the person ──────
 
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("rexon-ext-exec-{name}-{}", std::process::id()));
@@ -1971,8 +1971,8 @@ mod tests {
         dir
     }
 
-    /// План «пользовательская часть + системная часть» — как у темы экрана
-    /// входа: файл в домашней папке, затем помощник через pkexec.
+    /// A "user part + system part" plan — as for a login screen
+    /// theme: a file in the home folder, then the helper via pkexec.
     fn plan_with_system_part(dir: &Path, kind: &str) -> Vec<ExtStep> {
         vec![
             ExtStep::WriteFile { path: s(&dir.join("user-part.txt")), content: "x".into() },
@@ -1984,7 +1984,7 @@ mod tests {
     }
 
     fn exec_steps(steps: &[ExtStep], pre_ran: &mut Vec<Vec<String>>, ctx: &ExecCtx) -> ExecResult<()> {
-        // Как у `exec_plan_noted`: план установки при сбое откатывается.
+        // As with `exec_plan_noted`: on failure the install plan is rolled back.
         let mut undo = if ctx.install { crate::install_plan::Undo::new() } else { crate::install_plan::Undo::off() };
         let outcome = exec_steps_noted(steps, pre_ran, ctx, &mut Vec::new(), &mut undo);
         undo.finish(outcome.is_ok());
@@ -2002,9 +2002,9 @@ mod tests {
         (r, calls.get())
     }
 
-    /// Тема Plymouth с модулем из самой темы (код от root при загрузке)
-    /// отвергается ДО окна пароля — и через помощника, и на запасном
-    /// сыром `pkexec bash`, где других проверок нет вовсе.
+    /// A Plymouth theme with a module from the theme itself (code run as root at boot)
+    /// is rejected BEFORE the password window — both via the helper and on the fallback
+    /// raw `pkexec bash`, where there are no other checks at all.
     #[test]
     fn boot_splash_with_own_code_is_refused_before_password() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2030,7 +2030,7 @@ mod tests {
             assert_eq!(calls, 0, "окно пароля показано для отвергнутой темы");
             let _ = std::fs::remove_dir_all(&staged);
         }
-        // Штатная тема идёт дальше, к помощнику.
+        // A stock theme goes further, to the helper.
         std::fs::remove_file(src.join("evil.so")).unwrap();
         std::fs::write(src.join("neon.plymouth"), "[Plymouth Theme]\nModuleName=script\n").unwrap();
         let steps = vec![stage.clone(), ExtStep::PkexecScript { prefix: "rexon_plymouth".into(), script: String::new() }];
@@ -2040,8 +2040,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&src);
     }
 
-    /// Отказ в пароле больше не глушится: установка получает ошибку с
-    /// человеческим текстом, а не «установлено».
+    /// A password refusal is no longer swallowed: the installation gets an error with
+    /// human text, not "installed".
     #[test]
     fn denied_password_reaches_the_message() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2051,10 +2051,10 @@ mod tests {
         assert_eq!(calls, 1);
         let text = r.expect_err("отказ в пароле — ошибка установки");
         assert!(text.contains("administrator password was not confirmed"), "{text}");
-        // Всё или ничего: пользовательская часть, легшая до окна пароля,
-        // снята откатом.
+        // All or nothing: the user part that went in before the password window
+        // is removed by the rollback.
         assert!(!dir.join("user-part.txt").exists(), "отказ в пароле оставил пользовательскую часть");
-        // То же — по тексту агента polkit при любом коде.
+        // The same — by the polkit agent's text with any code.
         let (r, _) = run(&steps, false, true, PrivOutcome::Failed {
             code: 127,
             stderr: "Error executing command as another user: Not authorized\n".into(),
@@ -2063,8 +2063,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Ошибка записи в системный раздел (как на SteamOS или при полном
-    /// диске) доходит до сообщения дословно — последней строкой ответа.
+    /// A write error to the system partition (as on SteamOS or with a full
+    /// disk) reaches the message verbatim — as the last line of the answer.
     #[test]
     fn write_error_in_usr_reaches_the_message() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2077,22 +2077,22 @@ mod tests {
         let text = r.unwrap_err();
         assert!(text.starts_with("Rexon could not change the system part of the theme: cp:"), "{text}");
         assert!(text.ends_with("Read-only file system"), "{text}");
-        // Молчаливая команда — хотя бы код, но не пустота.
+        // A silent command — at least the code, but not emptiness.
         let (r, _) = run(&steps, false, true, PrivOutcome::Failed { code: 3, stderr: String::new() });
         assert!(r.unwrap_err().contains("error code 3"));
-        // Таймаут и отсутствие pkexec — тоже ошибки, а не успех.
+        // A timeout and a missing pkexec are errors too, not success.
         assert!(run(&steps, false, true, PrivOutcome::TimedOut).0.is_err());
         assert_eq!(
             run(&steps, false, true, PrivOutcome::NotStarted).0.unwrap_err(),
             crate::system_plan::pkexec_missing_message()
         );
-        // Успех — успех.
+        // Success is success.
         assert_eq!(run(&steps, false, true, PrivOutcome::Done).0, Ok(()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Обычные (не системные) команды плана по-прежнему не роняют установку:
-    /// обновить кэш меню не вышло — не повод откатывать тему.
+    /// Regular (non-system) plan commands still do not bring the installation down:
+    /// failing to refresh the menu cache is no reason to roll back a theme.
     #[test]
     fn plain_command_failure_is_still_not_fatal() {
         let steps = vec![ExtStep::Run { argv: vec!["false".into()], timeout_secs: Some(5) }];
@@ -2100,9 +2100,9 @@ mod tests {
         assert_eq!((r, calls), (Ok(()), 0));
     }
 
-    /// SteamOS (Steam Deck и Steam Machine): установка с системной частью
-    /// отказывает ДО первого шага и называет причину по тому, что ставится;
-    /// pkexec не зовётся вовсе.
+    /// SteamOS (Steam Deck and Steam Machine): an installation with a system part
+    /// refuses BEFORE the first step and names the reason by what is being installed;
+    /// pkexec is not called at all.
     #[test]
     fn steamos_refuses_system_part_before_any_step() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2121,13 +2121,13 @@ mod tests {
             assert!(!dir.join("user-part.txt").exists(), "{kind}: ни одного шага до отказа");
             let _ = std::fs::remove_dir_all(&dir);
         }
-        // Скрипт-обёртка опознаётся по префиксу.
+        // The wrapper script is recognized by its prefix.
         let script = ExtStep::PkexecScript { prefix: "rexon_plymouth".into(), script: String::new() };
         assert_eq!(steamos_block_of(&script), SteamOsBlock::BootSplash);
     }
 
-    /// Удаление на SteamOS системную часть пропускает, а свою доводит до
-    /// конца — иначе расширение нельзя было бы убрать вовсе.
+    /// Uninstalling on SteamOS skips the system part and finishes its own part
+    /// — otherwise the extension could not be removed at all.
     #[test]
     fn steamos_uninstall_skips_system_part() {
         let dir = scratch("steamos-uninstall");
@@ -2138,9 +2138,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Снимок распакованного архива обязан лечь в слой НАБЛЮДЕНИЙ: по
-    /// пре-слою планировщик решал бы, что дерево существовало до нас, и
-    /// `find_manifest_root` искал бы манифест не там.
+    /// The snapshot of an unpacked archive must go into the OBSERVATIONS layer: by
+    /// the pre-layer the planner would decide that the tree existed before us, and
+    /// `find_manifest_root` would look for the manifest in the wrong place.
     #[test]
     fn snap_tree_is_observations_only() {
         let value = snap_tree(Path::new("/nonexistent-rexon-snap"));
@@ -2148,10 +2148,10 @@ mod tests {
         assert_eq!(value["pre_files"].as_array().map(Vec::len), Some(0));
     }
 
-    /// Каталоги установки в снимке — ОБА набора: и тот, что строит
-    /// планировщик от голого `$HOME`, и продуктовый XDG-осведомлённый.
-    /// Разъезд этих двух наборов уже стоил вкладке «Оформление» пустой
-    /// витрины (правило #12).
+    /// Install directories in the snapshot — BOTH sets: the one the planner builds
+    /// from a bare `$HOME`, and the product's XDG-aware one.
+    /// The divergence of these two sets already cost the «Appearance» tab an empty
+    /// storefront (rule #12).
     #[test]
     fn target_dirs_cover_both_path_tables() {
         let dirs = target_dirs("/home/tester");
@@ -2161,9 +2161,9 @@ mod tests {
         assert!(dirs.iter().any(|d| d.ends_with(".themes")), "нет ~/.themes");
     }
 
-    /// Ответы исполнителя идут в строку состояния вкладки как есть — в
-    /// английском интерфейсе в них ни одной русской буквы. Русский слово в
-    /// слово сверяет `installer_parity::ext_exec_errors_in_russian_as_before`.
+    /// The executor's answers go into the tab's status line as is — in
+    /// the English interface there is not a single Russian letter in them. The Russian is checked word
+    /// for word by `installer_parity::ext_exec_errors_in_russian_as_before`.
     #[test]
     fn english_install_errors_have_no_russian() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2187,20 +2187,20 @@ mod tests {
         }
     }
 
-    /// Чужой формат больше не отвергается по расширению имени.
+    /// A foreign format is no longer rejected by the name extension.
     ///
-    /// Сторож переезда импортёров в ядро: пока живой `ImpIo` жил только в
-    /// мосте, `install_from_file` отвечала «умею только .rxn» на любой
-    /// `.themepack`. Возврат этой ветки означал бы, что вкладка снова
-    /// обманывает своим же фильтром окна выбора файла, — поэтому проверяется
-    /// не «получилось», а «ответ уже не про расширение имени».
+    /// A guard for the importers' move into the core: while the live `ImpIo` lived only in
+    /// the bridge, `install_from_file` answered "I can only do .rxn" to any
+    /// `.themepack`. The return of this branch would mean that the tab again
+    /// deceives with its own file chooser filter — so what is checked is
+    /// not "it worked" but "the answer is no longer about the name extension".
     #[test]
     fn foreign_format_is_no_longer_refused_by_extension() {
         let dir = mkdtemp(&std::env::temp_dir(), "rexon_test_foreign_")
             .expect("каталог создан");
         let file = Path::new(&dir).join("тема.themepack");
-        // Не настоящий CAB: до конвертации дело не дойдёт, но и отказа по
-        // расширению имени быть уже не должно.
+        // Not a real CAB: it will not get as far as conversion, but there must no longer be
+        // a refusal by the name extension.
         std::fs::write(&file, b"not a real themepack").expect("файл записан");
         let answer = install_from_file(&s(&file));
         let _ = std::fs::remove_dir_all(&dir);
@@ -2211,8 +2211,8 @@ mod tests {
         );
     }
 
-    /// Весть об установке: файл события с именем расширения — ровно тот, что
-    /// читает слушатель моста, — и уборка устаревших за 5 минут.
+    /// The installation message: an event file with the extension name — exactly the one
+    /// the bridge listener reads — and cleaning up those older than 5 minutes.
     #[test]
     fn announce_installed_writes_event_and_sweeps_stale() {
         use crate::rexon_bridge::RexonBridge;
@@ -2237,18 +2237,18 @@ mod tests {
         assert!(names[0].starts_with("event_extension_installed_"), "{names:?}");
     }
 
-    /// Переменная, по которой дочерний прогон узнаёт свой временный каталог.
+    /// The variable by which the child run learns its temporary directory.
     const E2E_BASE_ENV: &str = "REXON_EXT_BRIDGE_E2E_BASE";
 
-    /// Сквозной сторож: установка шлёт мосту `extension_installed` с ИМЕНЕМ,
-    /// удаление и неудача молчат (как `_install_rxn` оригинала), а витрина,
-    /// которую перечитывает страница «Расширений», видит установку и
-    /// удаление без перезапуска.
+    /// An end-to-end guard: installation sends the bridge `extension_installed` with the NAME,
+    /// uninstalling and failure stay silent (like the original's `_install_rxn`), and the storefront
+    /// the «Extensions» page rereads sees the installation and
+    /// the uninstallation without a restart.
     ///
-    /// ⚠️ Конвейер читает `HOME`/`XDG_CONFIG_HOME` процесса, а соседние тесты
-    /// этого бинаря бегут параллельно. Поэтому сама проверка идёт в ДОЧЕРНЕМ
-    /// процессе того же бинаря с подменённым домом — живой профиль и соседи
-    /// её не видят.
+    /// ⚠️ The pipeline reads the process's `HOME`/`XDG_CONFIG_HOME`, and neighboring tests
+    /// of this binary run in parallel. So the check itself runs in a CHILD
+    /// process of the same binary with a substituted home — the live profile and the neighbors
+    /// do not see it.
     #[test]
     fn install_announces_to_bridge_and_list_follows_without_restart() {
         let base = mkdtemp(&std::env::temp_dir(), "rexon_test_ext_bridge_").expect("каталог");
@@ -2291,9 +2291,9 @@ mod tests {
     }
 
     fn e2e_events(_home: &Path) -> Vec<(String, Value)> {
-        // Каталог спрашиваем у ядра, а не склеиваем литералом: сторож обязан
-        // читать РОВНО ту папку, куда пишет продукт (в т.ч. при заданном
-        // `$XDG_CONFIG_HOME` подставного окружения).
+        // We ask the core for the directory rather than gluing a literal: the guard must
+        // read EXACTLY the folder the product writes to (including with
+        // `$XDG_CONFIG_HOME` set in the fake environment).
         let dir = crate::rexon_bridge::default_commands_dir();
         let mut out: Vec<(String, Value)> = SnapBuilder::names_of(&dir)
             .into_iter()
@@ -2306,7 +2306,7 @@ mod tests {
         out
     }
 
-    /// Тело сквозного сторожа — только в дочернем процессе (см. выше).
+    /// The body of the end-to-end guard — only in the child process (see above).
     #[test]
     #[ignore = "запускается дочерним процессом install_announces_to_bridge_and_list_follows_without_restart"]
     fn bridge_e2e_child() {
@@ -2328,21 +2328,21 @@ mod tests {
         let listed = |id: &str| qt_extensions::installed().iter().any(|v| v.ext_id == id);
         assert!(listed("rexon-test-clock"), "витрина не видит установленное");
 
-        // Повтор («уже установлено») и битый архив — отказ без вести.
+        // A repeat ("already installed") and a broken archive — a refusal without a message.
         assert!(install_from_file(&s(&rxn)).is_err());
         let broken = base.join("broken.rxn");
         std::fs::write(&broken, b"not a zip").expect("файл");
         assert!(install_from_file(&s(&broken)).is_err());
         assert_eq!(e2e_events(&home).len(), 1, "неудача не шлёт весть");
 
-        // Удаление: витрина пустеет, вести нет — у оригинала её нет.
+        // Uninstalling: the storefront empties, no message — the original has none.
         uninstall("rexon-test-clock").expect("удаление прошло");
         assert!(!listed("rexon-test-clock"), "витрина видит удалённое");
         assert_eq!(e2e_events(&home).len(), 1, "удаление не шлёт весть");
     }
 
-    /// Временные каталоги плана уникальны: два плана подряд не имеют права
-    /// делить staged-каталог — второй снёс бы файлы первого.
+    /// The plan's temporary directories are unique: two plans in a row have no right to
+    /// share a staged directory — the second would erase the first one's files.
     #[test]
     fn mkdtemp_gives_unique_dirs() {
         let base = std::env::temp_dir();
@@ -2353,21 +2353,21 @@ mod tests {
         let _ = std::fs::remove_dir_all(&b);
     }
 
-    // ── Сеанс прав окна (Б9) ─────────────────────────────────────────────
+    // ── The window's privilege session (B9) ──────────────────────────────
 
-    /// Шаги помощников раскладки и системных тем узнаются операцией, и её
-    /// путь «как сейчас» — ровно тот же argv; прочее — прежним путём.
+    /// Steps of the layout and system theme helpers are recognized as an operation, and its
+    /// "as now" path is exactly the same argv; the rest — the old way.
     #[test]
     fn step_priv_op_recognizes_only_exact_helper_argv() {
         use crate::privilege::op::{PrivOp, SystemThemeKind, SystemThemeOp, ThemeFamily};
         let run = |argv: Vec<String>| ExtStep::Run { argv, timeout_secs: Some(60) };
-        // Раскладка (фон экрана входа) — Stage с каталогом раскладки.
+        // The layout (the login screen background) — Stage with the layout directory.
         let stage = crate::system_plan::privileged_stage_cmd("gdm-bg", "rexon-login", "/tmp/st", true, Some("/tmp/st"), true)
             .unwrap();
         let (op, files) = step_priv_op(&run(stage.clone())).expect("раскладка");
         assert!(matches!(&op, PrivOp::Stage { category, name, source } if category == "gdm-bg" && name == "rexon-login" && source.label == "/tmp/st"));
         assert_eq!(files, vec!["/tmp/st".to_string()]);
-        // Системные темы: установка, «Применить», «Удалить».
+        // System themes: installing, «Apply», «Remove».
         let helper = crate::installer::system_helper_path();
         let lang = crate::system_l10n::lang_args(helper);
         let mut install = vec!["pkexec".to_string(), helper.to_string()];
@@ -2390,8 +2390,8 @@ mod tests {
             step_priv_op(&run(remove)),
             Some((PrivOp::SystemTheme(SystemThemeOp::Remove { kind: SystemThemeKind::Plymouth, .. }), _))
         ));
-        // Не узнаётся: сырой скрипт, лишнее слово, чужой помощник, чужое
-        // семейство, не pkexec, скрипт-обёртка.
+        // Not recognized: a raw script, an extra word, a foreign helper, a foreign
+        // family, not pkexec, the wrapper script.
         let mut extra = stage.clone();
         extra.push("--force".into());
         let mut other = install.clone();
@@ -2411,10 +2411,10 @@ mod tests {
         assert_eq!(step_priv_op(&script), None);
     }
 
-    /// ⛔ Сторож Б9: никто, кроме сеанса прав (`privilege/`), не запускает
-    /// `pkexec` своим `Command::new` — все остальные зовут общий исполнитель
-    /// или `privilege::run`. Тексты и argv-литералы (`"pkexec"` в векторе)
-    /// сторож не трогает.
+    /// ⛔ Guard B9: nobody except the privilege session (`privilege/`) starts
+    /// `pkexec` with its own `Command::new` — everyone else calls the shared executor
+    /// or `privilege::run`. Texts and argv literals (`"pkexec"` in a vector)
+    /// are not touched by the guard.
     #[test]
     fn no_raw_pkexec_spawn_outside_privilege() {
         fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -2454,10 +2454,10 @@ mod tests {
     }
 
 
-    // ── Курсоры из Windows: перевод заново только по исправлению ─────────
+    // ── Cursors from Windows: converting again only for a fix ────────────
 
-    /// Поставить тему «из Windows» в подставной каталог расширений так, как её
-    /// кладёт установка: распакованный `.rxn` под каталогом с id пакета.
+    /// Put a theme «from Windows» into a fake extensions directory the way
+    /// installation puts it: an unpacked `.rxn` under a directory with the package id.
     fn put_windows_theme(root: &Path, ext_dir: &Path, name: &str, files: &[(&str, Vec<u8>)]) -> PathBuf {
         let set = root.join(format!("set-{name}"));
         std::fs::create_dir_all(&set).unwrap();
@@ -2492,15 +2492,15 @@ mod tests {
         let still = put_windows_theme(&root, &ext_dir, "Still", &[("pointer.cur", cur32(32, 0, 0, 1))]);
         let changed = put_windows_theme(&root, &ext_dir, "Changed", &[("busy.ani", busy.clone())]);
         let bare = put_windows_theme(&root, &ext_dir, "Bare", &[("busy.ani", busy)]);
-        // Тема старого образца — без оригиналов: пропуск без шума.
+        // An old-style theme — without originals: a skip without noise.
         std::fs::remove_dir_all(bare.join("originals")).unwrap();
-        // «Прежний переводчик» дал другие байты у одной темы.
+        // "The previous converter" gave different bytes for one theme.
         let wait = changed.join("data/changed/cursors/wait");
         assert!(wait.is_file(), "нет {wait:?}");
         std::fs::write(&wait, b"old output").unwrap();
         let anim_data = std::fs::read(anim.join("data/anim/cursors/wait")).unwrap();
 
-        // Подделка: версия 3 исправляет только анимированные (реальная — 2).
+        // A fake: version 3 fixes only animated ones (the real one is 2).
         let changes = [(2, imp::CursorFixScope::All), (3, imp::CursorFixScope::Animated)];
         let mut calls: Vec<String> = Vec::new();
         let mut reinstall = |id: &str, fresh: &Path| -> Result<(), String> {
@@ -2517,20 +2517,20 @@ mod tests {
         assert_eq!(report.replaced, vec![("Changed".to_string(), "changed".to_string())]);
         assert_eq!(report.version_only, vec!["wincur-anim".to_string()]);
         assert_eq!(calls, vec!["wincur-changed".to_string()]);
-        // Побайтно то же — файлы не тронуты, только версия.
+        // Byte for byte the same — the files are untouched, only the version.
         assert_eq!(std::fs::read(anim.join("data/anim/cursors/wait")).unwrap(), anim_data);
         assert_eq!(converter_of(&anim), 3);
-        // Заменённая тема — новые байты и новая версия.
+        // The replaced theme — new bytes and a new version.
         assert_ne!(std::fs::read(&wait).unwrap(), b"old output");
         assert_eq!(converter_of(&changed), 3);
-        // Неподвижную исправление не касается, без оригиналов — мимо.
+        // The fix does not concern a static one, without originals — skipped.
         assert_eq!(converter_of(&still), 2);
         assert_eq!(converter_of(&bare), 2);
 
-        // Второй заход: всё уже на текущей версии — ни замены, ни шума.
+        // The second pass: everything is already on the current version — no replacement, no noise.
         let again = refresh_windows_cursors_in(&ext_dir, 3, &changes, &mut |_, _| panic!("второй раз не переводится"));
         assert_eq!(again, CursorRefresh::default());
-        // С настоящей таблицей (версия 2) не трогается ничего.
+        // With the real table (version 2) nothing is touched.
         let real = refresh_windows_cursors_in(
             &ext_dir,
             imp::CURSOR_CONVERTER_VERSION,
@@ -2561,10 +2561,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // ── Вторая копия обычного виджета Conky ────────────────────────────
+    // ── The second copy of a regular Conky widget ──────────────────────
 
-    /// Машина для прохода уборки: файлы — настоящие (во временной папке),
-    /// процессов conky нет, команды не запускаются, а записываются.
+    /// A machine for the cleanup pass: the files are real (in a temporary folder),
+    /// there are no conky processes, commands are not run but recorded.
     struct NoProcIo {
         ran: std::cell::RefCell<Vec<Vec<String>>>,
     }
@@ -2603,8 +2603,8 @@ mod tests {
         crate::de_apply::Ctx { home: s(home), xdg_config_home: None, wayland: false, de: String::new() }
     }
 
-    /// Пакет `my-theme` с подпапками `data/<имя>` (у каждой — `conky.conf`
-    /// и `lua/rings.lua`).
+    /// The package `my-theme` with subfolders `data/<name>` (each has `conky.conf`
+    /// and `lua/rings.lua`).
     fn conky_package(exts: &Path, subs: &[&str]) -> PathBuf {
         let pkg = exts.join("my-theme");
         put(&pkg.join("manifest.json"), r#"{"id": "my-theme", "name": "My Theme", "type": "theme-conky", "version": "1.0"}"#);
@@ -2615,8 +2615,8 @@ mod tests {
         pkg
     }
 
-    /// Копия подпапки пакета в `dest` (как клал прежний Rexon), с меткой
-    /// `mark` (пусто — без метки).
+    /// A copy of a package subfolder in `dest` (as the old Rexon put it), with the mark
+    /// `mark` (empty — without a mark).
     fn copy_sub(pkg: &Path, sub: &str, dest: &Path, mark: &str) {
         let mut undo = crate::install_plan::Undo::off();
         crate::install_plan::copy_tree(&pkg.join("data").join(sub), dest, &mut undo).unwrap();
@@ -2625,10 +2625,10 @@ mod tests {
         }
     }
 
-    /// Уборка снимает только свою нетронутую вторую копию: копию без
-    /// метки (папка человека), с меткой другого пакета, изменённую и с
-    /// лишним файлом — оставляет; основной каталог виджета не трогает;
-    /// автозапуск второй копии переходит на основной.
+    /// The cleanup removes only our own untouched second copy: a copy without
+    /// a mark (the person's folder), with another package's mark, modified and with
+    /// an extra file — it leaves; it does not touch the widget's main directory;
+    /// the second copy's autostart moves to the main one.
     #[test]
     fn conky_heal_removes_only_own_untouched_duplicate() {
         let home = scratch("conky-heal");
@@ -2662,22 +2662,22 @@ mod tests {
             assert!(main.join(sub).join("conky.conf").is_file(), "основной каталог потерял {sub}");
         }
         assert!(!Path::new(&old_autostart).exists(), "автозапуск второй копии остался");
-        // Пакет из нескольких виджетов: автозапуск — у вложенного `my-theme/MyTheme`.
+        // A package of several widgets: the autostart is at the nested `my-theme/MyTheme`.
         let new_autostart = std::fs::read_to_string(crate::de_apply::conky_autostart_path(&ctx, "my-theme/MyTheme")).unwrap();
         assert!(new_autostart.contains("/my-theme/MyTheme/conky.conf"), "{new_autostart}");
-        // conky не запускается; проба версии (`conky -v`, файл запуска через
-        // XWayland) — не запуск.
+        // conky is not started; a version probe (`conky -v`, the XWayland launch
+        // file) is not a launch.
         assert!(io.ran.borrow().iter().all(|a| a.first().map(String::as_str) != Some("conky") || a[1..] == ["-v"]));
 
-        // Повтор ничего не делает.
+        // A repeat does nothing.
         assert!(heal_conky_duplicates(&io, &ctx, &exts).is_empty());
         let _ = std::fs::remove_dir_all(&home);
     }
 
-    /// Копия, чьи пути уже поправила починка перед запуском
-    /// (`de_apply::conky_repair_paths`), — всё ещё своя; у набора виджетов
-    /// подпапки — сами виджеты, их уборка не трогает; без основного
-    /// каталога вторая копия остаётся.
+    /// A copy whose paths were already fixed by the repair before launch
+    /// (`de_apply::conky_repair_paths`) is still our own; in a widget set
+    /// the subfolders are the widgets themselves, the cleanup does not touch them; without the main
+    /// directory the second copy stays.
     #[test]
     fn conky_heal_repaired_copy_sets_and_missing_main() {
         let home = scratch("conky-heal-2");
@@ -2690,7 +2690,7 @@ mod tests {
         let ctx = conky_ctx(&home);
         let io = NoProcIo { ran: Default::default() };
 
-        // Основного каталога нет — копия единственная, остаётся.
+        // There is no main directory — the copy is the only one, it stays.
         assert!(heal_conky_duplicates(&io, &ctx, &exts).is_empty());
         assert!(dup.is_dir());
 
@@ -2699,7 +2699,7 @@ mod tests {
         let changed = crate::de_apply::conky_repair_paths(&ctx.home, &s(&dup));
         assert_eq!(changed.len(), 1, "починка ничего не поправила");
 
-        // Набор виджетов: подпапки — его виджеты.
+        // A widget set: the subfolders are its widgets.
         let manifest = pkg.join("manifest.json");
         put(&manifest, r#"{"id": "my-theme", "type": "theme-conky", "conky_set": {"widgets": []}}"#);
         assert!(heal_conky_duplicates(&io, &ctx, &exts).is_empty());
@@ -2710,11 +2710,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&home);
     }
 
-    /// Обычный пакет с двумя вложенными виджетами (`data/A`, `data/B`,
-    /// своего файла настроек в `data/` нет): файлы — одним каталогом
-    /// `<корень>/my-theme`, но виджетов два — две плитки `my-theme/A` и
-    /// `my-theme/B`, у каждой свой файл настроек, автозапуск, удаление;
-    /// уборка переносит автозапуск прежней копии `<корень>/A` на `my-theme/A`.
+    /// A regular package with two nested widgets (`data/A`, `data/B`,
+    /// no settings file of its own in `data/`): the files — as one directory
+    /// `<root>/my-theme`, but there are two widgets — two tiles `my-theme/A` and
+    /// `my-theme/B`, each with its own settings file, autostart, removal;
+    /// the cleanup moves the autostart of the old copy `<root>/A` to `my-theme/A`.
     #[test]
     fn conky_package_with_two_widgets_is_two_tiles() {
         use crate::de_apply as da;
@@ -2749,8 +2749,8 @@ mod tests {
         assert_eq!(da::conky_widget_of_conf(&io, &ctx, &s(&main.join("B/lua/rings.lua"))).as_deref(), Some("my-theme/B"));
         assert_ne!(da::conky_autostart_path(&ctx, "my-theme/A"), da::conky_autostart_path(&ctx, "my-theme/B"));
 
-        // Прежняя вторая копия `<корень>/A` с автозапуском — уходит, автозапуск
-        // переходит на `my-theme/A`.
+        // The old second copy `<root>/A` with an autostart — goes away, the autostart
+        // moves to `my-theme/A`.
         copy_sub(&pkg, "A", &root.join("A"), "my-theme");
         let old = da::conky_autostart_path(&ctx, "A");
         put(Path::new(&old), "[Desktop Entry]\nExec=conky -c x\n");
@@ -2761,7 +2761,7 @@ mod tests {
         let entry = std::fs::read_to_string(da::conky_autostart_path(&ctx, "my-theme/A")).unwrap();
         assert!(entry.contains(&conf_a), "{entry}");
 
-        // Свой автозапуск у B, затем «Удалить» плитки A: снимается только A.
+        // B has its own autostart, then «Remove» of tile A: only A is removed.
         assert!(da::set_conky_autostart(&io, &ctx, "my-theme/B", true).0);
         let roots = crate::theme_removal::RemovalRoots::new(&s(&home), "/usr");
         let a_dir = s(&main.join("A"));
@@ -2782,15 +2782,15 @@ mod tests {
         );
         assert_eq!(left.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), vec!["local:conky:my-theme/B"]);
 
-        // Удаление пакета снимает автозапуск и вложенного виджета.
+        // Removing the package removes the nested widget's autostart too.
         assert_eq!(da::conky_forget_widget(&io, &ctx, &s(&main)).as_deref(), Some("my-theme"));
         assert!(!da::conky_autostart(&io, &ctx, "my-theme/B"));
         assert!(!root.join("A").exists() && !root.join("B").exists(), "копии в корне Conky");
         let _ = std::fs::remove_dir_all(&home);
     }
 
-    /// Пакет с файлом настроек прямо в `data/` (и подпапками рядом) — один
-    /// виджет `<id>`; с одной подпапкой-виджетом — тоже один.
+    /// A package with a settings file right in `data/` (and subfolders next to it) is one
+    /// widget `<id>`; with a single subfolder widget — also one.
     #[test]
     fn conky_package_with_own_conf_is_one_tile() {
         let home = scratch("conky-one");

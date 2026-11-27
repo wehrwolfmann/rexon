@@ -1,13 +1,13 @@
-//! Матрица кастомизации окружений: согласованность таблиц и планы установки.
+//! Desktop customization matrix: consistency of the tables and install plans.
 //!
-//! Эталона в Python у модуля нет (это новая функциональность, а не порт),
-//! поэтому проверяется не байтовое совпадение, а два свойства:
-//!   * все параллельные таблицы типов обновлены (правило #12) — тип из матрицы
-//!     обязан быть в `VALID_TYPES`, в категории «Оформление», иметь путь,
-//!     метку, иконку и градиент, причём путь — ТОТ ЖЕ, что в матрице;
-//!   * план установки/удаления делает ровно то, что обещает строка матрицы:
-//!     кладёт в нужный каталог под нужным именем, включает нужной командой и
-//!     обновляет окружение только там, где это безопасно.
+//! The module has no Python golden file (this is new functionality, not a port),
+//! so what is checked is not a byte match but two properties:
+//!   * all parallel type tables are updated (rule #12) — a type from the matrix
+//!     must be in `VALID_TYPES`, in the «Appearance» category, and have a path,
+//!     a label, an icon and a gradient, with the path THE SAME as in the matrix;
+//!   * the install/removal plan does exactly what the matrix row promises:
+//!     puts things into the right directory under the right name, enables with the right command and
+//!     refreshes the desktop only where that is safe.
 
 mod i18n_pin;
 
@@ -21,25 +21,25 @@ use rexon_core::ext_manager::{
 use serde_json::{json, Map, Value};
 
 // ============================================================================
-// Согласованность таблиц
+// Table consistency
 // ============================================================================
 
 #[test]
 fn every_matrix_kind_is_registered_everywhere() {
     for kind in dec::kinds() {
-        assert!(constants::is_valid_type(kind), "{kind} нет в VALID_TYPES");
-        assert!(constants::is_appearance(kind), "{kind} нет в категории «Оформление»");
-        assert!(!constants::is_scripted(kind), "{kind} не должен быть скриптовым");
-        assert!(constants::type_label(kind).is_some(), "{kind} без метки");
-        assert!(constants::type_icon(kind).is_some(), "{kind} без иконки");
-        assert!(constants::type_gradient(kind).is_some(), "{kind} без градиента");
+        assert!(constants::is_valid_type(kind), "{kind} is missing from VALID_TYPES");
+        assert!(constants::is_appearance(kind), "{kind} is missing from the «Appearance» category");
+        assert!(!constants::is_scripted(kind), "{kind} must not be a script type");
+        assert!(constants::type_label(kind).is_some(), "{kind} has no label");
+        assert!(constants::type_icon(kind).is_some(), "{kind} has no icon");
+        assert!(constants::type_gradient(kind).is_some(), "{kind} has no gradient");
     }
 }
 
-/// `VALID_TYPES` теперь ВЫВОДИТСЯ из матрицы. Состав обязан остаться прежним:
-/// список ниже — снимок того, что было до слияния двух таблиц (16 «безопасных»
-/// типов оформления + adaptive-обои + 16 типов кастомизации окружений + 2
-/// скриптовых). Расхождение = потерянный или самовольно заведённый тип.
+/// `VALID_TYPES` is now DERIVED from the matrix. Its contents must stay the same:
+/// the list below is a snapshot of what existed before the two tables were merged (16 "safe"
+/// decoration types + adaptive wallpapers + 16 desktop customization types + 2
+/// script ones). A mismatch = a lost or an arbitrarily added type.
 #[test]
 fn valid_types_derived_from_matrix_keeps_composition() {
     const BEFORE: &[&str] = &[
@@ -53,7 +53,7 @@ fn valid_types_derived_from_matrix_keeps_composition() {
         "gnome-shell-extension", "theme-gnome-shell", "cinnamon-applet",
         "cinnamon-desklet", "cinnamon-extension", "theme-cinnamon",
         "nemo-action", "theme-xfwm4", "theme-marco", "theme-lxqt",
-        // 01.11.2026: рамки Openbox и labwc (пункт 5.10 паритета).
+        // 01.11.2026: Openbox and labwc frames (parity item 5.10).
         "theme-openbox",
         "desktop-tool", "plugin",
     ];
@@ -61,9 +61,9 @@ fn valid_types_derived_from_matrix_keeps_composition() {
     let mut want = BEFORE.to_vec();
     got.sort_unstable();
     want.sort_unstable();
-    assert_eq!(got, want, "состав VALID_TYPES изменился");
+    assert_eq!(got, want, "the set of VALID_TYPES changed");
 
-    // Категория «Оформление» = вся матрица, скриптовые типы в неё не входят.
+    // The «Appearance» category = the whole matrix, script types are not part of it.
     let mut appearance = constants::category_appearance();
     appearance.sort_unstable();
     let mut want_app: Vec<&str> =
@@ -80,34 +80,34 @@ fn install_paths_match_matrix() {
         assert_eq!(
             constants::install_path_suffix(kind),
             expected,
-            "путь {kind} разъехался с матрицей"
+            "the path of {kind} diverged from the matrix"
         );
     }
-    // Набор обоев применяется прямо из пакета — каталога установки у него нет
-    // (так было и в исходном INSTALL_PATHS).
+    // A wallpaper set is applied straight from the package — it has no install directory
+    // (that was so in the original INSTALL_PATHS too).
     assert_eq!(constants::install_path_suffix("wallpaper-pack"), None);
     assert_eq!(constants::install_path_suffix("plugin"), None);
 }
 
-/// Фильтр каталога: покупателю не показывают то, что в его окружении
-/// физически не работает, — но и не отнимают то, что работает.
+/// Catalog filter: the buyer is not shown what physically does not work in their
+/// desktop — but what does work is not taken away either.
 #[test]
 fn matrix_filters_by_desktop() {
     let kinds_in = |de: De| -> Vec<&'static str> {
         dec::rows_for(de).iter().map(|r| r.kind).collect()
     };
-    // В GNOME нет плазмоидов, зато есть расширения оболочки.
+    // GNOME has no plasmoids, but it has shell extensions.
     let gnome = kinds_in(De::Gnome);
     assert!(!gnome.contains(&"theme-plasmoid"));
     assert!(gnome.contains(&"gnome-shell-extension"));
-    // В KDE есть и то, и другое своё, и тема GTK (Firefox, GIMP, kde-gtk-config).
+    // KDE has both of its own, and the GTK theme (Firefox, GIMP, kde-gtk-config).
     let kde = kinds_in(De::Kde);
     assert!(kde.contains(&"theme-plasmoid"));
     assert!(kde.contains(&"theme-gtk"));
     assert!(!kde.contains(&"gnome-shell-extension"));
-    // Budgie оформляется темой GTK — она обязана быть.
+    // Budgie is themed with a GTK theme — it must be there.
     assert!(kinds_in(De::Budgie).contains(&"theme-gtk"));
-    // Тайловые: обои и шрифты да, KDE-шные виджеты нет.
+    // Tiling ones: wallpapers and fonts yes, KDE widgets no.
     let tiling = kinds_in(De::Wlroots);
     assert!(tiling.contains(&"wallpaper-pack") && tiling.contains(&"font-pack"));
     assert!(!tiling.contains(&"theme-plasmoid"));
@@ -119,54 +119,54 @@ fn unsupported_rows_explain_themselves() {
         .iter()
         .filter(|r| !r.support.installable())
         .collect();
-    // Нативные плагины панелей XFCE/MATE/Budgie/LXQt, тема GDM, конфиги
-    // тайловых, темы COSMIC — все семь строк обязаны нести причину.
+    // Native panel plugins of XFCE/MATE/Budgie/LXQt, the GDM theme, tiling configs,
+    // COSMIC themes — all seven rows must carry a reason.
     assert!(blocked.len() >= 6);
     for r in blocked {
-        let reason = r.support.reason().expect("причина отказа");
-        assert!(reason.len() > 20, "слишком короткое объяснение: {reason}");
+        let reason = r.support.reason().expect("refusal reason");
+        assert!(reason.len() > 20, "the explanation is too short: {reason}");
     }
 }
 
 #[test]
 fn each_desktop_is_covered() {
     for de in [De::Kde, De::Gnome, De::Cinnamon, De::Xfce, De::Mate, De::Lxqt] {
-        assert!(!dec::rows_hosted_by(de).is_empty(), "{} без строк", de.label());
+        assert!(!dec::rows_hosted_by(de).is_empty(), "{} has no rows", de.label());
     }
-    // Cinnamon — три РАЗНЫХ типа дополнений плюс тема и действия Nemo.
+    // Cinnamon — three DIFFERENT kinds of add-ons plus the theme and Nemo actions.
     assert_eq!(dec::rows_hosted_by(De::Cinnamon).len(), 5);
 }
 
 // ============================================================================
-// Документация — из той же таблицы
+// Documentation — from the same table
 // ============================================================================
 
-/// Собрать `docs/de_customization_matrix.md` из матрицы.
+/// Build `docs/de_customization_matrix.md` from the matrix.
 fn render_doc() -> String {
     let mut s = String::new();
     s.push_str(
-        "# Кастомизация рабочих столов Linux: разбор по окружениям\n\n\
-         Полная карта того, чем оформляется каждый рабочий стол, куда это \
-         кладётся, чем включается и что нужно перезапустить. Таблица — рабочая \
-         основа универсального `.rxn`: типы из колонки «Тип `.rxn`» Rexon ставит \
-         и включает сам.\n\n\
-         > Файл СОБИРАЕТСЯ из `rust/rexon-core/src/de_customization.rs`\n\
-         > (тест `matrix_doc_is_up_to_date`). Править нужно матрицу, а не этот\n\
-         > текст: обновление — `REXON_UPDATE_DOC=1 cargo test -p rexon-core\n\
+        "# Customizing Linux desktops: a per-environment breakdown\n\n\
+         The full map of what each desktop is customized with, where it is \
+         put, what enables it and what has to be restarted. The table is the working \
+         basis of the universal `.rxn`: Rexon installs and enables the types from the \
+         \"`.rxn` type\" column itself.\n\n\
+         > This file is GENERATED from `rust/rexon-core/src/de_customization.rs`\n\
+         > (test `matrix_doc_is_up_to_date`). Edit the matrix, not this\n\
+         > text: to update — `REXON_UPDATE_DOC=1 cargo test -p rexon-core\n\
          > --test de_customization`.\n",
     );
 
-    // Общие каталоги: куда класть — одинаково везде. Колонка «Где работает»
-    // отвечает на ВТОРОЙ вопрос матрицы: общий каталог не значит «во всех
-    // окружениях» (тема Kvantum).
-    s.push_str("\n## Общий каталог (кладётся одинаково везде)\n\n");
+    // Common directories: where to put things is the same everywhere. The "Works in" column
+    // answers the SECOND question of the matrix: a common directory does not mean "in all
+    // desktops" (the Kvantum theme).
+    s.push_str("\n## Common directory (installed the same way everywhere)\n\n");
     s.push_str(
-        "| Тип `.rxn` | Что это | Куда положить | Где работает | Чем включить |\n\
+        "| `.rxn` type | What it is | Where to put it | Works in | How to enable |\n\
          |---|---|---|---|---|\n",
     );
     for r in dec::rows_hosted_by(De::Any) {
         let path = if r.dest.is_empty() {
-            "— (применяется на месте)".to_string()
+            "— (applied in place)".to_string()
         } else {
             format!("`~/{}`", r.dest)
         };
@@ -183,7 +183,7 @@ fn render_doc() -> String {
         .filter(|r| !r.note.is_empty())
         .collect();
     if !common_notes.is_empty() {
-        s.push_str("\nПодводные камни:\n\n");
+        s.push_str("\nPitfalls:\n\n");
         for r in common_notes {
             s.push_str(&format!(
                 "* **{}** — {}\n",
@@ -193,8 +193,8 @@ fn render_doc() -> String {
         }
     }
 
-    // Оговорки: тип работает, но при условии. Это НЕ то же, что «не работает»
-    // — раздел каталога остаётся на месте, а условие человеку называется.
+    // Caveats: the type works, but under a condition. That is NOT the same as "does not work"
+    // — the catalog section stays in place, and the condition is named to the person.
     let caveats: Vec<(&dec::Row, dec::Caveat)> = dec::ROWS
         .iter()
         .filter_map(|r| match r.applies {
@@ -203,7 +203,7 @@ fn render_doc() -> String {
         })
         .collect();
     if !caveats.is_empty() {
-        s.push_str("\nРаботает, но с оговоркой:\n\n");
+        s.push_str("\nWorks, but with a caveat:\n\n");
         for (r, c) in caveats {
             s.push_str(&format!(
                 "* **{}** ({}) — {}\n",
@@ -240,7 +240,7 @@ fn render_doc() -> String {
         if !supported.is_empty() {
             s.push('\n');
             s.push_str(
-                "| Тип `.rxn` | Что это | Куда положить | Чем включить | Что перезапустить |\n\
+                "| `.rxn` type | What it is | Where to put it | How to enable | What to restart |\n\
                  |---|---|---|---|---|\n",
             );
             for r in &supported {
@@ -256,7 +256,7 @@ fn render_doc() -> String {
             let notes: Vec<&&dec::Row> =
                 supported.iter().filter(|r| !r.note.is_empty()).collect();
             if !notes.is_empty() {
-                s.push_str("\nПодводные камни:\n\n");
+                s.push_str("\nPitfalls:\n\n");
                 for r in notes {
                     s.push_str(&format!(
                         "* **{}** — {}\n",
@@ -270,7 +270,7 @@ fn render_doc() -> String {
         let blocked: Vec<&dec::Row> =
             rows.iter().copied().filter(|r| !r.support.installable()).collect();
         if !blocked.is_empty() {
-            s.push_str("\nЧерез `.rxn` не раздаётся:\n\n");
+            s.push_str("\nNot distributed via `.rxn`:\n\n");
             for r in blocked {
                 s.push_str(&format!(
                     "* **{}** (`{}`) — {}.{}\n",
@@ -289,35 +289,37 @@ fn render_doc() -> String {
     s
 }
 
-/// Свернуть перенос строки исходника в один пробел (в Rust строки таблицы
-/// разбиты по ширине, в markdown они должны быть цельными).
+/// Collapse a source line break into one space (in Rust the table strings are
+/// wrapped by width, in markdown they must be whole).
 fn squash(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Документация не должна отставать от таблицы: обновляется тем же тестом с
+/// The documentation must not lag behind the table: it is updated by the same test with
 /// `REXON_UPDATE_DOC=1`.
 #[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn matrix_doc_is_up_to_date() {
-    // Документ пишется по-русски: подписи типов берутся из `po/ru.po`.
-    let _lang = i18n_pin::ru();
+    // The document is for developers and is written in English (the source language of the
+    // catalog), so it needs no compiled `po/ru.po`. The matrix row fields (`what`, `note`,
+    // activation/restart hints, refusal reasons) are not catalog strings and come out as
+    // written in `src/de_customization.rs`.
+    let _lang = i18n_pin::en();
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/de_customization_matrix.md");
     let doc = render_doc();
     if std::env::var("REXON_UPDATE_DOC").is_ok() {
-        std::fs::write(path, &doc).expect("запись документа");
+        std::fs::write(path, &doc).expect("writing the document");
         return;
     }
     let on_disk = std::fs::read_to_string(path).expect("docs/de_customization_matrix.md");
     assert_eq!(
         on_disk, doc,
-        "документ отстал от матрицы — обнови: REXON_UPDATE_DOC=1 cargo test \
+        "the document is behind the matrix — update it: REXON_UPDATE_DOC=1 cargo test \
          -p rexon-core --test de_customization"
     );
 }
 
 // ============================================================================
-// Стенд для планов
+// Stand for the plans
 // ============================================================================
 
 struct Case {
@@ -340,8 +342,8 @@ impl Case {
         }
     }
 
-    /// Запущенный стол стенда: Cinnamon, если среди программ есть `cinnamon`
-    /// (перезапуск оболочки — только в своём сеансе), иначе не опознан.
+    /// The stand's running desktop: Cinnamon if `cinnamon` is among the programs
+    /// (restarting the shell — only in its own session), otherwise unrecognized.
     fn xdg(&self) -> &'static str {
         if self.which.contains_key("cinnamon") { "X-Cinnamon" } else { "" }
     }
@@ -372,8 +374,8 @@ impl Case {
         }
     }
 
-    /// Шаги кнопки «Применить»/«Включить» раздела окружения — то, что до
-    /// 04.10.2026 делала установка.
+    /// Steps of the desktop section's «Apply»/«Turn on» button — what
+    /// the installation did before 04.10.2026.
     fn enable(&self, kind: &str, name: &str) -> Vec<ExtStep> {
         let tmp = TmpAlloc::new("/tmp/t");
         let which = |n: &str| self.which.get(n).cloned();
@@ -400,7 +402,7 @@ fn manifest(id: &str, t: &str) -> Map<String, Value> {
     json!({"id": id, "type": t}).as_object().unwrap().clone()
 }
 
-/// Снимок: `data/<sub>` с файлом метаданных заданного содержимого.
+/// Snapshot: `data/<sub>` with a metadata file of the given contents.
 fn snap_with_meta(sub: &str, meta_name: &str, meta_text: &str, extra_dirs: &[&str]) -> Value {
     let mut dirs = json!({
         "/ext": ["data"],
@@ -439,11 +441,11 @@ fn copies(steps: &[ExtStep]) -> Vec<(String, String)> {
 }
 
 // ============================================================================
-// Планы установки
+// Install plans
 // ============================================================================
 
-/// GNOME: каталог назначения называется по uuid из metadata.json, а НЕ по имени
-/// папки в архиве — иначе оболочка расширение не найдёт.
+/// GNOME: the destination directory is named by the uuid from metadata.json, NOT by the
+/// folder name in the archive — otherwise the shell will not find the extension.
 #[test]
 fn gnome_extension_installs_under_uuid_and_enables() {
     let case = Case::new(
@@ -466,19 +468,19 @@ fn gnome_extension_installs_under_uuid_and_enables() {
             "/home/t/.local/share/gnome-shell/extensions/my@ext.example.com".to_string(),
         )]
     );
-    // Установка только кладёт (решение 04.10.2026), включает кнопка.
+    // Installation only puts files (decision of 04.10.2026), the button enables.
     assert!(argvs(&steps).is_empty(), "{steps:?}");
     let on = case.enable("gnome-shell-extension", "my@ext.example.com");
     let script = &argvs(&on)[0][2];
     assert!(script.contains("gnome-extensions enable 'my@ext.example.com'"));
     assert!(script.contains("glib-compile-schemas"));
     assert!(script.contains("/home/t/.local/share/gnome-shell/extensions/my@ext.example.com/schemas"));
-    // Оболочку GNOME не перезапускаем — на Wayland это невозможно.
+    // We do not restart the GNOME shell — that is impossible on Wayland.
     assert!(!argvs(&on).iter().any(|a| a.iter().any(|s| s.contains("gnome-shell --replace"))));
 }
 
-/// Cinnamon: апплет дописывается строкой в список со счётчиком экземпляров,
-/// а на X11 оболочка перезапускается сама.
+/// Cinnamon: an applet is appended as a line to the list with an instance counter,
+/// and on X11 the shell restarts by itself.
 #[test]
 fn cinnamon_applet_enables_and_restarts_on_x11() {
     let case = Case::new(
@@ -497,17 +499,17 @@ fn cinnamon_applet_enables_and_restarts_on_x11() {
     let on = case.enable("cinnamon-applet", "weather@mockturtl");
     let a = argvs(&on);
     assert!(a[0][2].contains("next-applet-id $((id + 1))"));
-    // Как окно настроек Cinnamon (Spices.enable_extension): новый апплет — на
-    // нулевое место правой зоны первой панели, соседи по зоне сдвигаются.
-    assert!(a[0][2].contains("panel1:right:0:weather@mockturtl:$id"), "в начало правой зоны");
-    assert!(a[0][2].contains("$1==\"\\047panel1\" && $2==\"right\""), "сдвигается только правая зона первой панели");
-    assert!(a[0][2].contains("{$3=$3+1}"), "соседи по зоне сдвигаются на одно");
-    // Номер экземпляра не меньше «наибольший занятый + 1».
-    assert!(a[0][2].contains("if [ \"$id\" -le \"$max\" ]; then id=$((max + 1)); fi"), "номер не занят");
+    // Like the Cinnamon settings window (Spices.enable_extension): a new applet goes to
+    // position zero of the first panel's right zone, the zone neighbours shift.
+    assert!(a[0][2].contains("panel1:right:0:weather@mockturtl:$id"), "at the start of the right zone");
+    assert!(a[0][2].contains("$1==\"\\047panel1\" && $2==\"right\""), "only the right zone of the first panel is shifted");
+    assert!(a[0][2].contains("{$3=$3+1}"), "zone neighbours are shifted by one");
+    // The instance number is not less than "the largest taken + 1".
+    assert!(a[0][2].contains("if [ \"$id\" -le \"$max\" ]; then id=$((max + 1)); fi"), "the number is not taken");
     assert_eq!(a.last().unwrap(), &vec!["/usr/bin/cinnamon".to_string(), "--replace".to_string()]);
 }
 
-/// На Wayland перезапуск Cinnamon невозможен — шага быть не должно.
+/// On Wayland restarting Cinnamon is impossible — there must be no such step.
 #[test]
 fn cinnamon_applet_does_not_restart_on_wayland() {
     let case = Case::new(
@@ -522,8 +524,8 @@ fn cinnamon_applet_does_not_restart_on_wayland() {
     assert!(!on.iter().any(|s| matches!(s, ExtStep::Spawn { .. })));
 }
 
-/// KDE: пакет ставится своим инструментом, включается ключом по KPlugin.Id
-/// (не по имени папки) и применяется через reconfigure.
+/// KDE: the package is installed with its own tool, enabled with a key by KPlugin.Id
+/// (not by the folder name) and applied through reconfigure.
 #[test]
 fn kwin_script_uses_kpackagetool_and_plugin_id() {
     let case = Case::new(
@@ -542,11 +544,11 @@ fn kwin_script_uses_kpackagetool_and_plugin_id() {
 
     assert_eq!(a[0][..4], ["/usr/bin/kpackagetool6", "--type", "KWin/Script", "-u"]);
     assert_eq!(a[1][..4], ["/usr/bin/kpackagetool6", "--type", "KWin/Script", "-i"]);
-    // Инструмент справился — копирования быть не должно; включения тоже.
+    // The tool succeeded — there must be no copying; no enabling either.
     assert!(copies(&steps).is_empty());
     assert_eq!(a.len(), 2, "{a:?}");
-    // Метка владельца и у пакета, поставленного инструментом: по ней
-    // удаление узнаёт своё.
+    // The owner mark also on a package installed by the tool: removal
+    // recognizes its own by it.
     assert!(steps.iter().any(|s| matches!(s, ExtStep::WriteFile { path, content }
         if path == "/home/t/.local/share/kwin/scripts/krohnkite/.rexon-owner" && content == "krohnkite\n")), "{steps:?}");
     let on = argvs(&case.enable("kde-kwin-script", "krohnkite"));
@@ -560,9 +562,9 @@ fn kwin_script_uses_kpackagetool_and_plugin_id() {
     assert_eq!(on[1], vec!["/usr/bin/qdbus6", "org.kde.KWin", "/KWin", "reconfigure"]);
 }
 
-/// Скрипт KWin с тем же KPlugin.Id уже стоит и положен не этим пакетом
-/// (без метки — руками или прежним Rexon): ни `kpackagetool -u/-i` при
-/// установке, ни `-r` при удалении, ни копии — только заметка с причиной.
+/// A KWin script with the same KPlugin.Id is already installed and was not put there by this package
+/// (no mark — by hand or by an earlier Rexon): no `kpackagetool -u/-i` on
+/// install, no `-r` on removal, no copy — only a note with the reason.
 #[test]
 fn kwin_script_never_replaces_foreign_package() {
     english();
@@ -576,20 +578,20 @@ fn kwin_script_never_replaces_foreign_package() {
     let kpt = |steps: &[ExtStep]| {
         steps.iter().any(|s| matches!(s, ExtStep::Run { argv, .. } if argv[0].ends_with("kpackagetool6")))
     };
-    assert!(!kpt(&install) && copies(&install).is_empty(), "установка тронула чужой скрипт: {install:?}");
-    // Скрипт в пакете один, и он пропущен — установка отказывает целиком
-    // (шаг-отказ с причиной), а не «успех» без единого положенного файла.
+    assert!(!kpt(&install) && copies(&install).is_empty(), "the installation touched a foreign script: {install:?}");
+    // The package has one script, and it is skipped — the installation refuses entirely
+    // (a refusal step with the reason), not a "success" without a single file put down.
     assert!(
         matches!(install.as_slice(), [ExtStep::Refuse { text }] if text.contains("skipped") && text.contains("myscript")),
         "{install:?}"
     );
     let uninstall = case.plan(&m, true);
-    assert!(!kpt(&uninstall), "удаление сняло чужой скрипт: {uninstall:?}");
+    assert!(!kpt(&uninstall), "the removal removed a foreign script: {uninstall:?}");
     assert!(!uninstall.iter().any(|s| matches!(s, ExtStep::RemoveTree { .. })), "{uninstall:?}");
 }
 
-/// Если kpackagetool отработал с ошибкой — падаем на копирование, а не молча
-/// «устанавливаем» ничего.
+/// If kpackagetool finished with an error — we fall back to copying rather than silently
+/// "installing" nothing.
 #[test]
 fn kwin_script_falls_back_to_copy() {
     let case = Case::new(
@@ -605,7 +607,7 @@ fn kwin_script_falls_back_to_copy() {
     );
 }
 
-/// XFCE: тема окон кладётся в ~/.themes, включает её кнопка xfconf-query.
+/// XFCE: the window theme goes into ~/.themes, the xfconf-query button enables it.
 #[test]
 fn xfwm4_theme_copies_to_themes_and_switches() {
     let snapshot = json!({
@@ -628,7 +630,7 @@ fn xfwm4_theme_copies_to_themes_and_switches() {
     );
 }
 
-/// Действие Nemo — отдельный файл, включать нечего.
+/// A Nemo action is a separate file, nothing to enable.
 #[test]
 fn nemo_action_copies_file_without_activation() {
     let snapshot = json!({
@@ -651,7 +653,7 @@ fn nemo_action_copies_file_without_activation() {
     assert!(argvs(&steps).is_empty());
 }
 
-/// LXQt: тема включается ключом в личном lxqt.conf, панель не трогаем.
+/// LXQt: the theme is enabled with a key in the personal lxqt.conf, we do not touch the panel.
 #[test]
 fn lxqt_theme_writes_config_key() {
     let snapshot = json!({
@@ -674,11 +676,11 @@ fn lxqt_theme_writes_config_key() {
 }
 
 // ============================================================================
-// Планы удаления
+// Removal plans
 // ============================================================================
 
-/// Экран блокировки: ключ обязан сбрасываться ДО удаления каталога, иначе
-/// KDE останется со ссылкой в никуда и блокировка не соберётся.
+/// Lock screen: the key must be reset BEFORE removing the directory, otherwise
+/// KDE is left with a link to nowhere and the lock screen will not build.
 #[test]
 fn lockscreen_uninstall_resets_key_before_removing() {
     let snapshot = json!({
@@ -689,7 +691,7 @@ fn lockscreen_uninstall_resets_key_before_removing() {
             "/ext/data/org.rexon.lock/contents": [],
             "/home/t/.local/share/plasma/look-and-feel/org.rexon.lock": [".rexon-owner"],
         },
-        // Метка владельца: каталог положил этот пакет (чужой удаление не снимает).
+        // The owner mark: the directory was put by this package (removal does not take away a foreign one).
         "files": {
             "/home/t/.local/share/plasma/look-and-feel/org.rexon.lock/.rexon-owner": {"size": 5, "text": "lock\n"},
         },
@@ -700,15 +702,15 @@ fn lockscreen_uninstall_resets_key_before_removing() {
     let reset_at = steps
         .iter()
         .position(|s| matches!(s, ExtStep::Run { argv, .. } if argv[2].contains("kscreenlockerrc")))
-        .expect("сброс ключа экрана блокировки");
+        .expect("lock screen key reset");
     let remove_at = steps
         .iter()
         .position(|s| matches!(s, ExtStep::RemoveTree { .. }))
-        .expect("удаление каталога");
-    assert!(reset_at < remove_at, "каталог удалён раньше сброса ключа");
+        .expect("directory removal");
+    assert!(reset_at < remove_at, "the directory was removed before the key reset");
 }
 
-/// Удаление расширения GNOME: выключить и убрать из списка, затем снести.
+/// Removing a GNOME extension: disable and remove from the list, then delete.
 #[test]
 fn gnome_extension_uninstall_disables_and_removes() {
     let mut snapshot = snap_with_meta(
@@ -733,8 +735,8 @@ fn gnome_extension_uninstall_disables_and_removes() {
     )));
 }
 
-/// Скрипт KWin при удалении обязан выгружаться явно: проверено живьём —
-/// `reconfigure` снятый скрипт не выгружает, он работает до конца сеанса.
+/// A KWin script must be unloaded explicitly on removal: checked live —
+/// `reconfigure` does not unload a removed script, it keeps running until the end of the session.
 #[test]
 fn kwin_script_uninstall_unloads_script() {
     let mut snapshot =
@@ -750,14 +752,14 @@ fn kwin_script_uninstall_unloads_script() {
         == &vec![
             "/usr/bin/qdbus6", "org.kde.KWin", "/Scripting", "unloadScript", "myscript"
         ]));
-    // Порядок: выключить → выгрузить → снять пакет → удалить файлы.
+    // Order: disable → unload → remove the package → delete the files.
     let unload = a.iter().position(|x| x.contains(&"unloadScript".to_string())).unwrap();
     let remove = a.iter().position(|x| x.contains(&"-r".to_string())).unwrap();
     assert!(unload < remove);
 }
 
-/// Тема Cinnamon сбрасывается только если выбрана именно она — чужой выбор
-/// пользователя удаление нашего пакета ломать не должно.
+/// The Cinnamon theme is reset only if exactly it is selected — removing our package
+/// must not break the user's other choice.
 #[test]
 fn cinnamon_theme_uninstall_resets_only_own_theme() {
     let snapshot = json!({
@@ -777,7 +779,7 @@ fn cinnamon_theme_uninstall_resets_only_own_theme() {
     assert!(script.contains("gsettings reset org.cinnamon.theme name"));
 }
 
-/// Строки, которые через .rxn не ставятся, в установщик не попадают вовсе.
+/// Rows that are not installed through .rxn do not get into the installer at all.
 #[test]
 fn blocked_kinds_have_no_plan() {
     for r in dec::ROWS {
@@ -789,51 +791,51 @@ fn blocked_kinds_have_no_plan() {
 }
 
 // ============================================================================
-// Установка ≠ применение
+// Installation ≠ applying
 // ============================================================================
 
-/// ⛔ Дефект 03.10.2026: установка `.rxn` с темой курсоров молча писала
-/// `~/.icons/default/index.theme` (`Inherits=<тема>`) — курсор у X11-программ
-/// менялся сразу, до «Применить». Так же при установке применялись цвета,
-/// стиль Plasma, глобальная тема, Kvantum, рамки окон KDE, заставка и экран
-/// блокировки. Сторож общий: для КАЖДОГО типа, который включает кнопка
-/// «Применить» вкладки «Оформление», и в КАЖДОМ окружении план установки
-/// только кладёт файлы в каталог типа — ни одной записи настроек, ни одной
-/// команды включения. Новый тип с кнопкой попадает под сторож сам.
+/// ⛔ Defect of 03.10.2026: installing an `.rxn` with a cursor theme silently wrote
+/// `~/.icons/default/index.theme` (`Inherits=<theme>`) — the cursor of X11 programs
+/// changed right away, before «Apply». In the same way, colors,
+/// the Plasma style, the global theme, Kvantum, KDE window frames, the splash and the lock
+/// screen were applied on install. The guard is common: for EVERY type enabled by the
+/// «Apply» button of the «Appearance» tab, and in EVERY desktop, the install plan
+/// only puts files into the type's directory — not a single settings write, not a single
+/// enable command. A new type with a button falls under the guard by itself.
 #[test]
 fn rxn_install_never_applies_what_the_button_applies() {
     use rexon_core::appearance_installer::applied_by_button;
 
     let button_kinds: Vec<&str> =
         dec::kinds().into_iter().filter(|k| applied_by_button(k)).collect();
-    // Состав — чтобы сторож не опустел молча, если связь разделов с типами
-    // сломается.
+    // The composition — so that the guard does not silently become empty if the link between sections and types
+    // breaks.
     for must in [
         "theme-cursors", "theme-icons", "theme-gtk", "theme-sounds",
         "theme-kvantum", "theme-kde-global", "theme-kde-colors",
         "theme-kde-plasma", "theme-window-decoration", "theme-kde-splash",
         "theme-kde-lockscreen",
-        // Решение 04.10.2026: у всех типов, которые раньше включала сама
-        // установка, своя кнопка — «Применить», «Включить» или «Запустить».
+        // Decision of 04.10.2026: all types that the installation itself used to enable
+        // have their own button — «Apply», «Turn on» or «▶️ Start».
         "theme-xfwm4", "theme-marco", "theme-gnome-shell", "theme-cinnamon",
         "theme-lxqt", "theme-openbox", "kde-window-switcher", "kde-kwin-script", "kde-kwin-effect",
         "gnome-shell-extension", "cinnamon-applet", "cinnamon-desklet",
         "cinnamon-extension", "nemo-action", "theme-conky", "theme-login-screen",
         "theme-plymouth",
     ] {
-        assert!(button_kinds.contains(&must), "{must}: нет кнопки «Применить»?");
+        assert!(button_kinds.contains(&must), "{must}: no «Apply» button?");
     }
-    // Виджеты Plasma, шрифты и плагин обоев включать нечем (выбор — в самом
-    // окружении) — кнопки у них нет.
+    // Plasma widgets, fonts and the wallpaper plugin have nothing to enable with (the choice is in the
+    // desktop itself) — they have no button.
     for not in ["theme-plasmoid", "font-pack", "kde-wallpaper-plugin"] {
-        assert!(!applied_by_button(not), "{not}: неожиданная кнопка «Применить»");
+        assert!(!applied_by_button(not), "{not}: unexpected «Apply» button");
     }
 
-    // Пакет, похожий на тему любого вида: подпапка с курсорами, содержимым
-    // look-and-feel и метаданными плюс файл цветовой схемы.
-    // Для типов окружений там же подкаталоги рамок и оболочек, uuid в
-    // метаданных, панель LXQt, файл Conky и действие Nemo; каталог Conky уже
-    // «скопирован» — прежняя установка по нему писала автозапуск и запускала.
+    // A package that looks like a theme of any kind: a subfolder with cursors, look-and-feel
+    // contents and metadata plus a color scheme file.
+    // For desktop types — subdirectories of frames and shells as well, a uuid in
+    // the metadata, an LXQt panel, a Conky file and a Nemo action; the Conky directory is already
+    // "copied" — the former installation wrote autostart for it and launched it.
     let snapshot = json!({
         "dirs": {
             "/ext": ["data", "manifest.json"],
@@ -871,12 +873,12 @@ fn rxn_install_never_applies_what_the_button_applies() {
     .iter()
     .map(|t| ((*t).to_string(), format!("/usr/bin/{t}")))
     .collect();
-    // Инструменты установки (не включения) — им можно.
+    // Install tools (not enabling ones) — they are allowed.
     const INSTALL_TOOLS: &[&str] = &["kpackagetool6", "kpackagetool5", "fc-cache"];
 
-    // Кнопка есть не во всех окружениях: раздел рамок (Aurorae) — только в
-    // KDE, и на XFCE включение рамок остаётся за установкой (xfwm4), иначе
-    // включить их было бы нечем. Сторож — там, где кнопка ЕСТЬ.
+    // The button is not in every desktop: the frames section (Aurorae) — only in
+    // KDE, and on XFCE enabling frames stays with the installation (xfwm4), otherwise
+    // there would be nothing to enable them with. The guard applies where the button EXISTS.
     let button_here = |kind: &str, de_id: &str| -> bool {
         rexon_core::categories::categories(std::path::Path::new("/")).iter().any(|c| {
             rexon_core::categories::category_kind(&c.key) == Some(kind)
@@ -887,8 +889,8 @@ fn rxn_install_never_applies_what_the_button_applies() {
         ("KDE", "kde"), ("GNOME", "gnome"), ("XFCE", "xfce"), ("X-Cinnamon", "cinnamon"),
         ("MATE", "mate"), ("LXQt", "lxqt"), ("sway", "sway"), ("", ""),
     ] {
-        // Системные темы (экран входа, заставка) — и с помощником Rexon, и
-        // запасным путём без него.
+        // System themes (login screen, splash) — both with the Rexon helper and
+        // via the fallback path without it.
         for helper in [false, true] {
         for kind in button_kinds.iter().filter(|k| de_id.is_empty() || button_here(k, de_id)) {
             let tmp = TmpAlloc::new("/tmp/t");
@@ -912,23 +914,23 @@ fn rxn_install_never_applies_what_the_button_applies() {
             let steps = safe_install_plan(&env, &ExtInfo { dir: "/ext", manifest: &m });
             for step in &steps {
                 let bad = match step {
-                    // Свой файл внутри пакета (недостающий `.plymouth`) и метка
-                    // владельца копии — не настройка окружения.
+                    // An own file inside the package (the missing `.plymouth`) and the owner mark
+                    // of the copy are not a desktop setting.
                     ExtStep::WriteFile { path, .. } => {
                         !path.starts_with("/ext/")
                             && !path.ends_with(&format!("/{}", rexon_core::ext_manager::OWNER_MARK))
                     }
-                    // Системная часть: только копия темы, без выбора.
+                    // The system part: only a copy of the theme, without selecting it.
                     ExtStep::PkexecScript { script, .. } => {
                         script.contains("zz-rexon-theme") || script.contains("plymouth-set-default-theme")
                     }
-                    // Проба «какой экран входа работает» ничего не меняет.
+                    // The "which login screen works" probe changes nothing.
                     ExtStep::Run { argv, .. } if argv[0] == "systemctl" => {
                         argv.get(1).map(String::as_str) != Some("is-active")
                     }
                     ExtStep::Run { argv, .. } if argv[0] == "pkexec" => {
-                        // Помощник в режиме установки: вид — `sddm`/`plymouth`,
-                        // режим выбора (`apply-…`) установке нельзя.
+                        // The helper in install mode: the kind is `sddm`/`plymouth`,
+                        // the select mode (`apply-…`) is not allowed for installation.
                         argv.iter().any(|a| a.starts_with("apply-"))
                     }
                     ExtStep::Run { argv, .. } | ExtStep::Spawn { argv } => {
@@ -937,16 +939,16 @@ fn rxn_install_never_applies_what_the_button_applies() {
                     }
                     _ => false,
                 };
-                assert!(!bad, "{kind} в «{xdg}»: установка применяет тему — {step:?}");
+                assert!(!bad, "{kind} in «{xdg}»: the installation applies the theme — {step:?}");
                 assert!(
                     !format!("{step:?}").contains(".icons/default"),
-                    "{kind} в «{xdg}»: установка трогает ~/.icons/default — {step:?}"
+                    "{kind} in «{xdg}»: the installation touches ~/.icons/default — {step:?}"
                 );
             }
-            // И сама установка не пустая: файлы темы кладутся (системные —
-            // через помощник или запасной сценарий копии).
-            // (Экран входа без работающего менеджера входа на стенде честно
-            // не ставится вовсе — тема не к кому.)
+            // And the installation itself is not empty: the theme files are put down (system ones —
+            // through the helper or the fallback copy script).
+            // (A login screen without a working display manager on the stand is honestly
+            // not installed at all — there is nobody to give the theme to.)
             if *kind != "wallpaper-pack" && *kind != "theme-login-screen" {
                 assert!(
                     steps.iter().any(|s| matches!(
@@ -956,15 +958,15 @@ fn rxn_install_never_applies_what_the_button_applies() {
                             | ExtStep::PkexecScript { .. }
                             | ExtStep::Stage { .. }
                     ) || matches!(s, ExtStep::Run { argv, .. } if argv[0].ends_with("kpackagetool6"))),
-                    "{kind} в «{xdg}»: план установки ничего не копирует: {steps:?}"
+                    "{kind} in «{xdg}»: the install plan copies nothing: {steps:?}"
                 );
             }
         }
         }
     }
 
-    // Рамки окон (`theme-window-decoration`) на XFCE ложатся в ~/.themes и
-    // включаются кнопкой раздела «Рамки окон (XFCE)», а не установкой.
+    // Window frames (`theme-window-decoration`) on XFCE go into ~/.themes and
+    // are enabled by the «Window Borders (XFCE)» section button, not by the installation.
     let tmp = TmpAlloc::new("/tmp/t");
     let which = |n: &str| tools.get(n).cloned();
     let run_ok = |_: &[String]| false;
@@ -986,13 +988,13 @@ fn rxn_install_never_applies_what_the_button_applies() {
     let steps = safe_install_plan(&env, &ExtInfo { dir: "/ext", manifest: &m });
     assert!(
         !steps.iter().any(|s| format!("{s:?}").contains("xfconf-query")),
-        "рамки на XFCE: установка включает тему — {steps:?}"
+        "window borders on XFCE: the installation enables the theme — {steps:?}"
     );
 }
 
-/// Кнопка раздела окружения пишет ровно то, что прежде писала установка:
-/// шаги включения — те же, что у установки до решения 04.10.2026, а
-/// выключение — те же, что удаление делает перед сносом.
+/// A desktop section's button writes exactly what the installation used to write:
+/// the enable steps are the same as the installation's before the decision of 04.10.2026, and
+/// disabling is the same as what removal does before deleting.
 #[test]
 fn section_button_writes_what_install_used_to() {
     use rexon_core::ext_manager::{de_disable_steps, de_enable_steps};
@@ -1020,7 +1022,7 @@ fn section_button_writes_what_install_used_to() {
             .into_iter()
             .map(|s| match s {
                 ExtStep::Run { argv, .. } | ExtStep::Spawn { argv } => argv,
-                other => panic!("{kind}: шаг не команда: {other:?}"),
+                other => panic!("{kind}: the step is not a command: {other:?}"),
             })
             .collect()
     };
@@ -1036,25 +1038,25 @@ fn section_button_writes_what_install_used_to() {
         argv("kde-window-switcher", true)[0],
         s(&["kwriteconfig6", "--file", "kwinrc", "--group", "TabBox", "--key", "LayoutName", "Name"])
     );
-    // Скрипт KWin: ключ плагина + reconfigure; выключение — false + выгрузка.
+    // KWin script: the plugin key + reconfigure; disabling — false + unload.
     let on = argv("kde-kwin-script", true);
     assert_eq!(on[0], s(&["kwriteconfig6", "--file", "kwinrc", "--group", "Plugins", "--key", "NameEnabled", "true"]));
     assert!(on[1].ends_with(&s(&["org.kde.KWin", "/KWin", "reconfigure"])));
     let off = argv("kde-kwin-script", false);
     assert_eq!(off[0], s(&["kwriteconfig6", "--file", "kwinrc", "--group", "Plugins", "--key", "NameEnabled", "false"]));
     assert!(off.iter().any(|a| a.contains(&"unloadScript".to_string())));
-    // Апплет Cinnamon: добавить в список / убрать из него.
+    // Cinnamon applet: add to the list / remove from it.
     assert!(argv("cinnamon-applet", true)[0][2].contains("next-applet-id"));
     assert!(argv("cinnamon-applet", false)[0][2].contains("grep -vF ':Name:'"));
-    // Расширение GNOME: штатная утилита, запасной путь — список.
+    // GNOME extension: the stock utility, the fallback path is the list.
     assert!(argv("gnome-shell-extension", true)[0][2].contains("gnome-extensions enable 'Name'"));
     assert!(argv("gnome-shell-extension", false)[0][2].contains("gnome-extensions disable 'Name'"));
 }
 
-/// Удаление `.rxn` с темой заставки или экрана входа снимает её каталог в
-/// `/usr/share` через системный помощник (режим remove-<вид>) — прежде
-/// системная часть оставалась на месте молча. Нет темы в системе или нет
-/// помощника — шага нет (окно пароля впустую не показывается).
+/// Removing an `.rxn` with a splash or login screen theme removes its directory in
+/// `/usr/share` through the system helper (mode remove-<kind>) — previously
+/// the system part silently stayed in place. No theme on the system or no
+/// helper — no step (the password window is not shown in vain).
 #[test]
 fn rxn_uninstall_removes_system_theme_through_helper() {
     let tmp = TmpAlloc::new("/tmp/t");
@@ -1099,17 +1101,17 @@ fn rxn_uninstall_removes_system_theme_through_helper() {
         assert_eq!(argv[0][0], "pkexec");
         let tail: Vec<&str> = argv[0][argv[0].len() - 4..].iter().map(String::as_str).collect();
         assert_eq!(tail, [format!("remove-{kind}").as_str(), "neon", "-", "arch"], "{ext_type}");
-        assert!(plan(&without, true).is_empty(), "{ext_type}: темы в системе нет");
-        assert!(plan(&with_theme, false).is_empty(), "{ext_type}: помощника нет");
+        assert!(plan(&without, true).is_empty(), "{ext_type}: the theme is not in the system");
+        assert!(plan(&with_theme, false).is_empty(), "{ext_type}: there is no helper");
     }
 }
 
-/// Окно виджета Conky по рабочему столу (`conky_overlay::window_preset`):
-/// 13 окружений × X11/Wayland. На X11 — везде обычное окно с подсказками
-/// «под всеми окнами»; на Wayland со слоями — слой фона, у KWin с conky
-/// 1.25 — обычное окно с пространством имён `desktop`, у niri — нижний
-/// слой; GNOME, Cinnamon и Pantheon на Wayland слоёв не знают — совета нет,
-/// есть предупреждение.
+/// The Conky widget window per desktop (`conky_overlay::window_preset`):
+/// 13 desktops × X11/Wayland. On X11 — everywhere an ordinary window with "below
+/// all windows" hints; on Wayland with layers — the background layer, on KWin with conky
+/// 1.25 — an ordinary window with the `desktop` namespace, on niri — the bottom
+/// layer; GNOME, Cinnamon and Pantheon on Wayland know no layers — no advice,
+/// there is a warning.
 #[test]
 fn conky_window_preset_matrix() {
     use rexon_core::conky_overlay::{preset_note, window_preset, DESKTOP_HINTS};
@@ -1121,7 +1123,7 @@ fn conky_window_preset_matrix() {
     for de in des {
         let x = window_preset(de, false, v125).unwrap_or_else(|| panic!("{de}: X11"));
         assert_eq!((x.own_window_type, x.hints, x.namespace), ("normal", Some(DESKTOP_HINTS), None), "{de}: X11");
-        assert!(preset_note(de, false).is_none(), "{de}: X11 без оговорки");
+        assert!(preset_note(de, false).is_none(), "{de}: X11 without a caveat");
         let w = window_preset(de, true, v125);
         let wl = w.as_ref().map(|p| (p.own_window_type, p.hints, p.namespace));
         let want = match de {
@@ -1131,14 +1133,14 @@ fn conky_window_preset_matrix() {
             _ => Some(("desktop", None, None)),
         };
         assert_eq!(wl, want, "{de}: Wayland");
-        assert_eq!(preset_note(de, true).is_some(), want.is_none(), "{de}: оговорка Wayland");
-        // До 1.25 подсказки не поднимают обычное окно в слой — везде фон.
+        assert_eq!(preset_note(de, true).is_some(), want.is_none(), "{de}: Wayland caveat");
+        // Before 1.25 the hints do not raise an ordinary window into a layer — background everywhere.
         if want.is_some() {
             assert_eq!(window_preset(de, true, Some((1, 19))).unwrap().own_window_type, "desktop", "{de}: 1.19");
-            assert_eq!(window_preset(de, true, None).unwrap().own_window_type, "desktop", "{de}: версия неизвестна");
+            assert_eq!(window_preset(de, true, None).unwrap().own_window_type, "desktop", "{de}: version unknown");
         }
     }
-    // Оговорка раздела: с conky 1.25 — «обычное окно», без версии — прежняя.
+    // The section caveat: with conky 1.25 — «regular window», without a version — the former one.
     rexon_core::i18n::set_language(Some("en"));
     let new = rexon_core::de_apply::conky_wayland_note_for("gnome", true, v125).unwrap();
     assert!(new.contains("regular window"), "{new}");
@@ -1148,10 +1150,10 @@ fn conky_window_preset_matrix() {
 }
 
 // ============================================================================
-// Правило владельца: плазмоиды по KPlugin.Id и одиночные файлы
+// The owner rule: plasmoids by KPlugin.Id and single files
 // ============================================================================
 
-/// Положить в снимок файл `path` с текстом `text` (каталог — в листинг).
+/// Put a file `path` with the text `text` into the snapshot (the directory goes into the listing).
 fn with_file(mut snap: Value, path: &str, text: &str) -> Value {
     let (dir, name) = path.rsplit_once('/').unwrap();
     let mut list = snap["dirs"][dir].as_array().cloned().unwrap_or_default();
@@ -1163,7 +1165,7 @@ fn with_file(mut snap: Value, path: &str, text: &str) -> Value {
     snap
 }
 
-/// Тронул ли план путь `dest`: копия туда, запись внутрь, снятие, инструмент KDE.
+/// Whether the plan touched the path `dest`: a copy there, a write inside, a removal, a KDE tool.
 fn touches(steps: &[ExtStep], dest: &str) -> bool {
     steps.iter().any(|s| match s {
         ExtStep::CopyTree { dest: d, .. } | ExtStep::CopyFile { dest: d, .. } => d == dest,
@@ -1174,14 +1176,14 @@ fn touches(steps: &[ExtStep], dest: &str) -> bool {
     })
 }
 
-/// Причину пропуска тесты ищут по английскому слову «skipped»: язык
-/// процесса задаётся явно, иначе при русской локали машины текст приходит
-/// переведённым и тест краснеет (все тесты файла ждут исходный язык).
+/// The tests look for the skip reason by the English word "skipped": the process
+/// language is set explicitly, otherwise with a Russian machine locale the text arrives
+/// translated and the test turns red (all tests of the file expect the source language).
 fn english() {
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
 }
 
-/// План назвал причину пропуска `dest`: заметкой или отказом целиком.
+/// The plan named the reason for skipping `dest`: as a note or as a total refusal.
 fn says_skipped(steps: &[ExtStep], dest: &str) -> bool {
     steps.iter().any(|s| matches!(s, ExtStep::Notice { text } | ExtStep::Refuse { text }
         if text.contains("skipped") && text.contains(dest)))
@@ -1189,11 +1191,11 @@ fn says_skipped(steps: &[ExtStep], dest: &str) -> bool {
 
 const PLASMOIDS: &str = "/home/t/.local/share/plasma/plasmoids";
 
-/// Плазмоид каталогом: на месте `plasmoids/<KPlugin.Id>` чужой (без метки —
-/// руками, магазином или прежним Rexon; с меткой другого пакета). Ни
-/// копии, ни снятия, ни `kpackagetool`; причина названа. Папка названа как
-/// id — больше пакету ставить нечего: отказ целиком. Удаление чужое не
-/// снимает.
+/// A plasmoid as a directory: in place of `plasmoids/<KPlugin.Id>` there is a foreign one (without a mark —
+/// by hand, by the store or by an earlier Rexon; with another package's mark). No
+/// copy, no removal, no `kpackagetool`; the reason is named. The folder is named as the
+/// id — the package has nothing else to install: total refusal. Removal does not take away
+/// a foreign one.
 #[test]
 fn plasmoid_dir_never_replaces_foreign_with_same_id() {
     english();
@@ -1204,19 +1206,19 @@ fn plasmoid_dir_never_replaces_foreign_with_same_id() {
         let case = Case::new(snap, &["kpackagetool6"], true, false);
         let m = manifest("clock-pack", "theme-plasmoid");
         let install = case.plan(&m, false);
-        assert!(!touches(&install, &dest), "{inner}: установка тронула чужой плазмоид: {install:?}");
+        assert!(!touches(&install, &dest), "{inner}: the installation touched a foreign plasmoid: {install:?}");
         assert!(
             matches!(install.as_slice(), [ExtStep::Refuse { text }] if text.contains("skipped") && text.contains(&dest)),
-            "{inner}: всё пропущено — нужен отказ с причиной: {install:?}"
+            "{inner}: everything was skipped — a refusal with a reason is needed: {install:?}"
         );
         assert_eq!(install.iter().filter(|s| matches!(s, ExtStep::Refuse { .. })).count(), 1);
         let uninstall = case.plan(&m, true);
-        assert!(!touches(&uninstall, &dest), "{inner}: удаление сняло чужой плазмоид: {uninstall:?}");
+        assert!(!touches(&uninstall, &dest), "{inner}: the removal removed a foreign plasmoid: {uninstall:?}");
     }
 }
 
-/// Свой прежний плазмоид (метка этого пакета) — снимается и кладётся
-/// заново, с меткой; удаление его снимает (`kpackagetool -r` и каталог).
+/// Our own former plasmoid (this package's mark) — removed and put down
+/// again, with the mark; removal takes it away (`kpackagetool -r` and the directory).
 #[test]
 fn plasmoid_dir_replaces_own_previous_copy() {
     let snap = snap_with_meta("W", "metadata.json", r#"{"KPlugin": {"Id": "org.own.clock"}}"#, &[]);
@@ -1235,8 +1237,8 @@ fn plasmoid_dir_replaces_own_previous_copy() {
     assert!(uninstall.iter().any(|s| matches!(s, ExtStep::RemoveTree { path, .. } if *path == dest)), "{uninstall:?}");
 }
 
-/// Папка в `data/` названа не как id: её общая копия ложится, а сам
-/// плазмоид по id (чужой) пропущен — установка частичная, с заметкой.
+/// The folder in `data/` is not named as the id: its common copy goes down, while the
+/// plasmoid itself by id (a foreign one) is skipped — a partial installation, with a note.
 #[test]
 fn plasmoid_partial_skip_is_a_notice_not_a_refusal() {
     let snap = snap_with_meta("W", "metadata.json", r#"{"KPlugin": {"Id": "org.human.clock"}}"#, &[]);
@@ -1249,8 +1251,8 @@ fn plasmoid_partial_skip_is_a_notice_not_a_refusal() {
     assert!(install.iter().any(|s| matches!(s, ExtStep::Notice { text } if text.contains(&dest))), "{install:?}");
 }
 
-/// Снимок пакета с архивом `.plasmoid`, который проба плана уже распаковала
-/// (`ext_manager::PLASMOID_PROBE_DIR`), — id внутри архива: `org.zip.clock`.
+/// A package snapshot with a `.plasmoid` archive that the plan probe has already unpacked
+/// (`ext_manager::PLASMOID_PROBE_DIR`) — the id inside the archive: `org.zip.clock`.
 fn plasmoid_archive_snapshot() -> Value {
     let probe = "/tmp/t/rexon_plasmoid_probe/clock.plasmoid";
     json!({
@@ -1267,10 +1269,10 @@ fn plasmoid_archive_snapshot() -> Value {
     })
 }
 
-/// Архив `.plasmoid`: id известен только после распаковки — его даёт проба
-/// снимка, и чужой плазмоид с тем же id не отдаётся `kpackagetool -u` (тот
-/// заменил бы его ещё при сборке плана). Отказ с причиной; удаление чужое
-/// не трогает.
+/// A `.plasmoid` archive: the id is known only after unpacking — the snapshot probe gives it,
+/// and a foreign plasmoid with the same id is not handed to `kpackagetool -u` (which
+/// would have replaced it already while building the plan). Refusal with a reason; removal does not
+/// touch a foreign one.
 #[test]
 fn plasmoid_archive_never_updates_foreign_with_same_id() {
     let dest = format!("{PLASMOIDS}/org.zip.clock");
@@ -1286,13 +1288,13 @@ fn plasmoid_archive_never_updates_foreign_with_same_id() {
             "{tools:?}: {install:?}"
         );
         let uninstall = case.plan(&m, true);
-        assert!(!touches(&uninstall, &dest), "{tools:?}: удаление: {uninstall:?}");
+        assert!(!touches(&uninstall, &dest), "{tools:?}: removal: {uninstall:?}");
     }
 }
 
-/// Архив `.plasmoid` на чистом месте: инструмент KDE ставит его, и каталог
-/// по id из пробы получает метку; удаление снимает плазмоид по НАСТОЯЩЕМУ
-/// id (прежде — по id пакета, мимо каталога).
+/// A `.plasmoid` archive in a clean place: the KDE tool installs it, and the directory
+/// by the id from the probe gets the mark; removal takes the plasmoid away by the REAL
+/// id (previously — by the package id, missing the directory).
 #[test]
 fn plasmoid_archive_installed_by_tool_is_marked_and_removed_by_real_id() {
     let dest = format!("{PLASMOIDS}/org.zip.clock");
@@ -1310,7 +1312,7 @@ fn plasmoid_archive_installed_by_tool_is_marked_and_removed_by_real_id() {
 
 const SCHEMES: &str = "/home/t/.local/share/color-schemes";
 
-/// Пакет цветовых схем `names` (`(имя файла, текст)`).
+/// A color scheme package `names` (`(file name, text)`).
 fn colors_snapshot(names: &[(&str, &str)]) -> Value {
     let mut snap = json!({"dirs": {"/ext": ["data"], "/ext/data": []}, "files": {}});
     for (n, t) in names {
@@ -1319,9 +1321,9 @@ fn colors_snapshot(names: &[(&str, &str)]) -> Value {
     snap
 }
 
-/// Одиночный файл (`.colors`, действие Nemo): на месте чужой файл с другим
-/// содержимым — не перезаписывается и не снимается удалением; причина
-/// названа; единственный файл пакета — отказ целиком.
+/// A single file (`.colors`, a Nemo action): in its place there is a foreign file with different
+/// contents — it is not overwritten and not removed by uninstall; the reason
+/// is named; if it is the package's only file — total refusal.
 #[test]
 fn single_file_never_overwrites_foreign() {
     english();
@@ -1330,32 +1332,32 @@ fn single_file_never_overwrites_foreign() {
         ("nemo-action", "/home/t/.local/share/nemo/actions", "open.nemo_action"),
     ] {
         let dest = format!("{base}/{name}");
-        let snap = with_file(colors_snapshot(&[(name, "пакет\n")]), &dest, "человек\n");
+        let snap = with_file(colors_snapshot(&[(name, "package\n")]), &dest, "person\n");
         let case = Case::new(snap, &[], true, false);
         let m = manifest("pack", t);
         let install = case.plan(&m, false);
-        assert!(!touches(&install, &dest), "{t}: установка перезаписала чужой файл: {install:?}");
+        assert!(!touches(&install, &dest), "{t}: the installation overwrote a foreign file: {install:?}");
         assert!(
             matches!(install.as_slice(), [ExtStep::Refuse { text }] if text.contains("skipped") && text.contains(&dest)),
             "{t}: {install:?}"
         );
         let uninstall = case.plan(&m, true);
-        assert!(!touches(&uninstall, &dest), "{t}: удаление сняло чужой файл: {uninstall:?}");
+        assert!(!touches(&uninstall, &dest), "{t}: the removal removed a foreign file: {uninstall:?}");
     }
 }
 
-/// Тот же файл байт в байт — свой (заменяется, снимается); файл из общего
-/// журнала этого пакета (`owned_files`) — свой при любом содержимом; ссылка
-/// на месте — чужая.
+/// The same file byte for byte is ours (replaced, removed); a file from this package's
+/// common log (`owned_files`) is ours whatever its contents; a link
+/// in its place is foreign.
 #[test]
 fn single_file_same_bytes_or_journal_is_own() {
     let dest = format!("{SCHEMES}/Nord.colors");
     let m = manifest("pack", "theme-kde-colors");
-    let same = Case::new(with_file(colors_snapshot(&[("Nord.colors", "одно\n")]), &dest, "одно\n"), &[], true, false);
+    let same = Case::new(with_file(colors_snapshot(&[("Nord.colors", "same\n")]), &dest, "same\n"), &[], true, false);
     assert_eq!(copies(&same.plan(&m, false)), vec![("/ext/data/Nord.colors".to_string(), dest.clone())]);
     assert!(same.plan(&m, true).iter().any(|s| matches!(s, ExtStep::RemoveFile { path } if *path == dest)));
 
-    let mut journal = with_file(colors_snapshot(&[("Nord.colors", "новое\n")]), &dest, "прежнее своё\n");
+    let mut journal = with_file(colors_snapshot(&[("Nord.colors", "new\n")]), &dest, "own previous\n");
     journal["owned_files"] = json!([dest]);
     let own = Case::new(journal, &[], true, false);
     let install = own.plan(&m, false);
@@ -1363,27 +1365,27 @@ fn single_file_same_bytes_or_journal_is_own() {
     assert!(!says_skipped(&install, &dest), "{install:?}");
     assert!(own.plan(&m, true).iter().any(|s| matches!(s, ExtStep::RemoveFile { path } if *path == dest)));
 
-    let mut link = with_file(colors_snapshot(&[("Nord.colors", "одно\n")]), &dest, "одно\n");
+    let mut link = with_file(colors_snapshot(&[("Nord.colors", "same\n")]), &dest, "same\n");
     link["links"] = json!([dest]);
     let linked = Case::new(link, &[], true, false);
-    assert!(!touches(&linked.plan(&m, false), &dest), "файл записан сквозь ссылку");
+    assert!(!touches(&linked.plan(&m, false), &dest), "the file was written through the link");
 }
 
-/// Две схемы, одна занята чужой: вторая ставится, про первую — заметка
-/// (частичный пропуск — не отказ).
+/// Two schemes, one taken by a foreign file: the second is installed, the first gets a note
+/// (a partial skip is not a refusal).
 #[test]
 fn single_file_partial_skip_installs_the_rest() {
     let taken = format!("{SCHEMES}/Nord.colors");
     let free = format!("{SCHEMES}/Gold.colors");
-    let snap = with_file(colors_snapshot(&[("Nord.colors", "пакет\n"), ("Gold.colors", "пакет\n")]), &taken, "человек\n");
+    let snap = with_file(colors_snapshot(&[("Nord.colors", "package\n"), ("Gold.colors", "package\n")]), &taken, "person\n");
     let install = Case::new(snap, &[], true, false).plan(&manifest("pack", "theme-kde-colors"), false);
     assert_eq!(copies(&install), vec![("/ext/data/Gold.colors".to_string(), free)], "{install:?}");
     assert!(install.iter().any(|s| matches!(s, ExtStep::Notice { text } if text.contains(&taken))), "{install:?}");
     assert!(!install.iter().any(|s| matches!(s, ExtStep::Refuse { .. })), "{install:?}");
 }
 
-/// Комплект: шрифт в общем каталоге шрифтов и тема части комплекта под
-/// своим именем — по тем же правилам (чужое цело, причина названа).
+/// A bundle: a font in the common fonts directory and a theme of a bundle part under
+/// its own name — by the same rules (the foreign stays intact, the reason is named).
 #[test]
 fn bundle_parts_never_overwrite_foreign() {
     english();
@@ -1393,9 +1395,9 @@ fn bundle_parts_never_overwrite_foreign() {
         "dirs": {"/ext": ["data"], "/ext/data": ["fonts", "gtk"], "/ext/data/fonts": [], "/ext/data/gtk": ["BDark"], "/ext/data/gtk/BDark": []},
         "files": {},
     });
-    snap = with_file(snap, "/ext/data/fonts/Sans.ttf", "пакет");
-    snap = with_file(snap, font, "человек");
-    snap = with_file(snap, &format!("{gtk}/gtk.css"), "человек");
+    snap = with_file(snap, "/ext/data/fonts/Sans.ttf", "package");
+    snap = with_file(snap, font, "person");
+    snap = with_file(snap, &format!("{gtk}/gtk.css"), "person");
     let mut m = manifest("bun", "theme-bundle");
     m.insert("bundle".into(), json!({"font-pack": "data/fonts", "theme-gtk": "data/gtk"}));
     let case = Case::new(snap, &[], true, false);
@@ -1406,6 +1408,6 @@ fn bundle_parts_never_overwrite_foreign() {
     }
     let uninstall = case.plan(&m, true);
     for dest in [font, gtk] {
-        assert!(!touches(&uninstall, dest), "удаление {dest}: {uninstall:?}");
+        assert!(!touches(&uninstall, dest), "removal of {dest}: {uninstall:?}");
     }
 }

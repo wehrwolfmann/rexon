@@ -1,24 +1,27 @@
-// Главное окно Rexon целиком на QML: хозяин — Rust, виджетов нет вовсе.
+// The whole Rexon main window in QML: the host is Rust, there are no
+// widgets at all.
 //
-// Разница с продуктом — в том, КТО кому принадлежит. Живое окно строит
-// Python: `QMainWindow` с `QTabWidget`, а QML-страницы лежат ВНУТРИ
-// `QQuickWidget`. Здесь наоборот: окно — `ApplicationWindow`, страницы
-// вкладываются в него напрямую, а данные приходят от Rust-объекта
-// `MainWindowModel` (rust/rexon-gui/src/main_window.rs), который сам ничего
-// не решает и спрашивает ядро (`rexon_core::qt_main`).
+// The difference from the product is in WHO owns whom. The live window is
+// built by Python: a `QMainWindow` with a `QTabWidget`, and the QML pages
+// lie INSIDE a `QQuickWidget`. Here it is the other way round: the window
+// is an `ApplicationWindow`, the pages are nested in it directly, and the
+// data comes from the Rust object `MainWindowModel`
+// (rust/rexon-gui/src/main_window.rs), which decides nothing itself and
+// asks the core (`rexon_core::qt_main`).
 //
-// ⚠️ Это СКЕЛЕТ отдельного входа для разработчика
-// (`rust/target/release/rexon-main-window`), а не замена продукта. Живой
-// Rexon запускается по-прежнему и этого файла не видит.
+// Warning: this is the SKELETON of a separate developer entry point
+// (`rust/target/release/rexon-main-window`), not a replacement for the
+// product. The live Rexon still starts as before and does not see this
+// file.
 //
-// Своих цветов окно не заводит: палитра приходит свойством `palette` от
-// того же объекта и родом из `ui_base::active_qml_palette` — скина по
-// умолчанию всего продукта (правило #17).
+// The window defines no colours of its own: the palette arrives through
+// the `palette` property of the same object and originates from
+// `ui_base::active_qml_palette` — the default skin of the whole product
+// (rule #17).
 //
-// Делегаты Repeater обращаются к id внешних элементов (root, shell, bar).
-// Без этой прагмы проверка QML справедливо ругается на неквалифицированный
-// доступ, а Qt разрешает такие имена лишь через устаревший контекст
-// делегата.
+// Repeater delegates refer to ids of outer elements (root, shell, bar).
+// Without this pragma, QML lint rightly complains about unqualified access,
+// and Qt resolves such names only through the deprecated delegate context.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -29,69 +32,71 @@ import org.rexon.gui 1.0
 ApplicationWindow {
     id: root
 
-    // Язык справа налево (арабский, персидский, иврит): вся раскладка окна
-    // зеркалится от корня — якоря, Row/Grid/Layout, горизонтальные списки и
-    // явное выравнивание текста (`RexonText`). Направление ставит Qt по
-    // переводу самой Qt (`QT_LAYOUT_DIRECTION` в qtbase_ar/he/fa), проверка
-    // без перевода — запуск с `-reverse`. Где раскладка физическая и
-    // зеркалиться не должна, ставится местное `LayoutMirroring.enabled: false`.
-    // Сторож — `rust/rexon-core/tests/rtl_parity.rs`.
+    // Right-to-left language (Arabic, Persian, Hebrew): the whole window
+    // layout is mirrored from the root — anchors, Row/Grid/Layout, horizontal
+    // lists and explicit text alignment (`RexonText`). The direction is set by
+    // Qt from Qt's own translation (`QT_LAYOUT_DIRECTION` in qtbase_ar/he/fa);
+    // checking without a translation means running with `-reverse`. Where the
+    // layout is physical and must not be mirrored, a local
+    // `LayoutMirroring.enabled: false` is set. The guard is
+    // `rust/rexon-core/tests/rtl_parity.rs`.
     LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
     LayoutMirroring.childrenInherit: true
-    /// Стрелки ← → в подписях окна — по его зеркалированию.
+    /// The ← → arrows in the window's labels follow its mirroring.
     readonly property RexonArrows arrows: RexonArrows {
         mirrored: root.LayoutMirroring.enabled
     }
 
-    // ── Ядро окна ─────────────────────────────────────────────────────────
+    // ── Window core ───────────────────────────────────────────────────────
 
     MainWindowModel {
         id: shell
-        // Имя нужно проверкам: снаружи объект достают
-        // `findChild(QObject, "mainWindowModel")` и спрашивают его без
-        // единой правки в этом файле.
+        // The name is needed by checks: from outside the object is fetched with
+        // `findChild(QObject, "mainWindowModel")` and queried without a single
+        // change in this file.
         objectName: "mainWindowModel"
     }
 
-    // Объект побочных действий вкладки «Рабочие столы». В продукте на его
-    // месте стоит Python-класс `DesktopsActions`; здесь — Rust-объект с теми
-    // же девятью методами и тем же сигналом `versionReady`. Все девять он
-    // исполняет сам: установку, проверку, смену и удаление стола — через
-    // исполнитель ядра (`rexon_core::system_de_exec`), с одним окном хода
-    // внутри `DesktopsPage.qml` (карта `operation`, сигналы `operationLog`
-    // и `desktopsChanged`; у Python-хозяина этих свойств нет, и окно там
-    // просто не показывается). Подробности — в шапке
+    // Side-actions object of the "Desktops" tab. In the product its place is
+    // taken by the Python class `DesktopsActions`; here it is a Rust object
+    // with the same nine methods and the same `versionReady` signal. It
+    // executes all nine by itself: installing, checking, switching and
+    // removing a desktop — through the core executor
+    // (`rexon_core::system_de_exec`), with one progress window inside
+    // `DesktopsPage.qml` (the `operation` map, the `operationLog` and
+    // `desktopsChanged` signals; the Python host has no such properties, and
+    // the window is simply not shown there). Details are in the header of
     // src/desktops_actions.rs.
     DesktopsActions {
         id: desktopsActions
         objectName: "desktopsActions"
     }
 
-    // Объект побочных действий вкладки «Steam». В продукте на его месте
-    // стоит Python-класс `SteamActions` (`rexon/qt_steam/qml_window.py`);
-    // здесь — Rust-объект с теми же восемью методами, и `SteamPage.qml` от
-    // этого не меняется ни на строку.
+    // Side-actions object of the "Steam" tab. In the product its place is
+    // taken by the Python class `SteamActions` (`rexon/qt_steam/qml_window.py`);
+    // here it is a Rust object with the same eight methods, and `SteamPage.qml`
+    // does not change by a single line because of it.
     //
-    // ⚠️ Заводится ЗДЕСЬ, а не внутри `Component` страницы, по той же
-    // причине, что и два соседа: до него должен дотянуться прогон
-    // `--selftest`. Заведи его в компоненте — и проверить, что кнопки
-    // вкладки кому-то отвечают, стало бы нечем.
+    // Warning: it is created HERE, not inside the page's `Component`, for the
+    // same reason as its two neighbours: the `--selftest` run must be able to
+    // reach it. Create it in the component, and there would be no way to check
+    // that the tab's buttons answer to anybody.
     SteamActions {
         id: steamActions
         objectName: "steamActions"
     }
 
-    // Меню окна («☰»). В продукте его строит `RexonMainWindow._build_menubar`
-    // — четыре пункта, за которыми стоят сброс темы KDE, справка, удаление
-    // Rexon и выход. Объект заводится ЗДЕСЬ, а не внутри разметки меню, по
-    // той же причине, что и три соседа: до него должен дотянуться прогон
-    // `--selftest`.
+    // Window menu ("☰"). In the product it is built by
+    // `RexonMainWindow._build_menubar` — four items with the KDE theme reset,
+    // the about box, uninstalling Rexon and quitting behind them. The object
+    // is created HERE, not inside the menu markup, for the same reason as its
+    // three neighbours: the `--selftest` run must be able to reach it.
     WindowMenuModel {
         id: menuCore
         objectName: "windowMenuModel"
     }
 
-    // ── Окно ──────────────────────────────────────────────────────────────
+    // ── Window ────────────────────────────────────────────────────────────
 
     title: shell.windowTitle
     width: shell.windowMinWidth
@@ -101,11 +106,12 @@ ApplicationWindow {
     visible: true
     color: root.colBg
 
-    // Подсказки (`ToolTip.text` у кнопок всех вкладок) стиль Basic рисует
-    // ролями `toolTipBase`/`toolTipText` палитры окна, а они у него светлые:
-    // жёлто-белая плашка поверх тёмного окна — та же беда, что была у меню
-    // «☰» (снимок 30.09.2026). Подсказок полсотни на шести вкладках, поэтому
-    // краска ставится один раз здесь, на окне, а вкладки её наследуют.
+    // Tooltips (`ToolTip.text` on the buttons of all tabs) are drawn by the
+    // Basic style with the `toolTipBase`/`toolTipText` roles of the window
+    // palette, and those are light there: a yellowish-white plate over the
+    // dark window — the same trouble the "☰" menu had (screenshot
+    // 30.09.2026). There are some fifty tooltips across six tabs, so the colour
+    // is set once here, on the window, and the tabs inherit it.
     palette.toolTipBase: root.pal.bg_card
     palette.toolTipText: root.pal.text_primary
 
@@ -117,45 +123,47 @@ ApplicationWindow {
     readonly property color colText: root.pal.text_primary
     readonly property color colTextSecondary: root.pal.text_secondary
 
-    // Прогон без глаз: ставится начальным свойством из Rust
-    // (`--selftest`). Смотри `runSelftest` внизу файла.
+    // A run without eyes: set as an initial property from Rust (`--selftest`).
+    // See `runSelftest` at the bottom of the file.
     property bool selftest: false
 
-    // Режим обхода (`--tour`): окно невидимо и само обходит разделы.
-    // Смотри «Режим обхода» внизу файла.
+    // Tour mode (`--tour`): the window is invisible and walks through the
+    // sections by itself. See "Tour mode" at the bottom of the file.
     property bool tourMode: false
 
-    // Раздел, открытый при запуске (`--section=<id>`). Пусто — первый.
-    // Незнакомый идентификатор не молчит и не роняет окно: он остаётся на
-    // первом разделе, а причина уходит в журнал.
+    // Section opened at startup (`--section=<id>`). Empty means the first one.
+    // An unknown identifier neither stays silent nor crashes the window: it
+    // stays on the first section, and the reason goes to the log.
     property string startSection: ""
 
-    // Подраздел, открытый сразу при старте: `compare` — «Сравнение DE»
-    // внутри «Рабочих столов» (`--page=compare` из ярлыка). Раздел гасит
-    // просьбу, исполнив её: повторный заход в «Рабочие столы» обязан
-    // показать сами столы, а не снова сравнение.
+    // Sub-page opened right at startup: `compare` — "DE comparison" inside
+    // "Desktops" (`--page=compare` from the launcher). The section clears the
+    // request once fulfilled: entering "Desktops" again must show the desktops
+    // themselves, not the comparison again.
     property string startSubpage: ""
 
-    // Каталог вендорного интерфейса вкладки обоев (`qml_ui/` пакета
-    // `rexon/`). Приходит начальным свойством от `bin/main_window.rs`.
+    // Directory of the vendored interface of the wallpaper tab (`qml_ui/` of
+    // the `rexon/` package). Arrives as an initial property from
+    // `bin/main_window.rs`.
     property string weVendorQmlDir: ""
 
-    // API всплывающих страниц вендора, который ставит на ОКНО шелл
-    // `PageHost.qml` (`_installWindowApi`): вендорные страницы зовут
-    // `Window.window.presentPopup(...)` и `Window.window.showChangelog()`.
-    // У питоновского хозяина окно — чужой C++-объект, и JS дописывает эти
-    // свойства в его обёртку сам. Здесь окно — этот корень, тип, объявленный
-    // в QML, и новое свойство в него не дописать («Cannot assign to
-    // non-existent property»): без объявления мертвы все всплывающие
-    // страницы вкладки — фильтры, плейлисты, метки, «Библиотеки».
+    // The vendor's pop-up page API that the `PageHost.qml` shell installs on
+    // the WINDOW (`_installWindowApi`): vendored pages call
+    // `Window.window.presentPopup(...)` and `Window.window.showChangelog()`.
+    // With the Python host the window is a foreign C++ object, and the JS adds
+    // these properties to its wrapper by itself. Here the window is this root,
+    // a type declared in QML, and a new property cannot be added to it
+    // ("Cannot assign to non-existent property"): without the declaration all
+    // pop-up pages of the tab are dead — filters, playlists, tags,
+    // "Libraries".
     property var popupPresenter: null
     property var presentPopup: null
     property var showChangelog: null
 
-    /// Открыть раздел `id` (и подраздел `subpage`, `compare` — «Сравнение
-    /// DE»). Одна дверь на стартовый раздел и на просьбу второго запуска
-    /// (слушатель активации зовёт её через шим лотка). false — такого
-    /// раздела нет, окно остаётся где было.
+    /// Open section `id` (and sub-page `subpage`, `compare` — "DE comparison").
+    /// One door for the start section and for the request of a second launch
+    /// (the activation listener calls it through the tray shim). false means
+    /// there is no such section, and the window stays where it was.
     function openSection(id, subpage) {
         const sections = shell.sections;
         let found = -1;
@@ -164,9 +172,9 @@ ApplicationWindow {
                 found = i;
         if (found < 0)
             return false;
-        // Просьба о подразделе ставится ДО переключения: только что
-        // построенный раздел читает её при создании, уже построенный —
-        // по сигналу смены (см. раздел «Рабочие столы»).
+        // The sub-page request is set BEFORE switching: a just-built section
+        // reads it on creation, an already built one on the change signal (see
+        // the "Desktops" section).
         root.startSubpage = subpage ? String(subpage) : "";
         bar.currentIndex = found;
         return true;
@@ -178,33 +186,34 @@ ApplicationWindow {
             console.warn("раздела «" + root.startSection + "» нет; "
                          + "открыт первый");
         if (root.tourMode) {
-            // Обход ни мастера, ни обучения, ни сверки оформления не
-            // показывает — по той же причине, что и самопроверка.
+            // The tour shows neither the wizard, nor the tutorial, nor the look
+            // reconciliation — for the same reason as the self-test.
             root.tourSend(null);
         } else if (root.selftest) {
-            // Прогон обходит разделы по порядку и обязан начать с первого:
-            // начни он с того, что назвали `--section=`, предыдущие разделы
-            // остались бы непроверенными, а прогон — зелёным.
+            // The run walks through the sections in order and must start with the
+            // first: if it started with the one named by `--section=`, the previous
+            // sections would remain unchecked and the run green.
             bar.currentIndex = 0;
             selftestTimer.start();
         } else {
-            // Самопроверка ни мастера установки, ни обучения не показывает:
-            // вопрос накрыл бы окно, а ответ записался бы в настройки
-            // человека.
+            // The self-test shows neither the installation wizard nor the tutorial:
+            // the question would cover the window, and the answer would be written
+            // into the user's settings.
             wizardTimer.start();
-            // Раздел при запуске — в журнал действий (смена индекса с нуля
-            // на ноль сигнала не даёт).
+            // The section at startup goes to the action journal (changing the index
+            // from zero to zero gives no signal).
             if (bar.currentIndex >= 0 && bar.currentIndex < shell.sections.length)
                 ActionJournal.section(shell.sections[bar.currentIndex].id);
-            // И сверку оформления тоже: её вопрос накрыл бы окно так же.
+            // And the look reconciliation too: its question would cover the window
+            // in the same way.
             aeroshellTimer.start();
         }
     }
 
-    // ── Меню окна ─────────────────────────────────────────────────────────
+    // ── Window menu ───────────────────────────────────────────────────────
     //
-    // Именно `menuBar:`, а не `header:`: в шапке стоит полоса разделов, и
-    // меню обязано жить над ней — там же, где его показывает продукт.
+    // Exactly `menuBar:`, not `header:`: the header holds the section strip,
+    // and the menu must live above it — where the product shows it.
 
     menuBar: WindowMenu {
         id: menuBarItem
@@ -222,10 +231,11 @@ ApplicationWindow {
         onQuitRequested: Qt.quit()
     }
 
-    // ── Обучение при первом запуске ───────────────────────────────────────
+    // ── First-run tutorial ────────────────────────────────────────────────
     //
-    // Сценарий, тексты и прогресс — у ядра; прогресс лежит в общем файле
-    // настроек, поэтому прошедший обучение в Python-окне здесь его не увидит.
+    // The scenario, texts and progress belong to the core; the progress lies
+    // in the shared settings file, so someone who took the tutorial in the
+    // Python window will not see it here.
 
     OnboardingModel {
         id: onboardingCore
@@ -239,29 +249,32 @@ ApplicationWindow {
         locate: (kind, tabId) => root.onboardingTarget(kind, tabId)
     }
 
-    /// Обучение ждёт, пока окно покажут (запуск свёрнутым в лоток).
+    /// The tutorial waits until the window is shown (a start minimized to the
+    /// tray).
     property bool onboardingPending: false
 
-    // Как у Python-окна: ПОСЛЕ первой вкладки. Вопрос поверх пустого окна
-    // выглядит так, будто программа не загрузилась.
+    // As in the Python window: AFTER the first tab. A question over an empty
+    // window looks as if the program had not loaded.
     //
-    // ⚠️ Запускает этот таймер не показ окна, а КОНЕЦ МАСТЕРА УСТАНОВКИ
-    // (`firstRun.onFinished`). Прежде обучение начиналось через 700 мс
-    // после показа окна, и при первом запуске неустановленного Rexon два
-    // вопроса встали бы друг на друга: карточка обучения поверх окна
-    // установки. Мастер сам отвечает `finished()` сразу, когда предлагать
-    // нечего, — тогда обучение начинается ровно как раньше.
+    // Warning: this timer is started not by showing the window but by the END
+    // OF THE INSTALLATION WIZARD (`firstRun.onFinished`). Previously the
+    // tutorial started 700 ms after the window was shown, and on the first
+    // launch of a non-installed Rexon two questions would stack up: the
+    // tutorial card over the installation window. The wizard itself answers
+    // `finished()` immediately when there is nothing to offer — then the
+    // tutorial starts exactly as before.
     Timer {
         id: onboardingTimer
         interval: 700
         onTriggered: root.maybeStartOnboarding()
     }
 
-    // ── Мастер первого запуска ────────────────────────────────────────────
+    // ── First-run wizard ──────────────────────────────────────────────────
     //
-    // Решение «предлагать ли установку» и все подписи — у ядра; накладка
-    // только спрашивает мост (`FirstRunWizardOverlay.begin()`). Обучение
-    // ждёт её конца, а сверка оформления — конца их обоих.
+    // The decision "whether to offer installation" and all labels belong to
+    // the core; the overlay only asks the bridge
+    // (`FirstRunWizardOverlay.begin()`). The tutorial waits for its end, and
+    // the look reconciliation for the end of both.
 
     FirstRunWizardOverlay {
         id: firstRun
@@ -271,11 +284,12 @@ ApplicationWindow {
         onFinished: root.maybeStartOnboarding()
     }
 
-    /// Мастер ждёт, пока окно покажут (запуск свёрнутым в лоток).
+    /// The wizard waits until the window is shown (a start minimized to the
+    /// tray).
     property bool wizardPending: false
 
-    // Та же задержка, что у обучения, и по той же причине: вопрос поверх
-    // пустого окна выглядит так, будто программа не загрузилась.
+    // The same delay as for the tutorial, and for the same reason: a question
+    // over an empty window looks as if the program had not loaded.
     Timer {
         id: wizardTimer
         interval: 700
@@ -298,7 +312,7 @@ ApplicationWindow {
         }
         root.onboardingPending = false;
         const decision = onboardingCore.start();
-        // В журнал: по нему видно, почему обучение показалось или нет.
+        // To the log: it shows why the tutorial appeared or not.
         console.info("обучение при запуске: " + decision.kind
                      + (decision.step ? " " + decision.step : ""));
         onboarding.begin(decision);
@@ -313,13 +327,14 @@ ApplicationWindow {
             aeroshellTimer.restart();
     }
 
-    // ── Оформление AeroShell отстало от системы ───────────────────────────
+    // ── The AeroShell look has fallen behind the system ───────────────────
     //
-    // Как у Python-окна (`rexon/qt_main/window.py`): сверка ПОСЛЕ обучения —
-    // два окна разом при первом запуске перебор. Здесь только сверка и
-    // вопрос; пересборка — исключительно нажатием «Восстановить» в окне.
-    // Объект действий и окно — те же, что у кнопки «Проверить сейчас» в
-    // «Настройках» (`settings_actions.rs`, исполнитель ядра `system_de_exec`).
+    // As in the Python window (`rexon/qt_main/window.py`): the reconciliation
+    // comes AFTER the tutorial — two windows at once on the first launch is
+    // too much. Here there is only the reconciliation and the question; the
+    // rebuild happens exclusively by pressing "Restore" in the window. The
+    // actions object and the window are the same as for the "Check now" button
+    // in "Settings" (`settings_actions.rs`, core executor `system_de_exec`).
 
     SettingsActions {
         id: aeroshellActions
@@ -332,7 +347,8 @@ ApplicationWindow {
         pal: root.pal
     }
 
-    /// Сверка ждёт, пока окно покажут (запуск свёрнутым в лоток).
+    /// The reconciliation waits until the window is shown (a start minimized
+    /// to the tray).
     property bool aeroshellPending: false
 
     Timer {
@@ -346,8 +362,9 @@ ApplicationWindow {
             root.aeroshellPending = true;
             return;
         }
-        // Мастер установки или обучение ещё на экране — дождаться их конца:
-        // вопрос поверх чужого окна читался бы как его продолжение.
+        // The installation wizard or the tutorial is still on screen — wait for
+        // them to finish: a question over someone else's window would read as its
+        // continuation.
         if (firstRun.opened || onboarding.opened) {
             aeroshellTimer.restart();
             return;
@@ -356,9 +373,9 @@ ApplicationWindow {
         aeroshellActions.aeroshellStartupCheck();
     }
 
-    /// Прямоугольник цели обучения в координатах окна либо null.
-    /// "tab" — заголовок вкладки, "tab_content" — её содержимое (окно
-    /// переключается на вкладку, как у Python-окна).
+    /// Rectangle of the tutorial target in window coordinates, or null. "tab"
+    /// is the tab header, "tab_content" its content (the window switches to the
+    /// tab, as in the Python window).
     function onboardingTarget(kind, tabId) {
         const sections = shell.sections;
         let index = -1;
@@ -381,15 +398,15 @@ ApplicationWindow {
         return { x: p.x, y: p.y, width: item.width, height: item.height };
     }
 
-    // ── Полоса разделов ───────────────────────────────────────────────────
+    // ── Section strip ─────────────────────────────────────────────────────
 
     header: TabBar {
         id: bar
 
-        // Смена раздела: (1) в журнал действий — сторож и строки кнопок
-        // называют раздел, в котором человек был; (2) сведение подвала
-        // («… — Завершено ✅») относится к разделу, где его получили, —
-        // что снимать, решает ядро (`system_de_exec::footer_hold`).
+        // Section change: (1) into the action journal — the watchdog and the
+        // button lines name the section the user was in; (2) the footer summary
+        // ("… — Done ✅") belongs to the section where it was received — what to
+        // clear is decided by the core (`system_de_exec::footer_hold`).
         onCurrentIndexChanged: {
             const sections = shell.sections;
             if (bar.currentIndex >= 0 && bar.currentIndex < sections.length)
@@ -416,16 +433,16 @@ ApplicationWindow {
                 required property var modelData
 
                 text: tabButton.modelData.label
-                // Высота ≥ 40 px — требование Big Picture (архитектурное
-                // правило #16), а не вкусовое число.
+                // Height ≥ 40 px is a Big Picture requirement (architecture rule #16),
+                // not a number of taste.
                 implicitHeight: 44
                 font.pointSize: 11
-                // Ширина — по НАШЕЙ подписи, а не по стилю платформы. В сеансе
-                // KDE контролы берут стиль org.kde.desktop: тот меряет вкладку
-                // своим шрифтом (10 pt против наших 11) и ещё своей рамкой
-                // выделения, и выделенная «Wallpaper Engine» обрезалась до
-                // «Wallpaper Engin» (стенд 08.11.2026). Поля — с запасом на
-                // отступы плашки с обеих сторон.
+                // The width follows OUR label, not the platform style. In a KDE session
+                // the controls take the org.kde.desktop style: it measures a tab with its
+                // own font (10 pt versus our 11) and also with its own selection frame,
+                // and the selected "Wallpaper Engine" was cut to "Wallpaper Engin" (test
+                // bench 08.11.2026). The padding leaves room for the chip's margins on
+                // both sides.
                 leftPadding: shell.tabStyle.marginH + 10
                 rightPadding: shell.tabStyle.marginH + 10
                 implicitWidth: Math.ceil(tabButton.contentItem.implicitWidth)
@@ -441,15 +458,15 @@ ApplicationWindow {
                     elide: Text.ElideRight
                 }
 
-                // Плашка-«чип» у КАЖДОЙ вкладки, как в виджетном окне.
+                // A "chip" plate on EVERY tab, as in the widget window.
                 //
-                // ⚠️ Неактивная вкладка НЕ прозрачна. Прозрачной она была до
-                // 18.09.2026, и полоса разделов выходила сплошной: у соседей
-                // не было ни заливки, ни зазора, и не было видно, где
-                // кончается одна вкладка и начинается следующая (замечание
-                // Wehrwolfmann). Краски и отступы — из ядра
-                // (`qt_main::TAB_*` через `shell.tabStyle`), общие с
-                // виджетным окном; своих чисел разметка не заводит.
+                // Warning: an inactive tab is NOT transparent. It was transparent until
+                // 18.09.2026, and the section strip came out as one solid block: the
+                // neighbours had neither a fill nor a gap, and it was impossible to see
+                // where one tab ended and the next began (Wehrwolfmann's remark). Colours
+                // and margins come from the core (`qt_main::TAB_*` through
+                // `shell.tabStyle`), shared with the widget window; the markup defines no
+                // numbers of its own.
                 background: Rectangle {
                     color: "transparent"
 
@@ -465,9 +482,8 @@ ApplicationWindow {
                                ? root.colBg
                                : (tabButton.hovered ? shell.tabStyle.hoverFill
                                                     : shell.tabStyle.idleFill)
-                        // Рамка сфокусированной кнопки: цепочка фокуса
-                        // закладывается с самого начала, а не «когда дойдём до
-                        // контроллера».
+                        // Frame of the focused button: the focus chain is built in from the very
+                        // start, not "when we get to the controller".
                         border.width: tabButton.activeFocus ? 2 : 0
                         border.color: root.colAccent
 
@@ -485,23 +501,24 @@ ApplicationWindow {
         }
     }
 
-    // ── Карта страниц: идентификатор → разметка ───────────────────────────
+    // ── Page map: identifier → markup ─────────────────────────────────────
     //
-    // Раньше на этом месте был гвоздь: `Loader.sourceComponent` смотрел
-    // прямо в `comparePage`, а `wake()` сравнивал идентификатор с литералом
-    // «compare» — открыться мог ровно один раздел из шести, остальные пять
-    // показывали объяснение вместо страницы.
+    // There used to be a nail here: `Loader.sourceComponent` looked straight
+    // at `comparePage`, and `wake()` compared the identifier with the literal
+    // "compare" — exactly one section out of six could open, the other five
+    // showed an explanation instead of a page.
     //
-    // Карта — единственное место, где окно знает, какая разметка стоит за
-    // идентификатором страницы. КАКОЙ раздел её получает, окно не решает
-    // вовсе: это таблица `SECTION_PAGES` в src/main_window.rs.
+    // The map is the only place where the window knows which markup stands
+    // behind a page identifier. WHICH section gets it is not decided by the
+    // window at all: that is the `SECTION_PAGES` table in
+    // src/main_window.rs.
     //
-    // Перечислены ВСЕ страницы, которые уже есть на QML, включая ту, что
-    // таблица разделов не выбирает («compare»: сравнение — не раздел, а
-    // вторая страница «Рабочих столов», и её кладёт держатель раздела ниже).
-    // Карта — каталог доступного, а не вторая копия таблицы. Обратный
-    // разъезд — страницу таблица назвала, а карта её не знает — ловит сторож
-    // `every_page_is_in_the_qml_map`.
+    // ALL pages that already exist in QML are listed, including one the
+    // section table does not pick ("compare": the comparison is not a section
+    // but the second page of "Desktops", and the section holder below puts it
+    // there). The map is a catalogue of what is available, not a second copy
+    // of the table. The reverse divergence — the table named a page the map
+    // does not know — is caught by the `every_page_is_in_the_qml_map` guard.
     readonly property var pageComponents: ({
         "compare": comparePage,
         "desktops": desktopsPage,
@@ -512,7 +529,7 @@ ApplicationWindow {
         "settings": settingsPage
     })
 
-    // ── Содержимое разделов ───────────────────────────────────────────────
+    // ── Section contents ──────────────────────────────────────────────────
 
     StackLayout {
         id: stack
@@ -527,19 +544,18 @@ ApplicationWindow {
                 required property int index
                 required property var modelData
 
-                /// Разметка этого раздела по карте окна либо null, если
-                /// страницы у него нет. Здесь и кончается всё знание
-                /// раздела о том, что он показывает.
+                /// This section's markup from the window map, or null if it has no page.
+                /// This is where all the section's knowledge of what it shows ends.
                 readonly property Component pageComponent:
                     root.pageComponents[section.modelData.page] ?? null
 
-                /// Построенная страница раздела либо null — этим полем её
-                /// достают проверки, не разбирая дерево наощупь.
+                /// The section's built page, or null — checks fetch it through this field
+                /// without groping through the tree.
                 readonly property Item page: pageLoader.item as Item
 
-                // Названная, но неизвестная карте страница не должна молча
-                // превратиться в «раздел ещё не перенесён»: текст соврал бы
-                // о причине, а причина — разъезд таблицы с картой.
+                // A page that is named but unknown to the map must not silently turn into
+                // "section not ported yet": the text would lie about the cause, and the
+                // cause is a divergence between the table and the map.
                 Component.onCompleted: {
                     if (section.modelData.page !== ""
                             && section.pageComponent === null)
@@ -551,17 +567,17 @@ ApplicationWindow {
                 Loader {
                     id: pageLoader
                     anchors.fill: parent
-                    // Страницы грузятся асинхронно и лениво — как в
-                    // продукте: синхронная компиляция всех шести разделов
-                    // легла бы целиком в старт окна.
+                    // Pages load asynchronously and lazily — as in the product: synchronous
+                    // compilation of all six sections would land entirely on the window
+                    // start.
                     asynchronous: true
                     active: false
                     visible: section.pageComponent !== null
                     sourceComponent: section.pageComponent
 
-                    // Страница строится, когда её раздел открыли ПЕРВЫЙ раз,
-                    // и дальше остаётся построенной: платить компиляцией за
-                    // каждый возврат на вкладку покупатель не должен.
+                    // A page is built when its section is opened for the FIRST time and stays
+                    // built afterwards: the customer should not pay with compilation for every
+                    // return to the tab.
                     function wake() {
                         if (section.pageComponent !== null
                                 && bar.currentIndex === section.index)
@@ -576,9 +592,9 @@ ApplicationWindow {
                     }
                 }
 
-                // Раздел, у которого Rust-хозяина ещё нет. Пустая страница
-                // читается как поломка (правило #13), поэтому объяснение
-                // приходит из ядра, а не рисуется пустотой.
+                // A section that has no Rust host yet. An empty page reads as a breakage
+                // (rule #13), so the explanation comes from the core rather than being
+                // drawn as emptiness.
                 RexonText {
                     anchors.centerIn: parent
                     width: Math.min(parent.width - 80, 560)
@@ -593,60 +609,59 @@ ApplicationWindow {
         }
     }
 
-    // Страницы — ТЕ ЖЕ, что открывает живой Rexon, и ни одна из них не
-    // знает, кто её хозяин. `Component` сам по себе ничего не строит, пока
-    // его не попросили, поэтому семь объявлений стоят старту окна ровно
-    // ноль: строится только та страница, чей раздел открыли.
+    // The pages are THE SAME ones the live Rexon opens, and none of them knows
+    // who its host is. A `Component` builds nothing by itself until asked, so
+    // the seven declarations cost the window start exactly zero: only the page
+    // whose section was opened is built.
     //
-    // Объект побочных действий есть теперь у КАЖДОЙ страницы, которой он
-    // нужен, и приходит к ней двумя разными путями — это не небрежность, а
-    // разница в договоре самой страницы:
-    //   * «Сравнение DE», «Рабочие столы» и «Steam» ждут его свойством
-    //     `actions`, и подставляет его хозяин (объекты объявлены выше);
-    //   * «Расширения» и «Wallpaper Engine» заводят его СЕБЕ САМИ
-    //     (`ExtensionsActions { }`, `WeActions { }` прямо в .qml), поэтому
-    //     здесь про них ничего и не сказано.
-    // Пустой `actions` страницы по-прежнему переносят: каждая проверяет его
-    // на null сама, и ни одна из-за него не падает.
+    // Every page that needs a side-actions object now has one, and it reaches
+    // the page in two different ways — this is not carelessness but a
+    // difference in the page's own contract:
+    //   * "DE comparison", "Desktops" and "Steam" expect it as the `actions`
+    //     property, and the host provides it (the objects are declared above);
+    //   * "Extensions" and "Wallpaper Engine" create it FOR THEMSELVES
+    //     (`ExtensionsActions { }`, `WeActions { }` right in the .qml), so
+    //     nothing is said about them here.
+    // The pages still tolerate an empty `actions`: each checks it for null
+    // itself, and none crashes because of it.
     Component {
         id: comparePage
 
         ComparePage {
-            // Тот же объект, что у «Рабочих столов»: установка и смена
-            // стола идут одним исполнителем и одним окном хода.
+            // The same object as for "Desktops": installing and switching a desktop go
+            // through one executor and one progress window.
             actions: desktopsActions
         }
     }
 
-    // Раздел «Рабочие столы» — это ДВЕ страницы, ровно как в продукте:
-    // витрина столов и встроенное «Сравнение DE» (отдельной вкладкой оно
-    // перестало быть 08.07.2026). Виджетная вкладка держала их
-    // `QStackedWidget`, здесь то же делает `StackLayout`.
+    // The "Desktops" section is TWO pages, exactly as in the product: the
+    // desktop showcase and the embedded "DE comparison" (it stopped being a
+    // separate tab on 08.07.2026). The widget tab held them in a
+    // `QStackedWidget`; here `StackLayout` does the same.
     //
-    // Вставить сравнение ВНУТРЬ сцены столов нельзя: это отдельная страница
-    // со своей моделью. Поэтому переключает страницы хозяин, а сама вкладка
-    // только просит об этом — сигналом `compareRequested` объекта действий.
-    // Подпись кнопки возврата приходит из ядра (`compareBackText`), второй
-    // копии буквы здесь нет.
+    // The comparison cannot be inserted INSIDE the desktops scene: it is a
+    // separate page with its own model. So the host switches the pages, and
+    // the tab itself only asks for it — with the `compareRequested` signal of
+    // the actions object. The back button label comes from the core
+    // (`compareBackText`); there is no second copy of the text here.
     Component {
         id: desktopsPage
 
         Item {
             id: desktopsHolder
 
-            // Заголовок раздела спрашивает прогон `--selftest`, и отдать его
-            // обязана САМА страница столов: подставь сюда свою строку — и
-            // проверка «хозяин окна → страница → модель» стала бы зелёной,
-            // ничего не проверив.
+            // The section title is queried by the `--selftest` run, and the desktops
+            // page ITSELF must provide it: put your own string here, and the check
+            // "window host → page → model" would go green without checking anything.
             readonly property string windowTitle: desktopsView.windowTitle
 
-            /// Какая из двух страниц раздела показана: 0 — столы, 1 —
-            /// сравнение. Этим полем прогон проверяет, что просьба показать
-            /// «Сравнение DE» куда-то ведёт.
+            /// Which of the section's two pages is shown: 0 — desktops, 1 — comparison.
+            /// The run uses this field to check that the request to show "DE
+            /// comparison" leads somewhere.
             readonly property int subPage: desktopsStack.currentIndex
 
-            /// Какой стол выбран и в каком сеанс: прогон требует, чтобы
-            /// вкладка открывалась на текущем столе.
+            /// Which desktop is selected and in which session: the run requires the
+            /// tab to open on the current desktop.
             readonly property string selectedDe: desktopsView.selectedDe
             readonly property string currentDe: desktopsView.currentDe
 
@@ -668,15 +683,14 @@ ApplicationWindow {
                         Layout.topMargin: 10
                         Layout.bottomMargin: 4
                         pal: root.pal
-                        // Стрелка «назад» — к началу строки (`RexonArrows.keyHint`).
+                        // The "back" arrow points to the start of the line (`RexonArrows.keyHint`).
                         text: root.arrows.keyHint(desktopsView.compareBackText)
                         onClicked: desktopsStack.currentIndex = 0
                     }
 
-                    // Сравнение берётся из той же карты `pageComponents` и
-                    // строится, только когда его попросили: пока человек не
-                    // нажал «Сравнить», платить за компиляцию второй
-                    // страницы раздел не должен.
+                    // The comparison is taken from the same `pageComponents` map and built
+                    // only when requested: until the user presses "Compare", the section
+                    // should not pay for compiling the second page.
                     Loader {
                         id: compareLoader
                         Layout.fillWidth: true
@@ -699,8 +713,8 @@ ApplicationWindow {
                 function onCompareRequested() { desktopsHolder.showCompare(); }
             }
 
-            // `--page=compare` (при старте либо от второго запуска): та же
-            // дверь, что у кнопки «Сравнить». Просьба гасится исполненной.
+            // `--page=compare` (at startup or from a second launch): the same door as
+            // the "Compare" button. The request is cleared once fulfilled.
             function takeSubpage() {
                 if (root.startSubpage === "compare") {
                     root.startSubpage = "";
@@ -733,10 +747,10 @@ ApplicationWindow {
     Component {
         id: wallpaperEnginePage
 
-        // Каталог вендорного интерфейса waywallen называет хозяин процесса
-        // (`we_env::vendor_qml_dir`, начальное свойство `weVendorQmlDir`).
-        // Пусто — пакета `rexon/` рядом нет, и страница честно открывается
-        // без вендорных страниц, как она и написана.
+        // The directory of the vendored waywallen interface is named by the
+        // process host (`we_env::vendor_qml_dir`, initial property
+        // `weVendorQmlDir`). Empty means there is no `rexon/` package nearby, and
+        // the page honestly opens without vendored pages, as it is written.
         WallpaperEnginePage {
             vendorQmlDir: root.weVendorQmlDir
         }
@@ -756,20 +770,21 @@ ApplicationWindow {
         SettingsPage {}
     }
 
-    // ── Подвал: что ответило побочное действие ────────────────────────────
+    // ── Footer: what a side action answered ───────────────────────────────
 
-    // Ответ ПОСЛЕДНЕГО нажатия, а не одного избранного объекта: объектов
-    // побочных действий стало два, и «показываем только первого» означало бы,
-    // что половина кнопок отвечает в пустоту — то есть выглядит поломкой
-    // (правило #13).
+    // The answer of the LAST press, not of one chosen object: there are now
+    // two side-actions objects, and "show only the first one" would mean that
+    // half of the buttons answer into the void — that is, look broken
+    // (rule #13).
     property string footerStatus: ""
 
     Connections {
         target: desktopsActions
         function onStatusChanged() {
             root.footerStatus = desktopsActions.status;
-            // Срок строки — от ядра по её роду: сведение уходит само, ошибка
-            // и ожидание ответа таймером не снимаются.
+            // The line's lifetime comes from the core according to its kind: a
+            // summary goes away by itself, an error and a wait for an answer are not
+            // cleared by a timer.
             const ms = desktopsActions.statusTimeoutMs();
             footerTimer.stop();
             if (ms > 0) {
@@ -809,33 +824,34 @@ ApplicationWindow {
             text: root.footerStatus
         }
 
-        // Щелчок по подвалу убирает сведение или ошибку (ожидание ответа —
-        // нет: его снимает окно вопроса).
+        // A click on the footer removes a summary or an error (not a wait for an
+        // answer: that is cleared by the question window).
         MouseArea {
             anchors.fill: parent
             onClicked: desktopsActions.dismissStatus()
         }
     }
 
-    // ── Режим обхода (`--tour`) ───────────────────────────────────────────
+    // ── Tour mode (`--tour`) ──────────────────────────────────────────────
     //
-    // Исполнитель, а не решатель: что делать дальше, когда экран готов и что
-    // в увиденном подозрительно — решает ядро (`main_window_tour`), его
-    // спрашивает `shell.tourNext`. Здесь только исполнение команды и замер.
+    // An executor, not a decider: what to do next, when the screen is ready
+    // and what looks suspicious in what was seen is decided by the core
+    // (`main_window_tour`), which `shell.tourNext` asks. Here there is only
+    // the execution of the command and the measurement.
     //
-    // ⛔ Обход ничего не устанавливает, не применяет и не удаляет. Страницу
-    // он трогает ОДНОЙ дверью — `tourInvoke`, а она зовёт метод, только если
-    // ядро его разрешило (`shell.tourCallAllowed`). Кнопок страница обходу не
-    // отдаёт вовсе.
+    // Never: the tour installs, applies and removes nothing. It touches a page
+    // through ONE door — `tourInvoke`, which calls a method only if the core
+    // has allowed it (`shell.tourCallAllowed`). The page does not hand any
+    // buttons to the tour at all.
 
     QtObject {
         id: tour
-        /// Команда в работе (разобранный JSON ядра).
+        /// Command in progress (parsed core JSON).
         property var cmd: null
-        /// Шаг исполнения: page | settle | load | preview | grab.
+        /// Execution step: page | settle | load | preview | grab.
         property string phase: ""
         property double phaseAt: 0
-        /// Ответ, который копится для ядра.
+        /// Answer accumulated for the core.
         property var result: ({})
         property int lastNoPreview: -1
         property double stableSince: 0
@@ -848,7 +864,7 @@ ApplicationWindow {
         onTriggered: root.tourTick()
     }
 
-    /// Отдать ядру ответ на прошлую команду и взяться за следующую.
+    /// Hand the core the answer to the previous command and take on the next.
     function tourSend(report) {
         tourTimer.stop();
         const cmd = JSON.parse(shell.tourNext(report === null ? "" : JSON.stringify(report)));
@@ -861,8 +877,8 @@ ApplicationWindow {
         root.tourStart(cmd);
     }
 
-    /// Единственная дверь обхода к странице: метод зовётся, только если ядро
-    /// его разрешило.
+    /// The tour's only door to a page: a method is called only if the core has
+    /// allowed it.
     function tourInvoke(cmd, arg) {
         if (!shell.tourCallAllowed(cmd.method)) {
             tour.result.error = "вызов «" + cmd.method + "» запрещён ядром";
@@ -876,7 +892,7 @@ ApplicationWindow {
         return target[cmd.method](arg) !== false;
     }
 
-    /// Построенная страница открытого раздела либо null.
+    /// Built page of the open section, or null.
     function tourPage() {
         const holder = root.sectionHolder(bar.currentIndex);
         return holder ? holder.page : null;
@@ -936,8 +952,8 @@ ApplicationWindow {
             root.tourSend({ ok: ready, built: !!page,
                             kind: appearance ? "appearance" : "", categories: cats });
         } else if (tour.phase === "settle") {
-            // Шапка раздела (чипы, поле поиска) обновляется сигналом модели,
-            // не тем же вызовом: дать ей кадр-другой.
+            // The section header (chips, search field) is updated by a model signal,
+            // not by the same call: give it a frame or two.
             if (elapsed < 300)
                 return;
             const r = tour.result;
@@ -979,7 +995,8 @@ ApplicationWindow {
         }
     }
 
-    /// Снять окно целиком (с полосой разделов и меню) в файл команды.
+    /// Capture the whole window (with the section strip and menu) into the
+    /// command's file.
     function tourGrab() {
         tourTimer.stop();
         tour.phase = "grab";
@@ -1000,30 +1017,30 @@ ApplicationWindow {
             r.status_warn = st.statusWarn;
             r.source = st.source;
         }
-        // Окно целиком (`QQuickWindow::grabWindow`): `grabToImage` корня
-        // окна не умеет — корневой элемент не принадлежит движку QML.
+        // The whole window (`QQuickWindow::grabWindow`): `grabToImage` cannot do
+        // the window root — the root element does not belong to the QML engine.
         r.saved = shell.tourGrab(tour.cmd.path);
         root.tourSend(r);
     }
 
-    // ── Самопроверка ──────────────────────────────────────────────────────
+    // ── Self-test ─────────────────────────────────────────────────────────
 
-    // Стенд, который зеленеет всегда, ничего не проверяет: каждая проверка
-    // названа поимённо, а провал печатается отдельной строкой
-    // REXON-MAINWINDOW-FAIL и уносит код возврата в единицу.
+    // A test bench that is always green checks nothing: every check is named
+    // individually, and a failure is printed as a separate
+    // REXON-MAINWINDOW-FAIL line and sets the exit code to one.
     //
-    // Прогон обходит ВСЕ разделы по очереди, а не только открытый. Пока
-    // страница была одна, «текущий раздел построился» и «окно работает»
-    // значили одно и то же; с шестью страницами такая проверка пропустила
-    // бы пять — и разъезд карты с таблицей остался бы зелёным.
+    // The run walks through ALL sections in turn, not only the open one. While
+    // there was a single page, "the current section was built" and "the window
+    // works" meant the same thing; with six pages such a check would skip
+    // five — and a divergence between the map and the table would stay green.
     //
-    // Страница текущего раздела грузится АСИНХРОННО, и в первом же кадре её
-    // ещё нет. Проверять сразу значило бы мерить не готовность страницы, а
-    // скорость планировщика: первый прогон так и покраснел («страница
-    // текущего раздела не построена»), хотя окно было исправно. Поэтому у
-    // каждого раздела свой цикл ожидания.
+    // The current section's page loads ASYNCHRONOUSLY, and in the very first
+    // frame it is not there yet. Checking at once would measure not the page's
+    // readiness but the scheduler's speed: the first run turned red exactly
+    // like that ("the current section's page is not built"), although the
+    // window was fine. So every section has its own wait loop.
 
-    /// Накопленные провалы обхода; приговор по ним выносит `runSelftest`.
+    /// Accumulated tour failures; `runSelftest` gives the verdict on them.
     property var selftestFailures: []
 
     Timer {
@@ -1033,16 +1050,16 @@ ApplicationWindow {
         property int ticks: 0
         onTriggered: {
             const holder = root.sectionHolder(bar.currentIndex);
-            // Раздела без страницы ждать нечего — он готов сразу.
+            // A section without a page has nothing to wait for — it is ready at once.
             const waiting = holder !== null && holder.pageComponent !== null
                             && !holder.page;
-            // 40 попыток по 100 мс = 4 с на раздел, шесть разделов — 24 с.
-            // Число подобрано под сторож бинаря (30 с): пересиди прогон
-            // сторожа, и провал стал бы безымянным «окно не отчиталось»
-            // вместо «страница раздела такого-то не построена». Замер обхода
-            // на этой машине — 1,06 с на все шесть, запас двадцатикратный.
-            // Не дождались — это уже провал, а не «подождём ещё»: страница
-            // обязана строиться.
+            // 40 attempts of 100 ms = 4 s per section, six sections — 24 s. The number
+            // is chosen to fit the binary's watchdog (30 s): outlast the watchdog, and
+            // the failure would become a nameless "the window did not report" instead
+            // of "the page of such-and-such section was not built". The tour measured
+            // on this machine takes 1.06 s for all six, a twentyfold margin. Not
+            // waiting long enough is already a failure, not "let's wait some more":
+            // the page must build.
             if (waiting && selftestTimer.ticks++ < 40)
                 return;
             selftestTimer.stop();
@@ -1051,12 +1068,12 @@ ApplicationWindow {
         }
     }
 
-    /// Держатель раздела по его номеру.
+    /// Section holder by its index.
     ///
-    /// Поиском, а не `stack.children[i]`: в детях StackLayout лежит ещё и
-    /// сам Repeater, и номер ребёнка не обязан совпадать с номером раздела.
-    /// Пока раздел был один, разницы не было видно — с шестью она стала бы
-    /// молчаливой сверкой не той страницы.
+    /// By search, not `stack.children[i]`: the children of a StackLayout also
+    /// include the Repeater itself, and a child's index need not match the
+    /// section's index. While there was one section the difference was
+    /// invisible — with six it would become a silent check of the wrong page.
     function sectionHolder(index) {
         for (let i = 0; i < stack.children.length; ++i)
             if (stack.children[i].index === index)
@@ -1064,7 +1081,7 @@ ApplicationWindow {
         return null;
     }
 
-    /// Приговор по ОДНОМУ разделу; дальше прогон переходит к следующему.
+    /// Verdict on ONE section; then the run moves on to the next.
     function checkSection() {
         const sections = shell.sections;
         const index = bar.currentIndex;
@@ -1076,10 +1093,10 @@ ApplicationWindow {
         if (holder === null)
             root.selftestFailures.push("раздел «" + id + "» не построен вовсе");
         else if (sections[index].page !== "" && !wanted)
-            // Таблица разделов назвала страницу, а карта окна её не знает.
-            // Без этой проверки прогон остался бы зелёным: раздел покажет
-            // объяснение «ещё не перенесён», а оно выглядит как штатная
-            // заглушка — то есть разъезд спрятался бы за исправным видом.
+            // The section table named a page that the window map does not know.
+            // Without this check the run would stay green: the section shows the
+            // explanation "not ported yet", which looks like a regular placeholder —
+            // so the divergence would hide behind a healthy look.
             root.selftestFailures.push("страницы «" + sections[index].page
                                        + "» раздела «" + id
                                        + "» нет в карте pageComponents");
@@ -1087,10 +1104,10 @@ ApplicationWindow {
             root.selftestFailures.push("страница раздела «" + id
                                        + "» не построена");
 
-        // Заголовок от Rust-модели — сквозная проверка «хозяин окна →
-        // страница → модель». Отдают его не все: у страницы Wallpaper Engine
-        // своего заголовка нет вовсе, и требовать его значило бы выдумать
-        // провал на ровном месте.
+        // The title from the Rust model is an end-to-end check "window host →
+        // page → model". Not all pages provide one: the Wallpaper Engine page has
+        // no title of its own at all, and requiring one would invent a failure out
+        // of nothing.
         const hasTitle = page !== null && page.windowTitle !== undefined;
         console.log("REXON-MAINWINDOW-PAGE " + id
                     + " | " + (page ? "построена" : (wanted ? "НЕТ" : "заглушка"))
@@ -1103,25 +1120,25 @@ ApplicationWindow {
             bar.currentIndex = index + 1;
             selftestTimer.start();
         } else {
-            // Разделы пройдены — очередь меню окна. Оно ОТКРЫВАЕТСЯ: пока
-            // меню закрыто, у пунктов нет ширины, и подпись, которая не
-            // влезла, ничем не отличается от влезшей.
+            // The sections are done — now the window menu. It is OPENED: while the
+            // menu is closed its items have no width, and a label that did not fit is
+            // indistinguishable from one that did.
             menuBarItem.openForCheck();
             menuLayoutTimer.start();
         }
     }
 
-    // Меню разложится не в том же кадре, в каком открылось: ширину пунктам
-    // даёт очередной проход раскладки. Мерить сразу значило бы мерить нули
-    // и звать это «влезло».
+    // The menu is not laid out in the same frame in which it opened: the items
+    // get their width from the next layout pass. Measuring at once would
+    // measure zeros and call it "fits".
     Timer {
         id: menuLayoutTimer
         interval: 50
         repeat: true
         property int ticks: 0
         onTriggered: {
-            // 40 попыток по 50 мс = 2 с. Не разложилось за это время — это
-            // уже провал, и он назовётся своим именем в `runSelftest`.
+            // 40 attempts of 50 ms = 2 s. If it is not laid out within that time, it
+            // is already a failure, and it will be named as such in `runSelftest`.
             if (!menuBarItem.laidOut() && menuLayoutTimer.ticks++ < 40)
                 return;
             menuLayoutTimer.stop();
@@ -1148,34 +1165,35 @@ ApplicationWindow {
             failures.push("состав разделов пуст");
         if (shell.windowTitle === "")
             failures.push("заголовок окна пуст");
-        // Ради этого прогон и затевался: своя страница обязана быть у
-        // КАЖДОГО раздела. Пока хоть один открывается заглушкой, окно на
-        // Rust не может заменить окно на Python.
+        // This is what the run was set up for: EVERY section must have its own
+        // page. As long as even one opens with a placeholder, the Rust window
+        // cannot replace the Python window.
         if (withPage !== sections.length)
             failures.push("разделов без своей страницы: "
                           + (sections.length - withPage));
 
-        // Побочное действие обязано ОТВЕТИТЬ, а не промолчать. Объект
-        // действий «Рабочих столов» — он же у «Сравнения DE». Кнопка установки
-        // ничего не запускает сама: она открывает окно вопроса (либо отказа
-        // дистрибутива) и пишет в подвал, что ждёт ответа. Пустой подвал
-        // значил бы, что кнопка промолчала, — покупатель принял бы это за
-        // поломку. Ответа «Да» прогон не даёт, а открытое окно сразу
-        // закрывает: ни пароля, ни пакетного менеджера здесь не бывает.
+        // A side action must ANSWER, not stay silent. The actions object of
+        // "Desktops" is also that of "DE comparison". The install button starts
+        // nothing by itself: it opens a question window (or a distribution
+        // refusal) and writes into the footer that it is waiting for an answer.
+        // An empty footer would mean the button stayed silent — the customer
+        // would take it for a breakage. The run never answers "Yes" and closes the
+        // opened window at once: there is never a password or a package manager
+        // here.
         desktopsActions.install("kde");
         console.log("REXON-MAINWINDOW-DESKTOPS-STATUS " + desktopsActions.status);
         if (desktopsActions.status === "")
             failures.push("побочное действие «Рабочих столов» ничего не сказало");
         desktopsActions.dismissOperation();
 
-        // Тот же вопрос объекту действий «Steam». Спрашиваем ДВЕ вещи, и
-        // обе — без единого следа на машине:
-        //   * снимок витрины обязан быть картой со всеми шестью ключами,
-        //     которые читает страница; отдай он `undefined` — витрина
-        //     осталась бы пустой, а переключатели сами встали бы в «выкл»;
-        //   * показ БЕЗ выбранного ролика обязан ответить словами. Пустой
-        //     ответ страница понимает как «пошло» и пишет «▶ Проигрываю…»,
-        //     то есть безмолвный отказ выглядел бы успехом.
+        // The same question to the "Steam" actions object. We ask TWO things, and
+        // both without leaving a single trace on the machine:
+        //   * the showcase snapshot must be a map with all six keys the page
+        //     reads; if it returned `undefined`, the showcase would stay empty and
+        //     the toggles would fall to "off" by themselves;
+        //   * showing WITHOUT a selected clip must answer in words. The page
+        //     understands an empty answer as "it started" and writes "▶ Playing…",
+        //     so a silent refusal would look like success.
         const snapshot = steamActions.scan();
         const missing = [];
         for (const key of ["movies", "current", "favorites",
@@ -1188,15 +1206,16 @@ ApplicationWindow {
         if (missing.length)
             failures.push("снимок вкладки «Steam» без ключей: " + missing.join(","));
 
-        // Третий вопрос — про корень Steam, и он про молчаливую пропажу.
+        // The third question is about the Steam root, and it is about a silent
+        // loss.
         //
-        // Страница берётся за фоновые задачи сама, в `Component.onCompleted`.
-        // Пока корень приходил снаружи, от Python-хозяина, под этим хозяином
-        // сказать его было НЕКОМУ — и секция «Steam-фоны профиля» оставалась
-        // пустой навсегда, притом что вкладка выглядела рабочей. Теперь
-        // страница ищет корень сама, а сверка требует, чтобы она знала ровно
-        // то же, что находит объект действий: расходятся — значит снова
-        // осталась без корня.
+        // The page starts its background tasks by itself, in
+        // `Component.onCompleted`. While the root came from outside, from the
+        // Python host, under that host there was NOBODY to tell it — and the
+        // "Steam profile backgrounds" section stayed empty forever, while the tab
+        // looked working. Now the page finds the root itself, and the
+        // reconciliation requires it to know exactly what the actions object
+        // finds: if they differ, it has been left without a root again.
         const actionsRoot = steamActions.steamRoot();
         const pageHolder = root.sectionHolder(4);
         const pageRoot = pageHolder ? pageHolder.page : null;
@@ -1214,14 +1233,14 @@ ApplicationWindow {
         if (steamRefusal === "")
             failures.push("вкладка «Steam» промолчала об отказе показать заставку");
 
-        // «Сравнение DE» больше не отдельный раздел, а вторая страница
-        // «Рабочих столов». Не приведи просьба никуда — сравнение просто
-        // исчезло бы из окна, и по виду вкладки этого не заметить.
+        // "DE comparison" is no longer a separate section but the second page of
+        // "Desktops". If the request led nowhere, the comparison would simply
+        // vanish from the window, and the tab's look would not reveal it.
         const desktopsHolder = root.sectionHolder(0);
         const desktopsRoot = desktopsHolder ? desktopsHolder.page : null;
-        // Вкладка открывается на столе СЕАНСА (приёмка 10.10.2026 и снова
-        // 20.10.2026: в MATE выбирался Cinnamon — первый в списке). Сеанс не
-        // опознан — сверять не с чем.
+        // The tab opens on the SESSION's desktop (acceptance 10.10.2026 and again
+        // 20.10.2026: in MATE Cinnamon was selected — the first in the list). If
+        // the session is not recognized, there is nothing to compare against.
         if (desktopsRoot) {
             console.log("REXON-MAINWINDOW-DESKTOPS-SELECTED " + desktopsRoot.selectedDe
                         + " | сеанс: " + (desktopsRoot.currentDe || "—"));
@@ -1236,12 +1255,12 @@ ApplicationWindow {
         if (!desktopsRoot || desktopsRoot.subPage !== 1)
             failures.push("просьба показать «Сравнение DE» никуда не привела");
 
-        // ── Меню окна ────────────────────────────────────────────────
+        // ── Window menu ──────────────────────────────────────────────
         //
-        // Полный список пунктов НИЧЕГО не доказывает: модель может быть
-        // полна, а делегаты не построиться — и меню окажется пустым при
-        // исправном ядре. Поэтому мерило здесь двойное: что сказало ядро и
-        // сколько пунктов РЕАЛЬНО создано в `Menu`.
+        // A complete list of items proves NOTHING: the model may be complete while
+        // the delegates fail to build — and the menu turns out empty with a
+        // healthy core. So the yardstick here is twofold: what the core said and
+        // how many items were ACTUALLY created in the `Menu`.
         const menuItems = menuCore.items;
         const wantShortcuts = menuItems.filter(e => e.shortcut !== "").length;
         console.log("REXON-MAINWINDOW-MENU " + menuItems.length
@@ -1263,20 +1282,20 @@ ApplicationWindow {
         if (menuBarItem.builtSeparators !== 1)
             failures.push("разделителей в меню построено "
                           + menuBarItem.builtSeparators + ", а нужен один");
-        // Клавиша живёт отдельным объектом от пункта: не создайся он, меню
-        // осталось бы целым на вид, а «Ctrl+Q» не работал бы вовсе.
+        // The shortcut lives as an object separate from the item: if it were not
+        // created, the menu would look intact while "Ctrl+Q" did not work at all.
         if (menuBarItem.builtShortcuts !== wantShortcuts)
             failures.push("горячих клавиш построено "
                           + menuBarItem.builtShortcuts + " из " + wantShortcuts);
         if (menuCore.buttonText === "")
             failures.push("кнопка меню без подписи — её не увидеть");
 
-        // ⚠️ ШИРИНА ПУНКТА — ОТДЕЛЬНАЯ МЕРА, И ВОТ ПОЧЕМУ ОНА ЗДЕСЬ.
-        // Счёт пунктов выше зелён и тогда, когда все четыре построены, а
-        // читается вместо «🛟 Восстановить тему KDE» — «🛟 Восстановить
-        // те…». Ровно это и прошло мимо прогона 18.09.2026: пункты были на
-        // месте, а подпись — нет. Теперь меню открывается и меряется
-        // ширина, и обрезанная подпись валит прогон.
+        // Warning: AN ITEM'S WIDTH IS A SEPARATE MEASURE, AND HERE IS WHY IT IS
+        // HERE. The item count above is green even when all four are built but
+        // read "🛟 Restore the…" instead of "🛟 Restore KDE theme". That is exactly
+        // what slipped past the run on 18.09.2026: the items were in place, the
+        // label was not. Now the menu is opened and the width is measured, and an
+        // elided label fails the run.
         if (!menuBarItem.laidOut())
             failures.push("меню окна не разложилось — ширину подписей "
                           + "измерить нечем");
@@ -1286,15 +1305,15 @@ ApplicationWindow {
                     + (menuClipped.length ? menuClipped.join(" | ") : "нет"));
         for (const c of menuClipped)
             failures.push("подпись пункта меню обрезана: " + c);
-        // Меню обязано быть в скине окна: белое меню стиля Basic поверх
-        // тёмного окна проходило все счёты выше (снимок 30.09.2026).
+        // The menu must be in the window skin: a white Basic-style menu over the
+        // dark window passed all the counts above (screenshot 30.09.2026).
         const menuOffSkin = menuBarItem.offSkinParts();
         console.log("REXON-MAINWINDOW-MENU-SKIN "
                     + (menuOffSkin.length ? menuOffSkin.join(" | ") : "в скине"));
         for (const c of menuOffSkin)
             failures.push("меню окна не в скине: " + c);
-        // Дальше идут окна пунктов, и открытое меню им только мешало бы:
-        // фокус в окне удаления прогон проверяет нажатием клавиш.
+        // Next come the item windows, and an open menu would only get in their
+        // way: the run checks the focus in the uninstall window by pressing keys.
         menuBarItem.closeAfterCheck();
         for (const e of menuItems) {
             if (e.label === "")
@@ -1303,8 +1322,8 @@ ApplicationWindow {
                 failures.push("пункт меню «" + e.id + "» недоступен");
         }
 
-        // Тексты диалогов обязаны быть у ядра, а не собираться разметкой.
-        // Пустой текст покупатель принял бы за поломку (правило #13).
+        // Dialog texts must belong to the core rather than be assembled by the
+        // markup. The customer would take an empty text for a breakage (rule #13).
         const about = menuCore.aboutHtml();
         console.log("REXON-MAINWINDOW-MENU-ABOUT " + menuCore.aboutTitle()
                     + " | " + about.length + " знаков");
@@ -1317,9 +1336,10 @@ ApplicationWindow {
         if (!recover.title || !recover.text || !recover.target)
             failures.push("вопрос о сбросе темы KDE неполон");
 
-        // Окно удаления спрашивается ЦЕЛИКОМ, но ничего не удаляет: это
-        // чтение файловой системы и опрос пакетного менеджера. Проверять
-        // здесь само удаление нельзя — оно снесло бы Rexon с живой машины.
+        // The uninstall window is queried IN FULL but removes nothing: this is
+        // reading the file system and querying the package manager. The removal
+        // itself must not be tested here — it would wipe Rexon off the live
+        // machine.
         const uninstall = menuCore.uninstallPrompt();
         const missingKeys = [];
         for (const key of ["title", "text", "informative", "files",
@@ -1340,14 +1360,15 @@ ApplicationWindow {
         if (menuCore.busy())
             failures.push("удаление считает себя уже запущенным");
 
-        // Пункт меню обязан КУДА-ТО вести, и проверять это надо у КАЖДОГО:
-        // модель может быть полна, делегаты построены, а дверь за пунктом не
-        // открыться — меню при этом выглядит исправным. «Выход» здесь не
-        // трогаем намеренно: он закрыл бы окно посреди прогона.
+        // A menu item must lead SOMEWHERE, and this must be checked for EVERY one:
+        // the model may be complete, the delegates built, and still the door
+        // behind the item may fail to open — while the menu looks fine. "Quit" is
+        // deliberately not touched here: it would close the window in the middle
+        // of the run.
         //
-        // ⚠️ Живая система этим не задевается: справка только показывает
-        // текст, вопрос о сбросе темы ждёт «Да», окно удаления — нажатия
-        // кнопки. Ни один из трёх сам по себе ничего не делает.
+        // Warning: the live system is not affected by this: the about box only
+        // shows text, the theme reset question waits for "Yes", the uninstall
+        // window for a button press. None of the three does anything by itself.
         for (const e of menuItems) {
             if (e.id === "quit")
                 continue;
@@ -1357,9 +1378,9 @@ ApplicationWindow {
                            ? "никуда" : menuDialogs.openDialog));
             if (menuDialogs.openDialog !== e.id)
                 failures.push("пункт меню «" + e.id + "» никуда не привёл");
-            // Кнопки окна удаления подписываются в момент открытия. Пустая
-            // подпись здесь — безымянная кнопка, за которой стоит снос
-            // программы с машины покупателя.
+            // The uninstall window buttons are labelled when it opens. An empty label
+            // here is a nameless button with the removal of the program from the
+            // customer's machine behind it.
             if (e.id === "uninstall") {
                 const labels = menuDialogs.uninstallButtonTexts();
                 console.log("REXON-MAINWINDOW-MENU-UNINSTALL-BUTTONS "
@@ -1367,16 +1388,15 @@ ApplicationWindow {
                 for (const t of labels)
                     if (t === "")
                         failures.push("кнопка окна удаления без подписи");
-                // Подпись «сохранить» называет, что сохранится; обрезанная,
-                // она прячет ровно это.
+                // The "keep" label names what will be kept; elided, it hides exactly that.
                 const clipped = menuDialogs.uninstallClippedLabels();
                 console.log("REXON-MAINWINDOW-MENU-UNINSTALL-CLIPPED "
                             + (clipped.length ? clipped.join(" | ") : "нет"));
                 for (const c of clipped)
                     failures.push("подпись кнопки окна удаления обрезана: " + c);
-                // Фокус на «Отмене» — та же защита от дурака, что
-                // `setDefaultButton(Cancel)` в продукте. Нажатием её не
-                // проверить: ошибись — и программа снесётся по-настоящему.
+                // Focus on "Cancel" is the same foolproofing as `setDefaultButton(Cancel)`
+                // in the product. It cannot be checked by pressing: get it wrong, and the
+                // program is removed for real.
                 console.log("REXON-MAINWINDOW-MENU-UNINSTALL-FOCUS "
                             + (menuDialogs.uninstallDefaultHasFocus()
                                ? "на «Отмене»" : "НЕ на «Отмене»"));
@@ -1387,10 +1407,10 @@ ApplicationWindow {
             menuDialogs.closeOpenDialog();
         }
 
-        // ── Обучение ─────────────────────────────────────────────────
+        // ── Tutorial ─────────────────────────────────────────────────
         //
-        // Только чтение: решение при запуске и ответы пишут настройки
-        // человека, поэтому здесь не зовутся.
+        // Read-only: the startup decision and the answers write the user's
+        // settings, so they are not called here.
         const obTexts = onboardingCore.texts();
         const obFirst = onboardingCore.card("welcome");
         console.log("REXON-MAINWINDOW-ONBOARDING " + obTexts.askTitle
@@ -1400,13 +1420,13 @@ ApplicationWindow {
         if (!obFirst.title || !obFirst.nextText)
             failures.push("первый шаг обучения без карточки");
 
-        // ── Перевод: QML и Rust говорят на одном языке ──────────────
+        // ── Translation: QML and Rust speak the same language ──────
         //
-        // Подписи из Rust и подписи QML переводит один и тот же каталог
-        // .mo: QML спрашивает его через переводчик окна. Одна и та же
-        // строка обязана выйти одинаковой с обеих сторон: разошлись —
-        // значит переводчик QML не встал, и в переведённом окне остались
-        // бы английские подписи QML.
+        // Labels from Rust and labels in QML are translated by the same .mo
+        // catalogue: QML asks it through the window's translator. The same string
+        // must come out identical on both sides: if they differ, the QML
+        // translator did not take hold, and the translated window would be left
+        // with English QML labels.
         const qmlNext = qsTranslate("rexon", "Next");
         console.log("REXON-MAINWINDOW-L10N qml «" + qmlNext + "» | rust «"
                     + obFirst.nextText + "»");

@@ -1,24 +1,24 @@
-//! Golden-сверка `session_splash.rs` (заставка входа).
+//! Golden check of `session_splash.rs` (the login splash).
 //!
-//! `golden/session_splash_cases.json` — эталон. Когда-то он был снят
-//! read-only с живого `rexon.session_splash` одноразовым генератором
-//! (HOME/XDG во временном каталоге, subprocess/socket/X11-оверлей замоканы,
-//! mpv/ffmpeg/systemctl/kwriteconfig6/qdbus и живой KWin не запускались, пути
-//! нормализованы в `/HOME` и `/usr/local/lib/rexon`). С 02.10.2026 Python в
-//! Rexon — только архив: снимок заморожен и служит СОБСТВЕННЫМ эталоном
-//! Rust. Покрыто: константы/пути, скан заставок Steam (встроенные +
-//! инвентарь, имена из localconfig.vdf), конфиг (чтение/слияние/
-//! сериализация), гибрид (тема LnF, ksplashrc, argv kwriteconfig6/systemctl/
-//! ffmpeg, systemd-юнит, решение hybrid_supported), правило KWin
-//! (создание/миграция/идемпотентность + багфикс регистрации),
-//! reconfigure-кандидаты, разбор xrandr, mpv-IPC (payload'ы и разбор
-//! ответа), sd_notify, кандидаты/argv rexon-splash-overlay, argv mpv всех
-//! веток `play`, маршруты install/uninstall autostart, выбор постера,
-//! тексты сообщений.
+//! `golden/session_splash_cases.json` is the golden data. It was once taken
+//! read-only from the live `rexon.session_splash` by a one-off generator
+//! (HOME/XDG in a temporary directory, subprocess/socket/X11 overlay mocked,
+//! mpv/ffmpeg/systemctl/kwriteconfig6/qdbus and the live KWin were not started, paths
+//! normalized to `/HOME` and `/usr/local/lib/rexon`). Since 02.10.2026 Python in
+//! Rexon is only an archive: the snapshot is frozen and serves as Rust's OWN
+//! golden data. Covered: constants/paths, the Steam splash scan (built-in +
+//! inventory, names from localconfig.vdf), the config (reading/merging/
+//! serializing), the hybrid (LnF theme, ksplashrc, argv of kwriteconfig6/systemctl/
+//! ffmpeg, the systemd unit, the hybrid_supported decision), the KWin rule
+//! (creation/migration/idempotency + the registration bugfix),
+//! reconfigure candidates, xrandr parsing, mpv IPC (payloads and answer
+//! parsing), sd_notify, rexon-splash-overlay candidates/argv, mpv argv of all
+//! `play` branches, install/uninstall autostart routes, poster choice,
+//! message texts.
 //!
-//! Места, где Rust сознательно ушёл от снятого поведения, — ТОЛЬКО
-//! осознанные починки (см. шапку модуля), каждая закреплена здесь отдельным
-//! тестом.
+//! The places where Rust deliberately departed from the recorded behavior are ONLY
+//! conscious fixes (see the module header), each pinned here by a separate
+//! test.
 
 mod i18n_pin;
 
@@ -51,7 +51,7 @@ const VIDEO: &str = "/HOME/movie.webm";
 const SOCK: &str = "/HOME/run/rexon-splash-mpv.sock";
 
 // ============================================================================
-// Константы и пути
+// Constants and paths
 // ============================================================================
 
 #[test]
@@ -79,14 +79,14 @@ fn constants_and_paths() {
         ]
     );
     for (key, name) in ss::BUILTIN_NAMES {
-        // Имя — msgid; эталон Python — русский, сверяем перевод из ru.po.
+        // The name is a msgid; the Python golden value is Russian, we compare the translation from ru.po.
         assert_eq!(g["builtin_names"][*key], Value::from(rexon_core::i18n::tr(name)));
     }
     assert_eq!(
         ss::BUILTIN_NAMES.len(),
         g["builtin_names"].as_object().unwrap().len()
     );
-    // производные пути runtime
+    // derived runtime paths
     assert_eq!(ss::ipc_sock_path(RUN), SOCK);
     assert_eq!(ss::play_lock_path(RUN), "/HOME/run/rexon-session-splash.lock");
     assert_eq!(ss::runtime_poster_path(RUN), s(&g["poster_runtime"]));
@@ -103,11 +103,11 @@ fn constants_and_paths() {
     );
 }
 
-/// Починка №5: корень пользовательских конфигов уважает `$XDG_CONFIG_HOME`.
-/// В оригинале переменную знал только `_ksplashrc_get`, остальные пути
-/// вшивали `~/.config` — при нестандартном значении systemd-юнит и
-/// `.desktop` уезжали мимо тех каталогов, где их ищут (автозапуск заставки
-/// молча не включался), а правило KWin писалось мимо живого `kwinrulesrc`.
+/// Fix #5: the user config root respects `$XDG_CONFIG_HOME`.
+/// In the original only `_ksplashrc_get` knew the variable, the other paths
+/// hardcoded `~/.config` — with a non-standard value the systemd unit and
+/// `.desktop` went past the directories where they are looked for (the splash autostart
+/// was silently not enabled), and the KWin rule was written past the live `kwinrulesrc`.
 #[test]
 fn fix_paths_honor_xdg_config_home() {
     const XDG: &str = "/xdg/cfg";
@@ -136,8 +136,8 @@ fn fix_paths_honor_xdg_config_home() {
     );
     assert_eq!(ss::kwinrulesrc_path(Some(XDG), HOME), "/xdg/cfg/kwinrulesrc");
     assert_eq!(ss::ksplashrc_path(Some(XDG), HOME), "/xdg/cfg/ksplashrc");
-    // Пустая переменная = не задана (Python-истинность), хвостовой слэш
-    // не даёт двойного разделителя — корень общий с we_client::config_home.
+    // An empty variable = unset (Python truthiness), a trailing slash
+    // does not give a double separator — the root is shared with we_client::config_home.
     assert_eq!(ss::config_path(Some(""), HOME), ss::config_path(None, HOME));
     assert_eq!(
         ss::config_path(Some("/xdg/cfg/"), HOME),
@@ -154,13 +154,13 @@ fn launcher_and_unit_texts() {
         ss::launcher_exec(Some("/usr/local/bin/rexon"), s(&g["python_executable"])),
         s(&g["launcher_exec_rexon"])
     );
-    // ⛔РАСХОЖДЕНИЕ С ЭТАЛОНОМ, НАЗВАННОЕ ВСЛУХ (16.09.2026, блок H).
-    // Оригинал без лаунчера в `PATH` выдавал `launcher_exec_fallback` —
-    // `<python> -m rexon.app --session-splash`. Эта строка уезжала в
-    // `Exec=` автозапуска и в `ExecStart=` юнита, где выполняется без
-    // рабочего каталога, а пакета `rexon` в `sys.path` системного
-    // интерпретатора нет: заставка при входе молча не показывалась.
-    // Теперь заводить нечем — значит пусто, и вызывающий отказывает вслух
+    // ⛔ A DIVERGENCE FROM THE GOLDEN DATA, NAMED OUT LOUD (16.09.2026, block H).
+    // Without a launcher in `PATH` the original gave `launcher_exec_fallback` —
+    // `<python> -m rexon.app --session-splash`. This line went into the
+    // autostart `Exec=` and the unit's `ExecStart=`, where it runs without
+    // a working directory, and the system interpreter's `sys.path` has no
+    // `rexon` package: the splash silently did not show at login.
+    // Now there is nothing to start with — so it is empty, and the caller refuses out loud
     // (`Splash::install_desktop_autostart` / `install_hybrid`).
     assert!(
         s(&g["launcher_exec_fallback"]).contains("-m rexon.app"),
@@ -172,8 +172,8 @@ fn launcher_and_unit_texts() {
         ss::systemd_unit_content(s(&g["launcher_exec_rexon"])),
         s(&g["systemd_unit_content"])
     );
-    // Переснято 30.09.2026: `Comment` — английский + `Comment[<код>]` из
-    // каталога (прежде был только русский, без ключа языка).
+    // Retaken 30.09.2026: `Comment` in English + `Comment[<code>]` from
+    // the catalog (previously only Russian, without a language key).
     assert_eq!(
         i18n_pin::ru_only(&ss::autostart_desktop_content(s(&g["launcher_exec_rexon"]))),
         s(&g["autostart_desktop_content"])
@@ -185,7 +185,7 @@ fn launcher_and_unit_texts() {
 }
 
 // ============================================================================
-// Steam: имена из VDF + скан заставок
+// Steam: names from VDF + splash scan
 // ============================================================================
 
 #[test]
@@ -216,7 +216,7 @@ fn scan_startup_movies() {
         "deck_startup.webm".to_string(),
         "bigpicture_startup.webm".to_string(),
     ];
-    // листинг НЕсортированный — сортировка внутри, как sorted() в Python
+    // the listing is UNsorted — sorting happens inside, like sorted() in Python
     let inventory: Vec<String> = [
         "readme.txt",
         "weird.webm",
@@ -235,13 +235,13 @@ fn scan_startup_movies() {
         &names,
         &[],
     ));
-    // Починка №3: у файла без «_» id — из стема, а не из полного имени
-    // с расширением (Python давал id/имя «weird.webm»).
+    // Fix #3: for a file without "_" the id comes from the stem, not from the full name
+    // with the extension (Python gave id/name "weird.webm").
     let mut expected = g["scan_movies_python"].clone();
     {
         let arr = expected.as_array_mut().unwrap();
         let weird = arr.last_mut().unwrap();
-        assert_eq!(weird["id"], "weird.webm"); // квирк Python в эталоне
+        assert_eq!(weird["id"], "weird.webm"); // a Python quirk in the golden data
         weird["id"] = "weird".into();
         weird["name"] = "Инвентарь · weird".into();
     }
@@ -249,7 +249,7 @@ fn scan_startup_movies() {
 }
 
 // ============================================================================
-// Конфиг
+// Config
 // ============================================================================
 
 #[test]
@@ -261,11 +261,11 @@ fn config_roundtrip() {
     assert_eq!(ss::parse_config(Some("[1, 2]")), g["load_config_nondict"]);
     assert_eq!(ss::parse_config(None), g["load_config_missing"]);
 
-    // save_config: обновление path/sound без потери служебных ключей
+    // save_config: updating path/sound without losing the service keys
     let cfg = ss::parse_config(Some(initial));
     let saved = ss::config_with_selection(&cfg, "/usr/local/share/movie.webm", false);
     assert_eq!(ss::config_json(&saved), s(&g["save_config_text"]));
-    // save_hybrid_pref поверх сохранённого
+    // save_hybrid_pref on top of what was saved
     let with_pref = ss::config_with_hybrid_pref(&saved, true);
     assert_eq!(ss::config_json(&with_pref), s(&g["save_hybrid_pref_text"]));
 }
@@ -282,7 +282,7 @@ fn hybrid_flags() {
 }
 
 // ============================================================================
-// Гибрид: тема LnF, ksplashrc, argv, решение поддержки
+// Hybrid: LnF theme, ksplashrc, argv, support decision
 // ============================================================================
 
 #[test]
@@ -292,8 +292,8 @@ fn lnf_theme_texts() {
     let g = fx();
     assert_eq!(ss::SPLASH_QML, s(&g["splash_qml"]));
     assert_eq!(ss::SPLASH_QML, s(&g["lnf_splash_qml"]));
-    // Переснято 30.09.2026: описание темы — английское + `Description[<код>]`
-    // из каталога (прежде было только русское, без ключа языка).
+    // Retaken 30.09.2026: the theme description in English + `Description[<code>]`
+    // from the catalog (previously only Russian, without a language key).
     assert_eq!(i18n_pin::ru_only(&ss::lnf_metadata_json()), s(&g["lnf_metadata_json"]));
     assert_eq!(
         [true.into(), Value::from(ss::msg_lnf_updated())],
@@ -361,20 +361,20 @@ fn hybrid_supported_cases() {
 #[test]
 fn backup_rollback_decisions() {
     assert!(ss::should_backup_prev_theme("org.kde.breeze.desktop"));
-    assert!(ss::should_backup_prev_theme("")); // ключа не было — тоже бэкап
+    assert!(ss::should_backup_prev_theme("")); // the key did not exist — also a backup
     assert!(!ss::should_backup_prev_theme(ss::KSPLASH_THEME_ID));
     assert!(ss::should_rollback_ksplashrc(ss::KSPLASH_THEME_ID));
     assert!(!ss::should_rollback_ksplashrc("org.kde.breeze.desktop"));
 }
 
 // ============================================================================
-// Правило KWin
+// KWin rule
 // ============================================================================
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn kwin_rule_texts() {
-    // Эталон снят с русским названием правила.
+    // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
     let g = fx();
     assert_eq!(ss::KWIN_RULE_DESC, s(&g["kwin_rule_desc"]));
@@ -385,7 +385,7 @@ fn kwin_rule_texts() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn kwin_rule_create_empty() {
-    // Эталон снят с русским названием правила.
+    // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
     let g = fx();
     assert_eq!(
@@ -397,7 +397,7 @@ fn kwin_rule_create_empty() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn kwin_rule_append_to_existing() {
-    // Эталон снят с русским названием правила.
+    // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
     let g = fx();
     assert_eq!(
@@ -409,10 +409,10 @@ fn kwin_rule_append_to_existing() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn kwin_rule_uptodate_untouched() {
-    // Эталон снят с русским названием правила.
+    // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
     let g = fx();
-    // актуальное правило уже есть → файл не перезаписывается
+    // an up-to-date rule already exists → the file is not rewritten
     assert_eq!(
         ss::ensure_kwin_rule_text(Some(s(&g["kwin_uptodate"]["initial"]))),
         None
@@ -423,7 +423,7 @@ fn kwin_rule_uptodate_untouched() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn kwin_rule_migrate_old() {
-    // Эталон снят с русским названием правила.
+    // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
     let g = fx();
     assert_eq!(
@@ -435,7 +435,7 @@ fn kwin_rule_migrate_old() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn kwin_rule_number_gaps() {
-    // Эталон снят с русским названием правила.
+    // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
     let g = fx();
     assert_eq!(
@@ -447,12 +447,12 @@ fn kwin_rule_number_gaps() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn kwin_rule_broken_general_fixed() {
-    // Эталон снят с русским названием правила.
+    // The golden data was taken with the Russian rule name.
     let _lang = i18n_pin::ru();
     let g = fx();
-    // Починка №1: [General] без rules=/count= — Python дописывал блок, но НЕ
-    // регистрировал его (re.sub вхолостую → KWin правило игнорирует); Rust
-    // вписывает недостающие ключи сразу после заголовка [General].
+    // Fix #1: [General] without rules=/count= — Python appended the block but did NOT
+    // register it (re.sub idled → KWin ignores the rule); Rust
+    // writes the missing keys right after the [General] header.
     let input = s(&g["kwin_broken_general_input"]);
     let fixed = format!(
         "[1]\nwmclass=a\n\n[General]\ncount=1\nrules=2\nsomething=1\n\n[2]\n{}",
@@ -460,21 +460,21 @@ fn kwin_rule_broken_general_fixed() {
     );
     let out = ss::ensure_kwin_rule_text(Some(input)).unwrap();
     assert_eq!(out, fixed);
-    // ...и это отличается от эталонного (багованного) вывода Python.
+    // ...and this differs from the golden (buggy) Python output.
     assert_ne!(out, s(&g["kwin_broken_general_python"]));
     assert!(!s(&g["kwin_broken_general_python"]).contains("rules="));
 }
 
 // ----------------------------------------------------------------------------
-// Название правила переводится, а уже стоящее правило находится и при смене
-// языка (01.10.2026). Название видно человеку в «Правилах окон» KDE; до
-// перевода оно было русским для всех.
+// The rule name is translated, and an existing rule is found even after a language
+// change (01.10.2026). The name is visible to the person in KDE «Window Rules»; before
+// the translation it was Russian for everyone.
 // ----------------------------------------------------------------------------
 
-/// Правило в том виде, как его пишет Rexon, с заданным названием.
+/// The rule as Rexon writes it, with the given name.
 fn our_rule(n: &str, title: &str, with_fsp: bool) -> String {
     let body = ss::kwin_rule_body();
-    let tail = body.split_once('\n').unwrap().1; // всё после строки Description=
+    let tail = body.split_once('\n').unwrap().1; // everything after the Description= line
     let tail = if with_fsp { tail.to_string() } else { tail.replacen(ss::KWIN_RULE_FSP, "", 1) };
     format!("[{n}]\nDescription={title}\n{tail}")
 }
@@ -497,8 +497,8 @@ fn kwin_rule_title_follows_language() {
     assert_eq!(ss::kwin_rule_desc_line(), ss::KWIN_RULE_DESC, "по-русски — как писал оригинал");
 }
 
-/// Старое русское правило у человека, который перешёл на английский:
-/// находится (второго правила не появляется) и переименовывается.
+/// An old Russian rule of a person who switched to English:
+/// it is found (no second rule appears) and renamed.
 #[test]
 fn kwin_rule_old_russian_found_and_renamed() {
     let _lang = i18n_pin::en();
@@ -507,10 +507,10 @@ fn kwin_rule_old_russian_found_and_renamed() {
     let before = format!("{FOREIGN}{}{}", our_rule("2", ru, true), general("1,2", 2));
     let after = ss::ensure_kwin_rule_text(Some(&before)).expect("название переписывается");
     assert_eq!(after, format!("{FOREIGN}{}{}", our_rule("2", en, true), general("1,2", 2)));
-    // Повторный запуск ничего не меняет — файл не переписывается каждый раз.
+    // A repeat run changes nothing — the file is not rewritten every time.
     assert_eq!(ss::ensure_kwin_rule_text(Some(&after)), None);
 
-    // Совсем старое русское правило без снятия FSP: обе правки сразу.
+    // A very old Russian rule without the FSP removal: both edits at once.
     let old = format!("{}{}", our_rule("1", ru, false), general("1", 1));
     assert_eq!(
         ss::ensure_kwin_rule_text(Some(&old)).unwrap(),
@@ -518,7 +518,7 @@ fn kwin_rule_old_russian_found_and_renamed() {
     );
 }
 
-/// Правило с английским названием у человека с русским языком.
+/// A rule with an English name for a person with the Russian language.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn kwin_rule_english_found_under_russian() {
@@ -530,9 +530,9 @@ fn kwin_rule_english_found_under_russian() {
     assert_eq!(ss::ensure_kwin_rule_text(Some(&after)), None);
 }
 
-/// Немецкое название — из НАСТОЯЩЕГО `po/de.po` (собран msgfmt): правило
-/// находится по переводу и без `wmclass` (поправлено руками), второго
-/// блока не появляется.
+/// The German name comes from the REAL `po/de.po` (built by msgfmt): the rule
+/// is found by the translation even without `wmclass` (edited by hand), no second
+/// block appears.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/de.po настоящим msgfmt")]
 fn kwin_rule_german_found_by_title() {
@@ -551,7 +551,7 @@ fn kwin_rule_german_found_by_title() {
     let mut known = vec![ss::KWIN_RULE_TITLE.to_string()];
     known.push(de.clone());
     let en = ss::KWIN_RULE_TITLE;
-    // wmclass снят руками — узнаём по названию.
+    // wmclass removed by hand — we recognize it by the name.
     let rule = our_rule("3", &de, true).replace("wmclass=rexon-session-splash\nwmclassmatch=1\n", "");
     let before = format!("{FOREIGN}{rule}{}", general("1,3", 2));
     let after = ss::ensure_kwin_rule_text_with(Some(&before), en, &known).unwrap();
@@ -560,20 +560,20 @@ fn kwin_rule_german_found_by_title() {
     assert_eq!(after.matches("\n[").count(), before.matches("\n[").count(), "второго правила нет");
 }
 
-/// Чужие правила не трогаются: ни похожий `wmclass`, ни своё название,
-/// данное человеком нашему правилу.
+/// Other rules are not touched: neither a similar `wmclass` nor a custom name
+/// the person gave to our rule.
 #[test]
 fn kwin_rule_foreign_untouched() {
     let _lang = i18n_pin::en();
     let en = "Rexon: startup movie on top of everything";
-    // `wmclass=rexon-session-splash-x` — не наше: раньше сошло бы подстрокой.
+    // `wmclass=rexon-session-splash-x` is not ours: previously it would have matched as a substring.
     let lookalike = "[2]\nDescription=Чужое\nwmclass=rexon-session-splash-x\nwmclassmatch=1\n";
     let before = format!("{FOREIGN}{lookalike}{}", general("1,2", 2));
     let after = ss::ensure_kwin_rule_text(Some(&before)).expect("наше правило добавляется");
     assert!(after.starts_with(&format!("{FOREIGN}{lookalike}")), "чужие секции изменены:\n{after}");
     assert!(after.contains(&format!("Description={en}\n")));
 
-    // Наше правило, переименованное человеком: название — его, не трогаем.
+    // Our rule renamed by the person: the name is theirs, we do not touch it.
     let mine = format!("{}{}", our_rule("1", "Моя заставка", true), general("1", 1));
     assert_eq!(ss::ensure_kwin_rule_text(Some(&mine)), None);
 }
@@ -632,8 +632,8 @@ fn ipc_get_roundtrip() {
 
 #[test]
 fn ipc_get_non_object_line_fixed() {
-    // Починка №2: валидный JSON-не-объект в потоке ронял Python
-    // (AttributeError мимо `except OSError`); здесь строка пропускается.
+    // Fix #2: valid JSON that is not an object in the stream crashed Python
+    // (AttributeError past `except OSError`); here the line is skipped.
     let received = "[1, 2]\n{\"request_id\":700,\"error\":\"success\",\"data\":1}\n";
     assert_eq!(
         ss::parse_mpv_ipc_response(received, ss::MPV_IPC_REQUEST_ID),
@@ -661,7 +661,7 @@ fn sd_notify() {
 }
 
 // ============================================================================
-// X11: xrandr, тип сессии
+// X11: xrandr, session type
 // ============================================================================
 
 #[test]
@@ -702,7 +702,7 @@ fn x11_session_detection() {
 }
 
 // ============================================================================
-// Прогон: хелпер, argv mpv, сообщения
+// Run: helper, mpv argv, messages
 // ============================================================================
 
 #[test]
@@ -777,12 +777,12 @@ fn helper_fallback_chain() {
     let _lang = i18n_pin::ru();
     let g = fx();
     let case = &g["play"]["wayland_helper_then_fallback"];
-    // хелпер запускается без --mute/--paused (звук вкл, гибрид авто-выкл)
+    // the helper starts without --mute/--paused (sound on, hybrid auto-off)
     assert_eq!(
         ss::splash_overlay_argv("/usr/local/bin/rexon-splash-overlay", VIDEO, SOCK, true, false),
         str_vec(&case["helper_argv"])
     );
-    // умер до IPC-сокета → фолбэк на оконный mpv (Wayland-окно, без гибрида)
+    // died before the IPC socket → fallback to windowed mpv (a Wayland window, no hybrid)
     assert_eq!(
         ss::mpv_argv(VIDEO, true, false, &ss::MpvTarget::Window { wayland: true }, SOCK),
         str_vec(&case["mpv_argv"])
@@ -807,26 +807,26 @@ fn play_messages() {
 
 #[test]
 fn play_route_decisions() {
-    // effective_hybrid: None → авто (гибрид установлен И blocking)
+    // effective_hybrid: None → auto (hybrid installed AND blocking)
     assert!(ss::effective_hybrid(None, true, true));
     assert!(!ss::effective_hybrid(None, true, false));
     assert!(!ss::effective_hybrid(None, false, true));
     assert!(!ss::effective_hybrid(Some(false), true, true));
     assert!(ss::effective_hybrid(Some(true), false, false));
-    // хелпер — только реальный прогон на Wayland
+    // the helper — only a real run on Wayland
     assert!(ss::wants_wayland_helper(true, Some(":0"), Some("wayland-0")));
     assert!(ss::wants_wayland_helper(true, None, Some("wayland-0")));
     assert!(!ss::wants_wayland_helper(false, None, Some("wayland-0")));
     assert!(!ss::wants_wayland_helper(true, Some(":0"), None));
     assert!(!ss::wants_wayland_helper(true, Some(":0"), Some("")));
-    // is_enabled: любой из двух механизмов
+    // is_enabled: either of the two mechanisms
     assert!(ss::is_enabled(true, false));
     assert!(ss::is_enabled(false, true));
     assert!(!ss::is_enabled(false, false));
 }
 
 // ============================================================================
-// Autostart: маршруты и сообщения
+// Autostart: routes and messages
 // ============================================================================
 
 #[test]
@@ -835,10 +835,10 @@ fn autostart_routes() {
     let _lang = i18n_pin::ru();
     let g = fx();
     let r = &g["autostart_routes"];
-    // нет пути → отказ
+    // no path → refusal
     assert_eq!(ss::autostart_route(&json!({}), true), ss::AutostartRoute::NoPath);
     assert_eq!(r["no_path"]["result"], json!([false, ss::msg_choose_first()]));
-    // путь есть, галка по умолчанию, гибрид поддержан → гибрид
+    // a path exists, the checkbox at its default, hybrid supported → hybrid
     let cfg = json!({"path": VIDEO, "sound": true});
     assert_eq!(ss::autostart_route(&cfg, true), ss::AutostartRoute::Hybrid);
     assert_eq!(r["hybrid_ok"]["result"], json!([true, ss::msg_hybrid_route_ok()]));
@@ -846,7 +846,7 @@ fn autostart_routes() {
         r["hybrid_ok"]["calls"],
         json!(["supported", "install_hybrid", "rm_desktop"])
     );
-    // гибрид не удался → откат + фаза 1 с составным сообщением
+    // hybrid failed → rollback + phase 1 with a compound message
     assert_eq!(
         r["hybrid_fail_fallback"]["result"],
         json!([
@@ -862,7 +862,7 @@ fn autostart_routes() {
         r["hybrid_fail_fallback"]["calls"],
         json!(["supported", "install_hybrid", "uninstall_hybrid", "desktop"])
     );
-    // галка выключена + остатки гибрида → чистая фаза 1 с откатом
+    // checkbox off + hybrid leftovers → a clean phase 1 with rollback
     let cfg2 = json!({"path": VIDEO, "hybrid": false, "hybrid_installed": true});
     assert_eq!(
         ss::autostart_route(&cfg2, true),
@@ -876,12 +876,12 @@ fn autostart_routes() {
         r["hybrid_disabled_leftovers"]["calls"],
         json!(["uninstall_hybrid", "desktop"])
     );
-    // гибрид не поддержан, остатков нет → просто фаза 1
+    // hybrid not supported, no leftovers → just phase 1
     assert_eq!(
         ss::autostart_route(&cfg, false),
         ss::AutostartRoute::Plain { rollback_hybrid: false }
     );
-    // uninstall: сообщение одно на оба пути
+    // uninstall: one message for both paths
     assert_eq!(
         r["uninstall_with_hybrid"]["result"],
         json!([true, ss::msg_autostart_disabled()])
@@ -894,33 +894,33 @@ fn autostart_routes() {
 }
 
 // ============================================================================
-// Выбор постера
+// Poster choice
 // ============================================================================
 
 #[test]
 fn poster_selection() {
     let g = fx();
     let cfg = json!({"path": VIDEO, "sound": true});
-    // ролик из конфига + постер темы на месте → готовый постер темы
+    // video from the config + the theme poster in place → the theme's ready poster
     assert_eq!(
         ss::poster_source(&cfg, VIDEO, true, HOME, RUN),
         ss::PosterSource::Theme(s(&g["poster_theme_hit"]).to_string())
     );
-    // темы нет → свежий кадр ffmpeg-ом в runtime
+    // no theme → a fresh frame by ffmpeg into runtime
     assert_eq!(
         ss::poster_source(&cfg, VIDEO, false, HOME, RUN),
         ss::PosterSource::Extract(s(&g["poster_runtime"]).to_string())
     );
-    // другой ролик → тоже извлечение, даже при живом постере темы
+    // another video → extraction as well, even with a live theme poster
     assert_eq!(
         ss::poster_source(&cfg, "/HOME/other.webm", true, HOME, RUN),
         ss::PosterSource::Extract(s(&g["poster_runtime"]).to_string())
     );
-    assert!(g["poster_fail"].is_null()); // неудача ffmpeg → None (исполнитель)
+    assert!(g["poster_fail"].is_null()); // ffmpeg failure → None (executor)
 }
 
 // ============================================================================
-// Витрина заставок: метаданные предмета, кадр, избранное, ротация
+// Splash showcase: item metadata, frame, favorites, rotation
 // ============================================================================
 
 fn sc() -> Value {
@@ -938,20 +938,20 @@ fn hex_bytes(v: &Value) -> Vec<u8> {
 #[test]
 fn startup_movie_items_full_records() {
     let g = sc();
-    // Запись отдаётся ЦЕЛИКОМ (обложка, item_class, локализованный
-    // заголовок) — витрине нужны все поля, в отличие от маршрута скана.
+    // The record is returned IN FULL (cover, item_class, localized
+    // title) — the showcase needs all the fields, unlike the scan route.
     assert_eq!(
         ss::parse_startup_movie_items(s(&g["vdf_text"])),
         g["items"]
     );
-    // Числовой communityitemid становится строковым ключом, как str() в Python.
+    // A numeric communityitemid becomes a string key, like str() in Python.
     let items = ss::parse_startup_movie_items(s(&g["vdf_text"]));
     assert!(items.get("991").is_some());
-    // Отброшены: null, «none» и элемент-не-словарь.
+    // Dropped: null, "none" and an element that is not a dict.
     assert_eq!(items.as_object().unwrap().len(), 3);
     assert!(items.get("None").is_none());
     assert!(items.get("none").is_none());
-    // Нет ключа GetStartupMovies / битый JSON → пусто.
+    // No GetStartupMovies key / broken JSON → empty.
     assert_eq!(ss::parse_startup_movie_items("\"Other\"\t\"1\"\n"), json!({}));
     assert_eq!(
         ss::parse_startup_movie_items("\"GetStartupMovies\"\t\"[не json\"\n"),
@@ -962,8 +962,8 @@ fn startup_movie_items_full_records() {
 #[test]
 fn appinfo_names_binary_vdf() {
     let g = sc();
-    // Версия со строковой таблицей (0x07564429) — та, что реально лежит у
-    // современного клиента Steam.
+    // The version with a string table (0x07564429) is the one that really lies in
+    // a modern Steam client.
     let want: Vec<i64> = vec![1_259_420, 570, 999];
     for tag in ["v29", "v28"] {
         let data = hex_bytes(&g[format!("appinfo_{tag}_bytes")]);
@@ -976,14 +976,14 @@ fn appinfo_names_binary_vdf() {
             .collect();
         assert_eq!(got, expect, "версия {tag}");
     }
-    // Незнакомая версия → пусто (в Python — тоже, с записью в журнал).
+    // An unknown version → empty (in Python too, with a log entry).
     let bad = hex_bytes(&g["appinfo_bad_bytes"]);
     assert!(ss::parse_appinfo_names(&bad, &want).is_empty());
-    // Пустой запрос не читает файл вообще.
+    // An empty request does not read the file at all.
     let data = hex_bytes(&g["appinfo_v29_bytes"]);
     assert!(ss::parse_appinfo_names(&data, &[]).is_empty());
     assert!(ss::parse_appinfo_names(&data, &[0]).is_empty());
-    // Обрезанный файл не паникует (Python ловил struct.error).
+    // A truncated file does not panic (Python caught struct.error).
     for cut in [0, 4, 15, 16, 20, 40] {
         let _ = ss::parse_appinfo_names(&data[..cut.min(data.len())], &want);
     }
@@ -1003,17 +1003,17 @@ fn enrich_movies_showcase_fields() {
         .collect();
     let got = ss::enrich_movies(&movies, &g["items"], &names);
     assert_eq!(Value::Array(got.clone()), g["enriched"]);
-    // Ключевые правила витрины закреплены отдельно от общего сравнения:
-    // локализованный item_title важнее английского name (правило #13),
-    // ведущий слэш обложки снимается, appid приходит и строкой, и числом.
+    // The key showcase rules are pinned separately from the general comparison:
+    // the localized item_title beats the English name (rule #13),
+    // the cover's leading slash is stripped, appid arrives both as a string and as a number.
     assert_eq!(got[1]["title"], json!("Специальная доставка"));
     assert_eq!(got[1]["image"], json!("items/1259420/big.png"));
     assert_eq!(got[1]["game"], json!("Days Gone"));
-    assert_eq!(got[2]["appid"], json!(570)); // в VDF было "570" строкой
-    assert_eq!(got[2]["title"], json!("Only Name")); // item_title нет → name
+    assert_eq!(got[2]["appid"], json!(570)); // in the VDF it was "570" as a string
+    assert_eq!(got[2]["title"], json!("Only Name")); // no item_title → name
     assert_eq!(got[0]["origin"], json!(ss::ORIGIN_BUILTIN));
-    assert_eq!(got[4]["appid"], json!(0)); // метаданных нет вовсе
-    assert_eq!(got[4]["title"], json!("Без метаданных")); // остаётся имя скана
+    assert_eq!(got[4]["appid"], json!(0)); // no metadata at all
+    assert_eq!(got[4]["title"], json!("Без метаданных")); // the scan name remains
 }
 
 #[test]
@@ -1029,7 +1029,7 @@ fn describe_custom_record() {
         };
         assert_eq!(&ss::describe_custom(path, base, stem), expect, "{path}");
     }
-    // Подписи происхождения — те же строки, что в Python.
+    // Origin captions are the same strings as in Python.
     let labels = &g["origin_labels"];
     for id in [ss::ORIGIN_BUILTIN, ss::ORIGIN_SHOP, ss::ORIGIN_CUSTOM] {
         assert_eq!(ss::origin_label(id), s(&labels[id]));
@@ -1038,7 +1038,7 @@ fn describe_custom_record() {
         str_vec(&g["origins"]),
         vec![ss::ORIGIN_BUILTIN, ss::ORIGIN_SHOP, ss::ORIGIN_CUSTOM]
     );
-    // Неизвестное происхождение → пустая подпись (пустую метку не рисуем).
+    // Unknown origin → an empty caption (we do not draw an empty label).
     assert_eq!(ss::origin_label("xyz"), "");
 }
 
@@ -1059,12 +1059,12 @@ fn favorites_toggle() {
         assert_eq!(fav, str_vec(&case["list"]), "{tag}: список");
         assert_eq!(cfg["favorites"], case["config"]["favorites"], "{tag}: конфиг");
     }
-    // Не-строки в favorites отбрасываются, как isinstance-фильтр Python.
+    // Non-strings in favorites are dropped, like Python's isinstance filter.
     assert_eq!(
         ss::favorites_from_config(&json!({"favorites": ["/a", 5, null, "/b"]})),
         vec!["/a".to_string(), "/b".to_string()]
     );
-    // Не-список и отсутствие ключа → пусто.
+    // Not a list, or the key is missing → empty.
     assert!(ss::favorites_from_config(&json!({"favorites": "нет"})).is_empty());
     assert!(ss::favorites_from_config(&json!({})).is_empty());
 }
@@ -1091,8 +1091,8 @@ fn rotation_rules() {
         g["set_rotation"]["off"]
     );
 
-    // Пул: избранное от двух штук, иначе всё найденное (правило #13 —
-    // одна звёздочка не должна давать «один и тот же ролик каждый вход»).
+    // The pool: favorites from two items up, otherwise everything found (rule #13 —
+    // a single star must not give "the same video at every login").
     let p = &g["rotation_pool"];
     assert_eq!(
         ss::rotation_pool(&["/a".into(), "/b".into()], &["/a".into(), "/b".into(), "/c".into()]),
@@ -1105,7 +1105,7 @@ fn rotation_rules() {
     assert_eq!(ss::rotation_pool(&[], &["/a".into()]), str_vec(&p["fav_none"]));
     assert_eq!(ss::rotation_pool(&["/a".into()], &[]), str_vec(&p["all_empty"]));
 
-    // Кандидаты жребия: без текущего, а если после фильтра пусто — весь пул.
+    // Draw candidates: without the current one, and if empty after filtering — the whole pool.
     let c = &g["rotation_choices"];
     assert_eq!(
         ss::rotation_choices(&["/a".into(), "/b".into(), "/c".into()], Some("/b")),
@@ -1119,7 +1119,7 @@ fn rotation_rules() {
         ss::rotation_choices(&["/a".into(), "/a".into()], Some("/a")),
         str_vec(&c["all_same"])
     );
-    // Пул меньше двух → крутить нечего (в Python это ранний return None).
+    // A pool smaller than two → nothing to rotate (in Python this is an early return None).
     assert!(ss::rotation_choices(&["/a".into()], None).is_empty());
     assert!(ss::rotation_choices(&[], None).is_empty());
 }
@@ -1150,7 +1150,7 @@ fn preview_frame_argv_and_cache() {
         ss::preview_ffmpeg_argv(exe, VIDEO, tmp, 9.375),
         str_vec(&a["seek"])
     );
-    // seek ≤ 0.05 → без -ss (тот же argv, что у повторной попытки).
+    // seek ≤ 0.05 → without -ss (the same argv as the retry).
     assert_eq!(
         ss::preview_ffmpeg_argv(exe, VIDEO, tmp, 0.0),
         str_vec(&a["no_seek"])
@@ -1160,7 +1160,7 @@ fn preview_frame_argv_and_cache() {
         str_vec(&a["tiny_seek"])
     );
 
-    // Каталог кэша уважает $XDG_CACHE_HOME.
+    // The cache directory respects $XDG_CACHE_HOME.
     let rel = s(&g["preview_cache_dir_rel"]);
     assert_eq!(ss::preview_cache_dir(None, HOME), format!("/HOME/.cache/{rel}"));
     assert_eq!(
@@ -1172,12 +1172,12 @@ fn preview_frame_argv_and_cache() {
 
 #[test]
 fn preview_cache_key_is_stable() {
-    // ⚠️ Починка №6: отпечаток в имени файла кэша ДЕТЕРМИНИРОВАННЫЙ.
-    // Питоновский `hash((abspath, mtime))` солится PYTHONHASHSEED, поэтому
-    // байт-паритета с оригиналом тут быть НЕ МОЖЕТ — эталон нестабилен
-    // between запусками. Сверяем то, что от оригинала осталось (санитайзер
-    // имени) и главное свойство починки: одинаковый вход → одинаковое имя,
-    // разный mtime/путь → разное.
+    // ⚠️ Fix #6: the fingerprint in the cache file name is DETERMINISTIC.
+    // Python's `hash((abspath, mtime))` is salted by PYTHONHASHSEED, so
+    // byte parity with the original CANNOT exist here — the golden value is unstable
+    // between runs. We compare what remains of the original (the name
+    // sanitizer) and the main property of the fix: the same input → the same name,
+    // a different mtime/path → a different one.
     let g = sc();
     let dir = "/HOME/.cache/rexon/steam_splash_preview";
     for (path, key) in g["preview_keys"].as_object().unwrap() {
@@ -1196,17 +1196,17 @@ fn preview_cache_key_is_stable() {
 }
 
 // ============================================================================
-// Потоки заставки: реплей журнала исполнителя (шов `SplashIo`)
+// Splash flows: replaying the executor log (the `SplashIo` seam)
 // ============================================================================
 //
-// Второй слой порта: ядро ведёт САМИ ПОТОКИ (скан, конфиг, гибрид, автозапуск
-// и все три пути прогона), а побочные эффекты исполняет трейт. Здесь трейт
-// подменён журналирующей заглушкой: проверяется ПОРЯДОК шагов и решения на
-// развилках — то, что раньше жило в Python-`play`/`_install_hybrid` и никакой
-// сверкой не покрывалось (записанный эталон Python-пути их не трогал: живой
-// mpv/ffmpeg/systemctl в тесте не запустишь).
+// The second layer of the port: the core drives THE FLOWS THEMSELVES (scan, config, hybrid, autostart
+// and all three run paths), and the side effects are executed by a trait. Here the trait
+// is replaced by a logging stub: the ORDER of steps and the decisions at
+// forks are checked — what used to live in Python `play`/`_install_hybrid` and was not
+// covered by any check (the recorded golden data of the Python path did not touch them: you cannot start a live
+// mpv/ffmpeg/systemctl in a test).
 //
-// `sleep` двигает фальшивые часы — иначе ожидания с дедлайнами не кончались бы.
+// `sleep` advances a fake clock — otherwise waits with deadlines would never end.
 
 use rexon_core::session_splash::{RunOut, Splash, SplashIo};
 use std::collections::{HashMap, HashSet};
@@ -1218,12 +1218,12 @@ struct FakeIo {
     files: HashSet<String>,
     dirs: HashSet<String>,
     texts: HashMap<String, String>,
-    /// подстрока argv → (код возврата, stdout, stderr)
+    /// argv substring → (exit code, stdout, stderr)
     runs: Vec<(String, i64, String, String)>,
     written: HashMap<String, String>,
     journal: Vec<String>,
     now: f64,
-    /// на каком по счёту poll процесс считается завершённым
+    /// on which poll the process counts as finished
     exit_after_polls: Option<usize>,
     exit_code: i64,
     polls: usize,
@@ -1233,7 +1233,7 @@ struct FakeIo {
     ipc_reply: Option<String>,
     lock_free: bool,
     steps: HashMap<String, (bool, String)>,
-    /// Выбранный вход продукта; `None` — Python-вход (прежние сверки).
+    /// The product's chosen entry; `None` — the Python entry (earlier checks).
     entry: Option<rexon_core::installer::LaunchEntry>,
 }
 
@@ -1409,8 +1409,8 @@ impl SplashIo for FakeIo {
                 break;
             }
         }
-        // Успешный ffmpeg оставляет файл последним аргументом argv —
-        // дальше поток проверяет его существование.
+        // A successful ffmpeg leaves the file as the last argv argument —
+        // the flow then checks that it exists.
         if res.rc == 0 {
             if let Some(last) = argv.last() {
                 if last.starts_with('/') {
@@ -1529,10 +1529,10 @@ impl SplashIo for FakeIo {
     }
 }
 
-/// Ролик из фальшивого дерева Steam (общие HOME/VIDEO — выше).
+/// A video from the fake Steam tree (shared HOME/VIDEO — above).
 const FLOW_VIDEO: &str = "/HOME/.local/share/Steam/steamui/movies/deck_startup.webm";
 
-/// Конфиг «ролик выбран» уже на месте.
+/// A "video chosen" config is already in place.
 fn with_config(io: FakeIo, extra: &str) -> FakeIo {
     let mut io = io;
     let path = "/HOME/.config/rexon/session_splash.json";
@@ -1551,7 +1551,7 @@ fn flow_play_no_file_stops_before_any_effect() {
     let (ok, msg) = Splash::new(&mut io, HOME).play(None, None, true, None, "/repo");
     assert!(!ok);
     assert_eq!(msg, ss::msg_no_file());
-    // ни замка, ни процессов: отказ ДО первого побочного действия
+    // neither a lock nor processes: a refusal BEFORE the first side action
     assert!(io.journal.iter().all(|l| !l.starts_with("spawn")), "{:?}", io.journal);
     assert!(!io.has("lock "));
 }
@@ -1562,7 +1562,7 @@ fn flow_play_second_run_skipped_by_lock() {
     let mut io = with_config(FakeIo::new().with_file(FLOW_VIDEO).with_bin("mpv"), "");
     io.lock_free = false;
     let (ok, msg) = Splash::new(&mut io, HOME).play(None, None, true, None, "/repo");
-    // «уже проигрывается» — успех: второй экземпляр молча уходит
+    // "already playing" is a success: the second instance leaves silently
     assert!(ok);
     assert_eq!(msg, ss::msg_already_playing());
     assert!(io.journal.iter().all(|l| !l.starts_with("spawn")));
@@ -1571,7 +1571,7 @@ fn flow_play_second_run_skipped_by_lock() {
 #[test]
 fn flow_play_wayland_helper_relay_order() {
     let _lang = i18n_pin::en();
-    // Гибрид на Wayland: хелпер поднялся, ksplashqml погас, mpv распаузили.
+    // Hybrid on Wayland: the helper came up, ksplashqml went out, mpv was unpaused.
     let helper = "/repo/rust/target/release/rexon-splash-overlay";
     let sock = "/run/user/1000/rexon-splash-mpv.sock";
     let mut io = with_config(
@@ -1584,14 +1584,14 @@ fn flow_play_wayland_helper_relay_order() {
             .with_env("WAYLAND_DISPLAY", "wayland-0")
             .with_env("XDG_RUNTIME_DIR", "/run/user/1000")
             .with_env("NOTIFY_SOCKET", "/run/systemd/notify")
-            .with_run("pgrep", 1, "", ""), // ksplashqml не бежит
+            .with_run("pgrep", 1, "", ""), // ksplashqml is not running
         ", \"hybrid_installed\": true",
     );
     io.ipc_reply = Some("{\"request_id\":700,\"error\":\"success\",\"data\":true}\n".into());
     let (ok, msg) = Splash::new(&mut io, HOME).play(None, None, true, None, "/repo");
     assert!(ok, "{msg}");
     assert_eq!(msg, ss::msg_played());
-    // Порядок: замок → запуск хелпера → READY=1 → снятие паузы → quit.
+    // Order: lock → helper start → READY=1 → unpause → quit.
     let i_lock = io.index_of("lock ");
     let i_spawn = io.index_of("spawn[false] /repo/rust/target/release/rexon-splash-overlay");
     let i_ready = io.index_of("notify /run/systemd/notify READY=1");
@@ -1599,7 +1599,7 @@ fn flow_play_wayland_helper_relay_order() {
     let i_quit = io.index_of("ipc {\"command\": [\"quit\"]}");
     assert!(i_lock < i_spawn && i_spawn < i_ready && i_ready < i_unpause && i_unpause < i_quit,
             "{:#?}", io.journal);
-    // Оконный mpv не запускался — хелпер справился сам.
+    // Windowed mpv was not started — the helper managed by itself.
     assert!(!io.has("spawn[false] mpv"), "{:#?}", io.journal);
 }
 
@@ -1607,7 +1607,7 @@ fn flow_play_wayland_helper_relay_order() {
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn flow_play_helper_dead_falls_back_to_window_mpv() {
     let _lang = i18n_pin::ru();
-    // Хелпер умер до IPC-сокета → прозрачный откат на оконный mpv + правило KWin.
+    // The helper died before the IPC socket → a transparent fallback to windowed mpv + the KWin rule.
     let helper = "/repo/rust/target/release/rexon-splash-overlay";
     let mut io = with_config(
         FakeIo::new()
@@ -1618,7 +1618,7 @@ fn flow_play_helper_dead_falls_back_to_window_mpv() {
             .with_env("XDG_RUNTIME_DIR", "/run/user/1000"),
         "",
     );
-    io.exit_after_polls = Some(0); // хелпер мёртв на первой же пробе
+    io.exit_after_polls = Some(0); // the helper is dead on the very first probe
     let (ok, _msg) = Splash::new(&mut io, HOME).play(None, None, true, None, "/repo");
     assert!(ok);
     assert!(io.has(ss::MSG_HELPER_NO_LIFTOFF), "{:#?}", io.journal);
@@ -1628,14 +1628,14 @@ fn flow_play_helper_dead_falls_back_to_window_mpv() {
         .find(|l| l.starts_with("spawn[false] mpv"))
         .expect("оконный mpv не запущен");
     assert!(cmd.contains("--wayland-app-id=rexon-session-splash"), "{cmd}");
-    // правило KWin ставится ДО запуска окна
+    // the KWin rule is set BEFORE the window starts
     assert!(io.index_of("write /HOME/.config/kwinrulesrc") < io.index_of("spawn[false] mpv"));
 }
 
 #[test]
 fn flow_play_x11_overlay_poster_before_map() {
     let _lang = i18n_pin::en();
-    // X11: постер кладётся в слой ДО маппинга, эстафета гибрида не нужна.
+    // X11: the poster goes into the layer BEFORE mapping, no hybrid relay needed.
     let mut io = with_config(
         FakeIo::new()
             .with_file(FLOW_VIDEO)
@@ -1656,12 +1656,12 @@ fn flow_play_x11_overlay_poster_before_map() {
     let i_map = io.index_of("x11_map");
     let i_spawn = io.index_of("spawn[false] mpv");
     assert!(i_poster < i_map && i_map < i_spawn, "{:#?}", io.journal);
-    // окно mpv рисует внутрь слоя
+    // the mpv window draws into the layer
     assert!(io.has("--wid=88080391"), "{:#?}", io.journal);
-    // на X11 гибрид принудительно снят: паузы (и распаузивания) нет
+    // on X11 the hybrid is forcibly off: no pause (and no unpause)
     assert!(!io.has("--pause"), "{:#?}", io.journal);
     assert!(!io.has("set_property"), "{:#?}", io.journal);
-    // финал: сначала гаснет слой, потом mpv
+    // finale: first the layer goes out, then mpv
     assert!(io.index_of("x11_close") < io.index_of("ipc {\"command\": [\"quit\"]}"));
 }
 
@@ -1669,7 +1669,7 @@ fn flow_play_x11_overlay_poster_before_map() {
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn flow_play_x11_cold_start_waits_for_compositor() {
     let _lang = i18n_pin::ru();
-    // Холодный вход: композитора ещё нет — ждём его под чёрным слоем.
+    // A cold login: there is no compositor yet — we wait for it under a black layer.
     let mut io = with_config(
         FakeIo::new()
             .with_file(FLOW_VIDEO)
@@ -1690,12 +1690,12 @@ fn flow_play_x11_cold_start_waits_for_compositor() {
     assert!(io.now - t0 >= ss::COMPOSITOR_WAIT_SEC, "ожидание короче потолка");
 }
 
-/// Путь пользовательского ksplashrc в фальшивом HOME.
+/// The path of the user's ksplashrc in the fake HOME.
 const KSPLASHRC: &str = "/HOME/.config/ksplashrc";
-/// Каталог LnF-темы гибрида в фальшивом HOME.
+/// The hybrid's LnF theme directory in the fake HOME.
 const THEME_DIR: &str = "/HOME/.local/share/plasma/look-and-feel/org.rexon.sessionsplash";
 
-/// Фикстура «гибрид стоит, вход идёт по-настоящему» (Wayland + хелпер).
+/// Fixture "the hybrid is installed, a real login is in progress" (Wayland + helper).
 fn heal_fixture(ksplashrc: Option<&str>) -> FakeIo {
     let helper = "/repo/rust/target/release/rexon-splash-overlay";
     let sock = "/run/user/1000/rexon-splash-mpv.sock";
@@ -1722,58 +1722,58 @@ fn heal_fixture(ksplashrc: Option<&str>) -> FakeIo {
     io
 }
 
-/// Решение самолечения: лечим только когда гибрид числится установленным и
-/// в ksplashrc стоит НЕ наша тема (пусто = ключ потеряли).
+/// The self-healing decision: heal only when the hybrid is listed as installed and
+/// ksplashrc holds a theme that is NOT ours (empty = the key was lost).
 #[test]
 fn heal_ksplashrc_decision() {
     let on = json!({"hybrid_installed": true});
     let off = json!({"hybrid_installed": false});
     let empty = json!({});
-    // гибрид стоит, тема чужая либо ключ потерян → чиним
+    // hybrid installed, the theme is someone else's or the key is lost → repair
     assert!(ss::should_heal_ksplashrc(&on, "org.kde.breezedark.desktop"));
     assert!(ss::should_heal_ksplashrc(&on, ""));
-    // гибрид стоит, тема уже наша → не трогаем
+    // hybrid installed, the theme is already ours → leave it
     assert!(!ss::should_heal_ksplashrc(&on, ss::KSPLASH_THEME_ID));
-    // гибрида нет → чужой ksplashrc не наше дело ни при каком значении
+    // no hybrid → someone else's ksplashrc is none of our business, whatever the value
     assert!(!ss::should_heal_ksplashrc(&off, "org.kde.breezedark.desktop"));
     assert!(!ss::should_heal_ksplashrc(&off, ""));
     assert!(!ss::should_heal_ksplashrc(&empty, "org.kde.breezedark.desktop"));
     assert!(!ss::should_heal_ksplashrc(&empty, ss::KSPLASH_THEME_ID));
 }
 
-/// Спор за слот KSplash: видеозаставка входа и заставка KDE — одно место, и
-/// выбирать обязан покупатель. Проверяем ВСЕ ветки решения: молчание в обе
-/// стороны здесь и есть дефект.
+/// Contention for the KSplash slot: the login video splash and the KDE splash share one place, and
+/// the customer must choose. We check ALL branches of the decision: silence in either
+/// direction is exactly the defect here.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn splash_slot_conflict_branches() {
     let _lang = i18n_pin::ru();
-    // Гибрида нет — слот свободен, спрашивать не о чем ни при каком виде.
+    // No hybrid — the slot is free, nothing to ask about, whatever the kind.
     assert!(ss::splash_slot_conflict("splash", "Breeze", false).is_none());
     assert!(ss::splash_slot_conflict("global", "Breeze", false).is_none());
-    // Вид оформления слота не касается — тоже молча применяем.
+    // The appearance kind does not concern the slot — also applied silently.
     for kind in ["colors", "cursor", "icons", "gtk", "lockscreen", "wallpapers", "none"] {
         assert!(!ss::apply_kind_takes_ksplash_slot(kind), "{kind}");
         assert!(ss::splash_slot_conflict(kind, "Breeze", true).is_none(), "{kind}");
     }
-    // Наша же тема-постер: отбирать место не у кого.
+    // Our own poster theme: there is nobody to take the place from.
     assert!(ss::splash_slot_conflict("splash", ss::KSPLASH_THEME_ID, true).is_none());
     assert!(ss::splash_slot_conflict("global", ss::KSPLASH_THEME_ID, true).is_none());
 
-    // Чужая заставка KDE поверх гибрида — вопрос, и «Нет» означает «не
-    // применять»: у вида `splash` всё действие и есть заставка.
+    // Someone else's KDE splash over the hybrid — a question, and «No» means "do not
+    // apply": for the `splash` kind the whole action is the splash.
     assert!(ss::apply_kind_takes_ksplash_slot("splash"));
     let c = ss::splash_slot_conflict("splash", "Breeze", true).expect("вопрос обязан быть");
     assert_eq!(c.title, ss::slot_question_title());
     assert!(!c.keep_applies_rest);
     assert!(c.question.contains("Breeze"), "{}", c.question);
-    // Оба исхода названы в тексте прямым словом, иначе «Да»/«Нет» — лотерея.
+    // Both outcomes are named in the text in plain words, otherwise «Yes»/«No» is a lottery.
     assert!(c.question.contains("«Да»") && c.question.contains("«Нет»"), "{}", c.question);
     assert_eq!(c.kept, ss::msg_slot_kept_instead_of("Breeze"));
     assert!(c.kept.contains("не применена"), "{}", c.kept);
 
-    // Целое оформление: заставка — лишь одна его часть, поэтому «Нет»
-    // применяет ОСТАЛЬНОЕ, а слот остаётся за роликом.
+    // A whole appearance: the splash is only one of its parts, so «No»
+    // applies THE REST, and the slot stays with the video.
     assert!(ss::apply_kind_takes_ksplash_slot("global"));
     let g = ss::splash_slot_conflict("global", "Nordic", true).expect("вопрос обязан быть");
     assert_eq!(g.title, ss::slot_question_title());
@@ -1783,8 +1783,8 @@ fn splash_slot_conflict_branches() {
     assert_eq!(g.kept, ss::msg_slot_kept_video());
 }
 
-/// Тексты обоих исходов — по-человечески и без жаргона: имена технологий
-/// латиницей, «гибрид KSplash» покупателю не показываем.
+/// The texts of both outcomes are human and jargon-free: technology names
+/// in Latin letters, "KSplash hybrid" is not shown to the customer.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn splash_slot_texts_are_human() {
@@ -1798,16 +1798,16 @@ fn splash_slot_texts_are_human() {
         assert!(!text.contains("ksplashrc"), "{text}");
         assert!(!text.contains("КДЕ") && !text.contains("Плазма"), "{text}");
     }
-    // Отказ обязан объяснить, ПОЧЕМУ заставку не применили, а не просто
-    // сказать «не вышло».
+    // A refusal must explain WHY the splash was not applied, not just
+    // say "did not work".
     assert!(failed.contains("не применена"), "{failed}");
     assert!(released.contains("выключена"), "{released}");
 }
 
-/// ⚠️ 09.09.2026: применение глобальной темы Plasma перезаписало
-/// `[KSplash] Theme` — при входе секунду висела ШТАТНАЯ заставка Plasma, и
-/// только потом выпрыгивал ролик. Реальный прогон обязан вернуть связку
-/// САМ, до показа, а чужую тему увести в бэкап для честного отката.
+/// ⚠️ 09.09.2026: applying a global Plasma theme overwrote
+/// `[KSplash] Theme` — at login the STOCK Plasma splash hung for a second, and
+/// only then the video jumped out. The real run must restore the binding
+/// ITSELF, before showing, and move the foreign theme into a backup for an honest rollback.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn flow_play_heals_foreign_ksplashrc_theme() {
@@ -1815,13 +1815,13 @@ fn flow_play_heals_foreign_ksplashrc_theme() {
     let mut io = heal_fixture(Some("[KSplash]\nTheme=org.kde.breezedark.desktop\nEngine=KSplashQML\n"));
     let (ok, msg) = Splash::new(&mut io, HOME).play(None, None, true, None, "/repo");
     assert!(ok, "{msg}");
-    // связка возвращена нашей темой и нашим движком
+    // the binding is restored with our theme and our engine
     let i_theme = io.index_of("--key Theme org.rexon.sessionsplash");
     let i_engine = io.index_of("--key Engine KSplashQML");
-    // …и обязательно ДО запуска плеера
+    // …and necessarily BEFORE the player starts
     let i_spawn = io.index_of("spawn[false] /repo/rust/target/release/rexon-splash-overlay");
     assert!(i_theme < i_spawn && i_engine < i_spawn, "{:#?}", io.journal);
-    // чужая тема ушла в бэкап: откат гибрида вернёт покупателю ЕЁ, не нашу
+    // the foreign theme went into the backup: the hybrid rollback returns IT to the customer, not ours
     let cfg: Value = serde_json::from_str(
         io.written
             .get("/HOME/.config/rexon/session_splash.json")
@@ -1830,12 +1830,12 @@ fn flow_play_heals_foreign_ksplashrc_theme() {
     .unwrap();
     assert_eq!(cfg["prev_ksplash_theme"], json!("org.kde.breezedark.desktop"));
     assert_eq!(cfg["prev_ksplash_engine"], json!("KSplashQML"));
-    // каталог темы был на месте — перегенерации не затевали
+    // the theme directory was in place — no regeneration was started
     assert!(!io.has("-frames:v"), "{:#?}", io.journal);
 }
 
-/// Ключ потеряли целиком (живой случай: ksplashrc оказался ПУСТ) — тогда в
-/// бэкап уходит пустая строка, и откат вернёт состояние «ключа не было».
+/// The key was lost entirely (a live case: ksplashrc turned out EMPTY) — then an
+/// empty string goes into the backup, and rollback restores the "there was no key" state.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn flow_play_heals_empty_ksplashrc() {
@@ -1853,7 +1853,7 @@ fn flow_play_heals_empty_ksplashrc() {
     assert_eq!(cfg["prev_ksplash_theme"], json!(""));
 }
 
-/// Связка цела — ksplashrc не трогаем и конфиг не переписываем.
+/// The binding is intact — ksplashrc is not touched and the config is not rewritten.
 #[test]
 fn flow_play_healthy_ksplashrc_untouched() {
     let _lang = i18n_pin::en();
@@ -1866,8 +1866,8 @@ fn flow_play_healthy_ksplashrc_untouched() {
     assert!(!io.written.contains_key("/HOME/.config/rexon/session_splash.json"));
 }
 
-/// Каталог темы-постера пропал (снесли `~/.local/share`) — перегенерируем
-/// его по ФАКТИЧЕСКОМУ пути ролика, вход не остаётся чёрным.
+/// The poster theme directory disappeared (`~/.local/share` was wiped) — we regenerate
+/// it from the ACTUAL video path, the login does not stay black.
 #[test]
 fn flow_play_rebuilds_missing_theme_dir() {
     let _lang = i18n_pin::en();
@@ -1885,8 +1885,8 @@ fn flow_play_rebuilds_missing_theme_dir() {
     assert!(io.has(ss::MSG_HEAL_THEME_REBUILT), "{:#?}", io.journal);
 }
 
-/// Самолечение не роняет показ: kwriteconfig6 отсутствует — жалуемся в
-/// журнал, но ролик всё равно играем.
+/// Self-healing does not break the show: kwriteconfig6 is missing — we complain into
+/// the log, but play the video anyway.
 #[test]
 fn flow_play_heal_failure_does_not_stop_playback() {
     let _lang = i18n_pin::en();
@@ -1898,8 +1898,8 @@ fn flow_play_heal_failure_does_not_stop_playback() {
     assert!(io.has(ss::MSG_HEAL_KSPLASHRC_FAILED), "{:#?}", io.journal);
 }
 
-/// Тест заставки из UI (non-blocking) — чужой ksplashrc не наше дело:
-/// пользователь ничего не входил, связка при входе ни при чём.
+/// A splash test from the UI (non-blocking) — someone else's ksplashrc is none of our business:
+/// the user did not log in, the login binding is irrelevant.
 #[test]
 fn flow_play_nonblocking_does_not_touch_ksplashrc() {
     let _lang = i18n_pin::en();
@@ -1933,10 +1933,10 @@ fn flow_install_hybrid_writes_theme_unit_and_config() {
     assert!(io.written.contains_key(&format!("{theme}/contents/splash/Splash.qml")));
     let unit = "/HOME/.config/systemd/user/rexon-session-splash.service";
     let text = io.written.get(unit).expect("юнит не записан");
-    // ⚠️ порог, из-за которого была панель поверх заставки на холодном входе
+    // ⚠️ the threshold that caused the panel over the splash on a cold login
     assert!(text.contains("TimeoutStartSec=15"), "{text}");
     assert!(text.contains("Type=notify") && text.contains("Before=plasma-plasmashell.service"));
-    // ksplashrc правится ПОСЛЕ бэкапа прежней темы в конфиг
+    // ksplashrc is edited AFTER backing up the previous theme into the config
     let cfg = io
         .written
         .get("/HOME/.config/rexon/session_splash.json")
@@ -1954,8 +1954,8 @@ fn flow_install_hybrid_without_kwriteconfig_stops_with_reason() {
         FakeIo::new()
             .with_file(FLOW_VIDEO)
             .with_bin("ffmpeg")
-            // Заводить заставку ЕСТЬ чем — проверяем именно отказ ksplashrc,
-            // а не отсутствие входа (у него свой сторож ниже).
+            // There IS something to start the splash with — we check precisely the ksplashrc refusal,
+            // not a missing entry (that has its own watchdog below).
             .with_bin("rexon")
             .with_run("-frames:v", 0, "", ""),
         "",
@@ -1963,7 +1963,7 @@ fn flow_install_hybrid_without_kwriteconfig_stops_with_reason() {
     let (ok, msg) = Splash::new(&mut io, HOME).install_hybrid(FLOW_VIDEO, "/usr/bin/python3");
     assert!(!ok);
     assert_eq!(msg, ss::msg_ksplashrc_failed());
-    // юнит не пишется, если ksplashrc не поддался — половины гибрида не бывает
+    // the unit is not written if ksplashrc did not give in — there is no such thing as half a hybrid
     assert!(!io.has("systemd/user/rexon-session-splash.service"), "{:#?}", io.journal);
 }
 
@@ -2001,9 +2001,9 @@ fn flow_uninstall_hybrid_restores_previous_theme() {
     assert!(!cfg.contains("hybrid_installed") && !cfg.contains("prev_ksplash"), "{cfg}");
 }
 
-/// Хуки входа идут по выбору входа продукта: при Rust-входе и юнит гибрида,
-/// и autostart-`.desktop` зовут бинарь окна — без интерпретатора, даже когда
-/// лаунчер `rexon` стоит в PATH. При Python-входе — прежние строки.
+/// Login hooks follow the product's chosen entry: with the Rust entry both the hybrid unit
+/// and the autostart `.desktop` call the window binary — without an interpreter, even when
+/// the `rexon` launcher is in PATH. With the Python entry — the old lines.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn flow_login_hooks_follow_launch_entry() {
@@ -2058,19 +2058,19 @@ fn flow_login_hooks_follow_launch_entry() {
     assert!(desk.contains("\nExec=/usr/bin/rexon --session-splash\n"), "{desk}");
 }
 
-/// ⛔Заводить заставку нечем — отказ ВСЛУХ, а не запись в пустоту.
+/// ⛔ There is nothing to start the splash with — a refusal OUT LOUD, not a write into the void.
 ///
-/// До 16.09.2026 (блок H) на этой развилке — Python-вход и лаунчера `rexon`
-/// в `PATH` нет — обе записи получали `python3 -m rexon.app
-/// --session-splash` и рапортовали успех. Ни `.desktop`-автозапуск, ни
-/// systemd-юнит не дают рабочего каталога, а пакета `rexon` в `sys.path`
-/// системного интерпретатора нет: при входе не показывалось ничего, и
-/// узнать об этом было неоткуда.
+/// Before 16.09.2026 (block H) at this fork — the Python entry and no `rexon` launcher
+/// in `PATH` — both records got `python3 -m rexon.app
+/// --session-splash` and reported success. Neither the `.desktop` autostart nor the
+/// systemd unit provide a working directory, and the system interpreter's `sys.path`
+/// has no `rexon` package: nothing was shown at login, and
+/// there was no way to find out.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn flow_login_hooks_refuse_when_nothing_to_launch() {
     let _lang = i18n_pin::ru();
-    // Лаунчера `rexon` в PATH НЕТ (`with_bin("rexon")` не вызван).
+    // There is NO `rexon` launcher in PATH (`with_bin("rexon")` not called).
     let mut io = with_config(
         FakeIo::new()
             .with_file(FLOW_VIDEO)
@@ -2106,14 +2106,14 @@ fn flow_login_hooks_refuse_when_nothing_to_launch() {
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn flow_install_autostart_routes_through_steps() {
     let _lang = i18n_pin::ru();
-    // Гибрид возможен и встал → .desktop снимается.
+    // Hybrid possible and installed → the .desktop is removed.
     let mut io = with_config(FakeIo::new(), "");
     io.steps.insert("supported".into(), (true, String::new()));
     let (ok, msg) = Splash::new(&mut io, HOME).install_autostart();
     assert!(ok && msg == ss::msg_hybrid_route_ok(), "{msg}");
     assert_eq!(io.steps_of("step "), vec![format!("step hyb {FLOW_VIDEO}"), "step rmdesk".to_string()]);
 
-    // Гибрид упал → полный откат остатков и честная фаза 1.
+    // Hybrid failed → a full rollback of the leftovers and an honest phase 1.
     let mut io = with_config(FakeIo::new(), "");
     io.steps.insert("supported".into(), (true, String::new()));
     io.steps.insert("hyb".into(), (false, "нет kwriteconfig6".into()));
@@ -2125,7 +2125,7 @@ fn flow_install_autostart_routes_through_steps() {
         vec![format!("step hyb {FLOW_VIDEO}"), "step unhyb".to_string(), "step desk".to_string()]
     );
 
-    // Ролик не выбран — ни одного шага.
+    // No video chosen — not a single step.
     let mut io = FakeIo::new();
     let (ok, msg) = Splash::new(&mut io, HOME).install_autostart();
     assert!(!ok && msg == ss::msg_choose_first());
@@ -2135,17 +2135,17 @@ fn flow_install_autostart_routes_through_steps() {
 #[test]
 fn flow_hybrid_supported_short_circuits() {
     let _lang = i18n_pin::en();
-    // Не KDE — бинари даже не ищем.
+    // Not KDE — the binaries are not even looked for.
     let mut io = FakeIo::new().with_env("XDG_CURRENT_DESKTOP", "GNOME");
     assert!(!Splash::new(&mut io, HOME).hybrid_supported());
     assert!(io.journal.is_empty(), "{:#?}", io.journal);
 
-    // KDE, но нет ffmpeg — systemctl не дёргаем.
+    // KDE, but no ffmpeg — systemctl is not touched.
     let mut io = FakeIo::new().with_env("XDG_CURRENT_DESKTOP", "KDE");
     assert!(!Splash::new(&mut io, HOME).hybrid_supported());
     assert!(!io.has("run "), "{:#?}", io.journal);
 
-    // Всё на месте и цель активна.
+    // Everything in place and the target active.
     let mut io = FakeIo::new()
         .with_env("XDG_CURRENT_DESKTOP", "KDE")
         .with_bin("ffmpeg")
@@ -2196,7 +2196,7 @@ fn flow_preview_frame_retries_first_frame_and_caches() {
         .with_bin("ffmpeg")
         .with_bin("ffprobe")
         .with_run("ffprobe", 0, "12.5\n", "")
-        // первая попытка (со сдвигом) провалилась, вторая — с первого кадра
+        // the first attempt (with an offset) failed, the second one from the first frame
         .with_run("-ss", 1, "", "битый")
         .with_run("-frames:v", 0, "", "");
     let out = {
@@ -2206,12 +2206,12 @@ fn flow_preview_frame_retries_first_frame_and_caches() {
     let out = out.expect("кадр не получен");
     assert!(out.starts_with(cache), "{out}");
     let runs = io.steps_of("run ");
-    assert_eq!(runs.len(), 3, "{runs:#?}"); // ffprobe + две попытки ffmpeg
+    assert_eq!(runs.len(), 3, "{runs:#?}"); // ffprobe + two ffmpeg attempts
     assert!(runs[1].contains("-ss "), "{:?}", runs[1]);
     assert!(!runs[2].contains("-ss "), "{:?}", runs[2]);
     assert!(io.has(&format!("replace {out}.part.png → {out}")));
 
-    // Повторный вызов берёт готовый файл: ffmpeg больше не дёргается.
+    // A repeat call takes the ready file: ffmpeg is no longer touched.
     io.journal.clear();
     let again = Splash::new(&mut io, HOME).preview_frame(video);
     assert_eq!(again.as_deref(), Some(out.as_str()));
@@ -2232,7 +2232,7 @@ fn flow_rotation_picks_next_and_saves() {
     io.files
         .insert("/HOME/.config/rexon/session_splash.json".into());
     let nxt = Splash::new(&mut io, HOME).advance_rotation();
-    // текущий ролик из жребия исключён — иначе «случайность» стояла бы на месте
+    // the current video is excluded from the draw — otherwise the "randomness" would stand still
     assert_eq!(nxt.as_deref(), Some(b));
     let cfg = io
         .written
@@ -2243,17 +2243,17 @@ fn flow_rotation_picks_next_and_saves() {
 
 #[test]
 fn letterbox_rect_matches_mpv_fullscreen() {
-    // Широкий ролик в 16:10 экран: поля сверху и снизу.
+    // A wide video on a 16:10 screen: bars at the top and bottom.
     assert_eq!(ss::letterbox_rect(1920, 1080, 2560, 1600), (0, 80, 2560, 1440));
-    // Вертикальный ролик: поля слева и справа.
+    // A vertical video: bars on the left and right.
     assert_eq!(ss::letterbox_rect(1080, 1920, 2560, 1600), (830, 0, 900, 1600));
-    // Точное совпадение пропорций — без полей.
+    // An exact aspect match — no bars.
     assert_eq!(ss::letterbox_rect(1280, 800, 2560, 1600), (0, 0, 2560, 1600));
-    // Битая картинка (нулевой размер) не роняет слой — заполняем целиком.
+    // A broken image (zero size) does not crash the layer — we fill it entirely.
     assert_eq!(ss::letterbox_rect(0, 0, 640, 480), (0, 0, 640, 480));
 }
 
-/// Гибрид стоит: флаг в конфиге, юнит и тема на месте, откат проходит.
+/// The hybrid is installed: the flag in the config, the unit and the theme in place, rollback works.
 fn slot_fixture() -> FakeIo {
     let unit = "/HOME/.config/systemd/user/rexon-session-splash.service";
     let theme = "/HOME/.local/share/plasma/look-and-feel/org.rexon.sessionsplash";
@@ -2269,29 +2269,29 @@ fn slot_fixture() -> FakeIo {
     )
 }
 
-/// Поток спора за слот, общий для ОБОИХ хозяев вкладки «Оформление»
-/// (Rust-окно и Python-хозяин живого продукта): ветвление «Да/Нет → что
-/// делать» живёт в ядре, и здесь проверена каждая ветка.
+/// The slot contention flow shared by BOTH owners of the «Appearance» tab
+/// (the Rust window and the Python owner of the live product): the branching "Yes/No → what
+/// to do" lives in the core, and every branch is checked here.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn flow_resolve_splash_slot_all_answers() {
     let _lang = i18n_pin::ru();
     let unit_rm = "rm /HOME/.config/systemd/user/rexon-session-splash.service";
 
-    // Вид слота не касается — вопроса нет, диск не читается вовсе.
+    // The kind does not concern the slot — no question, the disk is not read at all.
     let mut io = FakeIo::new();
     let plan = Splash::new(&mut io, HOME)
         .resolve_splash_slot("colors", "Breeze", |_| panic!("вопроса быть не должно"));
     assert_eq!(plan, ss::SplashSlotPlan::plain());
     assert!(io.journal.is_empty(), "{:#?}", io.journal);
 
-    // Гибрида нет — спора нет.
+    // No hybrid — no contention.
     let mut io = FakeIo::new();
     let plan = Splash::new(&mut io, HOME)
         .resolve_splash_slot("splash", "Breeze", |_| panic!("вопроса быть не должно"));
     assert_eq!(plan, ss::SplashSlotPlan::plain());
 
-    // Заставка, «Нет» — не применять, гибрид не трогать.
+    // Splash, «No» — do not apply, do not touch the hybrid.
     let mut io = slot_fixture();
     let mut asked = None;
     let plan = Splash::new(&mut io, HOME).resolve_splash_slot("splash", "Breeze", |c| {
@@ -2302,7 +2302,7 @@ fn flow_resolve_splash_slot_all_answers() {
     assert_eq!(plan, ss::SplashSlotPlan::Stop(ss::msg_slot_kept_instead_of("Breeze")));
     assert!(!io.has(unit_rm), "{:#?}", io.journal);
 
-    // Целое оформление, «Нет» — применить всё и вернуть слот ролику.
+    // A whole appearance, «No» — apply everything and give the slot back to the video.
     let mut io = slot_fixture();
     let plan = Splash::new(&mut io, HOME).resolve_splash_slot("global", "Nordic", |_| false);
     assert_eq!(
@@ -2314,7 +2314,7 @@ fn flow_resolve_splash_slot_all_answers() {
     );
     assert!(!io.has(unit_rm), "{:#?}", io.journal);
 
-    // «Да» — гибрид снят ДО применения, место за выбранной заставкой.
+    // «Yes» — the hybrid is removed BEFORE applying, the place goes to the chosen splash.
     let mut io = slot_fixture();
     let plan = Splash::new(&mut io, HOME).resolve_splash_slot("splash", "Breeze", |_| true);
     assert_eq!(
@@ -2324,7 +2324,7 @@ fn flow_resolve_splash_slot_all_answers() {
     assert!(io.has(unit_rm), "{:#?}", io.journal);
 }
 
-/// Доведение плана: слот возвращается ролику, примечание — только к удаче.
+/// Finishing the plan: the slot goes back to the video, the note is only added on success.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn flow_finish_splash_slot_heals_and_notes() {
@@ -2333,13 +2333,13 @@ fn flow_finish_splash_slot_heals_and_notes() {
     assert_eq!(ss::msg_with_slot_note("", "Ролик на месте.", true), "Ролик на месте.");
     assert_eq!(ss::msg_with_slot_note("Сбой.", "Ролик на месте.", false), "Сбой.");
 
-    // Без ролика — ничего не лечим.
+    // Without a video — nothing to heal.
     let mut io = heal_fixture(Some("[KSplash]\nTheme=org.kde.breezedark.desktop\n"));
     let out = Splash::new(&mut io, HOME).finish_splash_slot(None, "", true, "Готово.");
     assert_eq!(out, "Готово.");
     assert!(!io.has("kwriteconfig6"), "{:#?}", io.journal);
 
-    // Ролик оставлен — связка возвращается нашей темой даже при неудаче.
+    // The video is kept — the binding is restored with our theme even on failure.
     let mut io = heal_fixture(Some("[KSplash]\nTheme=org.kde.breezedark.desktop\n"));
     let out = Splash::new(&mut io, HOME).finish_splash_slot(
         Some(FLOW_VIDEO),
@@ -2352,14 +2352,14 @@ fn flow_finish_splash_slot_heals_and_notes() {
 }
 
 // ============================================================================
-// Английский интерфейс
+// English interface
 // ============================================================================
 
 fn has_cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Все сообщения заставки по-английски — без единой русской буквы.
+/// All splash messages in English — without a single Russian letter.
 #[test]
 fn english_splash_texts_have_no_russian() {
     let _lang = i18n_pin::en();
@@ -2388,8 +2388,8 @@ fn english_splash_texts_have_no_russian() {
         ss::msg_ffmpeg_failed(e),
         ss::msg_ffmpeg_stderr(e),
         ss::msg_ksplashrc_failed(),
-        // Самолечение ksplashrc (`msg_heal_*`) пишет только в журнал — его
-        // не переводим.
+        // ksplashrc self-healing (`msg_heal_*`) writes only to the log — it is
+        // not translated.
         ss::msg_unit_write_failed(e),
         ss::msg_unit_enable_failed(e),
         ss::msg_rollback_problems(e),
@@ -2424,7 +2424,7 @@ fn english_splash_texts_have_no_russian() {
     }
 }
 
-/// Английские фразы заставки читаются как фразы, а не калька.
+/// The English splash phrases read as phrases, not as a calque.
 #[test]
 fn english_phrases_read_naturally() {
     let _lang = i18n_pin::en();
@@ -2445,8 +2445,8 @@ fn english_phrases_read_naturally() {
     assert!(c.question.contains("“Yes” — apply the “Breeze” splash screen."), "{}", c.question);
 }
 
-/// Те же тексты по-русски — дословно как до перевода на каталог (снимок
-/// `ca42e74^`), с «ёлочками».
+/// The same texts in Russian — verbatim as before moving to the catalog (snapshot
+/// `ca42e74^`), with «guillemets».
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn russian_slot_texts_as_before() {
@@ -2465,8 +2465,8 @@ fn russian_slot_texts_as_before() {
     assert!(!c.question.contains('“') && !c.question.contains('”'), "{}", c.question);
 }
 
-/// Плитка «Нет» в разделе «Заставка» при включённом ролике: вопрос свой —
-/// без имени «None», которого человек не видел; без ролика вопроса нет.
+/// The «None» tile in the «Splash Screen» section with a video enabled: the question is its own —
+/// without the name "None" the person never saw; without a video there is no question.
 #[test]
 fn splash_none_tile_asks_in_own_words() {
     assert!(ss::splash_slot_conflict("splash", "None", false).is_none());
@@ -2477,11 +2477,11 @@ fn splash_none_tile_asks_in_own_words() {
 }
 
 // ============================================================================
-// Свой ролик: третий источник скана, проверка файла, новые встроенные ролики
+// Own video: the third scan source, file check, new built-in videos
 // ============================================================================
 
-/// Встроенные ролики — ровно те, что лежат в `steamui/movies` клиента
-/// (ноябрь 2026), в прежнем порядке и с новыми устройствами Valve в конце.
+/// Built-in videos — exactly those lying in the client's `steamui/movies`
+/// (November 2026), in the old order and with Valve's new devices at the end.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn builtin_names_cover_new_steam_devices() {
@@ -2521,13 +2521,13 @@ fn builtin_names_cover_new_steam_devices() {
         &[],
     );
     let names: Vec<&str> = movies.iter().map(|m| m["name"].as_str().unwrap()).collect();
-    // Порядок — по списку, не по листингу.
+    // The order follows the list, not the listing.
     assert_eq!(names, vec!["Steam Machine", "Steam Deck (заводской образ)"]);
     assert_eq!(movies[0]["path"], "/S/steamui/movies/startup_machine.webm");
 }
 
-/// `config/uioverrides/movies/*.webm` — как в самом Steam: только `.webm`
-/// (с учётом регистра), скрытые пропускаются, миниатюра `.jpg` рядом.
+/// `config/uioverrides/movies/*.webm` — as in Steam itself: only `.webm`
+/// (case-sensitive), hidden ones are skipped, a `.jpg` thumbnail next to it.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn scan_reads_custom_movies_like_steam() {
@@ -2566,7 +2566,7 @@ fn scan_reads_custom_movies_like_steam() {
         ]
     );
     let mine = &out[4];
-    assert_eq!(mine["name"], "моя заставка.webm"); // как в списке Steam
+    assert_eq!(mine["name"], "моя заставка.webm"); // as in the Steam list
     assert_eq!(mine["title"], "моя заставка");
     assert_eq!(mine["builtin"], false);
     assert_eq!(mine["origin"], ss::ORIGIN_CUSTOM);
@@ -2574,18 +2574,18 @@ fn scan_reads_custom_movies_like_steam() {
     assert_eq!(mine["thumb"], "/S/config/uioverrides/movies/моя заставка.jpg");
     assert_eq!(out[3]["thumb"], "/S/config/uioverrides/movies/b.webm.jpg");
     assert_eq!(out[2]["thumb"], "");
-    // Обогащение не превращает свой ролик в «Points Shop».
+    // Enrichment does not turn our own video into "Points Shop".
     let enriched = ss::enrich_movies(&out, &json!({}), &[]);
     assert_eq!(enriched[4]["origin"], ss::ORIGIN_CUSTOM);
     assert_eq!(enriched[4]["origin_label"], "Свой ролик");
     assert_eq!(enriched[4]["title"], "моя заставка");
     assert_eq!(enriched[1]["origin"], ss::ORIGIN_SHOP);
     assert_eq!(enriched[0]["origin"], ss::ORIGIN_BUILTIN);
-    // Вручную выбранный файл (видит только Rexon) подписан по-прежнему.
+    // A manually chosen file (only Rexon sees it) is captioned as before.
     assert_eq!(ss::origin_label(ss::ORIGIN_CUSTOM), "Свой файл");
 }
 
-/// Живой маршрут скана: исполнитель листает `uioverrides/movies`.
+/// The live scan route: the executor lists `uioverrides/movies`.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn flow_scan_reads_custom_movies_dir() {
@@ -2609,7 +2609,7 @@ fn flow_scan_reads_custom_movies_dir() {
     assert_eq!(movies[0]["title"], "intro");
 }
 
-/// Образец вывода `ffprobe -show_streams -show_format -of json`.
+/// A sample of `ffprobe -show_streams -show_format -of json` output.
 fn probe_json(format: &str, duration: Option<&str>, streams: Value) -> String {
     let mut fmt = json!({"format_name": format});
     if let Some(d) = duration {
@@ -2636,7 +2636,7 @@ fn movie_probe_verdicts() {
     let mp4 = "mov,mp4,m4a,3gp,3g2,mj2";
     let check = |fmt: &str, d: Option<&str>, st: Value| ss::check_movie_probe(&probe_json(fmt, d, st));
 
-    // Как есть: webm VP9/VP8/AV1 + Opus/Vorbis или без звука.
+    // As is: webm VP9/VP8/AV1 + Opus/Vorbis or without sound.
     let c = check(webm, Some("5.000000"), json!([vstream("vp9", 1920, 1200), astream("opus")]));
     assert_eq!(c.verdict, AsIs, "{c:?}");
     assert_eq!((c.width, c.height, c.duration), (1920, 1200, 5.0));
@@ -2644,14 +2644,14 @@ fn movie_probe_verdicts() {
     assert!(c.reason.is_empty() && c.warnings.is_empty());
     assert_eq!(check(webm, Some("3.1"), json!([vstream("vp8", 1280, 720), astream("vorbis")])).verdict, AsIs);
     assert_eq!(check(webm, Some("3.1"), json!([vstream("av1", 1280, 800)])).verdict, AsIs);
-    // Вертикальный ролик с телефона — годится.
+    // A vertical video from a phone — acceptable.
     assert_eq!(check(webm, Some("3"), json!([vstream("vp9", 720, 1280)])).verdict, AsIs);
-    // Длительность числом, а не строкой — тоже читается.
+    // Duration as a number rather than a string — also readable.
     let num = json!({"streams": [vstream("vp9", 1280, 720)],
                      "format": {"format_name": webm, "duration": 4.5}}).to_string();
     assert_eq!(ss::check_movie_probe(&num).duration, 4.5);
 
-    // Перекодировать: другой контейнер/кодек, лишние дорожки, нет длительности.
+    // Re-encode: another container/codec, extra tracks, no duration.
     assert_eq!(check(mp4, Some("5"), json!([vstream("h264", 1920, 1080), astream("aac")])).verdict, Transcode);
     assert_eq!(check(webm, Some("5"), json!([vstream("h264", 1920, 1080)])).verdict, Transcode);
     assert_eq!(check(webm, Some("5"), json!([vstream("vp9", 1920, 1080), astream("aac")])).verdict, Transcode);
@@ -2667,12 +2667,12 @@ fn movie_probe_verdicts() {
     let c = check(webm, None, json!([vstream("vp9", 1920, 1080)]));
     assert_eq!((c.verdict, c.duration), (Transcode, 0.0));
 
-    // Отказы — человеческим языком.
+    // Refusals in human language.
     let c = ss::check_movie_probe("не json");
     assert_eq!(c.verdict, Reject);
     assert_eq!(c.reason, "Не удалось прочитать файл — возможно, он повреждён или это не видео.");
     assert_eq!(ss::check_movie_probe("{}").verdict, Reject);
-    // mp3 с обложкой альбома: «видеопоток» есть, видео нет.
+    // An mp3 with album art: there is a "video stream", but no video.
     let cover = json!({"codec_type": "video", "codec_name": "mjpeg", "width": 1000, "height": 1000,
                        "disposition": {"attached_pic": 1}});
     let c = check("mp3", Some("200"), json!([astream("mp3"), cover]));
@@ -2692,11 +2692,11 @@ fn movie_probe_verdicts() {
     );
     assert_eq!(check(webm, Some("4"), json!([vstream("vp9", 640, 359)])).verdict, Reject);
 
-    // Границы: ровно 1 с, ровно 60 с и 640×360 — принимаются.
+    // Boundaries: exactly 1 s, exactly 60 s and 640×360 are accepted.
     assert_eq!(check(webm, Some("1"), json!([vstream("vp9", 640, 360)])).verdict, AsIs);
     let c = check(webm, Some("60"), json!([vstream("vp9", 640, 360)]));
     assert_eq!(c.verdict, AsIs);
-    // Дольше 30 с — предупреждение, но не отказ.
+    // Longer than 30 s — a warning, but not a refusal.
     assert_eq!(
         c.warnings,
         vec!["Ролик длиннее 30 секунд — это заставка, а не фильм: ждать её придётся при каждом входе.".to_string()]
@@ -2710,7 +2710,7 @@ fn movie_probe_verdicts() {
     );
 }
 
-/// Ролик проверяется тем же ffprobe, что и длительность для витрины.
+/// The video is checked by the same ffprobe as the duration for the showcase.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn flow_probe_movie_runs_ffprobe() {
@@ -2722,15 +2722,15 @@ fn flow_probe_movie_runs_ffprobe() {
     let c = Splash::new(&mut io, HOME).probe_movie("/v.webm");
     assert_eq!(c.verdict, ss::MovieVerdict::AsIs);
     assert!(io.has("run /usr/bin/ffprobe -v error -show_streams -show_format -of json /v.webm"));
-    // ffprobe нет или он упал — отказ, а не молчаливый приём.
+    // No ffprobe or it crashed — a refusal, not a silent acceptance.
     let mut io = FakeIo::new();
     assert_eq!(Splash::new(&mut io, HOME).probe_movie("/v.webm").verdict, ss::MovieVerdict::Reject);
     let mut io = FakeIo::new().with_bin("ffprobe").with_run("-show_streams", 1, "", "Invalid data");
     assert_eq!(Splash::new(&mut io, HOME).probe_movie("/v.webm").verdict, ss::MovieVerdict::Reject);
 }
 
-/// Настоящие маленькие ролики ffmpeg'ом во временном каталоге — разбор
-/// живого вывода ffprobe, а не только образцов.
+/// Real small videos made by ffmpeg in a temporary directory — parsing
+/// live ffprobe output, not only samples.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: ffmpeg и ffprobe")]
 fn movie_probe_on_real_clips() {
@@ -2771,7 +2771,7 @@ fn movie_probe_on_real_clips() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Новые подписи по-английски — без русского.
+/// New captions in English — without Russian.
 #[test]
 fn custom_movie_texts_in_english() {
     let _lang = i18n_pin::en();

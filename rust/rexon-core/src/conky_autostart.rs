@@ -1,62 +1,65 @@
-//! «Запускать при входе» у виджета Conky: задержка, окружение, композиторы.
+//! "Start at login" for a Conky widget: delay, environment, compositors.
 //!
-//! ЗАЧЕМ. Виджет, запущенный в первую же секунду входа, встаёт под панель
-//! или рисуется без фона: панель и обои ещё не поднялись (жалоба
-//! пользователей программ-менеджеров conky, у них по умолчанию задержка
-//! 20 с). Человеку с двумя рабочими столами нужен виджет только в одном
-//! из них. А голые композиторы (sway, Hyprland без uwsm, river, labwc,
-//! Wayfire, niri без `niri-session`) записей `~/.config/autostart` не
-//! исполняют вовсе — галочка горела, а виджет при входе не появлялся.
+//! WHY. A widget started in the very first second after login ends up under
+//! the panel or is drawn without a background: the panel and the wallpaper
+//! are not up yet (a complaint from users of conky manager programs, which
+//! default to a 20 s delay). A person with two desktop environments wants the
+//! widget in only one of them. And bare compositors (sway, Hyprland without
+//! uwsm, river, labwc, Wayfire, niri without `niri-session`) do not run
+//! `~/.config/autostart` entries at all — the checkbox was on, yet the widget
+//! did not appear at login.
 //!
-//! Как устроено:
-//! * задержка — `sleep N` в самой строке запуска
-//!   ([`crate::ext_manager::conky_desktop_entry_with`]): ключ
-//!   `X-GNOME-Autostart-Delay` исполняют не все окружения;
-//! * «только в этом окружении» — `OnlyShowIn=` с именами из
-//!   `XDG_CURRENT_DESKTOP` (у композитора — его имена);
-//! * композиторы — общий путь Rexon для своих программ
-//!   ([`crate::compositor_autostart`]): строка запуска управляемым блоком в
-//!   родном конфиге композитора и `NotShowIn=` в записи, чтобы виджет не
-//!   стартовал дважды там, где композитор исполняет и то и другое. Юнит
-//!   systemd с `PartOf=graphical-session.target` тут ничего не добавил бы:
-//!   у голых sway и Hyprland эта цель не поднимается (её поднимают uwsm,
-//!   `niri-session`, sway-systemd — а там XDG-записи и так исполняются).
-//!   Строка в конфиг пишется по щелчку «Запускать при входе» и ТОЛЬКО в
-//!   конфиг композитора текущего сеанса (решение Wehrwolfmann 23.10.2026):
-//!   в конфигах других установленных композиторов новой строки не
-//!   появляется, а в полных окружениях (KDE, MATE, Cinnamon…) — ни в одном.
-//!   Строка, оставшаяся там от прежних включений, лишь подновляется вместе
-//!   с записью (иначе звала бы снятую накладку). Выключение и удаление
-//!   снимают строку отовсюду. Не легла — человеку сказано, что вставить
-//!   руками и куда.
+//! How it works:
+//! * the delay is a `sleep N` in the launch line itself
+//!   ([`crate::ext_manager::conky_desktop_entry_with`]): not every
+//!   environment honors the `X-GNOME-Autostart-Delay` key;
+//! * "only in this environment" is `OnlyShowIn=` with names from
+//!   `XDG_CURRENT_DESKTOP` (for a compositor, its names);
+//! * compositors use Rexon's common path for its own programs
+//!   ([`crate::compositor_autostart`]): a launch line in a managed block in
+//!   the compositor's native config, plus `NotShowIn=` in the entry, so the
+//!   widget does not start twice where the compositor runs both. A systemd
+//!   unit with `PartOf=graphical-session.target` would add nothing here: on
+//!   bare sway and Hyprland that target is never reached (it is brought up by
+//!   uwsm, `niri-session`, sway-systemd — and there XDG entries run anyway).
+//!   The line is written to a config when "Start at login" is clicked, and
+//!   ONLY to the config of the current session's compositor (Wehrwolfmann's
+//!   decision, 23.10.2026): no new line appears in the configs of other
+//!   installed compositors, and in full desktop environments (KDE, MATE,
+//!   Cinnamon…) in none of them. A line left there by earlier enabling is
+//!   only refreshed together with the entry (otherwise it would call an
+//!   overlay that has been removed). Disabling and removing take the line out
+//!   everywhere. If it could not be placed, the person is told what to insert
+//!   by hand and where.
 //!
-//! Настройки записи хранятся в ней самой ([`options_of`]): переписывание
-//! записи (переход на накладку, обновление старого вида) их не теряет.
+//! The entry's settings are stored in the entry itself ([`options_of`]):
+//! rewriting the entry (switching to the overlay, updating the old form) does
+//! not lose them.
 
 use crate::compositor_autostart::{self as ca, Compositor, CurrentSession, SessionEnv};
 use crate::de_apply::Ctx;
 use crate::i18n::{tr, trf};
 
-/// Ключ записи с задержкой в секундах.
+/// The entry key holding the delay in seconds.
 pub const DELAY_KEY: &str = "X-Rexon-Conky-Delay";
 
-/// Задержка нового автозапуска: панель и обои успевают подняться.
+/// The delay of a new autostart: the panel and the wallpaper have time to come up.
 pub const DEFAULT_DELAY: u32 = 10;
 
-/// Наибольшая задержка, которую можно выбрать.
+/// The largest delay that can be chosen.
 pub const MAX_DELAY: u32 = 600;
 
-/// Настройки записи автозапуска.
+/// Autostart entry settings.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 pub struct Options {
-    /// Секунды до запуска.
+    /// Seconds before start.
     pub delay: u32,
-    /// `OnlyShowIn=`; пусто — во всех окружениях.
+    /// `OnlyShowIn=`; empty means in all environments.
     pub only_in: Vec<String>,
 }
 
-/// Настройки, записанные в записи `text`. Задержка — из [`DELAY_KEY`], а у
-/// записи без ключа — из `sleep N &&` строки запуска.
+/// The settings stored in entry `text`. The delay comes from [`DELAY_KEY`], and
+/// for an entry without that key, from the `sleep N &&` of the launch line.
 pub fn options_of(text: &str) -> Options {
     let value = |k: &str| text.lines().find_map(|l| l.strip_prefix(k)).map(str::trim);
     let delay = value(&format!("{DELAY_KEY}="))
@@ -73,9 +76,10 @@ pub fn options_of(text: &str) -> Options {
     Options { delay: delay.min(MAX_DELAY), only_in }
 }
 
-/// Метка блока в конфигах композиторов по части имени файла автозапуска
-/// (`rexon-conky-<ключ>.desktop`). Метка идёт в комментарий и в ключ
-/// Wayfire — знаки вне `[A-Za-z0-9_-]` заменяются отпечатком.
+/// The block tag in compositor configs, derived from part of the autostart
+/// file name (`rexon-conky-<key>.desktop`). The tag goes into a comment and
+/// into a Wayfire key, so characters outside `[A-Za-z0-9_-]` are replaced by
+/// a fingerprint.
 pub fn compositor_id(key: &str) -> String {
     if !key.is_empty() && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
         return format!("conky-{key}");
@@ -88,10 +92,11 @@ pub fn compositor_id(key: &str) -> String {
     format!("conky-{h:016x}")
 }
 
-/// Строка запуска для конфига композитора. Сценарий записи (`$0`, `$1`)
-/// туда не годится: sway и Hyprland разворачивают `$` сами. Здесь пути
-/// вписаны в сценарий в двойных кавычках; путь с `"`, `$`, `` ` `` или `\`
-/// такой строки не даст — отказ композитора покажет, что вставить руками.
+/// The launch line for a compositor config. The entry's script (`$0`, `$1`)
+/// does not work there: sway and Hyprland expand `$` themselves. Here the
+/// paths are written into the script in double quotes; a path with `"`, `$`,
+/// `` ` `` or `\` yields no such line — the compositor refusal then shows what
+/// to insert by hand.
 pub fn compositor_argv(conf: &str, launch: Option<&str>, delay: u32) -> Option<Vec<String>> {
     let bad = |s: &str| s.contains(['"', '$', '`', '\\', '\n']);
     let dir = crate::de_apply::conky_work_dir(conf);
@@ -103,8 +108,8 @@ pub fn compositor_argv(conf: &str, launch: Option<&str>, delay: u32) -> Option<V
     Some(vec!["sh".into(), "-c".into(), format!("{sleep}cd \"{dir}\" && exec conky -c \"{file}\"")])
 }
 
-/// Имена окружения для «только здесь»: `XDG_CURRENT_DESKTOP`, у
-/// композитора без него — его имена. Пусто — сеанс не распознан.
+/// Environment names for "only here": `XDG_CURRENT_DESKTOP`, or for a
+/// compositor without it, its names. Empty means the session was not recognized.
 pub fn current_names(env: &SessionEnv) -> Vec<String> {
     if !env.current_desktop.is_empty() {
         return env.current_desktop.clone();
@@ -115,9 +120,9 @@ pub fn current_names(env: &SessionEnv) -> Vec<String> {
     }
 }
 
-/// Окружение для правки конфигов композиторов. Только для домашнего
-/// каталога этого процесса — у чужого дерева (сверки) композиторов нет, и
-/// конфиги не трогаются.
+/// The environment for editing compositor configs. Only for this process's
+/// home directory: a foreign tree (comparison runs) has no compositors, and
+/// configs are not touched.
 pub fn session_env(ctx: &Ctx) -> SessionEnv {
     let own = std::env::var("HOME").ok().is_some_and(|h| h.trim_end_matches('/') == ctx.home.trim_end_matches('/'));
     if own {
@@ -126,22 +131,21 @@ pub fn session_env(ctx: &Ctx) -> SessionEnv {
     SessionEnv { home: ctx.home.clone(), config_home: ctx.config(""), ..Default::default() }
 }
 
-/// Итог сборки записи.
+/// The result of building the entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Built {
-    /// Окончательный текст записи.
+    /// The final entry text.
     pub desktop: String,
-    /// Почему в ТЕКУЩЕМ сеансе виджет при входе не запустится (композитор,
-    /// в чей конфиг строка не легла); `None` — запустится.
+    /// Why the widget will not start at login in the CURRENT session (a compositor
+    /// whose config the line could not be written to); `None` means it will start.
     pub refusal: Option<String>,
-    /// Конфиги композиторов, куда легла строка.
+    /// The compositor configs where the line was written.
     pub configs: Vec<String>,
 }
 
-/// Собрать запись автозапуска `key` и поставить (или снять) строки
-/// композиторов. Записывать на диск — [`Built::desktop`].
-/// `xwayland` — файл запуска через XWayland
-/// ([`crate::conky_overlay::autostart_xwayland`]).
+/// Builds the autostart entry `key` and places (or removes) the compositor
+/// lines. Writing it to disk is up to [`Built::desktop`]. `xwayland` is the
+/// launch file via XWayland ([`crate::conky_overlay::autostart_xwayland`]).
 pub fn build(
     env: &SessionEnv,
     key: &str,
@@ -155,10 +159,10 @@ pub fn build(
     build_entry(env, key, entry, compositor_argv(conf, launch, opts.delay), opts)
 }
 
-/// [`build`] для темы, которая запускается своим `start.sh`
-/// (`conky_theme::ScriptLaunch`): при входе — тот же сценарий, из папки
-/// темы и с меткой её процессов. `main_conf` — главный файл настроек
-/// (по нему решается, нужен ли виджету X11).
+/// [`build`] for a theme that starts with its own `start.sh`
+/// (`conky_theme::ScriptLaunch`): at login the same script runs, from the
+/// theme folder and with its process tag. `main_conf` is the main settings
+/// file (it decides whether the widget needs X11).
 pub fn build_script(
     env: &SessionEnv,
     key: &str,
@@ -181,14 +185,15 @@ pub fn build_script(
     build_entry(env, key, entry, crate::conky_theme::compositor_argv(plan, opts.delay), opts)
 }
 
-/// Общая часть [`build`] и [`build_script`]: строки композиторов по
-/// готовой записи `entry` и строке `argv` (`None` — путь в неё не лёг).
+/// The part shared by [`build`] and [`build_script`]: compositor lines for the
+/// finished entry `entry` and the line `argv` (`None` means the path could not
+/// be put into it).
 fn build_entry(env: &SessionEnv, key: &str, entry: String, argv: Option<Vec<String>>, opts: &Options) -> Built {
     let id = compositor_id(key);
-    // Строка ставится только в конфиг композитора ТЕКУЩЕГО сеанса
-    // ([`ca::Scope::Current`]); в конфигах прочих подновляется лишь уже
-    // стоящая там строка прежних включений, чтобы не звала старое.
-    // «Только здесь»: строке не место у композиторов вне списка.
+    // The line is placed only in the config of the CURRENT session's compositor
+    // ([`ca::Scope::Current`]); in the configs of the others, only a line already
+    // there from earlier enabling is refreshed, so that it does not call the old one.
+    // "Only here": the line has no place in compositors outside the list.
     let wanted = |c: Compositor| opts.only_in.is_empty() || c.desktop_names().iter().any(|n| opts.only_in.iter().any(|o| o == n));
     for c in ca::compositors_with_block(env, &id) {
         if !wanted(c) {
@@ -211,7 +216,7 @@ fn build_entry(env: &SessionEnv, key: &str, entry: String, argv: Option<Vec<Stri
         });
         return Built { desktop: entry, refusal, configs: Vec::new() };
     };
-    // Текущему сеансу строка не нужна — новой не ставить.
+    // The current session does not need the line — do not add a new one.
     let scope = if current.is_some_and(|c| !wanted(c)) { ca::Scope::Present } else { ca::Scope::Current };
     let report = ca::sync_command_in(env, &id, Some(&argv), scope);
     let names = report.not_show_in();
@@ -219,17 +224,17 @@ fn build_entry(env: &SessionEnv, key: &str, entry: String, argv: Option<Vec<Stri
     Built { desktop: ca::with_not_show_in(&entry, &names), refusal: report.current_refusal(env), configs }
 }
 
-/// Снять строки композиторов записи `key`.
+/// Removes the compositor lines of entry `key`.
 pub fn remove(env: &SessionEnv, key: &str) {
     ca::remove_everywhere(env, &compositor_id(key));
 }
 
-/// Часть имени файла по пути записи (`…/rexon-conky-<ключ>.desktop`).
+/// Part of the file name from the entry path (`…/rexon-conky-<key>.desktop`).
 pub fn key_of_path(path: &str) -> Option<&str> {
     path.rsplit('/').next()?.strip_prefix("rexon-conky-")?.strip_suffix(".desktop")
 }
 
-/// Подписи настроек автозапуска для карточки.
+/// Labels of the autostart settings for the card.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Texts {
     pub delay: String,
@@ -249,13 +254,13 @@ pub fn texts(names: &[String]) -> Texts {
     }
 }
 
-/// Что карточка показывает под переключателем «Запускать при входе».
+/// What the card shows under the "Start at login" switch.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct View {
     pub on: bool,
     pub delay: u32,
     pub only_here: bool,
-    /// Можно ли ограничить окружением (сеанс распознан).
+    /// Whether it can be restricted to an environment (the session is recognized).
     pub can_limit: bool,
     pub max_delay: u32,
     pub t: Texts,
@@ -274,14 +279,14 @@ pub fn view(text: Option<&str>, env: &SessionEnv) -> View {
     }
 }
 
-/// Настройки автозапуска виджета `id` для карточки.
+/// Autostart settings of widget `id` for the card.
 pub fn widget_view(io: &dyn crate::animations::LookIo, ctx: &Ctx, id: &str) -> View {
     let text = io.read(&crate::de_apply::conky_autostart_path(ctx, id));
     view(text.as_deref(), &session_env(ctx))
 }
 
-/// Поменять задержку и «только здесь» у включённого автозапуска.
-/// `(получилось, сообщение)`.
+/// Changes the delay and "only here" of an enabled autostart.
+/// Returns `(succeeded, message)`.
 pub fn set_widget(io: &dyn crate::animations::LookIo, ctx: &Ctx, id: &str, delay: u32, only_here: bool) -> (bool, String) {
     let env = session_env(ctx);
     let only_in = if only_here { current_names(&env) } else { Vec::new() };
@@ -299,7 +304,7 @@ mod tests {
         assert_eq!(options_of(&e), Options { delay: 25, only_in: vec!["MATE".into()] });
         let plain = crate::ext_manager::conky_desktop_entry("w", "/h/w/c.conf");
         assert_eq!(options_of(&plain), Options::default());
-        // Запись без ключа — задержка из строки запуска.
+        // An entry without the key: the delay comes from the launch line.
         assert_eq!(options_of("Exec=sh -c \"sleep 7 && cd x\" a\n").delay, 7);
     }
 

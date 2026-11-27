@@ -1,59 +1,64 @@
-// CompareModel — вкладка «Сравнение DE» на Rust + cxx-qt + QML.
+// CompareModel — the "DE comparison" tab on Rust + cxx-qt + QML.
 //
-// Виджетные вкладки, чья логика уже в ядре,
-// переписываются на QML по одной, и `qt_compare` идёт ПЕРВОЙ — она самая
-// маленькая, а её данные и решения давно живут в ядре
-// (`rexon_core::qt_compare`). Схема переноса обкатана здесь: решения и
-// подписи — ядро, здесь оболочка QObject, в QML только разметка;
-// следующие вкладки идут по ней.
+// The widget tabs whose logic is already in the core are rewritten in QML
+// one by one, and `qt_compare` goes FIRST — it is the smallest, and its
+// data and decisions have long lived in the core (`rexon_core::qt_compare`).
+// The porting scheme is tried out here: decisions and labels come from the
+// core, here is the QObject wrapper, and QML has only markup; the following
+// tabs go by it.
 //
-// Что здесь есть и чего нет:
-//   * ЕСТЬ оболочка QObject: модель списка рабочих столов (роли для
-//     делегата), неизменные подписи страницы, строки рекомендаций и
-//     таблица «X против Y» одним вызовом;
-//   * НЕТ ни одной строки продуктовых решений — какие пары предложить, что
-//     написать в легенде, какого цвета полоса памяти и кому что
-//     порекомендовать, отвечает ядро. Вторая копия этих таблиц разъехалась
-//     бы с первой молча, а числа на витрине покупатель сверит раньше нас.
+// What is here and what is not:
+//   * there IS the QObject wrapper: the desktop list model (roles for the
+//     delegate), the fixed page labels, the recommendation lines and the
+//     "X versus Y" table in one call;
+//   * there is NOT a single line of product decisions — which pairs to
+//     offer, what to write in the legend, what colour the memory bar is and
+//     what to recommend to whom is the core's business. A second copy of
+//     these tables would silently drift away from the first, and the
+//     customer would check the numbers on the showcase before we do.
 //
-// Побочные действия (установка стола, переключение сессии с копией и
-// выходом) в этот объект НЕ входят. Страница зовёт их у объекта `actions`:
-// в окне на Rust это `DesktopsActions` (src/desktops_actions.rs, исполнитель
-// ядра `system_de_exec`, окно хода `qml/DeOperationDialog.qml` — одни на обе
-// вкладки), у Python-хозяина — класс `CompareActions` из
-// rexon/qt_compare/window.py. Обратно приходит сигнал «состав установленных
-// столов изменился».
+// Side actions (installing a desktop, switching the session with a copy
+// and a logout) are NOT part of this object. The page calls them on the
+// `actions` object: in the Rust window this is `DesktopsActions`
+// (src/desktops_actions.rs, the core executor `system_de_exec`, the
+// progress window `qml/DeOperationDialog.qml` — one for both tabs), with
+// the Python host it is the `CompareActions` class from
+// rexon/qt_compare/window.py. Back comes the signal "the set of installed
+// desktops changed".
 //
-// ⚠️ Состояние «установлен» модель считает САМА, а не принимает снаружи:
-// ядро знает, какие исполняемые файлы у стола (`de_installed_binaries`), а
-// поиск в PATH — `system::binary_in_path`. Ровно тот же ответ даёт
-// `DesktopEnvironment.recheck_installed()` на Python (`shutil.which`),
-// поэтому обе вкладки, старая и новая, показывают одинаковые отметки.
+// Warning: the model computes the "installed" state ITSELF rather than
+// taking it from outside: the core knows which executables a desktop has
+// (`de_installed_binaries`), and the PATH lookup is
+// `system::binary_in_path`. Exactly the same answer is given by
+// `DesktopEnvironment.recheck_installed()` in Python (`shutil.which`), so
+// both tabs, the old and the new, show the same marks.
 
-/// Мост cxx-qt: содержимое страницы сравнения. Оно же — модель списка столов.
+/// cxx-qt bridge: the content of the comparison page. It is also the
+/// desktop list model.
 ///
-/// Один QObject, а не два (страница + модель), намеренно: список тут
-/// фиксированный и целиком принадлежит странице, а разделение потребовало бы
-/// связывать объекты через QML — лишний шов на ровном месте. Для вкладок с
-/// настоящими списками (расширения, обои) схема остаётся прежней: отдельная
-/// модель, страница держит её свойством.
+/// One QObject rather than two (page + model) on purpose: the list here is
+/// fixed and belongs entirely to the page, and splitting it would require
+/// connecting the objects through QML — a needless extra seam. For tabs
+/// with real lists (extensions, wallpapers) the scheme stays the same: a
+/// separate model held by the page as a property.
 ///
-/// ⚠️ Тип зовётся `CompareModel`, а не `ComparePage`: .qml-файлы модуля сами
-/// становятся QML-типами по имени файла, и `ComparePage` уже занят
-/// `qml/ComparePage.qml`. Совпадение имён даёт «Ambiguous type detected» и
-/// страницу, которая не находит собственный источник данных. Правило на все
-/// вкладки: вид — `<Имя>Page.qml`, объект — `<Имя>Model`.
+/// Warning: the type is called `CompareModel`, not `ComparePage`: the
+/// module's .qml files become QML types by file name themselves, and
+/// `ComparePage` is already taken by `qml/ComparePage.qml`. A name clash
+/// gives "Ambiguous type detected" and a page that cannot find its own data
+/// source. The rule for all tabs: the view is `<Name>Page.qml`, the object
+/// `<Name>Model`.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
         include!(<QtCore/QAbstractListModel>);
-        /// Базовый Qt-тип: обёртки QAbstractListModel в cxx-qt-lib нет.
+        /// The base Qt type: cxx-qt-lib has no QAbstractListModel wrapper.
         ///
-        /// ⚠️ БЕЗ `#[qobject]` — как в соседних мостах крейта: на каждый
-        /// `#[qobject]`-тип в `extern "C++Qt"` cxx-qt печатает шимы
-        /// приведения с именем по ТИПУ, и второй мост с той же базой даёт
-        /// `duplicate symbol`. Наследование при этом работает: `#[base]`,
-        /// `#[inherit]` и `#[cxx_override]` висят на наследнике.
+        /// Warning: WITHOUT `#[qobject]` — as in the neighbouring bridges of the
+        /// crate: for every `#[qobject]` type in `extern "C++Qt"` cxx-qt emits cast
+        /// shims named after the TYPE, and a second bridge with the same base gives
+        /// a `duplicate symbol`. Inheritance still works: `#[base]`, `#[inherit]`
+        /// and `#[cxx_override]` hang on the subclass.
         type QAbstractListModel;
 
         include!("cxx-qt-lib/qhash.h");
@@ -72,7 +77,7 @@ pub mod qobject {
         type QModelIndex = cxx_qt_lib::QModelIndex;
 
         include!("cxx-qt-lib/qvector.h");
-        /// Набор ролей для dataChanged (в Qt6 QVector<int> == QList<int>).
+        /// Set of roles for dataChanged (in Qt6 QVector<int> == QList<int>).
         type QVector_i32 = cxx_qt_lib::QVector<i32>;
 
         include!("cxx-qt-lib/qlist.h");
@@ -86,8 +91,8 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[base = QAbstractListModel]
-        // ── Неизменные подписи страницы. CONSTANT, потому что за время
-        // жизни вкладки они не меняются: это константы ядра.
+        // ── Fixed page labels. CONSTANT, because they do not change during the
+        // tab's lifetime: they are core constants.
         #[qproperty(QString, window_title, cxx_name = "windowTitle",
                     READ = window_title, CONSTANT)]
         #[qproperty(i32, window_min_width, cxx_name = "windowMinWidth",
@@ -112,14 +117,14 @@ pub mod qobject {
                     READ = rec_header, CONSTANT)]
         #[qproperty(i32, section_point_size, cxx_name = "sectionPointSize",
                     READ = section_point_size, CONSTANT)]
-        // Быстрые пары шапки: [{label, a, b}, …].
+        // Quick pairs of the header: [{label, a, b}, …].
         #[qproperty(QList_QVariant, quick_pairs, cxx_name = "quickPairs",
                     READ = quick_pairs, CONSTANT)]
-        // Палитра стандартного скина приложения (steam_dark, правило #17).
-        // Оформление НЕ пишется заново в QML — берётся из ui_base ядра.
+        // The application's standard skin palette (steam_dark, rule #17). The
+        // styling is NOT rewritten in QML — it is taken from the core's ui_base.
         #[qproperty(QMap_QString_QVariant, palette, READ = palette,
                     NOTIFY = palette_changed)]
-        // Размеры и подписи диалога «X против Y».
+        // Sizes and labels of the "X versus Y" dialog.
         #[qproperty(i32, pair_min_width, cxx_name = "pairMinWidth",
                     READ = pair_min_width, CONSTANT)]
         #[qproperty(i32, pair_min_height, cxx_name = "pairMinHeight",
@@ -128,23 +133,23 @@ pub mod qobject {
                     READ = pair_title_point_size, CONSTANT)]
         #[qproperty(QString, pair_close_text, cxx_name = "pairCloseText",
                     READ = pair_close_text, CONSTANT)]
-        // ── Меняющееся: строки рекомендаций зависят от состава
-        // установленных столов, значит после установки они другие.
+        // ── Changing: the recommendation lines depend on the set of installed
+        // desktops, so after an installation they are different.
         #[qproperty(QList_QVariant, rec_rows, cxx_name = "recRows",
                     READ = rec_rows, NOTIFY = rec_rows_changed)]
         #[qproperty(i32, count, READ = count, NOTIFY = count_changed)]
         type CompareModel = super::CompareModelRust;
     }
 
-    // ── Сигналы ───────────────────────────────────────────────────────────
+    // ── Signals ───────────────────────────────────────────────────────────
     unsafe extern "RustQt" {
-        /// Скин сменили на лету — палитру пересчитать.
+        /// The skin was changed on the fly — recompute the palette.
         ///
-        /// Свойство `palette` НЕ `CONSTANT` именно поэтому: без сигнала
-        /// привязки QML (`readonly property var pal: page.palette`) не
-        /// пересчитываются, и открытая вкладка остаётся в цветах прошлого
-        /// скина, пока окно на виджетах уже перекрашено. Толчок приходит из
-        /// общего реестра (`crate::skin`), а не отсюда.
+        /// The `palette` property is NOT `CONSTANT` precisely because of this:
+        /// without a signal the QML bindings (`readonly property var pal:
+        /// page.palette`) do not recompute, and an open tab stays in the previous
+        /// skin's colours while the widget window is already repainted. The push
+        /// comes from the shared registry (`crate::skin`), not from here.
         #[qsignal]
         #[cxx_name = "paletteChanged"]
         fn palette_changed(self: Pin<&mut CompareModel>);
@@ -157,7 +162,7 @@ pub mod qobject {
         #[cxx_name = "countChanged"]
         fn count_changed(self: Pin<&mut CompareModel>);
 
-        /// dataChanged базового класса — точечное обновление строки.
+        /// dataChanged of the base class — a targeted row update.
         #[inherit]
         #[qsignal]
         #[cxx_name = "dataChanged"]
@@ -169,8 +174,9 @@ pub mod qobject {
         );
     }
 
-    // index() безопасен, но cxx-qt требует держать #[inherit] в unsafe-блоке
-    // (unsafe тут про соответствие сигнатуре C++, а не про опасность).
+    // index() is safe, but cxx-qt requires keeping #[inherit] in an unsafe
+    // block (unsafe here is about matching the C++ signature, not about
+    // danger).
     unsafe extern "RustQt" {
         #[inherit]
         fn index(
@@ -181,10 +187,11 @@ pub mod qobject {
         ) -> QModelIndex;
     }
 
-    // ── Переопределения QAbstractListModel ────────────────────────────────
-    // Без #[qinvokable]: инвокабл в наследнике затеняет укороченные клоны
-    // сигнатур базы, которые moc делает ради default-аргументов, и
-    // rowCount() без аргументов из JS падает «Insufficient arguments».
+    // ── QAbstractListModel overrides ──────────────────────────────────────
+    // Without #[qinvokable]: an invokable in a subclass shadows the shortened
+    // clones of the base's signatures that moc makes for default arguments,
+    // and rowCount() without arguments from JS fails with "Insufficient
+    // arguments".
     extern "RustQt" {
         #[cxx_override]
         #[cxx_name = "rowCount"]
@@ -198,7 +205,7 @@ pub mod qobject {
         fn data(self: &CompareModel, index: &QModelIndex, role: i32) -> QVariant;
     }
 
-    // ── Чтение свойств ────────────────────────────────────────────────────
+    // ── Property reading ──────────────────────────────────────────────────
     extern "RustQt" {
         #[cxx_name = "windowTitle"]
         fn window_title(self: &CompareModel) -> QString;
@@ -210,8 +217,8 @@ pub mod qobject {
         fn header_title(self: &CompareModel) -> QString;
         #[cxx_name = "headerTitlePointSize"]
         fn header_title_point_size(self: &CompareModel) -> i32;
-        /// Строка под шапкой: какие столы ставятся на SteamOS; пусто — не
-        /// SteamOS.
+        /// The line under the header: which desktops can be installed on SteamOS;
+        /// empty means not SteamOS.
         #[cxx_name = "installNoteText"]
         fn install_note_text(self: &CompareModel) -> QString;
         #[cxx_name = "pairsLabel"]
@@ -242,62 +249,64 @@ pub mod qobject {
         fn count(self: &CompareModel) -> i32;
     }
 
-    // ── API для QML ───────────────────────────────────────────────────────
+    // ── API for QML ───────────────────────────────────────────────────────
     extern "RustQt" {
-        /// Раскрыть/свернуть карточку стола. Обновляется ТОЛЬКО две роли,
-        /// а не вся строка: делегат перерисовывает шапку и показывает тело,
-        /// остальное на месте.
+        /// Expand/collapse a desktop card. ONLY two roles are updated, not the
+        /// whole row: the delegate redraws the header and shows the body, the rest
+        /// stays in place.
         #[qinvokable]
         fn toggle(self: Pin<&mut CompareModel>, row: i32);
 
-        /// Перечитать состав установленных столов.
+        /// Re-read the set of installed desktops.
         ///
-        /// Зовётся после успешной установки: без этого карточка продолжала
-        /// бы предлагать «Установить» уже установленный стол, а строка
-        /// рекомендации — держать кнопку вместо отметки. Ровно эта починка
-        /// была сделана в виджетной вкладке (`_refresh_installed`), и
-        /// консервировать баг при переносе нельзя (правило #16).
+        /// Called after a successful installation: without this the card would keep
+        /// offering "Install" for an already installed desktop, and the
+        /// recommendation line would keep a button instead of a mark. Exactly this
+        /// fix was made in the widget tab (`_refresh_installed`), and preserving the
+        /// bug during the port is not allowed (rule #16).
         #[qinvokable]
         #[cxx_name = "refreshInstalled"]
         fn refresh_installed(self: Pin<&mut CompareModel>);
 
-        /// Таблица «X против Y» целиком: заголовок, HTML-таблица, кнопки
-        /// установки для ещё не стоящих столов. Пустой QVariant — хотя бы
-        /// один стол ядру неизвестен (диалог тогда не открывается).
+        /// The whole "X versus Y" table: the title, an HTML table, install buttons
+        /// for desktops not yet installed. An empty QVariant means at least one
+        /// desktop is unknown to the core (then the dialog does not open).
         #[qinvokable]
         #[cxx_name = "pairView"]
         fn pair_view(self: &CompareModel, a_id: &QString, b_id: &QString) -> QVariant;
 
-        /// Почему кнопка «Установить» стола `de_id` неактивна (SteamOS: стол
-        /// не ставится образом systemd-sysext); пусто — активна.
+        /// Why the "Install" button of desktop `de_id` is disabled (SteamOS: the
+        /// desktop is not installed as a systemd-sysext image); empty means it is
+        /// enabled.
         #[qinvokable]
         #[cxx_name = "installBlockedText"]
         fn install_blocked_text(self: &CompareModel, de_id: &QString) -> QString;
 
-        /// Отображаемое имя стола — для заголовков подтверждений на стороне
-        /// побочных действий.
+        /// Display name of a desktop — for confirmation titles on the side of the
+        /// side actions.
         #[qinvokable]
         #[cxx_name = "displayName"]
         fn display_name(self: &CompareModel, de_id: &QString) -> QString;
 
-        /// Номер роли по имени (-1, если роли нет) — для проверок без
-        /// делегата, как в соседних моделях крейта.
+        /// Role number by name (-1 if there is no such role) — for checks without a
+        /// delegate, as in the neighbouring models of the crate.
         #[qinvokable]
         #[cxx_name = "roleNumber"]
         fn role_number(self: &CompareModel, name: &QString) -> i32;
 
-        /// Значение роли по номеру строки — проверки без делегата.
+        /// A role's value by row number — checks without a delegate.
         #[qinvokable]
         #[cxx_name = "roleValue"]
         fn role_value(self: &CompareModel, row: i32, name: &QString) -> QVariant;
     }
 
-    // Объявление трейта обязано быть В МОСТЕ, иначе `impl cxx_qt::Initialize`
-    // снаружи не находит конструктора: cxx-qt печатает его по этой строке.
+    // The trait declaration must be IN THE BRIDGE, otherwise an
+    // `impl cxx_qt::Initialize` outside does not find the constructor: cxx-qt
+    // emits it from this line.
     impl cxx_qt::Initialize for CompareModel {}
-    // Подписка на смену скина идёт через `CxxQtThread::queue`, и трейт
-    // потока обязан быть объявлен В МОСТЕ: cxx-qt печатает по этой
-    // строке и сам `qt_thread()`, и его алиас типа.
+    // Subscribing to skin changes goes through `CxxQtThread::queue`, and the
+    // thread trait must be declared IN THE BRIDGE: cxx-qt emits both
+    // `qt_thread()` itself and its type alias from this line.
     impl cxx_qt::Threading for CompareModel {}
 }
 
@@ -312,14 +321,15 @@ use rexon_core::system::{binary_in_path, de_installed_binaries, DE_META};
 use rexon_core::ui_base;
 
 // ============================================================================
-// Чистый слой: строки списка (Qt здесь нет)
+// Plain layer: list rows (no Qt here)
 // ============================================================================
 
-/// Одна строка списка: идентификатор стола плюс его наблюдаемое состояние.
+/// One list row: the desktop identifier plus its observed state.
 ///
-/// Всё остальное (шапка, ТТХ, описание, кнопка) считается ядром на лету —
-/// это дешёвые строковые операции над константной таблицей, и держать их
-/// копию в состоянии значило бы завести второй источник истины.
+/// Everything else (the header, specs, description, button) is computed by
+/// the core on the fly — these are cheap string operations over a constant
+/// table, and keeping a copy of them in the state would mean creating a
+/// second source of truth.
 #[derive(Debug, Clone, Default)]
 pub struct DeRow {
     pub de_id: String,
@@ -327,16 +337,17 @@ pub struct DeRow {
     pub expanded: bool,
 }
 
-/// Стоит ли стол: у него непустой список исполняемых файлов и все они в PATH.
+/// Whether the desktop is installed: it has a non-empty list of executables
+/// and all of them are in PATH.
 ///
-/// Тот же ответ, что у `DesktopEnvironment.recheck_installed()` на Python.
+/// The same answer as `DesktopEnvironment.recheck_installed()` in Python.
 pub fn de_installed(de_id: &str) -> bool {
     let binaries = de_installed_binaries(de_id);
     !binaries.is_empty() && binaries.iter().all(|b| binary_in_path(b))
 }
 
-/// Список столов в порядке базы ядра — том же, в котором их выдаёт
-/// `DesktopEnvironment.load_all()` виджетной вкладке.
+/// The list of desktops in the order of the core database — the same order
+/// in which `DesktopEnvironment.load_all()` gives them to the widget tab.
 pub fn load_rows() -> Vec<DeRow> {
     DE_META
         .iter()
@@ -349,14 +360,14 @@ pub fn load_rows() -> Vec<DeRow> {
 }
 
 // ============================================================================
-// Роли модели
+// Model roles
 // ============================================================================
 
-/// Роли начинаются с Qt::UserRole + 1 (Qt::UserRole == 256).
+/// Roles start at Qt::UserRole + 1 (Qt::UserRole == 256).
 const ROLE_BASE: i32 = 256 + 1;
 
-/// Имена ролей в порядке номеров — единственный источник истины и для
-/// roleNames, и для data(), и для roleNumber().
+/// Role names in number order — the single source of truth for roleNames,
+/// data() and roleNumber().
 const ROLE_NAMES: [&str; 16] = [
     "deId",
     "displayName",
@@ -383,7 +394,7 @@ const ROLE_ACTION_KIND: usize = 13;
 const ROLE_ACTION_TEXT: usize = 14;
 const ROLE_ACTION_ACCENT: usize = 15;
 
-/// Роли, меняющиеся от раскрытия карточки.
+/// Roles that change when a card is expanded.
 fn toggle_roles() -> QVector<i32> {
     let mut roles = QVector::<i32>::default();
     roles.append(ROLE_BASE + ROLE_EXPANDED as i32);
@@ -391,10 +402,10 @@ fn toggle_roles() -> QVector<i32> {
     roles
 }
 
-/// Роли, меняющиеся от установки стола.
+/// Roles that change when a desktop is installed.
 ///
-/// Пустой вектор («изменились все роли») здесь был бы дороже и заставил бы
-/// делегат пересчитать даже ТТХ, которые не менялись.
+/// An empty vector ("all roles changed") would be more expensive here and
+/// would make the delegate recompute even the specs that did not change.
 fn installed_roles() -> QVector<i32> {
     let mut roles = QVector::<i32>::default();
     roles.append(ROLE_BASE + ROLE_INSTALLED as i32);
@@ -406,10 +417,11 @@ fn installed_roles() -> QVector<i32> {
 }
 
 // ============================================================================
-// Мелочи перевода в Qt
+// Translation odds and ends in Qt
 // ============================================================================
 
-/// Собрать QVariantMap из пар. QML читает такую карту точкой (`row.label`).
+/// Build a QVariantMap from pairs. QML reads such a map with a dot
+/// (`row.label`).
 fn vmap(pairs: Vec<(&str, QVariant)>) -> QMap<QMapPair_QString_QVariant> {
     let mut out = QMap::<QMapPair_QString_QVariant>::default();
     for (key, value) in pairs {
@@ -422,22 +434,23 @@ fn qstr(value: &str) -> QVariant {
     QVariant::from(&QString::from(value))
 }
 
-/// Rust-состояние страницы.
+/// Rust state of the page.
 #[derive(Default)]
 pub struct CompareModelRust {
-    /// Номер записи в общем реестре смены скина (`crate::skin`).
-    /// 0 — страница ещё не подписана.
+    /// Entry number in the shared skin change registry (`crate::skin`).
+    /// 0 means the page is not subscribed yet.
     skin_watch: u64,
     rows: Vec<DeRow>,
-    /// Состояние собирается при первом обращении, а не в конструкторе:
-    /// объявленный конструктор в cxx-qt отменяет дефолтный с родителем,
-    /// а PATH на момент создания объекта уже такой же.
+    /// The state is built on first access, not in the constructor: a declared
+    /// constructor in cxx-qt cancels the default one with a parent, and PATH at
+    /// object creation time is the same anyway.
     loaded: bool,
 }
 
-/// Снять подписку на смену скина. Без этого реестр держал бы запись
-/// закрытой вкладки до первой рассылки — та её отсеет по
-/// `ObjectDestroyed`, но копить мусор незачем.
+/// Remove the skin change subscription. Without this the registry would
+/// keep the closed tab's entry until the next broadcast — that one would
+/// filter it out by `ObjectDestroyed`, but there is no reason to accumulate
+/// garbage.
 impl Drop for CompareModelRust {
     fn drop(&mut self) {
         crate::skin::unwatch(self.skin_watch);
@@ -452,7 +465,8 @@ impl CompareModelRust {
         }
     }
 
-    /// Список идентификаторов установленных столов — вход рекомендаций.
+    /// List of identifiers of installed desktops — the input of the
+    /// recommendations.
     fn installed_ids(&self) -> Vec<String> {
         self.rows
             .iter()
@@ -463,7 +477,7 @@ impl CompareModelRust {
 }
 
 impl qobject::CompareModel {
-    // ── Неизменные подписи ────────────────────────────────────────────────
+    // ── Fixed labels ──────────────────────────────────────────────────────
     fn window_title(&self) -> QString {
         QString::from(&qc::window_title())
     }
@@ -484,9 +498,9 @@ impl qobject::CompareModel {
         qc::HEADER_TITLE_POINT_SIZE
     }
 
-    /// SteamOS (Steam Deck и Steam Machine): какие столы ставятся образами
-    /// systemd-sysext — одной фразой под шапкой (та же сводка, что в окне
-    /// отказа). Не SteamOS — пусто.
+    /// SteamOS (Steam Deck and Steam Machine): which desktops are installed as
+    /// systemd-sysext images — in one phrase under the header (the same summary
+    /// as in the refusal window). Not SteamOS — empty.
     fn install_note_text(&self) -> QString {
         if !rexon_core::distro_compat::running_on_steamos() {
             return QString::default();
@@ -494,9 +508,10 @@ impl qobject::CompareModel {
         QString::from(&rexon_core::i18n::tr(rexon_core::distro_compat::STEAMOS_SUMMARY_DESKTOPS))
     }
 
-    /// SteamOS: проверенные столы ставятся — пусто; прочим кнопка видна, но
-    /// неактивна, и причина та же, что у карточки вкладки «Рабочие столы»
-    /// (`distro_compat::steamos_desktop_card_block`, одна на продукт).
+    /// SteamOS: verified desktops can be installed — empty; for the others the
+    /// button is visible but disabled, and the reason is the same as on the
+    /// "Desktops" tab card (`distro_compat::steamos_desktop_card_block`, one for
+    /// the product).
     fn install_blocked_text(&self, de_id: &QString) -> QString {
         let steamos = rexon_core::distro_compat::running_on_steamos();
         QString::from(
@@ -541,16 +556,16 @@ impl qobject::CompareModel {
         out
     }
 
-    /// Палитра ДЕЙСТВУЮЩЕГО скина (сохранённый `ui_skin`, откат к
-    /// стандартному по правилу #17). Оформление QML-вкладки берётся отсюда,
-    /// а не пишется заново: скин один на весь продукт, и второй его копией
-    /// в .qml мы бы развели вкладку с остальным Rexon.
+    /// Palette of the ACTIVE skin (the saved `ui_skin`, falling back to the
+    /// standard one by rule #17). The QML tab's styling is taken from here
+    /// rather than written anew: there is one skin for the whole product, and a
+    /// second copy of it in .qml would set the tab apart from the rest of Rexon.
     fn palette(&self) -> QMap<QMapPair_QString_QVariant> {
         let mut out = QMap::<QMapPair_QString_QVariant>::default();
         let colors = ui_base::active_qml_palette();
-        // Тёмный ли скин — тем же критерием, что и весь продукт, а не
-        // «steam_dark в названии»: скин выбирает покупатель, и «Светлый»
-        // обязан считаться светлым.
+        // Whether the skin is dark — by the same criterion as the whole product,
+        // not "steam_dark in the name": the customer chooses the skin, and "Light"
+        // must count as light.
         let dark = colors
             .get("bg_primary")
             .and_then(|c| ui_base::parse_hex(c))
@@ -559,37 +574,37 @@ impl qobject::CompareModel {
         for (key, value) in &colors {
             out.insert(QString::from(key), qstr(value));
         }
-        // Цвета, которые задаёт сама вкладка через ядро: отметка «стоит» в
-        // рекомендациях и пороги полосы памяти живут в qt_compare.
+        // Colours the tab itself sets through the core: the "installed" mark in the
+        // recommendations and the memory bar thresholds live in qt_compare.
         out.insert(
             QString::from("rec_badge"),
             qstr(qc::REC_BADGE_COLOR),
         );
-        // Янтарная строка «почему неактивно» — та же краска, что у
-        // «недоступен» на вкладке «Рабочие столы».
+        // The amber "why disabled" line — the same colour as "unavailable" on the
+        // "Desktops" tab.
         out.insert(
             QString::from("status_unavailable"),
             qstr(rexon_core::qt_desktops::STATUS_UNAVAILABLE_COLOR),
         );
         out.insert(QString::from("spec_good"), qstr(qc::GOOD_COLOR));
         out.insert(QString::from("spec_bad"), qstr(qc::BAD_COLOR));
-        // Канавка полосы памяти. Скин страницы тёмный (правило #17), но
-        // спрашиваем ядро по теме, а не берём тёмный вариант руками:
-        // светлый скин иначе получил бы канавку от тёмного.
+        // Groove of the memory bar. The page skin is dark (rule #17), but we ask
+        // the core by theme rather than taking the dark variant by hand: otherwise
+        // a light skin would get the dark groove.
         out.insert(QString::from("ram_track"), qstr(qc::ram_track_color(dark)));
-        // Насыщенность вторичного текста (подпись пар, тело легенды,
-        // описание стола, подстрочник рекомендации). У виджетной вкладки
-        // это `font-weight: 600` из `secondary_text_qss`; без неё QML
-        // набирал те же строки обычным начертанием (замер 03.09.2026:
-        // описание KDE у виджетов 426 точек шириной, у QML — 417).
+        // Weight of the secondary text (the pair label, the legend body, the
+        // desktop description, the recommendation subline). In the widget tab this
+        // is `font-weight: 600` from `secondary_text_qss`; without it QML set the
+        // same lines in the regular weight (measurement 03.09.2026: the KDE
+        // description is 426 pixels wide in the widgets, 417 in QML).
         out.insert(
             QString::from("text_secondary_weight"),
             QVariant::from(&ui_base::SECONDARY_TEXT_WEIGHT),
         );
-        // Тон синей кнопки установки — карта, какую понимает RexonButton
-        // (`tone`). Краски те же, что в `INSTALL_BUTTON_QSS` виджетной
-        // вкладки; раньше QML брал `highlighted` — акцент скина с другой
-        // прозрачностью, то есть свою краску вместо краски ядра.
+        // Tone of the blue install button — a map that RexonButton understands
+        // (`tone`). The colours are the same as `INSTALL_BUTTON_QSS` of the widget
+        // tab; previously QML took `highlighted` — the skin accent with a different
+        // opacity, that is, its own colour instead of the core's.
         out.insert(
             QString::from("install_tone"),
             QVariant::from(&vmap(vec![
@@ -599,14 +614,15 @@ impl qobject::CompareModel {
                 ("bold", QVariant::from(&true)),
             ])),
         );
-        // «Да»/«Прервать» общего окна операции (`DeOperationDialog.qml`) —
-        // тоны «Рабочих столов» по той же таблице ядра. Без них «Да» выходила
-        // обычной кнопкой скина, а не синей или красной по операции.
+        // "Yes"/"Abort" of the shared operation window (`DeOperationDialog.qml`) —
+        // the "Desktops" tones from the same core table. Without them "Yes" came
+        // out as an ordinary skin button rather than blue or red depending on the
+        // operation.
         crate::desktops_page::insert_operation_tones(&mut out);
-        // Затемнение фона под модальным окном. Своего оттенка страница не
-        // заводит: гашение фона одно на продукт (`ui_base::MODAL_DIM_RGBA`),
-        // тем же цветом гасит окно обучение. Следующим QML-вкладкам эту
-        // строку повторять как есть.
+        // Background dimming under a modal window. The page defines no shade of
+        // its own: dimming is one for the product (`ui_base::MODAL_DIM_RGBA`), and
+        // the tutorial dims the window with the same colour. The next QML tabs
+        // should repeat this line as is.
         out.insert(
             QString::from("modal_dim"),
             qstr(&ui_base::modal_dim_argb_hex()),
@@ -630,13 +646,13 @@ impl qobject::CompareModel {
         QString::from(&qc::pair_close_text())
     }
 
-    // ── Рекомендации ──────────────────────────────────────────────────────
+    // ── Recommendations ───────────────────────────────────────────────────
     fn rec_rows(&self) -> QList<QVariant> {
-        // Читающий геттер не может дозагрузить состояние (у него &self), но
-        // список столов от PATH не зависит по составу — только по отметкам,
-        // а их считает `installed_ids` уже загруженного состояния. До первого
-        // обращения к модели QML сюда не попадает: свойство читает та же
-        // страница, что и делегаты.
+        // A reading getter cannot load the state on demand (it has &self), but the
+        // list of desktops does not depend on PATH in composition — only in its
+        // marks, and those are computed by `installed_ids` of the already loaded
+        // state. QML does not get here before the first access to the model: the
+        // property is read by the same page as the delegates.
         let installed = self.rust().installed_ids();
         let mut out = QList::<QVariant>::default();
         for row in qc::rec_rows(&installed) {
@@ -663,7 +679,7 @@ impl qobject::CompareModel {
 
     // ── QAbstractListModel ────────────────────────────────────────────────
     fn row_count(&self, parent: &QModelIndex) -> i32 {
-        // У плоского списка дети есть только у корня.
+        // In a flat list only the root has children.
         if parent.is_valid() {
             0
         } else {
@@ -691,15 +707,16 @@ impl qobject::CompareModel {
         self.role_of(entry, ROLE_NAMES.get(slot).copied())
     }
 
-    /// Значение одной роли строки. Отдельно от `data`, чтобы тем же путём
-    /// отвечал `roleValue` — иначе проверки смотрели бы не туда, куда
-    /// смотрит делегат.
+    /// Value of one role of a row. Separate from `data` so that `roleValue`
+    /// answers the same way — otherwise the checks would look somewhere other
+    /// than where the delegate looks.
     fn role_of(&self, entry: &DeRow, name: Option<&str>) -> QVariant {
-        // Тело карточки ядро отдаёт одной структурой: ram_label, полоса,
-        // звёзды, ТТХ, описание и кнопка считаются вместе.
-        // `dark` = true: вкладка идёт под стандартным скином steam_dark, а
-        // от темы в теле зависит только QSS-подложка полосы, которой в QML
-        // нет вовсе (цвет заполнения от темы не зависит).
+        // The core hands over the card body as one structure: ram_label, the bar,
+        // the stars, specs, the description and the button are computed together.
+        // `dark` = true: the tab runs under the standard steam_dark skin, and the
+        // only thing in the body that depends on the theme is the QSS backing of
+        // the bar, which QML does not have at all (the fill colour does not depend
+        // on the theme).
         let body = qc::card_body(&entry.de_id, entry.installed, true);
         match name {
             Some("deId") => qstr(&entry.de_id),
@@ -751,8 +768,8 @@ impl qobject::CompareModel {
             },
             Some("actionKind") => qstr(qc::card_action(&entry.de_id, entry.installed).kind),
             Some("actionText") => qstr(&qc::card_action(&entry.de_id, entry.installed).text),
-            // Выделенная (синяя) кнопка — только у установки: у ядра она
-            // помечена непустым QSS, здесь это флаг для QML.
+            // The highlighted (blue) button — only for installation: in the core it is
+            // marked with a non-empty QSS, here it is a flag for QML.
             Some("actionAccent") => {
                 let action = qc::card_action(&entry.de_id, entry.installed);
                 QVariant::from(&!action.qss.is_empty())
@@ -761,8 +778,8 @@ impl qobject::CompareModel {
         }
     }
 
-    /// Отображаемое имя по идентификатору; сам идентификатор — если стола в
-    /// базе нет (в интерфейсе это лучше пустой строки).
+    /// Display name by identifier; the identifier itself if the desktop is not
+    /// in the database (in the interface that is better than an empty string).
     fn display_name_of<'a>(&self, de_id: &'a str) -> &'a str {
         DE_META
             .iter()
@@ -771,7 +788,7 @@ impl qobject::CompareModel {
             .unwrap_or(de_id)
     }
 
-    // ── API для QML ───────────────────────────────────────────────────────
+    // ── API for QML ───────────────────────────────────────────────────────
     fn toggle(mut self: Pin<&mut Self>, row: i32) {
         let Ok(idx) = usize::try_from(row) else {
             return;
@@ -803,8 +820,9 @@ impl qobject::CompareModel {
             let roles = installed_roles();
             self.as_mut().data_changed(&first, &last, &roles);
         }
-        // Строки рекомендаций считаются от состава установленных — после
-        // установки у них другая правая часть (кнопка → отметка).
+        // The recommendation lines are computed from the set of installed
+        // desktops — after an installation their right part is different (button
+        // → mark).
         self.as_mut().rec_rows_changed();
         self.as_mut().count_changed();
     }
@@ -815,8 +833,8 @@ impl qobject::CompareModel {
         let rows = &self.rust().rows;
         let installed = |id: &str| rows.iter().any(|r| r.de_id == id && r.installed);
         let Some(view) = qc::pair_view(&a_id, &b_id, installed(&a_id), installed(&b_id)) else {
-            // Пара ядру неизвестна — виджетная вкладка в этом случае просто
-            // не открывала диалог; пустой QVariant значит для QML то же.
+            // The pair is unknown to the core — the widget tab simply did not open the
+            // dialog in this case; an empty QVariant means the same to QML.
             return QVariant::default();
         };
         let mut buttons = QList::<QVariant>::default();
@@ -866,16 +884,17 @@ impl qobject::CompareModel {
 }
 
 // ============================================================================
-// Инициализация состояния
+// State initialization
 // ============================================================================
 
 impl cxx_qt::Initialize for qobject::CompareModel {
-    /// Список столов собирается сразу при создании объекта: `rowCount`
-    /// зовётся из QML раньше любого нашего кода, и пустая модель на первом
-    /// кадре означала бы пустую вкладку до первого `refreshInstalled`.
+    /// The list of desktops is built right when the object is created:
+    /// `rowCount` is called from QML before any of our code, and an empty model
+    /// on the first frame would mean an empty tab until the first
+    /// `refreshInstalled`.
     fn initialize(mut self: Pin<&mut Self>) {
-        // Подписка на смену скина: одна строка на страницу, рассылка — общая
-        // (`crate::skin`). Снимается в `Drop` того же состояния.
+        // Subscribing to skin changes: one line per page, the broadcast is shared
+        // (`crate::skin`). Removed in `Drop` of the same state.
         let watch = crate::skin::watch(
             self.as_ref().get_ref().qt_thread(),
             qobject::CompareModel::palette_changed,

@@ -1,77 +1,77 @@
-//! Compliance Check — проверка и автоисправление настроек DE, порт
-//! `rexon/compliance.py` (класс `ComplianceCheck`).
+//! Compliance Check — checking and auto-fixing DE settings, port of
+//! `rexon/compliance.py` (the `ComplianceCheck` class).
 //!
-//! При запуске Rexon / переключении DE: определяется текущий DE, для него
-//! прогоняется набор проверок (пакеты, gsettings, файлы, mimeapps), а
-//! несоответствия автоматически чинятся. Поддержаны 8 DE: MATE, KDE, GNOME,
+//! On Rexon start / DE switch: the current DE is detected, a set of checks is run
+//! for it (packages, gsettings, files, mimeapps), and
+//! mismatches are fixed automatically. 8 DEs are supported: MATE, KDE, GNOME,
 //! COSMIC, XFCE, Cinnamon, Budgie, Hyprland.
 //!
-//! Принцип порта (как `system_plan.rs` / `importers.rs`): вся ЧИСТАЯ логика —
-//! детерминированные функции вход→выход (таблицы проверок, разбор состояния,
-//! построение argv, решение «нужно ли чинить», генерация settings.ini и
-//! bash-скрипта layout'ов). Побочные эффекты НЕ исполняются здесь: каждый
-//! `safe_run`/`shutil`/`os`/`open`/`tempfile` оригинала — ровно один метод
-//! трейта [`ComplianceIo`]. В parity-тестах трейт реплеит журнал живого
-//! Python; в живом мосте — реальный I/O. Наблюдения (значение gsettings,
-//! наличие пакета, содержимое файла, наличие helper'а) приходят из трейта
-//! или параметром.
+//! The porting principle (as in `system_plan.rs` / `importers.rs`): all PURE logic is
+//! deterministic input→output functions (check tables, state parsing,
+//! building argv, the "does it need fixing" decision, generating settings.ini and
+//! the layouts bash script). Side effects are NOT executed here: every
+//! `safe_run`/`shutil`/`os`/`open`/`tempfile` of the original is exactly one method
+//! of the [`ComplianceIo`] trait. In parity tests the trait replays a log of live
+//! Python; in the live bridge — real I/O. Observations (a gsettings value,
+//! package presence, file contents, helper presence) come from the trait
+//! or as a parameter.
 //!
-//! Паритет БАЙТ-В-БАЙТ с Python: тот же argv (в т.ч. `pkexec …`), тот же
-//! порядок проверок, тот же текст лога. Эталоны сняты с живого Python
-//! read-only (`tests/golden/compliance_cases.json`); привилегированное НЕ
-//! исполнялось.
+//! BYTE-FOR-BYTE parity with Python: the same argv (including `pkexec …`), the same
+//! check order, the same log text. The references were taken from live Python
+//! read-only (`tests/golden/compliance_cases.json`); nothing privileged was
+//! executed.
 //!
-//! Сохранённые квирки оригинала (намеренное расхождение сохранено для
-//! паритета):
-//!   * `_check_mate` возвращает `mate_terminal="failed"` / `mate_cursor="failed"`
-//!     при `gsettings get == None`, но при `== None` для локали cc уже
-//!     `mate_cc_locale="failed"` — логика «gsettings недоступен» размазана,
-//!     сохранена как есть;
-//!   * `_check_xfce` для helpers.rc ВСЕГДА даёт `xfce_helpers="ok"` (даже
-//!     когда `TerminalEmulator=` не найден или файла нет) — только текст лога
-//!     меняется; сохранено;
-//!   * `_patch_settings_ini`: если секции `[Settings]` не было, она
-//!     вставляется в начало, затем `key=value` — на индекс `insert_at+1`
-//!     (Python `list.insert` клампит выход за длину) — арифметика сохранена;
-//!   * `detect_current_de` матчит первую часть `XDG_CURRENT_DESKTOP` (split
-//!     по `:`), совпавшую с таблицей — порядок частей задаёт результат.
+//! Preserved quirks of the original (a deliberate divergence kept for
+//! parity):
+//!   * `_check_mate` returns `mate_terminal="failed"` / `mate_cursor="failed"`
+//!     when `gsettings get == None`, but on `== None` for the cc locale it is already
+//!     `mate_cc_locale="failed"` — the "gsettings unavailable" logic is smeared,
+//!     kept as is;
+//!   * `_check_xfce` ALWAYS gives `xfce_helpers="ok"` for helpers.rc (even
+//!     when `TerminalEmulator=` is not found or there is no file) — only the log text
+//!     changes; kept;
+//!   * `_patch_settings_ini`: if there was no `[Settings]` section, it is
+//!     inserted at the start, then `key=value` at index `insert_at+1`
+//!     (Python's `list.insert` clamps going past the length) — the arithmetic is kept;
+//!   * `detect_current_de` matches the first part of `XDG_CURRENT_DESKTOP` (split
+//!     by `:`) found in the table — the order of parts determines the result.
 //!
-//! Режим автозапуска (`allow_privileged = false`): при входе в систему Rexon
-//! не имеет права спрашивать пароль и лезть в сеть. Диагностика при этом
-//! выполняется полностью (честно смотрим, чего не хватает), а само лечение —
-//! установка пакетов, AUR-хелпер, `git clone`, копирование в системные
-//! каталоги через helper/`pkexec` — откладывается: шаг получает статус
-//! `needs_action` и ОДНУ строку лога на весь прогон. Из интерфейса проверка
-//! зовётся с `allow_privileged = true` и чинит как раньше.
+//! Autostart mode (`allow_privileged = false`): at login Rexon
+//! has no right to ask for a password or go online. Diagnostics still
+//! run fully (we honestly look at what is missing), while the fixing itself —
+//! installing packages, the AUR helper, `git clone`, copying into system
+//! directories via the helper/`pkexec` — is postponed: the step gets the status
+//! `needs_action` and ONE log line for the whole run. From the interface the check
+//! is called with `allow_privileged = true` and fixes as before.
 //!
-//! Гейт по семейству пакетного менеджера: имена пакетов в проверках арчевые
+//! The package manager family gate: package names in the checks are Arch ones
 //! (`ttf-ubuntu-font-family`, `cosmic-wallpapers`, `ayatana-indicator-*`…),
-//! а установка идёт через `pacman`/AUR-хелпер. На любом другом семействе
-//! такие шаги НЕ выполняются вовсе (ни проверки пакетов, ни `pkexec`), получают
-//! статус `skipped` и дают ОДНУ строку лога на весь прогон. Непакетные
-//! проверки (gsettings, файлы конфигов, темы иконок) работают везде.
-//! Семейство подаётся параметром — как `pkg_helper_available`.
+//! and installation goes through `pacman`/an AUR helper. On any other family
+//! such steps are NOT executed at all (neither package checks nor `pkexec`), they get
+//! the status `skipped` and give ONE log line for the whole run. Non-package
+//! checks (gsettings, config files, icon themes) work everywhere.
+//! The family is passed as a parameter — like `pkg_helper_available`.
 //!
-//! НЕ портировано (исполнение — при подключении к живому Python): реальные
-//! `subprocess.run`/`safe_run`, `shutil.which/copy2/rmtree`, чтение/запись
-//! `~/.config`, `tempfile.mkdtemp/mkstemp`, git clone layout'ов,
-//! `pkexec` — всё выражено вызовами трейта. Наличие helper'ов
-//! (`_pkg_helper_available`/`_stage_helper_available`) подаётся параметром.
+//! NOT ported (execution — when hooked up to live Python): the actual
+//! `subprocess.run`/`safe_run`, `shutil.which/copy2/rmtree`, reading/writing
+//! `~/.config`, `tempfile.mkdtemp/mkstemp`, git clone of layouts,
+//! `pkexec` — all expressed as trait calls. Helper presence
+//! (`_pkg_helper_available`/`_stage_helper_available`) is passed as a parameter.
 
 use crate::i18n::{n_, ntr, tr, trc, trf};
 use crate::system::PkgFamily;
 
 // ============================================================================
-// Константы-таблицы (порядок = как в Python, важен для порядка проверок/лога)
+// Constant tables (order = as in Python, matters for the check/log order)
 // ============================================================================
 
-/// `ComplianceCheck.MATE_EXPECTED_LAYOUTS` — 8 layout'ов Ubuntu MATE.
+/// `ComplianceCheck.MATE_EXPECTED_LAYOUTS` — the 8 Ubuntu MATE layouts.
 pub const MATE_EXPECTED_LAYOUTS: &[&str] = &[
     "familiar", "redmond", "cupertino", "mutiny",
     "pantheon", "contemporary", "netbook", "traditional",
 ];
 
-/// `ComplianceCheck.AYATANA_PACKAGES` — Ayatana-стек.
+/// `ComplianceCheck.AYATANA_PACKAGES` — the Ayatana stack.
 pub const AYATANA_PACKAGES: &[&str] = &[
     "ayatana-indicator-application",
     "ayatana-indicator-session",
@@ -84,22 +84,22 @@ pub const AYATANA_PACKAGES: &[&str] = &[
 pub const MATE_AUR_PACKAGES: &[&str] = &[
     "mate-tweak", "brisk-menu",
     "mate-indicator-applet",
-    // Не общий `vala-panel-appmenu` — он тянет budgie-desktop и vala-panel.
+    // Not the shared `vala-panel-appmenu` — it pulls in budgie-desktop and vala-panel.
     "vala-panel-appmenu-mate",
     "vala-panel-appmenu-registrar",
 ];
 
-/// Пакеты, которые починка соответствия ставит штатным путём (`install_pkg`
-/// → помощник пакетов): шрифты Ubuntu (MATE), обои и значки COSMIC,
-/// дополнения Budgie. Белый список установки помощника
-/// (`system_plan::pkg_helper_install_allowlist`) берёт их отсюда; новое имя в
-/// `install_pkg` без записи здесь помощник отвергнет — сторожит
-/// `debug_assert` в самом `install_pkg`.
+/// Packages the compliance fix installs the standard way (`install_pkg`
+/// → the package helper): Ubuntu fonts (MATE), COSMIC wallpapers and icons,
+/// Budgie extras. The helper's install allowlist
+/// (`system_plan::pkg_helper_install_allowlist`) takes them from here; a new name in
+/// `install_pkg` without a record here will be rejected by the helper — guarded by
+/// a `debug_assert` in `install_pkg` itself.
 pub const FIX_PACKAGES: &[&str] = &[
     "ttf-ubuntu-font-family", "cosmic-wallpapers", "cosmic-icon-theme", "budgie-extras",
 ];
 
-/// `ComplianceCheck._ICON_FALLBACKS` — по убыванию предпочтения для DE.
+/// `ComplianceCheck._ICON_FALLBACKS` — in descending order of preference per DE.
 pub const ICON_FALLBACKS: &[(&str, &[&str])] = &[
     ("kde", &["breeze-dark", "breeze", "Papirus-Dark", "Adwaita"]),
     ("gnome", &["Adwaita", "Papirus-Dark"]),
@@ -112,10 +112,10 @@ pub const ICON_FALLBACKS: &[(&str, &[&str])] = &[
     ("hyprland", &["Papirus-Dark", "Adwaita"]),
 ];
 
-/// Дефолт `_ICON_FALLBACKS.get(de, ("Adwaita", "Papirus-Dark"))`.
+/// The default of `_ICON_FALLBACKS.get(de, ("Adwaita", "Papirus-Dark"))`.
 const ICON_FALLBACKS_DEFAULT: &[&str] = &["Adwaita", "Papirus-Dark"];
 
-/// Snap → Arch подстановки в `.layout` (порядок важен) —
+/// Snap → Arch substitutions in a `.layout` (order matters) —
 /// `_download_mate_layouts.snap_map`.
 pub const MATE_LAYOUT_SNAP_MAP: &[(&str, &str)] = &[
     ("firefox_firefox.desktop", "firefox.desktop"),
@@ -125,14 +125,14 @@ pub const MATE_LAYOUT_SNAP_MAP: &[(&str, &str)] = &[
     ("software-properties-drivers.desktop", "cachyos-hello.desktop"),
 ];
 
-/// `_check_hyprland` — пакеты компонентов. Порядок как в Python dict.
+/// `_check_hyprland` — component packages. Order as in the Python dict.
 const HYPRLAND_COMPONENTS: &[&str] = &[
     "hyprland", "waybar", "wofi", "kitty", "grim", "slurp", "wl-clipboard",
 ];
 
-/// Подпись компонента Hyprland для журнала проверки. Контекст — потому что
-/// «Terminal» и «Panel» в каталоге уже есть в другом значении (строки
-/// сравнения столов).
+/// The Hyprland component label for the check log. A context is used because
+/// "Terminal" and "Panel" are already in the catalog with another meaning (the desktop
+/// comparison strings).
 pub fn hyprland_component_label(pkg: &str) -> String {
     match pkg {
         "hyprland" => trc("Hyprland component", "Compositor"),
@@ -146,22 +146,22 @@ pub fn hyprland_component_label(pkg: &str) -> String {
     }
 }
 
-/// Статус шага, который пропущен (не «ошибка» — просто не наш дистрибутив).
+/// The status of a skipped step (not an "error" — just not our distribution).
 pub const SKIPPED: &str = "skipped";
 
-/// Единственная строка лога о пропуске пакетных шагов на не-Arch —
-/// без жаргона, одна на весь прогон проверок.
+/// The single log line about skipping package steps on non-Arch —
+/// without jargon, one for the whole check run.
 pub fn pkg_unsupported_note() -> String {
     l2(tr("ℹ️ Checking and installing system packages is only available on \
 Arch/CachyOS for now — all other settings were checked"))
 }
 
-/// Статус шага, который требует установки: не ошибка и не «дистрибутив не
-/// поддержан», а «нужно нажать кнопку в приложении».
+/// The status of a step that needs installing: not an error and not "the distribution is not
+/// supported", but "a button in the application needs pressing".
 pub const NEEDS_ACTION: &str = "needs_action";
 
-/// Единственная строка лога об отложенном лечении при входе в систему.
-/// Надпись кнопки — та же строка ядра, что написана на самой кнопке.
+/// The single log line about postponed fixing at login.
+/// The button label is the same core string written on the button itself.
 pub fn privileged_deferred_note() -> String {
     let button = crate::qt_settings::text("compl.button", &[]).unwrap_or_default();
     l2(trf(
@@ -172,41 +172,41 @@ pub fn privileged_deferred_note() -> String {
     ))
 }
 
-/// Строка журнала с отступом шага (два пробела).
+/// A log line with the step indent (two spaces).
 fn l2(s: String) -> String {
     format!("  {s}")
 }
 
-/// Строка журнала с отступом подробности шага (четыре пробела).
+/// A log line with the step detail indent (four spaces).
 fn l4(s: String) -> String {
     format!("    {s}")
 }
 
 // ============================================================================
-// Трейт исполнителя
+// The executor trait
 // ============================================================================
 
-/// Результат `safe_run(..., capture_output=True)`. `ok` = returncode == 0.
-/// `None` у [`ComplianceIo::run`] — safe_run вернул None (таймаут/исключение).
+/// The result of `safe_run(..., capture_output=True)`. `ok` = returncode == 0.
+/// `None` from [`ComplianceIo::run`] — safe_run returned None (timeout/exception).
 #[derive(Debug, Clone, PartialEq)]
 pub struct RunResult {
     pub ok: bool,
     pub stdout: String,
 }
 
-/// Запись `os.scandir`: имя + `entry.is_dir()`.
+/// An `os.scandir` entry: name + `entry.is_dir()`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScanEntry {
     pub name: String,
     pub is_dir: bool,
 }
 
-/// Интерфейс исполнителя: каждый метод — ровно один побочный вызов или
-/// наблюдение Python-оригинала, в порядке исполнения. В parity-тестах —
-/// реплей журнала; в живом мосте — реальный I/O.
+/// The executor interface: each method is exactly one side call or
+/// observation of the Python original, in execution order. In parity tests —
+/// a log replay; in the live bridge — real I/O.
 pub trait ComplianceIo {
     /// `safe_run(argv, capture_output=True[, timeout=t])`; None — safe_run
-    /// вернул None.
+    /// returned None.
     fn run(&mut self, argv: &[String], timeout: Option<u64>) -> Option<RunResult>;
     /// `shutil.which(name) is not None`.
     fn which(&mut self, name: &str) -> bool;
@@ -220,7 +220,7 @@ pub trait ComplianceIo {
     fn is_dir(&mut self, path: &str) -> bool;
     /// `open(path, "r", encoding="utf-8"[, errors=...]).read()`; None — OSError.
     fn read_text(&mut self, path: &str) -> Option<String>;
-    /// `os.scandir(path)` → записи; None — OSError.
+    /// `os.scandir(path)` → entries; None — OSError.
     fn scandir(&mut self, path: &str) -> Option<Vec<ScanEntry>>;
     /// `os.listdir(path)`.
     fn listdir(&mut self, path: &str) -> Vec<String>;
@@ -232,10 +232,10 @@ pub trait ComplianceIo {
     fn replace(&mut self, src: &str, dst: &str);
     /// `os.path.realpath(path)`.
     fn realpath(&mut self, path: &str) -> String;
-    /// `tempfile.mkdtemp(prefix=prefix[, dir=dir])` → путь.
+    /// `tempfile.mkdtemp(prefix=prefix[, dir=dir])` → path.
     fn mkdtemp(&mut self, prefix: &str, dir: Option<&str>) -> String;
-    /// `tempfile.mkstemp(prefix=prefix, suffix=suffix)` → путь (fd закрыт
-    /// исполнителем).
+    /// `tempfile.mkstemp(prefix=prefix, suffix=suffix)` → path (the fd is closed
+    /// by the executor).
     fn mkstemp(&mut self, prefix: &str, suffix: &str) -> String;
     /// `os.chmod(path, mode)`.
     fn chmod(&mut self, path: &str, mode: u32);
@@ -245,10 +245,10 @@ pub trait ComplianceIo {
     fn remove_tree(&mut self, path: &str);
     /// `shutil.copy2(src, dst)`.
     fn copy_file(&mut self, src: &str, dst: &str);
-    /// Шаг от root: операция `op` через сеанс прав окна
-    /// ([`crate::privilege::run`]; `files` — пути файлов операции), иначе
-    /// прежняя команда `argv`. По умолчанию — прежняя команда: проверки без
-    /// окна (вход в систему) и подделки живут прежним путём.
+    /// A root step: the operation `op` through the window's privilege session
+    /// ([`crate::privilege::run`]; `files` — the operation's file paths), otherwise
+    /// the old command `argv`. By default — the old command: checks without
+    /// a window (login) and fakes live the old way.
     fn run_priv(
         &mut self,
         op: &crate::privilege::op::PrivOp,
@@ -261,12 +261,12 @@ pub trait ComplianceIo {
     }
 }
 
-/// Упорядоченные результаты проверок `{check: status}` (порядок вставки =
-/// порядок Python dict).
+/// Ordered check results `{check: status}` (insertion order =
+/// Python dict order).
 pub type Results = Vec<(String, String)>;
 
 fn put(results: &mut Results, key: &str, status: &str) {
-    // Python dict: повторный ключ обновляет значение, порядок сохраняется.
+    // Python dict: a repeated key updates the value, the order is preserved.
     if let Some(e) = results.iter_mut().find(|(k, _)| k == key) {
         e.1 = status.to_string();
     } else {
@@ -275,21 +275,21 @@ fn put(results: &mut Results, key: &str, status: &str) {
 }
 
 // ============================================================================
-// Чистые хелперы
+// Pure helpers
 // ============================================================================
 
-/// `os.path.expanduser` для наших входов (`~` / `~/…`) — единый расширитель
-/// ядра: ветка `~/.config/…` уважает `$XDG_CONFIG_HOME`.
+/// `os.path.expanduser` for our inputs (`~` / `~/…`) — the core's single
+/// expander: the `~/.config/…` branch respects `$XDG_CONFIG_HOME`.
 fn expanduser(home: &str, xdg_config_home: Option<&str>, p: &str) -> String {
     crate::utils::expand_user(p, home, xdg_config_home)
 }
 
-/// `str.strip(chars)` — снять с обоих концов любые символы из набора.
+/// `str.strip(chars)` — strip any characters of the set from both ends.
 fn strip_chars(s: &str, chars: &str) -> String {
     s.trim_matches(|c| chars.contains(c)).to_string()
 }
 
-/// `_ICON_DIRS` для данного HOME.
+/// `_ICON_DIRS` for the given HOME.
 fn icon_dirs(home: &str) -> [String; 3] {
     [
         expanduser(home, None, "~/.local/share/icons"),
@@ -298,30 +298,30 @@ fn icon_dirs(home: &str) -> [String; 3] {
     ]
 }
 
-/// `detect_current_de` — по значению `XDG_CURRENT_DESKTOP`.
+/// `detect_current_de` — by the value of `XDG_CURRENT_DESKTOP`.
 ///
-/// Своей таблицы окружений здесь больше нет: она одна на весь продукт —
-/// [`crate::system::detect_current_de`]. Заодно закрыта дыра, из-за которой
-/// проверки соответствия не доставались тайловым: sway, niri и LXQt в
-/// прежней таблице отсутствовали, и функция возвращала `None`.
+/// There is no desktop table of its own here anymore: there is one for the whole product —
+/// [`crate::system::detect_current_de`]. This also closed the hole due to which
+/// tiling ones got no compliance checks: sway, niri and LXQt were missing from
+/// the old table, and the function returned `None`.
 pub fn detect_current_de(xdg_current_desktop: &str) -> Option<String> {
     crate::system::detect_current_de(xdg_current_desktop, "", false)
 }
 
-/// `_pkg_install_arch` — argv установки одного пакета на Arch.
+/// `_pkg_install_arch` — the argv for installing one package on Arch.
 ///
-/// Рукописного отката здесь больше нет. Он повторял `pkexec` + таблицу
-/// [`crate::system_plan::install_cmd`] слово в слово, а такая копия живёт
-/// ровно до первой правки таблицы: в соседнем месте того же класса
-/// (`wallpaper_engine`) копия уже разошлась — потеряла `--needed`. Ответ
-/// целиком отдаёт движок ([`crate::system_plan::install_argv`]), он же решает
-/// «именованный путь org.rexon.pkg или сырой pkexec».
+/// There is no hand-written fallback here anymore. It repeated `pkexec` + the
+/// [`crate::system_plan::install_cmd`] table word for word, and such a copy lives
+/// exactly until the first table edit: in a neighboring place of the same kind
+/// (`wallpaper_engine`) the copy had already diverged — it lost `--needed`. The whole answer
+/// is given by the engine ([`crate::system_plan::install_argv`]), which also decides
+/// "the named org.rexon.pkg path or raw pkexec".
 ///
-/// Arch здесь не сужение движка, а предмет проверок соответствия: пути
-/// починки в этом модуле опираются на pacman и AUR-помощников и на прочих
-/// семействах не запускаются вовсе ([`Compliance::pkg_steps_supported`]).
+/// Arch here is not a narrowing of the engine but the subject of the compliance checks: the
+/// fix paths in this module rely on pacman and AUR helpers and do not run at all on other
+/// families ([`Compliance::pkg_steps_supported`]).
 ///
-/// `None` — ставить нечего (пустое имя пакета).
+/// `None` — nothing to install (an empty package name).
 pub fn pkg_install_arch(pkg: &str, pkg_helper_available: bool) -> Option<Vec<String>> {
     if pkg.is_empty() {
         return None;
@@ -329,23 +329,23 @@ pub fn pkg_install_arch(pkg: &str, pkg_helper_available: bool) -> Option<Vec<Str
     crate::system_plan::install_argv(PkgFamily::Arch, &[pkg.to_string()], pkg_helper_available)
 }
 
-/// Помощники AUR в порядке предпочтения. Одна точка на модуль и на
-/// исполнитель доустановки (`system_de_exec`), который по этим именам узнаёт
-/// команду починки среди прочих запусков проверки.
+/// AUR helpers in order of preference. One point for the module and for
+/// the completion executor (`system_de_exec`), which recognizes by these names
+/// the fix command among the check's other launches.
 pub const AUR_HELPERS: &[&str] = &["yay", "paru", "trizen", "pikaur"];
 
-/// argv установки AUR-пакетов — `_install_aur_packages`.
+/// The argv for installing AUR packages — `_install_aur_packages`.
 fn aur_install_argv(helper: &str, packages: &[String]) -> Vec<String> {
     crate::aur_install::install_argv(helper, packages, false)
 }
 
-/// Валидна ли строка `Directories=` (не пустая) в `.tex`-подобном index.theme.
+/// Whether a `Directories=` line (non-empty) in a `.tex`-like index.theme is valid.
 fn line_has_directories(s: &str) -> bool {
     s.starts_with("Directories=") && s != "Directories="
 }
 
-/// `_patch_settings_ini` — чистая генерация нового содержимого settings.ini.
-/// `existing` — текущее содержимое файла (None — файла нет / OSError).
+/// `_patch_settings_ini` — pure generation of the new settings.ini contents.
+/// `existing` — the current file contents (None — no file / OSError).
 pub fn compute_settings_ini(existing: Option<&str>, key: &str, value: &str) -> String {
     let mut lines: Vec<String> = match existing {
         Some(c) => split_lines(c),
@@ -378,9 +378,9 @@ pub fn compute_settings_ini(existing: Option<&str>, key: &str, value: &str) -> S
     format!("{}\n", lines.join("\n"))
 }
 
-/// `str.splitlines()` — по `\n` без завершающего пустого элемента.
+/// `str.splitlines()` — by `\n` without a trailing empty element.
 fn split_lines(s: &str) -> Vec<String> {
-    // Python splitlines(): без хвостового пустого сегмента.
+    // Python splitlines(): without a trailing empty segment.
     let mut out: Vec<String> = s.split('\n').map(|l| l.to_string()).collect();
     if s.ends_with('\n') {
         out.pop();
@@ -391,7 +391,7 @@ fn split_lines(s: &str) -> Vec<String> {
     out
 }
 
-/// Применить snap→Arch подстановки к тексту layout'а — `_download_mate_layouts`.
+/// Apply the snap→Arch substitutions to a layout's text — `_download_mate_layouts`.
 pub fn apply_snap_map(text: &str) -> String {
     let mut txt = text.to_string();
     for (snap_n, arch_n) in MATE_LAYOUT_SNAP_MAP {
@@ -403,7 +403,7 @@ pub fn apply_snap_map(text: &str) -> String {
     txt
 }
 
-/// `shlex.quote` — минимальное POSIX-экранирование (как в CPython).
+/// `shlex.quote` — minimal POSIX escaping (as in CPython).
 fn shlex_quote(s: &str) -> String {
     if s.is_empty() {
         return "''".to_string();
@@ -418,7 +418,7 @@ fn shlex_quote(s: &str) -> String {
     }
 }
 
-/// Fallback-скрипт копирования layout'ов (сырой pkexec-путь) —
+/// The fallback script for copying layouts (the raw pkexec path) —
 /// `_download_mate_layouts`. `staged_files` — `os.listdir(staged)`.
 pub fn mate_layouts_bash_script(
     staged: &str,
@@ -440,7 +440,7 @@ pub fn mate_layouts_bash_script(
     format!("{}\n", slines.join("\n"))
 }
 
-/// `os.path.join` (двух-аргументный POSIX).
+/// `os.path.join` (two-argument POSIX).
 fn join(a: &str, b: &str) -> String {
     if b.starts_with('/') {
         b.to_string()
@@ -469,33 +469,33 @@ fn dirname(p: &str) -> String {
 }
 
 // ============================================================================
-// Основной класс проверок
+// The main checks class
 // ============================================================================
 
-/// Состояние пакета для проверок.
+/// Package state for the checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PkgState {
     Installed,
     Missing,
-    /// Проверка не проводилась: семейство пакетного менеджера не Arch, а
-    /// имена пакетов в проверках арчевые.
+    /// The check was not performed: the package manager family is not Arch, while
+    /// the package names in the checks are Arch ones.
     Unsupported,
 }
 
-/// Чем кончилась попытка починки (установка пакета, AUR, доустановка
-/// раскладок).
+/// How a fix attempt ended (installing a package, AUR, completing
+/// the layouts).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FixOutcome {
-    /// Починили.
+    /// Fixed.
     Done,
-    /// Пытались и не смогли.
+    /// Tried and failed.
     Failed,
-    /// Не пытались: идёт автозапуск, пароль и сеть при входе запрещены.
+    /// Did not try: autostart is running, password and network are forbidden at login.
     Deferred,
 }
 
 impl FixOutcome {
-    /// Статус шага для таблицы результатов.
+    /// The step status for the results table.
     pub fn status(self) -> &'static str {
         match self {
             FixOutcome::Done => "fixed",
@@ -505,8 +505,8 @@ impl FixOutcome {
     }
 }
 
-/// Есть ли у DE набор проверок (`ComplianceCheck._DE_CHECKS`) — свободная
-/// функция, чтобы спрашивать без построения контекста проверок.
+/// Whether a DE has a set of checks (`ComplianceCheck._DE_CHECKS`) — a free
+/// function, so it can be asked without building a check context.
 pub fn has_checks(de_id: &str) -> bool {
     matches!(
         de_id,
@@ -515,19 +515,19 @@ pub fn has_checks(de_id: &str) -> bool {
     )
 }
 
-/// Что именно доустанавливается по кнопке «Проверить и доустановить» —
-/// подпись для человека по ключу проверки.
+/// What exactly is installed by the "Check and install missing" button —
+/// a label for the person by check key.
 ///
-/// Ключи — ровно те, которым проверка умеет дать [`NEEDS_ACTION`] (всё, что
-/// лечится паролем администратора или загрузкой из сети). Окно вопроса
-/// перечисляет недостающее этими словами, а не именами ключей: покупатель не
-/// должен читать `mate_aur_pkgs`. Полноту таблицы держит сверка
-/// `system_de_exec::tests::every_deferred_fix_has_a_label` — она прогоняет
-/// проверки всех столов на «пустой» машине и требует подпись для КАЖДОГО
-/// отложенного ключа, так что новая починка без подписи покраснеет сразу.
+/// The keys are exactly those the check can give [`NEEDS_ACTION`] to (everything
+/// fixed with an administrator password or a download from the network). The question window
+/// lists what is missing in these words, not by key names: the buyer must not
+/// read `mate_aur_pkgs`. The completeness of the table is held by the check
+/// `system_de_exec::tests::every_deferred_fix_has_a_label` — it runs
+/// the checks of all desktops on an "empty" machine and demands a label for EVERY
+/// postponed key, so a new fix without a label turns red immediately.
 ///
-/// Подписи — исходные (английские) строки каталога, помеченные `n_`;
-/// переводит их [`fix_label`].
+/// The labels are the original (English) catalog strings marked with `n_`;
+/// [`fix_label`] translates them.
 pub const FIX_LABELS: &[(&str, &str)] = &[
     ("mate_layouts", n_("MATE panel layouts (downloaded from the internet)")),
     ("mate_yaru_theme", n_("Yaru theme for MATE (from the AUR)")),
@@ -539,15 +539,15 @@ pub const FIX_LABELS: &[(&str, &str)] = &[
     ("budgie_extras", n_("Budgie add-ons")),
 ];
 
-/// Подпись недостающего по ключу проверки (на языке интерфейса); `None` —
-/// ключ не из таблицы.
+/// The label of what is missing by check key (in the interface language); `None` —
+/// the key is not from the table.
 pub fn fix_label(key: &str) -> Option<String> {
     FIX_LABELS.iter().find(|(k, _)| *k == key).map(|(_, v)| tr(v))
 }
 
-/// Что осталось доустановить по итогам проверки: ключи со статусом
-/// [`NEEDS_ACTION`] в порядке проверок и их подписи. Ключ без подписи не
-/// теряется — показывается как есть (сверка не даст такому появиться).
+/// What is left to install after the check: keys with the status
+/// [`NEEDS_ACTION`] in check order and their labels. A key without a label is not
+/// lost — it is shown as is (the check will not let one appear).
 pub fn deferred_fixes(results: &[(String, String)]) -> Vec<(String, String)> {
     results
         .iter()
@@ -556,45 +556,45 @@ pub fn deferred_fixes(results: &[(String, String)]) -> Vec<(String, String)> {
         .collect()
 }
 
-/// `run_for_current_de`: текущий DE не опознан по `XDG_CURRENT_DESKTOP`.
+/// `run_for_current_de`: the current DE was not recognized by `XDG_CURRENT_DESKTOP`.
 pub fn msg_unknown_de() -> String {
     tr("⚠️ Couldn't detect the current desktop")
 }
 
-/// Шапка одного DE в общем прогоне (`run_for_installed_des`): рамка из `═`,
-/// строка с именем DE и снова рамка. Единая точка (правило #12) — её же берёт
-/// мост для Python-цикла, чтобы лог обоих путей не разъезжался.
+/// The header of one DE in the shared run (`run_for_installed_des`): a `═` frame,
+/// a line with the DE name and the frame again. A single point (rule #12) — the bridge
+/// takes it too for the Python loop, so the logs of both paths do not drift apart.
 pub fn de_banner_lines(de_id: &str) -> Vec<String> {
     let sep = "═".repeat(50);
     vec![format!("\n{sep}"), l2(trf("Desktop: %1", &[&de_id])), sep]
 }
 
-/// Контекст проверок: HOME + семейство пакетного менеджера + разрешение на
-/// привилегированные действия + наличие привилегированных helper'ов
-/// (подаются параметром — `family`, `allow_privileged`,
-/// `_pkg_helper_available` / `_stage_helper_available` живого Python).
+/// The check context: HOME + package manager family + permission for
+/// privileged actions + presence of privileged helpers
+/// (passed as parameters — `family`, `allow_privileged`,
+/// `_pkg_helper_available` / `_stage_helper_available` of live Python).
 pub struct Compliance<'a, IO: ComplianceIo> {
     pub io: &'a mut IO,
     pub home: String,
-    /// `$XDG_CONFIG_HOME` (пусто/None — стандартный `~/.config`).
+    /// `$XDG_CONFIG_HOME` (empty/None — the standard `~/.config`).
     pub xdg_config_home: Option<String>,
-    /// Семейство пакетного менеджера текущего дистрибутива.
+    /// The package manager family of the current distribution.
     pub pkg_family: PkgFamily,
-    /// Можно ли лечить: ставить пакеты, звать AUR-хелпер, клонировать
-    /// репозиторий, копировать в системные каталоги через `pkexec`.
-    /// `false` — автозапуск при входе в систему: только диагностика.
+    /// Whether fixing is allowed: installing packages, calling the AUR helper, cloning
+    /// a repository, copying into system directories via `pkexec`.
+    /// `false` — autostart at login: diagnostics only.
     pub allow_privileged: bool,
     pub pkg_helper_available: bool,
     pub stage_helper_available: bool,
-    /// Строка о пропуске пакетных шагов уже выдана в этом прогоне.
+    /// The line about skipping package steps has already been printed in this run.
     pkg_note_done: bool,
-    /// Строка об отложенном лечении уже выдана в этом прогоне.
+    /// The line about postponed fixing has already been printed in this run.
     deferred_note_done: bool,
-    /// Терминал (`.desktop`), выбранный человеком для проверяемого стола во
-    /// вкладке «Настройки» — из списка своего стола с пометкой «выбрано
-    /// человеком» ([`crate::defaults::chosen_terminal_in_list`]). Выбор
-    /// человека главнее родного терминала (решение Wehrwolfmann 08.11.2026):
-    /// проверка терминала ставит в родное место стола его, а не родной.
+    /// The terminal (`.desktop`) the person chose for the checked desktop in
+    /// the "Settings" tab — from the desktop's own list marked "chosen by the
+    /// person" ([`crate::defaults::chosen_terminal_in_list`]). The person's choice
+    /// takes priority over the native terminal (Wehrwolfmann's decision of 08.11.2026):
+    /// the terminal check puts it, not the native one, into the desktop's native place.
     chosen_terminal: Option<String>,
 }
 
@@ -618,7 +618,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         )
     }
 
-    /// То же, но с явным `$XDG_CONFIG_HOME` (живой вызов из Python).
+    /// The same, but with an explicit `$XDG_CONFIG_HOME` (a live call from Python).
     #[allow(clippy::too_many_arguments)]
     pub fn with_xdg(
         io: &'a mut IO,
@@ -643,8 +643,8 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         }
     }
 
-    /// Выбор человека из `<стол>-xdg-terminals.list` (`desktop` — сырое
-    /// `XDG_CURRENT_DESKTOP` или идентификатор Rexon).
+    /// The person's choice from `<desktop>-xdg-terminals.list` (`desktop` — the raw
+    /// `XDG_CURRENT_DESKTOP` or a Rexon identifier).
     fn read_chosen_terminal(&mut self, desktop: &str) -> Option<String> {
         let name = crate::appdefaults::terminals_list_filename(desktop)?;
         let path = self.expand(&format!("~/.config/{name}"));
@@ -652,9 +652,9 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         crate::defaults::chosen_terminal_in_list(&text)
     }
 
-    /// Какой терминал должен стоять в родном месте стола: выбранный человеком
-    /// (если установлен) или родной `native`. Выбранный, но не установленный
-    /// — родной, и это сказано в журнале.
+    /// Which terminal must be in the desktop's native place: the one chosen by the person
+    /// (if installed) or the native `native`. Chosen but not installed
+    /// — the native one, and the log says so.
     fn wanted_terminal(&mut self, native: &str, log: &mut Vec<String>) -> (String, bool) {
         let Some(chosen) = self.chosen_terminal.clone() else {
             return (native.to_string(), false);
@@ -672,15 +672,15 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         expanduser(&self.home, self.xdg_config_home.as_deref(), p)
     }
 
-    // ── Гейт по семейству пакетного менеджера ───────────────────────────
+    // ── The package manager family gate ─────────────────────────────────
 
-    /// Можно ли выполнять пакетные шаги: имена пакетов и команды установки
-    /// арчевые, поэтому только на Arch/CachyOS (и производных).
+    /// Whether package steps may run: package names and install commands
+    /// are Arch ones, so only on Arch/CachyOS (and derivatives).
     pub fn pkg_steps_supported(&self) -> bool {
         self.pkg_family == PkgFamily::Arch
     }
 
-    /// Одна понятная строка на весь прогон о пропуске пакетных шагов.
+    /// One clear line for the whole run about skipping package steps.
     fn note_pkg_unsupported(&mut self, log: &mut Vec<String>) {
         if !self.pkg_note_done {
             self.pkg_note_done = true;
@@ -688,8 +688,8 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         }
     }
 
-    /// Пропустить пакетный шаг: пометка (однократно) + статус `skipped`
-    /// каждому ключу шага. Общая точка для всех DE.
+    /// Skip a package step: the mark (once) + the `skipped` status for
+    /// each key of the step. A shared point for all DEs.
     fn skip_pkg_step<S: AsRef<str>>(
         &mut self,
         results: &mut Results,
@@ -702,9 +702,9 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         }
     }
 
-    // ── Гейт привилегированных действий (автозапуск при входе) ──────────
+    // ── The privileged actions gate (autostart at login) ────────────────
 
-    /// Одна понятная строка на весь прогон об отложенном лечении.
+    /// One clear line for the whole run about postponed fixing.
     fn note_deferred(&mut self, log: &mut Vec<String>) {
         if !self.deferred_note_done {
             self.deferred_note_done = true;
@@ -712,9 +712,9 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         }
     }
 
-    /// Можно ли сейчас лечить (ставить/копировать под root, ходить в сеть).
-    /// Если нельзя — помечает прогон и возвращает `false`: вызывающий отдаёт
-    /// [`FixOutcome::Deferred`]. Единая точка для всех видов починки.
+    /// Whether fixing is allowed now (installing/copying as root, going online).
+    /// If not — marks the run and returns `false`: the caller returns
+    /// [`FixOutcome::Deferred`]. A single point for all kinds of fixes.
     fn may_fix(&mut self, log: &mut Vec<String>) -> bool {
         if self.allow_privileged {
             return true;
@@ -723,24 +723,24 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         false
     }
 
-    // ── Утилиты проверки ────────────────────────────────────────────────
+    // ── Check utilities ─────────────────────────────────────────────────
 
-    /// Состояние пакета. На не-Arch команда НЕ запускается вовсе — единая
-    /// точка гейта для всех проверок (имена пакетов в них арчевые).
+    /// Package state. On non-Arch the command is NOT run at all — the single
+    /// gate point for all checks (the package names in them are Arch ones).
     ///
-    /// Команду даёт общий движок [`crate::system_plan::query_cmd`] — тот же,
-    /// которым спрашивают `PackageManager.is_installed` и проверка
-    /// пакета-поставщика темы Plymouth; решение — общее
-    /// [`crate::system_plan::pkg_installed_from_run`]. Раньше здесь стоял
-    /// зашитый `pacman -Qi <pkg>` со своим разбором исхода: третья копия
-    /// одного и того же вопроса. Ответ от замены не меняется — `pacman -Q`
-    /// и `pacman -Qi` дают одинаковый код возврата и на установленном
-    /// пакете, и на отсутствующем; вывод команды здесь не читается вовсе.
+    /// The command is given by the shared engine [`crate::system_plan::query_cmd`] — the same
+    /// one used by `PackageManager.is_installed` and the check of
+    /// the Plymouth theme provider package; the decision is the shared
+    /// [`crate::system_plan::pkg_installed_from_run`]. Previously there was a
+    /// hard-coded `pacman -Qi <pkg>` with its own outcome parsing here: a third copy
+    /// of one and the same question. The answer does not change with the replacement — `pacman -Q`
+    /// and `pacman -Qi` give the same return code both for an installed
+    /// package and a missing one; the command output is not read here at all.
     ///
-    /// `Err` от движка (семейство UNKNOWN) недостижим за гейтом, но
-    /// трактуется как «проверка недоступна», а не как «не установлен»:
-    /// выдумывать отсутствие пакета из-за незнакомого дистрибутива нельзя —
-    /// это привело бы к установке под pkexec прямо при входе в систему.
+    /// An `Err` from the engine (the UNKNOWN family) is unreachable behind the gate, but
+    /// is treated as "the check is unavailable", not as "not installed":
+    /// inventing a package's absence because of an unfamiliar distribution is not allowed —
+    /// it would lead to installing under pkexec right at login.
     pub fn pkg_state(&mut self, pkg: &str) -> PkgState {
         if !self.pkg_steps_supported() {
             return PkgState::Unsupported;
@@ -760,8 +760,8 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         self.pkg_state(pkg) == PkgState::Installed
     }
 
-    /// Отсутствующие пакеты из списка; `None` — проверка недоступна
-    /// (не-Arch).
+    /// Missing packages from the list; `None` — the check is unavailable
+    /// (non-Arch).
     fn missing_pkgs(&mut self, pkgs: &[&str]) -> Option<Vec<String>> {
         if !self.pkg_steps_supported() {
             return None;
@@ -781,8 +781,8 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
             .find(|h| self.io.which(h))
     }
 
-    /// Установка одного пакета штатным путём Arch — единая точка вместо
-    /// россыпи `pkg_install_arch` + `io.run` по проверкам.
+    /// Installing one package the standard Arch way — a single point instead of
+    /// a scattering of `pkg_install_arch` + `io.run` across the checks.
     fn install_pkg(&mut self, pkg: &str, log: &mut Vec<String>) -> FixOutcome {
         if !self.pkg_steps_supported() {
             self.note_pkg_unsupported(log);
@@ -792,12 +792,12 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
             return FixOutcome::Deferred;
         }
         debug_assert!(FIX_PACKAGES.contains(&pkg), "{pkg} не в FIX_PACKAGES");
-        // Пустое имя пакета — дефект вызывающего, а не «нечего делать»:
-        // команды нет, запускать нечего, чинить не удалось.
+        // An empty package name is a caller defect, not "nothing to do":
+        // there is no command, nothing to run, the fix failed.
         let Some(argv) = pkg_install_arch(pkg, self.pkg_helper_available) else {
             return FixOutcome::Failed;
         };
-        // Таблица починки — PkgSource::DesktopRepair (FIX_PACKAGES).
+        // The fix table — PkgSource::DesktopRepair (FIX_PACKAGES).
         let op = crate::privilege::op::PrivOp::PkgInstall {
             family: PkgFamily::Arch,
             packages: vec![pkg.to_string()],
@@ -812,7 +812,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
 
     fn install_aur_packages(&mut self, packages: &[String], log: &mut Vec<String>) -> FixOutcome {
         if !self.pkg_steps_supported() {
-            // Защита от дурака: AUR-хелпер не существует вне Arch.
+            // Foolproofing: an AUR helper does not exist outside Arch.
             self.note_pkg_unsupported(log);
             return FixOutcome::Deferred;
         }
@@ -862,7 +862,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         matches!(self.io.run(&argv, None), Some(r) if r.ok)
     }
 
-    // ── Валидность icon-темы ────────────────────────────────────────────
+    // ── Icon theme validity ─────────────────────────────────────────────
 
     fn icon_theme_index_path(&mut self, name: &str) -> Option<String> {
         if name.is_empty() {
@@ -909,7 +909,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
                 return Some(name);
             }
         }
-        // Последний шанс — любая установленная валидная тема.
+        // The last chance — any installed valid theme.
         for base in icon_dirs(&self.home) {
             if !self.io.is_dir(&base) {
                 continue;
@@ -1008,7 +1008,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
             ];
             ok = matches!(self.io.run(&argv, None), Some(r) if r.ok);
         }
-        // Синк в settings.ini для GTK-приложений.
+        // Sync to settings.ini for GTK applications.
         for gtk_ver in ["gtk-3.0", "gtk-4.0"] {
             let ini = self.expand(&format!("~/.config/{gtk_ver}/settings.ini"));
             self.patch_settings_ini(&ini, "gtk-icon-theme-name", theme);
@@ -1106,12 +1106,12 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         let mut results: Results = Vec::new();
         let lang = self.io.env("LANG");
 
-        // 1. Локализация Центра управления
+        // 1. Control Center localization
         if lang.starts_with("ru") {
             log.push(l2(tr("🌐 Checking the Control Center translation...")));
-            // Не подпись интерфейса, а ДАННЫЕ: русские названия «Общих
-            // задач» Центра управления MATE, которые пишутся в gsettings
-            // (проверка идёт только под русской локалью). Не переводить.
+            // Not an interface label but DATA: the Russian names of the MATE Control
+            // Center's "Common tasks" that are written to gsettings
+            // (the check runs only under a Russian locale). Do not translate.
             let expected = "['Изменить тему;mate-appearance-properties.desktop', \
                 'Предпочтительные приложения;mate-default-applications-properties.desktop', \
                 'Информация о системе MATE;mate-system-info.desktop']";
@@ -1138,7 +1138,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
             }
         }
 
-        // 2. Терминал по умолчанию
+        // 2. Default terminal
         log.push(l2(tr("🖥️ Checking the default terminal...")));
         let current_term = self.gsettings_get("org.mate.applications-terminal", "exec");
         match current_term {
@@ -1168,10 +1168,10 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
             }
         }
 
-        // 3. Все 8 layout'ов. Доустановка кладёт файлы в системный каталог
-        //    через привилегированный helper и подставляет арчевые .desktop —
-        //    поэтому шаг тоже под гейтом семейства (иначе окно ввода пароля
-        //    при каждом входе в систему на чужом дистрибутиве).
+        // 3. All 8 layouts. Completing them puts files into a system directory
+        //    via the privileged helper and substitutes Arch .desktop files —
+        //    so this step is under the family gate too (otherwise a password prompt
+        //    at every login on a foreign distribution).
         if self.pkg_steps_supported() {
             log.push(l2(tr("📐 Checking all 8 Ubuntu MATE panel layouts...")));
             let layouts_dir = "/usr/share/mate-panel/layouts";
@@ -1193,15 +1193,15 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
                     &[&missing_layouts.len(), &missing_layouts.join(", ")],
                 )));
                 if !self.may_fix(log) {
-                    // Автозапуск: ни git clone (сеть), ни pkexec (пароль).
+                    // Autostart: neither git clone (network) nor pkexec (password).
                     put(&mut results, "mate_layouts", NEEDS_ACTION);
                 } else if self.io.which("git") {
                     log.push(l4(tr("📥 Downloading layouts from ubuntu-mate-settings...")));
                     let ok = self.download_mate_layouts(log);
                     put(&mut results, "mate_layouts", if ok { "fixed" } else { "failed" });
                 } else {
-                    // Имя пакета — по семейству ЭТОЙ проверки: на Fedora и
-                    // openSUSE git зовётся git-core (правило #13).
+                    // The package name — by THIS check's family: on Fedora and
+                    // openSUSE git is called git-core (rule #13).
                     let hint = crate::utils::tool_package_hint("git", self.pkg_family.as_str());
                     log.push(
                         l4(trf("⚠️ git isn't installed — skipping. %1", &[&hint]))
@@ -1228,10 +1228,10 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
             put(&mut results, "mate_gschema", "failed");
         }
 
-        // 5. Yaru-MATE тема
-        // ⛔ Прежние имена `yaru-mate-gtk-theme` / `yaru-mate-icon-theme`
-        // НЕ существуют ни в AUR, ни в репозиториях (RPC 2026-09-01,
-        // resultcount 0) — установка падала каждый раз.
+        // 5. The Yaru-MATE theme
+        // ⛔ The old names `yaru-mate-gtk-theme` / `yaru-mate-icon-theme`
+        // do NOT exist either in the AUR or in the repositories (RPC 2026-09-01,
+        // resultcount 0) — installation failed every time.
         let yaru_pkgs = ["ubuntu-mate-themes", "ubuntu-mate-icon-themes"];
         match self.missing_pkgs(&yaru_pkgs) {
             None => self.skip_pkg_step(&mut results, &["mate_yaru_theme"], log),
@@ -1248,7 +1248,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
             }
         }
 
-        // 6. Шрифты Ubuntu
+        // 6. Ubuntu fonts
         let ubuntu_font_pkg = "ttf-ubuntu-font-family";
         match self.pkg_state(ubuntu_font_pkg) {
             PkgState::Unsupported => {
@@ -1278,7 +1278,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
             }
         }
 
-        // 7. AUR-пакеты MATE + Ayatana
+        // 7. MATE + Ayatana AUR packages
         let mut all_mate_aur: Vec<&str> = MATE_AUR_PACKAGES.to_vec();
         all_mate_aur.extend_from_slice(AYATANA_PACKAGES);
         match self.missing_pkgs(&all_mate_aur) {
@@ -1303,7 +1303,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
             }
         }
 
-        // 8. Курсор Yaru
+        // 8. The Yaru cursor
         log.push(l2(tr("🖱️ Checking the Yaru cursor...")));
         let cursor_val = self.gsettings_get("org.mate.peripherals-mouse", "cursor-theme");
         match cursor_val {
@@ -1333,7 +1333,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
             }
         }
 
-        // 9. mate-system-info локализация
+        // 9. mate-system-info localization
         if lang.starts_with("ru") {
             log.push(l2(tr("🌐 Checking the mate-utils translation...")));
             let mo_path = "/usr/share/locale/ru/LC_MESSAGES/mate-utils.mo";
@@ -1353,15 +1353,15 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
     }
 
     fn download_mate_layouts(&mut self, log: &mut Vec<String>) -> bool {
-        // Защита от дурака: сюда нельзя попасть при входе в систему —
-        // здесь и сеть (git clone), и запись в системный каталог.
+        // Foolproofing: this cannot be reached at login —
+        // here there is both the network (git clone) and writing to a system directory.
         if !self.may_fix(log) {
             return false;
         }
         let tmp_repo = self.io.mkdtemp("rexon_ums_", None);
         let layouts_dst = "/usr/share/mate-panel/layouts";
 
-        // if os.path.isdir(tmp_repo): rmtree — mkdtemp всегда создаёт каталог.
+        // if os.path.isdir(tmp_repo): rmtree — mkdtemp always creates the directory.
         if self.io.is_dir(&tmp_repo) {
             self.io.remove_tree(&tmp_repo);
         }
@@ -1413,7 +1413,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
             }
         }
 
-        // named org.rexon.stage, иначе hardened сырой pkexec.
+        // named org.rexon.stage, otherwise the hardened raw pkexec.
         let staged_is_dir = self.io.is_dir(&staged);
         let staged_real = self.io.realpath(&staged);
         let named = crate::system_plan::privileged_stage_cmd(
@@ -1568,7 +1568,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
                 let (chosen, by_choice) = self.wanted_terminal("gnome-terminal", log);
                 let gnome_terms = ["gnome-terminal", "kgx", "org.gnome.Console"];
                 if by_choice {
-                    // Выбор человека: в схеме должен стоять он.
+                    // The person's choice: it must be the one in the schema.
                     if tv == chosen {
                         log.push(l4(trf("✅ Terminal: %1", &[&tv])));
                         put(&mut results, "gnome_terminal", "ok");
@@ -1640,7 +1640,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
     fn check_cosmic(&mut self, log: &mut Vec<String>) -> Results {
         let mut results: Results = Vec::new();
 
-        // Весь набор проверок COSMIC — пакетный (обои/иконки/keyring).
+        // The whole COSMIC check set is package-based (wallpapers/icons/keyring).
         if !self.pkg_steps_supported() {
             self.skip_pkg_step(
                 &mut results,
@@ -1745,7 +1745,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
     fn check_cinnamon(&mut self, log: &mut Vec<String>) -> Results {
         let mut results: Results = Vec::new();
 
-        // Весь набор проверок Cinnamon — пакетный (Nemo/темы Mint/LightDM).
+        // The whole Cinnamon check set is package-based (Nemo/Mint themes/LightDM).
         if !self.pkg_steps_supported() {
             self.skip_pkg_step(
                 &mut results,
@@ -1820,9 +1820,9 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
                 put(&mut results, "budgie_extras", "ok");
             } else {
                 log.push(l4(trf("⚠️ %1 isn't installed", &[&"budgie-extras"])));
-                // ⚠️ Раньше он ставился помощником AUR — и на машине без
-                // yay/paru починка проваливалась зря: `budgie-extras` лежит
-                // в extra, pacman берёт его сам.
+                // ⚠️ It used to be installed by an AUR helper — and on a machine without
+                // yay/paru the fix failed for nothing: `budgie-extras` is in
+                // extra, pacman takes it itself.
                 let out = self.install_pkg("budgie-extras", log);
                 put(&mut results, "budgie_extras", out.status());
             }
@@ -1906,9 +1906,9 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         results
     }
 
-    // ── Диспетчеризация ─────────────────────────────────────────────────
+    // ── Dispatch ────────────────────────────────────────────────────────
 
-    /// Есть ли набор проверок для DE (`_DE_CHECKS.get(de_id)` — без запуска).
+    /// Whether there is a check set for a DE (`_DE_CHECKS.get(de_id)` — without running).
     pub fn has_handler(de_id: &str) -> bool {
         has_checks(de_id)
     }
@@ -1927,8 +1927,8 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         }
     }
 
-    /// `run_for_de` — запустить все проверки для DE. Возвращает результаты и
-    /// пишет лог в `log`.
+    /// `run_for_de` — run all checks for a DE. Returns the results and
+    /// writes the log to `log`.
     pub fn run_for_de(&mut self, de_id: &str, log: &mut Vec<String>) -> Results {
         if !Self::has_handler(de_id) {
             log.push(trf("ℹ️ No checks for this desktop: %1", &[&de_id]));
@@ -1942,9 +1942,9 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         let ok = results.iter().filter(|(_, v)| v == "ok").count();
         let skipped = results.iter().filter(|(_, v)| v == SKIPPED).count();
         let needs = results.iter().filter(|(_, v)| v == NEEDS_ACTION).count();
-        // Одна строка на каждый вариант, а не фраза из кусков: порядок частей
-        // и знаки между ними решает переводчик (в языках справа налево и с
-        // другим порядком слов склейка «, %1 skipped» в конце не работает).
+        // One string per variant rather than a sentence from pieces: the order of parts
+        // and the punctuation between them is the translator's call (in right-to-left languages and with
+        // a different word order the ", %1 skipped" suffix at the end does not work).
         let summary = match (skipped > 0, needs > 0) {
             (false, false) => trf(
                 // TRANSLATORS: %1 checks passed, %2 fixed, %3 failed.
@@ -1971,7 +1971,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         results
     }
 
-    /// `run_for_current_de` — определить текущий DE и прогнать проверки.
+    /// `run_for_current_de` — detect the current DE and run the checks.
     pub fn run_for_current_de(
         &mut self,
         xdg_current_desktop: &str,
@@ -1991,7 +1991,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         }
     }
 
-    /// `run_for_installed_des` — прогнать compliance для всех установленных DE.
+    /// `run_for_installed_des` — run compliance for all installed DEs.
     pub fn run_for_installed_des(
         &mut self,
         installed_de_ids: &[String],

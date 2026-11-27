@@ -1,41 +1,43 @@
-//! «Удалить» у установленной темы — с плитки раздела и из обзоров диска.
+//! «Remove» on an installed theme — from the section tile and from the disk
+//! overviews.
 //!
-//! ЗАЧЕМ. Прежде удалить можно было только купленное в магазине (по журналу
-//! установленных, `appearance_installer::uninstall_from_log`): тема,
-//! поставленная руками, чужим установщиком или распакованная в `~/.icons`,
-//! оставалась навсегда. В KDE удаляется любая тема пользователя (строки
-//! паритета 0.8, 0.9 и «Удаление» каждого раздела), причём не сразу: плитка
-//! помечается, внизу всплывает строка с «Вернуть», и снимается тема, когда
-//! строка закрылась.
+//! WHY. Previously only what was bought in the store could be removed (by the
+//! installed log, `appearance_installer::uninstall_from_log`): a theme put in
+//! by hand, by another installer or unpacked into `~/.icons` stayed forever. In
+//! KDE any user theme can be removed (parity lines 0.8, 0.9 and the "Removal"
+//! line of each section), and not at once: the tile is marked, a bar with
+//! «Undo» pops up at the bottom, and the theme is removed when the bar closes.
 //!
-//! Правила (решает [`RemovalRoots::verdict`] по пути из скана —
-//! `ThemeItem::install_path`, признак «включена» — `local_kind == "active"`):
-//!   * включённую сейчас тему удалить нельзя — кнопка недоступна с подсказкой
-//!     ([`removal_active_reason`]); при снятии проверяется ещё раз по живой
-//!     карте включённого, во всех видах, которые читают этот каталог (одна
-//!     папка в `~/.themes` бывает и темой GTK, и рамкой xfwm4). Исключение —
-//!     запущенный свой виджет Conky: после вопроса он гаснет и уходит в
-//!     корзину ([`Verdict::RunningConky`]), как найденный на диске;
-//!   * своя тема — прямой потомок каталога тем пользователя (`~/.local/share/…`,
-//!     `~/.icons`, `~/.themes`, `~/.config/Kvantum` и каталоги разделов
-//!     окружений) — удаляется отложенно ([`RemovalQueue`]);
-//!   * экран входа и заставка загрузки, которые поставил сам Rexon (путь есть в
-//!     журнале установленных), — прежним «Удалить» по журналу
-//!     (`LiveInstaller::uninstall`, помощник от root; коммит a135f89). Окно
-//!     пароля на истечении всплывающей строки было бы сюрпризом, поэтому
-//!     здесь без отсрочки;
-//!   * экран входа и заставка загрузки без пакета-владельца, положенные руками
-//!     или чужим установщиком, — тем же помощником от root по пути
-//!     (`LiveInstaller::remove_loose_system_theme`), тоже без отсрочки;
-//!   * прочее системное (`/usr/share/…`) — кнопка недоступна с подсказкой
-//!     ([`removal_system_reason`]): файлы принадлежат пакету;
-//!   * у плитки без пути (Qt-стиль из `QStyleFactory`) кнопки нет вовсе.
+//! Rules (decided by [`RemovalRoots::verdict`] from the scan path —
+//! `ThemeItem::install_path`, the "enabled" flag is `local_kind == "active"`):
+//!   * the theme enabled right now cannot be removed — the button is disabled
+//!     with a hint ([`removal_active_reason`]); on removal it is checked again
+//!     against the live map of what is enabled, in all kinds that read this
+//!     directory (one folder in `~/.themes` can be both a GTK theme and an xfwm4
+//!     border). The exception is the person's own running Conky widget: after a
+//!     question it stops and goes to the trash ([`Verdict::RunningConky`]), like
+//!     one found on disk;
+//!   * an own theme — a direct child of a user theme directory
+//!     (`~/.local/share/…`, `~/.icons`, `~/.themes`, `~/.config/Kvantum` and the
+//!     directories of desktop sections) — is removed deferred ([`RemovalQueue`]);
+//!   * a login screen and a boot splash that Rexon itself installed (the path is
+//!     in the installed log) — by the former «Remove» via the log
+//!     (`LiveInstaller::uninstall`, the root helper; commit a135f89). A password
+//!     window when the pop-up bar expires would be a surprise, so there is no
+//!     delay here;
+//!   * a login screen and a boot splash without an owner package, put in by
+//!     hand or by another installer — by the same root helper by path
+//!     (`LiveInstaller::remove_loose_system_theme`), also without delay;
+//!   * other system things (`/usr/share/…`) — the button is disabled with a
+//!     hint ([`removal_system_reason`]): the files belong to a package;
+//!   * a tile without a path (a Qt style from `QStyleFactory`) has no button
+//!     at all.
 //!
-//! Отложенное удаление ничего не трогает на диске, пока строка «Вернуть»
-//! открыта: [`RemovalQueue`] только помнит пути, а страница прячет их плитки
-//! ([`RemovalQueue::retain_visible`]). Снимает [`commit`], когда строка
-//! закрылась или истекла (и на выходе из программы). Упала программа до
-//! этого — тема осталась на месте: потерять тему хуже, чем не удалить.
+//! Deferred removal touches nothing on disk while the «Undo» bar is open:
+//! [`RemovalQueue`] only remembers the paths, and the page hides their tiles
+//! ([`RemovalQueue::retain_visible`]). [`commit`] removes them when the bar
+//! closes or expires (and on program exit). If the program crashed before that,
+//! the theme stayed in place: losing a theme is worse than not removing it.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -46,52 +48,52 @@ use crate::i18n::{ntr, tr, trf};
 use crate::installed_scan::{de_types, sidecar_preview_path, types_for};
 use crate::models::ThemeItem;
 
-/// Сколько всплывающая строка с «Вернуть» висит, прежде чем тема снимется.
+/// How long the pop-up bar with «Undo» stays before the theme is removed.
 pub const UNDO_TIMEOUT_MS: i32 = 8000;
 
-/// Что делать с кнопкой «Удалить» у плитки.
+/// What to do with the «Remove» button of a tile.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {
-    /// Кнопки нет: у плитки нет пути на диске.
+    /// No button: the tile has no path on disk.
     Hidden,
-    /// Своя тема: отложенное удаление через [`RemovalQueue`], без вопроса,
-    /// со строкой «Вернуть» — как у всех разделов «Оформления». `path` — то,
-    /// что реально лежит на диске (у цветовой схемы — файл `.colors`). Свой
-    /// невключённый виджет Conky идёт тем же путём, но в корзину ([`commit`]).
+    /// Own theme: deferred removal via [`RemovalQueue`], without a question, with
+    /// the «Undo» bar — as in all «Appearance» sections. `path` is what actually
+    /// lies on disk (for a color scheme — the `.colors` file). An own Conky widget
+    /// that is not enabled goes the same way, but to the trash ([`commit`]).
     Local { path: String },
-    /// Системная тема, которую поставил Rexon: прежнее «Удалить» по журналу
-    /// (`LiveInstaller::uninstall(content_id)`), сразу, с окном пароля.
+    /// A system theme installed by Rexon: the former «Remove» via the log
+    /// (`LiveInstaller::uninstall(content_id)`), at once, with a password window.
     Journal { content_id: String },
-    /// Системная тема без пакета-владельца и без записи журнала (положена
-    /// руками): снимает помощник от root по пути, сразу, с окном пароля.
+    /// A system theme without an owner package and without a log record (put in by
+    /// hand): the root helper removes it by path, at once, with a password window.
     Loose { path: String },
-    /// Виджет Conky, найденный на диске вне каталога Rexon: после вопроса
-    /// (`conky_scan::found_removal_questions`) гаснет и уходит в корзину
-    /// (`conky_scan::live_remove_found`), сразу, без строки «Вернуть» —
-    /// возвращается он из корзины.
+    /// A Conky widget found on disk outside the Rexon directory: after a question
+    /// (`conky_scan::found_removal_questions`) it stops and goes to the trash
+    /// (`conky_scan::live_remove_found`), at once, without the «Undo» bar — it is
+    /// restored from the trash.
     FoundConky { path: String },
-    /// Свой виджет Conky (папка в каталоге Rexon), который сейчас запущен:
-    /// после вопроса (`conky_scan::running_removal_question`) гаснет, теряет
-    /// автозапуск и уходит в корзину ([`live_remove_running_conky`]), сразу —
-    /// как найденный на диске.
+    /// An own Conky widget (a folder in the Rexon directory) that is running now:
+    /// after a question (`conky_scan::running_removal_question`) it stops, loses
+    /// autostart and goes to the trash ([`live_remove_running_conky`]), at once —
+    /// like one found on disk.
     RunningConky { path: String },
-    /// Кнопка видна, но недоступна; `reason` — подсказка на ней.
+    /// The button is visible but disabled; `reason` is the hint on it.
     Blocked { reason: String },
 }
 
 impl Verdict {
-    /// Видна ли кнопка.
+    /// Whether the button is visible.
     pub fn visible(&self) -> bool {
         !matches!(self, Verdict::Hidden)
     }
-    /// Можно ли её нажать.
+    /// Whether it can be pressed.
     pub fn enabled(&self) -> bool {
         matches!(
             self,
             Verdict::Local { .. } | Verdict::Journal { .. } | Verdict::Loose { .. } | Verdict::FoundConky { .. } | Verdict::RunningConky { .. }
         )
     }
-    /// Подсказка на недоступной кнопке (у доступной — пусто).
+    /// Hint on a disabled button (empty on an enabled one).
     pub fn tooltip(&self) -> String {
         match self {
             Verdict::Blocked { reason } => reason.clone(),
@@ -100,33 +102,33 @@ impl Verdict {
     }
 }
 
-// ── Подписи ────────────────────────────────────────────────────────────
+// ── Captions ───────────────────────────────────────────────────────────
 
-// Подписи этого потока — без существительного «тема»: через ту же плашку и
-// те же подсказки идут значки, курсоры, шрифты, виджеты Conky и KDE,
-// расширения GNOME и обои (все плитки «Удалить» раздела «Оформление»), и
-// «Тема «Caffeine» будет удалена» про расширение GNOME сбивала с толку
-// (живая проверка 15.11). Своей карты «вид → существительное» в ядре нет,
-// заводить её ради одной строки — плодить второй список видов (правило #12).
+// The captions of this flow have no noun "theme": icons, cursors, fonts, Conky
+// and KDE widgets, GNOME extensions and wallpapers go through the same bar and
+// the same hints (all «Remove» tiles of the «Appearance» section), and
+// "The theme “Caffeine” will be removed" about a GNOME extension was confusing
+// (live check 15.11). The core has no "kind → noun" map of its own, and
+// starting one for a single line would breed a second list of kinds (rule #12).
 
-/// Подсказка на «Удалить» у включённого сейчас.
+/// Hint on «Remove» of what is enabled now.
 pub fn removal_active_reason() -> String {
     tr("You can't remove what is in use now. Switch to something else first.")
 }
 
-/// Подсказка на «Удалить» у системного (из пакета).
+/// Hint on «Remove» of a system item (from a package).
 pub fn removal_system_reason() -> String {
     tr("This came with the system (it is in /usr/share), so Rexon doesn't remove it. \
         It goes away together with its package.")
 }
 
-/// Подсказка на «Удалить» у лежащего вне каталогов пользователя.
+/// Hint on «Remove» of an item lying outside the user directories.
 pub fn removal_outside_reason() -> String {
     tr("This is outside your personal appearance folders, so Rexon doesn't remove it.")
 }
 
-/// Итог снятия для строки состояния. `names` — имена снятого в порядке
-/// пометки.
+/// Removal result for the status line. `names` are the names of what was
+/// removed, in the order of marking.
 pub fn removal_toast_text(names: &[String]) -> String {
     match names {
         [] => String::new(),
@@ -137,10 +139,10 @@ pub fn removal_toast_text(names: &[String]) -> String {
     }
 }
 
-/// Текст строки «Вернуть», пока помеченное ещё на диске: удаление ИДЁТ, а
-/// не прошло. Прошедшее время («удалена») здесь обманывало: человек решал,
-/// что всё уже пропало, и «Вернуть» не искал. Срок — отдельной строкой
-/// обратного отсчёта ([`removal_countdown_text`]).
+/// Text of the «Undo» bar while the marked items are still on disk: the removal
+/// IS GOING ON, not done. The past tense ("removed") was misleading here: the
+/// person decided everything was already gone and didn't look for «Undo». The
+/// deadline is a separate countdown line ([`removal_countdown_text`]).
 pub fn removal_pending_text(names: &[String]) -> String {
     match names {
         [] => String::new(),
@@ -152,12 +154,12 @@ pub fn removal_pending_text(names: &[String]) -> String {
     }
 }
 
-/// Обратный отсчёт строки «Вернуть»: через сколько секунд снимется
-/// помеченное (страница считает от [`UNDO_TIMEOUT_MS`] и держит паузу, пока
-/// над строкой курсор).
+/// Countdown of the «Undo» bar: in how many seconds the marked items are removed
+/// (the page counts from [`UNDO_TIMEOUT_MS`] and pauses while the pointer is over
+/// the bar).
 pub fn removal_countdown_text(seconds: u64) -> String {
-    // Самостоятельное предложение: строка встаёт сразу за «Удаляем «…».»,
-    // и прежнее «Через 6 секунд, если…» читалось обрывком.
+    // A standalone sentence: the line comes right after «Removing “…”.», and the
+    // former "In 6 seconds, if…" read like a fragment.
     ntr(
         "%n second left — “Undo” cancels the removal.",
         "%n seconds left — “Undo” cancels the removal.",
@@ -165,30 +167,30 @@ pub fn removal_countdown_text(seconds: u64) -> String {
     )
 }
 
-/// Кнопка всплывающей строки: отменить удаление.
+/// Button of the pop-up bar: cancel the removal.
 pub fn removal_undo_btn() -> String {
     tr("Undo")
 }
 
-/// Помеченное оказалось включённым к моменту снятия.
+/// The marked item turned out to be enabled by the time of removal.
 fn removal_now_active(name: &str) -> String {
     trf("“%1” is in use now, so it wasn't removed.", &[&name])
 }
 
-// ── Каталоги тем ───────────────────────────────────────────────────────
+// ── Theme directories ──────────────────────────────────────────────────
 
-/// Каталоги тем пользователя (с видами, которые в них ищут) и системные
-/// каталоги — из тех же таблиц, что у сканов (`installed_scan::types_for`,
-/// `de_types`, прежние `~/.icons` и `~/.themes` из `section_types`): нового
-/// списка мест здесь нет (правило #12).
+/// User theme directories (with the kinds looked for in them) and system
+/// directories — from the same tables as the scans (`installed_scan::types_for`,
+/// `de_types`, the former `~/.icons` and `~/.themes` from `section_types`): there
+/// is no new list of places here (rule #12).
 pub struct RemovalRoots {
-    /// (каталог пользователя, вид темы).
+    /// (user directory, theme kind).
     user: Vec<(String, String)>,
-    /// Системные каталоги тем и корень usr.
+    /// System theme directories and the usr root.
     system: Vec<String>,
-    /// Каталоги тем экрана входа и заставки загрузки (снимает помощник).
+    /// Theme directories of the login screen and the boot splash (removed by the helper).
     helper: Vec<String>,
-    /// Домашний каталог (вложенные виджеты Conky, `conky_nested_widgets`).
+    /// Home directory (nested Conky widgets, `conky_nested_widgets`).
     home: String,
 }
 
@@ -217,38 +219,38 @@ impl RemovalRoots {
                     system.push(sys);
                 }
             }
-            // Темы рамок и оболочек ищутся и в `~/.local/share/themes`
+            // Border and shell themes are also looked for in `~/.local/share/themes`
             // (`installed_scan::de_types`).
             if t.entry == "sub" {
                 push(&mut user, &format!("{home}/.local/share/themes"), t.apply_kind);
                 push(&mut user, &format!("{home}/.themes"), t.apply_kind);
             }
         }
-        // Прежние каталоги, которые читают и KDE, и GTK.
+        // Former directories read by both KDE and GTK.
         for kind in ["icons", "cursor"] {
             push(&mut user, &format!("{home}/.icons"), kind);
         }
         push(&mut user, &format!("{home}/.themes"), "gtk");
-        // Заставка и экран блокировки KDE — части пакетов look-and-feel.
+        // The KDE splash and lock screen are parts of look-and-feel packages.
         for kind in ["splash", "lockscreen"] {
             push(&mut user, &format!("{home}/.local/share/plasma/look-and-feel"), kind);
         }
         RemovalRoots { user, system, helper, home: home.to_string() }
     }
 
-    /// Виды тем, которые ищут в каталоге `dir` (пусто — не каталог тем
-    /// пользователя).
+    /// Theme kinds looked for in the directory `dir` (empty — not a user theme
+    /// directory).
     fn kinds_at(&self, dir: &str) -> Vec<&str> {
         self.user.iter().filter(|(d, _)| d == dir).map(|(_, k)| k.as_str()).collect()
     }
 
-    /// Решение по плитке скана.
+    /// Decision for a scan tile.
     ///
-    /// `install_path` — `ThemeItem::install_path`; у цветовой схемы скан
-    /// отдаёт путь без `.colors` — файл находится здесь. `active` — плитка
-    /// помечена включённой. `journal` — журнал установленных
-    /// (`ocs_store::parse_installed_log`). `loose` — системные темы без
-    /// пакета-владельца (`LiveScan::loose_system_themes`).
+    /// `install_path` is `ThemeItem::install_path`; for a color scheme the scan
+    /// gives the path without `.colors` — the file is found here. `active` — the
+    /// tile is marked enabled. `journal` is the installed log
+    /// (`ocs_store::parse_installed_log`). `loose` — system themes without an owner
+    /// package (`LiveScan::loose_system_themes`).
     pub fn verdict(
         &self,
         install_path: &str,
@@ -271,11 +273,11 @@ impl RemovalRoots {
             return if present(&target) {
                 Verdict::Local { path: target }
             } else {
-                Verdict::Hidden // темы уже нет — нечего удалять
+                Verdict::Hidden // the theme is already gone — nothing to remove
             };
         }
-        // Вложенный виджет пакета Conky (`<корень>/<id>/<подпапка>`) — своя
-        // плитка, снимается сам по себе.
+        // A nested widget of a Conky package (`<root>/<id>/<subfolder>`) — its own
+        // tile, removed on its own.
         if self.is_nested_conky(&target) {
             return if present(&target) { Verdict::Local { path: target } } else { Verdict::Hidden };
         }
@@ -293,15 +295,15 @@ impl RemovalRoots {
         Verdict::Blocked { reason: removal_outside_reason() }
     }
 
-    /// Папка ли `path` вложенного виджета пакета Conky.
+    /// Whether `path` is the folder of a nested widget of a Conky package.
     fn is_nested_conky(&self, path: &str) -> bool {
         let ctx = crate::de_apply::Ctx::for_home(&self.home);
         crate::de_apply::conky_widget_of_dir(&crate::animations::SystemIo, &ctx, path).is_some_and(|w| w.contains('/'))
     }
 
-    /// Виды, чья часть темы — `path` вида `<каталог тем>/<имя>/<подпапка>`
-    /// (рамка `Arc/xfwm4` внутри темы GTK, [`frame_part_target`]); пусто — не
-    /// такая часть.
+    /// Kinds whose part of a theme is `path` of the form
+    /// `<theme dir>/<name>/<subfolder>` (the `Arc/xfwm4` border inside a GTK theme,
+    /// [`frame_part_target`]); empty — not such a part.
     fn nested_kinds(&self, path: &str) -> Vec<&str> {
         let Some((theme, sub)) = path.rsplit_once('/') else { return Vec::new() };
         let Some((dir, name)) = theme.rsplit_once('/') else { return Vec::new() };
@@ -314,9 +316,9 @@ impl RemovalRoots {
             .collect()
     }
 
-    /// Включена ли сейчас тема по пути `path` хоть в одном виде, который
-    /// ищет её в этом каталоге. `active_map` — `LiveScan::active_map`.
-    /// У части темы (`Arc/xfwm4`) — только в видах этой части.
+    /// Whether the theme at `path` is enabled now in at least one kind that looks
+    /// for it in this directory. `active_map` is `LiveScan::active_map`.
+    /// For a part of a theme (`Arc/xfwm4`) — only in the kinds of that part.
     pub fn in_use(&self, path: &str, active_map: &std::collections::HashMap<String, String>) -> bool {
         let nested = self.nested_kinds(path);
         if !nested.is_empty() {
@@ -335,8 +337,8 @@ impl RemovalRoots {
     }
 }
 
-/// Подпапка части темы у вида `kind` (`xfwm4`, `metacity-1`, `gnome-shell`,
-/// `cinnamon`); `None` — вид не часть папки темы.
+/// Subfolder of a theme part for kind `kind` (`xfwm4`, `metacity-1`,
+/// `gnome-shell`, `cinnamon`); `None` — the kind is not a part of a theme folder.
 fn part_subdir(kind: &str) -> Option<&'static str> {
     match crate::appearance_installer::de_theme_marker(kind) {
         Some(crate::appearance_installer::DeThemeMarker::Subdir(sub)) => Some(sub),
@@ -344,13 +346,14 @@ fn part_subdir(kind: &str) -> Option<&'static str> {
     }
 }
 
-/// Что снимает «Удалить» у плитки вида `kind` с папкой `install_path`.
+/// What «Remove» removes for a tile of kind `kind` with folder `install_path`.
 ///
-/// Решение 3в Wehrwolfmann 20.10.2026: у рамки окон (и оболочки), которая
-/// лежит подпапкой в папке темы GTK (`Arc/xfwm4` рядом с `Arc/gtk-3.0`), —
-/// только эта подпапка: тема GTK остаётся. Папка, где кроме подпапки рамки
-/// других папок нет, — отдельная рамка: снимается целиком, как раньше.
-/// `subdirs` — имена папок внутри `install_path`.
+/// Decision 3c of Wehrwolfmann 20.10.2026: for a window border (and a shell)
+/// that lies as a subfolder in a GTK theme folder (`Arc/xfwm4` next to
+/// `Arc/gtk-3.0`) — only that subfolder: the GTK theme stays. A folder that has
+/// no other folders besides the border subfolder is a separate border: it is
+/// removed whole, as before. `subdirs` are the names of folders inside
+/// `install_path`.
 pub fn frame_part_target(install_path: &str, kind: &str, subdirs: &[String]) -> String {
     let path = install_path.trim_end_matches('/');
     match part_subdir(kind) {
@@ -361,10 +364,10 @@ pub fn frame_part_target(install_path: &str, kind: &str, subdirs: &[String]) -> 
     }
 }
 
-/// Части, поставленные в папку `path` ОТДЕЛЬНО (другой записью журнала
-/// установленных, не той, что владеет самой папкой): рамка окон, легшая
-/// подпапкой в тему GTK. `own_id` — запись, которую снимают (её пути не в
-/// счёт). Отдаёт `(запись, имя)`.
+/// Parts installed into the folder `path` SEPARATELY (by another installed log
+/// record, not the one that owns the folder itself): a window border that went
+/// as a subfolder into a GTK theme. `own_id` is the record being removed (its
+/// paths don't count). Returns `(record, name)`.
 pub fn separate_parts_inside(journal: &Map<String, Value>, path: &str, own_id: Option<&str>) -> Vec<(String, String)> {
     let path = path.trim_end_matches('/');
     let under = format!("{path}/");
@@ -385,9 +388,9 @@ pub fn separate_parts_inside(journal: &Map<String, Value>, path: &str, own_id: O
         .collect()
 }
 
-/// Вопрос перед удалением папки темы `theme`, в которой лежат отдельно
-/// поставленные части `parts` ([`separate_parts_inside`]): (заголовок, текст).
-/// `None` — таких частей нет, спрашивать не о чем.
+/// The question before removing the folder of theme `theme` that holds
+/// separately installed parts `parts` ([`separate_parts_inside`]): (title,
+/// text). `None` — there are no such parts, nothing to ask.
 pub fn separate_parts_question(theme: &str, parts: &[(String, String)]) -> Option<(String, String)> {
     if parts.is_empty() {
         return None;
@@ -402,18 +405,19 @@ pub fn separate_parts_question(theme: &str, parts: &[(String, String)]) -> Optio
     Some((title, text))
 }
 
-/// Имя элемента каталога, которое безопасно снимать.
+/// A directory entry name that is safe to remove.
 fn safe_name(name: &str) -> bool {
     !name.is_empty() && name != "." && name != ".." && !name.contains('/')
 }
 
-/// Есть ли что-то по пути (ссылку не разыменовываем).
+/// Whether anything is at the path (a symlink is not dereferenced).
 fn present(p: &str) -> bool {
     std::fs::symlink_metadata(p).is_ok()
 }
 
-/// Что реально лежит на диске под путём скана: сам путь, а у цветовой схемы
-/// (скан отдаёт путь без окончания) — файл `<путь>.colors`.
+/// What actually lies on disk under the scan path: the path itself, and for a
+/// color scheme (the scan gives the path without the suffix) the file
+/// `<path>.colors`.
 fn disk_target(path: &str) -> String {
     if !present(path) {
         let colors = format!("{path}.colors");
@@ -424,7 +428,7 @@ fn disk_target(path: &str) -> String {
     path.to_string()
 }
 
-/// Запись журнала установленных, в путях которой есть `path`.
+/// The installed log record whose paths include `path`.
 fn journal_owner(journal: &Map<String, Value>, path: &str) -> Option<String> {
     journal.iter().find_map(|(id, rec)| {
         rec["paths"]
@@ -435,28 +439,28 @@ fn journal_owner(journal: &Map<String, Value>, path: &str) -> Option<String> {
     })
 }
 
-// ── Отложенное удаление ────────────────────────────────────────────────
+// ── Deferred removal ───────────────────────────────────────────────────
 
-/// Тема, помеченная к удалению.
+/// A theme marked for removal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingRemoval {
-    /// Что снимать (`Verdict::Local::path`).
+    /// What to remove (`Verdict::Local::path`).
     pub path: String,
-    /// Имя для человека (`ThemeItem::name`).
+    /// Human-readable name (`ThemeItem::name`).
     pub name: String,
-    /// Номер плитки (`ThemeItem::id`) — чтобы убрать сайдкар-превью.
+    /// Tile number (`ThemeItem::id`) — to remove the sidecar preview.
     pub item_id: String,
 }
 
-/// Помеченные к удалению темы, пока открыта строка «Вернуть».
+/// Themes marked for removal while the «Undo» bar is open.
 #[derive(Debug, Default)]
 pub struct RemovalQueue {
     pending: Vec<PendingRemoval>,
 }
 
 impl RemovalQueue {
-    /// Пометить тему к удалению (повторная пометка того же пути — без
-    /// изменений). Отдаёт текст всплывающей строки.
+    /// Mark a theme for removal (marking the same path again changes nothing).
+    /// Returns the text of the pop-up bar.
     pub fn mark(&mut self, path: &str, name: &str, item_id: &str) -> String {
         if !self.pending.iter().any(|p| p.path == path) {
             self.pending.push(PendingRemoval {
@@ -468,12 +472,12 @@ impl RemovalQueue {
         self.toast_text()
     }
 
-    /// «Вернуть»: снять все пометки. Отдаёт, сколько тем вернулось.
+    /// «Undo»: clear all marks. Returns how many themes came back.
     pub fn undo_all(&mut self) -> usize {
         std::mem::take(&mut self.pending).len()
     }
 
-    /// Строка закрылась или истекла: отдать помеченное на снятие.
+    /// The bar closed or expired: hand over the marked items for removal.
     pub fn take_all(&mut self) -> Vec<PendingRemoval> {
         std::mem::take(&mut self.pending)
     }
@@ -482,20 +486,20 @@ impl RemovalQueue {
         self.pending.is_empty()
     }
 
-    /// Текст всплывающей строки для текущих пометок.
+    /// Text of the pop-up bar for the current marks.
     pub fn toast_text(&self) -> String {
         let names: Vec<String> = self.pending.iter().map(|p| p.name.clone()).collect();
         removal_pending_text(&names)
     }
 
-    /// Помечена ли плитка с путём скана `install_path`.
+    /// Whether the tile with scan path `install_path` is marked.
     pub fn is_pending(&self, install_path: &str) -> bool {
         let path = install_path.trim_end_matches('/');
         let colors = format!("{path}.colors");
         self.pending.iter().any(|p| p.path == path || p.path == colors)
     }
 
-    /// Убрать из ответа скана плитки помеченных тем.
+    /// Remove the tiles of marked themes from the scan response.
     pub fn retain_visible(&self, items: &mut Vec<ThemeItem>) {
         if self.pending.is_empty() {
             return;
@@ -504,19 +508,19 @@ impl RemovalQueue {
     }
 }
 
-/// Снять помеченные темы — `(всё снялось, сообщение для строки состояния)`.
+/// Remove the marked themes — `(everything removed, message for the status line)`.
 ///
-/// Перед снятием каждая тема проверяется заново: путь всё ещё прямой потомок
-/// каталога тем пользователя, и тема не включена ни в одном виде
-/// (`in_use`, по живой карте включённого). Снятые пути уходят и из журнала
-/// установленных (`log_path`): запись, у которой на диске ничего не
-/// осталось, забывается — плитка магазина перестаёт звать тему
-/// установленной. Сайдкар-превью снимается заодно.
+/// Before removal each theme is checked again: the path is still a direct child
+/// of a user theme directory, and the theme is not enabled in any kind (`in_use`,
+/// by the live map of what is enabled). The removed paths also go out of the
+/// installed log (`log_path`): a record with nothing left on disk is forgotten —
+/// the store tile stops calling the theme installed. The sidecar preview is
+/// removed along the way.
 ///
-/// Виджет Conky (плитка `local:conky:…`) не стирается, а уходит в корзину
-/// `home_trash` ([`crate::utils::move_to_trash`]) — как у запущенного и
-/// найденного на диске (`conky_scan::stop_and_trash`): у виджета бывают
-/// правки человека, и вернуть его должно быть можно и после строки «Вернуть».
+/// A Conky widget (tile `local:conky:…`) is not erased but goes to the trash
+/// `home_trash` ([`crate::utils::move_to_trash`]) — like a running one and one
+/// found on disk (`conky_scan::stop_and_trash`): a widget may carry the person's
+/// edits, and it must be possible to restore it even after the «Undo» bar.
 pub fn commit(
     pending: Vec<PendingRemoval>,
     roots: &RemovalRoots,
@@ -531,15 +535,15 @@ pub fn commit(
     let date = crate::utils::trash_deletion_date_now();
     let mut removed_paths: HashSet<String> = HashSet::new();
     let mut problems: Vec<String> = Vec::new();
-    // Покупки магазина в общем журнале установки (шаг 3г слияния
-    // установщиков): записанную тему снимает журнал — вместе с её ссылкой
-    // `~/.themes`; тему, положенную не магазином, — прежним путём.
+    // Store purchases in the shared install journal (step 3d of merging the
+    // installers): a recorded theme is removed by the journal — together with its
+    // `~/.themes` link; a theme not put in by the store — the former way.
     let journal = crate::install_journal::store_view(log_path);
     for p in pending {
         match roots.verdict(&p.path, false, &empty, &HashSet::new()) {
             Verdict::Local { .. } => {}
             Verdict::Hidden => {
-                // Уже нет на диске — снимать нечего, но журнал поправить.
+                // Already gone from disk — nothing to remove, but fix the log.
                 removed_paths.insert(p.path.clone());
                 removed_names.push(p.name);
                 continue;
@@ -612,13 +616,13 @@ pub fn commit(
     (problems.is_empty(), message)
 }
 
-/// Шаги снятия пути `path` по записи покупки общего журнала, в которой он
-/// записан ([`crate::install_journal::part_removal`]): сам путь и его ссылка
-/// `~/.themes`. `None` — путь не из магазина.
+/// Steps to remove the path `path` by the purchase record of the shared journal
+/// that recorded it ([`crate::install_journal::part_removal`]): the path itself
+/// and its `~/.themes` link. `None` — the path is not from the store.
 ///
-/// Плитка — то, что человек видит на диске и сам велел удалить: если журнал
-/// сам путь оставил бы (на месте теперь не то, что клали), снимается, как
-/// прежде, то, что лежит на диске.
+/// The tile is what the person sees on disk and told to remove: if the journal
+/// would leave the path itself (what lies there now is not what was put), what
+/// lies on disk is removed, as before.
 fn journal_part(journal: &crate::install_journal::Journal, path: &str) -> Option<Vec<crate::ext_manager::ExtStep>> {
     use crate::install_journal::{part_removal, probe_live, removal_path, Source};
     let r = journal
@@ -631,7 +635,7 @@ fn journal_part(journal: &crate::install_journal::Journal, path: &str) -> Option
     (own || std::fs::symlink_metadata(path).is_err()).then_some(r.steps)
 }
 
-/// Исполнить файловые шаги снятия; первая ошибка — отказ.
+/// Carry out the file removal steps; the first error is a refusal.
 fn remove_steps(steps: &[crate::ext_manager::ExtStep]) -> std::io::Result<()> {
     use crate::ext_manager::ExtStep;
     for step in steps {
@@ -644,8 +648,8 @@ fn remove_steps(steps: &[crate::ext_manager::ExtStep]) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Снять то, что лежит по пути (каталог — целиком, ссылку — саму); нет — и
-/// снимать нечего.
+/// Remove what lies at the path (a directory — whole, a symlink — itself);
+/// nothing there — nothing to remove.
 fn remove_on_disk(path: &str) -> std::io::Result<()> {
     match std::fs::symlink_metadata(path) {
         Ok(m) if m.is_dir() => std::fs::remove_dir_all(path),
@@ -655,30 +659,33 @@ fn remove_on_disk(path: &str) -> std::io::Result<()> {
     }
 }
 
-/// Убрать то, что тема оставляет рядом с собой, после того как снят её
-/// путь `removed`. ОДНО поведение у обоих удалений: «Удалить» на плитке
-/// ([`commit`]) и удаления по журналу покупки
-/// (`appearance_installer::uninstall_from_log`) — прежде журнал оставлял
-/// висячую ссылку `~/.themes/<тема>` (дефект Д4, 25.10.2026).
+/// Clean up what a theme leaves next to itself after its path `removed` is
+/// removed. ONE behaviour for both removals: «Remove» on the tile ([`commit`])
+/// and removal by the purchase log (`appearance_installer::uninstall_from_log`)
+/// — previously the log left a dangling link `~/.themes/<theme>` (defect D4,
+/// 25.10.2026).
 ///
-/// * тема из `~/.local/share/themes` — её ссылка в `~/.themes`
-///   ([`crate::installed_scan::drop_theme_link`]; чужую ссылку и тему не трогает);
-/// * спайс Cinnamon — переводы, настройки, у действия Nemo — его каталог.
+/// * a theme from `~/.local/share/themes` — its link in `~/.themes`
+///   ([`crate::installed_scan::drop_theme_link`]; doesn't touch someone else's
+///   link and theme);
+/// * a Cinnamon spice — translations, settings, for a Nemo action — its
+///   directory.
 ///
-/// С шага 3г слияния установщиков ссылку темы ПОКУПКИ снимает общий журнал
-/// установки (она записана в покупке, [`crate::install_journal::Placed::of`]),
-/// и удаление по журналу покупки зовёт отсюда только уборку спайса. Целиком
-/// уборка остаётся у плитки: тема в `~/.local/share/themes`, положенная не
-/// магазином (руками, другим установщиком), в журнале не записана, а ссылку
-/// ей `sync_theme_links` ставит всё равно; переводы и настройки спайса в
-/// журнал не пишутся вовсе.
+/// Since step 3d of merging the installers the link of a PURCHASED theme is
+/// removed by the shared install journal (it is recorded in the purchase,
+/// [`crate::install_journal::Placed::of`]), and removal by the purchase log
+/// calls only the spice cleanup from here. The full cleanup stays with the tile:
+/// a theme in `~/.local/share/themes` put in not by the store (by hand, by
+/// another installer) is not recorded in the journal, while `sync_theme_links`
+/// gives it a link anyway; spice translations and settings are not written to
+/// the journal at all.
 pub fn tidy_after_removal(home: &str, removed: &str) {
     crate::installed_scan::drop_theme_link(home, removed);
     crate::cinnamon_spices::cleanup_after_removal(&crate::cinnamon_spices::SpiceEnv::for_home(home), removed);
 }
 
-/// Снять сайдкар-превью плитки `local:<вид>:<имя>` (кеш картинки темы без
-/// своего превью). Нет файла — нечего делать.
+/// Remove the sidecar preview of tile `local:<kind>:<name>` (the cached picture
+/// of a theme without its own preview). No file — nothing to do.
 fn remove_sidecar(home: &str, item_id: &str) {
     let Some((kind, name)) = item_id.strip_prefix("local:").and_then(|r| r.split_once(':')) else {
         return;
@@ -686,10 +693,10 @@ fn remove_sidecar(home: &str, item_id: &str) {
     let _ = std::fs::remove_file(sidecar_preview_path(home, kind, name));
 }
 
-/// Убрать снятые пути из журнала установленных; запись без единого пути на
-/// диске забыть. Записей нет или журнал не менялся — ничего не писать.
-/// Пишется общий журнал установки, `ocs_installed.json` — его зеркало (шаг
-/// 5б слияния установщиков).
+/// Remove the removed paths from the installed log; forget a record without a
+/// single path on disk. No records or the log did not change — write nothing.
+/// The shared install journal is written, `ocs_installed.json` is its mirror
+/// (step 5b of merging the installers).
 fn forget_in_journal(log_path: &str, removed: &HashSet<String>) -> Result<(), String> {
     let mut data = crate::install_journal::store_log_view(log_path);
     let mut changed = false;
@@ -697,7 +704,7 @@ fn forget_in_journal(log_path: &str, removed: &HashSet<String>) -> Result<(), St
     for (id, rec) in data.iter_mut() {
         let Some(paths) = rec.get_mut("paths").and_then(Value::as_array_mut) else { continue };
         let before = paths.len();
-        // Снятая папка темы уносит и части, лёгшие в неё подпапками.
+        // A removed theme folder also takes away the parts that went into it as subfolders.
         paths.retain(|v| v.as_str().map(|s| !removed_covers(removed, s)).unwrap_or(true));
         if paths.len() != before {
             changed = true;
@@ -716,14 +723,14 @@ fn forget_in_journal(log_path: &str, removed: &HashSet<String>) -> Result<(), St
     crate::install_journal::put_store_log(log_path, &data).map_err(|e| e.to_string())
 }
 
-/// Снят ли путь `p` — сам или вместе с папкой, в которой лежал.
+/// Whether the path `p` was removed — by itself or together with the folder it was in.
 fn removed_covers(removed: &HashSet<String>, p: &str) -> bool {
     let p = p.trim_end_matches('/');
     removed.contains(p) || removed.iter().any(|r| p.starts_with(&format!("{r}/")))
 }
 
-/// Плитка встроенной рамки KDE ([`crate::kdecoration`]), которую не
-/// удаляют: всё, что лежит не в доме человека.
+/// A tile of a built-in KDE border ([`crate::kdecoration`]) that is not
+/// removed: everything that lies outside the person's home.
 fn builtin_decoration_without_removal(item: &ThemeItem, home: &str) -> bool {
     let builtin = item
         .id
@@ -734,36 +741,37 @@ fn builtin_decoration_without_removal(item: &ThemeItem, home: &str) -> bool {
     builtin && !item.install_path.starts_with(&home)
 }
 
-// ── Живые обёртки ──────────────────────────────────────────────────────
+// ── Live wrappers ──────────────────────────────────────────────────────
 
 fn live_home() -> String {
     std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
 }
 
-/// Журнал установленных этой машины.
+/// The installed log of this machine.
 pub fn live_log_path() -> String {
     let xdg = std::env::var("XDG_CONFIG_HOME").ok().filter(|v| !v.is_empty());
     crate::ocs_store::install_log_path_xdg(xdg.as_deref(), &live_home())
 }
 
-/// Решения по плиткам одного скана: каталоги и журнал читаются один раз.
+/// Decisions for the tiles of one scan: the directories and the log are read once.
 pub struct LiveRemoval {
     roots: RemovalRoots,
     journal: Map<String, Value>,
-    /// Системные темы без пакета-владельца; спрашивается у пакетной базы
-    /// один раз и только когда попалась плитка из их каталогов.
+    /// System themes without an owner package; the package database is asked once
+    /// and only when a tile from their directories comes up.
     loose: std::cell::OnceCell<HashSet<String>>,
 }
 
-/// Нужен ли плитке ответ «у каких тем экрана входа и заставки нет
-/// пакета-владельца» ([`crate::installed_scan::LiveScan::loose_system_themes`]).
+/// Whether a tile needs the answer "which login screen and boot splash themes
+/// have no owner package"
+/// ([`crate::installed_scan::LiveScan::loose_system_themes`]).
 ///
-/// Ответ дорогой: один `pacman -Qo` на все каталоги тем SDDM и Plymouth
-/// читает списки файлов всех пакетов. 08.11.2026 на стенде он шёл 5 с, а на
-/// живой машине под нагрузкой диска раздел «Активные» из-за него висел на
-/// «Загрузка…» 20–60 с — ради включённой заставки загрузки, которой
-/// «Удалить» всё равно закрыто («сейчас используется»,
-/// [`RemovalRoots::verdict`] отвечает раньше, чем смотрит на ответ).
+/// The answer is expensive: one `pacman -Qo` over all SDDM and Plymouth theme
+/// directories reads the file lists of all packages. On 08.11.2026 it took 5 s
+/// on the bench, and on the live machine under disk load the «Active» section
+/// hung on "Loading…" for 20–60 s because of it — for the sake of an enabled
+/// boot splash whose «Remove» is closed anyway ("in use now",
+/// [`RemovalRoots::verdict`] answers before looking at the answer).
 fn loose_needed(in_helper_dir: bool, active: bool) -> bool {
     in_helper_dir && !active
 }
@@ -777,10 +785,10 @@ impl LiveRemoval {
         }
     }
 
-    /// Решение по плитке.
+    /// Decision for a tile.
     pub fn verdict(&self, item: &ThemeItem) -> Verdict {
-        // Виджет Conky «Найдено на диске» (имя — путь): свои правила, и
-        // запущенный снимается тоже — сначала гаснет.
+        // A Conky widget from «🔎 Found on disk» (the name is the path): its own rules,
+        // and a running one is removed too — it stops first.
         let found = item.id.strip_prefix("local:conky:").is_some_and(crate::conky_scan::is_found_name);
         if found {
             return match crate::conky_scan::live_found_removal(&item.install_path) {
@@ -789,9 +797,9 @@ impl LiveRemoval {
                 Err(reason) => Verdict::Blocked { reason },
             };
         }
-        // Встроенная рамка KDE (`local:aurorae:<модуль>/<тема>`): модуль Qt
-        // (Breeze, Oxygen) и пакет темы QML из системы приходят с Plasma, у
-        // KDE кнопки удаления у них нет — и у нас тоже.
+        // A built-in KDE border (`local:aurorae:<module>/<theme>`): a Qt module
+        // (Breeze, Oxygen) and a system QML theme package come with Plasma; KDE has no
+        // remove button for them — and neither do we.
         if builtin_decoration_without_removal(item, &live_home()) {
             return Verdict::Hidden;
         }
@@ -813,7 +821,7 @@ impl LiveRemoval {
         } else {
             &none
         };
-        // Рамка, лёгшая подпапкой в тему GTK: снимается только подпапка.
+        // A border that went as a subfolder into a GTK theme: only the subfolder is removed.
         let kind = item.id.strip_prefix("local:").and_then(|r| r.split_once(':')).map(|(k, _)| k).unwrap_or("");
         let target = if part_subdir(kind).is_some() {
             let subdirs: Vec<String> = std::fs::read_dir(path)
@@ -831,15 +839,15 @@ impl LiveRemoval {
         self.roots.verdict(&target, active, &self.journal, loose)
     }
 
-    /// Вопрос перед снятием папки `path` (решение «Удалить» плитки), если в
-    /// ней лежат отдельно поставленные части ([`separate_parts_question`]).
+    /// The question before removing the folder `path` (the tile's «Remove»
+    /// decision) if it holds separately installed parts ([`separate_parts_question`]).
     pub fn separate_parts_question(&self, path: &str, theme: &str) -> Option<(String, String)> {
         separate_parts_question(theme, &separate_parts_inside(&self.journal, path, None))
     }
 }
 
-/// Вопрос перед «Удалить» покупки `content_id` по журналу: в её папках
-/// лежат отдельно поставленные части ([`separate_parts_question`]).
+/// The question before «Remove» of purchase `content_id` by the log: its folders
+/// hold separately installed parts ([`separate_parts_question`]).
 pub fn live_uninstall_question(content_id: &str) -> Option<(String, String)> {
     let journal = crate::install_journal::store_log_view(&live_log_path());
     let rec = journal.get(content_id)?;
@@ -855,9 +863,9 @@ pub fn live_uninstall_question(content_id: &str) -> Option<(String, String)> {
     separate_parts_question(&theme, &parts)
 }
 
-/// Свой виджет Conky запущен: то, что было бы обычным «Удалить» своей темы
-/// (`base` — решение как для невключённой), становится «остановить и
-/// удалить»; прочие решения (кнопки нет, недоступна) — как есть.
+/// An own Conky widget is running: what would be a regular «Remove» of an own
+/// theme (`base` — the decision as for a non-enabled one) becomes "stop and
+/// remove"; other decisions (no button, disabled) stay as they are.
 fn running_conky_verdict(base: Verdict) -> Verdict {
     match base {
         Verdict::Local { path } => Verdict::RunningConky { path },
@@ -865,10 +873,10 @@ fn running_conky_verdict(base: Verdict) -> Verdict {
     }
 }
 
-/// Снять свой запущенный виджет Conky `path` (плитка `item_id`): его
-/// процессы гаснут по номерам, запись автозапуска уходит, папка — в корзину
-/// (`conky_scan::live_remove_running_own`); затем, как у [`commit`], путь
-/// уходит из журнала установленных и снимается сайдкар-превью.
+/// Remove an own running Conky widget `path` (tile `item_id`): its processes
+/// are stopped by PID, the autostart entry goes away, the folder goes to the
+/// trash (`conky_scan::live_remove_running_own`); then, as in [`commit`], the
+/// path leaves the installed log and the sidecar preview is removed.
 pub fn live_remove_running_conky(path: &str, item_id: &str) -> (bool, String) {
     let (ok, msg) = crate::conky_scan::live_remove_running_own(path);
     if ok {
@@ -887,9 +895,9 @@ impl Default for LiveRemoval {
     }
 }
 
-/// Снять помеченное на этой машине. `de` — рабочий стол вкладки (ключ Rexon):
-/// по нему карта включённого знает разделы окружения. Читает настройки
-/// окружения (может звать `gsettings`) — не из потока интерфейса.
+/// Remove the marked items on this machine. `de` is the tab's desktop (Rexon
+/// key): by it the map of what is enabled knows the desktop's sections. Reads
+/// the desktop settings (may call `gsettings`) — not from the UI thread.
 pub fn live_commit(pending: Vec<PendingRemoval>, de: &str) -> (bool, String) {
     if pending.is_empty() {
         return (true, String::new());
@@ -897,19 +905,20 @@ pub fn live_commit(pending: Vec<PendingRemoval>, de: &str) -> (bool, String) {
     let home = live_home();
     let roots = RemovalRoots::new(&home, "/usr");
     let mut scan = crate::installed_scan::LiveScan::new(Vec::new(), Default::default()).with_de(de);
-    // Экран входа к удалению своих тем отношения не имеет — `systemctl` не зовём.
+    // The login screen has nothing to do with removing own themes — `systemctl` is not called.
     scan.plasma_login = Some(false);
     let active = scan.active_map();
     let paths: Vec<String> = pending.iter().map(|p| p.path.clone()).collect();
     let xdg_data = std::env::var("XDG_DATA_HOME").ok();
     let trash = crate::utils::home_trash_dir(xdg_data.as_deref(), &home);
     let outcome = commit(pending, &roots, &|p| roots.in_use(p, &active), &home, &live_log_path(), Path::new(&trash));
-    // Тема из файла Windows стояла ещё и расширением — запись снимаем вместе
-    // с ней, иначе она остаётся в каталоге расширений навсегда.
+    // A theme from a Windows file was also installed as an extension — its entry
+    // is removed together with it, otherwise it stays in the extensions directory
+    // forever.
     let gone: Vec<String> = paths.into_iter().filter(|p| !present(p)).collect();
-    // Снятый виджет Conky из каталога Rexon: его процессы гаснут (по номерам),
-    // запись автозапуска уходит — иначе при входе conky звал бы файл, которого
-    // нет. Не виджет — ничего не делается.
+    // A removed Conky widget from the Rexon directory: its processes are stopped
+    // (by PID), the autostart entry goes away — otherwise on login conky would call
+    // a file that doesn't exist. Not a widget — nothing is done.
     let ctx = crate::de_apply::Ctx::live();
     for p in &gone {
         crate::de_apply::conky_forget_widget(&crate::animations::SystemIo, &ctx, p);
@@ -920,12 +929,12 @@ pub fn live_commit(pending: Vec<PendingRemoval>, de: &str) -> (bool, String) {
     outcome
 }
 
-// ── «Удалить» у товара магазина ─────────────────────────────────────────
+// ── «Remove» on a store item ────────────────────────────────────────────
 
-/// Пути покупки `content_id` на диске: из журнала установленных (KDE Store,
-/// Cinnamon Spices; прежние записи `github:…` — так же). У спайса Cinnamon — ещё и его каталог: тема,
-/// поставленная окном настроек Cinnamon, в журнале не числится, а «Удалить»
-/// в витрине у неё есть.
+/// Paths of purchase `content_id` on disk: from the installed log (KDE Store,
+/// Cinnamon Spices; former `github:…` records — likewise). For a Cinnamon spice
+/// also its directory: a theme installed by the Cinnamon settings window is not
+/// in the log, yet it has «Remove» in the storefront.
 pub fn store_paths(journal: &Map<String, Value>, content_id: &str, home: &str) -> Vec<String> {
     let mut out: Vec<String> = journal
         .get(content_id)
@@ -941,18 +950,18 @@ pub fn store_paths(journal: &Map<String, Value>, content_id: &str, home: &str) -
     out
 }
 
-/// «Удалить» у товара магазина (кнопка деталей): включённую сейчас тему
-/// снять нельзя — та же проверка, что у плитки сетки установленного
-/// ([`RemovalRoots::in_use`]: тема GTK, рамки xfwm4 и Marco, оболочки GNOME
-/// и Cinnamon, значки, курсоры, цвета…), по путям покупки. `Some(причина)` —
-/// кнопка недоступна; `None` — удалять можно.
+/// «Remove» on a store item (the details button): the theme enabled now cannot
+/// be removed — the same check as for a tile of the installed grid
+/// ([`RemovalRoots::in_use`]: GTK theme, xfwm4 and Marco borders, GNOME and
+/// Cinnamon shells, icons, cursors, colors…), by the purchase paths.
+/// `Some(reason)` — the button is disabled; `None` — removal is allowed.
 pub fn store_blocked(paths: &[String], in_use: &dyn Fn(&str) -> bool) -> Option<String> {
     paths.iter().any(|p| in_use(p)).then(removal_active_reason)
 }
 
-/// [`store_blocked`] на этой машине для покупки `content_id`. `de` — рабочий
-/// стол вкладки (как у [`live_commit`]). Читает настройки окружения (может
-/// звать `gsettings`) — не из потока интерфейса.
+/// [`store_blocked`] on this machine for purchase `content_id`. `de` is the
+/// tab's desktop (as in [`live_commit`]). Reads the desktop settings (may call
+/// `gsettings`) — not from the UI thread.
 pub fn live_store_blocked(content_id: &str, de: &str) -> Option<String> {
     let home = live_home();
     let journal = crate::install_journal::store_log_view(&live_log_path());
@@ -973,7 +982,7 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
-    /// Временный HOME и подставной /usr — живой профиль не трогается.
+    /// Temporary HOME and a fake /usr — the live profile is not touched.
     fn sandbox(tag: &str) -> (PathBuf, String, String) {
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -1006,9 +1015,8 @@ mod tests {
         }
     }
 
-    /// Свой виджет Conky: не запущен — обычное отложенное «Удалить»;
-    /// запущен — не отказ, а «остановить и удалить»; недоступное и
-    /// отсутствующее остаются как были.
+    /// An own Conky widget: not running — the regular deferred «Remove»; running —
+    /// not a refusal but "stop and remove"; disabled and missing stay as they were.
     #[test]
     fn running_own_conky_is_stop_and_remove_not_refusal() {
         let (_root, home, usr) = sandbox("conky-running");
@@ -1045,7 +1053,7 @@ mod tests {
             mkdir(&dir);
             assert_eq!(roots.verdict(&dir, false, &journal, &HashSet::new()), Verdict::Local { path: dir.clone() }, "{dir}");
         }
-        // Цветовая схема: скан отдаёт путь без окончания, снимается файл.
+        // Color scheme: the scan gives the path without the suffix, the file is removed.
         let colors = format!("{home}/.local/share/color-schemes/Nord");
         touch(&format!("{colors}.colors"));
         assert_eq!(
@@ -1054,8 +1062,8 @@ mod tests {
         );
     }
 
-    /// Включённой теме экрана входа или заставки дорогой опрос владельцев не
-    /// нужен: «Удалить» у неё закрыто, что бы пакетная база ни ответила.
+    /// An enabled login screen or splash theme doesn't need the expensive owner
+    /// query: «Remove» is closed for it whatever the package database answers.
     #[test]
     fn active_helper_theme_skips_the_owner_query() {
         assert!(!loose_needed(true, true));
@@ -1066,7 +1074,7 @@ mod tests {
         let ply = format!("{usr}/share/plymouth/themes/cachyos-bootanimation");
         mkdir(&ply);
         let loose: HashSet<String> = [ply.clone()].into_iter().collect();
-        // Тот же ответ, что дал бы и полный опрос.
+        // The same answer the full query would give.
         assert_eq!(
             roots.verdict(&ply, true, &Map::new(), &HashSet::new()),
             roots.verdict(&ply, true, &Map::new(), &loose)
@@ -1088,7 +1096,7 @@ mod tests {
         let sys = format!("{usr}/share/icons/breeze");
         mkdir(&sys);
         assert_eq!(roots.verdict(&sys, false, &journal, &HashSet::new()), Verdict::Blocked { reason: removal_system_reason() });
-        // Plymouth не из журнала — тоже системная, помощник не зовём.
+        // Plymouth not from the log — also a system one, the helper is not called.
         let ply = format!("{usr}/share/plymouth/themes/spinner");
         mkdir(&ply);
         assert_eq!(roots.verdict(&ply, false, &journal, &HashSet::new()), Verdict::Blocked { reason: removal_system_reason() });
@@ -1096,14 +1104,14 @@ mod tests {
         let outside = root.join("elsewhere/Theme").to_string_lossy().into_owned();
         mkdir(&outside);
         assert_eq!(roots.verdict(&outside, false, &journal, &HashSet::new()), Verdict::Blocked { reason: removal_outside_reason() });
-        // Вложенный глубже каталог темы — не тема каталога тем.
+        // A theme directory nested deeper is not a theme of the theme directory.
         let nested = format!("{home}/.local/share/icons/Papirus/scalable");
         mkdir(&nested);
         assert_eq!(roots.verdict(&nested, false, &journal, &HashSet::new()), Verdict::Blocked { reason: removal_outside_reason() });
-        // Сам каталог тем — тоже нет.
+        // The theme directory itself is not either.
         let base = format!("{home}/.local/share/icons");
         assert!(!roots.verdict(&base, false, &journal, &HashSet::new()).enabled());
-        // Плитка без пути (Qt-стиль) — без кнопки.
+        // A tile without a path (Qt style) — no button.
         assert_eq!(roots.verdict("", false, &journal, &HashSet::new()), Verdict::Hidden);
     }
 
@@ -1116,8 +1124,8 @@ mod tests {
         let journal: Map<String, Value> =
             serde_json::from_value(serde_json::json!({"777": {"name": "Neon", "paths": [ply.clone()]}})).unwrap();
         assert_eq!(roots.verdict(&ply, false, &journal, &HashSet::new()), Verdict::Journal { content_id: "777".into() });
-        // Тема без записи журнала и без пакета-владельца — помощником по пути;
-        // включённую сейчас не снимаем и её.
+        // A theme without a log record and without an owner package — by the helper by
+        // path; the one enabled now is not removed either.
         let hand = format!("{usr}/share/plymouth/themes/by-hand");
         mkdir(&hand);
         let loose: HashSet<String> = [hand.clone()].into();
@@ -1127,13 +1135,13 @@ mod tests {
             roots.verdict(&hand, false, &journal, &HashSet::new()),
             Verdict::Blocked { reason: removal_system_reason() }
         );
-        // Включённую — не трогаем и через журнал.
+        // The enabled one is not touched via the log either.
         assert!(!roots.verdict(&ply, true, &journal, &HashSet::new()).enabled());
     }
 
-    /// Подписи плашки и подсказок «Удалить» не называют удаляемое темой:
-    /// через них идут и расширения GNOME, и виджеты, и значки, и шрифты
-    /// (живая проверка 15.11: «Тема «Caffeine» будет удалена»).
+    /// The captions of the bar and of the «Remove» hints don't call the removed item
+    /// a theme: GNOME extensions, widgets, icons and fonts go through them too (live
+    /// check 15.11: "The theme “Caffeine” will be removed").
     #[test]
     fn removal_texts_name_no_kind() {
         let one = vec!["Caffeine".to_string()];
@@ -1144,7 +1152,7 @@ mod tests {
         assert_eq!(removal_toast_text(&two), "2 items removed.");
         assert_eq!(removal_pending_text(&[]), "");
         assert_eq!(removal_toast_text(&[]), "");
-        // Плашку видят все виды плиток — у очереди нет развилки по виду.
+        // All tile kinds see the bar — the queue has no branching by kind.
         for id in ["local:gnomeext:caffeine@patapon.info", "local:conky:Clock", "local:icons:Papirus", "local:cursor:Bibata"] {
             let mut q = RemovalQueue::default();
             assert_eq!(q.mark("/h/x", "Caffeine", id), removal_pending_text(&one), "{id}");
@@ -1176,7 +1184,7 @@ mod tests {
         assert_eq!(q.mark("/h/.local/share/icons/A", "A", "local:icons:A"), removal_pending_text(&["A".into()]));
         let text = q.mark("/h/.local/share/color-schemes/Nord.colors", "Nord", "local:colors:Nord");
         assert_eq!(text, removal_pending_text(&["A".into(), "Nord".into()]));
-        // Повторная пометка ничего не добавляет.
+        // Marking again adds nothing.
         q.mark("/h/.local/share/icons/A", "A", "local:icons:A");
         q.retain_visible(&mut items);
         assert_eq!(items.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["local:widgetstyle:Fusion"]);
@@ -1194,13 +1202,13 @@ mod tests {
         touch(&format!("{gtk}/gtk-3.0/gtk.css"));
         let colors = format!("{home}/.local/share/color-schemes/Nord.colors");
         touch(&colors);
-        // Ссылка: снимается сама ссылка, цель остаётся.
+        // Symlink: the link itself is removed, the target stays.
         let target = format!("{home}/keep/Bibata");
         touch(&format!("{target}/index.theme"));
         let link = format!("{home}/.icons/Bibata");
         mkdir(&format!("{home}/.icons"));
         std::os::unix::fs::symlink(&target, &link).unwrap();
-        // Сайдкар-превью цветовой схемы.
+        // Sidecar preview of a color scheme.
         let side = sidecar_preview_path(&home, "colors", "Nord");
         touch(&side);
 
@@ -1217,7 +1225,7 @@ mod tests {
         .unwrap();
         mkdir(&format!("{home}/.local/share/plasma/desktoptheme/Keep"));
 
-        // Arc стал темой рамок xfwm4 в той же папке — она включена.
+        // Arc became the xfwm4 border theme in the same folder — it is enabled.
         let mut active = HashMap::new();
         active.insert("xfwm4".to_string(), "Arc".to_string());
         let kinds = roots.kinds_at(&format!("{home}/.themes"));
@@ -1275,9 +1283,9 @@ mod tests {
         assert!(present(&sys));
     }
 
-    /// Решение 3в: рамка, лёгшая подпапкой в тему GTK, удаляется одна —
-    /// тема GTK остаётся; тема GTK с отдельно поставленной рамкой внутри
-    /// спрашивает и уносит запись рамки из журнала.
+    /// Decision 3c: a border that went as a subfolder into a GTK theme is removed
+    /// alone — the GTK theme stays; a GTK theme with a separately installed border
+    /// inside asks and takes the border's record out of the log.
     #[test]
     fn frame_inside_gtk_theme_is_removed_alone() {
         let (_root, home, usr) = sandbox("frame-part");
@@ -1288,7 +1296,7 @@ mod tests {
         let subdirs = vec!["gtk-3.0".to_string(), "metacity-1".to_string()];
         let part = frame_part_target(&theme, "marco", &subdirs);
         assert_eq!(part, format!("{theme}/metacity-1"));
-        // Отдельная рамка и сама тема GTK — папка целиком.
+        // A separate border and the GTK theme itself — the whole folder.
         assert_eq!(frame_part_target(&theme, "marco", &["metacity-1".to_string()]), theme);
         assert_eq!(frame_part_target(&theme, "gtk", &subdirs), theme);
 
@@ -1298,7 +1306,7 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(roots.verdict(&part, false, &journal, &HashSet::new()), Verdict::Local { path: part.clone() });
-        // Включена тема GTK, а не рамка: рамку снять можно.
+        // The GTK theme is enabled, not the border: the border can be removed.
         let mut active = HashMap::new();
         active.insert("gtk".to_string(), "Arc".to_string());
         assert!(!roots.in_use(&part, &active));
@@ -1306,7 +1314,7 @@ mod tests {
         active.insert("marco".to_string(), "Arc".to_string());
         assert!(roots.in_use(&part, &active));
 
-        // Вопрос: у темы GTK внутри отдельная рамка; у самой рамки — нет.
+        // Question: the GTK theme has a separate border inside; the border itself doesn't.
         let inside = separate_parts_inside(&journal, &theme, None);
         assert_eq!(inside, [("11".to_string(), "Arc Marco".to_string())]);
         assert!(separate_parts_question("Arc", &inside).is_some_and(|(_, t)| t.contains("Arc Marco")));
@@ -1323,7 +1331,7 @@ mod tests {
         let data = crate::ocs_store::parse_installed_log(std::fs::read_to_string(&log).ok().as_deref());
         assert!(data.get("11").is_none() && data.get("10").is_some());
 
-        // Тема GTK целиком уносит и запись рамки, лежавшей внутри.
+        // The whole GTK theme also takes away the record of the border that lay inside.
         touch(&format!("{theme}/metacity-1/metacity-theme-3.xml"));
         std::fs::write(
             &log,
@@ -1338,11 +1346,11 @@ mod tests {
         assert!(data.is_empty(), "{data:?}");
     }
 
-    /// Шаг 3г: «Удалить» на плитке темы GTK из магазина снимает её по общему
-    /// журналу установки — тему и её ссылку `~/.themes`, а цвета той же
-    /// покупки остаются (и путь в журнале магазина). Тема, положенная не
-    /// магазином, снимается прежним путём — её ссылку снимает уборка
-    /// (`drop_theme_link`: журнал её не знает).
+    /// Step 3d: «Remove» on the tile of a GTK theme from the store removes it by the
+    /// shared install journal — the theme and its `~/.themes` link, while the colors
+    /// of the same purchase stay (and the path in the store log). A theme put in not
+    /// by the store is removed the former way — its link is removed by the cleanup
+    /// (`drop_theme_link`: the journal doesn't know it).
     #[test]
     fn store_gtk_tile_removal_goes_by_journal_with_its_link() {
         let (_root, home, usr) = sandbox("journal-tile");
@@ -1381,9 +1389,9 @@ mod tests {
         assert_eq!(data["10"]["paths"], serde_json::json!([colors]), "{data:?}");
     }
 
-    /// Свой невключённый виджет Conky после строки «Вернуть» уходит в
-    /// корзину freedesktop (файл и запись `.trashinfo`), а не стирается, —
-    /// как запущенный и найденный на диске; тема рядом снимается как прежде.
+    /// An own non-enabled Conky widget goes after the «Undo» bar to the freedesktop
+    /// trash (the file and a `.trashinfo` record) instead of being erased — like a
+    /// running one and one found on disk; a theme next to it is removed as before.
     #[test]
     fn own_conky_widget_goes_to_trash() {
         let (_root, home, usr) = sandbox("conky-trash");
@@ -1416,9 +1424,10 @@ mod tests {
         assert!(msg.contains(&removal_toast_text(&["Papirus".into()])), "{msg}");
     }
 
-    /// «Удалить» у товара магазина: та же защита включённой темы, что у
-    /// плитки, — по путям покупки из журнала, а у спайса Cinnamon и по его
-    /// каталогу (поставленного окном настроек Cinnamon в журнале нет).
+    /// «Remove» on a store item: the same protection of the enabled theme as for the
+    /// tile — by the purchase paths from the log, and for a Cinnamon spice also by
+    /// its directory (one installed by the Cinnamon settings window is not in the
+    /// log).
     #[test]
     fn store_item_removal_is_blocked_while_its_theme_is_on() {
         let roots = RemovalRoots::new("/h", "/u");
@@ -1431,8 +1440,8 @@ mod tests {
         assert_eq!(store_paths(&journal, "spices:theme:CBlack", "/h"), ["/h/.themes/CBlack"], "без повтора");
         assert_eq!(store_paths(&journal, "spices:theme:Mint-Y", "/h"), ["/h/.themes/Mint-Y"], "не из журнала — по каталогу");
         assert!(store_paths(&journal, "999", "/h").is_empty());
-        // Каждый вид, что ищет темы в ~/.themes, держит тему: GTK, рамки
-        // XFCE и MATE, оболочки GNOME и Cinnamon.
+        // Every kind that looks for themes in ~/.themes holds the theme: GTK, XFCE and
+        // MATE borders, GNOME and Cinnamon shells.
         for kind in ["gtk", "xfwm4", "marco", "gnomeshell", "cinnamontheme"] {
             let active = HashMap::from([(kind.to_string(), "CBlack".to_string())]);
             let paths = store_paths(&journal, "spices:theme:CBlack", "/h");
@@ -1440,7 +1449,7 @@ mod tests {
             let other = store_paths(&journal, "1234", "/h");
             assert_eq!(store_blocked(&other, &|p| roots.in_use(p, &active)), None, "{kind}: чужая тема не держит");
         }
-        // Значки из KDE Store — тот же путь.
+        // Icons from the KDE Store — the same path.
         let icons: Map<String, Value> =
             serde_json::from_value(serde_json::json!({"7": {"paths": ["/h/.local/share/icons/Papirus"]}})).unwrap();
         let active = HashMap::from([("icons".to_string(), "Papirus".to_string())]);
@@ -1453,12 +1462,12 @@ mod tests {
         let mut active = HashMap::new();
         active.insert("cursor".to_string(), "Bibata".to_string());
         active.insert("colors".to_string(), "Nord".to_string());
-        // Курсор лежит в каталоге значков — включён как курсор.
+        // The cursor lies in the icons directory — enabled as a cursor.
         assert!(roots.in_use("/h/.local/share/icons/Bibata", &active));
         assert!(roots.in_use("/h/.icons/Bibata", &active));
         assert!(roots.in_use("/h/.local/share/color-schemes/Nord.colors", &active));
         assert!(!roots.in_use("/h/.local/share/icons/Papirus", &active));
-        // Заставка из глобальной темы — тот же пакет look-and-feel.
+        // The splash from a global theme — the same look-and-feel package.
         active.insert("splash".to_string(), "org.x.desktop".to_string());
         assert!(roots.in_use("/h/.local/share/plasma/look-and-feel/org.x.desktop", &active));
     }
@@ -1471,7 +1480,7 @@ mod tests {
         assert!(builtin_decoration_without_removal(&breeze, home));
         let plastik = tile("local:aurorae:org.kde.kwin.aurorae/plastik", "/usr/share/kwin/decorations/plastik");
         assert!(builtin_decoration_without_removal(&plastik, home));
-        // Свой пакет темы QML и тема Aurorae SVG — по общим правилам.
+        // Own QML theme package and Aurorae SVG theme — by the general rules.
         let mine = tile("local:aurorae:org.kde.kwin.aurorae/mine", "/h/.local/share/kwin/decorations/mine");
         assert!(!builtin_decoration_without_removal(&mine, home));
         let svg = tile("local:aurorae:Sweet", "/usr/share/aurorae/themes/Sweet");

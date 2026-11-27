@@ -1,123 +1,123 @@
-//! Чистая логика заставки входа — порт `rexon/session_splash.py`.
+//! Pure logic of the login splash — port of `rexon/session_splash.py`.
 //!
-//! Оригинал (Qt-free, ~1600 строк) проигрывает выбранный webm полноэкранно
-//! СРАЗУ ПОСЛЕ ВХОДА в сессию (как `deck_startup.webm` на Steam Deck):
-//! скан заставок Steam (встроенные + инвентарь Points Shop), конфиг,
-//! «гибрид KSplash» (тема-постер + ранний systemd-юнит + эстафета
-//! ksplash→mpv), правило KWin «поверх всего», три пути прогона (Wayland
-//! Rust-хелпер rexon-splash-overlay / X11 override-redirect слой / оконный
-//! mpv) и autostart.
+//! The original (Qt-free, ~1600 lines) plays the chosen webm fullscreen
+//! RIGHT AFTER LOGIN into the session (like `deck_startup.webm` on the Steam Deck):
+//! the Steam splash scan (built-in + Points Shop inventory), the config,
+//! the «KSplash hybrid» (poster theme + early systemd unit + the
+//! ksplash→mpv relay), the KWin «above everything» rule, three run paths (the Wayland
+//! Rust helper rexon-splash-overlay / the X11 override-redirect layer / windowed
+//! mpv) and autostart.
 //!
-//! Здесь — ТОЛЬКО детерминированная часть: вход → выход, без файловой
-//! системы, сокетов и процессов. Наблюдения за средой (наличие бинарей,
-//! содержимое файлов, переменные окружения, вывод xrandr, байты из
-//! mpv-IPC-сокета) подаются ПАРАМЕТРАМИ; исполнение (Popen mpv/ffmpeg/
-//! systemctl/kwriteconfig6, unix-сокеты, flock, запись файлов, ожидания
-//! с таймаутами) остаётся в Python-шиме, который прогоняет построенные
-//! здесь argv/тексты/решения — образец подхода см. `system_plan.rs`.
+//! Here is ONLY the deterministic part: input → output, without the file
+//! system, sockets and processes. Observations of the environment (presence of binaries,
+//! file contents, environment variables, xrandr output, bytes from
+//! the mpv-IPC socket) are passed as PARAMETERS; execution (Popen of mpv/ffmpeg/
+//! systemctl/kwriteconfig6, unix sockets, flock, writing files, waits
+//! with timeouts) stays in the Python shim, which runs the argv/texts/decisions
+//! built here — for a sample of the approach see `system_plan.rs`.
 //!
-//! Принципиально непортируемое в ядро (живёт в Python / отдельном крейте):
-//!   * `_X11SplashOverlay` целиком — живой X11-клиент на ctypes+libX11
-//!     (окно/pixmap/XPutImage/событийный raise-цикл, время жизни = живое
-//!     соединение с X-сервером) + Pillow-масштабирование постера;
-//!   * сама эстафета `_hybrid_wait_and_unpause` и все poll-ожидания
-//!     (`time.monotonic`-циклы) — здесь только их константы-таймауты.
+//! Fundamentally non-portable into the core (lives in Python / a separate crate):
+//!   * `_X11SplashOverlay` as a whole — a live X11 client on ctypes+libX11
+//!     (window/pixmap/XPutImage/event-driven raise loop, lifetime = the live
+//!     connection to the X server) + Pillow scaling of the poster;
+//!   * the `_hybrid_wait_and_unpause` relay itself and all poll waits
+//!     (`time.monotonic` loops) — here only their timeout constants.
 //!
-//! Паритет байт-в-байт с живым Python — `tests/session_splash_parity.rs`
-//! (эталон снят read-only: HOME/XDG → temp, subprocess/socket замоканы,
-//! mpv/ffmpeg/systemctl/KWin НЕ запускались; пути нормализованы в /HOME и
+//! Byte-for-byte parity with live Python — `tests/session_splash_parity.rs`
+//! (the reference was recorded read-only: HOME/XDG → temp, subprocess/socket mocked,
+//! mpv/ffmpeg/systemctl/KWin were NOT started; paths normalized to /HOME and
 //! /usr/local/lib/rexon).
 //!
-//! ⚠️ Починенные при порте баги оригинала (правило #16 — не консервируем):
-//!   1. `_ensure_kwin_splash_rule`: при `[General]` без строк `rules=`/
-//!      `count=` Python выполнял `re.sub` вхолостую — новый блок правила
-//!      дописывался, но НЕ регистрировался в `rules=` (KWin его игнорирует).
-//!      Здесь недостающие ключи вписываются в секцию `[General]`.
-//!   2. `_mpv_ipc_get`: строка сокета с валидным JSON-НЕ-объектом (например
-//!      `[1,2]`) роняла `msg.get` AttributeError, который не перехватывался
-//!      (ловится только OSError) и мог уронить процесс заставки посреди
-//!      ожидания EOF. Здесь такие строки пропускаются.
-//!   3. `scan_startup_movies`: у файла инвентаря без «_» id брался из
-//!      ПОЛНОГО имени с расширением («weird.webm» → id/имя с «.webm»).
-//!      Здесь id берётся из стема («weird»); для нормальных имён
-//!      `<id>_<hash>.webm` поведение не меняется.
-//!   4. `_startup_movie_names`: `communityitemid: null` в JSON давал в
-//!      Python ключ-строку `"None"` (str(None)); здесь null/отсутствие —
-//!      пропуск записи, как и пустая строка.
-//!   5. Пути пользовательских конфигов игнорировали `$XDG_CONFIG_HOME`:
-//!      `~/.config` был вшит в `CONFIG_PATH`, `AUTOSTART_PATH`,
-//!      `SYSTEMD_UNIT_PATH`, ручной симлинк `plasma-workspace.target.wants`
-//!      и `kwinrulesrc`, хотя соседний `_ksplashrc_get` переменную уважал.
-//!      При нестандартном `XDG_CONFIG_HOME` юнит и `.desktop` писались
-//!      туда, где systemd/XDG их не ищут (заставка молча не включалась), а
-//!      правило KWin — мимо живого `kwinrulesrc`. Корень теперь один на
-//!      весь проект — [`crate::we_client::config_home`] (тот же класс
-//!      дефекта уже чинился там же, правило #12).
-//!   6. `preview_frame`: имя файла кэша кадра витрины считалось питоновским
-//!      `hash((abspath, mtime))`, а хеш строк в CPython солится
-//!      PYTHONHASHSEED и РАЗНЫЙ в каждом процессе — попадания в кэш не было
-//!      никогда, ffmpeg запускался на каждое открытие витрины, а каталог
-//!      кэша копил мусор. Здесь отпечаток детерминированный (FNV-1a).
-//!   7. `_appinfo_names`: рекурсивный разбор дерева на битом appinfo.vdf
-//!      упирался в RecursionError, а перехватывались только ValueError/
-//!      IndexError/struct.error — процесс падал. Здесь глубина ограничена.
+//! ⚠️ Bugs of the original fixed during the port (rule #16 — we do not preserve them):
+//!   1. `_ensure_kwin_splash_rule`: with `[General]` lacking the `rules=`/
+//!      `count=` lines Python ran `re.sub` to no effect — the new rule block
+//!      was appended but NOT registered in `rules=` (KWin ignores it).
+//!      Here the missing keys are written into the `[General]` section.
+//!   2. `_mpv_ipc_get`: a socket line with valid JSON that is NOT an object (for example
+//!      `[1,2]`) made `msg.get` raise an AttributeError that was not caught
+//!      (only OSError is caught) and could crash the splash process in the middle of
+//!      waiting for EOF. Here such lines are skipped.
+//!   3. `scan_startup_movies`: for an inventory file without «_» the id was taken from
+//!      the FULL name with the extension («weird.webm» → id/name with «.webm»).
+//!      Here the id is taken from the stem («weird»); for normal names
+//!      `<id>_<hash>.webm` the behavior does not change.
+//!   4. `_startup_movie_names`: `communityitemid: null` in JSON gave
+//!      Python the string key `"None"` (str(None)); here null/absence —
+//!      the record is skipped, as is an empty string.
+//!   5. User config paths ignored `$XDG_CONFIG_HOME`:
+//!      `~/.config` was baked into `CONFIG_PATH`, `AUTOSTART_PATH`,
+//!      `SYSTEMD_UNIT_PATH`, the manual symlink `plasma-workspace.target.wants`
+//!      and `kwinrulesrc`, although the neighbouring `_ksplashrc_get` honored the variable.
+//!      With a non-standard `XDG_CONFIG_HOME` the unit and the `.desktop` were written
+//!      where systemd/XDG do not look for them (the splash silently did not turn on), and
+//!      the KWin rule missed the live `kwinrulesrc`. The root is now one for
+//!      the whole project — [`crate::we_client::config_home`] (the same class
+//!      of defect was already fixed there, rule #12).
+//!   6. `preview_frame`: the cache file name of the showcase frame was computed by Python's
+//!      `hash((abspath, mtime))`, and string hashing in CPython is salted by
+//!      PYTHONHASHSEED and DIFFERS in every process — there was never a cache hit,
+//!      ffmpeg ran on every opening of the showcase, and the cache directory
+//!      piled up garbage. Here the fingerprint is deterministic (FNV-1a).
+//!   7. `_appinfo_names`: recursive tree parsing on a broken appinfo.vdf
+//!      hit RecursionError, while only ValueError/
+//!      IndexError/struct.error were caught — the process crashed. Here the depth is bounded.
 //!
-//! ⚠️ Самолечение связки ksplashrc (09.09.2026, доказано живьём). Гибрид
-//! держится на ОДНОЙ строке чужого файла — `Theme=` в группе `[KSplash]`
-//! пользовательского `ksplashrc`. Этот ключ пишем не только мы: его
-//! перезаписывает применение глобальной темы Plasma (KCM «Глобальная
-//! тема» / `plasma-apply-lookandfeel`, а также своя же вкладка
-//! «Оформление» — `ainst_lnf_component_plan`), а бывает и просто теряет,
-//! оставляя файл пустым. Тогда KSplash молча берёт тему из глобальной
-//! (`LookAndFeelPackage` в kdeglobals) и при входе на секунду показывает
-//! ШТАТНУЮ заставку Plasma — чёрный фон с логотипом KDE, — после чего
-//! поверх неё выпрыгивает наш ролик: бесшовная передача KSplash → mpv
-//! умирает, а конфиг гибрида, юнит и тема при этом целы, так что ни один
-//! признак «сломалось» наружу не выходит. Чинить руками бесполезно —
-//! следующее применение темы сломает снова. Поэтому реальный прогон
-//! заставки (`play`, ветка `blocking && hybrid` — то есть запуск из
-//! systemd-юнита при входе) СНАЧАЛА восстанавливает связку и только потом
-//! играет: нет каталога темы — перегенерировать, стоит чужая тема —
-//! вернуть свою (чужое значение при этом уходит в
-//! `prev_ksplash_theme`/`prev_ksplash_engine`, чтобы откат гибрида отдал
-//! покупателю его НАСТОЯЩУЮ тему, а не нашу). Неудача самолечения — только
-//! строка в журнал: ролик показать важнее.
+//! ⚠️ Self-healing of the ksplashrc setup (09.09.2026, proven live). The hybrid
+//! hangs on ONE line of someone else's file — `Theme=` in the `[KSplash]` group
+//! of the user's `ksplashrc`. We are not the only ones writing this key: it is
+//! overwritten by applying a Plasma global theme (the «Global
+//! Theme» KCM / `plasma-apply-lookandfeel`, and also our own
+//! «Appearance» tab — `ainst_lnf_component_plan`), and sometimes it is simply lost,
+//! leaving the file empty. Then KSplash silently takes the theme from the global one
+//! (`LookAndFeelPackage` in kdeglobals) and at login shows for a second the
+//! STOCK Plasma splash — a black background with the KDE logo — after which
+//! our clip pops up over it: the seamless KSplash → mpv handover
+//! dies, while the hybrid config, the unit and the theme stay intact, so not a single
+//! sign of «broken» comes out. Fixing it by hand is useless —
+//! the next theme application breaks it again. So a real splash
+//! run (`play`, the `blocking && hybrid` branch — i.e. a launch from the
+//! systemd unit at login) FIRST restores the setup and only then
+//! plays: no theme directory — regenerate it, a foreign theme is set —
+//! put ours back (the foreign value goes into
+//! `prev_ksplash_theme`/`prev_ksplash_engine`, so that the hybrid rollback returns
+//! the user their REAL theme, not ours). A self-healing failure is only
+//! a line in the log: showing the clip matters more.
 //!
-//! ⚠️ У самолечения есть обратная сторона, и она закрыта ЯВНЫМ ВОПРОСОМ, а
-//! не умолчанием: во вкладке «Оформление» покупатель волен выбрать СВОЮ
-//! заставку KDE, и молчаливый возврат нашей темы отменил бы его выбор.
-//! Разбор спора за слот — [`splash_slot_conflict`] ниже.
+//! ⚠️ Self-healing has a flip side, and it is closed by an EXPLICIT QUESTION, not
+//! by a default: in the «Appearance» tab the user is free to choose THEIR OWN
+//! KDE splash, and silently bringing our theme back would cancel their choice.
+//! Settling the dispute over the slot — [`splash_slot_conflict`] below.
 
 use crate::i18n::{n_, tr, trf};
 use crate::we_client::config_home;
 use serde_json::{Map, Value};
 
 // ============================================================================
-// Константы и пути (порт модульных констант; $HOME — параметром)
+// Constants and paths (port of module constants; $HOME is a parameter)
 // ============================================================================
 
-/// ID LnF-темы KSplash гибрида — порт `KSPLASH_THEME_ID`.
+/// ID of the hybrid's KSplash LnF theme — port of `KSPLASH_THEME_ID`.
 pub const KSPLASH_THEME_ID: &str = "org.rexon.sessionsplash";
-/// Имя systemd user-юнита — порт `SYSTEMD_UNIT_NAME`.
+/// Name of the systemd user unit — port of `SYSTEMD_UNIT_NAME`.
 pub const SYSTEMD_UNIT_NAME: &str = "rexon-session-splash.service";
-/// app_id окна mpv на Wayland (правило KWin матчится по нему) — порт
+/// app_id of the mpv window on Wayland (the KWin rule matches by it) — port of
 /// `_KWIN_APP_ID`.
 pub const KWIN_APP_ID: &str = "rexon-session-splash";
-/// Имя Rust-хелпера Wayland-оверлея.
+/// Name of the Rust helper of the Wayland overlay.
 pub const SPLASH_OVERLAY_BINARY: &str = "rexon-splash-overlay";
 
-/// Человеческие имена встроенных стартовых видео Steam — порт
-/// `_BUILTIN_NAMES` (порядок = порядок обхода при скане). Имя — `msgid`,
-/// переводится при скане (`tr`); латинские имена в каталог не попадают.
+/// Human names of Steam's built-in startup videos — port of
+/// `_BUILTIN_NAMES` (order = traversal order of the scan). The name is a `msgid`,
+/// translated during the scan (`tr`); Latin names do not go into the catalog.
 pub const BUILTIN_NAMES: &[(&str, &str)] = &[
     // TRANSLATORS: name of Steam's standard built-in startup movie.
     ("deck_startup", n_("Steam Deck (Default)")),
     ("oled_startup", "Steam Deck OLED"),
     ("bigpicture_startup", "Big Picture"),
-    // Ролики новых устройств Valve (клиент Steam, `steamui/sp.js`: выбор по
-    // типу устройства — SteamOS вообще, Steam Machine, Steam Frame; ролик
-    // «семейства» Steam играет на заводском образе Deck). Своих подписей
-    // у этих роликов в Steam нет — имена устройств он пишет латиницей.
+    // Clips of new Valve devices (the Steam client, `steamui/sp.js`: chosen by
+    // device type — SteamOS in general, Steam Machine, Steam Frame; the Steam
+    // «family» clip plays on the Deck's factory image). Steam has no labels of its own
+    // for these clips — it writes the device names in Latin script.
     ("steam_os_startup", "SteamOS"),
     ("startup_machine", "Steam Machine"),
     ("steamframe_startup_450x450", "Steam Frame"),
@@ -125,71 +125,71 @@ pub const BUILTIN_NAMES: &[(&str, &str)] = &[
     ("steam_os_family_startup", n_("Steam Deck (Factory Image)")),
 ];
 
-/// Бинари, обязательные для гибрида — порт списка в `hybrid_supported`.
+/// Binaries required for the hybrid — port of the list in `hybrid_supported`.
 pub const HYBRID_REQUIRED_BINARIES: &[&str] =
     &["ffmpeg", "kwriteconfig6", "kreadconfig6", "ksplashqml", "systemctl"];
 
-/// request_id запроса `get_property` в mpv-IPC — порт литерала 700.
+/// request_id of the `get_property` request in mpv-IPC — port of the literal 700.
 pub const MPV_IPC_REQUEST_ID: i64 = 700;
 
-// ── Таймауты ожиданий (сами циклы — в исполнителе) ─────────────────────────
+// ── Wait timeouts (the loops themselves are in the executor) ───────────────
 
-/// Ожидание IPC-сокета mpv в эстафете гибрида (`< TimeoutStartSec=15`).
+/// Waiting for mpv's IPC socket in the hybrid relay (`< TimeoutStartSec=15`).
 pub const HYBRID_SOCK_WAIT_SEC: f64 = 6.0;
-/// Ожидание появления ksplashqml после нашего старта.
+/// Waiting for ksplashqml to appear after our start.
 pub const KSPLASH_APPEAR_WAIT_SEC: f64 = 3.0;
-/// Потолок ожидания смерти ksplashqml (его свои страховки — 30 c + 40 c).
+/// Cap on waiting for ksplashqml to die (its own safety nets are 30 s + 40 s).
 pub const KSPLASH_DEATH_WAIT_SEC: f64 = 45.0;
-/// Потолок прогона видео (mpv/хелпер), после — принудительное гашение.
+/// Cap on the video run (mpv/helper), after which it is forcibly stopped.
 pub const PLAY_TIMEOUT_SEC: f64 = 120.0;
-/// Ранняя диагностика хелпера: сокет не поднялся за это время → фолбэк.
-/// Крах ловится отдельно и мгновенно, здесь ждём «жив, но не готов»:
-/// на холодном первом входе (пустой кэш libmpv/EGL/glslang, холодный GPU,
-/// первая компиляция шейдеров) инициализация раздувается, а убийство
-/// живого хелпера роняет заставку в дырявый оконный фолбэк, где панель
-/// пробивается поверх (инцидент 2026-07-25). Задержки не видно — всё это
-/// время ksplashqml держит постер. Инвариант: `<= HYBRID_SOCK_WAIT_SEC`,
-/// а худший случай до READY (6 + 6 = 12 c) < `TimeoutStartSec=15`.
+/// Early helper diagnostics: the socket did not come up within this time → fallback.
+/// A crash is caught separately and instantly, here we wait for «alive but not ready»:
+/// on a cold first login (empty libmpv/EGL/glslang cache, cold GPU,
+/// first shader compilation) initialization balloons, and killing
+/// a live helper drops the splash into the leaky windowed fallback, where the panel
+/// breaks through on top (incident 2026-07-25). The delay is not visible — all this
+/// time ksplashqml holds the poster. Invariant: `<= HYBRID_SOCK_WAIT_SEC`,
+/// and the worst case until READY (6 + 6 = 12 s) < `TimeoutStartSec=15`.
 pub const HELPER_SOCK_WAIT_SEC: f64 = 6.0;
-/// Ожидание композитора на холодном X11-входе (`wait_compositor`).
+/// Waiting for the compositor on a cold X11 login (`wait_compositor`).
 pub const COMPOSITOR_WAIT_SEC: f64 = 2.5;
-/// Страховочный интервал raise-цикла X11-слоя.
+/// Safety interval of the X11 layer's raise loop.
 pub const RAISE_INTERVAL_SEC: f64 = 0.5;
 
-/// `$XDG_CONFIG_HOME/rexon/session_splash.json` — порт `CONFIG_PATH`
-/// (починка №5: корень конфигов уважает переменную).
+/// `$XDG_CONFIG_HOME/rexon/session_splash.json` — port of `CONFIG_PATH`
+/// (fix #5: the config root honors the variable).
 pub fn config_path(xdg_config_home: Option<&str>, home: &str) -> String {
     let cfg = config_home(xdg_config_home, home);
     format!("{cfg}/rexon/session_splash.json")
 }
 
-/// `$XDG_CONFIG_HOME/autostart/rexon-session-splash.desktop` — порт
-/// `AUTOSTART_PATH` (починка №5).
+/// `$XDG_CONFIG_HOME/autostart/rexon-session-splash.desktop` — port of
+/// `AUTOSTART_PATH` (fix #5).
 pub fn autostart_path(xdg_config_home: Option<&str>, home: &str) -> String {
     let cfg = config_home(xdg_config_home, home);
     format!("{cfg}/autostart/rexon-session-splash.desktop")
 }
 
-/// Каталог LnF-темы гибрида — порт `LNF_THEME_DIR`.
+/// Directory of the hybrid's LnF theme — port of `LNF_THEME_DIR`.
 pub fn lnf_theme_dir(home: &str) -> String {
     format!("{home}/.local/share/plasma/look-and-feel/{KSPLASH_THEME_ID}")
 }
 
-/// Путь systemd user-юнита — порт `SYSTEMD_UNIT_PATH` (починка №5:
-/// при нестандартном `$XDG_CONFIG_HOME` юнит писался туда, где systemd
-/// его не ищет, и `enable` не находил юнит).
+/// Path of the systemd user unit — port of `SYSTEMD_UNIT_PATH` (fix #5:
+/// with a non-standard `$XDG_CONFIG_HOME` the unit was written where systemd
+/// does not look for it, and `enable` could not find the unit).
 pub fn systemd_unit_path(xdg_config_home: Option<&str>, home: &str) -> String {
     let cfg = config_home(xdg_config_home, home);
     format!("{cfg}/systemd/user/{SYSTEMD_UNIT_NAME}")
 }
 
-/// Каталог ручного enable-фолбэка `plasma-workspace.target.wants`.
+/// Directory of the manual enable fallback `plasma-workspace.target.wants`.
 pub fn systemd_wants_dir(xdg_config_home: Option<&str>, home: &str) -> String {
     let cfg = config_home(xdg_config_home, home);
     format!("{cfg}/systemd/user/plasma-workspace.target.wants")
 }
 
-/// Ручной симлинк enable-фолбэка в `plasma-workspace.target.wants`.
+/// The manual enable-fallback symlink in `plasma-workspace.target.wants`.
 pub fn systemd_wants_link(xdg_config_home: Option<&str>, home: &str) -> String {
     format!(
         "{}/{SYSTEMD_UNIT_NAME}",
@@ -197,8 +197,8 @@ pub fn systemd_wants_link(xdg_config_home: Option<&str>, home: &str) -> String {
     )
 }
 
-/// Кандидаты каталога Steam — порт кортежа в `steam_root` (исполнитель
-/// прогоняет их через realpath и проверяет наличие `config/`).
+/// Candidates for the Steam directory — port of the tuple in `steam_root` (the executor
+/// runs them through realpath and checks for `config/`).
 pub fn steam_root_candidates(home: &str) -> Vec<String> {
     vec![
         format!("{home}/.local/share/Steam"),
@@ -207,23 +207,23 @@ pub fn steam_root_candidates(home: &str) -> Vec<String> {
     ]
 }
 
-/// Путь пользовательского ksplashrc — порт вычисления в `_ksplashrc_get`
-/// (`$XDG_CONFIG_HOME` или `~/.config`; пустая строка = не задан).
+/// Path of the user's ksplashrc — port of the computation in `_ksplashrc_get`
+/// (`$XDG_CONFIG_HOME` or `~/.config`; an empty string = not set).
 pub fn ksplashrc_path(xdg_config_home: Option<&str>, home: &str) -> String {
     let cfg = config_home(xdg_config_home, home);
     format!("{cfg}/ksplashrc")
 }
 
-/// Путь kwinrulesrc — порт `os.path.expanduser("~/.config/kwinrulesrc")`
-/// (починка №5: правило KWin писалось мимо живого файла при нестандартном
+/// Path of kwinrulesrc — port of `os.path.expanduser("~/.config/kwinrulesrc")`
+/// (fix #5: the KWin rule was written past the live file with a non-standard
 /// `$XDG_CONFIG_HOME`).
 pub fn kwinrulesrc_path(xdg_config_home: Option<&str>, home: &str) -> String {
     let cfg = config_home(xdg_config_home, home);
     format!("{cfg}/kwinrulesrc")
 }
 
-/// Runtime-каталог — порт `_runtime_dir` (`$XDG_RUNTIME_DIR` или `/tmp`;
-/// пустая строка — falsy, как в Python).
+/// The runtime directory — port of `_runtime_dir` (`$XDG_RUNTIME_DIR` or `/tmp`;
+/// an empty string is falsy, as in Python).
 pub fn runtime_dir(xdg_runtime_dir: Option<&str>) -> String {
     match xdg_runtime_dir {
         Some(x) if !x.is_empty() => x.to_string(),
@@ -231,31 +231,31 @@ pub fn runtime_dir(xdg_runtime_dir: Option<&str>) -> String {
     }
 }
 
-/// flock-файл «один сплеш на сессию» — порт `_acquire_play_lock`.
+/// The «one splash per session» flock file — port of `_acquire_play_lock`.
 pub fn play_lock_path(runtime_dir: &str) -> String {
     format!("{runtime_dir}/rexon-session-splash.lock")
 }
 
-/// IPC-сокет mpv/хелпера — порт `ipc_sock` в `play`.
+/// IPC socket of mpv/the helper — port of `ipc_sock` in `play`.
 pub fn ipc_sock_path(runtime_dir: &str) -> String {
     format!("{runtime_dir}/rexon-splash-mpv.sock")
 }
 
-/// Свежевыжатый постер в runtime — порт `out` в `_poster_for_video`.
+/// A freshly extracted poster in runtime — port of `out` in `_poster_for_video`.
 pub fn runtime_poster_path(runtime_dir: &str) -> String {
     format!("{runtime_dir}/rexon-splash-poster.png")
 }
 
-/// Готовый постер темы KSplash — порт `theme_poster` в `_poster_for_video`.
+/// A ready KSplash theme poster — port of `theme_poster` in `_poster_for_video`.
 pub fn theme_poster_path(home: &str) -> String {
     format!("{}/contents/splash/images/poster.png", lnf_theme_dir(home))
 }
 
 // ============================================================================
-// Steam: имена из localconfig.vdf + скан заставок
+// Steam: names from localconfig.vdf + splash scan
 // ============================================================================
 
-/// Python-истинность JSON-значения (`or`-цепочки, `if not x`).
+/// Python truthiness of a JSON value (`or` chains, `if not x`).
 fn truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
@@ -267,21 +267,21 @@ fn truthy(v: &Value) -> bool {
     }
 }
 
-/// `dict.get(key, default)` — значение, если ключ есть (даже null).
+/// `dict.get(key, default)` — the value if the key exists (even null).
 fn get_or(obj: &Value, key: &str, default: Value) -> Value {
     obj.get(key).cloned().unwrap_or(default)
 }
 
-/// Найти в тексте VDF значение `"GetStartupMovies"` — семантика регекса
-/// `"GetStartupMovies"\s*"(.*?)"\s*[\r\n]` (re.S, lazy): закрывающая кавычка —
-/// первая, за которой идут только пробельные символы до `\r`/`\n`.
+/// Find the `"GetStartupMovies"` value in VDF text — the semantics of the regex
+/// `"GetStartupMovies"\s*"(.*?)"\s*[\r\n]` (re.S, lazy): the closing quote is
+/// the first one followed only by whitespace up to `\r`/`\n`.
 fn find_startup_movies_raw(txt: &str) -> Option<&str> {
     const NEEDLE: &str = "\"GetStartupMovies\"";
     let bytes = txt.as_bytes();
     let mut from = 0;
     while let Some(rel) = txt[from..].find(NEEDLE) {
         let mut i = from + rel + NEEDLE.len();
-        // \s* до открывающей кавычки
+        // \s* up to the opening quote
         while i < bytes.len() && (bytes[i] as char).is_whitespace() {
             i += 1;
         }
@@ -290,11 +290,11 @@ fn find_startup_movies_raw(txt: &str) -> Option<&str> {
             let mut j = start;
             while let Some(rel_q) = txt[j..].find('"') {
                 let q = j + rel_q;
-                // после кавычки: \s*[\r\n]
+                // after the quote: \s*[\r\n]
                 let mut k = q + 1;
                 loop {
                     if k >= bytes.len() {
-                        break; // EOF без \r\n → эта кавычка не подходит
+                        break; // EOF without \r\n → this quote does not fit
                     }
                     let c = bytes[k] as char;
                     if c == '\r' || c == '\n' {
@@ -313,16 +313,16 @@ fn find_startup_movies_raw(txt: &str) -> Option<&str> {
     None
 }
 
-/// communityitemid → {name, item_title, appid} из текста localconfig.vdf —
-/// порт разбора ОДНОГО файла в `_startup_movie_names` (обход userdata и
-/// слияние по пользователям — у исполнителя). Нет ключа/битый JSON → пусто.
+/// communityitemid → {name, item_title, appid} from localconfig.vdf text —
+/// port of parsing ONE file in `_startup_movie_names` (walking userdata and
+/// merging across users is on the executor). No key/broken JSON → empty.
 pub fn parse_startup_movie_names(vdf_text: &str) -> Value {
     let mut out = Map::new();
     let Some(raw) = find_startup_movies_raw(vdf_text) else {
         return Value::Object(out);
     };
-    // VDF-строка: внутренние кавычки экранированы \" → распакуем в JSON
-    // (последовательные replace — как в оригинале).
+    // A VDF string: inner quotes are escaped as \" → unpack into JSON
+    // (sequential replaces — as in the original).
     let unescaped = raw.replace("\\\"", "\"").replace("\\\\", "\\");
     let Ok(parsed) = serde_json::from_str::<Value>(&unescaped) else {
         return Value::Object(out);
@@ -331,8 +331,8 @@ pub fn parse_startup_movie_names(vdf_text: &str) -> Value {
         return Value::Object(out);
     };
     for e in entries {
-        // Порт `str(e.get("communityitemid", ""))`; починка №4: null →
-        // пропуск (в Python получался ключ "None").
+        // Port of `str(e.get("communityitemid", ""))`; fix #4: null →
+        // skip (Python produced the key "None").
         let cid = match e.get("communityitemid") {
             Some(Value::String(s)) => s.clone(),
             Some(Value::Number(n)) => n.to_string(),
@@ -360,8 +360,8 @@ pub fn parse_startup_movie_names(vdf_text: &str) -> Value {
     Value::Object(out)
 }
 
-/// Порт `os.path.splitext(...)[1].lower()`: расширение с точкой; ведущая
-/// точка скрытого файла расширением не считается.
+/// Port of `os.path.splitext(...)[1].lower()`: the extension with the dot; the leading
+/// dot of a hidden file does not count as an extension.
 fn splitext_ext_lower(name: &str) -> String {
     match name.rfind('.') {
         Some(pos) if pos > 0 && !name[..pos].chars().all(|c| c == '.') => {
@@ -371,14 +371,14 @@ fn splitext_ext_lower(name: &str) -> String {
     }
 }
 
-/// Доступные стартовые видео — порт `scan_startup_movies`, наблюдения
-/// параметрами: `builtin_present` — имена файлов в `<root>/steamui/movies`,
-/// `inventory_files` — листинг `<root>/config/communityitemscache/
-/// startupmovies` (несортированный, сортировка здесь — как `sorted()`),
-/// `names` — результат [`parse_startup_movie_names`] (слитый по юзерам),
-/// `custom_files` — листинг `<root>/config/uioverrides/movies` (свои ролики
-/// для Steam, см. [`custom_movie_records`]).
-/// Каждый элемент: `{id, name, path, builtin}`; у своих роликов ещё
+/// Available startup videos — port of `scan_startup_movies`, observations
+/// as parameters: `builtin_present` — file names in `<root>/steamui/movies`,
+/// `inventory_files` — listing of `<root>/config/communityitemscache/
+/// startupmovies` (unsorted, sorting here — like `sorted()`),
+/// `names` — the result of [`parse_startup_movie_names`] (merged across users),
+/// `custom_files` — listing of `<root>/config/uioverrides/movies` (custom clips
+/// for Steam, see [`custom_movie_records`]).
+/// Each element: `{id, name, path, builtin}`; custom clips also have
 /// `origin`, `origin_label`, `title`, `thumb`.
 pub fn scan_movies(
     root: &str,
@@ -390,7 +390,7 @@ pub fn scan_movies(
     let mut result: Vec<Value> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
 
-    // Встроенные стартовые видео.
+    // Built-in startup videos.
     let movies = format!("{root}/steamui/movies");
     for (key, nice) in BUILTIN_NAMES {
         let fname = format!("{key}.webm");
@@ -406,7 +406,7 @@ pub fn scan_movies(
         }
     }
 
-    // Инвентарь (Points Shop) — с человеческими именами из кэша.
+    // Inventory (Points Shop) — with human names from the cache.
     let sm_dir = format!("{root}/config/communityitemscache/startupmovies");
     let mut sorted_files: Vec<&String> = inventory_files.iter().collect();
     sorted_files.sort();
@@ -420,8 +420,8 @@ pub fn scan_movies(
             continue;
         }
         seen.push(path.clone());
-        // Починка №3: id из СТЕМА (без расширения) — в Python
-        // `fn.split("_", 1)[0]` у имени без «_» захватывал «.webm».
+        // Fix #3: id from the STEM (without the extension) — in Python
+        // `fn.split("_", 1)[0]` of a name without «_» captured «.webm».
         let stem = &fname[..fname.len() - ext.len()];
         let cid = stem.split('_').next().unwrap_or(stem).to_string();
         let nice = names
@@ -441,7 +441,7 @@ pub fn scan_movies(
         result.push(Value::Object(m));
     }
 
-    // Свои ролики — третий источник, как в самом Steam.
+    // Custom clips — the third source, as in Steam itself.
     for rec in custom_movie_records(root, custom_files) {
         let path = rec["path"].as_str().unwrap_or_default().to_string();
         if !seen.contains(&path) {
@@ -452,19 +452,19 @@ pub fn scan_movies(
     result
 }
 
-/// Свои ролики Steam: `<root>/config/uioverrides/movies/*.webm`.
+/// Steam custom clips: `<root>/config/uioverrides/movies/*.webm`.
 ///
-/// Так их видит сам клиент (`steamui.so`: маска `*.webm`, адрес
-/// `/uioverrides/movies/%s`; `sp.js` `GetLocalStartupMovies`, в списке
-/// «Кастомизация → Стартовый ролик» имя = имя файла). Маска — как у Steam,
-/// с учётом регистра; скрытые файлы (недокачанные копии) пропускаются.
-/// Миниатюру `.jpg` Steam делает сам (`GenerateLocalStartupMoviesThumbnails`,
-/// строка `%s.jpg`); из бинаря не видно, клеит он `.jpg` к стему или к имени
-/// целиком, поэтому принимаются оба (`<стем>.jpg` первым). Нет — `thumb`
-/// пустой, кадр витрины тогда делает ffmpeg, как у остальных.
+/// That is how the client itself sees them (`steamui.so`: mask `*.webm`, address
+/// `/uioverrides/movies/%s`; `sp.js` `GetLocalStartupMovies`, in the
+/// «Customization → Startup Movie» list the name = the file name). The mask is as in Steam,
+/// case-sensitive; hidden files (partially downloaded copies) are skipped.
+/// Steam makes the `.jpg` thumbnail itself (`GenerateLocalStartupMoviesThumbnails`,
+/// the string `%s.jpg`); the binary does not show whether it appends `.jpg` to the stem or to the
+/// whole name, so both are accepted (`<stem>.jpg` first). None — `thumb` is
+/// empty, and then ffmpeg makes the showcase frame, as for the others.
 ///
-/// `id` — полный путь (как у вручную выбранного файла, [`describe_custom`]):
-/// имя может совпасть с встроенным `deck_startup`.
+/// `id` is the full path (as for a manually chosen file, [`describe_custom`]):
+/// the name may coincide with the built-in `deck_startup`.
 pub fn custom_movie_records(root: &str, files: &[String]) -> Vec<Value> {
     let dir = steam_custom_movies_dir(root);
     let mut sorted: Vec<&String> = files.iter().collect();
@@ -500,28 +500,28 @@ pub fn custom_movie_records(root: &str, files: &[String]) -> Vec<Value> {
     out
 }
 
-/// Подпись своего ролика из папки Steam. Отличается от «Свой файл»
-/// ([`origin_label`] для [`ORIGIN_CUSTOM`]) намеренно: файл где-то на диске
-/// видит только Rexon, а ролик из `uioverrides/movies` — и сам Steam.
+/// Label of a custom clip from the Steam folder. Deliberately differs from «Own file»
+/// ([`origin_label`] for [`ORIGIN_CUSTOM`]): a file somewhere on disk
+/// is seen only by Rexon, while a clip from `uioverrides/movies` is seen by Steam itself too.
 pub fn custom_movie_label() -> String {
     // TRANSLATORS: where a startup movie comes from: the user's own movie in Steam's folder for custom startup movies (Steam shows it too).
     tr("Your own movie")
 }
 
 // ============================================================================
-// Витрина заставок: метаданные предмета Steam, постер, избранное, ротация
+// Splash showcase: Steam item metadata, poster, favorites, rotation
 // ============================================================================
 
-/// Ролик, встроенный в клиент Steam.
+/// A clip built into the Steam client.
 pub const ORIGIN_BUILTIN: &str = "builtin";
-/// Ролик, купленный в Points Shop (инвентарь).
+/// A clip bought in the Points Shop (inventory).
 pub const ORIGIN_SHOP: &str = "shop";
-/// Файл, выбранный покупателем вручную.
+/// A file chosen by the user by hand.
 pub const ORIGIN_CUSTOM: &str = "custom";
 
-/// Человеческая подпись происхождения — без жаргона (правило #13).
-/// Неизвестное значение даёт пустую строку: пустая метка в карточке не
-/// рисуется, а «origin=xyz» покупателю не объяснить.
+/// A human label of the origin — without jargon (rule #13).
+/// An unknown value gives an empty string: an empty label is not drawn on the card,
+/// and «origin=xyz» cannot be explained to the user.
 pub fn origin_label(origin: &str) -> String {
     match origin {
         // TRANSLATORS: where a startup movie comes from: built into the Steam client.
@@ -533,15 +533,15 @@ pub fn origin_label(origin: &str) -> String {
     }
 }
 
-/// communityitemid → ПОЛНАЯ запись предмета из кэша GetStartupMovies.
+/// communityitemid → the FULL item record from the GetStartupMovies cache.
 ///
-/// Отличие от [`parse_startup_movie_names`]: отдаёт запись целиком (обложка,
-/// item_class, локализованный заголовок) — витрине нужны все поля, а формат
-/// скана менять нельзя. Обход `userdata/<id>/` и слияние — у исполнителя.
+/// The difference from [`parse_startup_movie_names`]: it returns the whole record (cover,
+/// item_class, localized title) — the showcase needs all fields, and the scan format
+/// must not change. Walking `userdata/<id>/` and merging are on the executor.
 ///
-/// Записи с `communityitemid` пустым, `null` или строкой «none» (в любом
-/// регистре) пропускаются: у них нет ключа, по которому витрина найдёт
-/// метаданные.
+/// Records with an empty `communityitemid`, `null` or the string «none» (in any
+/// case) are skipped: they have no key by which the showcase would find
+/// the metadata.
 pub fn parse_startup_movie_items(vdf_text: &str) -> Value {
     let mut out = Map::new();
     let Some(raw) = find_startup_movies_raw(vdf_text) else {
@@ -571,19 +571,19 @@ pub fn parse_startup_movie_items(vdf_text: &str) -> Value {
     Value::Object(out)
 }
 
-// ── appcache/appinfo.vdf: appid → название игры ───────────────────────
+// ── appcache/appinfo.vdf: appid → game title ───────────────────────────
 
-/// Версия appinfo.vdf со строковой таблицей (ключи — индексы в ней).
+/// The appinfo.vdf version with a string table (keys are indexes into it).
 const APPINFO_MAGIC_STRING_TABLE: u32 = 0x0756_4429;
-/// Версии, где ключи лежат строками прямо в дереве.
+/// Versions where keys lie as strings right in the tree.
 const APPINFO_MAGIC_INLINE: [u32; 2] = [0x0756_4427, 0x0756_4428];
-/// Служебный заголовок записи приложения перед деревом ключей-значений.
+/// The service header of an application record before the key-value tree.
 const APPINFO_APP_HEADER: usize = 60;
-/// Предел вложенности дерева. У appinfo.vdf реальная глубина — единицы;
-/// ⚠️ починка: в Python рекурсия по битому файлу упиралась в
-/// RecursionError, который НЕ перехватывался (ловились только ValueError/
-/// IndexError/struct.error) и ронял процесс — здесь разбор просто
-/// останавливается.
+/// Tree nesting limit. The real depth of appinfo.vdf is a few levels;
+/// ⚠️ fix: in Python recursion over a broken file hit
+/// RecursionError, which was NOT caught (only ValueError/
+/// IndexError/struct.error were) and crashed the process — here parsing simply
+/// stops.
 const APPINFO_MAX_DEPTH: u32 = 32;
 
 fn le_u32(data: &[u8], pos: usize) -> Option<u32> {
@@ -597,8 +597,8 @@ fn le_i64(data: &[u8], pos: usize) -> Option<i64> {
     })
 }
 
-/// Строка до нулевого байта начиная с `pos` → (строка, позиция за нулём).
-/// Нет нуля до конца — None (в Python это ValueError от `bytes.index`).
+/// A string up to the zero byte starting at `pos` → (string, position past the zero).
+/// No zero until the end — None (in Python this is a ValueError from `bytes.index`).
 fn cstr_at(data: &[u8], pos: usize) -> Option<(String, usize)> {
     let rest = data.get(pos..)?;
     let end = rest.iter().position(|b| *b == 0)?;
@@ -608,7 +608,7 @@ fn cstr_at(data: &[u8], pos: usize) -> Option<(String, usize)> {
     ))
 }
 
-/// Строковая таблица версии 0x07564429: количество + подряд C-строки.
+/// String table of version 0x07564429: a count + consecutive C strings.
 fn appinfo_string_table(data: &[u8]) -> Option<Vec<String>> {
     let tbl = le_i64(data, 8)?;
     let mut pos = usize::try_from(tbl).ok()?;
@@ -623,7 +623,7 @@ fn appinfo_string_table(data: &[u8]) -> Option<Vec<String>> {
     Some(out)
 }
 
-/// Ключ поля: индекс в строковой таблице либо C-строка на месте.
+/// Field key: an index into the string table or a C string in place.
 fn appinfo_key(
     blob: &[u8],
     pos: usize,
@@ -632,16 +632,16 @@ fn appinfo_key(
     match strings {
         Some(tbl) => {
             let idx = le_u32(blob, pos)? as usize;
-            // Индекс за пределами таблицы — пустой ключ (как в Python).
+            // An index beyond the table — an empty key (as in Python).
             Some((tbl.get(idx).cloned().unwrap_or_default(), pos + 4))
         }
         None => cstr_at(blob, pos),
     }
 }
 
-/// Название приложения из дерева ключей-значений: первое поле `name` не
-/// глубже второго уровня (`common/name`). Заодно двигает курсор — дерево
-/// приходится проходить целиком, чтобы понять, где кончается раздел.
+/// The application name from the key-value tree: the first `name` field no
+/// deeper than the second level (`common/name`). It also moves the cursor — the tree
+/// has to be walked in full to know where the section ends.
 fn appinfo_find_name(
     blob: &[u8],
     mut pos: usize,
@@ -656,7 +656,7 @@ fn appinfo_find_name(
         let kind = blob[pos];
         pos += 1;
         if kind == 0x08 {
-            // Конец раздела.
+            // End of section.
             return Some((found, pos));
         }
         let (key, next) = appinfo_key(blob, pos, strings)?;
@@ -678,23 +678,23 @@ fn appinfo_find_name(
             }
             0x02 | 0x03 => pos += 4,
             0x07 => pos += 8,
-            // Неизвестный тип — дальше идти нельзя, смещения поедут.
+            // An unknown type — we cannot go further, the offsets would drift.
             _ => return Some((found, blob.len())),
         }
     }
     Some((found, pos))
 }
 
-/// appid → название игры из байтов `appcache/appinfo.vdf`.
+/// appid → game title from the bytes of `appcache/appinfo.vdf`.
 ///
-/// Двоичный VDF Steam-клиента: заголовок (magic + universe), у версии
-/// 0x07564429 — ещё смещение строковой таблицы, дальше подряд записи
-/// «appid, размер, 60 байт служебного заголовка, дерево». Разбираем ТОЛЬКО
-/// дерево запрошенных appid'ов — файл на 8 МБ целиком парсить незачем.
+/// The Steam client's binary VDF: a header (magic + universe), for version
+/// 0x07564429 also the string table offset, then consecutive records
+/// «appid, size, 60 bytes of service header, tree». We parse ONLY
+/// the tree of the requested appids — there is no reason to parse an 8 MB file in full.
 ///
-/// Нужно для подписи «Видеозаставка из <игра>» БЕЗ сети и Steam Web API:
-/// покупатель может сидеть офлайн. Незнакомая версия/оборванная запись →
-/// то, что успели разобрать (в Python — тот же best-effort).
+/// Needed for the «Video splash from <game>» label WITHOUT a network or the Steam Web API:
+/// the user may be offline. An unknown version/truncated record →
+/// whatever was parsed so far (in Python — the same best effort).
 pub fn parse_appinfo_names(data: &[u8], appids: &[i64]) -> Vec<(i64, String)> {
     let mut want: Vec<i64> = appids.iter().copied().filter(|a| *a != 0).collect();
     want.sort_unstable();
@@ -710,7 +710,7 @@ pub fn parse_appinfo_names(data: &[u8], appids: &[i64]) -> Vec<(i64, String)> {
     if magic == APPINFO_MAGIC_STRING_TABLE {
         match appinfo_string_table(data) {
             Some(t) => strings = Some(t),
-            // Таблица не разобрана — без неё ключи не прочитать.
+            // The table was not parsed — keys cannot be read without it.
             None => return Vec::new(),
         }
         off = 16;
@@ -730,8 +730,8 @@ pub fn parse_appinfo_names(data: &[u8], appids: &[i64]) -> Vec<(i64, String)> {
         let body = off + 8;
         let appid = i64::from(appid);
         if let Ok(idx) = want.binary_search(&appid) {
-            // Срез как в Python: границы подрезаются по длине буфера,
-            // «конец раньше начала» даёт пустой срез, а не панику.
+            // Slicing as in Python: the bounds are clipped to the buffer length,
+            // «end before start» gives an empty slice, not a panic.
             let end = body.saturating_add(size as usize).min(data.len());
             let start = body.saturating_add(APPINFO_APP_HEADER).min(end);
             let blob = &data[start..end];
@@ -748,9 +748,9 @@ pub fn parse_appinfo_names(data: &[u8], appids: &[i64]) -> Vec<(i64, String)> {
     out
 }
 
-// ── Обогащение записей скана метаданными предмета ─────────────────────
+// ── Enriching scan records with item metadata ───────────────────────────
 
-/// `int(x)` для JSON-значения там, где Python принимает и число, и строку.
+/// `int(x)` for a JSON value where Python accepts both a number and a string.
 fn as_int(v: Option<&Value>) -> i64 {
     match v {
         Some(Value::Number(n)) => n.as_i64().unwrap_or_else(|| {
@@ -762,7 +762,7 @@ fn as_int(v: Option<&Value>) -> i64 {
     }
 }
 
-/// Первое «истинное» строковое значение из перечисленных ключей.
+/// The first «truthy» string value among the listed keys.
 fn first_truthy_str(meta: &Value, keys: &[&str]) -> String {
     for k in keys {
         if let Some(v) = meta.get(*k) {
@@ -777,15 +777,15 @@ fn first_truthy_str(meta: &Value, keys: &[&str]) -> String {
     String::new()
 }
 
-/// Дополнить записи скана метаданными предмета Steam (всё локально).
+/// Supplement the scan records with Steam item metadata (all local).
 ///
-/// Единая точка обогащения для ОБОИХ маршрутов скана (мост и Python) —
-/// иначе они разъедутся. Добавляет: title (крупная подпись), game
-/// (игра-источник), appid, origin/origin_label, image (обложка предмета на
-/// CDN сообщества), item_class. Отсутствующие данные остаются пустыми
-/// строками — карточка их просто не рисует (правило #13).
+/// The single enrichment point for BOTH scan routes (bridge and Python) —
+/// otherwise they would drift apart. Adds: title (the large label), game
+/// (the source game), appid, origin/origin_label, image (the item cover on
+/// the community CDN), item_class. Missing data stays as empty
+/// strings — the card simply does not draw it (rule #13).
 ///
-/// `items` — результат [`parse_startup_movie_items`], `names` — результат
+/// `items` — the result of [`parse_startup_movie_items`], `names` — the result of
 /// [`parse_appinfo_names`].
 pub fn enrich_movies(
     movies: &[Value],
@@ -796,7 +796,7 @@ pub fn enrich_movies(
     for m in movies {
         let mut rec = m.as_object().cloned().unwrap_or_default();
         let builtin = rec.get("builtin").map(truthy).unwrap_or(false);
-        // Свой ролик приходит из скана уже с происхождением и подписью.
+        // A custom clip comes from the scan already with its origin and label.
         let preset = rec.get("origin").and_then(Value::as_str).unwrap_or_default().to_string();
         if preset.is_empty() {
             let origin = if builtin { ORIGIN_BUILTIN } else { ORIGIN_SHOP };
@@ -806,8 +806,8 @@ pub fn enrich_movies(
             rec.insert("origin_label".into(), Value::from(origin_label(&preset)));
         }
 
-        // Ключ метаданных — id записи скана: у инвентаря это
-        // communityitemid, у встроенных ролика такого предмета нет.
+        // The metadata key is the scan record's id: for the inventory it is the
+        // communityitemid, built-in clips have no such item.
         let id_key = match rec.get("id") {
             Some(Value::String(s)) => s.clone(),
             Some(v) if truthy(v) => v.to_string(),
@@ -832,8 +832,8 @@ pub fn enrich_movies(
         };
         rec.insert("game".into(), Value::from(game));
 
-        // Локализованный item_title лучше английского name: интерфейс
-        // покупателя русский (правило #13).
+        // The localized item_title is better than the English name: the user's
+        // interface is Russian (rule #13).
         let mut title = first_truthy_str(meta, &["item_title", "name"]);
         if title.is_empty() {
             title = first_truthy_str(&Value::Object(rec.clone()), &["title"]);
@@ -859,8 +859,8 @@ pub fn enrich_movies(
     out
 }
 
-/// Запись витрины для файла, выбранного покупателем вручную. `basename` и
-/// `stem` (имя без расширения) считает исполнитель — он же владеет путём.
+/// A showcase record for a file chosen by the user by hand. `basename` and
+/// `stem` (the name without the extension) are computed by the executor — it owns the path.
 pub fn describe_custom(path: &str, basename: &str, stem: &str) -> Value {
     let mut m = Map::new();
     m.insert("id".into(), Value::from(path));
@@ -877,16 +877,16 @@ pub fn describe_custom(path: &str, basename: &str, stem: &str) -> Value {
     Value::Object(m)
 }
 
-// ── Кадр для витрины (ffprobe/ffmpeg) ─────────────────────────────────
+// ── Showcase frame (ffprobe/ffmpeg) ─────────────────────────────────────
 
-/// Доля длительности, на которой берём «представительный» кадр: к этому
-/// моменту заставка дорисовала логотип, но ещё не начала гаснуть.
+/// The share of the duration at which we take a «representative» frame: by this
+/// moment the splash has drawn its logo but has not started fading yet.
 pub const PREVIEW_AT: f64 = 0.75;
 
-/// Каталог кэша кадров витрины. ⚠️ НЕ путать с постером гибрида KSplash
-/// ([`poster_ffmpeg_argv`]) — тому нужен строго ПЕРВЫЙ кадр, иначе
-/// эстафета ksplash→mpv перестанет быть бесшовной; витрине первый кадр
-/// бесполезен, почти у всех роликов он чёрный.
+/// Cache directory of showcase frames. ⚠️ Do NOT confuse with the KSplash hybrid poster
+/// ([`poster_ffmpeg_argv`]) — that one needs strictly the FIRST frame, otherwise
+/// the ksplash→mpv relay stops being seamless; for the showcase the first frame
+/// is useless, it is black in almost all clips.
 pub fn preview_cache_dir(xdg_cache_home: Option<&str>, home: &str) -> String {
     let base = match xdg_cache_home {
         Some(p) if !p.is_empty() => p.to_string(),
@@ -895,7 +895,7 @@ pub fn preview_cache_dir(xdg_cache_home: Option<&str>, home: &str) -> String {
     format!("{base}/rexon/steam_splash_preview")
 }
 
-/// argv ffprobe для длительности ролика.
+/// ffprobe argv for the clip duration.
 pub fn ffprobe_duration_argv(exe: &str, path: &str) -> Vec<String> {
     [
         exe,
@@ -912,32 +912,32 @@ pub fn ffprobe_duration_argv(exe: &str, path: &str) -> Vec<String> {
     .collect()
 }
 
-/// Длительность из вывода ffprobe: отрицательные и нечисловые → 0.0.
+/// Duration from ffprobe output: negative and non-numeric → 0.0.
 pub fn parse_duration(stdout: &str) -> f64 {
     stdout.trim().parse::<f64>().map(|v| v.max(0.0)).unwrap_or(0.0)
 }
 
-// ── Приём своего ролика: проверка файла по ffprobe ───────────────────
+// ── Accepting a custom clip: checking the file with ffprobe ─────────────
 
-/// Короче — ролик мелькнёт незаметно.
+/// Shorter — the clip flashes by unnoticed.
 pub const MOVIE_MIN_SEC: f64 = 1.0;
-/// Длиннее — это уже не заставка; отказ.
+/// Longer — this is no longer a splash; refusal.
 pub const MOVIE_MAX_SEC: f64 = 60.0;
-/// Длиннее — принять, но предупредить: ждать его при каждом входе.
+/// Longer — accept, but warn: it will be waited for at every login.
 pub const MOVIE_WARN_SEC: f64 = 30.0;
-/// Наименьшая картинка: длинная сторона / короткая сторона (вертикальный
-/// ролик с телефона 360×640 тоже годится).
+/// The smallest picture: long side / short side (a vertical
+/// 360×640 phone clip is fine too).
 pub const MOVIE_MIN_LONG_SIDE: i64 = 640;
-/// См. [`MOVIE_MIN_LONG_SIDE`].
+/// See [`MOVIE_MIN_LONG_SIDE`].
 pub const MOVIE_MIN_SHORT_SIDE: i64 = 360;
 
-/// Видеокодеки, которые Steam (встроенный Chromium) играет из webm.
+/// Video codecs Steam (its built-in Chromium) plays from webm.
 const WEBM_VIDEO_CODECS: &[&str] = &["vp8", "vp9", "av1"];
-/// Звуковые кодеки webm.
+/// webm audio codecs.
 const WEBM_AUDIO_CODECS: &[&str] = &["opus", "vorbis"];
 
-/// argv ffprobe для проверки своего ролика: все потоки и контейнер в JSON.
-/// Тот же вызов, что [`ffprobe_duration_argv`], только с полным разбором.
+/// ffprobe argv for checking a custom clip: all streams and the container as JSON.
+/// The same call as [`ffprobe_duration_argv`], only with full parsing.
 pub fn ffprobe_streams_argv(exe: &str, path: &str) -> Vec<String> {
     [exe, "-v", "error", "-show_streams", "-show_format", "-of", "json", path]
         .iter()
@@ -945,30 +945,30 @@ pub fn ffprobe_streams_argv(exe: &str, path: &str) -> Vec<String> {
         .collect()
 }
 
-/// Что делать с выбранным файлом.
+/// What to do with the chosen file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MovieVerdict {
-    /// Уже webm, который понимает Steam, — копировать как есть.
+    /// Already a webm Steam understands — copy as is.
     AsIs,
-    /// Годится, но Steam его не сыграет — перекодировать в webm (VP9 + Opus).
+    /// Fit, but Steam will not play it — transcode to webm (VP9 + Opus).
     Transcode,
-    /// Не годится — показать `reason`.
+    /// Not fit — show `reason`.
     Reject,
 }
 
-/// Итог проверки ролика (для исполнителя и интерфейса).
+/// Result of the clip check (for the executor and the interface).
 #[derive(Debug, Clone, PartialEq)]
 pub struct MovieCheck {
     pub verdict: MovieVerdict,
-    /// Причина отказа человеческим языком; пусто, если не отказ.
+    /// The refusal reason in human language; empty if not a refusal.
     pub reason: String,
-    /// Предупреждения, не мешающие приёму (длинный ролик).
+    /// Warnings that do not prevent acceptance (a long clip).
     pub warnings: Vec<String>,
-    /// Длительность, с; 0.0 — ffprobe её не знает.
+    /// Duration, s; 0.0 — ffprobe does not know it.
     pub duration: f64,
     pub width: i64,
     pub height: i64,
-    /// Кодек видео/звука как его называет ffprobe; звук пустой — без звука.
+    /// Video/audio codec as ffprobe names it; empty audio — no sound.
     pub video_codec: String,
     pub audio_codec: String,
 }
@@ -988,7 +988,7 @@ impl MovieCheck {
     }
 }
 
-/// Число из поля ffprobe: в JSON оно бывает и строкой ("3.117000"), и числом.
+/// A number from an ffprobe field: in JSON it can be both a string ("3.117000") and a number.
 fn probe_num(v: Option<&Value>) -> Option<f64> {
     match v? {
         Value::Number(n) => n.as_f64(),
@@ -1002,7 +1002,7 @@ fn probe_str<'a>(v: &'a Value, key: &str) -> &'a str {
     v.get(key).and_then(Value::as_str).unwrap_or_default()
 }
 
-/// Обложка альбома (mp3/m4a с картинкой) — «видеопоток», но не видео.
+/// Album cover art (mp3/m4a with a picture) — a «video stream», but not video.
 fn probe_is_cover(s: &Value) -> bool {
     s.get("disposition")
         .and_then(|d| d.get("attached_pic"))
@@ -1011,22 +1011,22 @@ fn probe_is_cover(s: &Value) -> bool {
         != 0
 }
 
-/// Решение по выводу `ffprobe -show_streams -show_format -of json`
-/// ([`ffprobe_streams_argv`]): копировать / перекодировать / отказать.
+/// Decision from the output of `ffprobe -show_streams -show_format -of json`
+/// ([`ffprobe_streams_argv`]): copy / transcode / refuse.
 ///
-/// * Отказ: вывод не разобрать; нет видеопотока (обложка альбома —
-///   `disposition.attached_pic` — видео не считается); длительность меньше
-///   [`MOVIE_MIN_SEC`] или больше [`MOVIE_MAX_SEC`]; картинка меньше
-///   640×360 (по длинной и короткой стороне).
-/// * Как есть: контейнер webm/Matroska, одно видео VP8/VP9/AV1, звук
-///   Opus/Vorbis (одна дорожка) или без звука, ничего лишнего (субтитры,
-///   вложения). Matroska у ffprobe и webm называются одинаково
-///   (`matroska,webm`), поэтому mkv с теми же кодеками тоже идёт как есть.
-/// * Иначе — перекодировать.
-/// * Длительности ffprobe не знает (webm, записанный в браузере, бывает без
-///   неё) — перекодировать: ffmpeg её пропишет, а пределы исполнитель
-///   проверит повторным прогоном по готовому файлу.
-/// * Дольше [`MOVIE_WARN_SEC`] — предупреждение, не отказ.
+/// * Refuse: the output cannot be parsed; there is no video stream (album cover art —
+///   `disposition.attached_pic` — does not count as video); the duration is less than
+///   [`MOVIE_MIN_SEC`] or more than [`MOVIE_MAX_SEC`]; the picture is smaller than
+///   640×360 (by the long and the short side).
+/// * As is: a webm/Matroska container, one VP8/VP9/AV1 video, audio
+///   Opus/Vorbis (one track) or no audio, nothing extra (subtitles,
+///   attachments). ffprobe names Matroska and webm the same
+///   (`matroska,webm`), so an mkv with the same codecs also goes as is.
+/// * Otherwise — transcode.
+/// * ffprobe does not know the duration (a webm recorded in a browser can lack
+///   it) — transcode: ffmpeg will write it, and the executor will check the limits
+///   with a repeated run on the finished file.
+/// * Longer than [`MOVIE_WARN_SEC`] — a warning, not a refusal.
 pub fn check_movie_probe(json_text: &str) -> MovieCheck {
     let Ok(probe) = serde_json::from_str::<Value>(json_text) else {
         return MovieCheck::reject(msg_movie_unreadable());
@@ -1109,58 +1109,58 @@ pub fn check_movie_probe(json_text: &str) -> MovieCheck {
     check
 }
 
-/// Файл не прочитать.
+/// The file cannot be read.
 pub fn msg_movie_unreadable() -> String {
     // TRANSLATORS: a startup movie the user picked can't be used: ffprobe couldn't read it.
     tr("Couldn't read this file — it may be damaged or not a video.")
 }
 
-/// В файле нет изображения (например, это музыка).
+/// The file has no picture (for example, it is music).
 pub fn msg_movie_no_picture() -> String {
     // TRANSLATORS: a startup movie the user picked can't be used: the file has no video picture (e.g. it is music).
     tr("This file has no picture — choose a video file.")
 }
 
-/// Ролик короче секунды.
+/// The clip is shorter than a second.
 pub fn msg_movie_too_short() -> String {
     // TRANSLATORS: a startup movie the user picked can't be used: it is shorter than one second.
     tr("The video is shorter than a second — it would flash by unnoticed. Choose a longer one.")
 }
 
-/// Ролик длиннее минуты.
+/// The clip is longer than a minute.
 pub fn msg_movie_too_long() -> String {
     // TRANSLATORS: a startup movie the user picked can't be used: it is longer than one minute.
     tr("The video is longer than a minute — a startup movie should be short. Trim it or choose another one.")
 }
 
-/// Картинка меньше 640×360.
+/// The picture is smaller than 640×360.
 pub fn msg_movie_too_small(width: i64, height: i64) -> String {
-    // Литерал — на одной строке с `trf(`: иначе xgettext теряет комментарий.
+    // The literal is on one line with `trf(`: otherwise xgettext loses the comment.
     let (w, h) = (width, height);
     // TRANSLATORS: a startup movie the user picked can't be used: its picture is too small; %1 and %2 are its width and height in pixels.
     trf("The picture is too small (%1×%2) — it would look blurry on screen. Choose a video of at least 640×360.", &[&w, &h])
 }
 
-/// Ролик длиннее 30 с — принять, но предупредить.
+/// The clip is longer than 30 s — accept, but warn.
 pub fn msg_movie_long_warning() -> String {
     // TRANSLATORS: warning when adding a startup movie longer than 30 seconds; it is still accepted.
     tr("The video is longer than 30 seconds — it's a startup movie, not a film: you'll wait for it at every login.")
 }
 
-/// Ролик будет перекодирован (подсказка для интерфейса).
+/// The clip will be transcoded (a hint for the interface).
 pub fn msg_movie_will_convert() -> String {
     // TRANSLATORS: shown when adding a startup movie that Steam can't play as is; the original file stays untouched.
     tr("The video will be converted to WebM so Steam can play it. The original file stays as it is.")
 }
 
-/// FNV-1a 64 — детерминированный отпечаток для имени файла кэша.
+/// FNV-1a 64 — a deterministic fingerprint for the cache file name.
 ///
-/// ⚠️ Починка бага оригинала: ключ кэша считался питоновским
-/// `hash((abspath, mtime))`, а хеш строк в CPython солится PYTHONHASHSEED и
-/// РАЗНЫЙ в каждом процессе. Имя файла кэша поэтому не совпадало с
-/// прошлым запуском: попадания в кэш не было НИКОГДА, ffmpeg дёргался на
-/// каждое открытие витрины, а каталог копил мусор. Здесь отпечаток
-/// стабильный, кэш начинает работать.
+/// ⚠️ Fix of a bug of the original: the cache key was computed by Python's
+/// `hash((abspath, mtime))`, and string hashing in CPython is salted by PYTHONHASHSEED and
+/// DIFFERS in every process. So the cache file name did not match the
+/// previous run: there was NEVER a cache hit, ffmpeg was started on
+/// every opening of the showcase, and the directory piled up garbage. Here the fingerprint is
+/// stable, and the cache starts working.
 fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in bytes {
@@ -1170,10 +1170,10 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
     h
 }
 
-/// Санитайзер имени для файловой системы: всё, кроме букв, цифр, `_`, `.`
-/// и `-`, заменяется на `_`; берутся последние 64 символа. Семантика
-/// `re.sub(r"[^\w.-]", "_", name)[-64:]` (Python `\w` Unicode-aware, здесь
-/// это `char::is_alphanumeric` + `_`).
+/// A file-system name sanitizer: everything except letters, digits, `_`, `.`
+/// and `-` is replaced with `_`; the last 64 characters are taken. The semantics of
+/// `re.sub(r"[^\w.-]", "_", name)[-64:]` (Python's `\w` is Unicode-aware, here
+/// it is `char::is_alphanumeric` + `_`).
 fn preview_key(basename: &str) -> String {
     let cleaned: Vec<char> = basename
         .chars()
@@ -1189,8 +1189,8 @@ fn preview_key(basename: &str) -> String {
     cleaned[start..].iter().collect()
 }
 
-/// Путь файла кэша кадра. Ключ — путь + mtime, поэтому подменённый ролик
-/// перегенерируется сам.
+/// Path of the frame cache file. The key is path + mtime, so a replaced clip
+/// is regenerated by itself.
 pub fn preview_cache_path(cache_dir: &str, video_abs: &str, mtime: i64) -> String {
     let basename = video_abs.rsplit('/').next().unwrap_or(video_abs);
     let key = preview_key(basename);
@@ -1198,8 +1198,8 @@ pub fn preview_cache_path(cache_dir: &str, video_abs: &str, mtime: i64) -> Strin
     format!("{cache_dir}/{key}.{digest:x}.png")
 }
 
-/// argv ffmpeg для кадра витрины. `seek` ≤ 0.05 c — без `-ss` (ролик
-/// короче ожидаемого): так же ведёт себя повторная попытка «первый кадр».
+/// ffmpeg argv for the showcase frame. `seek` ≤ 0.05 s — without `-ss` (the clip is
+/// shorter than expected): the «first frame» retry behaves the same way.
 pub fn preview_ffmpeg_argv(exe: &str, video: &str, out_tmp: &str, seek: f64) -> Vec<String> {
     let mut cmd: Vec<String> = vec![exe.into(), "-y".into(), "-v".into(), "error".into()];
     if seek > 0.05 {
@@ -1218,9 +1218,9 @@ pub fn preview_ffmpeg_argv(exe: &str, video: &str, out_tmp: &str, seek: f64) -> 
     cmd
 }
 
-// ── Избранное и ротация роликов ───────────────────────────────────────
+// ── Favorites and clip rotation ─────────────────────────────────────────
 
-/// Пути роликов со звёздочкой из конфига (не-строки отбрасываются).
+/// Paths of starred clips from the config (non-strings are dropped).
 pub fn favorites_from_config(cfg: &Value) -> Vec<String> {
     cfg.get("favorites")
         .and_then(Value::as_array)
@@ -1232,7 +1232,7 @@ pub fn favorites_from_config(cfg: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Конфиг с обновлённой звёздочкой → (новый конфиг, актуальный список).
+/// The config with an updated star → (new config, the current list).
 pub fn config_with_favorite(cfg: &Value, path: &str, on: bool) -> (Value, Vec<String>) {
     let mut fav = favorites_from_config(cfg);
     if on {
@@ -1250,35 +1250,35 @@ pub fn config_with_favorite(cfg: &Value, path: &str, on: bool) -> (Value, Vec<St
     (Value::Object(obj), fav)
 }
 
-/// Включена ли «случайная заставка при каждом входе».
+/// Whether «a random splash at every login» is enabled.
 pub fn rotation_enabled(cfg: &Value) -> bool {
     cfg.get("rotate").map(truthy).unwrap_or(false)
 }
 
-/// Конфиг с переключённой ротацией.
+/// The config with rotation toggled.
 pub fn config_with_rotation(cfg: &Value, enabled: bool) -> Value {
     let mut obj = cfg.as_object().cloned().unwrap_or_default();
     obj.insert("rotate".into(), Value::from(enabled));
     Value::Object(obj)
 }
 
-/// Сколько роликов нужно, чтобы «каждый вход — новый ролик» вообще что-то
-/// меняло.
+/// How many clips are needed for «a new clip at every login» to change
+/// anything at all.
 ///
-/// ⭐ Одна правда на всех. Число «два» стояло литералом в пяти местах: выбор
-/// пула, жребий, короткое замыкание скана, чип состояния вкладки «Steam» и
-/// отказ её переключателя (в Python — ещё и `len(self._sv_items) < 2`).
-/// Разойдись они — чип обещал бы ротацию, которой при входе не случится.
-/// Спрашивать через функции ниже, а не сравнивать с числом на месте.
+/// ⭐ One truth for everyone. The number «two» was a literal in five places: the pool
+/// choice, the draw, the scan short circuit, the state chip of the «Steam» tab and
+/// the refusal of its switch (in Python also `len(self._sv_items) < 2`).
+/// If they diverged, the chip would promise a rotation that does not happen at login.
+/// Ask through the functions below rather than comparing with a number in place.
 pub const ROTATION_MIN_POOL: usize = 2;
 
-/// Крутится ли избранное (а не все найденные ролики).
+/// Whether the favorites rotate (rather than all found clips).
 pub fn rotation_uses_favorites(favorites: usize) -> bool {
     favorites >= ROTATION_MIN_POOL
 }
 
-/// Размер пула ротации по числу избранных и всех найденных роликов — то же
-/// решение, что [`rotation_pool`], только на числах (витрине файлы не нужны).
+/// Rotation pool size by the number of favorites and of all found clips — the same
+/// decision as [`rotation_pool`], only on numbers (the showcase does not need the files).
 pub fn rotation_pool_size(favorites: usize, all: usize) -> usize {
     if rotation_uses_favorites(favorites) {
         favorites
@@ -1287,16 +1287,16 @@ pub fn rotation_pool_size(favorites: usize, all: usize) -> usize {
     }
 }
 
-/// Будет ли ротация на самом деле менять ролик при входе.
+/// Whether rotation will really change the clip at login.
 pub fn rotation_possible(favorites: usize, all: usize) -> bool {
     rotation_pool_size(favorites, all) >= ROTATION_MIN_POOL
 }
 
-/// Из чего крутим: избранное, а если его меньше двух — всё найденное.
-/// Существование файлов проверяет исполнитель (I/O-граница).
+/// What we rotate from: the favorites, and if there are fewer than two — everything found.
+/// The executor checks that the files exist (the I/O boundary).
 ///
-/// Защита от дурака (правило #13): включённая ротация с ОДНОЙ звёздочкой не
-/// должна молча превращаться в «каждый вход один и тот же ролик».
+/// Foolproofing (rule #13): enabled rotation with ONE star must not
+/// silently turn into «the same clip at every login».
 pub fn rotation_pool(existing_favorites: &[String], existing_all: &[String]) -> Vec<String> {
     if rotation_uses_favorites(existing_favorites.len()) {
         return existing_favorites.to_vec();
@@ -1304,10 +1304,10 @@ pub fn rotation_pool(existing_favorites: &[String], existing_all: &[String]) -> 
     existing_all.to_vec()
 }
 
-/// Из чего выбирать ролик на СЛЕДУЮЩИЙ вход: пул без текущего, а если
-/// после исключения ничего не осталось — весь пул. Пустой список = крутить
-/// нечего (пул меньше двух элементов); сам жребий бросает исполнитель —
-/// генератор случайных чисел это I/O-граница.
+/// What to choose the clip for the NEXT login from: the pool without the current one, and if
+/// nothing is left after exclusion — the whole pool. An empty list = nothing to
+/// rotate (the pool has fewer than two elements); the draw itself is made by the executor —
+/// the random number generator is an I/O boundary.
 pub fn rotation_choices(pool: &[String], current: Option<&str>) -> Vec<String> {
     if pool.len() < ROTATION_MIN_POOL {
         return Vec::new();
@@ -1325,10 +1325,10 @@ pub fn rotation_choices(pool: &[String], current: Option<&str>) -> Vec<String> {
 }
 
 // ============================================================================
-// Конфиг (какой webm + звук + служебные ключи гибрида)
+// Config (which webm + sound + the hybrid's service keys)
 // ============================================================================
 
-/// Порт `load_config`: текст файла → dict; нет файла/битый JSON/не-dict → {}.
+/// Port of `load_config`: file text → dict; no file/broken JSON/not a dict → {}.
 pub fn parse_config(text: Option<&str>) -> Value {
     if let Some(t) = text {
         if let Ok(v) = serde_json::from_str::<Value>(t) {
@@ -1340,8 +1340,8 @@ pub fn parse_config(text: Option<&str>) -> Value {
     Value::Object(Map::new())
 }
 
-/// Порт `save_config`: обновить `path`/`sound`, НЕ перезаписывая служебные
-/// ключи (prev_ksplash_theme и т.п.). Возвращает новый конфиг.
+/// Port of `save_config`: update `path`/`sound` WITHOUT overwriting the service
+/// keys (prev_ksplash_theme etc.). Returns the new config.
 pub fn config_with_selection(cfg: &Value, path: &str, sound: bool) -> Value {
     let mut m = cfg.as_object().cloned().unwrap_or_default();
     m.insert("path".into(), Value::from(path));
@@ -1349,36 +1349,36 @@ pub fn config_with_selection(cfg: &Value, path: &str, sound: bool) -> Value {
     Value::Object(m)
 }
 
-/// Порт `save_hybrid_pref`: запомнить галку «гибрид вкл/выкл».
+/// Port of `save_hybrid_pref`: remember the «hybrid on/off» checkbox.
 pub fn config_with_hybrid_pref(cfg: &Value, enabled: bool) -> Value {
     let mut m = cfg.as_object().cloned().unwrap_or_default();
     m.insert("hybrid".into(), Value::from(enabled));
     Value::Object(m)
 }
 
-/// Сериализация конфига — `json.dump(cfg, ensure_ascii=False, indent=2)`
-/// (порт `_write_config`; атомарная запись .tmp+rename — у исполнителя).
+/// Config serialization — `json.dump(cfg, ensure_ascii=False, indent=2)`
+/// (port of `_write_config`; the atomic .tmp+rename write is on the executor).
 pub fn config_json(cfg: &Value) -> String {
     serde_json::to_string_pretty(cfg).expect("Value сериализуется")
 }
 
-/// Порт `hybrid_installed`: флаг в конфиге И юнит-файл на месте.
+/// Port of `hybrid_installed`: the flag in the config AND the unit file in place.
 pub fn hybrid_installed(cfg: &Value, unit_file_exists: bool) -> bool {
     truthy(&get_or(cfg, "hybrid_installed", Value::Null)) && unit_file_exists
 }
 
-/// Обновлять ли постер темы при сохранении выбора — порт условия в
-/// `save_config` (гибрид установлен и каталог темы существует).
+/// Whether to update the theme poster when saving the choice — port of the condition in
+/// `save_config` (the hybrid is installed and the theme directory exists).
 pub fn should_refresh_hybrid_poster(cfg: &Value, theme_dir_exists: bool) -> bool {
     truthy(&get_or(cfg, "hybrid_installed", Value::Null)) && theme_dir_exists
 }
 
 // ============================================================================
-// Гибрид KSplash: тема-постер, ksplashrc, systemd-юнит
+// KSplash hybrid: poster theme, ksplashrc, systemd unit
 // ============================================================================
 
-/// Splash.qml темы-постера — порт `_SPLASH_QML` (без Kirigami, мгновенный
-/// показ первого кадра ролика с PreserveAspectFit на чёрном).
+/// Splash.qml of the poster theme — port of `_SPLASH_QML` (without Kirigami, instant
+/// display of the clip's first frame with PreserveAspectFit on black).
 pub const SPLASH_QML: &str = "\
 import QtQuick
 
@@ -1403,11 +1403,11 @@ const LNF_DESCRIPTION: &str = n_("Rexon startup movie poster (Steam style) — s
 // TRANSLATORS: Description of the startup movie autostart entry (shown in the desktop's autostart settings).
 const AUTOSTART_COMMENT: &str = n_("Startup movie at login (Steam style)");
 
-/// metadata.json LnF-пакета — порт `meta` в `_write_lnf_theme`
+/// metadata.json of the LnF package — port of `meta` in `_write_lnf_theme`
 /// (`json.dump(..., ensure_ascii=False, indent=4)`).
 pub fn lnf_metadata_json() -> String {
-    // Описание — на всех языках каталога (`Description[ru]`): его показывают
-    // «Параметры системы» KDE, и язык они выбирают сами по локали сеанса.
+    // The description in all catalog languages (`Description[ru]`): KDE's «System
+    // Settings» shows it and picks the language itself by the session locale.
     let mut plugin = serde_json::Map::new();
     plugin.insert("Id".into(), KSPLASH_THEME_ID.into());
     plugin.insert("Name".into(), "Rexon Session Splash".into());
@@ -1422,7 +1422,7 @@ pub fn lnf_metadata_json() -> String {
         "KPlugin": plugin,
         "X-Plasma-APIVersion": "2",
     });
-    // indent=4 — как в оригинале (у json.dump там 4 пробела, не 2).
+    // indent=4 — as in the original (json.dump there uses 4 spaces, not 2).
     let mut buf = Vec::new();
     let fmt = serde_json::ser::PrettyFormatter::with_indent(b"    ");
     let mut ser = serde_json::Serializer::with_formatter(&mut buf, fmt);
@@ -1430,8 +1430,8 @@ pub fn lnf_metadata_json() -> String {
     String::from_utf8(buf).expect("JSON — валидный UTF-8")
 }
 
-/// argv ffmpeg «первый кадр → PNG» — порт cmd в `_extract_poster`.
-/// `ffmpeg` — путь из `shutil.which` (наблюдение исполнителя).
+/// ffmpeg argv «first frame → PNG» — port of cmd in `_extract_poster`.
+/// `ffmpeg` — the path from `shutil.which` (the executor's observation).
 pub fn poster_ffmpeg_argv(ffmpeg: &str, video: &str, out_png: &str) -> Vec<String> {
     vec![
         ffmpeg.into(),
@@ -1448,9 +1448,9 @@ pub fn poster_ffmpeg_argv(ffmpeg: &str, video: &str, out_png: &str) -> Vec<Strin
     ]
 }
 
-/// Порт `_ksplashrc_get`: значение ключа из группы `[KSplash]`
-/// ПОЛЬЗОВАТЕЛЬСКОГО ksplashrc (текст файла параметром). Намеренно не
-/// kconfig-каскад: для бэкапа/отката важен факт «ключа не было» ('').
+/// Port of `_ksplashrc_get`: the key value from the `[KSplash]` group of
+/// the USER's ksplashrc (the file text as a parameter). Deliberately not
+/// the kconfig cascade: for backup/rollback the fact «there was no key» ('') matters.
 pub fn ksplashrc_get(text: &str, key: &str) -> String {
     let mut in_group = false;
     for ln in text.lines() {
@@ -1468,8 +1468,8 @@ pub fn ksplashrc_get(text: &str, key: &str) -> String {
     String::new()
 }
 
-/// argv kwriteconfig6 — порт `_ksplashrc_set` (пустое value = удалить ключ).
-/// `exe` — путь из `shutil.which("kwriteconfig6")`.
+/// kwriteconfig6 argv — port of `_ksplashrc_set` (an empty value = delete the key).
+/// `exe` — the path from `shutil.which("kwriteconfig6")`.
 pub fn kwriteconfig_argv(exe: &str, key: &str, value: &str) -> Vec<String> {
     let mut cmd: Vec<String> = vec![
         exe.into(),
@@ -1488,25 +1488,25 @@ pub fn kwriteconfig_argv(exe: &str, key: &str, value: &str) -> Vec<String> {
     cmd
 }
 
-/// argv `systemctl --user …` — порт `_systemctl_user`.
+/// argv of `systemctl --user …` — port of `_systemctl_user`.
 pub fn systemctl_user_argv(exe: &str, args: &[&str]) -> Vec<String> {
     let mut cmd: Vec<String> = vec![exe.into(), "--user".into()];
     cmd.extend(args.iter().map(|a| (*a).to_string()));
     cmd
 }
 
-/// Текст systemd user-юнита — порт `_systemd_unit_content`.
+/// Text of the systemd user unit — port of `_systemd_unit_content`.
 ///
-/// After=kwin (обе ветки, несуществующая игнорируется), Type=notify +
-/// Before=plasma-plasmashell.service — plasmashell не стартует, пока mpv не
-/// поднял IPC-сокет (READY=1), поэтому ksplash не гаснет раньше первого
-/// кадра. ⚠️ НЕ добавлять After=plasma-ksplash.service — взаимная
-/// блокировка (oneshot-job завершается ВЫХОДОМ ksplashqml; инцидент
-/// 2026-07-16, Wayland-вход виснул на чёрном сплэше).
+/// After=kwin (both branches, a nonexistent one is ignored), Type=notify +
+/// Before=plasma-plasmashell.service — plasmashell does not start until mpv has
+/// brought up its IPC socket (READY=1), so ksplash does not go away before the first
+/// frame. ⚠️ Do NOT add After=plasma-ksplash.service — a mutual
+/// deadlock (the oneshot job finishes on ksplashqml's EXIT; incident
+/// 2026-07-16, the Wayland login hung on a black splash).
 ///
-/// `Description` — по-английски и не из каталога: у systemd нет
-/// локализованных ключей (`Description[ru]` он не знает), а видна строка
-/// только в `systemctl`/журнале. Подписи для человека — в записи автозапуска.
+/// `Description` — in English and not from the catalog: systemd has no
+/// localized keys (it does not know `Description[ru]`), and the line is visible
+/// only in `systemctl`/the journal. Labels for people are in the autostart entry.
 pub fn systemd_unit_content(launcher_exec: &str) -> String {
     format!(
         "[Unit]\n\
@@ -1529,18 +1529,18 @@ pub fn systemd_unit_content(launcher_exec: &str) -> String {
     )
 }
 
-/// Команда запуска заставки при Python-входе — порт `_launcher_exec`.
-/// `rexon_path` — результат `shutil.which("rexon")`; пусто — заводить
-/// нечем, и тогда строка ПУСТАЯ: писать её нельзя.
+/// The splash launch command for the Python entry — port of `_launcher_exec`.
+/// `rexon_path` — the result of `shutil.which("rexon")`; empty — nothing
+/// to start with, and then the line is EMPTY: it must not be written.
 ///
-/// ⛔`python_executable` больше не участвует ни в одном ответе. Прежде на
-/// пустом `rexon_path` отсюда выходило `python3 -m rexon.app
-/// --session-splash` — строка, которую `.desktop`-автозапуск и
-/// systemd-юнит выполняют без рабочего каталога, а пакета `rexon` в
-/// `sys.path` системного интерпретатора нет: заставка при входе молча не
-/// показывалась. Выбор целиком переехал в [`crate::app::launch_program`].
-/// ⚠️Параметр оставлен подписи ради — её держит мост `rexon-py`
-/// (`ss_launcher_exec`); уйдёт вместе с мостом.
+/// ⛔`python_executable` no longer takes part in any answer. Previously with an
+/// empty `rexon_path` this produced `python3 -m rexon.app
+/// --session-splash` — a line that the `.desktop` autostart and the
+/// systemd unit run without a working directory, and the `rexon` package is not in
+/// the system interpreter's `sys.path`: the login splash silently did not
+/// show. The choice moved entirely into [`crate::app::launch_program`].
+/// ⚠️The parameter is kept for the signature's sake — the `rexon-py` bridge holds it
+/// (`ss_launcher_exec`); it will go away together with the bridge.
 pub fn launcher_exec(rexon_path: Option<&str>, _python_executable: &str) -> String {
     crate::app::launch_command(
         &crate::installer::LaunchEntry::Python,
@@ -1550,20 +1550,20 @@ pub fn launcher_exec(rexon_path: Option<&str>, _python_executable: &str) -> Stri
     .unwrap_or_default()
 }
 
-/// Флаг маршрута заставки при входе (его разбирает `app::route`).
+/// The login splash route flag (parsed by `app::route`).
 pub const SESSION_SPLASH_FLAG: &str = "--session-splash";
 
-/// Команда запуска заставки для `Exec=` автозапуска (формат Desktop Entry).
+/// The splash launch command for the autostart `Exec=` (Desktop Entry format).
 ///
-/// ⚠️ Вход выбирает ТА ЖЕ функция, что у ярлыка и лотка
-/// ([`crate::installer::launch_entry_live`]), — сюда он приходит готовым.
-/// Rust-вход — бинарь окна с [`SESSION_SPLASH_FLAG`]: маршрут отрабатывает
-/// ядро без Qt (`cli::run_headless`), интерпретатор при входе не нужен.
-/// Python-вход (откат) — лаунчер `rexon` полным путём.
+/// ⚠️ The entry is chosen by THE SAME function as for the shortcut and the tray
+/// ([`crate::installer::launch_entry_live`]) — it arrives here ready.
+/// The Rust entry is the window binary with [`SESSION_SPLASH_FLAG`]: the route is handled by
+/// the core without Qt (`cli::run_headless`), no interpreter is needed at login.
+/// The Python entry (fallback) is the `rexon` launcher by full path.
 ///
-/// Пустая строка — заводить нечем ([`crate::app::launch_program`]); писать
-/// её в `Exec=` нельзя, вызывающий обязан отказать вслух.
-/// ⚠️`python_executable` не используется — см. [`launcher_exec`].
+/// An empty line — nothing to start with ([`crate::app::launch_program`]); it must not
+/// be written into `Exec=`, the caller must refuse out loud.
+/// ⚠️`python_executable` is not used — see [`launcher_exec`].
 pub fn desktop_launcher_exec(
     entry: &crate::installer::LaunchEntry,
     rexon_path: Option<&str>,
@@ -1572,11 +1572,11 @@ pub fn desktop_launcher_exec(
     crate::app::launch_command(entry, rexon_path, &[SESSION_SPLASH_FLAG]).unwrap_or_default()
 }
 
-/// То же для `ExecStart=` systemd-юнита гибрида.
+/// The same for the hybrid systemd unit's `ExecStart=`.
 ///
-/// Отдельно от [`desktop_launcher_exec`], потому что правила кавычек у
-/// systemd другие: у Desktop Entry `\`, `$`, `` ` `` и `"` внутри кавычек
-/// удваивают косую ещё раз, а systemd прочёл бы лишнюю косую буквально.
+/// Separate from [`desktop_launcher_exec`] because systemd's quoting rules
+/// differ: in a Desktop Entry `\`, `$`, `` ` `` and `"` inside quotes
+/// double the backslash once more, while systemd would read the extra backslash literally.
 pub fn unit_launcher_exec(
     entry: &crate::installer::LaunchEntry,
     rexon_path: Option<&str>,
@@ -1585,10 +1585,10 @@ pub fn unit_launcher_exec(
     crate::app::unit_launch_command(entry, rexon_path, &[SESSION_SPLASH_FLAG]).unwrap_or_default()
 }
 
-/// Аргумент командной строки `ExecStart=` по `systemd.service(5)`:
-/// `%` — спецификатор (`%%`), `$` — подстановка переменной (`$$`); слово с
-/// пробелом, кавычкой, `\` или `;` берётся в двойные кавычки, внутри
-/// которых `"` и `\` экранируются косой.
+/// An `ExecStart=` command-line argument per `systemd.service(5)`:
+/// `%` is a specifier (`%%`), `$` is variable substitution (`$$`); a word with
+/// a space, a quote, `\` or `;` is put in double quotes, inside
+/// which `"` and `\` are escaped with a backslash.
 pub fn systemd_exec_arg(arg: &str) -> String {
     let arg = arg.replace('%', "%%").replace('$', "$$");
     if !arg.contains(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '\\' | ';')) {
@@ -1606,7 +1606,7 @@ pub fn systemd_exec_arg(arg: &str) -> String {
     q
 }
 
-/// «KDE ли десктоп» — порт `"KDE" in XDG_CURRENT_DESKTOP.upper()`.
+/// «Is the desktop KDE» — port of `"KDE" in XDG_CURRENT_DESKTOP.upper()`.
 pub fn is_kde_desktop(xdg_current_desktop: Option<&str>) -> bool {
     xdg_current_desktop
         .unwrap_or("")
@@ -1614,8 +1614,8 @@ pub fn is_kde_desktop(xdg_current_desktop: Option<&str>) -> bool {
         .contains("KDE")
 }
 
-/// Решение `hybrid_supported`: KDE + все бинари + активный
-/// plasma-workspace.target (наличие бинарей и is-active — наблюдения).
+/// The `hybrid_supported` decision: KDE + all binaries + an active
+/// plasma-workspace.target (the presence of binaries and is-active are observations).
 pub fn hybrid_supported_decision(
     xdg_current_desktop: Option<&str>,
     all_binaries_present: bool,
@@ -1624,81 +1624,81 @@ pub fn hybrid_supported_decision(
     is_kde_desktop(xdg_current_desktop) && all_binaries_present && plasma_target_active
 }
 
-/// Бэкапить ли текущую тему ksplashrc перед установкой гибрида — порт
-/// условия в `_install_hybrid` (повторное включение не затирает бэкап).
+/// Whether to back up the current ksplashrc theme before installing the hybrid — port of
+/// the condition in `_install_hybrid` (re-enabling does not overwrite the backup).
 pub fn should_backup_prev_theme(cur_theme: &str) -> bool {
     cur_theme != KSPLASH_THEME_ID
 }
 
-/// Откатывать ли ksplashrc при снятии гибрида — порт условия в
-/// `_uninstall_hybrid` (чужую тему, выбранную позже, не трогаем).
+/// Whether to roll back ksplashrc when removing the hybrid — port of the condition in
+/// `_uninstall_hybrid` (a foreign theme chosen later is left alone).
 pub fn should_rollback_ksplashrc(cur_theme: &str) -> bool {
     cur_theme == KSPLASH_THEME_ID
 }
 
-/// Чинить ли связку ksplashrc перед реальным показом заставки: гибрид
-/// числится установленным, а в `[KSplash] Theme` стоит НЕ наша тема (в том
-/// числе пусто — ключ потеряли, и KSplash возьмёт тему из глобальной).
+/// Whether to repair the ksplashrc setup before a real splash display: the hybrid
+/// counts as installed, while `[KSplash] Theme` holds a theme that is NOT ours (including
+/// empty — the key was lost, and KSplash will take the theme from the global one).
 ///
-/// Причина самолечения — в шапке модуля: ключ перезаписывает любое
-/// применение глобальной темы Plasma, и вход молча теряет бесшовность.
+/// The reason for self-healing is in the module header: any application of a Plasma
+/// global theme overwrites the key, and the login silently loses its seamlessness.
 pub fn should_heal_ksplashrc(cfg: &Value, cur_theme: &str) -> bool {
     truthy(&get_or(cfg, "hybrid_installed", Value::Null)) && cur_theme != KSPLASH_THEME_ID
 }
 
 // ============================================================================
-// Спор за слот KSplash: видеозаставка входа против заставки KDE
+// The dispute over the KSplash slot: the login video splash versus the KDE splash
 // ============================================================================
 //
-// ⚠️ Место при входе ОДНО. Самолечение выше возвращает нашу тему в
-// `ksplashrc` при каждом входе — и ровно поэтому оно обязано знать про
-// вкладку «Оформление»: там покупатель может выбрать СВОЮ заставку KDE
-// (`ainst::lnf_component_plan`, вид `splash`) или оформление целиком
-// (`global`, его применяет `plasma-apply-lookandfeel` — тот же ключ). Не
-// спроси мы ничего — человек выбрал бы заставку, а при следующем входе
-// продукт МОЛЧА вернул бы свою: осознанный выбор покупателя отменён без
-// единого слова, и виноватым выглядит его собственный выбор.
+// ⚠️ There is ONE slot at login. The self-healing above brings our theme back into
+// `ksplashrc` at every login — and exactly because of that it must know about
+// the «Appearance» tab: there the user may choose THEIR OWN KDE splash
+// (`ainst::lnf_component_plan`, the `splash` kind) or a whole look
+// (`global`, applied by `plasma-apply-lookandfeel` — the same key). If we
+// asked nothing, the person would choose a splash, and at the next login
+// the product would SILENTLY bring its own back: the user's deliberate choice is cancelled without
+// a single word, and their own choice looks to blame.
 //
-// Поэтому здесь не «умное» правило, а честный вопрос с двумя исходами:
-// место остаётся за роликом либо уходит выбранной заставке, и тогда гибрид
-// снимается по-настоящему (`uninstall_hybrid`), чтобы возвращать было
-// нечему. Решение и все тексты — тут; интерфейсу остаётся показать вопрос
-// и исполнить ответ.
+// So here there is no «smart» rule but an honest question with two outcomes:
+// the slot stays with the clip or goes to the chosen splash, and then the hybrid
+// is removed for real (`uninstall_hybrid`), so that there is nothing to bring
+// back. The decision and all texts are here; the interface only shows the question
+// and executes the answer.
 
-/// Займёт ли применение этого вида оформления слот заставки KSplash.
+/// Whether applying this look kind takes the KSplash splash slot.
 ///
-/// `splash` пишет `ksplashrc[KSplash]Theme` напрямую, `global` — тот же ключ
-/// руками `plasma-apply-lookandfeel`. Остальные виды (курсоры, иконки, GTK,
-/// обои, экран блокировки) слота не касаются, и спрашивать о них нечего.
+/// `splash` writes `ksplashrc[KSplash]Theme` directly, `global` — the same key
+/// by the hands of `plasma-apply-lookandfeel`. Other kinds (cursors, icons, GTK,
+/// wallpapers, lock screen) do not touch the slot, and there is nothing to ask about them.
 pub fn apply_kind_takes_ksplash_slot(apply_kind: &str) -> bool {
     matches!(apply_kind, "splash" | "global")
 }
 
-/// Вопрос покупателю и оба его исхода.
+/// The question to the user and both of its outcomes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SplashSlotConflict {
-    /// Заголовок окна вопроса.
+    /// Title of the question window.
     pub title: &'static str,
-    /// Объяснение и сам вопрос. «Да» — отдать место выбранной заставке,
-    /// «Нет» — оставить видеозаставку Rexon.
+    /// The explanation and the question itself. «Yes» — give the slot to the chosen splash,
+    /// «No» — keep Rexon's video splash.
     pub question: String,
-    /// Что сказать покупателю, когда он оставил видеозаставку.
+    /// What to tell the user when they kept the video splash.
     pub kept: String,
-    /// Можно ли применить ОСТАЛЬНОЕ, оставив видеозаставку.
+    /// Whether the REST can be applied while keeping the video splash.
     ///
-    /// У целого оформления заставка — лишь одна из частей, и отказывать во
-    /// всей теме из-за неё незачем: тема применяется, а слот заставки мы
-    /// сразу возвращаем себе (`heal_hybrid`). У вида `splash` возвращать
-    /// нечего — там вся суть действия и есть заставка, поэтому «Нет»
-    /// означает «не применять».
+    /// For a whole look the splash is just one of the parts, and there is no reason to refuse
+    /// the whole theme because of it: the theme is applied, and we take the splash slot
+    /// back right away (`heal_hybrid`). For the `splash` kind there is nothing to give
+    /// back — the splash is the whole point of the action there, so «No»
+    /// means «do not apply».
     pub keep_applies_rest: bool,
 }
 
-/// Заголовок вопроса о слоте.
+/// Title of the question about the slot.
 ///
-/// `&'static str`, а не `String`: поле [`SplashSlotConflict::title`] так
-/// объявлено, и хозяева окна берут его как есть. Перевод на каждый язык
-/// процесса оседает один раз (языков — единицы, утечка ограничена).
+/// `&'static str`, not `String`: the field [`SplashSlotConflict::title`] is declared
+/// that way, and the window hosts take it as is. The translation for each language of the
+/// process is leaked once (there are only a few languages, the leak is bounded).
 pub fn slot_question_title() -> &'static str {
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -1715,10 +1715,10 @@ pub fn slot_question_title() -> &'static str {
     leaked
 }
 
-/// Спорит ли применение оформления с видеозаставкой входа.
+/// Whether applying a look conflicts with the login video splash.
 ///
-/// `None` — спорить не о чем: вид оформления слота не касается, гибрид не
-/// установлен, либо применяют саму нашу тему-постер.
+/// `None` — nothing to dispute: the look kind does not touch the slot, the hybrid is not
+/// installed, or our own poster theme is being applied.
 pub fn splash_slot_conflict(
     apply_kind: &str,
     theme_name: &str,
@@ -1727,7 +1727,7 @@ pub fn splash_slot_conflict(
     if !hybrid_installed || !apply_kind_takes_ksplash_slot(apply_kind) {
         return None;
     }
-    // Наша же тема-постер: она и так стоит в слоте, отбирать место не у кого.
+    // Our own poster theme: it already sits in the slot, there is nobody to take the place from.
     if theme_name == KSPLASH_THEME_ID {
         return None;
     }
@@ -1750,9 +1750,9 @@ pub fn splash_slot_conflict(
             keep_applies_rest: true,
         });
     }
-    // Плитка «Нет» — выключить заставку KDE совсем. Ролик тоже держится на
-    // ней (тема-постер), поэтому спросить надо, но другими словами: имени
-    // «None» человек нигде не видел.
+    // The «None» tile — turn the KDE splash off entirely. The clip relies on
+    // it too (the poster theme), so we must ask, but in other words: the person
+    // has never seen the name «None» anywhere.
     if theme_name == crate::appearance_installer::SPLASH_NONE {
         return Some(SplashSlotConflict {
             title: slot_question_title(),
@@ -1785,12 +1785,12 @@ pub fn splash_slot_conflict(
     })
 }
 
-/// Покупатель оставил видеозаставку, а остальное оформление применено.
+/// The user kept the video splash, and the rest of the look was applied.
 pub fn msg_slot_kept_video() -> String {
     tr("The splash screen was left alone — the Rexon startup movie still plays at login.")
 }
 
-/// Покупатель оставил видеозаставку, выбранная заставка НЕ применена.
+/// The user kept the video splash, the chosen splash was NOT applied.
 pub fn msg_slot_kept_instead_of(theme_name: &str) -> String {
     trf(
         "The “%1” splash screen wasn't applied — the Rexon startup movie stays at login.",
@@ -1798,16 +1798,16 @@ pub fn msg_slot_kept_instead_of(theme_name: &str) -> String {
     )
 }
 
-/// Покупатель отдал место выбранной заставке — гибрид снят.
+/// The user gave the slot to the chosen splash — the hybrid was removed.
 pub fn msg_slot_released() -> String {
     tr("The Rexon startup movie is off — the chosen splash screen now shows at login.")
 }
 
-/// Место отдать не вышло: гибрид не снялся.
+/// Could not give up the slot: the hybrid was not removed.
 ///
-/// Применять выбранную заставку в таком случае НЕЛЬЗЯ: гибрид числится
-/// установленным, и при следующем входе самолечение вернуло бы нашу тему —
-/// покупатель увидел бы, что выбор «не сохранился», без всякой причины.
+/// Applying the chosen splash in this case is NOT allowed: the hybrid counts as
+/// installed, and at the next login self-healing would bring our theme back —
+/// the user would see that the choice «was not saved», for no reason at all.
 pub fn msg_slot_release_failed(detail: &str) -> String {
     trf(
         "Couldn't turn off the Rexon startup movie: %1. The chosen splash screen \
@@ -1816,25 +1816,25 @@ pub fn msg_slot_release_failed(detail: &str) -> String {
     )
 }
 
-/// Ответ покупателя на спор за слот, переведённый в план применения.
+/// The user's answer to the slot dispute, turned into an apply plan.
 ///
-/// Один на все хозяева вкладки «Оформление» (Rust-окно и Python-хозяин
-/// живого продукта): ветвление «Да/Нет → что делать» живёт здесь, а
-/// хозяевам остаётся показать вопрос и исполнить план (правило #12).
+/// One for all hosts of the «Appearance» tab (the Rust window and the Python host
+/// of the live product): the «Yes/No → what to do» branching lives here, and
+/// the hosts only show the question and execute the plan (rule #12).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SplashSlotPlan {
-    /// Применять. `keep_video` — вернуть слот заставки себе сразу после
-    /// применения (путь ролика), `note` — что дописать к итогу.
+    /// Apply. `keep_video` — take the splash slot back right after
+    /// applying (the clip path), `note` — what to append to the result.
     Apply {
         keep_video: Option<String>,
         note: String,
     },
-    /// Не применять — отчитаться этим текстом.
+    /// Do not apply — report with this text.
     Stop(String),
 }
 
 impl SplashSlotPlan {
-    /// Спора нет — обычное применение без примечаний.
+    /// No dispute — a normal apply without notes.
     pub fn plain() -> Self {
         SplashSlotPlan::Apply {
             keep_video: None,
@@ -1843,10 +1843,10 @@ impl SplashSlotPlan {
     }
 }
 
-/// Итог применения с примечанием о слоте заставки.
+/// The apply result with a note about the splash slot.
 ///
-/// Примечание дописывается только к УДАЧЕ: отказ установщика говорит сам за
-/// себя, и «ролик остался на месте» рядом с ним читалось бы как успех.
+/// The note is appended only to a SUCCESS: an installer refusal speaks for
+/// itself, and «the clip stayed in place» next to it would read as success.
 pub fn msg_with_slot_note(msg: &str, note: &str, ok: bool) -> String {
     let mut out = msg.to_string();
     if ok && !note.is_empty() {
@@ -1859,37 +1859,37 @@ pub fn msg_with_slot_note(msg: &str, note: &str, ok: bool) -> String {
 }
 
 // ============================================================================
-// Правило KWin «поверх всего» (kwinrulesrc)
+// The KWin «above everything» rule (kwinrulesrc)
 // ============================================================================
 
-/// Название правила — его человек видит в «Параметрах системы → Управление
-/// окнами → Правила окон» KDE, поэтому оно на языке интерфейса.
+/// The rule name — the person sees it in KDE's «System Settings → Window
+/// Management → Window Rules», so it is in the interface language.
 // TRANSLATORS: name of a KDE window rule that keeps Rexon's startup movie
 // above the panel; people see it in System Settings → Window Rules.
 pub const KWIN_RULE_TITLE: &str = n_("Rexon: startup movie on top of everything");
 
-/// Первая строка правила, какой её писал оригинал (`_KWIN_RULE_DESC`), — по-
-/// русски для всех языков. Новые правила так больше не пишутся
-/// ([`kwin_rule_desc_line`]); константа осталась, чтобы узнавать уже
-/// установленные правила, и для моста в старый Python.
+/// The rule's first line as the original wrote it (`_KWIN_RULE_DESC`) — in
+/// Russian for all languages. New rules are no longer written this way
+/// ([`kwin_rule_desc_line`]); the constant remains to recognize already
+/// installed rules, and for the bridge to the old Python.
 pub const KWIN_RULE_DESC: &str = "Description=Rexon: заставка входа поверх всего\n";
 
-/// Название из [`KWIN_RULE_DESC`] без ключа и перевода строки.
+/// The name from [`KWIN_RULE_DESC`] without the key and the newline.
 const KWIN_RULE_TITLE_LEGACY_RU: &str = "Rexon: заставка входа поверх всего";
 
-/// Первая строка правила на текущем языке интерфейса.
+/// The rule's first line in the current interface language.
 pub fn kwin_rule_desc_line() -> String {
     format!("Description={}\n", tr(KWIN_RULE_TITLE))
 }
 
-/// Все названия, под которыми наше правило могло быть записано: исходное
-/// английское, прежнее русское (до каталога перевода) и перевод на каждый
-/// язык каталога, установленный на машине, плюс текущий.
+/// All names under which our rule may have been written: the original
+/// English one, the former Russian one (before the translation catalog) and the translation into every
+/// catalog language installed on the machine, plus the current one.
 ///
-/// Правило ищется прежде всего по `wmclass` ([`KWIN_APP_ID`]); названия —
-/// второй признак (правило без `wmclass`, поправленное руками) и, главное,
-/// разрешение переписать название на текущий язык: название не из этого
-/// списка — своё, данное человеком, и его не трогаем.
+/// The rule is found primarily by `wmclass` ([`KWIN_APP_ID`]); the names are
+/// a second sign (a rule without `wmclass`, edited by hand) and, most importantly,
+/// the permission to rewrite the name into the current language: a name not from this
+/// list is the person's own, and we do not touch it.
 pub fn kwin_rule_known_titles() -> Vec<String> {
     let mut all = vec![KWIN_RULE_TITLE.to_string(), KWIN_RULE_TITLE_LEGACY_RU.to_string()];
     all.extend(crate::i18n::translations_everywhere(KWIN_RULE_TITLE));
@@ -1902,18 +1902,18 @@ pub fn kwin_rule_known_titles() -> Vec<String> {
     }
     out
 }
-/// Снятие FSP (0=None, 2=Force) — порт `_KWIN_RULE_FSP`. Ключевой момент:
-/// keepAbove НЕ поднимает окно над панелью (DockLayer выше AboveLayer);
-/// над панелью — только АКТИВНЫЙ фулскрин, а активацию mpv получает лишь
-/// со снятым focus-stealing-prevention (инцидент 2026-07-17 19:57).
+/// Removing FSP (0=None, 2=Force) — port of `_KWIN_RULE_FSP`. The key point:
+/// keepAbove does NOT raise the window above the panel (DockLayer is above AboveLayer);
+/// only an ACTIVE fullscreen goes above the panel, and mpv gets activation only
+/// with focus-stealing-prevention removed (incident 2026-07-17 19:57).
 pub const KWIN_RULE_FSP: &str = "fsplevel=0\nfsplevelrule=2\n";
 
-/// Тело правила KWin (без заголовка `[N]`) — порт `_KWIN_RULE_BODY`.
+/// Body of the KWin rule (without the `[N]` header) — port of `_KWIN_RULE_BODY`.
 pub fn kwin_rule_body() -> String {
     kwin_rule_body_with(&kwin_rule_desc_line())
 }
 
-/// [`kwin_rule_body`] с заданной первой строкой (`Description=…\n`).
+/// [`kwin_rule_body`] with a given first line (`Description=…\n`).
 fn kwin_rule_body_with(desc_line: &str) -> String {
     format!(
         "{desc_line}{KWIN_RULE_FSP}\
@@ -1928,9 +1928,9 @@ fn kwin_rule_body_with(desc_line: &str) -> String {
     )
 }
 
-/// Кандидаты команды reconfigure живого KWin — порт `_kwin_reconfigure`
-/// (исполнитель берёт первый существующий бинарь; reconfigure асинхронный —
-/// после него пауза ~0.5 c до старта mpv).
+/// Candidates for the live KWin reconfigure command — port of `_kwin_reconfigure`
+/// (the executor takes the first existing binary; reconfigure is asynchronous —
+/// after it a ~0.5 s pause before mpv starts).
 pub fn kwin_reconfigure_candidates() -> Vec<Vec<String>> {
     vec![
         vec!["qdbus6".into(), "org.kde.KWin".into(), "/KWin".into(), "reconfigure".into()],
@@ -1949,8 +1949,8 @@ pub fn kwin_reconfigure_candidates() -> Vec<Vec<String>> {
     ]
 }
 
-/// Разбить текст kwinrulesrc на секции — семантика `re.split(r"(?m)^(?=\[)")`
-/// (границы ПЕРЕД каждым `[Header]` в начале строки; заголовки сохраняются).
+/// Split the kwinrulesrc text into sections — the semantics of `re.split(r"(?m)^(?=\[)")`
+/// (boundaries BEFORE each `[Header]` at the start of a line; headers are kept).
 fn split_sections(txt: &str) -> Vec<&str> {
     let mut cuts = vec![0usize];
     for (i, _) in txt.match_indices('[') {
@@ -1966,7 +1966,7 @@ fn split_sections(txt: &str) -> Vec<&str> {
     out
 }
 
-/// Номер `[N]` в начале строки — семантика `^\[(\d+)\]` (re.M).
+/// The `[N]` number at the start of a line — the semantics of `^\[(\d+)\]` (re.M).
 fn rule_numbers(txt: &str) -> Vec<u64> {
     let mut nums = Vec::new();
     for line in txt.lines() {
@@ -1981,8 +1981,8 @@ fn rule_numbers(txt: &str) -> Vec<u64> {
     nums
 }
 
-/// Байтовое смещение начала и конца ПЕРВОЙ строки с данным префиксом
-/// (семантика `re.search(..., re.M)` для `^prefix...$`).
+/// Byte offset of the start and end of the FIRST line with the given prefix
+/// (the semantics of `re.search(..., re.M)` for `^prefix...$`).
 fn find_line_with_prefix(txt: &str, prefix: &str) -> Option<(usize, usize)> {
     let mut offset = 0;
     for line in txt.split_inclusive('\n') {
@@ -1996,7 +1996,7 @@ fn find_line_with_prefix(txt: &str, prefix: &str) -> Option<(usize, usize)> {
     None
 }
 
-/// Первая строка вида `count=<цифры>` целиком — семантика `^count=\d+$`.
+/// The first whole line of the form `count=<digits>` — the semantics of `^count=\d+$`.
 fn find_count_line(txt: &str) -> Option<(usize, usize)> {
     let mut offset = 0;
     for line in txt.split_inclusive('\n') {
@@ -2012,42 +2012,42 @@ fn find_count_line(txt: &str) -> Option<(usize, usize)> {
     None
 }
 
-/// Идемпотентное правило KWin для окна заставки — порт чистой части
-/// `_ensure_kwin_splash_rule` (текст файла → новый текст файла).
+/// An idempotent KWin rule for the splash window — port of the pure part of
+/// `_ensure_kwin_splash_rule` (file text → new file text).
 ///
-/// * правило уже есть и актуально (`fsplevel=`, название на текущем языке)
-///   → `None` (файл не трогаем);
-/// * старое правило без fsplevel → миграция на месте (врезка снятия FSP);
-/// * название — один из прежних вариантов ([`kwin_rule_known_titles`]), но
-///   не на текущем языке → переписывается на текущий;
-/// * правила нет → новый блок `[max+1]` + регистрация в `[General]`.
+/// * the rule already exists and is up to date (`fsplevel=`, the name in the current language)
+///   → `None` (the file is left alone);
+/// * an old rule without fsplevel → migration in place (inserting the FSP removal);
+/// * the name is one of the former variants ([`kwin_rule_known_titles`]), but
+///   not in the current language → it is rewritten into the current one;
+/// * no rule → a new block `[max+1]` + registration in `[General]`.
 ///
-/// Возврат `Some(text)` = исполнитель перезаписывает файл и дёргает
-/// reconfigure живого KWin ([`kwin_reconfigure_candidates`]).
+/// Returning `Some(text)` = the executor rewrites the file and pokes
+/// reconfigure of the live KWin ([`kwin_reconfigure_candidates`]).
 ///
-/// Починка №1: если `[General]` есть, но в нём нет `rules=`/`count=`,
-/// Python терял регистрацию правила (re.sub вхолостую) — здесь недостающие
-/// ключи вписываются сразу после заголовка `[General]`.
+/// Fix #1: if `[General]` exists but has no `rules=`/`count=`,
+/// Python lost the rule's registration (re.sub did nothing) — here the missing
+/// keys are written right after the `[General]` header.
 ///
-/// Починка №2 (01.10.2026): своё правило узнаётся по строке `wmclass=`
-/// ЦЕЛИКОМ (раньше — подстрокой, и чужое `wmclass=rexon-session-splash-x`
-/// сошло бы за наше) либо по одному из известных названий. Миграция
-/// врезает снятие FSP после строки `Description=` ЛЮБОГО языка: оригинал
-/// искал свою русскую строку дословно, и при другом названии миграция
-/// молча не происходила — файл переписывался на каждом запуске без толку.
+/// Fix #2 (01.10.2026): our own rule is recognized by the WHOLE `wmclass=`
+/// line (previously by substring, and a foreign `wmclass=rexon-session-splash-x`
+/// would pass for ours) or by one of the known names. The migration
+/// inserts the FSP removal after a `Description=` line of ANY language: the original
+/// looked for its own Russian line verbatim, and with a different name the migration
+/// silently did not happen — the file was rewritten on every launch for nothing.
 pub fn ensure_kwin_rule_text(existing: Option<&str>) -> Option<String> {
     ensure_kwin_rule_text_with(existing, &tr(KWIN_RULE_TITLE), &kwin_rule_known_titles())
 }
 
-/// Значение первой строки `key=` секции (без `\r`).
+/// Value of the section's first `key=` line (without `\r`).
 fn section_value<'a>(sec: &'a str, key: &str) -> Option<&'a str> {
     sec.lines()
         .map(|l| l.strip_suffix('\r').unwrap_or(l))
         .find_map(|l| l.strip_prefix(key))
 }
 
-/// [`ensure_kwin_rule_text`] с явными названиями: `title` — текущее,
-/// `known` — все, под которыми правило могло быть записано.
+/// [`ensure_kwin_rule_text`] with explicit names: `title` — the current one,
+/// `known` — all names under which the rule may have been written.
 pub fn ensure_kwin_rule_text_with(
     existing: Option<&str>,
     title: &str,
@@ -2055,11 +2055,11 @@ pub fn ensure_kwin_rule_text_with(
 ) -> Option<String> {
     let txt = existing.unwrap_or("");
     let desc_line = format!("Description={title}\n");
-    // Наше правило уже есть? Ищем свой блок среди секций.
+    // Does our rule already exist? Look for our block among the sections.
     let sections = split_sections(txt);
     let is_ours = |sec: &str| {
-        // Секция правила — любая, кроме [General]: KWin новых версий
-        // называет правила не номерами, а UUID.
+        // A rule section is any except [General]: newer KWin versions
+        // name rules not by numbers but by UUID.
         !sec.starts_with("[General]")
             && (sec
                 .lines()
@@ -2072,16 +2072,16 @@ pub fn ensure_kwin_rule_text_with(
             continue;
         }
         let mut updated = sec.to_string();
-        // Название — на текущий язык, если оно наше прежнее, а не данное
-        // человеком.
+        // The name goes into the current language if it is our former one, not one given
+        // by the person.
         if let Some((s, e)) = find_line_with_prefix(&updated, "Description=") {
             let current = &updated[s + "Description=".len()..e];
             if current != title && known.iter().any(|k| k == current) {
                 updated.replace_range(s + "Description=".len()..e, title);
             }
         }
-        // Миграция старого правила: врезаем снятие FSP после названия (или
-        // сразу после заголовка, если названия нет).
+        // Migration of an old rule: insert the FSP removal after the name (or
+        // right after the header if there is no name).
         if !updated.contains("fsplevel=") {
             let at = find_line_with_prefix(&updated, "Description=")
                 .or_else(|| find_line_with_prefix(&updated, "["))
@@ -2094,7 +2094,7 @@ pub fn ensure_kwin_rule_text_with(
             updated.insert_str(at, &fsp);
         }
         if updated == *sec {
-            return None; // актуально, ничего не делаем
+            return None; // up to date, do nothing
         }
         let mut out = String::with_capacity(txt.len() + KWIN_RULE_FSP.len() + title.len());
         for (j, s) in sections.iter().enumerate() {
@@ -2107,7 +2107,7 @@ pub fn ensure_kwin_rule_text_with(
         return Some(out);
     }
 
-    // Правила ещё нет — добавляем новый блок.
+    // No rule yet — add a new block.
     let new = rule_numbers(txt).into_iter().max().unwrap_or(0) + 1;
     let mut rules: Vec<String> = match find_line_with_prefix(txt, "rules=") {
         Some((s, e)) => txt[s + "rules=".len()..e]
@@ -2133,7 +2133,7 @@ pub fn ensure_kwin_rule_text_with(
             None => missing.push_str(&format!("{rules_line}\n")),
         }
         if !missing.is_empty() {
-            // Починка №1: вписать недостающие ключи сразу после [General].
+            // Fix #1: write the missing keys right after [General].
             if let Some((_, hdr_end)) = find_line_with_prefix(&txt, "[General]") {
                 let insert_at = if txt[hdr_end..].starts_with('\n') {
                     hdr_end + 1
@@ -2153,7 +2153,7 @@ pub fn ensure_kwin_rule_text_with(
 // mpv IPC / sd_notify
 // ============================================================================
 
-/// JSON-литерал строки в стиле `json.dumps` (ensure_ascii=True).
+/// A JSON string literal in the style of `json.dumps` (ensure_ascii=True).
 fn py_json_string(s: &str, out: &mut String) {
     out.push('"');
     for ch in s.chars() {
@@ -2184,7 +2184,7 @@ fn py_json_string(s: &str, out: &mut String) {
     out.push('"');
 }
 
-/// `json.dumps(v)` с дефолтными разделителями Python (`", "` / `": "`).
+/// `json.dumps(v)` with Python's default separators (`", "` / `": "`).
 fn py_dumps(v: &Value, out: &mut String) {
     match v {
         Value::Null => out.push_str("null"),
@@ -2217,7 +2217,7 @@ fn py_dumps(v: &Value, out: &mut String) {
     }
 }
 
-/// Полезная нагрузка `_mpv_ipc_send`: `json.dumps({"command": cmd}) + "\n"`.
+/// Payload of `_mpv_ipc_send`: `json.dumps({"command": cmd}) + "\n"`.
 pub fn mpv_ipc_command_payload(command: &Value) -> String {
     let mut m = Map::new();
     m.insert("command".into(), command.clone());
@@ -2227,7 +2227,7 @@ pub fn mpv_ipc_command_payload(command: &Value) -> String {
     out
 }
 
-/// Полезная нагрузка запроса `get_property` в `_mpv_ipc_get`
+/// Payload of the `get_property` request in `_mpv_ipc_get`
 /// (`request_id` = [`MPV_IPC_REQUEST_ID`]).
 pub fn mpv_ipc_get_payload(prop: &str) -> String {
     let mut m = Map::new();
@@ -2242,22 +2242,22 @@ pub fn mpv_ipc_get_payload(prop: &str) -> String {
     out
 }
 
-/// Разбор потока ответа mpv-IPC — порт цикла в `_mpv_ipc_get`.
+/// Parsing the mpv-IPC reply stream — port of the loop in `_mpv_ipc_get`.
 ///
-/// В сокет вперемешку с ответом сыплются события: строки разбираются по
-/// порядку, незавершённый хвост (без `\n`) игнорируется; первый объект с
-/// нашим `request_id` решает: `error == "success"` → `Some(data)`, иначе
-/// `None`. Починка №2: валидный JSON-не-объект пропускается (в Python
-/// `msg.get` ронял AttributeError мимо перехвата).
+/// Events pour into the socket mixed with the reply: lines are parsed in
+/// order, an unfinished tail (without `\n`) is ignored; the first object with
+/// our `request_id` decides: `error == "success"` → `Some(data)`, otherwise
+/// `None`. Fix #2: valid JSON that is not an object is skipped (in Python
+/// `msg.get` raised an AttributeError past the handler).
 pub fn parse_mpv_ipc_response(received: &str, request_id: i64) -> Option<Value> {
     let mut parts: Vec<&str> = received.split('\n').collect();
-    parts.pop(); // незавершённый хвост
+    parts.pop(); // unfinished tail
     for line in parts {
         let Ok(msg) = serde_json::from_str::<Value>(line) else {
             continue;
         };
         if !msg.is_object() {
-            continue; // починка №2
+            continue; // fix #2
         }
         if msg.get("request_id").and_then(Value::as_i64) == Some(request_id) {
             return if msg.get("error").and_then(Value::as_str) == Some("success") {
@@ -2270,8 +2270,8 @@ pub fn parse_mpv_ipc_response(received: &str, request_id: i64) -> Option<Value> 
     None
 }
 
-/// Адрес сокета `sd_notify` — порт трансформации в `_sd_notify_ready`:
-/// пусто → None (no-op), `@…` (abstract namespace) → `\0…`.
+/// The `sd_notify` socket address — port of the transformation in `_sd_notify_ready`:
+/// empty → None (no-op), `@…` (abstract namespace) → `\0…`.
 pub fn notify_socket_addr(notify_socket: Option<&str>) -> Option<String> {
     let addr = notify_socket.unwrap_or("");
     if addr.is_empty() {
@@ -2283,15 +2283,15 @@ pub fn notify_socket_addr(notify_socket: Option<&str>) -> Option<String> {
     })
 }
 
-/// Полезная нагрузка READY менеджеру systemd.
+/// The READY payload for the systemd manager.
 pub const SD_NOTIFY_READY: &str = "READY=1";
 
 // ============================================================================
-// X11: геометрия primary-монитора (сам оверлей — непортируемый ctypes-код)
+// X11: primary monitor geometry (the overlay itself is non-portable ctypes code)
 // ============================================================================
 
-/// `\b` перед позицией `pos` (semantics Python: слева не-словесный символ
-/// или начало строки; `connected` начинается со словесного).
+/// `\b` before position `pos` (Python semantics: a non-word character on the left
+/// or the start of the string; `connected` starts with a word character).
 fn word_boundary_before(txt: &str, pos: usize) -> bool {
     match txt[..pos].chars().next_back() {
         None => true,
@@ -2299,7 +2299,7 @@ fn word_boundary_before(txt: &str, pos: usize) -> bool {
     }
 }
 
-/// Прочитать `\d+` с позиции; возврат (число, конец) или None.
+/// Read `\d+` from a position; returns (number, end) or None.
 fn read_digits(txt: &str, from: usize) -> Option<(i64, usize)> {
     let bytes = txt.as_bytes();
     let mut i = from;
@@ -2312,7 +2312,7 @@ fn read_digits(txt: &str, from: usize) -> Option<(i64, usize)> {
     txt[from..i].parse().ok().map(|n| (n, i))
 }
 
-/// Ожидаемый одиночный символ на позиции; возврат позиции после него.
+/// An expected single character at a position; returns the position after it.
 fn expect_char(txt: &str, at: usize, ch: char) -> Option<usize> {
     if txt[at..].starts_with(ch) {
         Some(at + ch.len_utf8())
@@ -2321,7 +2321,7 @@ fn expect_char(txt: &str, at: usize, ch: char) -> Option<usize> {
     }
 }
 
-/// Геометрия `(\d+)x(\d+)\+(\d+)\+(\d+)` с позиции.
+/// Geometry `(\d+)x(\d+)\+(\d+)\+(\d+)` from a position.
 fn read_geometry(txt: &str, from: usize) -> Option<(i64, i64, i64, i64)> {
     let (w, i) = read_digits(txt, from)?;
     let i = expect_char(txt, i, 'x')?;
@@ -2333,7 +2333,7 @@ fn read_geometry(txt: &str, from: usize) -> Option<(i64, i64, i64, i64)> {
     Some((w, h, x, y))
 }
 
-/// Первое вхождение `\b<needle><geometry>` — общая часть обоих регексов.
+/// The first occurrence of `\b<needle><geometry>` — the shared part of both regexes.
 fn find_geometry_after(txt: &str, needle: &str) -> Option<(i64, i64, i64, i64)> {
     let mut from = 0;
     while let Some(rel) = txt[from..].find(needle) {
@@ -2348,40 +2348,40 @@ fn find_geometry_after(txt: &str, needle: &str) -> Option<(i64, i64, i64, i64)> 
     None
 }
 
-/// (x, y, w, h) primary-монитора из вывода `xrandr --query` — порт разбора в
-/// `_x11_primary_geometry`. Без primary-флага — первый connected-выход
-/// (покрывать весь виртуальный root при мультимониторе нельзя); ничего не
-/// нашли → None.
+/// (x, y, w, h) of the primary monitor from `xrandr --query` output — port of the parsing in
+/// `_x11_primary_geometry`. Without the primary flag — the first connected output
+/// (covering the whole virtual root with multiple monitors is not allowed); nothing
+/// found → None.
 pub fn parse_xrandr_geometry(stdout: &str) -> Option<(i64, i64, i64, i64)> {
     let (w, h, x, y) = find_geometry_after(stdout, "connected primary ")
         .or_else(|| find_geometry_after(stdout, "connected "))?;
     Some((x, y, w, h))
 }
 
-/// argv `xrandr --query` (порт вызова в `_x11_primary_geometry`).
+/// argv of `xrandr --query` (port of the call in `_x11_primary_geometry`).
 pub fn xrandr_query_argv(exe: &str) -> Vec<String> {
     vec![exe.into(), "--query".into()]
 }
 
 // ============================================================================
-// Прогон: маршруты, argv mpv и rexon-splash-overlay, сообщения
+// The run: routes, argv of mpv and rexon-splash-overlay, messages
 // ============================================================================
 
-/// Порт `_is_x11_session`: есть DISPLAY и нет WAYLAND_DISPLAY (на Plasma
-/// Wayland у user-юнитов есть ОБА — там остаётся Wayland-путь).
+/// Port of `_is_x11_session`: DISPLAY is set and WAYLAND_DISPLAY is not (on Plasma
+/// Wayland user units have BOTH — the Wayland path stays there).
 pub fn is_x11_session(display: Option<&str>, wayland_display: Option<&str>) -> bool {
     display.map(|d| !d.is_empty()).unwrap_or(false)
         && !wayland_display.map(|w| !w.is_empty()).unwrap_or(false)
 }
 
-/// Эффективный режим гибрида — порт `hybrid=None` в `play` (авто: гибрид
-/// установлен И реальный прогон; тест из UI передаёт Some(false)).
+/// The effective hybrid mode — port of `hybrid=None` in `play` (auto: the hybrid is
+/// installed AND it is a real run; a test from the UI passes Some(false)).
 pub fn effective_hybrid(param: Option<bool>, hybrid_installed: bool, blocking: bool) -> bool {
     param.unwrap_or(hybrid_installed && blocking)
 }
 
-/// Пробовать ли Rust-хелпер rexon-splash-overlay — порт условия в `play`
-/// (только реальный прогон на Wayland; тест из UI идёт оконным mpv).
+/// Whether to try the Rust helper rexon-splash-overlay — port of the condition in `play`
+/// (only a real run on Wayland; a test from the UI goes through windowed mpv).
 pub fn wants_wayland_helper(
     blocking: bool,
     display: Option<&str>,
@@ -2392,9 +2392,9 @@ pub fn wants_wayland_helper(
         && wayland_display.map(|w| !w.is_empty()).unwrap_or(false)
 }
 
-/// Кандидаты бинаря rexon-splash-overlay — порт `_find_splash_overlay_binary`
-/// (workspace-таргет rust/target и таргет крейта, release затем debug;
-/// PATH-фолбэк — наблюдение исполнителя). `repo_root` — realpath корня.
+/// Candidates for the rexon-splash-overlay binary — port of `_find_splash_overlay_binary`
+/// (the workspace target rust/target and the crate target, release then debug;
+/// the PATH fallback is the executor's observation). `repo_root` — realpath of the root.
 pub fn splash_overlay_candidates(repo_root: &str) -> Vec<String> {
     vec![
         format!("{repo_root}/rust/target/release/{SPLASH_OVERLAY_BINARY}"),
@@ -2404,8 +2404,8 @@ pub fn splash_overlay_candidates(repo_root: &str) -> Vec<String> {
     ]
 }
 
-/// argv rexon-splash-overlay — порт cmd в `_play_wayland_overlay`
-/// (протокол хелпера = протокол mpv: --ipc/--paused/unpause/quit).
+/// argv of rexon-splash-overlay — port of cmd in `_play_wayland_overlay`
+/// (the helper's protocol = mpv's protocol: --ipc/--paused/unpause/quit).
 pub fn splash_overlay_argv(
     helper: &str,
     video: &str,
@@ -2429,20 +2429,20 @@ pub fn splash_overlay_argv(
     cmd
 }
 
-/// Куда рендерит mpv — ветки построения cmd в `play`.
+/// Where mpv renders — the branches of building cmd in `play`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MpvTarget {
-    /// X11: рисуем в свой override-redirect слой через `--wid`
-    /// (`--keep-open=yes`: закрываем слой ПЕРВЫМ, постер не мелькает).
+    /// X11: draw into our own override-redirect layer via `--wid`
+    /// (`--keep-open=yes`: we close the layer FIRST, the poster does not flash).
     X11Overlay { window_id: u64 },
-    /// Обычное окно `--fullscreen --ontop`; на Wayland добавляется app_id
-    /// (иначе «поверх всего» не удержать — компенсирует правило KWin).
+    /// A normal `--fullscreen --ontop` window; on Wayland the app_id is added
+    /// (otherwise «above everything» cannot be kept — the KWin rule compensates).
     Window { wayland: bool },
 }
 
-/// argv mpv — порт построения `cmd` в `play` (одна функция на обе ветки;
-/// `ipc_sock` попадает в argv по правилам оригинала: overlay — всегда,
-/// окно — только в гибриде).
+/// mpv argv — port of building `cmd` in `play` (one function for both branches;
+/// `ipc_sock` gets into argv by the original's rules: overlay — always,
+/// window — only in the hybrid).
 pub fn mpv_argv(
     path: &str,
     sound: bool,
@@ -2452,7 +2452,7 @@ pub fn mpv_argv(
 ) -> Vec<String> {
     let mut cmd: Vec<String> = vec![
         "mpv".into(),
-        "--no-config".into(), // игнор пользовательского mpv.conf
+        "--no-config".into(), // ignore the user's mpv.conf
         "--osd-level=0".into(),
         "--no-osc".into(),
         "--no-osd-bar".into(),
@@ -2478,8 +2478,8 @@ pub fn mpv_argv(
                     .map(String::from),
             );
             if *wayland {
-                // --ontop на Wayland мёртв — поверх держит правило KWin по
-                // app_id (см. ensure_kwin_rule_text).
+                // --ontop is dead on Wayland — staying on top is ensured by the KWin rule by
+                // app_id (see ensure_kwin_rule_text).
                 cmd.push(format!("--wayland-app-id={KWIN_APP_ID}"));
             }
             if hybrid {
@@ -2488,8 +2488,8 @@ pub fn mpv_argv(
         }
     }
     if hybrid {
-        // Старт НА ПАУЗЕ: первый кадр (= постер темы) под оверлеем
-        // ksplashqml; unpause — после его гашения.
+        // Start PAUSED: the first frame (= the theme poster) is under the ksplashqml
+        // overlay; unpause — after it goes away.
         cmd.push("--pause".into());
     }
     cmd.push("--".into());
@@ -2497,81 +2497,81 @@ pub fn mpv_argv(
     cmd
 }
 
-// ── Сообщения play/автозапуска (тексты — как в оригинале) ──────────────────
+// ── play/autostart messages (texts as in the original) ─────────────────────
 
-/// «Файл не задан/не найден» в начале `play`.
+/// «File not set/not found» at the start of `play`.
 pub fn msg_no_file() -> String {
     tr("The startup movie file isn't set or can't be found")
 }
-/// Нет mpv (и нет пригодного хелпера).
+/// No mpv (and no usable helper).
 pub fn msg_no_mpv() -> String {
     tr("mpv isn't installed (it's needed for playback)")
 }
-/// Второй запуск при живом flock-локе.
+/// A second launch while the flock lock is alive.
 pub fn msg_already_playing() -> String {
     tr("The startup movie is already playing (second launch skipped)")
 }
-/// Успешный прогон.
+/// A successful run.
 pub fn msg_played() -> String {
     tr("Played")
 }
-/// Non-blocking запуск (тест из UI).
+/// A non-blocking launch (a test from the UI).
 pub fn msg_launched() -> String {
     tr("Started")
 }
-/// mpv не завершился за [`PLAY_TIMEOUT_SEC`].
+/// mpv did not finish within [`PLAY_TIMEOUT_SEC`].
 pub fn msg_mpv_timeout() -> String {
     tr("mpv didn't finish within 120 s — stopped")
 }
-/// Хелпер не завершился за [`PLAY_TIMEOUT_SEC`].
+/// The helper did not finish within [`PLAY_TIMEOUT_SEC`].
 pub fn msg_helper_timeout() -> String {
     tr("The startup movie didn't finish within 120 s — stopped")
 }
-/// В `install_autostart` не задан ролик.
+/// No clip is set in `install_autostart`.
 ///
-/// `msgid`, а не готовый текст: витрина узнаёт этот отказ по нему
-/// (`qt_steam::autostart_refusal_text`) — см. [`msg_choose_first`].
+/// A `msgid`, not a ready text: the showcase recognizes this refusal by it
+/// (`qt_steam::autostart_refusal_text`) — see [`msg_choose_first`].
 pub const MSG_CHOOSE_FIRST: &str = n_("Choose a startup movie first");
-/// [`MSG_CHOOSE_FIRST`] на языке интерфейса.
+/// [`MSG_CHOOSE_FIRST`] in the interface language.
 pub fn msg_choose_first() -> String {
     tr(MSG_CHOOSE_FIRST)
 }
-/// Autostart-.desktop включён.
+/// The autostart .desktop is enabled.
 pub fn msg_autostart_enabled() -> String {
     tr("Startup movie at login is on")
 }
-/// Заставка при входе полностью отключена.
+/// The login splash is completely disabled.
 pub fn msg_autostart_disabled() -> String {
     tr("Startup movie at login is off")
 }
-/// Гибрид включён (маршрут hybrid в `install_autostart`).
+/// The hybrid is enabled (the hybrid route in `install_autostart`).
 pub fn msg_hybrid_route_ok() -> String {
     tr("Turned on (KSplash hybrid — no desktop flash)")
 }
-/// `_install_hybrid` успешен.
+/// `_install_hybrid` succeeded.
 pub fn msg_hybrid_installed() -> String {
     tr("KSplash hybrid is on")
 }
-/// `_uninstall_hybrid` успешен.
+/// `_uninstall_hybrid` succeeded.
 pub fn msg_hybrid_uninstalled() -> String {
     tr("KSplash hybrid is off")
 }
-/// `_write_lnf_theme` успешен.
+/// `_write_lnf_theme` succeeded.
 pub fn msg_lnf_updated() -> String {
     tr("KSplash theme updated")
 }
 
-/// `f"mpv вернул код {rc}"`.
+/// The original's `f"mpv exited with code {rc}"` (it was in Russian).
 pub fn mpv_exit_message(rc: i64) -> String {
     trf("mpv exited with code %1", &[&rc])
 }
 
-/// `f"rexon-splash-overlay вернул код {rc}"`.
+/// The original's `f"rexon-splash-overlay exited with code {rc}"` (it was in Russian).
 pub fn helper_exit_message(rc: i64) -> String {
     trf("rexon-splash-overlay exited with code %1", &[&rc])
 }
 
-/// Сообщение фолбэка «гибрид не удался» — порт хвоста `install_autostart`.
+/// The «hybrid failed» fallback message — port of the tail of `install_autostart`.
 pub fn hybrid_fallback_message(hybrid_msg: &str, plain_ok: bool, plain_msg: &str) -> String {
     if plain_ok {
         trf("The hybrid didn't work (%1) — regular autostart is on instead", &[&hybrid_msg])
@@ -2580,10 +2580,10 @@ pub fn hybrid_fallback_message(hybrid_msg: &str, plain_ok: bool, plain_msg: &str
     }
 }
 
-/// Содержимое autostart-.desktop (фаза 1) — порт `_install_desktop_autostart`.
+/// Contents of the autostart .desktop (phase 1) — port of `_install_desktop_autostart`.
 ///
-/// `Comment` — на всех языках каталога ([`crate::system_l10n::desktop_key`]):
-/// прежде он был только русским, и английский покупатель видел русский.
+/// `Comment` — in all catalog languages ([`crate::system_l10n::desktop_key`]):
+/// previously it was only Russian, and an English-speaking user saw Russian.
 pub fn autostart_desktop_content(launcher_exec: &str) -> String {
     format!(
         "[Desktop Entry]\n\
@@ -2598,22 +2598,22 @@ pub fn autostart_desktop_content(launcher_exec: &str) -> String {
     )
 }
 
-/// Маршрут `install_autostart` (сами шаги — у исполнителя).
+/// The `install_autostart` route (the steps themselves are on the executor).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AutostartRoute {
-    /// Ролик не выбран → (false, [`MSG_CHOOSE_FIRST`]).
+    /// No clip chosen → (false, [`MSG_CHOOSE_FIRST`]).
     NoPath,
-    /// Гибрид: `_install_hybrid`; успех → снять .desktop и
-    /// [`msg_hybrid_route_ok`]; неудача → полный откат гибрида + фаза 1
+    /// Hybrid: `_install_hybrid`; success → remove the .desktop and
+    /// [`msg_hybrid_route_ok`]; failure → full hybrid rollback + phase 1
     /// ([`hybrid_fallback_message`]).
     Hybrid,
-    /// Чистая фаза 1 (autostart-.desktop); `rollback_hybrid` — сперва
-    /// откатить остатки гибрида (`hybrid_installed` в конфиге).
+    /// Pure phase 1 (the autostart .desktop); `rollback_hybrid` — first
+    /// roll back the hybrid's leftovers (`hybrid_installed` in the config).
     Plain { rollback_hybrid: bool },
 }
 
-/// Решение маршрута — порт развилки в `install_autostart`
-/// (галка гибрида по умолчанию ВКЛ: `cfg.get("hybrid", True)`).
+/// The route decision — port of the fork in `install_autostart`
+/// (the hybrid checkbox defaults to ON: `cfg.get("hybrid", True)`).
 pub fn autostart_route(cfg: &Value, hybrid_supported: bool) -> AutostartRoute {
     if !truthy(&get_or(cfg, "path", Value::Null)) {
         return AutostartRoute::NoPath;
@@ -2627,23 +2627,23 @@ pub fn autostart_route(cfg: &Value, hybrid_supported: bool) -> AutostartRoute {
     }
 }
 
-/// Порт `is_enabled`: включён любой из двух механизмов.
+/// Port of `is_enabled`: either of the two mechanisms is enabled.
 pub fn is_enabled(autostart_file_exists: bool, unit_file_exists: bool) -> bool {
     autostart_file_exists || unit_file_exists
 }
 
-/// Источник постера для X11-слоя — порт `_poster_for_video`.
+/// The poster source for the X11 layer — port of `_poster_for_video`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PosterSource {
-    /// Готовый постер темы KSplash (критический путь входа без ~0.3 c
-    /// ffmpeg) — ролик из конфига и файл на месте.
+    /// A ready KSplash theme poster (the login critical path without ~0.3 s of
+    /// ffmpeg) — the clip from the config and the file in place.
     Theme(String),
-    /// Свежий кадр ffmpeg-ом в runtime-каталог.
+    /// A fresh frame by ffmpeg into the runtime directory.
     Extract(String),
 }
 
-/// Решение — откуда постер: тема (если `cfg.path == video` и постер темы
-/// существует) или извлечение в runtime.
+/// The decision where the poster comes from: the theme (if `cfg.path == video` and the theme poster
+/// exists) or extraction into runtime.
 pub fn poster_source(
     cfg: &Value,
     video: &str,
@@ -2659,15 +2659,15 @@ pub fn poster_source(
 }
 
 // ============================================================================
-// Раскладка каталогов Steam и LnF-пакета (пути — здесь, листинги — исполнитель)
+// Layout of the Steam directories and the LnF package (paths — here, listings — the executor)
 // ============================================================================
 
-/// Каталог встроенных заставок клиента Steam.
+/// Directory of the Steam client's built-in splashes.
 pub fn steam_movies_dir(root: &str) -> String {
     format!("{root}/steamui/movies")
 }
 
-/// Имена файлов встроенных заставок (порядок = порядок обхода при скане).
+/// File names of the built-in splashes (order = traversal order of the scan).
 pub fn builtin_movie_filenames() -> Vec<String> {
     BUILTIN_NAMES
         .iter()
@@ -2675,53 +2675,53 @@ pub fn builtin_movie_filenames() -> Vec<String> {
         .collect()
 }
 
-/// Каталог своих роликов Steam (`config/uioverrides/movies`).
+/// Directory of Steam's custom clips (`config/uioverrides/movies`).
 pub fn steam_custom_movies_dir(root: &str) -> String {
     format!("{root}/config/uioverrides/movies")
 }
 
-/// Каталог инвентарных заставок (купленное в Points Shop уже лежит файлами).
+/// Directory of inventory splashes (purchases from the Points Shop already lie there as files).
 pub fn steam_inventory_dir(root: &str) -> String {
     format!("{root}/config/communityitemscache/startupmovies")
 }
 
-/// Каталог профилей Steam (`userdata/<steamid>`).
+/// Directory of Steam profiles (`userdata/<steamid>`).
 pub fn steam_userdata_dir(root: &str) -> String {
     format!("{root}/userdata")
 }
 
-/// `localconfig.vdf` одного профиля — кэш ответа Points Shop.
+/// `localconfig.vdf` of one profile — the cache of the Points Shop response.
 pub fn steam_localconfig_path(root: &str, steam_id: &str) -> String {
     format!("{root}/userdata/{steam_id}/config/localconfig.vdf")
 }
 
-/// `appcache/appinfo.vdf` — appid → название игры (двоичный VDF).
+/// `appcache/appinfo.vdf` — appid → game title (binary VDF).
 pub fn steam_appinfo_path(root: &str) -> String {
     format!("{root}/appcache/appinfo.vdf")
 }
 
-/// Пути внутри LnF-пакета темы KSplash — порт раскладки `_write_lnf_theme`.
-/// Второй копии этих имён на Python-стороне нет: тема и постер обязаны
-/// лежать там, где их ищет `theme_poster_path`.
+/// Paths inside the KSplash theme LnF package — port of the layout of `_write_lnf_theme`.
+/// There is no second copy of these names on the Python side: the theme and the poster must
+/// lie where `theme_poster_path` looks for them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LnfLayout {
-    /// `contents/splash` — каталог Splash.qml.
+    /// `contents/splash` — the Splash.qml directory.
     pub splash_dir: String,
-    /// `contents/splash/images` — каталог постера.
+    /// `contents/splash/images` — the poster directory.
     pub images_dir: String,
-    /// `contents/previews` — превью для списка тем в Параметрах системы.
+    /// `contents/previews` — previews for the theme list in System Settings.
     pub previews_dir: String,
-    /// `contents/splash/images/poster.png` — первый кадр ролика.
+    /// `contents/splash/images/poster.png` — the clip's first frame.
     pub poster_png: String,
-    /// `contents/previews/splash.png` — копия постера для списка тем.
+    /// `contents/previews/splash.png` — a copy of the poster for the theme list.
     pub preview_png: String,
-    /// `metadata.json` пакета.
+    /// The package's `metadata.json`.
     pub metadata_json: String,
     /// `contents/splash/Splash.qml`.
     pub splash_qml: String,
 }
 
-/// Раскладка LnF-пакета по каталогу темы.
+/// Layout of the LnF package by theme directory.
 pub fn lnf_layout(theme_dir: &str) -> LnfLayout {
     let splash_dir = format!("{theme_dir}/contents/splash");
     let images_dir = format!("{splash_dir}/images");
@@ -2738,93 +2738,93 @@ pub fn lnf_layout(theme_dir: &str) -> LnfLayout {
 }
 
 // ============================================================================
-// Константы исполнения: имена, таймауты подпроцессов, шаги poll-ожиданий
+// Execution constants: names, subprocess timeouts, poll-wait steps
 // ============================================================================
 
-/// Цель systemd, по которой гибрид определяет живую сессию Plasma и в
-/// `.wants` которой лежит ручной enable-фолбэк.
+/// The systemd target by which the hybrid detects a live Plasma session and in whose
+/// `.wants` the manual enable fallback lies.
 pub const PLASMA_WORKSPACE_TARGET: &str = "plasma-workspace.target";
-/// Значение `Engine` в ksplashrc для QML-заставки.
+/// The `Engine` value in ksplashrc for a QML splash.
 pub const KSPLASH_ENGINE: &str = "KSplashQML";
-/// Имя процесса заставки Plasma (по нему видно, погас ли оверлей).
+/// The process name of the Plasma splash (it shows whether the overlay went away).
 pub const KSPLASH_PROCESS: &str = "ksplashqml";
-/// Суффикс временного файла атомарной записи (`.tmp` + `os.replace`).
+/// Suffix of the atomic write's temporary file (`.tmp` + `os.replace`).
 pub const TMP_SUFFIX: &str = ".tmp";
-/// Суффикс недописанного кадра витрины (переименовывается по успеху ffmpeg).
+/// Suffix of an unfinished showcase frame (renamed on ffmpeg success).
 pub const PREVIEW_TMP_SUFFIX: &str = ".part.png";
-/// Глубины X11-визуала, при которых постер кладётся в слой как BGRX-байты.
-/// 30-битный (10bpc) визуал такими байтами рисуется криво — постер тогда не
-/// ставим, слой остаётся чёрным (не фатально).
+/// X11 visual depths at which the poster is put into the layer as BGRX bytes.
+/// A 30-bit (10bpc) visual draws such bytes wrong — then we do not set the poster,
+/// the layer stays black (not fatal).
 pub const X11_POSTER_DEPTHS: &[i64] = &[24, 32];
 
-/// Таймаут `ffprobe` (длительность ролика).
+/// `ffprobe` timeout (clip duration).
 pub const FFPROBE_TIMEOUT_SEC: f64 = 15.0;
-/// Таймаут `ffmpeg` (кадр витрины и постер темы).
+/// `ffmpeg` timeout (showcase frame and theme poster).
 pub const FFMPEG_TIMEOUT_SEC: f64 = 30.0;
-/// Таймаут `kwriteconfig6`.
+/// `kwriteconfig6` timeout.
 pub const KWRITECONFIG_TIMEOUT_SEC: f64 = 10.0;
-/// Таймаут `systemctl --user`.
+/// `systemctl --user` timeout.
 pub const SYSTEMCTL_TIMEOUT_SEC: f64 = 15.0;
-/// Таймаут `xrandr --query`.
+/// `xrandr --query` timeout.
 pub const XRANDR_TIMEOUT_SEC: f64 = 5.0;
-/// Таймаут пробы «жив ли ksplashqml».
+/// Timeout of the «is ksplashqml alive» probe.
 pub const PGREP_TIMEOUT_SEC: f64 = 5.0;
-/// Таймаут вызова reconfigure у живого KWin.
+/// Timeout of the reconfigure call to the live KWin.
 pub const DBUS_TIMEOUT_SEC: f64 = 5.0;
-/// Пауза после reconfigure: он асинхронный, а правило применяется при
-/// создании окна — дать KWin перечитать kwinrulesrc до старта mpv.
+/// Pause after reconfigure: it is asynchronous, and the rule is applied when the window is
+/// created — let KWin reread kwinrulesrc before mpv starts.
 pub const KWIN_RECONFIGURE_SETTLE_SEC: f64 = 0.5;
 
-/// Шаг ожидания IPC-сокета mpv в эстафете гибрида.
+/// Step of waiting for mpv's IPC socket in the hybrid relay.
 pub const SOCK_POLL_SEC: f64 = 0.1;
-/// Шаг ожидания IPC-сокета Rust-хелпера (он поднимается заметно быстрее).
+/// Step of waiting for the Rust helper's IPC socket (it comes up noticeably faster).
 pub const HELPER_POLL_SEC: f64 = 0.05;
-/// Шаг проб «жив ли ksplashqml».
+/// Step of the «is ksplashqml alive» probes.
 pub const KSPLASH_POLL_SEC: f64 = 0.1;
-/// Шаг опроса `eof-reached` через mpv-IPC.
+/// Step of polling `eof-reached` via mpv-IPC.
 pub const EOF_POLL_SEC: f64 = 0.15;
-/// Шаг ожидания композитора на холодном X11-входе.
+/// Step of waiting for the compositor on a cold X11 login.
 pub const COMPOSITOR_POLL_SEC: f64 = 0.1;
-/// Пауза «дать композитору отрисовать первую сцену» после его появления.
+/// The «let the compositor draw the first scene» pause after it appears.
 pub const COMPOSITOR_SETTLE_SEC: f64 = 0.2;
-/// Страховочный поллинг raise-цикла, когда событийная подписка не удалась.
+/// Safety polling of the raise loop when the event subscription failed.
 pub const RAISE_POLL_FALLBACK_SEC: f64 = 0.08;
-/// Ожидание чистого выхода после `quit` по IPC.
+/// Waiting for a clean exit after `quit` via IPC.
 pub const QUIT_WAIT_SEC: f64 = 3.0;
-/// Ожидание после SIGTERM, перед SIGKILL.
+/// Waiting after SIGTERM, before SIGKILL.
 pub const TERM_WAIT_SEC: f64 = 2.0;
-/// Ожидание после SIGTERM в ветке «mpv не завершился за PLAY_TIMEOUT_SEC».
+/// Waiting after SIGTERM in the «mpv did not finish within PLAY_TIMEOUT_SEC» branch.
 pub const MPV_TERM_WAIT_SEC: f64 = 5.0;
-/// Срок ожидания на unix-сокетах исполнителя (mpv-IPC и sd_notify).
+/// Wait timeout on the executor's unix sockets (mpv-IPC and sd_notify).
 ///
-/// Своей копии у исполнителя больше нет: ровно на параллельных копиях
-/// сроков однажды разъехалось ожидание сокета хелпера с `TimeoutStartSec`
-/// юнита и панель встала поверх заставки (инцидент 2026-07-25).
+/// The executor no longer has its own copy: it was exactly through parallel copies of
+/// timeouts that the wait for the helper's socket once drifted apart from the unit's `TimeoutStartSec`
+/// and the panel ended up above the splash (incident 2026-07-25).
 pub const IPC_SOCK_TIMEOUT_SEC: f64 = 2.0;
-/// Сколько ждать завершения потока raise-цикла при остановке слоя.
+/// How long to wait for the raise-loop thread to finish when stopping the layer.
 ///
-/// Потолок, а не пауза: поток будят немедленно, и обычно он уходит за доли
-/// миллисекунды. Значение важно тем, что ПРЕВЫШАЕТ страховочный шаг цикла
-/// ([`RAISE_INTERVAL_SEC`]) — иначе остановка возвращалась бы раньше, чем
-/// поток дошёл до проверки признака, и слой закрывался бы у него под руками.
+/// A cap, not a pause: the thread is woken immediately and usually leaves within a fraction of
+/// a millisecond. The value matters because it EXCEEDS the loop's safety step
+/// ([`RAISE_INTERVAL_SEC`]) — otherwise stopping would return before
+/// the thread reached the flag check, and the layer would be closed right under it.
 pub const RAISE_JOIN_WAIT_SEC: f64 = 1.0;
 
-/// Маркер строки-ОТВЕТА в потоке mpv-IPC: события таким полем не подписаны,
-/// поэтому исполнитель читает сокет до первой строки с ним (иначе `recv`
-/// висел бы на живом соединении).
+/// Marker of the REPLY line in the mpv-IPC stream: events are not tagged with this field,
+/// so the executor reads the socket up to the first line with it (otherwise `recv`
+/// would hang on a live connection).
 pub const MPV_IPC_REPLY_MARKER: &str = "\"request_id\"";
-/// Предел чтения ответа из mpv-IPC — порт `while len(buf) < 65536`.
+/// Read limit of a reply from mpv-IPC — port of `while len(buf) < 65536`.
 pub const MPV_IPC_READ_LIMIT: usize = 65536;
 
-/// argv пробы «жив ли ksplashqml» — порт `_ksplash_running`.
-/// `exe` — путь из `shutil.which("pgrep")`.
+/// argv of the «is ksplashqml alive» probe — port of `_ksplash_running`.
+/// `exe` — the path from `shutil.which("pgrep")`.
 pub fn pgrep_argv(exe: &str, process: &str) -> Vec<String> {
     vec![exe.into(), "-x".into(), process.into()]
 }
 
-/// Порт `round()` CPython (половина — к чётному): в letterbox-математике
-/// ровно .5 попадается на «круглых» разрешениях, и рамка постера съезжала бы
-/// на пиксель относительно кадра mpv.
+/// Port of CPython's `round()` (half to even): in the letterbox math
+/// exactly .5 occurs at «round» resolutions, and the poster frame would shift
+/// by a pixel relative to mpv's frame.
 fn py_round(x: f64) -> f64 {
     let r = x.round();
     if (x - x.trunc()).abs() == 0.5 && r % 2.0 != 0.0 {
@@ -2834,9 +2834,9 @@ fn py_round(x: f64) -> f64 {
     }
 }
 
-/// Вписать картинку в слой с сохранением пропорций (letterbox — как у mpv
-/// `--fullscreen`): (x, y, ширина, высота) внутри окна `dst_*`. Поля вокруг
-/// остаются чёрными. Порт масштабирования в `_X11SplashOverlay.set_poster`.
+/// Fit the picture into the layer preserving the aspect ratio (letterbox — like mpv's
+/// `--fullscreen`): (x, y, width, height) inside the `dst_*` window. The bars around
+/// stay black. Port of the scaling in `_X11SplashOverlay.set_poster`.
 pub fn letterbox_rect(src_w: i64, src_h: i64, dst_w: i64, dst_h: i64) -> (i64, i64, i64, i64) {
     if src_w <= 0 || src_h <= 0 {
         return (0, 0, dst_w.max(1), dst_h.max(1));
@@ -2847,25 +2847,25 @@ pub fn letterbox_rect(src_w: i64, src_h: i64, dst_w: i64, dst_h: i64) -> (i64, i
     ((dst_w - sw) / 2, (dst_h - sh) / 2, sw, sh)
 }
 
-// ── Тексты статусов, которых у оригинала не было в одном месте ─────────────
+// ── Status texts the original did not have in one place ────────────────────
 
-/// Не удалось создать каталог темы KSplash.
+/// Could not create the KSplash theme directory.
 pub fn msg_theme_dir_failed(err: &str) -> String {
     trf("Couldn't create the theme folder: %1", &[&err])
 }
-/// Не удалось записать файлы темы KSplash.
+/// Could not write the KSplash theme files.
 pub fn msg_theme_write_failed(err: &str) -> String {
     trf("Couldn't write the theme: %1", &[&err])
 }
-/// ffmpeg не установлен (постер извлечь нечем).
+/// ffmpeg is not installed (nothing to extract the poster with).
 pub fn msg_no_ffmpeg() -> String {
     tr("ffmpeg isn't installed")
 }
-/// ffmpeg не запустился.
+/// ffmpeg did not start.
 pub fn msg_ffmpeg_failed(err: &str) -> String {
     format!("ffmpeg: {err}")
 }
-/// ffmpeg вернул ошибку: первые 200 символов stderr либо «не смог».
+/// ffmpeg returned an error: the first 200 characters of stderr or «failed».
 pub fn msg_ffmpeg_stderr(stderr: &str) -> String {
     let trimmed = stderr.trim();
     let short: String = trimmed.chars().take(200).collect();
@@ -2875,14 +2875,14 @@ pub fn msg_ffmpeg_stderr(stderr: &str) -> String {
         format!("ffmpeg: {short}")
     }
 }
-/// Постер извлечён (порт `return True, "OK"`).
+/// The poster was extracted (port of `return True, "OK"`).
 pub const MSG_OK: &str = "OK";
-/// ksplashrc не записался (нет kwriteconfig6 либо он вернул ошибку).
+/// ksplashrc was not written (no kwriteconfig6 or it returned an error).
 pub fn msg_ksplashrc_failed() -> String {
     tr("Couldn't write ksplashrc (kwriteconfig6)")
 }
-/// Самолечение: связка ksplashrc была сбита (тема в скобках — чужая),
-/// вернули свою.
+/// Self-healing: the ksplashrc setup was knocked off (the theme in brackets is foreign),
+/// we restored ours.
 pub fn msg_heal_ksplashrc_restored(prev_theme: &str) -> String {
     let was = if prev_theme.is_empty() {
         "ключ потерян".to_string()
@@ -2891,95 +2891,95 @@ pub fn msg_heal_ksplashrc_restored(prev_theme: &str) -> String {
     };
     format!("Связка заставки в ksplashrc восстановлена ({was})")
 }
-/// Самолечение: вернуть ключи в ksplashrc не вышло — ролик всё равно играем.
+/// Self-healing: could not restore the keys in ksplashrc — the clip is played anyway.
 pub const MSG_HEAL_KSPLASHRC_FAILED: &str =
     "Не восстановить связку в ksplashrc — при входе мелькнёт штатная заставка Plasma";
-/// Самолечение: каталога темы-постера не было, перегенерировали.
+/// Self-healing: the poster theme directory was missing, regenerated.
 pub const MSG_HEAL_THEME_REBUILT: &str = "Тема-постер KSplash отсутствовала — пересоздана";
-/// Самолечение: пересоздать тему-постер не вышло.
+/// Self-healing: could not recreate the poster theme.
 pub fn msg_heal_theme_failed(err: &str) -> String {
     format!("Не пересоздать тему-постер KSplash: {err}")
 }
-/// Самолечение: конфиг с бэкапом чужой темы не записался.
+/// Self-healing: the config with the backup of the foreign theme was not written.
 pub fn msg_heal_backup_failed(err: &str) -> String {
     format!("Не сохранить прежнюю тему KSplash: {err}")
 }
-/// systemd-юнит не записался.
+/// The systemd unit was not written.
 pub fn msg_unit_write_failed(err: &str) -> String {
     trf("Couldn't write the systemd unit: %1", &[&err])
 }
-/// systemd-юнит не включился (и ручной симлинк тоже не удался).
+/// The systemd unit was not enabled (and the manual symlink failed too).
 pub fn msg_unit_enable_failed(err: &str) -> String {
     trf("Couldn't enable the systemd unit: %1", &[&err])
 }
-/// Сводка проблем отката гибрида (`problems` — уже через «; »).
+/// Summary of hybrid rollback problems (`problems` — already joined with «; »).
 pub fn msg_rollback_problems(problems: &str) -> String {
     trf("Hybrid rollback finished with errors: %1", &[&problems])
 }
-/// Проблема с юнитом при откате.
+/// A problem with the unit during rollback.
 pub fn msg_problem_unit(err: &str) -> String {
     // TRANSLATORS: one problem in a list; %1 is a system error.
     trf("unit: %1", &[&err])
 }
-/// Проблема с ksplashrc при откате.
+/// A problem with ksplashrc during rollback.
 pub fn msg_problem_ksplashrc() -> String {
     tr("ksplashrc: kwriteconfig6 failed")
 }
-/// Проблема с каталогом темы при откате.
+/// A problem with the theme directory during rollback.
 pub fn msg_problem_theme(err: &str) -> String {
     // TRANSLATORS: one problem in a list; %1 is a system error.
     trf("theme: %1", &[&err])
 }
-/// Проблема со снятием autostart-.desktop.
+/// A problem with removing the autostart .desktop.
 pub fn msg_problem_autostart(err: &str) -> String {
     format!("autostart: {err}")
 }
-/// Не удалось включить фазу 1 (autostart-.desktop).
+/// Could not enable phase 1 (the autostart .desktop).
 pub fn msg_autostart_write_failed(err: &str) -> String {
     trf("Couldn't turn on: %1", &[&err])
 }
-/// Не удалось сохранить настройки заставки (⚠️ починка: в Python OSError на
-/// записи конфига летел исключением из середины установки гибрида и
-/// покупатель видел трейсбек вместо причины).
+/// Could not save the splash settings (⚠️ fix: in Python an OSError on
+/// writing the config flew as an exception out of the middle of the hybrid install and
+/// the user saw a traceback instead of the reason).
 pub fn msg_config_write_failed(err: &str) -> String {
     trf("Couldn't save the startup movie settings: %1", &[&err])
 }
-/// mpv не запустился (текст исключения — от исполнителя).
+/// mpv did not start (the exception text comes from the executor).
 pub fn msg_mpv_spawn_failed(err: &str) -> String {
     trf("Couldn't start mpv: %1", &[&err])
 }
 
 // ============================================================================
-// Шов «ядро ведёт поток»: трейт исполнителя
+// The «core drives the flow» seam: the executor trait
 // ============================================================================
 
-/// Результат `subprocess.run(argv, capture_output=True, text=True,
-/// timeout=…)`; `None` у [`SplashIo::run`] — OSError/SubprocessError.
+/// Result of `subprocess.run(argv, capture_output=True, text=True,
+/// timeout=…)`; `None` from [`SplashIo::run`] — OSError/SubprocessError.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunOut {
     /// `returncode`.
     pub rc: i64,
-    /// `stdout` (пустая строка, если нечего).
+    /// `stdout` (an empty string if there is nothing).
     pub stdout: String,
-    /// `stderr` (пустая строка, если нечего).
+    /// `stderr` (an empty string if there is nothing).
     pub stderr: String,
 }
 
-/// Интерфейс исполнителя: каждый метод — ровно один побочный эффект или
-/// наблюдение Python-оригинала. Ядро ведёт весь поток заставки (порядок,
-/// решения, тексты, таймауты), а РЕАЛЬНОЕ исполнение — Popen mpv/ffmpeg/
-/// systemctl, unix-сокеты, flock, запись файлов, X11-оверлей на ctypes и
-/// живые потоки — остаётся в шиме. Ошибки файловых операций возвращаются
-/// текстом (`None` = успех), чтобы поток мог объяснить отказ покупателю, а
-/// не падать исключением из середины установки.
+/// The executor interface: each method is exactly one side effect or
+/// observation of the Python original. The core drives the whole splash flow (order,
+/// decisions, texts, timeouts), while the REAL execution — Popen of mpv/ffmpeg/
+/// systemctl, unix sockets, flock, writing files, the ctypes X11 overlay and
+/// live threads — stays in the shim. File operation errors are returned
+/// as text (`None` = success), so the flow can explain a refusal to the user instead of
+/// failing with an exception from the middle of an installation.
 pub trait SplashIo {
     /// `os.environ.get(name, "")`.
     fn env(&mut self, name: &str) -> String;
     /// `shutil.which(name) or ""`.
     fn which(&mut self, name: &str) -> String;
-    /// Какой вход продукта сейчас выбран — у живого исполнителя это
-    /// [`crate::installer::launch_entry_live`], то же правило, что у ярлыка
-    /// и лотка. Наблюдение, а не решение ядра: смотрит на PATH и диски.
+    /// Which product entry is selected now — for the live executor it is
+    /// [`crate::installer::launch_entry_live`], the same rule as for the shortcut
+    /// and the tray. An observation, not a core decision: it looks at PATH and the disks.
     fn launch_entry(&mut self) -> crate::installer::LaunchEntry;
     /// `os.path.isfile`.
     fn is_file(&mut self, path: &str) -> bool;
@@ -2993,40 +2993,40 @@ pub trait SplashIo {
     fn realpath(&mut self, path: &str) -> String;
     /// `os.path.abspath`.
     fn abspath(&mut self, path: &str) -> String;
-    /// `os.listdir(path)`; OSError → пусто.
+    /// `os.listdir(path)`; OSError → empty.
     fn listdir(&mut self, path: &str) -> Vec<String>;
-    /// Текст файла (`errors="replace"`); OSError → None.
+    /// File text (`errors="replace"`); OSError → None.
     fn read_text(&mut self, path: &str) -> Option<String>;
-    /// Байты файла; OSError → None.
+    /// File bytes; OSError → None.
     fn read_bytes(&mut self, path: &str) -> Option<Vec<u8>>;
     /// `int(os.path.getmtime(path))`; OSError → None.
     fn mtime(&mut self, path: &str) -> Option<i64>;
     /// `os.path.getsize(path)`; OSError → 0.
     fn file_size(&mut self, path: &str) -> i64;
-    /// `os.makedirs(path, exist_ok=True)`; текст OSError при неудаче.
+    /// `os.makedirs(path, exist_ok=True)`; the OSError text on failure.
     fn makedirs(&mut self, path: &str) -> Option<String>;
-    /// Запись текста; текст OSError при неудаче.
+    /// Write text; the OSError text on failure.
     fn write_text(&mut self, path: &str, content: &str) -> Option<String>;
-    /// Атомарная запись (`.tmp` + `os.replace`); текст OSError при неудаче.
+    /// Atomic write (`.tmp` + `os.replace`); the OSError text on failure.
     fn write_atomic(&mut self, path: &str, content: &str) -> Option<String>;
-    /// `os.replace(src, dst)`; текст OSError при неудаче.
+    /// `os.replace(src, dst)`; the OSError text on failure.
     fn replace(&mut self, src: &str, dst: &str) -> Option<String>;
-    /// `os.remove(path)` (файла может не быть); текст OSError при неудаче.
+    /// `os.remove(path)` (the file may be missing); the OSError text on failure.
     fn remove_file(&mut self, path: &str) -> Option<String>;
-    /// `shutil.rmtree(path)`; текст OSError при неудаче.
+    /// `shutil.rmtree(path)`; the OSError text on failure.
     fn remove_tree(&mut self, path: &str) -> Option<String>;
-    /// `shutil.copyfile(src, dst)`; текст OSError при неудаче.
+    /// `shutil.copyfile(src, dst)`; the OSError text on failure.
     fn copy_file(&mut self, src: &str, dst: &str) -> Option<String>;
-    /// `os.symlink(target, link)`; текст OSError при неудаче.
+    /// `os.symlink(target, link)`; the OSError text on failure.
     fn symlink(&mut self, target: &str, link: &str) -> Option<String>;
     /// `subprocess.run(argv, capture_output=True, text=True, timeout=…)`.
     fn run(&mut self, argv: &[String], timeout: f64) -> Option<RunOut>;
-    /// `subprocess.Popen(argv[, start_new_session=True])` → дескриптор
-    /// процесса у исполнителя; текст исключения при неудаче.
+    /// `subprocess.Popen(argv[, start_new_session=True])` → a process handle
+    /// held by the executor; the exception text on failure.
     fn spawn(&mut self, argv: &[String], detached: bool) -> Result<i64, String>;
-    /// `proc.poll()` — код возврата либо None (ещё жив).
+    /// `proc.poll()` — the exit code or None (still alive).
     fn poll(&mut self, proc: i64) -> Option<i64>;
-    /// `proc.wait(timeout)` — код возврата либо None по таймауту.
+    /// `proc.wait(timeout)` — the exit code or None on timeout.
     fn wait(&mut self, proc: i64, timeout: f64) -> Option<i64>;
     /// `proc.terminate()`.
     fn terminate(&mut self, proc: i64);
@@ -3036,88 +3036,88 @@ pub trait SplashIo {
     fn monotonic(&mut self) -> f64;
     /// `time.sleep(seconds)`.
     fn sleep(&mut self, seconds: f64);
-    /// `random.choice(items)` — пустой список даёт None.
+    /// `random.choice(items)` — an empty list gives None.
     fn choice(&mut self, items: &[String]) -> Option<String>;
-    /// Одна команда в mpv-IPC без ответа; False — сокет недоступен.
+    /// One mpv-IPC command without a reply; False — the socket is unavailable.
     fn ipc_send(&mut self, sock: &str, payload: &str) -> bool;
-    /// Запрос в mpv-IPC: отправить payload и прочитать поток до строки с
-    /// `reply_marker` (или до конца/предела). None — сокет недоступен.
+    /// An mpv-IPC request: send the payload and read the stream up to the line with
+    /// `reply_marker` (or to the end/limit). None — the socket is unavailable.
     fn ipc_request(&mut self, sock: &str, payload: &str, reply_marker: &str) -> Option<String>;
-    /// Датаграмма менеджеру systemd (адрес уже нормализован ядром).
+    /// A datagram to the systemd manager (the address is already normalized by the core).
     fn notify(&mut self, addr: &str, message: &str);
-    /// `flock(LOCK_EX|LOCK_NB)` на файл-замок; False — замок занят.
+    /// `flock(LOCK_EX|LOCK_NB)` on the lock file; False — the lock is taken.
     fn acquire_lock(&mut self, path: &str) -> bool;
-    /// reconfigure живого KWin через сессионную шину (общий хелпер).
+    /// reconfigure of the live KWin via the session bus (a shared helper).
     fn kwin_reconfigure_dbus(&mut self, timeout: f64) -> bool;
-    /// Создать X11-слой (override-redirect окно во весь экран); None —
-    /// нет libX11/X-сервера.
+    /// Create the X11 layer (a fullscreen override-redirect window); None —
+    /// no libX11/X server.
     fn x11_create(&mut self) -> Option<i64>;
-    /// `window_id` слоя — уходит в `--wid` mpv.
+    /// The layer's `window_id` — goes into mpv's `--wid`.
     fn x11_window_id(&mut self, overlay: i64) -> i64;
-    /// Нарисовать постер фоном слоя; False — не удалось (остаётся чёрный).
+    /// Draw the poster as the layer background; False — failed (black stays).
     fn x11_set_poster(&mut self, overlay: i64, png: &str) -> bool;
-    /// Показать слой (`XMapRaised`).
+    /// Show the layer (`XMapRaised`).
     fn x11_map(&mut self, overlay: i64);
-    /// Владелец `_NET_WM_CM_S<n>` уже есть (композитор работает).
+    /// `_NET_WM_CM_S<n>` already has an owner (a compositor is running).
     fn x11_compositor_present(&mut self, overlay: i64) -> bool;
-    /// Запустить фоновый raise-цикл слоя (событийный, в своём потоке).
+    /// Start the layer's background raise loop (event-driven, in its own thread).
     fn x11_raise_start(&mut self, overlay: i64);
-    /// Остановить raise-цикл и дождаться потока.
+    /// Stop the raise loop and wait for the thread.
     fn x11_raise_stop(&mut self, overlay: i64);
-    /// Уничтожить слой и закрыть X-соединение.
+    /// Destroy the layer and close the X connection.
     fn x11_close(&mut self, overlay: i64);
     /// `os.access(path, os.X_OK)`.
     fn is_executable(&mut self, path: &str) -> bool;
-    /// Составной шаг «поставить гибрид» (`_install_hybrid` шима).
+    /// The compound step «install the hybrid» (the shim's `_install_hybrid`).
     ///
-    /// ⚠️ Пять методов ниже — единственные СОСТАВНЫЕ шаги трейта: их
-    /// внутренности тоже живут в ядре ([`Splash::install_hybrid`] и
-    /// соседи), но маршрут `install_autostart` дёргает их ЧЕРЕЗ
-    /// исполнителя. Так шов остаётся ровно там, где он был у оригинала:
-    /// сверка маршрутов подменяет шаги у шима и сравнивает
-    /// последовательность с записанным эталоном, не поднимая живой
+    /// ⚠️ The five methods below are the trait's only COMPOUND steps: their
+    /// internals live in the core too ([`Splash::install_hybrid`] and
+    /// neighbours), but the `install_autostart` route calls them THROUGH
+    /// the executor. So the seam stays exactly where it was in the original:
+    /// route verification swaps steps in the shim and compares the
+    /// sequence with a recorded reference without starting a live
     /// ffmpeg/systemctl.
     fn step_install_hybrid(&mut self, video: &str) -> (bool, String);
-    /// Составной шаг «откатить гибрид» (`_uninstall_hybrid` шима).
+    /// The compound step «roll back the hybrid» (the shim's `_uninstall_hybrid`).
     fn step_uninstall_hybrid(&mut self) -> (bool, String);
-    /// Составной шаг «включить фазу 1» (`_install_desktop_autostart`).
+    /// The compound step «enable phase 1» (`_install_desktop_autostart`).
     fn step_install_desktop_autostart(&mut self) -> (bool, String);
-    /// Составной шаг «снять autostart-.desktop».
+    /// The compound step «remove the autostart .desktop».
     fn step_remove_desktop_autostart(&mut self);
-    /// Составной шаг «возможен ли гибрид» (`hybrid_supported` шима).
+    /// The compound step «is the hybrid possible» (the shim's `hybrid_supported`).
     fn step_hybrid_supported(&mut self) -> bool;
-    /// Строка в журнал: `level` — `warning`/`info`/`debug`.
+    /// A line into the log: `level` — `warning`/`info`/`debug`.
     fn log(&mut self, level: &str, message: &str);
 
-    /// Строки автозапуска в конфигах композиторов, которые `.desktop` не
-    /// исполняют (`crate::compositor_autostart`). `Some(запись)` — поставить
-    /// и вернуть окончательный текст записи (с `NotShowIn=`) и отказ для
-    /// текущего сеанса; `None` — снять отовсюду. По умолчанию — ничего не
-    /// трогать: подставные исполнители сверок живых конфигов не касаются.
+    /// Autostart lines in the configs of compositors that do not run `.desktop`
+    /// files (`crate::compositor_autostart`). `Some(entry)` — install
+    /// and return the final text of the entry (with `NotShowIn=`) and the refusal for
+    /// the current session; `None` — remove everywhere. By default — touch
+    /// nothing: fake executors of the checks do not touch live configs.
     fn login_lines(&mut self, desktop: Option<&str>) -> (Option<String>, Option<String>) {
         (desktop.map(str::to_string), None)
     }
-    /// Сработает ли запись по пути `desktop_path` в текущем сеансе (у
-    /// композиторов без XDG autostart — только при своей строке в их
-    /// конфиге).
+    /// Whether the entry at `desktop_path` will fire in the current session (for
+    /// compositors without XDG autostart — only with its own line in their
+    /// config).
     fn login_works(&mut self, desktop_path: &str) -> bool {
         let _ = desktop_path;
         true
     }
 }
 
-/// Поток заставки: ядро ведёт, [`SplashIo`] исполняет.
+/// The splash flow: the core drives, [`SplashIo`] executes.
 ///
-/// `home` — `os.path.expanduser("~")` (наблюдение исполнителя); всё
-/// остальное (XDG-корни, пути, тексты, таймауты) ядро считает само, чтобы
-/// параллельных копий значений не осталось нигде.
+/// `home` — `os.path.expanduser("~")` (the executor's observation); everything
+/// else (XDG roots, paths, texts, timeouts) the core computes itself, so that
+/// no parallel copies of the values remain anywhere.
 pub struct Splash<'a, IO: SplashIo> {
     io: &'a mut IO,
     home: String,
 }
 
 impl<'a, IO: SplashIo> Splash<'a, IO> {
-    /// Новый поток над исполнителем.
+    /// A new flow over an executor.
     pub fn new(io: &'a mut IO, home: &str) -> Self {
         Self {
             io,
@@ -3125,7 +3125,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         }
     }
 
-    // ── Пути (XDG читается каждый раз: у юнита и у UI-процесса он разный) ──
+    // ── Paths (XDG is read every time: it differs between the unit and the UI process) ──
 
     fn cfg_home(&mut self) -> Option<String> {
         let v = self.io.env("XDG_CONFIG_HOME");
@@ -3170,10 +3170,10 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         runtime_dir(if v.is_empty() { None } else { Some(&v) })
     }
 
-    // ── Обнаружение Steam и скан заставок ──────────────────────────────
+    // ── Steam detection and splash scan ────────────────────────────────
 
-    /// Каталог установки Steam — порт `steam_root` (кандидаты ядра через
-    /// realpath, признак — наличие `config/`).
+    /// The Steam installation directory — port of `steam_root` (the core's candidates through
+    /// realpath, the sign is the presence of `config/`).
     pub fn steam_root(&mut self) -> Option<String> {
         for cand in steam_root_candidates(&self.home.clone()) {
             let p = self.io.realpath(&cand);
@@ -3184,7 +3184,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         None
     }
 
-    /// Обойти профили Steam и слить разобранные записи `GetStartupMovies`.
+    /// Walk the Steam profiles and merge the parsed `GetStartupMovies` records.
     fn merge_localconfig(&mut self, root: &str, full_records: bool) -> Value {
         let mut out = Map::new();
         let userdata = steam_userdata_dir(root);
@@ -3213,17 +3213,17 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         Value::Object(out)
     }
 
-    /// communityitemid → метаданные — порт `_startup_movie_names`.
+    /// communityitemid → metadata — port of `_startup_movie_names`.
     pub fn startup_movie_names(&mut self, root: &str) -> Value {
         self.merge_localconfig(root, false)
     }
 
-    /// communityitemid → ПОЛНАЯ запись предмета — порт `_startup_movie_items`.
+    /// communityitemid → the FULL item record — port of `_startup_movie_items`.
     pub fn startup_movie_items(&mut self, root: &str) -> Value {
         self.merge_localconfig(root, true)
     }
 
-    /// appid → название игры из `appcache/appinfo.vdf` — порт `_appinfo_names`.
+    /// appid → game title from `appcache/appinfo.vdf` — port of `_appinfo_names`.
     pub fn appinfo_names(&mut self, root: &str, appids: &[i64]) -> Vec<(i64, String)> {
         let mut want: Vec<i64> = appids.iter().copied().filter(|a| *a != 0).collect();
         want.sort_unstable();
@@ -3241,7 +3241,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         }
     }
 
-    /// Базовый скан `{id, name, path, builtin}` — порт `_scan_startup_movies_raw`.
+    /// Basic scan `{id, name, path, builtin}` — port of `_scan_startup_movies_raw`.
     fn scan_movies_raw(&mut self) -> Vec<Value> {
         let Some(root) = self.steam_root() else {
             return Vec::new();
@@ -3272,7 +3272,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         scan_movies(&root, &builtin_present, &inventory, &names, &custom)
     }
 
-    /// Дополнить записи скана метаданными предмета — порт `_enrich_movies`.
+    /// Supplement the scan records with item metadata — port of `_enrich_movies`.
     pub fn enrich_movies(&mut self, movies: &[Value]) -> Vec<Value> {
         let Some(root) = self.steam_root() else {
             return enrich_movies(movies, &Value::Object(Map::new()), &[]);
@@ -3291,16 +3291,16 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         enrich_movies(movies, &items, &names)
     }
 
-    /// Доступные стартовые видео Steam — порт `scan_startup_movies`.
+    /// Available Steam startup videos — port of `scan_startup_movies`.
     pub fn scan_startup_movies(&mut self) -> Vec<Value> {
         let raw = self.scan_movies_raw();
         self.enrich_movies(&raw)
     }
 
-    // ── Приём своего ролика ────────────────────────────────────────────
+    // ── Accepting a custom clip ────────────────────────────────────────
 
-    /// Проверить выбранный файл ([`check_movie_probe`]). Нет ffprobe или он
-    /// не ответил — отказ «не прочитать»: без проверки ролик не принимаем.
+    /// Check the chosen file ([`check_movie_probe`]). No ffprobe or it
+    /// did not answer — the refusal «cannot read»: without a check the clip is not accepted.
     pub fn probe_movie(&mut self, path: &str) -> MovieCheck {
         let exe = self.io.which("ffprobe");
         if exe.is_empty() {
@@ -3313,9 +3313,9 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         }
     }
 
-    // ── Кадр для витрины ───────────────────────────────────────────────
+    // ── Showcase frame ─────────────────────────────────────────────────
 
-    /// Длительность ролика — порт `_video_duration` (0.0 = не определить).
+    /// Clip duration — port of `_video_duration` (0.0 = cannot determine).
     pub fn video_duration(&mut self, path: &str) -> f64 {
         let exe = self.io.which("ffprobe");
         if exe.is_empty() {
@@ -3328,7 +3328,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         }
     }
 
-    /// Кадр ролика для витрины (кэшируется) — порт `preview_frame`.
+    /// A clip frame for the showcase (cached) — port of `preview_frame`.
     pub fn preview_frame(&mut self, video: &str) -> Option<String> {
         if video.is_empty() || !self.io.is_file(video) {
             return None;
@@ -3359,8 +3359,8 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
             return None;
         };
         if !(first.rc == 0 && self.io.is_file(&tmp)) {
-            // Ролик короче ожидаемого / битый — пробуем самый первый кадр
-            // (тот же argv без -ss).
+            // The clip is shorter than expected / broken — try the very first frame
+            // (the same argv without -ss).
             let argv0 = preview_ffmpeg_argv(&exe, video, &tmp, 0.0);
             let second = self.io.run(&argv0, FFMPEG_TIMEOUT_SEC)?;
             if !(second.rc == 0 && self.io.is_file(&tmp)) {
@@ -3373,17 +3373,17 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         Some(out)
     }
 
-    // ── Конфиг, избранное, ротация ─────────────────────────────────────
+    // ── Config, favorites, rotation ────────────────────────────────────
 
-    /// Конфиг заставки — порт `load_config`.
+    /// Splash config — port of `load_config`.
     pub fn load_config(&mut self) -> Value {
         let path = self.config_path();
         let text = self.io.read_text(&path);
         parse_config(text.as_deref())
     }
 
-    /// Атомарная запись конфига — порт `_write_config`; текст ошибки при
-    /// неудаче (исполнитель поднимает его исключением, как оригинал).
+    /// Atomic config write — port of `_write_config`; the error text on
+    /// failure (the executor raises it as an exception, like the original).
     pub fn write_config(&mut self, cfg: &Value) -> Option<String> {
         let text = config_json(cfg);
         let path = self.config_path();
@@ -3399,13 +3399,13 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         self.io.write_atomic(&path, &text)
     }
 
-    /// Пути роликов со звёздочкой — порт `favorites`.
+    /// Paths of starred clips — port of `favorites`.
     pub fn favorites(&mut self) -> Vec<String> {
         let cfg = self.load_config();
         favorites_from_config(&cfg)
     }
 
-    /// Отметить/снять звёздочку — порт `set_favorite`.
+    /// Star/unstar — port of `set_favorite`.
     pub fn set_favorite(&mut self, path: &str, on: bool) -> (Vec<String>, Option<String>) {
         let cfg = self.load_config();
         let (new_cfg, fav) = config_with_favorite(&cfg, path, on);
@@ -3413,28 +3413,28 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         (fav, err)
     }
 
-    /// Включена ли ротация — порт `rotation_enabled`.
+    /// Whether rotation is enabled — port of `rotation_enabled`.
     pub fn rotation_enabled(&mut self) -> bool {
         let cfg = self.load_config();
         rotation_enabled(&cfg)
     }
 
-    /// Переключить ротацию — порт `set_rotation`.
+    /// Toggle rotation — port of `set_rotation`.
     pub fn set_rotation(&mut self, enabled: bool) -> Option<String> {
         let cfg = self.load_config();
         let new_cfg = config_with_rotation(&cfg, enabled);
         self.write_config(&new_cfg)
     }
 
-    /// Из чего крутим — порт `rotation_pool`.
+    /// What we rotate from — port of `rotation_pool`.
     pub fn rotation_pool(&mut self) -> Vec<String> {
         let fav: Vec<String> = self
             .favorites()
             .into_iter()
             .filter(|p| self.io.is_file(p))
             .collect();
-        // Полный скан дорогой (ffmpeg/VDF) — только когда избранного мало и
-        // правило всё равно уведёт в «всё найденное».
+        // A full scan is expensive (ffmpeg/VDF) — only when there are few favorites and
+        // the rule would lead to «everything found» anyway.
         let all: Vec<String> = if rotation_needs_full_scan(fav.len()) {
             self.scan_startup_movies()
                 .iter()
@@ -3447,7 +3447,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         rotation_pool(&fav, &all)
     }
 
-    /// Выбрать ролик на СЛЕДУЮЩИЙ вход и сохранить — порт `advance_rotation`.
+    /// Pick a clip for the NEXT login and save it — port of `advance_rotation`.
     pub fn advance_rotation(&mut self) -> Option<String> {
         if !self.rotation_enabled() {
             return None;
@@ -3465,7 +3465,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         Some(nxt)
     }
 
-    /// Сохранить выбор ролика (и обновить постер темы) — порт `save_config`.
+    /// Save the clip choice (and update the theme poster) — port of `save_config`.
     pub fn save_config(&mut self, path: &str, sound: bool) -> Option<String> {
         let cfg = self.load_config();
         let new_cfg = config_with_selection(&cfg, path, sound);
@@ -3483,17 +3483,17 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         err
     }
 
-    /// Запомнить галку «гибрид вкл/выкл» — порт `save_hybrid_pref`.
+    /// Remember the «hybrid on/off» checkbox — port of `save_hybrid_pref`.
     pub fn save_hybrid_pref(&mut self, enabled: bool) -> Option<String> {
         let cfg = self.load_config();
         let new_cfg = config_with_hybrid_pref(&cfg, enabled);
         self.write_config(&new_cfg)
     }
 
-    // ── Гибрид KSplash ─────────────────────────────────────────────────
+    // ── KSplash hybrid ─────────────────────────────────────────────────
 
-    /// Гибрид возможен — порт `hybrid_supported` (short-circuit сохранён:
-    /// не KDE → бинарей не ищем, нет бинарей → systemctl не дёргаем).
+    /// The hybrid is possible — port of `hybrid_supported` (short-circuit kept:
+    /// not KDE → we do not look for binaries, no binaries → we do not call systemctl).
     pub fn hybrid_supported(&mut self) -> bool {
         let xdg = self.io.env("XDG_CURRENT_DESKTOP");
         let xdg_opt = if xdg.is_empty() { None } else { Some(xdg.clone()) };
@@ -3511,7 +3511,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         hybrid_supported_decision(xdg_opt.as_deref(), all_present, active)
     }
 
-    /// Гибрид установлен — порт `hybrid_installed`.
+    /// The hybrid is installed — port of `hybrid_installed`.
     pub fn hybrid_installed(&mut self) -> bool {
         let cfg = self.load_config();
         let unit = self.unit_path();
@@ -3519,7 +3519,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         hybrid_installed(&cfg, exists)
     }
 
-    /// Первый кадр ролика → PNG — порт `_extract_poster`.
+    /// The clip's first frame → PNG — port of `_extract_poster`.
     pub fn extract_poster(&mut self, video: &str, out_png: &str) -> (bool, String) {
         let ff = self.io.which("ffmpeg");
         if ff.is_empty() {
@@ -3535,7 +3535,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         (true, MSG_OK.to_string())
     }
 
-    /// Сгенерировать/обновить LnF-пакет темы KSplash — порт `_write_lnf_theme`.
+    /// Generate/update the KSplash theme LnF package — port of `_write_lnf_theme`.
     pub fn write_lnf_theme(&mut self, video: &str) -> (bool, String) {
         let meta_text = lnf_metadata_json();
         let qml_text = SPLASH_QML.to_string();
@@ -3550,7 +3550,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         if !ok {
             return (false, msg);
         }
-        // превью для списка тем в Параметрах системы → Заставка
+        // preview for the theme list in System Settings → Splash Screen
         if let Some(e) = self.io.copy_file(&lay.poster_png, &lay.preview_png) {
             self.io
                 .log("debug", &format!("splash preview copy failed: {e}"));
@@ -3564,7 +3564,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         (true, msg_lnf_updated())
     }
 
-    /// Значение из пользовательского ksplashrc — порт `_ksplashrc_get`.
+    /// A value from the user's ksplashrc — port of `_ksplashrc_get`.
     pub fn ksplashrc_get(&mut self, key: &str) -> String {
         let x = self.cfg_home();
         let path = ksplashrc_path(x.as_deref(), &self.home.clone());
@@ -3574,7 +3574,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         }
     }
 
-    /// Записать/удалить ключ в ksplashrc — порт `_ksplashrc_set`.
+    /// Write/delete a key in ksplashrc — port of `_ksplashrc_set`.
     pub fn ksplashrc_set(&mut self, key: &str, value: &str) -> bool {
         let exe = self.io.which("kwriteconfig6");
         if exe.is_empty() {
@@ -3584,7 +3584,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         matches!(self.io.run(&argv, KWRITECONFIG_TIMEOUT_SEC), Some(r) if r.rc == 0)
     }
 
-    /// `systemctl --user …` — порт `_systemctl_user`.
+    /// `systemctl --user …` — port of `_systemctl_user`.
     pub fn systemctl_user(&mut self, args: &[&str]) -> bool {
         let exe = self.io.which("systemctl");
         if exe.is_empty() {
@@ -3594,20 +3594,20 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         matches!(self.io.run(&argv, SYSTEMCTL_TIMEOUT_SEC), Some(r) if r.rc == 0)
     }
 
-    /// Команда запуска заставки для `Exec=` автозапуска — порт
-    /// `_launcher_exec`, вход — по правилу ярлыка ([`desktop_launcher_exec`]).
+    /// The splash launch command for the autostart `Exec=` — port of
+    /// `_launcher_exec`, the entry follows the shortcut rule ([`desktop_launcher_exec`]).
     pub fn launcher_exec(&mut self, python_executable: &str) -> String {
         let (entry, rexon) = self.entry_and_launcher();
         desktop_launcher_exec(&entry, rexon.as_deref(), python_executable)
     }
 
-    /// То же для `ExecStart=` юнита гибрида ([`unit_launcher_exec`]).
+    /// The same for the hybrid unit's `ExecStart=` ([`unit_launcher_exec`]).
     pub fn unit_launcher_exec(&mut self, python_executable: &str) -> String {
         let (entry, rexon) = self.entry_and_launcher();
         unit_launcher_exec(&entry, rexon.as_deref(), python_executable)
     }
 
-    /// Вход продукта и — только при Python-входе — лаунчер `rexon` из `PATH`.
+    /// The product entry and — only for the Python entry — the `rexon` launcher from `PATH`.
     fn entry_and_launcher(&mut self) -> (crate::installer::LaunchEntry, Option<String>) {
         let entry = self.io.launch_entry();
         let rexon = match entry {
@@ -3619,15 +3619,15 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         (entry, rexon)
     }
 
-    /// Самолечение связки гибрида перед РЕАЛЬНЫМ показом заставки —
-    /// причина и симптом описаны в шапке модуля.
+    /// Self-healing of the hybrid setup before a REAL splash display —
+    /// the cause and the symptom are described in the module header.
     ///
-    /// Ничего не возвращает и ничего не отменяет: каждая неудача — строка в
-    /// журнал, ролик показать важнее исправности связки.
+    /// Returns nothing and cancels nothing: every failure is a line in
+    /// the log, showing the clip matters more than the setup being intact.
     pub fn heal_hybrid(&mut self, video: &str) {
-        // Каталог темы мог унести `plasma-apply-lookandfeel --resetLayout`,
-        // чистка `~/.local/share` или переезд профиля — постера тогда нет
-        // вовсе, и вход остаётся чёрным до первого кадра mpv.
+        // The theme directory may have been taken away by `plasma-apply-lookandfeel --resetLayout`,
+        // a cleanup of `~/.local/share` or a profile move — then there is no poster
+        // at all, and the login stays black until mpv's first frame.
         let theme_dir = self.theme_dir();
         if !self.io.is_dir(&theme_dir) {
             let (ok, msg) = self.write_lnf_theme(video);
@@ -3643,10 +3643,10 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
             return;
         }
         let cur_engine = self.ksplashrc_get("Engine");
-        // Чужое значение — в бэкап по ТОМУ ЖЕ условию, что и при установке
-        // (`_install_hybrid`): откат гибрида обязан вернуть покупателю его
-        // настоящую тему, а не нашу. Пустая строка — законное значение:
-        // на откате она удалит ключ, вернув состояние «ключа не было».
+        // A foreign value goes to the backup under THE SAME condition as during installation
+        // (`_install_hybrid`): the hybrid rollback must return the user their
+        // real theme, not ours. An empty string is a legitimate value:
+        // on rollback it deletes the key, restoring the «no key» state.
         if should_backup_prev_theme(&cur_theme) {
             let mut cfg = cfg;
             if let Some(m) = cfg.as_object_mut() {
@@ -3667,13 +3667,13 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         }
     }
 
-    /// Поставить гибрид: тема-постер + ksplashrc + systemd-юнит — порт
+    /// Install the hybrid: poster theme + ksplashrc + systemd unit — port of
     /// `_install_hybrid`.
     pub fn install_hybrid(&mut self, video: &str, python_executable: &str) -> (bool, String) {
-        // ⛔Сперва — ЕСТЬ ЛИ ЧЕМ ЗАВОДИТЬ. Проверка стоит до единой правки на
-        // диске нарочно: отказать на полпути (тема-постер записана,
-        // ksplashrc уже переключен на нашу тему, юнита нет) — значит
-        // оставить вход в сеанс в состоянии хуже исходного.
+        // ⛔First — IS THERE ANYTHING TO START IT WITH. The check comes before a single edit on
+        // disk on purpose: refusing halfway (the poster theme is written,
+        // ksplashrc already switched to our theme, no unit) would mean
+        // leaving the session login in a state worse than the original.
         let exec = self.unit_launcher_exec(python_executable);
         if exec.is_empty() {
             return (false, crate::app::MSG_NOTHING_TO_LAUNCH.to_string());
@@ -3685,10 +3685,10 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         let mut cfg = self.load_config();
         let cur_theme = self.ksplashrc_get("Theme");
         let cur_engine = self.ksplashrc_get("Engine");
-        // Бэкап оригинала — только если сейчас стоит НЕ наша тема (повторное
-        // включение не должно затирать настоящий бэкап нашим же ID).
-        // Персистим ДО правки ksplashrc: упади установка дальше — откату
-        // будет из чего восстанавливать.
+        // Back up the original — only if the theme set now is NOT ours (re-enabling
+        // must not overwrite the real backup with our own ID).
+        // Persist BEFORE editing ksplashrc: if the installation falls over later, the rollback
+        // will have something to restore from.
         if should_backup_prev_theme(&cur_theme) {
             if let Some(m) = cfg.as_object_mut() {
                 m.insert("prev_ksplash_theme".into(), Value::from(cur_theme.clone()));
@@ -3718,7 +3718,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         self.systemctl_user(&["daemon-reload"]);
         let unit_name = SYSTEMD_UNIT_NAME;
         if !self.systemctl_user(&["enable", unit_name]) {
-            // фолбэк: руками симлинк в plasma-workspace.target.wants
+            // fallback: a manual symlink in plasma-workspace.target.wants
             let wants_dir = self.wants_dir();
             let link = self.wants_link();
             if let Some(e) = self.io.makedirs(&wants_dir) {
@@ -3739,7 +3739,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         (true, msg_hybrid_installed())
     }
 
-    /// Полный откат гибрида: юнит, ksplashrc, тема — порт `_uninstall_hybrid`.
+    /// Full hybrid rollback: unit, ksplashrc, theme — port of `_uninstall_hybrid`.
     pub fn uninstall_hybrid(&mut self) -> (bool, String) {
         let mut problems: Vec<String> = Vec::new();
         let unit_name = SYSTEMD_UNIT_NAME;
@@ -3750,7 +3750,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
                 problems.push(msg_problem_unit(&e));
             }
         }
-        // подчистить ручной симлинк, если enable шёл через фолбэк
+        // clean up the manual symlink if enable went through the fallback
         let link = self.wants_link();
         if problems.is_empty() && self.io.is_link(&link) {
             if let Some(e) = self.io.remove_file(&link) {
@@ -3760,8 +3760,8 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         self.systemctl_user(&["daemon-reload"]);
 
         let mut cfg = self.load_config();
-        // ksplashrc откатываем ТОЛЬКО если там всё ещё наша тема
-        // (пользователь мог выбрать другую в Параметрах системы).
+        // ksplashrc is rolled back ONLY if our theme is still there
+        // (the user may have chosen another in System Settings).
         let cur = self.ksplashrc_get("Theme");
         if should_rollback_ksplashrc(&cur) {
             let prev_theme = get_or(&cfg, "prev_ksplash_theme", Value::from(""))
@@ -3798,15 +3798,15 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         (true, msg_hybrid_uninstalled())
     }
 
-    // ── Спор за слот заставки при применении оформления ────────────────
+    // ── Dispute over the splash slot when applying a look ──────────────
 
-    /// Разобрать спор за слот KSplash перед применением оформления.
+    /// Settle the dispute over the KSplash slot before applying a look.
     ///
-    /// `ask` показывает вопрос покупателю и возвращает «Да» (`true`) —
-    /// диалог у каждого хозяина свой, решение одно. Зовётся ДО применения:
-    /// при «Да» гибрид снимается сразу, чтобы самолечение не вернуло нашу
-    /// тему при следующем входе. `ask` не зовётся вовсе, когда спорить не о
-    /// чем; у видов, слота не касающихся, не читается даже конфиг.
+    /// `ask` shows the question to the user and returns «Yes» (`true`) —
+    /// each host has its own dialog, the decision is one. Called BEFORE applying:
+    /// on «Yes» the hybrid is removed right away so that self-healing does not bring our
+    /// theme back at the next login. `ask` is not called at all when there is nothing
+    /// to dispute; for kinds that do not touch the slot even the config is not read.
     pub fn resolve_splash_slot(
         &mut self,
         apply_kind: &str,
@@ -3821,9 +3821,9 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
             return SplashSlotPlan::plain();
         };
         if !ask(&conflict) {
-            // Место остаётся за роликом. У целого оформления это не отказ:
-            // применяем всё, а слот возвращаем тем же самолечением, каким
-            // гибрид держится при входе (второго механизма возврата нет).
+            // The slot stays with the clip. For a whole look this is not a refusal:
+            // we apply everything, and return the slot with the same self-healing that
+            // keeps the hybrid at login (there is no second return mechanism).
             if conflict.keep_applies_rest {
                 let video = self
                     .load_config()
@@ -3838,13 +3838,13 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
             }
             return SplashSlotPlan::Stop(conflict.kept);
         }
-        // Место отдано выбранной заставке — гибрид снимаем ЧЕСТНО.
+        // The slot is given to the chosen splash — we remove the hybrid HONESTLY.
         let (ok, detail) = self.uninstall_hybrid();
         if !ok {
             return SplashSlotPlan::Stop(msg_slot_release_failed(&detail));
         }
-        // У «Нет» показывать при входе нечего — и «выбранная заставка» в
-        // примечании была бы неправдой.
+        // With «No» there is nothing to show at login — and «the chosen splash» in
+        // the note would be untrue.
         let note = if theme_name == crate::appearance_installer::SPLASH_NONE {
             tr("The Rexon startup movie is off.")
         } else {
@@ -3853,12 +3853,12 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         SplashSlotPlan::Apply { keep_video: None, note }
     }
 
-    /// Довести план до конца после применения: вернуть слот ролику, если
-    /// покупатель его оставил, и отдать итог с примечанием.
+    /// Finish the plan after applying: return the slot to the clip if
+    /// the user kept it, and hand back the result with a note.
     ///
-    /// Лечим ВСЕГДА, а не только при удаче: `plasma-apply-lookandfeel`
-    /// успевает записать ksplashrc и в тех прогонах, которые сам считает
-    /// неудачными.
+    /// We heal ALWAYS, not only on success: `plasma-apply-lookandfeel`
+    /// manages to write ksplashrc even in runs it itself considers
+    /// failed.
     pub fn finish_splash_slot(
         &mut self,
         keep_video: Option<&str>,
@@ -3872,25 +3872,25 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         msg_with_slot_note(msg, note, ok)
     }
 
-    // ── Автозапуск при входе ───────────────────────────────────────────
+    // ── Autostart at login ─────────────────────────────────────────────
 
-    /// Включён ли автозапуск заставки — порт `is_enabled`.
+    /// Whether splash autostart is enabled — port of `is_enabled`.
     pub fn is_enabled(&mut self) -> bool {
         let a = self.autostart_path();
         let u = self.unit_path();
         let af = self.io.is_file(&a);
-        // Запись есть, но этот композитор её не исполнит — не «включено».
+        // The entry exists, but this compositor will not run it — not «enabled».
         let af = af && self.io.login_works(&a);
         let uf = self.io.is_file(&u);
         is_enabled(af, uf)
     }
 
-    /// Фаза 1: autostart-.desktop — порт `_install_desktop_autostart`.
+    /// Phase 1: the autostart .desktop — port of `_install_desktop_autostart`.
     pub fn install_desktop_autostart(&mut self, python_executable: &str) -> (bool, String) {
         let exec = self.launcher_exec(python_executable);
-        // ⛔Пустая строка — заводить заставку нечем. Прежде сюда приезжал
-        // мёртвый `python3 -m rexon.app --session-splash`, и запись
-        // автозапуска рапортовала успех, ничего не показывая при входе.
+        // ⛔An empty line — nothing to start the splash with. Previously a dead
+        // `python3 -m rexon.app --session-splash` arrived here, and the autostart
+        // entry reported success while showing nothing at login.
         if exec.is_empty() {
             return (false, crate::app::MSG_NOTHING_TO_LAUNCH.to_string());
         }
@@ -3908,14 +3908,14 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         if let Some(e) = self.io.write_atomic(&path, &content) {
             return (false, msg_autostart_write_failed(&e));
         }
-        // Запись для других окружений легла, но здесь не сработает.
+        // The entry for other environments was written, but it will not fire here.
         if let Some(msg) = refusal {
             return (false, msg);
         }
         (true, msg_autostart_enabled())
     }
 
-    /// Снять autostart-.desktop — порт `_remove_desktop_autostart`.
+    /// Remove the autostart .desktop — port of `_remove_desktop_autostart`.
     pub fn remove_desktop_autostart(&mut self) {
         self.io.login_lines(None);
         let path = self.autostart_path();
@@ -3927,9 +3927,9 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         }
     }
 
-    /// Включить заставку при входе — порт `install_autostart` (шаги
-    /// `install_hybrid`/`uninstall_hybrid`/фаза 1 — через исполнителя,
-    /// чтобы у шима остался ровно тот же шов для сверки).
+    /// Enable the splash at login — port of `install_autostart` (the steps
+    /// `install_hybrid`/`uninstall_hybrid`/phase 1 go through the executor,
+    /// so the shim keeps exactly the same seam for verification).
     pub fn install_autostart(&mut self) -> (bool, String) {
         let cfg = self.load_config();
         let supported = self.io.step_hybrid_supported();
@@ -3949,7 +3949,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
                     "warning",
                     &format!("hybrid install failed, fallback to autostart: {msg}"),
                 );
-                self.io.step_uninstall_hybrid(); // не оставлять пол-гибрида
+                self.io.step_uninstall_hybrid(); // do not leave half a hybrid
                 let (ok2, msg2) = self.io.step_install_desktop_autostart();
                 (ok2, hybrid_fallback_message(&msg, ok2, &msg2))
             }
@@ -3962,7 +3962,7 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         }
     }
 
-    /// Отключить заставку при входе — порт `uninstall_autostart`.
+    /// Disable the splash at login — port of `uninstall_autostart`.
     pub fn uninstall_autostart(&mut self) -> (bool, String) {
         let mut problems: Vec<String> = Vec::new();
         let cfg = self.load_config();
@@ -3988,16 +3988,16 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
     }
 }
 
-// ── Прогон заставки: постер, хелпер, mpv-IPC, эстафета, три пути ──────────
+// ── Splash run: poster, helper, mpv-IPC, relay, three paths ────────────────
 
-/// Нужен ли полный скан для ротации — порт короткого замыкания в
-/// `rotation_pool` (скан дорогой: ffmpeg + разбор VDF, и на критическом пути
-/// входа он не нужен, если избранного и так хватает).
+/// Whether rotation needs a full scan — port of the short circuit in
+/// `rotation_pool` (the scan is expensive: ffmpeg + VDF parsing, and on the critical path
+/// of login it is not needed if there are enough favorites anyway).
 pub fn rotation_needs_full_scan(existing_favorites: usize) -> bool {
     !rotation_uses_favorites(existing_favorites)
 }
 
-/// Команда mpv-IPC «снять паузу».
+/// The mpv-IPC command «unpause».
 pub fn unpause_command() -> Value {
     Value::Array(vec![
         Value::from("set_property"),
@@ -4006,33 +4006,33 @@ pub fn unpause_command() -> Value {
     ])
 }
 
-/// Команда mpv-IPC «выйти».
+/// The mpv-IPC command «quit».
 pub fn quit_command() -> Value {
     Value::Array(vec![Value::from("quit")])
 }
 
-/// Свойство mpv, по которому опознаётся конец ролика.
+/// The mpv property that identifies the end of the clip.
 pub const MPV_EOF_PROPERTY: &str = "eof-reached";
 
-/// Формат `%g` для секунд в сообщениях (6.0 → «6»).
+/// The `%g` format for seconds in messages (6.0 → «6»).
 fn fmt_g(v: f64) -> String {
     let s = format!("{v}");
     s
 }
 
-/// X11-слой не создался — откат на управляемое окно mpv.
+/// The X11 layer was not created — fall back to a managed mpv window.
 pub const MSG_X11_OVERLAY_FALLBACK: &str =
     "x11 overlay не создан — откат на --fullscreen/--ontop (панель/попапы могут пробиться)";
-/// Rust-хелпер не взлетел — откат на оконный mpv.
+/// The Rust helper did not take off — fall back to windowed mpv.
 pub const MSG_HELPER_NO_LIFTOFF: &str =
     "rexon-splash-overlay не взлетел — фолбэк на mpv-окно";
-/// Ни шина, ни бинари не дали reconfigure живому KWin.
+/// Neither the bus nor the binaries gave the live KWin a reconfigure.
 pub const MSG_KWIN_RECONFIGURE_FAILED: &str =
     "KWin reconfigure не прошёл: ни сессионная шина, ни бинари qdbus/gdbus не \
 сработали — правило окна заставки KWin подхватит при следующем входе";
 
 impl<IO: SplashIo> Splash<'_, IO> {
-    /// PNG первого кадра ролика — порт `_poster_for_video`.
+    /// PNG of the clip's first frame — port of `_poster_for_video`.
     pub fn poster_for_video(&mut self, video: &str) -> Option<String> {
         let home = self.home.clone();
         let theme_poster = theme_poster_path(&home);
@@ -4053,8 +4053,8 @@ impl<IO: SplashIo> Splash<'_, IO> {
         }
     }
 
-    /// Собранный rexon-splash-overlay — порт `_find_splash_overlay_binary`
-    /// (`repo_root` — realpath корня дерева, наблюдение исполнителя).
+    /// The built rexon-splash-overlay — port of `_find_splash_overlay_binary`
+    /// (`repo_root` — realpath of the tree root, the executor's observation).
     pub fn find_splash_overlay_binary(&mut self, repo_root: &str) -> Option<String> {
         for c in splash_overlay_candidates(repo_root) {
             if self.io.is_file(&c) && self.io.is_executable(&c) {
@@ -4069,20 +4069,20 @@ impl<IO: SplashIo> Splash<'_, IO> {
         }
     }
 
-    /// Команда в mpv-IPC без ответа — порт `_mpv_ipc_send`.
+    /// An mpv-IPC command without a reply — port of `_mpv_ipc_send`.
     pub fn mpv_ipc_send(&mut self, sock: &str, command: &Value) -> bool {
         let payload = mpv_ipc_command_payload(command);
         self.io.ipc_send(sock, &payload)
     }
 
-    /// Свойство mpv через IPC — порт `_mpv_ipc_get`.
+    /// An mpv property via IPC — port of `_mpv_ipc_get`.
     pub fn mpv_ipc_get(&mut self, sock: &str, prop: &str) -> Option<Value> {
         let payload = mpv_ipc_get_payload(prop);
         let received = self.io.ipc_request(sock, &payload, MPV_IPC_REPLY_MARKER)?;
         parse_mpv_ipc_response(&received, MPV_IPC_REQUEST_ID)
     }
 
-    /// READY=1 менеджеру systemd — порт `_sd_notify_ready`.
+    /// READY=1 to the systemd manager — port of `_sd_notify_ready`.
     pub fn sd_notify_ready(&mut self) {
         let ns = self.io.env("NOTIFY_SOCKET");
         let addr = notify_socket_addr(if ns.is_empty() { None } else { Some(&ns) });
@@ -4091,7 +4091,7 @@ impl<IO: SplashIo> Splash<'_, IO> {
         }
     }
 
-    /// Жив ли ksplashqml — порт `_ksplash_running`.
+    /// Whether ksplashqml is alive — port of `_ksplash_running`.
     fn ksplash_running(&mut self) -> bool {
         let pg = self.io.which("pgrep");
         if pg.is_empty() {
@@ -4101,7 +4101,7 @@ impl<IO: SplashIo> Splash<'_, IO> {
         matches!(self.io.run(&argv, PGREP_TIMEOUT_SEC), Some(r) if r.rc == 0)
     }
 
-    /// Правило KWin «поверх всего» — порт `_ensure_kwin_splash_rule`.
+    /// The KWin «above everything» rule — port of `_ensure_kwin_splash_rule`.
     pub fn ensure_kwin_splash_rule(&mut self) -> bool {
         let x = self.cfg_home();
         let path = kwinrulesrc_path(x.as_deref(), &self.home.clone());
@@ -4118,7 +4118,7 @@ impl<IO: SplashIo> Splash<'_, IO> {
             None
         };
         let Some(new_text) = ensure_kwin_rule_text(txt.as_deref()) else {
-            return true; // актуально, файл не трогаем
+            return true; // up to date, the file is left alone
         };
         if let Some(e) = self.io.write_text(&path, &new_text) {
             self.io
@@ -4129,11 +4129,11 @@ impl<IO: SplashIo> Splash<'_, IO> {
         true
     }
 
-    /// Дёрнуть reconfigure живого KWin — порт `_kwin_reconfigure`.
+    /// Poke reconfigure of the live KWin — port of `_kwin_reconfigure`.
     pub fn kwin_reconfigure(&mut self) {
         if self.io.kwin_reconfigure_dbus(DBUS_TIMEOUT_SEC) {
-            // reconfigure асинхронный, а правила применяются при создании
-            // окна — дать KWin перечитать их до старта mpv.
+            // reconfigure is asynchronous, and rules are applied when a window is
+            // created — let KWin reread them before mpv starts.
             self.io.sleep(KWIN_RECONFIGURE_SETTLE_SEC);
             return;
         }
@@ -4150,13 +4150,13 @@ impl<IO: SplashIo> Splash<'_, IO> {
         self.io.log("warning", MSG_KWIN_RECONFIGURE_FAILED);
     }
 
-    /// Эстафета гибрида: дождаться гашения ksplashqml → снять паузу mpv.
-    /// Порт `_hybrid_wait_and_unpause`: все ожидания жёстко ограничены,
-    /// unpause делается БЕЗУСЛОВНО в конце (mpv никогда не остаётся на
-    /// паузе, даже если выше что-то пошло не так).
+    /// The hybrid relay: wait for ksplashqml to go away → unpause mpv.
+    /// Port of `_hybrid_wait_and_unpause`: all waits are strictly bounded,
+    /// unpause is done UNCONDITIONALLY at the end (mpv never stays
+    /// paused, even if something above went wrong).
     pub fn hybrid_wait_and_unpause(&mut self, proc: i64, sock: &str) {
-        // 1. mpv поднял IPC-сокет (первый кадр вот-вот/уже отрисован под
-        //    оверлеем ksplash). Потолок строго < TimeoutStartSec юнита.
+        // 1. mpv brought up its IPC socket (the first frame is about to be/already drawn under
+        //    the ksplash overlay). The cap is strictly < the unit's TimeoutStartSec.
         let mut deadline = self.io.monotonic() + HYBRID_SOCK_WAIT_SEC;
         while self.io.monotonic() < deadline && self.io.poll(proc).is_none() {
             if self.io.exists(sock) {
@@ -4164,11 +4164,11 @@ impl<IO: SplashIo> Splash<'_, IO> {
             }
             self.io.sleep(SOCK_POLL_SEC);
         }
-        // 2. Отпускаем plasmashell (Type=notify). БЕЗУСЛОВНО, даже без
-        //    сокета: иначе TimeoutStartSec убьёт юнит вместе с mpv.
+        // 2. Release plasmashell (Type=notify). UNCONDITIONALLY, even without
+        //    a socket: otherwise TimeoutStartSec kills the unit together with mpv.
         self.sd_notify_ready();
-        // 3. ksplashqml мог стартовать чуть позже нас — подождать появления
-        //    (сплеш выключен в системе → просто едем дальше).
+        // 3. ksplashqml may have started slightly after us — wait for it to appear
+        //    (the splash is turned off in the system → just move on).
         let mut seen = self.ksplash_running();
         if !seen {
             deadline = self.io.monotonic() + KSPLASH_APPEAR_WAIT_SEC;
@@ -4180,8 +4180,8 @@ impl<IO: SplashIo> Splash<'_, IO> {
                 self.io.sleep(KSPLASH_POLL_SEC);
             }
         }
-        // 4. Ждём его смерти: счётчик стадий Plasma гасит его после
-        //    готовности plasmashell (стадия «desktop»).
+        // 4. Wait for it to die: Plasma's stage counter kills it once
+        //    plasmashell is ready (the «desktop» stage).
         if seen {
             deadline = self.io.monotonic() + KSPLASH_DEATH_WAIT_SEC;
             while self.io.monotonic() < deadline {
@@ -4191,16 +4191,16 @@ impl<IO: SplashIo> Splash<'_, IO> {
                 self.io.sleep(KSPLASH_POLL_SEC);
             }
         }
-        // 5. Постер ksplash исчез → под ним тот же кадр в mpv → пускаем видео.
+        // 5. The ksplash poster is gone → the same frame is in mpv under it → start the video.
         if self.io.poll(proc).is_none() {
             let cmd = unpause_command();
             self.mpv_ipc_send(sock, &cmd);
         }
     }
 
-    /// Ожидание конца ролика по mpv-IPC — общий финал overlay-путей
-    /// (Wayland-хелпер и X11-слой ведут себя одинаково: последний кадр
-    /// держится `keep-open=yes`, гасим МЫ по EOF).
+    /// Waiting for the end of the clip via mpv-IPC — the shared finale of the overlay paths
+    /// (the Wayland helper and the X11 layer behave the same: the last frame
+    /// is held by `keep-open=yes`, WE close it on EOF).
     fn wait_eof(&mut self, proc: i64, ipc_sock: &str, helper: bool) -> (bool, String) {
         let deadline = self.io.monotonic() + PLAY_TIMEOUT_SEC;
         let mut eof = false;
@@ -4223,7 +4223,7 @@ impl<IO: SplashIo> Splash<'_, IO> {
         }
     }
 
-    /// Гашение живого проигрывателя: `quit` по IPC → SIGTERM → SIGKILL.
+    /// Stopping the live player: `quit` via IPC → SIGTERM → SIGKILL.
     fn quit_player(&mut self, proc: i64, ipc_sock: &str) {
         if self.io.poll(proc).is_some() {
             return;
@@ -4238,13 +4238,13 @@ impl<IO: SplashIo> Splash<'_, IO> {
         }
     }
 
-    /// Дождаться работающего композитора на холодном X11-входе — порт
-    /// `_X11SplashOverlay.wait_compositor` (сам цикл был на Python).
+    /// Wait for a running compositor on a cold X11 login — port of
+    /// `_X11SplashOverlay.wait_compositor` (the loop itself was in Python).
     fn wait_compositor(&mut self, overlay: i64) -> bool {
         let deadline = self.io.monotonic() + COMPOSITOR_WAIT_SEC;
         while self.io.monotonic() < deadline {
             if self.io.x11_compositor_present(overlay) {
-                // дать композитору отрисовать первую сцену
+                // let the compositor draw the first scene
                 self.io.sleep(COMPOSITOR_SETTLE_SEC);
                 return true;
             }
@@ -4253,9 +4253,9 @@ impl<IO: SplashIo> Splash<'_, IO> {
         false
     }
 
-    /// Прогон заставки Rust-хелпером rexon-splash-overlay (Wayland) — порт
-    /// `_play_wayland_overlay`. None — хелпер не взлетел (умер до сокета),
-    /// вызывающий откатывается на оконный mpv.
+    /// A splash run with the Rust helper rexon-splash-overlay (Wayland) — port of
+    /// `_play_wayland_overlay`. None — the helper did not take off (died before the socket),
+    /// the caller falls back to windowed mpv.
     pub fn play_wayland_overlay(
         &mut self,
         helper: &str,
@@ -4273,9 +4273,9 @@ impl<IO: SplashIo> Splash<'_, IO> {
                 return None;
             }
         };
-        // Ранняя диагностика: сокет появляется после mpv_initialize, т.е.
-        // фатальные отказы среды (нет Wayland/layer-shell/EGL) уже позади.
-        // Крах ловится отдельно и мгновенно, дедлайн ждёт «жив, но не готов».
+        // Early diagnostics: the socket appears after mpv_initialize, i.e.
+        // fatal environment failures (no Wayland/layer-shell/EGL) are already behind us.
+        // A crash is caught separately and instantly, the deadline waits for «alive but not ready».
         let deadline = self.io.monotonic() + HELPER_SOCK_WAIT_SEC;
         let mut up = false;
         while self.io.monotonic() < deadline {
@@ -4309,20 +4309,20 @@ impl<IO: SplashIo> Splash<'_, IO> {
         if hybrid {
             self.hybrid_wait_and_unpause(proc, ipc_sock);
         } else {
-            self.sd_notify_ready(); // вдруг нас всё же запустил notify-юнит
+            self.sd_notify_ready(); // in case a notify unit started us after all
         }
         let res = self.wait_eof(proc, ipc_sock, true);
-        // Чистый выход: quit по IPC, страховки — SIGTERM (хелпер его ловит и
-        // корректно освобождает mpv/EGL), затем SIGKILL.
+        // A clean exit: quit via IPC, the safety nets are SIGTERM (the helper catches it and
+        // releases mpv/EGL correctly), then SIGKILL.
         self.quit_player(proc, ipc_sock);
         Some(res)
     }
 
-    /// Проиграть заставку как полноэкранный сплеш — порт `play`.
+    /// Play the splash as a fullscreen splash — port of `play`.
     ///
-    /// `path`/`sound` по умолчанию из конфига; `blocking=true` — ждать конца
-    /// (autostart/юнит), `false` — вернуть управление сразу (тест из UI);
-    /// `hybrid=None` — авто. `repo_root` — корень дерева для поиска хелпера.
+    /// `path`/`sound` default to the config; `blocking=true` — wait for the end
+    /// (autostart/unit), `false` — return control right away (a test from the UI);
+    /// `hybrid=None` — auto. `repo_root` — the tree root for finding the helper.
     pub fn play(
         &mut self,
         path: Option<&str>,
@@ -4351,10 +4351,10 @@ impl<IO: SplashIo> Splash<'_, IO> {
         if path.is_empty() || !self.io.is_file(&path) {
             return (false, msg_no_file());
         }
-        // Реальный прогон (запуск из systemd-юнита при входе) — сперва
-        // починить связку, потом играть: чужая тема в ksplashrc даёт секунду
-        // ШТАТНОЙ заставки Plasma перед нашим роликом (шапка модуля).
-        // В НЕблокирующем режиме (тест из UI) ksplashrc трогать незачем.
+        // A real run (started from the systemd unit at login) — first
+        // repair the setup, then play: a foreign theme in ksplashrc gives a second of the
+        // STOCK Plasma splash before our clip (module header).
+        // In NON-blocking mode (a test from the UI) there is no reason to touch ksplashrc.
         if blocking && hybrid {
             self.heal_hybrid(&path);
         }
@@ -4362,10 +4362,10 @@ impl<IO: SplashIo> Splash<'_, IO> {
         let wayland = self.io.env("WAYLAND_DISPLAY");
         let disp_opt = if display.is_empty() { None } else { Some(display.as_str()) };
         let wl_opt = if wayland.is_empty() { None } else { Some(wayland.as_str()) };
-        // Wayland + реальный прогон: предпочтителен Rust-хелпер (layer-shell
-        // OVERLAY — поверх панелей KDE, свой libmpv внутри). Тест из UI идёт
-        // оконным mpv: хелпер держит последний кадр до нашего гашения, а в
-        // non-blocking режиме гасить некому.
+        // Wayland + a real run: the Rust helper is preferred (layer-shell
+        // OVERLAY — above the KDE panels, its own libmpv inside). A test from the UI goes
+        // through windowed mpv: the helper holds the last frame until we close it, and in
+        // non-blocking mode there is nobody to close it.
         let helper = if wants_wayland_helper(blocking, disp_opt, wl_opt) {
             self.find_splash_overlay_binary(repo_root)
         } else {
@@ -4381,32 +4381,32 @@ impl<IO: SplashIo> Splash<'_, IO> {
                 return (true, msg_already_playing());
             }
         }
-        // X11 (только реальный прогон): свой override-redirect слой + --wid —
-        // WM-независимо, панель/попапы не пробьются.
+        // X11 (real run only): our own override-redirect layer + --wid —
+        // WM-independent, the panel/popups will not break through.
         let mut overlay: Option<i64> = None;
         if blocking && is_x11_session(disp_opt, wl_opt) {
             match self.io.x11_create() {
                 None => self.io.log("warning", MSG_X11_OVERLAY_FALLBACK),
                 Some(h) => {
                     overlay = Some(h);
-                    // На X11 эстафета ksplash→mpv не используется:
-                    // ksplashqml гаснет через ~0.4 c после нашего READY, а
-                    // слой и так перекрывает его окно. Постер фоном слоя
-                    // держит экран ~1.5 c инициализации mpv, и видео
-                    // начинается с того же кадра без чёрной паузы.
+                    // On X11 the ksplash→mpv relay is not used:
+                    // ksplashqml goes away ~0.4 s after our READY, and
+                    // the layer covers its window anyway. The poster as the layer background
+                    // holds the screen during ~1.5 s of mpv initialization, and the video
+                    // starts from the same frame without a black pause.
                     hybrid = false;
                     self.sd_notify_ready();
                     let poster = self.poster_for_video(&path);
-                    // Постер ДО маппинга: фоновый pixmap рисует сам
-                    // X-сервер, композитор ему не нужен — холодный вход
-                    // обходится без чёрного зазора.
+                    // The poster BEFORE mapping: the background pixmap is drawn by the
+                    // X server itself, it needs no compositor — a cold login
+                    // goes without a black gap.
                     if let Some(p) = poster {
                         self.io.x11_set_poster(h, &p);
                     }
                     self.io.x11_map(h);
                     if !self.io.x11_compositor_present(h) {
-                        // холодный вход: видео пускать после перехвата
-                        // композитинга
+                        // cold login: start the video after compositing
+                        // is taken over
                         self.wait_compositor(h);
                     }
                 }
@@ -4418,7 +4418,7 @@ impl<IO: SplashIo> Splash<'_, IO> {
             if let Some(res) = self.play_wayland_overlay(&h, &path, sound, hybrid, &ipc_sock) {
                 return res;
             }
-            // Хелпер не взлетел (умер до IPC-сокета) → оконный mpv ниже.
+            // The helper did not take off (died before the IPC socket) → windowed mpv below.
             self.io.log("warning", MSG_HELPER_NO_LIFTOFF);
             if self.io.which("mpv").is_empty() {
                 return (false, msg_no_mpv());
@@ -4448,8 +4448,8 @@ impl<IO: SplashIo> Splash<'_, IO> {
                     &ipc_sock,
                 );
                 if !wayland.is_empty() {
-                    // --ontop на Wayland мёртв — поверх (в т.ч. над панелью
-                    // Plasma) держит правило KWin по app_id.
+                    // --ontop is dead on Wayland — staying on top (including above the Plasma
+                    // panel) is ensured by the KWin rule by app_id.
                     self.ensure_kwin_splash_rule();
                 }
                 c
@@ -4478,17 +4478,17 @@ impl<IO: SplashIo> Splash<'_, IO> {
         if hybrid {
             self.hybrid_wait_and_unpause(proc, &ipc_sock);
         } else {
-            self.sd_notify_ready(); // вдруг нас всё же запустил notify-юнит
+            self.sd_notify_ready(); // in case a notify unit started us after all
         }
         let res = if overlay.is_some() {
-            // Финал в правильном порядке: mpv стоит на последнем кадре
-            // (--keep-open=yes), по EOF закрываем СНАЧАЛА слой — с ним
-            // рушится и окно mpv, постер не мелькает.
+            // The finale in the right order: mpv stays on the last frame
+            // (--keep-open=yes), on EOF we close the layer FIRST — the mpv window
+            // collapses together with it, and the poster does not flash.
             self.wait_eof(proc, &ipc_sock, false)
         } else {
             match self.io.wait(proc, PLAY_TIMEOUT_SEC) {
                 None => {
-                    self.io.terminate(proc); // страховка: не блокировать сессию
+                    self.io.terminate(proc); // safety net: do not block the session
                     if self.io.wait(proc, MPV_TERM_WAIT_SEC).is_none() {
                         self.io.kill(proc);
                     }
@@ -4507,20 +4507,20 @@ impl<IO: SplashIo> Splash<'_, IO> {
         if let Some(h) = overlay {
             self.io.x11_raise_stop(h);
             self.io.x11_close(h);
-            // слой уже закрыт — гасим mpv, стоявший на последнем кадре
+            // the layer is already closed — stop mpv that stood on the last frame
             self.quit_player(proc, &ipc_sock);
         }
         res
     }
 
-    /// CLI-точка (`rexon --session-splash`) — порт `main`.
+    /// The CLI point (`rexon --session-splash`) — port of `main`.
     ///
-    /// Ролик на следующий вход выбирается ПОСЛЕ показа: вход уже отдан
-    /// рабочему столу, и ffmpeg для постера ничего не задерживает.
+    /// The clip for the next login is chosen AFTER the display: the login has already been handed
+    /// to the desktop, and ffmpeg for the poster delays nothing.
     pub fn main(&mut self, repo_root: &str) -> i64 {
         let (ok, msg) = self.play(None, None, true, None, repo_root);
         if !ok {
-            // тихо: autostart не должен мешать входу в сессию
+            // quietly: autostart must not get in the way of the session login
             self.io.log("warning", &format!("session-splash: {msg}"));
         }
         if let Some(nxt) = self.advance_rotation() {

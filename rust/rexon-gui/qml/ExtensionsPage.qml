@@ -1,32 +1,35 @@
-// Вкладка «Расширения» на QML. Данные и решения — Rust-объект
-// ExtensionsModel (rust/rexon-gui/src/extensions_page.rs), который сам
-// ничего не решает, а спрашивает ядро (`rexon_core::qt_extensions`). Здесь
-// только РАЗМЕТКА.
+// The "Extensions" tab in QML. Data and decisions come from the Rust
+// object ExtensionsModel (rust/rexon-gui/src/extensions_page.rs), which
+// decides nothing itself but asks the core (`rexon_core::qt_extensions`).
+// Only MARKUP lives here.
 //
-// Оформление берётся из готового: палитра приходит свойством `palette` от
-// того же объекта и родом из `ui_base::skin_colors("steam_dark")` — скина по
-// умолчанию всего продукта (правило #17). Своих цветов страница не заводит;
-// сторожит это тест ядра `qt_extensions_parity::page_colors_come_from_core`.
+// The styling is taken ready-made: the palette arrives through the
+// `palette` property of the same object and originates from
+// `ui_base::skin_colors("steam_dark")` — the default skin of the whole
+// product (rule #17). The page defines no colours of its own; this is
+// guarded by the core test `qt_extensions_parity::page_colors_come_from_core`.
 //
-// Побочные действия (установка .rxn, удаление, включение/выключение) живут
-// снаружи, объектом со свойством `root.actions`: installDialog / installPath /
-// busy / confirm / uninstall / toggle / openFolder плюс сигналы
-// installFinished / uninstallFinished. Обещание «страница не изменится»
-// выполнено: с приходом Rust-объекта (`ExtensionsActions`,
-// rust/rexon-gui/src/extensions_actions.rs) ни один вызов здесь не переписан,
-// добавлено ровно умолчание ниже.
+// Side actions (installing an .rxn, removal, enabling/disabling) live
+// outside, in an object set as the `root.actions` property: installDialog /
+// installPath / busy / confirm / uninstall / toggle / openFolder plus the
+// signals installFinished / uninstallFinished. The promise "the page will
+// not change" was kept: with the arrival of the Rust object
+// (`ExtensionsActions`, rust/rexon-gui/src/extensions_actions.rs) not a
+// single call here was rewritten; only the default below was added.
 //
-// Умолчание — Rust-объект, заведённый самой страницей. Так вкладка полна в
-// процессе без Python вовсе; хозяин на PySide6 (`rexon/qt_extensions/window.py`)
-// по-прежнему может подставить свой объект — присваивание свойства снимает
-// привязку. Пустой `actions` больше не значит «кнопки молчат».
+// The default is a Rust object created by the page itself. That way the
+// tab is complete in a process with no Python at all; the PySide6 host
+// (`rexon/qt_extensions/window.py`) can still substitute its own object —
+// assigning the property removes the binding. An empty `actions` no longer
+// means "the buttons do nothing".
 //
-// Цепочка фокуса заложена с самого начала: все действия — на контролах, у
-// сфокусированного видна рамка, страница подкручивается к нему.
+// The focus chain is built in from the very start: all actions are on
+// controls, the focused one shows a frame, and the page scrolls to it.
 
-// Делегаты обращаются к id внешних элементов (root, page). Без этой прагмы
-// проверка QML справедливо ругается на неквалифицированный доступ.
-// (Строку «// qmllint …» здесь писать нельзя: она читается как директива.)
+// Delegates refer to ids of outer elements (root, page). Without this
+// pragma, QML lint rightly complains about unqualified access.
+// (A "// qmllint …" line must not be written here: it is read as a
+// directive.)
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -37,11 +40,11 @@ import org.rexon.gui 1.0
 Item {
     id: root
 
-    // ── Мост наружу ───────────────────────────────────────────────────────
+    // ── Bridge to the outside ─────────────────────────────────────────────
 
-    // Объект побочных действий. По умолчанию — свой, на Rust; хозяин
-    // страницы может подставить другой.
-    // Методы: installDialog() -> string, installPath(path) -> bool,
+    // Side-actions object. Our own Rust one by default; the page host may
+    // substitute another.
+    // Methods: installDialog() -> string, installPath(path) -> bool,
     //         busy() -> bool, confirm(title, text) -> bool,
     //         uninstall(extId) -> bool, toggle(extId) -> string,
     //         openFolder(dir) -> bool.
@@ -49,7 +52,7 @@ Item {
 
     ExtensionsActions {
         id: ownActions
-        // Имя нужно проверкам — тем же приёмом, что у модели ниже.
+        // The name is needed by checks — the same approach as for the model below.
         objectName: "extensionsActions"
     }
 
@@ -60,17 +63,17 @@ Item {
     implicitWidth: page.windowMinWidth
     implicitHeight: page.windowMinHeight
 
-    // ── Ядро вкладки ──────────────────────────────────────────────────────
+    // ── Tab core ──────────────────────────────────────────────────────────
 
     ExtensionsModel {
         id: page
-        // Имя нужно проверкам: модель достают
-        // `root.findChild(QObject, "extensionsModel")` и спрашивают её без
-        // единой правки в самой странице.
+        // The name is needed by checks: the model is fetched with
+        // `root.findChild(QObject, "extensionsModel")` and queried without a
+        // single change in the page itself.
         objectName: "extensionsModel"
     }
 
-    // ── Палитра стандартного скина ────────────────────────────────────────
+    // ── Standard skin palette ─────────────────────────────────────────────
 
     readonly property var pal: page.palette
     readonly property color colBg: root.pal.bg_primary
@@ -81,13 +84,14 @@ Item {
     readonly property color colInfo: root.pal.accent_info
     readonly property color colDanger: root.pal.danger
 
-    // Оформление вкладки, которого нет в палитре скина: чипы, плитка,
-    // заглушка превью, строка списка, блок «Установить», раскладка. Всё
-    // приходит готовым от ядра (`qt_extensions`) — тем же набором чисел и
-    // красок, каким набраны компоновки и таблицы стилей виджетной вкладки.
+    // Tab styling that is not in the skin palette: chips, the tile, the
+    // preview placeholder, the list row, the "Install" block, the layout.
+    // Everything comes ready from the core (`qt_extensions`) — the same set of
+    // numbers and colours that the layouts and style sheets of the widget tab
+    // are built from.
     readonly property var st: page.styles
-    // Чип (кнопки вида и фильтры): рамка без заливки, выбранный — синяя
-    // заливка с рамкой. Тот же чип, что у подвкладок Steam.
+    // Chip (view buttons and filters): a border without fill; the selected one
+    // has a blue fill with a border. The same chip as in the Steam sub-tabs.
     readonly property var toneChip: ({
         "background": "transparent",
         "border": root.st.chip.border,
@@ -100,12 +104,14 @@ Item {
         "hover": root.st.chip.checkedBackground,
         "radius": root.st.chip.radius
     })
-    // Кнопка «🗑 Удалить» подробного разбора: заливка у неё своя, гуще
-    // плиточной (0,25 против 0,2 — так набрана таблица стилей оригинала).
+    // The "🗑 Delete" button of the detailed view: it has its own fill, denser
+    // than on the tile (0.25 versus 0.2 — that is how the original's style
+    // sheet is written).
     readonly property var toneDetailDelete: ({
         "fillAlpha": root.st.dialog.dangerFillAlpha
     })
-    // Крупная кнопка блока «Установить»: рамка и лёгкая заливка, скругление 6.
+    // Large button of the "Install" block: a border and a light fill,
+    // rounding 6.
     readonly property var toneSource: ({
         "background": root.st.source.background,
         "border": root.st.source.border,
@@ -113,20 +119,22 @@ Item {
         "radius": root.st.source.radius
     })
 
-    // ── Побочные действия ─────────────────────────────────────────────────
+    // ── Side actions ──────────────────────────────────────────────────────
 
-    // Установка идёт в фоне у хозяина: сюда возвращается только «взялись ли
-    // за дело». Итог приходит сигналом (см. Connections ниже) — так строка
-    // состояния и витрина обновляются тогда же, когда в виджетной вкладке.
-    // Что делает кнопка блока «Установить». Разбор вида действия — здесь, а
-    // не в делегате: так его можно позвать и с клавиатуры, и проверкой, не
-    // изображая нажатие мышью по координатам.
+    // Installation runs in the host's background: only "did it start the job"
+    // comes back here. The result arrives as a signal (see Connections below)
+    // — so the status line and the showcase update at the same moment as in
+    // the widget tab.
+    // What the button of the "Install" block does. The action kind is
+    // dispatched here, not in the delegate: that way it can be called both
+    // from the keyboard and from a check, without imitating a mouse click at
+    // coordinates.
     function runSource(kind) {
         if (kind === "file")
             root.runInstallDialog();
         else if (kind === "create")
             createDialog.open();
-        // «workshop» выключен: кнопка неактивна, нажать её нельзя.
+        // "workshop" is disabled: the button is inactive and cannot be pressed.
     }
 
     function runInstallDialog() {
@@ -166,9 +174,9 @@ Item {
     function runToggle(extId) {
         if (!root.actions)
             return;
-        // Ответ — «on» / «off» / текст ошибки с приставкой «!». Пары
-        // «получилось ли + новое состояние» одним значением не выразить, а
-        // два вызова подряд разошлись бы с состоянием на диске.
+        // The answer is "on" / "off" / an error text prefixed with "!". A pair
+        // "did it work + the new state" cannot be expressed as one value, and two
+        // calls in a row could disagree with the state on disk.
         const answer = root.actions.toggle(extId);
         if (answer === "on")
             page.noteEnabled(extId);
@@ -203,24 +211,24 @@ Item {
         }
     }
 
-    // «Применить» у набора обоев: ставит обои на рабочий стол прямо отсюда.
-    // Прежде у плитки была одна «Удалить», и поставленное из файла нечем
-    // было включить, не уходя в «Настройки».
+    // "Apply" on a wallpaper set: puts the wallpaper on the desktop right from
+    // here. Previously the tile had only "Delete", and something installed
+    // from a file could not be turned on without going to "Settings".
     function runApply(extId) {
         if (root.actions && root.actions.apply)
             page.noteText(root.actions.apply(extId));
     }
 
-    // Подкрутить страницу к элементу, который только что получил фокус:
-    // без этого Tab уводит фокус за нижний край, и с клавиатуры (а завтра с
-    // геймпада) вкладка выглядит зависшей.
+    // Scroll the page to the element that has just received focus: without
+    // this Tab takes focus past the bottom edge, and from the keyboard (and
+    // tomorrow from a gamepad) the tab looks frozen.
     function ensureVisible(item) {
         if (!item || !flick.contentItem)
             return;
-        // Окно снова стало активным (закрыт диалог снимка экрана по Print,
-        // вернулись из другой программы) — Qt возвращает фокус тому же
-        // элементу. Это не переход по Tab: крутить страницу к нему нельзя,
-        // иначе прокрученная вниз вкладка прыгает наверх.
+        // The window became active again (the screenshot dialog from Print was
+        // closed, the user returned from another program) — Qt gives focus back
+        // to the same element. This is not a Tab move: the page must not scroll
+        // to it, otherwise a tab scrolled down jumps to the top.
         if (item.focusReason === Qt.ActiveWindowFocusReason)
             return;
         const pos = item.mapToItem(flick.contentItem, 0, 0);
@@ -238,10 +246,10 @@ Item {
         color: root.colBg
     }
 
-    // ── Перетаскивание файлов ─────────────────────────────────────────────
+    // ── Dragging files ────────────────────────────────────────────────────
     //
-    // Тот же набор расширений, что принимала виджетная вкладка; решает о нём
-    // ядро (`qt_extensions::is_supported_drop`), а не список в разметке.
+    // The same set of extensions the widget tab accepted; the core decides
+    // about it (`qt_extensions::is_supported_drop`), not a list in the markup.
     DropArea {
         id: dropZone
         anchors.fill: parent
@@ -269,8 +277,8 @@ Item {
         return out;
     }
 
-    // Подсветка окна под перетаскиванием: без неё человек не понимает,
-    // возьмёт ли программа файл (защита от дурака, правило #13).
+    // Window highlight while dragging: without it the user cannot tell
+    // whether the program will take the file (foolproofing, rule #13).
     Rectangle {
         anchors.fill: parent
         visible: dropZone.containsDrag
@@ -280,7 +288,7 @@ Item {
         z: 5
     }
 
-    // ── Страница ──────────────────────────────────────────────────────────
+    // ── Page ──────────────────────────────────────────────────────────────
 
     Flickable {
         id: flick
@@ -292,9 +300,9 @@ Item {
 
         ScrollBar.vertical: ScrollBar {}
 
-        // ⚠️ Раскладка внутри ОБЫЧНОГО Item (не внутри другой раскладки)
-        // обязана получить высоту руками: сама она остаётся нулевой, и
-        // страница схлопывается в полоску.
+        // Warning: a layout inside an ORDINARY Item (not inside another layout)
+        // must get its height by hand: by itself it stays at zero, and the page
+        // collapses into a strip.
         ColumnLayout {
             id: pageColumn
             anchors.left: parent.left
@@ -304,7 +312,7 @@ Item {
             height: implicitHeight
             spacing: root.st.page.spacing
 
-            // ── Шапка ─────────────────────────────────────────────────────
+            // ── Header ────────────────────────────────────────────────────
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
@@ -320,10 +328,10 @@ Item {
                     Layout.fillWidth: true
                 }
 
-                // Кнопки вида — чипы оригинала (`QToolButton:checked` синим),
-                // а не выделенные кнопки скина: кегль значка 14 и наименьшая
-                // ширина 32 — из ядра. Выбор рисуется тоном, а не `checked`:
-                // повторное нажатие на выбранную не должно её «снимать».
+                // View buttons are the original's chips (`QToolButton:checked` in blue),
+                // not the skin's highlighted buttons: icon size 14 and minimum width 32
+                // come from the core. The selection is drawn with a tone, not `checked`:
+                // pressing the selected one again must not "deselect" it.
                 RexonButton {
                     id: gridButton
                     pal: root.pal
@@ -361,14 +369,14 @@ Item {
                     pal: root.pal
                     text: page.installButtonText
                     highlighted: true
-                    // Оригинал: `font-weight: bold` в таблице стилей кнопки.
+                    // Original: `font-weight: bold` in the button's style sheet.
                     font.bold: true
                     onClicked: root.runInstallDialog()
                     onActiveFocusChanged: if (activeFocus) root.ensureVisible(installButton)
                 }
             }
 
-            // ── Поиск ─────────────────────────────────────────────────────
+            // ── Search ────────────────────────────────────────────────────
             RexonTextField {
                 id: searchField
                 Layout.fillWidth: true
@@ -379,12 +387,12 @@ Item {
                 onActiveFocusChanged: if (activeFocus) root.ensureVisible(searchField)
             }
 
-            // ── Кнопки фильтров ───────────────────────────────────────────
+            // ── Filter buttons ────────────────────────────────────────────
             //
-            // ⚠️ Flow, а не RowLayout: типов расширений тридцать пять, и на
-            // минимальной ширине окна (900, число из ядра) кнопки в одну
-            // строку не помещаются. RowLayout переносить не умеет и просто
-            // обрезал бы хвост — тот же дефект, что был у шапки «Сравнения».
+            // Warning: a Flow, not a RowLayout: there are thirty-five extension types,
+            // and at the minimum window width (900, a number from the core) the
+            // buttons do not fit into one line. RowLayout cannot wrap and would simply
+            // cut off the tail — the same defect the "Compare" header had.
             Flow {
                 Layout.fillWidth: true
                 spacing: root.st.page.filterSpacing
@@ -408,21 +416,21 @@ Item {
                 }
             }
 
-            // ── Статистика ────────────────────────────────────────────────
+            // ── Statistics ────────────────────────────────────────────────
             RexonText {
                 Layout.fillWidth: true
                 text: page.statsLine
                 textFormat: Text.RichText
                 wrapMode: Text.WordWrap
                 color: root.colTextSecondary
-                // Оригинал: `font-weight: 600` у всех вторичных подписей —
-                // тонкое начертание нечитаемо на тёмном (правило владельца
-                // 2026-06-11). Число приходит из ядра палитрой
-                // (`ui_base::SECONDARY_TEXT_WEIGHT`), как у «Сравнения».
+                // Original: `font-weight: 600` on all secondary labels — a thin weight is
+                // unreadable on dark (the owner's rule, 2026-06-11). The number arrives
+                // from the core with the palette (`ui_base::SECONDARY_TEXT_WEIGHT`), as in
+                // "Compare".
                 font.weight: root.pal.text_secondary_weight
             }
 
-            // ── «Мои расширения» ──────────────────────────────────────────
+            // ── "My extensions" ───────────────────────────────────────────
             RexonText {
                 text: page.myHeader
                 visible: page.myHeader !== ""
@@ -431,25 +439,24 @@ Item {
                 font.bold: true
             }
 
-            // ── Витрина: сетка плиток ─────────────────────────────────────
+            // ── Showcase: tile grid ───────────────────────────────────────
             //
-            // Число столбцов считается по ширине полосы и ПОСТОЯННОЙ ширине
-            // плитки (260 из ядра) — так же, как это делал общий движок
-            // сеток виджетной вкладки. Свои ступени «<700 → 2, <1100 → 3»
-            // там уже были признаны неверными: выше 1500 px число столбцов
-            // замирало на пяти и справа оставалось пустое поле.
-            // ⚠️ GridLayout, а не Flow: плитки в ОДНОМ РЯДУ обязаны быть
-            // одной высоты, иначе кнопки «Выключить» и «🗑» встают на разной
-            // высоте — у расширений набор строк разный (автор есть не у
-            // всех, статус «Активно» — только у скриптовых). В виджетной
-            // вкладке это делала распорка `card_actions_spacer`, которая
-            // снимала карточке вертикальную фиксацию и растягивала её на
-            // высоту ряда. Flow высоту ряда не выравнивает — вышла бы
-            // деградация, а не перенос.
+            // The number of columns is computed from the strip width and the CONSTANT
+            // tile width (260 from the core) — just as the shared grid engine of the
+            // widget tab did. Its own steps "<700 → 2, <1100 → 3" had already been
+            // found wrong there: above 1500 px the number of columns froze at five
+            // and an empty margin remained on the right.
+            // Warning: a GridLayout, not a Flow: tiles in ONE ROW must have the same
+            // height, otherwise the "Disable" and "🗑" buttons sit at different
+            // heights — extensions have different sets of lines (not all have an
+            // author, the "Active" status only scripted ones have). In the widget tab
+            // this was done by the `card_actions_spacer` spacer, which removed the
+            // card's vertical fixing and stretched it to the row height. A Flow does
+            // not equalize row heights — that would be a degradation, not a port.
             //
-            // Выравнивание влево (без AlignTop) — тоже из оригинала: с
-            // AlignTop плитка зажимается на своей высоте, и ряд снова
-            // разъезжается.
+            // Left alignment (without AlignTop) also comes from the original: with
+            // AlignTop a tile is clamped to its own height, and the row falls apart
+            // again.
             GridLayout {
                 id: cardsGrid
                 Layout.alignment: Qt.AlignLeft
@@ -477,10 +484,10 @@ Item {
                         required property string stateText
                         required property string stateColor
                         required property string toggleText
-                        /// Картинка плитки прочиталась — её можно открыть
-                        /// крупно (заглушку-значок открывать незачем).
+                        /// The tile picture was read — it can be opened large (there is no point
+                        /// opening the placeholder icon).
                         readonly property bool imageReady: cardImage.visible
-                        /// Запись плитки для крупного просмотра.
+                        /// Tile entry for the large view.
                         readonly property var viewerItem: card.imageReady ? ({
                             "key": card.extId,
                             "title": card.name,
@@ -497,16 +504,16 @@ Item {
                         Layout.fillHeight: true
                         Layout.alignment: Qt.AlignLeft
                         implicitHeight: cardColumn.implicitHeight + 2 * root.st.card.margin
-                        // Краски плитки — из ядра (`QFrame#extCard` оригинала):
-                        // под курсором меняется только рамка, фон остаётся.
+                        // Tile colours come from the core (the original's `QFrame#extCard`): under
+                        // the cursor only the border changes, the background stays.
                         color: root.st.card.background
                         border.color: cardHover.hovered ? root.st.card.hover
                                                         : root.st.card.border
                         border.width: 1
                         radius: root.st.card.radius
 
-                        // Клик по плитке — подробный разбор, как в оригинале
-                        // (там это был mousePressEvent всей карточки).
+                        // A click on the tile opens the detailed view, as in the original (there
+                        // it was a mousePressEvent of the whole card).
                         HoverHandler {
                             id: cardHover
                         }
@@ -520,16 +527,14 @@ Item {
                             anchors.right: parent.right
                             anchors.margins: root.st.card.margin
                             y: root.st.card.margin
-                            // Высоту берём от плитки, а не от своего
-                            // implicitHeight: плитку растянул ряд, и ряд
-                            // кнопок ниже обязан этим воспользоваться, чтобы
-                            // прижаться к нижнему краю.
+                            // The height is taken from the tile, not from its own implicitHeight: the
+                            // row stretched the tile, and the button row below must use that to press
+                            // against the bottom edge.
                             height: parent.height - 2 * root.st.card.margin
                             spacing: root.st.card.spacing
 
-                            // Превью либо значок типа. Заглушка показывается
-                            // ровно тогда, когда картинка не прочиталась —
-                            // тот же выбор делал виджет по пустому пиксмапу.
+                            // Preview or type icon. The placeholder is shown exactly when the picture
+                            // was not read — the widget made the same choice based on an empty pixmap.
                             Rectangle {
                                 Layout.fillWidth: true
                                 implicitHeight: page.previewHeight
@@ -554,8 +559,8 @@ Item {
                                     font.pointSize: root.st.placeholder.pointSize
                                 }
 
-                                // Щелчок по плитке занят описанием, поэтому
-                                // крупный просмотр открывает лупа.
+                                // A click on the tile is taken by the description, so the large view is
+                                // opened with the magnifier.
                                 RexonZoomArea {
                                     anchors.fill: parent
                                     pal: root.pal
@@ -567,9 +572,8 @@ Item {
                                 }
                             }
 
-                            // Тип и автор — вторичные подписи оригинала:
-                            // цвет из пары `ui_base` (починка №2 в ядре),
-                            // начертание 600 — как там.
+                            // Type and author are the original's secondary labels: the colour from the
+                            // `ui_base` pair (fix no. 2 in the core), weight 600 — as there.
                             RexonText {
                                 Layout.fillWidth: true
                                 text: card.typeLine
@@ -609,30 +613,24 @@ Item {
                                 color: card.stateColor
                             }
 
-                            // Ряд кнопок забирает остаток высоты ряда и
-                            // прижимает их к низу — это распорка
-                            // `card_actions_spacer` оригинала: у расширений
-                            // набор строк разный (автор есть не у всех,
-                            // статус — только у скриптовых), и без неё
-                            // кнопки в ряду стояли бы на разной высоте.
-                            // Отдельный Item-распорка здесь не годится:
-                            // раскладка добавляла к нему свой шаг, и над
-                            // кнопками выходило на 10 точек больше, чем у
-                            // оригинала (замер 03.09: 20 против 8).
-                            // ⚠️ Одного `fillHeight` мало, и это не
-                            // придирка: у ряда есть ещё и ПОТОЛОК высоты,
-                            // который он считает по своим детям. Кнопки
-                            // прижаты `Qt.AlignBottom`, выровненная ячейка
-                            // не тянется, и потолок ряда становится равен
-                            // высоте кнопки. Остаток высоты плитке деть
-                            // некуда — раскладка размазывает его по ВСЕМ
-                            // промежуткам: над превью появлялся лишний
-                            // отступ, а кнопки до нижнего края так и не
-                            // доходили (замер 18.09 на стенде: отступ
-                            // сверху 19 против 7 точек, кнопки выше
-                            // соседних на 4). Потолок снят — весь остаток
-                            // забирает ряд кнопок, как забирала его
-                            // распорка оригинала.
+                            // The button row takes the rest of the row height and presses the buttons
+                            // to the bottom — this is the original's `card_actions_spacer`: extensions
+                            // have different sets of lines (not all have an author, only scripted ones
+                            // have a status), and without it the buttons in a row would sit at
+                            // different heights.
+                            // A separate spacer Item does not work here: the layout added its own
+                            // spacing to it, and above the buttons there came out 10 pixels more than
+                            // in the original (measurement 03.09: 20 versus 8).
+                            // Warning: `fillHeight` alone is not enough, and this is not nitpicking:
+                            // the row also has a height CEILING, which it computes from its children.
+                            // The buttons are pressed down with `Qt.AlignBottom`, an aligned cell does
+                            // not stretch, and the row's ceiling becomes equal to the button height.
+                            // The tile has nowhere to put the remaining height — the layout spreads it
+                            // over ALL the gaps: an extra margin appeared above the preview, and the
+                            // buttons still did not reach the bottom edge (measurement 18.09 on the
+                            // test bench: top margin 19 versus 7 pixels, buttons 4 higher than their
+                            // neighbours). The ceiling is removed — the button row takes the whole
+                            // remainder, as the original's spacer did.
                             RowLayout {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
@@ -668,13 +666,11 @@ Item {
                                     id: cardDelete
                                     Layout.alignment: Qt.AlignBottom
                                     pal: root.pal
-                                    // Подпись, а не одна корзина: удаление
-                                    // необратимо, и угадывать значок
-                                    // покупатель не обязан (правило #13).
-                                    // Подробности отступления от эталона —
-                                    // у ключа `UNINSTALL_TEXT` в ядре.
-                                    // Ширину кнопка меряет по подписи сама,
-                                    // как соседний выключатель.
+                                    // A label, not just a bin icon: removal is irreversible, and the customer
+                                    // should not have to guess the icon (rule #13). Details of the departure
+                                    // from the reference are at the `UNINSTALL_TEXT` key in the core. The
+                                    // button measures its width by its label itself, like the neighbouring
+                                    // toggle.
                                     text: page.uninstallText
                                     ToolTip.visible: hovered
                                     ToolTip.text: page.uninstallTooltip
@@ -692,10 +688,10 @@ Item {
                 }
             }
 
-            // ── Витрина: список с группами по типам ───────────────────────
-            // У виджетной вкладки заголовки групп и строки — соседние ряды
-            // ОДНОЙ сетки с шагом плиток (10), поэтому и здесь шаг сетки —
-            // и между блоками, и между заголовком и его первой строкой.
+            // ── Showcase: list grouped by type ────────────────────────────
+            // In the widget tab the group headers and the rows are neighbouring rows
+            // of ONE grid with the tile spacing (10), so here too the grid spacing is
+            // used both between blocks and between a header and its first row.
             ColumnLayout {
                 Layout.fillWidth: true
                 visible: page.viewMode === "list"
@@ -730,8 +726,8 @@ Item {
                             color: root.colInfo
                         }
 
-                        // Поля строки — поля компоновки плюс `padding` её
-                        // таблицы стилей: у виджетов они складываются.
+                        // Row padding is the layout margins plus the `padding` of its style sheet:
+                        // in the widgets they add up.
                         Rectangle {
                             id: rowFrame
                             readonly property int padH: root.st.row.marginH + root.st.row.padding
@@ -820,7 +816,7 @@ Item {
                 }
             }
 
-            // ── Пустое состояние ──────────────────────────────────────────
+            // ── Empty state ───────────────────────────────────────────────
             RexonText {
                 Layout.fillWidth: true
                 Layout.margins: root.st.page.emptyPadding
@@ -832,7 +828,7 @@ Item {
                 font.weight: root.pal.text_secondary_weight
             }
 
-            // ── Блок «⬇ Установить» ───────────────────────────────────────
+            // ── "⬇ Install" block ─────────────────────────────────────────
             RexonText {
                 text: page.installSectionHeader
                 color: root.colText
@@ -871,15 +867,14 @@ Item {
                 }
             }
 
-            // ── Строка состояния ──────────────────────────────────────────
+            // ── Status line ───────────────────────────────────────────────
             //
-            // Место под строку занято ВСЕГДА, даже когда сообщать нечего:
-            // у оригинала это постоянный `QLabel`, который прячут не по
-            // пустому тексту, а никогда, и пустая строка держит свои 21
-            // точку между блоком «Установить» и планами. Пока здесь стояло
-            // `visible: statusText !== ""`, строка схлопывалась, планы
-            // поднимались на 30 точек выше оригинала, а при первой же
-            // установке вся страница дёргалась вниз.
+            // Room for the line is ALWAYS taken, even when there is nothing to report:
+            // in the original this is a permanent `QLabel` that is hidden never, not
+            // on empty text, and the empty line keeps its 21 pixels between the
+            // "Install" block and the plans. While `visible: statusText !== ""` stood
+            // here, the line collapsed, the plans rose 30 pixels above the original,
+            // and on the very first installation the whole page jerked down.
             RexonText {
                 Layout.fillWidth: true
                 text: page.statusText
@@ -888,7 +883,7 @@ Item {
                 font.weight: root.pal.text_secondary_weight
             }
 
-            // ── Планы ─────────────────────────────────────────────────────
+            // ── Plans ─────────────────────────────────────────────────────
             RexonText {
                 Layout.fillWidth: true
                 text: page.roadmapNote
@@ -899,12 +894,12 @@ Item {
         }
     }
 
-    // ── Подробный разбор расширения ───────────────────────────────────────
+    // ── Detailed view of an extension ─────────────────────────────────────
 
-    // ── Крупный просмотр картинки расширения ──────────────────────────────
+    // ── Large view of an extension picture ────────────────────────────────
     //
-    // Слой общий на весь продукт (`RexonImageViewer.qml`). Листание — по
-    // плиткам витрины, у которых картинка есть.
+    // The layer is shared across the whole product (`RexonImageViewer.qml`).
+    // Paging goes over the showcase tiles that have a picture.
     property var viewerRegistry: ({})
 
     function registerViewerItem(row, info) {
@@ -917,9 +912,9 @@ Item {
     function openViewer(extId) {
         const items = [];
         let at = 0;
-        // Что показать, плитки говорят сами (`viewerRegistry`): номер плитки
-        // на витрине → её запись. Плитки с заглушкой вместо картинки в
-        // список не попадают.
+        // What to show is said by the tiles themselves (`viewerRegistry`): tile
+        // index on the showcase → its entry. Tiles with a placeholder instead of
+        // a picture do not get into the list.
         const rows = Object.keys(root.viewerRegistry).map(Number).sort((x, y) => x - y);
         for (const row of rows) {
             const info = root.viewerRegistry[row];
@@ -938,8 +933,8 @@ Item {
 
     function openDetail(extId) {
         const view = page.detailFor(extId);
-        // Пустой ответ — такого расширения на витрине нет. Виджетная вкладка
-        // в этом случае просто не открывала окно; здесь так же.
+        // An empty answer means there is no such extension on the showcase. The
+        // widget tab simply did not open the window in this case; the same here.
         if (!view)
             return;
         detailDialog.view = view;
@@ -948,8 +943,8 @@ Item {
 
     Popup {
         id: detailDialog
-        // Имя нужно стенду приёмки: окно находят по нему, чтобы снять его
-        // отдельно от страницы.
+        // The name is needed by the acceptance test bench: the window is found by
+        // it in order to capture it separately from the page.
         objectName: "detailDialog"
 
         property var view: null
@@ -959,11 +954,11 @@ Item {
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         anchors.centerIn: parent
-        // Числа из ядра — это МИНИМУМ окна, а не его размер: у виджетного
-        // окна `setMinimumSize` не мешало ему занять больше, и на большом
-        // мониторе README читался целиком. Модальное окно QML своего
-        // размера не имеет вовсе, поэтому берём минимум как нижнюю границу,
-        // а не как потолок.
+        // The numbers from the core are the window MINIMUM, not its size: for the
+        // widget window `setMinimumSize` did not stop it from taking more, and on
+        // a large monitor the README could be read in full. A QML modal window has
+        // no size of its own at all, so we take the minimum as a lower bound, not
+        // as a ceiling.
         width: Math.min(root.width - 40,
                         Math.max(page.detailMinWidth, root.width * 0.6))
         height: Math.min(root.height - 40,
@@ -971,20 +966,22 @@ Item {
         padding: root.st.dialog.margin
 
         background: Rectangle {
-            // Фон окна — тот же, что у виджетного диалога: роль `Window`
-            // палитры скина. Вторичный фон здесь был темнее оригинала на
-            // весь диалог, а он принадлежит области описания (см. ниже).
+            // Window background — the same as the widget dialog's: the `Window` role
+            // of the skin palette. The secondary background here was darker than the
+            // original across the whole dialog, while it belongs to the description
+            // area (see below).
             color: root.pal.bg_primary
             border.color: root.colBorder
             border.width: 1
             radius: 8
         }
 
-        // Затемнение страницы под модальным окном. Стиль по умолчанию его не
-        // рисует, и получалось бы, что окно модальное, а на вид нет: человек
-        // тыкает в плитки под ним и не понимает, почему не отвечают (защита
-        // от дурака, правило #13). Оттенок — общий для продукта
-        // (`ui_base::MODAL_DIM_RGBA`, приезжает в палитре ключом `modal_dim`).
+        // Dimming of the page under the modal window. The default style does not
+        // draw it, so the window would be modal but not look it: the user pokes at
+        // the tiles under it and does not understand why they do not respond
+        // (foolproofing, rule #13). The shade is product-wide
+        // (`ui_base::MODAL_DIM_RGBA`, arriving in the palette under the key
+        // `modal_dim`).
         Overlay.modal: Rectangle {
             color: root.pal.modal_dim
         }
@@ -1006,20 +1003,20 @@ Item {
                 Layout.fillWidth: true
                 text: detailDialog.view ? detailDialog.view.metaLine : ""
                 color: root.colTextSecondary
-                // Оригинал: `font-weight: 600` у мета-строки, техсведений и
-                // пути — тот же набор вторичных подписей, что на витрине.
+                // Original: `font-weight: 600` on the meta line, the technical details and
+                // the path — the same set of secondary labels as on the showcase.
                 font.weight: root.pal.text_secondary_weight
                 wrapMode: Text.WordWrap
             }
 
             Image {
                 Layout.fillWidth: true
-                // Превью занимает свою высоту, пока она есть, и УСТУПАЕТ её,
-                // когда окно ужато до минимума. Без этого картинка держала
-                // свою натуральную высоту как нижнюю границу и выдавливала
-                // описание вовсе: на окне 680×540 (а это разрешённый
-                // минимум) текста не оставалось ни строки, тогда как у
-                // виджетного окна сжимаются оба блока (правило #13).
+                // The preview takes its height while there is room and GIVES IT UP when
+                // the window is shrunk to the minimum. Without this the picture kept its
+                // natural height as a lower bound and squeezed the description out
+                // entirely: in a 680×540 window (the allowed minimum) not a single line of
+                // text was left, whereas in the widget window both blocks shrink
+                // (rule #13).
                 Layout.fillHeight: true
                 Layout.preferredHeight: page.detailPreviewHeight
                 Layout.minimumHeight: 0
@@ -1042,16 +1039,17 @@ Item {
                 }
             }
 
-            // Подложка области описания. У виджетного окна это
-            // `QTextBrowser`: своя рамка, своё скругление и фон роли `Base`,
-            // отличный от фона окна. Голый Flickable этого не давал, и текст
-            // висел прямо на подложке окна — область не читалась как поле.
+            // Backing of the description area. In the widget window this is a
+            // `QTextBrowser`: its own border, its own rounding and a `Base` role
+            // background different from the window background. A bare Flickable did
+            // not give that, and the text hung directly on the window backing — the
+            // area did not read as a field.
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                // Ниже этой границы описание не сжимается — так же, как
-                // `QTextBrowser` виджетного окна. Нехватку места на ужатом
-                // окне забирает превью, а текст остаётся читаемым.
+                // Below this bound the description does not shrink — just like the widget
+                // window's `QTextBrowser`. The lack of room in a shrunk window is taken by
+                // the preview, and the text stays readable.
                 Layout.minimumHeight: root.st.dialog.bodyMinHeight
                 color: root.pal.bg_secondary
                 border.color: root.colBorder
@@ -1068,28 +1066,28 @@ Item {
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
 
-                    // Полоса прокрутки ОТНИМАЕТ ширину у текста, а не лежит
-                    // поверх него: так устроен QTextBrowser виджетных окон, и
-                    // без этого строки шли на полтора десятка точек длиннее,
-                    // переносились в других местах и весь текст съезжал
-                    // (замер справки: сдвиг −19 точек на каждой полосе).
-                    // Ширина берётся у самой полосы, своего числа нет.
+                    // The scroll bar TAKES width from the text rather than lying over it: that
+                    // is how the QTextBrowser of the widget windows works, and without it the
+                    // lines ran some fifteen pixels longer, wrapped in other places and the
+                    // whole text shifted (measurement of the help: a shift of −19 pixels on
+                    // every bar). The width is taken from the bar itself; there is no number
+                    // of our own.
                     ScrollBar.vertical: ScrollBar { id: bodyBar }
 
-                    // README и описание приходят готовой разметкой из ядра —
-                    // тем же текстом, что показывал QTextBrowser виджетной
-                    // вкладки, только с экранированными угловыми скобками
-                    // (починка #1: оригинал терял на них куски текста).
+                    // The README and the description arrive as ready markup from the core —
+                    // the same text the QTextBrowser of the widget tab showed, only with
+                    // escaped angle brackets (fix #1: the original lost chunks of text on
+                    // them).
                     RexonLinkText {
                         id: bodyText
-                        // Ширина якорями, место под полосу — отступом с её
-                        // стороны: справа налево полоса уходит влево, и
-                        // зеркалирование переносит туда же и отступ.
+                        // Width by anchors, room for the bar by a margin on its side: for right to
+                        // left the bar moves to the left, and mirroring moves the margin there
+                        // too.
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.rightMargin: bodyBar.visible ? bodyBar.width : 0
-                        // Описание чужого расширения: ссылки — общим путём
-                        // (↗ и вопрос перед внешним сайтом).
+                        // Description of a third-party extension: links go through the shared path
+                        // (↗ and a question before an external site).
                         html: detailDialog.view ? detailDialog.view.bodyHtml : ""
                         pal: root.pal
                         wrapMode: Text.WordWrap
@@ -1181,12 +1179,12 @@ Item {
             }
         }
 
-        // Фокус при открытии — на кнопке закрытия: окно обязано быть
-        // управляемо с клавиатуры с первого кадра, не только мышью.
+        // Focus on opening is on the close button: the window must be operable
+        // from the keyboard from the first frame, not only with the mouse.
         onOpened: detailClose.forceActiveFocus()
     }
 
-    // ── Справка «Создать своё» ────────────────────────────────────────────
+    // ── "Create your own" help ────────────────────────────────────────────
 
     Popup {
         id: createDialog
@@ -1215,8 +1213,8 @@ Item {
         }
 
         contentItem: ColumnLayout {
-            // Своего шага у справки нет: работает шаг компоновки по
-            // умолчанию, и он ýже разборного (6 против 10).
+            // The help has no spacing of its own: the default layout spacing applies,
+            // and it is narrower than the detailed view's (6 versus 10).
             spacing: root.st.dialog.createSpacing
 
             RexonText {
@@ -1228,8 +1226,8 @@ Item {
                 font.bold: true
             }
 
-            // Та же подложка, что у описания разбора: у виджетной справки
-            // текст тоже лежит в `QTextBrowser`.
+            // The same backing as the detailed view's description: in the widget help
+            // the text also lies in a `QTextBrowser`.
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -1253,9 +1251,9 @@ Item {
 
                     RexonLinkText {
                         id: createText
-                        // Ширина якорями, место под полосу — отступом с её
-                        // стороны: справа налево полоса уходит влево, и
-                        // зеркалирование переносит туда же и отступ.
+                        // Width by anchors, room for the bar by a margin on its side: for right to
+                        // left the bar moves to the left, and mirroring moves the margin there
+                        // too.
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.rightMargin: createBar.visible ? createBar.width : 0
@@ -1286,18 +1284,18 @@ Item {
         onOpened: createClose.forceActiveFocus()
     }
 
-    // ── Фокус с первого кадра ─────────────────────────────────────────────
+    // ── Focus from the first frame ────────────────────────────────────────
 
-    // ⚠️ Фокус берёт ПЕРВЫЙ КОНТРОЛ, а не корень страницы. `forceActiveFocus`
-    // на корне выглядит правильно, но делает `activeFocusItem` безымянным
-    // Item'ом: ни одна кнопка фокуса не получает, и страница мертва и с
-    // клавиатуры, и с геймпада.
-    // На холодном первом кадре сцена может быть ещё не в окне, и
-    // `forceActiveFocus()` уходит в пустоту: замер поймал прогон, где фокус
-    // не взялся вовсе и вкладка осталась мёртвой и с клавиатуры, и с
-    // геймпада. Поэтому попытка повторяется на следующем проходе цикла
-    // событий — так же, как у «Сравнения DE» и «Рабочих столов», — но не
-    // бесконечно.
+    // Warning: focus goes to the FIRST CONTROL, not to the page root.
+    // `forceActiveFocus` on the root looks right but makes `activeFocusItem`
+    // a nameless Item: no button receives focus, and the page is dead both
+    // from the keyboard and from a gamepad.
+    // On a cold first frame the scene may not be in the window yet, and
+    // `forceActiveFocus()` goes nowhere: a measurement caught a run where
+    // focus was not taken at all and the tab stayed dead from both the
+    // keyboard and the gamepad. So the attempt is repeated on the next pass
+    // of the event loop — just as in "DE comparison" and "Desktops" — but not
+    // forever.
     property int focusAttempts: 0
 
     function focusFirstControl() {
@@ -1316,15 +1314,15 @@ Item {
 
     Component.onCompleted: root.focusFirstControl()
 
-    // Во встроенной вкладке страница создаётся заранее и оживает при
-    // переключении на неё — фокус надо взять и там, иначе первый Tab после
-    // смены вкладки уходит в никуда.
+    // In the embedded tab the page is created in advance and comes alive when
+    // switched to — focus must be taken there too, otherwise the first Tab
+    // after switching tabs goes nowhere.
     onVisibleChanged: {
         if (!root.visible)
             return;
-        // Расширение могло встать и мимо этой вкладки («Установить из
-        // файла…» в «Оформлении») — список перечитываем при каждом показе,
-        // иначе новое не видно до перезапуска.
+        // An extension may have been installed bypassing this tab ("Install from
+        // file…" in "Appearance") — the list is re-read on every show, otherwise
+        // the new one is not visible until a restart.
         page.refresh();
         root.focusFirstControl();
     }

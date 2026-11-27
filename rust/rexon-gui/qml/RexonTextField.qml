@@ -1,6 +1,6 @@
-// Поле ввода QML-вкладок Rexon в стандартном скине приложения.
-// Причина отдельного типа — та же, что у RexonButton: стиль Basic не следует
-// палитре приложения.
+// Text field for Rexon QML tabs in the application's standard skin.
+// The reason for a separate type is the same as for RexonButton: the Basic
+// style does not follow the application palette.
 
 import QtQuick
 import QtQuick.Controls
@@ -9,14 +9,15 @@ import org.rexon.gui 1.0
 TextField {
     id: control
 
-    // ── Журнал действий (`ActionJournal`, ядро — `ui_watch`) ─────────────
+    // ── Action journal (`ActionJournal`, core — `ui_watch`) ──────────────
     //
-    // Нажатия кнопок ловит общий фильтр ввода приложения, а что набрано в
-    // поле, ему не видно — поэтому поле сообщает само, в ОДНОМ общем
-    // контроле на все вкладки. Набор — только отметка для сторожа окна (без
-    // строки), конец ввода (Enter, уход фокуса) — одна строка, если значение
-    // сменилось. ⛔ У поля пароля текст в журнал не уходит вовсе: сюда
-    // передаётся пустая строка, ядро строку не пишет.
+    // Button presses are caught by the application-wide input filter, but it
+    // cannot see what is typed into a field — so the field reports it itself,
+    // in ONE shared control for all tabs. Typing is only a mark for the window
+    // watchdog (no line); the end of input (Enter, focus loss) is one line if
+    // the value changed. Never: the text of a password field does not go to
+    // the journal at all — an empty string is passed here, and the core
+    // writes no line.
     readonly property bool journalSecret: control.echoMode !== TextInput.Normal
     readonly property string journalField: control.placeholderText !== ""
                                            ? control.placeholderText : control.objectName
@@ -31,28 +32,29 @@ TextField {
             Qt.callLater(function() { ActionJournal.finish(journalId); });
     }
 
-    /// Палитра скина.
+    /// Skin palette.
     property var pal: null
 
-    // Поле красит САМА Qt ролью палитры `Base`, а не таблица стилей
-    // вкладки, — поэтому краска приходит готовой из ядра (`surface_field`,
-    // `ui_base::QML_SURFACES`). Прежде здесь стоял похожий на глаз токен
-    // `bg_card`, и на стандартном скине поле выходило (30,45,61) вместо
-    // (22,32,45) — на ступень светлее оригинала.
+    // The field is painted by Qt ITSELF with the `Base` palette role, not by
+    // the tab's style sheet — so the colour comes ready from the core
+    // (`surface_field`, `ui_base::QML_SURFACES`). Previously a token that
+    // looked similar, `bg_card`, was used here, and on the standard skin the
+    // field came out (30,45,61) instead of (22,32,45) — one step lighter than
+    // the original.
     readonly property color colField: control.pal ? control.pal.surface_field
                                                   : "#16202d"
-    /// Рамка от таблицы стилей ВКЛАДКИ, когда она у вкладки есть. Пусто —
-    /// обводка стиля Qt. ⚠️ Оба случая настоящие: у «Расширений»,
-    /// «Настроек» и «Steam» поле ничем не перекрыто и рамку ему рисует сам
-    /// стиль, а у «Оформления» правило `#SearchBox` кладёт туда токен
-    /// `border` скина, и стиль в этом не участвует вовсе.
+    /// Border from the TAB's style sheet when the tab has one. Empty means the
+    /// Qt style outline. Warning: both cases are real: in "Extensions",
+    /// "Settings" and "Steam" the field is not overridden at all and its border
+    /// is drawn by the style itself, while in "Appearance" the `#SearchBox` rule
+    /// puts the skin's `border` token there and the style takes no part at all.
     property var borderTone: null
 
-    // Обводку стиля ядро отдаёт готовой краской (`ui_base::CONTROL_OUTLINE_*`,
-    // поверхность `surface_field_outline`): замер 05.09 (поле поиска
-    // «Расширений», скин steam_dark) дал (73,83,96) — накладку белого 0.20
-    // поверх фона страницы, а токен `border` даёт (42,64,85), на 31 уровень
-    // темнее.
+    // The core hands over the style outline as a ready colour
+    // (`ui_base::CONTROL_OUTLINE_*`, surface `surface_field_outline`): a
+    // measurement on 05.09 (the "Extensions" search field, steam_dark skin)
+    // gave (73,83,96) — a white 0.20 overlay on top of the page background,
+    // while the `border` token gives (42,64,85), 31 levels darker.
     readonly property color colBorder: control.borderTone !== null
                                        ? control.borderTone
                                        : (control.pal
@@ -63,17 +65,18 @@ TextField {
     readonly property color colText: control.pal ? control.pal.text_primary : "#ffffff"
     readonly property color colHint: control.pal ? control.pal.text_secondary : "#8f98a0"
 
-    // ── Начало строки при языке справа налево ────────────────────────────
+    // ── Start of the line for right-to-left languages ────────────────────
     //
-    // Без явного выравнивания поле берёт его из САМОГО текста, а пустое — из
-    // направления ввода, но не из зеркалирования окна. Подсказка
-    // (`placeholderText`) в Qt Quick Controls — отдельный `Text`, который
-    // повторяет выравнивание поля, только если оно задано явно; иначе и она
-    // выравнивается по своей строке. Итог при `-reverse`: русская подсказка
-    // стояла слева. Явное `AlignLeft` зеркалирование переворачивает
-    // (`effectiveHorizontalAlignment` — вправо) — и у вводимого текста, и у
-    // подсказки; при языке слева направо всё остаётся как было. Отступы
-    // слева и справа равны, поэтому место текста перекладывать не нужно.
+    // Without explicit alignment the field takes it from the text ITSELF, and
+    // an empty field from the input direction, but not from window mirroring.
+    // The placeholder (`placeholderText`) in Qt Quick Controls is a separate
+    // `Text` that repeats the field's alignment only if it is set explicitly;
+    // otherwise it too aligns by its own string. The result with `-reverse`:
+    // the Russian placeholder sat on the left. Mirroring flips an explicit
+    // `AlignLeft` (`effectiveHorizontalAlignment` becomes right) — both for the
+    // typed text and for the placeholder; for left-to-right languages
+    // everything stays as it was. The left and right paddings are equal, so
+    // the text position does not need to be moved.
     horizontalAlignment: TextInput.AlignLeft
 
     implicitHeight: 40
@@ -83,31 +86,32 @@ TextField {
     placeholderTextColor: control.colHint
     selectByMouse: true
 
-    // ── Enter не уходит из страницы в каркас окна ────────────────────────
+    // ── Enter does not leave the page for the window frame ───────────────
     //
-    // ⚠️ Поле ввода Qt клавишу подтверждения ОБРАБАТЫВАЕТ (сигнал
-    // `accepted`), но НЕ ПРИНИМАЕТ: так задумано ради виджетных диалогов, где
-    // на Enter обязана срабатывать кнопка по умолчанию. У нас же сцена QML
-    // лежит внутри `QQuickWidget`, и непринятая клавиша уходит из неё вверх
-    // по дереву виджетов — через хозяина страницы, стопку вкладок и до самого
-    // главного окна продукта.
+    // Warning: the Qt text field HANDLES the confirm key (the `accepted`
+    // signal) but does NOT ACCEPT it: this is intended for widget dialogs,
+    // where Enter must trigger the default button. Here, however, the QML
+    // scene lives inside a `QQuickWidget`, and an unaccepted key goes up the
+    // widget tree from it — through the page host, the tab stack and all the
+    // way to the product's main window.
     //
-    // Замер 08.09.2026 (живой сеанс Wayland и offscreen дали одно и то же):
-    // Enter в поиске тем «Оформления» доезжал до `RexonMainWindow` парой
-    // `ShortcutOverride`+`KeyPress` с кодом 0x1000004, хотя поиск при этом
-    // отрабатывал. Это и есть дорожка, по которой находка «Enter прячет
-    // главное окно» вообще могла состояться: что сделает с чужой клавишей
-    // каркас окна — уже не во власти страницы.
+    // Measurement on 08.09.2026 (a live Wayland session and offscreen gave the
+    // same): Enter in the "Appearance" theme search reached `RexonMainWindow`
+    // as a `ShortcutOverride`+`KeyPress` pair with code 0x1000004, even though
+    // the search itself worked. This is exactly the path through which the
+    // finding "Enter hides the main window" could happen at all: what the
+    // window frame does with a foreign key is no longer up to the page.
     //
-    // Правится в ОБЩЕМ поле, а не в поиске «Оформления»: полей ввода в
-    // QML-вкладках несколько (поиск «Расширений», «Настроек», «Steam»,
-    // «Wallpaper Engine»), и утечка у них одна на всех.
+    // Fixed in the SHARED field, not in the "Appearance" search: there are
+    // several text fields in the QML tabs (search in "Extensions", "Settings",
+    // "Steam", "Wallpaper Engine"), and they all share one leak.
     //
-    // ⚠️ Именно `Keys.AfterItem`: при обычном порядке обработчик стоял бы
-    // ПЕРЕД полем, съедал клавишу первым — и `onAccepted` у страниц не
-    // сработал бы вовсе. После поля сигнал уже отправлен, а клавише дальше
-    // хода нет. Прочие клавиши (стрелки, Escape) поле само не принимает,
-    // поэтому обработчики страниц продолжают их получать.
+    // Warning: it must be `Keys.AfterItem`: with the normal order the handler
+    // would sit BEFORE the field, eat the key first — and the pages'
+    // `onAccepted` would never fire. After the field the signal has already
+    // been emitted, and the key goes no further. Other keys (arrows, Escape)
+    // are not accepted by the field itself, so the page handlers keep
+    // receiving them.
     Keys.priority: Keys.AfterItem
     Keys.onReturnPressed: (event) => { event.accepted = true; }
     Keys.onEnterPressed: (event) => { event.accepted = true; }

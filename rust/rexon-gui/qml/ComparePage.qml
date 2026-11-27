@@ -1,26 +1,31 @@
-// Вкладка «Сравнение DE» на QML. Данные и решения — Rust-объект CompareModel
-// (rust/rexon-gui/src/compare_page.rs), который сам ничего не решает, а
-// спрашивает ядро (`rexon_core::qt_compare`). Здесь только РАЗМЕТКА.
+// The "DE comparison" tab in QML. Data and decisions come from the Rust
+// object CompareModel (rust/rexon-gui/src/compare_page.rs), which decides
+// nothing itself but asks the core (`rexon_core::qt_compare`). Only MARKUP
+// lives here.
 //
-// Оформление берётся из готового: палитра приходит свойством `palette` от
-// того же объекта и родом из `ui_base::skin_colors("steam_dark")` — скина по
-// умолчанию всего продукта (правило #17). Своих цветов страница не заводит:
-// вторая палитра в .qml развела бы вкладку с остальным Rexon молча.
+// The styling is taken ready-made: the palette arrives through the
+// `palette` property of the same object and originates from
+// `ui_base::skin_colors("steam_dark")` — the default skin of the whole
+// product (rule #17). The page defines no colours of its own: a second
+// palette in .qml would silently set the tab apart from the rest of Rexon.
 //
-// Побочные действия (установка через pkexec, переключение сессии) живут
-// снаружи: хозяин страницы кладёт в `root.actions` объект с методами
-// install/switchTo, и они возвращают «получилось ли». Пока эти шаги на
-// Python (rexon/qt_compare/window.py), после ухода с PySide6 на их место
-// встанет Rust-объект с теми же двумя методами — страница не изменится.
+// Side actions (installation via pkexec, session switching) live outside:
+// the page host puts an object with install/switchTo methods into
+// `root.actions`, and they return "did it work". For now these steps are
+// in Python (rexon/qt_compare/window.py); after moving away from PySide6 a
+// Rust object with the same two methods will take their place — the page
+// will not change.
 //
-// Цепочка фокуса заложена с самого начала (решение по контроллеру: сам
-// контроллер отложен, фокус в QML — всегда): все кнопки достижимы Tab'ом,
-// у сфокусированной видна рамка, страница сама подкручивается к ней.
+// The focus chain is built in from the very start (the controller
+// decision: controller support itself is postponed, focus in QML is
+// always there): all buttons are reachable with Tab, the focused one shows
+// a frame, and the page scrolls to it by itself.
 
-// Делегаты обращаются к id внешних элементов (root, page). Без этой прагмы
-// проверка QML справедливо ругается на неквалифицированный доступ, а Qt
-// разрешает такие имена лишь через устаревший контекст делегата.
-// (Строку «// qmllint …» здесь писать нельзя: она читается как директива.)
+// Delegates refer to ids of outer elements (root, page). Without this
+// pragma, QML lint rightly complains about unqualified access, and Qt
+// resolves such names only through the deprecated delegate context.
+// (A "// qmllint …" line must not be written here: it is read as a
+// directive.)
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -31,14 +36,14 @@ import org.rexon.gui 1.0
 Item {
     id: root
 
-    // ── Мост наружу ───────────────────────────────────────────────────────
+    // ── Bridge to the outside ─────────────────────────────────────────────
 
-    // Объект побочных действий; ставит хозяин страницы.
-    // Методы: install(deId) -> bool, switchTo(deId) -> bool.
+    // Side-actions object; set by the page host.
+    // Methods: install(deId) -> bool, switchTo(deId) -> bool.
     property var actions: null
 
-    // Хозяину окна: заголовок и минимальный размер живут в ядре, а не в
-    // питоновской или QML-копии.
+    // For the window host: the title and minimum size live in the core, not in
+    // a Python or QML copy.
     readonly property string windowTitle: page.windowTitle
     readonly property int windowMinWidth: page.windowMinWidth
     readonly property int windowMinHeight: page.windowMinHeight
@@ -46,32 +51,34 @@ Item {
     implicitWidth: page.windowMinWidth
     implicitHeight: page.windowMinHeight
 
-    // ── Ядро вкладки ──────────────────────────────────────────────────────
+    // ── Tab core ──────────────────────────────────────────────────────────
 
-    // Имя типа — CompareModel, а не ComparePage: последнее занято самим этим
-    // файлом (в QML-модуле каждый .qml — тип по имени файла).
+    // The type name is CompareModel, not ComparePage: the latter is taken by
+    // this very file (in a QML module every .qml is a type named after the
+    // file).
     CompareModel {
         id: page
-        // Имя нужно проверкам: из хозяина страницы модель достают
-        // `root.findChild(QObject, "compareModel")` и спрашивают её
-        // без единой правки в самой странице.
-        // ⚠️ Снаружи зовутся только инвокаблы БЕЗ чисел в подписи
-        // (`refreshInstalled`, `pairView`, `displayName`): у `i32` в
-        // метаобъекте стоит имя `::std::int32_t`, метатипа с таким именем
-        // нет, и `QMetaObject.invokeMethod("toggle", …)` молча вернёт False.
-        // Проверять раскрытие карточки надо клавишами (Tab до шапки, Space)
-        // — то есть тем же путём, каким её ведёт покупатель.
+        // The name is needed by checks: from the page host the model is fetched
+        // with `root.findChild(QObject, "compareModel")` and queried without a
+        // single change in the page itself.
+        // Warning: only invokables WITHOUT numbers in their signature are called
+        // from outside (`refreshInstalled`, `pairView`, `displayName`): for `i32`
+        // the metaobject has the name `::std::int32_t`, there is no metatype with
+        // that name, and `QMetaObject.invokeMethod("toggle", …)` silently returns
+        // False. Expanding a card has to be checked with keys (Tab to the header,
+        // Space) — that is, the same way a customer does it.
         objectName: "compareModel"
     }
 
-    // ── Палитра стандартного скина ────────────────────────────────────────
+    // ── Standard skin palette ─────────────────────────────────────────────
 
     readonly property var pal: page.palette
     readonly property color colBg: root.pal.bg_primary
-    // Карточку у виджетов красит не палитра, а полупрозрачная накладка
-    // таблицы стилей (`qt_compare::card_qss`); ядро кладёт её на фон
-    // страницы и отдаёт готовой краской. Токен `bg_card` был похож, но не
-    // тот: (30,45,61) против (36,48,64) на 1 712 261 точке.
+    // In the widgets the card is painted not by the palette but by a
+    // translucent style sheet overlay (`qt_compare::card_qss`); the core lays
+    // it over the page background and hands out the ready colour. The
+    // `bg_card` token was similar but not the same: (30,45,61) versus
+    // (36,48,64) over 1 712 261 pixels.
     readonly property color colCard: root.pal.surface_card
     readonly property color colCardHover: root.pal.bg_card_hover
     readonly property color colBorder: root.pal.border
@@ -79,13 +86,13 @@ Item {
     readonly property color colText: root.pal.text_primary
     readonly property color colTextSecondary: root.pal.text_secondary
 
-    // ── Побочные действия ─────────────────────────────────────────────────
+    // ── Side actions ──────────────────────────────────────────────────────
 
-    // Установка идёт синхронно: подтверждение, ход дела и итог показывает
-    // хозяин, а сюда возвращается только «получилось ли». Пересчёт состава
-    // столов делает страница — иначе карточка продолжала бы предлагать
-    // «Установить» уже установленный стол (починка, перенесённая из
-    // виджетной версии).
+    // Installation runs synchronously: confirmation, progress and result are
+    // shown by the host, and only "did it work" comes back here. The page
+    // recomputes the set of desktops — otherwise the card would keep offering
+    // "Install" for an already installed desktop (a fix carried over from the
+    // widget version).
     function runInstall(deId) {
         if (!root.actions)
             return;
@@ -99,16 +106,16 @@ Item {
         root.actions.switchTo(deId);
     }
 
-    // Подкрутить страницу к элементу, который только что получил фокус:
-    // без этого Tab уводит фокус за нижний край, и с клавиатуры (а завтра с
-    // геймпада) вкладка выглядит зависшей.
+    // Scroll the page to the element that has just received focus: without
+    // this Tab takes focus past the bottom edge, and from the keyboard (and
+    // tomorrow from a gamepad) the tab looks frozen.
     function ensureVisible(item) {
         if (!item || !flick.contentItem)
             return;
-        // Окно снова стало активным (закрыт диалог снимка экрана по Print,
-        // вернулись из другой программы) — Qt возвращает фокус тому же
-        // элементу. Это не переход по Tab: крутить страницу к нему нельзя,
-        // иначе прокрученная вниз вкладка прыгает наверх.
+        // The window became active again (the screenshot dialog from Print was
+        // closed, the user returned from another program) — Qt gives focus back
+        // to the same element. This is not a Tab move: the page must not scroll
+        // to it, otherwise a tab scrolled down jumps to the top.
         if (item.focusReason === Qt.ActiveWindowFocusReason)
             return;
         const pos = item.mapToItem(flick.contentItem, 0, 0);
@@ -126,7 +133,7 @@ Item {
         color: root.colBg
     }
 
-    // ── Страница ──────────────────────────────────────────────────────────
+    // ── Page ──────────────────────────────────────────────────────────────
 
     Flickable {
         id: flick
@@ -138,9 +145,9 @@ Item {
 
         ScrollBar.vertical: ScrollBar {}
 
-        // ⚠️ Раскладка внутри ОБЫЧНОГО Item (не внутри другой раскладки)
-        // обязана получить высоту руками: сама она остаётся нулевой, и
-        // страница схлопывается в полоску.
+        // Warning: a layout inside an ORDINARY Item (not inside another layout)
+        // must get its height by hand: by itself it stays at zero, and the page
+        // collapses into a strip.
         ColumnLayout {
             id: pageColumn
             anchors.left: parent.left
@@ -150,7 +157,7 @@ Item {
             height: implicitHeight
             spacing: 14
 
-            // ── Шапка: заголовок и быстрые пары ───────────────────────────
+            // ── Header: title and quick pairs ─────────────────────────────
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
@@ -162,9 +169,9 @@ Item {
                     font.bold: true
                 }
 
-                // Виджетная вкладка прижимает быстрые пары к ПРАВОМУ краю
-                // окна, а не ставит их вплотную к заголовку: распорка
-                // держит тот же вид.
+                // The widget tab pushes the quick pairs to the RIGHT edge of the window
+                // instead of placing them right next to the title: the spacer keeps the
+                // same look.
                 Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 0
@@ -174,24 +181,23 @@ Item {
                     Layout.leftMargin: 16
                     text: page.pairsLabel
                     color: root.colTextSecondary
-                    // Вторичный текст у виджетной вкладки набран плотнее
-                    // (`font-weight: 600` из `secondary_text_qss`); число
-                    // приезжает из ядра палитрой, своего страница не заводит.
+                    // Secondary text in the widget tab is set bolder (`font-weight: 600` from
+                    // `secondary_text_qss`); the number arrives from the core with the
+                    // palette, the page defines none of its own.
                     font.weight: root.pal.text_secondary_weight
                 }
 
-                // Кнопки пар — в Flow, а не в самой строке: на минимальной
-                // ширине окна (900, число из ядра) четыре кнопки в один ряд
-                // не помещаются, и последняя уезжала за правый край. Flow
-                // переносит лишнюю на вторую строку вместо того, чтобы её
-                // обрезать.
+                // The pair buttons are in a Flow, not in the row itself: at the minimum
+                // window width (900, a number from the core) four buttons do not fit in
+                // one row, and the last one slid past the right edge. Flow wraps the
+                // extra one onto a second line instead of cutting it.
                 Flow {
                     id: pairsFlow
 
-                    // Ширина ряда кнопок, если бы он умещался в одну строку.
-                    // Считается по кнопкам, а не спрашивается у самого Flow:
-                    // у позиционера implicitWidth зависит от его же ширины,
-                    // и связывание одного через другое зациклилось бы.
+                    // Width of the button row if it fitted on one line. Computed from the
+                    // buttons rather than asked from the Flow itself: a positioner's
+                    // implicitWidth depends on its own width, and binding one through the
+                    // other would loop.
                     property real naturalWidth: 0
 
                     function measure() {
@@ -199,21 +205,18 @@ Item {
                         let shown = 0;
                         for (let i = 0; i < pairsFlow.children.length; i++) {
                             const item = pairsFlow.children[i];
-                            // ⚠️ Сам Repeater тоже числится ребёнком Flow, и
-                            // он невидимой шириной ноль. Пока его считали
-                            // наравне с кнопками, в потолок ширины попадал
-                            // ЛИШНИЙ зазор, и весь блок пар отходил от
-                            // правого края окна на 8 точек, хотя у
-                            // оригинала он прижат вплотную (замер
-                            // 02.09.2026: правый край 1367 против 1374).
+                            // Warning: the Repeater itself also counts as a child of the Flow, and it
+                            // is invisible with zero width. While it was counted along with the
+                            // buttons, an EXTRA gap went into the width cap, and the whole pairs block
+                            // moved 8 pixels away from the right edge of the window, although in the
+                            // original it is flush (measurement 02.09.2026: right edge 1367 versus
+                            // 1374).
                             if (!item.visible || item.implicitWidth <= 0)
                                 continue;
-                            // Каждая ширина округляется ВВЕРХ по
-                            // отдельности. Ширина кнопки дробная, а Flow
-                            // переносит по сравнению дробных сумм: потолок,
-                            // посчитанный впритык, оказывался на сотую доли
-                            // точки меньше нужного, и последняя пара
-                            // уезжала на вторую строку на ровном месте.
+                            // Each width is rounded UP separately. A button width is fractional, and
+                            // Flow wraps by comparing fractional sums: a cap computed exactly turned
+                            // out a hundredth of a pixel short, and the last pair moved to the second
+                            // line for no reason.
                             total += Math.ceil(item.implicitWidth);
                             shown += 1;
                         }
@@ -223,9 +226,9 @@ Item {
                     }
 
                     Layout.fillWidth: true
-                    // Потолок ширины — свой же ряд кнопок: лишнее место
-                    // забирает распорка слева, и блок стоит справа. Ниже
-                    // потолка Flow сжимается и переносит кнопку.
+                    // The width cap is the button row itself: the spacer on the left takes
+                    // the extra room, and the block stays on the right. Below the cap the
+                    // Flow shrinks and wraps a button.
                     Layout.maximumWidth: pairsFlow.naturalWidth
                     Layout.alignment: Qt.AlignVCenter
                     spacing: 8
@@ -253,10 +256,10 @@ Item {
                 }
             }
 
-            // SteamOS (Steam Deck и Steam Machine): какие столы ставятся —
-            // отдельной строкой под шапкой, во всю ширину (в строке шапки
-            // фраза налезала на быстрые пары). Почему неактивна кнопка
-            // остальных — строкой в их карточке.
+            // SteamOS (Steam Deck and Steam Machine): which desktops can be installed
+            // is shown as a separate line under the header, across the full width (in
+            // the header row the phrase overlapped the quick pairs). Why the button
+            // of the others is disabled is a line in their card.
             RexonText {
                 Layout.fillWidth: true
                 visible: page.installNoteText !== ""
@@ -265,18 +268,18 @@ Item {
                 color: root.colTextSecondary
             }
 
-            // ── Легенда «как читать таблицу» ──────────────────────────────
+            // ── "How to read the table" legend ────────────────────────────
             Rectangle {
                 Layout.fillWidth: true
                 color: root.colCard
                 border.color: root.colBorder
                 border.width: 1
                 radius: 6
-                // Рамка у Rectangle рисуется ВНУТРЬ, у QSS виджетной
-                // рамки — снаружи отступов. Поэтому её точку сверху и
-                // снизу приходится добавлять руками, иначе блок ниже
-                // оригинала на два пикселя, и к низу страницы набегает
-                // столько же, сколько блоков (замер 02.09.2026).
+                // A Rectangle's border is drawn INSIDE, while a QSS widget border is
+                // outside the padding. So its pixel at the top and bottom has to be added
+                // by hand, otherwise the block is two pixels lower than the original, and
+                // by the bottom of the page the error adds up as many times as there are
+                // blocks (measurement 02.09.2026).
                 implicitHeight: legendColumn.implicitHeight + 22
 
                 ColumnLayout {
@@ -286,9 +289,9 @@ Item {
                     anchors.margins: 13
                     y: 11
                     height: implicitHeight
-                    // Зазор между подписью и телом легенды у виджетной
-                    // вкладки задаёт не код, а стиль (Breeze отдаёт 6):
-                    // там `QVBoxLayout` оставлен со своим умолчанием.
+                    // The gap between the legend label and its body in the widget tab is set
+                    // not by code but by the style (Breeze gives 6): the `QVBoxLayout` there
+                    // is left with its default.
                     spacing: 6
 
                     RexonText {
@@ -309,7 +312,7 @@ Item {
                 }
             }
 
-            // ── Заголовок таблицы столов ──────────────────────────────────
+            // ── Desktop table header ──────────────────────────────────────
             RexonText {
                 text: page.tableHeader
                 color: root.colText
@@ -317,7 +320,7 @@ Item {
                 font.bold: true
             }
 
-            // ── Карточки рабочих столов ───────────────────────────────────
+            // ── Desktop cards ─────────────────────────────────────────────
             Repeater {
                 model: page
 
@@ -339,8 +342,8 @@ Item {
                     required property string actionText
                     required property bool actionAccent
                     required property string actionKind
-                    // SteamOS: почему «Установить» этого стола неактивна;
-                    // пусто — активна (или кнопка не «Установить»).
+                    // SteamOS: why "Install" of this desktop is disabled; empty means it is
+                    // enabled (or the button is not "Install").
                     readonly property string installBlocked: page.installBlockedText(card.deId)
 
                     Layout.fillWidth: true
@@ -348,9 +351,9 @@ Item {
                     border.color: root.colBorder
                     border.width: 1
                     radius: 6
-                    // Плюс два пикселя рамки — та же поправка, что у
-                    // легенды: у оригинала рамка карточки лежит снаружи
-                    // содержимого, у Rectangle — внутри.
+                    // Plus two pixels of border — the same correction as for the legend: in
+                    // the original the card border lies outside the content, in a Rectangle
+                    // inside.
                     implicitHeight: cardColumn.implicitHeight + 2
 
                     ColumnLayout {
@@ -362,33 +365,31 @@ Item {
                         height: implicitHeight
                         spacing: 0
 
-                        // Шапка карточки — кликабельная строка целиком, как
-                        // в оригинале (там это была QPushButton во всю ширину).
+                        // The card header is a whole clickable row, as in the original (there it
+                        // was a full-width QPushButton).
                         Button {
                             id: cardHeader
-                            // Имя нужно проверкам: раскрыть карточку снаружи
-                            // иначе нечем — `toggle(i32)` через
-                            // `QMetaObject.invokeMethod` не зовётся (см.
-                            // оговорку у модели), а шапка кликается той же
-                            // самой посылкой сигнала, какой её жмёт человек.
+                            // The name is needed by checks: there is no other way to expand the card
+                            // from outside — `toggle(i32)` cannot be called through
+                            // `QMetaObject.invokeMethod` (see the note at the model), and the header
+                            // is clicked by sending the same signal a human press sends.
                             objectName: "cardHeader"
                             Layout.fillWidth: true
                             flat: true
-                            // Стрелку раскрытия ставит страница, а не ядро:
-                            // свёрнутая смотрит к концу строки. Справа налево
-                            // шапка начинается со знака RLM: имя стола
-                            // латиницей иначе сделало бы строку левой, и «◀»
-                            // встал бы посреди карточки, а не у её начала.
+                            // The expand arrow is set by the page, not the core: a collapsed one
+                            // points to the end of the line. For right to left the header starts with
+                            // an RLM mark: otherwise a desktop name in Latin letters would make the
+                            // line left-to-right, and "◀" would end up in the middle of the card
+                            // instead of at its start.
                             readonly property RexonArrows arrows: RexonArrows {
                                 mirrored: cardHeader.mirrored
                             }
                             text: (cardHeader.mirrored ? "\u200f" : "")
                                   + (card.expanded ? "▼" : arrows.collapsedRow)
                                   + "  " + card.headerText
-                            // Подсветка под курсором и рамка фокуса — пара
-                            // цветов из скина, а не жёстко прибитый чёрный:
-                            // на тёмной теме тот темнил строку вместо
-                            // подсветки (починка ядра, правило #9).
+                            // The hover highlight and the focus frame are a pair of skin colours, not
+                            // a hard-coded black: on a dark theme that darkened the row instead of
+                            // highlighting it (a core fix, rule #9).
                             background: Rectangle {
                                 radius: 6
                                 color: cardHeader.hovered || cardHeader.down
@@ -412,8 +413,8 @@ Item {
                                 root.ensureVisible(cardHeader)
                         }
 
-                        // Тело карточки: показывается только раскрытым, как
-                        // в оригинале (там это был setVisible на виджете).
+                        // Card body: shown only when expanded, as in the original (there it was
+                        // setVisible on the widget).
                         ColumnLayout {
                             id: cardBody
                             Layout.fillWidth: true
@@ -424,7 +425,7 @@ Item {
                             spacing: 8
                             visible: card.expanded
 
-                            // Память: подпись и полоса
+                            // Memory: label and bar
                             RexonText {
                                 Layout.fillWidth: true
                                 text: card.ramLabel
@@ -436,10 +437,9 @@ Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 8
                                 radius: 4
-                                // Канавка полосы — светлая на тёмной теме
-                                // (та же починка пары цветов). Цвет приходит
-                                // из ядра палитрой: у виджетной вкладки он
-                                // тот же, только в обёртке QSS.
+                                // The bar groove is light on a dark theme (the same colour pair fix). The
+                                // colour comes from the core with the palette: in the widget tab it is the
+                                // same, only wrapped in QSS.
                                 color: root.pal.ram_track
 
                                 Rectangle {
@@ -452,7 +452,7 @@ Item {
                                 }
                             }
 
-                            // Звёзды: настройка и гейминг
+                            // Stars: customization and gaming
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 24
@@ -474,7 +474,7 @@ Item {
                                 }
                             }
 
-                            // ТТХ
+                            // Specs
                             Repeater {
                                 model: card.specs
 
@@ -493,8 +493,8 @@ Item {
                                     RexonText {
                                         text: specRow.modelData.valueHtml
                                         textFormat: Text.RichText
-                                        // Пустой цвет из ядра = «не красить»,
-                                        // тогда значение идёт обычным текстом.
+                                        // An empty colour from the core means "do not paint", and then the value
+                                        // goes as ordinary text.
                                         color: specRow.modelData.color === ""
                                                ? root.colText
                                                : specRow.modelData.color
@@ -502,21 +502,20 @@ Item {
                                 }
                             }
 
-                            // Описание
+                            // Description
                             RexonText {
                                 Layout.fillWidth: true
                                 Layout.topMargin: 6
                                 text: card.description
                                 wrapMode: Text.WordWrap
                                 color: root.colTextSecondary
-                                // Тот же вес, что у легенды: в оригинале
-                                // описание — `secondary_text_qss(...)`.
-                                // Без него строка выходила уже на 9 точек и
-                                // тоньше (замер 03.09.2026, карточка KDE).
+                                // The same weight as the legend: in the original the description is
+                                // `secondary_text_qss(...)`. Without it the line came out 9 pixels
+                                // narrower and thinner (measurement 03.09.2026, the KDE card).
                                 font.weight: root.pal.text_secondary_weight
                             }
 
-                            // Кнопка действия: установить либо переключиться
+                            // Action button: install or switch
                             RowLayout {
                                 Layout.fillWidth: true
 
@@ -524,24 +523,19 @@ Item {
                                     Layout.fillWidth: true
                                 }
 
-                                // ⚠️ У виджетного оригинала эта кнопка
-                                // выглядит голым текстом: сброс
-                                // `QFrame#deCard QWidget { background:
-                                // transparent }` в `card_qss` перекрывает
-                                // стиль QPushButton (дефект класса из
-                                // правила #9). Здесь она настоящая кнопка
-                                // скина — дефект в порт не переносится.
-                                // Синяя «Установить» красится тоном из ядра
-                                // (те же краски, что `INSTALL_BUTTON_QSS`),
-                                // а не `highlighted` — тот брал акцент скина
-                                // с другой прозрачностью.
+                                // Warning: in the widget original this button looks like bare text: the
+                                // reset `QFrame#deCard QWidget { background: transparent }` in `card_qss`
+                                // overrides the QPushButton style (a defect of the class from rule #9).
+                                // Here it is a real skin button — the defect is not carried into the
+                                // port. The blue "Install" is painted with a tone from the core (the same
+                                // colours as `INSTALL_BUTTON_QSS`), not with `highlighted` — that took the
+                                // skin accent with a different opacity.
                                 RexonButton {
                                     id: cardAction
                                     pal: root.pal
                                     text: card.actionText
-                                    // SteamOS: «Установить» непроверенного
-                                    // стола видна, но неактивна (причина —
-                                    // строкой под кнопкой).
+                                    // SteamOS: "Install" of an unverified desktop is visible but disabled (the
+                                    // reason is a line under the button).
                                     enabled: card.actionKind !== "install"
                                              || card.installBlocked === ""
                                     tone: card.actionAccent
@@ -570,7 +564,7 @@ Item {
                 }
             }
 
-            // ── Быстрые рекомендации ──────────────────────────────────────
+            // ── Quick recommendations ─────────────────────────────────────
             RexonText {
                 text: page.recHeader
                 color: root.colText
@@ -590,7 +584,7 @@ Item {
                     border.color: root.colBorder
                     border.width: 1
                     radius: 6
-                    // Плюс два пикселя рамки — см. поправку у легенды.
+                    // Plus two pixels of border — see the correction at the legend.
                     implicitHeight: recLayout.implicitHeight + 18
 
                     RowLayout {
@@ -621,8 +615,8 @@ Item {
                             }
                         }
 
-                        // Стол уже стоит — отметка; не стоит — кнопка;
-                        // «none» (стол ядру неизвестен) — строка без действия.
+                        // Desktop already installed — a mark; not installed — a button; "none"
+                        // (the desktop is unknown to the core) — a line without an action.
                         RexonText {
                             visible: recRow.modelData.mark === "badge"
                             text: recRow.modelData.text
@@ -646,12 +640,12 @@ Item {
         }
     }
 
-    // ── Диалог «X против Y» ───────────────────────────────────────────────
+    // ── "X versus Y" dialog ───────────────────────────────────────────────
 
     function openPair(aId, bId) {
         const view = page.pairView(aId, bId);
-        // Пустой ответ — пара ядру неизвестна. Виджетная вкладка в этом
-        // случае просто не открывала диалог; здесь так же.
+        // An empty answer means the pair is unknown to the core. The widget tab
+        // simply did not open the dialog in this case; the same here.
         if (!view)
             return;
         pairDialog.view = view;
@@ -662,7 +656,7 @@ Item {
         id: pairDialog
 
         property var view: null
-        // Причины неактивных кнопок установки пары, без повторов.
+        // Reasons for the pair's disabled install buttons, without repetition.
         readonly property string blockedText: {
             const out = [];
             for (const b of (pairDialog.view ? pairDialog.view.buttons : [])) {
@@ -680,11 +674,11 @@ Item {
         anchors.centerIn: parent
         width: Math.min(root.width - 40,
                         pairDialog.view ? pairDialog.view.minWidth : 720)
-        // Высота — по содержимому, но не меньше наименьшей у ядра и не
-        // больше окна. Постоянные 520 точек резали таблицу посередине
-        // последней строки даже в окне 1440×920, где места хватало, а
-        // полоса прокрутки при этом пряталась — обрезанное выглядело
-        // концом окна (01.11.2026).
+        // Height follows the content, but no less than the core's minimum and no
+        // more than the window. A constant 520 pixels cut the table in the middle
+        // of the last row even in a 1440×920 window where there was enough room,
+        // and the scroll bar was hidden meanwhile — the cut-off part looked like
+        // the end of the window (01.11.2026).
         height: Math.min(root.height - 40,
                          Math.max(pairDialog.view ? pairDialog.view.minHeight : 520,
                                   pairDialog.implicitHeight))
@@ -697,19 +691,19 @@ Item {
             radius: 8
         }
 
-        // Затемнение страницы под модальным окном. Стиль по умолчанию его не
-        // рисует, и получалось, что окно модальное, а на вид — нет: человек
-        // тыкает в карточки под ним и не понимает, почему не отвечают
-        // (защита от дурака, правило #13). Оттенок — общий для продукта
-        // (`ui_base::MODAL_DIM_RGBA`, приезжает в палитре ключом
-        // `modal_dim`): тем же гасит окно обучение, своего числа у вкладки
-        // нет и быть не должно.
+        // Dimming of the page under the modal window. The default style does not
+        // draw it, so the window was modal but did not look it: the user pokes at
+        // the cards under it and does not understand why they do not respond
+        // (foolproofing, rule #13). The shade is product-wide
+        // (`ui_base::MODAL_DIM_RGBA`, arriving in the palette under the key
+        // `modal_dim`): the tutorial dims the window with the same one; the tab
+        // has no number of its own and must not have one.
         Overlay.modal: Rectangle {
             color: root.pal.modal_dim
         }
 
-        // Диалог перерисовывается на каждое открытие: содержимое приходит
-        // от ядра целиком и от прошлой пары в нём не остаётся ничего.
+        // The dialog is redrawn on every opening: the content arrives from the
+        // core in full, and nothing of the previous pair remains in it.
         contentItem: ColumnLayout {
             spacing: 10
 
@@ -723,8 +717,8 @@ Item {
                 font.bold: true
             }
 
-            // SteamOS: почему кнопки установки внизу окна неактивны — те же
-            // причины, что в карточках этих столов.
+            // SteamOS: why the install buttons at the bottom of the window are
+            // disabled — the same reasons as in the cards of these desktops.
             RexonText {
                 Layout.fillWidth: true
                 visible: pairDialog.blockedText !== ""
@@ -733,22 +727,22 @@ Item {
                 color: root.pal.status_unavailable
             }
 
-            // Таблица «параметр — X — Y» приходит готовым HTML из ядра:
-            // тот же текст, что показывал QTextBrowser виджетной вкладки.
+            // The "parameter — X — Y" table arrives as ready HTML from the core: the
+            // same text that the QTextBrowser of the widget tab showed.
             Flickable {
                 id: pairFlick
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                // Сколько таблице нужно целиком: отсюда высота окна.
+                // How much the table needs in full: the window height comes from here.
                 Layout.preferredHeight: pairBody.implicitHeight
                 contentWidth: width
                 contentHeight: pairBody.implicitHeight
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
 
-                // В низком окне таблица прокручивается — и полоса тогда
-                // видна всегда, а не только под мышью: иначе не понять,
-                // что ниже есть ещё строки.
+                // In a low window the table scrolls — and then the bar is always visible,
+                // not only under the mouse: otherwise there is no way to tell there are
+                // more rows below.
                 ScrollBar.vertical: ScrollBar {
                     policy: pairFlick.contentHeight > pairFlick.height
                             ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
@@ -781,7 +775,7 @@ Item {
                         pal: root.pal
                         text: pairInstall.modelData.text
                         enabled: page.installBlockedText(pairInstall.modelData.deId) === ""
-                        // Та же синяя кнопка ядра, что в карточке.
+                        // The same blue core button as in the card.
                         tone: pairInstall.modelData.accent
                               ? root.pal.install_tone : null
                         onClicked: {
@@ -802,17 +796,18 @@ Item {
             }
         }
 
-        // Фокус при открытии — на кнопке закрытия: диалог обязан быть
-        // управляем с клавиатуры с первого кадра, не только мышью.
+        // Focus on opening is on the close button: the dialog must be operable
+        // from the keyboard from the first frame, not only with the mouse.
         onOpened: pairClose.forceActiveFocus()
     }
 
-    // ── Фокус с первого кадра ─────────────────────────────────────────────
+    // ── Focus from the first frame ────────────────────────────────────────
 
-    // ⚠️ Фокус берёт ПЕРВЫЙ КОНТРОЛ, а не корень страницы. `forceActiveFocus`
-    // на корне выглядит правильно, но делает `activeFocusItem` безымянным
-    // Item'ом: ни одна кнопка фокуса не получает, и страница мертва и с
-    // клавиатуры, и с геймпада. Поймано макетом каркаса вкладок, не гаданием.
+    // Warning: focus goes to the FIRST CONTROL, not to the page root.
+    // `forceActiveFocus` on the root looks right but makes `activeFocusItem`
+    // a nameless Item: no button receives focus, and the page is dead both
+    // from the keyboard and from a gamepad. Caught with a mock-up of the tab
+    // frame, not by guessing.
     property int focusAttempts: 0
 
     function focusFirstControl() {
@@ -822,9 +817,9 @@ Item {
             first.forceActiveFocus();
             return;
         }
-        // Повторитель наполняется не мгновенно. Пробуем на следующем проходе
-        // цикла событий, но не бесконечно: пустой список пар — это поломка
-        // ядра, и вечный самовызов её только спрячет.
+        // The repeater does not fill instantly. We retry on the next event loop
+        // pass, but not forever: an empty list of pairs is a core breakage, and
+        // endless self-calls would only hide it.
         if (root.focusAttempts < 20) {
             root.focusAttempts += 1;
             Qt.callLater(root.focusFirstControl);
@@ -833,10 +828,10 @@ Item {
         }
     }
 
-    // ── Окно операции над столом ──────────────────────────────────────────
+    // ── Desktop operation window ──────────────────────────────────────────
     //
-    // То же окно, что у «Рабочих столов» (`DeOperationDialog.qml`), и тот же
-    // объект действий: второго исполнителя и второго диалога нет.
+    // The same window as in "Desktops" (`DeOperationDialog.qml`) and the same
+    // actions object: there is no second executor and no second dialog.
 
     DeOperationDialog {
         anchors.fill: parent
@@ -847,8 +842,8 @@ Item {
 
     Component.onCompleted: root.focusFirstControl()
 
-    // Во встроенной вкладке страница создаётся заранее и оживает при
-    // переключении на неё — фокус надо взять и там, иначе первый Tab
-    // после смены вкладки уходит в никуда.
+    // In the embedded tab the page is created in advance and comes alive when
+    // switched to — focus must be taken there too, otherwise the first Tab
+    // after switching tabs goes nowhere.
     onVisibleChanged: if (root.visible) root.focusFirstControl()
 }

@@ -1,53 +1,53 @@
-//! «Анимация» вкладки «Настройки»: скорость анимаций, «без анимаций» и
-//! эффекты по событиям (открытие и закрытие окон, сворачивание, переключение
-//! рабочих столов…) — во ВСЕХ окружениях, родным ключом каждого.
+//! "Animation" of the "Settings" tab: animation speed, "no animations" and
+//! per-event effects (opening and closing windows, minimizing, switching
+//! desktops…) — on ALL desktops, with each one's native key.
 //!
-//! Эталон — модуль «Анимация» Параметров системы KDE (kcm_animations KWin
-//! 6.7): ползунок скорости пишет `kdeglobals [KDE] AnimationDurationFactor`
-//! (ряд значений 4 · 2 · 1,5 · 1 · 0,75 · 0,5, крайнее «мгновенно» = 0),
-//! эффекты — ключи `kwinrc [Plugins] <эффект>Enabled`. Внутри каждой группы
-//! («открытие и закрытие окон» и т. д.) включён не больше чем один эффект —
-//! группа берётся из метаданных эффекта (`X-KWin-Exclusive-Category` у
-//! эффектов-сценариев, `org.kde.kwin.effect/exclusiveGroup` у встроенных).
-//! Имена эффектов и их значения по умолчанию сверены с исходниками KWin
-//! 6.7.5 (тот же выпуск, что стоит в системе) и с живым `kwinrc`. Ключ,
-//! совпавший со значением по умолчанию, удаляется, а не пишется — так же
-//! поступает сам модуль KDE, и `kwinrc` не обрастает лишними строками.
+//! The reference is the "Animation" module of KDE System Settings (kcm_animations, KWin
+//! 6.7): the speed slider writes `kdeglobals [KDE] AnimationDurationFactor`
+//! (the value series 4 · 2 · 1.5 · 1 · 0.75 · 0.5, the extreme "instant" = 0),
+//! effects are the keys `kwinrc [Plugins] <effect>Enabled`. Within each group
+//! ("opening and closing windows" and so on) at most one effect is enabled —
+//! the group comes from the effect's metadata (`X-KWin-Exclusive-Category` for
+//! scripted effects, `org.kde.kwin.effect/exclusiveGroup` for built-in ones).
+//! Effect names and their defaults are checked against the KWin
+//! 6.7.5 sources (the same release as installed on the system) and a live `kwinrc`. A key
+//! equal to the default is deleted rather than written — the KDE module itself
+//! does the same, and `kwinrc` does not accumulate extra lines.
 //!
-//! Остальные окружения:
+//! Other desktops:
 //! * GNOME, Budgie, Pantheon — `org.gnome.desktop.interface enable-animations`
-//!   (скорости там нет — говорим честно);
-//! * Cinnamon — главный выключатель `org.cinnamon desktop-effects-workspace`
-//!   плюс `org.cinnamon.desktop.interface enable-animations`, скорость
-//!   `window-effect-speed` (три ступени), эффекты `desktop-effects-*`;
-//! * MATE — `org.mate.interface enable-animations` и `gtk-enable-animations`
-//!   (у Marco анимаций окон нет);
-//! * XFCE — `xsettings /Gtk/EnableAnimations` (у xfwm4 анимаций окон нет);
-//! * Hyprland — свой файл `rexon-animations.lua|conf` рядом с конфигом и
-//!   строка его подключения в управляемом блоке: `animations.enabled`,
-//!   скорость — множитель к стандартному набору анимаций Hyprland, виды
-//!   анимаций окон и рабочих столов;
-//! * niri — свой `rexon-animations.kdl`: `off`, `slowdown`, выключение
-//!   отдельных анимаций;
-//! * sway, LXQt, labwc, COSMIC… — своих анимаций (или их настройки) у
-//!   композитора нет; выключатель действует на анимации внутри
-//!   GTK-программ (`gtk-enable-animations` в `settings.ini`). Так и пишем.
+//!   (there is no speed there — we say so honestly);
+//! * Cinnamon — the main switch `org.cinnamon desktop-effects-workspace`
+//!   plus `org.cinnamon.desktop.interface enable-animations`, speed
+//!   `window-effect-speed` (three steps), effects `desktop-effects-*`;
+//! * MATE — `org.mate.interface enable-animations` and `gtk-enable-animations`
+//!   (Marco has no window animations);
+//! * XFCE — `xsettings /Gtk/EnableAnimations` (xfwm4 has no window animations);
+//! * Hyprland — our own file `rexon-animations.lua|conf` next to the config and
+//!   the line including it in a managed block: `animations.enabled`,
+//!   speed — a multiplier on Hyprland's standard animation set, kinds of
+//!   window and workspace animations;
+//! * niri — our own `rexon-animations.kdl`: `off`, `slowdown`, turning off
+//!   individual animations;
+//! * sway, LXQt, labwc, COSMIC… — the compositor has no animations of its own (or no
+//!   settings for them); the switch affects animations inside
+//!   GTK programs (`gtk-enable-animations` in `settings.ini`). We say exactly that.
 //!
-//! KDE сверх того: список «Эффекты рабочего стола» — все остальные эффекты
-//! KWin (размытие, обзор, лупа, куб и сторонние) с поиском, группами и
-//! кнопкой «Настроить…» ([`desktop_effects_state`]); та же кнопка — у строк
-//! «Анимации», чей эффект имеет страницу настроек ([`configure_effect`]).
-//! Вне KDE этого раздела нет: эффекты — свойство KWin.
+//! KDE additionally: the "Desktop Effects" list — all other KWin effects
+//! (blur, overview, zoom, cube and third-party ones) with search, groups and
+//! a "Configure…" button ([`desktop_effects_state`]); the same button is on
+//! "Animation" rows whose effect has a settings page ([`configure_effect`]).
+//! Outside KDE this section does not exist: effects are a KWin property.
 //!
-//! GTK-программы вне GNOME-семейства берут выключатель из
-//! `~/.config/gtk-{3,4}.0/settings.ini` — это общий слой, его пишем всюду,
-//! где у окружения нет своей службы xsettings.
+//! GTK programs outside the GNOME family take the switch from
+//! `~/.config/gtk-{3,4}.0/settings.ini` — a shared layer we write everywhere
+//! the desktop has no xsettings service of its own.
 //!
-//! Устройство: ядро ничего не делает с машиной само — всё через [`LookIo`].
-//! Снимок ([`read_state`]) и план записи ([`plan_change`]) проверяются
-//! сверками на подставном `LookIo`; исполнитель [`run_steps`] общий и для
-//! кнопки, и для стенда `de_matrix_stand`, и для раздела «Кнопки заголовка
-//! окна» (`window_buttons`).
+//! Design: the core does nothing to the machine by itself — everything goes through [`LookIo`].
+//! The snapshot ([`read_state`]) and the write plan ([`plan_change`]) are verified by
+//! checks on a fake `LookIo`; the executor [`run_steps`] is shared by
+//! the button, the `de_matrix_stand` test bench and the "Window title
+//! buttons" section (`window_buttons`).
 
 use std::collections::BTreeMap;
 
@@ -57,51 +57,51 @@ use crate::i18n::{n_, tr, trf};
 use crate::themes::{remove_managed_block, upsert_managed_block, WmSyntax};
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Ввод-вывод и исполнитель — общие с `window_buttons`
+// I/O and executor — shared with `window_buttons`
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Всё, что модулю нужно от машины. Настоящая реализация — [`SystemIo`];
-/// сверки подставляют свою.
+/// Everything the module needs from the machine. The real implementation is [`SystemIo`];
+/// checks substitute their own.
 pub trait LookIo {
-    /// Запустить команду: (код 0?, вывод). При успехе вывод — stdout; при
-    /// отказе — причина для человека ([`run_failure_text`]: stderr, а без
-    /// него stdout), чтобы сообщение называло её, а не одно имя программы.
+    /// Run a command: (exit code 0?, output). On success the output is stdout; on
+    /// failure — the reason for the person ([`run_failure_text`]: stderr, or
+    /// stdout without it), so the message names the reason and not just the program name.
     fn run(&self, argv: &[String]) -> (bool, String);
-    /// Есть ли программа в PATH.
+    /// Whether a program is in PATH.
     fn have(&self, tool: &str) -> bool;
-    /// Прочитать текстовый файл.
+    /// Read a text file.
     fn read(&self, path: &str) -> Option<String>;
-    /// Прочитать файл как байты (модули Qt: метаданные эффекта вшиты в
-    /// `.so`). По умолчанию — через [`LookIo::read`], подделкам хватает.
+    /// Read a file as bytes (Qt modules: effect metadata is embedded in
+    /// the `.so`). By default — via [`LookIo::read`], which is enough for fakes.
     fn read_bytes(&self, path: &str) -> Option<Vec<u8>> {
         self.read(path).map(String::into_bytes)
     }
-    /// Записать файл целиком (каталоги заводятся).
+    /// Write a whole file (directories are created).
     fn write(&self, path: &str, text: &str) -> bool;
-    /// Имена в каталоге (пусто — каталога нет).
+    /// Names in a directory (empty — no directory).
     fn list_dir(&self, path: &str) -> Vec<String>;
-    /// Запустить программу и не ждать (перезапуск оболочки: `cinnamon
-    /// --replace`). По умолчанию НИЧЕГО не запускает: подделки в тестах
-    /// безопасны сами. 25.10.2026 тест с подделкой без этого метода
-    /// запустил `cinnamon --replace` на живом экране MATE и уронил машину.
+    /// Start a program without waiting (restarting the shell: `cinnamon
+    /// --replace`). By default it starts NOTHING: test fakes are safe by
+    /// themselves. On 25.10.2026 a test with a fake lacking this method
+    /// ran `cinnamon --replace` on a live MATE screen and brought the machine down.
     fn spawn(&self, _argv: &[String]) -> bool {
         false
     }
-    /// Удалить каталог целиком (наша устаревшая копия расширения оболочки,
-    /// [`crate::screen_effects`]). По умолчанию НИЧЕГО не удаляет — подделки
-    /// в тестах безопасны сами, как и у [`LookIo::spawn`].
+    /// Delete a whole directory (our outdated copy of a shell extension,
+    /// [`crate::screen_effects`]). By default it deletes NOTHING — test fakes
+    /// are safe by themselves, as with [`LookIo::spawn`].
     fn remove_tree(&self, _path: &str) -> bool {
         false
     }
-    /// Расширения GNOME со слов запущенной оболочки (D-Bus
-    /// `ListExtensions`). `None` — оболочки нет. По умолчанию `None`:
-    /// подделки в тестах шину не трогают.
+    /// GNOME extensions as reported by the running shell (D-Bus
+    /// `ListExtensions`). `None` — no shell. Defaults to `None`:
+    /// test fakes do not touch the bus.
     fn gnome_shell_extensions(&self) -> Option<Vec<crate::gnome_shell_ext::ExtInfo>> {
         None
     }
 }
 
-/// Настоящая машина.
+/// The real machine.
 pub struct SystemIo;
 
 impl LookIo for SystemIo {
@@ -150,8 +150,8 @@ impl LookIo for SystemIo {
     }
 
     fn remove_tree(&self, path: &str) -> bool {
-        // Только абсолютный путь не короче `/home/<кто>/<что>/<имя>`: корень
-        // и домашний каталог сюда не попадут ни при какой ошибке плана.
+        // Only an absolute path no shorter than `/home/<who>/<what>/<name>`: the root
+        // and the home directory can never get here, whatever the plan error.
         let p = std::path::Path::new(path);
         if !p.is_absolute() || p.components().count() < 5 {
             return false;
@@ -184,13 +184,13 @@ impl LookIo for SystemIo {
     }
 }
 
-/// Причина отказа команды для человека. Раньше наружу шёл только stdout, а
-/// у отказавших `gsettings`/`bash -c` он пуст: человек читал «Не удалось
-/// применить «Dracula»: gsettings» без единого слова о том, что случилось
-/// (проверка GNOME, 16.10.2026). Берётся последняя непустая строка stderr —
-/// в ней программы пишут саму ошибку (`bash` до неё — номер строки,
-/// трассировки — стек); без stderr — stdout; не дошла до кода — таймаут или
-/// ошибка запуска.
+/// The reason a command failed, for the person. Previously only stdout went out, and
+/// for failed `gsettings`/`bash -c` it is empty: the person read "Could not
+/// apply "Dracula": gsettings" without a single word about what happened
+/// (GNOME check, 16.10.2026). The last non-empty stderr line is taken —
+/// programs write the error itself there (`bash` puts the line number before it,
+/// tracebacks — the stack); without stderr — stdout; if it never reached the code — a timeout or
+/// a launch error.
 pub fn run_failure_text(program: &str, report: &crate::utils::RunReport) -> String {
     use crate::utils::RunOutcome;
     let last_line = |bytes: &[u8]| {
@@ -211,29 +211,29 @@ pub fn run_failure_text(program: &str, report: &crate::utils::RunReport) -> Stri
     }
 }
 
-/// Где искать настройки человека.
+/// Where to look for the person's settings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LookCtx {
-    /// Окружение как его зовёт ядро (`system::detect_current_de`).
+    /// The desktop as the core calls it (`system::detect_current_de`).
     pub de: String,
     pub home: String,
-    /// `$XDG_CONFIG_HOME` либо `~/.config`.
+    /// `$XDG_CONFIG_HOME` or `~/.config`.
     pub config_home: String,
-    /// `$XDG_DATA_HOME` либо `~/.local/share`.
+    /// `$XDG_DATA_HOME` or `~/.local/share`.
     pub data_home: String,
-    /// Системные каталоги данных (`$XDG_DATA_DIRS`).
+    /// System data directories (`$XDG_DATA_DIRS`).
     pub data_dirs: Vec<String>,
-    /// Корни плагинов Qt 6 (`$QT_PLUGIN_PATH` и обычные места).
+    /// Qt 6 plugin roots (`$QT_PLUGIN_PATH` and the usual places).
     pub plugin_dirs: Vec<String>,
-    /// Сеанс Wayland: в LXQt по нему выбирается, чей менеджер окон читать
-    /// (`window_manager` на X11 или `compositor` на Wayland,
+    /// Wayland session: in LXQt it decides whose window manager to read
+    /// (`window_manager` on X11 or `compositor` on Wayland,
     /// [`crate::qt_settings::title_wm_for`]).
     pub wayland: bool,
 }
 
 impl LookCtx {
-    /// Каталоги данных и плагинов — по умолчанию спецификации; окружение
-    /// процесса подставляет [`LookCtx::from_env`].
+    /// Data and plugin directories — the specification defaults; the process
+    /// environment is substituted by [`LookCtx::from_env`].
     pub fn new(de: &str, home: &str, xdg_config_home: Option<&str>) -> Self {
         LookCtx {
             de: de.to_string(),
@@ -246,7 +246,7 @@ impl LookCtx {
         }
     }
 
-    /// Из окружения процесса (окно, стенд).
+    /// From the process environment (the window, the test bench).
     pub fn from_env() -> Self {
         let env = |n: &str| std::env::var(n).unwrap_or_default();
         let de = crate::system::detect_current_de(
@@ -269,10 +269,10 @@ impl LookCtx {
         format!("{}/{rel}", self.config_home.trim_end_matches('/'))
     }
 
-    /// Контекст для окружения `chosen`, выбранного в «Текущее окружение»
-    /// вкладки «Оформление»: пусто, «определить автоматически» или тот же
-    /// стол — контекст как есть; другой — его имя и ЕГО род сеанса
-    /// ([`crate::screen_effects::KNOWN_DESKTOPS`]; незнакомый — род прежний).
+    /// Context for the desktop `chosen` selected in "Current desktop" of the
+    /// "Appearance" tab: empty, "detect automatically" or the same
+    /// desktop — the context as is; another one — its name and ITS session kind
+    /// ([`crate::screen_effects::KNOWN_DESKTOPS`]; an unknown one — the kind stays).
     pub fn for_chosen(self, chosen: &str) -> Self {
         let chosen = chosen.trim();
         if chosen.is_empty() || chosen == crate::appearance_page::DE_AUTO_ID || chosen == self.de {
@@ -286,24 +286,24 @@ impl LookCtx {
         ctx
     }
 
-    /// Контекст разделов вкладки «Оформление»: окружение процесса, но стол —
-    /// выбранный в «Текущее окружение» ([`set_chosen_desktop`]). Раньше разделы
-    /// («Анимация», «Кнопки заголовка окна», «Эффекты экрана», «Акцент»…)
-    /// брали стол сеанса, и при выбранном вручную другом столе говорили и
-    /// писали про запущенный (08.11.2026: «Tiling and Wayfire» в сеансе KDE —
-    /// предупреждение про KWin). Вне вкладки выбор не ставится — там это
-    /// ровно [`LookCtx::from_env`].
+    /// Context of the "Appearance" tab sections: the process environment, but the desktop is
+    /// the one selected in "Current desktop" ([`set_chosen_desktop`]). Previously the sections
+    /// ("Animation", "Window title buttons", "Screen effects", "Accent"…)
+    /// took the session's desktop, and with another desktop selected by hand they talked about and
+    /// wrote to the running one (08.11.2026: "Tiling and Wayfire" in a KDE session —
+    /// a warning about KWin). Outside the tab no choice is set — there it is
+    /// exactly [`LookCtx::from_env`].
     pub fn for_look() -> Self {
         Self::from_env().for_chosen(&chosen_desktop())
     }
 }
 
-/// Стол, выбранный в «Текущее окружение» вкладки «Оформление» (пусто — не
-/// выбирали, берётся сеанс). Один на процесс: его ставит страница, читают
-/// разделы через [`LookCtx::for_look`].
+/// The desktop selected in "Current desktop" of the "Appearance" tab (empty — not
+/// selected, the session is used). One per process: the page sets it, the sections
+/// read it through [`LookCtx::for_look`].
 static CHOSEN_DESKTOP: std::sync::RwLock<String> = std::sync::RwLock::new(String::new());
 
-/// Запомнить выбор «Текущее окружение» (идентификатор ядра либо
+/// Remember the "Current desktop" choice (a core identifier or
 /// [`crate::appearance_page::DE_AUTO_ID`]).
 pub fn set_chosen_desktop(de: &str) {
     if let Ok(mut slot) = CHOSEN_DESKTOP.write() {
@@ -311,70 +311,70 @@ pub fn set_chosen_desktop(de: &str) {
     }
 }
 
-/// Выбор «Текущее окружение» (пусто — не выбирали).
+/// The "Current desktop" choice (empty — not selected).
 pub fn chosen_desktop() -> String {
     CHOSEN_DESKTOP.read().map(|s| s.clone()).unwrap_or_default()
 }
 
-/// Один возможный конфиг композитора и наш файл рядом.
+/// One possible compositor config and our file next to it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WmTarget {
-    /// Конфиг композитора — его ведёт человек.
+    /// The compositor config — the person maintains it.
     pub config: String,
     pub syntax: WmSyntax,
-    /// Наш файл — переписываем целиком.
+    /// Our file — rewritten entirely.
     pub own_path: String,
     pub own_content: String,
-    /// Строка подключения нашего файла (внутри управляемого блока).
+    /// The line including our file (inside the managed block).
     pub include_line: String,
 }
 
-/// Наш файл в конфиге композитора.
+/// Our file in the compositor config.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WmInclude {
-    /// Имя управляемого блока (`>>> Rexon: <tag>`).
+    /// Name of the managed block (`>>> Rexon: <tag>`).
     pub tag: String,
-    /// Имя композитора для человека.
+    /// Compositor name for the person.
     pub wm: String,
-    /// Возможные конфиги в порядке поиска самого композитора.
+    /// Possible configs in the compositor's own lookup order.
     pub targets: Vec<WmTarget>,
-    /// Проверка конфига самим композитором (путь дописывается в конец).
+    /// Config check by the compositor itself (the path is appended at the end).
     pub validate: Vec<String>,
-    /// Минимальная версия (`niri --version`), (год, месяц).
+    /// Minimum version (`niri --version`), (year, month).
     pub min_version: Option<(Vec<String>, (u32, u32))>,
-    /// Личного конфига нет: чем его засеять (системный конфиг) и на место
-    /// какого из `targets`. Только у sway — он, в отличие от niri и
-    /// Hyprland, свой конфиг при первом запуске не заводит.
+    /// No personal config: what to seed it with (the system config) and in place of
+    /// which of `targets`. Only for sway — unlike niri and
+    /// Hyprland, it does not create its config on first start.
     pub seed: Option<(String, usize)>,
-    /// Конфиги, которые композитор читает вместо своего (sway — конфиг
-    /// i3): есть такой — засевать нельзя, наш файл заслонил бы его.
+    /// Configs the compositor reads instead of its own (sway — the i3
+    /// config): if one exists, seeding is forbidden, our file would shadow it.
     pub foreign: Vec<String>,
 }
 
-/// Шаг записи.
+/// A write step.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum LookStep {
-    /// Команда, которая обязана пройти (родной ключ).
+    /// A command that must succeed (the native key).
     Cmd(Vec<String>),
-    /// Уведомить живое окружение: первая сработавшая из вариантов; неудача
-    /// не ошибка (на стенде и вне сеанса уведомлять некого).
+    /// Notify the live desktop: the first variant that works; a failure
+    /// is not an error (on the test bench and outside a session there is nobody to notify).
     Notify(Vec<Vec<String>>),
-    /// Ключ в `[Settings]` у `gtk-3.0/settings.ini` и `gtk-4.0/settings.ini`.
+    /// A key in `[Settings]` of `gtk-3.0/settings.ini` and `gtk-4.0/settings.ini`.
     GtkIni { key: String, value: String },
-    /// Файл целиком (COSMIC хранит по ключу на файл).
+    /// A whole file (COSMIC stores one key per file).
     WriteFile { path: String, content: String },
-    /// Наш файл + управляемый блок в конфиге композитора.
+    /// Our file + a managed block in the compositor config.
     Wm(WmInclude),
-    /// Снять каталог целиком (устаревшая копия нашего же расширения).
+    /// Remove a whole directory (an outdated copy of our own extension).
     RemoveTree { path: String },
 }
 
-/// Короткое имя программы из argv — для сообщения человеку.
+/// Short program name from argv — for the message to the person.
 fn tool_name(argv: &[String]) -> String {
     argv.first().map(|a| a.rsplit('/').next().unwrap_or(a).to_string()).unwrap_or_default()
 }
 
-/// Исполнить план. Ошибка — готовая фраза для человека.
+/// Execute the plan. An error is a ready sentence for the person.
 pub fn run_steps(io: &dyn LookIo, ctx: &LookCtx, steps: &[LookStep]) -> Result<(), String> {
     for step in steps {
         match step {
@@ -382,9 +382,9 @@ pub fn run_steps(io: &dyn LookIo, ctx: &LookCtx, steps: &[LookStep]) -> Result<(
                 if !io.have(&argv[0]) {
                     return Err(trf("The program %1 is not installed.", &[&tool_name(argv)]));
                 }
-                // Одна повторная попытка: на стенде под нагрузкой kwriteconfig6
-                // однажды (1 из 4 прогонов) вернул ошибку на свежем профиле,
-                // а повтор той же команды проходит.
+                // One retry: on the test bench under load kwriteconfig6
+                // once (1 of 4 runs) returned an error on a fresh profile,
+                // while a repeat of the same command succeeds.
                 if !io.run(argv).0 && !io.run(argv).0 {
                     return Err(trf("Could not change the setting: %1 failed.", &[&tool_name(argv)]));
                 }
@@ -422,8 +422,8 @@ pub fn run_steps(io: &dyn LookIo, ctx: &LookCtx, steps: &[LookStep]) -> Result<(
     Ok(())
 }
 
-/// Наш файл + строка подключения, с копией конфига до первой правки и
-/// откатом, если проверка композитора отвергла результат.
+/// Our file + the include line, with a copy of the config before the first edit and
+/// a rollback if the compositor's check rejected the result.
 fn run_wm_include(io: &dyn LookIo, inc: &WmInclude) -> Result<(), String> {
     if let Some((argv, min)) = &inc.min_version {
         if io.have(&argv[0]) {
@@ -443,8 +443,8 @@ fn run_wm_include(io: &dyn LookIo, inc: &WmInclude) -> Result<(), String> {
     let target = match inc.targets.iter().find(|t| io.read(&t.config).is_some()) {
         Some(t) => t,
         None => {
-            // sway без личного конфига читает системный: копия на место
-            // личного поведения не меняет (так советует sway(5)).
+            // sway without a personal config reads the system one: a copy in place of
+            // the personal one does not change behavior (as sway(5) advises).
             let seeded = match &inc.seed {
                 Some((from, idx)) if !inc.foreign.iter().any(|f| io.read(f).is_some()) => {
                     match (io.read(from), inc.targets.get(*idx)) {
@@ -476,9 +476,9 @@ fn run_wm_include(io: &dyn LookIo, inc: &WmInclude) -> Result<(), String> {
     };
     let validator = inc.validate.first().is_some_and(|t| io.have(t));
     if after == before {
-        // Подключение уже стоит — меняли только наш файл. Если композитор
-        // его не принял, вернуть прежний наш файл нечем (мы его не храним),
-        // поэтому сначала проверяем, потом говорим.
+        // The include is already there — only our file changed. If the compositor
+        // did not accept it, there is nothing to restore our previous file from (we do not keep it),
+        // so we check first, then speak.
         if validator && !validate(&target.config) {
             return Err(trf("%1 rejected the change. Check the config: %2", &[&inc.wm, &target.own_path]));
         }
@@ -499,15 +499,15 @@ fn run_wm_include(io: &dyn LookIo, inc: &WmInclude) -> Result<(), String> {
     Ok(())
 }
 
-/// Снять наш управляемый блок (откат «как было до Rexon»). Только текст —
-/// пишет вызывающий; нужен сверкам.
+/// Remove our managed block (rollback to "as it was before Rexon"). Text only —
+/// the caller writes it; needed by the checks.
 pub fn without_block(existing: &str, syntax: WmSyntax, tag: &str) -> String {
     remove_managed_block(existing, syntax.comment(), tag)
 }
 
-/// Кандидаты конфига композитора: Hyprland 0.56 читает `hyprland.lua`, если
-/// он есть, иначе `hyprland.conf`; niri — `config.kdl`; sway —
-/// `~/.sway/config`, потом `$XDG_CONFIG_HOME/sway/config`.
+/// Compositor config candidates: Hyprland 0.56 reads `hyprland.lua` if
+/// it exists, otherwise `hyprland.conf`; niri — `config.kdl`; sway —
+/// `~/.sway/config`, then `$XDG_CONFIG_HOME/sway/config`.
 pub fn wm_targets(
     ctx: &LookCtx,
     wm: &str,
@@ -537,20 +537,20 @@ pub fn wm_targets(
     }
 }
 
-/// Проверка конфига самим композитором и порог версии.
+/// Config check by the compositor itself and the version threshold.
 pub fn wm_include(ctx: &LookCtx, wm: &str, tag: &str, stem: &str, content: &dyn Fn(WmSyntax) -> String) -> WmInclude {
     let (name, validate, min_version) = match wm {
         "hyprland" => ("Hyprland", vec!["Hyprland", "--verify-config", "--config"], None),
         "niri" => (
             "niri",
             vec!["niri", "validate", "--config"],
-            // `include` появился у niri в 25.11.
+            // niri got `include` in 25.11.
             Some((vec!["niri".to_string(), "--version".to_string()], (25, 11))),
         ),
         _ => ("sway", vec!["sway", "--validate", "--config"], None),
     };
     let (seed, foreign) = if name == "sway" {
-        // Второй из `wm_targets` — `$XDG_CONFIG_HOME/sway/config`.
+        // The second of `wm_targets` is `$XDG_CONFIG_HOME/sway/config`.
         (
             Some(("/etc/sway/config".to_string(), 1)),
             vec![format!("{}/.i3/config", ctx.home), ctx.cfg("i3/config")],
@@ -569,15 +569,15 @@ pub fn wm_include(ctx: &LookCtx, wm: &str, tag: &str, stem: &str, content: &dyn 
     }
 }
 
-/// Наш файл композитора, который сейчас подключён (первый существующий
-/// конфиг из кандидатов) — его текст, если он есть.
+/// Our compositor file that is currently included (the first existing
+/// config among the candidates) — its text, if it exists.
 pub fn read_own_wm_file(io: &dyn LookIo, ctx: &LookCtx, wm: &str, stem: &str) -> Option<(WmSyntax, String)> {
     let targets = wm_targets(ctx, wm, stem, &|_| String::new());
     let target = targets.iter().find(|t| io.read(&t.config).is_some())?;
     Some((target.syntax, io.read(&target.own_path)?))
 }
 
-/// Строка состояния в первой строке нашего файла: `rexon-state: k=v k=v`.
+/// The state line in the first line of our file: `rexon-state: k=v k=v`.
 pub fn parse_state_line(text: &str) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     if let Some(line) = text.lines().find(|l| l.contains("rexon-state:")) {
@@ -596,7 +596,7 @@ pub fn state_line(comment: &str, values: &BTreeMap<String, String>) -> String {
     format!("{comment} rexon-state: {}\n", pairs.join(" "))
 }
 
-/// Значение gsettings без кавычек и типовой приставки (`uint32 1` → `1`).
+/// A gsettings value without quotes and the type prefix (`uint32 1` → `1`).
 pub fn clean_gvariant(raw: &str) -> String {
     let s = raw.trim();
     let s = s.rsplit(' ').next().filter(|_| s.starts_with("uint") || s.starts_with("int")).unwrap_or(s);
@@ -623,12 +623,12 @@ pub fn xfconf_get(io: &dyn LookIo, channel: &str, prop: &str) -> Option<String> 
     ok.then(|| out.trim().to_string())
 }
 
-/// `-n -t`: завести свойство, если его ещё нет (у чистого профиля его нет).
+/// `-n -t`: create the property if it does not exist yet (a clean profile does not have it).
 pub fn xfconf_set(channel: &str, prop: &str, kind: &str, value: &str) -> LookStep {
     LookStep::Cmd(argv(&["xfconf-query", "-c", channel, "-p", prop, "-n", "-t", kind, "-s", value]))
 }
 
-/// `kwriteconfig6`: значение либо удаление ключа (возврат к умолчанию).
+/// `kwriteconfig6`: a value or deleting the key (back to the default).
 pub fn kwrite(file: &str, group: &str, key: &str, value: Option<&str>, bool_type: bool) -> LookStep {
     let mut a = argv(&["kwriteconfig6", "--file", file, "--group", group, "--key", key, "--notify"]);
     match value {
@@ -647,7 +647,7 @@ pub fn kwrite(file: &str, group: &str, key: &str, value: Option<&str>, bool_type
     LookStep::Cmd(a)
 }
 
-/// Значение KConfig из файла `$XDG_CONFIG_HOME/<file>`; пусто — ключа нет.
+/// A KConfig value from the file `$XDG_CONFIG_HOME/<file>`; empty — no key.
 pub fn kconfig_value(io: &dyn LookIo, ctx: &LookCtx, file: &str, group: &str, key: &str) -> Option<String> {
     let text = io.read(&ctx.cfg(file));
     let cfg = crate::gtk_sanitizer::read_kde_ini(text.as_deref());
@@ -655,7 +655,7 @@ pub fn kconfig_value(io: &dyn LookIo, ctx: &LookCtx, file: &str, group: &str, ke
     (!v.is_empty()).then_some(v)
 }
 
-/// Попросить живой KWin перечитать конфиг (на стенде и вне KDE — молча мимо).
+/// Ask the live KWin to reread its config (on the test bench and outside KDE — silently skipped).
 pub fn kwin_reconfigure() -> LookStep {
     let (dest, obj, method) = crate::utils::KWIN_RECONFIGURE;
     LookStep::Notify(vec![
@@ -664,7 +664,7 @@ pub fn kwin_reconfigure() -> LookStep {
     ])
 }
 
-/// Сигнал `KGlobalSettings.notifyChange` — как у модуля «Анимация» KDE.
+/// The `KGlobalSettings.notifyChange` signal — as in the KDE "Animation" module.
 fn kglobals_notify() -> LookStep {
     LookStep::Notify(vec![argv(&[
         "dbus-send",
@@ -681,13 +681,13 @@ pub fn argv(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|s| s.to_string()).collect()
 }
 
-/// GTK-ключ `settings.ini` для этого окружения пишется? Только там, где
-/// GTK не получает настройку от службы xsettings / портала GNOME-семейства.
+/// Is the GTK `settings.ini` key written for this desktop? Only where
+/// GTK does not get the setting from an xsettings service / the GNOME-family portal.
 pub fn uses_gtk_ini(de: &str) -> bool {
     !matches!(de, "gnome" | "budgie" | "pantheon" | "cinnamon-mint" | "mate" | "xfce")
 }
 
-/// Имя окружения для человека.
+/// Desktop name for the person.
 pub fn de_label(de: &str) -> String {
     match de {
         "kde" => "KDE Plasma".into(),
@@ -710,22 +710,22 @@ pub fn de_label(de: &str) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Анимация: модель
+// Animation: the model
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Ступени ползунка скорости — те же, что у KDE (медленно → быстро).
+/// Speed slider steps — the same as KDE's (slow → fast).
 pub const SPEED_STEPS: &[f64] = &[4.0, 2.0, 1.5, 1.0, 0.75, 0.5];
 
-/// Вариант выбора в строке.
+/// A choice option in a row.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AnimOption {
     pub id: String,
     pub label: String,
-    /// У эффекта есть своя страница настроек («Настроить…», только KWin).
+    /// The effect has its own settings page ("Configure…", KWin only).
     pub configurable: bool,
 }
 
-/// Строка «событие → эффект» (выбор) или «эффект вкл/выкл» (флажок).
+/// An "event → effect" row (a choice) or an "effect on/off" row (a checkbox).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EffectRow {
     pub id: String,
@@ -733,41 +733,41 @@ pub struct EffectRow {
     /// `choice` | `toggle`.
     pub kind: String,
     pub options: Vec<AnimOption>,
-    /// Выбранный вариант; у флажка `true`/`false`.
+    /// The selected option; for a checkbox `true`/`false`.
     pub value: String,
-    /// У флажка-эффекта есть своя страница настроек (у выбора — смотри
-    /// `configurable` варианта).
+    /// A checkbox effect has its own settings page (for a choice — see
+    /// the option's `configurable`).
     pub configurable: bool,
 }
 
-/// Снимок раздела для страницы.
+/// Section snapshot for the page.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AnimState {
     pub de: String,
-    /// Анимации включены.
+    /// Animations are enabled.
     pub enabled: bool,
-    /// Ползунок скорости есть.
+    /// There is a speed slider.
     pub has_speed: bool,
-    /// Ступени ползунка и выбранная (индекс в [`SPEED_STEPS`]).
+    /// Slider steps and the selected one (index into [`SPEED_STEPS`]).
     pub speed_steps: Vec<f64>,
     pub speed_index: usize,
     pub rows: Vec<EffectRow>,
-    /// Честное пояснение: где настройка не доходит.
+    /// An honest explanation: where the setting does not reach.
     pub note: String,
 }
 
-/// Что поменять.
+/// What to change.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnimChange {
     Enabled(bool),
-    /// Множитель длительности (ступень [`SPEED_STEPS`]).
+    /// Duration multiplier (a step of [`SPEED_STEPS`]).
     Speed(f64),
     Row { id: String, value: String },
-    /// Всё по умолчанию.
+    /// Everything to defaults.
     Defaults,
 }
 
-/// Внутренний снимок: выключатель, множитель, значения строк.
+/// Internal snapshot: the switch, the multiplier, row values.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnimSettings {
     pub enabled: bool,
@@ -784,7 +784,7 @@ impl AnimSettings {
     }
 }
 
-/// Ступень ползунка, ближайшая к множителю.
+/// The slider step nearest to the multiplier.
 pub fn speed_index(factor: f64) -> usize {
     let mut best = 3;
     let mut dist = f64::MAX;
@@ -804,7 +804,7 @@ fn fmt_factor(f: f64) -> String {
     s.to_string()
 }
 
-// ── Подписи (каталог перевода) ─────────────────────────────────────────────
+// ── Labels (translation catalog) ───────────────────────────────────────────
 
 const L_OPEN_CLOSE: &str = n_("Window open and close");
 const L_OPEN: &str = n_("Opening windows");
@@ -855,10 +855,10 @@ fn toggle(id: &str, label: &str) -> EffectRow {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// KDE: эффекты KWin
+// KDE: KWin effects
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Встроенный эффект KWin: имя модуля, подпись, включён ли по умолчанию.
+/// A built-in KWin effect: module name, label, whether it is enabled by default.
 #[derive(Debug, Clone, PartialEq)]
 pub struct KwinEffect {
     pub id: String,
@@ -866,9 +866,9 @@ pub struct KwinEffect {
     pub default_on: bool,
 }
 
-/// Группы «Анимации» KWin 6.7: (строка, исключающая группа KWin, эффекты).
-/// Порядок и состав — как у kcm_animations (`animationsdata.cpp`); имена и
-/// значения по умолчанию — из `metadata.json` эффектов того же выпуска.
+/// KWin 6.7 "Animation" groups: (row, KWin exclusive group, effects).
+/// Order and contents — as in kcm_animations (`animationsdata.cpp`); names and
+/// defaults — from the effects' `metadata.json` of the same release.
 const KWIN_GROUPS: &[(&str, &str, &str, &[(&str, &str, bool)])] = &[
     ("openClose", L_OPEN_CLOSE, "toplevel-open-close-animation", &[
         ("fade", O_FADE, false),
@@ -888,7 +888,7 @@ const KWIN_GROUPS: &[(&str, &str, &str, &[(&str, &str, bool)])] = &[
     ]),
 ];
 
-/// Отдельные эффекты-флажки KWin (как «прочие» у kcm_animations).
+/// Individual KWin checkbox effects (like the "other" ones in kcm_animations).
 const KWIN_TOGGLES: &[(&str, &str, bool)] = &[
     ("fadingpopups", L_FADING_POPUPS, true),
     ("slidingpopups", L_SLIDING_POPUPS, true),
@@ -897,9 +897,9 @@ const KWIN_TOGGLES: &[(&str, &str, bool)] = &[
     ("logout", L_LOGOUT, true),
 ];
 
-/// Эффекты с исключающей группой из «Анимации» (встроенные вне таблицы
-/// [`KWIN_GROUPS`], сценарии из магазина KDE, модули `.so`) — те же записи,
-/// что у списка «Эффекты рабочего стола» ([`scan_kwin_effects`]).
+/// Effects with an exclusive group from "Animation" (built-in ones outside the
+/// [`KWIN_GROUPS`] table, scripts from the KDE store, `.so` modules) — the same records
+/// as the "Desktop Effects" list ([`scan_kwin_effects`]).
 fn third_party_effects(io: &dyn LookIo, ctx: &LookCtx) -> Vec<(String, KwinEffect)> {
     scan_kwin_effects(io, ctx)
         .into_iter()
@@ -909,7 +909,7 @@ fn third_party_effects(io: &dyn LookIo, ctx: &LookCtx) -> Vec<(String, KwinEffec
         .collect()
 }
 
-/// Эффекты группы: встроенные + сторонние той же исключающей группы.
+/// Effects of a group: built-in + third-party ones of the same exclusive group.
 fn kwin_group_effects(group: &(&str, &str, &str, &[(&str, &str, bool)]), extra: &[(String, KwinEffect)]) -> Vec<KwinEffect> {
     let mut v: Vec<KwinEffect> = group
         .3
@@ -927,8 +927,8 @@ fn kwin_enabled(io: &dyn LookIo, ctx: &LookCtx, id: &str, default_on: bool) -> b
     }
 }
 
-/// Запись `<эффект>Enabled` по правилу модуля KDE: совпало с умолчанием —
-/// ключ удаляется, иначе пишется.
+/// Writing `<effect>Enabled` by the KDE module's rule: equal to the default —
+/// the key is deleted, otherwise it is written.
 fn kwin_write(steps: &mut Vec<LookStep>, io: &dyn LookIo, ctx: &LookCtx, e: &KwinEffect, want: bool) {
     let key = format!("{}Enabled", e.id);
     let now = kconfig_value(io, ctx, "kwinrc", "Plugins", &key);
@@ -942,57 +942,57 @@ fn kwin_write(steps: &mut Vec<LookStep>, io: &dyn LookIo, ctx: &LookCtx, e: &Kwi
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// KDE: «Эффекты рабочего стола» — все эффекты KWin
+// KDE: "Desktop Effects" — all KWin effects
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// Эталон — модуль KDE «Эффекты рабочего стола» (kcm_kwin_effects, KWin 6.8:
-// `src/kcms/common/effectsmodel.cpp`). Эффекты там собираются из трёх мест,
-// и мы читаем те же три:
-// * встроенные — `kwin/builtin-effects/*.json` в первом каталоге данных, где
-//   он есть (`QStandardPaths::locate`); id — имя файла;
-// * сценарии (пакеты `KWin/Effect`) — `kwin/effects/<id>/metadata.json` во
-//   всех каталогах данных, личный первым;
-// * модули — `<корень плагинов Qt>/kwin/effects/plugins/*.so`, метаданные
-//   вшиты в модуль (CBOR, разбор — `plugin_journal`).
-// Повтор id — берётся первый (как `shouldStore`). Служебные эффекты
-// (`internal`) не показываются. Эффекты, которые уже есть в «Анимации»
-// (шесть исключающих групп и пять флажков), модуль KDE тоже исключает —
-// повторять их здесь незачем.
+// The reference is the KDE "Desktop Effects" module (kcm_kwin_effects, KWin 6.8:
+// `src/kcms/common/effectsmodel.cpp`). Effects there are collected from three places,
+// and we read the same three:
+// * built-in — `kwin/builtin-effects/*.json` in the first data directory where
+//   it exists (`QStandardPaths::locate`); the id is the file name;
+// * scripts (`KWin/Effect` packages) — `kwin/effects/<id>/metadata.json` in
+//   all data directories, the personal one first;
+// * modules — `<Qt plugin root>/kwin/effects/plugins/*.so`, the metadata is
+//   embedded in the module (CBOR, parsed by `plugin_journal`).
+// A repeated id — the first one wins (like `shouldStore`). Internal effects
+// (`internal`) are not shown. Effects already in "Animation"
+// (six exclusive groups and five checkboxes) are excluded by the KDE module too —
+// no point repeating them here.
 //
-// Включение — `kwinrc [Plugins] <id>Enabled` по тому же правилу, что у
-// «Анимации» ([`kwin_write`]); KWin следит за `kwinrc` (`KConfigWatcher`,
-// `EffectsHandler::configChanged`) и сам загружает и выгружает эффект, а
-// `reconfigure` по D-Bus — запасной путь. В исключающей группе включённый
-// эффект выключает соседей — как переключатель-кружок у KDE.
+// Enabling — `kwinrc [Plugins] <id>Enabled` by the same rule as
+// "Animation" ([`kwin_write`]); KWin watches `kwinrc` (`KConfigWatcher`,
+// `EffectsHandler::configChanged`) and loads and unloads the effect itself, while
+// `reconfigure` over D-Bus is the fallback. In an exclusive group an enabled
+// effect turns off its neighbors — like a radio button in KDE.
 //
-// «Настроить…» — тот же модуль настройки, что открывает KDE
-// (`EffectsModel::requestConfigure`): `kwin/effects/configs/<модуль>`;
-// снаружи его открывает `kcmshell6` (проверено: путь с подкаталогом
-// принимается, голое имя модуля — нет). Сценарию с общим модулем
-// `kcm_kwin4_genericscripted` нужны его `contents/config/main.xml` и
-// `contents/ui/config.ui` и аргументы `<id> KWin/Effect` — как у KDE.
+// "Configure…" — the same settings module KDE opens
+// (`EffectsModel::requestConfigure`): `kwin/effects/configs/<module>`;
+// from outside it is opened by `kcmshell6` (checked: a path with a subdirectory
+// is accepted, a bare module name is not). A script with the shared module
+// `kcm_kwin4_genericscripted` needs its `contents/config/main.xml` and
+// `contents/ui/config.ui` and the arguments `<id> KWin/Effect` — as in KDE.
 
-/// Общий модуль настройки эффектов-сценариев.
+/// The shared settings module for scripted effects.
 const GENERIC_SCRIPTED_KCM: &str = "kcm_kwin4_genericscripted";
 
-/// Эффект KWin, как его видит модуль «Эффекты рабочего стола».
+/// A KWin effect as the "Desktop Effects" module sees it.
 #[derive(Debug, Clone, PartialEq)]
 struct KwinMeta {
     id: String,
     name: String,
     description: String,
-    /// Категория без перевода (`Appearance`, `Accessibility`…).
+    /// Category without translation (`Appearance`, `Accessibility`…).
     category: String,
-    /// Исключающая группа; пусто — эффект сам по себе.
+    /// Exclusive group; empty — the effect stands alone.
     group: String,
     default_on: bool,
     internal: bool,
-    /// Модуль настройки и его аргументы.
+    /// The settings module and its arguments.
     config: Option<(String, Vec<String>)>,
 }
 
-/// Ключи по языку интерфейса: `Name[ru_RU]`, `Name[ru]`, `Name` — и то же
-/// для `Description`.
+/// Keys by interface language: `Name[ru_RU]`, `Name[ru]`, `Name` — and the same
+/// for `Description`.
 fn meta_keys(base: &str, lang: &str) -> Vec<String> {
     crate::installed_scan::locale_name_keys(lang)
         .into_iter()
@@ -1008,9 +1008,9 @@ fn localized(kplugin: &serde_json::Value, base: &str, lang: &str) -> String {
         .to_string()
 }
 
-/// Запись из метаданных. `top` — весь `metadata.json` (у модуля `.so` —
-/// собранный из вшитых ключей), `fallback_id` — имя файла или каталога,
-/// `lang` — язык интерфейса (`ru`, `pt-BR`).
+/// A record from metadata. `top` — the whole `metadata.json` (for a `.so` module —
+/// assembled from the embedded keys), `fallback_id` — the file or directory name,
+/// `lang` — the interface language (`ru`, `pt-BR`).
 fn kwin_meta(top: &serde_json::Value, fallback_id: &str, scripted: bool, lang: &str) -> KwinMeta {
     let kplugin = top.get("KPlugin").cloned().unwrap_or_default();
     let id = kplugin.get("Id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).unwrap_or(fallback_id).to_string();
@@ -1045,7 +1045,7 @@ fn kwin_meta(top: &serde_json::Value, fallback_id: &str, scripted: bool, lang: &
     }
 }
 
-/// Каталоги данных в порядке `QStandardPaths`: личный, затем системные.
+/// Data directories in `QStandardPaths` order: the personal one, then the system ones.
 fn data_roots(ctx: &LookCtx) -> Vec<String> {
     let mut v = vec![ctx.data_home.trim_end_matches('/').to_string()];
     for d in &ctx.data_dirs {
@@ -1056,18 +1056,18 @@ fn data_roots(ctx: &LookCtx) -> Vec<String> {
     v
 }
 
-/// Первый каталог данных, где есть файл `rel` (`QStandardPaths::locate`).
+/// The first data directory containing the file `rel` (`QStandardPaths::locate`).
 fn locate_data(io: &dyn LookIo, ctx: &LookCtx, rel: &str) -> Option<String> {
     data_roots(ctx).into_iter().map(|d| format!("{d}/{rel}")).find(|p| io.read(p).is_some())
 }
 
-/// Модуль настройки установлен (`kwin/effects/configs/<модуль>.so`).
+/// The settings module is installed (`kwin/effects/configs/<module>.so`).
 fn config_module_installed(io: &dyn LookIo, ctx: &LookCtx, module: &str) -> bool {
     let file = format!("{module}.so");
     ctx.plugin_dirs.iter().any(|d| io.list_dir(&format!("{d}/kwin/effects/configs")).contains(&file))
 }
 
-/// Все эффекты KWin на машине (без проверки «поддерживается»).
+/// All KWin effects on the machine (without the "supported" check).
 fn scan_kwin_effects(io: &dyn LookIo, ctx: &LookCtx) -> Vec<KwinMeta> {
     let mut out: Vec<KwinMeta> = Vec::new();
     let push = |m: KwinMeta, out: &mut Vec<KwinMeta>| {
@@ -1077,7 +1077,7 @@ fn scan_kwin_effects(io: &dyn LookIo, ctx: &LookCtx) -> Vec<KwinMeta> {
     };
     let roots = data_roots(ctx);
     let lang = crate::i18n::current_language();
-    // Встроенные: только первый каталог, где `builtin-effects` есть.
+    // Built-in: only the first directory where `builtin-effects` exists.
     for root in &roots {
         let dir = format!("{root}/kwin/builtin-effects");
         let files: Vec<String> = io.list_dir(&dir).into_iter().filter(|f| f.ends_with(".json")).collect();
@@ -1091,7 +1091,7 @@ fn scan_kwin_effects(io: &dyn LookIo, ctx: &LookCtx) -> Vec<KwinMeta> {
         }
         break;
     }
-    // Сценарии.
+    // Scripts.
     for root in &roots {
         let dir = format!("{root}/kwin/effects");
         for name in io.list_dir(&dir) {
@@ -1107,7 +1107,7 @@ fn scan_kwin_effects(io: &dyn LookIo, ctx: &LookCtx) -> Vec<KwinMeta> {
             push(m, &mut out);
         }
     }
-    // Модули `.so`.
+    // `.so` modules.
     for root in &ctx.plugin_dirs {
         let dir = format!("{root}/kwin/effects/plugins");
         for file in io.list_dir(&dir) {
@@ -1127,7 +1127,7 @@ fn scan_kwin_effects(io: &dyn LookIo, ctx: &LookCtx) -> Vec<KwinMeta> {
             push(kwin_meta(&serde_json::Value::Object(top), stem, false, &lang), &mut out);
         }
     }
-    // Модуль настройки (не общий для сценариев) должен стоять на машине.
+    // The settings module (not the shared one for scripts) must be installed on the machine.
     for m in &mut out {
         if m.config.as_ref().is_some_and(|(module, args)| args.is_empty() && !config_module_installed(io, ctx, module)) {
             m.config = None;
@@ -1136,8 +1136,8 @@ fn scan_kwin_effects(io: &dyn LookIo, ctx: &LookCtx) -> Vec<KwinMeta> {
     out
 }
 
-/// Какие из эффектов живой KWin умеет показать (`areEffectsSupported`).
-/// None — KWin не ответил (другое окружение, стенд): считаем, что все.
+/// Which of the effects the live KWin can show (`areEffectsSupported`).
+/// None — KWin did not answer (another desktop, the test bench): we assume all.
 fn kwin_supported(io: &dyn LookIo, ids: &[String]) -> Option<Vec<bool>> {
     if ids.is_empty() || !io.have("dbus-send") {
         return None;
@@ -1162,7 +1162,7 @@ fn kwin_supported(io: &dyn LookIo, ids: &[String]) -> Option<Vec<bool>> {
     (v.len() == ids.len()).then_some(v)
 }
 
-/// Подпись категории — те же восемь, что знает KDE; прочие как есть.
+/// Category label — the same eight KDE knows; others as is.
 fn effect_category(raw: &str) -> String {
     const KNOWN: &[(&str, &str)] = &[
         ("Accessibility", n_("Accessibility")),
@@ -1180,33 +1180,33 @@ fn effect_category(raw: &str) -> String {
     }
 }
 
-/// Эффект в списке «Эффекты рабочего стола».
+/// An effect in the "Desktop Effects" list.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DesktopEffect {
     pub id: String,
     pub name: String,
     pub description: String,
-    /// Заголовок группы в списке.
+    /// Group header in the list.
     pub category: String,
-    /// Исключающая группа: включён не больше чем один.
+    /// Exclusive group: at most one is enabled.
     pub group: String,
     pub enabled: bool,
-    /// Есть страница настроек («Настроить…»).
+    /// There is a settings page ("Configure…").
     pub configurable: bool,
-    /// Строка для поиска (имя, описание, категория) в нижнем регистре.
+    /// The search string (name, description, category) in lowercase.
     pub search: String,
 }
 
-/// Снимок списка для страницы.
+/// List snapshot for the page.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DesktopEffectsState {
-    /// Раздел есть (только KDE: эффекты — у KWin).
+    /// The section exists (KDE only: effects belong to KWin).
     pub available: bool,
     pub effects: Vec<DesktopEffect>,
 }
 
-/// Эффекты, которые список «Эффекты рабочего стола» показывает: без
-/// служебных и без уже показанных в «Анимации».
+/// Effects the "Desktop Effects" list shows: without
+/// internal ones and without those already shown in "Animation".
 fn listed_effects(io: &dyn LookIo, ctx: &LookCtx) -> Vec<KwinMeta> {
     let mut v: Vec<KwinMeta> = scan_kwin_effects(io, ctx)
         .into_iter()
@@ -1222,7 +1222,7 @@ fn listed_effects(io: &dyn LookIo, ctx: &LookCtx) -> Vec<KwinMeta> {
     v
 }
 
-/// Снимок списка «Эффекты рабочего стола».
+/// Snapshot of the "Desktop Effects" list.
 pub fn desktop_effects_state(io: &dyn LookIo, ctx: &LookCtx) -> DesktopEffectsState {
     if ctx.de != "kde" {
         return DesktopEffectsState { available: false, effects: Vec::new() };
@@ -1244,12 +1244,12 @@ pub fn desktop_effects_state(io: &dyn LookIo, ctx: &LookCtx) -> DesktopEffectsSt
             }
         })
         .collect();
-    // Порядок KDE: категория, исключающая группа, имя.
+    // KDE order: category, exclusive group, name.
     effects.sort_by(|a, b| (&a.category, &a.group, &a.name).cmp(&(&b.category, &b.group, &b.name)));
     DesktopEffectsState { available: true, effects }
 }
 
-/// План: включить или выключить эффект списка.
+/// Plan: enable or disable an effect of the list.
 pub fn plan_desktop_effect(io: &dyn LookIo, ctx: &LookCtx, id: &str, on: bool) -> Vec<LookStep> {
     if ctx.de != "kde" {
         return Vec::new();
@@ -1272,7 +1272,7 @@ pub fn plan_desktop_effect(io: &dyn LookIo, ctx: &LookCtx, id: &str, on: bool) -
     steps
 }
 
-/// План: все эффекты списка — по умолчанию.
+/// Plan: all effects of the list to defaults.
 pub fn plan_desktop_effects_defaults(io: &dyn LookIo, ctx: &LookCtx) -> Vec<LookStep> {
     if ctx.de != "kde" {
         return Vec::new();
@@ -1298,19 +1298,19 @@ fn run_effect_steps(io: &dyn LookIo, ctx: &LookCtx, steps: &[LookStep]) -> Strin
     }
 }
 
-/// Включить или выключить эффект: фраза для всплывающего сообщения.
+/// Enable or disable an effect: the sentence for the popup message.
 pub fn set_desktop_effect(io: &dyn LookIo, ctx: &LookCtx, id: &str, on: bool) -> String {
     run_effect_steps(io, ctx, &plan_desktop_effect(io, ctx, id, on))
 }
 
-/// «По умолчанию» для списка.
+/// "Defaults" for the list.
 pub fn desktop_effects_defaults(io: &dyn LookIo, ctx: &LookCtx) -> String {
     run_effect_steps(io, ctx, &plan_desktop_effects_defaults(io, ctx))
 }
 
-/// Команда, открывающая страницу настроек эффекта; None — страницы нет.
-/// Ищется среди всех эффектов, а не только списка: «Настроить…» есть и у
-/// строк «Анимации» (скольжение, волшебная лампа, вход в систему…).
+/// The command that opens an effect's settings page; None — no page.
+/// It is searched among all effects, not only the list: "Configure…" is also on
+/// "Animation" rows (glide, magic lamp, login…).
 pub fn effect_config_argv(io: &dyn LookIo, ctx: &LookCtx, id: &str) -> Option<Vec<String>> {
     if ctx.de != "kde" {
         return None;
@@ -1318,7 +1318,7 @@ pub fn effect_config_argv(io: &dyn LookIo, ctx: &LookCtx, id: &str) -> Option<Ve
     let (module, args) = scan_kwin_effects(io, ctx).into_iter().find(|m| m.id == id)?.config?;
     let mut a = vec!["kcmshell6".to_string()];
     if !args.is_empty() {
-        // `kcmshell6` делит `--args` по пробелам с кавычками оболочки.
+        // `kcmshell6` splits `--args` by spaces with shell quoting.
         let quoted: Vec<String> = args
             .iter()
             .map(|x| if x.contains(|c: char| c.is_whitespace() || c == '\'' || c == '"') { format!("'{}'", x.replace('\'', "'\\''")) } else { x.clone() })
@@ -1330,7 +1330,7 @@ pub fn effect_config_argv(io: &dyn LookIo, ctx: &LookCtx, id: &str) -> Option<Ve
     Some(a)
 }
 
-/// Эффекты с собственной страницей настроек (для строк «Анимации»).
+/// Effects with their own settings page (for "Animation" rows).
 fn configurable_ids(io: &dyn LookIo, ctx: &LookCtx) -> Vec<String> {
     if ctx.de != "kde" || !io.have("kcmshell6") {
         return Vec::new();
@@ -1338,7 +1338,7 @@ fn configurable_ids(io: &dyn LookIo, ctx: &LookCtx) -> Vec<String> {
     scan_kwin_effects(io, ctx).into_iter().filter(|m| m.config.is_some()).map(|m| m.id).collect()
 }
 
-/// «Настроить…»: открыть страницу настроек эффекта. Пусто — открыта.
+/// "Configure…": open the effect's settings page. Empty — opened.
 pub fn configure_effect(io: &dyn LookIo, ctx: &LookCtx, id: &str) -> String {
     let Some(a) = effect_config_argv(io, ctx, id) else {
         return tr("This effect has no settings of its own.");
@@ -1354,14 +1354,14 @@ pub fn configure_effect(io: &dyn LookIo, ctx: &LookCtx, id: &str) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Hyprland и niri: наш файл
+// Hyprland and niri: our file
 // ═══════════════════════════════════════════════════════════════════════════
 
 pub const ANIM_TAG: &str = "animations";
 pub const ANIM_STEM: &str = "rexon-animations";
 
-/// Стандартный набор анимаций Hyprland 0.56 (`/usr/share/hypr/hyprland.lua`):
-/// (лист, скорость в децисекундах, кривая).
+/// Hyprland 0.56 standard animation set (`/usr/share/hypr/hyprland.lua`):
+/// (leaf, speed in deciseconds, curve).
 const HYPR_LEAVES: &[(&str, f64, &str)] = &[
     ("global", 10.0, "default"),
     ("border", 5.39, "rexonQuint"),
@@ -1389,7 +1389,7 @@ const HYPR_BEZIERS: &[(&str, [f64; 4])] = &[
     ("rexonQuick", [0.15, 0.0, 0.1, 1.0]),
 ];
 
-/// Значения строк Hyprland по умолчанию (как стандартный конфиг).
+/// Default Hyprland row values (as in the standard config).
 fn hypr_defaults() -> BTreeMap<String, String> {
     [("openClose", "popin"), ("desktopSwitch", "fade"), ("layers", "true"), ("fade", "true")]
         .iter()
@@ -1409,7 +1409,7 @@ fn n(v: f64) -> String {
     s.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
-/// Наш файл Hyprland.
+/// Our Hyprland file.
 pub fn hypr_content(s: &AnimSettings, syntax: WmSyntax) -> String {
     let lua = syntax == WmSyntax::HyprLua;
     let c = syntax.comment();
@@ -1466,7 +1466,7 @@ pub fn hypr_content(s: &AnimSettings, syntax: WmSyntax) -> String {
             _ => "",
         };
         let speed = n((speed * s.factor).max(0.01));
-        // У hyprland.conf пружин нет — там окна идут по той же кривой, что рамка.
+        // hyprland.conf has no springs — windows there follow the same curve as the border.
         let curve = if !lua && *curve == "rexonEasy" { "rexonQuint" } else { curve };
         out.push_str(&if lua {
             if !on {
@@ -1486,7 +1486,7 @@ pub fn hypr_content(s: &AnimSettings, syntax: WmSyntax) -> String {
     out
 }
 
-/// Наш файл niri.
+/// Our niri file.
 pub fn niri_content(s: &AnimSettings) -> String {
     let mut state = s.values.clone();
     state.insert("enabled".into(), s.enabled.to_string());
@@ -1529,10 +1529,10 @@ fn settings_from_state(map: &BTreeMap<String, String>, defaults: BTreeMap<String
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Снимок
+// Snapshot
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Строки (без значений) для окружения.
+/// Rows (without values) for a desktop.
 fn row_defs(io: &dyn LookIo, ctx: &LookCtx) -> Vec<EffectRow> {
     match ctx.de.as_str() {
         "kde" => {
@@ -1570,7 +1570,7 @@ fn row_defs(io: &dyn LookIo, ctx: &LookCtx) -> Vec<EffectRow> {
     }
 }
 
-/// Cinnamon: строка → ключ `org.cinnamon`.
+/// Cinnamon: row → `org.cinnamon` key.
 const CINNAMON_KEYS: &[(&str, &str)] = &[
     ("open", "desktop-effects-map"),
     ("close", "desktop-effects-close"),
@@ -1581,7 +1581,7 @@ const CINNAMON_KEYS: &[(&str, &str)] = &[
     ("login", "startup-animation"),
 ];
 
-/// Cinnamon `window-effect-speed` (0 медленнее … 2 быстрее) ↔ множитель.
+/// Cinnamon `window-effect-speed` (0 slower … 2 faster) ↔ multiplier.
 fn cinnamon_speed_to_factor(v: &str) -> f64 {
     match v {
         "0" => 2.0,
@@ -1614,7 +1614,7 @@ fn gnome_schema(de: &str) -> &'static str {
     }
 }
 
-/// Настройки как они стоят сейчас.
+/// The settings as they are now.
 pub fn read_settings(io: &dyn LookIo, ctx: &LookCtx) -> AnimSettings {
     let mut s = AnimSettings { enabled: true, factor: 1.0, values: BTreeMap::new() };
     match ctx.de.as_str() {
@@ -1665,22 +1665,22 @@ pub fn read_settings(io: &dyn LookIo, ctx: &LookCtx) -> AnimSettings {
     s
 }
 
-/// Есть ли у оконного менеджера стола анимации окон, которые Rexon
-/// настраивает. Где их нет (Marco, xfwm4 и столы, у которых своих настроек
-/// анимации нет вовсе — [`note`]), от раздела «Анимация» остаётся одна
-/// галочка «Без анимаций» для программ: такого раздела в боковой панели
-/// нет, а галочка — вид «⚙️ Настройки» раздела «GTK-темы»
-/// (`categories::SECTION_SETTINGS`, решение Wehrwolfmann 08.11.2026).
+/// Whether the desktop's window manager has window animations that Rexon
+/// configures. Where there are none (Marco, xfwm4 and desktops with no animation
+/// settings of their own at all — [`note`]), all that is left of the "Animation" section is a single
+/// "No animations" checkbox for programs: there is no such section in the sidebar,
+/// and the checkbox is the "⚙️ Settings" view of the "GTK themes" section
+/// (`categories::SECTION_SETTINGS`, Wehrwolfmann's decision of 08.11.2026).
 pub fn has_window_animations(de: &str) -> bool {
     matches!(de, "kde" | "gnome" | "budgie" | "pantheon" | "cinnamon-mint" | "cinnamon" | "hyprland" | "niri")
 }
 
-/// Есть ли ползунок скорости.
+/// Whether there is a speed slider.
 pub fn has_speed(de: &str) -> bool {
     matches!(de, "kde" | "cinnamon-mint" | "hyprland" | "niri")
 }
 
-/// Пояснение под разделом.
+/// The explanation under the section.
 pub fn note(de: &str) -> String {
     match de {
         "kde" => tr("Not every application follows the speed: GTK applications can only turn animations on or off."),
@@ -1694,7 +1694,7 @@ pub fn note(de: &str) -> String {
     }
 }
 
-/// Снимок для страницы.
+/// Snapshot for the page.
 pub fn read_state(io: &dyn LookIo, ctx: &LookCtx) -> AnimState {
     let s = read_settings(io, ctx);
     let mut rows = row_defs(io, ctx);
@@ -1719,7 +1719,7 @@ pub fn read_state(io: &dyn LookIo, ctx: &LookCtx) -> AnimState {
     }
 }
 
-/// Значения по умолчанию окружения.
+/// The desktop's default values.
 pub fn default_settings(io: &dyn LookIo, ctx: &LookCtx) -> AnimSettings {
     let mut values = BTreeMap::new();
     match ctx.de.as_str() {
@@ -1747,10 +1747,10 @@ pub fn default_settings(io: &dyn LookIo, ctx: &LookCtx) -> AnimSettings {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// План записи
+// Write plan
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Новое состояние после изменения.
+/// The new state after a change.
 pub fn changed(io: &dyn LookIo, ctx: &LookCtx, old: &AnimSettings, change: &AnimChange) -> AnimSettings {
     let mut s = old.clone();
     match change {
@@ -1767,8 +1767,8 @@ pub fn changed(io: &dyn LookIo, ctx: &LookCtx, old: &AnimSettings, change: &Anim
     s
 }
 
-/// План перехода из `old` в `new`. Пишется только то, что меняется:
-/// повторное применение того же значения даёт пустой план.
+/// The plan for going from `old` to `new`. Only what changes is written:
+/// reapplying the same value gives an empty plan.
 pub fn plan_settings(io: &dyn LookIo, ctx: &LookCtx, old: &AnimSettings, new: &AnimSettings) -> Vec<LookStep> {
     let mut steps = Vec::new();
     let bool_s = |b: bool| if b { "true" } else { "false" };
@@ -1835,7 +1835,7 @@ pub fn plan_settings(io: &dyn LookIo, ctx: &LookCtx, old: &AnimSettings, new: &A
             }
         }
         "hyprland" | "niri" => {
-            // Наш файл описывает ВСЁ состояние: сравниваем с тем, что лежит.
+            // Our file describes the WHOLE state: compare with what is there.
             let de = ctx.de.clone();
             let new2 = new.clone();
             let content = move |syntax: WmSyntax| {
@@ -1863,14 +1863,14 @@ pub fn plan_settings(io: &dyn LookIo, ctx: &LookCtx, old: &AnimSettings, new: &A
     steps
 }
 
-/// План одного изменения.
+/// The plan of one change.
 pub fn plan_change(io: &dyn LookIo, ctx: &LookCtx, change: &AnimChange) -> Vec<LookStep> {
     let old = read_settings(io, ctx);
     let new = changed(io, ctx, &old, change);
     plan_settings(io, ctx, &old, &new)
 }
 
-/// Применить изменение: готовая фраза для всплывающего сообщения.
+/// Apply a change: the ready sentence for the popup message.
 pub fn apply_change(io: &dyn LookIo, ctx: &LookCtx, change: &AnimChange) -> String {
     let steps = plan_change(io, ctx, change);
     if steps.is_empty() {
@@ -1885,8 +1885,8 @@ pub fn apply_change(io: &dyn LookIo, ctx: &LookCtx, change: &AnimChange) -> Stri
 #[cfg(test)]
 mod tests {
 
-    /// Выбор «Текущее окружение» ведёт разделы «Оформления»: стол и род
-    /// сеанса — выбранного; «авто», пусто и тот же стол — сеанс как есть.
+    /// The "Current desktop" choice drives the "Appearance" sections: the desktop and the session
+    /// kind are the selected one's; "auto", empty and the same desktop — the session as is.
     #[test]
     fn chosen_desktop_leads_the_look_sections() {
         let mut kde = LookCtx::new("kde", "/h", None);
@@ -1906,17 +1906,17 @@ mod tests {
     use std::cell::RefCell;
     use std::collections::HashMap;
 
-    /// Подставная машина: файлы в памяти, gsettings/xfconf/kwriteconfig6 —
-    /// в той же памяти, валидаторы композиторов всегда «да».
+    /// A fake machine: files in memory, gsettings/xfconf/kwriteconfig6 —
+    /// in the same memory, compositor validators always say "yes".
     #[derive(Default)]
     pub struct FakeIo {
         pub files: RefCell<HashMap<String, String>>,
         pub gs: RefCell<HashMap<String, String>>,
         pub ran: RefCell<Vec<Vec<String>>>,
         pub cfg: String,
-        /// Двоичные файлы (модули `.so`).
+        /// Binary files (`.so` modules).
         pub bins: RefCell<HashMap<String, Vec<u8>>>,
-        /// Запущенное без ожидания (`kcmshell6`) — только запись.
+        /// Started without waiting (`kcmshell6`) — recorded only.
         pub spawned: RefCell<Vec<Vec<String>>>,
     }
 
@@ -1974,7 +1974,7 @@ mod tests {
         fn read_bytes(&self, p: &str) -> Option<Vec<u8>> {
             self.bins.borrow().get(p).cloned().or_else(|| self.read(p).map(String::into_bytes))
         }
-        /// Имена прямо в каталоге — из ключей файлов в памяти.
+        /// Names directly in the directory — from the keys of in-memory files.
         fn list_dir(&self, dir: &str) -> Vec<String> {
             let prefix = format!("{}/", dir.trim_end_matches('/'));
             let mut v: Vec<String> = self
@@ -2023,14 +2023,14 @@ mod tests {
         let kwinrc = io.files.borrow()["/h/.config/kwinrc"].clone();
         assert!(kwinrc.contains("glideEnabled=true"), "{kwinrc}");
         assert!(kwinrc.contains("scaleEnabled=false"), "{kwinrc}");
-        // Повтор — пустой план.
+        // A repeat — an empty plan.
         assert!(plan_change(&io, &c, &AnimChange::Row { id: "openClose".into(), value: "glide".into() }).is_empty());
         assert!(plan_change(&io, &c, &AnimChange::Speed(0.5)).is_empty());
-        // «Без анимаций» → 0, обратно → прежний множитель.
+        // "No animations" → 0, back → the previous multiplier.
         apply(&io, &c, AnimChange::Enabled(false));
         assert!(io.files.borrow()["/h/.config/kdeglobals"].contains("AnimationDurationFactor=0"));
         assert!(io.files.borrow()["/h/.config/gtk-3.0/settings.ini"].contains("gtk-enable-animations=false"));
-        // Откат: возврат к исходному снимку.
+        // Rollback: return to the original snapshot.
         let back = plan_settings(&io, &c, &read_settings(&io, &c), &before);
         run_steps(&io, &c, &back).unwrap();
         let after = read_settings(&io, &c);
@@ -2092,8 +2092,8 @@ mod tests {
         assert!(own.contains("leaf = \"windowsIn\", enabled = true, speed = 4.1, spring = \"rexonEasy\", style = \"slide\""), "{own}");
     }
 
-    /// Отказ команды называет причину: последняя строка stderr, без него —
-    /// stdout, без обоих — таймаут или ошибка запуска.
+    /// A command failure names the reason: the last stderr line, without it —
+    /// stdout, without both — a timeout or a launch error.
     #[test]
     fn run_failure_text_names_reason() {
         use crate::utils::{RunOutcome, RunReport};
@@ -2116,8 +2116,8 @@ mod tests {
         assert_eq!(run_failure_text("gsettings", &e), "No such file or directory");
     }
 
-    /// Машина с эффектами KWin: встроенные, сценарии (личный и системный),
-    /// модуль `.so` и модули настройки.
+    /// A machine with KWin effects: built-in, scripts (personal and system),
+    /// a `.so` module and settings modules.
     fn kwin_machine() -> FakeIo {
         let io = fake();
         let mut f = io.files.borrow_mut();
@@ -2144,7 +2144,7 @@ mod tests {
         for m in ["kwin_blur_config", "kwin_glide_config", "kcm_kwin4_genericscripted"] {
             bins.insert(format!("{q}/configs/{m}.so"), vec![0]);
         }
-        // Модуль `.so` с вшитыми метаданными (CBOR), как у Qt 6.
+        // A `.so` module with embedded metadata (CBOR), as in Qt 6.
         let mut so = b"\x7fELF junk ".to_vec();
         so.extend_from_slice(b"\xa3\x67KPlugin\xa3\x62Id\x68smodglow\x64Name\x69SMOD Glow\x68Category\x6aAppearance");
         so.extend_from_slice(b"\x73org.kde.kwin.effect\xa1\x6eexclusiveGroup\x64mine");
@@ -2162,7 +2162,7 @@ mod tests {
         let st = desktop_effects_state(&io, &c);
         assert!(st.available);
         let ids: Vec<&str> = st.effects.iter().map(|e| e.id.as_str()).collect();
-        // Нет служебного zoom, нет glide и slidingpopups — они в «Анимации».
+        // No internal zoom, no glide and slidingpopups — they are in "Animation".
         let mut sorted = ids.clone();
         sorted.sort();
         assert_eq!(sorted, ["blur", "myfx", "otherfx", "smodglow", "translucency", "wobblywindows"], "{ids:?}");
@@ -2170,16 +2170,16 @@ mod tests {
         assert!(get("blur").enabled && get("blur").configurable);
         assert_eq!(get("blur").category, "Appearance");
         assert!(get("blur").search.contains("blurs the background"));
-        // Модуля настройки на машине нет — кнопки нет.
+        // The settings module is not on the machine — no button.
         assert!(!get("wobblywindows").configurable && !get("wobblywindows").enabled);
-        // Сценарий без config.ui — у KDE тоже без «Настроить…».
+        // A script without config.ui — KDE also has no "Configure…" for it.
         assert!(!get("translucency").configurable);
         assert!(get("myfx").configurable && get("myfx").group == "mine");
-        // Модуль `.so`: имя, группа и модуль настройки — из вшитых метаданных;
-        // самого модуля настройки нет на машине.
+        // A `.so` module: name, group and settings module — from the embedded metadata;
+        // the settings module itself is not on the machine.
         let glow = get("smodglow");
         assert_eq!((glow.name.as_str(), glow.group.as_str(), glow.configurable), ("SMOD Glow", "mine", false));
-        // Порядок KDE: категория, группа, имя.
+        // KDE order: category, group, name.
         assert_eq!(ids.first(), Some(&"blur"));
         assert_eq!(ids.last(), Some(&"otherfx"));
         assert_eq!(
@@ -2213,20 +2213,20 @@ mod tests {
         let kwinrc = || io.files.borrow().get("/h/.config/kwinrc").cloned().unwrap_or_default();
         assert_eq!(set_desktop_effect(&io, &c, "wobblywindows", true), "Desktop effect settings applied.");
         assert!(kwinrc().contains("wobblywindowsEnabled=true"), "{}", kwinrc());
-        // Повтор — ничего не пишется.
+        // A repeat — nothing is written.
         assert!(plan_desktop_effect(&io, &c, "wobblywindows", true).is_empty());
         set_desktop_effect(&io, &c, "blur", false);
         assert!(kwinrc().contains("blurEnabled=false"));
-        // Исключающая группа: включили otherfx — myfx (и модуль .so) выключены.
+        // Exclusive group: otherfx was enabled — myfx (and the .so module) are disabled.
         set_desktop_effect(&io, &c, "otherfx", true);
         let k = kwinrc();
         assert!(k.contains("otherfxEnabled=true") && k.contains("myfxEnabled=false"), "{k}");
         assert!(!k.contains("smodglowEnabled"), "{k}");
         let st = desktop_effects_state(&io, &c);
         assert!(!st.effects.iter().find(|e| e.id == "myfx").unwrap().enabled);
-        // Эффекты «Анимации» отсюда не трогаются.
+        // "Animation" effects are not touched from here.
         assert!(plan_desktop_effect(&io, &c, "glide", true).is_empty());
-        // «По умолчанию» — ключи удалены.
+        // "Defaults" — the keys are deleted.
         desktop_effects_defaults(&io, &c);
         let k = kwinrc();
         assert!(!k.contains("Enabled="), "{k}");
@@ -2243,7 +2243,7 @@ mod tests {
         let opt = |id: &str| open.options.iter().find(|o| o.id == id).unwrap().configurable;
         assert!(opt("glide") && !opt("fade") && !opt("none"));
         assert!(row("login").configurable && !row("logout").configurable);
-        // Вне KDE — кнопок нет нигде.
+        // Outside KDE — no buttons anywhere.
         let st = read_state(&io, &ctx("cinnamon-mint"));
         assert!(st.rows.iter().all(|r| !r.configurable && r.options.iter().all(|o| !o.configurable)));
     }

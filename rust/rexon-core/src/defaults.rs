@@ -1,55 +1,57 @@
-//! Защита приложений по умолчанию при смене DE — порт
-//! `rexon/defaults.py` (класс `SystemDefaultsProtector`).
+//! Protection of default applications when the DE changes, a port of
+//! `rexon/defaults.py` (the `SystemDefaultsProtector` class).
 //!
-//! Модуль сохраняет/восстанавливает «приложения по умолчанию» (файловый
-//! менеджер, текстовый редактор, браузер, почта, просмотрщики, плееры,
-//! архиватор, терминал) при установке соседнего DE: снимок текущих defaults
-//! через `xdg-mime`, восстановление старого выбора после установки + запрос
-//! пользователю «появилось новое приложение, переключиться?».
+//! The module saves/restores the "default applications" (file manager,
+//! text editor, browser, mail, viewers, players, archiver, terminal) when a
+//! neighbouring DE is installed: a snapshot of the current defaults through
+//! `xdg-mime`, restoring the old choice after installation + a question to
+//! the user "a new application appeared, switch to it?".
 //!
-//! Принцип порта (как `system_plan.rs` / `installed_scan.rs`): вся ЧИСТАЯ
-//! логика — детерминированные функции вход→выход; побочные эффекты (реальный
-//! subprocess `xdg-mime`/`gsettings`/`kwriteconfig6`, чтение/запись
-//! `~/.config`) НЕ исполняются здесь. Они выражаются либо ПЛАНАМИ команд/
-//! записей ([`TermStep`], [`SetDefault`], [`ProtectDeOutcome`]), либо приходят
-//! готовыми значениями/колбэками (содержимое файлов, `desktop_file_exists`,
-//! вывод `xdg-mime`/`gsettings`). Живое исполнение остаётся на Python-стороне
-//! / будущем мосте.
+//! Port principle (like `system_plan.rs` / `installed_scan.rs`): all the
+//! PURE logic is deterministic input->output functions; side effects (a
+//! real `xdg-mime`/`gsettings`/`kwriteconfig6` subprocess, reading/writing
+//! `~/.config`) are NOT executed here. They are expressed either as PLANS
+//! of commands/writes ([`TermStep`], [`SetDefault`], [`ProtectDeOutcome`])
+//! or arrive as ready values/callbacks (file contents,
+//! `desktop_file_exists`, `xdg-mime`/`gsettings` output). Live execution
+//! stays on the Python side / in a future bridge.
 //!
-//! Паритет БАЙТ-В-БАЙТ с Python: та же сериализация snapshot/rules/pending
-//! (`json.dump(indent=2, ensure_ascii=False)` — совпадает с
-//! `serde_json::to_string_pretty` при feature `preserve_order`), тот же argv
-//! команд, та же генерация `*-mimeapps.list`, тот же разбор
-//! `xdg-terminals.list`/`kdeglobals`/`mimeapps.list`. Эталоны сняты с живого
-//! Python read-only (`tests/golden/defaults_cases.json`).
+//! BYTE-FOR-BYTE parity with Python: the same serialisation of
+//! snapshot/rules/pending (`json.dump(indent=2, ensure_ascii=False)`
+//! matches `serde_json::to_string_pretty` with the `preserve_order`
+//! feature), the same command argv, the same generation of
+//! `*-mimeapps.list`, the same parsing of
+//! `xdg-terminals.list`/`kdeglobals`/`mimeapps.list`. The golden files were
+//! taken from live Python read-only (`tests/golden/defaults_cases.json`).
 //!
-//! Сохранённые квирки оригинала (намеренное расхождение НЕ вводится, паритет):
-//!   * `TerminalService` в `kdeglobals` возвращается «как есть», а
-//!     `TerminalApplication` дополняется суффиксом `.desktop` — асимметрия
-//!     оригинала сохранена;
-//!   * `binary = terminal_desktop.replace(".desktop", "")` затирает ВСЕ
-//!     вхождения подстроки `.desktop`, затем берётся хвост после последней
-//!     точки — сохранено;
-//!   * `action = "updated" if existing else "created"` в `protect_de_mimeapps`
-//!     смотрит на НЕПУСТОТУ разобранного словаря, а не на факт наличия файла
-//!     — сохранено.
+//! Quirks of the original kept (no deliberate divergence introduced, for
+//! parity):
+//!   * `TerminalService` in `kdeglobals` is returned "as is", while
+//!     `TerminalApplication` gets the `.desktop` suffix appended: the
+//!     original's asymmetry is kept;
+//!   * `binary = terminal_desktop.replace(".desktop", "")` erases ALL
+//!     occurrences of the `.desktop` substring, then the tail after the
+//!     last dot is taken: kept;
+//!   * `action = "updated" if existing else "created"` in
+//!     `protect_de_mimeapps` looks at whether the parsed dictionary is
+//!     NON-EMPTY, not at whether the file exists: kept.
 //!
-//! НЕ портировано (исполнение — при подключении к живому Python):
-//!   реальные `subprocess.run`/`safe_run` (`xdg-mime query/default`,
-//!   `gsettings`, `kwriteconfig6`), реальные чтение/запись файлов
+//! NOT ported (execution happens when connected to live Python):
+//!   real `subprocess.run`/`safe_run` (`xdg-mime query/default`,
+//!   `gsettings`, `kwriteconfig6`), real reading/writing of the files
 //!   `~/.config/rexon/*.json`, `~/.config/xdg-terminals.list`,
 //!   `~/.config/kdeglobals`, `~/.config/environment.d/rexon-terminal.conf`,
-//!   `~/.config/*-mimeapps.list`, `os.makedirs`, логирование.
+//!   `~/.config/*-mimeapps.list`, `os.makedirs`, logging.
 
 use crate::i18n::{n_, tr};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
 // ============================================================================
-// Таблицы-константы (порядок = как в Python dict, важен для сериализации)
+// Constant tables (order = as in the Python dict, matters for serialisation)
 // ============================================================================
 
-/// `SystemDefaultsProtector.MIME_TYPES` — тип приложения → MIME.
+/// `SystemDefaultsProtector.MIME_TYPES`: application type -> MIME.
 pub const MIME_TYPES: &[(&str, &str)] = &[
     ("file_manager", "inode/directory"),
     ("text_editor", "text/plain"),
@@ -62,15 +64,15 @@ pub const MIME_TYPES: &[(&str, &str)] = &[
     ("music_player", "audio/mpeg"),
 ];
 
-/// MIME для типа приложения (`MIME_TYPES.get`).
+/// MIME for an application type (`MIME_TYPES.get`).
 pub fn mime_for(app_type: &str) -> Option<&'static str> {
     MIME_TYPES.iter().find(|(k, _)| *k == app_type).map(|(_, v)| *v)
 }
 
-/// Человеческие названия типов приложений — то, что читает покупатель в
-/// «Настройках». Терминал стоит первым: он единственный настраивается не
-/// через MIME, и в интерфейсе его называют так же, как остальные.
-/// Подписи — `msgid`, переводит [`app_type_label`].
+/// Human names of application types: what the customer reads in
+/// "Settings". The terminal comes first: it is the only one not configured
+/// through MIME, and the interface names it the same way as the rest.
+/// The labels are `msgid`s, translated by [`app_type_label`].
 pub const APP_TYPE_LABELS: &[(&str, &str)] = &[
     ("terminal", n_("🖥️ Terminal")),
     ("file_manager", n_("📁 File Manager")),
@@ -84,8 +86,8 @@ pub const APP_TYPE_LABELS: &[(&str, &str)] = &[
     ("music_player", n_("🎵 Music Player")),
 ];
 
-/// Название типа приложения для человека. Незнакомый тип возвращается как
-/// есть — так же, как это делал `APP_TYPE_LABELS.get(key, key)`.
+/// Human name of an application type. An unknown type is returned as is,
+/// just as `APP_TYPE_LABELS.get(key, key)` did.
 pub fn app_type_label(app_type: &str) -> String {
     APP_TYPE_LABELS
         .iter()
@@ -94,14 +96,14 @@ pub fn app_type_label(app_type: &str) -> String {
         .unwrap_or_else(|| app_type.to_string())
 }
 
-/// Порядок ключей rules по умолчанию + значения — порт `self.rules`.
+/// Default rules key order + values, a port of `self.rules`.
 pub const DEFAULT_RULES: &[(&str, bool)] = &[
     ("enabled", true),
     ("terminal", true),
     ("file_manager", true),
     ("text_editor", true),
-    ("browser", false), // браузер не трогаем по умолчанию
-    ("email", false),   // email не трогаем
+    ("browser", false), // the browser is left alone by default
+    ("email", false),   // email is left alone
     ("image_viewer", true),
     ("video_player", true),
     ("pdf_viewer", true),
@@ -109,7 +111,7 @@ pub const DEFAULT_RULES: &[(&str, bool)] = &[
     ("music_player", true),
 ];
 
-/// XDG_CURRENT_DESKTOP → имя файла `*-mimeapps.list` — порт `DE_DESKTOP_NAMES`.
+/// XDG_CURRENT_DESKTOP -> `*-mimeapps.list` file name, a port of `DE_DESKTOP_NAMES`.
 pub const DE_DESKTOP_NAMES: &[(&str, &str)] = &[
     ("kde", "kde"),
     ("gnome", "gnome"),
@@ -134,8 +136,9 @@ fn desktop_name_for(de_id: &str) -> &str {
         .unwrap_or(de_id)
 }
 
-/// Родные приложения каждого DE — порт `DE_NATIVE_APPS`. Порядок пар внутри
-/// DE важен (порядок формирования valid_entries до сортировки на записи).
+/// Native applications of each DE, a port of `DE_NATIVE_APPS`. The order of
+/// pairs within a DE matters (the order valid_entries are built in before
+/// sorting on write).
 pub const DE_NATIVE_APPS: &[(&str, &[(&str, &str)])] = &[
     (
         "kde",
@@ -305,9 +308,10 @@ pub const DE_NATIVE_APPS: &[(&str, &[(&str, &str)])] = &[
             ("audio/flac", "com.system76.CosmicPlayer.desktop"),
         ],
     ),
-    // Budgie: программы Ubuntu Budgie 26.04 по её `/etc/budgie-desktop/defaults.list`
-    // (их ставит набор `budgie` в `system::DE_DATABASE`). Музыка — Lollypop
-    // целиком, как в `appdefaults` (у Ubuntu Budgie MP3/M4A/WAV открывает VLC).
+    // Budgie: the programs of Ubuntu Budgie 26.04 per its
+    // `/etc/budgie-desktop/defaults.list` (installed by the `budgie` set in
+    // `system::DE_DATABASE`). Music is Lollypop throughout, as in
+    // `appdefaults` (Ubuntu Budgie opens MP3/M4A/WAV with VLC).
     (
         "budgie",
         &[
@@ -363,8 +367,8 @@ pub const DE_NATIVE_APPS: &[(&str, &[(&str, &str)])] = &[
             ("audio/ogg", "io.elementary.music.desktop"),
         ],
     ),
-    // Deepin: программы группы `deepin` / `deepin-extra` (имена `.desktop`
-    // сверены с их репозиториями linuxdeepin).
+    // Deepin: programs of the `deepin` / `deepin-extra` groups (`.desktop`
+    // names checked against their linuxdeepin repositories).
     (
         "deepin",
         &[
@@ -384,7 +388,7 @@ pub const DE_NATIVE_APPS: &[(&str, &[(&str, &str)])] = &[
             ("application/x-7z-compressed", "deepin-compressor.desktop"),
         ],
     ),
-    ("hyprland", &[]), // пользователь сам выбирает
+    ("hyprland", &[]), // the user chooses themselves
 ];
 
 fn native_apps_for(de_id: &str) -> Option<&'static [(&'static str, &'static str)]> {
@@ -392,16 +396,17 @@ fn native_apps_for(de_id: &str) -> Option<&'static [(&'static str, &'static str)
 }
 
 // ============================================================================
-// Rules — упорядоченный словарь bool (семантика Python dict)
+// Rules: an ordered bool dictionary (Python dict semantics)
 // ============================================================================
 
-/// Правила защиты: упорядоченные пары (как Python dict). `get` даёт None,
-/// если ключа нет; вызывающие подставляют дефолт (`enabled`→true, прочие→false).
+/// Protection rules: ordered pairs (like a Python dict). `get` gives None
+/// if the key is missing; callers substitute the default (`enabled`->true,
+/// others->false).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rules(pub Vec<(String, bool)>);
 
 impl Rules {
-    /// Дефолтные правила — порт инициализации `self.rules`.
+    /// Default rules, a port of the `self.rules` initialisation.
     pub fn defaults() -> Rules {
         Rules(DEFAULT_RULES.iter().map(|(k, v)| (k.to_string(), *v)).collect())
     }
@@ -421,9 +426,9 @@ impl Rules {
         self.get(app_type).unwrap_or(false)
     }
 
-    /// `self.rules.update(loaded)` — замена по позиции + дозапись новых ключей
-    /// в конец (порт `_load_rules`). `loaded` — JSON-объект bool-значений
-    /// (rules всегда bool).
+    /// `self.rules.update(loaded)`: replace by position + append new keys at
+    /// the end (a port of `_load_rules`). `loaded` is a JSON object of bool
+    /// values (rules are always bool).
     pub fn updated(&self, loaded: &Map<String, Value>) -> Rules {
         let mut out = self.0.clone();
         for (k, v) in loaded {
@@ -447,19 +452,19 @@ impl Rules {
     }
 }
 
-/// `json.dumps(obj, indent=2, ensure_ascii=False)` (кириллица не экранируется,
-/// отступ 2 пробела — совпадает при feature `preserve_order`).
+/// `json.dumps(obj, indent=2, ensure_ascii=False)` (Cyrillic is not
+/// escaped, 2-space indent; matches with the `preserve_order` feature).
 fn to_pretty(v: &Value) -> String {
     serde_json::to_string_pretty(v).expect("Value сериализуется")
 }
 
 // ============================================================================
-// Снимок / pending — сериализация и загрузка
+// Snapshot / pending: serialisation and loading
 // ============================================================================
 
-/// `_save_snapshot`: `{"protected_apps": {...}, "last_updated": ts}` →
-/// json.dump(indent=2, ensure_ascii=False). `last_updated` (isoformat) —
-/// недетерминирован, подаётся параметром.
+/// `_save_snapshot`: `{"protected_apps": {...}, "last_updated": ts}` ->
+/// json.dump(indent=2, ensure_ascii=False). `last_updated` (isoformat) is
+/// non-deterministic and is passed as a parameter.
 pub fn serialize_snapshot(
     protected_apps: &[(String, Option<String>)],
     last_updated: &str,
@@ -493,8 +498,8 @@ fn opt_to_value(v: &Option<String>) -> Value {
     }
 }
 
-/// `_load_snapshot`: извлечь `protected_apps` из разобранного JSON
-/// (порядок ключей как в файле). Отсутствует → пусто.
+/// `_load_snapshot`: extract `protected_apps` from the parsed JSON (key
+/// order as in the file). Missing -> empty.
 pub fn load_protected_apps(parsed: &Value) -> Vec<(String, Option<String>)> {
     parsed
         .get("protected_apps")
@@ -508,10 +513,10 @@ pub fn load_protected_apps(parsed: &Value) -> Vec<(String, Option<String>)> {
 }
 
 // ============================================================================
-// Определение текущего терминала — порт _get_current_terminal
+// Detecting the current terminal: a port of _get_current_terminal
 // ============================================================================
 
-/// `val + ".desktop"` если ещё не оканчивается на `.desktop` (иначе как есть).
+/// `val + ".desktop"` if it does not end with `.desktop` yet (otherwise as is).
 fn maybe_desktop(val: &str) -> String {
     if val.ends_with(".desktop") {
         val.to_string()
@@ -520,15 +525,15 @@ fn maybe_desktop(val: &str) -> String {
     }
 }
 
-/// Из какой схемы gsettings читать текущий терминал (ключ `exec`) — по
-/// сырому `XDG_CURRENT_DESKTOP`; `None` — окружение держит его не в gsettings
-/// (KDE, XFCE…) или своего места нет вовсе.
+/// Which gsettings schema to read the current terminal from (the `exec`
+/// key), by the raw `XDG_CURRENT_DESKTOP`; `None` means the environment
+/// keeps it outside gsettings (KDE, XFCE…) or has no place for it at all.
 ///
-/// Одно решение на продукт (правило #12): раньше одна и та же цепочка
-/// «gnome | cinnamon | budgie → схема GNOME, mate → схема MATE» жила тремя
-/// копиями — здесь, в исполнителе смены стола и во вкладке «Настройки».
-/// Cinnamon читается из схемы GNOME намеренно: её общий слой
-/// [`set_terminal_plan`] пишет всегда.
+/// One decision for the product (rule #12): the same chain "gnome |
+/// cinnamon | budgie -> the GNOME schema, mate -> the MATE schema" used to
+/// live in three copies: here, in the desktop switch executor and in the
+/// "Settings" tab. Cinnamon is read from the GNOME schema on purpose: the
+/// common layer of [`set_terminal_plan`] always writes it.
 pub fn terminal_exec_schema(desktop: &str) -> Option<&'static str> {
     let de = desktop.to_lowercase();
     if de.contains("kde") || de.contains("plasma") {
@@ -545,19 +550,19 @@ pub fn terminal_exec_schema(desktop: &str) -> Option<&'static str> {
     }
 }
 
-/// Порт `_get_current_terminal`. Все побочные источники поданы значениями:
-///   * `xdg_terminals_list` — содержимое `~/.config/xdg-terminals.list`;
-///   * `desktop` — сырое `XDG_CURRENT_DESKTOP` (лоуэркейс внутри);
-///   * `kdeglobals` — содержимое `~/.config/kdeglobals` (только KDE-ветка);
-///   * `gsettings_exec` — stdout соответствующей `gsettings get ... exec`
-///     (схему выбирает [`terminal_exec_schema`]).
+/// Port of `_get_current_terminal`. All side sources are passed as values:
+///   * `xdg_terminals_list`: contents of `~/.config/xdg-terminals.list`;
+///   * `desktop`: the raw `XDG_CURRENT_DESKTOP` (lowercased inside);
+///   * `kdeglobals`: contents of `~/.config/kdeglobals` (KDE branch only);
+///   * `gsettings_exec`: stdout of the matching `gsettings get ... exec`
+///     (the schema is chosen by [`terminal_exec_schema`]).
 pub fn get_current_terminal(
     xdg_terminals_list: Option<&str>,
     desktop: &str,
     kdeglobals: Option<&str>,
     gsettings_exec: Option<&str>,
 ) -> Option<String> {
-    // 1. xdg-terminals.list — freedesktop стандарт, независим от DE.
+    // 1. xdg-terminals.list: the freedesktop standard, independent of the DE.
     if let Some(content) = xdg_terminals_list {
         let first = content.lines().next().unwrap_or("").trim();
         if !first.is_empty() {
@@ -589,8 +594,9 @@ pub fn get_current_terminal(
         return Some("org.kde.konsole.desktop".to_string());
     }
 
-    // 3-4. GNOME / Cinnamon / Budgie / Pantheon — схема GNOME, MATE — своя:
-    // какую читать, решает [`terminal_exec_schema`], сюда приходит её ответ.
+    // 3-4. GNOME / Cinnamon / Budgie / Pantheon use the GNOME schema, MATE its
+    // own: which one to read is decided by [`terminal_exec_schema`], and its
+    // answer arrives here.
     if terminal_exec_schema(desktop).is_some() {
         if let Some(out) = gsettings_exec {
             let val = out.trim().trim_matches(|c| c == '\'' || c == '"');
@@ -609,39 +615,40 @@ pub fn get_current_terminal(
 }
 
 // ============================================================================
-// Список терминалов для своего стола: `<стол>-xdg-terminals.list`
+// Terminal list for one's own desktop: `<desktop>-xdg-terminals.list`
 // ============================================================================
 //
-// `xdg-terminal-exec` читает списки по порядку: сперва
-// `~/.config/<стол>-xdg-terminals.list` (стол — каждый элемент
-// `XDG_CURRENT_DESKTOP` в нижнем регистре), и только потом общий
-// `~/.config/xdg-terminals.list`. Список своего стола ПЕРЕБИВАЕТ общий.
-// Пойманный случай (08.11.2026, живая машина владельца): в MATE программа с
-// `Terminal=true` открылась в GNOME Terminal — его назвал чужой
-// `mate-xdg-terminals.list`, а общий список при этом держал konsole,
-// записанный когда-то из Plasma. Поэтому Rexon ведёт и список своего стола:
-// осознанный выбор во вкладке «Настройки» пишется туда с пометкой
-// [`TERMINALS_LIST_CHOSEN_MARK`], а при входе в сеанс стол с родным
-// терминалом получает его с пометкой [`TERMINALS_LIST_NATIVE_MARK`] — если
-// только человек не выбрал терминал для этого стола сам.
+// `xdg-terminal-exec` reads the lists in order: first
+// `~/.config/<desktop>-xdg-terminals.list` (desktop is each element of
+// `XDG_CURRENT_DESKTOP` in lower case), and only then the common
+// `~/.config/xdg-terminals.list`. The own desktop's list OVERRIDES the
+// common one. A caught case (08.11.2026, the owner's live machine): in
+// MATE a program with `Terminal=true` opened in GNOME Terminal: a foreign
+// `mate-xdg-terminals.list` named it, while the common list held konsole,
+// written once from Plasma. So Rexon maintains the own desktop's list too:
+// a deliberate choice in the "Settings" tab is written there with the
+// [`TERMINALS_LIST_CHOSEN_MARK`] mark, and at login a desktop with a
+// native terminal gets it with the [`TERMINALS_LIST_NATIVE_MARK`] mark,
+// unless the person chose a terminal for this desktop themselves.
 
-/// Пометка списка своего стола: терминал выбран человеком в Rexon. Такой
-/// список вход в сеанс не переписывает. Строка-комментарий: `xdg-terminal-exec`
-/// пропускает строки с `#`.
+/// Mark of the own desktop's list: the terminal was chosen by the person in
+/// Rexon. Logging in does not rewrite such a list. A comment line:
+/// `xdg-terminal-exec` skips lines with `#`.
 pub const TERMINALS_LIST_CHOSEN_MARK: &str = "# Rexon: chosen by the user";
 
-/// Пометка списка своего стола: родной терминал стола, записан при входе.
+/// Mark of the own desktop's list: the desktop's native terminal, written at login.
 pub const TERMINALS_LIST_NATIVE_MARK: &str = "# Rexon: native terminal of this desktop";
 
-/// Текст списка своего стола. Терминал — ПЕРВОЙ строкой: её же читает
-/// [`get_current_terminal`].
+/// Text of the own desktop's list. The terminal is on the FIRST line: that
+/// is what [`get_current_terminal`] reads.
 pub fn desktop_terminals_list_text(terminal_desktop: &str, chosen: bool) -> String {
     let mark = if chosen { TERMINALS_LIST_CHOSEN_MARK } else { TERMINALS_LIST_NATIVE_MARK };
     format!("{terminal_desktop}\n{mark}\n")
 }
 
-/// Терминал, выбранный человеком для этого стола (список с пометкой
-/// [`TERMINALS_LIST_CHOSEN_MARK`]); `None` — выбора нет или список чужой.
+/// The terminal chosen by the person for this desktop (a list with the
+/// [`TERMINALS_LIST_CHOSEN_MARK`] mark); `None` means no choice or a
+/// foreign list.
 pub fn chosen_terminal_in_list(content: &str) -> Option<String> {
     if !content.lines().any(|l| l.trim() == TERMINALS_LIST_CHOSEN_MARK) {
         return None;
@@ -650,9 +657,9 @@ pub fn chosen_terminal_in_list(content: &str) -> Option<String> {
     (!first.is_empty() && !first.starts_with('#')).then(|| first.to_string())
 }
 
-/// Какой список читать как «текущий терминал»: список своего стола, если в
-/// нём есть первая строка (`xdg-terminal-exec` берёт его раньше общего),
-/// иначе общий `xdg-terminals.list`.
+/// Which list to read as "the current terminal": the own desktop's list if
+/// it has a first line (`xdg-terminal-exec` takes it before the common
+/// one), otherwise the common `xdg-terminals.list`.
 pub fn effective_terminals_list(desktop_list: Option<String>, general: Option<String>) -> Option<String> {
     desktop_list
         .filter(|c| c.lines().next().is_some_and(|l| !l.trim().is_empty()))
@@ -660,26 +667,27 @@ pub fn effective_terminals_list(desktop_list: Option<String>, general: Option<St
 }
 
 // ============================================================================
-// Свой перебор терминалов (там, где ни один источник ничего не сказал)
+// Our own terminal search (where no source said anything)
 // ============================================================================
 //
-// ⚠️ Почему это вообще нужно. Общесистемный выбор терминала во freedesktop
-// работает через утилиту `xdg-terminal-exec`: это её GLib зовёт первой, и
-// это она читает `~/.config/xdg-terminals.list`, куда пишет Rexon. Но в
-// официальных репозиториях Arch её нет ВОВСЕ (только AUR), в Fedora она
-// появилась лишь в 42, а в Debian/Ubuntu/openSUSE есть, но не ставится ни
-// по умолчанию, ни по зависимостям. То есть «из коробки» её нет нигде, и
-// считать её наличие данностью нельзя. Ниже — свой перебор кандидатов:
-// он даёт осмысленный ответ «какой терминал у человека», даже когда ни один
-// источник настройки ничего не сказал.
+// ⚠️ Why this is needed at all. The system-wide terminal choice in
+// freedesktop works through the `xdg-terminal-exec` utility: GLib calls it
+// first, and it reads `~/.config/xdg-terminals.list`, where Rexon writes.
+// But the official Arch repositories do not have it AT ALL (only the AUR),
+// Fedora got it only in 42, and Debian/Ubuntu/openSUSE have it, but it is
+// installed neither by default nor as a dependency. So "out of the box" it
+// is nowhere, and its presence cannot be taken for granted. Below is our
+// own search over candidates: it gives a meaningful answer to "which
+// terminal does the person have" even when no settings source said
+// anything.
 
-/// Кандидаты терминалов: бинарь → возможные имена его `.desktop`.
+/// Terminal candidates: binary -> possible names of its `.desktop`.
 ///
-/// Порядок — от «родных» терминалов крупных рабочих столов к универсальным.
-/// Имён `.desktop` может быть несколько, потому что дистрибутивы называют
-/// один и тот же файл по-разному (Arch — `org.gnome.Terminal.desktop`,
-/// Debian — `gnome-terminal.desktop`); какое из них реально существует,
-/// смотрит исполнитель и подаёт списком.
+/// The order goes from the "native" terminals of the big desktops to the
+/// universal ones. There can be several `.desktop` names, because
+/// distributions name the same file differently (Arch:
+/// `org.gnome.Terminal.desktop`, Debian: `gnome-terminal.desktop`); which
+/// one really exists is checked by the executor and passed as a list.
 pub const TERMINAL_CANDIDATES: &[(&str, &[&str])] = &[
     ("konsole", &["org.kde.konsole.desktop", "konsole.desktop"]),
     ("kgx", &["org.gnome.Console.desktop", "kgx.desktop"]),
@@ -706,12 +714,13 @@ pub const TERMINAL_CANDIDATES: &[(&str, &[&str])] = &[
     ("xterm", &["xterm.desktop", "debian-xterm.desktop"]),
 ];
 
-/// Первый установленный терминал из [`TERMINAL_CANDIDATES`].
+/// The first installed terminal from [`TERMINAL_CANDIDATES`].
 ///
-/// `available` — имена бинарей, найденных в PATH; `desktops_present` — имена
-/// `.desktop`, реально лежащих в каталогах приложений. Если ни одно из имён
-/// кандидата не нашлось, берём первое (канонический id по freedesktop) —
-/// лучше записать его, чем не записать ничего.
+/// `available` are the binary names found in PATH; `desktops_present` are
+/// the names of `.desktop` files actually present in the application
+/// directories. If none of a candidate's names was found, we take the first
+/// (the canonical freedesktop id): better to write it than to write
+/// nothing.
 pub fn pick_terminal(available: &[String], desktops_present: &[String]) -> Option<String> {
     for (binary, desktop_ids) in TERMINAL_CANDIDATES {
         if !available.iter().any(|b| b == binary) {
@@ -726,11 +735,12 @@ pub fn pick_terminal(available: &[String], desktops_present: &[String]) -> Optio
     None
 }
 
-/// Честное предупреждение для UI, когда `xdg-terminal-exec` в системе нет.
+/// An honest warning for the UI when the system has no `xdg-terminal-exec`.
 ///
-/// Без него выбор терминала остаётся записанным (Rexon пишет его во все три
-/// места), но часть программ, запускающих терминал через GLib, откроет свой.
-/// Правило #13: говорим об этом по-человечески, а не молчим.
+/// Without it the terminal choice stays written (Rexon writes it to all
+/// three places), but some programs that launch a terminal through GLib
+/// will open their own. Rule #13: we say so in plain words rather than stay
+/// silent.
 pub fn terminal_exec_missing_note() -> String {
     tr("Some apps will open their own terminal instead of the one you chose: a \
         system-wide choice needs the xdg-terminal-exec utility, and it isn't \
@@ -738,7 +748,7 @@ pub fn terminal_exec_missing_note() -> String {
         “xdg-terminal-exec” package and it will work everywhere.")
 }
 
-/// Текст статуса терминала для UI: пусто, если предупреждать не о чем.
+/// Terminal status text for the UI: empty if there is nothing to warn about.
 pub fn terminal_status_note(xdg_terminal_exec_present: bool) -> String {
     if xdg_terminal_exec_present {
         String::new()
@@ -748,21 +758,22 @@ pub fn terminal_status_note(xdg_terminal_exec_present: bool) -> String {
 }
 
 // ============================================================================
-// _set_ini_value — чистая трансформация INI (kdeglobals и подобные)
+// _set_ini_value: a pure INI transformation (kdeglobals and the like)
 // ============================================================================
 
-/// Порт `_set_ini_value`. `existing` — содержимое файла (None = файла нет).
-/// `section` — с квадратными скобками (напр. `"[General]"`). Возвращает новое
-/// содержимое файла.
+/// Port of `_set_ini_value`. `existing` is the file contents (None = no
+/// file). `section` comes with square brackets (e.g. `"[General]"`).
+/// Returns the new file contents.
 ///
-/// Пустой `section` — файл без секций (`xfce4/helpers.rc`): ключ правится или
-/// дописывается до первого заголовка `[…]`, если он вообще есть.
+/// An empty `section` means a file without sections (`xfce4/helpers.rc`):
+/// the key is edited or appended before the first `[…]` header, if there is
+/// one at all.
 pub fn set_ini_value(existing: Option<&str>, section: &str, key: &str, value: &str) -> String {
     if section.is_empty() {
         return set_sectionless_value(existing, key, value);
     }
-    // Python читает f.readlines() — строки С завершающим '\n' (кроме, быть
-    // может, последней). split_inclusive воспроизводит это.
+    // Python reads f.readlines(): lines WITH the trailing '\n' (except perhaps
+    // the last one). split_inclusive reproduces this.
     let lines: Vec<&str> = match existing {
         Some(text) => text.split_inclusive('\n').collect(),
         None => Vec::new(),
@@ -771,8 +782,9 @@ pub fn set_ini_value(existing: Option<&str>, section: &str, key: &str, value: &s
     let mut in_section = false;
     let mut found = false;
     let mut new_lines: Vec<String> = Vec::new();
-    // `key = value` с пробелами — тот же ключ (так пишут, например,
-    // `wayfire.ini`): иначе ключ дописывался бы вторым рядом с прежним.
+    // `key = value` with spaces is the same key (that is how, for example,
+    // `wayfire.ini` is written): otherwise the key would be appended a second
+    // time next to the old one.
     let is_key = |s: &str| s.strip_prefix(key).is_some_and(|rest| rest.trim_start().starts_with('='));
 
     for line in &lines {
@@ -802,8 +814,9 @@ pub fn set_ini_value(existing: Option<&str>, section: &str, key: &str, value: &s
     new_lines.concat()
 }
 
-/// [`set_ini_value`] для ключа вне секций: правка по месту до первого
-/// заголовка, иначе строка встаёт перед ним (или в конец файла без секций).
+/// [`set_ini_value`] for a key outside sections: edit in place before the
+/// first header, otherwise the line goes before it (or at the end of a file
+/// without sections).
 fn set_sectionless_value(existing: Option<&str>, key: &str, value: &str) -> String {
     let lines: Vec<&str> = existing.map(|t| t.split_inclusive('\n').collect()).unwrap_or_default();
     let is_key = |s: &str| s.strip_prefix(key).is_some_and(|rest| rest.trim_start().starts_with('='));
@@ -834,12 +847,12 @@ fn set_sectionless_value(existing: Option<&str>, key: &str, value: &str) -> Stri
 }
 
 // ============================================================================
-// _set_terminal — план восстановления терминала
+// _set_terminal: the terminal restore plan
 // ============================================================================
 
-/// Шаг плана восстановления терминала (порт `_set_terminal`). Исполнение — при
-/// подключении к живому Python.
-/// ⚠️ Теги вариантов — ФОРМА для исполнителя плана (см. [`crate::themes::ApplyStep`]).
+/// A step of the terminal restore plan (a port of `_set_terminal`).
+/// Execution happens when connected to live Python.
+/// ⚠️ The variant tags are the FORM for the plan executor (see [`crate::themes::ApplyStep`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "op")]
 pub enum TermStep {
@@ -857,44 +870,46 @@ pub enum TermStep {
     SetIni { path: String, section: String, key: String, value: String },
 }
 
-/// Где окружение держит СВОЙ терминал по умолчанию — одна таблица на весь
-/// Rexon (правило #12). Её читают и вкладка «Настройки»/защита приложений
-/// ([`set_terminal_plan`]), и смена рабочего стола
-/// ([`crate::appdefaults::apply_de_specific`]); раньше у них были две разные
-/// копии, и первая не писала Cinnamon, XFCE и LXQt вовсе.
+/// Where the environment keeps ITS OWN default terminal: one table for the
+/// whole of Rexon (rule #12). It is read both by the "Settings" tab /
+/// application protection ([`set_terminal_plan`]) and by the desktop switch
+/// ([`crate::appdefaults::apply_de_specific`]); previously they had two
+/// different copies, and the first did not write Cinnamon, XFCE and LXQt
+/// at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalHome {
     /// `kdeglobals [General] TerminalApplication/TerminalService`.
     Kde,
     /// `org.gnome.desktop.default-applications.terminal` (GNOME, Budgie,
-    /// Pantheon — своего ключа терминала в схемах io.elementary.* нет).
+    /// Pantheon: the io.elementary.* schemas have no terminal key of their own).
     Gnome,
-    /// `org.cinnamon.desktop.default-applications.terminal` — его берут Nemo
-    /// «Открыть в терминале» и Ctrl+Alt+T.
+    /// `org.cinnamon.desktop.default-applications.terminal`: Nemo's "Open in
+    /// Terminal" and Ctrl+Alt+T take it.
     Cinnamon,
     /// `org.mate.applications-terminal`.
     Mate,
     /// `~/.config/xfce4/helpers.rc TerminalEmulator=` — `exo-open --launch
     /// TerminalEmulator`.
     Xfce,
-    /// `~/.config/lxqt-qtxdg.conf TerminalEmulator=<id>.desktop` — libqtxdg
-    /// `XdgDefaultApps::setTerminal`, файл `<первое из XDG_CURRENT_DESKTOP>-qtxdg`.
+    /// `~/.config/lxqt-qtxdg.conf TerminalEmulator=<id>.desktop`: libqtxdg
+    /// `XdgDefaultApps::setTerminal`, file `<first of XDG_CURRENT_DESKTOP>-qtxdg`.
     Lxqt,
     /// `com.deepin.desktop.default-applications.terminal` `app-id`/`exec`/
-    /// `exec-arg` — его берут Ctrl+Alt+T и «Открыть в терминале» Deepin
+    /// `exec-arg`: Deepin's Ctrl+Alt+T and "Open in Terminal" take it
     /// (dde-daemon `bin/default-terminal`, `keybinding1`).
     Deepin,
-    /// Своего места нет (COSMIC, тайловые): только общий слой.
+    /// No place of its own (COSMIC, tiling ones): only the common layer.
     None,
 }
 
-/// Схема терминала Deepin (deepin-desktop-schemas).
+/// Deepin terminal schema (deepin-desktop-schemas).
 pub const DEEPIN_TERMINAL_SCHEMA: &str = "com.deepin.desktop.default-applications.terminal";
 
-/// Окружение → место терминала. Принимает и сырое `XDG_CURRENT_DESKTOP`
-/// (`X-Cinnamon`, `Budgie:GNOME`, `LXQt`), и идентификатор Rexon
-/// (`cinnamon-mint`, `budgie`). Своей таблицы окружений здесь нет: ответ дают
-/// общие [`crate::de_customization::de_from_id`] и
+/// Environment -> terminal place. Accepts both the raw
+/// `XDG_CURRENT_DESKTOP` (`X-Cinnamon`, `Budgie:GNOME`, `LXQt`) and a Rexon
+/// identifier (`cinnamon-mint`, `budgie`). There is no environment table of
+/// its own here: the answer comes from the shared
+/// [`crate::de_customization::de_from_id`] and
 /// [`crate::system::detect_current_de`].
 pub fn terminal_home(desktop: &str) -> TerminalHome {
     use crate::de_customization::{de_from_id, De};
@@ -913,12 +928,13 @@ pub fn terminal_home(desktop: &str) -> TerminalHome {
     }
 }
 
-/// Места терминала сверх родного [`terminal_home`]: их читают программы
-/// набора стола, а не он сам. Budgie ставится с Nemo (как в Ubuntu Budgie),
-/// а «Открыть в терминале» Nemo берёт терминал из схемы Cinnamon
-/// (`eel-gnome-extensions.c`); Ubuntu Budgie задаёт там тот же терминал
-/// (`25_budgie-desktop-environment.gschema.override`). Без этого Nemo
-/// звал бы `gnome-terminal`, которого в наборе Budgie нет.
+/// Terminal places beyond the native [`terminal_home`]: they are read by
+/// the programs of the desktop's set, not by the desktop itself. Budgie is
+/// installed with Nemo (as in Ubuntu Budgie), and Nemo's "Open in Terminal"
+/// takes the terminal from the Cinnamon schema (`eel-gnome-extensions.c`);
+/// Ubuntu Budgie sets the same terminal there
+/// (`25_budgie-desktop-environment.gschema.override`). Without this Nemo
+/// would call `gnome-terminal`, which is not in the Budgie set.
 pub fn terminal_extra_homes(desktop: &str) -> &'static [TerminalHome] {
     use crate::de_customization::{de_from_id, De};
     let de = de_from_id(desktop).or_else(|| {
@@ -930,17 +946,17 @@ pub fn terminal_extra_homes(desktop: &str) -> &'static [TerminalHome] {
     }
 }
 
-/// Имя программы терминала по его `.desktop` — для `exec` в gsettings,
-/// `TerminalApplication` KDE и помощника XFCE. Там, где имя бинаря не
-/// совпадает с хвостом идентификатора, — явная таблица; иначе хвост после
-/// последней точки в нижнем регистре (`org.kde.konsole` → `konsole`,
-/// `Alacritty` → `alacritty`).
+/// The terminal program name from its `.desktop`: for `exec` in gsettings,
+/// KDE's `TerminalApplication` and the XFCE helper. Where the binary name
+/// does not match the identifier's tail, an explicit table; otherwise the
+/// tail after the last dot in lower case (`org.kde.konsole` -> `konsole`,
+/// `Alacritty` -> `alacritty`).
 pub fn terminal_exec_name(terminal_desktop: &str) -> String {
     match terminal_desktop {
         "org.gnome.Console.desktop" => "kgx".to_string(),
         "org.gnome.Terminal.desktop" => "gnome-terminal".to_string(),
         "com.system76.CosmicTerm.desktop" => "cosmic-term".to_string(),
-        // Хвост после точки дал бы «terminal» — такого бинаря нет.
+        // The tail after the dot would give "terminal", and there is no such binary.
         "io.elementary.terminal.desktop" => "io.elementary.terminal".to_string(),
         _ => {
             let s = terminal_desktop.replace(".desktop", "");
@@ -949,15 +965,15 @@ pub fn terminal_exec_name(terminal_desktop: &str) -> String {
     }
 }
 
-/// Ключ «выполнить команду» (`exec-arg`) для схем gsettings: у
-/// gnome-terminal это `--` (`-e` у него устарел), у mate-terminal — `-x`,
-/// у остальных — общепринятый `-e`.
+/// The "run a command" key (`exec-arg`) for gsettings schemas: for
+/// gnome-terminal it is `--` (its `-e` is deprecated), for mate-terminal
+/// `-x`, for the others the conventional `-e`.
 pub fn terminal_exec_arg(exec_name: &str) -> &'static str {
     match exec_name {
         "gnome-terminal" => "--",
         "mate-terminal" => "-x",
-        // `-e` у терминала elementary берёт ОДНУ строку на флаг, а
-        // «остаток строки как команда» — это `-x` (`--commandline`,
+        // The elementary terminal's `-e` takes ONE string per flag, while "the
+        // rest of the line as a command" is `-x` (`--commandline`,
         // src/Application.vala).
         "io.elementary.terminal" => "-x",
         _ => "-e",
@@ -975,21 +991,23 @@ fn gsettings_terminal_steps(schema: &str, exec: &str) -> Vec<TermStep> {
 }
 
 // ============================================================================
-// Помощники exo в XFCE (`helpers.rc`)
+// exo helpers in XFCE (`helpers.rc`)
 // ============================================================================
 //
-// `exo-open --launch TerminalEmulator` (и «Открыть в терминале» Thunar)
-// берёт имя из `~/.config/xfce4/helpers.rc` и ищет ФАЙЛ помощника
-// `xfce4/helpers/<имя>.desktop` в каталогах данных XDG. Помощники системы
-// (пакет xfce4-settings) есть не у всех программ: у konsole, foot, kgx,
-// mate-terminal, cosmic-term, wezterm, ghostty, ptyxis, Dolphin и Nemo их
-// нет, и одно имя в `helpers.rc` даёт окно «выберите терминал» (Д7, проверка
-// окружений 02.10.2026, снято живьём). Для таких программ пишется СВОЙ
-// помощник `~/.local/share/xfce4/helpers/custom-<Категория>.desktop` — то же
-// имя и тот же вид файла, что заводит сам xfce4-settings, когда человек
-// выбирает «другую программу» (строки установленного `xfce4-mime-helper`).
+// `exo-open --launch TerminalEmulator` (and Thunar's "Open in Terminal")
+// takes the name from `~/.config/xfce4/helpers.rc` and looks for the
+// helper FILE `xfce4/helpers/<name>.desktop` in the XDG data directories.
+// Not every program has a system helper (the xfce4-settings package):
+// konsole, foot, kgx, mate-terminal, cosmic-term, wezterm, ghostty,
+// ptyxis, Dolphin and Nemo have none, and a bare name in `helpers.rc`
+// gives a "choose a terminal" window (D7, environment check of 02.10.2026,
+// captured live). For such programs OUR OWN helper
+// `~/.local/share/xfce4/helpers/custom-<Category>.desktop` is written:
+// the same name and the same kind of file xfce4-settings itself creates
+// when the person chooses "another program" (the strings of the installed
+// `xfce4-mime-helper`).
 
-/// Вид помощника XFCE.
+/// Kind of XFCE helper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum XfceHelper {
     Terminal,
@@ -997,7 +1015,7 @@ pub enum XfceHelper {
 }
 
 impl XfceHelper {
-    /// Ключ `helpers.rc` — он же `X-XFCE-Category` файла помощника.
+    /// The `helpers.rc` key, also the `X-XFCE-Category` of the helper file.
     pub fn key(self) -> &'static str {
         match self {
             XfceHelper::Terminal => "TerminalEmulator",
@@ -1005,16 +1023,16 @@ impl XfceHelper {
         }
     }
 
-    /// Имя своего помощника (`custom-TerminalEmulator`).
+    /// Name of our own helper (`custom-TerminalEmulator`).
     pub fn custom_id(self) -> String {
         format!("custom-{}", self.key())
     }
 }
 
-/// Каталоги помощников системы (`$XDG_DATA_DIRS` по умолчанию).
+/// System helper directories (`$XDG_DATA_DIRS` by default).
 pub const XFCE_SYSTEM_HELPER_DIRS: &[&str] = &["/usr/local/share/xfce4/helpers", "/usr/share/xfce4/helpers"];
 
-/// Есть ли у системы помощник `<name>.desktop`.
+/// Whether the system has a `<name>.desktop` helper.
 pub fn xfce_system_helper_exists(name: &str) -> bool {
     !name.is_empty()
         && !name.contains('/')
@@ -1023,7 +1041,7 @@ pub fn xfce_system_helper_exists(name: &str) -> bool {
             .any(|d| std::path::Path::new(&format!("{d}/{name}.desktop")).is_file())
 }
 
-/// Текст своего помощника для программы `binary`.
+/// Text of our own helper for the program `binary`.
 pub fn xfce_custom_helper_text(kind: XfceHelper, binary: &str) -> String {
     let with_param = match kind {
         XfceHelper::Terminal => format!("{binary} {} %s", terminal_exec_arg(binary)),
@@ -1037,8 +1055,8 @@ pub fn xfce_custom_helper_text(kind: XfceHelper, binary: &str) -> String {
     )
 }
 
-/// Каталог данных рядом с каталогом настроек: `<дом>/.config` →
-/// `<дом>/.local/share` (и `~/.config` → `~/.local/share`).
+/// The data directory next to the config directory: `<home>/.config` ->
+/// `<home>/.local/share` (and `~/.config` -> `~/.local/share`).
 fn data_home_beside(cfg: &str) -> String {
     let cfg = cfg.trim_end_matches('/');
     match cfg.strip_suffix("/.config") {
@@ -1047,9 +1065,10 @@ fn data_home_beside(cfg: &str) -> String {
     }
 }
 
-/// Шаги «программа `binary` — помощник `kind` в XFCE»: имя в `helpers.rc`,
-/// а если у системы помощника для неё нет (`has_system_helper == false`) —
-/// сперва свой помощник `custom-…` в `~/.local/share/xfce4/helpers`.
+/// Steps "program `binary` is the `kind` helper in XFCE": the name in
+/// `helpers.rc`, and if the system has no helper for it
+/// (`has_system_helper == false`), first our own `custom-…` helper in
+/// `~/.local/share/xfce4/helpers`.
 pub fn xfce_helper_steps(kind: XfceHelper, binary: &str, cfg: &str, has_system_helper: bool) -> Vec<TermStep> {
     let mut steps = Vec::new();
     let value = if has_system_helper {
@@ -1072,13 +1091,13 @@ pub fn xfce_helper_steps(kind: XfceHelper, binary: &str, cfg: &str, has_system_h
     steps
 }
 
-/// Записи терминала в РОДНОЕ место окружения (без общего слоя).
-/// `cfg` — каталог настроек (`~/.config` или `$XDG_CONFIG_HOME`).
+/// Terminal writes into the environment's NATIVE place (without the common
+/// layer). `cfg` is the config directory (`~/.config` or `$XDG_CONFIG_HOME`).
 pub fn terminal_home_steps(home: TerminalHome, terminal_desktop: &str, cfg: &str) -> Vec<TermStep> {
     terminal_home_steps_with(home, terminal_desktop, cfg, &xfce_system_helper_exists)
 }
 
-/// То же, с подставным ответом «есть ли помощник системы» (для сверок).
+/// The same, with a fake answer to "is there a system helper" (for parity checks).
 pub fn terminal_home_steps_with(
     home: TerminalHome,
     terminal_desktop: &str,
@@ -1126,8 +1145,9 @@ pub fn terminal_home_steps_with(
             value: terminal_desktop.to_string(),
         }],
         TerminalHome::Deepin => {
-            // `app-id` — имя `.desktop` без расширения: по нему служба Deepin
-            // запускает терминал через менеджер приложений, `exec` — запасной.
+            // `app-id` is the `.desktop` name without the extension: by it the
+            // Deepin service launches the terminal through the application manager;
+            // `exec` is the fallback.
             let app_id = terminal_desktop.trim_end_matches(".desktop");
             let mut steps = vec![TermStep::Run {
                 argv: vec![
@@ -1142,17 +1162,18 @@ pub fn terminal_home_steps_with(
     }
 }
 
-/// Порт `_set_terminal`. `home` — раскрытие `~` (базовый каталог `~/.config`
-/// строится как `{home}/.config`).
+/// Port of `_set_terminal`. `home` is the expansion of `~` (the base
+/// directory `~/.config` is built as `{home}/.config`).
 ///
-/// Общий слой пишется всегда (его видят программы вне своего окружения):
-/// `xdg-terminals.list`, схема GNOME, `environment.d/rexon-terminal.conf`.
-/// Затем — родное место окружения из [`terminal_home_steps`].
+/// The common layer is always written (programs outside their own
+/// environment see it): `xdg-terminals.list`, the GNOME schema,
+/// `environment.d/rexon-terminal.conf`. Then the environment's native place
+/// from [`terminal_home_steps`].
 pub fn set_terminal_plan(terminal_desktop: &str, desktop: &str, home: &str) -> Vec<TermStep> {
     set_terminal_plan_with(terminal_desktop, desktop, home, &xfce_system_helper_exists)
 }
 
-/// То же, с подставным ответом «есть ли помощник XFCE у системы».
+/// The same, with a fake answer to "does the system have an XFCE helper".
 pub fn set_terminal_plan_with(
     terminal_desktop: &str,
     desktop: &str,
@@ -1165,22 +1186,22 @@ pub fn set_terminal_plan_with(
 
     let mut steps = Vec::new();
 
-    // ── ОБЩИЙ СЛОЙ ──
+    // ── COMMON LAYER ──
     // 1. xdg-terminals.list.
     steps.push(TermStep::WriteFile {
         path: format!("{cfg}/xdg-terminals.list"),
         content: format!("{terminal_desktop}\n"),
     });
-    // 1а. Список своего стола — он перебивает общий (см. раздел о
-    // `<стол>-xdg-terminals.list`); с пометкой «выбрано человеком», чтобы
-    // вход в сеанс не заменил выбор родным терминалом.
+    // 1a. The own desktop's list: it overrides the common one (see the section
+    // on `<desktop>-xdg-terminals.list`); marked "chosen by the person", so
+    // that logging in does not replace the choice with the native terminal.
     if let Some(name) = crate::appdefaults::terminals_list_filename(desktop) {
         steps.push(TermStep::WriteFile {
             path: format!("{cfg}/{name}"),
             content: desktop_terminals_list_text(terminal_desktop, true),
         });
     }
-    // 2. Схема GNOME: её читают GLib-программы в любом окружении.
+    // 2. The GNOME schema: GLib programs read it in any environment.
     steps.extend(terminal_home_steps(TerminalHome::Gnome, terminal_desktop, &cfg));
     // 3. environment.d/rexon-terminal.conf.
     let env_dir = format!("{cfg}/environment.d");
@@ -1190,7 +1211,7 @@ pub fn set_terminal_plan_with(
         content: format!("TERMINAL={exec}\n"),
     });
 
-    // ── РОДНОЕ МЕСТО ОКРУЖЕНИЯ ── (GNOME/Budgie уже записаны общим слоем.)
+    // ── NATIVE PLACE OF THE ENVIRONMENT ── (GNOME/Budgie are already written by the common layer.)
     if de_home != TerminalHome::Gnome {
         steps.extend(terminal_home_steps_with(de_home, terminal_desktop, &cfg, xfce_helper_exists));
     }
@@ -1202,19 +1223,20 @@ pub fn set_terminal_plan_with(
 }
 
 // ============================================================================
-// _set_default — установка defaults
+// _set_default: setting defaults
 // ============================================================================
 
-/// Результат `_set_default` (порт). `Terminal` — исполнитель прогоняет
-/// `set_terminal_plan`; `Xdg` — список argv `xdg-mime default …`.
+/// Result of `_set_default` (port). `Terminal`: the executor runs
+/// `set_terminal_plan`; `Xdg`: a list of `xdg-mime default …` argv.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetDefault {
     Terminal(String),
     Xdg(Vec<Vec<String>>),
 }
 
-/// Порт `_set_default`. Неизвестный тип без MIME → пустой `Xdg` (Python
-/// `if not mime: return`). Браузер получает доп. `x-scheme-handler/https`.
+/// Port of `_set_default`. An unknown type without MIME -> an empty `Xdg`
+/// (Python `if not mime: return`). The browser additionally gets
+/// `x-scheme-handler/https`.
 pub fn set_default(app_type: &str, desktop: &str) -> SetDefault {
     if app_type == "terminal" {
         return SetDefault::Terminal(desktop.to_string());
@@ -1240,13 +1262,13 @@ pub fn set_default(app_type: &str, desktop: &str) -> SetDefault {
 }
 
 // ============================================================================
-// snapshot() — обновление protected_apps
+// snapshot(): updating protected_apps
 // ============================================================================
 
-/// Порт `snapshot`: `for key,val in current: if val and rules.get(key,False):
-/// protected[key]=val`. `current` — упорядоченные пары (MIME_TYPES + terminal).
-/// `existing` — уже сохранённые protected_apps (порядок сохраняется, новые
-/// ключи дописываются).
+/// Port of `snapshot`: `for key,val in current: if val and rules.get(key,False):
+/// protected[key]=val`. `current` are ordered pairs (MIME_TYPES + terminal).
+/// `existing` are the already saved protected_apps (order is kept, new keys
+/// are appended).
 pub fn compute_snapshot(
     current: &[(String, Option<String>)],
     rules: &Rules,
@@ -1266,23 +1288,26 @@ pub fn compute_snapshot(
     out
 }
 
-/// Решение «снимать ли эталон защиты при старте окна».
+/// The decision "take the protection baseline at window startup or not".
 ///
-/// Раздел «Защита приложений по умолчанию» включён по умолчанию, но до
-/// первого снятия эталона сверять подмену не с чем: Rexon не помнит ничего и
-/// молча не защищает. Поэтому эталон снимается САМ при первом же запуске.
+/// The "Default application protection" section is on by default, but
+/// until the first baseline is taken there is nothing to compare a
+/// substitution against: Rexon remembers nothing and silently does not
+/// protect. So the baseline is taken BY ITSELF on the very first launch.
 ///
-/// ⭐ Условие — по ФАКТУ, а не по отдельному ключу-флажку «первый запуск»:
-/// защита включена И не запомнено ничего. Так оно само чинится, если эталон
-/// удалили руками или потеряли вместе с профилем, и в правилах не заводится
-/// ещё один ключ, который потом никто не сбросит. Тот же смысл «не
-/// запомнено», что у строки состояния вкладки
-/// (`qt_settings::protection_status_text`): пусто — сравнивать не с чем.
+/// ⭐ The condition is based on the FACT, not on a separate "first launch"
+/// flag key: protection is on AND nothing is remembered. This way it heals
+/// itself if the baseline was deleted by hand or lost with the profile, and
+/// the rules do not get one more key nobody will ever reset. The same
+/// meaning of "not remembered" as in the tab's status line
+/// (`qt_settings::protection_status_text`): empty means nothing to compare
+/// against.
 ///
-/// Уже снятый эталон НЕ переснимается: иначе второй запуск записал бы поверх
-/// подменённое чужим установщиком значение как «правильное» — ровно то, от
-/// чего защита и страхует. Пересъёмка остаётся за кнопкой «Запомнить
-/// сейчас», то есть за осознанным действием человека.
+/// An already taken baseline is NOT retaken: otherwise a second launch
+/// would write over it, as "correct", a value substituted by someone else's
+/// installer, exactly what the protection guards against. Retaking stays
+/// with the "Remember now" button, i.e. with a deliberate action by the
+/// person.
 pub fn should_snapshot_at_startup(
     rules: &Rules,
     remembered: &[(String, Option<String>)],
@@ -1291,13 +1316,13 @@ pub fn should_snapshot_at_startup(
 }
 
 // ============================================================================
-// restore_defaults() — решение восстановления
+// restore_defaults(): the restore decision
 // ============================================================================
 
-/// Итог `restore_defaults` (чистая часть). `results` — упорядочены по обходу
-/// protected_apps; `set_calls` — какие `_set_default(app_type, desktop)`
-/// исполнитель должен вызвать (в порядке); `pending` — итоговый
-/// pending_choices (исходный + добавленные).
+/// Result of `restore_defaults` (the pure part). `results` are ordered by
+/// the traversal of protected_apps; `set_calls` are the
+/// `_set_default(app_type, desktop)` calls the executor must make (in
+/// order); `pending` is the resulting pending_choices (original + added).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RestoreOutcome {
     pub results: Vec<(String, String)>,
@@ -1312,8 +1337,9 @@ fn lookup<'a>(pairs: &'a [(String, Option<String>)], key: &str) -> Option<&'a st
         .and_then(|(_, v)| v.as_deref())
 }
 
-/// Порт `restore_defaults`. `desktop_file_exists` — колбэк наличия `.desktop`.
-/// `existing_pending` — текущий pending_choices (обычно пуст).
+/// Port of `restore_defaults`. `desktop_file_exists` is the `.desktop`
+/// presence callback. `existing_pending` is the current pending_choices
+/// (usually empty).
 pub fn restore_defaults(
     protected_apps: &[(String, Option<String>)],
     rules: &Rules,
@@ -1329,7 +1355,7 @@ pub fn restore_defaults(
     };
 
     if !rules.enabled() {
-        // Python: возвращает {} и НЕ сохраняет pending (in-memory не тронут).
+        // Python: returns {} and does NOT save pending (in-memory is untouched).
         return outcome;
     }
 
@@ -1362,7 +1388,7 @@ pub fn restore_defaults(
             continue;
         }
 
-        // DE НЕ переключён — восстанавливаем старое + запоминаем новое.
+        // The DE is NOT switched: restore the old one + remember the new one.
         outcome.set_calls.push((app_type.clone(), saved_desktop.to_string()));
         outcome.results.push((app_type.clone(), "restored".into()));
 
@@ -1385,7 +1411,7 @@ pub fn restore_defaults(
 // should_protect / resolve_choice
 // ============================================================================
 
-/// Порт `should_protect`.
+/// Port of `should_protect`.
 pub fn should_protect(
     app_type: &str,
     rules: &Rules,
@@ -1404,18 +1430,19 @@ pub fn should_protect(
     }
 }
 
-/// Итог `resolve_choice` (чистая часть).
+/// Result of `resolve_choice` (the pure part).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolveOutcome {
-    /// `_set_default(app_type, new_desktop)` + обновление protected_apps —
-    /// только при use_new и наличии choice.
+    /// `_set_default(app_type, new_desktop)` + an update of protected_apps:
+    /// only with use_new and a choice present.
     pub set_call: Option<(String, String)>,
     pub protected_apps: Vec<(String, Option<String>)>,
     pub pending: Vec<(String, (String, String))>,
 }
 
-/// Порт `resolve_choice`. `pop`-семантика: choice удаляется из pending
-/// независимо от use_new; при use_new — set_default(new) + protected[app]=new.
+/// Port of `resolve_choice`. `pop` semantics: the choice is removed from
+/// pending regardless of use_new; with use_new, set_default(new) +
+/// protected[app]=new.
 pub fn resolve_choice(
     app_type: &str,
     use_new: bool,
@@ -1428,7 +1455,7 @@ pub fn resolve_choice(
         pending: pending.to_vec(),
     };
     let Some(idx) = out.pending.iter().position(|(k, _)| k == app_type) else {
-        // Нет choice — Python возвращает сразу.
+        // No choice: Python returns right away.
         return out;
     };
     let (_, (_, new_desktop)) = out.pending.remove(idx);
@@ -1447,9 +1474,9 @@ pub fn resolve_choice(
 // get_status_summary
 // ============================================================================
 
-/// Порт `get_status_summary`. Возвращает JSON-массив строк (как список dict
-/// Python). `saved`/`current`: значение или `"—"`; `changed`: bool или null
-/// (`saved and cur and saved != cur`).
+/// Port of `get_status_summary`. Returns a JSON array of rows (like the
+/// Python list of dicts). `saved`/`current`: the value or `"—"`; `changed`:
+/// bool or null (`saved and cur and saved != cur`).
 pub fn get_status_summary(
     protected_apps: &[(String, Option<String>)],
     current: &[(String, Option<String>)],
@@ -1464,7 +1491,7 @@ pub fn get_status_summary(
     for app_type in all_types {
         let saved = lookup(protected_apps, app_type);
         let cur = lookup(current, app_type);
-        // changed = saved and cur and saved != cur → null если любой отсутствует
+        // changed = saved and cur and saved != cur -> null if either is missing
         let changed = match (saved, cur) {
             (Some(s), Some(c)) => Value::Bool(s != c),
             _ => Value::Null,
@@ -1484,21 +1511,23 @@ pub fn get_status_summary(
 // _get_exec_from_desktop
 // ============================================================================
 
-/// Порт `_get_exec_from_desktop`: первая строка `Exec=` → первое слово после
-/// `=`. `content` — содержимое `.desktop` (None = файла нет). Ищет по строкам.
+/// Port of `_get_exec_from_desktop`: the first `Exec=` line -> the first
+/// word after `=`. `content` is the `.desktop` contents (None = no file).
+/// Searches line by line.
 pub fn get_exec_from_desktop(content: Option<&str>) -> Option<String> {
     let text = content?;
     for line in text.lines() {
         if let Some(rest) = line.strip_prefix("Exec=") {
-            // rest.strip().split()[0] — первое слово после '=' (split по
-            // пробелам уже игнорирует края, отдельный strip/trim не нужен).
+            // rest.strip().split()[0] is the first word after '=' (splitting on
+            // whitespace already ignores the edges; a separate strip/trim is not
+            // needed).
             return rest.split_whitespace().next().map(String::from);
         }
     }
     None
 }
 
-/// Пути поиска `.desktop` — порт `_desktop_file_exists`. `home` раскрывает `~`.
+/// `.desktop` search paths, a port of `_desktop_file_exists`. `home` expands `~`.
 pub fn desktop_search_paths(desktop: &str, home: &str) -> [String; 2] {
     [
         format!("/usr/share/applications/{desktop}"),
@@ -1507,11 +1536,12 @@ pub fn desktop_search_paths(desktop: &str, home: &str) -> [String; 2] {
 }
 
 // ============================================================================
-// mimeapps.list — разбор / генерация / протекция per-DE
+// mimeapps.list: parsing / generation / per-DE protection
 // ============================================================================
 
-/// Порт `_parse_mimeapps_list`: секция `[Default Applications]` → {mime: desktop}
-/// (desktop — до первой `;`). Возвращает упорядоченные пары (порядок файла).
+/// Port of `_parse_mimeapps_list`: the `[Default Applications]` section ->
+/// {mime: desktop} (desktop up to the first `;`). Returns ordered pairs
+/// (file order).
 pub fn parse_mimeapps_list(content: &str) -> Vec<(String, String)> {
     let mut result: Vec<(String, String)> = Vec::new();
     let mut in_section = false;
@@ -1522,14 +1552,14 @@ pub fn parse_mimeapps_list(content: &str) -> Vec<(String, String)> {
             continue;
         }
         if line.starts_with('[') && in_section {
-            break; // другая секция
+            break; // another section
         }
         if in_section {
             if let Some(eq) = line.find('=') {
                 let mime = line[..eq].trim().to_string();
                 let desktop =
                     line[eq + 1..].trim().split(';').next().unwrap_or("").to_string();
-                // dict[mime] = desktop (перезапись сохраняет позицию).
+                // dict[mime] = desktop (overwriting keeps the position).
                 if let Some(e) = result.iter_mut().find(|(m, _)| *m == mime) {
                     e.1 = desktop;
                 } else {
@@ -1541,9 +1571,9 @@ pub fn parse_mimeapps_list(content: &str) -> Vec<(String, String)> {
     result
 }
 
-/// Порт `_write_mimeapps_list`: заголовок + `[Default Applications]` + записи,
-/// ОТСОРТИРОВАННЫЕ по MIME. `timestamp` = `datetime.now().isoformat(
-/// timespec='seconds')` — подаётся параметром.
+/// Port of `_write_mimeapps_list`: header + `[Default Applications]` +
+/// entries SORTED by MIME. `timestamp` = `datetime.now().isoformat(
+/// timespec='seconds')`, passed as a parameter.
 pub fn serialize_mimeapps_list(entries: &[(String, String)], timestamp: &str) -> String {
     let mut out = String::new();
     out.push_str("# Автоматически создан Rexon для изоляции DE\n");
@@ -1558,27 +1588,29 @@ pub fn serialize_mimeapps_list(entries: &[(String, String)], timestamp: &str) ->
     out
 }
 
-/// Результат `protect_de_mimeapps` (чистая часть).
+/// Result of `protect_de_mimeapps` (the pure part).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProtectDeOutcome {
-    /// Упорядочены по обходу installed_des: (de_id, "created"/"updated"/
+    /// Ordered by the traversal of installed_des: (de_id, "created"/"updated"/
     /// "skipped"/"empty").
     pub results: Vec<(String, String)>,
-    /// Файлы к записи: (абсолютный путь, содержимое) — в порядке обработки.
+    /// Files to write: (absolute path, contents), in processing order.
     pub writes: Vec<(String, String)>,
-    /// Параллельно `writes`: сколько РОДНЫХ записей DE реально установлено
-    /// (`len(valid_entries)` в логе оригинала — merge с пользовательскими
-    /// записями это число не увеличивает).
+    /// Parallel to `writes`: how many NATIVE DE entries are actually installed
+    /// (`len(valid_entries)` in the original's log; merging with user entries
+    /// does not increase this number).
     pub valid_counts: Vec<usize>,
 }
 
-/// Порт `protect_de_mimeapps` (чистая часть). Побочные эффекты — колбэками:
-///   * `desktop_file_exists(desktop)` — установлен ли `.desktop`;
-///   * `read_existing(path)` — содержимое существующего `*-mimeapps.list`
-///     (None = файла нет).
+/// Port of `protect_de_mimeapps` (the pure part). Side effects via
+/// callbacks:
+///   * `desktop_file_exists(desktop)`: whether the `.desktop` is installed;
+///   * `read_existing(path)`: contents of an existing `*-mimeapps.list`
+///     (None = no file).
 ///
-/// `config_dir` — раскрытый `~/.config`; `timestamp` — для заголовка.
-/// `current_de` в оригинале не используется (сохранён в сигнатуре для паритета).
+/// `config_dir` is the expanded `~/.config`; `timestamp` is for the header.
+/// `current_de` is not used in the original (kept in the signature for
+/// parity).
 pub fn protect_de_mimeapps(
     _current_de: &str,
     installed_des: &[String],
@@ -1605,7 +1637,7 @@ pub fn protect_de_mimeapps(
         let desktop_name = desktop_name_for(de_id);
         let path = format!("{config_dir}/{desktop_name}-mimeapps.list");
 
-        // Только реально установленные .desktop (порядок native).
+        // Only the actually installed .desktop files (native order).
         let valid: Vec<(String, String)> = native
             .iter()
             .filter(|(_, d)| desktop_file_exists(d))
@@ -1617,14 +1649,14 @@ pub fn protect_de_mimeapps(
             continue;
         }
 
-        // Существующий файл → разбор (для merge и для action).
+        // Existing file -> parse (for the merge and for the action).
         let existing: Vec<(String, String)> = match read_existing(&path) {
             Some(content) => parse_mimeapps_list(&content),
             None => Vec::new(),
         };
 
-        // merged = dict(existing); merged.update(valid) — union ключей
-        // (порядок на выходе не важен: serialize сортирует по MIME).
+        // merged = dict(existing); merged.update(valid): a union of keys (the
+        // output order does not matter: serialise sorts by MIME).
         let mut merged = existing.clone();
         for (m, d) in &valid {
             if let Some(e) = merged.iter_mut().find(|(mm, _)| mm == m) {
@@ -1638,7 +1670,7 @@ pub fn protect_de_mimeapps(
         outcome.writes.push((path, content));
         outcome.valid_counts.push(valid.len());
 
-        // Квирк: "updated" если РАЗОБРАННЫЙ словарь непуст (не факт наличия файла).
+        // Quirk: "updated" if the PARSED dictionary is non-empty (not whether the file exists).
         let action = if existing.is_empty() { "created" } else { "updated" };
         outcome.results.push((de_id.clone(), action.to_string()));
     }

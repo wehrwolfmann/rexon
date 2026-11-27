@@ -1,12 +1,13 @@
-//! Сверка порта `we_wallpaper.rs` с оригиналом waywallen —
+//! Check of the `we_wallpaper.rs` port against the waywallen original —
 //! `ui/src/query/wallpaper_query.cpp` (`WallpaperListQuery`,
-//! `WallpaperGetQuery`) и вендоренным QML страницы «Обои».
+//! `WallpaperGetQuery`) and the vendored QML of the «Wallpapers» page.
 //!
-//! Проверяется: набор ключей карты записи (QML читает именно их — список
-//! сверен грепом по `ui/qml`), порядок сигналов сеттеров, молчание при
-//! повторе того же значения, ветка ошибки демона, битый кадр и КРУГ —
-//! правила фильтра/сортировки уезжают в запрос теми же, какими пришли из
-//! настроек демона. Кадры собираются prost'ом, живой демон не дёргается.
+//! Checked: the key set of the entry map (QML reads exactly those — the list
+//! was verified by grep over `ui/qml`), the order of setter signals, silence
+//! on a repeat of the same value, the daemon error branch, a broken frame and
+//! the ROUND TRIP — filter/sort rules go into the request the same as they
+//! came from the daemon settings. Frames are built by prost, the live daemon
+//! is not poked.
 
 use prost::Message;
 use rexon_core::proto::control as pb;
@@ -16,7 +17,7 @@ use rexon_core::we_wallpaper as w;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-/// Кадр ответа: статус OK и полезная нагрузка.
+/// A response frame: status OK and a payload.
 fn ok_frame(payload: pb::response::Payload) -> Vec<u8> {
     frame(pb::Status::Ok as i32, String::new(), Some(payload))
 }
@@ -40,8 +41,8 @@ fn list_frame(wallpapers: Vec<pb::WallpaperEntry>, count: u32) -> Vec<u8> {
     ))
 }
 
-/// Полностью заполненная запись: на ней проверяется, что ни одно поле
-/// `WallpaperEntry` не потерялось по дороге в QML.
+/// A fully filled entry: it checks that no `WallpaperEntry` field got lost on
+/// the way to QML.
 fn full_entry() -> pb::WallpaperEntry {
     pb::WallpaperEntry {
         id: "wp-42".into(),
@@ -76,23 +77,23 @@ fn full_entry() -> pb::WallpaperEntry {
         wallpaper_layout_override_set: true,
         supports_item_remove: true,
         supports_item_unsubscribe: true,
-        // waywallen 0.4.4: флаг «скрыта». В карту QML не идёт — разметка
-        // v0.4.3 его не читает; приедет с приёмом разметки v0.4.4.
+        // waywallen 0.4.4: the «hidden» flag. It does not go into the QML map — the
+        // v0.4.3 markup does not read it; it will come with accepting the v0.4.4 markup.
         hidden: false,
         update_available: false,
         sub_type: 0,
     }
 }
 
-// ── карта записи библиотеки ─────────────────────────────────────────────
+// ── library entry map ─────────────────────────────────────────────
 
 #[test]
 fn entry_map_keys_match_qt_protobuf_gadget_properties() {
     let m = w::entry_to_map(&full_entry());
     let mut keys: Vec<&str> = m.keys().map(String::as_str).collect();
     keys.sort_unstable();
-    // Все свойства гаджета `control::v1::WallpaperEntry`: json_name полей
-    // proto, кроме `id` — его генератор Qt Protobuf зовёт `id_proto`.
+    // All properties of the `control::v1::WallpaperEntry` gadget: the proto
+    // fields' json_name, except `id` — the Qt Protobuf generator calls it `id_proto`.
     let mut expected = vec![
         "id_proto",
         "name",
@@ -114,9 +115,9 @@ fn entry_map_keys_match_qt_protobuf_gadget_properties() {
         "supportsItemRemove",
         "supportsItemUnsubscribe",
         "webUrl",
-        // waywallen 0.4.4: признак «скрыта».
+        // waywallen 0.4.4: the «hidden» flag.
         "hidden",
-        // waywallen 0.6.0: обновление в источнике и подтип записи.
+        // waywallen 0.6.0: update at the source and the entry subtype.
         "updateAvailable",
         "subType",
     ];
@@ -153,17 +154,18 @@ fn entry_map_carries_every_field_value() {
     assert_eq!(m["externalId"], json!("1234567890"));
 }
 
-/// Дефект прежнего Python-моста: панель деталей читает эти три ключа, а
-/// карта их не несла — блок «Layout override» показывал раскладку по
-/// умолчанию, кнопка сброса и действие «Отписаться» были вечно серыми.
+/// A defect of the former Python bridge: the details panel reads these three
+/// keys, but the map did not carry them — the «Layout override» block showed
+/// the default layout, the reset button and the «Unsubscribe» action were
+/// forever grey.
 #[test]
 fn entry_map_has_layout_override_and_unsubscribe_flags() {
     let m = w::entry_to_map(&full_entry());
     assert_eq!(m["wallpaperLayoutOverrideSet"], json!(true));
     assert_eq!(m["supportsItemUnsubscribe"], json!(true));
     assert_eq!(m["supportsItemRemove"], json!(true));
-    // Ключи вложенной раскладки — те же, что у layout_to_map настроек,
-    // плюс `flip` (v0.4.4): WallpaperDetailPanel читает
+    // The nested layout keys are the same as in the settings' layout_to_map,
+    // plus `flip` (v0.4.4): WallpaperDetailPanel reads
     // fillmode/locationX/locationY/rotation/flip.
     let mut want = s::layout_to_map(&pb::LayoutPrefs {
         fillmode: 2,
@@ -180,9 +182,9 @@ fn entry_map_has_layout_override_and_unsubscribe_flags() {
 
 #[test]
 fn entry_map_layout_override_present_even_when_unset() {
-    // Гаджет Qt-Protobuf отдаёт неустановленное сообщение с полями по
-    // умолчанию, и QML берёт `wallpaperLayoutOverride` безусловно —
-    // форма карты не должна прыгать.
+    // The Qt-Protobuf gadget returns an unset message with default fields, and
+    // QML takes `wallpaperLayoutOverride` unconditionally — the map shape must
+    // not jump.
     let m = w::entry_to_map(&pb::WallpaperEntry::default());
     assert_eq!(m["wallpaperLayoutOverrideSet"], json!(false));
     let mut want = s::layout_to_map(&pb::LayoutPrefs::default());
@@ -192,8 +194,8 @@ fn entry_map_layout_override_present_even_when_unset() {
 
 #[test]
 fn entry_map_metadata_order_is_stable() {
-    // Порядок HashMap проto недетерминирован: без сортировки одна и та же
-    // запись выглядела бы «изменившейся» и дёргала сброс модели.
+    // The proto HashMap order is non-deterministic: without sorting the same
+    // entry would look «changed» and trigger a model reset.
     let mut e = pb::WallpaperEntry::default();
     for i in 0..32 {
         e.metadata.insert(format!("k{i}"), format!("v{i}"));
@@ -204,7 +206,7 @@ fn entry_map_metadata_order_is_stable() {
     }
 }
 
-// ── сеттеры свойств ─────────────────────────────────────────────────────
+// ── property setters ─────────────────────────────────────────────────────
 
 fn prop(name: &'static str) -> q::QuerySignal {
     q::QuerySignal::Property(name)
@@ -218,7 +220,7 @@ fn scalar_setters_emit_own_signal_once() {
         vec![prop("wpType")]
     );
     assert_eq!(d.wp_type, "scene");
-    // Повтор того же значения молчит (сеттеры оригинала сравнивают).
+    // A repeat of the same value is silent (the original's setters compare).
     assert!(w::set_property(&mut d, "wpType", &json!("scene"))
         .unwrap()
         .is_empty());
@@ -236,7 +238,7 @@ fn scalar_setters_emit_own_signal_once() {
 fn unknown_property_is_rejected() {
     let mut d = w::WallpaperListData::default();
     assert!(w::set_property(&mut d, "offset", &json!(1)).is_none());
-    // Список имён, который читает шим, — тот же самый.
+    // The list of names the shim reads is the very same.
     for name in w::LIST_PROPERTIES {
         assert!(w::set_property(&mut d, name, &Value::Null).is_some());
     }
@@ -267,9 +269,9 @@ fn filters_setter_order_is_filters_then_state_then_has_active() {
         "type": 1, "group": 0,
         "stringFilter": {"value": "закат", "condition": 2}
     }]);
-    // setFilters оригинала: filtersChanged → filterStateChanged →
-    // hasOtherFiltersChanged (0.5.0, подписан на filterStateChanged) →
-    // hasActiveFiltersChanged (оба — только когда признак перевернулся).
+    // The original's setFilters: filtersChanged → filterStateChanged →
+    // hasOtherFiltersChanged (0.5.0, subscribed to filterStateChanged) →
+    // hasActiveFiltersChanged (both only when the flag flipped).
     assert_eq!(
         w::set_property(&mut d, "filters", &rules).unwrap(),
         vec![
@@ -280,12 +282,12 @@ fn filters_setter_order_is_filters_then_state_then_has_active() {
         ]
     );
     assert!(d.has_active_filters());
-    // Повтор — молчание целиком, включая filterStateChanged (иначе
-    // страница перезагружала бы список впустую).
+    // A repeat — complete silence, including filterStateChanged (otherwise the
+    // page would reload the list for nothing).
     assert!(w::set_property(&mut d, "filters", &rules)
         .unwrap()
         .is_empty());
-    // Снятие последнего правила снова переворачивает признак.
+    // Removing the last rule flips the flag again.
     assert_eq!(
         w::set_property(&mut d, "filters", &json!([])).unwrap(),
         vec![
@@ -301,7 +303,7 @@ fn filters_setter_order_is_filters_then_state_then_has_active() {
 #[test]
 fn filter_logics_setter_does_not_touch_has_active_filters() {
     let mut d = w::WallpaperListData::default();
-    // hasActiveFilters оригинала логику групп не учитывает.
+    // The original's hasActiveFilters does not take group logic into account.
     assert_eq!(
         w::set_property(&mut d, "filterLogics", &json!([{"op": 1, "groupA": 0, "groupB": 1}]))
             .unwrap(),
@@ -318,9 +320,10 @@ fn filter_logics_setter_does_not_touch_has_active_filters() {
     );
 }
 
-/// Дефект прежнего Python-моста: быстрые списки меняли `hasActiveFilters`,
-/// но сигнал не слали — подсветка кнопки «Фильтры» обновлялась лишь как
-/// побочный эффект успешного ответа демона, а при ошибке не обновлялась.
+/// A defect of the former Python bridge: quick lists changed
+/// `hasActiveFilters` but sent no signal — the «Filters» button highlight was
+/// updated only as a side effect of a successful daemon response, and was not
+/// updated on an error.
 #[test]
 fn quick_filter_setters_emit_has_active_filters_on_flip() {
     for (name, value) in [
@@ -335,9 +338,9 @@ fn quick_filter_setters_emit_has_active_filters_on_flip() {
             "свойство {name}"
         );
         assert!(d.has_active_filters());
-        // Второй такой же список — молчание.
+        // A second identical list — silence.
         assert!(w::set_property(&mut d, name, &value).unwrap().is_empty());
-        // Возврат к пустому — признак перевернулся обратно.
+        // Back to empty — the flag flipped back.
         assert_eq!(
             w::set_property(&mut d, name, &json!([])).unwrap(),
             vec![prop(name), prop("hasOtherFilters"), prop("hasActiveFilters")]
@@ -350,8 +353,8 @@ fn quick_filter_setters_emit_has_active_filters_on_flip() {
 fn quick_filter_setter_is_quiet_when_flag_does_not_flip() {
     let mut d = w::WallpaperListData::default();
     w::set_property(&mut d, "skipTypes", &json!(["video"])).unwrap();
-    // Признак уже поднят пропуском типов — второй сигнал не нужен ни при
-    // добавлении другого быстрого фильтра, ни при правке того же списка.
+    // The flag is already raised by skipping types — a second signal is needed
+    // neither when adding another quick filter nor when editing the same list.
     assert_eq!(
         w::set_property(&mut d, "filterTags", &json!(["море"])).unwrap(),
         vec![prop("filterTags")]
@@ -360,7 +363,7 @@ fn quick_filter_setter_is_quiet_when_flag_does_not_flip() {
         w::set_property(&mut d, "skipTypes", &json!(["video", "web"])).unwrap(),
         vec![prop("skipTypes")]
     );
-    // И снятие одного из двух признак тоже не переворачивает.
+    // And removing one of the two does not flip the flag either.
     assert_eq!(
         w::set_property(&mut d, "skipTypes", &json!([])).unwrap(),
         vec![prop("skipTypes")]
@@ -387,7 +390,7 @@ fn replace_filter_state_emits_single_state_signal() {
             prop("hasActiveFilters"),
         ]
     );
-    // Повтор — «ничего не изменилось», страница по false не перезагружает.
+    // A repeat — «nothing changed», the page does not reload on false.
     let (changed, sig) = w::replace_filter_state(&mut d, &filters, &logics);
     assert!(!changed);
     assert!(sig.is_empty());
@@ -398,8 +401,8 @@ fn replace_filter_state_reports_only_changed_half() {
     let mut d = w::WallpaperListData::default();
     let filters = json!([{"type": 1, "group": 0, "stringFilter": {"value": "a", "condition": 1}}]);
     w::replace_filter_state(&mut d, &filters, &json!([]));
-    // Меняется только логика групп: сигнал правил не летит, признак
-    // активных фильтров не переворачивался.
+    // Only the group logic changes: the rules signal does not fire, the active
+    // filters flag did not flip.
     let (changed, sig) = w::replace_filter_state(
         &mut d,
         &filters,
@@ -409,7 +412,7 @@ fn replace_filter_state_reports_only_changed_half() {
     assert_eq!(sig, vec![prop("filterLogics"), prop("filterState")]);
 }
 
-// ── запрос ──────────────────────────────────────────────────────────────
+// ── request ──────────────────────────────────────────────────────────────
 
 #[test]
 fn request_carries_every_property_and_no_pagination() {
@@ -434,23 +437,23 @@ fn request_carries_every_property_and_no_pagination() {
     let req = pb::WallpaperListRequest::decode(&w::encode_list_request(&d)[..]).unwrap();
     assert_eq!(req.wp_type, "scene");
     assert_eq!(req.search_text, "закат");
-    // Границы вкладки WE: скрытые типы (gltf) дописываются в кадр после выбора человека.
+    // WE tab boundaries: hidden types (gltf) are appended to the frame after the person's choice.
     assert_eq!(req.skip_types, vec!["video".to_string(), "gltf".to_string()]);
     assert_eq!(req.filter_tags, vec!["природа".to_string()]);
     assert_eq!(req.skip_content_ratings, vec!["mature".to_string()]);
     assert_eq!(req.sorts.len(), 1);
     assert_eq!(req.filters.len(), 2);
     assert_eq!(req.filter_logics.len(), 1);
-    // initReqForReload при limit = 0: страница нулевая, размер страницы 0 —
-    // по протоколу «без постраничности, отдать всё».
+    // initReqForReload with limit = 0: page zero, page size 0 — by protocol
+    // «no paging, return everything».
     assert_eq!(req.page, 0);
     assert_eq!(req.page_size, 0);
 }
 
-/// КРУГ: правила приходят на страницу из настроек демона
-/// (`settings_get` → `wallpaperFilters`/`wallpaperSorts`) и уезжают в
-/// запрос списка. Карта — единственное представление между ними, и она
-/// обязана донести правила без потерь.
+/// ROUND TRIP: rules come to the page from the daemon settings (`settings_get`
+/// → `wallpaperFilters`/`wallpaperSorts`) and go into the list request. The
+/// map is the only representation between them, and it must carry the rules
+/// without losses.
 #[test]
 fn rules_survive_round_trip_from_settings_to_request() {
     let sorts = vec![pb::WallpaperSortRule {
@@ -488,7 +491,7 @@ fn rules_survive_round_trip_from_settings_to_request() {
                 },
             )),
         },
-        // Свежая строка редактора фильтров — правило без payload.
+        // A fresh filter editor row — a rule without payload.
         pb::WallpaperFilterRule {
             r#type: pb::WallpaperFilterType::Unspecified as i32,
             group: 3,
@@ -501,7 +504,7 @@ fn rules_survive_round_trip_from_settings_to_request() {
         group_b: 1,
     }];
 
-    // Настройки → карты (ровно то, что QML отдаёт нашим сеттерам).
+    // Settings → maps (exactly what QML gives our setters).
     let global = s::global_to_map(&pb::GlobalSettings {
         wallpaper_sorts: sorts.clone(),
         wallpaper_filters: filters.clone(),
@@ -518,31 +521,31 @@ fn rules_survive_round_trip_from_settings_to_request() {
     );
     assert!(changed);
 
-    // Карта донесла правила без потерь — вместе со свежей строкой…
+    // The map carried the rules without losses — together with the fresh row…
     assert_eq!(d.filters, filters);
     let req = pb::WallpaperListRequest::decode(&w::encode_list_request(&d)[..]).unwrap();
     assert_eq!(req.sorts, sorts);
-    // …и на провод они уходят ВСЕ, как у оригинала: незаполненное правило
-    // демон 0.5.0 отвергает сам, и страница показывает его ошибку.
+    // …and they ALL go onto the wire, as in the original: the 0.5.0 daemon
+    // itself rejects an unfilled rule, and the page shows its error.
     assert_eq!(req.filters, filters);
     assert_eq!(req.filter_logics, logics);
 }
 
-/// Запрос несёт правила, логики и сортировки КАК ЕСТЬ — паритет с
-/// `listRequest` оригинала. Негодное (свежая строка редактора, условие
-/// «любое», библиотека с «больше», логика-сирота) демон 0.5.0 отвергает
-/// сам (`InvalidArgument` «invalid wallpaper selection»), и его ошибку
-/// показывает страница. 24.10.2026 Rexon такие правила молча выкидывал —
-/// и вместе с порчей гаджетов в шиме это стирало ВСЕ фильтры умного
-/// плейлиста без единого слова.
+/// The request carries rules, logics and sorts AS IS — parity with the
+/// original's `listRequest`. Invalid ones (a fresh editor row, the «any»
+/// condition, a library with «greater», an orphan logic) are rejected by the
+/// 0.5.0 daemon itself (`InvalidArgument` «invalid wallpaper selection»), and
+/// the page shows its error. On 24.10.2026 Rexon silently dropped such rules
+/// — and together with the gadget corruption in the shim this erased ALL
+/// filters of a smart playlist without a single word.
 #[test]
 fn request_carries_rules_as_is_like_upstream() {
     let mut d = w::WallpaperListData::default();
     let filters = json!([
         {"type": 1, "group": 0, "stringFilter": {"value": "лес", "condition": 3}},
-        // свежая строка редактора: тип 0, без нагрузки
+        // a fresh editor row: type 0, no payload
         {"type": 0, "group": 1},
-        // условие «любое» (STRING_CONDITION_UNSPECIFIED)
+        // the «any» condition (STRING_CONDITION_UNSPECIFIED)
         {"type": 1, "group": 2, "stringFilter": {"value": "x", "condition": 0}},
         {"type": 3, "group": 3, "intFilter": {"value": 4, "condition": 5}},
         {"type": 3, "group": 4, "intFilter": {"value": 0, "condition": 1}},
@@ -586,7 +589,7 @@ fn request_carries_rules_as_is_like_upstream() {
     );
 }
 
-// ── разбор ответа ───────────────────────────────────────────────────────
+// ── response parsing ───────────────────────────────────────────────────────
 
 #[test]
 fn list_response_sets_items_then_total_then_finishes() {
@@ -595,9 +598,9 @@ fn list_response_sets_items_then_total_then_finishes() {
     q::begin_call(&mut st, true);
 
     let sig = w::apply_wallpaper_list(&mut st, &mut d, &list_frame(vec![full_entry()], 1)).unwrap();
-    // Оригинал: сначала синхронизация модели, потом totalChanged, за ним
-    // `setNoMore` (waywallen 0.5.0, база QueryList: весь список пришёл —
-    // страниц больше нет), и лишь затем статус Finished.
+    // Original: first the model sync, then totalChanged, followed by `setNoMore`
+    // (waywallen 0.5.0, the QueryList base: the whole list arrived — no more
+    // pages), and only then the Finished status.
     assert_eq!(
         sig,
         vec![
@@ -622,8 +625,8 @@ fn same_list_repeats_silently() {
     q::begin_call(&mut st, true);
     w::apply_wallpaper_list(&mut st, &mut d, &f).unwrap();
 
-    // Пересканирование библиотеки без изменений: список тот же — сброса
-    // модели быть не должно (иначе теряются прокрутка и выделение).
+    // Rescanning the library without changes: the list is the same — there must
+    // be no model reset (otherwise scrolling and selection are lost).
     q::begin_call(&mut st, true);
     let sig = w::apply_wallpaper_list(&mut st, &mut d, &f).unwrap();
     assert_eq!(
@@ -638,8 +641,8 @@ fn same_list_repeats_silently() {
 
 #[test]
 fn total_comes_from_count_field_not_page_length() {
-    // Контракт демона: count — сколько записей подходит под фильтр,
-    // независимо от размера отданной страницы.
+    // The daemon contract: count is how many entries match the filter,
+    // regardless of the size of the returned page.
     let mut st = q::QueryState::default();
     let mut d = w::WallpaperListData::default();
     q::begin_call(&mut st, true);
@@ -662,7 +665,7 @@ fn daemon_error_keeps_previous_items() {
         &frame(pb::Status::Internal as i32, "база занята".into(), None),
     )
     .unwrap();
-    // inspect_set оригинала на ошибке не зовёт разбор — свойства целы.
+    // The original's inspect_set does not call parsing on an error — the properties are intact.
     assert_eq!(
         sig,
         vec![
@@ -715,7 +718,7 @@ fn get_response_sets_wallpaper_then_finishes() {
     );
     assert_eq!(d.wallpaper, w::entry_to_map(&full_entry()));
 
-    // Тот же ответ второй раз — молчание.
+    // The same response a second time — silence.
     q::begin_call(&mut st, true);
     let sig = w::apply_wallpaper_get(
         &mut st,
@@ -732,9 +735,9 @@ fn get_response_sets_wallpaper_then_finishes() {
 
 #[test]
 fn get_response_without_entry_clears_wallpaper() {
-    // Оригинал присваивает `rsp.wallpaperGet().entry()` без проверки
-    // присутствия: у Qt-Protobuf это запись с полями по умолчанию.
-    // Панель по пустому `id_proto` сама падает обратно на строку списка.
+    // The original assigns `rsp.wallpaperGet().entry()` without a presence
+    // check: in Qt-Protobuf this is an entry with default fields. On an empty
+    // `id_proto` the panel itself falls back to the list row.
     let mut st = q::QueryState::default();
     let mut d = w::WallpaperGetData::default();
     q::begin_call(&mut st, true);
@@ -763,8 +766,8 @@ fn get_response_without_entry_clears_wallpaper() {
 
 // ── WallpaperLayoutSetQuery ─────────────────────────────────────────────
 //
-// Сверка с `WallpaperLayoutSetQuery::reload()` и макросом `WW_SET`
-// оригинала (`ui/src/query/wallpaper_query.cpp`).
+// Check against the original's `WallpaperLayoutSetQuery::reload()` and the
+// `WW_SET` macro (`ui/src/query/wallpaper_query.cpp`).
 
 fn layout_of(bytes: &[u8]) -> pb::WallpaperLayoutSetRequest {
     use prost::Message;
@@ -773,8 +776,8 @@ fn layout_of(bytes: &[u8]) -> pb::WallpaperLayoutSetRequest {
 
 #[test]
 fn layout_set_without_wallpaper_id_sends_nothing() {
-    // Оригинал: `if (m_wallpaper_id.isEmpty()) return;` — ДО setStatus,
-    // то есть запрос не начинается вовсе.
+    // Original: `if (m_wallpaper_id.isEmpty()) return;` — BEFORE setStatus, i.e.
+    // the request does not start at all.
     let d = w::LayoutSetData::default();
     assert!(w::encode_layout_set(&d).is_none());
 }
@@ -804,8 +807,8 @@ fn layout_set_sends_prefs_and_marks_location() {
 
 #[test]
 fn layout_set_clamps_percentages() {
-    // std::clamp(v, 0, 100) оригинала: страница уже режет, но запрос
-    // обязан быть корректен и без её помощи.
+    // The original's std::clamp(v, 0, 100): the page already clamps, but the
+    // request must be correct even without its help.
     for (x, y, want) in [(-5, 250, (0u32, 100u32)), (0, 100, (0, 100))] {
         let d = w::LayoutSetData {
             wallpaper_id: "wp".into(),
@@ -820,8 +823,8 @@ fn layout_set_clamps_percentages() {
 
 #[test]
 fn layout_set_clear_drops_the_prefs_body() {
-    // Сброс: демон снимает персональную раскладку, тела нет вовсе —
-    // иначе он записал бы «пустую» раскладку вместо удаления оверрайда.
+    // Reset: the daemon removes the personal layout, there is no body at all —
+    // otherwise it would write an «empty» layout instead of removing the override.
     let d = w::LayoutSetData {
         wallpaper_id: "wp".into(),
         clear: true,
@@ -838,8 +841,8 @@ fn layout_set_clear_drops_the_prefs_body() {
 #[test]
 fn layout_properties_signal_params_only_on_change() {
     let mut d = w::LayoutSetData::default();
-    // WW_SET: сигнал только при реальном изменении, и он один на все
-    // свойства — paramsChanged.
+    // WW_SET: a signal only on a real change, and it is one for all properties —
+    // paramsChanged.
     assert_eq!(
         w::set_layout_property(&mut d, "fillmode", &json!(3)),
         Some(vec![q::QuerySignal::Property("params")])
@@ -849,13 +852,13 @@ fn layout_properties_signal_params_only_on_change() {
         Some(vec![])
     );
     assert_eq!(d.fillmode, 3);
-    // Числа из QML приходят double'ами.
+    // Numbers from QML arrive as doubles.
     assert_eq!(
         w::set_layout_property(&mut d, "locationX", &json!(49.6)),
         Some(vec![q::QuerySignal::Property("params")])
     );
     assert_eq!(d.location_x, 50);
-    // Неизвестное имя — None (шим падает на Python-путь).
+    // An unknown name — None (the shim falls back to the Python path).
     assert!(w::set_layout_property(&mut d, "align", &json!(1)).is_none());
 }
 
@@ -868,13 +871,13 @@ fn layout_set_covers_every_property_of_the_original() {
             "свойство {name} должно приниматься"
         );
     }
-    // v0.4.4: седьмое — `flip` (отражение).
+    // v0.4.4: the seventh is `flip` (mirroring).
     assert_eq!(w::LAYOUT_SET_PROPERTIES.len(), 7);
 }
 
 #[test]
 fn ack_response_finishes_or_reports_daemon_error() {
-    // Запрос-действие: полезной нагрузки нет, важен исход.
+    // An action request: there is no payload, the outcome matters.
     let mut st = q::QueryState::default();
     q::begin_call(&mut st, true);
     let sig = q::apply_ack(
@@ -894,7 +897,7 @@ fn ack_response_finishes_or_reports_daemon_error() {
     );
 
     let mut st = q::QueryState::default();
-    q::set_forward_error(&mut st, false); // панель показывает ошибку сама
+    q::set_forward_error(&mut st, false); // the panel shows the error itself
     q::begin_call(&mut st, true);
     let bad = pb::ServerFrame {
         kind: Some(pb::server_frame::Kind::Response(pb::Response {
@@ -919,13 +922,13 @@ fn ack_response_finishes_or_reports_daemon_error() {
     );
 }
 
-// ── waywallen 0.4.4: скрытые обои и отражение ───────────────────────────
+// ── waywallen 0.4.4: hidden wallpapers and mirroring ───────────────────────────
 
 #[test]
 fn hidden_filter_counts_as_active_filter_and_goes_into_request() {
     let mut d = w::WallpaperListData::default();
-    // 1 = WALLPAPER_HIDDEN_FILTER_ONLY: сигнал свойства, затем перелом
-    // `hasActiveFilters` — порядок сеттера `setHiddenFilter` оригинала.
+    // 1 = WALLPAPER_HIDDEN_FILTER_ONLY: the property signal, then the flip of
+    // `hasActiveFilters` — the order of the original's `setHiddenFilter` setter.
     assert_eq!(
         w::set_property(&mut d, "hiddenFilter", &json!(1)).unwrap(),
         vec![
@@ -938,7 +941,7 @@ fn hidden_filter_counts_as_active_filter_and_goes_into_request() {
     assert!(w::set_property(&mut d, "hiddenFilter", &json!(1)).unwrap().is_empty());
     let req = pb::WallpaperListRequest::decode(&w::encode_list_request(&d)[..]).unwrap();
     assert_eq!(req.hidden_filter, pb::WallpaperHiddenFilter::Only as i32);
-    // 2 = INCLUDE: признак фильтра не переворачивается — только свойство.
+    // 2 = INCLUDE: the filter flag does not flip — only the property.
     assert_eq!(
         w::set_property(&mut d, "hiddenFilter", &json!(2)).unwrap(),
         vec![q::QuerySignal::Property("hiddenFilter")]
@@ -955,7 +958,7 @@ fn entry_map_carries_hidden_flag_and_layout_flip() {
     });
     let m = w::entry_to_map(&e);
     assert_eq!(m.get("hidden"), Some(&Value::Bool(true)));
-    // waywallen 0.6.0: значок обновления и подтип «таймлайн» — как у гаджета.
+    // waywallen 0.6.0: the update badge and the «timeline» subtype — as in the gadget.
     assert_eq!(m.get("updateAvailable"), Some(&Value::Bool(false)));
     assert_eq!(m.get("subType"), Some(&json!(0)));
     e.update_available = true;
@@ -967,7 +970,7 @@ fn entry_map_carries_hidden_flag_and_layout_flip() {
         m["wallpaperLayoutOverride"].get("flip"),
         Some(&json!(pb::Flip::Horizontal as i32))
     );
-    // Без оверрайда ключ всё равно есть — форма карты не прыгает.
+    // Without an override the key is still there — the map shape does not jump.
     e.wallpaper_layout_override = None;
     let m = w::entry_to_map(&e);
     assert_eq!(m["wallpaperLayoutOverride"].get("flip"), Some(&json!(0)));
@@ -987,7 +990,7 @@ fn layout_set_sends_flip() {
 
 #[test]
 fn hide_request_like_the_original() {
-    // Пустые отсеиваются; ничего не осталось — запроса нет вовсе.
+    // Empty ones are filtered out; nothing left — no request at all.
     assert!(w::encode_hide_request(&["".into()], true).is_none());
     let one = pb::WallpaperHideRequest::decode(
         &w::encode_hide_request(&["".into(), "a".into()], true).unwrap()[..],
@@ -1005,10 +1008,10 @@ fn hide_request_like_the_original() {
     assert!(!many.hidden);
 }
 
-// ── WallpaperApplyQuery: остановленные плейлисты ────────────────────────
+// ── WallpaperApplyQuery: stopped playlists ────────────────────────
 
-/// Ключи карты — те, что читает `toastStoppedPlaylists` панели деталей:
-/// разойдись они с разметкой, тост молча показал бы «Плейлист #undefined».
+/// The map keys are those read by the details panel's `toastStoppedPlaylists`:
+/// should they diverge from the markup, the toast would silently show «Playlist #undefined».
 #[test]
 fn stopped_playlists_use_keys_the_detail_panel_reads() {
     const PANEL: &str = include_str!(
@@ -1049,18 +1052,18 @@ fn stopped_playlists_use_keys_the_detail_panel_reads() {
     }
 }
 
-/// Ответ без остановленных плейлистов — пустой список, а не null: разметка
-/// берёт у него `length`.
+/// A response without stopped playlists is an empty list, not null: the
+/// markup takes its `length`.
 #[test]
 fn stopped_playlists_empty_response_is_empty_list() {
     assert_eq!(w::stopped_playlists(&pb::WallpaperApplyResponse::default()), json!([]));
 }
 
-// ── waywallen 0.5.0: скрытые библиотеки ─────────────────────────────────
+// ── waywallen 0.5.0: hidden libraries ─────────────────────────────────
 
-/// `setHiddenLibraryIds` оригинала: список нормализуется (по возрастанию,
-/// без повторов) ДО сравнения; признак `hasActiveFilters` поднимают и
-/// скрытые библиотеки, а `hasOtherFilters` — нет.
+/// The original's `setHiddenLibraryIds`: the list is normalised (ascending,
+/// without repeats) BEFORE comparison; the `hasActiveFilters` flag is raised
+/// by hidden libraries too, while `hasOtherFilters` is not.
 #[test]
 fn hidden_library_ids_are_normalized_and_raise_only_active_filters() {
     let mut d = w::WallpaperListData::default();
@@ -1071,17 +1074,17 @@ fn hidden_library_ids_are_normalized_and_raise_only_active_filters() {
     assert_eq!(d.hidden_library_ids, vec![1, 3]);
     assert!(d.has_active_filters());
     assert!(!d.has_other_filters());
-    // Тот же набор в другом порядке и с повтором — молчание.
+    // The same set in another order and with a repeat — silence.
     assert!(w::set_property(&mut d, "hiddenLibraryIds", &json!([3.0, 1.0]))
         .unwrap()
         .is_empty());
-    // Строка с числом (так номер приходит из карты) — тот же номер, мусор
-    // отбрасывается.
+    // A string with a number (that is how the id comes from the map) — the same
+    // id, garbage is dropped.
     assert_eq!(
         w::set_property(&mut d, "hiddenLibraryIds", &json!(["1", 3, "x", null])).unwrap(),
         Vec::<q::QuerySignal>::new()
     );
-    // Не список — «скрытых нет».
+    // Not a list — «nothing hidden».
     assert_eq!(
         w::set_property(&mut d, "hiddenLibraryIds", &Value::Null).unwrap(),
         vec![prop("hiddenLibraryIds"), prop("hasActiveFilters")]
@@ -1090,7 +1093,7 @@ fn hidden_library_ids_are_normalized_and_raise_only_active_filters() {
     assert!(!d.has_active_filters());
 }
 
-/// `toggleLibraryHidden` оригинала: был — снять, не было — добавить.
+/// The original's `toggleLibraryHidden`: was there — remove, was not — add.
 #[test]
 fn toggle_library_hidden_flips_one_id() {
     let mut d = w::WallpaperListData::default();
@@ -1112,9 +1115,9 @@ fn toggle_library_hidden_flips_one_id() {
     assert_eq!(d.hidden_library_ids, vec![7]);
 }
 
-/// Таблица признаков: `hasOtherFilters` — всё, кроме скрытых библиотек,
-/// `hasActiveFilters` — скрытые библиотеки ИЛИ прочие. При уже скрытой
-/// библиотеке быстрый фильтр переворачивает только `hasOtherFilters`.
+/// The flag table: `hasOtherFilters` is everything except hidden libraries,
+/// `hasActiveFilters` is hidden libraries OR the rest. With a library already
+/// hidden a quick filter flips only `hasOtherFilters`.
 #[test]
 fn other_and_active_filter_flags_follow_upstream_table() {
     let mut d = w::WallpaperListData::default();
@@ -1128,7 +1131,7 @@ fn other_and_active_filter_flags_follow_upstream_table() {
     assert!(d.has_other_filters() && d.has_active_filters());
     w::set_property(&mut d, "hiddenLibraryIds", &json!([])).unwrap();
     assert!(d.has_other_filters() && d.has_active_filters());
-    // Логика групп не фильтр — признаков не трогает.
+    // Group logic is not a filter — it does not touch the flags.
     assert_eq!(
         w::set_property(&mut d, "filterLogics", &json!([{"op": 1, "groupA": 0, "groupB": 1}]))
             .unwrap(),
@@ -1136,8 +1139,8 @@ fn other_and_active_filter_flags_follow_upstream_table() {
     );
 }
 
-/// Кадр несёт `library_visibility` ВСЕГДА, как `listRequest` оригинала:
-/// пустой список — «показать все».
+/// The frame ALWAYS carries `library_visibility`, as the original's
+/// `listRequest`: an empty list means «show all».
 #[test]
 fn list_request_carries_library_visibility() {
     let mut d = w::WallpaperListData::default();
@@ -1154,11 +1157,11 @@ fn list_request_carries_library_visibility() {
     );
 }
 
-// ── waywallen 0.5.0: выборка ────────────────────────────────────────────
+// ── waywallen 0.5.0: selection ────────────────────────────────────────────
 
-/// Выборка, в которой заполнены все 10 полей (номера библиотек — уже по
-/// возрастанию: сеттер их нормализует). Одно правило — незаполненная
-/// строка редактора: в выборке она обязана сохраниться.
+/// A selection with all 10 fields filled (library ids already ascending: the
+/// setter normalises them). One rule is an unfilled editor row: it must be
+/// kept in the selection.
 fn full_selection() -> pb::WallpaperSelection {
     use pb::wallpaper_filter_rule::Payload;
     pb::WallpaperSelection {
@@ -1205,7 +1208,7 @@ fn full_selection() -> pb::WallpaperSelection {
     }
 }
 
-/// selection(restore(x)) == x: все 10 полей проходят круг без потерь.
+/// selection(restore(x)) == x: all 10 fields make the round trip without losses.
 #[test]
 fn selection_survives_restore_round_trip() {
     let x = full_selection();
@@ -1216,8 +1219,8 @@ fn selection_survives_restore_round_trip() {
     assert_eq!(w::decode_selection(&w::encode_selection(&x)), Some(x));
 }
 
-/// `matchesSelection` истинно сразу после `restoreSelection` и ложно после
-/// смены ЛЮБОГО из 10 полей.
+/// `matchesSelection` is true right after `restoreSelection` and false after
+/// changing ANY of the 10 fields.
 #[test]
 fn matches_selection_breaks_on_each_of_ten_fields() {
     let x = w::encode_selection(&full_selection());
@@ -1242,22 +1245,22 @@ fn matches_selection_breaks_on_each_of_ten_fields() {
     }
 }
 
-/// Восстановление ТЕКУЩЕЙ выборки — ни одного сигнала, то есть ни
-/// перезагрузки, ни `selectionChanged`.
+/// Restoring the CURRENT selection — not a single signal, i.e. neither a
+/// reload nor `selectionChanged`.
 #[test]
 fn restoring_current_selection_is_silent() {
     let x = w::encode_selection(&full_selection());
     let mut d = w::WallpaperListData::default();
     w::restore_selection(&mut d, &x);
     assert!(w::restore_selection(&mut d, &x).is_empty());
-    // Пустая выборка поверх пустого состояния — тоже.
+    // An empty selection over an empty state — likewise.
     let mut fresh = w::WallpaperListData::default();
     let empty = w::encode_selection(&w::selection_of(&fresh));
     assert!(w::restore_selection(&mut fresh, &empty).is_empty());
 }
 
-/// Порядок сигналов `restoreSelection` — обычные сеттеры в порядке
-/// оригинала: `replaceFilterState`, `sorts`, …, `hiddenLibraryIds`.
+/// The signal order of `restoreSelection` — the regular setters in the
+/// original's order: `replaceFilterState`, `sorts`, …, `hiddenLibraryIds`.
 #[test]
 fn restore_selection_uses_upstream_setter_order() {
     let mut d = w::WallpaperListData::default();
@@ -1282,8 +1285,8 @@ fn restore_selection_uses_upstream_setter_order() {
     );
 }
 
-/// Не выборка — ничего: у пустой выборки prost-код пуст, и без метки
-/// пустая строка или `null` из QML «совпали» бы с пустым состоянием.
+/// Not a selection — nothing: an empty selection's prost code is empty, and
+/// without a tag an empty string or `null` from QML would «match» the empty state.
 #[test]
 fn untagged_bytes_are_not_a_selection() {
     let mut d = w::WallpaperListData::default();
@@ -1295,14 +1298,14 @@ fn untagged_bytes_are_not_a_selection() {
     let empty = w::encode_selection(&pb::WallpaperSelection::default());
     assert_eq!(empty, w::SELECTION_TAG);
     assert!(w::matches_selection(&d, &empty));
-    // Метка есть, код битый — тоже не выборка.
+    // A tag is there, the code is broken — not a selection either.
     let mut broken = w::SELECTION_TAG.to_vec();
     broken.extend([0xff, 0xff, 0xff]);
     assert!(w::decode_selection(&broken).is_none());
 }
 
-/// Запрос списка и выборка — одни и те же поля, и запрос несёт их как
-/// есть: незаполненное правило не отбрасывается (оригинал его тоже шлёт).
+/// The list request and the selection are the same fields, and the request
+/// carries them as is: an unfilled rule is not dropped (the original sends it too).
 #[test]
 fn list_request_is_selection() {
     let mut d = w::WallpaperListData::default();
@@ -1316,7 +1319,7 @@ fn list_request_is_selection() {
     assert_eq!(req.sorts, s.sorts);
     assert_eq!(req.search_text, s.search_text);
     assert_eq!(req.wp_type, s.wp_type);
-    // Единственное расхождение кадра с выборкой — скрытые типы вкладки WE.
+    // The only divergence of the frame from the selection is the WE tab's hidden types.
     assert_eq!(req.skip_types, rexon_core::we_query::we_tab_skip_types(&s.skip_types));
     assert_eq!(req.filter_tags, s.filter_tags);
     assert_eq!(req.skip_content_ratings, s.skip_content_ratings);
@@ -1327,7 +1330,7 @@ fn list_request_is_selection() {
     );
 }
 
-// ── waywallen 0.5.0: страницы ───────────────────────────────────────────
+// ── waywallen 0.5.0: pages ───────────────────────────────────────────
 
 fn entries(from: usize, n: usize) -> Vec<pb::WallpaperEntry> {
     (from..from + n)
@@ -1342,9 +1345,9 @@ fn decode_list(bytes: &[u8]) -> pb::WallpaperListRequest {
     pb::WallpaperListRequest::decode(bytes).unwrap()
 }
 
-/// QueryList: reload — страница 0 размером `limit`, fetchMore — страница
-/// `offset + 1` размером `limit`, строки дописываются, `noMore` — когда
-/// строк столько, сколько подходит под выборку.
+/// QueryList: reload — page 0 of size `limit`, fetchMore — page `offset + 1`
+/// of size `limit`, rows are appended, `noMore` — when there are as many rows
+/// as match the selection.
 #[test]
 fn pages_follow_query_list_base() {
     let mut st = q::QueryState::default();
@@ -1387,7 +1390,7 @@ fn pages_follow_query_list_base() {
     assert!(w::encode_fetch_more_request(&d, st.status).is_none());
 }
 
-/// Пустая страница — конец, даже если `count` обещает больше.
+/// An empty page is the end, even if `count` promises more.
 #[test]
 fn empty_page_ends_pages() {
     let mut st = q::QueryState::default();
@@ -1402,9 +1405,9 @@ fn empty_page_ends_pages() {
     assert!(d.no_more);
 }
 
-/// Когда fetchMore не догружает: `noMore`, висящая перезагрузка, запрос в
-/// полёте и — наше условие — `limit = 0` (иначе страница 1 размером 0 —
-/// это ВЕСЬ список ещё раз, в хвост).
+/// When fetchMore does not load more: `noMore`, a pending reload, a request
+/// in flight and — our condition — `limit = 0` (otherwise page 1 of size 0 is
+/// the WHOLE list once more, at the tail).
 #[test]
 fn fetch_more_is_refused_when_upstream_would_skip_or_double() {
     let d = w::WallpaperListData {
@@ -1427,8 +1430,8 @@ fn fetch_more_is_refused_when_upstream_would_skip_or_double() {
     assert!(w::encode_fetch_more_request(&all, q::STATUS_UNINITIALIZED).is_none());
 }
 
-/// Главная страница (`limit = 0`): весь список одним ответом, после него
-/// `noMore` — страниц нет.
+/// The main page (`limit = 0`): the whole list in one response, after it
+/// `noMore` — no pages.
 #[test]
 fn whole_list_answer_has_no_more_pages() {
     let mut st = q::QueryState::default();
@@ -1440,7 +1443,7 @@ fn whole_list_answer_has_no_more_pages() {
     assert!(d.no_more);
 }
 
-/// `invalidateList`: `selectionChanged`, сброс страниц, перезагрузка в пути.
+/// `invalidateList`: `selectionChanged`, page reset, a reload on the way.
 #[test]
 fn invalidate_list_resets_pages() {
     let mut d = w::WallpaperListData {
@@ -1456,9 +1459,8 @@ fn invalidate_list_resets_pages() {
     assert_eq!(w::invalidate_list(&mut d), vec![prop("selection")]);
 }
 
-/// `limit`: до первого запуска только запоминается (+`selectionChanged`,
-/// как у оригинала), после — перезагрузка, как `limitChanged →
-/// invalidateList`.
+/// `limit`: before the first start it is only remembered (+`selectionChanged`,
+/// as in the original), after — a reload, like `limitChanged → invalidateList`.
 #[test]
 fn limit_reloads_only_after_first_start() {
     let mut d = w::WallpaperListData::default();

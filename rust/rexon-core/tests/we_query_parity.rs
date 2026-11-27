@@ -1,17 +1,17 @@
-//! Сверка порта `we_query.rs` с оригиналом waywallen: `qextra::QAsyncResult`
-//! (`async.cpp`), `qextra::Query` (`query.cpp`) и запросы
-//! `ui/src/query/{health,renderer,tag}_query.cpp`.
+//! Check of the `we_query.rs` port against the waywallen original:
+//! `qextra::QAsyncResult` (`async.cpp`), `qextra::Query` (`query.cpp`) and the
+//! queries `ui/src/query/{health,renderer,tag}_query.cpp`.
 //!
-//! Проверяется то, ради чего база вообще существует: ПОРЯДОК сигналов при
-//! смене статуса, молчание при повторе того же значения, ветка ошибки
-//! демона и глобальная пересылка по `forwardError`. Кадры собираются тем
-//! же prost'ом (схема общая с демоном) — живой демон не дёргается.
+//! What is checked is what the base exists for: the ORDER of signals on a
+//! status change, silence on a repeat of the same value, the daemon error
+//! branch and global forwarding by `forwardError`. Frames are built with the
+//! same prost (schema shared with the daemon) — the live daemon is not poked.
 
 use prost::Message;
 use rexon_core::proto::control as pb;
 use rexon_core::we_query as q;
 
-/// Кадр ответа: статус OK и полезная нагрузка.
+/// A response frame: status OK and a payload.
 fn ok_frame(payload: pb::response::Payload) -> Vec<u8> {
     frame(pb::Status::Ok as i32, String::new(), Some(payload))
 }
@@ -29,12 +29,12 @@ fn frame(status: i32, message: String, payload: Option<pb::response::Payload>) -
     .encode_to_vec()
 }
 
-// ── база: автомат статуса ──────────────────────────────────────────────
+// ── base: status state machine ──────────────────────────────────────────────
 
 #[test]
 fn fresh_state_matches_qasyncresult_defaults() {
     let st = q::QueryState::default();
-    // async.cpp: m_status(Status::Uninitialized), m_error пустой,
+    // async.cpp: m_status(Status::Uninitialized), m_error empty,
     // m_forward_error(true).
     assert_eq!(st.status, q::STATUS_UNINITIALIZED);
     assert!(st.error.is_empty());
@@ -44,7 +44,7 @@ fn fresh_state_matches_qasyncresult_defaults() {
 #[test]
 fn status_change_order_is_status_then_querying_then_finished() {
     let mut st = q::QueryState::default();
-    // Uninitialized → Querying: querying стало true.
+    // Uninitialized → Querying: querying became true.
     assert_eq!(
         q::set_status(&mut st, q::STATUS_QUERYING),
         vec![
@@ -52,7 +52,7 @@ fn status_change_order_is_status_then_querying_then_finished() {
             q::QuerySignal::QueryingChanged,
         ]
     );
-    // Querying → Finished: querying стало false, следом finished().
+    // Querying → Finished: querying became false, followed by finished().
     assert_eq!(
         q::set_status(&mut st, q::STATUS_FINISHED),
         vec![
@@ -65,7 +65,7 @@ fn status_change_order_is_status_then_querying_then_finished() {
 
 #[test]
 fn same_status_is_silent() {
-    // Биндабельное свойство уведомляет только при изменении значения.
+    // A bindable property notifies only when the value changes.
     let mut st = q::QueryState::default();
     q::set_status(&mut st, q::STATUS_FINISHED);
     assert!(q::set_status(&mut st, q::STATUS_FINISHED).is_empty());
@@ -75,8 +75,8 @@ fn same_status_is_silent() {
 fn error_status_emits_error_occurred_then_forwards_to_app() {
     let mut st = q::QueryState::default();
     q::set_error(&mut st, "демон упал");
-    // async.cpp: сначала errorOccurred(error()), потом — если стоит
-    // forwardError — глобальный обработчик.
+    // async.cpp: first errorOccurred(error()), then — if forwardError is set —
+    // the global handler.
     assert_eq!(
         q::set_status(&mut st, q::STATUS_ERROR),
         vec![
@@ -89,8 +89,8 @@ fn error_status_emits_error_occurred_then_forwards_to_app() {
 
 #[test]
 fn forward_error_false_keeps_error_local() {
-    // Страницы, показывающие ошибку сами (DiscoverPage, SettingsPage,
-    // WallpaperDetailPanel), ставят forwardError: false.
+    // Pages that show the error themselves (DiscoverPage, SettingsPage,
+    // WallpaperDetailPanel) set forwardError: false.
     let mut st = q::QueryState::default();
     assert_eq!(
         q::set_forward_error(&mut st, false),
@@ -147,7 +147,7 @@ fn begin_call_connected_switches_to_querying() {
 
 #[test]
 fn daemon_error_text_falls_back_to_status_number() {
-    // backend.cpp: пустой message → "status N", иначе сам message.
+    // backend.cpp: empty message → "status N", otherwise the message itself.
     assert_eq!(q::response_error_text(3, ""), "status 3");
     assert_eq!(q::response_error_text(3, "не найдено"), "не найдено");
 }
@@ -167,8 +167,8 @@ fn non_ok_response_sets_error_and_skips_payload() {
         })),
     );
     let sig = q::apply_health(&mut st, &mut data, &f).unwrap();
-    // Полезная нагрузка при не-OK не читается (inspect_set оригинала
-    // зовёт лямбду только на успехе).
+    // The payload is not read on non-OK (the original's inspect_set calls the
+    // lambda only on success).
     assert_eq!(data, q::HealthData::default());
     assert_eq!(st.status, q::STATUS_ERROR);
     assert_eq!(st.error, "status 3");
@@ -189,7 +189,7 @@ fn broken_frame_is_error_not_panic() {
     let mut st = q::QueryState::default();
     let mut data = q::HealthData::default();
     assert!(q::apply_health(&mut st, &mut data, &[0xff, 0xff, 0xff]).is_err());
-    // Состояние не тронуто — шим пишет отладку и живёт дальше.
+    // State untouched — the shim writes a debug line and lives on.
     assert_eq!(st, q::QueryState::default());
 }
 
@@ -231,9 +231,9 @@ fn health_fills_properties_and_repeats_silently() {
             q::QuerySignal::Finished,
         ]
     );
-    // Повтор того же ответа: свойства молчат (расхождение №1 с
-    // оригиналом — он эмитил бы serviceChanged/stateChanged снова),
-    // статус тоже не менялся.
+    // A repeat of the same response: properties stay silent (divergence #1
+    // from the original — it would emit serviceChanged/stateChanged again),
+    // the status did not change either.
     q::begin_call(&mut st, true);
     let sig = q::apply_health(&mut st, &mut data, &f).unwrap();
     assert_eq!(
@@ -258,8 +258,8 @@ fn renderer_list_maps_instance_fields() {
             instances: vec![pb::RendererInstance {
                 renderer_id: "r-1".into(),
                 fps: 60,
-                // v0.3.5: строки `status` на проводе больше нет, состояние
-                // приезжает деревом — строку собирает ядро.
+                // v0.3.5: there is no `status` string on the wire any more, the state
+                // arrives as a tree — the core builds the string.
                 state: Some(pb::RendererState {
                     kind: Some(pb::renderer_state::Kind::Running(
                         pb::RendererRunningState {
@@ -281,7 +281,7 @@ fn renderer_list_maps_instance_fields() {
     let sig = q::apply_renderer_list(&mut st, &mut data, &f).unwrap();
     assert_eq!(data.renderers, vec!["wescene", "web"]);
     let i = &data.instances[0];
-    // renderer_id → id (ключ карты моста), остальное 1-в-1.
+    // renderer_id → id (the bridge map key), the rest 1:1.
     assert_eq!(i.id, "r-1");
     assert_eq!(i.fps, 60);
     assert_eq!(i.status, "playing");
@@ -314,7 +314,7 @@ fn renderer_list_reports_only_changed_property() {
     };
     q::apply_renderer_list(&mut st, &mut data, &base(30)).unwrap();
     let sig = q::apply_renderer_list(&mut st, &mut data, &base(60)).unwrap();
-    // Список движков тот же — сигнал только по instances.
+    // The engine list is the same — a signal only for instances.
     assert_eq!(sig, vec![q::QuerySignal::Property("instances")]);
     assert_eq!(data.instances[0].fps, 60);
 }
@@ -346,13 +346,13 @@ fn renderer_plugin_list_carries_setting_schema() {
                     choices: vec!["auto".into(), "native".into()],
                     group: "render".into(),
                     order: 3,
-                    // Локализуемые подписи схемы — протокол 0.3.7.
+                    // Localisable schema labels — protocol 0.3.7.
                     ..Default::default()
                 }],
                 plugin_id: "io.waywallen.wescene".into(),
             }],
             supported_types: vec!["scene".into(), "video".into()],
-            // Подписи типов — протокол 0.4.2; этот случай их не касается.
+            // Type labels — protocol 0.4.2; this case does not involve them.
             ..Default::default()
         },
     ));
@@ -373,10 +373,10 @@ fn renderer_plugin_list_carries_setting_schema() {
 
 #[test]
 fn setting_schema_carries_translatable_labels() {
-    // `pluginMessageFromPb` вендора: есть ключ каталога — наружу карта,
-    // нет — голая строка запаски. `SettingField.qml` читает `label` и
-    // `description`, заголовок группы — `group_label`
-    // (`PluginSettingsPage.qml`), и без них человек видел бы ключ.
+    // The vendor's `pluginMessageFromPb`: a catalog key exists — a map goes out,
+    // none — a bare fallback string. `SettingField.qml` reads `label` and
+    // `description`, the group title — `group_label`
+    // (`PluginSettingsPage.qml`), and without them the person would see the key.
     let schema = q::SettingSchema::from(pb::SettingSchema {
         key: "hwdec".into(),
         label_key: "settings.video.hwdec".into(),
@@ -392,8 +392,8 @@ fn setting_schema_carries_translatable_labels() {
     let v = serde_json::to_value(&schema).unwrap();
     assert_eq!(v["label"]["pluginId"], "org.waywallen.video");
     assert_eq!(v["label"]["msgid"], "Hardware decoding");
-    // Каталога у описания и группы нет — наружу идут прежние строки, а не
-    // пустая карта: у вендора это тоже строка.
+    // The description and group have no catalog — the former strings go out,
+    // not an empty map: for the vendor this is a string too.
     assert_eq!(v["description"], "settings.video.hwdec.desc");
     assert_eq!(v["group_label"], "video");
 }
@@ -420,15 +420,15 @@ fn tag_and_rating_lists_fill_their_own_property() {
     ));
     let sig = q::apply_content_rating_list(&mut st, &mut ratings, &f).unwrap();
     assert_eq!(ratings.items, vec!["everyone", "mature"]);
-    // ⚠️ Именно этот список был всегда пуст до 12234d9: живой класс
-    // моста был заглушкой, затиравшей рабочую реализацию.
+    // ⚠️ This very list was always empty before 12234d9: the live bridge class
+    // was a stub that overwrote the working implementation.
     assert_eq!(sig[0], q::QuerySignal::Property("ratings"));
 }
 
 #[test]
 fn empty_payload_still_finishes() {
-    // Демон вправе ответить OK без нагрузки — запрос обязан закончиться
-    // Finished, а не зависнуть в Querying.
+    // The daemon may answer OK without a payload — the query must end in
+    // Finished, not hang in Querying.
     let mut st = q::QueryState::default();
     let mut tags = q::StringListData::default();
     q::begin_call(&mut st, true);
@@ -446,10 +446,10 @@ fn empty_payload_still_finishes() {
     );
 }
 
-// ── видеокарты ─────────────────────────────────────────────────────────
+// ── graphics cards ─────────────────────────────────────────────────────────
 
-/// Ответ `gpu_list` живого демона 0.4.4 на машине с двумя картами
-/// (тот же кадр лежит в `golden/we_live_frames.json`).
+/// The `gpu_list` response of a live 0.4.4 daemon on a machine with two cards
+/// (the same frame is in `golden/we_live_frames.json`).
 const LIVE_GPU_LIST_HEX: &str = "0abd0208061001ca02b5020a790a132f6465762f6472692f72656e64657244313238120e2f6465762f6472692f636172643118e20120800128e20130013a0c303030303a30363a30302e3040822048bf2b5206616d646770755a2150686f656e69783120e2809420616d64677075203078313030323a307831356266620850686f656e6978310ab7010a132f6465762f6472692f72656e64657244313239120e2f6465762f6472692f636172643018e20120810128e2013a0c303030303a30313a30302e3040de2148a05052066e76696469615a4141443130364d205b4765466f726365205254582034303730204d61782d51202f204d6f62696c655d20e28094206e7669646961203078313064653a307832383230622841443130364d205b4765466f726365205254582034303730204d61782d51202f204d6f62696c655d";
 
 fn unhex(hex: &str) -> Vec<u8> {
@@ -485,13 +485,13 @@ fn gpu_list_reads_live_daemon_frame() {
 #[test]
 fn gpu_is_found_by_render_or_primary_node() {
     let gpus = q::gpu_list_from_frame(&unhex(LIVE_GPU_LIST_HEX)).unwrap();
-    // Узел отрисовки — его несёт рисовальщик.
+    // The render node — the renderer carries it.
     assert_eq!(q::find_gpu(&gpus, 226, 128), Some(0));
     assert_eq!(q::find_gpu(&gpus, 226, 129), Some(1));
-    // Основной узел той же карты.
+    // The primary node of the same card.
     assert_eq!(q::find_gpu(&gpus, 226, 1), Some(0));
     assert_eq!(q::find_gpu(&gpus, 226, 0), Some(1));
-    // Чужой узел и «узел неизвестен».
+    // A foreign node and «node unknown».
     assert_eq!(q::find_gpu(&gpus, 226, 130), None);
     assert_eq!(q::find_gpu(&gpus, 0, 0), None);
     assert_eq!(q::find_gpu(&gpus, 0, 128), None);
@@ -499,23 +499,23 @@ fn gpu_is_found_by_render_or_primary_node() {
 
 #[test]
 fn gpu_list_ignores_frames_that_are_not_its_answer() {
-    // Отказ демона и кадр обрыва соединения: статус не OK.
+    // Daemon refusal and a connection-drop frame: status not OK.
     let refused = frame(pb::Status::Internal as i32, "нет".into(), None);
     assert_eq!(q::gpu_list_from_frame(&refused), None);
-    // OK, но чужая нагрузка.
+    // OK, but a foreign payload.
     let other = ok_frame(pb::response::Payload::TagList(pb::TagListResponse::default()));
     assert_eq!(q::gpu_list_from_frame(&other), None);
-    // Мусор вместо кадра.
+    // Garbage instead of a frame.
     assert_eq!(q::gpu_list_from_frame(&[0xff, 0xff, 0xff]), None);
-    // Пустой список — это ответ «карт нет», а не «ответа нет».
+    // An empty list is the answer «no cards», not «no answer».
     let empty = ok_frame(pb::response::Payload::GpuList(pb::GpuListResponse::default()));
     assert_eq!(q::gpu_list_from_frame(&empty), Some(Vec::new()));
 }
 
-/// Сторож оповещений о карте: значок карты (`GpuTag.qml`) — привязка, и
-/// обновится она только по сигналу. Пойман случай: рисовальщик стартует с
-/// нулевым узлом DRM и называет карту следующим обновлением, а свойства
-/// были постоянными — на открытой странице «Состояние» значок не появлялся.
+/// Guard of card notifications: the card badge (`GpuTag.qml`) is a binding,
+/// and it updates only on a signal. A case was caught: the renderer starts
+/// with a zero DRM node and names the card on the next update, while the
+/// properties were constant — on an open «Status» page the badge never appeared.
 #[test]
 fn gpu_tag_inputs_announce_their_changes() {
     const OBJMODEL_RS: &str = include_str!("../../rexon-gui/src/we_objmodel.rs");
@@ -524,7 +524,7 @@ fn gpu_tag_inputs_announce_their_changes() {
     let objmodel = flat(OBJMODEL_RS);
     let app = flat(APP_RS);
 
-    // У Renderer оба номера узла меняются с оповещением…
+    // For Renderer both node numbers change with a notification…
     let renderer_bridge = objmodel
         .split("type Renderer = super::RendererRust;")
         .next()
@@ -536,7 +536,7 @@ fn gpu_tag_inputs_announce_their_changes() {
             "Renderer.{property} обязан оповещать о смене (drmRenderChanged)"
         );
     }
-    // …и обновление это оповещение шлёт.
+    // …and the update sends this notification.
     let update = objmodel
         .split("fn update_from(mut self: Pin<&mut Self>, info: RendererInfo)")
         .nth(1)
@@ -549,7 +549,7 @@ fn gpu_tag_inputs_announce_their_changes() {
         "Renderer::update_from обязан слать drmRenderChanged при смене узла"
     );
 
-    // Смена списка карт доходит до значков через свойство App.gpuManager.
+    // A change of the card list reaches the badges via the App.gpuManager property.
     assert!(
         app.contains("READ = gpu_manager, NOTIFY = gpu_manager_changed)]"),
         "App.gpuManager обязан оповещать: значок ищет карту вызовом find в привязке"
@@ -560,7 +560,7 @@ fn gpu_tag_inputs_announce_their_changes() {
     );
 }
 
-// ── Текущие показы обоев (карточка рейки) ───────────────────────────────
+// ── Current wallpaper shows (rail card) ───────────────────────────────
 
 #[test]
 fn wallpaper_lookup_answer_keeps_daemon_order_and_ignores_foreign_frames() {
@@ -575,7 +575,7 @@ fn wallpaper_lookup_answer_keeps_daemon_order_and_ignores_foreign_frames() {
     let found = q::wallpaper_lookup_from_frame(&answer).expect("ответ wallpaper_lookup");
     assert_eq!(found.iter().map(|w| w.id.as_str()).collect::<Vec<_>>(), ["b", "a"]);
 
-    // Кадр обрыва соединения (статус не OK) и чужая нагрузка — не ответ.
+    // A connection-drop frame (status not OK) and a foreign payload are not a response.
     let refused = frame(pb::Status::Internal as i32, "нет".into(), None);
     assert_eq!(q::wallpaper_lookup_from_frame(&refused), None);
     let other = ok_frame(pb::response::Payload::TagList(pb::TagListResponse::default()));

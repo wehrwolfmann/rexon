@@ -1,40 +1,40 @@
-//! Golden-сверка порта `qt_extensions.rs` с оригиналом —
-//! `rexon/qt_extensions/window.py` в версии до переноса.
+//! Golden check of the `qt_extensions.rs` port against the original —
+//! `rexon/qt_extensions/window.py` in its version before the move.
 //!
-//! Эталон снят прогоном ЖИВОЙ вкладки под offscreen-Qt на подставном доме
+//! The golden was captured by running the LIVE tab under offscreen Qt on a fake home
 //! (`golden/qt_extensions_cases.py` → `golden/qt_extensions_cases.json`):
-//!   * дерево-фикстура из семи каталогов, включая два заведомо негодных
-//!     (без манифеста и с битым JSON) — их вкладка обязана пропустить;
-//!   * ПОЛНОЕ дерево подписей собранного окна в обоих режимах показа и на
-//!     пустом каталоге;
-//!   * карточка и подробный разбор каждого расширения по отдельности;
-//!   * кнопки фильтров, строка статистики, заголовок «Мои расширения»,
-//!     пустые состояния, поиск по шести запросам;
-//!   * строка состояния после каждого исхода, включая обрезку длинной
-//!     ошибки на 200 символах.
+//!   * a fixture tree of seven directories, including two knowingly invalid ones
+//!     (without a manifest and with broken JSON) — the tab must skip them;
+//!   * the FULL label tree of the built window in both display modes and on
+//!     an empty directory;
+//!   * the card and the detailed view of each extension separately;
+//!   * filter buttons, the statistics line, the «My extensions» header,
+//!     empty states, search over six queries;
+//!   * the status line after each outcome, including truncation of a long
+//!     error at 200 characters.
 //!
-//! Санкционированные расхождения (починки оригинала, правило #16) в голдене
-//! НЕ отражены — там записано поведение Python как есть; каждая проверяется
-//! отдельным тестом внизу файла:
-//!   1. имя, автор, описание, теги и README теперь экранируются: у
-//!      оригинала `<разметкой>` в имени и `<изменений>` в README ИСЧЕЗАЛИ с
-//!      витрины — это видно прямо в эталоне (`body_plain` разбора
-//!      `theme-dark` потерял слово);
-//!   2. порядок карточек больше не зависит от порядка файловой системы:
-//!      каталоги перебираются отсортированными;
-//!   3. пустое состояние одно на все ветки — обработчик фильтра больше не
-//!      прячет подсказку «Расширений ещё нет».
+//! Sanctioned deviations (fixes of the original, rule #16) are NOT reflected
+//! in the golden — it records Python's behaviour as is; each one is checked by
+//! a separate test at the bottom of the file:
+//!   1. the name, author, description, tags and README are now escaped: in
+//!      the original `<markup>` in the name and `<changes>` in the README DISAPPEARED from
+//!      the storefront — this is visible right in the golden (the `body_plain` of the
+//!      `theme-dark` view lost a word);
+//!   2. the card order no longer depends on the file system order:
+//!      directories are iterated sorted;
+//!   3. one empty state for all branches — the filter handler no longer
+//!      hides the «No extensions yet» hint.
 //!
-//! ГЕЙТ «голден обязан ловить регрессию» проверен мутацией: шесть точечных
-//! поломок реализации (в статистике потерян разделитель `  •  `; фильтры
-//! собираются по `valid_types()` вместо порядка подписей; `my_header`
-//! показывает счётчик всегда; группы списка сортируются по алфавиту;
-//! обрезка ошибки считает байты вместо символов; в строке типа переставлены
-//! значок и подпись) — каждая красит тесты.
+//! The GATE "the golden must catch a regression" was checked by mutation: six point
+//! breakages of the implementation (the `  •  ` separator lost from the statistics; filters
+//! built by `valid_types()` instead of the label order; `my_header`
+//! always showing the counter; list groups sorted alphabetically;
+//! error truncation counting bytes instead of characters; the icon and the label
+//! swapped in the type line) — each one turns the tests red.
 //!
-//! ⚠️ Ради второй из них в фикстуру добавлены `theme-kde-global` и
-//! `theme-kvantum`: у этих двух типов порядок в таблице подписей и в
-//! `valid_types()` РАЗНЫЙ, и без них сверка порядка не ловила ничего.
+//! ⚠️ For the second of them `theme-kde-global` and
+//! `theme-kvantum` were added to the fixture: for these two types the order in the label table and in
+//! `valid_types()` is DIFFERENT, and without them the order check caught nothing.
 
 
 mod i18n_pin;
@@ -55,8 +55,8 @@ fn golden() -> Value {
     serde_json::from_str(&text).expect("эталон не разбирается как JSON")
 }
 
-/// Построить дерево-фикстуру во временном каталоге ровно так же, как это
-/// делал снимок: описание лежит в самом эталоне, второй его копии тут нет.
+/// Build the fixture tree in a temporary directory exactly as
+/// the snapshot did: the description lies in the golden itself, there is no second copy of it here.
 struct Fixture {
     root: PathBuf,
 }
@@ -115,7 +115,7 @@ impl Fixture {
             .collect()
     }
 
-    /// Путь с подставленным `{ROOT}` — как нормализовал снимок.
+    /// A path with `{ROOT}` substituted — as the snapshot normalized it.
     fn norm(&self, text: &str) -> String {
         text.replace(&self.root.to_string_lossy().to_string(), "{ROOT}")
     }
@@ -127,7 +127,7 @@ impl Drop for Fixture {
     }
 }
 
-/// Расширение по идентификатору.
+/// An extension by identifier.
 fn by_id<'a>(views: &'a [qe::ExtView], id: &str) -> &'a qe::ExtView {
     views
         .iter()
@@ -135,7 +135,7 @@ fn by_id<'a>(views: &'a [qe::ExtView], id: &str) -> &'a qe::ExtView {
         .unwrap_or_else(|| panic!("в фикстуре нет расширения «{id}»"))
 }
 
-/// Подписи (`kind == "label"`) из снятого дерева.
+/// Labels (`kind == "label"`) from the captured tree.
 fn labels(tree: &Value) -> Vec<String> {
     tree.as_array()
         .expect("дерево — массив")
@@ -145,7 +145,7 @@ fn labels(tree: &Value) -> Vec<String> {
         .collect()
 }
 
-// ── состав и порядок ────────────────────────────────────────────────────
+// ── set and order ───────────────────────────────────────────────────────
 
 #[test]
 fn discovery_matches_python() {
@@ -172,8 +172,8 @@ fn discovery_matches_python() {
         })
         .collect();
     assert_eq!(mine, theirs, "состав установленных разошёлся с оригиналом");
-    // Каталоги без манифеста и с битым JSON обязаны быть пропущены, а не
-    // уронить вкладку.
+    // Directories without a manifest and with broken JSON must be skipped rather than
+    // bring down the tab.
     assert!(!mine.contains_key("no-manifest"));
     assert!(!mine.contains_key("bad-json"));
 }
@@ -181,7 +181,7 @@ fn discovery_matches_python() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn extension_fields_match_python() {
-    // Подписи типов — английские `msgid`; эталон помнит русский (`po/ru.po`).
+    // Type labels are English `msgid`s; the golden remembers Russian (`po/ru.po`).
     let _lang = i18n_pin::ru();
     let g = golden();
     let fx = Fixture::new("fields", &g);
@@ -237,12 +237,12 @@ fn extension_fields_match_python() {
     }
 }
 
-// ── постоянные вкладки ──────────────────────────────────────────────────
+// ── permanent tabs ──────────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn constants_match_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     assert_eq!(qe::CARD_W, g["card_w"].as_i64().unwrap() as i32);
     assert_eq!(qe::CARD_TEXT_W, g["card_text_w"].as_i64().unwrap() as i32);
@@ -271,12 +271,12 @@ fn drop_check_is_case_insensitive() {
     assert!(!qe::is_supported_drop("/tmp/безрасширения"));
 }
 
-// ── статистика, заголовки, фильтры ──────────────────────────────────────
+// ── statistics, headers, filters ────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn stats_line_matches_python() {
-    // Подписи типов — английские `msgid`; эталон помнит русский (`po/ru.po`).
+    // Type labels are English `msgid`s; the golden remembers Russian (`po/ru.po`).
     let _lang = i18n_pin::ru();
     let g = golden();
     let fx = Fixture::new("stats", &g);
@@ -288,7 +288,7 @@ fn stats_line_matches_python() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn filters_match_python() {
-    // Подписи типов — английские `msgid`; эталон помнит русский (`po/ru.po`).
+    // Type labels are English `msgid`s; the golden remembers Russian (`po/ru.po`).
     let _lang = i18n_pin::ru();
     let g = golden();
     let fx = Fixture::new("filters", &g);
@@ -316,7 +316,7 @@ fn filters_match_python() {
 fn filter_resets_when_its_button_is_gone() {
     let items = qe::filter_items(&["plugin".to_string()]);
     assert_eq!(qe::normalize_filter("plugin", &items), "plugin");
-    // Плагин удалили — кнопки больше нет, выбор обязан сброситься.
+    // The plugin was removed — the button is gone, the selection must be reset.
     let items = qe::filter_items(&[]);
     assert_eq!(qe::normalize_filter("plugin", &items), qe::FILTER_ALL_ID);
     assert_eq!(items.len(), 1, "остаётся только «Все»");
@@ -325,7 +325,7 @@ fn filter_resets_when_its_button_is_gone() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn my_header_matches_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let total = g["discovered"].as_array().unwrap().len();
     assert_eq!(
@@ -339,12 +339,12 @@ fn my_header_matches_python() {
     assert_eq!(qe::my_header(0, 0), None, "над пустотой заголовка нет");
 }
 
-// ── карточка ────────────────────────────────────────────────────────────
+// ── card ────────────────────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn cards_match_python() {
-    // Подписи типов — английские `msgid`; эталон помнит русский (`po/ru.po`).
+    // Type labels are English `msgid`s; the golden remembers Russian (`po/ru.po`).
     let _lang = i18n_pin::ru();
     let g = golden();
     let fx = Fixture::new("cards", &g);
@@ -353,11 +353,11 @@ fn cards_match_python() {
         let v = by_id(&views, id);
         let c = qe::card(v);
         let their = labels(tree);
-        // Первая подпись — значок-заглушка превью (в снимке картинки
-        // ненастоящие, поэтому у всех карточек виден значок типа).
+        // The first label is the preview placeholder icon (the pictures in the snapshot are
+        // not real, so every card shows the type icon).
         assert_eq!(their[0], c.placeholder, "заглушка превью «{id}»");
         assert_eq!(their[1], c.type_line, "строка типа «{id}»");
-        // Имя в оригинале обрезано по метрикам шрифта — сверяем начало.
+        // In the original the name is cut by font metrics — we compare the beginning.
         let shown = their[2].trim_end_matches('…');
         assert!(
             c.name.starts_with(shown),
@@ -373,7 +373,7 @@ fn cards_match_python() {
         }
         assert!(rest.is_empty(), "лишние подписи карточки «{id}»: {rest:?}");
 
-        // Кнопки: выключатель (если есть) и удаление.
+        // Buttons: the toggle (if any) and removal.
         let buttons: Vec<(String, String)> = tree
             .as_array()
             .unwrap()
@@ -406,12 +406,12 @@ fn toggle_only_for_scripted_types() {
     assert!(!qe::is_toggleable("wallpaper-pack"));
 }
 
-// ── режим «список» ──────────────────────────────────────────────────────
+// ── «list» mode ─────────────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn list_groups_and_rows_match_python() {
-    // Подписи типов — английские `msgid`; эталон помнит русский (`po/ru.po`).
+    // Type labels are English `msgid`s; the golden remembers Russian (`po/ru.po`).
     let _lang = i18n_pin::ru();
     let g = golden();
     let fx = Fixture::new("list", &g);
@@ -419,8 +419,8 @@ fn list_groups_and_rows_match_python() {
     let filtered = qe::apply_filters(&views, qe::FILTER_ALL_ID, "");
     let groups = qe::list_groups(&filtered);
 
-    // Собираем ожидаемую последовательность подписей режима «список»:
-    // заголовок группы, затем значок, название и подпись каждой строки.
+    // We build the expected sequence of labels of the «list» mode:
+    // the group header, then the icon, name and label of each row.
     let mut mine: Vec<String> = Vec::new();
     for grp in &groups {
         mine.push(grp.header_html.clone());
@@ -434,20 +434,20 @@ fn list_groups_and_rows_match_python() {
         }
     }
 
-    // В снимке дереву режима «список» предшествуют осиротевшие карточки
-    // прежнего режима (Qt удаляет их отложенно), поэтому берём хвост от
-    // первого заголовка группы.
+    // In the snapshot the «list» mode tree is preceded by orphaned cards of
+    // the previous mode (Qt deletes them later), so we take the tail from
+    // the first group header.
     let their_all = labels(&g["tree_list"]);
     let start = their_all
         .iter()
         .position(|t| t == &groups[0].header_html)
         .expect("в снимке нет первого заголовка группы");
-    // Хвост после последней строки списка — подвал страницы («⬇ Установить»
-    // и примечание о планах); он сверяется отдельно, в page_chrome.
+    // The tail after the last list row is the page footer («⬇ Install»
+    // and the note about plans); it is checked separately, in page_chrome.
     let their: Vec<String> = their_all[start..start + mine.len()].to_vec();
 
-    // Оригинал не экранировал разметку и обрезал длинные имена — сверяем по
-    // «расшитому» виду: снимаем экранирование со своих строк.
+    // The original did not escape markup and cut long names — we compare by
+    // the "unescaped" form: we remove the escaping from our own strings.
     let unescape = |s: &str| {
         s.replace("&lt;", "<")
             .replace("&gt;", ">")
@@ -472,9 +472,9 @@ fn list_group_order_follows_label_table() {
         .iter()
         .map(|grp| grp.ext_type.clone())
         .collect();
-    // Ожидаемый порядок берётся из СНИМКА: там это порядок кнопок фильтров,
-    // который вкладка строила той же таблицей подписей. Списка-копии здесь
-    // нет — иначе он разъехался бы с фикстурой при первом же её пополнении.
+    // The expected order is taken from the SNAPSHOT: there it is the order of the filter buttons,
+    // which the tab built from the same label table. There is no copy list here
+    // — otherwise it would diverge from the fixture the very first time it is extended.
     let expected: Vec<String> = g["filters"]
         .as_array()
         .unwrap()
@@ -488,12 +488,12 @@ fn list_group_order_follows_label_table() {
     );
 }
 
-// ── подробный разбор ────────────────────────────────────────────────────
+// ── detailed view ───────────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn details_match_python() {
-    // Подписи типов — английские `msgid`; эталон помнит русский (`po/ru.po`).
+    // Type labels are English `msgid`s; the golden remembers Russian (`po/ru.po`).
     let _lang = i18n_pin::ru();
     let g = golden();
     let fx = Fixture::new("details", &g);
@@ -553,26 +553,26 @@ fn details_match_python() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn detail_body_falls_back_like_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let fx = Fixture::new("body", &g);
     let views = fx.views();
-    // README есть — показывается он.
+    // There is a README — it is shown.
     let v = by_id(&views, "theme-dark");
     let d = qe::detail(v, qe::read_readme(v).as_deref(), "");
     assert!(d.body_html.starts_with("<pre"), "README обязан идти <pre>");
-    // Длинные строки README переносятся, а не уходят за край окна.
+    // Long README lines wrap rather than going past the window edge.
     assert!(d.body_html.contains("white-space: pre-wrap"), "{}", d.body_html);
     assert!(
         d.body_html.contains("&lt;изменений&gt;"),
         "слово в угловых скобках обязано уцелеть: {}",
         d.body_html
     );
-    // README нет, описание есть.
+    // No README, there is a description.
     let v = by_id(&views, "my-plugin");
     let d = qe::detail(v, qe::read_readme(v).as_deref(), "");
     assert!(d.body_html.starts_with("<p>"));
-    // Ни README, ни описания.
+    // Neither README nor description.
     let v = by_id(&views, "tool-x");
     let d = qe::detail(v, qe::read_readme(v).as_deref(), "");
     assert_eq!(d.body_html, qe::detail_no_description());
@@ -592,12 +592,12 @@ fn detail_tags_are_capped_like_python() {
     );
 }
 
-// ── справка «Создать своё» ──────────────────────────────────────────────
+// ── the «Create your own» help ──────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn create_dialog_matches_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let dlg = &g["create_dialog"];
     assert_eq!(qe::create_title(), dlg["title"].as_str().unwrap());
@@ -618,8 +618,8 @@ fn create_dialog_matches_python() {
         .collect();
     assert_eq!(buttons, vec![qe::create_close_text()]);
 
-    // Текст справки: сверяем по видимому виду (снимок снят с QTextBrowser,
-    // то есть уже без разметки).
+    // The help text: we compare by the visible form (the snapshot was taken from a QTextBrowser,
+    // i.e. already without markup).
     let plain = dlg["body_plain"].as_str().unwrap();
     for probe in [
         "manifest.json",
@@ -639,12 +639,12 @@ fn create_dialog_matches_python() {
     }
 }
 
-// ── строка состояния ────────────────────────────────────────────────────
+// ── status line ─────────────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn status_texts_match_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let s = &g["status"];
     assert_eq!(
@@ -697,15 +697,15 @@ fn status_texts_match_python() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn long_error_is_clipped_by_characters() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
-    // ⚠️ 200 СИМВОЛОВ, а не байтов: у оригинала срез `msg[:200]`
-    // посимвольный, а байтовый срез на русском тексте разрубил бы символ.
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
+    // ⚠️ 200 CHARACTERS, not bytes: the original's slice `msg[:200]` is
+    // per character, while a byte slice of Russian text would cut a character in half.
     let text = qe::status_install_error(&"я".repeat(300));
     let tail: String = text.chars().skip("⚠️ Ошибка: ".chars().count()).collect();
     assert_eq!(tail.chars().count(), 200);
 }
 
-// ── поиск ───────────────────────────────────────────────────────────────
+// ── search ──────────────────────────────────────────────────────────────
 
 #[test]
 fn search_matches_python() {
@@ -724,8 +724,8 @@ fn search_matches_python() {
             .map(|v| v.as_str().unwrap().to_string())
             .collect();
         let mut mine = found.clone();
-        // Порядок карточек — отдельная починка (см. шапку), здесь важен
-        // именно состав найденного.
+        // The card order is a separate fix (see the header), here what matters is
+        // exactly the set of what was found.
         mine.sort();
         theirs.sort();
         assert_eq!(mine, theirs, "поиск «{query}» нашёл не то");
@@ -735,7 +735,7 @@ fn search_matches_python() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn filter_by_type_matches_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let fx = Fixture::new("bytype", &g);
     let views = fx.views();
@@ -749,12 +749,12 @@ fn filter_by_type_matches_python() {
     );
 }
 
-// ── пустые состояния ────────────────────────────────────────────────────
+// ── empty states ────────────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn empty_states_match_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     assert_eq!(
         qe::empty_text(5, 5),
@@ -765,7 +765,7 @@ fn empty_states_match_python() {
         qe::empty_text(0, 0).unwrap(),
         g["empty"]["empty_label"].as_str().unwrap()
     );
-    // «Ничего не найдено» снимался поиском по заведомо отсутствующему слову.
+    // «Nothing found» was captured by searching for a word that is known to be absent.
     let no_match = g["search"]["нетакого"]["empty"].as_str().unwrap();
     assert_eq!(qe::empty_text(0, 5).unwrap(), no_match);
 }
@@ -773,7 +773,7 @@ fn empty_states_match_python() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn empty_catalog_has_only_all_filter() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let theirs = g["empty"]["filters"].as_array().unwrap();
     let items = qe::filter_items(&[]);
@@ -785,7 +785,7 @@ fn empty_catalog_has_only_all_filter() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn empty_catalog_stats_match_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let stats = qe::stats(&[]);
     assert_eq!(
@@ -794,12 +794,12 @@ fn empty_catalog_stats_match_python() {
     );
 }
 
-// ── блок «Установить» ───────────────────────────────────────────────────
+// ── the «Install» block ─────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn install_sources_match_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let their: Vec<(String, bool, String)> = g["tree_grid"]
         .as_array()
@@ -824,7 +824,7 @@ fn install_sources_match_python() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn page_chrome_matches_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let tree = g["tree_grid"].as_array().unwrap();
     let texts = labels(&g["tree_grid"]);
@@ -875,12 +875,12 @@ fn page_chrome_matches_python() {
     );
 }
 
-// ── подтверждения ───────────────────────────────────────────────────────
+// ── confirmations ───────────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn confirmations_match_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     assert_eq!(qe::confirm_title(), "Удалить?");
     assert_eq!(qe::confirm_uninstall("Утилита X"), "Удалить «Утилита X»?");
     assert_eq!(
@@ -889,7 +889,7 @@ fn confirmations_match_python() {
     );
 }
 
-// ── починки оригинала (правило #16) ─────────────────────────────────────
+// ── fixes of the original (rule #16) ────────────────────────────────────
 
 #[test]
 fn fix_1_markup_in_text_survives() {
@@ -898,8 +898,8 @@ fn fix_1_markup_in_text_survives() {
     let views = fx.views();
     let v = by_id(&views, "my-plugin");
 
-    // Оригинал терял слово: QTextBrowser съедал `<изменений>` как тег —
-    // это видно прямо в снимке.
+    // The original lost a word: QTextBrowser ate `<изменений>` as a tag —
+    // this is visible right in the snapshot.
     let their_plain = g["details"]["theme-dark"]["body_plain"].as_str().unwrap();
     assert!(
         !their_plain.contains("изменений"),
@@ -927,21 +927,21 @@ fn fix_2_card_order_is_stable() {
     assert_eq!(first, second, "порядок обязан быть повторяемым");
     let mut sorted = first.clone();
     sorted.sort();
-    // Идентификаторы совпадают с именами каталогов, поэтому отсортированный
-    // обход каталога даёт отсортированный порядок карточек.
+    // The identifiers match the directory names, so a sorted
+    // directory walk gives a sorted card order.
     assert_eq!(first, sorted, "карточки идут в порядке имён каталогов");
 }
 
 #[test]
 fn fix_3_empty_state_is_one_decision() {
-    // Обработчик фильтра в оригинале прятал подсказку «Расширений ещё нет».
-    // Теперь ответ один и не зависит от того, кто спрашивает.
+    // The filter handler in the original hid the «No extensions yet» hint.
+    // Now there is one answer, and it does not depend on who asks.
     assert_eq!(qe::empty_text(0, 0), Some(qe::empty_no_extensions()));
     assert_eq!(qe::empty_text(0, 3), Some(qe::empty_no_match()));
     assert_eq!(qe::empty_text(2, 3), None);
 }
 
-// ── сторож разметки: у страницы не должно быть своих цветов ─────────────
+// ── layout guard: the page must not have colours of its own ─────────────
 
 #[test]
 fn page_colors_come_from_core() {
@@ -950,7 +950,7 @@ fn page_colors_come_from_core() {
         "/../rexon-gui/qml/ExtensionsPage.qml"
     );
     let Ok(text) = fs::read_to_string(Path::new(qml)) else {
-        // Разметка живёт в соседнем крейте; если его нет — сторожить нечего.
+        // The layout lives in the neighbouring crate; if it is absent, there is nothing to guard.
         return;
     };
     for (num, line) in text.lines().enumerate() {
@@ -960,7 +960,7 @@ fn page_colors_come_from_core() {
             "строка {}: цвет собран в разметке — он обязан приезжать из ядра",
             num + 1
         );
-        // Шестнадцатеричный цвет в кавычках — тоже своё решение.
+        // A hexadecimal colour in quotes is also a decision of its own.
         assert!(
             !code.contains("\"#"),
             "строка {}: цвет прибит в разметке — палитра приходит из ui_base",
@@ -969,13 +969,13 @@ fn page_colors_come_from_core() {
     }
 }
 
-// ── перевод: английский без русских букв ────────────────────────────────
+// ── translation: English without Russian letters ────────────────────────
 
 fn cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Расширение с английскими данными: всё русское в его подписях — наше.
+/// An extension with English data: everything Russian in its labels is ours.
 fn sample(ext_type: &str, enabled: bool) -> qe::ExtView {
     qe::ExtView {
         ext_id: "night".into(),
@@ -998,8 +998,8 @@ fn sample(ext_type: &str, enabled: bool) -> qe::ExtView {
     }
 }
 
-/// Английский интерфейс вкладки: ни одной русской буквы в подписях,
-/// статусах, карточках, разборе и справке — забытая строка видна здесь.
+/// The tab's English interface: not a single Russian letter in labels,
+/// statuses, cards, the detailed view and the help — a forgotten string shows up here.
 #[test]
 fn english_extensions_tab_has_no_russian() {
     let _lang = i18n_pin::en();
@@ -1073,7 +1073,7 @@ fn english_extensions_tab_has_no_russian() {
     }
 }
 
-/// Английские фразы читаются как фразы; «автор неизвестен» решает признак.
+/// English phrases read as phrases; «author unknown» is decided by a flag.
 #[test]
 fn english_phrases_read_naturally() {
     let _lang = i18n_pin::en();
@@ -1082,7 +1082,7 @@ fn english_phrases_read_naturally() {
     assert_eq!(qe::status_toggled(false, "night"), "⏸️ Disabled: night");
     assert_eq!(qe::my_header(1, 3).unwrap(), "My Extensions (1/3)");
     let d = qe::detail(&sample("plugin", true), None, "/home/u");
-    // Версия формата пакета и его служебный номер человеку не показываются.
+    // The package format version and its internal number are not shown to a person.
     assert!(!d.tech_html.contains("Format") && !d.tech_html.contains("ID:"), "{}", d.tech_html);
     assert!(d.tech_html.contains("<b>Minimum Rexon:</b> 5.0"), "{}", d.tech_html);
     assert!(d.tech_html.contains("<b>Website:</b> <a href='https://example.org'>"), "{}", d.tech_html);
@@ -1092,7 +1092,7 @@ fn english_phrases_read_naturally() {
     assert!(qe::card(&v).author_line.is_empty());
 }
 
-/// По-русски подписи без эталона Python — как были (сняты с HEAD 29.09).
+/// In Russian, labels without a Python golden are as they were (taken from HEAD on 29.09).
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn russian_catalog_keeps_old_texts() {
@@ -1120,8 +1120,8 @@ fn russian_catalog_keeps_old_texts() {
     assert!(d.tech_html.contains("<b>Rexon мин.:</b> 5.0"), "{}", d.tech_html);
     assert!(d.tech_html.contains("<b>Сайт:</b> <a href='https://example.org'>https://example.org</a>"));
     assert!(d.tech_html.contains("<b>Лицензия:</b> MIT"));
-    // Справка — слово в слово прежняя (без ведущего перевода строки: в
-    // HTML он не виден, а xgettext срезает его у ключа каталога).
+    // The help is word for word the former one (without the leading newline: in
+    // HTML it is not visible, and xgettext strips it from the catalog key).
     let before = include_str!("golden/qt_extensions_create_body_ru.html");
     assert_eq!(qe::create_body_html(), before);
 }

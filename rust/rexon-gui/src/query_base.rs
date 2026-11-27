@@ -1,27 +1,29 @@
-// Общая часть всех запросов вкладки Wallpaper Engine: свойства базы
-// `Query`, отправка кадра общим транспортным швом и рассылка сигналов базы.
+// The part shared by all queries of the Wallpaper Engine tab: the
+// properties of the `Query` base, sending a frame through the shared
+// transport seam and emitting the base's signals.
 //
-// Это и есть замена Qt-наследования: cxx-qt не умеет
-// наследование Rust-QObject от Rust-QObject, а вся иерархия запросов вкладки
-// — наследование от одной базы. Макрос печатает то, что у оригинала давал
-// общий базовый класс.
+// This is the replacement for Qt inheritance: cxx-qt cannot make a Rust
+// QObject inherit from a Rust QObject, while the whole query hierarchy of
+// the tab is inheritance from one base. The macro emits what the original
+// got from a shared base class.
 //
-// Модуль НЕ мост: `macro_rules!` в файле с `#[cxx_qt::bridge]` жил бы вместе
-// с ним, а нужен он всем мостам сразу. Один движок на крейт, а не копия в
-// каждом файле (правило #12).
+// The module is NOT a bridge: a `macro_rules!` in a file with
+// `#[cxx_qt::bridge]` would live together with it, while all bridges need
+// it at once. One engine per crate, not a copy in every file (rule #12).
 //
-// ⏳ `src/wallpaper_actions.rs` и `src/discover_queries.rs` держат свои копии
-// этой же заготовки — они писались раньше, до появления общего модуля.
-// Переключить их на `impl_query_base!` — отдельная короткая правка; здесь
-// она не делается, чтобы не пересекаться с параллельной работой по тем
-// файлам.
+// Pending: `src/wallpaper_actions.rs` and `src/discover_queries.rs` keep
+// their own copies of the same scaffolding — they were written earlier,
+// before the shared module appeared. Switching them to `impl_query_base!`
+// is a separate short edit; it is not done here so as not to overlap with
+// parallel work on those files.
 
-/// Свойства базы `Query`, отправка кадра и рассылка сигналов базы.
+/// Properties of the `Query` base, sending a frame and emitting the base's
+/// signals.
 ///
-/// Требования к типу: Rust-структура с полем `base: QueryState`, а мост —
-/// с сигналами `statusChanged`/`queryingChanged`/`errorChanged`/
-/// `forwardErrorChanged`/`finished`/`errorOccurred`/`appErrorOccurred`/
-/// `sendRequest` и методом `emit_property(&str)`.
+/// Requirements for the type: a Rust struct with a `base: QueryState` field,
+/// and a bridge with the signals `statusChanged`/`queryingChanged`/
+/// `errorChanged`/`forwardErrorChanged`/`finished`/`errorOccurred`/
+/// `appErrorOccurred`/`sendRequest` and an `emit_property(&str)` method.
 #[macro_export]
 macro_rules! impl_query_base {
     ($query:ident) => {
@@ -53,13 +55,13 @@ macro_rules! impl_query_base {
                 self.dispatch(signals);
             }
 
-            /// Отправить кадр наружу общим швом партий 2-3.
+            /// Send the frame out through the shared seam of batches 2-3.
             ///
-            /// Возвращает токен или `None`, если соединения нет: тогда ядро
-            /// уже перевело запрос в Error и слать нечего.
+            /// Returns a token, or `None` if there is no connection: then the core has
+            /// already switched the request to Error and there is nothing to send.
             ///
-            /// ⚠️ Владельца токена запоминаем ДО отправки: ответ может
-            /// прийти раньше, чем мы вернёмся из колбэка.
+            /// Warning: the token owner is remembered BEFORE sending: the answer may
+            /// arrive before we return from the callback.
             pub fn send_frame(
                 mut self: ::core::pin::Pin<&mut Self>,
                 field: &'static str,
@@ -74,8 +76,9 @@ macro_rules! impl_query_base {
                 if !send {
                     return ::core::option::Option::None;
                 }
-                // Номер выдаётся ДО сборки кадра и кладётся прямо в него:
-                // он же `request_id` протокола, второго счётчика больше нет.
+                // The number is issued BEFORE the frame is built and put right into it:
+                // it is also the protocol's `request_id`; there is no second counter any
+                // more.
                 let token = $crate::discover_queries::next_token();
                 let ::core::result::Result::Ok(bytes) =
                     ::rexon_core::we_client::request_bytes(token as u64, field, &payload)
@@ -100,8 +103,8 @@ macro_rules! impl_query_base {
                 ::core::option::Option::Some(token)
             }
 
-            /// Разослать сигналы базы. Свойства читаются живые: обработчик
-            /// `onStatusChanged` в QML обязан увидеть новые значения.
+            /// Emit the base's signals. The properties are read live: an
+            /// `onStatusChanged` handler in QML must see the new values.
             pub fn dispatch_base(
                 mut self: ::core::pin::Pin<&mut Self>,
                 signals: ::std::vec::Vec<::rexon_core::we_query::QuerySignal>,
@@ -132,7 +135,7 @@ macro_rules! impl_query_base {
     };
 }
 
-/// Разобрать кадр не удалось — демон может быть новее нас.
+/// The frame could not be parsed — the daemon may be newer than us.
 pub fn decode_failed(
     st: &mut rexon_core::we_query::QueryState,
 ) -> Vec<rexon_core::we_query::QuerySignal> {
@@ -144,23 +147,23 @@ pub fn decode_failed(
     out
 }
 
-/// Реестр запросов, ждущих прогресса длинной задачи демона.
+/// Registry of requests waiting for the progress of a long daemon task.
 ///
-/// Порт связки `Notify::taskProgress` → `ProgressQuery` оригинала. У нас
-/// событие приходит СЫРЫМ кадром через транспортный шов, поэтому реестр
-/// держит не сигнал Qt, а по замыканию на запрос.
+/// A port of the original's `Notify::taskProgress` → `ProgressQuery` link.
+/// For us the event arrives as a RAW frame through the transport seam, so
+/// the registry holds not a Qt signal but a closure per request.
 ///
-/// Замыкание, а не `CxxQtThread<T>` конкретного типа: прогресса ждут
-/// РАЗНЫЕ типы запросов (проверка обновлений и установка), а обобщить
-/// `CxxQtThread` по типу нельзя — cxx-qt печатает свой алиас на каждый
-/// QObject. Тот же приём, что у склада состояний
-/// приобретения в `remote_list_model.rs`.
+/// A closure rather than a `CxxQtThread<T>` of a concrete type: DIFFERENT
+/// request types wait for progress (update check and installation), and
+/// `CxxQtThread` cannot be made generic over the type — cxx-qt emits its
+/// own alias for every QObject. The same technique as the acquisition
+/// state store in `remote_list_model.rs`.
 pub mod progress {
     use rexon_core::we_manage::TaskProgressSnapshot;
     use std::sync::{Mutex, OnceLock};
 
-    /// Доставка снимка одному запросу. `Err(())` — объект умер, запись
-    /// пора снять.
+    /// Delivering a snapshot to one request. `Err(())` means the object died
+    /// and the entry should be removed.
     type Deliver = Box<dyn Fn(&str, &TaskProgressSnapshot) -> Result<(), ()> + Send>;
 
     #[derive(Default)]
@@ -174,7 +177,7 @@ pub mod progress {
         REGISTRY.get_or_init(|| Mutex::new(Registry::default()))
     }
 
-    /// Зарегистрировать получателя. Возвращает номер записи для снятия.
+    /// Register a recipient. Returns the entry number for removal.
     pub fn register(deliver: Deliver) -> u64 {
         let mut reg = registry().lock().expect("реестр прогресса не отравлен");
         reg.next_id += 1;
@@ -183,13 +186,13 @@ pub mod progress {
         id
     }
 
-    /// Снять запись. Идемпотентно.
+    /// Remove an entry. Idempotent.
     pub fn unregister(id: u64) {
         let mut reg = registry().lock().expect("реестр прогресса не отравлен");
         reg.entries.retain(|(entry, _)| *entry != id);
     }
 
-    /// Сколько получателей сейчас в реестре (для проверок).
+    /// How many recipients are in the registry right now (for checks).
     pub fn registered() -> usize {
         registry()
             .lock()
@@ -198,7 +201,7 @@ pub mod progress {
             .len()
     }
 
-    /// Разослать снимок всем живым получателям. Возвращает их число.
+    /// Send the snapshot to all live recipients. Returns their number.
     pub fn dispatch(query_id: &str, snapshot: &TaskProgressSnapshot) -> usize {
         let mut delivered = 0usize;
         let mut reg = registry().lock().expect("реестр прогресса не отравлен");
@@ -207,7 +210,7 @@ pub mod progress {
                 delivered += 1;
                 true
             }
-            // Объект умер — запись больше не нужна.
+            // The object died — the entry is no longer needed.
             Err(()) => false,
         });
         delivered

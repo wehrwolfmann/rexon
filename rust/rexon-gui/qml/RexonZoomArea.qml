@@ -1,16 +1,18 @@
-// Вход в крупный просмотр с миниатюры — ОДИН на весь продукт.
+// Entry into the large view from a thumbnail — ONE for the whole product.
 //
-// Кладётся поверх миниатюры (`anchors.fill: parent`) и делает её понятной:
-// под курсором в углу появляется лупа, курсор становится рукой, щелчок
-// открывает крупный просмотр (`RexonImageViewer.qml`). С клавиатуры —
-// Tab на миниатюру, затем Enter или пробел.
+// Placed over a thumbnail (`anchors.fill: parent`) and makes it
+// self-explanatory: under the cursor a magnifier appears in the corner, the
+// cursor becomes a hand, and a click opens the large view
+// (`RexonImageViewer.qml`). From the keyboard: Tab to the thumbnail, then
+// Enter or Space.
 //
-// `badgeOnly` — для карточек, где щелчок по картинке уже занят другим делом
-// (выбор ролика, открытие описания): тогда просмотр открывает только лупа,
-// а остальная карточка ведёт себя как прежде.
+// `badgeOnly` is for cards where a click on the picture is already taken by
+// something else (choosing a clip, opening the description): then only the
+// magnifier opens the view, and the rest of the card behaves as before.
 //
-// Мышь слушает `MouseArea`, а не `TapHandler`: нажатие, принятое здесь, до
-// обработчиков самой карточки не доходит, и одно нажатие не делает два дела.
+// The mouse is handled by a `MouseArea`, not a `TapHandler`: a press
+// accepted here does not reach the card's own handlers, so one press does
+// not do two things.
 
 import QtQuick
 import QtQuick.Controls
@@ -18,16 +20,16 @@ import QtQuick.Controls
 Item {
     id: area
 
-    /// Палитра скина страницы (рамка фокуса — её акцентом).
+    /// Page skin palette (the focus frame uses its accent).
     property var pal: null
-    /// Просмотр открывает только лупа, а не вся миниатюра.
+    /// Only the magnifier opens the view, not the whole thumbnail.
     property bool badgeOnly: false
-    /// Подсказка под курсором.
+    /// Tooltip under the cursor.
     property string tooltip: qsTranslate("rexon", "Open large view")
-    /// Скругление рамки фокуса — как у миниатюры под ней.
+    /// Focus frame rounding — same as the thumbnail underneath.
     property real radius: 4
 
-    /// Миниатюру просят показать крупно.
+    /// The thumbnail is asked to be shown large.
     signal activated()
 
     readonly property color colAccent: area.pal && area.pal.accent !== undefined
@@ -55,7 +57,7 @@ Item {
         ToolTip.delay: 600
     }
 
-    // Рамка фокуса: с клавиатуры видно, какая миниатюра откроется.
+    // Focus frame: from the keyboard it is visible which thumbnail will open.
     Rectangle {
         anchors.fill: parent
         visible: area.activeFocus

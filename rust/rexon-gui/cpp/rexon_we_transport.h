@@ -1,26 +1,29 @@
-// Обратный адрес запросов вкладки Wallpaper Engine: кому отдать ответ демона.
+// The return address of the Wallpaper Engine tab's queries: whom to give
+// the daemon's answer to.
 //
-// Что делает. Транспорт целиком на Rust (src/we_socket.rs — сокет к демону,
-// src/we_transport.rs — отправка кадров). Запрос (любой из десятков
-// cxx-qt-классов: Discover, обои, плейлисты, плагины…) перед отправкой
-// кадра оставляет здесь свой номер и указатель на себя. Когда сокет
-// получает ответ с этим номером, он зовёт rexon_we_do_deliver_response —
-// и шим вызывает у запроса инвокабл `deliverResponse(int64, QByteArray)`.
-// При обрыве соединения rexon_we_do_fail_pending раздаёт один кадр-ошибку
-// всем ждущим, чтобы ни один не остался вечным спиннером.
+// What it does. The transport is entirely in Rust (src/we_socket.rs — the
+// socket to the daemon, src/we_transport.rs — sending frames). A query (any
+// of dozens of cxx-qt classes: Discover, wallpapers, playlists, plugins…)
+// leaves its number and a pointer to itself here before sending a frame.
+// When the socket receives an answer with this number, it calls
+// rexon_we_do_deliver_response — and the shim calls the query's
+// `deliverResponse(int64, QByteArray)` invokable. On a disconnection
+// rexon_we_do_fail_pending hands one error frame to everyone waiting, so
+// that none stays an eternal spinner.
 //
-// Почему C++, а не Rust (правило #16). Решений здесь нет — только два
-// механизма Qt, которых у cxx-qt нет:
-//   * QPointer — слабая ссылка на QObject, которую обнуляет его деструктор.
-//     Ответ на закрытую вкладку (запрос уже удалён) поэтому превращается в
-//     тихий 0, а не в обращение к освобождённой памяти. В cxx-qt-lib 0.9
-//     QPointer нет, а ручной учёт времени жизни из Rust дал бы ту самую
-//     гонку «ответ пришёл после удаления»;
-//   * вызов метода по ИМЕНИ через метаобъект (QMetaObject::invokeMethod).
-//     Запросы — разные типы, общего Rust-трейта у них нет; объединяет их
-//     только одинаково названный инвокабл, и найти его умеет лишь moc.
-// Обычные функции, а не QObject с сигналами: cpp_files крейта через moc не
-// проходят (их собирает cxx-qt-build как есть).
+// Why C++ and not Rust (rule #16). There are no decisions here — only two
+// Qt mechanisms that cxx-qt lacks:
+//   * QPointer — a weak reference to a QObject that its destructor nulls.
+//     An answer to a closed tab (the query is already deleted) therefore
+//     turns into a quiet 0 rather than an access to freed memory. cxx-qt-lib
+//     0.9 has no QPointer, and manual lifetime accounting from Rust would
+//     give exactly the "answer arrived after deletion" race;
+//   * calling a method by NAME through the metaobject
+//     (QMetaObject::invokeMethod). The queries are different types, they
+//     have no common Rust trait; they are united only by an identically
+//     named invokable, and only moc can find it.
+// Ordinary functions rather than a QObject with signals: the crate's
+// cpp_files do not go through moc (cxx-qt-build builds them as is).
 #pragma once
 
 #include <QtCore/QtGlobal>
@@ -29,23 +32,26 @@ class QObject;
 
 extern "C" {
 
-/// Запомнить, кому принадлежит номер. Зовётся при отправке кадра.
+/// Remember whom the number belongs to. Called when a frame is sent.
 void rexon_we_remember(qint64 token, QObject* query);
 
-/// Отдать ответ демона запросу, который его просил.
+/// Give the daemon's answer to the query that asked for it.
 ///
-/// Возвращает 1, если ответ доставлен, и 0, если запрос уже умер (закрыли
-/// вкладку, пересоздали вью): QPointer обнулился, доставлять некому.
+/// Returns 1 if the answer was delivered, and 0 if the query has already
+/// died (the tab was closed, the view was recreated): the QPointer was
+/// nulled, there is nobody to deliver to.
 int rexon_we_do_deliver_response(qint64 token, const char* data, int len);
 
-/// Сколько запросов сейчас ждут ответа (проверке сокета и журналу).
+/// How many queries are waiting for an answer right now (for the socket
+/// check and the log).
 int rexon_we_do_pending_count();
 
-/// Отдать ОДИН и тот же кадр всем ожидающим и очистить карту.
+/// Give ONE and the same frame to everyone waiting and clear the map.
 ///
-/// Обрыв соединения: каждому уходит кадр `Response` с не-OK статусом, и
-/// запрос переходит в Error своим обычным путём — новых инвокаблов не нужно.
+/// A disconnection: each gets a `Response` frame with a non-OK status, and
+/// the query goes into Error by its ordinary path — no new invokables are
+/// needed.
 ///
-/// Возвращает число запросов, до которых кадр доехал.
+/// Returns the number of queries the frame reached.
 int rexon_we_do_fail_pending(const char* data, int len);
 }

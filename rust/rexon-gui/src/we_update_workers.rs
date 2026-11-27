@@ -1,58 +1,66 @@
-// Фоновые задачи страницы «Разработчик» вкладки «Wallpaper Engine» — порт
-// трёх `QThread` из `rexon/qt_wallpaper_engine/window.py` вместе с их
-// исполнительным слоем из `rexon/qt_wallpaper_engine/engine_update.py`.
+// Background tasks of the "Developer" page of the "Wallpaper Engine" tab —
+// a port of three `QThread`s from `rexon/qt_wallpaper_engine/window.py`
+// together with their execution layer from
+// `rexon/qt_wallpaper_engine/engine_update.py`.
 //
-// Оригинал держал три наследника QThread:
+// The original kept three QThread subclasses:
 //
-//   1. `_UpstreamCheckWorker` — проверка обеих upstream-целей (waywallen и
-//      OWE): наша версия ↔ GitHub Releases, changelog диапазона, запись
-//      отчёта в стейт → сигнал `done(statuses)`;
-//   2. `_EngineInstallWorker` — скачать → проверить → установить AppImage
-//      движка (с `.bak`-откатом) → сигналы `progress(str)` и `done(ok, msg)`;
-//   3. `_OwePluginWorker`     — скачать → проверить (→ установить) плагин-zip
-//      OWE → сигналы `progress(str)` и `done(ok, msg, zip_path)`.
+//   1. `_UpstreamCheckWorker` — checking both upstream targets (waywallen
+//      and OWE): our version ↔ GitHub Releases, the changelog of the range,
+//      writing the report into the state → the `done(statuses)` signal;
+//   2. `_EngineInstallWorker` — download → verify → install the engine
+//      AppImage (with a `.bak` rollback) → `progress(str)` and
+//      `done(ok, msg)` signals;
+//   3. `_OwePluginWorker`     — download → verify (→ install) the OWE plugin
+//      zip → `progress(str)` and `done(ok, msg, zip_path)` signals.
 //
-// Здесь это три задачи одного рантайма, а сигналы Qt заменены одной очередью
-// событий ([`UpdateEvent`]): владелец страницы забирает их из своего потока
-// ([`WeUpdateTasks::poll_event`]). Очередь, а не колбэки, — чтобы данные
-// пересекали границу потоков ровно в одном месте, как это уже сделано у
-// вкладки «Steam» (`steam_workers.rs`).
+// Here these are three tasks of one runtime, and the Qt signals are
+// replaced with one event queue ([`UpdateEvent`]): the page owner takes
+// them from its own thread ([`WeUpdateTasks::poll_event`]). A queue rather
+// than callbacks — so that data crosses the thread boundary in exactly one
+// place, as already done for the "Steam" tab (`steam_workers.rs`).
 //
-// Чего здесь НЕТ: решений. Адреса API, разбор ответов, сравнение версий,
-// вердикт валидации AppImage, разбор плагин-архива, планы установки и отката,
-// формат стейта и ВСЕ подписи для человека живут в `rexon_core::engine_update`
-// и `rexon_core::we_window`. На Rust переехало только исполнение: сеть,
-// распаковка, файловые операции и запуск подпроцессов.
+// What is NOT here: decisions. The API addresses, parsing the answers,
+// comparing versions, the AppImage validation verdict, parsing the plugin
+// archive, the installation and rollback plans, the state format and ALL
+// labels for the user live in `rexon_core::engine_update` and
+// `rexon_core::we_window`. Only execution moved to Rust: the network,
+// unpacking, file operations and launching subprocesses.
 //
-// ⚠️ ЖИВАЯ ВЕРСИЯ ДЕМОНА. У оригинала был путь `_daemon_version_via_qt`: он
-// создавал `DaemonControl` ПРЯМО В ФОНОВОМ ПОТОКЕ и уже ронял процесс
-// (починено коммитом a38d22f — колбэки больше не ставятся в конструкторе).
-// Здесь этого пути нет вовсе и быть не может: ни одна задача этого модуля не
-// трогает Qt. Версию живого демона, если она известна, подаёт ВЛАДЕЛЕЦ
-// страницы из своего потока — параметром [`WeUpdateTasks::start_check`].
-// Остальные источники (родные для фонового потока) считает ядро: `--version`
-// у того бинаря, который реально будет запущен, затем `busctl`, затем стейт.
+// Warning: THE LIVE DAEMON VERSION. The original had a
+// `_daemon_version_via_qt` path: it created a `DaemonControl` RIGHT IN THE
+// BACKGROUND THREAD and already crashed the process (fixed in commit
+// a38d22f — the callbacks are no longer set in the constructor). Here this
+// path does not exist at all and cannot: not a single task of this module
+// touches Qt. The live daemon version, if known, is supplied by the page
+// OWNER from its own thread — as a parameter of
+// [`WeUpdateTasks::start_check`]. The other sources (native to the
+// background thread) are computed by the core: `--version` of the binary
+// that will actually be launched, then `busctl`, then the state.
 //
-// ⚠️ Починки оригинала (правило #16), каждая помечена `Починка:` по месту:
-//   1. ГЕЙТ СОВМЕСТИМОСТИ МОРОЗИЛ ИНТЕРФЕЙС. `_start_owe_install` звал
-//      `waywallen_meets_owe_min()` в GUI-потоке, а тот при незапущенном
-//      демоне уходит в `busctl` (потолок 5 с) и в пробу `--version` (ещё 5 с).
-//      Десять секунд неподвижного окна на нажатие кнопки. Гейт переехал
-//      внутрь задачи, а отказ приезжает событием [`UpdateEvent::OweGateRefused`]
-//      с текстом, собранным ядром, — вид у отказа прежний;
-//   2. ОТМЕНЫ НЕ БЫЛО У ПРОВЕРКИ ОБНОВЛЕНИЙ. `_UpstreamCheckWorker` не умел
-//      прерываться вовсе: `_wait_workers` ждал его до минуты
-//      (`WORKER_WAIT_MS`), пока не истекут сетевые таймауты. Здесь у вкладки
-//      дерево отмены, и токен рвёт уже отправленный запрос;
-//   3. ДВА ВОРКЕРА ПИСАЛИ СТЕЙТ ВРАЗНОБОЙ. Проверка (`_store_report`) и
-//      установка (`mark_installed`) читали-меняли-писали один файл из разных
-//      потоков без всякой синхронизации: одновременная запись теряла отчёт
-//      либо версию. Здесь правка стейта идёт под общим замком процесса.
+// Warning: fixes of the original (rule #16), each marked `Fix:` in place:
+//   1. THE COMPATIBILITY GATE FROZE THE INTERFACE. `_start_owe_install`
+//      called `waywallen_meets_owe_min()` in the GUI thread, and with the
+//      daemon not running it goes to `busctl` (a 5 s ceiling) and to the
+//      `--version` probe (another 5 s). Ten seconds of a frozen window per
+//      button press. The gate moved inside the task, and the refusal arrives
+//      as the [`UpdateEvent::OweGateRefused`] event with text assembled by
+//      the core — the refusal looks the same as before;
+//   2. THE UPDATE CHECK HAD NO CANCELLATION. `_UpstreamCheckWorker` could
+//      not be interrupted at all: `_wait_workers` waited for it up to a
+//      minute (`WORKER_WAIT_MS`) until the network timeouts expired. Here the
+//      tab has a cancellation tree, and the token aborts an already sent
+//      request;
+//   3. TWO WORKERS WROTE THE STATE INDEPENDENTLY. The check
+//      (`_store_report`) and the installation (`mark_installed`)
+//      read-modified-wrote one file from different threads without any
+//      synchronization: a simultaneous write lost either the report or the
+//      version. Here editing the state goes under a shared process lock.
 //
-// ⛔ Установку движка живьём НЕ гонять: это ~200 МиБ и системные пути.
-// Проверки этого модуля работают на локальных файлах и временных каталогах, а
-// сверка идёт с записанным эталоном живого Python
-// (`rust/rexon-gui/tests/golden/engine_update_reference.json`).
+// Never: do NOT run the engine installation live: it is ~200 MiB and system
+// paths. The checks of this module work on local files and temporary
+// directories, and the comparison is with a recorded reference of the live
+// Python (`rust/rexon-gui/tests/golden/engine_update_reference.json`).
 
 use std::io::{Read, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -72,77 +80,83 @@ use tokio_util::task::TaskTracker;
 use crate::steam_workers::blocking_cancellable;
 use crate::we_env;
 
-/// Сколько ждём завершения задач при закрытии вкладки. Это ПОТОЛОК, а не
-/// плановое ожидание: токен уже взведён, задачи рвут запросы сами. Оригинал
-/// ждал до `WORKER_WAIT_MS` (минута) И БЕЗ отмены у проверки обновлений.
+/// How long we wait for the tasks to finish when the tab closes. This is a
+/// CEILING, not a planned wait: the token is already triggered, the tasks
+/// abort their requests themselves. The original waited up to
+/// `WORKER_WAIT_MS` (a minute) AND WITHOUT cancellation for the update
+/// check.
 pub const SHUTDOWN_GRACE_MS: u64 = 2000;
 
-/// Рабочих потоков рантайма. Задач три, все они ждут сеть либо подпроцесс,
-/// поэтому пары потоков хватает: тяжёлое уходит в блокирующий пул.
+/// Worker threads of the runtime. There are three tasks, all of them wait
+/// for the network or a subprocess, so a couple of threads is enough: the
+/// heavy work goes to the blocking pool.
 const WORKER_THREADS: usize = 2;
 
 // ============================================================================
-// События наружу
+// Events out
 // ============================================================================
 
-/// То, что задачи отдают владельцу страницы. Замена сигналов трёх QThread.
+/// What the tasks hand to the page owner. A replacement for the signals of
+/// the three QThreads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UpdateEvent {
-    /// `_UpstreamCheckWorker.done(statuses)`. Пустой список — как в
-    /// оригинале, «не удалось проверить».
+    /// `_UpstreamCheckWorker.done(statuses)`. An empty list means, as in the
+    /// original, "could not check".
     CheckDone(Vec<eu::TargetStatus>),
-    /// `progress(str)` обоих устанавливающих воркеров: готовая строка
-    /// состояния из ядра.
+    /// `progress(str)` of both installing workers: a ready status line from the
+    /// core.
     Progress(String),
     /// `_EngineInstallWorker.done(ok, msg)`.
     EngineDone { ok: bool, message: String },
-    /// `_OwePluginWorker.done(ok, msg, zip_path)`. Непустой `zip_path` —
-    /// архив проверен и передан GUI-потоку под hot-install через IPC демона
-    /// (QWebSocket из чужого потока трогать нельзя).
+    /// `_OwePluginWorker.done(ok, msg, zip_path)`. A non-empty `zip_path` means
+    /// the archive was verified and handed to the GUI thread for hot-install
+    /// through the daemon IPC (a QWebSocket must not be touched from another
+    /// thread).
     OweDone {
         ok: bool,
         message: String,
         zip_path: String,
     },
-    /// Гейт совместимости waywallen ≥ 0.2.3 не пройден: текст уже собран
-    /// ядром (`we_window::owe_gate_refused_text`). Починка 1 — гейт считает
-    /// задача, а не GUI-поток.
+    /// The waywallen ≥ 0.2.3 compatibility gate was not passed: the text is
+    /// already assembled by the core (`we_window::owe_gate_refused_text`). Fix
+    /// 1 — the gate is computed by the task, not by the GUI thread.
     OweGateRefused(String),
-    /// Живая версия движка для подписи «Версия waywallen: …».
+    /// The live engine version for the "waywallen version: …" label.
     ///
-    /// ⚠️ Починка 4 (правило #16): у оригинала подписи версии фонового пути
-    /// не было вовсе — `_refresh_version` звал `current_version()` ПРЯМО В
-    /// GUI-ПОТОКЕ, а тот уходит в `--version` бинаря (потолок 5 с) и в
-    /// `busctl` (ещё 5 с). Страница открывалась и замирала на эти секунды
-    /// при каждом заходе и после каждой установки. Здесь версию считает
-    /// задача, а подпись приезжает событием.
+    /// Warning: fix 4 (rule #16): the original had no background path for the
+    /// version label at all — `_refresh_version` called `current_version()`
+    /// RIGHT IN THE GUI THREAD, and that goes to the binary's `--version` (a 5
+    /// s ceiling) and to `busctl` (another 5 s). The page opened and froze for
+    /// those seconds on every visit and after every installation. Here the
+    /// version is computed by a task, and the label arrives as an event.
     EngineVersion(String),
 }
 
 // ============================================================================
-// Окружение
+// Environment
 // ============================================================================
 
-/// Пути, от которых зависят стейт, каталог плагинов и управляемый AppImage.
-/// Снимаются один раз при постройке: читать `$HOME` из рабочей задачи незачем,
-/// а проверки подставляют своё.
+/// Paths the state, the plugins directory and the managed AppImage depend
+/// on. Taken once on construction: there is no reason to read `$HOME` from a
+/// worker task, and the checks substitute their own.
 #[derive(Debug, Clone, Default)]
 pub struct UpdateEnv {
     pub home: String,
     pub xdg_config_home: Option<String>,
     pub xdg_data_home: Option<String>,
-    /// Каталог движка из пакета (`we_client::ENGINE_DIR`); проверки
-    /// подставляют свою песочницу.
+    /// Engine directory from the package (`we_client::ENGINE_DIR`); the checks
+    /// substitute their own sandbox.
     pub engine_dir: String,
-    /// Демон движка из пакета дистрибутива (`we_client::SYSTEM_DAEMON`).
+    /// The engine daemon from the distribution package
+    /// (`we_client::SYSTEM_DAEMON`).
     pub system_daemon: String,
-    /// Каталог данных движка пакетов дистрибутива
-    /// (`we_client::SYSTEM_ENGINE_DIR`, в нём `plugins/`).
+    /// Data directory of the engine from distribution packages
+    /// (`we_client::SYSTEM_ENGINE_DIR`, with `plugins/` in it).
     pub system_engine_dir: String,
 }
 
 impl UpdateEnv {
-    /// Живое окружение процесса.
+    /// The live process environment.
     pub fn from_process() -> UpdateEnv {
         UpdateEnv {
             home: we_env::home(),
@@ -154,8 +168,9 @@ impl UpdateEnv {
         }
     }
 
-    /// Отказ ставить вторую копию цели `key`, которую поставил пакетный
-    /// менеджер (`engine_update::system_update_refusal`); `None` — можно.
+    /// Refusal to install a second copy of target `key` that the package
+    /// manager installed (`engine_update::system_update_refusal`); `None` means
+    /// it is allowed.
     pub fn system_refusal(&self, key: &str) -> Option<String> {
         let system_engine = std::path::Path::new(&self.system_daemon).exists();
         let owe = eu::owe_manifest_path(&rexon_core::we_client::engine_plugins_path(&self.system_engine_dir));
@@ -163,70 +178,73 @@ impl UpdateEnv {
         eu::system_update_refusal(key, system_engine, system_owe)
     }
 
-    /// Файл стейта dev-обновлений.
+    /// File of the dev updates state.
     pub fn state_path(&self) -> String {
         eu::state_path_xdg(self.xdg_config_home.as_deref(), &self.home)
     }
 
-    /// Пользовательский каталог плагинов waywallen.
+    /// The user's waywallen plugins directory.
     pub fn plugins_dir(&self) -> String {
         eu::plugins_dir(self.xdg_data_home.as_deref(), &self.home)
     }
 
-    /// Управляемый AppImage движка.
+    /// The managed engine AppImage.
     pub fn managed_appimage(&self) -> String {
         eu::managed_appimage(&self.home)
     }
 }
 
 // ============================================================================
-// Рантайм страницы
+// Page runtime
 // ============================================================================
 
-/// Все фоновые задачи страницы «Разработчик» и их отмена.
+/// All background tasks of the "Developer" page and their cancellation.
 pub struct WeUpdateTasks {
-    /// ⚠️ `Option`, а не просто `Runtime`: обычный `Drop` рантайма tokio
-    /// ждёт блокирующие задачи БЕЗ СРОКА, и одна застрявшая не даёт
-    /// процессу выйти вовсе. Разбор — у близнеца этой страницы
-    /// (`steam_workers::SteamTasks`), правило #12: порядок завершения у
-    /// обоих рантаймов один.
+    /// Warning: `Option` rather than just `Runtime`: the ordinary `Drop` of a
+    /// tokio runtime waits for blocking tasks WITHOUT A LIMIT, and one stuck
+    /// task keeps the process from exiting at all. The analysis is at this
+    /// page's twin (`steam_workers::SteamTasks`), rule #12: the shutdown order
+    /// is the same for both runtimes.
     rt: Option<Runtime>,
-    /// Корень дерева отмены: закрытие вкладки гасит ВСЁ.
+    /// Root of the cancellation tree: closing the tab cancels EVERYTHING.
     root: CancellationToken,
-    /// Учёт живых задач — чтобы закрытие дождалось каждой.
+    /// Accounting of live tasks — so that closing waits for each one.
     tracker: TaskTracker,
     tx: UnboundedSender<UpdateEvent>,
     rx: Mutex<UnboundedReceiver<UpdateEvent>>,
-    /// Идёт ли проверка (оригинальный `_check_worker.isRunning()`).
+    /// Whether a check is in progress (the original's
+    /// `_check_worker.isRunning()`).
     checking: std::sync::Arc<AtomicBool>,
-    /// Идёт ли установка движка (`_install_worker.isRunning()`).
+    /// Whether an engine installation is in progress
+    /// (`_install_worker.isRunning()`).
     installing: std::sync::Arc<AtomicBool>,
-    /// Идёт ли работа с плагином (`_owe_worker.isRunning()`).
+    /// Whether plugin work is in progress (`_owe_worker.isRunning()`).
     owe_busy: std::sync::Arc<AtomicBool>,
     env: UpdateEnv,
 }
 
 impl WeUpdateTasks {
-    /// Поднять рантайм страницы. `None` — рантайм не создался (в живом Rexon
-    /// это значит «фоновых задач не будет», а не падение).
+    /// Bring up the page runtime. `None` means the runtime was not created (in
+    /// the live Rexon this means "there will be no background tasks", not a
+    /// crash).
     pub fn new(env: UpdateEnv) -> Option<WeUpdateTasks> {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(WORKER_THREADS)
             .thread_name("rexon-we-update")
-            // ⚠️ enable_io обязателен, а не «на всякий случай»: без него
-            // `tokio::process` ПАНИКУЕТ в рабочем потоке при первом же
-            // подпроцессе («A Tokio 1.x context was found, but IO is
-            // disabled»), а подпроцессов здесь три — `--version` бинаря,
-            // busctl и проба AppImage. Поймано живым прогоном.
+            // Warning: enable_io is mandatory, not "just in case": without it
+            // `tokio::process` PANICS in a worker thread on the very first subprocess
+            // ("A Tokio 1.x context was found, but IO is disabled"), and there are
+            // three subprocesses here — the binary's `--version`, busctl and the
+            // AppImage probe. Caught by a live run.
             .enable_io()
             .enable_time()
             .build()
             .ok()?;
         let (tx, rx) = unbounded_channel();
         let root = CancellationToken::new();
-        // ⭐ Общая дверь выхода: без этой записи сток фоновых задач не видит
-        // рабочих потоков рантайма и отвечает «не осталось никого» при
-        // работающей проверке обновлений. То же у соседа —
+        // ⭐ The shared exit door: without this entry the background task drain
+        // does not see the runtime's worker threads and answers "nobody is left"
+        // while an update check is running. The same at the neighbour —
         // `steam_workers::SteamTasks::new`.
         {
             let root = root.clone();
@@ -245,14 +263,14 @@ impl WeUpdateTasks {
         })
     }
 
-    /// Забрать очередное событие; `None` — очередь пуста. Зовётся из потока
-    /// интерфейса (таймером страницы), никогда не блокирует.
+    /// Take the next event; `None` means the queue is empty. Called from the
+    /// interface thread (by the page's timer), never blocks.
     pub fn poll_event(&self) -> Option<UpdateEvent> {
         self.rx.lock().ok()?.try_recv().ok()
     }
 
-    /// Окружение, с которым работают задачи (нужно владельцу для подписей
-    /// путей и для проверок).
+    /// The environment the tasks work with (the owner needs it for path labels
+    /// and for checks).
     pub fn env(&self) -> &UpdateEnv {
         &self.env
     }
@@ -269,14 +287,15 @@ impl WeUpdateTasks {
         self.owe_busy.load(Ordering::SeqCst)
     }
 
-    // ── Задача 1: проверка обновлений ──────────────────────────────────
+    // ── Task 1: checking for updates ───────────────────────────────────
 
-    /// Порт `_UpstreamCheckWorker`. `false` — проверка уже идёт (оригинальный
-    /// ранний выход из `_start_upstream_check`).
+    /// A port of `_UpstreamCheckWorker`. `false` means a check is already in
+    /// progress (the original's early return from `_start_upstream_check`).
     ///
-    /// `daemon_version` — свойство `Version` живого демона, если владелец его
-    /// знает; «» — источник пропускается. Спрашивать демона ОТСЮДА нельзя:
-    /// это Qt, а мы в чужом потоке (см. шапку модуля).
+    /// `daemon_version` is the `Version` property of the live daemon if the
+    /// owner knows it; "" means the source is skipped. Asking the daemon FROM
+    /// HERE is not allowed: that is Qt, and we are in another thread (see the
+    /// module header).
     pub fn start_check(&self, daemon_version: String) -> bool {
         if self.checking.swap(true, Ordering::SeqCst) {
             return false;
@@ -295,11 +314,11 @@ impl WeUpdateTasks {
         true
     }
 
-    /// Обновить подпись версии движка в фоне (починка 4).
+    /// Update the engine version label in the background (fix 4).
     ///
-    /// Отдельной задачи в оригинале не было: он спрашивал версию прямо в
-    /// потоке интерфейса. Своего флага занятости у неё нет — задача
-    /// короткая, идемпотентная и ничего не пишет.
+    /// The original had no separate task: it asked for the version right in the
+    /// interface thread. It has no busy flag of its own — the task is short,
+    /// idempotent and writes nothing.
     pub fn start_version_refresh(&self, daemon_version: String) {
         let token = self.root.child_token();
         let tx = self.tx.clone();
@@ -312,9 +331,10 @@ impl WeUpdateTasks {
         });
     }
 
-    // ── Задача 2: установка AppImage движка ────────────────────────────
+    // ── Task 2: installing the engine AppImage ─────────────────────────
 
-    /// Порт `_EngineInstallWorker`. `false` — установка уже идёт.
+    /// A port of `_EngineInstallWorker`. `false` means an installation is
+    /// already in progress.
     pub fn start_engine_install(&self, asset_url: String, latest_tag: String) -> bool {
         if self.installing.swap(true, Ordering::SeqCst) {
             return false;
@@ -324,7 +344,8 @@ impl WeUpdateTasks {
         let env = self.env.clone();
         let busy = self.installing.clone();
         self.spawn(async move {
-            // Движок стоит пакетом дистрибутива — вторую копию не качаем.
+            // The engine is installed as a distribution package — we do not download
+            // a second copy.
             if let Some(message) = env.system_refusal("waywallen") {
                 busy.store(false, Ordering::SeqCst);
                 if !token.is_cancelled() {
@@ -344,12 +365,14 @@ impl WeUpdateTasks {
         true
     }
 
-    // ── Задача 3: OWE-плагин ───────────────────────────────────────────
+    // ── Task 3: the OWE plugin ─────────────────────────────────────────
 
-    /// Порт `_OwePluginWorker` вместе с гейтом совместимости (починка 1).
+    /// A port of `_OwePluginWorker` together with the compatibility gate (fix
+    /// 1).
     ///
-    /// `fs_install` решает владелец ДО старта: `we_window::plugin_fs_install`
-    /// от «подключён ли демон». `false` — работа с плагином уже идёт.
+    /// `fs_install` is decided by the owner BEFORE the start:
+    /// `we_window::plugin_fs_install` from "whether the daemon is connected".
+    /// `false` means plugin work is already in progress.
     pub fn start_owe_install(
         &self,
         asset_url: String,
@@ -365,8 +388,9 @@ impl WeUpdateTasks {
         let env = self.env.clone();
         let busy = self.owe_busy.clone();
         self.spawn(async move {
-            // Плагин стоит пакетом дистрибутива — вторую копию не качаем.
-            // Отказ идёт тем же событием, что и гейт: кнопка возвращается.
+            // The plugin is installed as a distribution package — we do not download a
+            // second copy. The refusal goes as the same event as the gate: the button
+            // comes back.
             if let Some(message) = env.system_refusal("owe") {
                 busy.store(false, Ordering::SeqCst);
                 if !token.is_cancelled() {
@@ -374,8 +398,8 @@ impl WeUpdateTasks {
                 }
                 return;
             }
-            // Починка 1: гейт «waywallen ≥ 0.2.3» считается здесь, а не в
-            // потоке интерфейса — он уходит в busctl и в пробу `--version`.
+            // Fix 1: the "waywallen ≥ 0.2.3" gate is computed here and not in the
+            // interface thread — it goes to busctl and to the `--version` probe.
             let version = engine_current_version(&env, &daemon_version).await;
             let (allowed, why) = eu::waywallen_meets_owe_min(&version);
             if !allowed {
@@ -398,10 +422,10 @@ impl WeUpdateTasks {
         true
     }
 
-    // ── Услуги потока интерфейса ───────────────────────────────────────
+    // ── Services for the interface thread ──────────────────────────────
 
-    /// Порт `engine_update.mark_seen` — «прочитал changelog, ставить не буду».
-    /// Версия пишется тегом, как в `_on_mark_owe_seen`.
+    /// A port of `engine_update.mark_seen` — "read the changelog, will not
+    /// install". The version is written as a tag, as in `_on_mark_owe_seen`.
     pub fn mark_seen(&self, key: &str, version: &str) {
         let now = now_iso();
         edit_state(&self.env.state_path(), |st| {
@@ -409,8 +433,9 @@ impl WeUpdateTasks {
         });
     }
 
-    /// Порт `mark_installed(key, version_tag_to_state(tag))` — так его зовёт
-    /// `_on_owe_ipc_resp` после успешной установки плагина демоном.
+    /// A port of `mark_installed(key, version_tag_to_state(tag))` — that is how
+    /// `_on_owe_ipc_resp` calls it after the daemon successfully installed the
+    /// plugin.
     pub fn mark_installed_tag(&self, key: &str, tag: &str) {
         let version = eu::version_tag_to_state(tag);
         let now = now_iso();
@@ -419,21 +444,23 @@ impl WeUpdateTasks {
         });
     }
 
-    /// ФС-фолбэк установки плагина ПРЯМО В ПОТОКЕ ИНТЕРФЕЙСА — порт ветки
-    /// `_on_owe_worker_done`, где демон умер, пока качали архив. Сети здесь
-    /// нет, только распаковка уже скачанного файла, поэтому оригинал делал
-    /// это на месте — и мы делаем так же.
+    /// The FS fallback of the plugin installation RIGHT IN THE INTERFACE THREAD
+    /// — a port of the `_on_owe_worker_done` branch where the daemon died while
+    /// the archive was downloading. There is no network here, only unpacking an
+    /// already downloaded file, so the original did it on the spot — and so do
+    /// we.
     pub fn install_plugin_zip_now(&self, zip_path: &str, tag: &str) -> (bool, String) {
         install_plugin_zip_fs(&self.env, zip_path, tag, "")
     }
 
-    // ── Закрытие ───────────────────────────────────────────────────────
+    // ── Closing ────────────────────────────────────────────────────────
 
-    /// Погасить ВСЕ задачи и дождаться их — порт `_wait_workers`.
+    /// Cancel ALL tasks and wait for them — a port of `_wait_workers`.
     ///
-    /// Оригинал ждал до минуты, потому что отмены у проверки обновлений не
-    /// было вовсе (починка 2). Здесь токен взводится первым, задачи рвут свои
-    /// запросы сами, а ожидание — страховка с потолком [`SHUTDOWN_GRACE_MS`].
+    /// The original waited up to a minute because the update check had no
+    /// cancellation at all (fix 2). Here the token is triggered first, the
+    /// tasks abort their requests themselves, and the wait is a safety net with
+    /// the ceiling [`SHUTDOWN_GRACE_MS`].
     pub fn shutdown(&self) {
         self.root.cancel();
         self.tracker.close();
@@ -450,7 +477,7 @@ impl WeUpdateTasks {
         });
     }
 
-    /// Завести задачу под учётом трекера.
+    /// Start a task under the tracker's accounting.
     fn spawn<F>(&self, fut: F)
     where
         F: std::future::Future<Output = ()> + Send + 'static,
@@ -467,9 +494,9 @@ impl WeUpdateTasks {
 }
 
 impl Drop for WeUpdateTasks {
-    /// Потолок на роспуск рантайма — тот же порядок, что у
-    /// `steam_workers::SteamTasks` (правило #12): человек, закрывший окно,
-    /// обязан получить закрытое окно, чем бы ни была занята фоновая задача.
+    /// A ceiling on dismantling the runtime — the same order as at
+    /// `steam_workers::SteamTasks` (rule #12): a user who closed the window
+    /// must get a closed window, whatever the background task is busy with.
     fn drop(&mut self) {
         self.root.cancel();
         self.tracker.close();
@@ -480,29 +507,33 @@ impl Drop for WeUpdateTasks {
 }
 
 // ============================================================================
-// Исходы задач
+// Task outcomes
 // ============================================================================
 
-/// Итог задачи установки — порт `WorkerOutcome` ядра, доведённый до события.
+/// Outcome of the installation task — a port of the core's `WorkerOutcome`,
+/// brought to an event.
 struct TaskOutcome {
     ok: bool,
     message: String,
-    /// Непустой — архив передан GUI-потоку под IPC-установку.
+    /// Non-empty means the archive was handed to the GUI thread for IPC
+    /// installation.
     zip_path: String,
 }
 
 // ============================================================================
-// Задача 1: проверка обеих целей
+// Task 1: checking both targets
 // ============================================================================
 
-/// Порт `check_all_targets` — обе цели подряд, как в оригинале.
+/// A port of `check_all_targets` — both targets in a row, as in the
+/// original.
 async fn check_all_targets(
     env: &UpdateEnv,
     token: &CancellationToken,
     daemon_version: &str,
 ) -> Vec<eu::TargetStatus> {
-    // Живая версия движка нужна только цели `waywallen`, и спрашиваем её
-    // ОДИН раз: оригинал звал `current_version()` внутри цикла по целям.
+    // The live engine version is needed only for the `waywallen` target, and
+    // we ask for it ONCE: the original called `current_version()` inside the
+    // loop over the targets.
     let engine_version = engine_current_version(env, daemon_version).await;
     let state_path = env.state_path();
     let mut out = Vec::new();
@@ -541,15 +572,15 @@ async fn check_all_targets(
     out
 }
 
-/// Поход в GitHub API за релизами, с фолбэком на коммиты default-ветки —
-/// порт сетевой части `check_target`.
+/// A trip to the GitHub API for releases, with a fallback to the default
+/// branch commits — a port of the network part of `check_target`.
 fn fetch_outcome(repo: &str, since_iso: &str, cancel: &net::CancelToken) -> eu::FetchOutcome {
     match api_json(&eu::releases_url(repo), cancel) {
         Err(e) => eu::FetchOutcome::ReleasesFailed(e),
         Ok(body) => match eu::parse_releases(&body) {
             Err(e) => eu::FetchOutcome::ReleasesFailed(e),
             Ok(rels) if !rels.is_empty() => eu::FetchOutcome::Releases(rels),
-            // У репо нет релизов — фолбэк на коммиты default-ветки.
+            // The repo has no releases — fall back to the default branch commits.
             Ok(_) => match api_json(&eu::commits_url(repo, since_iso), cancel) {
                 Err(e) => eu::FetchOutcome::CommitsFailed(e),
                 Ok(body) => match eu::parse_commits(&body) {
@@ -561,7 +592,8 @@ fn fetch_outcome(repo: &str, since_iso: &str, cancel: &net::CancelToken) -> eu::
     }
 }
 
-/// `GET` к API GitHub — порт `_api_json`. Тело как есть, разбирает ядро.
+/// `GET` to the GitHub API — a port of `_api_json`. The body as is; the
+/// core parses it.
 fn api_json(url: &str, cancel: &net::CancelToken) -> Result<String, String> {
     let mut net = api_net(cancel.clone());
     let body = net
@@ -570,25 +602,27 @@ fn api_json(url: &str, cancel: &net::CancelToken) -> Result<String, String> {
     String::from_utf8(body).map_err(|e| e.to_string())
 }
 
-/// Транспорт для API GitHub: заголовки ровно те, что назвало ядро
-/// (`api_headers` — `Accept` и `User-Agent`).
+/// Transport for the GitHub API: exactly the headers the core named
+/// (`api_headers` — `Accept` and `User-Agent`).
 fn api_net(cancel: net::CancelToken) -> UreqNet {
     let mut extra = eu::api_headers();
-    // `User-Agent` транспорт ставит сам отдельным аргументом каждого запроса —
-    // здесь остаётся только то, чего он не знает.
+    // The transport sets `User-Agent` itself as a separate argument of every
+    // request — only what it does not know remains here.
     extra.retain(|(name, _)| !name.eq_ignore_ascii_case("user-agent"));
     UreqNet::new().with_cancel(cancel).with_headers(extra)
 }
 
 // ============================================================================
-// Наша текущая версия
+// Our current version
 // ============================================================================
 
-/// Версия движка waywallen — порт `current_version` со всеми источниками.
+/// The waywallen engine version — a port of `current_version` with all its
+/// sources.
 ///
-/// Порядок и вердикт — целиком ядро (`engine_update::current_version`): здесь
-/// только добыча наблюдений. `daemon_version` приходит от владельца страницы,
-/// потому что спрашивать демона по D-Bus умеет только Qt-слой.
+/// The order and the verdict are entirely the core's
+/// (`engine_update::current_version`): here there is only gathering
+/// observations. `daemon_version` comes from the page owner because only
+/// the Qt layer can ask the daemon over D-Bus.
 async fn engine_current_version(env: &UpdateEnv, daemon_version: &str) -> String {
     let binary = binary_version().await;
     let busctl = run_capture(
@@ -606,8 +640,9 @@ async fn engine_current_version(env: &UpdateEnv, daemon_version: &str) -> String
     )
 }
 
-/// `waywallen --version` у ТОГО бинаря, который реально будет запущен.
-/// Разные сборки печатают версию то в stdout, то в stderr — смотрим оба.
+/// `waywallen --version` of THE binary that will actually be launched.
+/// Different builds print the version to stdout or to stderr — we look at
+/// both.
 async fn binary_version() -> String {
     let Some(bin) = we_env::daemon_binary() else {
         return String::new();
@@ -628,15 +663,15 @@ async fn binary_version() -> String {
     }
 }
 
-/// Версия OWE-плагина, которую РЕАЛЬНО загрузит демон — правда с ФС
-/// (`plugin.toml`), порт `owe_installed_version`.
+/// The version of the OWE plugin that the daemon will ACTUALLY load — the
+/// truth from the FS (`plugin.toml`), a port of `owe_installed_version`.
 ///
-/// С 28.09.2026 копий может быть две: у человека
-/// (`$XDG_DATA_HOME/waywallen/plugins`) и в пакете Rexon
-/// (`/usr/lib/rexon/engine/plugins`). Демон берёт новую из двух (при равенстве
-/// — копию человека); версию считаем тем же правилом
-/// (`we_client::active_plugin_source`), иначе страница «Разработчик»
-/// предлагала бы обновить плагин, который уже стоит в пакете.
+/// Since 28.09.2026 there may be two copies: the user's
+/// (`$XDG_DATA_HOME/waywallen/plugins`) and in the Rexon package
+/// (`/usr/lib/rexon/engine/plugins`). The daemon takes the newer of the two
+/// (on a tie, the user's copy); we compute the version by the same rule
+/// (`we_client::active_plugin_source`), otherwise the "Developer" page would
+/// offer to update a plugin that is already installed in the package.
 pub fn owe_installed_version(env: &UpdateEnv) -> String {
     let read = |plugins: &str| {
         std::fs::read_to_string(eu::owe_manifest_path(plugins))
@@ -644,8 +679,8 @@ pub fn owe_installed_version(env: &UpdateEnv) -> String {
             .unwrap_or_default()
     };
     let user = read(&env.plugins_dir());
-    // Копия пакета: из пакета дистрибутива, а нет её — вшитая в Rexon
-    // (порядок `we_client::engine_layouts`).
+    // The package copy: from the distribution package, and without it, the one
+    // built into Rexon (the order of `we_client::engine_layouts`).
     let bundled = Some(read(&rexon_core::we_client::engine_plugins_path(&env.system_engine_dir)))
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| read(&rexon_core::we_client::engine_plugins_path(&env.engine_dir)));
@@ -660,7 +695,7 @@ pub fn owe_installed_version(env: &UpdateEnv) -> String {
 }
 
 // ============================================================================
-// Задача 2: скачать → проверить → установить AppImage движка
+// Task 2: download → verify → install the engine AppImage
 // ============================================================================
 
 async fn engine_install(
@@ -690,9 +725,9 @@ async fn engine_install(
         return done(out);
     }
 
-    // Остановить движок ДО подмены (грабля 27.08.2026: подмена под живым
-    // демоном — несовпадение версий и SIGBUS при остановке). Не вышло
-    // остановить — файл не трогаем вовсе.
+    // Stop the engine BEFORE the swap (pitfall of 27.08.2026: a swap under a
+    // live daemon — a version mismatch and SIGBUS on stop). If it could not be
+    // stopped, the file is not touched at all.
     let _ = tx.send(UpdateEvent::Progress(rexon_core::i18n::tr(
         "Stopping the wallpaper engine…",
     )));
@@ -710,8 +745,8 @@ async fn engine_install(
     let (ok, imsg) = tokio::task::spawn_blocking(move || install_appimage(&env2, &src, &version))
         .await
         .unwrap_or_else(|e| (false, eu::appimage_install_fail_message(&e.to_string())));
-    // Поднять службу в ЛЮБОМ исходе: при откате вернулась прежняя версия, и
-    // без обоев человек остаться не должен.
+    // Bring the service up on ANY outcome: on rollback the previous version
+    // came back, and the user must not be left without a wallpaper.
     let restarted = match &swap.start_argv {
         Some(argv) => run_status(argv, rexon_core::we_client::SYSTEMCTL_TIMEOUT_SECS).await == Some(0),
         None => false,
@@ -721,8 +756,9 @@ async fn engine_install(
         (true, false, true) => eu::appimage_install_quit_message(&env.managed_appimage()),
         _ => imsg,
     };
-    // Новый движок — и плагин обоев KDE, если он уже стоит, в ногу с бандлом
-    // (дефект 12.11.2026). Не установленный не ставится.
+    // A new engine — and the KDE wallpaper plugin, if already installed, in
+    // step with the bundle (defect of 12.11.2026). One not installed is not
+    // installed.
     if ok {
         crate::we_socket::refresh_installed_kde_plugin("обновление движка");
     }
@@ -734,7 +770,7 @@ async fn engine_install(
 }
 
 // ============================================================================
-// Задача 3: скачать → проверить (→ установить) плагин-zip OWE
+// Task 3: download → verify (→ install) the OWE plugin zip
 // ============================================================================
 
 async fn owe_install(
@@ -771,8 +807,9 @@ async fn owe_install(
 
     let out = ww::after_validate_plugin_route(fs_install, &validation.msg);
     if out.hand_over_tmp {
-        // Установку сделает GUI-поток через IPC демона: QWebSocket из чужого
-        // потока трогать нельзя, воркер только доносит путь.
+        // The installation will be done by the GUI thread through the daemon IPC:
+        // a QWebSocket must not be touched from another thread, the worker only
+        // delivers the path.
         return TaskOutcome {
             ok: out.ok,
             message: out.message,
@@ -797,7 +834,7 @@ async fn owe_install(
     done(out)
 }
 
-/// Вердикт ядра → исход задачи (архив никому не передан).
+/// The core's verdict → the task outcome (the archive is handed to nobody).
 fn done(out: ww::WorkerOutcome) -> TaskOutcome {
     TaskOutcome {
         ok: out.ok,
@@ -807,10 +844,10 @@ fn done(out: ww::WorkerOutcome) -> TaskOutcome {
 }
 
 // ============================================================================
-// Скачивание
+// Downloading
 // ============================================================================
 
-/// Шаг скачивания с сообщениями прогресса — общий для обеих задач.
+/// The download step with progress messages — shared by both tasks.
 async fn download_step(
     token: &CancellationToken,
     tx: &UnboundedSender<UpdateEvent>,
@@ -833,9 +870,9 @@ async fn download_step(
     .flatten()
 }
 
-/// Порт `download_asset`/`download_plugin_zip`: release-ассет во временный
-/// файл. Путь или `None`. Локальный путь (для проверок) тоже принимается —
-/// как в оригинале.
+/// A port of `download_asset`/`download_plugin_zip`: a release asset into a
+/// temporary file. A path or `None`. A local path (for checks) is accepted
+/// too — as in the original.
 fn download_asset(
     url: &str,
     spec: &eu::DownloadSpec,
@@ -860,8 +897,9 @@ fn download_asset(
     Some(tmp)
 }
 
-/// Тело ответа в файл кусками по `spec.chunk` с кооперативной отменой между
-/// ними — порт цикла `while True: chunk = r.read(...)`.
+/// The response body into a file in `spec.chunk` pieces with cooperative
+/// cancellation between them — a port of the
+/// `while True: chunk = r.read(...)` loop.
 fn stream_to_file(
     url: &str,
     dest: &str,
@@ -893,10 +931,11 @@ fn stream_to_file(
 }
 
 // ============================================================================
-// Валидация и установка AppImage
+// AppImage validation and installation
 // ============================================================================
 
-/// Порт `validate_appimage`: наблюдения снимаем здесь, вердикт выносит ядро.
+/// A port of `validate_appimage`: we take the observations here, the core
+/// gives the verdict.
 async fn validate_appimage(path: &str) -> (bool, String) {
     let meta = std::fs::metadata(path);
     let is_file = meta.as_ref().map(|m| m.is_file()).unwrap_or(false);
@@ -911,21 +950,22 @@ async fn validate_appimage(path: &str) -> (bool, String) {
         Some((stdout, stderr)) => {
             eu::validate_appimage_verdict(true, true, None, &format!("{stdout}{stderr}"))
         }
-        // Не запустился либо не уложился в потолок — для ядра это тот же
-        // «spawn_error», что и исключение `subprocess.run` в оригинале.
+        // Did not start or did not fit into the ceiling — for the core this is the
+        // same "spawn_error" as the `subprocess.run` exception in the original.
         None => eu::validate_appimage_verdict(true, true, Some(&probe_failed()), ""),
     }
 }
 
-/// Пояснение к несостоявшемуся запуску пробы: ядро вставляет его в свою
-/// фразу «не запускается: …», которую видит человек на странице
-/// «Разработчик», — поэтому и оно из каталога перевода.
+/// An explanation for the failed probe launch: the core inserts it into its
+/// phrase "does not start: …", which the user sees on the "Developer" page
+/// — so it too comes from the translation catalogue.
 fn probe_failed() -> String {
     rexon_core::i18n::tr("the process did not start or did not respond in time")
 }
 
-/// Порт `install_appimage`: атомарная подмена управляемого AppImage с
-/// `.bak`-откатом. План (пути, права, версия для стейта) строит ядро.
+/// A port of `install_appimage`: an atomic swap of the managed AppImage
+/// with a `.bak` rollback. The plan (paths, permissions, version for the
+/// state) is built by the core.
 fn install_appimage(env: &UpdateEnv, new_path: &str, tag: &str) -> (bool, String) {
     let plan = eu::appimage_install_plan_for_dest(&env.managed_appimage(), tag);
     let _ = std::fs::create_dir_all(&plan.dest_dir);
@@ -941,7 +981,8 @@ fn install_appimage(env: &UpdateEnv, new_path: &str, tag: &str) -> (bool, String
             (true, eu::appimage_install_ok_message(&plan.dest))
         }
         Err(e) => {
-            // Недоделанный `.new-update` не остаётся мусором в каталоге движка.
+            // An unfinished `.new-update` does not stay as garbage in the engine
+            // directory.
             let _ = std::fs::remove_file(&plan.tmp);
             if Path::new(&plan.bak).is_file() {
                 let _ = std::fs::rename(&plan.bak, &plan.dest);
@@ -951,9 +992,10 @@ fn install_appimage(env: &UpdateEnv, new_path: &str, tag: &str) -> (bool, String
     }
 }
 
-/// Файловые операции подмены: копия прежней версии в `.bak`, новая — через
-/// временное имя В ТОЙ ЖЕ папке и `rename` (писать поверх работающего бинаря
-/// нельзя — «Text file busy»).
+/// File operations of the swap: a copy of the previous version into
+/// `.bak`, the new one through a temporary name IN THE SAME folder and
+/// `rename` (writing over a running binary is not allowed — "Text file
+/// busy").
 fn place_appimage(plan: &eu::AppimageInstallPlan, new_path: &str) -> Result<(), String> {
     if Path::new(&plan.dest).is_file() {
         std::fs::copy(&plan.dest, &plan.bak).map_err(|e| e.to_string())?;
@@ -965,13 +1007,14 @@ fn place_appimage(plan: &eu::AppimageInstallPlan, new_path: &str) -> Result<(), 
 }
 
 // ============================================================================
-// Установка плагин-zip в файловую систему
+// Installing the plugin zip into the file system
 // ============================================================================
 
-/// Порт `install_plugin_zip_fs`: staging → атомарный перенос в
-/// `plugins_dir()/<id>`, прежняя версия в `.bak-update`, откат по плану ядра.
+/// A port of `install_plugin_zip_fs`: staging → an atomic move into
+/// `plugins_dir()/<id>`, the previous version into `.bak-update`, a rollback
+/// by the core's plan.
 ///
-/// `plugins_root` — переопределение каталога («» = штатный).
+/// `plugins_root` overrides the directory ("" = the standard one).
 pub fn install_plugin_zip_fs(
     env: &UpdateEnv,
     zip_path: &str,
@@ -1026,9 +1069,10 @@ pub fn install_plugin_zip_fs(
     }
 }
 
-/// Распаковка и перенос на место. Флаги отката выставляются ровно там, где
-/// это делал оригинал: до переноса прежней версии в `.bak` каталог плагина
-/// ещё НЕ наш, и при сбое трогать его нельзя.
+/// Unpacking and moving into place. The rollback flags are set exactly
+/// where the original set them: until the previous version is moved into
+/// `.bak`, the plugin directory is NOT ours yet, and it must not be touched
+/// on failure.
 fn unpack_into_place(
     zip_path: &str,
     plan: &eu::PluginInstallPlan,
@@ -1046,22 +1090,23 @@ fn unpack_into_place(
         std::fs::rename(&plan.target, &plan.bak).map_err(|e| e.to_string())?;
         *moved_to_bak = true;
     }
-    // С этого момента target — НАШ: его можно сносить при откате.
+    // From this moment the target is OURS: it may be removed on rollback.
     *target_created = true;
     if std::fs::rename(extract_root, &plan.target).is_err() {
-        // Стейджинг на другой файловой системе (обычно так и есть: временный
-        // каталог в /tmp, плагины в $HOME) — копируем дерево.
+        // Staging on another file system (usually this is the case: the temporary
+        // directory is in /tmp, the plugins in $HOME) — we copy the tree.
         copy_tree(Path::new(extract_root), Path::new(&plan.target))?;
     }
     Ok(())
 }
 
-/// Распаковать архив, восстановив unix-права записей.
+/// Unpack the archive, restoring the unix permissions of the entries.
 ///
-/// Права нужны бинарям рендереров (демон делает то же в `apply_zip_mode`), а
-/// маску задаёт ядро (`zip_entry_mode`). ⚠️ У архивов, собранных не на unix,
-/// крейт `zip` домысливает права там, где `ZipFile` оригинала видел ноль;
-/// плагины waywallen собираются на Linux, где значение то же самое.
+/// The permissions are needed by the renderer binaries (the daemon does the
+/// same in `apply_zip_mode`), and the mask is set by the core
+/// (`zip_entry_mode`). Warning: for archives built not on unix, the `zip`
+/// crate infers permissions where the original's `ZipFile` saw zero;
+/// waywallen plugins are built on Linux, where the value is the same.
 fn extract_zip(zip_path: &str, root: &str) -> Result<(), String> {
     let file = std::fs::File::open(zip_path).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
@@ -1082,8 +1127,8 @@ fn extract_zip(zip_path: &str, root: &str) -> Result<(), String> {
                 std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
             }
             let mut dest = std::fs::File::create(&out).map_err(|e| e.to_string())?;
-            // Чтение до конца заодно сверяет CRC записи: битый архив падает
-            // здесь, ДО того как тронута установленная версия.
+            // Reading to the end also verifies the entry's CRC: a broken archive fails
+            // here, BEFORE the installed version is touched.
             let mut buf = Vec::new();
             entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
             dest.write_all(&buf).map_err(|e| e.to_string())?;
@@ -1095,8 +1140,8 @@ fn extract_zip(zip_path: &str, root: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Рекурсивная копия дерева с правами — замена `shutil.copytree` для случая
-/// «стейджинг на другой файловой системе».
+/// A recursive copy of a tree with permissions — a replacement for
+/// `shutil.copytree` for the "staging on another file system" case.
 fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dst).map_err(|e| e.to_string())?;
     for entry in std::fs::read_dir(src).map_err(|e| e.to_string())? {
@@ -1114,7 +1159,8 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Порт `_rmtree_quiet`: снести файл либо дерево, не мешая исходу шага.
+/// A port of `_rmtree_quiet`: remove a file or a tree without interfering
+/// with the step's outcome.
 fn rmtree_quiet(path: &str) {
     let p = Path::new(path);
     if p.is_dir() {
@@ -1124,7 +1170,7 @@ fn rmtree_quiet(path: &str) {
     }
 }
 
-/// Порт `_drop_tmp`: убрать временный файл воркера.
+/// A port of `_drop_tmp`: remove the worker's temporary file.
 pub fn drop_tmp(path: &str) {
     if path.is_empty() {
         return;
@@ -1133,23 +1179,24 @@ pub fn drop_tmp(path: &str) {
 }
 
 // ============================================================================
-// Стейт ~/.config/rexon/dev_upstream_state.json
+// State ~/.config/rexon/dev_upstream_state.json
 // ============================================================================
 
-/// Замок правки стейта. Починка 3: проверка и установка меняли один файл из
-/// разных потоков без всякой синхронизации, и одновременная запись теряла то
-/// отчёт, то записанную версию.
+/// Lock for editing the state. Fix 3: the check and the installation
+/// changed one file from different threads without any synchronization,
+/// and a simultaneous write lost now the report, now the recorded version.
 fn state_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
-/// Порт `_read_state_text`: сырой текст файла (`None` — нет/не читается).
+/// A port of `_read_state_text`: the raw file text (`None` — missing or
+/// unreadable).
 fn read_state_text(path: &str) -> Option<String> {
     std::fs::read_to_string(path).ok()
 }
 
-/// Прочитать-изменить-записать стейт под общим замком.
+/// Read-modify-write the state under the shared lock.
 fn edit_state(path: &str, edit: impl FnOnce(&mut Map<String, Value>)) {
     let _guard = state_lock().lock();
     let mut state = eu::load_state(read_state_text(path).as_deref());
@@ -1157,21 +1204,22 @@ fn edit_state(path: &str, edit: impl FnOnce(&mut Map<String, Value>)) {
     write_state_text(path, &eu::serialize_state(&state));
 }
 
-/// Порт `_write_state_text`: атомарная запись через временное имя из ядра.
+/// A port of `_write_state_text`: an atomic write through a temporary name
+/// from the core.
 fn write_state_text(path: &str, text: &str) {
     if let Some(dir) = Path::new(path).parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    // ⭐ Единственная атомарная дверь профиля: временный файл РЯДОМ с целью,
-    // `fsync`, переименование. Своей пары «запись + переименование» здесь
-    // больше нет — без `fsync` после сбоя питания на месте целого прежнего
-    // состояния оказывалось целое новое из нулей, и страница показывала бы
-    // «движок не проверялся» на проверенном движке. Сторож —
-    // `rexon-core/tests/profile_writes_atomic.rs`.
+    // ⭐ The profile's single atomic door: a temporary file NEXT TO the
+    // target, `fsync`, rename. There is no longer a "write + rename" pair of
+    // our own here — without `fsync`, after a power failure an intact new state
+    // of zeros ended up in place of the intact previous one, and the page
+    // would show "the engine was not checked" for a checked engine. The guard
+    // is `rexon-core/tests/profile_writes_atomic.rs`.
     let _ = rexon_core::utils::atomic_write(path, text);
 }
 
-/// Порт `_now_iso`: метка времени стейта в формате ядра.
+/// A port of `_now_iso`: the state timestamp in the core's format.
 fn now_iso() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1181,17 +1229,17 @@ fn now_iso() -> String {
 }
 
 // ============================================================================
-// Временные файлы и подпроцессы
+// Temporary files and subprocesses
 // ============================================================================
 
-/// Порядковый номер временного имени — чтобы две задачи одного процесса не
-/// целились в один путь в пределах наносекунды.
+/// Sequence number of the temporary name — so that two tasks of one process
+/// do not aim at the same path within a nanosecond.
 fn temp_counter() -> u64 {
     static N: AtomicU64 = AtomicU64::new(0);
     N.fetch_add(1, Ordering::Relaxed)
 }
 
-/// Хвост уникального имени: время, идентификатор процесса и счётчик.
+/// Tail of a unique name: the time, the process identifier and the counter.
 fn temp_token() -> String {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1200,8 +1248,9 @@ fn temp_token() -> String {
     format!("{:x}{:x}{:x}", std::process::id(), nanos, temp_counter())
 }
 
-/// Порт `tempfile.mkstemp(prefix, suffix)`: создать пустой файл под своим
-/// именем. `create_new` — чужой файл с таким именем перехвачен не будет.
+/// A port of `tempfile.mkstemp(prefix, suffix)`: create an empty file under
+/// our own name. `create_new` — someone else's file with this name will not
+/// be hijacked.
 fn mktemp_file(prefix: &str, suffix: &str) -> Option<String> {
     let dir = std::env::temp_dir();
     for _ in 0..64 {
@@ -1220,7 +1269,7 @@ fn mktemp_file(prefix: &str, suffix: &str) -> Option<String> {
     None
 }
 
-/// Порт `tempfile.mkdtemp(prefix)`.
+/// A port of `tempfile.mkdtemp(prefix)`.
 fn mktemp_dir(prefix: &str) -> Option<String> {
     let dir = std::env::temp_dir();
     for _ in 0..64 {
@@ -1237,9 +1286,11 @@ fn mktemp_dir(prefix: &str) -> Option<String> {
     None
 }
 
-/// `subprocess.run(argv, capture_output=True, timeout=…)` — стандартный вывод
-/// и поток ошибок. `None` — не запустилось либо не уложилось в потолок.
-/// Код выхода процесса (`None` — не запустился или не уложился в срок).
+/// `subprocess.run(argv, capture_output=True, timeout=…)` — standard output
+/// and the error stream. `None` means it did not start or did not fit into
+/// the ceiling.
+/// Exit code of the process (`None` — did not start or did not finish in
+/// time).
 async fn run_status(argv: &[String], timeout_secs: u64) -> Option<i32> {
     let (exe, args) = argv.split_first()?;
     let fut = tokio::process::Command::new(exe)
@@ -1255,7 +1306,8 @@ async fn run_status(argv: &[String], timeout_secs: u64) -> Option<i32> {
         .code()
 }
 
-/// Отвечает ли демон на шине (свойство `Version` читается).
+/// Whether the daemon answers on the bus (the `Version` property is
+/// readable).
 async fn daemon_on_bus() -> bool {
     run_capture(&eu::busctl_version_argv(), eu::BUSCTL_TIMEOUT_SECS)
         .await
@@ -1263,10 +1315,11 @@ async fn daemon_on_bus() -> bool {
         .unwrap_or(false)
 }
 
-/// Остановить движок перед подменой его файла — по плану ядра
-/// (`engine_update::engine_swap_plan`): служба — `systemctl --user stop`,
-/// демон вне службы — его же метод `Quit`. `Err` — остановить не вышло, и
-/// подменять файл НЕЛЬЗЯ.
+/// Stop the engine before swapping its file — by the core's plan
+/// (`engine_update::engine_swap_plan`): a service gets
+/// `systemctl --user stop`, a daemon outside a service gets its own `Quit`
+/// method. `Err` means it could not be stopped, and the file MUST NOT be
+/// swapped.
 async fn stop_engine_for_swap() -> Result<eu::EngineSwapPlan, String> {
     let unit_active = run_status(
         &eu::engine_unit_active_argv(),
@@ -1314,14 +1367,15 @@ async fn run_capture(argv: &[String], timeout_secs: u64) -> Option<(String, Stri
 }
 
 // ============================================================================
-// Проверки
+// Checks
 // ============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Записанный эталон живого Python (мост `rexon-py` ушёл в архив).
+    /// The recorded reference of the live Python (the `rexon-py` bridge went to
+    /// the archive).
     const REFERENCE: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/golden/engine_update_reference.json"
@@ -1331,18 +1385,19 @@ mod tests {
         serde_json::from_str(REFERENCE).expect("эталон engine_update обязан быть валидным JSON")
     }
 
-    /// Сообщения сверяются на ИСХОДНОМ языке. С 30.09 (65e9b32) тексты —
-    /// английские msgid каталога, русский приезжает переводом; эталон
-    /// Python-эпохи был русским, и сверка зеленела только на русской локали
-    /// с установленным каталогом — и то пока соседняя сверка процесса не
-    /// переключала язык на английский. Язык процесса — общий, поэтому
-    /// закрепляем тот же, что ставят соседи крейта (`SOURCE_LANGUAGE`).
+    /// Messages are compared in the SOURCE language. Since 30.09 (65e9b32) the
+    /// texts are English msgids of the catalogue, and Russian comes as a
+    /// translation; the Python-era reference was Russian, and the comparison was
+    /// green only in a Russian locale with the catalogue installed — and even
+    /// then only until a neighbouring comparison in the process switched the
+    /// language to English. The process language is shared, so we pin the same
+    /// one the crate's neighbours set (`SOURCE_LANGUAGE`).
     fn source_language() {
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
     }
 
-    /// Значение эталона с подстановкой настоящего домашнего каталога вместо
-    /// плейсхолдера `<H>`, которым его записал Python.
+    /// A reference value with the real home directory substituted for the
+    /// `<H>` placeholder with which Python recorded it.
     fn expect_str(key: &str, home: &str) -> String {
         reference()[key]
             .as_str()
@@ -1409,8 +1464,8 @@ mod tests {
             & 0o7777
     }
 
-    /// Стейт с подменённой меткой времени: её живой Python замораживал, а мы
-    /// снимаем настоящую — сверяем всё остальное побайтово.
+    /// State with a substituted timestamp: the live Python froze it, while we
+    /// take the real one — everything else is compared byte for byte.
     fn state_with_frozen_stamp(path: &str) -> String {
         let text = std::fs::read_to_string(path).expect("стейт обязан быть записан");
         let mut out = String::new();
@@ -1429,7 +1484,7 @@ mod tests {
         out.trim_end_matches('\n').to_string()
     }
 
-    // ── Скачивание с локального пути (эталон dl_*) ──────────────────────
+    // ── Downloading from a local path (reference dl_*) ──────────────────
 
     #[test]
     fn download_local_path_matches_reference() {
@@ -1465,11 +1520,11 @@ mod tests {
         assert_eq!(mode_of(&p), 0o644);
         drop_tmp(&p);
 
-        // dl_empty: пустой адрес — ничего не создаём.
+        // dl_empty: an empty address — we create nothing.
         assert!(download_asset("", &spec, &cancel, |_, _| {}).is_none());
     }
 
-    // ── Установка AppImage (эталон ia_*) ────────────────────────────────
+    // ── Installing the AppImage (reference ia_*) ────────────────────────
 
     #[test]
     fn install_appimage_matches_reference() {
@@ -1478,7 +1533,7 @@ mod tests {
         let env = sb.env();
         let dest = env.managed_appimage();
 
-        // ia_fresh: чистая установка.
+        // ia_fresh: a clean installation.
         let src = sb.join("new.AppImage");
         write_exec(&src, b"NEW", 0o755);
         let got = install_appimage(&env, &src, "v0.2.5");
@@ -1491,7 +1546,7 @@ mod tests {
             expect_str("ia_fresh_state", &sb.0)
         );
 
-        // ia_over: поверх прежней — прежняя уезжает в .bak.
+        // ia_over: over the previous one — the previous one goes to .bak.
         let src2 = sb.join("new2.AppImage");
         write_exec(&src2, b"NEWER", 0o755);
         let got = install_appimage(&env, &src2, "0.2.6");
@@ -1503,7 +1558,7 @@ mod tests {
             expect_str("ia_over_state", &sb.0)
         );
 
-        // ia_missing: исходника нет — откат, мусора не остаётся.
+        // ia_missing: there is no source — a rollback, no garbage remains.
         let (ok, msg) = install_appimage(&env, &sb.join("nope"), "v1");
         assert!(!ok);
         assert_eq!(msg.split(':').next().unwrap(), "installation failed, rolled back");
@@ -1514,7 +1569,7 @@ mod tests {
         assert_eq!(std::fs::read(&dest).unwrap(), b"NEWER", "ia_rollback_dest");
     }
 
-    // ── Валидация AppImage без запуска (эталон va_missing/va_noexec) ────
+    // ── AppImage validation without launching (reference va_missing/va_noexec) ─
 
     #[test]
     fn validate_appimage_file_checks_match_reference() {
@@ -1539,7 +1594,7 @@ mod tests {
         );
     }
 
-    // ── Установка плагин-zip (эталон ipz_*) ─────────────────────────────
+    // ── Installing the plugin zip (reference ipz_*) ─────────────────────
 
     const MANIFEST_OK: &str = "[plugin]\n\
 id = \"org.waywallen.open-wallpaper-engine\"\n\
@@ -1565,7 +1620,7 @@ version = \"0.1.10\"\n";
         source_language();
         let sb = Sandbox::new("ipz");
         let env = sb.env();
-        // Эталон снят с plugins_root = <H>/work/plugins.
+        // The reference was captured with plugins_root = <H>/work/plugins.
         let proot = sb.join("work/plugins");
         let zp = make_zip(
             &sb.join("install.zip"),
@@ -1596,7 +1651,8 @@ version = \"0.1.10\"\n";
             expect_str("ipz_state", &sb.0)
         );
 
-        // ipz_over: повторная установка — прежняя версия в .bak-update.
+        // ipz_over: a repeated installation — the previous version into
+        // .bak-update.
         let got = install_plugin_zip_fs(&env, &zp, "0.2.1", &proot);
         assert_eq!(got, expect_pair("ipz_over", &sb.0));
         assert!(
@@ -1604,15 +1660,15 @@ version = \"0.1.10\"\n";
             "ipz_bak"
         );
 
-        // ipz_invalid: архив без plugin.toml.
+        // ipz_invalid: an archive without plugin.toml.
         let bad = make_zip(&sb.join("bad.zip"), &[("files.txt", "x", 0o644)]);
         assert_eq!(
             install_plugin_zip_fs(&env, &bad, "1", &proot),
             expect_pair("ipz_invalid", &sb.0)
         );
 
-        // ipz_broken: валидация проходит, а распаковка падает на CRC —
-        // рабочий установленный плагин обязан УЦЕЛЕТЬ.
+        // ipz_broken: validation passes, but unpacking fails on the CRC — the
+        // working installed plugin must SURVIVE.
         let broken = sb.join("corrupt.zip");
         make_stored_zip(
             &broken,
@@ -1635,8 +1691,8 @@ version = \"0.1.10\"\n";
         );
     }
 
-    /// Копия дерева переживает перенос между файловыми системами — ветка,
-    /// которую в живой установке включает `/tmp` в оперативной памяти.
+    /// A tree copy survives a move between file systems — the branch that in a
+    /// live installation is enabled by `/tmp` in RAM.
     #[test]
     fn copy_tree_keeps_exec_bit() {
         let sb = Sandbox::new("tree");
@@ -1648,7 +1704,7 @@ version = \"0.1.10\"\n";
         assert_eq!(mode_of(&sb.join("dst/plugin.toml")), 0o644);
     }
 
-    /// Отметки стейта — те же ключи и тот же формат, что у оригинала.
+    /// State marks — the same keys and the same format as the original's.
     #[test]
     fn state_marks_roundtrip() {
         let sb = Sandbox::new("state");
@@ -1702,13 +1758,14 @@ version = \"0.1.10\"\n";
         std::fs::write(path, raw).expect("архив обязан переписаться");
     }
 
-    // ── Живая проверка релизов ──────────────────────────────────────────
+    // ── Live release check ──────────────────────────────────────────────
 
-    /// Настоящий поход в GitHub за релизами обеих целей.
+    /// A real trip to GitHub for the releases of both targets.
     ///
-    /// Запуск: `cargo test -p rexon-gui --lib upstream_check_live -- --ignored
-    /// --nocapture`. Отдельно от обычного прогона — сеть в тестах не
-    /// обязательна; ставить движок этот тест не умеет и не пытается.
+    /// Run: `cargo test -p rexon-gui --lib upstream_check_live -- --ignored
+    /// --nocapture`. Separate from the ordinary run — the network is not
+    /// mandatory in tests; this test cannot install the engine and does not
+    /// try.
     #[test]
     #[ignore = "нужен интернет"]
     fn upstream_check_live() {

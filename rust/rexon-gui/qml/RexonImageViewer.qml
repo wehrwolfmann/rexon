@@ -1,41 +1,44 @@
-// Крупный просмотр картинки — ОДИН на весь продукт.
+// Large picture view — ONE for the whole product.
 //
-// Миниатюры есть почти в каждой вкладке (фоны и заставки Steam, расширения,
-// библиотека обоев, снимки тем), а открыть картинку крупно можно было не
-// везде, и там, где можно, — каждый раз по-своему. Этот слой общий: страница
-// отдаёт ему список того, что лежит на карточках, и номер карточки, с
-// которой открыть; всё остальное он делает сам.
+// Thumbnails exist in almost every tab (Steam backgrounds and screensavers,
+// extensions, the wallpaper library, theme screenshots), but a picture
+// could not be opened large everywhere, and where it could, each place did
+// it its own way. This layer is shared: the page hands it the list of what
+// is on the cards and the number of the card to open; it does everything
+// else by itself.
 //
-// Что умеет:
-//   * картинка во всё окно приложения на затемнённой подложке;
-//   * «на весь экран» — кнопкой и клавишей F (окно приложения уходит в
-//     полноэкранный режим и возвращается, как было, при выходе);
-//   * закрытие — Esc, кнопка, щелчок мимо картинки;
-//   * листание по списку — стрелки на экране и клавиши ← → (справа налево
-//     «вперёд» — влево, см. `RexonArrows`);
-//   * масштаб — колесо мыши и клавиши + − 0, сдвиг — перетаскиванием;
-//     двойной щелчок переключает «вписать / 1:1»;
-//   * подпись: название, вторая строка (игра, источник), отметка
-//     (например, «анимированный») и счётчик «3 / 205»;
-//   * пока полноразмерная картинка грузится — видна миниатюра и признак
-//     загрузки; окно при этом не замирает (всё читается асинхронно);
-//   * GIF/APNG/WebP играют (`animatedImage`), ролик (`video`) идёт без звука
-//     по кругу поверх статичного кадра.
+// What it can do:
+//   * the picture over the whole application window on a dimmed backdrop;
+//   * "full screen" — with a button and the F key (the application window
+//     goes full screen and returns to how it was on exit);
+//   * closing — Esc, a button, a click outside the picture;
+//   * paging through the list — on-screen arrows and the ← → keys (for
+//     right to left "forward" is to the left, see `RexonArrows`);
+//   * zoom — mouse wheel and the + − 0 keys, panning by dragging;
+//     a double click toggles "fit / 1:1";
+//   * caption: title, second line (game, source), a badge (for example,
+//     "animated") and a counter "3 / 205";
+//   * while the full-size picture loads, the thumbnail and a loading
+//     indicator are visible; the window does not freeze meanwhile
+//     (everything is read asynchronously);
+//   * GIF/APNG/WebP play (`animatedImage`), a clip (`video`) loops muted
+//     on top of the still frame.
 //
-// Как подключить:
+// How to hook it up:
 //
 //     RexonImageViewer { id: viewer; pal: root.pal }
 //     ...
 //     RexonZoomArea { anchors.fill: parent; pal: root.pal
 //                     onActivated: viewer.show(items, index) }
 //
-// Элемент списка — простой объект:
+// A list item is a plain object:
 //     { key, title, subtitle, badge, thumb, source, video,
 //       animatedImage, pending }
-// `thumb` — то, что уже на карточке (показывается сразу); `source` —
-// полноразмерная картинка; `video` — ролик. Если полного адреса у страницы
-// ещё нет, она ставит `pending: true`, слушает `wanted(key)` и, когда файл
-// готов, кладёт его в `sources`:  { "<key>": { source, video, done } }.
+// `thumb` is what is already on the card (shown immediately); `source` is
+// the full-size picture; `video` is a clip. If the page does not have the
+// full address yet, it sets `pending: true`, listens to `wanted(key)` and,
+// when the file is ready, puts it into `sources`:
+// { "<key>": { source, video, done } }.
 
 pragma ComponentBehavior: Bound
 
@@ -47,29 +50,30 @@ import QtMultimedia
 Popup {
     id: viewer
 
-    // ── Договор со страницей ──────────────────────────────────────────────
+    // ── Contract with the page ────────────────────────────────────────────
 
-    /// Палитра скина страницы (акцент и текст берутся из неё).
+    /// Page skin palette (accent and text are taken from it).
     property var pal: null
-    /// Список карточек (см. шапку файла).
+    /// List of cards (see the file header).
     property var items: []
-    /// Номер показанной карточки.
+    /// Number of the card being shown.
     property int index: 0
-    /// Поздние адреса: ключ карточки → { source, video, done }.
+    /// Late addresses: card key → { source, video, done }.
     property var sources: ({})
-    /// Подложка просмотра. Темнее общего затемнения модальных окон:
-    /// картинку смотрят на почти чёрном, а не сквозь страницу.
+    /// Viewer backdrop. Darker than the common dimming of modal windows: the
+    /// picture is viewed on near-black, not through the page.
     property color backdropColor: "#eb000000"
 
-    /// Показана карточка `key` (или её сосед — он подгружается заранее):
-    /// странице пора добыть полноразмерный файл, если его ещё нет.
+    /// Card `key` is shown (or its neighbour — it is preloaded): time for the
+    /// page to obtain the full-size file if it does not have it yet.
     signal wanted(string key)
 
     readonly property int count: viewer.items ? viewer.items.length : 0
 
-    /// Значки «назад/вперёд» и клавиши ← → по зеркалированию самого
-    /// просмотра: справа налево «вперёд» — влево. Кнопки переставляют якоря,
-    /// а «⛶ ❌» уходят в левый верхний угол тем же зеркалированием ряда.
+    /// "Back/forward" icons and the ← → keys follow the mirroring of the viewer
+    /// itself: for right to left "forward" is to the left. The buttons swap
+    /// anchors, and "⛶ ❌" move to the top left corner by the same row
+    /// mirroring.
     readonly property RexonArrows arrows: RexonArrows {
         mirrored: viewer.mirrored
     }
@@ -93,16 +97,17 @@ Popup {
     readonly property bool animatedImage: viewer.current !== null
                                           && viewer.current.animatedImage === true
 
-    /// Полноразмерное ещё в пути: страница обещала (`pending`) и не
-    /// отчиталась (`done`), либо сам файл ещё читается.
+    /// The full-size picture is still on its way: the page promised it
+    /// (`pending`) and has not reported (`done`), or the file itself is still
+    /// being read.
     readonly property bool loading: viewer.opened && viewer.current !== null
         && ((viewer.current.pending === true && !(viewer.late && viewer.late.done === true))
             || (stage.fullItem !== null && stage.fullItem.status === Image.Loading)
             || (viewer.videoSource !== "" && !viewer.videoBroken && !stage.videoPlaying))
-    /// Ролик не открылся — остаётся статичный кадр.
+    /// The clip failed to open — the still frame remains.
     property bool videoBroken: false
 
-    /// Открыть просмотр на карточке `at` списка `list`.
+    /// Open the viewer at card `at` of list `list`.
     function show(list, at) {
         viewer.items = list || [];
         if (viewer.count === 0)
@@ -113,7 +118,7 @@ Popup {
         viewer.announce();
     }
 
-    /// Листание по кругу.
+    /// Paging wraps around.
     function step(delta) {
         if (viewer.count < 2)
             return;
@@ -122,7 +127,7 @@ Popup {
         viewer.announce();
     }
 
-    /// Сказать странице, что понадобилось: показанное и оба соседа.
+    /// Tell the page what is needed: the shown card and both neighbours.
     function announce() {
         const seen = {};
         for (const d of [0, 1, -1]) {
@@ -139,9 +144,9 @@ Popup {
         }
     }
 
-    // ── Масштаб и сдвиг ───────────────────────────────────────────────────
+    // ── Zoom and pan ──────────────────────────────────────────────────────
 
-    /// Масштаб относительно «вписать»: 1 — картинка целиком в окне.
+    /// Zoom relative to "fit": 1 means the whole picture fits in the window.
     property real zoom: 1.0
     property real panX: 0
     property real panY: 0
@@ -155,7 +160,7 @@ Popup {
         viewer.videoBroken = false;
     }
 
-    /// Не дать картинке уехать за край: сдвиг — только на то, что не влезло.
+    /// Do not let the picture drift past the edge: pan only by what did not fit.
     function clampPan() {
         const overX = Math.max(0, (stage.naturalWidth * stage.fitScale * viewer.zoom - stage.width) / 2);
         const overY = Math.max(0, (stage.naturalHeight * stage.fitScale * viewer.zoom - stage.height) / 2);
@@ -163,7 +168,7 @@ Popup {
         viewer.panY = Math.max(-overY, Math.min(overY, viewer.panY));
     }
 
-    /// Поставить масштаб `value`, удержав под курсором ту же точку картинки.
+    /// Set zoom `value` while keeping the same picture point under the cursor.
     function zoomTo(value, px, py) {
         const next = Math.max(1.0, Math.min(viewer.maxZoom, value));
         const ratio = next / viewer.zoom;
@@ -175,7 +180,7 @@ Popup {
         viewer.clampPan();
     }
 
-    /// Двойной щелчок: «вписать» ↔ «1:1» (точка картинки в точку экрана).
+    /// Double click: "fit" ↔ "1:1" (one picture pixel to one screen pixel).
     function toggleActualSize(px, py) {
         if (viewer.zoomed) {
             viewer.zoom = 1.0;
@@ -186,16 +191,15 @@ Popup {
         viewer.zoomTo(1 / Math.max(stage.fitScale, 0.01), px, py);
     }
 
-    // ── На весь экран ─────────────────────────────────────────────────────
+    // ── Full screen ───────────────────────────────────────────────────────
     //
-    // Слой занимает окно приложения целиком, поэтому «на весь экран» — это
-    // полноэкранный режим самого окна: панели рабочего стола уходят, а при
-    // выходе окно возвращается в тот вид, в каком было (обычное или
-    // развёрнутое).
+    // The layer covers the whole application window, so "full screen" is the
+    // full-screen mode of the window itself: the desktop panels go away, and
+    // on exit the window returns to the state it was in (normal or maximized).
     readonly property var hostWindow: viewer.parent ? viewer.parent.Window.window : null
     readonly property bool fullScreen: viewer.hostWindow !== null
                                        && viewer.hostWindow.visibility === Window.FullScreen
-    /// Вид окна до полноэкранного режима; -1 — режим включали не мы.
+    /// Window state before full-screen mode; -1 means we did not turn the mode on.
     property int savedVisibility: -1
 
     function toggleFullScreen() {
@@ -219,7 +223,7 @@ Popup {
         viewer.savedVisibility = -1;
     }
 
-    // ── Сам слой ──────────────────────────────────────────────────────────
+    // ── The layer itself ──────────────────────────────────────────────────
 
     parent: Overlay.overlay
     x: 0
@@ -234,12 +238,13 @@ Popup {
     enter: null
     exit: null
 
-    // Затемняет сам слой; второе затемнение под ним было бы лишним.
+    // The layer dims by itself; a second dimming underneath would be redundant.
     Overlay.modal: Item {}
     background: Rectangle { color: viewer.backdropColor }
 
-    /// Щелчок, которым просмотр открыли, бывает двойным. Вторая его половина
-    /// приходит уже сюда и, попав мимо картинки, закрыла бы просмотр сразу.
+    /// The click that opened the viewer may be a double one. Its second half
+    /// already arrives here and, landing outside the picture, would close the
+    /// viewer at once.
     property double openedAt: 0
 
     onOpened: {
@@ -247,12 +252,13 @@ Popup {
         stage.forceActiveFocus();
     }
     onClosed: {
-        // Включали полноэкранный режим мы — мы и возвращаем окно.
+        // We turned full-screen mode on, so we restore the window.
         if (viewer.savedVisibility >= 0)
             viewer.leaveFullScreen();
     }
 
-    // Кнопки поверх картинки: круглые, тёмные, с рамкой акцента под курсором.
+    // Buttons over the picture: round, dark, with an accent border under the
+    // cursor.
     readonly property color colAccent: viewer.pal && viewer.pal.accent !== undefined
                                        ? viewer.pal.accent : "#66c0f4"
     readonly property int chromeSize: 44
@@ -274,17 +280,17 @@ Popup {
         focus: true
         clip: true
 
-        /// Полноразмерная картинка (обычная либо анимированная).
+        /// Full-size picture (ordinary or animated).
         readonly property var fullItem: viewer.fullSource === "" ? null
             : (viewer.animatedImage ? fullAnimated : fullStill)
         readonly property bool fullReady: stage.fullItem !== null
                                           && stage.fullItem.status === Image.Ready
         property bool videoPlaying: false
 
-        // Размер картинки «как есть»: у готовой полноразмерной, иначе у
-        // миниатюры, а пока нет ничего — условные 16:9. Меряется ДЕЙСТВИЕМ
-        // (`measure`), а не связкой: картинки лежат внутри холста, чей
-        // размер от этой мерки и считается, и связка замыкалась бы в круг.
+        // "As is" picture size: of the ready full-size one, otherwise of the
+        // thumbnail, and while there is nothing — a nominal 16:9. Measured by an
+        // ACTION (`measure`), not a binding: the pictures sit inside a canvas
+        // whose size is computed from this measurement, and a binding would loop.
         property real naturalWidth: 1600
         property real naturalHeight: 900
 
@@ -336,8 +342,8 @@ Popup {
             event.accepted = true;
         }
 
-        // Мышь по всему слою: колесо — масштаб, перетаскивание — сдвиг,
-        // двойной щелчок по картинке — «вписать / 1:1», щелчок мимо — выход.
+        // Mouse over the whole layer: wheel zooms, dragging pans, a double click
+        // on the picture toggles "fit / 1:1", a click outside exits.
         MouseArea {
             id: pointer
             anchors.fill: parent
@@ -406,8 +412,9 @@ Popup {
             x: Math.round((stage.width - canvas.width) / 2 + viewer.panX)
             y: Math.round((stage.height - canvas.height) / 2 + viewer.panY)
 
-            // Миниатюра — снизу и сразу: пока полноразмерной нет, видно её,
-            // и пустому прямоугольнику мелькнуть негде.
+            // The thumbnail is at the bottom and shown at once: while there is no
+            // full-size picture it is visible, and an empty rectangle has no chance
+            // to flash.
             Image {
                 id: thumbImage
                 anchors.fill: parent
@@ -444,9 +451,9 @@ Popup {
                 onStatusChanged: Qt.callLater(stage.measure)
             }
 
-            // Ролик — поверх статичного кадра. Проигрыватель поднимается
-            // только когда он нужен: мультимедийный слой Qt тяжёлый, и
-            // платить за него тот, кто смотрит картинки, не должен.
+            // The clip goes over the still frame. The player is created only when it
+            // is needed: the Qt multimedia layer is heavy, and someone looking at
+            // pictures should not pay for it.
             Loader {
                 anchors.fill: parent
                 active: viewer.opened && viewer.videoSource !== "" && !viewer.videoBroken
@@ -468,9 +475,9 @@ Popup {
                         visible: stage.videoPlaying
                     }
 
-                    // Вывода звука нет намеренно: просмотр — это взгляд на
-                    // картинку, а не показ обоев. Звук у ролика — только там,
-                    // где его применяют.
+                    // There is no audio output on purpose: the viewer is for looking at a
+                    // picture, not for showing a wallpaper. A clip's sound plays only where
+                    // it is applied.
                     MediaPlayer {
                         id: videoPlayer
                         source: viewer.videoSource
@@ -492,7 +499,7 @@ Popup {
             }
         }
 
-        // ── Кнопки ────────────────────────────────────────────────────────
+        // ── Buttons ───────────────────────────────────────────────────────
 
         RexonButton {
             id: prevButton
@@ -576,7 +583,7 @@ Popup {
             }
         }
 
-        // ── Подпись ───────────────────────────────────────────────────────
+        // ── Caption ───────────────────────────────────────────────────────
 
         Rectangle {
             id: caption
@@ -612,8 +619,8 @@ Popup {
                     objectName: "imageViewerSubtitle"
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: Math.min(implicitWidth, stage.width - 2 * viewer.chromeMargin - 32)
-                    // Отметка (например, «анимированный») — перед второй
-                    // строкой, той же подписью.
+                    // The badge (for example, "animated") comes before the second line, in
+                    // the same caption.
                     text: {
                         const parts = [];
                         if (viewer.current && viewer.current.badge)

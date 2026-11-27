@@ -1,21 +1,21 @@
-//! Разбор ответов «управляющих» запросов вкладки Wallpaper Engine:
-//! плагины, плейлисты, источники и библиотеки, подписки источников,
-//! действия плагинов и правка их настроек.
+//! Parsing responses of the «management» requests of the Wallpaper Engine tab:
+//! plugins, playlists, sources and libraries, source subscriptions,
+//! plugin actions and editing their settings.
 //!
-//! Здесь только Qt-свободная часть: кадр демона → карты/списки + список сигналов
-//! в порядке оригинала. Оболочки `#[qobject]` живут в `rexon-gui`.
+//! Only the Qt-free part lives here: daemon frame → maps/lists + a list of signals
+//! in the original's order. The `#[qobject]` wrappers live in `rexon-gui`.
 //!
-//! ⚠️ Эталон — ОРИГИНАЛ (waywallen `ui/src/query/` на
-//! коммите вендора `e5626c1`, он же v0.2.6+9), а не наш Python-мост.
-//! Расхождения, которые перенос «как было» законсервировал бы, чинятся
-//! здесь и перечислены у каждой функции.
+//! ⚠️ The reference is the ORIGINAL (waywallen `ui/src/query/` at
+//! vendor commit `e5626c1`, a.k.a. v0.2.6+9), not our Python bridge.
+//! Deviations that an «as it was» port would have preserved are fixed
+//! here and listed at each function.
 //!
-//! Отдельно про сортировку списка плагинов: оригинал сравнивает имена
-//! `QString::localeAwareCompare`, то есть коллацией ICU. В ядре Qt нет и
-//! быть не должно, поэтому сравнение идёт по `to_lowercase()` — ровно
-//! то же, что делал Python-мост. Для латинских имён плагинов
-//! (`org.waywallen.*`) результат совпадает; расхождение возможно только
-//! на именах с диакритикой, и тащить ради него ICU в ядро дороже пользы.
+//! A separate note on sorting the plugin list: the original compares names
+//! with `QString::localeAwareCompare`, i.e. with ICU collation. The core has no Qt and
+//! must not have it, so the comparison goes by `to_lowercase()` — exactly
+//! what the Python bridge did. For Latin plugin names
+//! (`org.waywallen.*`) the result is the same; a difference is possible only
+//! on names with diacritics, and pulling ICU into the core for that costs more than it gives.
 
 use serde_json::{json, Map, Value};
 
@@ -25,10 +25,10 @@ use crate::we_query::{
     STATUS_QUERYING,
 };
 
-/// Карта `SettingSchema` для QML.
+/// `SettingSchema` map for QML.
 ///
-/// ⚠️ Ключи SNAKE_CASE — `SettingField.qml` написан против
-/// `default_value`/`label_key`/`description_key` оригинала.
+/// ⚠️ SNAKE_CASE keys — `SettingField.qml` is written against the original's
+/// `default_value`/`label_key`/`description_key`.
 fn setting_schema_map(s: &SettingSchema) -> Value {
     json!({
         "key": s.key,
@@ -37,8 +37,8 @@ fn setting_schema_map(s: &SettingSchema) -> Value {
         "identity": s.identity,
         "label_key": s.label_key,
         "description_key": s.description_key,
-        // Переводимые подписи каталога плагина: `SettingField.qml` читает
-        // `label`/`description`, заголовок группы — `group_label`.
+        // Translatable labels of the plugin catalog: `SettingField.qml` reads
+        // `label`/`description`, the group header — `group_label`.
         "label": s.label,
         "description": s.description,
         "group_label": s.group_label,
@@ -46,16 +46,16 @@ fn setting_schema_map(s: &SettingSchema) -> Value {
         "max": s.max,
         "step": s.step,
         "choices": s.choices,
-        // waywallen 0.6.0: подписи вариантов (`choiceLabels`, camelCase —
-        // так ключ пишет `source_query.cpp`).
+        // waywallen 0.6.0: option labels (`choiceLabels`, camelCase —
+        // that is how `source_query.cpp` writes the key).
         "choiceLabels": s.choice_labels,
         "group": s.group,
         "order": s.order,
     })
 }
 
-/// `RendererPluginInfo` → карта (`renderer_to_map` оригинала + наши
-/// `bin`/`priority`/`pluginId`; лишние ключи QML не мешают).
+/// `RendererPluginInfo` → map (the original's `renderer_to_map` + our
+/// `bin`/`priority`/`pluginId`; extra keys do not bother QML).
 fn renderer_plugin_map(r: pb::RendererPluginInfo) -> Value {
     let settings: Vec<Value> = r
         .settings
@@ -73,7 +73,7 @@ fn renderer_plugin_map(r: pb::RendererPluginInfo) -> Value {
     })
 }
 
-/// `PluginUpdateInfo` → карта (`plugin_update_to_map` оригинала).
+/// `PluginUpdateInfo` → map (the original's `plugin_update_to_map`).
 fn plugin_update_map(u: &pb::PluginUpdateInfo) -> Value {
     json!({
         "pluginId": u.plugin_id,
@@ -86,10 +86,10 @@ fn plugin_update_map(u: &pb::PluginUpdateInfo) -> Value {
     })
 }
 
-/// `PluginCompat` → карта (`plugin_compat_to_map` оригинала, waywallen
-/// 0.4.2): годится ли установленный плагин этому демону и, если нет, —
-/// почему, словами самого демона. Как у оригинала, отсутствие сообщения
-/// читается умолчаниями protobuf (`compatible: false`, пустая причина).
+/// `PluginCompat` → map (the original's `plugin_compat_to_map`, waywallen
+/// 0.4.2): whether the installed plugin suits this daemon and, if not —
+/// why, in the daemon's own words. As in the original, a missing message
+/// is read as protobuf defaults (`compatible: false`, empty reason).
 fn plugin_compat_map(c: &pb::PluginCompat) -> Value {
     json!({
         "compatible": c.compatible,
@@ -101,7 +101,7 @@ fn plugin_compat_map(c: &pb::PluginCompat) -> Value {
 // PluginListQuery
 // ════════════════════════════════════════════════════════════════════════
 
-/// Свойства `PluginListQuery`.
+/// Properties of `PluginListQuery`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PluginListData {
     pub plugins: Vec<Value>,
@@ -109,8 +109,8 @@ pub struct PluginListData {
     pub inactive_user: Vec<String>,
 }
 
-/// Ключ сортировки оригинала: пользовательские раньше системных, внутри —
-/// по имени (пустое имя заменяется идентификатором).
+/// The original's sort key: user plugins before system ones, within each —
+/// by name (an empty name is replaced by the id).
 fn plugin_sort_key(m: &Value) -> (bool, String) {
     let system = m.get("system").and_then(Value::as_bool).unwrap_or(false);
     let name = m.get("name").and_then(Value::as_str).unwrap_or_default();
@@ -119,7 +119,7 @@ fn plugin_sort_key(m: &Value) -> (bool, String) {
     (system, label.to_lowercase())
 }
 
-/// Разобрать ответ `plugin_list`.
+/// Parse the `plugin_list` response.
 pub fn apply_plugin_list(
     st: &mut QueryState,
     data: &mut PluginListData,
@@ -152,8 +152,8 @@ pub fn apply_plugin_list(
             })
             .collect();
         items.sort_by(|a, b| plugin_sort_key(a).cmp(&plugin_sort_key(b)));
-        // Один сигнал на три свойства — так у оригинала (`pluginsChanged`
-        // объявлен NOTIFY для всех трёх).
+        // One signal for three properties — as in the original (`pluginsChanged`
+        // is declared NOTIFY for all three).
         let changed = data.plugins != items
             || data.inactive_system != pl.inactive_system
             || data.inactive_user != pl.inactive_user;
@@ -171,18 +171,18 @@ pub fn apply_plugin_list(
 // PluginInstallQuery / PluginInspectQuery / PluginDeleteQuery
 // ════════════════════════════════════════════════════════════════════════
 
-/// Свойства `PluginInstallQuery` и `PluginDeleteQuery` — они одинаковы.
+/// Properties of `PluginInstallQuery` and `PluginDeleteQuery` — they are the same.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PluginIdResult {
     pub plugin_id: String,
     pub needs_restart: bool,
 }
 
-/// Разобрать ответ `plugin_install`.
+/// Parse the `plugin_install` response.
 ///
-/// Сигналы: `resultChanged`, затем `installed(pluginId, needsRestart)` —
-/// оба БЕЗУСЛОВНЫЕ, как у оригинала: они означают «демон ответил», а не
-/// «значение стало другим».
+/// Signals: `resultChanged`, then `installed(pluginId, needsRestart)` —
+/// both UNCONDITIONAL, as in the original: they mean «the daemon answered», not
+/// «the value became different».
 pub fn apply_plugin_install(
     st: &mut QueryState,
     data: &mut PluginIdResult,
@@ -201,7 +201,7 @@ pub fn apply_plugin_install(
     Ok(finish(st, out))
 }
 
-/// Разобрать ответ `plugin_delete`.
+/// Parse the `plugin_delete` response.
 pub fn apply_plugin_delete(
     st: &mut QueryState,
     data: &mut PluginIdResult,
@@ -220,7 +220,7 @@ pub fn apply_plugin_delete(
     Ok(finish(st, out))
 }
 
-/// Свойства `PluginInspectQuery` — весь ответ целиком.
+/// Properties of `PluginInspectQuery` — the whole response.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PluginInspectData {
     pub plugin_id: String,
@@ -235,7 +235,7 @@ pub struct PluginInspectData {
     pub existing_system: bool,
 }
 
-/// Разобрать ответ `plugin_inspect`.
+/// Parse the `plugin_inspect` response.
 pub fn apply_plugin_inspect(
     st: &mut QueryState,
     data: &mut PluginInspectData,
@@ -265,24 +265,24 @@ pub fn apply_plugin_inspect(
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Прогресс длинных задач (ProgressQuery оригинала)
+// Progress of long tasks (the original's ProgressQuery)
 // ════════════════════════════════════════════════════════════════════════
 //
-// ⚠️ Починка при порте (правило #16). У оригинала проверка и установка
-// обновлений плагина наследуются от `ProgressQuery`: RPC лишь ПРИНИМАЕТ
-// задачу и отдаёт `query_id`, а идёт она дальше событиями `task_progress`
-// демона — оттуда и `progress`/`progressing`, и настоящий конец работы.
-// Наш Python-мост этого класса не имел вовсе:
+// ⚠️ Fixed during the port (rule #16). In the original, checking and installing
+// plugin updates inherit from `ProgressQuery`: the RPC only ACCEPTS the
+// task and returns a `query_id`, and the task then proceeds through the daemon's
+// `task_progress` events — that is where `progress`/`progressing` and the real end of the work come from.
+// Our Python bridge did not have this class at all:
 //
-//   * свойств `queryId`/`progress`/`progressing` не было, а вендорный QML
-//     их читает (`PluginManagePage.qml:499,501`) — привязки индикатора
-//     обновления были мёртвыми;
-//   * `installed`/`checked` слались по ПРИЁМУ задачи, поэтому тост
-//     «Обновлён "X"» появлялся сразу, а не когда обновление встало;
-//   * событие `task_progress` не разбиралось ни в `we_notify`, ни где-либо
-//     ещё — весь канал прогресса пропадал в никуда.
+//   * there were no `queryId`/`progress`/`progressing` properties, while the vendor QML
+//     reads them (`PluginManagePage.qml:499,501`) — the update indicator
+//     bindings were dead;
+//   * `installed`/`checked` were emitted on task ACCEPTANCE, so the toast
+//     «Updated "X"» appeared immediately, not when the update was in place;
+//   * the `task_progress` event was parsed neither in `we_notify` nor anywhere
+//     else — the whole progress channel went nowhere.
 
-/// Снимок прогресса одной задачи демона (`TaskProgressSnapshot`).
+/// Progress snapshot of one daemon task (`TaskProgressSnapshot`).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TaskProgressSnapshot {
     pub progress: f64,
@@ -290,16 +290,16 @@ pub struct TaskProgressSnapshot {
     pub ended: bool,
     pub error: bool,
     pub message: String,
-    /// Монотонный номер: снимок, пришедший ДО начала запроса, не имеет к
-    /// нему отношения и должен игнорироваться.
+    /// Monotonic number: a snapshot that arrived BEFORE the request started has nothing
+    /// to do with it and must be ignored.
     pub sequence: u64,
 }
 
-/// Склад снимков прогресса — порт полей `m_task_progress`/
-/// `m_task_progress_sequence` синглтона `Notify` оригинала.
+/// Store of progress snapshots — port of the `m_task_progress`/
+/// `m_task_progress_sequence` fields of the original's `Notify` singleton.
 ///
-/// Живёт в ядре, а не в оболочке: он нужен и разбору события, и запросам,
-/// а второй копии быть не должно (правило #12).
+/// Lives in the core, not in the wrapper: both event parsing and the requests
+/// need it, and there must not be a second copy (rule #12).
 pub mod progress_store {
     use super::TaskProgressSnapshot;
     use std::collections::HashMap;
@@ -316,7 +316,7 @@ pub mod progress_store {
         STORE.get_or_init(|| Mutex::new(Store::default()))
     }
 
-    /// Записать снимок, выдав ему следующий номер. Возвращает записанное.
+    /// Record a snapshot, giving it the next number. Returns what was recorded.
     pub fn record(
         query_id: &str,
         progress: f64,
@@ -339,7 +339,7 @@ pub mod progress_store {
         snapshot
     }
 
-    /// Текущий номер (порт `taskProgressSequence()`).
+    /// Current number (port of `taskProgressSequence()`).
     pub fn sequence() -> u64 {
         store()
             .lock()
@@ -347,7 +347,7 @@ pub mod progress_store {
             .sequence
     }
 
-    /// Снимок по идентификатору задачи (порт `taskProgressSnapshot()`).
+    /// Snapshot by task id (port of `taskProgressSnapshot()`).
     pub fn snapshot(query_id: &str) -> Option<TaskProgressSnapshot> {
         store()
             .lock()
@@ -357,8 +357,8 @@ pub mod progress_store {
             .cloned()
     }
 
-    /// Забыть всё — нужно только проверкам, чтобы случаи не влияли друг
-    /// на друга.
+    /// Forget everything — needed only by tests, so cases do not affect each
+    /// other.
     pub fn reset() {
         let mut s = store().lock().expect("склад прогресса не отравлен");
         s.sequence = 0;
@@ -366,30 +366,30 @@ pub mod progress_store {
     }
 }
 
-/// Состояние `ProgressQuery` поверх состояния базы `Query`.
+/// `ProgressQuery` state on top of the `Query` base state.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ProgressState {
     pub query_id: String,
     pub progress: f64,
     pub progressing: bool,
-    /// Номер склада на момент `beginProgressQuery` — всё, что было раньше,
-    /// к этому запросу не относится.
+    /// Store number at the moment of `beginProgressQuery` — everything earlier
+    /// does not belong to this request.
     pub begin_sequence: u64,
-    /// Текст последнего `progressEnded`. Отдельно от `QueryState::error`:
-    /// у оригинала сигнал несёт `snapshot.message`, а он приходит и при
-    /// успешном завершении, где ошибки нет вовсе.
+    /// Text of the last `progressEnded`. Separate from `QueryState::error`:
+    /// in the original the signal carries `snapshot.message`, and it also arrives on
+    /// successful completion, where there is no error at all.
     pub last_message: String,
 }
 
-/// `progressEnded(error, message)` — отдельным вариантом его не выразить,
-/// поэтому оболочка получает его как `Property("progressEnded")`, а текст
-/// берёт из `ProgressState::last_message`, признак ошибки — из статуса.
+/// `progressEnded(error, message)` cannot be expressed as a separate variant,
+/// so the wrapper receives it as `Property("progressEnded")`, takes the text
+/// from `ProgressState::last_message`, and the error flag from the status.
 pub const PROGRESS_ENDED: &str = "progressEnded";
 
 fn set_progress_value(ps: &mut ProgressState, value: f64, out: &mut Vec<QuerySignal>) {
     let value = value.clamp(0.0, 1.0);
-    // qFuzzyCompare(m_progress + 1.0, progress + 1.0) оригинала — то же
-    // самое сравнение с поправкой на около-нулевые значения.
+    // The original's qFuzzyCompare(m_progress + 1.0, progress + 1.0) — the same
+    // comparison, corrected for near-zero values.
     if (ps.progress - value).abs() <= f64::EPSILON * 1e5 {
         return;
     }
@@ -405,8 +405,8 @@ fn set_progressing_value(ps: &mut ProgressState, value: bool, out: &mut Vec<Quer
     out.push(QuerySignal::Property("progressing"));
 }
 
-/// `beginProgressQuery()`: запомнить номер склада, обнулить прогресс и
-/// перевести базу в Querying.
+/// `beginProgressQuery()`: remember the store number, zero the progress and
+/// switch the base to Querying.
 pub fn begin_progress(st: &mut QueryState, ps: &mut ProgressState) -> Vec<QuerySignal> {
     let mut out = Vec::new();
     ps.begin_sequence = progress_store::sequence();
@@ -455,9 +455,9 @@ pub fn apply_task_progress(
     out
 }
 
-/// `acceptProgressQuery(queryId)`: пустой идентификатор — сразу отказ;
-/// иначе запомнить и, если снимок уже пришёл (демон мог опередить ответ),
-/// применить его немедленно.
+/// `acceptProgressQuery(queryId)`: an empty id — immediate failure;
+/// otherwise remember it and, if the snapshot has already arrived (the daemon may have
+/// beaten the response), apply it right away.
 pub fn accept_progress(
     st: &mut QueryState,
     ps: &mut ProgressState,
@@ -479,21 +479,21 @@ pub fn accept_progress(
     out
 }
 
-/// Событие `task_progress` пришло — относится ли оно к этому запросу.
+/// A `task_progress` event arrived — does it belong to this request.
 ///
-/// Порт условия лямбды конструктора `ProgressQuery`: пустой `queryId`,
-/// чужой `queryId` и снимок старше начала запроса пропускаются.
+/// Port of the condition in the `ProgressQuery` constructor lambda: an empty `queryId`,
+/// a foreign `queryId` and a snapshot older than the request start are skipped.
 pub fn progress_matches(ps: &ProgressState, query_id: &str, sequence: u64) -> bool {
     !ps.query_id.is_empty() && ps.query_id == query_id && sequence > ps.begin_sequence
 }
 
-/// Свойства `PluginUpdateCheckQuery`.
+/// Properties of `PluginUpdateCheckQuery`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PluginUpdateCheckData {
     pub updates: Vec<Value>,
 }
 
-/// Разобрать ответ `plugin_update_check`: это ПРИЁМ задачи, а не её конец.
+/// Parse the `plugin_update_check` response: this is task ACCEPTANCE, not its end.
 pub fn apply_plugin_update_check(
     st: &mut QueryState,
     ps: &mut ProgressState,
@@ -502,9 +502,9 @@ pub fn apply_plugin_update_check(
 ) -> Result<Vec<QuerySignal>, prost::DecodeError> {
     let (answer, mut out) = take_response(st, frame_bytes)?;
     let Some(rsp) = answer else {
-        // Оригинал на отказе зовёт failProgressQuery — статус Error уже
-        // выставлен take_response, осталось снять признак работы и
-        // сообщить о конце.
+        // On a refusal the original calls failProgressQuery — the Error status is already
+        // set by take_response, what is left is to clear the working flag and
+        // report the end.
         let mut ended = Vec::new();
         set_progressing_value(ps, false, &mut ended);
         ps.last_message = st.error.clone();
@@ -518,7 +518,7 @@ pub fn apply_plugin_update_check(
         if data.updates != updates {
             data.updates = updates;
         }
-        // Сигнал безусловный — так у оригинала.
+        // The signal is unconditional — as in the original.
         out.push(QuerySignal::Property("updates"));
         query_id = r.query_id;
     }
@@ -526,7 +526,7 @@ pub fn apply_plugin_update_check(
     Ok(out)
 }
 
-/// Разобрать ответ `plugin_update_install` — тоже приём задачи.
+/// Parse the `plugin_update_install` response — also task acceptance.
 pub fn apply_plugin_update_install(
     st: &mut QueryState,
     ps: &mut ProgressState,
@@ -549,9 +549,9 @@ pub fn apply_plugin_update_install(
     Ok(out)
 }
 
-/// Разобрать событие демона: если это `task_progress` — записать снимок.
+/// Parse a daemon event: if it is `task_progress` — record the snapshot.
 ///
-/// Возвращает `(query_id, снимок)`; `None` — кадр не про прогресс.
+/// Returns `(query_id, snapshot)`; `None` — the frame is not about progress.
 pub fn take_task_progress(frame_bytes: &[u8]) -> Option<(String, TaskProgressSnapshot)> {
     use prost::Message;
     let frame = pb::ServerFrame::decode(frame_bytes).ok()?;
@@ -576,15 +576,15 @@ pub fn take_task_progress(frame_bytes: &[u8]) -> Option<(String, TaskProgressSna
 // PlaylistListQuery / PlaylistMutationQuery
 // ════════════════════════════════════════════════════════════════════════
 
-/// `PlaylistSummary` → карта в терминах QML (`playlist_to_map` оригинала).
+/// `PlaylistSummary` → map in QML terms (the original's `playlist_to_map`).
 ///
-/// ⚠️ Ключ `sourceKind` — наш, у оригинала его в карте нет. Оставлен:
-/// лишний ключ вендорному QML не мешает, а страница плейлистов Rexon
-/// по нему отличает «умные» плейлисты от обычных.
+/// ⚠️ The `sourceKind` key is ours, the original's map does not have it. Kept:
+/// an extra key does not bother the vendor QML, and Rexon's playlists page
+/// uses it to tell «smart» playlists from regular ones.
 ///
-/// Одна точка на весь файл (правило #12): по этой же карте живут и список
-/// плейлистов, и подробности одного — расходиться им нельзя, иначе
-/// `revision` доехал бы до одной страницы и потерялся у другой.
+/// One point for the whole file (rule #12): both the playlist list and the details
+/// of one playlist live on this same map — they must not diverge, otherwise
+/// `revision` would reach one page and get lost on the other.
 pub fn playlist_summary_map(p: &pb::PlaylistSummary) -> Value {
     json!({
         "id": p.id,
@@ -594,20 +594,20 @@ pub fn playlist_summary_map(p: &pb::PlaylistSummary) -> Value {
         "intervalSecs": p.interval_secs,
         "itemCount": p.item_count,
         "entryIds": p.entry_ids,
-        // Поля протокола 0.3.7. `revision` — сторож гонки правок: страница
-        // возвращает его демону в `expected_revision`. `synchronizedSelection`
-        // — переключатель формы правки плейлиста.
+        // Protocol 0.3.7 fields. `revision` is the edit race guard: the page
+        // returns it to the daemon in `expected_revision`. `synchronizedSelection`
+        // is a toggle of the playlist edit form.
         "revision": p.revision,
         "synchronizedSelection": p.synchronized_selection,
     })
 }
 
-/// Ключ карты плейлиста с выборкой умного плейлиста (waywallen 0.5.0,
-/// `playlist_to_map` оригинала: ключ есть только у умного плейлиста).
+/// Playlist map key holding the smart playlist selection (waywallen 0.5.0,
+/// the original's `playlist_to_map`: only a smart playlist has the key).
 pub const SMART_SELECTION_KEY: &str = "smartSelection";
 
-/// Выборка умного плейлиста из его сводки; `None` — плейлист курируемый
-/// (или демон старше 0.5.0 и источника не прислал).
+/// Smart playlist selection from its summary; `None` — the playlist is curated
+/// (or the daemon is older than 0.5.0 and sent no source).
 fn smart_selection_of(p: &pb::PlaylistSummary) -> Option<pb::WallpaperSelection> {
     match p.source.as_ref()?.kind.as_ref()? {
         pb::playlist_source::Kind::Smart(sel) => Some(sel.clone()),
@@ -615,25 +615,25 @@ fn smart_selection_of(p: &pb::PlaylistSummary) -> Option<pb::WallpaperSelection>
     }
 }
 
-/// Плейлист для QML: карта [`playlist_summary_map`] и выборка умного
-/// плейлиста.
+/// A playlist for QML: the [`playlist_summary_map`] map and the smart playlist
+/// selection.
 ///
-/// Выборка лежит отдельно от карты потому, что в JSON ей места нет: в
-/// QML она уходит тем же непрозрачным значением (байты, в JS —
-/// `ArrayBuffer`), что `WallpaperListQuery.selection`
-/// ([`crate::we_wallpaper::encode_selection`]), — `PlaylistEditPage` 0.5.0
-/// отдаёт `playlist.smartSelection` прямо в `restoreSelection` и
-/// `matchesSelection`. Под ключ [`SMART_SELECTION_KEY`] её кладёт мост.
+/// The selection lies apart from the map because there is no place for it in JSON:
+/// it goes to QML as the same opaque value (bytes, in JS an
+/// `ArrayBuffer`) as `WallpaperListQuery.selection`
+/// ([`crate::we_wallpaper::encode_selection`]) — `PlaylistEditPage` 0.5.0
+/// hands `playlist.smartSelection` straight to `restoreSelection` and
+/// `matchesSelection`. The bridge puts it under the [`SMART_SELECTION_KEY`] key.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PlaylistView {
     pub map: Value,
-    /// Закодированная выборка; `None` — ключа в карте нет.
+    /// Encoded selection; `None` — the key is not in the map.
     pub smart_selection: Option<Vec<u8>>,
 }
 
-/// `PlaylistSummary` → [`PlaylistView`]. Выборка — как её прислал демон,
-/// без правки: страница сравнивает с ней выборку превью, а демон хранит
-/// уже очищенную (её очищает [`playlist_save_smart_request`]).
+/// `PlaylistSummary` → [`PlaylistView`]. The selection is as the daemon sent it,
+/// unedited: the page compares the preview selection with it, and the daemon stores
+/// an already cleaned one (cleaned by [`playlist_save_smart_request`]).
 pub fn playlist_view(p: &pb::PlaylistSummary) -> PlaylistView {
     PlaylistView {
         map: playlist_summary_map(p),
@@ -642,21 +642,21 @@ pub fn playlist_view(p: &pb::PlaylistSummary) -> PlaylistView {
     }
 }
 
-/// Источники «умных» плейлистов, увиденные в ответах демона.
+/// Sources of «smart» playlists seen in daemon responses.
 ///
-/// waywallen 0.5.0 различает курируемый плейлист (явный список обоев) и
-/// умный (выборка по фильтрам, `PlaylistSource.smart`). Форма правки
-/// вендорного UI 0.4.4 о втором не знает и шлёт `PlaylistUpdate` без
-/// `source` — демон читает это как курируемый из `entry_ids`. На умном
-/// плейлисте 0.5.0 такой кадр отвергает («source cannot be converted»),
-/// то есть имя, режим и интервал умного плейлиста из Rexon поменять было
-/// нельзя, а у демона без этой проверки выборка превратилась бы в пустой
-/// список.
+/// waywallen 0.5.0 distinguishes a curated playlist (an explicit wallpaper list) and
+/// a smart one (a selection by filters, `PlaylistSource.smart`). The edit form of the
+/// vendor UI 0.4.4 does not know about the second and sends `PlaylistUpdate` without
+/// `source` — the daemon reads that as curated from `entry_ids`. On a smart
+/// playlist 0.5.0 rejects such a frame («source cannot be converted»),
+/// i.e. the name, mode and interval of a smart playlist could not be changed from Rexon,
+/// and a daemon without this check would have turned the selection into an empty
+/// list.
 ///
-/// Склад общий на процесс, как [`progress_store`]: ответы приходят
-/// запросам списка и подробностей, а кадр правки собирает третий объект
-/// (`PlaylistMutationQuery`), и протаскивать выборку через QML ради этого
-/// не нужно.
+/// The store is process-wide, like [`progress_store`]: responses come to the
+/// list and details requests, while the edit frame is built by a third object
+/// (`PlaylistMutationQuery`), and dragging the selection through QML for that
+/// is not needed.
 pub mod playlist_source_store {
     use crate::proto::control as pb;
     use std::collections::HashMap;
@@ -669,7 +669,7 @@ pub mod playlist_source_store {
 
     use super::smart_selection_of as smart_of;
 
-    /// Запомнить (или забыть) источник одного плейлиста — ответ `playlist_get`.
+    /// Remember (or forget) the source of one playlist — the `playlist_get` response.
     pub fn remember(p: &pb::PlaylistSummary) {
         let mut s = store().lock().expect("склад плейлистов не отравлен");
         match smart_of(p) {
@@ -682,7 +682,7 @@ pub mod playlist_source_store {
         }
     }
 
-    /// Ответ `playlist_list` — полный список: удалённые плейлисты забываются.
+    /// The `playlist_list` response — the full list: deleted playlists are forgotten.
     pub fn remember_all(list: &[pb::PlaylistSummary]) {
         let mut s = store().lock().expect("склад плейлистов не отравлен");
         s.clear();
@@ -693,7 +693,7 @@ pub mod playlist_source_store {
         }
     }
 
-    /// Выборка умного плейлиста; `None` — плейлист курируемый или не виден.
+    /// Smart playlist selection; `None` — the playlist is curated or not seen.
     pub fn smart(id: i64) -> Option<pb::WallpaperSelection> {
         store()
             .lock()
@@ -703,17 +703,17 @@ pub mod playlist_source_store {
     }
 }
 
-/// Кадр `PlaylistUpdate` формы правки плейлиста.
+/// `PlaylistUpdate` frame of the playlist edit form.
 ///
-/// Курируемый плейлист — как прежде: состав в `entry_ids`, `source` не
-/// шлётся (так его читает и демон до 0.5.0). Умный — `source` с его
-/// же выборкой и пустым `entry_ids`: демон 0.5.0 отвергает кадр, где
-/// заданы оба, а ручного состава у умного плейлиста не бывает. Так имя,
-/// режим, интервал и синхронный выбор правятся, а выборка остаётся.
+/// A curated playlist — as before: the contents in `entry_ids`, `source` is not
+/// sent (that is how a daemon before 0.5.0 reads it too). A smart one — `source` with its
+/// own selection and an empty `entry_ids`: daemon 0.5.0 rejects a frame where
+/// both are set, and a smart playlist never has manual contents. This way the name,
+/// mode, interval and synchronized selection are edited, while the selection stays.
 ///
-/// Форма 0.5.0 умный плейлист сохраняет не этим кадром, а `saveSmart`
-/// ([`playlist_save_smart_request`]) — с выборкой со страницы; подстановка
-/// здесь нужна только `update()` от формы, которая о выборке не знает.
+/// Form 0.5.0 saves a smart playlist not with this frame but with `saveSmart`
+/// ([`playlist_save_smart_request`]) — with the selection from the page; the substitution
+/// here is only needed by `update()` from a form that does not know about the selection.
 #[allow(clippy::too_many_arguments)]
 pub fn playlist_update_request(
     id: i64,
@@ -745,7 +745,7 @@ pub fn playlist_update_request(
     }
 }
 
-/// Кадр `saveSmart` — создать умный плейлист или обновить существующий.
+/// `saveSmart` frame — create a smart playlist or update an existing one.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SmartPlaylistSave {
     Create(pb::PlaylistCreateRequest),
@@ -753,7 +753,7 @@ pub enum SmartPlaylistSave {
 }
 
 impl SmartPlaylistSave {
-    /// Поле `Request` протокола.
+    /// Protocol `Request` field.
     pub fn field(&self) -> &'static str {
         match self {
             Self::Create(_) => "playlist_create",
@@ -761,7 +761,7 @@ impl SmartPlaylistSave {
         }
     }
 
-    /// Ждать ли в ответе номер созданного плейлиста (`captureCreate`).
+    /// Whether to expect the created playlist's id in the response (`captureCreate`).
     pub fn captures_create(&self) -> bool {
         matches!(self, Self::Create(_))
     }
@@ -775,17 +775,17 @@ impl SmartPlaylistSave {
     }
 }
 
-/// `PlaylistMutationQuery::saveSmart` оригинала (waywallen 0.5.0).
+/// The original's `PlaylistMutationQuery::saveSmart` (waywallen 0.5.0).
 ///
-/// `id > 0` — `PlaylistUpdate`, иначе `PlaylistCreate` (страница создания
-/// умного плейлиста зовёт с нулём). Источник — выборка превью страницы
-/// как есть, как у оригинала и как у запроса списка: демон получает ровно
-/// ту выборку, по которой страница показала превью, а негодную отвергает
-/// сам (его ошибка уходит в `error`). `entry_ids` пустой: кадр, где заданы и состав, и источник,
-/// демон 0.5.0 отвергает.
+/// `id > 0` — `PlaylistUpdate`, otherwise `PlaylistCreate` (the smart playlist
+/// creation page calls it with zero). The source is the page's preview selection
+/// as is, as in the original and as in the list request: the daemon gets exactly
+/// the selection the page showed the preview by, and rejects an unusable one
+/// itself (its error goes to `error`). `entry_ids` is empty: daemon 0.5.0 rejects a frame
+/// where both contents and source are set.
 ///
-/// `None` — `selection` не выборка (у оригинала `canConvert` ложен):
-/// ничего не шлётся, ответ — [`playlist_smart_invalid`].
+/// `None` — `selection` is not a selection (the original's `canConvert` is false):
+/// nothing is sent, the response is [`playlist_smart_invalid`].
 #[allow(clippy::too_many_arguments)]
 pub fn playlist_save_smart_request(
     id: i64,
@@ -823,42 +823,42 @@ pub fn playlist_save_smart_request(
     })
 }
 
-/// `saveSmart` с невыборкой: ошибка, статус Error и `done()` — в порядке
-/// оригинала. Текст здесь, а не в мосте: подписи для человека живут в
-/// ядре.
+/// `saveSmart` with a non-selection: error, Error status and `done()` — in the
+/// original's order. The text is here, not in the bridge: human-facing labels live in the
+/// core.
 pub fn playlist_smart_invalid(st: &mut QueryState) -> Vec<QuerySignal> {
-    // Английский — дословно строка оригинала (`playlist_query.cpp`).
+    // The English is verbatim the original's string (`playlist_query.cpp`).
     let mut out = we_query::set_error(st, &crate::i18n::tr("invalid smart playlist selection"));
     out.extend(we_query::set_status(st, STATUS_ERROR));
     out.push(QuerySignal::Property("done"));
     out
 }
 
-/// Свойства `PlaylistListQuery`.
+/// Properties of `PlaylistListQuery`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PlaylistListData {
     pub playlists: Vec<PlaylistView>,
 }
 
-/// Свойства `PlaylistDetailQuery` (страница правки плейлиста, 0.3.7).
+/// Properties of `PlaylistDetailQuery` (the playlist edit page, 0.3.7).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PlaylistDetailData {
-    /// Плейлист — свойство `playlist`.
+    /// The playlist — the `playlist` property.
     pub playlist: PlaylistView,
-    /// Номер правки — свойство `revision`.
+    /// Edit number — the `revision` property.
     pub revision: i64,
-    /// Состав по порядку — свойство `entryIds`.
+    /// Contents in order — the `entryIds` property.
     pub entry_ids: Vec<String>,
-    /// Строки модели `data` — карты `we_wallpaper::entry_to_map`.
+    /// Rows of the `data` model — `we_wallpaper::entry_to_map` maps.
     pub items: Vec<crate::we_settings::VMap>,
 }
 
-/// Разобрать ответ `playlist_get`.
+/// Parse the `playlist_get` response.
 ///
-/// Порядок сигналов — как у оригинала (`PlaylistDetailQuery::reload`):
-/// сначала перестраивается модель обоей, потом летит `playlistChanged`.
-/// Страница по нему пересобирает черновик и обязана увидеть УЖЕ новый
-/// состав.
+/// Signal order — as in the original (`PlaylistDetailQuery::reload`):
+/// first the wallpaper model is rebuilt, then `playlistChanged` fires.
+/// The page rebuilds its draft on it and must ALREADY see the new
+/// contents.
 pub fn apply_playlist_get(
     st: &mut QueryState,
     data: &mut PlaylistDetailData,
@@ -885,7 +885,7 @@ pub fn apply_playlist_get(
     Ok(finish(st, out))
 }
 
-/// Разобрать ответ `playlist_list`. Плейлист строит [`playlist_view`].
+/// Parse the `playlist_list` response. The playlist is built by [`playlist_view`].
 pub fn apply_playlist_list(
     st: &mut QueryState,
     data: &mut PlaylistListData,
@@ -898,17 +898,17 @@ pub fn apply_playlist_list(
     if let Some(pb::response::Payload::PlaylistList(pl)) = rsp.payload {
         playlist_source_store::remember_all(&pl.playlists);
         data.playlists = pl.playlists.iter().map(playlist_view).collect();
-        // Сигнал безусловный — так у оригинала.
+        // The signal is unconditional — as in the original.
         out.push(QuerySignal::Property("playlists"));
     }
     Ok(finish(st, out))
 }
 
-/// Разобрать ответ мутации плейлиста.
+/// Parse a playlist mutation response.
 ///
-/// `capture_create` — брать ли из ответа номер созданного плейлиста.
-/// Сигнал `done()` у оригинала летит ВСЕГДА, в том числе при отказе
-/// демона: QML после него читает `.status`.
+/// `capture_create` — whether to take the created playlist's id from the response.
+/// In the original the `done()` signal fires ALWAYS, including on a daemon
+/// refusal: QML reads `.status` after it.
 pub fn apply_playlist_mutation(
     st: &mut QueryState,
     created_id: &mut i64,
@@ -935,20 +935,20 @@ pub fn apply_playlist_mutation(
 // SourceListQuery / LibraryAutoDetectQuery
 // ════════════════════════════════════════════════════════════════════════
 
-/// Свойства `SourceListQuery`.
+/// Properties of `SourceListQuery`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SourceListData {
     pub sources: Vec<Value>,
 }
 
-/// Разобрать ответ `source_list`.
+/// Parse the `source_list` response.
 ///
-/// ⚠️ Починка при порте (правило #16): наш Python отдавал только пять
-/// ключей (`name`/`version`/`libraryLabel`/`libraryHint`/`types`), а
-/// оригинал на этом вендоре кладёт ещё `pluginId` и полную схему
-/// `settings` (`source_query.cpp` @e5626c1). Без них страница настроек
-/// источника не знала, какому плагину принадлежит источник и какие у него
-/// настройки вообще есть.
+/// ⚠️ Fixed during the port (rule #16): our Python returned only five
+/// keys (`name`/`version`/`libraryLabel`/`libraryHint`/`types`), while
+/// the original on this vendor commit also puts `pluginId` and the full
+/// `settings` schema (`source_query.cpp` @e5626c1). Without them the source settings
+/// page did not know which plugin the source belongs to and which settings it
+/// has at all.
 pub fn apply_source_list(
     st: &mut QueryState,
     data: &mut SourceListData,
@@ -959,8 +959,8 @@ pub fn apply_source_list(
         return Ok(out);
     };
     if let Some(pb::response::Payload::SourceList(sl)) = rsp.payload {
-        // Границы вкладки WE: источник библиотек, у которого только скрытые
-        // типы (папки glTF), в список «Добавить библиотеку» не попадает.
+        // WE tab boundaries: a library source that has only hidden
+        // types (glTF folders) does not get into the «Add library» list.
         data.sources = sl
             .sources
             .into_iter()
@@ -979,7 +979,7 @@ pub fn apply_source_list(
                     "types": we_query::we_tab_types(s.types),
                     "pluginId": s.plugin_id,
                     "settings": schemas(s.settings),
-                    // waywallen 0.6.0: настройки самой библиотеки
+                    // waywallen 0.6.0: settings of the library itself
                     // (`AddLibraryPage`/`EditLibraryPage`).
                     "librarySettings": schemas(s.library_settings),
                 })
@@ -990,12 +990,12 @@ pub fn apply_source_list(
     Ok(finish(st, out))
 }
 
-/// Разобрать ответ `library_auto_detect`.
+/// Parse the `library_auto_detect` response.
 ///
-/// ⚠️ Починка при порте (правило #16): у оригинала есть свойство
-/// `addedCount` (сколько библиотек нашлось), а наш Python выбрасывал ответ
-/// целиком (`lambda rsp: None`), и число добавленных библиотек показать
-/// было нечем.
+/// ⚠️ Fixed during the port (rule #16): the original has an `addedCount`
+/// property (how many libraries were found), while our Python threw the response
+/// away entirely (`lambda rsp: None`), and there was nothing to show the number of
+/// added libraries with.
 pub fn apply_library_auto_detect(
     st: &mut QueryState,
     added_count: &mut i32,
@@ -1017,21 +1017,21 @@ pub fn apply_library_auto_detect(
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Подписки источников (Мастерская Steam и прочие)
+// Source subscriptions (Steam Workshop and others)
 // ════════════════════════════════════════════════════════════════════════
 
-/// Что именно должен разослать шим после ответа на `subscription_status`.
+/// What exactly the shim must emit after the `subscription_status` response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubscriptionStateResult {
     pub state: i32,
     pub error: String,
 }
 
-/// Разобрать ответ `subscription_status` для одного предмета.
+/// Parse the `subscription_status` response for one item.
 ///
-/// Возвращает `(сигналы базы, исход)`. Исход есть всегда: и на успехе, и
-/// на отказе — оригинал в обеих ветках шлёт `stateLoaded`, разница только
-/// в значениях (на отказе состояние 0 и текст ошибки запроса).
+/// Returns `(base signals, outcome)`. There is always an outcome: both on success and
+/// on refusal — the original emits `stateLoaded` in both branches, the difference is only
+/// in the values (on refusal state 0 and the request's error text).
 pub fn apply_subscription_status(
     st: &mut QueryState,
     item_id: &str,
@@ -1058,19 +1058,19 @@ pub fn apply_subscription_status(
     Ok((finish(st, out), result))
 }
 
-/// Исход `subscription_set`.
+/// Outcome of `subscription_set`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubscriptionSetResult {
     pub accepted: bool,
     pub error: String,
-    /// Состояние, которое нужно положить в общий склад приобретения.
+    /// The state to put into the shared acquisition store.
     pub state: i32,
 }
 
-/// Разобрать ответ `subscription_set`.
+/// Parse the `subscription_set` response.
 ///
-/// Состояния — как у оригинала: принято → 2 при подписке и 1 при отписке,
-/// отклонено → наоборот.
+/// States — as in the original: accepted → 2 on subscribe and 1 on unsubscribe,
+/// rejected → the other way round.
 pub fn apply_subscription_set(
     st: &mut QueryState,
     subscribed: bool,
@@ -1112,10 +1112,10 @@ pub fn apply_subscription_set(
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Действия плагинов и правка настроек источника
+// Plugin actions and editing source settings
 // ════════════════════════════════════════════════════════════════════════
 
-/// Исход `plugin_action`.
+/// Outcome of `plugin_action`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PluginActionResult {
     pub accepted: bool,
@@ -1123,14 +1123,14 @@ pub struct PluginActionResult {
     pub session_id: String,
 }
 
-/// Разобрать ответ `plugin_action`.
+/// Parse the `plugin_action` response.
 ///
-/// ⚠️ Расхождение с оригиналом СОЗНАТЕЛЬНОЕ и в нашу пользу: у оригинала
-/// `completed` шлётся только в двух ветках из трёх — при обрыве связи и
-/// при успехе. Если демон ответил, но со статусом-отказом, `inspect_set`
-/// лямбду не зовёт, и `completed` не летит вовсе: диалог формы действия
-/// зависает открытым навсегда. Здесь `completed(false, error, "")` идёт и
-/// в этой ветке — так же, как это делал наш Python-мост.
+/// ⚠️ The deviation from the original is DELIBERATE and in our favour: in the original
+/// `completed` is emitted only in two branches out of three — on a connection drop and
+/// on success. If the daemon answered, but with a refusal status, `inspect_set`
+/// does not call the lambda, and `completed` does not fire at all: the action form dialog
+/// hangs open forever. Here `completed(false, error, "")` is emitted in
+/// this branch too — just as our Python bridge did.
 pub fn apply_plugin_action(
     st: &mut QueryState,
     result: &mut PluginActionResult,
@@ -1156,21 +1156,21 @@ pub fn apply_plugin_action(
     Ok(finish(st, out))
 }
 
-/// Исход `remote_settings_patch`.
+/// Outcome of `remote_settings_patch`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PatchResult {
     pub accepted: bool,
     pub error: String,
 }
 
-/// Разобрать ответ `remote_settings_patch`.
+/// Parse the `remote_settings_patch` response.
 ///
-/// ⚠️ Расхождение с оригиналом СОЗНАТЕЛЬНОЕ и в нашу пользу: оригинал
-/// шлёт `completed(..., accepted = true, "")` СРАЗУ после `inspect_set`,
-/// не глядя на статус ответа, — то есть отклонённая демоном правка
-/// докладывалась странице как принятая, и та молча считала настройки
-/// сохранёнными. Здесь при отказе идёт `accepted = false` с текстом
-/// ошибки, как это делал наш Python-мост.
+/// ⚠️ The deviation from the original is DELIBERATE and in our favour: the original
+/// emits `completed(..., accepted = true, "")` RIGHT after `inspect_set`,
+/// without looking at the response status — i.e. an edit rejected by the daemon
+/// was reported to the page as accepted, and the page silently considered the settings
+/// saved. Here a refusal gives `accepted = false` with the error
+/// text, as our Python bridge did.
 pub fn apply_settings_patch(
     st: &mut QueryState,
     result: &mut PatchResult,
@@ -1194,10 +1194,10 @@ pub fn apply_settings_patch(
     Ok(out)
 }
 
-/// Карта `QVariantMap` из QML → карта строк протокола.
+/// A `QVariantMap` map from QML → a protocol string map.
 ///
-/// Порт цикла `wire_values` оригинала: значение любого типа приводится к
-/// строке, `null` становится пустой строкой.
+/// Port of the original's `wire_values` loop: a value of any type is converted to
+/// a string, `null` becomes an empty string.
 pub fn values_to_wire(values: &Value) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
     if let Value::Object(map) = values {
@@ -1213,7 +1213,7 @@ fn value_to_wire_string(value: &Value) -> String {
         Value::Null => String::new(),
         Value::String(s) => s.clone(),
         Value::Bool(b) => {
-            // Qt печатает bool как "true"/"false" — QVariant::toString().
+            // Qt prints bool as "true"/"false" — QVariant::toString().
             if *b {
                 "true".to_string()
             } else {
@@ -1224,7 +1224,7 @@ fn value_to_wire_string(value: &Value) -> String {
     }
 }
 
-/// Список `QVariantList` из QML → список строк протокола.
+/// A `QVariantList` list from QML → a protocol string list.
 pub fn list_to_strings(values: &Value) -> Vec<String> {
     match values {
         Value::Array(items) => items.iter().map(value_to_wire_string).collect(),
@@ -1232,7 +1232,7 @@ pub fn list_to_strings(values: &Value) -> Vec<String> {
     }
 }
 
-/// Список `QVariantList` из QML → список беззнаковых номеров экранов.
+/// A `QVariantList` list from QML → a list of unsigned screen numbers.
 pub fn list_to_u64(values: &Value) -> Vec<u64> {
     match values {
         Value::Array(items) => items
@@ -1247,17 +1247,17 @@ pub fn list_to_u64(values: &Value) -> Vec<u64> {
     }
 }
 
-/// Список целей применения v0.3.5 из того, что присвоил QML.
+/// The v0.3.5 list of apply targets from what QML assigned.
 ///
-/// Порт `presentationTargetsFromVariant` (`ui/src/proto.cpp` вендора):
-/// каждая запись — карта ЛИБО с `canvasId`, ЛИБО с `displayId`; непустой
-/// `canvasId` побеждает, а запись без пригодного идентификатора
-/// выбрасывается (у вендора `display_id == 0` — «значения нет»).
+/// Port of `presentationTargetsFromVariant` (the vendor's `ui/src/proto.cpp`):
+/// each entry is a map EITHER with `canvasId` OR with `displayId`; a non-empty
+/// `canvasId` wins, and an entry without a usable id
+/// is dropped (at the vendor `display_id == 0` means «no value»).
 ///
-/// Точка сборки целей ровно одна на всю вкладку (правило #12): с v0.3.5
-/// поля `display_ids` у `wallpaper_apply` и у обеих команд плейлиста
-/// сменили ТИП, сохранив номер, — кадр старой формы демон роняет молча,
-/// поэтому собирать цели «ещё где-то рядом» нельзя.
+/// There is exactly one point of building targets for the whole tab (rule #12): since v0.3.5
+/// the `display_ids` fields of `wallpaper_apply` and of both playlist commands
+/// changed TYPE while keeping the number — the daemon drops an old-shape frame silently,
+/// so targets must not be built «somewhere else nearby».
 pub fn presentation_targets(values: &Value) -> Vec<pb::PresentationTarget> {
     let Value::Array(items) = values else {
         return Vec::new();
@@ -1288,23 +1288,23 @@ pub fn presentation_targets(values: &Value) -> Vec<pb::PresentationTarget> {
     out
 }
 
-/// Пустая карта — чтобы оболочка не собирала её вручную.
+/// An empty map — so the wrapper does not build it by hand.
 pub fn empty_map() -> Map<String, Value> {
     Map::new()
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Партия 7: глобальные пауза/звук/стоп и холсты (v0.3.5)
+// Batch 7: global pause/sound/stop and canvases (v0.3.5)
 // ════════════════════════════════════════════════════════════════════════
 //
-// Эталон — вендорные `ui/src/query/global_pause_query.cpp` и
-// `ui/src/query/display_query.cpp` на теге v0.3.5 (f7baecd), тот же тег, с
-// которого вендорен наш QML.
+// The reference is the vendor's `ui/src/query/global_pause_query.cpp` and
+// `ui/src/query/display_query.cpp` at tag v0.3.5 (f7baecd), the same tag
+// our QML is vendored from.
 
-/// Какой из четырёх глобальных переключателей отвечает демон.
+/// Which of the four global toggles the daemon is answering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GlobalFlag {
-    /// `global_pause_toggle` — демон сам решает, во что переключиться.
+    /// `global_pause_toggle` — the daemon decides itself what to switch to.
     PauseToggle,
     /// `global_pause_set`.
     PauseSet,
@@ -1315,7 +1315,7 @@ pub enum GlobalFlag {
 }
 
 impl GlobalFlag {
-    /// Достать значение из ответа демона, если в нём ожидаемая нагрузка.
+    /// Extract the value from the daemon response if it holds the expected payload.
     fn read(self, payload: &pb::response::Payload) -> Option<bool> {
         match (self, payload) {
             (GlobalFlag::PauseToggle, pb::response::Payload::GlobalPauseToggle(r)) => {
@@ -1329,16 +1329,16 @@ impl GlobalFlag {
     }
 }
 
-/// Разбор ответа на любой из четырёх глобальных переключателей.
+/// Parsing the response to any of the four global toggles.
 ///
-/// Возвращает вместе с сигналами то значение, которое НАЗВАЛ демон — оно
-/// нужно `GlobalPauseToggleQuery`: у оригинала сигнал `toggled(paused)`
-/// летит на каждом успешном ответе, даже если свойство не изменилось
-/// (кнопка в интерфейсе показывает тост «Приостановлено»/«Продолжено»
-/// независимо от того, совпало ли значение с прежним).
+/// Returns, along with the signals, the value the daemon NAMED — it is
+/// needed by `GlobalPauseToggleQuery`: in the original the `toggled(paused)` signal
+/// fires on every successful response, even if the property did not change
+/// (the button in the interface shows the «Paused»/«Resumed» toast
+/// regardless of whether the value matched the previous one).
 ///
-/// `None` во втором поле — ответ не про нас (демон ошибся полем) или демон
-/// отказал: тогда ни свойство, ни сигнал трогать нельзя.
+/// `None` in the second field — the response is not about us (the daemon got the field wrong) or the daemon
+/// refused: then neither the property nor the signal may be touched.
 pub fn apply_global_flag(
     st: &mut QueryState,
     flag: GlobalFlag,
@@ -1357,24 +1357,24 @@ pub fn apply_global_flag(
     Ok((finish(st, out), value))
 }
 
-/// Чем кончилась правка холста — ровно три исхода оригинала.
+/// How a canvas edit ended — exactly the original's three outcomes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CanvasMutation {
     /// `canvasCreated(id)`.
     Created(String),
     /// `canvasUpdated(id, revision)`.
     Updated(String, u64),
-    /// `canvasDeleted(id)`. Номер холста демон в ответе не повторяет —
-    /// его помнит сам запрос с момента отправки кадра.
+    /// `canvasDeleted(id)`. The daemon does not repeat the canvas id in the response —
+    /// the request itself remembers it from the moment the frame was sent.
     Deleted(String),
-    /// Демон отказал либо ответил не тем полем: сигналов нет.
+    /// The daemon refused or answered with the wrong field: no signals.
     None,
 }
 
-/// Разбор ответа на создание/правку/удаление холста.
+/// Parsing the response to creating/editing/deleting a canvas.
 ///
-/// `deleted_id` — номер холста из ОТПРАВЛЕННОГО кадра удаления (у
-/// оригинала он тоже захватывается в замыкание до отправки).
+/// `deleted_id` — the canvas id from the SENT delete frame (in the
+/// original it is also captured into the closure before sending).
 pub fn apply_canvas_mutation(
     st: &mut QueryState,
     deleted_id: &str,
@@ -1401,10 +1401,10 @@ pub fn apply_canvas_mutation(
     Ok((finish(st, out), outcome))
 }
 
-/// Прямоугольник участника холста из карты QML (`{settingsKey, x, y,
-/// width, height}`) — так его кладёт `CanvasEditorState.members`.
+/// A canvas member rectangle from a QML map (`{settingsKey, x, y,
+/// width, height}`) — that is how `CanvasEditorState.members` puts it.
 ///
-/// Ключи именно camelCase: карту собирает QML вендора, а не протокол.
+/// The keys are camelCase precisely: the map is built by the vendor QML, not by the protocol.
 pub fn canvas_members_from_json(values: &Value) -> Vec<pb::CanvasMemberInput> {
     let Some(items) = values.as_array() else {
         return Vec::new();
@@ -1423,10 +1423,10 @@ pub fn canvas_members_from_json(values: &Value) -> Vec<pb::CanvasMemberInput> {
                 width: json_i32(item.get("width")).max(0) as u32,
                 height: json_i32(item.get("height")).max(0) as u32,
             }),
-            // Замок пропорций участника — поле протокола 0.3.7. Берём из
-            // той же карты QML; нынешний вендорный QML ключа не кладёт, и
-            // тогда здесь `false` — ровно нынешний кадр (нулевой bool в
-            // proto3 не сериализуется).
+            // The member's aspect lock — a protocol 0.3.7 field. Taken from
+            // the same QML map; the current vendor QML does not put the key, and
+            // then it is `false` here — exactly the current frame (a zero bool in
+            // proto3 is not serialized).
             aspect_locked: item
                 .get("aspectLocked")
                 .and_then(Value::as_bool)
@@ -1435,7 +1435,7 @@ pub fn canvas_members_from_json(values: &Value) -> Vec<pb::CanvasMemberInput> {
         .collect()
 }
 
-/// Число из QML: оно приходит и целым, и дробным (JS не различает).
+/// A number from QML: it arrives both as an integer and as a fraction (JS does not distinguish).
 fn json_i32(value: Option<&Value>) -> i32 {
     match value {
         Some(Value::Number(n)) => n
@@ -1501,7 +1501,7 @@ mod tests {
             .iter()
             .map(|p| p["id"].as_str().unwrap())
             .collect();
-        // Beta < org.c (пустое имя заменяется id), системный Zeta — последним.
+        // Beta < org.c (an empty name is replaced by the id), the system Zeta goes last.
         assert_eq!(ids, ["org.b", "org.c", "org.a"]);
     }
 
@@ -1525,9 +1525,9 @@ mod tests {
         assert_eq!(data.sources[0]["settings"][0]["key"], "api_key");
     }
 
-    /// Границы вкладки WE: источник только с glTF в «Добавить библиотеку»
-    /// не попадает, у смешанного вычёркивается сам тип, источник без типов
-    /// остаётся.
+    /// WE tab boundaries: a source with only glTF does not get into «Add library»,
+    /// a mixed one has the type itself struck out, a source without types
+    /// stays.
     #[test]
     fn source_list_hides_gltf_only_sources() {
         let src = |name: &str, types: &[&str]| pb::SourcePluginInfo {
@@ -1566,7 +1566,7 @@ mod tests {
 
     #[test]
     fn отклонённая_правка_настроек_не_докладывается_принятой() {
-        // Отказ демона: статус не OK.
+        // Daemon refusal: status is not OK.
         let rsp = pb::Response {
             request_id: 1,
             status: pb::Status::InvalidArgument as i32,
@@ -1587,8 +1587,8 @@ mod tests {
     #[test]
     fn прогресс_задачи_живёт_складом_и_номерами() {
         progress_store::reset();
-        // Снимок ПРОШЛОЙ задачи с тем же идентификатором пришёл ДО начала
-        // нашего запроса — он не должен его закрыть.
+        // A snapshot of a PREVIOUS task with the same id arrived BEFORE the start of
+        // our request — it must not close it.
         let stale = progress_store::record("q1", 1.0, false, true, true, "старая ошибка");
 
         let mut st = QueryState::default();
@@ -1597,7 +1597,7 @@ mod tests {
         assert!(begin.contains(&QuerySignal::Property("progressing")));
         assert_eq!(ps.begin_sequence, stale.sequence);
 
-        // Приём задачи: старый снимок в складе есть, но он не новее начала.
+        // Task acceptance: an old snapshot is in the store, but it is not newer than the start.
         accept_progress(&mut st, &mut ps, "q1");
         assert_eq!(st.status, STATUS_QUERYING);
         assert!(!progress_matches(&ps, "q1", stale.sequence));
@@ -1608,13 +1608,13 @@ mod tests {
         assert_eq!(st.status, we_query::STATUS_FINISHED);
     }
 
-    // ── партия 7: глобальные переключатели и холсты ──────────────────
+    // ── batch 7: global toggles and canvases ─────────────────────────
 
     #[test]
     fn глобальная_пауза_берёт_значение_от_демона_а_не_своё() {
         let mut st = QueryState::default();
         let mut value = false;
-        // Клиент просил «пауза», демон ответил «не пауза» — побеждает демон.
+        // The client asked for «pause», the daemon answered «not paused» — the daemon wins.
         let bytes = frame(pb::response::Payload::GlobalPauseSet(
             pb::GlobalPauseSetResponse { paused: false },
         ));
@@ -1644,7 +1644,7 @@ mod tests {
             &bytes,
         )
         .expect("кадр разбирается");
-        // Свойство не менялось, но тост в интерфейсе показать надо.
+        // The property did not change, but the toast in the interface must be shown.
         assert_eq!(answered, Some(true));
     }
 
@@ -1692,7 +1692,7 @@ mod tests {
             apply_canvas_mutation(&mut st, "", &updated).expect("кадр разбирается");
         assert_eq!(outcome, CanvasMutation::Updated("c2".into(), 9));
 
-        // Номер удалённого холста демон не повторяет — его помнит запрос.
+        // The daemon does not repeat the deleted canvas id — the request remembers it.
         let deleted = frame(pb::response::Payload::CanvasDelete(pb::Empty {}));
         let mut st = QueryState::default();
         let (_, outcome) =
@@ -1730,14 +1730,14 @@ mod tests {
         assert_eq!(got[0].settings_key, "DP-1");
         let rect = got[0].rect.as_ref().expect("прямоугольник обязателен");
         assert_eq!((rect.x, rect.y, rect.width, rect.height), (-100, 0, 1920, 1080));
-        // Пропущенные ключи — нули, а не отказ разбора.
+        // Missing keys are zeros, not a parse failure.
         let rect = got[1].rect.as_ref().expect("прямоугольник обязателен");
         assert_eq!((rect.x, rect.y, rect.width, rect.height), (0, 0, 0, 0));
     }
 
-    /// waywallen 0.5.0: «Сохранить» в форме правки умного плейлиста не
-    /// должно ни превращать его в курируемый, ни ломаться отказом демона.
-    /// Склад общий на процесс, поэтому весь сценарий — в одной проверке.
+    /// waywallen 0.5.0: «Save» in the smart playlist edit form must
+    /// neither turn it into a curated one nor break on a daemon refusal.
+    /// The store is process-wide, so the whole scenario is in one test.
     #[test]
     fn smart_playlist_update_keeps_its_selection() {
         let selection = pb::WallpaperSelection {
@@ -1784,8 +1784,8 @@ mod tests {
         apply_playlist_list(&mut st, &mut data, &frame(list)).expect("кадр разобран");
         assert_eq!(data.playlists[0].map["sourceKind"], "smart");
 
-        // Умный: выборка уходит обратно, ручного состава нет (форма 0.4.4
-        // шлёт пустой список — демон 0.5.0 отверг бы кадр с обоими полями).
+        // Smart: the selection goes back, no manual contents (form 0.4.4
+        // sends an empty list — daemon 0.5.0 would reject a frame with both fields).
         let req = playlist_update_request(7001, "Море 2", 3, 600, true, vec![], 99);
         assert!(req.entry_ids.is_empty());
         assert_eq!(
@@ -1797,13 +1797,13 @@ mod tests {
         assert_eq!((req.name.as_str(), req.mode, req.interval_secs), ("Море 2", 3, 600));
         assert_eq!(req.expected_revision, 99);
 
-        // Курируемый — как прежде: состав в `entry_ids`, `source` не шлётся.
+        // Curated — as before: contents in `entry_ids`, `source` is not sent.
         let req = playlist_update_request(7002, "Избранное", 1, 0, false, vec!["5".into(), "6".into()], 0);
         assert_eq!(req.entry_ids, vec!["5".to_string(), "6".to_string()]);
         assert!(req.source.is_none());
 
-        // Подробности одного плейлиста тоже обновляют склад: умный стал
-        // курируемым в другом клиенте — больше не подставляем выборку.
+        // The details of one playlist also update the store: a smart one became
+        // curated in another client — the selection is no longer substituted.
         let mut detail = PlaylistDetailData::default();
         let get = pb::response::Payload::PlaylistGet(pb::PlaylistGetResponse {
             playlist: Some(pb::PlaylistSummary {
@@ -1815,7 +1815,7 @@ mod tests {
         apply_playlist_get(&mut st, &mut detail, &frame(get)).expect("кадр разобран");
         assert!(playlist_update_request(7001, "Море", 1, 0, false, vec![], 0).source.is_none());
 
-        // Плейлист пропал из полного списка — забыт.
+        // The playlist vanished from the full list — forgotten.
         let list = pb::response::Payload::PlaylistList(pb::PlaylistListResponse {
             playlists: vec![curated],
         });
@@ -1823,9 +1823,9 @@ mod tests {
         assert!(playlist_source_store::smart(7001).is_none());
     }
 
-    /// Выборка умного плейлиста с годным правилом и сортировкой и с
-    /// незаполненным: правило без значения и сортировка без ключа. Их
-    /// отвергает демон, а не Rexon, — до демона они обязаны доехать.
+    /// A smart playlist selection with a usable rule and sort and with
+    /// unfilled ones: a rule without a value and a sort without a key. They
+    /// are rejected by the daemon, not by Rexon — they must reach the daemon.
     fn smart_selection_with_junk() -> pb::WallpaperSelection {
         pb::WallpaperSelection {
             filters: vec![
@@ -1861,10 +1861,10 @@ mod tests {
         }
     }
 
-    /// waywallen 0.5.0, `saveSmart`: номер > 0 — `PlaylistUpdate`, иначе
-    /// `PlaylistCreate` с захватом номера; источник — выборка как есть (ни
-    /// одно правило не теряется), состав пустой; не выборка — кадра нет,
-    /// ошибка и `done()`.
+    /// waywallen 0.5.0, `saveSmart`: id > 0 — `PlaylistUpdate`, otherwise
+    /// `PlaylistCreate` with capturing the id; the source is the selection as is (not
+    /// a single rule is lost), contents empty; not a selection — no frame,
+    /// an error and `done()`.
     #[test]
     fn save_smart_sends_selection_as_is_without_entries() {
         let raw = smart_selection_with_junk();
@@ -1891,7 +1891,7 @@ mod tests {
                 source: smart.clone(),
             }
         );
-        // Байты кадра — те же, что у prost-кода запроса.
+        // The frame bytes are the same as the request's prost encoding.
         assert_eq!(save.encode_to_vec(), prost::Message::encode_to_vec(r));
 
         for id in [0, -5] {
@@ -1912,11 +1912,11 @@ mod tests {
             );
         }
 
-        // Пустая выборка — тоже выборка (метка есть, кода нет).
+        // An empty selection is a selection too (the tag is there, no encoding).
         let empty = crate::we_wallpaper::encode_selection(&pb::WallpaperSelection::default());
         assert!(playlist_save_smart_request(0, "Все", 1, 0, true, &empty, 0).is_some());
 
-        // Не выборка: пусто, строка, чужой код без метки.
+        // Not a selection: empty, a string, a foreign encoding without the tag.
         let foreign = prost::Message::encode_to_vec(&raw);
         for junk in [&b""[..], b"selection", &foreign[..]] {
             assert!(playlist_save_smart_request(7101, "x", 1, 0, true, junk, 0).is_none());
@@ -1928,10 +1928,10 @@ mod tests {
         assert_eq!(signals.last(), Some(&QuerySignal::Property("done")));
     }
 
-    /// waywallen 0.5.0: карта умного плейлиста несёт его выборку тем же
-    /// непрозрачным значением, что `WallpaperListQuery.selection`, — как
-    /// прислал демон, без очистки; у курируемого выборки нет. Список и
-    /// подробности строят плейлист одной функцией.
+    /// waywallen 0.5.0: a smart playlist map carries its selection as the same
+    /// opaque value as `WallpaperListQuery.selection` — as the daemon
+    /// sent it, without cleaning; a curated one has no selection. The list and the
+    /// details build the playlist with one function.
     #[test]
     fn smart_selection_rides_with_playlist_map() {
         let raw = smart_selection_with_junk();
@@ -1953,13 +1953,13 @@ mod tests {
         assert_eq!(bytes, crate::we_wallpaper::encode_selection(&raw));
         assert_eq!(crate::we_wallpaper::decode_selection(&bytes), Some(raw.clone()));
 
-        // `restoreSelection(smartSelection)` превью даёт ту же выборку —
-        // `matchesSelection(baseline)` сразу после восстановления истинно.
+        // `restoreSelection(smartSelection)` of the preview gives the same selection —
+        // `matchesSelection(baseline)` right after restoring is true.
         let mut preview = crate::we_wallpaper::WallpaperListData::default();
         let _ = crate::we_wallpaper::restore_selection(&mut preview, &bytes);
         assert!(crate::we_wallpaper::matches_selection(&preview, &bytes));
 
-        // Курируемый и плейлист без источника (демон до 0.5.0) — без ключа.
+        // Curated and a playlist without a source (daemon before 0.5.0) — without the key.
         for source in [
             Some(pb::PlaylistSource {
                 kind: Some(pb::playlist_source::Kind::Curated(pb::CuratedPlaylistSource {
@@ -1976,7 +1976,7 @@ mod tests {
             assert_eq!(playlist_view(&p).smart_selection, None);
         }
 
-        // Подробности: тот же плейлист.
+        // Details: the same playlist.
         let mut st = QueryState::default();
         let mut detail = PlaylistDetailData::default();
         let get = pb::response::Payload::PlaylistGet(pb::PlaylistGetResponse {

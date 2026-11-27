@@ -1,70 +1,71 @@
-//! Импортёры тем чужих платформ — порт `rexon/extensions/importers.py`
-//! (чистая логика, без I/O).
+//! Importers of themes from other platforms — port of `rexon/extensions/importers.py`
+//! (pure logic, no I/O).
 //!
-//! В оригинале 5 классов / 7 путей импорта, все — Windows-семейство:
+//! The original has 5 classes / 7 import paths, all of the Windows family:
 //!   * ThemepackImporter        — .themepack / .deskthemepack (CAB);
-//!   * WindowsThemeImporter     — диспетчер + .theme (INI), DreamScene
+//!   * WindowsThemeImporter     — dispatcher + .theme (INI), DreamScene
 //!     (.wmv/.mpeg/.mpg/.dream), .gadget (ZIP+XML);
-//!   * WindowsCursorImporter    — .cur/.ani/.inf/.crs/.CurXPTheme/папка/архив → Xcursor
-//!     (с 03.10.2026 — свой перевод `crate::wincursor`, все кадры анимации);
+//!   * WindowsCursorImporter    — .cur/.ani/.inf/.crs/.CurXPTheme/folder/archive → Xcursor
+//!     (since 03.10.2026 — our own converter `crate::wincursor`, all animation frames);
 //!   * WindowsIconImporter      — .ico/.icl/.dll/.exe/.iconpackage/.ip/.7tsp;
 //!   * MSStyImporter            — .msstyles (PE) → GTK+Aurorae+Plasma+colors.
 //!
-//! Symbian/PSP-импортёров в importers.py НЕТ (старый комментарий в
-//! описании структуры проекта устарел); решение Wehrwolfmann 2026-07-17
-//! их не портировать выполняется автоматически.
+//! There are NO Symbian/PSP importers in importers.py (the old comment in the
+//! project structure description is out of date); Wehrwolfmann's decision of
+//! 2026-07-17 not to port them is fulfilled automatically.
 //!
-//! СХЕМА: импортёры интерактивны — ход разбора зависит от результатов
-//! subprocess (convert/ffmpeg/wrestool/...) и от файлов, появившихся после
-//! них. Поэтому вместо статического плана (как `ext_manager`) — трейт
-//! [`ImpIo`]: КАЖДЫЙ побочный вызов и КАЖДОЕ наблюдение Python-оригинала
-//! (os/shutil/subprocess/tempfile/zipfile/open/_write_manifest/_pack_rxn/
-//! _safe_zip_extract/ET.parse) — один метод трейта, в том же порядке.
-//! Эталон паритета — журнал вызовов живого Python в песочнице
-//! (`tests/golden/importers_cases.json`, снят harness'ом «виртуальная ФС +
-//! журнал»); Rust обязан сделать те же вызовы в том же порядке и прийти к
-//! тому же результату/ошибке (тексты байт-в-байт).
+//! SCHEME: the importers are interactive — the parsing flow depends on the
+//! results of subprocesses (convert/ffmpeg/wrestool/...) and on files that
+//! appear after them. So instead of a static plan (as in `ext_manager`) there
+//! is the [`ImpIo`] trait: EVERY side call and EVERY observation of the Python
+//! original (os/shutil/subprocess/tempfile/zipfile/open/_write_manifest/_pack_rxn/
+//! _safe_zip_extract/ET.parse) is one trait method, in the same order. The
+//! parity reference is a call log of live Python in a sandbox
+//! (`tests/golden/importers_cases.json`, captured by a "virtual FS + log"
+//! harness); Rust must make the same calls in the same order and arrive at the
+//! same result/error (texts byte for byte).
 //!
-//! Разобрано в Rust: mini-configparser (семантика CPython 3.14: SECTCRE с
-//! жадным `.+`, ParsingError с накоплением, BasicInterpolation с точными
-//! текстами ошибок), CLSID-регексп, gadget.xml (обход в порядке документа,
-//! как `root.iter()`), маппинги ICON-типов/PART_MAP (роли курсоров — `wincursor`), генерация
-//! manifest.json / index.theme / gtk.css / aurorae rc / metadata.desktop /
-//! SVG-обёрток (base64) — тексты 1-в-1.
+//! Parsed in Rust: a mini-configparser (CPython 3.14 semantics: SECTCRE with
+//! greedy `.+`, ParsingError with accumulation, BasicInterpolation with exact
+//! error texts), the CLSID regex, gadget.xml (traversal in document order,
+//! like `root.iter()`), ICON type/PART_MAP mappings (cursor roles — `wincursor`),
+//! generation of manifest.json / index.theme / gtk.css / aurorae rc /
+//! metadata.desktop / SVG wrappers (base64) — texts 1-to-1.
 //!
-//! ГРАБЛИ ОРИГИНАЛА ПОЧИНЕНЫ (санкционированные расхождения с Python;
-//! решение Wehrwolfmann 2026-07-17: чинить только в Rust, Python не трогать):
-//!   * `WallpaperUpscaler` в importers.py НЕ импортирован → в Python каждый
-//!     импорт .themepack и .theme падает NameError сразу после копирования
-//!     обоев; здесь апскейл смоделирован методом [`ImpIo::upscale_wallpapers`]
-//!     и хвосты обоих импортов портированы целиком;
-//!   * `os.path.join(..., exist_ok=True)` в WindowsIconImporter → в Python
-//!     каждый импорт иконок падает TypeError; здесь `exist_ok` — семантика
-//!     makedirs, хвост импорта иконок портирован (та же опечатка в ветке
-//!     иконок ThemepackImporter — починена так же);
-//!   * `"group_icon" in r.stdout.lower()` — str-в-bytes → в Python TypeError
-//!     в can_import для .dll/.exe с непустым stdout wrestool; здесь stdout
-//!     декодируется как текст;
-//!   * `f"#{bytes}"` в `_extract_dominant_colors` давал строки `#b'336699'`
-//!     → ValueError в `_generate_kde_colorscheme`; здесь stdout convert
-//!     декодируется, цветовая схема генерируется;
-//!   * подстрочный поиск по PART_MAP брал ПЕРВЫЙ ключ по порядку словаря:
-//!     `startmenu` ловился ключом `menu`, `startpanel` — `pane`,
-//!     `taskitemactive` — `taskitem`; здесь выбирается самый длинный
-//!     (самый специфичный) подходящий ключ;
-//!   * 7z-фолбэк .msstyles искал битмапы НЕрекурсивно (os.listdir), хотя 7z
-//!     кладёт ресурсы PE в подпапки; здесь после 7z поиск рекурсивный.
+//! PITFALLS OF THE ORIGINAL FIXED (sanctioned divergences from Python;
+//! Wehrwolfmann's decision of 2026-07-17: fix only in Rust, don't touch Python):
+//!   * `WallpaperUpscaler` is NOT imported in importers.py → in Python every
+//!     .themepack and .theme import fails with NameError right after copying
+//!     the wallpapers; here the upscale is modelled by the
+//!     [`ImpIo::upscale_wallpapers`] method and the tails of both imports are
+//!     ported in full;
+//!   * `os.path.join(..., exist_ok=True)` in WindowsIconImporter → in Python
+//!     every icon import fails with TypeError; here `exist_ok` has makedirs
+//!     semantics, the tail of the icon import is ported (the same typo in the
+//!     icon branch of ThemepackImporter is fixed the same way);
+//!   * `"group_icon" in r.stdout.lower()` — str-in-bytes → TypeError in Python
+//!     in can_import for .dll/.exe with non-empty wrestool stdout; here stdout
+//!     is decoded as text;
+//!   * `f"#{bytes}"` in `_extract_dominant_colors` produced strings like
+//!     `#b'336699'` → ValueError in `_generate_kde_colorscheme`; here convert's
+//!     stdout is decoded and the color scheme is generated;
+//!   * substring lookup in PART_MAP took the FIRST key in dict order:
+//!     `startmenu` was caught by the key `menu`, `startpanel` — by `pane`,
+//!     `taskitemactive` — by `taskitem`; here the longest (most specific)
+//!     matching key is chosen;
+//!   * the 7z fallback for .msstyles searched for bitmaps NON-recursively
+//!     (os.listdir), although 7z puts PE resources into subfolders; here the
+//!     search after 7z is recursive.
 //!
-//! ИСПОЛНИТЕЛЬ — не здесь: реальные файловые операции и запуск конвертеров
-//! делает вызывающая сторона. Живой исполнитель на Rust лежит в
-//! [`crate::imp_live`] (им пользуются и `ext_exec::install_from_file`, и
-//! PyO3-мост); апскейл обоев подключается ему замыканием
-//! (`upscale_wallpapers`), потому что у апскейлера свой исполнитель. Логи —
-//! тоже на стороне вызывающего.
-//! Известные допущения: отсутствие бинарника в PATH (FileNotFoundError из
-//! subprocess.run) не моделируется — исполнителю доступен `which` заранее;
-//! не-UTF-8 XML и небуквенные экзотические непечатаемые символы в repr —
-//! за пределами фикстур (см. `py_repr`).
+//! THE EXECUTOR is not here: real file operations and running converters are
+//! done by the caller. The live Rust executor lives in [`crate::imp_live`]
+//! (used both by `ext_exec::install_from_file` and by the PyO3 bridge); the
+//! wallpaper upscale is plugged into it as a closure (`upscale_wallpapers`),
+//! because the upscaler has its own executor. Logs are on the caller's side too.
+//! Known assumptions: a binary missing from PATH (FileNotFoundError from
+//! subprocess.run) is not modelled — the executor has `which` available up
+//! front; non-UTF-8 XML and exotic non-letter unprintable characters in repr
+//! are outside the fixtures (see `py_repr`).
 
 use quick_xml::events::Event;
 use quick_xml::Reader;
@@ -73,10 +74,10 @@ use crate::wincursor::{self, Role};
 use serde_json::{json, Map, Value};
 
 // ============================================================================
-// Ошибки и интерфейс исполнителя
+// Errors and the executor interface
 // ============================================================================
 
-/// Ошибка импорта: имя Python-исключения + текст (байт-в-байт).
+/// Import error: Python exception name + text (byte for byte).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImpError {
     pub kind: String,
@@ -97,7 +98,7 @@ fn rerr(message: impl Into<String>) -> ImpError {
     ImpError::new("RuntimeError", message)
 }
 
-/// `open()` не смог открыть файл (текст CPython для FileNotFoundError).
+/// `open()` could not open the file (CPython text for FileNotFoundError).
 fn oserr(path: &str) -> ImpError {
     ImpError::new(
         "FileNotFoundError",
@@ -105,26 +106,26 @@ fn oserr(path: &str) -> ImpError {
     )
 }
 
-/// Результат `subprocess.run`: `ok` = returncode == 0.
+/// Result of `subprocess.run`: `ok` = returncode == 0.
 pub struct RunResult {
     pub ok: bool,
     pub stdout: Vec<u8>,
 }
 
-/// Кортеж `os.walk`: (root, подкаталоги, файлы) в порядке листинга.
+/// An `os.walk` tuple: (root, subdirectories, files) in listing order.
 pub type WalkEntry = (String, Vec<String>, Vec<String>);
 
-/// Интерфейс исполнителя: каждый метод — ровно один побочный вызов или
-/// наблюдение Python-оригинала, в порядке исполнения. В parity-тестах
-/// реализуется реплеем журнала; в живом мосте — реальным I/O.
+/// Executor interface: each method is exactly one side call or observation of
+/// the Python original, in execution order. In parity tests it is implemented
+/// by replaying a log; in the live bridge — by real I/O.
 pub trait ImpIo {
-    /// `tempfile.mkdtemp(prefix=...)` → путь.
+    /// `tempfile.mkdtemp(prefix=...)` → path.
     fn mkdtemp(&mut self, prefix: &str) -> String;
     /// `os.makedirs(path, exist_ok=True)`.
     fn makedirs(&mut self, path: &str);
     /// `subprocess.run(argv, capture_output=True, timeout=...)`.
     fn run(&mut self, argv: Vec<String>, timeout: u64) -> RunResult;
-    /// `os.walk(root)` (topdown, целиком).
+    /// `os.walk(root)` (topdown, in full).
     fn walk(&mut self, root: &str) -> Vec<WalkEntry>;
     /// `os.listdir(path)`.
     fn listdir(&mut self, path: &str) -> Vec<String>;
@@ -137,15 +138,15 @@ pub trait ImpIo {
     /// `os.path.getsize`.
     fn getsize(&mut self, path: &str) -> u64;
     /// `open(path, encoding="utf-8", errors="replace").read()`;
-    /// None — файл не открылся (OSError).
+    /// None — the file didn't open (OSError).
     fn read_text(&mut self, path: &str) -> Option<String>;
-    /// то же, но `.read(n)` (n символов).
+    /// the same, but `.read(n)` (n characters).
     fn read_head_text(&mut self, path: &str, n: usize) -> Option<String>;
     /// `open(path, "rb").read(n)`.
     fn read_head_bytes(&mut self, path: &str, n: usize) -> Option<Vec<u8>>;
     /// `open(path, "rb").read()`.
     fn read_bytes(&mut self, path: &str) -> Option<Vec<u8>>;
-    /// `zipfile.is_zipfile(path)`; None — OSError при открытии.
+    /// `zipfile.is_zipfile(path)`; None — OSError on open.
     fn is_zipfile(&mut self, path: &str) -> Option<bool>;
     /// `zipfile.ZipFile(path)`: false — BadZipFile.
     fn zip_open(&mut self, path: &str) -> bool;
@@ -155,39 +156,39 @@ pub trait ImpIo {
     fn copy_file(&mut self, src: &str, dest: &str);
     /// `shutil.copytree(src, dest)`.
     fn copy_tree(&mut self, src: &str, dest: &str);
-    /// `os.symlink(target, link)`; false — исключение (подавлено оригиналом).
+    /// `os.symlink(target, link)`; false — an exception (suppressed by the original).
     fn symlink(&mut self, target: &str, link: &str) -> bool;
     /// `os.remove(path)`.
     fn remove_file(&mut self, path: &str);
     /// `shutil.rmtree(path, ignore_errors=True)`.
     fn remove_tree(&mut self, path: &str);
-    /// Запись текста в файл (`open(...,"w").write` либо `_write_manifest`).
+    /// Write text to a file (`open(...,"w").write` or `_write_manifest`).
     fn write_file(&mut self, path: &str, content: &str);
     /// `_safe_zip_extract(zf, dest)`.
     fn extract_zip(&mut self, archive: &str, dest: &str);
     /// `_pack_rxn(src, dest)`.
     fn pack_rxn(&mut self, src: &str, dest: &str);
-    /// Запись байтов в файл (переведённые курсоры, обложка). Python-аналога
-    /// нет: перевод курсоров с 03.10.2026 — свой код на Rust.
+    /// Write bytes to a file (converted cursors, cover image). No Python
+    /// counterpart: cursor conversion since 03.10.2026 is our own Rust code.
     fn write_bytes(&mut self, path: &str, data: &[u8]);
-    /// Имена записей ZIP; None — файл не открылся или это не ZIP.
+    /// ZIP entry names; None — the file didn't open or isn't a ZIP.
     fn zip_names(&mut self, path: &str) -> Option<Vec<String>>;
-    /// Символьная ссылка ли это (по ней не переходя): ссылки из чужого
-    /// архива не читаются и в `.rxn` не кладутся.
+    /// Whether this is a symbolic link (without following it): links from a
+    /// foreign archive are not read and are not put into `.rxn`.
     fn is_symlink(&mut self, path: &str) -> bool;
-    /// `WallpaperUpscaler.process_wallpapers_in_dir(data_dir)` → число
-    /// обработанных обоев. Намеренное расхождение с Python-оригиналом:
-    /// там NameError (WallpaperUpscaler не импортирован), починено здесь —
-    /// апскейл выполняет исполнитель (живой мост зовёт настоящий
-    /// upscaler.py, upscaler — отдельный модуль и сюда не портируется).
+    /// `WallpaperUpscaler.process_wallpapers_in_dir(data_dir)` → number of
+    /// wallpapers processed. A deliberate divergence from the Python original:
+    /// there it is a NameError (WallpaperUpscaler not imported), fixed here — the
+    /// executor performs the upscale (the live bridge calls the real
+    /// upscaler.py; the upscaler is a separate module and is not ported here).
     fn upscale_wallpapers(&mut self, data_dir: &str) -> u64;
 }
 
 // ============================================================================
-// Хелперы семантики Python (os.path, str, int, repr, base64)
+// Python semantics helpers (os.path, str, int, repr, base64)
 // ============================================================================
 
-/// `os.path.join` для POSIX (достаточно двух аргументов).
+/// `os.path.join` for POSIX (two arguments are enough).
 fn join(a: &str, b: &str) -> String {
     if b.starts_with('/') {
         b.to_string()
@@ -210,13 +211,13 @@ fn dirname(p: &str) -> String {
     }
 }
 
-/// `os.path.splitext`: точка в начале basename (и все ведущие точки)
-/// расширением не считается.
+/// `os.path.splitext`: a dot at the start of the basename (and all leading
+/// dots) is not considered an extension.
 fn splitext(p: &str) -> (&str, &str) {
     let base_start = p.rfind('/').map_or(0, |i| i + 1);
     let base = &p[base_start..];
     if let Some(dot_rel) = base.rfind('.') {
-        // есть ли не-точка до последней точки?
+        // is there a non-dot before the last dot?
         if base[..dot_rel].chars().any(|c| c != '.') {
             let dot = base_start + dot_rel;
             return (&p[..dot], &p[dot..]);
@@ -233,8 +234,8 @@ fn stem(p: &str) -> &str {
     splitext(basename(p)).0
 }
 
-/// Пробельный символ в смысле Python `str` (шире Rust `is_whitespace`
-/// на U+001C..U+001F).
+/// A whitespace character in the Python `str` sense (wider than Rust
+/// `is_whitespace` by U+001C..U+001F).
 fn py_space(c: char) -> bool {
     c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)
 }
@@ -247,9 +248,9 @@ fn py_rstrip(s: &str) -> &str {
     s.trim_end_matches(py_space)
 }
 
-/// `repr()` строки: кавычки и экранирование как в CPython (печатаемые
-/// не-ASCII символы остаются как есть; экзотические непечатаемые за
-/// пределами C0/DEL не экранируются — на фикстурах не встречаются).
+/// `repr()` of a string: quotes and escaping as in CPython (printable
+/// non-ASCII characters stay as is; exotic unprintable ones outside C0/DEL
+/// are not escaped — they don't occur in the fixtures).
 fn py_repr(s: &str) -> String {
     let quote = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
     let mut out = String::with_capacity(s.len() + 2);
@@ -274,8 +275,8 @@ fn py_repr(s: &str) -> String {
     out
 }
 
-/// `int(s)` (десятичный): пробелы по краям, знак, ASCII-цифры с одиночными
-/// подчёркиваниями между ними. None — ValueError (вызывающие подавляют).
+/// `int(s)` (decimal): surrounding whitespace, sign, ASCII digits with single
+/// underscores between them. None — ValueError (callers suppress it).
 fn py_int(s: &str) -> Option<i64> {
     let t = py_strip(s);
     let (neg, t) = match t.strip_prefix('-') {
@@ -292,12 +293,12 @@ fn py_int(s: &str) -> Option<i64> {
     digits.parse::<i64>().ok().map(|v| if neg { -v } else { v })
 }
 
-/// `int(x)` от bytes (identify выдаёт bytes; int() принимает их как ASCII).
+/// `int(x)` of bytes (identify outputs bytes; int() accepts them as ASCII).
 fn py_int_bytes(b: &[u8]) -> Option<i64> {
     std::str::from_utf8(b).ok().and_then(py_int)
 }
 
-/// `int(s, 16)`: Err — текст ValueError байт-в-байт.
+/// `int(s, 16)`: Err — the ValueError text byte for byte.
 fn py_int_base16(s: &str) -> Result<i64, ImpError> {
     let bad = || {
         verr(format!(
@@ -326,17 +327,18 @@ fn py_int_base16(s: &str) -> Result<i64, ImpError> {
         .map_err(|_| bad())
 }
 
-/// `re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:60]` — общий safe_id.
+/// `re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:60]` — the shared safe_id.
 ///
-/// Отличие от Python: кириллица (ru/uk/be) сперва транслитерируется — у
-/// оригинала «Аэро» давало пустой id, и импорт писал `msstyles-.rxn`, а тему
-/// клал прямо в `data/gtk/` без своей папки. Если латиницы нет и после этого
-/// (иероглифы, арабица), id — `theme-` + 8 hex sha256 имени: стабилен для того
-/// же имени и не совпадает у разных.
-/// Имя каталога импортированной темы значков или курсоров: набор, названный
-/// `hicolor`/`locolor`, встал бы на место общего набора всех программ и его
-/// `index.theme` перекрыл бы системный (дефект 09.11.2026,
-/// [`crate::icon_hygiene`]) — такому имени добавляется `-imported`.
+/// Difference from Python: Cyrillic (ru/uk/be) is transliterated first — in
+/// the original "Аэро" gave an empty id, and the import wrote `msstyles-.rxn`
+/// and put the theme straight into `data/gtk/` without its own folder. If
+/// there is still no Latin after that (CJK, Arabic script), the id is
+/// `theme-` + 8 hex of the name's sha256: stable for the same name and
+/// different for different ones.
+/// Directory name of an imported icon or cursor theme: a set named
+/// `hicolor`/`locolor` would take the place of the shared set of all programs
+/// and its `index.theme` would override the system one (defect 09.11.2026,
+/// [`crate::icon_hygiene`]) — such a name gets `-imported` appended.
 fn icon_set_dir(slug: String) -> String {
     if crate::icon_hygiene::is_reserved_icon_set(&slug) {
         format!("{slug}-imported")
@@ -375,8 +377,8 @@ pub(crate) fn slug60(s: &str) -> String {
     format!("theme-{hex}")
 }
 
-/// Латиница для строчной кириллической буквы (ru/uk/be); `None` — не кириллица.
-/// `ъ`/`ь` дают пустую строку: в id они не нужны.
+/// Latin for a lowercase Cyrillic letter (ru/uk/be); `None` — not Cyrillic.
+/// `ъ`/`ь` give an empty string: they aren't needed in an id.
 fn cyrillic_latin(c: char) -> Option<&'static str> {
     Some(match c {
         'а' => "a", 'б' => "b", 'в' => "v", 'г' => "g", 'ґ' => "g", 'д' => "d",
@@ -390,7 +392,7 @@ fn cyrillic_latin(c: char) -> Option<&'static str> {
     })
 }
 
-/// `bytes.strip()` — ASCII-пробелы по краям.
+/// `bytes.strip()` — ASCII whitespace at both ends.
 fn bytes_strip(b: &[u8]) -> &[u8] {
     let is_ws = |c: &u8| matches!(c, b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c);
     let start = b.iter().position(|c| !is_ws(c)).unwrap_or(b.len());
@@ -398,14 +400,14 @@ fn bytes_strip(b: &[u8]) -> &[u8] {
     &b[start..end]
 }
 
-/// `bytes.split()` — по пробельным прогонам.
+/// `bytes.split()` — on runs of whitespace.
 fn bytes_split_ws(b: &[u8]) -> Vec<&[u8]> {
     b.split(|c| matches!(c, b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c))
         .filter(|p| !p.is_empty())
         .collect()
 }
 
-/// `base64.b64encode` (стандартный алфавит, без переносов).
+/// `base64.b64encode` (standard alphabet, no line breaks).
 fn b64encode(data: &[u8]) -> String {
     const AL: &[u8; 64] =
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -423,12 +425,12 @@ fn b64encode(data: &[u8]) -> String {
     out
 }
 
-/// `json.dumps(..., indent=2, ensure_ascii=False)` (как в `_write_manifest`).
+/// `json.dumps(..., indent=2, ensure_ascii=False)` (as in `_write_manifest`).
 pub(crate) fn dumps_indent2(v: &Value) -> String {
     serde_json::to_string_pretty(v).expect("Value сериализуется")
 }
 
-/// Упорядоченный словарь путей (семантика dict: перезапись сохраняет позицию).
+/// An ordered path dictionary (dict semantics: overwriting keeps the position).
 #[derive(Default)]
 struct OrdMap(Vec<(String, String)>);
 
@@ -459,11 +461,11 @@ impl OrdMap {
 }
 
 // ============================================================================
-// Mini-configparser — семантика CPython 3.14 (ConfigParser(strict=False))
+// Mini-configparser — CPython 3.14 semantics (ConfigParser(strict=False))
 // ============================================================================
 
-/// Разобранный INI: DEFAULT-секция + обычные секции в порядке появления.
-/// Значения уже соединены (multiline join + rstrip), БЕЗ интерполяции.
+/// Parsed INI: the DEFAULT section + ordinary sections in order of appearance.
+/// Values are already joined (multiline join + rstrip), WITHOUT interpolation.
 #[derive(Default)]
 struct Ini {
     defaults: Vec<(String, String)>,
@@ -476,12 +478,12 @@ enum CurSect {
 }
 
 impl Ini {
-    /// `config.read_string(text)`. Возвращает разобранное состояние И
-    /// возможную ошибку: как в CPython, при ParsingError/
-    /// MissingSectionHeaderError уже разобранные данные сохраняются в
-    /// парсере (вызывающие с подавлением используют частичный результат).
+    /// `config.read_string(text)`. Returns the parsed state AND a possible error:
+    /// as in CPython, on ParsingError/MissingSectionHeaderError the data parsed
+    /// so far stays in the parser (callers that suppress errors use the partial
+    /// result).
     fn read_string(text: &str) -> (Ini, Option<ImpError>) {
-        // значения в фазе разбора — список строк (multiline)
+        // values during the parsing phase are a list of lines (multiline)
         type RawOpts = Vec<(String, Vec<String>)>;
         let mut defaults: RawOpts = Vec::new();
         let mut sections: Vec<(String, RawOpts)> = Vec::new();
@@ -499,7 +501,7 @@ impl Ini {
             let has_comments = trimmed != clean;
 
             if clean.is_empty() {
-                // пустая строка внутри значения → '' (empty_lines_in_values)
+                // an empty line inside a value → '' (empty_lines_in_values)
                 if !has_comments {
                     if let (Some(cur), Some(opt)) = (&cursect, &optname) {
                         if !opt.is_empty() {
@@ -521,7 +523,7 @@ impl Ini {
             let cur_indent_level =
                 raw.chars().position(|c| !py_space(c)).unwrap_or(0);
 
-            // строка-продолжение значения?
+            // a value continuation line?
             let is_continue = cursect.is_some()
                 && optname.as_deref().is_some_and(|o| !o.is_empty())
                 && cur_indent_level > indent_level;
@@ -539,7 +541,7 @@ impl Ini {
 
             indent_level = cur_indent_level;
 
-            // заголовок секции: `\[(.+)\]` — жадно до ПОСЛЕДНЕЙ `]`
+            // section header: `\[(.+)\]` — greedy up to the LAST `]`
             let header = if clean.starts_with('[') {
                 match clean.rfind(']') {
                     Some(j) if j >= 2 => Some(&clean[1..j]),
@@ -570,10 +572,10 @@ impl Ini {
                         py_repr(raw)
                     ),
                 ));
-                break; // CPython прерывает разбор немедленно
+                break; // CPython aborts parsing immediately
             }
 
-            // опция: разделитель — первое вхождение '=' или ':'
+            // option: the delimiter is the first occurrence of '=' or ':'
             let delim = clean.char_indices().find(|(_, c)| *c == '=' || *c == ':');
             let Some((di, _)) = delim else {
                 errors.push((lineno, raw.to_string()));
@@ -597,7 +599,7 @@ impl Ini {
             optname = Some(name);
         }
 
-        // _join_multiline_values (выполняется и при ошибке — finally)
+        // _join_multiline_values (runs on error too — finally)
         let join_vals = |v: Vec<(String, Vec<String>)>| -> Vec<(String, String)> {
             v.into_iter()
                 .map(|(k, lines)| (k, py_rstrip(&lines.join("\n")).to_string()))
@@ -632,7 +634,7 @@ impl Ini {
         self.sections.iter().map(|(n, _)| n.clone()).collect()
     }
 
-    /// `config.options(section)`: ключи DEFAULT, затем свои (порядок dict).
+    /// `config.options(section)`: DEFAULT keys, then its own (dict order).
     fn options(&self, section: &str) -> Vec<String> {
         let mut out: Vec<String> =
             self.defaults.iter().map(|(k, _)| k.clone()).collect();
@@ -657,7 +659,7 @@ impl Ini {
                     return Some(v);
                 }
             } else {
-                return None; // NoSectionError → fallback у вызывающего
+                return None; // NoSectionError → fallback at the caller
             }
         }
         self.defaults
@@ -666,8 +668,8 @@ impl Ini {
             .map(|(_, v)| v.as_str())
     }
 
-    /// `config.get(section, option, fallback=...)` с BasicInterpolation.
-    /// NoSection/NoOption → fallback; ошибки интерполяции — наружу.
+    /// `config.get(section, option, fallback=...)` with BasicInterpolation.
+    /// NoSection/NoOption → fallback; interpolation errors propagate.
     fn get_fb(
         &self,
         section: &str,
@@ -687,7 +689,7 @@ impl Ini {
         Ok(accum)
     }
 
-    /// Порт `BasicInterpolation._interpolate_some` (тексты ошибок 1-в-1).
+    /// Port of `BasicInterpolation._interpolate_some` (error texts 1-to-1).
     fn interpolate_some(
         &self,
         section: &str,
@@ -781,16 +783,16 @@ impl Ini {
 }
 
 // ============================================================================
-// CLSID-регексп и gadget.xml
+// CLSID regex and gadget.xml
 // ============================================================================
 
-/// Матч `\[CLSID\\?\{([^}]+)\}\\?DefaultIcon\]\s*DefaultValue\s*=\s*(.+)`
-/// (IGNORECASE): (guid, значение до конца строки).
+/// Match `\[CLSID\\?\{([^}]+)\}\\?DefaultIcon\]\s*DefaultValue\s*=\s*(.+)`
+/// (IGNORECASE): (guid, value up to the end of line).
 fn clsid_finditer(content: &str) -> Vec<(String, String)> {
     let lower = content.to_lowercase();
-    // паттерн и content ASCII-совместимы в интересующих местах; индексы
-    // сопоставляем по байтам lower-строки (to_lowercase ASCII-стабильна
-    // для ASCII, не-ASCII в литералы паттерна не входят)
+    // the pattern and content are ASCII-compatible where it matters; indices are
+    // matched by bytes of the lowercased string (to_lowercase is stable for
+    // ASCII, and no non-ASCII appears in the pattern literals)
     let lb = lower.as_bytes();
     let cb = content.as_bytes();
     let mut out = Vec::new();
@@ -799,7 +801,7 @@ fn clsid_finditer(content: &str) -> Vec<(String, String)> {
         let Some(rel) = find_sub(&lb[i..], b"[clsid") else { break };
         let start = i + rel;
         let mut p = start + b"[clsid".len();
-        // \\? — необязательный обратный слеш
+        // \\? — optional backslash
         if lb.get(p) == Some(&b'\\') {
             p += 1;
         }
@@ -845,7 +847,7 @@ fn clsid_finditer(content: &str) -> Vec<(String, String)> {
         while p < lb.len() && is_ascii_py_space(lb[p]) {
             p += 1;
         }
-        // (.+) — до конца строки ('.' не матчит \n), минимум один символ
+        // (.+) — up to the end of line ('.' doesn't match \n), at least one character
         let val_start = p;
         while p < lb.len() && lb[p] != b'\n' {
             p += 1;
@@ -858,7 +860,7 @@ fn clsid_finditer(content: &str) -> Vec<(String, String)> {
             String::from_utf8_lossy(&cb[guid_start..guid_end]).into_owned();
         let value = String::from_utf8_lossy(&cb[val_start..p]).into_owned();
         out.push((guid, value));
-        i = p; // finditer — без перекрытий
+        i = p; // finditer — non-overlapping
     }
     out
 }
@@ -873,29 +875,29 @@ fn find_sub(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|w| w == needle)
 }
 
-/// Элемент gadget.xml в порядке документа (аналог `root.iter()`):
-/// (localname, значение атрибута name, text до первого ребёнка).
+/// A gadget.xml element in document order (like `root.iter()`):
+/// (localname, value of the name attribute, text up to the first child).
 struct XmlElem {
     tag: String,
     name_attr: Option<String>,
     text: Option<String>,
 }
 
-/// Разбор gadget.xml quick-xml'ом с семантикой ElementTree в нужном нам
-/// объёме. Err(()) — ParseError (подавляется вызывающим). Незакрытые тэги
-/// на EOF — ошибка (как у expat).
+/// Parse gadget.xml with quick-xml with ElementTree semantics to the extent we
+/// need. Err(()) — ParseError (suppressed by the caller). Unclosed tags at EOF
+/// are an error (as with expat).
 fn parse_gadget_xml(bytes: &[u8]) -> Result<Vec<XmlElem>, ()> {
     let text = std::str::from_utf8(bytes).map_err(|_| ())?;
     let mut reader = Reader::from_str(text);
     let mut out: Vec<XmlElem> = Vec::new();
-    // стек: индексы открытых элементов в out + флаг «уже есть ребёнок»
+    // stack: indices of open elements in out + a "already has a child" flag
     let mut stack: Vec<(usize, bool)> = Vec::new();
     let push_elem = |out: &mut Vec<XmlElem>,
                          stack: &mut Vec<(usize, bool)>,
                          tag: String,
                          name_attr: Option<String>| {
         if let Some(top) = stack.last_mut() {
-            top.1 = true; // у родителя появился ребёнок → text закрыт
+            top.1 = true; // the parent got a child → text is closed
         }
         out.push(XmlElem { tag, name_attr, text: None });
         out.len() - 1
@@ -964,7 +966,7 @@ fn parse_gadget_xml(bytes: &[u8]) -> Result<Vec<XmlElem>, ()> {
         }
     }
     if !stack.is_empty() {
-        return Err(()); // незакрытые элементы — expat дал бы ParseError
+        return Err(()); // unclosed elements — expat would give a ParseError
     }
     Ok(out)
 }
@@ -977,7 +979,7 @@ fn local_name(qname: &[u8]) -> String {
     }
 }
 
-/// Значение атрибута `name` (как `elem.get("name")`). Err — битые атрибуты.
+/// Value of the `name` attribute (like `elem.get("name")`). Err — broken attributes.
 fn attr_name(e: &quick_xml::events::BytesStart) -> Result<Option<String>, ()> {
     for attr in e.attributes() {
         let attr = attr.map_err(|_| ())?;
@@ -990,10 +992,10 @@ fn attr_name(e: &quick_xml::events::BytesStart) -> Result<Option<String>, ()> {
 }
 
 // ============================================================================
-// Маппинги (порядок — как в Python, важен для подстрочного поиска)
+// Mappings (order as in Python, it matters for substring lookup)
 // ============================================================================
 
-/// `_CLSID_NAMES` из ThemepackImporter.
+/// `_CLSID_NAMES` from ThemepackImporter.
 const CLSID_NAMES: &[(&str, &str)] = &[
     ("20d04fe0", "computer"),
     ("645ff040", "trash-full"),
@@ -1002,7 +1004,7 @@ const CLSID_NAMES: &[(&str, &str)] = &[
     ("871c5380", "internet"),
 ];
 
-/// `WindowsIconImporter.ICON_MAP` — имя файла (без расширения) → Linux-имена.
+/// `WindowsIconImporter.ICON_MAP` — file name (without extension) → Linux names.
 const ICON_MAP: &[(&str, &[&str])] = &[
     ("my computer", &["computer", "user-desktop"]),
     ("computer", &["computer", "user-desktop"]),
@@ -1067,7 +1069,7 @@ const ICON_MAP: &[(&str, &[&str])] = &[
 /// `WindowsIconImporter.SIZES`.
 const ICON_SIZES: &[u32] = &[16, 22, 24, 32, 48, 64, 128, 256];
 
-/// `WindowsIconImporter.CONTEXTS` — порядок словаря Python.
+/// `WindowsIconImporter.CONTEXTS` — Python dict order.
 const ICON_CONTEXTS: &[(&str, &[&str])] = &[
     (
         "places",
@@ -1112,10 +1114,10 @@ const ICON_CONTEXTS: &[(&str, &[&str])] = &[
     ("mimetypes", &["text-x-generic", "x-office-document"]),
 ];
 
-/// `MSStyImporter.PART_MAP`. Намеренное расхождение с Python-оригиналом:
-/// там подстрочный поиск брал ПЕРВЫЙ ключ по порядку словаря (`startmenu`
-/// ловился ключом `menu`, `startpanel` — `pane`, `taskitemactive` —
-/// `taskitem`); здесь выбирается самый длинный подходящий ключ.
+/// `MSStyImporter.PART_MAP`. A deliberate divergence from the Python original:
+/// there the substring lookup took the FIRST key in dict order (`startmenu`
+/// was caught by the key `menu`, `startpanel` — by `pane`, `taskitemactive` —
+/// by `taskitem`); here the longest matching key is chosen.
 const PART_MAP: &[(&str, &str)] = &[
     ("caption", "window-titlebar"),
     ("framebottom", "window-bottom"),
@@ -1172,7 +1174,7 @@ const PART_MAP: &[(&str, &str)] = &[
 // can_import
 // ============================================================================
 
-/// `ThemepackImporter.can_import`: расширение + CAB-магия "MSCF".
+/// `ThemepackImporter.can_import`: extension + CAB magic "MSCF".
 pub fn themepack_can_import(io: &mut dyn ImpIo, path: &str) -> bool {
     let lower = path.to_lowercase();
     if !(lower.ends_with(".themepack") || lower.ends_with(".deskthemepack")) {
@@ -1180,11 +1182,11 @@ pub fn themepack_can_import(io: &mut dyn ImpIo, path: &str) -> bool {
     }
     match io.read_head_bytes(path, 4) {
         Some(magic) => magic == b"MSCF",
-        None => false, // OSError подавлен
+        None => false, // OSError suppressed
     }
 }
 
-/// `MSStyImporter.can_import`: расширение + PE-магия "MZ".
+/// `MSStyImporter.can_import`: extension + PE magic "MZ".
 pub fn msstyles_can_import(io: &mut dyn ImpIo, path: &str) -> bool {
     if ext_lower(path) != ".msstyles" {
         return false;
@@ -1201,8 +1203,8 @@ pub fn cursor_can_import(io: &mut dyn ImpIo, path: &str) -> bool {
     if matches!(ext.as_str(), ".cur" | ".ani" | ".inf" | ".crs" | ".curxptheme") {
         return true;
     }
-    // Архив — набор курсоров, только если внутри есть .cur/.ani (иной ZIP
-    // ставится как был, например `.rxn`, переименованный в `.zip`).
+    // An archive is a cursor set only if it contains .cur/.ani (any other ZIP is
+    // installed as it was, e.g. a `.rxn` renamed to `.zip`).
     if is_cursor_archive_ext(&ext) {
         return io.is_file(path) && archive_has_cursors(io, path);
     }
@@ -1229,9 +1231,9 @@ pub fn icon_can_import(io: &mut dyn ImpIo, path: &str) -> bool {
                 vec!["wrestool".into(), "-l".into(), path.into()],
                 10,
             );
-            // Намеренное расхождение с Python-оригиналом: там
-            // `"group_icon" in r.stdout.lower()` — str-в-bytes → TypeError
-            // при непустом stdout; починено здесь (stdout декодируется).
+            // A deliberate divergence from the Python original: there
+            // `"group_icon" in r.stdout.lower()` — str-in-bytes → TypeError
+            // on non-empty stdout; fixed here (stdout is decoded).
             return r.ok
                 && String::from_utf8_lossy(&r.stdout)
                     .to_lowercase()
@@ -1248,13 +1250,13 @@ pub fn icon_can_import(io: &mut dyn ImpIo, path: &str) -> bool {
     false
 }
 
-/// Группы форматов для окна выбора файла: (подпись, расширения без точки).
+/// Format groups for the file chooser: (label, extensions without the dot).
 ///
-/// Правило #12: список один на программу. Раньше вкладка «Настройки» держала
-/// свою строку фильтров, и она успела разойтись с диспетчером — гаджеты
-/// рабочего стола (`.gadget`) движок принимал, а покупателю такой файл в
-/// окне просто не показывался.
-/// Подписи — `msgid`, переводит [`import_dialog_filter`].
+/// Rule #12: one list for the whole program. Previously the «⚙️ Settings» tab
+/// kept its own filter string, and it drifted away from the dispatcher — the
+/// engine accepted desktop gadgets (`.gadget`), but such a file simply wasn't
+/// shown to the user in the dialog.
+/// Labels are `msgid`s, translated by [`import_dialog_filter`].
 pub const IMPORT_GROUPS: &[(&str, &[&str])] = &[
     (
         // TRANSLATORS: file type group in the “Import Windows theme” file dialog.
@@ -1263,17 +1265,17 @@ pub const IMPORT_GROUPS: &[(&str, &[&str])] = &[
     ),
     (n_("Icons"), &["ico", "icl", "iconpackage", "ip", "7tsp"]),
     (n_("Cursors"), &["cur", "ani", "inf", "curxptheme"]),
-    // Наборы курсоров так и скачиваются — архивом (сайты с курсорами
-    // Windows: zip/rar/7z; RW-Designer: zip с файлом ролей .crs). Иной архив импортёр не примет:
-    // `cursor_can_import` заглядывает внутрь.
+    // Cursor sets are downloaded exactly like that — as an archive (Windows
+    // cursor sites: zip/rar/7z; RW-Designer: a zip with a .crs roles file). The
+    // importer won't accept any other archive: `cursor_can_import` looks inside.
     (n_("Cursor Sets"), &["zip", "rar", "7z", "crs"]),
     (n_("DreamScene Video Wallpapers"), &["dream", "wmv", "mpeg", "mpg"]),
     (n_("Desktop Gadgets"), &["gadget"]),
 ];
 
-/// Принимает ли диспетчер файл с таким расширением (`.themepack`, точка
-/// обязательна, регистр любой). Собирается из [`IMPORT_GROUPS`], поэтому
-/// «движок умеет, а окно не показывает» больше не разъезжается.
+/// Whether the dispatcher accepts a file with this extension (`.themepack`,
+/// the dot is required, any case). Built from [`IMPORT_GROUPS`], so "the
+/// engine can, but the dialog doesn't show it" can no longer drift apart.
 pub fn is_importable_ext(ext_with_dot: &str) -> bool {
     let ext = ext_with_dot.trim_start_matches('.').to_lowercase();
     IMPORT_GROUPS
@@ -1281,8 +1283,8 @@ pub fn is_importable_ext(ext_with_dot: &str) -> bool {
         .any(|(_, exts)| exts.contains(&ext.as_str()))
 }
 
-/// Строка фильтров для окна выбора файла: сводная группа, потом по типам,
-/// потом «Все файлы».
+/// Filter string for the file chooser: the combined group, then by type,
+/// then «All files».
 pub fn import_dialog_filter() -> String {
     let mask = |exts: &[&str]| -> String {
         exts.iter()
@@ -1303,11 +1305,11 @@ pub fn import_dialog_filter() -> String {
     parts.join(";;")
 }
 
-/// `WindowsThemeImporter.can_import` — диспетчер по расширению.
+/// `WindowsThemeImporter.can_import` — dispatch by extension.
 pub fn windows_theme_can_import(io: &mut dyn ImpIo, path: &str) -> bool {
     let ext = ext_lower(path);
-    // Список принимаемых расширений — один, из IMPORT_GROUPS: разойтись
-    // диспетчеру и окну выбора файла теперь нечем.
+    // The list of accepted extensions is one, from IMPORT_GROUPS: the dispatcher
+    // and the file chooser have nothing left to drift apart on.
     if !is_importable_ext(&ext) {
         return false;
     }
@@ -1334,7 +1336,7 @@ pub fn windows_theme_can_import(io: &mut dyn ImpIo, path: &str) -> bool {
 }
 
 // ============================================================================
-// WindowsThemeImporter.import_to_rxn — диспетчер
+// WindowsThemeImporter.import_to_rxn — dispatcher
 // ============================================================================
 
 /// `WindowsThemeImporter.import_to_rxn`.
@@ -1386,7 +1388,7 @@ fn themepack_inner(
     output_dir: Option<&str>,
     work_dir: &str,
 ) -> Result<String, ImpError> {
-    // ── 1. Распаковка CAB ──
+    // ── 1. Unpack the CAB ──
     let extract_dir = join(work_dir, "extracted");
     io.makedirs(&extract_dir);
     let mut ok = io
@@ -1417,7 +1419,7 @@ fn themepack_inner(
         return Err(rerr(trf("Couldn't unpack the .themepack. %1", &[&legacy_hint(HINT_CABEXTRACT)])));
     }
 
-    // ── 2. Найти и парсить .theme ──
+    // ── 2. Find and parse the .theme ──
     let mut theme_file: Option<String> = None;
     'outer: for (root, _dirs, files) in io.walk(&extract_dir) {
         for f in &files {
@@ -1432,7 +1434,7 @@ fn themepack_inner(
     let mut accent_color = String::new();
 
     if let Some(tf) = &theme_file {
-        // try: open+read+read_string — ошибки подавлены (partial сохраняется)
+        // try: open+read+read_string — errors suppressed (partial result kept)
         let mut ini = Ini::default();
         if let Some(content) = io.read_text(tf) {
             let (parsed, _suppressed) = Ini::read_string(&content);
@@ -1440,7 +1442,7 @@ fn themepack_inner(
         }
         if ini.has_section("Theme") {
             theme_name = ini.get_fb("Theme", "DisplayName", &theme_name)?;
-            // @themeui.dll,-NNN → имя из файла
+            // @themeui.dll,-NNN → name from the file
             if theme_name.starts_with('@') {
                 theme_name = stem(themepack_path).to_string();
             }
@@ -1452,7 +1454,7 @@ fn themepack_inner(
                         let val = ini.get_fb(&section, &key, "")?;
                         if !val.is_empty() {
                             accent_color = val;
-                            break; // только внутренний цикл — как в Python
+                            break; // only the inner loop — as in Python
                         }
                     }
                 }
@@ -1460,7 +1462,7 @@ fn themepack_inner(
         }
     }
 
-    // ── 3. Ресурсы: обои, иконки, курсоры ──
+    // ── 3. Resources: wallpapers, icons, cursors ──
     const IMG_EXTS: &[&str] = &[".jpg", ".jpeg", ".png", ".bmp", ".webp"];
     const ICO_EXTS: &[&str] = &[".ico", ".cur", ".ani"];
     let mut all_images: Vec<(String, u64)> = Vec::new();
@@ -1480,12 +1482,12 @@ fn themepack_inner(
         }
     }
 
-    // Иконки из CLSID-секций .theme (повторное чтение файла — как оригинал)
-    // Текст `.theme` из этого же чтения нужен и ниже — узнать, какие
-    // картинки пакет сам называет обоями.
+    // Icons from the CLSID sections of .theme (the file is read again — as in the original).
+    // The `.theme` text from this same read is needed below too — to learn which
+    // pictures the package itself calls wallpapers.
     let mut theme_text = String::new();
     if let Some(tf) = &theme_file {
-        // try: подавлено
+        // try: suppressed
         if let Some(content) = io.read_text(tf) {
             theme_text = content.clone();
             for (guid_raw, icon_val) in clsid_finditer(&content) {
@@ -1516,12 +1518,13 @@ fn themepack_inner(
         }
     }
 
-    // Обои — то, что сам пакет назвал обоями: картинки из каталога
-    // `DesktopBackground` и те, на которые ссылается `.theme` (`Wallpaper=`,
-    // `[Slideshow] ItemNPath=`). Прежде решал один размер файла (>100 КБ), и
-    // фон в 99,9 КБ уезжал «значком» в тему значков (приёмка 10.10.2026).
-    // Размер остался запасным признаком для пакетов без этих указаний.
-    // «Значки-картинки» — только мелкие PNG/BMP: фотография значком не бывает.
+    // Wallpapers are what the package itself calls wallpapers: pictures from the
+    // `DesktopBackground` directory and those referenced by `.theme`
+    // (`Wallpaper=`, `[Slideshow] ItemNPath=`). Previously the file size alone
+    // decided (>100 KB), and a 99.9 KB background went off "as an icon" into the
+    // icon theme (acceptance 10.10.2026). Size remains a fallback sign for
+    // packages without these hints. "Picture icons" are only small PNG/BMP: a
+    // photo is never an icon.
     let named_wallpapers: Vec<String> = themepack_wallpaper_names(&theme_text);
     let mut wallpapers: Vec<String> = Vec::new();
     for (path, sz) in &all_images {
@@ -1542,7 +1545,7 @@ fn themepack_inner(
         return Err(verr(tr("No wallpapers or icons found in the .themepack")));
     }
 
-    // ── 4. Сборка .rxn: копирование обоев ──
+    // ── 4. Build the .rxn: copy the wallpapers ──
     let rxn_dir = join(work_dir, "rxn_content");
     let data_dir = join(&rxn_dir, "data");
     io.makedirs(&data_dir);
@@ -1573,18 +1576,18 @@ fn themepack_inner(
         }));
     }
 
-    // 4a-2. Апскейл маленьких обоев.
-    // Намеренное расхождение с Python-оригиналом: там NameError
-    // (WallpaperUpscaler не импортирован), починено здесь — вызов через
-    // исполнителя, хвост импорта портирован.
+    // 4a-2. Upscale small wallpapers.
+    // A deliberate divergence from the Python original: there it is a NameError
+    // (WallpaperUpscaler not imported), fixed here — the call goes through the
+    // executor, the tail of the import is ported.
     io.upscale_wallpapers(&data_dir);
 
-    // 4b. Иконки → структура freedesktop icon theme
+    // 4b. Icons → freedesktop icon theme structure
     //
-    // Каталог темы значков называется по пакету: установка кладёт его в
-    // каталог значков пользователя под ЭТИМ именем, и прежнее общее `icons`
-    // давало `~/.local/share/icons/icons` — одну папку на все пакеты, каждый
-    // следующий затирал предыдущий (приёмка 10.10.2026).
+    // The icon theme directory is named after the package: the install puts it
+    // into the user's icon directory under THAT name, and the old shared `icons`
+    // gave `~/.local/share/icons/icons` — one folder for all packages, each next
+    // one overwrote the previous (acceptance 10.10.2026).
     let mut safe_id = slug60(&theme_name);
     if safe_id.is_empty() {
         safe_id = "imported-themepack".to_string();
@@ -1595,14 +1598,14 @@ fn themepack_inner(
         let icon_theme_dir = join(&data_dir, &icon_dir_name);
         for size_dir in ["48x48", "64x64", "128x128"] {
             for ctx in ["places", "devices", "apps", "status"] {
-                // Намеренное расхождение с Python-оригиналом: там опечатка
-                // exist_ok=True внутри os.path.join → TypeError; здесь
-                // корректный makedirs(..., exist_ok=True).
+                // A deliberate divergence from the Python original: there the typo
+                // exist_ok=True inside os.path.join → TypeError; here a
+                // correct makedirs(..., exist_ok=True).
                 io.makedirs(&join(&join(&icon_theme_dir, size_dir), ctx));
             }
         }
 
-        // Конвертируем .ico → .png
+        // Convert .ico → .png
         for ico_path in &all_icons {
             let name = stem(ico_path).to_string();
             let dest = join(
@@ -1624,7 +1627,7 @@ fn themepack_inner(
             }
         }
 
-        // Именованные иконки из .theme (computer, trash, ...)
+        // Named icons from .theme (computer, trash, ...)
         for (icon_name, icon_path) in themepack_icons.iter() {
             let ext = ext_lower(icon_path);
             if ext == ".ico" {
@@ -1651,14 +1654,14 @@ fn themepack_inner(
             }
         }
 
-        // index.theme для набора иконок
+        // index.theme for the icon set
         let index_content = format!(
             "[Icon Theme]\nName={theme_name} Icons\nComment=Icons imported from Windows .themepack\nInherits=hicolor\nDirectories=48x48/places,64x64/places,128x128/places\n\n[48x48/places]\nSize=48\nContext=Places\nType=Fixed\n\n[64x64/places]\nSize=64\nContext=Places\nType=Fixed\n\n[128x128/places]\nSize=128\nContext=Places\nType=Fixed\n"
         );
         io.write_file(&join(&icon_theme_dir, "index.theme"), &index_content);
     }
 
-    // Превью — первые обои (уменьшенные)
+    // Preview — the first wallpaper (scaled down)
     let preview_src = if !wallpapers.is_empty() {
         wallpapers[0].clone()
     } else if !all_icons.is_empty() {
@@ -1729,7 +1732,7 @@ fn themepack_inner(
         &dumps_indent2(&Value::Object(manifest)),
     );
 
-    // ── 5. Упаковать в .rxn ──
+    // ── 5. Pack into .rxn ──
     let out_dir = match output_dir {
         Some(o) => o.to_string(),
         None => {
@@ -1742,10 +1745,10 @@ fn themepack_inner(
     Ok(rxn_path)
 }
 
-/// Имена файлов (в нижнем регистре, без каталогов), которые `.theme`
-/// называет обоями: `Wallpaper=` в `[Control Panel\\Desktop]` и `ItemNPath=`
-/// в `[Slideshow]`. Разбор построчный: значения в этих файлах — пути Windows
-/// с переменными окружения, и важен в них только последний компонент.
+/// File names (lowercase, without directories) that `.theme` calls
+/// wallpapers: `Wallpaper=` in `[Control Panel\\Desktop]` and `ItemNPath=` in
+/// `[Slideshow]`. Parsing is line by line: values in these files are Windows
+/// paths with environment variables, and only their last component matters.
 pub fn themepack_wallpaper_names(theme_text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for line in theme_text.lines() {
@@ -1787,7 +1790,7 @@ fn theme_file_inner(
     work_dir: &str,
 ) -> Result<String, ImpError> {
     let content = io.read_text(theme_path).ok_or_else(|| oserr(theme_path))?;
-    // read_string здесь НЕ обёрнут в try — ошибки разбора наружу
+    // read_string is NOT wrapped in try here — parse errors propagate
     let (ini, err) = Ini::read_string(&content);
     if let Some(e) = err {
         return Err(e);
@@ -1804,7 +1807,7 @@ fn theme_file_inner(
             for key in ini.options(&section) {
                 if key.to_lowercase().contains("background") {
                     accent = ini.get_fb(&section, &key, "")?;
-                    break; // здесь break безусловный — как в Python
+                    break; // the break here is unconditional — as in Python
                 }
             }
         }
@@ -1813,14 +1816,14 @@ fn theme_file_inner(
     let mut slideshow_interval: i64 = 0;
     let mut slideshow_shuffle = false;
     if ini.has_section("Slideshow") {
-        // int(...) → ValueError подавлен (значение остаётся 0)
+        // int(...) → ValueError suppressed (the value stays 0)
         if let Some(v) = py_int(&ini.get_fb("Slideshow", "Interval", "0")?) {
             slideshow_interval = v;
         }
         slideshow_shuffle = ini.get_fb("Slideshow", "Shuffle", "0")? == "1";
     }
 
-    // Обои рядом с .theme файлом (> 50 КБ)
+    // Wallpapers next to the .theme file (> 50 KB)
     let theme_dir = dirname(theme_path);
     const IMG_EXTS: &[&str] =
         &[".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff"];
@@ -1868,13 +1871,13 @@ fn theme_file_inner(
         }));
     }
 
-    // Апскейл маленьких обоев.
-    // Намеренное расхождение с Python-оригиналом: там NameError
-    // (WallpaperUpscaler не импортирован), починено здесь — вызов через
-    // исполнителя, хвост импорта портирован.
+    // Upscale small wallpapers.
+    // A deliberate divergence from the Python original: there it is a NameError
+    // (WallpaperUpscaler not imported), fixed here — the call goes through the
+    // executor, the tail of the import is ported.
     io.upscale_wallpapers(&data_dir);
 
-    // Превью
+    // Preview
     let preview = join(&rxn_dir, "preview.png");
     io.run(
         vec![
@@ -1948,8 +1951,8 @@ pub fn dreamscene_import_to_rxn(
     video_path: &str,
     output_dir: Option<&str>,
 ) -> Result<String, ImpError> {
-    // Файлы «.dream» пока не поддерживаются. Раньше отсюда выходил пакет
-    // с обоями, которые не играют, — честнее отказать сразу.
+    // ".dream" files are not supported yet. Previously this produced a package
+    // with wallpapers that don't play — it is more honest to refuse right away.
     if ext_lower(video_path) == ".dream" {
         return Err(verr(tr(
             "“.dream” files are not supported yet. Support is planned for a future version.",
@@ -1976,15 +1979,15 @@ fn dreamscene_inner(
 
     let ext = ext_lower(video_path);
     let dest = if matches!(ext.as_str(), ".wmv" | ".mpeg" | ".mpg") {
-        // Ролик кладётся как есть, без перекодирования: хост обоев играет
-        // WMV и MPEG-1/2 сам, а разбирает их та же системная libavcodec,
-        // что и у ffmpeg, — запасной путь через ffmpeg не открыл бы ничего,
-        // чего не откроет хост, а качество и время импорта терял бы всегда.
+        // The video is placed as is, without re-encoding: the wallpaper host plays
+        // WMV and MPEG-1/2 itself, and they are decoded by the same system libavcodec
+        // as ffmpeg uses — a fallback through ffmpeg would open nothing the host
+        // can't, while always losing quality and import time.
         let dest = join(&data_dir, &format!("{safe_id}{ext}"));
         io.copy_file(video_path, &dest);
         dest
     } else {
-        // недостижимо через диспетчер, но метод вызываем и напрямую
+        // unreachable through the dispatcher, but the method can be called directly
         let dest = join(&data_dir, basename(video_path));
         io.copy_file(video_path, &dest);
         dest
@@ -1992,7 +1995,7 @@ fn dreamscene_inner(
 
     let dest_name = basename(&dest).to_string();
 
-    // Превью: кадр из видео (результат игнорируется)
+    // Preview: a frame from the video (the result is ignored)
     let preview = join(&rxn_dir, "preview.png");
     io.run(
         vec![
@@ -2066,7 +2069,7 @@ fn gadget_inner(
 
     let gadget_xml = join(&extract_dir, "gadget.xml");
     if io.is_file(&gadget_xml) {
-        // try: ET.parse — ошибки подавлены
+        // try: ET.parse — errors suppressed
         if let Some(bytes) = io.read_bytes(&gadget_xml) {
             if let Ok(elems) = parse_gadget_xml(&bytes) {
                 for el in elems {
@@ -2154,72 +2157,73 @@ fn gadget_inner(
 // WindowsCursorImporter
 // ============================================================================
 //
-// ⭐ С 03.10.2026 перевод курсоров — свой код на Rust ([`crate::wincursor`]):
-// все кадры `.ani` с задержками и горячими точками, номиналы 24/32/48 (+64/96),
-// без `win2xcur`/`convert`/`xcursorgen`. Прежний путь брал первый кадр
-// (`convert file[0]`) — анимированные наборы (а у курсоров Windows их много)
-// становились неподвижными; без `xcursorgen` (его нет почти нигде) импорт
-// не работал вовсе. Эталон Python для этого импортёра снят (Python — архив).
+// ⭐ Since 03.10.2026 cursor conversion is our own Rust code ([`crate::wincursor`]):
+// all `.ani` frames with delays and hotspots, nominal sizes 24/32/48 (+64/96),
+// without `win2xcur`/`convert`/`xcursorgen`. The old path took the first
+// frame (`convert file[0]`) — animated sets (and Windows cursors have many)
+// became static; without `xcursorgen` (it is missing almost everywhere) the
+// import didn't work at all. The Python reference for this importer has been
+// dropped (Python is an archive).
 //
-// Роли берутся из описателя набора (`install.inf`, `.crs`), а не из имён
-// файлов; имена — только запасной путь. В `.rxn` кладутся ОРИГИНАЛЫ набора
-// (`originals/`) — решение Wehrwolfmann 03.10: улучшился переводчик —
-// переводим заново без перекачки ([`cursor_retranslate_dir`]).
+// Roles are taken from the set's descriptor (`install.inf`, `.crs`), not from
+// file names; names are only a fallback. The set's ORIGINALS go into `.rxn`
+// (`originals/`) — Wehrwolfmann's decision of 03.10: when the converter
+// improves, we convert again without re-downloading ([`cursor_retranslate_dir`]).
 //
-// ФОРМАТ manifest `.rxn` курсоров Windows (поля сверх общего v3):
-//   "source": "windows"                — признак «из Windows» (плитка 🪟);
-//   "source_site", "source_url",       — откуда набор (если известно);
+// FORMAT of the `.rxn` manifest for Windows cursors (fields beyond the common v3):
+//   "source": "windows"                — the "from Windows" sign (tile 🪟);
+//   "source_site", "source_url",       — where the set came from (if known);
 //   "license"
-//   "author"                           — автор (из витрины или `IART` .ani);
+//   "author"                           — author (from the storefront or `IART` of .ani);
 //   "windows_cursors": {
-//     "converter": 2,                  — версия переводчика ([`CURSOR_CONVERTER_VERSION`]);
-//     "theme_dir": "<каталог темы в data/>",
-//     "descriptor": "install.inf"|null — по какому описателю взяты роли;
-//     "originals": ["Normal.ani", …],  — файлы в originals/ (как пришли);
+//     "converter": 2,                  — converter version ([`CURSOR_CONVERTER_VERSION`]);
+//     "theme_dir": "<theme directory in data/>",
+//     "descriptor": "install.inf"|null — which descriptor the roles came from;
+//     "originals": ["Normal.ani", …],  — files in originals/ (as they arrived);
 //     "roles": {"Arrow": "Normal.ani", …},
-//     "animated": ["Wait", …],         — роли с анимацией;
-//     "frames": {"Wait": 18, …},       — шагов анимации после склейки;
-//     "skipped": ["X.cur: причина", …] — что прочесть не удалось.
+//     "animated": ["Wait", …],         — roles with animation;
+//     "frames": {"Wait": 18, …},       — animation steps after merging;
+//     "skipped": ["X.cur: reason", …]  — what could not be read.
 //   }
 
-/// Откуда набор курсоров (для manifest `.rxn`); пустые поля не пишутся.
+/// Where the cursor set came from (for the `.rxn` manifest); empty fields are not written.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CursorSource {
-    /// Имя темы (пусто — из описателя набора или имени файла/папки).
+    /// Theme name (empty — from the set's descriptor or the file/folder name).
     pub name: String,
-    /// Сайт-источник (`"rw-designer"`…); пусто — файл, принесённый человеком.
+    /// Source site (`"rw-designer"`…); empty — a file brought by the person.
     pub site: String,
-    /// Адрес страницы набора.
+    /// URL of the set's page.
     pub url: String,
-    /// Автор набора.
+    /// Author of the set.
     pub author: String,
-    /// Лицензия, как её назвал сайт.
+    /// License, as the site named it.
     pub license: String,
-    /// id прежнего `.rxn` при переводе заново (пусто — из имени темы).
+    /// id of the previous `.rxn` when converting again (empty — from the theme name).
     pub id: String,
 }
 
-/// Версия переводчика курсоров в manifest: выросла — старые `.rxn` можно
-/// перевести заново из их же оригиналов.
+/// Cursor converter version in the manifest: when it grows, old `.rxn` can be
+/// converted again from their own originals.
 pub const CURSOR_CONVERTER_VERSION: u32 = 2;
 
-/// Кого касается повышение версии переводчика (решение Wehrwolfmann
-/// 14.11.2026: перевод заново — автоматический, но только по делу: тема,
-/// которой исправление не касается, не трогается).
+/// Whom a converter version bump concerns (Wehrwolfmann's decision of
+/// 14.11.2026: re-conversion is automatic, but only when it matters: a theme
+/// the fix doesn't concern is left alone).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CursorFixScope {
-    /// Все курсоры.
+    /// All cursors.
     All,
-    /// Только анимированные `.ani`.
+    /// Only animated `.ani`.
     Animated,
-    /// Только с горячей точкой не в центре картинки.
+    /// Only those with a hotspot off the picture's center.
     HotspotOffCenter,
-    /// Только с картинками на палитре (1/4/8 бит).
+    /// Only those with palette images (1/4/8 bit).
     Paletted,
 }
 
 impl CursorFixScope {
-    /// Касается ли исправление набора с такими приметами.
+    /// Whether the fix concerns a set with these traits.
     pub fn touches(self, traits: &wincursor::CursorTraits) -> bool {
         match self {
             CursorFixScope::All => true,
@@ -2230,14 +2234,14 @@ impl CursorFixScope {
     }
 }
 
-/// Таблица «версия переводчика → кого касается её исправление». Подняли
-/// [`CURSOR_CONVERTER_VERSION`] — добавь строку (сторож в тестах).
-/// Версия 2 — переводчик на Rust вместо `convert`/`xcursorgen`: все курсоры.
+/// Table "converter version → whom its fix concerns". If you bump
+/// [`CURSOR_CONVERTER_VERSION`], add a row (there is a guard in the tests).
+/// Version 2 — the Rust converter instead of `convert`/`xcursorgen`: all cursors.
 pub const CURSOR_CONVERTER_CHANGES: &[(u32, CursorFixScope)] = &[(2, CursorFixScope::All)];
 
-/// Переводить ли заново набор, переведённый версией `from`, если текущая —
-/// `current`: да, когда хотя бы одно исправление между ними касается его
-/// примет.
+/// Whether to re-convert a set converted by version `from` when the current
+/// one is `current`: yes, when at least one fix between them concerns its
+/// traits.
 pub fn cursor_retranslate_due(
     from: u32,
     current: u32,
@@ -2250,7 +2254,7 @@ pub fn cursor_retranslate_due(
             .any(|(v, scope)| *v > from && *v <= current && scope.touches(traits))
 }
 
-/// Приметы набора по байтам его оригиналов; нечитаемые файлы не в счёт.
+/// Traits of a set from the bytes of its originals; unreadable files don't count.
 pub fn cursor_set_traits(files: &[Vec<u8>]) -> wincursor::CursorTraits {
     files
         .iter()
@@ -2258,8 +2262,8 @@ pub fn cursor_set_traits(files: &[Vec<u8>]) -> wincursor::CursorTraits {
         .fold(wincursor::CursorTraits::default(), wincursor::CursorTraits::merge)
 }
 
-/// Версия переводчика темы курсоров «из Windows» по её manifest; `None` —
-/// тема не из Windows. Нет поля — 1 (переведено до версий).
+/// Converter version of a "from Windows" cursor theme from its manifest;
+/// `None` — the theme is not from Windows. No field — 1 (converted before versions existed).
 pub fn cursor_manifest_converter(m: &Value) -> Option<u32> {
     if m.get("type").and_then(Value::as_str) != Some("theme-cursors")
         || m.get("source").and_then(Value::as_str) != Some("windows")
@@ -2274,7 +2278,7 @@ pub fn cursor_manifest_converter(m: &Value) -> Option<u32> {
     )
 }
 
-/// Записать в manifest версию переводчика (прочие поля — как были).
+/// Write the converter version into the manifest (other fields as they were).
 pub fn set_cursor_manifest_converter(m: &mut Value, version: u32) {
     if let Some(obj) = m.as_object_mut() {
         let wc = obj.entry("windows_cursors").or_insert_with(|| json!({}));
@@ -2284,15 +2288,16 @@ pub fn set_cursor_manifest_converter(m: &mut Value, version: u32) {
     }
 }
 
-/// Ключ `index.theme` темы курсоров, переведённой из Windows (значение
-/// `windows`); его читает плитка установленного.
+/// `index.theme` key of a cursor theme converted from Windows (value
+/// `windows`); the installed tile reads it.
 pub const WINDOWS_CURSOR_ORIGIN_KEY: &str = "X-Rexon-Source";
 
-/// Автор по умолчанию (manifest требует непустое поле).
+/// Default author (the manifest requires a non-empty field).
 const DEFAULT_CURSOR_AUTHOR: &str = "Windows Cursors";
 
-/// Что из папки набора уходит в `originals/` (картинки-превью, readme,
-/// описатели и сами курсоры) и пределы — чтобы `.rxn` не раздуло мусором.
+/// What from the set's folder goes into `originals/` (preview pictures,
+/// readme, descriptors and the cursors themselves) and limits — so `.rxn`
+/// doesn't bloat with junk.
 const ORIGINAL_EXTS: &[&str] = &[
     ".cur", ".ani", ".inf", ".crs", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".bmp",
     ".ico", ".url", ".theme", ".htm", ".html",
@@ -2300,7 +2305,7 @@ const ORIGINAL_EXTS: &[&str] = &[
 const MAX_ORIGINAL_BYTES: u64 = 16 << 20;
 const MAX_ORIGINALS_TOTAL: u64 = 128 << 20;
 
-/// Роли на обложке набора — в этом порядке, сколько есть (до 10).
+/// Roles on the set's cover — in this order, as many as there are (up to 10).
 const PREVIEW_ROLES: &[Role] = &[
     Role::Arrow, Role::Help, Role::AppStarting, Role::Wait, Role::Crosshair,
     Role::IBeam, Role::Hand, Role::NWPen, Role::No, Role::SizeAll,
@@ -2311,12 +2316,12 @@ fn is_cursor_file(name: &str) -> bool {
     l.ends_with(".cur") || l.ends_with(".ani")
 }
 
-/// Архив ли это, в котором может лежать набор курсоров.
+/// Whether this is an archive that may contain a cursor set.
 fn is_cursor_archive_ext(ext: &str) -> bool {
     matches!(ext, ".zip" | ".rar" | ".7z")
 }
 
-/// Список имён в архиве `.rar`/`.7z` чужой программой; None — нечем.
+/// List of names in a `.rar`/`.7z` archive via an external program; None — nothing to do it with.
 fn list_other_archive(io: &mut dyn ImpIo, path: &str) -> Option<Vec<String>> {
     if io.which("bsdtar") {
         let r = io.run(vec!["bsdtar".into(), "-tf".into(), path.into()], 30);
@@ -2339,8 +2344,8 @@ fn list_other_archive(io: &mut dyn ImpIo, path: &str) -> Option<Vec<String>> {
     None
 }
 
-/// Распаковать `.rar`/`.7z` в `dest`: `bsdtar` (libarchive: отказывается от
-/// абсолютных путей и `..`), иначе `7z`.
+/// Unpack `.rar`/`.7z` into `dest`: `bsdtar` (libarchive: refuses absolute
+/// paths and `..`), otherwise `7z`.
 fn extract_other_archive(io: &mut dyn ImpIo, archive: &str, dest: &str) {
     io.makedirs(dest);
     if io.which("bsdtar") {
@@ -2356,9 +2361,10 @@ fn extract_other_archive(io: &mut dyn ImpIo, archive: &str, dest: &str) {
     }
 }
 
-/// Есть ли в архиве курсоры. `.rar`/`.7z` без распаковщика — «да»: дальше
-/// честный отказ «поставьте программу», а не попытка поставить архив как
-/// `.rxn`. ZIP с `manifest.json` в корне — это `.rxn`, не набор Windows.
+/// Whether the archive contains cursors. `.rar`/`.7z` without an unpacker —
+/// "yes": next comes an honest "install the program" refusal, not an attempt
+/// to install the archive as `.rxn`. A ZIP with `manifest.json` at the root is
+/// a `.rxn`, not a Windows set.
 fn archive_has_cursors(io: &mut dyn ImpIo, path: &str) -> bool {
     let names = if ext_lower(path) == ".zip" {
         match io.zip_names(path) {
@@ -2374,7 +2380,7 @@ fn archive_has_cursors(io: &mut dyn ImpIo, path: &str) -> bool {
     !names.iter().any(|n| n == "manifest.json") && names.iter().any(|n| is_cursor_file(n))
 }
 
-/// `WindowsCursorImporter.import_to_rxn` (прежняя подпись: имя темы строкой).
+/// `WindowsCursorImporter.import_to_rxn` (old signature: theme name as a string).
 pub fn cursor_import_to_rxn(
     io: &mut dyn ImpIo,
     source_path: &str,
@@ -2385,11 +2391,11 @@ pub fn cursor_import_to_rxn(
     cursor_import_with_source(io, source_path, &source, output_dir)
 }
 
-/// Импорт набора курсоров Windows со сведениями об источнике.
+/// Import a Windows cursor set with information about its source.
 ///
-/// Вход: `.cur`/`.ani` (один курсор → стрелка, если имя не говорит иного),
-/// `.inf`/`.crs` (набор рядом с описателем), папка, `.zip`/`.curxptheme`
-/// (своим ZIP-ридером), `.rar`/`.7z` (`bsdtar` или `7z`).
+/// Input: `.cur`/`.ani` (one cursor → the arrow, unless the name says
+/// otherwise), `.inf`/`.crs` (the set next to the descriptor), a folder,
+/// `.zip`/`.curxptheme` (with our own ZIP reader), `.rar`/`.7z` (`bsdtar` or `7z`).
 pub fn cursor_import_with_source(
     io: &mut dyn ImpIo,
     source_path: &str,
@@ -2402,9 +2408,9 @@ pub fn cursor_import_with_source(
     result
 }
 
-/// Перевести тему курсоров заново из оригиналов, лежащих в распакованном
-/// `.rxn` (или в каталоге установленного расширения) — без перекачки.
-/// id, имя и сведения об источнике берутся из его manifest.
+/// Re-convert a cursor theme from the originals lying in an unpacked `.rxn`
+/// (or in the installed extension's directory) — without re-downloading. id,
+/// name and source information are taken from its manifest.
 pub fn cursor_retranslate_dir(
     io: &mut dyn ImpIo,
     rxn_dir: &str,
@@ -2431,10 +2437,10 @@ pub fn cursor_retranslate_dir(
     cursor_import_with_source(io, &originals, &source, Some(output_dir))
 }
 
-/// Папка-кандидат на набор внутри распакованного дерева.
+/// A candidate folder for a set inside the unpacked tree.
 struct SetDir {
     dir: String,
-    /// Обычные файлы (без символьных ссылок), по алфавиту.
+    /// Regular files (without symbolic links), alphabetically.
     files: Vec<String>,
     cursors: usize,
     has_descriptor: bool,
@@ -2445,13 +2451,13 @@ fn is_descriptor(name: &str) -> bool {
     l.ends_with(".inf") || l.ends_with(".crs")
 }
 
-/// Обойти дерево и собрать папки с курсорами.
+/// Walk the tree and collect folders with cursors.
 fn collect_set_dirs(io: &mut dyn ImpIo, root: &str) -> Vec<SetDir> {
     let mut out = Vec::new();
     for (dir, _subdirs, files) in io.walk(root) {
         let mut plain = Vec::new();
         for f in files {
-            // Ссылка из архива могла бы увести чтение за пределы набора.
+            // A link from the archive could lead reading outside the set.
             if !io.is_symlink(&join(&dir, &f)) {
                 plain.push(f);
             }
@@ -2467,7 +2473,7 @@ fn collect_set_dirs(io: &mut dyn ImpIo, root: &str) -> Vec<SetDir> {
     out
 }
 
-/// Одна папка (без обхода вглубь): набор рядом с описателем, названным человеком.
+/// One folder (without descending): the set next to a descriptor the person named.
 fn one_set_dir(io: &mut dyn ImpIo, dir: &str) -> SetDir {
     let mut plain = Vec::new();
     for f in io.listdir(dir) {
@@ -2482,9 +2488,9 @@ fn one_set_dir(io: &mut dyn ImpIo, dir: &str) -> SetDir {
     SetDir { dir: dir.to_string(), files: plain, cursors, has_descriptor }
 }
 
-/// Выбрать папку набора: с описателем, «обычного» размера (у Bibata и
-/// подобных рядом лежат Regular/Large/Extra-Large), с большим числом
-/// курсоров; при равенстве — первая по обходу.
+/// Pick the set's folder: with a descriptor, of "regular" size (Bibata and
+/// the like have Regular/Large/Extra-Large side by side), with more cursors;
+/// on a tie — the first one in walk order.
 fn pick_set_dir(sets: &[SetDir]) -> Option<usize> {
     let size_bonus = |dir: &str| -> i32 {
         let b = basename(dir).to_lowercase();
@@ -2509,7 +2515,7 @@ fn pick_set_dir(sets: &[SetDir]) -> Option<usize> {
     best.map(|(_, i)| i)
 }
 
-/// Найти файл без учёта регистра: сначала в папке набора, потом во всём дереве.
+/// Find a file case-insensitively: first in the set's folder, then in the whole tree.
 fn find_file_ci(set: &SetDir, all: &[SetDir], name: &str) -> Option<(String, String)> {
     let want = name.to_lowercase();
     let hit = |s: &SetDir| {
@@ -2530,7 +2536,7 @@ fn cursor_inner(
 ) -> Result<String, ImpError> {
     let ext = ext_lower(source_path);
 
-    // ── 1. Где лежит набор ──
+    // ── 1. Where the set lies ──
     let mut preferred: Option<String> = None;
     let mut single: Option<String> = None;
     let fallback_name: String;
@@ -2562,11 +2568,11 @@ fn cursor_inner(
         return Err(verr(trf("Unsupported format: %1", &[&ext])));
     };
 
-    // ── 2. Папка набора и роли ──
+    // ── 2. The set's folder and roles ──
     let all_sets: Vec<SetDir>;
     let set: SetDir;
     if let Some(file) = &single {
-        // Один файл: соседей (папку «Загрузки» целиком) не трогаем.
+        // A single file: we don't touch its neighbours (the whole Downloads folder).
         all_sets = Vec::new();
         set = SetDir {
             dir: dirname(file),
@@ -2589,7 +2595,7 @@ fn cursor_inner(
         all_sets = found;
     }
 
-    // Описатели по старшинству: названный человеком, install.inf, прочие .inf, .crs.
+    // Descriptors by precedence: the one the person named, install.inf, other .inf, .crs.
     let mut descriptors: Vec<String> = set.files.iter().filter(|f| is_descriptor(f)).cloned().collect();
     descriptors.sort_by_key(|f| {
         let l = f.to_lowercase();
@@ -2619,7 +2625,7 @@ fn cursor_inner(
             break;
         }
     }
-    // (роль, полный путь, имя файла)
+    // (role, full path, file name)
     let mut roles: Vec<(Role, String, String)> = Vec::new();
     for (role, fname) in &scheme.roles {
         if let Some((path, name)) = find_file_ci(&set, &all_sets, fname) {
@@ -2635,8 +2641,8 @@ fn cursor_inner(
         }
     }
     if roles.is_empty() {
-        // Имена ничего не говорят: первый курсор — стрелка (так ведёт себя
-        // и «один файл»), остальное хранится в оригиналах.
+        // The names say nothing: the first cursor is the arrow (that is how
+        // "a single file" behaves too), the rest is kept in the originals.
         if let Some(first) = set.files.iter().find(|f| is_cursor_file(f)) {
             roles.push((Role::Arrow, join(&set.dir, first), first.clone()));
         }
@@ -2652,13 +2658,13 @@ fn cursor_inner(
         .unwrap_or("Imported Cursors")
         .to_string();
 
-    // ── 3. Перевод в Xcursor ──
+    // ── 3. Conversion to Xcursor ──
     let safe_id = icon_set_dir(match source.id.strip_prefix("wincur-").unwrap_or(&source.id) {
         "" => slug60(&theme_name),
         id => id.to_string(),
     });
-    // Тема пишется прямо в data/ будущего .rxn: копия через copy_tree
-    // превратила бы ссылки-синонимы в полные копии анимаций.
+    // The theme is written straight into data/ of the future .rxn: a copy via
+    // copy_tree would turn synonym links into full copies of the animations.
     let rxn_dir = join(work_dir, "rxn");
     let theme_root = join(&join(&rxn_dir, "data"), &safe_id);
     let cursors_dir = join(&theme_root, "cursors");
@@ -2691,7 +2697,7 @@ fn cursor_inner(
             &[&skipped.join("; ")],
         )));
     }
-    // Ролей, которых в наборе нет, — ближайшим курсором ТОГО ЖЕ набора.
+    // Roles missing from the set — with the closest cursor of THE SAME set.
     for role in wincursor::ALL_ROLES {
         if done.iter().any(|(r, ..)| *r == role) {
             continue;
@@ -2705,11 +2711,11 @@ fn cursor_inner(
     }
 
     // ── 4. index.theme ──
-    // Недостающее — из распространённых тем (не «default»: стол пишет
-    // ~/.icons/default с Inherits на НАШУ тему, и вышел бы круг).
-    // `X-Rexon-Source=windows` — пометка для плитки установленной темы
-    // («🪟 из Windows», [`crate::installed_scan`]): manifest `.rxn` после
-    // установки рядом с темой не лежит.
+    // What is missing — from common themes (not "default": the desktop writes
+    // ~/.icons/default with Inherits pointing at OUR theme, which would make a loop).
+    // `X-Rexon-Source=windows` is a marker for the installed theme's tile
+    // («🪟 From Windows», [`crate::installed_scan`]): the `.rxn` manifest doesn't
+    // lie next to the theme after installation.
     io.write_file(
         &join(&theme_root, "index.theme"),
         &format!(
@@ -2718,7 +2724,7 @@ fn cursor_inner(
         ),
     );
 
-    // ── 5. Упаковка: оригиналы, обложка, manifest ──
+    // ── 5. Packing: originals, cover, manifest ──
     let originals_dir = join(&rxn_dir, "originals");
     io.makedirs(&originals_dir);
     let mut originals: Vec<String> = Vec::new();
@@ -2737,7 +2743,7 @@ fn cursor_inner(
         io.copy_file(&path, &join(&originals_dir, f));
         originals.push(f.clone());
     }
-    // Курсор роли, найденный вне папки набора, — тоже в оригиналы.
+    // A role's cursor found outside the set's folder goes into the originals too.
     for (_, path, name) in &roles {
         if !originals.contains(name) && dirname(path) != set.dir {
             io.copy_file(path, &join(&originals_dir, name));
@@ -2914,10 +2920,10 @@ fn icon_inner(
         if io.zip_open(source_path) {
             io.extract_zip(source_path, &extract_dir);
         } else {
-            // Не ZIP (так бывает у настоящих .7tsp) → пробуем 7z. Починка при
-            // порте: оригинал код возврата игнорировал, а 7z из обрезанного
-            // архива вытаскивает КУСОК файлов и уходит с кодом 2 — импорт
-            // «удавался», и покупатель получал тему из битого архива.
+            // Not a ZIP (real .7tsp can be like that) → try 7z. Fixed while porting:
+            // the original ignored the exit code, and 7z pulls a PART of the files out
+            // of a truncated archive and exits with code 2 — the import "succeeded",
+            // and the user got a theme from a broken archive.
             if !io
                 .run(
                     vec![
@@ -2951,14 +2957,14 @@ fn icon_inner(
         theme_name = "Imported Icons".to_string();
     }
 
-    // ── 2. Конвертация .ico → PNG (мультиразмерная) ──
+    // ── 2. Convert .ico → PNG (multi-size) ──
     let safe_id = icon_set_dir(slug60(&theme_name));
     let theme_base = join(&join(work_dir, "theme"), &safe_id);
 
-    // Структура размеров × контекстов.
-    // Намеренное расхождение с Python-оригиналом: там опечатка exist_ok=True
-    // внутри os.path.join → TypeError на первой же итерации; здесь корректный
-    // makedirs(..., exist_ok=True), хвост импорта портирован.
+    // Sizes × contexts structure.
+    // A deliberate divergence from the Python original: there the typo
+    // exist_ok=True inside os.path.join → TypeError on the very first iteration;
+    // here a correct makedirs(..., exist_ok=True), the tail of the import is ported.
     for size in ICON_SIZES {
         for (ctx, _) in ICON_CONTEXTS {
             io.makedirs(&join(
@@ -2970,7 +2976,7 @@ fn icon_inner(
 
     let mut converted: u64 = 0;
     for (win_name, ico_path) in ico_files.iter() {
-        // Linux-имена и контекст
+        // Linux names and context
         let linux_names: Vec<String> = ICON_MAP
             .iter()
             .find(|(k, _)| *k == win_name.as_str())
@@ -2987,7 +2993,7 @@ fn icon_inner(
         }
 
         if has_icotool {
-            // icotool извлекает все размеры
+            // icotool extracts all sizes
             let tmp_extract = join(work_dir, &format!("_ico_{win_name}"));
             io.makedirs(&tmp_extract);
             io.run(
@@ -2997,7 +3003,7 @@ fn icon_inner(
                 ],
                 10,
             );
-            // icotool создаёт файлы вида name_N_NxN.png
+            // icotool creates files like name_N_NxN.png
             for png_file in io.listdir(&tmp_extract) {
                 if !png_file.ends_with(".png") {
                     continue;
@@ -3020,7 +3026,7 @@ fn icon_inner(
                     }
                 }
                 if !matched {
-                    // Не удалось определить размер — ставим в 48x48
+                    // Couldn't determine the size — put it into 48x48
                     let dest = join(
                         &join(&join(&theme_base, "48x48"), ctx),
                         &format!("{}.png", linux_names[0]),
@@ -3031,7 +3037,7 @@ fn icon_inner(
                 }
             }
         } else {
-            // Fallback: ImageMagick (берёт первый кадр)
+            // Fallback: ImageMagick (takes the first frame)
             for size in [48u32, 32, 16] {
                 let dest = join(
                     &join(&join(&theme_base, &format!("{size}x{size}")), ctx),
@@ -3050,7 +3056,7 @@ fn icon_inner(
             }
         }
 
-        // Симлинки для альтернативных имён
+        // Symlinks for alternative names
         for alt in &linux_names[1..] {
             for size in ICON_SIZES {
                 let size_ctx =
@@ -3058,7 +3064,7 @@ fn icon_inner(
                 let src = join(&size_ctx, &format!("{}.png", linux_names[0]));
                 let dst = join(&size_ctx, &format!("{alt}.png"));
                 if io.exists(&src) && !io.exists(&dst) {
-                    // сбой симлинка подавлен оригиналом
+                    // a symlink failure is suppressed by the original
                     io.symlink(&format!("{}.png", linux_names[0]), &dst);
                 }
             }
@@ -3086,7 +3092,7 @@ fn icon_inner(
     for d in &dirs_list {
         let size = d.split('x').next().unwrap_or("");
         let ctx = d.split('/').nth(1).unwrap_or("");
-        // str.capitalize(): первая буква вверх, остальные вниз
+        // str.capitalize(): first letter up, the rest down
         let mut chars = ctx.chars();
         let ctx_cap = match chars.next() {
             Some(c) => {
@@ -3101,12 +3107,12 @@ fn icon_inner(
     }
     io.write_file(&join(&theme_base, "index.theme"), &index_content);
 
-    // ── 4. Упаковать в .rxn ──
+    // ── 4. Pack into .rxn ──
     let rxn_dir = join(work_dir, "rxn");
     let data_dir = join(&rxn_dir, "data");
     io.copy_tree(&theme_base, &join(&data_dir, &safe_id));
 
-    // Превью (результат convert игнорируется)
+    // Preview (the convert result is ignored)
     let preview = join(&rxn_dir, "preview.png");
     let first_ico = ico_files
         .first_value()
@@ -3145,7 +3151,7 @@ fn icon_inner(
     let out_dir = match output_dir {
         Some(o) => o.to_string(),
         None => {
-            // os.path.dirname без фолбэка "." — как в оригинале
+            // os.path.dirname without a "." fallback — as in the original
             if io.is_file(source_path) {
                 dirname(source_path)
             } else {
@@ -3186,7 +3192,7 @@ fn msstyles_inner(
     let theme_name = stem(source_path).to_string();
     let safe_id = slug60(&theme_name);
 
-    // ── 1. Извлечение bitmap-ресурсов ──
+    // ── 1. Extract bitmap resources ──
     let bitmaps_dir = join(work_dir, "bitmaps");
     io.makedirs(&bitmaps_dir);
 
@@ -3207,7 +3213,7 @@ fn msstyles_inner(
         );
     }
 
-    // short-circuit: which("7z") — только при пустом каталоге
+    // short-circuit: which("7z") — only when the directory is empty
     let mut used_7z = false;
     if io.listdir(&bitmaps_dir).is_empty() && io.which("7z") {
         io.run(
@@ -3220,7 +3226,7 @@ fn msstyles_inner(
         used_7z = true;
     }
 
-    // BMP → PNG (конвертированный кладётся рядом с исходником)
+    // BMP → PNG (the converted one is placed next to the source)
     for (f, full) in list_bitmap_dir(io, &bitmaps_dir, used_7z) {
         if f.to_lowercase().ends_with(".bmp") {
             let dst = join(&dirname(&full), &format!("{}.png", splitext(&f).0));
@@ -3231,7 +3237,7 @@ fn msstyles_inner(
         }
     }
 
-    // (имя файла, полный путь)
+    // (file name, full path)
     let bitmaps: Vec<(String, String)> =
         list_bitmap_dir(io, &bitmaps_dir, used_7z)
             .into_iter()
@@ -3247,11 +3253,11 @@ fn msstyles_inner(
         )));
     }
 
-    // ── 2. Классификация ──
-    let mut window_parts: Vec<(String, String)> = Vec::new(); // (полный путь, тип)
+    // ── 2. Classification ──
+    let mut window_parts: Vec<(String, String)> = Vec::new(); // (full path, type)
     let mut gtk_parts: Vec<(String, String)> = Vec::new();
     let mut plasma_parts: Vec<(String, String)> = Vec::new();
-    let mut other_parts: Vec<(String, String)> = Vec::new(); // (имя, полный путь)
+    let mut other_parts: Vec<(String, String)> = Vec::new(); // (name, full path)
 
     for (bmp, full) in &bitmaps {
         let name = splitext(bmp).0.to_lowercase();
@@ -3261,9 +3267,9 @@ fn msstyles_inner(
         } else {
             clean
         };
-        // Намеренное расхождение с Python-оригиналом: там брался ПЕРВЫЙ
-        // подходящий ключ по порядку словаря (коллизии startmenu→menu,
-        // startpanel→pane, taskitemactive→taskitem); здесь — самый длинный.
+        // A deliberate divergence from the Python original: there the FIRST matching
+        // key in dict order was taken (collisions startmenu→menu,
+        // startpanel→pane, taskitemactive→taskitem); here — the longest one.
         let mut best: Option<(&str, &str)> = None;
         for (part_key, part_type) in PART_MAP {
             if clean.contains(part_key)
@@ -3332,7 +3338,7 @@ fn msstyles_inner(
         bundle.push(("theme-kde-plasma", "data/plasma"));
     }
 
-    // 3d. Цветовая палитра
+    // 3d. Color palette
     let head: Vec<String> =
         bitmaps.iter().take(5).map(|(_, full)| full.clone()).collect();
     let colors = extract_dominant_colors(io, &head);
@@ -3347,7 +3353,7 @@ fn msstyles_inner(
         return Err(verr(tr("Couldn't create a theme from the .msstyles")));
     }
 
-    // Превью-коллаж
+    // Preview collage
     let preview = join(&rxn_dir, "preview.png");
     let preview_srcs: Vec<String> =
         bitmaps.iter().take(6).map(|(_, full)| full.clone()).collect();
@@ -3405,10 +3411,10 @@ fn msstyles_inner(
     Ok(rxn_path)
 }
 
-/// Листинг каталога битмапов: (имя файла, полный путь).
-/// Намеренное расхождение с Python-оригиналом: там после 7z-фолбэка поиск
-/// шёл НЕрекурсивно (os.listdir), хотя 7z кладёт ресурсы PE в подпапки;
-/// здесь после 7z каталог обходится рекурсивно (os.walk).
+/// Listing of the bitmap directory: (file name, full path).
+/// A deliberate divergence from the Python original: there after the 7z
+/// fallback the search was NON-recursive (os.listdir), although 7z puts PE
+/// resources into subfolders; here after 7z the directory is walked recursively (os.walk).
 fn list_bitmap_dir(
     io: &mut dyn ImpIo,
     bitmaps_dir: &str,
@@ -3447,7 +3453,7 @@ fn strip_num_suffix(name: &str) -> String {
     name.to_string()
 }
 
-/// `re.sub(r'^.*[_\-]', '', clean)` — жадно до ПОСЛЕДНЕГО разделителя.
+/// `re.sub(r'^.*[_\-]', '', clean)` — greedy up to the LAST separator.
 fn strip_to_last_sep(clean: &str) -> String {
     match clean.rfind(['_', '-']) {
         Some(i) => clean[i + 1..].to_string(),
@@ -3455,7 +3461,7 @@ fn strip_to_last_sep(clean: &str) -> String {
     }
 }
 
-/// `MSStyImporter._generate_aurorae_theme` (текст 1-в-1).
+/// `MSStyImporter._generate_aurorae_theme` (text 1-to-1).
 fn generate_aurorae_theme(
     io: &mut dyn ImpIo,
     aurorae_dir: &str,
@@ -3468,7 +3474,7 @@ fn generate_aurorae_theme(
     io.write_file(&join(aurorae_dir, &format!("{theme_id}rc")), &rc_content);
 }
 
-/// `MSStyImporter._generate_plasma_theme` (`plasma_parts` — полные пути).
+/// `MSStyImporter._generate_plasma_theme` (`plasma_parts` — full paths).
 fn generate_plasma_theme(
     io: &mut dyn ImpIo,
     plasma_dir: &str,
@@ -3549,7 +3555,7 @@ fn generate_plasma_theme(
         }
     }
 
-    // Фон диалогов — первая текстура меню/панели (без isfile — как оригинал)
+    // Dialog background — the first menu/panel texture (no isfile — as in the original)
     for (src, part_type) in plasma_parts {
         if part_type == "plasma-start-menu" || part_type == "plasma-panel" {
             let dst = join(&dialogs_dir, "background.png");
@@ -3565,7 +3571,7 @@ fn generate_plasma_theme(
     }
 }
 
-/// `MSStyImporter._wrap_png_as_svg` (текст SVG 1-в-1, base64 стандартный).
+/// `MSStyImporter._wrap_png_as_svg` (SVG text 1-to-1, standard base64).
 fn wrap_png_as_svg(io: &mut dyn ImpIo, png_path: &str, svg_path: &str, hint: &str) {
     if !io.is_file(png_path) {
         return;
@@ -3579,8 +3585,8 @@ fn wrap_png_as_svg(io: &mut dyn ImpIo, png_path: &str, svg_path: &str, hint: &st
     );
     let (mut w, mut h) = (100i64, 30i64);
     if r.ok {
-        // int(parts[0]), int(parts[1]) — кортеж атомарен: любые ошибки
-        // (ValueError/IndexError) оставляют значения по умолчанию
+        // int(parts[0]), int(parts[1]) — the tuple is atomic: any errors
+        // (ValueError/IndexError) leave the default values
         let stripped = bytes_strip(&r.stdout);
         let parts = bytes_split_ws(stripped);
         if let (Some(pw), Some(ph)) = (
@@ -3591,7 +3597,7 @@ fn wrap_png_as_svg(io: &mut dyn ImpIo, png_path: &str, svg_path: &str, hint: &st
             h = ph;
         }
     }
-    // файл только что проверен isfile — контракт исполнителя
+    // the file has just been checked with isfile — executor contract
     let Some(bytes) = io.read_bytes(png_path) else {
         return;
     };
@@ -3645,7 +3651,7 @@ fn generate_gtk_css(
 
     io.write_file(&join(gtk_dir, "gtk.css"), &css_lines.join("\n"));
 
-    // gtk-4.0 симлинки (try/except: сбой первого пропускает второй)
+    // gtk-4.0 symlinks (try/except: a failure of the first skips the second)
     let gtk4_dir = join(&dirname(gtk_dir), "gtk-4.0");
     io.makedirs(&gtk4_dir);
     if io.symlink(&join(gtk_dir, "gtk.css"), &join(&gtk4_dir, "gtk.css"))
@@ -3655,10 +3661,10 @@ fn generate_gtk_css(
     }
 }
 
-/// `MSStyImporter._extract_dominant_colors` (`bitmaps` — полные пути).
-/// Намеренное расхождение с Python-оригиналом: там f"#{bytes}" давал
-/// строки вида "#b'336699'" → ValueError в int(..., 16) при генерации
-/// схемы; здесь stdout convert декодируется как текст.
+/// `MSStyImporter._extract_dominant_colors` (`bitmaps` — full paths).
+/// A deliberate divergence from the Python original: there f"#{bytes}" gave
+/// strings like "#b'336699'" → ValueError in int(..., 16) while generating
+/// the scheme; here convert's stdout is decoded as text.
 fn extract_dominant_colors(
     io: &mut dyn ImpIo,
     bitmaps: &[String],
@@ -3687,9 +3693,9 @@ fn extract_dominant_colors(
     colors
 }
 
-/// `MSStyImporter._generate_kde_colorscheme`. Err — ValueError из
-/// `int(h[0:2], 16)` (после починки цветов достигается только на
-/// не-hex stdout convert).
+/// `MSStyImporter._generate_kde_colorscheme`. Err — ValueError from
+/// `int(h[0:2], 16)` (after the color fix it is reachable only with non-hex
+/// convert stdout).
 fn generate_kde_colorscheme(
     io: &mut dyn ImpIo,
     colors_dir: &str,
@@ -3729,34 +3735,35 @@ fn generate_kde_colorscheme(
 }
 
 // ============================================================================
-// Внешние конвертеры: набор по формату и вердикт проверки (правило #12)
+// External converters: the set per format and the check verdict (rule #12)
 // ============================================================================
 //
-// Импортёры Windows-оформления держатся на чужих программах (cabextract/7z
-// распаковывают, ImageMagick конвертирует, wrestool/icotool вынимают ресурсы,
-// win2xcur/xcursorgen делают курсоры, ffmpeg — видео DreamScene). Ни одной нет
-// в базовой поставке целевых дистрибутивов, а на SteamOS нет и ImageMagick.
-// Поэтому у импорта РОВНО ОДНА точка проверки — таблица ниже: она решает, чем
-// можно выполнить каждый шаг формата и что сказать покупателю, если нечем.
-// Имена пакетов берутся из `utils::tool_package_name` по семейству
-// дистрибутива (правило #13: нельзя советовать `pacman -S` на Fedora).
+// Windows appearance importers rely on external programs (cabextract/7z
+// unpack, ImageMagick converts, wrestool/icotool extract resources,
+// win2xcur/xcursorgen make cursors, ffmpeg handles DreamScene video). None of
+// them ships in the base install of the target distributions, and SteamOS
+// doesn't even have ImageMagick. So the import has EXACTLY ONE check point —
+// the table below: it decides what each step of a format can be done with
+// and what to tell the user if there is nothing. Package names are taken
+// from `utils::tool_package_name` by distribution family (rule #13: never
+// suggest `pacman -S` on Fedora).
 //
-// Порт этого слоя из `rexon/extensions/importers.py` (`_IMPORT_TOOLS`,
+// Port of this layer from `rexon/extensions/importers.py` (`_IMPORT_TOOLS`,
 // `_import_kind`, `_packages_phrase`, `_require_tools`, `_LEGACY_HINTS`,
-// `_friendly_error`). Сама проверка наличия программы — за исполнителем
-// (`shutil.which`), в ядре только решение и текст.
+// `_friendly_error`). Checking whether a program is present is up to the
+// executor (`shutil.which`); the core has only the decision and the text.
 
-/// Шаг импорта, зависящий от чужих программ.
+/// An import step that depends on external programs.
 pub struct ToolStep {
-    /// Что делаем — подставляется в текст «для {что} нет нужной программы».
-    /// `msgid` («unpacking the theme»; по-русски — в родительном падеже:
-    /// «распаковки темы»), переводит [`require_tools`].
+    /// What we are doing — substituted into the text "there is no program needed
+    /// for {what}". A `msgid` ("unpacking the theme"; in Russian — in the genitive
+    /// case: "распаковки темы"), translated by [`require_tools`].
     pub what: &'static str,
-    /// Варианты набора программ: подходит ЛЮБОЙ вариант, внутри варианта
-    /// нужны ВСЕ программы.
+    /// Program set variants: ANY variant will do, within a variant ALL programs
+    /// are needed.
     pub variants: &'static [&'static [&'static str]],
-    /// Обязателен ли шаг: необязательный без программ не отменяет импорт —
-    /// работает запасной путь, но в журнале остаётся предупреждение.
+    /// Whether the step is mandatory: an optional one without programs doesn't
+    /// cancel the import — a fallback path works, but a warning stays in the log.
     pub required: bool,
 }
 
@@ -3785,10 +3792,10 @@ const TOOLS_DREAMSCENE: &[ToolStep] = &[ToolStep {
     required: false,
 }];
 
-// Курсоры переводит свой код (`wincursor`) — чужих программ не нужно.
+// Cursors are converted by our own code (`wincursor`) — no external programs needed.
 const TOOLS_CURSOR: &[ToolStep] = &[];
 
-/// `.rar`/`.7z` своим кодом не читаются: нужен `bsdtar` (libarchive) или `7z`.
+/// `.rar`/`.7z` aren't read by our own code: `bsdtar` (libarchive) or `7z` is needed.
 const TOOLS_CURSOR_ARCHIVE: &[ToolStep] = &[ToolStep {
     what: n_("unpacking the archive"),
     variants: &[&["bsdtar"], &["7z"]],
@@ -3801,7 +3808,7 @@ const TOOLS_ICON: &[ToolStep] = &[ToolStep {
     required: true,
 }];
 
-/// `.icl`/`.dll`/`.exe` — иконки лежат ресурсами внутри программы Windows.
+/// `.icl`/`.dll`/`.exe` — icons are resources inside a Windows program.
 const TOOLS_ICON_PE: &[ToolStep] = &[
     ToolStep {
         what: n_("extracting icons from a Windows file"),
@@ -3828,8 +3835,8 @@ const TOOLS_MSSTYLES: &[ToolStep] = &[
     },
 ];
 
-/// Шаги импорта для набора конвертеров (`_IMPORT_TOOLS`). Неизвестный набор —
-/// пусто (проверять нечего, как `.get(kind, ())` в оригинале).
+/// Import steps for a converter set (`_IMPORT_TOOLS`). An unknown set — empty
+/// (nothing to check, like `.get(kind, ())` in the original).
 pub fn import_tools(kind: &str) -> &'static [ToolStep] {
     match kind {
         "themepack" => TOOLS_THEMEPACK,
@@ -3840,13 +3847,13 @@ pub fn import_tools(kind: &str) -> &'static [ToolStep] {
         "icon" => TOOLS_ICON,
         "icon_pe" => TOOLS_ICON_PE,
         "msstyles" => TOOLS_MSSTYLES,
-        // "gadget" — распаковка своим ZIP-ридером, чужих программ не надо.
+        // "gadget" — unpacked with our own ZIP reader, no external programs needed.
         _ => &[],
     }
 }
 
-/// Набор конвертеров по расширению файла — порт `_import_kind`. `default`
-/// возвращается для расширений, которых нет в таблице.
+/// Converter set by file extension — port of `_import_kind`. `default` is
+/// returned for extensions not in the table.
 pub fn import_kind<'a>(path: &str, default: &'a str) -> &'a str {
     match ext_lower(path).as_str() {
         ".themepack" | ".deskthemepack" => "themepack",
@@ -3862,9 +3869,9 @@ pub fn import_kind<'a>(path: &str, default: &'a str) -> &'a str {
     }
 }
 
-/// «пакет «icoutils» либо пакет «7zip»» — именами ЭТОГО дистрибутива
-/// (порт `_packages_phrase`). Программа без известного пакета называется
-/// именем бинаря.
+/// "the “icoutils” package or the “7zip” package" — with THIS distribution's
+/// names (port of `_packages_phrase`). A program without a known package is
+/// named by its binary.
 pub fn packages_phrase(variants: &[&[&str]], family: &str) -> String {
     let mut parts: Vec<String> = Vec::with_capacity(variants.len());
     for variant in variants {
@@ -3891,14 +3898,15 @@ pub fn packages_phrase(variants: &[&[&str]], family: &str) -> String {
     parts.join(&trc("joining package alternatives", " or "))
 }
 
-/// Вердикт проверки конвертеров перед импортом — порт `_require_tools`.
+/// Verdict of the converter check before an import — port of `_require_tools`.
 ///
-/// `have` — есть ли программа в системе (`shutil.which`, за исполнителем).
-/// `Ok(warnings)` — импорт возможен; каждая строка — предупреждение в журнал
-/// про необязательный шаг без программ. `Err(msg)` — отказ по-русски с
-/// именами пакетов этого дистрибутива (правило #13: ни `FileNotFoundError`,
-/// ни голого имени бинаря покупателю). Порядок шагов — как в таблице, отказ
-/// на ПЕРВОМ невыполнимом обязательном шаге.
+/// `have` — whether the program is on the system (`shutil.which`, up to the
+/// executor). `Ok(warnings)` — the import is possible; each line is a warning
+/// for the log about an optional step without programs. `Err(msg)` — a
+/// refusal in the interface language with this distribution's package names
+/// (rule #13: neither `FileNotFoundError` nor a bare binary name for the
+/// user). Steps go in table order, the refusal is on the FIRST mandatory step
+/// that can't be done.
 pub fn require_tools(
     kind: &str,
     family: &str,
@@ -3929,16 +3937,16 @@ pub fn require_tools(
     Ok(warnings)
 }
 
-/// Итог импорта ПЛЮС предупреждения о пропущенных шагах — одним текстом.
+/// The import result PLUS warnings about skipped steps — as one text.
 ///
-/// ЗАЧЕМ ОТДЕЛЬНОЙ ФУНКЦИЕЙ. Предупреждения [`require_tools`] оригинал только
-/// клал в журнал (`log.warning`), то есть покупатель не видел их никогда:
-/// тема ставилась «упрощённо» — без обложки, без подготовленных картинок, —
-/// а человек читал «Установлено» и решал, что так и надо. Это молчаливый
-/// отказ, и чинится он одинаково для всех мест, где такие предупреждения
-/// возникают, — поэтому склейка одна на всех (правило #12).
+/// WHY A SEPARATE FUNCTION. The original only put the [`require_tools`]
+/// warnings into the log (`log.warning`), i.e. the user never saw them: the
+/// theme was installed "simplified" — without a cover, without prepared
+/// pictures — and the person read «Installed» and decided that was how it
+/// should be. That is a silent failure, and it is fixed the same way for every
+/// place where such warnings arise — so there is one joiner for all (rule #12).
 ///
-/// Предупреждений нет — текст не меняется ни на символ.
+/// No warnings — the text doesn't change by a single character.
 pub fn with_skipped_notes(text: &str, notes: &[String]) -> String {
     if notes.is_empty() {
         return text.to_string();
@@ -3951,11 +3959,12 @@ pub fn with_skipped_notes(text: &str, notes: &[String]) -> String {
     out
 }
 
-/// Арчевые подсказки, вшитые в тексты ошибок импорта: `msgid` → бинарь.
+/// Arch hints baked into import error texts: `msgid` → binary.
 ///
-/// ⚠️ Текст читает код ([`friendly_error_text`] ищет его в ошибке), поэтому
-/// ключ — `msgid`, а ищется и он, и его перевод на языке интерфейса:
-/// ошибку собирают здесь же, тем же [`legacy_hint`].
+/// ⚠️ The text is read by code ([`friendly_error_text`] looks for it in the
+/// error), so the key is the `msgid`, and both it and its translation in the
+/// interface language are searched for: the error is assembled right here,
+/// by the same [`legacy_hint`].
 const HINT_CABEXTRACT: &str = n_("Install it: sudo pacman -S cabextract");
 const HINT_ICOUTILS: &str = n_("Install it: sudo pacman -S icoutils");
 const HINT_WIN2XCUR: &str = n_("Install it: pip install win2xcur");
@@ -3965,13 +3974,13 @@ const LEGACY_HINTS: &[(&str, &str)] = &[
     (HINT_WIN2XCUR, "win2xcur"),
 ];
 
-/// Подсказка для текста ошибки — на языке интерфейса.
+/// A hint for the error text — in the interface language.
 fn legacy_hint(key: &str) -> String {
     tr(key)
 }
 
-/// Заменить в тексте ошибки арчевые подсказки на пакет ЭТОЙ системы — порт
-/// `_friendly_error`. `None` — заменять нечего (текст не тронут).
+/// Replace the Arch hints in an error text with THIS system's package — port
+/// of `_friendly_error`. `None` — nothing to replace (the text is untouched).
 pub fn friendly_error_text(text: &str, family: &str) -> Option<String> {
     let mut out = text.to_string();
     let mut changed = false;
@@ -3996,15 +4005,15 @@ pub fn friendly_error_text(text: &str, family: &str) -> Option<String> {
 mod skipped_notes_tests {
     use super::*;
 
-    /// Пропущенный необязательный шаг обязан стать ВИДИМЫМ предупреждением с
-    /// именем пакета ЭТОГО дистрибутива, а не строкой в журнале.
+    /// A skipped optional step must become a VISIBLE warning with THIS
+    /// distribution's package name, not a line in the log.
     ///
-    /// Сторож против рецидива: оригинал (`_require_tools`) складывал такие
-    /// сообщения в `log.warning`, и покупатель не узнавал, что тема поставлена
-    /// упрощённо — без обложки и подготовленных картинок.
+    /// Guard against regression: the original (`_require_tools`) put such
+    /// messages into `log.warning`, and the user never learned the theme was
+    /// installed simplified — without a cover and prepared pictures.
     #[test]
     fn missing_optional_converter_speaks_up_with_local_package_name() {
-        // Обязательный шаг выполним, необязательный (ImageMagick) — нет.
+        // The mandatory step is doable, the optional one (ImageMagick) is not.
         let have = |tool: &str| tool == "cabextract";
         let warnings = require_tools("themepack", "debian", &have)
             .expect("обязательный шаг выполним — импорт не отменяется");
@@ -4023,12 +4032,12 @@ mod skipped_notes_tests {
         let shown = with_skipped_notes("Тема", &warnings);
         assert!(shown.starts_with("Тема"), "имя темы потерялось: {shown}");
         assert!(shown.contains(&warnings[0]), "предупреждение не дошло: {shown}");
-        // Предупреждений нет — текст не меняется ни на символ.
+        // No warnings — the text doesn't change by a single character.
         assert_eq!(with_skipped_notes("Тема", &[]), "Тема");
     }
 
-    /// Нет ОБЯЗАТЕЛЬНОЙ программы — отказ по-русски с именем пакета, а не
-    /// попытка импорта, которая тихо родит пустую тему.
+    /// A MANDATORY program is missing — a refusal in the interface language with
+    /// the package name, not an import attempt that quietly produces an empty theme.
     #[test]
     fn missing_required_converter_refuses_before_any_side_effect() {
         let refusal = require_tools("themepack", "arch", &|_| false)
@@ -4043,9 +4052,9 @@ mod skipped_notes_tests {
 
 #[cfg(test)]
 mod cursor_tests {
-    //! Импорт курсоров Windows на настоящей ФС (временные каталоги) и
-    //! подставных байтах: роли из описателя, все кадры, оригиналы в `.rxn`,
-    //! ссылки-синонимы, перевод заново.
+    //! Windows cursor import on a real FS (temporary directories) with
+    //! substitute bytes: roles from the descriptor, all frames, originals in
+    //! `.rxn`, synonym links, re-conversion.
     use super::*;
     use crate::imp_live::LiveImpIo;
     use crate::wincursor::testbytes::{ani, cur32};
@@ -4078,7 +4087,7 @@ mod cursor_tests {
         }
     }
 
-    /// Анимация: 3 кадра, seq 0,1,2,1, задержки 6/12/3/60 шестидесятых.
+    /// Animation: 3 frames, seq 0,1,2,1, delays 6/12/3/60 sixtieths.
     fn ani3() -> Vec<u8> {
         let fr = [cur32(32, 1, 2, 10), cur32(32, 3, 4, 20), cur32(32, 5, 6, 30)];
         ani(&fr, 10, Some(&[6, 12, 3, 60]), Some(&[0, 1, 2, 1]), 4)
@@ -4124,7 +4133,7 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
         assert!(io.io_err.is_none(), "{:?}", io.io_err);
         assert!(rxn.ends_with("/wincur-blue-trans.rxn"), "{rxn}");
 
-        // В архиве синонимы — ссылки, а не копии.
+        // In the archive synonyms are links, not copies.
         let f = std::fs::File::open(&rxn).unwrap();
         let mut z = zip::ZipArchive::new(f).unwrap();
         let link = z.by_name("data/blue-trans/cursors/left_ptr").unwrap();
@@ -4155,20 +4164,20 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
         assert!(u.join("preview.png").is_file());
 
         let cur = u.join("data/blue-trans/cursors");
-        // Стрелка: все 4 шага, задержки в мс, горячие точки кадров.
+        // Arrow: all 4 steps, delays in ms, hotspots of the frames.
         let imgs = xcur(&cur.join("default"));
         let at32: Vec<_> = imgs.iter().filter(|i| i.nominal == 32).map(|i| (i.hot_x, i.hot_y, i.delay)).collect();
         assert_eq!(at32, vec![(1, 2, 100), (3, 4, 200), (5, 6, 50), (3, 4, 1000)]);
-        // Синоним после распаковки — снова ссылка на основной файл.
+        // A synonym after unpacking is again a link to the main file.
         assert_eq!(std::fs::read_link(cur.join("left_ptr")).unwrap(), Path::new("default"));
-        // Прицел — Pointer.ani по .inf, а не по имени файла.
+        // Crosshair — Pointer.ani per .inf, not per file name.
         assert_eq!(xcur(&cur.join("crosshair"))[1].hot_x, 15);
-        // «Занят» в наборе пуст — его имена ведут на «работу в фоне».
+        // "Busy" is empty in the set — its names point to "working in background".
         assert_eq!(std::fs::read_link(cur.join("wait")).unwrap(), Path::new("progress"));
         let theme = std::fs::read_to_string(u.join("data/blue-trans/index.theme")).unwrap();
         assert!(theme.contains("Name=Blue Trans\n"), "{theme}");
         assert!(!theme.contains("Inherits=default"), "{theme}");
-        // Плитка установленной темы узнаёт по этой строке «🪟 из Windows».
+        // The installed theme's tile recognises «🪟 From Windows» by this line.
         assert!(theme.contains("\nX-Rexon-Source=windows\n"), "{theme}");
     }
 
@@ -4207,7 +4216,7 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
         let cur = u.join("data/neon-pack/cursors");
         assert_eq!(xcur(&cur.join("pencil"))[1].hot_y, 31);
         assert_eq!(xcur(&cur.join("pointer"))[1].hot_x, 9);
-        // Regular (32 px) — без HiDPI-номиналов 64/96.
+        // Regular (32 px) — without the 64/96 HiDPI sizes.
         assert!(xcur(&cur.join("default")).iter().all(|i| i.nominal <= 48));
     }
 
@@ -4248,7 +4257,7 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
         assert_eq!(m["windows_cursors"]["originals"], json!(["Rammstein.ani"]));
         assert_eq!(xcur(&u.join("data/rammstein/cursors/default")).len(), 12);
 
-        // Перевод заново из оригиналов: тот же id, те же роли и кадры.
+        // Re-conversion from the originals: the same id, the same roles and frames.
         std::fs::create_dir_all(t.path("again")).unwrap();
         let rxn2 = cursor_retranslate_dir(&mut io, &u.to_string_lossy(), &t.s("again")).unwrap();
         assert_eq!(rxn2, t.s("again/wincur-rammstein.rxn"));
@@ -4262,7 +4271,7 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
             std::fs::read(u2.join("data/rammstein/cursors/default")).unwrap(),
             std::fs::read(u.join("data/rammstein/cursors/default")).unwrap()
         );
-        // Тема без оригиналов перевести заново нельзя — отказ, не паника.
+        // A theme without originals can't be re-converted — a refusal, not a panic.
         std::fs::remove_dir_all(u.join("originals")).unwrap();
         let e = cursor_retranslate_dir(&mut io, &u.to_string_lossy(), &t.s("again")).unwrap_err();
         assert_eq!(e.message, "This cursor theme has no Windows originals to convert again");
@@ -4312,7 +4321,7 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
         assert!(require_tools(import_kind("/x/a.ani", "cursor"), "arch", &|_| false).unwrap().is_empty());
     }
 
-    /// `.7z` настоящим распаковщиком — только где он есть.
+    /// `.7z` with a real unpacker — only where it exists.
     #[test]
     fn seven_zip_archive_is_unpacked_when_a_tool_exists() {
         let mut io = LiveImpIo::new(None);
@@ -4341,8 +4350,8 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
         assert_eq!(m["name"], "set");
     }
 
-    /// Перевод настоящих наборов: `REXON_CUR_SETS` (пути через `:`) →
-    /// `.rxn` в `REXON_CUR_OUT`. Запуск вручную: `cargo test … -- --ignored real_sets`.
+    /// Converting real sets: `REXON_CUR_SETS` (paths separated by `:`) →
+    /// `.rxn` in `REXON_CUR_OUT`. Run manually: `cargo test … -- --ignored real_sets`.
     #[test]
     #[ignore = "нужны настоящие наборы курсоров на диске"]
     fn real_sets_from_env() {
@@ -4358,15 +4367,15 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
         }
     }
 
-    // ── Область действия исправлений переводчика ──
+    // ── Scope of converter fixes ──
 
     #[test]
     fn every_converter_bump_names_whom_it_touches() {
-        // Подняли версию — строка в таблице обязательна, версии по возрастанию.
+        // Version bumped — a table row is mandatory, versions ascending.
         let versions: Vec<u32> = CURSOR_CONVERTER_CHANGES.iter().map(|(v, _)| *v).collect();
         assert!(versions.windows(2).all(|w| w[0] < w[1]), "{versions:?}");
         assert_eq!(versions.last().copied(), Some(CURSOR_CONVERTER_VERSION));
-        // Текущие темы (версия 2) переводить заново не за что.
+        // Current themes (version 2) have no reason to be re-converted.
         let any = wincursor::CursorTraits { animated: true, hotspot_off_center: true, paletted: true };
         assert!(!cursor_retranslate_due(CURSOR_CONVERTER_VERSION, CURSOR_CONVERTER_VERSION, CURSOR_CONVERTER_CHANGES, &any));
     }
@@ -4374,24 +4383,24 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
     #[test]
     fn retranslate_only_where_a_fix_applies() {
         use wincursor::CursorTraits as T;
-        // Подделка: версия 3 исправляет только анимированные.
+        // Fake: version 3 fixes only animated ones.
         let changes = [(2, CursorFixScope::All), (3, CursorFixScope::Animated)];
         let animated = T { animated: true, ..T::default() };
         let still = T { hotspot_off_center: true, paletted: true, ..T::default() };
         assert!(cursor_retranslate_due(2, 3, &changes, &animated));
         assert!(!cursor_retranslate_due(2, 3, &changes, &still));
-        // С версии 1 — через «все курсоры» версии 2.
+        // From version 1 — through "all cursors" of version 2.
         assert!(cursor_retranslate_due(1, 3, &changes, &still));
-        // Уже текущая или новее — нет.
+        // Already current or newer — no.
         assert!(!cursor_retranslate_due(3, 3, &changes, &animated));
         assert!(!cursor_retranslate_due(4, 3, &changes, &animated));
-        // Исправление новее текущей версии не в счёт.
+        // A fix newer than the current version doesn't count.
         assert!(!cursor_retranslate_due(2, 2, &changes, &animated));
-        // Прочие области.
+        // Other scopes.
         assert!(CursorFixScope::HotspotOffCenter.touches(&still));
         assert!(CursorFixScope::Paletted.touches(&still));
         assert!(!CursorFixScope::Animated.touches(&still));
-        // Приметы набора — по байтам оригиналов, мусор не в счёт.
+        // Set traits — from the bytes of the originals, junk doesn't count.
         let set = cursor_set_traits(&[cur32(32, 16, 16, 0), ani3(), b"junk".to_vec()]);
         assert!(set.animated && set.hotspot_off_center && !set.paletted);
     }
@@ -4404,9 +4413,9 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
         set_cursor_manifest_converter(&mut m, 3);
         assert_eq!(cursor_manifest_converter(&m), Some(3));
         assert_eq!(m["windows_cursors"]["roles"], json!({"Arrow": "a.cur"}));
-        // Без поля — переведено до версий.
+        // No field — converted before versions existed.
         assert_eq!(cursor_manifest_converter(&json!({"type": "theme-cursors", "source": "windows"})), Some(1));
-        // Не из Windows — не наше дело.
+        // Not from Windows — none of our business.
         assert_eq!(cursor_manifest_converter(&json!({"type": "theme-cursors"})), None);
         assert_eq!(cursor_manifest_converter(&json!({"type": "theme-icons", "source": "windows"})), None);
     }
@@ -4422,7 +4431,7 @@ mod slug_tests {
         assert_eq!(slug60("The Witcher 3 — Geralt Theme"), "the-witcher-3-geralt-theme");
     }
 
-    /// Набор из Windows, названный как общий `hicolor`, встаёт своей папкой.
+    /// A set from Windows named like the shared `hicolor` gets its own folder.
     #[test]
     fn imported_icon_set_never_takes_shared_name() {
         assert_eq!(icon_set_dir(slug60("HiColor")), "hicolor-imported");
@@ -4445,8 +4454,8 @@ mod slug_tests {
         assert_ne!(a, slug60("風"));
         assert_eq!(slug60("   "), "");
     }
-    /// Обои пакета — по словам самого `.theme`: `Wallpaper=` и строки
-    /// слайд-шоу; пути Windows с переменными и кавычками сводятся к имени файла.
+    /// The package's wallpapers — per `.theme` itself: `Wallpaper=` and slideshow
+    /// lines; Windows paths with variables and quotes are reduced to the file name.
     #[test]
     fn themepack_wallpaper_names_come_from_theme_file() {
         let theme = "[Control Panel\\Desktop]\r\nWallpaper=%SystemRoot%\\Web\\Wallpaper\\Img0.JPG\r\n\

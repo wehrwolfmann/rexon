@@ -1,26 +1,28 @@
-// Стенд страницы «Обои»: тот же голден на ЖИВЫХ QObject'ах.
+// "Wallpapers" page test bench: the same golden file on LIVE QObjects.
 //
-// Чистый слой запроса списка уже сверен с Python в `cargo test`
-// (wallpaper_page_golden). Здесь проверяется ровно то, чего он проверить не
-// может:
+// The pure layer of the list query is already compared with Python in
+// `cargo test` (wallpaper_page_golden). Here exactly what it cannot check
+// is checked:
 //
-//   * все ВОСЕМЬ объектов страницы разом — запрос библиотеки и семь
-//     запросов-действий. У действий чистого слоя нет вовсе: их решения живут
-//     прямо в Qt-объектах, и другого способа их проиграть не существует;
-//   * сигналы действительно долетают из C++, а не «мы решили их послать»;
-//   * дебаунс — НАСТОЯЩИЙ QTimer: две правки свойства подряд склеиваются в
-//     один кадр потому, что так работает Qt, а не потому что так написано в
-//     стенде;
-//   * кадр разбирается ОБРАТНО из байтов, уехавших наружу;
-//   * модель библиотеки — ребёнок запроса, читается по РОЛЯМ через свой
-//     `data()`, то есть ровно так, как её читает делегат QML.
+//   * all EIGHT objects of the page at once — the library query and seven
+//     action queries. The actions have no pure layer at all: their
+//     decisions live right in the Qt objects, and there is no other way to
+//     play them back;
+//   * the signals really arrive from C++, not "we decided to send them";
+//   * the debounce is a REAL QTimer: two property edits in a row are glued
+//     into one frame because that is how Qt works, not because the bench
+//     says so;
+//   * the frame is parsed BACK from the bytes that went out;
+//   * the library model is a child of the query and is read by ROLES
+//     through its own `data()`, that is, exactly the way a QML delegate
+//     reads it.
 //
-// Чего стенд не видит: структурных сигналов модели (`modelReset`,
-// `rowsInserted`). Они приватные (QPrivateSignal), из Rust на них не
-// подписаться, поэтому их порядок сверяет чистый слой.
+// What the bench does not see: the model's structural signals
+// (`modelReset`, `rowsInserted`). They are private (QPrivateSignal), Rust
+// cannot subscribe to them, so their order is checked by the pure layer.
 //
-// Возврат: 0 — всё сошлось, 1 — есть расхождения. Молчаливого успеха по
-// таймауту нет: стенд ничего не ждёт вслепую.
+// Return: 0 — everything matched, 1 — there are divergences. There is no
+// silent success on a timeout: the bench waits for nothing blindly.
 
 use core::pin::Pin;
 use cxx_qt::QMetaObjectConnectionGuard;
@@ -49,14 +51,14 @@ use crate::wallpaper_queries::qobject::{
 
 pub const ARG: &str = "--wallpaper-selftest";
 
-/// Журнал живых сигналов.
+/// Log of live signals.
 type Journal = Arc<Mutex<Vec<Record>>>;
 
 fn push(journal: &Journal, q: &str, sig: Sig) {
     journal.lock().expect("журнал").push(Record::new(q, sig));
 }
 
-/// Живая страница: восемь запросов и модель библиотеки.
+/// The live page: eight queries and the library model.
 struct Page {
     list: *mut WallpaperListQuery,
     get: *mut WallpaperGetQuery,
@@ -70,8 +72,8 @@ struct Page {
     raw: Vec<*mut QObject>,
 }
 
-/// Изменяемая ссылка из неизменяемой: объектами владеет Qt, а не Rust. Та же
-/// схема, что у стендов партий 2-3.
+/// A mutable reference from an immutable one: the objects are owned by Qt,
+/// not Rust. The same scheme as the benches of batches 2-3.
 macro_rules! pin_of {
     ($ptr:expr) => {
         unsafe { Pin::new_unchecked(&mut *$ptr) }
@@ -94,8 +96,8 @@ impl Page {
             assert!(!object.is_null(), "фабрика вернула nullptr");
         }
         let list: *mut WallpaperListQuery = list.cast();
-        // Модель создаёт сам запрос в пост-конструкции и владеет ею как
-        // ребёнком — отдельно её удалять нельзя.
+        // The model is created by the query itself in post-construction and owned
+        // by it as a child — it must not be deleted separately.
         let model = unsafe { (*list).data() }.cast::<WallpaperListModel>();
         assert!(!model.is_null(), "запрос списка не создал модель");
         Page {
@@ -152,8 +154,9 @@ impl Page {
     }
 }
 
-/// Подписка на сигналы базы Query. Макрос, потому что типы разные, а имена
-/// методов одинаковые — ровно та же причина, что у `impl_action_base!`.
+/// Subscribing to the signals of the Query base. A macro, because the types
+/// differ while the method names are the same — exactly the same reason as
+/// for `impl_action_base!`.
 macro_rules! connect_base {
     ($guards:expr, $journal:expr, $ptr:expr, $ty:ty, $name:literal) => {{
         let raw: *mut $ty = $ptr;
@@ -181,8 +184,8 @@ macro_rules! connect_base {
         $guards.push(pin().on_app_error_occurred(move |_, text| {
             push(&sink, $name, Sig::AppError(text.to_string()));
         }));
-        // Кадр разбирается ОБРАТНО из байтов: стенд обязан проверять то, что
-        // реально уехало, а не намерение это отправить.
+        // The frame is parsed BACK from the bytes: the bench must check what
+        // actually went out, not the intention to send it.
         let sink = Arc::clone($journal);
         $guards.push(pin().on_send_request(move |_, token, _field, request| {
             let (field, request) = golden::request_json(request.as_slice());
@@ -199,7 +202,7 @@ macro_rules! connect_base {
     }};
 }
 
-/// Подписка на сигнал-свойство: одна строчка вместо четырёх на каждый.
+/// Subscribing to a property signal: one line instead of four for each.
 macro_rules! connect_prop {
     ($guards:expr, $journal:expr, $pin:expr, $method:ident, $name:literal, $signal:literal) => {{
         let sink = Arc::clone($journal);
@@ -207,14 +210,14 @@ macro_rules! connect_prop {
     }};
 }
 
-/// Счётчики стенда.
+/// Bench counters.
 struct Report {
     failures: Vec<String>,
     cases: usize,
-    /// Имена случаев, на которых нашлось хоть одно расхождение. Приговор по
-    /// СЛУЧАЯМ, а не по числу проваленных проверок: одно расхождение журнала
-    /// тянет за собой десяток проваленных свойств, и «провалов 14» ничего не
-    /// говорит о том, сколько сценариев на самом деле разошлось.
+    /// Names of the cases that had at least one divergence. The verdict is by
+    /// CASES, not by the number of failed checks: one log divergence drags a
+    /// dozen failed properties after it, and "14 failures" says nothing about
+    /// how many scenarios actually diverged.
     diverged: Vec<String>,
     events: usize,
     fixups: Vec<&'static str>,
@@ -227,9 +230,10 @@ impl Report {
         }
     }
 
-    /// Сверка значения: в отчёт уезжает И то, что в эталоне, И то, что выдал
-    /// порт. Одно «не сошлось» без обеих сторон заставляет лезть в голден
-    /// руками — а расхождений тут может быть сразу несколько.
+    /// Comparing a value: both what is in the reference AND what the port
+    /// produced go into the report. A bare "did not match" without both sides
+    /// forces you to dig into the golden file by hand — and there may be
+    /// several divergences here at once.
     fn eq<T: PartialEq + std::fmt::Debug>(&mut self, what: String, actual: T, expected: T) {
         if actual != expected {
             self.failures
@@ -238,11 +242,12 @@ impl Report {
     }
 }
 
-/// Значение QVariant в JSON.
+/// A QVariant value as JSON.
 ///
-/// Через карту-обёртку намеренно: `QJsonDocument::fromVariant` держит на
-/// верхнем уровне только массив или объект, а роли модели — это строки,
-/// числа и признаки. Обёртка отдаёт разбор типов Qt, а не догадкам Rust.
+/// Through a wrapper map on purpose: `QJsonDocument::fromVariant` holds only
+/// an array or an object at the top level, while model roles are strings,
+/// numbers and flags. The wrapper leaves type parsing to Qt rather than to
+/// Rust guesswork.
 fn variant_json(value: &QVariant) -> Value {
     let mut map = QMap::<QMapPair_QString_QVariant>::default();
     map.insert(QString::from("v"), value.clone());
@@ -260,11 +265,13 @@ fn qstringlist(values: &[String]) -> QStringList {
     QStringList::from_iter(values.iter().map(QString::from))
 }
 
-/// Строки живой модели по РОЛЯМ в том же JSON-виде, что печатает голден.
+/// Rows of the live model by ROLES in the same JSON form the golden file
+/// prints.
 ///
-/// Роль `selected` в эталоне отсутствует: у питоновской модели её не было
-/// вовсе (шапка `wallpaper_list_model.rs`, пункт 1). Она проверяется
-/// отдельно — что объявлена и что по ней читается `false`.
+/// The `selected` role is absent from the reference: the Python model did
+/// not have it at all (the header of `wallpaper_list_model.rs`, item 1). It
+/// is checked separately — that it is declared and that `false` is read by
+/// it.
 fn rows_json(model: &WallpaperListModel, name: &str, report: &mut Report) -> Value {
     let mut rows = Vec::new();
     for row in 0..model.count() {
@@ -292,7 +299,7 @@ fn rows_json(model: &WallpaperListModel, name: &str, report: &mut Report) -> Val
     Value::Array(rows)
 }
 
-/// Прогон одного случая голдена на живых объектах.
+/// Running one golden case on live objects.
 fn run_case(case: &Value, report: &mut Report) {
     crate::discover_queries::reset_tokens();
     crate::discover_queries::set_connected(true);
@@ -324,7 +331,7 @@ fn run_case(case: &Value, report: &mut Report) {
         "portal"
     );
 
-    // ── собственные сигналы запросов ────────────────────────────────────
+    // ── the queries' own signals ────────────────────────────────────────
     connect_prop!(&mut guards, &journal, page.list(), on_wp_type_changed, "list", "wpTypeChanged");
     connect_prop!(&mut guards, &journal, page.list(), on_search_text_changed, "list", "searchTextChanged");
     connect_prop!(&mut guards, &journal, page.list(), on_sorts_changed, "list", "sortsChanged");
@@ -359,7 +366,7 @@ fn run_case(case: &Value, report: &mut Report) {
     connect_prop!(&mut guards, &journal, page.portal(), on_wallpaper_id_changed, "portal", "wallpaperIdChanged");
     connect_prop!(&mut guards, &journal, page.portal(), on_uri_changed, "portal", "uriChanged");
 
-    // Отчёт удаления — на нём висит тост страницы.
+    // The removal report — the page's toast hangs on it.
     let sink = Arc::clone(&journal);
     guards.push(page.remove().on_removed(move |_, id| {
         push(&sink, "remove", Sig::Removed(id.to_string()));
@@ -376,8 +383,9 @@ fn run_case(case: &Value, report: &mut Report) {
         );
     }));
 
-    // Модель библиотеки: структурных сигналов из Rust не видно, зато виден
-    // countChanged и сигналы выбора (последних в эталоне быть не может).
+    // Library model: structural signals are not visible from Rust, but
+    // countChanged and the selection signals are (the latter cannot be in the
+    // reference).
     let model_pin = || pin_of!(page.model);
     let sink = Arc::clone(&journal);
     guards.push(model_pin().on_count_changed(move |_| push(&sink, "list.model", Sig::ModelCount)));
@@ -390,7 +398,7 @@ fn run_case(case: &Value, report: &mut Report) {
         push(&sink, "list.model", Sig::ModelSelectedCount)
     }));
 
-    // ── шаги сценария ───────────────────────────────────────────────────
+    // ── scenario steps ──────────────────────────────────────────────────
     for step in case
         .get("steps")
         .and_then(Value::as_array)
@@ -487,14 +495,14 @@ fn run_case(case: &Value, report: &mut Report) {
                     }
                 }
             }
-            // Дебаунс — НАСТОЯЩИЙ таймер: крутим цикл событий дольше его
-            // интервала. Не склеивались бы правки — пришло бы несколько
-            // кадров, и сверка журнала это поймала бы.
+            // The debounce is a REAL timer: we spin the event loop longer than its
+            // interval. If the edits were not glued, several frames would arrive, and
+            // the log comparison would catch that.
             "settle" => rexon_process_events(i64_at(step, "ms").max(300) as i32),
             "respond" | "respondError" => {
                 let token = i64_at(step, "token");
                 let frame = QByteArray::from(&golden::build_frame(step)[..]);
-                // Кому отдать ответ — известно из уже записанного кадра.
+                // Whom to give the answer to is known from the frame already recorded.
                 let owner = journal
                     .lock()
                     .expect("журнал")
@@ -519,15 +527,16 @@ fn run_case(case: &Value, report: &mut Report) {
             other => report.check(false, || format!("{name}: неизвестное действие {other}")),
         }
     }
-    // Незакрытый дебаунс обязан сработать и в конце случая.
+    // An unclosed debounce must fire at the end of the case too.
     rexon_process_events(300);
 
-    // ── сверка журнала ──────────────────────────────────────────────────
+    // ── log comparison ──────────────────────────────────────────────────
     let actual = journal.lock().expect("журнал").clone();
     report.events += actual.len();
     let (expected, fixups) = golden::port_records(case);
     report.fixups.extend(fixups);
-    // Структурные сигналы модели стенду не видны — их проверяет чистый слой.
+    // The model's structural signals are not visible to the bench — the pure
+    // layer checks them.
     let expected: Vec<Record> = expected
         .into_iter()
         .filter(|r| r.sig != Sig::ModelReset)
@@ -536,7 +545,7 @@ fn run_case(case: &Value, report: &mut Report) {
         format!("{name}: журнал разошёлся\n{}", diff(&actual, &expected))
     });
 
-    // ── сверка свойств у ЖИВЫХ объектов ─────────────────────────────────
+    // ── comparing properties on LIVE objects ────────────────────────────
     let want = golden::port_final(case, "list", &mut report.fixups);
     let list = page.list();
     report.eq(
@@ -589,7 +598,7 @@ fn run_case(case: &Value, report: &mut Report) {
         list.total(),
         i64_at(&want, "total") as i32,
     );
-    // Правила уезжают в QML списком карт — проверяем ровно то, что он видит.
+    // The rules go to QML as a list of maps — we check exactly what it sees.
     for (prop, actual) in [
         ("sorts", variant_json(&list.sorts())),
         ("filters", variant_json(&list.filters())),
@@ -767,9 +776,9 @@ fn run_case(case: &Value, report: &mut Report) {
     page.destroy();
 }
 
-/// Развёрнутое расхождение журналов: первая разошедшаяся запись и хвосты.
-/// Простыня из двух списков по полсотни записей нечитаема, а разбирать
-/// расхождение всё равно приходится с первой точки расхождения.
+/// An expanded log divergence: the first diverging entry and the tails. A
+/// sheet of two lists of fifty entries each is unreadable, and the
+/// divergence has to be analysed from the first point of divergence anyway.
 fn diff(actual: &[Record], expected: &[Record]) -> String {
     let at = (0..actual.len().max(expected.len()))
         .find(|i| actual.get(*i) != expected.get(*i))
@@ -792,10 +801,11 @@ fn diff(actual: &[Record], expected: &[Record]) -> String {
     )
 }
 
-/// Проверки waywallen 0.4.4, которых в голдене нет: он снят с Python-моста
-/// до 0.4.4. Скрытие обоев, фильтр «скрытые» у списка, отражение `flip` в
-/// раскладке. Сверяется то, что реально уехало байтами, и то, что вернулось
-/// в QML сигналами, — на тех же живых объектах, что и голден.
+/// waywallen 0.4.4 checks that the golden file does not have: it was taken
+/// from the Python bridge before 0.4.4. Hiding wallpapers, the "hidden"
+/// filter of the list, the `flip` in the layout. What actually went out as
+/// bytes and what came back to QML as signals is compared — on the same
+/// live objects as the golden file.
 fn run_v044(report: &mut Report) {
     use prost::Message;
     use rexon_core::proto::control as pb;
@@ -863,8 +873,8 @@ fn run_v044(report: &mut Report) {
         format!("{:?}", sent.iter().map(|(_, p)| p).collect::<Vec<_>>()),
         format!("{:?}", want.iter().collect::<Vec<_>>()),
     );
-    // Ответы в обратном порядке: отчёт обязан нести то, что просили в
-    // ЭТОМ запросе, а не текущие свойства.
+    // Answers in reverse order: the report must carry what was asked for in
+    // THIS request, not the current properties.
     for (token, count) in sent.iter().map(|(t, _)| *t).rev().zip([2u32, 1]) {
         hide().deliver_response(
             token,
@@ -885,7 +895,7 @@ fn run_v044(report: &mut Report) {
     drop(guards);
     unsafe { rexon_delete_object(raw_hide) };
 
-    // ── отражение в раскладке ───────────────────────────────────────────
+    // ── flip in the layout ──────────────────────────────────────────────
     let raw_layout = unsafe { rexon_new_wallpaper_layout_set_query(core::ptr::null_mut()) };
     let layout_ptr: *mut WallpaperLayoutSetQuery = raw_layout.cast();
     let layout = || pin_of!(layout_ptr);
@@ -920,7 +930,7 @@ fn run_v044(report: &mut Report) {
     drop(guards);
     unsafe { rexon_delete_object(raw_layout) };
 
-    // ── фильтр «скрытые» у списка и delayReload ─────────────────────────
+    // ── the "hidden" filter of the list and delayReload ─────────────────
     let raw_list = unsafe { rexon_new_wallpaper_list_query(core::ptr::null_mut()) };
     let list_ptr: *mut WallpaperListQuery = raw_list.cast();
     let list = || pin_of!(list_ptr);
@@ -961,9 +971,10 @@ fn run_v044(report: &mut Report) {
     }
 }
 
-/// waywallen 0.5.0: страницы и поколения `WallpaperListQuery` на живых
-/// объектах — так, как их гоняют `PlaylistEditPage` (`limit: 50`) и сетка
-/// «Скрытых обоев» (догрузку просит сама модель через `fetchMore`).
+/// waywallen 0.5.0: pages and generations of `WallpaperListQuery` on live
+/// objects — the way `PlaylistEditPage` (`limit: 50`) and the "Hidden
+/// wallpapers" grid drive them (loading more is requested by the model
+/// itself through `fetchMore`).
 fn run_v050(report: &mut Report) {
     use prost::Message;
     use rexon_core::proto::control as pb;
@@ -1029,9 +1040,10 @@ fn run_v050(report: &mut Report) {
     report.eq("v0.5.0: первая страница в модели".into(), model().count(), 50);
     report.eq("v0.5.0: noMore после первой страницы".into(), list().no_more(), false);
 
-    // Как сетка: модель сама просит догрузку, запрос шлёт страницу 1.
+    // Like the grid: the model itself asks for more, the query sends page 1.
     model().fetch_more(&cxx_qt_lib::QModelIndex::default());
-    // Пока страница в полёте, повторная просьба — ни модели, ни запросу.
+    // While a page is in flight, a repeated request reaches neither the model
+    // nor the query.
     model().fetch_more(&cxx_qt_lib::QModelIndex::default());
     list().fetch_more(50);
     report.eq(
@@ -1049,8 +1061,8 @@ fn run_v050(report: &mut Report) {
     list().fetch_more(50);
     report.eq("v0.5.0: после noMore догрузки нет".into(), pages().len(), 3);
 
-    // Поколение: смена выборки отменяет ответ в полёте, отложенная
-    // перезагрузка уходит с новой выборкой и первой страницей.
+    // Generation: changing the selection cancels the answer in flight, and the
+    // deferred reload goes out with the new selection and the first page.
     list().reload();
     let stale = last_token();
     list().set_search_text(QString::from("море"));
@@ -1071,10 +1083,11 @@ fn run_v050(report: &mut Report) {
     }
 }
 
-/// waywallen 0.5.0: умные плейлисты и поколения запросов плейлистов на
-/// живых объектах — так, как их гоняет `PlaylistEditPage` 0.5.0: создание
-/// умного плейлиста с `playlistId: 0`, `saveSmart` с выборкой превью,
-/// `playlist.smartSelection` обратно в `restoreSelection`.
+/// waywallen 0.5.0: smart playlists and generations of playlist queries on
+/// live objects — the way the 0.5.0 `PlaylistEditPage` drives them:
+/// creating a smart playlist with `playlistId: 0`, `saveSmart` with the
+/// preview selection, `playlist.smartSelection` back into
+/// `restoreSelection`.
 fn run_v050_playlists(report: &mut Report) {
     use crate::playlist_queries::qobject::{
         rexon_new_playlist_detail_query, rexon_new_playlist_list_query,
@@ -1102,8 +1115,8 @@ fn run_v050_playlists(report: &mut Report) {
         .encode_to_vec();
         QByteArray::from(&frame[..])
     };
-    // Выборка с незаполненным правилом и сортировкой без ключа: до демона
-    // она доезжает как есть (отвергает её он, как у оригинала).
+    // A selection with an unfilled rule and a sort without a key: it reaches
+    // the daemon as is (the daemon rejects it, as in the original).
     let raw = pb::WallpaperSelection {
         filters: vec![
             pb::WallpaperFilterRule {
@@ -1146,7 +1159,7 @@ fn run_v050_playlists(report: &mut Report) {
         entry_ids: vec!["wp-1".into()],
         ..Default::default()
     };
-    // `smartSelection` карты: байты, если ключ есть.
+    // The map's `smartSelection`: bytes, if the key is present.
     let smart_of = |map: &QVariant| {
         map.value::<QMap<QMapPair_QString_QVariant>>()
             .and_then(|m| m.get(&QString::from("smartSelection")))
@@ -1173,7 +1186,7 @@ fn run_v050_playlists(report: &mut Report) {
     let count = || sent.lock().expect("кадры").len();
     let last = || sent.lock().expect("кадры").last().cloned();
 
-    // ── Список: поколения и выборка в карте ───────────────────────────────
+    // ── List: generations and the selection in the map ───────────────────
     let raw_list = unsafe { rexon_new_playlist_list_query(core::ptr::null_mut()) };
     let list_ptr: *mut PlaylistListQuery = raw_list.cast();
     let list = || pin_of!(list_ptr);
@@ -1207,7 +1220,7 @@ fn run_v050_playlists(report: &mut Report) {
         Some("Закаты".to_string()),
     );
 
-    // ── Подробности: молчание без номера, поколения ───────────────────────
+    // ── Details: silence without a number, generations ────────────────────
     let raw_detail = unsafe { rexon_new_playlist_detail_query(core::ptr::null_mut()) };
     let detail_ptr: *mut PlaylistDetailQuery = raw_detail.cast();
     let detail = || pin_of!(detail_ptr);
@@ -1233,7 +1246,8 @@ fn run_v050_playlists(report: &mut Report) {
     detail().set_playlist_id(7.0);
     rexon_process_events(300);
     let about_7 = last().map(|(t, _)| t).unwrap_or(-1);
-    // Плейлист сменился, пока ответ про прежний летит: тот ответ не наш.
+    // The playlist changed while the answer about the previous one is in
+    // flight: that answer is not ours.
     detail().set_playlist_id(6.0);
     detail().deliver_response(about_7, &getting(curated.clone()));
     report.eq(
@@ -1252,7 +1266,8 @@ fn run_v050_playlists(report: &mut Report) {
         Some(6),
     );
     let about_6 = sent_get.map(|(t, _)| t).unwrap_or(-1);
-    // Повторный reload — новое поколение: ответ на первый не наш.
+    // A repeated reload is a new generation: the answer to the first is not
+    // ours.
     detail().reload();
     let again = last().map(|(t, _)| t).unwrap_or(-1);
     detail().deliver_response(about_6, &getting(curated.clone()));
@@ -1267,7 +1282,7 @@ fn run_v050_playlists(report: &mut Report) {
         (smart_of(&detail().playlist()), detail().status()),
         (Some(Some(we_wallpaper::encode_selection(&raw))), 2),
     );
-    // Назад к нулю (страница создания): молча, статус прежний.
+    // Back to zero (the creation page): silently, the status stays as it was.
     let before = count();
     detail().set_playlist_id(0.0);
     rexon_process_events(300);
@@ -1352,19 +1367,20 @@ fn run_v050_playlists(report: &mut Report) {
     }
 }
 
-/// waywallen 0.5.0: правило редактора фильтров на НАСТОЯЩИХ гаджетах
-/// Qt-Protobuf доезжает до ядра целым — для каждого вида правила.
+/// waywallen 0.5.0: a filter editor rule on REAL Qt Protobuf gadgets
+/// reaches the core intact — for every kind of rule.
 ///
-/// Случай 24.10.2026: «Название / содержит / zzqxw» в умном плейлисте —
-/// предпросмотр показывал все обои, в базу демона легло `filters: []`.
-/// Шим гаджетов при развороте правила в JSON читал служебные свойства
-/// `intFilter_p`/`tagFilter_p`, а их геттер ПИШЕТ: ставит в oneof пустую
-/// ветку и стирает настоящую. Нагрузка любого правила уезжала пустой
-/// (`condition: 0`, `value: ""`), и ядро молча выбрасывало его как
-/// негодное. Чистый слой этого не видит: у него гаджетов нет. Здесь
-/// правило строится ТЕМИ ЖЕ вызовами шима, что модель редактора, в том же
-/// порядке, что QML: `applyType` (пустой субфильтр, затем тип числом JS),
-/// потом `commitToFilter` (заполненный субфильтр).
+/// The case of 24.10.2026: "Title / contains / zzqxw" in a smart playlist —
+/// the preview showed all wallpapers, while `filters: []` went into the
+/// daemon's database. The gadget shim, when unwrapping a rule into JSON,
+/// read the internal properties `intFilter_p`/`tagFilter_p`, and their
+/// getter WRITES: it puts an empty branch into the oneof and erases the
+/// real one. The payload of any rule went out empty (`condition: 0`,
+/// `value: ""`), and the core silently threw it away as invalid. The pure
+/// layer does not see this: it has no gadgets. Here the rule is built with
+/// THE SAME shim calls as the editor model, in the same order as QML:
+/// `applyType` (an empty subfilter, then the type as a JS number), then
+/// `commitToFilter` (a filled subfilter).
 fn run_v050_filter_gadgets(report: &mut Report) {
     use crate::wallpaper_queries::qobject::{
         rexon_coerce_gadget, rexon_default_gadget, rexon_gadget_set_by_role,
@@ -1382,7 +1398,8 @@ fn run_v050_filter_gadgets(report: &mut Report) {
     match crate::we_env::load_control_types() {
         Ok(so) => println!("REXON-WALLPAPER-SELFTEST типы гаджетов: {so}"),
         Err(why) => {
-            // Без настоящих типов проверять нечего — это провал, а не пропуск.
+            // Without real types there is nothing to check — this is a failure, not a
+            // skip.
             report.check(false, || format!("v0.5.0 гаджеты фильтров: {why}"));
             report.diverged.push("v0.5.0: правила фильтров на гаджетах".into());
             return;
@@ -1431,7 +1448,7 @@ fn run_v050_filter_gadgets(report: &mut Report) {
             group: 3,
             payload: Some(payload.clone()),
         };
-        // Ветка и субфильтр в виде карты — ровно то, что лежит в гаджете.
+        // The branch and the subfilter as a map — exactly what lies in the gadget.
         let map = ws::filter_rule_to_map(&expected);
         let (field, sub_map) = map
             .iter()
@@ -1456,10 +1473,11 @@ fn run_v050_filter_gadgets(report: &mut Report) {
             got,
             Some(expected.clone()),
         );
-        // Разворот не имеет права менять сам гаджет: второй раз — то же.
+        // Unwrapping must not change the gadget itself: the second time gives the
+        // same.
         report.eq(format!("v0.5.0 гаджет правила {label}: второй разворот"), second, first);
 
-        // Обратный путь (`replaceState` из сохранённой выборки) — тоже целым.
+        // The way back (`replaceState` from a saved selection) is intact too.
         let back = rexon_coerce_gadget(&rule_type, &json_to_variant(&Value::Object(map.clone())));
         report.eq(
             format!("v0.5.0 гаджет правила {label}: обратный путь"),
@@ -1467,7 +1485,7 @@ fn run_v050_filter_gadgets(report: &mut Report) {
             Some(expected),
         );
     }
-    // Без шума: значения карт — числами, служебных `*_p` наружу нет.
+    // No noise: map values are numbers, and no internal `*_p` goes out.
     let rule = rexon_coerce_gadget(
         &rule_type,
         &json_to_variant(&json!({"type": 1, "group": 1, "stringFilter": {"value": "a", "condition": 3}})),
@@ -1483,14 +1501,16 @@ fn run_v050_filter_gadgets(report: &mut Report) {
     }
 }
 
-/// Точка входа стенда. Код возврата — приговор.
+/// Bench entry point. The exit code is the verdict.
 pub fn run() -> i32 {
-    // Стенду хватает ядра приложения: ни окон, ни QML здесь нет.
+    // The bench needs only the application core: there are no windows or QML
+    // here.
     let mut app = cxx_qt_lib::QCoreApplication::new();
     if let Some(app) = app.as_mut() {
         app.set_application_name(&QString::from("Rexon (стенд страницы «Обои»)"));
     }
-    // Эталон — на исходном языке (см. `wallpaper_page_golden::tests`).
+    // The reference is in the source language (see
+    // `wallpaper_page_golden::tests`).
     rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
 
     let doc = golden::load();
@@ -1502,16 +1522,17 @@ pub fn run() -> i32 {
         events: 0,
         fixups: Vec::new(),
     };
-    // Ключи записи и их порядок — от них считаются номера ролей модели.
+    // Record keys and their order — the model's role numbers are counted from
+    // them.
     let keys = golden::entry_keys(&doc);
     report.check(ENTRY_KEYS.to_vec() == keys, || {
         format!("порядок ключей записи разошёлся с эталоном: {ENTRY_KEYS:?} против {keys:?}")
     });
 
-    // ⭐ Пустая выборка = провал, а не успех: голден без случаев прогнал бы
-    // перебор НИ РАЗУ и объявил стенд зелёным, не проверив ничего. Тот же
-    // класс, на котором попался QML-стенд: сценарий Мастерской шёл на пустой
-    // модели и сверял ноль с нулём.
+    // ⭐ An empty sample = a failure, not a success: a golden file without
+    // cases would run the loop NOT ONCE and declare the bench green without
+    // checking anything. The same class the QML bench was caught on: the
+    // Workshop scenario ran on an empty model and compared zero with zero.
     report.check(!cases.is_empty(), || {
         "в эталоне нет ни одного случая — стенду нечего проверять".to_string()
     });
@@ -1523,8 +1544,8 @@ pub fn run() -> i32 {
     run_v050_playlists(&mut report);
     run_v050_filter_gadgets(&mut report);
 
-    // Правки эталона обязаны быть живыми: если расхождение починили, а
-    // поблажку снять забыли, стенд обязан это заметить.
+    // Reference adjustments must be live: if a divergence was fixed but the
+    // allowance was not removed, the bench must notice.
     let want_fixups = golden::FIXUPS.len() + golden::FINAL_FIXUPS.len();
     let applied = report.fixups.clone();
     report.check(applied.len() == want_fixups, || {

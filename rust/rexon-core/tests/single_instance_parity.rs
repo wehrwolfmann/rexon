@@ -1,25 +1,25 @@
-//! Один Rexon на сессию: замок, слушатель «подними окно» и стук в него.
+//! One Rexon per session: the lock, the "raise the window" listener and knocking on it.
 //!
-//! Сверять построчно не с чем: в оригинальном `rexon/app.py` замка никогда
-//! не было — механизм родился из двух ЖИВЫХ дефектов (пять значков в лотке
-//! 02.09.2026 и «программа работает, двери в неё нет» 06.09.2026), и оба
-//! разобраны в шапке `rexon_core::single_instance`. Поэтому здесь проверяется
-//! не совпадение с Python, а САМО ПОВЕДЕНИЕ, ради которого механизм есть:
-//! замок держит межпроцессно, слушатель отвечает по факту, стук приносит
-//! честный ответ, а бинд не ворует чужой живой сокет.
+//! There is nothing to compare line by line: the original `rexon/app.py` never had
+//! a lock — the mechanism was born from two LIVE defects (five tray icons
+//! 02.09.2026 and "the program runs, but there is no door into it" 06.09.2026), and both
+//! are analyzed in the header of `rexon_core::single_instance`. So what is checked here
+//! is not a match with Python but THE BEHAVIOR ITSELF the mechanism exists for:
+//! the lock holds across processes, the listener answers by fact, the knock brings
+//! an honest answer, and bind does not steal someone else's live socket.
 //!
-//! ⚠️⚠️ ГДЕ ЭТИ СВЕРКИ РАБОТАЮТ. Только в СВОЁМ подставном каталоге
-//! (`/tmp/rxsi-<PID>-<n>`, см. `sandbox`), никогда в `$XDG_RUNTIME_DIR`
-//! живого сеанса. Причина записана
-//! в проекте кровью: тестовый демон уже забирал и сносил ОБЩИЕ сокеты в
-//! `/run/user/$UID` — приватной шины мало, потому что адрес общий на весь
-//! сеанс. Настоящие `rexon.lock` и `rexon-activate.sock` владельца эти
-//! сверки не открывают ни на чтение, ни на запись.
+//! ⚠️⚠️ WHERE THESE CHECKS RUN. Only in THEIR OWN stand-in directory
+//! (`/tmp/rxsi-<PID>-<n>`, see `sandbox`), never in the live session's
+//! `$XDG_RUNTIME_DIR`. The reason is written
+//! into the project in blood: a test daemon already took and deleted SHARED sockets in
+//! `/run/user/$UID` — a private bus is not enough, because the address is shared by the whole
+//! session. The owner's real `rexon.lock` and `rexon-activate.sock` are not opened by these
+//! checks, neither for reading nor for writing.
 //!
-//! ⚠️ СТОРОЖ. Каждая сверка с живым сокетом обёрнута в сторожа: любое
-//! ожидание здесь конечно, и зависший `accept`/`connect` обязан УБИТЬ
-//! прогон с внятной строкой, а не висеть до общего таймаута. Сторож
-//! проверен на укус (см. `watchdog_bites`).
+//! ⚠️ WATCHDOG. Every check with a live socket is wrapped in a watchdog: every
+//! wait here is finite, and a hung `accept`/`connect` must KILL the
+//! run with a clear line rather than hang until the global timeout. The watchdog
+//! is tested for its bite (see `watchdog_bites`).
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -33,11 +33,11 @@ mod i18n_pin;
 use rexon_core::single_instance as si;
 
 // ============================================================================
-// Свой каталог и сторож
+// Own directory and watchdog
 // ============================================================================
 
-/// Подставной runtime-каталог: живой `$XDG_RUNTIME_DIR` эти сверки не трогают
-/// вовсе. Уходит вместе с сверкой (`Drop`, в том числе при панике).
+/// A stand-in runtime directory: these checks do not touch the live `$XDG_RUNTIME_DIR`
+/// at all. It goes away with the check (`Drop`, including on panic).
 struct Sandbox(PathBuf);
 
 impl std::ops::Deref for Sandbox {
@@ -53,29 +53,29 @@ impl Drop for Sandbox {
     }
 }
 
-/// Самый длинный адрес, который примет `bind`: `sockaddr_un.sun_path` — 108
-/// байт вместе с завершающим нулём.
+/// The longest address `bind` accepts: `sockaddr_un.sun_path` — 108
+/// bytes including the terminating zero.
 const SUN_PATH_MAX: usize = si::SUN_PATH_MAX;
 
-/// ⚠️⚠️ ПОЧЕМУ НЕ `CARGO_TARGET_TMPDIR`. Раньше каталог лежал под `target/`,
-/// и адрес сокета собирался из четырёх переменных частей: корень дерева,
-/// имя сверки, PID и номер вызова. В основном дереве корень
-/// `…/Загрузки/Rexon/rexon_v5/rust/target/tmp` — 63 байта (кириллица по 2),
-/// и `si-clear-dead-<PID>-<n>/rexon-activate.sock` переходил за 107 байт,
-/// как только PID становился семизначным (`pid_max` = 4 194 304, к вечеру
-/// PID перевалил за миллион), а номер вызова — двузначным (сверки идут
-/// потоками, номер зависит от порядка). Замер 15.09: 9 красных из 10,
-/// путь ровно 108 байт, `InvalidInput: path must be shorter than SUN_LEN`.
-/// Утром при шестизначном PID та же сверка была зелёной, а в копии дерева
-/// с более длинным корнем краснела `rust_holder_hands_over_the_lock` —
-/// сверка краснела на длине пути, а не на поведении.
+/// ⚠️⚠️ WHY NOT `CARGO_TARGET_TMPDIR`. The directory used to live under `target/`,
+/// and the socket address was built from four variable parts: the tree root,
+/// the check name, the PID and the call number. In the main tree the root
+/// `…/Загрузки/Rexon/rexon_v5/rust/target/tmp` is 63 bytes (Cyrillic takes 2 each),
+/// and `si-clear-dead-<PID>-<n>/rexon-activate.sock` went over 107 bytes
+/// as soon as the PID became seven digits (`pid_max` = 4 194 304, by evening
+/// the PID passed a million) and the call number two digits (checks run in
+/// threads, the number depends on the order). Measurement 15.09: 9 red out of 10,
+/// the path exactly 108 bytes, `InvalidInput: path must be shorter than SUN_LEN`.
+/// In the morning with a six-digit PID the same check was green, and in a tree copy
+/// with a longer root `rust_holder_hands_over_the_lock` went red —
+/// the check failed on the path length, not on the behavior.
 ///
-/// Поэтому корень — системный временный каталог (`/tmp`), имя без имени
-/// сверки, и длина проверяется здесь же, до первого сокета.
+/// So the root is the system temporary directory (`/tmp`), the name without the check
+/// name, and the length is checked right here, before the first socket.
 ///
-/// ⚠️ Длина меряется ОСНОВНЫМ адресом (`preferred_socket_path`): с 15.09
-/// `socket_path` при длинном каталоге сам уходит в запасной `/tmp/rexon-<uid>`,
-/// а сверкам ниже сокет нужен именно в подставном каталоге.
+/// ⚠️ The length is measured by the PRIMARY address (`preferred_socket_path`): since 15.09
+/// `socket_path` with a long directory falls back by itself to `/tmp/rexon-<uid>`,
+/// and the checks below need the socket precisely in the stand-in directory.
 fn sandbox(_name: &str) -> Sandbox {
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -85,7 +85,7 @@ fn sandbox(_name: &str) -> Sandbox {
         si::preferred_socket_path(root.join(&leaf).to_str().unwrap_or_default()).len()
             <= SUN_PATH_MAX
     };
-    // Нестандартный длинный `TMPDIR` — не повод краснеть: `/tmp` есть всегда.
+    // A non-standard long `TMPDIR` is no reason to go red: `/tmp` always exists.
     if !fits(&root) {
         root = PathBuf::from("/tmp");
     }
@@ -102,11 +102,11 @@ fn sandbox(_name: &str) -> Sandbox {
     Sandbox(dir)
 }
 
-/// Выполнить `body` под сторожем: не уложился в `limit` — прогон падает с
-/// названной причиной, а не висит.
+/// Run `body` under a watchdog: if it does not fit in `limit`, the run fails with
+/// a named reason instead of hanging.
 ///
-/// ⚠️ Сторож обязан именно УБИВАТЬ процесс. Мягкий `panic!` из чужого
-/// потока libtest не заметит: он ждёт поток сверки, а тот стоит в `accept`.
+/// ⚠️ The watchdog must really KILL the process. A soft `panic!` from another
+/// thread would go unnoticed by libtest: it waits for the check's thread, which sits in `accept`.
 fn under_watchdog<T, F>(what: &str, limit: Duration, body: F) -> T
 where
     T: Send + 'static,
@@ -126,7 +126,7 @@ where
 }
 
 // ============================================================================
-// Адреса
+// Addresses
 // ============================================================================
 
 #[test]
@@ -137,8 +137,8 @@ fn addresses_live_next_to_each_other() {
         si::socket_path("/run/user/1000"),
         "/run/user/1000/rexon-activate.sock"
     );
-    // Замок и сокет — в ОДНОМ каталоге: сокет обязан умирать вместе с
-    // сеансом, как и замок.
+    // The lock and the socket are in ONE directory: the socket must die together with
+    // the session, like the lock.
     for dir in ["/run/user/1000", "/tmp"] {
         let lock = si::lock_path(dir);
         let sock = si::socket_path(dir);
@@ -149,7 +149,7 @@ fn addresses_live_next_to_each_other() {
     }
 }
 
-/// Каталог ровно такой длины, чтобы основной адрес вышел `total` байт.
+/// A directory of exactly the length that makes the primary address `total` bytes.
 fn dir_for_address_len(total: usize) -> String {
     let tail = "/rexon-activate.sock".len();
     let mut dir = String::from("/run/user/1000/");
@@ -163,12 +163,12 @@ fn dir_for_address_len(total: usize) -> String {
 #[test]
 fn address_moves_to_a_short_fallback_only_past_the_limit() {
     let uid = 1000;
-    // 107 байт — ещё помещается: адрес рядом с замком, как всегда.
+    // 107 bytes still fit: the address next to the lock, as always.
     let d107 = dir_for_address_len(107);
     assert_eq!(si::socket_path_for(&d107, uid), si::preferred_socket_path(&d107));
     assert_eq!(si::socket_address_note(&d107), None);
 
-    // 108 и 200 — уже нет: запасной адрес в личном каталоге пользователя.
+    // 108 and 200 no longer do: the fallback address in the user's private directory.
     for total in [108, 200] {
         let dir = dir_for_address_len(total);
         let sock = si::socket_path_for(&dir, uid);
@@ -177,7 +177,7 @@ fn address_moves_to_a_short_fallback_only_past_the_limit() {
             "{total} байт: {sock}"
         );
         assert!(sock.len() <= SUN_PATH_MAX, "запасной адрес сам обязан помещаться: {sock}");
-        // Одна функция — один ответ: слушатель и стук приходят к одному адресу.
+        // One function, one answer: the listener and the knock arrive at one address.
         assert_eq!(sock, si::socket_path_for(&dir, uid));
         assert_eq!(sock, si::fallback_socket_path(&dir, uid));
         let note = si::socket_address_note(&dir).expect("запасной адрес обязан попасть в журнал");
@@ -187,14 +187,14 @@ fn address_moves_to_a_short_fallback_only_past_the_limit() {
         );
     }
 
-    // Разные сеансы одного пользователя — разные адреса; хвостовая черта — тот же.
+    // Different sessions of one user get different addresses; a trailing slash gives the same one.
     let a = dir_for_address_len(150);
     let b = format!("{}x", &a[..a.len() - 1]);
     assert_ne!(si::socket_path_for(&a, uid), si::socket_path_for(&b, uid));
     assert_eq!(si::socket_path_for(&a, uid), si::fallback_socket_path(&format!("{a}/"), uid));
-    // Разные пользователи — разные каталоги.
+    // Different users get different directories.
     assert_ne!(si::socket_path_for(&a, 1000), si::socket_path_for(&a, 1001));
-    // Хеш закреплён: стук и слушатель бывают разными бинарями.
+    // The hash is pinned: the knock and the listener may be different binaries.
     assert_eq!(
         si::fallback_socket_path("/x", 7),
         format!("/tmp/rexon-7/activate-{:016x}.sock", 0x07d6_4e07_b49c_aeb2_u64)
@@ -203,15 +203,15 @@ fn address_moves_to_a_short_fallback_only_past_the_limit() {
 
 #[test]
 fn runtime_dir_falls_back_to_tmp() {
-    // Порт `os.environ.get("XDG_RUNTIME_DIR") or "/tmp"`: пустая строка
-    // ложна в Python, и здесь обязана вести себя так же.
+    // Port of `os.environ.get("XDG_RUNTIME_DIR") or "/tmp"`: an empty string
+    // is falsy in Python and must behave the same way here.
     assert_eq!(si::runtime_dir(Some("/run/user/1000")), "/run/user/1000");
     assert_eq!(si::runtime_dir(Some("")), "/tmp");
     assert_eq!(si::runtime_dir(None), "/tmp");
 }
 
 // ============================================================================
-// Протокол
+// Protocol
 // ============================================================================
 
 #[test]
@@ -225,7 +225,7 @@ fn wire_words_survive_trailing_newline() {
     assert_eq!(si::reply_for(true), si::REPLY_RAISED);
     assert_eq!(si::reply_for(false), si::REPLY_FAILED);
 
-    // Соврать «поднял» нельзя: всё, кроме «ok», — отказ.
+    // Lying "raised" is not allowed: everything except "ok" is a refusal.
     assert!(si::knock_accepted(b"ok\n"));
     assert!(si::knock_accepted(b"ok"));
     assert!(!si::knock_accepted(b"no\n"));
@@ -234,12 +234,12 @@ fn wire_words_survive_trailing_newline() {
 }
 
 // ============================================================================
-// Замок
+// Lock
 // ============================================================================
 
-/// Замок на процесс один (`LOCK_FD`), а сверки libtest идут потоками ОДНОГО
-/// процесса: удачный захват в одной сверке сменил бы замок другой. Сверки,
-/// берущие замок, идут по очереди.
+/// There is one lock per process (`LOCK_FD`), and libtest checks run as threads of ONE
+/// process: a successful grab in one check would change another's lock. Checks
+/// that take the lock run one at a time.
 static LOCK_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[test]
@@ -250,8 +250,8 @@ fn process_knows_it_holds_the_lock() {
 
     assert!(!si::holds_lock(&lock), "замок ещё не брали");
     assert!(si::acquire_lock(&lock));
-    // Второй вход в том же процессе обязан узнать свой замок, а не
-    // упереться в него как второй экземпляр.
+    // A second entry in the same process must recognize its own lock rather than
+    // run into it as a second instance.
     assert!(si::holds_lock(&lock), "взятый замок обязан числиться нашим");
     assert!(!si::acquire_lock(&lock), "повторный flock блокирует сам себя");
     assert!(si::holds_lock(&lock), "неудачный повтор замок не отнимает");
@@ -264,14 +264,14 @@ fn lock_holds_across_processes() {
     let dir = sandbox("lock");
     let lock = si::lock_path(dir.to_str().unwrap());
 
-    // Первый захват в этом процессе — успешен.
+    // The first grab in this process succeeds.
     assert!(si::acquire_lock(&lock), "первый запуск обязан взять замок");
-    // Повторный захват ТОГО ЖЕ пути: оба дескриптора смотрят в один inode,
-    // второй flock блокирует сам себя — как если бы это были два процесса.
+    // A repeat grab of THE SAME path: both descriptors point at one inode,
+    // the second flock blocks itself — as if these were two processes.
     assert!(!si::acquire_lock(&lock), "второй запуск не должен пройти");
 
-    // Межпроцессная проверка настоящим процессом: пока держим мы, чужой
-    // взять не может.
+    // An inter-process check with a real process: while we hold it, someone else
+    // cannot take it.
     let child = std::process::Command::new("/usr/bin/flock")
         .args(["-n", &lock, "true"])
         .status()
@@ -281,8 +281,8 @@ fn lock_holds_across_processes() {
         "чужой процесс обязан увидеть замок занятым"
     );
 
-    // Стухшего замка не бывает: файл от прошлой сессии остаётся, но замок
-    // на нём свободен — ядро сняло его вместе с умершим держателем.
+    // There is no such thing as a stale lock: the file from the last session remains, but the lock
+    // on it is free — the kernel released it together with the dead holder.
     let stale = dir.join("stale.lock");
     let stale = stale.to_str().unwrap();
     let held = std::process::Command::new("/usr/bin/flock")
@@ -305,23 +305,23 @@ fn show_word_carries_a_section() {
             section: Some((s.to_string(), p.to_string())),
         })
     };
-    // Голое `show` — прежний протокол, работает как раньше.
+    // A bare `show` is the old protocol and works as before.
     assert_eq!(r(b"show\n"), bare);
     assert_eq!(r(b"show settings\n"), sec("settings", ""));
     assert_eq!(r(b"show desktops compare\n"), sec("desktops", "compare"));
-    // Подраздел, которого у раздела не бывает, отбрасывается; раздел — нет.
+    // A subsection the section never has is dropped; the section is not.
     assert_eq!(r(b"show settings compare\n"), sec("settings", ""));
-    // Мусорный раздел или лишние слова: окно поднять, никуда не переключать.
+    // A garbage section or extra words: raise the window, switch nowhere.
     assert_eq!(r(b"show ../etc\n"), bare);
     assert_eq!(r(b"show zzz\n"), bare);
     assert_eq!(r(b"show desktops compare extra\n"), bare);
-    // Не «show» вовсе — окно не трогать.
+    // Not "show" at all — leave the window alone.
     assert_eq!(r(b"showsettings\n"), None);
     assert_eq!(r(b"hide settings\n"), None);
     assert_eq!(r(b"\xff\xfe\n"), None);
     assert!(si::is_show_request(b"show desktops compare\n"));
 
-    // Слово строится обратно тем же разбором и влезает в буфер слушателя.
+    // The word is built back by the same parsing and fits the listener's buffer.
     for target in [None, Some(("settings", "")), Some(("desktops", "compare"))] {
         let word = si::show_request(target);
         assert!(word.len() < 128, "слово обязано влезть в буфер слушателя");
@@ -330,7 +330,7 @@ fn show_word_carries_a_section() {
             target.map(|(s, p)| (s.to_string(), p.to_string()))
         );
     }
-    // Непроверенная цель в провод не уходит.
+    // An unchecked target does not go onto the wire.
     assert_eq!(si::show_request(Some(("zzz", ""))), si::SHOW_REQUEST);
 }
 
@@ -368,7 +368,7 @@ fn knock_brings_the_section_to_the_listener() {
         Some(("desktops".to_string(), "compare".to_string()))
     );
 
-    // Голое `show` доходит без раздела, как раньше.
+    // A bare `show` arrives without a section, as before.
     let probe = sock.clone();
     let ok = under_watchdog("голый стук", Duration::from_secs(10), move || {
         si::activate_running_instance(&probe)
@@ -379,8 +379,8 @@ fn knock_brings_the_section_to_the_listener() {
 
 #[test]
 fn listener_without_sections_still_raises_on_a_sectioned_knock() {
-    // Слушатель, поставленный через `spawn` (без раздела — так пока стоит
-    // Rust-вход), обязан поднимать окно и на новое слово с разделом.
+    // A listener set up via `spawn` (without a section — that is how the
+    // Rust entry stands for now) must raise the window on the new word with a section too.
     let dir = sandbox("oldsect");
     let (sock, asked) = listener_saying(&dir, true);
     let ok = under_watchdog("стук с разделом в старого", Duration::from_secs(10), move || {
@@ -397,7 +397,7 @@ fn classic_start_asks_for_handover() {
         si::on_busy_lock(&a(&["--classic"])),
         si::OnBusyLock::RequestHandover
     );
-    // Скрытый запуск окна не просил вовсе — и классическим его не сделать.
+    // A hidden launch did not ask for a window at all — and cannot be made classic.
     assert_eq!(
         si::on_busy_lock(&a(&["--tray", "--classic"])),
         si::OnBusyLock::ExitQuietly
@@ -413,7 +413,7 @@ fn handover_word_and_who_answers_it() {
         si::parse_request(b"show\n"),
         Some(si::Request::Show(si::ShowRequest { section: None }))
     );
-    // Держатель — классическое окно: передавать нечего, поднять себя.
+    // The holder is the classic window: nothing to hand over, raise itself.
     assert_eq!(
         si::listener_action(si::Holder::Python, b"handover\n"),
         Some(si::ListenerAction::Raise(None))
@@ -434,8 +434,8 @@ fn handover_word_and_who_answers_it() {
 
 #[test]
 fn listener_without_handover_refuses_it() {
-    // Слушатель через `spawn` (так пока стоит Rust-вход) хозяина не отдаёт:
-    // отказ, окно не трогает, классический запуск честно получает «не вышло».
+    // A listener via `spawn` (that is how the Rust entry stands for now) does not hand over the owner:
+    // a refusal, the window is not touched, the classic launch honestly gets "did not work".
     let dir = sandbox("nohand");
     let lock = si::lock_path(dir.to_str().unwrap());
     let (sock, asked) = listener_saying(&dir, true);
@@ -467,19 +467,19 @@ fn python_holder_raises_instead_of_handing_over() {
     );
 }
 
-/// Настоящая передача замка между ДВУМЯ процессами: дочерний прогон этого же
-/// файла держит замок слушателем Rust-держателя и на «handover» уходит, а
-/// этот процесс ждёт замок функцией ядра и берёт его.
+/// A real lock handover between TWO processes: a child run of this same
+/// file holds the lock with the Rust holder's listener and leaves on "handover", and
+/// this process waits for the lock with the core function and takes it.
 #[test]
 fn rust_holder_hands_over_the_lock() {
     if let Ok(dir) = std::env::var("REXON_SI_HANDOVER_HOLDER") {
-        // Роль держателя.
+        // The holder's role.
         let lock = si::lock_path(&dir);
         let sock = si::socket_path(&dir);
         assert!(si::acquire_lock(&lock), "держатель обязан взять замок");
         si::ActivationListener::spawn_for(&sock, si::Holder::Rust, |action| {
             if action == si::ListenerAction::HandOver {
-                // Уход запланирован, а не немедленный: «bye» уходит первым.
+                // The exit is scheduled, not immediate: "bye" goes out first.
                 std::thread::spawn(|| {
                     std::thread::sleep(Duration::from_millis(200));
                     std::process::exit(0);
@@ -524,8 +524,8 @@ fn rust_holder_hands_over_the_lock() {
 
 #[test]
 fn hidden_start_never_knocks_on_a_busy_lock() {
-    // Скрытый запуск (автозапуск при входе) окна не просил: стук вытащил
-    // бы уже открытое окно на экран.
+    // A hidden launch (autostart at login) did not ask for a window: a knock would
+    // pull the already open window onto the screen.
     let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     assert_eq!(
         si::on_busy_lock(&args(&["--tray"])),
@@ -535,7 +535,7 @@ fn hidden_start_never_knocks_on_a_busy_lock() {
         si::on_busy_lock(&args(&["--page=install", "--tray"])),
         si::OnBusyLock::ExitQuietly
     );
-    // Обычный второй запуск (ярлык) — стучится и поднимает окно.
+    // A normal second launch (a shortcut) knocks and raises the window.
     assert_eq!(si::on_busy_lock(&args(&[])), si::OnBusyLock::Knock);
     assert_eq!(
         si::on_busy_lock(&args(&["--page=backups"])),
@@ -545,22 +545,22 @@ fn hidden_start_never_knocks_on_a_busy_lock() {
 }
 
 // ============================================================================
-// Слушатель и стук
+// Listener and knock
 // ============================================================================
 
-/// Поднять слушателя, отвечающего заданным исходом, и вернуть его адрес.
-/// Оставить по адресу МЁРТВЫЙ сокет — файл есть, слушателя нет, — как после
-/// убитого процесса.
+/// Bring up a listener answering with the given outcome and return its address.
+/// Leave a DEAD socket at the address — the file exists, there is no listener — as after
+/// a killed process.
 ///
-/// ⚠️ Мало привязать слушатель и закрыть его. Соседние сверки в этом же
-/// процессе запускают дочерние процессы (`flock`, свой бинарь), и дочерний
-/// процесс между `fork` и `exec` держит копии ВСЕХ дескрипторов родителя —
-/// в том числе только что закрытого слушателя. Пока такая копия жива, сокет
-/// честно принимает подключения, и `socket_alive` правильно отвечает «жив».
-/// Сверка тогда краснела бы изредка (замер: 3 из 60) не на поведении, а на
-/// гонке с соседним тестом. Поэтому ждём, пока адрес действительно перестанет
-/// принимать подключения. У убитого процесса такой копии нет, продукт это не
-/// затрагивает.
+/// ⚠️ It is not enough to bind the listener and close it. Neighboring checks in this same
+/// process start child processes (`flock`, our own binary), and a child
+/// process between `fork` and `exec` holds copies of ALL the parent's descriptors —
+/// including the listener that was just closed. While such a copy lives, the socket
+/// honestly accepts connections, and `socket_alive` correctly answers "alive".
+/// The check would then go red occasionally (measured: 3 out of 60) not on behavior but on
+/// a race with a neighboring test. So we wait until the address really stops
+/// accepting connections. A killed process has no such copy, the product is not
+/// affected.
 fn leave_dead_socket(path: &str) {
     std::os::unix::net::UnixListener::bind(path)
         .map(drop)
@@ -608,9 +608,9 @@ fn knock_raises_the_running_window() {
 
 #[test]
 fn knock_tells_the_truth_when_window_did_not_rise() {
-    // Тот самый дефект 06.09.2026 наоборот: соврать «поднял» и оставить
-    // экран пустым нельзя — второй запуск обязан узнать правду и отправить
-    // человека в лоток.
+    // That very defect of 06.09.2026 in reverse: lying "raised" and leaving
+    // the screen empty is not allowed — the second launch must learn the truth and send
+    // the person to the tray.
     let dir = sandbox("refused");
     let (sock, _asked) = listener_saying(&dir, false);
 
@@ -625,14 +625,14 @@ fn knock_without_listener_is_false_not_a_hang() {
     let dir = sandbox("nobody");
     let sock = si::socket_path(dir.to_str().unwrap());
     let probe = sock.clone();
-    // Rexon старее этой правки: замок держит, слушателя нет. Стук обязан
-    // сразу вернуть false, а не ждать.
+    // A Rexon older than this fix: it holds the lock, there is no listener. The knock must
+    // return false right away instead of waiting.
     let ok = under_watchdog("стук в пустоту", Duration::from_secs(5), move || {
         si::activate_running_instance(&probe)
     });
     assert!(!ok);
 
-    // Мёртвый файл сокета от прошлой сессии — тоже отказ, а не зависание.
+    // A dead socket file from the last session is also a refusal, not a hang.
     std::fs::write(&sock, b"").expect("подделка мёртвого файла");
     let ok = under_watchdog("стук в мёртвый файл", Duration::from_secs(5), move || {
         si::activate_running_instance(&sock)
@@ -642,7 +642,7 @@ fn knock_without_listener_is_false_not_a_hang() {
 
 #[test]
 fn stray_word_does_not_touch_the_window() {
-    // Чужой стук в наш адрес — не повод дёргать экран покупателю.
+    // A foreign knock on our address is no reason to jerk the customer's screen.
     let dir = sandbox("stray");
     let sock = si::socket_path(dir.to_str().unwrap());
     let (tx, asked) = mpsc::channel();
@@ -669,14 +669,14 @@ fn stray_word_does_not_touch_the_window() {
 }
 
 // ============================================================================
-// Кража общего сокета — то, чего делать НЕЛЬЗЯ
+// Stealing the shared socket — what must NOT be done
 // ============================================================================
 
 #[test]
 fn bind_never_steals_a_live_socket() {
-    // ⚠️⚠️ Ради этой сверки модуль и не повторяет `QLocalServer::removeServer`:
-    // тот сносит файл по адресу БЕЗУСЛОВНО. В общем на весь сеанс каталоге
-    // это означает отнять адрес у живой программы — уже случалось.
+    // ⚠️⚠️ For the sake of this check the module does not repeat `QLocalServer::removeServer`:
+    // that one deletes the file at the address UNCONDITIONALLY. In a directory shared by the whole session
+    // this means taking the address away from a live program — it has happened already.
     let dir = sandbox("steal");
     let (sock, _asked) = listener_saying(&dir, true);
 
@@ -686,7 +686,7 @@ fn bind_never_steals_a_live_socket() {
         "второй слушатель обязан уйти ни с чем, а не забрать адрес"
     );
 
-    // И главное: первый по-прежнему на месте и отвечает.
+    // And most importantly: the first one is still in place and answers.
     let probe = sock.clone();
     let ok = under_watchdog("первый жив после отказа", Duration::from_secs(10), move || {
         si::activate_running_instance(&probe)
@@ -699,17 +699,17 @@ fn bind_clears_only_a_dead_socket_and_never_a_stranger_file() {
     let dir = sandbox("stale");
     let sock = si::socket_path(dir.to_str().unwrap());
 
-    // Мёртвый сокет прошлой сессии: снести можно, и слушатель встаёт.
+    // A dead socket from the last session: it may be deleted, and the listener comes up.
     {
         let dead = si::ActivationListener::bind(&sock).expect("первый");
         drop(dead);
     }
-    // Специально оставляем файл на месте, как это бывает после убитого
-    // процесса (Drop не отработал).
+    // Deliberately leave the file in place, as happens after a killed
+    // process (Drop did not run).
     leave_dead_socket(&sock);
     let _fresh = si::ActivationListener::bind(&sock).expect("мёртвый сокет не помеха");
 
-    // А вот НЕ сокет по адресу — руками не сносим: чужой файл не наш.
+    // But a NON-socket at the address we do not delete by hand: someone else's file is not ours.
     let dir2 = sandbox("notsock");
     let plain = si::socket_path(dir2.to_str().unwrap());
     std::fs::write(&plain, "чужое").expect("подделка обычного файла");
@@ -725,8 +725,8 @@ fn bind_clears_only_a_dead_socket_and_never_a_stranger_file() {
 
 #[test]
 fn clearing_the_address_spares_a_live_socket() {
-    // Та же функция, что снимает мёртвый сокет перед Python-слушателем
-    // (вместо безусловного `QLocalServer::removeServer`).
+    // The same function that removes a dead socket before the Python listener
+    // (instead of the unconditional `QLocalServer::removeServer`).
     let dir = sandbox("clear");
     let sock = si::socket_path(dir.to_str().unwrap());
     assert!(si::clear_stale_socket(&sock).is_ok(), "пустой адрес свободен");
@@ -742,7 +742,7 @@ fn clearing_the_address_spares_a_live_socket() {
     });
     assert!(ok, "живой слушатель обязан уцелеть и отвечать");
 
-    // Мёртвый сокет (процесс убит, файл остался) — снести можно.
+    // A dead socket (process killed, file left) may be deleted.
     let dir2 = sandbox("clear-dead");
     let dead = si::socket_path(dir2.to_str().unwrap());
     leave_dead_socket(&dead);
@@ -751,7 +751,7 @@ fn clearing_the_address_spares_a_live_socket() {
     assert!(cleared.is_ok(), "мёртвый сокет — не помеха, а вернулось {cleared:?}");
     assert!(!std::path::Path::new(&dead).exists(), "мёртвый сокет обязан уйти");
 
-    // Не сокет — не трогаем.
+    // Not a socket — do not touch.
     let dir3 = sandbox("clear-file");
     let plain = si::socket_path(dir3.to_str().unwrap());
     std::fs::write(&plain, "чужое").expect("подделка обычного файла");
@@ -767,8 +767,8 @@ fn dropped_listener_takes_only_its_own_socket() {
     let dir = sandbox("drop");
     let sock = si::socket_path(dir.to_str().unwrap());
 
-    // Свой сокет за собой убираем: следующий запуск не должен разбираться с
-    // нашим мусором.
+    // We clean up our own socket: the next launch should not have to deal with
+    // our garbage.
     let ours = si::ActivationListener::bind(&sock).expect("наш слушатель");
     drop(ours);
     assert!(
@@ -776,10 +776,10 @@ fn dropped_listener_takes_only_its_own_socket() {
         "свой сокет обязан уйти вместе со слушателем"
     );
 
-    // А ЧУЖОЙ сокет, успевший встать на тот же адрес, наш Drop трогать не
-    // смеет — это та же кража общего адреса, только задним ходом. Поэтому
-    // сверяется inode, а не путь: подменяем сокет под живым слушателем и
-    // смотрим, что после его смерти чужой уцелел.
+    // But SOMEONE ELSE'S socket that managed to come up at the same address our Drop must not
+    // dare touch — that is the same theft of the shared address, only in reverse. So
+    // the inode is compared, not the path: we swap the socket under a live listener and
+    // check that after its death the other one survived.
     let ours = si::ActivationListener::bind(&sock).expect("наш слушатель");
     std::fs::remove_file(&sock).expect("снять наш");
     let stranger = std::os::unix::net::UnixListener::bind(&sock).expect("чужой слушатель");
@@ -792,10 +792,10 @@ fn dropped_listener_takes_only_its_own_socket() {
 }
 
 // ============================================================================
-// Длинный XDG_RUNTIME_DIR и чужой пользователь
+// Long XDG_RUNTIME_DIR and another user
 // ============================================================================
 
-/// Подставной runtime-каталог, у которого основной адрес за пределом.
+/// A stand-in runtime directory whose primary address is over the limit.
 fn long_runtime_dir(dir: &PathBuf) -> String {
     let long = dir.join("d".repeat(120));
     std::fs::create_dir_all(&long).expect("длинный подставной каталог");
@@ -809,16 +809,16 @@ fn knock_reaches_the_listener_on_a_long_runtime_dir() {
     let dir = sandbox("long");
     let runtime = long_runtime_dir(&dir);
     let lock = si::lock_path(&runtime);
-    // Слушатель и стук считают адрес ОДНОЙ функцией, каждый сам.
+    // The listener and the knock compute the address with ONE function, each on its own.
     let listen_at = si::socket_path(&runtime);
     let knock_at = si::socket_path(&runtime);
     assert_eq!(listen_at, knock_at);
     let fallback_dir = si::fallback_socket_dir(si::current_uid());
     assert!(listen_at.starts_with(&format!("{fallback_dir}/")), "{listen_at}");
 
-    // Слушатель обслуживает ОДИН стук и уходит: запасной каталог общий для
-    // пользователя и не принадлежит стенду, и навечно поднятый слушатель
-    // оставлял бы там файл сокета от каждого прогона.
+    // The listener serves ONE knock and leaves: the fallback directory is shared by
+    // the user and does not belong to the stand, and a listener kept up forever
+    // would leave a socket file there from every run.
     let server = si::ActivationListener::bind(&listen_at)
         .unwrap_or_else(|e| panic!("слушатель на длинном каталоге обязан встать: {e}"));
     let (tx, asked) = mpsc::channel();
@@ -843,15 +843,15 @@ fn knock_reaches_the_listener_on_a_long_runtime_dir() {
         "свой сокет в запасном каталоге обязан уйти вместе со слушателем"
     );
 
-    // Запасной каталог — личный: этого пользователя и 0700.
+    // The fallback directory is private: this user's and 0700.
     use std::os::unix::fs::MetadataExt;
     let meta = std::fs::symlink_metadata(&fallback_dir).expect("запасной каталог");
     assert!(meta.is_dir());
     assert_eq!(meta.uid(), si::current_uid());
     assert_eq!(meta.mode() & 0o777, 0o700);
-    // Замок длины не боится (flock путь в sun_path не кладёт) и остаётся в
-    // runtime-каталоге сеанса. Сам замок здесь не берём: он на процесс один,
-    // и захват вне `LOCK_TESTS` отнял бы его у соседней сверки.
+    // The lock is not afraid of length (flock does not put the path into sun_path) and stays in
+    // the session's runtime directory. We do not take the lock itself here: there is one per process,
+    // and a grab outside `LOCK_TESTS` would take it away from a neighboring check.
     assert_eq!(std::path::Path::new(&lock).parent(), Some(std::path::Path::new(&runtime)));
 }
 
@@ -860,8 +860,8 @@ fn stranger_knock_is_refused_without_touching_the_window() {
     let dir = sandbox("stranger");
     let sock = si::socket_path(dir.to_str().unwrap());
     let stranger = si::current_uid().wrapping_add(1);
-    // Слушатель, считающий своим другого пользователя, — то же, что стук
-    // от чужого: uid стучащего не совпадает с хозяином.
+    // A listener that considers another user its own is the same as a knock
+    // from a stranger: the knocker's uid does not match the owner.
     let server = si::ActivationListener::bind(&sock)
         .expect("слушатель")
         .with_owner_uid(stranger);
@@ -881,9 +881,9 @@ fn stranger_knock_is_refused_without_touching_the_window() {
             si::request_handover(&s2, &lock, Duration::from_millis(200)),
         )
     });
-    // Отказ «no» либо оборванное соединение — слушатель отвечает, не читая
-    // слова, и закрывает; какой из двух дойдёт, зависит от порядка потоков.
-    // Важно одно: не «поднял».
+    // A "no" refusal or a dropped connection — the listener answers without reading
+    // the word and closes; which of the two arrives depends on the thread order.
+    // Only one thing matters: not "raised".
     assert_ne!(show, si::KnockOutcome::Raised, "чужому — отказ");
     assert_eq!(handover, si::HandoverOutcome::Failed, "чужой не вправе забрать место");
     assert!(
@@ -973,8 +973,8 @@ fn busy_lock_texts_are_honest_and_plain() {
     assert!(said(Some(&si::KnockOutcome::Refused)).contains(&si::said_look_in_tray()));
     assert!(!said(None).contains(&si::said_look_in_tray()), "скрытый запуск окна не просил");
 
-    // Правило #13: в том, что читает человек при сломанной двери, — ни
-    // одного технического слова.
+    // Rule #13: what a person reads when the door is broken contains not
+    // a single technical word.
     for jargon in [
         "сокет", "socket", "sun_path", "sun_len", "xdg", "/tmp", "/run", "flock", "uid", "байт",
         "замок", "трее",
@@ -986,7 +986,7 @@ fn busy_lock_texts_are_honest_and_plain() {
     }
 }
 
-/// По-русски — дословно как было до переноса строк в каталог.
+/// In Russian — verbatim as it was before the strings moved into the catalog.
 #[test]
 fn busy_lock_texts_in_russian_as_before() {
     let _lang = i18n_pin::ru();
@@ -1052,19 +1052,19 @@ fn english_busy_lock_texts_have_no_russian() {
 }
 
 // ============================================================================
-// Укус сторожа
+// Watchdog bite
 // ============================================================================
 
-/// Сторож обязан УБИВАТЬ зависшую сверку, и это проверяется по-настоящему:
-/// дочерний прогон этого же файла ждёт `accept`, которого не будет, и обязан
-/// умереть кодом 97 со своей строкой, а не висеть.
+/// The watchdog must KILL a hung check, and this is tested for real:
+/// a child run of this same file waits for an `accept` that will never come, and must
+/// die with code 97 and its own line rather than hang.
 ///
-/// Отдельным процессом — потому что укус по определению убивает процесс:
-/// внутри своего он унёс бы весь прогон.
+/// In a separate process — because a bite by definition kills the process:
+/// inside our own it would take the whole run down.
 #[test]
 fn watchdog_bites() {
     if std::env::var("REXON_SINGLE_INSTANCE_WATCHDOG_VICTIM").is_ok() {
-        // Роль жертвы: висим внутри сторожа заведомо дольше отпущенного.
+        // The victim's role: hang inside the watchdog clearly longer than allowed.
         under_watchdog("заведомо зависшая работа", Duration::from_millis(300), || {
             std::thread::sleep(Duration::from_secs(30));
         });
@@ -1091,10 +1091,10 @@ fn watchdog_bites() {
 }
 
 // ============================================================================
-// Перезапуск: новый процесс ждёт ухода прежнего (живой случай 08.10.2026)
+// Restart: the new process waits for the old one to leave (live case 08.10.2026)
 // ============================================================================
 
-/// Держатель замка — настоящий чужой процесс `flock(1)`, спящий `secs`.
+/// The lock holder is a real foreign `flock(1)` process sleeping `secs`.
 fn hold_lock_for(lock: &str, secs: &str) -> std::process::Child {
     let child = std::process::Command::new("/usr/bin/flock")
         .args(["-x", lock, "sleep", secs])
@@ -1151,7 +1151,7 @@ fn restart_notices_another_holder_after_previous_left() {
     let _turn = LOCK_TESTS.lock().unwrap_or_else(|e| e.into_inner());
     let dir = sandbox("restart-other");
     let lock = si::lock_path(dir.to_str().unwrap());
-    // «Прежний» уже умер (и прибран), а замок держит посторонний.
+    // The "old one" has already died (and been reaped), and a stranger holds the lock.
     let mut gone = std::process::Command::new("true").spawn().expect("true");
     let gone_pid = gone.id();
     let _ = gone.wait();
@@ -1176,15 +1176,15 @@ fn proc_locks_line_is_parsed() {
 }
 
 // ============================================================================
-// Rexon обновился, а работает прежняя копия
+// Rexon was updated, but the old copy is running
 // ============================================================================
 
 fn stamp(ino: u64, mtime: i64) -> si::FileStamp {
     si::FileStamp { dev: 1, ino, mtime_sec: mtime, mtime_nsec: 0 }
 }
 
-/// Решение по наблюдениям: хвост « (deleted)», смена inode или времени
-/// изменения — замена; файла нет — перезапускаться не во что.
+/// The decision from observations: a « (deleted)» suffix, a changed inode or modification
+/// time means a replacement; no file means there is nothing to restart into.
 #[test]
 fn exe_change_reads_deleted_suffix_and_stamps() {
     let a = stamp(10, 100);
@@ -1210,8 +1210,8 @@ fn exe_change_reads_deleted_suffix_and_stamps() {
     assert_eq!(si::exe_change(exe, None, Some(a)), si::ExeChange::Same);
 }
 
-/// Живая сверка на подставной ссылке вместо `/proc/self/exe`: замена файла
-/// переименованием (как у пакетного менеджера) и ссылка на снятый файл.
+/// A live check on a stand-in link instead of `/proc/self/exe`: replacing the file
+/// by rename (as a package manager does) and a link to a removed file.
 #[test]
 fn exe_change_at_on_substitute_link() {
     let dir = sandbox("self-update");
@@ -1233,19 +1233,19 @@ fn exe_change_at_on_substitute_link() {
         si::ExeChange::Replaced { path: exe.to_string_lossy().into_owned(), stamp: new_stamp }
     );
 
-    // Как ядро показывает снятый файл: ссылка с хвостом « (deleted)».
+    // How the kernel shows a removed file: a link with a « (deleted)» suffix.
     let deleted = dir.join("deleted-exe");
     let target = format!("{}{}", exe.to_string_lossy(), si::DELETED_EXE_SUFFIX);
     std::os::unix::fs::symlink(&target, &deleted).unwrap();
     assert!(matches!(si::exe_change_at(&deleted, None), si::ExeChange::Replaced { .. }));
     std::fs::remove_file(&exe).unwrap();
     assert_eq!(si::exe_change_at(&deleted, None), si::ExeChange::Gone);
-    // Ссылки нет вовсе — молчим.
+    // No link at all — stay silent.
     assert_eq!(si::exe_change_at(&dir.join("nope"), None), si::ExeChange::Same);
 }
 
-/// Уведомление — один раз на обновление и только после подтверждения
-/// вторым опросом; следующее обновление — снова один раз.
+/// A notification once per update and only after confirmation by
+/// a second poll; the next update — again once.
 #[test]
 fn self_update_notice_once_per_update() {
     let mut n = si::SelfUpdateNotice::default();
@@ -1257,7 +1257,7 @@ fn self_update_notice_once_per_update() {
     assert!(!n.step(&r(v2)) && !n.step(&r(v2)), "больше не показывать");
     assert!(!n.step(&r(v3)));
     assert!(n.step(&r(v3)), "новое обновление — снова один раз");
-    // Замена посреди транзакции: отпечаток скачет — ждём, пока устоится.
+    // A replacement mid-transaction: the fingerprint jumps — wait until it settles.
     let mut m = si::SelfUpdateNotice::default();
     assert!(!m.step(&r(v2)));
     assert!(!m.step(&r(v3)));
@@ -1276,10 +1276,10 @@ fn update_restart_opens_window() {
     assert!(!si::self_update_no_buttons().is_empty());
 }
 
-/// Второй запуск уходит без окна и обязан сам сказать панели «запуск
-/// окончен» (01.11.2026: «Запускается Rexon» и думающий курсор до таймаута).
-/// Формат — спецификация startup-notification: «remove: ID=…», куски по 20
-/// байт, ноль в конце.
+/// The second launch leaves without a window and must itself tell the panel "launch
+/// finished" (01.11.2026: «Starting Rexon» and a busy cursor until the timeout).
+/// The format is the startup-notification spec: "remove: ID=…", chunks of 20
+/// bytes, a zero at the end.
 #[test]
 fn startup_notification_remove_message() {
     assert_eq!(si::startup_id_from(None), None);
@@ -1297,7 +1297,7 @@ fn startup_notification_remove_message() {
     let joined: Vec<u8> = chunks.concat();
     assert_eq!(&joined[..msg.len()], msg.as_bytes());
     assert_eq!(joined[msg.len()], 0, "сообщение обязано кончаться нулём");
-    // Ровно 20 байт с нулём — один кусок, а не два.
+    // Exactly 20 bytes with the zero — one chunk, not two.
     assert_eq!(si::startup_message_chunks(&"x".repeat(19)).len(), 1);
     assert_eq!(si::startup_message_chunks(&"x".repeat(20)).len(), 2);
 }

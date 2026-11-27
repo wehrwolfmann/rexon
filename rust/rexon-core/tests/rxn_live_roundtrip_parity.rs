@@ -1,28 +1,28 @@
-//! Страховка перед слиянием установщиков: ЖИВОЙ путь установки `.rxn`
-//! (`ext_exec::install_from_file` → `exec_plan_noted` → `uninstall`) на
-//! временном профиле.
+//! Safety net before merging the installers: the LIVE `.rxn` install path
+//! (`ext_exec::install_from_file` → `exec_plan_noted` → `uninstall`) on a
+//! temporary profile.
 //!
-//! Планы по типам и столам сторожит `rxn_install_plans_parity.rs`; здесь —
-//! что настоящий исполнитель делает с диском: файлы темы на месте, запись
-//! «включено», отказ повторной установки, отказ на неверном пакете без
-//! следов, откат при сбое посреди установки (копия пакета, файлы плана,
-//! заменённое — профиль побайтно прежний, у `.rxn` и магазина) и чистый
-//! профиль после удаления.
+//! Plans per type and desktop are guarded by `rxn_install_plans_parity.rs`;
+//! here — what the real executor does to the disk: theme files in place, the
+//! "enabled" record, a repeat install refused, a bad package refused without
+//! traces, rollback on a failure mid-install (the package copy, the plan's
+//! files, what was replaced — the profile byte-for-byte as before, for both
+//! `.rxn` and the store) and a clean profile after removal.
 //!
-//! ⚠️ Профиль владельца не трогается. Тело идёт в ДОЧЕРНЕМ процессе с
-//! временными `HOME`/`XDG_*`, ПУСТЫМ `PATH` (ни одной программы — ни
-//! gsettings, ни kpackagetool не запустятся) и несуществующей шиной
-//! сеанса. Без своей переменной окружения дочернее тело ничего не делает.
+//! ⚠️ The owner's profile is not touched. The body runs in a CHILD process with
+//! temporary `HOME`/`XDG_*`, an EMPTY `PATH` (not a single program — neither
+//! gsettings nor kpackagetool will start) and a nonexistent session bus.
+//! Without its own environment variable the child body does nothing.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const CHILD_ENV: &str = "REXON_LIVE_ROUNDTRIP_CHILD";
 
-/// Временный каталог прогона — в `$HOME/.cache` родителя, а не в `/tmp`
-/// (там ОЗУ), и с номером процесса: параллельные прогоны не мешают друг другу.
+/// The run's temporary directory is in the parent's `$HOME/.cache`, not in `/tmp`
+/// (that is RAM), and carries the process id: parallel runs do not interfere.
 fn sandbox(tag: &str) -> PathBuf {
-    // Номер прогона: одно дочернее тело могут звать два теста сразу.
+    // Run number: two tests may call the same child body at once.
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let base = std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
@@ -32,7 +32,7 @@ fn sandbox(tag: &str) -> PathBuf {
     dir
 }
 
-/// Прогнать дочернее тело `child` на временном профиле.
+/// Run the child body `child` on a temporary profile.
 fn run_child(child: &str) {
     run_child_env(child, &[]);
 }
@@ -73,35 +73,35 @@ fn run_child_env(child: &str, extra: &[(&str, &str)]) {
     );
 }
 
-/// Д4. Удаление темы GTK по журналу покупки (`LiveInstaller::uninstall` →
-/// `uninstall_from_log`) снимает `~/.local/share/themes/<тема>` и ссылку
-/// `~/.themes/<тема>`, которую ставит установка
-/// (`installed_scan::sync_theme_links`), — той же общей уборкой
-/// (`theme_removal::tidy_after_removal`), что и плиточное «Удалить».
-/// Прежде ссылка висела в пустоту до следующего скана (найдено страховкой
-/// 25.10.2026, починено). Проверка — в `live_appearance_roundtrip_on_temp_profile`.
+/// D4. Removing a GTK theme by the purchase log (`LiveInstaller::uninstall` →
+/// `uninstall_from_log`) removes `~/.local/share/themes/<theme>` and the link
+/// `~/.themes/<theme>` that installation creates
+/// (`installed_scan::sync_theme_links`) — with the same shared cleanup
+/// (`theme_removal::tidy_after_removal`) as the tile «Remove».
+/// Previously the link dangled until the next scan (found by the safety net
+/// 25.10.2026, fixed). Checked in `live_appearance_roundtrip_on_temp_profile`.
 #[test]
 fn defect_gtk_uninstall_drops_theme_link() {
     run_child("live_appearance_child");
 }
 
-/// Пакеты `.rxn`: `ext_exec`.
+/// `.rxn` packages: `ext_exec`.
 #[test]
 fn live_install_roundtrip_on_temp_profile() {
     run_child("live_roundtrip_child");
 }
 
-/// «Оформление»: `LiveInstaller`.
+/// «Appearance»: `LiveInstaller`.
 #[test]
 fn live_appearance_roundtrip_on_temp_profile() {
     run_child("live_appearance_child");
 }
 
 // ============================================================================
-// Дочернее тело
+// Child body
 // ============================================================================
 
-/// Собрать `.rxn`: `manifest.json` + файлы `(путь, содержимое)`.
+/// Build an `.rxn`: `manifest.json` + files `(path, contents)`.
 fn make_rxn(path: &Path, manifest: &serde_json::Value, files: &[(&str, &str)]) {
     let f = std::fs::File::create(path).unwrap();
     let mut z = zip::ZipWriter::new(f);
@@ -115,10 +115,10 @@ fn make_rxn(path: &Path, manifest: &serde_json::Value, files: &[(&str, &str)]) {
     z.finish().unwrap();
 }
 
-/// Все ФАЙЛЫ под `root` (относительно него; пустые базовые каталоги вроде
-/// `~/.local/share/icons`, заведённые установкой, следом не считаются —
-/// каталог самой темы проверяется отдельно), кроме служебного хозяйства Rexon (`.config/rexon` — каталог расширений, карта состояний,
-/// мост) — оно проверяется отдельно.
+/// All FILES under `root` (relative to it; empty base directories like
+/// `~/.local/share/icons` created by installation do not count as a trace —
+/// the theme directory itself is checked separately), except Rexon's own housekeeping (`.config/rexon` — the extensions directory, the state map,
+/// the bridge) — that is checked separately.
 fn tree(root: &Path) -> Vec<String> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
@@ -140,9 +140,9 @@ fn tree(root: &Path) -> Vec<String> {
     out
 }
 
-/// Весь профиль побайтно — вместе с хозяйством Rexon (каталог расширений,
-/// карта состояний, общий журнал): путь, вид, содержимое или цель ссылки.
-/// Без журналов запуска (`.cache`, `.local/state`).
+/// The whole profile byte-for-byte — together with Rexon's housekeeping (extensions
+/// directory, state map, shared log): path, kind, contents or link target.
+/// Without run logs (`.cache`, `.local/state`).
 fn bytes(root: &Path) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
@@ -169,14 +169,14 @@ fn bytes(root: &Path) -> Vec<(String, String)> {
     out
 }
 
-/// Закрыть каталог на запись (`ro = true`) или открыть снова.
+/// Make a directory read-only (`ro = true`) or writable again.
 fn read_only(dir: &Path, ro: bool) {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(dir, std::fs::Permissions::from_mode(if ro { 0o555 } else { 0o755 })).unwrap();
 }
 
-/// Запись на закрытый каталог не проходит (не root): сбой посреди копии
-/// воспроизводим.
+/// Writing into a read-only directory fails (not root): a failure mid-copy is
+/// reproducible.
 fn read_only_bites(dir: &Path) -> bool {
     let probe = dir.join(".rexon-probe");
     let wrote = std::fs::write(&probe, "").is_ok();
@@ -195,7 +195,7 @@ fn state(home: &Path) -> serde_json::Value {
         .unwrap_or(serde_json::Value::Null)
 }
 
-/// Общий журнал установки песочницы и ключ записи пакета `id`.
+/// The sandbox's shared install log and the record key of package `id`.
 fn journal_entry(home: &Path, id: &str) -> (rexon_core::install_journal::Journal, String) {
     use rexon_core::install_journal as journal;
     let j = journal::load_at(&home.join(".config/rexon")).expect("общий журнал читается");
@@ -204,8 +204,8 @@ fn journal_entry(home: &Path, id: &str) -> (rexon_core::install_journal::Journal
     (j, key)
 }
 
-/// Снять запись `key` по общему журналу — файловым слоем, с подменным
-/// запуском программ (ни одна не запускается), и записать журнал.
+/// Remove record `key` by the shared log — with the file layer, with a stub
+/// program runner (none is started), and write the log.
 fn remove_by_journal(home: &Path, j: &mut rexon_core::install_journal::Journal, key: &str) {
     use rexon_core::install_journal as journal;
     let run = |_: &[String], _: Option<u64>| rexon_core::utils::RunReport::default();
@@ -225,7 +225,7 @@ fn remove_by_journal(home: &Path, j: &mut rexon_core::install_journal::Journal, 
     journal::save_at(&home.join(".config/rexon"), j).expect("журнал записан");
 }
 
-/// Пакет темы: `data/<Theme>/` с файлами, похожими на тему любого вида.
+/// Theme package: `data/<Theme>/` with files resembling a theme of any kind.
 fn theme_files(theme: &str) -> Vec<(String, String)> {
     vec![
         (format!("data/{theme}/index.theme"), format!("[Icon Theme]\nName={theme}\nDirectories=\n")),
@@ -242,7 +242,7 @@ fn theme_files(theme: &str) -> Vec<(String, String)> {
 #[ignore = "запускается дочерним процессом live_install_roundtrip_on_temp_profile"]
 fn live_roundtrip_child() {
     if std::env::var_os(CHILD_ENV).is_none() {
-        // Не дочерний прогон — живой профиль. Ничего не делаем.
+        // Not a child run — a live profile. Do nothing.
         eprintln!("live_roundtrip_child: только из live_install_roundtrip_on_temp_profile");
         return;
     }
@@ -252,11 +252,11 @@ fn live_roundtrip_child() {
     let work = home.parent().unwrap().join("pkgs");
     std::fs::create_dir_all(&work).unwrap();
 
-    // ── 1. Установка → повтор → удаление по ходовым типам ──────────────
-    // Рамки окон на XFCE кладут ещё и копию в ~/.themes, комплект — копии
-    // подпапок под общими именами: удаление снимает их по метке владельца
-    // (дефекты Д1–Д3, починены 25.10.2026). Обычный виджет Conky — один
-    // каталог `<id>` (вторая копия подпапки — дефект 14.11.2026).
+    // ── 1. Install → repeat → remove for the common types ───────────────
+    // Window borders on XFCE also put a copy into ~/.themes, a bundle puts copies
+    // of subfolders under shared names: removal takes them off by the owner mark
+    // (defects D1–D3, fixed 25.10.2026). A plain Conky widget is one
+    // `<id>` directory (a second copy of the subfolder was defect 14.11.2026).
     let types: &[(&str, &str)] = &[
         ("theme-window-decoration", ".themes/GoldenTheme/xfwm4/themerc"),
         ("theme-conky", ".config/conky/golden-theme-conky/GoldenTheme/index.theme"),
@@ -287,13 +287,13 @@ fn live_roundtrip_child() {
         assert_eq!(state(&home)[&id], serde_json::json!(true), "{t}: нет отметки «включено»");
         let after_install = tree(&home);
 
-        // Повтор того же пакета — отказ, на диске ничего не меняется.
+        // Repeating the same package is refused, nothing changes on disk.
         let again = ext_exec::install_from_file(&rxn.to_string_lossy());
         let err = again.err().unwrap_or_else(|| panic!("{t}: повторная установка прошла молча"));
         assert!(err.contains("already installed"), "{t}: не тот отказ повтора: {err}");
         assert_eq!(tree(&home), after_install, "{t}: отказ повтора тронул профиль");
 
-        // Удаление — профиль как до установки, записи нет.
+        // Removal: the profile as before installation, no record.
         ext_exec::uninstall(&id).unwrap_or_else(|e| panic!("{t}: удаление отказало: {e}"));
         assert_eq!(tree(&home), pristine, "{t}: после удаления в профиле остались следы");
         let theme_root = &landed[..landed.find("GoldenTheme").unwrap() + "GoldenTheme".len()];
@@ -302,10 +302,10 @@ fn live_roundtrip_child() {
         assert!(state(&home).get(&id).is_none(), "{t}: отметка состояния осталась");
     }
 
-    // ── 1б. Те же пакеты — снятие по ОБЩЕМУ журналу установки ─────────
-    // Установка записывает положенные пути (шаг 3 слияния установщиков);
-    // снятие по журналу — только файловый слой, без программ, — обязано
-    // вернуть профиль к исходному так же, как удаление по плану.
+    // ── 1b. The same packages — removal by the SHARED install log ──────
+    // Installation records the paths it put (step 3 of the installer merge);
+    // removal by the log — only the file layer, no programs — must bring the
+    // profile back to the original just like removal by the plan.
     for (t, _) in types {
         let id = format!("golden-{t}");
         let rxn = work.join(format!("{id}.rxn"));
@@ -315,14 +315,14 @@ fn live_roundtrip_child() {
         let e = &j.items[&key];
         assert!(e.placed_known && !e.placed.is_empty(), "{t}: журнал без положенных путей: {e:#?}");
         assert_eq!(e.enabled, Some(true), "{t}: журнал: «включено»");
-        // Журнал сверен с картой и каталогом: файл есть, профиль тот же.
+        // Log checked against the map and the directory: the file exists, the profile is the same.
         assert_eq!(tree(&home), after_install, "{t}: запись журнала тронула профиль");
         remove_by_journal(&home, &mut j, &key);
         assert_eq!(tree(&home), pristine, "{t}: снятие по журналу оставило следы или сняло лишнее");
         assert!(!ext_dir(&home).join(&id).exists(), "{t}: копия пакета осталась");
     }
 
-    // ── 1в. Удаление `ext_exec::uninstall` по общему журналу (шаг 3г) ──
+    // ── 1c. Removal with `ext_exec::uninstall` by the shared log (step 3d) ──
     use rexon_core::install_journal as journal;
     let rexon_dir = home.join(".config/rexon");
     let pkg = |id: &str, t: &str| {
@@ -333,7 +333,7 @@ fn live_roundtrip_child() {
         ext_exec::install_from_file(&rxn.to_string_lossy()).unwrap_or_else(|e| panic!("{id}: установка: {e}"));
     };
 
-    // Пакет, поставленный ДО журнала (путей в записи нет): прежним планом.
+    // A package installed BEFORE the log (no paths in the record): by the old plan.
     pkg("golden-pre-journal", "theme-icons");
     std::fs::remove_file(journal::journal_path(&rexon_dir)).expect("общий журнал был");
     let (j, key) = journal_entry(&home, "golden-pre-journal");
@@ -342,8 +342,8 @@ fn live_roundtrip_child() {
     assert_eq!(tree(&home), pristine, "пакет до журнала: после удаления остались следы");
     assert!(!ext_dir(&home).join("golden-pre-journal").exists(), "пакет до журнала: копия пакета осталась");
 
-    // На месте каталога темы — уже ЧУЖОЕ (человек заменил его ссылкой на
-    // свою тему): журнал его не снимает, прочее своё снято.
+    // In place of the theme directory there is now SOMEONE ELSE'S (the person replaced it with a link to
+    // their own theme): the log does not remove it, the rest of ours is removed.
     pkg("golden-foreign", "theme-icons");
     let landed = home.join(".local/share/icons/GoldenTheme");
     std::fs::remove_dir_all(&landed).unwrap();
@@ -360,10 +360,10 @@ fn live_roundtrip_child() {
     std::fs::remove_dir_all(home.join("Темы")).unwrap();
     assert_eq!(tree(&home), pristine, "чужое на месте: после уборки остались следы");
 
-    // Тема GTK пакета в `~/.local/share/themes` со ссылкой `~/.themes`.
-    // Ни один тип `.rxn` сегодня туда не кладёт (тема GTK ложится в
-    // `~/.themes`), поэтому раскладка — подменой: тема перенесена туда,
-    // запись журнала поправлена, ссылку ставит настоящий `sync_theme_links`.
+    // The package's GTK theme in `~/.local/share/themes` with a `~/.themes` link.
+    // No `.rxn` type puts anything there today (a GTK theme goes into
+    // `~/.themes`), so the layout is faked: the theme is moved there,
+    // the log record is adjusted, the link is set by the real `sync_theme_links`.
     pkg("golden-gtk-link", "theme-gtk");
     let in_themes = home.join(".themes/GoldenTheme");
     let xdg_theme = home.join(".local/share/themes/GoldenTheme");
@@ -387,13 +387,13 @@ fn live_roundtrip_child() {
     assert!(!xdg_theme.exists(), "тема осталась в ~/.local/share/themes");
     assert_eq!(tree(&home), pristine, "тема GTK со ссылкой: после удаления остались следы");
 
-    // Рамки поверх ТЕМЫ ЧЕЛОВЕКА с тем же именем в ~/.themes: установка её
-    // не перезаписывает, удаление не снимает (Д1).
+    // Borders over THE PERSON'S THEME with the same name in ~/.themes: installation does not
+    // overwrite it, removal does not take it off (D1).
     let human = home.join(".themes/FamilyTheme");
     std::fs::create_dir_all(human.join("gtk-3.0")).unwrap();
     std::fs::write(human.join("gtk-3.0/gtk.css"), "/* своя */").unwrap();
     let with_human = tree(&home);
-    // То же — снятием по общему журналу: тема человека не записана и цела.
+    // Same with removal by the shared log: the person's theme is not recorded and stays intact.
     let rxn = work.join("golden-deco-human-j.rxn");
     let files = theme_files("FamilyTheme");
     let refs: Vec<(&str, &str)> = files.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
@@ -427,12 +427,12 @@ fn live_roundtrip_child() {
     std::fs::remove_dir_all(&human).unwrap();
     assert_eq!(tree(&home), pristine, "после уборки темы человека остались следы");
 
-    // ОСНОВНАЯ копия темы поверх темы человека с тем же именем (дефект
-    // 25.10.2026: план снимал её и клал свою). Тема человека (она же —
-    // копия прежнего Rexon без метки: их не отличить) остаётся побайтно.
-    // Другой темы в пакете нет — ставить нечего: отказ целиком с причиной,
-    // профиль (с каталогом расширений и журналом) побайтно прежний. Оба
-    // пути плана: общий (значки) и матрица окружений (xfwm4).
+    // The MAIN copy of a theme over the person's theme with the same name (defect
+    // 25.10.2026: the plan removed it and put its own). The person's theme (which is also
+    // a copy from an earlier Rexon without a mark: they cannot be told apart) stays byte-for-byte.
+    // There is no other theme in the package — nothing to install: refused entirely with a reason,
+    // the profile (with the extensions directory and the log) byte-for-byte as before. Both
+    // plan paths: the shared one (icons) and the desktop matrix (xfwm4).
     for (t, base) in [("theme-icons", ".local/share/icons"), ("theme-xfwm4", ".themes")] {
         let human = home.join(base).join("HumanTheme");
         std::fs::create_dir_all(human.join("sub")).unwrap();
@@ -462,9 +462,9 @@ fn live_roundtrip_child() {
     }
     assert_eq!(tree(&home), pristine, "после уборки тем человека остались следы");
 
-    // Своя прежняя копия (метка ЭТОГО пакета) — заменяется: пакет забыт
-    // (копии в каталоге расширений нет), тема осталась; установка новой
-    // версии кладёт новое содержимое и метку, заметок нет.
+    // Our own earlier copy (the mark of THIS package) is replaced: the package is forgotten
+    // (no copy in the extensions directory), the theme remains; installing the new
+    // version puts the new contents and the mark, no notes.
     for (t, base) in [("theme-icons", ".local/share/icons"), ("theme-xfwm4", ".themes")] {
         let id = format!("golden-main-update-{t}");
         let theme = home.join(base).join("UpdTheme");
@@ -490,7 +490,7 @@ fn live_roundtrip_child() {
         assert_eq!(tree(&home), pristine, "{t}: после удаления обновлённой остались следы");
     }
 
-    // Цветовая схема — файл, а не каталог.
+    // A color scheme is a file, not a directory.
     let rxn = work.join("golden-colors.rxn");
     make_rxn(
         &rxn,
@@ -502,13 +502,13 @@ fn live_roundtrip_child() {
     ext_exec::uninstall("golden-colors").expect("цвета: удаление");
     assert_eq!(tree(&home), pristine, "цвета: после удаления остались следы");
 
-    // ── Правило владельца у плазмоидов (по KPlugin.Id) и одиночных файлов ─
-    // Дефект 25.10.2026: план снимал каталог плазмоида с тем же id (и
-    // обновлял его `kpackagetool -u`), даже чужой, и молча перезаписывал
-    // одноимённую цветовую схему. Чужое остаётся побайтно, причина названа;
-    // пропущено всё — отказ целиком, профиль как до установки; своё
-    // заменяется. Подмена kpackagetool6 только пишет argv в журнал и
-    // отказывает (ручная ветка плана) — настоящий инструмент не запускается.
+    // ── Owner rule for plasmoids (by KPlugin.Id) and single files ─────────
+    // Defect 25.10.2026: the plan removed a plasmoid directory with the same id (and
+    // updated it with `kpackagetool -u`), even someone else's, and silently overwrote
+    // a color scheme of the same name. Someone else's stays byte-for-byte, the reason is named;
+    // everything skipped means refused entirely, the profile as before installation; ours
+    // is replaced. The kpackagetool6 stub only writes argv into a log and
+    // fails (the manual branch of the plan) — the real tool is not started.
     let bin = PathBuf::from(std::env::var("PATH").unwrap());
     let kpt_log = home.parent().unwrap().join("kpackagetool.log");
     let fake_kpt = bin.join("kpackagetool6");
@@ -542,7 +542,7 @@ fn live_roundtrip_child() {
     std::fs::write(plasmoid.join("contents/ui/main.qml"), "часы человека").unwrap();
     let plasmoid_s = plasmoid.to_string_lossy().into_owned();
     let before = bytes(&home);
-    // Каталогом (папка названа как id) и архивом `.plasmoid` (id — внутри).
+    // As a directory (folder named as the id) and as a `.plasmoid` archive (id inside).
     let as_dir = work.join("golden-plasmoid-dir.rxn");
     make_rxn(
         &as_dir,
@@ -561,9 +561,9 @@ fn live_roundtrip_child() {
     assert!(!kpt_log.exists(), "kpackagetool запускался поверх чужого плазмоида: {:?}", std::fs::read_to_string(&kpt_log));
     std::fs::remove_dir_all(&plasmoid).unwrap();
 
-    // Свой плазмоид: архив ставится (инструмент отказал — ручная ветка),
-    // каталог по id из архива — с меткой; пакет забыт, новая версия
-    // заменяет свою прежнюю копию; удаление снимает по настоящему id.
+    // Our own plasmoid: the archive installs (the tool failed — manual branch),
+    // the directory by the id from the archive carries the mark; the package is forgotten, a new version
+    // replaces our earlier copy; removal takes it off by the real id.
     let own_id = "golden-plasmoid-own";
     let v1 = work.join("golden-plasmoid-own-1.rxn");
     make_plasmoid_rxn(&v1, own_id, &plasmoid_archive("v1"));
@@ -584,7 +584,7 @@ fn live_roundtrip_child() {
     assert_eq!(tree(&home), pristine, "плазмоиды: следы после удаления");
     std::fs::remove_file(&fake_kpt).unwrap();
 
-    // Цветовые схемы. Схема человека с тем же именем файла.
+    // Color schemes. The person's scheme with the same file name.
     let schemes = home.join(".local/share/color-schemes");
     std::fs::create_dir_all(&schemes).unwrap();
     let human_colors = schemes.join("Golden.colors");
@@ -602,8 +602,8 @@ fn live_roundtrip_child() {
     let err = ext_exec::install_from_file(&rxn.to_string_lossy()).err().expect("цвета: поверх схемы человека прошло");
     assert!(err.contains("“Golden.colors” skipped") && err.contains(&human_colors_s), "цвета: причина: {err}");
     assert_eq!(bytes(&home), before, "цвета: отказ тронул профиль");
-    // Две схемы, одна занята: вторая ставится, про первую — заметка; удаление
-    // схему человека не снимает.
+    // Two schemes, one taken: the second installs, the first gets a note; removal
+    // does not take off the person's scheme.
     let rxn = work.join("golden-colors-two.rxn");
     make_rxn(
         &rxn,
@@ -617,8 +617,8 @@ fn live_roundtrip_child() {
     ext_exec::uninstall("golden-colors-two").unwrap_or_else(|e| panic!("цвета: удаление: {e}"));
     assert_eq!(tree(&home), with_human, "цвета: удаление сняло лишнее или оставило своё");
     assert_eq!(std::fs::read_to_string(&human_colors).unwrap(), "[General]\nName=Своя\n", "цвета: удаление тронуло схему человека");
-    // Тот же файл байт в байт — свой: установка без заметок, путь в журнале,
-    // удаление снимает.
+    // The same file byte-for-byte is ours: installed without notes, the path is in the log,
+    // removal takes it off.
     std::fs::write(&human_colors, golden).unwrap();
     let rxn = work.join("golden-colors-same.rxn");
     make_rxn(
@@ -633,7 +633,7 @@ fn live_roundtrip_child() {
     ext_exec::uninstall("golden-colors-same").unwrap_or_else(|e| panic!("цвета: тот же файл: удаление: {e}"));
     assert_eq!(tree(&home), pristine, "цвета: тот же файл не снят удалением");
 
-    // Ссылки в архиве (синоним и висячая) переносятся ссылками.
+    // Links in the archive (an alias and a dangling one) are carried over as links.
     let rxn = work.join("golden-links.rxn");
     let (mut files, links) = link_theme_files("data/");
     files.insert(0, (
@@ -647,8 +647,8 @@ fn live_roundtrip_child() {
     ext_exec::uninstall("golden-links").expect("ссылки: удаление");
     assert_eq!(tree(&home), pristine, "ссылки: после удаления остались следы");
 
-    // Шрифт — копия ФАЙЛА в файл под своим именем внутри каталога набора
-    // (прежде шаг звал «файл в каталог»).
+    // A font is a copy of a FILE into a file under its own name inside the set directory
+    // (previously the step called "file into directory").
     let rxn = work.join("golden-font.rxn");
     make_rxn(
         &rxn,
@@ -661,7 +661,7 @@ fn live_roundtrip_child() {
     ext_exec::uninstall("golden-font").expect("шрифт: удаление");
     assert_eq!(tree(&home), pristine, "шрифт: после удаления остались следы");
 
-    // ── 2. Неверные пакеты — отказ без следов ─────────────────────────
+    // ── 2. Bad packages — refused without traces ──────────────────────
     let cases: &[(&str, serde_json::Value, &str)] = &[
         ("unknown-type", serde_json::json!({"id": "golden-bad1", "name": "x", "type": "theme-nonsense"}), "Unknown extension type"),
         ("no-id", serde_json::json!({"name": "x", "type": "theme-icons"}), "id"),
@@ -688,7 +688,7 @@ fn live_roundtrip_child() {
         assert_eq!(after_ext, before_ext, "{what}: в каталоге расширений что-то появилось");
         assert!(!home.join(".config/escape").exists(), "{what}: пакет вышел за каталог расширений");
     }
-    // Не архив и архив без манифеста.
+    // Not an archive, and an archive without a manifest.
     let junk = work.join("junk.rxn");
     std::fs::write(&junk, b"not a zip").unwrap();
     let err = ext_exec::install_from_file(&junk.to_string_lossy()).err().expect("мусор установился");
@@ -704,10 +704,10 @@ fn live_roundtrip_child() {
     assert!(err.contains("manifest.json"), "без манифеста: не тот отказ: {err}");
     assert_eq!(tree(&home), pristine, "мусорные пакеты оставили следы");
 
-    // ── 3. Откат: сбой посреди установки снимает копию пакета ─────────
-    // Каталог тем значков занят ФАЙЛОМ — копия темы не ляжет.
+    // ── 3. Rollback: a failure mid-install removes the package copy ───
+    // The icon themes directory is taken by a FILE — the theme copy will not land.
     let icons = home.join(".local/share/icons");
-    let _ = std::fs::remove_dir_all(&icons); // пустой остаток прежних установок
+    let _ = std::fs::remove_dir_all(&icons); // empty leftover of earlier installs
     std::fs::create_dir_all(icons.parent().unwrap()).unwrap();
     std::fs::write(&icons, b"blocker").unwrap();
     let rxn = work.join("golden-rollback.rxn");
@@ -724,21 +724,21 @@ fn live_roundtrip_child() {
     assert!(state(&home).get("golden-rollback").is_none(), "откат оставил отметку «включено»");
     std::fs::remove_file(&icons).unwrap();
 
-    // ── 3б. Откат посреди плана: замена и чужой каталог (шаг 4) ───────
-    // Рамка окон на XFCE кладёт тему в `~/.local/share/aurorae/themes`, затем
-    // копию в `~/.themes`. Там уже стоит прежняя копия этого же пакета (план
-    // её заменит), а `~/.themes` с чужим файлом закрыт на запись:
-    // первая копия ложится, на второй — сбой. Откат обязан снять положенное
-    // (и копию пакета), вернуть заменённую тему и не тронуть чужое; профиль
-    // (с картой состояний и общим журналом) — побайтно как до установки.
+    // ── 3b. Rollback mid-plan: a replacement and someone else's directory (step 4) ──
+    // Window borders on XFCE put the theme into `~/.local/share/aurorae/themes`, then
+    // a copy into `~/.themes`. An earlier copy of this same package is already there (the plan
+    // will replace it), and `~/.themes` with someone else's file is read-only:
+    // the first copy lands, the second fails. Rollback must remove what was put
+    // (and the package copy), restore the replaced theme and not touch someone else's; the profile
+    // (with the state map and the shared log) byte-for-byte as before installation.
     let aurorae = home.join(".local/share/aurorae/themes/RollbackTheme");
     std::fs::create_dir_all(aurorae.join("xfwm4")).unwrap();
     std::fs::write(aurorae.join("xfwm4/themerc"), "прежняя рамка").unwrap();
-    // Прежняя копия ЭТОГО пакета (с его меткой) — её план заменяет; чужую
-    // с тем же именем он не тронул бы вовсе.
+    // An earlier copy of THIS package (with its mark) — the plan replaces it; someone else's
+    // with the same name it would not touch at all.
     std::fs::write(aurorae.join(rexon_core::ext_manager::OWNER_MARK), "golden-rollback-mid\n").unwrap();
     let themes = home.join(".themes");
-    let _ = std::fs::remove_dir_all(&themes); // пустой остаток прежних установок
+    let _ = std::fs::remove_dir_all(&themes); // empty leftover of earlier installs
     std::fs::create_dir_all(&themes).unwrap();
     std::fs::write(themes.join("keep.txt"), "чужой файл").unwrap();
     read_only(&themes, true);
@@ -766,17 +766,17 @@ fn live_roundtrip_child() {
     std::fs::remove_dir_all(home.join(".local/share/aurorae")).unwrap();
     std::fs::remove_dir_all(&themes).unwrap();
 
-    // Удаление несуществующего — отказ с именем.
+    // Removing something nonexistent is refused with the name.
     let err = ext_exec::uninstall("golden-absent").err().expect("удалилось несуществующее");
     assert!(err.contains("golden-absent"), "не тот отказ удаления: {err}");
 }
 
-/// Собрать zip-архив темы «как из магазина»: `(путь, содержимое)`.
+/// Build a theme zip archive "as from the store": `(path, contents)`.
 fn make_zip(path: &Path, files: &[(String, String)]) {
     make_zip_with_links(path, files, &[]);
 }
 
-/// То же со ссылками внутри архива: `(путь ссылки, цель)`.
+/// Same with links inside the archive: `(link path, target)`.
 fn make_zip_with_links(path: &Path, files: &[(String, String)], links: &[(&str, &str)]) {
     let mut z = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
     let opt = zip::write::SimpleFileOptions::default();
@@ -790,9 +790,9 @@ fn make_zip_with_links(path: &Path, files: &[(String, String)], links: &[(&str, 
     z.finish().unwrap();
 }
 
-/// Тема значков со ссылкой-синонимом и висячей ссылкой: обе обязаны лечь
-/// ССЫЛКАМИ с прежней целью (общее копирование, шаг 2 слияния
-/// установщиков), установка из-за висячей не падает.
+/// An icon theme with an alias link and a dangling link: both must land
+/// AS LINKS with the original target (shared copying, step 2 of the installer
+/// merge), installation does not fail because of the dangling one.
 fn assert_links_landed(theme_dir: &Path, what: &str) {
     let alias = theme_dir.join("scalable/alias.svg");
     let gone = theme_dir.join("scalable/gone.svg");
@@ -832,7 +832,7 @@ fn live_appearance_child() {
     let mut inst = LiveInstaller::new("xfce", Box::new(|_| {}));
     let pristine = tree(&home);
 
-    // (раздел, файлы архива, куда ляжет тема)
+    // (section, archive files, where the theme lands)
     let icon = |t: &str| vec![
         (format!("{t}/index.theme"), format!("[Icon Theme]\nName={t}\nDirectories=\n")),
         (format!("{t}/scalable/a.svg"), "<svg/>".to_string()),
@@ -877,13 +877,13 @@ fn live_appearance_child() {
         assert!(home.join(landed).exists(), "{cat_id}: тема не легла в {landed}: {:#?}", tree(&home));
         let after = tree(&home);
 
-        // Повтор той же покупки — удаётся и кладёт то же самое.
+        // Repeating the same purchase succeeds and puts the same thing.
         let (ok, msg, _) = inst.install(&item, &zip.to_string_lossy());
         assert!(ok, "{cat_id}: повторная установка отказала: {msg}");
         assert_eq!(tree(&home), after, "{cat_id}: повтор положил другое");
 
-        // Общий журнал установки сверен с журналом магазина: та же покупка,
-        // те же пути, у каждого — вид с диска.
+        // The shared install log checked against the store log: the same purchase,
+        // the same paths, each with its kind from disk.
         use rexon_core::install_journal as journal;
         let rexon = home.join(".config/rexon");
         let key = journal::key_of(journal::Source::Store, &id);
@@ -892,8 +892,8 @@ fn live_appearance_child() {
         let e = j.items.get(&key).unwrap_or_else(|| panic!("{cat_id}: покупки нет в общем журнале"));
         let old: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(rexon.join("ocs_installed.json")).unwrap()).unwrap();
-        // Пути — те же, а у темы GTK вслед за ней ещё её ссылка `~/.themes`
-        // (её ставит `sync_theme_links`; удаление по журналу снимет и её).
+        // The paths are the same, and a GTK theme is followed by its `~/.themes` link
+        // (set by `sync_theme_links`; removal by the log takes it off too).
         let xdg_themes = home.join(".local/share/themes");
         let mut want: Vec<String> = Vec::new();
         for p in old[&id]["paths"].as_array().unwrap().iter().filter_map(|p| p.as_str()) {
@@ -913,12 +913,12 @@ fn live_appearance_child() {
             let rec = e.placed.iter().find(|p| p.path == link).unwrap_or_else(|| panic!("ссылка ~/.themes/GoldGtk не в журнале: {e:#?}"));
             assert_eq!(rec.what, Some(journal::What::Link), "ссылка ~/.themes записана видом «ссылка»");
         }
-        // Читатели берут журнал магазина через общий — видят то же, что в
-        // самом журнале магазина.
+        // Readers get the store log through the shared one — they see the same as in
+        // the store log itself.
         let view = journal::store_log_view(&rexon.join("ocs_installed.json").to_string_lossy());
         assert_eq!(serde_json::Value::Object(view), old, "{cat_id}: читатель видит не то, что в журнале магазина");
 
-        // Удаление по журналу — профиль как был.
+        // Removal by the log: the profile as it was.
         let (ok, msg) = inst.uninstall(&id);
         assert!(ok, "{cat_id}: удаление отказало: {msg}");
         let j = journal::parse(std::fs::read_to_string(journal::journal_path(&rexon)).ok().as_deref()).unwrap();
@@ -929,7 +929,7 @@ fn live_appearance_child() {
         assert_eq!(now, pristine, "{cat_id}: после удаления остались следы");
     }
 
-    // Цветовая схема одним голым файлом.
+    // A color scheme as a single bare file.
     let colors = work.join("Gold.colors");
     std::fs::write(&colors, "[General]\nName=Gold\n[Colors:Window]\nBackgroundNormal=1,2,3\n").unwrap();
     let item = ThemeItem { id: "900100".into(), category_id: 112, download_name: "Gold.colors".into(), ..Default::default() };
@@ -940,8 +940,8 @@ fn live_appearance_child() {
     assert!(ok, "цвета: удаление: {msg}");
     assert_eq!(tree(&home), pristine, "цвета: следы после удаления");
 
-    // Ссылки в архиве магазина (синоним и висячая) — тем же поведением, что
-    // у `.rxn`.
+    // Links in a store archive (an alias and a dangling one) — the same behavior as
+    // for `.rxn`.
     let zip = work.join("links.zip");
     let (files, links) = link_theme_files("");
     let link_refs: Vec<(&str, &str)> = links.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
@@ -954,10 +954,10 @@ fn live_appearance_child() {
     assert!(ok, "ссылки: удаление: {msg}");
     assert_eq!(tree(&home), pristine, "ссылки: следы после удаления");
 
-    // Одиночный файл поверх чужого (правило владельца для файлов, дефект
-    // 25.10.2026: схема перезаписывалась молча). Ссылка наружу на месте —
-    // тоже чужое: ни копии сквозь неё, ни замены самой ссылки; схема
-    // человека с другим содержимым цела — обе с причиной отказа.
+    // A single file over someone else's (owner rule for files, defect
+    // 25.10.2026: the scheme was silently overwritten). A link pointing outside in its place is
+    // also someone else's: no copy through it, no replacement of the link itself; the person's
+    // scheme with different contents stays intact — both with a refusal reason.
     let outside = work.join("outside.colors");
     std::fs::write(&outside, "чужой").unwrap();
     let schemes = home.join(".local/share/color-schemes");
@@ -976,7 +976,7 @@ fn live_appearance_child() {
     let (ok, msg, _) = inst.install(&item, &colors.to_string_lossy());
     assert!(!ok && msg.contains("skipped"), "цвета поверх схемы человека: {msg}");
     assert_eq!(bytes(&home), before, "цвета поверх схемы человека: отказ тронул профиль");
-    // Архив со схемами: занятая чужой — пропуск с причиной, свободная ложится.
+    // An archive with schemes: one taken by someone else is skipped with a reason, a free one lands.
     let pack = work.join("schemes.zip");
     make_zip(&pack, &[
         ("Pack/Gold.colors".into(), "[General]\nName=Gold v2\n".into()),
@@ -990,7 +990,7 @@ fn live_appearance_child() {
     let (ok, msg) = inst.uninstall("900102");
     assert!(ok, "архив схем: удаление: {msg}");
     assert_eq!(std::fs::read_to_string(&landed).unwrap(), "[General]\nName=Своя\n", "удаление архива схем сняло схему человека");
-    // Тот же файл байт в байт — свой: ставится и снимается удалением.
+    // The same file byte-for-byte is ours: it installs and is taken off by removal.
     std::fs::copy(&colors, &landed).unwrap();
     let item = ThemeItem { id: "900103".into(), category_id: 112, download_name: "Gold.colors".into(), ..Default::default() };
     let (ok, msg, _) = inst.install(&item, &colors.to_string_lossy());
@@ -999,12 +999,12 @@ fn live_appearance_child() {
     assert!(ok, "цвета, тот же файл: удаление: {msg}");
     assert_eq!(tree(&home), pristine, "цвета: следы после удаления");
 
-    // Откат посреди установки (шаг 4). Рамка `GoldA` куплена (v1); новая
-    // версия той же покупки (v2) несёт `GoldA` и `GoldB`. `GoldB` ложится
-    // подпапкой внутрь темы GTK с тем же именем, поставленной руками и
-    // закрытой на запись, — на ней сбой. Откат: прежняя копия `GoldA` (v1)
-    // возвращена, чужая тема цела, журналы — как до установки; профиль
-    // побайтно прежний.
+    // Rollback mid-install (step 4). Borders `GoldA` are purchased (v1); a new
+    // version of the same purchase (v2) carries `GoldA` and `GoldB`. `GoldB` lands
+    // as a subfolder inside a GTK theme of the same name, installed by hand and
+    // made read-only — it fails there. Rollback: the earlier copy of `GoldA` (v1)
+    // is restored, someone else's theme is intact, the logs as before installation; the profile
+    // byte-for-byte as before.
     let item = ThemeItem { id: "900400".into(), name: "Gold frames".into(), category_id: 906, download_name: "frames.zip".into(), ..Default::default() };
     let v1 = work.join("frames-v1.zip");
     make_zip(&v1, &[("GoldA/xfwm4/themerc".into(), "v1".into())]);
@@ -1036,11 +1036,11 @@ fn live_appearance_child() {
     assert!(ok, "рамка: удаление: {msg}");
     assert_eq!(tree(&home), pristine, "рамка: следы после удаления");
 
-    // Запасная ветка «обои / шрифты и прочее» (правило владельца, дефект
-    // 25.10.2026: каталог с тем же именем снимался без проверки). Каталог
-    // человека с тем же именем побайтно цел, причина названа; каталог другой
-    // покупки — тоже; своя прежняя покупка заменяется, удаление снимает
-    // только своё.
+    // The fallback branch "wallpapers / fonts and the rest" (owner rule, defect
+    // 25.10.2026: a directory with the same name was removed without a check). The person's
+    // directory with the same name stays byte-for-byte, the reason is named; another
+    // purchase's directory too; our own earlier purchase is replaced, removal takes off
+    // only ours.
     for (cat_id, dir, file) in [
         (299, ".local/share/wallpapers", "contents/images/1920x1080.jpg"),
         (103, ".local/share/fonts", "GoldFont.ttf"),
@@ -1063,14 +1063,14 @@ fn live_appearance_child() {
         assert_eq!(bytes(&home), before, "{cat_id}: отказ тронул профиль");
         std::fs::remove_dir_all(&landed).unwrap();
 
-        // Своя покупка (v1), повтор её же новой версией (v2) — заменяется.
+        // Our own purchase (v1), repeated with its new version (v2), is replaced.
         let (ok, msg, _) = inst.install(&item, &v1.to_string_lossy());
         assert!(ok, "{cat_id}: v1: {msg}");
         let (ok, msg, _) = inst.install(&item, &v2.to_string_lossy());
         assert!(ok, "{cat_id}: своя прежняя покупка не заменена: {msg}");
         assert_eq!(std::fs::read_to_string(landed.join(file)).unwrap(), "v2", "{cat_id}: прежняя версия осталась");
 
-        // Другая покупка с тем же именем — чужое: отказ, наша цела.
+        // Another purchase with the same name is someone else's: refused, ours is intact.
         let other = ThemeItem { id: format!("9006{cat_id}"), ..item.clone() };
         let before = bytes(&home);
         let (ok, msg, _) = inst.install(&other, &v1.to_string_lossy());
@@ -1084,7 +1084,7 @@ fn live_appearance_child() {
         assert_eq!(tree(&home), pristine, "{cat_id}: следы после удаления");
     }
 
-    // Отказы без следов: исходники вместо виджета, битый архив.
+    // Refusals without traces: sources instead of a widget, a broken archive.
     let src = work.join("src.zip");
     make_zip(&src, &[("widget-src/CMakeLists.txt".into(), "project(x)".into()), ("widget-src/main.cpp".into(), "".into())]);
     let item = ThemeItem { id: "900200".into(), category_id: 705, download_name: "src.zip".into(), ..Default::default() };
@@ -1097,13 +1097,13 @@ fn live_appearance_child() {
     let (ok, msg, _) = inst.install(&item, &junk.to_string_lossy());
     assert!(!ok, "битый архив установился: {msg}");
     assert_eq!(tree(&home), pristine, "отказы оставили следы");
-    // Удаление того, чего нет в журнале, — отказ.
+    // Removing what is not in the log is refused.
     let (ok, _) = inst.uninstall("900999");
     assert!(!ok, "удалилось то, чего нет в журнале");
 
-    // Шаг 5а: «Применить» — план нажатия исполняет общий исполнитель.
-    // Значки в XFCE: команда (`xfconf-query` — подделка в PATH песочницы,
-    // отвечает успехом) и записи `settings.ini` GTK 3/4 и `kdeglobals`.
+    // Step 5a: «Apply» — the click plan is run by the shared executor.
+    // Icons on XFCE: a command (`xfconf-query` — a fake in the sandbox PATH,
+    // answers with success) and writes to GTK 3/4 `settings.ini` and `kdeglobals`.
     let bin = home.parent().unwrap().join("bin");
     std::fs::write(bin.join("xfconf-query"), "#!/bin/sh\nexit 0\n").unwrap();
     {
@@ -1120,21 +1120,21 @@ fn live_appearance_child() {
     assert!(ok, "значки для «Применить»: {msg}");
     let cfg = home.join(".config");
     let rexon = cfg.join("rexon");
-    // Значки человека «Mine» стоят — иначе санитайзер GTK после нажатия
-    // сам заменит несуществующее имя, и сверка поймала бы его, а не план.
+    // The person's icons "Mine" are installed — otherwise the GTK sanitizer would replace a nonexistent
+    // name by itself after the click, and the check would catch it rather than the plan.
     let mine = home.join(".local/share/icons/Mine");
     std::fs::create_dir_all(mine.join("scalable")).unwrap();
     std::fs::write(mine.join("index.theme"), "[Icon Theme]\nName=Mine\nDirectories=scalable\n\n[scalable]\nSize=48\nType=Scalable\n").unwrap();
     std::fs::create_dir_all(cfg.join("gtk-3.0")).unwrap();
     std::fs::write(cfg.join("gtk-3.0/settings.ini"), "[Settings]\ngtk-icon-theme-name=Mine\ngtk-font-name=Sans 10\n").unwrap();
-    // Конфиги без каталога Rexon (там журнал, история тем, мост).
+    // Configs without the Rexon directory (the log, theme history, the bridge live there).
     let configs = || -> Vec<(String, String)> {
         bytes(&cfg).into_iter().filter(|(p, _)| p != "rexon" && !p.starts_with("rexon/")).collect()
     };
     let before = configs();
 
-    // Сбой посреди нажатия: каталог GTK 4 закрыт на запись — запись GTK 3
-    // уже прошла, на GTK 4 сбой. Конфиги побайтно прежние, записи нет.
+    // A failure mid-click: the GTK 4 directory is read-only — the GTK 3 write
+    // has already gone through, GTK 4 fails. Configs byte-for-byte as before, no record.
     let gtk4 = cfg.join("gtk-4.0");
     std::fs::create_dir_all(&gtk4).unwrap();
     let before_fail = configs();
@@ -1154,7 +1154,7 @@ fn live_appearance_child() {
     }
     std::fs::remove_dir(&gtk4).unwrap();
 
-    // Удачное нажатие → запись «applied» со снимком → «вернуть как было».
+    // A successful click → an "applied" record with a snapshot → «Restore as it was».
     let (ok, msg) = inst.apply(&item, "PressIcons");
     assert!(ok, "«Применить» значков: {msg}");
     let ini = std::fs::read_to_string(cfg.join("gtk-3.0/settings.ini")).unwrap();
@@ -1164,7 +1164,7 @@ fn live_appearance_child() {
     let rec = j.applied.get("icons").unwrap_or_else(|| panic!("«Применить» не записано в общий журнал: {j:#?}"));
     assert_eq!(rec.theme, "PressIcons");
     assert_eq!(rec.item.as_deref(), Some("store:900600"), "запись не связана с покупкой");
-    // Значение xfconf (подделка: свойство есть, пустое) снято до записи.
+    // The xfconf value (fake: the property exists, empty) is snapshotted before writing.
     let vals = j.applied_values.get("icons").unwrap_or_else(|| panic!("значения стола не сняты: {j:#?}"));
     assert!(
         vals.iter().any(|v| v.key == "xfconf xsettings /Net/IconThemeName" && v.restore.ends_with(&["-s".to_string(), String::new()])),
@@ -1183,8 +1183,8 @@ fn live_appearance_child() {
     let (ok, msg) = inst.uninstall("900600");
     assert!(ok, "значки для «Применить»: удаление: {msg}");
 
-    // Шаг 5а, курсор и цвета — тоже планом нажатия. Профиль целиком (кроме
-    // хозяйства Rexon: журнал, снимки, история тем): курсор пишет и вне
+    // Step 5a, cursor and colors — also via the click plan. The whole profile (except
+    // Rexon's housekeeping: the log, snapshots, theme history): the cursor also writes outside
     // `.config` (`~/.icons/default`).
     let profile = || -> Vec<(String, String)> {
         bytes(&home).into_iter().filter(|(p, _)| !p.starts_with(".config/rexon")).collect()
@@ -1197,8 +1197,8 @@ fn live_appearance_child() {
     let cursor_item = ThemeItem { id: "900700".into(), name: "Press cursor".into(), category_id: 107, ..Default::default() };
     let before = profile();
 
-    // Сбой посреди нажатия курсора: `environment.d` закрыт на запись —
-    // `settings.ini` GTK 3/4 уже записаны, на переменных сбой.
+    // A failure mid cursor click: `environment.d` is read-only —
+    // GTK 3/4 `settings.ini` already written, the variables fail.
     let envd = cfg.join("environment.d");
     std::fs::create_dir_all(&envd).unwrap();
     let before_fail = profile();
@@ -1211,7 +1211,7 @@ fn live_appearance_child() {
         assert!(msg.contains("Not applied") && msg.contains("environment.d"), "курсор: причина сбоя не названа: {msg}");
         assert_eq!(after, before_fail, "курсор: сбой посреди нажатия — профиль не как до нажатия");
         assert!(journal_applied("cursor").is_none(), "курсор: неудачное нажатие записано в журнал");
-        // Размер — тот же путь.
+        // Size goes the same path.
         read_only(&envd, true);
         let (ok, msg) = inst.apply_cursor_size(48);
         let after = profile();
@@ -1224,7 +1224,7 @@ fn live_appearance_child() {
     }
     std::fs::remove_dir(&envd).unwrap();
 
-    // Удачное нажатие → снимок «что было» → «вернуть как было» побайтно.
+    // A successful click → a "what was there" snapshot → «Restore as it was» byte-for-byte.
     let (ok, msg) = inst.apply(&cursor_item, "PressCursor");
     assert!(ok, "«Применить» курсора: {msg}");
     let ini = std::fs::read_to_string(cfg.join("gtk-3.0/settings.ini")).unwrap();
@@ -1233,7 +1233,7 @@ fn live_appearance_child() {
     let rec = journal_applied("cursor").unwrap_or_else(|| panic!("курсор: «Применить» не записано в общий журнал"));
     assert_eq!(rec.theme, "PressCursor");
     assert!(rec.files.iter().any(|f| f.path.ends_with("environment.d/rexon-cursor.conf")), "курсор: файл переменных не в снимке: {rec:#?}");
-    // Размер дописывает в тот же раздел: раннее «что было» не затёрто.
+    // Size appends to the same section: the earlier "what was there" is not overwritten.
     let (ok, msg) = inst.apply_cursor_size(48);
     assert!(ok, "размер курсора: {msg}");
     assert!(std::fs::read_to_string(cfg.join("gtk-3.0/settings.ini")).unwrap().contains("gtk-cursor-theme-size=48"), "размер не записан");
@@ -1244,8 +1244,8 @@ fn live_appearance_child() {
     assert!(journal_applied("cursor").is_none(), "курсор: запись осталась после возврата");
     std::fs::remove_dir_all(&cursor_dir).unwrap();
 
-    // Цвета вне Plasma (XFCE) — слои Rexon: `kdeglobals`, палитра qt6ct,
-    // переменная сеанса и памятка «что было» (`~/.local/state`).
+    // Colors outside Plasma (XFCE) — Rexon layers: `kdeglobals`, the qt6ct palette,
+    // a session variable and a "what was there" memo (`~/.local/state`).
     let schemes = home.join(".local/share/color-schemes");
     std::fs::create_dir_all(&schemes).unwrap();
     std::fs::write(schemes.join("Press.colors"), "[General]\nName=Press\n[Colors:Window]\nBackgroundNormal=10,20,30\n").unwrap();
@@ -1257,8 +1257,8 @@ fn live_appearance_child() {
     let before = profile();
     assert!(!memo.exists());
 
-    // Сбой посреди: каталог палитр qt6ct закрыт — памятка и `kdeglobals`
-    // уже записаны, на палитре сбой. Всё прежнее, памятки нет.
+    // A failure midway: the qt6ct palettes directory is read-only — the memo and `kdeglobals`
+    // already written, the palette fails. Everything as before, no memo.
     let palettes = cfg.join("qt6ct/colors");
     std::fs::create_dir_all(&palettes).unwrap();
     let before_fail = profile();
@@ -1278,7 +1278,7 @@ fn live_appearance_child() {
     }
     std::fs::remove_dir(&palettes).unwrap();
 
-    // Удачное нажатие → снимок → «вернуть как было» по записи `applied`.
+    // A successful click → a snapshot → «Restore as it was» by the `applied` record.
     let (ok, msg) = inst.apply(&colors_item, "Press");
     assert!(ok, "«Применить» цветов: {msg}");
     assert!(msg.contains("KDE and Qt apps"), "цвета: не тот текст удачи: {msg}");
@@ -1296,11 +1296,11 @@ fn live_appearance_child() {
     assert_eq!(profile(), before, "цвета: «вернуть как было» — профиль не как до нажатия");
     assert!(!memo.exists(), "цвета: памятка не снята возвратом");
 
-    // Прежний возврат по памятке слоя работает и после нового пути
-    // (записи сосуществуют): файлы памятки прежние. Чего памятка не знает
-    // (заведённые каталоги, блок переменных, отзеркаленный в
-    // `labwc/environment`), добирает оставшаяся запись `applied` — после
-    // неё профиль побайтно прежний.
+    // The old revert by the layer memo still works after the new path
+    // (the records coexist): the memo files are as before. What the memo does not know
+    // (created directories, the variables block mirrored into
+    // `labwc/environment`) is picked up by the remaining `applied` record — after
+    // it the profile is byte-for-byte as before.
     let (ok, msg) = inst.apply(&colors_item, "Press");
     assert!(ok, "цвета, второй раз: {msg}");
     use rexon_core::shell_palette as sp;
@@ -1319,12 +1319,12 @@ fn live_appearance_child() {
     assert_eq!(profile(), before, "цвета: запись applied после возврата по памятке испортила профиль");
     assert!(!memo.exists(), "цвета: памятка вернулась");
 
-    // Шаг 5а, звук — планом нажатия: записи командами (`xfconf-query`
-    // окружения и `kwriteconfig6` для программ KDE — подделки в PATH
-    // песочницы, только встроенные команды sh: в PATH песочницы нет даже
-    // `cat`; хранилище xfconf — вне профиля), затем прочитанное
-    // обратно имя. `kdeglobals` пишет команда мимо отката — его «что было»
-    // снимает шаг `Guard`, и «вернуть как было» возвращает его побайтно.
+    // Step 5a, sound — via the click plan: writes with commands (the desktop's `xfconf-query`
+    // and `kwriteconfig6` for KDE programs — fakes in the sandbox
+    // PATH, only sh builtins: the sandbox PATH does not even have
+    // `cat`; the xfconf store is outside the profile), then the name read
+    // back. `kdeglobals` is written by a command bypassing rollback — its "what was there" is
+    // snapshotted by the `Guard` step, and «Restore as it was» restores it byte-for-byte.
     let fake = |name: &str, body: String| {
         use std::os::unix::fs::PermissionsExt;
         std::fs::write(bin.join(name), body).unwrap();
@@ -1344,7 +1344,7 @@ fn live_appearance_child() {
     std::fs::write(sound_dir.join("index.theme"), "[Sound Theme]\nName=PressSound\n").unwrap();
     let sound_item = ThemeItem { id: "900900".into(), name: "Press sound".into(), category_id: 316, ..Default::default() };
     let before = profile();
-    // Темы нет — отказ без единой записи.
+    // No theme — refused without a single write.
     let (ok, msg) = inst.apply(&sound_item, "NoSuchSound");
     assert!(!ok, "звук: несуществующая тема применилась: {msg}");
     assert_eq!(profile(), before, "звук: отказ что-то записал");
@@ -1363,16 +1363,16 @@ fn live_appearance_child() {
     let left = rexon_core::install_journal::revert_applied_at(&rexon, "sounds").unwrap();
     assert_eq!(left, Some(Vec::new()), "звук: вернулось не всё");
     assert_eq!(profile(), before, "звук: «вернуть как было» — профиль не как до нажатия");
-    // Программы проверки нет — записано, но не применено; журнал не пишется.
+    // No checking program — written but not applied; the log is not written.
     std::fs::write(&store, "").unwrap();
     fake("xfconf-query", "#!/bin/sh\nexit 0\n".to_string());
     let (ok, msg) = inst.apply(&sound_item, "PressSound");
     assert!(!ok && msg.contains("sound theme"), "звук: непрочитанное имя сочтено удачей: {msg}");
     assert!(journal_applied("sounds").is_none(), "звук: неудача записана в журнал");
 
-    // Шаг 5а, обои экрана блокировки — планом нажатия: ключи
-    // `kscreenlockerrc` пишет `kwriteconfig6` (подделка); файла до нажатия
-    // нет — снимок помнит, что его завело нажатие, и возврат его снимает.
+    // Step 5a, lock screen wallpaper — via the click plan: the
+    // `kscreenlockerrc` keys are written by `kwriteconfig6` (a fake); the file does not exist before the click
+    // — the snapshot remembers that the click created it, and revert removes it.
     let walls = home.join(".local/share/wallpapers");
     std::fs::create_dir_all(&walls).unwrap();
     std::fs::write(walls.join("press-lock.png"), "png").unwrap();
@@ -1383,7 +1383,7 @@ fn live_appearance_child() {
     let (ok, msg) = inst.apply(&lock_item, "no-such.png");
     assert!(!ok && msg.contains("not found"), "обои блокировки: нет картинки — не отказ: {msg}");
     assert_eq!(profile(), before, "обои блокировки: отказ что-то записал");
-    // Команда отказала — не применено, журнал не пишется, профиль прежний.
+    // The command failed — not applied, the log is not written, the profile as before.
     let kwrite_ok = std::fs::read_to_string(bin.join("kwriteconfig6")).unwrap();
     fake("kwriteconfig6", "#!/bin/sh\nexit 1\n".to_string());
     let (ok, msg) = inst.apply(&lock_item, "press-lock.png");
@@ -1404,10 +1404,10 @@ fn live_appearance_child() {
     assert_eq!(left, Some(Vec::new()), "обои блокировки: вернулось не всё");
     assert_eq!(profile(), before, "обои блокировки: «вернуть как было» — профиль не как до нажатия");
 
-    // Шаг 5а, раздел окружения (тема LXQt) — планом нажатия: ключ в
-    // `lxqt.conf` пишет сценарий bash (настоящие bash, grep, sed — ссылками
-    // в PATH песочницы, пишут только в её профиль), итог — сверка «окружение
-    // отдаёт после записи». «Что было» `lxqt.conf` снимает шаг `Guard`.
+    // Step 5a, the desktop section (LXQt theme) — via the click plan: the key in
+    // `lxqt.conf` is written by a bash script (real bash, grep, sed — as links
+    // in the sandbox PATH, they write only into its profile), the result is the check "the desktop
+    // returns after writing". The "what was there" of `lxqt.conf` is snapshotted by the `Guard` step.
     for tool in ["bash", "mkdir", "dirname", "grep", "sed"] {
         let real = ["/usr/bin", "/bin"].iter().map(|d| Path::new(d).join(tool)).find(|p| p.exists());
         std::os::unix::fs::symlink(real.unwrap_or_else(|| panic!("нет {tool}")), bin.join(tool)).unwrap();
@@ -1421,8 +1421,8 @@ fn live_appearance_child() {
     std::fs::write(&lxqt_conf, "[General]\ntheme=Old\nicon_theme=Mine\n").unwrap();
     let lx_item = ThemeItem { id: "901100".into(), name: "Press LXQt".into(), category_id: 910, ..Default::default() };
     let before = profile();
-    // Окружение не приняло (каталог закрыт — сценарий не записал): не
-    // применено, профиль прежний, журнал пуст.
+    // The desktop did not accept it (directory read-only — the script did not write): not
+    // applied, the profile as before, the log empty.
     read_only(&lxqt_dir, true);
     if read_only_bites(&lxqt_dir) {
         let (ok, msg) = inst.apply(&lx_item, "PressLx");

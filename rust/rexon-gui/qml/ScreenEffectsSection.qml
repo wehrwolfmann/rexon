@@ -1,16 +1,17 @@
-// Раздел «Эффекты экрана» вкладки «Оформление»: строки развёртки,
-// кинескоп, видеокассета, киноплёнка… — одной настройкой во всех
-// окружениях, где композитор даёт наложить шейдер.
+// The "Screen effects" section of the "Appearance" tab: scan lines, CRT,
+// video cassette, film… — one setting in all environments where the
+// compositor allows overlaying a shader.
 //
-// Только разметка: снимок и запись — `ScreenEffectsActions`
+// Markup only: snapshot and writing — `ScreenEffectsActions`
 // (rust/rexon-gui/src/screen_effects_actions.rs → rexon_core::screen_effects).
-// Что здесь можно, решает ядро (таблица `support`): нет применения — нет
-// кнопки «Применить», а пояснение `note` честно говорит, почему.
+// What is possible here is decided by the core (the `support` table): no
+// way to apply — no "Apply" button, and the `note` explanation honestly
+// says why.
 //
-// Плитки рисует тот же GLSL, что ляжет на экран: ядро порождает шейдер
-// предпросмотра (`preview_glsl`, все пресеты в одном файле), build.rs
-// собирает его в `.qsb`. Под шейдер подложен нарисованный здесь образец
-// рабочего стола — своя картинка, без чужих ассетов.
+// The tiles are drawn by the same GLSL that will go onto the screen: the
+// core generates a preview shader (`preview_glsl`, all presets in one
+// file), and build.rs compiles it into a `.qsb`. Under the shader lies a
+// desktop sample drawn here — our own picture, without foreign assets.
 
 pragma ComponentBehavior: Bound
 
@@ -22,40 +23,41 @@ Rectangle {
     id: section
     RexonBidi { id: bidi }
 
-    /// Палитра скина и раскладка вкладки — от хозяина страницы.
+    /// Skin palette and tab layout — from the page host.
     property var pal: ({})
-    /// Окружение, выбранное в «Текущее окружение» вкладки «Оформление»
-    /// (пусто — запущенное сейчас). Пояснение, «Применить» и запись идут за
-    /// ним: 08.11.2026 при выбранном «Tiling and Wayfire» в сеансе KDE
-    /// раздел говорил про KWin.
+    /// The environment selected in "Current environment" of the "Appearance"
+    /// tab (empty means the one running now). The explanation, "Apply" and
+    /// writing follow it: on 08.11.2026, with "Tiling and Wayfire" selected in
+    /// a KDE session, the section talked about KWin.
     property string de: ""
     onDeChanged: section.reload()
     property var sty: ({})
 
-    /// Итог действия для всплывающей плашки хозяина.
+    /// Action result for the host's pop-up banner.
     signal message(string text)
 
     property var st: ({})
 
-    /// Выбранная плитка (ещё не применённая): `""` — «Выключено».
+    /// Selected tile (not yet applied): `""` means "Off".
     property string selected: ""
     property real strength: 0.6
     property real speed: 1.0
 
-    /// Часы предпросмотра, уже помноженные на скорость.
+    /// Preview clock, already multiplied by the speed.
     property real clock: 0
 
     readonly property real labelWidth: Math.max(section.sty.widths.fieldLabel, 220)
 
     readonly property var selectedTile: (section.st.presets || []).find(p => p.id === section.selected) || null
 
-    /// Плитки двигаются так же, как двигался бы экран: где хост не даёт
-    /// времени (KWin, Wayfire), эффект и на плитке застывает.
+    /// The tiles move just as the screen would: where the host provides no
+    /// time (KWin, Wayfire), the effect freezes on the tile as well.
     readonly property bool liveMotion: section.st.moving === true
                                        || section.st.coverage === "None"
                                        || section.st.coverage === "MonochromeOnly"
 
-    /// Есть что применять: выбор или ползунки разошлись с тем, что включено.
+    /// There is something to apply: the selection or the sliders differ from
+    /// what is enabled.
     readonly property bool dirty: section.selected !== (section.st.preset || "")
                                   || (section.selected !== ""
                                       && (Math.abs(section.strength - (section.st.strength || 0)) > 0.001
@@ -72,21 +74,23 @@ Rectangle {
         section.take(actions.state(section.de));
     }
 
-    /// Идёт запись (рабочий поток `ScreenEffectsActions`): кнопки неактивны.
-    /// Запись НЕ синхронная — 15.11.2026 окно зависало на быстрых нажатиях.
+    /// Writing in progress (the `ScreenEffectsActions` worker thread): buttons
+    /// are disabled. Writing is NOT synchronous — on 15.11.2026 the window
+    /// froze on rapid presses.
     readonly property bool busy: actions.busy
 
-    // ── Защита от чёрного экрана (правило #13) ────────────────────────────
-    // Шейдер может не собраться на чужом драйвере, и тогда экран темнеет.
-    // Поэтому включённый эффект живёт «на пробу»: как при смене разрешения,
-    // без ответа за 15 с всё возвращается к прежнему (выключено или прежний
-    // эффект). Выключение — безопасное действие, его не спрашиваем.
+    // ── Protection against a black screen (rule #13) ──────────────────────
+    // A shader may fail to compile on someone else's driver, and then the
+    // screen goes dark. So an enabled effect lives "on trial": as with a
+    // resolution change, without an answer within 15 s everything returns to
+    // the previous state (off or the previous effect). Turning off is a safe
+    // action; we do not ask about it.
     readonly property int confirmSeconds: 15
     property bool confirming: false
     property int secondsLeft: 0
     property var previous: null
 
-    /// Что было до последнего «Применить» — для отката пробного показа.
+    /// What was there before the last "Apply" — for rolling back the trial.
     property var before: null
 
     function applySelected() {
@@ -95,8 +99,9 @@ Rectangle {
         actions.request("apply", section.de, section.selected, section.strength, section.speed);
     }
 
-    /// Плитка, с которой ушло последнее действие. Пока оно шло, человек мог
-    /// выбрать другую — её выбор итог действия не сбивает.
+    /// The tile the last action came from. While it was running, the user may
+    /// have chosen another one — the action's result does not override that
+    /// choice.
     property string asked: ""
 
     function finished(tag, text, changed, shown, state) {
@@ -106,10 +111,10 @@ Rectangle {
         section.take(state);
         if (picked !== null)
             section.selected = picked;
-        // Пробный показ — только своему шейдеру (`trial` ядра; штатный
-        // чёрно-белый фильтр KDE/Pantheon/COSMIC чёрного экрана не оставит)
-        // и только если эффект действительно включён: у GNOME/Cinnamon это
-        // подтверждает само расширение (`shown`).
+        // The trial is only for our own shader (the core's `trial`; the stock
+        // greyscale filter of KDE/Pantheon/COSMIC will not leave a black screen),
+        // and only if the effect is actually enabled: on GNOME/Cinnamon this is
+        // confirmed by the extension itself (`shown`).
         if (tag === "apply" && changed && shown && section.st.trial === true
                 && (section.st.preset || "") !== "") {
             section.previous = section.before;
@@ -152,7 +157,8 @@ Rectangle {
         }
     }
 
-    // Окно закрыли или ушли из раздела, не ответив, — тоже откат.
+    // The window was closed or the section left without answering — also a
+    // rollback.
     Component.onDestruction: if (section.confirming) section.revert()
 
     ScreenEffectsActions {
@@ -173,18 +179,18 @@ Rectangle {
     radius: section.sty.group.radius
     implicitHeight: body.implicitHeight + 2 * (section.sty.group.marginV + border.width)
 
-    // ── Образец рабочего стола под плитками ───────────────────────────────
-    // Рисуется один раз и отдаётся всем плиткам текстурой.
+    // ── Desktop sample under the tiles ────────────────────────────────────
+    // Drawn once and handed to all tiles as a texture.
     Item {
         id: sample
         width: 320
         height: 200
 
-        // Физическая зона: это картинка экрана, которую шейдер искажает, а
-        // не строка интерфейса. Окно, солнце и холмы стоят ручными `x`, а
-        // ряды и якоря зеркалирование перевернуло бы — при языке справа
-        // налево вышла бы каша (часы поверх значков панели). Картинка одна
-        // при любом языке.
+        // Physical zone: this is a picture of the screen that the shader distorts,
+        // not an interface line. The window, the sun and the hills are placed with
+        // manual `x`, while mirroring would flip rows and anchors — for
+        // right-to-left languages the result would be a mess (the clock on top of
+        // the panel icons). The picture is the same in any language.
         LayoutMirroring.enabled: false
         LayoutMirroring.childrenInherit: true
 
@@ -212,7 +218,7 @@ Rectangle {
             color: "#2f6a3e"
         }
 
-        // Окно.
+        // Window.
         Rectangle {
             x: 28; y: 26; width: 170; height: 112
             color: "#f2f2f2"
@@ -257,7 +263,7 @@ Rectangle {
             }
         }
 
-        // Панель с цветными значками.
+        // Panel with colourful icons.
         Rectangle {
             y: parent.height - 22
             width: parent.width; height: 22
@@ -321,7 +327,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        // Что умеет это окружение — фраза ядра (таблица `support`).
+        // What this environment can do — a core phrase (the `support` table).
         RexonText {
             objectName: "screenEffectsNote"
             Layout.fillWidth: true
@@ -396,7 +402,7 @@ Rectangle {
                             property real rx_window: section.st.per_window === true ? 1 : 0
                             property real rx_time: tile.modelData.animated === true ? section.clock : 0
                             property size rx_res: Qt.size(preview.width, preview.height)
-                            // «Выключено» — образец как есть (шейдер Qt по умолчанию).
+                            // "Off" — the sample as is (the default Qt shader).
                             fragmentShader: preview.plain ? "" : "shaders/screen-effects.frag.qsb"
                         }
 
@@ -425,7 +431,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
-            // У штатного фильтра COSMIC силы нет — ползунок ничего бы не менял.
+            // The stock COSMIC filter has no strength — the slider would change nothing.
             visible: section.st.has_strength !== false
 
             RexonText {
@@ -462,8 +468,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
-            // Скорость есть только у движущихся эффектов и только там, где
-            // хост даёт им время.
+            // Only moving effects have a speed, and only where the host gives them time.
             visible: section.st.moving === true
 
             RexonText {
@@ -506,8 +511,8 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        // Подтверждение «на пробу» — в самой странице, без всплывающего окна
-        // (удобно и с геймпада).
+        // The "on trial" confirmation is in the page itself, without a pop-up
+        // window (convenient with a gamepad too).
         Rectangle {
             objectName: "screenEffectsConfirm"
             Layout.fillWidth: true
@@ -567,16 +572,16 @@ Rectangle {
                 onClicked: section.applySelected()
             }
 
-            // Снять наш блок: конфиг возвращается к прежним байтам.
+            // Remove our block: the config returns to its previous bytes.
             RexonButton {
                 objectName: "screenEffectsRestore"
                 pal: section.pal
                 visible: (section.st.preset || "") !== ""
                 enabled: !section.busy
                 text: qsTranslate("rexon", "Restore as it was")
-                // Окружение — вторым аргументом, сразу за видом действия, как
-                // у «Применить»: прежде пустая строка уходила вместо
-                // окружения, а сила — вместо пресета.
+                // The environment goes as the second argument, right after the action
+                // kind, as with "Apply": previously an empty string went in place of the
+                // environment and the strength in place of the preset.
                 onClicked: {
                     section.asked = "";
                     section.selected = "";

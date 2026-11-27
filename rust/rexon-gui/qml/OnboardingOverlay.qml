@@ -1,21 +1,23 @@
-// Обучение при первом запуске — накладка-«прожектор» поверх окна на Rust.
+// First-run tutorial — a "spotlight" overlay over the Rust window.
 //
-// Порт виджетной накладки `rexon/onboarding.py`: затемнить окно, вырезать
-// окно вокруг нужного места, показать карточку с «Далее» и «Пропустить».
-// Сценарий, порядок, тексты, решение «что показывать», сохранение прогресса,
-// отступ выреза, место карточки и цвета скина — у ядра
-// (`rexon_core::onboarding` через `OnboardingModel`). Здесь только рисование
-// и поиск цели в окне (функция `locate` от хозяина).
+// A port of the widget overlay `rexon/onboarding.py`: dim the window, cut
+// out a hole around the place of interest, show a card with "Next" and
+// "Skip". The scenario, order, texts, the decision "what to show", saving
+// progress, the cut-out margin, the card position and the skin colours
+// belong to the core (`rexon_core::onboarding` through `OnboardingModel`).
+// Here we only draw and find the target in the window (the `locate`
+// function from the host).
 //
-// Первый шаг — вопрос «Показать краткое обучение?», как у Python-окна
-// (`Tour._ask`), только не отдельным окном, а той же карточкой: в Big
-// Picture череда системных окон неудобна (архитектурное правило #16).
+// The first step is the question "Show a short tutorial?", as in the
+// Python window (`Tour._ask`), only not as a separate window but as the
+// same card: in Big Picture a chain of system windows is awkward
+// (architecture rule #16).
 //
-// Управление без мыши: фокус сразу на главной кнопке, Enter/Return — нажать
-// кнопку в фокусе, Esc — отказаться («Не нужно» / «Пропустить»; на последнем
-// шаге — «Готово»), стрелки влево-вправо и Tab — между кнопками. Steam Input
-// переводит крестовину в стрелки, A — в Enter, B — в Esc. Кнопки не ниже
-// 40×40 (правило #16).
+// Control without a mouse: focus goes straight to the main button,
+// Enter/Return presses the focused button, Esc declines ("No thanks" /
+// "Skip"; on the last step — "Done"), the left/right arrows and Tab move
+// between buttons. Steam Input maps the D-pad to arrows, A to Enter, B to
+// Esc. Buttons are no smaller than 40×40 (rule #16).
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -26,21 +28,21 @@ import QtQuick.Shapes
 Popup {
     id: tour
 
-    /// Объект обучения на Rust.
+    /// The Rust tutorial object.
     required property var core
 
-    /// Найти цель в координатах окна: `(kind, tabId)` → `{x, y, width,
-    /// height}` либо null. `kind` — "tab" (заголовок вкладки) или
-    /// "tab_content" (содержимое; хозяин заодно переключается на вкладку).
+    /// Find the target in window coordinates: `(kind, tabId)` → `{x, y, width,
+    /// height}` or null. `kind` is "tab" (the tab header) or "tab_content" (the
+    /// content; the host also switches to the tab).
     property var locate: null
 
-    /// "ask" — вопрос первого запуска, "step" — шаг сценария, "" — закрыто.
+    /// "ask" is the first-run question, "step" a scenario step, "" closed.
     property string mode: ""
-    /// Идентификатор показанного шага.
+    /// Identifier of the step being shown.
     property string stepId: ""
-    /// Содержимое карточки шага от ядра.
+    /// Content of the step card from the core.
     property var content: ({})
-    /// Вырез вокруг цели от ядра.
+    /// Cut-out around the target from the core.
     property var hole: ({ valid: false, x: 0, y: 0, width: 0, height: 0 })
 
     readonly property var st: tour.core.style
@@ -55,18 +57,19 @@ Popup {
     height: parent ? parent.height : 0
     padding: 0
     modal: true
-    // Своё затемнение с вырезом ниже; штатное закрасило бы окно целиком.
+    // Our own dimming with a cut-out below; the stock one would paint over the
+    // whole window.
     dim: false
-    // Закрывается только кнопками: случайный клик мимо карточки не должен
-    // ни закрыть обучение, ни провалиться в окно под ним.
+    // Closed only with the buttons: an accidental click outside the card must
+    // neither close the tutorial nor fall through into the window underneath.
     closePolicy: Popup.NoAutoClose
     focus: true
     enter: null
     exit: null
 
-    // ── Ход обучения ──────────────────────────────────────────────────────
+    // ── Tutorial flow ─────────────────────────────────────────────────────
 
-    /// Исполнить решение ядра `{kind, step}`.
+    /// Execute the core decision `{kind, step}`.
     function begin(decision) {
         if (!decision || decision.kind === "nothing") {
             tour.finish();
@@ -84,7 +87,7 @@ Popup {
     function show(id) {
         const c = tour.core.card(id);
         if (c.title === undefined) {
-            // Шага нет в сценарии — пустая карточка хуже, чем ничего.
+            // The step is not in the scenario — an empty card is worse than nothing.
             tour.finish();
             return;
         }
@@ -92,11 +95,11 @@ Popup {
         tour.stepId = id;
         tour.mode = "step";
         tour.open();
-        // Цель ищется после показа: вкладка могла только что переключиться.
+        // The target is looked up after showing: the tab may have just switched.
         Qt.callLater(tour.settle);
     }
 
-    /// Навести подсветку, поставить карточку и фокус на главную кнопку.
+    /// Point the highlight, place the card and put focus on the main button.
     function settle() {
         tour.aim();
         primaryButton.forceActiveFocus();
@@ -112,7 +115,8 @@ Popup {
         let rect = null;
         if (a.kind !== "window" && a.tab !== "" && tour.locate)
             rect = tour.locate(a.kind, a.tab);
-        // Цель не нашлась — карточка по центру, без пустой рамки.
+        // The target was not found — the card goes to the centre, without an
+        // empty frame.
         tour.hole = rect
             ? tour.core.hole(Math.round(rect.x), Math.round(rect.y),
                              Math.round(rect.width), Math.round(rect.height))
@@ -130,7 +134,7 @@ Popup {
         card.y = p.y;
     }
 
-    /// Главная кнопка: «Показать» / «Далее» / «Готово».
+    /// Main button: "Show" / "Next" / "Done".
     function primary() {
         if (tour.mode === "ask") {
             tour.begin(tour.core.answerAsk(true));
@@ -143,7 +147,7 @@ Popup {
         }
     }
 
-    /// Отказ: «Не нужно» (запоминается) / «Пропустить» (весь сценарий).
+    /// Declining: "No thanks" (remembered) / "Skip" (the whole scenario).
     function secondary() {
         if (tour.mode === "ask")
             tour.core.answerAsk(false);
@@ -152,7 +156,7 @@ Popup {
         tour.finish();
     }
 
-    /// Esc. На последнем шаге отказываться не от чего — это «Готово».
+    /// Esc. On the last step there is nothing to decline — it means "Done".
     function dismiss() {
         if (tour.mode === "step" && tour.content.skipVisible !== true)
             tour.primary();
@@ -172,11 +176,11 @@ Popup {
     Connections {
         target: tour.core
 
-        // «Пройти обучение заново» из Настроек.
+        // "Take the tutorial again" from Settings.
         function onReplayRequested() { tour.begin(tour.core.replay()); }
     }
 
-    // ── Затемнение с вырезом ──────────────────────────────────────────────
+    // ── Dimming with a cut-out ────────────────────────────────────────────
 
     background: Item {
         Shape {
@@ -204,7 +208,7 @@ Popup {
             }
         }
 
-        // Неоновая рамка вокруг подсвеченного места.
+        // Neon frame around the highlighted place.
         Rectangle {
             visible: tour.hole.valid === true
             x: tour.hole.x
@@ -218,7 +222,7 @@ Popup {
         }
     }
 
-    // ── Карточка ──────────────────────────────────────────────────────────
+    // ── Card ──────────────────────────────────────────────────────────────
 
     contentItem: FocusScope {
         id: scope
@@ -228,11 +232,12 @@ Popup {
         Keys.onReturnPressed: (event) => { event.accepted = true; scope.pressFocused(); }
         Keys.onEnterPressed: (event) => { event.accepted = true; scope.pressFocused(); }
 
-        // ⚠️ Фокус держится на карточке, пока обучение открыто. Шаг «Каталог
-        // тем» переключает вкладку, и страница, достроившись асинхронно,
-        // забирает фокус себе (поле «Поиск тем…»). Поймано стендом на Xvfb
-        // 12.09.2026: Esc и стрелки уходили в поле поиска, и с клавиатуры и
-        // геймпада обучение становилось не закрыть.
+        // Warning: focus stays on the card while the tutorial is open. The "Theme
+        // catalogue" step switches the tab, and the page, finishing its build
+        // asynchronously, takes focus for itself (the "Search themes…" field).
+        // Caught by the Xvfb test bench on 12.09.2026: Esc and the arrows went to
+        // the search field, and the tutorial could no longer be closed from the
+        // keyboard or a gamepad.
         Connections {
             target: scope.Window.window
             enabled: tour.opened
@@ -312,7 +317,7 @@ Popup {
                     Layout.topMargin: 4
                     spacing: tour.st.buttonSpacing
 
-                    // «Не нужно» / «Пропустить» — плоская надпись.
+                    // "No thanks" / "Skip" — a flat label.
                     Button {
                         id: secondaryButton
                         objectName: "onboardingSecondary"
@@ -347,7 +352,7 @@ Popup {
 
                     Item { Layout.fillWidth: true }
 
-                    // «Показать» / «Далее» / «Готово» — заливка акцентом.
+                    // "Show" / "Next" / "Done" — filled with the accent.
                     Button {
                         id: primaryButton
                         objectName: "onboardingPrimary"
@@ -375,8 +380,8 @@ Popup {
                             color: primaryButton.hovered || primaryButton.down
                                    ? tour.st.haloHover : tour.st.halo
                             radius: tour.st.nextRadius
-                            // Рамка фокуса цветом текста карточки: на заливке
-                            // акцентом акцентная рамка была бы не видна.
+                            // Focus frame in the card's text colour: on an accent fill an accent
+                            // frame would not be visible.
                             border.width: primaryButton.activeFocus ? 2 : 0
                             border.color: tour.st.cardText
                         }

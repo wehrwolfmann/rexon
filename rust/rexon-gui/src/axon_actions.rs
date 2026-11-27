@@ -1,18 +1,21 @@
-// AxonActions — модель источника «Razer Axon» раздела «Оформление → Обои HD»
-// и его блока в «⚙️ Настройках» того же раздела.
+// AxonActions — the model of the "Razer Axon" source of the "Appearance →
+// HD Wallpapers" section and of its block in the "⚙️ Settings" of the same
+// section.
 //
-// Логики здесь нет: что попадает в сетку, в каком порядке, что сказать
-// человеку — ядро (`rexon_core::axon_window`); чтение библиотеки —
-// `axon_library`, подготовка и наши настройки — `axon_prepare`. Объект
-// держит только прочитанную библиотеку и запрос (поиск, режим, сортировка,
-// фильтры), чтобы поиск по набору не перечитывал файлы Axon.
+// There is no logic here: what goes into the grid, in what order and what
+// to tell the user belong to the core (`rexon_core::axon_window`); reading
+// the library — `axon_library`, preparation and our settings —
+// `axon_prepare`. The object holds only the library it has read and the
+// query (search, mode, sorting, filters), so that searching through the
+// set does not re-read the Axon files.
 //
-// Файлы Axon источник только читает (решение Wehrwolfmann 14.11.2026):
-// «Применить» готовит обои в кэш Rexon или берёт подготовленные заранее и
-// ставит их общим исполнителем обоев — тем же, что у наборов обоев.
+// The source only reads Axon's files (Wehrwolfmann's decision 14.11.2026):
+// "Apply" prepares the wallpaper into the Rexon cache or takes one prepared
+// in advance and sets it with the shared wallpaper executor — the same as
+// for wallpaper sets.
 //
-// До 14.11.2026 те же действия жили временным окном «Razer Axon (тест)» на
-// странице «Расширения» (`ExtensionsActions::axon*`).
+// Until 14.11.2026 the same actions lived in the temporary "Razer Axon
+// (test)" window on the "Extensions" page (`ExtensionsActions::axon*`).
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -28,101 +31,103 @@ pub mod qobject {
     }
 
     unsafe extern "RustQt" {
-        /// Фоновое дело («Применить», возврат описаний) закончилось:
-        /// `message` — готовая строка итога.
+        /// A background job ("Apply", restoring descriptions) has finished:
+        /// `message` is the ready result line.
         #[qsignal]
         fn finished(self: Pin<&mut AxonActions>, message: QString);
 
-        /// Доехали обложки плиток: сетку и подробности стоит перечитать.
+        /// The tile covers arrived: the grid and the details should be re-read.
         #[qsignal]
         #[cxx_name = "coversReady"]
         fn covers_ready(self: Pin<&mut AxonActions>);
     }
 
     extern "RustQt" {
-        /// Все подписи источника и блока настроек одним JSON.
+        /// All labels of the source and the settings block as one JSON.
         #[qinvokable]
         fn texts(self: &AxonActions) -> QString;
 
-        /// Перечитать библиотеку Axon (заход в источник, «Обновить»).
+        /// Re-read the Axon library (entering the source, "Refresh").
         #[qinvokable]
         fn reload(self: Pin<&mut AxonActions>);
 
-        /// Сетка по текущему запросу: JSON `axon_window::view_json`.
+        /// Grid for the current query: JSON `axon_window::view_json`.
         #[qinvokable]
         fn view(self: &AxonActions) -> QString;
 
-        /// Строка поиска.
+        /// Search string.
         #[qinvokable]
         #[cxx_name = "setSearch"]
         fn set_search(self: Pin<&mut AxonActions>, text: &QString);
 
-        /// Режим поиска: `titles` | `tags`.
+        /// Search mode: `titles` | `tags`.
         #[qinvokable]
         #[cxx_name = "setSearchMode"]
         fn set_search_mode(self: Pin<&mut AxonActions>, key: &QString);
 
-        /// Сортировка: `name` | `date`.
+        /// Sorting: `name` | `date`.
         #[qinvokable]
         #[cxx_name = "setSort"]
         fn set_sort(self: Pin<&mut AxonActions>, key: &QString);
 
-        /// Флажок панели фильтров (`axon_window::FilterFlag::key`) либо пункт
-        /// «Тип» (`Dynamic` | `Static` | `Interactive`).
+        /// A filter panel check box (`axon_window::FilterFlag::key`) or a "Type"
+        /// item (`Dynamic` | `Static` | `Interactive`).
         #[qinvokable]
         #[cxx_name = "setFilter"]
         fn set_filter(self: Pin<&mut AxonActions>, key: &QString, on: bool);
 
-        /// «Очистить» панели фильтров.
+        /// "Clear" of the filter panel.
         #[qinvokable]
         #[cxx_name = "clearFilters"]
         fn clear_filters(self: Pin<&mut AxonActions>);
 
-        /// Ссылка «Очистить фильтр»: фильтры и поиск.
+        /// The "Clear filter" link: filters and search.
         #[qinvokable]
         #[cxx_name = "clearFilter"]
         fn clear_filter(self: Pin<&mut AxonActions>);
 
-        /// Подробности обоев `id`: JSON `axon_window::details_json`; пусто —
-        /// таких нет.
+        /// Details of wallpaper `id`: JSON `axon_window::details_json`; empty means
+        /// there is no such wallpaper.
         #[qinvokable]
         fn details(self: &AxonActions, id: &QString) -> QString;
 
-        /// Подготовить обои `id` и поставить их на рабочий стол (на все
-        /// экраны). Возвращает строку «готовлю…»; итог — сигналом `finished`.
+        /// Prepare wallpaper `id` and put it on the desktop (on all screens).
+        /// Returns a "preparing…" line; the result comes with the `finished`
+        /// signal.
         #[qinvokable]
         fn apply(self: Pin<&mut AxonActions>, id: &QString) -> QString;
 
-        /// «Перейти к расположению файла»: папка обоев в файловом менеджере.
+        /// "Go to file location": the wallpaper folder in the file manager.
         #[qinvokable]
         #[cxx_name = "openLocation"]
         fn open_location(self: &AxonActions, id: &QString) -> bool;
 
-        /// Открыть папку `path` в файловом менеджере.
+        /// Open folder `path` in the file manager.
         #[qinvokable]
         #[cxx_name = "openFolder"]
         fn open_folder(self: &AxonActions, path: &QString) -> bool;
 
-        /// Запомнить папку с обоями Axon (`WallpaperSource`), выбранную
-        /// человеком (`file://…` или путь). JSON `{ok, message}`.
+        /// Remember the Axon wallpaper folder (`WallpaperSource`) chosen by the user
+        /// (`file://…` or a path). JSON `{ok, message}`.
         #[qinvokable]
         #[cxx_name = "addFolder"]
         fn add_folder(self: Pin<&mut AxonActions>, url: &QString) -> QString;
 
-        /// Блок настроек: JSON `{line, running, enabled, dirs}` — строка
-        /// «Подготовлено: N, осталось: M», переключатель и папки библиотеки.
+        /// Settings block: JSON `{line, running, enabled, dirs}` — the line
+        /// "Prepared: N, remaining: M", the switch and the library folders.
         #[qinvokable]
         #[cxx_name = "settingsState"]
         fn settings_state(self: &AxonActions) -> QString;
 
-        /// «Подготавливать обои заранее»: запомнить и, если включили, сразу
-        /// запустить фоновую подготовку.
+        /// "Prepare wallpapers in advance": remember it and, if turned on, start
+        /// the background preparation at once.
         #[qinvokable]
         #[cxx_name = "setPrepareAhead"]
         fn set_prepare_ahead(self: &AxonActions, on: bool);
 
-        /// «Вернуть оригинальные описания»: выключает подготовку заранее и
-        /// возвращает ResourceConfig.txt из резервных копий. Итог — `finished`.
+        /// "Restore original descriptions": turns off preparing in advance and
+        /// restores ResourceConfig.txt from the backups. The result comes with
+        /// `finished`.
         #[qinvokable]
         #[cxx_name = "restoreOriginals"]
         fn restore_originals(self: Pin<&mut AxonActions>);
@@ -141,26 +146,28 @@ use rexon_core::axon_library::{self as ax, AxonLibrary};
 use rexon_core::axon_prepare as ap;
 use rexon_core::axon_window::{self as aw, EffectKind, FilterFlag, Query, SearchMode, SortOrder};
 
-/// Прочитанная библиотека и запрос сетки.
+/// The library that was read and the grid query.
 #[derive(Default)]
 pub struct AxonActionsRust {
     lib: AxonLibrary,
     query: Query,
-    /// Адреса обложек, которые сейчас качаются или не скачались в этом
-    /// сеансе: повторный заход в источник их второй раз не просит.
+    /// Cover addresses that are being downloaded now or failed to download in
+    /// this session: entering the source again does not ask for them a second
+    /// time.
     covers_asked: std::collections::HashSet<String>,
 }
 
-/// Готовая копия обложки по адресу — в общем кэше превью «Оформления»
-/// (тот же путь, по которому её кладёт загрузка KDE Store и Wallhaven).
+/// A ready copy of a cover by address — in the shared "Appearance" preview
+/// cache (the same path where the KDE Store and Wallhaven downloads put it).
 fn cached_cover(url: &str) -> Option<std::path::PathBuf> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
     let p = std::path::PathBuf::from(rexon_core::appearance_page::preview_cache_path(&home, url));
     p.is_file().then_some(p)
 }
 
-/// Скачать обложки по очереди в общий кэш превью; доехавшие отдаются в
-/// поток интерфейса пачками, чтобы сетка не перестраивалась на каждую.
+/// Download covers one by one into the shared preview cache; the ones that
+/// arrived are handed to the interface thread in batches, so the grid does
+/// not rebuild for each one.
 fn fetch_covers(handle: cxx_qt::CxxQtThread<qobject::AxonActions>, urls: Vec<String>) {
     use rexon_core::net::UreqNet;
     use rexon_core::ocs::{LiveOcsIo, OcsClient};
@@ -205,12 +212,13 @@ fn fetch_covers(handle: cxx_qt::CxxQtThread<qobject::AxonActions>, urls: Vec<Str
     }
 }
 
-/// Окружение библиотеки Axon: процесс плюс папки из настроек Rexon.
+/// Axon library environment: the process plus the folders from the Rexon
+/// settings.
 fn axon_env() -> ax::AxonEnv {
     ap::live_env().0
 }
 
-/// Доставить итог фоновой работы в поток интерфейса.
+/// Deliver the result of background work to the interface thread.
 fn deliver(handle: cxx_qt::CxxQtThread<qobject::AxonActions>, status: String) {
     if let Err(e) = handle.queue(move |mut object| {
         object.as_mut().finished(QString::from(&status));
@@ -272,8 +280,9 @@ impl qobject::AxonActions {
         self.as_mut().resolve_covers();
     }
 
-    /// Обложки плиток: что уже на диске — сразу, недостающие — фоновой
-    /// загрузкой в общий кэш превью. Выбор — ядро (`axon_window::cover_plan`).
+    /// Tile covers: what is already on disk — at once, the missing ones — by a
+    /// background download into the shared preview cache. The choice is the
+    /// core's (`axon_window::cover_plan`).
     fn resolve_covers(mut self: Pin<&mut Self>) {
         let mut wanted: Vec<String> = Vec::new();
         {
@@ -351,13 +360,14 @@ impl qobject::AxonActions {
         let handle = self.as_mut().qt_thread();
         std::thread::spawn(move || {
             let extractor = ax::default_extractor();
-            // Подготовленные заранее — прямо из `Resource/`, прочие — через кэш.
+            // Ones prepared in advance — straight from `Resource/`, the others through
+            // the cache.
             let status = match ap::prepare_for_apply(&w, Some(extractor.as_ref()), &env) {
                 Ok(ready) => {
                     rexon_core::log_info!("axon", "обои {} готовы: {}", w.id, ready.path.display());
                     let path = ready.path.to_string_lossy().into_owned();
-                    // Та же дверь ядра, что у «Применить» набора обоев: один
-                    // исполнитель на процесс, вывод под окружение решает он.
+                    // The same core door as "Apply" of a wallpaper set: one executor per
+                    // process, and it decides the output for the environment.
                     wallpaper_exec::run_in_slot(
                         &wallpaper_exec::live_slot(),
                         move |exec: &mut wallpaper_exec::WallpaperExec<wallpaper_exec::LiveSys>| {
@@ -403,8 +413,8 @@ impl qobject::AxonActions {
         if let Err(e) = saved {
             rexon_core::log_warn!("axon", "папка {} не сохранена в настройках: {e}", dir.display());
         }
-        // Новая папка — подготовить и её обои заранее (выключено — поток
-        // сразу выйдет).
+        // A new folder — prepare its wallpapers in advance too (when off, the
+        // thread exits at once).
         ap::spawn_background(std::time::Duration::ZERO);
         self.as_mut().reload();
         answer(true, ax::folder_added_text(count))

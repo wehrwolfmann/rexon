@@ -1,23 +1,23 @@
-//! Категории каталога оформления — порт `rexon/appearance/categories.py`.
+//! Appearance catalog categories — port of `rexon/appearance/categories.py`.
 //!
-//! cat_id → тип → путь установки → apply-команда → requires_root. Данные
-//! (реальные OCS-категории KDE Store + виртуальные/локальные) и порядок
-//! сайдбара переносятся один-в-один; правильность транскрипции таблицы
-//! проверяется побайтовой сверкой `asdict`-дампа с самим Python
-//! (golden-тест `categories_parity.rs`).
+//! cat_id → type → install path → apply command → requires_root. The data
+//! (real KDE Store OCS categories + virtual/local ones) and the sidebar order
+//! are carried over one to one; the correctness of the table transcription is
+//! checked by a byte-for-byte comparison of an `asdict` dump with Python itself
+//! (the golden test `categories_parity.rs`).
 //!
-//! Пути `install_dir` в Python раскрываются `os.path.expanduser` на этапе
-//! импорта (от `$HOME`). Здесь дом передаётся параметром — так функции
-//! остаются чистыми и тестируются с фиксированным `$HOME` (как `settings.rs`
-//! выносит предикат `command_exists` параметром).
+//! In Python the `install_dir` paths are expanded by `os.path.expanduser` at
+//! import time (from `$HOME`). Here the home is passed as a parameter — so the functions
+//! stay pure and are tested with a fixed `$HOME` (just as `settings.rs`
+//! takes the `command_exists` predicate as a parameter).
 
 use std::path::Path;
 
 use crate::i18n::{tr, trc};
 use crate::models::{CatalogSource, ThemeCategory};
 
-/// Аналог `os.path.expanduser`: заменяет ведущую `~` на домашний каталог.
-/// Путь без `~` (абсолютный `/usr/share/...` или пустой) возвращается как есть.
+/// Like `os.path.expanduser`: replaces a leading `~` with the home directory.
+/// A path without `~` (an absolute `/usr/share/...` or empty) is returned as is.
 fn exp(home: &Path, p: &str) -> String {
     if p == "~" {
         return home.to_string_lossy().into_owned();
@@ -28,7 +28,7 @@ fn exp(home: &Path, p: &str) -> String {
     p.to_string()
 }
 
-/// Хелпер конструктора реальной категории с install_dir/apply_kind.
+/// A helper constructing a real category with install_dir/apply_kind.
 fn cat(id: i64, key: &str, name: String, icon: &str, install_dir: String, apply_kind: &str) -> ThemeCategory {
     ThemeCategory {
         id,
@@ -44,16 +44,16 @@ fn cat(id: i64, key: &str, name: String, icon: &str, install_dir: String, apply_
     }
 }
 
-/// Реальные категории KDE Store в порядке объявления Python-словаря
-/// `CATEGORIES` (важен для сверки — порядок ключей виден в `asdict`-дампе).
+/// Real KDE Store categories in the declaration order of the Python dict
+/// `CATEGORIES` (matters for the check — the key order is visible in the `asdict` dump).
 ///
-/// `home` — домашний каталог для раскрытия `~` в `install_dir`.
+/// `home` — the home directory for expanding `~` in `install_dir`.
 ///
-/// `apply_kind` у КАЖДОЙ реальной категории свой и совпадает с её ключом.
-/// Общей свалки `"none"` больше нет: пока обои, шрифты, звуки и виджеты
-/// делили один вид, журнал установленных не мог отличить звуковую тему от
-/// пачки обоев (обе писались типом `wallpaper-pack`), а карточка не умела
-/// показать «применено» ни той, ни другой. Wehrwolfmann 2026-08-22.
+/// EVERY real category has its own `apply_kind`, matching its key.
+/// The shared `"none"` catch-all is gone: while wallpapers, fonts, sounds and widgets
+/// shared one kind, the installed log could not tell a sound theme from
+/// a wallpaper pack (both were written with the `wallpaper-pack` type), and the card could not
+/// show "applied" for either. Wehrwolfmann 2026-08-22.
 pub fn categories(home: &Path) -> Vec<ThemeCategory> {
     let e = |p: &str| exp(home, p);
     vec![
@@ -69,10 +69,10 @@ pub fn categories(home: &Path) -> Vec<ThemeCategory> {
         cat(715, "wallpaper_plugins", trc("appearance section", "Wallpaper Plugins"), "🎞️", e("~/.local/share/plasma/wallpapers"), "wallpaper_plugins"),
         cat(103, "fonts", trc("appearance section", "Fonts"), "🔤", e("~/.local/share/fonts"), "fonts"),
         cat(316, "sounds", trc("appearance section", "Sounds"), "🔔", e("~/.local/share/sounds"), "sounds"),
-        // «Виджеты» — зонт 705 «Plasma 6 Extensions», как у Discover
-        // (`plasmoids.knsrc`): апплеты 706 и подкатегории 707–712 (календари,
-        // часы, меню, мониторинг, мультимедиа, погода). Товары приходят с
-        // typeid подкатегории — к разделу их ведёт [`STORE_TYPE_ALIASES`].
+        // "Widgets" — the umbrella 705 "Plasma 6 Extensions", as in Discover
+        // (`plasmoids.knsrc`): applets 706 and subcategories 707–712 (calendars,
+        // clocks, menus, monitoring, multimedia, weather). Items arrive with
+        // the subcategory typeid — [`STORE_TYPE_ALIASES`] leads them to the section.
         cat(705, "plasmoids", trc("appearance section", "Widgets"), "🧊", e("~/.local/share/plasma/plasmoids"), "plasmoids"),
         ThemeCategory {
             requires_root: true,
@@ -82,10 +82,10 @@ pub fn categories(home: &Path) -> Vec<ThemeCategory> {
             requires_root: true,
             ..cat(108, "plymouth", "Plymouth".to_string(), "⚡", "/usr/share/plymouth/themes".to_string(), "plymouth")
         },
-        // «Стиль приложений»: стили Qt и темы Kvantum одной сеткой, магазин —
-        // темы Kvantum (категория 123, ставятся по её же записи выше в
-        // `~/.config/Kvantum`). Готовые стили Qt (Darkly, Lightly, Klassy)
-        // онлайн-каталога не имеют — они в AUR (`aur::category_queries`).
+        // "Application style": Qt styles and Kvantum themes in one grid, the store —
+        // Kvantum themes (category 123, installed by its own record above into
+        // `~/.config/Kvantum`). Ready Qt styles (Darkly, Lightly, Klassy)
+        // have no online catalog — they are in the AUR (`aur::category_queries`).
         ThemeCategory {
             store: CatalogSource::Ocs(vec![123]),
             ..cat(901, "widgetstyle", trc("appearance section", "Application Style"), "🎛️", String::new(), "widgetstyle")
@@ -95,7 +95,7 @@ pub fn categories(home: &Path) -> Vec<ThemeCategory> {
             ..cat(902, "splash", trc("appearance section", "KDE Splash Screen"), "🌅", e("~/.local/share/plasma/look-and-feel"), "splash")
         },
         ThemeCategory {
-            // Номер по режиму (полные темы 722 / обои 299) выбирает
+            // The number by mode (full themes 722 / wallpapers 299) is chosen by
             // `CatalogView::query_category_id`.
             store: CatalogSource::Ocs(vec![722]),
             ..cat(903, "lockscreen", trc("appearance section", "Lock Screen"), "🔒", e("~/.local/share/plasma/look-and-feel"), "lockscreen")
@@ -105,28 +105,28 @@ pub fn categories(home: &Path) -> Vec<ThemeCategory> {
         cat(488, "splash", trc("appearance section", "Plasma Splashscreens"), "🌅", e("~/.local/share/plasma/look-and-feel"), "splash"),
     ]
     .into_iter()
-    // ── Разделы окружений (04.10.2026) ─────────────────────────────────
-    // То, что раньше включала сама установка `.rxn`, получило свой раздел и
-    // свою кнопку: «Применить» у тем, «Включить»/«Выключить» у дополнений,
-    // «Запустить»/«Остановить» у Conky (`crate::de_apply`). Каталог
-    // установки берётся из матрицы, в каком окружении раздел виден — тоже
-    // из неё (`category_available`).
+    // ── Desktop sections (04.10.2026) ──────────────────────────────────
+    // What the `.rxn` installation used to turn on by itself got its own section and
+    // its own button: "Apply" for themes, "Enable"/"Disable" for extensions,
+    // "Start"/"Stop" for Conky (`crate::de_apply`). The install directory
+    // is taken from the matrix, and so is the desktop in which the section is visible
+    // (`category_available`).
     .chain(DE_SECTIONS.iter().map(|(id, key)| de_section(home, *id, key)))
     .collect()
 }
 
-/// Разделы окружений: номер и ключ (он же вид применения). Номер больше
-/// [`STORE_MAX_ID`] — синтетический (после местных 901–905), не больше —
-/// настоящая категория магазина KDE. Откуда раздел берёт каталог, номер не
-/// решает: это [`de_section_store`]. Эталон Python этих разделов не знал.
-/// Тип раздела — [`category_kind`], подпись — [`de_section_name`]; новый
-/// раздел окружения добавляется сюда, туда и строкой матрицы, больше никуда
-/// (скан диска и кнопка подхватят его сами).
+/// Desktop sections: number and key (also the apply kind). A number above
+/// [`STORE_MAX_ID`] is synthetic (after the local 901–905), not above —
+/// a real KDE store category. Where a section takes its catalog from is not decided
+/// by the number: that is [`de_section_store`]. The Python reference did not know these sections.
+/// The section type is [`category_kind`], the label is [`de_section_name`]; a new
+/// desktop section is added here, there and as a matrix row, nowhere else
+/// (the disk scan and the button will pick it up by themselves).
 ///
-/// Переключатель окон, скрипты и эффекты KWin — категории магазина
-/// «Kwin Switching Layouts / Kwin Scripts / KWin Effects Plasma 6» (те же,
-/// что в `kwinswitcher.knsrc`, `kwinscripts.knsrc`, `kwineffect.knsrc`).
-/// До 04.10.2026 они были местными 911–913 — старые номера ведёт
+/// The window switcher, KWin scripts and effects are store categories
+/// "Kwin Switching Layouts / Kwin Scripts / KWin Effects Plasma 6" (the same
+/// as in `kwinswitcher.knsrc`, `kwinscripts.knsrc`, `kwineffect.knsrc`).
+/// Until 04.10.2026 they were the local 911–913 — the old numbers are led by
 /// [`STORE_TYPE_ALIASES`].
 pub const DE_SECTIONS: &[(i64, &str)] = &[
     (906, "xfwm4"),
@@ -134,7 +134,7 @@ pub const DE_SECTIONS: &[(i64, &str)] = &[
     (908, "gnomeshell"),
     (909, "cinnamontheme"),
     (910, "lxqttheme"),
-    // Рамки Openbox и labwc — менеджеров окон LXQt (и сеанса labwc).
+    // Openbox and labwc frames — the window managers of LXQt (and of the labwc session).
     (OPENBOX_SECTION_ID, OPENBOX_KEY),
     (721, "tabbox"),
     (720, "kwinscripts"),
@@ -144,23 +144,23 @@ pub const DE_SECTIONS: &[(i64, &str)] = &[
     (916, "cinnamondesklets"),
     (917, "cinnamonext"),
     (918, "nemoactions"),
-    // Conky — настоящая категория магазина KDE Store («Conky», 124, больше
-    // тысячи наборов): раздел показывает её каталог, и виджет ставится
-    // кнопкой, а не командами в терминале (просьба Wehrwolfmann 10.10.2026).
-    // До этого раздел был местным 919 — старый номер ведёт
+    // Conky is a real KDE Store category ("Conky", 124, over a
+    // thousand sets): the section shows its catalog, and a widget is installed
+    // with a button, not with commands in a terminal (Wehrwolfmann's request of 10.10.2026).
+    // Before that the section was the local 919 — the old number is led by
     // [`STORE_TYPE_ALIASES`].
     (CONKY_SECTION_ID, "conky"),
 ];
 
-/// Разделы KDE «Внешнего вида», которые сканируются как разделы окружений:
-/// номер категории и ключ (он же вид применения и ключ карты активных тем,
+/// KDE "Appearance" sections scanned as desktop sections:
+/// category number and key (also the apply kind and the active-theme map key,
 /// `installed_scan::active_map_from_sources`).
 ///
-/// Есть ли у раздела сетка установленного с кнопкой «Загрузить новые…»,
-/// этот список больше не решает: она есть у любого раздела со сканом и
-/// магазином (`appearance_page::has_installed_grid_for`). Скан раздела — тот же
-/// [`DE_SECTIONS`]-ный (`appearance_page::local_scan_plan` → `"section"`,
-/// `installed_scan::LiveScan::section`), каталоги — из таблицы типов
+/// Whether a section has an installed grid with a "Get new…" button
+/// is no longer decided by this list: any section with a scan and a
+/// store has it (`appearance_page::has_installed_grid_for`). The section scan is the same
+/// as for [`DE_SECTIONS`] (`appearance_page::local_scan_plan` → `"section"`,
+/// `installed_scan::LiveScan::section`), the directories come from the type table
 /// `installed_scan::types_for`.
 pub const KDE_INSTALLED_SECTIONS: &[(i64, &str)] = &[
     (722, "global"),
@@ -171,34 +171,34 @@ pub const KDE_INSTALLED_SECTIONS: &[(i64, &str)] = &[
     (107, "cursor"),
     (135, "gtk"),
     (316, "sounds"),
-    // Экран входа (SDDM) и заставка загрузки (Plymouth) — как kcm sddm и
-    // kcm plymouth: сетка установленных тем с выделенной текущей, а не
-    // магазин с установленным только в обзоре «Системные». Темы лежат в
-    // системных каталогах; «Применить» и «Удалить» идут через помощника
-    // от root (`ApplyAction::SystemTheme`, `theme_removal`). При Plasma Login
-    // Manager раздела SDDM в панели нет ([`sidebar_for`]), на SteamOS оба
-    // раздела объясняют отказ ([`steamos_note`]).
+    // The login screen (SDDM) and the boot splash (Plymouth) — like kcm sddm and
+    // kcm plymouth: a grid of installed themes with the current one highlighted, not
+    // a store with installed items only in the "System" overview. The themes live in
+    // system directories; "Apply" and "Remove" go through the helper
+    // running as root (`ApplyAction::SystemTheme`, `theme_removal`). With Plasma Login
+    // Manager there is no SDDM section in the panel ([`sidebar_for`]), on SteamOS both
+    // sections explain the refusal ([`steamos_note`]).
     (101, "sddm"),
     (108, "plymouth"),
 ];
 
-/// Наибольший номер настоящей категории магазина KDE. Всё, что выше, —
-/// синтетические номера разделов: в магазин они не уходят никогда, каталог
-/// раздела задаёт его поле `store`.
+/// The highest number of a real KDE store category. Everything above is
+/// synthetic section numbers: they never go to the store, the section's
+/// catalog is set by its `store` field.
 pub const STORE_MAX_ID: i64 = 900;
 
-/// Номер товара магазина (его `typeid`) → номер раздела, где он живёт,
-/// когда они не совпадают.
+/// Store item number (its `typeid`) → the number of the section where it lives,
+/// when they differ.
 ///
-/// Раздел-зонт запрашивает магазин родительской категорией, а товары
-/// приходят с номером своей подкатегории: «Виджеты» спрашивают 705, а
-/// виджет часов приходит с 708. Без этой таблицы такой товар не находил
-/// раздела — ни вида установки (плазмоид), ни кнопки, ни подписи.
-/// Здесь же прежние номера разделов, чтобы записи журнала и избранного,
-/// сделанные до смены номера, не потеряли свой раздел.
+/// An umbrella section queries the store with the parent category, while items
+/// arrive with their subcategory number: "Widgets" asks for 705, while
+/// a clock widget arrives with 708. Without this table such an item found no
+/// section — no install kind (plasmoid), no button, no label.
+/// Here are also previous section numbers, so that log and favorites records
+/// made before the number change do not lose their section.
 pub const STORE_TYPE_ALIASES: &[(i64, i64)] = &[
-    // Подкатегории «Plasma 6 Extensions»: апплеты, календари, часы, меню,
-    // мониторинг, мультимедиа, погода. 706 — и прежний номер раздела.
+    // "Plasma 6 Extensions" subcategories: applets, calendars, clocks, menus,
+    // monitoring, multimedia, weather. 706 is also the previous section number.
     (706, 705),
     (707, 705),
     (708, 705),
@@ -206,20 +206,20 @@ pub const STORE_TYPE_ALIASES: &[(i64, i64)] = &[
     (710, 705),
     (711, 705),
     (712, 705),
-    // Местные номера разделов KWin до 04.10.2026.
+    // Local KWin section numbers until 04.10.2026.
     (911, 721),
     (912, 720),
     (913, 719),
-    // Местный номер раздела Conky до 10.10.2026.
+    // The local Conky section number until 10.10.2026.
     (919, 124),
-    // «Cinnamon Themes» магазина (cinnamon-look): до 24.10.2026 раздел тем
-    // Cinnamon показывал этот каталог, теперь — Cinnamon Spices. Записи
-    // журнала тех установок остаются в своём разделе.
+    // The store's "Cinnamon Themes" (cinnamon-look): until 24.10.2026 the Cinnamon
+    // themes section showed this catalog, now it shows Cinnamon Spices. The log
+    // records of those installs stay in their section.
     (133, 909),
 ];
 
-/// Номер раздела для номера товара: подкатегория зонта → зонт, прежний
-/// номер раздела → нынешний, остальное — как есть.
+/// The section number for an item number: an umbrella subcategory → the umbrella, a previous
+/// section number → the current one, the rest — as is.
 pub fn section_id_for(type_id: i64) -> i64 {
     STORE_TYPE_ALIASES
         .iter()
@@ -228,12 +228,12 @@ pub fn section_id_for(type_id: i64) -> i64 {
         .unwrap_or(type_id)
 }
 
-/// Раздел окружения ли это (по номеру).
+/// Whether this is a desktop section (by number).
 pub fn is_de_section(id: i64) -> bool {
     DE_SECTIONS.iter().any(|(i, _)| *i == id)
 }
 
-/// Подпись раздела окружения на языке интерфейса.
+/// The desktop section label in the interface language.
 fn de_section_name(key: &str) -> String {
     match key {
         "xfwm4" => trc("appearance section", "Window Borders (XFCE)"),
@@ -255,8 +255,8 @@ fn de_section_name(key: &str) -> String {
     }
 }
 
-/// Местный раздел окружения: ключ раздела = вид применения, тип — из
-/// [`category_kind`], каталог и значок — из матрицы и таблицы типов.
+/// A local desktop section: section key = apply kind, the type — from
+/// [`category_kind`], the directory and icon — from the matrix and the type table.
 fn de_section(home: &Path, id: i64, key: &str) -> ThemeCategory {
     let name = de_section_name(key);
     let kind = category_kind(key).expect("раздел окружения связан с типом в category_kind");
@@ -269,45 +269,45 @@ fn de_section(home: &Path, id: i64, key: &str) -> ThemeCategory {
     }
 }
 
-/// Каталог раздела окружения — явно, по ключу, а не по номеру: номер
-/// раздела держит журнал установленного и избранное и меняться не может, а
-/// каталог у раздела бывает в магазине под другим номером. Нет записи —
-/// каталога нет, раздел показывает только диск.
+/// The desktop section's catalog — explicitly, by key, not by number: the section
+/// number is held by the installed log and favorites and cannot change, while
+/// a section's catalog may live in the store under another number. No record —
+/// no catalog, the section shows only the disk.
 pub fn de_section_store(key: &str) -> CatalogSource {
-    // Пять разделов Cinnamon — магазин Cinnamon Spices (тот же, что у окна
-    // настроек Cinnamon): вид каталога — из таблицы типов спайсов.
+    // The five Cinnamon sections — the Cinnamon Spices store (the same as in the Cinnamon
+    // settings window): the catalog kind comes from the spices type table.
     if let Some(t) = crate::cinnamon_spices::type_for_section(key) {
         return CatalogSource::Spices(t.json.to_string());
     }
-    // «Расширения GNOME» — сайт extensions.gnome.org (`crate::gnome_ego`):
-    // ставит расширение сама оболочка, KDE Store их не держит.
+    // "GNOME extensions" — the extensions.gnome.org site (`crate::gnome_ego`):
+    // the shell itself installs an extension, the KDE Store does not carry them.
     if crate::gnome_ego::has_section(key) {
         return CatalogSource::GnomeExtensions;
     }
     match key {
-        // Те же категории, что у Discover (`kwinswitcher.knsrc`,
+        // The same categories as in Discover (`kwinswitcher.knsrc`,
         // `kwinscripts.knsrc`, `kwineffect.knsrc`).
         "tabbox" => CatalogSource::Ocs(vec![721]),
         "kwinscripts" => CatalogSource::Ocs(vec![720]),
         "kwineffects" => CatalogSource::Ocs(vec![719]),
         "conky" => CatalogSource::Ocs(vec![CONKY_SECTION_ID]),
-        // Разделы окружений под синтетическими номерами: категории pling
-        // (xfce-look, gnome-look, cinnamon-look; тот же API OCS).
-        // «XFCE/XFWM4 Themes».
+        // Desktop sections under synthetic numbers: pling categories
+        // (xfce-look, gnome-look, cinnamon-look; the same OCS API).
+        // "XFCE/XFWM4 Themes".
         "xfwm4" => CatalogSource::Ocs(vec![138]),
-        // «Metacity Themes»: Marco читает тот же формат `metacity-1`.
+        // "Metacity Themes": Marco reads the same `metacity-1` format.
         "marco" => CatalogSource::Ocs(vec![125]),
         // «Gnome Shell Themes».
         "gnomeshell" => CatalogSource::Ocs(vec![134]),
         // «LXQt Themes».
         "lxqttheme" => CatalogSource::Ocs(vec![446]),
-        // «Openbox Themes» (box-look): тот же формат читает и labwc.
+        // "Openbox Themes" (box-look): labwc reads the same format too.
         OPENBOX_KEY => CatalogSource::Ocs(vec![140]),
         _ => CatalogSource::None,
     }
 }
 
-/// Виртуальная категория сайдбара (без cat_id, без сети).
+/// A virtual sidebar category (no cat_id, no network).
 fn virtual_cat(key: &str, name: String, icon: &str, default_sort: &str) -> ThemeCategory {
     ThemeCategory {
         id: 0,
@@ -318,16 +318,16 @@ fn virtual_cat(key: &str, name: String, icon: &str, default_sort: &str) -> Theme
         apply_kind: String::new(),
         requires_root: false,
         virtual_: true,
-        // Обзоры диска сети не знают; «Популярные» и «Новые» — сборная
-        // витрина ходовых категорий окружения.
+        // Disk overviews do not know the network; "Popular" and "New" are a combined
+        // storefront of the desktop's most common categories.
         store: if LOCAL_VIEW_KEYS.contains(&key) { CatalogSource::None } else { CatalogSource::OcsShowcase },
         default_sort: default_sort.to_string(),
     }
 }
 
-/// Виртуальные категории сайдбара в порядке Python-констант.
-/// popular/new агрегируют реальные категории с разной сортировкой;
-/// active/downloaded/system/favorites — локальный обзор диска без сети.
+/// Virtual sidebar categories in the order of the Python constants.
+/// popular/new aggregate real categories with different sorting;
+/// active/downloaded/system/favorites — a local disk overview without network.
 pub fn popular() -> ThemeCategory {
     virtual_cat("popular", trc("appearance section", "Popular"), "⭐", "high")
 }
@@ -347,11 +347,11 @@ pub fn favorites() -> ThemeCategory {
     virtual_cat("favorites", trc("appearance section", "Favorites"), "⭐", "new")
 }
 
-/// Порядок сайдбара: локальные обзоры → магазин.
+/// Sidebar order: local overviews → the store.
 ///
-/// `home` раскрывает `~` в реальных категориях. Виртуальные категории
-/// перечислены явно (не из сети). Реальные берутся из `categories(home)` по
-/// cat_id — как `CATEGORIES[…]` в Python.
+/// `home` expands `~` in real categories. Virtual categories are
+/// listed explicitly (not from the network). Real ones are taken from `categories(home)` by
+/// cat_id — like `CATEGORIES[…]` in Python.
 pub fn sidebar(home: &Path) -> Vec<ThemeCategory> {
     let all = categories(home);
     let pick = |id: i64| -> ThemeCategory {
@@ -371,11 +371,11 @@ pub fn sidebar(home: &Path) -> Vec<ThemeCategory> {
         pick(104),
         pick(112),
         pick(114),
-        // Кнопки заголовка окна, системные шрифты, значки с панелями
-        // инструментов в программах и отклик при запуске своей строки не
-        // имеют (08.11.2026): они — вид «⚙️ Настройки» разделов рамок окон,
-        // «Шрифты», «Значки» и «Курсоры» ([`SECTION_SETTINGS`]), как вкладки
-        // модулей KDE 6.8.
+        // Window title buttons, system fonts, icons with toolbars
+        // in programs and launch feedback have no row of their own
+        // (08.11.2026): they are the "⚙️ Settings" view of the window frame,
+        // "Fonts", "Icons" and "Cursors" sections ([`SECTION_SETTINGS`]), like the tabs
+        // of KDE 6.8 modules.
         pick(132),
         pick(107),
         pick(135),
@@ -385,8 +385,8 @@ pub fn sidebar(home: &Path) -> Vec<ThemeCategory> {
         pick(103),
         pick(316),
         pick(705),
-        // Виджеты Conky — сразу под «Виджетами»: это тоже виджеты рабочего
-        // стола, и на другом конце списка их искали бы зря (10.10.2026).
+        // Conky widgets — right under "Widgets": they are desktop widgets too,
+        // and at the other end of the list people would look for them in vain (10.10.2026).
         pick(CONKY_SECTION_ID),
         pick(101),
         pick(902),
@@ -394,86 +394,86 @@ pub fn sidebar(home: &Path) -> Vec<ThemeCategory> {
         pick(108),
     ]
     .into_iter()
-    // Разделы окружений — после общих; в каждом окружении видны только
-    // свои (`category_available`).
+    // Desktop sections — after the shared ones; on each desktop only its own
+    // are visible (`category_available`).
     .chain(DE_SECTIONS.iter().filter(|(id, _)| *id != CONKY_SECTION_ID).map(|(id, _)| pick(*id)))
-    // «Панель MATE» — не каталог тем, а готовые раскладки панели; стоит
-    // среди разделов рабочего стола MATE.
+    // "MATE panel" is not a theme catalog but ready panel layouts; it sits
+    // among the MATE desktop sections.
     .chain(std::iter::once(mate_panel_category()))
-    // «Анимация» — последним разделом «Внешнего вида», как в KDE 6.8
-    // (`kcm_animations`, вес 40 в категории `appearance`). «Эффекты
-    // рабочего стола» своей строки не имеют (решение Wehrwolfmann
-    // 08.11.2026): это вид «⚙️ Настройки» раздела «Эффекты KWin»
-    // ([`SECTION_SETTINGS`]) — каталог и включение эффектов в одном месте.
-    // (Прежде строка стояла здесь: в KDE они в «Управлении окнами», а
-    // такой вкладки у Rexon нет. «Эффекты экрана» (02.11.2026) — между
-    // ними: тоже «как выглядит весь стол», и в KDE ближе всего к ним.
+    // "Animation" — the last "Appearance" section, as in KDE 6.8
+    // (`kcm_animations`, weight 40 in the `appearance` category). "Desktop
+    // effects" have no row of their own (Wehrwolfmann's decision of
+    // 08.11.2026): it is the "⚙️ Settings" view of the "KWin effects" section
+    // ([`SECTION_SETTINGS`]) — the catalog and enabling effects in one place.
+    // (The row used to stand here: in KDE they are in "Window Management", and
+    // Rexon has no such tab. "Screen effects" (02.11.2026) sits between
+    // them: also "how the whole desktop looks", and in KDE closest to them.
     .chain(["animations", SCREEN_EFFECTS_KEY].into_iter().map(settings_panel))
     .collect()
 }
 
-// ── Разделы настроек в «Оформлении» (01.11.2026) ───────────────────────
+// ── Settings sections in "Appearance" (01.11.2026) ─────────────────────
 
-/// Разделы, которые до 01.11.2026 жили во вкладке «Настройки», а в KDE 6.8
-/// стоят во «Внешнем виде и стиле» (замечание пересчётов паритета 30–31.10):
-/// номер (синтетический, магазина у них нет) и ключ. Содержимое — те же
-/// разделы вкладки «Настройки» (`SettingsPage.qml`, режим `panel`), здесь
-/// только место в боковой панели. Где какой стоит — [`sidebar`],
-/// в какой группе — [`category_group`], где виден — [`category_available`].
+/// Sections that until 01.11.2026 lived in the "Settings" tab, while in KDE 6.8
+/// they are in "Appearance & Style" (a remark from the parity reviews of 30–31.10):
+/// number (synthetic, they have no store) and key. The contents are the same
+/// sections of the "Settings" tab (`SettingsPage.qml`, `panel` mode), here
+/// it is only their place in the sidebar. Where each one stands — [`sidebar`],
+/// in which group — [`category_group`], where it is visible — [`category_available`].
 pub const SETTINGS_PANELS: &[(i64, &str)] = &[
     (925, "animations"),
-    // 926 — «Эффекты рабочего стола», с 08.11.2026 вид «⚙️ Настройки»
-    // раздела «Эффекты KWin» ([`DESKTOP_EFFECTS_PANEL`]).
+    // 926 — "Desktop effects", since 08.11.2026 the "⚙️ Settings" view
+    // of the "KWin effects" section ([`DESKTOP_EFFECTS_PANEL`]).
     (928, SCREEN_EFFECTS_KEY),
 ];
 
-/// Раздел «Эффекты рабочего стола» (`DesktopEffectsSection`): включение и
-/// настройки эффектов, которые уже есть в KWin, — вид «⚙️ Настройки»
-/// раздела «Эффекты KWin» (каталог KDE Store); своей строки в боковой панели
-/// с 08.11.2026 нет (решение Wehrwolfmann).
+/// The "Desktop effects" section (`DesktopEffectsSection`): enabling and
+/// configuring effects already in KWin — the "⚙️ Settings" view
+/// of the "KWin effects" section (the KDE Store catalog); it has had no row of its own in the sidebar
+/// since 08.11.2026 (Wehrwolfmann's decision).
 pub const DESKTOP_EFFECTS_PANEL: &str = "desktopeffects";
-/// Раздел «Системные шрифты» вкладки «Настройки» (`SettingsPage.qml`,
-/// режим `panel`) — вид «⚙️ Настройки» раздела «Шрифты».
+/// The "System fonts" section of the "Settings" tab (`SettingsPage.qml`,
+/// `panel` mode) — the "⚙️ Settings" view of the "Fonts" section.
 pub const FONT_SETTINGS_PANEL: &str = "fontsettings";
-/// Раздел «Значки и панели инструментов в программах» (`AppWidgetsSection`)
-/// — вид «⚙️ Настройки» раздела «Значки».
+/// The "Icons and toolbars in programs" section (`AppWidgetsSection`)
+/// — the "⚙️ Settings" view of the "Icons" section.
 pub const APP_WIDGETS_PANEL: &str = "appwidgets";
-/// Раздел «Отклик при запуске» (`LaunchFeedbackSection`) — вид
-/// «⚙️ Настройки» раздела «Курсоры», как вкладка модуля «Курсоры» KDE.
+/// The "Launch feedback" section (`LaunchFeedbackSection`) — the
+/// "⚙️ Settings" view of the "Cursors" section, like the tab of the KDE "Cursors" module.
 pub const LAUNCH_FEEDBACK_PANEL: &str = "launchfeedback";
-/// Рамка «Размытие обоев» вкладки «Настройки» (`blurGroup`) — вид
-/// «⚙️ Настройки» раздела «Обои HD» (08.11.2026); во вкладке «Настройки»
-/// её больше нет.
+/// The "Wallpaper blur" frame of the "Settings" tab (`blurGroup`) — the
+/// "⚙️ Settings" view of the "HD wallpapers" section (08.11.2026); it is no longer
+/// in the "Settings" tab.
 pub const WALLPAPER_BLUR_PANEL: &str = "wallpaperblur";
-/// Блок «Razer Axon» (`AxonSettingsSection`): наши настройки показа обоев
-/// из библиотеки Razer Axon — вид «⚙️ Настройки» раздела «Обои HD»
-/// (14.11.2026), рядом с источником «Razer Axon». Есть, только если Axon
-/// найден: отбирает `appearance_page::CatalogView::section_settings_panels`.
+/// The "Razer Axon" block (`AxonSettingsSection`): our display settings for wallpapers
+/// from the Razer Axon library — the "⚙️ Settings" view of the "HD wallpapers" section
+/// (14.11.2026), next to the "Razer Axon" source. Present only if Axon is
+/// found: selected by `appearance_page::CatalogView::section_settings_panels`.
 pub const AXON_SETTINGS_PANEL: &str = "axonsettings";
-/// Блок «Плейлист обоев» (`WallpaperPlaylistSection`): один плейлист для
-/// всех собственных обоев Rexon (видео, веб, Flash, картинки, Razer Axon) —
-/// вид «⚙️ Настройки» раздела «Обои HD» (15.11.2026), первым.
+/// The "Wallpaper playlist" block (`WallpaperPlaylistSection`): one playlist for
+/// all of Rexon's own wallpapers (video, web, Flash, pictures, Razer Axon) —
+/// the "⚙️ Settings" view of the "HD wallpapers" section (15.11.2026), first.
 pub const WALLPAPER_PLAYLIST_PANEL: &str = "wallpaperplaylist";
-/// Рамки «Фоновые звуки» (`ambientGroup`) и «Звуки событий»
-/// (`soundThemeGroup`) вкладки «Настройки» — вид «⚙️ Настройки» раздела
-/// «Звуки» (08.11.2026); во вкладке «Настройки» их больше нет.
+/// The "Ambient sounds" (`ambientGroup`) and "Event sounds"
+/// (`soundThemeGroup`) frames of the "Settings" tab — the "⚙️ Settings" view of the
+/// "Sounds" section (08.11.2026); they are no longer in the "Settings" tab.
 pub const AMBIENT_SOUNDS_PANEL: &str = "ambientsounds";
 pub const EVENT_SOUNDS_PANEL: &str = "eventsounds";
-/// Раздел «Анимация» (`AnimationsSection`). Где у оконного менеджера нет
-/// анимаций окон (`animations::has_window_animations`), его строки нет, а
-/// галочка «Без анимаций» для программ — вид «⚙️ Настройки» раздела
-/// «GTK-темы».
+/// The "Animation" section (`AnimationsSection`). Where the window manager has no
+/// window animations (`animations::has_window_animations`), it has no row, and
+/// the "No animations" checkbox for programs is the "⚙️ Settings" view of the
+/// "GTK themes" section.
 pub const ANIMATIONS_KEY: &str = "animations";
 
-/// Разделы каталога, у которых настройки того же рода открываются кнопкой
-/// «⚙️ Настройки» в шапке, а не своей строкой боковой панели (решение
-/// Wehrwolfmann 08.11.2026): `(раздел каталога, раздел настроек)`. Каталог и
-/// настройки одного рода — в одном месте, как вкладки модулей KDE
-/// («Оформление окон → Кнопки заголовка», «Курсоры → Отклик при запуске»).
-/// Механизм один на все пары (`appearance_page::CatalogView::section_settings_panels`),
-/// новая пара — строка здесь. У раздела может быть несколько строк: в
-/// «GTK-темах» стола без своих рамок окон — и кнопки заголовка, и галочка
-/// анимации. Номера 921–924 освобождены вместе со строками.
+/// Catalog sections whose settings of the same kind open with the
+/// "⚙️ Settings" button in the header rather than with their own sidebar row (Wehrwolfmann's
+/// decision of 08.11.2026): `(catalog section, settings section)`. The catalog and
+/// settings of one kind are in one place, like the tabs of KDE modules
+/// ("Window Decorations → Titlebar Buttons", "Cursors → Launch Feedback").
+/// One mechanism for all pairs (`appearance_page::CatalogView::section_settings_panels`),
+/// a new pair is a row here. A section may have several rows: in
+/// "GTK themes" of a desktop without its own window frames — both the title buttons and the animation
+/// checkbox. Numbers 921–924 were freed together with the rows.
 pub const SECTION_SETTINGS: &[(&str, &str)] = &[
     ("fonts", FONT_SETTINGS_PANEL),
     ("icons", APP_WIDGETS_PANEL),
@@ -484,10 +484,10 @@ pub const SECTION_SETTINGS: &[(&str, &str)] = &[
     ("sounds", EVENT_SOUNDS_PANEL),
     ("sounds", AMBIENT_SOUNDS_PANEL),
     ("kwineffects", DESKTOP_EFFECTS_PANEL),
-    // Кнопки заголовка — при рамках окон этого стола
-    // ([`WINDOW_BORDER_SECTIONS`]); у стола без раздела рамок (GNOME,
-    // Budgie, Pantheon, COSMIC, Deepin, тайловые) — в «GTK-темах»: там
-    // заголовки рисует тема GTK или сами программы GTK.
+    // Title buttons — with this desktop's window frames
+    // ([`WINDOW_BORDER_SECTIONS`]); for a desktop without a frames section (GNOME,
+    // Budgie, Pantheon, COSMIC, Deepin, tiling ones) — in "GTK themes": there
+    // the titles are drawn by the GTK theme or by the GTK programs themselves.
     ("aurorae", WINDOW_BUTTONS_KEY),
     ("xfwm4", WINDOW_BUTTONS_KEY),
     ("marco", WINDOW_BUTTONS_KEY),
@@ -497,16 +497,16 @@ pub const SECTION_SETTINGS: &[(&str, &str)] = &[
     ("gtk", ANIMATIONS_KEY),
 ];
 
-/// Разделы настроек при разделе каталога `cat_key`, в которых в окружении
-/// `de_id` есть что настраивать, в порядке [`SECTION_SETTINGS`]. Настройку,
-/// которой у стола нет, не показываем вовсе — ни строкой, ни кнопкой
-/// (решение Wehrwolfmann 08.11.2026: «в MATE нет настройки отклика…» над
-/// пустой страницей — тупик). «Значки и панели инструментов» — везде, кроме
-/// Deepin (`app_widgets::available`; неизвестное окружение — видно), отклик
-/// при запуске — только KDE (`launch_feedback::supported`), анимация
-/// программ в «GTK-темах» — только там, где своей строки «Анимация» нет
-/// (известный стол без анимаций окон), кнопки заголовка в «GTK-темах» —
-/// только там, где нет раздела рамок, шрифты — везде.
+/// Settings sections with the catalog section `cat_key` that have something to configure on the
+/// desktop `de_id`, in [`SECTION_SETTINGS`] order. A setting
+/// the desktop does not have is not shown at all — neither as a row nor as a button
+/// (Wehrwolfmann's decision of 08.11.2026: "MATE has no launch feedback setting…" above
+/// an empty page is a dead end). "Icons and toolbars" — everywhere except
+/// Deepin (`app_widgets::available`; an unknown desktop — visible), launch
+/// feedback — KDE only (`launch_feedback::supported`), program animation
+/// in "GTK themes" — only where there is no "Animation" row of its own
+/// (a known desktop without window animations), title buttons in "GTK themes" —
+/// only where there is no frames section, fonts — everywhere.
 pub fn section_settings_panels(cat_key: &str, de_id: &str) -> Vec<&'static str> {
     let known = crate::de_customization::de_from_id(de_id).is_some();
     SECTION_SETTINGS
@@ -526,27 +526,27 @@ pub fn section_settings_panels(cat_key: &str, de_id: &str) -> Vec<&'static str> 
         .collect()
 }
 
-/// Ключ раздела «Эффекты экрана» (`screen_effects`). Во вкладке
-/// «Настройки» его никогда не было.
+/// The "Screen effects" section key (`screen_effects`). It was never in the
+/// "Settings" tab.
 pub const SCREEN_EFFECTS_KEY: &str = "screeneffects";
 
-/// Ключ раздела «Кнопки заголовка окна» (с размером рамки и флажками рамок).
+/// The "Window title buttons" section key (with frame size and frame checkboxes).
 pub const WINDOW_BUTTONS_KEY: &str = "windowbuttons";
 
-/// Разделы рамок окон, в шапке которых — «⚙️ Настройки» с [`WINDOW_BUTTONS_KEY`]: в KDE
-/// кнопки заголовка — вкладка модуля «Оформление окон», и в каждом
-/// окружении они идут сразу за его разделом рамок (Aurorae, XFWM4, Marco).
-/// У Cinnamon своего раздела рамок нет: с 5.4 рамки Muffin рисует тема GTK
-/// (`de_customization::UNAVAILABLE_REASONS`), и кнопки встают за темой
-/// Cinnamon — последним разделом его рабочего стола.
+/// Window frame sections whose header has "⚙️ Settings" with [`WINDOW_BUTTONS_KEY`]: in KDE
+/// title buttons are a tab of the "Window Decorations" module, and on every
+/// desktop they come right after its frames section (Aurorae, XFWM4, Marco).
+/// Cinnamon has no frames section of its own: since 5.4 the Muffin frames are drawn by the GTK theme
+/// (`de_customization::UNAVAILABLE_REASONS`), and the buttons go after the Cinnamon
+/// theme — the last section of its desktop.
 pub const WINDOW_BORDER_SECTIONS: &[&str] = &["aurorae", "xfwm4", "marco", "cinnamontheme", OPENBOX_KEY];
 
-/// Раздел настроек ли это (по ключу).
+/// Whether this is a settings section (by key).
 pub fn is_settings_panel(key: &str) -> bool {
     SETTINGS_PANELS.iter().any(|(_, k)| *k == key)
 }
 
-/// Подпись раздела настроек — тот же заголовок, что у самого раздела.
+/// The settings section label — the same title as the section itself has.
 fn settings_panel_name(key: &str) -> String {
     match key {
         "animations" => tr("Animation"),
@@ -555,9 +555,9 @@ fn settings_panel_name(key: &str) -> String {
     }
 }
 
-/// Раздел настроек боковой панели: магазина и скана нет, свой экран
-/// (`appearance_page::SCREEN_SETTINGS`). В [`categories`] его нет
-/// намеренно — ставить в него нечего.
+/// A sidebar settings section: there is no store and no scan, it has its own screen
+/// (`appearance_page::SCREEN_SETTINGS`). It is deliberately not in [`categories`]
+/// — there is nothing to install into it.
 fn settings_panel(key: &str) -> ThemeCategory {
     let (id, key) = *SETTINGS_PANELS
         .iter()
@@ -574,19 +574,19 @@ fn settings_panel(key: &str) -> ThemeCategory {
     }
 }
 
-// Ссылок «Оформление → …» на месте переехавших разделов во вкладке
-// «Настройки» больше нет (решение Wehrwolfmann 08.11.2026): переезд давний,
-// разделы и так стоят в боковой панели «Оформления».
+// There are no more "Appearance → …" links in place of the moved sections in the
+// "Settings" tab (Wehrwolfmann's decision of 08.11.2026): the move is long done,
+// the sections already stand in the "Appearance" sidebar.
 
-/// Где раздел настроек виден — по тем же правилам, по которым его раздел
-/// прячется сам: «Анимация» — где у оконного
-/// менеджера есть анимации окон (`animations::has_window_animations`, иначе
-/// её галочка — в «GTK-темах → ⚙️ Настройки»); «Эффекты экрана» — там, где их
-/// можно включить хотя бы в одном роде сеанса (`screen_effects::support`:
-/// sway, river, labwc, niri, Budgie и Deepin не умеют никак — раздел с одной
-/// фразой «нельзя» не показываем, 08.11.2026). Остальные разделы работают в
-/// каждом окружении (хотя бы отчасти) и говорят об оговорках сами.
-/// Неизвестное окружение — видно всё. Род сеанса — [`Session`].
+/// Where a settings section is visible — by the same rules by which its section
+/// hides itself: "Animation" — where the window
+/// manager has window animations (`animations::has_window_animations`, otherwise
+/// its checkbox is in "GTK themes → ⚙️ Settings"); "Screen effects" — where they
+/// can be enabled in at least one session kind (`screen_effects::support`:
+/// sway, river, labwc, niri, Budgie and Deepin cannot do it at all — a section with a single
+/// "not possible" sentence is not shown, 08.11.2026). The other sections work on
+/// every desktop (at least partly) and state their caveats themselves.
+/// An unknown desktop — everything is visible. The session kind — [`Session`].
 fn settings_panel_available(key: &str, de_id: &str, session: Session) -> bool {
     if crate::de_customization::de_from_id(de_id).is_none() {
         return true;
@@ -598,12 +598,12 @@ fn settings_panel_available(key: &str, de_id: &str, session: Session) -> bool {
     }
 }
 
-/// Род сеанса, в котором смотрят раздел (08.11.2026): то, что в сеансе
-/// выбранного стола невозможно («только на X11», «только на Wayland»), не
-/// показываем. `Any` — сеанс не известен (вкладка «Настройки», сверки без
-/// окна): видно, если работает хоть в одном роде сеанса. Окно вкладки
-/// «Оформление» берёт род сеанса выбранного стола (`LookCtx::for_chosen`:
-/// стол сеанса — как есть, выбранный вручную — его род из
+/// The session kind in which the section is viewed (08.11.2026): what is impossible in the session of
+/// the chosen desktop ("X11 only", "Wayland only") is not
+/// shown. `Any` — the session is unknown (the "Settings" tab, checks without
+/// a window): visible if it works in at least one session kind. The "Appearance" tab
+/// window takes the session kind of the chosen desktop (`LookCtx::for_chosen`:
+/// the session's desktop — as is, one chosen by hand — its kind from
 /// `screen_effects::KNOWN_DESKTOPS`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Session {
@@ -617,7 +617,7 @@ impl Session {
     pub fn from_wayland(wayland: bool) -> Self {
         if wayland { Session::Wayland } else { Session::X11 }
     }
-    /// Роды сеанса, которые надо проверить: «любой» — оба.
+    /// Session kinds to check: "any" means both.
     fn kinds(self) -> &'static [bool] {
         match self {
             Session::Any => &[true, false],
@@ -627,10 +627,10 @@ impl Session {
     }
 }
 
-/// Можно ли включить эффекты экрана в окружении `de_id` в этом роде сеанса
-/// (MATE, Xfce и LXQt — только на X11, через picom). Имя, которого нет в
-/// таблице окружений эффектов (`screen_effects::KNOWN_DESKTOPS`), — видно:
-/// «не знаю» не повод прятать.
+/// Whether screen effects can be enabled on the desktop `de_id` in this session kind
+/// (MATE, Xfce and LXQt — X11 only, via picom). A name that is not in
+/// the effects desktop table (`screen_effects::KNOWN_DESKTOPS`) — visible:
+/// "don't know" is no reason to hide.
 fn screen_effects_possible(de_id: &str, session: Session) -> bool {
     use crate::screen_effects::{support, Coverage, KNOWN_DESKTOPS};
     if !KNOWN_DESKTOPS.iter().any(|(de, _)| *de == de_id) {
@@ -639,28 +639,28 @@ fn screen_effects_possible(de_id: &str, session: Session) -> bool {
     session.kinds().iter().any(|wayland| support(de_id, *wayland).coverage != Coverage::None)
 }
 
-/// Ключ раздела рамок Openbox и labwc.
+/// The Openbox and labwc frames section key.
 pub const OPENBOX_KEY: &str = "openbox";
-/// Его номер (синтетический, после разделов настроек 921–926; 928 —
-/// «Эффекты экрана», заведены позже).
+/// Its number (synthetic, after the settings sections 921–926; 928 —
+/// "Screen effects", created later).
 pub const OPENBOX_SECTION_ID: i64 = 927;
 
-/// Где раздел рамок Openbox виден: в LXQt (Openbox — его менеджер окон на
-/// X11, labwc — на Wayland) и в сеансе labwc. Матрица сводит тайловые в
-/// одно окружение, а рамок нет ни у sway, ни у Hyprland, ни у niri.
-/// Неизвестное окружение — видно, как всё остальное.
+/// Where the Openbox frames section is visible: in LXQt (Openbox is its window manager on
+/// X11, labwc — on Wayland) and in the labwc session. The matrix merges tiling ones into
+/// one desktop, and none of sway, Hyprland or niri has frames.
+/// An unknown desktop — visible, like everything else.
 fn openbox_available(de_id: &str) -> bool {
     matches!(de_id, "lxqt" | "labwc") || crate::de_customization::de_from_id(de_id).is_none()
 }
 
-/// Ключ раздела «Панель MATE».
+/// The "MATE panel" section key.
 pub const MATE_PANEL_KEY: &str = "mate-panel";
 
-/// Раздел «Панель MATE»: готовые раскладки mate-panel одной кнопкой
-/// (`mate_panel`). Тем у него нет — ни магазина, ни скана диска, свой экран
-/// (`appearance_page::SCREEN_MATE_PANEL`). В [`categories`] его нет
-/// намеренно: ставить в него нечего. Номер синтетический, на нём ничего не
-/// держится.
+/// The "MATE panel" section: ready mate-panel layouts with one button
+/// (`mate_panel`). It has no themes — neither a store nor a disk scan, it has its own screen
+/// (`appearance_page::SCREEN_MATE_PANEL`). It is deliberately not in [`categories`]:
+/// there is nothing to install into it. The number is synthetic, nothing
+/// depends on it.
 pub fn mate_panel_category() -> ThemeCategory {
     ThemeCategory {
         store: CatalogSource::None,
@@ -668,22 +668,22 @@ pub fn mate_panel_category() -> ThemeCategory {
     }
 }
 
-/// Номер раздела «Виджеты Conky» ([`DE_SECTIONS`]): в боковой панели он стоит
-/// рядом с «Виджетами», а не в хвосте с разделами окружений.
+/// The "Conky widgets" section number ([`DE_SECTIONS`]): in the sidebar it stands
+/// next to "Widgets", not at the tail with the desktop sections.
 pub const CONKY_SECTION_ID: i64 = 124;
 
-/// Ключ раздела «Экран входа (Plasma Login Manager)».
+/// The "Login screen (Plasma Login Manager)" section key.
 pub const PLASMA_LOGIN_KEY: &str = "plasmalogin";
 
-/// Раздел экрана входа, когда его рисует Plasma Login Manager.
+/// The login screen section when Plasma Login Manager draws it.
 ///
-/// Встаёт в боковую панель НА МЕСТО «SDDM (экран входа)» (см.
-/// [`sidebar_for`]). Товаров у него нет: у Plasma Login Manager нет тем, вид
-/// собран в сам бинарь, а категории в магазине KDE для него не существует.
-/// Поэтому раздел местный (без каталога, без сети), а номер — синтетический,
-/// больше девятисот, как у прочих разделов вне магазина: прогрев такие
-/// пропускает. В [`categories`] его НЕТ намеренно — ставить в него нечего, и
-/// `category_by_kind`/`category_by_id` находить его не должны.
+/// It goes into the sidebar IN PLACE OF "SDDM (login screen)" (see
+/// [`sidebar_for`]). It has no items: Plasma Login Manager has no themes, the look
+/// is built into the binary itself, and there is no KDE store category for it.
+/// So the section is local (no catalog, no network), and the number is synthetic,
+/// above nine hundred, like the other sections outside the store: prewarming skips
+/// such ones. It is deliberately NOT in [`categories`] — there is nothing to install into it, and
+/// `category_by_kind`/`category_by_id` must not find it.
 pub fn plasma_login_category() -> ThemeCategory {
     ThemeCategory {
         store: CatalogSource::None,
@@ -698,12 +698,12 @@ pub fn plasma_login_category() -> ThemeCategory {
     }
 }
 
-/// Боковая панель с учётом того, что рисует экран входа.
+/// The sidebar taking into account what draws the login screen.
 ///
-/// `plasma_login` — активен Plasma Login Manager
-/// (`system_plan::is_plasma_login`). Тогда на месте раздела SDDM-тем стоит
-/// [`plasma_login_category`]: полка SDDM-тем там — обман, ни одна из них на
-/// экран входа не попадёт. Иначе — ровно [`sidebar`].
+/// `plasma_login` — Plasma Login Manager is active
+/// (`system_plan::is_plasma_login`). Then in place of the SDDM themes section stands
+/// [`plasma_login_category`]: a shelf of SDDM themes there is a deception, none of them will reach
+/// the login screen. Otherwise — exactly [`sidebar`].
 pub fn sidebar_for(home: &Path, plasma_login: bool) -> Vec<ThemeCategory> {
     let mut out = sidebar(home);
     if plasma_login {
@@ -716,12 +716,12 @@ pub fn sidebar_for(home: &Path, plasma_login: bool) -> Vec<ThemeCategory> {
     out
 }
 
-/// Что запрещено этому разделу на SteamOS (Steam Deck и Steam Machine).
+/// What is forbidden for this section on SteamOS (Steam Deck and Steam Machine).
 ///
-/// Экран входа и заставку загрузки Rexon там не меняет вовсе
-/// ([`crate::distro_compat::SteamOsBlock`]); раздел остаётся на месте и
-/// СРАЗУ говорит почему, а не отказывает после скачивания темы по кнопке
-/// «Установить» (правило #13). `None` — раздел на SteamOS работает.
+/// Rexon does not change the login screen and the boot splash there at all
+/// ([`crate::distro_compat::SteamOsBlock`]); the section stays in place and
+/// IMMEDIATELY says why, rather than refusing after downloading a theme on the
+/// "Install" button (rule #13). `None` — the section works on SteamOS.
 pub fn steamos_block(cat_key: &str) -> Option<crate::distro_compat::SteamOsBlock> {
     use crate::distro_compat::SteamOsBlock;
     match cat_key {
@@ -731,8 +731,8 @@ pub fn steamos_block(cat_key: &str) -> Option<crate::distro_compat::SteamOsBlock
     }
 }
 
-/// Объяснение вместо полки раздела, закрытого на SteamOS. `None` — раздел
-/// открыт (или это не SteamOS).
+/// An explanation instead of the shelf of a section closed on SteamOS. `None` — the section
+/// is open (or this is not SteamOS).
 pub fn steamos_note(home: &Path, cat_key: &str, steamos: bool) -> Option<String> {
     if !steamos {
         return None;
@@ -741,26 +741,26 @@ pub fn steamos_note(home: &Path, cat_key: &str, steamos: bool) -> Option<String>
     Some(note_text(home, cat_key, &why))
 }
 
-/// Ключи локальных категорий-обзоров диска (без сети, без чипов «Магазин:»).
+/// Keys of local disk overview categories (no network, no "Store:" chips).
 pub const LOCAL_VIEW_KEYS: [&str; 4] = ["active", "downloaded", "system", "favorites"];
 
-/// Для popular/new — какие реальные cat_id запрашивать (самые ходовые).
-/// В окружении остаются только действующие там ([`aggregate_cats`]).
+/// For popular/new — which real cat_ids to request (the most common ones).
+/// On a desktop only those that work there remain ([`aggregate_cats`]).
 pub const AGGREGATE_CATS: [i64; 5] = [722, 104, 112, 132, 107];
 
-/// Добор витрин «Популярные»/«Новые» там, где часть [`AGGREGATE_CATS`] не
-/// действует (вне KDE глобальные темы и стили Plasma — мимо): GTK-темы, обои
-/// и виджеты Conky — то, что ставят чаще всего после значков и курсоров.
+/// Filling up the "Popular"/"New" storefronts where part of [`AGGREGATE_CATS`] does not
+/// work (outside KDE global themes and Plasma styles are skipped): GTK themes, wallpapers
+/// and Conky widgets — what is installed most often after icons and cursors.
 pub const AGGREGATE_EXTRA_CATS: [i64; 3] = [135, 299, CONKY_SECTION_ID];
 
-/// Категории магазина для «Популярных» и «Новых» в этом окружении.
+/// Store categories for "Popular" and "New" on this desktop.
 ///
-/// До 16.10.2026 витрины спрашивали только первую из [`AGGREGATE_CATS`] —
-/// глобальные темы Plasma, и в MATE обе верхние витрины целиком состояли из
-/// того, что там не применяется. Теперь берутся ходовые категории, которые
-/// в окружении действуют (`category_available`, та же матрица, что прячет
-/// разделы); если какие-то отпали — добираются [`AGGREGATE_EXTRA_CATS`].
-/// В KDE отпавших нет, и набор — ровно [`AGGREGATE_CATS`].
+/// Until 16.10.2026 the storefronts asked only for the first of [`AGGREGATE_CATS`] —
+/// Plasma global themes, and in MATE both top storefronts consisted entirely of
+/// things that do not apply there. Now the common categories that work
+/// on the desktop are taken (`category_available`, the same matrix that hides
+/// sections); if some dropped out, [`AGGREGATE_EXTRA_CATS`] fill up the set.
+/// In KDE none drop out, and the set is exactly [`AGGREGATE_CATS`].
 pub fn aggregate_cats(de_id: &str) -> Vec<i64> {
     let all = categories(Path::new(""));
     let works = |id: &i64| {
@@ -775,14 +775,14 @@ pub fn aggregate_cats(de_id: &str) -> Vec<i64> {
     out
 }
 
-/// [`aggregate_cats`] строкой для запроса: магазин понимает список через
-/// запятую, как у зонта заставки «716,488».
+/// [`aggregate_cats`] as a string for the request: the store understands a comma-separated
+/// list, like the splash umbrella "716,488".
 pub fn aggregate_query(de_id: &str) -> String {
     aggregate_cats(de_id).iter().map(|c| c.to_string()).collect::<Vec<_>>().join(",")
 }
 
-/// Найти категорию по внутреннему ключу — первую в порядке сайдбара
-/// (как `get_category` перебирает `SIDEBAR`). Виртуальные включены.
+/// Find a category by internal key — the first one in sidebar order
+/// (as `get_category` iterates over `SIDEBAR`). Virtual ones included.
 pub fn get_category(home: &Path, key: &str) -> Option<ThemeCategory> {
     sidebar(home)
         .into_iter()
@@ -790,16 +790,16 @@ pub fn get_category(home: &Path, key: &str) -> Option<ThemeCategory> {
         .or_else(|| (key == PLASMA_LOGIN_KEY).then(plasma_login_category))
 }
 
-/// Найти реальную категорию по OCS cat_id (как `CATEGORIES.get`).
+/// Find a real category by OCS cat_id (like `CATEGORIES.get`).
 ///
-/// Номер товара подкатегории (или прежний номер раздела) ведёт в свой
-/// раздел через [`STORE_TYPE_ALIASES`]: виджет часов (708) — это раздел
-/// «Виджеты» со всем, что из этого следует (каталог установки, вид, кнопка).
+/// A subcategory item number (or a previous section number) leads to its
+/// section through [`STORE_TYPE_ALIASES`]: a clock widget (708) is the
+/// "Widgets" section with everything that follows (install directory, kind, button).
 ///
-/// Товар из каталога раздела окружения приходит с номером категории
-/// магазина, а не раздела: рамка из «XFCE/XFWM4 Themes» — это 138, раздел
-/// же — 906. Такой номер ведёт в раздел, чей каталог (`store`) его
-/// содержит, — без отдельной таблицы псевдонимов на каждый раздел.
+/// An item from a desktop section's catalog arrives with the store category
+/// number, not the section's: a frame from "XFCE/XFWM4 Themes" is 138, while the section
+/// is 906. Such a number leads to the section whose catalog (`store`)
+/// contains it — without a separate alias table for each section.
 pub fn category_by_id(home: &Path, cat_id: i64) -> Option<ThemeCategory> {
     let all = categories(home);
     let pos = all
@@ -810,27 +810,27 @@ pub fn category_by_id(home: &Path, cat_id: i64) -> Option<ThemeCategory> {
     all.into_iter().nth(pos)
 }
 
-/// Найти категорию по apply_kind — первую в порядке объявления `CATEGORIES`
-/// (как `category_by_kind` перебирает `CATEGORIES.values()`). Устойчиво к
-/// смене OCS cat_id: install-пути привязаны к apply_kind.
+/// Find a category by apply_kind — the first in the declaration order of `CATEGORIES`
+/// (as `category_by_kind` iterates over `CATEGORIES.values()`). Robust to
+/// OCS cat_id changes: install paths are tied to apply_kind.
 pub fn category_by_kind(home: &Path, apply_kind: &str) -> Option<ThemeCategory> {
     categories(home).into_iter().find(|c| c.apply_kind == apply_kind)
 }
 
 // ============================================================================
-// Связь с матрицей: что показывать в каком окружении
+// Link to the matrix: what to show on which desktop
 // ============================================================================
 
-/// Тип `.rxn`, которым оформляется категория каталога.
+/// The `.rxn` type a catalog category is packaged as.
 ///
-/// Это ЕДИНСТВЕННОЕ место, где раздел боковой панели связывается с типом
-/// оформления; дальше всё решает матрица `de_customization` — какие разделы
-/// показать покупателю и почему остальные скрыты. Списков типов в коде
-/// интерфейса быть не должно (правило #12).
+/// This is the ONLY place where a sidebar section is linked to an appearance
+/// type; after that the `de_customization` matrix decides everything — which sections
+/// to show the buyer and why the others are hidden. There must be no type lists in
+/// the interface code (rule #12).
 ///
-/// `None` — раздел не про конкретный тип: обзоры уже установленного
-/// (активные, загруженные, системные, избранное) и витрины (популярные,
-/// новые) показываются всегда.
+/// `None` — the section is not about a specific type: overviews of what is already installed
+/// (active, downloaded, system, favorites) and storefronts (popular,
+/// new) are always shown.
 pub fn category_kind(key: &str) -> Option<&'static str> {
     Some(match key {
         "global" => "theme-kde-global",
@@ -840,8 +840,8 @@ pub fn category_kind(key: &str) -> Option<&'static str> {
         "icons" => "theme-icons",
         "cursor" => "theme-cursors",
         "gtk" => "theme-gtk",
-        // «Стиль приложений» — выбор Qt-стиля и темы Kvantum: штатно это
-        // умеют KDE и LXQt.
+        // "Application style" — choosing a Qt style and a Kvantum theme: natively
+        // KDE and LXQt can do this.
         "widgetstyle" | "kvantum" => "theme-kvantum",
         "wallpapers" => "wallpaper-pack",
         "wallpaper_plugins" => "kde-wallpaper-plugin",
@@ -871,20 +871,20 @@ pub fn category_kind(key: &str) -> Option<&'static str> {
     })
 }
 
-/// Показывать ли раздел каталога в этом окружении.
+/// Whether to show a catalog section on this desktop.
 ///
-/// Неизвестный идентификатор окружения — показываем всё: «не знаю, где я»
-/// не повод прятать от человека половину программы. Род сеанса не учтён
-/// (видно, если работает хоть в одном) — с ним [`category_available_in`].
+/// An unknown desktop identifier — we show everything: "don't know where I am"
+/// is no reason to hide half the program from the person. The session kind is not taken into account
+/// (visible if it works in at least one) — for that there is [`category_available_in`].
 pub fn category_available(cat_key: &str, de_id: &str) -> bool {
     category_available_in(cat_key, de_id, Session::Any)
 }
 
-/// [`category_available`] в роде сеанса `session`: одно правило на все
-/// разделы, которые возможны только на X11 или только на Wayland.
+/// [`category_available`] in the session kind `session`: one rule for all
+/// sections that are possible only on X11 or only on Wayland.
 pub fn category_available_in(cat_key: &str, de_id: &str, session: Session) -> bool {
-    // Раскладки mate-panel есть только у MATE; есть ли сама панель на этой
-    // машине, решает окно (`mate_panel::is_available`).
+    // Only MATE has mate-panel layouts; whether the panel itself is on this
+    // machine is decided by the window (`mate_panel::is_available`).
     if cat_key == MATE_PANEL_KEY {
         return crate::de_customization::de_from_id(de_id) == Some(crate::de_customization::De::Mate);
     }
@@ -900,25 +900,25 @@ pub fn category_available_in(cat_key: &str, de_id: &str, session: Session) -> bo
     let Some(de) = crate::de_customization::de_from_id(de_id) else {
         return true;
     };
-    // «Экран блокировки» держит два режима: полные темы (тип матрицы —
-    // только KDE) и обои, у которых свой путь применения. Раздел есть там,
-    // где работает хотя бы обоевый.
+    // "Lock screen" holds two modes: full themes (the matrix type is
+    // KDE only) and wallpapers, which have their own apply path. The section exists where
+    // at least the wallpaper one works.
     if matches!(cat_key, "lockscreen" | "lockwallpaper") && LOCK_WALLPAPER_DES.contains(&de) {
         return true;
     }
     crate::de_customization::row(kind).is_none_or(|r| r.covers(de))
 }
 
-/// Где Rexon ставит обои экрана блокировки
+/// Where Rexon sets the lock screen wallpaper
 /// (`appearance_installer::lock_wallpaper_plan`): KDE — `kscreenlockerrc`,
-/// Deepin — Центр управления в сеансе Treeland
-/// (`dde::control_center_wallpaper_argv`). Новое окружение
-/// с этим режимом — сюда и в план, больше никуда.
+/// Deepin — the Control Center in a Treeland session
+/// (`dde::control_center_wallpaper_argv`). A new desktop
+/// with this mode goes here and into the plan, nowhere else.
 pub const LOCK_WALLPAPER_DES: &[crate::de_customization::De] =
     &[crate::de_customization::De::Kde, crate::de_customization::De::Deepin];
 
-/// Есть ли в окружении режим «Полные темы» экрана блокировки (тип матрицы
-/// `theme-kde-lockscreen`). Неизвестное окружение — есть: прятать не повод.
+/// Whether the desktop has the "Full themes" lock screen mode (the matrix type
+/// `theme-kde-lockscreen`). An unknown desktop — it does: no reason to hide.
 pub fn lock_themes_supported(de_id: &str) -> bool {
     match crate::de_customization::de_from_id(de_id) {
         None => true,
@@ -926,27 +926,27 @@ pub fn lock_themes_supported(de_id: &str) -> bool {
     }
 }
 
-/// При каком условии раздел работает в этом окружении — подпись под
-/// заголовком (правило #13: назвать условие заранее, а не оставить человека
-/// гадать, почему «ничего не произошло»). `None` — условий нет.
+/// Under what condition the section works on this desktop — a caption under
+/// the title (rule #13: name the condition in advance rather than leave the person
+/// guessing why "nothing happened"). `None` — no conditions.
 ///
-/// Пара к [`category_note`]: та объясняет, почему раздела НЕТ, эта — что
-/// нужно, чтобы имеющийся раздел сработал.
+/// The pair of [`category_note`]: that one explains why the section is ABSENT, this one — what
+/// is needed for the existing section to work.
 ///
-/// Текст берётся из каталога перевода на языке интерфейса.
+/// The text is taken from the translation catalog in the interface language.
 pub fn category_condition(cat_key: &str, de_id: &str) -> Option<String> {
     crate::de_customization::condition_note_id(category_kind(cat_key)?, de_id)
 }
 
-/// Почему раздела нет в этом окружении — текст для человека (правило #13:
-/// объяснять, а не показывать пустой экран). `None` — раздел доступен.
+/// Why the section is absent on this desktop — text for the person (rule #13:
+/// explain rather than show an empty screen). `None` — the section is available.
 pub fn category_note(home: &Path, cat_key: &str, de_id: &str) -> Option<String> {
     if category_available(cat_key, de_id) {
         return None;
     }
     let kind = category_kind(cat_key)?;
     let de = crate::de_customization::de_from_id(de_id)?;
-    // Имя рабочего стола — то же, что во вкладке «Рабочие столы».
+    // The desktop name — the same as in the "Desktops" tab.
     let here = crate::system::DE_META
         .iter()
         .find(|m| m.id == de_id)
@@ -965,9 +965,9 @@ pub fn category_note(home: &Path, cat_key: &str, de_id: &str) -> Option<String> 
     Some(note_text(home, cat_key, &why))
 }
 
-/// Экран-объяснение закрытого раздела: имя раздела заголовком, причина и
-/// совет выбрать другой раздел. Один на все причины — и «нет в этом рабочем
-/// столе», и «нельзя на SteamOS».
+/// The explanation screen of a closed section: the section name as the title, the reason and
+/// advice to pick another section. One for all reasons — both "not on this
+/// desktop" and "not allowed on SteamOS".
 fn note_text(home: &Path, cat_key: &str, why: &str) -> String {
     let name = get_category(home, cat_key).map(|c| c.name).unwrap_or_default();
     let head = if name.is_empty() {
@@ -983,29 +983,30 @@ fn note_text(home: &Path, cat_key: &str, why: &str) -> String {
     format!("{head}{why}\n{tail}")
 }
 
-/// Рабочие столы для выбора «Текущее окружение» во вкладке «Оформление»:
-/// `(id, подпись)` в порядке [`crate::system::DE_META`].
+/// Desktops for the "Current desktop" choice in the "Appearance" tab:
+/// `(id, label)` in the order of [`crate::system::DE_META`].
 ///
-/// Тайловые сведены в ОДИН пункт. Это не упрощение на глаз, а то, что уже
-/// записано в матрице кастомизации: `de_from_id` отдаёт на sway, Hyprland и
-/// niri один и тот же [`De::Wlroots`], поэтому три строки подряд давали
-/// покупателю ПОБИТОВО одинаковый каталог — и заставляли выбирать там, где
-/// выбора нет (правило #13).
+/// Tiling ones are merged into ONE item. This is not an eyeballed simplification but what is already
+/// recorded in the customization matrix: `de_from_id` returns one and the same
+/// [`De::Wlroots`] for sway, Hyprland and
+/// niri, so three rows in a row gave
+/// the buyer a BIT-FOR-BIT identical catalog — and made them choose where there
+/// is no choice (rule #13).
 ///
-/// Под общим пунктом при этом едет НАСТОЯЩИЙ идентификатор: `current_de_id`,
-/// если сейчас запущен (или ранее выбран) тайловый, иначе первый из секции
-/// «Тайловые» ([`crate::qt_desktops::TILING_IDS`], Hyprland). Не первый
-/// подходящий из [`crate::system::DE_META`]: там перед тайловыми стоит
-/// Wayfire (тоже wlroots, но не тайловый), и объяснения звали бы общий пункт
-/// «Wayfire». Настоящий он потому, что за пределами каталога разница есть:
-/// объяснение «почему раздела нет» зовёт рабочий стол по имени («Sway», а не
-/// «Тайловые»), а настройки приложений по умолчанию пишутся каждым в свой
-/// `<id>-mimeapps.list`. Схлопывание живёт ТОЛЬКО в этом списке.
+/// Under the shared item travels the REAL identifier: `current_de_id`,
+/// if a tiling one is running now (or was chosen earlier), otherwise the first of the
+/// "Tiling" section ([`crate::qt_desktops::TILING_IDS`], Hyprland). Not the first
+/// matching one from [`crate::system::DE_META`]: there Wayfire comes before the tiling ones
+/// (also wlroots, but not tiling), and the explanations would call the shared item
+/// "Wayfire". It is the real one because outside the catalog there is a difference:
+/// the explanation "why the section is absent" calls the desktop by name ("Sway", not
+/// "Tiling"), and default application settings are written by each into its own
+/// `<id>-mimeapps.list`. The merging lives ONLY in this list.
 pub fn appearance_de_choices(current_de_id: &str) -> Vec<(String, String)> {
     use crate::de_customization::{de_from_id, De};
 
     let is_tiling = |id: &str| de_from_id(id) == Some(De::Wlroots);
-    // Что поедет под общим пунктом: сначала то, что у человека на самом деле.
+    // What travels under the shared item: first what the person actually has.
     let in_meta = |id: &str| crate::system::DE_META.iter().any(|m| m.id == id);
     let tiling_id = if is_tiling(current_de_id) {
         current_de_id
@@ -1035,36 +1036,36 @@ pub fn appearance_de_choices(current_de_id: &str) -> Vec<(String, String)> {
 }
 
 // ============================================================================
-// Группы боковой панели и подписи разделов по окружению
+// Sidebar groups and section labels per desktop
 // ============================================================================
 
-/// Группа боковой панели. Порядок вариантов — порядок групп на экране.
+/// A sidebar group. The order of variants is the order of groups on screen.
 ///
-/// Плоский список из двух десятков разделов не говорил, что из них меняет
-/// сам рабочий стол, что — все программы, а что — только программы Qt; в
-/// MATE рядом стояли «Рамки окон (MATE)» и экран входа Plasma. Группа
-/// отвечает на вопрос «на что это подействует» (просьба Wehrwolfmann
-/// 16.10.2026: показывать только действующее и понятно подписанное).
+/// A flat list of two dozen sections did not say which of them change
+/// the desktop itself, which change all programs, and which only Qt programs; in
+/// MATE "Window frames (MATE)" and the Plasma login screen stood side by side. A group
+/// answers the question "what will this affect" (Wehrwolfmann's request of
+/// 16.10.2026: show only what works, with clear labels).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SidebarGroup {
-    /// Активные, загруженные, системные, избранное, витрины магазина.
+    /// Active, downloaded, system, favorites, store storefronts.
     Overview,
-    /// Родное оформление этого рабочего стола.
+    /// The native look of this desktop.
     Desktop,
-    /// То, что подхватывают все программы: значки, курсоры, GTK, шрифты,
-    /// звуки, обои.
+    /// What all programs pick up: icons, cursors, GTK, fonts,
+    /// sounds, wallpapers.
     AllApps,
-    /// Только программы Qt и KDE (вне KDE и LXQt).
+    /// Only Qt and KDE programs (outside KDE and LXQt).
     QtApps,
-    /// Виджеты на рабочем столе: Plasma, Conky, десклеты Cinnamon.
+    /// Widgets on the desktop: Plasma, Conky, Cinnamon desklets.
     Widgets,
-    /// Экран входа и заставка загрузки: видны до входа, общие для всех
-    /// рабочих столов машины.
+    /// The login screen and the boot splash: visible before login, shared by all
+    /// desktops of the machine.
     System,
 }
 
 impl SidebarGroup {
-    /// Короткий ключ — для строк модели боковой панели.
+    /// A short key — for the sidebar model rows.
     pub fn key(self) -> &'static str {
         match self {
             SidebarGroup::Overview => "overview",
@@ -1077,14 +1078,14 @@ impl SidebarGroup {
     }
 }
 
-/// Окружение, у которого программы Qt — свои: там цвета и стиль Qt
-/// меняют сам рабочий стол, а не «чужие» программы.
+/// A desktop whose Qt programs are its own: there Qt colors and style
+/// change the desktop itself, not "foreign" programs.
 fn qt_native(de_id: &str) -> bool {
     use crate::de_customization::De;
     matches!(crate::de_customization::de_from_id(de_id), Some(De::Kde | De::Lxqt))
 }
 
-/// В какой группе боковой панели стоит раздел в этом окружении.
+/// Which sidebar group the section is in on this desktop.
 pub fn category_group(key: &str, de_id: &str) -> SidebarGroup {
     match key {
         "active" | "downloaded" | "system" | "favorites" | "popular" | "new" => SidebarGroup::Overview,
@@ -1102,18 +1103,18 @@ pub fn category_group(key: &str, de_id: &str) -> SidebarGroup {
     }
 }
 
-/// Боковая панель по группам: внутри группы — прежний порядок
-/// [`sidebar`], группы — в порядке [`SidebarGroup`]. В группе виджетов
-/// Conky идёт последним: родные виджеты стола (Plasma, десклеты Cinnamon) —
-/// первыми, Conky — рядом как общий для всех столов (24.10.2026).
+/// The sidebar by groups: within a group — the previous order of
+/// [`sidebar`], groups — in [`SidebarGroup`] order. In the widgets group
+/// Conky comes last: the desktop's native widgets (Plasma, Cinnamon desklets) —
+/// first, Conky — next to them as shared by all desktops (24.10.2026).
 pub fn grouped_sidebar(sidebar: &[ThemeCategory], de_id: &str) -> Vec<ThemeCategory> {
     let mut out = sidebar.to_vec();
     out.sort_by_key(|c| (category_group(&c.key, de_id), c.key == "conky"));
     out
 }
 
-/// Имя рабочего стола для заголовка группы: то же, что во вкладке
-/// «Рабочие столы». Пусто — окружение не опознано.
+/// The desktop name for the group title: the same as in the
+/// "Desktops" tab. Empty — the desktop is not recognized.
 fn desktop_name(de_id: &str) -> String {
     crate::system::DE_META
         .iter()
@@ -1123,7 +1124,7 @@ fn desktop_name(de_id: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Заголовок группы на языке интерфейса.
+/// The group title in the interface language.
 pub fn group_title(group: SidebarGroup, de_id: &str) -> String {
     match group {
         SidebarGroup::Overview => trc("appearance group", "Overview"),
@@ -1143,8 +1144,8 @@ pub fn group_title(group: SidebarGroup, de_id: &str) -> String {
     }
 }
 
-/// Пояснение под заголовком группы в этом окружении. Пусто — заголовка
-/// хватает.
+/// The explanation under the group title on this desktop. Empty — the title
+/// is enough.
 pub fn group_note(group: SidebarGroup, de_id: &str) -> String {
     match group {
         SidebarGroup::QtApps => tr("VLC, qBittorrent, Krita, Dolphin… The desktop itself doesn't change."),
@@ -1154,17 +1155,17 @@ pub fn group_note(group: SidebarGroup, de_id: &str) -> String {
     }
 }
 
-/// Пояснение группы «Виджеты рабочего стола» (решение Wehrwolfmann
-/// 24.10.2026: виджеты на столе — в каждом окружении). Своих виджетов у
-/// стола нет почти нигде, кроме KDE и Cinnamon, и человек, ищущий «виджеты
-/// на стол», видит одно слово «Conky» — пояснение говорит, что это такое,
-/// без жаргона. Оговорки про Wayland здесь больше нет (15.11.2026): на
-/// столах без слоёв (`conky_overlay::wayland_without_layers`: GNOME,
-/// Cinnamon, Pantheon) Rexon запускает conky через XWayland, и виджет
-/// держится на столе, как в сеансе X11 (`conky_overlay::via_xwayland`);
-/// редкий сеанс совсем без XWayland получает оговорку в заголовке раздела
-/// (`de_apply::conky_section_note`), где сеанс известен. Неизвестное
-/// окружение видит все разделы виджетов разом — пояснять там нечем.
+/// The explanation of the "Desktop widgets" group (Wehrwolfmann's decision of
+/// 24.10.2026: widgets on the desktop — on every desktop). Almost no desktop
+/// has widgets of its own except KDE and Cinnamon, and a person looking for "widgets
+/// for the desktop" sees one word, "Conky" — the explanation says what it is,
+/// without jargon. The Wayland caveat is gone from here (15.11.2026): on
+/// desktops without layers (`conky_overlay::wayland_without_layers`: GNOME,
+/// Cinnamon, Pantheon) Rexon runs conky through XWayland, and the widget
+/// stays on the desktop as in an X11 session (`conky_overlay::via_xwayland`);
+/// a rare session with no XWayland at all gets a caveat in the section title
+/// (`de_apply::conky_section_note`), where the session is known. An unknown
+/// desktop sees all widget sections at once — there is nothing to explain there.
 fn widgets_group_note(de_id: &str) -> String {
     use crate::de_customization::De;
     let Some(de) = crate::de_customization::de_from_id(de_id) else {
@@ -1180,15 +1181,15 @@ fn widgets_group_note(de_id: &str) -> String {
     }
 }
 
-/// Подпись раздела в этом окружении.
+/// The section label on this desktop.
 ///
-/// Имя в [`categories`] от окружения не зависит (по нему ищут журнал и
-/// сообщения установки), а в боковой панели и заголовке раздела оно должно
-/// говорить правду о ЭТОМ рабочем столе: вне Plasma «Цветовые схемы» красят
-/// только программы Qt и KDE, «Стиль приложений» — тоже; приписка «(MATE)» к
-/// рамкам окон внутри группы «Рабочий стол «MATE»» лишняя. Неизвестное
-/// окружение (видно всё) — прежние имена: там рядом стоят и рамки XFCE, и
-/// рамки MATE.
+/// The name in [`categories`] does not depend on the desktop (the log and
+/// install messages are looked up by it), while in the sidebar and the section title it must
+/// tell the truth about THIS desktop: outside Plasma "Color schemes" color
+/// only Qt and KDE programs, and so does "Application style"; the "(MATE)" suffix on
+/// window frames inside the "Desktop "MATE"" group is superfluous. An unknown
+/// desktop (everything visible) — the old names: there both the XFCE frames and
+/// the MATE frames stand side by side.
 pub fn display_name(cat: &ThemeCategory, de_id: &str) -> String {
     let known = crate::de_customization::de_from_id(de_id).is_some();
     match cat.key.as_str() {
@@ -1204,17 +1205,17 @@ pub fn display_name(cat: &ThemeCategory, de_id: &str) -> String {
     }
 }
 
-/// Человеческое имя экрана входа по юниту systemd
-/// (`appearance_installer::active_login_manager`). Пусто — незнакомый.
+/// The human name of the login screen by the systemd unit
+/// (`appearance_installer::active_login_manager`). Empty — an unknown one.
 pub fn login_manager_label(unit: &str) -> &'static str {
     crate::system_plan::login_manager_spec(unit).map_or("", |s| s.label)
 }
 
-/// Пояснение под заголовком системного раздела (экран входа, заставка
-/// загрузки): они видны ДО выбора рабочего стола и общие для всех столов,
-/// и человек в MATE должен понимать, почему здесь экран входа Plasma.
-/// `login_unit` — юнит активного экрана входа (пусто — не знаем).
-/// `None` — раздел не системный.
+/// The explanation under the title of a system section (the login screen, the boot
+/// splash): they are visible BEFORE a desktop is chosen and shared by all desktops,
+/// and a person in MATE must understand why the Plasma login screen is here.
+/// `login_unit` — the unit of the active login screen (empty — we don't know).
+/// `None` — the section is not a system one.
 pub fn system_section_note(key: &str, login_unit: &str) -> Option<String> {
     match key {
         "sddm" | PLASMA_LOGIN_KEY => {
@@ -1223,8 +1224,8 @@ pub fn system_section_note(key: &str, login_unit: &str) -> Option<String> {
             Some(if label.is_empty() {
                 shared
             } else if key == "sddm" && login_unit.trim() != "sddm" {
-                // Полка SDDM-тем при другом экране входа: сказать заранее,
-                // что темы подействуют, только если им станет SDDM.
+                // A shelf of SDDM themes with another login screen: say in advance
+                // that the themes take effect only if SDDM becomes it.
                 format!(
                     "{shared} {}",
                     crate::i18n::trf(

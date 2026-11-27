@@ -1,18 +1,19 @@
-//! Golden-сверка порта `youtube_wallpaper.rs` с оригиналом
+//! Golden check of the `youtube_wallpaper.rs` port against the original
 //! `rexon/youtube_wallpaper.py`.
 //!
-//! Эталон снят read-only с ЖИВОГО `rexon.youtube_wallpaper` одноразовым
-//! генератором. Реальный yt-dlp / скачивание / subprocess НЕ исполнялись:
-//! stdout `--get-url`/`--dump-json`/`--flat-playlist` синтетический, HOME и
-//! кеш нормализованы в `/HOME` (`XDG_CACHE_HOME=/HOME/.cache`), `time.time()`
-//! → фикс. Покрыто: выбор формата по качеству (stream/download), пути кеша
-//! (cache_dir/meta/output-template/meta_path) и хеш URL, валидация/
-//! классификация URL (supported/youtube/playlist), argv всех вызовов yt-dlp
-//! (+ install/update/version), разбор `--get-url`, прогресс скачивания,
-//! список форматов, карточка видео, разбор плейлиста, format_info_text,
-//! вытеснение из кеша, предикат кеш-файла, precheck длительности/live.
+//! The reference was captured read-only from the LIVE `rexon.youtube_wallpaper`
+//! by a one-off generator. Real yt-dlp / download / subprocess were NOT run:
+//! the stdout of `--get-url`/`--dump-json`/`--flat-playlist` is synthetic,
+//! HOME and the cache are normalised to `/HOME`
+//! (`XDG_CACHE_HOME=/HOME/.cache`), `time.time()` → fixed. Covered: format
+//! choice by quality (stream/download), cache paths
+//! (cache_dir/meta/output-template/meta_path) and the URL hash, URL
+//! validation/classification (supported/youtube/playlist), argv of all yt-dlp
+//! calls (+ install/update/version), parsing `--get-url`, download progress,
+//! format list, video card, playlist parsing, format_info_text, cache
+//! eviction, cache-file predicate, duration/live precheck.
 //!
-//! `golden/youtube_wallpaper_cases.json` — снятые значения.
+//! `golden/youtube_wallpaper_cases.json` — the captured values.
 
 use rexon_core::youtube_wallpaper as yt;
 use serde_json::Value;
@@ -68,7 +69,7 @@ fn format_selection() {
 #[test]
 fn cache_paths_and_hash() {
     let g = fx();
-    // cache_dir: XDG задан ИЛИ выведен из HOME — оба дают тот же путь
+    // cache_dir: XDG set OR derived from HOME — both give the same path
     let cd_xdg = yt::cache_dir(Some("/HOME/.cache"), HOME);
     let cd_home = yt::cache_dir(None, HOME);
     assert_eq!(cd_xdg, s(&g["cache_dir"]));
@@ -153,7 +154,7 @@ fn argv_stream() {
         yt::stream_argv(URL, yt::stream_format("best")),
         str_vec(&g["stream_cmd_best"])
     );
-    // неизвестное качество → STREAM_FORMAT
+    // unknown quality → STREAM_FORMAT
     assert_eq!(
         yt::stream_argv(URL, yt::stream_format("unknown")),
         str_vec(&g["stream_cmd_unknown"])
@@ -174,7 +175,7 @@ fn argv_download() {
         yt::download_argv(URL, yt::download_format("4k"), &tmpl),
         str_vec(&g["download_cmd_4k"])
     );
-    // неизвестное качество → 1080p
+    // unknown quality → 1080p
     assert_eq!(
         yt::download_argv(URL, yt::download_format("unknown"), &tmpl),
         str_vec(&g["download_cmd_unknown"])
@@ -200,8 +201,8 @@ fn argv_install_update_version() {
     assert_eq!(yt::version_argv(), str_vec(&g["version_cmd"]));
 }
 
-/// pip-ветка установки: имя бинаря и `--break-system-packages` по факту
-/// отказа PEP 668, а не по семейству дистрибутива.
+/// pip install branch: the binary name and `--break-system-packages` depend on
+/// an actual PEP 668 refusal, not on the distro family.
 #[test]
 fn pip_fallback() {
     let _lang = i18n_pin::ru();
@@ -258,8 +259,8 @@ fn parse_download_progress() {
 #[test]
 fn extract_formats() {
     let g = fx();
-    // Вход синтетический — та же yt-dlp-структура, что в генераторе; сверяем
-    // прямой выход _extract_format_list (в golden — "extract_formats").
+    // Synthetic input — the same yt-dlp structure as in the generator; we compare
+    // the direct output of _extract_format_list (in golden — "extract_formats").
     let input = serde_json::json!({
         "formats": [
             {"height": 1080, "fps": 30, "vcodec": "avc1", "filesize": 50000000},
@@ -359,10 +360,10 @@ fn cache_eviction() {
     let size = g["evict_size_mb"].as_f64().unwrap();
     let deleted = yt::select_evictions(size, &files);
     assert_eq!(deleted, str_vec(&g["evictions"]));
-    // в пределах лимита → ничего не удаляем
+    // within the limit → delete nothing
     let under = yt::select_evictions(1000.0, &files);
     assert_eq!(under, str_vec(&g["evict_under_limit"]));
-    // dir_size_mb: сумма байт / 1 МиБ (2600 МБ)
+    // dir_size_mb: sum of bytes / 1 MiB (2600 MB)
     let sizes: Vec<u64> = files.iter().map(|f| f.2).collect();
     assert_eq!(yt::dir_size_mb(&sizes), size);
 }
@@ -381,8 +382,8 @@ fn download_precheck() {
     }
 }
 
-/// Скачанный ролик в кеше: только наш хеш, без недокачанных `.part` и
-/// `.ytdl`, первое имя по порядку.
+/// A downloaded clip in the cache: only our hash, without partial `.part` and
+/// `.ytdl`, the first name in order.
 #[test]
 fn cached_file_is_found_by_hash() {
     let names: Vec<String> = ["zz.mp4", "abc.webm.part", "abc.mp4", "abc.ytdl", "abd.mp4"]
@@ -393,8 +394,8 @@ fn cached_file_is_found_by_hash() {
     assert_eq!(yt::cached_file_name(&names, "нет"), None);
 }
 
-/// pip: удача с первой попытки — без флага; отказ PEP 668 — ровно один
-/// повтор с `--break-system-packages`; любой другой отказ — без повтора.
+/// pip: success on the first try — no flag; a PEP 668 refusal — exactly one
+/// retry with `--break-system-packages`; any other refusal — no retry.
 #[test]
 fn pip_retries_only_on_pep668() {
     let pep668 = "error: externally-managed-environment".to_string();
@@ -443,8 +444,8 @@ fn pip_retries_only_on_pep668() {
     assert!(!yt::pip_run_with(&mut |_| None, "pip", false), "нет pip — не успех");
 }
 
-/// Итоги установки и обновления yt-dlp (их показывает вкладка «Настройки»)
-/// по-английски — без единой русской буквы.
+/// Results of installing and updating yt-dlp (shown on the «Settings» tab)
+/// are in English — without a single Russian letter.
 #[test]
 fn english_ytdlp_messages_have_no_russian() {
     let _lang = i18n_pin::en();
@@ -470,7 +471,7 @@ fn english_ytdlp_messages_have_no_russian() {
     );
 }
 
-/// По-русски — дословно как было до перевода.
+/// In Russian — word for word as before the translation.
 #[test]
 fn russian_ytdlp_messages_read_as_before() {
     let _lang = i18n_pin::ru();

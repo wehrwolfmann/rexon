@@ -1,71 +1,73 @@
-//! Экран входа окончательно упал → понятный текст на текстовой консоли
-//! вместо чёрного экрана.
+//! The login screen went down for good → a clear text on the text console
+//! instead of a black screen.
 //!
-//! ЗАЧЕМ. 07–08.10.2026 обновление поставило Qt вразнобой, и Plasma Login
-//! Manager после перезагрузки падал до `start-limit-hit`: человек видел
-//! чёрный экран и мигающий курсор, без единого слова о том, что случилось и
-//! что делать. [`crate::update_guard`] предупреждает ДО перезагрузки, а этот
-//! модуль отвечает за случай «уже поздно».
+//! WHY. On 07–08.10.2026 an update installed mismatched Qt packages, and
+//! Plasma Login Manager crashed after reboot until `start-limit-hit`: the
+//! person saw a black screen and a blinking cursor, without a single word
+//! about what happened and what to do. [`crate::update_guard`] warns BEFORE
+//! the reboot, and this module handles the "too late" case.
 //!
-//! КАК УСТРОЕНО. Пока установлен Rexon, у ЛЮБОГО экрана входа есть drop-in
-//! [`DROPIN_NAME`] с `OnFailure=` [`RESCUE_SERVICE`]: он лежит в
-//! `display-manager.service.d/` (systemd читает drop-in'ы псевдонима у того
-//! юнита, на который псевдоним указывает) и, на случай, если псевдонима
-//! нет, — у каждого экрана входа из [`crate::system_plan::LOGIN_MANAGER_SPECS`].
-//! Служба зовёт программу [`RESCUE_BIN_NAME`] с [`BOOT_FLAG`]:
-//!   1. ждёт, пока systemd сдастся ([`decide`]): `OnFailure=` срабатывает и
-//!      на падениях, после которых systemd сам перезапустит юнит (замер на
-//!      стенде archlinux 20.10.2026, см. `system_plan::DM_FALLBACK_SCRIPT`);
-//!   2. выясняет причину БЕЗ сети ([`diagnose`]): `ldd -r` того, что экран
-//!      входа действительно запускает (`ExecStart` и, у SDDM, выбранное
-//!      настройками приветствие — [`sddm_greeter`]), и прочих программ
-//!      пакета, где «библиотеки нет» не списывается на необязательную
-//!      зависимость ([`crate::aeroshell::ldd_problems`]); наборы пакетов
-//!      вразнобой ([`crate::update_guard::evaluate`] без ждущих обновлений);
-//!      последние строки журнала самого экрана входа — не systemd и не
-//!      `ExecStartPre` ([`log_lines`]);
-//!   3. пишет текст в [`ISSUE_PATH`] (его печатает `agetty` над приглашением)
-//!      и поднимает `getty@` на консоли, которую ядро рисует ([`console_vt`]:
-//!      обычно tty1 — экраны входа держат `Conflicts=getty@tty1.service`, и
-//!      после их падения там не запущено ничего; на SteamOS — tty4).
+//! HOW IT WORKS. While Rexon is installed, ANY login screen has the drop-in
+//! [`DROPIN_NAME`] with `OnFailure=` [`RESCUE_SERVICE`]: it lives in
+//! `display-manager.service.d/` (systemd reads the alias drop-ins for the
+//! unit the alias points to) and, in case there is no alias, in every login
+//! screen from [`crate::system_plan::LOGIN_MANAGER_SPECS`].
+//! The service calls the program [`RESCUE_BIN_NAME`] with [`BOOT_FLAG`]:
+//!   1. waits until systemd gives up ([`decide`]): `OnFailure=` also fires
+//!      on crashes after which systemd restarts the unit itself (measured on
+//!      the archlinux test bench 20.10.2026, see `system_plan::DM_FALLBACK_SCRIPT`);
+//!   2. finds the cause WITHOUT network ([`diagnose`]): `ldd -r` of what the
+//!      login screen actually starts (`ExecStart` and, for SDDM, the greeter
+//!      chosen by the settings, [`sddm_greeter`]), and of the package's other
+//!      programs, where a "missing library" is not written off as an optional
+//!      dependency ([`crate::aeroshell::ldd_problems`]); mismatched package
+//!      sets ([`crate::update_guard::evaluate`] without pending updates);
+//!      the last journal lines of the login screen itself, not of systemd and
+//!      not of `ExecStartPre` ([`log_lines`]);
+//!   3. writes the text to [`ISSUE_PATH`] (`agetty` prints it above the prompt)
+//!      and starts `getty@` on the console the kernel draws ([`console_vt`]:
+//!      usually tty1; login screens hold `Conflicts=getty@tty1.service`, and
+//!      after they crash nothing runs there; on SteamOS it is tty4).
 //!
-//! ЭКРАН ВХОДА ЖИВ, А ОКНА ВХОДА НЕТ. SDDM и Plasma Login Manager не
-//! замечают приветствия, упавшего с «чужим» кодом (127 — нет библиотеки,
-//! сигнал): служба остаётся `active`, и `OnFailure=` молчит. Этот случай
-//! ловит сторож приветствия — таймер из того же drop-in'а
-//! ([`decide_greeter`], раздел «Сторож приветствия»); текст и приглашение
-//! — те же.
+//! THE LOGIN SCREEN IS ALIVE, BUT THERE IS NO LOGIN WINDOW. SDDM and Plasma
+//! Login Manager do not notice a greeter that died with an "unexpected" code
+//! (127 means a missing library, or a signal): the service stays `active`,
+//! and `OnFailure=` stays silent. This case is caught by the greeter watch,
+//! a timer from the same drop-in ([`decide_greeter`], section "Greeter
+//! watch"); the text and the prompt are the same.
 //!
-//! ⛔ НИЧЕГО НЕ ЧИНИТ. Ни пакетов, ни экрана входа, ни `reset-failed`:
-//! только объясняет и показывает приглашение входа. Чинит человек — по
-//! подсказкам `rexon doctor` ([`doctor_report`]), которая тоже только
-//! смотрит.
+//! ⛔ IT REPAIRS NOTHING. Neither packages, nor the login screen, nor
+//! `reset-failed`: it only explains and shows the login prompt. The person
+//! repairs, following the hints of `rexon doctor` ([`doctor_report`]), which
+//! also only looks.
 //!
-//! СОГЛАСОВАНИЕ СО СЛУЖБОЙ-ОТКАТОМ (`rexon-dm-fallback`, ставится при
-//! «Сделать основным»). Обе зовёт `OnFailure=` одного и того же юнита, и
-//! эта служба упорядочена `After=` отката. Откат, вернув прежний экран входа,
-//! запускает его — и к моменту нашей проверки `display-manager.service` уже
-//! не `failed` (`inactive` с заданием запуска либо `activating`): мы ждём.
-//! Если упадёт и прежний (у него drop-in отката нет, а наш есть — через
-//! псевдоним), сработаем мы, и текст скажет, что откат уже был.
-//! Проверяется всегда ТЕКУЩИЙ `display-manager.service`, а не тот юнит,
-//! который нас позвал: упавший посторонний экран входа ни при чём.
-//! `MONITOR_UNIT` для этого не нужен — и обычно его нет: служба стоит в
-//! `OnFailure=` у нескольких юнитов (псевдоним и все экраны входа), и
-//! systemd тогда переменную не передаёт («multiple trigger source
-//! candidates», замер в ВМ SteamOS 25.10.2026).
+//! COORDINATION WITH THE FALLBACK SERVICE (`rexon-dm-fallback`, installed on
+//! «Make default»). Both are called by `OnFailure=` of the same unit, and
+//! this service is ordered `After=` the fallback. The fallback, having
+//! restored the previous login screen, starts it, so by the time we check
+//! `display-manager.service` is no longer `failed` (`inactive` with a start
+//! job, or `activating`): we wait. If the previous one crashes too (it has
+//! no fallback drop-in, but ours applies through the alias), we fire, and
+//! the text says the fallback has already happened.
+//! The CURRENT `display-manager.service` is always checked, not the unit
+//! that called us: a crashed unrelated login screen does not matter.
+//! `MONITOR_UNIT` is not needed for this, and usually it is absent: the
+//! service is in `OnFailure=` of several units (the alias and all login
+//! screens), and then systemd does not pass the variable ("multiple trigger
+//! source candidates", measured in the SteamOS VM 25.10.2026).
 //!
-//! ЗАЩИТА ОТ ЗАЦИКЛИВАНИЯ: отметка [`STAMP_PATH`] в `/run` — один показ за
-//! загрузку; `StartLimitIntervalSec=0` у службы — частые вызовы на
-//! перезапусках экрана входа не исчерпают её собственный предел запусков
-//! раньше того вызова, ради которого она существует.
+//! PROTECTION AGAINST LOOPS: the stamp [`STAMP_PATH`] in `/run` means one
+//! showing per boot; `StartLimitIntervalSec=0` on the service means frequent
+//! calls during login screen restarts do not exhaust its own start limit
+//! before the call it exists for.
 //!
-//! ЯЗЫК. На консоли при загрузке языка сеанса нет: берётся системная локаль
-//! (`/etc/locale.conf`, её же systemd отдаёт службам в `LANG`), перевод — из
-//! каталогов, вшитых при сборке ([`crate::system_l10n::translated`]), как у
-//! остального системного текста Rexon: на диске при загрузке может не быть
-//! ничего исправного. Шрифт консоли по умолчанию кириллицы и прочего не-
-//! латинского не рисует — поэтому под переводом всегда идёт английский.
+//! LANGUAGE. On the console at boot there is no session language: the system
+//! locale is used (`/etc/locale.conf`, which systemd also passes to services
+//! in `LANG`), the translation comes from catalogs embedded at build time
+//! ([`crate::system_l10n::translated`]), as with the rest of Rexon's system
+//! text: at boot nothing working may be left on disk. The default console
+//! font does not draw Cyrillic or other non-Latin scripts, so English always
+//! follows the translation.
 
 use crate::i18n::{fill_plain, n_};
 use crate::system::PkgFamily;
@@ -73,40 +75,40 @@ use crate::system_exec::SystemIo;
 use crate::update_guard::{self, Effect, Finding, Survey};
 
 // ══════════════════════════════════════════════════════════════════════════
-// Файлы в системе
+// Files in the system
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Программа службы (в пакете — [`RESCUE_BIN_PACKAGE`]). Без Qt: её зовут
-/// именно тогда, когда Qt мог сломаться.
+/// The service program (in the package: [`RESCUE_BIN_PACKAGE`]). Without Qt:
+/// it is called exactly when Qt may have broken.
 pub const RESCUE_BIN_NAME: &str = "rexon-login-rescue";
-/// Путь программы в пакете.
+/// Path of the program in the package.
 pub const RESCUE_BIN_PACKAGE: &str = "/usr/lib/rexon/rexon-login-rescue";
-/// Служба: её зовёт `OnFailure=` экрана входа.
+/// The service: called by the login screen's `OnFailure=`.
 pub const RESCUE_SERVICE: &str = "rexon-login-rescue.service";
-/// Drop-in экрана входа с `OnFailure=`. Имя не совпадает с drop-in'ом
-/// отката (`50-rexon-fallback.conf`): совпади оно, файл в `/etc` перекрыл бы
-/// наш в `/usr/lib`, и одна из служб потерялась бы.
+/// Login screen drop-in with `OnFailure=`. The name differs from the fallback
+/// drop-in (`50-rexon-fallback.conf`): if they matched, the file in `/etc`
+/// would shadow ours in `/usr/lib`, and one of the services would be lost.
 pub const DROPIN_NAME: &str = "50-rexon-login-rescue.conf";
-/// Каталог юнитов пакета.
+/// The package's unit directory.
 pub const UNIT_DIR_PACKAGE: &str = "/usr/lib/systemd/system";
-/// Псевдоним текущего экрана входа.
+/// Alias of the current login screen.
 pub const DM_ALIAS: &str = "display-manager.service";
-/// Текст над приглашением `agetty` (`/run` — для созданного на лету; с
-/// util-linux 2.41 читается всегда, раньше — только без `/etc/issue`).
+/// Text above the `agetty` prompt (`/run` is for files created on the fly;
+/// since util-linux 2.41 it is always read, before that only without `/etc/issue`).
 pub const ISSUE_PATH: &str = "/run/issue.d/50-rexon-login-rescue.issue";
-/// Отметка «в эту загрузку уже показали».
+/// Stamp "already shown during this boot".
 pub const STAMP_PATH: &str = "/run/rexon/login-rescue.done";
-/// Командная строка ядра: из неё — какие консоли ядро рисует на экране.
+/// Kernel command line: tells which consoles the kernel draws on screen.
 pub const KERNEL_CMDLINE: &str = "/proc/cmdline";
-/// Предел номеров консолей в ядре (`MAX_NR_CONSOLES`).
+/// Kernel limit on console numbers (`MAX_NR_CONSOLES`).
 const MAX_VT: u32 = 63;
 
-/// Номер консоли, которую человек УВИДИТ: первая из `fbcon=vc:<n1>-<n2>`
-/// (номера с 1, как у `ttyN`), если первая консоль в этот промежуток не
-/// входит, иначе 1. SteamOS грузится с `fbcon=vc:4-6`: на tty1 ядро не
-/// рисует ничего, и приглашение там — тот же чёрный экран (замер в ВМ
-/// SteamOS 3.9.5, 25.10.2026: текст виден только на tty4). Опции `fbcon=`
-/// идут через запятую; повтор параметра — действует последний.
+/// Number of the console the person will SEE: the first of `fbcon=vc:<n1>-<n2>`
+/// (numbered from 1, like `ttyN`) if the first console is outside that range,
+/// otherwise 1. SteamOS boots with `fbcon=vc:4-6`: the kernel draws nothing
+/// on tty1, and a prompt there is the same black screen (measured in the
+/// SteamOS 3.9.5 VM, 25.10.2026: the text is visible only on tty4). `fbcon=`
+/// options are comma-separated; if the parameter repeats, the last one wins.
 pub fn console_vt(cmdline: &str) -> u32 {
     let mut first = None;
     for arg in cmdline.split_whitespace() {
@@ -123,46 +125,46 @@ pub fn console_vt(cmdline: &str) -> u32 {
     }
 }
 
-/// Управляющая последовательность консоли Linux «включить погашенный экран»
+/// Linux console control sequence "unblank the screen"
 /// (`ESC [ 13 ]`, console_codes(4)).
 pub const UNBLANK_SEQ: &str = "\x1b[13]";
 
-/// Устройство консоли `vt`.
+/// Device of console `vt`.
 pub fn tty_path(vt: u32) -> String {
     format!("/dev/tty{vt}")
 }
 
-/// Служба приглашения входа на консоли `vt`.
+/// Login prompt service on console `vt`.
 pub fn getty_unit(vt: u32) -> String {
     format!("getty@tty{vt}.service")
 }
-/// Флаг запуска из службы.
+/// Flag for running from the service.
 pub const BOOT_FLAG: &str = "--boot";
-/// Флаг одной проверки сторожа приветствия (из [`WATCH_SERVICE`]).
+/// Flag for one greeter watch check (from [`WATCH_SERVICE`]).
 pub const WATCH_FLAG: &str = "--watch-greeter";
-/// Служба и таймер сторожа приветствия.
+/// Service and timer of the greeter watch.
 pub const WATCH_SERVICE: &str = "rexon-greeter-watch.service";
 pub const WATCH_TIMER: &str = "rexon-greeter-watch.timer";
-/// Первая проверка — через столько секунд после старта экрана входа.
+/// The first check: this many seconds after the login screen starts.
 pub const WATCH_FIRST_SECS: u32 = 45;
-/// Следующие — через столько секунд после конца предыдущей.
+/// The following ones: this many seconds after the previous one ends.
 pub const WATCH_EVERY_SECS: u32 = 30;
-/// Экран входа моложе этого — приветствие ещё может подниматься.
+/// A login screen younger than this: the greeter may still be coming up.
 pub const GREETER_GRACE_SECS: u64 = 30;
-/// Перепроверка перед показом: окна входа нет и через столько секунд.
+/// Recheck before showing: still no login window after this many seconds.
 pub const WATCH_RECHECK_SECS: u64 = 10;
-/// Флаг отчёта для человека (`rexon doctor`).
+/// Flag for the report for the person (`rexon doctor`).
 pub const DOCTOR_FLAG: &str = "--doctor";
-/// Команда, которую текст на консоли предлагает выполнить.
+/// The command the console text suggests running.
 pub const DOCTOR_COMMAND: &str = "rexon doctor";
-/// Слово маршрута `rexon doctor` (первый аргумент).
+/// Route word of `rexon doctor` (the first argument).
 pub const DOCTOR_WORD: &str = "doctor";
-/// Строк журнала в тексте.
+/// Journal lines in the text.
 pub const LOG_LINES: usize = 5;
-/// Длина строки журнала в тексте, символы.
+/// Length of a journal line in the text, characters.
 pub const LOG_LINE_MAX: usize = 160;
 
-/// Юнит службы. `exec` — путь программы.
+/// The service unit. `exec` is the program path.
 pub fn rescue_unit(exec: &str) -> String {
     format!(
         "[Unit]\n\
@@ -178,16 +180,16 @@ pub fn rescue_unit(exec: &str) -> String {
     )
 }
 
-/// Drop-in экрана входа: `OnFailure=` — на падение самого экрана входа,
-/// `Wants=` — сторож приветствия ([`WATCH_TIMER`]) на случай, когда экран
-/// входа жив, а окна входа нет.
+/// Login screen drop-in: `OnFailure=` for a crash of the login screen itself,
+/// `Wants=` for the greeter watch ([`WATCH_TIMER`]) for the case when the
+/// login screen is alive but there is no login window.
 pub fn dropin() -> String {
     format!("[Unit]\nOnFailure={RESCUE_SERVICE}\nWants={WATCH_TIMER}\n")
 }
 
-/// Служба сторожа приветствия: одна проверка ([`WATCH_FLAG`]). Обычные
-/// зависимости по умолчанию (`Conflicts=shutdown.target`): при выключении
-/// systemd её не запустит.
+/// Greeter watch service: one check ([`WATCH_FLAG`]). Regular default
+/// dependencies (`Conflicts=shutdown.target`): systemd will not start it
+/// during shutdown.
 pub fn watch_unit(exec: &str) -> String {
     format!(
         "[Unit]\n\
@@ -199,10 +201,10 @@ pub fn watch_unit(exec: &str) -> String {
     )
 }
 
-/// Таймер сторожа: первая проверка через [`WATCH_FIRST_SECS`] после старта
-/// экрана входа, дальше — через [`WATCH_EVERY_SECS`] после конца
-/// предыдущей. Повтор нужен автовходу: приветствие запускается только после
-/// выхода из сеанса, и упасть оно может через час после загрузки.
+/// Watch timer: the first check [`WATCH_FIRST_SECS`] after the login screen
+/// starts, then [`WATCH_EVERY_SECS`] after the previous one ends. Repetition
+/// is needed for autologin: the greeter starts only after logging out of the
+/// session, and it may crash an hour after boot.
 pub fn watch_timer() -> String {
     format!(
         "[Unit]\n\
@@ -216,8 +218,8 @@ pub fn watch_timer() -> String {
     )
 }
 
-/// Юниты, которым кладётся drop-in: псевдоним и все известные экраны входа.
-/// Двойной `OnFailure=` на одну службу systemd сводит в одну зависимость.
+/// Units that receive the drop-in: the alias and all known login screens.
+/// systemd merges a duplicate `OnFailure=` for one service into one dependency.
 pub fn dropin_units() -> Vec<String> {
     let mut units = vec![DM_ALIAS.to_string()];
     for spec in crate::system_plan::LOGIN_MANAGER_SPECS {
@@ -229,9 +231,9 @@ pub fn dropin_units() -> Vec<String> {
     units
 }
 
-/// Все файлы страховки в каталоге юнитов `unit_dir`: (путь, текст). Их
-/// печатает пакету `rexon-login-rescue --files`/`--file`, удаляет их
-/// `pacman -R` — они в учёте пакета.
+/// All safety-net files in the unit directory `unit_dir`: (path, text).
+/// `rexon-login-rescue --files`/`--file` prints them for the package,
+/// `pacman -R` removes them, since they are tracked by the package.
 pub fn unit_files(unit_dir: &str, exec: &str) -> Vec<(String, String)> {
     let dir = unit_dir.trim_end_matches('/');
     let mut files = vec![
@@ -246,55 +248,55 @@ pub fn unit_files(unit_dir: &str, exec: &str) -> Vec<(String, String)> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Состояние юнита и решение «ждать / показать»
+// Unit state and the "wait / show" decision
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Свойства [`DM_ALIAS`] из `systemctl show`.
+/// Properties of [`DM_ALIAS`] from `systemctl show`.
 pub const SHOW_PROPS: &[&str] =
     &["Id", "LoadState", "ActiveState", "SubState", "Result", "ExecStart", "ExecStartPre", "ExecStartPost",
       "ActiveEnterTimestampMonotonic", "Conflicts"];
 
-/// Состояние юнита экрана входа.
+/// State of the login screen unit.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UnitState {
-    /// Настоящее имя (`sddm.service`), не псевдоним.
+    /// The real name (`sddm.service`), not the alias.
     pub id: String,
     pub load: String,
     pub active: String,
     pub sub: String,
     pub result: String,
-    /// Программа из `ExecStart` (`path=`).
+    /// Program from `ExecStart` (`path=`).
     pub exec_path: Option<String>,
-    /// Имена программ `ExecStartPre=`/`ExecStartPost=` (см. [`aux_commands`]):
-    /// их строки в журнале юнита — не голос экрана входа.
+    /// Program names of `ExecStartPre=`/`ExecStartPost=` (see [`aux_commands`]):
+    /// their lines in the unit journal are not the login screen speaking.
     pub aux_commands: Vec<String>,
-    /// Когда юнит стал `active`, мкс от загрузки (`ActiveEnterTimestampMonotonic`;
-    /// 0 — ещё ни разу).
+    /// When the unit became `active`, µs since boot (`ActiveEnterTimestampMonotonic`;
+    /// 0 means never yet).
     pub active_since_us: Option<u64>,
-    /// `Conflicts=`: экран входа уходит, если запустить `getty@` его консоли.
+    /// `Conflicts=`: the login screen goes away if `getty@` of its console is started.
     pub conflicts: Vec<String>,
 }
 
 impl UnitState {
-    /// Имя без `.service` (`sddm`).
+    /// Name without `.service` (`sddm`).
     pub fn short(&self) -> &str {
         self.id.strip_suffix(".service").unwrap_or(&self.id)
     }
 
-    /// Имя для человека: из таблицы экранов входа, иначе юнит.
+    /// Name for the person: from the login screen table, otherwise the unit.
     pub fn label(&self) -> String {
         crate::system_plan::login_manager_spec(self.short())
             .map(|s| s.label.to_string())
             .unwrap_or_else(|| self.short().to_string())
     }
 
-    /// systemd сдался: юнит `failed` и сам больше не перезапустится.
+    /// systemd gave up: the unit is `failed` and will not restart by itself anymore.
     pub fn gave_up(&self) -> bool {
         self.active == "failed" && !self.sub.starts_with("auto-restart")
     }
 }
 
-/// Разбор `systemctl show -p …` (строки `Ключ=значение`).
+/// Parsing of `systemctl show -p …` (`Key=value` lines).
 pub fn parse_show(text: &str) -> UnitState {
     let mut s = UnitState::default();
     for line in text.lines() {
@@ -319,8 +321,8 @@ pub fn parse_show(text: &str) -> UnitState {
             _ => {}
         }
     }
-    // Своя программа юнита своей же «вспомогательной» не считается
-    // (`ExecStartPre=/usr/bin/sddm --check` не глушит строки самого sddm).
+    // The unit's own program does not count as its "auxiliary" one
+    // (`ExecStartPre=/usr/bin/sddm --check` does not mute sddm's own lines).
     if let Some(main) = s.exec_path.as_deref().map(base_name) {
         s.aux_commands.retain(|n| n != main);
     }
@@ -331,14 +333,15 @@ fn base_name(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
-/// Имена программ из значения `ExecStartPre=`/`ExecStartPost=` в выводе
-/// `systemctl show`: у каждой команды `{ path=… ; argv[]=… ; … }` — имя
-/// `path`, первого слова `argv[]` и, если это `sh -c '…'`, первого слова
-/// сценария. Так в журнале узнаются строки и самой оболочки (её
-/// `SYSLOG_IDENTIFIER`), и запущенной ею программы (`_COMM`): на SteamOS
-/// `ExecStartPre` экрана входа удаляет временные настройки автовхода, и
-/// `rm: cannot remove …zzt-*-temp-login.conf` (замер в ВМ, 25.10.2026)
-/// заслонял настоящую ошибку.
+/// Program names from the value of `ExecStartPre=`/`ExecStartPost=` in the
+/// output of `systemctl show`: for each command `{ path=… ; argv[]=… ; … }`,
+/// the name of `path`, of the first word of `argv[]` and, if it is
+/// `sh -c '…'`, of the first word of the script. This way the journal lines
+/// of both the shell itself (its `SYSLOG_IDENTIFIER`) and the program it ran
+/// (`_COMM`) are recognized: on SteamOS the login screen's `ExecStartPre`
+/// deletes the temporary autologin settings, and
+/// `rm: cannot remove …zzt-*-temp-login.conf` (measured in the VM, 25.10.2026)
+/// hid the real error.
 pub fn aux_commands(value: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut push = |name: &str| {
@@ -366,40 +369,40 @@ pub fn aux_commands(value: &str) -> Vec<String> {
     out
 }
 
-/// Программа из значения `ExecStart`: `{ path=/usr/bin/sddm ; argv[]=… }`.
+/// Program from the `ExecStart` value: `{ path=/usr/bin/sddm ; argv[]=… }`.
 fn exec_path(value: &str) -> Option<String> {
     let rest = value.split("path=").nth(1)?;
     let path = rest.split([' ', ';']).next()?.trim();
     path.starts_with('/').then(|| path.to_string())
 }
 
-/// Что видно при вызове службы.
+/// What is visible when the service is called.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BootFacts {
     /// `systemctl is-system-running` = `stopping`.
     pub stopping: bool,
-    /// [`STAMP_PATH`] уже есть.
+    /// [`STAMP_PATH`] already exists.
     pub already_shown: bool,
-    /// `MONITOR_UNIT` от systemd (кто упал); пусто — не передан.
+    /// `MONITOR_UNIT` from systemd (who crashed); empty means not passed.
     pub monitor_unit: String,
     pub dm: UnitState,
 }
 
-/// Решение службы.
+/// The service's decision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
-    /// Не наш случай — причина для журнала.
+    /// Not our case: the reason, for the journal.
     Skip(&'static str),
-    /// Экран входа ещё может подняться (перезапуск, откат запустил прежний).
+    /// The login screen may still come up (restart, the fallback started the previous one).
     Wait,
-    /// Экран входа окончательно упал: показать текст и приглашение.
+    /// The login screen went down for good: show the text and the prompt.
     Rescue,
 }
 
-/// Ждать, пропустить или показать. Решает состояние ТЕКУЩЕГО экрана
-/// входа; `monitor_unit` — лишь добавочный отсев, когда systemd его
-/// передал (обычно нет — см. шапку модуля): упал посторонний, а текущий
-/// жив — `Wait` и так; текущий сдался — показать, кто бы ни позвал.
+/// Wait, skip or show. The state of the CURRENT login screen decides;
+/// `monitor_unit` is only an extra filter when systemd passed it (usually
+/// not, see the module header): an unrelated one crashed while the current
+/// one is alive, that is `Wait` anyway; the current one gave up, show, whoever called.
 pub fn decide(f: &BootFacts) -> Verdict {
     if f.stopping {
         return Verdict::Skip("system is shutting down");
@@ -420,55 +423,56 @@ pub fn decide(f: &BootFacts) -> Verdict {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Сторож приветствия: экран входа жив, а окна входа нет
+// Greeter watch: the login screen is alive, but there is no login window
 // ══════════════════════════════════════════════════════════════════════════
 //
-// ЗАЧЕМ. SDDM и Plasma Login Manager после выхода приветствия смотрят только
-// на три кода помощника (ошибка дисплея, консоли, сеанса — `HELPER_*` 4, 5,
-// 2). Приветствие, которое не нашло библиотеку (127) или упало сигналом,
-// даёт другой код: экран входа ничего не делает, его служба остаётся
-// `active`, `OnFailure=` не срабатывает, а человек видит чёрный экран. При
-// автовходе это проявляется только после выхода из сеанса.
+// WHY. After the greeter exits, SDDM and Plasma Login Manager look only at
+// three helper codes (display, console, session error: `HELPER_*` 4, 5,
+// 2). A greeter that did not find a library (127) or died by a signal
+// gives a different code: the login screen does nothing, its service stays
+// `active`, `OnFailure=` does not fire, and the person sees a black screen.
+// With autologin this shows up only after logging out of the session.
 //
-// КАК УСТРОЕНО. Таймер [`WATCH_TIMER`] (его тянет `Wants=` из того же
-// drop-in'а) раз в [`WATCH_EVERY_SECS`] зовёт [`WATCH_FLAG`]. Проверка
-// дешёвая и идёт от дешёвого к дорогому ([`watch_facts`]): отметка показа →
-// состояние экрана входа → сеансы logind на seat0 → журнал. Показ — только
-// если ([`decide_greeter`]) экран входа `active` дольше
-// [`GREETER_GRACE_SECS`], на seat0 нет ни приветствия, ни живого сеанса
-// человека, а в журнале экрана входа после его запуска последним словом
-// помощника стоит неудачный выход ([`greeter_crash_evidence`]); у Plasma
-// Login Manager — ещё и когда сеанс приветствия есть, но упали его
-// пользовательские юниты ([`PLASMALOGIN_GREETER_UNITS`]): там приветствие
-// живёт службой systemd пользователя, и сеанс после её падения не
-// закрывается. Перед показом — перепроверка через [`WATCH_RECHECK_SECS`].
+// HOW IT WORKS. The timer [`WATCH_TIMER`] (pulled in by `Wants=` from the same
+// drop-in) calls [`WATCH_FLAG`] every [`WATCH_EVERY_SECS`]. The check is
+// cheap and goes from cheap to expensive ([`watch_facts`]): shown stamp →
+// login screen state → logind sessions on seat0 → journal. It shows only
+// if ([`decide_greeter`]) the login screen has been `active` longer than
+// [`GREETER_GRACE_SECS`], seat0 has neither a greeter nor a live session
+// of a person, and in the login screen journal after its start the last
+// word of the helper is a failed exit ([`greeter_crash_evidence`]); for
+// Plasma Login Manager also when the greeter session exists but its user
+// units have crashed ([`PLASMALOGIN_GREETER_UNITS`]): there the greeter
+// lives as a systemd user service, and the session is not closed after it
+// crashes. Before showing, a recheck after [`WATCH_RECHECK_SECS`].
 //
-// ⛔ Над экраном входа — никаких действий; консоль для приглашения
-// выбирается так, чтобы `getty@` не попал в его `Conflicts=` ([`pick_vt`]).
+// ⛔ No actions on the login screen; the console for the prompt is chosen
+// so that `getty@` does not fall into its `Conflicts=` ([`pick_vt`]).
 
-/// Экраны входа, у которых сторож что-то понимает (журнал помощника, у
-/// DDM — служба окна входа [`DDM_GREETER_UNITS`]).
+/// Login screens the watch understands something about (helper journal, for
+/// DDM the login window service [`DDM_GREETER_UNITS`]).
 pub const WATCHED_DMS: &[&str] = &["sddm", "plasmalogin", crate::system_plan::DDM_UNIT];
-/// Системные юниты окна входа DDM: окно входа рисует сам Treeland
-/// (`treeland.service` от имени `dde`, `StartLimitBurst=2`). Упал до
-/// `failed`, а `ddm.service` жив и человека на seat0 нет — окна входа нет.
-/// На стенде не проверено (DDM с другими столами не включали): сторож
-/// опирается на устройство юнитов пакета ddm 0.4 / treeland 0.11.
+/// DDM login window system units: the login window is drawn by Treeland itself
+/// (`treeland.service` as the `dde` user, `StartLimitBurst=2`). If it went
+/// down to `failed` while `ddm.service` is alive and nobody is on seat0,
+/// there is no login window. Not tested on the bench (DDM was not enabled
+/// with other desktops): the watch relies on the unit layout of the ddm 0.4 /
+/// treeland 0.11 packages.
 pub const DDM_GREETER_UNITS: &[&str] = &["treeland.service"];
-/// Пользователь приветствия Plasma Login Manager.
+/// The Plasma Login Manager greeter user.
 pub const PLASMALOGIN_GREETER_USER: &str = "plasmalogin";
-/// Юниты systemd пользователя приветствия Plasma Login Manager: окно входа и
-/// его композитор (цель держит оба через `BindsTo=`).
+/// systemd user units of the Plasma Login Manager greeter: the login window
+/// and its compositor (the target holds both through `BindsTo=`).
 pub const PLASMALOGIN_GREETER_UNITS: &[&str] = &["plasma-login.service", "plasma-login-kwin_wayland.service"];
-/// Программы приветствия Plasma Login Manager (их — в `ldd`).
+/// Plasma Login Manager greeter programs (they go into `ldd`).
 const PLASMALOGIN_GREETER_PROGRAMS: &[&str] = &["startplasma-login-wayland", "plasma-login-greeter"];
-/// Место, куда logind сажает графические сеансы.
+/// The seat where logind places graphical sessions.
 pub const SEAT: &str = "seat0";
-/// Активная консоль ядра.
+/// Active kernel console.
 pub const ACTIVE_VT_PATH: &str = "/sys/class/tty/tty0/active";
 
-/// Программы приветствия, которые экран входа запускает помимо `ExecStart`
-/// (у SDDM приветствие выбирает [`sddm_greeter`]).
+/// Greeter programs the login screen starts besides `ExecStart`
+/// (for SDDM the greeter is chosen by [`sddm_greeter`]).
 pub fn greeter_programs(dm_short: &str, files: &[String]) -> Vec<String> {
     if dm_short != "plasmalogin" {
         return Vec::new();
@@ -476,7 +480,7 @@ pub fn greeter_programs(dm_short: &str, files: &[String]) -> Vec<String> {
     files.iter().filter(|f| PLASMALOGIN_GREETER_PROGRAMS.contains(&base_name(f))).cloned().collect()
 }
 
-/// Сеанс logind (`loginctl show-session`).
+/// A logind session (`loginctl show-session`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionInfo {
     pub id: String,
@@ -489,20 +493,21 @@ impl SessionInfo {
     fn live_on_seat(&self) -> bool {
         self.seat == SEAT && self.state != "closing"
     }
-    /// Сеанс приветствия на seat0.
+    /// Greeter session on seat0.
     pub fn is_greeter(&self) -> bool {
         self.live_on_seat() && self.class == "greeter"
     }
-    /// Человек на seat0 — графический сеанс или вход на консоли (его тоже
-    /// не уводим [`pick_vt`]'ом). `closing` — сеанс, из которого вышли, а
-    /// процессы ещё доживают: он не в счёт (автовход после выхода).
+    /// A person on seat0: a graphical session or a console login (which
+    /// [`pick_vt`] does not take away either). `closing` is a session that was
+    /// logged out of while its processes are still finishing: it does not count
+    /// (autologin after logout).
     pub fn is_person(&self) -> bool {
         self.live_on_seat() && (self.class.starts_with("user") || self.class == "lock-screen")
     }
 }
 
-/// Номера сеансов из `loginctl list-sessions -o json`; не JSON (старый
-/// systemd) — первое слово каждой строки `--no-legend`.
+/// Session numbers from `loginctl list-sessions -o json`; not JSON (old
+/// systemd) means the first word of each `--no-legend` line.
 pub fn parse_session_ids(text: &str) -> Vec<String> {
     if let Ok(serde_json::Value::Array(items)) = serde_json::from_str::<serde_json::Value>(text.trim()) {
         return items.iter().map(|v| json_field(v, "session")).filter(|s| !s.is_empty()).collect();
@@ -510,10 +515,10 @@ pub fn parse_session_ids(text: &str) -> Vec<String> {
     text.lines().filter_map(|l| l.split_whitespace().next()).map(str::to_string).collect()
 }
 
-/// Свойства сеанса для `loginctl show-session -p …`.
+/// Session properties for `loginctl show-session -p …`.
 pub const SESSION_PROPS: &[&str] = &["Id", "Seat", "Class", "State"];
 
-/// Разбор `loginctl show-session -p Id -p Seat -p Class -p State`.
+/// Parsing of `loginctl show-session -p Id -p Seat -p Class -p State`.
 pub fn parse_session_show(text: &str) -> SessionInfo {
     let mut s = SessionInfo::default();
     for line in text.lines() {
@@ -530,8 +535,8 @@ pub fn parse_session_show(text: &str) -> SessionInfo {
     s
 }
 
-/// Упавшие юниты из `systemctl show -p Id -p ActiveState` по нескольким
-/// юнитам (блоки через пустую строку).
+/// Failed units from `systemctl show -p Id -p ActiveState` over several
+/// units (blocks separated by an empty line).
 pub fn failed_units(show: &str) -> Vec<String> {
     show.split("\n\n")
         .map(parse_show)
@@ -540,8 +545,8 @@ pub fn failed_units(show: &str) -> Vec<String> {
         .collect()
 }
 
-/// Код из «Auth: sddm-helper exited with 127» (и `plasmalogin-helper`);
-/// «exited successfully» — 0.
+/// The code from "Auth: sddm-helper exited with 127" (and `plasmalogin-helper`);
+/// "exited successfully" means 0.
 fn helper_exit_code(msg: &str) -> Option<i64> {
     if !msg.contains("-helper exited") {
         return None;
@@ -554,26 +559,28 @@ fn helper_exit_code(msg: &str) -> Option<i64> {
     rest[..end].parse().ok()
 }
 
-/// Загрузчик не смог запустить программу.
+/// The loader could not start the program.
 fn is_loader_error(msg: &str) -> bool {
     msg.contains("symbol lookup error") || msg.contains("error while loading shared libraries")
 }
 
-/// Улика из журнала экрана входа (`journalctl -u … -o json`): последнее
-/// слово помощника после `since_us` (запуск экрана входа) — неудачный выход
-/// или его падение. Сообщение загрузчика (нет библиотеки, нет символа)
-/// после последнего удачного выхода — тоже в улику: его строка понятнее
-/// кода. Удачный выход (человек вышел из сеанса) улику снимает.
+/// Evidence from the login screen journal (`journalctl -u … -o json`): the
+/// helper's last word after `since_us` (the login screen start) is a failed
+/// exit or its crash. A loader message (missing library, missing symbol)
+/// after the last successful exit also counts as evidence: its line is
+/// clearer than the code. A successful exit (the person logged out of the
+/// session) clears the evidence.
 ///
-/// Код выхода помощника виден не всегда: когда приветствие идёт под
-/// Wayland-композитором или под X от имени пользователя sddm (x11-user — так
-/// на SteamOS, где weston нет и SDDM откатывается с wayland), между
-/// помощником и приветствием стоит `sddm-helper-start-*`, и он выходит с 0
-/// при любом коде приветствия. Тогда улика — «Greeter stopped.» без
-/// предшествующего «Greeter stopping...»: остановку при входе человека SDDM
-/// всегда начинает сам и пишет «stopping», а тут окно закрылось само (замер
-/// в ВМ SteamOS 3.9.5, 25.10.2026). «Greeter starting...» начинает отсчёт
-/// заново: новое окно входа — прежние слова не в счёт.
+/// The helper's exit code is not always visible: when the greeter runs under
+/// a Wayland compositor or under X as the sddm user (x11-user, as on SteamOS,
+/// where there is no weston and SDDM falls back from wayland), there is a
+/// `sddm-helper-start-*` between the helper and the greeter, and it exits
+/// with 0 whatever the greeter's code. Then the evidence is "Greeter stopped."
+/// without a preceding "Greeter stopping...": SDDM always starts the stop
+/// itself when a person logs in and writes "stopping", while here the window
+/// closed on its own (measured in the SteamOS 3.9.5 VM, 25.10.2026).
+/// "Greeter starting..." restarts the count: a new login window, the earlier
+/// words do not count.
 pub fn greeter_crash_evidence(entries: &[JournalEntry], since_us: Option<u64>) -> Option<String> {
     let mut last_bad: Option<String> = None;
     let mut loader: Option<String> = None;
@@ -615,22 +622,22 @@ pub fn greeter_crash_evidence(entries: &[JournalEntry], since_us: Option<u64>) -
     last_bad.map(|bad| loader.unwrap_or(bad))
 }
 
-/// Что видит сторож приветствия.
+/// What the greeter watch sees.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WatchFacts {
     pub stopping: bool,
     pub already_shown: bool,
     pub dm: UnitState,
-    /// Время от загрузки, мкс (`/proc/uptime`).
+    /// Time since boot, µs (`/proc/uptime`).
     pub uptime_us: Option<u64>,
     pub sessions: Vec<SessionInfo>,
-    /// Упавшие юниты приветствия (только Plasma Login Manager).
+    /// Failed greeter units (Plasma Login Manager only).
     pub greeter_units_failed: Vec<String>,
     /// [`greeter_crash_evidence`].
     pub evidence: Option<String>,
 }
 
-/// Решение сторожа приветствия: `Rescue` — показать текст.
+/// Decision of the greeter watch: `Rescue` means show the text.
 pub fn decide_greeter(f: &WatchFacts) -> Verdict {
     if f.stopping {
         return Verdict::Skip("system is shutting down");
@@ -645,7 +652,7 @@ pub fn decide_greeter(f: &WatchFacts) -> Verdict {
         return Verdict::Skip("this login screen is not watched");
     }
     if f.dm.active != "active" {
-        // Упавший экран входа — дело `OnFailure=` (`--boot`).
+        // A crashed login screen is the job of `OnFailure=` (`--boot`).
         return Verdict::Skip("the login screen is not running");
     }
     if let (Some(up), Some(since)) = (f.uptime_us, f.dm.active_since_us) {
@@ -656,8 +663,8 @@ pub fn decide_greeter(f: &WatchFacts) -> Verdict {
     if f.sessions.iter().any(SessionInfo::is_person) {
         return Verdict::Skip("someone is logged in on seat0");
     }
-    // DDM: журнала помощника в духе SDDM нет, улика одна — упавшая служба
-    // окна входа (Treeland), с сеансом приветствия или без него.
+    // DDM: there is no SDDM-style helper journal, the only evidence is the
+    // crashed login window service (Treeland), with or without a greeter session.
     if f.dm.short() == crate::system_plan::DDM_UNIT {
         return if f.greeter_units_failed.is_empty() {
             Verdict::Skip("the login window service is running")
@@ -678,12 +685,12 @@ pub fn decide_greeter(f: &WatchFacts) -> Verdict {
     Verdict::Rescue
 }
 
-/// Отметка [`STAMP_PATH`]: «юнит причина».
+/// The [`STAMP_PATH`] stamp: "unit reason".
 pub fn stamp_text(dm_id: &str, greeter: bool) -> String {
     format!("{dm_id} {}\n", if greeter { "greeter" } else { "failed" })
 }
 
-/// Отметка говорит «окна входа не было» у этого экрана входа.
+/// The stamp says "there was no login window" for this login screen.
 pub fn stamp_says_greeter(stamp: Option<&str>, dm_id: &str) -> bool {
     stamp.is_some_and(|s| {
         let mut w = s.split_whitespace();
@@ -691,18 +698,18 @@ pub fn stamp_says_greeter(stamp: Option<&str>, dm_id: &str) -> bool {
     })
 }
 
-/// Время от загрузки, мкс, из `/proc/uptime`.
+/// Time since boot, µs, from `/proc/uptime`.
 pub fn parse_uptime_us(text: &str) -> Option<u64> {
     let secs: f64 = text.split_whitespace().next()?.parse().ok()?;
     (secs >= 0.0).then(|| (secs * 1_000_000.0) as u64)
 }
 
-/// Номер активной консоли из [`ACTIVE_VT_PATH`] (`tty1`).
+/// Number of the active console from [`ACTIVE_VT_PATH`] (`tty1`).
 pub fn parse_active_vt(text: &str) -> Option<u32> {
     text.trim().strip_prefix("tty")?.parse().ok()
 }
 
-/// Последняя консоль из `fbcon=vc:<n1>-<n2>`; нет — `None`.
+/// The last console of `fbcon=vc:<n1>-<n2>`; none means `None`.
 fn drawn_last_vt(cmdline: &str) -> Option<u32> {
     let mut last = None;
     for arg in cmdline.split_whitespace() {
@@ -716,19 +723,19 @@ fn drawn_last_vt(cmdline: &str) -> Option<u32> {
     last
 }
 
-/// Консоль для приглашения, когда экран входа жив: начиная с
-/// [`console_vt`], в пределах того, что ядро рисует, — не та, на которой
-/// сейчас экран входа (`active_vt`), и не та, чей `getty@` у экрана входа в
-/// `Conflicts=` (systemd остановил бы экран входа). `None` — подходящей нет.
+/// Console for the prompt when the login screen is alive: starting from
+/// [`console_vt`], within what the kernel draws, not the one the login screen
+/// is on now (`active_vt`), and not the one whose `getty@` is in the login
+/// screen's `Conflicts=` (systemd would stop the login screen). `None` means none fits.
 pub fn pick_vt(cmdline: &str, active_vt: Option<u32>, conflicts: &[String]) -> Option<u32> {
     let first = console_vt(cmdline);
     let last = drawn_last_vt(cmdline).filter(|l| *l >= first).unwrap_or(first + 11).min(MAX_VT);
     (first..=last).find(|vt| Some(*vt) != active_vt && !conflicts.contains(&getty_unit(*vt)))
 }
 
-/// Упавшие службы окна входа: Plasma Login Manager — службы пользователя
-/// приветствия (`systemctl --user -M plasmalogin@`), DDM — системный
-/// [`DDM_GREETER_UNITS`]; у других экранов входа — пусто.
+/// Failed login window services: for Plasma Login Manager the greeter user's
+/// services (`systemctl --user -M plasmalogin@`), for DDM the system
+/// [`DDM_GREETER_UNITS`]; empty for other login screens.
 fn greeter_units_failed_live<IO: SystemIo + ?Sized>(io: &IO, dm: &UnitState) -> Vec<String> {
     if dm.short() == crate::system_plan::DDM_UNIT {
         let mut a = argv(&["systemctl", "show"]);
@@ -745,15 +752,15 @@ fn greeter_units_failed_live<IO: SystemIo + ?Sized>(io: &IO, dm: &UnitState) -> 
     failed_units(&io.run(&a, Some(10), true).stdout)
 }
 
-/// Окно входа Plasma Login Manager пишет в журнал своей службы
-/// пользователя, а не экрана входа: при упавших `units` разбор идёт по их
-/// журналу. Общее у сторожа и `rexon doctor`.
+/// The Plasma Login Manager login window writes to the journal of its user
+/// service, not of the login screen: with failed `units` their journal is
+/// parsed. Shared by the watch and `rexon doctor`.
 fn use_greeter_journal<IO: SystemIo + ?Sized>(io: &IO, observed: &mut Observed, units: &[String]) {
     if units.is_empty() {
         return;
     }
-    // Окно входа DDM — системная служба: её журнал по `-u`, а не по полям
-    // служб пользователя.
+    // The DDM login window is a system service: its journal by `-u`, not by the
+    // user service fields.
     let a = if observed.dm.short() == crate::system_plan::DDM_UNIT {
         let mut a = argv(&["journalctl", "-b", "-n", "200", "-o", "json", "--no-pager"]);
         for u in units {
@@ -768,8 +775,8 @@ fn use_greeter_journal<IO: SystemIo + ?Sized>(io: &IO, observed: &mut Observed, 
     observed.greeter_units = units.to_vec();
 }
 
-/// Собрать [`WatchFacts`] (только чтение), от дешёвого к дорогому: дальше
-/// не идёт, когда решение уже ясно. `stamp` — текст [`STAMP_PATH`].
+/// Collect [`WatchFacts`] (read-only), from cheap to expensive: stops going
+/// further once the decision is clear. `stamp` is the text of [`STAMP_PATH`].
 pub fn watch_facts<IO: SystemIo + ?Sized>(io: &IO, stamp: Option<&str>) -> WatchFacts {
     let mut f = WatchFacts { already_shown: stamp.is_some(), ..Default::default() };
     if f.already_shown {
@@ -803,13 +810,13 @@ pub fn watch_facts<IO: SystemIo + ?Sized>(io: &IO, stamp: Option<&str>) -> Watch
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Откат на прежний экран входа уже был?
+// Has the fallback to the previous login screen already happened?
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Откат (`rexon-dm-fallback`) в эту загрузку уже вернул `dm_short`, а тот
-/// тоже упал → имя экрана входа, с которого откатились. `conf` — текст
-/// `dm-fallback.conf`, `done_mtime`/`boot_time` — секунды эпохи отметки
-/// `dm-fallback.done` и начала загрузки.
+/// The fallback (`rexon-dm-fallback`) already restored `dm_short` during this
+/// boot, and that one crashed too → the name of the login screen it fell back
+/// from. `conf` is the text of `dm-fallback.conf`, `done_mtime`/`boot_time`
+/// are epoch seconds of the `dm-fallback.done` stamp and of the boot start.
 pub fn fallback_from(conf: Option<&str>, done_mtime: Option<u64>, boot_time: Option<u64>, dm_short: &str) -> Option<String> {
     let conf = conf?;
     let fresh = matches!((done_mtime, boot_time), (Some(d), Some(b)) if d >= b);
@@ -817,57 +824,57 @@ pub fn fallback_from(conf: Option<&str>, done_mtime: Option<u64>, boot_time: Opt
     (fresh && val("old") == Some(dm_short)).then(|| val("new").unwrap_or_default().to_string())
 }
 
-/// Начало загрузки, секунды эпохи: строка `btime` из `/proc/stat`.
+/// Boot start, epoch seconds: the `btime` line of `/proc/stat`.
 pub fn parse_btime(proc_stat: &str) -> Option<u64> {
     proc_stat.lines().find_map(|l| l.strip_prefix("btime ")?.trim().parse().ok())
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Причина
+// Cause
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Что не так.
+/// What is wrong.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Cause {
-    /// `ldd -r`: библиотеки нет, версии символа нет, символа нет.
+    /// `ldd -r`: a library is missing, a symbol version is missing, a symbol is missing.
     Library { program: String, problem: String },
-    /// Части набора пакетов разных версий ([`update_guard::PACKAGE_SETS`]).
+    /// Parts of a package set at different versions ([`update_guard::PACKAGE_SETS`]).
     PackageMix(Finding),
 }
 
-/// Наблюдения для [`diagnose`] — всё, что собрано снаружи.
+/// Observations for [`diagnose`]: everything collected from outside.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Observed {
     pub dm: UnitState,
-    /// Пакет экрана входа (если узнали).
+    /// The login screen package (if found out).
     pub package: Option<String>,
-    /// Файлы пакета — соседи для [`crate::aeroshell::ldd_problems`].
+    /// Package files: the neighbours for [`crate::aeroshell::ldd_problems`].
     pub package_files: Vec<String>,
-    /// (программа, вывод `ldd -r`).
+    /// (program, output of `ldd -r`).
     pub ldd: Vec<(String, String)>,
-    /// Программы, которые экран входа действительно запускает
-    /// ([`entry_programs`]): `ExecStart` и выбранное приветствие.
+    /// Programs the login screen actually starts
+    /// ([`entry_programs`]): `ExecStart` and the chosen greeter.
     pub entries: Vec<String>,
-    /// Необязательные зависимости пакета: (имя, установлен ли) — `pacman
-    /// -Qi`; `None` — не узнали (не Arch или pacman не ответил).
+    /// Optional dependencies of the package: (name, whether installed) from `pacman
+    /// -Qi`; `None` means not found out (not Arch, or pacman did not answer).
     pub optional_deps: Option<Vec<(String, bool)>>,
-    /// `pacman -Q` и `pacman -Qg …` (только Arch).
+    /// `pacman -Q` and `pacman -Qg …` (Arch only).
     pub pacman_q: Option<String>,
     pub pacman_qg: Option<String>,
-    /// `pacman -Qmq`: пакеты вне репозиториев ([`update_guard::foreign_packages`]).
+    /// `pacman -Qmq`: packages outside the repositories ([`update_guard::foreign_packages`]).
     pub foreign: Option<std::collections::BTreeSet<String>>,
-    /// `journalctl -b -u <юнит> -o json` (разбор — [`log_lines`]).
+    /// `journalctl -b -u <unit> -o json` (parsed by [`log_lines`]).
     pub journal: String,
-    /// Откатились с этого экрана входа ([`fallback_from`]).
+    /// Fell back from this login screen ([`fallback_from`]).
     pub fallback_from: Option<String>,
-    /// Экран входа жив, а окна входа нет ([`decide_greeter`]).
+    /// The login screen is alive, but there is no login window ([`decide_greeter`]).
     pub greeter_gone: bool,
-    /// Упавшие службы окна входа: тогда `journal` — их журнал
-    /// ([`greeter_journal_argv`]), а разбор — [`greeter_log_lines`].
+    /// Failed login window services: then `journal` is their journal
+    /// ([`greeter_journal_argv`]), and parsing is done by [`greeter_log_lines`].
     pub greeter_units: Vec<String>,
 }
 
-/// Итог разбора.
+/// Result of the analysis.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Diagnosis {
     pub dm: UnitState,
@@ -875,19 +882,19 @@ pub struct Diagnosis {
     pub causes: Vec<Cause>,
     pub log: Vec<String>,
     pub fallback_from: Option<String>,
-    /// См. [`Observed::greeter_gone`].
+    /// See [`Observed::greeter_gone`].
     pub greeter_gone: bool,
 }
 
-/// Бед `ldd` на одну программу и всего в тексте.
+/// `ldd` problems per program and in total in the text.
 const LDD_PER_PROGRAM: usize = 2;
 const LDD_TOTAL: usize = 6;
 
-/// Разобрать наблюдения. Чистая функция: решения здесь, походы наружу —
-/// в [`observe_live`].
+/// Analyze the observations. A pure function: decisions are here, trips
+/// outside are in [`observe_live`].
 pub fn diagnose(o: &Observed) -> Diagnosis {
     let mut causes = Vec::new();
-    // Пакеты вразнобой — первыми: это причина, а ldd показывает следствие.
+    // Mismatched packages first: that is the cause, while ldd shows the consequence.
     if let Some(q) = &o.pacman_q {
         let survey = Survey {
             installed: update_guard::parse_installed(q),
@@ -904,11 +911,11 @@ pub fn diagnose(o: &Observed) -> Diagnosis {
     }
     let mut seen: Vec<String> = Vec::new();
     let mut libs = 0;
-    // «Библиотеки нет» у программы, которую экран входа не запускает, —
-    // чаще всего просто не поставленная необязательная зависимость (пакет
-    // sddm несёт приветствие на Qt5, а qt5-declarative у него
-    // необязательна): верим такой беде, только когда все необязательные
-    // зависимости пакета стоят.
+    // A "missing library" in a program the login screen does not start is most
+    // often just an optional dependency that was not installed (the sddm
+    // package ships a Qt5 greeter, while qt5-declarative is optional for it):
+    // such a problem is trusted only when all optional dependencies of the
+    // package are installed.
     let optional_all_installed = o.optional_deps.as_ref().is_some_and(|d| d.iter().all(|(_, installed)| *installed));
     for (program, out) in &o.ldd {
         let entry = o.entries.contains(program);
@@ -934,7 +941,7 @@ pub fn diagnose(o: &Observed) -> Diagnosis {
     }
 }
 
-/// Запись журнала юнита (`journalctl -o json`): текст и кто его написал.
+/// A unit journal entry (`journalctl -o json`): the text and who wrote it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct JournalEntry {
     pub message: String,
@@ -944,19 +951,19 @@ pub struct JournalEntry {
     pub ident: String,
     /// `_COMM`.
     pub comm: String,
-    /// `__MONOTONIC_TIMESTAMP`, мкс от загрузки.
+    /// `__MONOTONIC_TIMESTAMP`, µs since boot.
     pub mono: Option<u64>,
 }
 
 impl JournalEntry {
-    /// Сам systemd о юните («Scheduled restart job…», «start-limit-hit»,
-    /// «Triggering OnFailure=…»): это одинаково при любой причине.
+    /// systemd itself about the unit ("Scheduled restart job…", "start-limit-hit",
+    /// "Triggering OnFailure=…"): this is the same whatever the cause.
     pub fn from_systemd(&self) -> bool {
         self.pid == "1" || self.ident == "systemd"
     }
 }
 
-/// Строка поля записи: текст или (не UTF-8) массив байтов.
+/// String of an entry field: text or (not UTF-8) a byte array.
 fn json_field(v: &serde_json::Value, key: &str) -> String {
     match v.get(key) {
         Some(serde_json::Value::String(s)) => s.clone(),
@@ -969,8 +976,8 @@ fn json_field(v: &serde_json::Value, key: &str) -> String {
     }
 }
 
-/// Разбор `journalctl -o json` (запись на строку). Строка не JSON — текст
-/// неизвестного автора (старый вывод `-o cat`).
+/// Parsing of `journalctl -o json` (one entry per line). A non-JSON line is
+/// text of an unknown author (old `-o cat` output).
 pub fn parse_journal_json(text: &str) -> Vec<JournalEntry> {
     text.lines()
         .filter(|l| !l.trim().is_empty())
@@ -987,11 +994,11 @@ pub fn parse_journal_json(text: &str) -> Vec<JournalEntry> {
         .collect()
 }
 
-/// Строки журнала для человека: голос самого экрана входа (и его
-/// приветствия, помощников), без systemd и без программ
-/// `ExecStartPre`/`ExecStartPost` (`aux` — [`UnitState::aux_commands`]).
-/// Если экран входа не сказал ничего (упал молча, сигналом) — из строк
-/// systemd только те, где сказано, как закончился процесс.
+/// Journal lines for the person: the voice of the login screen itself (and of
+/// its greeter and helpers), without systemd and without the
+/// `ExecStartPre`/`ExecStartPost` programs (`aux` is [`UnitState::aux_commands`]).
+/// If the login screen said nothing (died silently, by a signal), only those
+/// systemd lines that tell how the process ended.
 pub fn log_lines(journal_json: &str, aux: &[String]) -> Vec<String> {
     let entries = parse_journal_json(journal_json);
     let is_aux = |e: &JournalEntry| aux.iter().any(|a| *a == e.ident || *a == e.comm);
@@ -1004,28 +1011,28 @@ pub fn log_lines(journal_json: &str, aux: &[String]) -> Vec<String> {
     log_tail(&picked.join("\n"))
 }
 
-/// Строки systemd о том, как кончилась служба.
+/// systemd lines about how the service ended.
 fn is_exit_report(msg: &str) -> bool {
     msg.contains("process exited") || msg.contains("Failed with result")
 }
 
-/// Шум графического стека: окно входа на Qt пишет его при каждом запуске
-/// (в ВМ SteamOS — «libEGL warning: …», «MESA: error: ZINK: …»), и о
-/// падении он обычно ничего не говорит. Сообщение загрузчика — не шум.
+/// Graphics stack noise: a Qt login window writes it on every start
+/// (in the SteamOS VM: "libEGL warning: …", "MESA: error: ZINK: …"), and it
+/// usually says nothing about the crash. A loader message is not noise.
 fn is_render_noise(msg: &str) -> bool {
     const MARKS: &[&str] = &["EGL", "MESA", "Mesa", "ZINK", "zink", "libGL", "GLX", "glx", "dri2", "dri3", "DRI2", "DRI3"];
     !is_loader_error(msg) && MARKS.iter().any(|m| msg.contains(m))
 }
 
-/// Строк systemd о конце службы и строк самого окна входа в хвосте.
+/// systemd lines about the end of the service and lines of the login window itself in the tail.
 const GREETER_EXIT_LINES: usize = 2;
 const GREETER_OWN_LINES: usize = 3;
 
-/// Строки журнала упавшей службы окна входа ([`greeter_journal_argv`]):
-/// как она кончилась (systemd пользователя: «Main process exited,
-/// code=dumped, status=11/SEGV») и несколько последних слов самого процесса.
-/// Шум графики ([`is_render_noise`]) отброшен, если процесс сказал что-то
-/// ещё; сказал только его — лучше он, чем ничего.
+/// Journal lines of the crashed login window service ([`greeter_journal_argv`]):
+/// how it ended (systemd user manager: "Main process exited,
+/// code=dumped, status=11/SEGV") and a few last words of the process itself.
+/// Graphics noise ([`is_render_noise`]) is dropped if the process said
+/// anything else; if it said only that, better it than nothing.
 pub fn greeter_log_lines(journal_json: &str) -> Vec<String> {
     let entries = parse_journal_json(journal_json);
     let said = |e: &JournalEntry| !e.from_systemd() && !e.message.trim().is_empty();
@@ -1040,10 +1047,10 @@ pub fn greeter_log_lines(journal_json: &str) -> Vec<String> {
     log_tail(&picked.iter().map(|&i| entries[i].message.as_str()).collect::<Vec<_>>().join("\n"))
 }
 
-/// `journalctl` для журнала служб окна входа `units`: строки процесса несут
-/// `_SYSTEMD_USER_UNIT`, а строки systemd пользователя о службе («Main
-/// process exited») — `USER_UNIT`; `+` у journalctl — «или». (`--user-unit`
-/// не годится: он добавляет `_UID` того, кто спрашивает.)
+/// `journalctl` for the journal of the login window services `units`: process
+/// lines carry `_SYSTEMD_USER_UNIT`, while the systemd user manager's lines
+/// about the service ("Main process exited") carry `USER_UNIT`; `+` in
+/// journalctl means "or". (`--user-unit` does not fit: it adds `_UID` of the asker.)
 pub fn greeter_journal_argv(units: &[String]) -> Vec<String> {
     let mut a = argv(&["journalctl", "-b", "-n", "200", "-o", "json", "--no-pager"]);
     a.extend(units.iter().map(|u| format!("_SYSTEMD_USER_UNIT={u}")));
@@ -1052,8 +1059,8 @@ pub fn greeter_journal_argv(units: &[String]) -> Vec<String> {
     a
 }
 
-/// Последние строки текста: без пустых и управляющих символов (консоль
-/// исполнила бы их), длинные — обрезаны.
+/// The last lines of the text: without empty lines and control characters
+/// (the console would execute them), long ones truncated.
 pub fn log_tail(journal: &str) -> Vec<String> {
     let clean: Vec<String> = journal
         .lines()
@@ -1073,7 +1080,7 @@ pub fn log_tail(journal: &str) -> Vec<String> {
     clean[clean.len().saturating_sub(LOG_LINES)..].to_vec()
 }
 
-/// Пакет экрана входа по юниту и семейству пакетного менеджера.
+/// The login screen package by unit and package manager family.
 pub fn dm_package(dm_short: &str, family: PkgFamily) -> Option<String> {
     let spec = crate::system_plan::login_manager_spec(dm_short)?;
     if family == PkgFamily::Debian {
@@ -1084,7 +1091,7 @@ pub fn dm_package(dm_short: &str, family: PkgFamily) -> Option<String> {
     Some(spec.package.to_string())
 }
 
-/// Файлы пакета: argv по семейству. `None` — не умеем.
+/// Package files: argv by family. `None` means not supported.
 pub fn package_files_argv(family: PkgFamily, package: &str) -> Option<Vec<String>> {
     let argv: &[&str] = match family {
         PkgFamily::Arch => &["pacman", "-Qlq"],
@@ -1097,7 +1104,7 @@ pub fn package_files_argv(family: PkgFamily, package: &str) -> Option<Vec<String
     Some(v)
 }
 
-/// Команда переустановки пакета для человека.
+/// The package reinstall command for the person.
 pub fn reinstall_command(family: PkgFamily, package: &str) -> Option<String> {
     Some(match family {
         PkgFamily::Arch => format!("sudo pacman -S {package}"),
@@ -1108,10 +1115,10 @@ pub fn reinstall_command(family: PkgFamily, package: &str) -> Option<String> {
     })
 }
 
-/// Кандидаты в `ldd`: сначала то, что экран входа действительно запускает
-/// (`entries`, [`entry_programs`]), потом файлы пакета в каталогах программ
-/// и библиотек, без каталогов, без `skip` (приветствия, которые при этих
-/// настройках не запустятся вовсе) и без не-ELF (решает исполнитель).
+/// Candidates for `ldd`: first what the login screen actually starts
+/// (`entries`, [`entry_programs`]), then package files in program and
+/// library directories, without directories, without `skip` (greeters that
+/// will not start at all with these settings) and without non-ELF (the executor decides).
 pub fn ldd_candidates(entries: &[String], files: &[String], skip: &[String]) -> Vec<String> {
     const MAX: usize = 24;
     let mut out: Vec<String> = Vec::new();
@@ -1122,7 +1129,7 @@ pub fn ldd_candidates(entries: &[String], files: &[String], skip: &[String]) -> 
     }
     let in_dirs = |p: &str| ["/usr/bin/", "/usr/sbin/", "/usr/lib", "/usr/libexec/"].iter().any(|d| p.starts_with(d));
     let program = |p: &str| p.starts_with("/usr/bin/") || p.starts_with("/usr/sbin/") || p.starts_with("/usr/libexec/");
-    // Программы раньше библиотек: приветствие важнее его модулей.
+    // Programs before libraries: the greeter matters more than its modules.
     let mut rest: Vec<&String> = files.iter().filter(|p| in_dirs(p) && !p.ends_with('/') && !skip.contains(p)).collect();
     rest.sort_by_key(|p| !program(p));
     for p in rest {
@@ -1136,27 +1143,27 @@ pub fn ldd_candidates(entries: &[String], files: &[String], skip: &[String]) -> 
     out
 }
 
-/// Каталог тем SDDM по умолчанию (`[Theme] ThemeDir=`).
+/// Default SDDM theme directory (`[Theme] ThemeDir=`).
 pub const SDDM_THEME_DIR_DEFAULT: &str = crate::system_plan::SDDM_THEMES_DIR;
-/// Настройки SDDM в порядке чтения: каталог пакета, каталог `/etc`,
-/// главный файл — поздние перекрывают ранние.
+/// SDDM settings in reading order: the package directory, the `/etc`
+/// directory, the main file; later ones override earlier ones.
 pub const SDDM_CONF_DIRS: &[&str] = &[crate::system_plan::SDDM_DISTRO_CONF_D, crate::system_plan::SDDM_CONF_D];
 pub const SDDM_CONF_FILE: &str = "/etc/sddm.conf";
-/// Имя программы приветствия SDDM (Qt5 — без суффикса, иначе `-qt<N>`).
+/// SDDM greeter program name (Qt5 without a suffix, otherwise `-qt<N>`).
 const SDDM_GREETER: &str = "sddm-greeter";
 
-/// Программа приветствия SDDM среди файлов пакета. Только из каталога
-/// программ: в пакете есть и `/etc/pam.d/sddm-greeter`, и в списке
-/// `pacman -Qlq sddm` он идёт ПЕРВЫМ — по нему каталог приветствия
-/// выходил `/etc/pam.d`, и `ldd` приветствия не делался вовсе (ВМ SteamOS
-/// 3.9.5, 25.10.2026).
+/// The SDDM greeter program among the package files. Only from the program
+/// directory: the package also has `/etc/pam.d/sddm-greeter`, and in the
+/// `pacman -Qlq sddm` list it comes FIRST; by it the greeter directory came
+/// out as `/etc/pam.d`, and `ldd` of the greeter was not done at all
+/// (SteamOS 3.9.5 VM, 25.10.2026).
 fn is_sddm_greeter_program(path: &str) -> bool {
     base_name(path).starts_with(SDDM_GREETER) && path.rsplit_once('/').is_some_and(|(dir, _)| dir.ends_with("/bin") || dir.ends_with("/sbin"))
 }
 
-/// Значение `[section] key=` по текстам настроек в порядке чтения: последнее
-/// выигрывает, в том числе пустое (так читает SDDM: пустое `Current=` в
-/// `/etc/sddm.conf` — встроенная тема).
+/// Value of `[section] key=` over the settings texts in reading order: the last
+/// one wins, including an empty one (that is how SDDM reads it: an empty
+/// `Current=` in `/etc/sddm.conf` means the built-in theme).
 pub fn ini_value(texts: &[String], section: &str, key: &str) -> Option<String> {
     let mut found = None;
     for text in texts {
@@ -1183,15 +1190,16 @@ pub fn ini_value(texts: &[String], section: &str, key: &str) -> Option<String> {
     found
 }
 
-/// Какое приветствие запустит SDDM — так же, как решает сам SDDM
-/// (`Display::findGreeterTheme`, `Greeter::start`): тема `[Theme] Current`
-/// из каталога `[Theme] ThemeDir`; есть тема — версия Qt из её
-/// `metadata.desktop` (`[SddmGreeterTheme] QtVersion`, по умолчанию 5),
-/// нет темы (пусто или каталога нет) — версия Qt самого SDDM; приветствия
-/// под эту версию нет — приветствие версии SDDM. Версия Qt самого SDDM —
-/// по пакету: собранный на Qt6 SDDM ставит `sddm-greeter-qt6`.
-/// `confs` — тексты настроек в порядке чтения, `files` — файлы пакета,
-/// `is_dir`/`is_exec`/`read` — живые пробы.
+/// Which greeter SDDM will start, decided the same way SDDM itself decides
+/// (`Display::findGreeterTheme`, `Greeter::start`): the theme `[Theme] Current`
+/// from the directory `[Theme] ThemeDir`; if there is a theme, the Qt version
+/// comes from its `metadata.desktop` (`[SddmGreeterTheme] QtVersion`, default
+/// 5); without a theme (empty or no directory), the Qt version of SDDM
+/// itself; if there is no greeter for that version, the greeter of the SDDM
+/// version. The Qt version of SDDM itself is taken from the package: an SDDM
+/// built with Qt6 installs `sddm-greeter-qt6`.
+/// `confs` are the settings texts in reading order, `files` are the package
+/// files, `is_dir`/`is_exec`/`read` are live probes.
 pub fn sddm_greeter(
     confs: &[String],
     files: &[String],
@@ -1216,7 +1224,7 @@ pub fn sddm_greeter(
         own_qt
     } else {
         let meta = read(&format!("{theme_path}/metadata.desktop")).unwrap_or_default();
-        // QSettings::toInt(): не число — 0, такого приветствия нет.
+        // QSettings::toInt(): not a number gives 0, and there is no such greeter.
         ini_value(&[meta], "SddmGreeterTheme", "QtVersion").map(|v| v.parse().unwrap_or(0)).unwrap_or(5)
     };
     let chosen = path_for(qt);
@@ -1227,10 +1235,10 @@ pub fn sddm_greeter(
     }
 }
 
-/// Программы, которые экран входа запускает: `ExecStart` и, у SDDM,
-/// выбранное приветствие ([`sddm_greeter`]). Второе — (`entries`, `skip`):
-/// `skip` — приветствия того же пакета, которые при этих настройках не
-/// запустятся (их бедам не место среди причин).
+/// Programs the login screen starts: `ExecStart` and, for SDDM, the chosen
+/// greeter ([`sddm_greeter`]). The second element is (`entries`, `skip`):
+/// `skip` are greeters of the same package that will not start with these
+/// settings (their problems do not belong among the causes).
 pub fn entry_programs(dm: &UnitState, greeter: Option<&str>, files: &[String]) -> (Vec<String>, Vec<String>) {
     let mut entries: Vec<String> = dm.exec_path.iter().cloned().collect();
     let mut skip = Vec::new();
@@ -1243,9 +1251,9 @@ pub fn entry_programs(dm: &UnitState, greeter: Option<&str>, files: &[String]) -
     (entries, skip)
 }
 
-/// Необязательные зависимости из `pacman -Qi` (под `LANG=C`): строки поля
-/// `Optional Deps` — «имя: зачем [installed]». `None` — поля нет (вывод не
-/// тот); пустой список — `None` в поле.
+/// Optional dependencies from `pacman -Qi` (under `LANG=C`): lines of the
+/// `Optional Deps` field, "name: purpose [installed]". `None` means no field
+/// (wrong output); an empty list means `None` in the field.
 pub fn parse_optional_deps(qi: &str) -> Option<Vec<(String, bool)>> {
     let mut out = Vec::new();
     let mut inside = false;
@@ -1265,7 +1273,7 @@ pub fn parse_optional_deps(qi: &str) -> Option<Vec<(String, bool)>> {
             continue;
         }
         let name = value.split([':', ' ']).next().unwrap_or(value).trim();
-        // Имя может нести версию: «qt5-declarative>=5.15».
+        // The name may carry a version: "qt5-declarative>=5.15".
         let name = name.split(['<', '>', '=']).next().unwrap_or(name);
         if !name.is_empty() {
             out.push((name.to_string(), value.ends_with("[installed]")));
@@ -1275,7 +1283,7 @@ pub fn parse_optional_deps(qi: &str) -> Option<Vec<(String, bool)>> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Текст
+// Text
 // ══════════════════════════════════════════════════════════════════════════
 
 // TRANSLATORS: Shown on the text console when the graphical login screen failed to start. %1 is a login screen name (SDDM, Plasma Login Manager, …).
@@ -1331,7 +1339,7 @@ const T_ADVICE_STEAMOS_RECOVERY: &str = n_("On SteamOS the system part is read-o
 // TRANSLATORS: "rexon doctor" output. %1 and %2 are login screen names.
 const T_ADVICE_BOTH_FAILED: &str = n_("Going back to the previous login screen will not help: %1 and %2 both fail to start.");
 
-/// Все строки модуля (для сверки «каждая — через gettext и с вставками»).
+/// All strings of the module (for the check "each goes through gettext and with placeholders").
 pub const TEXTS: &[&str] = &[
     T_HEADLINE, T_FALLBACK, T_CAUSE_HEADER, T_CAUSE_MIX, T_PAIR, T_CAUSE_UNKNOWN, T_LOG_HEADER,
     T_ACTION, T_UNCHANGED, T_DOCTOR_OK, T_DOCTOR_NONE, T_DOCTOR_FAILED, T_ADVICE_HEADER,
@@ -1340,7 +1348,7 @@ pub const TEXTS: &[&str] = &[
     T_ADVICE_BOTH_FAILED, T_HEADLINE_GREETER, T_DOCTOR_GREETER,
 ];
 
-/// Переводчик: msgid → текст на нужном языке.
+/// Translator: msgid → text in the needed language.
 pub type Translate<'a> = &'a dyn Fn(&str) -> String;
 
 fn mix_versions(f: &Finding, t: Translate) -> String {
@@ -1365,7 +1373,7 @@ fn cause_lines(d: &Diagnosis, t: Translate) -> Vec<String> {
         .collect()
 }
 
-/// Текст для консоли на одном языке.
+/// Console text in one language.
 pub fn console_text(d: &Diagnosis, t: Translate) -> String {
     let label = d.dm.label();
     let headline = if d.greeter_gone { T_HEADLINE_GREETER } else { T_HEADLINE };
@@ -1392,9 +1400,9 @@ pub fn console_text(d: &Diagnosis, t: Translate) -> String {
     lines.join("\n") + "\n"
 }
 
-/// Язык консоли: системная локаль (`locale.conf` — текст
-/// `/etc/locale.conf`, `env` — окружение службы), если для неё есть
-/// вшитый каталог. `None` — английский.
+/// Console language: the system locale (`locale.conf` is the text of
+/// `/etc/locale.conf`, `env` is the service environment), if there is an
+/// embedded catalog for it. `None` means English.
 pub fn console_language(locale_conf: Option<&str>, env: &dyn Fn(&str) -> Option<String>) -> Option<&'static str> {
     let from_conf = |k: &str| {
         locale_conf?
@@ -1409,14 +1417,14 @@ pub fn console_language(locale_conf: Option<&str>, env: &dyn Fn(&str) -> Option<
         .find_map(|c| langs.iter().copied().find(|l| *l == c))
 }
 
-/// Перевод на язык консоли (вшитый каталог; нет перевода — английский).
+/// Translation into the console language (embedded catalog; no translation means English).
 pub fn console_translate(code: &str, msgid: &str) -> String {
     crate::system_l10n::translated(code, msgid).unwrap_or_else(|| msgid.to_string())
 }
 
-/// Перевод для `rexon doctor`: каталог на диске (`disk` — [`crate::i18n::tr`]),
-/// а строки, которых в нём нет (или нет самого каталога), — из вшитого
-/// каталога языка `lang`.
+/// Translation for `rexon doctor`: the catalog on disk (`disk` is [`crate::i18n::tr`]),
+/// and strings missing from it (or when the catalog itself is missing) come
+/// from the embedded catalog of the language `lang`.
 pub fn doctor_translate(disk: &dyn Fn(&str) -> String, lang: Option<&str>, msgid: &str) -> String {
     let from_disk = disk(msgid);
     if from_disk != msgid {
@@ -1428,8 +1436,8 @@ pub fn doctor_translate(disk: &dyn Fn(&str) -> String, lang: Option<&str>, msgid
     }
 }
 
-/// Полный текст на консоль: перевод, а под ним английский (шрифт консоли
-/// может не рисовать букв языка).
+/// Full text for the console: the translation with English below it (the
+/// console font may not draw the language's letters).
 pub fn console_message(d: &Diagnosis, lang: Option<&str>) -> String {
     let en = console_text(d, &|m| m.to_string());
     match lang {
@@ -1445,15 +1453,15 @@ pub fn console_message(d: &Diagnosis, lang: Option<&str>) -> String {
     }
 }
 
-/// Текст для файла issue: `agetty` понимает `\` как начало вставки
-/// (`\n` — имя машины), поэтому `\` удваивается. Рамка — чтобы текст
-/// отделялся от приглашения.
+/// Text for the issue file: `agetty` treats `\` as the start of an escape
+/// (`\n` is the host name), so `\` is doubled. The frame separates the text
+/// from the prompt.
 pub fn issue_text(message: &str) -> String {
     let rule = "=".repeat(64);
     format!("\n{rule}\n{}{rule}\n\n", message.replace('\\', "\\\\"))
 }
 
-/// Версия util-linux из `agetty --version`: (2, 42).
+/// util-linux version from `agetty --version`: (2, 42).
 pub fn parse_agetty_version(text: &str) -> Option<(u32, u32)> {
     let ver = text.split("util-linux").nth(1)?.split_whitespace().next()?;
     let mut parts = ver.split('.');
@@ -1461,24 +1469,24 @@ pub fn parse_agetty_version(text: &str) -> Option<(u32, u32)> {
     Some((number(parts.next()?)?, number(parts.next()?)?))
 }
 
-/// `agetty` этой версии сам покажет [`ISSUE_PATH`] при живом `/etc/issue`
-/// (с 2.41). Старше — текст пишется на консоль напрямую.
+/// `agetty` of this version shows [`ISSUE_PATH`] by itself with a live
+/// `/etc/issue` (since 2.41). Older ones get the text written to the console directly.
 pub fn agetty_reads_run_issue(version: Option<(u32, u32)>) -> bool {
     version.is_some_and(|v| v >= (2, 41))
 }
 
-/// Где запущен `rexon doctor`: от этого зависят советы.
+/// Where `rexon doctor` runs: the advice depends on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DoctorHost {
     pub family: PkgFamily,
-    /// SteamOS ([`crate::distro_compat::running_on_steamos`]): системный
-    /// раздел только для чтения, пакетным менеджером не чинится — вместо
-    /// `pacman` советуются обновление и восстановление SteamOS.
+    /// SteamOS ([`crate::distro_compat::running_on_steamos`]): the system
+    /// partition is read-only and cannot be repaired with the package manager,
+    /// so instead of `pacman` updating and recovering SteamOS is advised.
     pub steamos: bool,
 }
 
-/// Отчёт `rexon doctor`: что с экраном входа и что можно сделать. Только
-/// советы: ни одной команды он не выполняет.
+/// The `rexon doctor` report: what is wrong with the login screen and what
+/// can be done. Advice only: it does not run a single command.
 pub fn doctor_report(d: &Diagnosis, host: DoctorHost, rollback: &[Vec<String>], previous_dm: Option<&str>, t: Translate) -> String {
     let family = host.family;
     let label = d.dm.label();
@@ -1497,7 +1505,7 @@ pub fn doctor_report(d: &Diagnosis, host: DoctorHost, rollback: &[Vec<String>], 
         let from = crate::system_plan::login_manager_spec(from).map(|s| s.label).unwrap_or(from.as_str());
         lines.push(fill_plain(&t(T_FALLBACK), &[&from]));
     }
-    // Окна входа нет — для советов это та же поломка, что и упавший экран входа.
+    // No login window: for advice this is the same breakage as a crashed login screen.
     let failed = d.dm.active == "failed" || d.greeter_gone;
     if !d.causes.is_empty() {
         lines.push(String::new());
@@ -1516,13 +1524,13 @@ pub fn doctor_report(d: &Diagnosis, host: DoctorHost, rollback: &[Vec<String>], 
         .filter_map(|c| if let Cause::PackageMix(f) = c { Some(f) } else { None })
         .enumerate()
         .collect();
-    // Сироте обновление не поможет — ей свой совет (удалить).
+    // An update will not help an orphan: it gets its own advice (remove).
     let orphans: Vec<String> = mixes.iter().filter_map(|(_, f)| update_guard::orphan_advice(f, t)).collect();
     let mixes: Vec<(usize, &Finding)> = mixes.into_iter().filter(|(_, f)| f.stage != update_guard::Stage::Orphaned).collect();
     let libs = d.causes.iter().any(|c| matches!(c, Cause::Library { .. }));
     if host.steamos {
-        // `pacman -S/-Syu/-U/-Rns` на SteamOS не сработают: /usr только для
-        // чтения, а части системы ставит только обновление образа.
+        // `pacman -S/-Syu/-U/-Rns` will not work on SteamOS: /usr is read-only,
+        // and parts of the system are installed only by an image update.
         if failed || !d.causes.is_empty() {
             advice.push(fill_plain(&t(T_ADVICE_STEAMOS_UPDATE), &[&"sudo steamos-update"]));
             advice.push(t(T_ADVICE_STEAMOS_RECOVERY));
@@ -1547,8 +1555,9 @@ pub fn doctor_report(d: &Diagnosis, host: DoctorHost, rollback: &[Vec<String>], 
     }
     if failed {
         if let Some(from) = &d.fallback_from {
-            // Откат уже вернул прежний экран входа, и упал и он: совет
-            // «вернуть прежний» вёл бы ровно на тот, что сейчас не стартует.
+            // The fallback already restored the previous login screen, and it crashed
+            // too: the advice "go back to the previous one" would lead exactly to the
+            // one that does not start now.
             let from = crate::system_plan::login_manager_spec(from).map(|s| s.label).unwrap_or(from.as_str());
             advice.push(fill_plain(&t(T_ADVICE_BOTH_FAILED), &[&from, &label]));
         } else if let Some(prev) = previous_dm.map(str::trim).filter(|p| !p.is_empty()) {
@@ -1569,14 +1578,14 @@ pub fn doctor_report(d: &Diagnosis, host: DoctorHost, rollback: &[Vec<String>], 
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Исполнение
+// Execution
 // ══════════════════════════════════════════════════════════════════════════
 
 fn argv(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
 
-/// Состояние [`DM_ALIAS`] на живой машине.
+/// State of [`DM_ALIAS`] on a live machine.
 pub fn dm_state_live<IO: SystemIo + ?Sized>(io: &IO) -> UnitState {
     let mut a = argv(&["systemctl", "show", DM_ALIAS]);
     for p in SHOW_PROPS {
@@ -1586,8 +1595,8 @@ pub fn dm_state_live<IO: SystemIo + ?Sized>(io: &IO) -> UnitState {
     parse_show(&io.run(&a, Some(15), true).stdout)
 }
 
-/// Тексты настроек SDDM в порядке чтения самим SDDM: файлы каталогов
-/// [`SDDM_CONF_DIRS`] по имени, затем [`SDDM_CONF_FILE`].
+/// SDDM settings texts in the order SDDM itself reads them: files of the
+/// [`SDDM_CONF_DIRS`] directories by name, then [`SDDM_CONF_FILE`].
 fn sddm_conf_texts<IO: SystemIo + ?Sized>(io: &IO) -> Vec<String> {
     let mut texts = Vec::new();
     for dir in SDDM_CONF_DIRS {
@@ -1599,7 +1608,7 @@ fn sddm_conf_texts<IO: SystemIo + ?Sized>(io: &IO) -> Vec<String> {
     texts
 }
 
-/// Файл — ELF (по первым байтам).
+/// The file is ELF (by its first bytes).
 fn is_elf(path: &str) -> bool {
     use std::io::Read;
     let mut magic = [0u8; 4];
@@ -1611,7 +1620,7 @@ fn mtime_secs(path: &str) -> Option<u64> {
     m.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs())
 }
 
-/// Собрать наблюдения (только чтение).
+/// Collect the observations (read-only).
 pub fn observe_live<IO: SystemIo + ?Sized>(io: &IO, family: PkgFamily, dm: UnitState) -> Observed {
     let package = dm_package(dm.short(), family);
     let package_files: Vec<String> = package
@@ -1687,9 +1696,9 @@ pub fn observe_live<IO: SystemIo + ?Sized>(io: &IO, family: PkgFamily, dm: UnitS
     }
 }
 
-/// Служба ([`BOOT_FLAG`]): решить, показать текст и приглашение входа.
-/// Код возврата 0 всегда, кроме неудачи записи текста: падение службы
-/// ничего не дало бы человеку.
+/// The service ([`BOOT_FLAG`]): decide, show the text and the login prompt.
+/// The exit code is always 0, except when writing the text fails: a crash of
+/// the service would give the person nothing.
 pub fn boot_live(out: &mut dyn FnMut(&str)) -> i32 {
     let io = crate::system_exec::LiveSystemIo;
     let stopping = io.run(&argv(&["systemctl", "is-system-running"]), Some(10), true).stdout.trim() == "stopping";
@@ -1723,8 +1732,8 @@ pub fn boot_live(out: &mut dyn FnMut(&str)) -> i32 {
     present(&io, &diagnosis, Some(vt), out)
 }
 
-/// Показать текст: в [`ISSUE_PATH`] и, если `vt` есть, — `getty@` на этой
-/// консоли, переключение на неё и включение экрана. Код возврата — как у
+/// Show the text: in [`ISSUE_PATH`] and, if there is a `vt`, `getty@` on that
+/// console, switching to it and unblanking the screen. The exit code is as in
 /// [`boot_live`].
 fn present<IO: SystemIo + ?Sized>(io: &IO, diagnosis: &Diagnosis, vt: Option<u32>, out: &mut dyn FnMut(&str)) -> i32 {
     let locale_conf = io.read_text("/etc/locale.conf");
@@ -1748,8 +1757,8 @@ fn present<IO: SystemIo + ?Sized>(io: &IO, diagnosis: &Diagnosis, vt: Option<u32
     let getty = getty_unit(vt);
     let version = parse_agetty_version(&io.run(&argv(&["agetty", "--version"]), Some(5), true).stdout);
     if !agetty_reads_run_issue(version) {
-        // Старый agetty файл в /run не покажет: текст — прямо на консоль
-        // (`getty@` запускается с --noclear, текст останется над приглашением).
+        // An old agetty will not show the file in /run: the text goes straight to the
+        // console (`getty@` starts with --noclear, the text stays above the prompt).
         if let Ok(mut tty) = std::fs::OpenOptions::new().write(true).open(tty_path(vt)) {
             use std::io::Write;
             let _ = tty.write_all(issue_text(&message).replace("\\\\", "\\").replace('\n', "\r\n").as_bytes());
@@ -1757,7 +1766,7 @@ fn present<IO: SystemIo + ?Sized>(io: &IO, diagnosis: &Diagnosis, vt: Option<u32
     }
     let getty_active = io.run(&argv(&["systemctl", "is-active", &getty]), Some(10), true).stdout.trim() == "active";
     if getty_active {
-        // Приглашение уже стоит — пусть agetty перерисует его с новым текстом.
+        // The prompt is already there: let agetty redraw it with the new text.
         let _ = io.run(&argv(&["agetty", "--reload"]), Some(10), true);
     } else {
         let r = io.run(&argv(&["systemctl", "start", "--no-block", &getty]), Some(30), true);
@@ -1768,10 +1777,10 @@ fn present<IO: SystemIo + ?Sized>(io: &IO, diagnosis: &Diagnosis, vt: Option<u32
     if io.which("chvt") {
         let _ = io.run(&argv(&["chvt", &vt.to_string()]), Some(5), true);
     }
-    // Консоль могла остаться погашенной: в ВМ SteamOS 25.10.2026 после
-    // загрузки tty4 активна, текст на ней есть, а экран чёрный до первого
-    // нажатия клавиши (а о нажатии человек не знает). Запись на консоль
-    // экран не включает — включает только «ESC [ 13 ]» (console_codes(4)).
+    // The console may have stayed blanked: in the SteamOS VM on 25.10.2026 after
+    // boot tty4 is active and the text is on it, but the screen is black until
+    // the first key press (and the person does not know to press one). Writing
+    // to the console does not unblank the screen; only "ESC [ 13 ]" does (console_codes(4)).
     if let Ok(mut tty) = std::fs::OpenOptions::new().write(true).open(tty_path(vt)) {
         use std::io::Write;
         let _ = tty.write_all(UNBLANK_SEQ.as_bytes());
@@ -1779,8 +1788,8 @@ fn present<IO: SystemIo + ?Sized>(io: &IO, diagnosis: &Diagnosis, vt: Option<u32
     rc
 }
 
-/// Сторож приветствия ([`WATCH_FLAG`]): проверить, при нужде — перепроверить
-/// через [`WATCH_RECHECK_SECS`] и показать текст. Код возврата — как у
+/// Greeter watch ([`WATCH_FLAG`]): check, if needed recheck after
+/// [`WATCH_RECHECK_SECS`] and show the text. The exit code is as in
 /// [`boot_live`].
 pub fn watch_live(out: &mut dyn FnMut(&str)) -> i32 {
     let io = crate::system_exec::LiveSystemIo;
@@ -1788,7 +1797,7 @@ pub fn watch_live(out: &mut dyn FnMut(&str)) -> i32 {
     let facts = watch_facts(&io, stamp().as_deref());
     match decide_greeter(&facts) {
         Verdict::Rescue => {}
-        // Тихо: таймер зовёт часто, журнал не засоряется.
+        // Quietly: the timer calls often, the journal is not cluttered.
         Verdict::Skip(_) | Verdict::Wait => return 0,
     }
     out(&format!("{RESCUE_BIN_NAME}: {} has no login window, checking again in {WATCH_RECHECK_SECS} s", facts.dm.id));
@@ -1822,18 +1831,18 @@ pub fn watch_live(out: &mut dyn FnMut(&str)) -> i32 {
     present(&io, &diagnosis, pick_vt(&cmdline, active, &facts.dm.conflicts), out)
 }
 
-/// `rexon doctor`: тот же разбор и советы. Ничего не меняет, пароля не
-/// спрашивает (журнал системы без прав может быть не виден — тогда без него).
+/// `rexon doctor`: the same analysis and advice. Changes nothing, asks for no
+/// password (without privileges the system journal may not be visible; then without it).
 pub fn doctor_live(out: &mut dyn FnMut(&str)) -> i32 {
     let io = crate::system_exec::LiveSystemIo;
     let family = crate::system::DistroDetector::detect_live().family_live();
     let dm = dm_state_live(&io);
     let mut observed = observe_live(&io, family, dm);
-    // Сторож в эту загрузку уже сказал «окна входа нет», а экран входа жив.
+    // During this boot the watch already said "no login window", while the login screen is alive.
     observed.greeter_gone = observed.dm.active == "active"
         && stamp_says_greeter(std::fs::read_to_string(STAMP_PATH).ok().as_deref(), &observed.dm.id);
-    // Журнал — тот же, что брал сторож: упавшей службы окна входа. Без прав
-    // `systemctl -M` может не ответить — тогда журнал экрана входа.
+    // The journal is the same one the watch used: that of the crashed login window
+    // service. Without privileges `systemctl -M` may not answer; then the login screen journal.
     if observed.dm.active == "active" {
         let units = greeter_units_failed_live(&io, &observed.dm);
         use_greeter_journal(&io, &mut observed, &units);
@@ -1852,9 +1861,9 @@ pub fn doctor_live(out: &mut dyn FnMut(&str)) -> i32 {
         .collect();
     let previous = io.read_text(crate::system_plan::PREVIOUS_DM_FILE);
     let host = DoctorHost { family, steamos: crate::distro_compat::running_on_steamos() };
-    // Язык — как у всего Rexon (каталог `.mo` на диске); каталога нет
-    // (пакет сломан, `/usr/share/locale` без нашего `.mo`, запуск из дерева
-    // без сборки переводов) — вшитый, как у текста на консоли.
+    // The language is the same as for all of Rexon (the `.mo` catalog on disk);
+    // without the catalog (broken package, `/usr/share/locale` without our `.mo`,
+    // running from the tree without built translations), the embedded one, as for the console text.
     let lang = match crate::i18n::current_language() {
         code if code != crate::i18n::SOURCE_LANGUAGE => Some(code),
         _ => {
@@ -1869,7 +1878,7 @@ pub fn doctor_live(out: &mut dyn FnMut(&str)) -> i32 {
     0
 }
 
-/// Аргументы `rexon doctor`: слово маршрута первым либо [`DOCTOR_FLAG`].
+/// Arguments of `rexon doctor`: the route word first, or [`DOCTOR_FLAG`].
 pub fn is_doctor_args(args: &[String]) -> bool {
     args.first().is_some_and(|a| a == DOCTOR_WORD) || args.iter().any(|a| a == DOCTOR_FLAG)
 }
@@ -1915,7 +1924,7 @@ mod tests {
             ("failed", "auto-restart-queued"),
             ("activating", "start"),
             ("active", "running"),
-            // Откат вернул прежний экран входа и поставил его запуск.
+            // The fallback restored the previous login screen and queued its start.
             ("inactive", "dead"),
         ] {
             let mut dm = failed_sddm();
@@ -1943,11 +1952,11 @@ mod tests {
         let mut f = facts(failed_sddm());
         f.stopping = true;
         assert!(matches!(decide(&f), Verdict::Skip(_)));
-        // Упал посторонний экран входа (человек пробовал gdm руками).
+        // An unrelated login screen crashed (the person tried gdm by hand).
         let mut f = facts(failed_sddm());
         f.monitor_unit = "gdm.service".into();
         assert!(matches!(decide(&f), Verdict::Skip(_)));
-        // Псевдонима нет вовсе.
+        // No alias at all.
         let none = parse_show("Id=display-manager.service\nLoadState=not-found\nActiveState=inactive\n");
         assert!(matches!(decide(&facts(none)), Verdict::Skip(_)));
     }
@@ -1959,9 +1968,9 @@ mod tests {
         assert!(unit.contains("Type=oneshot\n"));
         assert!(unit.contains("StartLimitIntervalSec=0\n"));
         assert!(unit.contains("DefaultDependencies=no\n"));
-        // Ждёт службу-откат, если её тоже позвали.
+        // Waits for the fallback service, if it was called too.
         assert!(unit.contains(&format!("After=sysinit.target {}\n", crate::system_plan::DM_FALLBACK_SERVICE)));
-        // Ничего не чинит: ни перезапусков, ни Restart=.
+        // Repairs nothing: no restarts, no Restart=.
         assert!(!unit.contains("Restart="));
         assert_eq!(dropin(), "[Unit]\nOnFailure=rexon-login-rescue.service\nWants=rexon-greeter-watch.timer\n");
     }
@@ -1982,7 +1991,7 @@ mod tests {
         let files = unit_files("/usr/lib/systemd/system/", RESCUE_BIN_PACKAGE);
         assert_eq!(files[0].0, "/usr/lib/systemd/system/rexon-login-rescue.service");
         assert!(files.iter().any(|(p, _)| p == "/usr/lib/systemd/system/display-manager.service.d/50-rexon-login-rescue.conf"));
-        // Файлы — только в каталоге пакета: в /etc (там drop-in отката) — ничего.
+        // Files only in the package directory: nothing in /etc (the fallback drop-in is there).
         assert!(files.iter().all(|(p, _)| p.starts_with("/usr/lib/systemd/system/")));
     }
 
@@ -1990,16 +1999,16 @@ mod tests {
     fn fallback_detected_only_this_boot() {
         let conf = "old=sddm\nold_real=/usr/lib/systemd/system/sddm.service\nnew=plasmalogin\n";
         assert_eq!(fallback_from(Some(conf), Some(200), Some(100), "sddm").as_deref(), Some("plasmalogin"));
-        // Откат был в прошлую загрузку.
+        // The fallback happened during the previous boot.
         assert_eq!(fallback_from(Some(conf), Some(50), Some(100), "sddm"), None);
-        // Упал новый, а не тот, к которому откатились.
+        // A new one crashed, not the one it fell back to.
         assert_eq!(fallback_from(Some(conf), Some(200), Some(100), "plasmalogin"), None);
         assert_eq!(fallback_from(None, Some(200), Some(100), "sddm"), None);
         assert_eq!(fallback_from(Some(conf), None, Some(100), "sddm"), None);
         assert_eq!(parse_btime("cpu 1 2\nbtime 1761380000\nprocesses 5\n"), Some(1761380000));
     }
 
-    /// Случай 08.10.2026: qt6-base 6.12.0 при qt6-declarative 6.11.2.
+    /// The case of 08.10.2026: qt6-base 6.12.0 with qt6-declarative 6.11.2.
     fn observed_qt_mix() -> Observed {
         Observed {
             dm: failed_sddm(),
@@ -2036,7 +2045,7 @@ mod tests {
         assert_eq!(f.set.id, "qt6");
         assert_eq!(f.stage, Stage::DontReboot);
         let libs: Vec<&Cause> = d.causes.iter().filter(|c| matches!(c, Cause::Library { .. })).collect();
-        // Не больше двух на программу, без повторов.
+        // No more than two per program, without repeats.
         assert_eq!(libs.len(), 2, "{libs:?}");
         assert_eq!(
             libs[0],
@@ -2053,12 +2062,12 @@ mod tests {
         assert!(text.starts_with("Rexon: the login screen SDDM did not start"), "{text}");
         assert!(text.contains("  - parts of Qt of different versions are installed (qt6-base 6.12.0 with qt6-declarative 6.11.2)\n"), "{text}");
         assert!(text.contains("  - /usr/bin/sddm-greeter-qt6: libfoo.so.3: not found\n"), "{text}");
-        // Журнал отделён от причин пустой строкой.
+        // The journal is separated from the causes by an empty line.
         assert!(text.contains("_ZN7QObject5eventEP6QEvent\n\nLast lines of its log:\n"), "{text}");
         assert!(text.contains("and run: rexon doctor\n"));
         assert!(text.contains("Rexon has not changed anything"));
         assert!(!text.chars().any(|c| c.is_control() && c != '\n'));
-        // Без причин — честно «не нашли».
+        // Without causes: an honest "not found".
         let mut o = observed_qt_mix();
         o.ldd.clear();
         o.pacman_q = None;
@@ -2068,7 +2077,7 @@ mod tests {
         assert!(text.contains("after Plasma Login Manager failed, but it did not start either."), "{text}");
     }
 
-    /// SteamOS: `fbcon=vc:4-6` — tty1 не рисуется, приглашение — на tty4.
+    /// SteamOS: `fbcon=vc:4-6`, tty1 is not drawn, the prompt goes on tty4.
     #[test]
     fn console_is_the_one_kernel_draws() {
         let steamos = "BOOT_IMAGE=/boot/vmlinuz-linux-neptune-72 console=tty1 quiet splash fbcon=vc:4-6 steamos.efi=x";
@@ -2079,7 +2088,7 @@ mod tests {
         assert_eq!(console_vt(""), 1);
         assert_eq!(console_vt("fbcon=vc:1-6"), 1);
         assert_eq!(console_vt("fbcon=font:TER16x32,vc:2"), 2);
-        // Действует последний параметр; мусор — первая консоль.
+        // The last parameter wins; garbage means the first console.
         assert_eq!(console_vt("fbcon=vc:4-6 fbcon=vc:3-6"), 3);
         assert_eq!(console_vt("fbcon=vc:x-6"), 1);
         assert_eq!(console_vt("fbcon=vc:99"), 1);
@@ -2114,7 +2123,7 @@ mod tests {
         assert_eq!(console_language(Some("LANG=en_US.UTF-8\n"), &none), None);
         assert_eq!(console_language(None, &none), None);
         assert_eq!(console_language(Some("LANG=xx_YY.UTF-8\n"), &none), None);
-        // Окружение службы (systemd отдаёт locale.conf в LANG) — раньше файла.
+        // The service environment (systemd passes locale.conf in LANG) comes before the file.
         let env = |k: &str| (k == "LANG").then(|| "C.UTF-8".to_string());
         assert_eq!(console_language(Some("LANG=ru_RU.UTF-8\n"), &env), None);
     }
@@ -2123,14 +2132,14 @@ mod tests {
     fn translation_keeps_english_below() {
         let d = diagnose(&observed_qt_mix());
         let en = console_message(&d, None);
-        // Языка без каталога — ровно английский, без повтора.
+        // A language without a catalog gives plain English, without a repeat.
         assert_eq!(console_message(&d, Some("xx")), en);
         assert_eq!(console_message(&d, Some("en")), en);
     }
 
-    /// Сирота вне репозиториев (kwin-x11 6.7.5 при Plasma 6.8.1): на консоли
-    /// и в `rexon doctor` — «ушёл из репозиториев», совет — удалить, а не
-    /// «обновитесь».
+    /// An orphan outside the repositories (kwin-x11 6.7.5 with Plasma 6.8.1): on
+    /// the console and in `rexon doctor` it is "left the repositories", the advice
+    /// is to remove it, not "update".
     #[test]
     fn orphan_package_told_as_removed_from_repositories() {
         let mut o = observed_qt_mix();
@@ -2148,7 +2157,7 @@ mod tests {
         let doctor = doctor_report(&d, ARCH, &[Vec::new()], None, &en);
         assert!(doctor.contains("remove the package: sudo pacman -Rns kwin-x11"), "{doctor}");
         assert!(!doctor.contains("sudo pacman -Syu"), "{doctor}");
-        // Без сведений о сиротах — прежнее «вразнобой».
+        // Without information about orphans: the previous "mismatched".
         o.foreign = None;
         let d = diagnose(&o);
         assert!(console_text(&d, &en).contains("parts of Plasma of different versions"));
@@ -2174,7 +2183,7 @@ mod tests {
         assert!(text.starts_with("The login screen SDDM did not start (failed/failed).\n"), "{text}");
         assert!(text.contains("sudo pacman -Syu"));
         assert!(text.contains("sudo pacman -U /var/cache/pacman/pkg/qt6-base-6.11.2-1-x86_64.pkg.tar.zst"));
-        // Пакеты вразнобой — переустановка экрана входа не лечит, не советуем.
+        // Mismatched packages: reinstalling the login screen does not cure it, so it is not advised.
         assert!(!text.contains("Reinstall"));
         assert!(text.contains("journalctl -b -u sddm.service"));
         assert!(text.contains("How to go back to the previous login screen:"));
@@ -2194,7 +2203,7 @@ mod tests {
         let text = doctor_report(&diagnose(&ok), ARCH, &[], Some(prev), &|m| m.to_string());
         assert!(text.starts_with("The login screen SDDM is not broken (active/running)."), "{text}");
         assert!(!text.contains("What you can do:"), "{text}");
-        // Экран входа жив, а набор разошёлся — «заметил», а не «причина».
+        // The login screen is alive but the set diverged: "noticed", not "cause".
         let mut mix = observed_qt_mix();
         mix.dm.active = "active".into();
         let text = doctor_report(&diagnose(&mix), ARCH, &[], None, &|m| m.to_string());
@@ -2217,8 +2226,8 @@ mod tests {
         assert_eq!(c, vec!["/usr/bin/sddm", "/usr/bin/sddm-greeter-qt6", "/usr/lib/qt6/qml/SddmComponents/libplugin.so"]);
     }
 
-    /// Пакет ставит программу по пути, на который смотрит юнит, и зовёт её
-    /// для `rexon doctor` в обход Qt.
+    /// The package installs the program at the path the unit looks at, and calls
+    /// it for `rexon doctor` bypassing Qt.
     #[test]
     fn package_installs_rescue() {
         let pkgbuild = include_str!("../../../packaging/aur/PKGBUILD");
@@ -2243,7 +2252,7 @@ mod tests {
             .collect()
     }
 
-    /// Приветствие выбирается так же, как его выбирает SDDM.
+    /// The greeter is chosen the same way SDDM chooses it.
     #[test]
     fn sddm_greeter_follows_settings() {
         let files = sddm_files();
@@ -2257,24 +2266,24 @@ mod tests {
         };
         let conf = |t: &str| vec![format!("[General]\nNumlock=on\n\n[Theme]\n{t}\n")];
         let g = |confs: Vec<String>, exec: &dyn Fn(&str) -> bool| sddm_greeter(&confs, &files, &themes, exec, &meta);
-        // Тема на Qt6.
+        // A Qt6 theme.
         assert_eq!(g(conf("Current=breeze"), &all), "/usr/bin/sddm-greeter-qt6");
-        // Тема без QtVersion — Qt5 (так считает SDDM).
+        // A theme without QtVersion is Qt5 (that is how SDDM sees it).
         assert_eq!(g(conf("Current=maya"), &all), "/usr/bin/sddm-greeter");
-        // …но Qt5-приветствия нет — приветствие версии самого SDDM.
+        // …but there is no Qt5 greeter: the greeter of SDDM's own version.
         assert_eq!(g(conf("Current=maya"), &|p: &str| p != "/usr/bin/sddm-greeter"), "/usr/bin/sddm-greeter-qt6");
-        // Темы нет вовсе или каталога темы нет — встроенная тема SDDM.
+        // No theme at all or no theme directory: the built-in SDDM theme.
         assert_eq!(g(Vec::new(), &all), "/usr/bin/sddm-greeter-qt6");
         assert_eq!(g(conf("Current=gone"), &all), "/usr/bin/sddm-greeter-qt6");
-        // Поздний файл перекрывает ранний, и пустое значение тоже.
+        // A later file overrides an earlier one, an empty value too.
         let mut confs = conf("Current=maya");
         confs.push("[Theme]\nCurrent=\n".into());
         assert_eq!(g(confs, &all), "/usr/bin/sddm-greeter-qt6");
-        // Свой каталог тем.
+        // Own theme directory.
         assert_eq!(g(conf("ThemeDir=/opt/t\nCurrent=x"), &all), "/usr/bin/sddm-greeter-qt6");
-        // Ключ из другого раздела не в счёт.
+        // A key from another section does not count.
         assert_eq!(g(vec!["[Users]\nCurrent=maya\n".into()], &all), "/usr/bin/sddm-greeter-qt6");
-        // SDDM на Qt5 (приветствия Qt6 в пакете нет).
+        // SDDM on Qt5 (the package has no Qt6 greeter).
         let qt5: Vec<String> = vec!["/usr/bin/sddm".into(), "/usr/bin/sddm-greeter".into()];
         assert_eq!(sddm_greeter(&[], &qt5, &themes, &all, &meta), "/usr/bin/sddm-greeter");
 
@@ -2287,9 +2296,9 @@ mod tests {
         assert!(skip.is_empty());
     }
 
-    /// Замер в ВМ SteamOS 25.10.2026: `ExecStart=/bin/false`, а «причиной»
-    /// названо Qt5-приветствие без qt5-declarative (необязательная
-    /// зависимость sddm). То же — в `rexon doctor` на исправной системе.
+    /// Measured in the SteamOS VM 25.10.2026: `ExecStart=/bin/false`, and the
+    /// "cause" named was the Qt5 greeter without qt5-declarative (an optional
+    /// sddm dependency). The same in `rexon doctor` on a healthy system.
     #[test]
     fn optional_qt5_greeter_is_not_a_cause() {
         let qt5_missing = "\tlibQt5Quick.so.5 => not found\n\tlibQt5Qml.so.5 => not found\n";
@@ -2304,23 +2313,23 @@ mod tests {
         ];
         o.optional_deps = Some(vec![("qt5-declarative".into(), false)]);
         assert!(diagnose(&o).causes.is_empty());
-        // Не узнали необязательные зависимости — тоже не верим.
+        // Optional dependencies not found out: not trusted either.
         o.optional_deps = None;
         assert!(diagnose(&o).causes.is_empty());
-        // Все необязательные стоят, а библиотеки нет — это беда.
+        // All optional ones are installed, yet a library is missing: that is a problem.
         o.optional_deps = Some(vec![("qt5-declarative".into(), true)]);
         assert_eq!(diagnose(&o).causes.len(), 2);
-        // Несовпадение символов у вспомогательной программы — всегда беда:
-        // библиотека стоит, но не та.
+        // A symbol mismatch in an auxiliary program is always a problem:
+        // the library is installed, but the wrong one.
         o.optional_deps = Some(vec![("qt5-declarative".into(), false)]);
         o.ldd[2].1 = "undefined symbol: _ZTI20QDBusAbstractAdaptor\t(/usr/lib/sddm/sddm-helper)\n".into();
         assert_eq!(diagnose(&o).causes.len(), 1);
-        // То, что экран входа запускает, проверяется без скидок.
+        // What the login screen starts is checked without allowances.
         o.entries.push("/usr/lib/sddm/sddm-helper".into());
         o.ldd[2].1 = qt5_missing.into();
         assert_eq!(diagnose(&o).causes.len(), 2);
 
-        // `rexon doctor` на исправной системе — без «also noticed».
+        // `rexon doctor` on a healthy system: without "also noticed".
         let mut ok = observed_qt_mix();
         ok.pacman_q = None;
         ok.dm.active = "active".into();
@@ -2365,9 +2374,9 @@ mod tests {
             .to_string()
     }
 
-    /// Хвост журнала — голос экрана входа, а не systemd и не `ExecStartPre`
-    /// (снимок ВМ SteamOS r8-boot-fixed.png: пять строк systemd поверх
-    /// настоящей ошибки).
+    /// The journal tail is the voice of the login screen, not of systemd and not
+    /// of `ExecStartPre` (SteamOS VM snapshot r8-boot-fixed.png: five systemd
+    /// lines on top of the real error).
     #[test]
     fn log_shows_the_process_not_systemd() {
         let aux = vec!["sh".to_string(), "rm".to_string()];
@@ -2387,25 +2396,25 @@ mod tests {
             log_lines(&journal, &aux),
             vec!["/usr/bin/sddm: symbol lookup error: /usr/bin/sddm: undefined symbol: _ZTI20QDBusAbstractAdaptor"]
         );
-        // Без `ExecStartPre` в списке строка rm осталась бы — проверка, что
-        // отсев идёт именно по нему.
+        // Without `ExecStartPre` in the list the rm line would remain: a check that
+        // the filtering goes exactly by it.
         assert_eq!(log_lines(&journal, &[]).len(), 2);
-        // Процесс промолчал (упал сигналом) — из systemd только «как кончился».
+        // The process kept silent (died by a signal): from systemd only "how it ended".
         let silent = [
             jline("1", "systemd", "systemd", "sddm.service: Main process exited, code=dumped, status=11/SEGV"),
             jline("1", "systemd", "systemd", "sddm.service: Failed with result 'core-dump'."),
         ]
         .join("\n");
         assert_eq!(log_lines(&silent, &aux), vec!["sddm.service: Main process exited, code=dumped, status=11/SEGV"]);
-        // MESSAGE не в UTF-8 — массивом байтов.
+        // MESSAGE not in UTF-8: as a byte array.
         let bytes = r#"{"_PID":"9","SYSLOG_IDENTIFIER":"sddm-greeter-qt6","MESSAGE":[104,105,255]}"#;
         assert_eq!(log_lines(bytes, &aux), vec!["hi\u{fffd}"]);
         assert!(log_lines("", &aux).is_empty());
     }
 
-    /// Упала служба окна входа Plasma Login Manager (снимок ВМ SteamOS
-    /// g5-plasmalogin-rescue.png): в хвосте был только шум EGL/ZINK, а
-    /// строка о падении systemd пользователя отсеивалась.
+    /// The Plasma Login Manager login window service crashed (SteamOS VM snapshot
+    /// g5-plasmalogin-rescue.png): the tail had only EGL/ZINK noise, and the
+    /// systemd user manager's line about the crash was filtered out.
     #[test]
     fn greeter_unit_log_shows_the_crash() {
         let user = |msg: &str| {
@@ -2435,18 +2444,18 @@ mod tests {
                 "plasma-login.service: Failed with result 'core-dump'.",
             ]
         );
-        // Сказал только шум — лучше он, чем ничего: не больше трёх строк
-        // процесса, строки о падении — всегда.
+        // It said only noise: better that than nothing; no more than three lines of
+        // the process, the crash lines always.
         let only_noise: Vec<String> = noise.iter().chain(tail.iter()).cloned().collect();
         let lines = greeter_log_lines(&only_noise.join("\n"));
         assert_eq!(lines.len(), 5, "{lines:?}");
         assert_eq!(lines[0], "MESA: error: ZINK: vkEnumeratePhysicalDevices failed (VK_ERROR_INITIALIZATION_FAILED)");
         assert!(lines[4].contains("core-dump"));
-        // Сообщение загрузчика — не шум, даже с «EGL» в имени библиотеки.
+        // A loader message is not noise, even with "EGL" in the library name.
         let loader = [noise[0].clone(), own("plasmalogin-greeter: error while loading shared libraries: libEGL.so.1: cannot open shared object file")];
         assert_eq!(greeter_log_lines(&loader.join("\n")).len(), 1);
         assert!(greeter_log_lines("").is_empty());
-        // Разбор выбирается по упавшим службам.
+        // The parsing is chosen by the failed services.
         let mut o = Observed { journal: journal.join("\n"), ..Default::default() };
         assert_eq!(diagnose(&o).log.len(), 5);
         o.greeter_units = vec!["plasma-login.service".into()];
@@ -2461,19 +2470,19 @@ mod tests {
         assert!(a.iter().any(|x| x == "-b") && !a.iter().any(|x| x.starts_with("--user-unit")));
     }
 
-    /// systemd не передаёт `MONITOR_UNIT`, когда служба стоит в
-    /// `OnFailure=` у нескольких юнитов: решение — по текущему экрану входа.
+    /// systemd does not pass `MONITOR_UNIT` when the service is in `OnFailure=`
+    /// of several units: the decision goes by the current login screen.
     #[test]
     fn decides_without_monitor_unit() {
         let f = facts(failed_sddm());
         assert!(f.monitor_unit.is_empty());
         assert_eq!(decide(&f), Verdict::Rescue);
-        // Упал посторонний (gdm руками), а текущий sddm жив — не показываем.
+        // An unrelated one crashed (gdm by hand) while the current sddm is alive: not shown.
         let mut alive = failed_sddm();
         alive.active = "active".into();
         alive.sub = "running".into();
         assert_eq!(decide(&facts(alive)), Verdict::Wait);
-        // Текущий ещё перезапускается.
+        // The current one is still restarting.
         let mut restarting = failed_sddm();
         restarting.sub = "auto-restart".into();
         assert_eq!(decide(&facts(restarting)), Verdict::Wait);
@@ -2489,11 +2498,11 @@ mod tests {
         assert!(text.contains("update SteamOS: sudo steamos-update"), "{text}");
         assert!(text.contains("Steam Deck Recovery Instructions"), "{text}");
         assert!(!text.contains("pacman"), "{text}");
-        // Пакеты вразнобой и сирота — тоже без pacman.
+        // Mismatched packages and an orphan: also without pacman.
         let d = diagnose(&observed_qt_mix());
         let text = doctor_report(&d, steamos, &[vec!["/var/cache/pacman/pkg/x.pkg.tar.zst".into()]], None, &en);
         assert!(!text.contains("sudo pacman"), "{text}");
-        // Исправный экран входа без находок — советов нет.
+        // A healthy login screen without findings: no advice.
         let mut ok = observed_qt_mix();
         ok.pacman_q = None;
         ok.ldd.clear();
@@ -2501,8 +2510,8 @@ mod tests {
         assert!(!doctor_report(&diagnose(&ok), steamos, &[], None, &en).contains("steamos-update"));
     }
 
-    /// Откат уже вернул прежний экран входа, и тот тоже упал: «вернитесь к
-    /// прежнему» не советуется.
+    /// The fallback already restored the previous login screen, and that one
+    /// crashed too: "go back to the previous one" is not advised.
     #[test]
     fn no_way_back_when_previous_failed_too() {
         let prev = "Rexon switched …\n    sudo systemctl enable --force sddm.service && sudo reboot\n";
@@ -2514,12 +2523,12 @@ mod tests {
             text.contains("Going back to the previous login screen will not help: Plasma Login Manager and SDDM both fail to start."),
             "{text}"
         );
-        // Без отката — прежний совет на месте.
+        // Without a fallback the previous advice stays in place.
         let text = doctor_report(&diagnose(&observed_qt_mix()), ARCH, &[], Some(prev), &|m| m.to_string());
         assert!(text.contains("How to go back to the previous login screen:"), "{text}");
     }
 
-    /// `rexon doctor` без `.mo` на диске говорит вшитым каталогом.
+    /// `rexon doctor` without a `.mo` on disk speaks with the embedded catalog.
     #[test]
     fn doctor_translates_without_mo() {
         let none = |m: &str| m.to_string();
@@ -2531,15 +2540,15 @@ mod tests {
             assert_ne!(ru, T_DOCTOR_FOOTER);
             assert_eq!(Some(ru), crate::system_l10n::translated("ru", T_DOCTOR_FOOTER));
         }
-        // Перевод с диска — первым.
+        // The translation from disk comes first.
         let disk = |m: &str| format!("[{m}]");
         assert_eq!(doctor_translate(&disk, Some("ru"), "x"), "[x]");
     }
 
-    // ── Сторож приветствия ───────────────────────────────────────────────
+    // ── Greeter watch ────────────────────────────────────────────────────
 
-    /// Подставной исполнитель: argv через пробел, начинающийся с ключа, →
-    /// вывод; файлы — из таблицы. Ничего настоящего не запускает.
+    /// A fake executor: space-joined argv starting with the key → output;
+    /// files come from the table. Runs nothing real.
     struct WatchIo {
         runs: Vec<(String, String)>,
         files: Vec<(String, String)>,
@@ -2573,7 +2582,7 @@ mod tests {
         fn copy_file(&self, _: &str, _: &str) -> Result<(), String> { Err("ro".into()) }
     }
 
-    /// Экран входа запущен на 5-й секунде, сейчас 120-я.
+    /// The login screen started at second 5, now it is second 120.
     const DM_SINCE_US: u64 = 5_000_000;
 
     fn dm_show(id: &str, active: &str) -> String {
@@ -2590,7 +2599,7 @@ mod tests {
             .to_string()
     }
 
-    /// Сеансы: (номер, класс, состояние) на seat0.
+    /// Sessions: (number, class, state) on seat0.
     fn watch_io(dm: &str, sessions: &[(&str, &str, &str)], journal: &[String]) -> WatchIo {
         let mut runs = vec![
             ("systemctl is-system-running".to_string(), "running\n".to_string()),
@@ -2622,9 +2631,9 @@ mod tests {
         assert_eq!(f.dm.active_since_us, Some(DM_SINCE_US));
         assert_eq!(f.uptime_us, Some(120_500_000));
         assert_eq!(decide_greeter(&f), Verdict::Rescue, "{f:?}");
-        // Строка загрузчика понятнее кода — она и улика.
+        // The loader line is clearer than the code: it is the evidence too.
         assert!(f.evidence.as_deref().unwrap().contains("symbol lookup error"), "{f:?}");
-        // Упал сигналом, без строки загрузчика.
+        // Died by a signal, without a loader line.
         let io = watch_io("sddm.service", &[], &[jm(7_000_000, "sddm", "Auth: sddm-helper exited with 11")]);
         let f = watch_facts(&io, None);
         assert_eq!(f.evidence.as_deref(), Some("Auth: sddm-helper exited with 11"));
@@ -2636,7 +2645,7 @@ mod tests {
         let io = watch_io("sddm.service", &[("c1", "greeter", "online")], &greeter_crash_journal());
         let f = watch_facts(&io, None);
         assert!(matches!(decide_greeter(&f), Verdict::Skip(_)), "{f:?}");
-        // До журнала не дошли: решение ясно по сеансам.
+        // Did not get to the journal: the decision is clear from the sessions.
         assert!(!io.calls.borrow().iter().any(|c| c.starts_with("journalctl")));
     }
 
@@ -2647,14 +2656,14 @@ mod tests {
             let f = watch_facts(&io, None);
             assert!(matches!(decide_greeter(&f), Verdict::Skip(_)), "{class}/{state}");
         }
-        // Сеанс без места (ssh) человека на экране не значит.
+        // A session without a seat (ssh) does not mean a person at the screen.
         let mut f = watch_facts(&watch_io("sddm.service", &[], &greeter_crash_journal()), None);
         f.sessions.push(SessionInfo { id: "5".into(), seat: String::new(), class: "user".into(), state: "active".into() });
         assert_eq!(decide_greeter(&f), Verdict::Rescue);
     }
 
-    /// Автовход: человек вышел (сеанс доживает в `closing`), SDDM поднял
-    /// приветствие, и оно упало.
+    /// Autologin: the person logged out (the session is finishing in `closing`),
+    /// SDDM brought up the greeter, and it crashed.
     #[test]
     fn autologin_logout_then_greeter_crash_is_shown() {
         let journal = vec![
@@ -2668,10 +2677,10 @@ mod tests {
         let f = watch_facts(&io, None);
         assert_eq!(decide_greeter(&f), Verdict::Rescue, "{f:?}");
         assert!(f.evidence.as_deref().unwrap().contains("libQt6Quick.so.6"));
-        // Только вышел, приветствие ещё не поднялось: удачный выход — не улика.
+        // Just logged out, the greeter is not up yet: a successful exit is not evidence.
         let io = watch_io("sddm.service", &[("2", "user", "closing")], &journal[..3]);
         assert!(matches!(decide_greeter(&watch_facts(&io, None)), Verdict::Skip(_)));
-        // Сеанс человека кончился с ошибкой, а приветствие поднялось.
+        // The person's session ended with an error, and the greeter came up.
         let journal = vec![jm(90_000_000, "sddm", "Auth: sddm-helper exited with 1")];
         let io = watch_io("sddm.service", &[("c3", "greeter", "online")], &journal);
         assert!(matches!(decide_greeter(&watch_facts(&io, None)), Verdict::Skip(_)));
@@ -2682,37 +2691,37 @@ mod tests {
         let crash = greeter_crash_journal();
         let base = watch_facts(&watch_io("sddm.service", &[], &crash), None);
         assert_eq!(decide_greeter(&base), Verdict::Rescue);
-        // Уже показали — ни одного запуска.
+        // Already shown: not a single run.
         let io = watch_io("sddm.service", &[], &crash);
         let f = watch_facts(&io, Some("sddm.service failed\n"));
         assert!(matches!(decide_greeter(&f), Verdict::Skip(_)));
         assert!(io.calls.borrow().is_empty());
-        // Выключение.
+        // Shutdown.
         let mut f = base.clone();
         f.stopping = true;
         assert!(matches!(decide_greeter(&f), Verdict::Skip(_)));
-        // Экран входа только что запустился.
+        // The login screen has just started.
         let mut f = base.clone();
         f.uptime_us = Some(DM_SINCE_US + 10_000_000);
         assert_eq!(decide_greeter(&f), Verdict::Wait);
-        // Экран входа упал — это дело `--boot`.
+        // The login screen crashed: that is the job of `--boot`.
         let mut f = base.clone();
         f.dm.active = "failed".into();
         assert!(matches!(decide_greeter(&f), Verdict::Skip(_)));
-        // Чужой экран входа — сторож не смотрит.
+        // Someone else's login screen: the watch does not look.
         let io = watch_io("gdm.service", &[], &crash);
         let f = watch_facts(&io, None);
         assert!(matches!(decide_greeter(&f), Verdict::Skip(_)));
         assert!(!io.calls.borrow().iter().any(|c| c.starts_with("loginctl")));
-        // Падение до нынешнего запуска экрана входа — не в счёт.
+        // A crash before the current start of the login screen does not count.
         let old = vec![jm(1_000_000, "sddm", "Auth: sddm-helper exited with 127")];
         assert!(matches!(decide_greeter(&watch_facts(&watch_io("sddm.service", &[], &old), None)), Verdict::Skip(_)));
-        // Улик нет вовсе.
+        // No evidence at all.
         assert!(matches!(decide_greeter(&watch_facts(&watch_io("sddm.service", &[], &[]), None)), Verdict::Skip(_)));
     }
 
-    /// Plasma Login Manager: окно входа — служба пользователя plasmalogin;
-    /// она упала, а сеанс приветствия остался.
+    /// Plasma Login Manager: the login window is a user service of plasmalogin;
+    /// it crashed while the greeter session remained.
     #[test]
     fn plasmalogin_failed_greeter_unit_is_shown() {
         let mut io = watch_io("plasmalogin.service", &[("c1", "greeter", "online")], &[]);
@@ -2723,11 +2732,11 @@ mod tests {
         let f = watch_facts(&io, None);
         assert_eq!(f.greeter_units_failed, vec!["plasma-login.service"]);
         assert_eq!(decide_greeter(&f), Verdict::Rescue);
-        // Живые — ничего.
+        // Alive: nothing.
         let mut io = watch_io("plasmalogin.service", &[("c1", "greeter", "online")], &[]);
         io.runs.push(("systemctl --user -M plasmalogin@ show".into(), "Id=plasma-login.service\nActiveState=active\n".into()));
         assert!(matches!(decide_greeter(&watch_facts(&io, None)), Verdict::Skip(_)));
-        // Сама программа приветствия не запустилась — как у SDDM.
+        // The greeter program itself did not start, as with SDDM.
         let j = vec![jm(7_000_000, "plasmalogin", "Auth: plasmalogin-helper exited with 127")];
         assert_eq!(decide_greeter(&watch_facts(&watch_io("plasmalogin.service", &[], &j), None)), Verdict::Rescue);
         let files: Vec<String> = vec!["/usr/bin/plasmalogin".into(), "/usr/bin/startplasma-login-wayland".into(), "/usr/lib/plasma-login-greeter".into()];
@@ -2735,9 +2744,9 @@ mod tests {
         assert!(greeter_programs("sddm", &files).is_empty());
     }
 
-    /// DDM: окно входа — системная служба Treeland; она дошла до `failed`,
-    /// а `ddm.service` жив и человека нет — показать текст. Журнал помощника
-    /// SDDM у DDM не ищется.
+    /// DDM: the login window is the Treeland system service; it got to `failed`,
+    /// while `ddm.service` is alive and there is no person: show the text. The
+    /// SDDM helper journal is not searched for DDM.
     #[test]
     fn ddm_failed_treeland_is_shown() {
         let mut io = watch_io("ddm.service", &[], &[]);
@@ -2749,15 +2758,15 @@ mod tests {
         assert_eq!(f.greeter_units_failed, vec!["treeland.service"]);
         assert_eq!(decide_greeter(&f), Verdict::Rescue);
         assert!(!io.calls.borrow().iter().any(|c| c.starts_with("journalctl")));
-        // Treeland жив — ничего, даже без сеанса приветствия.
+        // Treeland is alive: nothing, even without a greeter session.
         let mut io = watch_io("ddm.service", &[], &[]);
         io.runs.push(("systemctl show treeland.service".into(), "Id=treeland.service\nActiveState=active\n".into()));
         assert!(matches!(decide_greeter(&watch_facts(&io, None)), Verdict::Skip(_)));
-        // Человек в сеансе — ничего, Treeland не спрашиваем.
+        // A person is in a session: nothing, Treeland is not asked.
         let io = watch_io("ddm.service", &[("2", "user", "active")], &[]);
         assert!(matches!(decide_greeter(&watch_facts(&io, None)), Verdict::Skip(_)));
         assert!(!io.calls.borrow().iter().any(|c| c.contains("treeland")));
-        // Drop-in спасателя у ddm.service есть (он в таблице экранов входа).
+        // ddm.service has the rescue drop-in (it is in the login screen table).
         assert!(dropin_units().contains(&"ddm.service".to_string()));
     }
 
@@ -2769,8 +2778,8 @@ mod tests {
         assert_eq!(helper_exit_code("Greeter stopped."), None);
         let crashed = [JournalEntry { message: "Auth: sddm-helper (--socket x) crashed (exit code 1)".into(), ..Default::default() }];
         assert!(greeter_crash_evidence(&crashed, None).is_some());
-        // SteamOS: weston нет → откат на x11-user; помощник выходит с 0, а
-        // окно входа закрылось само (журнал ВМ SteamOS 3.9.5).
+        // SteamOS: no weston → fallback to x11-user; the helper exits with 0, while
+        // the login window closed on its own (SteamOS 3.9.5 VM journal).
         let x11user = |tail: &[&str]| -> Vec<JournalEntry> {
             ["Greeter starting...", "Auth: sddm-helper exited with 4", "Greeter stopped. SDDM::Auth::HELPER_DISPLAYSERVER_ERROR",
              "Failed to launch the display server, falling back to DisplayServer=x11-user", "Greeter starting...",
@@ -2782,10 +2791,10 @@ mod tests {
         };
         let died = x11user(&["Auth: sddm-helper exited successfully", "Greeter stopped. SDDM::Auth::HELPER_SUCCESS"]);
         assert_eq!(greeter_crash_evidence(&died, None).as_deref(), Some("Greeter stopped. SDDM::Auth::HELPER_SUCCESS"));
-        // Человек вошёл: SDDM сам останавливает окно входа — не улика.
+        // A person logged in: SDDM stops the login window itself, not evidence.
         let login = x11user(&["Greeter stopping...", "Auth: sddm-helper exited successfully", "Greeter stopped. SDDM::Auth::HELPER_SUCCESS"]);
         assert_eq!(greeter_crash_evidence(&login, None), None);
-        // Окно входа упало, но SDDM поднял новое — прежнее не в счёт.
+        // The login window crashed, but SDDM brought up a new one: the earlier one does not count.
         let again = x11user(&["Auth: sddm-helper exited successfully", "Greeter stopped. SDDM::Auth::HELPER_SUCCESS", "Greeter starting..."]);
         assert_eq!(greeter_crash_evidence(&again, None), None);
         assert_eq!(parse_session_ids("[{\"session\":\"2\"},{\"session\":\"c1\"}]"), vec!["2", "c1"]);
@@ -2805,15 +2814,15 @@ mod tests {
         assert_eq!(parse_show("ActiveEnterTimestampMonotonic=0\n").active_since_us, None);
     }
 
-    /// Экран входа жив: `getty@` его консоли остановил бы его (`Conflicts=`),
-    /// а на его консоли (активной) приглашения не видно.
+    /// The login screen is alive: `getty@` of its console would stop it (`Conflicts=`),
+    /// and on its (active) console the prompt is not visible.
     #[test]
     fn prompt_console_avoids_the_login_screen() {
         let c = vec!["getty@tty1.service".to_string()];
         assert_eq!(pick_vt("quiet", Some(1), &c), Some(2));
         assert_eq!(pick_vt("quiet", Some(2), &c), Some(3));
         assert_eq!(pick_vt("quiet", Some(7), &[]), Some(1));
-        // SteamOS: рисуются только 4–6.
+        // SteamOS: only 4–6 are drawn.
         let steamos = "quiet fbcon=vc:4-6";
         assert_eq!(pick_vt(steamos, Some(4), &[]), Some(5));
         let all: Vec<String> = (4..=6).map(getty_unit).collect();
@@ -2839,7 +2848,7 @@ mod tests {
         let unit = watch_unit(RESCUE_BIN_PACKAGE);
         assert!(unit.contains("ExecStart=/usr/lib/rexon/rexon-login-rescue --watch-greeter\n"));
         assert!(unit.contains("Type=oneshot\n"));
-        // Обычные зависимости: при выключении служба не запускается.
+        // Regular dependencies: the service is not started during shutdown.
         assert!(!unit.contains("DefaultDependencies=no"));
         assert!(!unit.contains("Restart="));
         let timer = watch_timer();

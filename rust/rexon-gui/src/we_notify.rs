@@ -1,26 +1,27 @@
-// Notify — QML-синглтон событий демона вкладки Wallpaper Engine.
+// Notify — the QML singleton of daemon events of the Wallpaper Engine tab.
 //
-// Порт
-// `ui/src/notify.cpp` waywallen (MIT, (c) hypengw; атрибуция в NOTICE).
+// A port of waywallen's `ui/src/notify.cpp` (MIT, (c) hypengw; attribution
+// in NOTICE).
 //
-// Решающей части здесь нет: разбор кадра `ServerFrame`, переход состояния и
-// СПИСОК сигналов к отправке считает ядро (`rexon_core::we_notify`, прикрыто
-// `we_notify_parity.rs`). Мосту остаётся раздать полученный список.
+// There is no deciding part here: parsing the `ServerFrame` frame, the
+// state transition and the LIST of signals to send are computed by the core
+// (`rexon_core::we_notify`, covered by `we_notify_parity.rs`). The bridge
+// only has to hand out the resulting list.
 //
-// Две починки апстрима живут в ядре и приезжают вместе с ним:
-// `displayConnectionFailed` теперь действительно эмитится (ветки события не
-// было вовсе), а `statusChanged` молчит, если снимок не изменился.
+// Two upstream fixes live in the core and come with it:
+// `displayConnectionFailed` is now really emitted (there was no event branch
+// at all), and `statusChanged` stays silent if the snapshot did not change.
 //
-// ⚠️ `displayBackend` у оригинала — гаджет Qt-Protobuf
-// (`control::v1::DisplayBackendStatus`), у нас — QVariantMap. Гаджет в
-// cxx-qt 0.9 не выразим, а QML читает у него только поля
-// точкой — на карте это работает ровно так же.
+// Warning: in the original `displayBackend` is a Qt Protobuf gadget
+// (`control::v1::DisplayBackendStatus`), for us a QVariantMap. A gadget
+// cannot be expressed in cxx-qt 0.9, and QML reads only its fields with a
+// dot — on a map this works exactly the same.
 //
-// НЕ портировано намеренно (как и в ядре): `taskProgress`. Событие у демона
-// есть, но вендорный QML v0.2.6+9 его не использует ни разу — проверено
-// grep'ом по `waywallen/ui/qml`.
+// NOT ported deliberately (as in the core): `taskProgress`. The daemon has
+// the event, but the vendored QML v0.2.6+9 does not use it once — checked by
+// grep over `waywallen/ui/qml`.
 
-/// Мост cxx-qt: синглтон `Notify`.
+/// cxx-qt bridge: the `Notify` singleton.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -40,21 +41,21 @@ pub mod qobject {
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
     }
 
-    // ⚠️ `type QObject` здесь НЕ объявляется: у Notify нет базы, и cxx-qt
-    // печатает объявление сам (cxx-qt-gen: add_qobject_import). Второе даёт
-    // «the type QObject is defined multiple times».
+    // Warning: `type QObject` is NOT declared here: Notify has no base, and
+    // cxx-qt emits the declaration itself (cxx-qt-gen: add_qobject_import). A
+    // second one gives «the type QObject is defined multiple times».
     unsafe extern "C++" {
         include!("rexon_we_singletons.h");
-        /// Записаться получателем кадров демона.
+        /// Register as a receiver of daemon frames.
         ///
         /// # Safety
-        /// `notify` — живой QObject (указатель на самого себя).
+        /// `notify` is a live QObject (a pointer to itself).
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_we_register_notify(notify: *mut QObject);
     }
 
-    /// Фаза демона. Значения — из оригинала (`notify.cppm`), QML читает их
-    /// как `Notify.DaemonPhase.Ready`.
+    /// The daemon phase. The values come from the original (`notify.cppm`),
+    /// QML reads them as `Notify.DaemonPhase.Ready`.
     #[qenum(Notify)]
     enum DaemonPhase {
         Starting,
@@ -82,7 +83,7 @@ pub mod qobject {
         type Notify = super::NotifyRust;
     }
 
-    // ── сигналы (имена и сигнатуры — из оригинала) ────────────────────────
+    // ── signals (names and signatures come from the original) ─────────────
     unsafe extern "RustQt" {
         #[qsignal]
         #[cxx_name = "statusChanged"]
@@ -96,7 +97,7 @@ pub mod qobject {
         #[cxx_name = "wallpaperSyncFinished"]
         fn wallpaper_sync_finished(self: Pin<&mut Notify>, count: u32, error: QString);
 
-        /// waywallen 0.4.4: обои скрыты или возвращены.
+        /// waywallen 0.4.4: wallpapers were hidden or restored.
         #[qsignal]
         #[cxx_name = "wallpaperHiddenChanged"]
         fn wallpaper_hidden_changed(self: Pin<&mut Notify>, wallpaper_ids: QStringList,
@@ -110,8 +111,8 @@ pub mod qobject {
         #[cxx_name = "settingsChanged"]
         fn settings_changed(self: Pin<&mut Notify>);
 
-        /// ⚠️ Сигнал, который у нашего Python-моста был объявлен, но не
-        /// эмитился ни разу: ветки события не существовало (починено в ядре).
+        /// Warning: a signal that our Python bridge declared but never emitted:
+        /// the event branch did not exist (fixed in the core).
         #[qsignal]
         #[cxx_name = "displayConnectionFailed"]
         fn display_connection_failed(
@@ -161,10 +162,26 @@ pub mod qobject {
             action_id: QString,
             state: i32,
             qr_image: QString,
-            // waywallen 0.3.8: четыре текста диалога переводимы — наружу
-            // едет либо карта `PluginMessage`, либо готовая строка, ровно
-            // как у `pluginMessageFromPb` вендора. QML пропускает их через
-            // `I18n.tr`, который понимает обе формы.
+            // waywallen 0.3.8: the four texts of the dialog are translatable —
+            // either a `PluginMessage` map or a ready string goes out, exactly
+            // as with the vendor's `pluginMessageFromPb`. QML passes them through
+            // `I18n.tr`, which understands both forms.
+            display_value: QVariant,
+            error: QVariant,
+            title: QVariant,
+            instruction: QVariant,
+        );
+
+        /// waywallen 0.6.1: sign-in through a browser window
+        /// (BrowserLoginDialog). Same texts as `qrLoginProgress`, no QR image.
+        #[qsignal]
+        #[cxx_name = "browserLoginProgress"]
+        fn browser_login_progress(
+            self: Pin<&mut Notify>,
+            session_id: QString,
+            plugin_id: QString,
+            action_id: QString,
+            state: i32,
             display_value: QVariant,
             error: QVariant,
             title: QVariant,
@@ -188,15 +205,15 @@ pub mod qobject {
         #[cxx_name = "displayBackend"]
         fn display_backend(self: &Notify) -> QMap_QString_QVariant;
 
-        /// Сырой кадр `ServerFrame` от демона. Зовётся шимом
-        /// (`rexon_we_do_deliver_event`), а не QML: имя обязано совпадать с
-        /// тем, что ищет `QMetaObject::invokeMethod`.
+        /// A raw `ServerFrame` frame from the daemon. Called by the shim
+        /// (`rexon_we_do_deliver_event`), not by QML: the name must match what
+        /// `QMetaObject::invokeMethod` looks for.
         #[qinvokable]
         #[cxx_name = "deliverEvent"]
         fn deliver_event(self: Pin<&mut Notify>, frame: &QByteArray);
 
-        /// Обрыв WebSocket: вернуться к пессимистичному состоянию, чтобы UI
-        /// не держал устаревшее «демон готов».
+        /// WebSocket disconnection: go back to the pessimistic state so that the
+        /// UI does not keep a stale «daemon is ready».
         #[qinvokable]
         #[cxx_name = "transportDisconnected"]
         fn transport_disconnected(self: Pin<&mut Notify>);
@@ -210,12 +227,12 @@ use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QByteArray, QMap, QMapPair_QString_QVariant, QString, QStringList, QVariant};
 use rexon_core::we_notify::{self, NotifySignal, NotifyState};
 
-/// Переводимая строка плагина → значение для QML.
+/// A translatable plugin string → a value for QML.
 ///
-/// Форма та же, что у `pluginMessageFromPb` вендора и у карт `*Text` в
-/// описании источника: карта `{pluginId, msgid, arguments}`, когда у
-/// подписи есть ключ каталога, и голая строка, когда его нет. Вендорный
-/// `I18n.tr` понимает обе.
+/// The form is the same as the vendor's `pluginMessageFromPb` and the `*Text`
+/// maps in a source description: a `{pluginId, msgid, arguments}` map when
+/// the label has a catalogue key, and a bare string when it does not. The
+/// vendored `I18n.tr` understands both.
 fn plugin_text_variant(text: &we_notify::PluginText) -> QVariant {
     if !text.has_catalog_key() {
         return QVariant::from(&QString::from(&text.fallback));
@@ -235,8 +252,8 @@ fn plugin_text_variant(text: &we_notify::PluginText) -> QVariant {
                 .collect(),
         ),
     );
-    // Запасной текст рядом: `plugin_l10n::resolve` берёт его, если каталога
-    // плагина на машине нет.
+    // The fallback text goes alongside: `plugin_l10n::resolve` takes it if the
+    // plugin's catalogue is not on the machine.
     map.insert(
         "rexonFallback".into(),
         serde_json::Value::String(text.fallback.clone()),
@@ -244,7 +261,7 @@ fn plugin_text_variant(text: &we_notify::PluginText) -> QVariant {
     crate::qvalue::json_to_variant(&serde_json::Value::Object(map))
 }
 
-/// Состояние синглтона целиком принадлежит ядру.
+/// The singleton's state belongs entirely to the core.
 #[derive(Default)]
 pub struct NotifyRust {
     state: NotifyState,
@@ -252,10 +269,10 @@ pub struct NotifyRust {
 
 impl cxx_qt::Initialize for qobject::Notify {
     fn initialize(self: Pin<&mut Self>) {
-        // Записаться получателем СРАЗУ, в пост-конструкции: демон шлёт
-        // стартовый `status_sync` один раз на WS-connect, и синглтон,
-        // созданный позже, переход в Ready потеряет. У оригинала ровно та же
-        // причина завести Notify до загрузки QML (`App::init`).
+        // Register as a receiver AT ONCE, in post-construction: the daemon sends
+        // the initial `status_sync` once per WS connect, and a singleton created
+        // later will lose the transition to Ready. The original has exactly the
+        // same reason to set up Notify before loading QML (`App::init`).
         let this: *mut qobject::Notify = unsafe { self.get_unchecked_mut() };
         unsafe { qobject::rexon_we_register_notify(this.cast()) };
     }
@@ -304,7 +321,7 @@ impl qobject::Notify {
 
     pub fn deliver_event(mut self: Pin<&mut Self>, frame: &QByteArray) {
         let mut state = self.rust().state.clone();
-        // Битый кадр не должен ронять вкладку: демон может быть новее нас.
+        // A broken frame must not bring the tab down: the daemon may be newer than us.
         let Ok(signals) = we_notify::apply_frame(&mut state, frame.as_slice()) else {
             return;
         };
@@ -319,8 +336,8 @@ impl qobject::Notify {
         self.emit_all(&signals);
     }
 
-    /// Разослать список сигналов, посчитанный ядром. Порядок сохраняется —
-    /// он часть контракта (`we_notify_parity.rs`).
+    /// Broadcast the list of signals computed by the core. The order is kept —
+    /// it is part of the contract (`we_notify_parity.rs`).
     fn emit_all(mut self: Pin<&mut Self>, signals: &[NotifySignal]) {
         for signal in signals {
             match signal {
@@ -359,9 +376,9 @@ impl qobject::Notify {
                     error,
                     transfer,
                 } => {
-                    // Как `Notify` оригинала: состояние и ход передачи —
-                    // сначала в общий склад (карточка выдачи и панель
-                    // деталей), потом сигнал странице.
+                    // Like the original's `Notify`: the state and the transfer
+                    // progress go first to the shared store (the result card and
+                    // the details panel), then the signal to the page.
                     let transfer = transfer.map_or_else(Default::default, |(received, total)| {
                         crate::remote_list_model::acquisition::Transfer {
                             active: true,
@@ -402,6 +419,25 @@ impl qobject::Notify {
                     QString::from(action_id),
                     *state,
                     QString::from(qr_image),
+                    plugin_text_variant(display_value),
+                    plugin_text_variant(error),
+                    plugin_text_variant(title),
+                    plugin_text_variant(instruction),
+                ),
+                NotifySignal::BrowserLoginProgress {
+                    session_id,
+                    plugin_id,
+                    action_id,
+                    state,
+                    display_value,
+                    error,
+                    title,
+                    instruction,
+                } => self.as_mut().browser_login_progress(
+                    QString::from(session_id),
+                    QString::from(plugin_id),
+                    QString::from(action_id),
+                    *state,
                     plugin_text_variant(display_value),
                     plugin_text_variant(error),
                     plugin_text_variant(title),

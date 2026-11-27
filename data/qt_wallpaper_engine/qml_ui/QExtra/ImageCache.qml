@@ -1,28 +1,28 @@
-// Объём кэша декодированных картинок — замена синглтона `QExtra.ImageCache`.
+// Size of the decoded image cache — a replacement for the `QExtra.ImageCache` singleton.
 //
-// НАШ файл, не вендорный. С v0.4.4 вендорная разметка waywallen
-// (`Global.qml`) задаёт объём кэша миниатюр через модуль QExtra — C++-
-// библиотеку автора waywallen, которую их приложение линкует в себя. В
-// Rexon её нет, а без модуля с этим именем `Global.qml` не загружается, и
-// вкладка «Wallpaper Engine» остаётся пустой целиком.
+// OUR file, not vendored. Since v0.4.4 the vendor waywallen markup
+// (`Global.qml`) sets the thumbnail cache size through the QExtra module — a C++
+// library by the waywallen author that their application links in. Rexon
+// does not have it, and without a module with this name `Global.qml` does not load, and
+// the «Wallpaper Engine» tab stays empty entirely.
 //
-// Чем это отличается от оригинала: у QExtra свой декодер с кэшем кадров,
-// ограниченным `capacityMiB`. У нас картинки декодирует сам Qt Quick, и
-// задать ему потолок в мебибайтах из QML нечем. Поэтому настройка
-// «Кэш декодированных картинок» действует как выключатель: 0 — миниатюры
-// не кэшируются (`cache: false` у `AnimatedImage` ниже), любое другое
-// значение — кэшируются по правилам Qt.
+// How this differs from the original: QExtra has its own decoder with a frame cache
+// limited by `capacityMiB`. Here pictures are decoded by Qt Quick itself, and
+// there is no way to set a cap in mebibytes for it from QML. So the setting
+// «Decoded image cache» acts as a switch: 0 — thumbnails
+// are not cached (`cache: false` on `AnimatedImage` below), any other
+// value — they are cached by Qt's rules.
 pragma Singleton
 import QtQml
 
 QtObject {
-    // Как у оригинала: отрицательного объёма не бывает.
+    // As in the original: there is no negative size.
     property int capacityMiB: 64
     onCapacityMiBChanged: if (capacityMiB < 0)
         capacityMiB = 0
 
-    // waywallen 0.6.0: потолок кэша ТЕКСТУР окна. У штатного Qt Quick
-    // такого потолка нет — вызов принимается и ничего не делает.
+    // waywallen 0.6.0: the window's TEXTURE cache cap. Stock Qt Quick has
+    // no such cap — the call is accepted and does nothing.
     function setTextureCapacityMiB(window, value) {
     }
 }

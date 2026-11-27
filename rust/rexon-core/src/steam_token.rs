@@ -1,54 +1,54 @@
-//! Добыча личного `webapi_token` из локального клиента Steam — порт
-//! ДЕТЕРМИНИРОВАННОЙ части Python-кода (архив, метка git `python-final`):
-//! чтение и расшифровка
-//! cookie `steamLoginSecure` из CEF-БД клиента Steam (SQLite + Chromium-схема
-//! v10). Тем же токеном пользуются ОБЕ вкладки — «Steam» (фоны профиля) и
-//! «Wallpaper Engine» (Мастерская); второй копии этого кода в проекте быть не
-//! должно (правило #12).
+//! Getting the personal `webapi_token` from the local Steam client — a port of
+//! the DETERMINISTIC part of the Python code (archive, git tag `python-final`):
+//! reading and decrypting
+//! the `steamLoginSecure` cookie from the Steam client's CEF DB (SQLite + the
+//! Chromium v10 scheme). BOTH tabs use the same token — «Steam» (profile
+//! backgrounds) and «Wallpaper Engine» (Workshop); there must be no second copy
+//! of this code in the project (rule #12).
 //!
-//! Что здесь (перенесено с Python):
-//!   * [`cookie_db_paths`]   — перечисление путей к CEF `Cookies`
-//!     (`config/htmlcache/{Default,,*}/Cookies`), порт `_cookie_db_paths`;
-//!   * [`decrypt_v10`]       — расшифровка Chromium-cookie v10 (AES-128-CBC,
-//!     ключ PBKDF2-HMAC-SHA1 pw="peanuts" salt="saltysalt" iter=1, IV=16
-//!     пробелов; PKCS7-распад; срез 32-байтного SHA256-префикса домена у новых
-//!     сборок), порт `_decrypt_v10`;
-//!   * [`read_login_cookie`] — выбор нужной cookie из БД (SQLite, только
-//!     чтение), порт `read_login_cookie`.
+//! What is here (moved from Python):
+//!   * [`cookie_db_paths`]   — listing the paths to the CEF `Cookies`
+//!     (`config/htmlcache/{Default,,*}/Cookies`), port of `_cookie_db_paths`;
+//!   * [`decrypt_v10`]       — decrypting a Chromium v10 cookie (AES-128-CBC,
+//!     key PBKDF2-HMAC-SHA1 pw="peanuts" salt="saltysalt" iter=1, IV = 16
+//!     spaces; PKCS7 unpadding; cutting the 32-byte SHA256 domain prefix of newer
+//!     builds), port of `_decrypt_v10`;
+//!   * [`read_login_cookie`] — picking the right cookie from the DB (SQLite,
+//!     read-only), port of `read_login_cookie`.
 //!
-//! ⚠️ Граница «сюда не переносится HTTP» СНЯТА 2026-09-08, и не по недосмотру:
-//! сетевой слой ядра появился (`net::UreqNet`), запрос `GetProfileItemsOwned`
-//! давно ходит через него из вкладки «Steam» на Rust, и единственным куском,
-//! оставшимся на `urllib` Python, был обмен cookie на токен. Пока он там,
-//! вкладка на Rust не могла добыть токен САМА — её объект побочных действий
-//! обязан был просить его у Python. Теперь обмен и кэш живут здесь
-//! ([`fetch_webapi_token`], [`access_token`]), то есть в одной точке на весь
-//! продукт: тем же токеном пользуются обе вкладки.
+//! ⚠️ The "no HTTP here" boundary was LIFTED on 2026-09-08, and not by
+//! oversight: the core network layer appeared (`net::UreqNet`), the
+//! `GetProfileItemsOwned` request has long gone through it from the Rust «Steam»
+//! tab, and the only piece left on Python's `urllib` was exchanging the cookie
+//! for the token. While it stayed there, the Rust tab could not get the token BY
+//! ITSELF — its side-effects object had to ask Python for it. Now the exchange
+//! and the cache live here ([`fetch_webapi_token`], [`access_token`]), i.e. in
+//! one place for the whole product: both tabs use the same token.
 //!
-//! ⚠️ СЕКРЕТЫ. Значение cookie и производный токен — секрет пользователя. Модуль
-//! НИКОГДА не пишет их в журнал, в сообщения об ошибках и в отладочный вывод:
-//! [`CookieError`] несёт только КЛАСС сбоя без значений, а сами функции ничего
-//! не логируют. Оригинал на Python сыпал `log.debug` с текстом исключения
-//! (`v10-decrypt failed: %s`, `open cookies %s failed` и т.п.) — при включённом
-//! debug туда попадали путь к БД и текст ошибки; здесь этого нет (см. §"Дефекты
-//! оригинала" ниже, п.1).
+//! ⚠️ SECRETS. The cookie value and the derived token are the user's secret. The
+//! module NEVER writes them to the log, to error messages or to debug output:
+//! [`CookieError`] carries only the CLASS of the failure without values, and the
+//! functions themselves log nothing. The Python original sprinkled `log.debug`
+//! with the exception text (`v10-decrypt failed: %s`, `open cookies %s failed`
+//! etc.) — with debug on, the DB path and the error text got there; here there
+//! is none of that (see §"Defects of the original" below, item 1).
 //!
-//! Дефекты оригинала, поправленные при порте (правило #16 — каждый назван):
-//!   1. Утечка в журнал. `_decrypt_v10`/`read_login_cookie` на Python писали
-//!      `log.debug(... %s, e)` с путём БД и текстом ошибки расшифровки. Секрет
-//!      сам по себе туда не попадал, но путь профиля и детали — да. В Rust
-//!      диагностики со значениями нет вовсе.
-//!   2. Тихая зависимость от `cryptography`. На Python при отсутствии пакета
-//!      `_decrypt_v10` молча возвращал `None`, и вкладка «откатывалась на
-//!      публичный инвентарь» без объяснения. В Rust крипта вкомпилирована —
-//!      этот класс отказа исчез.
+//! Defects of the original fixed during the port (rule #16 — each is named):
+//!   1. Leak into the log. `_decrypt_v10`/`read_login_cookie` in Python wrote
+//!      `log.debug(... %s, e)` with the DB path and the decryption error text.
+//!      The secret itself did not get there, but the profile path and details
+//!      did. In Rust there are no diagnostics with values at all.
+//!   2. Silent dependency on `cryptography`. In Python, without the package
+//!      `_decrypt_v10` silently returned `None`, and the tab "fell back to the
+//!      public inventory" without explanation. In Rust the crypto is compiled
+//!      in — this class of failure is gone.
 //!
-//! Известное ХРУПКОЕ место (сохранено ради паритета, НЕ дефект-краш): срез
-//! 32-байтного префикса домена делается только если ВЕСЬ расшифрованный буфер
-//! не декодируется как UTF-8. Если 32 байта SHA256 случайно окажутся валидным
-//! UTF-8, вернётся значение вместе с префиксом — ровно как в оригинале. Менять
-//! эвристику здесь нельзя: это сломало бы побайтовый паритет. Настоящая починка
-//! (детектить префикс по длине/схеме) — отдельная задача поверх обмена токена.
+//! A known FRAGILE spot (kept for parity, NOT a crash defect): the 32-byte
+//! domain prefix is cut only if the WHOLE decrypted buffer does not decode as
+//! UTF-8. If the 32 SHA256 bytes happen to be valid UTF-8, the value is returned
+//! together with the prefix — exactly as in the original. The heuristic must not
+//! be changed here: it would break byte-for-byte parity. The real fix (detecting
+//! the prefix by length/scheme) is a separate task on top of the token exchange.
 
 use std::path::{Path, PathBuf};
 
@@ -60,76 +60,78 @@ use sha1::Sha1;
 
 type Aes128CbcDec = cbc::Decryptor<Aes128>;
 
-/// Класс сбоя добычи cookie — БЕЗ значений (секреты не попадают в текст).
-/// Namespace-only: используется в тестах и внутренней логике, наружу
-/// (в UI/шим) отдаётся `Option`, как в оригинале.
+/// Class of a cookie retrieval failure — WITHOUT values (secrets do not get into
+/// the text). Namespace-only: used in tests and internal logic; outwards (to the
+/// UI/shim) an `Option` is given, as in the original.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CookieError {
-    /// Ни одной читаемой CEF-БД по путям профиля.
+    /// Not a single readable CEF DB at the profile paths.
     NoDatabase,
-    /// БД есть, но подходящего `steamLoginSecure` в ней не нашлось.
+    /// The DB exists, but no suitable `steamLoginSecure` was found in it.
     NotFound,
 }
 
-// ── ключ и параметры схемы v10 (Linux-фолбэк Chromium) ────────────────
+// ── key and parameters of the v10 scheme (Chromium Linux fallback) ────────
 const V10_PREFIX: &[u8; 3] = b"v10";
 const KDF_PASSWORD: &[u8] = b"peanuts";
 const KDF_SALT: &[u8] = b"saltysalt";
 const KDF_ITERATIONS: u32 = 1;
 const KEY_LEN: usize = 16;
-/// IV Chromium под Linux — 16 пробелов.
+/// Chromium IV on Linux — 16 spaces.
 const IV: [u8; 16] = [b' '; 16];
-/// Длина SHA256-префикса домена, который новые сборки Chromium дописывают
-/// перед значением cookie.
+/// Length of the SHA256 domain prefix that newer Chromium builds prepend to the
+/// cookie value.
 const DOMAIN_HASH_LEN: usize = 32;
 
-/// 16-байтный ключ схемы v10: PBKDF2-HMAC-SHA1(pw="peanuts", salt="saltysalt",
-/// iter=1). Детерминирован — вычисляется каждый раз, кэш не нужен.
+/// 16-byte key of the v10 scheme: PBKDF2-HMAC-SHA1(pw="peanuts", salt="saltysalt",
+/// iter=1). Deterministic — computed every time, no cache needed.
 fn derive_key() -> [u8; KEY_LEN] {
     let mut key = [0u8; KEY_LEN];
     pbkdf2::pbkdf2_hmac::<Sha1>(KDF_PASSWORD, KDF_SALT, KDF_ITERATIONS, &mut key);
     key
 }
 
-/// Расшифровать Chromium-cookie схемы v10 (порт `_decrypt_v10`).
+/// Decrypt a Chromium cookie of the v10 scheme (port of `_decrypt_v10`).
 ///
-/// Возвращает расшифрованное значение либо `None`, если вход не v10, слишком
-/// короткий, не расшифровывается, не проходит PKCS7-распад или не декодируется
-/// в UTF-8 (после возможного среза 32-байтного префикса домена). Паритет с
-/// Python — побайтовый (см. `tests/steam_token_parity.rs`).
+/// Returns the decrypted value or `None` if the input is not v10, too short,
+/// does not decrypt, fails PKCS7 unpadding or does not decode as UTF-8 (after
+/// possibly cutting the 32-byte domain prefix). Parity with Python is
+/// byte-for-byte (see `tests/steam_token_parity.rs`).
 pub fn decrypt_v10(enc: &[u8]) -> Option<String> {
     if enc.len() < V10_PREFIX.len() || &enc[..V10_PREFIX.len()] != V10_PREFIX {
         return None;
     }
     let body = &enc[V10_PREFIX.len()..];
-    // Пустое тело / не кратное блоку — CBC/PKCS7 не разберёт: у Python это
-    // ветка `except` → None. Копируем в буфер: decrypt_padded_mut пишет на месте.
+    // Empty body / not a multiple of the block — CBC/PKCS7 cannot parse it: in
+    // Python this is the `except` branch → None. Copy into a buffer:
+    // decrypt_padded_mut writes in place.
     let mut buf = body.to_vec();
     let key = derive_key();
     let plain = Aes128CbcDec::new(&key.into(), &IV.into())
         .decrypt_padded_mut::<Pkcs7>(&mut buf)
         .ok()?;
 
-    // Порядок как в оригинале: сперва весь буфер, затем срез 32 байт префикса.
-    // Возвращаем ПЕРВЫЙ вариант, который декодируется в UTF-8.
+    // Order as in the original: first the whole buffer, then the 32-byte prefix
+    // cut. Return the FIRST variant that decodes as UTF-8.
     if let Ok(s) = std::str::from_utf8(plain) {
         return Some(s.to_owned());
     }
     let tail = if plain.len() >= DOMAIN_HASH_LEN {
         &plain[DOMAIN_HASH_LEN..]
     } else {
-        // В Python `raw[32:]` для короткого буфера = b"" → "".decode() = "".
+        // In Python `raw[32:]` for a short buffer = b"" → "".decode() = "".
         &plain[plain.len()..]
     };
     std::str::from_utf8(tail).ok().map(str::to_owned)
 }
 
-/// Возможные пути к CEF `Cookies` внутри корня Steam (порт `_cookie_db_paths`).
+/// Possible paths to the CEF `Cookies` inside the Steam root (port of
+/// `_cookie_db_paths`).
 ///
-/// Порядок обхода ВАЖЕН и совпадает с оригиналом: `Default/Cookies`,
-/// `Cookies`, затем прочие профили `*/Cookies` в лексикографическом порядке.
-/// Дубли (тот же путь из glob) отбрасываются, несуществующие файлы — тоже.
+/// The traversal order MATTERS and matches the original: `Default/Cookies`,
+/// `Cookies`, then other profiles `*/Cookies` in lexicographic order.
+/// Duplicates (the same path from the glob) are dropped, non-existent files too.
 pub fn cookie_db_paths(steam_root: &Path) -> Vec<PathBuf> {
     let base = steam_root.join("config").join("htmlcache");
     let mut candidates: Vec<PathBuf> = vec![
@@ -137,9 +139,9 @@ pub fn cookie_db_paths(steam_root: &Path) -> Vec<PathBuf> {
         base.join("Cookies"),
     ];
 
-    // glob(base/*/Cookies), отсортированный по имени профиля — как sorted() в
-    // Python (тот сортирует полные пути, но общий префикс одинаков, значит
-    // порядок эквивалентен сортировке по имени каталога профиля).
+    // glob(base/*/Cookies), sorted by profile name — like sorted() in Python (that
+    // one sorts full paths, but the common prefix is the same, so the order is
+    // equivalent to sorting by the profile directory name).
     let mut globbed: Vec<PathBuf> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&base) {
         for entry in entries.flatten() {
@@ -166,14 +168,15 @@ pub fn cookie_db_paths(steam_root: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Расшифрованное значение cookie `steamLoginSecure` из CEF-БД клиента Steam
-/// (порт `read_login_cookie`), либо `Err` с классом сбоя (без значений).
+/// The decrypted value of the `steamLoginSecure` cookie from the Steam client's
+/// CEF DB (port of `read_login_cookie`), or `Err` with the failure class
+/// (without values).
 ///
-/// Логика выбора — как в оригинале: по всем БД (в порядке [`cookie_db_paths`])
-/// читаются все `encrypted_value` строк `name='steamLoginSecure'`; первое
-/// значение, содержащее разделитель `steamid||token` (`%7C%7C` или `||`),
-/// возвращается сразу; иначе запоминается ПЕРВОЕ расшифрованное значение как
-/// фолбэк и возвращается в конце.
+/// The selection logic is as in the original: across all DBs (in the
+/// [`cookie_db_paths`] order) all `encrypted_value` of the rows
+/// `name='steamLoginSecure'` are read; the first value containing the
+/// `steamid||token` separator (`%7C%7C` or `||`) is returned at once; otherwise
+/// the FIRST decrypted value is remembered as a fallback and returned at the end.
 pub fn read_login_cookie(steam_root: &Path) -> Result<String, CookieError> {
     let paths = cookie_db_paths(steam_root);
     if paths.is_empty() {
@@ -184,11 +187,11 @@ pub fn read_login_cookie(steam_root: &Path) -> Result<String, CookieError> {
         for value in read_encrypted_values(db) {
             let Some(decoded) = decrypt_v10(&value) else { continue };
             if decoded.is_empty() {
-                // Python: `if not val: continue` — пустая строка не значение.
+                // Python: `if not val: continue` — an empty string is not a value.
                 continue;
             }
             if decoded.contains("%7C%7C") || decoded.contains("||") {
-                return Ok(decoded); // полноценный steamid||token
+                return Ok(decoded); // a full steamid||token
             }
             if fallback.is_none() {
                 fallback = Some(decoded);
@@ -198,12 +201,13 @@ pub fn read_login_cookie(steam_root: &Path) -> Result<String, CookieError> {
     fallback.ok_or(CookieError::NotFound)
 }
 
-/// Прочитать `encrypted_value` всех строк `steamLoginSecure` одной БД.
-/// Ошибку открытия/чтения гасим в пустой список — как оригинал переходил к
-/// следующей БД; путь и текст ошибки НИКУДА не пишем (секрет-гигиена).
+/// Read `encrypted_value` of all `steamLoginSecure` rows of one DB. An
+/// open/read error is turned into an empty list — as the original moved on to
+/// the next DB; the path and the error text are written NOWHERE (secret hygiene).
 fn read_encrypted_values(db: &Path) -> Vec<Vec<u8>> {
-    // immutable=1 + read-only: читаем даже при запущенном Steam (локи игнорим),
-    // как URI-открытие оригинала. rusqlite сам собирает URI при флаге URI.
+    // immutable=1 + read-only: we read even while Steam is running (locks are
+    // ignored), like the original's URI open. rusqlite builds the URI itself with
+    // the URI flag.
     let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI;
     let Some(uri) = db.to_str() else { return Vec::new() };
     let uri = format!("file:{}?immutable=1&mode=ro", uri_escape(uri));
@@ -219,8 +223,9 @@ fn read_encrypted_values(db: &Path) -> Vec<Vec<u8>> {
     rows.filter_map(Result::ok).collect()
 }
 
-/// Минимальное экранирование пути для `file:`-URI SQLite: пробел и `?`/`#`,
-/// которые иначе оборвут путь. Полный percent-encode не нужен — путь локальный.
+/// Minimal escaping of a path for an SQLite `file:` URI: space and `?`/`#`,
+/// which would otherwise cut the path. Full percent-encoding is not needed — the
+/// path is local.
 fn uri_escape(path: &str) -> String {
     let mut out = String::with_capacity(path.len());
     for ch in path.chars() {
@@ -236,49 +241,51 @@ fn uri_escape(path: &str) -> String {
 
 
 // ============================================================================
-// cookie → webapi_token: личный токен пользователя
+// cookie → webapi_token: the user's personal token
 // ============================================================================
 //
-// Порт `steam_roots`, `fetch_webapi_token`, `_fetch_token`, `_TokenCache` и
-// `access_token`/`forget_token` из Python-архива (`python-final`). Отсюда токен
-// берут ОБЕ вкладки — «Steam» (владеемые фоны профиля) и «Wallpaper Engine»
-// (Мастерская); второй копии этого кода в проекте быть не должно (правило #12).
+// Port of `steam_roots`, `fetch_webapi_token`, `_fetch_token`, `_TokenCache`
+// and `access_token`/`forget_token` from the Python archive (`python-final`).
+// BOTH tabs take the token from here — «Steam» (owned profile backgrounds) and
+// «Wallpaper Engine» (Workshop); there must be no second copy of this code in
+// the project (rule #12).
 
-/// Сколько живёт добытый токен, прежде чем его перечитают.
+/// How long a fetched token lives before it is re-read.
 ///
-/// Токен короткоживущий; перечитываем не чаще раза в десять минут, но
-/// принудительно — сразу после отказа Steam (401/403), см. [`forget_token`].
+/// The token is short-lived; we re-read it at most once every ten minutes, but
+/// forcibly — right after a Steam refusal (401/403), see [`forget_token`].
 pub const TOKEN_TTL_SEC: u64 = 600;
 
-/// Точка обмена cookie на токен.
+/// The endpoint that exchanges the cookie for the token.
 ///
-/// ⚠️ Именно `steamcommunity`, а НЕ `store.steampowered.com`: магазинный домен
-/// с той же cookie уводит в 302-петлю входа, community-домен отдаёт токен
-/// (проверено живьём).
+/// ⚠️ Exactly `steamcommunity`, NOT `store.steampowered.com`: the store domain
+/// with the same cookie leads into a 302 login loop, the community domain gives
+/// the token (verified live).
 pub const ASYNC_CONFIG_URL: &str = "https://steamcommunity.com/pointssummary/ajaxgetasyncconfig";
 
-/// Таймаут обмена, секунды (`timeout=20` оригинала).
+/// Exchange timeout, seconds (`timeout=20` of the original).
 pub const TOKEN_TIMEOUT_SEC: u64 = 20;
 
-/// Причина отказа: клиента Steam на машине нет либо в него не входили.
+/// Refusal reason: there is no Steam client on the machine or nobody logged in.
 pub fn no_login_reason() -> String {
     // TRANSLATORS: why Steam items can't be loaded; starts in lower case.
     tr("sign in to Steam on this computer")
 }
 
-/// Причина отказа: cookie есть, а токена Steam не дал.
+/// Refusal reason: the cookie exists, but Steam gave no token.
 pub fn no_token_reason() -> String {
     // TRANSLATORS: why Steam items can't be loaded; starts in lower case.
     tr("the Steam client didn't provide an access key")
 }
 
-/// Существующие корни Steam: обычный, `~/.steam/steam`, `~/.steam/root` и два
-/// Flatpak-варианта — порт `steam_roots`.
+/// Existing Steam roots: the usual one, `~/.steam/steam`, `~/.steam/root` and
+/// two Flatpak variants — port of `steam_roots`.
 ///
-/// ⚠️ Это НЕ тот список, что у заставки (`session_splash::steam_root_candidates`),
-/// и сводить их в один нельзя: заставке нужен каталог с `config/`, где лежат
-/// стартовые ролики, а cookie клиента живёт в том числе внутри Flatpak-песочницы,
-/// куда заставка не заглядывает вовсе. Разными их сделал оригинал, и по делу.
+/// ⚠️ This is NOT the same list as the splash screen's
+/// (`session_splash::steam_root_candidates`), and they must not be merged: the
+/// splash needs the directory with `config/` where the startup videos are, while
+/// the client cookie also lives inside the Flatpak sandbox, which the splash
+/// never looks into. The original made them different, and for a reason.
 pub fn steam_roots(home: &str) -> Vec<PathBuf> {
     let candidates = [
         format!("{home}/.local/share/Steam"),
@@ -299,12 +306,13 @@ pub fn steam_roots(home: &str) -> Vec<PathBuf> {
     out
 }
 
-/// Обменять cookie входа на короткоживущий `webapi_token` — порт
+/// Exchange the login cookie for a short-lived `webapi_token` — port of
 /// `fetch_webapi_token`.
 ///
-/// `None` — сеть не ответила, cookie протухла либо ответ без токена. Причину
-/// НЕ логируем и наружу не отдаём: в текст ошибки `ureq` попадает URL, а
-/// cookie уходит заголовком — секрет-гигиена модуля (см. шапку).
+/// `None` — the network did not answer, the cookie expired or the response has
+/// no token. The reason is NOT logged and not given out: the `ureq` error text
+/// contains the URL, and the cookie goes as a header — the module's secret
+/// hygiene (see the header).
 pub fn fetch_webapi_token(login_cookie: &str) -> Option<String> {
     let mut net = crate::net::UreqNet::new()
         .with_headers(vec![(
@@ -327,8 +335,9 @@ pub fn fetch_webapi_token(login_cookie: &str) -> Option<String> {
     }
 }
 
-/// SteamID64 из cookie входа: `steamid||token` после percent-раскодировки —
-/// порт двух строк `_fetch_token`. Пусто — разделителя в cookie нет.
+/// SteamID64 from the login cookie: `steamid||token` after percent-decoding —
+/// port of two lines of `_fetch_token`. Empty — there is no separator in the
+/// cookie.
 pub fn steamid_from_cookie(cookie: &str) -> String {
     let raw = percent_decode(cookie);
     match raw.split_once("||") {
@@ -337,9 +346,9 @@ pub fn steamid_from_cookie(cookie: &str) -> String {
     }
 }
 
-/// `urllib.parse.unquote` в объёме, который нужен cookie: `%XX` → байт,
-/// остальное как есть. Плюсы в пробелы НЕ превращаются — `unquote` этого тоже
-/// не делает (это `unquote_plus`).
+/// `urllib.parse.unquote` to the extent the cookie needs: `%XX` → byte, the rest
+/// as is. Pluses are NOT turned into spaces — `unquote` does not do that either
+/// (that is `unquote_plus`).
 fn percent_decode(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
@@ -359,7 +368,7 @@ fn percent_decode(text: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// Один заход за токеном: `(токен, steamid64, причина отказа)` — порт
+/// One trip for the token: `(token, steamid64, refusal reason)` — port of
 /// `_fetch_token`.
 fn fetch_token(home: &str) -> (String, String, String) {
     let mut cookie = String::new();
@@ -379,8 +388,8 @@ fn fetch_token(home: &str) -> (String, String, String) {
     }
 }
 
-/// Кэш токена — порт `_TokenCache`. Один на процесс: токен общий для вкладок,
-/// и второй кэш означал бы два похода в сеть за одним и тем же.
+/// Token cache — port of `_TokenCache`. One per process: the token is shared by
+/// the tabs, and a second cache would mean two network trips for the same thing.
 struct TokenCache {
     token: String,
     steamid: String,
@@ -395,20 +404,20 @@ static TOKEN_CACHE: std::sync::Mutex<TokenCache> = std::sync::Mutex::new(TokenCa
     stamp: None,
 });
 
-/// Личный токен пользователя: `(токен, причина-осечки)`. Пустой токен значит
-/// «работаем без входа», а не поломку — вкладка покажет публичный инвентарь.
+/// The user's personal token: `(token, miss reason)`. An empty token means
+/// "working without login", not a breakage — the tab shows the public inventory.
 ///
-/// `force` — не смотреть на кэш (Steam отказал, токен протух раньше срока).
+/// `force` — ignore the cache (Steam refused, the token expired early).
 ///
-/// ⚠️ Ходит в сеть и потому НИКОГДА не зовётся из потока интерфейса.
+/// ⚠️ Goes to the network and therefore is NEVER called from the UI thread.
 pub fn access_token(home: &str, force: bool) -> (String, String) {
-    // Замок держится на всё время похода в сеть — намеренно, как `with
-    // self._lock` оригинала: иначе две вкладки, стартующие разом, сходили бы
-    // за одним токеном дважды.
+    // The lock is held for the whole network trip — on purpose, like the
+    // original's `with self._lock`: otherwise two tabs starting at once would fetch
+    // the same token twice.
     let mut cache = match TOKEN_CACHE.lock() {
         Ok(c) => c,
-        // Замок отравлен — паниковать здесь нельзя: отсутствие токена не
-        // повод ронять окно, вкладка обойдётся публичным инвентарём.
+        // The lock is poisoned — we must not panic here: a missing token is no reason
+        // to crash the window, the tab will do with the public inventory.
         Err(poisoned) => poisoned.into_inner(),
     };
     let fresh = cache
@@ -431,7 +440,7 @@ pub fn access_token(home: &str, force: bool) -> (String, String) {
     (cache.token.clone(), cache.error.clone())
 }
 
-/// SteamID64 последнего удачного захода — порт `_TokenCache.steamid`.
+/// SteamID64 of the last successful trip — port of `_TokenCache.steamid`.
 pub fn token_steamid() -> String {
     match TOKEN_CACHE.lock() {
         Ok(c) => c.steamid.clone(),
@@ -439,8 +448,8 @@ pub fn token_steamid() -> String {
     }
 }
 
-/// Забыть токен: Steam отказал, при следующем запросе перечитаем — порт
-/// `forget_token`.
+/// Forget the token: Steam refused, it will be re-read on the next request —
+/// port of `forget_token`.
 pub fn forget_token() {
     let mut cache = match TOKEN_CACHE.lock() {
         Ok(c) => c,
@@ -454,8 +463,8 @@ pub fn forget_token() {
 mod token_tests {
     use super::*;
 
-    /// Percent-раскодировка cookie: `%7C%7C` — это `||`, иначе SteamID64 из
-    /// неё не достать вовсе.
+    /// Percent-decoding of the cookie: `%7C%7C` is `||`, otherwise the SteamID64
+    /// cannot be got out of it at all.
     #[test]
     fn steamid_is_read_through_percent_encoding() {
         assert_eq!(
@@ -466,7 +475,7 @@ mod token_tests {
         assert_eq!(steamid_from_cookie("совсем не cookie"), "");
     }
 
-    /// Хвостовой `%` и битая пара не должны ни падать, ни съедать символы.
+    /// A trailing `%` and a broken pair must neither panic nor eat characters.
     #[test]
     fn broken_percent_sequences_survive() {
         assert_eq!(percent_decode("a%"), "a%");
@@ -474,15 +483,16 @@ mod token_tests {
         assert_eq!(percent_decode("a%41b"), "aAb");
     }
 
-    /// Список корней для cookie ШИРЕ, чем список заставки: Flatpak-песочница
-    /// входит только сюда. Сведи их в один — и вкладка перестала бы находить
-    /// вход у покупателя с Flatpak-Steam.
+    /// The list of roots for the cookie is WIDER than the splash list: the Flatpak
+    /// sandbox is only in this one. Merge them into one — and the tab would stop
+    /// finding the login of a customer with Flatpak Steam.
     #[test]
     fn cookie_roots_cover_flatpak_unlike_splash_roots() {
         let splash = crate::session_splash::steam_root_candidates("/дом");
         assert!(splash.iter().all(|p| !p.contains("com.valvesoftware.Steam")));
-        // Сам список корней проверяется на живой ФС (`canonicalize`), поэтому
-        // сверяем не его вывод, а то, что кандидаты вообще разные.
+        // The list of roots itself is checked on the live file system
+        // (`canonicalize`), so we compare not its output but the fact that the
+        // candidates differ at all.
         assert_eq!(splash.len(), 3);
     }
 }

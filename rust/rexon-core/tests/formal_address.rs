@@ -1,42 +1,42 @@
-//! Сторож обращения на «вы» в текстах ядра.
+//! Guard of the formal "вы" address in the core's texts.
 //!
-//! Продукт продаётся обычному покупателю, и разговаривает он с ним так же,
-//! как Steam и Windows, — на «вы» (решение владельца 11.09.2026). До этого
-//! строки писались вперемешку: окно о крахе говорило «Помоги разработчику —
-//! отправь отчёт», соседняя вкладка — «Выберите рабочий стол». Разнобой
-//! виден покупателю сразу и читается как небрежность.
+//! The product is sold to an ordinary buyer, and it talks to them the same way
+//! as Steam and Windows do — with the formal "вы" (owner's decision of 11.09.2026). Before that
+//! strings were written in a mix: the crash window said "Помоги разработчику —
+//! отправь отчёт", the neighbouring tab said "Выберите рабочий стол". The inconsistency
+//! is visible to the buyer at once and reads as carelessness.
 //!
-//! Разовой правки тут мало: строки заводят каждый день, и следующая «ты»-форма
-//! приедет с очередной вкладкой. Поэтому сверка читает ИСХОДНИКИ ядра
-//! (`rexon-core/src/**.rs`), достаёт из них строковые литералы и краснеет на
-//! запрещённых формах: местоимения «ты», глаголы 2 л. ед. ч. и повелительное
-//! наклонение на «ты».
+//! A one-off fix is not enough here: strings are added every day, and the next "ты" form
+//! will arrive with the next tab. So the check reads the core's SOURCES
+//! (`rexon-core/src/**.rs`), pulls string literals out of them and goes red on
+//! forbidden forms: the pronouns "ты", 2nd person singular verbs and the
+//! "ты" imperative mood.
 //!
-//! ГРАНИЦЫ (намеренные, чтобы сверка не орала на ровном месте):
-//!   * читаются ТОЛЬКО строковые литералы — комментарии и имена в коде
-//!     сверку не волнуют: правило про обращение к человеку, а не про язык
-//!     исходника;
-//!   * ядро — единственное место, где живут подписи продукта, поэтому
-//!     хватает его: Python и QML букв своих не держат (оговорка — эталон
-//!     «Оформления»);
-//!   * список повелительных форм ЯВНЫЙ. Общего правила «глагол на -и» в
-//!     русском нет («помощи», «двери», «строки» — не приказы), и попытка
-//!     угадать морфологию дала бы ложные срабатывания на каждом втором
-//!     слове. Новая форма ловится добавлением слова в [`IMPERATIVES`];
-//!   * глаголы 2 л. ед. ч. ловятся окончанием (-ешь/-ёшь/-ишь, в том числе
-//!     с -ся), а существительные на то же окончание перечислены в
+//! LIMITS (deliberate, so the check does not cry wolf):
+//!   * ONLY string literals are read — comments and names in the code
+//!     do not concern the check: the rule is about addressing a person, not about the
+//!     language of the source;
+//!   * the core is the only place where the product's labels live, so
+//!     it is enough: Python and QML hold no letters of their own (the exception is the
+//!     «Appearance» golden);
+//!   * the list of imperative forms is EXPLICIT. Russian has no general rule
+//!     "a verb ending in -и" («помощи», «двери», «строки» are not commands), and an attempt
+//!     to guess the morphology would give false positives on every other
+//!     word. A new form is caught by adding the word to [`IMPERATIVES`];
+//!   * 2nd person singular verbs are caught by ending (-ешь/-ёшь/-ишь, including
+//!     with -ся), and nouns with the same ending are listed in
 //!     [`NOT_VERBS`].
 
 use std::path::{Path, PathBuf};
 
-/// Местоимения второго лица единственного числа во всех падежах.
+/// Second person singular pronouns in all cases.
 const PRONOUNS: &[&str] = &[
     "ты", "тебя", "тебе", "тобой", "тобою", "твой", "твоя", "твоё", "твое", "твои", "твоих",
     "твоим", "твоими", "твоем", "твоём", "твою", "твоего", "твоему", "твоей", "твоих",
 ];
 
-/// Повелительное наклонение на «ты». Пополняется по мере появления новых
-/// строк — сверка для того и стоит, чтобы форма не проехала молча.
+/// The "ты" imperative mood. Extended as new strings appear —
+/// the check exists precisely so that a form does not slip through silently.
 const IMPERATIVES: &[&str] = &[
     "активируй", "введи", "верни", "вернись", "включи", "войди", "возьми", "вставь", "выбери",
     "выбирай", "выдели", "выключи", "выполни", "выйди", "глянь", "дай", "дождись", "жди", "жми",
@@ -55,35 +55,35 @@ const IMPERATIVES: &[&str] = &[
     "обнови", "опиши", "повтори", "добавь", "создай", "выставь", "купи", "передай", "назови",
 ];
 
-/// Слова, которые кончаются как глагол 2 л. ед. ч., но им не являются.
-/// Короткие («лишь», «тишь») отсекаются ещё и длиной — см. [`forbidden`].
+/// Words that end like a 2nd person singular verb but are not one.
+/// Short ones («лишь», «тишь») are also cut off by length — see [`forbidden`].
 const NOT_VERBS: &[&str] = &["брешь", "плешь", "лишь", "тишь", "глушь"];
 
-/// Строки, которым «ты»-форма прощена осознанно. Пусто — и пусть остаётся
-/// пустым: каждая запись здесь означает, что покупателю где-то говорят
-/// «ты». Формат — точный текст литерала.
+/// Strings whose "ты" form is forgiven deliberately. Empty — and let it stay
+/// empty: every entry here means that somewhere the buyer is addressed with
+/// "ты". Format: the exact text of the literal.
 const ALLOWED: &[&str] = &[];
 
-/// Формы на «ты» в ЧУЖОЙ речи, которую Rexon не произносит, а переводит.
+/// "ты" forms in SOMEONE ELSE'S speech, which Rexon does not utter but translates.
 ///
-/// Словарь поправок терминов (`translator.rs`, `TERM_FIXES`) чинит машинный
-/// перевод описаний тем: автор темы написал «Unzip it», движок дал «извлеки»
-/// — правим на «распакуй». Обращение здесь выбирает автор описания, а не
-/// продукт: заменить «ты» на «вы» внутри его фразы значило бы смешать два
-/// обращения в одном предложении («распакуйте и положи»). Поэтому в паре
-/// «форма движка → форма поправки» обе стороны держат лицо оригинала.
+/// The term fix dictionary (`translator.rs`, `TERM_FIXES`) repairs the machine
+/// translation of theme descriptions: the theme author wrote "Unzip it", the engine gave «извлеки»
+/// — we fix it to «распакуй». Here the address is chosen by the description's author, not
+/// by the product: replacing "ты" with "вы" inside their phrase would mix two
+/// forms of address in one sentence («распакуйте и положи»). So in the pair
+/// "engine form → fixed form" both sides keep the person of the original.
 ///
-/// Прощение узкое: точный литерал (одно слово) и ТОЛЬКО в указанном файле.
-/// Та же форма в любом другом исходнике или внутри фразы краснеет, как
-/// раньше; запись, которой в файле больше нет, тоже краснеет — список не
-/// зарастает мёртвыми исключениями.
+/// The forgiveness is narrow: an exact literal (one word) and ONLY in the given file.
+/// The same form in any other source or inside a phrase goes red as
+/// before; an entry that is no longer in the file goes red too — the list does not
+/// get overgrown with dead exceptions.
 const FOREIGN_SPEECH: &[(&str, &str)] = &[
     ("src/translator.rs", "распакуй"),
     ("src/translator.rs", "загрузи"),
     ("src/translator.rs", "скачай"),
 ];
 
-/// Один найденный случай.
+/// One found case.
 #[derive(Debug)]
 struct Hit {
     file: String,
@@ -147,8 +147,8 @@ fn тексты_ядра_обращаются_на_вы() {
     );
 }
 
-/// Сверка сама себя проверяет: подсунутые формы обязаны ловиться, иначе
-/// зелёный цвет выше ничего не значит.
+/// The check checks itself: planted forms must be caught, otherwise
+/// the green colour above means nothing.
 #[test]
 fn сторож_ловит_формы_на_ты() {
     for bad in [
@@ -169,7 +169,7 @@ fn сторож_ловит_формы_на_ты() {
         "это ваш рабочий стол",
         "вы останетесь без сессии",
         "убедитесь, что демон запущен",
-        // Слова, похожие на 2 л. ед. ч., но ими не являющиеся.
+        // Words that look like 2nd person singular but are not.
         "брешь в обороне",
         "эта помощь не нужна",
         "мышь и клавиатура",
@@ -189,15 +189,15 @@ fn forbidden(word: &str) -> bool {
     if PRONOUNS.contains(&word) || IMPERATIVES.contains(&word) {
         return true;
     }
-    // Глагол 2 л. ед. ч.: -ешь/-ёшь/-ишь, в том числе возвратный. Порог
-    // длины отсекает частицы и существительные той же концовки («лишь»,
-    // «тишь»): короче пяти букв таких глаголов в русском нет — самые
-    // короткие «идёшь», «ждёшь», «поёшь».
+    // 2nd person singular verb: -ешь/-ёшь/-ишь, including reflexive. The length
+    // threshold cuts off particles and nouns with the same ending («лишь»,
+    // «тишь»): Russian has no such verbs shorter than five letters — the
+    // shortest are «идёшь», «ждёшь», «поёшь».
     let stem = word.strip_suffix("ся").unwrap_or(word);
     ["ешь", "ёшь", "ишь"].iter().any(|e| stem.ends_with(e)) && stem.chars().count() > 4
 }
 
-/// Слова из кириллицы (дефис внутри слова сохраняется).
+/// Cyrillic words (a hyphen inside a word is kept).
 fn cyrillic_words(text: &str) -> Vec<String> {
     text.split(|c: char| !(('а'..='я').contains(&c) || ('А'..='Я').contains(&c) || c == 'ё' || c == 'Ё'))
         .filter(|w| !w.is_empty())
@@ -226,12 +226,12 @@ fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Строковые литералы исходника: `(номер строки, содержимое)`.
+/// String literals of a source: `(line number, content)`.
 ///
-/// Разбор ручной, а не регулярным выражением: в ядре есть и сырые строки
-/// (`r#"…"#`), и экранированные кавычки, и `'x'` рядом с временами жизни
-/// `'a` — регулярное выражение на этом ломается молча, а молчащая сверка
-/// хуже отсутствующей.
+/// Hand-written parsing, not a regular expression: the core has raw strings
+/// (`r#"…"#`), escaped quotes, and `'x'` next to lifetimes
+/// `'a` — a regular expression breaks on this silently, and a silent check
+/// is worse than a missing one.
 fn string_literals(text: &str) -> Vec<(usize, String)> {
     let chars: Vec<char> = text.chars().collect();
     let mut out = Vec::new();
@@ -244,7 +244,7 @@ fn string_literals(text: &str) -> Vec<(usize, String)> {
             i += 1;
             continue;
         }
-        // Комментарии.
+        // Comments.
         if c == '/' && chars.get(i + 1) == Some(&'/') {
             while i < chars.len() && chars[i] != '\n' {
                 i += 1;
@@ -272,7 +272,7 @@ fn string_literals(text: &str) -> Vec<(usize, String)> {
             }
             continue;
         }
-        // Сырая строка: r"…" / r#"…"# / br#"…"#.
+        // Raw string: r"…" / r#"…"# / br#"…"#.
         if c == 'r' || (c == 'b' && chars.get(i + 1) == Some(&'r')) {
             let mut j = if c == 'b' { i + 2 } else { i + 1 };
             let hashes_start = j;
@@ -308,15 +308,15 @@ fn string_literals(text: &str) -> Vec<(usize, String)> {
                 continue;
             }
         }
-        // Обычная строка.
+        // Ordinary string.
         if c == '"' {
             let start_line = line;
             let mut buf = String::new();
             i += 1;
             while i < chars.len() && chars[i] != '"' {
                 if chars[i] == '\\' {
-                    // Перенос строки после `\` в исходнике съедается вместе с
-                    // отступом — ровно так же, как это делает компилятор.
+                    // A line break after `\` in the source is eaten together with
+                    // the indent — exactly as the compiler does it.
                     if chars.get(i + 1) == Some(&'\n') {
                         line += 1;
                         i += 2;
@@ -339,7 +339,7 @@ fn string_literals(text: &str) -> Vec<(usize, String)> {
             out.push((start_line, buf));
             continue;
         }
-        // Символ или время жизни.
+        // A char or a lifetime.
         if c == '\'' {
             if chars.get(i + 1) == Some(&'\\') {
                 i += 2;

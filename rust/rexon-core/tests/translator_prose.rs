@@ -1,16 +1,16 @@
-//! Сверка ФИЛЬТРА «проза или техника» (`rexon_core::translator`,
-//! [`is_prose_segment`] и кодовое окружение).
+//! Check of the "prose or technical" FILTER (`rexon_core::translator`,
+//! [`is_prose_segment`] and the code context).
 //!
-//! ⚠️ Это НЕ паритет с Python: в `translator.py` фильтра нет вовсе, он звал
-//! движок на каждый текстовый узел. Сверка стережёт НОВОЕ поведение; старое
-//! лежит рядом в `translator_parity.rs` и здесь не трогается.
+//! ⚠️ This is NOT parity with Python: `translator.py` has no filter at all, it called
+//! the engine on every text node. The check guards the NEW behavior; the old one
+//! lies next door in `translator_parity.rs` and is not touched here.
 //!
-//! ОТКУДА СТРОКИ. Почти все — из живого материала: `mt-bench/samples.md`,
-//! 12 настоящих описаний оформления из магазина OCS (выгрузка публичного API
-//! `api.opendesktop.org`) вместе с тем, во что их превращают три движка
-//! перевода. Ссылки на образцы стоят у каждой группы. Выдуманы только те
-//! формы, которых в 12 образцах не нашлось: расширения файлов, `::`, `$`,
-//! `~/` и трёхчастная версия — они помечены «формы нет в образцах».
+//! WHERE THE STRINGS COME FROM. Almost all are from live material: `mt-bench/samples.md`,
+//! 12 real appearance descriptions from the OCS store (a dump of the public API
+//! `api.opendesktop.org`) together with what three translation engines turn them
+//! into. References to the samples are given for each group. Only the forms
+//! not found in the 12 samples are made up: file extensions, `::`, `$`,
+//! `~/` and a three-part version — they are marked "form not in the samples".
 
 use rexon_core::translator::{
     apply_term_fixes, invented_latin_word, is_code_env_tag, is_product_name_token, is_prose_segment,
@@ -20,11 +20,11 @@ use rexon_core::translator::{
     unmask_tech_names, CodeEnvStack, Segment,
 };
 
-// ── (1) нет ни одной буквы ─────────────────────────────────────────────────
+// ── (1) not a single letter ─────────────────────────────────────────────────
 
-/// Разделители из живых описаний (образец 10 «Qogir theme», образец 8
-/// «Breeze-Noir-White-Blue Icons») — в них нет букв, движку их отдавать не за
-/// чем (argos дописывал им точку в конце).
+/// Separators from live descriptions (sample 10 "Qogir theme", sample 8
+/// "Breeze-Noir-White-Blue Icons") — they have no letters, there is no point
+/// handing them to the engine (argos appended a period to them).
 #[test]
 fn separators_without_letters_are_not_prose() {
     for s in [
@@ -32,7 +32,7 @@ fn separators_without_letters_are_not_prose() {
         "____",
         "_____",
         "__",
-        "1.2.3", // форма из задачи, версии как отдельного сегмента в образцах нет
+        "1.2.3", // form from the task, a version as a separate segment is not in the samples
         "5.8",
         "- - -",
     ] {
@@ -40,10 +40,10 @@ fn separators_without_letters_are_not_prose() {
     }
 }
 
-// ── (2) голова командной строки ────────────────────────────────────────────
+// ── (2) command line head ────────────────────────────────────────────
 
-/// Три установочные команды из описания Qogir (образец 10) — ровно те, что
-/// движки ломают в «sudo apt-get установить gtk2-двигатели-муррин».
+/// Three install commands from the Qogir description (sample 10) — exactly the ones
+/// engines break into «sudo apt-get установить gtk2-двигатели-муррин».
 #[test]
 fn command_lines_from_live_descriptions_are_not_prose() {
     for s in [
@@ -55,8 +55,8 @@ fn command_lines_from_live_descriptions_are_not_prose() {
     }
 }
 
-/// Остальные головы из списка — на живых пакетах из тех же описаний
-/// (формы нет в образцах: в 12 описаниях встретились только apt-get/yum/pacman).
+/// The remaining heads from the list — on live packages from the same descriptions
+/// (form not in the samples: only apt-get/yum/pacman occurred in the 12 descriptions).
 #[test]
 fn every_command_head_is_recognised() {
     for s in [
@@ -79,7 +79,7 @@ fn every_command_head_is_recognised() {
         "makepkg -si",
         "cmake ..",
         "make install",
-        // Добавлены 03.10: раньше эти строки отвергал путь в них (правило 4).
+        // Added 03.10: previously these lines were rejected because of the path in them (rule 4).
         "cp -r Nordic ~/.themes",
         "mv Nordic ~/.themes",
         "mkdir -p ~/.local/share/sounds",
@@ -92,9 +92,9 @@ fn every_command_head_is_recognised() {
     }
 }
 
-/// ⚠️ ЗЕРКАЛО того же правила: голова команды опознаётся только в нижнем
-/// регистре и только в короткой строке, иначе правило съедало бы прозу —
-/// английские `make`, `cd`, `git` это обычные слова.
+/// ⚠️ MIRROR of the same rule: a command head is recognized only in lower
+/// case and only in a short line, otherwise the rule would eat prose —
+/// English `make`, `cd`, `git` are ordinary words.
 #[test]
 fn prose_starting_with_command_word_survives() {
     for s in [
@@ -106,19 +106,19 @@ fn prose_starting_with_command_word_survives() {
     }
 }
 
-// ── (4) технический токен ──────────────────────────────────────────────────
+// ── (4) technical token ──────────────────────────────────────────────────
 
-/// Ссылки и пути из живых описаний (образцы 2, 9, 10, 12) — строки, которые
-/// техникой НАЧИНАЮТСЯ. С 03.10 строка с техникой ВНУТРИ прозы переводится
-/// (`prose_with_technique_inside_is_prose` ниже); здесь — то, что осталось
-/// техникой целиком.
+/// Links and paths from live descriptions (samples 2, 9, 10, 12) — lines that
+/// START with something technical. Since 03.10 a line with something technical INSIDE prose is translated
+/// (`prose_with_technique_inside_is_prose` below); here is what remained
+/// technical as a whole.
 #[test]
 fn links_and_paths_are_not_prose() {
     for s in [
         "https://www.pling.com/p/1229126",
         "https://github.com/vinceliuice/Qogir-theme/blob/master/src/firefox",
         "https://github.com/Luwx/material-decoration",
-        // Формы нет в образцах — проверяем каждый признак отдельно.
+        // Form not in the samples — we check each sign separately.
         "~/.config/Kvantum",
         "$HOME/.local/share/plasma",
         "C:\\Windows\\Fonts",
@@ -130,7 +130,7 @@ fn links_and_paths_are_not_prose() {
     }
 }
 
-/// Расширения файлов (формы нет в образцах — ни одного имени файла в 12 описаниях).
+/// File extensions (form not in the samples — not a single file name in the 12 descriptions).
 #[test]
 fn file_names_are_not_prose() {
     for s in [
@@ -147,8 +147,8 @@ fn file_names_are_not_prose() {
     }
 }
 
-/// ⚠️ ЗЕРКАЛО: `--` считается ключом только приклеенным к буквам. Живая фраза
-/// из образца 12 «Aritim-Light» содержит стрелку `-->` и обязана переводиться.
+/// ⚠️ MIRROR: `--` counts as a flag only when glued to letters. A live phrase
+/// from sample 12 "Aritim-Light" contains the arrow `-->` and must be translated.
 #[test]
 fn arrow_in_live_prose_is_not_a_command_flag() {
     let s = "You can find all the wallpapers by browsing the related collection --> Aritim-Light Wallpapers Collection";
@@ -157,9 +157,9 @@ fn arrow_in_live_prose_is_not_a_command_flag() {
     assert!(!is_prose_segment("kvantummanager --set Nordic"));
 }
 
-// ── (5) имена продуктов целым сегментом ────────────────────────────────────
+// ── (5) product names as a whole segment ────────────────────────────────────
 
-/// Живой список «Supported desktops» описания Qogir (образец 10): движки дают
+/// The live "Supported desktops" list from the Qogir description (sample 10): engines give
 /// «1 Гном», «2 Единство», «6 Корица», «3 Баджи».
 #[test]
 fn product_name_labels_from_live_list_are_not_prose() {
@@ -177,7 +177,7 @@ fn product_name_labels_from_live_list_are_not_prose() {
     }
 }
 
-/// Каждое имя из списка — отдельным сегментом, в обоих регистрах.
+/// Each name from the list as a separate segment, in both cases.
 #[test]
 fn every_product_name_is_recognised() {
     for s in [
@@ -192,9 +192,9 @@ fn every_product_name_is_recognised() {
     assert!(!is_product_name_token("Nordic"), "имя темы — не имя продукта");
 }
 
-// ── (6) один токен / (8) меньше двух слов ──────────────────────────────────
+// ── (6) one token / (8) fewer than two words ──────────────────────────────────
 
-/// Адреса кошельков из образца 12 «Aritim-Light» — один токен с цифрами.
+/// Wallet addresses from sample 12 "Aritim-Light" — one token with digits.
 #[test]
 fn single_opaque_token_is_not_prose() {
     for s in [
@@ -202,14 +202,14 @@ fn single_opaque_token_is_not_prose() {
         "iota1qrp0r6f69mewngr8x5xsx88d4xzk33mkq6sfwdv5ul2y0wptw5r0ck0r7r4",
         "gtk2-engines-murrine",
         "win11OS",
-        "Qt", // имя продукта И слишком короткое для «человеческого слова»
+        "Qt", // a product name AND too short for a "human word"
     ] {
         assert!(!is_prose_segment(s), "должно быть техникой: {s:?}");
     }
 }
 
-/// Правило «слов длиной от двух букв меньше двух» (формы нет в образцах —
-/// проверяем саму форму: подписи из однобуквенных слов).
+/// The rule "fewer than two words of two or more letters" (form not in the samples —
+/// we check the form itself: captions of one-letter words).
 #[test]
 fn fewer_than_two_real_words_is_not_prose() {
     for s in ["R G B", "a b c", "X Y"] {
@@ -217,12 +217,12 @@ fn fewer_than_two_real_words_is_not_prose() {
     }
 }
 
-// ── (7) доля не-букв выше трети ────────────────────────────────────────────
+// ── (7) share of non-letters above a third ────────────────────────────────────────────
 
-/// Живые строки раздела INFO описания Qogir (образец 10). ⚠️ ЧЕСТНАЯ ГРАНИЦА:
-/// это строки-полутехника, и правило доли не-букв решает их в пользу
-/// «не переводить». Смысл теряется мало (`GTK+ 3.20 or later`), а сломать
-/// номер версии некому.
+/// Live lines of the INFO section of the Qogir description (sample 10). ⚠️ AN HONEST BOUNDARY:
+/// these are semi-technical lines, and the non-letter share rule decides them in favor of
+/// "do not translate". Little meaning is lost (`GTK+ 3.20 or later`), and nobody gets
+/// a chance to break the version number.
 #[test]
 fn number_heavy_lines_are_not_prose() {
     for s in ["1. GTK+ 3.20 or later", "(1). GTK2 engine Murrine 0.98.1.1 or later."] {
@@ -230,33 +230,33 @@ fn number_heavy_lines_are_not_prose() {
     }
 }
 
-// ── ЗЕРКАЛО: проза, которую отсекать НЕЛЬЗЯ ────────────────────────────────
+// ── MIRROR: prose that must NOT be cut off ────────────────────────────────
 
-/// Заголовки описаний. `Features:`, `Installation:`, `Note:` — формы из
-/// постановки задачи; остальные взяты живьём из образцов 6, 7, 10, 11, 12.
+/// Description headings. `Features:`, `Installation:`, `Note:` — forms from
+/// the task statement; the rest are taken live from samples 6, 7, 10, 11, 12.
 #[test]
 fn description_headings_are_prose() {
     for s in [
         "Features:",
         "Installation:",
         "Note:",
-        "INFO",                // образец 10
-        "Important",           // образец 7
-        "- Note -",            // образец 11
-        "¡IMPORTANT!",         // образец 11
-        "Suggested settings:", // образец 6
-        "Suggested setings:",  // образец 7, опечатка автора сохранена
-        "RELATED PRODUCTS:",   // образец 12
-        "WALLPAPERS",          // образец 12
-        "FOLLOW ME!",          // образец 12
-        "Folders",             // образец 6
+        "INFO",                // sample 10
+        "Important",           // sample 7
+        "- Note -",            // sample 11
+        "¡IMPORTANT!",         // sample 11
+        "Suggested settings:", // sample 6
+        "Suggested setings:",  // sample 7, the author's typo kept
+        "RELATED PRODUCTS:",   // sample 12
+        "WALLPAPERS",          // sample 12
+        "FOLLOW ME!",          // sample 12
+        "Folders",             // sample 6
         "DONATIONS: (Thank You!)",
     ] {
         assert!(is_prose_segment(s), "должно быть прозой: {s:?}");
     }
 }
 
-/// Обычные фразы описаний — образцы 1, 2, 6, 7, 8, 12.
+/// Ordinary description phrases — samples 1, 2, 6, 7, 8, 12.
 #[test]
 fn live_description_sentences_are_prose() {
     for s in [
@@ -279,8 +279,8 @@ fn live_description_sentences_are_prose() {
     }
 }
 
-/// Русская проза (интерфейс русскоязычный, а в описаниях бывает и кириллица) —
-/// фильтр работает по буквам Unicode, а не по ASCII.
+/// Russian prose (the interface is in Russian, and descriptions sometimes contain Cyrillic too) —
+/// the filter works on Unicode letters, not on ASCII.
 #[test]
 fn russian_prose_is_prose() {
     for s in ["Тёмная тема со шрифтом покрупнее", "Обои из снимка лежат здесь"] {
@@ -288,7 +288,7 @@ fn russian_prose_is_prose() {
     }
 }
 
-// ── версии и разрешения ────────────────────────────────────────────────────
+// ── versions and resolutions ────────────────────────────────────────────────────
 
 #[test]
 fn version_and_resolution_tokens() {
@@ -298,14 +298,14 @@ fn version_and_resolution_tokens() {
     for t in ["Qogir", "gtk2", "win11OS", "10k", "3.20or"] {
         assert!(!is_version_or_resolution_token(t), "не версия: {t:?}");
     }
-    // Версия НЕ мешает соседней прозе.
+    // A version does NOT get in the way of neighboring prose.
     assert!(is_prose_segment("Aurorae theme for KDE 5.8 and higer"));
     assert!(is_prose_segment("Based on Yosemite v0.1"));
-    // Разрешение отдельным сегментом — техника.
+    // A resolution as a separate segment is technical.
     assert!(!is_prose_segment("3840x2160"));
 }
 
-// ── кодовое окружение ──────────────────────────────────────────────────────
+// ── code context ──────────────────────────────────────────────────────
 
 #[test]
 fn code_env_tags_listed() {
@@ -317,8 +317,8 @@ fn code_env_tags_listed() {
     }
 }
 
-/// Внутри `code`/`pre`/`kbd`/`samp`/`tt` не переводится НИЧЕГО — даже
-/// безупречная проза: автор явно сказал, что это код.
+/// Inside `code`/`pre`/`kbd`/`samp`/`tt` NOTHING is translated — not even
+/// flawless prose: the author said explicitly that this is code.
 #[test]
 fn prose_inside_code_env_is_not_translated() {
     for tag in ["code", "pre", "kbd", "samp", "tt", "PRE"] {
@@ -338,8 +338,8 @@ fn prose_inside_code_env_is_not_translated() {
     }
 }
 
-/// Стек кодового окружения: вложенность, закрытие, возврат к прозе после
-/// `</pre>`, самозакрывающиеся теги и литералы, которые вовсе не теги.
+/// The code context stack: nesting, closing, returning to prose after
+/// `</pre>`, self-closing tags and literals that are not tags at all.
 #[test]
 fn code_env_stack_tracks_nesting() {
     let mut env = CodeEnvStack::new();
@@ -360,8 +360,8 @@ fn code_env_stack_tracks_nesting() {
     assert!(!env.in_code(), "лишнее закрытие не роняет стек");
 }
 
-/// Живой кусок описания Qogir целиком: прозу переводим, две команды и
-/// разделители — нет. Колбэк-маркер ‹…› показывает, кого позвали.
+/// A live piece of the Qogir description as a whole: we translate the prose, but not the two commands and
+/// the separators. The callback marker ‹…› shows who was called.
 #[test]
 fn live_qogir_block_filtered_end_to_end() {
     let html = concat!(
@@ -381,8 +381,8 @@ fn live_qogir_block_filtered_end_to_end() {
             "<p>‹Qogir is a flat Design theme for GTK 3, GTK 2 and Gnome-Shell.›</p>",
             "<p>---------------------------------------</p>",
             "<p>‹Supported desktops:›</p><p>2 Unity</p><p>6 Cinnamon</p>",
-            // С 03.10 заголовок со списком имён через косую черту — проза:
-            // имена уйдут под заполнитель, «distros» переведётся.
+            // Since 03.10 a heading with a list of names separated by slashes is prose:
+            // the names go under a placeholder, "distros" gets translated.
             "<p>‹Ubuntu/Mint/Debian distros:›</p>",
             "<pre>sudo apt-get install gtk2-engines-murrine gtk2-engines-pixbuf</pre>",
             "<p>‹ArchLinux:›</p>",
@@ -391,29 +391,29 @@ fn live_qogir_block_filtered_end_to_end() {
     );
 }
 
-/// Разметка, пробелы и порядок — как у нефильтрованной сборки: фильтр меняет
-/// только СОСТАВ вызовов движка, а не реассемблинг (его порт закрыт сверкой
+/// Markup, spaces and order — as in the unfiltered assembly: the filter changes
+/// only the SET of engine calls, not the reassembly (its port is covered by the check
 /// `translator_parity.rs`).
 #[test]
 fn filter_changes_only_who_gets_called() {
-    // Проза: фильтр и старая сборка дают одно и то же.
+    // Prose: the filter and the old assembly give the same result.
     let prose = "<p>Nordic is a dark theme created using the awesome Nord color palette.</p>";
     let segs = segment_html(prose);
     assert_eq!(
         render_segments_filtered(&segs, |s| format!("‹{s}›")),
         render_segments(&segs, |s| format!("‹{s}›"))
     );
-    // Команда: старая сборка её переводила, фильтр — нет.
+    // A command: the old assembly translated it, the filter does not.
     let cmd = "<p>pacman -S gtk-engine-murrine gtk-engines</p>";
     let segs = segment_html(cmd);
     assert_eq!(render_segments_filtered(&segs, |s| format!("‹{s}›")), cmd);
     assert_ne!(render_segments(&segs, |s| format!("‹{s}›")), cmd);
-    // Пустой ответ движка по-прежнему означает «оставить оригинал».
+    // An empty engine answer still means "keep the original".
     assert_eq!(render_segments_filtered(&segs, |_| String::new()), cmd);
 }
 
-/// Флаги выстроены по сегментам один к одному, и на литералы движок не зовут
-/// никогда.
+/// Flags are lined up with segments one to one, and the engine is never called
+/// on literals.
 #[test]
 fn flags_line_up_with_segments() {
     let html = "<b>Important</b> &mdash; <code>sudo pacman -S kvantum</code>";
@@ -428,8 +428,8 @@ fn flags_line_up_with_segments() {
     assert_eq!(flags.iter().filter(|f| **f).count(), 1, "переводится только «Important»");
 }
 
-/// Набор нельзя «усохнуть» до формальностей: живых строк в сверке должно
-/// оставаться много.
+/// The set must not "shrink" to formalities: many live lines must
+/// remain in the check.
 #[test]
 fn live_material_coverage_is_not_thin() {
     let live_technical = [
@@ -475,16 +475,16 @@ fn live_material_coverage_is_not_thin() {
     }
 }
 
-// ── Защита имён ВНУТРИ фразы ───────────────────────────────────────────────
+// ── Protecting names INSIDE a phrase ───────────────────────────────────────────────
 //
-// Фильтр выше отдаёт эти фразы движку — они проза. Сверки ниже стерегут то,
-// что делается с именами ПЕРЕД вызовом и ПОСЛЕ него. Строки живые:
-// «Sweet Kvantum theme» — образец 5 (Sweet-Mars), «A Kvantum theme heavily
-// based on Microsoft's Fluent Design elements.» — образец 9 («Fluent Dark»),
-// список сред — образец 10 («Qogir theme»).
+// The filter above hands these phrases to the engine — they are prose. The checks below guard what
+// is done with the names BEFORE the call and AFTER it. The lines are live:
+// "Sweet Kvantum theme" — sample 5 (Sweet-Mars), "A Kvantum theme heavily
+// based on Microsoft's Fluent Design elements." — sample 9 ("Fluent Dark"),
+// the desktop list — sample 10 ("Qogir theme").
 
-/// Имя внутри фразы уходит под заполнитель, а сама фраза не меняется больше
-/// ни в чём.
+/// A name inside a phrase goes under a placeholder, and the phrase itself does not change in
+/// any other way.
 #[test]
 fn a_name_inside_a_phrase_goes_under_a_placeholder() {
     let masked = mask_tech_names("Sweet Kvantum theme");
@@ -495,15 +495,15 @@ fn a_name_inside_a_phrase_goes_under_a_placeholder() {
     assert_eq!(masked.text, "This theme is based on @0@.");
     assert_eq!(masked.names, vec!["Cinnamon".to_string()]);
 
-    // Фраза без имён не трогается вовсе — и подмены тогда нет.
+    // A phrase without names is not touched at all — and then there is no substitution.
     let clean = mask_tech_names("Nordic is a dark theme created using the awesome palette.");
     assert_eq!(clean.text, "Nordic is a dark theme created using the awesome palette.");
     assert!(clean.names.is_empty());
 }
 
-/// Цепочка имён подряд — под ОДНИМ заполнителем: `KDE Plasma` это одно имя, а
-/// список сред целиком — одно место в тексте. Так замерено живучéе: движок
-/// путается именно в соседних заполнителях (см. `mask_tech_names`).
+/// A chain of consecutive names goes under ONE placeholder: `KDE Plasma` is one name, and
+/// the whole desktop list is one place in the text. Measured to be more robust this way: the engine
+/// gets confused precisely by adjacent placeholders (see `mask_tech_names`).
 #[test]
 fn a_run_of_names_shares_one_placeholder() {
     let masked = mask_tech_names("works with GNOME and KDE Plasma");
@@ -519,21 +519,21 @@ fn a_run_of_names_shares_one_placeholder() {
     );
 }
 
-/// Имя опознаётся ПО ГРАНИЦАМ СЛОВА и по регистру.
+/// A name is recognized BY WORD BOUNDARIES and by case.
 #[test]
 fn names_are_matched_on_word_boundaries_and_by_case() {
-    // `kde` внутри слова — не имя.
+    // `kde` inside a word is not a name.
     for text in ["Edit kdeglobals by hand", "the gtkrc file", "Plasmatic look", "Matelight"] {
         let masked = mask_tech_names(text);
         assert!(masked.names.is_empty(), "тронули слово целиком: {text:?} → {:?}", masked.text);
     }
-    // Полностью строчная запись именем не считается: в списке лежат обычные
-    // английские слова (`mate`, `unity`, `plasma`).
+    // An all-lowercase spelling does not count as a name: the list holds ordinary
+    // English words (`mate`, `unity`, `plasma`).
     for text in ["works with your mate", "brings unity to the desktop", "a plasma ball"] {
         let masked = mask_tech_names(text);
         assert!(masked.names.is_empty(), "подменили обычное слово: {text:?} → {:?}", masked.text);
     }
-    // А живые записи имён — считаются, все три формы.
+    // But the live spellings of names do count, all three forms.
     for (text, want) in [
         ("A GNOME theme", "GNOME"),
         ("A Gnome theme", "Gnome"),
@@ -549,8 +549,8 @@ fn names_are_matched_on_word_boundaries_and_by_case() {
     assert!(!name_casing_matches("Mate", "mate"));
 }
 
-/// Список имён ОДИН: что фильтр считает именем продукта, то и прячется из
-/// фразы. Разъедься списки — эта сверка покраснеет.
+/// There is ONE list of names: what the filter considers a product name is what gets hidden from
+/// the phrase. Should the lists drift apart, this check goes red.
 #[test]
 fn the_filter_and_the_mask_share_one_list_of_names() {
     for name in [
@@ -561,12 +561,12 @@ fn the_filter_and_the_mask_share_one_list_of_names() {
         assert!(is_product_name_token(name), "фильтр не знает имени {name:?}");
         let masked = mask_tech_names(&format!("A {name} theme for everyone"));
         assert_eq!(masked.names, vec![name.to_string()], "подмена не знает имени {name:?}");
-        // Фильтру регистр по-прежнему безразличен — он судит целый сегмент.
+        // The filter still does not care about case — it judges the whole segment.
         assert!(is_product_name_token(&name.to_lowercase()));
     }
 }
 
-/// Круг замкнут: спрятали — вернули, вышел исходный текст.
+/// The circle is closed: hidden, restored, the original text comes out.
 #[test]
 fn hiding_and_restoring_a_name_is_a_round_trip() {
     for text in [
@@ -587,23 +587,23 @@ fn hiding_and_restoring_a_name_is_a_round_trip() {
     }
 }
 
-/// ⭐ ГЛАВНОЕ: заполнителей стало меньше или больше — перевод НЕ БЕРЁТСЯ.
-/// Каждая строка ниже — настоящая порча, увиденная на живой модели Firefox при
-/// подборе формы заполнителя.
+/// ⭐ THE MAIN THING: if there are fewer or more placeholders, the translation is NOT TAKEN.
+/// Each line below is a real corruption seen on the live Firefox model while
+/// choosing the placeholder form.
 #[test]
 fn a_lost_or_multiplied_placeholder_refuses_the_translation() {
     let names = vec!["Nordic".to_string(), "Kvantum".to_string()];
     for spoiled in [
-        // огрызок: номер съеден, знак остался («Nordic @ Kvantum тема»)
+        // a stub: the number eaten, the sign left («Nordic @ Kvantum тема»)
         "@0@ @ тема",
-        // заполнитель потерян совсем
+        // the placeholder lost completely
         "скандинавская тема",
         "@0@ тема",
-        // размножен
+        // multiplied
         "@0@ @1@ и @1@ тема",
-        // выдуманный номер, которого мы не давали
+        // a made-up number we never gave
         "@0@ @1@ @7@ тема",
-        // знак прилип к слову («@@1@@@»)
+        // the sign stuck to a word ("@@1@@@")
         "@0@ @1@@ тема",
     ] {
         assert_eq!(
@@ -612,31 +612,31 @@ fn a_lost_or_multiplied_placeholder_refuses_the_translation() {
             "порча прошла как перевод: {spoiled:?}"
         );
     }
-    // А целый ответ — проходит.
+    // But an intact answer passes.
     assert_eq!(
         unmask_tech_names("@0@ @1@ тема", &names).as_deref(),
         Some("Nordic Kvantum тема")
     );
 }
 
-/// `@` в исходнике выключает подмену целиком: заполнитель было бы не отличить
-/// от авторского знака. Такой текст переводится как до правки.
+/// An `@` in the source turns substitution off completely: a placeholder could not be told
+/// apart from the author's sign. Such text is translated as before the fix.
 #[test]
 fn an_at_sign_in_the_source_switches_the_mask_off() {
     let text = "Write to kvantum@example.invalid about the Kvantum theme";
     let masked = mask_tech_names(text);
     assert_eq!(masked.text, text);
     assert!(masked.names.is_empty());
-    // И перевод такого текста берётся как есть, даже если `@` в нём остался.
+    // And the translation of such text is taken as is, even if an `@` remained in it.
     assert_eq!(
         unmask_tech_names("перевод с @ внутри", &masked.names).as_deref(),
         Some("перевод с @ внутри")
     );
 }
 
-/// Форма заполнителя: хвостовая метка не даёт номерам склеиться — `@1@` не
-/// является началом `@10@`, поэтому подстановка десятого имени не задевает
-/// первое.
+/// The placeholder form: the trailing mark keeps numbers from gluing together — `@1@` is
+/// not the beginning of `@10@`, so substituting the tenth name does not affect
+/// the first.
 #[test]
 fn placeholder_numbers_do_not_collide() {
     assert_eq!(name_placeholder(0), "@0@");
@@ -650,20 +650,20 @@ fn placeholder_numbers_do_not_collide() {
     assert!(restored.contains("Имя10 Имя11"), "подстановка поехала: {restored}");
 }
 
-// ── Имена от вызывающего: название товара и автор ───────────────────────────
+// ── Names from the caller: the item title and the author ───────────────────────────
 //
-// ⚠️ Списка названий тем нет и быть не может, но название открытого товара
-// окно знает — оно приходит рядом с описанием. Строки ниже живые: «Nordic
-// Kvantum theme» движок отдавал как «Скандинавская Kvantum тема», «Sweet
-// Kvantum theme» — как «Сладкая Kvantum тема» (прогоны 21.09). Имя технологии
-// в них уже было защищено, а НАЗВАНИЕ переводилось.
+// ⚠️ There is no list of theme titles and cannot be, but the window knows the title of the open item
+// — it arrives next to the description. The lines below are live: "Nordic
+// Kvantum theme" was returned by the engine as «Скандинавская Kvantum тема», "Sweet
+// Kvantum theme" as «Сладкая Kvantum тема» (runs of 21.09). The technology name
+// in them was already protected, but the TITLE got translated.
 
-/// ⭐ ГЛАВНОЕ: название товара уходит под заполнитель ЦЕЛИКОМ, даже если оно из
-/// нескольких слов, и вместе с соседним именем технологии — под ОДИН
-/// заполнитель (соседние заполнители движок ломает).
+/// ⭐ THE MAIN THING: the item title goes under a placeholder AS A WHOLE, even if it consists of
+/// several words, and together with an adjacent technology name — under ONE
+/// placeholder (the engine breaks adjacent placeholders).
 #[test]
 fn the_item_name_goes_under_a_placeholder_whole() {
-    // Название = первое слово, дальше имя технологии: цепочка, один заполнитель.
+    // Title = the first word, then a technology name: a chain, one placeholder.
     let masked = mask_names("Nordic Kvantum theme", &["Nordic"]);
     assert_eq!(masked.text, "@0@ theme");
     assert_eq!(masked.names, vec!["Nordic Kvantum".to_string()]);
@@ -672,27 +672,27 @@ fn the_item_name_goes_under_a_placeholder_whole() {
     assert_eq!(masked.text, "@0@ theme");
     assert_eq!(masked.names, vec!["Sweet Kvantum".to_string()]);
 
-    // Название из двух слов — тоже целиком, а не по словам.
+    // A two-word title also goes as a whole, not word by word.
     let masked = mask_names("NT Legacy is a global theme", &["NT Legacy"]);
     assert_eq!(masked.text, "@0@ is a global theme");
     assert_eq!(masked.names, vec!["NT Legacy".to_string()]);
 
-    // Название из двух слов, которое целиком совпало с названием товара
-    // «Sweet Kvantum», прячется одним заполнителем и без общего списка.
+    // A two-word title that fully matches the item title
+    // "Sweet Kvantum" is hidden with one placeholder even without the shared list.
     let masked = mask_names("Sweet Kvantum theme", &["Sweet Kvantum"]);
     assert_eq!(masked.text, "@0@ theme");
     assert_eq!(masked.names, vec!["Sweet Kvantum".to_string()]);
 }
 
-/// Название СЕРЕДИНЕ фразы и в другом регистре: сверка без учёта регистра, а в
-/// текст возвращается ровно то написание, что стояло в исходнике.
+/// A title IN THE MIDDLE of a phrase and in a different case: the comparison ignores case, and
+/// exactly the spelling that stood in the source is returned into the text.
 #[test]
 fn the_item_name_is_found_mid_phrase_and_in_other_case() {
     let masked = mask_names("Install NT Legacy and enjoy the look", &["NT Legacy"]);
     assert_eq!(masked.text, "Install @0@ and enjoy the look");
     assert_eq!(masked.names, vec!["NT Legacy".to_string()]);
 
-    // В описании название написано иначе, чем в подписи товара.
+    // The description spells the title differently from the item caption.
     for (text, want) in [
         ("Based on the nt legacy theme", "nt legacy"),
         ("Based on the NT LEGACY theme", "NT LEGACY"),
@@ -700,7 +700,7 @@ fn the_item_name_is_found_mid_phrase_and_in_other_case() {
     ] {
         let masked = mask_names(text, &["NT Legacy"]);
         assert_eq!(masked.names, vec![want.to_string()], "не узнали название в {text:?}");
-        // ⭐ Возвращается ДОСЛОВНО исходное написание, а не наше.
+        // ⭐ The source spelling is returned VERBATIM, not ours.
         assert_eq!(
             unmask_tech_names(&masked.text, &masked.names).as_deref(),
             Some(text),
@@ -708,18 +708,18 @@ fn the_item_name_is_found_mid_phrase_and_in_other_case() {
         );
     }
 
-    // Шов внутри названия: дефис в описании и пробел в подписи — одно имя.
+    // A seam inside the title: a hyphen in the description and a space in the caption are one name.
     let masked = mask_names("The Aritim-Light wallpapers collection", &["Aritim Light"]);
     assert_eq!(masked.names, vec!["Aritim-Light".to_string()]);
 
-    // Границы слова: название внутри слова — не название.
+    // Word boundaries: a title inside a word is not a title.
     let masked = mask_names("Check the nordicsettings file", &["Nordic"]);
     assert!(masked.names.is_empty(), "съели слово целиком: {}", masked.text);
 }
 
-/// ⛔ Название из ОДНОГО словарного слова не съедает это слово в другом
-/// значении: полностью строчная запись названием не считается (то же правило,
-/// по которому уже живут `mate`, `unity`, `plasma` из общего списка).
+/// ⛔ A title of ONE dictionary word does not eat that word in another
+/// meaning: an all-lowercase spelling does not count as a title (the same rule
+/// `mate`, `unity`, `plasma` from the shared list already live by).
 #[test]
 fn a_one_word_dictionary_name_does_not_eat_the_word_in_prose() {
     for (text, name) in [
@@ -734,19 +734,19 @@ fn a_one_word_dictionary_name_does_not_eat_the_word_in_prose() {
             masked.text
         );
     }
-    // А сам товар — с большой буквы или заглавными — прячется.
+    // But the item itself, capitalized or in all caps, is hidden.
     for (text, want) in [("Dark is a global theme", "Dark"), ("DARK is here", "DARK")] {
         let masked = mask_names(text, &["Dark"]);
         assert_eq!(masked.names, vec![want.to_string()], "не узнали товар в {text:?}");
     }
-    // Регистр требуется ТОЛЬКО от однословных: у названия из нескольких слов
-    // случайных совпадений не бывает.
+    // Case is required ONLY of single-word titles: a multi-word title
+    // has no accidental matches.
     let masked = mask_names("a dark forest theme in the woods", &["Dark Forest"]);
     assert_eq!(masked.names, vec!["dark forest".to_string()]);
 }
 
-/// ⛔ Пустое и коротенькое название не прячется вовсе, и путь остаётся ровно
-/// таким, каким был до правки.
+/// ⛔ An empty or very short title is not hidden at all, and the path stays exactly
+/// as it was before the fix.
 #[test]
 fn empty_and_short_names_are_not_hidden() {
     for name in ["", "   ", "A", "UI", "!!", "-"] {
@@ -757,11 +757,11 @@ fn empty_and_short_names_are_not_hidden() {
             masked.text
         );
     }
-    // Имена технологий при этом защищены как всегда — список ядра на месте.
+    // Technology names are protected as always — the core's list is in place.
     let masked = mask_names("A Kvantum theme", &["", "A"]);
     assert_eq!(masked.text, "A @0@ theme");
 
-    // Пустой список — байт-в-байт `mask_tech_names`.
+    // An empty list is byte-for-byte `mask_tech_names`.
     for text in [
         "Sweet Kvantum theme",
         "The theme supports Gnome, Unity, Budgie and Mate desktops.",
@@ -771,8 +771,8 @@ fn empty_and_short_names_are_not_hidden() {
     }
 }
 
-/// Оба сита работают и на именах вызывающего: заполнитель потерян, размножен
-/// или обгрызен — перевод НЕ берётся; круг «спрятали — вернули» замкнут.
+/// Both sieves work on the caller's names too: a placeholder lost, multiplied
+/// or nibbled — the translation is NOT taken; the "hidden — restored" circle is closed.
 #[test]
 fn the_two_sieves_cover_caller_names_too() {
     let masked = mask_names("Sweet Kvantum theme by Rtlewis", &["Sweet Kvantum", "Rtlewis"]);
@@ -788,21 +788,21 @@ fn the_two_sieves_cover_caller_names_too() {
             "порча прошла как перевод: {spoiled:?}"
         );
     }
-    // Имя товара с `@` внутри исходника — подмены нет вовсе, как и раньше.
+    // An item name with `@` inside the source — no substitution at all, as before.
     let masked = mask_names("Write to sweet@example.invalid", &["Sweet Kvantum"]);
     assert!(masked.names.is_empty());
 }
 
-// ── Название из НЕСКОЛЬКИХ слов: узнаётся и по значащему слову ──────────────
+// ── A title of SEVERAL words: also recognized by a significant word ──────────────
 //
-// ⚠️ Живая приёмка 23.09: охранялась только ЦЕЛАЯ цепочка слов названия, и
-// составные названия оставались без защиты. Строки ниже — дословно из описаний
-// товаров мастерской, вместе с тем, что отдавал на них движок.
+// ⚠️ Live acceptance 23.09: only the WHOLE chain of title words was protected, and
+// compound titles were left unprotected. The lines below are verbatim from the descriptions
+// of workshop items, together with what the engine returned for them.
 
-/// ⭐ ГЛАВНОЕ: товар «Nordic KDE» защищает своё имя в «Nordic Plasma theme»,
-/// хотя целая цепочка `["Nordic","KDE"]` там не стоит.
+/// ⭐ THE MAIN THING: the item "Nordic KDE" protects its name in "Nordic Plasma theme",
+/// even though the whole chain `["Nordic","KDE"]` is not there.
 ///
-/// До правки движок отдавал: «Скандинавская - это темная тема, созданная с
+/// Before the fix the engine returned: «Скандинавская - это темная тема, созданная с
 /// использованием потрясающего Норд цветовая палитра цветов.», «Скандинавская
 /// Plasma тема», «Скандинавская цветовая схема».
 #[test]
@@ -821,21 +821,21 @@ fn a_multi_word_item_name_is_recognised_by_a_meaningful_word() {
         let masked = mask_names(text, &[name]);
         assert_eq!(masked.text, want_text, "не та подмена на {text:?}");
         assert_eq!(masked.names, want_names, "не те имена на {text:?}");
-        // Круг замкнут: имя возвращается дословно.
+        // The circle is closed: the name is returned verbatim.
         assert_eq!(unmask_tech_names(&masked.text, &masked.names).as_deref(), Some(text));
     }
 
-    // Целая цепочка по-прежнему выигрывает у одинокого слова: «Nordic KDE»
-    // уходит ОДНИМ заполнителем, а не двумя.
+    // The whole chain still wins over a lone word: "Nordic KDE"
+    // goes as ONE placeholder, not two.
     let masked = mask_names("Nordic KDE is here", &[name]);
     assert_eq!(masked.text, "@0@ is here");
     assert_eq!(masked.names, vec!["Nordic KDE".to_string()]);
 }
 
-/// Товар «Sweet Mars LAF Plasma 6»: слово названия ловится и через шов
-/// (`Sweet-Mars` в тексте — `Sweet Mars` в подписи), и в одиночку.
+/// The item "Sweet Mars LAF Plasma 6": a title word is caught both across a seam
+/// (`Sweet-Mars` in the text — `Sweet Mars` in the caption) and alone.
 ///
-/// До правки: «Сладкий марс Kvantum тема», «Сладкая Plasma тема», «Сладкие
+/// Before the fix: «Сладкий марс Kvantum тема», «Сладкая Plasma тема», «Сладкие
 /// обои».
 #[test]
 fn a_long_item_name_is_recognised_by_its_parts_and_across_a_seam() {
@@ -852,9 +852,9 @@ fn a_long_item_name_is_recognised_by_its_parts_and_across_a_seam() {
     }
 }
 
-/// ⛔ Мусорные и описательные слова названия НЕ охраняются: иначе `laf`,
-/// `theme`, `global`, `dark` и число `6` из подписей товаров забирали бы под
-/// заполнитель обычную прозу.
+/// ⛔ Junk and descriptive title words are NOT protected: otherwise `laf`,
+/// `theme`, `global`, `dark` and the number `6` from item captions would take ordinary
+/// prose under a placeholder.
 #[test]
 fn filler_words_of_the_item_name_are_not_guarded() {
     for (text, name) in [
@@ -866,14 +866,14 @@ fn filler_words_of_the_item_name_are_not_guarded() {
         let masked = mask_names(text, &[name]);
         assert!(masked.names.is_empty(), "охранили мусорное слово по {name:?}: {}", masked.text);
     }
-    // Число названия — тоже не имя: «6» из «Plasma 6» прозу не трогает.
+    // A title number is not a name either: "6" from "Plasma 6" does not touch prose.
     let masked = mask_names("It needs 6 files", &["Sweet Mars LAF Plasma 6"]);
     assert!(masked.names.is_empty(), "охранили число: {}", masked.text);
 }
 
-/// ⭐ Контрольный случай регистра на СОСТАВНОМ названии: правило прежнее —
-/// одинокое слово охраняется только при совпадении регистра. Тема «Dark Glass»
-/// не съедает `dark`/`glass` в прозе, а «Glass» с большой буквы прячет.
+/// ⭐ The control case for case on a COMPOUND title: the rule is the same —
+/// a lone word is protected only when the case matches. The theme "Dark Glass"
+/// does not eat `dark`/`glass` in prose, but hides a capitalized "Glass".
 #[test]
 fn a_meaningful_word_of_the_name_still_obeys_the_casing_rule() {
     let masked = mask_names("a dark glass look in the woods", &["Dark Glass"]);
@@ -886,12 +886,12 @@ fn a_meaningful_word_of_the_name_still_obeys_the_casing_rule() {
     assert_eq!(masked.names, vec!["Glass".to_string()], "слово с большой буквы — товар");
 }
 
-/// ⭐ ПОТЕРЯ СЛОВА: аббревиатуры списка охраняются и в СТРОЧНОЙ записи.
+/// ⭐ A LOST WORD: abbreviations from the list are protected in LOWERCASE spelling too.
 ///
-/// Живой замер 23.09 (товар «Iridescent»): «A colorful theme inspired by sweet
-/// kde theme.» модель отдавала как «красочная тема, вдохновленная сладкой
-/// темой.» — слова `kde` в переводе НЕ БЫЛО вовсе; `sweet KDE theme` и
-/// заполнитель доходили целыми. Значит лечится охраной.
+/// Live measurement 23.09 (the item "Iridescent"): "A colorful theme inspired by sweet
+/// kde theme." was returned by the model as «красочная тема, вдохновленная сладкой
+/// темой.» — the word `kde` was NOT in the translation at all; `sweet KDE theme` and
+/// the placeholder arrived intact. So protection cures it.
 #[test]
 fn lowercase_acronyms_of_the_list_are_still_names() {
     for (text, want_text, want_names) in [
@@ -910,42 +910,42 @@ fn lowercase_acronyms_of_the_list_are_still_names() {
         assert_eq!(unmask_tech_names(&masked.text, &masked.names).as_deref(), Some(text));
     }
 
-    // ⛔ Послабление — ТОЛЬКО аббревиатурам списка. Имена, которые являются
-    // английскими словами, по-прежнему строгие, и границы слова целы.
+    // ⛔ The relaxation is ONLY for abbreviations from the list. Names that are
+    // English words are still strict, and word boundaries are intact.
     for text in ["works with your mate", "a plasma ball", "Edit kdeglobals by hand"] {
         assert!(mask_tech_names(text).names.is_empty(), "подменили лишнее: {text:?}");
     }
-    // ⛔ И НАЗВАНИЯ ТОВАРОВ послабления не получают: подпись заглавными не
-    // должна съедать это же слово в прозе.
+    // ⛔ And ITEM TITLES get no relaxation: an all-caps caption must not
+    // eat the same word in prose.
     for name in ["SWEET", "DARK"] {
         let masked = mask_names("a sweet and dark taste of the old days", &[name]);
         assert!(masked.names.is_empty(), "подпись {name:?} съела прозу: {}", masked.text);
     }
 }
 
-// ── Дефекты живой приёмки 24.09 ────────────────────────────────────────────
+// ── Defects from live acceptance 24.09 ────────────────────────────────────────────
 //
-// Четыре случая пришли с живой приёмки пакета, и три из четырёх оказались
-// нашими, а не движковыми. Сверки ниже стерегут их по отдельности; дословные
-// ответы живой модели «до» и «после» — в `translator_engine.rs`, сверка
+// Four cases came from live acceptance of the package, and three of the four turned out to be
+// ours, not the engine's. The checks below guard them one by one; the verbatim
+// answers of the live model "before" and "after" are in `translator_engine.rs`, the check
 // `live_acceptance_defects_of_24_09`.
 
-/// ⭐ D4b: узел с прозой И ссылкой отдаётся движку ПРЕДЛОЖЕНИЯМИ, а не
-/// отвергается целиком.
+/// ⭐ D4b: a node with prose AND a link is handed to the engine AS SENTENCES rather than
+/// rejected as a whole.
 ///
-/// Комментарий maxkaspar к «Awesome Widgets» (08.12.2013): «hddtemp shows only
-/// the first digit. here is a screenshot http://…». Правило 4
-/// [`is_prose_segment`] («значимое слово технично по форме») верно для
-/// предложения со ссылкой и неверно для узла целиком: покупатель видел весь
-/// комментарий английским. Теперь узел годится, если проза — хоть одно его
-/// предложение, а судьбу каждого предложения решает то же правило. С 03.10
-/// и вторая фраза — проза: ссылка в ней уходит под заполнитель.
+/// maxkaspar's comment on "Awesome Widgets" (08.12.2013): "hddtemp shows only
+/// the first digit. here is a screenshot http://…". Rule 4 of
+/// [`is_prose_segment`] ("a significant word is technical in form") is right for
+/// the sentence with the link and wrong for the whole node: the customer saw the whole
+/// comment in English. Now the node qualifies if at least one of its sentences is prose,
+/// and the fate of each sentence is decided by the same rule. Since 03.10
+/// the second phrase is prose too: the link in it goes under a placeholder.
 #[test]
 fn a_node_with_prose_and_a_link_is_judged_by_sentences() {
     let comment =
         "hddtemp shows only the first digit. here is a screenshot http://i.imgur.com/abc.png";
-    // С 03.10 ссылка внутри фразы её не отвергает (уходит под заполнитель):
-    // проза и узел целиком, и каждое его предложение.
+    // Since 03.10 a link inside a phrase does not reject it (it goes under a placeholder):
+    // both the whole node and each of its sentences are prose.
     assert!(is_prose_segment(comment), "ссылка внутри прозы снова отвергает узел");
     assert!(is_prose_segment("hddtemp shows only the first digit."));
     assert!(is_prose_segment("here is a screenshot http://i.imgur.com/abc.png"));
@@ -955,8 +955,8 @@ fn a_node_with_prose_and_a_link_is_judged_by_sentences() {
     assert_eq!(by_sentence, vec![true], "узел с прозой движку так и не достался");
     assert_eq!(translatable_flags(&segs), vec![true]);
 
-    // ⛔ Обратная сторона: где прозы нет ни в одном предложении, ничего не
-    // изменилось — команды, пути и ссылки движку не достаются.
+    // ⛔ The flip side: where no sentence has prose, nothing has
+    // changed — commands, paths and links do not reach the engine.
     for technical in [
         "sudo apt-get install gtk2-engines-murrine",
         "cp -r Nordic ~/.themes",
@@ -972,9 +972,9 @@ fn a_node_with_prose_and_a_link_is_judged_by_sentences() {
     }
 }
 
-/// Разбиватель предложений для сверки — по точке с пробелом. Живой путь берёт
-/// границы у самого крейта перевода; здесь важна не точность границ, а то, что
-/// решение считается ПО НИМ.
+/// A sentence splitter for the check — on a period followed by a space. The live path takes
+/// the boundaries from the translation crate itself; what matters here is not the precision of the boundaries but that
+/// the decision is computed BY THEM.
 fn split_sentences(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut current = String::new();
@@ -992,12 +992,12 @@ fn split_sentences(text: &str) -> Vec<String> {
     out
 }
 
-/// ⭐ D4a: СЛИПШИЙСЯ повтор заполнителя лечится, повтор в разных местах — нет.
+/// ⭐ D4a: a GLUED repeat of a placeholder is cured, a repeat in different places is not.
 ///
-/// Комментарий viz67 к «Nordic KDE» (23.04.2022): на «Can we expect soon the
-/// @0@ Bluish theme of @1@ for @2@ too?» живая модель ответила «…@0@ Bluish
-/// тему @1@ @1@ для @2@ тоже?», сито отвергало перевод, и покупатель видел
-/// английским ВЕСЬ комментарий — вместе с «Very nice.», которое перевелось.
+/// viz67's comment on "Nordic KDE" (23.04.2022): to "Can we expect soon the
+/// @0@ Bluish theme of @1@ for @2@ too?" the live model answered «…@0@ Bluish
+/// тему @1@ @1@ для @2@ тоже?», the sieve rejected the translation, and the customer saw
+/// the WHOLE comment in English — together with "Very nice.", which did get translated.
 #[test]
 fn a_glued_repeat_of_a_placeholder_is_healed() {
     let names = vec!["Nordic".to_string(), "Gnome".to_string(), "KDE".to_string()];
@@ -1009,29 +1009,29 @@ fn a_glued_repeat_of_a_placeholder_is_healed() {
         .as_deref(),
         Some("можем ли мы ожидать в ближайшее время Nordic Bluish тему Gnome для KDE тоже?")
     );
-    // Больше двух копий подряд и пробел любой ширины — тот же случай.
+    // More than two copies in a row and whitespace of any width — the same case.
     assert_eq!(
         unmask_tech_names("тема @0@ @0@  @0@ готова", &["Nordic".to_string()]).as_deref(),
         Some("тема Nordic готова")
     );
 
-    // ⛔ Повтор в РАЗНЫХ местах строки по-прежнему отказ: там вторая копия может
-    // быть настоящим вторым упоминанием имени, и выбирать мы не вправе.
+    // ⛔ A repeat in DIFFERENT places of the line is still a refusal: there the second copy may
+    // be a genuine second mention of the name, and we have no right to choose.
     assert_eq!(unmask_tech_names("@0@ тема на основе @0@", &["Nordic".to_string()]), None);
-    // ⛔ И прежние виды порчи судятся как раньше.
+    // ⛔ And the earlier kinds of corruption are judged as before.
     assert_eq!(unmask_tech_names("тема без имени", &["Nordic".to_string()]), None);
     assert_eq!(unmask_tech_names("тема @ Nordic", &["Nordic".to_string()]), None);
     assert_eq!(unmask_tech_names("тема @@0@@@", &["Nordic".to_string()]), None);
 }
 
-/// ⭐ D2: ВЫДУМАННОЕ латинское слово в переводе — порча, которую не видят ни
-/// фильтр прозы, ни сита заполнителей.
+/// ⭐ D2: a MADE-UP Latin word in the translation is a corruption seen neither by
+/// the prose filter nor by the placeholder sieves.
 ///
-/// Товар «Awesome Widgets» (arcanis, id 998913): «graphical item support -
-/// tooltips, bars» живая модель отдала как «служба графических элементов -
-/// toolbep, bars». `toolbep` — не смесь алфавитов (все семь букв ASCII), а
-/// слово, собранное подсловным декодировщиком из `tooltips`; имён в строке нет
-/// вовсе, значит ловить порчу можно только сравнением с источником.
+/// The item "Awesome Widgets" (arcanis, id 998913): "graphical item support -
+/// tooltips, bars" was returned by the live model as «служба графических элементов -
+/// toolbep, bars». `toolbep` is not a mix of alphabets (all seven letters are ASCII) but
+/// a word assembled by the subword decoder from `tooltips`; there are no names in the line
+/// at all, so the corruption can only be caught by comparing with the source.
 #[test]
 fn an_invented_latin_word_is_caught_by_comparing_with_the_source() {
     let source = "graphical item support - tooltips, bars";
@@ -1039,7 +1039,7 @@ fn an_invented_latin_word_is_caught_by_comparing_with_the_source() {
         invented_latin_word(source, "служба графических элементов - toolbep, bars").as_deref(),
         Some("toolbep")
     );
-    // Латиница ИЗ источника — своя, в любом регистре и внутри слова.
+    // Latin letters FROM the source are ours, in any case and inside a word.
     for clean in [
         "Kvantum тема на основе Fluent Design",
         "тема для KDE Plasma",
@@ -1050,26 +1050,26 @@ fn an_invented_latin_word_is_caught_by_comparing_with_the_source() {
                       with the Nord palette and graphical item support - tooltips, bars";
         assert_eq!(invented_latin_word(source, clean), None, "своя латиница признана порчей");
     }
-    // Слово из одной буквы не судится, целиком русский перевод — тоже чист.
+    // A one-letter word is not judged, an entirely Russian translation is clean too.
     assert_eq!(invented_latin_word("3 x 4 tiles", "3 х 4 плитки"), None);
     assert_eq!(invented_latin_word("a dark theme", "тёмная тема"), None);
-    // Склонённая латиница своя: `Kvantum` из `Kvantum's`.
+    // Inflected Latin is ours: `Kvantum` from `Kvantum's`.
     assert_eq!(invented_latin_word("Kvantum's engine", "движок Kvantum"), None);
 }
 
-// ── Техника ВНУТРИ прозы (дефект владельца 03.10) ──────────────────────────
+// ── Technical bits INSIDE prose (owner's defect 03.10) ──────────────────────────
 //
-// KDE Store, «ZorinOS 6 Sound Theme»: первая фраза описания переводилась, а
-// «Just unzip the file and put in the /usr/share/sounds folder to add the to
-// your desktop.» оставалась английской целиком — прежнее правило 4 отвергало
-// строку за один путь в ней. Теперь путь уходит под заполнитель, остальное
-// переводится, путь возвращается дословно.
+// KDE Store, "ZorinOS 6 Sound Theme": the first phrase of the description was translated, but
+// "Just unzip the file and put in the /usr/share/sounds folder to add the to
+// your desktop." stayed entirely in English — the old rule 4 rejected
+// the line for the single path in it. Now the path goes under a placeholder, the rest
+// is translated, the path is returned verbatim.
 
-/// Дефект владельца дословно.
+/// The owner's defect verbatim.
 const SOUNDS_SENTENCE: &str =
     "Just unzip the file and put in the /usr/share/sounds folder to add the to your desktop.";
 
-/// Фраза с путём, ссылкой, именем файла, переменной или `кодом` — проза.
+/// A phrase with a path, a link, a file name, a variable or `code` is prose.
 #[test]
 fn prose_with_technique_inside_is_prose() {
     for s in [
@@ -1091,8 +1091,8 @@ fn prose_with_technique_inside_is_prose() {
     }
 }
 
-/// ⛔ Обратная сторона: строка-команда и строка, которая техникой НАЧИНАЕТСЯ,
-/// по-прежнему не проза; почта отвергает строку, как прежде.
+/// ⛔ The flip side: a command line and a line that STARTS with something technical
+/// are still not prose; an email address rejects the line as before.
 #[test]
 fn pure_commands_and_paths_stay_technical() {
     for s in [
@@ -1108,8 +1108,8 @@ fn pure_commands_and_paths_stay_technical() {
         "$HOME/.local/share/plasma",
         "https://www.pling.com/p/1229126",
         "Write to wehrwolfmann@example.org for help",
-        // Живые строки KDE Store: команда ВНУТРИ фразы и команда на
-        // неразрывных дефисах («Sugar Candy for SDDM»).
+        // Live KDE Store lines: a command INSIDE a phrase and a command with
+        // non-breaking hyphens ("Sugar Candy for SDDM").
         "Copy: cp -r bigsur ~/.local/share/sounds/",
         "Use the following command: kpackagetool6 -i Alba.P6.tar.xz",
         "sddm\u{2011}greeter \u{2011}\u{2011}test\u{2011}mode \u{2011}\u{2011}theme /usr/share/sddm/themes/sugar\u{2011}candy",
@@ -1120,8 +1120,8 @@ fn pure_commands_and_paths_stay_technical() {
     }
 }
 
-/// Куски техники: краевая пунктуация фразы в кусок не входит, пара обычных
-/// слов через косую черту — не кусок, почта — не кусок.
+/// Technical pieces: the phrase's edge punctuation is not part of the piece, a pair of ordinary
+/// words separated by a slash is not a piece, an email address is not a piece.
 #[test]
 fn technical_spans_cut_exactly_the_technique() {
     let pieces = |t: &str| -> Vec<String> {
@@ -1140,8 +1140,8 @@ fn technical_spans_cut_exactly_the_technique() {
     assert!(pieces("Version 1.2.3 is out").is_empty(), "версия — не техника");
 }
 
-/// Подмена: техника уходит под заполнитель и возвращается БАЙТ В БАЙТ, даже
-/// когда перевод склоняет слова вокруг неё («в папку /usr/share/sounds»).
+/// Substitution: the technical bit goes under a placeholder and comes back BYTE FOR BYTE, even
+/// when the translation inflects the words around it («в папку /usr/share/sounds»).
 #[test]
 fn technique_is_masked_and_restored_byte_for_byte() {
     let masked = mask_tech_names(SOUNDS_SENTENCE);
@@ -1155,7 +1155,7 @@ fn technique_is_masked_and_restored_byte_for_byte() {
         unmask_tech_names(russian, &masked.names).as_deref(),
         Some("Просто распакуйте файл и положите в папку /usr/share/sounds, чтобы добавить на рабочий стол.")
     );
-    // Круг замкнут для каждой формы техники.
+    // The circle is closed for every technical form.
     for text in [
         SOUNDS_SENTENCE,
         "Visit https://www.pling.com/p/1229126/ for more.",
@@ -1172,18 +1172,18 @@ fn technique_is_masked_and_restored_byte_for_byte() {
         );
         assert_eq!(unmask_tech_names(&masked.text, &masked.names).as_deref(), Some(text));
     }
-    // Имя ВНУТРИ пути отдельно не прячется: путь уходит целиком.
+    // A name INSIDE a path is not hidden separately: the path goes as a whole.
     let masked = mask_tech_names("Copy it to ~/.local/share/KDE/themes now");
     assert_eq!(masked.names, vec!["~/.local/share/KDE/themes".to_string()]);
-    // Имя и путь подряд — один заполнитель (два подряд живой движок ломает).
+    // A name and a path in a row — one placeholder (the live engine breaks two in a row).
     let masked = mask_tech_names("Open Kvantum ~/.config/Kvantum and pick it");
     assert_eq!(masked.names, vec!["Kvantum ~/.config/Kvantum".to_string()]);
-    // Путь и путь через «or» — два заполнителя.
+    // A path and a path joined by "or" — two placeholders.
     let masked = mask_tech_names("Put it in /usr/share/icons or ~/.icons today");
     assert_eq!(masked.text, "Put it in @0@ or @1@ today");
 }
 
-/// Метка пути потерялась, размножилась или обгрызена — перевод не берётся.
+/// The path mark got lost, multiplied or nibbled — the translation is not taken.
 #[test]
 fn a_lost_technique_placeholder_rejects_the_translation() {
     let masked = mask_tech_names(SOUNDS_SENTENCE);
@@ -1197,11 +1197,11 @@ fn a_lost_technique_placeholder_rejects_the_translation() {
     }
 }
 
-// ── Словарь поправок терминов (после движка) ───────────────────────────────
+// ── Dictionary of term corrections (after the engine) ───────────────────────────────
 
-/// Пары «источник → ответ живой модели Firefox en→ru → ждём» — ответы
-/// ДОСЛОВНО из прогона 03.10 (зонд по 375 фразам описаний KDE Store из кеша
-/// OCS и стенд `live_technique_inside_prose_survives_the_real_engine`).
+/// Triples "source → answer of the live Firefox en→ru model → expected" — answers
+/// VERBATIM from the run of 03.10 (a probe over 375 phrases of KDE Store descriptions from the
+/// OCS cache and the stand `live_technique_inside_prose_survives_the_real_engine`).
 #[test]
 fn term_fixes_turn_engine_slips_into_rexon_terms() {
     let cases = [
@@ -1272,14 +1272,14 @@ fn term_fixes_turn_engine_slips_into_rexon_terms() {
     }
 }
 
-/// Правка ТОЛЬКО по паре: без исходного термина, при `extract` не про архив,
-/// с другим `load` рядом, на чужой паре языков — перевод не трогается.
+/// A correction ONLY by the pair: without the source term, with `extract` not about an archive,
+/// with another `load` nearby, on a foreign language pair — the translation is not touched.
 #[test]
 fn term_fixes_leave_alone_what_they_cannot_prove() {
     let untouched = [
-        // «Расстегните» не от unzip — может, правда застёжка.
+        // «Расстегните» not from unzip — maybe it really is a zipper.
         ("Undo the zipper on the bag.", "Расстегните молнию на сумке."),
-        // extract не про архив: цвет, звуки «извлечены из».
+        // extract not about an archive: a color, sounds «извлечены из».
         (
             "~Dynamic Accent Colors: Automatically extracts and applies the dominant color from your wallpaper to UI elements.",
             "Динамичные цвета акцента: автоматически извлекает и применяет доминирующий цвет от ваших обоев к элементам пользовательского интерфейса.",
@@ -1292,22 +1292,22 @@ fn term_fixes_leave_alone_what_they_cannot_prove() {
             "Native PNG Rendering: Uses lightweight QML frame-sequencing directly from extracted source files.",
             "Нативный PNG-рендеринг: использует QML непосредственно из извлеченных исходных файлов.",
         ),
-        // Существительное без предлога — род у замены другой, не трогаем.
+        // A noun without a preposition — the replacement has a different gender, do not touch.
         (
             "If only 1 or 2 cursors show up in the theme, then the extraction of the archive didn't work.",
             "Если в теме появляются только 1 или 2 курсора, то извлечение архива не сработало.",
         ),
-        // Рядом другой load — «загрузить» может быть про него.
+        // Another load nearby — «загрузить» may be about it.
         (
             "Download the theme and load it in the settings.",
             "Загрузите тему и загрузите её в настройках.",
         ),
-        // Имя окна KDE «Download New …» — у KDE ru «Загрузить новые …».
+        // The KDE window name "Download New …" — in KDE ru it is «Загрузить новые …».
         (
             "The Download New Global Themes program seems pretty bad at searching, search for win98",
             "Загружаемая программа «Новые глобальные темы» кажется довольно плохой в поиске, поиск win98",
         ),
-        // «Если вы загрузите» — будущее, не повелительное.
+        // «Если вы загрузите» — future tense, not imperative.
         (
             "If you download the archive, you get two folders.",
             "Если вы загрузите архив, вы получите две папки.",
@@ -1316,15 +1316,15 @@ fn term_fixes_leave_alone_what_they_cannot_prove() {
     for (source, engine) in untouched {
         assert_eq!(apply_term_fixes("en", "ru", source, engine), engine, "источник: {source}");
     }
-    // Чужая пара языков: групп нет — как есть.
+    // A foreign language pair: no groups — as is.
     assert_eq!(
         apply_term_fixes("en", "de", "Unzip it.", "Расстегни его."),
         "Расстегни его."
     );
 }
 
-/// Форма сохраняется: повелительное → повелительное, инфинитив → инфинитив,
-/// причастие — с тем же окончанием, ё и регистр первой буквы не мешают.
+/// The form is kept: imperative → imperative, infinitive → infinitive,
+/// a participle keeps the same ending, the letter ё and the case of the first letter do not interfere.
 #[test]
 fn term_fixes_keep_the_engine_form() {
     let source = "Unzip the archive.";
@@ -1338,7 +1338,7 @@ fn term_fixes_keep_the_engine_form() {
     ] {
         assert_eq!(apply_term_fixes("en", "ru", source, engine), want);
     }
-    // Слипшийся повтор сворачивается только у верной формы своей группы.
+    // A glued repeat is collapsed only for the correct form of its group.
     assert_eq!(
         apply_term_fixes("en", "ru", "Download it", "скачать скачать его"),
         "скачать его"

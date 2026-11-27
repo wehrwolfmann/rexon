@@ -1,24 +1,25 @@
-// Вкладка «Рабочие столы» на QML. Данные и решения — Rust-объект
-// DesktopsModel (rust/rexon-gui/src/desktops_page.rs), который сам ничего не
-// решает, а спрашивает ядро (`rexon_core::qt_desktops`). Здесь только
-// РАЗМЕТКА.
+// The "Desktops" tab in QML. Data and decisions come from the Rust object
+// DesktopsModel (rust/rexon-gui/src/desktops_page.rs), which decides
+// nothing itself but asks the core (`rexon_core::qt_desktops`). Only
+// MARKUP lives here.
 //
-// Оформление берётся из готового: палитра приходит свойством `palette` от
-// того же объекта и родом из `ui_base::skin_colors("steam_dark")` — скина по
-// умолчанию всего продукта (правило #17). Своих цветов страница не заводит.
+// The styling is taken ready-made: the palette arrives through the
+// `palette` property of the same object and originates from
+// `ui_base::skin_colors("steam_dark")` — the default skin of the whole
+// product (rule #17). The page defines no colours of its own.
 //
-// ⛔ Побочные действия этой вкладки СТАВЯТ И УДАЛЯЮТ рабочие столы через
-// pacman и pkexec. Ни одного такого шага страница не делает сама: она зовёт
-// объект `root.actions`, который кладёт хозяин окна
-// (rexon/qt_desktops/window.py). Там же живут подтверждения, обе защиты
-// удаления и окна хода дела — то есть ровно то, что было в виджетной
-// вкладке. Страница знает только имена методов и «получилось ли».
+// Never: the side actions of this tab INSTALL AND REMOVE desktops through
+// pacman and pkexec. The page takes not a single such step by itself: it
+// calls the `root.actions` object put in by the window host
+// (rexon/qt_desktops/window.py). The confirmations, both removal
+// safeguards and the progress windows live there too — exactly what was in
+// the widget tab. The page knows only the method names and "did it work".
 //
-// Цепочка фокуса заложена сразу: все действия — контролы, у сфокусированного
-// видна рамка, страница подкручивается к нему.
+// The focus chain is built in from the start: all actions are controls,
+// the focused one shows a frame, and the page scrolls to it.
 
-// Делегаты обращаются к id внешних элементов (root, page). Без этой прагмы
-// проверка QML справедливо ругается на неквалифицированный доступ.
+// Delegates refer to ids of outer elements (root, page). Without this
+// pragma, QML lint rightly complains about unqualified access.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -29,60 +30,64 @@ import org.rexon.gui 1.0
 Item {
     id: root
 
-    // ── Мост наружу ───────────────────────────────────────────────────────
+    // ── Bridge to the outside ─────────────────────────────────────────────
 
-    // Объект побочных действий; ставит хозяин страницы. Методы:
-    //   install(deId) -> bool      установка стола (подтверждение + ход дела)
-    //   repair(deId) -> bool       проверка и восстановление
-    //   switchTo(deId) -> bool     переключение сессии
-    //   remove(deId) -> bool       удаление с обеими защитами
-    //   repairCurrent() -> bool    «проверить мой стол»
+    // Side-actions object; set by the page host. Methods:
+    //   install(deId) -> bool      install a desktop (confirmation + progress)
+    //   repair(deId) -> bool       check and repair
+    //   switchTo(deId) -> bool     switch the session
+    //   remove(deId) -> bool       removal with both safeguards
+    //   repairCurrent() -> bool    "check my desktop"
     //   panelBackup() / panelRestore() -> bool
-    //   openCompare()              показать встроенное «Сравнение DE»
-    //   requestVersion(deId)       асинхронный запрос версии из репозиториев
+    //   openCompare()              show the embedded "DE comparison"
+    //   requestVersion(deId)       asynchronous version query from repositories
     //   shellInstall / shellSwitch / shellRemove(deId, shellId)
-    //                              блок «Оболочки» (Noctalia, DMS)
+    //                              the "Shells" block (Noctalia, DMS)
     //   lookApply / lookRevert(lookId)
-    //                              блок «Как в дистрибутиве»
-    // Сигнал versionReady(deId, version) — ответ на requestVersion.
+    //                              the "Like in the distribution" block
+    // Signal versionReady(deId, version) — the answer to requestVersion.
     property var actions: null
 
     readonly property string windowTitle: page.windowTitle
     readonly property int windowMinWidth: page.windowMinWidth
     readonly property int windowMinHeight: page.windowMinHeight
-    // Подпись кнопки возврата из встроенного «Сравнения DE»: рисует её
-    // хозяин страницы (сравнение — отдельное окно, внутрь сцены не встаёт),
-    // но текст всё равно приходит из ядра, а не второй копией на Python.
+    // Label of the back button from the embedded "DE comparison": the page
+    // host draws it (the comparison is a separate window and does not go into
+    // the scene), but the text still comes from the core rather than from a
+    // second copy in Python.
     readonly property string compareBackText: page.compareBackText
-    /// Стрелки ← → в подписях страницы — по её зеркалированию.
+    /// The ← → arrows in the page's labels follow its mirroring.
     readonly property RexonArrows arrows: RexonArrows {
         mirrored: root.LayoutMirroring.enabled
     }
-    // Выбранный стол и стол сеанса — для прогона `--selftest` главного окна:
-    // вкладка обязана открываться на ТЕКУЩЕМ столе, а не на первом в списке.
+    // The selected desktop and the session's desktop — for the main window's
+    // `--selftest` run: the tab must open on the CURRENT desktop, not on the
+    // first one in the list.
     readonly property string selectedDe: page.selectedDe
     readonly property string currentDe: page.currentDe
 
     implicitWidth: page.windowMinWidth
     implicitHeight: page.windowMinHeight
 
-    // ── Ядро вкладки ──────────────────────────────────────────────────────
+    // ── Tab core ──────────────────────────────────────────────────────────
 
     DesktopsModel {
         id: page
-        // Имя нужно проверкам: из хозяина страницы модель достают
-        // `root.findChild(QObject, "desktopsModel")`.
-        // ⚠️ Снаружи зовутся только инвокаблы БЕЗ чисел в подписи
-        // (`refreshInstalled`, `select`, `removePlan`, `displayName`): у `i32`
-        // в метаобъекте стоит имя `::std::int32_t`, метатипа с таким именем
-        // нет, и `QMetaObject.invokeMethod` молча вернёт False.
+        // The name is needed by checks: from the page host the model is fetched
+        // with `root.findChild(QObject, "desktopsModel")`.
+        // Warning: only invokables WITHOUT numbers in their signature are called
+        // from outside (`refreshInstalled`, `select`, `removePlan`, `displayName`):
+        // for `i32` the metaobject has the name `::std::int32_t`, there is no
+        // metatype with that name, and `QMetaObject.invokeMethod` silently returns
+        // False.
         objectName: "desktopsModel"
     }
 
-    // ── Палитра стандартного скина ────────────────────────────────────────
+    // ── Standard skin palette ─────────────────────────────────────────────
 
     readonly property var pal: page.palette
-    // Размеры разметки — поля, кегли, стороны кнопок — той же картой от ядра.
+    // Markup sizes — paddings, font sizes, button sides — from the same core
+    // map.
     readonly property var m: page.metrics
     readonly property color colBg: root.pal.bg_primary
     readonly property color colCard: root.pal.bg_card
@@ -92,31 +97,33 @@ Item {
     readonly property color colText: root.pal.text_primary
     readonly property color colTextSecondary: root.pal.text_secondary
 
-    // ── Состояние вида ────────────────────────────────────────────────────
+    // ── View state ────────────────────────────────────────────────────────
 
     readonly property var card: page.card
     readonly property var carouselTexts: page.carousel
 
-    // Текущий слайд карусели. Сбрасывается при смене стола: иначе у стола с
-    // одним снимком остался бы индекс от предыдущего, и карусель показала бы
-    // пустоту.
+    // Current carousel slide. Reset when the desktop changes: otherwise a
+    // desktop with a single screenshot would keep the index from the previous
+    // one, and the carousel would show emptiness.
     property int slide: 0
-    // Версия пакета из репозиториев для показанного стола: "" — ещё не
-    // спрашивали либо пакета нет, тогда строка скрыта.
+    // Package version from the repositories for the shown desktop: "" means
+    // not asked yet or there is no package, and then the line is hidden.
     property string versionText: ""
     property bool versionPending: false
-    // Блок «пакеты» по ответу пробной транзакции: "" — ответа ещё нет (или
-    // спросить не вышло), тогда видна строка карточки.
+    // The "packages" block from the answer of the trial transaction: "" means
+    // no answer yet (or asking failed), and then the card's line is visible.
     property string packagesLine: ""
     property string packagesNotice: ""
-    // Замена шапки по ответу пробы («Установлен частично»); пусто — шапка карточки.
+    // Header replacement from the probe answer ("Partially installed"); empty
+    // means the card's header.
     property string statusOverride: ""
-    // Набор не встанет из-за конфликта с установленным: «Установить» и
-    // «Проверить / Восстановить» видны, но неактивны (причина — в
-    // `packagesNotice` прямо над ними).
+    // The set will not install because of a conflict with something installed:
+    // "Install" and "Check / Repair" are visible but disabled (the reason is
+    // in `packagesNotice` right above them).
     property bool packagesBlocked: false
-    // Пакет набора ждёт пересборки против новой библиотеки — его можно
-    // собрать из исходников Arch: подпись кнопки и пояснение ("" — нечего).
+    // A package of the set is waiting to be rebuilt against a new library — it
+    // can be built from the Arch sources: the button label and an explanation
+    // ("" — nothing to do).
     property string rebuildButton: ""
     property string rebuildHint: ""
 
@@ -134,11 +141,11 @@ Item {
         root.requestPackages();
     }
 
-    // ── Побочные действия ─────────────────────────────────────────────────
+    // ── Side actions ──────────────────────────────────────────────────────
 
-    // Все они СИНХРОННЫ и возвращают «получилось ли»: подтверждение, ход
-    // дела и итог показывает хозяин, а страница по ответу решает,
-    // пересчитывать ли состав установленных столов.
+    // All of them are SYNCHRONOUS and return "did it work": confirmation,
+    // progress and result are shown by the host, and from the answer the page
+    // decides whether to recompute the set of installed desktops.
     function runAction(kind, deId) {
         if (!root.actions)
             return;
@@ -155,9 +162,9 @@ Item {
             page.refreshInstalled();
     }
 
-    // Блок «Оболочки»: установить, войти с оболочкой, убрать. Ход и итог —
-    // общим окном операции; состав столов пересчитывает сигнал
-    // `desktopsChanged`.
+    // The "Shells" block: install, log in with the shell, remove. Progress and
+    // result go through the shared operation window; the set of desktops is
+    // recomputed by the `desktopsChanged` signal.
     function runShellAction(kind, deId, shellId) {
         if (!root.actions)
             return;
@@ -169,9 +176,10 @@ Item {
             root.actions.shellRemove(deId, shellId);
     }
 
-    // Блок «Как в дистрибутиве»: «Применить» и «Вернуть как было». Вопрос,
-    // ход и итог — общим окном операции; плитки перечитывает сигнал
-    // `desktopsChanged` (→ `refreshInstalled`).
+    // The "Like in the distribution" block: "Apply" and "Restore as it was".
+    // Question, progress and result go through the shared operation window;
+    // the tiles are re-read by the `desktopsChanged` signal
+    // (→ `refreshInstalled`).
     function runLook(kind, lookId) {
         if (!root.actions)
             return;
@@ -195,42 +203,46 @@ Item {
             root.actions.panelRestore();
     }
 
-    // Версия пакета из репозиториев дистрибутива запрашивается асинхронно:
-    // `pacman -Si` занимает секунды, и синхронный вызов остановил бы вкладку.
-    // Строка нужна только там, где есть кнопка «Установить».
+    // The package version from the distribution repositories is requested
+    // asynchronously: `pacman -Si` takes seconds, and a synchronous call would
+    // stall the tab. The line is needed only where there is an "Install"
+    // button.
     function requestVersion() {
         if (!root.actions || !root.card || root.card.deId === "")
             return;
         if (!root.card.available)
             return;
-        // Запрос уже в пути — второй раз пакетный менеджер не дёргаем:
-        // сюда приходят и со сменой карточки, и с появлением объекта
-        // действий, а это может случиться в любом порядке.
+        // A request is already on its way — the package manager is not bothered a
+        // second time: we get here both when the card changes and when the actions
+        // object appears, and these can happen in any order.
         if (root.versionPending)
             return;
         root.versionPending = true;
-        // У установленного стола — его версия (и, если в репозитории
-        // новее, — она же рядом); у неустановленного — что придёт.
+        // For an installed desktop — its version (and, if the repository has a
+        // newer one, that one next to it); for a non-installed one — what will
+        // arrive.
         if (root.card.installed)
             root.actions.requestInstalledVersion(root.card.deId);
         else
             root.actions.requestVersion(root.card.deId);
     }
 
-    // Сколько пакетов РЕАЛЬНО поставится и не сломан ли набор — пробной
-    // транзакцией в фоне; ответ `packagesReady`.
+    // How many packages will ACTUALLY be installed and whether the set is
+    // broken — by a trial transaction in the background; the answer is
+    // `packagesReady`.
     function requestPackages() {
         if (!root.actions || !root.card || root.card.deId === "" || !root.card.packagesProbe)
             return;
         root.actions.requestPackages(root.card.deId, root.card.installed);
     }
 
-    // Объект действий кладёт хозяин страницы, и делает это уже ПОСЛЕ того,
-    // как страница собралась: в `Component.onCompleted` его ещё нет, там
-    // `root.actions` равен null. Без этого обработчика запрос версии из
-    // репозиториев уходил в пустоту — строка «Доступно в твоём дистрибутиве»
-    // не появлялась НИКОГДА, сколько её ни жди. Тот же приём, что на
-    // странице настроек: всё, что требует хозяина, спрашивается здесь.
+    // The actions object is put in by the page host, and it does so AFTER the
+    // page has been built: in `Component.onCompleted` it is not there yet,
+    // `root.actions` is null there. Without this handler the version query to
+    // the repositories went into the void — the "Available in your
+    // distribution" line NEVER appeared, however long you waited. The same
+    // approach as on the settings page: everything that needs the host is
+    // asked here.
     onActionsChanged: {
         root.requestVersion();
         root.requestPackages();
@@ -272,15 +284,15 @@ Item {
         }
     }
 
-    // Подкрутить карточку к элементу, который получил фокус: без этого Tab
-    // уводит фокус за нижний край, и вкладка выглядит зависшей.
+    // Scroll the card to the element that received focus: without this Tab
+    // takes focus past the bottom edge, and the tab looks frozen.
     function ensureVisible(item) {
         if (!item || !cardFlick.contentItem)
             return;
-        // Окно снова стало активным (закрыт диалог снимка экрана по Print,
-        // вернулись из другой программы) — Qt возвращает фокус тому же
-        // элементу. Это не переход по Tab: крутить страницу к нему нельзя,
-        // иначе прокрученная вниз вкладка прыгает наверх.
+        // The window became active again (the screenshot dialog from Print was
+        // closed, the user returned from another program) — Qt gives focus back
+        // to the same element. This is not a Tab move: the page must not scroll
+        // to it, otherwise a tab scrolled down jumps to the top.
         if (item.focusReason === Qt.ActiveWindowFocusReason)
             return;
         const pos = item.mapToItem(cardFlick.contentItem, 0, 0);
@@ -297,27 +309,28 @@ Item {
         color: root.colBg
     }
 
-    // ── Три панели: список, «Как в дистрибутиве», карточка ────────────────
+    // ── Three panels: list, "Like in the distribution", card ──────────────
 
     SplitView {
         id: split
         anchors.fill: parent
         orientation: Qt.Horizontal
 
-        // Рукоятка: ширина и краска — из ядра. Своей рукоятки стиль QtQuick
-        // Basic не красит по палитре приложения и рисует светло-серую
-        // полосу (198,200,201) во всю высоту вкладки; у оригинала на том же
-        // месте почти незаметная накладка (73,83,96 на стандартном скине).
+        // Handle: width and colour come from the core. The QtQuick Basic style
+        // does not paint its own handle with the application palette and draws a
+        // light grey strip (198,200,201) over the full height of the tab; in the
+        // original the same place has a barely noticeable overlay (73,83,96 on the
+        // standard skin).
         handle: Rectangle {
             implicitWidth: root.m.splitHandleWidth
             implicitHeight: root.m.splitHandleWidth
             color: root.pal.split_handle
         }
 
-        // Язык справа налево: `SplitView` зеркалирование не учитывает (Qt
-        // кладёт панели слева направо в порядке детей — снимок при
-        // `-reverse`: список остался слева), поэтому порядок панелей
-        // переворачиваем сами — список у начала строки, справа.
+        // Right-to-left language: `SplitView` ignores mirroring (Qt lays the
+        // panels out left to right in child order — screenshot with `-reverse`:
+        // the list stayed on the left), so we reverse the panel order ourselves —
+        // the list at the start of the line, on the right.
         readonly property bool panelsMirrored: split.LayoutMirroring.enabled
         onPanelsMirroredChanged: split.orderPanels()
         Component.onCompleted: split.orderPanels()
@@ -336,7 +349,7 @@ Item {
             }
         }
 
-        // ── Левая панель: список рабочих столов ───────────────────────────
+        // ── Left panel: list of desktops ──────────────────────────────────
         Item {
             id: listPanel
             SplitView.preferredWidth: root.m.listInitialWidth
@@ -361,39 +374,38 @@ Item {
 
                 ListView {
                     id: deList
-                    // Имя нужно стенду приёмки: заказанный стол он выбирает
-                    // сменой `currentIndex` — тем же путём, что стрелка с
-                    // клавиатуры.
+                    // The name is needed by the acceptance test bench: it selects the
+                    // requested desktop by changing `currentIndex` — the same way as an arrow
+                    // key does.
                     objectName: "deList"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
                     model: page
-                    // Между пунктами оригинала зазора нет: поля пункта
-                    // (`padding: 8px 12px`) и есть весь его воздух.
+                    // There is no gap between the original's items: the item padding
+                    // (`padding: 8px 12px`) is all the air it has.
                     spacing: 0
                     boundsBehavior: Flickable.StopAtBounds
-                    // Фокус ведёт сам список: кнопка ТЕКУЩЕЙ строки берёт
-                    // его через ListView.isCurrentItem. Так снаружи никто не
-                    // лезет в потроха делегата — а именно оттуда фокус и
-                    // терялся молча при любой правке разметки.
+                    // Focus is driven by the list itself: the button of the CURRENT row takes
+                    // it through ListView.isCurrentItem. That way nobody from outside pokes
+                    // into the delegate's innards — and that is exactly where focus used to
+                    // get silently lost on any markup edit.
                     focus: true
                     currentIndex: -1
                     keyNavigationEnabled: true
 
                     ScrollBar.vertical: ScrollBar {}
 
-                    // Куда шли в прошлый раз — по этому перешагиваем
-                    // заголовок секции в ТУ ЖЕ сторону.
+                    // Where we went last time — by this we step over a section header in THE
+                    // SAME direction.
                     property int lastRow: -1
 
-                    // Строка списка и показанная карточка — одно целое, как в
-                    // виджетной вкладке: там `itemSelectionChanged` перерисовывал
-                    // карточку сразу на стрелку, и человеку не приходилось после
-                    // каждого шага ещё и подтверждать выбор. Плюс заголовок
-                    // секции виден, но не выбирается (`NoItemFlags` у оригинала),
-                    // значит и фокус на нём стоять не должен — иначе с клавиатуры
-                    // и с геймпада получается «мёртвый» шаг без подсветки.
+                    // The list row and the shown card are one whole, as in the widget tab:
+                    // there `itemSelectionChanged` redrew the card right on the arrow key, and
+                    // the user did not have to confirm the choice after every step. Plus a
+                    // section header is visible but not selectable (`NoItemFlags` in the
+                    // original), so focus must not stay on it either — otherwise the keyboard
+                    // and the gamepad get a "dead" step without a highlight.
                     onCurrentIndexChanged: {
                         if (deList.currentIndex < 0)
                             return;
@@ -419,16 +431,16 @@ Item {
                         required property bool selectable
 
                         width: ListView.view.width
-                        // Обе строки — с полями пункта оригинала: у заголовка
-                        // секции те же `padding: 8px 12px`, что у стола.
+                        // Both rows have the original's item padding: a section header has the
+                        // same `padding: 8px 12px` as a desktop.
                         implicitHeight: listRow.selectable
                                         ? deButton.implicitHeight
                                         : sectionLabel.implicitHeight
                                           + 2 * root.m.listItemPaddingV
 
-                        // Заголовок секции: виден, но не выбирается — в
-                        // оригинале у него стоял `NoItemFlags`, а красился он
-                        // ролью PlaceholderText палитры скина.
+                        // Section header: visible but not selectable — in the original it had
+                        // `NoItemFlags` and was painted with the PlaceholderText role of the skin
+                        // palette.
                         RexonText {
                             id: sectionLabel
                             visible: !listRow.selectable
@@ -450,12 +462,12 @@ Item {
 
                             readonly property bool current: page.selectedDe === listRow.deId
 
-                            // Фокус приходит от списка вместе с «текущестью».
+                            // Focus comes from the list together with "currentness".
                             focus: listRow.ListView.isCurrentItem
 
-                            // Поля пункта — свои у кнопки, а не у текста: так
-                            // высота строки складывается ровно как у
-                            // оригинала (текст плюс `padding: 8px 12px`).
+                            // The item padding belongs to the button, not to the text: that way the
+                            // row height adds up exactly as in the original (text plus
+                            // `padding: 8px 12px`).
                             padding: 0
                             topPadding: root.m.listItemPaddingV
                             bottomPadding: root.m.listItemPaddingV
@@ -464,8 +476,8 @@ Item {
 
                             background: Rectangle {
                                 radius: root.m.listItemRadius
-                                // Краски списка — из ядра: синяя подложка
-                                // выбранного и лёгкая под курсором.
+                                // List colours come from the core: a blue backing for the selected item
+                                // and a light one under the cursor.
                                 color: deButton.current
                                        ? root.pal.list_selected
                                        : (deButton.hovered || deButton.down
@@ -498,36 +510,38 @@ Item {
             }
         }
 
-        // ── Вторая панель: «Как в дистрибутиве» и «Инструменты» ───────────
-        // Решение владельца 25.10.2026: на месте прежних «Инструментов» —
-        // образы целиком «как в дистрибутиве», по плитке на образ. Плитки,
-        // пометку применённого и кнопки собирает ядро
-        // (`qt_desktops::look_tiles`), ход «Применить» и «Вернуть как было» —
-        // общее окно операции.
-        // Решение владельца 28.10.2026: «Инструменты» вернулись в эту же
-        // панель — СПРАВА от «Как в дистрибутиве», кнопки столбиком, как до
-        // 25.10; полосы внизу карточки больше нет. На узкой панели (окно
-        // 1280) два блока рядом не помещаются, и «Инструменты» встают ПОД
-        // «Как в дистрибутиве» тем же столбиком — решает ядро
-        // (`qt_desktops::looks_tools_side_by_side`).
+        // ── Second panel: "Like in the distribution" and "Tools" ──────────
+        // The owner's decision 25.10.2026: in place of the former "Tools" — whole
+        // looks "like in the distribution", one tile per look. The tiles, the mark
+        // of the applied one and the buttons are assembled by the core
+        // (`qt_desktops::look_tiles`); the progress of "Apply" and "Restore as it
+        // was" goes through the shared operation window.
+        // The owner's decision 28.10.2026: "Tools" came back into the same panel —
+        // TO THE RIGHT of "Like in the distribution", buttons in a column, as
+        // before 25.10; there is no strip at the bottom of the card any more. On a
+        // narrow panel (a 1280 window) the two blocks do not fit side by side, and
+        // "Tools" go UNDER "Like in the distribution" in the same column — the
+        // core decides (`qt_desktops::looks_tools_side_by_side`).
         Rectangle {
             id: middlePanel
-            // Ширина — делёж лишнего места окна между панелями, как у
-            // сплиттера оригинала (растяжка 0:1:4 с потолком карточки):
-            // считает ядро. Иначе QML отдавал всё лишнее карточке, и на окне
-            // 1400 рамка скриншота выходила на 40 точек шире, чем у оригинала.
+            // Width — sharing the window's extra room between the panels, as the
+            // original's splitter does (stretch 0:1:4 with a cap for the card): the
+            // core computes it. Otherwise QML gave all the extra to the card, and in a
+            // 1400 window the screenshot frame came out 40 pixels wider than in the
+            // original.
             SplitView.preferredWidth: page.looksPanelWidth(split.width, root.height)
-            // ⚠️ НАИМЕНЬШАЯ ширина панели идёт от её СОДЕРЖИМОГО, а не от
-            // одного числа: на штатном окне 1100×750 сплиттер даёт панели
-            // ровно 160 точек, и заголовок обрезался бы краем соседней
-            // карточки посреди слова. На узкой панели блоки стоят друг под
-            // другом, поэтому пол — по более широкому из двух. Ширину надписей
-            // меряет по шрифту Qt, пол, потолок и арифметику держит ядро.
+            // Warning: the panel's MINIMUM width comes from its CONTENT, not from a
+            // single number: in a standard 1100×750 window the splitter gives the panel
+            // exactly 160 pixels, and the title would be cut by the edge of the
+            // neighbouring card in the middle of a word. On a narrow panel the blocks
+            // stand one under another, so the floor is the wider of the two. Qt
+            // measures the label widths by the font; the floor, the cap and the
+            // arithmetic are held by the core.
             SplitView.minimumWidth: page.looksPanelMinWidth(
                 Math.max(looksHeaderText.implicitWidth, toolsHeaderText.implicitWidth),
                 Math.max(looksColumn.implicitWidth, toolColumn.implicitWidth))
-            // Лёгкий фон и правая граница: без них растянутая панель читается
-            // как пустая дыра между списком и карточкой.
+            // A light background and a right border: without them the stretched panel
+            // reads as an empty hole between the list and the card.
             color: root.pal.tools_bg
 
             Rectangle {
@@ -555,9 +569,9 @@ Item {
                     id: middleBody
                     objectName: "middleBody"
 
-                    // Рядом или столбиком и ширина блока — ядро. Просят блоки
-                    // свою НЕсжатую ширину (заголовок и колонка), от ширины
-                    // самого блока она не зависит — петли раскладки нет.
+                    // Side by side or in a column, and the block width — the core. The blocks
+                    // ask for their UNcompressed width (title and column), which does not
+                    // depend on the width of the block itself — there is no layout loop.
                     readonly property bool sideBySide: page.looksToolsSideBySide(
                         looksFlick.width,
                         Math.max(looksHeaderText.implicitWidth, looksColumn.implicitWidth),
@@ -572,11 +586,11 @@ Item {
                                     : looksBody.implicitHeight + middleBody.gap
                                       + toolsBody.implicitHeight
 
-                    // ── «Как в дистрибутиве» ──────────────────────────────
+                    // ── "Like in the distribution" ────────────────────────
                     ColumnLayout {
                         id: looksBody
-                        // Отступы от края — якорями: справа налево блоки
-                        // меняются сторонами сами (`LayoutMirroring`).
+                        // Margins from the edge are anchors: for right to left the blocks swap
+                        // sides by themselves (`LayoutMirroring`).
                         anchors.left: parent.left
                         y: 0
                         width: middleBody.blockWidth
@@ -591,9 +605,8 @@ Item {
                             font.bold: true
                         }
 
-                        // Пояснение по ширине блока (в колонку плиток не
-                        // кладём: длинная строка растянула бы её по своей
-                        // ширине).
+                        // The explanation spans the block width (we do not put it into the tile
+                        // column: a long line would stretch the column to its own width).
                         RexonText {
                             Layout.fillWidth: true
                             Layout.preferredWidth: looksBody.width
@@ -604,8 +617,8 @@ Item {
                             font.pointSize: root.m.packagesPointSize
                         }
 
-                        // Колонка плиток: по самой длинной подписи, с потолком
-                        // ядра и НИКОГДА не шире самого блока.
+                        // Tile column: by the longest label, with the core's cap and NEVER wider
+                        // than the block itself.
                         ColumnLayout {
                             id: looksColumn
                             Layout.fillWidth: true
@@ -626,13 +639,13 @@ Item {
                                                     + 2 * root.m.shellsPanelPadding
                                     radius: root.m.carouselFrameRadius
                                     color: root.colCard
-                                    // Применённый образ — в рамке цвета пометки.
+                                    // The applied look is framed in the mark colour.
                                     border.color: lookTile.modelData.applied
                                                   ? root.pal.current_badge : root.pal.tools_border
                                     border.width: 1
 
-                                    // Описание образа из манифеста — подсказкой:
-                                    // на плитку оно не помещается.
+                                    // The look description from the manifest goes into a tooltip: it does not
+                                    // fit on the tile.
                                     HoverHandler {
                                         id: tileHover
                                     }
@@ -690,9 +703,8 @@ Item {
                         }
                     }
 
-                    // Граница между блоками — посередине промежутка:
-                    // вертикальная, когда блоки рядом, горизонтальная, когда
-                    // «Инструменты» ушли вниз.
+                    // Border between the blocks — in the middle of the gap: vertical when the
+                    // blocks are side by side, horizontal when "Tools" moved down.
                     Rectangle {
                         anchors.left: parent.left
                         anchors.leftMargin: middleBody.sideBySide
@@ -705,9 +717,9 @@ Item {
                         color: root.pal.tools_border
                     }
 
-                    // ── «Инструменты»: столбик кнопок ─────────────────────
-                    // Кнопки и почему часть неактивна — ядро
-                    // (`qt_desktops::tool_buttons`). Вид — как до 25.10.
+                    // ── "Tools": a column of buttons ──────────────────────
+                    // The buttons and why some are disabled come from the core
+                    // (`qt_desktops::tool_buttons`). The look is as before 25.10.
                     ColumnLayout {
                         id: toolsBody
                         objectName: "toolsBlock"
@@ -727,11 +739,10 @@ Item {
                             font.bold: true
                         }
 
-                        // Колонка кнопок шириной по САМОЙ ДЛИННОЙ подписи и с
-                        // потолком ядра, прижата влево и на весь блок не
-                        // растягивается. ⚠️ И НИКОГДА ШИРЕ САМОГО БЛОКА: если
-                        // человек сам стянет разделитель, кнопки останутся
-                        // внутри панели.
+                        // Button column as wide as the LONGEST label, with the core's cap, pressed
+                        // to the left and not stretched over the whole block. Warning: and NEVER
+                        // WIDER THAN THE BLOCK ITSELF: if the user drags the divider in, the
+                        // buttons stay inside the panel.
                         ColumnLayout {
                             id: toolColumn
                             Layout.alignment: Qt.AlignLeft
@@ -750,9 +761,8 @@ Item {
                                     implicitHeight: page.toolButtonMinHeight
                                     pal: root.pal
                                     text: toolButton.modelData.text
-                                    // SteamOS: пакетная кнопка видна, но
-                                    // неактивна — причина строкой ниже
-                                    // (`toolsNotice`).
+                                    // SteamOS: the package button is visible but disabled — the reason is a
+                                    // line below (`toolsNotice`).
                                     enabled: toolButton.modelData.enabled !== false
                                     ToolTip.visible: toolButton.hovered
                                     ToolTip.text: toolButton.modelData.tooltip
@@ -761,9 +771,9 @@ Item {
                             }
                         }
 
-                        // Почему часть кнопок неактивна — одной фразой по
-                        // ширине блока (в колонку кнопок не кладём: длинная
-                        // строка растянула бы её по своей ширине).
+                        // Why some buttons are disabled — one phrase across the block width (we do
+                        // not put it into the button column: a long line would stretch the column
+                        // to its own width).
                         RexonText {
                             Layout.fillWidth: true
                             Layout.preferredWidth: toolsBody.width
@@ -777,21 +787,21 @@ Item {
             }
         }
 
-        // ── Правая панель: карточка выбранного стола ──────────────────────
+        // ── Right panel: card of the selected desktop ─────────────────────
         Item {
             id: cardPanel
             SplitView.fillWidth: true
-            // Потолок ширины — от высоты окна, как у сплиттера оригинала:
-            // дальше лишняя ширина уходит средней панели («Как в
-            // дистрибутиве» и «Инструменты»), а не в пустоту вокруг карточки.
+            // The width cap comes from the window height, as with the original's
+            // splitter: beyond it the extra width goes to the middle panel ("Like in
+            // the distribution" and "Tools"), not into empty space around the card.
             SplitView.maximumWidth: page.detailPanelMaxWidth(root.height)
 
-            // Приглашение выбрать стол — когда выбранного нет вовсе.
+            // An invitation to choose a desktop — when none is selected at all.
             RexonText {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.verticalCenter: cardFlick.verticalCenter
                 visible: !root.card || root.card.deId === ""
-                // Стрелка смотрит на список столов (`RexonArrows.keyHint`).
+                // The arrow points at the desktop list (`RexonArrows.keyHint`).
                 text: root.arrows.keyHint(page.placeholderText)
                 color: root.colTextSecondary
                 font.weight: root.pal.text_secondary_weight
@@ -803,9 +813,9 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
-                // Карточка — во всю высоту панели (с 28.10.2026 полосы
-                // «Инструменты» под ней нет); рамка снимка ужимается под
-                // подвал окна (`carouselHeightFitted`).
+                // The card takes the full panel height (since 28.10.2026 there is no
+                // "Tools" strip under it); the screenshot frame shrinks to make room for
+                // the window footer (`carouselHeightFitted`).
                 anchors.bottom: parent.bottom
                 visible: root.card && root.card.deId !== ""
                 contentWidth: width
@@ -814,30 +824,30 @@ Item {
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
 
-                // Полоса прокрутки видна всегда: её появление меняло бы
-                // ширину области, а от ширины зависит высота рамки скриншота
-                // (16:9) — получалась дрожащая петля.
+                // The scroll bar is always visible: its appearance would change the
+                // area's width, and the height of the screenshot frame (16:9) depends on
+                // the width — that gave a jittering loop.
                 ScrollBar.vertical: ScrollBar {
                     id: cardScroll
                     policy: ScrollBar.AlwaysOn
                 }
 
-                // ⚠️ Раскладка внутри обычного Item обязана получить высоту
-                // руками, иначе схлопывается в полоску.
+                // Warning: a layout inside an ordinary Item must get its height by hand,
+                // otherwise it collapses into a strip.
                 ColumnLayout {
                     id: cardColumn
 
-                    // Полоса прокрутки у оригинала стоит рядом с карточкой, а
-                    // не поверх неё — её ширина вычитается из вьюпорта.
+                    // In the original the scroll bar stands next to the card, not over it —
+                    // its width is subtracted from the viewport.
                     readonly property int viewport: cardFlick.width - cardScroll.width
-                    // Карточка прижата к ПРАВОМУ краю панели: у оригинала её
-                    // обёртка делит ширину между распоркой и карточкой 100:1,
-                    // и слева остаётся сотая доля вьюпорта. Считает ядро.
+                    // The card is pressed to the RIGHT edge of the panel: in the original its
+                    // wrapper divides the width between a spacer and the card 100:1, and a
+                    // hundredth of the viewport remains on the left. The core computes it.
                     readonly property int gapLeft: page.cardLeftSpacer(viewport)
                                                    + page.cardGapLeft
 
-                    // Отступ от начала строки — якорем: справа налево
-                    // полоса прокрутки уходит влево, карточка — к ней.
+                    // The margin from the start of the line is an anchor: for right to left
+                    // the scroll bar moves to the left, and the card goes towards it.
                     anchors.left: parent.left
                     anchors.leftMargin: cardColumn.gapLeft
                     y: root.m.cardMarginTop
@@ -847,20 +857,20 @@ Item {
                     height: implicitHeight
                     spacing: root.m.cardSpacing
 
-                    // ── Карусель скриншотов ───────────────────────────────
+                    // ── Screenshot carousel ───────────────────────────────
                     Item {
                         id: carousel
                         Layout.fillWidth: true
-                        // Рамка всегда 16:9 и не прыгает по слайдам: по её
-                        // левому краю выравнивается текст карточки.
+                        // The frame is always 16:9 and does not jump between slides: the card
+                        // text is aligned to its left edge.
                         implicitHeight: frame.height + dots.implicitHeight
                                         + root.m.carouselDotsSpacing
 
                         readonly property var images: root.card && root.card.images
                                                       ? root.card.images : []
                         readonly property int count: carousel.images.length
-                        /// Значки «назад/вперёд» по зеркалированию листалки:
-                        /// справа налево «вперёд» — влево (`RexonArrows`).
+                        /// "Back/forward" icons follow the pager's mirroring: for right to left
+                        /// "forward" is to the left (`RexonArrows`).
                         readonly property RexonArrows arrows: RexonArrows {
                             mirrored: carousel.LayoutMirroring.enabled
                         }
@@ -878,22 +888,20 @@ Item {
                         Rectangle {
                             id: frame
                             anchors.right: parent.right
-                            // Рамка 16:9 от своей высоты плюс боковые поля
-                            // картинки; высота — от ширины БЕЗ этих полей,
-                            // как в оригинале (`self.width() - 16`).
+                            // A 16:9 frame from its own height plus the picture's side margins; the
+                            // height comes from the width WITHOUT those margins, as in the original
+                            // (`self.width() - 16`).
                             readonly property int sidePadding: 2 * root.m.carouselFramePaddingH
-                            // Высота рамки на окне, которому высоты хватает.
-                            // От НЕЁ считается ширина — и только от неё, см.
-                            // предупреждение про «храповик» у
-                            // `carousel_height_fitted` в ядре.
+                            // Frame height in a window that has enough height. The width is computed
+                            // FROM IT — and only from it; see the warning about the "ratchet" at
+                            // `carousel_height_fitted` in the core.
                             readonly property int fullHeight:
                                 page.carouselHeight(root.height,
                                                     parent.width - frame.sidePadding)
-                            // Сколько высоты остаётся рамке после всего
-                            // остального в карточке: полей, промежутка,
-                            // точек-индикаторов и текстовой колонки. Меряется
-                            // ВСЁ, кроме самой рамки, — иначе вышло бы
-                            // круговое правило.
+                            // How much height is left for the frame after everything else in the
+                            // card: margins, the gap, the indicator dots and the text column.
+                            // EVERYTHING except the frame itself is measured — otherwise the rule
+                            // would be circular.
                             readonly property int room:
                                 cardFlick.height - root.m.cardMarginTop
                                 - root.m.cardMarginBottom - root.m.cardSpacing
@@ -901,22 +909,20 @@ Item {
                                 - cardBody.implicitHeight
                             width: Math.min(parent.width,
                                             frame.fullHeight * 16 / 9 + frame.sidePadding)
-                            // ⭐ Рамка отдаёт высоту карточке, когда окну её
-                            // не хватает: на окне наименьшего размера подвал
-                            // состояния срезал нижний ряд кнопок — теперь
-                            // вместо этого снимок становится чуть мельче.
-                            // Сколько отдать и где предел — решает ядро.
+                            // The frame gives height to the card when the window is short of it: in a
+                            // window of the minimum size the status footer cut off the bottom row of
+                            // buttons — now the screenshot becomes slightly smaller instead. How much
+                            // to give and where the limit is — the core decides.
                             height: page.carouselHeightFitted(frame.fullHeight, frame.room)
                             color: root.pal.carousel_frame
                             radius: root.m.carouselFrameRadius
                             clip: true
 
-                            // Поля вокруг снимка, у которого стороны не 16:9
-                            // (Pantheon — почти 4:3): та же картинка, сжатая
-                            // до горстки точек и растянутая обратно, — это
-                            // и есть размытие, без модуля эффектов (его нет
-                            // в Qt старше 6.5), — и приглушённая краской
-                            // рамки, чтобы не спорить со снимком.
+                            // Margins around a screenshot whose sides are not 16:9 (Pantheon — almost
+                            // 4:3): the same picture squeezed down to a handful of pixels and
+                            // stretched back — that is the blur, without the effects module (it does
+                            // not exist in Qt older than 6.5) — and muted with the frame colour so it
+                            // does not compete with the screenshot.
                             Image {
                                 id: shotBackdrop
                                 anchors.fill: shot
@@ -939,21 +945,18 @@ Item {
                             Image {
                                 id: shot
                                 anchors.fill: parent
-                                // Поля только по бокам: сверху и снизу у
-                                // рамки оригинала их нет.
+                                // Margins only on the sides: the original's frame has none at the top and
+                                // bottom.
                                 anchors.leftMargin: root.m.carouselFramePaddingH
                                 anchors.rightMargin: root.m.carouselFramePaddingH
                                 visible: carousel.source !== ""
                                 source: carousel.source
-                                // ⚠️ Снимок показывается ЦЕЛИКОМ: обрезка
-                                // под рамку 16:9 срезала у снимков 4:3 и
-                                // панель сверху, и док снизу — на карточке
-                                // оставался «просто пейзаж» вместо стола
-                                // (Pantheon, 08.10). Поля закрывает
-                                // размытая копия под снимком.
-                                // Маленький исходник (заглушка-SVG) НЕ
-                                // растягивается — оригинал показывает его
-                                // как есть, по центру.
+                                // Warning: the screenshot is shown WHOLE: cropping to the 16:9 frame cut
+                                // both the top panel and the bottom dock off 4:3 screenshots — the card
+                                // was left with "just a landscape" instead of a desktop (Pantheon, 08.10).
+                                // The margins are covered by a blurred copy under the screenshot.
+                                // A small source (an SVG placeholder) is NOT stretched — the original
+                                // shows it as is, centred.
                                 readonly property bool fits: shot.sourceSize.width > 0
                                     && shot.sourceSize.width <= shot.width
                                     && shot.sourceSize.height <= shot.height
@@ -982,10 +985,9 @@ Item {
                                 font.pointSize: root.m.noScreenshotsPointSize
                             }
 
-                            // Стрелки — оверлеем поверх краёв картинки, а не
-                            // слотами раскладки: желоба отодвигали бы
-                            // скриншот от края рамки. Круглые и тёмные, как
-                            // в оригинале: тон и сторона — из ядра.
+                            // The arrows are an overlay over the picture edges, not layout slots:
+                            // gutters would push the screenshot away from the frame edge. Round and
+                            // dark, as in the original: tone and side come from the core.
                             RexonButton {
                                 id: prevBtn
                                 visible: carousel.count > 1
@@ -1041,9 +1043,9 @@ Item {
                             }
                         }
 
-                        // Точки-индикаторы по центру колонки со скриншотом:
-                        // приглушённый текст оригинала — тот же вторичный
-                        // цвет и вес, без своей прозрачности.
+                        // Indicator dots centred under the screenshot column: the original's muted
+                        // text — the same secondary colour and weight, without an opacity of our
+                        // own.
                         RexonText {
                             id: dots
                             anchors.top: frame.bottom
@@ -1055,13 +1057,12 @@ Item {
                         }
                     }
 
-                    // ── Под снимком: текст стола слева, «Оболочки» справа ─
-                    // Блок «Оболочки» есть только у Hyprland, niri и sway
-                    // (решение владельца 01.10.2026); у остальных столов
-                    // его нет, и текстовая колонка занимает всю ширину, как
-                    // раньше. Справа блок стоит, когда карточка достаточно
-                    // широкая; на узком окне он уходит под текст стола (с
-                    // какой ширины — решает ядро).
+                    // ── Under the screenshot: desktop text on the left, "Shells" on the right ─
+                    // The "Shells" block exists only for Hyprland, niri and sway (the owner's
+                    // decision 01.10.2026); the other desktops have none, and the text column
+                    // takes the full width, as before. The block stands on the right when the
+                    // card is wide enough; in a narrow window it moves under the desktop text
+                    // (from what width — the core decides).
                     GridLayout {
                         id: cardBody
                         readonly property bool sideBySide:
@@ -1073,20 +1074,20 @@ Item {
                         columnSpacing: root.m.cardSpacing
                         rowSpacing: root.m.cardSpacing
 
-                    // ── Текстовая колонка ─────────────────────────────────
+                    // ── Text column ───────────────────────────────────────
                     ColumnLayout {
                         id: textColumn
-                        // Ширину отдаёт строка: всё, что осталось от блока
-                        // «Оболочки». Без нулевой желаемой ширины колонка
-                        // просила бы ширину своей самой длинной строки, и
-                        // блок справа уезжал за край карточки.
+                        // The row gives out the width: everything left over from the "Shells"
+                        // block. Without a zero preferred width the column would ask for the width
+                        // of its longest line, and the block on the right would slide past the
+                        // card edge.
                         Layout.fillWidth: true
                         Layout.preferredWidth: 0
                         Layout.minimumWidth: 0
                         Layout.alignment: Qt.AlignTop
                         spacing: root.m.cardSpacing
 
-                        // Заголовок и статус
+                        // Title and status
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: root.m.headerRowSpacing
@@ -1105,15 +1106,15 @@ Item {
                                 color: root.statusOverride !== "" ? root.card.statusPartialColor
                                        : root.card.statusColor === ""
                                        ? root.colTextSecondary : root.card.statusColor
-                                // Некрашеный статус — вторичный текст, а тот у
-                                // оригинала набран весом 600.
+                                // An unpainted status is secondary text, and the original sets that in
+                                // weight 600.
                                 font.weight: root.card.statusBold
                                              ? Font.Bold : root.pal.text_secondary_weight
                                 font.pointSize: page.cardStatusPointSize
                             }
                         }
 
-                        // Описание
+                        // Description
                         RexonText {
                             Layout.fillWidth: true
                             text: root.card.description
@@ -1129,7 +1130,7 @@ Item {
                             color: root.pal.separator
                         }
 
-                        // ТТХ-полоса: память, нагрузка, настройка, игры
+                        // Specs strip: memory, load, customization, games
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 0
@@ -1141,10 +1142,9 @@ Item {
                                     id: statCell
                                     required property var modelData
                                     Layout.fillWidth: true
-                                    // Колонки РАВНОЙ ширины, как у растяжки
-                                    // 1:1:1:1 в оригинале: без этого ширина
-                                    // делилась по длине подписи, и «RAM»
-                                    // уезжал на 16 точек влево.
+                                    // Columns of EQUAL width, like the 1:1:1:1 stretch in the original:
+                                    // without it the width was divided by label length, and "RAM" moved 16
+                                    // pixels to the left.
                                     Layout.preferredWidth: 1
                                     spacing: root.m.statSpacing
 
@@ -1157,9 +1157,8 @@ Item {
 
                                     RexonText {
                                         Layout.fillWidth: true
-                                        // Пустое значение держит место, но не
-                                        // видно: колонки иначе разъезжаются
-                                        // по высоте.
+                                        // An empty value holds its place but is invisible: otherwise the columns
+                                        // come out at different heights.
                                         text: statCell.modelData.value === ""
                                               ? "·" : statCell.modelData.value
                                         opacity: statCell.modelData.value === "" ? 0 : 1
@@ -1186,8 +1185,8 @@ Item {
                             color: root.pal.separator
                         }
 
-                        // Сколько пакетов поставится и откуда; у
-                        // установленного — всё ли на месте.
+                        // How many packages will be installed and from where; for an installed
+                        // desktop — whether everything is in place.
                         RexonText {
                             Layout.fillWidth: true
                             text: root.packagesLine !== "" ? root.packagesLine
@@ -1198,9 +1197,9 @@ Item {
                             font.pointSize: root.m.packagesPointSize
                         }
 
-                        // Что из набора сейчас не ставится (ждёт пересборки
-                        // в репозитории) — до нажатия «Установить», а не
-                        // после пароля в журнале pacman.
+                        // What from the set does not install right now (waiting for a rebuild in
+                        // the repository) — before pressing "Install", not after the password in
+                        // the pacman log.
                         RexonText {
                             Layout.fillWidth: true
                             visible: root.packagesNotice !== ""
@@ -1210,9 +1209,8 @@ Item {
                             font.pointSize: root.m.packagesPointSize
                         }
 
-                        // Такой пакет можно собрать из официального рецепта
-                        // Arch прямо здесь — кнопка с пояснением под
-                        // предупреждением.
+                        // Such a package can be built from the official Arch recipe right here — a
+                        // button with an explanation under the warning.
                         ColumnLayout {
                             Layout.fillWidth: true
                             visible: root.rebuildButton !== ""
@@ -1243,22 +1241,22 @@ Item {
                             }
                         }
 
-                        // ── Кнопки действий ──────────────────────────────
+                        // ── Action buttons ───────────────────────────────
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.topMargin: root.m.buttonRowTopMargin
                             spacing: root.m.buttonRowSpacing
 
-                            // Стол недоступен на этом дистрибутиве — вместо
-                            // кнопок объяснение.
+                            // The desktop is not available on this distribution — an explanation
+                            // instead of buttons.
                             RexonText {
                                 visible: !root.card.available
                                 text: root.card.notice
                                 color: root.pal.status_unavailable
                             }
 
-                            // Это текущий стол: ни «Переключиться» (мы уже в
-                            // нём), ни «Удалить» (остались бы без графики).
+                            // This is the current desktop: neither "Switch" (we are already in it) nor
+                            // "Delete" (we would be left without graphics).
                             RexonText {
                                 id: currentBadge
                                 visible: root.card.isCurrent && root.card.available
@@ -1273,10 +1271,9 @@ Item {
                                 }
                             }
 
-                            // Установка и переключение — синяя, проверка —
-                            // нейтральная с рамкой, удаление — красная. Все
-                            // три тона и поля приходят из ядра; кнопка одна
-                            // (общая `RexonButton`), меняется только тон.
+                            // Install and switch are blue, check is neutral with a border, remove is
+                            // red. All three tones and the paddings come from the core; there is one
+                            // button (the shared `RexonButton`), only the tone changes.
                             Repeater {
                                 model: root.card.buttons
 
@@ -1294,11 +1291,10 @@ Item {
                                     leftPadding: root.m.cardButtonPaddingH
                                     rightPadding: root.m.cardButtonPaddingH
                                     text: actionButton.modelData.text
-                                    // SteamOS: кнопка видна, но неактивна;
-                                    // причина — строкой под кнопками.
-                                    // Конфликт набора с установленным: то же
-                                    // для кнопок, ставящих набор, причина —
-                                    // ⛔-строкой над кнопками.
+                                    // SteamOS: the button is visible but disabled; the reason is a line under
+                                    // the buttons.
+                                    // A conflict of the set with something installed: the same for the
+                                    // buttons that install the set, the reason is a ⛔ line above the buttons.
                                     enabled: actionButton.modelData.enabled !== false
                                              && !(root.packagesBlocked
                                                   && actionButton.modelData.installsSet === true)
@@ -1316,13 +1312,11 @@ Item {
                                 Layout.fillWidth: true
                             }
                         }
-                        // Версия, которая РЕАЛЬНО поставится из
-                        // репозиториев этого дистрибутива. Пока идёт
-                        // запрос — мягкий плейсхолдер, при отсутствии
-                        // пакета строка тихо исчезает.
-                        // Отдельной строкой под кнопками: рядом с тремя
-                        // кнопками ей оставалось место на полтора слова
-                        // («Установлена верс…», приёмка 10.10.2026).
+                        // The version that will ACTUALLY be installed from this distribution's
+                        // repositories. While the query is running — a soft placeholder; without a
+                        // package the line quietly disappears.
+                        // A separate line under the buttons: next to the three buttons it had room
+                        // for a word and a half ("Installed vers…", acceptance 10.10.2026).
                         RexonText {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
@@ -1337,8 +1331,8 @@ Item {
                             font.pointSize: root.m.versionPointSize
                         }
 
-                        // SteamOS (Steam Deck и Steam Machine): почему кнопки
-                        // выше неактивны — одной фразой из ядра.
+                        // SteamOS (Steam Deck and Steam Machine): why the buttons above are
+                        // disabled — one phrase from the core.
                         RexonText {
                             Layout.fillWidth: true
                             visible: (root.card.blockedNotice || "") !== ""
@@ -1348,12 +1342,11 @@ Item {
                         }
                     }
 
-                    // ── Блок «Оболочки» ───────────────────────────────────
-                    // Надстройка над столом: у каждой оболочки своё
-                    // «Установить», а после установки — «Переключиться» (вход
-                    // в этот же стол с оболочкой) и «Убрать» (стол остаётся).
-                    // Подписи, состав кнопок и почему кнопка неактивна —
-                    // ядро (`qt_desktops::shell_rows`).
+                    // ── "Shells" block ────────────────────────────────────
+                    // An add-on over the desktop: each shell has its own "Install", and after
+                    // installation "Switch" (log into this same desktop with the shell) and
+                    // "Remove" (the desktop stays). Labels, the set of buttons and why a button
+                    // is disabled — the core (`qt_desktops::shell_rows`).
                     Rectangle {
                         id: shellsPanel
                         readonly property var rows: root.card && root.card.shells
@@ -1475,8 +1468,8 @@ Item {
                                         }
                                     }
 
-                                    // Почему кнопка неактивна — словами, а не
-                                    // только подсказкой под курсором (геймпад).
+                                    // Why the button is disabled — in words, not only as a tooltip under the
+                                    // cursor (gamepad).
                                     RexonText {
                                         Layout.fillWidth: true
                                         visible: shellRow.modelData.hint !== ""
@@ -1495,59 +1488,63 @@ Item {
         }
     }
 
-    // ── Увеличение скриншота ──────────────────────────────────────────────
+    // ── Screenshot zoom ───────────────────────────────────────────────────
 
-    // ⭐ ОТДЕЛЬНОЕ ОКНО ВО ВЕСЬ ЭКРАН, а не всплывашка внутри вкладки.
+    // A SEPARATE FULL-SCREEN WINDOW, not a pop-up inside the tab.
     //
-    // Раньше здесь стоял `Popup` размером во вкладку, и «увеличить во весь
-    // экран» оказывалось неправдой: поверх снимка оставались полоса разделов
-    // сверху и подвал состояния снизу, а поля вокруг были полями страницы.
-    // Оправдание «сцена живёт внутри QQuickWidget» к делу не относится:
-    // `Window` в QML — САМОСТОЯТЕЛЬНОЕ окно верхнего уровня, границами
-    // сцены-хозяина оно не ограничено и одинаково открывается и из окна на
-    // Rust, и из вкладки внутри QQuickWidget. У виджетного оригинала это
-    // `QDialog` без рамки, модальный, с `showFullScreen()` в `showEvent`
-    // (`rexon/qt_desktops/window.py`) — здесь ровно те же три свойства.
+    // There used to be a tab-sized `Popup` here, and "zoom to full screen"
+    // turned out to be untrue: the section strip at the top and the status
+    // footer at the bottom remained over the screenshot, and the margins
+    // around it were the page margins. The excuse "the scene lives inside a
+    // QQuickWidget" is irrelevant: a QML `Window` is an INDEPENDENT top-level
+    // window, not bounded by the host scene, and it opens the same way from
+    // the Rust window and from a tab inside a QQuickWidget. In the widget
+    // original this is a frameless modal `QDialog` with `showFullScreen()` in
+    // `showEvent` (`rexon/qt_desktops/window.py`) — here exactly the same
+    // three properties.
     //
-    // Выход возвращает окно как было: своих размеров главному окну просмотр
-    // не менял (он в нём не жил) и раскладку вкладки не трогал — закрытие
-    // просто прячет окно и возвращает управление тому, кто его открыл.
+    // Exit leaves the window as it was: the viewer did not change the main
+    // window's size (it did not live in it) and did not touch the tab layout —
+    // closing simply hides the window and returns control to whoever opened
+    // it.
     //
-    // `transientParent: null` — намеренно. По умолчанию вложенное `Window`
-    // становится подчинённым окну сцены, а у хозяина-QQuickWidget настоящего
-    // окна нет вовсе: привязка к нему сделала бы просмотр неоткрываемым на
-    // одном из двух входов.
+    // `transientParent: null` is deliberate. By default a nested `Window`
+    // becomes transient for the scene's window, and a QQuickWidget host has no
+    // real window at all: tying it to that would make the viewer unopenable
+    // from one of the two entry points.
     Window {
         id: zoom
 
-        // Отдельное окно корневого зеркалирования главного окна не наследует —
-        // включается своим (то же правило, что в MainWindow.qml).
+        // A separate window does not inherit the main window's root mirroring — it
+        // turns on its own (the same rule as in MainWindow.qml).
         LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
         LayoutMirroring.childrenInherit: true
 
         transientParent: null
         flags: Qt.Window | Qt.FramelessWindowHint
         modality: Qt.ApplicationModal
-        // Заголовок — из ядра, как у оригинала (`setWindowTitle`). Рамки у
-        // окна нет, но заголовок видят переключатель окон и панель задач.
+        // The title comes from the core, as in the original (`setWindowTitle`).
+        // The window has no frame, but the window switcher and the task bar see
+        // the title.
         title: root.carouselTexts.zoomTitle
-        // Фон просмотра — из ядра (`rgba(0,0,0,0.95)` у оригинала).
+        // Viewer background — from the core (`rgba(0,0,0,0.95)` in the original).
         color: root.pal.zoom_bg
 
-        /// Открыть просмотр во весь экран. Имя `open()` оставлено прежним:
-        /// его зовут и щелчок по снимку, и кнопка-лупа под ним.
-        /// Фокус внутри окна здесь НЕ берётся: его берёт обработчик показа
-        /// внизу, один на все пути появления окна.
+        /// Open the viewer in full screen. The name `open()` is kept as before: it
+        /// is called both by a click on the screenshot and by the magnifier button
+        /// under it.
+        /// Focus inside the window is NOT taken here: it is taken by the show
+        /// handler at the bottom, one for all the ways the window appears.
         ///
-        /// ⚠️ Размер экрана проставляется РУКАМИ, до просьбы о полном
-        /// экране, и это не перестраховка ради красоты. `showFullScreen()` —
-        /// именно просьба: её исполняет оконный менеджер, и там, где его нет
-        /// или где он её не понял, окно осталось бы размером со своё
-        /// содержимое. Замер на стенде без оконного менеджера: просмотр
-        /// вышел окошком 160×150 в левом верхнем углу — то есть «во весь
-        /// экран» опять оказалось бы неправдой, только по другой причине.
-        /// С этими двумя строками окно занимает экран в любом случае, а
-        /// полноэкранный режим сверху снимает ещё и панели композитора.
+        /// Warning: the screen size is set BY HAND, before the full-screen request,
+        /// and this is not a precaution for the sake of looks. `showFullScreen()`
+        /// is exactly a request: the window manager fulfils it, and where there is
+        /// none or where it did not understand it, the window would stay the size
+        /// of its content. Measurement on a test bench without a window manager:
+        /// the viewer came out as a 160×150 window in the top left corner — so
+        /// "full screen" would again have been untrue, just for a different
+        /// reason. With these two lines the window takes the screen in any case,
+        /// and full-screen mode on top of that also removes the compositor panels.
         function open() {
             zoom.x = 0;
             zoom.y = 0;
@@ -1558,8 +1555,8 @@ Item {
             zoom.requestActivate();
         }
 
-        /// Закрыть просмотр. Точка выхода ОДНА, и зовут её все четыре пути:
-        /// щелчок по снимку, крестик, Esc и Q.
+        /// Close the viewer. There is ONE exit point, and all four paths call it:
+        /// a click on the screenshot, the cross, Esc and Q.
         function hideZoom() {
             zoom.close();
         }
@@ -1569,29 +1566,29 @@ Item {
 
             anchors.fill: parent
 
-            // Клавиши слушает САМО ТЕЛО окна: `Keys` — свойство элемента, а
-            // окно элементом не является. И фокус на первом кадре берёт
-            // тело, а не кнопка «×»: пока фокус стоял на кнопке, пробел её
-            // НАЖИМАЛ (просмотр закрывался) вместо листания, хотя у
-            // виджетного просмотра пробел листал вперёд.
+            // Keys are listened to by the window BODY ITSELF: `Keys` is an item
+            // property, and a window is not an item. And on the first frame focus is
+            // taken by the body, not by the "×" button: while focus was on the button,
+            // Space PRESSED it (the viewer closed) instead of paging, although in the
+            // widget viewer Space paged forward.
             focus: true
 
-            /// Значки и клавиши ← → (и их пары A/D) — по зеркалированию
-            /// окна просмотра: справа налево «вперёд» — влево. Пробел — всегда
-            /// вперёд: он про порядок, а не про сторону.
+            /// Icons and the ← → keys (and their A/D pairs) follow the viewer window's
+            /// mirroring: for right to left "forward" is to the left. Space is always
+            /// forward: it is about order, not direction.
             readonly property RexonArrows arrows: RexonArrows {
                 mirrored: zoomBody.LayoutMirroring.enabled
             }
 
-            // Набор — как у виджетного просмотра (`keyPressEvent`):
-            // ←/A назад, →/D/пробел вперёд, Esc/Q закрыть (справа налево
-            // ←/A и →/D меняются ролями — `zoomBody.arrows`).
+            // The set is as in the widget viewer (`keyPressEvent`): ←/A back, →/D/Space
+            // forward, Esc/Q close (for right to left ←/A and →/D swap roles —
+            // `zoomBody.arrows`).
             //
-            // ⚠️ Esc назван здесь ПОИМЁННО. У `Popup` его закрывал
-            // `closePolicy`, у окна такого свойства нет вовсе: пока строки
-            // ниже не было, просмотр на весь экран не закрывался клавишей
-            // выхода — а других выходов из окна без рамки у человека ровно
-            // два, и оба надо найти мышью.
+            // Warning: Esc is named here EXPLICITLY. In a `Popup` it was closed by
+            // `closePolicy`; a window has no such property at all: while the line
+            // below was missing, the full-screen viewer did not close with the escape
+            // key — and the user has exactly two other ways out of a frameless window,
+            // both of which must be found with the mouse.
             Keys.onPressed: (event) => {
                 switch (event.key) {
                 case Qt.Key_Left:
@@ -1693,24 +1690,24 @@ Item {
             }
         }
 
-        // Просмотр обязан быть управляем с клавиатуры с первого кадра, а
-        // страница — с первого кадра ПОСЛЕ выхода.
+        // The viewer must be keyboard-operable from the first frame, and the page
+        // from the first frame AFTER exit.
         //
-        // Фокус внутри просмотра берёт ТЕЛО окна (`zoomBody`): оно слушает
-        // клавиши листания, а Tab с него уводит на «❮ / ❯ / ×», если человек
-        // хочет кнопки. Показ окна не всегда идёт через `open()` — его
-        // показывает и сам Qt, восстанавливая окно, — поэтому фокус берётся
-        // на СОБЫТИИ показа, а не только в функции.
+        // Focus inside the viewer is taken by the window BODY (`zoomBody`): it
+        // listens to the paging keys, and Tab from it leads to "❮ / ❯ / ×" if the
+        // user wants the buttons. The window is not always shown through
+        // `open()` — Qt itself shows it too when restoring the window — so focus is
+        // taken on the show EVENT, not only in the function.
         //
-        // ⚠️ Возврат фокуса странице — не мелочь. Пока его не было, после
-        // закрытия просмотра клавиатура уходила в никуда: ←/→ не листали
-        // список столов, Tab не ходил по кнопкам, и вкладка выглядела
-        // зависшей, хотя мышью работала.
+        // Warning: returning focus to the page is not a trifle. Before it existed,
+        // after closing the viewer the keyboard went nowhere: ←/→ did not page the
+        // desktop list, Tab did not move between buttons, and the tab looked
+        // frozen, although it worked with the mouse.
         //
-        // Возвращается ИМЕННО фокус, а не выбор: `focusFirstControl()` здесь
-        // звать нельзя — она перекидывает выбор на первый стол списка, и
-        // выход из просмотра менял бы показанную карточку. Выбранная строка
-        // остаётся той же, какой была до увеличения.
+        // It is the FOCUS that is returned, not the selection:
+        // `focusFirstControl()` must not be called here — it moves the selection
+        // to the first desktop in the list, and leaving the viewer would change
+        // the shown card. The selected row stays the same as before zooming.
         onVisibleChanged: {
             if (zoom.visible)
                 zoomBody.forceActiveFocus();
@@ -1719,10 +1716,10 @@ Item {
         }
     }
 
-    // ── Окно операции над столом ──────────────────────────────────────────
+    // ── Desktop operation window ──────────────────────────────────────────
     //
-    // Общее для «Рабочих столов» и «Сравнения DE»: вопрос или отказ → ход
-    // дела → итог (`DeOperationDialog.qml`).
+    // Shared by "Desktops" and "DE comparison": question or refusal →
+    // progress → result (`DeOperationDialog.qml`).
 
     DeOperationDialog {
         anchors.fill: parent
@@ -1731,20 +1728,20 @@ Item {
         onDesktopsChanged: page.refreshInstalled()
     }
 
-    // ── Фокус с первого кадра ─────────────────────────────────────────────
+    // ── Focus from the first frame ────────────────────────────────────────
 
-    // ⚠️ Фокус берёт ПЕРВЫЙ УПРАВЛЯЕМЫЙ ЭЛЕМЕНТ, а не корень страницы:
-    // `forceActiveFocus()` на корне делает `activeFocusItem` безымянным
-    // Item'ом, и страница мертва и с клавиатуры, и с геймпада.
+    // Warning: focus goes to the FIRST OPERABLE ELEMENT, not to the page root:
+    // `forceActiveFocus()` on the root makes `activeFocusItem` a nameless Item,
+    // and the page is dead both from the keyboard and from a gamepad.
     property int focusAttempts: 0
 
     function focusFirstControl() {
-        // Первой строкой идёт заголовок секции: он виден, но не выбирается,
-        // и фокус берёт первый ВЫБИРАЕМЫЙ пункт.
-        // Строка стола, который уже выбран моделью: при открытии это текущий
-        // рабочий стол, после возврата на вкладку — тот, на котором человек
-        // остановился. Прежде фокус всегда уходил на первую строку, и
-        // вкладка открывалась на Cinnamon (приёмка 10.10.2026).
+        // The first row is a section header: it is visible but not selectable,
+        // and focus goes to the first SELECTABLE item.
+        // The row of the desktop already selected by the model: on opening this is
+        // the current desktop, after returning to the tab — the one the user
+        // stopped at. Previously focus always went to the first row, and the tab
+        // opened on Cinnamon (acceptance 10.10.2026).
         const wanted = page.selectedDe;
         if (wanted !== "") {
             for (let i = 0; i < deList.count; i++) {
@@ -1758,9 +1755,9 @@ Item {
             }
         }
         for (let i = 0; i < deList.count; i++) {
-            // Заголовок секции виден, но не выбирается — фокус берёт первый
-            // ВЫБИРАЕМЫЙ пункт. Спрашиваем модель, а не разметку: состав
-            // секций решает ядро, и разметка о нём знать не должна.
+            // A section header is visible but not selectable — focus goes to the
+            // first SELECTABLE item. We ask the model, not the markup: the set of
+            // sections is decided by the core, and the markup must not know about it.
             if (page.roleValue(i, "selectable") === true) {
                 root.focusAttempts = 0;
                 deList.currentIndex = i;
@@ -1768,8 +1765,8 @@ Item {
                 return;
             }
         }
-        // Список наполняется не мгновенно; пробуем на следующем проходе
-        // цикла событий, но не бесконечно.
+        // The list does not fill instantly; we retry on the next event loop pass,
+        // but not forever.
         if (root.focusAttempts < 20) {
             root.focusAttempts += 1;
             Qt.callLater(root.focusFirstControl);
@@ -1783,7 +1780,7 @@ Item {
         root.requestVersion();
     }
 
-    // Во встроенной вкладке страница создаётся заранее и оживает при
-    // переключении на неё — фокус надо взять и там.
+    // In the embedded tab the page is created in advance and comes alive when
+    // switched to — focus must be taken there too.
     onVisibleChanged: if (root.visible) root.focusFirstControl()
 }

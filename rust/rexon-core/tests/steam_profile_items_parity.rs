@@ -1,15 +1,18 @@
-//! Golden-сверка разбора публичного инвентаря фонов профиля Steam с оригиналом
-//! `rexon/qt_steam/window.py` (детерминированные функции; сам файл — Qt/сеть).
+//! Golden check of parsing the public Steam profile background inventory
+//! against the original `rexon/qt_steam/window.py` (deterministic functions;
+//! the file itself is Qt/network).
 //!
-//! Эталон синтетический: живой ответ `steamcommunity.com/inventory/<id64>/753/6`
-//! требует публичного инвентаря конкретного аккаунта, а надетый фон читается из
-//! локального `localconfig.vdf` — воспроизводимо снять нельзя. Фикстуры покрывают
-//! документированные поля (item_class_3, actions[].link, economy-CDN-фолбэк,
-//! classid/market_hash_name, movie_*/image_*). Rust обязан вернуть те же записи,
-//! строки и порядок, что Python.
+//! The reference is synthetic: a live `steamcommunity.com/inventory/<id64>/753/6`
+//! response needs the public inventory of a specific account, and the equipped
+//! background is read from the local `localconfig.vdf` — it cannot be captured
+//! reproducibly. The fixtures cover the documented fields (item_class_3,
+//! actions[].link, economy CDN fallback, classid/market_hash_name,
+//! movie_*/image_*). Rust must return the same records, strings and order as
+//! Python.
 //!
-//! ⚠️ Живой сетевой вызов, скачивание ассетов и чтение ФС в ядро НЕ портированы и
-//! golden-тестами не покрываются — проверяется только РАЗБОР сырья.
+//! ⚠️ The live network call, asset download and FS reads are NOT ported to the
+//! core and are not covered by golden tests — only PARSING of the raw data is
+//! checked.
 
 use rexon_core::steam_profile_items::{
     community_url_variants, finalize_items, parse_equipped_background,
@@ -18,7 +21,7 @@ use rexon_core::steam_profile_items::{
 };
 use serde_json::{json, Value};
 
-/// Собрать ожидаемый предмет из JSON-объекта фикстуры.
+/// Build the expected item from a fixture JSON object.
 fn item_from(v: &Value) -> ProfileBackgroundItem {
     ProfileBackgroundItem {
         id: v["id"].as_str().unwrap().to_string(),
@@ -35,9 +38,10 @@ fn cases() -> Value {
     serde_json::from_str(include_str!("golden/steam_profile_items_cases.json")).unwrap()
 }
 
-/// Разбор публичного инвентаря 753/6: пропуск не-фонов (item_class_2) и записей
-/// без картинки, economy-CDN-фолбэк, classid/market_hash_name/дедуп по cid
-/// (last-value, первая позиция) и порядок — как Python `_InventoryWorker.run`.
+/// Parsing the public inventory 753/6: skipping non-backgrounds (item_class_2)
+/// and records without an image, economy CDN fallback,
+/// classid/market_hash_name/dedup by cid (last value, first position) and the
+/// order — as in Python `_InventoryWorker.run`.
 #[test]
 fn parse_inventory_matches_python() {
     let raw: Value =
@@ -56,8 +60,9 @@ fn parse_inventory_matches_python() {
     assert_eq!(got, want);
 }
 
-/// Разбор надетого фона: movie_webm приоритетнее movie_mp4, image_large — над
-/// image_small, url/preview на community-CDN, `animated=true`, `equipped=true`.
+/// Parsing the equipped background: movie_webm beats movie_mp4, image_large
+/// beats image_small, url/preview on the community CDN, `animated=true`,
+/// `equipped=true`.
 #[test]
 fn parse_equipped_matches_python() {
     let raw: Value =
@@ -69,8 +74,8 @@ fn parse_equipped_matches_python() {
     assert_eq!(got, want);
 }
 
-/// `finalize_items`: надетого нет в инвентаре → он вставлен наверх; остальные
-/// отсортированы по (game.lower, name.lower). Порт `_finalize_items`.
+/// `finalize_items`: the equipped one is not in the inventory → it is inserted
+/// on top; the rest are sorted by (game.lower, name.lower). Port of `_finalize_items`.
 #[test]
 fn finalize_inserts_absent_equipped_and_sorts() {
     let cases = cases();
@@ -93,14 +98,14 @@ fn finalize_inserts_absent_equipped_and_sorts() {
     assert_eq!(got, want);
 }
 
-/// Битый/пустой ответ инвентаря → пустой список (порт `(data or {}).get(...)`).
+/// Broken/empty inventory response → empty list (port of `(data or {}).get(...)`).
 #[test]
 fn inventory_empty_or_broken_yields_empty() {
     assert!(parse_inventory_backgrounds(&json!({}), None).is_empty());
     assert!(parse_inventory_backgrounds(&json!({"descriptions": []}), None).is_empty());
-    // descriptions не массив → пусто.
+    // descriptions is not an array → empty.
     assert!(parse_inventory_backgrounds(&json!({"descriptions": "oops"}), None).is_empty());
-    // Только не-фон и фон-без-картинки → пусто.
+    // Only a non-background and a background without an image → empty.
     let only_junk = json!({"descriptions": [
         {"tags": [{"category": "item_class", "internal_name": "item_class_2"}]},
         {"tags": [{"category": "item_class", "internal_name": "item_class_3"}]}
@@ -108,8 +113,8 @@ fn inventory_empty_or_broken_yields_empty() {
     assert!(parse_inventory_backgrounds(&only_junk, None).is_empty());
 }
 
-/// Надетый фон без ссылок (ни movie_*, ни image_*) и отсутствие
-/// `profile_background` → `None` (UI откатится на публичный инвентарь).
+/// An equipped background without links (neither movie_* nor image_*) and a
+/// missing `profile_background` → `None` (the UI falls back to the public inventory).
 #[test]
 fn equipped_without_link_is_none() {
     assert!(parse_equipped_background(&json!({})).is_none());
@@ -119,8 +124,8 @@ fn equipped_without_link_is_none() {
     );
 }
 
-/// Починен баг оригинала: `str(bg.get("communityitemid", "equipped"))` при
-/// явном `null`/пустой строке/0 давал "None"/""/"0"; здесь → фолбэк "equipped".
+/// Fixed bug of the original: `str(bg.get("communityitemid", "equipped"))` with
+/// an explicit `null`/empty string/0 gave "None"/""/"0"; here → fallback "equipped".
 #[test]
 fn equipped_id_fixed_on_degenerate_communityitemid() {
     let mk = |cid: Value| {
@@ -134,18 +139,19 @@ fn equipped_id_fixed_on_degenerate_communityitemid() {
         let got = parse_equipped_background(&mk(cid)).unwrap();
         assert_eq!(got.id, "equipped", "вырожденный communityitemid → equipped");
     }
-    // Отсутствие ключа тоже → "equipped".
+    // A missing key also → "equipped".
     let missing = json!({"profile_background": {"name": "Фон", "image_large": "images/x.jpg"}});
     assert_eq!(parse_equipped_background(&missing).unwrap().id, "equipped");
-    // Нормальные значения сохраняются.
+    // Normal values are kept.
     let num = json!({"profile_background": {"communityitemid": 12345, "image_large": "a.jpg"}});
     assert_eq!(parse_equipped_background(&num).unwrap().id, "12345");
     let string = json!({"profile_background": {"communityitemid": "abc", "image_large": "a.jpg"}});
     assert_eq!(parse_equipped_background(&string).unwrap().id, "abc");
 }
 
-/// `finalize_items`: надетый уже в инвентаре → он помечен `equipped`, поднят
-/// наверх и НЕ вставлен повторно; признак пересчитан с нуля по `equipped.id`.
+/// `finalize_items`: the equipped one is already in the inventory → it is
+/// marked `equipped`, moved to the top and NOT inserted again; the flag is
+/// recomputed from scratch by `equipped.id`.
 #[test]
 fn finalize_marks_present_equipped_without_duplication() {
     let a = ProfileBackgroundItem {
@@ -155,7 +161,7 @@ fn finalize_marks_present_equipped_without_duplication() {
         url: "u_a".into(),
         preview: "u_a".into(),
         animated: false,
-        // Заведомо неверный исходный флаг — finalize обязан его пересчитать.
+        // A deliberately wrong initial flag — finalize must recompute it.
         equipped: true,
     };
     let b = ProfileBackgroundItem {
@@ -179,18 +185,18 @@ fn finalize_marks_present_equipped_without_duplication() {
 
     let got = finalize_items(vec![a, b], Some(equipped));
     assert_eq!(got.len(), 2, "надетый уже в списке — без дубля");
-    // bbb помечен equipped и поднят наверх.
+    // bbb is marked equipped and moved to the top.
     assert_eq!(got[0].id, "bbb");
     assert!(got[0].equipped);
-    // Это ИСХОДНЫЙ предмет списка, а не копия equipped (имя не перезаписано).
+    // This is the ORIGINAL list item, not a copy of equipped (name not overwritten).
     assert_eq!(got[0].name, "Beta");
-    // aaa: флаг сброшен в false (пересчёт с нуля).
+    // aaa: the flag is reset to false (recomputed from scratch).
     assert_eq!(got[1].id, "aaa");
     assert!(!got[1].equipped);
 }
 
-/// `finalize_items` без надетого (`None`): никто не помечен, ничего не вставлено,
-/// сортировка по (game.lower, name.lower).
+/// `finalize_items` without an equipped one (`None`): nobody is marked, nothing
+/// inserted, sorting by (game.lower, name.lower).
 #[test]
 fn finalize_without_equipped() {
     let items = vec![
@@ -220,7 +226,7 @@ fn finalize_without_equipped() {
     assert_eq!(got[1].id, "1");
 }
 
-/// Предварительная пометка `equipped` по `eq_id` в `parse_inventory_backgrounds`.
+/// Preliminary `equipped` marking by `eq_id` in `parse_inventory_backgrounds`.
 #[test]
 fn inventory_marks_eq_id() {
     let raw = json!({"descriptions": [
@@ -241,10 +247,10 @@ fn inventory_marks_eq_id() {
     assert!(!got_no[0].equipped);
 }
 
-/// Игра берётся из метки `Game`, а не из строки `type`: Steam пишет `type`
-/// по-разному на каждом языке («Фон профиля — Half-Life 2», «Half-Life 2
-/// Uncommon Profile Background»), и вырезка прежнего префикса на живом
-/// инвентаре 28.09.2026 не срабатывала ни разу (205 из 205).
+/// The game is taken from the `Game` tag, not from the `type` string: Steam
+/// writes `type` differently in each language (the Russian «Profile Background
+/// — Half-Life 2», «Half-Life 2 Uncommon Profile Background»), and cutting the
+/// old prefix on the live inventory on 28.09.2026 never worked (205 of 205).
 #[test]
 fn inventory_game_comes_from_the_game_tag() {
     for ty in ["Необычный Фон профиля — Half-Life 2", "Half-Life 2 Uncommon Profile Background"] {
@@ -263,8 +269,9 @@ fn inventory_game_comes_from_the_game_tag() {
     }
 }
 
-/// `community_url_variants`: путь на канон-CDN → [канон, legacy]; на legacy →
-/// [legacy, канон]; неизвестный префикс → [url]. Порт `_community_url_variants`.
+/// `community_url_variants`: a path on the canonical CDN → [canonical, legacy];
+/// on legacy → [legacy, canonical]; unknown prefix → [url]. Port of
+/// `_community_url_variants`.
 #[test]
 fn url_variants_switch_cdn_hosts() {
     let canon = format!("{COMMUNITY_IMG_BASE}items/abc.jpg");

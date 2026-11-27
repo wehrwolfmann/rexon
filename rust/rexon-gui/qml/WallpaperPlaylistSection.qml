@@ -1,10 +1,11 @@
-// Блок «Плейлист обоев» в «⚙️ Настройках» раздела «Обои HD»: один список
-// для всех собственных обоев Rexon — видео, веб, Flash, картинки «Обоев HD»
-// и обои Razer Axon вперемешку; порядок, интервал, смена при входе,
-// «Следующие/Предыдущие», пауза. Обои Wallpaper Engine ведёт его вкладка.
+// The "Wallpaper playlist" block in "⚙️ Settings" of the "HD Wallpapers"
+// section: one list for all of Rexon's own wallpapers — video, web, Flash,
+// "HD Wallpapers" pictures and Razer Axon wallpapers mixed together; order,
+// interval, change on login, "Next/Previous", pause. Wallpaper Engine
+// wallpapers are handled by their own tab.
 //
-// Только разметка: подписи, снимок и правки — ядро (`wallpaper_playlist`)
-// через `WallpaperPlaylistActions` (rust/rexon-gui/src/wallpaper_playlist_actions.rs).
+// Markup only: labels, snapshot and edits — the core (`wallpaper_playlist`)
+// through `WallpaperPlaylistActions` (rust/rexon-gui/src/wallpaper_playlist_actions.rs).
 
 pragma ComponentBehavior: Bound
 
@@ -49,8 +50,8 @@ Rectangle {
 
     Component.onCompleted: section.reload()
 
-    // Таймер идёт сам — строку «сейчас / следующие через» освежаем, пока
-    // блок виден.
+    // The timer runs by itself — we refresh the "now / next in" line while the
+    // block is visible.
     Timer {
         interval: 5000
         repeat: true
@@ -215,7 +216,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        // Список: название, вид, ▲ ▼ ✕.
+        // List: title, kind, ▲ ▼ ✕.
         Repeater {
             model: section.st.items
 

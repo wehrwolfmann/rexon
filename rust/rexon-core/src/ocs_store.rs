@@ -1,44 +1,44 @@
-//! Порт `rexon/ocs_store.py` — детект фактического типа KDE-темы и журнал
-//! установленного.
+//! Port of `rexon/ocs_store.py` — detection of the actual type of a KDE theme
+//! and the journal of installed items.
 //!
-//! Живой установщик тем спрашивает у этого модуля две вещи: какой на самом
-//! деле тип у распакованной темы (авторы на KDE Store сплошь и рядом грузят
-//! Aurorae или Kvantum в категорию «Global Theme», и применение через
-//! `plasma-apply-lookandfeel` тогда не работает) и что уже установлено —
-//! чтобы карточка в режиме «только установленные» выглядела как в каталоге,
-//! не обращаясь к сети.
+//! The live theme installer asks this module two things: what type the
+//! unpacked theme really is (authors on the KDE Store routinely upload Aurorae
+//! or Kvantum themes into the "Global Theme" category, and applying them via
+//! `plasma-apply-lookandfeel` then does not work) and what is already installed
+//! — so that a card in "installed only" mode looks the same as in the catalog
+//! without going to the network.
 //!
-//! Обе задачи здесь чисто вычислительные: обход каталога и чтение файлов
-//! делает исполнитель и подаёт наблюдения структурой, запись журнала —
-//! тоже он.
+//! Both tasks are purely computational here: the executor walks the directory
+//! and reads the files and hands over its observations as a structure; it also
+//! writes the journal.
 
 use serde_json::{Map, Value};
 
 // ============================================================================
-// Детект фактического типа KDE-темы
+// Detecting the actual type of a KDE theme
 // ============================================================================
 
-/// Наблюдения о распакованном каталоге темы — ровно то, что оригинал
-/// добывал вызовами `listdir`/`isdir`/`isfile`/чтением метаданных.
+/// Observations about the unpacked theme directory — exactly what the original
+/// obtained with `listdir`/`isdir`/`isfile` calls and by reading the metadata.
 #[derive(Debug, Clone, Default)]
 pub struct KdeContentScan {
-    /// Существует ли сам каталог (`os.path.isdir(content_root)`).
+    /// Whether the directory itself exists (`os.path.isdir(content_root)`).
     pub exists: bool,
-    /// Содержимое каталога; пусто, если листинг не удался.
+    /// Directory contents; empty if listing failed.
     pub files: Vec<String>,
-    /// Те элементы `files`, что являются каталогами.
+    /// The `files` entries that are directories.
     pub subdirs: Vec<String>,
-    /// Есть ли подкаталог `contents`.
+    /// Whether there is a `contents` subdirectory.
     pub has_contents_dir: bool,
-    /// Есть ли файл `contents/defaults`.
+    /// Whether there is a `contents/defaults` file.
     pub has_contents_defaults: bool,
-    /// Содержимое `contents`; пусто, если листинг не удался.
+    /// Contents of `contents`; empty if listing failed.
     pub contents_subdirs: Vec<String>,
-    /// Текст `metadata.desktop`, если файл есть и читается.
+    /// Text of `metadata.desktop`, if the file exists and is readable.
     pub metadata_text: Option<String>,
 }
 
-/// Папки-признаки «полного пака» из нескольких компонентов KDE.
+/// Folders that mark a "full pack" of several KDE components.
 const BUNDLE_MARKERS: &[&str] = &[
     "aurorae",
     "color-schemes",
@@ -51,7 +51,7 @@ const BUNDLE_MARKERS: &[&str] = &[
     "sddm",
 ];
 
-/// Файлы-признаки декорации окон Aurorae в корне темы.
+/// Files at the theme root that mark an Aurorae window decoration.
 const AURORAE_MARKERS: &[&str] = &[
     "decoration.svg",
     "decoration.svgz",
@@ -60,7 +60,7 @@ const AURORAE_MARKERS: &[&str] = &[
     "maximize.svg",
 ];
 
-/// Подкаталоги, характерные для темы иконок.
+/// Subdirectories typical of an icon theme.
 const ICON_SUBDIRS: &[&str] = &[
     "apps",
     "places",
@@ -71,18 +71,18 @@ const ICON_SUBDIRS: &[&str] = &[
     "status",
 ];
 
-/// Подкаталоги `contents`, характерные для Plasma Style.
+/// Subdirectories of `contents` typical of a Plasma Style.
 const PLASMA_STYLE_SUBDIRS: &[&str] =
     &["widgets", "dialogs", "frames", "icons", "translucent"];
 
-/// Фактический тип распакованной KDE-темы либо `None`, если определить не
-/// удалось.
+/// The actual type of the unpacked KDE theme, or `None` if it could not be
+/// determined.
 ///
-/// ⚠️ ПОРЯДОК ПРОВЕРОК ЗНАЧИМ и повторяет оригинал: сначала «полный пак»
-/// (две и более компонентных папки), потом однозначная цветовая схема,
-/// затем Aurorae, Kvantum, иконки, и лишь в конце — `contents` и
-/// `metadata.desktop`. Поменять порядок значит поменять решение на темах,
-/// подходящих сразу под несколько признаков.
+/// Warning: THE ORDER OF CHECKS MATTERS and follows the original: first the
+/// "full pack" (two or more component folders), then an unambiguous color
+/// scheme, then Aurorae, Kvantum, icons, and only at the end `contents` and
+/// `metadata.desktop`. Changing the order changes the decision for themes that
+/// match several signs at once.
 pub fn detect_actual_kde_type(scan: &KdeContentScan) -> Option<&'static str> {
     if !scan.exists {
         return None;
@@ -91,28 +91,28 @@ pub fn detect_actual_kde_type(scan: &KdeContentScan) -> Option<&'static str> {
     let has_subdir = |name: &str| scan.subdirs.iter().any(|s| s == name);
     let has_file = |name: &str| scan.files.iter().any(|f| f == name);
 
-    // Полный пак: несколько компонентов KDE отдельными папками.
+    // Full pack: several KDE components in separate folders.
     if BUNDLE_MARKERS.iter().filter(|m| has_subdir(m)).count() >= 2 {
         return Some("bundle");
     }
 
-    // Цветовая схема — однозначный признак.
+    // A color scheme — an unambiguous sign.
     if scan.files.iter().any(|f| f.ends_with(".colors")) {
         return Some("color-scheme");
     }
 
-    // Декорация окон Aurorae.
+    // Aurorae window decoration.
     if AURORAE_MARKERS.iter().any(|m| has_file(m)) {
         return Some("aurorae");
     }
 
-    // Тема Kvantum.
+    // Kvantum theme.
     if scan.files.iter().any(|f| f.ends_with(".kvconfig")) {
         return Some("kvantum");
     }
 
-    // Тема иконок: index.theme И хотя бы одна характерная подпапка. Без
-    // подпапки это не иконки — index.theme носят и другие типы тем.
+    // Icon theme: index.theme AND at least one typical subfolder. Without a
+    // subfolder it is not icons — other theme types carry an index.theme too.
     if has_file("index.theme") && ICON_SUBDIRS.iter().any(|s| has_subdir(s)) {
         return Some("icons");
     }
@@ -129,7 +129,7 @@ pub fn detect_actual_kde_type(scan: &KdeContentScan) -> Option<&'static str> {
         }
     }
 
-    // Последний рубеж — заявленный тип службы в метаданных.
+    // Last resort — the service type declared in the metadata.
     if let Some(text) = &scan.metadata_text {
         if text.contains("Plasma/LookAndFeel") {
             return Some("look-and-feel");
@@ -143,15 +143,15 @@ pub fn detect_actual_kde_type(scan: &KdeContentScan) -> Option<&'static str> {
 }
 
 // ============================================================================
-// Журнал установленных тем
+// Journal of installed themes
 // ============================================================================
 
-/// Путь журнала установленного.
+/// Path of the installed-items journal.
 pub fn install_log_path(home: &str) -> String {
     install_log_path_xdg(None, home)
 }
 
-/// То же с учётом `$XDG_CONFIG_HOME`.
+/// The same, honoring `$XDG_CONFIG_HOME`.
 pub fn install_log_path_xdg(xdg_config_home: Option<&str>, home: &str) -> String {
     format!(
         "{}/rexon/ocs_installed.json",
@@ -159,14 +159,14 @@ pub fn install_log_path_xdg(xdg_config_home: Option<&str>, home: &str) -> String
     )
 }
 
-/// Путь временного файла атомарной записи журнала.
+/// Path of the temporary file for the journal's atomic write.
 pub fn install_log_tmp_path(log_path: &str) -> String {
     format!("{log_path}.tmp")
 }
 
-/// Разобрать журнал. Любая проблема — отсутствие файла, битый JSON, валидный
-/// JSON не-объект на верхнем уровне — даёт пустой журнал: испорченный чужой
-/// файл не должен ронять карточки установленного.
+/// Parse the journal. Any problem — a missing file, broken JSON, valid JSON
+/// that is not an object at the top level — gives an empty journal: someone
+/// else's corrupted file must not break the installed-item cards.
 pub fn parse_installed_log(text: Option<&str>) -> Map<String, Value> {
     let Some(text) = text else {
         return Map::new();
@@ -177,8 +177,8 @@ pub fn parse_installed_log(text: Option<&str>) -> Map<String, Value> {
     }
 }
 
-/// Поля карточки, которые журнал хранит вместе с записью. Оригинал читал их
-/// с объекта по утиной типизации; здесь состав закреплён типом.
+/// Card fields that the journal stores together with the entry. The original
+/// read them from the object by duck typing; here the set is fixed by a type.
 #[derive(Debug, Clone, Default)]
 pub struct InstalledItem {
     pub content_id: String,
@@ -198,11 +198,11 @@ pub struct InstalledItem {
     pub category_id: i64,
 }
 
-/// Запись журнала для установленной темы.
+/// Journal entry for an installed theme.
 ///
-/// ⚠️ ПОРЯДОК КЛЮЧЕЙ значим: журнал пишется как JSON с отступами и
-/// сравнивается побайтно, а Python сохраняет порядок вставки. Пустые пути
-/// отфильтровываются — они попадали в список от неудавшихся шагов установки.
+/// Warning: KEY ORDER matters: the journal is written as indented JSON and
+/// compared byte for byte, and Python preserves insertion order. Empty paths
+/// are filtered out — they got into the list from failed installation steps.
 pub fn installed_entry(
     item: &InstalledItem,
     paths: &[String],
@@ -240,7 +240,7 @@ pub fn installed_entry(
     Value::Object(m)
 }
 
-/// Добавить (или заменить) запись в журнале.
+/// Add (or replace) an entry in the journal.
 pub fn record_installed(
     log: &mut Map<String, Value>,
     item: &InstalledItem,
@@ -253,13 +253,13 @@ pub fn record_installed(
     );
 }
 
-/// Убрать запись; `false` — записи не было (файл тогда не переписывается).
+/// Remove an entry; `false` — there was no entry (the file is then not rewritten).
 pub fn forget_installed(log: &mut Map<String, Value>, content_id: &str) -> bool {
     log.remove(content_id).is_some()
 }
 
-/// Текст файла журнала — как `json.dump(..., ensure_ascii=False, indent=2)`:
-/// кириллица не экранируется, перевода строки в конце нет.
+/// Text of the journal file — as `json.dump(..., ensure_ascii=False, indent=2)`:
+/// Cyrillic is not escaped, there is no trailing newline.
 pub fn serialize_installed_log(log: &Map<String, Value>) -> String {
     serde_json::to_string_pretty(&Value::Object(log.clone()))
         .unwrap_or_else(|_| "{}".to_string())

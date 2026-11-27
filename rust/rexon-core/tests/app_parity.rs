@@ -1,13 +1,13 @@
-//! Golden-сверка `app.rs` (аварийный откат `--recover-kde`, ярлыки, хуки
-//! входа).
+//! Golden check of `app.rs` (the `--recover-kde` emergency rollback, shortcuts, login
+//! hooks).
 //!
-//! `golden/app_cases.json` — эталон. Когда-то он был снят read-only с живого
-//! `rexon.app` (чистая `_strip_fork_applets_text` на синтетическом
-//! appletsrc, детекторы токенов на пограничных строках, таблицы ключей
-//! шрифтов, эффектов KWin и флагов одиночных вкладок). С 02.10.2026 Python в
-//! Rexon — только архив: снимок заморожен и служит СОБСТВЕННЫМ эталоном
-//! Rust, а не записью чужого поведения. Переснимать его нечем и незачем —
-//! осознанная правка поведения правит и эталон.
+//! `golden/app_cases.json` — the golden file. Once it was captured read-only from the live
+//! `rexon.app` (the pure `_strip_fork_applets_text` on a synthetic
+//! appletsrc, token detectors on edge-case lines, key tables of
+//! fonts, KWin effects and single-tab flags). Since 02.10.2026 Python in
+//! Rexon is only an archive: the snapshot is frozen and serves as Rust's OWN golden
+//! reference, not a record of someone else's behaviour. There is nothing to recapture it with and no reason to —
+//! a deliberate behaviour change edits the golden file as well.
 
 mod i18n_pin;
 
@@ -38,8 +38,8 @@ fn strip_fork_applets_cases() {
     }
 }
 
-/// Без форк-апплетов текст обязан вернуться БАЙТ-В-БАЙТ исходным: файл
-/// панели переписывается только когда есть что удалять.
+/// Without fork applets the text must come back BYTE FOR BYTE as the original: the panel
+/// file is rewritten only when there is something to remove.
 #[test]
 fn strip_is_identity_without_fork() {
     let g = fx();
@@ -49,8 +49,8 @@ fn strip_is_identity_without_fork() {
     assert!(removed.is_empty());
 }
 
-/// Секция форк-апплета выкидывается вместе с вложенными подсекциями, а
-/// соседний стоковый systemtray и его extraItems остаются нетронутыми.
+/// A fork applet's section is dropped together with its nested subsections, while
+/// the neighbouring stock systemtray and its extraItems stay untouched.
 #[test]
 fn strip_keeps_stock_applets() {
     let g = fx();
@@ -100,7 +100,7 @@ fn reset_tables() {
     assert_eq!(app::KDE_FONT_KEYS, strs(&g["font_keys"]).as_slice());
     assert_eq!(app::KWIN_FORK_EFFECTS, strs(&g["kwin_effects"]).as_slice());
 
-    // argv строятся по этим же таблицам — сверяем форму на первом элементе.
+    // argv are built from these same tables — we check the shape on the first element.
     let fonts = app::kde_font_reset_argv("kwriteconfig6");
     assert_eq!(fonts.len(), app::KDE_FONT_KEYS.len());
     assert_eq!(
@@ -182,8 +182,8 @@ fn cli_routing() {
         Route::SingleTab { module: "rexon.qt_settings.app" }
     );
 
-    // Приоритет как в оригинале: служебные хуки раньше UI, вкладки раньше
-    // заставки и аварийного отката.
+    // Priority as in the original: service hooks before UI, tabs before
+    // the splash and the emergency rollback.
     assert_eq!(
         app::route(&args(&["--recover-kde", "--apply-defaults"])),
         Route::ApplyDefaults
@@ -192,12 +192,12 @@ fn cli_routing() {
         app::route(&args(&["--recover-kde", "--compare-qt"])),
         Route::SingleTab { module: "rexon.qt_compare.app" }
     );
-    // Несколько вкладок сразу — побеждает первая по таблице.
+    // Several tabs at once — the first in the table wins.
     assert_eq!(
         app::route(&args(&["--desktops-qt", "--appearance-qt"])),
         Route::SingleTab { module: "rexon.appearance_page" }
     );
-    // Неизвестный флаг маршрут не меняет.
+    // An unknown flag does not change the route.
     assert_eq!(app::route(&args(&["--чего-то-нет"])), Route::MainWindow);
 }
 
@@ -211,7 +211,7 @@ fn main_window_args_drop_legacy_alias() {
 }
 
 // ============================================================================
-// Ярлыки рабочего стола: `--page=<имя>`
+// Desktop shortcuts: `--page=<name>`
 // ============================================================================
 
 #[test]
@@ -220,17 +220,17 @@ fn start_page_targets() {
     assert_eq!(one("--page=install"), Some(("desktops", "")));
     assert_eq!(one("--page=backups"), Some(("settings", "")));
     assert_eq!(one("--page=compare"), Some(("desktops", "compare")));
-    // Регистр и пробелы приезжают из чужих файлов — на них падать нельзя.
+    // Case and spaces arrive from foreign files — we must not fail on them.
     assert_eq!(one("--page=Backups"), Some(("settings", "")));
-    // Незнакомое имя и отсутствие флага одинаково означают «раздел по
-    // умолчанию»: окно обязано открыться, а не отказать из-за опечатки.
+    // An unfamiliar name and a missing flag both mean "the default
+    // section": the window must open rather than refuse because of a typo.
     assert_eq!(one("--page=такого-нет"), None);
     assert_eq!(one("--tray"), None);
     assert_eq!(app::start_page(&[]), None);
 }
 
-/// Раздел из таблицы обязан существовать в составе окна, иначе ярлык ведёт
-/// в никуда — а узнать об этом можно было бы только глазом.
+/// A section from the table must exist in the window's composition, otherwise the shortcut leads
+/// nowhere — and one could find that out only by eye.
 #[test]
 fn start_page_sections_exist() {
     for (page, section, _) in app::PAGE_TARGETS {
@@ -241,8 +241,8 @@ fn start_page_sections_exist() {
     }
 }
 
-/// Сторож против рецидива: в ярлыке появился `--page=` без записи в
-/// таблице — значит пункт меню снова обещает то, чего продукт не делает.
+/// A guard against relapse: a `--page=` appeared in the shortcut without an entry in
+/// the table — so a menu item again promises what the product does not do.
 #[test]
 fn ярлык_не_обещает_неизвестных_страниц() {
     for entry in [inst::LaunchEntry::Python, rust_entry()] {
@@ -264,7 +264,7 @@ fn ярлык_не_обещает_неизвестных_страниц() {
 }
 
 // ============================================================================
-// Вход ярлыка и автозапуска: Rust-окно, откат на Python
+// Shortcut and autostart entry: the Rust window, fallback to Python
 // ============================================================================
 
 use rexon_core::installer as inst;
@@ -275,7 +275,7 @@ fn rust_entry() -> inst::LaunchEntry {
     inst::LaunchEntry::MainWindow(RUST_BIN.to_string())
 }
 
-/// Группы `.desktop`: имя группы → пары ключ/значение.
+/// `.desktop` groups: group name → key/value pairs.
 fn groups(text: &str) -> Vec<(String, Vec<(String, String)>)> {
     let mut out: Vec<(String, Vec<(String, String)>)> = Vec::new();
     for line in text.lines() {
@@ -303,7 +303,7 @@ fn основной_вход_ярлыка_rust_окно() {
     assert_eq!(g[0].0, "Desktop Entry");
     assert_eq!(key(&g[0].1, "Exec"), Some(RUST_BIN));
     assert_eq!(key(&g[0].1, "TryExec"), Some(RUST_BIN));
-    // X-ключи — в основной группе, а не в группе последнего действия.
+    // X- keys are in the main group, not in the group of the last action.
     assert_eq!(key(&g[0].1, "X-GNOME-UsesNotifications"), Some("true"));
     for (name, keys) in &g[1..] {
         assert!(key(keys, "X-GNOME-UsesNotifications").is_none(), "X-ключ в [{name}]");
@@ -323,8 +323,8 @@ fn быстрые_действия_идут_на_rust_окно_и_понимаю
         assert!(actions.split(';').any(|a| a == id), "{id} не в Actions");
         let args = argv(key(keys, "Exec").unwrap());
         assert_eq!(args[0], RUST_BIN, "действие {id} ушло не на Rust-окно");
-        // Rust-бинарь понимает флаг той же дверью: либо раздел окна, либо
-        // маршрут без окна. Флаг, который не понимает никто, — обман.
+        // The Rust binary understands the flag through the same door: either a window section or
+        // a route without a window. A flag nobody understands is a lie.
         let rest = args[1..].to_vec();
         let understood = rexon_core::cli::start_section(&rest).is_some()
             || app::route(&rest) == app::Route::RecoverKde;
@@ -336,11 +336,11 @@ fn быстрые_действия_идут_на_rust_окно_и_понимаю
     );
 }
 
-/// ⭐ 16.09.2026: пункта «Rexon (классическое окно)» в ярлыке БОЛЬШЕ НЕТ.
-/// Классического окна на Python не везёт ни пакет дистрибутива, ни ручная
-/// установка: команда `rexon` у обоих ведёт на то же Rust-окно, и пункт
-/// открывал бы копию того, что открывает сам ярлык. Сторож держит это при
-/// любом входе.
+/// ⭐ 16.09.2026: the «Rexon (классическое окно)» item is NO LONGER in the shortcut.
+/// Neither the distro package nor a manual install ships the classic Python window:
+/// the `rexon` command in both leads to the same Rust window, and the item
+/// would open a copy of what the shortcut itself opens. The guard holds this for
+/// any entry.
 #[test]
 fn пункта_классического_окна_в_ярлыке_нет() {
     for entry in [rust_entry(), inst::LaunchEntry::Python] {
@@ -385,10 +385,10 @@ fn без_бинаря_ярлык_пишется_на_python_а_не_битым(
     let g = groups(&text);
     assert_eq!(key(&g[0].1, "Exec"), Some("rexon"));
     assert_eq!(key(&g[0].1, "TryExec"), Some("rexon"));
-    // Первый ИСПОЛНЯЕМЫЙ кандидат, а не первый по списку.
+    // The first EXECUTABLE candidate, not the first in the list.
     let e = inst::choose_launch_entry(None, &cands, |p| p == RUST_BIN);
     assert_eq!(e, rust_entry());
-    // Путь с управляющим символом в `.desktop` не записать — пропускается.
+    // A path with a control character cannot be written to `.desktop` — it is skipped.
     let bad = vec!["/x\ny/rexon-main-window".to_string()];
     assert_eq!(inst::choose_launch_entry(None, &bad, |_| true), inst::LaunchEntry::Python);
 }
@@ -407,12 +407,12 @@ fn кандидаты_бинаря_окна_по_порядку() {
             "/usr/bin/rexon-main-window",
             inst::PACKAGE_MAIN_WINDOW,
             "/usr/local/lib/rexon/rexon-main-window",
-            // Установка в домашнюю папку — та же раскладка.
+            // Installing into the home folder — the same layout.
             "/home/u/.local/lib/rexon/rexon-main-window",
             "/home/u/tree/rust/target/release/rexon-main-window",
         ]
     );
-    // Установка в систему кладёт окно по раскладке пакета.
+    // A system install puts the window according to the package layout.
     assert_eq!(
         inst::main_window_candidates(None, "", &[]),
         vec![inst::PACKAGE_MAIN_WINDOW, "/usr/local/lib/rexon/rexon-main-window"]
@@ -431,10 +431,10 @@ fn автозапуск_по_тому_же_правилу_что_ярлык() {
             .expect("лаунчер задан — заводить есть чем");
         let auto = argv(&auto);
         assert_eq!(auto.last().map(String::as_str), Some("--tray"));
-        // Лоток и есть хозяин — забирать замок ему не у кого.
+        // The tray is the owner — there is no one to take the lock from.
         assert!(!auto.iter().any(|a| a == rexon_core::single_instance::CLASSIC_FLAG));
-        // Один хозяин: программа автозапуска — та же, что у ярлыка (у
-        // Python-входа ярлык зовёт `rexon` по PATH, лоток — найденный путь).
+        // One owner: the autostart program is the same as the shortcut's (for
+        // the Python entry the shortcut calls `rexon` from PATH, the tray — the found path).
         match &entry {
             inst::LaunchEntry::MainWindow(p) => {
                 assert_eq!(main[0], *p);
@@ -448,11 +448,11 @@ fn автозапуск_по_тому_же_правилу_что_ярлык() {
     }
 }
 
-/// ⛔ Сторож хуков входа в сеанс: автозапуск дефолтов (`--apply-defaults`),
-/// заставка (`.desktop` и юнит гибрида, `--session-splash`) и лоток пишутся
-/// по ОДНОМУ выбору входа. При Rust-входе в них нет ни интерпретатора, ни
-/// модуля `rexon`, и бинарь окна понимает флаг сам; при откате на Python —
-/// прежние строки.
+/// ⛔ Guard of the session login hooks: the defaults autostart (`--apply-defaults`),
+/// the splash (`.desktop` and the hybrid unit, `--session-splash`) and the tray are written
+/// by ONE entry choice. With the Rust entry they contain neither an interpreter nor
+/// the `rexon` module, and the window binary understands the flag itself; with the fallback to Python —
+/// the former lines.
 #[test]
 fn хуки_входа_без_python_при_rust_входе() {
     use rexon_core::{appdefaults as ad, session_splash as ss, tray};
@@ -516,11 +516,11 @@ fn хуки_входа_без_python_при_rust_входе() {
     assert_eq!(app::route(&["--apply-defaults".to_string()]), app::Route::ApplyDefaults);
     assert_eq!(app::route(&[ss::SESSION_SPLASH_FLAG.to_string()]), app::Route::SessionSplash);
 
-    // ⛔Откат без лаунчера — НЕ строка через интерпретатор, а пусто: писать
-    // нечего. Прежде отсюда выходило `python3 -m rexon.app --session-splash`
-    // — команда, которую автозапуск и юнит выполняют без рабочего каталога,
-    // а пакета `rexon` в `sys.path` системного интерпретатора нет: заставка
-    // при входе молча не показывалась (починено 16.09.2026, блок H).
+    // ⛔A fallback without a launcher is NOT a line through an interpreter but empty: there is
+    // nothing to write. Previously this produced `python3 -m rexon.app --session-splash`
+    // — a command that autostart and the unit run without a working directory,
+    // while the system interpreter's `sys.path` has no `rexon` package: the splash
+    // silently did not show at login (fixed 16.09.2026, block H).
     let python = inst::LaunchEntry::Python;
     for got in [
         ss::desktop_launcher_exec(&python, None, py),
@@ -531,14 +531,14 @@ fn хуки_входа_без_python_при_rust_входе() {
         assert_eq!(got, "", "откат без лаунчера обязан молчать, а не звать python");
     }
     assert_eq!(tray::autostart_exec(&python, None), None);
-    // У дефолтов есть своё последнее звено — САМ работающий бинарь Rexon:
-    // он и обрабатывает `--apply-defaults`, посредник не нужен.
+    // The defaults have their own last link — the running Rexon binary ITSELF:
+    // it handles `--apply-defaults`, no intermediary is needed.
     assert_eq!(
         ad::autostart_exec_for(&python, None, Some("/opt/rexon/bin/rexon")).as_deref(),
         Some("/opt/rexon/bin/rexon")
     );
     assert_eq!(ad::autostart_exec_for(&python, Some(""), None), None);
-    // Лаунчер найден — все три хука зовут ЕГО, и полным путём.
+    // The launcher was found — all three hooks call IT, by full path.
     assert_eq!(
         ss::desktop_launcher_exec(&python, launcher, py),
         "/usr/local/bin/rexon --session-splash"
@@ -552,7 +552,7 @@ fn хуки_входа_без_python_при_rust_входе() {
         Some("/usr/local/bin/rexon")
     );
 
-    // Кавычки: у `.desktop` и у systemd правила разные.
+    // Quoting: `.desktop` and systemd have different rules.
     let odd = inst::LaunchEntry::MainWindow("/home/u/Rexon v5/rexon-main-window".into());
     assert_eq!(
         ss::desktop_launcher_exec(&odd, None, py),
@@ -587,10 +587,10 @@ fn путь_с_пробелом_берётся_в_кавычки() {
     assert_eq!(e.try_exec(), "/a b/rexon-main-window");
 }
 
-/// Сгенерированные ярлыки проходят `desktop-file-validate` — на обоих входах
-/// и на пути с пробелом и кириллицей. Каталог — во временном каталоге
-/// сборки (под `rust/target`), не в `/tmp`. Нет утилиты — тест говорит об
-/// этом вслух, а не зеленеет молча.
+/// The generated shortcuts pass `desktop-file-validate` — on both entries
+/// and on a path with a space and Cyrillic. The directory is in the build's temporary directory
+/// (under `rust/target`), not in `/tmp`. No utility — the test says so
+/// out loud instead of quietly turning green.
 #[test]
 fn ярлыки_проходят_desktop_file_validate() {
     let Ok(out) = std::process::Command::new("desktop-file-validate").arg("--help").output()
@@ -623,14 +623,14 @@ fn ярлыки_проходят_desktop_file_validate() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
-/// Ярлыки пакета печатает генератор ядра (`desktop-entry --package`), а
-/// PKGBUILD ставит бинарь окна ровно туда, куда этот ярлык ведёт.
+/// The package's shortcuts are printed by the core generator (`desktop-entry --package`), and
+/// the PKGBUILD installs the window binary exactly where this shortcut leads.
 ///
-/// Прежде пакет вёз статичную копию `rexon.desktop`, и она отстала при
-/// первой же правке генератора: ярлык пакета остался на Python-входе. Тест
-/// краснеет, если (а) программа печати разойдётся с генератором, (б)
-/// статичная копия вернётся в пакет, (в) путь установки окна в PKGBUILD
-/// разойдётся с [`inst::PACKAGE_MAIN_WINDOW`].
+/// Previously the package shipped a static copy of `rexon.desktop`, and it fell behind on
+/// the very first edit of the generator: the package shortcut stayed on the Python entry. The test
+/// turns red if (a) the printing program diverges from the generator, (b)
+/// the static copy returns to the package, (c) the window install path in the PKGBUILD
+/// diverges from [`inst::PACKAGE_MAIN_WINDOW`].
 #[test]
 fn ярлыки_пакета_печатает_генератор_ядра() {
     let run = |args: &[&str]| {
@@ -650,8 +650,8 @@ fn ярлыки_пакета_печатает_генератор_ядра() {
         run(&["--main-window", odd]),
         inst::desktop_content_for(&inst::LaunchEntry::MainWindow(odd.into()))
     );
-    // Автозапуск печатается теми же функциями, которыми его пишет галочка в трее:
-    // ярлык и автозапуск обязаны вести на один вход.
+    // Autostart is printed by the same functions the tray checkbox writes it with:
+    // the shortcut and autostart must lead to one entry.
     let window_autostart = run(&["--main-window", odd, "--autostart"]);
     assert_eq!(
         window_autostart,
@@ -702,13 +702,13 @@ fn ярлыки_пакета_печатает_генератор_ядра() {
     );
 }
 
-/// Пакет везёт оба QML-плагина вкладки обоев, и редакция `Qcm.Material` в
-/// нём та же, что выписана рядом с вендором.
+/// The package ships both QML plugins of the wallpaper tab, and the `Qcm.Material` revision in
+/// it is the same as the one written next to the vendor code.
 ///
-/// Без обоих плагинов `qml_modules::qml_plugins_ready` говорит «нет», и
-/// вендорные страницы не грузятся ни в одном окне. Разъехавшийся пин — самый
-/// неприятный случай: QML новый, библиотека старая, и видно это только
-/// глазами на живой странице.
+/// Without both plugins `qml_modules::qml_plugins_ready` says "no", and
+/// the vendor pages do not load in any window. A drifted pin is the most
+/// unpleasant case: the QML is new, the library is old, and it can be seen only
+/// by eye on the live page.
 #[test]
 fn плагины_вкладки_обоев_едут_в_пакете() {
     use rexon_core::qml_modules as qm;
@@ -728,7 +728,7 @@ fn плагины_вкладки_обоев_едут_в_пакете() {
         pkgbuild.contains("#commit=${_qm_pin}"),
         "источник QmlMaterial не закреплён коммитом"
     );
-    // Каталог модулей и оба плагина — именами из ядра, не переписанными руками.
+    // The module directory and both plugins — by names from the core, not retyped by hand.
     assert!(
         pkgbuild.contains(&format!("$pkgdir{}", qm::SYSTEM_MODULE_DIRS[0])),
         "пакет кладёт QML-модули не туда, где ядро их ищет ({})",
@@ -740,17 +740,17 @@ fn плагины_вкладки_обоев_едут_в_пакете() {
     }
 }
 
-/// Массивы PKGBUILD, как их видит makepkg: файл исполняет сам bash с
-/// заданным `REXON_BUNDLED_ENGINE` (`None` — переменной нет вовсе).
-/// Возвращает `имя → значения` для depends, license, source, sha256sums,
+/// PKGBUILD arrays as makepkg sees them: the file is executed by bash itself with
+/// the given `REXON_BUNDLED_ENGINE` (`None` — the variable is absent altogether).
+/// Returns `name → values` for depends, license, source, sha256sums,
 /// noextract.
 fn pkgbuild_arrays(
     bundled: Option<&str>,
 ) -> std::collections::HashMap<&'static str, Vec<String>> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut cmd = std::process::Command::new("bash");
-    // `CARCH` makepkg задаёт сам (у нас — x86_64): от него зависят имена
-    // архитектурных источников (`waywallen-kde-…-${CARCH}-embed.zip`).
+    // makepkg sets `CARCH` itself (for us — x86_64): the names of the
+    // architecture-specific sources depend on it (`waywallen-kde-…-${CARCH}-embed.zip`).
     cmd.env_clear()
         .env("PATH", std::env::var_os("PATH").unwrap_or_default())
         .env("CARCH", "x86_64")
@@ -781,22 +781,22 @@ done"#,
     m
 }
 
-/// Тег, с которого сняты протокол и вендорный интерфейс (без `v`).
+/// The tag the protocol and the vendor interface were taken from (without `v`).
 fn upstream_tag() -> String {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let tag = std::fs::read_to_string(root.join("data/qt_wallpaper_engine/proto/UPSTREAM_TAG")).unwrap();
     tag.split_whitespace().next().unwrap().trim_start_matches('v').to_string()
 }
 
-/// Движок обоев по умолчанию — отдельные пакеты дистрибутива (с 30.10.2026),
-/// а не вшитый AppImage; так же описан и `.SRCINFO`.
+/// The default wallpaper engine is separate distro packages (since 30.10.2026),
+/// not an embedded AppImage; `.SRCINFO` describes it the same way.
 ///
-/// Каждое условие — отдельная поломка: нижняя граница демона разошлась с
-/// тегом, с которого сняты протокол и интерфейс, — пакет обещает работу с
-/// демоном, которого ядро не понимает; AppImage или архив исходников OWE
-/// просочились в вариант по умолчанию — снова то, что сопровождающие
-/// дистрибутива не пустят; ядро ищет демон не там, куда его ставит пакет
-/// `waywallen`.
+/// Each condition is a separate breakage: the daemon's lower bound diverged from the
+/// tag the protocol and interface were taken from — the package promises to work with
+/// a daemon the core does not understand; the AppImage or the OWE source archive
+/// leaked into the default variant — again something the distro
+/// maintainers will not let in; the core looks for the daemon not where the
+/// `waywallen` package puts it.
 #[test]
 fn packaged_engine_comes_from_system_packages() {
     use rexon_core::we_client as wc;
@@ -808,12 +808,12 @@ fn packaged_engine_comes_from_system_packages() {
         "_ww_min в PKGBUILD разошёлся с proto/UPSTREAM_TAG ({tag})"
     );
     assert!(pkgbuild.contains("\n_owe_min="), "нет нижней границы плагина");
-    // Переменные — до depends: bash раскрывает массив в момент присваивания.
+    // Variables come before depends: bash expands the array at assignment time.
     let at = |needle: &str| pkgbuild.find(needle).unwrap_or_else(|| panic!("нет {needle}"));
     assert!(at("\n_ww_min=") < at("depends=(") && at("\n_owe_min=") < at("depends=("));
     assert!(at("REXON_BUNDLED_ENGINE") < at("depends=("), "переключатель варианта — до depends");
 
-    // Без переменной и с `0` — один и тот же вариант по умолчанию.
+    // Without the variable and with `0` — one and the same default variant.
     let unset = pkgbuild_arrays(None);
     assert_eq!(unset, pkgbuild_arrays(Some("0")), "REXON_BUNDLED_ENGINE=0 обязан совпасть с умолчанием");
     let deps = &unset["depends"];
@@ -834,7 +834,7 @@ fn packaged_engine_comes_from_system_packages() {
     );
     assert_eq!(unset["source"].len(), unset["sha256sums"].len());
 
-    // .SRCINFO описывает ровно вариант по умолчанию.
+    // .SRCINFO describes exactly the default variant.
     let srcinfo = std::fs::read_to_string(root.join("packaging/aur/.SRCINFO")).unwrap();
     let field = |name: &str| -> Vec<String> {
         srcinfo
@@ -846,7 +846,7 @@ fn packaged_engine_comes_from_system_packages() {
     assert_eq!(field("source"), unset["source"], ".SRCINFO отстал от source по умолчанию");
     assert_eq!(field("license"), unset["license"]);
 
-    // Ядро ищет движок там, куда его ставят пакеты Arch.
+    // The core looks for the engine where the Arch packages put it.
     assert_eq!(wc::SYSTEM_DAEMON, "/usr/bin/waywallen");
     assert_eq!(
         wc::engine_layouts()[0].plugins_dir(),
@@ -855,17 +855,17 @@ fn packaged_engine_comes_from_system_packages() {
     );
 }
 
-/// Вариант `REXON_BUNDLED_ENGINE=1`: движок едет в пакете туда, где его ищет
-/// ядро (`we_client::ENGINE_DIR`), с GPL-исходниками OWE и без зависимостей
-/// на пакеты движка.
+/// The `REXON_BUNDLED_ENGINE=1` variant: the engine ships in the package where the
+/// core looks for it (`we_client::ENGINE_DIR`), with the OWE GPL sources and without dependencies
+/// on the engine packages.
 ///
-/// Каждое условие — отдельная поломка у человека: путь разошёлся — ядро не
-/// видит движок и шлёт на экран «не установлен»; strip задел каталог
-/// движка — от AppImage отрезан squashfs, движок мёртв; нет архива
-/// исходников или GPL-2.0-only в license — раздача GPL-плагина без
-/// исходника (GPL-2 §3(a)); остались depends на waywallen — пакет не
-/// поставить там, ради чего вариант и есть; источник назван дважды —
-/// makepkg отказывает.
+/// Each condition is a separate breakage for the person: the path diverged — the core does not
+/// see the engine and shows "not installed"; strip touched the engine
+/// directory — the squashfs is cut off the AppImage, the engine is dead; no source
+/// archive or no GPL-2.0-only in license — distributing a GPL plugin without
+/// its source (GPL-2 §3(a)); depends on waywallen remained — the package cannot
+/// be installed exactly where the variant is for; a source is named twice —
+/// makepkg refuses.
 #[test]
 fn bundled_engine_variant_ships_where_core_looks() {
     use rexon_core::we_client as wc;
@@ -883,16 +883,16 @@ fn bundled_engine_variant_ships_where_core_looks() {
     );
     assert!(b["license"].iter().any(|l| l == "GPL-2.0-only"), "license=() молчит про GPL-2.0-only плагина");
 
-    // Суммы на каждый источник, имена файлов не повторяются.
+    // Checksums for every source, file names are not repeated.
     assert_eq!(b["source"].len(), b["sha256sums"].len(), "source и sha256sums разной длины");
     let names: Vec<&str> = b["source"].iter().map(|s| s.split("::").next().unwrap()).collect();
     let uniq: std::collections::HashSet<&&str> = names.iter().collect();
     assert_eq!(uniq.len(), names.len(), "источник назван дважды: {names:?}");
-    // Вариант по умолчанию — префикс вшитого: суммы и порядок не сдвинуты.
+    // The default variant is a prefix of the bundled one: checksums and order are not shifted.
     let d = pkgbuild_arrays(None);
     assert_eq!(b["source"][..d["source"].len()], d["source"][..]);
     assert_eq!(b["sha256sums"][..d["sha256sums"].len()], d["sha256sums"][..]);
-    // AppImage — ровно тег протокола (prepare() сверяет то же на сборке).
+    // The AppImage is exactly the protocol tag (prepare() checks the same at build time).
     let appimage = format!("waywallen-{tag}-x86_64.AppImage");
     assert!(
         b["source"].iter().any(|s| s.starts_with(&format!("{appimage}::"))),
@@ -901,7 +901,7 @@ fn bundled_engine_variant_ships_where_core_looks() {
     );
     assert!(b["noextract"].iter().any(|s| s.starts_with("org.waywallen.open-wallpaper-engine-")));
 
-    // Раскладка в package() — та, что ищет ядро.
+    // The layout in package() is the one the core looks for.
     assert!(
         pkgbuild.contains(&format!("local eng=\"$pkgdir{}\"", wc::ENGINE_DIR)),
         "пакет кладёт движок не туда, где его ищет ядро ({})",
@@ -922,11 +922,11 @@ fn bundled_engine_variant_ships_where_core_looks() {
         "_strip_own_binaries не обходит каталог движка — strip отрежет squashfs AppImage"
     );
     assert!(pkgbuild.contains("\"$pkgdir/usr/share/rexon/sources/open-wallpaper-engine-${_owe_ver}-src.tar.xz\""));
-    // Сторож тега — для обоих вариантов.
+    // The tag guard — for both variants.
     assert!(pkgbuild.contains("\"$tag\" != \"v$_ww_min\""), "нет сторожа _ww_min");
     assert!(pkgbuild.contains("\"$tag\" != \"v$_ww_ver\""), "нет сторожа вшитого _ww_ver");
 
-    // Ядро держит вшитую раскладку запасной, после системной.
+    // The core keeps the bundled layout as a fallback, after the system one.
     let layouts = wc::engine_layouts();
     let bundled = layouts
         .iter()
@@ -937,8 +937,8 @@ fn bundled_engine_variant_ships_where_core_looks() {
     assert_eq!(layouts[bundled].daemon, wc::engine_appimage_path(wc::ENGINE_DIR));
 }
 
-/// Любое значение переключателя, кроме 0 и 1, сборку останавливает, а не
-/// молча собирает вариант по умолчанию.
+/// Any switch value other than 0 and 1 stops the build instead of
+/// silently building the default variant.
 #[test]
 fn bundled_engine_switch_rejects_garbage() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -969,7 +969,7 @@ fn paths() {
 }
 
 // ============================================================================
-// --recover-kde: возврат обоев рабочих столов к стандартным
+// --recover-kde: returning desktop wallpapers to the defaults
 // ============================================================================
 
 fn wp() -> Value {
@@ -979,29 +979,29 @@ fn wp() -> Value {
 #[test]
 fn desktop_containments_from_appletsrc() {
     let g = wp();
-    // ⚠️ Расхождение с Python ОСОЗНАННОЕ (правило #16): оригинал не
-    // сбрасывал «текущий контейнмент» на чужом заголовке секции, поэтому
-    // апплет «Папки» внутри ПАНЕЛИ засчитывался панели — она попадала в
-    // список «рабочих столов» (снятый эталон: 1, 2, 3 — где 2 это
-    // plugin=org.kde.panel). Здесь панель отсеивается.
+    // ⚠️ The divergence from Python is DELIBERATE (rule #16): the original did not
+    // reset the "current containment" on a foreign section header, so
+    // a «Папки» applet inside a PANEL was counted for the panel — it got into
+    // the list of "desktops" (the captured golden: 1, 2, 3 — where 2 is
+    // plugin=org.kde.panel). Here the panel is filtered out.
     let got = app::desktop_containment_ids(s(&g["appletsrc"]));
     assert_eq!(got, strs(&g["containments_fixed"]));
     assert_eq!(strs(&g["containments_python_buggy"]), vec!["1", "2", "3"]);
     assert!(!got.contains(&"2".to_string()), "панель не рабочий стол");
 
-    // Обычные случаи с оригиналом совпадают байт-в-байт.
+    // Ordinary cases match the original byte for byte.
     assert_eq!(
         app::desktop_containment_ids(s(&g["appletsrc_simple"])),
         strs(&g["containments_simple"])
     );
     assert!(app::desktop_containment_ids(s(&g["appletsrc_no_desktop"])).is_empty());
     assert!(app::desktop_containment_ids("").is_empty());
-    // Вложенный заголовок сам контейнментом не считается.
+    // A nested header is not itself counted as a containment.
     assert!(app::desktop_containment_ids(
         "[Containments][1][Applets][2]\nplugin=org.kde.plasma.folder\n"
     )
     .is_empty());
-    // Нецифровой номер не подходит (порт `\d+` в регулярном выражении).
+    // A non-numeric number does not match (port of `\d+` in the regular expression).
     assert!(app::desktop_containment_ids(
         "[Containments][abc]\nplugin=org.kde.desktopcontainment\n"
     )
@@ -1033,24 +1033,24 @@ fn wallpaper_reset_argv() {
 }
 
 // ============================================================================
-// --recover-kde: слова, которые увидит человек
+// --recover-kde: the words the person will see
 // ============================================================================
 //
-// ⭐ СТОРОЖ ТЕКСТОВ. Маршрут аварийного отката переехал на Rust целиком, и
-// его строки живут ЗДЕСЬ. С 02.10.2026 эталон — сами строки Rust, записанные
-// ниже дословно (`русский_откат_как_был`, `собранные_строки_…`); прежняя
-// сверка фрагментов с замороженной редакцией `rexon/app.py` снята вместе с
-// Python. Переименовали подпись у нас — сверка краснеет, пока эталон не
-// поправлен осознанно, и расхождение видно сразу, а не на живой машине
-// человека, у которого сломано оформление.
+// ⭐ TEXT GUARD. The emergency rollback route moved to Rust entirely, and
+// its strings live HERE. Since 02.10.2026 the golden reference is the Rust strings themselves, written
+// below verbatim (`русский_откат_как_был`, `собранные_строки_…`); the former
+// check of fragments against the frozen revision of `rexon/app.py` was removed together with
+// Python. Renamed a caption on our side — the check turns red until the golden reference is
+// deliberately updated, and the divergence is visible at once, not on the live machine of
+// a person whose desktop look is broken.
 
 #[test]
 fn отказ_на_чужом_рабочем_столе_теми_же_словами() {
     let _lang = i18n_pin::ru();
     assert!(app::is_plasma_desktop("KDE"));
     assert!(app::is_plasma_desktop("plasmawayland"));
-    // Пустая переменная — «неизвестно», а не «чужой стол»: маршрут зовут и
-    // из tty, когда сеанс уже не поднимается.
+    // An empty variable is "unknown", not "a foreign desktop": the route is also called
+    // from a tty when the session no longer starts.
     assert!(app::is_plasma_desktop(""));
     assert!(!app::is_plasma_desktop("GNOME"));
     assert!(!app::is_plasma_desktop("XFCE"));
@@ -1089,8 +1089,8 @@ fn предупреждение_о_форках_совпадает_с_ориги
     let with_cmd = app::fork_warning_lines(&forks, true, "sudo pacman -Rns X");
     assert_eq!(with_cmd[1], "      • aeroshell-workspace-git");
     assert!(with_cmd[3].contains("sudo pacman -Rns X"), "{:?}", with_cmd);
-    // Целей в репозиториях нет — команду НЕ печатаем, иначе человек
-    // выполнит её руками и получит «не найдена цель».
+    // The targets are not in the repositories — we do NOT print the command, otherwise the person
+    // will run it by hand and get "target not found".
     let without = app::fork_warning_lines(&forks, false, "Первая\nВторая");
     assert_eq!(without[2], "    Первая");
     assert_eq!(without[3], "    Вторая");
@@ -1099,8 +1099,8 @@ fn предупреждение_о_форках_совпадает_с_ориги
         "{without:?}"
     );
 
-    // Слова заголовка и оговорок переписаны (см. JARGON_GONE), строй прежний:
-    // заголовок, пакеты по одному, призыв, команда, оговорка.
+    // The words of the title and caveats are rewritten (see JARGON_GONE), the structure is the same:
+    // title, packages one by one, a call to action, the command, a caveat.
     assert_eq!(with_cmd.len(), 5, "{with_cmd:?}");
     assert!(with_cmd[0].starts_with("⚠️  ") && with_cmd[0].ends_with(':'), "{}", with_cmd[0]);
     assert!(with_cmd[2].starts_with("    ") && with_cmd[2].ends_with("удалите их:"), "{}", with_cmd[2]);
@@ -1132,19 +1132,19 @@ fn собранные_строки_читаются_как_у_оригинала
         "🧱 С панели убраны сломанные виджеты от замен Plasma: 2 (x, y). Резервная копия: /cfg/appletsrc.rexon-bak"
     );
     assert_eq!(app::step_ok_line("готово"), "   ✅ готово");
-    // Обрезка чужого stderr — ПО СИМВОЛАМ: срез посреди многобайтной буквы
-    // в Rust паника, то есть маршрут падал бы на самой неудаче.
+    // Truncating foreign stderr — BY CHARACTERS: a slice in the middle of a multi-byte letter
+    // panics in Rust, i.e. the route would crash on the failure itself.
     let long = "я".repeat(500);
     let cut = app::apply_failed_line(&long);
     assert_eq!(cut.chars().count(), "❌ Ошибка: ".chars().count() + 200);
 }
 
-/// Обороты, от которых аварийный откат ушёл 01.10.2026: оригинал говорил
-/// жаргоном («сток», «оверрайды», «logout/login», «родной дефолт»,
-/// «форки», «апплеты», «бэкап», «reboot», «раскладка панели»), покупателю
-/// непонятным, а аварийный откат как раз читает человек, у которого всё
-/// сломалось. Ни одна русская строка отката не должна их вернуть. Новый
-/// текст держат `собранные_строки_…` и `русский_откат_как_был`, строй —
+/// Phrases the emergency rollback moved away from on 01.10.2026: the original spoke
+/// jargon («сток», «оверрайды», «logout/login», «родной дефолт»,
+/// «форки», «апплеты», «бэкап», «reboot», «раскладка панели») incomprehensible
+/// to the buyer, while the emergency rollback is read precisely by a person for whom everything
+/// broke. Not a single Russian rollback string may bring them back. The new
+/// text is held by `собранные_строки_…` and `русский_откат_как_был`, the structure by
 /// `предупреждение_о_форках_…`.
 const JARGON_GONE: &[(&str, &str)] = &[
     ("Обнаружены ПАКЕТЫ-ФОРКИ Plasma (подменяют ядро", "заголовок про пакеты-замены"),
@@ -1183,7 +1183,7 @@ fn жаргон_оригинала_заменён_осознанно() {
 #[test]
 fn стандартные_обои_выбираются_по_порядку() {
     let _lang = i18n_pin::ru();
-    // Штатный кандидат есть — берём его и не смотрим дальше.
+    // There is a stock candidate — we take it and look no further.
     let got = app::default_wallpaper_dir(
         &|p| p == "/usr/share/wallpapers/Next",
         &["Zebra".to_string()],
@@ -1191,8 +1191,8 @@ fn стандартные_обои_выбираются_по_порядку() {
     );
     assert_eq!(got, "/usr/share/wallpapers/Next/", "слэш на конце обязателен");
 
-    // Ни одного кандидата — берём ЛЮБОЙ установленный пакет обоев, но
-    // только настоящий (с каталогом картинок внутри).
+    // Not a single candidate — we take ANY installed wallpaper package, but
+    // only a real one (with a picture directory inside).
     let got = app::default_wallpaper_dir(
         &|_| false,
         &["Aaa".to_string(), "Zebra".to_string()],
@@ -1200,7 +1200,7 @@ fn стандартные_обои_выбираются_по_порядку() {
     );
     assert_eq!(got, "/usr/share/wallpapers/Zebra/");
 
-    // Обоев в системе нет вовсе — имени не выдумываем.
+    // No wallpapers on the system at all — we do not invent a name.
     assert_eq!(app::default_wallpaper_dir(&|_| false, &[], &|_| false), "");
     assert_eq!(
         app::wallpaper_reset_line(2, ""),
@@ -1211,18 +1211,18 @@ fn стандартные_обои_выбираются_по_порядку() {
 }
 
 // ============================================================================
-// Перевод аварийного отката
+// Translation of the emergency rollback
 // ============================================================================
 //
-// Строки `--recover-kde` были зашиты по-русски; теперь исходный язык
-// английский, русский — в `po/ru.po`. Сверки выше держат русский слово в
-// слово, ниже — английский и откат без каталога.
+// The `--recover-kde` strings were hard-coded in Russian; now the source language is
+// English, Russian is in `po/ru.po`. The checks above hold the Russian word for
+// word, those below — the English and the fallback without a catalog.
 
 fn cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Все строки отката, которые может увидеть человек, — одним списком.
+/// All rollback strings the person may see — in one list.
 fn every_recover_line() -> Vec<String> {
     let mut all = app::not_plasma_lines("GNOME");
     all.extend(app::fork_warning_lines(&["aeroshell-plasma".into()], true, "sudo pacman -Rns x"));
@@ -1290,13 +1290,13 @@ fn english_recover_lines_have_no_russian() {
         "🖼️  Wallpaper reset to the default one (3 desktops): Next"
     );
     assert_eq!(app::manual_command_line("cmd"), "   To do it by hand: cmd");
-    // Обрезка чужого stderr по символам — и по-английски.
+    // Truncating foreign stderr by characters — in English too.
     let cut = app::apply_failed_line(&"я".repeat(500));
     assert_eq!(cut.chars().count(), "❌ Error: ".chars().count() + 200);
 }
 
-/// Аварийный маршрут зовут, когда система уже сломана: каталога может не
-/// быть вовсе. Тогда строки — исходные английские, и ни одной паники.
+/// The emergency route is called when the system is already broken: the catalog may be
+/// missing entirely. Then the strings are the English source ones, and not a single panic.
 #[test]
 fn recover_lines_fall_back_to_english_without_catalog() {
     let _lang = i18n_pin::en();
@@ -1306,9 +1306,9 @@ fn recover_lines_fall_back_to_english_without_catalog() {
     assert_eq!(app::FONTS_RESET_LINE.msgid(), &**app::FONTS_RESET_LINE);
 }
 
-/// Константа-строка сравнивается и печатается как переведённый текст, на
-/// том языке, что выбран сейчас, — а не на том, что был при первом
-/// обращении.
+/// A string constant is compared and printed as translated text, in
+/// the language selected now — not the one that was active at the first
+/// access.
 #[test]
 fn константа_отката_следует_за_языком() {
     let ru = {
@@ -1330,10 +1330,10 @@ fn константа_отката_следует_за_языком() {
     );
 }
 
-/// Русский после переноса строк в каталог — как было до переноса (тексты
-/// скопированы из прежнего `app.rs`, где были зашиты), кроме строк с
-/// жаргоном, переписанных 01.10.2026 (см. [`JARGON_GONE`]): у них здесь новый
-/// текст.
+/// The Russian after moving the strings into the catalog — as before the move (the texts
+/// were copied from the former `app.rs`, where they were hard-coded), except the strings with
+/// jargon rewritten on 01.10.2026 (see [`JARGON_GONE`]): those have the new
+/// text here.
 #[test]
 fn русский_откат_как_был() {
     let _lang = i18n_pin::ru();

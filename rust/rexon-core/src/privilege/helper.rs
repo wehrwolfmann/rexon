@@ -1,51 +1,53 @@
-//! Root-помощник сеанса прав (пункт Б4 плана, см. [`super`]).
+//! Root helper of the privilege session (item B4 of the plan, see [`super`]).
 //!
-//! Бинарь `rexon-priv-helper` — тонкий `main` над [`main_live`]. Окно
-//! поднимает его одним `pkexec` и отдаёт свой конец `socketpair` на fd 0/1;
-//! дальше помощник:
-//! 1. убеждается, что запущен через pkexec (`PKEXEC_UID`, euid 0), чистит своё
-//!    окружение, уводит сокет с fd 0/1 (потомки его не получат);
-//! 2. сверяет собеседника (`SO_PEERCRED`: uid — `PKEXEC_UID`, pid — родитель,
+//! The `rexon-priv-helper` binary is a thin `main` over [`main_live`]. The window
+//! raises it with one `pkexec` and hands its end of a `socketpair` over on fd 0/1;
+//! then the helper:
+//! 1. makes sure it was started through pkexec (`PKEXEC_UID`, euid 0), cleans its
+//!    environment, moves the socket off fd 0/1 (children will not get it);
+//! 2. checks the peer (`SO_PEERCRED`: uid is `PKEXEC_UID`, pid is the parent,
 //!    [`validate::check_peer`]);
-//! 3. принимает `Hello` ([`proto::check_hello`]), затем сам спрашивает logind о
-//!    сеансе окна: `User` — тот, кто вводил пароль, `Active=yes`. Номеру сеанса
-//!    из аргумента не верит — только сверяет;
-//! 4. берёт по одной операции: [`Revoker::op_started`] → все проверки
-//!    [`validate`] ([`check_op`]) → исполнение без оболочки (явный argv,
+//! 3. accepts `Hello` ([`proto::check_hello`]), then asks logind itself about
+//!    the window's session: `User` is whoever entered the password, `Active=yes`.
+//!    It does not trust the session number from the argument, only compares it;
+//! 4. takes one operation at a time: [`Revoker::op_started`] → all checks of
+//!    [`validate`] ([`check_op`]) → execution without a shell (explicit argv,
 //!    [`RootIo`]) → `Done` → [`Revoker::op_finished`];
-//! 5. гаснет по отзыву права ([`super::revoke`]): обрыв сокета, SIGTERM,
-//!    простой, блокировка, сон, смена сеанса. Идущую операцию доводит.
+//! 5. goes away when the privilege is revoked ([`super::revoke`]): socket break,
+//!    SIGTERM, idling, lock, sleep, session change. A running operation is finished.
 //!
-//! # Чему помощник не верит
+//! # What the helper does not trust
 //!
-//! Окно может быть подменено (У2п), поэтому всё, что решает «можно или нет»,
-//! помощник узнаёт сам: семейство пакетного менеджера — по os-release этой
-//! машины, текущий стол — по сеансу logind, SteamOS — по os-release. От окна
-//! берётся только `PrivOp`, и он проверяется целиком до первого действия.
+//! The window may be replaced (U2p), so everything that decides "allowed or not"
+//! the helper finds out itself: the package manager family from the os-release
+//! of this machine, the current desktop from the logind session, SteamOS from
+//! os-release. Only `PrivOp` is taken from the window, and it is checked in full
+//! before the first action.
 //!
-//! # Исполнение (З1)
+//! # Execution (Z1)
 //!
-//! Ни оболочки, ни `eval`: каждая команда — `std::process::Command` с явным
-//! argv из таблиц ядра ([`plan::install_cmd`], [`plan::remove_cmd`]), с чистым
-//! окружением ([`child_env`]), рабочим каталогом `/` и `stdin` из `/dev/null`.
-//! Вывод программ идёт окну строками `Progress` не длиннее [`PROGRESS_MAX`].
+//! Neither a shell nor `eval`: each command is a `std::process::Command` with an
+//! explicit argv from the core tables ([`plan::install_cmd`], [`plan::remove_cmd`]),
+//! with a clean environment ([`child_env`]), working directory `/` and `stdin`
+//! from `/dev/null`. Program output goes to the window as `Progress` lines no
+//! longer than [`PROGRESS_MAX`].
 //!
-//! # Что исполняется сейчас
+//! # What is executed now
 //!
-//! | Операция | Ответ |
+//! | Operation | Answer |
 //! |---|---|
-//! | `PkgInstall` (имя — только из названной таблицы `PkgSource`; таблицы — ровно белый список `rexon-pkg-helper`), `PkgRemove`, `EnableDm`, `SwitchDm` (с автооткатом), `BuildDeps` | исполняется |
-//! | `InstallBuilt`, `Stage`, `SystemTheme` | исполняется; файл — только открытым fd, копия root через [`super::unpack`] |
-//! | `LoginSessionWayland` (сеанс по умолчанию у экрана входа) | исполняется: X11-сеанс — из таблицы ядра, файл пары лежит в каталоге сеансов Wayland; меняется только значение ключей сеанса SDDM и Plasma Login Manager, указывающих на этот X11-сеанс, в `/etc` и в последнем сеансе SDDM (не ссылки); после правки тем же чтением, что у сторожа, экран входа его сам не открывает — иначе ничего не пишется |
-//! | `DeInstallSet` (стол набором: DKMS `--asdeps`, замена `--ask=4`, Deepin на Treeland) | исполняется; перед первым действием root сам повторяет пробу ядра по pacman этой машины ([`validate::check_de_set_preview`]) |
-//! | `Sysext` (SteamOS) | исполняется; сценарии и юниты — тексты из своего бинаря ([`crate::steamos_sysext`]), пишутся в `/var/lib/rexon` и `/etc`, `/usr` не трогается |
-//! | `AurDeps`, `AurInstallBuilt`, `AurDropMake` (шим AUR, Б10) | исполняется: зависимости — только имена из sync-базы этой машины; собранное — fd, `.PKGINFO` копии из списка окна и не имя официального пакета; снятие — только сироты-зависимости |
-//! | `OrphanRemove` (сирота сторожа обновлений) | исполняется: каждое имя — член набора сторожа, установлено и отсутствует в sync-базе этой машины; всё, что снимет `pacman -Rns` (проба `-p`), — не жизненно важное и не пакет текущего стола |
-//! | `CacheRollback` (откат набора сторожа из кэша pacman) | исполняется: файл — только из каталога кэша этой машины (`pacman-conf CacheDir`), открыт root сам без ссылок (`openat2`), владелец root, не пишется группой/всеми; имя и версия — из `.PKGINFO` копии; набор — ровно откат одной находки сторожа по pacman этой машины, версии строго меньше установленных (`vercmp`); проба `pacman -U --print` — ровно эти пакеты; одна транзакция |
-//! | `FontInstall`, `FontRemove` (шрифты «для всех пользователей») | исполняется: только каталог ядра `/usr/local/share/fonts` (шрифты пакетов не трогаются); установка — файл открытым fd, копия root, `fc-query` по копии, имя — имя файла шрифта, существующий файл или ссылка с этим именем — отказ (не перезаписывается); удаление — только обычный файл шрифта внутри каталога, не через ссылку; затем `fc-cache -f` каталога |
-//! | `SddmBackground`, `SddmClock`, `SddmLook` (экран входа SDDM: фон темы, «Показывать часы», перенос оформления стола) | исполняется: тема — каталог в `/usr/share/sddm/themes` (не ссылка) с файлом настроек из `metadata.desktop`; часы — ключ `showClock` в `<ConfigFile>.user`; картинка — fd, копия root, PNG/JPEG (WebP — если у Qt приветствия темы есть модуль WebP) по сигнатуре, ложится как `rexon-background.<ext>`, имя — в `<ConfigFile>.user` (прежняя своя снимается, чужие файлы не трогаются); перенос — ключи по правилу ядра `plan_sddm_look` с откатом, значения проверены, `-dpi` собирает помощник; файлы — fd, только имена таблицы ядра, UTF-8 до 1 МиБ, в доме `sddm` пишутся от имени `sddm` (`setpriv`), не root; сбой файлов — ключи возвращаются |
-//! | `AurInstall`, `AeroShellRebuild` | `Error{Refused, "not_for_helper"}` — сборку ведёт paru/yay от пользователя, root получает только вызовы pacman через шим (Б10) |
-//! | прочие | `Error{Refused, "not_supported_yet"}` — молча не исполняются |
+//! | `PkgInstall` (a name only from the named `PkgSource` table; the tables are exactly the allowlist of `rexon-pkg-helper`), `PkgRemove`, `EnableDm`, `SwitchDm` (with automatic rollback), `BuildDeps` | executed |
+//! | `InstallBuilt`, `Stage`, `SystemTheme` | executed; a file only as an open fd, a root copy through [`super::unpack`] |
+//! | `LoginSessionWayland` (the login screen's default session) | executed: the X11 session is from the core table, the pair file lies in the Wayland session directory; only the value of the SDDM and Plasma Login Manager session keys pointing to this X11 session is changed, in `/etc` and in SDDM's last session (not links); after the edit, by the same reading the guard uses, the login screen does not open it by itself; otherwise nothing is written |
+//! | `DeInstallSet` (desktop as a set: DKMS `--asdeps`, replacement `--ask=4`, Deepin on Treeland) | executed; before the first action root repeats the core probe itself by the pacman of this machine ([`validate::check_de_set_preview`]) |
+//! | `Sysext` (SteamOS) | executed; scripts and units are texts from its own binary ([`crate::steamos_sysext`]), written to `/var/lib/rexon` and `/etc`, `/usr` is not touched |
+//! | `AurDeps`, `AurInstallBuilt`, `AurDropMake` (AUR shim, B10) | executed: dependencies are only names from the sync database of this machine; built packages come as an fd, the `.PKGINFO` of the copy is from the window's list and not the name of an official package; removal is only of orphan dependencies |
+//! | `OrphanRemove` (an update guard orphan) | executed: each name is a member of an update guard set, installed and absent from the sync database of this machine; everything `pacman -Rns` would remove (probe `-p`) is not vital and not a package of the current desktop |
+//! | `CacheRollback` (rolling back an update guard set from the pacman cache) | executed: the file only from the cache directory of this machine (`pacman-conf CacheDir`), opened by root itself without links (`openat2`), owner root, not writable by group/others; the name and version come from the `.PKGINFO` of the copy; the set is exactly the rollback of one guard finding by the pacman of this machine, versions strictly lower than the installed ones (`vercmp`); the `pacman -U --print` probe is exactly these packages; one transaction |
+//! | `FontInstall`, `FontRemove` (fonts "for all users") | executed: only the core directory `/usr/local/share/fonts` (package fonts are not touched); install: the file as an open fd, a root copy, `fc-query` on the copy, the name is a font file name, an existing file or link with that name means refusal (no overwriting); removal: only a regular font file inside the directory, not through a link; then `fc-cache -f` of the directory |
+//! | `SddmBackground`, `SddmClock`, `SddmLook` (SDDM login screen: theme background, «Show clock», carrying over the desktop look) | executed: the theme is a directory in `/usr/share/sddm/themes` (not a link) with a settings file from `metadata.desktop`; the clock is the `showClock` key in `<ConfigFile>.user`; the picture is an fd, a root copy, PNG/JPEG (WebP if the theme greeter's Qt has the WebP module) by signature, it goes in as `rexon-background.<ext>`, the name into `<ConfigFile>.user` (our previous one is removed, foreign files are not touched); carry-over: keys by the core rule `plan_sddm_look` with rollback, values checked, `-dpi` assembled by the helper; files come as fds, only names of the core table, UTF-8 up to 1 MiB, in the `sddm` home they are written as `sddm` (`setpriv`), not root; if the files fail, the keys are restored |
+//! | `AurInstall`, `AeroShellRebuild` | `Error{Refused, "not_for_helper"}`: the build is done by paru/yay as the user, root gets only pacman calls through the shim (B10) |
+//! | others | `Error{Refused, "not_supported_yet"}`: silently not executed |
 
 use std::collections::{BTreeSet, HashSet};
 use std::ffi::CString;
@@ -70,125 +72,125 @@ use crate::distro_compat::SteamOsBlock;
 use crate::system::{self, DistroDetector, PkgFamily};
 use crate::system_plan as plan;
 
-/// Самая длинная строка `Progress` в байтах; длиннее — режется.
+/// The longest `Progress` line in bytes; longer ones are cut.
 pub const PROGRESS_MAX: usize = 4096;
 
-/// `PATH` помощника и его потомков. Ни `~/.local/bin`, ни `/usr/local`: имя
-/// программы ищется только в системных каталогах.
+/// `PATH` of the helper and its children. Neither `~/.local/bin` nor `/usr/local`:
+/// a program name is looked up only in system directories.
 pub const CHILD_PATH: &str = "/usr/bin:/usr/sbin";
 
-/// Каталоги поиска программ — те же, что в [`CHILD_PATH`].
+/// Program search directories: the same as in [`CHILD_PATH`].
 const SEARCH_DIRS: &[&str] = &["/usr/bin", "/usr/sbin"];
 
-/// Имя в журнале (`SYSLOG_IDENTIFIER`).
+/// Name in the journal (`SYSLOG_IDENTIFIER`).
 pub const JOURNAL_ID: &str = "rexon-priv-helper";
 
-/// Сокет journald для записей в родном формате.
+/// journald socket for entries in the native format.
 const JOURNAL_SOCKET: &str = "/run/systemd/journal/socket";
 
-/// Коды выхода помощника. 126/127 не используются: это коды самого pkexec
-/// (отказ в пароле, нет прав), по ним клиент решает, что сеанса нет.
+/// Helper exit codes. 126/127 are not used: they are pkexec's own codes
+/// (password refused, no permission), by which the client decides there is no session.
 pub const EXIT_OK: i32 = 0;
-/// Неверные аргументы.
+/// Wrong arguments.
 pub const EXIT_USAGE: i32 = 2;
-/// Запущен не через pkexec (нет `PKEXEC_UID` или euid не 0).
+/// Not started through pkexec (no `PKEXEC_UID`, or euid is not 0).
 pub const EXIT_NOT_PKEXEC: i32 = 3;
-/// На fd 0 нет сокета окна, родитель умер, собеседник чужой.
+/// No window socket on fd 0, the parent died, the peer is foreign.
 pub const EXIT_CHANNEL: i32 = 4;
-/// Рукопожатие или сеанс logind не прошли.
+/// The handshake or the logind session check failed.
 pub const EXIT_HANDSHAKE: i32 = 5;
 
 // ============================================================================
-// Шов к системе
+// Seam to the system
 // ============================================================================
 
-/// Код и стандартный вывод пробы.
+/// Exit code and standard output of a probe.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Captured {
-    /// Код выхода; `None` — не запустилась или убита сигналом.
+    /// Exit code; `None` means it did not start or was killed by a signal.
     pub code: Option<i32>,
     pub stdout: String,
 }
 
-/// Дополнительное к команде: текст на `stdin` и переменные сверх
-/// [`child_env`] (только из кода помощника, не от окна).
+/// Extras to a command: text for `stdin` and variables beyond
+/// [`child_env`] (only from the helper's code, not from the window).
 #[derive(Debug, Clone, Default)]
 pub struct RunExtra {
     pub stdin: Option<String>,
     pub env: Vec<(&'static str, String)>,
 }
 
-/// Всё, чем помощник трогает систему. Живой — [`LiveRootIo`]; в тестах —
-/// подделка, которая записывает вызовы и ничего не делает.
+/// Everything the helper touches the system with. The live one is [`LiveRootIo`];
+/// in tests it is a fake that records the calls and does nothing.
 ///
-/// Мутирующие методы: [`RootIo::run`], [`RootIo::write_file`],
+/// Mutating methods: [`RootIo::run`], [`RootIo::write_file`],
 /// [`RootIo::copy_file`], [`RootIo::remove_file`], [`RootIo::remove_dir`],
-/// [`RootIo::create_dir_all`]. Остальные только читают.
+/// [`RootIo::create_dir_all`]. The rest only read.
 pub trait RootIo: Send + Sync {
-    /// Исполнить argv (первое слово — имя программы из [`CHILD_PATH`] или
-    /// абсолютный путь) и отдавать строки вывода (stdout и stderr вместе) в
-    /// `out`. `Ok(код)`; `Ok(None)` — убита сигналом; `Err` — не запустилась.
+    /// Execute argv (the first word is a program name from [`CHILD_PATH`] or an
+    /// absolute path) and pass output lines (stdout and stderr together) to
+    /// `out`. `Ok(code)`; `Ok(None)` means killed by a signal; `Err` means it did not start.
     fn run(&self, argv: &[String], extra: &RunExtra, out: &mut dyn FnMut(&str)) -> Result<Option<i32>, String>;
-    /// Проба только на чтение: код и stdout.
+    /// A read-only probe: exit code and stdout.
     fn capture(&self, argv: &[String]) -> Captured;
-    /// Путь к программе (`name` без `/` — поиск в [`CHILD_PATH`]; с `/` — сам
-    /// путь, если это исполняемый файл).
+    /// Path to a program (`name` without `/` is looked up in [`CHILD_PATH`]; with `/`
+    /// it is the path itself, if it is an executable file).
     fn which(&self, name: &str) -> Option<String>;
     fn read_text(&self, path: &str) -> Option<String>;
-    /// Есть ли путь (ссылки разыменовываются).
+    /// Whether the path exists (links are dereferenced).
     fn exists(&self, path: &str) -> bool;
     fn is_file(&self, path: &str) -> bool;
     fn is_dir(&self, path: &str) -> bool;
-    /// Сам путь — символьная ссылка (живая или висячая).
+    /// The path itself is a symbolic link (live or dangling).
     fn is_symlink(&self, path: &str) -> bool;
-    /// Настоящий путь (`realpath`); `None` — пути нет.
+    /// The real path (`realpath`); `None` means there is no path.
     fn canonicalize(&self, path: &str) -> Option<String>;
-    /// Имена в каталоге; пусто — каталога нет.
+    /// Names in a directory; empty means there is no directory.
     fn list_dir(&self, path: &str) -> Vec<String>;
-    /// Записать файл целиком с правами `mode` (ссылку на месте файла не
-    /// разыменовывает — отказ).
+    /// Write a whole file with permissions `mode` (a link in place of the file is
+    /// not dereferenced: refusal).
     fn write_file(&self, path: &str, content: &str, mode: u32) -> Result<(), String>;
-    /// Права файла (без разыменования ссылки); `None` — файла нет.
+    /// File permissions (without dereferencing a link); `None` means there is no file.
     fn mode_of(&self, path: &str) -> Option<u32> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::symlink_metadata(path).ok().map(|m| m.permissions().mode() & 0o7777)
     }
-    /// Скопировать файл с правами.
+    /// Copy a file with its permissions.
     fn copy_file(&self, src: &str, dst: &str) -> Result<(), String>;
-    /// Переименовать в том же каталоге (замена файла одним шагом: читающий
-    /// видит либо прежний текст, либо новый — так меняют сценарий, который
-    /// bash, возможно, сейчас исполняет).
+    /// Rename within the same directory (replacing a file in one step: a reader
+    /// sees either the old text or the new one; this is how a script that bash
+    /// may be executing right now is changed).
     fn rename(&self, from: &str, to: &str) -> Result<(), String>;
     fn remove_file(&self, path: &str) -> Result<(), String>;
-    /// Удалить ПУСТОЙ каталог.
+    /// Remove an EMPTY directory.
     fn remove_dir(&self, path: &str) -> Result<(), String>;
     fn create_dir_all(&self, path: &str, mode: u32) -> Result<(), String>;
-    /// Скопировать дерево `src` (свой рабочий каталог root: только файлы и
-    /// каталоги) в `dst`, заменяя файлы, а не пиша сквозь ссылки.
+    /// Copy the tree `src` (root's own working directory: only files and
+    /// directories) to `dst`, replacing files instead of writing through links.
     fn copy_tree(&self, src: &str, dst: &str) -> Result<(), String>;
-    /// Удалить дерево (ссылки внутри не разыменовываются).
+    /// Remove a tree (links inside are not dereferenced).
     fn remove_tree(&self, path: &str) -> Result<(), String>;
-    /// Где заводить свой рабочий каталог ([`WorkDir`]).
+    /// Where to create its own working directory ([`WorkDir`]).
     fn work_base(&self) -> std::path::PathBuf;
-    /// Домашний каталог пользователя по passwd (не по окружению окна).
+    /// The user's home directory from passwd (not from the window environment).
     fn home_of(&self, uid: u32) -> Option<String>;
-    /// Строка в журнал (journald).
+    /// A line to the journal (journald).
     fn log(&self, line: &str);
-    /// Открыть файл root `name` в каталоге `dir` только для чтения: без
-    /// ссылок во всём пути, владелец root, не пишется группой/всеми
-    /// ([`unpack::open_root_file`]). Поддельная система тестов подменяет.
+    /// Open root's file `name` in directory `dir` read-only: without links along
+    /// the whole path, owner root, not writable by group/others
+    /// ([`unpack::open_root_file`]). The fake test system substitutes it.
     fn open_root_file(&self, dir: &str, name: &str) -> Result<OwnedFd, UnpackError> {
         unpack::open_root_file(dir, name)
     }
 }
 
-/// Окружение каждой программы, запущенной помощником: только это, всё
-/// прочее стёрто (`env_clear`). Ни `LD_*`, ни `HOME`, ни `XDG_*` окна.
+/// The environment of every program started by the helper: only this, everything
+/// else is wiped (`env_clear`). No `LD_*`, no `HOME`, no `XDG_*` of the window.
 pub fn child_env() -> Vec<(&'static str, &'static str)> {
     vec![("PATH", CHILD_PATH), ("LC_ALL", "C"), ("LANG", "C")]
 }
 
-/// Живой исполнитель: настоящие программы и файловая система.
+/// The live executor: real programs and the file system.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct LiveRootIo;
 
@@ -217,7 +219,7 @@ impl RootIo for LiveRootIo {
         cmd.stdout(writer.try_clone().map_err(|e| e.to_string())?).stderr(writer);
         cmd.stdin(if extra.stdin.is_some() { Stdio::piped() } else { Stdio::null() });
         let mut child = cmd.spawn().map_err(|e| e.to_string())?;
-        // Наши копии концов записи живут в `cmd`: без этого чтение не увидит EOF.
+        // Our copies of the write ends live in `cmd`: without this the reading would not see EOF.
         drop(cmd);
         if let (Some(text), Some(mut stdin)) = (&extra.stdin, child.stdin.take()) {
             let _ = stdin.write_all(text.as_bytes());
@@ -340,12 +342,12 @@ impl RootIo for LiveRootIo {
         let mut pw: libc::passwd = unsafe { std::mem::zeroed() };
         let mut buf = vec![0 as libc::c_char; 16 * 1024];
         let mut out: *mut libc::passwd = std::ptr::null_mut();
-        // SAFETY: getpwuid_r пишет в наши pw и buf; строки читаются, пока buf жив.
+        // SAFETY: getpwuid_r writes into our pw and buf; the strings are read while buf is alive.
         let rc = unsafe { libc::getpwuid_r(uid, &mut pw, buf.as_mut_ptr(), buf.len(), &mut out) };
         if rc != 0 || out.is_null() || pw.pw_dir.is_null() {
             return None;
         }
-        // SAFETY: pw_dir указывает в buf и оканчивается NUL.
+        // SAFETY: pw_dir points into buf and ends with NUL.
         let dir = unsafe { std::ffi::CStr::from_ptr(pw.pw_dir) }.to_string_lossy().into_owned();
         dir.starts_with('/').then_some(dir)
     }
@@ -355,9 +357,9 @@ impl RootIo for LiveRootIo {
     }
 }
 
-/// Копия своего дерева в системный каталог: каталоги 0755, файлы — с режимом
-/// копии (`unpack` нормализовал его в 0644/0755); существующий файл или
-/// ссылка на месте приёмника сначала снимается (как `--remove-destination`).
+/// Copy of its own tree into a system directory: directories 0755, files with
+/// the copy's mode (`unpack` normalized it to 0644/0755); an existing file or
+/// link in place of the destination is removed first (like `--remove-destination`).
 fn copy_tree_live(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     let err = |p: &std::path::Path, e: std::io::Error| format!("{}: {e}", p.display());
@@ -389,8 +391,8 @@ fn copy_tree_live(src: &std::path::Path, dst: &std::path::Path) -> Result<(), St
     Ok(())
 }
 
-/// Запись в journald родным протоколом (без `logger` и оболочки). Нет
-/// journald — строка уходит в stderr.
+/// Writing to journald with the native protocol (without `logger` and a shell).
+/// Without journald the line goes to stderr.
 fn journal(line: &str) {
     let clean: String = line.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
     let datagram = format!("SYSLOG_IDENTIFIER={JOURNAL_ID}\nPRIORITY=6\nMESSAGE={clean}\n");
@@ -403,13 +405,13 @@ fn journal(line: &str) {
 }
 
 // ============================================================================
-// Вывод программ → строки Progress
+// Program output → Progress lines
 // ============================================================================
 
-/// Режет поток байт вывода на строки (по `\n` и `\r` — у pacman строка хода
-/// перерисовывается возвратом каретки) не длиннее [`PROGRESS_MAX`] байт.
-/// Пустые строки не отдаёт. Длинная строка без перевода режется по границе
-/// символа UTF-8.
+/// Cuts the output byte stream into lines (by `\n` and `\r`: pacman redraws its
+/// progress line with a carriage return) no longer than [`PROGRESS_MAX`] bytes.
+/// Empty lines are not emitted. A long line without a line break is cut at a
+/// UTF-8 character boundary.
 #[derive(Debug, Default)]
 pub struct LineCutter {
     buf: Vec<u8>,
@@ -440,7 +442,7 @@ impl LineCutter {
         }
     }
 
-    /// Буфер полон: отдать целые символы, недописанный хвост UTF-8 оставить.
+    /// The buffer is full: emit whole characters, keep the unfinished UTF-8 tail.
     fn flush_full(&mut self, out: &mut dyn FnMut(&str)) {
         let keep = match std::str::from_utf8(&self.buf) {
             Ok(_) => 0,
@@ -453,7 +455,7 @@ impl LineCutter {
     }
 }
 
-/// Строка → куски не длиннее [`PROGRESS_MAX`] байт по границам символов.
+/// A line → pieces no longer than [`PROGRESS_MAX`] bytes at character boundaries.
 pub fn cut_progress(line: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut rest = line;
@@ -472,28 +474,28 @@ pub fn cut_progress(line: &str) -> Vec<String> {
 }
 
 // ============================================================================
-// Машина и сеанс — со слов системы, не окна
+// Machine and session: from the system's words, not the window's
 // ============================================================================
 
-/// Что помощник знает о машине сам.
+/// What the helper knows about the machine by itself.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Facts {
-    /// Семейство пакетного менеджера по os-release и программам этой машины.
+    /// Package manager family by os-release and the programs of this machine.
     pub family: PkgFamily,
     pub steamos: bool,
-    /// Текущий стол по сеансу logind (`Desktop`); пусто — не опознан
-    /// (тогда удаление пакетов отвергается, [`validate::check_remove_packages`]).
+    /// The current desktop by the logind session (`Desktop`); empty means not
+    /// recognized (then package removal is rejected, [`validate::check_remove_packages`]).
     pub current_de: String,
-    /// Тип сеанса окна по logind (`Type`: `x11`, `wayland`, …); пусто — не
-    /// узнан.
+    /// Type of the window's session by logind (`Type`: `x11`, `wayland`, …); empty
+    /// means not found out.
     pub session_type: String,
-    /// Корень пересборок пользователя `PKEXEC_UID` (домашний каталог — по
-    /// passwd); `None` — домашнего каталога нет.
+    /// Rebuild root of the user `PKEXEC_UID` (the home directory from passwd);
+    /// `None` means there is no home directory.
     pub rebuild_root: Option<String>,
 }
 
-/// Собрать [`Facts`]: os-release читает помощник, `desktop` и
-/// `session_type` — из logind ([`verify_session`]).
+/// Collect [`Facts`]: the helper reads os-release, `desktop` and
+/// `session_type` come from logind ([`verify_session`]).
 pub fn machine_facts(io: &dyn RootIo, desktop: &str, session_type: &str, pkexec_uid: u32) -> Facts {
     let det = DistroDetector::from_os_release_files(
         io.read_text("/etc/os-release").as_deref(),
@@ -509,8 +511,8 @@ pub fn machine_facts(io: &dyn RootIo, desktop: &str, session_type: &str, pkexec_
     }
 }
 
-/// Сеанс окна по logind: `User` — тот, кто вводил пароль (`PKEXEC_UID`), и
-/// сеанс активен. `Ok((Desktop, Type))` сеанса; `Err` — ключ отказа.
+/// The window's session by logind: `User` is whoever entered the password
+/// (`PKEXEC_UID`), and the session is active. `Ok((Desktop, Type))` of the session; `Err` is the refusal key.
 pub fn verify_session(io: &dyn RootIo, session: &str, pkexec_uid: u32) -> Result<(String, String), &'static str> {
     if !revoke::valid_session_id(session) {
         return Err("session_mismatch");
@@ -543,8 +545,8 @@ pub fn verify_session(io: &dyn RootIo, session: &str, pkexec_uid: u32) -> Result
     }
 }
 
-/// Запрос logind для [`LogindWatch`] через тот же [`RootIo`] (чистое
-/// окружение, абсолютный путь `loginctl`).
+/// A logind query for [`LogindWatch`] through the same [`RootIo`] (clean
+/// environment, absolute path of `loginctl`).
 pub struct RootLoginctl(pub Arc<dyn RootIo>);
 
 impl SessionQuery for RootLoginctl {
@@ -563,29 +565,29 @@ impl SessionQuery for RootLoginctl {
 }
 
 // ============================================================================
-// Проверка операции (всё до первого действия)
+// Checking an operation (everything before the first action)
 // ============================================================================
 
-/// Проверенная операция — то, что помощник исполнит.
+/// A checked operation: what the helper will execute.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Plan {
     Install { family: PkgFamily, packages: Vec<String> },
     Remove { family: PkgFamily, packages: Vec<String> },
     EnableDm { unit: String },
     SwitchDm { family: PkgFamily, unit: String, greeter: Option<String> },
-    /// Сеанс по умолчанию — пара X11-сеанса на Wayland (запись таблицы).
+    /// Default session: the pair of an X11 session on Wayland (a table entry).
     LoginSessionWayland { session: &'static plan::SessionSuccessor },
     BuildDeps { deps: Vec<String> },
-    /// Собранный пакет: файл — дескриптор 0 запроса.
+    /// A built package: the file is descriptor 0 of the request.
     InstallBuilt { label: String, build_only: Vec<String>, replace: bool, rebuild_root: String },
-    /// Раскладка по категории: каталог — дескриптор 0 запроса (ustar).
+    /// Staging by category: the directory is descriptor 0 of the request (ustar).
     Stage { category: String, name: String },
-    /// Тема SDDM/Plymouth: установка (дескриптор 0 — ustar), выбор, снятие.
+    /// SDDM/Plymouth theme: install (descriptor 0 is ustar), selection, removal.
     ThemeInstall { kind: SystemThemeKind, theme: String },
     ThemeApply { kind: SystemThemeKind, theme: String },
     ThemeRemove { kind: SystemThemeKind, theme: String },
-    /// Стол набором (pacman): правило ядра по пробе root-стороны —
-    /// перед исполнением ([`de_set_verdict`]).
+    /// Desktop as a set (pacman): the core rule by the root side's probe,
+    /// before execution ([`de_set_verdict`]).
     DeInstallSet {
         family: PkgFamily,
         de_id: String,
@@ -594,30 +596,30 @@ pub enum Plan {
         replace: Vec<String>,
         update_first: bool,
     },
-    /// Образ стола на SteamOS.
+    /// A desktop image on SteamOS.
     Sysext { op: SysextOp, de_id: String },
-    /// Шим AUR: зависимости из официальных репозиториев.
+    /// AUR shim: dependencies from the official repositories.
     AurDeps { names: Vec<String> },
-    /// Шим AUR: собранные пакеты (дескрипторы запроса по порядку `labels`).
+    /// AUR shim: built packages (request descriptors in the order of `labels`).
     AurInstallBuilt { labels: Vec<String>, allowed: Vec<String>, replace: bool },
-    /// Шим AUR: снять сборочные (только сироты-зависимости).
+    /// AUR shim: remove build packages (only orphan dependencies).
     AurDropMake { names: Vec<String> },
-    /// Сирота сторожа обновлений (проба машины — при исполнении).
-    /// `current_de` — стол, который помощник узнал у logind сам.
+    /// An update guard orphan (the machine probe happens at execution).
+    /// `current_de` is the desktop the helper found out from logind itself.
     OrphanRemove { names: Vec<String>, current_de: String },
-    /// Откат набора сторожа из кэша pacman (сверка машины — при исполнении).
+    /// Rolling back an update guard set from the pacman cache (machine check at execution).
     CacheRollback { files: Vec<String> },
-    /// Шрифты для всех: имена файлов (дескрипторы запроса — по порядку).
+    /// Fonts for all: file names (request descriptors in order).
     FontInstall { names: Vec<String> },
-    /// Шрифты для всех: пути внутри каталога ядра.
+    /// Fonts for all: paths inside the core directory.
     FontRemove { files: Vec<String> },
-    /// Фон темы SDDM: `image` — картинка пришла дескриптором 0, иначе
-    /// вернуть фон темы.
+    /// SDDM theme background: `image` means the picture came as descriptor 0,
+    /// otherwise restore the theme's background.
     SddmBackground { theme: String, image: bool },
-    /// Перенос оформления на экран входа SDDM (`look: None` — «Сбросить»);
-    /// файлы — дескрипторы запроса по порядку `names`.
+    /// Carrying the look over to the SDDM login screen (`look: None` is «Reset»);
+    /// files are request descriptors in the order of `names`.
     SddmLook { look: Option<plan::SddmLook>, names: Vec<String> },
-    /// «Показывать часы» у темы SDDM.
+    /// «Show clock» of an SDDM theme.
     SddmClock { theme: String, show: bool },
 }
 
@@ -628,7 +630,7 @@ fn theme_kind(k: op::SystemThemeKind) -> SystemThemeKind {
     }
 }
 
-/// Что на SteamOS запрещает тему этого вида.
+/// What forbids a theme of this kind on SteamOS.
 fn theme_block(k: SystemThemeKind) -> SteamOsBlock {
     match k {
         SystemThemeKind::Sddm => SteamOsBlock::LoginScreen,
@@ -643,7 +645,7 @@ fn kind_dir(k: SystemThemeKind) -> &'static str {
     }
 }
 
-/// Отказ до исполнения: код протокола и ключ сообщения.
+/// A refusal before execution: the protocol code and the message key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Deny {
     pub code: ErrorCode,
@@ -655,7 +657,7 @@ impl Deny {
         Deny { code: ErrorCode::Refused, key: key.to_string() }
     }
 
-    /// Отказ, найденный уже при исполнении (до касания системы).
+    /// A refusal found already during execution (before touching the system).
     fn into_outcome(self) -> Outcome {
         Outcome::Refused(self.key)
     }
@@ -667,7 +669,7 @@ impl From<Refusal> for Deny {
     }
 }
 
-/// Семейство из операции должно совпасть с тем, что помощник узнал сам.
+/// The family from the operation must match what the helper found out itself.
 fn same_family(claimed: PkgFamily, facts: &Facts) -> Result<(), Refusal> {
     if claimed == facts.family {
         Ok(())
@@ -676,8 +678,8 @@ fn same_family(claimed: PkgFamily, facts: &Facts) -> Result<(), Refusal> {
     }
 }
 
-/// Строка сборочной зависимости: имя по правилу ядра и, возможно,
-/// ограничение версии (`cmake>=3.20`) — как `dep_ok` у `rexon-pkg-helper`.
+/// A build dependency string: a name by the core rule and possibly a version
+/// constraint (`cmake>=3.20`), like `dep_ok` in `rexon-pkg-helper`.
 fn check_build_dep(dep: &str) -> Result<(), Refusal> {
     if dep.len() > validate::MAX_NAME_LEN {
         return Err(Refusal::TooLong(dep.chars().take(validate::MAX_NAME_LEN).collect()));
@@ -700,10 +702,10 @@ fn check_build_dep(dep: &str) -> Result<(), Refusal> {
     }
 }
 
-/// Имена операций шима AUR: только pacman этой машины, система не только
-/// для чтения, список непустой и не длиннее [`validate::MAX_PACKAGES`],
-/// каждое — имя пакета (без версий и `repo/`). `no_vital` — жизненно важное
-/// не ставится собранным и не снимается.
+/// Names of AUR shim operations: only the pacman of this machine, the system is
+/// not read-only, the list is non-empty and no longer than
+/// [`validate::MAX_PACKAGES`], each is a package name (without versions and
+/// `repo/`). `no_vital` means vital packages are neither installed as built nor removed.
 fn check_aur_names(facts: &Facts, names: &[String], no_vital: bool) -> Result<(), Refusal> {
     if facts.family != PkgFamily::Arch {
         return Err(Refusal::Family(facts.family.as_str()));
@@ -724,9 +726,9 @@ fn check_aur_names(facts: &Facts, names: &[String], no_vital: bool) -> Result<()
     Ok(())
 }
 
-/// Шрифты для всех: на NixOS шрифты системы описывает её конфигурация
-/// (`/usr/local` fontconfig там не сканирует), на SteamOS системный раздел
-/// только для чтения.
+/// Fonts for all: on NixOS the system fonts are described by its configuration
+/// (fontconfig does not scan `/usr/local` there), on SteamOS the system
+/// partition is read-only.
 fn check_font_machine(facts: &Facts) -> Result<(), Refusal> {
     if facts.family == PkgFamily::Nix {
         return Err(Refusal::Family(facts.family.as_str()));
@@ -734,24 +736,24 @@ fn check_font_machine(facts: &Facts) -> Result<(), Refusal> {
     validate::check_mutable_system(SteamOsBlock::SystemPart, facts.steamos)
 }
 
-/// Ключ отказа: операция идёт через шим сборщика (AUR, AeroShell — Б10),
-/// у помощника исполнения для неё нет и не будет.
+/// Refusal key: the operation goes through the builder shim (AUR, AeroShell, B10),
+/// the helper has no execution for it and never will.
 pub const NOT_FOR_HELPER: &str = "not_for_helper";
 
-/// Начало ключа отказа «сеанс окна держится на пакете» (+ имя пакета).
+/// Prefix of the refusal key "the window's session depends on the package" (+ package name).
 pub const ORPHAN_IN_USE: &str = "refused.orphan-in-use.";
 
-/// Начало ключа отказа «экран входа сам открывает сеанс на пакете» (+ имя).
+/// Prefix of the refusal key "the login screen itself opens a session on the package" (+ name).
 pub const ORPHAN_LOGIN_DEFAULT: &str = "refused.orphan-login-default.";
 
-/// Ключ отказа: операцию помощник пока не исполняет.
+/// Refusal key: the helper does not execute the operation yet.
 pub const NOT_SUPPORTED_YET: &str = "not_supported_yet";
 
-/// Исполняет ли помощник операцию этого вида вообще (до любых проверок
-/// данных). `Err` — ключ отказа [`NOT_FOR_HELPER`] или [`NOT_SUPPORTED_YET`]:
-/// единственные отказы, после которых окну можно идти прежним путём
-/// (`privilege::run`). Окно спрашивает это ДО подъёма сеанса, чтобы не
-/// просить пароль ради заведомого отказа.
+/// Whether the helper executes operations of this kind at all (before any data
+/// checks). `Err` is the refusal key [`NOT_FOR_HELPER`] or [`NOT_SUPPORTED_YET`]:
+/// the only refusals after which the window may take the old path
+/// (`privilege::run`). The window asks this BEFORE raising the session, so as
+/// not to ask for a password for a certain refusal.
 pub fn executes(op: &PrivOp) -> Result<(), &'static str> {
     match op {
         PrivOp::AurInstall { .. } | PrivOp::AeroShellRebuild { .. } => Err(NOT_FOR_HELPER),
@@ -786,13 +788,13 @@ pub fn executes(op: &PrivOp) -> Result<(), &'static str> {
     }
 }
 
-/// Все проверки root-стороны для одной операции. `fds` — сколько
-/// дескрипторов пришло с кадром (должно совпасть с файлами операции).
+/// All root-side checks for one operation. `fds` is how many descriptors came
+/// with the frame (it must match the operation's files).
 ///
-/// `Err` — ни одного действия: ни команды, ни файла.
+/// `Err` means not a single action: no command, no file.
 pub fn check_op(op: &PrivOp, facts: &Facts, fds: usize) -> Result<Plan, Deny> {
     executes(op).map_err(Deny::refused)?;
-    // Файлы операции — ровно пришедшие дескрипторы, по порядку: slot = индекс.
+    // The operation's files are exactly the received descriptors, in order: slot = index.
     let files = op.local_files();
     if fds != files.len() || files.iter().enumerate().any(|(i, f)| usize::from(f.slot) != i) {
         return Err(Deny::refused("fds_mismatch"));
@@ -801,8 +803,8 @@ pub fn check_op(op: &PrivOp, facts: &Facts, fds: usize) -> Result<Plan, Deny> {
         PrivOp::PkgInstall { family, packages, source } => {
             same_family(*family, facts)?;
             validate::check_mutable_system(SteamOsBlock::Desktops, facts.steamos)?;
-            // Только по таблице, которую назвало окно (стол для починки —
-            // тот, что помощник узнал у logind сам).
+            // Only by the table the window named (the desktop to repair is the one the
+            // helper found out from logind itself).
             validate::check_install(*family, packages, source.install_source(&facts.current_de))?;
             Ok(Plan::Install { family: *family, packages: packages.clone() })
         }
@@ -823,7 +825,7 @@ pub fn check_op(op: &PrivOp, facts: &Facts, fds: usize) -> Result<Plan, Deny> {
             validate::check_mutable_system(SteamOsBlock::LoginScreen, facts.steamos)?;
             validate::check_switch_dm_unit(unit)?;
             if let Some(g) = greeter {
-                // Приветствие выбирается только у LightDM.
+                // A greeter is chosen only for LightDM.
                 if unit != "lightdm" {
                     return Err(Refusal::DisplayManager(unit.clone()).into());
                 }
@@ -833,8 +835,8 @@ pub fn check_op(op: &PrivOp, facts: &Facts, fds: usize) -> Result<Plan, Deny> {
         }
         PrivOp::LoginSessionWayland { x11 } => {
             validate::check_mutable_system(SteamOsBlock::LoginScreen, facts.steamos)?;
-            // Только сеанс из таблицы, и ровно по имени (не путь, не значение
-            // окна с `.desktop`).
+            // Only a session from the table, and exactly by name (not a path, not the
+            // window's value with `.desktop`).
             let session = plan::X11_SESSION_SUCCESSORS
                 .iter()
                 .find(|s| s.x11 == x11)
@@ -842,7 +844,7 @@ pub fn check_op(op: &PrivOp, facts: &Facts, fds: usize) -> Result<Plan, Deny> {
             Ok(Plan::LoginSessionWayland { session })
         }
         PrivOp::BuildDeps { names } => {
-            // Пересборка — только pacman; семейство — по машине.
+            // Rebuild: pacman only; the family is taken from the machine.
             if facts.family != PkgFamily::Arch {
                 return Err(Refusal::Family(facts.family.as_str()).into());
             }
@@ -935,7 +937,7 @@ pub fn check_op(op: &PrivOp, facts: &Facts, fds: usize) -> Result<Plan, Deny> {
             let mut seen = HashSet::new();
             for p in packages {
                 let name = validate::check_aur_package(&p.label)?;
-                // Две копии под одним именем в рабочем каталоге не лягут.
+                // Two copies under one name will not fit in the working directory.
                 if !seen.insert(name.to_string()) {
                     return Err(Refusal::PackageFile(name.to_string()).into());
                 }
@@ -949,9 +951,9 @@ pub fn check_op(op: &PrivOp, facts: &Facts, fds: usize) -> Result<Plan, Deny> {
         }
         PrivOp::OrphanRemove { names } => {
             check_aur_names(facts, names, true)?;
-            // Вечное и пакеты текущего стола (текущий стол не узнан — отказ).
+            // Permanent packages and packages of the current desktop (current desktop not found out: refusal).
             validate::check_remove_packages(PkgFamily::Arch, names, &facts.current_de)?;
-            // Сеанс окна держится на этом пакете (kwin-x11 в Plasma X11).
+            // The window's session depends on this package (kwin-x11 in Plasma X11).
             if let Some(s) = crate::update_guard::orphan_in_use(names, &facts.session_type, &facts.current_de) {
                 return Err(Deny::refused(&format!("{ORPHAN_IN_USE}{}", s.package)));
             }
@@ -971,7 +973,7 @@ pub fn check_op(op: &PrivOp, facts: &Facts, fds: usize) -> Result<Plan, Deny> {
             let mut seen = HashSet::new();
             for f in files {
                 let (_, name) = validate::check_cache_package(f)?;
-                // Две копии под одним именем в рабочем каталоге не лягут.
+                // Two copies under one name will not fit in the working directory.
                 if !seen.insert(name.to_string()) {
                     return Err(Refusal::PackageFile(name.to_string()).into());
                 }
@@ -1010,21 +1012,21 @@ pub fn check_op(op: &PrivOp, facts: &Facts, fds: usize) -> Result<Plan, Deny> {
 }
 
 // ============================================================================
-// Исполнение
+// Execution
 // ============================================================================
 
-/// Итог исполнения.
+/// Result of execution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
-    /// Программа отработала (`ok` — успех), `key` — ключ сообщения каталога
-    /// помощников ([`crate::system_l10n::message`]).
+    /// The program finished (`ok` means success), `key` is the message key of the
+    /// helpers catalog ([`crate::system_l10n::message`]).
     Done { ok: bool, code: Option<i32>, key: Option<String> },
-    /// `Cancel` пришёл до касания системы.
+    /// `Cancel` arrived before the system was touched.
     Cancelled,
-    /// Отказ проверки файла (по копии root: `unpack`, `.PKGINFO`) — система
-    /// не тронута.
+    /// A file check refusal (on the root copy: `unpack`, `.PKGINFO`): the system
+    /// is untouched.
     Refused(String),
-    /// Сбой помощника (программа не запустилась).
+    /// Helper failure (the program did not start).
     Internal(String),
 }
 
@@ -1046,14 +1048,14 @@ impl Outcome {
     }
 }
 
-/// Состояние идущей операции: отмена и «система уже тронута».
+/// State of the running operation: cancellation and "the system has already been touched".
 #[derive(Debug, Default)]
 pub struct OpState {
     cancelled: bool,
     touched: bool,
 }
 
-/// Отменить, если система ещё не тронута. `true` — отмена принята.
+/// Cancel if the system has not been touched yet. `true` means the cancellation is accepted.
 fn request_cancel(state: &Mutex<OpState>) -> bool {
     let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
     if s.touched {
@@ -1064,21 +1066,21 @@ fn request_cancel(state: &Mutex<OpState>) -> bool {
     }
 }
 
-/// Окружение исполнителя одной операции.
+/// Environment of the executor of one operation.
 pub struct Ctx<'a> {
     pub io: &'a dyn RootIo,
     pub progress: &'a (dyn Fn(&str) + Sync),
     pub state: &'a Mutex<OpState>,
-    /// Язык сообщений для человека (`--lang`), `None` — английский.
+    /// Language of messages for a person (`--lang`), `None` means English.
     pub lang: Option<&'a str>,
-    /// Что поставил последний `BuildDeps` (для снятия сборочных после
-    /// `InstallBuilt`; запись живёт, пока жив помощник).
+    /// What the last `BuildDeps` installed (for removing build packages after
+    /// `InstallBuilt`; the record lives as long as the helper does).
     pub rebuilt: &'a Mutex<Vec<String>>,
 }
 
 impl Ctx<'_> {
-    /// Сейчас будет первое изменение системы. После этого `Cancel` не
-    /// действует; до — `Err(Cancelled)`.
+    /// The first change to the system is about to happen. After this `Cancel`
+    /// has no effect; before it, `Err(Cancelled)`.
     fn touch(&self) -> Result<(), Outcome> {
         let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if s.cancelled && !s.touched {
@@ -1100,7 +1102,7 @@ impl Ctx<'_> {
         text
     }
 
-    /// Сообщение каталога помощников человеку (строкой хода).
+    /// A helpers catalog message for the person (as a progress line).
     fn say(&self, key: &str, args: &[&str]) {
         (self.progress)(&self.say_text(key, args));
     }
@@ -1117,7 +1119,7 @@ impl Ctx<'_> {
         rc
     }
 
-    /// Исполнить и собрать вывод в строку (для текста ошибки), без хода.
+    /// Execute and collect the output into a string (for the error text), without progress.
     fn run_quiet(&self, argv: &[String], extra: &RunExtra) -> (Option<i32>, String) {
         self.io.log(&format!("запуск: {}", argv.join(" ")));
         let mut text = String::new();
@@ -1136,7 +1138,7 @@ fn strings(words: &[&str]) -> Vec<String> {
     words.iter().map(|s| s.to_string()).collect()
 }
 
-/// Код программы → итог.
+/// Program exit code → result.
 fn finished(rc: Result<Option<i32>, String>) -> Outcome {
     match rc {
         Ok(code) => Outcome::Done { ok: code == Some(0), code, key: None },
@@ -1144,8 +1146,8 @@ fn finished(rc: Result<Option<i32>, String>) -> Outcome {
     }
 }
 
-/// Исполнить проверенную операцию. `files` — дескрипторы запроса (уже
-/// сверенные с операцией в [`check_op`]).
+/// Execute a checked operation. `files` are the request descriptors (already
+/// matched against the operation in [`check_op`]).
 pub fn execute(plan_: &Plan, ctx: &Ctx<'_>, files: Vec<OwnedFd>) -> Outcome {
     let file = files.first().map(|f| f.as_fd());
     let need_file = || Outcome::Refused("fds_mismatch".into());
@@ -1206,7 +1208,7 @@ pub fn execute(plan_: &Plan, ctx: &Ctx<'_>, files: Vec<OwnedFd>) -> Outcome {
     }
 }
 
-/// Команда из таблицы ядра как есть.
+/// A command from the core table as is.
 fn run_table(ctx: &Ctx<'_>, argv: Result<Vec<String>, String>) -> Outcome {
     let Ok(argv) = argv else { return Outcome::Internal("no_cmd".into()) };
     if ctx.io.which(&argv[0]).is_none() {
@@ -1218,7 +1220,7 @@ fn run_table(ctx: &Ctx<'_>, argv: Result<Vec<String>, String>) -> Outcome {
     finished(ctx.run(&argv, &RunExtra::default()))
 }
 
-/// `enable-dm` — как у `rexon-pkg-helper`: `systemctl enable [--force] <юнит>`.
+/// `enable-dm`, as in `rexon-pkg-helper`: `systemctl enable [--force] <unit>`.
 fn enable_dm(ctx: &Ctx<'_>, unit: &str) -> Outcome {
     if ctx.io.which("systemctl").is_none() {
         return ctx.fail("no_systemctl", &[]);
@@ -1234,8 +1236,8 @@ fn enable_dm(ctx: &Ctx<'_>, unit: &str) -> Outcome {
     finished(ctx.run(&argv, &RunExtra::default()))
 }
 
-/// `build-deps` — как у `rexon-pkg-helper`: `pacman -S --needed --asdeps`, и
-/// запись, что именно поставлено (разница `pacman -Qq` до и после).
+/// `build-deps`, as in `rexon-pkg-helper`: `pacman -S --needed --asdeps`, and a
+/// record of what exactly was installed (the difference of `pacman -Qq` before and after).
 fn build_deps(ctx: &Ctx<'_>, deps: &[String]) -> Outcome {
     if ctx.io.which("pacman").is_none() {
         return ctx.fail("no_pm", &["pacman"]);
@@ -1259,12 +1261,13 @@ fn build_deps(ctx: &Ctx<'_>, deps: &[String]) -> Outcome {
     finished(rc)
 }
 
-// ── Стол набором (`DeInstallSet`) ────────────────────────────────────────
+// ── Desktop as a set (`DeInstallSet`) ──────────────────────────────────
 
-/// Правило ядра для набора стола по ответам pacman ЭТОЙ машины (окну не
-/// верим): члены групп таблицы стола (`pacman -Sg`) и проба
-/// [`plan::install_preview`] — та же, что окно делало до пароля (DKMS-модули
-/// и заголовки под стоящие ядра, конфликты с установленным). Только чтение.
+/// The core rule for a desktop set by the pacman answers of THIS machine (the
+/// window is not trusted): members of the desktop table's groups (`pacman -Sg`)
+/// and the probe [`plan::install_preview`], the same one the window made before
+/// the password (DKMS modules and headers for the installed kernels, conflicts
+/// with what is installed). Read-only.
 fn de_set_verdict(
     io: &dyn RootIo,
     family: PkgFamily,
@@ -1294,11 +1297,11 @@ fn de_set_verdict(
     validate::check_de_set_preview(packages, &base, deps_only, replace, preview.as_ref())
 }
 
-/// Стол набором — то, что делала обёртка `pkexec bash` плана
-/// ([`plan::install_batch_plan_with_deps`]), без оболочки: обновить базу
-/// (если окно так решило), `pacman -S` набора (с `--ask=4` — только при
-/// согласованной замене из таблицы ядра), затем пометить DKMS-модуль и
-/// заголовки `--asdeps`. Каждый шаг — после успеха предыдущего (`set -e`).
+/// A desktop as a set: what the plan's `pkexec bash` wrapper did
+/// ([`plan::install_batch_plan_with_deps`]), without a shell: refresh the
+/// database (if the window decided so), `pacman -S` of the set (with `--ask=4`
+/// only for an agreed replacement from the core table), then mark the DKMS
+/// module and headers `--asdeps`. Each step only after the previous one succeeds (`set -e`).
 fn de_install_set(
     ctx: &Ctx<'_>,
     family: PkgFamily,
@@ -1323,7 +1326,7 @@ fn de_install_set(
     let Ok(mut install) = plan::install_cmd_replacing(family, packages, replace) else {
         return Outcome::Internal("no_cmd".into());
     };
-    // Как строка обёртки: ход pacman без полосок и цвета (его разбирают).
+    // As in the wrapper line: pacman progress without bars and color (it gets parsed).
     if let Some(at) = install.iter().position(|a| a == "--noconfirm") {
         install.splice(at + 1..at + 1, strings(&["--noprogressbar", "--color", "never"]));
     }
@@ -1337,9 +1340,9 @@ fn de_install_set(
                 return finished(rc);
             }
         }
-        // База обновилась — проба другая. `--ask=4` отвечает «да» на ЛЮБОЙ
-        // конфликт, поэтому правило ядра — ещё раз, по новой базе. Тронута
-        // пока только база пакетов.
+        // The database was refreshed, so the probe is different. `--ask=4` answers
+        // "yes" to ANY conflict, so the core rule runs once more on the new database.
+        // Only the package database has been touched so far.
         if let Err(o) = verdict("после обновления базы") {
             return o;
         }
@@ -1348,7 +1351,7 @@ fn de_install_set(
     if rc != Ok(Some(0)) {
         return finished(rc);
     }
-    // `deps_only` — подмножество набора (проверено); пометка — как
+    // `deps_only` is a subset of the set (checked); marking is as in
     // [`plan::mark_deps_line`].
     if deps_only.is_empty() {
         return finished(rc);
@@ -1358,11 +1361,11 @@ fn de_install_set(
     finished(ctx.run(&mark, &RunExtra::default()))
 }
 
-// ── Образ стола на SteamOS (`Sysext`) ────────────────────────────────────
+// ── Desktop image on SteamOS (`Sysext`) ─────────────────────────────────
 
-/// Заменить файл целиком одним переименованием (как `put` у
-/// `rexon-sysext-helper`): bash читает сценарий по ходу исполнения, и
-/// запись поверх идущего сломала бы службу пересборки.
+/// Replace a whole file with one rename (like `put` in `rexon-sysext-helper`):
+/// bash reads a script as it executes it, and writing over a running one
+/// would break the rebuild service.
 fn put_file(io: &dyn RootIo, path: &str, text: &str, mode: u32) -> Result<(), String> {
     io.create_dir_all(parent_dir(path), 0o755)?;
     let tmp = format!("{path}.rexon-new");
@@ -1370,10 +1373,10 @@ fn put_file(io: &dyn RootIo, path: &str, text: &str, mode: u32) -> Result<(), St
     io.rename(&tmp, path)
 }
 
-/// Сценарии, юниты, политика и сам `rexon-sysext-helper` — тексты из
-/// своего бинаря ([`crate::steamos_sysext::layout_files`]), плюс язык
-/// сообщений сценариев. Файл помощника кладётся тоже: прежний путь (без
-/// сеанса) им и пользуется, со своей политикой polkit.
+/// Scripts, units, the policy and `rexon-sysext-helper` itself are texts from
+/// its own binary ([`crate::steamos_sysext::layout_files`]), plus the language of
+/// the script messages. The helper file is put in place too: the old path
+/// (without a session) uses it, with its own polkit policy.
 fn sysext_layout(ctx: &Ctx<'_>) -> Result<(), String> {
     use crate::steamos_sysext as sx;
     for f in sx::layout_files() {
@@ -1387,7 +1390,7 @@ fn sysext_layout(ctx: &Ctx<'_>) -> Result<(), String> {
     put_file(ctx.io, sx::HELPER_PATH, &sx::helper_script(), 0o755)
 }
 
-/// Убрать стол из списка сборки.
+/// Remove the desktop from the build list.
 fn sysext_list_remove(ctx: &Ctx<'_>, de: &str) {
     use crate::steamos_sysext as sx;
     let Some(text) = ctx.io.read_text(sx::DESKTOPS_LIST) else { return };
@@ -1397,8 +1400,8 @@ fn sysext_list_remove(ctx: &Ctx<'_>, de: &str) {
     }
 }
 
-/// Забыть образы стола: ссылку в `/var/lib/extensions`, образы и
-/// недостроенные каталоги сборки (`rm --one-file-system`, как прежде).
+/// Forget the desktop images: the link in `/var/lib/extensions`, the images and
+/// unfinished build directories (`rm --one-file-system`, as before).
 fn sysext_forget(ctx: &Ctx<'_>, de: &str) {
     use crate::steamos_sysext as sx;
     let _ = ctx.io.remove_file(&format!("{}/rexon-{de}.raw", sx::EXTENSIONS_DIR));
@@ -1422,15 +1425,16 @@ fn sysext_forget(ctx: &Ctx<'_>, de: &str) {
     }
 }
 
-/// Образ стола на SteamOS — то, что делает `rexon-sysext-helper`, без
-/// `bash -c`: раскладка своих текстов, службы, список столов, сборка и
-/// откат (всё или ничего), снятие. Сборку и пересборку делают сценарии
-/// `rexon-sysext-*` (они и после обновления ОС работают без Rexon — см.
-/// [`crate::steamos_sysext`]); их помощник берёт из своего бинаря и кладёт
-/// в `/var/lib/rexon/bin` сам, от окна — только операция и стол из таблицы.
+/// A desktop image on SteamOS: what `rexon-sysext-helper` does, without
+/// `bash -c`: laying out its own texts, services, the desktop list, build and
+/// rollback (all or nothing), removal. Building and rebuilding are done by the
+/// `rexon-sysext-*` scripts (they keep working without Rexon after an OS update,
+/// see [`crate::steamos_sysext`]); the helper takes them from its own binary and
+/// puts them into `/var/lib/rexon/bin` itself, only the operation and a desktop
+/// from the table come from the window.
 fn sysext(ctx: &Ctx<'_>, op: SysextOp, de: &str) -> Outcome {
     use crate::steamos_sysext as sx;
-    // Свои каталоги состояния: ссылка на их месте — отказ до касания.
+    // Its own state directories: a link in their place means refusal before touching anything.
     for dir in [sx::STATE_DIR, sx::BIN_DIR, parent_dir(sx::DESKTOPS_LIST), sx::IMAGE_DIR, sx::BUILD_DIR] {
         if ctx.io.is_symlink(dir) {
             return Outcome::Refused(format!("refused.{}", Refusal::Path(dir.to_string()).code()));
@@ -1470,7 +1474,7 @@ fn sysext(ctx: &Ctx<'_>, op: SysextOp, de: &str) -> Outcome {
             }
             let rc = ctx.run(&sync(de), &quiet);
             if rc != Ok(Some(0)) && fresh {
-                // Всё или ничего: не собравшийся стол не остаётся в списке.
+                // All or nothing: a desktop that failed to build does not stay in the list.
                 ctx.say("sx_rollback", &[de]);
                 sysext_list_remove(ctx, de);
                 sysext_forget(ctx, de);
@@ -1495,9 +1499,9 @@ fn sysext(ctx: &Ctx<'_>, op: SysextOp, de: &str) -> Outcome {
     }
 }
 
-// ── Файлы пользователя: только копия root (`unpack`) ─────────────────────
+// ── User files: only a root copy (`unpack`) ─────────────────────────────
 
-/// Свой рабочий каталог (0700, root); удаляется вместе с копией по выходу.
+/// Its own working directory (0700, root); removed together with the copy on exit.
 fn work_dir(ctx: &Ctx<'_>) -> Result<WorkDir, Outcome> {
     WorkDir::create(&ctx.io.work_base()).map_err(|e| {
         ctx.io.log(&format!("рабочий каталог: {e}"));
@@ -1509,7 +1513,7 @@ fn path_str(p: &std::path::Path) -> String {
     p.to_string_lossy().into_owned()
 }
 
-/// Имя пакета из имени файла makepkg: `<имя>-<версия>-<выпуск>-<арх>.pkg.tar…`.
+/// Package name from a makepkg file name: `<name>-<version>-<release>-<arch>.pkg.tar…`.
 pub fn pkgname_from_file(file: &str) -> Option<String> {
     let base = basename(file);
     let stem = &base[..base.find(".pkg.tar")?];
@@ -1518,13 +1522,13 @@ pub fn pkgname_from_file(file: &str) -> Option<String> {
     parts.next().filter(|n| !n.is_empty()).map(str::to_string)
 }
 
-/// `pkgname` из текста `.PKGINFO`.
+/// `pkgname` from the `.PKGINFO` text.
 pub fn pkginfo_name(text: &str) -> Option<String> {
     pkginfo_field(text, "pkgname")
 }
 
-/// Первое значение поля `key` из текста `.PKGINFO` (`pkgver` — полная
-/// версия с эпохой и выпуском).
+/// The first value of the field `key` from the `.PKGINFO` text (`pkgver` is the
+/// full version with epoch and release).
 pub fn pkginfo_field(text: &str, key: &str) -> Option<String> {
     text.lines()
         .filter_map(|l| l.split_once('='))
@@ -1533,15 +1537,15 @@ pub fn pkginfo_field(text: &str, key: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-/// `install-built` — как у `rexon-pkg-helper`, но файл приходит открытым
-/// дескриптором: копия root в своём каталоге, `.PKGINFO` сверяется по
-/// КОПИИ (`bsdtar`, путь пользователя root не открывает), затем
-/// `pacman -U`; сборочные снимаются, только если их поставил предыдущий
-/// `BuildDeps` этого сеанса и они помечены как зависимости.
+/// `install-built`, as in `rexon-pkg-helper`, but the file comes as an open
+/// descriptor: a root copy in its own directory, `.PKGINFO` is checked on the
+/// COPY (`bsdtar`, root does not open the user's path), then `pacman -U`;
+/// build packages are removed only if the previous `BuildDeps` of this session
+/// installed them and they are marked as dependencies.
 ///
-/// ⚠️ Граница, как у AUR: `pacman -U` файла, собранного пользователем, —
-/// это его код от root (install-скрипты пакета). Помощник гарантирует лишь,
-/// что ставится именно проверенная копия с ожидаемым именем.
+/// ⚠️ The boundary, as with the AUR: `pacman -U` of a file built by the user is
+/// that user's code running as root (the package's install scripts). The helper
+/// only guarantees that exactly the checked copy with the expected name is installed.
 fn install_built(
     ctx: &Ctx<'_>,
     fd: BorrowedFd<'_>,
@@ -1610,10 +1614,10 @@ fn install_built(
     Outcome::ok(None)
 }
 
-// ── Шим AUR (пункт Б10) ─────────────────────────────────────────────────
+// ── AUR shim (item B10) ─────────────────────────────────────────────────
 
-/// Имена пакетов официальных репозиториев ЭТОЙ машины (`pacman -Slq`).
-/// Пусто — sync-база не прочиталась (тогда не проходит ни одно имя).
+/// Package names of the official repositories of THIS machine (`pacman -Slq`).
+/// Empty means the sync database could not be read (then no name passes).
 fn sync_names(io: &dyn RootIo) -> HashSet<String> {
     let c = io.capture(&strings(&["pacman", "-Slq"]));
     if c.code != Some(0) {
@@ -1622,8 +1626,8 @@ fn sync_names(io: &dyn RootIo) -> HashSet<String> {
     c.stdout.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect()
 }
 
-/// Зависимости сборки AUR — только пакеты официальных репозиториев, и только
-/// зависимостями: `pacman -S --needed --noconfirm --asdeps`.
+/// AUR build dependencies: only packages of the official repositories, and only
+/// as dependencies: `pacman -S --needed --noconfirm --asdeps`.
 fn aur_deps(ctx: &Ctx<'_>, names: &[String]) -> Outcome {
     if ctx.io.which("pacman").is_none() {
         return ctx.fail("no_pm", &["pacman"]);
@@ -1641,13 +1645,14 @@ fn aur_deps(ctx: &Ctx<'_>, names: &[String]) -> Outcome {
     finished(ctx.run(&argv, &RunExtra::default()))
 }
 
-/// Собранное paru/yay: копии root, `.PKGINFO` каждой — имя из списка окна,
-/// совпадает с именем файла и не имя официального пакета (собранное не
-/// подменяет пакет репозитория). Всё — одной транзакцией `pacman -U`.
+/// What paru/yay built: root copies, the `.PKGINFO` of each has a name from the
+/// window's list, matches the file name and is not the name of an official
+/// package (a built package does not replace a repository package). Everything
+/// in one `pacman -U` transaction.
 ///
-/// ⚠️ Граница та же, что у [`install_built`]: install-скрипты собранного
-/// пакета — код пользователя от root. Помощник гарантирует только, что
-/// ставится проверенная копия с именем, которое окно просило собрать.
+/// ⚠️ The boundary is the same as in [`install_built`]: the install scripts of a
+/// built package are the user's code running as root. The helper only guarantees
+/// that a checked copy with a name the window asked to build is installed.
 fn aur_install_built(
     ctx: &Ctx<'_>,
     files: &[OwnedFd],
@@ -1700,9 +1705,9 @@ fn aur_install_built(
     finished(ctx.run(&argv, &RunExtra::default()))
 }
 
-/// `--removemake`: снимаются только сироты-зависимости (`pacman -Qqdt` —
-/// поставлены зависимостью и больше никому не нужны), остальное остаётся
-/// с пояснением. `-Rs` уносит и их зависимости, которые тоже стали сиротами.
+/// `--removemake`: only orphan dependencies are removed (`pacman -Qqdt`:
+/// installed as a dependency and no longer needed by anyone), the rest stays,
+/// with an explanation. `-Rs` also takes their dependencies that became orphans too.
 fn aur_drop_make(ctx: &Ctx<'_>, names: &[String]) -> Outcome {
     if ctx.io.which("pacman").is_none() {
         return ctx.fail("no_pm", &["pacman"]);
@@ -1732,21 +1737,21 @@ fn aur_drop_make(ctx: &Ctx<'_>, names: &[String]) -> Outcome {
     finished(rc)
 }
 
-// ── Сирота сторожа обновлений ───────────────────────────────────────────
+// ── Update guard orphan ─────────────────────────────────────────────────
 
-/// Удалить сирот сторожа обновлений. Окну не верим: что каждое имя —
-/// сирота, узнаём сами по pacman этой машины, так же, как судит сторож
-/// ([`crate::update_guard`]):
-/// 1. член набора «одной версией», не опорный
-///    ([`crate::update_guard::orphan_candidate`], группы — `pacman -Qg`);
-/// 2. установлен (`pacman -Q`);
-/// 3. нет ни в одном репозитории (`pacman -Slq` — sync-база машины;
-///    прочиталась пустой — проверить нечем, отказ).
+/// Remove update guard orphans. The window is not trusted: that each name is an
+/// orphan we find out ourselves by the pacman of this machine, the same way the
+/// guard judges ([`crate::update_guard`]):
+/// 1. a member of a "single version" set, not an anchor
+///    ([`crate::update_guard::orphan_candidate`], groups via `pacman -Qg`);
+/// 2. installed (`pacman -Q`);
+/// 3. present in no repository (`pacman -Slq` is the machine's sync database;
+///    if it reads as empty, there is nothing to check with: refusal).
 ///
-/// Затем проба `pacman -Rnsp`: всё, что транзакция снимет вместе с ним
-/// (ставшие ненужными зависимости), — не жизненно важное и не пакет
-/// текущего стола ([`validate::check_remove_packages`]). Проба не прошла
-/// (кому-то он нужен, база занята) — отказ, система не тронута.
+/// Then the `pacman -Rnsp` probe: everything the transaction removes together
+/// with it (dependencies that became unneeded) is not vital and not a package
+/// of the current desktop ([`validate::check_remove_packages`]). If the probe
+/// fails (someone needs it, the database is locked): refusal, the system is untouched.
 fn orphan_remove(ctx: &Ctx<'_>, names: &[String], current_de: &str) -> Outcome {
     let io = ctx.io;
     if io.which("pacman").is_none() {
@@ -1786,7 +1791,7 @@ fn orphan_remove(ctx: &Ctx<'_>, names: &[String], current_de: &str) -> Outcome {
         io.log(&format!("orphan-remove: снялось бы лишнее: {going:?}"));
         return Deny::from(r).into_outcome();
     }
-    // Экран входа сам открывает сеанс, которому нужен снимаемый пакет.
+    // The login screen itself opens a session that needs the package being removed.
     let defaults = crate::update_guard::login_default_sessions(&|p| io.read_text(p), &|d| io.list_dir(d));
     if let Some(s) = crate::update_guard::orphan_login_default(&going, &defaults) {
         io.log(&format!("orphan-remove: экран входа открывает сеанс {:?} ({defaults:?})", s.session_name));
@@ -1800,38 +1805,40 @@ fn orphan_remove(ctx: &Ctx<'_>, names: &[String], current_de: &str) -> Outcome {
     finished(ctx.run(&rm, &RunExtra::default()))
 }
 
-// ── Откат набора сторожа из кэша pacman ─────────────────────────────────
+// ── Rolling back an update guard set from the pacman cache ──────────────
 
-/// Ключ отказа: транзакция отката тронула бы что-то сверх набора
-/// (зависимость из репозитория, чужая зависимость на новую версию) либо
-/// проба pacman не прошла.
+/// Refusal key: the rollback transaction would touch something beyond the set
+/// (a dependency from a repository, someone else's dependency on the new
+/// version), or the pacman probe failed.
 pub const ROLLBACK_EXTRA: &str = "refused.rollback-extra";
 
-/// Ключ отказа: у файла кэша есть подпись, но она не открывается как файл
-/// root или не сходится с пакетом — признак подмены.
+/// Refusal key: the cache file has a signature, but it does not open as a root
+/// file or does not match the package: a sign of tampering.
 pub const ROLLBACK_SIGNATURE: &str = "refused.rollback-signature";
 
-/// Вернуть прежние версии набора сторожа обновлений. Окну не верим ни в чём:
-/// 1. каталог файла — ровно каталог кэша этой машины ([`PACKAGE_CACHE_DIR`]
-///    и `pacman-conf CacheDir` от root,
+/// Restore the previous versions of an update guard set. The window is trusted in nothing:
+/// 1. the file's directory is exactly the cache directory of this machine
+///    ([`PACKAGE_CACHE_DIR`] and `pacman-conf CacheDir` run as root,
 ///    [`crate::update_guard::parse_cache_dirs`]);
-/// 2. файл открывает root сам ([`RootIo::open_root_file`]: без ссылок,
-///    владелец root, не пишется группой/всеми), дальше — только копия в
-///    своём каталоге; подпись `.sig` рядом, если есть, — тоже копией и
-///    обязана сойтись (`pacman-key --verify`), иначе отказ;
-/// 3. имя и версия — из `.PKGINFO` копии, не из имени файла;
-/// 4. своя сверка набора по pacman этой машины (`-Q`, `-Qg`, `-Qmq`, без
-///    ждущего обновления) тем же [`crate::update_guard::evaluate`], что у
-///    окна: имена — РОВНО откат одной находки (не меньше — без частичных, не
-///    больше), версия каждого подходит под цель находки и строго меньше
-///    установленной (`vercmp`); вечное — никогда;
-/// 5. проба `pacman -U --print`: ставится ровно это (ни зависимостей из
-///    репозиториев, ни сломанных чужих зависимостей — pacman откажет уже на
-///    пробе);
-/// 6. одна транзакция `pacman -U`, после — версии сверены `pacman -Q`.
+/// 2. root opens the file itself ([`RootIo::open_root_file`]: without links,
+///    owner root, not writable by group/others), and from then on only a copy
+///    in its own directory is used; a `.sig` signature next to it, if present,
+///    is copied too and must match (`pacman-key --verify`), otherwise refusal;
+/// 3. the name and version come from the `.PKGINFO` of the copy, not from the file name;
+/// 4. its own check of the set by the pacman of this machine (`-Q`, `-Qg`,
+///    `-Qmq`, without a pending update) with the same
+///    [`crate::update_guard::evaluate`] as the window: the names are EXACTLY the
+///    rollback of one finding (no fewer, so nothing partial, and no more), the
+///    version of each fits the finding's target and is strictly lower than the
+///    installed one (`vercmp`); permanent packages never;
+/// 5. the `pacman -U --print` probe: exactly this is installed (no dependencies
+///    from the repositories, no broken foreign dependencies: pacman would
+///    refuse already at the probe);
+/// 6. one `pacman -U` transaction, after which the versions are checked with `pacman -Q`.
 ///
-/// Проверку «пакет текущего стола» сюда не берём намеренно: откат Plasma
-/// или Qt — это и есть текущий стол; защита — «ровно набор находки».
+/// The "package of the current desktop" check is deliberately not taken here:
+/// rolling back Plasma or Qt is the current desktop; the protection is
+/// "exactly the finding's set".
 ///
 /// [`PACKAGE_CACHE_DIR`]: crate::update_guard::PACKAGE_CACHE_DIR
 fn cache_rollback(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
@@ -1857,7 +1864,7 @@ fn cache_rollback(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
         Ok(w) => w,
         Err(o) => return o,
     };
-    // (имя, версия, копия) — по `.PKGINFO` копий.
+    // (name, version, copy) by the `.PKGINFO` of the copies.
     let mut got: Vec<(String, String, String)> = Vec::with_capacity(files.len());
     for path in files {
         let (dir, base) = match validate::check_cache_package(path) {
@@ -1879,11 +1886,11 @@ fn cache_rollback(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
             Ok(p) => path_str(&p),
             Err(e) => return e.into(),
         };
-        // Подпись — рядом с копией: при `LocalFileSigLevel = Required` без
-        // неё pacman откажет. Подписи нет вовсе — решает SigLevel pacman.
-        // Подпись ЕСТЬ, но не открывается как файл root, не копируется или не
-        // сходится (`pacman-key --verify` по копиям) — признак подмены: отказ,
-        // без неё не ставим.
+        // The signature goes next to the copy: with `LocalFileSigLevel = Required`
+        // pacman refuses without it. No signature at all: pacman's SigLevel decides.
+        // There IS a signature, but it does not open as a root file, does not copy or
+        // does not match (`pacman-key --verify` on the copies): a sign of tampering,
+        // refusal, we do not install without it.
         let sig = format!("{base}.sig");
         let sig_path = format!("{dir}/{sig}");
         if io.exists(&sig_path) || io.is_symlink(&sig_path) {
@@ -1924,8 +1931,8 @@ fn cache_rollback(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
     }
     let names: Vec<&str> = got.iter().map(|(n, _, _)| n.as_str()).collect();
 
-    // Своя сверка набора — тем же движком, что у окна, без ждущего
-    // обновления: находка с откатом тогда бывает только «уже разошлось».
+    // Its own check of the set, with the same engine as the window, without a
+    // pending update: a finding with a rollback then can only be "already diverged".
     let q = io.capture(&strings(&["pacman", "-Q"]));
     if q.code != Some(0) {
         return not_rollback(&names.join(" "), "pacman -Q не прочитался");
@@ -1966,15 +1973,15 @@ fn cache_rollback(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
         }
     }
 
-    // Проба: ставится ровно это.
+    // The probe: exactly this is installed.
     let copies: Vec<String> = got.iter().map(|(_, _, c)| c.clone()).collect();
     let mut probe = strings(&["pacman", "-U", "--print", "--print-format", "%n %v", "--"]);
     probe.extend(copies.iter().cloned());
     let p = io.capture(&probe);
-    // Множество пар: pacman печатает их не обязательно в порядке файлов, а
-    // недостающие зависимости из репозиториев — отдельными строками (их
-    // `-d` не убирает). Лишняя пара или строка не «имя версия» — отказ:
-    // откат — ровно набор, без подтягивания из сети.
+    // A set of pairs: pacman does not necessarily print them in file order, and
+    // missing dependencies from the repositories come as separate lines (`-d`
+    // does not remove them). An extra pair or a line that is not "name version"
+    // means refusal: the rollback is exactly the set, without pulling from the network.
     let lines: Vec<Vec<&str>> =
         p.stdout.lines().map(|l| l.split_whitespace().collect::<Vec<_>>()).filter(|w| !w.is_empty()).collect();
     let well_formed = lines.iter().all(|w| w.len() == 2);
@@ -2009,7 +2016,7 @@ fn cache_rollback(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
     Outcome::ok(None)
 }
 
-/// Файлы верхнего уровня своего дерева (копия root), по имени.
+/// Top-level files of its own tree (root copy), by name.
 fn top_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut v: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
         .map(|rd| {
@@ -2023,7 +2030,7 @@ fn top_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     v
 }
 
-/// Заменить строки `background=…` (как `sed -i s|^background=.*|…|`).
+/// Replace the `background=…` lines (like `sed -i s|^background=.*|…|`).
 fn set_background_lines(text: &str, dest: &str) -> String {
     let mut out: String = text
         .lines()
@@ -2041,8 +2048,8 @@ const SLICK_CONF: &str = "/etc/lightdm/slick-greeter.conf";
 const GTK_GREETER_CONF: &str = "/etc/lightdm/lightdm-gtk-greeter.conf";
 const GDM_DCONF_DIR: &str = "/etc/dconf/db/gdm.d";
 
-/// Раскладка по категории — перенос `rexon-stage-helper`: приёмник —
-/// константа ядра, от окна только категория, имя и дескриптор архива.
+/// Staging by category, a port of `rexon-stage-helper`: the destination is a
+/// core constant, only the category, the name and the archive descriptor come from the window.
 fn stage(ctx: &Ctx<'_>, fd: BorrowedFd<'_>, category: &str, name: &str) -> Outcome {
     let io = ctx.io;
     let work = match work_dir(ctx) {
@@ -2147,11 +2154,11 @@ fn stage(ctx: &Ctx<'_>, fd: BorrowedFd<'_>, category: &str, name: &str) -> Outco
     result.unwrap_or_else(|o| o)
 }
 
-// ── Шрифты для всех пользователей ──────────────────────────────────────
+// ── Fonts for all users ────────────────────────────────────────────────
 
-/// Расширение имени файла шрифта (`.ttf`, `.pcf.gz`) строчными — для имени
-/// копии root: FreeType узнаёт формат по содержимому, но сжатый PCF
-/// fontconfig открывает только с `.gz`.
+/// The font file name extension (`.ttf`, `.pcf.gz`) in lower case, for the name
+/// of the root copy: FreeType recognizes the format by content, but fontconfig
+/// opens a compressed PCF only with `.gz`.
 fn font_suffix(name: &str) -> String {
     let lower = name.to_lowercase();
     crate::qt_settings::FONT_INSTALL_EXTS
@@ -2162,19 +2169,19 @@ fn font_suffix(name: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Пересобрать кэш fontconfig каталога для всех (нет `fc-cache` — не беда:
-/// fontconfig сам заметит новый файл по времени изменения каталога).
+/// Rebuild the fontconfig cache of the directory for all (no `fc-cache` is no
+/// problem: fontconfig notices a new file by the directory modification time itself).
 fn refresh_font_cache(ctx: &Ctx<'_>) {
     if ctx.io.which("fc-cache").is_some() {
         let _ = ctx.run_quiet(&crate::qt_settings::fc_cache_argv(crate::qt_settings::SHARED_FONT_DIR), &RunExtra::default());
     }
 }
 
-/// Шрифты для всех: копия root каждого файла, `fc-query` по ней (что
-/// fontconfig не считает шрифтом — отказ до касания системы), проба
-/// приёмника (файл или ссылка с этим именем уже есть — отказ: чужое не
-/// перезаписывается), затем копии в каталог ядра с правами 0644 и
-/// `fc-cache`. Не легла одна — уже положенные снимаются.
+/// Fonts for all: a root copy of each file, `fc-query` on it (what fontconfig
+/// does not consider a font is refused before touching the system), a
+/// destination probe (a file or link with this name already exists: refusal,
+/// what is not ours is not overwritten), then copies into the core directory
+/// with permissions 0644 and `fc-cache`. If one fails, those already placed are removed.
 fn font_install(ctx: &Ctx<'_>, files: &[OwnedFd], names: &[String]) -> Outcome {
     let io = ctx.io;
     let root = crate::qt_settings::SHARED_FONT_DIR;
@@ -2202,8 +2209,8 @@ fn font_install(ctx: &Ctx<'_>, files: &[OwnedFd], names: &[String]) -> Outcome {
         if io.exists(&dest) || io.is_symlink(&dest) {
             return Deny::from(Refusal::FontExists(name.clone())).into_outcome();
         }
-        // Копия root лежит в своём каталоге 0700 с правами 0600; в общий
-        // каталог шрифт должен лечь читаемым для всех.
+        // The root copy lies in its own 0700 directory with permissions 0600; in the
+        // shared directory the font must be readable by everyone.
         {
             use std::os::unix::fs::PermissionsExt;
             if let Err(e) = std::fs::set_permissions(&copy, std::fs::Permissions::from_mode(0o644)) {
@@ -2241,9 +2248,9 @@ fn font_install(ctx: &Ctx<'_>, files: &[OwnedFd], names: &[String]) -> Outcome {
     Outcome::ok(None)
 }
 
-/// Шрифты для всех: удалить только обычные файлы внутри каталога ядра,
-/// до которых путь доходит без ссылок; опустевшие подкаталоги (не сам
-/// каталог) снимаются; затем `fc-cache`. Проверка — до первого удаления.
+/// Fonts for all: remove only regular files inside the core directory that the
+/// path reaches without links; emptied subdirectories (not the directory itself)
+/// are removed; then `fc-cache`. The check comes before the first removal.
 fn font_remove(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
     let io = ctx.io;
     let root = crate::qt_settings::SHARED_FONT_DIR;
@@ -2276,7 +2283,7 @@ fn font_remove(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
             dir = dir.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_default();
         }
     }
-    // Глубокие раньше: подкаталог опустеет — снимется и его родитель.
+    // Deeper ones first: when a subdirectory empties, its parent is removed too.
     let mut parents: Vec<String> = parents.into_iter().collect();
     parents.sort_by_key(|d| std::cmp::Reverse(d.len()));
     for d in parents {
@@ -2292,9 +2299,9 @@ fn font_remove(ctx: &Ctx<'_>, files: &[String]) -> Outcome {
     }
 }
 
-// ── Экран входа SDDM: фон темы и перенос оформления ────────────────────
+// ── SDDM login screen: theme background and look carry-over ────────────
 
-/// Вернуть файлы, как были до правки (`None` — файла не было).
+/// Restore the files as they were before the edit (`None` means there was no file).
 fn restore_files(io: &dyn RootIo, before: Vec<(String, Option<String>, u32)>, tag: &str) {
     for (path, old, mode) in before.into_iter().rev() {
         io.log(&format!("{tag}: откат {path}"));
@@ -2308,11 +2315,12 @@ fn restore_files(io: &dyn RootIo, before: Vec<(String, Option<String>, u32)>, ta
     }
 }
 
-/// Фон темы SDDM. Картинка: копия root, PNG/JPEG по сигнатуре, ложится в
-/// каталог темы под своим именем, имя — в `<ConfigFile>.user`; не
-/// записалось имя — картинка снимается. Прежняя своя картинка (другое
-/// расширение) снимается после успеха. Без картинки — ключи `background` и
-/// `type` уходят из `.user` (тема покажет свой фон), своя картинка снимается.
+/// SDDM theme background. A picture: a root copy, PNG/JPEG by signature, it goes
+/// into the theme directory under its own name, the name into `<ConfigFile>.user`;
+/// if the name was not written, the picture is removed. Our previous picture
+/// (another extension) is removed after success. Without a picture, the
+/// `background` and `type` keys leave `.user` (the theme shows its own
+/// background), and our picture is removed.
 fn sddm_background(ctx: &Ctx<'_>, theme: &str, fd: Option<BorrowedFd<'_>>) -> Outcome {
     let io = ctx.io;
     let deny = |r: Refusal| Deny::from(r).into_outcome();
@@ -2358,7 +2366,7 @@ fn sddm_background(ctx: &Ctx<'_>, theme: &str, fd: Option<BorrowedFd<'_>>) -> Ou
             f.take(16).read_to_end(&mut buf).map(|_| buf)
         })
         .unwrap_or_default();
-    // WebP — только если у Qt приветствия этой темы есть модуль WebP.
+    // WebP only if the Qt of this theme's greeter has the WebP module.
     let webp = plan::qt_has_webp(bg.qt, &|p| io.exists(p));
     let Some(ext) = plan::login_image_ext_with(&head, webp) else {
         return deny(Refusal::LoginImage(theme.to_string()));
@@ -2397,10 +2405,10 @@ fn sddm_background(ctx: &Ctx<'_>, theme: &str, fd: Option<BorrowedFd<'_>>) -> Ou
     Outcome::ok(None)
 }
 
-/// Тема SDDM `theme` из системного каталога, принимающая свои настройки:
-/// каталог, её фон ([`plan::sddm_theme_background`]) и путь
-/// `<ConfigFile>.user`. Нет темы, нет файла настроек или он (или `.user`) —
-/// ссылка — отказ.
+/// The SDDM theme `theme` from the system directory that accepts its own
+/// settings: the directory, its background ([`plan::sddm_theme_background`]) and
+/// the path `<ConfigFile>.user`. No theme, no settings file, or it (or `.user`)
+/// is a link: refusal.
 fn sddm_theme_user(io: &dyn RootIo, theme: &str) -> Result<(String, plan::SddmBackground, String), Outcome> {
     let deny = || Deny::from(Refusal::SddmTheme(theme.to_string())).into_outcome();
     let dir = theme_dest(SystemThemeKind::Sddm, theme);
@@ -2415,8 +2423,8 @@ fn sddm_theme_user(io: &dyn RootIo, theme: &str) -> Result<(String, plan::SddmBa
     Ok((dir, bg, user))
 }
 
-/// «Показывать часы» у темы SDDM: `showClock` в `<ConfigFile>.user` (запись
-/// целиком, атомарно — сбой оставляет прежний файл).
+/// «Show clock» of an SDDM theme: `showClock` in `<ConfigFile>.user` (written
+/// whole, atomically: a failure leaves the previous file).
 fn sddm_clock(ctx: &Ctx<'_>, theme: &str, show: bool) -> Outcome {
     let io = ctx.io;
     let (_, _, user) = match sddm_theme_user(io, theme) {
@@ -2435,14 +2443,14 @@ fn sddm_clock(ctx: &Ctx<'_>, theme: &str, show: bool) -> Outcome {
     Outcome::ok(None)
 }
 
-/// Учётная запись `sddm`: uid, gid и домашний каталог (по `getent`; дом
-/// должен быть каталогом с нормальным абсолютным путём).
+/// The `sddm` account: uid, gid and home directory (via `getent`; the home must
+/// be a directory with a normal absolute path).
 fn sddm_account(io: &dyn RootIo) -> Option<(u32, u32, String)> {
     greeter_account(io, plan::SDDM_USER)
 }
 
-/// Учётка пользователя приветствия: `(uid, gid, дом)`; дом обязан быть
-/// настоящим каталогом, а пользователь — не root.
+/// The greeter user's account: `(uid, gid, home)`; the home must be a real
+/// directory, and the user must not be root.
 fn greeter_account(io: &dyn RootIo, user: &str) -> Option<(u32, u32, String)> {
     let got = io.capture(&strings(&["getent", "passwd", user]));
     if got.code != Some(0) {
@@ -2462,7 +2470,7 @@ fn greeter_account(io: &dyn RootIo, user: &str) -> Option<(u32, u32, String)> {
     (sane && uid != 0 && io.is_dir(home)).then(|| (uid, gid, home.to_string()))
 }
 
-/// argv команды от имени пользователя `uid:gid` (без дополнительных групп).
+/// argv of a command run as the user `uid:gid` (without supplementary groups).
 fn as_user_argv(uid: u32, gid: u32, cmd: &[String]) -> Vec<String> {
     let mut v = strings(&["setpriv"]);
     v.push(format!("--reuid={uid}"));
@@ -2472,10 +2480,10 @@ fn as_user_argv(uid: u32, gid: u32, cmd: &[String]) -> Vec<String> {
     v
 }
 
-/// Перенос оформления стола на экран входа SDDM (`look: None` —
-/// «Сбросить»). Порядок: все проверки и копии файлов (UTF-8) — до касания;
-/// затем ключи настроек SDDM (откат при сбое записи); затем файлы в доме
-/// `sddm` от его имени. Не вышло с файлами — ключи возвращаются как были.
+/// Carrying the desktop look over to the SDDM login screen (`look: None` is
+/// «Reset»). Order: all checks and file copies (UTF-8) before touching anything;
+/// then the SDDM settings keys (rolled back if writing fails); then the files in
+/// the `sddm` home, as that user. If the files fail, the keys are restored as they were.
 fn sddm_look(ctx: &Ctx<'_>, look: Option<&plan::SddmLook>, files: &[OwnedFd], names: &[String]) -> Outcome {
     let io = ctx.io;
     let deny = |r: Refusal| Deny::from(r).into_outcome();
@@ -2557,9 +2565,9 @@ fn theme_dest(kind: SystemThemeKind, theme: &str) -> String {
     format!("/usr/share/{}/themes/{theme}", kind_dir(kind))
 }
 
-/// Тема SDDM/Plymouth: копия root, проверенная `unpack` (ссылки, `.so`,
-/// `ModuleName`), раскладывается в `/usr/share/<вид>/themes/<тема>`.
-/// Установка тему не выбирает — это «Применить».
+/// SDDM/Plymouth theme: a root copy checked by `unpack` (links, `.so`,
+/// `ModuleName`) is laid out into `/usr/share/<kind>/themes/<theme>`.
+/// Installing does not select the theme; that is «Apply».
 fn theme_install(ctx: &Ctx<'_>, fd: BorrowedFd<'_>, kind: SystemThemeKind, theme: &str) -> Outcome {
     let work = match work_dir(ctx) {
         Ok(w) => w,
@@ -2581,17 +2589,17 @@ fn theme_install(ctx: &Ctx<'_>, fd: BorrowedFd<'_>, kind: SystemThemeKind, theme
     }
 }
 
-/// Тема стоит в системном каталоге обычным каталогом (не ссылкой).
+/// The theme sits in the system directory as a regular directory (not a link).
 fn theme_present(io: &dyn RootIo, dest: &str) -> bool {
     io.is_dir(dest) && !io.is_symlink(dest)
 }
 
-/// Пересборщики образа ядра — по порядку предпочтения, первый найденный.
-/// Первым — собственный сценарий plymouth (его же зовёт
-/// `plymouth-set-default-theme -R`): дистрибутив настраивает его под свой
-/// загрузчик (CachyOS с Limine — `limine-mkinitcpio`, а голый `mkinitcpio -P`
-/// там образ, с которого грузится Limine, не обновляет). Дальше — те же
-/// программы напрямую, если сценария нет (Debian, Ubuntu).
+/// Kernel image rebuilders, in order of preference, the first one found.
+/// First is plymouth's own script (the same one `plymouth-set-default-theme -R`
+/// calls): the distribution sets it up for its bootloader (CachyOS with Limine
+/// uses `limine-mkinitcpio`, while a bare `mkinitcpio -P` there does not update
+/// the image Limine boots from). Then the same programs directly, if there is
+/// no script (Debian, Ubuntu).
 const INITRAMFS_REBUILDERS: &[&[&str]] = &[
     &["/usr/lib/plymouth/plymouth-update-initrd"],
     &["/usr/libexec/plymouth/plymouth-update-initrd"],
@@ -2603,16 +2611,16 @@ const INITRAMFS_REBUILDERS: &[&[&str]] = &[
     &["/usr/lib/booster/regenerate_images"],
 ];
 
-/// Пересборка образа ядра после смены темы заставки. `None` — нечем
-/// пересобрать; иначе итог запуска.
+/// Rebuilding the kernel image after the splash theme changes. `None` means
+/// nothing to rebuild with; otherwise the result of the run.
 fn rebuild_initramfs(ctx: &Ctx<'_>) -> Option<Result<Option<i32>, String>> {
     let argv = INITRAMFS_REBUILDERS.iter().find(|a| ctx.io.which(a[0]).is_some())?;
     Some(ctx.run(&strings(argv), &RunExtra::default()))
 }
 
-/// Записать правки настроек по одной; не записалась одна — уже записанные
-/// возвращаются как были (новые файлы снимаются), и система остаётся в
-/// прежнем виде. `tag` — для журнала помощника.
+/// Write settings edits one by one; if one fails, those already written are
+/// restored as they were (new files are removed), and the system stays as it
+/// was. `tag` is for the helper journal.
 fn write_edits(ctx: &Ctx<'_>, edits: &[plan::SessionEdit], tag: &str) -> Result<(), Outcome> {
     let io = ctx.io;
     let mut done: Vec<(&str, Option<String>, u32)> = Vec::new();
@@ -2646,8 +2654,8 @@ fn write_edits(ctx: &Ctx<'_>, edits: &[plan::SessionEdit], tag: &str) -> Result<
     Ok(())
 }
 
-/// Plymouth: вернуть прежнюю тему в настройки после неудачной пересборки
-/// образа (сам образ при этом прежний — заставка не меняется) и отказать.
+/// Plymouth: put the previous theme back into the settings after a failed image
+/// rebuild (the image itself is still the old one, the splash does not change) and refuse.
 fn plymouth_rollback(ctx: &Ctx<'_>, back: Option<Vec<String>>) -> Outcome {
     if let Some(argv) = back {
         let _ = ctx.run(&argv, &RunExtra::default());
@@ -2655,7 +2663,7 @@ fn plymouth_rollback(ctx: &Ctx<'_>, back: Option<Vec<String>>) -> Outcome {
     ctx.fail("initramfs_failed", &[])
 }
 
-/// «Применить» — как `activate` у `rexon-system-helper`.
+/// «Apply», like `activate` of `rexon-system-helper`.
 fn theme_apply(ctx: &Ctx<'_>, kind: SystemThemeKind, theme: &str) -> Outcome {
     let io = ctx.io;
     let dest = theme_dest(kind, theme);
@@ -2667,8 +2675,8 @@ fn theme_apply(ctx: &Ctx<'_>, kind: SystemThemeKind, theme: &str) -> Outcome {
         return ctx.fail("no_plymouth_file", &[&main]);
     }
     if kind == SystemThemeKind::Sddm {
-        // Решение — ядра: все файлы `/etc`, где тема задана, плюс свой
-        // файл, если без него итог не тот (`/etc/sddm.conf` перекрывает
+        // The decision is the core's: all `/etc` files where the theme is set, plus
+        // our own file if without it the result is wrong (`/etc/sddm.conf` overrides
         // `sddm.conf.d`).
         let edits = match plan::plan_sddm_theme(theme, &|p| io.read_text(p), &|d| io.list_dir(d)) {
             plan::SessionSwitch::Nothing => return Outcome::ok(None),
@@ -2687,10 +2695,10 @@ fn theme_apply(ctx: &Ctx<'_>, kind: SystemThemeKind, theme: &str) -> Outcome {
             Err(o) => o,
         };
     }
-    // Способ — по факту инструментов, не по семейству (Ubuntu без
-    // plymouth-set-default-theme, Debian без alternatives для plymouth).
-    // Тема выбирается без `-R`, образ пересобирается следом сам: так видно,
-    // что именно не вышло, и прежнюю тему можно вернуть.
+    // The method follows the actual tools, not the family (Ubuntu without
+    // plymouth-set-default-theme, Debian without alternatives for plymouth).
+    // The theme is selected without `-R`, and the image is rebuilt right after
+    // by us: this way it is visible what exactly failed, and the previous theme can be restored.
     if io.which("plymouth-set-default-theme").is_some() {
         let prev = io.capture(&strings(&["plymouth-set-default-theme"]));
         let prev = prev.stdout.trim();
@@ -2737,7 +2745,7 @@ fn theme_apply(ctx: &Ctx<'_>, kind: SystemThemeKind, theme: &str) -> Outcome {
     ctx.fail("no_activation", &[])
 }
 
-/// Строка `ключ = значение` в тексте настроек (ключ без учёта регистра).
+/// A `key = value` line in the settings text (the key is case-insensitive).
 fn conf_has(text: &str, key: &str, value: &str) -> bool {
     text.lines().any(|l| {
         l.trim_end_matches('\r')
@@ -2746,8 +2754,8 @@ fn conf_has(text: &str, key: &str, value: &str) -> bool {
     })
 }
 
-/// Выбрана ли тема сейчас — с запасом, как у прежнего помощника: лишний
-/// отказ лучше снятой активной темы.
+/// Whether the theme is selected now, with a margin, as in the old helper: an
+/// extra refusal is better than a removed active theme.
 fn theme_is_active(io: &dyn RootIo, kind: SystemThemeKind, theme: &str, dest: &str) -> bool {
     let confs = |dir: &str| -> Vec<String> {
         let mut v: Vec<String> =
@@ -2780,7 +2788,7 @@ fn theme_is_active(io: &dyn RootIo, kind: SystemThemeKind, theme: &str, dest: &s
             .is_some_and(|l| l.starts_with(&format!("{dest}/")))
 }
 
-/// Каталог принадлежит пакету системы — его снимает менеджер пакетов.
+/// The directory belongs to a system package: the package manager removes it.
 fn theme_from_package(io: &dyn RootIo, dest: &str) -> bool {
     [
         ["pacman", "-Qoq", "--", dest],
@@ -2791,7 +2799,7 @@ fn theme_from_package(io: &dyn RootIo, dest: &str) -> bool {
     .any(|argv| io.which(argv[0]).is_some() && io.capture(&strings(argv)).code == Some(0))
 }
 
-/// «Удалить» — не выбранную сейчас и не пакетную тему.
+/// «Remove»: only a theme that is not selected now and is not from a package.
 fn theme_remove(ctx: &Ctx<'_>, kind: SystemThemeKind, theme: &str) -> Outcome {
     let io = ctx.io;
     let dest = theme_dest(kind, theme);
@@ -2816,22 +2824,22 @@ fn theme_remove(ctx: &Ctx<'_>, kind: SystemThemeKind, theme: &str) -> Outcome {
     }
 }
 
-// ── switch-dm: «Сделать основным» экран входа ────────────────────────────
+// ── switch-dm: «Make default» for a login screen ────────────────────────
 //
-// Перенос операции `switch-dm` из `rexon-pkg-helper`
-// (`system_plan::PKG_HELPER_SCRIPT_TMPL`) шаг в шаг: помощник сам
-// определяет прежний экран входа и механизм, сам повторяет проверки
-// готовности, сверяет результат и при расхождении откатывает. Только
-// `enable`: служб в живом сеансе не запускает и не останавливает. Страховка
-// (служба-откат `OnFailure=`) — те же тексты ядра.
+// A step-by-step port of the `switch-dm` operation from `rexon-pkg-helper`
+// (`system_plan::PKG_HELPER_SCRIPT_TMPL`): the helper determines the previous
+// login screen and the mechanism itself, repeats the readiness checks itself,
+// verifies the result and rolls back on a mismatch. Only `enable`: it neither
+// starts nor stops services in the live session. The safety net (the
+// `OnFailure=` fallback service) uses the same core texts.
 
 const UNIT_DIRS: &[&str] =
     &["/etc/systemd/system", "/usr/local/lib/systemd/system", "/usr/lib/systemd/system", "/lib/systemd/system"];
 const X11_DEFAULT_DM: &str = "/etc/X11/default-display-manager";
 const XGREETERS: &str = "/usr/share/xgreeters";
 const POLICY_RC: &str = "/usr/sbin/policy-rc.d";
-/// Имена программ текстового входа — только для распознавания конфига
-/// greetd, ничего не запускается.
+/// Names of text login programs: only for recognizing a greetd config,
+/// nothing is started.
 const TEXT_LOGINS: &[&str] = &["agreety", "login", "sh", "bash", "dash", "zsh", "fish"]; // сторож: имена, не запуск
 
 fn basename(p: &str) -> &str {
@@ -2842,7 +2850,7 @@ fn parent_dir(p: &str) -> &str {
     p.rsplit_once('/').map(|(d, _)| d).filter(|d| !d.is_empty()).unwrap_or("/")
 }
 
-/// Имя юнита или пакета, как `name_ok` у помощника.
+/// A unit or package name, like `name_ok` of the helper.
 fn plain_name(s: &str) -> bool {
     s.chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
         && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
@@ -2860,7 +2868,7 @@ fn debian_pkg(unit: &str) -> String {
         .unwrap_or_else(|| unit.to_string())
 }
 
-/// Последняя строка `ExecStart=` юнита без префиксов systemd.
+/// The unit's last `ExecStart=` line without systemd prefixes.
 fn exec_start(unit_text: &str) -> String {
     unit_text
         .lines()
@@ -2870,7 +2878,7 @@ fn exec_start(unit_text: &str) -> String {
         .to_string()
 }
 
-/// Файл конфига greetd из строки запуска (`--config X`, `-c X`, `--config=X`).
+/// The greetd config file from the start line (`--config X`, `-c X`, `--config=X`).
 fn greetd_config(exec_line: &str) -> String {
     let words: Vec<&str> = exec_line.split_whitespace().collect();
     let mut found = None;
@@ -2884,7 +2892,7 @@ fn greetd_config(exec_line: &str) -> String {
     found.unwrap_or_else(|| "/etc/greetd/config.toml".to_string())
 }
 
-/// Программа приветствия из `[default_session] command = …` greetd.
+/// The greeter program from greetd's `[default_session] command = …`.
 fn greetd_greeter(config: &str) -> String {
     let mut in_section = false;
     let mut command = None;
@@ -2911,8 +2919,8 @@ fn greetd_greeter(config: &str) -> String {
         .to_string()
 }
 
-/// Сеанс по умолчанию у экрана входа — пара X11-сеанса на Wayland. Решение
-/// — ядра ([`plan::plan_wayland_default`]); здесь — проверки машины и запись.
+/// The login screen's default session: the pair of an X11 session on Wayland.
+/// The decision is the core's ([`plan::plan_wayland_default`]); here, machine checks and writing.
 fn login_session_wayland(ctx: &Ctx<'_>, s: &plan::SessionSuccessor) -> Outcome {
     let io = ctx.io;
     let target = plan::wayland_session_file(s);
@@ -2927,7 +2935,7 @@ fn login_session_wayland(ctx: &Ctx<'_>, s: &plan::SessionSuccessor) -> Outcome {
         }
         plan::SessionSwitch::Edits(e) => e,
     };
-    // Ссылку на месте файла не пишем ни одну (и не начинаем вовсе).
+    // We write none of them if a link is in place of a file (and do not start at all).
     if let Some(e) = edits.iter().find(|e| io.is_symlink(&e.path)) {
         io.log(&format!("login-session: {} — ссылка, ничего не меняю", e.path));
         return Outcome::Refused(format!("{}{}", plan::SESSION_SET_ELSEWHERE, s.x11));
@@ -2942,10 +2950,10 @@ fn login_session_wayland(ctx: &Ctx<'_>, s: &plan::SessionSuccessor) -> Outcome {
     }
 }
 
-/// Перенос автовхода `old` → `new` по решению ядра
-/// ([`crate::dm_autologin::plan_transfer`]); `None` — записывать нечего.
-/// Пользователь автовхода сверяется с системой: такого нет (или это root) —
-/// не переносим и говорим об этом.
+/// Carrying autologin over `old` → `new` by the core's decision
+/// ([`crate::dm_autologin::plan_transfer`]); `None` means nothing to write.
+/// The autologin user is checked against the system: if there is no such user
+/// (or it is root), it is not carried over, and we say so.
 fn autologin_transfer(ctx: &Ctx<'_>, old: &str, new: &str) -> Option<crate::dm_autologin::Transfer> {
     use crate::dm_autologin as al;
     let io = ctx.io;
@@ -2983,7 +2991,7 @@ fn autologin_transfer(ctx: &Ctx<'_>, old: &str, new: &str) -> Option<crate::dm_a
     (!t.edits.is_empty() || t.group.is_some()).then_some(t)
 }
 
-/// Пользователь для автовхода есть в системе и это не root.
+/// The autologin user exists in the system and is not root.
 fn login_user_ok(io: &dyn RootIo, user: &str) -> bool {
     if !plain_name(user) {
         return false;
@@ -2994,8 +3002,8 @@ fn login_user_ok(io: &dyn RootIo, user: &str) -> bool {
     got.code == Some(0) && f.len() >= 7 && f[0] == user && f[2].parse::<u32>().is_ok_and(|uid| uid != 0)
 }
 
-/// Записать автовход у нового экрана входа: файлы (прежние тексты — в
-/// `saved` для отката), затем группа PAM. Ошибка — текст для человека.
+/// Write autologin for the new login screen: the files (the previous texts go
+/// into `saved` for a rollback), then the PAM group. An error is a text for a person.
 fn apply_autologin(
     ctx: &Ctx<'_>,
     t: &crate::dm_autologin::Transfer,
@@ -3003,7 +3011,7 @@ fn apply_autologin(
     group_done: &std::cell::RefCell<Option<(String, String, bool)>>,
 ) -> Result<(), String> {
     let io = ctx.io;
-    // Ссылку на месте файла не пишем (как у сеанса по умолчанию).
+    // We do not write if a link is in place of a file (as for the default session).
     if let Some(e) = t.edits.iter().find(|e| io.is_symlink(&e.path)) {
         io.log(&format!("autologin: {} — ссылка, не пишу", e.path));
         return Err(ctx.say_text("dm_autologin_write_failed", &[]));
@@ -3011,7 +3019,7 @@ fn apply_autologin(
     *saved.borrow_mut() =
         t.edits.iter().map(|e| (e.path.clone(), io.read_text(&e.path), io.mode_of(&e.path).unwrap_or(0o644))).collect();
     if write_edits(ctx, &t.edits, "autologin").is_err() {
-        // Частично записанное write_edits уже вернул сам.
+        // write_edits has already restored what was partially written by itself.
         saved.borrow_mut().clear();
         return Err(ctx.say_text("dm_autologin_write_failed", &[]));
     }
@@ -3032,7 +3040,7 @@ fn apply_autologin(
     Ok(())
 }
 
-/// Сказать человеку, что сделано с автовходом.
+/// Tell the person what was done with autologin.
 fn autologin_said(ctx: &Ctx<'_>, t: &crate::dm_autologin::Transfer, new: &str) {
     use crate::dm_autologin::Note;
     for n in &t.notes {
@@ -3045,12 +3053,12 @@ fn autologin_said(ctx: &Ctx<'_>, t: &crate::dm_autologin::Transfer, new: &str) {
     }
 }
 
-/// Звук экрана входа: у пользователя приветствия прежнего экрана входа
-/// звуковые юниты замаскированы (обход «громкость падает до 40 % после
-/// входа») — те же маски ставятся пользователю приветствия нового. Пишется
-/// от имени этого пользователя (`setpriv`): в его доме — ни одного файла
-/// root. Сбой не отменяет переключения (экран входа уже сменён): говорим и
-/// идём дальше.
+/// Login screen sound: the greeter user of the previous login screen has its
+/// sound units masked (a workaround for "the volume drops to 40% after login"),
+/// and the same masks are set for the greeter user of the new one. Written as
+/// that user (`setpriv`): not a single root file in their home. A failure does
+/// not cancel the switch (the login screen has already been changed): we say
+/// so and go on.
 fn move_greeter_sound_masks(ctx: &Ctx<'_>, old: &str, new: &str) {
     use crate::dm_autologin as al;
     let io = ctx.io;
@@ -3110,7 +3118,7 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
     if !io.is_dir("/run/systemd/system") {
         return ctx.fail("no_systemd", &[]);
     }
-    // Механизм выбора — по этой машине (то же решение, что dm_switch_backend).
+    // The selection mechanism follows this machine (the same decision as dm_switch_backend).
     for p in [plan::DM_SYMLINK, "/usr/lib/systemd/system/display-manager.service"] {
         if io.is_file(p) && io.canonicalize(p).is_some_and(|r| basename(&r) == "display-manager.service") {
             return ctx.fail("dm_backend_unsupported", &[]);
@@ -3153,8 +3161,8 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
         }
     }
 
-    // Обязательные службы юнита (`Requires=`; у DDM — dde-seatd): без них
-    // systemd экран входа не запустит.
+    // The unit's required services (`Requires=`; for DDM it is dde-seatd): without
+    // them systemd will not start the login screen.
     let unit_text = io.read_text(&unit_real).unwrap_or_default();
     for need in plan::unit_values(&unit_text, "Unit", "Requires") {
         if !need.ends_with(".service") || need.contains('@') {
@@ -3167,8 +3175,8 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
         }
     }
 
-    // greetd и всё, что через него: приветствие — из СВОЕГО конфига;
-    // текстовый вход не годится.
+    // greetd and everything through it: the greeter comes from ITS OWN config;
+    // a text login does not fit.
     if basename(&exec_bin) == "greetd" {
         let cfg = greetd_config(&exec_line);
         let gprog = greetd_greeter(&io.read_text(&cfg).unwrap_or_default());
@@ -3205,7 +3213,7 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
         }
     }
 
-    // Прежний экран входа — только по живой ссылке.
+    // The previous login screen only by a live link.
     let (mut old, mut old_real) = (String::new(), String::new());
     if io.is_symlink(plan::DM_SYMLINK) && io.exists(plan::DM_SYMLINK) {
         old_real = io.canonicalize(plan::DM_SYMLINK).unwrap_or_default();
@@ -3227,18 +3235,18 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
         }
     }
 
-    // Автовход прежнего — у нового (решение ядра, `dm_autologin`); пока
-    // только чтение.
+    // The previous one's autologin goes to the new one (core decision, `dm_autologin`);
+    // so far read-only.
     let autologin = if old.is_empty() { None } else { autologin_transfer(ctx, &old, new) };
 
-    // ── дальше система меняется ─────────────────────────────────────
+    // ── from here on the system changes ─────────────────────────────
     if let Err(o) = ctx.touch() {
         return o;
     }
     let etc = plan::DM_FALLBACK_DIR;
     let greeter_prev = format!("{etc}/dm-fallback.greeter-prev");
 
-    // Прежняя страховка снимается: она относилась к прошлому переключению.
+    // The previous safety net is removed: it belonged to the previous switch.
     for entry in io.list_dir("/etc/systemd/system") {
         if !entry.ends_with(".service.d") {
             continue;
@@ -3263,7 +3271,7 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
         }
     };
     let greeter_written = std::cell::Cell::new(false);
-    // Прежние тексты файлов автовхода и сделанное с группой — для отката.
+    // The previous texts of the autologin files and what was done with the group, for a rollback.
     let autologin_saved: std::cell::RefCell<Vec<(String, Option<String>, u32)>> = Default::default();
     let group_done: std::cell::RefCell<Option<(String, String, bool)>> = Default::default();
     let rollback = || {
@@ -3332,7 +3340,7 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
             return broke(e);
         }
         if io.which("dpkg-reconfigure").is_some() {
-            // policy-rc.d: сценарий пакета не должен запустить службу в живом сеансе.
+            // policy-rc.d: the package script must not start the service in the live session.
             let own_policy = !io.exists(POLICY_RC) && io.write_file(POLICY_RC, "#!/bin/sh\nexit 101\n", 0o755).is_ok();
             let extra = RunExtra { stdin: None, env: vec![("DEBIAN_FRONTEND", "noninteractive".into())] };
             let _ = ctx.run_quiet(&strings(&["dpkg-reconfigure", &new_pkg]), &extra);
@@ -3347,7 +3355,7 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
         return broke(out);
     }
 
-    // Проверка «после»: ссылка, состояние юнита, на Debian — файл выбора.
+    // The "after" check: the link, the unit state, on Debian the selection file.
     let link_ok = io.canonicalize(plan::DM_SYMLINK).as_deref() == Some(unit_real.as_str());
     let state = io.capture(&strings(&["systemctl", "is-enabled", &format!("{new}.service")]));
     let enabled_ok = matches!(state.stdout.trim(), "enabled" | "enabled-runtime" | "alias");
@@ -3357,7 +3365,7 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
         return ctx.fail("dm_switch_mismatch", &[new]);
     }
 
-    // Прежний с WantedBy= (самодельный юнит) иначе поднялся бы вторым.
+    // Otherwise the previous one with WantedBy= (a home-made unit) would come up second.
     if !old.is_empty()
         && io.read_text(&old_real).unwrap_or_default().lines().any(|l| l.trim_start().starts_with("WantedBy="))
     {
@@ -3379,7 +3387,7 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
         return Outcome::ok(Some("dm_switched_first"));
     }
 
-    // Страховка: новый экран входа упал при загрузке — служба-откат вернёт прежний.
+    // Safety net: if the new login screen crashes at boot, the fallback service restores the previous one.
     let conf = format!(
         "old={old}\nold_real={old_real}\nnew={new}\nnew_real={unit_real}\nold_x11={old_x11}\nold_pkg={old_pkg}\ngreeter_written={}\n",
         u8::from(greeter_written.get())
@@ -3410,8 +3418,8 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
         io.write_file(plan::PREVIOUS_DM_FILE, &previous, 0o644)
     })();
     if let Err(e) = insured {
-        // Экран входа уже переключён; страховки нет — это сбой, но не повод
-        // откатывать сделанное (как `set -e` у прежнего помощника).
+        // The login screen is already switched; no safety net is a failure, but not a
+        // reason to roll back what was done (like `set -e` of the old helper).
         (ctx.progress)(&e);
         return Outcome::Done { ok: false, code: Some(1), key: None };
     }
@@ -3420,57 +3428,57 @@ fn switch_dm(ctx: &Ctx<'_>, family: PkgFamily, new: &str, greeter: Option<&str>)
 }
 
 // ============================================================================
-// Сеанс: сокет, рукопожатие, цикл
+// Session: socket, handshake, loop
 // ============================================================================
 
-/// Настройки сеанса.
+/// Session settings.
 #[derive(Debug, Clone)]
 pub struct SessionConfig {
-    /// [`proto::build_id`] помощника.
+    /// The helper's [`proto::build_id`].
     pub build_id: String,
-    /// Кто вводил пароль (`PKEXEC_UID`).
+    /// Who entered the password (`PKEXEC_UID`).
     pub pkexec_uid: u32,
-    /// Ожидаемый pid собеседника — родитель помощника (`getppid()`).
+    /// Expected pid of the peer: the helper's parent (`getppid()`).
     pub parent_pid: i32,
-    /// Номер сеанса logind окна (сверяется, не принимается на веру).
+    /// The window's logind session number (checked, not taken on trust).
     pub session_id: String,
-    /// Язык сообщений человеку.
+    /// Language of messages for the person.
     pub lang: Option<String>,
     pub poll_interval: Duration,
     pub idle_limit: Duration,
 }
 
-/// Чем закончился сеанс.
+/// How the session ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionEnd {
-    /// `SO_PEERCRED` не тот (чужой uid или pid) — ни слова в ответ.
+    /// Wrong `SO_PEERCRED` (foreign uid or pid): not a word in reply.
     PeerRejected,
-    /// Рукопожатие: другая сборка или сообщение раньше `Hello`.
+    /// Handshake: a different build, or a message before `Hello`.
     HandshakeFailed(ErrorCode),
-    /// logind: сеанс не того пользователя или не активен.
+    /// logind: the session belongs to the wrong user or is not active.
     SessionRejected,
-    /// Право погашено, идущей операции нет.
+    /// The privilege is revoked, and no operation is running.
     Revoked(Reason),
 }
 
-/// Итог сеанса для журнала и тестов.
+/// The session result for the journal and tests.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionReport {
     pub end: SessionEnd,
-    /// Сколько операций дошло до исполнения и закончилось.
+    /// How many operations reached execution and finished.
     pub ops_executed: u32,
 }
 
-/// Помощник получил SIGTERM (PDEATHSIG окна или `kill`). Ставит только
-/// обработчик сигнала живого помощника.
+/// The helper got SIGTERM (the window's PDEATHSIG or `kill`). Only the signal
+/// handler of the live helper sets it.
 static SIGTERM_SEEN: AtomicBool = AtomicBool::new(false);
 
 extern "C" fn on_sigterm(_: libc::c_int) {
     SIGTERM_SEEN.store(true, Ordering::SeqCst);
 }
 
-/// Отправка в сокет из нескольких потоков; ошибки (окно ушло) глотаются —
-/// идущая операция доводится и без собеседника (З4).
+/// Sending to the socket from several threads; errors (the window is gone) are
+/// swallowed: the running operation is finished even without a peer (Z4).
 struct Out {
     fd: Arc<OwnedFd>,
     lock: Mutex<()>,
@@ -3493,11 +3501,11 @@ enum Input {
     OpEnded(u64),
 }
 
-/// `SO_PEERCRED`: (uid, pid) собеседника.
+/// `SO_PEERCRED`: (uid, pid) of the peer.
 pub(crate) fn peer_cred(fd: BorrowedFd<'_>) -> Option<(u32, i32)> {
     let mut cred = libc::ucred { pid: 0, uid: 0, gid: 0 };
     let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
-    // SAFETY: getsockopt пишет не больше `len` байт в `cred`.
+    // SAFETY: getsockopt writes no more than `len` bytes into `cred`.
     let rc = unsafe {
         libc::getsockopt(
             fd.as_raw_fd(),
@@ -3516,8 +3524,8 @@ struct Running {
     handle: JoinHandle<()>,
 }
 
-/// Сеанс целиком: от проверки собеседника до выхода. Возвращает, когда
-/// помощнику пора выходить; сокет к этому моменту закрыт.
+/// The whole session: from checking the peer to the exit. Returns when it is
+/// time for the helper to exit; by then the socket is closed.
 pub fn run_session(
     sock: OwnedFd,
     io: Arc<dyn RootIo>,
@@ -3572,16 +3580,16 @@ pub fn run_session(
     let out = Arc::new(Out { fd: Arc::clone(&sock), lock: Mutex::new(()) });
     let report = session_loop(&io, &cfg, &out, &tx, &rx, clock.as_ref());
 
-    // Уборка: опрос — стоп, сокет — закрыть с обеих сторон (поток чтения
-    // увидит EOF), дождаться потоков.
+    // Cleanup: stop polling, close the socket on both sides (the reading thread
+    // will see EOF), wait for the threads.
     drop(stop_tx);
-    // SAFETY: shutdown только помечает сокет закрытым, fd остаётся нашим.
+    // SAFETY: shutdown only marks the socket closed, the fd stays ours.
     unsafe { libc::shutdown(sock.as_raw_fd(), libc::SHUT_RDWR) };
     let _ = poller.join();
-    // Поток чтения НЕ ждём: выход помощника не должен зависеть от того,
-    // разбудит ли `shutdown` поток, стоящий в `recvmsg`. Окно EOF уже
-    // получило; поток выйдет сам, как только проснётся (у живого помощника —
-    // вместе с процессом).
+    // The reading thread is NOT waited for: the helper's exit must not depend on
+    // whether `shutdown` wakes a thread sitting in `recvmsg`. The window has
+    // already got EOF; the thread exits by itself as soon as it wakes up (for the
+    // live helper, together with the process).
     drop(reader);
     io.log(&format!("выход: {:?}, операций исполнено {}", report.end, report.ops_executed));
     report
@@ -3606,7 +3614,7 @@ fn session_loop(
     let end = |end: SessionEnd, executed: u32| SessionReport { end, ops_executed: executed };
 
     loop {
-        // Отзыв сообщается окну один раз (кроме закрытия окна — некому).
+        // The revocation is reported to the window once (except when the window closed: nobody to tell).
         if let Some(reason) = revoker.revoked() {
             if !announced {
                 announced = true;
@@ -3642,13 +3650,13 @@ fn session_loop(
                 revoker.on_event(Event::WindowClosed, clock.now());
             }
             Input::Msg(Err(e)) => {
-                // Ошибка кадра = конец сеанса, без ответа (proto.rs).
+                // A frame error = end of the session, without a reply (proto.rs).
                 io.log(&format!("ошибка кадра: {e}"));
                 revoker.on_event(Event::WindowClosed, clock.now());
             }
             Input::Msg(Ok(Some((msg, fds)))) => {
                 let Some(facts_now) = facts.as_ref() else {
-                    // Рукопожатие.
+                    // Handshake.
                     let ClientMsg::Hello(hello) = msg else {
                         out.error(None, ErrorCode::Sequence, "hello_first");
                         return end(SessionEnd::HandshakeFailed(ErrorCode::Sequence), 0);
@@ -3674,7 +3682,7 @@ fn session_loop(
                             let taken = request_cancel(&r.state);
                             io.log(&format!("отмена {id}: {}", if taken { "принята" } else { "поздно, доводим" }));
                         }
-                        // Отмена разминулась с концом операции — не ошибка.
+                        // A cancel that crossed paths with the end of the operation is not an error.
                         _ if last_finished == Some(id) => {}
                         _ => out.error(Some(id), ErrorCode::Sequence, "cancel_unknown"),
                     },
@@ -3714,7 +3722,7 @@ fn session_loop(
     }
 }
 
-/// `Hello` → отпечаток сборки → сеанс logind → факты машины.
+/// `Hello` → build fingerprint → logind session → machine facts.
 fn handshake(
     io: &dyn RootIo,
     cfg: &SessionConfig,
@@ -3751,12 +3759,13 @@ fn spawn_worker(
         let ctx = Ctx { io: io.as_ref(), progress: &progress, state: &state, lang: lang.as_deref(), rebuilt: &rebuilt };
         let outcome = execute(&plan_, &ctx, files);
         io.log(&format!("запрос {id}: {outcome:?}"));
-        // Сначала — циклу «операция кончилась», потом итог окну. Наоборот
-        // была гонка: окно получало итог, сразу слало следующий запрос, а
-        // цикл ещё не знал о конце и отвечал `Busy` (ловилось под нагрузкой
-        // стендом `замена_конфликтующего_только_из_таблицы_ядра`). Цикл на
-        // `OpEnded` ждёт этот поток (`join`), поэтому итог всё равно уходит
-        // окну раньше любого следующего ответа цикла (отзыв права и пр.).
+        // First tell the loop "the operation ended", then send the result to the
+        // window. The other way round there was a race: the window got the result,
+        // immediately sent the next request, while the loop did not know about the
+        // end yet and answered `Busy` (caught under load by the bench
+        // `замена_конфликтующего_только_из_таблицы_ядра`). On `OpEnded` the loop waits
+        // for this thread (`join`), so the result still reaches the window before any
+        // next reply of the loop (privilege revocation etc.).
         let _ = tx.send(Input::OpEnded(id));
         match outcome {
             Outcome::Done { ok, code, key } => out.send(&HelperMsg::Done { id, ok, code, message_key: key }),
@@ -3768,22 +3777,22 @@ fn spawn_worker(
 }
 
 // ============================================================================
-// Живой запуск (bin/rexon-priv-helper.rs)
+// Live start (bin/rexon-priv-helper.rs)
 // ============================================================================
 
-/// Аргументы помощника.
+/// Helper arguments.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Args {
-    /// Номер сеанса logind окна (`--session <id>`) — только сверяется.
-    /// Нет — окно его не знало; помощник берёт графический сеанс
-    /// пользователя у logind сам ([`session_of_user`]).
+    /// The window's logind session number (`--session <id>`): only checked.
+    /// Absent means the window did not know it; the helper takes the user's
+    /// graphical session from logind itself ([`session_of_user`]).
     pub session: Option<String>,
-    /// Язык сообщений (`--lang <код>`).
+    /// Message language (`--lang <code>`).
     pub lang: Option<String>,
 }
 
-/// Договор с клиентом (`client.rs`): `[--session <id>] [--lang <код>]`
-/// (или `--ключ=значение`); всё прочее, повтор и негодное значение — отказ.
+/// The contract with the client (`client.rs`): `[--session <id>] [--lang <code>]`
+/// (or `--key=value`); anything else, a repeat and an invalid value are refused.
 pub fn parse_args(args: &[String]) -> Option<Args> {
     let mut out = Args { session: None, lang: None };
     let mut it = args.iter();
@@ -3804,9 +3813,9 @@ pub fn parse_args(args: &[String]) -> Option<Args> {
     Some(out)
 }
 
-/// Графический сеанс пользователя по logind (`show-user … -p Display`):
-/// запасной путь, когда окно номера не передало. Дальше он сверяется так
-/// же, как переданный ([`verify_session`]).
+/// The user's graphical session by logind (`show-user … -p Display`): a
+/// fallback when the window did not pass a number. It is then checked the
+/// same way as a passed one ([`verify_session`]).
 pub fn session_of_user(io: &dyn RootIo, uid: u32) -> Option<String> {
     let argv: Vec<String> = [revoke::LOGINCTL, "show-user", &uid.to_string(), "-p", "Display", "--value"]
         .iter()
@@ -3817,8 +3826,8 @@ pub fn session_of_user(io: &dyn RootIo, uid: u32) -> Option<String> {
     (got.code == Some(0) && revoke::valid_session_id(&id)).then_some(id)
 }
 
-/// Стереть окружение процесса и поставить своё ([`child_env`]). Зовётся в
-/// самом начале, пока поток один.
+/// Wipe the process environment and set our own ([`child_env`]). Called at the
+/// very beginning, while there is only one thread.
 fn sanitize_process_env() {
     let names: Vec<std::ffi::OsString> = std::env::vars_os().map(|(k, _)| k).collect();
     for k in names {
@@ -3829,12 +3838,12 @@ fn sanitize_process_env() {
     }
 }
 
-/// Забрать сокет окна с fd 0 в свой fd с `CLOEXEC`, а на 0 и 1 поставить
-/// `/dev/null`: ни одна программа, запущенная помощником, канала не получит.
+/// Move the window socket from fd 0 to our own fd with `CLOEXEC`, and put
+/// `/dev/null` on 0 and 1: no program started by the helper gets the channel.
 fn take_socket_from_stdio() -> Option<OwnedFd> {
     let mut ty: libc::c_int = 0;
     let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
-    // SAFETY: getsockopt/fcntl/open/dup2 на своих fd; результаты проверяются.
+    // SAFETY: getsockopt/fcntl/open/dup2 on our own fds; the results are checked.
     unsafe {
         if libc::getsockopt(0, libc::SOL_SOCKET, libc::SO_TYPE, (&mut ty as *mut libc::c_int).cast(), &mut len) != 0
             || ty != libc::SOCK_SEQPACKET
@@ -3858,12 +3867,12 @@ fn take_socket_from_stdio() -> Option<OwnedFd> {
     }
 }
 
-/// Весь живой помощник. Код выхода — см. `EXIT_*`.
+/// The whole live helper. For the exit code see `EXIT_*`.
 pub fn main_live() -> i32 {
-    // SAFETY: prctl/signal/getppid/geteuid/umask/chdir — системные вызовы без
-    // разделяемого состояния Rust; поток пока один.
+    // SAFETY: prctl/signal/getppid/geteuid/umask/chdir are system calls without
+    // shared Rust state; there is only one thread so far.
     let parent = unsafe {
-        // pkexec setuid сбрасывает PDEATHSIG, выставленный окном, — ставим свой.
+        // pkexec setuid resets the PDEATHSIG set by the window, so we set our own.
         libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM as libc::c_ulong, 0, 0, 0);
         libc::signal(libc::SIGTERM, on_sigterm as extern "C" fn(libc::c_int) as libc::sighandler_t);
         libc::signal(libc::SIGHUP, on_sigterm as extern "C" fn(libc::c_int) as libc::sighandler_t);
@@ -3878,14 +3887,14 @@ pub fn main_live() -> i32 {
         return EXIT_USAGE;
     };
     let pkexec_uid = std::env::var("PKEXEC_UID").ok().and_then(|s| validate::parse_pkexec_uid(&s));
-    // SAFETY: см. выше.
+    // SAFETY: see above.
     let euid = unsafe { libc::geteuid() };
     let Some(pkexec_uid) = pkexec_uid.filter(|_| euid == 0) else {
         journal("запущен не через pkexec");
         return EXIT_NOT_PKEXEC;
     };
     sanitize_process_env();
-    // SAFETY: см. выше.
+    // SAFETY: see above.
     unsafe {
         libc::umask(0o022);
         libc::chdir(c"/".as_ptr());
@@ -3921,7 +3930,7 @@ pub fn main_live() -> i32 {
 }
 
 // ============================================================================
-// Тесты
+// Tests
 // ============================================================================
 
 #[cfg(test)]
@@ -3932,7 +3941,7 @@ mod tests {
     use std::sync::atomic::{AtomicU32, AtomicU64};
     use std::time::Instant;
 
-    // ── поддельная система ──────────────────────────────────────────────
+    // ── fake system ─────────────────────────────────────────────────────
 
     #[derive(Default)]
     struct FakeState {
@@ -3940,41 +3949,41 @@ mod tests {
         dirs: BTreeSet<String>,
         links: BTreeMap<String, String>,
         exe: BTreeSet<String>,
-        /// Запущенные команды.
+        /// Commands that were run.
         runs: Vec<Vec<String>>,
-        /// Изменения файлов: «write <путь>», «remove <путь>», …
+        /// File changes: "write <path>", "remove <path>", …
         mutations: Vec<String>,
         log: Vec<String>,
-        /// Вывод каждой команды.
+        /// Output of each command.
         output: Vec<String>,
-        /// `systemctl enable --force <новый>` падает.
+        /// `systemctl enable --force <new>` fails.
         enable_fails: bool,
         loginctl: String,
-        /// Ответ `bsdtar -xOf <копия> .PKGINFO`.
+        /// The answer of `bsdtar -xOf <copy> .PKGINFO`.
         pkginfo: String,
-        /// Свой ответ `bsdtar` по имени файла копии (иначе — `pkginfo`).
+        /// A specific `bsdtar` answer by the copy's file name (otherwise `pkginfo`).
         pkginfos: BTreeMap<String, String>,
-        /// Файлы root для [`RootIo::open_root_file`]: путь → содержимое.
+        /// Root files for [`RootIo::open_root_file`]: path → contents.
         root_files: BTreeMap<String, Vec<u8>>,
-        /// Эти пути `open_root_file` отвергает (чужой владелец).
+        /// These paths are rejected by `open_root_file` (foreign owner).
         root_refuse: BTreeSet<String>,
-        /// Ответы проб: первое начало строки argv (через пробел), с
-        /// которого она начинается, → (код, stdout).
+        /// Probe answers: the first argv line prefix (space-joined) the line
+        /// starts with → (code, stdout).
         answers: Vec<(String, i32, String)>,
-        /// Команды, начинающиеся с этого, кончаются кодом 1.
+        /// Commands starting with this end with code 1.
         fail_runs: Vec<String>,
-        /// Запись этих файлов не удаётся.
+        /// Writing these files fails.
         fail_writes: BTreeSet<String>,
-        /// Входной поток каждой команды (по порядку `runs`).
+        /// The input stream of each command (in the order of `runs`).
         stdins: Vec<Option<String>>,
     }
 
     #[derive(Default)]
     struct FakeIo {
         st: Mutex<FakeState>,
-        /// `which("pacman")` ждёт сигнала (Cancel до касания).
+        /// `which("pacman")` waits for a signal (Cancel before touching).
         gate_which: Mutex<Option<Receiver<()>>>,
-        /// `run` сообщает о начале и ждёт сигнала (Cancel после, EOF).
+        /// `run` reports the start and waits for a signal (Cancel after, EOF).
         gate_run: Mutex<Option<(Sender<()>, Receiver<()>)>>,
         runs_finished: AtomicU32,
     }
@@ -4036,7 +4045,7 @@ mod tests {
             if self.st().fail_runs.iter().any(|f| line.starts_with(f.as_str())) {
                 code = 1;
             }
-            // systemctl enable --force X.service: ссылка display-manager → X.
+            // systemctl enable --force X.service: the display-manager link → X.
             if argv.len() == 4 && argv[..3] == strings(&["systemctl", "enable", "--force"]) {
                 let mut s = self.st();
                 if s.enable_fails && argv[3] != "lightdm.service" {
@@ -4057,13 +4066,13 @@ mod tests {
             if let Some((_, code, out)) = self.st().answers.iter().find(|(pre, _, _)| line.starts_with(pre.as_str())) {
                 return Captured { code: Some(*code), stdout: out.clone() };
             }
-            // Владелец пути — ни один пакет.
+            // The owner of the path is no package.
             if matches!(argv.get(1).map(String::as_str), Some("-Qoq" | "-S" | "-qf")) {
                 return Captured { code: Some(1), stdout: String::new() };
             }
             if argv.first().map(String::as_str) == Some("bsdtar") {
-                // Копия root уже лежит в рабочем каталоге — проверим, что
-                // сверяют её, а не путь пользователя.
+                // The root copy already lies in the working directory: check that it is
+                // the copy that gets checked, not the user's path.
                 assert!(std::path::Path::new(&argv[2]).is_file(), "bsdtar не по копии: {argv:?}");
                 let s = self.st();
                 let own = s.pkginfos.get(basename(&argv[2])).cloned();
@@ -4130,12 +4139,12 @@ mod tests {
             Ok(())
         }
         fn mode_of(&self, path: &str) -> Option<u32> {
-            // Настоящую систему поддельная не спрашивает.
+            // The fake does not ask the real system.
             self.st().files.contains_key(path).then_some(0o644)
         }
         fn copy_file(&self, src: &str, dst: &str) -> Result<(), String> {
             self.mutate(format!("copy {src} {dst}"));
-            // Источник — либо подделанный файл, либо копия root в своём каталоге.
+            // The source is either a faked file or a root copy in its own directory.
             let text = self
                 .read_text(src)
                 .or_else(|| std::fs::read(src).ok().map(|b| String::from_utf8_lossy(&b).into_owned()))
@@ -4195,7 +4204,7 @@ mod tests {
         }
     }
 
-    // ── поддельные часы и наблюдатель ────────────────────────────────────
+    // ── fake clock and observer ──────────────────────────────────────────
 
     #[derive(Default)]
     struct FakeClock(AtomicU64);
@@ -4218,22 +4227,22 @@ mod tests {
         }
     }
 
-    // ── стенд: помощник в потоке, окно — тест ─────────────────────────────
+    // ── bench: the helper in a thread, the window is the test ────────────
 
     const BUILD: &str = "0.0.0+test";
 
-    /// Предел любого ожидания в тестах: зависание — падение, а не вечный
-    /// `futex_wait`, держащий очередь сборок.
+    /// The limit of any wait in tests: a hang is a failure, not an eternal
+    /// `futex_wait` holding up the build queue.
     const WAIT: Duration = Duration::from_secs(10);
 
-    /// Дождаться сигнала из канала не дольше [`WAIT`].
+    /// Wait for a signal from a channel no longer than [`WAIT`].
     fn wait<T>(rx: &Receiver<T>, what: &str) -> T {
         rx.recv_timeout(WAIT).unwrap_or_else(|_| panic!("не дождались: {what}"))
     }
 
     struct Bench {
         client: OwnedFd,
-        /// Итог сеанса — каналом, чтобы ждать его с тайм-аутом.
+        /// The session result via a channel, so it can be awaited with a timeout.
         done: Receiver<SessionReport>,
         clock: Arc<FakeClock>,
         watch: FakeWatch,
@@ -4242,7 +4251,7 @@ mod tests {
     fn bench_with(io: Arc<FakeIo>, pkexec_uid: u32) -> Bench {
         let (client, helper_end) = proto::seqpacket_pair().unwrap();
         let tv = libc::timeval { tv_sec: WAIT.as_secs() as libc::time_t, tv_usec: 0 };
-        // SAFETY: тайм-аут чтения, чтобы тест падал, а не висел.
+        // SAFETY: a read timeout, so the test fails instead of hanging.
         unsafe {
             libc::setsockopt(
                 client.as_raw_fd(),
@@ -4282,7 +4291,7 @@ mod tests {
         fn recv(&self) -> Option<HelperMsg> {
             proto::recv_msg(self.client.as_fd()).expect("ответ помощника")
         }
-        /// Следующее не-Progress сообщение.
+        /// The next non-Progress message.
         fn recv_final(&self) -> Option<HelperMsg> {
             loop {
                 match self.recv() {
@@ -4312,7 +4321,7 @@ mod tests {
         Some(HelperMsg::Error { id: Some(id), code: ErrorCode::Refused, message_key: key.into() })
     }
 
-    // ── рукопожатие и собеседник ─────────────────────────────────────────
+    // ── handshake and peer ───────────────────────────────────────────────
 
     #[test]
     fn рукопожатие_своя_сборка_принята() {
@@ -4371,13 +4380,13 @@ mod tests {
     fn чужой_uid_пира_молча_выход() {
         let io = FakeIo::arch();
         let b = bench_with(io.clone(), unsafe { libc::getuid() } + 1);
-        // Помощник закрывает сокет, не прочитав ни кадра.
+        // The helper closes the socket without reading a single frame.
         assert_eq!(b.recv(), None, "чужому — ни Welcome, ни ответа");
         assert_eq!(b.finish().end, SessionEnd::PeerRejected);
         assert!(io.touched_nothing());
     }
 
-    // ── проверки до исполнения ───────────────────────────────────────────
+    // ── checks before execution ──────────────────────────────────────────
 
     #[test]
     fn отказ_проверки_не_исполняет_ничего() {
@@ -4398,7 +4407,7 @@ mod tests {
         assert_eq!(b.recv(), refused(4, "refused.operand"));
         b.send(install(5, &["some-random-tool"]));
         assert_eq!(b.recv(), refused(5, "refused.not-in-table"));
-        // Семейство из операции не совпало с машиной.
+        // The family from the operation did not match the machine.
         b.send(ClientMsg::Request {
             id: 6,
             op: PrivOp::PkgInstall { family: PkgFamily::Debian, packages: strings(&["sddm"]), source: PkgSource::DisplayManager },
@@ -4416,7 +4425,7 @@ mod tests {
         assert_eq!(b.recv(), refused(8, "refused.display-manager"));
         b.send(ClientMsg::Request { id: 9, op: PrivOp::BuildDeps { names: strings(&["cmake>=3;id"]) } });
         assert!(matches!(b.recv(), Some(HelperMsg::Error { id: Some(9), code: ErrorCode::Refused, .. })));
-        // AUR — не помощнику; прочее — пока не исполняется; файлы — ждут unpack.
+        // AUR is not for the helper; the rest is not executed yet; files wait for unpack.
         b.send(ClientMsg::Request {
             id: 10,
             op: PrivOp::AurInstall { helper: "paru".into(), packages: strings(&["x"]), replace_conflicts: false },
@@ -4432,7 +4441,7 @@ mod tests {
                 replace: false,
             },
         });
-        // Файл операции без дескриптора — отказ.
+        // An operation file without a descriptor: refusal.
         assert_eq!(b.recv(), refused(12, "fds_mismatch"));
         let r = b.finish();
         assert_eq!(r.ops_executed, 0);
@@ -4474,22 +4483,22 @@ mod tests {
         let mate_only: Vec<&str> =
             mate.iter().filter(|p| !xfce.contains(p)).map(String::as_str).take(1).collect();
         assert!(!mate_only.is_empty());
-        // Своя таблица — да.
+        // Its own table: yes.
         assert!(check_op(&op(&mate_only, PkgSource::Desktop { de_id: "mate".into() }), &facts, 0).is_ok());
         assert!(check_op(&op(&["sddm"], PkgSource::DisplayManager), &facts, 0).is_ok());
         assert!(check_op(&op(&["yt-dlp"], PkgSource::YtDlp), &facts, 0).is_ok());
-        // Имя из другой таблицы ядра — нет, хоть оно и «наше».
+        // A name from another core table: no, even though it is "ours".
         for (pkgs, src) in [
             (mate_only.clone(), PkgSource::Desktop { de_id: "xfce".into() }),
             (vec!["sddm"], PkgSource::YtDlp),
             (vec!["yt-dlp"], PkgSource::DisplayManager),
-            // Починка — только текущего стола (у помощника он «kde»).
+            // Repair only of the current desktop (for the helper it is "kde").
             (mate_only.clone(), PkgSource::DesktopRepair),
         ] {
             let err = check_op(&op(&pkgs, src.clone()), &facts, 0).unwrap_err();
             assert_eq!(err.key, "refused.not-in-table", "{pkgs:?} {src:?}");
         }
-        // Чужой стол — отказ таблицы, а не установка.
+        // Another desktop: a table refusal, not an install.
         let err = check_op(&op(&["a"], PkgSource::Desktop { de_id: "evil".into() }), &facts, 0).unwrap_err();
         assert_ne!(err.key, "not_supported_yet");
         assert!(err.key.starts_with("refused."), "{}", err.key);
@@ -4503,7 +4512,7 @@ mod tests {
         assert!(check_op(&op, &facts, 0).is_ok());
     }
 
-    // ── исполнение ───────────────────────────────────────────────────────
+    // ── execution ────────────────────────────────────────────────────────
 
     #[test]
     fn установка_из_таблицы_исполняется_без_оболочки() {
@@ -4546,7 +4555,7 @@ mod tests {
         assert_eq!(b.recv(), Some(HelperMsg::Busy { id: 2 }));
         go_tx.send(()).unwrap();
         assert!(matches!(b.recv_final(), Some(HelperMsg::Done { id: 1, ok: true, .. })));
-        // После Busy тот же id можно прислать снова.
+        // After Busy the same id may be sent again.
         b.send(install(2, &["lightdm"]));
         assert!(matches!(b.recv_final(), Some(HelperMsg::Done { id: 2, ok: true, .. })));
         assert_eq!(b.finish().ops_executed, 2);
@@ -4573,7 +4582,7 @@ mod tests {
         );
         b.send(ClientMsg::Hello(Hello { build_id: BUILD.into() }));
         assert!(matches!(b.recv(), Some(HelperMsg::Error { id: None, code: ErrorCode::Sequence, .. })));
-        // Отмена, разминувшаяся с концом операции, — молча.
+        // A cancel that crossed paths with the end of the operation: silently.
         b.send(ClientMsg::Cancel { id: 5 });
         b.send(install(6, &["sddm"]));
         assert!(matches!(b.recv_final(), Some(HelperMsg::Done { id: 6, .. })));
@@ -4590,7 +4599,7 @@ mod tests {
         b.hello();
         b.send(install(1, &["sddm"]));
         b.send(ClientMsg::Cancel { id: 1 });
-        // Busy на второй запрос — значит, отмену цикл уже обработал.
+        // Busy on the second request means the loop has already processed the cancel.
         b.send(install(2, &["sddm"]));
         assert_eq!(b.recv(), Some(HelperMsg::Busy { id: 2 }));
         go_tx.send(()).unwrap();
@@ -4633,7 +4642,7 @@ mod tests {
         wait(&started_rx, "начало pacman");
         let Bench { client, done, .. } = b;
         drop(client);
-        // Окно ушло; помощник ещё ждёт конца pacman и не выходит.
+        // The window is gone; the helper is still waiting for pacman to finish and does not exit.
         assert!(
             done.recv_timeout(Duration::from_millis(100)).is_err(),
             "помощник вышел посреди операции"
@@ -4674,7 +4683,7 @@ mod tests {
             b.recv(),
             Some(HelperMsg::Error { id: None, code: ErrorCode::Revoked, message_key: "revoked.screen-locked".into() })
         );
-        // Отзыв не обрывает идущую операцию.
+        // Revocation does not interrupt a running operation.
         go_tx.send(()).unwrap();
         assert!(matches!(b.recv_final(), Some(HelperMsg::Done { id: 1, ok: true, .. })));
         assert_eq!(b.recv(), None);
@@ -4696,7 +4705,7 @@ mod tests {
 
     #[test]
     fn progress_режется_по_4кб() {
-        let long = "ж".repeat(5000); // 10 000 байт
+        let long = "ж".repeat(5000); // 10,000 bytes
         let parts = cut_progress(&long);
         assert!(parts.iter().all(|p| p.len() <= PROGRESS_MAX));
         assert_eq!(parts.concat(), long);
@@ -4737,12 +4746,12 @@ mod tests {
         b.finish();
     }
 
-    // ── окружение ────────────────────────────────────────────────────────
+    // ── environment ──────────────────────────────────────────────────────
 
     #[test]
     fn окружение_потомка_очищено() {
-        // Настоящая программа `env` от пользователя: в окружении теста есть
-        // HOME, USER и прочее — у потомка помощника их быть не должно.
+        // The real `env` program run as the user: the test environment has HOME,
+        // USER and the rest, while a child of the helper must not have them.
         let got = LiveRootIo.capture(&strings(&["env"]));
         assert_eq!(got.code, Some(0));
         let mut lines: Vec<&str> = got.stdout.lines().collect();
@@ -4758,13 +4767,13 @@ mod tests {
     #[test]
     fn аргументы_помощника() {
         let some = |s: &str| Some(s.to_string());
-        // Как зовёт клиент: `--session <id>`.
+        // As the client calls it: `--session <id>`.
         assert_eq!(parse_args(&strings(&["--session", "2"])), Some(Args { session: some("2"), lang: None }));
         assert_eq!(
             parse_args(&strings(&["--session=c1", "--lang", "ru"])),
             Some(Args { session: some("c1"), lang: some("ru") })
         );
-        // Без флага — можно: сеанс помощник найдёт у logind сам.
+        // Without the flag it is allowed: the helper finds the session at logind itself.
         assert_eq!(parse_args(&[]), Some(Args { session: None, lang: None }));
         for bad in [
             &["--session"][..],
@@ -4863,7 +4872,7 @@ mod tests {
         assert!(io.touched_nothing());
     }
 
-    /// Plasma Login с автовходом alice → SDDM (как у Wehrwolfmann).
+    /// Plasma Login with autologin for alice → SDDM (as on Wehrwolfmann's machine).
     fn plm_machine() -> Arc<FakeIo> {
         let io = dm_machine();
         {
@@ -4891,7 +4900,7 @@ mod tests {
         assert!(own.contains("User=alice") && own.contains("Relogin=true"), "{own}");
         assert_eq!(s.files["/etc/plasmalogin.conf"], "[Autologin]\nRelogin=true\nSession=plasma\nUser=alice\n", "прежний не тронут");
         assert!(lines.iter().any(|l| l == "automatic sign-in for alice moved to sddm"), "{lines:?}");
-        // Записано ДО включения — откат его вернёт.
+        // Written BEFORE enabling: the rollback restores it.
         let write = s.mutations.iter().position(|m| m == "write /etc/sddm.conf").unwrap();
         assert!(s.mutations[..write].iter().all(|m| !m.contains("dm-fallback")));
     }
@@ -4922,7 +4931,7 @@ mod tests {
             assert!(s.runs.contains(&strings(&["groupadd", "-r", "autologin"])));
             assert!(s.runs.contains(&strings(&["gpasswd", "-a", "alice", "autologin"])));
         }
-        // Сбой включения — группа снимается вместе с файлами.
+        // Enabling failed: the group is removed together with the files.
         let io = plm_machine();
         io.st().files.insert(
             "/etc/pam.d/sddm-autologin".into(),
@@ -4972,16 +4981,16 @@ mod tests {
             assert!(s.runs.contains(&as_sddm(&["ln", "-s", "/dev/null", &format!("{dir}/{u}")])), "{u}");
         }
         assert!(lines.iter().any(|l| l == "login screen sound turned off for sddm too, as it was for plasmalogin"));
-        // Масок у прежнего нет — ничего.
+        // The previous one has no masks: nothing.
         let io = plm_machine();
         io.st().exe.insert("/usr/bin/setpriv".into());
         let _ = run_switch(&io);
         assert!(!io.st().runs.iter().any(|r| r.first().map(String::as_str) == Some("setpriv")));
     }
 
-    /// Plasma Login (автовход alice, звук приветствия погашен) → DDM:
-    /// автовход ложится в свой файл `ddm.conf.d` без `Relogin=`, маски
-    /// звука — пользователю `dde` (дом `/var/lib/ddm`, как в sysusers ddm).
+    /// Plasma Login (autologin for alice, greeter sound muted) → DDM: autologin
+    /// goes into its own `ddm.conf.d` file without `Relogin=`, the sound masks go
+    /// to the `dde` user (home `/var/lib/ddm`, as in ddm's sysusers).
     #[test]
     fn switch_dm_в_ddm_переносит_автовход_и_маски_звука() {
         let io = plm_machine();
@@ -5021,8 +5030,8 @@ mod tests {
         assert!(lines.iter().any(|l| l == "login screen sound turned off for ddm too, as it was for plasmalogin"), "{lines:?}");
     }
 
-    /// Без `dde-seatd` DDM не стартует — отказ до любой записи, автовход
-    /// не тронут.
+    /// Without `dde-seatd` DDM does not start: refusal before any writing,
+    /// autologin untouched.
     #[test]
     fn switch_dm_в_ddm_без_dde_seatd_отказ_до_касания() {
         let io = plm_machine();
@@ -5050,7 +5059,7 @@ mod tests {
         assert_eq!(exec_start("[Service]\nExecStart=\nExecStart=-/usr/bin/x --y\n"), "-/usr/bin/x --y");
     }
 
-    // ── файлы по дескриптору ─────────────────────────────────────────────
+    // ── files by descriptor ──────────────────────────────────────────────
 
     fn facts() -> Facts {
         Facts {
@@ -5068,7 +5077,7 @@ mod tests {
         crate::privilege::op::LocalFile { slot, label: label.into() }
     }
 
-    /// Файл пользователя в его временном каталоге — открытым дескриптором.
+    /// The user's file in their temporary directory, as an open descriptor.
     fn user_file(tag: &str, bytes: &[u8]) -> OwnedFd {
         let p = std::env::temp_dir().join(format!("rexon-b4-{}-{tag}", std::process::id()));
         std::fs::write(&p, bytes).unwrap();
@@ -5090,7 +5099,7 @@ mod tests {
         assert_eq!(check_op(&op(1), &facts(), 1).unwrap_err().key, "fds_mismatch");
         assert_eq!(check_op(&op(0), &facts(), 0).unwrap_err().key, "fds_mismatch");
         assert_eq!(check_op(&op(0), &facts(), 2).unwrap_err().key, "fds_mismatch");
-        // Путь вне каталога пересборок, вечное в снимаемых — отказ до файла.
+        // A path outside the rebuild directory, a permanent package among those removed: refusal before the file.
         let outside = PrivOp::InstallBuilt { package: local(0, "/tmp/x.pkg.tar.zst"), build_only: Vec::new(), replace: false };
         assert_eq!(check_op(&outside, &facts(), 1).unwrap_err().key, "refused.outside-root");
         let vital = PrivOp::InstallBuilt { package: local(0, BUILT), build_only: strings(&["glibc"]), replace: false };
@@ -5126,8 +5135,8 @@ mod tests {
         assert_eq!(runs[0][..5], strings(&["pacman", "-U", "--noconfirm", "--ask=4", "--"]));
         assert!(!runs[0][5].starts_with("/home/"), "pacman получил путь пользователя: {:?}", runs[0]);
         assert!(runs[0][5].ends_with("deepin-session-treeland-1.2-3-x86_64.pkg.tar.zst"));
-        // ninja не ставился этим build-deps, cmake не помечен зависимостью
-        // (pacman -Qqd пуст) — ничего не снимается.
+        // ninja was not installed by this build-deps, cmake is not marked as a
+        // dependency (pacman -Qqd is empty): nothing is removed.
         assert_eq!(runs.len(), 1);
         assert!(rebuilt.lock().unwrap().is_empty(), "запись build-deps израсходована");
     }
@@ -5167,7 +5176,7 @@ mod tests {
         assert!(io.touched_nothing());
     }
 
-    // ── шим AUR (Б10) ────────────────────────────────────────────────────
+    // ── AUR shim (B10) ───────────────────────────────────────────────────
 
     const AUR_BUILT: &str = "/home/test/.cache/paru/clone/t/t-1.0-1-x86_64.pkg.tar.zst";
 
@@ -5231,7 +5240,7 @@ mod tests {
         assert_eq!(runs[0][..4], strings(&["pacman", "-U", "--noconfirm", "--ask=4"]));
         assert!(!runs[0][5].starts_with("/home/"), "pacman получил путь пользователя: {:?}", runs[0]);
 
-        // .PKGINFO с чужим именем — отказ.
+        // .PKGINFO with a foreign name: refusal.
         let io = FakeIo::arch();
         {
             let mut s = io.st();
@@ -5242,7 +5251,7 @@ mod tests {
         assert_eq!(out, Outcome::Refused("refused.pkginfo".into()));
         assert!(io.touched_nothing());
 
-        // Имя из списка, но не тот пакет, что просили (`allowed` без него).
+        // A name from the list, but not the package that was asked for (`allowed` without it).
         let io = FakeIo::arch();
         {
             let mut s = io.st();
@@ -5253,7 +5262,7 @@ mod tests {
         assert_eq!(out, Outcome::Refused("refused.pkginfo".into()));
         assert!(io.touched_nothing());
 
-        // Имя официального пакета собранным не ставится.
+        // An official package name is not installed as a built one.
         let io = FakeIo::arch();
         {
             let mut s = io.st();
@@ -5279,7 +5288,7 @@ mod tests {
         assert!(io.touched_nothing());
     }
 
-    // ── сирота сторожа обновлений ────────────────────────────────────────
+    // ── update guard orphan ──────────────────────────────────────────────
 
     #[test]
     fn сирота_проверки_до_действия() {
@@ -5292,7 +5301,7 @@ mod tests {
         assert_eq!(check_op(&op(&[]), &f, 0).unwrap_err().key, "refused.empty");
         assert_eq!(check_op(&op(&["glibc"]), &f, 0).unwrap_err().key, "refused.vital");
         assert_eq!(check_op(&op(&["-Rdd"]), &f, 0).unwrap_err().key, "refused.operand");
-        // Пакет текущего стола; стол не узнан; не pacman; SteamOS.
+        // A package of the current desktop; the desktop not found out; not pacman; SteamOS.
         assert_eq!(check_op(&op(&["plasma-meta"]), &f, 0).unwrap_err().key, "refused.current-desktop-package");
         let unknown = Facts { current_de: String::new(), ..facts() };
         assert_eq!(check_op(&op(&["kwin-x11"]), &unknown, 0).unwrap_err().key, "refused.current-desktop-unknown");
@@ -5301,8 +5310,8 @@ mod tests {
         let steam = Facts { steamos: true, ..facts() };
         assert_eq!(check_op(&op(&["kwin-x11"]), &steam, 0).unwrap_err().key, "refused.read-only-system");
         assert!(executes(&op(&["kwin-x11"])).is_ok());
-        // Сеанс окна — Plasma (X11): он держится на kwin-x11 — отказ с
-        // именем пакета; Wayland или чужой стол на X11 — можно.
+        // The window's session is Plasma (X11): it depends on kwin-x11, so refusal
+        // with the package name; Wayland or another desktop on X11 is allowed.
         let x11 = Facts { session_type: "x11".into(), ..facts() };
         assert_eq!(check_op(&op(&["kwin-x11"]), &x11, 0).unwrap_err().key, "refused.orphan-in-use.kwin-x11");
         let xfce_x11 = Facts { session_type: "x11".into(), current_de: "xfce".into(), ..facts() };
@@ -5326,7 +5335,7 @@ mod tests {
             assert_eq!(out, Outcome::Refused("refused.orphan-login-default.kwin-x11".into()), "{file}");
             assert!(io.touched_nothing(), "{file}");
         }
-        // По умолчанию Wayland-сеанс — удаляется.
+        // With a Wayland session by default it is removed.
         let io = FakeIo::arch();
         answers(&io, &[("pacman -Slq", "kwin\n"), ("pacman -Qg", plasma_qg), ("pacman -Rnsp", "kwin-x11\n")]);
         io.st().files.insert("/etc/plasmalogin.conf".into(), "[Autologin]\nSession=plasma\n".into());
@@ -5345,9 +5354,9 @@ mod tests {
         assert_eq!((f.current_de.as_str(), f.session_type.as_str()), ("kde", "x11"));
     }
 
-    /// «Сделать Plasma (Wayland) сеансом по умолчанию»: только значения
-    /// ключей сеанса, указывающих на plasmax11; прочее — байт в байт;
-    /// после — сирота снимается тем же сторожем.
+    /// "Make Plasma (Wayland) the default session": only the values of the session
+    /// keys pointing to plasmax11; everything else byte for byte; afterwards the
+    /// orphan is removed by the same guard.
     #[test]
     fn сеанс_по_умолчанию_переводится_на_wayland() {
         let op = |x11: &str| PrivOp::LoginSessionWayland { x11: x11.into() };
@@ -5390,19 +5399,19 @@ mod tests {
         assert_eq!(st.mutations.len(), 3, "{:?}", st.mutations);
         assert!(st.runs.is_empty(), "{:?}", st.runs);
         drop(st);
-        // Теперь сирота снимается.
+        // Now the orphan is removed.
         let plasma_qg = "plasma plasma-workspace\nplasma kwin\nplasma kwin-x11\n";
         answers(&io, &[("pacman -Slq", "kwin\n"), ("pacman -Qg", plasma_qg), ("pacman -Rnsp", "kwin-x11\n")]);
         assert_eq!(run_plan(&io, &orphan_plan(&["kwin-x11"]), vec![], &Mutex::new(Vec::new())), Outcome::ok(None));
 
-        // Второй раз менять нечего — ничего и не пишется.
+        // The second time there is nothing to change, so nothing is written.
         let io2 = machine();
         let _ = run_plan(&io2, &lsw, vec![], &Mutex::new(Vec::new()));
         io2.st().mutations.clear();
         assert_eq!(run_plan(&io2, &lsw, vec![], &Mutex::new(Vec::new())), Outcome::ok(None));
         assert!(io2.touched_nothing());
 
-        // Пары нет — отказ, ничего не тронуто.
+        // No pair: refusal, nothing touched.
         let io = machine();
         io.st().files.remove(wayland);
         assert_eq!(
@@ -5411,8 +5420,8 @@ mod tests {
         );
         assert!(io.touched_nothing());
 
-        // X11-сеанс задан в файле пакета — его Rexon не правит: отказ до
-        // первой записи (и `/etc` тоже не тронут).
+        // The X11 session is set in a package file, which Rexon does not edit:
+        // refusal before the first write (and `/etc` is untouched too).
         let io = machine();
         io.st().files.insert("/usr/lib/sddm/sddm.conf.d/10-x.conf".into(), "[Autologin]\nSession=plasmax11\n".into());
         io.st().files.remove("/etc/sddm.conf.d/kde_settings.conf");
@@ -5422,7 +5431,7 @@ mod tests {
         );
         assert!(io.touched_nothing());
 
-        // Ссылка на месте файла настроек — тоже отказ без записи.
+        // A link in place of the settings file: also a refusal without writing.
         let io = machine();
         {
             let mut st = io.st();
@@ -5444,8 +5453,8 @@ mod tests {
     #[test]
     fn сирота_снимается_только_проверенная_машиной() {
         let plasma_qg = "plasma plasma-workspace\nplasma kwin\nplasma kwin-x11\n";
-        // Сирота: член группы plasma, установлен, в sync-базе нет; проба
-        // снимает только его.
+        // An orphan: a member of the plasma group, installed, absent from the sync
+        // database; the probe removes only it.
         let io = FakeIo::arch();
         answers(&io, &[
             ("pacman -Slq", "kwin\nplasma-workspace\n"),
@@ -5456,21 +5465,21 @@ mod tests {
         assert_eq!(out, Outcome::ok(None));
         assert_eq!(io.st().runs, vec![strings(&["pacman", "-Rns", "--noconfirm", "--", "kwin-x11"])]);
 
-        // Есть в репозиториях — не сирота.
+        // Present in the repositories: not an orphan.
         let io = FakeIo::arch();
         answers(&io, &[("pacman -Slq", "kwin-x11\n"), ("pacman -Qg", plasma_qg), ("pacman -Rnsp", "kwin-x11\n")]);
         let out = run_plan(&io, &orphan_plan(&["kwin-x11"]), vec![], &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::Refused("refused.not-orphan".into()));
         assert!(io.touched_nothing());
 
-        // Не член набора сторожа (сторонний пакет из AUR) — не сирота.
+        // Not a member of an update guard set (a third-party AUR package): not an orphan.
         let io = FakeIo::arch();
         answers(&io, &[("pacman -Slq", "kwin\n"), ("pacman -Qg", plasma_qg), ("pacman -Rnsp", "decky-loader\n")]);
         let out = run_plan(&io, &orphan_plan(&["decky-loader"]), vec![], &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::Refused("refused.not-orphan".into()));
         assert!(io.touched_nothing());
 
-        // Не установлен.
+        // Not installed.
         let io = FakeIo::arch();
         answers(&io, &[
             ("pacman -Slq", "kwin\n"),
@@ -5482,14 +5491,14 @@ mod tests {
         assert_eq!(out, Outcome::Refused("refused.not-orphan".into()));
         assert!(io.touched_nothing());
 
-        // sync-база не прочиталась — проверить нечем.
+        // The sync database could not be read: nothing to check with.
         let io = FakeIo::arch();
         answers(&io, &[("pacman -Qg", plasma_qg), ("pacman -Rnsp", "kwin-x11\n")]);
         let out = run_plan(&io, &orphan_plan(&["kwin-x11"]), vec![], &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::Refused("refused.not-orphan".into()));
         assert!(io.touched_nothing());
 
-        // Транзакция унесла бы жизненно важное или пакет текущего стола.
+        // The transaction would take away something vital or a package of the current desktop.
         for (extra, key) in [("glibc", "refused.vital"), ("plasma-meta", "refused.current-desktop-package")] {
             let io = FakeIo::arch();
             let preview = format!("kwin-x11\n{extra}\n");
@@ -5499,7 +5508,7 @@ mod tests {
             assert!(io.touched_nothing());
         }
 
-        // Проба не прошла (нужен другим, база занята) — отказ, ничего не тронуто.
+        // The probe failed (needed by others, the database is locked): refusal, nothing touched.
         let io = FakeIo::arch();
         answers(&io, &[("pacman -Slq", "kwin\n"), ("pacman -Qg", plasma_qg), ("pacman -Rnsp", "")]);
         io.st().answers[2].1 = 1;
@@ -5508,7 +5517,7 @@ mod tests {
         assert!(io.touched_nothing());
     }
 
-    // ── откат набора сторожа из кэша pacman ──────────────────────────────
+    // ── rolling back an update guard set from the pacman cache ───────────
 
     const QT_CACHE: &str = "/var/cache/pacman/pkg/qt6-base-6.11.2-1-x86_64.pkg.tar.zst";
 
@@ -5523,7 +5532,7 @@ mod tests {
             (0..65).map(|i| format!("/var/cache/pacman/pkg/p{i}-1-1-x86_64.pkg.tar.zst")).collect();
         let many_op = PrivOp::CacheRollback { files: many };
         assert_eq!(check_op(&many_op, &f, 0).unwrap_err().key, "refused.too-many");
-        // Одно имя файла дважды (из двух каталогов) — копии не лягут.
+        // The same file name twice (from two directories): the copies will not fit.
         let twice = op(&[QT_CACHE, "/mnt/c/qt6-base-6.11.2-1-x86_64.pkg.tar.zst"]);
         assert_eq!(check_op(&twice, &f, 0).unwrap_err().key, "refused.package-file");
         for bad in ["qt6-base-6.11.2-1-x86_64.pkg.tar.zst", "/var/../qt6-base-6.11.2-1-x86_64.pkg.tar.zst"] {
@@ -5534,15 +5543,16 @@ mod tests {
         assert_eq!(check_op(&op(&[QT_CACHE]), &debian, 0).unwrap_err().key, "refused.family");
         let steam = Facts { steamos: true, ..facts() };
         assert_eq!(check_op(&op(&[QT_CACHE]), &steam, 0).unwrap_err().key, "refused.read-only-system");
-        // Текущий стол не узнан — откату не мешает (защита — ровно набор).
+        // The current desktop not found out: it does not hinder the rollback (the protection is exactly the set).
         let unknown = Facts { current_de: String::new(), ..facts() };
         assert!(check_op(&op(&[QT_CACHE]), &unknown, 0).is_ok());
     }
 
-    /// Машина с Qt вразнобой после обновления: qt6-base 6.12.0 при
-    /// qt6-declarative 6.11.2 — откат qt6-base к серии 6.11.2.
-    /// `extra` — свои ответы (раньше общих); `pacman -Q` целиком — в
-    /// `installed` (общий префикс `pacman -Q` иначе перехватил бы `-Qg`/`-Qmq`).
+    /// A machine with mismatched Qt after an update: qt6-base 6.12.0 with
+    /// qt6-declarative 6.11.2, rolling qt6-base back to the 6.11.2 series.
+    /// `extra` are specific answers (ahead of the shared ones); the whole
+    /// `pacman -Q` goes into `installed` (otherwise the shared `pacman -Q` prefix
+    /// would intercept `-Qg`/`-Qmq`).
     fn qt_mixed_machine(io: &FakeIo, extra: &[(&str, i32, &str)]) {
         qt_mixed_machine_with(io, extra, QT_MIXED);
     }
@@ -5586,12 +5596,12 @@ mod tests {
         let runs = io.st().runs.clone();
         assert_eq!(runs.len(), 1, "{runs:?}");
         assert_eq!(runs[0][..4], strings(&["pacman", "-U", "--noconfirm", "--"]));
-        // Ставится копия root, а не файл по пути окна.
+        // The root copy is installed, not the file at the window's path.
         assert_eq!(runs[0].len(), 5);
         assert_ne!(runs[0][4], QT_CACHE);
         assert!(runs[0][4].ends_with("/qt6-base-6.11.2-1-x86_64.pkg.tar.zst"), "{runs:?}");
 
-        // Подпись рядом есть и сходится — проверена по копиям, ставится.
+        // A signature is next to it and matches: checked on the copies, installed.
         let io = FakeIo::arch();
         qt_mixed_machine(&io, &[]);
         let sig = format!("{QT_CACHE}.sig");
@@ -5601,7 +5611,7 @@ mod tests {
         assert_eq!(out, Outcome::ok(None), "{:?}", io.st().log);
         assert_eq!(io.st().runs.len(), 1);
 
-        // Каталог кэша из pacman.conf — тоже кэш.
+        // A cache directory from pacman.conf is a cache too.
         let io = FakeIo::arch();
         let other = "/mnt/c/qt6-base-6.11.2-1-x86_64.pkg.tar.zst";
         qt_mixed_machine(&io, &[("pacman-conf CacheDir", 0, "/var/cache/pacman/pkg/\n/mnt/c/\n")]);
@@ -5621,12 +5631,12 @@ mod tests {
             assert!(io.touched_nothing(), "{key}");
         };
         let none = |_: &FakeIo| {};
-        // Не каталог кэша (файл того же вида у пользователя).
+        // Not a cache directory (a file of the same kind at the user's).
         let home = "/home/test/qt6-base-6.11.2-1-x86_64.pkg.tar.zst";
         refused(&[], &|io| { io.st().root_files.insert(home.into(), b"zst".to_vec()); }, &[home], "refused.path");
-        // Файл кэша не только root.
+        // The cache file is not root-only.
         refused(&[], &|io| { io.st().root_refuse.insert(QT_CACHE.into()); }, &[QT_CACHE], "refused.not-root-owned");
-        // .PKGINFO: чужое имя, нет версии, вечный пакет.
+        // .PKGINFO: a foreign name, no version, a permanent package.
         let pkginfo = |text: &'static str| {
             move |io: &FakeIo| {
                 io.st().pkginfos.insert(basename(QT_CACHE).into(), text.into());
@@ -5635,17 +5645,17 @@ mod tests {
         refused(&[], &pkginfo("pkgname = evil\npkgver = 6.11.2-1\n"), &[QT_CACHE], "refused.not-rollback");
         refused(&[], &pkginfo("pkgname = qt6-base\n"), &[QT_CACHE], "refused.pkginfo");
         refused(&[], &pkginfo("pkgname = glibc\npkgver = 2.40-1\n"), &[QT_CACHE], "refused.vital");
-        // Версия не той серии (та же, что стоит) — это не откат.
+        // A version of the wrong series (the same as installed): that is not a rollback.
         refused(&[], &pkginfo("pkgname = qt6-base\npkgver = 6.12.0-2\n"), &[QT_CACHE], "refused.not-rollback");
-        // vercmp не подтверждает «меньше».
+        // vercmp does not confirm "lower".
         refused(&[("vercmp", 0, "1\n")], &none, &[QT_CACHE], "refused.not-rollback");
-        // Набор уже сошёлся (нечего откатывать).
+        // The set has already converged (nothing to roll back).
         let io = FakeIo::arch();
         qt_mixed_machine_with(&io, &[], "qt6-base 6.11.2-1\nqt6-declarative 6.11.2-1.1\n");
         let out = run_plan(&io, &rollback_plan(&[QT_CACHE]), vec![], &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::Refused("refused.not-rollback".into()));
         assert!(io.touched_nothing());
-        // Сверх набора: ещё и qt6-declarative (его в откате находки нет).
+        // Beyond the set: qt6-declarative as well (it is not in the finding's rollback).
         let decl = "/var/cache/pacman/pkg/qt6-declarative-6.11.1-1-x86_64.pkg.tar.zst";
         refused(
             &[],
@@ -5657,7 +5667,7 @@ mod tests {
             &[QT_CACHE, decl],
             "refused.not-rollback",
         );
-        // Подпись рядом ЕСТЬ, но не сходится либо не файл root — подмена.
+        // A signature IS next to it, but does not match or is not a root file: tampering.
         let sig = format!("{QT_CACHE}.sig");
         let with_sig = |io: &FakeIo| {
             let mut s = io.st();
@@ -5667,13 +5677,13 @@ mod tests {
         refused(&[("pacman-key --verify", 1, "")], &with_sig, &[QT_CACHE], ROLLBACK_SIGNATURE);
         refused(&[], &|io| { with_sig(io); io.st().root_refuse.insert(sig.clone()); }, &[QT_CACHE], ROLLBACK_SIGNATURE);
         refused(&[], &|io| { with_sig(io); io.st().exe.remove("/usr/bin/pacman-key"); }, &[QT_CACHE], ROLLBACK_SIGNATURE);
-        // Проба тянет лишнее либо не проходит.
+        // The probe pulls in extra things or fails.
         refused(&[("pacman -U --print", 0, "qt6-base 6.11.2-1\nqt6-svg 6.11.2-1\n")], &none, &[QT_CACHE], ROLLBACK_EXTRA);
         refused(&[("pacman -U --print", 1, "")], &none, &[QT_CACHE], ROLLBACK_EXTRA);
         refused(&[("pacman -U --print", 0, "qt6-base 6.11.2-1\nwarning: downgrading package\n")], &none, &[QT_CACHE], ROLLBACK_EXTRA);
-        // Прежней версии нужна зависимость, которой нет: pacman 7.1 кладёт её
-        // в пробу из репозитория (перед самим пакетом) — откат только ровно
-        // набор, из сети ничего не тянем.
+        // The previous version needs a dependency that is missing: pacman 7.1 puts it
+        // into the probe from the repository (before the package itself); a rollback
+        // is only exactly the set, nothing is pulled from the network.
         refused(
             &[("pacman -U --print", 0, "deno 2.9.8-1\nqt6-base 6.11.2-1\n")],
             &none,
@@ -5682,8 +5692,8 @@ mod tests {
         );
     }
 
-    /// Неполный откат набора — отказ: Plasma вразнобой, откатить надо и
-    /// plasma-workspace, и kwin, а окно прислало только одно.
+    /// An incomplete rollback of a set: refusal. Plasma is mismatched, both
+    /// plasma-workspace and kwin must be rolled back, but the window sent only one.
     #[test]
     fn cache_rollback_refuses_partial_set() {
         let pw = "/var/cache/pacman/pkg/plasma-workspace-6.7.5-3.1-x86_64.pkg.tar.zst";
@@ -5710,8 +5720,8 @@ mod tests {
         let out = run_plan(&io, &rollback_plan(&[pw]), vec![], &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::Refused("refused.not-rollback".into()));
         assert!(io.touched_nothing());
-        // Весь набор — одна транзакция; проба сверяется множеством пар:
-        // порядок строк pacman может не совпадать с порядком файлов.
+        // The whole set is one transaction; the probe is checked as a set of pairs:
+        // the order of pacman's lines may differ from the order of the files.
         let io = FakeIo::arch();
         machine(&io);
         io.st().answers.insert(0, ("pacman -U --print".into(), 0, "kwin 6.7.5-3.1\nplasma-workspace 6.7.5-3.1\n".into()));
@@ -5722,14 +5732,14 @@ mod tests {
         assert_eq!(runs[0].len(), 6, "{runs:?}");
     }
 
-    /// pacman отработал, а версии после — не те: провал, не «готово».
+    /// pacman finished, but the versions afterwards are wrong: a failure, not "done".
     #[test]
     fn cache_rollback_verifies_versions_after() {
         let io = FakeIo::arch();
         qt_mixed_machine(&io, &[("pacman -Q --", 0, "qt6-base 6.12.0-2\n")]);
         let out = run_plan(&io, &rollback_plan(&[QT_CACHE]), vec![], &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::Done { ok: false, code: Some(1), key: None });
-        // pacman упал — его код.
+        // pacman failed: its code.
         let io = FakeIo::arch();
         qt_mixed_machine(&io, &[]);
         io.st().fail_runs.push("pacman -U".into());
@@ -5737,7 +5747,7 @@ mod tests {
         assert_eq!(out, Outcome::Done { ok: false, code: Some(1), key: None });
     }
 
-    /// Каталог пользователя → ustar в памяти (как пакует окно).
+    /// User directory → ustar in memory (as the window packs it).
     fn packed(tag: &str, files: &[(&str, &[u8])]) -> OwnedFd {
         let dir = std::env::temp_dir().join(format!("rexon-b4-tree-{}-{tag}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -5802,7 +5812,7 @@ mod tests {
 
     #[test]
     fn тема_sddm_перекрытая_etc_sddm_conf_выбирается_и_там() {
-        // Как на CachyOS: `/etc/sddm.conf` читается последним и держит свою тему.
+        // As on CachyOS: `/etc/sddm.conf` is read last and holds its own theme.
         let io = FakeIo::arch();
         {
             let mut s = io.st();
@@ -5851,8 +5861,8 @@ mod tests {
         assert!(io.touched_nothing());
     }
 
-    /// Система с plymouth-set-default-theme и сценарием пересборки plymouth;
-    /// выбрана `bgrt`, тема `t` лежит в системном каталоге.
+    /// A system with plymouth-set-default-theme and a plymouth rebuild script;
+    /// `bgrt` is selected, the theme `t` lies in the system directory.
     fn plymouth_io() -> Arc<FakeIo> {
         let io = FakeIo::arch();
         {
@@ -5871,7 +5881,7 @@ mod tests {
     fn тема_plymouth_выбирается_и_образ_пересобирается_сценарием_plymouth() {
         let io = plymouth_io();
         assert_eq!(apply(&io, SystemThemeKind::Plymouth, "t"), Outcome::ok(None));
-        // Сценарий plymouth — раньше голого mkinitcpio (Limine на CachyOS).
+        // The plymouth script comes before a bare mkinitcpio (Limine on CachyOS).
         assert_eq!(
             io.st().runs,
             vec![strings(&["plymouth-set-default-theme", "t"]), strings(&["/usr/lib/plymouth/plymouth-update-initrd"])]
@@ -5885,7 +5895,7 @@ mod tests {
         assert_eq!(apply(&io, SystemThemeKind::Plymouth, "t"), Outcome::fail("initramfs_failed"));
         assert_eq!(io.st().runs.last().unwrap(), &strings(&["plymouth-set-default-theme", "bgrt"]));
 
-        // Нечем пересобрать — тоже откат, а не «применено».
+        // Nothing to rebuild with: also a rollback, not "applied".
         let io = plymouth_io();
         {
             let mut s = io.st();
@@ -5955,7 +5965,7 @@ mod tests {
         assert_eq!(io.st().mutations, vec!["remove_tree /usr/share/sddm/themes/t".to_string()]);
     }
 
-    // ── стол набором (DeInstallSet) ──────────────────────────────────────
+    // ── desktop as a set (DeInstallSet) ──────────────────────────────────
 
     fn set_req(id: u64, de: &str, packages: &[String], deps_only: &[String], replace: &[&str], update_first: bool) -> ClientMsg<PrivOp> {
         ClientMsg::Request {
@@ -5971,7 +5981,7 @@ mod tests {
         }
     }
 
-    /// Проба ядра по ответам подделки — то, что окно делает до пароля.
+    /// The core probe by the fake's answers: what the window does before the password.
     fn preview_by(io: &FakeIo, base: &[&str]) -> plan::InstallPreview {
         let run = |cmd: &plan::Cmd| {
             let got = io.capture(&cmd.argv);
@@ -5984,13 +5994,13 @@ mod tests {
         io.st().answers = list.iter().map(|(k, v)| (k.to_string(), 0, v.to_string())).collect();
     }
 
-    /// Машина с ядром CachyOS и своей сборкой Deepin: `deepin-anything` тянет
-    /// готовый модуль под штатное `linux` — правило ядра (91ecc0c3) берёт
-    /// DKMS-вариант и заголовки стоящего ядра.
+    /// A machine with the CachyOS kernel and our own Deepin build: `deepin-anything`
+    /// pulls a prebuilt module for the stock `linux`, and the core rule (91ecc0c3)
+    /// takes the DKMS variant and the headers of the installed kernel.
     fn deepin_dkms_machine(io: &FakeIo) {
         answers(io, &[
             ("pacman -Sg", "deepin deepin-anything\ndeepin treeland\ndeepin deepin-session\n"),
-            // Второй круг пробы — уже с DKMS-вариантом и заголовками.
+            // The second round of the probe, already with the DKMS variant and headers.
             (
                 "pacman -Sp --needed --noconfirm --print-format %n deepin-anything treeland deepin-anything-dkms",
                 "deepin-anything\ntreeland\ndeepin-anything-dkms\nlinux-cachyos-headers\n",
@@ -6018,7 +6028,7 @@ mod tests {
         assert_eq!(p.deps_only, extras);
         let b = bench(io.clone());
         b.hello();
-        // Пересборка Deepin и набор — в одном сеансе: один пароль.
+        // Rebuilding Deepin and the set in one session: one password.
         b.send(ClientMsg::Request { id: 1, op: PrivOp::BuildDeps { names: strings(&["cmake"]) } });
         assert!(matches!(b.recv_final(), Some(HelperMsg::Done { id: 1, ok: true, .. })));
         b.send(set_req(2, "deepin", &p.targets, &p.deps_only, &[], true));
@@ -6044,24 +6054,24 @@ mod tests {
         evil.push("nvidia-dkms".into());
         b.send(set_req(1, "deepin", &evil, &[], &[], true));
         assert_eq!(b.recv(), refused(1, "refused.not-in-table"));
-        // --asdeps не на зависимость правила ядра.
+        // --asdeps not on a dependency of the core rule.
         b.send(set_req(2, "deepin", &p.targets, &strings(&["treeland"]), &[], true));
         assert_eq!(b.recv(), refused(2, "refused.set-rule"));
-        // Рецептный сеанс Deepin и группа целиком — никогда.
+        // The recipe-built Deepin session and the whole group: never.
         for (id, bad) in [(3, "deepin-session"), (4, "deepin"), (5, "deepin-kwin")] {
             let mut set = p.targets.clone();
             set.push(bad.into());
             b.send(set_req(id, "deepin", &set, &[], &[], false));
             assert_eq!(b.recv(), refused(id, "refused.not-in-table"), "{bad}");
         }
-        // Имя чужого стола.
+        // A name of another desktop.
         b.send(set_req(6, "river", &p.targets, &[], &[], false));
         assert_eq!(b.recv(), refused(6, "refused.not-in-table"));
         b.finish();
         assert!(io.touched_nothing(), "{:?}", io.st().runs);
     }
 
-    /// River 0.5 стоит, ставится river-classic: замена из таблицы ядра.
+    /// River 0.5 is installed, river-classic is being installed: a replacement from the core table.
     fn river_machine(io: &FakeIo, also_kwin: bool) {
         let si = if also_kwin {
             "Name            : river-classic\nConflicts With  : river  kwin\n"
@@ -6088,19 +6098,19 @@ mod tests {
         let b = bench(io.clone());
         b.hello();
         let pkgs = strings(&["river-classic"]);
-        // Без согласия — конфликт не снимается.
+        // Without consent the conflict is not removed.
         b.send(set_req(1, "river", &pkgs, &[], &[], false));
         assert_eq!(b.recv(), refused(1, "refused.conflict"));
-        // Лишнее имя к замене.
+        // An extra name for replacement.
         b.send(set_req(2, "river", &pkgs, &[], &["river", "foo"], false));
         assert_eq!(b.recv(), refused(2, "refused.conflict"));
-        // Пакет текущего стола (KDE) и вечное — отказ до вопросов к pacman.
+        // A package of the current desktop (KDE) and a permanent one: refusal before asking pacman.
         b.send(set_req(3, "river", &pkgs, &[], &["river", "konsole"], false));
         assert_eq!(b.recv(), refused(3, "refused.current-desktop-package"));
         b.send(set_req(4, "river", &pkgs, &[], &["glibc"], false));
         assert_eq!(b.recv(), refused(4, "refused.vital"));
         assert!(io.touched_nothing());
-        // Согласованная замена — одна транзакция с --ask=4.
+        // An agreed replacement: one transaction with --ask=4.
         b.send(set_req(5, "river", &pkgs, &[], &["river"], false));
         assert_eq!(b.recv_final(), Some(HelperMsg::Done { id: 5, ok: true, code: Some(0), message_key: None }));
         b.finish();
@@ -6110,7 +6120,7 @@ mod tests {
                 "pacman", "-S", "--needed", "--noconfirm", "--noprogressbar", "--color", "never", "--ask=4", "river-classic"
             ])]
         );
-        // Чужой конфликт рядом (kwin) — замена не поможет: --ask=4 снял бы KDE.
+        // A foreign conflict next to it (kwin): the replacement will not help, --ask=4 would remove KDE.
         let io = FakeIo::arch();
         river_machine(&io, true);
         let b = bench(io.clone());
@@ -6139,7 +6149,7 @@ mod tests {
         assert!(check_op(&op(PkgFamily::Arch, Some("river")), &facts(), 0).is_ok());
     }
 
-    // ── образ стола на SteamOS (Sysext) ──────────────────────────────────
+    // ── desktop image on SteamOS (Sysext) ────────────────────────────────
 
     fn steamos_io(desktop: &str) -> Arc<FakeIo> {
         use crate::steamos_sysext as sx;
@@ -6157,7 +6167,7 @@ mod tests {
         ClientMsg::Request { id, op: PrivOp::Sysext { op, de_id: de.into() } }
     }
 
-    /// Ход до итога: строки и итог.
+    /// Progress up to the result: lines and the result.
     fn progress_and_final(b: &Bench) -> (Vec<String>, Option<HelperMsg>) {
         let mut lines = Vec::new();
         loop {
@@ -6181,7 +6191,7 @@ mod tests {
         assert_eq!(lines.last().map(String::as_str), Some("@progress 100"));
         b.finish();
         let s = io.st();
-        // Тексты — из своего бинаря, каждый файл — заменой одним переименованием.
+        // Texts from its own binary, each file replaced with one rename.
         for f in sx::layout_files() {
             assert_eq!(s.files.get(&f.path), Some(&f.text), "{}", f.path);
             assert!(s.mutations.contains(&format!("rename {}.rexon-new {}", f.path, f.path)), "{}", f.path);
@@ -6189,7 +6199,7 @@ mod tests {
         assert_eq!(s.files.get(sx::HELPER_PATH), Some(&sx::helper_script()));
         assert_eq!(s.files.get(sx::LANG_FILE).map(String::as_str), Some("en\n"));
         assert_eq!(s.files.get(sx::DESKTOPS_LIST).map(String::as_str), Some("xfce\n"));
-        // /usr на SteamOS только для чтения — туда ни одной записи.
+        // /usr on SteamOS is read-only: not a single write there.
         assert!(!s.mutations.iter().any(|m| m.contains(" /usr/")), "{:?}", s.mutations);
         assert_eq!(
             s.runs,
@@ -6248,7 +6258,7 @@ mod tests {
 
     #[test]
     fn steamos_проверки_образа_стола() {
-        // Не SteamOS — отказ; стол не из таблицы; снятие текущего.
+        // Not SteamOS: refusal; a desktop not from the table; removing the current one.
         let io = FakeIo::arch();
         let b = bench(io.clone());
         b.hello();
@@ -6263,19 +6273,19 @@ mod tests {
         assert_eq!(b.recv(), refused(1, "refused.unknown-desktop"));
         b.send(sysext_req(2, SysextOp::Remove, "xfce"));
         assert_eq!(b.recv(), refused(2, "refused.current-desktop"));
-        // Пакеты на SteamOS по-прежнему не трогаем.
+        // Packages on SteamOS are still not touched.
         b.send(install(3, &["sddm"]));
         assert_eq!(b.recv(), refused(3, "refused.read-only-system"));
         b.finish();
         assert!(io.touched_nothing());
     }
 
-    // ── сторож З1 ────────────────────────────────────────────────────────
+    // ── guard Z1 ─────────────────────────────────────────────────────────
 
     #[test]
     fn сторож_нет_оболочки_в_privilege() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/privilege");
-        // Иглы собраны по частям, чтобы сторож не нашёл сам себя.
+        // The needles are assembled from parts so the guard does not find itself.
         let needles = [
             format!("{}{}", "sh ", "-c"),
             format!("\"{}\"", ["ba", "sh"].concat()),
@@ -6283,7 +6293,7 @@ mod tests {
             format!("Command::new(\"{}\")", "sh"),
             format!("Command::new(\"/bin/{}\")", "sh"),
         ];
-        // Строка с этой пометкой — данные (имена), а не запуск.
+        // A line with this mark is data (names), not a launch.
         let allow = ["сторож:", " имена, не запуск"].concat();
         let eval_word = ["ev", "al"].concat();
         let mut hits = Vec::new();
@@ -6314,7 +6324,7 @@ mod tests {
 
     #[test]
     fn тайм_аут_стенда_разумный() {
-        // Стенд опирается на SO_RCVTIMEO: проверим, что пустой сокет не виснет.
+        // The bench relies on SO_RCVTIMEO: check that an empty socket does not hang.
         let b = bench(FakeIo::arch());
         let t = Instant::now();
         b.hello();
@@ -6322,7 +6332,7 @@ mod tests {
         b.finish();
     }
 
-    // ── Шрифты для всех пользователей ────────────────────────────────────
+    // ── Fonts for all users ──────────────────────────────────────────────
 
     const FONTS: &str = "/usr/local/share/fonts";
 
@@ -6347,8 +6357,8 @@ mod tests {
         io
     }
 
-    /// Проверка до исполнения: только имена файлов шрифтов, дескрипторов
-    /// ровно по файлам, не на NixOS и не на SteamOS.
+    /// The check before execution: only font file names, descriptors exactly per
+    /// file, not on NixOS and not on SteamOS.
     #[test]
     fn шрифты_для_всех_проверка_операции() {
         let f = facts();
@@ -6397,13 +6407,13 @@ mod tests {
         let out = run_plan(&io, &plan_, vec![user_file("font-bad", b"#!/bin/sh")], &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::Refused("refused.not-a-font".into()));
         assert!(io.touched_nothing());
-        // fontconfig молчит (код 0, пусто) — тоже не шрифт.
+        // fontconfig is silent (code 0, empty): not a font either.
         let io = font_io();
         io.st().answers.clear();
         let out = run_plan(&io, &plan_, vec![user_file("font-empty", b"x")], &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::Refused("refused.not-a-font".into()));
         assert!(io.touched_nothing());
-        // Нет fontconfig вовсе — отказ, без копий.
+        // No fontconfig at all: refusal, without copies.
         let io = font_io();
         io.st().exe.remove("/usr/bin/fc-query");
         let out = run_plan(&io, &plan_, vec![user_file("font-nofc", b"x")], &Mutex::new(Vec::new()));
@@ -6415,14 +6425,14 @@ mod tests {
     fn чужой_шрифт_с_тем_же_именем_не_перезаписывается() {
         let io = font_io();
         io.st().files.insert(format!("{FONTS}/b.ttf"), "чужой".into());
-        // Второй файл занят: не ложится и первый (проверка — до касания).
+        // The second file is taken: the first is not placed either (the check comes before touching).
         let plan_ = Plan::FontInstall { names: strings(&["a.ttf", "b.ttf"]) };
         let fds = vec![user_file("font-a", b"a"), user_file("font-b", b"b")];
         let out = run_plan(&io, &plan_, fds, &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::Refused("refused.font-exists".into()));
         assert!(io.touched_nothing());
         assert_eq!(io.st().files[&format!("{FONTS}/b.ttf")], "чужой");
-        // Ссылка на месте приёмника — тоже отказ (сквозь неё не пишем).
+        // A link in place of the destination: also a refusal (we do not write through it).
         let io = font_io();
         io.st().links.insert(format!("{FONTS}/c.ttf"), "/etc/shadow".into());
         let out = run_plan(&io, &Plan::FontInstall { names: strings(&["c.ttf"]) }, vec![user_file("font-c", b"c")], &Mutex::new(Vec::new()));
@@ -6451,7 +6461,7 @@ mod tests {
 
     #[test]
     fn удаление_шрифта_через_ссылку_отказ() {
-        // Файл-ссылка и подкаталог-ссылка наружу — отказ до первого удаления.
+        // A file link and a subdirectory link pointing outside: refusal before the first removal.
         let io = font_io();
         {
             let mut s = io.st();
@@ -6474,7 +6484,7 @@ mod tests {
         assert_eq!(io.st().files["/usr/share/fonts/noto/N.ttf"], "пакет");
     }
 
-    // ── Экран входа SDDM: фон темы и перенос оформления ──────────────────
+    // ── SDDM login screen: theme background and look carry-over ──────────
 
     const BREEZE: &str = "/usr/share/sddm/themes/breeze";
     const PNG: &[u8] = b"\x89PNG\r\n\x1a\npicture";
@@ -6555,7 +6565,7 @@ mod tests {
         let out = run_plan(&io, &plan_, vec![user_file("bg-sh", b"#!/bin/sh\nid\n")], &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::Refused("refused.login-image".into()));
         assert!(io.touched_nothing());
-        // Темы нет, тема без файла настроек, `.user` — ссылка.
+        // No theme, a theme without a settings file, `.user` is a link.
         let io = sddm_io();
         let none = Plan::SddmBackground { theme: "nope".into(), image: false };
         assert_eq!(run_plan(&io, &none, Vec::new(), &Mutex::new(Vec::new())), Outcome::Refused("refused.sddm-theme".into()));
@@ -6610,12 +6620,12 @@ mod tests {
         let out = run_plan(&io, &plan_, vec![user_file("look-fail", b"[General]\n")], &Mutex::new(Vec::new()));
         assert!(matches!(out, Outcome::Done { ok: false, .. }), "{out:?}");
         assert_eq!(io.st().files["/etc/sddm.conf.d/kde_settings.conf"], before);
-        // Не текст — отказ до касания.
+        // Not text: refusal before touching.
         let io = sddm_io();
         let out = run_plan(&io, &plan_, vec![user_file("look-bin", b"\xff\xfe\x00bin")], &Mutex::new(Vec::new()));
         assert_eq!(out, Outcome::Refused("refused.look-file".into()));
         assert!(io.touched_nothing());
-        // Нет учётной записи sddm / нет setpriv — отказ до касания.
+        // No sddm account / no setpriv: refusal before touching.
         let io = sddm_io();
         io.st().answers.clear();
         io.st().answers.push(("getent passwd sddm".into(), 2, String::new()));

@@ -1,17 +1,17 @@
-//! Golden-сверка порта констант с оригиналом `rexon/extensions/constants.py`.
+//! Golden check of the constants port against the original `rexon/extensions/constants.py`.
 //!
-//! Байтовый эталон снят с Python только для сериализуемых данных
-//! (`RECOMMENDED_EXTENSIONS`); множества/словари неупорядочены и проверяются
-//! юнит-тестами по содержимому.
+//! A byte golden file was captured from Python only for serializable data
+//! (`RECOMMENDED_EXTENSIONS`); sets/dicts are unordered and are checked
+//! by unit tests on their contents.
 
 mod i18n_pin;
 
 use rexon_core::constants;
 use rexon_core::models::to_json_indent1;
 
-/// `RECOMMENDED_EXTENSIONS` сериализуются байт-в-байт как Python
-/// `json.dumps(..., ensure_ascii=False, indent=1)`: порядок полей, пропуск
-/// отсутствующего `github_repo`, кириллица без экранирования.
+/// `RECOMMENDED_EXTENSIONS` serialize byte for byte like Python
+/// `json.dumps(..., ensure_ascii=False, indent=1)`: field order, a missing
+/// `github_repo` omitted, Cyrillic without escaping.
 #[test]
 fn recommended_extensions_serialize_byte_identical() {
     let golden = include_str!("golden/recommended_extensions.json");
@@ -19,19 +19,19 @@ fn recommended_extensions_serialize_byte_identical() {
     assert_eq!(to_json_indent1(&value), golden);
 }
 
-/// Версии.
+/// Versions.
 #[test]
 fn versions() {
     assert_eq!(constants::REXON_VERSION, (0, 1, 1));
     assert_eq!(constants::FORMAT_VERSION, 3);
 }
 
-/// Классификация типов совпадает с Python-множествами.
+/// Type classification matches the Python sets.
 #[test]
 fn type_classification() {
     assert!(constants::is_valid_type("theme-gtk"));
     assert!(constants::is_valid_type("plugin"));
-    assert!(!constants::is_valid_type("theme-pack")); // v2 убран
+    assert!(!constants::is_valid_type("theme-pack")); // v2 removed
     assert!(!constants::is_valid_type("nonsense"));
 
     assert!(constants::is_appearance("wallpaper-video-adaptive"));
@@ -44,31 +44,31 @@ fn type_classification() {
     assert!(constants::is_scripted("desktop-tool"));
     assert!(!constants::is_scripted("theme-gtk"));
 
-    // Типы кастомизации окружений — безопасные (только копирование и
-    // штатные команды включения), поэтому в категории «Оформление».
+    // Desktop customization types are safe (only copying and
+    // standard enable commands), hence in the «Оформление» category.
     assert!(constants::is_valid_type("gnome-shell-extension"));
     assert!(constants::is_appearance("cinnamon-applet"));
     assert!(!constants::is_scripted("kde-kwin-script"));
 
-    // VALID_TYPES = вся матрица `de_customization::ROWS` (34 типа оформления,
-    // с 01.11.2026 и рамки Openbox/labwc) плюс 2 скриптовых; отдельного
-    // списка типов больше нет.
+    // VALID_TYPES = the whole `de_customization::ROWS` matrix (34 decoration types,
+    // since 01.11.2026 also Openbox/labwc frames) plus 2 script ones; there is no
+    // separate type list any more.
     assert_eq!(constants::valid_types().len(), 36);
     assert_eq!(constants::category_appearance().len(), 34);
     assert_eq!(constants::CATEGORY_EXTENSIONS.len(), 2);
 }
 
-/// Пути установки раскрываются от дома пользователя; типов без записи в
-/// INSTALL_PATHS (wallpaper-pack, скриптовые) — None.
+/// Install paths are expanded from the user's home; types without an entry in
+/// INSTALL_PATHS (wallpaper-pack, script ones) — None.
 ///
-/// ⚠️ ЖИВОГО ОКРУЖЕНИЯ ЗДЕСЬ БЫТЬ НЕ ДОЛЖНО. Сверка подменяла только
-/// `HOME`, а [`constants::install_path`] сперва смотрит `XDG_CONFIG_HOME`
-/// и `XDG_DATA_HOME` (починка, см. её докстринг). Пока эти переменные у
-/// запускающего пусты, значение считается от `HOME` и всё сходится; стоит
-/// им появиться — и сверка краснеет, ничего не сломав. Ровно тот же класс
-/// уже ловили на сверках моста (`c7d5687`). Поэтому берём под контроль всю
-/// четвёрку и кладём значения ТУДА, куда их по умолчанию кладёт стандарт:
-/// ожидания в теле от этого не меняются.
+/// ⚠️ THE LIVE ENVIRONMENT MUST NOT LEAK IN HERE. The check used to fake only
+/// `HOME`, while [`constants::install_path`] looks at `XDG_CONFIG_HOME`
+/// and `XDG_DATA_HOME` first (a fix, see its docstring). While those variables are
+/// empty for whoever runs it, the value is derived from `HOME` and everything matches; once
+/// they appear, the check turns red without anything being broken. Exactly the same class
+/// was already caught in the bridge checks (`c7d5687`). So we take control of all
+/// four and put the values WHERE the standard puts them by default:
+/// the expectations in the body do not change because of this.
 #[test]
 fn install_paths() {
     let saved: Vec<(&str, Option<String>)> =
@@ -93,11 +93,11 @@ fn install_paths() {
         constants::install_path("font-pack").unwrap().to_str().unwrap(),
         "/home/tester/.local/share/fonts"
     );
-    // wallpaper-pack и скриптовые типы — не в INSTALL_PATHS.
+    // wallpaper-pack and script types are not in INSTALL_PATHS.
     assert!(constants::install_path("wallpaper-pack").is_none());
     assert!(constants::install_path("plugin").is_none());
 
-    // XDG-каталог не по умолчанию: путь обязан уехать за ним, а не за HOME.
+    // A non-default XDG directory: the path must follow it, not HOME.
     std::env::set_var("XDG_CONFIG_HOME", "/run/cfg");
     std::env::set_var("XDG_DATA_HOME", "/run/data");
     assert_eq!(
@@ -117,11 +117,11 @@ fn install_paths() {
     }
 }
 
-/// Метки, иконки, KDE-команды, градиенты.
+/// Labels, icons, KDE commands, gradients.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn labels_icons_commands() {
-    // Подписи — английские `msgid`, русский — в `po/ru.po` дословно прежний.
+    // Captions are English `msgid`s; the Russian in `po/ru.po` is word for word the old one.
     {
         let _lang = i18n_pin::ru();
         assert_eq!(constants::type_label("theme-gtk").as_deref(), Some("Тема GTK"));
@@ -148,7 +148,7 @@ fn labels_icons_commands() {
     assert!(constants::type_gradient("nope").is_none());
 }
 
-/// Форматы обоев и поддерживаемые расширения файлов.
+/// Wallpaper formats and supported file extensions.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn wallpaper_and_file_formats() {

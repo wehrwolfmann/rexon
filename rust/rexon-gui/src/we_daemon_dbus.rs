@@ -1,30 +1,33 @@
-// DaemonDBusClient — QML-синглтон доступности демона обоев по D-Bus.
+// DaemonDBusClient — the QML singleton of the wallpaper daemon's
+// availability over D-Bus.
 //
-// Порт
-// `ui/src/daemon_dbus.cpp` waywallen (MIT, (c) hypengw; атрибуция в NOTICE).
+// A port of waywallen's `ui/src/daemon_dbus.cpp` (MIT, (c) hypengw;
+// attribution in NOTICE).
 //
-// Кого он обслуживает: вендорный `dialog/DaemonNotRunDialog.qml` — диалог
-// «демон не запущен» со списком зависших процессов, кнопкой остановки и
-// кнопкой запуска.
+// Whom it serves: the vendored `dialog/DaemonNotRunDialog.qml` — the
+// «daemon is not running» dialog with a list of hung processes, a stop
+// button and a launch button.
 //
-// ⚠️ Главная починка партии: ЖИВЫЕ ПОДПИСКИ. У оригинала их три —
-// `QDBusServiceWatcher` на появление/исчезновение имени, сигналы демона
-// `Ready`/`ShuttingDown` и `PropertiesChanged`. В нашем Python-мосте не было
-// ни одной: состояние обновлялось ТОЛЬКО явным `refreshWsPort()` из QML,
-// поэтому диалог не замечал ни запуска демона, ни его остановки — он
-// показывал снимок на момент открытия и застывал. Подписки живут в шиме
-// (`cpp/rexon_we_singletons.cpp`) и сводятся к одному инвокаблу
-// `onDaemonBusChanged()`: что именно изменилось, всё равно выясняет
-// повторный опрос.
+// Warning: the main fix of the batch: LIVE SUBSCRIPTIONS. The original has
+// three — a `QDBusServiceWatcher` on the name appearing/disappearing, the
+// daemon's `Ready`/`ShuttingDown` signals and `PropertiesChanged`. Our
+// Python bridge had none: the state was updated ONLY by an explicit
+// `refreshWsPort()` from QML, so the dialog noticed neither the daemon
+// starting nor it stopping — it showed a snapshot at the moment of opening
+// and froze. The subscriptions live in the shim
+// (`cpp/rexon_we_singletons.cpp`) and come down to one
+// `onDaemonBusChanged()` invokable: what exactly changed is found out by a
+// repeated poll anyway.
 //
-// ⚠️ Осознанная развилка Rexon, унаследованная от Python-моста: ветку
-// `VersionMismatch` мы НЕ включаем. Оригинал сравнивает `Version` демона с
-// версией СВОЕГО приложения и при расхождении отказывается работать; у
-// Rexon свой цикл обновления движка (вкладка ставит демона сама), поэтому
-// живой демон с портом считается совместимым. `VersionMissing` остаётся —
-// это сборка без свойства `Version`, с ней говорить действительно не о чем.
+// Warning: a deliberate Rexon divergence inherited from the Python bridge:
+// we do NOT enable the `VersionMismatch` branch. The original compares the
+// daemon's `Version` with the version of ITS OWN application and refuses to
+// work on a mismatch; Rexon has its own engine update cycle (the tab
+// installs the daemon itself), so a live daemon with a port is considered
+// compatible. `VersionMissing` stays — that is a build without the
+// `Version` property, and there is really nothing to talk to it about.
 
-/// Мост cxx-qt: синглтон `DaemonDBusClient`.
+/// cxx-qt bridge: the `DaemonDBusClient` singleton.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -46,37 +49,37 @@ pub mod qobject {
 
     unsafe extern "C++" {
         include!("rexon_we_singletons.h");
-        /// Опрос демона по шине: JSON `{connected, port, version,
+        /// Polling the daemon over the bus: JSON `{connected, port, version,
         /// versionMissing}`.
         fn rexon_we_dbus_probe() -> QByteArray;
 
-        /// Подписаться на события шины. Возвращает число удавшихся подписок.
+        /// Subscribe to bus events. Returns the number of successful subscriptions.
         ///
         /// # Safety
-        /// `receiver` — живой QObject (указатель на самого себя).
+        /// `receiver` is a live QObject (a pointer to itself).
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_we_dbus_watch(receiver: *mut QObject) -> i32;
 
         fn rexon_we_launch_daemon() -> bool;
         fn rexon_we_kill_process(pid: i32) -> bool;
 
-        /// Попросить демона остановиться (метод `Quit` его интерфейса).
+        /// Ask the daemon to stop (the `Quit` method of its interface).
         fn rexon_we_quit_daemon() -> bool;
 
-        /// Попросить демона заново опросить дисплеи (метод
-        /// `RefreshDisplays` его интерфейса).
+        /// Ask the daemon to poll the displays again (the `RefreshDisplays`
+        /// method of its interface).
         fn rexon_we_refresh_displays() -> bool;
 
-        /// Переключатель «да/нет» в `QSettings` приложения — там же, где
-        /// его держит оригинал.
+        /// A yes/no toggle in the application's `QSettings` — in the same place
+        /// the original keeps it.
         #[cxx_name = "rexon_we_settings_bool"]
         fn settings_bool(key: &QString, fallback: bool) -> bool;
         #[cxx_name = "rexon_we_set_settings_bool"]
         fn set_settings_bool(key: &QString, value: bool);
     }
 
-    /// Состояние доступности демона. Значения — из оригинала
-    /// (`daemon_dbus.cppm`), QML читает их как `DaemonDBusClient.Connected`.
+    /// The daemon availability state. The values come from the original
+    /// (`daemon_dbus.cppm`), QML reads them as `DaemonDBusClient.Connected`.
     #[qenum(DaemonDBusClient)]
     enum Status {
         Disconnected,
@@ -138,42 +141,43 @@ pub mod qobject {
         #[cxx_name = "daemonShutdownExpected"]
         fn daemon_shutdown_expected(self: &DaemonDBusClient) -> bool;
 
-        /// Синхронный опрос демона (порт + версия). Возвращает свежий порт.
+        /// A synchronous poll of the daemon (port + version). Returns the fresh port.
         #[qinvokable]
         #[cxx_name = "refreshWsPort"]
         fn refresh_ws_port(self: Pin<&mut DaemonDBusClient>) -> u16;
 
-        /// Запустить демона. Возвращает, удалось ли.
+        /// Launch the daemon. Returns whether it worked.
         #[qinvokable]
         #[cxx_name = "launchDaemon"]
         fn launch_daemon(self: Pin<&mut DaemonDBusClient>) -> bool;
 
-        /// Остановить демона его же методом `Quit`. Возвращает, принят ли
-        /// вызов; отказ страница «Статус» показывает тостом сама.
+        /// Stop the daemon with its own `Quit` method. Returns whether the call
+        /// was accepted; the «Status» page shows a refusal as a toast itself.
         #[qinvokable]
         #[cxx_name = "quitDaemon"]
         fn quit_daemon(self: Pin<&mut DaemonDBusClient>) -> bool;
 
-        /// Заново опросить дисплеи: кнопка «Обновить дисплеи» страницы
-        /// «Дисплеи» (`DisplaysPage.qml`). Возвращает, принят ли вызов;
-        /// на отказ страница сама показывает тост.
+        /// Poll the displays again: the «Refresh displays» button of the
+        /// «Displays» page (`DisplaysPage.qml`). Returns whether the call was
+        /// accepted; on a refusal the page shows a toast itself.
         #[qinvokable]
         #[cxx_name = "refreshDisplays"]
         fn refresh_displays(self: &DaemonDBusClient) -> bool;
 
-        /// Живые процессы демона по /proc: `{pid, cmdline}`.
+        /// Live daemon processes by /proc: `{pid, cmdline}`.
         #[qinvokable]
         #[cxx_name = "listWaywallenProcesses"]
         fn list_waywallen_processes(self: &DaemonDBusClient) -> QList_QVariant;
 
-        /// SIGTERM зависшему процессу демона.
+        /// SIGTERM to a hung daemon process.
         #[qinvokable]
         #[cxx_name = "killProcess"]
         fn kill_process(self: &DaemonDBusClient, pid: u32) -> bool;
 
-        /// Шина сообщила, что что-то изменилось (появление/исчезновение
-        /// демона, `Ready`, `ShuttingDown`, `PropertiesChanged`). Зовётся
-        /// подписками шима — имя обязано совпадать со строкой в `SLOT(...)`.
+        /// The bus reported that something changed (the daemon appearing or
+        /// disappearing, `Ready`, `ShuttingDown`, `PropertiesChanged`). Called
+        /// by the shim's subscriptions — the name must match the string in
+        /// `SLOT(...)`.
         #[qinvokable]
         #[cxx_name = "onDaemonBusChanged"]
         fn on_daemon_bus_changed(self: Pin<&mut DaemonDBusClient>);
@@ -186,30 +190,30 @@ use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 
-/// Значения перечисления `Status` — те же, что у оригинала.
+/// Values of the `Status` enum — the same as in the original.
 const STATUS_DISCONNECTED: i32 = 0;
 const STATUS_VERSION_MISSING: i32 = 1;
 const STATUS_CONNECTED: i32 = 3;
 
-/// Имя процесса демона в `/proc/<pid>/comm` (как в оригинале).
+/// The daemon process name in `/proc/<pid>/comm` (as in the original).
 const DAEMON_COMM: &str = "waywallen";
 
-/// Ключ переключателя в `QSettings` — тот же, что у оригинала
+/// The toggle key in `QSettings` — the same as in the original
 /// (`daemon_dbus.cpp: kQuitOnDaemonShutdownKey`).
 const QUIT_ON_SHUTDOWN_KEY: &str = "quitOnDaemonShutdown";
 
-/// Значение переключателя по умолчанию — как у оригинала.
+/// The toggle's default value — as in the original.
 const QUIT_ON_SHUTDOWN_DEFAULT: bool = true;
 
 pub struct DaemonDBusClientRust {
     status: i32,
     ws_port: u16,
     version: String,
-    /// Переключатель со страницы настроек. Живёт в `QSettings`, как у
-    /// оригинала.
+    /// The toggle from the settings page. It lives in `QSettings`, as in the
+    /// original.
     quit_on_daemon_shutdown: bool,
-    /// Демона остановили МЫ: диалог «демон не запущен» в этом случае не
-    /// показывается (`DaemonNotRunDialog.qml`).
+    /// WE stopped the daemon: the «daemon is not running» dialog is not shown
+    /// in this case (`DaemonNotRunDialog.qml`).
     daemon_shutdown_expected: bool,
 }
 
@@ -229,8 +233,8 @@ impl cxx_qt::Initialize for qobject::DaemonDBusClient {
     fn initialize(mut self: Pin<&mut Self>) {
         let this: *mut qobject::DaemonDBusClient =
             unsafe { self.as_mut().get_unchecked_mut() };
-        // Подписки ставятся ДО первого опроса: между опросом и подпиской
-        // демон мог бы появиться, и мы бы этого не заметили.
+        // The subscriptions are set up BEFORE the first poll: between the poll
+        // and the subscription the daemon could appear, and we would not notice.
         unsafe { qobject::rexon_we_dbus_watch(this.cast()) };
         let stored = qobject::settings_bool(
             &QString::from(QUIT_ON_SHUTDOWN_KEY),
@@ -262,13 +266,13 @@ impl qobject::DaemonDBusClient {
         self.rust().quit_on_daemon_shutdown
     }
 
-    /// ⚠️ Осознанная развилка Rexon. У оригинала этот переключатель ещё и
-    /// ЗАКРЫВАЕТ приложение, когда демон сообщил `ShuttingDown`: там
-    /// приложение — это UI самого waywallen, и без демона ему нечего
-    /// показывать. У нас это вкладка внутри Rexon, и закрывать по уходу
-    /// демона обоев весь Rexon нельзя. Поэтому здесь остаётся только
-    /// хранение значения: переключатель помнит выбор и переживает
-    /// перезапуск, а ветку выхода мы не переносим.
+    /// Warning: a deliberate Rexon divergence. In the original this toggle
+    /// also CLOSES the application when the daemon reported `ShuttingDown`:
+    /// there the application is waywallen's own UI, and without the daemon it
+    /// has nothing to show. For us this is a tab inside Rexon, and closing the
+    /// whole of Rexon because the wallpaper daemon left is not allowed. So
+    /// only storing the value remains here: the toggle remembers the choice
+    /// and survives a restart, while the exit branch is not ported.
     fn set_quit_on_daemon_shutdown(mut self: Pin<&mut Self>, value: bool) {
         if self.rust().quit_on_daemon_shutdown == value {
             return;
@@ -282,8 +286,8 @@ impl qobject::DaemonDBusClient {
         self.rust().daemon_shutdown_expected
     }
 
-    /// `set_daemon_shutdown_expected` оригинала: сигнал только на реальном
-    /// изменении.
+    /// The original's `set_daemon_shutdown_expected`: a signal only on a real
+    /// change.
     fn set_daemon_shutdown_expected(mut self: Pin<&mut Self>, value: bool) {
         if self.rust().daemon_shutdown_expected == value {
             return;
@@ -330,10 +334,11 @@ impl qobject::DaemonDBusClient {
             }
             self.as_mut().status_changed();
         }
-        // Демон снова на связи — ждать его остановку больше нечего.
-        // У оригинала признак снимает `launchDaemon`, но там опрос и
-        // запуск идут одной дорогой; у нас демона может поднять и сам
-        // Rexon (`DaemonControl`), и тогда снять признак больше некому.
+        // The daemon is back in touch — there is no stop to wait for any more.
+        // In the original the flag is cleared by `launchDaemon`, but there the
+        // poll and the launch go one way; for us the daemon may also be brought
+        // up by Rexon itself (`DaemonControl`), and then nobody else would clear
+        // the flag.
         if status == STATUS_CONNECTED {
             self.as_mut().set_daemon_shutdown_expected(false);
         }
@@ -349,9 +354,9 @@ impl qobject::DaemonDBusClient {
         qobject::rexon_we_launch_daemon()
     }
 
-    /// Порт `DaemonDBusClient::quitDaemon`: «ждём остановку» поднимается
-    /// ДО вызова и снимается, если демон отказался, — иначе диалог
-    /// «демон не запущен» так и не появился бы.
+    /// A port of `DaemonDBusClient::quitDaemon`: "waiting for the stop" is
+    /// raised BEFORE the call and cleared if the daemon refused — otherwise the
+    /// «daemon is not running» dialog would never appear.
     fn quit_daemon(mut self: Pin<&mut Self>) -> bool {
         if self.rust().status != STATUS_CONNECTED {
             return false;
@@ -364,8 +369,8 @@ impl qobject::DaemonDBusClient {
         false
     }
 
-    /// `refreshDisplays` оригинала: без связи с демоном — отказ сразу,
-    /// вызов по шине не делается.
+    /// The original's `refreshDisplays`: without a connection to the daemon —
+    /// a refusal at once, no call over the bus is made.
     fn refresh_displays(&self) -> bool {
         if self.rust().status != STATUS_CONNECTED {
             return false;
@@ -380,18 +385,20 @@ impl qobject::DaemonDBusClient {
         qobject::rexon_we_kill_process(pid as i32)
     }
 
-    /// Порт `listWaywallenProcesses`: обход `/proc`, `comm == "waywallen"`.
+    /// A port of `listWaywallenProcesses`: walking `/proc`,
+    /// `comm == "waywallen"`.
     ///
-    /// Чистый Rust, а не шим: чтение файлов Qt тут не нужнее `std::fs`, а
-    /// проверять «это pid» разбором имени каталога — то же самое, что делает
-    /// оригинал через `QString::toUInt`.
+    /// Plain Rust rather than a shim: Qt is no more needed for reading files
+    /// here than `std::fs`, and checking "is this a pid" by parsing the
+    /// directory name is the same thing the original does through
+    /// `QString::toUInt`.
     fn list_waywallen_processes(&self) -> qobject::QList_QVariant {
         let mut out = QList::<QVariant>::default();
         let Ok(entries) = std::fs::read_dir("/proc") else {
             return out;
         };
-        // Порядок обхода /proc произволен — сортируем по pid, иначе список
-        // в диалоге прыгал бы между открытиями.
+        // The /proc walk order is arbitrary — we sort by pid, otherwise the list
+        // in the dialog would jump between openings.
         let mut found: Vec<(u32, String)> = Vec::new();
         for entry in entries.flatten() {
             let name = entry.file_name();
@@ -405,7 +412,7 @@ impl qobject::DaemonDBusClient {
             if comm.trim() != DAEMON_COMM {
                 continue;
             }
-            // cmdline — argv через нулевые байты с хвостовым нулём.
+            // cmdline is argv separated by null bytes with a trailing null.
             let cmdline = std::fs::read(format!("/proc/{pid}/cmdline"))
                 .map(|raw| {
                     String::from_utf8_lossy(&raw)

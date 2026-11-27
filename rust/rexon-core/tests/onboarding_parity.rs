@@ -1,16 +1,16 @@
-//! Тесты сценария обучения при первом запуске.
+//! Tests of the first-run tutorial scenario.
 //!
-//! Оригинала в Python нет — модуль написан сразу на Rust, поэтому здесь не
-//! golden-сверка, а проверка самих правил: порядок шагов, «показывать один
-//! раз», отличие первого запуска от осознанного отказа, устойчивость
-//! идентификаторов.
+//! There is no Python original — the module was written in Rust right away, so this is not a
+//! golden check but a check of the rules themselves: the order of steps, "show once",
+//! the difference between a first run and a deliberate refusal, stability of
+//! identifiers.
 
 use rexon_core::i18n;
 use rexon_core::onboarding as ob;
 
-/// Тексты сверяются на ИСХОДНОМ языке: иначе ответ зависел бы от локали
-/// машины и от того, стоит ли в системе пакет с каталогами. Русский
-/// сверяется отдельно, по самому каталогу — `russian_catalog_keeps_old_texts`.
+/// Texts are compared in the SOURCE language: otherwise the answer would depend on the machine's
+/// locale and on whether the package with catalogs is installed. Russian
+/// is checked separately, against the catalog itself — `russian_catalog_keeps_old_texts`.
 fn english() {
     i18n::set_language(Some(i18n::SOURCE_LANGUAGE));
 }
@@ -19,9 +19,9 @@ fn ids(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| (*s).to_string()).collect()
 }
 
-/// Идентификаторы шагов — часть сохранённого состояния у пользователей.
-/// Переименование заставит уже пройденный урок показаться заново, поэтому
-/// список закреплён тестом намеренно.
+/// Step identifiers are part of the users' saved state.
+/// Renaming would make an already completed lesson show again, so
+/// the list is pinned by a test on purpose.
 #[test]
 fn step_ids_are_stable() {
     let got: Vec<&str> = ob::STEPS.iter().map(|s| s.id).collect();
@@ -41,9 +41,9 @@ fn step_ids_are_stable() {
     assert_eq!(ob::total_steps(), 8);
 }
 
-/// Каждый шаг привязан к существующей вкладке главного окна либо к окну
-/// целиком. Опечатка в идентификаторе вкладки означала бы подсказку,
-/// указывающую в пустоту.
+/// Every step is bound to an existing tab of the main window or to the window
+/// as a whole. A typo in a tab identifier would mean a hint
+/// pointing into nowhere.
 #[test]
 fn anchors_point_to_real_tabs() {
     const TABS: &[&str] = &[
@@ -59,7 +59,7 @@ fn anchors_point_to_real_tabs() {
             assert!(TABS.contains(&tab), "шаг {}: нет вкладки {tab}", step.id);
         }
     }
-    // Первый и последний шаги — карточки по центру, без привязки.
+    // The first and last steps are centered cards, without binding.
     assert_eq!(ob::STEPS[0].anchor, ob::Anchor::Window);
     assert_eq!(ob::STEPS[ob::STEPS.len() - 1].anchor, ob::Anchor::Window);
 }
@@ -69,7 +69,7 @@ fn texts_are_filled() {
     for step in ob::STEPS {
         assert!(!step.title.trim().is_empty(), "шаг {}: пустой заголовок", step.id);
         assert!(step.text.len() > 40, "шаг {}: текст слишком короткий", step.id);
-        // Жаргон в обучении недопустим — оно как раз для тех, кто его не знает.
+        // Jargon is not allowed in the tutorial — it is exactly for those who do not know it.
         for word in ["QSS", "kpackage", "layer-shell", "mmap", "D-Bus"] {
             assert!(
                 !step.text.contains(word),
@@ -80,19 +80,19 @@ fn texts_are_filled() {
     }
 }
 
-/// Первый запуск отличается от осознанного отказа: иначе человек,
-/// однажды сказавший «не нужно», получал бы вопрос каждый раз.
+/// A first run differs from a deliberate refusal: otherwise a person who
+/// once said «not needed» would get the question every time.
 #[test]
 fn start_distinguishes_first_run_from_refusal() {
     assert_eq!(ob::on_start(None, &[]), ob::Start::Ask);
     assert_eq!(ob::on_start(Some(false), &[]), ob::Start::Nothing);
     assert_eq!(ob::on_start(Some(true), &[]), ob::Start::Show("welcome"));
-    // Обучение включено, но частично пройдено — продолжаем с места.
+    // The tutorial is on but partially completed — we continue from where it stopped.
     assert_eq!(
         ob::on_start(Some(true), &ids(&["welcome", "tab_appearance"])),
         ob::Start::Show("appearance_catalog")
     );
-    // Пройдено целиком — не мешаем.
+    // Completed in full — we do not get in the way.
     assert_eq!(ob::on_start(Some(true), &ob::skip_all()), ob::Start::Nothing);
 }
 
@@ -108,14 +108,14 @@ fn each_step_is_shown_once() {
     assert_eq!(order.len(), ob::total_steps());
     assert!(ob::is_finished(&seen));
 
-    // Повторная пометка не плодит записей.
+    // A repeated mark does not multiply entries.
     let before = seen.len();
     ob::mark_seen(&mut seen, "welcome");
     assert_eq!(seen.len(), before);
 }
 
-/// «Далее» идёт вперёд по сценарию, а не возвращается к пропущенному
-/// раньше шагу — иначе обучение ходило бы кругами.
+/// «Next» moves forward through the scenario, rather than going back to a step skipped
+/// earlier — otherwise the tutorial would go in circles.
 #[test]
 fn next_button_moves_forward() {
     let seen = ids(&["tab_appearance"]);
@@ -124,10 +124,10 @@ fn next_button_moves_forward() {
         Some("appearance_catalog"),
         "уже показанный шаг должен пропускаться"
     );
-    // С последнего шага идти некуда.
+    // There is nowhere to go from the last step.
     assert!(ob::step_after("finish", &[]).is_none());
-    // Неизвестный идентификатор (состояние от старой версии) не роняет
-    // обучение — начинаем с первого непоказанного.
+    // An unknown identifier (state from an old version) does not bring down
+    // the tutorial — we start from the first one not shown.
     assert_eq!(
         ob::step_after("шаг-из-будущего", &[]).map(|s| s.id),
         Some("welcome")
@@ -154,20 +154,20 @@ fn progress_label() {
     assert_eq!(ob::progress_label(3, 8), "Step 3 of 8");
 }
 
-// ── Накладка: геометрия, карточка, наведение ───────────────────────────────
+// ── Overlay: geometry, card, hover ─────────────────────────────────────────
 //
-// Эталон — код `_Spotlight`/`Tour._show`/`Tour._aim` на день переноса.
-// ⛔ Qt не стартует: всё здесь — чистая арифметика и таблица шагов.
+// The reference is the code of `_Spotlight`/`Tour._show`/`Tour._aim` as of the day of the move.
+// ⛔ Qt does not start: everything here is pure arithmetic and the step table.
 
 #[test]
 fn spotlight_hole_pads_the_target() {
-    // Вырез шире цели на отступ с каждой стороны.
+    // The cutout is wider than the target by a margin on each side.
     assert_eq!(
         ob::spotlight_hole(Some((100, 50, 200, 30))),
         Some((100 - 8, 50 - 8, 200 + 16, 30 + 16))
     );
     assert_eq!(ob::TARGET_PAD, 8);
-    // Цели нет либо она вырожденная — затемняем окно целиком.
+    // There is no target, or it is degenerate — we darken the whole window.
     assert_eq!(ob::spotlight_hole(None), None);
     assert_eq!(ob::spotlight_hole(Some((10, 10, 0, 20))), None);
     assert_eq!(ob::spotlight_hole(Some((10, 10, 20, -1))), None);
@@ -175,20 +175,20 @@ fn spotlight_hole_pads_the_target() {
 
 #[test]
 fn card_goes_below_the_hole_when_it_fits() {
-    // Окно 1000×700, вырез сверху — карточка под ним с зазором.
+    // A 1000×700 window, the cutout at the top — the card below it with a gap.
     let p = ob::card_placement((1000, 700), (400, 200), Some((100, 40, 200, 60)));
     assert_eq!(p.y, 40 + 60 - 1 + ob::CARD_GAP);
-    // По горизонтали — по центру выреза, но не ближе зазора к краю окна:
-    // здесь центр дал бы ровно 0, и карточка прижалась бы к самой рамке.
+    // Horizontally — centered on the cutout, but not closer than the gap to the window edge:
+    // here the center would give exactly 0, and the card would press against the frame itself.
     assert_eq!(p.x, ob::CARD_GAP);
-    // Вырез посередине окна — центрирование видно без клампа.
+    // The cutout in the middle of the window — centering is visible without clamping.
     let p = ob::card_placement((1000, 700), (400, 200), Some((400, 40, 200, 60)));
     assert_eq!(p.x, (400 + 200 / 2) - 400 / 2);
 }
 
 #[test]
 fn card_goes_above_when_there_is_no_room_below() {
-    // Вырез у самого низа: под ним карточка не помещается.
+    // The cutout at the very bottom: the card does not fit below it.
     let p = ob::card_placement((1000, 700), (400, 200), Some((100, 600, 200, 60)));
     assert_eq!(p.y, 600 - ob::CARD_GAP - 200);
     assert!(p.y >= 0);
@@ -196,24 +196,24 @@ fn card_goes_above_when_there_is_no_room_below() {
 
 #[test]
 fn card_centers_when_it_fits_nowhere() {
-    // Вырез во весь экран — ни сверху, ни снизу места нет.
+    // A full-screen cutout — no room either above or below.
     let p = ob::card_placement((1000, 700), (400, 600), Some((0, 0, 1000, 700)));
     assert_eq!(p.y, (700 - 600) / 2);
-    // Без выреза карточка ровно по центру.
+    // Without a cutout the card is exactly centered.
     let p = ob::card_placement((1000, 700), (400, 200), None);
     assert_eq!((p.x, p.y), ((1000 - 400) / 2, (700 - 200) / 2));
 }
 
 #[test]
 fn card_never_hangs_off_the_window_edge() {
-    // Вырез у левого края — карточка прижимается с зазором, а не уезжает
-    // за границу окна.
+    // A cutout at the left edge — the card is pressed in with a gap rather than going
+    // beyond the window border.
     let p = ob::card_placement((1000, 700), (400, 200), Some((0, 40, 40, 40)));
     assert_eq!(p.x, ob::CARD_GAP);
-    // Тот же случай справа.
+    // The same case on the right.
     let p = ob::card_placement((1000, 700), (400, 200), Some((960, 40, 40, 40)));
     assert_eq!(p.x, 1000 - 400 - ob::CARD_GAP);
-    // Карточка шире окна: прижать некуда — но за левый край не уводим.
+    // The card is wider than the window: nowhere to press it — but we do not move it past the left edge.
     let p = ob::card_placement((300, 700), (400, 200), Some((0, 40, 40, 40)));
     assert_eq!(p.x, ob::CARD_GAP);
 }
@@ -227,14 +227,14 @@ fn card_content_switches_buttons_on_the_last_step() {
     assert_eq!(first.skip_text, ob::btn_skip());
     assert!(first.skip_visible);
 
-    // На последнем шаге отказываться уже не от чего (правило #13).
+    // On the last step there is nothing left to refuse (rule #13).
     let last = ob::card_content("finish").unwrap();
     assert_eq!(last.progress, format!("Step {} of {}", ob::total_steps(), ob::total_steps()));
     assert_eq!(last.next_text, ob::btn_done());
     assert_eq!(last.skip_text, "");
     assert!(!last.skip_visible);
 
-    // Незнакомый шаг — пустой карточки быть не должно.
+    // An unknown step — there must be no empty card.
     assert!(ob::card_content("нет-такого").is_none());
 }
 
@@ -245,7 +245,7 @@ fn every_step_has_content_and_an_aim() {
         assert!(!c.title.is_empty(), "{}: пустой заголовок", step.id);
         assert!(!c.text.is_empty(), "{}: пустой текст", step.id);
         assert!(!c.progress.is_empty(), "{}: пустая подпись", step.id);
-        // Наведение согласовано с привязкой шага.
+        // Hover agrees with the step's binding.
         let aim = ob::aim_target(step.id);
         match step.anchor {
             ob::Anchor::Tab(id) => assert_eq!(aim, ob::AimTarget::TabHeader(id)),
@@ -253,7 +253,7 @@ fn every_step_has_content_and_an_aim() {
             ob::Anchor::Window => assert_eq!(aim, ob::AimTarget::WholeWindow),
         }
     }
-    // Незнакомый шаг не рисует пустую рамку.
+    // An unknown step does not draw an empty frame.
     assert_eq!(ob::aim_target("нет-такого"), ob::AimTarget::WholeWindow);
 }
 
@@ -262,22 +262,22 @@ fn seen_from_settings_survives_garbage() {
     use serde_json::json;
     assert_eq!(ob::normalize_seen(None), Vec::<String>::new());
     assert_eq!(ob::normalize_seen(Some(&json!(null))), Vec::<String>::new());
-    // Не список — начинаем с чистого листа, а не падаем.
+    // Not a list — we start from a clean slate rather than crash.
     assert_eq!(ob::normalize_seen(Some(&json!("welcome"))), Vec::<String>::new());
     assert_eq!(ob::normalize_seen(Some(&json!(7))), Vec::<String>::new());
     assert_eq!(
         ob::normalize_seen(Some(&json!(["welcome", "finish"]))),
         vec!["welcome".to_string(), "finish".to_string()]
     );
-    // Нестроковые элементы приводятся к строке, как это делал `str(x)`.
+    // Non-string elements are converted to a string, as `str(x)` did.
     assert_eq!(ob::normalize_seen(Some(&json!([1, true]))), vec!["1", "true"]);
 }
 
-// ── стиль карточки: цвета от скина, числа из ядра ───────────────────────
+// ── card style: colors from the skin, numbers from the core ─────────────
 
-/// Палитра накладки следует ВЫБРАННОМУ скину. Раньше все три цвета были
-/// запечены под `steam_dark`, и человек, выбравший «Светлый», получал
-/// тёмно-синюю карточку посреди светлого окна.
+/// The overlay palette follows the SELECTED skin. Previously all three colors were
+/// baked in for `steam_dark`, and a person who chose «Light» got
+/// a dark blue card in the middle of a light window.
 #[test]
 fn overlay_palette_follows_the_skin() {
     let dark = ob::overlay_palette_for("steam_dark");
@@ -292,15 +292,15 @@ fn overlay_palette_follows_the_skin() {
             "{id}: фон карточки обязан отличаться"
         );
     }
-    // Незнакомый скин не оставляет карточку без цветов.
+    // An unknown skin does not leave the card without colors.
     let unknown = ob::overlay_palette_for("нет-такого");
     assert_eq!(unknown, dark, "откат к скину по умолчанию");
 }
 
-/// Ни одно сочетание не делает надпись невидимой: текст на карточке не
-/// совпадает с её фоном, а надпись на акцентной кнопке — с акцентом.
-/// Именно это ломалось при запечённой палитре, поэтому проверка идёт по
-/// ВСЕМ скинам сразу, а не по одному.
+/// No combination makes the text invisible: the text on the card does not
+/// match its background, and the text on the accent button does not match the accent.
+/// This is exactly what broke with the baked palette, so the check goes over
+/// ALL skins at once, not over one.
 #[test]
 fn no_skin_makes_the_card_unreadable() {
     for (id, _) in rexon_core::ui_base::available_skins() {
@@ -308,12 +308,12 @@ fn no_skin_makes_the_card_unreadable() {
         assert_ne!(p.card_text, p.card_background, "{id}: текст слился с фоном");
         assert_ne!(p.card_muted, p.card_background, "{id}: подпись слилась с фоном");
         assert_ne!(p.on_accent, p.halo_hex, "{id}: надпись слилась с кнопкой");
-        // Наведение обязано быть ЗАМЕТНЫМ: на скине по умолчанию
-        // приглушённый и основной текст совпадают (только белый на
-        // тёмном), и прежний переход в белый ничего не менял.
+        // Hover must be NOTICEABLE: on the default skin
+        // the muted and the main text are the same (only white on
+        // dark), and the former switch to white changed nothing.
         assert_ne!(p.halo_hex, p.card_muted, "{id}: наведение на «Пропустить» невидимо");
         assert_ne!(p.halo_hover, p.halo_hex, "{id}: наведение на «Далее» невидимо");
-        // Надпись на акцентной кнопке выбрана по яркости самого акцента.
+        // The text on the accent button is chosen by the brightness of the accent itself.
         let (r, g, b) = p.halo;
         let want = if rexon_core::ui_base::is_dark_rgb(r, g, b) {
             ob::ON_ACCENT_LIGHT
@@ -324,20 +324,20 @@ fn no_skin_makes_the_card_unreadable() {
     }
 }
 
-/// Кегли карточки считает ядро, и нижние границы держатся.
+/// The card's font sizes are computed by the core, and the lower bounds hold.
 #[test]
 fn card_point_sizes_keep_their_floor() {
     assert_eq!(ob::card_point_sizes(10), (9, 14));
     assert_eq!(ob::card_point_sizes(20), (19, 23));
-    // Крошечный системный кегль не роняет подпись и заголовок ниже порога.
+    // A tiny system font size does not push the label and title below the threshold.
     assert_eq!(
         ob::card_point_sizes(1),
         (ob::PROGRESS_POINT_MIN, ob::TITLE_POINT_MIN)
     );
 }
 
-/// Таблицы стилей собраны из тех же чисел и цветов, что отдаёт палитра, —
-/// второй копии в Qt-шиме не осталось.
+/// Style sheets are built from the same numbers and colors the palette returns —
+/// no second copy is left in the Qt shim.
 #[test]
 fn card_qss_is_built_from_the_palette() {
     let p = ob::overlay_palette_for("light");
@@ -360,16 +360,16 @@ fn card_qss_is_built_from_the_palette() {
     assert!(skip.contains(&p.halo_hex), "наведение «Пропустить» не из палитры");
 }
 
-// ── Сеанс поверх файла настроек (общего для Rust- и Python-окна) ─────────
+// ── Session over the settings file (shared by the Rust and Python windows) ─
 
-/// Менеджер настроек на ВРЕМЕННОМ файле: профиль человека сверки не трогают.
+/// A settings manager on a TEMPORARY file: the checks do not touch the person's profile.
 fn scratch_settings(name: &str) -> rexon_core::settings::SettingsManager {
-    // Имя сверки + PID: соседние сверки в этом дереве делают так же
-    // (`aeroshell_live_stand`, `app_parity`, `completeness_live_stand`), и по
-    // делу — без PID два одновременных прогона `cargo test-core` берут один и
-    // тот же каталог, и `remove_dir_all` одного стирает его из-под другого.
-    // Пойманный случай: «No such file or directory» при записи настроек,
-    // когда прогон шёл параллельно с чужим.
+    // Check name + PID: the neighbouring checks in this tree do the same
+    // (`aeroshell_live_stand`, `app_parity`, `completeness_live_stand`), and for a
+    // reason — without the PID two simultaneous `cargo test-core` runs take one and
+    // the same directory, and the `remove_dir_all` of one wipes it from under the other.
+    // A caught case: «No such file or directory» when writing settings,
+    // when the run went in parallel with someone else's.
     let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
         .join("onboarding_session")
         .join(format!("{name}-{}", std::process::id()));
@@ -383,7 +383,7 @@ fn scratch_settings(name: &str) -> rexon_core::settings::SettingsManager {
     }
 }
 
-/// Перечитать тот же файл заново — это «второй запуск».
+/// Rereading the same file anew is the "second run".
 fn reopen(m: &rexon_core::settings::SettingsManager) -> rexon_core::settings::SettingsManager {
     rexon_core::settings::SettingsManager {
         settings: rexon_core::settings::load_settings(&m.config_file),
@@ -427,7 +427,7 @@ fn session_walkthrough_is_not_shown_twice() {
     assert_eq!(ob::session_start(&reopen(&m)), ob::Start::Nothing);
 }
 
-/// Закрытое на середине окно продолжает с того же места.
+/// A window closed halfway continues from the same place.
 #[test]
 fn session_progress_is_saved_after_each_step() {
     let mut m = scratch_settings("progress");
@@ -446,7 +446,7 @@ fn session_skip_and_replay() {
     ob::session_skip(&mut m).unwrap();
     assert_eq!(ob::session_start(&reopen(&m)), ob::Start::Nothing);
 
-    // Повтор из Настроек включает обучение даже после отказа.
+    // A repeat from Settings turns the tutorial on even after a refusal.
     ob::session_answer(&mut m, false).1.unwrap();
     let (start, saved) = ob::session_replay(&mut m);
     saved.unwrap();
@@ -454,8 +454,8 @@ fn session_skip_and_replay() {
     assert_eq!(ob::session_start(&reopen(&m)), ob::Start::Show("welcome"));
 }
 
-/// Ключи и вид значений — те, что пишет Python-окно (`Tour._save_seen`):
-/// файл общий, и разойдись они — человек увидел бы обучение дважды.
+/// Keys and value shapes are those the Python window writes (`Tour._save_seen`):
+/// the file is shared, and if they diverged a person would see the tutorial twice.
 #[test]
 fn session_reads_what_the_python_window_wrote() {
     let m = scratch_settings("python");
@@ -472,11 +472,11 @@ fn session_reads_what_the_python_window_wrote() {
     assert_eq!(ob::session_start(&reopen(&m)), ob::Start::Ask);
 }
 
-// ── Перевод: русский после переноса строк в каталог ─────────────────────────
+// ── Translation: Russian after moving the strings into the catalog ──────────
 //
-// Строки обучения были зашиты по-русски; теперь исходный язык английский, а
-// русский живёт в `po/ru.po`. Сверка держит слово: для русского интерфейса
-// ничего не поменялось. Ниже — ДОСЛОВНЫЕ тексты до переноса.
+// The tutorial strings used to be hard-coded in Russian; now the source language is English, and
+// Russian lives in `po/ru.po`. The check keeps the promise: for the Russian interface
+// nothing changed. Below are the VERBATIM texts before the move.
 
 const RU_BEFORE: &[(&str, &str, &str)] = &[
     (
@@ -531,8 +531,8 @@ const RU_BEFORE: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// Собрать `po/<lang>.po` настоящим `msgfmt` и прочитать тем же читателем,
-/// что и продукт.
+/// Compile `po/<lang>.po` with the real `msgfmt` and read it with the same reader
+/// as the product.
 fn compiled_catalog(lang: &str) -> i18n::Catalog {
     let po = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../po/{lang}.po"));
     let out = std::env::temp_dir().join(format!("rexon-onboarding-{lang}-{}.mo", std::process::id()));

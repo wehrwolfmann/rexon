@@ -1,41 +1,44 @@
-// Подстановки в переведённые строки QML — ОДНО место на весь наш QML.
+// Substitutions into translated QML strings — ONE place for all of our QML.
 //
-// Ядро подставляет `%1` через `i18n::fill`, и при языке справа налево каждая
-// подстановка уходит в изолят U+2068…U+2069 (FSI/PDI): имя файла, путь,
-// число или английское название не перемешивают порядок слов арабской или
-// еврейской фразы вокруг себя. Строки, которые собирает сам QML
-// (`qsTranslate(…).arg(…)`), мимо ядра — у `String.arg` изолятов нет, поэтому
-// они идут сюда:
+// The core substitutes `%1` via `i18n::fill`, and with a right-to-left
+// language every substitution goes into a U+2068…U+2069 isolate (FSI/PDI):
+// a file name, a path, a number or an English title does not scramble the
+// word order of the Arabic or Hebrew sentence around it. Strings that QML
+// builds itself (`qsTranslate(…).arg(…)`) bypass the core — `String.arg`
+// has no isolates — so they come here:
 //
 //     RexonBidi { id: bidi }
 //     text: bidi.arg(qsTranslate("rexon", "Saved to %1"), dir)
 //
-// Изолят ставится по направлению приложения (`Qt.application.layoutDirection`
-// — то же, чем корень окна включает зеркалирование), а не по месту: даже в
-// физической зоне строка арабская, и подстановке внутри неё нужна граница.
-// Слева направо вывод побайтно прежний — ни одного невидимого знака.
+// The isolate follows the application direction
+// (`Qt.application.layoutDirection` — the same thing the window root uses
+// to turn on mirroring), not the location: even in a physical zone the
+// string is Arabic, and a substitution inside it needs a boundary.
+// Left to right, the output is byte-for-byte unchanged — not a single
+// invisible character.
 //
-// Сторож — `rust/rexon-core/tests/rtl_parity.rs`: `.arg(` в нашем QML пишется
-// только в этом файле.
+// The guard is `rust/rexon-core/tests/rtl_parity.rs`: `.arg(` in our QML
+// is written only in this file.
 
 import QtQml
 
 QtObject {
     id: bidi
 
-    /// Интерфейс пишется справа налево.
+    /// The interface is written right to left.
     readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
 
-    /// Обернуть подстановку в изолят при письме справа налево.
+    /// Wrap a substitution in an isolate when writing right to left.
     function isolate(value) {
         const s = String(value);
         return bidi.rtl && s !== "" ? "\u2068" + s + "\u2069" : s;
     }
 
-    /// `template` с `%1`…`%9` на места `values` по номеру — как цепочка
-    /// `.arg()` над переводом, но за один проход (подстановка, в которой
-    /// самой есть «%2», не съест следующую) и с изолятами справа налево.
-    /// Чужой номер и «%» без цифры остаются как есть.
+    /// `template` with `%1`…`%9` replaced by `values` by number — like a chain
+    /// of `.arg()` over the translation, but in a single pass (a substitution
+    /// that itself contains "%2" does not swallow the next one) and with
+    /// isolates for right to left. A foreign number and a "%" without a digit
+    /// stay as they are.
     function arg(template) {
         const values = Array.prototype.slice.call(arguments, 1);
         return String(template).replace(/%([1-9])/g, (m, d) =>

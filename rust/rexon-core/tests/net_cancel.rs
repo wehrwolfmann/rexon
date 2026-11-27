@@ -1,18 +1,18 @@
-//! Отмена запроса, который уже ушёл в сеть (боевой транспорт `UreqNet`).
+//! Cancelling a request that has already gone out to the network (the production transport `UreqNet`).
 //!
-//! Отдельный файл от `net_parity.rs` сознательно: там голден-сверка с Python
-//! на ПОДДЕЛЬНОМ транспорте, здесь — живой сокет. Поднимаем свой медленный
-//! HTTP-сервер на localhost (без TLS: проверяется механизм отмены, а не
-//! шифрование) и смотрим три вещи:
-//!   * обычный запрос к нему проходит и отдаёт тело;
-//!   * взведённый в другом потоке токен рвёт ожидание ответа за доли секунды,
-//!     а не ждёт медленный сервер;
-//!   * сервер видит, что соединение реально закрылось — то есть канал
-//!     освобождён, а не «ответ выброшен, а запрос доживает».
+//! A separate file from `net_parity.rs` on purpose: there it is a golden check against Python
+//! on a FAKE transport, here it is a live socket. We bring up our own slow
+//! HTTP server on localhost (without TLS: the cancellation mechanism is checked, not
+//! encryption) and look at three things:
+//!   * an ordinary request to it goes through and returns the body;
+//!   * a token armed in another thread breaks the wait for the answer in fractions of a second,
+//!     instead of waiting for the slow server;
+//!   * the server sees that the connection really closed — i.e. the channel
+//!     is freed, rather than "the answer is thrown away, but the request lives on".
 //!
-//! Регресс к багу Wehrwolfmann 2026-07-31: при быстром переключении категорий
-//! запросы покинутых категорий продолжали занимать канал, и время ответа
-//! открытой категории росло с 0,95 с до 12,3 с.
+//! Regression of Wehrwolfmann's bug of 2026-07-31: when switching categories quickly,
+//! the requests of abandoned categories kept occupying the channel, and the response time
+//! of the open category grew from 0.95 s to 12.3 s.
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -23,18 +23,18 @@ use rexon_core::net::{CancelToken, NetError, NetIo, UreqNet, CANCELLED_DETAIL};
 
 const UA: &str = "Rexon-test";
 
-/// Итог со стороны сервера: успел ли клиент дождаться ответа и закрылось ли
-/// соединение до того, как сервер собрался отвечать.
+/// The outcome on the server side: did the client manage to wait for the answer, and did
+/// the connection close before the server got around to answering.
 #[derive(Debug, PartialEq, Eq)]
 enum ServerSaw {
-    /// Клиент отвалился, пока сервер «думал».
+    /// The client dropped off while the server was "thinking".
     ClientGone,
-    /// Клиент дождался ответа.
+    /// The client waited for the answer.
     Served,
 }
 
-/// Медленный сервер: принимает одно соединение, читает запрос, ждёт `delay`
-/// и только потом отвечает. Возвращает порт и канал с тем, что он увидел.
+/// A slow server: accepts one connection, reads the request, waits `delay`
+/// and only then answers. Returns the port and a channel with what it saw.
 fn slow_server(delay: Duration, body: &'static str) -> (u16, mpsc::Receiver<ServerSaw>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("слушатель");
     let port = listener.local_addr().unwrap().port();
@@ -43,7 +43,7 @@ fn slow_server(delay: Duration, body: &'static str) -> (u16, mpsc::Receiver<Serv
         let Ok((mut sock, _)) = listener.accept() else {
             return;
         };
-        // Прочитать строку запроса и заголовки (до пустой строки).
+        // Read the request line and headers (up to the empty line).
         let mut head = Vec::new();
         let mut byte = [0u8; 1];
         while head.len() < 8192 {
@@ -56,10 +56,10 @@ fn slow_server(delay: Duration, body: &'static str) -> (u16, mpsc::Receiver<Serv
             }
         }
         std::thread::sleep(delay);
-        // Ключевая проверка: ДО ответа смотрим, на месте ли ещё клиент.
-        // Оборвавший соединение шлёт FIN, и чтение сразу возвращает 0 байт;
-        // ждущий ответа — молчит (WouldBlock). Запись же успешна в обоих
-        // случаях (ядро буферизует), поэтому по ней судить нельзя.
+        // The key check: BEFORE answering, see whether the client is still there.
+        // One that dropped the connection sends FIN, and a read returns 0 bytes at once;
+        // one waiting for the answer is silent (WouldBlock). A write succeeds in both
+        // cases (the kernel buffers it), so it cannot be used to judge.
         if !client_still_there(&mut sock) {
             let _ = tx.send(ServerSaw::ClientGone);
             return;
@@ -83,9 +83,9 @@ fn client_still_there(sock: &mut TcpStream) -> bool {
     sock.set_read_timeout(Some(Duration::from_millis(200))).ok();
     let mut buf = [0u8; 1];
     match sock.read(&mut buf) {
-        Ok(0) => false,                                   // FIN — клиент ушёл
-        Ok(_) => true,                                    // что-то прислал
-        Err(e) => e.kind() == std::io::ErrorKind::WouldBlock, // молчит, но жив
+        Ok(0) => false,                                   // FIN — the client left
+        Ok(_) => true,                                    // sent something
+        Err(e) => e.kind() == std::io::ErrorKind::WouldBlock, // silent, but alive
     }
 }
 
@@ -102,7 +102,7 @@ fn обычный_запрос_проходит_через_отменяемый_
 
 #[test]
 fn отмена_рвёт_ожидание_ответа_не_дожидаясь_сервера() {
-    // Сервер «думает» 5 секунд — столько же ждал бы и клиент без отмены.
+    // The server "thinks" for 5 seconds — as long as the client would wait without cancellation.
     let (port, saw) = slow_server(Duration::from_secs(5), "поздно");
     let mut net = UreqNet::new();
     let token = net.cancel_token();
@@ -128,7 +128,7 @@ fn отмена_рвёт_ожидание_ответа_не_дожидаясь_�
         waited < Duration::from_secs(2),
         "отмена сработала за {waited:?} — ожидание сервера не прервано"
     );
-    // Сервер, досидев свои 5 секунд, должен обнаружить закрытое соединение.
+    // The server, having sat out its 5 seconds, must discover a closed connection.
     assert_eq!(
         saw.recv_timeout(Duration::from_secs(15)),
         Ok(ServerSaw::ClientGone),
@@ -155,18 +155,18 @@ fn запрос_с_уже_взведённым_токеном_в_сеть_не_�
         NetError::Transport { detail } => assert!(detail.contains(CANCELLED_DETAIL)),
         other => panic!("ожидался обрыв, получено {other:?}"),
     }
-    // Сервер либо вообще не увидел соединения (таймаут канала), либо увидел
-    // и тут же его потерял — оба исхода означают «в сеть не пошли».
+    // The server either did not see the connection at all (channel timeout), or saw it
+    // and lost it right away — both outcomes mean "did not go to the network".
     match saw.recv_timeout(Duration::from_secs(8)) {
         Err(_) | Ok(ServerSaw::ClientGone) => {}
         Ok(ServerSaw::Served) => panic!("сервер успел обслужить отменённый запрос"),
     }
 }
 
-/// Живой HTTPS к боевому серверу каталога: проверяет, что дробление ожидания
-/// на ломти не ломает TLS (ожидание прерывается прямо посреди приёма записи
-/// шифрованного потока) и что системное хранилище корней подхватывается.
-/// Требует интернет, поэтому по умолчанию не запускается:
+/// Live HTTPS to the production catalog server: checks that splitting the wait
+/// into slices does not break TLS (the wait is interrupted right in the middle of receiving a record
+/// of the encrypted stream) and that the system root store is picked up.
+/// Requires the internet, so it is not run by default:
 /// `cargo test -p rexon-core --test net_cancel -- --ignored`.
 #[test]
 #[ignore = "нужен интернет"]
@@ -204,9 +204,9 @@ fn токен_отменяет_только_свой_транспорт() {
     );
 }
 
-/// Сервер, который отдаёт ШАПКУ ответа сразу, а тело — не целиком, и молчит.
-/// Нужен, чтобы отмена застала клиента ВНУТРИ чтения тела, а не в ожидании
-/// шапки: это другой участок кода и отдельный класс зависаний.
+/// A server that sends the response HEAD right away, and the body not in full, and goes silent.
+/// Needed so that cancellation catches the client INSIDE reading the body, not while waiting for
+/// the head: this is a different section of code and a separate class of hangs.
 fn stalling_body_server(promised: usize, sent: &'static str) -> (u16, mpsc::Receiver<ServerSaw>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("слушатель");
     let port = listener.local_addr().unwrap().port();
@@ -226,26 +226,26 @@ fn stalling_body_server(promised: usize, sent: &'static str) -> (u16, mpsc::Rece
                 break;
             }
         }
-        // Шапка обещает больше, чем мы пошлём, а соединение держим открытым:
-        // клиент остаётся внутри чтения тела.
+        // The head promises more than we will send, and we keep the connection open:
+        // the client stays inside reading the body.
         let resp = format!("HTTP/1.1 200 OK\r\nContent-Length: {promised}\r\n\r\n{sent}");
         let _ = sock.write_all(resp.as_bytes());
         let _ = sock.flush();
         let _ = tx.send(ServerSaw::Served);
-        // Держим сокет открытым, пока клиент не уйдёт сам.
+        // Keep the socket open until the client leaves by itself.
         std::thread::sleep(Duration::from_secs(20));
     });
     (port, rx)
 }
 
-/// ⚠️ РЕГРЕСС 2026-09-19: отмена ВО ВРЕМЯ ЧТЕНИЯ ТЕЛА не срабатывала вовсе —
-/// поток уходил в вечный горячий круг и жёг ядро на 100 %.
+/// ⚠️ REGRESSION of 2026-09-19: cancellation DURING BODY READING did not work at all —
+/// the thread went into an eternal hot loop and burned a core at 100 %.
 ///
-/// Причина: отменённый транспорт отдавал `io::ErrorKind::Interrupted`, а
-/// `Read::read_to_end` этот вид ошибки по договору стандартной библиотеки
-/// ИГНОРИРУЕТ и повторяет чтение. Наружу это выходило так: человек закрывает
-/// окно, а Rexon не закрывается — фоновая задача вкладки не кончается, и
-/// выход ждёт её вечно.
+/// The cause: the cancelled transport returned `io::ErrorKind::Interrupted`, and
+/// `Read::read_to_end`, by the standard library's contract, IGNORES this kind of error
+/// and retries the read. Outside it looked like this: a person closes
+/// the window, but Rexon does not close — the tab's background task does not finish, and
+/// the exit waits for it forever.
 #[test]
 fn отмена_посреди_чтения_тела_возвращает_управление() {
     let (port, saw) = stalling_body_server(1_000_000, "начало тела");

@@ -1,45 +1,49 @@
-// SteamModel — вкладка «Steam» на Rust + cxx-qt + QML.
+// SteamModel — the "Steam" tab in Rust + cxx-qt + QML.
 //
-// Перенесена на QML по общей схеме вкладок: решения и подписи — ядро,
-// здесь оболочка QObject, в QML только разметка.
+// Ported to QML following the common tab scheme: decisions and labels are
+// the core's, here is the QObject shell, and QML holds only the markup.
 //
-// Что здесь есть и чего нет:
-//   * ЕСТЬ оболочка QObject: неизменные подписи страницы, палитра, модель
-//     списка витрины заставок (роли делегата), карточки текущей страницы
-//     фонов, крупная карточка, чип состояния, полоса пагинации и приём
-//     событий от фоновых задач (`crate::steam_workers`);
-//   * НЕТ ни одной строки продуктовых решений — что показать, в каком
-//     порядке, каким цветом и какими словами, отвечает
+// What is here and what is not:
+//   * there IS the QObject shell: the page's fixed labels, the palette, the
+//     list model of the splash showcase (the delegate's roles), the cards of
+//     the current background page, the large card, the status chip, the
+//     pagination strip and receiving events from the background tasks
+//     (`crate::steam_workers`);
+//   * there is NOT a single line of product decisions — what to show, in
+//     what order, in what colour and with what words is answered by
 //     `rexon_core::qt_steam`.
 //
-// ⚠️ Сетка фонов отдаётся СПИСКОМ (`bgCards`), а не второй моделью. Причина
-// не в лени: на странице лежит `cols × BG_ROWS` карточек, то есть 25 при
-// пяти столбцах и не больше 40 при восьми — ровно тот объём, ради которого
-// заводить вторую модель со своими ролями и своим сбросом незачем. Витрина
-// заставок моделью осталась: там весь список целиком (у владельца — сотни
-// роликов), и повторитель по нему был бы уже расточительством.
+// Warning: the background grid is exposed as a LIST (`bgCards`), not as a
+// second model. The reason is not laziness: a page holds `cols × BG_ROWS`
+// cards, that is, 25 with five columns and no more than 40 with eight —
+// exactly the volume for which there is no reason to create a second model
+// with its own roles and its own reset. The splash showcase stayed a model:
+// there it is the whole list (the owner has hundreds of clips), and a
+// repeater over it would already be wasteful.
 //
-// ⚠️ Витрину заставок наполняет не сама модель, а хозяин страницы
-// (`setMovies`), и это не незаконченность, а граница: скан роликов, конфиг,
-// избранное и автозапуск — побочные действия, их место в объекте `actions`
-// (тот же приём, что у «Расширений» с установкой `.rxn`). Python-хозяин
-// кладёт туда `rexon/qt_steam/qml_window.py`, Rust-хозяин — `steam_actions.rs`;
-// оба зовут один и тот же поток ядра `rexon_core::session_splash` поверх
-// живого исполнителя `rexon_core::splash_exec` (до 08.09.2026 тот был заперт
-// в `rexon-py`, и Rust-объекта действий у вкладки быть не могло).
+// Warning: the splash showcase is filled not by the model itself but by the
+// page host (`setMovies`), and this is not unfinished work but a boundary:
+// the clip scan, the config, favourites and autostart are side actions,
+// and their place is in the `actions` object (the same technique as in
+// "Extensions" with installing `.rxn`). The Python host puts
+// `rexon/qt_steam/qml_window.py` there, the Rust host `steam_actions.rs`;
+// both call the same core flow `rexon_core::session_splash` over the live
+// executor `rexon_core::splash_exec` (until 08.09.2026 it was locked inside
+// `rexon-py`, and the tab could not have a Rust action object).
 
-/// Мост cxx-qt: содержимое вкладки «Steam». Оно же — модель витрины заставок.
+/// cxx-qt bridge: the content of the "Steam" tab. It is also the splash
+/// showcase model.
 ///
-/// ⚠️ Тип зовётся `SteamModel`, а не `SteamPage`: .qml-файлы модуля сами
-/// становятся QML-типами по имени файла, и `SteamPage` занят
-/// `qml/SteamPage.qml`.
+/// Warning: the type is called `SteamModel`, not `SteamPage`: the module's
+/// .qml files themselves become QML types by file name, and `SteamPage` is
+/// taken by `qml/SteamPage.qml`.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
         include!(<QtCore/QAbstractListModel>);
-        /// Базовый Qt-тип. БЕЗ `#[qobject]`: на каждый `#[qobject]`-тип в
-        /// `extern "C++Qt"` cxx-qt печатает шимы приведения с именем по
-        /// ТИПУ, и второй мост крейта с той же базой даёт `duplicate symbol`.
+        /// The base Qt type. WITHOUT `#[qobject]`: for every `#[qobject]` type in
+        /// `extern "C++Qt"` cxx-qt emits cast shims named by TYPE, and a second
+        /// bridge of the crate with the same base gives a `duplicate symbol`.
         type QAbstractListModel;
 
         include!("cxx-qt-lib/qhash.h");
@@ -64,15 +68,15 @@ pub mod qobject {
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
     }
 
-    // Окно верхнего уровня — ради ОДНОГО вопроса: показывает ли композитор
-    // нашу поверхность.
+    // The top-level window — for the sake of ONE question: whether the
+    // compositor shows our surface.
     //
-    // ⚠️ Свойства `visibility` у окна для этого НЕ хватает. На Wayland
-    // протокол xdg-shell состояния «свёрнуто» клиенту не сообщает вовсе:
-    // после сворачивания KWin окно продолжает числиться обычным
-    // (`Window.Windowed`), и превью крутило бы видео в никуда. Честный
-    // признак — `QWindow::isExposed()`; Q_PROPERTY у него нет, поэтому из
-    // QML он достаётся только так.
+    // Warning: the window's `visibility` property is NOT enough for this. On
+    // Wayland the xdg-shell protocol does not tell the client the "minimized"
+    // state at all: after minimizing in KWin the window keeps counting as
+    // normal (`Window.Windowed`), and the preview would play video into
+    // nowhere. The honest flag is `QWindow::isExposed()`; it has no
+    // Q_PROPERTY, so this is the only way to get it from QML.
     unsafe extern "C++" {
         include!(<QtCore/QObject>);
         type QObject;
@@ -88,7 +92,7 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[base = QAbstractListModel]
-        // ── Окно и шапка ────────────────────────────────────────────────
+        // ── Window and header ───────────────────────────────────────────
         #[qproperty(QString, window_title, cxx_name = "windowTitle",
                     READ = window_title, CONSTANT)]
         #[qproperty(i32, window_min_width, cxx_name = "windowMinWidth",
@@ -101,12 +105,12 @@ pub mod qobject {
                     READ = header_title_point_size, CONSTANT)]
         #[qproperty(i32, group_title_point_size, cxx_name = "groupTitlePointSize",
                     READ = group_title_point_size, CONSTANT)]
-        // Подвкладки: [{key, label, checked}, …].
+        // Sub-tabs: [{key, label, checked}, …].
         #[qproperty(QList_QVariant, segments, READ = segments,
                     NOTIFY = section_changed)]
         #[qproperty(QString, section, READ = section, NOTIFY = section_changed)]
 
-        // ── Секция «Видеозаставка» ──────────────────────────────────────
+        // ── The "Video splash" section ──────────────────────────────────
         #[qproperty(QString, splash_group_title, cxx_name = "splashGroupTitle",
                     READ = splash_group_title, CONSTANT)]
         #[qproperty(QString, splash_pitch, cxx_name = "splashPitch",
@@ -161,7 +165,7 @@ pub mod qobject {
                     READ = sv_max_cols, CONSTANT)]
         #[qproperty(i32, sv_hover_delay_ms, cxx_name = "svHoverDelayMs",
                     READ = sv_hover_delay_ms, CONSTANT)]
-        // Меняющееся у витрины.
+        // What changes in the showcase.
         #[qproperty(QList_QVariant, sv_chips, cxx_name = "svChips",
                     READ = sv_chips, NOTIFY = showcase_changed)]
         #[qproperty(QString, sv_count_text, cxx_name = "svCountText",
@@ -175,20 +179,20 @@ pub mod qobject {
                     READ = rotate_on, NOTIFY = showcase_changed)]
         #[qproperty(bool, sound_on, cxx_name = "soundOn",
                     READ = sound_on, NOTIFY = showcase_changed)]
-        // Крупная карточка: {present, title, source, labels, event,
-        // starText, starOn, status, poster}.
+        // The large card: {present, title, source, labels, event, starText,
+        // starOn, status, poster}.
         #[qproperty(QMap_QString_QVariant, hero, READ = hero,
                     NOTIFY = hero_changed)]
-        // Что ДОЛЖНО играть в крупной карточке прямо сейчас: `file://…`
-        // либо «» (не играем). Сигнал тот же, что у карточки: превью и
-        // карточка показывают ОДИН ролик, и меняются они всегда вместе.
+        // What MUST play in the large card right now: `file://…` or "" (not
+        // playing). The signal is the same as the card's: the preview and the card
+        // show ONE clip, and they always change together.
         #[qproperty(QString, preview_source, cxx_name = "previewSource",
                     READ = preview_source, NOTIFY = preview_source_changed)]
-        // Чип состояния: {text, background, border, color}.
+        // The status chip: {text, background, border, color}.
         #[qproperty(QMap_QString_QVariant, state_chip, cxx_name = "stateChip",
                     READ = state_chip, NOTIFY = hero_changed)]
 
-        // ── Секция «Steam-фоны» ─────────────────────────────────────────
+        // ── The "Steam backgrounds" section ─────────────────────────────
         #[qproperty(QString, bg_group_title, cxx_name = "bgGroupTitle",
                     READ = bg_group_title, CONSTANT)]
         #[qproperty(QString, bg_group_desc, cxx_name = "bgGroupDesc",
@@ -215,25 +219,26 @@ pub mod qobject {
                     READ = bg_min_cols, CONSTANT)]
         #[qproperty(i32, bg_max_cols, cxx_name = "bgMaxCols",
                     READ = bg_max_cols, CONSTANT)]
-        // Карточки ТЕКУЩЕЙ страницы: [{id, icon, name, sub, subTooltip,
-        // animated, thumbTooltip, thumb, applied}, …].
+        // Cards of the CURRENT page: [{id, icon, name, sub, subTooltip, animated,
+        // thumbTooltip, thumb, applied}, …].
         #[qproperty(QList_QVariant, bg_cards, cxx_name = "bgCards",
                     READ = bg_cards, NOTIFY = backgrounds_changed)]
-        // Все фоны профиля (не страница сетки) — выбор фона для
-        // предпросмотра в подвкладке «Витрины профиля»:
-        // [{id, name, url, thumb, equipped}, …], `url` — статичная картинка.
+        // All profile backgrounds (not a grid page) — choosing the background for
+        // the preview in the "Profile showcases" sub-tab:
+        // [{id, name, url, thumb, equipped}, …], `url` is a static picture.
         #[qproperty(QList_QVariant, bg_choices, cxx_name = "bgChoices",
                     READ = bg_choices, NOTIFY = backgrounds_changed)]
-        // Поздние адреса крупного просмотра: id фона → {source, video,
-        // done} — для `RexonImageViewer.sources`.
+        // Late addresses of the large viewer: background id → {source, video,
+        // done} — for `RexonImageViewer.sources`.
         #[qproperty(QMap_QString_QVariant, bg_viewer_sources, cxx_name = "bgViewerSources",
                     READ = bg_viewer_sources, NOTIFY = backgrounds_changed)]
-        // Переключатель вида фонов: [{key, label, checked}, …] — «Все /
-        // Статичные / Анимированные» со счётчиками.
+        // Background kind switch: [{key, label, checked}, …] — "All / Static /
+        // Animated" with counters.
         #[qproperty(QList_QVariant, bg_kind_chips, cxx_name = "bgKindChips",
                     READ = bg_kind_chips, NOTIFY = backgrounds_changed)]
-        // Почему в списке нет анимированных фонов и что с этим делать;
-        // пусто — причины нет, строка с кнопкой «Повторить» не видна.
+        // Why there are no animated backgrounds in the list and what to do about
+        // it; empty means there is no reason, and the line with the "Retry" button
+        // is hidden.
         #[qproperty(QString, bg_animated_note, cxx_name = "bgAnimatedNote",
                     READ = bg_animated_note, NOTIFY = backgrounds_changed)]
         #[qproperty(QString, bg_retry_text, cxx_name = "bgRetryText",
@@ -244,11 +249,11 @@ pub mod qobject {
                     READ = bg_search_text, NOTIFY = backgrounds_changed)]
         #[qproperty(bool, bg_audio_on, cxx_name = "bgAudioOn",
                     READ = bg_audio_on, NOTIFY = backgrounds_changed)]
-        // Полоса пагинации: {visible, prevEnabled, nextEnabled, text}.
+        // Pagination strip: {visible, prevEnabled, nextEnabled, text}.
         #[qproperty(QMap_QString_QVariant, pager, READ = pager,
                     NOTIFY = backgrounds_changed)]
 
-        // ── Общее ───────────────────────────────────────────────────────
+        // ── Shared ──────────────────────────────────────────────────────
         #[qproperty(QString, header_found_text, cxx_name = "headerFoundText",
                     READ = header_found_text, NOTIFY = header_changed)]
         #[qproperty(QString, header_found_path, cxx_name = "headerFoundPath",
@@ -263,46 +268,48 @@ pub mod qobject {
                     READ = applied_color, CONSTANT)]
         #[qproperty(QString, gold_color, cxx_name = "goldColor",
                     READ = gold_color, CONSTANT)]
-        // Краски и размеры оформления вкладки, которых нет в палитре скина:
-        // группа-секция, карточка витрины, врезка-тезис, главная и зелёная
-        // кнопки, чип-переключатель, подложки миниатюр. Всё это уже есть у
-        // ядра (тем же набором красится виджетная вкладка) — разметка их
-        // только берёт, своих не заводит. Скин сменили — пересчитать.
+        // Colours and sizes of the tab's look that are not in the skin palette:
+        // the section group, the showcase card, the thesis inset, the main and the
+        // green buttons, the toggle chip, the thumbnail backgrounds. All of this
+        // already exists in the core (the widget tab is painted with the same set)
+        // — the markup only takes them and has none of its own. The skin changed —
+        // recompute.
         #[qproperty(QMap_QString_QVariant, styles, READ = styles,
                     NOTIFY = palette_changed)]
-        /// Через сколько гаснет плашка состояния, мс. Число одно на продукт
-        /// (`ui_base::TOAST_TIMEOUT_MS`), своего у вкладки нет.
+        /// After how many ms the status banner goes away. The number is one for the
+        /// product (`ui_base::TOAST_TIMEOUT_MS`), the tab has none of its own.
         #[qproperty(i32, toast_timeout_ms, cxx_name = "toastTimeoutMs",
                     READ = toast_timeout_ms, CONSTANT)]
         type SteamModel = super::SteamModelRust;
     }
 
-    // ── Сигналы ─────────────────────────────────────────────────────────
+    // ── Signals ─────────────────────────────────────────────────────────
     unsafe extern "RustQt" {
-        /// Скин сменили на лету — палитру пересчитать.
+        /// The skin was changed on the fly — recompute the palette.
         #[qsignal]
         #[cxx_name = "paletteChanged"]
         fn palette_changed(self: Pin<&mut SteamModel>);
 
-        /// Всё, что меняется вместе с составом витрины заставок.
+        /// Everything that changes together with the composition of the splash
+        /// showcase.
         #[qsignal]
         #[cxx_name = "showcaseChanged"]
         fn showcase_changed(self: Pin<&mut SteamModel>);
 
-        /// Крупная карточка и чип состояния: они всегда меняются парой.
+        /// The large card and the status chip: they always change as a pair.
         #[qsignal]
         #[cxx_name = "heroChanged"]
         fn hero_changed(self: Pin<&mut SteamModel>);
 
-        /// Что играет в крупной карточке. Отдельным сигналом от
-        /// `heroChanged` и только по РЕАЛЬНОЙ смене ролика: по нему разметка
-        /// поднимает проигрыватель при первой надобности, а он тянет за
-        /// собой мультимедийный слой Qt.
+        /// What plays in the large card. A signal separate from `heroChanged` and
+        /// only on a REAL change of the clip: by it the markup brings up the player
+        /// at the first need, and the player pulls in Qt's multimedia layer.
         #[qsignal]
         #[cxx_name = "previewSourceChanged"]
         fn preview_source_changed(self: Pin<&mut SteamModel>);
 
-        /// Состав страницы фонов, строка состояния и пагинация.
+        /// The composition of the background page, the status line and the
+        /// pagination.
         #[qsignal]
         #[cxx_name = "backgroundsChanged"]
         fn backgrounds_changed(self: Pin<&mut SteamModel>);
@@ -320,23 +327,24 @@ pub mod qobject {
         fn status_changed(self: Pin<&mut SteamModel>);
     }
 
-    // ── Наследуемые методы базового класса ──────────────────────────────
+    // ── Inherited methods of the base class ─────────────────────────────
     extern "RustQt" {
         /// # Safety
-        /// Требует парного end_reset_model.
+        /// Requires a paired end_reset_model.
         #[inherit]
         #[cxx_name = "beginResetModel"]
         unsafe fn begin_reset_model(self: Pin<&mut SteamModel>);
         /// # Safety
-        /// Парный к begin_reset_model.
+        /// Paired with begin_reset_model.
         #[inherit]
         #[cxx_name = "endResetModel"]
         unsafe fn end_reset_model(self: Pin<&mut SteamModel>);
     }
 
-    // ── Переопределения QAbstractListModel ──────────────────────────────
-    // Без #[qinvokable]: инвокабл в наследнике затеняет укороченные клоны
-    // сигнатур базы, и rowCount() без аргументов из JS падает.
+    // ── QAbstractListModel overrides ────────────────────────────────────
+    // Without #[qinvokable]: an invokable in a subclass shadows the shortened
+    // clones of the base's signatures, and rowCount() without arguments from
+    // JS fails.
     extern "RustQt" {
         #[cxx_override]
         #[cxx_name = "rowCount"]
@@ -350,7 +358,7 @@ pub mod qobject {
         fn data(self: &SteamModel, index: &QModelIndex, role: i32) -> QVariant;
     }
 
-    // ── Чтение свойств ──────────────────────────────────────────────────
+    // ── Property reading ────────────────────────────────────────────────
     extern "RustQt" {
         #[cxx_name = "windowTitle"]
         fn window_title(self: &SteamModel) -> QString;
@@ -504,20 +512,21 @@ pub mod qobject {
         fn toast_timeout_ms(self: &SteamModel) -> i32;
     }
 
-    // ── API для QML и хозяина страницы ──────────────────────────────────
+    // ── API for QML and the page host ───────────────────────────────────
     //
-    // ⚠️ Ни одного инвокабла с числом в подписи: cxx-qt пишет в метаобъект
-    // тип как `::std::int32_t`, метатипа с таким именем нет, и вызов через
-    // `QMetaObject.invokeMethod` молча возвращает False.
+    // Warning: not a single invokable with a number in its signature: cxx-qt
+    // writes the type into the metaobject as `::std::int32_t`, there is no
+    // metatype with that name, and a call through `QMetaObject.invokeMethod`
+    // silently returns False.
     extern "RustQt" {
-        /// Где нашёлся Steam (пусто — не нашёлся). Зовёт хозяин страницы.
+        /// Where Steam was found (empty — not found). Called by the page host.
         #[qinvokable]
         #[cxx_name = "setSteamRoot"]
         fn set_steam_root(self: Pin<&mut SteamModel>, root: &QString);
 
-        /// Наполнить витрину заставок. `movies` — список записей скана
-        /// (`session_splash.scan_startup_movies`), `favorites` — пути со
-        /// звёздочкой. Побочные действия заставки пока у хозяина страницы.
+        /// Fill the splash showcase. `movies` is the list of scan records
+        /// (`session_splash.scan_startup_movies`), `favorites` the starred paths.
+        /// The splash side actions are still at the page host for now.
         #[qinvokable]
         #[cxx_name = "setMovies"]
         fn set_movies(
@@ -527,7 +536,7 @@ pub mod qobject {
             favorites: &QVariant,
         );
 
-        /// Состояние переключателей заставки одним вызовом.
+        /// The state of the splash toggles in one call.
         #[qinvokable]
         #[cxx_name = "setSplashState"]
         fn set_splash_state(
@@ -537,209 +546,216 @@ pub mod qobject {
             sound: bool,
         );
 
-        /// Переключить подвкладку (`splash` либо `bg`).
+        /// Switch the sub-tab (`splash` or `bg`).
         #[qinvokable]
         #[cxx_name = "setSection"]
         fn set_section(self: Pin<&mut SteamModel>, key: &QString);
 
-        /// Строка поиска витрины заставок.
+        /// Search string of the splash showcase.
         #[qinvokable]
         #[cxx_name = "setSvSearch"]
         fn set_sv_search(self: Pin<&mut SteamModel>, text: &QString);
 
-        /// Чип фильтра «откуда заставка».
+        /// The "where the splash comes from" filter chip.
         #[qinvokable]
         #[cxx_name = "setSvGroup"]
         fn set_sv_group(self: Pin<&mut SteamModel>, key: &QString);
 
-        /// Выбрать ролик для входа (клик по карточке).
+        /// Choose the clip for login (a click on a card).
         #[qinvokable]
         #[cxx_name = "selectMovie"]
         fn select_movie(self: Pin<&mut SteamModel>, path: &QString);
 
-        /// Карточка под курсором («» — курсор ушёл): её показывает крупная
-        /// карточка, пока не выбрали другую.
+        /// The card under the cursor ("" — the cursor left): the large card shows
+        /// it until another one is chosen.
         #[qinvokable]
         #[cxx_name = "setHovered"]
         fn set_hovered(self: Pin<&mut SteamModel>, path: &QString);
 
-        /// Отметить/снять звёздочку. `favorites` — актуальный список от
-        /// хозяина (звёздочку сохраняет он).
+        /// Set/clear a star. `favorites` is the current list from the host (the
+        /// host saves the star).
         #[qinvokable]
         #[cxx_name = "setFavorites"]
         fn set_favorites(self: Pin<&mut SteamModel>, favorites: &QVariant);
 
-        /// Путь ролика, который сейчас показывает крупная карточка.
+        /// Path of the clip the large card is showing right now.
         #[qinvokable]
         #[cxx_name = "shownPath"]
         fn shown_path(self: &SteamModel) -> QString;
 
-        /// Строка-источник ролика (подсказка бейджа карточки).
+        /// The clip's source string (the tooltip of the card badge).
         #[qinvokable]
         #[cxx_name = "sourceTextFor"]
         fn source_text_for(self: &SteamModel, path: &QString) -> QString;
 
-        // ── Живое превью ролика ─────────────────────────────────────────
+        // ── Live clip preview ───────────────────────────────────────────
 
-        /// Видна ли крупная карточка человеку. Решает разметка: своя
-        /// подвкладка, своя вкладка окна, окно на экране. `false` —
-        /// `previewSource` пустеет, и плеер останавливается.
+        /// Whether the large card is visible to the user. Decided by the markup:
+        /// its own sub-tab, its own window tab, the window on screen. `false` —
+        /// `previewSource` becomes empty, and the player stops.
         #[qinvokable]
         #[cxx_name = "setPreviewShown"]
         fn set_preview_shown(self: Pin<&mut SteamModel>, on: bool);
 
-        /// Плеер не осилил ролик, который играл (битый файл, незнакомый
-        /// кодек). Больше его не пробуем: иначе секундный опрос открывал бы
-        /// его снова и снова. Какой именно — модель знает сама, разметке
-        /// пересказывать это не надо.
+        /// The player could not handle the clip it was playing (a broken file, an
+        /// unknown codec). We do not try it again: otherwise the once-a-second poll
+        /// would open it again and again. Which one exactly the model knows itself,
+        /// the markup does not need to retell it.
         #[qinvokable]
         #[cxx_name = "markPreviewBroken"]
         fn mark_preview_broken(self: Pin<&mut SteamModel>);
 
-        /// Ролик пошёл на весь экран — превью замирает: двух копий одного
-        /// видео разом быть не должно.
+        /// The clip went full screen — the preview freezes: there must not be two
+        /// copies of the same video at once.
         #[qinvokable]
         #[cxx_name = "pausePreview"]
         fn pause_preview(self: Pin<&mut SteamModel>);
 
-        /// Вернулись в окно — полноэкранный показ закончился, паузу снять.
+        /// We are back in the window — the full-screen show ended, remove the
+        /// pause.
         #[qinvokable]
         #[cxx_name = "resumePreview"]
         fn resume_preview(self: Pin<&mut SteamModel>);
 
-        /// Секундный опрос обстановки: снимает ПРОСРОЧЕННУЮ паузу. Нужен
-        /// на случай, когда фокус после полноэкранного показа не вернулся
-        /// вовсе, — иначе превью замерло бы навсегда.
+        /// The once-a-second poll of the situation: removes an OVERDUE pause.
+        /// Needed for the case when the focus did not come back at all after the
+        /// full-screen show — otherwise the preview would freeze forever.
         #[qinvokable]
         #[cxx_name = "previewTick"]
         fn preview_tick(self: Pin<&mut SteamModel>);
 
-        /// Строка состояния страницы (итог полноэкранного показа).
+        /// The page's status line (the outcome of the full-screen show).
         #[qinvokable]
         #[cxx_name = "setStatus"]
         fn set_status_text(self: Pin<&mut SteamModel>, text: &QString);
 
-        /// Ответ переключателя «Показывать при входе»: `on` — что просили,
-        /// `reason` — ответ `actions.setAutostart` («» — получилось). Отказ
-        /// показывается строкой состояния простыми словами из ядра.
+        /// The answer of the "Show at login" toggle: `on` is what was asked,
+        /// `reason` the answer of `actions.setAutostart` ("" — it worked). A refusal
+        /// is shown in the status line in simple words from the core.
         #[qinvokable]
         #[cxx_name = "autostartAnswered"]
         fn autostart_answered(self: Pin<&mut SteamModel>, on: bool, reason: &QString);
 
-        /// Переключатель «Каждый вход — новый ролик» нажат: если крутить
-        /// нечего, страница говорит об этом (порог — в ядре).
+        /// The "A new clip at every login" toggle was pressed: if there is nothing
+        /// to rotate, the page says so (the threshold is in the core).
         #[qinvokable]
         #[cxx_name = "rotationToggled"]
         fn rotation_toggled(self: Pin<&mut SteamModel>, on: bool);
 
-        /// Показывает ли композитор окно `window` (в QML — `Window.window`).
-        /// Пустой указатель — «показывает»: окна ещё нет, а замирать из-за
-        /// этого превью не должно.
+        /// Whether the compositor shows the `window` window (in QML —
+        /// `Window.window`). A null pointer means "shows": there is no window yet,
+        /// and the preview must not freeze because of that.
         ///
         /// # Safety
-        /// `window` обязан быть живым QWindow.
+        /// `window` must be a live QWindow.
         #[qinvokable]
         #[cxx_name = "windowExposed"]
         unsafe fn window_exposed(self: &SteamModel, window: *mut QObject) -> bool;
 
-        // ── Фоны профиля ────────────────────────────────────────────────
+        // ── Profile backgrounds ─────────────────────────────────────────
 
-        /// Ширина полосы фонов изменилась — пересчитать столбцы и страницу.
+        /// The width of the background strip changed — recompute the columns and
+        /// the page.
         #[qinvokable]
         #[cxx_name = "setBgViewportWidth"]
         fn set_bg_viewport_width(self: Pin<&mut SteamModel>, width: &QString);
 
-        /// Строка поиска сетки фонов.
+        /// Search string of the background grid.
         #[qinvokable]
         #[cxx_name = "setBgSearch"]
         fn set_bg_search(self: Pin<&mut SteamModel>, text: &QString);
 
-        /// Фильтр вида фонов: «» — все, `static`, `animated`.
+        /// Background kind filter: "" — all, `static`, `animated`.
         #[qinvokable]
         #[cxx_name = "setBgKind"]
         fn set_bg_kind(self: Pin<&mut SteamModel>, key: &QString);
 
-        /// Заново спросить у Steam список фонов (кнопка «Повторить» у
-        /// строки «анимированные не показаны»).
+        /// Ask Steam for the background list again (the "Retry" button of the
+        /// "animated ones are not shown" line).
         #[qinvokable]
         #[cxx_name = "reloadBackgrounds"]
         fn reload_backgrounds(self: Pin<&mut SteamModel>);
 
-        /// Звук видео-обоев.
+        /// Video wallpaper sound.
         #[qinvokable]
         #[cxx_name = "setBgAudio"]
         fn set_bg_audio(self: Pin<&mut SteamModel>, on: bool);
 
-        /// Предыдущая страница сетки.
+        /// The previous grid page.
         #[qinvokable]
         #[cxx_name = "bgPrevPage"]
         fn bg_prev_page(self: Pin<&mut SteamModel>);
 
-        /// Следующая страница сетки.
+        /// The next grid page.
         #[qinvokable]
         #[cxx_name = "bgNextPage"]
         fn bg_next_page(self: Pin<&mut SteamModel>);
 
-        /// Список для крупного просмотра: ВСЕ отобранные фоны, а не одна
-        /// страница сетки, — листание идёт по всему списку.
+        /// The list for the large viewer: ALL selected backgrounds, not one grid
+        /// page — paging goes over the whole list.
         #[qinvokable]
         #[cxx_name = "bgViewerItems"]
         fn bg_viewer_items(self: &SteamModel) -> QList_QVariant;
 
-        /// Просмотру понадобился фон целиком — добыть его (один раз).
+        /// The viewer needs a whole background — obtain it (once).
         #[qinvokable]
         #[cxx_name = "requestBgFull"]
         fn request_bg_full(self: Pin<&mut SteamModel>, item_id: &QString);
 
-        /// Список для крупного просмотра заставок: показанные ролики.
+        /// The list for the large splash viewer: the shown clips.
         #[qinvokable]
         #[cxx_name = "svViewerItems"]
         fn sv_viewer_items(self: &SteamModel) -> QList_QVariant;
 
-        /// Начать применение фона обоями. `false` — уже применяем.
+        /// Start applying a background as a wallpaper. `false` means we are already
+        /// applying.
         #[qinvokable]
         #[cxx_name = "applyBackground"]
         fn apply_background(self: Pin<&mut SteamModel>, item_id: &QString) -> bool;
 
-        // ── Фоновые задачи ──────────────────────────────────────────────
+        // ── Background tasks ────────────────────────────────────────────
 
-        /// Поднять задачи вкладки: кэши с диска и сеть. Зовётся один раз,
-        /// после того как известен корень Steam.
+        /// Bring up the tab's tasks: caches from disk and the network. Called once,
+        /// after the Steam root is known.
         #[qinvokable]
         fn start(self: Pin<&mut SteamModel>, webapi_token: &QString);
 
-        /// Забрать всё, что накопили фоновые задачи. Зовёт таймер страницы —
-        /// это шов между рантаймом задач и потоком интерфейса.
+        /// Take everything the background tasks have accumulated. Called by the
+        /// page's timer — this is the seam between the task runtime and the
+        /// interface thread.
         #[qinvokable]
         fn pump(self: Pin<&mut SteamModel>);
 
-        /// Погасить задачи и дождаться их — порт `closeEvent`.
+        /// Cancel the tasks and wait for them — a port of `closeEvent`.
         #[qinvokable]
         fn shutdown(self: Pin<&mut SteamModel>);
 
-        /// Номер роли по имени (-1, если роли нет) — проверки без делегата.
+        /// Role number by name (-1 if there is no such role) — checks without a
+        /// delegate.
         #[qinvokable]
         #[cxx_name = "roleNumber"]
         fn role_number(self: &SteamModel, name: &QString) -> i32;
 
-        /// Значение роли строки по пути ролика — проверки без делегата.
+        /// A row's role value by the clip path — checks without a delegate.
         #[qinvokable]
         #[cxx_name = "roleValueOf"]
         fn role_value_of(self: &SteamModel, path: &QString, name: &QString) -> QVariant;
 
-        /// Ширина плашки состояния при такой ширине страницы и такой ширине
-        /// текста в одну строку. Считает ядро (`ui_base::toast_width`), поля
-        /// и потолок — тоже его. Разметка зовёт напрямую из привязки.
+        /// Width of the status banner for this page width and this width of the
+        /// text on one line. Computed by the core (`ui_base::toast_width`), the
+        /// paddings and the cap are its too. The markup calls it directly from a
+        /// binding.
         #[qinvokable]
         #[cxx_name = "toastWidth"]
         fn toast_width(self: &SteamModel, page_width: i32, text_width: i32) -> i32;
     }
 
-    // Объявление трейта обязано быть В МОСТЕ, иначе `impl cxx_qt::Initialize`
-    // снаружи не находит конструктора: cxx-qt печатает его по этой строке.
+    // The trait declaration must be IN THE BRIDGE, otherwise
+    // `impl cxx_qt::Initialize` outside does not find the constructor: cxx-qt
+    // emits it from this line.
     impl cxx_qt::Initialize for SteamModel {}
-    // Подписка на смену скина идёт через `CxxQtThread::queue`, и трейт
-    // потока обязан быть объявлен В МОСТЕ.
+    // The skin change subscription goes through `CxxQtThread::queue`, and the
+    // thread trait must be declared IN THE BRIDGE.
     impl cxx_qt::Threading for SteamModel {}
 }
 
@@ -766,14 +782,14 @@ use crate::steam_workers::{
 };
 
 // ============================================================================
-// Роли модели витрины заставок
+// Roles of the splash showcase model
 // ============================================================================
 
-/// Роли начинаются с Qt::UserRole + 1 (Qt::UserRole == 256).
+/// Roles start at Qt::UserRole + 1 (Qt::UserRole == 256).
 const ROLE_BASE: i32 = 256 + 1;
 
-/// Имена ролей в порядке номеров — единственный источник истины и для
-/// roleNames, и для data(), и для roleNumber().
+/// Role names in number order — the single source of truth for roleNames,
+/// data() and roleNumber().
 const ROLE_NAMES: [&str; 10] = [
     "path",
     "title",
@@ -788,7 +804,7 @@ const ROLE_NAMES: [&str; 10] = [
 ];
 
 // ============================================================================
-// Мелочи перевода в Qt
+// Small conversions into Qt
 // ============================================================================
 
 fn vmap(pairs: Vec<(&str, QVariant)>) -> QMap<QMapPair_QString_QVariant> {
@@ -803,15 +819,16 @@ fn qstr(value: &str) -> QVariant {
     QVariant::from(&QString::from(value))
 }
 
-/// Путь на диске → адрес для `Image.source` и `MediaPlayer.source`. Пустой
-/// путь остаётся пустым.
+/// A path on disk → an address for `Image.source` and `MediaPlayer.source`.
+/// An empty path stays empty.
 ///
-/// ⚠️ Спецсимволы кодируются процентами, и это не украшательство. Пути
-/// роликов приходят из библиотек Steam и из окна «Свой файл…», то есть их
-/// пишет не программа: пробел в имени QUrl ещё переживёт, а `#` обрубает
-/// путь на месте решётки — файл тогда просто не открывается, и превью
-/// молча остаётся статичным кадром. Кодируется байтовое представление
-/// UTF-8, поэтому русские имена файлов проходят так же.
+/// Warning: special characters are percent-encoded, and this is not
+/// embellishment. Clip paths come from Steam libraries and from the "Own
+/// file…" window, that is, they are not written by the program: QUrl will
+/// still survive a space in the name, but `#` cuts the path off at the hash
+/// — the file then simply does not open, and the preview silently stays a
+/// static frame. The UTF-8 byte representation is encoded, so Russian file
+/// names pass just the same.
 fn file_url(path: &str) -> String {
     if path.is_empty() {
         return String::new();
@@ -828,18 +845,20 @@ fn file_url(path: &str) -> String {
     out
 }
 
-/// Тёмный ли действующий скин — общий ответ ядра (`ui_base`), а не своя
-/// копия критерия: тот же вопрос задаёт страница «Расширений».
+/// Whether the active skin is dark — the core's shared answer (`ui_base`),
+/// not our own copy of the criterion: the "Extensions" page asks the same
+/// question.
 fn active_is_dark() -> bool {
     ui_base::active_skin_is_dark()
 }
 
-/// Строковое поле записи ролика.
+/// A string field of a clip record.
 fn s<'a>(v: &'a Value, key: &str) -> &'a str {
     v.get(key).and_then(Value::as_str).unwrap_or("")
 }
 
-/// `QVariant` со списком строк → `Vec<String>`. Приходит из QML/хозяина.
+/// A `QVariant` with a string list → `Vec<String>`. Comes from QML/the
+/// host.
 fn strings_from(v: &QVariant) -> Vec<String> {
     v.value::<QList<QVariant>>()
         .map(|list| {
@@ -851,21 +870,22 @@ fn strings_from(v: &QVariant) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// `QVariant` со списком карт → записи роликов в виде JSON.
+/// A `QVariant` with a list of maps → clip records as JSON.
 ///
-/// Записи скана приезжают от хозяина страницы как QVariantList из
-/// QVariantMap; здесь они переводятся в тот вид, в котором их читает ядро.
+/// Scan records arrive from the page host as a QVariantList of QVariantMap;
+/// here they are converted into the form in which the core reads them.
 ///
-/// ⚠️ Перевод делает ОБЩИЙ конвертер крейта, а не разбор по типам на месте.
-/// Своя разборка тут стояла и определяла тип перебором `QVariant::value<T>`,
-/// начиная со строки, — а `canConvert` у Qt разрешающий, и ЛЮБОЕ число
-/// «конвертируется» в строку. `appid` приезжал в ядро строкой `"2861720"`,
-/// `movie_appid` читал его как 0, и метки предмета из инвентаря не
-/// находились НИКОГДА: бейдж карточки и чип фильтра показывали «Points
-/// Shop» вместо названия распродажи, а подсказка — общую фразу вместо
-/// «Видеозаставка из …». Поймано попиксельной сверкой с оригиналом
-/// 01.09.2026; ровно об этой ловушке предупреждает `qvalue::variant_to_json`,
-/// где тип определяет сам Qt (`QJsonDocument::fromVariant`).
+/// Warning: the conversion is done by the crate's SHARED converter, not by
+/// type-by-type parsing in place. There used to be our own parsing here
+/// that determined the type by trying `QVariant::value<T>`, starting with a
+/// string — and Qt's `canConvert` is permissive, ANY number "converts" to a
+/// string. `appid` arrived in the core as the string `"2861720"`,
+/// `movie_appid` read it as 0, and the inventory item markers were NEVER
+/// found: the card badge and the filter chip showed "Points Shop" instead of
+/// the sale name, and the tooltip a generic phrase instead of "Video splash
+/// from …". Caught by a pixel-by-pixel comparison with the original on
+/// 01.09.2026; `qvalue::variant_to_json` warns exactly about this trap,
+/// where the type is determined by Qt itself (`QJsonDocument::fromVariant`).
 fn movies_from(v: &QVariant) -> Vec<Value> {
     match crate::qvalue::variant_to_json(v) {
         Value::Array(items) => items
@@ -877,17 +897,17 @@ fn movies_from(v: &QVariant) -> Vec<Value> {
 }
 
 // ============================================================================
-// Движок обоев со стороны хозяина страницы
+// The wallpaper engine from the page host's side
 // ============================================================================
 
 // ============================================================================
-// Rust-состояние страницы
+// Rust state of the page
 // ============================================================================
 
-/// Состояние вкладки «Steam».
+/// State of the "Steam" tab.
 #[derive(Default)]
 pub struct SteamModelRust {
-    /// Номер записи в общем реестре смены скина (`crate::skin`).
+    /// Entry number in the shared skin change registry (`crate::skin`).
     skin_watch: u64,
     env: SteamEnv,
     tasks: Option<Arc<SteamTasks>>,
@@ -897,7 +917,7 @@ pub struct SteamModelRust {
     section: String,
     status: String,
 
-    // ── Витрина заставок ──
+    // ── Splash showcase ──
     movies: Vec<Value>,
     favorites: Vec<String>,
     meta: qs::MetaMap,
@@ -905,66 +925,72 @@ pub struct SteamModelRust {
     hovered_path: String,
     sv_search: String,
     sv_group: String,
-    /// Номера показанных роликов в `movies`.
+    /// Numbers of the shown clips in `movies`.
     visible: Vec<usize>,
-    /// Путь ролика → готовый кадр-превью.
+    /// Clip path → a ready preview frame.
     posters: BTreeMap<String, String>,
     autostart_on: bool,
     rotate_on: bool,
     sound_on: bool,
 
-    // ── Живое превью ролика в крупной карточке ──
-    /// Крупная карточка на виду (ставит разметка).
+    // ── Live clip preview in the large card ──
+    /// The large card is in view (set by the markup).
     preview_shown: bool,
-    /// Ролики, которых плеер не осилил, — второй раз не пробуем.
+    /// Clips the player could not handle — we do not try them a second time.
     preview_broken: BTreeSet<String>,
-    /// До этого мгновения превью замерло (полноэкранный показ).
+    /// Until this moment the preview is frozen (full-screen show).
     preview_paused_until: Option<Instant>,
-    /// Что играет сейчас по решению модели. Кэш, а не второе мнение:
-    /// решение считает `preview_path`, а храним его затем, чтобы секундный
-    /// опрос молчал, пока ничего не изменилось.
+    /// What plays now according to the model's decision. A cache, not a second
+    /// opinion: the decision is computed by `preview_path`, and we store it so
+    /// that the once-a-second poll stays silent while nothing has changed.
     preview_playing: String,
 
-    // ── Сетка фонов ──
+    // ── Background grid ──
     bg_all: Vec<ProfileBackgroundItem>,
     bg_search: String,
-    /// Фильтр вида: все / статичные / анимированные. Живёт до закрытия
-    /// программы: своих сохраняемых настроек у вкладки нет (звук видео-обоев
-    /// и поиск точно так же сбрасываются при запуске).
+    /// Kind filter: all / static / animated. Lives until the program closes:
+    /// the tab has no saved settings of its own (the video wallpaper sound and
+    /// the search are reset at launch in exactly the same way).
     bg_kind: String,
     bg_page: u32,
     bg_cols: u32,
     bg_audio: bool,
-    /// id фона → готовая миниатюра.
+    /// Background id → a ready thumbnail.
     thumbs: BTreeMap<String, String>,
-    /// id анимированного фона → скачанный ролик (для крупного просмотра).
+    /// Animated background id → the downloaded clip (for the large viewer).
     movies_full: BTreeMap<String, String>,
-    /// Фоны, за которыми крупный просмотр уже ходил: второй раз не просим,
-    /// а неудача не оставляет просмотр в вечном «загружается».
+    /// Backgrounds the large viewer has already gone for: we do not ask a
+    /// second time, and a failure does not leave the viewer in an eternal
+    /// "loading".
     full_asked: BTreeSet<String>,
     full_done: BTreeSet<String>,
     applied_id: String,
-    /// Фон, применение которого идёт (для строки состояния по завершении).
+    /// The background being applied (for the status line on completion).
     pending_apply: Option<ProfileBackgroundItem>,
-    /// Список уже показан из дискового кэша — не затирать его ошибкой сети.
+    /// The list is already shown from the disk cache — do not overwrite it with
+    /// a network error.
     cache_shown: bool,
-    /// Почему секции фонов нечего показать (или почему она ещё не готова):
-    /// «Загружаю инвентарь», «Steam не найден», «нет userdata», «обновляю из
-    /// кэша», «инвентарь не загрузился», «фонов нет». Пусто — причины нет,
-    /// подпись считается по числу фонов.
+    /// Why the background section has nothing to show (or why it is not ready
+    /// yet): "Loading the inventory", "Steam not found", "no userdata",
+    /// "updating from the cache", "the inventory did not load", "there are no
+    /// backgrounds". Empty means there is no reason, and the label is computed
+    /// from the number of backgrounds.
     ///
-    /// ⚠️ Это подпись САМОЙ секции, а не всплывающее сообщение. В оригинале
-    /// (`rexon/qt_steam/window.py`) ВСЕ перечисленные строки пишутся в
-    /// `_bg_status` — метку, стоящую там же, где «Найдено фонов: 0». Здесь
-    /// они уезжали в тост внизу слева поверх соседней секции
-    /// «Видеозаставки», где человеку и непонятно, к чему они относятся, и
-    /// пропадали через три секунды вместе с тостом, а секция всё это время
-    /// врала счётом «Найдено фонов: 0».
+    /// Warning: this is the label of the section ITSELF, not a pop-up message.
+    /// In the original (`rexon/qt_steam/window.py`) ALL the listed strings are
+    /// written into `_bg_status` — the label standing in the same place as
+    /// "Backgrounds found: 0". Here they went into the toast at the bottom left
+    /// over the neighbouring "Video splash" section, where the user has no idea
+    /// what they refer to, and disappeared after three seconds together with
+    /// the toast, while the section lied all that time with the count
+    /// "Backgrounds found: 0".
     bg_notice: String,
-    /// Чем кончился запрос владеемых предметов: от него зависит, есть ли в
-    /// списке анимированные фоны вовсе. Строку человеку собирает ядро.
+    /// How the request for owned items ended: whether there are animated
+    /// backgrounds in the list at all depends on it. The string for the user is
+    /// assembled by the core.
     bg_animated_gap: qs::AnimatedGap,
-    /// Надетый в профиле фон — запоминается для повторного запроса списка.
+    /// The background equipped in the profile — remembered for a repeated list
+    /// request.
     bg_equipped: Option<ProfileBackgroundItem>,
 }
 
@@ -978,7 +1004,7 @@ impl Drop for SteamModelRust {
 }
 
 impl SteamModelRust {
-    /// Пересчитать показанные ролики по текущим поиску и фильтру.
+    /// Recompute the shown clips by the current search and filter.
     fn recompute_showcase(&mut self) {
         self.sv_group =
             qs::normalize_group_key(&self.sv_group, &self.movies, &self.favorites, &self.meta);
@@ -994,12 +1020,12 @@ impl SteamModelRust {
             .collect();
     }
 
-    /// Ролики, отобранные поиском и фильтром.
+    /// Clips selected by the search and the filter.
     fn shown_movies(&self) -> Vec<&Value> {
         self.visible.iter().filter_map(|i| self.movies.get(*i)).collect()
     }
 
-    /// Что показывает крупная карточка: наведённое либо выбранное.
+    /// What the large card shows: the hovered or the chosen one.
     fn shown_item(&self) -> Option<&Value> {
         if !self.hovered_path.is_empty() {
             if let Some(it) = self.movies.iter().find(|m| s(m, "path") == self.hovered_path) {
@@ -1009,12 +1035,12 @@ impl SteamModelRust {
         self.current_item()
     }
 
-    /// Что ДОЛЖНО играть в крупной карточке прямо сейчас («» — ничего).
+    /// What MUST play in the large card right now ("" — nothing).
     ///
-    /// Порт `_sv_preview_target` + `_sv_preview_allowed` оригинала одним
-    /// решением: разметке остаётся только сказать, видно ли карточку.
-    /// Играем ровно тот ролик, что показывает карточка, — то есть
-    /// наведённый, а если наведения нет, выбранный.
+    /// A port of the original's `_sv_preview_target` + `_sv_preview_allowed` as
+    /// one decision: the markup only has to say whether the card is visible. We
+    /// play exactly the clip the card shows — that is, the hovered one, and if
+    /// there is no hover, the chosen one.
     fn preview_path(&self) -> &str {
         if !self.preview_shown || self.section != qs::SEG_SPLASH {
             return "";
@@ -1026,7 +1052,7 @@ impl SteamModelRust {
             return "";
         };
         let path = s(item, "path");
-        // Битый ролик и исчезнувший файл — не повод дёргать плеер.
+        // A broken clip and a vanished file are no reason to poke the player.
         if path.is_empty()
             || self.preview_broken.contains(path)
             || !std::path::Path::new(path).is_file()
@@ -1036,22 +1062,23 @@ impl SteamModelRust {
         path
     }
 
-    /// Ролик, который пойдёт при следующем входе.
+    /// The clip that will play at the next login.
     fn current_item(&self) -> Option<&Value> {
         self.movies.iter().find(|m| s(m, "path") == self.current_path)
     }
 
-    /// Отобранные поиском фоны.
+    /// Backgrounds selected by the search.
     fn bg_filtered(&self) -> Vec<&ProfileBackgroundItem> {
         qs::bg_filtered_by(&self.bg_all, &self.bg_search.trim().to_lowercase(), &self.bg_kind)
     }
 
-    /// Полоса пагинации по текущему состоянию.
+    /// Pagination strip by the current state.
     fn pager_view(&self) -> qs::PagerView {
         qs::bg_pager(self.bg_filtered().len(), self.bg_page, self.cols())
     }
 
-    /// Столбцов в сетке фонов сейчас (пока ширина неизвестна — минимум).
+    /// Columns in the background grid right now (while the width is unknown —
+    /// the minimum).
     fn cols(&self) -> u32 {
         if self.bg_cols == 0 {
             qs::BG_MIN_COLS
@@ -1060,12 +1087,12 @@ impl SteamModelRust {
         }
     }
 
-    /// Задачи вкладки (поднимаются лениво: до `start` их нет).
+    /// The tab's tasks (brought up lazily: until `start` there are none).
     fn tasks(&self) -> Option<&Arc<SteamTasks>> {
         self.tasks.as_ref()
     }
 
-    /// Заказать миниатюры ТОЛЬКО для карточек текущей страницы.
+    /// Order thumbnails ONLY for the cards of the current page.
     fn request_page_thumbs(&self) {
         let Some(tasks) = self.tasks() else { return };
         let p = self.pager_view();
@@ -1081,7 +1108,7 @@ impl SteamModelRust {
         tasks.start_thumbs(jobs);
     }
 
-    /// Заказать кадры-превью для роликов, у которых их ещё нет.
+    /// Order preview frames for clips that do not have them yet.
     fn request_posters(&self) {
         let Some(tasks) = self.tasks() else { return };
         let jobs: Vec<String> = self
@@ -1095,7 +1122,7 @@ impl SteamModelRust {
 }
 
 // ============================================================================
-// Конструктор
+// Constructor
 // ============================================================================
 
 impl cxx_qt::Initialize for qobject::SteamModel {
@@ -1109,24 +1136,25 @@ impl cxx_qt::Initialize for qobject::SteamModel {
             me.bg_audio = true;
             me.bg_cols = qs::BG_MIN_COLS;
         }
-        // Где стоит Steam, страница выясняет САМА, а не ждёт хозяина.
+        // The page finds out where Steam is ITSELF rather than waiting for the
+        // host.
         //
-        // ⚠️ Это не украшение, а починка гонки. Под Python-хозяином корень
-        // приходил снаружи (`qml_window.py:_tell_steam_root` →
-        // `setSteamRoot`), но страница берётся за фоновые задачи сама, в
-        // `Component.onCompleted`, — то есть ДО того, как хозяин успевает
-        // что-либо сказать. Первый заход задач неизбежно видел пустой
-        // корень и останавливался на «Steam не найден», а хозяин потом
-        // снимал задачи и поднимал заново. Под Rust-хозяином говорить было
-        // и вовсе некому: секция фонов профиля оставалась пустой навсегда.
+        // Warning: this is not decoration but a race fix. Under the Python host the
+        // root came from outside (`qml_window.py:_tell_steam_root` →
+        // `setSteamRoot`), but the page starts the background tasks itself, in
+        // `Component.onCompleted` — that is, BEFORE the host manages to say
+        // anything. The first run of the tasks inevitably saw an empty root and
+        // stopped at "Steam not found", and the host then took the tasks down and
+        // brought them up again. Under the Rust host there was nobody to say it at
+        // all: the profile backgrounds section stayed empty forever.
         //
-        // Здесь корень известен РАНЬШЕ первой задачи: `initialize`
-        // выполняется при создании модели, до `Component.onCompleted`.
-        // Правила поиска не дублируются — их знает ядро
-        // (`session_splash::Splash::steam_root`: кандидаты, `realpath`,
-        // проверка `config/`), исполнитель тот же живой, что у объекта
-        // действий. Сеттер `setSteamRoot` остаётся: Python-хозяин зовёт его
-        // по-прежнему, и значение придёт то же самое.
+        // Here the root is known BEFORE the first task: `initialize` runs when the
+        // model is created, before `Component.onCompleted`. The search rules are
+        // not duplicated — the core knows them
+        // (`session_splash::Splash::steam_root`: candidates, `realpath`, checking
+        // `config/`), and the executor is the same live one as the action
+        // object's. The `setSteamRoot` setter stays: the Python host still calls
+        // it, and the value will be the same.
         let root = {
             let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
             let mut io = LiveSplashIo::new(&home, rexon_core::installer::PYTHON_FALLBACK_EXE);
@@ -1134,23 +1162,24 @@ impl cxx_qt::Initialize for qobject::SteamModel {
         };
         self.as_mut().rust_mut().steam_root = root;
 
-        // Скин сменили на лету — палитру пересчитать. Толчок приходит из
-        // общего реестра (`crate::skin`), а не отсюда.
+        // The skin was changed on the fly — recompute the palette. The push comes
+        // from the shared registry (`crate::skin`), not from here.
         let watch = crate::skin::watch(self.qt_thread(), |page| page.palette_changed());
         self.as_mut().rust_mut().skin_watch = watch;
-        // ⚠️ Начальный текст — подпись САМОЙ секции фонов, а не тост. В
-        // оригинале это и есть текст метки при её создании
-        // (`rexon/qt_steam/window.py`, `QLabel("⏳ Загружаю инвентарь Steam…")`).
-        // Тостом он всплывал внизу слева поверх соседней секции
-        // «Видеозаставки», где человеку непонятно, к чему относится, и гас
-        // через три секунды, а секция фонов тем временем врала «Найдено
-        // фонов: 0», ещё ничего не загрузив.
+        // Warning: the initial text is the label of the background section ITSELF,
+        // not a toast. In the original this is exactly the label's text at its
+        // creation (`rexon/qt_steam/window.py`,
+        // `QLabel("⏳ Загружаю инвентарь Steam…")`). As a toast it popped up at the
+        // bottom left over the neighbouring "Video splash" section, where the user
+        // has no idea what it refers to, and went away after three seconds, while
+        // the background section meanwhile lied "Backgrounds found: 0" without
+        // having loaded anything yet.
         self.as_mut().set_bg_notice(&qs::bg_loading_text());
     }
 }
 
 // ============================================================================
-// Свойства: неизменные подписи
+// Properties: fixed labels
 // ============================================================================
 
 impl qobject::SteamModel {
@@ -1321,12 +1350,13 @@ impl qobject::SteamModel {
         QString::from(&qs::hex(qs::GOLD_RGB))
     }
 
-    /// Оформление вкладки, которого нет в палитре скина.
+    /// The tab's look that is not in the skin palette.
     ///
-    /// ⚠️ КАЖДАЯ краска проходит через [`ui_base::css_color_to_qml`]. У ядра
-    /// они набраны так, как их понимает QSS виджетов (`rgba(r,g,b,a)`), а
-    /// QML такую запись читает как недопустимый цвет и рисует ЧЁРНЫМ, не
-    /// сказав ни слова. Отдавать их сюда «как есть» нельзя.
+    /// Warning: EVERY colour goes through [`ui_base::css_color_to_qml`]. In the
+    /// core they are written the way widget QSS understands them
+    /// (`rgba(r,g,b,a)`), while QML reads such notation as an invalid colour and
+    /// draws it BLACK without a word. Handing them over here "as is" is not
+    /// allowed.
     pub fn styles(&self) -> QMap<QMapPair_QString_QVariant> {
         let dark = active_is_dark();
         let col = |css: &str| qstr(&ui_base::css_color_to_qml(css));
@@ -1403,8 +1433,8 @@ impl qobject::SteamModel {
             ("heroRadius", QVariant::from(&qs::HERO_RADIUS)),
         ]);
 
-        // Всплывающая плашка состояния: краски и поля — та же дверь, что у
-        // «Настроек» и у виджетной плашки (`crate::toast`).
+        // The pop-up status banner: colours and paddings — the same door as for
+        // "Settings" and the widget banner (`crate::toast`).
         let toast = crate::toast::style_map(dark);
 
         vmap(vec![
@@ -1420,36 +1450,36 @@ impl qobject::SteamModel {
         ])
     }
 
-    /// Через сколько гаснет плашка состояния, мс.
+    /// After how many ms the status banner goes away.
     pub fn toast_timeout_ms(&self) -> i32 {
         crate::toast::timeout_ms()
     }
 
-    /// Ширина плашки состояния под текст такой ширины.
+    /// Width of the status banner for text of this width.
     pub fn toast_width(&self, page_width: i32, text_width: i32) -> i32 {
         crate::toast::width(page_width, text_width)
     }
 
-    /// Палитра действующего скина (по умолчанию steam_dark, правило #17).
-    /// Оформление QML-вкладки берётся отсюда, а не пишется заново.
+    /// Palette of the active skin (steam_dark by default, rule #17). The QML
+    /// tab's look is taken from here rather than written anew.
     pub fn palette(&self) -> QMap<QMapPair_QString_QVariant> {
         let mut out = QMap::<QMapPair_QString_QVariant>::default();
         for (key, value) in &ui_base::active_qml_palette() {
             out.insert(QString::from(key), qstr(value));
         }
-        // Затемнение фона под модальным окном — одно на продукт.
+        // Background dimming under a modal window — one for the product.
         out.insert(
             QString::from("modal_dim"),
             qstr(&ui_base::modal_dim_argb_hex()),
         );
-        // Подложка ползунка (`track`) приходит с общей палитрой
+        // The slider track (`track`) comes with the shared palette
         // (`ui_base::qml_palette`).
         out
     }
 }
 
 // ============================================================================
-// Свойства: меняющееся
+// Properties: what changes
 // ============================================================================
 
 impl qobject::SteamModel {
@@ -1545,8 +1575,8 @@ impl qobject::SteamModel {
             me.favorites.len(),
             me.movies.len(),
         );
-        // Тёмный скин по умолчанию (правило #17): решает не разметка, а
-        // яркость подложки палитры.
+        // Dark skin by default (rule #17): it is decided not by the markup but by
+        // the brightness of the palette's background.
         let dark = active_is_dark();
         let (bg, border, fg) = qs::chip_colors(tone, dark);
         vmap(vec![
@@ -1581,9 +1611,9 @@ impl qobject::SteamModel {
         out
     }
 
-    /// Все фоны профиля для выбора фона предпросмотра витрины. У
-    /// анимированного фона `url` ведёт на ролик, поэтому берётся `preview` —
-    /// статичная картинка того же размера.
+    /// All profile backgrounds for choosing the showcase preview background.
+    /// For an animated background `url` leads to a clip, so `preview` is taken —
+    /// a static picture of the same size.
     pub fn bg_choices(&self) -> QList<QVariant> {
         let me = self.rust();
         let mut out = QList::<QVariant>::default();
@@ -1593,7 +1623,7 @@ impl qobject::SteamModel {
             out.append(QVariant::from(&vmap(vec![
                 ("id", qstr(&it.id)),
                 ("name", qstr(if it.name.is_empty() { "?" } else { &it.name })),
-                // Отметка анимированного — та же, что на карточке сетки.
+                // The animated marker — the same as on a grid card.
                 (
                     "mark",
                     qstr(if qs::bg_is_animated(it) { qs::BG_ANIMATED_MARK } else { "" }),
@@ -1606,12 +1636,13 @@ impl qobject::SteamModel {
         out
     }
 
-    /// Карточки крупного просмотра — весь отобранный список.
+    /// Cards of the large viewer — the whole selected list.
     ///
-    /// Картинка фона у Steam одна и сразу полноразмерная: файл, скачанный
-    /// для миниатюры, и есть полный размер. Поэтому у статичного фона с уже
-    /// скачанной миниатюрой ждать нечего; остальное просмотр попросит сам
-    /// (`requestBgFull`) и получит через `bgViewerSources`.
+    /// Steam has one background picture and it is full-size right away: the file
+    /// downloaded for the thumbnail is the full size. So for a static background
+    /// with an already downloaded thumbnail there is nothing to wait for; the
+    /// viewer will ask for the rest itself (`requestBgFull`) and get it through
+    /// `bgViewerSources`.
     pub fn bg_viewer_items(&self) -> QList<QVariant> {
         let me = self.rust();
         let mut out = QList::<QVariant>::default();
@@ -1645,7 +1676,8 @@ impl qobject::SteamModel {
             if still.is_none() && movie.is_none() && !asked_done {
                 continue;
             }
-            // Статичному хватает картинки; анимированному нужен ещё ролик.
+            // A static one needs only the picture; an animated one also needs the
+            // clip.
             let done = asked_done || (still.is_some() && !qs::bg_is_animated(it));
             out.insert(
                 QString::from(&it.id),
@@ -1674,13 +1706,14 @@ impl qobject::SteamModel {
         };
         self.as_mut().rust_mut().full_asked.insert(wanted.clone());
         let still_url = qs::bg_card(&item).preview_url;
-        // У анимированного `url` — ролик; у статичного он же картинка.
+        // For an animated one `url` is the clip; for a static one it is the
+        // picture.
         let movie_url = if animated { item.url.clone() } else { String::new() };
         tasks.start_full(wanted, if have_still { String::new() } else { still_url }, movie_url);
     }
 
-    /// Карточки крупного просмотра заставок: показанные ролики. Кадр-превью
-    /// виден сразу, сам ролик играет из файла на диске.
+    /// Cards of the large splash viewer: the shown clips. The preview frame is
+    /// visible at once, the clip itself plays from the file on disk.
     pub fn sv_viewer_items(&self) -> QList<QVariant> {
         let me = self.rust();
         let mut out = QList::<QVariant>::default();
@@ -1730,8 +1763,8 @@ impl qobject::SteamModel {
 
     pub fn bg_status_text(&self) -> QString {
         let me = self.rust();
-        // Решает ядро: подпись секции — это причина, если она есть, и счёт
-        // фонов, если её нет.
+        // The core decides: the section label is the reason if there is one, and
+        // the background count if there is none.
         QString::from(&qs::bg_section_text_filtered(
             &me.bg_notice,
             me.bg_all.len(),
@@ -1755,15 +1788,15 @@ impl qobject::SteamModel {
             ("prevEnabled", QVariant::from(&p.prev_enabled)),
             ("nextEnabled", QVariant::from(&p.next_enabled)),
             ("text", qstr(&p.text)),
-            // Столбцы сетки — те же, по которым нарезана страница: ряды
-            // всегда целые (`qs::bg_columns`).
+            // The grid columns are the same ones the page is cut by: the rows are
+            // always whole (`qs::bg_columns`).
             ("cols", QVariant::from(&(self.rust().cols() as i32))),
         ])
     }
 }
 
 // ============================================================================
-// Модель витрины заставок
+// Splash showcase model
 // ============================================================================
 
 impl qobject::SteamModel {
@@ -1794,8 +1827,9 @@ impl qobject::SteamModel {
         self.role_value(item, name)
     }
 
-    /// Значение одной роли для записи ролика. Общее место для `data`,
-    /// `roleValueOf` и проверок — второй копии правил не заводим.
+    /// The value of one role for a clip record. A shared place for `data`,
+    /// `roleValueOf` and the checks — we do not create a second copy of the
+    /// rules.
     fn role_value(&self, item: &Value, name: &str) -> QVariant {
         let me = self.rust();
         let path = s(item, "path");
@@ -1857,15 +1891,15 @@ impl qobject::SteamModel {
         let Some(item) = self.rust().movies.iter().find(|m| s(m, "path") == wanted) else {
             return QVariant::default();
         };
-        // Заимствование `item` живёт от `self.rust()`, поэтому берём копию:
-        // `role_value` снова спрашивает `rust()`.
+        // The borrow of `item` lives from `self.rust()`, so we take a copy:
+        // `role_value` asks `rust()` again.
         let copy = item.clone();
         self.role_value(&copy, &name.to_string())
     }
 }
 
 // ============================================================================
-// Действия
+// Actions
 // ============================================================================
 
 impl qobject::SteamModel {
@@ -1885,7 +1919,7 @@ impl qobject::SteamModel {
             me.movies = movies_from(movies);
             me.favorites = strings_from(favorites);
             me.current_path = current_path.to_string();
-            // Ничего не выбрано — берём первый найденный, как оригинал.
+            // Nothing is chosen — take the first one found, like the original.
             if me.current_path.is_empty() {
                 if let Some(first) = me.movies.first() {
                     me.current_path = s(first, "path").to_string();
@@ -1915,8 +1949,8 @@ impl qobject::SteamModel {
             return;
         }
         self.as_mut().rust_mut().section = key;
-        // Ушли с витрины — наведение снимается: превью крутится только на
-        // своей подвкладке (как в оригинале).
+        // Left the showcase — the hover is removed: the preview plays only on its
+        // own sub-tab (as in the original).
         self.as_mut().rust_mut().hovered_path.clear();
         self.as_mut().section_changed();
         self.as_mut().hero_and_preview();
@@ -1946,7 +1980,8 @@ impl qobject::SteamModel {
             return;
         }
         self.as_mut().rust_mut().current_path = path;
-        // Выбор меняет подсветку карточек — сбрасываем модель целиком.
+        // The choice changes the highlighting of the cards — we reset the whole
+        // model.
         unsafe {
             self.as_mut().begin_reset_model();
             self.as_mut().end_reset_model();
@@ -1965,12 +2000,12 @@ impl qobject::SteamModel {
 
     pub fn set_favorites(mut self: Pin<&mut Self>, favorites: &QVariant) {
         self.as_mut().rust_mut().favorites = strings_from(favorites);
-        // Избранное меняет и звёздочки, и состав чипов, и, если смотрят
-        // именно избранное, — состав витрины.
+        // Favourites change the stars, the set of chips and, if favourites are
+        // exactly what is being viewed, the composition of the showcase.
         self.as_mut().reset_showcase();
     }
 
-    // ── Живое превью ролика ─────────────────────────────────────────────
+    // ── Live clip preview ───────────────────────────────────────────────
 
     pub fn set_preview_shown(mut self: Pin<&mut Self>, on: bool) {
         if self.rust().preview_shown == on {
@@ -2009,8 +2044,9 @@ impl qobject::SteamModel {
         if matches!(self.rust().preview_paused_until, Some(t) if Instant::now() >= t) {
             self.as_mut().rust_mut().preview_paused_until = None;
         }
-        // Молчим, пока решение то же: иначе крупная карточка перестраивалась
-        // бы раз в секунду просто оттого, что за окном никто ничего не делал.
+        // We stay silent while the decision is the same: otherwise the large card
+        // would be rebuilt once a second simply because nobody did anything outside
+        // the window.
         if self.rust().preview_path() != self.rust().preview_playing.as_str() {
             self.hero_and_preview();
         }
@@ -2026,8 +2062,8 @@ impl qobject::SteamModel {
         let Some(text) = qs::autostart_refusal_text(on, &reason) else {
             return;
         };
-        // Сырая причина — журналу: покупателю она ничего не скажет, а
-        // разбирающемуся в отказе нужна дословно.
+        // The raw reason goes to the log: it tells the customer nothing, but
+        // someone analysing the refusal needs it verbatim.
         rexon_core::log_warn!("splash", "заставка при входе не переключена ({on}): {reason}");
         self.as_mut().set_status(&text);
     }
@@ -2046,14 +2082,16 @@ impl qobject::SteamModel {
         QString::from(self.rust().shown_item().map(|it| s(it, "path")).unwrap_or(""))
     }
 
-    /// Порт `QWindow.isExposed()` из оригинала (`_sv_preview_allowed`).
+    /// A port of `QWindow.isExposed()` from the original
+    /// (`_sv_preview_allowed`).
     ///
-    /// Приведение указателя — то же, что сделал бы `static_cast<QWindow*>`:
-    /// `QObject` — ПЕРВАЯ база `QWindow` (`class QWindow : public QObject,
-    /// public QSurface`), смещения у первой базы нет, адрес совпадает.
+    /// The pointer cast is the same as `static_cast<QWindow*>` would do:
+    /// `QObject` is the FIRST base of `QWindow`
+    /// (`class QWindow : public QObject, public QSurface`), the first base has
+    /// no offset, the address matches.
     ///
     /// # Safety
-    /// `window` — живой QWindow либо ноль.
+    /// `window` is a live QWindow or null.
     pub unsafe fn window_exposed(&self, window: *mut qobject::QObject) -> bool {
         if window.is_null() {
             return true;
@@ -2071,12 +2109,13 @@ impl qobject::SteamModel {
         }
     }
 
-    // ── Фоны профиля ────────────────────────────────────────────────────
+    // ── Profile backgrounds ─────────────────────────────────────────────
 
-    /// Ширина приходит СТРОКОЙ: инвокабл с числом в подписи снаружи
-    /// не зовётся (`::std::int32_t` в метаобъекте не имеет метатипа).
-    /// Это ширина САМОЙ сетки (без полей группы): по ней же сетка QML делит
-    /// ряд на `pager.cols` столбцов.
+    /// The width comes as a STRING: an invokable with a number in its
+    /// signature cannot be called from outside (`::std::int32_t` in the
+    /// metaobject has no metatype). This is the width of the grid ITSELF
+    /// (without the group's margins): the QML grid divides a row into
+    /// `pager.cols` columns by the same width.
     pub fn set_bg_viewport_width(mut self: Pin<&mut Self>, width: &QString) {
         let px: i32 = width.to_string().trim().parse().unwrap_or(0);
         let cols = qs::bg_columns(px);
@@ -2086,7 +2125,7 @@ impl qobject::SteamModel {
         }
         {
             let mut me = self.as_mut().rust_mut();
-            // Что было первым на экране, тем и остаётся.
+            // What was first on the screen stays first.
             me.bg_page = qs::bg_page_after_resize(me.bg_page, old, cols);
             me.bg_cols = cols;
         }
@@ -2101,7 +2140,7 @@ impl qobject::SteamModel {
         {
             let mut me = self.as_mut().rust_mut();
             me.bg_search = text;
-            // Поиск по всему инвентарю → сброс на страницу 0.
+            // A search over the whole inventory → reset to page 0.
             me.bg_page = 0;
         }
         self.as_mut().refresh_backgrounds();
@@ -2115,7 +2154,7 @@ impl qobject::SteamModel {
         {
             let mut me = self.as_mut().rust_mut();
             me.bg_kind = key.to_string();
-            // Отбор по всему инвентарю → сброс на страницу 0.
+            // A selection over the whole inventory → reset to page 0.
             me.bg_page = 0;
         }
         self.as_mut().refresh_backgrounds();
@@ -2130,8 +2169,8 @@ impl qobject::SteamModel {
             return;
         }
         let equipped = self.rust().bg_equipped.clone();
-        // Причина снимается сразу: кнопка нажата, ответ ещё не пришёл —
-        // прежний приговор уже не про этот запрос.
+        // The reason is removed at once: the button was pressed, the answer has
+        // not come yet — the previous verdict is no longer about this request.
         self.as_mut().rust_mut().bg_animated_gap = qs::AnimatedGap::None;
         let shown = self.rust().bg_all.len();
         let text = if shown == 0 { qs::bg_loading_text() } else { qs::bg_refreshing_text(shown) };
@@ -2186,9 +2225,9 @@ impl qobject::SteamModel {
             return false;
         };
         let audio = self.rust().bg_audio;
-        // ⭐ Настоящий движок: общий исполнитель обоев ядра (тот же, что у
-        // «Настроек»). До 15.09.2026 здесь стояла заглушка, и «Применить»
-        // отвечал «движок обоев недоступен» в обоих хозяевах страницы.
+        // ⭐ A real engine: the core's shared wallpaper executor (the same as in
+        // "Settings"). Until 15.09.2026 a stub stood here, and "Apply" answered
+        // "the wallpaper engine is unavailable" under both page hosts.
         let applier: std::sync::Arc<dyn WallpaperApply> =
             std::sync::Arc::new(steam_workers::ExecApplier::live());
         if !tasks.apply_background(item.clone(), audio, applier) {
@@ -2201,7 +2240,7 @@ impl qobject::SteamModel {
         true
     }
 
-    // ── Фоновые задачи ──────────────────────────────────────────────────
+    // ── Background tasks ────────────────────────────────────────────────
 
     pub fn start(mut self: Pin<&mut Self>, webapi_token: &QString) {
         if self.rust().tasks.is_some() {
@@ -2213,12 +2252,13 @@ impl qobject::SteamModel {
         };
         self.as_mut().rust_mut().tasks = Some(Arc::new(tasks));
 
-        // Кадры плиток заказываются уже здесь: страница отдаёт ролики
-        // (`setMovies`) ДО `start`, когда задач ещё нет, и заказ тогда уходит
-        // в пустоту. Дальше его повторял только `reset_showcase` в конце
-        // этой функции — а без Steam или без учётки до него не доходит, и
-        // все плитки (свои ролики, ролики стенда) навсегда оставались с
-        // хлопушкой. Для кадра не нужны ни Steam, ни учётка — только ffmpeg.
+        // The tile frames are ordered already here: the page hands over the clips
+        // (`setMovies`) BEFORE `start`, when there are no tasks yet, and the order
+        // then goes into the void. After that only `reset_showcase` at the end of
+        // this function repeated it — and without Steam or without an account it
+        // is never reached, and all tiles (own clips, bench clips) stayed with a
+        // clapperboard forever. A frame needs neither Steam nor an account — only
+        // ffmpeg.
         let root = self.rust().steam_root.clone();
         if root.is_empty() {
             self.rust().request_posters();
@@ -2230,8 +2270,8 @@ impl qobject::SteamModel {
             self.as_mut().set_bg_notice(&qs::bg_no_account());
             return;
         };
-        // Причину не стираем: до ответа сети в подписи честно стоит
-        // «⏳ Загружаю инвентарь Steam…», как в оригинале.
+        // We do not clear the reason: until the network answers, the label
+        // honestly says "⏳ Loading the Steam inventory…", as in the original.
         let equipped = steam_workers::read_equipped_background(&root);
 
         {
@@ -2241,8 +2281,8 @@ impl qobject::SteamModel {
             me.applied_id = steam_workers::read_applied_id(&env);
             me.meta = steam_workers::read_meta_cache(&env, &sid);
         }
-        // Дисковый кэш списка: витрина наполняется МГНОВЕННО, сеть тихо
-        // обновит её следом (stale-while-revalidate оригинала).
+        // Disk cache of the list: the showcase fills INSTANTLY, the network will
+        // quietly update it afterwards (the original's stale-while-revalidate).
         if let Some(cached) = steam_workers::read_inventory_cache(&env, &sid) {
             let shown = cached.len();
             {
@@ -2252,12 +2292,12 @@ impl qobject::SteamModel {
                 me.bg_page = 0;
             }
             self.as_mut().refresh_backgrounds();
-            // Порядок как в оригинале: сперва показать кэш, потом подписать
-            // его «обновляю». Подпись — секции, не тост.
+            // The order is as in the original: first show the cache, then label it
+            // "updating". The label is the section's, not a toast.
             let text = qs::bg_refreshing_text(shown);
             self.as_mut().set_bg_notice(&text);
         }
-        // Метки из кэша меняют бейджи и чипы витрины.
+        // Markers from the cache change the showcase badges and chips.
         self.as_mut().reset_showcase();
 
         if let Some(tasks) = self.rust().tasks.clone() {
@@ -2289,11 +2329,11 @@ impl qobject::SteamModel {
 }
 
 // ============================================================================
-// Внутреннее: приём событий и пересчёты
+// Internals: receiving events and recomputations
 // ============================================================================
 
 impl qobject::SteamModel {
-    /// Разложить одно событие фоновой задачи по состоянию страницы.
+    /// Lay out one background task event into the page state.
     fn handle_event(mut self: Pin<&mut Self>, event: SteamEvent) {
         match event {
             SteamEvent::InventoryDone { items, error } => {
@@ -2307,14 +2347,14 @@ impl qobject::SteamModel {
             }
             SteamEvent::SplashMeta(meta) => {
                 self.as_mut().rust_mut().meta = meta;
-                // Метки пришли — у части роликов появилось событие
-                // распродажи, значит и группы фильтра стали другими.
+                // The markers arrived — some clips got a sale event, so the filter groups
+                // became different too.
                 self.as_mut().reset_showcase();
             }
             SteamEvent::Poster { id, png } => {
                 self.as_mut().rust_mut().posters.insert(id, png);
-                // Кадр меняет ОДНУ роль показанной строки; полный сброс
-                // модели тут был бы дёрганьем всей сетки на каждый кадр.
+                // A frame changes ONE role of a shown row; a full model reset here would
+                // jerk the whole grid on every frame.
                 unsafe {
                     self.as_mut().begin_reset_model();
                     self.as_mut().end_reset_model();
@@ -2344,15 +2384,15 @@ impl qobject::SteamModel {
         }
     }
 
-    /// Порт `_on_inventory_done`.
+    /// A port of `_on_inventory_done`.
     fn on_inventory(mut self: Pin<&mut Self>, items: Vec<ProfileBackgroundItem>, error: String) {
         let cache_shown = self.rust().cache_shown && !self.rust().bg_all.is_empty();
         if items.is_empty() {
-            // Сеть/приватность подвели либо фонов нет. Показанный из кэша
-            // список НЕ стираем — оставляем прошлый.
+            // The network/privacy let us down or there are no backgrounds. We do NOT
+            // erase the list shown from the cache — we keep the previous one.
             if cache_shown {
-                // Причины нет — подпись возвращается к счёту показанных
-                // фонов, ровно как в оригинале.
+                // No reason — the label returns to the count of shown backgrounds, exactly
+                // as in the original.
                 self.as_mut().set_bg_notice("");
                 return;
             }
@@ -2380,7 +2420,7 @@ impl qobject::SteamModel {
         self.as_mut().set_status("");
     }
 
-    /// Порт `_on_apply_done`.
+    /// A port of `_on_apply_done`.
     fn on_apply_done(mut self: Pin<&mut Self>, ok: bool, message: String) {
         let item = self.as_mut().rust_mut().pending_apply.take();
         match (ok, item) {
@@ -2399,8 +2439,8 @@ impl qobject::SteamModel {
         }
     }
 
-    /// Пересобрать витрину заставок целиком: состав строк и их порядок
-    /// меняются разом — это и есть тот случай, ради которого в Qt есть reset.
+    /// Rebuild the whole splash showcase: the composition of rows and their
+    /// order change at once — this is exactly the case for which Qt has reset.
     fn reset_showcase(mut self: Pin<&mut Self>) {
         unsafe {
             self.as_mut().begin_reset_model();
@@ -2412,39 +2452,39 @@ impl qobject::SteamModel {
         self.rust().request_posters();
     }
 
-    /// Пересобрать страницу фонов и заказать её миниатюры.
+    /// Rebuild the background page and order its thumbnails.
     fn refresh_backgrounds(mut self: Pin<&mut Self>) {
-        // Страница могла выйти за пределы списка — нормализуем её тем же
-        // расчётом, что рисует полосу пагинации.
+        // The page may have gone beyond the list — we normalize it with the same
+        // calculation that draws the pagination strip.
         let page = self.rust().pager_view().page;
         self.as_mut().rust_mut().bg_page = page;
         self.as_mut().backgrounds_changed();
         self.rust().request_page_thumbs();
     }
 
-    /// Крупная карточка изменилась — а вместе с ней и ролик, который в ней
-    /// играет: это ОДИН и тот же ролик. Порт связки `_sv_update_hero` +
-    /// `_sv_sync_preview` оригинала — там она тоже звалась парой.
+    /// The large card changed — and with it the clip that plays in it: it is
+    /// ONE and the same clip. A port of the original's `_sv_update_hero` +
+    /// `_sv_sync_preview` pair — there it was also called as a pair.
     fn hero_and_preview(mut self: Pin<&mut Self>) {
         let want = self.rust().preview_path().to_string();
         let changed = self.rust().preview_playing != want;
         self.as_mut().rust_mut().preview_playing = want;
-        // Сигнал ролика — только по настоящей смене: он поднимает
-        // проигрыватель, и дёргать его на каждое движение мыши незачем.
+        // The clip signal — only on a real change: it brings up the player, and
+        // there is no reason to poke it on every mouse movement.
         if changed {
             self.as_mut().preview_source_changed();
         }
         self.as_mut().hero_changed();
     }
 
-    /// Строка состояния (общий всплывающий тост оригинала).
+    /// Status line (the original's shared pop-up toast).
     fn set_status(mut self: Pin<&mut Self>, text: &str) {
         self.as_mut().rust_mut().status = text.to_string();
         self.as_mut().status_changed();
     }
 
-    /// Причина, по которой секции фонов нечего показать. Пустая строка —
-    /// причины нет, подпись возвращается к счёту фонов.
+    /// The reason the background section has nothing to show. An empty string
+    /// means there is no reason, and the label returns to the background count.
     fn set_bg_notice(mut self: Pin<&mut Self>, text: &str) {
         if self.rust().bg_notice == text {
             return;

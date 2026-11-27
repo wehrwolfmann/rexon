@@ -14,8 +14,9 @@
 #include <QQuickRenderControl>
 #include <QQuickRenderTarget>
 #include <QQuickWindow>
-// Полупубличный с Qt 6.6 API видеокарты Qt (каталог с версией добавляет
-// build.rs): текстура-цель QQuickRenderControl и чтение её обратно.
+// Qt's GPU API, semi-public since Qt 6.6 (the versioned directory is added
+// by build.rs): the QQuickRenderControl render target texture and reading
+// it back.
 #include <rhi/qrhi.h>
 #include <QTimer>
 #include <QVariant>
@@ -26,27 +27,29 @@
 #include <QGuiApplication>
 #include <QScreen>
 #include <QtGui/qguiapplication_platform.h>
-// ⚠️ Приватный, но стабильный с Qt 5 интерфейс платформы: публичного способа
-// взять wl_surface окна в Qt 6.11 нет (wl_display и xcb — публичные ниже).
-// Каталоги с версией Qt добавляет build.rs.
+// Warning: a private but stable since Qt 5 platform interface: there is no
+// public way to get a window's wl_surface in Qt 6.11 (wl_display and xcb
+// are public, below). The directories with the Qt version are added by
+// build.rs.
 #include <qpa/qplatformnativeinterface.h>
 
 namespace
 {
 
-/// Сцена Qt Quick без окна: `QQuickRenderControl` рисует содержимое окна QML
-/// в свою цель, кадр читается обратно.
+/// A Qt Quick scene without a window: `QQuickRenderControl` renders the QML
+/// window's content into its own target, and the frame is read back.
 ///
-/// Зачем (замер 15.09.2026, 1920×1080, 30 к/с). Прежде веб-обои в потоке
-/// кадров снимались `grabWindow` с показанного окна на платформе `offscreen`:
-/// там у Qt нет EGL, Qt Quick уходил в программный рендер, Chromium — без
-/// видеокарты: CSS 17 к/с при 157 % CPU, WebGL нет вовсе. На настоящей
-/// платформе сеанса (wayland/xcb) окно показывать нельзя — на Mutter оно
-/// выходит поверх стола, — а QQuickRenderControl окна не создаёт вовсе (за
-/// прогон ни одной `wl_surface`) и рисует на видеокарте: CSS 43 % CPU, WebGL
-/// 25 % с живым кадром, страница идёт с частотой потока. Штатный путь Qt
-/// «рисовать без экрана» (документация QQuickRenderControl, пример
-/// rendercontrol_rhi).
+/// Why (measurement 15.09.2026, 1920×1080, 30 fps). Previously web
+/// wallpapers in the frame stream were captured with `grabWindow` from a
+/// shown window on the `offscreen` platform: Qt has no EGL there, Qt Quick
+/// fell back to software rendering, Chromium ran without a GPU: CSS at 17
+/// fps with 157 % CPU, no WebGL at all. On the session's real platform
+/// (wayland/xcb) the window must not be shown — on Mutter it appears on top
+/// of the desktop — while QQuickRenderControl creates no window at all (not
+/// a single `wl_surface` over the run) and renders on the GPU: CSS at 43 %
+/// CPU, WebGL at 25 % with a live frame, the page runs at the stream's
+/// rate. This is Qt's standard "render without a screen" path
+/// (QQuickRenderControl documentation, the rendercontrol_rhi example).
 struct SceneRender {
     QQuickRenderControl *control = nullptr;
     QQuickWindow *window = nullptr;
@@ -54,8 +57,8 @@ struct SceneRender {
     QRhiRenderBuffer *depth = nullptr;
     QRhiTextureRenderTarget *target = nullptr;
     QRhiRenderPassDescriptor *pass = nullptr;
-    /// Цель программного рендера — когда видеокарты у Qt нет (платформа
-    /// `offscreen` без GL).
+    /// Software render target — when Qt has no GPU (the `offscreen` platform
+    /// without GL).
     QImage software;
 
     ~SceneRender()
@@ -69,25 +72,27 @@ struct SceneRender {
     }
 };
 
-/// Состояние одного потока кадров. Живёт ровно столько, сколько окно:
-/// таймер — потомок окна, а запись в карте снимается по `destroyed`.
+/// State of one frame stream. It lives exactly as long as the window: the
+/// timer is a child of the window, and the map entry is removed on
+/// `destroyed`.
 struct Stream {
     int fd = -1;
-    /// Счётчик поколения кадра (seqlock для читателя без замка); -1 — нет.
+    /// Frame generation counter (a seqlock for a lock-free reader); -1 — none.
     int gen_fd = -1;
     std::uint64_t generation = 0;
     std::int32_t width = 0;
     std::int32_t height = 0;
     std::int64_t frames = 0;
-    /// Центральный пиксель последнего записанного кадра, 0xRRGGBB; -1 — не было.
+    /// Centre pixel of the last written frame, 0xRRGGBB; -1 — there was none.
     std::int64_t center_rgb = -1;
-    /// Доля не-чёрных пикселей последнего кадра, ‰ (выборка); -1 — не было.
+    /// Share of non-black pixels of the last frame, ‰ (sampled); -1 — there was
+    /// none.
     std::int64_t nonblack_permille = -1;
-    /// Источник кадров — VideoOutput; пусто — сцена Qt Quick.
+    /// Frame source — a VideoOutput; empty means the Qt Quick scene.
     QPointer<QObject> video;
-    /// Сцена без окна (веб); пусто при видео и при снимке окна.
+    /// Windowless scene (web); empty for video and for a window snapshot.
     std::shared_ptr<SceneRender> scene;
-    /// Чем снимается кадр — для самопроверки и журнала.
+    /// What captures the frame — for the self-test and the log.
     QString capture;
 };
 
@@ -97,8 +102,8 @@ QHash<QObject *, Stream> &streams()
     return map;
 }
 
-/// Окно QtQuick: сам объект либо первый такой потомок. Кадры снимаются
-/// только с него — `grabWindow` есть лишь у QQuickWindow.
+/// The QtQuick window: the object itself or its first such descendant.
+/// Frames are captured only from it — only QQuickWindow has `grabWindow`.
 QQuickWindow *quick_window(QObject *object)
 {
     if (auto *w = qobject_cast<QQuickWindow *>(object)) {
@@ -107,17 +112,17 @@ QQuickWindow *quick_window(QObject *object)
     return object == nullptr ? nullptr : object->findChild<QQuickWindow *>();
 }
 
-/// Текущий кадр проигрывателя прямо из приёмника VideoOutput, заполняющий
-/// кадр потока целиком с обрезкой краёв — как `VideoOutput.PreserveAspectCrop`
-/// в WallpaperVideo.qml.
+/// The player's current frame straight from the VideoOutput sink, filling
+/// the stream frame entirely with the edges cropped — like
+/// `VideoOutput.PreserveAspectCrop` in WallpaperVideo.qml.
 ///
-/// Зачем не `grabWindow`. В режиме потока кадров хост живёт на платформе
-/// `offscreen` (иначе на GNOME/Cinnamon-Wayland его окно выходит поверх
-/// рабочего стола), а там Qt Quick рисует только программным рендером, и
-/// VideoOutput в нём не рисует ничего: замер — 186 кадров в файле, все
-/// чёрные (0,0,0), при любых QSG_RHI_BACKEND/QT_QUICK_BACKEND. Приёмник же
-/// получает кадры декодера независимо от рендера, и `QVideoFrame::toImage`
-/// на той же платформе отдаёт настоящий цвет.
+/// Why not `grabWindow`. In frame stream mode the host lives on the
+/// `offscreen` platform (otherwise on GNOME/Cinnamon Wayland its window
+/// appears on top of the desktop), and there Qt Quick renders only in
+/// software, and VideoOutput draws nothing in it: measurement — 186 frames
+/// in the file, all black (0,0,0), with any QSG_RHI_BACKEND/QT_QUICK_BACKEND.
+/// The sink, however, gets the decoder's frames regardless of the renderer,
+/// and `QVideoFrame::toImage` on the same platform gives real colour.
 QImage video_image(QObject *video_output, std::int32_t width, std::int32_t height)
 {
     auto *sink = qobject_cast<QVideoSink *>(
@@ -127,7 +132,7 @@ QImage video_image(QObject *video_output, std::int32_t width, std::int32_t heigh
     }
     const QVideoFrame frame = sink->videoFrame();
     if (!frame.isValid()) {
-        return {}; // декодер ещё не отдал первый кадр — файл остаётся коротким
+        return {}; // the decoder has not given the first frame yet — the file stays short
     }
     const QImage image = frame.toImage();
     if (image.isNull() || (image.width() == width && image.height() == height)) {
@@ -139,8 +144,8 @@ QImage video_image(QObject *video_output, std::int32_t width, std::int32_t heigh
                        width, height);
 }
 
-/// Записать счётчик поколения (u64 little-endian — раскладку задаёт ядро,
-/// `wallpaper_mmap::frame_generation_bytes`).
+/// Write the generation counter (u64 little-endian — the layout is set by
+/// the core, `wallpaper_mmap::frame_generation_bytes`).
 void write_generation(const Stream &stream, std::uint64_t value)
 {
     if (stream.gen_fd < 0) {
@@ -153,11 +158,11 @@ void write_generation(const Stream &stream, std::uint64_t value)
     (void)::pwrite(stream.gen_fd, bytes, sizeof bytes, 0);
 }
 
-/// Один кадр в файл. Пишется целиком и под исключительным замком — для
-/// читателей, которые умеют брать разделяемый. Расширения оболочки не умеют
-/// (у GJS нет `flock`), им тот же кадр огорожен счётчиком поколения:
-/// нечётный — кадр пишется, чётный — записан целиком
-/// (`wallpaper_mmap::frame_generation_path`).
+/// One frame into the file. It is written in full and under an exclusive
+/// lock — for readers that can take a shared one. The shell extensions
+/// cannot (GJS has no `flock`), so for them the same frame is fenced by the
+/// generation counter: odd — the frame is being written, even — it is
+/// written in full (`wallpaper_mmap::frame_generation_path`).
 void write_frame(Stream &stream, const QImage &source)
 {
     QImage image = source;
@@ -178,12 +183,12 @@ void write_frame(Stream &stream, const QImage &source)
     if (::flock(stream.fd, LOCK_EX) != 0) {
         return;
     }
-    stream.generation += 1; // нечётное: кадр пишется
+    stream.generation += 1; // odd: the frame is being written
     write_generation(stream, stream.generation);
     ::lseek(stream.fd, 0, SEEK_SET);
-    // Построчно, а не одним куском: у QImage строки выровнены, и
-    // bytesPerLine может быть больше ширины кадра — запись целиком уехала бы
-    // со сдвигом, и расширение показало бы «косую» картинку.
+    // Row by row, not in one chunk: QImage rows are aligned, and bytesPerLine
+    // may be larger than the frame width — writing it in one piece would
+    // shift, and the extension would show a "skewed" picture.
     for (std::int32_t y = 0; y < stream.height; ++y) {
         const uchar *line = image.constScanLine(y);
         qsizetype written = 0;
@@ -196,15 +201,16 @@ void write_frame(Stream &stream, const QImage &source)
             written += n;
         }
     }
-    stream.generation += 1; // чётное: кадр записан целиком
+    stream.generation += 1; // even: the frame is written in full
     write_generation(stream, stream.generation);
     ::flock(stream.fd, LOCK_UN);
     stream.frames += 1;
     const QRgb center = image.pixel(stream.width / 2, stream.height / 2);
     stream.center_rgb = (static_cast<std::int64_t>(qRed(center)) << 16)
         | (qGreen(center) << 8) | qBlue(center);
-    // Центр бывает чёрным и у живой страницы, поэтому самопроверке нужна ещё
-    // доля не-чёрного по всему кадру. Выборка сеткой 16×16: ~8 тыс. точек.
+    // The centre can be black on a live page too, so the self-test also needs
+    // the share of non-black over the whole frame. Sampling on a 16×16 grid:
+    // ~8 thousand points.
     std::int64_t lit = 0;
     std::int64_t total = 0;
     for (std::int32_t y = 0; y < stream.height; y += 16) {
@@ -220,8 +226,9 @@ void write_frame(Stream &stream, const QImage &source)
     stream.nonblack_permille = total == 0 ? 0 : lit * 1000 / total;
 }
 
-/// Перенести содержимое окна QML в сцену QQuickRenderControl и приготовить
-/// цель. `false` — Qt не поднял сцену (содержимое возвращено на место).
+/// Move the QML window's content into the QQuickRenderControl scene and
+/// prepare the target. `false` means Qt did not bring up the scene (the
+/// content is put back).
 bool start_scene(Stream &stream, QQuickWindow *source)
 {
     auto scene = std::make_shared<SceneRender>();
@@ -230,10 +237,11 @@ bool start_scene(Stream &stream, QQuickWindow *source)
     scene->window->setColor(source->color());
     const QSize size(stream.width, stream.height);
     scene->window->resize(size);
-    // ⚠️ `resize` окна без платформенного окна до `contentItem` не доходит (он
-    // остаётся 0×0), а WebEngineView привязан к нему `anchors.fill`. Замер:
-    // без этой строки Chromium весь прогон видел `innerWidth=0`, холст WebGL
-    // вставал 0×0 и кадр был чёрным.
+    // Warning: `resize` of a window without a platform window does not reach
+    // `contentItem` (it stays 0×0), and the WebEngineView is attached to it
+    // with `anchors.fill`. Measurement: without this line Chromium saw
+    // `innerWidth=0` for the whole run, the WebGL canvas came up 0×0 and the
+    // frame was black.
     scene->window->contentItem()->setSize(QSizeF(size));
 
     const QList<QQuickItem *> items = source->contentItem()->childItems();
@@ -280,7 +288,7 @@ bool start_scene(Stream &stream, QQuickWindow *source)
         target = QQuickRenderTarget::fromPaintDevice(&scene->software);
         stream.capture = QStringLiteral("rendercontrol-software");
     }
-    // Кадр — ровно width×height пикселей, какой бы масштаб ни был у экрана.
+    // A frame is exactly width×height pixels, whatever the screen scale.
     target.setDevicePixelRatio(1.0);
     scene->window->setRenderTarget(target);
 
@@ -288,13 +296,15 @@ bool start_scene(Stream &stream, QQuickWindow *source)
     return true;
 }
 
-/// Один кадр сцены без окна — на КАЖДОМ тике.
+/// One frame of the windowless scene — on EVERY tick.
 ///
-/// ⚠️ Не пропускать тик «сцена не менялась» (`sceneChanged`/`renderRequested`).
-/// Замер: с таким пропуском за 30 с в файл ушёл ОДИН кадр, чёрный. Следующий
-/// кадр Chromium WebEngineView отдаёт только после того, как сцену отрисовали
-/// (`updatePaintNode` забирает кадр компоситора), а сигнал об изменении
-/// сцены приходит уже после этого — пропуск ждал сигнала, сигнал ждал отрисовки.
+/// Warning: do not skip a "scene did not change" tick
+/// (`sceneChanged`/`renderRequested`). Measurement: with such skipping only
+/// ONE frame, black, went into the file in 30 s. The Chromium WebEngineView
+/// hands over its next frame only after the scene has been rendered
+/// (`updatePaintNode` takes the compositor frame), while the scene change
+/// signal arrives after that — the skip waited for the signal, and the
+/// signal waited for rendering.
 void render_scene(Stream &stream)
 {
     SceneRender &scene = *stream.scene;
@@ -317,11 +327,12 @@ void render_scene(Stream &stream)
     const QImage image(reinterpret_cast<const uchar *>(result.data.constData()),
                        result.pixelSize.width(), result.pixelSize.height(),
                        QImage::Format_RGBA8888);
-    // OpenGL кладёт первую строку внизу — файл кадра ждёт её сверху.
+    // OpenGL puts the first row at the bottom — the frame file expects it at
+    // the top.
     write_frame(stream, rhi->isYUpInFramebuffer() ? image.flipped(Qt::Vertical) : image);
 }
 
-/// Отцепить прежний файл и открыть свежий inode (см. пояснение в
+/// Unlink the previous file and open a fresh inode (see the explanation in
 /// `rexon_wp_mmap_stream_start`).
 int open_fresh(const QString &path, std::uint32_t file_mode)
 {
@@ -354,42 +365,44 @@ bool rexon_wp_mmap_stream_start(QObject *window,
         return false;
     }
     if (streams().contains(qwin)) {
-        return true; // поток уже идёт — повторный запуск не нужен
+        return true; // the stream is already running — a repeated start is not needed
     }
 
-    // Файл кадра НЕ переиспользуется между потоками — прежний отцепляется, и
-    // новый поток пишет в свежий inode.
+    // The frame file is NOT reused between streams — the previous one is
+    // unlinked, and the new stream writes into a fresh inode.
     //
-    // Зачем (замер на подставном пути, кадр 64x48 = 12288 байт): прежде
-    // файл жил весь сеанс, и при смене обоев новый хост открывал тот же
-    // файл с готовым кадром ПРЕЖНИХ обоев полного размера. Расширение
-    // оболочки годность кадра определяет по размеру файла, поэтому в
-    // промежутке между стартом потока и первым своим кадром (34 мс на
-    // стенде, а на живой машине ещё и весь запуск процесса хоста) оно
-    // честно рисовало чужую картинку. Хуже того: пока прежний хост
-    // доживает свои миллисекунды после `kill`, он продолжает писать в тот
-    // же файл — на замере два хоста чередовали кадры в файле секундами.
+    // Why (measured on a fake path, a 64x48 frame = 12288 bytes): previously
+    // the file lived for the whole session, and on a wallpaper change the new
+    // host opened the same file with a full-size finished frame of the
+    // PREVIOUS wallpaper. The shell extension judges a frame's validity by the
+    // file size, so in the gap between the stream start and its own first
+    // frame (34 ms on the bench, and on a live machine also the whole host
+    // process start) it honestly drew someone else's picture. Worse: while the
+    // previous host lives out its milliseconds after `kill`, it keeps writing
+    // into the same file — in the measurement two hosts alternated frames in
+    // the file for seconds.
     //
-    // Отцепление лечит оба случая разом: прежний хост дописывает в
-    // отцепленный inode, до экрана это уже не доходит. Счётчик поколения
-    // отцепляется так же и по той же причине.
+    // Unlinking cures both cases at once: the previous host keeps writing into
+    // an unlinked inode, which no longer reaches the screen. The generation
+    // counter is unlinked in the same way for the same reason.
     const int fd = open_fresh(path, file_mode);
     if (fd < 0) {
         return false;
     }
-    // Файл намеренно остаётся НУЛЕВОЙ длины: расширения GNOME и Cinnamon
-    // пропускают тик, пока в файле меньше width*height*4 байт, и держат свой
-    // чёрный актёр. Раздуть файл заранее (прежний `ftruncate` на полный
-    // кадр) значило бы объявить готовым кадр, которого ещё нет: нули в
-    // RGBA8888 — это ПРОЗРАЧНЫЙ кадр во весь экран. Полного размера файл
-    // достигает ровно тогда, когда `write_frame` допишет последнюю строку
-    // первого настоящего кадра, — то есть «кадр готов» и «файл дорос»
-    // становятся одним событием, и отдельного признака готовности не нужно.
+    // The file deliberately stays at ZERO length: the GNOME and Cinnamon
+    // extensions skip the tick while the file has fewer than width*height*4
+    // bytes and keep their black actor. Growing the file in advance (the former
+    // `ftruncate` to a full frame) would declare ready a frame that does not
+    // exist yet: zeros in RGBA8888 are a full-screen TRANSPARENT frame. The
+    // file reaches full size exactly when `write_frame` finishes writing the
+    // last row of the first real frame — so "the frame is ready" and "the file
+    // has grown" become one event, and no separate readiness flag is needed.
 
     Stream stream;
     stream.fd = fd;
-    // Без счётчика поток всё равно идёт: читатель без счётчика ведёт себя
-    // как расширение прежней сборки — изредка рваный кадр, но не пустой экран.
+    // Without a counter the stream still runs: a reader without the counter
+    // behaves like an extension of the earlier build — an occasional torn
+    // frame, but not an empty screen.
     stream.gen_fd = generation_path.isEmpty() ? -1 : open_fresh(generation_path, file_mode);
     stream.width = width;
     stream.height = height;
@@ -397,9 +410,10 @@ bool rexon_wp_mmap_stream_start(QObject *window,
     if (video_output != nullptr) {
         stream.capture = QStringLiteral("videosink");
     } else if (!start_scene(stream, qwin)) {
-        // Сцена без окна не поднялась. Снимок показанного окна — только там,
-        // где окну некуда выйти (решение ядра `stream_window_may_show`): на
-        // настоящей платформе окно на Mutter легло бы поверх стола.
+        // The windowless scene did not come up. A snapshot of a shown window —
+        // only where the window has nowhere to appear (the core's decision
+        // `stream_window_may_show`): on a real platform the window on Mutter would
+        // lie on top of the desktop.
         if (!may_show_window) {
             ::close(fd);
             if (stream.gen_fd >= 0) {
@@ -413,9 +427,9 @@ bool rexon_wp_mmap_stream_start(QObject *window,
     write_generation(stream, 0);
     streams().insert(qwin, stream);
 
-    // Дескриптор закрывается по смерти окна, а не «когда-нибудь при выходе»:
-    // за сеанс окно обоев пересоздаётся (смена монитора, перезапуск обоев), и
-    // без этого дескрипторы копились бы.
+    // The descriptor is closed when the window dies, not "sometime at exit":
+    // over a session the wallpaper window is recreated (a monitor change, a
+    // wallpaper restart), and without this descriptors would pile up.
     QObject::connect(qwin, &QObject::destroyed, qwin, [qwin]() {
         const auto it = streams().find(qwin);
         if (it != streams().end()) {
@@ -488,11 +502,11 @@ std::int64_t rexon_wp_mmap_center_rgb(QObject *window)
     return it == streams().constEnd() ? -1 : it->center_rgb;
 }
 
-// ── Flash-режим (SWF) ─────────────────────────────────────────────────────
-// Qt только создаёт окно и отдаёт native-хэндлы; буферы в поверхность кладёт
-// wgpu (Ruffle, крейт rexon-swf). RasterSurface без QBackingStore: Qt в
-// поверхность не рисует — стенд на KWin (слой) и Xwayland конфликта буферов
-// не показал.
+// ── Flash mode (SWF) ──────────────────────────────────────────────────────
+// Qt only creates the window and hands out the native handles; buffers are
+// put into the surface by wgpu (Ruffle, the rexon-swf crate). A
+// RasterSurface without a QBackingStore: Qt does not draw into the surface
+// — the bench on KWin (layer) and Xwayland showed no buffer conflict.
 
 std::int32_t rexon_wp_screen_count()
 {
@@ -518,8 +532,9 @@ QObject *rexon_wp_swf_window_new(std::int32_t width,
     auto *window = new QWindow();
     window->setSurfaceType(QSurface::RasterSurface);
     window->setFlags(Qt::FramelessWindowHint);
-    // ⚠️ ДО показа: экран поверхности слоя LayerShellQt читает из окна, а
-    // на X11 позиция решает, какому монитору достанутся обои.
+    // Warning: BEFORE showing: LayerShellQt reads the layer surface's screen
+    // from the window, and on X11 the position decides which monitor gets the
+    // wallpaper.
     if (screen != nullptr) {
         window->setScreen(screen);
     }
@@ -543,8 +558,8 @@ void rexon_wp_swf_window_close(QObject *object)
 {
     if (auto *window = qobject_cast<QWindow *>(object)) {
         window->destroy();
-        // deleteLater, а не delete: окно могло попасть в очередь событий, а
-        // цикл Flash-режима крутит её сам (rexon_wp_process_events).
+        // deleteLater, not delete: the window may have got into the event queue,
+        // and the Flash mode loop spins it by itself (rexon_wp_process_events).
         window->deleteLater();
     }
 }

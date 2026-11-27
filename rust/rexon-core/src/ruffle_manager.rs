@@ -1,63 +1,70 @@
-//! Чистая логика менеджера Ruffle — порт `rexon/ruffle_manager.py`.
+//! Pure logic of the Ruffle manager — port of `rexon/ruffle_manager.py`.
 //!
-//! Ruffle — Flash-эмулятор (MIT + Apache 2.0), которым Rexon рендерит `.swf`
-//! как обои. Оригинальный класс `RuffleManager` смешивает детерминированные
-//! решения (какой ассет релиза скачать под платформу, как построить URL,
-//! argv запуска SWF, пути хранения в `~/.config/rexon/ruffle/`, выбор версии)
-//! с побочными эффектами (реальное скачивание/HTTP, распаковка tar/zip,
-//! запись бинаря, `chmod +x`, `subprocess.Popen`, проверки `os.path`). Здесь —
-//! ТОЛЬКО чистая часть: вход → выход, без файловой системы и сети.
+//! Ruffle is a Flash emulator (MIT + Apache 2.0) that Rexon uses to render
+//! `.swf` as wallpapers. The original `RuffleManager` class mixes deterministic
+//! decisions (which release asset to download for the platform, how to build
+//! the URL, the argv for launching a SWF, storage paths in
+//! `~/.config/rexon/ruffle/`, version choice) with side effects (actual
+//! downloading/HTTP, unpacking tar/zip, writing the binary, `chmod +x`,
+//! `subprocess.Popen`, `os.path` checks). Here is ONLY the pure part: input →
+//! output, without the file system or the network.
 //!
-//! Наблюдения за средой (установлен ли бинарь, есть ли системный ruffle в
-//! PATH, есть ли web-версия, вывод `ruffle --version`, содержимое `.version`,
-//! `platform.machine()`) подаются ПАРАМЕТРАМИ. Побочные эффекты (скачивание,
-//! распаковка, `Popen`, `os.makedirs`, `shutil.rmtree`) остаются в Python-шиме
-//! `ruffle_manager.py`, который исполняет то, что решило ядро (URL ассета,
-//! argv, пути, план ensure).
+//! Observations of the environment (whether the binary is installed, whether
+//! there is a system ruffle in PATH, whether there is a web version, the output
+//! of `ruffle --version`, the contents of `.version`, `platform.machine()`) are
+//! passed as PARAMETERS. Side effects (downloading, unpacking, `Popen`,
+//! `os.makedirs`, `shutil.rmtree`) stay in the Python shim `ruffle_manager.py`,
+//! which executes what the core decided (the asset URL, argv, paths, the ensure
+//! plan).
 //!
-//! Паритет байт-в-байт с живым Python — `tests/ruffle_manager_parity.rs`
-//! (эталон снят read-only, без реального скачивания/запуска subprocess).
+//! Byte-for-byte parity with live Python — `tests/ruffle_manager_parity.rs` (the
+//! reference was captured read-only, without real downloading/launching of a
+//! subprocess).
 //!
-//! ⚠️ В оригинале НЕТ сравнения версий: `.version` хранит строку
-//! `nightly-<дата>`, `get_version()` её лишь читает, обновление решается по
-//! наличию файлов (`ensure_installed`), а не по номеру версии. Поэтому здесь
-//! портированы построение/чтение строки версии и выбор источника
-//! (`resolve_version`), но сравнения версий нет — сравнивать нечего.
+//! Warning: the original has NO version comparison: `.version` stores the string
+//! `nightly-<date>`, `get_version()` only reads it, and updating is decided by
+//! the presence of files (`ensure_installed`), not by the version number. So the
+//! building/reading of the version string and the choice of source
+//! (`resolve_version`) are ported here, but there is no version comparison —
+//! there is nothing to compare.
 //!
-//! Починен баг оригинала (в side-effect-части, правка внесена и в
-//! `ruffle_manager.py`): `RuffleManager.remove()` объявлен `-> bool`, но
-//! всегда возвращал `None` — чистой части не касается, отмечено в .py.
+//! A bug of the original was fixed (in the side-effect part, the fix was also
+//! made in `ruffle_manager.py`): `RuffleManager.remove()` is declared `-> bool`
+//! but always returned `None` — it does not concern the pure part, noted in the
+//! .py.
 
 // ============================================================================
-// Константы (порт модульных констант ruffle_manager.py)
+// Constants (port of the module constants of ruffle_manager.py)
 // ============================================================================
 
-/// База GitHub Releases Ruffle — порт `GITHUB_RELEASES_URL`.
+/// Base of Ruffle's GitHub Releases — port of `GITHUB_RELEASES_URL`.
 pub const GITHUB_RELEASES_URL: &str = "https://github.com/ruffle-rs/ruffle/releases";
 
-/// Ожидаемый размер бинаря (МБ) — фолбэк прогресса при пустом Content-Length.
+/// Expected binary size (MB) — the progress fallback when Content-Length is empty.
 pub const EXPECTED_SIZE_MB: u64 = 25;
-/// Ожидаемый размер web self-hosted (МБ).
+/// Expected size of the self-hosted web version (MB).
 pub const EXPECTED_SIZE_WEB_MB: u64 = 18;
 
-/// URL web self-hosted (ruffle.js + ruffle.wasm) — порт `DOWNLOAD_URL_WEB`.
+/// URL of the self-hosted web version (ruffle.js + ruffle.wasm) — port of
+/// `DOWNLOAD_URL_WEB`.
 ///
-/// ⚠️ Мёртвая ссылка (проверено HEAD-запросом 15.09.2026): `latest` ведёт на
-/// выпуск v0.6.0, где файлов `ruffle-nightly-*` нет, — ответ 404. Живые
-/// ночные сборки носят дату в имени. Rexon Flash-обои так не показывает:
-/// Rust-исполнитель зовёт режим хоста `rexon-wallpaper-host --mode swf`
-/// (Ruffle как библиотека). Функция живёт, пока её зовёт классическое окно
-/// на Python (`rexon/ruffle_manager.py` через мост `rexon-py`).
+/// Warning: a dead link (checked with a HEAD request on 15.09.2026): `latest`
+/// leads to release v0.6.0, which has no `ruffle-nightly-*` files — the answer is
+/// 404. Live nightly builds carry the date in their name. Rexon does not show
+/// Flash wallpapers this way: the Rust executor calls the host mode
+/// `rexon-wallpaper-host --mode swf` (Ruffle as a library). The function lives
+/// on while the classic Python window calls it (`rexon/ruffle_manager.py`
+/// through the `rexon-py` bridge).
 pub fn web_download_url() -> String {
     format!("{GITHUB_RELEASES_URL}/latest/download/ruffle-nightly-web-selfhosted.zip")
 }
 
-/// URL ассета релиза по архитектуре — порт `DOWNLOAD_URLS.get(arch)`.
-/// Поддержаны только `x86_64` / `aarch64` (как в оригинале); прочее → None
-/// (Python: «Архитектура … не поддерживается Ruffle»).
+/// Release asset URL by architecture — port of `DOWNLOAD_URLS.get(arch)`. Only
+/// `x86_64` / `aarch64` are supported (as in the original); anything else → None
+/// (Python: "Architecture … is not supported by Ruffle").
 ///
-/// ⚠️ Та же мёртвая ссылка `latest/download/ruffle-nightly-*` (404, см.
-/// [`web_download_url`]); нужна только классическому окну на Python.
+/// Warning: the same dead link `latest/download/ruffle-nightly-*` (404, see
+/// [`web_download_url`]); needed only by the classic Python window.
 pub fn download_url(arch: &str) -> Option<String> {
     match arch {
         "x86_64" => Some(format!(
@@ -71,12 +78,12 @@ pub fn download_url(arch: &str) -> Option<String> {
 }
 
 // ============================================================================
-// Архитектура — порт get_arch
+// Architecture — port of get_arch
 // ============================================================================
 
-/// Нормализация `platform.machine()` → ключ ассета. Порт `get_arch`:
-/// строку приводим к нижнему регистру, `x86_64/amd64` → `x86_64`,
-/// `aarch64/arm64` → `aarch64`, остальное — как есть (в нижнем регистре).
+/// Normalizing `platform.machine()` → the asset key. Port of `get_arch`: the
+/// string is lowercased, `x86_64/amd64` → `x86_64`, `aarch64/arm64` →
+/// `aarch64`, anything else as is (in lower case).
 pub fn normalize_arch(machine: &str) -> String {
     let m = machine.to_lowercase();
     match m.as_str() {
@@ -87,12 +94,12 @@ pub fn normalize_arch(machine: &str) -> String {
 }
 
 // ============================================================================
-// Пути хранения — порт модульных RUFFLE_* (expanduser("~/.config/rexon/ruffle"))
+// Storage paths — port of the module RUFFLE_* (expanduser("~/.config/rexon/ruffle"))
 // ============================================================================
 
-/// Пути Ruffle относительно домашнего каталога. Порт `RUFFLE_DIR`/`RUFFLE_BIN`/
-/// `RUFFLE_WEB_DIR`/`RUFFLE_VERSION_FILE` (+ `web/ruffle.js`). `home` — то, во
-/// что раскрывается `~` (`$HOME`).
+/// Ruffle paths relative to the home directory. Port of
+/// `RUFFLE_DIR`/`RUFFLE_BIN`/`RUFFLE_WEB_DIR`/`RUFFLE_VERSION_FILE`
+/// (+ `web/ruffle.js`). `home` — what `~` expands to (`$HOME`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RufflePaths {
     pub dir: String,
@@ -102,12 +109,12 @@ pub struct RufflePaths {
     pub web_js: String,
 }
 
-/// Построить пути от домашнего каталога.
+/// Build the paths from the home directory.
 pub fn ruffle_paths(home: &str) -> RufflePaths {
     ruffle_paths_xdg(None, home)
 }
 
-/// То же с учётом `$XDG_CONFIG_HOME` (единый корень конфигов ядра).
+/// The same honoring `$XDG_CONFIG_HOME` (the single config root of the core).
 pub fn ruffle_paths_xdg(xdg_config_home: Option<&str>, home: &str) -> RufflePaths {
     let dir = format!(
         "{}/rexon/ruffle",
@@ -124,73 +131,72 @@ pub fn ruffle_paths_xdg(xdg_config_home: Option<&str>, home: &str) -> RufflePath
 }
 
 // ============================================================================
-// Наличие / выбор бинаря — порт is_installed / get_ruffle_path
+// Presence / choice of the binary — port of is_installed / get_ruffle_path
 // ============================================================================
 
-/// Есть ли по пути НЕЧТО исполнимое — порт `is_installed`
-/// (`isfile && os.access(X_OK)`). Наблюдения подаются параметрами.
+/// Whether there is SOMETHING executable at the path — port of `is_installed`
+/// (`isfile && os.access(X_OK)`). The observations are passed as parameters.
 ///
-/// ⚠️ Как ответ на вопрос «установлен ли Ruffle» этого НЕ ХВАТАЕТ: проверка
-/// говорит о наличии файла, а не о пригодности проигрывателя (разбор — в
-/// блоке ниже). Спрашивать надо [`is_installed_usable`]; эта остаётся только
-/// потому, что её сигнатуру держит PyO3-мост.
+/// Warning: as an answer to "is Ruffle installed" this is NOT ENOUGH: the check
+/// tells whether a file is present, not whether the player is usable (the
+/// analysis is in the block below). Ask [`is_installed_usable`] instead; this one
+/// remains only because the PyO3 bridge holds its signature.
 pub fn is_installed(bin_is_file: bool, bin_is_executable: bool) -> bool {
     bin_is_file && bin_is_executable
 }
 
 // ============================================================================
-// Пригодность бинаря — «установлен» ≠ «по пути что-то лежит»
+// Binary usability — "installed" ≠ "something lies at the path"
 // ============================================================================
 //
-// `is_installed` выше отвечает лишь на вопрос «файл на месте и исполним»,
-// и этого НЕ ХВАТАЕТ. У Wehrwolfmann в `~/.config/rexon/ruffle/` лежал файл
-// `ruffle` из десяти байт — строка `#!/bin/sh` с битом +x. Обе проверки его
-// пропускали: Rexon считал проигрыватель установленным, `get_ruffle_path`
-// отдавал заглушку в `run_swf`, а `ensure_decision` решал, что скачивать
-// нечего. Покупатель в такой машине не может проиграть ни один `.swf` и не
-// получает даже предложения доустановить Ruffle.
+// `is_installed` above answers only "the file is in place and executable", and
+// that is NOT ENOUGH. Wehrwolfmann had a ten-byte `ruffle` file in
+// `~/.config/rexon/ruffle/` — the line `#!/bin/sh` with the +x bit. Both checks
+// let it through: Rexon considered the player installed, `get_ruffle_path`
+// handed the stub to `run_swf`, and `ensure_decision` decided there was nothing
+// to download. A buyer on such a machine cannot play a single `.swf` and does
+// not even get an offer to install Ruffle.
 //
-// Это тот же класс дефекта, что и «Popen не бросил исключение — значит
-// обои запущены» (коммит 3661e21): проверка смотрит на НАЛИЧИЕ, а не на
-// ПРИГОДНОСТЬ. Лечится он одинаково — спрашиваем у объекта то, что умеет
-// только настоящий объект.
+// This is the same class of defect as "Popen did not raise an exception — so
+// the wallpaper is running" (commit 3661e21): the check looks at PRESENCE, not
+// at USABILITY. It is cured the same way — we ask the object for something
+// only the real object can do.
 //
-// Признак выбран так, чтобы проверку можно было звать часто (её зовут
-// `is_installed`, `get_ruffle_path`, `ensure_installed`, вкладка обоев):
-// запускать процесс на каждый чих нельзя, а прочитать 20 байт головы файла
-// — дешевле, чем сам `os.access`. Смотрим на то, что делает файл
-// исполняемым проигрывателем:
+// The sign is chosen so that the check can be called often (it is called by
+// `is_installed`, `get_ruffle_path`, `ensure_installed`, the wallpaper tab):
+// starting a process on every sneeze is not allowed, while reading 20 bytes of
+// the file's head is cheaper than `os.access` itself. We look at what makes the
+// file an executable player:
 //
-//   * сигнатура ELF (`\x7fELF`) — отсекает скрипты-заглушки, HTML-страницы
-//     ошибок вместо архива, обрывки и текстовые «заметки на память»;
-//   * 64-разрядный little-endian ELF — Ruffle других сборок под Linux не
-//     публикует;
-//   * тип файла ET_EXEC/ET_DYN — не объектник и не библиотека;
-//   * `e_machine` совпадает с архитектурой машины — бинарь, скачанный под
-//     чужую архитектуру, не запустится;
-//   * размер не меньше [`MIN_BINARY_BYTES`] — ловит оборванную загрузку,
-//     когда голова уже правильная, а хвоста нет.
+//   * the ELF signature (`\x7fELF`) — cuts off stub scripts, HTML error pages
+//     instead of an archive, fragments and text "notes to self";
+//   * a 64-bit little-endian ELF — Ruffle publishes no other builds for Linux;
+//   * file type ET_EXEC/ET_DYN — not an object file and not a library;
+//   * `e_machine` matches the machine's architecture — a binary downloaded for
+//     another architecture will not run;
+//   * the size is no less than [`MIN_BINARY_BYTES`] — catches an interrupted
+//     download where the head is already correct but the tail is missing.
 //
-// Размер здесь ПОСЛЕДНИЙ и вспомогательный именно потому, что признак
-// слабый: завтра заглушка будет не 10 байт, а 200 КБ. Несущая проверка —
-// сигнатура и `e_machine`.
+// The size is LAST here and auxiliary precisely because the sign is weak:
+// tomorrow the stub will be not 10 bytes but 200 KB. The load-bearing check is
+// the signature and `e_machine`.
 
-/// Сколько байт головы файла нужно прочитать для суждения о пригодности.
-/// Ровно заголовок ELF до `e_machine` включительно.
+/// How many bytes of the file's head must be read to judge usability. Exactly
+/// the ELF header up to and including `e_machine`.
 pub const BINARY_HEAD_BYTES: usize = 20;
 
-/// Нижняя граница правдоподобного размера бинаря Ruffle (байты).
+/// Lower bound of a plausible Ruffle binary size (bytes).
 ///
-/// Ruffle-nightly под Linux — десятки мегабайт (в нём wgpu, свой рендерер и
-/// вся ActionScript-машина). Порог в 4 МБ не отсекает ни одной реальной
-/// сборки и при этом ловит оборванную загрузку.
+/// Ruffle nightly for Linux is tens of megabytes (it contains wgpu, its own
+/// renderer and the whole ActionScript machine). A 4 MB threshold does not cut
+/// off any real build and still catches an interrupted download.
 pub const MIN_BINARY_BYTES: u64 = 4 * 1024 * 1024;
 
-/// Код архитектуры в поле `e_machine` заголовка ELF.
+/// Architecture code in the `e_machine` field of the ELF header.
 ///
-/// Вход — уже нормализованная строка из [`normalize_arch`]. Архитектуры, под
-/// которые Ruffle сборок не публикует (см. [`download_url`]), кода не имеют:
-/// пригодного бинаря там взяться неоткуда.
+/// The input is the already normalized string from [`normalize_arch`].
+/// Architectures for which Ruffle publishes no builds (see [`download_url`])
+/// have no code: a usable binary cannot come from anywhere there.
 pub fn elf_machine(arch: &str) -> Option<u16> {
     match arch {
         "x86_64" => Some(0x3E),
@@ -199,11 +205,11 @@ pub fn elf_machine(arch: &str) -> Option<u16> {
     }
 }
 
-/// Похож ли файл на исполняемый бинарь Ruffle для этой машины.
+/// Whether the file looks like an executable Ruffle binary for this machine.
 ///
-/// `head` — первые [`BINARY_HEAD_BYTES`] байт файла (меньше — сразу нет),
-/// `size` — его размер, `arch` — нормализованная архитектура машины.
-/// Чтение файла и `platform.machine()` — наблюдения исполнителя.
+/// `head` — the first [`BINARY_HEAD_BYTES`] bytes of the file (fewer — no right
+/// away), `size` — its size, `arch` — the machine's normalized architecture.
+/// Reading the file and `platform.machine()` are the executor's observations.
 pub fn binary_is_runnable(head: &[u8], size: u64, arch: &str) -> bool {
     if head.len() < BINARY_HEAD_BYTES || size < MIN_BINARY_BYTES {
         return false;
@@ -215,8 +221,8 @@ pub fn binary_is_runnable(head: &[u8], size: u64, arch: &str) -> bool {
     if head[4] != 2 || head[5] != 1 {
         return false;
     }
-    // e_type: ET_EXEC (2) либо ET_DYN (3) — Ruffle собирается PIE, то есть
-    // ET_DYN; ET_EXEC оставлен на случай сборки без PIE.
+    // e_type: ET_EXEC (2) or ET_DYN (3) — Ruffle is built as PIE, i.e. ET_DYN;
+    // ET_EXEC is kept in case of a build without PIE.
     let e_type = u16::from_le_bytes([head[16], head[17]]);
     if e_type != 2 && e_type != 3 {
         return false;
@@ -225,11 +231,11 @@ pub fn binary_is_runnable(head: &[u8], size: u64, arch: &str) -> bool {
     elf_machine(arch) == Some(e_machine)
 }
 
-/// Установлен ли ПРИГОДНЫЙ бинарь — ужесточение [`is_installed`].
+/// Whether a USABLE binary is installed — a stricter [`is_installed`].
 ///
-/// Отдельная функция, а не третий параметр у [`is_installed`], потому что
-/// сигнатуру последней держит PyO3-мост; когда мост переведут на эту,
-/// [`is_installed`] уйдёт вместе со своим вызовом.
+/// A separate function rather than a third parameter of [`is_installed`],
+/// because the latter's signature is held by the PyO3 bridge; when the bridge is
+/// switched to this one, [`is_installed`] will go away together with its call.
 pub fn is_installed_usable(
     bin_is_file: bool,
     bin_is_executable: bool,
@@ -238,28 +244,29 @@ pub fn is_installed_usable(
     is_installed(bin_is_file, bin_is_executable) && bin_is_runnable
 }
 
-/// Пригодна ли распакованная web-версия (`ruffle.js` + `.wasm`).
+/// Whether the unpacked web version (`ruffle.js` + `.wasm`) is usable.
 ///
-/// Тот же дефект и здесь: `is_web_installed` в шиме проверяет только
-/// `isfile(ruffle.js)`, и девятибайтовый `// ruffle` из той же папки
-/// Wehrwolfmann'а её проходит. Сам по себе `ruffle.js` — загрузчик: без
-/// `.wasm` рядом он не проиграет ничего, поэтому пригодность = непустой
-/// загрузчик И хотя бы один модуль `.wasm` в каталоге.
+/// The same defect here: `is_web_installed` in the shim checks only
+/// `isfile(ruffle.js)`, and the nine-byte `// ruffle` from the same folder of
+/// Wehrwolfmann's passes it. `ruffle.js` by itself is a loader: without a
+/// `.wasm` next to it, it will play nothing, so usability = a non-empty loader
+/// AND at least one `.wasm` module in the directory.
 pub const MIN_WEB_JS_BYTES: u64 = 1024;
 
-/// Решение о пригодности web-версии по наблюдениям каталога.
+/// Decision on the web version's usability from observations of the directory.
 pub fn web_is_usable(js_is_file: bool, js_size: u64, wasm_count: usize) -> bool {
     js_is_file && js_size >= MIN_WEB_JS_BYTES && wasm_count > 0
 }
 
-/// Имена бинаря Ruffle в пакетах разных дистрибутивов — порт
-/// `RuffleManager.SYSTEM_BINS`. Порядок значим: `system_bin` берёт ПЕРВОЕ
-/// найденное в `PATH` имя.
+/// Names of the Ruffle binary in the packages of different distributions — port
+/// of `RuffleManager.SYSTEM_BINS`. The order matters: `system_bin` takes the
+/// FIRST name found in `PATH`.
 pub const SYSTEM_BINS: &[&str] = &["ruffle", "ruffle-nightly", "ruffle_desktop"];
 
-/// Системный Ruffle из пакета дистрибутива — порт `system_bin`: перебор
-/// [`SYSTEM_BINS`] до первого найденного. Поиск в `PATH` (`shutil.which`) —
-/// побочный эффект, подаётся замыканием `which`, возвращающим найденный путь.
+/// System Ruffle from the distribution's package — port of `system_bin`: going
+/// through [`SYSTEM_BINS`] until the first one found. The `PATH` lookup
+/// (`shutil.which`) is a side effect, passed as the `which` closure that returns
+/// the found path.
 pub fn select_system_bin<F>(which: F) -> Option<String>
 where
     F: Fn(&str) -> Option<String>,
@@ -267,25 +274,25 @@ where
     SYSTEM_BINS.iter().find_map(|name| which(name))
 }
 
-/// Копировать ли файл из архива рядом с бинарём — порт предиката
-/// `f.startswith("LICENSE") or f == "README.md"` в `download()`.
-/// Лицензии Ruffle (MIT + Apache 2.0) обязаны лежать рядом с бинарём: мы его
-/// распространяем не сами, но пользователю они должны быть доступны.
+/// Whether to copy a file from the archive next to the binary — port of the
+/// predicate `f.startswith("LICENSE") or f == "README.md"` in `download()`.
+/// Ruffle's licenses (MIT + Apache 2.0) must lie next to the binary: we do not
+/// distribute it ourselves, but they must be available to the user.
 pub fn is_extra_asset(name: &str) -> bool {
     name.starts_with("LICENSE") || name == "README.md"
 }
 
-/// Путь к бинарю: наш → системный (из PATH, буквально `"ruffle"`) → нет.
-/// Порт `get_ruffle_path`.
+/// Path to the binary: ours → the system one (from PATH, literally `"ruffle"`)
+/// → none. Port of `get_ruffle_path`.
 pub fn ruffle_path(
     is_installed: bool,
     is_system_installed: bool,
     bin_path: &str,
 ) -> Option<String> {
-    // Решение Wehrwolfmann 2026-07-29: сначала пакет из репозитория
-    // дистрибутива, наша скачанная копия — только фолбэк. Пакет
-    // обновляется и чинится вместе с системой, подписан её ключом и не
-    // требует тянуть 25 МБ мимо пакетного менеджера.
+    // Wehrwolfmann's decision of 2026-07-29: first the package from the
+    // distribution's repository, our downloaded copy is only a fallback. The
+    // package is updated and fixed together with the system, signed with its
+    // key, and does not require pulling 25 MB past the package manager.
     if is_system_installed {
         Some("ruffle".to_string())
     } else if is_installed {
@@ -296,15 +303,15 @@ pub fn ruffle_path(
 }
 
 // ============================================================================
-// Версия — порт get_version (выбор источника; сравнения версий в оригинале нет)
+// Version — port of get_version (choice of source; the original has no version comparison)
 // ============================================================================
 
-/// Выбор строки версии — порт логики `get_version`:
-///   * нет пути к ruffle → None (файл `.version` НЕ читается — как в Python);
-///   * `ruffle --version` завершился успешно (rc==0) → его stdout,
-///     обрезанный по краям (`cmd_output = Some(stdout)` при rc==0);
-///   * иначе — содержимое `.version`, обрезанное (`version_file`);
-///   * иначе None.
+/// Choice of the version string — port of the `get_version` logic:
+///   * no path to ruffle → None (the `.version` file is NOT read — as in Python);
+///   * `ruffle --version` finished successfully (rc==0) → its stdout, trimmed
+///     at the edges (`cmd_output = Some(stdout)` when rc==0);
+///   * otherwise — the contents of `.version`, trimmed (`version_file`);
+///   * otherwise None.
 pub fn resolve_version(
     ruffle_path: Option<&str>,
     cmd_output: Option<&str>,
@@ -320,24 +327,25 @@ pub fn resolve_version(
     None
 }
 
-/// Содержимое файла `.version`, которое пишет `download()` —
-/// порт `f"nightly-{time.strftime('%Y-%m-%d')}"`. Дата подаётся параметром
-/// (её вычисление — побочный эффект исполнителя).
+/// Contents of the `.version` file written by `download()` — port of
+/// `f"nightly-{time.strftime('%Y-%m-%d')}"`. The date is passed as a parameter
+/// (computing it is the executor's side effect).
 pub fn version_file_content(date: &str) -> String {
     format!("nightly-{date}")
 }
 
-/// Чтение строки версии из файла `.version` — порт `f.read().strip()`.
+/// Reading the version string from the `.version` file — port of `f.read().strip()`.
 pub fn parse_version_file(content: &str) -> String {
     content.trim().to_string()
 }
 
 // ============================================================================
-// Запуск SWF — порт run_swf / run_swf_as_wallpaper (argv + скрипт-обёртка)
+// Launching a SWF — port of run_swf / run_swf_as_wallpaper (argv + wrapper script)
 // ============================================================================
 
-/// argv прямого запуска SWF — порт `run_swf`. `swf_abspath` — уже абсолютный
-/// путь (`os.path.abspath` — побочный эффект, зависит от cwd — делает шим).
+/// argv for launching a SWF directly — port of `run_swf`. `swf_abspath` is an
+/// already absolute path (`os.path.abspath` is a side effect that depends on the
+/// cwd — the shim does it).
 pub fn run_swf_argv(ruffle: &str, swf_abspath: &str, fullscreen: bool) -> Vec<String> {
     let mut cmd = vec![ruffle.to_string()];
     if fullscreen {
@@ -349,9 +357,10 @@ pub fn run_swf_argv(ruffle: &str, swf_abspath: &str, fullscreen: bool) -> Vec<St
     cmd
 }
 
-/// Базовое имя без расширения — порт `os.path.splitext(os.path.basename(p))[0]`
-/// (posix-семантика: последний `/` → basename, последняя точка → расширение,
-/// ведущие точки расширением НЕ считаются).
+/// Base name without the extension — port of
+/// `os.path.splitext(os.path.basename(p))[0]` (posix semantics: the last `/` →
+/// basename, the last dot → the extension, leading dots do NOT count as an
+/// extension).
 pub fn swf_stem(swf_path: &str) -> String {
     splitext_root(basename(swf_path)).to_string()
 }
@@ -363,8 +372,8 @@ fn basename(p: &str) -> &str {
     }
 }
 
-/// Корень имени (часть до расширения) для basename без `/` — порт
-/// `posixpath.splitext` (ведущие точки не отделяются).
+/// Root of the name (the part before the extension) for a basename without `/`
+/// — port of `posixpath.splitext` (leading dots are not split off).
 fn splitext_root(name: &str) -> &str {
     let Some(dot) = name.rfind('.') else {
         return name;
@@ -377,41 +386,44 @@ fn splitext_root(name: &str) -> &str {
         }
         i += 1;
     }
-    // Всё до точки — сами точки (например ".hidden"): расширения нет.
+    // Everything before the dot is dots themselves (e.g. ".hidden"): there is no
+    // extension.
     name
 }
 
-/// Путь скрипта-обёртки — порт `wrapper_dir/f"run_{swf_name}.sh"`.
+/// Path of the wrapper script — port of `wrapper_dir/f"run_{swf_name}.sh"`.
 pub fn wrapper_path(dir: &str, swf_stem: &str) -> String {
     format!("{dir}/wrappers/run_{swf_stem}.sh")
 }
 
-/// Содержимое bash-обёртки, запускающей Ruffle — порт heredoc из
-/// `run_swf_as_wallpaper` (всегда `--fullscreen`). `swf_abspath` — абсолютный.
+/// Contents of the bash wrapper that launches Ruffle — port of the heredoc from
+/// `run_swf_as_wallpaper` (always `--fullscreen`). `swf_abspath` is absolute.
 pub fn wrapper_script(ruffle: &str, swf_abspath: &str) -> String {
     format!("#!/bin/bash\nexec \"{ruffle}\" --fullscreen \"{swf_abspath}\"\n")
 }
 
-/// argv запуска SWF как обои — `rexon-wallpaper-host --mode swf <ролик>`.
+/// argv for launching a SWF as a wallpaper — `rexon-wallpaper-host --mode swf <movie>`.
 ///
-/// `host` — путь к собранному хосту обоев
+/// `host` — the path to the built wallpaper host
 /// ([`crate::wallpaper_engine::find_wallpaper_host_binary`]), `swf_abspath` —
-/// абсолютный путь к самому ролику. Внешний Ruffle и bash-обёртка
-/// ([`wrapper_script`]) этой дорогой не нужны: Flash играет НАТИВНО, Ruffle
-/// подключён библиотекой (крейт `rexon-swf`), кадры пишет сам хост.
+/// the absolute path to the movie itself. An external Ruffle and the bash
+/// wrapper ([`wrapper_script`]) are not needed on this route: Flash plays
+/// NATIVELY, Ruffle is linked as a library (the `rexon-swf` crate), and the host
+/// writes the frames itself.
 ///
-/// ⭐ Починка 16.09.2026 (блок H). Здесь стоял мёртвый путь
-/// `<python> -m rexon.app_wallpaper <обёртка> --mode subprocess`: модуль
-/// `rexon.app_wallpaper` снят с дерева коммитом `2091eac`, процесс падал
-/// сразу, и SWF-обои не работали с 23.08.2026 — молча, с зелёным рапортом
-/// «обои применены».
+/// ⭐ Fix of 16.09.2026 (block H). A dead path stood here:
+/// `<python> -m rexon.app_wallpaper <wrapper> --mode subprocess`: the module
+/// `rexon.app_wallpaper` was removed from the tree by commit `2091eac`, the
+/// process crashed immediately, and SWF wallpapers had not worked since
+/// 23.08.2026 — silently, with a green report "wallpaper applied".
 ///
-/// ⚠️ ХВОСТ ДЛЯ МОСТА. Подпись сохранена (два `&str` → `Vec<String>`), но
-/// СМЫСЛ обоих аргументов другой. Мост `rexon-py`
-/// (`lib.rs: ruffle_wallpaper_argv`) и `rexon/ruffle_manager.py:492` всё ещё
-/// передают сюда интерпретатор и путь обёртки — их надо перевести на хост и
-/// ролик. Регрессии это не даёт: прежняя дорога и так была мёртвой.
-/// Rust-исполнитель этой функцией не пользуется вовсе — он строит план
+/// Warning: A TAIL FOR THE BRIDGE. The signature is kept (two `&str` →
+/// `Vec<String>`), but the MEANING of both arguments is different. The
+/// `rexon-py` bridge (`lib.rs: ruffle_wallpaper_argv`) and
+/// `rexon/ruffle_manager.py:492` still pass the interpreter and the wrapper path
+/// here — they need to be switched to the host and the movie. This causes no
+/// regression: the old route was dead anyway. The Rust executor does not use
+/// this function at all — it builds the plan
 /// [`crate::wallpaper_engine::swf_host_plan`].
 pub fn wallpaper_argv(host: &str, swf_abspath: &str) -> Vec<String> {
     use crate::wallpaper_engine::{wallpaper_host_argv, HostMode};
@@ -419,19 +431,20 @@ pub fn wallpaper_argv(host: &str, swf_abspath: &str) -> Vec<String> {
 }
 
 // ============================================================================
-// ensure_installed — решение, что доскачать
+// ensure_installed — deciding what to download
 // ============================================================================
 
-/// Что нужно доустановить — порт первой части `ensure_installed`.
-/// Итоговый успех (`return success`) определяет ИСПОЛНИТЕЛЬ по результату
-/// реальных `download()`/`download_web()`; web некритичен (лишь warning).
+/// What needs to be installed — port of the first part of `ensure_installed`.
+/// The final success (`return success`) is determined by the EXECUTOR from the
+/// result of the real `download()`/`download_web()`; the web version is not
+/// critical (only a warning).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnsureDecision {
     pub need_bin: bool,
     pub need_web: bool,
 }
 
-/// Решение ensure по наблюдениям среды.
+/// The ensure decision from observations of the environment.
 pub fn ensure_decision(
     is_installed: bool,
     is_system_installed: bool,
@@ -444,20 +457,20 @@ pub fn ensure_decision(
 }
 
 impl EnsureDecision {
-    /// Всё на месте — ранний `return True` в Python (скачивать нечего).
+    /// Everything is in place — the early `return True` in Python (nothing to download).
     pub fn already_ok(&self) -> bool {
         !self.need_bin && !self.need_web
     }
 }
 
 // ============================================================================
-// Прогресс скачивания — чистая арифметика _download_file / CLI progress-bar
+// Download progress — pure arithmetic of _download_file / the CLI progress bar
 // ============================================================================
 
-/// Процент скачивания — порт `min(75, int(downloaded/total*75))`
-/// (фаза скачивания занимает 0-75%; распаковка/установка — 80/90/100 отдельно).
-/// `total` предполагается > 0 (исполнитель подставляет
-/// `EXPECTED_SIZE_MB * 1024 * 1024` при пустом Content-Length).
+/// Download percentage — port of `min(75, int(downloaded/total*75))` (the
+/// download phase takes 0-75%; unpacking/installation — 80/90/100 separately).
+/// `total` is assumed to be > 0 (the executor substitutes
+/// `EXPECTED_SIZE_MB * 1024 * 1024` when Content-Length is empty).
 pub fn download_progress_pct(downloaded: u64, total: u64) -> u64 {
     if total == 0 {
         return 0;
@@ -466,10 +479,10 @@ pub fn download_progress_pct(downloaded: u64, total: u64) -> u64 {
     pct.min(75)
 }
 
-/// Ширина CLI-прогрессбара — порт `bar_w = 30` из CLI `progress()`.
+/// Width of the CLI progress bar — port of `bar_w = 30` from the CLI `progress()`.
 pub const PROGRESS_BAR_WIDTH: usize = 30;
 
-/// CLI-прогрессбар — порт `"█"*filled + "░"*(bar_w-filled)`,
+/// CLI progress bar — port of `"█"*filled + "░"*(bar_w-filled)`,
 /// `filled = int(pct/100*bar_w)`.
 pub fn progress_bar(pct: u64) -> String {
     let filled = (((pct as f64) / 100.0) * PROGRESS_BAR_WIDTH as f64) as usize;
@@ -482,7 +495,7 @@ pub fn progress_bar(pct: u64) -> String {
 mod tests {
     use super::*;
 
-    /// Голова 64-разрядного little-endian ELF: тип `e_type`, машина `e_machine`.
+    /// Head of a 64-bit little-endian ELF: type `e_type`, machine `e_machine`.
     fn elf_head(e_type: u16, e_machine: u16) -> Vec<u8> {
         let mut h = vec![0u8; BINARY_HEAD_BYTES];
         h[0..4].copy_from_slice(b"\x7fELF");
@@ -495,42 +508,42 @@ mod tests {
 
     const BIG: u64 = 60 * 1024 * 1024;
 
-    /// Ровно тот файл, что лежал у Wehrwolfmann: `#!/bin/sh` с битом +x.
+    /// Exactly the file Wehrwolfmann had: `#!/bin/sh` with the +x bit.
     #[test]
     fn shell_stub_is_not_a_player() {
         let stub = b"#!/bin/sh\n";
         assert!(!binary_is_runnable(stub, stub.len() as u64, "x86_64"));
-        // И весь вывод продукта на нём: «установлено» больше не выходит.
+        // And all of the product's output on it: "installed" no longer comes out.
         assert!(is_installed(true, true), "старая проверка заглушку пропускала");
         assert!(!is_installed_usable(true, true, false));
     }
 
-    /// Настоящая сборка Ruffle (PIE под x86_64) — пригодна.
+    /// A real Ruffle build (PIE for x86_64) is usable.
     #[test]
     fn real_ruffle_binary_passes() {
         let head = elf_head(3, 0x3E);
         assert!(binary_is_runnable(&head, BIG, "x86_64"));
         assert!(is_installed_usable(true, true, true));
-        // Сборка без PIE (ET_EXEC) тоже.
+        // A build without PIE (ET_EXEC) too.
         assert!(binary_is_runnable(&elf_head(2, 0x3E), BIG, "x86_64"));
-        // И то же на aarch64.
+        // And the same on aarch64.
         assert!(binary_is_runnable(&elf_head(3, 0xB7), BIG, "aarch64"));
     }
 
-    /// Бинарь под чужую архитектуру не запустится — значит не установлен.
+    /// A binary for another architecture will not run — so it is not installed.
     #[test]
     fn foreign_architecture_rejected() {
         assert!(!binary_is_runnable(&elf_head(3, 0xB7), BIG, "x86_64"));
         assert!(!binary_is_runnable(&elf_head(3, 0x3E), BIG, "aarch64"));
-        // Архитектура, под которую Ruffle сборок не выпускает.
+        // An architecture for which Ruffle releases no builds.
         assert_eq!(elf_machine("riscv64"), None);
         assert!(!binary_is_runnable(&elf_head(3, 0xF3), BIG, "riscv64"));
     }
 
-    /// Не-ELF, 32-разрядный, big-endian и не-исполняемый ELF — мимо.
+    /// Non-ELF, 32-bit, big-endian and non-executable ELF — rejected.
     #[test]
     fn wrong_shape_rejected() {
-        // HTML-страница ошибки вместо архива.
+        // An HTML error page instead of an archive.
         let html = b"<!DOCTYPE html><html><head><ti";
         assert!(!binary_is_runnable(html, BIG, "x86_64"));
         let mut h32 = elf_head(3, 0x3E);
@@ -539,23 +552,23 @@ mod tests {
         let mut hbe = elf_head(3, 0x3E);
         hbe[5] = 2; // ELFDATA2MSB
         assert!(!binary_is_runnable(&hbe, BIG, "x86_64"));
-        // ET_REL (объектник) и ET_CORE — не проигрыватели.
+        // ET_REL (an object file) and ET_CORE are not players.
         assert!(!binary_is_runnable(&elf_head(1, 0x3E), BIG, "x86_64"));
         assert!(!binary_is_runnable(&elf_head(4, 0x3E), BIG, "x86_64"));
     }
 
-    /// Оборванная загрузка: голова правильная, хвоста нет.
+    /// An interrupted download: the head is correct, the tail is missing.
     #[test]
     fn truncated_download_rejected() {
         let head = elf_head(3, 0x3E);
         assert!(!binary_is_runnable(&head, 1024 * 1024, "x86_64"));
         assert!(binary_is_runnable(&head, MIN_BINARY_BYTES, "x86_64"));
-        // Пустой файл и слишком короткая голова.
+        // An empty file and a head that is too short.
         assert!(!binary_is_runnable(&[], 0, "x86_64"));
         assert!(!binary_is_runnable(&head[..8], BIG, "x86_64"));
     }
 
-    /// Бит +x и наличие файла остаются обязательными.
+    /// The +x bit and the presence of the file remain mandatory.
     #[test]
     fn usable_needs_all_three() {
         assert!(!is_installed_usable(false, true, true));
@@ -564,7 +577,7 @@ mod tests {
         assert!(is_installed_usable(true, true, true));
     }
 
-    /// Web-версия: девятибайтовый `// ruffle` и загрузчик без `.wasm` — не в счёт.
+    /// Web version: a nine-byte `// ruffle` and a loader without `.wasm` do not count.
     #[test]
     fn web_stub_is_not_installed() {
         assert!(!web_is_usable(true, 9, 0));

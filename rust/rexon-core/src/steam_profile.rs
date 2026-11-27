@@ -1,40 +1,42 @@
-//! Разбор владеемых фонов Steam-профиля — порт РАЗБОРА ответа из
-//! `rexon/steam_profile_items.py`.
+//! Parsing of owned Steam profile backgrounds — a port of the RESPONSE PARSING
+//! from `rexon/steam_profile_items.py`.
 //!
-//! Портирована ДЕТЕРМИНИРОВАННАЯ часть: преобразование JSON-ответа WebAPI
-//! `IPlayerService/GetProfileItemsOwned` в список фонов (`parse_owned_backgrounds`,
-//! порт тела `_fetch_owned`). Добыча токена (расшифровка cookie Chromium из
-//! CEF-БД, `sqlite3`, `cryptography`) и сами сетевые вызовы (`_read_steam_login_cookie`/
-//! `_fetch_webapi_token`/`_fetch_owned`-запрос, `urllib`) СЮДА НЕ переносятся:
-//! они недетерминированы (зависят от локального Steam) и golden-тестами не
-//! покрываются — это дело GUI/сетевого слоя. Здесь только «дай JSON — получи
-//! список фонов», что и сверяется с Python (golden `steam_profile_parity.rs`).
+//! Ported is the DETERMINISTIC part: turning the WebAPI
+//! `IPlayerService/GetProfileItemsOwned` JSON response into a list of backgrounds
+//! (`parse_owned_backgrounds`, a port of the `_fetch_owned` body). Getting the
+//! token (decrypting the Chromium cookie from the CEF DB, `sqlite3`,
+//! `cryptography`) and the network calls themselves (`_read_steam_login_cookie`/
+//! `_fetch_webapi_token`/the `_fetch_owned` request, `urllib`) are NOT moved here:
+//! they are non-deterministic (depend on the local Steam) and not covered by
+//! golden tests — that is the job of the GUI/network layer. Here it is only
+//! "give JSON — get a list of backgrounds", which is checked against Python
+//! (golden `steam_profile_parity.rs`).
 //!
-//! Сверка с Python: эталон снят с самого `_fetch_owned` (монипатч `urlopen` →
-//! канонический ответ схемы GetProfileItemsOwned), Rust обязан вернуть те же
-//! записи, те же строки и тот же порядок.
+//! Parity with Python: the reference was taken from `_fetch_owned` itself
+//! (monkeypatched `urlopen` → a canonical GetProfileItemsOwned response); Rust
+//! must return the same records, the same strings and the same order.
 
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::i18n::tr;
 
-/// Базовый CDN картинок/роликов community-предметов (`_COMMUNITY_IMG_BASE`).
+/// Base CDN for images/videos of community items (`_COMMUNITY_IMG_BASE`).
 pub const COMMUNITY_IMG_BASE: &str =
     "https://shared.fastly.steamstatic.com/community_assets/images/";
-/// User-Agent запросов (`_UA`).
+/// User-Agent of the requests (`_UA`).
 pub const USER_AGENT: &str = "Rexon/5.0";
-/// Имя по умолчанию для фона без названия (на языке интерфейса).
+/// Default name for a background without a title (in the UI language).
 pub fn default_name() -> String {
     // TRANSLATORS: name shown for a Steam profile background that has none.
     tr("Profile Background")
 }
 
-/// Один владеемый фон профиля — порт словаря из `_fetch_owned`.
+/// One owned profile background — a port of the dict from `_fetch_owned`.
 ///
-/// `url` анимированных ведёт на movie_webm/mp4, статичных — на картинку;
-/// `preview` всегда статичная картинка (миниатюра списка). `game` в оригинале
-/// всегда "" (поле есть в словаре, сохраняем для паритета).
+/// `url` of animated ones points to movie_webm/mp4, of static ones to the image;
+/// `preview` is always a static image (the list thumbnail). `game` in the
+/// original is always "" (the field is in the dict, kept for parity).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SteamBackground {
     pub id: String,
@@ -45,14 +47,14 @@ pub struct SteamBackground {
     pub animated: bool,
 }
 
-/// Строковое поле объекта: "" если ключа нет/`null`/не строка.
+/// String field of an object: "" if the key is missing/`null`/not a string.
 fn s<'a>(b: &'a Value, key: &str) -> &'a str {
     b.get(key).and_then(Value::as_str).unwrap_or("")
 }
 
-/// Порт `str(b.get("communityitemid") or "")`: числа (кроме 0) и непустые
-/// строки → их текст, иначе "". В реальном ответе id — строка; целочисленный
-/// вариант поддержан на случай, если сервер отдаст число.
+/// Port of `str(b.get("communityitemid") or "")`: numbers (except 0) and
+/// non-empty strings → their text, otherwise "". In a real response the id is a
+/// string; the integer variant is supported in case the server sends a number.
 fn community_id(v: Option<&Value>) -> String {
     match v {
         Some(Value::String(s)) if !s.is_empty() => s.clone(),
@@ -72,9 +74,10 @@ fn community_id(v: Option<&Value>) -> String {
     }
 }
 
-/// Разбор ответа GetProfileItemsOwned в список фонов — порт тела `_fetch_owned`
-/// (без сетевого запроса). Отсутствие `response`/`profile_backgrounds` →
-/// пустой список; записи без ссылки (`rel`) пропускаются.
+/// Parse a GetProfileItemsOwned response into a list of backgrounds — a port of
+/// the `_fetch_owned` body (without the network request). Missing
+/// `response`/`profile_backgrounds` → empty list; records without a link (`rel`)
+/// are skipped.
 pub fn parse_owned_backgrounds(data: &Value) -> Vec<SteamBackground> {
     let resp = data.get("response");
     let list = resp
@@ -86,7 +89,7 @@ pub fn parse_owned_backgrounds(data: &Value) -> Vec<SteamBackground> {
 
     let mut out = Vec::new();
     for b in list {
-        // movie = movie_webm or movie_mp4 (пустая строка → следующий).
+        // movie = movie_webm or movie_mp4 (empty string → the next one).
         let movie = {
             let w = s(b, "movie_webm");
             if !w.is_empty() {
@@ -104,7 +107,7 @@ pub fn parse_owned_backgrounds(data: &Value) -> Vec<SteamBackground> {
                 s(b, "image_small")
             }
         };
-        // rel = movie or image; нет ссылки → пропуск.
+        // rel = movie or image; no link → skip.
         let rel = if !movie.is_empty() { movie } else { image };
         if rel.is_empty() {
             continue;

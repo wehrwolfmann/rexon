@@ -1,8 +1,8 @@
-//! Стенд превью плиток «Оформления»: для каждой темы на этой машине —
-//! какой источник картинки выбран. Диск только читается.
+//! Bench of «Appearance» tile previews: for each theme on this machine —
+//! which picture source is chosen. The disk is only read.
 //!
-//!   preview_probe [<home с копией кеша магазина> [<рабочий стол, как в окне: kde>]]
-//!   preview_probe --ops <вид> <каталог темы>   — операции картинки одной темы
+//!   preview_probe [<home with a copy of the store cache> [<desktop, as in the window: kde>]]
+//!   preview_probe --ops <kind> <theme directory>   — picture operations of one theme
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -63,7 +63,7 @@ fn main() {
                     &lp::SampleInput { kind, install_path: &it.install_path, icon_themes: &icon_themes },
                     &lp::type_emoji(&it.author),
                 );
-                // У рамок MATE причина заглушки называется словами.
+                // For MATE window frames the placeholder reason is spelled out in words.
                 let detail = match (kind, picture.source) {
                     ("marco", lp::PreviewSource::Placeholder) => lp::marco_failure(&it.install_path).to_string(),
                     _ => picture.what.to_string(),

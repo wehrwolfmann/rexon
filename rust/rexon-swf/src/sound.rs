@@ -1,12 +1,12 @@
-//! Звук Ruffle (фича `sound`): вывод через cpal и проба без устройства (перенесено из host-proto).
-//! Микшер — ruffle_core::backend::audio::AudioMixer, как у десктопного Ruffle, но без frontend-utils
-//! (тот тянет reqwest/zip).
+//! Ruffle sound (feature `sound`): output via cpal and a probe without a device (moved from host-proto).
+//! The mixer is ruffle_core::backend::audio::AudioMixer, as in desktop Ruffle, but without frontend-utils
+//! (that one pulls in reqwest/zip).
 //!
-//! ⚠️ «Тишина» здесь — это ОТСУТСТВИЕ потока, а не громкость 0. То же правило, что у видео-обоев
-//! (там ради него `MediaPlayer` остаётся без `audioOutput`): открытый молчащий поток весь сеанс
-//! висит в системном микшере отдельным ползунком, который ничего не играет, не даёт звуковой карте
-//! уснуть, и по нему невозможно отличить «играет тихо» от «не играет вовсе». Поэтому `pause`
-//! закрывает поток целиком, а `play` открывает заново — устройство и формат для этого запомнены.
+//! ⚠️ "Silence" here is the ABSENCE of a stream, not volume 0. The same rule as for video wallpapers
+//! (there `MediaPlayer` stays without an `audioOutput` for its sake): an open silent stream hangs in the
+//! system mixer all session as a separate slider that plays nothing, does not let the sound card
+//! sleep, and makes it impossible to tell "playing quietly" from "not playing at all". So `pause`
+//! closes the stream entirely, and `play` opens it again — the device and format are remembered for that.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -18,7 +18,7 @@ use ruffle_core::backend::audio::{
 };
 use ruffle_core::impl_audio_mixer_backend;
 
-/// Сколько раз устройство забирало сэмплы и их уровень (RMS по всем каналам).
+/// How many times the device took samples and their level (RMS over all channels).
 #[derive(Default)]
 pub struct Level {
     pub callbacks: AtomicU64,
@@ -35,8 +35,8 @@ impl Level {
             a.2 = a.2.max(s.abs());
         }
     }
-    /// (rms, peak, samples). Пик копится с начала работы и не сбрасывается: по нему хост отличает
-    /// «ролик молчит» от «ролик звучит, но сейчас тихо».
+    /// (rms, peak, samples). The peak accumulates from the start and is not reset: by it the host tells
+    /// "the movie is silent" from "the movie plays, but is quiet right now".
     pub fn stats(&self) -> (f64, f64, u64) {
         let a = self.acc.lock().unwrap();
         (if a.1 > 0 { (a.0 / a.1 as f64).sqrt() } else { 0.0 }, a.2, a.1)
@@ -47,8 +47,8 @@ fn on_stream_error(e: cpal::StreamError) {
     rexon_core::log_warn!("wallpaper-host", "REXON-SWF-AUDIO звуковой поток сообщил об ошибке: {e}");
 }
 
-/// Открыть поток на запомненном устройстве. Вынесено из `new`, потому что зовётся ещё и при
-/// снятии тишины: поток закрывается насовсем, а не приглушается.
+/// Open a stream on the remembered device. Moved out of `new` because it is also called when
+/// silence is lifted: the stream is closed for good, not muted.
 fn open_stream(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
@@ -84,16 +84,16 @@ fn open_stream(
 
 pub struct CpalBackend {
     mixer: AudioMixer,
-    /// Устройство и формат запоминаются, чтобы поток можно было открыть заново.
+    /// The device and format are remembered so that the stream can be opened again.
     device: cpal::Device,
     config: cpal::StreamConfig,
     format: cpal::SampleFormat,
-    /// `None` — потока нет вовсе (тишина, пауза или неудачное переоткрытие).
+    /// `None` — there is no stream at all (silence, pause or a failed reopen).
     stream: Option<cpal::Stream>,
     pub level: Arc<Level>,
     pub desc: String,
-    /// О неудаче переоткрытия рассказываем один раз: устройство могли выдернуть, и повторять
-    /// жалобу каждые полсекунды незачем.
+    /// A failed reopen is reported once: the device may have been unplugged, and repeating
+    /// the complaint every half second is pointless.
     reopen_failed: bool,
 }
 
@@ -133,13 +133,13 @@ impl AudioBackend for CpalBackend {
     }
 
     fn pause(&mut self) {
-        // Именно закрыть, а не приостановить: молчащий поток в микшере — это ползунок, который
-        // ничего не делает, и невозможность отличить «тихо» от «никак».
+        // Close it, not pause it: a silent stream in the mixer is a slider that
+        // does nothing, and makes it impossible to tell "quiet" from "nothing".
         self.stream = None;
     }
 }
 
-/// Бэкенд без устройства: сэмплы забираются вручную через `proxy()` (проверка декодирования и громкости).
+/// A backend without a device: samples are pulled by hand via `proxy()` (checking decoding and volume).
 pub(crate) struct ProbeBackend {
     mixer: AudioMixer,
 }

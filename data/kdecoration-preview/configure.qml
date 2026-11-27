@@ -1,17 +1,17 @@
-// Окно настроек рамки окна KDE — кнопка «Настроить…» раздела «Оформление
-// окон».
+// KDE window decoration settings window — the «Configure…» button of the «Window
+// Decorations» section.
 //
-// То же окно, что открывает кнопка правки на плитке окна «Оформление окон»
-// Plasma: QML-модуль KWin org.kde.kwin.private.kdecoration сам собирает
-// диалог с модулем настроек рамки (org.kde.kdecoration3.kcm/<модуль>) и
-// передаёт ему тему — у тем Aurorae без неё настроек не показать. После «OK»
-// или «Применить» он же просит KWin перечитать настройки.
-// Запускается отдельным процессом `qml -a widget` на экране сеанса, чтобы
-// чужой модуль не загружался в процесс Rexon; процесс завершается сам, когда
-// диалог закрыт.
+// The same window that the edit button on a tile of the Plasma «Window Decorations»
+// window opens: the KWin QML module org.kde.kwin.private.kdecoration builds the
+// dialog with the decoration's settings module (org.kde.kdecoration3.kcm/<module>) itself and
+// passes it the theme — Aurorae themes cannot show settings without it. After «OK»
+// or «Apply» it also asks KWin to reread the settings.
+// It is started as a separate `qml -a widget` process on the session screen so that
+// the foreign module is not loaded into the Rexon process; the process exits by itself when
+// the dialog is closed.
 //
-// Аргументы после `--`: модуль рамки, тема, модуль настроек, заголовок окна.
-// Выход: 0 — диалог закрыт; 2 — модуль рамки не нашёлся.
+// Arguments after `--`: decoration module, theme, settings module, window title.
+// Exit: 0 — the dialog was closed; 2 — the decoration module was not found.
 
 import QtQuick
 import QtQuick.Window
@@ -22,7 +22,7 @@ Window {
 
     readonly property var args: Qt.application.arguments.slice(Qt.application.arguments.length - 4)
 
-    // Своё окно не нужно — показывается только диалог модуля.
+    // No window of our own is needed — only the module's dialog is shown.
     visible: false
 
     Item {
@@ -40,7 +40,7 @@ Window {
 
             bridge: bridgeItem.bridge
         }
-        // Рамка-образец нужна диалогу ради заголовка окна, как в KDE.
+        // The dialog needs a sample decoration for the window title, as in KDE.
         KDecoration.Decoration {
             bridge: bridgeItem.bridge
             settings: settingsItem

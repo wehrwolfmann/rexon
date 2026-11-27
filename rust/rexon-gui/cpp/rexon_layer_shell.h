@@ -1,22 +1,25 @@
-// Шим LayerShellQt: перевод обычного QWindow в поверхность wlr-layer-shell.
+// LayerShellQt shim: turning an ordinary QWindow into a wlr-layer-shell
+// surface.
 //
-// Зачем шим: LayerShellQt — библиотека KDE на C++ (пакет layer-shell-qt),
-// привязки к Rust у неё нет и не будет. Из Rust её видно только так же, как
-// cxx-qt видит собственные QObject'ы, — через тонкий C++-файл. Ровно тем же
-// приёмом сделана фабрика моделей (cpp/rexon_gui_factory.cpp), это второй шим
-// того же класса, а не новая архитектура.
+// Why a shim: LayerShellQt is a KDE C++ library (the layer-shell-qt
+// package); it has no Rust bindings and will not have any. From Rust it
+// can be seen only the same way cxx-qt sees its own QObjects — through a
+// thin C++ file. The model factory (cpp/rexon_gui_factory.cpp) is made
+// with exactly the same technique; this is a second shim of the same
+// kind, not a new architecture.
 //
-// Чего шим НЕ делает: не создаёт окон, не решает, каким быть слою, и не знает
-// слова «обои». Он исполняет то, что ему сказали из Rust, — решение «слой
-// обоев = Background + четыре якоря + зона -1» живёт в src/layer_shell.rs
-// единственным экземпляром (правило #12: общий движок, а не по копии на
-// каждый вид обоев).
+// What the shim does NOT do: it creates no windows, does not decide what
+// the layer should be and does not know the word "wallpaper". It executes
+// what Rust told it — the decision "wallpaper layer = Background + four
+// anchors + zone -1" lives in src/layer_shell.rs as a single instance
+// (rule #12: a shared engine, not a copy per wallpaper kind).
 //
-// ⚠️ Порядок обязателен: свойства слоя ставятся ДО первого показа окна.
-// LayerShellQt подменяет интеграцию оболочки в момент создания платформенного
-// окна; если окно уже показано, оно уже стало обычным xdg_toplevel, и
-// поздний вызов не переселит его в слой. Стенд ловит это нарушение по
-// протоколу — см. src/layer_shell.rs.
+// Warning: the order is mandatory: the layer properties are set BEFORE the
+// window is first shown. LayerShellQt replaces the shell integration at
+// the moment the platform window is created; if the window is already
+// shown, it has already become an ordinary xdg_toplevel, and a late call
+// will not move it into the layer. The test bench catches this violation
+// by the protocol — see src/layer_shell.rs.
 #pragma once
 
 #include <cstdint>
@@ -25,21 +28,22 @@
 
 class QObject;
 
-/// Возможен ли слой обоев в текущей сессии: платформа Qt — Wayland.
-/// Наличие самого протокола wlr-layer-shell у композитора отсюда не видно
-/// (Mutter/Muffin его не дают) — это выясняется только при показе окна.
+/// Whether a wallpaper layer is possible in the current session: the Qt
+/// platform is Wayland. Whether the compositor has the wlr-layer-shell
+/// protocol itself cannot be seen from here (Mutter/Muffin do not provide
+/// it) — that is found out only when the window is shown.
 bool rexon_layer_shell_available();
 
-/// Перевести окно в слой. `window` обязан быть QWindow (обычно — корневой
-/// объект QML-компонента Window), иначе возвращается false.
+/// Move the window into the layer. `window` must be a QWindow (usually the
+/// root object of a QML Window component), otherwise false is returned.
 ///
-/// `layer` — LayerShellQt::Window::Layer (0 Background, 1 Bottom, 2 Top,
-/// 3 Overlay); `anchors` — битовая маска Anchor (1 верх, 2 низ, 4 лево,
-/// 8 право); `exclusion_zone` — та самая «зона вытеснения» (-1 = не
-/// вытеснять панели и самому не резервировать место, значение обоев);
-/// `keyboard` — KeyboardInteractivity (0 None, 1 Exclusive, 2 OnDemand).
-/// `scope` — идентификатор поверхности для композитора (пустая строка = не
-/// трогать умолчание LayerShellQt).
+/// `layer` is LayerShellQt::Window::Layer (0 Background, 1 Bottom, 2 Top,
+/// 3 Overlay); `anchors` is an Anchor bit mask (1 top, 2 bottom, 4 left,
+/// 8 right); `exclusion_zone` is the very "exclusion zone" (-1 = do not push
+/// panels away and reserve no space oneself, the wallpaper value);
+/// `keyboard` is KeyboardInteractivity (0 None, 1 Exclusive, 2 OnDemand).
+/// `scope` is the surface identifier for the compositor (an empty string =
+/// leave the LayerShellQt default alone).
 bool rexon_layer_shell_configure(QObject *window,
                                  std::int32_t layer,
                                  std::int32_t anchors,
@@ -47,31 +51,34 @@ bool rexon_layer_shell_configure(QObject *window,
                                  std::int32_t keyboard,
                                  const QString &scope);
 
-/// Прицелить поверхность слоя на ТОТ ЖЕ экран, на котором стоит само окно
-/// (`QWindow::screen()`), и снять «пусть решает композитор».
+/// Aim the layer surface at THE SAME screen the window itself is on
+/// (`QWindow::screen()`), and clear "let the compositor decide".
 ///
-/// Зачем отдельным вызовом. Без него LayerShellQt берёт экран сам: при
-/// `screen() == nullptr` и `wantsToBeOnActiveScreen() == false` он читает
-/// `QWindow::screen()`, но оба умолчания — его внутреннее дело, и обои на
-/// втором мониторе не должны зависеть от того, не поменяет ли KDE их в
-/// следующей версии. Здесь выход поверхности назван явно.
+/// Why a separate call. Without it LayerShellQt picks the screen itself:
+/// with `screen() == nullptr` and `wantsToBeOnActiveScreen() == false` it
+/// reads `QWindow::screen()`, but both defaults are its internal business,
+/// and a wallpaper on the second monitor must not depend on whether KDE
+/// changes them in the next version. Here the surface output is named
+/// explicitly.
 ///
-/// Звать ПОСЛЕ `rexon_layer_shell_configure` и ДО первого показа окна:
-/// выход уходит в запрос `get_layer_surface`, и после показа менять его
-/// поздно. Возвращает false, если окно не QWindow, слой ему не ставили или
-/// экрана у окна нет.
+/// Call AFTER `rexon_layer_shell_configure` and BEFORE the window is first
+/// shown: the output goes into the `get_layer_surface` request, and after
+/// showing it is too late to change it. Returns false if the window is not
+/// a QWindow, no layer was set on it or the window has no screen.
 bool rexon_layer_shell_pin_to_window_screen(QObject *window);
 
-// Обратное чтение — для самопроверки. Возвращают -1, если объект не QWindow.
+// Reading back — for the self-test. Return -1 if the object is not a
+// QWindow.
 //
-// ⚠️ Это чтение НАШЕГО же состояния в LayerShellQt, а не ответа композитора:
-// оно доказывает лишь, что сеттеры не были молча проигнорированы. Что окно
-// действительно стало фоновой поверхностью, доказывается протоколом Wayland
-// в стенде.
+// Warning: this reads OUR OWN state in LayerShellQt, not the compositor's
+// answer: it only proves that the setters were not silently ignored. That
+// the window really became a background surface is proven by the Wayland
+// protocol in the test bench.
 std::int32_t rexon_layer_shell_layer(QObject *window);
 std::int32_t rexon_layer_shell_anchors(QObject *window);
 std::int32_t rexon_layer_shell_exclusion_zone(QObject *window);
 std::int32_t rexon_layer_shell_keyboard(QObject *window);
-/// Имя экрана, на который нацелена поверхность слоя; пусто — экран не
-/// назван (окно не в слое либо выход выбирает композитор).
+/// Name of the screen the layer surface is aimed at; empty means no screen
+/// is named (the window is not in a layer, or the compositor chooses the
+/// output).
 QString rexon_layer_shell_screen_name(QObject *window);

@@ -1,49 +1,49 @@
-//! Порт `rexon/waywallen_client.py` — тонкий D-Bus клиент демона waywallen.
+//! Port of `rexon/waywallen_client.py` — a thin D-Bus client for the waywallen daemon.
 //!
-//! Rexon (frontend, workshop-browser) говорит демону waywallen (backend,
-//! Rust Vulkan-рендер) «применить scene по ID» и читает его статус. В Python
-//! транспорт — PySide6.QtDBus (`QDBusInterface` на session-bus); здесь ВСЯ
-//! логика клиента (коэрции значений свойств, разбор ответов `_call`,
-//! формат ошибок, CLI-семантика `python3 -m tools.py_shims.waywallen_client`)
-//! отделена от живого I/O трейтом [`WaywallenIo`]:
+//! Rexon (frontend, workshop browser) tells the waywallen daemon (backend,
+//! Rust Vulkan renderer) to "apply scene by ID" and reads its status. In Python
+//! the transport is PySide6.QtDBus (`QDBusInterface` on the session bus); here ALL
+//! of the client logic (property value coercions, parsing of `_call` replies,
+//! the error format, the CLI semantics of `python3 -m tools.py_shims.waywallen_client`)
+//! is separated from live I/O by the [`WaywallenIo`] trait:
 //!
-//! * ядро НЕ тащит D-Bus зависимость (zbus и т.п.) — по политике минимума
-//!   зависимостей rexon-core живой транспорт появится реализацией трейта на
-//!   стороне моста при подключении;
-//! * в parity-тестах трейт реплеит журнал, снятый с живого Python
-//!   с полностью замоканным QtDBus (`waywallen_client_cases.json`).
+//! * the core does NOT pull in a D-Bus dependency (zbus etc.) — per the rexon-core
+//!   minimal-dependency policy, the live transport will appear as a trait
+//!   implementation on the bridge side when it is wired up;
+//! * in parity tests the trait replays a log captured from live Python
+//!   with QtDBus fully mocked (`waywallen_client_cases.json`).
 //!
-//! Клиент строго СИНХРОННЫЙ (каждый вызов — блокирующий D-Bus round-trip),
-//! асинхронных колбэков нет — owner-guard'ы доставки поздних ответов из
-//! `qt_wallpaper_engine/client.py` (фикс краша по умершим QML-объектам)
-//! относятся к WS-клиенту вкладки WE и на этот модуль не распространяются.
+//! The client is strictly SYNCHRONOUS (every call is a blocking D-Bus round trip),
+//! there are no async callbacks — the owner guards for delivering late replies in
+//! `qt_wallpaper_engine/client.py` (the fix for the crash on dead QML objects)
+//! belong to the WS client of the WE tab and do not apply to this module.
 //!
-//! Починенные при порте баги оригинала (правило авто-починки; каждое место
-//! помечено «намеренное расхождение» рядом с кодом):
-//! * `int(prop or 0)` / `int(call or 0)` в Python падали необработанным
-//!   `ValueError` на нечисловой строке от демона и `TypeError` на
-//!   multi-arg ответе `Rescan` — здесь неконвертируемое значение даёт 0;
-//! * типизация: строковые свойства всегда возвращают `String` (Python
-//!   возвращал «что пришло», напр. int вопреки аннотации `-> str`).
+//! Bugs of the original fixed during the port (auto-fix rule; every place is
+//! marked "intentional divergence" next to the code):
+//! * `int(prop or 0)` / `int(call or 0)` in Python crashed with an unhandled
+//!   `ValueError` on a non-numeric string from the daemon and a `TypeError` on
+//!   a multi-arg `Rescan` reply — here an unconvertible value gives 0;
+//! * typing: string properties always return `String` (Python returned
+//!   "whatever came in", e.g. an int despite the `-> str` annotation).
 
 // ============================================================================
-// Константы D-Bus (BUS_NAME / OBJECT_PATH / IFACE)
+// D-Bus constants (BUS_NAME / OBJECT_PATH / IFACE)
 // ============================================================================
 
-/// Имя сервиса демона на session-bus.
+/// Service name of the daemon on the session bus.
 pub const BUS_NAME: &str = "org.waywallen.waywallen.Daemon";
-/// Путь объекта демона.
+/// Object path of the daemon.
 pub const OBJECT_PATH: &str = "/org/waywallen/waywallen/Daemon";
-/// Интерфейс демона.
+/// Interface of the daemon.
 pub const IFACE: &str = "org.waywallen.waywallen.Daemon1";
 
 // ============================================================================
-// Значения D-Bus
+// D-Bus values
 // ============================================================================
 
-/// Значение, каким его видел Python после конверсии QVariant: None / bool /
-/// int / str. Больших типов (double/массивы) интерфейс демона не отдаёт;
-/// появятся — расширим enum вместе с golden.
+/// A value as Python saw it after the QVariant conversion: None / bool /
+/// int / str. The daemon interface does not return larger types (double/arrays);
+/// if they appear, extend the enum together with the golden data.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DbusValue {
     None,
@@ -63,7 +63,7 @@ impl DbusValue {
         }
     }
 
-    /// Python `str(x)` — так значение выглядит в f-string CLI.
+    /// Python `str(x)` — how the value looks in the CLI f-string.
     pub fn py_str(&self) -> String {
         match self {
             DbusValue::None => "None".to_string(),
@@ -74,10 +74,10 @@ impl DbusValue {
         }
     }
 
-    /// Python `repr(x)` — элементы списка в `str(list)`. Строки — в кавычках
-    /// по правилу CPython: одинарные, но двойные, если внутри есть `'` и нет
-    /// `"`. Экранирование управляющих символов не реализовано (ответы демона
-    /// — идентификаторы/сообщения без них).
+    /// Python `repr(x)` — list elements in `str(list)`. Strings are quoted
+    /// by the CPython rule: single quotes, but double if the string contains `'` and no
+    /// `"`. Escaping of control characters is not implemented (daemon replies
+    /// are identifiers/messages without them).
     fn py_repr(&self) -> String {
         match self {
             DbusValue::Str(s) => {
@@ -91,9 +91,9 @@ impl DbusValue {
         }
     }
 
-    /// Python `int(x)` для truthy-значений: bool → 0/1, int → как есть,
-    /// строка — парсинг литерала (пробелы по краям, знак, `_` между цифрами).
-    /// `None` = Python поднял бы ValueError.
+    /// Python `int(x)` for truthy values: bool → 0/1, int → as is,
+    /// string — literal parsing (surrounding whitespace, sign, `_` between digits).
+    /// `None` = Python would have raised ValueError.
     pub fn py_int(&self) -> Option<i64> {
         match self {
             DbusValue::None => None,
@@ -104,15 +104,15 @@ impl DbusValue {
     }
 }
 
-/// Python `int(str)`: обрезает пробелы, допускает знак и одиночные `_`
-/// между цифрами.
+/// Python `int(str)`: trims whitespace, allows a sign and single `_`
+/// between digits.
 fn py_parse_int(s: &str) -> Option<i64> {
     let t = s.trim();
     let digits = t.strip_prefix(['+', '-']).unwrap_or(t);
     if digits.is_empty() {
         return None;
     }
-    // `_` допустим только между цифрами (как в литералах Python 3).
+    // `_` is allowed only between digits (as in Python 3 literals).
     let bytes = digits.as_bytes();
     for (i, b) in bytes.iter().enumerate() {
         match b {
@@ -131,9 +131,9 @@ fn py_parse_int(s: &str) -> Option<i64> {
     t.replace('_', "").parse().ok()
 }
 
-/// Ответ D-Bus вызова, каким его видел Python: `reply.errorName()`,
-/// `reply.errorMessage()`, `reply.arguments()`. Пустой `error_name` =
-/// вызов успешен.
+/// A D-Bus call reply as Python saw it: `reply.errorName()`,
+/// `reply.errorMessage()`, `reply.arguments()`. An empty `error_name` =
+/// the call succeeded.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DbusReply {
     pub error_name: String,
@@ -141,8 +141,8 @@ pub struct DbusReply {
     pub arguments: Vec<DbusValue>,
 }
 
-/// `_call`: `argv[0] if len(argv) == 1 else argv` — одиночное значение либо
-/// список (в т.ч. пустой).
+/// `_call`: `argv[0] if len(argv) == 1 else argv` — a single value or
+/// a list (possibly empty).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReplyValue {
     Single(DbusValue),
@@ -158,7 +158,7 @@ impl ReplyValue {
         }
     }
 
-    /// Python `bool(x)`: список truthy, если непуст.
+    /// Python `bool(x)`: a list is truthy if non-empty.
     fn is_truthy(&self) -> bool {
         match self {
             ReplyValue::Single(v) => v.is_truthy(),
@@ -166,7 +166,7 @@ impl ReplyValue {
         }
     }
 
-    /// Python `str(x)` — как значение печатает CLI (`print(c.next())`).
+    /// Python `str(x)` — how the CLI prints the value (`print(c.next())`).
     pub fn py_str(&self) -> String {
         match self {
             ReplyValue::Single(v) => v.py_str(),
@@ -179,8 +179,8 @@ impl ReplyValue {
     }
 }
 
-/// Ошибка D-Bus вызова — порт `RuntimeError` из `_call`. `message` — тот же
-/// текст: `"{method}: {errorName} — {errorMessage}"`.
+/// D-Bus call error — port of the `RuntimeError` from `_call`. `message` is the same
+/// text: `"{method}: {errorName} — {errorMessage}"`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallError {
     pub message: String,
@@ -195,27 +195,27 @@ impl std::fmt::Display for CallError {
 impl std::error::Error for CallError {}
 
 // ============================================================================
-// Трейт транспорта
+// Transport trait
 // ============================================================================
 
-/// Транспорт `QDBusInterface`: каждый метод — ровно один D-Bus side-effect
-/// Python-оригинала. В parity-тестах — реплей журнала; в живом мосте —
-/// реальный session-bus (реализация появится при подключении).
+/// The `QDBusInterface` transport: each method is exactly one D-Bus side effect
+/// of the Python original. In parity tests — a log replay; in the live bridge —
+/// the real session bus (the implementation will appear when wired up).
 pub trait WaywallenIo {
-    /// `self._iface.isValid()` — демон виден на session-bus.
+    /// `self._iface.isValid()` — the daemon is visible on the session bus.
     fn is_valid(&mut self) -> bool;
-    /// `self._iface.property(name)`; [`DbusValue::None`] — свойства нет.
+    /// `self._iface.property(name)`; [`DbusValue::None`] — no such property.
     fn get_property(&mut self, name: &str) -> DbusValue;
-    /// `self._iface.call(method, *args)` → сырой ответ.
+    /// `self._iface.call(method, *args)` → the raw reply.
     fn call(&mut self, method: &str, args: &[DbusValue]) -> DbusReply;
 }
 
 // ============================================================================
-// Клиент
+// Client
 // ============================================================================
 
-/// Тонкий D-Bus wrapper — порт класса `WaywallenClient`. Конструктор не
-/// блокирует — проверять [`available`](Self::available).
+/// Thin D-Bus wrapper — port of the `WaywallenClient` class. The constructor does not
+/// block — check [`available`](Self::available).
 pub struct WaywallenClient<IO: WaywallenIo> {
     io: IO,
 }
@@ -225,18 +225,18 @@ impl<IO: WaywallenIo> WaywallenClient<IO> {
         WaywallenClient { io }
     }
 
-    /// Забрать транспорт обратно (parity-тестам — для финальных проверок).
+    /// Take the transport back (for parity tests — for the final checks).
     pub fn into_io(self) -> IO {
         self.io
     }
 
-    /// True, если daemon виден на session-bus (запущен и активирован).
+    /// True if the daemon is visible on the session bus (running and activated).
     pub fn available(&mut self) -> bool {
         self.io.is_valid()
     }
 
-    /// `_call`: вызов метода; ошибка D-Bus → [`CallError`] с тем же текстом,
-    /// что у `RuntimeError` оригинала.
+    /// `_call`: method call; a D-Bus error → [`CallError`] with the same text
+    /// as the original's `RuntimeError`.
     fn call(
         &mut self,
         method: &str,
@@ -254,18 +254,18 @@ impl<IO: WaywallenIo> WaywallenClient<IO> {
         Ok(ReplyValue::from_arguments(reply.arguments))
     }
 
-    /// `self._prop(name) or ""` — строковое свойство. Намерение Python —
-    /// `-> str`; намеренное расхождение: truthy-значение НЕ-строкового типа
-    /// приводится `str()` (Python возвращал его как есть вопреки аннотации;
-    /// наблюдаемый CLI-вывод через f-string идентичен).
+    /// `self._prop(name) or ""` — a string property. The Python intent is
+    /// `-> str`; intentional divergence: a truthy value of a NON-string type
+    /// is converted with `str()` (Python returned it as is despite the annotation;
+    /// the observable CLI output via f-string is identical).
     fn str_prop(&mut self, name: &str) -> String {
         let v = self.io.get_property(name);
         if v.is_truthy() { v.py_str() } else { String::new() }
     }
 
-    /// `int(self._prop(name) or 0)` — целочисленное свойство. Намеренное
-    /// расхождение: нечисловая строка от демона даёт 0 (Python падал
-    /// необработанным ValueError).
+    /// `int(self._prop(name) or 0)` — an integer property. Intentional
+    /// divergence: a non-numeric string from the daemon gives 0 (Python crashed
+    /// with an unhandled ValueError).
     fn int_prop(&mut self, name: &str) -> i64 {
         let v = self.io.get_property(name);
         if !v.is_truthy() {
@@ -274,35 +274,35 @@ impl<IO: WaywallenIo> WaywallenClient<IO> {
         v.py_int().unwrap_or(0)
     }
 
-    /// Свойство `CurrentWallpaperId`.
+    /// The `CurrentWallpaperId` property.
     pub fn current_wallpaper_id(&mut self) -> String {
         self.str_prop("CurrentWallpaperId")
     }
 
-    /// Свойство `Version`.
+    /// The `Version` property.
     pub fn version(&mut self) -> String {
         self.str_prop("Version")
     }
 
-    /// Свойство `WsPort`.
+    /// The `WsPort` property.
     pub fn ws_port(&mut self) -> i64 {
         self.int_prop("WsPort")
     }
 
-    /// Свойство `QueueMode`.
+    /// The `QueueMode` property.
     pub fn queue_mode(&mut self) -> String {
         self.str_prop("QueueMode")
     }
 
-    /// Свойство `RotationSecs`.
+    /// The `RotationSecs` property.
     pub fn rotation_secs(&mut self) -> i64 {
         self.int_prop("RotationSecs")
     }
 
-    /// Применить scene-обои; возвращает task-id (или сообщение об ошибке).
-    /// **Главный** метод интеграции — Apply-кнопка config.qml зовёт его.
-    /// Python делал `str(wallpaper_id)` — здесь коэрция закреплена типом
-    /// аргумента (не-строковый id приводит к строке вызывающий).
+    /// Apply a scene wallpaper; returns a task id (or an error message).
+    /// The **main** integration method — the Apply button of config.qml calls it.
+    /// Python did `str(wallpaper_id)` — here the coercion is fixed by the argument
+    /// type (the caller converts a non-string id to a string).
     pub fn apply_by_id(
         &mut self,
         wallpaper_id: &str,
@@ -310,31 +310,31 @@ impl<IO: WaywallenIo> WaywallenClient<IO> {
         self.call("ApplyById", &[DbusValue::Str(wallpaper_id.to_string())])
     }
 
-    /// Следующие обои в очереди. Имя как у D-Bus метода `Next` и Python
-    /// `next()` — это не итератор, паритет имён важнее lint'а.
+    /// Next wallpaper in the queue. Named like the D-Bus method `Next` and Python
+    /// `next()` — this is not an iterator, name parity matters more than the lint.
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<ReplyValue, CallError> {
         self.call("Next", &[])
     }
 
-    /// Предыдущие обои.
+    /// Previous wallpaper.
     pub fn previous(&mut self) -> Result<ReplyValue, CallError> {
         self.call("Previous", &[])
     }
 
-    /// Пауза рендера.
+    /// Pause rendering.
     pub fn pause(&mut self) -> Result<(), CallError> {
         self.call("Pause", &[]).map(|_| ())
     }
 
-    /// Возобновление рендера.
+    /// Resume rendering.
     pub fn resume(&mut self) -> Result<(), CallError> {
         self.call("Resume", &[]).map(|_| ())
     }
 
-    /// `int(self._call("Rescan") or 0)` — id задачи рескана. Намеренное
-    /// расхождение: неконвертируемый ответ (нечисловая строка — ValueError;
-    /// multi-arg список — TypeError в Python) даёт 0.
+    /// `int(self._call("Rescan") or 0)` — id of the rescan task. Intentional
+    /// divergence: an unconvertible reply (non-numeric string — ValueError;
+    /// multi-arg list — TypeError in Python) gives 0.
     pub fn rescan(&mut self) -> Result<i64, CallError> {
         let rv = self.call("Rescan", &[])?;
         if !rv.is_truthy() {
@@ -346,18 +346,18 @@ impl<IO: WaywallenIo> WaywallenClient<IO> {
         })
     }
 
-    /// Открыть родной UI демона.
+    /// Open the daemon's own UI.
     pub fn open_ui(&mut self) -> Result<(), CallError> {
         self.call("OpenUi", &[]).map(|_| ())
     }
 
-    /// Завершить демон.
+    /// Shut down the daemon.
     pub fn quit(&mut self) -> Result<(), CallError> {
         self.call("Quit", &[]).map(|_| ())
     }
 
-    /// Интервал ротации в секундах (Python коэрцил `int(secs)` — закреплено
-    /// типом).
+    /// Rotation interval in seconds (Python coerced `int(secs)` — fixed by the
+    /// type).
     pub fn set_rotation_interval(
         &mut self,
         secs: i64,
@@ -366,18 +366,18 @@ impl<IO: WaywallenIo> WaywallenClient<IO> {
             .map(|_| ())
     }
 
-    /// Режим перемешивания (Python коэрцил `bool(on)` — закреплено типом).
+    /// Shuffle mode (Python coerced `bool(on)` — fixed by the type).
     pub fn set_shuffle(&mut self, on: bool) -> Result<(), CallError> {
         self.call("SetShuffle", &[DbusValue::Bool(on)]).map(|_| ())
     }
 }
 
 // ============================================================================
-// CLI (порт `_cli` — smoke-тест: статус / apply / next / pause / …)
+// CLI (port of `_cli` — a smoke test: status / apply / next / pause / …)
 // ============================================================================
 
-/// Результат CLI-прогона: код возврата + захваченные потоки (печать —
-/// на вызывающем).
+/// Result of a CLI run: exit code + captured streams (printing is
+/// up to the caller).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliResult {
     pub code: i32,
@@ -395,9 +395,9 @@ impl CliResult {
     }
 }
 
-/// Порт `_cli()`: `prog` — `sys.argv[0]`, `args` — аргументы после него.
-/// Тексты/коды возврата — байт-в-байт с Python (кроме починенного краша
-/// `rescan`, см. [`WaywallenClient::rescan`]).
+/// Port of `_cli()`: `prog` — `sys.argv[0]`, `args` — the arguments after it.
+/// Texts/exit codes are byte-for-byte identical to Python (except the fixed
+/// `rescan` crash, see [`WaywallenClient::rescan`]).
 pub fn cli<IO: WaywallenIo>(
     client: &mut WaywallenClient<IO>,
     prog: &str,
@@ -413,7 +413,7 @@ pub fn cli<IO: WaywallenIo>(
     }
 
     if args.is_empty() {
-        // Статус
+        // Status
         let version = client.version();
         let current = client.current_wallpaper_id();
         let current = if current.is_empty() {

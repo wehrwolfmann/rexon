@@ -1,16 +1,16 @@
-//! Вкладка «Оформление» — числа оформления, подписи и таблицы стилей.
+//! The "Appearance" tab: layout numbers, labels and style sheets.
 //!
-//! Здесь живёт то, что вкладка ЗНАЕТ о своём виде: размеры плитки и панели
-//! деталей, пороги загрузчика превью, паузы дебаунса, список сортировок и
-//! готовые таблицы стилей. Python-сторона остаётся Qt-слоем: она строит
-//! виджеты и подставляет то, что ей сказали, — своих чисел и своих цветов
-//! у неё нет.
+//! This is where what the tab KNOWS about its look lives: the tile and
+//! details panel sizes, the preview loader thresholds, the debounce pauses,
+//! the list of sorts and ready style sheets. The Python side remains a Qt
+//! layer: it builds widgets and plugs in what it is told; it has no numbers
+//! or colours of its own.
 //!
-//! ⚠️ Цвета берутся из ДЕЙСТВУЮЩЕГО скина (`ui_base::skin_colors`), а не из
-//! запечённой Steam-палитры. Копия этой палитры жила во вкладке отдельным
-//! словарём и не обновлялась при смене скина: подписи деталки, путь
-//! установки, комментарии и выпадашка подсказок оставались белыми и на
-//! светлом скине становились невидимы.
+//! ⚠️ Colours come from the ACTIVE skin (`ui_base::skin_colors`), not from
+//! the baked-in Steam palette. A copy of that palette lived in the tab as a
+//! separate dictionary and was not updated when the skin changed: the
+//! details labels, the install path, the comments and the suggestions
+//! drop-down stayed white and became invisible on a light skin.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::Path;
@@ -30,170 +30,175 @@ use crate::models::{CatalogSource, ThemeCategory, ThemeItem};
 use crate::ui_base;
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Геометрия каталога
+//  Catalog geometry
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Сколько работ просим у OCS за одну серверную страницу. Сервер реально
-/// отдаёт около десятка — это учтено в подсчёте числа страниц.
+/// How many works we ask OCS for per server page. The server actually
+/// returns about ten: this is taken into account when counting pages.
 ///
-/// Это же — НИЖНЯЯ граница страницы Rexon: страница сетки набирается целыми
-/// рядами ([`grid_page_size`]) и бывает чуть больше, но не меньше. Серверная
-/// страница от числа столбцов не зависит, иначе кеш магазина (`ocs_cache`,
-/// ключ без размера) отдавал бы ломти другой длины.
+/// This is also the LOWER bound of a Rexon page: a grid page is assembled
+/// from whole rows ([`grid_page_size`]) and may be slightly larger, but not
+/// smaller. The server page does not depend on the number of columns;
+/// otherwise the store cache (`ocs_cache`, a key without the size) would
+/// return slices of a different length.
 pub const PAGE_SIZE: u32 = 20;
 
-/// Размер страницы сетки при `cols` столбцах: целые ряды, не меньше
-/// [`PAGE_SIZE`] работ. Иначе при девяти столбцах страница из двадцати
-/// кончалась рядом из двух плиток и семью пустыми местами.
+/// The grid page size with `cols` columns: whole rows, no fewer than
+/// [`PAGE_SIZE`] works. Otherwise, with nine columns, a page of twenty
+/// ended with a row of two tiles and seven empty places.
 pub fn grid_page_size(cols: u32) -> u32 {
     let cols = cols.max(1);
     ui_base::grid_page_size(cols, PAGE_SIZE.div_ceil(cols))
 }
 
-/// Номер страницы после смены её размера: первая работа прежней страницы
-/// остаётся на экране.
+/// The page number after its size changes: the first work of the previous
+/// page stays on screen.
 pub fn page_after_resize(page: i64, old_size: u32, new_size: u32) -> i64 {
     let first = page.max(0).saturating_mul(i64::from(old_size.max(1)));
     first / i64::from(new_size.max(1))
 }
 
-/// Ширина плитки каталога. Постоянная: по ней общий движок сеток считает
-/// число столбцов, и «плавающая» плитка сломала бы расчёт.
+/// The catalog tile width. Constant: the common grid engine computes the
+/// number of columns from it, and a "floating" tile would break the
+/// calculation.
 pub const CARD_W: i32 = 300;
-/// Полная высота плитки каталога.
+/// The full height of a catalog tile.
 pub const CARD_H: i32 = 285;
-/// Высота картинки в плитке.
+/// The height of the picture in a tile.
 pub const PREVIEW_H: i32 = 170;
-/// Поля тела плитки (12 + 12) плюс запас на скруглении: на столько подписи
-/// внутри плитки уже её самой.
+/// The tile body margins (12 + 12) plus a reserve for the rounding: the
+/// labels inside a tile are narrower than the tile itself by this much.
 pub const CARD_TEXT_MARGIN: i32 = 30;
 
-/// Ширина подписей внутри плитки.
+/// The width of labels inside a tile.
 pub fn card_text_width() -> i32 {
     CARD_W - CARD_TEXT_MARGIN
 }
 
-/// Поля тела плитки по бокам.
+/// The tile body side margins.
 pub const CARD_BODY_MARGIN: i32 = 12;
-/// Поле тела плитки сверху.
+/// The tile body top margin.
 ///
-/// ⚠️ Число взято с ОТРИСОВАННОЙ плитки оригинала, а не с его исходника, и
-/// расходится с ним намеренно. В исходнике объявлено 14, но плитка имеет
-/// жёсткую высоту (`CARD_H`), и содержимому тела её не хватает: `QVBoxLayout`
-/// в такой тесноте съедает поля и зазоры, и верхнее поле в живой отрисовке
-/// вырождается почти в ноль (замер снимка 01.09.2026: подпись начинается на
-/// 2 точки ниже границы картинки, а не на 14). Раскладка QML полей не
-/// сжимает — она вылезает за нижний край, и кнопка плитки обрезалась.
-/// Поэтому здесь записано то, что человек ВИДИТ.
+/// ⚠️ The number is taken from the original's RENDERED tile, not from its
+/// source, and differs from it deliberately. The source declares 14, but
+/// the tile has a fixed height (`CARD_H`), and the body content does not
+/// fit: `QVBoxLayout` eats the margins and gaps in such a squeeze, and the
+/// top margin degenerates almost to zero in the live rendering (screenshot
+/// measurement on 01.09.2026: the label starts 2 points below the picture
+/// border, not 14). A QML layout does not shrink margins: it overflows the
+/// bottom edge, and the tile button got cut off. So what is written here is
+/// what the person SEES.
 pub const CARD_BODY_TOP_MARGIN: i32 = 2;
-/// Поле тела плитки снизу.
+/// The tile body bottom margin.
 pub const CARD_BODY_BOTTOM_MARGIN: i32 = 10;
-/// Зазор между строками внутри плитки.
+/// The gap between lines inside a tile.
 pub const CARD_BODY_SPACING: i32 = 4;
-/// Высота кнопки плитки (замер отрисованной кнопки оригинала).
+/// The tile button height (measured on the original's rendered button).
 pub const CARD_BUTTON_HEIGHT: i32 = 32;
-/// Отступ ряда кнопок от стат-строки.
+/// The offset of the button row from the stats line.
 pub const CARD_BUTTON_TOP_MARGIN: i32 = 4;
-/// Кегль названия темы в плитке. Крупнее прочих строк: имя — то, по чему
-/// человек находит тему в сетке.
+/// The font size of the theme name in a tile. Larger than the other lines:
+/// the name is what the person finds the theme by in the grid.
 pub const CARD_NAME_POINT_SIZE: i32 = 11;
-/// Кегль второстепенных строк плитки (автор, источник, статистика).
+/// The font size of secondary tile lines (author, source, statistics).
 pub const CARD_META_POINT_SIZE: i32 = 10;
 
-/// Зазор между плитками сетки.
+/// The gap between grid tiles.
 pub const GRID_SPACING: i32 = 14;
-/// Поля сетки по бокам: те же 16, что у шапки и строки состояния, — иначе
-/// левый край плиток не совпадает с левым краем подписей над ними.
+/// The grid side margins: the same 16 as the header and the status line;
+/// otherwise the left edge of the tiles does not line up with the left edge
+/// of the labels above them.
 pub const GRID_MARGIN_H: i32 = 16;
-/// Поля сетки сверху и снизу.
+/// The grid top and bottom margins.
 pub const GRID_MARGIN_V: i32 = 12;
 
-/// Сколько столбцов плиток влезает в ширину `usable` (поля сетки уже
-/// вычтены; зазор после последнего столбца входит в ширину): сколько
-/// плиток наименьшей ширины [`CARD_W`] с зазором помещается, не меньше
-/// одного. Один расчёт на все сетки плиток «Оформления» (каталог магазина,
-/// библиотека Razer Axon) — иначе одна растягивается, а другая оставляет
-/// справа пустую полосу.
+/// How many tile columns fit into width `usable` (grid margins already
+/// subtracted; the gap after the last column is part of the width): how
+/// many tiles of the smallest width [`CARD_W`] with a gap fit, at least
+/// one. One calculation for all "Appearance" tile grids (the store catalog,
+/// the Razer Axon library); otherwise one stretches and the other leaves an
+/// empty strip on the right.
 pub fn grid_columns(usable: i32) -> i32 {
     (usable / (CARD_W + GRID_SPACING)).max(1)
 }
 
-/// Ширина ячейки (плитка плюс зазор) при ширине `usable`: остаток ширины
-/// делится между столбцами [`grid_columns`], но не уже наименьшей плитки.
+/// The cell width (tile plus gap) at width `usable`: the remaining width is
+/// divided between the [`grid_columns`] columns, but never narrower than
+/// the smallest tile.
 pub fn grid_cell_width(usable: i32) -> i32 {
     (usable / grid_columns(usable)).max(CARD_W + GRID_SPACING)
 }
-/// Поля шапки каталога по бокам.
+/// The catalog header side margins.
 pub const HEADER_MARGIN_H: i32 = 16;
-/// Поля шапки каталога сверху и снизу.
+/// The catalog header top and bottom margins.
 pub const HEADER_MARGIN_V: i32 = 12;
 
-/// Ширина боковой панели категорий.
+/// The width of the categories sidebar.
 pub const SIDEBAR_W: i32 = 210;
-/// Высота строки боковой панели.
+/// The height of a sidebar row.
 pub const SIDEBAR_ROW_H: i32 = 40;
-/// Ширина строки поиска.
+/// The width of the search line.
 pub const SEARCH_W: i32 = 240;
 
-/// Размер картинки на панели деталей.
+/// The size of the picture on the details panel.
 pub const DETAIL_PREVIEW_W: i32 = 600;
-/// Высота картинки на панели деталей.
+/// The height of the picture on the details panel.
 pub const DETAIL_PREVIEW_H: i32 = 340;
 
-// ── Накладные кнопки поверх картинки деталей ───────────────────────────
-/// Сторона круглой кнопки (лупа, стрелки галереи). Не меньше 40 —
-/// требование Big Picture к размеру цели нажатия.
+// ── Overlay buttons on top of the details picture ──────────────────────
+/// The side of a round button (magnifier, gallery arrows). At least 40: the
+/// Big Picture requirement for the size of a tap target.
 pub const OVERLAY_BTN: i32 = 44;
-/// Отступ накладной кнопки от края картинки.
+/// The offset of an overlay button from the picture edge.
 pub const OVERLAY_MARGIN: i32 = 10;
-/// Высота бейджа-счётчика «2/5».
+/// The height of the "2/5" counter badge.
 pub const COUNTER_H: i32 = 24;
-/// Наименьшая ширина бейджа-счётчика.
+/// The smallest width of the counter badge.
 pub const COUNTER_MIN_W: i32 = 48;
-/// Поля внутри бейджа-счётчика (слева и справа вместе).
+/// The padding inside the counter badge (left and right together).
 pub const COUNTER_PAD: i32 = 20;
 
-/// Ширина бейджа-счётчика под текст такой-то ширины.
+/// The width of the counter badge for text of a given width.
 pub fn counter_width(text_w: i32) -> i32 {
     COUNTER_MIN_W.max(text_w + COUNTER_PAD)
 }
 
-// ── Выпадашка подсказок поиска ─────────────────────────────────────────
-/// Высота строки подсказки.
+// ── Search suggestions drop-down ───────────────────────────────────────
+/// The height of a suggestion row.
 pub const SUGGEST_ROW_H: i32 = 54;
-/// Ширина миниатюры в подсказке (16:9).
+/// The width of the thumbnail in a suggestion (16:9).
 pub const SUGGEST_THUMB_W: i32 = 72;
-/// Высота миниатюры в подсказке.
+/// The height of the thumbnail in a suggestion.
 pub const SUGGEST_THUMB_H: i32 = 40;
-/// Сколько подсказок показываем самое большее.
+/// The maximum number of suggestions shown.
 pub const SUGGEST_MAX_ROWS: i32 = 12;
-/// Наименьшая ширина выпадашки: миниатюра плюс две строки текста.
+/// The smallest width of the drop-down: a thumbnail plus two lines of text.
 pub const SUGGEST_MIN_W: i32 = 360;
-/// Зазор от правого края страницы, за который выпадашка не заходит.
+/// The gap from the right edge of the page that the drop-down does not cross.
 pub const SUGGEST_EDGE: i32 = 12;
-/// Наименьший отступ выпадашки от левого края страницы.
+/// The smallest offset of the drop-down from the left edge of the page.
 pub const SUGGEST_LEFT: i32 = 8;
-/// Зазор между строкой поиска и выпадашкой.
+/// The gap between the search line and the drop-down.
 pub const SUGGEST_GAP: i32 = 3;
-/// Рамка выпадашки сверху и снизу вместе.
+/// The drop-down border, top and bottom together.
 pub const SUGGEST_FRAME: i32 = 2;
-/// По какой ширине обрезаются название и автор в строке подсказки.
+/// The width at which the name and the author are cut in a suggestion row.
 pub const SUGGEST_TEXT_W: i32 = 300;
-/// С какого числа введённых знаков вообще спрашиваем подсказки.
+/// From how many typed characters we ask for suggestions at all.
 pub const SUGGEST_MIN_CHARS: usize = 2;
 
-/// Ширина выпадашки подсказок: не уже строки поиска и не уже разумного
-/// минимума.
+/// The width of the suggestions drop-down: no narrower than the search line
+/// and no narrower than a reasonable minimum.
 pub fn suggest_width(anchor_w: i32) -> i32 {
     anchor_w.max(SUGGEST_MIN_W)
 }
 
-/// Высота выпадашки под столько-то строк.
+/// The height of the drop-down for a given number of rows.
 pub fn suggest_height(rows: i32) -> i32 {
     rows.clamp(0, SUGGEST_MAX_ROWS) * SUGGEST_ROW_H + SUGGEST_FRAME
 }
 
-/// Левый край выпадашки: под строкой поиска, но не за краем страницы.
+/// The left edge of the drop-down: under the search line, but not past the page edge.
 pub fn suggest_x(anchor_x: i32, width: i32, page_w: i32) -> i32 {
     let right_limit = page_w - SUGGEST_EDGE;
     if anchor_x + width > right_limit {
@@ -204,55 +209,56 @@ pub fn suggest_x(anchor_x: i32, width: i32, page_w: i32) -> i32 {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Паузы
+//  Pauses
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Пауза набора перед запросом подсказок: посимвольно магазин не дёргаем.
+/// The typing pause before requesting suggestions: we do not query the store per character.
 pub const SUGGEST_DEBOUNCE_MS: u32 = 220;
-/// Пауза перед сетевым запросом каталога: пока человек пробегает список
-/// категорий мышью, сеть не трогаем.
+/// The pause before a network catalog request: while the person runs the
+/// mouse over the category list, the network is not touched.
 pub const CATALOG_DEBOUNCE_MS: u32 = 200;
-/// Пауза набора перед поиском в магазине: запрос уходит, когда человек
-/// перестал печатать, а не на каждую букву (Enter — сразу).
+/// The typing pause before a store search: the request goes out when the
+/// person stops typing, not on every letter (Enter is immediate).
 pub const SEARCH_DEBOUNCE_MS: u32 = 300;
-/// Через сколько после показа вкладки грузим первую категорию.
+/// How soon after the tab is shown the first category is loaded.
 pub const FIRST_LOAD_MS: u32 = 120;
-/// Через сколько начинается фоновый прогрев остальных категорий: он не
-/// должен спорить за сеть с той категорией, что открыта.
+/// How soon the background warm-up of the other categories starts: it must
+/// not compete for the network with the open category.
 pub const PREFETCH_START_MS: u32 = 900;
-/// Через сколько чистим протухшие переводы (разово, не на горячем пути).
+/// How soon stale translations are cleaned up (once, not on the hot path).
 pub const PURGE_TRANSLATIONS_MS: u32 = 1500;
-/// Пауза между фоновыми прогревами категорий — не долбить сервер.
+/// The pause between background category warm-ups, so as not to hammer the server.
 pub const PREFETCH_PAUSE_MS: u32 = 450;
-/// Пауза перед пересборкой сетки после применения темы: применение Global
-/// Theme вызывает в нашем же процессе смену стиля Qt, и пересборка виджетов
-/// прямо в этот момент валила приложение.
+/// The pause before rebuilding the grid after a theme is applied: applying
+/// a Global Theme triggers a Qt style change in our own process, and
+/// rebuilding widgets at that very moment crashed the application.
 pub const STYLE_STORM_MS: u32 = 600;
-/// Пауза перед фоновым прогревом галереи показанной сетки: сначала должны
-/// доехать сами плитки, и категория должна «устояться».
+/// The pause before the background warm-up of the shown grid's gallery: the
+/// tiles themselves must arrive first, and the category must "settle".
 pub const GALLERY_WARM_DELAY_MS: u32 = 800;
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Загрузчик превью
+//  Preview loader
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Сколько картинок качаем одновременно.
+/// How many pictures are downloaded at the same time.
 pub const PREVIEW_MAX_INFLIGHT: usize = 6;
-/// Сколько из них разрешено занять ФОНОВОМУ прогреву: живым плиткам всегда
-/// остаётся место.
+/// How many of them the BACKGROUND warm-up may occupy: live tiles always
+/// have room left.
 pub const PREVIEW_MAX_INFLIGHT_LOW: usize = 2;
-/// Сколько добавочных попыток даём на временный сбой сети.
+/// How many extra attempts are given for a transient network failure.
 pub const PREVIEW_RETRIES: u32 = 2;
-/// Пауза перед повтором (растёт с номером попытки).
+/// The pause before a retry (grows with the attempt number).
 pub const PREVIEW_RETRY_DELAY_MS: u32 = 700;
-/// Больше этого объёма ответ считаем сбоем, а не картинкой.
+/// A response larger than this is treated as a failure, not a picture.
 pub const PREVIEW_MAX_BYTES: usize = 20 * 1024 * 1024;
 
-/// Ответы сервера, при которых повторять бессмысленно: файла нет либо
-/// доступ закрыт. Всё остальное (обрыв соединения, таймаут, 5xx) временно.
+/// Server responses for which retrying is pointless: the file does not
+/// exist or access is denied. Everything else (a dropped connection, a
+/// timeout, 5xx) is transient.
 pub const PREVIEW_FATAL_HTTP: &[u16] = &[400, 401, 403, 404, 405, 410, 451];
 
-/// Стоит ли повторять загрузку превью после такого ответа сервера.
+/// Whether to retry a preview download after such a server response.
 pub fn preview_retry_allowed(status: Option<u16>, tries: u32) -> bool {
     if let Some(code) = status {
         if PREVIEW_FATAL_HTTP.contains(&code) {
@@ -263,13 +269,13 @@ pub fn preview_retry_allowed(status: Option<u16>, tries: u32) -> bool {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Сортировки каталога
+//  Catalog sorts
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Порядок сортировок в выпадающем списке: `(подпись, ключ OCS)`. Подпись —
-/// `msgid`, переводится в месте показа ([`sort_label`]).
-/// Умолчание — «Новые»: по рейтингу наверху годами стоят одни и те же
-/// работы, и витрина выглядит мёртвой при каждом заходе.
+/// The order of sorts in the drop-down list: `(label, OCS key)`. The label
+/// is a `msgid`, translated where shown ([`sort_label`]).
+/// The default is "New": by rating the same works have sat at the top for
+/// years, and the showcase looks dead on every visit.
 pub const SORTS: &[(&str, &str)] = &[
     (n_("🆕 Newest"), "new"),
     (n_("⬇️ Most Downloaded"), "down"),
@@ -277,15 +283,15 @@ pub const SORTS: &[(&str, &str)] = &[
     (n_("🔤 Alphabetical"), "alpha"),
 ];
 
-/// Подпись сортировки из [`SORTS`] на языке интерфейса.
+/// The label of a sort from [`SORTS`] in the interface language.
 pub fn sort_label(label: &str) -> String {
     tr(label)
 }
 
-/// Сортировка по умолчанию.
+/// The default sort.
 pub const DEFAULT_SORT: &str = "new";
 
-/// Место сортировки по умолчанию в списке (для выставления в комбобоксе).
+/// The position of the default sort in the list (for setting it in the combo box).
 pub fn default_sort_index() -> usize {
     SORTS
         .iter()
@@ -294,10 +300,10 @@ pub fn default_sort_index() -> usize {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Числа для человека
+//  Numbers for people
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Счётчик скачиваний/голосов в короткой записи: 1234 → «1.2K».
+/// A download/vote counter in short form: 1234 -> "1.2K".
 pub fn human_count(n: i64) -> String {
     if n >= 1_000_000 {
         format!("{}M", format_decimal(n as f64 / 1_000_000.0, 1))
@@ -308,18 +314,18 @@ pub fn human_count(n: i64) -> String {
     }
 }
 
-/// Размер архива товара для человека: «13 КиБ», «1,4 МиБ».
+/// The item archive size for people: "13 KiB", "1.4 MiB".
 ///
-/// ⚠️ Магазин отдаёт `downloadsize1` в КИБИБАЙТАХ, а не в байтах: живой
-/// ответ 04.10.2026 — курсоры «Aemeath» `downloadsize1=13` при архиве в
-/// 13 КиБ, «ba-click-fx» `1419` при 1,4 МиБ (так же их показывает Discover).
-/// Пусто — размер неизвестен (0 или меньше).
+/// ⚠️ The store returns `downloadsize1` in KIBIBYTES, not bytes: a live
+/// response on 04.10.2026: the "Aemeath" cursors have `downloadsize1=13`
+/// with a 13 KiB archive, "ba-click-fx" `1419` with 1.4 MiB (Discover shows
+/// them the same way). Empty means the size is unknown (0 or less).
 pub fn human_size_kib(kib: i64) -> String {
     if kib <= 0 {
         return String::new();
     }
-    // Разделитель и цифры — по языку интерфейса: у русского и немецкого
-    // запятая ([`crate::i18n::format_decimal`]).
+    // The separator and digits follow the interface language: Russian and
+    // German use a comma ([`crate::i18n::format_decimal`]).
     let one_decimal = |v: f64| format_decimal(v, 1);
     let kib_f = kib as f64;
     if kib < 1024 {
@@ -335,7 +341,7 @@ pub fn human_size_kib(kib: i64) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Таблицы стилей
+//  Style sheets
 // ═══════════════════════════════════════════════════════════════════════
 
 fn token<'a>(colors: &'a BTreeMap<String, String>, key: &str) -> &'a str {
@@ -351,16 +357,16 @@ fn token<'a>(colors: &'a BTreeMap<String, String>, key: &str) -> &'a str {
         .unwrap_or("#ffffff")
 }
 
-/// Токены вкладки для действующего скина. Полный набор ключей гарантирован
-/// ядром, поэтому подстановка в таблицу стилей никогда не разваливается.
+/// The tab tokens for the active skin. The full set of keys is guaranteed
+/// by the core, so substitution into the style sheet never falls apart.
 pub fn colors() -> BTreeMap<String, String> {
     ui_base::active_skin_colors()
 }
 
-/// Таблица стилей всей вкладки, собранная из токенов скина `c`.
+/// The style sheet of the whole tab, assembled from the tokens of skin `c`.
 ///
-/// Для скинов `system`/`steam_dark` токены совпадают с исторической
-/// Steam-палитрой, поэтому вид вкладки остаётся прежним.
+/// For the `system`/`steam_dark` skins the tokens match the historical
+/// Steam palette, so the tab looks the same as before.
 pub fn page_qss(c: &BTreeMap<String, String>) -> String {
     let bg_primary = token(c, "bg_primary");
     let bg_secondary = token(c, "bg_secondary");
@@ -385,9 +391,9 @@ pub fn page_qss(c: &BTreeMap<String, String>) -> String {
 }}
 QScrollArea {{ background: {bg_primary}; border: none; }}
 
-/* Скроллбар — заметный handle по умолчанию (не только на hover).
-   Цвет — скин-зависимая RGB-основа c['scrollbar'] (белый на тёмных скинах,
-   чёрный на светлом): 0.28 в покое → 0.45 hover → 0.60 pressed. */
+/* Scrollbar: a visible handle by default (not only on hover).
+   The colour is the skin-dependent RGB base c['scrollbar'] (white on dark skins,
+   black on the light one): 0.28 at rest -> 0.45 hover -> 0.60 pressed. */
 QScrollBar:vertical {{
     background: transparent;
     width: 11px;
@@ -444,8 +450,8 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
 
 #PageTitle, #DetailName {{ color: {text_primary}; }}
 #StatusBar {{ color: {text_secondary}; font-size: 10pt; font-weight: 600; }}
-/* Объяснение «этого раздела в вашем рабочем столе нет» — вместо пустой
-   сетки. Крупно, по центру, читаемо и в Big Picture (шрифт ≥ 14pt). */
+/* The explanation "this section does not exist in your desktop" instead of an empty
+   grid. Large, centred, readable in Big Picture too (font >= 14pt). */
 #DeNote {{ color: {text_secondary}; font-size: 14pt; line-height: 150%; }}
 
 #SrcLabel {{ color: {text_secondary}; padding-right: 2px; font-weight: 600; }}
@@ -499,9 +505,9 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
     background: {bg_card_hover};
     border: 1px solid {accent};
 }}
-/* Неактивная кнопка страницы — приглушённый ТОТ ЖЕ цвет, что у скроллбара.
-   Раньше здесь стоял белый со своей прозрачностью, и на светлом скине
-   надпись «← Назад» пропадала на светлом фоне. */
+/* An inactive page button is a dimmed version of THE SAME colour as the scrollbar.
+   Previously this was white with its own transparency, and on the light skin
+   the "← Back" label vanished against the light background. */
 #PageBtn:disabled {{ color: rgba({sb},0.55); }}
 #PageLabel {{ color: {text_secondary}; padding: 0 12px; font-weight: 600; }}
 
@@ -524,12 +530,12 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
 #CardName {{ color: {text_primary}; }}
 #CardAuthor {{ color: {text_primary}; font-size: 10pt; font-weight: 600; }}
 #CardStats {{ color: {text_primary}; font-size: 10pt; font-weight: bold; }}
-/* Значок оценки (★ у каталога оформления, 👍 у AUR) — единственное цветное
-   пятно стат-строки. Раньше он был <span style='color:…'> внутри той же
-   подписи: цвет запекался в текст при построении плитки и за сменой скина
-   не шёл. Отдельная подпись со своим objectName красится таблицей стилей
-   даром — тем же setStyleSheet, что и вся вкладка. Размер и насыщенность
-   повторяют #CardStats: значок жил в её шрифте. */
+/* The rating icon (★ in the appearance catalog, 👍 in the AUR) is the only coloured
+   spot of the stats line. It used to be a <span style='color:…'> inside the same
+   label: the colour was baked into the text when the tile was built and did not
+   follow a skin change. A separate label with its own objectName is painted by the
+   style sheet for free, by the same setStyleSheet as the whole tab. The size and
+   weight repeat #CardStats: the icon lived in its font. */
 #CardStar {{ color: {rating_star}; font-size: 10pt; font-weight: bold; }}
 
 #InstallBtn, #InstallApplyBtn {{
@@ -541,19 +547,19 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
     font-weight: bold;
 }}
 #InstallBtn:hover, #InstallApplyBtn:hover {{ background: {accent_green_hover}; }}
-/* «✓ Применено» — приглушённый серо-зелёный (товар уже установлен/применён).
-   Остаётся кликабельной для переприменения; видна на тёмном фоне, но не
-   кричит как ярко-зелёная. */
+/* "✓ Applied" is a muted grey-green (the item is already installed/applied).
+   It stays clickable for reapplying; it is visible on a dark background but does
+   not shout like a bright green one. */
 #InstallApplyBtn[applied="true"] {{
     background: #3a5a3f;
     color: #cfe8d2;
     font-weight: bold;
 }}
 #InstallApplyBtn[applied="true"]:hover {{ background: #46704c; }}
-/* «✓ Установлено» на карточке каталога — НЕ заливка, а контур: залитая
-   зелёная кнопка = предложение действия, контурная бирюзовая = состояние.
-   Одного оттенка мало, «Установить» и «Установлено» на одинаковом зелёном
-   сливались. */
+/* "✓ Installed" on a catalog card is NOT a fill but an outline: a filled
+   green button = an offer of an action, an outlined teal one = a state.
+   One shade is not enough: "Install" and "Installed" in the same green
+   merged together. */
 #InstallBtn[installed="true"] {{
     background: transparent;
     border: 1px solid #4fd1c5;
@@ -565,11 +571,11 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
     border: 1px solid #7fe3da;
     color: #a8efe8;
 }}
-/* «✓ Применено» на карточке каталога — ЗАЛИТАЯ бирюзовая. Третье состояние
-   должно отличаться от обоих соседних, поэтому меняются оба признака сразу:
-   заливка (против контура «установлено») и оттенок (против зелёной кнопки
-   «Установить»). Рамка того же цвета, что фон, — чтобы кнопка не «прыгала»
-   в размере при переключении с контурного вида. */
+/* "✓ Applied" on a catalog card is a FILLED teal one. The third state
+   must differ from both neighbours, so both features change at once:
+   the fill (against the "installed" outline) and the shade (against the green
+   "Install" button). The border has the same colour as the background so that
+   the button does not "jump" in size when switching from the outlined look. */
 #InstallBtn[installed="applied"] {{
     background: #2f9e94;
     border: 1px solid #2f9e94;
@@ -581,8 +587,8 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
     border: 1px solid #4fd1c5;
     color: #ffffff;
 }}
-/* Деталь: «✓ Установлено» — тот же контурный вид, что у карточки, чтобы
-   сетка и деталь не рассказывали про товар разное. */
+/* Details: "✓ Installed" has the same outlined look as the card, so that
+   the grid and the details do not tell different stories about the item. */
 #InstallApplyBtn[applied="installed"] {{
     background: transparent;
     border: 1px solid #4fd1c5;
@@ -604,7 +610,7 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
 #DetailsBtn:hover, #DownloadOnlyBtn:hover, #CommentsMoreBtn:hover {{
     border: 1px solid {accent};
 }}
-/* Та же починка, что у «← Назад»: приглушение от цвета скина, а не белым. */
+/* The same fix as for "← Back": dimming comes from the skin colour, not white. */
 #CommentsMoreBtn:disabled {{ color: rgba({sb},0.55); }}
 #UninstallBtn {{
     background: #5a2230;
@@ -623,10 +629,10 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
     color: {text_dim};
 }}
 #DetailDesc {{ color: {text_primary}; font-size: 11pt; }}
-/* Мета-строка товара («автор • лицензия • обновлено»), счётчики и строка
-   «Категория / путь установки» тоже красятся отсюда, а не собираются
-   HTML-ом в момент показа: иначе смена скина оставляла УЖЕ ОТКРЫТУЮ
-   деталь в цветах прошлого скина, пока окно вокруг было перекрашено. */
+/* The item meta line ("author • licence • updated"), the counters and the
+   "Category / install path" line are also painted from here rather than
+   assembled as HTML at display time: otherwise a skin change left an ALREADY OPEN
+   details view in the previous skin's colours while the window around it was repainted. */
 #DetailMeta {{ color: {text_secondary}; }}
 #DetailStars {{ color: {rating_star}; font-size: 14pt; }}
 #DetailDownloads {{ color: {text_secondary}; }}
@@ -634,9 +640,9 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
 #CommentsHeader {{ color: {text_primary}; margin-top: 10px; }}
 #CommentsHost {{ background: transparent; }}
 #CommentItem {{ color: {text_primary}; font-size: 10.5pt; }}
-/* Ник и дата комментария. Ник САМОГО автора товара — ярко (author_self):
-   признак ставится динамическим свойством, чтобы правило жило в таблице
-   стилей, а не в тексте подписи. */
+/* The comment nick and date. The nick of the item author HIMSELF is bright (author_self):
+   the flag is set by a dynamic property so that the rule lives in the style
+   sheet rather than in the label text. */
 #CommentAuthor {{ color: {text_primary}; font-size: 10.5pt; font-weight: bold; }}
 #CommentAuthor[own="true"] {{ color: {author_self}; }}
 #CommentDate {{ color: {text_dim}; font-size: 9.5pt; font-weight: 600; }}
@@ -653,12 +659,12 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
     )
 }
 
-/// Таблица стилей выпадашки подсказок поиска.
+/// The style sheet of the search suggestions drop-down.
 ///
-/// Раньше набор цветов здесь был свой и запечён под Steam: на светлом скине
-/// посреди светлой страницы разворачивалась тёмно-синяя панель, а серо-синий
-/// автор нарушал правило «на тёмном фоне только белый». Теперь панель
-/// собирается из тех же токенов, что и вся вкладка.
+/// Previously the colour set here was its own and baked for Steam: on the
+/// light skin a dark blue panel unfolded in the middle of a light page, and
+/// the grey-blue author broke the rule "only white on a dark background".
+/// Now the panel is assembled from the same tokens as the whole tab.
 pub fn suggestions_qss(c: &BTreeMap<String, String>) -> String {
     let bg_secondary = token(c, "bg_secondary");
     let bg_card = token(c, "bg_card");
@@ -682,11 +688,12 @@ pub fn suggestions_qss(c: &BTreeMap<String, String>) -> String {
     )
 }
 
-/// Накладная кнопка поверх картинки: круглая, полупрозрачно-чёрная.
+/// An overlay button on top of the picture: round, semi-transparent black.
 ///
-/// Цвет здесь намеренно НЕ скин-зависимый: кнопка лежит на фотографии, а не
-/// на фоне страницы, и читается на любой картинке только затемнением.
-/// `point_size` отличает лупу (крупная) от стрелок галереи.
+/// The colour here is deliberately NOT skin-dependent: the button lies on a
+/// photo, not on the page background, and reads on any picture only by
+/// darkening. `point_size` tells the magnifier (large) from the gallery
+/// arrows.
 pub fn image_overlay_qss(point_size: f32) -> String {
     let radius = OVERLAY_BTN / 2;
     format!(
@@ -698,12 +705,12 @@ QPushButton:hover, QPushButton:focus \
     )
 }
 
-/// Кегль лупы «увеличить на весь экран».
+/// The font size of the "enlarge to full screen" magnifier.
 pub const OVERLAY_ZOOM_PT: f32 = 20.0;
-/// Кегль стрелок галереи.
+/// The font size of the gallery arrows.
 pub const OVERLAY_NAV_PT: f32 = 16.0;
 
-/// Таблица стилей бейджа-счётчика «2/5» поверх картинки.
+/// The style sheet of the "2/5" counter badge over the picture.
 pub fn gallery_counter_qss() -> String {
     let radius = COUNTER_H / 2;
     format!(
@@ -714,19 +721,21 @@ font-size: 10.5pt; font-weight: 600; }}"
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Журнал установленного: «установлена» и «применена» — разные состояния
+//  The installed log: "installed" and "applied" are different states
 // ═══════════════════════════════════════════════════════════════════════
 
-/// `rexon_type` записи журнала → `apply_kind` активной темы: обратная сторона
-/// `appearance_installer::kind_to_rexon_type`. По типу из журнала узнаём, в
-/// какой строке карты активных тем искать имя товара.
+/// The `rexon_type` of a log entry -> the `apply_kind` of the active theme:
+/// the reverse side of `appearance_installer::kind_to_rexon_type`. By the
+/// type from the log we learn in which row of the active themes map to
+/// look for the item name.
 ///
-/// ⚠️ СОВМЕСТИМОСТЬ СО СТАРЫМИ ЗАПИСЯМИ. До 2026-08-22 ядро сваливало обои,
-/// звуки, шрифты и виджеты в один тип «wallpaper-pack», а заставку, экран
-/// блокировки, GTK и стиль приложений — в «plugin». У покупателя такие записи
-/// в журнале уже лежат, и ломать их нельзя. Поэтому обе бывшие свалки здесь
-/// НЕ упомянуты вовсе: по ним вид определить нельзя, и запись честно уходит
-/// на второй заход — по OCS-категории (`category_id` в журнале есть всегда).
+/// ⚠️ COMPATIBILITY WITH OLD ENTRIES. Until 2026-08-22 the core dumped
+/// wallpapers, sounds, fonts and widgets into one type "wallpaper-pack",
+/// and the splash, the lock screen, GTK and the application style into
+/// "plugin". Customers already have such entries in the log, and they must
+/// not be broken. So both former dumps are NOT mentioned here at all: the
+/// kind cannot be determined from them, and the entry honestly goes to the
+/// second pass, by OCS category (the log always has `category_id`).
 pub fn rexon_type_to_apply_kind(rexon_type: &str) -> &'static str {
     match rexon_type.trim() {
         "theme-kde-global" => "global",
@@ -738,15 +747,16 @@ pub fn rexon_type_to_apply_kind(rexon_type: &str) -> &'static str {
         "theme-kvantum" => "kvantum",
         "theme-sddm" => "sddm",
         "theme-plymouth" => "plymouth",
-        // Виды, у которых с 2026-08-22 есть свой тип вместо свалки «plugin».
+        // Kinds that have had their own type instead of the "plugin" dump since 2026-08-22.
         "theme-gtk" => "gtk",
         "theme-widget-style" => "widgetstyle",
         "theme-kde-splash" => "splash",
         "theme-kde-lockscreen" => "lockscreen",
-        // Звук — полноценный вид: у него есть «применена сейчас».
+        // Sound is a full-fledged kind: it has "applied now".
         "theme-sounds" => "sounds",
-        // Шрифты, виджеты и плагины обоев тоже получили свои типы; применения
-        // у них нет, но по типу теперь видно, что это именно они, а не обои.
+        // Fonts, widgets and wallpaper plugins also got their own types; they
+        // have no applying, but the type now shows that it is them and not
+        // wallpapers.
         "font-pack" => "fonts",
         "theme-plasmoid" => "plasmoids",
         "kde-wallpaper-plugin" => "wallpaper_plugins",
@@ -754,10 +764,11 @@ pub fn rexon_type_to_apply_kind(rexon_type: &str) -> &'static str {
     }
 }
 
-/// Имена тем записи журнала — basename каждого установленного пути.
+/// Theme names of a log entry: the basename of each installed path.
 ///
-/// Цветовая схема лежит файлом «<Имя>.colors», а в карте активных тем зовётся
-/// без расширения — снимаем суффикс, иначе схема никогда не совпадёт.
+/// A colour scheme lies in a "<Name>.colors" file, while in the active
+/// themes map it is named without the extension: we strip the suffix,
+/// otherwise the scheme would never match.
 pub fn log_theme_names(paths: &[String]) -> Vec<String> {
     let mut out = Vec::new();
     for p in paths {
@@ -775,21 +786,23 @@ pub fn log_theme_names(paths: &[String]) -> Vec<String> {
     out
 }
 
-/// `apply_kind` записи журнала («» — понятия «применена» у вида нет).
+/// The `apply_kind` of a log entry ("" means the kind has no notion of
+/// "applied").
 ///
-/// Сперва по `rexon_type`, затем по OCS-категории. Второй заход обязателен и
-/// для старых записей (обе бывшие свалки типов), и для «wallpaper-pack»,
-/// которым помечены и обычные обои, и фон экрана блокировки.
+/// First by `rexon_type`, then by OCS category. The second pass is
+/// mandatory both for old entries (both former type dumps) and for
+/// "wallpaper-pack", which marks both ordinary wallpapers and the lock
+/// screen background.
 ///
-/// Есть ли у вида понятие «применена сейчас», решает
-/// `appearance_installer::kind_has_active_state` — список рядом с картой
-/// активных тем, а не второй такой же список во вкладке (правило #12).
+/// Whether a kind has a notion of "applied now" is decided by
+/// `appearance_installer::kind_has_active_state`: a list next to the
+/// active themes map, not a second such list in the tab (rule #12).
 pub fn log_apply_kind(home: &Path, rec: &Map<String, Value>, item_category_id: i64) -> String {
     let rexon_type = rec.get("rexon_type").and_then(Value::as_str).unwrap_or("");
     let mut kind = rexon_type_to_apply_kind(rexon_type).to_string();
     if kind.is_empty() {
-        // Ноль в записи — не «категория 0», а «поля нет»: тогда берём
-        // категорию с самой карточки, как делал оригинал.
+        // Zero in an entry is not "category 0" but "no field": then we take the
+        // category from the card itself, as the original did.
         let mut cid = rec.get("category_id").and_then(Value::as_i64).unwrap_or(0);
         if cid == 0 {
             cid = item_category_id;
@@ -804,12 +817,13 @@ pub fn log_apply_kind(home: &Path, rec: &Map<String, Value>, item_category_id: i
     kind
 }
 
-/// Что делать с картой активных тем при штамповке пачки карточек.
+/// What to do with the active themes map when stamping a batch of cards.
 ///
-/// Карту тянет `installed_scan`, а он дёргает `kreadconfig6` — процесс. Зовём
-/// его ТОЛЬКО когда в журнале реально нашёлся применимый товар, и ровно один
-/// раз на пачку. Вне KDE утилиты может не быть вовсе: сетка не должна ни
-/// падать, ни ждать процесс на каждую карточку.
+/// The map is fetched by `installed_scan`, and it calls `kreadconfig6`, a
+/// process. We call it ONLY when an applicable item was actually found in
+/// the log, and exactly once per batch. Outside KDE the utility may not
+/// exist at all: the grid must neither crash nor wait for a process on
+/// every card.
 pub struct LazyActiveMap<F: FnMut() -> Map<String, Value>> {
     fetch: F,
     cached: Option<Map<String, Value>>,
@@ -820,7 +834,7 @@ impl<F: FnMut() -> Map<String, Value>> LazyActiveMap<F> {
         Self { fetch, cached: None }
     }
 
-    /// Карта активных тем; первый вызов её и добывает.
+    /// The active themes map; the first call fetches it.
     pub fn get(&mut self) -> &Map<String, Value> {
         if self.cached.is_none() {
             self.cached = Some((self.fetch)());
@@ -828,23 +842,23 @@ impl<F: FnMut() -> Map<String, Value>> LazyActiveMap<F> {
         self.cached.as_ref().expect("карта только что заполнена")
     }
 
-    /// Дёргали ли источник вообще (для тестов и замеров).
+    /// Whether the source was queried at all (for tests and measurements).
     pub fn was_fetched(&self) -> bool {
         self.cached.is_some()
     }
 }
 
-/// Проставить пачке OCS-карточек `installed` и `applied` по журналу.
+/// Set `installed` and `applied` on a batch of OCS cards from the log.
 ///
-/// Журнал установленных OCS-тем (`~/.config/rexon/ocs_installed.json`,
-/// ключ = `content_id` = `item.id`) — единственный источник правды о том,
-/// установлен ли товар: при загрузке каталога OCS возвращает `installed=false`,
-/// и без этой сверки кнопка после перезапуска снова показывала «Установить и
-/// применить».
+/// The log of installed OCS themes (`~/.config/rexon/ocs_installed.json`,
+/// key = `content_id` = `item.id`) is the only source of truth about
+/// whether an item is installed: when the catalog is loaded OCS returns
+/// `installed=false`, and without this check the button showed "Install
+/// and apply" again after a restart.
 ///
-/// `applied` — ОТДЕЛЬНОЕ состояние: тему можно скачать кнопкой «Только
-/// скачать» и не включать. «Применена» она, только если её имя совпало с
-/// активной темой своего вида.
+/// `applied` is a SEPARATE state: a theme can be downloaded with the
+/// "Download only" button and not enabled. It is "applied" only if its
+/// name matched the active theme of its kind.
 pub fn stamp_installed_from_log<F: FnMut() -> Map<String, Value>>(
     home: &Path,
     log: &Map<String, Value>,
@@ -860,14 +874,14 @@ pub fn stamp_installed_from_log<F: FnMut() -> Map<String, Value>>(
         it.applied = false;
         let Some(rec) = rec.as_object() else { continue };
         let mut kind = log_apply_kind(home, rec, it.category_id);
-        // Виджет Conky и дополнение: «применён» — запущен или включён (их в
-        // карте активных сколько угодно, через перевод строки).
+        // A Conky widget and an add-on: "applied" means running or enabled (the
+        // active map can hold any number of them, newline-separated).
         let switch = kind.is_empty();
         if switch {
             kind = log_switch_kind(home, rec, it.category_id);
         }
         if kind.is_empty() {
-            continue; // вид без понятия «применён» (шрифты, плагины)
+            continue; // a kind without the notion of "applied" (fonts, plugins)
         }
         let cur = active
             .get()
@@ -877,7 +891,7 @@ pub fn stamp_installed_from_log<F: FnMut() -> Map<String, Value>>(
             .trim()
             .to_lowercase();
         if cur.is_empty() {
-            continue; // вид оформления в этом окружении не определяется
+            continue; // the appearance kind cannot be determined in this environment
         }
         let paths: Vec<String> = rec
             .get("paths")
@@ -895,8 +909,8 @@ pub fn stamp_installed_from_log<F: FnMut() -> Map<String, Value>>(
     }
 }
 
-/// Вид раздела товара из записи журнала, если он включается запуском или
-/// переключателем ([`store_item_switch`]); иначе пусто.
+/// The item section kind from a log entry, if it is enabled by starting or
+/// by a toggle ([`store_item_switch`]); otherwise empty.
 fn log_switch_kind(home: &Path, rec: &Map<String, Value>, item_category_id: i64) -> String {
     let mut cid = rec.get("category_id").and_then(Value::as_i64).unwrap_or(0);
     if cid == 0 {
@@ -908,10 +922,11 @@ fn log_switch_kind(home: &Path, rec: &Map<String, Value>, item_category_id: i64)
         .unwrap_or_default()
 }
 
-/// Та же штамповка, но журнал читается с диска по пути `log_path`.
+/// The same stamping, but the log is read from disk at path `log_path`.
 ///
-/// Нет файла, битый JSON, не-объект наверху — журнал пуст и карточки не
-/// трогаются (`ocs_store::parse_installed_log`). Пустая пачка файл не читает.
+/// No file, broken JSON, a non-object at the top: the log is empty and the
+/// cards are not touched (`ocs_store::parse_installed_log`). An empty batch
+/// does not read the file.
 pub fn stamp_installed_from_log_file<F: FnMut() -> Map<String, Value>>(
     home: &Path,
     log_path: &str,
@@ -921,19 +936,19 @@ pub fn stamp_installed_from_log_file<F: FnMut() -> Map<String, Value>>(
     if items.is_empty() {
         return;
     }
-    // Читается через общий журнал установки (шаг 3 слияния установщиков).
+    // Read through the common install log (step 3 of merging the installers).
     let log = crate::install_journal::store_log_view(log_path);
     stamp_installed_from_log(home, &log, items, active);
 }
 
-/// Итог установки на карточках одного товара.
+/// The installation result on the cards of one item.
 ///
-/// Удалось — товар «установлен» сразу, даже если журнал записать не вышло
-/// (тема на диске есть). «Применён» — только по факту: по журналу и карте
-/// активных тем, а не по намерению «установить и применить». У видов без
-/// применения ядро отвечает «применение не требуется», а применение могло и
-/// не удаться — в обоих случаях товар только установлен. Не удалось —
-/// прежнее состояние не трогаем.
+/// Success: the item is "installed" right away, even if writing the log
+/// failed (the theme is on disk). "Applied" only by fact: by the log and
+/// the active themes map, not by the intention "install and apply". For
+/// kinds without applying the core answers "applying is not required", and
+/// applying could also have failed: in both cases the item is only
+/// installed. Failure: the previous state is left alone.
 pub fn mark_installed_from_log_file<F: FnMut() -> Map<String, Value>>(
     home: &Path,
     log_path: &str,
@@ -951,18 +966,18 @@ pub fn mark_installed_from_log_file<F: FnMut() -> Map<String, Value>>(
     stamp_installed_from_log_file(home, log_path, items, active);
 }
 
-/// Путь журнала установленных с учётом `$XDG_CONFIG_HOME` — тот же, по
-/// которому его пишет установщик.
+/// The installed log path honouring `$XDG_CONFIG_HOME`: the same path the
+/// installer writes it to.
 fn live_install_log_path(home: &str) -> String {
     let xdg = std::env::var("XDG_CONFIG_HOME").ok();
     ocs_store::install_log_path_xdg(xdg.as_deref(), home)
 }
 
-/// Живая карта активных тем для штамповки (её добывает `installed_scan`).
+/// The live active themes map for stamping (fetched by `installed_scan`).
 ///
-/// Окружение — запущенное сейчас: без него в карте нет разделов окружения
-/// (рамки Marco/xfwm4, оболочки), и их товар из магазина не становился
-/// «применённым».
+/// The environment is the one running now: without it the map has no
+/// environment sections (Marco/xfwm4 frames, shells), and their items from
+/// the store did not become "applied".
 fn live_active_map() -> Map<String, Value> {
     let var = |k: &str| std::env::var(k).unwrap_or_default();
     let de = crate::system::detect_current_de(
@@ -979,9 +994,10 @@ fn live_active_map() -> Map<String, Value> {
         .collect()
 }
 
-/// Живая штамповка пачки OCS-карточек: журнал с диска, карта активных тем —
-/// лениво и не больше одного раза на пачку. Её зовут все места окна, где
-/// товары магазина уходят на экран: сетка, «Избранное», полные детали.
+/// Live stamping of a batch of OCS cards: the log from disk, the active
+/// themes map lazily and no more than once per batch. It is called by all
+/// places of the window where store items go on screen: the grid,
+/// "Favourites", full details.
 pub fn stamp_installed_live(home: &str, items: &mut [ThemeItem]) {
     let mut active = LazyActiveMap::new(live_active_map);
     stamp_installed_from_log_file(
@@ -992,7 +1008,7 @@ pub fn stamp_installed_live(home: &str, items: &mut [ThemeItem]) {
     );
 }
 
-/// Живой вариант [`mark_installed_from_log_file`] — итог установки.
+/// The live variant of [`mark_installed_from_log_file`]: the installation result.
 pub fn mark_installed_live(home: &str, items: &mut [ThemeItem], ok: bool) {
     let mut active = LazyActiveMap::new(live_active_map);
     mark_installed_from_log_file(
@@ -1006,28 +1022,31 @@ pub fn mark_installed_live(home: &str, items: &mut [ThemeItem], ok: bool) {
 
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Загрузчик превью: очередь, приоритет, дедуп и повторы
+//  Preview loader: queue, priority, dedup and retries
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Каталог кеша превью AUR-карточек — рядом с обычным, отдельной папкой.
+/// The preview cache directory of AUR cards: next to the ordinary one, a separate folder.
 pub fn aur_preview_dir(home: &str) -> String {
     format!("{}/aur_previews", appearance_cache::cache_dir(home))
 }
 
-/// Каталог нарисованных плейсхолдеров плиток местных тем.
+/// The directory of drawn placeholders for local theme tiles.
 ///
-/// Свой каталог, а не общий с превью магазина: там лежит скачанное, здесь —
-/// нарисованное нами, и чистить их однажды придётся по-разному.
+/// A directory of its own rather than shared with the store previews: that
+/// one holds downloads, this one what we drew, and they will one day have
+/// to be cleaned differently.
 pub fn placeholder_dir(home: &str) -> String {
     format!("{}/local_placeholders", appearance_cache::cache_dir(home))
 }
 
-/// Файл плейсхолдера местной темы, у которой своей картинки на диске нет.
+/// The placeholder file of a local theme that has no picture of its own on
+/// disk.
 ///
-/// В ключ входит ВСЁ, от чего зависит кадр: вид темы, путь установки, имя,
-/// подпись и отметка времени файла. Последнее не для порядка: у цветовой
-/// схемы кадр рисуется по ЕЁ содержимому — свотчи настоящих цветов, — и
-/// после правки схемы обязан перерисоваться, а не отдаться из кеша прежним.
+/// The key includes EVERYTHING the frame depends on: the theme kind, the
+/// install path, the name, the label and the file timestamp. The last one
+/// is not for show: for a colour scheme the frame is drawn from ITS
+/// content, swatches of the real colours, and after the scheme is edited it
+/// must be redrawn rather than served stale from the cache.
 pub fn placeholder_cache_path(
     home: &str,
     category_id: i64,
@@ -1036,9 +1055,9 @@ pub fn placeholder_cache_path(
     author: &str,
     stamp: i64,
 ) -> String {
-    // Разделитель — символ, которого не бывает ни в пути, ни в имени темы:
-    // без него «имя A + подпись B» и «имя AB + пустая подпись» дали бы один
-    // ключ и один кадр на две разные плитки.
+    // The separator is a character that never occurs in a path or a theme
+    // name: without it "name A + label B" and "name AB + empty label" would
+    // give one key and one frame for two different tiles.
     let key = [
         category_id.to_string().as_str(),
         install_path,
@@ -1054,20 +1073,21 @@ pub fn placeholder_cache_path(
     )
 }
 
-/// Хост, с которого приходят OpenGraph-карточки GitHub (превью AUR-пакетов).
+/// The host GitHub OpenGraph cards come from (AUR package previews).
 pub const GITHUB_OPENGRAPH_HOST: &str = "opengraph.githubassets.com";
 
-/// Локальный путь превью по URL.
+/// The local preview path by URL.
 ///
-/// Схема имён — общая с клиентом магазина (`ocs::preview_cache_name`), и
-/// это принципиально: разойдись два правила хоть в выборе расширения — и
-/// весь кеш превью считается пустым, картинки качаются заново поверх уже
-/// лежащих рядом файлов. Оригинал держал во вкладке ВТОРУЮ копию этого
-/// правила (свой sha1 и свой разбор расширения) — здесь копии нет
-/// (правило #12).
+/// The naming scheme is shared with the store client
+/// (`ocs::preview_cache_name`), and that is essential: if the two rules
+/// diverged even in choosing the extension, the whole preview cache would
+/// count as empty, and the pictures would be downloaded again on top of
+/// files already lying nearby. The original kept a SECOND copy of this rule
+/// in the tab (its own sha1 and its own extension parsing); there is no
+/// copy here (rule #12).
 ///
-/// OpenGraph-карточки GitHub (превью AUR) уходят в свой каталог и всегда
-/// PNG: у их ссылок расширения в пути нет вовсе.
+/// GitHub OpenGraph cards (AUR previews) go to their own directory and are
+/// always PNG: their links have no extension in the path at all.
 pub fn preview_cache_path(home: &str, url: &str) -> String {
     if ocs::url_netloc(url) == GITHUB_OPENGRAPH_HOST {
         return format!(
@@ -1083,52 +1103,55 @@ pub fn preview_cache_path(home: &str, url: &str) -> String {
     )
 }
 
-/// Одна заявка на превью: чья карточка, какая ссылка и фоновая ли она.
+/// One preview request: whose card, which link and whether it is a background one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewJob {
     pub content_id: String,
     pub url: String,
-    /// Фоновый прогрев: такие не показываются и уступают живым плиткам.
+    /// A background warm-up: such requests are not shown and give way to live tiles.
     pub low: bool,
 }
 
-/// Что делать после неудачной загрузки превью.
+/// What to do after a failed preview download.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreviewRetry {
-    /// Повторить через `delay_ms`; `attempt` — какая попытка была неудачной.
+    /// Retry after `delay_ms`; `attempt` is which attempt failed.
     Again { delay_ms: u32, attempt: u32 },
-    /// Сдаться. `fatal` — сервер ответил «файла нет / доступ закрыт»: такое
-    /// в журнал идёт спокойной строкой, а не предупреждением.
+    /// Give up. `fatal` means the server answered "no file / access denied":
+    /// that goes to the log as a calm line, not a warning.
     GiveUp { fatal: bool, attempts: u32 },
 }
 
-/// Очередь загрузчика превью — всё, что он ЗНАЕТ, без единого сетевого вызова.
+/// The preview loader queue: everything it KNOWS, without a single network
+/// call.
 ///
-/// Qt-слой остаётся снаружи: он лишь спрашивает «что запускать», сообщает
-/// «этот ответ пришёл» и отдаёт готовые пути наверх. Правила же — сколько
-/// картинок тянуть разом, кого пропускать вперёд, что считать дублем и когда
-/// повторять — живут здесь и покрыты приёмкой.
+/// The Qt layer stays outside: it only asks "what to start", reports "this
+/// answer arrived" and hands ready paths upwards. The rules (how many
+/// pictures to fetch at once, whom to let ahead, what counts as a duplicate
+/// and when to retry) live here and are covered by acceptance tests.
 ///
-/// ⚠ Сбой запроса — НЕ «картинки нет»: images.pling.com периодически
-/// закрывает соединение и роняет СРАЗУ всю пачку одновременных ответов.
-/// Поэтому временные сбои повторяются, а окончательные (404/403/410) — нет.
+/// ⚠ A request failure does NOT mean "no picture": images.pling.com
+/// periodically closes the connection and drops the WHOLE batch of
+/// simultaneous answers AT ONCE. So transient failures are retried, and
+/// final ones (404/403/410) are not.
 #[derive(Debug, Default)]
 pub struct PreviewQueue {
     queue: Vec<PreviewJob>,
-    /// Один URL — одна загрузка: без дедупа повторный заход в категорию слал
-    /// те же запросы заново и топил канал.
+    /// One URL, one download: without dedup returning to a category sent the
+    /// same requests again and flooded the channel.
     wanted: BTreeSet<String>,
-    /// URL → сделано попыток.
+    /// URL -> attempts made.
     tries: BTreeMap<String, u32>,
     inflight: usize,
-    /// Сколько ФОНОВЫХ загрузок в полёте: фон не имеет права занять все слоты.
+    /// How many BACKGROUND downloads are in flight: the background may not take all slots.
     low_inflight: usize,
     started: u64,
-    /// Поколение: `cancel_all` его увеличивает, отложенные повторы прошлого
-    /// поколения (категорию уже сменили) молча выбрасываются.
+    /// The generation: `cancel_all` increments it, and deferred retries of a
+    /// past generation (the category has already changed) are silently
+    /// dropped.
     gen: u64,
-    /// Готовые превью придерживаются и отдаются по одному: декодирование
-    /// шести JPEG за один проход цикла событий даёт заметный рывок.
+    /// Ready previews are held back and handed out one at a time: decoding six
+    /// JPEGs in one pass of the event loop gives a noticeable stutter.
     ready: VecDeque<(String, String)>,
 }
 
@@ -1137,13 +1160,13 @@ impl PreviewQueue {
         Self::default()
     }
 
-    /// Текущее поколение (его несут отложенные повторы).
+    /// The current generation (deferred retries carry it).
     pub fn generation(&self) -> u64 {
         self.gen
     }
 
-    /// Сколько загрузок запущено за всю жизнь очереди — этим меряют, не
-    /// «утопил» ли прогрев канал.
+    /// How many downloads have been started over the queue's whole life: this
+    /// measures whether the warm-up "flooded" the channel.
     pub fn started(&self) -> u64 {
         self.started
     }
@@ -1160,12 +1183,13 @@ impl PreviewQueue {
         self.queue.len()
     }
 
-    /// Одна картинка: попадание в кеш → сразу наверх (или молча), иначе в
-    /// очередь.
+    /// One picture: a cache hit goes straight up (or silently), otherwise into
+    /// the queue.
     ///
-    /// Дедуп держим только для ФОНОВЫХ заявок. Живую пропускать по тому же
-    /// ключу нельзя: две карточки каталога изредка делят один URL, и тогда
-    /// вторая осталась бы без картинки — её «готово» некому было бы послать.
+    /// Dedup is kept only for BACKGROUND requests. A live one must not be
+    /// skipped by the same key: two catalog cards occasionally share one URL,
+    /// and then the second would stay without a picture, since there would be
+    /// nobody to send its "done" to.
     pub fn want(
         &mut self,
         content_id: &str,
@@ -1187,10 +1211,12 @@ impl PreviewQueue {
         self.push(content_id, url, low);
     }
 
-    /// Положить в очередь с учётом приоритета: живые плитки перед фоном.
+    /// Put into the queue taking priority into account: live tiles before the
+    /// background.
     ///
-    /// Очередь держим «сначала все живые, потом фон», иначе полсотни фоновых
-    /// кадров отодвигают плитки той сетки, на которую человек смотрит.
+    /// The queue is kept as "all live first, then the background"; otherwise
+    /// fifty background frames push back the tiles of the grid the person is
+    /// looking at.
     fn push(&mut self, content_id: &str, url: &str, low: bool) {
         let job = PreviewJob {
             content_id: content_id.to_string(),
@@ -1205,10 +1231,11 @@ impl PreviewQueue {
         self.queue.insert(pos, job);
     }
 
-    /// Что запускать прямо сейчас. Фону отдаём не больше
-    /// `PREVIEW_MAX_INFLIGHT_LOW` слотов из `PREVIEW_MAX_INFLIGHT`: остальные
-    /// всегда свободны под живые карточки, иначе прогрев галереи занял бы
-    /// канал целиком и «ускорение» обернулось бы тормозами сетки.
+    /// What to start right now. The background gets no more than
+    /// `PREVIEW_MAX_INFLIGHT_LOW` slots out of `PREVIEW_MAX_INFLIGHT`: the rest
+    /// are always free for live cards; otherwise the gallery warm-up would
+    /// take the whole channel and the "speed-up" would turn into a sluggish
+    /// grid.
     pub fn pump(&mut self) -> Vec<PreviewJob> {
         let mut out = Vec::new();
         let mut i = 0;
@@ -1228,10 +1255,10 @@ impl PreviewQueue {
         out
     }
 
-    /// Ответ по заявке пришёл (любой — удачный, сбойный, оборванный).
+    /// The answer to a request arrived (any: successful, failed, cancelled).
     ///
-    /// Дедуп снимаем ЗДЕСЬ, а не при постановке в очередь: пока картинка
-    /// летит, повторная просьба о ней не должна порождать второй запрос.
+    /// Dedup is removed HERE, not when queueing: while a picture is in flight,
+    /// a repeated request for it must not spawn a second request.
     pub fn finished(&mut self, url: &str, low: bool) {
         self.inflight = self.inflight.saturating_sub(1);
         if low {
@@ -1240,14 +1267,14 @@ impl PreviewQueue {
         self.wanted.remove(url);
     }
 
-    /// Тело ответа годится в картинку? Пустое и неправдоподобно большое —
-    /// это сбой, а не превью, и его надо повторить.
+    /// Is the response body fit to be a picture? An empty or implausibly large
+    /// one is a failure, not a preview, and must be retried.
     pub fn body_is_image(len: usize) -> bool {
         len > 0 && len <= PREVIEW_MAX_BYTES
     }
 
-    /// Картинка записана в кеш: снять счётчик попыток и, если заявка живая,
-    /// поставить её в выдачу.
+    /// The picture is written to the cache: reset the attempt counter and, if
+    /// the request is live, put it into the output.
     pub fn succeeded(&mut self, content_id: &str, url: &str, low: bool, path: &str) {
         self.tries.remove(url);
         if !low {
@@ -1255,10 +1282,11 @@ impl PreviewQueue {
         }
     }
 
-    /// Сбой загрузки: повторить (временный) либо сдаться (постоянный).
+    /// A download failure: retry (transient) or give up (permanent).
     ///
-    /// Обрыв соединения сервером кладёт ВСЮ пачку одновременных запросов —
-    /// без повтора это `PREVIEW_MAX_INFLIGHT` карточек с вечной заглушкой.
+    /// A connection drop by the server takes down the WHOLE batch of
+    /// simultaneous requests: without a retry that is `PREVIEW_MAX_INFLIGHT`
+    /// cards with a placeholder forever.
     pub fn failed(&mut self, url: &str, status: Option<u16>) -> PreviewRetry {
         let attempt = self.tries.get(url).copied().unwrap_or(1);
         if !preview_retry_allowed(status, attempt) {
@@ -1273,8 +1301,9 @@ impl PreviewQueue {
         }
     }
 
-    /// Вернуть превью в очередь, если категорию с тех пор не сменили.
-    /// `false` — заявка устарела либо ту же картинку уже просят заново.
+    /// Return a preview to the queue if the category has not changed since.
+    /// `false` means the request is stale or the same picture is already being
+    /// requested again.
     pub fn requeue(&mut self, gen: u64, content_id: &str, url: &str, low: bool) -> bool {
         if gen != self.gen || self.wanted.contains(url) {
             return false;
@@ -1284,8 +1313,9 @@ impl PreviewQueue {
         true
     }
 
-    /// Отменить всё активное и очередное (смена категории). Счётчики полёта
-    /// снимут сами ответы: оборванный запрос всё равно вернётся в `finished`.
+    /// Cancel everything active and queued (a category change). The in-flight
+    /// counters are cleared by the answers themselves: a cancelled request
+    /// still comes back to `finished`.
     pub fn cancel_all(&mut self) {
         self.gen += 1;
         self.queue.clear();
@@ -1294,12 +1324,12 @@ impl PreviewQueue {
         self.wanted.clear();
     }
 
-    /// Следующее готовое превью — по одному за проход цикла событий.
+    /// The next ready preview, one per pass of the event loop.
     pub fn take_ready(&mut self) -> Option<(String, String)> {
         self.ready.pop_front()
     }
 
-    /// Есть ли что отдавать (Qt-слой держит таймер только пока есть).
+    /// Whether there is anything to hand out (the Qt layer keeps a timer only while there is).
     pub fn has_ready(&self) -> bool {
         !self.ready.is_empty()
     }
@@ -1307,43 +1337,45 @@ impl PreviewQueue {
 
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Состояние каталога: что вкладка показывает и куда идёт за данными
+//  Catalog state: what the tab shows and where it goes for data
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Источник данных категории.
+/// The category's data source.
 pub const SOURCE_OCS: &str = "ocs";
 pub const SOURCE_AUR: &str = "aur";
 pub const SOURCE_BOTH: &str = "both";
-/// Cinnamon Spices — единственный магазин пяти разделов Cinnamon
+/// Cinnamon Spices: the only store of the five Cinnamon sections
 /// (`crate::cinnamon_spices`).
 pub const SOURCE_SPICES: &str = crate::cinnamon_spices::SOURCE_KEY;
-/// Wallhaven — второй магазин «Обоев HD» рядом с KDE Store
+/// Wallhaven: the second store of "HD wallpapers" next to KDE Store
 /// (`crate::wallhaven`).
 pub const SOURCE_WALLHAVEN: &str = crate::wallhaven::SOURCE_KEY;
-/// extensions.gnome.org — единственный магазин «Расширений GNOME»
+/// extensions.gnome.org: the only store of "GNOME extensions"
 /// (`crate::gnome_ego`).
 pub const SOURCE_EGO: &str = crate::gnome_ego::SOURCE_KEY;
-/// Razer Axon — библиотека Axon на этом компьютере, чип «Обоев HD» рядом с
-/// KDE Store и Wallhaven (`crate::axon_window`). Есть, только если Axon
-/// найден ([`CatalogView::axon`]).
+/// Razer Axon: the Axon library on this computer, a chip of "HD wallpapers"
+/// next to KDE Store and Wallhaven (`crate::axon_window`). Present only if
+/// Axon was found ([`CatalogView::axon`]).
 pub const SOURCE_AXON: &str = crate::axon_window::SOURCE_KEY;
 
-/// Ключи источников, которые есть в разделе `category_key` (порядок чипов).
-/// Чего здесь нет, того в разделе нет: выбор помнится при переходе между
-/// разделами, но действует KDE Store ([`CatalogView::effective_source`]).
-/// Снятые источники — «vsthemes» (04.10.2026) и «github» в «Курсорах»
-/// (25.10.2026) — сюда не входят и тем же путём молча становятся KDE Store.
+/// The keys of the sources present in section `category_key` (chip order).
+/// What is not here does not exist in the section: the choice is
+/// remembered when moving between sections, but KDE Store is in effect
+/// ([`CatalogView::effective_source`]). Removed sources, "vsthemes"
+/// (04.10.2026) and "github" in "Cursors" (25.10.2026), are not included
+/// and by the same path silently become KDE Store.
 ///
-/// AUR («AUR» и «Все») — только там, где у AUR есть что показать
-/// ([`crate::aur::has_category`]): иначе чип вёл бы в заведомо пустую полку.
+/// AUR ("AUR" and "All") only where the AUR has something to show
+/// ([`crate::aur::has_category`]): otherwise the chip would lead to a shelf
+/// known to be empty.
 pub fn source_keys_for(category_key: &str) -> Vec<&'static str> {
-    // У разделов Cinnamon свой магазин, и он один: KDE Store и AUR
-    // спайсов не держат.
+    // Cinnamon sections have their own store, and only one: KDE Store and
+    // the AUR do not carry spices.
     if crate::cinnamon_spices::type_for_section(category_key).is_some() {
         return vec![SOURCE_SPICES];
     }
-    // Расширения GNOME — только сайт расширений: KDE Store и AUR их не
-    // держат, а ставит их сама оболочка.
+    // GNOME extensions come only from the extensions site: KDE Store and the
+    // AUR do not carry them, and the shell itself installs them.
     if crate::gnome_ego::has_section(category_key) {
         return vec![SOURCE_EGO];
     }
@@ -1351,8 +1383,8 @@ pub fn source_keys_for(category_key: &str) -> Vec<&'static str> {
     if crate::aur::has_category(category_key) {
         keys.extend([SOURCE_AUR, SOURCE_BOTH]);
     }
-    // Темы Spices несут и тему приложений, и рамки окон: в этих разделах
-    // они — ещё один магазин, отобранный по составу темы
+    // Spices themes carry both an application theme and window frames: in
+    // these sections they are one more store, selected by theme composition
     // (`cinnamon_spices::PART_SECTIONS`).
     if crate::cinnamon_spices::is_part_section(category_key) {
         keys.push(SOURCE_SPICES);
@@ -1363,10 +1395,11 @@ pub fn source_keys_for(category_key: &str) -> Vec<&'static str> {
     keys
 }
 
-/// [`source_keys_for`] вместе с источником «Razer Axon»: он стоит последним
-/// чипом в разделах `axon_window::SECTIONS`, и только если Axon найден
-/// (`axon` — `axon_window::show_source`, ставит окно). Без Axon источника
-/// нет вовсе — ни чипа, ни действующего выбора.
+/// [`source_keys_for`] together with the "Razer Axon" source: it is the
+/// last chip in the `axon_window::SECTIONS` sections, and only if Axon was
+/// found (`axon` is `axon_window::show_source`, set by the window). Without
+/// Axon there is no such source at all: neither a chip nor an active
+/// choice.
 pub fn source_keys_in(category_key: &str, axon: bool) -> Vec<&'static str> {
     let mut keys = source_keys_for(category_key);
     if axon && crate::axon_window::has_section(category_key) {
@@ -1375,94 +1408,98 @@ pub fn source_keys_in(category_key: &str, axon: bool) -> Vec<&'static str> {
     keys
 }
 
-/// Режим категории «Экран блокировки»: полные темы либо обои блокировки.
+/// The "Lock screen" category mode: full themes or lock screen wallpapers.
 pub const LOCK_MODE_THEMES: &str = "themes";
 pub const LOCK_MODE_WALLPAPER: &str = "wallpaper";
 
-/// Синтетическая категория «тема экрана блокировки» (apply_kind=lockscreen).
+/// The synthetic category "lock screen theme" (apply_kind=lockscreen).
 pub const LOCK_CAT_THEMES: i64 = 903;
-/// Синтетическая категория «обои экрана блокировки» (apply_kind=lockwallpaper).
+/// The synthetic category "lock screen wallpaper" (apply_kind=lockwallpaper).
 pub const LOCK_CAT_WALLPAPER: i64 = 904;
 
-/// OCS-каталог полных тем блокировки (Global Themes).
+/// The OCS catalog of full lock themes (Global Themes).
 pub const LOCK_STORE_THEMES: i64 = 722;
-/// OCS-каталог обоев (фон экрана блокировки).
+/// The OCS wallpaper catalog (the lock screen background).
 pub const LOCK_STORE_WALLPAPER: i64 = 299;
 
-/// Наименьшая длина запроса для поиска по AUR.
+/// The minimum query length for an AUR search.
 pub const AUR_MIN_QUERY: usize = 2;
 
-/// Состояние каталога — всё, из чего вкладка выводит свой вид и свои запросы.
+/// The catalog state: everything from which the tab derives its view and
+/// its requests.
 ///
-/// Виджетов здесь нет: Qt-слой держит те же поля не у себя, а спрашивает их
-/// у этого типа. Так «что показать» и «куда пойти за данными» перестают быть
-/// двумя разными правдами.
+/// There are no widgets here: the Qt layer does not keep the same fields
+/// itself but asks this type for them. This way "what to show" and "where
+/// to go for data" stop being two different truths.
 #[derive(Debug, Clone)]
 pub struct CatalogView {
-    /// Открытый раздел сайдбара.
+    /// The open sidebar section.
     pub category: ThemeCategory,
-    /// Страница каталога, с нуля.
+    /// The catalog page, from zero.
     pub page: i64,
-    /// Сколько работ у категории всего (по ответу магазина).
+    /// How many works the category has in total (per the store's answer).
     pub total: i64,
-    /// Ключ сортировки, выбранный человеком.
+    /// The sort key chosen by the person.
     pub sort: String,
-    /// Строка поиска.
+    /// The search line.
     pub query: String,
-    /// Источник: `ocs` | `aur` | `both`.
+    /// Source: `ocs` | `aur` | `both`.
     pub source: String,
-    /// Рабочий стол, под который отфильтрован каталог.
+    /// The desktop the catalog is filtered for.
     pub de: String,
-    /// Режим «Экрана блокировки».
+    /// The "Lock screen" mode.
     pub lock_mode: String,
-    /// Фильтр сетки «Стиля приложений»: [`STYLE_FILTER_ALL`],
-    /// [`STYLE_FILTER_QT`] или [`STYLE_FILTER_KVANTUM`]; `None` — все.
+    /// The "Application style" grid filter: [`STYLE_FILTER_ALL`],
+    /// [`STYLE_FILTER_QT`] or [`STYLE_FILTER_KVANTUM`]; `None` means all.
     pub style_sub: Option<String>,
-    /// Фильтр тона цветовых схем и стилей Plasma, как выбрал человек
-    /// (`local_preview::tone_filter` решает, какой действует); пусто — «Все».
+    /// The tone filter of colour schemes and Plasma styles as the person chose
+    /// it (`local_preview::tone_filter` decides which one is in effect); empty
+    /// means "All".
     pub tone_filter: String,
-    /// Чип «Запущенные» раздела «Виджеты Conky».
+    /// The "Running" chip of the "Conky widgets" section.
     pub running_only: bool,
-    /// Под нами SteamOS (Steam Deck или Steam Machine): экран входа и
-    /// заставку загрузки там не меняем, их разделы показывают причину
-    /// вместо полки (`categories::steamos_block`).
+    /// We run on SteamOS (Steam Deck or Steam Machine): the login screen and
+    /// the boot splash are not changed there, and their sections show the
+    /// reason instead of a shelf (`categories::steamos_block`).
     pub steamos: bool,
-    /// Юнит активного экрана входа (`plasmalogin`, `sddm`, `lightdm`…) —
-    /// для пояснения «сейчас его показывает …». Пусто — проба не ответила.
+    /// The unit of the active login screen (`plasmalogin`, `sddm`, `lightdm`…),
+    /// for the explanation "it is currently shown by …". Empty means the probe
+    /// did not answer.
     pub login_manager: String,
-    /// Программа Conky есть в системе (для подписи раздела «Виджеты Conky»).
+    /// The Conky program is in the system (for the "Conky widgets" section label).
     pub conky_installed: bool,
-    /// Rexon может сам поставить пакет Conky на этой системе.
+    /// Rexon can install the Conky package on this system by itself.
     pub conky_installable: bool,
-    /// Сеанс Wayland — у Conky на Wayland своя оговорка.
+    /// A Wayland session: Conky on Wayland has its own caveat.
     pub wayland: bool,
-    /// Открыт вид «⚙️ Настройки» раздела каталога (системные шрифты в
-    /// «Шрифтах», значки и панели инструментов в «Значках», отклик при
-    /// запуске в «Курсорах», анимация программ в «GTK-темах» —
-    /// `categories::SECTION_SETTINGS`) вместо плиток. Принадлежит разделу:
-    /// при уходе из него сбрасывается, и в раздел человек возвращается к
-    /// каталогу.
+    /// The catalog section's "⚙️ Settings" view is open (system fonts in
+    /// "Fonts", icons and toolbars in "Icons", launch feedback in "Cursors",
+    /// program animation in "GTK themes": `categories::SECTION_SETTINGS`)
+    /// instead of the tiles. It belongs to the section: it is reset when
+    /// leaving it, and the person returns to the section's catalog.
     pub section_settings: bool,
-    /// Род сеанса выбранного стола: разделы, невозможные в нём (эффекты
-    /// экрана MATE на Wayland), не видны (`categories::category_available_in`).
-    /// Ставит окно; по умолчанию — «любой».
+    /// The session kind of the chosen desktop: sections impossible in it (MATE
+    /// screen effects on Wayland) are not visible
+    /// (`categories::category_available_in`). Set by the window; "any" by
+    /// default.
     pub session: categories::Session,
-    /// Переключатель «Только для вашей версии GNOME» витрины
-    /// extensions.gnome.org: включён — сайт отдаёт только совместимые,
-    /// выключен — все, несовместимые помечены. По умолчанию включён.
+    /// The "Only for your GNOME version" toggle of the extensions.gnome.org
+    /// showcase: on means the site returns only compatible ones, off means all,
+    /// with incompatible ones marked. On by default.
     pub ego_compatible_only: bool,
-    /// Найден ли Razer Axon (`axon_window::show_source`): без него
-    /// источника «Razer Axon» и блока его настроек нет. Ставит окно; по
-    /// умолчанию — нет.
+    /// Whether Razer Axon was found (`axon_window::show_source`): without it
+    /// there is no "Razer Axon" source and no block of its settings. Set by the
+    /// window; no by default.
     pub axon: bool,
 }
 
 impl CatalogView {
-    /// Стартовое состояние: раздел, сортировка «Новые», магазин KDE.
+    /// The initial state: the section, the "New" sort, the KDE store.
     ///
-    /// Умолчание сортировки — «Новые»: по рейтингу наверху годами стоят одни
-    /// и те же работы, и витрина при каждом заходе выглядит мёртвой.
-    /// Умолчание режима блокировки — «Обои»: их тысячи, выбор мгновенный.
+    /// The default sort is "New": by rating the same works have sat at the top
+    /// for years, and the showcase looks dead on every visit. The default lock
+    /// mode is "Wallpapers": there are thousands of them, and the choice is
+    /// instant.
     pub fn new(category: ThemeCategory, de: &str) -> Self {
         Self {
             category,
@@ -1488,9 +1525,9 @@ impl CatalogView {
         }
     }
 
-    /// Режим «Экрана блокировки» с поправкой на окружение: где полных тем
-    /// нет (Deepin), остаётся режим обоев, даже если раньше, под KDE, был
-    /// выбран режим тем.
+    /// The "Lock screen" mode adjusted for the environment: where there are no
+    /// full themes (Deepin), the wallpaper mode stays even if the themes mode
+    /// was chosen earlier under KDE.
     pub fn lock_mode_effective(&self) -> &str {
         if self.lock_mode == LOCK_MODE_THEMES && !categories::lock_themes_supported(&self.de) {
             LOCK_MODE_WALLPAPER
@@ -1499,67 +1536,68 @@ impl CatalogView {
         }
     }
 
-    /// Раздел закрыт на этой SteamOS (экран входа, заставка загрузки).
+    /// The section is closed on this SteamOS (login screen, boot splash).
     pub fn steamos_blocked(&self) -> bool {
         self.steamos && categories::steamos_block(&self.category.key).is_some()
     }
 
-    /// Раздел экрана входа при Plasma Login Manager — у него своя панель
-    /// (объяснение и кнопка в настройки), а не полка магазина.
+    /// The login screen section under Plasma Login Manager has its own panel
+    /// (an explanation and a button to the settings), not a store shelf.
     pub fn is_plasma_login(&self) -> bool {
         self.category.key == categories::PLASMA_LOGIN_KEY
     }
 
-    /// Раздел экрана входа (полка тем SDDM или панель Plasma Login
-    /// Manager) — над ним блок «Менеджер входа». На SteamOS раздел закрыт
-    /// целиком, и блока нет.
+    /// The login screen section (a shelf of SDDM themes or the Plasma Login
+    /// Manager panel) has the "Login manager" block above it. On SteamOS the
+    /// section is closed entirely, and there is no block.
     pub fn is_login_screen(&self) -> bool {
         matches!(self.category.key.as_str(), "sddm" | categories::PLASMA_LOGIN_KEY) && !self.steamos_blocked()
     }
 
-    /// Раздел «Панель MATE» — свой экран с раскладками, а не полка.
+    /// The "MATE panel" section is its own screen with layouts, not a shelf.
     pub fn is_mate_panel(&self) -> bool {
         self.category.key == categories::MATE_PANEL_KEY
     }
 
-    /// Раздел настроек (анимация, шрифты, кнопки заголовка…) — свой экран
-    /// с разделом вкладки «Настройки», а не полка
+    /// A settings section (animation, fonts, title bar buttons…) is its own
+    /// screen with a section of the "Settings" tab, not a shelf
     /// (`categories::SETTINGS_PANELS`).
     pub fn is_settings_panel(&self) -> bool {
         categories::is_settings_panel(&self.category.key) || self.section_settings_open()
     }
 
-    /// Вид «⚙️ Настройки» раздела каталога — кнопка в шапке «Шрифтов»,
-    /// «Значков», «Курсоров», рамок окон и «GTK-тем» (08.11.2026: каталог и
-    /// настройки одного рода в одном разделе, а не двумя строками боковой
-    /// панели): какие разделы настроек в нём. Пусто — кнопки нет (у раздела
-    /// их нет, в этом столе настраивать нечего или раздел закрыт).
+    /// The catalog section's "⚙️ Settings" view: a button in the header of
+    /// "Fonts", "Icons", "Cursors", window frames and "GTK themes" (08.11.2026:
+    /// the catalog and the settings of one kind in one section rather than two
+    /// sidebar rows): which settings sections it holds. Empty means no button
+    /// (the section has none, there is nothing to configure in this desktop, or
+    /// the section is closed).
     pub fn section_settings_panels(&self) -> Vec<&'static str> {
         if self.de_blocked() || self.steamos_blocked() {
             return Vec::new();
         }
         let mut panels = categories::section_settings_panels(&self.category.key, &self.de);
-        // Блок «Razer Axon» — только там, где есть сам источник.
+        // The "Razer Axon" block only where the source itself exists.
         if !self.axon {
             panels.retain(|p| *p != categories::AXON_SETTINGS_PANEL);
         }
         panels
     }
 
-    /// Есть ли у раздела вид «⚙️ Настройки».
+    /// Whether the section has a "⚙️ Settings" view.
     pub fn has_section_settings(&self) -> bool {
         !self.section_settings_panels().is_empty()
     }
 
-    /// Открыт ли сейчас вид настроек раздела.
+    /// Whether the section's settings view is open now.
     pub fn section_settings_open(&self) -> bool {
         self.section_settings && self.has_section_settings()
     }
 
-    /// Какие разделы вкладки «Настройки» показать на экране
-    /// [`SCREEN_SETTINGS`] (через запятую — `SettingsPage.panel`): у
-    /// разделов настроек — свой ключ, у раздела каталога в виде настроек —
-    /// его разделы из `categories::SECTION_SETTINGS`.
+    /// Which sections of the "Settings" tab to show on the [`SCREEN_SETTINGS`]
+    /// screen (comma-separated, `SettingsPage.panel`): settings sections have
+    /// their own key, a catalog section in settings view has its sections from
+    /// `categories::SECTION_SETTINGS`.
     pub fn settings_panel_key(&self) -> String {
         if self.section_settings_open() {
             self.section_settings_panels().join(",")
@@ -1568,16 +1606,16 @@ impl CatalogView {
         }
     }
 
-    /// Объяснение вместо полки: раздела нет в этом рабочем столе либо он
-    /// закрыт на SteamOS. `None` — раздел открыт.
+    /// An explanation instead of a shelf: the section does not exist in this
+    /// desktop or is closed on SteamOS. `None` means the section is open.
     pub fn note(&self, home: &Path) -> Option<String> {
         categories::category_note(home, &self.category.key, &self.de)
             .or_else(|| categories::steamos_note(home, &self.category.key, self.steamos))
     }
 
-    /// Какой экран показать после пересборки раздела: `note` —
-    /// объяснение, `plasmalogin` — панель Plasma Login Manager, `grid` —
-    /// витрина. Деталь товара сюда не входит: её открывает человек.
+    /// Which screen to show after rebuilding the section: `note` is an
+    /// explanation, `plasmalogin` the Plasma Login Manager panel, `grid` the
+    /// showcase. An item's details are not included: the person opens them.
     pub fn screen(&self, home: &Path) -> &'static str {
         if self.note(home).is_some() {
             SCREEN_NOTE
@@ -1594,60 +1632,62 @@ impl CatalogView {
         }
     }
 
-    /// Раздел — локальный обзор диска, категория без сетевого магазина либо
-    /// раздел с сеткой установленного, пока магазин не открыт.
+    /// The section is a local disk overview, a category without a network
+    /// store, or a section with an installed grid while the store is not open.
     pub fn is_local(&self) -> bool {
         categories::LOCAL_VIEW_KEYS.contains(&self.category.key.as_str())
             || self.category.local_only()
     }
 
-    /// Есть ли у раздела сетка установленного с магазином за кнопкой
-    /// «Загрузить новые…» — как страницы kcm KDE «Внешний вид»: любой
-    /// раздел, у которого есть и скан диска, и магазин
-    /// ([`has_installed_grid_for`]), плюс полные темы экрана блокировки.
+    /// Whether the section has an installed grid with the store behind a "Get
+    /// new…" button, like the KDE "Appearance" kcm pages: any section that has
+    /// both a disk scan and a store ([`has_installed_grid_for`]), plus full
+    /// lock screen themes.
     ///
-    /// Раньше заставка и экран блокировки клеили установленное сверху
-    /// первой страницы магазина. Сетка с кнопкой — один путь на все десять:
-    /// установленного бывает больше страницы (значков в системе — десятки),
-    /// и магазин под ним уезжал бы за край, а заголовок «Установлено» между
-    /// двумя частями одной сетки не встанет.
+    /// Previously the splash and the lock screen glued the installed items on
+    /// top of the store's first page. A grid with a button is one path for all
+    /// ten: there can be more installed items than a page (there are dozens of
+    /// icon themes in the system), and the store below would slide off the
+    /// edge, while an "Installed" heading cannot stand between two parts of one
+    /// grid.
     pub fn has_installed_view(&self) -> bool {
         let key = self.category.key.as_str();
         has_installed_grid_for(&self.category)
             || (key == "lockscreen" && self.lock_mode_effective() == LOCK_MODE_THEMES)
     }
 
-    /// Показывает ли раздел установленное — сверху, над магазином раздела
-    /// на той же странице. Кнопки «Загрузить новые…» больше нет (решение
-    /// владельца 18.10.2026): магазин грузится сам.
+    /// Whether the section shows installed items: on top, above the section's
+    /// store on the same page. There is no "Get new…" button any more (the
+    /// owner's decision of 18.10.2026): the store loads by itself.
     pub fn installed_view(&self) -> bool {
         self.has_installed_view()
     }
 
-    /// Видна ли строка фильтра тона «Все / Светлые / Тёмные»
+    /// Whether the "All / Light / Dark" tone filter line is visible
     /// (`local_preview::tone_bar_applies`).
     pub fn tone_bar(&self) -> bool {
         crate::local_preview::tone_bar_applies(&self.category.key, self.installed_view())
     }
 
-    /// Действующий фильтр тона раздела (`local_preview::tone_filter`).
+    /// The section's tone filter in effect (`local_preview::tone_filter`).
     pub fn active_tone_filter(&self) -> &'static str {
         crate::local_preview::tone_filter(&self.category.key, &self.tone_filter)
     }
 
-    /// Сужает ли сетку установленного фильтр, под которым витрины магазина
-    /// нет: показывается только то, что на диске.
+    /// Whether the installed grid is narrowed by a filter that has no store
+    /// showcase underneath: only what is on disk is shown.
     ///
-    /// ОДНО правило на все такие фильтры раздела — «Светлые / Тёмные» у
-    /// цветов и стилей Plasma (тон знаем только у тем с диска), «Qt-стили /
-    /// Kvantum» у стиля приложений (фильтр сетки установленного, магазин
-    /// раздела — темы Kvantum без разбора) и «Запущенные» у Conky (процесс
-    /// бывает только у установленного). Под таким фильтром магазин не
-    /// спрашивается (`request_key`), листалки, сортировки и «Магазин:» нет
-    /// (`chrome`), поиск — среди установленного (`search_placeholder`).
-    /// Новый фильтр сетки установленного добавляется СЮДА, и всё остальное
-    /// он получает сам. До 01.11.2026 правило жило только у фильтра тона, и
-    /// под «Kvantum» оставались «Найдено 337» и листалка «1 / 17».
+    /// ONE rule for all such section filters: "Light / Dark" for colours and
+    /// Plasma styles (the tone is known only for themes on disk), "Qt styles /
+    /// Kvantum" for the application style (a filter of the installed grid,
+    /// while the section's store is Kvantum themes without distinction) and
+    /// "Running" for Conky (only installed items have a process). Under such a
+    /// filter the store is not queried (`request_key`), there is no pager, sort
+    /// or "Store:" (`chrome`), and search goes among the installed items
+    /// (`search_placeholder`). A new filter of the installed grid is added
+    /// HERE, and it gets everything else by itself. Until 01.11.2026 the rule
+    /// lived only in the tone filter, and under "Kvantum" "Found 337" and a
+    /// "1 / 17" pager remained.
     pub fn installed_only(&self) -> bool {
         if !self.installed_view() {
             return false;
@@ -1658,47 +1698,49 @@ impl CatalogView {
         tone || style || running
     }
 
-    /// Выделять ли текущую тему рамкой и жирной подписью (как KDE): в сетке
-    /// установленного и в разделах окружений. В обзорах «Активные» и прочих
-    /// включённых много сразу — там рамка ничего не отличала бы.
+    /// Whether to highlight the current theme with a frame and a bold label
+    /// (as KDE does): in the installed grid and in environment sections. In
+    /// the "Active" overview and others many are enabled at once, so a frame
+    /// would distinguish nothing there.
     pub fn marks_current(&self) -> bool {
         self.installed_view()
             || (self.is_local() && local_scan_plan(&self.local_scan_which()).0 == "section")
     }
 
-    /// Применим ли переключатель «Магазин:» к текущей категории.
+    /// Whether the "Store:" switch applies to the current category.
     ///
-    /// Локальные обзоры диска сети не знают вовсе. Переключатель есть там,
-    /// где каталог из OCS и кроме него есть из чего выбрать
-    /// ([`source_keys_for`]): у заставки (зонт 716+488), экрана блокировки,
-    /// переключателя окон, Conky и рамок окружений пакетов в AUR нет, и
-    /// чип «AUR» вёл бы в заведомо пустую полку.
+    /// Local disk overviews do not know the network at all. The switch exists
+    /// where the catalog comes from OCS and there is something else to choose
+    /// from besides it ([`source_keys_for`]): the splash (umbrella 716+488),
+    /// the lock screen, the window switcher, Conky and environment frames have
+    /// no packages in the AUR, and an "AUR" chip would lead to a shelf known
+    /// to be empty.
     pub fn source_applicable(&self) -> bool {
         let ocs = matches!(self.category.store, CatalogSource::Ocs(_) | CatalogSource::OcsShowcase);
         !self.is_local() && ocs && self.source_keys().len() > 1
     }
 
-    /// Источники раздела с поправкой на то, найден ли Axon
+    /// The section's sources, adjusted for whether Axon was found
     /// ([`source_keys_in`]).
     pub fn source_keys(&self) -> Vec<&'static str> {
         source_keys_in(&self.category.key, self.axon)
     }
 
-    /// Активен ли чистый AUR-источник.
+    /// Whether the pure AUR source is active.
     pub fn aur_mode(&self) -> bool {
         self.source_applicable() && self.source == SOURCE_AUR
     }
 
-    /// Активен ли смешанный источник «Все».
+    /// Whether the mixed "All" source is active.
     pub fn both_mode(&self) -> bool {
         self.source_applicable() && self.source == SOURCE_BOTH
     }
 
-    /// Источник, который действует в этом разделе. Выбор, которого в
-    /// разделе нет (или которого больше нет вовсе, как снятых «vsthemes» и
-    /// «github»),
-    /// помнится, но действует первый источник раздела (KDE Store, у
-    /// разделов Cinnamon — Cinnamon Spices).
+    /// The source in effect in this section. A choice the section does not
+    /// have (or that no longer exists at all, like the removed "vsthemes" and
+    /// "github")
+    /// is remembered, but the section's first source is in effect (KDE Store,
+    /// for Cinnamon sections Cinnamon Spices).
     pub fn effective_source(&self) -> &str {
         let keys = self.source_keys();
         if keys.contains(&self.source.as_str()) {
@@ -1708,41 +1750,43 @@ impl CatalogView {
         }
     }
 
-    /// Магазин раздела — Cinnamon Spices: вид каталога сайта (`applets`,
-    /// `themes`…). `None` — у раздела другой магазин либо он без сети.
+    /// The section's store is Cinnamon Spices: the site's catalog kind
+    /// (`applets`, `themes`…). `None` means the section has another store or
+    /// none on the network.
     pub fn spices_json(&self) -> Option<&str> {
         match &self.category.store {
             CatalogSource::Spices(json) if !self.is_local() => Some(json.as_str()),
-            // «Темы GTK» и рамки окон: выбран чип Cinnamon Spices — витрина
-            // тем сайта, отобранных по составу.
+            // "GTK themes" and window frames: the Cinnamon Spices chip is chosen,
+            // so the showcase is the site's themes selected by composition.
             _ if self.spices_parts_mode() => crate::cinnamon_spices::type_for_key("theme").map(|t| t.json),
             _ => None,
         }
     }
 
-    /// Открыты ли темы Cinnamon Spices в разделе GTK или рамок окон
-    /// (`cinnamon_spices::PART_SECTIONS`): там это не единственный магазин,
-    /// а чип рядом с KDE Store.
+    /// Whether Cinnamon Spices themes are open in the GTK or window frames
+    /// section (`cinnamon_spices::PART_SECTIONS`): there it is not the only
+    /// store but a chip next to KDE Store.
     pub fn spices_parts_mode(&self) -> bool {
         self.source_applicable()
             && self.source == SOURCE_SPICES
             && crate::cinnamon_spices::is_part_section(&self.category.key)
     }
 
-    /// Открыт ли магазин Cinnamon Spices.
+    /// Whether the Cinnamon Spices store is open.
     pub fn spices_mode(&self) -> bool {
         self.spices_json().is_some()
     }
 
-    /// Открыт ли магазин Wallhaven («Обои HD», чип рядом с KDE Store).
+    /// Whether the Wallhaven store is open ("HD wallpapers", a chip next to KDE Store).
     pub fn wallhaven_mode(&self) -> bool {
         self.source_applicable()
             && self.source == SOURCE_WALLHAVEN
             && crate::wallhaven::has_section(&self.category.key)
     }
 
-    /// Открыт ли источник «Razer Axon» («Обои HD», чип рядом с KDE Store):
-    /// вместо сетки магазина — свой экран [`SCREEN_AXON`] с библиотекой Axon.
+    /// Whether the "Razer Axon" source is open ("HD wallpapers", a chip next to
+    /// KDE Store): instead of the store grid, its own [`SCREEN_AXON`] screen
+    /// with the Axon library.
     pub fn axon_mode(&self) -> bool {
         self.axon
             && self.source_applicable()
@@ -1750,19 +1794,19 @@ impl CatalogView {
             && crate::axon_window::has_section(&self.category.key)
     }
 
-    /// Открыт ли магазин extensions.gnome.org («Расширения GNOME»).
+    /// Whether the extensions.gnome.org store is open ("GNOME extensions").
     pub fn ego_mode(&self) -> bool {
         !self.is_local() && self.category.store == CatalogSource::GnomeExtensions
     }
 
-    /// Открыт ли магазин со своим листингом (Cinnamon Spices, Wallhaven,
-    /// extensions.gnome.org): подсказок и фонового прогрева KDE Store у
-    /// него нет.
+    /// Whether a store with its own listing is open (Cinnamon Spices,
+    /// Wallhaven, extensions.gnome.org): it has no KDE Store suggestions or
+    /// background warm-up.
     pub fn own_site_store(&self) -> bool {
         self.spices_mode() || self.wallhaven_mode() || self.ego_mode() || self.axon_mode()
     }
 
-    /// Сортировки выпадающего списка у открытого магазина: `(подпись, ключ)`.
+    /// The drop-down list sorts of the open store: `(label, key)`.
     pub fn sorts(&self) -> &'static [(&'static str, &'static str)] {
         if self.wallhaven_mode() {
             crate::wallhaven::SORTS
@@ -1773,15 +1817,15 @@ impl CatalogView {
         }
     }
 
-    /// Раздела нет в выбранном рабочем столе.
+    /// The section does not exist in the chosen desktop.
     pub fn de_blocked(&self) -> bool {
         !categories::category_available_in(&self.category.key, &self.de, self.session)
     }
 
-    /// `cat_id` (или зонт «id1,id2») для запроса каталога.
+    /// `cat_id` (or an "id1,id2" umbrella) for the catalog request.
     ///
-    /// Строка, а не число: OCS принимает несколько категорий через запятую, и
-    /// категории-зонты этим пользуются.
+    /// A string, not a number: OCS accepts several categories separated by
+    /// commas, and umbrella categories use this.
     pub fn query_category_id(&self) -> String {
         if self.category.key == "lockscreen" {
             return if self.lock_mode_effective() == LOCK_MODE_THEMES {
@@ -1793,11 +1837,12 @@ impl CatalogView {
         store_query(&self.category, &self.de)
     }
 
-    /// Сортировка, которая реально уйдёт в запрос за эту категорию.
+    /// The sort that will actually go into the request for this category.
     ///
-    /// У «Популярных» и «Новых» она закреплена; для обычных — выбор человека.
-    /// Тем же способом её считает фоновый прогрев — иначе ключ кеша не сойдётся
-    /// и прогретая страница откроется заново через сеть.
+    /// For "Popular" and "New" it is fixed; for ordinary ones it is the
+    /// person's choice. The background warm-up computes it the same way;
+    /// otherwise the cache key would not match and the warmed-up page would
+    /// open again over the network.
     pub fn sort_for(&self, cat: &ThemeCategory) -> String {
         match cat.key.as_str() {
             "new" => "new".to_string(),
@@ -1806,8 +1851,8 @@ impl CatalogView {
         }
     }
 
-    /// Сортировка для открытого раздела. У Wallhaven своих сортировок три:
-    /// выбор, которого у него нет («По алфавиту»), действует как «Новые».
+    /// The sort for the open section. Wallhaven has three sorts of its own: a
+    /// choice it does not have ("Alphabetical") acts as "New".
     pub fn active_sort(&self) -> String {
         let sort = self.sort_for(&self.category);
         if self.wallhaven_mode() {
@@ -1819,10 +1864,11 @@ impl CatalogView {
         sort
     }
 
-    /// Ключ сессионного кеша AUR: список категории — по её ключу, поиск — по
-    /// разделу и запросу (выдача поиска отобрана под раздел,
-    /// `aur::search_in_category`). Тот же ключ несёт ответ воркера, и по нему
-    /// отбрасываются ответы категорий, с которых человек уже ушёл.
+    /// The AUR session cache key: a category list by its key, a search by the
+    /// section and the query (search results are filtered for the section,
+    /// `aur::search_in_category`). The worker's answer carries the same key,
+    /// and answers for categories the person has already left are discarded
+    /// by it.
     pub fn aur_cache_key(&self) -> String {
         if self.query.is_empty() {
             format!("cat:{}", self.category.key)
@@ -1831,16 +1877,17 @@ impl CatalogView {
         }
     }
 
-    /// Что показывать в шапке вкладки при текущем состоянии.
+    /// What to show in the tab header in the current state.
     pub fn chrome(&self) -> Chrome {
         if self.de_blocked() || self.steamos_blocked() || self.is_plasma_login() || self.is_mate_panel()
             || self.is_settings_panel()
         {
-            // Раздела в этом рабочем столе нет (или он закрыт на SteamOS, или
-            // у экрана входа нет тем вовсе): магазин, сортировка и страницы не
-            // нужны — показывать нечего, и предлагать «искать» здесь нечестно.
-            // У Plasma Login Manager остаётся пояснение «общий для всех
-            // рабочих столов»: в MATE иначе непонятно, почему здесь Plasma.
+            // The section does not exist in this desktop (or is closed on SteamOS,
+            // or the login screen has no themes at all): the store, the sort and
+            // the pages are not needed: there is nothing to show, and offering to
+            // "search" here is dishonest. For Plasma Login Manager the
+            // explanation "shared by all desktops" stays: in MATE it would
+            // otherwise be unclear why Plasma is here.
             let caveat = if self.is_plasma_login() && !self.steamos_blocked() {
                 self.caveat()
             } else {
@@ -1849,16 +1896,17 @@ impl CatalogView {
             return Chrome { caveat, ..Chrome::default() };
         }
         let local = self.is_local();
-        // Под фильтром «только установленное» магазина нет — и его
-        // переключателя, сортировки и страниц тоже (`installed_only`).
+        // Under the "installed only" filter there is no store, and so no switch,
+        // sort or pages for it either (`installed_only`).
         let store = !self.installed_only();
-        // У источника «Razer Axon» сортировка и фильтры — свои, как у самого
-        // Axon, на его экране; листать нечего (библиотека целиком), ставить
-        // из файла — не сюда. А строка поиска — ТА ЖЕ, что у соседних
-        // магазинов, на том же месте шапки и с тем же словом: своя строка
-        // на экране Axon уезжала влево вниз, и набранное слово при смене
-        // магазина пропадало (живая проверка 16.11.2026, Cinnamon 6.8).
-        // Где искать — в названиях или в тегах — выбирается в «Фильтре».
+        // The "Razer Axon" source has its own sort and filters, as Axon itself
+        // does, on its screen; there is nothing to page through (the whole
+        // library), and installing from a file does not belong here. But the
+        // search line is THE SAME as for the neighbouring stores, in the same
+        // place of the header and with the same word: a separate line on the
+        // Axon screen drifted to the bottom left, and the typed word was lost
+        // when switching stores (live check 16.11.2026, Cinnamon 6.8). Where
+        // to search, in names or in tags, is chosen in the "Filter".
         if self.axon_mode() {
             return Chrome {
                 search: true,
@@ -1873,8 +1921,8 @@ impl CatalogView {
             search_placeholder: self.search_placeholder(),
             caveat: self.caveat(),
             source_bar: self.source_applicable() && store,
-            // Фильтр «Все / Qt-стили / Kvantum» — над сеткой установленного;
-            // в магазине раздела (темы Kvantum) фильтровать нечего.
+            // The "All / Qt styles / Kvantum" filter is above the installed grid;
+            // in the section's store (Kvantum themes) there is nothing to filter.
             style_bar: self.category.key == "widgetstyle" && self.installed_view(),
             lock_bar: self.category.key == "lockscreen",
             cursor_size_bar: self.category.key == "cursor",
@@ -1887,10 +1935,10 @@ impl CatalogView {
         }
     }
 
-    /// Подсказка в поле поиска. Под фильтром «только установленное»
-    /// ([`Self::installed_only`]) магазина (и AUR, и Spices) нет, ищется
-    /// только среди установленного — подсказка про выбранный магазин была
-    /// бы неправдой.
+    /// The search field placeholder. Under the "installed only" filter
+    /// ([`Self::installed_only`]) there is no store (neither AUR nor Spices),
+    /// the search goes only among installed items, and a placeholder about the
+    /// chosen store would be untrue.
     pub fn search_placeholder(&self) -> String {
         if self.installed_only() {
             tr("🔍 Search installed…")
@@ -1909,9 +1957,9 @@ impl CatalogView {
         }
     }
 
-    /// Подпись-условие под заголовком раздела: у экрана входа и заставки
-    /// загрузки — что они общие для всех рабочих столов
-    /// (`categories::system_section_note`), у остальных — условие матрицы.
+    /// The condition label under the section heading: for the login screen and
+    /// the boot splash, that they are shared by all desktops
+    /// (`categories::system_section_note`), for the rest the matrix condition.
     fn caveat(&self) -> Option<String> {
         let key = self.category.key.as_str();
         let conky = (key == "conky").then(|| {
@@ -1933,10 +1981,10 @@ impl CatalogView {
         (!parts.is_empty()).then(|| parts.join(" "))
     }
 
-    /// Какой скан диска запускать для местной категории.
+    /// Which disk scan to run for a local category.
     ///
-    /// «Стиль приложений» несёт фильтр сетки (`widgetstyle:<фильтр>`):
-    /// стили Qt и темы Kvantum вместе, только стили Qt или только Kvantum.
+    /// "Application style" carries a grid filter (`widgetstyle:<filter>`): Qt
+    /// styles and Kvantum themes together, only Qt styles or only Kvantum.
     pub fn local_scan_which(&self) -> String {
         if self.category.key != "widgetstyle" {
             return self.category.key.clone();
@@ -1944,8 +1992,8 @@ impl CatalogView {
         format!("widgetstyle:{}", self.style_filter())
     }
 
-    /// Действующий фильтр «Стиля приложений»: незнакомое значение (в том
-    /// числе прежний под-выбор `qt:<Имя>`) — «Все».
+    /// The "Application style" filter in effect: an unknown value (including
+    /// the former sub-choice `qt:<Name>`) means "All".
     pub fn style_filter(&self) -> &'static str {
         match self.style_sub.as_deref() {
             Some(STYLE_FILTER_QT) => STYLE_FILTER_QT,
@@ -1954,25 +2002,26 @@ impl CatalogView {
         }
     }
 
-    /// Принять то, что человек набрал в строке поиска.
+    /// Accept what the person typed in the search line.
     ///
-    /// ⚠️ ЗДЕСЬ ЖИЛА ДЫРА (живая проверка 06.09.2026). Ввод непустого слова
-    /// в запрос НЕ попадал вовсе: страница умела только СБРАСЫВАТЬ поиск,
-    /// когда поле опустело, а набранное слово молча теряла. Запрос уходил в
-    /// магазин и в скан диска пустым, и ни один раздел не фильтровался —
-    /// в «Активных» на слово «bree» оставались все пять тем. Оригинал на
-    /// виджетах записывает набранное по Enter (`_on_search`), и вся разница
-    /// между ним и нами была в этой пропущенной записи.
+    /// ⚠️ THERE WAS A HOLE HERE (live check 06.09.2026). Typing a non-empty
+    /// word did NOT get into the query at all: the page could only RESET the
+    /// search when the field became empty, and silently lost the typed word.
+    /// The query went to the store and to the disk scan empty, and no section
+    /// was filtered: in "Active" all five themes remained for the word "bree".
+    /// The original widgets record the typed text on Enter (`_on_search`), and
+    /// the whole difference between it and us was this missing write.
     ///
-    /// Возвращает, что вкладке делать дальше: сама она про поиск больше
-    /// ничего не решает, и оттого правило одно на ВСЕ разделы страницы —
-    /// магазин, AUR и обзоры диска ходят за данными одним и тем же
-    /// `request_key` с одним и тем же `query`.
+    /// Returns what the tab should do next: it decides nothing more about
+    /// search itself, and so there is one rule for ALL sections of the page:
+    /// the store, the AUR and the disk overviews fetch data with the same
+    /// `request_key` and the same `query`.
     pub fn edit_query(&mut self, text: &str) -> QueryEdit {
         let text = text.trim();
         if text.is_empty() {
-            // Опустевшее поле сбрасывает поиск СРАЗУ: иначе запрос залипал
-            // на прошлом слове при визуально пустом поле (починка оригинала).
+            // An emptied field resets the search RIGHT AWAY: otherwise the query
+            // stuck on the previous word with a visually empty field (a fix of
+            // the original).
             if self.query.is_empty() {
                 return QueryEdit::Idle;
             }
@@ -1983,25 +2032,27 @@ impl CatalogView {
         if self.query == text {
             return QueryEdit::Idle;
         }
-        // Набранное запоминаем, но за данными не идём: посимвольно магазин
-        // не дёргаем — поиск применяет Enter (`submit_query`).
+        // The typed text is remembered, but we do not go for data: we do not
+        // query the store per character; search is applied by Enter
+        // (`submit_query`).
         //
-        // Разница с оригиналом намеренная: там набранное лежит только в
-        // поле ввода и попадает в запрос по Enter, поэтому «Обновить» или
-        // смена сортировки при набранном, но не отправленном слове
-        // перечитывали раздел БЕЗ него — на экране слово есть, в витрине
-        // его не видно. Здесь запрос всегда тот, что человек видит в поле.
+        // The difference from the original is deliberate: there the typed
+        // text lives only in the input field and gets into the query on
+        // Enter, so "Refresh" or a sort change with a typed but unsent word
+        // reread the section WITHOUT it: the word is on screen, but the
+        // showcase does not reflect it. Here the query is always what the
+        // person sees in the field.
         self.query = text.to_string();
         QueryEdit::Kept
     }
 
-    /// Через сколько применять набранное слово, пока человек печатает.
+    /// How soon to apply the typed word while the person is typing.
     ///
-    /// Обзор диска (и сетка под фильтром «только установленное») ищет по
-    /// уже прочитанному списку — без сети, поэтому сразу (0). Магазин и
-    /// раздел «установленное + магазин» (одним запросом) — после паузы
-    /// [`SEARCH_DEBOUNCE_MS`]: посимвольно магазин не дёргаем. Enter
-    /// применяет сразу при любом виде раздела.
+    /// A disk overview (and the grid under the "installed only" filter)
+    /// searches the already read list without the network, so right away (0).
+    /// The store and the "installed + store" section (one request) wait for
+    /// the [`SEARCH_DEBOUNCE_MS`] pause: we do not query the store per
+    /// character. Enter applies immediately for any kind of section.
     pub fn search_delay_ms(&self) -> u32 {
         if self.is_local() || self.installed_only() {
             0
@@ -2010,29 +2061,29 @@ impl CatalogView {
         }
     }
 
-    /// Ключ запроса за составом раздела: им же сверяется ответ, и чужой
-    /// отбрасывается.
+    /// The request key for the section's contents: the answer is checked
+    /// against it, and a foreign one is discarded.
     ///
-    /// ⚠️ Запрос входит в ключ у ВСЕХ видов раздела, а не только у магазина.
-    /// У обзоров диска ключ был `local:<вид>` без запроса, и два разных
-    /// запроса за одним разделом выглядели для дедупа одинаковыми: набранное
-    /// слово не отправлялось вовсе, а в сетку принимался ответ ещё летящего
-    /// НЕотфильтрованного скана.
+    /// ⚠️ The query is part of the key for ALL section kinds, not only for the
+    /// store. Disk overviews had the key `local:<kind>` without the query, and
+    /// two different queries for one section looked the same to the dedup:
+    /// the typed word was not sent at all, and the grid accepted the answer of
+    /// an UNFILTERED scan still in flight.
     pub fn request_key(&self) -> String {
-        // Под фильтром «только установленное» магазин не спрашивается —
-        // ключ свой, чтобы не слиться с летящим запросом «установленное +
-        // магазин» того же раздела.
+        // Under the "installed only" filter the store is not queried: the key
+        // is its own, so as not to merge with an "installed + store" request
+        // in flight for the same section.
         if self.installed_only() {
             return format!("installed:{}:{}", self.local_scan_which(), self.query);
         }
-        // Установленное и магазин одним запросом: ключ несёт обе части.
+        // Installed items and the store in one request: the key carries both parts.
         if self.installed_view() {
             return format!("combined:{}:{}", self.local_scan_which(), self.store_request_key());
         }
         self.store_request_key()
     }
 
-    /// Ключ без части установленного: обзор диска либо страница магазина.
+    /// The key without the installed part: a disk overview or a store page.
     fn store_request_key(&self) -> String {
         if self.is_local() {
             return format!("local:{}:{}", self.local_scan_which(), self.query);
@@ -2041,15 +2092,16 @@ impl CatalogView {
             return format!("aur:{}", self.aur_cache_key());
         }
         if let Some(json) = self.spices_json() {
-            // Темы по составу — своя витрина у каждого раздела.
+            // Themes by composition: each section has its own showcase.
             let json = if self.spices_parts_mode() { format!("{json}@{}", self.category.key) } else { json.to_string() };
             return format!("spices:{json}:{}:{}:{}", self.page, self.active_sort(), self.query);
         }
         if self.wallhaven_mode() {
             return format!("wallhaven:{}:{}:{}", self.page, self.active_sort(), self.query);
         }
-        // Библиотеку Axon читает модель источника, не каталог: ключ свой,
-        // чтобы не слиться с витриной KDE Store того же раздела.
+        // The Axon library is read by the source model, not the catalog: the key
+        // is its own, so as not to merge with the KDE Store showcase of the same
+        // section.
         if self.axon_mode() {
             return "axon".to_string();
         }
@@ -2067,69 +2119,71 @@ impl CatalogView {
     }
 }
 
-/// Что делать вкладке после правки строки поиска.
+/// What the tab should do after the search line was edited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QueryEdit {
-    /// Ничего не изменилось — трогать нечего.
+    /// Nothing changed: nothing to touch.
     Idle,
-    /// Набранное принято, раздел перечитывать рано: поиск применяет Enter.
+    /// The typed text is accepted; it is too early to reread the section: search is applied by Enter.
     Kept,
-    /// Поле опустело — запрос сброшен, раздел перечитать сразу.
+    /// The field became empty: the query is reset, reread the section right away.
     Cleared,
 }
 
-/// Видимость и подписи шапки каталога.
+/// Visibility and labels of the catalog header.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Chrome {
     pub search: bool,
-    /// Подсказка в строке поиска (пусто, когда строки нет).
+    /// The placeholder in the search line (empty when there is no line).
     pub search_placeholder: String,
-    /// «Работает, но при условии» — подпись под заголовком раздела. Раздел при
-    /// этом остаётся на месте: прятать работающее вместо того, чтобы назвать
-    /// условие, — не наш способ (правило #13).
+    /// "Works, but on a condition": a label under the section heading. The
+    /// section stays in place: hiding something that works instead of naming
+    /// the condition is not our way (rule #13).
     pub caveat: Option<String>,
     pub source_bar: bool,
     pub style_bar: bool,
     pub lock_bar: bool,
-    /// Чипы размера курсора — в разделе «Курсоры».
+    /// Cursor size chips, in the "Cursors" section.
     pub cursor_size_bar: bool,
     pub sort_combo: bool,
     pub pagination: bool,
-    /// Кнопка «Установить из файла…» (`crate::local_install::button_for`).
+    /// The "Install from file…" button (`crate::local_install::button_for`).
     pub install_file: bool,
 }
 
-// ── Экраны раздела ─────────────────────────────────────────────────────
+// ── Section screens ────────────────────────────────────────────────────
 
-/// Витрина плиток.
+/// The tile showcase.
 pub const SCREEN_GRID: &str = "grid";
-/// Объяснение, почему раздела здесь нет.
+/// An explanation of why the section is not here.
 pub const SCREEN_NOTE: &str = "note";
-/// Панель экрана входа при Plasma Login Manager.
+/// The login screen panel under Plasma Login Manager.
 pub const SCREEN_PLASMA_LOGIN: &str = "plasmalogin";
-/// Раскладки панели MATE (`categories::MATE_PANEL_KEY`).
+/// MATE panel layouts (`categories::MATE_PANEL_KEY`).
 pub const SCREEN_MATE_PANEL: &str = "matepanel";
-/// Раздел настроек (`categories::SETTINGS_PANELS`): тот же раздел, что во
-/// вкладке «Настройки», ключ раздела — ключ категории.
+/// A settings section (`categories::SETTINGS_PANELS`): the same section as
+/// in the "Settings" tab; the section key is the category key.
 pub const SCREEN_SETTINGS: &str = "settings";
-/// Библиотека Razer Axon — источник «Razer Axon» раздела обоев
-/// ([`CatalogView::axon_mode`]): свой экран, сетку каталога не спрашиваем.
+/// The Razer Axon library, the "Razer Axon" source of the wallpaper section
+/// ([`CatalogView::axon_mode`]): its own screen; the catalog grid is not
+/// queried.
 pub const SCREEN_AXON: &str = "axon";
 
-/// Модуль «Параметров системы», которым настраивается Plasma Login Manager
+/// The "System Settings" module that configures Plasma Login Manager
 /// (`/usr/share/applications/kcm_plasmalogin.desktop`,
 /// `Exec=systemsettings kcm_plasmalogin`).
 pub const PLASMA_LOGIN_KCM: &str = "kcm_plasmalogin";
 
-/// Чем открыть настройки экрана входа Plasma Login Manager — по порядку
-/// попыток. Первой — сами «Параметры системы» на нужной странице (так
-/// открывает пункт меню), запасной — тот же модуль отдельным окном
-/// (`kcmshell6`). `have(имя)` — есть ли такая программа. Пусто — открыть
-/// нечем, кнопку не показывать, а человека направить словами
-/// ([`plasma_login_panel`] с `can_open = false`).
+/// What to open the Plasma Login Manager login screen settings with, in
+/// order of attempts. First "System Settings" itself on the right page
+/// (that is how the menu item opens it), the fallback is the same module
+/// in a separate window (`kcmshell6`). `have(name)` tells whether such a
+/// program exists. Empty means there is nothing to open it with: do not
+/// show the button, and direct the person in words ([`plasma_login_panel`]
+/// with `can_open = false`).
 ///
-/// Прямо на подстраницу «Appearance» модуль не открыть: её он открывает
-/// сам изнутри, аргумента для неё нет.
+/// The module cannot be opened directly on the "Appearance" subpage: it
+/// opens it itself from inside, and there is no argument for it.
 pub fn login_settings_commands(have: &dyn Fn(&str) -> bool) -> Vec<Vec<String>> {
     ["systemsettings", "kcmshell6"]
         .iter()
@@ -2138,24 +2192,25 @@ pub fn login_settings_commands(have: &dyn Fn(&str) -> bool) -> Vec<Vec<String>> 
         .collect()
 }
 
-/// Подписи панели экрана входа при Plasma Login Manager.
+/// Labels of the login screen panel under Plasma Login Manager.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlasmaLoginPanel {
-    /// Заголовок панели.
+    /// The panel heading.
     pub title: String,
-    /// Что это и что тут можно поменять — человеческим языком.
+    /// What this is and what can be changed here, in plain language.
     pub body: String,
-    /// Кнопка в настройки экрана входа.
+    /// The button to the login screen settings.
     pub open_label: String,
-    /// Подсказка тем, кто пришёл за темами из магазина.
+    /// A hint for those who came for themes from the store.
     pub store_hint: String,
-    /// Строка состояния, если открыть настройки не вышло.
+    /// The status line if opening the settings did not work.
     pub open_failed: String,
 }
 
-/// Подписи панели Plasma Login Manager. `can_open` — есть чем открыть
-/// настройки ([`login_settings_commands`] не пуст); если нечем, кнопки не
-/// будет, и текст сам говорит, куда идти.
+/// Labels of the Plasma Login Manager panel. `can_open` means there is
+/// something to open the settings with ([`login_settings_commands`] is not
+/// empty); if there is nothing, there is no button, and the text itself
+/// says where to go.
 pub fn plasma_login_panel(can_open: bool) -> PlasmaLoginPanel {
     let mut body = tr(
         "It comes with KDE Plasma 6.6 and later and doesn't support third-party themes: \
@@ -2180,13 +2235,13 @@ pub fn plasma_login_panel(can_open: bool) -> PlasmaLoginPanel {
     }
 }
 
-// ── Звуки событий выключены ────────────────────────────────────────────
+// ── Event sounds are turned off ────────────────────────────────────────
 
-/// Полоса над разделом «Звуки», когда системные звуки в окружении
-/// выключены (в MATE — `org.mate.sound event-sounds`, в остальных — ключ из
-/// `qt_settings::sound_backend`). В таком состоянии любая звуковая тема
-/// немая: применить её можно, услышать — нет, и человек решит, что тема
-/// сломана (правило #13 — назвать условие заранее).
+/// The bar above the "Sounds" section when system sounds are turned off in
+/// the environment (in MATE `org.mate.sound event-sounds`, in the others
+/// the key from `qt_settings::sound_backend`). In this state any sound
+/// theme is mute: it can be applied but not heard, and the person will
+/// decide the theme is broken (rule #13: name the condition in advance).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EventSoundsBanner {
     pub visible: bool,
@@ -2194,11 +2249,12 @@ pub struct EventSoundsBanner {
     pub button: String,
 }
 
-/// Решение полосы: раздел `cat_key` и сырой ответ чтения выключателя
-/// (`qt_settings::sound_read_argv_for(.., EventSounds, ..)`).
+/// The bar's decision: section `cat_key` and the raw answer of reading the
+/// switch (`qt_settings::sound_read_argv_for(.., EventSounds, ..)`).
 ///
-/// Пустой ответ — прочитать не удалось (нет схемы, нет утилиты): тогда
-/// молчим, а не пугаем «выключено» там, где мы просто не знаем.
+/// An empty answer means reading failed (no schema, no utility): then we
+/// stay silent rather than scare with "turned off" where we simply do not
+/// know.
 pub fn event_sounds_banner(cat_key: &str, raw: &str) -> EventSoundsBanner {
     let off = cat_key == "sounds"
         && !raw.trim().is_empty()
@@ -2213,25 +2269,25 @@ pub fn event_sounds_banner(cat_key: &str, raw: &str) -> EventSoundsBanner {
     }
 }
 
-// ── «Вернуть как было» после «Применить» ───────────────────────────────
+// ── "Restore as it was" after "Apply" ──────────────────────────────────
 
-/// Полоса «Вернуть как было» раздела: удачное «Применить» оставило снимок
-/// того, что было до него (`install_journal::Applied`), и человек может
-/// вернуть это одной кнопкой.
+/// The section's "Restore as it was" bar: a successful "Apply" left a
+/// snapshot of what was there before it (`install_journal::Applied`), and
+/// the person can restore it with one button.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct AppliedRevertBanner {
     pub visible: bool,
-    /// Раздел, который вернётся (ключ категории).
+    /// The section that will be restored (the category key).
     pub section: String,
-    /// Что вернётся — словами.
+    /// What will be restored, in words.
     pub text: String,
-    /// Подпись кнопки.
+    /// The button label.
     pub button: String,
 }
 
-/// Когда было «Применить» — коротко, для подписи: `25.10, 14:02`. Метка
-/// журнала — местное время ISO (`2026-10-25T14:02:33`); не разобралась —
-/// `None`, и подпись обходится без времени.
+/// When "Apply" happened, briefly, for the label: `25.10, 14:02`. The log
+/// timestamp is local time in ISO (`2026-10-25T14:02:33`); if it does not
+/// parse, `None`, and the label does without the time.
 pub fn applied_when(applied_at: Option<&str>) -> Option<String> {
     let s = applied_at?;
     let b = s.as_bytes();
@@ -2242,16 +2298,17 @@ pub fn applied_when(applied_at: Option<&str>) -> Option<String> {
     Some(format!("{}.{}, {}", &s[8..10], &s[5..7], &s[11..16]))
 }
 
-/// Решение полосы раздела `cat_key`.
+/// The bar's decision for section `cat_key`.
 ///
-/// * `applied` — запись «Применить» этого раздела в общем журнале;
-/// * `layer_memo` — у цветов вне Plasma есть своя памятка слоя
-///   (`shell_palette::read_layer_memo`) с правками, которые можно вернуть;
-/// * `shell_revert_shown` — у полосы «Палитра оболочки» видна своя кнопка
-///   «Вернуть как было» (`PaletteBanner::can_revert` при живом шелле).
+/// * `applied`: this section's "Apply" record in the common log;
+/// * `layer_memo`: colours outside Plasma have their own layer note
+///   (`shell_palette::read_layer_memo`) with edits that can be restored;
+/// * `shell_revert_shown`: the "Shell palette" bar shows its own "Restore
+///   as it was" button (`PaletteBanner::can_revert` with a live shell).
 ///
-/// Кнопка на раздел одна. У цветов, пока видна кнопка полосы шелла,
-/// своей нет: та возвращает и файлы шелла, и прежнюю схему.
+/// There is one button per section. For colours, while the shell bar's
+/// button is visible, there is none of its own: that one restores both the
+/// shell files and the previous scheme.
 pub fn applied_revert_banner(
     cat_key: &str,
     applied: Option<&crate::install_journal::Applied>,
@@ -2301,8 +2358,8 @@ pub fn applied_revert_banner(
     AppliedRevertBanner { visible: true, section: cat_key.to_string(), text, button }
 }
 
-/// Итог «Вернуть как было» по записи «Применить» (`revert_applied_at`):
-/// `(получилось, текст для человека)`.
+/// The result of "Restore as it was" by the "Apply" record
+/// (`revert_applied_at`): `(success, text for the person)`.
 pub fn applied_revert_outcome(theme: &str, result: &std::io::Result<Option<Vec<String>>>, home: &str) -> (bool, String) {
     match result {
         Ok(None) => (false, tr("There is nothing to return: Rexon has no saved copy for this section.")),
@@ -2319,8 +2376,9 @@ pub fn applied_revert_outcome(theme: &str, result: &std::io::Result<Option<Vec<S
                 Some(rest) => format!("~{rest}"),
                 None => p.clone(),
             };
-            // Пути — файлы; остальное — ключи настроек стола (gsettings,
-            // dconf, xfconf): у них своя строка, файлами их не называть.
+            // Paths are files; the rest are desktop settings keys (gsettings,
+            // dconf, xfconf): they get their own line and must not be called
+            // files.
             let (values, files): (Vec<&String>, Vec<&String>) =
                 failed.iter().partition(|f| crate::install_journal::is_value_key(f));
             let mut lines = Vec::new();
@@ -2354,14 +2412,14 @@ pub fn applied_revert_outcome(theme: &str, result: &std::io::Result<Option<Vec<S
     }
 }
 
-/// «Вернуть как было» раздела `section`: одна кнопка полосы
-/// [`applied_revert_banner`].
+/// "Restore as it was" for section `section`: the one button of the
+/// [`applied_revert_banner`] bar.
 ///
-/// У цветов с памяткой слоя первой работает она
-/// (`shell_palette::revert_scheme_layer`: по ключам, правки после Rexon
-/// бережёт), затем запись «Применить» — только для путей, которых памятка не
-/// касается (и не для самой памятки: иначе вернулась бы её прежняя копия).
-/// Остальные разделы — запись «Применить» целиком.
+/// For colours with a layer note the note works first
+/// (`shell_palette::revert_scheme_layer`: by keys, keeping edits made after
+/// Rexon), then the "Apply" record, only for paths the note does not touch
+/// (and not for the note itself: otherwise its previous copy would come
+/// back). Other sections use the whole "Apply" record.
 pub fn revert_applied_section(
     rexon_dir: &Path,
     palette: &crate::shell_palette::PaletteHome,
@@ -2391,16 +2449,16 @@ pub fn revert_applied_section(
     applied_revert_outcome(&theme, &journal::revert_applied_at(rexon_dir, section), &palette.home)
 }
 
-// ── Страницы ───────────────────────────────────────────────────────────
+// ── Pages ──────────────────────────────────────────────────────────────
 
-/// Сколько всего страниц у категории.
+/// How many pages the category has in total.
 ///
-/// Магазин листает ровно по запрошенному размеру (`page × page_size`), а
-/// скрытые им работы просто выпадают из своей страницы: на странице бывает
-/// 18 карточек из двадцати, но следующая всё равно начинается с 21-й.
-/// Поэтому число страниц считается по ЗАПРОШЕННОМУ размеру. Прежний счёт по
-/// пришедшей странице (318 / 18 = 18 вместо 16) показывал в конце пустые
-/// страницы — проверено 03.10.2026 на Global Themes: 18, 20 × 14, 18, 0.
+/// The store pages by exactly the requested size (`page × page_size`), and
+/// works it hides simply drop out of their page: a page may have 18 cards
+/// out of twenty, but the next one still starts with the 21st. So the
+/// number of pages is counted by the REQUESTED size. The former count by
+/// the received page (318 / 18 = 18 instead of 16) showed empty pages at
+/// the end: checked on 03.10.2026 on Global Themes: 18, 20 × 14, 18, 0.
 pub fn total_pages(total: i64, page_size: u32) -> i64 {
     if total <= 0 {
         return 1;
@@ -2409,7 +2467,7 @@ pub fn total_pages(total: i64, page_size: u32) -> i64 {
     (1).max((total + per - 1) / per)
 }
 
-/// Состояние блока «Страница N / M».
+/// The state of the "Page N / M" block.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pagination {
     pub label: String,
@@ -2417,7 +2475,7 @@ pub struct Pagination {
     pub next_enabled: bool,
 }
 
-/// Блок страниц под текущий ответ каталога.
+/// The pages block for the current catalog answer.
 pub fn pagination(page: i64, total: i64, shown: usize, page_size: u32) -> Pagination {
     let pages = total_pages(total, page_size);
     Pagination {
@@ -2427,52 +2485,56 @@ pub fn pagination(page: i64, total: i64, shown: usize, page_size: u32) -> Pagina
     }
 }
 
-/// Есть ли следующая страница, которую стоит прогреть заранее.
+/// Whether there is a next page worth warming up in advance.
 ///
-/// ⚠️ Починка оригинала (правило #16). Прогрев считал страницы по
-/// ЗАПРОШЕННОМУ размеру (двадцать), а кнопка «Вперёд» — по реально пришедшему
-/// (около десяти). Из-за этого во второй половине каталога кнопка листала
-/// дальше, а прогрев считал, что страниц уже нет, и та страница каждый раз
-/// открывалась через сеть. Счёт теперь один на обоих.
+/// ⚠️ A fix of the original (rule #16). The warm-up counted pages by the
+/// REQUESTED size (twenty), and the "Forward" button by the actually
+/// received one (about ten). Because of this, in the second half of the
+/// catalog the button paged on, while the warm-up thought there were no
+/// pages left, and that page was opened over the network every time. The
+/// count is now shared by both.
 pub fn has_page_to_prefetch(page: i64, total: i64, page_size: u32) -> bool {
     total > 0 && (page + 1) < total_pages(total, page_size)
 }
 
-/// Страница Rexon, набранная из потока источника.
+/// A Rexon page assembled from the source's stream.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StreamPage<T> {
-    /// Ровно `page_size` работ подряд (меньше — только в самом конце потока).
+    /// Exactly `page_size` works in a row (fewer only at the very end of the stream).
     pub items: Vec<T>,
-    /// Сколько работ источник назвал всего (`totalitems`) — с теми, что он
-    /// потом скрывает, поэтому видимых бывает меньше.
+    /// How many works the source named in total (`totalitems`), including the
+    /// ones it later hides, so there may be fewer visible ones.
     pub total: i64,
-    /// За страницей есть хотя бы одна работа: «Вперёд» горит по факту, а не
-    /// по `total`.
+    /// There is at least one work after the page: "Forward" lights up by the
+    /// fact, not by `total`.
     pub has_more: bool,
 }
 
-/// Добор страницы: страница Rexon номер `page` — работы потока
-/// `[page × size, page × size + size)`, где поток — серверные страницы
-/// подряд по `server_size` работ. Размеры разные: страница Rexon — целые
-/// ряды сетки ([`grid_page_size`]), серверная — всегда [`PAGE_SIZE`].
+/// Filling up a page: Rexon page number `page` is the stream works
+/// `[page × size, page × size + size)`, where the stream is server pages in
+/// a row of `server_size` works each. The sizes differ: a Rexon page is
+/// whole grid rows ([`grid_page_size`]), a server page is always
+/// [`PAGE_SIZE`].
 ///
-/// Так ведёт себя KDE Store (OCS): листает строго по запрошенным двадцати, а
-/// скрытые им работы выпадают из своей страницы, и на экране оставалась дыра
-/// (Global Themes 03.10.2026: 18, 20 × 14, 18). Здесь недостачу закрывают
-/// работы следующей серверной страницы, а следующая страница Rexon начинается
-/// ровно с того места, где кончилась эта, — без повторов и пропусков.
+/// This is how KDE Store (OCS) behaves: it pages strictly by the requested
+/// twenty, and the works it hides drop out of their page, leaving a hole on
+/// screen (Global Themes 03.10.2026: 18, 20 × 14, 18). Here the shortfall
+/// is filled by works from the next server page, and the next Rexon page
+/// starts exactly where this one ended, without repeats or gaps.
 ///
-/// `fetch(k)` — серверная страница `k` (с нуля, по `server_size` работ):
-/// работы и `totalitems`.
-/// Источник не ответил — `(пусто, 0)`. Серверные страницы тянутся с нулевой
-/// по порядку, потому что, где в потоке начинается страница Rexon, известно
-/// только сложив длины всех предыдущих; при листании подряд они уже в кеше
-/// (`ocs_cache`), так что сеть видит одну-две новые страницы за шаг.
-/// Тянется на одну работу больше страницы — чтобы честно знать, есть ли
-/// следующая (`has_more`). Конец потока — по счёту самого источника
-/// (`ceil(total / server_size)` серверных страниц), а не по короткой странице:
-/// короткие страницы бывают и в середине. Источник замолчал посреди потока —
-/// о следующей странице судим по `total`, как раньше, а не гасим «Вперёд».
+/// `fetch(k)` is server page `k` (from zero, `server_size` works each):
+/// the works and `totalitems`.
+/// If the source did not answer, `(empty, 0)`. Server pages are fetched
+/// from zero in order, because where a Rexon page starts in the stream is
+/// known only by adding up the lengths of all previous ones; when paging
+/// in sequence they are already in the cache (`ocs_cache`), so the network
+/// sees one or two new pages per step. One work more than a page is
+/// fetched, to know honestly whether there is a next one (`has_more`). The
+/// end of the stream is by the source's own count
+/// (`ceil(total / server_size)` server pages), not by a short page: short
+/// pages also occur in the middle. If the source went silent in the middle
+/// of the stream, we judge the next page by `total`, as before, rather
+/// than turn off "Forward".
 pub fn stream_page<T>(
     page: i64,
     page_size: u32,
@@ -2491,7 +2553,7 @@ pub fn stream_page<T>(
     loop {
         let (chunk, reported) = fetch(server);
         if reported <= 0 && chunk.is_empty() {
-            // Нулевая страница пуста — пустой поток; дальше — сбой источника.
+            // An empty zero page means an empty stream; later ones mean a source failure.
             broken = server > 0;
             break;
         }
@@ -2518,10 +2580,10 @@ pub fn stream_page<T>(
     StreamPage { items, total, has_more }
 }
 
-/// Блок страниц для потока с добором ([`stream_page`]): «Вперёд» — по факту
-/// (`has_more`), число страниц — по `total`, пока поток не кончился, и по
-/// факту, когда кончился (скрытых работ в конце может набраться на целую
-/// страницу — пустую последнюю не обещаем).
+/// The pages block for a filled-up stream ([`stream_page`]): "Forward" by
+/// the fact (`has_more`), the number of pages by `total` while the stream
+/// has not ended, and by the fact once it has (hidden works at the end may
+/// add up to a whole page, and we do not promise an empty last one).
 pub fn stream_pagination(page: i64, total: i64, has_more: bool, page_size: u32) -> Pagination {
     let pages = if has_more {
         total_pages(total, page_size).max(page + 2)
@@ -2535,8 +2597,8 @@ pub fn stream_pagination(page: i64, total: i64, has_more: bool, page_size: u32) 
     }
 }
 
-/// Ломоть AUR-списка под текущую страницу: у AUR серверных страниц нет,
-/// RPC отдаёт всё разом, и страницы режутся на месте.
+/// A slice of the AUR list for the current page: the AUR has no server
+/// pages, RPC returns everything at once, and pages are cut on the spot.
 pub fn aur_page_range(len: usize, page: i64) -> std::ops::Range<usize> {
     let per = PAGE_SIZE as usize;
     let start = (page.max(0) as usize).saturating_mul(per).min(len);
@@ -2544,13 +2606,13 @@ pub fn aur_page_range(len: usize, page: i64) -> std::ops::Range<usize> {
     start..end
 }
 
-/// Страница, на которую сажаем свежий AUR-список: дальше конца не уводим.
+/// The page a fresh AUR list lands on: never beyond the end.
 pub fn aur_clamp_page(len: usize, page: i64) -> i64 {
     let last = if len == 0 { 0 } else { (len as i64 - 1) / PAGE_SIZE as i64 };
     page.min(last.max(0)).max(0)
 }
 
-/// Можно ли листать AUR-список на `delta` страниц.
+/// Whether the AUR list can be paged by `delta` pages.
 pub fn aur_can_change_page(len: usize, page: i64, delta: i64) -> bool {
     let new = page + delta;
     if new < 0 {
@@ -2562,20 +2624,21 @@ pub fn aur_can_change_page(len: usize, page: i64, delta: i64) -> bool {
     true
 }
 
-/// Слишком короткий запрос для поиска по AUR — RPC на одной букве отдаёт
-/// половину репозитория.
+/// A query too short for an AUR search: RPC returns half the repository on
+/// a single letter.
 pub fn aur_query_too_short(query: &str) -> bool {
     !query.is_empty() && query.chars().count() < AUR_MIN_QUERY
 }
 
-/// Подпись при слишком коротком запросе к AUR.
+/// The label for a query to the AUR that is too short.
 pub fn aur_query_too_short_msg() -> String {
     trf("AUR search needs at least %1 characters", &[&AUR_MIN_QUERY])
 }
 
-/// Подпись раздела и поиска, когда магазин KDE страницу не дал
-/// ([`ocs::StoreFailure`]): честно «не отвечает», а не «ничего не найдено».
-/// Установленное раздел показывает по-прежнему — это только строка состояния.
+/// The section and search label when the KDE store did not give a page
+/// ([`ocs::StoreFailure`]): an honest "not responding" rather than
+/// "nothing found". The section still shows installed items: this is only
+/// the status line.
 pub fn store_failure_text(failure: &ocs::StoreFailure) -> String {
     match failure {
         ocs::StoreFailure::Refused { code, message } if !message.is_empty() => trf(
@@ -2595,36 +2658,38 @@ pub fn store_failure_text(failure: &ocs::StoreFailure) -> String {
     }
 }
 
-// ── Местный поиск и сканы диска ────────────────────────────────────────
+// ── Local search and disk scans ────────────────────────────────────────
 
-/// Остаётся ли тема с диска в поле зрения при действующем запросе.
+/// Whether a theme from disk stays in view under the active query.
 ///
-/// Единое мерило на ВСЕ места, где страница показывает темы с диска:
-/// разделы-обзоры («Активные», «Загруженные», «Системные», «Стиль
-/// приложений», «Избранное»), подсказки строки поиска и установленные темы,
-/// доклеенные сверху магазина в «Сплэш-экране» и «Экране блокировки».
-/// Последние поиск раньше не замечал вовсе — витрина фильтровалась, а они
-/// оставались на месте.
+/// One measure for ALL places where the page shows themes from disk:
+/// overview sections ("Active", "Downloaded", "System", "Application
+/// style", "Favourites"), search line suggestions and installed themes
+/// glued on top of the store in "Splash screen" and "Lock screen". The
+/// latter used to be ignored by search entirely: the showcase was
+/// filtered, while they stayed in place.
 pub fn local_matches(name: &str, query: &str) -> bool {
     let q = query.trim().to_lowercase();
     q.is_empty() || name.to_lowercase().contains(&q)
 }
 
-/// Что именно сканировать на диске по ключу раздела.
+/// What exactly to scan on disk by the section key.
 ///
-/// Обратная сторона [`AppearanceView::local_scan_which`]: ключ собирает
-/// ядро (`widgetstyle:<под-выбор>` для «Стиля приложений», иначе голый ключ
-/// раздела), и разбирать его обратно тоже ядру. Пока разбор жил у
-/// исполнителя, формат ключа знали двое, и разойтись они могли молча —
-/// сборщик добавил бы префикс, а разборщик о нём не узнал.
+/// The reverse side of [`AppearanceView::local_scan_which`]: the core
+/// builds the key (`widgetstyle:<sub-choice>` for "Application style",
+/// otherwise the bare section key), and parsing it back is also up to the
+/// core. While parsing lived in the executor, two parties knew the key
+/// format, and they could diverge silently: the builder would add a
+/// prefix, and the parser would not learn about it.
 ///
-/// Отдаёт `(вид скана, имя Qt-стиля)`:
-///   * `active`, `downloaded`, `system`, `splash`, `lockscreen` — свой скан
-///     на каждый, имя пустое;
-///   * `widgetstyle` — «Стиль приложений» одной сеткой: стили Qt и темы
-///     Kvantum; вторым элементом — фильтр (`all`, `qt`, `kvantum`);
-///   * `section` — раздел целиком, вторым элементом — ключ раздела;
-///   * `` (пусто) — такого скана нет, показывать нечего.
+/// Returns `(scan kind, Qt style name)`:
+///   * `active`, `downloaded`, `system`, `splash`, `lockscreen`: a scan of
+///     its own for each, the name is empty;
+///   * `widgetstyle`: "Application style" as one grid: Qt styles and
+///     Kvantum themes; the second element is the filter (`all`, `qt`,
+///     `kvantum`);
+///   * `section`: a whole section, the second element is the section key;
+///   * `` (empty): there is no such scan, nothing to show.
 pub fn local_scan_plan(which: &str) -> (String, String) {
     if let Some(sub) = which.strip_prefix("widgetstyle:") {
         let filter = match sub {
@@ -2638,13 +2703,13 @@ pub fn local_scan_plan(which: &str) -> (String, String) {
         "active" | "downloaded" | "system" | "splash" | "lockscreen" => {
             (which.to_string(), String::new())
         }
-        // Раздел окружения: всё его на диске — включённое и нет.
+        // An environment section: everything of it on disk, enabled or not.
         k if categories::DE_SECTIONS.iter().any(|(_, key)| *key == k) => {
             ("section".to_string(), k.to_string())
         }
-        // Раздел KDE с сеткой установленного (глобальные темы, стили Plasma,
-        // цвета, рамки, значки, курсоры, GTK, звуки): тот же скан раздела —
-        // текущая, свои, системные.
+        // A KDE section with an installed grid (global themes, Plasma styles,
+        // colours, frames, icons, cursors, GTK, sounds): the same section scan,
+        // current, own, system.
         k if categories::KDE_INSTALLED_SECTIONS.iter().any(|(_, key)| *key == k) => {
             ("section".to_string(), k.to_string())
         }
@@ -2652,13 +2717,13 @@ pub fn local_scan_plan(which: &str) -> (String, String) {
     }
 }
 
-/// Раздел с сеткой установленного при любом режиме (без экрана блокировки,
-/// у которого она есть только в режиме полных тем). Тема, поставленная в
-/// такой раздел, видна в нём самом (`local_install`), а не только в
-/// «Загруженных».
+/// A section with an installed grid in any mode (excluding the lock
+/// screen, which has one only in full themes mode). A theme installed into
+/// such a section is visible in that section itself (`local_install`), not
+/// only in "Downloaded".
 ///
-/// Ключ ищется в таблице разделов ([`categories::categories`]); для
-/// открытого раздела — [`has_installed_grid_for`].
+/// The key is looked up in the section table ([`categories::categories`]);
+/// for the open section use [`has_installed_grid_for`].
 pub fn has_installed_grid(key: &str) -> bool {
     categories::categories(Path::new(""))
         .iter()
@@ -2666,17 +2731,18 @@ pub fn has_installed_grid(key: &str) -> bool {
         .is_some_and(has_installed_grid_for)
 }
 
-/// Сетка установленного у раздела: она есть у ЛЮБОГО раздела, у которого
-/// есть и скан диска ([`local_scan_plan`]), и магазин.
+/// The installed grid of a section: ANY section that has both a disk scan
+/// ([`local_scan_plan`]) and a store has one.
 ///
-/// До 17.10.2026 это решал жёсткий список восьми разделов KDE и заставки,
-/// и раздел видел либо только диск, либо только магазин: у Conky и
-/// разделов KWin (переключатель, скрипты, эффекты) скан был, а
-/// установленное в своём разделе не показывалось вовсе. Теперь новый
-/// раздел с магазином и сканом получает кнопку «Загрузить новые…» сам.
+/// Until 17.10.2026 this was decided by a hardcoded list of eight KDE
+/// sections and the splash, and a section saw either only the disk or only
+/// the store: Conky and the KWin sections (switcher, scripts, effects) had
+/// a scan, but what was installed was not shown in their own section at
+/// all. Now a new section with a store and a scan gets the "Get new…"
+/// button by itself.
 ///
-/// Экран блокировки сюда не входит: у него сетка есть только в режиме
-/// полных тем ([`CatalogView::has_installed_view`]).
+/// The lock screen is not included: it has a grid only in full themes mode
+/// ([`CatalogView::has_installed_view`]).
 pub fn has_installed_grid_for(cat: &ThemeCategory) -> bool {
     if cat.virtual_ || cat.key == "lockscreen" || categories::LOCAL_VIEW_KEYS.contains(&cat.key.as_str()) {
         return false;
@@ -2685,18 +2751,19 @@ pub fn has_installed_grid_for(cat: &ThemeCategory) -> bool {
     has_store && !local_scan_plan(&cat.key).0.is_empty()
 }
 
-/// Остаётся ли КАРТОЧКА темы с диска в поле зрения при действующем запросе.
+/// Whether a CARD of a theme from disk stays in view under the active query.
 ///
-/// Сверх показанного имени ([`local_matches`]) тема находится и по тому, как
-/// её зовут в оригинале: по имени без перевода (`source_name`, `Name=` без
-/// языка) и по имени каталога из номера карточки (`local:<вид>:<каталог>`).
-/// Иначе системные темы с переводом в метаданных терялись: «Adwaita» и
-/// «HighContrast» не находились, потому что на карточке стоят «Адвайта» и
-/// «Высококонтрастная» (живая проверка r1434, 16.10.2026).
+/// Beyond the shown name ([`local_matches`]) a theme is also found by its
+/// original name: the untranslated name (`source_name`, `Name=` without a
+/// language) and the directory name from the card id
+/// (`local:<kind>:<directory>`). Otherwise system themes with translations
+/// in their metadata got lost: "Adwaita" and "HighContrast" were not found
+/// because the card showed their Russian names (live check r1434,
+/// 16.10.2026).
 ///
-/// По оригинальным именам сверка ещё и без пробелов, дефисов и
-/// подчёркиваний: каталог `HighContrast` находится по «High Contrast»,
-/// `adw-gtk3` — по «adw gtk3».
+/// For original names the comparison also ignores spaces, hyphens and
+/// underscores: the `HighContrast` directory is found by "High Contrast",
+/// `adw-gtk3` by "adw gtk3".
 pub fn local_item_matches(item: &ThemeItem, query: &str) -> bool {
     if local_matches(&item.name, query) {
         return true;
@@ -2716,12 +2783,12 @@ pub fn local_item_matches(item: &ThemeItem, query: &str) -> bool {
     false
 }
 
-/// Имя без пробелов и знаков-разделителей — для сверки оригинальных имён.
+/// A name without spaces and separator characters, for comparing original names.
 fn squeeze_name(s: &str) -> String {
     s.chars().filter(|c| c.is_alphanumeric()).collect()
 }
 
-/// Фильтр списка по строке поиска — для разделов, у которых сети нет.
+/// Filtering a list by the search line, for sections without a network.
 pub fn local_filter(items: &[ThemeItem], query: &str) -> Vec<ThemeItem> {
     items
         .iter()
@@ -2730,8 +2797,8 @@ pub fn local_filter(items: &[ThemeItem], query: &str) -> Vec<ThemeItem> {
         .collect()
 }
 
-/// Подпись статуса по виду скана; `None` — у вида своей подписи нет и берётся
-/// имя раздела.
+/// The status label by scan kind; `None` means the kind has no label of its
+/// own and the section name is used.
 pub fn scan_status(which: &str, n: usize) -> Option<String> {
     match which {
         "active" => Some(trf("Active themes: %1", &[&n])),
@@ -2741,20 +2808,21 @@ pub fn scan_status(which: &str, n: usize) -> Option<String> {
     }
 }
 
-/// Значок «активна» в подписи автора локальной темы.
+/// The "active" marker in the author label of a local theme.
 ///
-/// Подпись, а НЕ признак: страница Rust узнаёт включённую тему по
-/// `ThemeItem::local_kind`, который ставит сам скан. Поиск бейджа в подписи
-/// ([`scan_local_kind`]) остался только для окна на Python.
+/// A label, NOT a flag: the Rust page recognises the enabled theme by
+/// `ThemeItem::local_kind`, which the scan itself sets. Looking for the
+/// badge in the label ([`scan_local_kind`]) remains only for the Python
+/// window.
 pub fn local_active_badge() -> String {
     tr("✅ Active")
 }
 
-/// Какой вид карточки проставить элементу скана.
+/// Which card kind to set on a scan item.
 ///
-/// «Активные» — все с бейджем; «Загруженные» и «Системные» — обычные; у
-/// остальных сканов (стиль приложений, заставка, экран блокировки) активный
-/// элемент узнаётся по подписи автора.
+/// "Active" are all with a badge; "Downloaded" and "System" are plain; for
+/// the other scans (application style, splash, lock screen) the active item
+/// is recognised by the author label.
 pub fn scan_local_kind(which: &str, author: &str) -> &'static str {
     match which {
         "active" => "active",
@@ -2769,25 +2837,26 @@ pub fn scan_local_kind(which: &str, author: &str) -> &'static str {
     }
 }
 
-/// Ответ скана устарел — человек уже ушёл в другой раздел.
+/// The scan answer is stale: the person has already moved to another section.
 ///
-/// Сканы «Стиля приложений» приходят с под-выбором в ключе
-/// (`widgetstyle:<что>`) и снимаются по своему счётчику, а не по имени
-/// раздела. Оригинал выражал ровно это же тремя вложенными условиями, одно из
-/// которых было недостижимо.
+/// "Application style" scans come with a sub-choice in the key
+/// (`widgetstyle:<what>`) and are discarded by their own counter, not by
+/// the section name. The original expressed exactly this with three nested
+/// conditions, one of which was unreachable.
 pub fn scan_answer_stale(which: &str, active_cat_key: &str) -> bool {
     !which.starts_with("widgetstyle") && which != active_cat_key
 }
 
-// ── Экран блокировки ───────────────────────────────────────────────────
+// ── Lock screen ────────────────────────────────────────────────────────
 
-/// Переписать категорию онлайн-карточек под режим «Экрана блокировки».
+/// Rewrite the category of online cards for the "Lock screen" mode.
 ///
-/// Карточки приходят из каталога Global Themes (722) или Wallpapers (299), и
-/// установщик применил бы ВЕСЬ Global Theme либо просто скопировал обои.
-/// Синтетическая категория заставляет его тронуть именно компонент блокировки
-/// (`lockscreen`) или её фон (`lockwallpaper`). Установленные местные карточки
-/// приходят уже с верной категорией — их не трогаем.
+/// The cards come from the Global Themes (722) or Wallpapers (299) catalog,
+/// and the installer would apply the WHOLE Global Theme or just copy the
+/// wallpaper. The synthetic category makes it touch exactly the lock
+/// component (`lockscreen`) or its background (`lockwallpaper`). Installed
+/// local cards already come with the right category, so they are left
+/// alone.
 pub fn stamp_lock_kind(items: &mut [ThemeItem], lock_mode: &str) {
     let forced = if lock_mode == LOCK_MODE_THEMES {
         LOCK_CAT_THEMES
@@ -2802,17 +2871,19 @@ pub fn stamp_lock_kind(items: &mut [ThemeItem], lock_mode: &str) {
     }
 }
 
-// ── Фоновый прогрев категорий ──────────────────────────────────────────
+// ── Background warm-up of categories ───────────────────────────────────
 
-/// Первые страницы всех СЕТЕВЫХ категорий сверху вниз — `(cat_id, sort)`.
+/// The first pages of all NETWORK categories from top to bottom,
+/// `(cat_id, sort)`.
 ///
-/// `cat_id` строкой — тем же значением, что уйдёт в запрос
-/// ([`CatalogView::query_category_id`]), иначе ключ кеша не сойдётся.
-/// Виртуальные «Популярные»/«Новые» включены (они агрегируют ходовые
-/// категории окружения с закреплённой сортировкой); локальные обзоры диска,
-/// разделы без магазина и разделы, которых в окружении нет, пропускаются.
-/// Номера берутся из каталога раздела (`store`), а не из номера раздела:
-/// синтетический номер больше девятисот в магазин не уходит. Дедуп по паре.
+/// `cat_id` as a string, the same value that goes into the request
+/// ([`CatalogView::query_category_id`]); otherwise the cache key would not
+/// match. The virtual "Popular"/"New" are included (they aggregate the
+/// environment's common categories with a fixed sort); local disk
+/// overviews, sections without a store and sections missing in the
+/// environment are skipped. The ids are taken from the section catalog
+/// (`store`), not from the section id: a synthetic id above nine hundred
+/// never goes to the store. Dedup by pair.
 pub fn prefetch_targets(view: &CatalogView, sidebar: &[ThemeCategory]) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
     for cat in sidebar {
@@ -2827,17 +2898,18 @@ pub fn prefetch_targets(view: &CatalogView, sidebar: &[ThemeCategory]) -> Vec<(S
     out
 }
 
-/// Номер категории для прогрева раздела — тот же, что уйдёт в живой запрос:
-/// у «Популярных» и «Новых» это ходовые категории окружения
-/// ([`categories::aggregate_query`]).
+/// The category id for warming up a section: the same one that goes into
+/// the live request: for "Popular" and "New" these are the environment's
+/// common categories ([`categories::aggregate_query`]).
 fn prefetch_cat_id(view: &CatalogView, cat: &ThemeCategory) -> String {
     store_query(cat, &view.de)
 }
 
-/// Номера категорий OCS раздела строкой для запроса (зонт — через запятую,
-/// как понимает магазин): из поля `store`, а не из номера раздела. Сборная
-/// витрина — ходовые категории окружения ([`categories::aggregate_query`]).
-/// Каталог не из OCS — пусто.
+/// The section's OCS category ids as a string for the request (an umbrella
+/// is comma-separated, as the store understands it): from the `store`
+/// field, not from the section id. The combined showcase uses the
+/// environment's common categories ([`categories::aggregate_query`]). A
+/// non-OCS catalog gives an empty string.
 pub fn store_query(cat: &ThemeCategory, de: &str) -> String {
     match &cat.store {
         CatalogSource::OcsShowcase => categories::aggregate_query(de),
@@ -2846,34 +2918,36 @@ pub fn store_query(cat: &ThemeCategory, de: &str) -> String {
     }
 }
 
-/// Раздел виден в окружении каталога — раздел, которого здесь нет, человек
-/// не откроет, и греть его витрину незачем.
+/// The section is visible in the catalog's environment: the person will
+/// not open a section missing here, and there is no point warming up its
+/// showcase.
 fn shown_here(view: &CatalogView, cat: &ThemeCategory) -> bool {
     categories::category_available_in(&cat.key, &view.de, view.session)
 }
 
-/// Раздел закрыт на SteamOS — его витрина человеку не покажется, греть её
-/// незачем.
+/// The section is closed on SteamOS: its showcase will not be shown to the
+/// person, so there is no point warming it up.
 fn steamos_closed(view: &CatalogView, cat: &ThemeCategory) -> bool {
     view.steamos && categories::steamos_block(&cat.key).is_some()
 }
 
-/// Ходит ли раздел в сеть за каталогом.
+/// Whether the section goes to the network for its catalog.
 ///
-/// Каталог — из поля `store`: разделы окружений со своей категорией OCS
-/// под синтетическим номером (рамки XFCE — 138) греются тем же запросом,
-/// что уйдёт живьём. Экран блокировки — нет: номер у него по режиму, и
-/// угадать его здесь значило бы греть не ту витрину.
+/// The catalog comes from the `store` field: environment sections with
+/// their own OCS category under a synthetic id (XFCE frames, 138) are
+/// warmed up with the same request that goes out live. The lock screen is
+/// not: its id depends on the mode, and guessing it here would mean warming
+/// up the wrong showcase.
 fn prefetchable(cat: &ThemeCategory) -> bool {
     !categories::LOCAL_VIEW_KEYS.contains(&cat.key.as_str())
         && cat.key != "lockscreen"
         && matches!(cat.store, CatalogSource::Ocs(_) | CatalogSource::OcsShowcase)
 }
 
-/// Соседи открытого раздела (N+1, затем N+2…), которые стоит прогреть первыми.
+/// Neighbours of the open section (N+1, then N+2…) worth warming up first.
 ///
-/// Прогрессивность: открыл раздел — сразу греем следующий, при переключении он
-/// откроется мгновенно из кеша.
+/// Progressiveness: open a section and we immediately warm up the next one;
+/// when switching it opens instantly from the cache.
 pub fn prefetch_neighbours(
     view: &CatalogView,
     sidebar: &[ThemeCategory],
@@ -2896,7 +2970,7 @@ pub fn prefetch_neighbours(
     front
 }
 
-/// Новая очередь прогрева: соседи впереди, остальное — следом и без дублей.
+/// A new warm-up queue: neighbours first, the rest after them, without duplicates.
 pub fn prefetch_reorder(
     front: &[(String, String)],
     queue: &[(String, String)],
@@ -2910,29 +2984,30 @@ pub fn prefetch_reorder(
     out
 }
 
-// ── Выбор рабочего стола ───────────────────────────────────────────────
+// ── Desktop choice ─────────────────────────────────────────────────────
 
-/// С каким рабочим столом открыть каталог и что при этом запомнить.
+/// Which desktop to open the catalog with and what to remember along the way.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeChoice {
-    /// Рабочий стол каталога.
+    /// The catalog's desktop.
     pub de_id: String,
-    /// Что записать в настройки: `(выбор, какой стол был запущен)`. `None` —
-    /// записывать нечего.
+    /// What to write to the settings: `(choice, which desktop was running)`.
+    /// `None` means nothing to write.
     pub remember: Option<(String, String)>,
 }
 
-/// Побеждает ФАКТИЧЕСКИ запущенный рабочий стол: зашёл в сеанс GNOME —
-/// каталог сам стал гномьим, помнить прошлый выбор тут неправильно.
+/// The ACTUALLY running desktop wins: log into a GNOME session and the
+/// catalog becomes GNOME's by itself; remembering the previous choice here
+/// would be wrong.
 ///
-/// Но выбор, сделанный руками, при этом не затирается, и вот как одно
-/// отличается от другого: вместе с выбором мы запоминаем, какой стол был
-/// запущен В МОМЕНТ выбора. Совпадает с нынешним — значит человек так и
-/// решил, оставляем его выбор; не совпадает — значит он сменил рабочий стол,
-/// и выбор был унаследован, а не сделан.
+/// But a choice made by hand is not erased, and this is how one is told
+/// from the other: together with the choice we remember which desktop was
+/// running AT THE MOMENT of the choice. If it matches the current one, the
+/// person decided so, and we keep their choice; if it does not match, they
+/// changed desktops, and the choice was inherited rather than made.
 ///
-/// Совсем ничего не известно — показываем самый широкий набор разделов, а не
-/// прячем половину каталога.
+/// If nothing is known at all, we show the widest set of sections rather
+/// than hide half the catalog.
 pub fn initial_de(detected: &str, saved: &str, seen: &str) -> DeChoice {
     if !detected.is_empty() && detected != seen {
         return DeChoice {
@@ -2947,21 +3022,21 @@ pub fn initial_de(detected: &str, saved: &str, seen: &str) -> DeChoice {
     DeChoice { de_id: de_id.to_string(), remember: None }
 }
 
-/// Пункт «Определять автоматически» в выборе рабочего стола.
+/// The "Detect automatically" item in the desktop choice.
 pub const DE_AUTO_ID: &str = "auto";
 
-/// Пункты выбора рабочего стола с подписью ручного выбора.
+/// The desktop choice items with the manual choice label.
 ///
-/// Ручной выбор живёт между запусками — так задумано (`initial_de`). Но
-/// когда он отличается от запущенного сеанса, на экране это должно быть
-/// видно: 19.10.2026 в сеансе MATE стояло просто «KDE Plasma», и казалось,
-/// что Rexon спутал рабочий стол. Тогда выбранный пункт подписан «выбрано
-/// вручную, сейчас <сеанс>», а первым идёт «Определять автоматически»,
-/// который этот выбор сбрасывает.
+/// A manual choice lives between launches: that is intended (`initial_de`).
+/// But when it differs from the running session, this must be visible on
+/// screen: on 19.10.2026 a MATE session showed just "KDE Plasma", and it
+/// looked as if Rexon had confused the desktop. So the chosen item is
+/// labelled "chosen manually, now <session>", and the first item is
+/// "Detect automatically", which resets this choice.
 pub fn de_picker_choices(selected: &str, detected: &str) -> Vec<(String, String)> {
     let mut out = crate::categories::appearance_de_choices(selected);
-    // Тайловые окружения стоят одним общим пунктом: sway против Hyprland —
-    // не ручной выбор, а тот же пункт.
+    // Tiling environments share one common item: sway versus Hyprland is
+    // not a manual choice but the same item.
     let tiling = |id: &str| {
         crate::de_customization::de_from_id(id) == Some(crate::de_customization::De::Wlroots)
     };
@@ -2977,8 +3052,8 @@ pub fn de_picker_choices(selected: &str, detected: &str) -> Vec<(String, String)
                 .into_iter()
                 .find(|(id, _)| id == detected)
                 .map(|(_, n)| n)
-                // Узнанный, но неподдержанный стол (UKUI) — его именем, а
-                // не сырым идентификатором.
+                // A recognised but unsupported desktop (UKUI) goes by its name,
+                // not by the raw identifier.
                 .or_else(|| crate::system::unsupported_desktop_name(detected).map(str::to_string))
                 .unwrap_or_else(|| detected.to_string())
         });
@@ -2994,9 +3069,10 @@ pub fn de_picker_choices(selected: &str, detected: &str) -> Vec<(String, String)
     out
 }
 
-/// Что делать по выбранному пункту: `(стол каталога, что записать выбором)`.
-/// «Определять автоматически» — стол сеанса и ПУСТОЙ выбор: с ним
-/// `initial_de` на каждом запуске сам идёт за сеансом.
+/// What to do for the chosen item: `(catalog desktop, what to write as the
+/// choice)`. "Detect automatically" means the session's desktop and an
+/// EMPTY choice: with it `initial_de` follows the session by itself on
+/// every launch.
 pub fn resolve_de_pick(picked: &str, detected: &str) -> (String, String) {
     if picked == DE_AUTO_ID {
         let de = if detected.is_empty() { "kde" } else { detected };
@@ -3006,26 +3082,28 @@ pub fn resolve_de_pick(picked: &str, detected: &str) -> (String, String) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Панель деталей: галерея, кнопки состояния, комментарии
+//  Details panel: gallery, state buttons, comments
 // ═══════════════════════════════════════════════════════════════════════
 
-/// ⚠️ Разделители между слотами стат-строки — настоящий НЕРАЗРЫВНЫЙ ПРОБЕЛ, а
-/// не мнемоника `&nbsp;`: без тегов Qt считает такой текст простым и печатает
-/// мнемонику как есть (замечено попиксельной сверкой со старой версией).
+/// ⚠️ The separators between stats line slots are a real NON-BREAKING SPACE,
+/// not the `&nbsp;` entity: without tags Qt treats such text as plain and
+/// prints the entity as is (noticed by a pixel comparison with the old
+/// version).
 pub const NBSP: &str = "\u{a0}";
 
-// ── Галерея скриншотов ─────────────────────────────────────────────────
+// ── Screenshot gallery ─────────────────────────────────────────────────
 
-/// Скриншоты карусели — РОВНО как на сайте: без первой картинки.
+/// Carousel screenshots EXACTLY as on the site: without the first picture.
 ///
-/// Первый слот на pling — «лицо товара»: сайт показывает его только иконкой в
-/// каталоге и в шапке, в карусели его НЕТ. У нас так же: первый остаётся
-/// превью плитки, галерея — со второго. Картинка у товара всего одна —
-/// показываем её.
+/// The first slot on pling is the "face of the item": the site shows it
+/// only as an icon in the catalog and in the header; it is NOT in the
+/// carousel. The same here: the first stays the tile preview, the gallery
+/// starts from the second. If the item has only one picture, we show it.
 ///
-/// Ссылки из ответа магазина — уменьшённые копии (770×540); в полноэкранном
-/// просмотре они растягивались на монитор и мылились. Каждая гонится через
-/// общий пересчёт в оригинал полного разрешения.
+/// The links from the store response are scaled-down copies (770×540); in
+/// the full-screen view they were stretched to the monitor and looked
+/// blurry. Each one goes through the common conversion to the
+/// full-resolution original.
 pub fn gallery_urls(preview_urls: &[String], preview_url: &str) -> Vec<String> {
     let mut urls: Vec<String> = preview_urls.to_vec();
     if urls.is_empty() && !preview_url.is_empty() {
@@ -3037,15 +3115,16 @@ pub fn gallery_urls(preview_urls: &[String], preview_url: &str) -> Vec<String> {
     urls.iter().map(|u| ocs::full_preview_url(u)).collect()
 }
 
-/// Картинки плитки по очереди: первая не загрузилась (сеть, 404, вместо
-/// картинки пришло что-то другое) — берём следующую.
+/// Tile pictures in turn: if the first did not load (network, 404,
+/// something other than a picture arrived), we take the next one.
 ///
-/// У магазина первая картинка бывает мёртвой при живых остальных: у «Sirin
-/// Cursor» (2370501) `previewpic1` — GIF с иероглифами в имени, сервер на
-/// него отвечает 404, и плитка стояла пустой. Порядок: превью плитки, потом
-/// все `previewpicN` по номерам; последним запасом — оригиналы полного
-/// размера (уменьшенная копия у pling может не собраться при живом
-/// оригинале). Дублей нет.
+/// In the store the first picture is sometimes dead while the others are
+/// alive: for "Sirin Cursor" (2370501) `previewpic1` is a GIF with CJK
+/// characters in the name, the server answers 404 for it, and the tile
+/// stayed empty. Order: the tile preview, then all `previewpicN` by
+/// number; the last reserve is the full-size originals (pling's
+/// scaled-down copy may fail to build while the original is alive). No
+/// duplicates.
 pub fn preview_candidates(preview_url: &str, preview_urls: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let push = |u: &str, out: &mut Vec<String>| {
@@ -3064,16 +3143,17 @@ pub fn preview_candidates(preview_url: &str, preview_urls: &[String]) -> Vec<Str
     out
 }
 
-/// Следующая картинка после той, что не загрузилась; `None` — запас кончился.
+/// The next picture after the one that did not load; `None` means the reserve is exhausted.
 pub fn next_preview_candidate(candidates: &[String], failed: &str) -> Option<String> {
     let pos = candidates.iter().position(|u| u == failed)?;
     candidates.get(pos + 1).cloned()
 }
 
-/// Картинка с движением? Решение — по первым байтам файла, а не по имени:
-/// кеш превью берёт расширение из ссылки магазина, и у ссылки без него файл
-/// ложится как `.jpg`, будь он хоть GIF. Анимация — GIF (`GIF87a`/`GIF89a`)
-/// и WebP с флагом анимации в заголовке `VP8X`.
+/// A picture with motion? The decision is by the first bytes of the file,
+/// not by the name: the preview cache takes the extension from the store
+/// link, and for a link without one the file is stored as `.jpg`, even if
+/// it is a GIF. Animation means GIF (`GIF87a`/`GIF89a`) and WebP with the
+/// animation flag in the `VP8X` header.
 pub fn is_animated_image_header(head: &[u8]) -> bool {
     if head.starts_with(b"GIF87a") || head.starts_with(b"GIF89a") {
         return true;
@@ -3085,9 +3165,9 @@ pub fn is_animated_image_header(head: &[u8]) -> bool {
         && head[20] & 0x02 != 0
 }
 
-/// Похоже ли начало файла на картинку. Сервер иногда отвечает «успехом» со
-/// страницей ошибки вместо картинки — такой файл в плитку не ставим, а
-/// берём следующую картинку товара.
+/// Whether the start of a file looks like a picture. The server sometimes
+/// answers "success" with an error page instead of a picture: such a file
+/// is not put on the tile, and we take the item's next picture.
 pub fn looks_like_image(head: &[u8]) -> bool {
     let starts = |sig: &[u8]| head.starts_with(sig);
     if starts(b"\x89PNG\r\n\x1a\n")
@@ -3101,7 +3181,7 @@ pub fn looks_like_image(head: &[u8]) -> bool {
     {
         return true;
     }
-    // SVG — текст: пропускаем пробелы и смотрим на корень.
+    // SVG is text: skip whitespace and look at the root.
     let text = String::from_utf8_lossy(head);
     let t = text.trim_start_matches('\u{feff}').trim_start().to_ascii_lowercase();
     if t.contains("<html") || t.starts_with("<!doctype html") {
@@ -3110,8 +3190,9 @@ pub fn looks_like_image(head: &[u8]) -> bool {
     t.starts_with("<svg") || t.starts_with("<?xml") || (t.starts_with("<!--") && t.contains("<svg"))
 }
 
-/// Шаг галереи с обходом битых кадров: кадр, который не загрузился, при
-/// листании пропускается. Битые все, кроме текущего, — остаёмся на месте.
+/// A gallery step that skips broken frames: a frame that did not load is
+/// skipped when flipping. If all but the current one are broken, we stay
+/// in place.
 pub fn gallery_step_skipping(index: i64, total: i64, delta: i64, failed: &BTreeSet<i64>) -> i64 {
     if total <= 1 || delta == 0 {
         return index;
@@ -3129,7 +3210,7 @@ pub fn gallery_step_skipping(index: i64, total: i64, delta: i64, failed: &BTreeS
     index
 }
 
-/// Счётчик «2/4» без битых кадров: человек видит только живые.
+/// The "2/4" counter without broken frames: the person sees only the live ones.
 pub fn gallery_counter_skipping(index: i64, total: i64, failed: &BTreeSet<i64>) -> Option<String> {
     let dead = failed.iter().filter(|&&i| i >= 0 && i < total).count() as i64;
     let alive = total - dead;
@@ -3137,7 +3218,7 @@ pub fn gallery_counter_skipping(index: i64, total: i64, failed: &BTreeSet<i64>) 
     gallery_counter(index - before, alive)
 }
 
-/// Листание стрелками — с закольцовкой (удобно с геймпада и с клавиатуры).
+/// Flipping with arrows wraps around (convenient with a gamepad and a keyboard).
 pub fn gallery_step(index: i64, total: i64, delta: i64) -> i64 {
     if total <= 1 {
         return index;
@@ -3145,41 +3226,41 @@ pub fn gallery_step(index: i64, total: i64, delta: i64) -> i64 {
     (index + delta).rem_euclid(total)
 }
 
-/// Сколько кадров у галереи: полные детали приносят больше ссылок, чем список,
-/// поэтому счётчик только растёт — иначе «2/5» превратилось бы в «2/1».
+/// How many frames the gallery has: full details bring more links than the
+/// list, so the counter only grows; otherwise "2/5" would turn into "2/1".
 pub fn gallery_total(known: i64, src_len: usize, loaded_len: usize) -> i64 {
     known.max(src_len as i64).max(loaded_len as i64)
 }
 
-/// Что показывать на месте картинки.
+/// What to show in place of the picture.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GalleryFrame {
-    /// Кадр есть — показать файл.
+    /// There is a frame: show the file.
     Image(String),
-    /// Кадр не доедет: сервер отказал либо обход ссылок уже закончен.
+    /// The frame will not arrive: the server refused or the link walk is already over.
     Failed,
-    /// Кадр ещё едет.
+    /// The frame is still loading.
     Loading,
-    /// Одиночная картинка, которой пока нет: панель остаётся как была.
+    /// A single picture that is not there yet: the panel stays as it was.
     Unchanged,
-    /// Картинки у товара нет и не будет: обход ссылок закончен пустым либо
-    /// единственный кадр не доехал. Раньше на этом месте навсегда оставалось
-    /// «Загрузка превью…» — ожидание того, что не придёт.
+    /// The item has no picture and will not have one: the link walk ended
+    /// empty or the only frame did not arrive. Previously "Loading preview…"
+    /// stayed here forever: waiting for something that will not come.
     Unavailable,
 }
 
-/// Надпись на месте кадра, который не загрузился. Раньше и отказ, и ожидание
-/// показывались одним «⏳ Загрузка скриншота…», и на отказе надпись висела до
-/// закрытия окна.
+/// The label in place of a frame that did not load. Previously both a
+/// refusal and waiting were shown with one "⏳ Loading screenshot…", and on
+/// a refusal the label hung until the window was closed.
 pub fn gallery_failed_msg() -> String {
     tr("🚫 The screenshot didn't load.\nUse the ◀️ ▶️ arrows to see the other ones.")
 }
-/// Надпись на месте кадра, который ещё едет.
+/// The label in place of a frame that is still loading.
 pub fn gallery_loading_msg() -> String {
     tr("⏳ Loading screenshot…")
 }
 
-/// Состояние текущего кадра галереи.
+/// The state of the current gallery frame.
 pub fn gallery_frame(
     index: i64,
     loaded: &BTreeMap<i64, String>,
@@ -3198,8 +3279,8 @@ pub fn gallery_frame(
         }
         return GalleryFrame::Unchanged;
     }
-    // Пустые «дыры» между удачными кадрами: ссылки на них у магазина не было
-    // вовсе — такой кадр тоже больше не появится.
+    // Empty "holes" between successful frames: the store had no links to them
+    // at all, so such a frame will not appear either.
     if failed.contains(&index) || finished {
         GalleryFrame::Failed
     } else {
@@ -3207,7 +3288,7 @@ pub fn gallery_frame(
     }
 }
 
-/// Счётчик «2/5» поверх картинки: виден только когда кадров больше одного.
+/// The "2/5" counter over the picture: visible only when there is more than one frame.
 pub fn gallery_counter(index: i64, total: i64) -> Option<String> {
     if total > 1 {
         Some(format!("{}/{}", index + 1, total))
@@ -3216,12 +3297,13 @@ pub fn gallery_counter(index: i64, total: i64) -> Option<String> {
     }
 }
 
-/// На какой кадр встать, когда из кеша подхватились уже готовые картинки.
+/// Which frame to land on when ready pictures were picked up from the cache.
 ///
-/// Фоновый прогрев кладёт первый кадр каждой видимой плитки на диск заранее;
-/// при открытии товара он просто подхватывается — без сети. Если текущего
-/// кадра среди готовых нет, а человек ещё не листал руками, встаём на самый
-/// ранний готовый. `None` — оставить как есть.
+/// The background warm-up puts the first frame of every visible tile on
+/// disk in advance; when an item is opened it is simply picked up, without
+/// the network. If the current frame is not among the ready ones and the
+/// person has not flipped by hand yet, we land on the earliest ready one.
+/// `None` means leave it as is.
 pub fn adopt_gallery_index(
     loaded: &BTreeMap<i64, String>,
     index: i64,
@@ -3236,24 +3318,24 @@ pub fn adopt_gallery_index(
     loaded.keys().next().copied()
 }
 
-// ── Главная кнопка деталей ─────────────────────────────────────────────
+// ── The main details button ────────────────────────────────────────────
 
-/// Вид главной кнопки: текст, подсказка и признак для таблицы стилей.
+/// The look of the main button: text, tooltip and the flag for the style sheet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallButton {
     pub text: String,
     pub tooltip: String,
-    /// Значение свойства `applied` для селекторов таблицы стилей.
+    /// The value of the `applied` property for the style sheet selectors.
     pub state: &'static str,
 }
 
-/// Состояния главной кнопки — те же, что у плитки каталога
+/// The states of the main button: the same as on a catalog tile
 /// ([`card_install_button`]).
 ///
-/// Как в KDE: «Установить» только ставит; у поставленной темы та же кнопка —
-/// «Применить» (`can_apply` — у вида есть применение,
-/// [`store_item_can_apply`]); у включённой — «Применено», нажатие
-/// переприменяет.
+/// As in KDE: "Install" only installs; for an installed theme the same
+/// button is "Apply" (`can_apply` means the kind can be applied,
+/// [`store_item_can_apply`]); for an enabled one it is "Applied", and a
+/// press reapplies it.
 pub fn install_button(installed: bool, applied: bool, can_apply: bool) -> InstallButton {
     if applied {
         return InstallButton {
@@ -3283,18 +3365,18 @@ pub fn install_button(installed: bool, applied: bool, can_apply: bool) -> Instal
     }
 }
 
-/// Что делает нажатие кнопки товара магазина (плитка и главная кнопка
-/// деталей — один вход).
+/// What pressing a store item button does (the tile and the main details
+/// button are one entry point).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StoreCardAction {
-    /// Скачать и поставить, НЕ применяя.
+    /// Download and install WITHOUT applying.
     Install,
-    /// Применить уже поставленное — по записи журнала, без скачивания.
+    /// Apply what is already installed, by the log entry, without downloading.
     ApplyInstalled,
 }
 
-/// Решение кнопки товара: поставленный товар вида с применением —
-/// применить; всё остальное — поставить (заново).
+/// The item button decision: an installed item of a kind that can be
+/// applied is applied; everything else is installed (again).
 pub fn store_card_action(installed: bool, can_apply: bool) -> StoreCardAction {
     if installed && can_apply {
         StoreCardAction::ApplyInstalled
@@ -3303,18 +3385,18 @@ pub fn store_card_action(installed: bool, can_apply: bool) -> StoreCardAction {
     }
 }
 
-/// Есть ли у товара магазина «применить» — по виду его раздела. У шрифтов,
-/// виджетов, плагинов обоев, дополнений и Conky кнопки «Применить» на плитке
-/// нет: включаются они в своей сетке установленного.
+/// Whether a store item has "apply", by the kind of its section. Fonts,
+/// widgets, wallpaper plugins, add-ons and Conky have no "Apply" button on
+/// the tile: they are enabled in their installed grid.
 pub fn store_item_can_apply(home: &Path, item: &ThemeItem) -> bool {
     categories::category_by_id(home, item.category_id)
         .is_some_and(|c| appearance_installer::kind_has_active_state(c.apply_kind.trim()))
 }
 
-/// Включается ли товар раздела не «Применить», а запуском (Conky) или
-/// переключателем (дополнения): `Some(кнопка)`; `None` — тема или вид без
-/// включения. Решает тот же вид раздела, что у местной плитки
-/// ([`crate::de_apply::button_for_apply_kind`]).
+/// Whether a section's item is enabled not by "Apply" but by starting
+/// (Conky) or by a toggle (add-ons): `Some(button)`; `None` means a theme
+/// or a kind without enabling. Decided by the same section kind as for a
+/// local tile ([`crate::de_apply::button_for_apply_kind`]).
 pub fn store_item_switch(home: &Path, item: &ThemeItem) -> Option<crate::de_apply::Button> {
     let c = categories::category_by_id(home, item.category_id)?;
     switch_of_apply_kind(c.apply_kind.trim())
@@ -3331,20 +3413,20 @@ fn switch_of_apply_kind(apply_kind: &str) -> Option<crate::de_apply::Button> {
     }
 }
 
-/// Номер плитки установленного (`local:<вид>:<имя>`) для поставленного
-/// товара магазина `item` с именем на диске `name` — по нему панель деталей
-/// товара показывает то же, что плитка установленного: «Запускать при
-/// входе», части и настройки виджета Conky. `None` — товар не включается
-/// запуском или переключателем.
+/// The installed tile id (`local:<kind>:<name>`) for an installed store
+/// item `item` with the on-disk name `name`: by it the item's details panel
+/// shows the same as the installed tile: "Start at login", the parts and
+/// settings of a Conky widget. `None` means the item is not enabled by
+/// starting or by a toggle.
 pub fn store_local_id(home: &Path, item: &ThemeItem, name: &str) -> Option<String> {
     let c = categories::category_by_id(home, item.category_id)?;
     let kind = c.apply_kind.trim();
     (switch_of_apply_kind(kind).is_some() && !name.is_empty()).then(|| format!("local:{kind}:{name}"))
 }
 
-/// Имя, под которым товар `content_id` стоит на диске, — по журналу
-/// установок: первый путь записи, который ещё есть (`exists`). `None` —
-/// записи нет или файлы темы сняты руками.
+/// The name under which item `content_id` is on disk, from the install log:
+/// the first path of the entry that still exists (`exists`). `None` means
+/// there is no entry or the theme files were removed by hand.
 pub fn logged_theme_name(
     log: &Map<String, Value>,
     content_id: &str,
@@ -3362,23 +3444,25 @@ pub fn logged_theme_name(
     log_theme_names(&paths).into_iter().next()
 }
 
-/// Живой [`logged_theme_name`]: журнал с диска.
+/// The live [`logged_theme_name`]: the log from disk.
 pub fn live_logged_theme_name(home: &str, content_id: &str) -> Option<String> {
     let log = crate::install_journal::store_log_view(&live_install_log_path(home));
     logged_theme_name(&log, content_id, |p| Path::new(p).exists())
 }
 
-/// Цвета главной кнопки деталей — сестра `install_button` для QML.
+/// The colours of the main details button: the QML sibling of
+/// `install_button`.
 ///
-/// Та же причина, что у `card_button_colors`: QSS в QML не работает, и
-/// голые цвета нужны отдельно. Контракт значений тот же — с решёткой это
-/// готовый цвет, без решётки имя токена скина, пусто — цвета нет.
+/// The same reason as for `card_button_colors`: QSS does not work in QML,
+/// and the bare colours are needed separately. The value contract is the
+/// same: with a hash it is a ready colour, without a hash a skin token
+/// name, empty means no colour.
 ///
-/// ⚠️ «✓ Применено» у деталей приглушённое серо-зелёное, а не бирюзовое,
-/// как у плитки: у панели деталей кнопка крупная и во всю ширину, и
-/// кричащий цвет на ней читался бы как незакрытое дело. «✓ Установлено»
-/// намеренно совпадает с плиткой — сетка и деталь не должны рассказывать
-/// про товар разное.
+/// ⚠️ "✓ Applied" in the details is a muted grey-green, not teal as on the
+/// tile: on the details panel the button is large and full width, and a
+/// loud colour on it would read as unfinished business. "✓ Installed"
+/// deliberately matches the tile: the grid and the details must not tell
+/// different stories about the item.
 pub fn detail_button_colors(state: &str) -> (&'static str, &'static str, &'static str) {
     match state {
         "true" => ("#3a5a3f", "#cfe8d2", ""),
@@ -3387,7 +3471,7 @@ pub fn detail_button_colors(state: &str) -> (&'static str, &'static str, &'stati
     }
 }
 
-/// Значок перед сообщением о результате действия.
+/// The icon before the action result message.
 pub fn status_prefix(ok: bool) -> &'static str {
     if ok {
         "✅ "
@@ -3396,10 +3480,10 @@ pub fn status_prefix(ok: bool) -> &'static str {
     }
 }
 
-// ── Местные темы ───────────────────────────────────────────────────────
+// ── Local themes ───────────────────────────────────────────────────────
 
-/// Имя темы для применения: у местных карточек оно зашито в номер
-/// (`local:<вид>:<имя>`), у остальных — обычное название.
+/// The theme name for applying: local cards have it baked into the id
+/// (`local:<kind>:<name>`), the others use the plain name.
 pub fn local_theme_name(id: &str, name: &str) -> String {
     if let Some(rest) = id.strip_prefix("local:") {
         if let Some((_, theme)) = rest.split_once(':') {
@@ -3409,7 +3493,7 @@ pub fn local_theme_name(id: &str, name: &str) -> String {
     name.to_string()
 }
 
-/// Почему тема старого формата не применится.
+/// Why an old-format theme will not apply.
 pub fn stale_global_msg(name: &str) -> String {
     trf(
         "❌ The theme “%1” uses the old Plasma 5 format (no metadata.json), and \
@@ -3418,17 +3502,17 @@ pub fn stale_global_msg(name: &str) -> String {
     )
 }
 
-// ── Подписи панели деталей ─────────────────────────────────────────────
+// ── Details panel labels ───────────────────────────────────────────────
 
-/// Мета-строка товара: автор, лицензия, дата обновления, версия.
+/// The item meta line: author, licence, update date, version.
 pub fn detail_meta_line(author: &str, license: &str, updated: &str, version: &str) -> String {
     let author = if author.is_empty() { "—" } else { author };
     let license = if license.is_empty() { "—" } else { license };
     let upd: String = updated.chars().take(10).collect();
     let upd = if upd.is_empty() { "—".to_string() } else { upd };
-    // ⚠️ Починка оригинала (правило #16): букву «v» он приписывал всегда, а
-    // магазин отдаёт версию и как «5.0», и как «v5.0» — во втором случае в
-    // деталях печаталось «vv5.0».
+    // ⚠️ Fix of the original (rule #16): it always prepended the letter "v",
+    // while the store returns the version both as "5.0" and as "v5.0"; in
+    // the second case the details printed "vv5.0".
     let ver = if version.is_empty() {
         String::new()
     } else if version.starts_with(['v', 'V']) {
@@ -3440,8 +3524,8 @@ pub fn detail_meta_line(author: &str, license: &str, updated: &str, version: &st
     trf("%1 • %2 • updated %3 %4", &[&author, &license, &upd, &ver])
 }
 
-/// Мета-строка с размером архива в конце: «автор • лицензия • обновлено …
-/// • 13 КиБ». Размер неизвестен — строка как была.
+/// The meta line with the archive size at the end: "author • licence •
+/// updated … • 13 KiB". If the size is unknown, the line stays as it was.
 pub fn detail_meta_with_size(meta_line: &str, download_size_kib: i64) -> String {
     let size = human_size_kib(download_size_kib);
     if size.is_empty() {
@@ -3451,8 +3535,9 @@ pub fn detail_meta_with_size(meta_line: &str, download_size_kib: i64) -> String 
     }
 }
 
-/// Адрес страницы товара в магазине — тот, что магазин отдаёт полем
-/// `detailpage` (`https://store.kde.org/p/<номер>`). Пусто — номера нет.
+/// The address of the item's page in the store: the one the store returns
+/// in the `detailpage` field (`https://store.kde.org/p/<id>`). Empty means
+/// there is no id.
 pub fn store_page_url(item_id: &str) -> String {
     if item_id.is_empty() {
         String::new()
@@ -3461,29 +3546,30 @@ pub fn store_page_url(item_id: &str) -> String {
     }
 }
 
-/// Заголовок блока выбора файла в панели деталей товара магазина (у товара
-/// несколько файлов).
+/// The heading of the file choice block in the store item details panel
+/// (the item has several files).
 pub fn detail_files_title() -> String {
     tr("Files of this item")
 }
-/// Пояснение под заголовком блока выбора файла.
+/// The explanation under the file choice block heading.
 pub fn detail_files_hint() -> String {
     tr("Rexon has picked the main archive. You can choose another file and press “Install”.")
 }
-/// Пометка у файла, который поставит кнопка «Установить».
+/// The mark on the file the "Install" button will install.
 pub fn detail_file_will_install() -> String {
     tr("will be installed")
 }
-/// Главная кнопка деталей, когда выбран не тот файл, что берётся
-/// автоматически: ставит выбранный, даже если товар уже стоит.
+/// The main details button when a file other than the automatic one is
+/// chosen: it installs the chosen one even if the item is already
+/// installed.
 pub fn detail_file_install_btn() -> String {
     tr("Install")
 }
 
-/// Строки блока выбора файла для страницы (JSON-массив): `name` — ключ
-/// выбора (его страница отдаёт обратно в `installById`), `meta` — размер и
-/// день выкладки для человека, `chosen` — файл автоматического выбора.
-/// Файл один или товар не из магазина — `[]`, блока нет.
+/// File choice block rows for the page (a JSON array): `name` is the choice
+/// key (the page passes it back to `installById`), `meta` the size and
+/// upload day for the person, `chosen` the automatically chosen file. With
+/// one file or a non-store item it is `[]`, and there is no block.
 pub fn store_file_choices_json(item: &ThemeItem) -> String {
     let rows: Vec<Value> = ocs::file_choices(item)
         .into_iter()
@@ -3499,7 +3585,7 @@ pub fn store_file_choices_json(item: &ThemeItem) -> String {
     Value::Array(rows).to_string()
 }
 
-/// Кнопка «Копировать ссылку» в карточке товара.
+/// The "Copy link" button in the item card.
 pub fn detail_copy_link_btn() -> String {
     tr("🔗 Copy Link")
 }
@@ -3507,20 +3593,20 @@ pub fn detail_copy_link_tooltip() -> String {
     tr("Copy the address of this item's store page")
 }
 
-/// Строка состояния после копирования ссылки.
+/// The status line after copying the link.
 pub fn link_copied_status(url: &str) -> String {
     // TRANSLATORS: status line after "Copy Link"; %1 is the address.
     trf("Link copied: %1", &[&url])
 }
 
-/// Подпись «голосов нет» — на плитке вместо числа звёзд и в карточке
-/// товара (`ThemeItem::rated_stars` = `None`).
+/// The "no votes" label: on the tile instead of the star count and in the
+/// item card (`ThemeItem::rated_stars` = `None`).
 pub fn no_ratings_label() -> String {
     // TRANSLATORS: store item that nobody has rated yet (shown instead of stars).
     tr("No ratings yet")
 }
 
-/// Подпись со звёздами рейтинга; `None` — голосов нет, звезды нет.
+/// The label with rating stars; `None` means no votes, no star.
 pub fn detail_stars_label(rating_stars: Option<f64>) -> String {
     match rating_stars {
         Some(stars) => format!("⭐ {}", format_decimal(stars, 1)),
@@ -3528,8 +3614,8 @@ pub fn detail_stars_label(rating_stars: Option<f64>) -> String {
     }
 }
 
-/// Значок оценки на плитке магазина: без голосов — пусто, звезда без
-/// числа читалась бы как оценка.
+/// The rating icon on a store tile: without votes it is empty, since a star
+/// without a number would read as a rating.
 pub fn card_star_glyph(rating_stars: Option<f64>) -> &'static str {
     if rating_stars.is_some() {
         "⭐"
@@ -3538,26 +3624,26 @@ pub fn card_star_glyph(rating_stars: Option<f64>) -> &'static str {
     }
 }
 
-/// Подпись со счётчиком скачиваний.
+/// The label with the download counter.
 pub fn detail_downloads_label(downloads: i64) -> String {
     format!("{NBSP}{NBSP}{}", trf("⬇️ %1 downloads", &[&human_count(downloads)]))
 }
 
-/// Подпись «Категория / Путь установки».
+/// The "Category / Install path" label.
 pub fn detail_path_label(category_name: &str, install_path: &str) -> String {
     trf("Category: %1\nInstalled to: %2", &[&category_name, &install_path])
 }
 
-/// Заглушка, когда описания у товара нет вовсе.
+/// The placeholder when the item has no description at all.
 pub fn no_description_html() -> String {
     format!("<i>{}</i>", tr("No description"))
 }
 
-/// Переключатель «перевод ⇄ оригинал» под текстом.
+/// The "translation ⇄ original" toggle under the text.
 ///
-/// Цвет ссылки берётся из ДЕЙСТВУЮЩЕГО скина и подставляется в момент сборки:
-/// это единственное место, где цвет остаётся в самом тексте, потому что
-/// таблица стилей не красит фрагмент внутри подписи.
+/// The link colour is taken from the ACTIVE skin and substituted at build
+/// time: this is the only place where the colour stays in the text itself,
+/// because the style sheet does not paint a fragment inside a label.
 fn toggle_link(accent: &str, label: &str, point_size: &str, lead: &str) -> String {
     format!(
         "{lead}<a href='rexon:toggle' style='color:{accent};\
@@ -3565,7 +3651,7 @@ text-decoration:none;font-size:{point_size}'>{label}</a>"
     )
 }
 
-/// Тело комментария вместе с переключателем перевода.
+/// The comment body together with the translation toggle.
 pub fn comment_body_html(
     original: &str,
     translated: &str,
@@ -3581,25 +3667,28 @@ pub fn comment_body_html(
     format!("{body}{}", toggle_link(accent, &label, "9pt", "&nbsp;&nbsp;"))
 }
 
-/// Смайлы магазина — знаком, а не картинкой из сети.
+/// Store smileys as a character, not as a picture from the network.
 ///
-/// Магазин подставляет в описания `<img src="…/media/emoticons/<имя>.png">`.
-/// Qt тянет такую картинку сам, и на каждую карточку это давало десяток строк
-/// в журнале: сокет закрывается раньше ответа (`QSslSocket: device not open`),
-/// данные приходят пустыми, дальше `Error decoding … Неподдерживаемый формат
-/// изображения`. Сервер при этом исправен — PNG в 1 КБ отдаётся по тому же
-/// адресу руками. Чинить сетевой путь ради картинки 30×30 незачем: знак
-/// набирается шрифтом, виден всегда и не зависит от сети вовсе.
+/// The store puts `<img src="…/media/emoticons/<name>.png">` into
+/// descriptions. Qt fetches such a picture itself, and for every card this
+/// gave a dozen log lines: the socket closes before the answer
+/// (`QSslSocket: device not open`), the data arrives empty, then
+/// `Error decoding …` with a localised "unsupported image format". The
+/// server is fine meanwhile: the 1 KB PNG is served at the same address by
+/// hand. There is no point fixing the network path for a 30×30 picture: a
+/// character is typed in a font, always visible and independent of the
+/// network.
 ///
-/// ⚠️Имена берутся из живого кеша магазина, а не из головы: в описаниях
-/// встречаются ровно девять (`happy` 88 раз, `wink` 23, `cool` 17,
-/// `ecstatic` 10, `tongue` 6, `gah` 4, `heart` 4, `sad` и `kiss` по одному).
-/// Незнакомое имя — тег просто выбрасывается: пустое место честнее
-/// сломанной картинки и уж точно честнее чужой рожицы наугад.
+/// ⚠️ The names are taken from the live store cache, not made up: exactly
+/// nine occur in descriptions (`happy` 88 times, `wink` 23, `cool` 17,
+/// `ecstatic` 10, `tongue` 6, `gah` 4, `heart` 4, `sad` and `kiss` once
+/// each). An unknown name means the tag is simply dropped: an empty space
+/// is more honest than a broken picture and certainly more honest than a
+/// random foreign smiley.
 ///
-/// Заодно видно, откуда смайлы берутся: `(default 15&deg;)` магазин
-/// прочитал как `;)` и подставил подмигивание. Это его разбор, не наш, и
-/// поправить его мы не можем — но знак хотя бы читается.
+/// It also shows where smileys come from: the store read
+/// `(default 15&deg;)` as `;)` and substituted a wink. That is its parsing,
+/// not ours, and we cannot fix it, but at least the character is readable.
 pub fn inline_emoticons(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
@@ -3611,7 +3700,7 @@ pub fn inline_emoticons(html: &str) -> String {
         if let Some(name) = emoticon_name(tag) {
             out.push_str(emoticon_char(name));
         } else if !tag.contains("/media/emoticons/") {
-            // Не смайл — картинка описания, её не трогаем.
+            // Not a smiley: a description picture, left alone.
             out.push_str(tag);
         }
         rest = &rest[end..];
@@ -3620,7 +3709,7 @@ pub fn inline_emoticons(html: &str) -> String {
     out
 }
 
-/// Имя смайла из тега `<img>`, если это он.
+/// The smiley name from an `<img>` tag, if it is one.
 fn emoticon_name(tag: &str) -> Option<&str> {
     let after = tag.split("/media/emoticons/").nth(1)?;
     let name = after.split(".png").next()?;
@@ -3630,7 +3719,7 @@ fn emoticon_name(tag: &str) -> Option<&str> {
     Some(name)
 }
 
-/// Знак вместо смайла магазина; незнакомое имя — пусто.
+/// A character instead of a store smiley; an unknown name gives an empty string.
 fn emoticon_char(name: &str) -> &'static str {
     match name {
         "happy" => "🙂",
@@ -3646,9 +3735,10 @@ fn emoticon_char(name: &str) -> &'static str {
     }
 }
 
-/// Пометка «перевод идёт» под ещё не переведённым описанием. Приклеивается к
-/// [`description_html`] ВМЕСТО переключателя, пока перевода нет, и
-/// пропадает, когда перевод пришёл или ядро решило «не переводить».
+/// The "translation in progress" mark under a description not yet
+/// translated. It is attached to [`description_html`] INSTEAD of the toggle
+/// while there is no translation, and disappears when the translation
+/// arrives or the core decides "do not translate".
 pub fn description_translating_html() -> String {
     // TRANSLATORS: shown under an item description in the store panel while
     // the description is being machine-translated into the interface
@@ -3656,7 +3746,7 @@ pub fn description_translating_html() -> String {
     format!("<br><br><i>{}</i>", tr("Translating the description…"))
 }
 
-/// Описание товара вместе с переключателем перевода.
+/// The item description together with the translation toggle.
 pub fn description_html(
     original: &str,
     translated: &str,
@@ -3667,7 +3757,7 @@ pub fn description_html(
     let body = if show_original { original } else { translated };
     let empty = no_description_html();
     let body = if body.is_empty() { empty.as_str() } else { body };
-    // Код и команды в описании магазина — слева направо при любом языке.
+    // Code and commands in a store description go left to right in any language.
     let body = crate::ui_base::pre_left_to_right(&inline_emoticons(body));
     if !was_translated {
         return body;
@@ -3680,19 +3770,19 @@ pub fn description_html(
     format!("{body}{}", toggle_link(accent, &label, "9.5pt", "<br>"))
 }
 
-// ── Комментарии ────────────────────────────────────────────────────────
+// ── Comments ───────────────────────────────────────────────────────────
 
-/// Сколько комментариев просим у магазина за раз.
+/// How many comments we ask the store for at a time.
 pub const COMMENTS_PAGESIZE: usize = 10;
 
-/// Насколько глубоко отбиваем ответы в ветке.
+/// How deep replies in a thread are indented.
 pub const COMMENT_INDENT_PX: i64 = 28;
 
-/// Текст комментария из магазина → безопасный кусок разметки (теги вырезаны).
+/// A comment text from the store -> a safe piece of markup (tags stripped).
 pub fn clean_comment_text(raw: &str) -> String {
     let text = translator::html_unescape(raw);
-    // re.sub(r"<[^>]+>", " ", …): пара «<…>» с хотя бы одним знаком внутри.
-    // Пустое «<>» правилу не подходит и остаётся текстом.
+    // re.sub(r"<[^>]+>", " ", …): a "<…>" pair with at least one character
+    // inside. An empty "<>" does not match the rule and stays text.
     let chars: Vec<char> = text.chars().collect();
     let mut stripped = String::with_capacity(text.len());
     let mut i = 0;
@@ -3714,33 +3804,34 @@ pub fn clean_comment_text(raw: &str) -> String {
     translator::html_escape(&stripped).replace('\n', "<br>")
 }
 
-/// Ник для сравнения «автор комментария == автор товара».
+/// A nick for the comparison "comment author == item author".
 ///
-/// Магазин отдаёт автора товара одним полем, а автора комментария другим. На
-/// pling это обычно один и тот же логин, но возможны расхождения регистра,
-/// крайних пробелов и изредка отображаемого имени против логина. Сравниваем
-/// без регистра и крайних пробелов, внутренние схлопываем. Полного
-/// соответствия магазин не обещает, поэтому это честная эвристика: ошибка в
-/// любую сторону стоит только цвета ника.
+/// The store returns the item author in one field and the comment author in
+/// another. On pling it is usually the same login, but case, surrounding
+/// spaces and occasionally a display name versus a login can differ. We
+/// compare case-insensitively and without surrounding spaces, collapsing
+/// inner ones. The store does not promise an exact match, so this is an
+/// honest heuristic: a mistake either way costs only the nick colour.
 pub fn norm_author(name: &str) -> String {
     let squeezed = name.split_whitespace().collect::<Vec<_>>().join(" ");
-    // Оригинал складывает регистр `casefold`, а не `lower`: он вдобавок
-    // приравнивает «ß» к «ss» и конечную сигму к обычной. Полной таблицы
-    // складывания в стандартной библиотеке Rust нет, поэтому доводим эти два
-    // случая руками — на латинице и на греческом других расхождений с
-    // `lower` нет, а сравнение ников других алфавитов от них не зависит.
+    // The original folds case with `casefold`, not `lower`: it additionally
+    // equates "ß" with "ss" and the final sigma with the ordinary one. Rust's
+    // standard library has no full folding table, so we handle these two
+    // cases by hand: for Latin and Greek there are no other differences from
+    // `lower`, and comparing nicks in other alphabets does not depend on
+    // them.
     squeezed
         .to_lowercase()
         .replace('\u{00df}', "ss")
         .replace('\u{03c2}', "\u{03c3}")
 }
 
-/// Комментирует ли САМ автор товара — его ник красится отдельно.
+/// Whether the item author HIMSELF is commenting: his nick is coloured separately.
 pub fn comment_is_product_author(comment_author: &str, product_author: &str) -> bool {
     !comment_author.is_empty() && norm_author(comment_author) == norm_author(product_author)
 }
 
-/// Ник комментатора для показа.
+/// The commenter's nick for display.
 pub fn comment_author_display(author: &str) -> String {
     if author.is_empty() {
         "—".to_string()
@@ -3749,22 +3840,22 @@ pub fn comment_author_display(author: &str) -> String {
     }
 }
 
-/// Дата комментария — только день, без времени.
+/// The comment date: only the day, without the time.
 pub fn comment_date(raw: &str) -> String {
     raw.chars().take(10).collect()
 }
 
-/// Глубина ответа с потолком: глубже пятого уровня отступ съел бы всю ширину.
+/// Reply depth with a ceiling: deeper than the fifth level the indent would eat the whole width.
 pub fn comment_depth(raw: i64) -> i64 {
     raw.clamp(0, 4)
 }
 
-/// Отступ ветки ответа.
+/// The indent of a reply thread.
 pub fn comment_indent(depth: i64) -> i64 {
     comment_depth(depth) * COMMENT_INDENT_PX
 }
 
-/// Значок ответа перед ником.
+/// The reply icon before the nick.
 pub fn comment_reply_prefix(depth: i64) -> &'static str {
     if comment_depth(depth) > 0 {
         "↪️ "
@@ -3773,18 +3864,18 @@ pub fn comment_reply_prefix(depth: i64) -> &'static str {
     }
 }
 
-/// Есть ли ещё страница комментариев.
+/// Whether there is another page of comments.
 ///
-/// Общего числа магазин не отдаёт, поэтому считаем по корневым: пришла полная
-/// страница — значит, скорее всего, есть и следующая.
+/// The store does not return the total, so we count by root comments: a
+/// full page arrived, so most likely there is a next one too.
 pub fn comments_has_more(depths: &[i64]) -> bool {
     depths.iter().filter(|d| **d == 0).count() >= COMMENTS_PAGESIZE
 }
 
-/// Заголовок секции комментариев.
+/// The heading of the comments section.
 ///
-/// Точное число приходит с полными деталями товара; из кеша оно теряется —
-/// тогда честное «показано N(+)», а не выдуманная точность.
+/// The exact number comes with the full item details; from the cache it is
+/// lost, and then an honest "showing N(+)" rather than made-up precision.
 pub fn comments_header_text(total: Option<i64>, shown: usize, has_more: bool) -> String {
     if let Some(n) = total {
         if n != 0 {
@@ -3795,54 +3886,56 @@ pub fn comments_header_text(total: Option<i64>, shown: usize, has_more: bool) ->
     trf("💬 Comments (%1)", &[&format!("{shown}{plus}")])
 }
 
-/// Заголовок, когда комментариев нет вовсе.
+/// The heading when there are no comments at all.
 pub fn comments_empty_header() -> String {
     tr("💬 Comments")
 }
-/// Подпись вместо пустого списка.
+/// The label instead of an empty list.
 pub fn comments_empty_text() -> String {
     tr("No comments yet")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Запросы каталога: поколения, дедуп и фоновый прогрев
+//  Catalog requests: generations, dedup and background warm-up
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Что делать с отложенным запросом каталога, когда истёк дебаунс.
+/// What to do with a deferred catalog request when the debounce expires.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FireOutcome {
-    /// Отправлять нечего.
+    /// Nothing to send.
     Nothing,
-    /// Человек уже ушёл дальше — запрос обесценился, не отправляем.
+    /// The person has already moved on: the request lost its value, do not send it.
     Stale,
-    /// Ровно этот запрос уже летит: второй в сеть НЕ уходит, летящему просто
-    /// обновлено поколение, и его ответ будет принят как свежий.
+    /// Exactly this request is already in flight: a second one does NOT go to
+    /// the network, the one in flight just gets its generation updated, and
+    /// its answer will be accepted as fresh.
     Deduplicated { key: String },
-    /// Отправлять.
+    /// Send.
     Send { key: String, generation: u64 },
 }
 
-/// Отложенный запрос каталога.
+/// A deferred catalog request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingCatalog {
     pub generation: u64,
     pub key: String,
 }
 
-/// Кто сейчас летит за каталогом и что стоит в очереди на прогрев.
+/// Who is in flight for the catalog now and what is queued for warm-up.
 ///
-/// До переноса поколение лишь отбрасывало ЧУЖОЙ ответ, а сам запрос доживал и
-/// занимал канал: замер показал до тринадцати одновременных запросов и рост
-/// времени ответа с одной секунды до двенадцати. Здесь ушедший запрос честно
-/// снимается, а дубль не отправляется вовсе.
+/// Before the port the generation only discarded SOMEONE ELSE'S answer,
+/// while the request itself lived on and occupied the channel: measurement
+/// showed up to thirteen simultaneous requests and the response time
+/// growing from one second to twelve. Here a request that has left is
+/// honestly cancelled, and a duplicate is not sent at all.
 #[derive(Debug, Default)]
 pub struct CatalogRequests {
     generation: u64,
     pending: Option<PendingCatalog>,
-    /// Ключ списка → поколение летящего за ним запроса.
+    /// List key -> the generation of the request in flight for it.
     inflight: BTreeMap<String, u64>,
-    /// Страницы, чей прогрев уже запускался: повторный заход в категорию не
-    /// должен слать тот же запрос заново.
+    /// Pages whose warm-up has already been started: returning to a category
+    /// must not send the same request again.
     prefetched_pages: BTreeSet<String>,
     prefetch_queue: Vec<(String, String)>,
     prefetch_done: BTreeSet<(String, String)>,
@@ -3859,16 +3952,16 @@ impl CatalogRequests {
         self.generation
     }
 
-    /// Смена вида (раздел, источник, поиск, страница) обесценивает всё, что
-    /// летит за прежнюю категорию. Возвращает новое поколение.
+    /// A view change (section, source, search, page) invalidates everything in
+    /// flight for the previous category. Returns the new generation.
     pub fn bump(&mut self) -> u64 {
         self.generation += 1;
         self.pending = None;
         self.generation
     }
 
-    /// Отложить запрос до конца дебаунса: пока человек пробегает список
-    /// категорий мышью, сеть не трогаем.
+    /// Defer the request until the end of the debounce: while the person runs
+    /// the mouse over the category list, the network is not touched.
     pub fn schedule(&mut self, generation: u64, key: &str) {
         self.pending = Some(PendingCatalog {
             generation,
@@ -3876,7 +3969,7 @@ impl CatalogRequests {
         });
     }
 
-    /// Дебаунс истёк — что делать с отложенным запросом.
+    /// The debounce expired: what to do with the deferred request.
     pub fn fire(&mut self) -> FireOutcome {
         let Some(pending) = self.pending.take() else {
             return FireOutcome::Nothing;
@@ -3895,26 +3988,27 @@ impl CatalogRequests {
         }
     }
 
-    /// Ответ за `key` пришёл. `true` — он устарел и в сетку не попадёт.
+    /// The answer for `key` arrived. `true` means it is stale and will not get
+    /// into the grid.
     ///
-    /// Снимает запрос из летящих в любом случае: оборванный вернётся сюда же
-    /// обычным путём.
+    /// Removes the request from those in flight in any case: a cancelled one
+    /// comes back here the usual way.
     pub fn answer(&mut self, key: &str) -> bool {
         match self.inflight.remove(key) {
             Some(gen) => gen != self.generation,
-            // Прямой вызов (попадание в кеш) отправителя не имеет — такой
-            // ответ всегда свежий.
+            // A direct call (a cache hit) has no sender: such an answer is
+            // always fresh.
             None => false,
         }
     }
 
-    /// Каталог видимой категории сейчас грузится и ждёт сети?
+    /// Is the visible category's catalog loading now and waiting for the network?
     pub fn busy(&self) -> bool {
         self.pending.is_some() || !self.inflight.is_empty()
     }
 
-    /// Какие запросы оборвать при уходе из категории: все, кроме того, за
-    /// которым мы сюда и пришли. Канал нужнее открытой категории.
+    /// Which requests to cancel when leaving a category: all except the one we
+    /// came here for. The channel is needed more by the open category.
     pub fn stale_keys(&self, keep: Option<&str>) -> Vec<String> {
         self.inflight
             .keys()
@@ -3923,11 +4017,11 @@ impl CatalogRequests {
             .collect()
     }
 
-    /// Стоит ли прогревать следующую страницу.
+    /// Whether to warm up the next page.
     ///
-    /// Один прогрев на страницу за сессию: без этого каждый повторный заход в
-    /// категорию слал тот же запрос заново и топил канал. Живой запрос
-    /// человека за ту же страницу тоже считается прогревом.
+    /// One warm-up per page per session: without it every return to a
+    /// category sent the same request again and flooded the channel. A live
+    /// request by the person for the same page also counts as a warm-up.
     pub fn claim_page_prefetch(&mut self, key: &str) -> bool {
         if self.prefetched_pages.contains(key) || self.inflight.contains_key(key) {
             return false;
@@ -3936,17 +4030,17 @@ impl CatalogRequests {
         true
     }
 
-    /// Кеш списков сброшен вручную — прогревы страниц можно запускать заново.
+    /// The list cache was reset by hand: page warm-ups can be started again.
     pub fn forget_page_prefetches(&mut self) {
         self.prefetched_pages.clear();
     }
 
-    /// Вкладка закрывается: новых прогревов не выдаём.
+    /// The tab is closing: no new warm-ups are handed out.
     pub fn close(&mut self) {
         self.closing = true;
     }
 
-    /// Добавить в хвост очереди прогрева всё, чего в ней ещё нет.
+    /// Append to the warm-up queue everything not in it yet.
     pub fn enqueue_prefetch(&mut self, targets: &[(String, String)]) {
         for key in targets {
             if !self.prefetch_done.contains(key) && !self.prefetch_queue.contains(key) {
@@ -3955,7 +4049,7 @@ impl CatalogRequests {
         }
     }
 
-    /// Переставить соседей открытого раздела в начало очереди.
+    /// Move the neighbours of the open section to the front of the queue.
     pub fn prioritize_prefetch(&mut self, front: &[(String, String)]) {
         if front.is_empty() {
             return;
@@ -3963,7 +4057,7 @@ impl CatalogRequests {
         self.prefetch_queue = prefetch_reorder(front, &self.prefetch_queue);
     }
 
-    /// Уже прогретые пары — для отбора соседей.
+    /// Pairs already warmed up, for selecting neighbours.
     pub fn prefetch_done(&self) -> &BTreeSet<(String, String)> {
         &self.prefetch_done
     }
@@ -3972,11 +4066,12 @@ impl CatalogRequests {
         self.prefetch_queue.len()
     }
 
-    /// Следующая цель прогрева — по одной за раз.
+    /// The next warm-up target, one at a time.
     ///
-    /// Живой запрос человека важнее фонового прогрева: пока категория, на
-    /// которую он смотрит, ещё грузится, канал ему не занимаем. Очередь при
-    /// этом не трогаем — она догонит после ответа.
+    /// The person's live request matters more than the background warm-up:
+    /// while the category they are looking at is still loading, we do not
+    /// occupy the channel. The queue is not touched: it catches up after the
+    /// answer.
     pub fn next_prefetch(&mut self) -> Option<(String, String)> {
         if self.closing || self.prefetch_busy || self.busy() {
             return None;
@@ -3992,36 +4087,37 @@ impl CatalogRequests {
         None
     }
 
-    /// Прогрев цели закончился (удачно или нет — кеш просто не наполнится).
+    /// The target's warm-up has finished (successfully or not: the cache just will not fill).
     pub fn prefetch_finished(&mut self, key: (String, String)) {
         self.prefetch_busy = false;
         self.prefetch_done.insert(key);
     }
 }
 
-// ── Подсказки поиска ───────────────────────────────────────────────────
+// ── Search suggestions ─────────────────────────────────────────────────
 
-/// Что делать с подсказками при текущем вводе.
+/// What to do with suggestions for the current input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SuggestAction {
-    /// Убрать выпадашку.
+    /// Remove the drop-down.
     Hide,
-    /// Сети нет — фильтруем уже загруженный список на месте, мгновенно.
+    /// No network: filter the already loaded list in place, instantly.
     Local,
-    /// Спросить магазин.
+    /// Ask the store.
     Network,
 }
 
-/// Нужны ли подсказки и откуда их брать.
+/// Whether suggestions are needed and where to take them from.
 ///
-/// Посимвольно магазин не дёргаем: до порога длины выпадашка просто закрыта.
-/// На панели деталей подсказок нет — там нет и сетки, к которой они ведут.
+/// We do not query the store per character: below the length threshold the
+/// drop-down is simply closed. The details panel has no suggestions: it
+/// has no grid for them to lead to either.
 pub fn suggest_action(query: &str, on_grid: bool, view: &CatalogView) -> SuggestAction {
     if query.trim().chars().count() < SUGGEST_MIN_CHARS || !on_grid {
         return SuggestAction::Hide;
     }
-    // Cinnamon Spices подсказок не даёт, а подсказки KDE Store вели бы не
-    // в тот магазин — ищется по своей витрине.
+    // Cinnamon Spices gives no suggestions, and KDE Store suggestions would
+    // lead to the wrong store: the search goes over its own showcase.
     if view.is_local() || view.aur_mode() || view.own_site_store() {
         SuggestAction::Local
     } else {
@@ -4029,10 +4125,10 @@ pub fn suggest_action(query: &str, on_grid: bool, view: &CatalogView) -> Suggest
     }
 }
 
-/// Принимать ли ответ с подсказками.
+/// Whether to accept an answer with suggestions.
 ///
-/// Человек печатал дальше (выросло поколение), ушёл из строки поиска или
-/// стёр введённое — ответ уже не про то, что он видит.
+/// The person kept typing (the generation grew), left the search line or
+/// erased the input: the answer is no longer about what they see.
 pub fn suggest_answer_fresh(
     answer_generation: u64,
     current_generation: u64,
@@ -4044,9 +4140,9 @@ pub fn suggest_answer_fresh(
         && query.trim().chars().count() >= SUGGEST_MIN_CHARS
 }
 
-// ── Подписи состояния каталога ─────────────────────────────────────────
+// ── Catalog status labels ──────────────────────────────────────────────
 
-/// Строка «Найдено: N · показано M» либо честное «ничего».
+/// The line "Found: N · showing M" or an honest "nothing".
 pub fn catalog_status(total: i64, shown: usize) -> String {
     if shown == 0 {
         return tr("Nothing found");
@@ -4054,11 +4150,12 @@ pub fn catalog_status(total: i64, shown: usize) -> String {
     trf("Found: %1 · showing %2", &[&total, &shown])
 }
 
-/// Строка состояния, пока действует поиск: видно, ЧТО отбирает раздел.
+/// The status line while a search is active: it shows WHAT is filtering
+/// the section.
 ///
-/// 19.10.2026 в поле осталось «MishMty» от прошлого поиска, раздел
-/// показывал одну плитку, а строка писала обычное «Найдено» — казалось,
-/// что магазин пропал.
+/// On 19.10.2026 the field still held "MishMty" from a previous search,
+/// the section showed one tile, and the line wrote the usual "Found": it
+/// looked as if the store had disappeared.
 pub fn search_status(query: &str, found: i64) -> String {
     if found <= 0 {
         return trf("Search: “%1” — nothing found", &[&query]);
@@ -4066,29 +4163,29 @@ pub fn search_status(query: &str, found: i64) -> String {
     trf("Search: “%1” — found %2", &[&query, &found])
 }
 
-/// Подсказка кнопки ✕ у строки поиска.
+/// Tooltip of the ✕ button in the search line.
 pub fn search_clear_tooltip() -> String {
     tr("Clear search")
 }
 
-/// Пока едет страница каталога.
+/// While a catalog page is loading.
 pub fn status_loading_catalog() -> String {
     tr("⏳ Loading catalog…")
 }
-/// Пока едет список AUR.
+/// While the AUR list is loading.
 pub fn status_loading_aur() -> String {
     tr("⏳ Loading AUR…")
 }
-/// Пока идёт скан диска.
+/// While the disk scan is running.
 pub fn status_loading_scan() -> String {
     tr("⏳ Loading…")
 }
-/// Пока идёт классификация системных тем (она дёргает пакетный менеджер).
+/// While system themes are being classified (it queries the package manager).
 pub fn status_scanning_system() -> String {
     tr("🖥️ Looking for system themes…")
 }
 
-/// Подпись во время скана: системные темы честно предупреждают о задержке.
+/// The label during the scan: system themes honestly warn about the delay.
 pub fn scan_busy_status(which: &str) -> String {
     if which == "system" {
         status_scanning_system()
@@ -4097,41 +4194,43 @@ pub fn scan_busy_status(which: &str) -> String {
     }
 }
 
-/// Системные темы не удалось классифицировать достоверно.
+/// System themes could not be classified reliably.
 ///
-/// Список тогда НЕ показываем вовсе: иначе темы из AUR протекли бы в раздел
-/// «Системные» и человек принял бы их за часть дистрибутива.
+/// The list is then NOT shown at all: otherwise themes from the AUR would
+/// leak into the "System" section, and the person would take them for part
+/// of the distribution.
 pub fn status_system_scan_unavailable() -> String {
     tr("⚠️ Couldn't tell where packages came from — system themes are hidden (so that \
         AUR themes are not shown as system ones). Try again later.")
 }
 
-// ── Ход установки ──────────────────────────────────────────────────────
+// ── Installation progress ──────────────────────────────────────────────
 
-/// Первая строка журнала установки: работа началась, но что именно делается,
-/// установщик ещё не сказал.
+/// The first line of the installation log: the work has started, but the
+/// installer has not yet said what exactly is being done.
 pub fn install_preparing() -> String {
     tr("⬇️ Preparing…")
 }
 
-/// Отказ установки: архив темы не скачался.
+/// Installation refusal: the theme archive did not download.
 ///
-/// Причины у сети свои и человеку не нужны — ему нужен ответ на нажатую
-/// кнопку. Строка одна на обе версии вкладки.
+/// The network has its own reasons, and the person does not need them:
+/// they need an answer to the button they pressed. One line for both
+/// versions of the tab.
 pub fn install_download_failed() -> String {
     tr("Couldn't download the archive")
 }
 
-/// Виды долгого действия над товаром: у каждого своя подпись, и полоса хода
-/// бывает не у всех.
+/// Kinds of long actions on an item: each has its own label, and not all
+/// of them have a progress bar.
 pub const ACTION_INSTALL: &str = "install";
 pub const ACTION_AUR: &str = "aur";
 pub const ACTION_APPLY: &str = "apply";
-/// «Установить из файла…»: доли выполненного у неё нет (распаковка и
-/// копирование идут без счёта), подпись — как у установки.
+/// "Install from file…": it has no completed fraction (unpacking and
+/// copying go uncounted); the label is the same as for installation.
 pub const ACTION_LOCAL: &str = "local";
 
-/// Подпись в строке состояния на время долгого действия.
+/// The status line label for the duration of a long action.
 pub fn action_busy_status(kind: &str, name: &str) -> String {
     match kind {
         ACTION_AUR => trf("🔨 Building “%1” from AUR…", &[&name]),
@@ -4140,41 +4239,43 @@ pub fn action_busy_status(kind: &str, name: &str) -> String {
     }
 }
 
-/// Пересобирать ли сетку после того, как действие кончилось.
+/// Whether to rebuild the grid after the action has finished.
 ///
-/// Только применение темы: активная тема сменилась, и бейдж «✅ Активна»
-/// обязан переехать на неё. Установка сетку не трогает (там меняется одна
-/// плитка), а удаление перестраивает её сразу — ждать нечего.
+/// Only applying a theme: the active theme has changed, and the
+/// "✅ Active" badge must move to it. Installation does not touch the grid
+/// (one tile changes there), and removal rebuilds it right away, so there
+/// is nothing to wait for.
 ///
-/// ⚠ И ждать перед пересборкой ОБЯЗАТЕЛЬНО (`STYLE_STORM_MS`): применение
-/// полной темы поднимает в НАШЕМ же процессе смену стиля Qt по D-Bus, и
-/// пересборка прямо в этот момент валила приложение.
+/// ⚠ And waiting before the rebuild is MANDATORY (`STYLE_STORM_MS`):
+/// applying a full theme triggers a Qt style change over D-Bus in OUR OWN
+/// process, and rebuilding at that very moment crashed the application.
 pub fn reload_after_action(kind: &str, ok: bool) -> bool {
     ok && kind == ACTION_APPLY
 }
 
-/// Показывать ли полосу хода.
+/// Whether to show the progress bar.
 ///
-/// Долю выполненного отдаёт только загрузка из магазина. Помощник AUR и
-/// применение темы её не считают вовсе, и полоса на нуле врала бы про
-/// «идёт, вот столько» — им остаются строки журнала.
+/// Only a store download reports the completed fraction. The AUR helper
+/// and theme application do not count it at all, and a bar at zero would
+/// lie about "running, this much done": they are left with log lines.
 pub fn action_shows_progress(kind: &str) -> bool {
     kind == ACTION_INSTALL
 }
 
-/// Доля выполненного для полосы хода: установщик изредка отдаёт и больше ста,
-/// и меньше нуля, а полоса обязана оставаться полосой.
+/// The completed fraction for the progress bar: the installer occasionally
+/// reports more than a hundred and less than zero, and the bar must stay a
+/// bar.
 pub fn install_percent(pct: i64) -> i64 {
     pct.clamp(0, 100)
 }
 
-/// Итог действия со значком впереди.
+/// The action result with an icon in front.
 ///
-/// ⚠ Значок ставится, только если сообщение ещё не начинается с него.
-/// Установщик отдаёт готовые «✅ Установлено: …», и безусловный второй
-/// значок давал «✅ ✅ Установлено» — в оригинале это чинили в строке
-/// состояния, но не на панели деталей, где двойной значок так и остался
-/// (правило #12: чиним в одном месте для всех).
+/// ⚠ The icon is added only if the message does not already start with
+/// it. The installer returns ready "✅ Installed: …", and an unconditional
+/// second icon gave "✅ ✅ Installed": in the original this was fixed in
+/// the status line but not in the details panel, where the double icon
+/// remained (rule #12: fix it in one place for everyone).
 pub fn action_result_status(ok: bool, msg: &str) -> String {
     let text = msg.trim_start();
     if text.starts_with('✅') || text.starts_with('❌') {
@@ -4183,18 +4284,18 @@ pub fn action_result_status(ok: bool, msg: &str) -> String {
     format!("{}{msg}", status_prefix(ok))
 }
 
-/// Подпись раздела «Избранное».
+/// Label of the "Favourites" section.
 pub fn favorites_status(n: usize) -> String {
     trf("In favorites: %1", &[&n])
 }
 
-/// Подпись сетки установленного: заголовок над плитками и строка состояния.
+/// Label of the installed grid: the heading above the tiles and the status line.
 pub fn installed_status(n: usize) -> String {
     trf("Installed: %1", &[&n])
 }
 
-/// Строка состояния раздела, где установленное и магазин на одной
-/// странице: обе части; установленного нет — только магазин.
+/// The status line of a section where the installed items and the store
+/// are on one page: both parts; with nothing installed, only the store.
 pub fn combined_status(installed: usize, total: i64, store_shown: usize) -> String {
     let store = catalog_status(total, store_shown);
     if installed == 0 {
@@ -4204,16 +4305,16 @@ pub fn combined_status(installed: usize, total: i64, store_shown: usize) -> Stri
     }
 }
 
-/// Подпись местного раздела, у которого своей нет: имя раздела и счёт.
+/// Label of a local section that has none of its own: the section name and the count.
 pub fn local_category_status(category_name: &str, n: usize) -> String {
     format!("{category_name}: {n}")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Плитки каталога: подписи, подсказки и виды кнопок
+//  Catalog tiles: labels, tooltips and button kinds
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Название на плитке (у товара без имени — прочерк, а не пустая строка).
+/// The name on a tile (an item without a name gets a dash, not an empty string).
 pub fn card_name(name: &str) -> &str {
     if name.is_empty() {
         "—"
@@ -4222,15 +4323,15 @@ pub fn card_name(name: &str) -> &str {
     }
 }
 
-/// Автор на плитке.
+/// The author on a tile.
 pub fn card_author(author: &str) -> &str {
     card_name(author)
 }
 
-/// Вид товара магазина — той же подписью, что у плиток «Активных»
-/// («📁 Иконки»): по разделу его категории магазина. Вид без строки скана
-/// (обои, шрифты, виджеты) — значок и имя раздела. `None` — категория
-/// неизвестна.
+/// The kind of a store item, with the same label as the "Active" tiles
+/// ("📁 Icons"): by the section of its store category. A kind without a
+/// scan line (wallpapers, fonts, widgets) gets the icon and the section
+/// name. `None` means the category is unknown.
 pub fn store_item_kind_label(home: &Path, item: &ThemeItem) -> Option<String> {
     let cat = categories::category_by_id(home, item.category_id)?;
     let h = home.to_string_lossy();
@@ -4245,8 +4346,8 @@ pub fn store_item_kind_label(home: &Path, item: &ThemeItem) -> Option<String> {
     })
 }
 
-/// Строка автора на плитке товара: в витринах «Новые»/«Популярные»
-/// (`showcase`) — «вид · автор», иначе — как есть.
+/// The author line on an item tile: in the "New"/"Popular" showcases
+/// (`showcase`) it is "kind · author", otherwise as is.
 pub fn showcase_author(home: &Path, item: &ThemeItem, showcase: bool) -> String {
     let author = card_author(&item.author).to_string();
     if !showcase {
@@ -4259,10 +4360,10 @@ pub fn showcase_author(home: &Path, item: &ThemeItem, showcase: bool) -> String 
     }
 }
 
-/// Стат-строка плитки магазина: рейтинг · скачивания · дата обновления.
+/// The stats line of a store tile: rating · downloads · update date.
 ///
-/// Набор слотов ЕДИНЫЙ с плиткой AUR (★/⬇/📅 против 👍/📈/📅) — разнобой
-/// магазинов в одной сетке недопустим.
+/// The slot set is THE SAME as on the AUR tile (★/⬇/📅 versus 👍/📈/📅):
+/// a mix of store styles in one grid is not acceptable.
 pub fn card_stats_line(rating_stars: Option<f64>, downloads: i64, updated: &str) -> String {
     let day: String = updated.chars().take(10).collect();
     let upd = if day.is_empty() {
@@ -4270,8 +4371,8 @@ pub fn card_stats_line(rating_stars: Option<f64>, downloads: i64, updated: &str)
     } else {
         format!("{NBSP}{NBSP}📅 {day}")
     };
-    // Без голосов звезды нет (`card_star_glyph`), и строка начинается с
-    // подписи без отступа под значок.
+    // Without votes there is no star (`card_star_glyph`), and the line starts
+    // with the label without the indent for the icon.
     let rating = match rating_stars {
         Some(stars) => format!("{NBSP}{}", format_decimal(stars, 1)),
         None => no_ratings_label(),
@@ -4279,7 +4380,7 @@ pub fn card_stats_line(rating_stars: Option<f64>, downloads: i64, updated: &str)
     format!("{rating}{NBSP}{NBSP}⬇️ {}{upd}", human_count(downloads))
 }
 
-/// Подсказка стат-строки плитки магазина (`None` — даты у товара нет).
+/// Tooltip of the store tile stats line (`None` means the item has no date).
 pub fn card_updated_tooltip(updated: &str) -> Option<String> {
     let day: String = updated.chars().take(10).collect();
     if day.is_empty() {
@@ -4289,30 +4390,31 @@ pub fn card_updated_tooltip(updated: &str) -> Option<String> {
     }
 }
 
-/// Вид кнопки на плитке.
+/// The button kind on a tile.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardButton {
     pub text: String,
-    /// Значение свойства для селекторов таблицы стилей.
+    /// The property value for the style sheet selectors.
     pub state: &'static str,
     pub enabled: bool,
 }
 
-/// Три состояния кнопки плитки магазина: действие / установлено / применено.
+/// Three states of a store tile button: action / installed / applied.
 ///
-/// «Установить» — залитая ЗЕЛЁНАЯ кнопка-действие. «✓ Установлено» —
-/// КОНТУРНАЯ бирюзовая: другой силуэт, а не только другой оттенок, чтобы
-/// состояние не читалось как ещё одно предложение установить. «✓ Применено» —
-/// ЗАЛИТАЯ бирюзовая: тема не просто лежит на диске, а включена прямо сейчас.
-/// Так все три плитки различимы в одной сетке, даже не читая подпись.
+/// "Install" is a filled GREEN action button. "✓ Installed" is an OUTLINED
+/// teal one: a different silhouette, not just a different shade, so that
+/// the state does not read as yet another offer to install. "✓ Applied" is
+/// a FILLED teal one: the theme is not just lying on disk but is enabled
+/// right now. This way all three tiles are distinguishable in one grid
+/// without even reading the label.
 ///
-/// Кнопка во всех состояниях остаётся нажимаемой: переустановить и
-/// переприменить — обычные желания.
+/// The button stays clickable in all states: reinstalling and reapplying
+/// are ordinary wishes.
 pub fn card_install_button(installed: bool, applied: bool, can_apply: bool) -> CardButton {
     if installed && applied {
         return CardButton { text: tr("✅ Applied"), state: "applied", enabled: true };
     }
-    // Как в KDE: поставленная, но не включённая тема — «Применить».
+    // As in KDE: an installed but not enabled theme gets "Apply".
     if installed && can_apply {
         return CardButton { text: tr("🎨 Apply"), state: "true", enabled: true };
     }
@@ -4322,32 +4424,32 @@ pub fn card_install_button(installed: bool, applied: bool, can_apply: bool) -> C
     CardButton { text: tr("Install"), state: "false", enabled: true }
 }
 
-/// Кнопка местной плитки: включённая тема показывает бейдж, остальные —
-/// предложение применить.
+/// The local tile button: the enabled theme shows a badge, the others an
+/// offer to apply.
 pub fn card_local_button(local_kind: &str) -> CardButton {
     if local_kind == "active" {
-        // ⚠️ Состояние «false», а не «applied», и это не описка. Бирюзовый
-        // «applied» носит плитка МАГАЗИНА: там он отличает применённый товар
-        // от просто скачанного. У местной плитки такого соседа нет — раздел
-        // «Активные» состоит из применённых целиком, — и оригинал на
-        // виджетах рисует бейдж обычной зелёной кнопкой (`#InstallBtn` без
-        // свойства `installed`). Бирюзовый бейдж был отсебятиной переноса:
-        // замер снимков 01.09.2026 — заливка (43,129,126) против (91,163,43)
-        // у оригинала.
+        // ⚠️ The state is "false", not "applied", and that is not a typo. The
+        // teal "applied" belongs to a STORE tile: there it distinguishes an
+        // applied item from one merely downloaded. A local tile has no such
+        // neighbour (the "Active" section consists entirely of applied ones),
+        // and the original widgets draw the badge as a normal green button
+        // (`#InstallBtn` without the `installed` property). The teal badge was
+        // an invention of the port: screenshot measurement on 01.09.2026, fill
+        // (43,129,126) versus (91,163,43) in the original.
         CardButton { text: local_active_badge(), state: "false", enabled: false }
     } else {
         CardButton { text: tr("🎨 Apply"), state: "false", enabled: true }
     }
 }
 
-/// Кнопка местной плитки с учётом вида раздела.
+/// The local tile button, taking the section kind into account.
 ///
-/// Темы — как [`card_local_button`]: «🎨 Применить», у включённой — бейдж.
-/// У дополнений окружений и виджетов Conky включённых может быть сколько
-/// угодно, и у включённого кнопка не бейдж, а обратное действие:
-/// «⏸ Выключить» / «⏹ Остановить» (решение 04.10.2026). Вид — из
-/// `de_apply` по номеру плитки `local:<вид>:<имя>`, отдельного списка
-/// разделов здесь нет.
+/// Themes are like [`card_local_button`]: "🎨 Apply", the enabled one gets
+/// a badge. Environment add-ons and Conky widgets can have any number
+/// enabled, and an enabled one has not a badge but the reverse action:
+/// "⏸ Disable" / "⏹ Stop" (decision of 04.10.2026). The kind comes from
+/// `de_apply` by the tile id `local:<kind>:<name>`; there is no separate
+/// list of sections here.
 pub fn card_local_button_for(local_kind: &str, item_id: &str) -> CardButton {
     use crate::de_apply::{apply_kind_of_local_id, button_for_apply_kind, Button};
     let button = apply_kind_of_local_id(item_id)
@@ -4360,10 +4462,11 @@ pub fn card_local_button_for(local_kind: &str, item_id: &str) -> CardButton {
     }
 }
 
-/// Кнопка дополнения или виджета: включённое — контурная кнопка состояния
-/// с обратным действием, выключенное — залитая кнопка-действие, как у
-/// остальных плиток. Одна на местную плитку ([`card_local_button_for`]) и
-/// поставленный товар магазина ([`card_store_button`]).
+/// The button of an add-on or widget: an enabled one gets an outlined
+/// status button with the reverse action, a disabled one a filled action
+/// button, like the other tiles. One for the local tile
+/// ([`card_local_button_for`]) and the installed store item
+/// ([`card_store_button`]).
 pub fn switch_button(button: crate::de_apply::Button, on: bool) -> CardButton {
     use crate::de_apply::Button;
     match button {
@@ -4375,13 +4478,13 @@ pub fn switch_button(button: crate::de_apply::Button, on: bool) -> CardButton {
     }
 }
 
-/// Кнопка плитки товара магазина. Поставленный виджет Conky или дополнение
-/// (`switch` — [`store_item_switch`]) включается прямо с плитки каталога,
-/// тем же нажатием, что у плитки установленного: «▶️ Запустить» /
-/// «⏹️ Остановить», «▶️ Включить» / «⏸️ Выключить» (`on` — запущен или
-/// включён сейчас). Раньше такая плитка после установки застывала на
-/// «✅ Установлено», и где включить виджет, было не понять (живая проверка
-/// 15.11.2026). Остальное — [`card_install_button`].
+/// The button of a store item tile. An installed Conky widget or add-on
+/// (`switch` is [`store_item_switch`]) is enabled right from the catalog
+/// tile, with the same press as on the installed tile: "▶️ Start" /
+/// "⏹️ Stop", "▶️ Enable" / "⏸️ Disable" (`on` means running or enabled
+/// now). Previously such a tile froze on "✅ Installed" after installation,
+/// and it was impossible to tell where to enable the widget (live check
+/// 15.11.2026). The rest is [`card_install_button`].
 pub fn card_store_button(installed: bool, on: bool, can_apply: bool, switch: Option<crate::de_apply::Button>) -> CardButton {
     match switch {
         Some(button) if installed => switch_button(button, on),
@@ -4389,8 +4492,8 @@ pub fn card_store_button(installed: bool, on: bool, can_apply: bool, switch: Opt
     }
 }
 
-/// Главная кнопка деталей товара магазина — те же состояния, что у плитки
-/// ([`card_store_button`]).
+/// The main button of a store item's details: the same states as on the
+/// tile ([`card_store_button`]).
 pub fn store_detail_button(installed: bool, on: bool, can_apply: bool, switch: Option<crate::de_apply::Button>) -> InstallButton {
     match switch {
         Some(button) if installed => {
@@ -4401,27 +4504,28 @@ pub fn store_detail_button(installed: bool, on: bool, can_apply: bool, switch: O
     }
 }
 
-/// Тему экрана входа SDDM нельзя включить, пока вход рисует Plasma Login
-/// Manager: «Применить» на плитке приглушено и объясняет причину подсказкой
-/// ([`sddm_under_plasma_login_reason`]); нажатие по-прежнему доходит до
-/// установщика, и тот отказывает теми же словами ещё до окна пароля
-/// (`appearance_installer::root_preflight`). Удалить такую тему можно.
-/// `plasma_login` — вход рисует Plasma Login Manager
-/// (`system_plan::is_plasma_login`).
+/// An SDDM login screen theme cannot be enabled while Plasma Login Manager
+/// draws the login: "Apply" on the tile is dimmed and explains the reason
+/// in a tooltip ([`sddm_under_plasma_login_reason`]); the press still
+/// reaches the installer, which refuses with the same words before the
+/// password window (`appearance_installer::root_preflight`). Such a theme
+/// can be removed. `plasma_login`: the login is drawn by Plasma Login
+/// Manager (`system_plan::is_plasma_login`).
 pub fn sddm_blocked_by_plasma_login(item_id: &str, plasma_login: bool) -> bool {
     plasma_login && crate::de_apply::apply_kind_of_local_id(item_id) == Some("sddm")
 }
 
-/// Подсказка на недоступном «Применить» у темы SDDM — заголовок панели
-/// раздела «Экран входа» (те же слова, что человек видит там).
+/// The tooltip on the unavailable "Apply" of an SDDM theme: the panel
+/// heading of the "Login screen" section (the same words the person sees
+/// there).
 pub fn sddm_under_plasma_login_reason() -> String {
     plasma_login_panel(false).title
 }
 
-/// Кнопка действия на панели деталей местной темы: `(подпись, можно ли
-/// нажать)`. Та же развилка, что у плитки ([`card_local_button_for`]):
-/// у включённой ТЕМЫ — бейдж «✅ Активна», у дополнения и виджета —
-/// обратное действие.
+/// The action button on the details panel of a local theme: `(label,
+/// clickable)`. The same fork as on the tile ([`card_local_button_for`]):
+/// an enabled THEME gets the "✅ Active" badge, an add-on and a widget the
+/// reverse action.
 pub fn detail_local_button(local_kind: &str, item_id: &str) -> (String, bool) {
     use crate::de_apply::{apply_kind_of_local_id, button_for_apply_kind, Button};
     let button = apply_kind_of_local_id(item_id)
@@ -4438,25 +4542,25 @@ pub fn detail_local_button(local_kind: &str, item_id: &str) -> (String, bool) {
     (card.text, true)
 }
 
-/// Виден ли на панели деталей переключатель «Запускать при входе» — только
-/// у виджетов Conky (у них запуск отдельно от автозапуска).
+/// Whether the "Start at login" toggle is visible on the details panel:
+/// only for Conky widgets (their start is separate from autostart).
 pub fn detail_autostart_visible(item_id: &str) -> bool {
     use crate::de_apply::{apply_kind_of_local_id, button_for_apply_kind, Button};
     apply_kind_of_local_id(item_id).map(button_for_apply_kind) == Some(Button::Run)
 }
 
-/// Подпись переключателя автозапуска виджета.
+/// Label of the widget autostart toggle.
 pub fn detail_autostart_text() -> String {
     tr("Start at login")
 }
 
-/// Местные плитки, которые имеют смысл в выбранном рабочем столе: раздел
-/// плитки доступен в нём (`categories::category_available`). Плитка
-/// неизвестного раздела остаётся — прятать без причины нельзя.
+/// Local tiles that make sense in the chosen desktop: the tile's section
+/// is available in it (`categories::category_available`). A tile of an
+/// unknown section stays: hiding it without a reason is not allowed.
 ///
-/// Без этого в «Загруженных» на XFCE лежали бы рамки Aurorae с кнопкой
-/// «Применить», которая пишет настройки KWin, — честнее не показывать
-/// кнопку там, где тип неприменим (решение 04.10.2026).
+/// Without this, "Downloaded" on XFCE would contain Aurorae frames with an
+/// "Apply" button that writes KWin settings; it is more honest not to show
+/// the button where the type does not apply (decision of 04.10.2026).
 pub fn local_items_for_de(items: Vec<ThemeItem>, home: &Path, de: &str) -> Vec<ThemeItem> {
     if de.is_empty() {
         return items;
@@ -4465,8 +4569,8 @@ pub fn local_items_for_de(items: Vec<ThemeItem>, home: &Path, de: &str) -> Vec<T
     items
         .into_iter()
         .filter(|it| {
-            // Номер товара подкатегории (виджет часов — 708) ведёт в свой
-            // раздел («Виджеты», 705), как у `categories::category_by_id`.
+            // A subcategory item id (the clock widget, 708) leads to its own
+            // section ("Widgets", 705), as in `categories::category_by_id`.
             let section = categories::section_id_for(it.category_id);
             cats.iter()
                 .find(|c| c.id == it.category_id)
@@ -4476,79 +4580,81 @@ pub fn local_items_for_de(items: Vec<ThemeItem>, home: &Path, de: &str) -> Vec<T
         .collect()
 }
 
-/// Цвета кнопки плитки по её состоянию — сестра `card_install_button` для
-/// QML.
+/// Tile button colours by its state: the QML sibling of
+/// `card_install_button`.
 ///
-/// ⚠️ Таблица стилей (`page_qss`) — это QtWidgets, в QML она не работает
-/// вовсе. Поэтому рядом с QSS-строкой заводится сестра, отдающая ГОЛЫЕ
-/// цвета, а сторож сверки следит, чтобы они не разъехались
-/// (`tests/appearance_page_parity.rs`). Решение о цвете остаётся одно,
-/// разными остаются только обёртки.
+/// ⚠️ The style sheet (`page_qss`) is QtWidgets; it does not work in QML at
+/// all. So next to the QSS string there is a sibling returning BARE
+/// colours, and a parity guard makes sure they do not drift apart
+/// (`tests/appearance_page_parity.rs`). The colour decision stays single;
+/// only the wrappers differ.
 ///
-/// Порядок: заливка, надпись, рамка. Значение с решёткой — готовый цвет,
-/// без решётки — ИМЯ ТОКЕНА действующего скина (его подставит вызывающий из
-/// `colors()`); пустая строка — цвета нет вовсе (прозрачно / без рамки).
+/// Order: fill, text, border. A value with a hash is a ready colour,
+/// without a hash it is the TOKEN NAME of the active skin (the caller
+/// substitutes it from `colors()`); an empty string means no colour at all
+/// (transparent / no border).
 pub fn card_button_colors(state: &str) -> (&'static str, &'static str, &'static str) {
     match state {
-        // «✓ Применено» — ЗАЛИТАЯ бирюзовая (рамка того же цвета, чтобы
-        // кнопка не «прыгала» в размере против контурного вида).
+        // "✓ Applied" is a FILLED teal one (the border has the same colour so
+        // that the button does not "jump" in size against the outlined kind).
         "applied" => ("#2f9e94", "#ffffff", "#2f9e94"),
-        // «✓ Установлено» — КОНТУРНАЯ бирюзовая: залитая зелёная кнопка
-        // читается как предложение действия, контур — как состояние.
+        // "✓ Installed" is an OUTLINED teal one: a filled green button reads as
+        // an offer of an action, an outline as a state.
         "true" => ("", "#7fe3da", "#4fd1c5"),
-        // «Установить» / «🎨 Применить» — залитая зелёная кнопка-действие
-        // цветом действующего скина.
+        // "Install" / "🎨 Apply" is a filled green action button in the colour
+        // of the active skin.
         _ => ("accent_green", "#ffffff", ""),
     }
 }
 
-/// Краски контрола, который таблица стилей ВКЛАДКИ перекрывает поверх
-/// палитры Qt.
+/// The paints of a control that the TAB's style sheet overrides on top of
+/// the Qt palette.
 ///
-/// ⚠️ ЗАЧЕМ ОТДЕЛЬНАЯ ТАБЛИЦА, а не общие поверхности из `ui_base`. Общие
-/// поверхности (`surface_button`, `surface_field`) отвечают на вопрос «чем
-/// Qt красит контрол САМА по роли палитры». Это верно ровно до тех пор,
-/// пока у страницы нет своей таблицы стилей. У «Оформления» она есть, и
-/// роль в ней не участвует вовсе: выпадающий список красится токеном
-/// `bg_secondary`, полоса страниц — `bg_card`, второстепенная кнопка —
-/// `bg_card_hover`. Замер 05.09 (стенд, раздел «Стиль приложений»): QML
-/// клал в те же места роль `Button` (42,64,85) и расходился с оригиналом на
-/// 6 475 точек у выпадающего списка, 2 339 у кнопки обновления и 2 121 у
-/// «Избранного».
+/// ⚠️ WHY A SEPARATE TABLE rather than the common surfaces from `ui_base`.
+/// The common surfaces (`surface_button`, `surface_field`) answer the
+/// question "how does Qt paint the control ITSELF by palette role". That
+/// holds exactly as long as the page has no style sheet of its own.
+/// "Appearance" has one, and the role plays no part in it: the drop-down
+/// list is painted with the `bg_secondary` token, the page bar with
+/// `bg_card`, a secondary button with `bg_card_hover`. Measured on 05.09
+/// (bench, "Application style" section): QML put the `Button` role
+/// (42,64,85) in the same places and diverged from the original by 6,475
+/// pixels on the drop-down list, 2,339 on the refresh button and 2,121 on
+/// "Favourites".
 ///
-/// Значения — ИМЕНА ТОКЕНОВ действующего скина (их подставит вызывающий из
-/// `colors()`), тот же контракт, что у [`card_button_colors`]; пустая
-/// строка — цвета нет.
+/// The values are TOKEN NAMES of the active skin (the caller substitutes
+/// them from `colors()`), the same contract as [`card_button_colors`]; an
+/// empty string means no colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ControlSkin {
-    /// Заливка в покое.
+    /// Fill at rest.
     pub bg: &'static str,
-    /// Заливка под курсором.
+    /// Fill under the cursor.
     pub hover: &'static str,
-    /// Рамка в покое.
+    /// Border at rest.
     pub border: &'static str,
-    /// Рамка под курсором.
+    /// Border under the cursor.
     pub hover_border: &'static str,
-    /// Надпись.
+    /// Text.
     pub fg: &'static str,
-    /// Скругление, точек.
+    /// Corner radius, points.
     pub radius: i32,
-    /// Поле слева и справа, точек.
+    /// Left and right padding, points.
     pub pad_h: i32,
-    /// Поле сверху и снизу, точек.
+    /// Top and bottom padding, points.
     pub pad_v: i32,
 }
 
-/// Краски контролов вкладки по виду. Неизвестный вид — как `nav`.
+/// The paints of the tab's controls by kind. An unknown kind is like `nav`.
 ///
-/// Виды повторяют группы правил из [`page_qss`] один в один:
-///   * `combo` — `#SortCombo`;
-///   * `nav` — `#RefreshBtn, #PageBtn, #BackBtn`;
-///   * `secondary` — `#DetailsBtn, #DownloadOnlyBtn, #CommentsMoreBtn`.
+/// The kinds repeat the rule groups from [`page_qss`] one to one:
+///   * `combo`: `#SortCombo`;
+///   * `nav`: `#RefreshBtn, #PageBtn, #BackBtn`;
+///   * `secondary`: `#DetailsBtn, #DownloadOnlyBtn, #CommentsMoreBtn`.
 pub fn control_colors(kind: &str) -> ControlSkin {
     match kind {
-        // Выпадающий список: своей подсветки под курсором у него в таблице
-        // стилей нет — заливка и рамка в покое и под курсором одни и те же.
+        // The drop-down list: the style sheet gives it no hover highlight of its
+        // own, so the fill and border at rest and under the cursor are the same.
         "combo" => ControlSkin {
             bg: "bg_secondary",
             hover: "bg_secondary",
@@ -4559,8 +4665,8 @@ pub fn control_colors(kind: &str) -> ControlSkin {
             pad_h: 8,
             pad_v: 5,
         },
-        // Второстепенная кнопка («Избранное», «Только скачать», «Показать
-        // ещё»): под курсором меняется одна рамка, заливка стоит на месте.
+        // A secondary button ("Favourites", "Download only", "Show more"): under
+        // the cursor only the border changes, the fill stays put.
         "secondary" => ControlSkin {
             bg: "bg_card_hover",
             hover: "bg_card_hover",
@@ -4571,7 +4677,7 @@ pub fn control_colors(kind: &str) -> ControlSkin {
             pad_h: 10,
             pad_v: 6,
         },
-        // Обновление, страницы каталога, «Назад».
+        // Refresh, catalog pages, "Back".
         _ => ControlSkin {
             bg: "bg_card",
             hover: "bg_card_hover",
@@ -4585,7 +4691,7 @@ pub fn control_colors(kind: &str) -> ControlSkin {
     }
 }
 
-/// Кнопка «Избранное»: подпись и признак для таблицы стилей.
+/// The "Favourites" button: the label and the flag for the style sheet.
 pub fn favorite_button(on: bool) -> CardButton {
     if on {
         CardButton { text: tr("⭐ Favorite"), state: "on", enabled: true }
@@ -4594,31 +4700,33 @@ pub fn favorite_button(on: bool) -> CardButton {
     }
 }
 
-// ── Плитка AUR ─────────────────────────────────────────────────────────
+// ── AUR tile ───────────────────────────────────────────────────────────
 
-/// Пометка устаревшего пакета в строке источника.
+/// The out-of-date package mark in the source line.
 pub fn aur_out_of_date() -> String {
     format!("  {}", tr("⚠️ out of date"))
 }
 
-/// Строка источника плитки AUR: бейдж и версия.
+/// The source line of an AUR tile: the badge and the version.
 ///
-/// Бейдж обязателен: в режиме «Все» плитки AUR идут вперемешку с магазинными,
-/// и человек должен видеть, откуда возьмётся пакет. `version` приходит уже
-/// обрезанным по фактической ширине — обрезка меряется в пикселях и живёт в
-/// Qt-слое, здесь только состав строки.
+/// The badge is mandatory: in "All" mode AUR tiles are mixed with store
+/// ones, and the person must see where the package will come from.
+/// `version` arrives already truncated to the actual width: truncation is
+/// measured in pixels and lives in the Qt layer; here only the line's
+/// composition.
 pub fn aur_meta_line(version: &str, out_of_date: bool) -> String {
     let ver = if version.is_empty() { "—" } else { version };
     let ood = if out_of_date { aur_out_of_date() } else { String::new() };
     format!("🛠️ AUR · {ver}{ood}")
 }
 
-/// Пометка плитки AUR там, где пакеты идут ВПЕРЕМЕШКУ с одиночными товарами
-/// магазина (источник «Все»): чем пакет отличается от соседа — он ставится
-/// системным пакетом и просит пароль, а у обоев это целый набор картинок,
-/// а не одна. Пусто — пометка не нужна (источник «AUR»: там все такие).
-/// Размер пакета AUR не сообщает (ни поиск, ни `info`), поэтому его в
-/// пометке нет.
+/// The mark of an AUR tile where packages are MIXED with single store items
+/// (the "All" source): how the package differs from its neighbour: it is
+/// installed as a system package and asks for a password, and for
+/// wallpapers it is a whole set of pictures rather than one. Empty means
+/// the mark is not needed (the "AUR" source: everything there is like
+/// that). The AUR does not report the package size (neither search nor
+/// `info`), so it is not in the mark.
 pub fn aur_mix_badge(view: &CatalogView, pkg_category: &str) -> String {
     if !view.both_mode() {
         return String::new();
@@ -4630,19 +4738,19 @@ pub fn aur_mix_badge(view: &CatalogView, pkg_category: &str) -> String {
     }
 }
 
-/// Подсказка к пометке [`aur_mix_badge`].
+/// Tooltip for the [`aur_mix_badge`] mark.
 pub fn aur_mix_badge_tooltip() -> String {
     tr("Installed as a system package from AUR: it asks for the administrator password and is removed the same way.")
 }
 
-/// Файл шрифта (по расширению) — картинка плитки шрифта: плитка рисует им
-/// образец текста, а не показывает файл картинкой.
+/// A font file (by extension) as the picture of a font tile: the tile draws
+/// a text sample with it rather than showing the file as a picture.
 pub fn is_font_file(path: &str) -> bool {
     let p = path.to_ascii_lowercase();
     [".ttf", ".otf", ".woff", ".woff2", ".ttc"].iter().any(|e| p.ends_with(e))
 }
 
-/// Начало файла — шрифт (TrueType, OpenType, коллекция, WOFF).
+/// The start of the file is a font (TrueType, OpenType, collection, WOFF).
 pub fn looks_like_font(head: &[u8]) -> bool {
     head.starts_with(&[0, 1, 0, 0])
         || head.starts_with(b"OTTO")
@@ -4652,29 +4760,30 @@ pub fn looks_like_font(head: &[u8]) -> bool {
         || head.starts_with(b"wOF2")
 }
 
-/// Сколько ширины остаётся версии в строке источника: полная ширина подписи
-/// минус то, что займут бейдж и пометка. Меньше сорока не отдаём — иначе от
-/// версии не останется ничего читаемого.
+/// How much width is left for the version in the source line: the full
+/// label width minus what the badge and the mark take. We never return
+/// less than forty, otherwise nothing readable of the version would
+/// remain.
 pub fn aur_version_budget(text_width: i32, fixed_width: i32) -> i32 {
     40.max(text_width - fixed_width)
 }
 
-/// Каркас строки источника, по которому Qt-слой меряет ширину неизменяемой
-/// части (сама версия в него не входит).
+/// The skeleton of the source line by which the Qt layer measures the width
+/// of the fixed part (the version itself is not in it).
 pub fn aur_meta_frame(out_of_date: bool) -> String {
     format!("🛠️ AUR · {}", if out_of_date { aur_out_of_date() } else { String::new() })
 }
 
-/// Подсказка строки источника.
+/// Tooltip of the source line.
 pub fn aur_version_tooltip(version: &str) -> String {
     trf("Version: %1", &[&if version.is_empty() { "—" } else { version }])
 }
 
-/// Стат-строка плитки AUR: голоса · популярность · дата обновления.
+/// The stats line of an AUR tile: votes · popularity · update date.
 ///
-/// `updated_day` — уже готовая дата: перевод отметки времени в календарный
-/// день зависит от часового пояса машины, и делать его здесь значило бы
-/// заводить в ядре свою таблицу поясов.
+/// `updated_day` is a ready date: converting a timestamp to a calendar day
+/// depends on the machine's time zone, and doing it here would mean
+/// keeping a time zone table of our own in the core.
 pub fn aur_stats_line(votes: i64, popularity: f64, updated_day: &str) -> String {
     let pop = if popularity != 0.0 {
         format!("{NBSP}{NBSP}📈 {}", format_decimal(popularity, 1))
@@ -4689,7 +4798,7 @@ pub fn aur_stats_line(votes: i64, popularity: f64, updated_day: &str) -> String 
     format!("{NBSP}{}{pop}{upd}", human_count(votes))
 }
 
-/// Подсказка стат-строки плитки AUR.
+/// Tooltip of the AUR tile stats line.
 pub fn aur_stats_tooltip(votes: i64, popularity: f64, updated_day: &str) -> String {
     let upd = if updated_day.is_empty() { "—" } else { updated_day };
     trf(
@@ -4698,7 +4807,7 @@ pub fn aur_stats_tooltip(votes: i64, popularity: f64, updated_day: &str) -> Stri
     )
 }
 
-/// Вид кнопки установки на плитке AUR.
+/// The install button kind on an AUR tile.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AurButton {
     pub text: String,
@@ -4706,22 +4815,23 @@ pub struct AurButton {
     pub tooltip: String,
 }
 
-/// Установить пакет AUR нечем: ни paru, ни yay в системе нет. Одна строка на
-/// подсказку кнопки и на итог попытки установки — теми же словами, что отказ
-/// пересборки оформления (`aeroshell::REBUILD_NO_HELPER`), без «хелпера».
+/// There is nothing to install an AUR package with: neither paru nor yay is
+/// in the system. One string for the button tooltip and for the result of
+/// an install attempt, in the same words as the appearance rebuild refusal
+/// (`aeroshell::REBUILD_NO_HELPER`), without the word "helper".
 pub fn aur_no_builder() -> String {
     tr("No AUR package builder found (paru or yay) — installation is unavailable")
 }
 
-/// Подсказка кнопки установки пакета AUR.
+/// Tooltip of the AUR package install button.
 fn aur_build_hint() -> String {
     tr("Built from source — this can take a while")
 }
 
-/// Кнопка установки пакета AUR.
+/// The AUR package install button.
 ///
-/// Без помощника (yay/paru) ставить нечем — говорим это подсказкой, а не
-/// молчаливо мёртвой кнопкой (правило #13).
+/// Without a helper (yay/paru) there is nothing to install with: we say so
+/// in a tooltip rather than with a silently dead button (rule #13).
 pub fn aur_install_button(installed: bool, can_install: bool) -> AurButton {
     if installed {
         return AurButton {
@@ -4744,7 +4854,7 @@ pub fn aur_install_button(installed: bool, can_install: bool) -> AurButton {
     }
 }
 
-/// Кнопка во время сборки пакета.
+/// The button while the package is being built.
 pub fn aur_busy_button(busy: bool) -> AurButton {
     if busy {
         AurButton { text: tr("⏳ Building…"), enabled: false, tooltip: String::new() }
@@ -4757,45 +4867,46 @@ pub fn aur_busy_button(busy: bool) -> AurButton {
     }
 }
 
-// ── Подписи панели деталей ─────────────────────────────────────────────
+// ── Details panel labels ───────────────────────────────────────────────
 //
-// Оставались в Qt-слое до переноса вкладки на QML: подпись — такое же
-// решение, как цвет и порядок, и вторая её копия в разметке разъехалась бы
-// с первой молча. Сторож — `appearance_page_parity.rs`.
+// They stayed in the Qt layer until the tab moved to QML: a label is the
+// same kind of decision as a colour and an order, and a second copy of it
+// in the markup would silently drift from the first. The guard is
+// `appearance_page_parity.rs`.
 
-/// Возврат из панели деталей к сетке. Двойной пробел — как в оригинале.
+/// Return from the details panel to the grid. The double space is as in the original.
 pub fn detail_back_btn() -> String {
     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("←  Back to Catalog")
 }
-/// Снять установленную тему.
+/// Remove the installed theme.
 pub fn detail_uninstall_btn() -> String {
     tr("🗑️ Remove")
 }
-/// Открыть страницу товара в магазине.
+/// Open the item's page in the store.
 pub fn detail_open_site_btn() -> String {
     tr("🌐 Open Website")
 }
 pub fn detail_open_site_tooltip() -> String {
     tr("Official page on pling.com (description, comments)")
 }
-/// Применить тему, которая уже лежит на диске.
+/// Apply a theme that is already on disk.
 pub fn detail_apply_local_btn() -> String {
     tr("🎨 Apply")
 }
-/// Подсказка картинки: по ней открывается полноэкранный просмотр.
+/// The picture tooltip: clicking it opens the full-screen view.
 pub fn detail_preview_tooltip() -> String {
     tr("Click the picture to view it full screen")
 }
-/// Пока картинка едет.
+/// While the picture is loading.
 pub fn detail_preview_loading() -> String {
     tr("Loading preview…")
 }
-/// Картинки у товара нет вовсе.
+/// The item has no picture at all.
 pub fn detail_preview_unavailable() -> String {
     tr("No preview available")
 }
-/// Накладные контролы поверх картинки.
+/// Overlay controls on top of the picture.
 pub const OVERLAY_ZOOM_BTN: &str = "🔍";
 pub fn overlay_zoom_tooltip() -> String {
     tr("View full screen")
@@ -4808,34 +4919,34 @@ pub const OVERLAY_NEXT_BTN: &str = "▶️";
 pub fn overlay_next_tooltip() -> String {
     tr("Next screenshot")
 }
-/// Дочитать ветку комментариев.
+/// Read the rest of the comment thread.
 pub fn comments_more_btn() -> String {
     tr("Show More")
 }
 
-/// Подпись кнопки «открыть страницу пакета».
+/// Label of the "open the package page" button.
 pub fn aur_open_btn() -> String {
     tr("🌐 Open in AUR")
 }
-/// Подсказка к ней.
+/// Its tooltip.
 pub fn aur_open_tooltip() -> String {
     tr("Package page on aur.archlinux.org")
 }
 
-// ── Прослушивание тем звуков ────────────────────────────────────────────
+// ── Listening to sound themes ──────────────────────────────────────────
 //
-// Паритет с модулем KDE «Системные звуки»: у каждой темы ряд «Прослушать:»
-// из пяти кнопок-значков (звонок, предупреждение, сообщение, батарея,
-// устройство — набор и запасные события в `sound_preview::PREVIEW_SLOTS`) и
-// «▶» — все пять по очереди. У товара Магазина ряд появляется после
-// «Прослушать до установки»: архив качается во временный кеш, ничего не
-// ставится.
+// Parity with the KDE "System Sounds" module: every theme has a "Listen:"
+// row of five icon buttons (bell, warning, message, battery, device; the
+// set and the fallback events are in `sound_preview::PREVIEW_SLOTS`) and
+// "▶", which plays all five in turn. For a Store item the row appears
+// after "Listen before installing": the archive is downloaded into a
+// temporary cache, nothing is installed.
 
-/// OCS-раздел «Звуки» (`categories::categories`, ключ `sounds`).
+/// The OCS "Sounds" section (`categories::categories`, key `sounds`).
 pub const SOUND_CATEGORY_ID: i64 = 316;
 
-/// Тема звуков на диске, которую показывает местная плитка
-/// (`local:sounds:<каталог>`); `None` — плитка не тема звуков.
+/// The sound theme on disk shown by a local tile (`local:sounds:<directory>`);
+/// `None` means the tile is not a sound theme.
 pub fn local_sound_theme(item_id: &str) -> Option<String> {
     item_id
         .strip_prefix("local:sounds:")
@@ -4843,11 +4954,12 @@ pub fn local_sound_theme(item_id: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Что плитка умеет показать во весь экран: заставка KDE на диске —
-/// «Продемонстрировать» (`ksplashqml <тема> --test`), знак — имя темы; тема
-/// SDDM — «Предпросмотр» экрана входа в тестовом режиме приветствия, знак —
-/// `sddm:<тема>` ([`crate::system_plan::login_preview_argv_live`]). У
-/// плитки «Нет» и прочих — `None`.
+/// What a tile can show full screen: a KDE splash on disk has
+/// "Demonstrate" (`ksplashqml <theme> --test`), the token is the theme
+/// name; an SDDM theme has a login screen "Preview" in greeter test mode,
+/// the token is `sddm:<theme>`
+/// ([`crate::system_plan::login_preview_argv_live`]). The "None" tile and
+/// others get `None`.
 pub fn local_splash_demo(item_id: &str) -> Option<String> {
     if let Some(theme) = item_id.strip_prefix("local:sddm:") {
         let ok = !theme.is_empty() && !theme.contains('/') && !theme.starts_with('-');
@@ -4859,43 +4971,43 @@ pub fn local_splash_demo(item_id: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Знак кнопки показа на плитке темы SDDM (см. [`local_splash_demo`]).
+/// The token of the show button on an SDDM theme tile (see [`local_splash_demo`]).
 pub const LOGIN_PREVIEW_PREFIX: &str = "sddm:";
 
-/// Товар Магазина из раздела «Звуки» — его можно послушать до установки.
+/// A Store item from the "Sounds" section: it can be listened to before installing.
 pub fn is_store_sound_item(item: &ThemeItem) -> bool {
     !item.id.starts_with("local:") && item.category_id == SOUND_CATEGORY_ID
 }
 
-/// Подпись ряда кнопок прослушивания.
+/// Label of the listening buttons row.
 pub fn sound_preview_label() -> String {
     tr("Preview:")
 }
-/// Подсказка кнопки одного звука; `event` — имя события freedesktop, как в
-/// KDE («battery-caution»).
+/// Tooltip of a single-sound button; `event` is the freedesktop event name,
+/// as in KDE ("battery-caution").
 pub fn sound_preview_tooltip(event: &str) -> String {
     // TRANSLATORS: %1 is a freedesktop sound event name such as battery-caution.
     trf("Preview sound “%1”", &[&event])
 }
-/// Подсказка «▶».
+/// Tooltip of "▶".
 pub fn sound_play_all_tooltip() -> String {
     tr("Play all five sounds in turn")
 }
-/// Подсказка выключенной кнопки: такого звука нет ни в теме, ни у её
-/// родителей, ни в `freedesktop`.
+/// Tooltip of a disabled button: there is no such sound in the theme, in
+/// its parents or in `freedesktop`.
 pub fn sound_missing_tooltip() -> String {
     tr("This theme has no such sound")
 }
-/// Кнопка панели товара Магазина из раздела «Звуки».
+/// The panel button of a Store item from the "Sounds" section.
 pub fn sound_store_preview_btn() -> String {
     tr("🔊 Preview Before Installing")
 }
-/// Подсказка к ней.
+/// Its tooltip.
 pub fn sound_store_preview_tooltip() -> String {
     tr("The theme is downloaded to a temporary folder so you can hear its sounds. Nothing is installed.")
 }
-/// Ход скачивания для прослушивания: доля, если сервер назвал размер,
-/// иначе сколько уже пришло.
+/// Download progress for listening: the fraction if the server named the
+/// size, otherwise how much has already arrived.
 pub fn sound_store_progress(done: i64, total: i64) -> String {
     if total > 0 {
         let pct = (done.max(0) * 100 / total).min(100);
@@ -4909,60 +5021,61 @@ pub fn sound_store_progress(done: i64, total: i64) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Шапка вкладки: подписи, чипы и накладные контролы
+//  Tab header: labels, chips and overlay controls
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Заголовок вкладки.
+/// The tab title.
 pub fn page_title() -> String {
     tr("Appearance")
 }
 
-/// Наименьший размер окна вкладки: боковая панель (210) плюс два ряда плиток
-/// по 300 с полями — уже при 900 сетка не рвётся на один столбец. То же
-/// число, что у «Сравнения» и «Steam»: у одного продукта один нижний предел.
+/// The smallest tab window size: the sidebar (210) plus two rows of 300
+/// tiles with margins: already at 900 the grid does not collapse into one
+/// column. The same number as in "Comparison" and "Steam": one product has
+/// one lower limit.
 pub const WINDOW_MIN_SIZE: (u32, u32) = (900, 720);
 
-/// Кегль заголовка вкладки (`_apply_heading_skin` оригинала).
+/// Font size of the tab title (the original's `_apply_heading_skin`).
 pub const PAGE_TITLE_POINT_SIZE: i32 = 15;
 
-/// Строка сайдбара: значок и имя раздела с отбивкой, как в оригинале.
+/// A sidebar line: the icon and the section name with spacing, as in the original.
 pub fn sidebar_row_text(icon: &str, name: &str) -> String {
     format!("  {icon}  {name}")
 }
 
-/// Заголовок открытого раздела над сеткой.
+/// The heading of the open section above the grid.
 pub fn section_title(icon: &str, name: &str) -> String {
     format!("{icon}  {name}")
 }
 
-/// Подпись перед чипами источника.
+/// The label before the source chips.
 pub fn source_label() -> String {
     tr("Store:")
 }
-/// Подпись перед под-чипами (вид стиля, режим блокировки).
+/// The label before the sub-chips (style kind, lock mode).
 pub fn submode_label() -> String {
     tr("View:")
 }
-/// Подпись перед выбором рабочего стола.
+/// The label before the desktop choice.
 pub fn de_label() -> String {
     tr("Current desktop:")
 }
-/// Подсказка выбора рабочего стола.
+/// Tooltip of the desktop choice.
 pub fn de_tooltip() -> String {
     tr("The catalog shows themes for this desktop.\nIt is detected automatically \
         from the current session.")
 }
 
-/// Кнопка обновления каталога и подсказка к ней.
+/// The catalog refresh button and its tooltip.
 pub const REFRESH_BTN: &str = "🔄";
 pub fn refresh_tooltip() -> String {
     tr("Refresh catalog")
 }
 
 
-/// Кнопка вида «Настройки» в шапке раздела каталога
-/// ([`CatalogView::section_settings_panel`]) и подсказки к ней — по
-/// разделу настроек.
+/// The "Settings" view button in the catalog section header
+/// ([`CatalogView::section_settings_panel`]) and its tooltips, per settings
+/// section.
 pub fn section_settings_btn() -> String {
     tr("⚙️ Settings")
 }
@@ -4984,19 +5097,19 @@ pub fn window_buttons_settings_tooltip() -> String {
 pub fn desktop_effects_settings_tooltip() -> String {
     tr("Turn on and set up the effects KWin already has: magic lamp, translucency, blur and others")
 }
-/// Подсказка кнопки для разделов настроек `panels` — по строке на раздел.
+/// The button tooltip for `panels` settings sections: one line per section.
 pub fn section_settings_tooltip(panels: &[&str]) -> String {
     panels.iter().map(|p| section_settings_tooltip_one(p)).collect::<Vec<_>>().join("\n")
 }
-/// Пояснение рамки вкладки «Настройки» `id` (`qt_settings::SECTIONS`):
-/// вторая формулировка той же мысли не заводится.
+/// The explanation of the "Settings" tab frame `id` (`qt_settings::SECTIONS`):
+/// no second wording of the same thought is introduced.
 fn group_desc(id: &str) -> String {
     crate::qt_settings::section_texts(id, "").map(|(_, desc)| desc).unwrap_or_default()
 }
 fn section_settings_tooltip_one(panel: &str) -> String {
     match panel {
         categories::WINDOW_BUTTONS_KEY => window_buttons_settings_tooltip(),
-        // Пояснение самой рамки «Размытие обоев» — второй формулировки нет.
+        // The explanation of the "Wallpaper blur" frame itself: there is no second wording.
         categories::WALLPAPER_BLUR_PANEL => group_desc("blurGroup"),
         categories::EVENT_SOUNDS_PANEL => group_desc("soundThemeGroup"),
         categories::AMBIENT_SOUNDS_PANEL => group_desc("ambientGroup"),
@@ -5009,12 +5122,13 @@ fn section_settings_tooltip_one(panel: &str) -> String {
         _ => font_settings_tooltip(),
     }
 }
-/// Та же кнопка, пока открыт вид настроек, ведёт назад к плиткам раздела —
-/// подписью возврата из карточки темы ([`detail_back_btn`]): «назад к
-/// каталогу» на вкладке выглядит везде одинаково.
+/// The same button, while the settings view is open, leads back to the
+/// section's tiles, with the label for returning from a theme card
+/// ([`detail_back_btn`]): "back to the catalog" looks the same everywhere
+/// on the tab.
 
-/// «Установить из файла…» в шапке раздела — тема, которая уже лежит на
-/// диске (`crate::local_install`).
+/// "Install from file…" in the section header: a theme that is already on
+/// disk (`crate::local_install`).
 pub fn install_file_btn() -> String {
     tr("Install from File…")
 }
@@ -5023,19 +5137,19 @@ pub fn install_file_tooltip() -> String {
         single files — fonts, cursors and icons from Windows, color schemes, wallpapers. \
         Rexon recognizes the kind by the contents.")
 }
-/// Пункты меню кнопки: файлы или папка.
+/// The button's menu items: files or a folder.
 pub fn install_file_files_item() -> String {
     tr("Choose Files…")
 }
 pub fn install_file_folder_item() -> String {
     tr("Choose a Folder…")
 }
-/// Заголовок окна выбора: куда ставим.
+/// The title of the picker window: where we install.
 pub fn install_file_dialog_title(section: &str) -> String {
     trf("Install into “%1”", &[&section])
 }
 
-/// Кнопки листания страниц.
+/// Page flipping buttons.
 pub fn page_prev_btn() -> String {
     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("← Previous")
@@ -5045,7 +5159,7 @@ pub fn page_next_btn() -> String {
     tr("Next →")
 }
 
-/// Чип переключателя: ключ, подпись и подсказка.
+/// A switch chip: key, label and tooltip.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Chip {
     pub key: &'static str,
@@ -5053,8 +5167,8 @@ pub struct Chip {
     pub tooltip: String,
 }
 
-/// Чипы «Магазин:». Показываются в каждом настоящем разделе; там, где
-/// выбирать не из чего, переключателя нет вовсе (см. `source_applicable`).
+/// The "Store:" chips. Shown in every real section; where there is nothing
+/// to choose from, there is no switch at all (see `source_applicable`).
 pub fn source_chips() -> Vec<Chip> {
     vec![
         Chip {
@@ -5075,13 +5189,14 @@ pub fn source_chips() -> Vec<Chip> {
     ]
 }
 
-/// Чипы «Магазин:» раздела — ровно те источники, что в нём есть
-/// ([`source_keys_for`]): общие плюс Cinnamon Spices в разделах тем по составу.
+/// The section's "Store:" chips: exactly the sources it has
+/// ([`source_keys_for`]): the common ones plus Cinnamon Spices in theme
+/// sections by composition.
 pub fn source_chips_for(category_key: &str) -> Vec<Chip> {
     source_chips_in(category_key, false)
 }
 
-/// [`source_chips_for`] с чипом «Razer Axon», если Axon найден
+/// [`source_chips_for`] with the "Razer Axon" chip if Axon was found
 /// ([`source_keys_in`]).
 pub fn source_chips_in(category_key: &str, axon: bool) -> Vec<Chip> {
     let keys = source_keys_in(category_key, axon);
@@ -5110,8 +5225,8 @@ pub fn source_chips_in(category_key: &str, axon: bool) -> Vec<Chip> {
     chips
 }
 
-/// Чипы режима «Экрана блокировки» для окружения: где полных тем
-/// блокировки нет (Deepin), остаётся только чип обоев.
+/// The "Lock screen" mode chips for an environment: where there are no full
+/// lock themes (Deepin), only the wallpaper chip remains.
 pub fn lock_chips_for(de_id: &str) -> Vec<Chip> {
     let mut chips = lock_chips();
     if !categories::lock_themes_supported(de_id) {
@@ -5120,7 +5235,7 @@ pub fn lock_chips_for(de_id: &str) -> Vec<Chip> {
     chips
 }
 
-/// Чипы режима «Экрана блокировки».
+/// The "Lock screen" mode chips.
 pub fn lock_chips() -> Vec<Chip> {
     vec![
         Chip {
@@ -5139,18 +5254,19 @@ pub fn lock_chips() -> Vec<Chip> {
     ]
 }
 
-/// Подпись перед чипами размера курсора.
+/// The label before the cursor size chips.
 pub fn cursor_size_label() -> String {
     trc("cursor", "Size:")
 }
 
-/// Ключи чипов размера курсора — те же числа, что [`crate::themes::CURSOR_SIZES`]
-/// (сторож в сверке держит их вместе).
+/// Cursor size chip keys: the same numbers as [`crate::themes::CURSOR_SIZES`]
+/// (a guard in the parity check keeps them together).
 pub const CURSOR_SIZE_KEYS: &[&str] = &["24", "32", "40", "48", "64", "96"];
 
-/// Чипы размера курсора («Курсоры»). Размер ложится на ТЕКУЩУЮ тему курсора
-/// и доходит туда же, куда выбор темы: родной ключ окружения, GTK,
-/// переменные окружения, конфиг тайлового композитора.
+/// Cursor size chips ("Cursors"). The size applies to the CURRENT cursor
+/// theme and reaches the same places as the theme choice: the
+/// environment's native key, GTK, environment variables, the tiling
+/// compositor config.
 pub fn cursor_size_chips() -> Vec<Chip> {
     let tooltip = tr("Pointer size in pixels. Rexon applies it to the cursor theme in use \
         — in the desktop's own settings, GTK and Qt apps, and the config of \
@@ -5161,19 +5277,20 @@ pub fn cursor_size_chips() -> Vec<Chip> {
         .collect()
 }
 
-/// Фильтр «Стиля приложений»: стили Qt и темы Kvantum вместе.
+/// "Application style" filter: Qt styles and Kvantum themes together.
 pub const STYLE_FILTER_ALL: &str = "all";
-/// Фильтр «Стиля приложений»: только стили Qt.
+/// "Application style" filter: only Qt styles.
 pub const STYLE_FILTER_QT: &str = "qt";
-/// Фильтр «Стиля приложений»: только темы Kvantum.
+/// "Application style" filter: only Kvantum themes.
 pub const STYLE_FILTER_KVANTUM: &str = "kvantum";
 
-/// Чипы фильтра над сеткой «Стиля приложений».
+/// Filter chips above the "Application style" grid.
 ///
-/// До 17.10.2026 каждый стиль Qt был чипом, а под чипом стояла ОДНА
-/// карточка того же стиля (перенос из окна на Python): раздел честно
-/// писал «Стиль приложений: 1», а темы Kvantum открывались только чипом
-/// «Kvantum». Теперь всё в одной сетке, а чипы только сужают её.
+/// Until 17.10.2026 every Qt style was a chip, and under the chip stood
+/// ONE card of the same style (carried over from the Python window): the
+/// section honestly wrote "Application style: 1", and Kvantum themes
+/// opened only with the "Kvantum" chip. Now everything is in one grid, and
+/// the chips only narrow it.
 pub fn style_filter_chips() -> Vec<Chip> {
     vec![
         Chip {
@@ -5194,12 +5311,12 @@ pub fn style_filter_chips() -> Vec<Chip> {
     ]
 }
 
-/// Какие стили Qt показывать карточками «Стиля приложений».
+/// Which Qt styles to show as "Application style" cards.
 ///
-/// Движок Kvantum среди них не значится — вместо него в сетке его темы.
-/// Прокси-стили `qt5ct-style` / `qt6ct-style` — не внешний вид, а
-/// прослойка qtNct поверх настоящего стиля: человеку такая карточка ничего
-/// не говорит, а выбор её ничего не меняет.
+/// The Kvantum engine is not listed among them: its themes are in the grid
+/// instead. The proxy styles `qt5ct-style` / `qt6ct-style` are not a look
+/// but a qtNct layer on top of the real style: such a card tells the
+/// person nothing, and choosing it changes nothing.
 pub fn shown_qt_styles(styles: &[String]) -> Vec<String> {
     styles
         .iter()
@@ -5212,16 +5329,16 @@ pub fn shown_qt_styles(styles: &[String]) -> Vec<String> {
 }
 
 
-// ── Накладные контролы поверх картинки деталей ─────────────────────────
+// ── Overlay controls on top of the details picture ─────────────────────
 
-/// Угол виджета внутри картинки деталей.
+/// The corner of a widget inside the details picture.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OverlayPos {
     pub x: i32,
     pub y: i32,
 }
 
-/// Положение лупы — правый верхний угол картинки.
+/// The magnifier position: the top right corner of the picture.
 pub fn overlay_zoom_pos(preview_w: i32, btn_w: i32) -> OverlayPos {
     OverlayPos {
         x: 0.max(preview_w - btn_w - OVERLAY_MARGIN),
@@ -5229,7 +5346,7 @@ pub fn overlay_zoom_pos(preview_w: i32, btn_w: i32) -> OverlayPos {
     }
 }
 
-/// Положение стрелки «назад» — левый край, по центру вертикали.
+/// The "back" arrow position: the left edge, vertically centred.
 pub fn overlay_prev_pos(preview_h: i32, btn_h: i32) -> OverlayPos {
     OverlayPos {
         x: OVERLAY_MARGIN,
@@ -5237,7 +5354,7 @@ pub fn overlay_prev_pos(preview_h: i32, btn_h: i32) -> OverlayPos {
     }
 }
 
-/// Положение стрелки «вперёд» — правый край, по центру вертикали.
+/// The "forward" arrow position: the right edge, vertically centred.
 pub fn overlay_next_pos(preview_w: i32, preview_h: i32, btn_w: i32, btn_h: i32) -> OverlayPos {
     OverlayPos {
         x: 0.max(preview_w - btn_w - OVERLAY_MARGIN),
@@ -5245,7 +5362,7 @@ pub fn overlay_next_pos(preview_w: i32, preview_h: i32, btn_w: i32, btn_h: i32) 
     }
 }
 
-/// Положение счётчика «2/5» — низ картинки, по центру.
+/// The "2/5" counter position: the bottom of the picture, centred.
 pub fn overlay_counter_pos(
     preview_w: i32,
     preview_h: i32,
@@ -5258,12 +5375,12 @@ pub fn overlay_counter_pos(
     }
 }
 
-/// Что открыть в полноэкранном просмотре: все уже скачанные кадры по порядку
-/// и место текущего среди них.
+/// What to open in the full-screen view: all frames already downloaded, in
+/// order, and the place of the current one among them.
 ///
-/// Кадр может быть один (местная тема либо одиночное превью) — тогда и
-/// показываем только его: подставлять в список чужие картинки нечестно.
-/// `exists` спрашивает файловую систему, есть ли файл на самом деле.
+/// There may be a single frame (a local theme or a single preview); then
+/// only it is shown: substituting other pictures into the list is
+/// dishonest. `exists` asks the filesystem whether the file really exists.
 pub fn zoom_frames<F: Fn(&str) -> bool>(
     current: &str,
     loaded: &BTreeMap<i64, String>,
@@ -5283,7 +5400,7 @@ pub fn zoom_frames<F: Fn(&str) -> bool>(
     }
 }
 
-/// Подпись кнопки применения местной темы после успеха.
+/// The label of the local theme apply button after success.
 pub fn local_applied_btn() -> String {
     tr("✅ Active")
 }
@@ -5291,8 +5408,9 @@ pub fn local_applied_btn() -> String {
 #[cfg(test)]
 mod tests {
 
-    /// Блок выбора файла: строки в порядке выдачи, автоматический помечен,
-    /// размер и день — одной строкой; файл один — блока нет.
+    /// The file choice block: lines in the order given, the automatic one
+    /// marked, the size and the day on one line; with one file there is no
+    /// block.
     #[test]
     fn store_file_choices_rows() {
         let item = ThemeItem {
@@ -5315,8 +5433,8 @@ mod tests {
         assert_eq!(store_file_choices_json(&single), "[]");
     }
 
-    /// Живой кусок описания из кеша магазина: `(default 15&deg;)` магазин
-    /// прочитал как `;)` и подставил картинку подмигивания.
+    /// A live piece of a description from the store cache: the store read
+    /// `(default 15&deg;)` as `;)` and substituted a wink picture.
     #[test]
     fn a_store_emoticon_becomes_a_character() {
         let live = "ap<br />🎚️ Configurable minimum altitude (default 15&amp;deg\
@@ -5326,8 +5444,8 @@ mod tests {
         assert!(!out.contains("<img"), "картинка осталась: {out}");
     }
 
-    /// Все девять имён, что встречаются в живом кеше, и хост может быть любым:
-    /// в описаниях попадаются и pling.com, и opendesktop.org.
+    /// All nine names found in the live cache, and the host can be anything:
+    /// descriptions contain both pling.com and opendesktop.org.
     #[test]
     fn every_emoticon_seen_in_the_store_has_a_character() {
         for (name, ch) in [
@@ -5340,14 +5458,14 @@ mod tests {
         }
     }
 
-    /// Незнакомое имя — пустое место, а не чужая рожица наугад.
+    /// An unknown name gives an empty space, not a random foreign smiley.
     #[test]
     fn an_unknown_emoticon_leaves_nothing_behind() {
         let tag = "до<img src=\"https://www.pling.com/media/emoticons/zzz-unknown.png\" />после";
         assert_eq!(super::inline_emoticons(tag), "допосле");
     }
 
-    /// Картинки самого описания (снимки экрана) не трогаем вовсе.
+    /// The description's own pictures (screenshots) are not touched at all.
     #[test]
     fn a_screenshot_in_the_description_survives() {
         let html = "<p>вид</p><img src=\"https://cdn.pling.com/img/preview.png\" alt=\"\" />";
@@ -5374,7 +5492,7 @@ mod tests {
 
     #[test]
     fn suggest_box_stays_inside_the_page() {
-        // У правого края выпадашка сдвигается влево, но не за левое поле.
+        // At the right edge the drop-down moves left, but not past the left margin.
         assert_eq!(suggest_x(900, 360, 1000), 1000 - SUGGEST_EDGE - 360);
         assert_eq!(suggest_x(10, 360, 1000), 10);
         assert_eq!(suggest_x(0, 5000, 400), SUGGEST_LEFT);
@@ -5393,7 +5511,7 @@ mod tests {
         let light = ui_base::skin_colors("light");
         let qss = page_qss(&light);
         assert!(qss.contains("background: #f4f5f6;"));
-        // Приглушение неактивной кнопки идёт от цвета скина, а не белым.
+        // Dimming of an inactive button comes from the skin colour, not white.
         assert!(qss.contains("#PageBtn:disabled { color: rgba(0,0,0,0.55); }"));
         assert!(!qss.contains("rgba(255,255,255,0.55)"));
     }
@@ -5403,7 +5521,7 @@ mod tests {
         for id in ["steam_dark", "light", "synthwave"] {
             let c = ui_base::skin_colors(id);
             let qss = suggestions_qss(&c);
-            // Ни одного цвета мимо палитры скина.
+            // Not a single colour outside the skin palette.
             assert!(!qss.contains("#aeb9c4"), "{id}");
             assert!(qss.contains(&format!("background:{}", token(&c, "bg_secondary"))), "{id}");
         }
@@ -5411,7 +5529,7 @@ mod tests {
 
     #[test]
     fn no_skin_leaves_the_page_text_unreadable() {
-        // Подпись не должна совпадать с фоном, на котором её рисуют.
+        // The label must not match the background it is drawn on.
         for id in ["system", "steam_dark", "light", "synthwave"] {
             let c = ui_base::skin_colors(id);
             for key in ["text_primary", "text_secondary", "text_dim"] {
@@ -5421,8 +5539,8 @@ mod tests {
         }
     }
 
-    /// Какая плитка «звучит»: местная тема звуков по номеру, товар Магазина —
-    /// по разделу «Звуки»; номер с `/` темой не считается.
+    /// Which tile "sounds": a local sound theme by id, a Store item by the
+    /// "Sounds" section; an id with `/` does not count as a theme.
     #[test]
     fn sound_preview_targets() {
         assert_eq!(local_sound_theme("local:sounds:Ocean").as_deref(), Some("Ocean"));
@@ -5445,7 +5563,7 @@ mod tests {
         assert!(sound_preview_tooltip("battery-caution").contains("battery-caution"));
     }
 
-    // ── «Вернуть как было» после «Применить» ──
+    // ── "Restore as it was" after "Apply" ──
 
     fn revert_scratch(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("rexon-applied-revert-{name}-{}", std::process::id()));
@@ -5469,9 +5587,10 @@ mod tests {
         crate::install_journal::AppliedFile { path: path.into(), before: None, dir: false }
     }
 
-    /// Модель «что можно вернуть»: подпись называет тему и время нажатия;
-    /// записи нет (или она без файлов) — полосы нет; у цветов при видимой
-    /// кнопке полосы шелла своей нет, а памятка слоя без записи — даёт её.
+    /// The "what can be restored" model: the label names the theme and the
+    /// time of the press; no record (or one without files) means no bar; for
+    /// colours with the button visible the shell bar has none of its own,
+    /// while a layer note without a record does give one.
     #[test]
     fn applied_revert_banner_model() {
         assert_eq!(applied_when(Some("2026-10-25T14:02:33")).as_deref(), Some("25.10, 14:02"));
@@ -5484,7 +5603,7 @@ mod tests {
         assert_eq!(b.section, "icons");
         assert_eq!(b.button, "Return as It Was Before “Papirus” (25.10, 14:02)");
         assert!(b.text.contains("Papirus") && b.text.contains("25.10, 14:02"), "{}", b.text);
-        // Чужая полоса шелла и памятка цветов значков не касаются.
+        // Another shell bar and the colours note do not concern icons.
         assert!(applied_revert_banner("icons", Some(&rec), true, true).visible);
 
         let no_time = applied_rec("icons", "Papirus", None, vec![file("/x")]);
@@ -5504,8 +5623,8 @@ mod tests {
         assert!(!applied_revert_banner("colors", None, false, false).visible);
     }
 
-    /// Итог возврата словами: всё вернулось / что не вернулось (путь от
-    /// дома — через «~») / записи нет.
+    /// The restore result in words: everything came back / what did not come
+    /// back (path relative to home, via "~") / no record.
     #[test]
     fn applied_revert_outcome_texts() {
         let (ok, text) = applied_revert_outcome("Papirus", &Ok(Some(Vec::new())), "/home/u");
@@ -5515,7 +5634,7 @@ mod tests {
         assert!(text.contains("~/.config/kdeglobals") && text.contains("1 file"), "{text}");
         let (ok, _) = applied_revert_outcome("Papirus", &Ok(None), "/home/u");
         assert!(!ok);
-        // Настройки стола — своей строкой, не «файлами».
+        // Desktop settings get their own line, not "files".
         let failed = vec!["/home/u/.config/kdeglobals".into(), "gsettings org.mate.interface gtk-theme".into(), "xfconf xsettings /Net/ThemeName".into()];
         let (ok, text) = applied_revert_outcome("Papirus", &Ok(Some(failed)), "/home/u");
         assert!(!ok);
@@ -5523,8 +5642,9 @@ mod tests {
         assert!(text.contains("2 desktop settings could not be put back (org.mate.interface gtk-theme, xsettings /Net/ThemeName)"), "{text}");
     }
 
-    /// Возврат на временном профиле: запись «Применить» значков — файлы
-    /// прежние, запись и снимок сняты, полосы больше нет.
+    /// A restore on a temporary profile: the icons "Apply" record: the files
+    /// are as before, the record and the snapshot are removed, there is no
+    /// bar any more.
     #[test]
     fn revert_applied_section_icons() {
         use crate::install_journal as journal;
@@ -5568,9 +5688,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Цвета вне Plasma: одна кнопка. Памятка слоя возвращает свои файлы
-    /// (файл, переписанный после Rexon, оставляет как есть), запись
-    /// «Применить» — только прочее; сама памятка обратно не воскресает.
+    /// Colours outside Plasma: one button. The layer note restores its own
+    /// files (a file rewritten after Rexon is left as is), the "Apply" record
+    /// only the rest; the note itself does not come back to life.
     #[test]
     fn revert_applied_section_colors_layer_first() {
         use crate::install_journal as journal;
@@ -5639,13 +5759,13 @@ mod grid_width_tests {
     #[test]
     fn grid_fills_the_width() {
         let cell = CARD_W + GRID_SPACING;
-        // Уже одной плитки — один столбец наименьшей ширины.
+        // Narrower than one tile: one column of the smallest width.
         assert_eq!((grid_columns(100), grid_cell_width(100)), (1, cell));
         assert_eq!((grid_columns(-5), grid_cell_width(-5)), (1, cell));
-        // Ровно две плитки и чуть больше: остаток уходит в ширину.
+        // Exactly two tiles and a bit more: the remainder goes into width.
         assert_eq!((grid_columns(2 * cell), grid_cell_width(2 * cell)), (2, cell));
         assert_eq!((grid_columns(3 * cell - 1), grid_cell_width(3 * cell - 1)), (2, (3 * cell - 1) / 2));
-        // Полный экран 1920 без боковой панели: ряд без пустой полосы.
+        // A full 1920 screen without the sidebar: a row without an empty strip.
         for usable in [500, 1100, 1586, 1904, 2540] {
             let (c, w) = (grid_columns(usable), grid_cell_width(usable));
             assert!(c * w <= usable && usable - c * w < c, "{usable}: {c}×{w}");

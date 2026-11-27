@@ -1,23 +1,26 @@
-// Клиент вывода демона waywallen на X11: ПО ОКНУ-РАБОЧЕМУ СТОЛУ НА ЭКРАН.
+// waywallen daemon output client on X11: ONE DESKTOP WINDOW PER SCREEN.
 //
-// Зачем (дефект 30.10.2026, MATE на X11): сцены Wallpaper Engine рисует
-// демон waywallen, а на стол их выводит клиент вывода — на KDE это
-// Plasma-плагин, на wlr-композиторах `waywallen-layer-shell`. На X11 вне KDE
-// такого клиента у waywallen нет, дисплеев у демона ноль, и «Применить»
-// оставалась серой. Здесь клиентом служит хост обоев Rexon: в каждом окне —
-// элемент вывода waywallen (`Waywallen.DisplayEmbed`, библиотека
-// waywallen-display из того же пакета `org.waywallen.kde`, что Rexon везёт
-// для Plasma). Он сам подключается к сокету демона, регистрирует дисплей и
-// показывает кадры; демон по нему решает, что и где рисовать.
+// Why (defect 30.10.2026, MATE on X11): Wallpaper Engine scenes are drawn
+// by the waywallen daemon, and they are put on the desktop by an output
+// client — on KDE that is the Plasma plugin, on wlr compositors
+// `waywallen-layer-shell`. On X11 outside KDE waywallen has no such
+// client, the daemon has zero displays, and "Apply" stayed grey. Here the
+// Rexon wallpaper host acts as the client: each window holds a waywallen
+// output element (`Waywallen.DisplayEmbed`, the waywallen-display library
+// from the same `org.waywallen.kde` package that Rexon ships for Plasma).
+// It connects to the daemon socket by itself, registers a display and
+// shows frames; based on it the daemon decides what to draw and where.
 //
-// Окна кладутся на задний план тем же исполнителем X11, что у видео и веба
-// (`WallpaperPlacement`, правило #12): тип «рабочий стол» и состояние — до
-// показа, просьбы корневому окну — после; порядок относительно окна значков
-// стола — после показа и сверкой раз в 2 с.
+// The windows are put into the background by the same X11 executor as for
+// video and web (`WallpaperPlacement`, rule #12): the "desktop" type and
+// state before showing, requests to the root window after; the order
+// relative to the desktop icons window after showing and by a
+// reconciliation every 2 s.
 //
-// Модуль вывода лежит в каталоге с другим именем, чем его URI, поэтому
-// грузится через обёртку пакета (`PluginDisplay.qml`) по пути на диске, а
-// не импортом: путь находит хост (`waywallen_kde_plugin::find_runtime_so`).
+// The output module lies in a directory whose name differs from its URI,
+// so it is loaded through the package wrapper (`PluginDisplay.qml`) by a
+// path on disk rather than by an import: the path is found by the host
+// (`waywallen_kde_plugin::find_runtime_so`).
 pragma ComponentBehavior: Bound
 
 import QtQml
@@ -28,17 +31,19 @@ import org.rexon.gui 1.0
 QtObject {
     id: root
 
-    // ── Начальные свойства из хоста ───────────────────────────────────
-    /// Обёртка элемента вывода (`…/Plugin/PluginDisplay.qml`) — адрес файла.
+    // ── Initial properties from the host ──────────────────────────────
+    /// Wrapper of the output element (`…/Plugin/PluginDisplay.qml`) — the file
+    /// address.
     property url displayItemUrl
-    /// Сокет вывода демона (`--socket` от демона). Пусто — элемент находит
-    /// его сам (свойство демона на шине, `$XDG_RUNTIME_DIR/waywallen`).
+    /// Output socket of the daemon (`--socket` from the daemon). Empty means
+    /// the element finds it by itself (the daemon's bus property,
+    /// `$XDG_RUNTIME_DIR/waywallen`).
     property string socketPath: ""
-    /// Отладочное окно 1280×720 вместо рабочих столов.
+    /// A 1280×720 debug window instead of desktops.
     property bool isWindowed: false
 
-    /// Экраны, на которых лежат окна. Пересобирается целиком — см. разбор в
-    /// WallpaperVideo.qml: обёртки `Qt.application.screens` живут по номеру.
+    /// Screens the windows lie on. Rebuilt as a whole — see the analysis in
+    /// WallpaperVideo.qml: the `Qt.application.screens` wrappers live by index.
     property var screenList: []
 
     readonly property var surfaceModel: root.isWindowed ? ["single"] : root.screenList
@@ -70,30 +75,30 @@ QtObject {
             visible: false
             color: "black"
             flags: root.isWindowed ? Qt.Window : Qt.FramelessWindowHint
-            // Отладочное окно — только для проверки разработчиком.
+            // Debug window — only for checking by a developer.
             title: root.isWindowed ? "Rexon" : ""
             screen: surface.info ? surface.info : null
             width: surface.info ? surface.info.width : 1280
             height: surface.info ? surface.info.height : 720
 
-            /// Демон шлёт в этот дисплей кадры (`StreamState.Active` = 1).
+            /// The daemon sends frames to this display (`StreamState.Active` = 1).
             readonly property bool streaming: output.item ? output.item.streamState === 1 : false
 
-            // ⚠️ Окно на столе — ТОЛЬКО пока идут кадры. Без потока (живые обои
-            // остановлены, человек вернул обычную картинку, демон ещё
-            // поднимается после входа) чёрное окно-рабочий стол закрыло бы
-            // обои стола — правило #13. Но первый показ нужен всё равно:
-            // элемент вывода проходит рукопожатие с демоном, когда у окна есть
-            // графический контекст (форматы DMA-BUF он узнаёт у EGL окна).
-            // Поэтому: показ при старте → рукопожатие → без кадров окно
-            // прячется (с запасом на смену обоев, чтобы не мигать) → кадры
-            // пошли — окно снова на столе.
+            // Warning: the window is on the desktop ONLY while frames are flowing.
+            // Without a stream (live wallpaper stopped, the user went back to an
+            // ordinary picture, the daemon is still starting after login) a black
+            // desktop window would cover the desktop's wallpaper — rule #13. But the
+            // first show is needed anyway: the output element performs the handshake
+            // with the daemon when the window has a graphics context (it learns the
+            // DMA-BUF formats from the window's EGL). So: show at start → handshake →
+            // without frames the window hides (with a margin for wallpaper changes,
+            // so it does not flicker) → frames start flowing — the window is back on
+            // the desktop.
             function showOnDesktop() {
                 if (surface.visible)
                     return;
-                // Свойства «рабочего стола» — ДО каждого показа: спрятанное
-                // окно оконный менеджер выводит из управления и забывает его
-                // состояние (EWMH).
+                // "Desktop" properties — BEFORE every show: the window manager unmanages a
+                // hidden window and forgets its state (EWMH).
                 if (!root.isWindowed && !root.placer.prepareX11Desktop(surface))
                     console.warn("REXON-WWD-WARN окно X11 не подготовлено к роли рабочего стола");
                 surface.visible = true;
@@ -112,7 +117,7 @@ QtObject {
 
             Component.onCompleted: {
                 if (surface.info) {
-                    // Без явного угла все окна легли бы на основной монитор.
+                    // Without an explicit corner all windows would land on the primary monitor.
                     surface.x = surface.info.virtualX;
                     surface.y = surface.info.virtualY;
                 }
@@ -127,10 +132,10 @@ QtObject {
                 onTriggered: root.placer.applyX11Desktop(surface)
             }
 
-            // Порядок относительно окна значков стола (Caja, Nemo,
-            // xfdesktop): окно значков пересоздаётся и встаёт сверху —
-            // сверка ставит обои обратно, над непрозрачными значками и под
-            // сквозными (`keepX11Order`, решение — ядро).
+            // Order relative to the desktop icons window (Caja, Nemo, xfdesktop): the
+            // icons window gets recreated and goes on top — the reconciliation puts
+            // the wallpaper back, above opaque icons and below see-through ones
+            // (`keepX11Order`, the decision comes from the core).
             Timer {
                 interval: 2000
                 repeat: true
@@ -159,8 +164,8 @@ QtObject {
                     const d = output.item;
                     if (root.socketPath.length > 0)
                         d.socketPath = root.socketPath;
-                    // Имя монитора — как его называет система: так дисплей
-                    // узнаётся на странице «Мониторы» и в журнале демона.
+                    // Monitor name as the system calls it: that way the display is recognized
+                    // on the "Monitors" page and in the daemon log.
                     d.displayName = surface.info
                         ? (surface.info.model && surface.info.model.trim().length > 0
                            ? surface.info.model.trim() : surface.info.name)

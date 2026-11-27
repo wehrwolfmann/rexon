@@ -1,10 +1,10 @@
-// Раздел «Окна Deepin» вкладки «Настройки». Rexon поддерживает Deepin
-// только на Treeland, а там углы, прозрачность и акцент окон задаёт только
-// Центр управления Deepin, — поэтому раздел говорит, где их менять (в
-// других сеансах Deepin — что Rexon поддерживает Deepin только на
-// Treeland). Показывается только в сеансе Deepin.
+// The "Deepin windows" section of the "Settings" tab. Rexon supports
+// Deepin only on Treeland, and there window corners, transparency and
+// accent are set only by the Deepin Control Center — so the section says
+// where to change them (in other Deepin sessions it says that Rexon
+// supports Deepin only on Treeland). Shown only in a Deepin session.
 //
-// Только разметка: снимок — `DdeLookActions`
+// Markup only: snapshot — `DdeLookActions`
 // (rust/rexon-gui/src/dde_look_actions.rs → rexon_core::dde).
 
 pragma ComponentBehavior: Bound

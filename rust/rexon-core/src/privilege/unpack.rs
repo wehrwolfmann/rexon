@@ -1,53 +1,55 @@
-//! Приём файлов пользователя по дескриптору и распаковка (пункт Б5 плана,
-//! см. [`super`]).
+//! Receiving user files by descriptor and unpacking (item B5 of the plan, see
+//! [`super`]).
 //!
-//! # Правило (З2)
+//! # The rule (Z2)
 //!
-//! Root-помощник НЕ открывает ни одного пути пользователя. Файл приходит
-//! открытым дескриптором (`SCM_RIGHTS`, [`super::proto::recv_frame_with_fds`]),
-//! который окно открыло от своего имени, и помощник:
-//! 1. проверяет `fstat` дескриптора: только обычный файл — не каталог,
-//!    устройство, канал, сокет;
-//! 2. копирует содержимое (`pread` с нуля — общий с окном указатель позиции
-//!    не влияет) в СВОЙ каталог root 0700 ([`WorkDir`]) с пределом размера;
-//! 3. дальше работает только с копией: окно может менять свой файл сколько
-//!    угодно, проверено и поставлено будет то, что лежит у root.
+//! The root helper does NOT open a single user path. A file arrives as an open
+//! descriptor (`SCM_RIGHTS`, [`super::proto::recv_frame_with_fds`]) that the
+//! window opened under its own identity, and the helper:
+//! 1. checks the descriptor with `fstat`: only a regular file — not a directory,
+//!    device, pipe or socket;
+//! 2. copies the contents (`pread` from zero — the file position pointer shared
+//!    with the window has no effect) into ITS OWN root 0700 directory
+//!    ([`WorkDir`]) with a size limit;
+//! 3. from then on works only with the copy: the window may change its file as
+//!    much as it likes, what gets checked and installed is what lies with root.
 //!
-//! # Каталоги (темы, раскладки экрана входа)
+//! # Directories (themes, login screen layouts)
 //!
-//! Каталог по дескриптору не передаётся: обход чужого каталога от root —
-//! та же дыра с подменой ссылкой, что закрывал коммит «своя копия 0700».
-//! Окно упаковывает уже распакованный и проверенный у себя каталог в
-//! НЕСЖАТЫЙ `ustar` ([`pack_tree`], [`pack_tree_memfd`]) и передаёт один
-//! файл. Архивы, которые человек скачивает (zip, tar.gz/xz/zst, 7z),
-//! по-прежнему распаковывает окно, от пользователя (`local_install`,
-//! `appearance_installer`): ни разжатия, ни разбора трёх форматов от root
-//! нет. Root читает ровно один простой формат — без внешних крейтов.
+//! A directory is not passed by descriptor: walking someone else's directory as
+//! root is the same symlink-substitution hole that the "own 0700 copy" commit
+//! closed. The window packs the directory it has already unpacked and checked
+//! on its side into an UNCOMPRESSED `ustar` ([`pack_tree`], [`pack_tree_memfd`])
+//! and passes a single file. Archives the person downloads (zip,
+//! tar.gz/xz/zst, 7z) are still unpacked by the window, as the user
+//! (`local_install`, `appearance_installer`): there is no decompression and no
+//! parsing of three formats as root. Root reads exactly one simple format —
+//! without external crates.
 //!
-//! Распаковка ([`unpack_tar_into`]) создаёт каждую запись через `openat2`
-//! с `RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS`
-//! относительно каталога назначения, и с `O_EXCL`: ни ссылка, ни подмена
-//! части пути, ни повтор записи не выведут запись наружу и не перепишут
-//! уже распакованное.
+//! Unpacking ([`unpack_tar_into`]) creates each entry via `openat2` with
+//! `RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS` relative to
+//! the destination directory, and with `O_EXCL`: neither a symlink, nor
+//! substitution of a path component, nor a repeated entry will take an entry
+//! outside or overwrite what was already unpacked.
 //!
-//! # Что на что отвечает
+//! # What answers what
 //!
-//! | Что в архиве | Ответ |
+//! | What is in the archive | Answer |
 //! |---|---|
-//! | общий размер больше предела, размер одной записи больше | отказ [`UnpackError::TooLarge`] — по заголовку, до записи на диск |
-//! | записей больше предела | отказ [`UnpackError::TooManyEntries`] |
-//! | глубже предела | отказ [`UnpackError::TooDeep`] |
-//! | символьная ссылка, жёсткая ссылка | отказ [`UnpackError::Link`] |
-//! | устройство, канал, прочие типы (pax, GNU long name) | отказ [`UnpackError::Special`] / [`UnpackError::Unsupported`] |
-//! | `..`, пустой или `.` сегмент | отказ [`UnpackError::DotDot`] / [`UnpackError::BadName`] |
-//! | абсолютный путь | отказ [`UnpackError::Absolute`] |
-//! | setuid / setgid бит | **отказ** [`UnpackError::SetId`]: наш упаковщик их не пишет, значит архив не от окна Rexon |
-//! | прочие биты режима (sticky, запись для группы/всех) | снимаются: файл `0644`, исполняемый `0755`, каталог `0755`, владелец root |
-//! | повтор имени | отказ [`UnpackError::Duplicate`] |
-//! | ссылка на пути в каталоге назначения (гонка) | отказ [`UnpackError::Escape`] (`openat2` вернул `ELOOP`/`EXDEV`) |
-//! | Plymouth: `.so` в теме | отказ при распаковке ([`validate::check_theme_file_not_code`]) |
-//! | Plymouth: `ModuleName` не штатный (в т. ч. `../x`), NUL | отказ [`UnpackError::Theme`] ([`crate::installer::system_theme_problem`] по копии) |
-//! | Plymouth: нет `<тема>.plymouth` в корне | отказ [`UnpackError::Theme`] |
+//! | total size over the limit, size of one entry over the limit | refusal [`UnpackError::TooLarge`] — by the header, before writing to disk |
+//! | more entries than the limit | refusal [`UnpackError::TooManyEntries`] |
+//! | deeper than the limit | refusal [`UnpackError::TooDeep`] |
+//! | symbolic link, hard link | refusal [`UnpackError::Link`] |
+//! | device, pipe, other types (pax, GNU long name) | refusal [`UnpackError::Special`] / [`UnpackError::Unsupported`] |
+//! | `..`, an empty or `.` segment | refusal [`UnpackError::DotDot`] / [`UnpackError::BadName`] |
+//! | absolute path | refusal [`UnpackError::Absolute`] |
+//! | setuid / setgid bit | **refusal** [`UnpackError::SetId`]: our packer does not write them, so the archive is not from the Rexon window |
+//! | other mode bits (sticky, write for group/others) | stripped: file `0644`, executable `0755`, directory `0755`, owner root |
+//! | repeated name | refusal [`UnpackError::Duplicate`] |
+//! | a symlink on the path in the destination directory (a race) | refusal [`UnpackError::Escape`] (`openat2` returned `ELOOP`/`EXDEV`) |
+//! | Plymouth: a `.so` in the theme | refusal during unpacking ([`validate::check_theme_file_not_code`]) |
+//! | Plymouth: `ModuleName` not a stock one (including `../x`), NUL | refusal [`UnpackError::Theme`] ([`crate::installer::system_theme_problem`] on the copy) |
+//! | Plymouth: no `<theme>.plymouth` at the root | refusal [`UnpackError::Theme`] |
 
 use std::ffi::CString;
 use std::fmt;
@@ -60,90 +62,90 @@ use std::path::{Path, PathBuf};
 use super::proto::ErrorCode;
 use super::validate::{self, Refusal, SystemThemeKind};
 
-/// Где root заводит свои рабочие каталоги — там же, где прежние помощники
-/// (`mktemp -d /var/tmp/rexon-*-helper.XXXXXXXX`): не tmpfs, пакет на
-/// гигабайт память не съест.
+/// Where root creates its working directories — the same place as the former
+/// helpers (`mktemp -d /var/tmp/rexon-*-helper.XXXXXXXX`): not tmpfs, so a
+/// gigabyte package will not eat memory.
 pub const WORK_BASE: &str = "/var/tmp";
 
-/// Предел собранного пакета для `pacman -U`.
+/// Limit of a built package for `pacman -U`.
 pub const MAX_PACKAGE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
-/// Пределы распаковки.
+/// Unpacking limits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
-    /// Сумма размеров файлов архива.
+    /// Sum of the sizes of the archive's files.
     pub max_total: u64,
-    /// Число записей (файлы + каталоги).
+    /// Number of entries (files + directories).
     pub max_entries: usize,
-    /// Число сегментов пути одной записи.
+    /// Number of path segments of one entry.
     pub max_depth: usize,
 }
 
 impl Limits {
-    /// Тема SDDM/Plymouth, фон и раскладка экрана входа, раскладка MATE.
-    /// Самые тяжёлые темы — видео-фоны SDDM на десятки мегабайт.
+    /// SDDM/Plymouth theme, login screen background and layout, MATE layout. The
+    /// heaviest themes are SDDM video backgrounds of tens of megabytes.
     pub const TREE: Limits = Limits {
         max_total: 512 * 1024 * 1024,
         max_entries: 20_000,
         max_depth: 24,
     };
 
-    /// Предел самого файла архива: данные + заголовок и добивка на запись
-    /// + конец архива.
+    /// Limit of the archive file itself: data + header and padding per entry + the
+    /// end of the archive.
     pub fn max_archive(&self) -> u64 {
         self.max_total + (self.max_entries as u64 + 4) * 2 * BLOCK as u64
     }
 }
 
 // ============================================================================
-// Ошибки
+// Errors
 // ============================================================================
 
-/// Почему файл не принят. Всё, кроме [`UnpackError::Io`], — отказ проверки
-/// (система не тронута); `Io` — сбой помощника.
+/// Why the file was not accepted. Everything except [`UnpackError::Io`] is a
+/// check refusal (the system is untouched); `Io` is a helper failure.
 #[derive(Debug)]
 pub enum UnpackError {
-    /// Дескриптор — не обычный файл (вид: `directory`, `fifo`, …).
+    /// The descriptor is not a regular file (kind: `directory`, `fifo`, …).
     NotRegular(&'static str),
-    /// Больше предела (байт — предел).
+    /// Over the limit (bytes — the limit).
     TooLarge(u64),
-    /// Записей больше предела.
+    /// More entries than the limit.
     TooManyEntries(usize),
-    /// Запись глубже предела.
+    /// An entry deeper than the limit.
     TooDeep(String),
-    /// Символьная или жёсткая ссылка в архиве.
+    /// A symbolic or hard link in the archive.
     Link(String),
-    /// Устройство или канал в архиве.
+    /// A device or pipe in the archive.
     Special(String),
-    /// Тип записи, который упаковщик Rexon не пишет (pax, GNU long name…).
+    /// An entry type the Rexon packer does not write (pax, GNU long name…).
     Unsupported(String),
-    /// Сегмент `..`.
+    /// A `..` segment.
     DotDot(String),
-    /// Абсолютный путь.
+    /// An absolute path.
     Absolute(String),
-    /// Пустой, `.`-сегмент, `//`, управляющий символ, не UTF-8.
+    /// An empty or `.` segment, `//`, a control character, not UTF-8.
     BadName(String),
-    /// setuid/setgid в режиме записи.
+    /// setuid/setgid in an entry's mode.
     SetId(String),
-    /// Повтор имени (файл или каталог уже есть).
+    /// A repeated name (the file or directory already exists).
     Duplicate(String),
-    /// Путь записи уходит через ссылку или за корень (`openat2`).
+    /// The entry's path goes through a symlink or beyond the root (`openat2`).
     Escape(String),
-    /// Порченый архив: контрольная сумма, обрыв, не ustar, нет родителя.
+    /// A corrupted archive: checksum, truncation, not ustar, no parent.
     Malformed(String),
-    /// Тема не прошла проверку ядра (ссылка, `.so`, `ModuleName`).
+    /// The theme did not pass the core check (a symlink, `.so`, `ModuleName`).
     Theme(crate::installer::SystemThemeProblem),
-    /// Файл или каталог, который должен быть только root: чужой владелец
-    /// либо пишется группой/всеми (кэш pacman, [`open_root_file`]).
+    /// A file or directory that must belong only to root: a foreign owner or
+    /// writable by group/others (the pacman cache, [`open_root_file`]).
     NotRootOwned(String),
-    /// Отказ проверки имени/категории ([`validate`]).
+    /// Refusal of the name/category check ([`validate`]).
     Refused(Refusal),
-    /// Ввод-вывод самого помощника.
+    /// Input/output of the helper itself.
     Io(io::Error),
 }
 
 impl UnpackError {
-    /// Короткое имя для журнала (не переводится).
+    /// Short name for the log (not translated).
     pub fn code(&self) -> &'static str {
         match self {
             Self::NotRegular(_) => "not-regular",
@@ -167,7 +169,7 @@ impl UnpackError {
         }
     }
 
-    /// Код ответа окну ([`super::proto::HelperMsg::Error`]).
+    /// Answer code to the window ([`super::proto::HelperMsg::Error`]).
     pub fn error_code(&self) -> ErrorCode {
         match self {
             Self::Io(_) => ErrorCode::Internal,
@@ -217,7 +219,7 @@ impl From<Refusal> for UnpackError {
 
 type Res<T> = Result<T, UnpackError>;
 
-/// Строка для журнала: не длиннее 256 символов, управляющие — `?`.
+/// A line for the log: no longer than 256 characters, control characters as `?`.
 fn clip(s: &str) -> String {
     s.chars()
         .take(256)
@@ -230,11 +232,11 @@ fn cstr(s: &str) -> Res<CString> {
 }
 
 // ============================================================================
-// Свой каталог root 0700
+// Root's own 0700 directory
 // ============================================================================
 
-/// Рабочий каталог помощника: `mkdtemp` (0700, владелец — сам помощник),
-/// открыт дескриптором; при уничтожении удаляется со всем содержимым.
+/// The helper's working directory: `mkdtemp` (0700, owned by the helper itself),
+/// open as a descriptor; on destruction it is removed with all its contents.
 #[derive(Debug)]
 pub struct WorkDir {
     path: PathBuf,
@@ -242,13 +244,13 @@ pub struct WorkDir {
 }
 
 impl WorkDir {
-    /// Завести каталог `<base>/rexon-priv.XXXXXX`. После создания
-    /// проверяется по дескриптору: каталог, владелец — наш `euid`, режим
-    /// ровно 0700 (иначе — ошибка, каталог убирается).
+    /// Create a `<base>/rexon-priv.XXXXXX` directory. After creation it is checked
+    /// via the descriptor: a directory, owned by our `euid`, mode exactly 0700
+    /// (otherwise an error, and the directory is removed).
     pub fn create(base: &Path) -> io::Result<Self> {
         let mut template = base.as_os_str().as_bytes().to_vec();
         template.extend_from_slice(b"/rexon-priv.XXXXXX\0");
-        // SAFETY: шаблон оканчивается NUL, mkdtemp пишет в него на месте.
+        // SAFETY: the template ends with NUL, mkdtemp writes into it in place.
         let p = unsafe { libc::mkdtemp(template.as_mut_ptr().cast()) };
         if p.is_null() {
             return Err(io::Error::last_os_error());
@@ -263,7 +265,7 @@ impl WorkDir {
             }
         };
         let st = fstat(fd.as_fd())?;
-        // SAFETY: geteuid не имеет предусловий.
+        // SAFETY: geteuid has no preconditions.
         let euid = unsafe { libc::geteuid() };
         if st.st_mode & libc::S_IFMT != libc::S_IFDIR || st.st_uid != euid || st.st_mode & 0o7777 != 0o700 {
             let _ = std::fs::remove_dir(&path);
@@ -283,14 +285,14 @@ impl WorkDir {
 
 impl Drop for WorkDir {
     fn drop(&mut self) {
-        // remove_dir_all в std ссылок не разыменовывает.
+        // remove_dir_all in std does not follow symlinks.
         let _ = std::fs::remove_dir_all(&self.path);
     }
 }
 
 fn open_dir_nofollow(path: &Path) -> io::Result<OwnedFd> {
     let c = CString::new(path.as_os_str().as_bytes()).map_err(io::Error::other)?;
-    // SAFETY: строка с NUL на конце.
+    // SAFETY: a NUL-terminated string.
     let fd = unsafe {
         libc::open(
             c.as_ptr(),
@@ -300,14 +302,14 @@ fn open_dir_nofollow(path: &Path) -> io::Result<OwnedFd> {
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
-    // SAFETY: новый дескриптор, владеем им одни.
+    // SAFETY: a new descriptor, we alone own it.
     Ok(unsafe { OwnedFd::from_raw_fd(fd) })
 }
 
 fn fstat(fd: BorrowedFd<'_>) -> io::Result<libc::stat> {
-    // SAFETY: stat — простая C-структура; fstat заполняет её целиком.
+    // SAFETY: stat is a plain C structure; fstat fills it entirely.
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    // SAFETY: живой fd и указатель на st.
+    // SAFETY: a live fd and a pointer to st.
     if unsafe { libc::fstat(fd.as_raw_fd(), &mut st) } != 0 {
         return Err(io::Error::last_os_error());
     }
@@ -321,10 +323,10 @@ fn fstat(fd: BorrowedFd<'_>) -> io::Result<libc::stat> {
 const RESOLVE_NO_MAGICLINKS: u64 = 0x02;
 const RESOLVE_NO_SYMLINKS: u64 = 0x04;
 const RESOLVE_BENEATH: u64 = 0x08;
-/// Флаги разрешения пути для всего, что root создаёт при распаковке.
+/// Path resolution flags for everything root creates while unpacking.
 const RESOLVE_STRICT: u64 = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS;
 
-/// `struct open_how` из `linux/openat2.h` (у `libc` она `non_exhaustive`).
+/// `struct open_how` from `linux/openat2.h` (in `libc` it is `non_exhaustive`).
 #[repr(C)]
 struct OpenHow {
     flags: u64,
@@ -332,9 +334,9 @@ struct OpenHow {
     resolve: u64,
 }
 
-/// `openat2(dir, path, flags, mode, RESOLVE_STRICT)`. Обёртки в libc нет —
-/// прямой системный вызов. Ядро старше 5.6 (`ENOSYS`) — ошибка `Io`:
-/// распаковывать без `openat2` помощник не будет.
+/// `openat2(dir, path, flags, mode, RESOLVE_STRICT)`. libc has no wrapper — a
+/// direct system call. A kernel older than 5.6 (`ENOSYS`) is an `Io` error: the
+/// helper will not unpack without `openat2`.
 fn openat2(dir: BorrowedFd<'_>, path: &str, flags: libc::c_int, mode: u32) -> Res<OwnedFd> {
     let c = cstr(path)?;
     let how = OpenHow {
@@ -343,7 +345,7 @@ fn openat2(dir: BorrowedFd<'_>, path: &str, flags: libc::c_int, mode: u32) -> Re
         resolve: RESOLVE_STRICT,
     };
     loop {
-        // SAFETY: строка с NUL, how живёт до конца вызова, размер — его.
+        // SAFETY: a NUL-terminated string, how lives until the end of the call, the size is its own.
         let fd = unsafe {
             libc::syscall(
                 libc::SYS_openat2,
@@ -354,7 +356,7 @@ fn openat2(dir: BorrowedFd<'_>, path: &str, flags: libc::c_int, mode: u32) -> Re
             )
         };
         if fd >= 0 {
-            // SAFETY: новый дескриптор, владеем им одни.
+            // SAFETY: a new descriptor, we alone own it.
             return Ok(unsafe { OwnedFd::from_raw_fd(fd as libc::c_int) });
         }
         let err = io::Error::last_os_error();
@@ -371,7 +373,7 @@ fn openat2(dir: BorrowedFd<'_>, path: &str, flags: libc::c_int, mode: u32) -> Re
 }
 
 // ============================================================================
-// Приём одного файла
+// Receiving one file
 // ============================================================================
 
 fn file_kind(mode: libc::mode_t) -> &'static str {
@@ -387,9 +389,10 @@ fn file_kind(mode: libc::mode_t) -> &'static str {
     }
 }
 
-/// Скопировать содержимое `src` (обычного файла, проверено `fstat`) в новый
-/// файл `name` рабочего каталога, не больше `max` байт. Возвращает путь
-/// копии. `name` даёт сам помощник или проверка [`validate`].
+/// Copy the contents of `src` (a regular file, checked with `fstat`) into a new
+/// file `name` of the working directory, no more than `max` bytes. Returns the
+/// path of the copy. `name` is given by the helper itself or by the [`validate`]
+/// check.
 pub fn receive_file(src: BorrowedFd<'_>, work: &WorkDir, name: &str, max: u64) -> Res<PathBuf> {
     let st = fstat(src)?;
     if st.st_mode & libc::S_IFMT != libc::S_IFREG {
@@ -406,9 +409,9 @@ pub fn receive_file(src: BorrowedFd<'_>, work: &WorkDir, name: &str, max: u64) -
     let mut buf = vec![0u8; 256 * 1024];
     let mut off: u64 = 0;
     loop {
-        // pread: позиция окна в общем описании файла нам не мешает и
-        // окном не сдвигается.
-        // SAFETY: живой буфер, длина — его.
+        // pread: the window's position in the shared file description does not bother
+        // us and is not moved by the window.
+        // SAFETY: a live buffer, the length is its own.
         let n = unsafe {
             libc::pread(src.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len(), off as libc::off_t)
         };
@@ -423,7 +426,7 @@ pub fn receive_file(src: BorrowedFd<'_>, work: &WorkDir, name: &str, max: u64) -
             break;
         }
         off += n as u64;
-        // Файл мог вырасти после fstat.
+        // The file may have grown after fstat.
         if off > max {
             return Err(UnpackError::TooLarge(max));
         }
@@ -434,12 +437,12 @@ pub fn receive_file(src: BorrowedFd<'_>, work: &WorkDir, name: &str, max: u64) -
 }
 
 // ============================================================================
-// Файл root (кэш pacman)
+// A root file (the pacman cache)
 // ============================================================================
 
-/// Файл или каталог, которому root может верить как своему: владелец root,
-/// группа и все прочие писать не могут; файл — обычный (`want_dir` —
-/// каталог). `what` — для журнала.
+/// A file or directory root can trust as its own: owned by root, the group and
+/// others cannot write; a file is regular (`want_dir` — a directory). `what` —
+/// for the log.
 pub fn check_root_stat(mode: libc::mode_t, uid: libc::uid_t, want_dir: bool, what: &str) -> Res<()> {
     let kind = mode & libc::S_IFMT;
     let want = if want_dir { libc::S_IFDIR } else { libc::S_IFREG };
@@ -452,12 +455,13 @@ pub fn check_root_stat(mode: libc::mode_t, uid: libc::uid_t, want_dir: bool, wha
     Ok(())
 }
 
-/// Открыть файл `name` в каталоге `dir` (абсолютный путь) только для
-/// чтения — так, чтобы ни одна ссылка не подменила ни путь каталога, ни сам
-/// файл: каталог — `openat2` от `/` без ссылок, файл — `openat2` под ним
-/// (`RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS`), `O_NONBLOCK` (канал не
-/// повесит). И каталог, и файл — [`check_root_stat`]; файл не больше
-/// [`MAX_PACKAGE_BYTES`]. Дальше помощник работает с копией по этому fd.
+/// Open file `name` in directory `dir` (an absolute path) read-only — so that no
+/// symlink can substitute either the directory's path or the file itself: the
+/// directory via `openat2` from `/` without symlinks, the file via `openat2`
+/// beneath it (`RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS`), `O_NONBLOCK` (a pipe
+/// will not hang it). Both the directory and the file go through
+/// [`check_root_stat`]; the file is no larger than [`MAX_PACKAGE_BYTES`]. Then
+/// the helper works with a copy via this fd.
 pub fn open_root_file(dir: &str, name: &str) -> Res<OwnedFd> {
     let rel = dir.strip_prefix('/').ok_or_else(|| UnpackError::Absolute(clip(dir)))?;
     if rel.is_empty() || rel.split('/').any(|s| s.is_empty() || s == "." || s == "..") {
@@ -473,8 +477,8 @@ pub fn open_root_file(dir: &str, name: &str) -> Res<OwnedFd> {
     open_root_file_in(d.as_fd(), name)
 }
 
-/// Файл `name` прямо в открытом каталоге `dir` — половина
-/// [`open_root_file`] (каталог уже проверен).
+/// File `name` directly in the open directory `dir` — half of
+/// [`open_root_file`] (the directory has already been checked).
 fn open_root_file_in(dir: BorrowedFd<'_>, name: &str) -> Res<OwnedFd> {
     if name.is_empty() || name.contains('/') || name == "." || name == ".." {
         return Err(UnpackError::BadName(clip(name)));
@@ -488,11 +492,11 @@ fn open_root_file_in(dir: BorrowedFd<'_>, name: &str) -> Res<OwnedFd> {
     Ok(f)
 }
 
-/// Собранный пакет для `pacman -U` (`PrivOp::InstallBuilt`): `label` —
-/// путь на стороне окна, root его не открывает; по нему только
-/// проверяется имя файла makepkg и место (`<rebuild_root>/<рецепт>/<файл>`,
-/// [`validate::check_built_package`]; `rebuild_root` root-сторона считает
-/// сама по `PKEXEC_UID`). Копия — `<work>/<имя файла>`, 0600, root.
+/// A built package for `pacman -U` (`PrivOp::InstallBuilt`): `label` — the path
+/// on the window's side, root does not open it; only the makepkg file name and
+/// the location are checked by it (`<rebuild_root>/<recipe>/<file>`,
+/// [`validate::check_built_package`]; the root side computes `rebuild_root`
+/// itself from `PKEXEC_UID`). The copy is `<work>/<file name>`, 0600, root.
 pub fn receive_built_package(
     src: BorrowedFd<'_>,
     label: &str,
@@ -503,10 +507,10 @@ pub fn receive_built_package(
     receive_file(src, work, name, MAX_PACKAGE_BYTES)
 }
 
-/// Собранный AUR-помощником пакет (`PrivOp::AurInstallBuilt`, пункт Б10):
-/// как [`receive_built_package`], но без корня пересборок — место файла
-/// задают paru/yay ([`validate::check_aur_package`]). Копия ложится под
-/// именем файла makepkg; `.PKGINFO` сверяет помощник по ней.
+/// A package built by the AUR helper (`PrivOp::AurInstallBuilt`, item B10): like
+/// [`receive_built_package`], but without the rebuild root — the file's location
+/// is set by paru/yay ([`validate::check_aur_package`]). The copy is stored
+/// under the makepkg file name; the helper checks `.PKGINFO` against it.
 pub fn receive_aur_package(src: BorrowedFd<'_>, label: &str, work: &WorkDir) -> Res<PathBuf> {
     let name = validate::check_aur_package(label)?;
     receive_file(src, work, name, MAX_PACKAGE_BYTES)
@@ -520,7 +524,7 @@ const BLOCK: usize = 512;
 const USTAR_MAGIC: &[u8] = b"ustar\0";
 const USTAR_VERSION: &[u8] = b"00";
 
-/// Разобранный заголовок.
+/// A parsed header.
 #[derive(Debug)]
 struct Header {
     name: String,
@@ -553,7 +557,7 @@ fn checksum(h: &[u8; BLOCK]) -> u64 {
         .sum()
 }
 
-/// `None` — нулевой блок (конец архива).
+/// `None` — a zero block (end of the archive).
 fn parse_header(h: &[u8; BLOCK]) -> Res<Option<Header>> {
     if h.iter().all(|&c| c == 0) {
         return Ok(None);
@@ -582,7 +586,7 @@ fn parse_header(h: &[u8; BLOCK]) -> Res<Option<Header>> {
     }))
 }
 
-/// Сегменты пути записи; `None` — запись самого корня (`.`, `./`).
+/// Path segments of an entry; `None` — an entry of the root itself (`.`, `./`).
 fn entry_segments<'a>(name: &'a str, is_dir: bool, max_depth: usize) -> Res<Option<Vec<&'a str>>> {
     if name.is_empty() || name.chars().any(|c| c.is_control()) {
         return Err(UnpackError::BadName(clip(name)));
@@ -613,7 +617,7 @@ fn entry_segments<'a>(name: &'a str, is_dir: bool, max_depth: usize) -> Res<Opti
     Ok(Some(segs))
 }
 
-/// Открыть каталог-родитель записи под `dest` (`openat2`, без ссылок).
+/// Open the parent directory of an entry under `dest` (`openat2`, without symlinks).
 fn open_parent(dest: BorrowedFd<'_>, segs: &[&str]) -> Res<OwnedFd> {
     let parent = segs[..segs.len() - 1].join("/");
     let path = if parent.is_empty() { "." } else { parent.as_str() };
@@ -623,7 +627,7 @@ fn open_parent(dest: BorrowedFd<'_>, segs: &[&str]) -> Res<OwnedFd> {
 fn mkdir_beneath(dest: BorrowedFd<'_>, segs: &[&str], full: &str) -> Res<()> {
     let parent = open_parent(dest, segs)?;
     let last = cstr(segs[segs.len() - 1])?;
-    // SAFETY: строка с NUL, живой fd родителя.
+    // SAFETY: a NUL-terminated string, a live fd of the parent.
     if unsafe { libc::mkdirat(parent.as_raw_fd(), last.as_ptr(), 0o700) } != 0 {
         let err = io::Error::last_os_error();
         return Err(match err.raw_os_error() {
@@ -631,22 +635,22 @@ fn mkdir_beneath(dest: BorrowedFd<'_>, segs: &[&str], full: &str) -> Res<()> {
             _ => err.into(),
         });
     }
-    // Режим — по дескриптору только что созданного каталога, не по пути.
+    // The mode is taken from the descriptor of the directory just created, not from the path.
     let dir = openat2(parent.as_fd(), segs[segs.len() - 1], libc::O_RDONLY | libc::O_DIRECTORY, 0)?;
-    // SAFETY: живой fd.
+    // SAFETY: a live fd.
     if unsafe { libc::fchmod(dir.as_raw_fd(), 0o755) } != 0 {
         return Err(io::Error::last_os_error().into());
     }
     Ok(())
 }
 
-/// Распаковать несжатый ustar из `archive` в каталог `dest`.
+/// Unpack an uncompressed ustar from `archive` into directory `dest`.
 ///
-/// `check_file` зовётся на путь каждого файла ДО его создания (Plymouth —
-/// [`validate::check_theme_file_not_code`]). Пределы `limits` проверяются по
-/// заголовку, до записи данных. Режимы нормализуются (см. описание модуля);
-/// setuid/setgid — отказ. При ошибке распакованное остаётся в `dest` —
-/// убирает его владелец каталога ([`WorkDir`]).
+/// `check_file` is called on each file's path BEFORE it is created (Plymouth —
+/// [`validate::check_theme_file_not_code`]). The `limits` are checked by the
+/// header, before writing data. Modes are normalized (see the module
+/// description); setuid/setgid is a refusal. On an error what was unpacked stays
+/// in `dest` — the directory's owner removes it ([`WorkDir`]).
 pub fn unpack_tar_into(
     archive: &mut impl Read,
     dest: BorrowedFd<'_>,
@@ -659,7 +663,7 @@ pub fn unpack_tar_into(
     loop {
         read_block(archive, &mut block)?;
         let Some(h) = parse_header(&block)? else {
-            // Конец: второй нулевой блок обязателен (иначе архив обрезан).
+            // End: a second zero block is mandatory (otherwise the archive is truncated).
             read_block(archive, &mut block)?;
             if block.iter().any(|&c| c != 0) {
                 return Err(UnpackError::Malformed("за концом архива данные".into()));
@@ -713,7 +717,7 @@ pub fn unpack_tar_into(
             return Err(UnpackError::Malformed(format!("обрыв данных {}", clip(name))));
         }
         let mode = if h.mode & 0o111 != 0 { 0o755 } else { 0o644 };
-        // SAFETY: живой fd.
+        // SAFETY: a live fd.
         if unsafe { libc::fchmod(out.as_raw_fd(), mode) } != 0 {
             return Err(io::Error::last_os_error().into());
         }
@@ -737,11 +741,11 @@ fn read_exact_or_malformed(r: &mut impl Read, b: &mut [u8]) -> Res<()> {
 }
 
 // ============================================================================
-// Приём каталога
+// Receiving a directory
 // ============================================================================
 
-/// Принять архив-каталог по дескриптору: копия в `work`, распаковка в
-/// `<work>/tree`, копия архива удаляется. Возвращает путь `tree`.
+/// Receive a directory archive by descriptor: a copy into `work`, unpacking into
+/// `<work>/tree`, the archive copy is deleted. Returns the `tree` path.
 pub fn receive_tree(
     src: BorrowedFd<'_>,
     work: &WorkDir,
@@ -750,7 +754,7 @@ pub fn receive_tree(
 ) -> Res<PathBuf> {
     let archive = receive_file(src, work, "bundle.tar", limits.max_archive())?;
     let tree = cstr("tree")?;
-    // SAFETY: строка с NUL, живой fd рабочего каталога.
+    // SAFETY: a NUL-terminated string, a live fd of the working directory.
     if unsafe { libc::mkdirat(work.as_fd().as_raw_fd(), tree.as_ptr(), 0o755) } != 0 {
         return Err(io::Error::last_os_error().into());
     }
@@ -763,24 +767,24 @@ pub fn receive_tree(
     Ok(work.path().join("tree"))
 }
 
-/// Раскладка экрана входа и MATE (`PrivOp::Stage`): категория — из
-/// [`crate::system_plan::STAGE_CATEGORIES`]. Что внутри должно лежать
-/// (одна картинка, тема webkit) — решает исполнение категории (Б4).
+/// Login screen and MATE layout (`PrivOp::Stage`): the category comes from
+/// [`crate::system_plan::STAGE_CATEGORIES`]. What must lie inside (one picture,
+/// a webkit theme) is decided by the category's execution (B4).
 pub fn receive_stage(src: BorrowedFd<'_>, work: &WorkDir, category: &str) -> Res<PathBuf> {
     validate::check_stage_category(category)?;
     receive_tree(src, work, Limits::TREE, &no_check)
 }
 
-/// Проверка «без особых правил» для [`receive_tree`].
+/// A check "without special rules" for [`receive_tree`].
 fn no_check(_: &str) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// Системная тема SDDM/Plymouth (`SystemThemeOp::Install`). Plymouth:
-/// `.so` — отказ ещё при распаковке; после неё — та же проверка ядра, что
-/// у прежнего помощника и окна ([`crate::installer::system_theme_problem`]:
-/// ссылки, `.so`, каждое `ModuleName` — только штатный модуль, без NUL), но
-/// по КОПИИ root; `<тема>.plymouth` в корне темы обязателен.
+/// An SDDM/Plymouth system theme (`SystemThemeOp::Install`). Plymouth: a `.so`
+/// is refused already during unpacking; after it — the same core check as for
+/// the former helper and the window ([`crate::installer::system_theme_problem`]:
+/// symlinks, `.so`, every `ModuleName` only a stock module, no NUL), but on
+/// root's COPY; `<theme>.plymouth` at the theme root is mandatory.
 pub fn receive_system_theme(
     src: BorrowedFd<'_>,
     work: &WorkDir,
@@ -807,11 +811,11 @@ pub fn receive_system_theme(
 }
 
 // ============================================================================
-// Упаковка (сторона окна)
+// Packing (the window's side)
 // ============================================================================
 
-/// Заголовок ustar. `name` — до 255 байт (100 имени + 155 префикса по
-/// границе `/`), иначе ошибка.
+/// A ustar header. `name` — up to 255 bytes (100 of name + 155 of prefix split
+/// at a `/`), otherwise an error.
 fn ustar_header(name: &str, typeflag: u8, mode: u32, size: u64, linkname: &str) -> io::Result<[u8; BLOCK]> {
     let mut h = [0u8; BLOCK];
     let nb = name.as_bytes();
@@ -849,11 +853,11 @@ fn ustar_header(name: &str, typeflag: u8, mode: u32, size: u64, linkname: &str) 
     Ok(h)
 }
 
-/// Упаковать каталог `dir` в несжатый ustar (сторона окна, от
-/// пользователя). Только обычные файлы и каталоги — ссылка или особый файл
-/// дают ошибку (`InvalidData`): тема не обязана их содержать, и root их всё
-/// равно не примет. Режимы нормализуются (`0644`/`0755`), владелец 0,
-/// время 0, порядок — по имени: одинаковый каталог даёт одинаковые байты.
+/// Pack directory `dir` into an uncompressed ustar (the window's side, as the
+/// user). Only regular files and directories — a symlink or a special file gives
+/// an error (`InvalidData`): a theme need not contain them, and root would not
+/// accept them anyway. Modes are normalized (`0644`/`0755`), owner 0, time 0,
+/// order by name: the same directory gives the same bytes.
 pub fn pack_tree(dir: &Path, out: &mut impl Write) -> io::Result<()> {
     fn walk(root: &Path, rel: &str, out: &mut dyn Write) -> io::Result<()> {
         let abs = if rel.is_empty() { root.to_path_buf() } else { root.join(rel) };
@@ -900,15 +904,15 @@ pub fn pack_tree(dir: &Path, out: &mut impl Write) -> io::Result<()> {
     out.flush()
 }
 
-/// [`pack_tree`] в анонимный файл в памяти (`memfd`, CLOEXEC) — его
-/// дескриптор окно и отдаёт помощнику в `SCM_RIGHTS`.
+/// [`pack_tree`] into an anonymous in-memory file (`memfd`, CLOEXEC) — the
+/// window passes its descriptor to the helper in `SCM_RIGHTS`.
 pub fn pack_tree_memfd(dir: &Path) -> io::Result<OwnedFd> {
-    // SAFETY: строка-литерал с NUL.
+    // SAFETY: a string literal with NUL.
     let fd = unsafe { libc::memfd_create(c"rexon-bundle".as_ptr(), libc::MFD_CLOEXEC) };
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
-    // SAFETY: новый дескриптор, владеем им одни.
+    // SAFETY: a new descriptor, we alone own it.
     let fd = unsafe { OwnedFd::from_raw_fd(fd) };
     let mut f = io::BufWriter::new(File::from(fd.try_clone()?));
     pack_tree(dir, &mut f)?;
@@ -917,7 +921,7 @@ pub fn pack_tree_memfd(dir: &Path) -> io::Result<OwnedFd> {
 }
 
 // ============================================================================
-// Сверки
+// Checks
 // ============================================================================
 
 #[cfg(test)]
@@ -933,7 +937,7 @@ mod tests {
         Limits { max_total: 64 * 1024, max_entries: 16, max_depth: 4 }
     }
 
-    /// Собрать архив из записей (имя, тип, режим, данные, ссылка).
+    /// Build an archive from entries (name, type, mode, data, link).
     fn tar(entries: &[(&str, u8, u32, &[u8], &str)]) -> Vec<u8> {
         let mut v = Vec::new();
         for (name, t, mode, data, link) in entries {
@@ -953,7 +957,7 @@ mod tests {
         (name, b'5', 0o755, b"", "")
     }
 
-    /// Распаковать байты в новый рабочий каталог.
+    /// Unpack bytes into a new working directory.
     fn unpack(bytes: &[u8], limits: Limits) -> (WorkDir, Res<usize>) {
         let work = WorkDir::create(&base()).unwrap();
         let r = unpack_tar_into(&mut &bytes[..], work.as_fd(), limits, &|_| Ok(()));
@@ -961,10 +965,10 @@ mod tests {
     }
 
     fn memfd_with(bytes: &[u8]) -> OwnedFd {
-        // SAFETY: литерал с NUL.
+        // SAFETY: a literal with NUL.
         let fd = unsafe { libc::memfd_create(c"t".as_ptr(), libc::MFD_CLOEXEC) };
         assert!(fd >= 0);
-        // SAFETY: новый fd.
+        // SAFETY: a new fd.
         let fd = unsafe { OwnedFd::from_raw_fd(fd) };
         File::from(fd.try_clone().unwrap()).write_all(bytes).unwrap();
         fd
@@ -1003,7 +1007,7 @@ mod tests {
         assert_eq!(mode("neon.plymouth"), 0o644, "запись для всех снимается");
         assert_eq!(mode("images"), 0o755);
         assert!(!work.path().join("bundle.tar").exists(), "копия архива убрана");
-        // Тот же каталог — те же байты.
+        // The same directory — the same bytes.
         let (mut a, mut b) = (Vec::new(), Vec::new());
         pack_tree(s, &mut a).unwrap();
         pack_tree(s, &mut b).unwrap();
@@ -1020,13 +1024,13 @@ mod tests {
 
     #[test]
     fn bomb_total_size_refused_before_write() {
-        // Один файл «объявляет» больше предела — отказ по заголовку.
+        // One file "declares" more than the limit — refusal by the header.
         let mut v = ustar_header("big", b'0', 0o644, 1024 * 1024, "").unwrap().to_vec();
         v.extend_from_slice(&[0u8; 4 * BLOCK]);
         let (work, r) = unpack(&v, small());
         assert!(matches!(r, Err(UnpackError::TooLarge(_))), "{r:?}");
         assert!(!work.path().join("big").exists(), "ничего не записано");
-        // Сумма мелких больше предела.
+        // The sum of small ones is over the limit.
         let chunk = vec![1u8; 20 * 1024];
         let names: Vec<String> = (0..5).map(|i| format!("f{i}")).collect();
         let entries: Vec<_> = names.iter().map(|n| file_e(n, &chunk)).collect();
@@ -1092,7 +1096,7 @@ mod tests {
             let (_w, r) = unpack(&tar(&[("x", b'0', mode, b"x", "")]), small());
             assert!(matches!(r, Err(UnpackError::SetId(_))), "{mode:o}: {r:?}");
         }
-        // sticky и запись для всех — не отказ, снимаются.
+        // sticky and write-for-all are not a refusal, they are stripped.
         let (w, r) = unpack(&tar(&[("x", b'0', 0o1777, b"x", "")]), small());
         r.unwrap();
         assert_eq!(std::fs::metadata(w.path().join("x")).unwrap().permissions().mode() & 0o7777, 0o755);
@@ -1106,8 +1110,8 @@ mod tests {
         assert!(matches!(r, Err(UnpackError::Duplicate(_))), "{r:?}");
     }
 
-    /// Ссылка, оказавшаяся в каталоге назначения (гонка, чужой каталог):
-    /// запись через неё — отказ, снаружи ничего не появилось.
+    /// A symlink that turned up in the destination directory (a race, a foreign
+    /// directory): writing through it is refused, nothing appeared outside.
     #[test]
     fn symlink_in_destination_does_not_escape() {
         let outside = WorkDir::create(&base()).unwrap();
@@ -1124,20 +1128,20 @@ mod tests {
 
     #[test]
     fn malformed_archives_refused() {
-        // Обрыв данных.
+        // Truncated data.
         let mut v = ustar_header("a", b'0', 0o644, 100, "").unwrap().to_vec();
         v.extend_from_slice(b"short");
         let (_w, r) = unpack(&v, small());
         assert!(matches!(r, Err(UnpackError::Malformed(_))), "{r:?}");
-        // Нет конца архива.
+        // No end of the archive.
         let mut v = tar(&[file_e("a", b"x")]);
         v.truncate(v.len() - 2 * BLOCK);
         assert!(matches!(unpack(&v, small()).1, Err(UnpackError::Malformed(_))));
-        // Порченая сумма.
+        // A corrupted checksum.
         let mut v = tar(&[file_e("a", b"x")]);
         v[0] = b'b';
         assert!(matches!(unpack(&v, small()).1, Err(UnpackError::Malformed(_))));
-        // GNU-заголовок вместо POSIX.
+        // A GNU header instead of POSIX.
         let mut h = ustar_header("a", b'0', 0o644, 0, "").unwrap();
         h[257..265].copy_from_slice(b"ustar  \0");
         let sum = checksum(&h);
@@ -1145,13 +1149,13 @@ mod tests {
         let mut v = h.to_vec();
         v.extend_from_slice(&[0u8; 2 * BLOCK]);
         assert!(matches!(unpack(&v, small()).1, Err(UnpackError::Malformed(_))));
-        // Файл без каталога-родителя.
+        // A file without a parent directory.
         assert!(matches!(unpack(&tar(&[file_e("no/x", b"1")]), small()).1, Err(UnpackError::Malformed(_))));
     }
 
     #[test]
     fn long_names_via_prefix() {
-        // Сегмент длиннее 100 ustar не хранит; длинный путь — через префикс.
+        // ustar does not store a segment longer than 100; a long path goes through the prefix.
         let dir = format!("{}/{}/", "d".repeat(80), "e".repeat(60));
         let long = format!("{dir}{}", "f".repeat(90));
         let top = format!("{}/", "d".repeat(80));
@@ -1159,7 +1163,7 @@ mod tests {
         let (w, r) = unpack(&tar(&entries), small());
         r.unwrap();
         assert_eq!(std::fs::read(w.path().join(&long)).unwrap(), b"ok");
-        // Не делится на префикс и имя — упаковщик отказывает.
+        // Cannot be split into a prefix and a name — the packer refuses.
         assert!(ustar_header(&"x".repeat(101), b'0', 0o644, 0, "").is_err());
     }
 
@@ -1169,16 +1173,16 @@ mod tests {
         let dir = File::open(work.path()).unwrap();
         assert!(matches!(receive_file(dir.as_fd(), &work, "x", 10), Err(UnpackError::NotRegular("directory"))));
         let mut p = [0; 2];
-        // SAFETY: массив из двух int.
+        // SAFETY: an array of two ints.
         assert_eq!(unsafe { libc::pipe2(p.as_mut_ptr(), libc::O_CLOEXEC) }, 0);
-        // SAFETY: новые fd.
+        // SAFETY: new fds.
         let (r, _w) = unsafe { (OwnedFd::from_raw_fd(p[0]), OwnedFd::from_raw_fd(p[1])) };
         assert!(matches!(receive_file(r.as_fd(), &work, "x", 10), Err(UnpackError::NotRegular("fifo"))));
         let null = File::open("/dev/null").unwrap();
         assert!(matches!(receive_file(null.as_fd(), &work, "x", 10), Err(UnpackError::NotRegular("char-device"))));
         let (a, _b) = super::super::proto::seqpacket_pair().unwrap();
         assert!(matches!(receive_file(a.as_fd(), &work, "x", 10), Err(UnpackError::NotRegular("socket"))));
-        // Ничего не создано.
+        // Nothing was created.
         assert_eq!(std::fs::read_dir(work.path()).unwrap().count(), 0);
     }
 
@@ -1187,7 +1191,7 @@ mod tests {
         let work = WorkDir::create(&base()).unwrap();
         let fd = memfd_with(&[5u8; 100]);
         assert!(matches!(receive_file(fd.as_fd(), &work, "big", 99), Err(UnpackError::TooLarge(99))));
-        // Позиция окна сдвинута в конец — копия всё равно целиком (pread с 0).
+        // The window's position is moved to the end — the copy is still complete (pread from 0).
         let fd = memfd_with(&[5u8; 100]);
         let p = receive_file(fd.as_fd(), &work, "ok", 100).unwrap();
         assert_eq!(std::fs::read(&p).unwrap(), vec![5u8; 100]);
@@ -1257,7 +1261,7 @@ mod tests {
             assert!(matches!(r, Err(UnpackError::Refused(Refusal::BootSplashCode(_)))), "{so}: {r:?}");
             assert!(!work.path().join("tree").join(so).exists(), ".so не записан");
         }
-        // Имя темы — имя, а не путь.
+        // The theme name is a name, not a path.
         let work = WorkDir::create(&base()).unwrap();
         let r = receive_system_theme(theme_fd(&[("neon.plymouth", good)]).as_fd(), &work, SystemThemeKind::Plymouth, "../neon");
         assert!(matches!(r, Err(UnpackError::Refused(_))), "{r:?}");
@@ -1284,7 +1288,7 @@ mod tests {
         assert_eq!(UnpackError::NotRootOwned("x".into()).code(), "not-root-owned");
     }
 
-    /// Владелец и права файла root: только root, группа и прочие не пишут.
+    /// Owner and permissions of a root file: only root, group and others do not write.
     #[test]
     fn root_stat_only_root_not_writable_by_others() {
         let reg = libc::S_IFREG;
@@ -1301,9 +1305,9 @@ mod tests {
         assert!(matches!(check_root_stat(reg | 0o644, 0, true, "d"), Err(UnpackError::NotRegular(_))));
     }
 
-    /// Живая файловая система (без root): ссылка на месте файла и в пути
-    /// каталога — отказ ещё до проверки владельца; файл пользователя — отказ
-    /// по владельцу; относительный путь и имя с `/` — отказ.
+    /// The live file system (without root): a symlink in place of the file and in
+    /// the directory path is refused even before the owner check; a user's file is
+    /// refused by owner; a relative path and a name with `/` are refused.
     #[test]
     fn root_file_open_refuses_links_and_foreign_owner() {
         use std::os::unix::fs::symlink;
@@ -1315,16 +1319,16 @@ mod tests {
         symlink(dir.join("real"), dir.join("via")).unwrap();
         let real = dir.join("real").to_string_lossy().into_owned();
         let via = dir.join("via").to_string_lossy().into_owned();
-        // Ссылка в пути каталога — до любой другой проверки.
+        // A symlink in the directory path — before any other check.
         let r = open_root_file(&via, "a-1-1-x86_64.pkg.tar.zst");
         assert!(matches!(r, Err(UnpackError::Escape(_))), "{r:?}");
-        // Тест не от root: каталог пользователя не принят по владельцу.
+        // The test is not run as root: the user's directory is not accepted by owner.
         if unsafe { libc::geteuid() } != 0 {
             let r = open_root_file(&real, "a-1-1-x86_64.pkg.tar.zst");
             assert!(matches!(r, Err(UnpackError::NotRootOwned(_))), "{r:?}");
         }
-        // Файл в уже открытом каталоге: ссылка — отказ, файл пользователя —
-        // по владельцу, каталог вместо файла — не обычный.
+        // A file in an already open directory: a symlink is refused, a user's file by
+        // owner, a directory instead of a file as not regular.
         let d = open_dir_nofollow(&dir.join("real")).unwrap();
         let r = open_root_file_in(d.as_fd(), "link-1-1-x86_64.pkg.tar.zst");
         assert!(matches!(r, Err(UnpackError::Escape(_))), "{r:?}");

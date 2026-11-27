@@ -1,19 +1,21 @@
-//! Схема адаптивного видео-манифеста `.rxn` v4 — порт
+//! Schema of the adaptive video manifest `.rxn` v4 — port of
 //! `rexon/extensions/manifest_v4.py`.
 //!
-//! Валидация структуры `manifest.json` (`validate_v4_manifest`) и чтение
-//! манифеста из архива без распаковки (`parse_v4_manifest`). Тексты ошибок
-//! воспроизводятся байт-в-байт как у Python (включая `{x!r}`-repr), чтобы
-//! сообщения в UI не поехали — сверено golden-тестом `manifest_v4_parity.rs`.
+//! Validation of the `manifest.json` structure (`validate_v4_manifest`) and
+//! reading the manifest from the archive without unpacking it
+//! (`parse_v4_manifest`). Error texts are reproduced byte for byte as in Python
+//! (including the `{x!r}` repr) so that UI messages do not drift — checked by
+//! the golden test `manifest_v4_parity.rs`.
 //!
-//! Отклонения от Python (осознанные):
-//!   * soft-warning «default_locale отсутствует в audio_tracks» в Python лишь
-//!     логируется и не влияет на результат — здесь опущен (в ядре нет логгера).
-//!   * `isinstance(x, int)` в Python принимает `bool` (True == 1). Здесь
-//!     bool-значение в числовых полях не считается числом — в реальных
-//!     манифестах эти поля числовые, край не встречается.
-//!   * Python `repr` для float не воспроизводится (в манифестах эти поля —
-//!     целые/строки); для int/str/None/bool repr совпадает.
+//! Deliberate deviations from Python:
+//!   * the soft warning "default_locale is missing from audio_tracks" is only
+//!     logged in Python and does not affect the result — it is omitted here
+//!     (the core has no logger).
+//!   * `isinstance(x, int)` in Python accepts `bool` (True == 1). Here a bool
+//!     value in numeric fields does not count as a number — in real manifests
+//!     these fields are numeric, so the edge case does not occur.
+//!   * Python's `repr` for float is not reproduced (in manifests these fields
+//!     are integers/strings); for int/str/None/bool the repr matches.
 
 use std::io::Read;
 use std::path::Path;
@@ -23,19 +25,19 @@ use serde_json::{Map, Value};
 use crate::ext_utils::zip_error_text;
 use crate::i18n::{tr, trf};
 
-/// `format_version` манифеста v4.
+/// `format_version` of a v4 manifest.
 pub const V4_FORMAT_VERSION: i64 = 4;
-/// `type` манифеста v4.
+/// `type` of a v4 manifest.
 pub const V4_TYPE: &str = "wallpaper-video-adaptive";
 
-/// Разрешения, поддерживаемые QML `pickVideo()` (см. main.qml).
-/// Порядок для сообщений об ошибке — `sorted()` Python (лексикографический).
+/// Resolutions supported by QML `pickVideo()` (see main.qml).
+/// The order in error messages is Python's `sorted()` (lexicographic).
 const ALLOWED_RESOLUTIONS: [&str; 4] = ["720p", "1080p", "1440p", "2160p"];
-/// repr Python-списка `sorted(ALLOWED_RESOLUTIONS)` для текста ошибки.
+/// repr of the Python list `sorted(ALLOWED_RESOLUTIONS)` for the error text.
 const ALLOWED_RESOLUTIONS_REPR: &str = "['1080p', '1440p', '2160p', '720p']";
 
-/// Python-`repr` значения для текстов ошибок (`{x!r}`). Покрывает типы,
-/// встречающиеся в манифестах: None/bool/int/строка.
+/// Python `repr` of a value for error texts (`{x!r}`). Covers the types that
+/// occur in manifests: None/bool/int/string.
 fn py_repr(v: &Value) -> String {
     match v {
         Value::Null => "None".to_string(),
@@ -47,38 +49,40 @@ fn py_repr(v: &Value) -> String {
             } else if let Some(u) = n.as_u64() {
                 u.to_string()
             } else {
-                // float — в манифестах не встречается; best-effort.
+                // float — does not occur in manifests; best effort.
                 n.to_string()
             }
         }
         Value::String(s) => format!("'{s}'"),
-        // list/dict в сообщениях не используются — отладочный fallback.
+        // list/dict are not used in messages — a debugging fallback.
         other => other.to_string(),
     }
 }
 
-/// `isinstance(v, str) and bool(v.strip())` — непустая строка (после strip).
+/// `isinstance(v, str) and bool(v.strip())` — a non-empty string (after strip).
 fn is_nonempty_str(v: &Value) -> bool {
     matches!(v, Value::String(s) if !s.trim().is_empty())
 }
 
-/// `_is_locale_code`: ровно 2 символа, ASCII, lower-case, буквы (ISO 639-1).
+/// `_is_locale_code`: exactly 2 characters, ASCII, lower-case letters (ISO 639-1).
 fn is_locale_code(v: &Value) -> bool {
     let Value::String(s) = v else { return false };
     s.chars().count() == 2 && s.chars().all(|c| c.is_ascii_lowercase())
 }
 
-/// Значение поля (отсутствует → `Null`, как `dict.get` без дефолта → None).
+/// Field value (missing → `Null`, like `dict.get` without a default → None).
 fn field<'a>(meta: &'a Map<String, Value>, key: &str) -> &'a Value {
     meta.get(key).unwrap_or(&Value::Null)
 }
 
-/// Мягкие предупреждения манифеста v4 — то, что НЕ блокирует установку, но
-/// автору набора стоит знать. Логгера у ядра нет, поэтому строки просто
-/// возвращаются: пишет их в журнал вызывающий (шим `manifest_v4.py`).
+/// Soft warnings of a v4 manifest — things that do NOT block installation but
+/// that the pack's author should know about. The core has no logger, so the
+/// lines are simply returned: the caller writes them to the log (the
+/// `manifest_v4.py` shim).
 ///
-/// Сейчас предупреждение одно: `default_locale` не имеет своего трека в
-/// непустом `audio_tracks` (QML сделает fallback, но звук будет не тот).
+/// For now there is a single warning: `default_locale` has no track of its own
+/// in a non-empty `audio_tracks` (QML will fall back, but the audio will be the
+/// wrong one).
 pub fn v4_soft_warnings(meta: &Value) -> Vec<String> {
     let mut out = Vec::new();
     let Some(obj) = meta.as_object() else {
@@ -109,8 +113,8 @@ pub fn v4_soft_warnings(meta: &Value) -> Vec<String> {
     out
 }
 
-/// Проверить структуру manifest v4. Возвращает `(ok, error_msg)`; при ok
-/// сообщение пустое — как Python `validate_v4_manifest`.
+/// Check the structure of a v4 manifest. Returns `(ok, error_msg)`; when ok,
+/// the message is empty — like Python's `validate_v4_manifest`.
 pub fn validate_v4_manifest(meta: &Value) -> (bool, String) {
     let Value::Object(meta) = meta else {
         return (false, tr("manifest must be a JSON object (dict)"));
@@ -155,7 +159,7 @@ pub fn validate_v4_manifest(meta: &Value) -> (bool, String) {
         }
     }
 
-    // audio_tracks (optional): отсутствует/None → пустой словарь.
+    // audio_tracks (optional): missing/None → an empty dictionary.
     let empty = Map::new();
     let audio = match meta.get("audio_tracks") {
         None | Some(Value::Null) => &empty,
@@ -188,7 +192,7 @@ pub fn validate_v4_manifest(meta: &Value) -> (bool, String) {
         return (false, trf("default_locale=%1, expected ISO 639-1 (lower case, 2 characters)", &[&py_repr(dl)]));
     }
 
-    // Optional поля — проверка типов, если присутствуют.
+    // Optional fields — type checks if they are present.
     if let Some(vol) = meta.get("audio_volume_default") {
         let ok = vol.as_i64().is_some_and(|n| (0..=100).contains(&n));
         if !ok {
@@ -210,16 +214,16 @@ pub fn validate_v4_manifest(meta: &Value) -> (bool, String) {
     (true, String::new())
 }
 
-/// Ошибки чтения манифеста из архива (аналог исключений Python).
+/// Errors reading the manifest from the archive (the analogue of Python exceptions).
 #[derive(Debug)]
 pub enum ParseError {
-    /// Архив не существует (FileNotFoundError).
+    /// The archive does not exist (FileNotFoundError).
     NotFound(String),
-    /// Повреждённый архив / ошибка чтения (BadZipFile, OSError).
+    /// Corrupted archive / read error (BadZipFile, OSError).
     BadZip(String),
-    /// Внутри нет `manifest.json` (KeyError).
+    /// There is no `manifest.json` inside (KeyError).
     NoManifest(String),
-    /// Невалидный JSON (JSONDecodeError).
+    /// Invalid JSON (JSONDecodeError).
     BadJson(String),
 }
 
@@ -235,32 +239,34 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
-/// Прочитать `manifest.json` из `.rxn` (ZIP) без распаковки — порт
-/// `parse_v4_manifest`. Ищет `manifest.json` в корне (case-sensitive).
+/// Read `manifest.json` from an `.rxn` (ZIP) without unpacking — port of
+/// `parse_v4_manifest`. Looks for `manifest.json` at the root (case-sensitive).
 ///
-/// Байты декодируются UTF-8 с заменой некорректных (как
-/// `data.decode("utf-8", errors="replace")` в Python).
+/// The bytes are decoded as UTF-8 with invalid sequences replaced (like
+/// `data.decode("utf-8", errors="replace")` in Python).
 pub fn parse_v4_manifest(zip_path: &Path) -> Result<Value, ParseError> {
     let text = read_manifest_text(zip_path)?;
     serde_json::from_str(&text).map_err(|e| ParseError::BadJson(e.to_string()))
 }
 
-/// Прочитать ТЕКСТ `manifest.json` из `.rxn` — всё, что делает
-/// `parse_v4_manifest` до `json.loads`: проверка файла, открытие ZIP, поиск
-/// записи в корне, декодирование UTF-8 с заменой (`errors="replace"`).
+/// Read the TEXT of `manifest.json` from an `.rxn` — everything
+/// `parse_v4_manifest` does before `json.loads`: checking the file, opening the
+/// ZIP, finding the entry at the root, decoding UTF-8 with replacement
+/// (`errors="replace"`).
 ///
-/// Отдельно от `parse_v4_manifest` ради живого моста: разбор JSON остаётся за
-/// Python, иначе не воспроизвести `json.JSONDecodeError` с его `msg`/`pos` —
-/// а вызывающий (`rxn_v4_installer`) ловит именно этот тип.
+/// Kept separate from `parse_v4_manifest` for the sake of the live bridge: JSON
+/// parsing stays with Python, otherwise `json.JSONDecodeError` with its
+/// `msg`/`pos` cannot be reproduced — and the caller (`rxn_v4_installer`)
+/// catches exactly that type.
 pub fn read_manifest_text(zip_path: &Path) -> Result<String, ParseError> {
     if !zip_path.is_file() {
         return Err(ParseError::NotFound(trf("Archive not found: %1", &[&zip_path.display()])));
     }
     let file = std::fs::File::open(zip_path).map_err(|e| ParseError::BadZip(e.to_string()))?;
-    // Тексты крейта `zip` («invalid Zip archive: Could not find EOCD») доезжают
-    // до окна покупателя как есть — установщик .rxn подклеивает str(e) к своему
-    // префиксу. Переводим их в слова zipfile, иначе Rust-путь и Python-фолбэк
-    // говорят про один и тот же архив разное.
+    // Texts from the `zip` crate ("invalid Zip archive: Could not find EOCD") reach
+    // the buyer's window as is — the .rxn installer appends str(e) to its own
+    // prefix. We translate them into zipfile's wording, otherwise the Rust path and
+    // the Python fallback would say different things about the same archive.
     let mut archive =
         zip::ZipArchive::new(file).map_err(|e| ParseError::BadZip(zip_error_text(&e)))?;
 
@@ -271,7 +277,7 @@ pub fn read_manifest_text(zip_path: &Path) -> Result<String, ParseError> {
     };
     let mut bytes = Vec::new();
     entry.read_to_end(&mut bytes).map_err(|e| {
-        // Битая полезная нагрузка при живом каталоге записей — «Bad CRC-32…».
+        // A broken payload with an intact entry directory — "Bad CRC-32…".
         if e.kind() == std::io::ErrorKind::InvalidData && e.to_string().contains("Invalid checksum") {
             ParseError::BadZip("Bad CRC-32 for file 'manifest.json'".to_string())
         } else {
@@ -279,6 +285,6 @@ pub fn read_manifest_text(zip_path: &Path) -> Result<String, ParseError> {
         }
     })?;
 
-    // errors="replace": невалидные последовательности → U+FFFD.
+    // errors="replace": invalid sequences → U+FFFD.
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }

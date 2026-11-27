@@ -1,9 +1,9 @@
-//! Сверка снимка рамки KDE для плитки «Оформления окон»
-//! (`kdecoration::shot_*`, `local_preview::shot_picture`). Ожидания —
+//! Check of the KDE frame snapshot for the «Window Decorations» tile
+//! (`kdecoration::shot_*`, `local_preview::shot_picture`). Expectations —
 //! `tests/golden/kdecoration_shot_cases.json`.
 //!
-//! Последний тест снимает настоящую рамку Breeze, если на машине есть
-//! запускатель `qml` Qt6 и модуль превью KWin; иначе печатает «НЕ ПРОВЕРЕНО».
+//! The last test takes a snapshot of the real Breeze frame, if the machine has the
+//! Qt6 `qml` launcher and the KWin preview module; otherwise it prints «НЕ ПРОВЕРЕНО».
 
 use rexon_core::kdecoration as kd;
 use rexon_core::local_preview as lp;
@@ -103,8 +103,8 @@ fn shot_is_laid_over_the_common_backdrop() {
     );
 }
 
-/// Метод ввода процессу снимка не передаётся: 16.11.2026 IBus сеанса
-/// (Cinnamon 6.8 Wayland) держал снимок Breeze до таймаута.
+/// The input method is not passed to the snapshot process: on 16.11.2026 the session's IBus
+/// (Cinnamon 6.8 Wayland) held the Breeze snapshot until the timeout.
 #[test]
 fn shot_process_gets_no_input_method() {
     for k in ["QT_IM_MODULE", "QT_IM_MODULES"] {
@@ -125,10 +125,10 @@ fn live_breeze_shot_or_not_checked() {
     }
     let dir = std::env::temp_dir().join(format!("rexon-kdeco-shot-{}", std::process::id()));
     let dir_s = dir.to_string_lossy().into_owned();
-    // Снимок — на своих настройках, а не на живых настройках человека
-    // (`kdeglobals`, адрес IBus в `~/.config/ibus`): иначе исход сверки
-    // зависел бы от сеанса, в котором её запустили. Соседние сверки файла
-    // HOME не читают.
+    // The snapshot runs on its own settings, not on the person's live settings
+    // (`kdeglobals`, the IBus address in `~/.config/ibus`): otherwise the outcome of the check
+    // would depend on the session it was run in. The neighbouring checks of the file
+    // do not read HOME.
     let home = dir.join("home");
     std::fs::create_dir_all(home.join(".config")).unwrap();
     std::env::set_var("HOME", &home);
@@ -137,7 +137,7 @@ fn live_breeze_shot_or_not_checked() {
     let req = kd::shot_request("local:aurorae:org.kde.breeze/Breeze", "Breeze", kd::AURORAE_V2, kd::BORDER_NORMAL).unwrap();
     assert!(kd::take_shot(&runner, &dir_s, &req, &out), "Breeze не снялся");
     assert_eq!(lp::image_size(std::path::Path::new(&out)), Some((lp::PREVIEW_WIDTH as f64, lp::PREVIEW_HEIGHT as f64)));
-    // Несуществующий модуль: снимка нет, файла тоже.
+    // A nonexistent module: no snapshot, no file either.
     let bad = kd::ShotRequest { library: "org.example.none".into(), ..req };
     let out_bad = format!("{dir_s}/none.png");
     assert!(!kd::take_shot(&runner, &dir_s, &bad, &out_bad));

@@ -1,8 +1,8 @@
-//! «Остановить все» на настоящих процессах: подставной conky
-//! (`tools/de_matrix_stand/fake_conky.c`) запускается дважды — виджетом
-//! Rexon и «чужим» из `~/.conky` в частном домашнем каталоге. Оба видны
-//! списком и гасятся по номерам. Чужие процессы машины (виджет человека)
-//! в проверку не попадают: гасится только то, что запустила сама проверка.
+//! «Остановить все» on real processes: a fake conky
+//! (`tools/de_matrix_stand/fake_conky.c`) is launched twice — as a Rexon
+//! widget and as a "foreign" one from `~/.conky` in a private home directory. Both are
+//! listed and stopped by PID. The machine's other processes (the person's widget)
+//! are not part of the check: only what the check itself launched is stopped.
 
 use rexon_core::animations::SystemIo;
 use rexon_core::conky_procs;
@@ -32,7 +32,7 @@ fn stop_all_stops_own_and_foreign_widgets_by_pid() {
         std::fs::create_dir_all(f.parent().unwrap()).unwrap();
         std::fs::write(f, "conky.text = [[x]]\n").unwrap();
     }
-    // Без `-d`: номер процесса — номер ребёнка, его и ждём.
+    // Without `-d`: the process ID is the child's ID, so that is what we wait for.
     let mut kids: Vec<std::process::Child> = [&own, &foreign]
         .iter()
         .map(|c| std::process::Command::new(&fake).arg("-c").arg(c).spawn().expect("подставной conky"))

@@ -1,67 +1,70 @@
-//! «Deepin на Treeland (экспериментально)» — ЕДИНСТВЕННЫЙ Deepin, который
-//! ставит Rexon (решение Wehrwolfmann 26.10.2026), на Arch и производных.
+//! "Deepin on Treeland (experimental)" is the ONLY Deepin that Rexon installs
+//! (Wehrwolfmann's decision, 26.10.2026), on Arch and derivatives.
 //!
-//! ЗАЧЕМ. Обычный набор Deepin тянет сеанс X11: `deepin-session` жёстко
-//! зависит от `deepin-kwin` — форка KWin, который объявляет
-//! `Conflicts With: kwin kwin-x11` (сотни общих файлов) и рядом с KDE
-//! Plasma не встаёт. Но `deepin-kwin` нужен ТОЛЬКО сеансу X11: его
-//! запускает лишь `dde-session@x11.service` (условие
-//! `XDG_SESSION_TYPE=x11`). В сеансе Treeland (Wayland-композитор Deepin)
-//! он не запускается вовсе. Поэтому Rexon ставит Deepin одним путём — с
-//! Plasma на машине и без неё: собирает `deepin-session` из официального
-//! рецепта Arch под своим именем [`LOCAL_PACKAGE`] — с `deepin-kwin` в
-//! необязательных зависимостях и без пункта X11 в экране входа — и ставит
-//! набор Deepin без `deepin-kwin`. Обычный Deepin (X11) Rexon не ставит ни
-//! при каких условиях. Свой экран входа Deepin (`ddm`) ставится, потому что
-//! без него не ставится `treeland`, но сам НЕ включается (менять экран
-//! входа молча нельзя: он общий для всех столов).
+//! WHY. The regular Deepin set pulls in an X11 session: `deepin-session` hard
+//! depends on `deepin-kwin`, a KWin fork that declares
+//! `Conflicts With: kwin kwin-x11` (hundreds of shared files) and cannot be
+//! installed next to KDE Plasma. But `deepin-kwin` is needed ONLY by the X11
+//! session: it is started only by `dde-session@x11.service` (condition
+//! `XDG_SESSION_TYPE=x11`). In a Treeland session (Deepin's Wayland
+//! compositor) it is not started at all. So Rexon installs Deepin in a single
+//! way, with or without Plasma on the machine: it builds `deepin-session` from
+//! the official Arch recipe under its own name [`LOCAL_PACKAGE`] — with
+//! `deepin-kwin` among the optional dependencies and without the X11 entry on
+//! the login screen — and installs the Deepin set without `deepin-kwin`.
+//! Rexon never installs the regular Deepin (X11) under any circumstances.
+//! Deepin's own login screen (`ddm`) is installed, because `treeland` cannot
+//! be installed without it, but it is NOT enabled (the login screen must not
+//! be changed silently: it is shared by all desktops).
 //!
-//! ⚠️ ВХОД — ТОЛЬКО ЧЕРЕЗ DDM. Прежнее допущение «пункт „Treeland User“
-//! (`treeland-user.desktop`) работает под любым экраном входа (SDDM, Plasma
-//! Login Manager)» с Treeland 0.11 НЕВЕРНО: в режиме user Treeland создаёт
-//! сеанс человека только по сообщениям DDM или для сеанса службы `ddm`,
-//! а под чужим экраном входа виден голый фон без панели (dde-shell ждёт
-//! сокет, который не появляется; linuxdeepin/treeland#1656, 15.11.2026).
-//! Поэтому тексты ниже честно говорят: чтобы войти в Deepin, основным
-//! экраном входа должен стать DDM (раздел «Менеджер входа»,
-//! [`crate::system_plan::DESKTOP_DM_RULES`]); там же предупреждение, если
-//! Deepin стоит, а экран входа другой.
+//! Warning — LOGIN ONLY THROUGH DDM. The earlier assumption "the 'Treeland
+//! User' entry (`treeland-user.desktop`) works under any login screen (SDDM,
+//! Plasma Login Manager)" is WRONG since Treeland 0.11: in user mode Treeland
+//! creates the person's session only on DDM messages or for the `ddm`
+//! service's session, and under another login screen only a bare background
+//! without a panel is visible (dde-shell waits for a socket that never
+//! appears; linuxdeepin/treeland#1656, 15.11.2026). That is why the texts
+//! below say honestly: to log into Deepin, DDM must become the default login
+//! screen (the "Login manager" section,
+//! [`crate::system_plan::DESKTOP_DM_RULES`]); a warning is shown there too if
+//! Deepin is installed but the login screen is a different one.
 //!
-//! УЖЕ СТОИТ ОБЫЧНЫЙ DEEPIN (`deepin-session` из репозитория). Rexon его
-//! сам не удаляет и «Починить» его не переустанавливает (отказ до пароля,
-//! [`install_verdict`]); на карточке — предложение перейти на вариант
-//! Treeland ([`Offer::Install`]): та же сборка, которая ставится заменой
-//! установленного `deepin-session` (`pacman -U --ask=4`), и снятие
-//! `deepin-kwin` той же командой.
+//! THE REGULAR DEEPIN IS ALREADY INSTALLED (`deepin-session` from the
+//! repository). Rexon does not remove it by itself, and "Repair" does not
+//! reinstall it (a refusal before the password, [`install_verdict`]); the
+//! card offers to switch to the Treeland variant ([`Offer::Install`]): the
+//! same build, installed by replacing the installed `deepin-session`
+//! (`pacman -U --ask=4`), with `deepin-kwin` removed by the same command.
 //!
-//! ОБНОВЛЕНИЯ — решение и почему. Пакет под именем Arch (`deepin-session`
-//! той же версии) первое же обновление Arch с новой версией «обновило» бы
-//! обратно на рецепт Arch, а тот снова потребовал бы `deepin-kwin`: pacman
-//! спросил бы «удалить kwin?» (ответ по умолчанию «нет» обрывает ВСЁ
-//! обновление системы, ответ «да» сносит KDE Plasma). `IgnorePkg` в
-//! `pacman.conf` спасает от этого, но правит чужой системный файл и
-//! оставляет человеку вечное «ignoring package upgrade». Хук pacman
-//! пересобрать пакет внутри транзакции не может (замок базы, сборка не от
-//! root, а конфликт pacman находит ещё до хуков). Поэтому:
+//! UPDATES — the decision and why. A package under the Arch name
+//! (`deepin-session` of the same version) would be "updated" by the very
+//! first Arch update with a new version back to the Arch recipe, which would
+//! again require `deepin-kwin`: pacman would ask "remove kwin?" (the default
+//! answer "no" aborts the WHOLE system update, the answer "yes" wipes KDE
+//! Plasma). `IgnorePkg` in `pacman.conf` avoids this, but edits someone
+//! else's system file and leaves the person with an eternal "ignoring package
+//! upgrade". A pacman hook cannot rebuild a package inside a transaction (the
+//! database lock, building not as root, and pacman finds the conflict before
+//! the hooks run). Therefore:
 //!
-//! * своё имя [`LOCAL_PACKAGE`] с `provides=deepin-session=<версия>` и
-//!   `conflicts=deepin-session`: `-Syu` его не трогает никогда (такого имени
-//!   в репозиториях нет), а `treeland` и `deepin-session-shell`, которым
-//!   нужен `deepin-session`, довольствуются `provides`;
-//! * версия — ровно та, что в репозитории (`pkgrel` берётся из него:
-//!   CachyOS пересобирает с `1.1`);
-//! * сборка сама не обновляется — и об этом говорят двое: хук pacman внутри
-//!   самого пакета (после каждой транзакции сравнивает свою версию с
-//!   `deepin-session` в репозитории и печатает, что пора пересобрать) и
-//!   карточка Deepin в Rexon (кнопка «Обновить сборку»). Пока не
-//!   пересобрали, сеанс Treeland работает на прежней сборке; Plasma это не
-//!   задевает никак.
+//! * our own name [`LOCAL_PACKAGE`] with `provides=deepin-session=<version>`
+//!   and `conflicts=deepin-session`: `-Syu` never touches it (no such name
+//!   exists in the repositories), and `treeland` and `deepin-session-shell`,
+//!   which need `deepin-session`, are satisfied by `provides`;
+//! * the version is exactly the one in the repository (`pkgrel` is taken from
+//!   it: CachyOS rebuilds with `1.1`);
+//! * the build does not update itself, and two places say so: a pacman hook
+//!   inside the package itself (after every transaction it compares its
+//!   version with `deepin-session` in the repository and prints that it is
+//!   time to rebuild) and the Deepin card in Rexon (the "Update build"
+//!   button). Until it is rebuilt, the Treeland session runs on the previous
+//!   build; Plasma is not affected in any way.
 //!
-//! Удаление — обычное удаление Deepin: свой пакет остаётся в группе
-//! `deepin`, и `pacman -Qg deepin` отдаёт его вместе с остальными; хук
-//! уходит вместе с пакетом, `pacman.conf` не тронут.
+//! Removal is the regular Deepin removal: our package stays in the `deepin`
+//! group, and `pacman -Qg deepin` returns it together with the others; the
+//! hook goes away with the package, `pacman.conf` is not touched.
 //!
-//! Только Arch и только изменяемая система — как у любой пересборки
+//! Only Arch and only a mutable system, as with any rebuild
 //! ([`crate::repo_rebuild::rebuild_ctx_live`]).
 
 use std::sync::Arc;
@@ -72,30 +75,30 @@ use crate::system::PkgFamily;
 use crate::system_de_exec::{CancelToken, DeOpOutcome, DeOpSink};
 use crate::system_plan::{self, Cmd, InstallPreview, PreviewAnswer};
 
-/// Команда с выводом под LANG=C (его разбирают).
+/// A command with output under LANG=C (it is parsed).
 fn cmd(argv: Vec<String>, timeout_secs: Option<u64>) -> Cmd {
     Cmd { argv, timeout_secs, lang_c: true }
 }
 
-/// Стол в базе ядра, к которому относится вариант.
+/// The desktop in the core database that the variant belongs to.
 pub const DE_ID: &str = "deepin";
-/// Группа Deepin в репозиториях Arch.
+/// The Deepin group in the Arch repositories.
 pub const GROUP: &str = "deepin";
-/// Пакет Arch, который пересобирается.
+/// The Arch package that is rebuilt.
 pub const SESSION_PACKAGE: &str = "deepin-session";
-/// Под каким именем он встаёт.
+/// The name it is installed under.
 pub const LOCAL_PACKAGE: &str = "deepin-session-treeland";
-/// Оконный менеджер сеанса X11 — тот, что конфликтует с KWin. Rexon его не
-/// ставит никогда.
+/// The window manager of the X11 session, the one that conflicts with KWin.
+/// Rexon never installs it.
 pub const X11_WM_PACKAGE: &str = "deepin-kwin";
-/// Пункт «Deepin» (X11) в экране входа: без `deepin-kwin` он не работает.
+/// The "Deepin" (X11) entry on the login screen: it does not work without `deepin-kwin`.
 const X11_SESSION_FILE: &str = "usr/share/xsessions/deepin.desktop";
 const HOOK_FILE: &str = "usr/share/libalpm/hooks/90-deepin-session-treeland.hook";
 const CHECK_FILE: &str = "usr/share/libalpm/scripts/deepin-session-treeland-check";
 
-// ── Правка рецепта ──────────────────────────────────────────────────────
+// ── Editing the recipe ──────────────────────────────────────────────────
 
-/// Строка для `printf` внутри двойных кавычек `sh`.
+/// A string for `printf` inside `sh` double quotes.
 fn dq(text: &str) -> String {
     let mut out = String::new();
     for c in text.chars() {
@@ -107,8 +110,8 @@ fn dq(text: &str) -> String {
     out
 }
 
-/// Хук pacman в самом пакете: после каждой установки и обновления —
-/// проверка, не обогнал ли репозиторий нашу сборку.
+/// The pacman hook inside the package itself: after every installation and
+/// update it checks whether the repository has overtaken our build.
 pub fn hook_text() -> String {
     format!(
         "[Trigger]\n\
@@ -124,8 +127,8 @@ pub fn hook_text() -> String {
     )
 }
 
-/// Сама проверка. Тексты — на языке Rexon в момент сборки (их читает тот,
-/// кто собирал).
+/// The check itself. The texts are in Rexon's language at build time (they
+/// are read by whoever built it).
 pub fn check_script() -> String {
     let line1 = dq(&trf(
         "Rexon: the repositories have %1 %2, and your Treeland build of it (without deepin-kwin) is still %3.",
@@ -152,7 +155,7 @@ pub fn check_script() -> String {
     )
 }
 
-/// Что меняется в рецепте `deepin-session`.
+/// What changes in the `deepin-session` recipe.
 pub fn recipe_edit() -> RecipeEdit {
     RecipeEdit {
         pkgname: LOCAL_PACKAGE.to_string(),
@@ -170,9 +173,10 @@ pub fn recipe_edit() -> RecipeEdit {
     }
 }
 
-/// Правка для перехода с обычного Deepin: та же сборка ставится заменой
-/// установленного `deepin-session`, а `deepin-kwin` (если стоит) снимается
-/// той же root-командой — сеанса X11 после перехода нет.
+/// The edit for switching from the regular Deepin: the same build is
+/// installed by replacing the installed `deepin-session`, and `deepin-kwin`
+/// (if installed) is removed by the same root command — there is no X11
+/// session after the switch.
 pub fn migration_edit(x11_wm_installed: bool) -> RecipeEdit {
     RecipeEdit {
         replace_conflicts: true,
@@ -181,10 +185,11 @@ pub fn migration_edit(x11_wm_installed: bool) -> RecipeEdit {
     }
 }
 
-// ── Набор и проба ───────────────────────────────────────────────────────
+// ── The set and the dry run ─────────────────────────────────────────────
 
-/// Что ставится: члены группы Deepin без `deepin-session` (его заменяет
-/// своя сборка) и без `deepin-kwin` (в группе его нет, но вдруг появится).
+/// What is installed: members of the Deepin group without `deepin-session`
+/// (our own build replaces it) and without `deepin-kwin` (it is not in the
+/// group, but it might appear).
 pub fn variant_targets(group_members: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for m in group_members {
@@ -195,9 +200,10 @@ pub fn variant_targets(group_members: &[String]) -> Vec<String> {
     out
 }
 
-/// `deepin-kwin` не ставится никогда — ни членом набора, ни зависимостью:
-/// проба, в плане которой он есть, считается неставящейся (он в
-/// [`InstallPreview::blocked`], и установка отказывает до пароля).
+/// `deepin-kwin` is never installed, neither as a set member nor as a
+/// dependency: a dry run whose plan contains it counts as not installable (it
+/// is in [`InstallPreview::blocked`], and the installation refuses before the
+/// password).
 pub fn forbid_x11_wm(p: &mut InstallPreview) {
     let pulled = p.new_packages.iter().chain(&p.targets).any(|n| n == X11_WM_PACKAGE);
     if pulled && !p.blocked.iter().any(|n| n == X11_WM_PACKAGE) {
@@ -205,7 +211,7 @@ pub fn forbid_x11_wm(p: &mut InstallPreview) {
     }
 }
 
-/// Члены группы Deepin в репозиториях (`pacman -Sg deepin`).
+/// Members of the Deepin group in the repositories (`pacman -Sg deepin`).
 fn group_members(family: PkgFamily, run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Option<Vec<String>> {
     let cmd = system_plan::sync_groups_cmd(family, &[GROUP.to_string()])?;
     let (_, stdout, _) = run(&cmd)?;
@@ -216,13 +222,13 @@ fn group_members(family: PkgFamily, run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Opti
         .filter(|m| !m.is_empty())
 }
 
-/// Версия поля `Version` первого блока `pacman -Si`/`-Qi` — того
-/// репозитория, из которого pacman и поставил бы пакет.
+/// The `Version` field of the first block of `pacman -Si`/`-Qi`, i.e. of the
+/// repository pacman would install the package from.
 fn first_version(stdout: &str) -> Option<String> {
     repo_rebuild::si_field(stdout, "Version").into_iter().next().filter(|v| !v.is_empty())
 }
 
-/// Версия `deepin-session` в репозиториях.
+/// The version of `deepin-session` in the repositories.
 pub fn repo_session_version(run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Option<String> {
     let cmd = cmd(vec!["pacman".into(), "-Si".into(), SESSION_PACKAGE.into()], Some(60));
     match run(&cmd)? {
@@ -231,8 +237,9 @@ pub fn repo_session_version(run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Option<Strin
     }
 }
 
-/// Версия установленного пакета `name` по `pacman -Q`, если стоит именно
-/// он (а не другой, который его `provides`).
+/// The version of the installed package `name` according to `pacman -Q`, if
+/// it is exactly that package that is installed (and not another one that
+/// `provides` it).
 fn installed_version(name: &str, run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Option<String> {
     let cmd = cmd(vec!["pacman".into(), "-Q".into(), name.into()], Some(30));
     match run(&cmd)? {
@@ -244,32 +251,33 @@ fn installed_version(name: &str, run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Option<
     }
 }
 
-/// Версия своей сборки, если она стоит.
+/// The version of our own build, if it is installed.
 pub fn local_version(run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Option<String> {
     installed_version(LOCAL_PACKAGE, run)
 }
 
-/// Стоит обычный Deepin: `deepin-session` из репозитория, а не своя сборка.
+/// The regular Deepin is installed: `deepin-session` from the repository, not our own build.
 pub fn ordinary_installed(run: &dyn Fn(&Cmd) -> PreviewAnswer) -> bool {
     installed_version(SESSION_PACKAGE, run).is_some()
 }
 
-/// Стоит ли `deepin-kwin` (остаток обычного Deepin).
+/// Whether `deepin-kwin` is installed (a leftover of the regular Deepin).
 fn x11_wm_installed(run: &dyn Fn(&Cmd) -> PreviewAnswer) -> bool {
     installed_version(X11_WM_PACKAGE, run).is_some()
 }
 
-/// `a` новее `b` — по `vercmp` из pacman (своё сравнение версий Arch
-/// повторять незачем). Не ответил — «не новее»: ложная тревога хуже.
+/// `a` is newer than `b`, according to pacman's `vercmp` (there is no point
+/// in reimplementing Arch version comparison). No answer means "not newer":
+/// a false alarm is worse.
 pub fn newer(a: &str, b: &str, run: &dyn Fn(&Cmd) -> PreviewAnswer) -> bool {
     let cmd = cmd(vec!["vercmp".into(), a.into(), b.into()], Some(10));
     matches!(run(&cmd), Some((0, out, _)) if out.trim().parse::<i32>().is_ok_and(|n| n > 0))
 }
 
-/// Проба `-Sp` того же набора, но как будто `deepin-session` уже стоит:
-/// `--assume-installed` закрывает зависимость `treeland` и
-/// `deepin-session-shell` от него, и pacman не тянет рецептный
-/// `deepin-session` с его `deepin-kwin`.
+/// A `-Sp` dry run of the same set, but as if `deepin-session` were already
+/// installed: `--assume-installed` satisfies the dependency of `treeland` and
+/// `deepin-session-shell` on it, and pacman does not pull in the recipe's
+/// `deepin-session` with its `deepin-kwin`.
 fn assume_session(cmd: &Cmd, version: &str) -> Cmd {
     let mut argv = cmd.argv.clone();
     if argv.get(1).map(String::as_str) == Some("-Sp") {
@@ -279,10 +287,11 @@ fn assume_session(cmd: &Cmd, version: &str) -> Cmd {
     Cmd { argv, timeout_secs: cmd.timeout_secs, lang_c: cmd.lang_c }
 }
 
-/// Набор варианта и проба его установки (тем же [`system_plan::install_preview`],
-/// что у любого стола, со сверкой конфликтов). `assume` — версия
-/// `deepin-session`, которую считать стоящей (своей сборки ещё нет);
-/// `None` — своя сборка уже стоит и сама его даёт.
+/// The variant's set and a dry run of its installation (with the same
+/// [`system_plan::install_preview`] as any desktop, with conflict checking).
+/// `assume` is the version of `deepin-session` to treat as installed (our
+/// own build does not exist yet); `None` means our build is already installed
+/// and provides it itself.
 pub fn variant_preview(
     family: PkgFamily,
     assume: Option<&str>,
@@ -301,29 +310,29 @@ pub fn variant_preview(
     Some((targets, preview))
 }
 
-/// Что предложить на карточке Deepin кнопкой под предупреждением.
+/// What to offer on the Deepin card with a button under the warning.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Offer {
-    /// Стоит обычный Deepin (X11): перейти на вариант Treeland — своя
-    /// сборка заменой установленного `deepin-session` ([`install_live`]).
+    /// The regular Deepin (X11) is installed: switch to the Treeland variant —
+    /// our own build replacing the installed `deepin-session` ([`install_live`]).
     Install,
-    /// Вариант стоит, а в репозитории `deepin-session` новее своей сборки.
+    /// The variant is installed, and the repository's `deepin-session` is newer than our build.
     Update { local: String, repo: String },
 }
 
-/// Состояние карточки Deepin: проба, которую показывать вместо обычной
-/// (обычный набор тянет `deepin-session` с `deepin-kwin` и Rexon его не
-/// ставит), и что предложить.
+/// The state of the Deepin card: the dry run to show instead of the regular
+/// one (the regular set pulls in `deepin-session` with `deepin-kwin`, and
+/// Rexon does not install it), and what to offer.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CardState {
     pub preview: Option<InstallPreview>,
     pub offer: Option<Offer>,
 }
 
-/// Решение для карточки. `normal` — проба обычного набора стола: она идёт
-/// в ход, только если пробу варианта сделать не вышло, и тогда с
-/// запретом `deepin-kwin` ([`forbid_x11_wm`]) — обещать обычный Deepin
-/// карточка не должна.
+/// The decision for the card. `normal` is the dry run of the desktop's
+/// regular set: it is used only if the variant's dry run could not be made,
+/// and then with `deepin-kwin` forbidden ([`forbid_x11_wm`]) — the card must
+/// not promise the regular Deepin.
 pub fn card_state(
     de_id: &str,
     family: PkgFamily,
@@ -355,9 +364,10 @@ pub fn card_state(
     CardState { preview, offer: None }
 }
 
-/// Набор для установки Deepin, когда своя сборка уже стоит: члены группы
-/// без `deepin-session`, иначе pacman потянул бы его и `deepin-kwin`.
-/// Своей сборки нет — отказ: группу целиком Rexon не ставит.
+/// The set for installing Deepin when our own build is already installed:
+/// group members without `deepin-session`, otherwise pacman would pull it in
+/// along with `deepin-kwin`. Without our own build it is a refusal: Rexon does
+/// not install the group as a whole.
 pub fn install_set(family: PkgFamily, run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Result<Vec<String>, String> {
     if family != PkgFamily::Arch || local_version(run).is_none() {
         return Err(format!("{}\n\n{}", only_treeland_title(), not_built_text()));
@@ -367,10 +377,11 @@ pub fn install_set(family: PkgFamily, run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Re
         .ok_or_else(|| format!("{}\n\n{}", only_treeland_title(), group_unknown_text()))
 }
 
-/// Вердикт перед установкой и «Починить» (после проверки дистрибутива):
-/// `None` — сказать нечего (своя сборка стоит, «Починить» её набор);
-/// `Some((false, …))` — стоит обычный Deepin, отказ до пароля;
-/// `Some((true, …))` — предупреждение «экспериментально» в том же вопросе.
+/// The verdict before installation and "Repair" (after the distribution check):
+/// `None` means there is nothing to say (our build is installed, "Repair"
+/// reinstalls its set); `Some((false, …))` means the regular Deepin is
+/// installed, a refusal before the password; `Some((true, …))` means the
+/// "experimental" warning in the same question.
 pub fn install_verdict(family: PkgFamily, run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Option<(bool, String, String)> {
     if family != PkgFamily::Arch {
         return None;
@@ -384,7 +395,7 @@ pub fn install_verdict(family: PkgFamily, run: &dyn Fn(&Cmd) -> PreviewAnswer) -
     Some((true, install_warning_title(), install_warning()))
 }
 
-// ── Исполнение ──────────────────────────────────────────────────────────
+// ── Execution ───────────────────────────────────────────────────────────
 
 fn live_run(cmd: &Cmd) -> PreviewAnswer {
     let r = crate::system_exec::SystemIo::run(
@@ -396,7 +407,7 @@ fn live_run(cmd: &Cmd) -> PreviewAnswer {
     r.rc().map(|rc| (rc, r.stdout.clone(), r.stderr.clone()))
 }
 
-/// [`card_state`] на живой машине (не на неизменяемой системе).
+/// [`card_state`] on the live machine (not on an immutable system).
 pub fn card_state_live(de_id: &str, family: PkgFamily, normal: Option<&InstallPreview>) -> CardState {
     if de_id != DE_ID || repo_rebuild::rebuild_ctx_live().is_err() {
         return CardState::default();
@@ -404,11 +415,11 @@ pub fn card_state_live(de_id: &str, family: PkgFamily, normal: Option<&InstallPr
     card_state(de_id, family, normal, &live_run)
 }
 
-/// Своя сборка `deepin-session` (если её ещё нет или надо заменить
-/// обычный), затем установка стола Deepin набором варианта
-/// ([`install_set`]) — с теми же проверками, пробой конфликтов и защитой
-/// экрана входа. `migrate` — согласие заменить обычный Deepin; без него
-/// стоящий обычный Deepin — отказ.
+/// Our own build of `deepin-session` (if it does not exist yet or must
+/// replace the regular one), then the installation of the Deepin desktop with
+/// the variant's set ([`install_set`]) — with the same checks, conflict dry
+/// run and login screen protection. `migrate` is the consent to replace the
+/// regular Deepin; without it, an installed regular Deepin means a refusal.
 fn install_variant(sink: Arc<dyn DeOpSink>, cancel: CancelToken, current_de: &str, migrate: bool) -> DeOpOutcome {
     let ctx = match repo_rebuild::rebuild_ctx_live() {
         Ok(ctx) => ctx,
@@ -441,18 +452,18 @@ fn install_variant(sink: Arc<dyn DeOpSink>, cancel: CancelToken, current_de: &st
     outcome
 }
 
-/// Установка и «Починить» Deepin с карточки — путь
-/// [`crate::system_de_exec::install_de_live`] для Deepin.
+/// Installing and "Repair" of Deepin from the card: the
+/// [`crate::system_de_exec::install_de_live`] path for Deepin.
 pub fn install_from_card_live(sink: Arc<dyn DeOpSink>, cancel: CancelToken, current_de: &str) -> DeOpOutcome {
     install_variant(sink, cancel, current_de, false)
 }
 
-/// Переход с обычного Deepin на вариант Treeland ([`Offer::Install`]).
+/// Switching from the regular Deepin to the Treeland variant ([`Offer::Install`]).
 pub fn install_live(sink: Arc<dyn DeOpSink>, cancel: CancelToken, current_de: &str) -> DeOpOutcome {
     install_variant(sink, cancel, current_de, true)
 }
 
-/// Обновление своей сборки до версии репозитория.
+/// Updating our own build to the repository version.
 pub fn update_live(sink: Arc<dyn DeOpSink>, cancel: CancelToken) -> DeOpOutcome {
     let ctx = match repo_rebuild::rebuild_ctx_live() {
         Ok(ctx) => ctx,
@@ -469,14 +480,14 @@ pub fn update_live(sink: Arc<dyn DeOpSink>, cancel: CancelToken) -> DeOpOutcome 
     )
 }
 
-// ── Тексты для человека ─────────────────────────────────────────────────
+// ── Texts for humans ────────────────────────────────────────────────────
 
-/// Главная фраза отказа для любого Deepin не на Treeland.
+/// The main refusal sentence for any Deepin not on Treeland.
 pub fn only_treeland_title() -> String {
     tr("Rexon supports Deepin only on Treeland")
 }
 
-/// Отказ «Починить» и установки поверх обычного Deepin.
+/// The refusal of "Repair" and of installing over the regular Deepin.
 fn ordinary_installed_text() -> String {
     tr("The usual Deepin with the X11 session is installed here. Rexon doesn't repair or reinstall it. \
         To move to Deepin on Treeland, press “Switch to Deepin on Treeland” on the Deepin card.")
@@ -491,12 +502,12 @@ fn group_unknown_text() -> String {
     tr("The list of Deepin packages couldn't be read from the repositories. Check the internet connection and try again.")
 }
 
-/// Заголовок предупреждения в вопросе перед установкой.
+/// The warning title in the question before installation.
 pub fn install_warning_title() -> String {
     tr("Deepin on Treeland (experimental)")
 }
 
-/// Честное предупреждение в вопросе перед установкой.
+/// The honest warning in the question before installation.
 pub fn install_warning() -> String {
     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("Deepin is installed on Treeland, its own Wayland session.\n\n\
@@ -517,12 +528,12 @@ pub fn install_warning() -> String {
         once more before installing. Removing Deepin later removes all of it.")
 }
 
-/// Кнопка на карточке, когда стоит обычный Deepin.
+/// The card button when the regular Deepin is installed.
 pub fn install_button() -> String {
     tr("🧪 Switch to Deepin on Treeland (experimental)")
 }
 
-/// Пояснение под кнопкой перехода.
+/// The explanation under the switch button.
 pub fn install_hint() -> String {
     tr("This is the usual Deepin with the X11 session. Rexon supports Deepin only on Treeland, \
         its Wayland session: Rexon builds its own deepin-session without deepin-kwin, puts it in place \
@@ -530,12 +541,12 @@ pub fn install_hint() -> String {
         starts only from its own login screen, DDM.")
 }
 
-/// Заголовок окна перехода.
+/// The title of the switch dialog.
 pub fn install_title() -> String {
     tr("Switching to Deepin on Treeland (experimental)")
 }
 
-/// Вопрос перед переходом.
+/// The question before switching.
 pub fn install_confirm_text() -> String {
     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("The usual Deepin will be moved to Treeland, its own Wayland session.\n\n\
@@ -555,21 +566,22 @@ pub fn install_confirm_text() -> String {
         once more before installing.")
 }
 
-/// Приписка к итогу удачной установки: как войти. Под чужим экраном входа
-/// Treeland 0.11 сеанса не поднимает (treeland#1656) — сказать честно, а не
-/// оставить человека перед голым фоном.
+/// The note added to the result of a successful installation: how to log in.
+/// Under another login screen Treeland 0.11 does not bring up a session
+/// (treeland#1656) — say so honestly instead of leaving the person in front of
+/// a bare background.
 pub fn install_result_text() -> String {
     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("Deepin starts only from its own login screen, DDM. To try it, make DDM the default in \
         Appearance → Login Screen → Login manager, restart and choose Treeland there.")
 }
 
-/// Кнопка на карточке, когда своя сборка отстала от репозитория.
+/// The card button when our own build has fallen behind the repository.
 pub fn update_button() -> String {
     tr("🛠 Update the Treeland build")
 }
 
-/// Пояснение под кнопкой обновления.
+/// The explanation under the update button.
 pub fn update_hint(local: &str, repo: &str) -> String {
     trf(
         "The repositories have deepin-session %1, your Treeland build is %2. System updates \
@@ -578,12 +590,12 @@ pub fn update_hint(local: &str, repo: &str) -> String {
     )
 }
 
-/// Заголовок окна обновления.
+/// The title of the update dialog.
 pub fn update_title() -> String {
     tr("Updating the Treeland build of deepin-session")
 }
 
-/// Вопрос перед обновлением.
+/// The question before updating.
 pub fn update_confirm_text(local: &str, repo: &str) -> String {
     trf(
         "deepin-session %1 will be built from the official Arch recipe without deepin-kwin and \
@@ -608,13 +620,14 @@ mod tests {
     use crate::system_plan::PkgConflict;
     use std::cell::RefCell;
 
-    /// `LC_ALL=C pacman -Sg deepin` (CachyOS, 20.10.2026), начало и члены,
-    /// важные для варианта; один и тот же член из двух репозиториев.
+    /// `LC_ALL=C pacman -Sg deepin` (CachyOS, 20.10.2026): the beginning and the
+    /// members that matter for the variant; one and the same member from two
+    /// repositories.
     const SG_DEEPIN: &str = "deepin ddm\ndeepin deepin-daemon\n\
 deepin deepin-session\ndeepin deepin-session-shell\ndeepin deepin-shell\ndeepin treeland\n\
 deepin ddm\ndeepin deepin-session\n";
 
-    /// `LC_ALL=C pacman -Si deepin-session`: блок cachyos-extra-znver4, затем extra.
+    /// `LC_ALL=C pacman -Si deepin-session`: a cachyos-extra-znver4 block, then extra.
     const SI_SESSION: &str = "Repository      : cachyos-extra-znver4\n\
 Name            : deepin-session\nVersion         : 2.0.33-1.1\n\
 Depends On      : bash  deepin-kwin  deepin-shell\n\n\
@@ -624,23 +637,23 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
         v.iter().map(|s| s.to_string()).collect()
     }
 
-    /// Что стоит на машине.
+    /// What is installed on the machine.
     #[derive(Clone, Copy)]
     struct Machine {
-        /// KDE Plasma (kwin) стоит.
+        /// KDE Plasma (kwin) is installed.
         plasma: bool,
-        /// Версия своей сборки, если стоит.
+        /// The version of our own build, if installed.
         local: Option<&'static str>,
-        /// Стоит обычный Deepin (`deepin-session` и `deepin-kwin` из репозитория).
+        /// The regular Deepin is installed (`deepin-session` and `deepin-kwin` from the repository).
         ordinary: bool,
-        /// Проба набора варианта тянет `deepin-kwin` (на случай, если его
-        /// когда-нибудь потребует другой член группы).
+        /// The dry run of the variant's set pulls in `deepin-kwin` (in case another
+        /// group member ever requires it).
         variant_pulls_kwin: bool,
     }
 
     const FRESH: Machine = Machine { plasma: false, local: None, ordinary: false, variant_pulls_kwin: false };
 
-    /// Ответы pacman для машины `m`; каждая проба `-Sp` записывается в `seen`.
+    /// pacman answers for machine `m`; every `-Sp` dry run is recorded in `seen`.
     fn machine(m: Machine, seen: &RefCell<Vec<Vec<String>>>) -> impl Fn(&Cmd) -> PreviewAnswer + '_ {
         move |cmd: &Cmd| {
             let a: Vec<&str> = cmd.argv.iter().map(String::as_str).collect();
@@ -651,8 +664,8 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
                     Some(v) => Some((0, format!("{LOCAL_PACKAGE} {v}\n"), String::new())),
                     None => missing(LOCAL_PACKAGE),
                 },
-                // pacman -Q отвечает и за того, кто `provides`: своя сборка —
-                // своим именем.
+                // pacman -Q also answers for a package that `provides`: our own build
+                // answers under its own name.
                 ["pacman", "-Q", SESSION_PACKAGE] => match (m.ordinary, m.local) {
                     (true, _) => Some((0, "deepin-session 2.0.32-1\n".into(), String::new())),
                     (false, Some(v)) => Some((0, format!("{LOCAL_PACKAGE} {v}\n"), String::new())),
@@ -664,7 +677,7 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
                 ["pacman", "-Q", X11_WM_PACKAGE] => missing(X11_WM_PACKAGE),
                 ["pacman", "-Si", SESSION_PACKAGE] => Some((0, SI_SESSION.into(), String::new())),
                 ["pacman", "-Sg", GROUP] => Some((0, SG_DEEPIN.into(), String::new())),
-                // Набор варианта — пакеты, а не группы.
+                // The variant's set consists of packages, not groups.
                 ["pacman", "-Sg", ..] => Some((1, String::new(), "error: target not found\n".into())),
                 ["pacman", "-Sp", rest @ ..] => {
                     seen.borrow_mut().push(rest.iter().map(|s| s.to_string()).collect());
@@ -691,7 +704,7 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
         }
     }
 
-    /// Проба обычного набора на машине с Plasma: упёрлась в `deepin-kwin`.
+    /// A dry run of the regular set on a machine with Plasma: it ran into `deepin-kwin`.
     fn kwin_blocked() -> InstallPreview {
         InstallPreview {
             conflicts: vec![PkgConflict { new_package: "deepin-kwin".into(), installed: "kwin".into(), ..Default::default() }],
@@ -700,8 +713,8 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
         }
     }
 
-    /// Проба обычного набора на машине без Plasma: конфликта нет, но
-    /// `deepin-kwin` в плане.
+    /// A dry run of the regular set on a machine without Plasma: no conflict, but
+    /// `deepin-kwin` is in the plan.
     fn plain_group() -> InstallPreview {
         InstallPreview { new_packages: names(&["deepin-kwin", "deepin-session"]), ..Default::default() }
     }
@@ -728,13 +741,13 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
         assert_eq!(script.1, "0755");
         assert!(script.2.starts_with("#!/bin/sh\n"));
         assert!(script.2.contains("vercmp \"$repo_ver\" \"$local_ver\""));
-        // Подстановки — переменные оболочки, а не текст «%REPO%».
+        // The substitutions are shell variables, not the text "%REPO%".
         assert!(script.2.contains("${repo_ver}") && script.2.contains("${local_ver}"));
         assert!(!script.2.contains("%REPO%"));
     }
 
-    /// Переход с обычного Deepin: та же сборка, но заменой установленного
-    /// `deepin-session` и со снятием `deepin-kwin`, если он стоит.
+    /// Switching from the regular Deepin: the same build, but replacing the
+    /// installed `deepin-session` and removing `deepin-kwin` if it is installed.
     #[test]
     fn migration_replaces_the_session_and_removes_kwin() {
         let e = migration_edit(true);
@@ -773,9 +786,9 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
         assert!(clean.installable());
     }
 
-    /// Карточка ещё не установленного Deepin — с Plasma и без неё одно и то
-    /// же: проба набора варианта (с `--assume-installed`), без `deepin-session`
-    /// и `deepin-kwin`, и никакой второй кнопки.
+    /// The card of a Deepin that is not installed yet is the same with and
+    /// without Plasma: a dry run of the variant's set (with `--assume-installed`),
+    /// without `deepin-session` and `deepin-kwin`, and no second button.
     #[test]
     fn card_is_the_treeland_set_with_and_without_plasma() {
         let mut previews = Vec::new();
@@ -826,7 +839,7 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
         assert!(preview.installable(), "{preview:?}");
         assert!(!preview.targets.iter().any(|t| t == SESSION_PACKAGE));
         assert_eq!(state.offer, None);
-        // Своя сборка стоит — `--assume-installed` не нужен.
+        // Our own build is installed: `--assume-installed` is not needed.
         assert!(seen.borrow().iter().all(|argv| !argv.iter().any(|a| a == "--assume-installed")));
     }
 
@@ -838,7 +851,7 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
         assert_eq!(state.offer, Some(Offer::Update { local: "2.0.32-1".into(), repo: "2.0.33-1.1".into() }));
     }
 
-    /// Стоит обычный Deepin: Rexon его не трогает, карточка предлагает переход.
+    /// The regular Deepin is installed: Rexon does not touch it, the card offers to switch.
     #[test]
     fn ordinary_deepin_is_offered_the_switch() {
         let seen = RefCell::new(Vec::new());
@@ -848,9 +861,9 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
         assert!(x11_wm_installed(&machine(m, &seen)));
     }
 
-    /// Вопрос перед установкой: свежая машина — предупреждение
-    /// «экспериментально»; обычный Deepin — отказ до пароля («Починить» его
-    /// не переустанавливает); своя сборка — сказать нечего.
+    /// The question before installation: a fresh machine gets the "experimental"
+    /// warning; the regular Deepin gets a refusal before the password ("Repair"
+    /// does not reinstall it); our own build — nothing to say.
     #[test]
     fn verdict_warns_refuses_or_stays_quiet() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -859,8 +872,8 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
         assert!(allowed);
         assert!(title.contains("experimental"), "{title}");
         assert!(text.contains("no X11 session") && text.contains("Treeland User"), "{text}");
-        // Treeland 0.11 без DDM сеанса не поднимает (treeland#1656): тексты
-        // не обещают вход «из любого экрана входа», а ведут к DDM.
+        // Treeland 0.11 does not bring up a session without DDM (treeland#1656): the
+        // texts do not promise login "from any login screen", they lead to DDM.
         assert!(text.contains("starts only from DDM") && text.contains("Login manager"), "{text}");
         for t in [install_confirm_text(), install_hint(), install_result_text()] {
             assert!(t.contains("DDM") && !t.contains("choose “Treeland User”"), "{t}");
@@ -873,7 +886,7 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
         assert_eq!(install_verdict(PkgFamily::Arch, &machine(built, &seen)), None);
     }
 
-    /// Набор установки — только при своей сборке; иначе отказ, а не группа.
+    /// The installation set exists only with our own build; otherwise a refusal, not the group.
     #[test]
     fn install_set_needs_the_own_build() {
         let seen = RefCell::new(Vec::new());
@@ -884,9 +897,10 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
         assert!(err.starts_with(&only_treeland_title()), "{err}");
     }
 
-    /// Стенд в КОНТЕЙНЕРЕ (archlinux с plasma-desktop и kwin, `pkexec` —
-    /// обёртка над sudo): шаг из `REXON_DTL_STEP` — `card`, `install`,
-    /// `switch`, `update`, `remove`. На живой машине не запускать: ставит пакеты.
+    /// A stand in a CONTAINER (archlinux with plasma-desktop and kwin, `pkexec` is
+    /// a wrapper over sudo): the step from `REXON_DTL_STEP` is `card`, `install`,
+    /// `switch`, `update`, `remove`. Do not run on a live machine: it installs
+    /// packages.
     /// `cargo test -p rexon-core --lib deepin_treeland::tests::container_stand -- --ignored --nocapture`.
     #[test]
     #[ignore]
@@ -935,7 +949,7 @@ Repository      : extra\nName            : deepin-session\nVersion         : 2.0
         let built = Machine { local: Some("2.0.33-1.1"), ..FRESH };
         assert_eq!(repo_session_version(&machine(built, &seen)).as_deref(), Some("2.0.33-1.1"));
         assert_eq!(local_version(&machine(built, &seen)).as_deref(), Some("2.0.33-1.1"));
-        // Своя сборка `provides` deepin-session, но обычным Deepin не считается.
+        // Our own build `provides` deepin-session, but does not count as the regular Deepin.
         assert!(!ordinary_installed(&machine(built, &seen)));
         assert_eq!(local_version(&machine(FRESH, &seen)), None);
     }

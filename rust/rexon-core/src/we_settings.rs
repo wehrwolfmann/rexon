@@ -1,39 +1,39 @@
-//! Настройки вкладки Wallpaper Engine — порт `ui/src/query/settings_query.cpp`
-//! waywallen (MIT, (c) hypengw; атрибуция в NOTICE).
+//! Settings of the Wallpaper Engine tab — port of waywallen's
+//! `ui/src/query/settings_query.cpp` (MIT, (c) hypengw; attribution in NOTICE).
 //!
-//! Здесь живёт КОНВЕРТЕР между `GlobalSettings`/`PluginSettings` протокола и
-//! картой значений, которую читает и пишет QML. Он один на оба направления:
-//! `settings_get` разворачивает proto в карту, `settings_set` собирает из
-//! карты proto обратно. Направления обязаны быть зеркальны — демон
-//! обрабатывает `settings_set` как ПОЛНУЮ замену, и любое поле, потерянное
-//! на круге, у пользователя стирается.
+//! The CONVERTER between the protocol's `GlobalSettings`/`PluginSettings` and
+//! the value map QML reads and writes lives here. It is one for both
+//! directions: `settings_get` unfolds the proto into a map, `settings_set`
+//! assembles the proto back from the map. The directions must be mirror
+//! images — the daemon handles `settings_set` as a FULL replacement, and any
+//! field lost on the round trip is erased at the user's.
 //!
-//! Отдельный модуль (а не хвост `we_query.rs`) по той же границе, что у
-//! оригинала: у него `settings_query.cpp` тоже отдельная единица трансляции,
-//! а конвертер обслуживает не только запросы настроек, но и страницу «Обои»
-//! (правила сортировки/фильтров в `WallpaperListQuery`).
+//! A separate module (rather than the tail of `we_query.rs`) along the same
+//! boundary as the original: its `settings_query.cpp` is a separate
+//! translation unit too, and the converter serves not only settings requests
+//! but also the «Wallpapers» page (sort/filter rules in `WallpaperListQuery`).
 //!
-//! ⚠️ Прежний Python-мост строил карту РЕФЛЕКСИЕЙ по дескриптору protobuf
-//! (`_pb_to_variant`: все поля под `json_name`). Это не то же самое, что
-//! `global_to_map` оригинала, и давало ДВА живых дефекта — оба чинятся
-//! этим портом (правило #16):
+//! ⚠️ The former Python bridge built the map by REFLECTION over the protobuf
+//! descriptor (`_pb_to_variant`: all fields under `json_name`). That is not
+//! the same as the original's `global_to_map`, and gave TWO live defects —
+//! both fixed by this port (rule #16):
 //!
-//!   1. `renderer` уезжал вложенной картой `{enableAudio, volume}`, а
-//!      `SettingsPage.qml` читает и пишет ПЛОСКИЕ ключи
-//!      `renderer.enable_audio` / `renderer.volume`. Итог: галка «звук
-//!      рендереров» и ползунок громкости показывали значения по умолчанию
-//!      и не сохранялись вовсе (обратный `_js_to_pb` плоские ключи не
-//!      видел, а вложенную карту брал из устаревшего снимка).
-//!   2. `plugins[имя]` уезжал как `{"values": {ключ: значение}}` вместо
-//!      плоской карты значений. `PluginSettingsPage.qml` читает
-//!      `currentValues[ключ]` и шлёт обратно плоскую карту — то есть
-//!      настройки плагина не читались, а «Применить» отправляло демону
-//!      ПУСТУЮ таблицу (полная замена → значения плагина стирались).
+//!   1. `renderer` went out as a nested map `{enableAudio, volume}`, while
+//!      `SettingsPage.qml` reads and writes the FLAT keys
+//!      `renderer.enable_audio` / `renderer.volume`. Result: the «renderer
+//!      sound» checkbox and the volume slider showed default values and were
+//!      not saved at all (the reverse `_js_to_pb` did not see the flat keys,
+//!      and took the nested map from a stale snapshot).
+//!   2. `plugins[name]` went out as `{"values": {key: value}}` instead of a
+//!      flat value map. `PluginSettingsPage.qml` reads `currentValues[key]` and
+//!      sends back a flat map — so plugin settings were not read, and «Apply»
+//!      sent the daemon an EMPTY table (full replacement → the plugin's values
+//!      were erased).
 //!
-//! Значения — `serde_json::Value` (карта = `Map<String, Value>`): ровно те
-//! типы, что переживают границу QVariant (bool / число / строка / список /
-//! карта). JSON здесь — представление в памяти и формат голденов, по
-//! проводу настройки ходят protobuf'ом.
+//! Values are `serde_json::Value` (a map = `Map<String, Value>`): exactly the
+//! types that survive the QVariant boundary (bool / number / string / list /
+//! map). JSON here is the in-memory representation and the golden format; on
+//! the wire settings travel as protobuf.
 
 use crate::proto::control as pb;
 use crate::we_query::{self as q, QuerySignal, QueryState};
@@ -41,13 +41,13 @@ use prost::Message;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 
-/// Карта значений в терминах QML (`QVariantMap` у оригинала).
+/// A value map in QML terms (`QVariantMap` in the original).
 pub type VMap = Map<String, Value>;
 
-// ── чтение значений карты (семантика QVariant::toInt/toBool/toString) ────
+// ── reading map values (QVariant::toInt/toBool/toString semantics) ───────
 
-/// `QVariant::toString()` над одним значением: не-строка приводится к
-/// строке, всё прочее (карта, список, `null`) — пустая строка.
+/// `QVariant::toString()` over one value: a non-string is converted to a
+/// string, everything else (a map, a list, `null`) is an empty string.
 pub(crate) fn value_str(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -57,8 +57,8 @@ pub(crate) fn value_str(v: &Value) -> String {
     }
 }
 
-/// `QVariant::toBool()` над одним значением: число — «не ноль», пустая
-/// строка и `null` — ложь.
+/// `QVariant::toBool()` over one value: a number is «non-zero», an empty
+/// string and `null` are false.
 pub(crate) fn value_bool(v: &Value) -> bool {
     match v {
         Value::Bool(b) => *b,
@@ -68,8 +68,8 @@ pub(crate) fn value_bool(v: &Value) -> bool {
     }
 }
 
-/// `QVariant::toInt()` над одним значением: числа из QML приходят
-/// double'ами, поэтому дробное округляется.
+/// `QVariant::toInt()` over one value: numbers from QML arrive as doubles, so
+/// a fractional one is rounded.
 pub(crate) fn value_i64(v: &Value) -> i64 {
     match v {
         Value::Number(n) => n
@@ -81,17 +81,17 @@ pub(crate) fn value_i64(v: &Value) -> i64 {
     }
 }
 
-/// То же в разрядности `int` Qt.
+/// The same in the width of Qt's `int`.
 pub(crate) fn value_i32(v: &Value) -> i32 {
     value_i64(v) as i32
 }
 
-/// `QVariant::toString()`: нет ключа — пустая строка.
+/// `QVariant::toString()`: no key — an empty string.
 fn get_str(m: &VMap, key: &str) -> String {
     m.get(key).map(value_str).unwrap_or_default()
 }
 
-/// `QVariant::toInt()`: нет ключа — 0.
+/// `QVariant::toInt()`: no key — 0.
 fn get_i64(m: &VMap, key: &str) -> i64 {
     m.get(key).map(value_i64).unwrap_or(0)
 }
@@ -100,9 +100,9 @@ fn get_i32(m: &VMap, key: &str) -> i32 {
     get_i64(m, key) as i32
 }
 
-/// `QVariant::toUInt()`: отрицательное в беззнаковое не превращаем — берём 0
-/// (у оригинала это UB-подобная зона, до неё QML не доводит: и громкость, и
-/// секунды ротации ограничены неотрицательными).
+/// `QVariant::toUInt()`: we do not turn a negative into an unsigned — take 0
+/// (in the original this is a UB-like zone, QML never gets there: both volume
+/// and rotation seconds are limited to non-negative values).
 fn get_u32(m: &VMap, key: &str) -> u32 {
     let v = get_i64(m, key);
     if v < 0 {
@@ -112,8 +112,8 @@ fn get_u32(m: &VMap, key: &str) -> u32 {
     }
 }
 
-/// `QVariant::value(key, fallback).toUInt()`: ключа нет — берём запасное
-/// число, а не ноль.
+/// `QVariant::value(key, fallback).toUInt()`: no key — take the fallback
+/// number, not zero.
 fn get_u32_or(m: &VMap, key: &str, fallback: u32) -> u32 {
     if m.contains_key(key) {
         get_u32(m, key)
@@ -122,7 +122,7 @@ fn get_u32_or(m: &VMap, key: &str, fallback: u32) -> u32 {
     }
 }
 
-/// `QVariant::toBool()`: нет ключа — false.
+/// `QVariant::toBool()`: no key — false.
 fn get_bool(m: &VMap, key: &str) -> bool {
     m.get(key).map(value_bool).unwrap_or(false)
 }
@@ -141,8 +141,9 @@ fn get_map<'a>(m: &'a VMap, key: &str) -> Option<&'a VMap> {
     }
 }
 
-/// Элемент списка → карта (мимо не-карт: у оригинала `value<Gadget>()`
-/// на чужом типе отдаёт пустой гаджет, у нас — пустая карта).
+/// A list element → a map (skipping non-maps: in the original
+/// `value<Gadget>()` on a foreign type returns an empty gadget, ours — an
+/// empty map).
 pub(crate) fn as_map(v: &Value) -> VMap {
     match v {
         Value::Object(o) => o.clone(),
@@ -150,7 +151,7 @@ pub(crate) fn as_map(v: &Value) -> VMap {
     }
 }
 
-/// Список строк (`QStringList` оригинала): элементы приводятся к строке.
+/// A list of strings (the original's `QStringList`): elements are converted to strings.
 pub(crate) fn string_list(items: &[Value]) -> Vec<String> {
     items.iter().map(value_str).collect()
 }
@@ -163,16 +164,16 @@ fn maps_value<T>(items: &[T], to_map: fn(&T) -> VMap) -> Value {
     Value::Array(items.iter().map(|i| Value::Object(to_map(i))).collect())
 }
 
-// ── правила сортировки и фильтров (страница «Обои») ──────────────────────
+// ── sort and filter rules (the «Wallpapers» page) ────────────────────────
 //
-// У оригинала эти три поля кладутся в карту КАК ГАДЖЕТЫ Qt-Protobuf
-// (`QVariant::fromValue(rule)`), гаджет умеет и читать, и писать свойства.
-// У нас гаджетов на этой стороне нет: карту читает QML (`r.key`,
-// `r.direction`) и Rust-модель фильтров, которая приводит карту к гаджету
-// сама (`rexon_coerce_gadget`). Поэтому ключи здесь — Qt-Protobuf'овские
-// имена свойств (`json_name`, camelCase), значения перечислений — числа.
+// In the original these three fields go into the map AS Qt-Protobuf GADGETS
+// (`QVariant::fromValue(rule)`), a gadget can both read and write
+// properties. We have no gadgets on this side: the map is read by QML
+// (`r.key`, `r.direction`) and by the Rust filter model, which converts the
+// map to a gadget itself (`rexon_coerce_gadget`). So the keys here are
+// Qt-Protobuf property names (`json_name`, camelCase), enum values are numbers.
 
-/// `WallpaperSortRule` → карта.
+/// `WallpaperSortRule` → a map.
 pub fn sort_rule_to_map(r: &pb::WallpaperSortRule) -> VMap {
     let mut m = VMap::new();
     m.insert("key".into(), Value::from(r.key));
@@ -180,7 +181,7 @@ pub fn sort_rule_to_map(r: &pb::WallpaperSortRule) -> VMap {
     m
 }
 
-/// Карта → `WallpaperSortRule`.
+/// A map → `WallpaperSortRule`.
 pub fn map_to_sort_rule(m: &VMap) -> pb::WallpaperSortRule {
     pb::WallpaperSortRule {
         key: get_i32(m, "key"),
@@ -188,7 +189,7 @@ pub fn map_to_sort_rule(m: &VMap) -> pb::WallpaperSortRule {
     }
 }
 
-/// `FilterLogic` → карта.
+/// `FilterLogic` → a map.
 pub fn filter_logic_to_map(l: &pb::FilterLogic) -> VMap {
     let mut m = VMap::new();
     m.insert("op".into(), Value::from(l.op));
@@ -197,7 +198,7 @@ pub fn filter_logic_to_map(l: &pb::FilterLogic) -> VMap {
     m
 }
 
-/// Карта → `FilterLogic`.
+/// A map → `FilterLogic`.
 pub fn map_to_filter_logic(m: &VMap) -> pb::FilterLogic {
     pb::FilterLogic {
         op: get_i32(m, "op"),
@@ -206,9 +207,9 @@ pub fn map_to_filter_logic(m: &VMap) -> pb::FilterLogic {
     }
 }
 
-/// `WallpaperFilterRule` → карта. Ветка `oneof payload` кладётся ТОЛЬКО
-/// установленная — гаджет-читатель отличает «нет payload» по отсутствию
-/// ключа (у Qt-Protobuf это `hasStringFilter` и компания).
+/// `WallpaperFilterRule` → a map. Only the SET branch of `oneof payload` is
+/// put — the gadget reader tells «no payload» by the absence of the key (in
+/// Qt-Protobuf that is `hasStringFilter` and company).
 pub fn filter_rule_to_map(r: &pb::WallpaperFilterRule) -> VMap {
     use pb::wallpaper_filter_rule::Payload;
     let mut m = VMap::new();
@@ -238,7 +239,7 @@ pub fn filter_rule_to_map(r: &pb::WallpaperFilterRule) -> VMap {
     m
 }
 
-/// Карта → `WallpaperFilterRule`.
+/// A map → `WallpaperFilterRule`.
 pub fn map_to_filter_rule(m: &VMap) -> pb::WallpaperFilterRule {
     use pb::wallpaper_filter_rule::Payload;
     let payload = if let Some(f) = get_map(m, "stringFilter") {
@@ -268,7 +269,7 @@ pub fn map_to_filter_rule(m: &VMap) -> pb::WallpaperFilterRule {
 
 // ── LayoutPrefs / AutoReplayPolicy ───────────────────────────────────────
 
-/// `layout_to_map` оригинала.
+/// The original's `layout_to_map`.
 pub fn layout_to_map(l: &pb::LayoutPrefs) -> VMap {
     let mut m = VMap::new();
     m.insert("fillmode".into(), Value::from(l.fillmode));
@@ -280,7 +281,7 @@ pub fn layout_to_map(l: &pb::LayoutPrefs) -> VMap {
     m
 }
 
-/// `map_to_layout` оригинала.
+/// The original's `map_to_layout`.
 pub fn map_to_layout(m: &VMap) -> pb::LayoutPrefs {
     pb::LayoutPrefs {
         fillmode: get_i32(m, "fillmode"),
@@ -289,19 +290,19 @@ pub fn map_to_layout(m: &VMap) -> pb::LayoutPrefs {
         location_x: get_u32(m, "locationX"),
         location_y: get_u32(m, "locationY"),
         location_set: get_bool(m, "locationSet"),
-        // waywallen 0.4.4: в `GlobalSettings.layout_defaults` отражение не
-        // используется (control.proto), `map_to_layout` оригинала его не
-        // ставит — FLIP_UNSPECIFIED.
+        // waywallen 0.4.4: mirroring is not used in
+        // `GlobalSettings.layout_defaults` (control.proto), the original's
+        // `map_to_layout` does not set it — FLIP_UNSPECIFIED.
         flip: 0,
     }
 }
 
-/// Задержка возобновления по умолчанию, когда демон её не прислал.
-/// Вендорное число одно и то же в трёх местах выпуска v0.3.9:
-/// `settings_query.cpp` (обе стороны карты) и `SettingsPage.qml`.
+/// Default resume delay when the daemon did not send it. The vendor number
+/// is the same in three places of release v0.3.9: `settings_query.cpp` (both
+/// sides of the map) and `SettingsPage.qml`.
 pub const DEFAULT_AUTO_REPLAY_RESUME_DELAY_MS: u32 = 250;
 
-/// `auto_replay_to_map` оригинала.
+/// The original's `auto_replay_to_map`.
 pub fn auto_replay_to_map(p: &pb::AutoReplayPolicy) -> VMap {
     let mut m = VMap::new();
     m.insert("anyWindow".into(), Value::from(p.any_window));
@@ -310,19 +311,19 @@ pub fn auto_replay_to_map(p: &pb::AutoReplayPolicy) -> VMap {
     m.insert("fullscreen".into(), Value::from(p.fullscreen));
     m.insert("sessionLocked".into(), Value::from(p.session_locked));
     m.insert("sessionInactive".into(), Value::from(p.session_inactive));
-    // waywallen 0.4.2: пятый повод паузы — активный GameMode (перечисление
-    // `AutoAction`, как и остальные поводы).
+    // waywallen 0.4.2: the fifth pause reason — an active GameMode (the
+    // `AutoAction` enum, like the other reasons).
     m.insert("gamemode".into(), Value::from(p.gamemode));
-    // waywallen 0.5.0: шестой повод паузы — питание от батареи
-    // (`AutoAction`). Строки на странице настроек под него пока нет, но
-    // карта обязана его нести: `settings_set` заменяет политику целиком, и
-    // без ключа каждое сохранение из Rexon сбрасывало бы выбор, сделанный
-    // в другом клиенте. Ключ — как у `auto_replay_to_map` вендорного UI
-    // 0.5.0 (`settings_query.cpp`: `onBattery`).
+    // waywallen 0.5.0: the sixth pause reason — running on battery
+    // (`AutoAction`). The settings page has no row for it yet, but the map
+    // must carry it: `settings_set` replaces the policy entirely, and
+    // without the key every save from Rexon would reset the choice made in
+    // another client. The key is the same as in the 0.5.0 vendor UI's
+    // `auto_replay_to_map` (`settings_query.cpp`: `onBattery`).
     m.insert("onBattery".into(), Value::from(p.on_battery));
-    // Поле необязательное: «не прислано» у вендора превращается в 250, а
-    // не в 0 — иначе ползунок страницы вставал бы на ноль и первая же
-    // запись настроек отменяла бы задержку, которой человек не касался.
+    // The field is optional: «not sent» turns into 250 at the vendor, not 0
+    // — otherwise the page slider would sit at zero and the very first
+    // settings write would cancel a delay the person never touched.
     m.insert(
         "resumeDelayMs".into(),
         Value::from(
@@ -330,17 +331,17 @@ pub fn auto_replay_to_map(p: &pb::AutoReplayPolicy) -> VMap {
                 .unwrap_or(DEFAULT_AUTO_REPLAY_RESUME_DELAY_MS),
         ),
     );
-    // waywallen 0.4.2: на какие мониторы действует пауза по окнам —
-    // `AutoScope` (0 = только монитор, где окно; 1 = все мониторы). Ноль —
-    // и умолчание протокола, и прежнее поведение демона до 0.4.2.
+    // waywallen 0.4.2: which monitors the window-based pause applies to —
+    // `AutoScope` (0 = only the monitor with the window; 1 = all monitors).
+    // Zero is both the protocol default and the daemon's behaviour before 0.4.2.
     m.insert("anyWindowScope".into(), Value::from(p.any_window_scope));
     m.insert("focusedScope".into(), Value::from(p.focused_scope));
     m.insert("maximizedScope".into(), Value::from(p.maximized_scope));
     m.insert("fullscreenScope".into(), Value::from(p.fullscreen_scope));
-    // waywallen 0.4.4: исключения окон для паузы (по id приложения и
-    // заголовку, точно и шаблоном `*`/`?`). Страница их пока не правит, но
-    // карта обязана их нести: `settings_set` — полная замена, и
-    // `auto_replay` без них стёр бы исключения, заданные человеком.
+    // waywallen 0.4.4: window exceptions for the pause (by app id and title,
+    // exactly or by a `*`/`?` pattern). The page does not edit them yet, but
+    // the map must carry them: `settings_set` is a full replacement, and
+    // `auto_replay` without them would erase exceptions set by the person.
     let ex = p.window_exclusions.clone().unwrap_or_default();
     m.insert(
         "excludedApplicationIds".into(),
@@ -358,7 +359,7 @@ pub fn auto_replay_to_map(p: &pb::AutoReplayPolicy) -> VMap {
     m
 }
 
-/// `map_to_auto_replay` оригинала.
+/// The original's `map_to_auto_replay`.
 pub fn map_to_auto_replay(m: &VMap) -> pb::AutoReplayPolicy {
     pb::AutoReplayPolicy {
         any_window: get_i32(m, "anyWindow"),
@@ -367,26 +368,26 @@ pub fn map_to_auto_replay(m: &VMap) -> pb::AutoReplayPolicy {
         fullscreen: get_i32(m, "fullscreen"),
         session_locked: get_i32(m, "sessionLocked"),
         session_inactive: get_i32(m, "sessionInactive"),
-        // `m.value("resumeDelayMs", 250).toUInt()` оригинала: ключа нет —
-        // 250, а не 0.
+        // The original's `m.value("resumeDelayMs", 250).toUInt()`: no key —
+        // 250, not 0.
         resume_delay_ms: Some(get_u32_or(
             m,
             "resumeDelayMs",
             DEFAULT_AUTO_REPLAY_RESUME_DELAY_MS,
         )),
-        // waywallen 0.4.2 (`settings_query.cpp` v0.4.2): ключа нет — 0, то
-        // есть `AUTO_ACTION_NONE` для GameMode и `AUTO_SCOPE_CURRENT_DISPLAY`
-        // для охвата: ровно то, как демон вёл себя до появления полей.
+        // waywallen 0.4.2 (`settings_query.cpp` v0.4.2): no key — 0, i.e.
+        // `AUTO_ACTION_NONE` for GameMode and `AUTO_SCOPE_CURRENT_DISPLAY` for
+        // the scope: exactly how the daemon behaved before the fields appeared.
         gamemode: get_i32(m, "gamemode"),
-        // waywallen 0.5.0: ключа нет — 0 (`AUTO_ACTION_NONE`), умолчание
-        // демона для этого повода.
+        // waywallen 0.5.0: no key — 0 (`AUTO_ACTION_NONE`), the daemon's default
+        // for this reason.
         on_battery: get_i32(m, "onBattery"),
         any_window_scope: get_i32(m, "anyWindowScope"),
         focused_scope: get_i32(m, "focusedScope"),
         maximized_scope: get_i32(m, "maximizedScope"),
         fullscreen_scope: get_i32(m, "fullscreenScope"),
-        // waywallen 0.4.4 (`settings_query.cpp` v0.4.4): исключения ставятся
-        // всегда, нет ключа — пустой список, как у оригинала.
+        // waywallen 0.4.4 (`settings_query.cpp` v0.4.4): the exceptions are
+        // always set, no key — an empty list, as in the original.
         window_exclusions: Some(pb::WindowExclusions {
             application_ids: string_list(get_list(m, "excludedApplicationIds")),
             titles: string_list(get_list(m, "excludedWindowTitles")),
@@ -396,13 +397,13 @@ pub fn map_to_auto_replay(m: &VMap) -> pb::AutoReplayPolicy {
     }
 }
 
-/// Длительность перехода по умолчанию, когда в карте её нет
-/// (`map_to_transition` выпуска v0.4.2: `m.value("durationMs", 500)`).
+/// Default transition duration when the map does not have it
+/// (`map_to_transition` of release v0.4.2: `m.value("durationMs", 500)`).
 pub const DEFAULT_TRANSITION_DURATION_MS: u32 = 500;
-/// Центр «роста» по умолчанию, проценты поверхности (там же: 50/50).
+/// Default «grow» center, percent of the surface (same place: 50/50).
 pub const DEFAULT_TRANSITION_ORIGIN: u32 = 50;
 
-/// `transition_to_map` оригинала (waywallen 0.4.2): анимация смены обоев.
+/// The original's `transition_to_map` (waywallen 0.4.2): the wallpaper change animation.
 pub fn transition_to_map(p: &pb::TransitionConfig) -> VMap {
     let mut m = VMap::new();
     m.insert("kind".into(), Value::from(p.kind));
@@ -413,8 +414,8 @@ pub fn transition_to_map(p: &pb::TransitionConfig) -> VMap {
     m
 }
 
-/// `map_to_transition` оригинала: нет ключа — умолчания вендора (вид 0 =
-/// без перехода, 500 мс, угол 0, центр 50/50), а не нули.
+/// The original's `map_to_transition`: no key — the vendor defaults (kind 0 =
+/// no transition, 500 ms, angle 0, center 50/50), not zeros.
 pub fn map_to_transition(m: &VMap) -> pb::TransitionConfig {
     pb::TransitionConfig {
         kind: get_i32(m, "kind"),
@@ -427,25 +428,26 @@ pub fn map_to_transition(m: &VMap) -> pb::TransitionConfig {
 
 // ── GlobalSettings ───────────────────────────────────────────────────────
 
-/// Ключ плоской пары «звук рендереров» (`GlobalRendererSettings.enable_audio`).
+/// Key of the flat «renderer sound» pair (`GlobalRendererSettings.enable_audio`).
 pub const KEY_RENDERER_ENABLE_AUDIO: &str = "renderer.enable_audio";
-/// Ключ плоской пары «громкость рендереров» (`GlobalRendererSettings.volume`).
+/// Key of the flat «renderer volume» pair (`GlobalRendererSettings.volume`).
 pub const KEY_RENDERER_VOLUME: &str = "renderer.volume";
-/// Громкость по умолчанию, когда демон её не прислал (оригинал: 100).
+/// Default volume when the daemon did not send it (original: 100).
 pub const DEFAULT_RENDERER_VOLUME: u32 = 100;
 
-/// Радиус размытия на паузе по умолчанию — как у вендорной страницы
-/// настроек (`SettingsPage.qml:289`).
+/// Default blur radius on pause — as on the vendor settings page
+/// (`SettingsPage.qml:289`).
 pub const DEFAULT_BLUR_RADIUS: u32 = 30;
 
-/// `global_to_map` оригинала: `GlobalSettings` → карта для QML.
+/// The original's `global_to_map`: `GlobalSettings` → a map for QML.
 ///
-/// Набор ключей ровно как у оригинала — он покрывает ВСЕ поля сообщения,
-/// поэтому обратный [`map_to_global`] ничего не теряет при полной замене.
-/// Два ключа переименованы (так у оригинала, QML знает только их):
-/// `pluginUpdateNotifications` — ИНВЕРСИЯ `disable_plugin_update_notifications`,
-/// `duplicateRenderers` — `duplicate_renderers_for_same_wallpaper`.
-/// Настройки рендерера — плоской парой `renderer.*`, а не вложенной картой.
+/// The key set is exactly the original's — it covers ALL fields of the
+/// message, so the reverse [`map_to_global`] loses nothing on a full
+/// replacement. Two keys are renamed (as in the original, QML knows only
+/// them): `pluginUpdateNotifications` — the INVERSE of
+/// `disable_plugin_update_notifications`, `duplicateRenderers` —
+/// `duplicate_renderers_for_same_wallpaper`. Renderer settings go as a flat
+/// `renderer.*` pair, not a nested map.
 pub fn global_to_map(g: &pb::GlobalSettings) -> VMap {
     let mut m = VMap::new();
     m.insert(
@@ -469,8 +471,8 @@ pub fn global_to_map(g: &pb::GlobalSettings) -> VMap {
     m.insert("queueMode".into(), Value::String(g.queue_mode.clone()));
     m.insert("rotationSecs".into(), Value::from(g.rotation_secs));
     m.insert("audioFadeMs".into(), Value::from(g.audio_fade_ms));
-    // Оригинал: hasMuteWhenOtherAudio() && muteWhenOtherAudio() — «не
-    // прислано» и «прислано false» для UI одно и то же.
+    // Original: hasMuteWhenOtherAudio() && muteWhenOtherAudio() — «not
+    // sent» and «sent false» are the same thing for the UI.
     m.insert(
         "muteWhenOtherAudio".into(),
         Value::Bool(g.mute_when_other_audio.unwrap_or(false)),
@@ -479,17 +481,17 @@ pub fn global_to_map(g: &pb::GlobalSettings) -> VMap {
         "audioCaptureEnabled".into(),
         Value::Bool(g.audio_capture_enabled),
     );
-    // v0.3.5. Эффект на паузе приезжает вложенным сообщением; карту кладём
-    // ВСЕГДА и полной — страница правит копию и шлёт её назад целиком, а
-    // `settings_set` у демона — полная замена: пропавший ключ стёр бы
-    // настройку.
+    // v0.3.5. The pause effect arrives as a nested message; the map is put
+    // ALWAYS and in full — the page edits a copy and sends it back whole,
+    // and the daemon's `settings_set` is a full replacement: a missing key
+    // would erase the setting.
     m.insert(
         "pauseEffect".into(),
         Value::Object(pause_effect_to_map(g.pause_effect.as_ref())),
     );
-    // waywallen 0.4.2: как у оригинала — только если демон прислал.
-    // Страница сама нормализует пустое (`_normalizedTransition`), а
-    // обратный путь кладёт поле лишь при наличии ключа.
+    // waywallen 0.4.2: as in the original — only if the daemon sent it. The
+    // page normalizes an empty one itself (`_normalizedTransition`), and the
+    // reverse path puts the field only when the key is present.
     if let Some(t) = &g.transition {
         m.insert("transition".into(), Value::Object(transition_to_map(t)));
     }
@@ -498,7 +500,7 @@ pub fn global_to_map(g: &pb::GlobalSettings) -> VMap {
         Value::Bool(g.pointer_forwarding_enabled),
     );
     m.insert("hideTrayIcon".into(), Value::Bool(g.hide_tray_icon));
-    // waywallen 0.3.8: отладочный уровень журнала демона и рендерера.
+    // waywallen 0.3.8: debug log level of the daemon and renderer.
     m.insert(
         "debugLoggingEnabled".into(),
         Value::Bool(g.debug_logging_enabled),
@@ -511,9 +513,9 @@ pub fn global_to_map(g: &pb::GlobalSettings) -> VMap {
         "duplicateRenderers".into(),
         Value::Bool(g.duplicate_renderers_for_same_wallpaper),
     );
-    // Оба поля `GlobalRendererSettings` — с признаком присутствия: нет
-    // сообщения либо нет поля → значения по умолчанию (звук включён,
-    // громкость 100), как у оригинала.
+    // Both `GlobalRendererSettings` fields have a presence flag: no message
+    // or no field → default values (sound on, volume 100), as in the
+    // original.
     let r = g.renderer.as_ref();
     m.insert(
         KEY_RENDERER_ENABLE_AUDIO.into(),
@@ -535,17 +537,17 @@ pub fn global_to_map(g: &pb::GlobalSettings) -> VMap {
         "wallpaperSkipContentRatings".into(),
         strings_value(&g.wallpaper_skip_content_ratings),
     );
-    // waywallen 0.4.4: как библиотека показывает скрытые обои
-    // (`WallpaperHiddenFilter`, 0 = прятать — умолчание демона).
+    // waywallen 0.4.4: how the library shows hidden wallpapers
+    // (`WallpaperHiddenFilter`, 0 = hide — the daemon's default).
     m.insert(
         "wallpaperHiddenFilter".into(),
         Value::from(g.wallpaper_hidden_filter),
     );
-    // waywallen 0.5.0: скрытые библиотеки страницы «Обои». Как у
-    // оригинала — ключ есть ТОЛЬКО когда демон прислал сообщение: его
-    // отсутствие в `settings_set` значит «не трогать», а присланный пустой
-    // список — «показать все». Подставить пустой список вместо «не
-    // прислано» значило бы стереть скрытие при первой же записи настроек.
+    // waywallen 0.5.0: hidden libraries of the «Wallpapers» page. As in the
+    // original — the key exists ONLY when the daemon sent the message: its
+    // absence in `settings_set` means «do not touch», while a sent empty
+    // list means «show all». Substituting an empty list for «not sent»
+    // would erase the hiding at the very first settings write.
     if let Some(v) = &g.wallpaper_library_visibility {
         m.insert(
             KEY_WALLPAPER_HIDDEN_LIBRARY_IDS.into(),
@@ -555,13 +557,13 @@ pub fn global_to_map(g: &pb::GlobalSettings) -> VMap {
     m
 }
 
-/// Ключ скрытых библиотек в карте `global` (waywallen 0.5.0,
+/// Key of hidden libraries in the `global` map (waywallen 0.5.0,
 /// `settings_query.cpp`).
 pub const KEY_WALLPAPER_HIDDEN_LIBRARY_IDS: &str = "wallpaperHiddenLibraryIds";
 
-/// `PauseEffectConfig` → карта QML. Форма — как у `_defaultPauseEffect`
-/// вендорной страницы настроек (`SettingsPage.qml:286`): вид эффекта плюс
-/// вложенная карта размытия, радиус по умолчанию 30.
+/// `PauseEffectConfig` → a QML map. The shape is like `_defaultPauseEffect`
+/// of the vendor settings page (`SettingsPage.qml:286`): the effect kind plus
+/// a nested blur map, default radius 30.
 fn pause_effect_to_map(p: Option<&pb::PauseEffectConfig>) -> VMap {
     let mut blur = VMap::new();
     blur.insert(
@@ -579,7 +581,7 @@ fn pause_effect_to_map(p: Option<&pb::PauseEffectConfig>) -> VMap {
     out
 }
 
-/// Карта QML → `PauseEffectConfig`.
+/// A QML map → `PauseEffectConfig`.
 fn map_to_pause_effect(m: &VMap) -> pb::PauseEffectConfig {
     let radius = as_map(m.get("blur").unwrap_or(&Value::Null))
         .get("radius")
@@ -591,13 +593,13 @@ fn map_to_pause_effect(m: &VMap) -> pb::PauseEffectConfig {
     }
 }
 
-/// `map_to_global` оригинала: карта из QML → `GlobalSettings`.
+/// The original's `map_to_global`: a map from QML → `GlobalSettings`.
 ///
-/// Списки правил ставятся ВСЕГДА (пустой список — законное «фильтров нет»),
-/// остальное — только когда ключ есть: страница правит копию полной карты
-/// из `settings_get`, и отсутствие ключа значит «поле не пришло от демона».
-/// Единственное исключение — `audioCaptureEnabled`: оригинал пишет его
-/// безусловно (нет ключа → false), сохранено как есть.
+/// Rule lists are ALWAYS set (an empty list is a legitimate «no filters»),
+/// the rest — only when the key exists: the page edits a copy of the full map
+/// from `settings_get`, and the absence of a key means «the field did not
+/// come from the daemon». The only exception is `audioCaptureEnabled`: the
+/// original writes it unconditionally (no key → false), kept as is.
 pub fn map_to_global(m: &VMap) -> pb::GlobalSettings {
     let mut g = pb::GlobalSettings {
         wallpaper_filters: get_list(m, "wallpaperFilters")
@@ -619,8 +621,9 @@ pub fn map_to_global(m: &VMap) -> pb::GlobalSettings {
         debug_logging_enabled: get_bool(m, "debugLoggingEnabled"),
         ..Default::default()
     };
-    // Круговой перенос layout_defaults: страница их не редактирует, но
-    // обязана вернуть демону — иначе полная замена стёрла бы раскладку.
+    // Round-tripping layout_defaults: the page does not edit them, but must
+    // return them to the daemon — otherwise a full replacement would erase the
+    // layout.
     if let Some(l) = get_map(m, "layoutDefaults") {
         g.layout_defaults = Some(map_to_layout(l));
     }
@@ -670,10 +673,10 @@ pub fn map_to_global(m: &VMap) -> pb::GlobalSettings {
     if m.contains_key("wallpaperHiddenFilter") {
         g.wallpaper_hidden_filter = get_i32(m, "wallpaperHiddenFilter");
     }
-    // waywallen 0.5.0: ключ есть — поле ставится (пустой список законен и
-    // значит «показать все»), ключа нет — поле не ставится, и демон
-    // сохраняет прежнее скрытие. Порядок номеров — как прислала страница:
-    // нормализует их `WallpaperListQuery`, а не настройки.
+    // waywallen 0.5.0: the key exists — the field is set (an empty list is
+    // legitimate and means «show all»), no key — the field is not set, and
+    // the daemon keeps the previous hiding. The order of numbers is as the
+    // page sent it: `WallpaperListQuery` normalizes them, not the settings.
     if m.contains_key(KEY_WALLPAPER_HIDDEN_LIBRARY_IDS) {
         g.wallpaper_library_visibility = Some(pb::WallpaperLibraryVisibility {
             hidden_library_ids: get_list(m, KEY_WALLPAPER_HIDDEN_LIBRARY_IDS)
@@ -685,13 +688,14 @@ pub fn map_to_global(m: &VMap) -> pb::GlobalSettings {
     g
 }
 
-/// Схема карты `global`: ключ → вид значения.
+/// Schema of the `global` map: key → value kind.
 ///
-/// Нужна ровно одному потребителю — шиму PySide6, который достаёт значения
-/// из `QJSValue` (карта приходит из QML и может нести Qt-Protobuf-гаджеты).
-/// Типы полей знает только эта сторона, поэтому список ключей живёт здесь,
-/// рядом с [`global_to_map`], а не дублируется в Python (правило #12).
-/// Тест `global_map_schema_covers_every_key` следит, чтобы они не разошлись.
+/// Needed by exactly one consumer — the PySide6 shim, which extracts values
+/// from a `QJSValue` (the map comes from QML and may carry Qt-Protobuf
+/// gadgets). Only this side knows the field types, so the key list lives
+/// here, next to [`global_to_map`], and is not duplicated in Python (rule
+/// #12). The test `global_map_schema_covers_every_key` makes sure they do not
+/// diverge.
 pub const GLOBAL_MAP_SCHEMA: &[(&str, GlobalValueKind)] = &[
     ("wallpaperFilters", GlobalValueKind::FilterRuleList),
     ("wallpaperFilterLogics", GlobalValueKind::FilterLogicList),
@@ -719,14 +723,14 @@ pub const GLOBAL_MAP_SCHEMA: &[(&str, GlobalValueKind)] = &[
     (KEY_WALLPAPER_HIDDEN_LIBRARY_IDS, GlobalValueKind::IntList),
 ];
 
-/// Вид значения ключа карты `global`.
+/// Value kind of a `global` map key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GlobalValueKind {
     Bool,
     Int,
     String,
     StringList,
-    /// waywallen 0.5.0: список целых (номера библиотек).
+    /// waywallen 0.5.0: a list of integers (library numbers).
     IntList,
     LayoutPrefs,
     AutoReplayPolicy,
@@ -738,8 +742,8 @@ pub enum GlobalValueKind {
 }
 
 impl GlobalValueKind {
-    /// Имя вида для шима (он же — ключ таблицы соответствия
-    /// «вид → сообщение protobuf» на стороне Python).
+    /// Kind name for the shim (it is also the key of the «kind → protobuf
+    /// message» mapping table on the Python side).
     pub fn name(self) -> &'static str {
         match self {
             GlobalValueKind::Bool => "bool",
@@ -760,14 +764,14 @@ impl GlobalValueKind {
 
 // ── PluginSettings ───────────────────────────────────────────────────────
 
-/// `plugins_to_map` оригинала: `имя → PluginSettings` → `имя → {ключ:
-/// значение}`. Уровень `values` из proto СНИМАЕТСЯ — QML читает значения
-/// плагина напрямую (`currentValues[ключ]`).
+/// The original's `plugins_to_map`: `name → PluginSettings` → `name → {key:
+/// value}`. The `values` level of the proto is REMOVED — QML reads plugin
+/// values directly (`currentValues[key]`).
 pub fn plugins_to_map(plugins: &HashMap<String, pb::PluginSettings>) -> VMap {
     let mut out = VMap::new();
-    // Порядок карты proto недетерминирован — сортируем, чтобы карта была
-    // сравнимой (сигнал `pluginsChanged` шлём только при реальном
-    // изменении) и чтобы голдены не плавали.
+    // The proto map order is non-deterministic — we sort so the map is
+    // comparable (the `pluginsChanged` signal is sent only on a real
+    // change) and so the goldens do not drift.
     let mut names: Vec<&String> = plugins.keys().collect();
     names.sort();
     for name in names {
@@ -782,7 +786,7 @@ pub fn plugins_to_map(plugins: &HashMap<String, pb::PluginSettings>) -> VMap {
     out
 }
 
-/// `map_to_plugins` оригинала (обратное направление).
+/// The original's `map_to_plugins` (the reverse direction).
 pub fn map_to_plugins(m: &VMap) -> HashMap<String, pb::PluginSettings> {
     let mut out = HashMap::new();
     for (name, cfg) in m {
@@ -807,22 +811,22 @@ pub fn map_to_plugins(m: &VMap) -> HashMap<String, pb::PluginSettings> {
 
 // ── SettingsGetQuery ─────────────────────────────────────────────────────
 
-/// Свойства `SettingsGetQuery` (`global` и `plugins` в терминах QML).
+/// Properties of `SettingsGetQuery` (`global` and `plugins` in QML terms).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SettingsGetData {
     pub global: VMap,
     pub plugins: VMap,
-    /// waywallen 0.3.8: каталог журнала демона (только чтение).
+    /// waywallen 0.3.8: the daemon's log directory (read only).
     pub log_dir: String,
-    /// waywallen 0.3.8: в окружении демона задан `WW_LOG` — уровень
-    /// журнала выставлен снаружи, и переключатель в настройках не работает.
+    /// waywallen 0.3.8: `WW_LOG` is set in the daemon's environment — the log
+    /// level is set from outside, and the switch in settings does not work.
     pub ww_log_active: bool,
 }
 
-/// Разобрать ответ `settings_get`.
+/// Parse the `settings_get` response.
 ///
-/// Как и остальные запросы партии 3, сигналы свойств шлём только при
-/// реальном изменении (оригинал шлёт их безусловно, см. заголовок
+/// Like the other batch 3 requests, property signals are sent only on a real
+/// change (the original sends them unconditionally, see the header of
 /// `we_query.rs`).
 pub fn apply_settings_get(
     st: &mut QueryState,
@@ -834,9 +838,9 @@ pub fn apply_settings_get(
         return Ok(out);
     };
     if let Some(pb::response::Payload::SettingsGet(sg)) = rsp.payload {
-        // Оригинал зовёт global_to_map(get_rsp.global()) без проверки
-        // присутствия: у Qt-Protobuf чтение неустановленного сообщения
-        // отдаёт сообщение с полями по умолчанию.
+        // The original calls global_to_map(get_rsp.global()) without a
+        // presence check: in Qt-Protobuf reading an unset message returns a
+        // message with default fields.
         let g = global_to_map(&sg.global.unwrap_or_default());
         q::assign(&mut data.global, g, "global", &mut out);
         let p = plugins_to_map(&sg.plugins);
@@ -854,13 +858,14 @@ pub fn apply_settings_get(
 
 // ── SettingsSetQuery ─────────────────────────────────────────────────────
 
-/// Собрать `SettingsSetRequest` из карт QML и сериализовать.
+/// Assemble a `SettingsSetRequest` from QML maps and serialize it.
 ///
-/// Демон трактует запрос как ПОЛНУЮ замену: карта `global` должна быть
-/// копией всей карты из `settings_get` с правкой, а `plugins` — всеми
-/// плагинами, а не одним изменённым. Гейт «не писать до первого чтения»
-/// живёт в QML (`_persistGlobalChange`), здесь его дублировать нельзя —
-/// иначе законная запись пустых настроек стала бы невозможной.
+/// The daemon treats the request as a FULL replacement: the `global` map must
+/// be a copy of the whole map from `settings_get` with the edit, and `plugins`
+/// — all plugins, not just the one changed. The «do not write before the
+/// first read» gate lives in QML (`_persistGlobalChange`), it must not be
+/// duplicated here — otherwise a legitimate write of empty settings would
+/// become impossible.
 pub fn encode_settings_set(global: &VMap, plugins: &VMap) -> Vec<u8> {
     pb::SettingsSetRequest {
         global: Some(map_to_global(global)),

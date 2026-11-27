@@ -1,32 +1,37 @@
-// rexon-wallpaper-host — ОДИН хост обоев Rexon без Python в процессе.
+// rexon-wallpaper-host — ONE Rexon wallpaper host without Python in the
+// process.
 //
-// Видео (QtMultimedia) и веб (QtWebEngine) — режимы одного бинаря, а не два
-// хоста: 15.09.2026 владелец решил хосты не плодить. Строку запуска собирает
-// ядро (`rexon-core::wallpaper_engine::wallpaper_host_argv`), режим задаёт
-// ключ `--mode`. Здесь — общий подъём Qt; что показывать, решают `video.rs`
-// и `web.rs`, разбор ключей режимов — src/wallpaper_host.rs и src/web_host.rs.
+// Video (QtMultimedia) and web (QtWebEngine) are modes of one binary, not
+// two hosts: on 15.09.2026 the owner decided not to multiply hosts. The
+// command line is built by the core
+// (`rexon-core::wallpaper_engine::wallpaper_host_argv`), and the mode is
+// set by the `--mode` option. Here is the shared Qt start-up; what to show
+// is decided by `video.rs` and `web.rs`, and the mode options are parsed in
+// src/wallpaper_host.rs and src/web_host.rs.
 //
-// Запуск:
-//     rexon-wallpaper-host --mode video /путь/видео.mp4 [--no-audio]
-//     rexon-wallpaper-host --mode video /каталог/обоев             # с project.json
+// Run:
+//     rexon-wallpaper-host --mode video /path/video.mp4 [--no-audio]
+//     rexon-wallpaper-host --mode video /wallpaper/dir             # with project.json
 //     rexon-wallpaper-host --mode web https://example.com
-//     rexon-wallpaper-host --mode web /путь/index.html --windowed  # окно 1280×720
-//     rexon-wallpaper-host --mode swf /путь/ролик.swf
-//     rexon-wallpaper-host /путь/видео.mp4     # без --mode — видео (прежний контракт)
-//     rexon-wallpaper-host --mode waywallen [--socket <display.sock>]  # вывод демона на X11
-// Самопроверка (отчитывается и закрывается сам, код возврата — приговор):
-//     rexon-wallpaper-host --mode web /путь/index.html --selftest
+//     rexon-wallpaper-host --mode web /path/index.html --windowed  # a 1280×720 window
+//     rexon-wallpaper-host --mode swf /path/clip.swf
+//     rexon-wallpaper-host /path/video.mp4     # without --mode — video (the previous contract)
+//     rexon-wallpaper-host --mode waywallen [--socket <display.sock>]  # daemon output on X11
+// Self-test (reports and closes by itself, the exit code is the verdict):
+//     rexon-wallpaper-host --mode web /path/index.html --selftest
 //
-// ⚠️ Ленивость режимов. Chromium поднимается ТОЛЬКО веб-режимом: библиотека
-// QtWebEngineQuick открывается `dlopen` из `web.rs` (разбор —
-// src/web_host.rs), в таблице зависимостей бинаря её нет, и видео-обои не
-// платят за неё при каждом старте. QtMultimedia грузит сам QML видео.
+// Warning: laziness of modes. Chromium is brought up ONLY by web mode: the
+// QtWebEngineQuick library is opened with `dlopen` from `web.rs` (analysis
+// in src/web_host.rs), it is not in the binary's dependency table, and
+// video wallpapers do not pay for it on every start. QtMultimedia is loaded
+// by the video QML itself.
 //
-// Третий режим — Flash (SWF, Ruffle через wgpu, крейт `rexon-swf`): у него
-// не QML, а свой цикл отрисовки, поэтому в `run_qml` он не заходит, а
-// возвращает код сам (`swf.rs`). Коды возврата — из той же таблицы ядра
-// (`wallpaper_engine::host_exit`). Vulkan и Ruffle поднимаются ТОЛЬКО этим
-// режимом: видео и веб за них при старте не платят.
+// The third mode is Flash (SWF, Ruffle through wgpu, the `rexon-swf`
+// crate): it has no QML but its own render loop, so it does not enter
+// `run_qml` and returns the code by itself (`swf.rs`). The exit codes come
+// from the same core table (`wallpaper_engine::host_exit`). Vulkan and
+// Ruffle are brought up ONLY by this mode: video and web do not pay for
+// them at start.
 
 mod swf;
 mod video;
@@ -43,47 +48,51 @@ use rexon_gui::wallpaper_host::{
     host_placement, install_host_log, install_panic_guard, keep_alive_without_windows, prepare_qpa_platform,
     take_mode, verdict, PLACEMENT_OFFSCREEN, USAGE,
 };
-// Ссылка на библиотеку крейта обязательна, а не декоративна: без неё rustc
-// не подтягивает rlib, а вместе с ним и статические архивы cxx-qt (moc,
-// QML-плагин с ресурсами) — бинарь соберётся, а QML будет пуст.
+// The link to the crate library is mandatory, not decorative: without it
+// rustc does not pull in the rlib, and with it the cxx-qt static archives
+// (moc, the QML plugin with resources) — the binary would build, but the
+// QML would be empty.
 use rexon_gui::wallpaper_audio::qobject::WallpaperAudio;
 use rexon_gui::wallpaper_host::qobject::WallpaperPlacement;
 
 fn main() {
-    // ⚠️ ПЕРВОЙ строкой, до всякого Qt. Паника хоста обоев не имеет права
-    // раскручивать стек: раскрутка идёт через разбор Qt, а он на X11 ждёт
-    // поток очереди событий — на этом ожидании хост однажды завис навсегда
-    // (разбор — `wallpaper_host::verdict`). Обои на всех режимах поднимает
-    // заново исполнитель, а вечно живой пустой процесс не поднимет никто.
+    // Warning: as the FIRST line, before any Qt. A panic of the wallpaper host
+    // has no right to unwind the stack: unwinding goes through Qt teardown,
+    // and on X11 that waits for the event queue thread — the host once hung
+    // forever on that wait (analysis in `wallpaper_host::verdict`). Wallpapers
+    // of all modes are brought up again by the executor, while nobody would
+    // bring up an eternally living empty process.
     install_panic_guard();
     std::process::exit(run());
 }
 
-/// Коды возврата — общая таблица ядра `wallpaper_engine::host_exit`: 1 —
-/// нечего показывать, 2 — QML не поднялся, 3 — поток кадров не пошёл; у
-/// видео ещё 4 (звук просили, дорожки нет), у веба 5 (страница не
-/// загрузилась) — оба выставляет самопроверка из QML; у Flash 7 (нет
-/// Vulkan-видеокарты для обоев) и 8 (ролик не загрузился).
+/// Exit codes are the core's shared table `wallpaper_engine::host_exit`: 1 —
+/// nothing to show, 2 — the QML did not come up, 3 — the frame stream did
+/// not start; video also has 4 (audio requested, no track), web has 5 (the
+/// page did not load) — both are set by the self-test from QML; Flash has 7
+/// (no Vulkan GPU for wallpapers) and 8 (the clip did not load).
 fn run() -> i32 {
-    // Точка отсчёта замера «первый кадр на экране».
+    // The reference point of the "first frame on screen" measurement.
     rexon_gui::wallpaper_host::mark_host_started();
-    // Язык интерфейса Rexon — до всего остального: имя звукового потока
-    // обоев в системном микшере берётся из каталога перевода
-    // (`wallpaper_audio::stream_description`).
+    // The Rexon interface language — before everything else: the name of the
+    // wallpaper audio stream in the system mixer is taken from the translation
+    // catalogue (`wallpaper_audio::stream_description`).
     rexon_core::i18n::init();
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let (mode, rest) = match take_mode(&argv) {
         Ok(taken) => taken,
         Err(message) => return refuse(&message),
     };
-    // Журнал — до разбора режима: строки `-START` и отказы плана уже
-    // события. Справка и неверные ключи выше — вывод команды, не журнал.
+    // The log — before parsing the mode: the `-START` lines and plan refusals
+    // are already events. The help and invalid options above are command
+    // output, not the log.
     install_host_log(rest.iter().any(|a| a == "--selftest" || a.starts_with("--selftest=")));
     let cinnamon_layer_shell = rexon_gui::wallpaper_host::cinnamon_layer::init_fact();
-    // Показ кадрами в файл заказывает только расширение оболочки. На
-    // Cinnamon с layer-shell обои кладёт Rexon слоем стола, и такой запуск —
-    // второй хост рядом с нашим (копия расширения от прежней версии). Код 0:
-    // расширение любой версии считает это «сняли сами» и молчит.
+    // Showing frames into a file is ordered only by a shell extension. On
+    // Cinnamon with layer-shell Rexon puts the wallpaper as a desktop layer,
+    // and such a start is a second host next to ours (a copy of the extension
+    // from an earlier version). Code 0: an extension of any version treats
+    // this as "removed by ourselves" and stays silent.
     let stream = rexon_core::wallpaper_mmap::env_output_path(std::env::var("REXON_WP_OUTPUT").ok().as_deref()).is_some();
     if mode != HostMode::Waywallen && rexon_core::wallpaper_engine::stream_host_refused(stream, cinnamon_layer_shell) {
         rexon_core::log_warn!(
@@ -92,18 +101,18 @@ fn run() -> i32 {
         );
         return host_exit::OK;
     }
-    // Один хост показа на сеанс: прежний (если он есть) сменяется — но
-    // только когда показывать точно есть что (план сложился), иначе
-    // негодный запуск снял бы работающие обои.
+    // One display host per session: the previous one (if any) is replaced —
+    // but only when there is definitely something to show (the plan came
+    // together), otherwise an invalid start would remove a working wallpaper.
     let take_lock = || rexon_gui::wallpaper_host::session_lock::take(mode, &rest);
     let planned = match mode {
         HostMode::Video => video::plan(&rest),
         HostMode::Web => web::plan(&rest),
-        // Клиент вывода демона waywallen на X11 (сцены Wallpaper Engine).
+        // The waywallen daemon output client on X11 (Wallpaper Engine scenes).
         HostMode::Waywallen => waywallen::plan(&rest),
-        // Flash рисует wgpu, а не QML: свой цикл, свои коды той же таблицы.
-        // Платформу Qt выставляет этот файл — то же общее решение, что у
-        // QML-режимов в `run_qml`.
+        // Flash is drawn by wgpu, not QML: its own loop, its own codes from the
+        // same table. The Qt platform is set by this file — the same shared
+        // decision as for the QML modes in `run_qml`.
         HostMode::Swf => {
             return match swf::plan(&rest) {
                 Ok(plan) => {
@@ -124,7 +133,8 @@ fn run() -> i32 {
     }
 }
 
-/// Отказ до всякого Qt: справка — не ошибка; всё остальное — нечего показывать.
+/// Refusal before any Qt: help is not an error; everything else means
+/// nothing to show.
 fn refuse(message: &str) -> i32 {
     eprintln!("{message}");
     if message == USAGE {
@@ -134,38 +144,42 @@ fn refuse(message: &str) -> i32 {
     }
 }
 
-/// Всё, что нужно окну режима, посчитанное ДО первого вызова Qt.
+/// Everything the mode's window needs, computed BEFORE the first Qt call.
 pub struct QmlPlan {
-    /// Имя модуля в таблице точек входа ядра (`rexon-core::qt_app`). Своей
-    /// строки с именем приложения у режимов нет: без `desktopFileName` KDE
-    /// на Wayland рисует в панели задач дефолтный логотип вместо иконки.
+    /// Module name in the core's entry point table (`rexon-core::qt_app`). The
+    /// modes have no application name string of their own: without
+    /// `desktopFileName` KDE on Wayland draws a default logo in the task bar
+    /// instead of the icon.
     pub entry_module: &'static str,
-    /// Адрес QML внутри статического ресурса модуля `org.rexon.gui`.
+    /// QML address inside the static resource of the `org.rexon.gui` module.
     pub qml_url: &'static str,
-    /// Метка строк журнала режима (`REXON-WPH` у видео, `REXON-WEB` у веба)
-    /// — прежние метки двух хостов сохранены: по ним ищут в журналах.
+    /// Log line tag of the mode (`REXON-WPH` for video, `REXON-WEB` for web) —
+    /// the former tags of the two hosts are kept: logs are searched by them.
     pub tag: &'static str,
-    /// Режим хоста: от него зависит, чем снимается кадр в режиме потока и,
-    /// значит, на какой платформе Qt жить (`wallpaper_mmap::host_stream_capture`).
+    /// Host mode: it determines what captures the frame in stream mode and,
+    /// therefore, which Qt platform to live on
+    /// (`wallpaper_mmap::host_stream_capture`).
     pub mode: HostMode,
     pub placement: &'static str,
     pub properties: QMap<QMapPair_QString_QVariant>,
     pub selftest: bool,
-    /// Действие режима ДО `QGuiApplication` (роль звукового потока у видео,
-    /// подъём Chromium у веба). Ошибка — «QML не поднялся».
+    /// The mode's action BEFORE `QGuiApplication` (the audio stream role for
+    /// video, bringing up Chromium for web). An error means "the QML did not
+    /// come up".
     pub before_app: fn(&QmlPlan) -> Result<(), String>,
 }
 
 fn run_qml(plan: QmlPlan) -> i32 {
-    // ⚠️ ДО создания QGuiApplication: платформу Qt выбирает конструктор
-    // приложения. Без этого на GNOME/Cinnamon-Wayland окно обоев в режиме
-    // потока кадров выходило обычным окном поверх рабочего стола. И ДО
-    // инициализации Chromium: он читает платформу при подъёме.
+    // Warning: BEFORE QGuiApplication is created: the Qt platform is chosen by
+    // the application constructor. Without this, on GNOME/Cinnamon Wayland the
+    // wallpaper window in frame stream mode came out as an ordinary window on
+    // top of the desktop. And BEFORE Chromium initialization: it reads the
+    // platform when coming up.
     prepare_qpa_platform(plan.placement, plan.mode);
 
-    // Без этого прогон из скрипта выглядит немым: когда stderr не терминал,
-    // Qt на Arch/CachyOS уводит сообщения в journald, и отчёт самопроверки
-    // из QML в вывод не попадает.
+    // Without this a run from a script looks mute: when stderr is not a
+    // terminal, Qt on Arch/CachyOS sends messages to journald, and the QML
+    // self-test report does not reach the output.
     if plan.selftest {
         unsafe { std::env::set_var("QT_FORCE_STDERR_LOGGING", "1") };
     }
@@ -175,20 +189,21 @@ fn run_qml(plan: QmlPlan) -> i32 {
         return host_exit::QML_FAILED;
     }
 
-    // ОБЯЗАТЕЛЬНО: статический QML-плагин с ресурсами и регистрацией типов
-    // линкуется отдельным архивом, и без явной ссылки линкер его
-    // выбрасывает — QML тогда падает на «qrc:/… No such file or directory»
-    // ещё до всякой ошибки импорта.
+    // MANDATORY: the static QML plugin with resources and type registration is
+    // linked as a separate archive, and without an explicit reference the
+    // linker drops it — QML then fails with "qrc:/… No such file or directory"
+    // before any import error.
     cxx_qt::init_qml_module!("org.rexon.gui");
 
     let mut app = QGuiApplication::new();
     if let Some(app) = app.as_mut() {
         apply_qt_identity(app, plan.entry_module);
     }
-    // ⚠️ СРАЗУ после приложения и до первого окна. Окон у хоста столько,
-    // сколько мониторов; отключённый монитор уносит своё окно, и умолчание
-    // Qt «последнее окно закрыли — выходим» убило бы весь процесс обоев на
-    // ровном месте (см. `wallpaper_host::keep_alive_without_windows`).
+    // Warning: RIGHT after the application and before the first window. The
+    // host has as many windows as monitors; a disconnected monitor takes its
+    // window away, and the Qt default "the last window was closed — quit"
+    // would kill the whole wallpaper process for no reason (see
+    // `wallpaper_host::keep_alive_without_windows`).
     keep_alive_without_windows();
 
     let tag = plan.tag;
@@ -198,16 +213,17 @@ fn run_qml(plan: QmlPlan) -> i32 {
         return verdict(host_exit::QML_FAILED);
     };
 
-    // Свойства едут корню QML начальными свойствами: контекстные свойства в
-    // cxx-qt-lib 0.9 не обёрнуты, а setInitialProperties есть и применяется
-    // ДО первой привязки — то есть до того, как окно решит, каким ему быть.
+    // The properties go to the QML root as initial properties: context
+    // properties are not wrapped in cxx-qt-lib 0.9, while setInitialProperties
+    // exists and is applied BEFORE the first binding — that is, before the
+    // window decides what it should be.
     engine.as_mut().set_initial_properties(&plan.properties);
 
-    // Приговор «QML не загрузился» выносится сигналом, а не молчанием: без
-    // него пустой движок дал бы мгновенный выход кодом 0, и «обоев нет»
-    // выглядело бы как «всё хорошо».
-    // Arc/AtomicBool, а не Rc/Cell: cxx-qt требует от обработчика сигнала
-    // Send — сигнал вправе прийти не из главного потока.
+    // The verdict "the QML did not load" is given by a signal, not by silence:
+    // without it an empty engine would exit instantly with code 0, and "no
+    // wallpaper" would look like "all is well".
+    // Arc/AtomicBool, not Rc/Cell: cxx-qt requires the signal handler to be
+    // Send — the signal may come from a thread other than the main one.
     let loaded = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let seen = loaded.clone();
     let _guard = engine
@@ -225,27 +241,30 @@ fn run_qml(plan: QmlPlan) -> i32 {
         return verdict(host_exit::QML_FAILED);
     }
 
-    // Приговор через `verdict`, а не голым числом: сразу за этой строкой
-    // начинается разбор Qt, и он обязан уложиться в срок (разбор — там же).
+    // The verdict goes through `verdict`, not as a bare number: right after
+    // this line Qt teardown begins, and it must fit into a deadline (analysis
+    // there).
     let code = verdict(match app.as_mut() {
         Some(app) => app.exec(),
         None => host_exit::QML_FAILED,
     });
-    // Проигрыватель — стоп и пустой источник ДО разбора движка и окон, уже
-    // под сроком `verdict`. Иначе окно сносится, пока поток декодирования
-    // ещё работает, — тот же класс краха, что у главного окна на выходе
-    // (SIGSEGV в `av_log`, разбор — в `bin/main_window.rs` у того же
-    // вызова). Выход здесь бывает по `Qt.quit()` отладочного окна.
+    // The player — stop and an empty source BEFORE tearing down the engine and
+    // the windows, already under the `verdict` deadline. Otherwise the window
+    // is destroyed while the decoding thread is still working — the same class
+    // of crash as the main window has at exit (SIGSEGV in `av_log`, analysis
+    // in `bin/main_window.rs` at the same call). Exit here happens on `Qt.quit()`
+    // of the debug window.
     unsafe { rexon_stop_media_players() };
     code
 }
 
-// Шим — `cpp/rexon_gui_factory.cpp`, общий с главным окном.
+// The shim is `cpp/rexon_gui_factory.cpp`, shared with the main window.
 extern "C" {
     fn rexon_stop_media_players() -> std::ffi::c_int;
 }
 
-/// Как приложение представляется системе — из общей таблицы точек входа.
+/// How the application presents itself to the system — from the shared
+/// entry point table.
 fn apply_qt_identity(app: std::pin::Pin<&mut QGuiApplication>, entry_module: &str) {
     let Some(identity) = rexon_core::qt_app::identity(entry_module) else {
         return;
@@ -264,9 +283,10 @@ fn apply_qt_identity(app: std::pin::Pin<&mut QGuiApplication>, entry_module: &st
     }
 }
 
-/// Окружение показа — ОДНО на все режимы: куда писать кадры, какого они
-/// размера, с какой частотой и каким способом класть окно. Все решения —
-/// ядра, своих здесь нет. Прежде каждый хост читал его своей копией.
+/// The display environment — ONE for all modes: where to write frames,
+/// their size, rate and how to place the window. All decisions are the
+/// core's, there are none of our own here. Previously each host read it
+/// with its own copy.
 pub struct HostEnv {
     pub mmap_output: Option<String>,
     pub mmap_w: i64,
@@ -289,8 +309,9 @@ impl HostEnv {
             &env("XDG_SESSION_TYPE").unwrap_or_default(),
             &env("WAYLAND_DISPLAY").unwrap_or_default(),
         );
-        // Способ показа у всех режимов обязан совпадать, иначе на одном
-        // рабочем столе видео ушло бы в слой, а веб — в окно поверх всего.
+        // The display method must be the same for all modes, otherwise on one
+        // desktop video would go into a layer while web went into a window on top
+        // of everything.
         let placement = host_placement(mmap_output.is_some(), windowed, wayland);
         HostEnv {
             mmap_output,
@@ -301,8 +322,8 @@ impl HostEnv {
         }
     }
 
-    /// Свойства корня QML, общие для всех режимов, и честные отказы до
-    /// всякого Qt.
+    /// QML root properties shared by all modes, and honest refusals before any
+    /// Qt.
     pub fn common_properties(
         &self,
         properties: &mut QMap<QMapPair_QString_QVariant>,
@@ -318,8 +339,8 @@ impl HostEnv {
             QString::from("selftestMs"),
             QVariant::from(&(selftest_ms as i32)),
         );
-        // Офскрин без файла кадров — это молча чёрный экран у человека,
-        // поэтому отказ честный и до всякого Qt.
+        // Offscreen without a frame file is a silently black screen for the user,
+        // so the refusal is honest and comes before any Qt.
         if self.placement == PLACEMENT_OFFSCREEN && self.mmap_output.is_none() {
             return Err("офскрин-режим без REXON_WP_OUTPUT: кадры некуда писать".to_string());
         }
@@ -331,9 +352,9 @@ pub fn variant_str(value: &str) -> QVariant {
     QVariant::from(&QString::from(value))
 }
 
-// Типы упоминаются ради линковки статических архивов cxx-qt: без обращения
-// к ним QML-плагин крейта выбрасывается линкером, и `WallpaperPlacement` в
-// QML не существует.
+// The types are mentioned for linking the cxx-qt static archives: without
+// a reference to them the crate's QML plugin is dropped by the linker, and
+// `WallpaperPlacement` does not exist in QML.
 #[allow(dead_code)]
 fn keep_qml_types_linked() -> (&'static str, &'static str) {
     (

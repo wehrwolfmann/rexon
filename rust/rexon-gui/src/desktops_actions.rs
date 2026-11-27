@@ -1,71 +1,82 @@
-// DesktopsActions — объект побочных действий вкладки «Рабочие столы» на Rust.
+// DesktopsActions — the side-actions object of the "Desktops" tab in Rust.
 //
-// ЗАЧЕМ. `DesktopsPage.qml` ждёт свойством `actions` объект с девятью
-// методами и одним сигналом. Пока такого объекта на Rust не было, хозяин окна
-// (`main_window.rs`) не мог отдать разделу «Рабочие столы» его собственную
-// страницу: таблица `SECTION_PAGES` показывала в нём подраздел «Сравнение DE»,
-// потому что страница столов без объекта действий отдала бы мёртвые кнопки и
-// пустую строку версии. Здесь этот объект появляется, и раздел получает свою
-// страницу.
+// WHY. `DesktopsPage.qml` expects, in its `actions` property, an object with
+// nine methods and one signal. While there was no such object in Rust, the
+// window host (`main_window.rs`) could not give the "Desktops" section its
+// own page: the `SECTION_PAGES` table showed the "DE comparison"
+// subsection in it, because the desktops page without an action object
+// would have given dead buttons and an empty version line. Here this object
+// appears, and the section gets its own page.
 //
-// ГРАНИЦА ПРОВЕДЕНА ПО ОДНОМУ ПРИЗНАКУ — что действие ДЕЛАЕТ с машиной:
+// THE BOUNDARY IS DRAWN BY ONE CRITERION — what the action DOES to the
+// machine:
 //
-//   * читает и водит по интерфейсу → исполняет Rust:
-//       - `requestVersion(deId)` — версия пакета из репозиториев дистрибутива
-//         (`system_plan::repo_version_query` + `parse_repo_version`, запуск
-//         через `utils::run`), в фоне, ответ сигналом `versionReady`;
-//       - `openCompare()` — переход во встроенное «Сравнение DE»; страницами
-//         переключает хозяин, поэтому объект только объявляет о просьбе
-//         сигналом `compareRequested`.
+//   * reads and navigates the interface → executed by Rust:
+//       - `requestVersion(deId)` — the package version from the
+//         distribution's repositories (`system_plan::repo_version_query` +
+//         `parse_repo_version`, launched through `utils::run`), in the
+//         background, the answer with the `versionReady` signal;
+//       - `openCompare()` — switching to the built-in "DE comparison"; the
+//         host switches pages, so the object only announces the request with
+//         the `compareRequested` signal.
 //
-//   * ставит и чинит рабочий стол → исполняет ЯДРО
-//     (`rexon_core::system_de_exec`, порт `install_de`):
-//       - `repairCurrent` — «Проверить мой стол»;
-//       - `repair` — «Проверить / Восстановить» на карточке;
-//       - `install` — «Установить» на карточке;
-//       - `switchTo` — «Переключиться» (копии, выход из сессии);
-//       - `remove` — «Удалить»: три защиты — кнопки нет у текущего стола,
-//         `qt_desktops::remove_plan` (не текущий и не последний), и
-//         `remove_de(force=false)` в ядре, которое откажет и прямому вызову.
-//     Порядок как у Python (`DesktopsActions` + `confirm_de_install` +
-//     `run_de_operation`), но без вложенных модальных окон: один
-//     мастер-диалог на операцию (правило #16) — карта `operation`, строки
-//     журнала сигналом `operationLog`, итог — сигнал `desktopsChanged`.
-//     Отказ дистрибутива показывается ДО запроса пароля. Ход дела идёт в
-//     рабочем потоке; отмена — только пока система не тронута.
+//   * installs and repairs a desktop → executed by the CORE
+//     (`rexon_core::system_de_exec`, a port of `install_de`):
+//       - `repairCurrent` — "Check my desktop";
+//       - `repair` — "Check / Repair" on a card;
+//       - `install` — "Install" on a card;
+//       - `switchTo` — "Switch" (copies, logging out of the session);
+//       - `remove` — "Remove": three safeguards — the current desktop has no
+//         button, `qt_desktops::remove_plan` (not the current one and not
+//         the last), and `remove_de(force=false)` in the core, which will
+//         refuse a direct call too.
+//     The order is as in Python (`DesktopsActions` + `confirm_de_install` +
+//     `run_de_operation`), but without nested modal windows: one wizard
+//     dialog per operation (rule #16) — the `operation` map, the log lines
+//     with the `operationLog` signal, the outcome with the
+//     `desktopsChanged` signal. A distribution refusal is shown BEFORE the
+//     password prompt. The progress runs in a worker thread; cancellation
+//     is possible only while the system is untouched.
 //
-//   * применяет и возвращает образы «Как в дистрибутиве» → исполняет ЯДРО
-//     (`rexon_core::distro_looks`: `offer_live`, `apply_live`,
-//     `revert_live`), тексты и решения окна — `qt_desktops::look_*`:
-//       - `lookApply` — план в фоне, вопрос (галочка «по желанию» —
-//         `setOperationOption`), ход и итог тем же окном операции;
-//       - `lookRevert` — «Вернуть как было».
-//     Программы из официальных репозиториев ставятся окном пароля, AUR —
-//     никогда: такие пакеты называются человеку списком.
+//   * applies and reverts "As in the distribution" looks → executed by the
+//     CORE (`rexon_core::distro_looks`: `offer_live`, `apply_live`,
+//     `revert_live`), the window's texts and decisions are
+//     `qt_desktops::look_*`:
+//       - `lookApply` — the plan in the background, the question (the
+//         "optional" checkbox — `setOperationOption`), the progress and the
+//         outcome in the same operation window;
+//       - `lookRevert` — "Revert to what it was".
+//     Programs from the official repositories are installed through the
+//     password window, from AUR — never: such packages are named to the user
+//     as a list.
 //
-//   * снимает и возвращает копию панели KDE → исполняет Rust:
+//   * takes and restores a copy of the KDE panel → executed by Rust:
 //       - `panelBackup` / `panelRestore`.
-//     Исполнитель `PlasmaProtector` перенесён в ядро (`backup::
-//     plasma_backup_run`, `plasma_restore_run`, `plasma_restart_shell`), и
-//     зовётся ТЕМ ЖЕ вызовом, что у «Настроек» (`settings_actions::
-//     panel_backup_now` / `panel_restore_now`) — второй копии в продукте нет.
-//     Вопрос перед возвратом и тексты итога — как у Python-вкладки.
+//     The `PlasmaProtector` executor moved to the core
+//     (`backup::plasma_backup_run`, `plasma_restore_run`,
+//     `plasma_restart_shell`), and is called with THE SAME call as in
+//     "Settings" (`settings_actions::panel_backup_now` /
+//     `panel_restore_now`) — there is no second copy in the product. The
+//     question before restoring and the outcome texts are as in the Python
+//     tab.
 //
-// ⚠️ МОЛЧАЛИВОГО «ничего не произошло» здесь быть не должно (правило #13):
-// покупатель принял бы такую кнопку за поломку. Поэтому каждый неперенесённый
-// метод возвращает `false` И пишет в `status` строку, которую окно показывает
-// в подвале. Этот же объект стоит и за «Сравнением DE»: у страницы
-// сравнения те же `install`/`switchTo`, и второго объекта действий с
-// заглушкой больше нет.
+// Warning: there must be no SILENT "nothing happened" here (rule #13): the
+// customer would take such a button for a breakage. So every method not yet
+// ported returns `false` AND writes into `status` a line that the window
+// shows in the footer. The same object also stands behind "DE comparison":
+// the comparison page has the same `install`/`switchTo`, and there is no
+// second action object with a stub any more.
 //
-// Приём фоновой работы повторён за `ExtensionsActions` дословно: поток,
-// `qt_thread()`, доставка итога сигналом. `pacman -Si` занимает секунды, и
-// синхронный запрос остановил бы вкладку ровно там, где она рисует карточку.
+// The background work technique is repeated after `ExtensionsActions`
+// verbatim: a thread, `qt_thread()`, delivering the outcome with a signal.
+// `pacman -Si` takes seconds, and a synchronous request would stop the tab
+// exactly where it draws the card.
 
-/// Мост cxx-qt объекта действий.
+/// cxx-qt bridge of the action object.
 ///
-/// Тип объявлен `#[qml_element]`, поэтому хозяин окна заводит его сам
-/// (`DesktopsActions { }`) и подставляет странице свойством `actions`.
+/// The type is declared `#[qml_element]`, so the window host creates it
+/// itself (`DesktopsActions { }`) and hands it to the page through the
+/// `actions` property.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -82,13 +93,13 @@ pub mod qobject {
     extern "RustQt" {
         #[qobject]
         #[qml_element]
-        /// Чем кончилось последнее побочное действие. Окно показывает эту
-        /// строку в подвале: без неё нажатие кнопки, за которой исполнителя
-        /// ещё нет, выглядело бы как поломка.
+        /// How the last side action ended. The window shows this line in the
+        /// footer: without it pressing a button with no executor behind it yet would
+        /// look like a breakage.
         #[qproperty(QString, status, READ = status, NOTIFY = status_changed)]
-        /// Окно операции над столом: вопрос, отказ, ход дела или итог.
-        /// Карта с `phase` (`""` — окна нет, `blocked`, `confirm`,
-        /// `password`, `running`, `done`) и всеми подписями — их даёт ядро.
+        /// The desktop operation window: a question, a refusal, the progress or the
+        /// outcome. A map with `phase` (`""` — no window, `blocked`, `confirm`,
+        /// `password`, `running`, `done`) and all the labels — given by the core.
         #[qproperty(QMap_QString_QVariant, operation, READ = operation, NOTIFY = operation_changed)]
         type DesktopsActions = super::DesktopsActionsRust;
     }
@@ -102,38 +113,38 @@ pub mod qobject {
         #[cxx_name = "operationChanged"]
         fn operation_changed(self: Pin<&mut DesktopsActions>);
 
-        /// Строка журнала хода дела — дописывается окном, а не пересылается
-        /// целиком картой: у установки стола их тысячи.
+        /// A line of the progress log — appended by the window rather than sent
+        /// whole as a map: a desktop installation has thousands of them.
         #[qsignal]
         #[cxx_name = "operationLog"]
         fn operation_log(self: Pin<&mut DesktopsActions>, line: QString);
 
-        /// Состав установленных столов мог измениться — страница пересчитает
-        /// себя. Операции теперь идут в фоне, и синхронного «получилось ли»
-        /// у методов больше нет.
+        /// The set of installed desktops may have changed — the page will
+        /// recompute itself. Operations now run in the background, and the methods
+        /// no longer have a synchronous "did it work".
         #[qsignal]
         #[cxx_name = "desktopsChanged"]
         fn desktops_changed(self: Pin<&mut DesktopsActions>);
 
-        /// Ответ на `requestVersion`: `(deId, версия)`. Пустая версия значит
-        /// «пакета в репозиториях нет либо спросить не вышло» — страница
-        /// тихо прячет строку, а не пугает ошибкой.
+        /// The answer to `requestVersion`: `(deId, version)`. An empty version
+        /// means "the package is not in the repositories or asking failed" — the
+        /// page quietly hides the line instead of scaring with an error.
         #[qsignal]
         #[cxx_name = "versionReady"]
         fn version_ready(self: Pin<&mut DesktopsActions>, de_id: QString, version: QString);
 
-        /// Ответ на `requestInstalledVersion`: `(deId, готовая строка)`;
-        /// пустая — версию узнать не вышло, строка скрыта.
+        /// The answer to `requestInstalledVersion`: `(deId, ready string)`; empty
+        /// means the version could not be found out, and the line is hidden.
         #[qsignal]
         #[cxx_name = "installedVersionReady"]
         fn installed_version_ready(self: Pin<&mut DesktopsActions>, de_id: QString, line: QString);
 
-        /// Ответ на `requestPackages`: `(deId, установлен ли, строка про
-        /// пакеты, предупреждение, набор не встанет из-за конфликта)`.
-        /// Пустая строка — спросить не вышло, и страница остаётся при своём
-        /// счёте имён. `blocked` — кнопки, ставящие набор, неактивны
-        /// (`qd::PackagesView::install_blocked`). `status` — замена шапки
-        /// («Установлен частично»), пусто — шапка как есть.
+        /// The answer to `requestPackages`: `(deId, whether installed, the line
+        /// about packages, a warning, the set will not install due to a conflict)`.
+        /// An empty line means asking failed, and the page keeps its own count of
+        /// names. `blocked` — the buttons that install the set are inactive
+        /// (`qd::PackagesView::install_blocked`). `status` replaces the header
+        /// ("Partially installed"), empty means the header as is.
         #[qsignal]
         #[cxx_name = "packagesReady"]
         fn packages_ready(
@@ -146,10 +157,10 @@ pub mod qobject {
             status: QString,
         );
 
-        /// Вторая половина ответа на `requestPackages`: пакет набора ждёт
-        /// пересборки против новой библиотеки, и его можно собрать из
-        /// исходников Arch — `(deId, установлен ли, подпись кнопки,
-        /// пояснение)`. Пустая подпись — предлагать нечего.
+        /// The second half of the answer to `requestPackages`: a package of the set
+        /// is waiting to be rebuilt against a new library, and it can be built from
+        /// the Arch sources — `(deId, whether installed, the button label, the
+        /// explanation)`. An empty label means there is nothing to offer.
         #[qsignal]
         #[cxx_name = "rebuildOfferReady"]
         fn rebuild_offer_ready(
@@ -160,9 +171,9 @@ pub mod qobject {
             hint: QString,
         );
 
-        /// Просьба показать встроенное «Сравнение DE». Сравнение — вторая
-        /// страница раздела, и переключает их хозяин: сам объект действий о
-        /// том, как устроено окно, не знает.
+        /// A request to show the built-in "DE comparison". The comparison is the
+        /// section's second page, and the host switches them: the action object
+        /// itself does not know how the window is arranged.
         #[qsignal]
         #[cxx_name = "compareRequested"]
         fn compare_requested(self: Pin<&mut DesktopsActions>);
@@ -174,164 +185,168 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// «Да» в окне вопроса — запустить операцию.
+        /// "Yes" in the question window — start the operation.
         #[qinvokable]
         #[cxx_name = "confirmOperation"]
         fn confirm_operation(self: Pin<&mut DesktopsActions>);
 
-        /// «Нет», «Понятно», «Закрыть» — убрать окно (пока операция идёт,
-        /// не действует).
+        /// "No", "Got it", "Close" — remove the window (does not work while the
+        /// operation is running).
         #[qinvokable]
         #[cxx_name = "dismissOperation"]
         fn dismiss_operation(self: Pin<&mut DesktopsActions>);
 
-        /// Через сколько миллисекунд подвал снимается сам (0 — не
-        /// снимается). Решает ядро по роду строки
-        /// (`system_de_exec::footer_hold`); окно заводит таймер и по нему
-        /// зовёт `expireStatus`.
+        /// After how many milliseconds the footer is removed by itself (0 — it is
+        /// not removed). Decided by the core by the kind of line
+        /// (`system_de_exec::footer_hold`); the window starts a timer and calls
+        /// `expireStatus` by it.
         #[qinvokable]
         #[cxx_name = "statusTimeoutMs"]
         fn status_timeout_ms(self: &DesktopsActions) -> i32;
 
-        /// Таймер подвала истёк.
+        /// The footer timer expired.
         #[qinvokable]
         #[cxx_name = "expireStatus"]
         fn expire_status(self: Pin<&mut DesktopsActions>);
 
-        /// Щелчок по подвалу.
+        /// A click on the footer.
         #[qinvokable]
         #[cxx_name = "dismissStatus"]
         fn dismiss_status(self: Pin<&mut DesktopsActions>);
 
-        /// Человек перешёл в другой раздел окна.
+        /// The user moved to another section of the window.
         #[qinvokable]
         #[cxx_name = "sectionChanged"]
         fn section_changed(self: Pin<&mut DesktopsActions>);
 
-        /// «Отменить» — только пока система не тронута.
+        /// "Cancel" — only while the system is untouched.
         #[qinvokable]
         #[cxx_name = "cancelOperation"]
         fn cancel_operation(self: Pin<&mut DesktopsActions>);
 
-        /// Шаг пароля (SteamOS, у «deck» пароля нет): задать пароль из двух
-        /// полей и продолжить операцию, что ждёт «Да».
+        /// The password step (SteamOS, "deck" has no password): set the password
+        /// from two fields and continue the operation waiting for "Yes".
         #[qinvokable]
         #[cxx_name = "submitPassword"]
         fn submit_password(self: Pin<&mut DesktopsActions>, first: &QString, second: &QString);
     }
 
     extern "RustQt" {
-        /// Установка стола. Подписи — те же, что у Python-класса
-        /// `DesktopsActions`, и это условие проверки: `DesktopsPage.qml` не
-        /// должен измениться ни на строку.
+        /// Installing a desktop. The signatures are the same as in the Python
+        /// `DesktopsActions` class, and that is a condition of the check:
+        /// `DesktopsPage.qml` must not change by a single line.
         #[qinvokable]
         fn install(self: Pin<&mut DesktopsActions>, de_id: &QString) -> bool;
 
-        /// Проверка и восстановление стола.
+        /// Checking and repairing a desktop.
         #[qinvokable]
         fn repair(self: Pin<&mut DesktopsActions>, de_id: &QString) -> bool;
 
-        /// Переключение на стол. Имя не `switch`: в JavaScript это ключевое
-        /// слово, и вызвать такой метод из QML нельзя.
+        /// Switching to a desktop. The name is not `switch`: in JavaScript that is
+        /// a keyword, and such a method cannot be called from QML.
         #[qinvokable]
         #[cxx_name = "switchTo"]
         fn switch_to(self: Pin<&mut DesktopsActions>, de_id: &QString) -> bool;
 
-        /// Удаление стола (обе защиты — в ядре, `qt_desktops::remove_plan`).
+        /// Removing a desktop (both safeguards are in the core,
+        /// `qt_desktops::remove_plan`).
         #[qinvokable]
         fn remove(self: Pin<&mut DesktopsActions>, de_id: &QString) -> bool;
 
-        /// «Проверить мой стол» — восстановление ТЕКУЩЕГО стола.
+        /// "Check my desktop" — repairing the CURRENT desktop.
         #[qinvokable]
         #[cxx_name = "repairCurrent"]
         fn repair_current(self: Pin<&mut DesktopsActions>) -> bool;
 
-        /// Снять копию настроек панели KDE.
+        /// Take a copy of the KDE panel settings.
         #[qinvokable]
         #[cxx_name = "panelBackup"]
         fn panel_backup(self: Pin<&mut DesktopsActions>) -> bool;
 
-        /// Вернуть панель KDE из последней снятой копии.
+        /// Restore the KDE panel from the last copy taken.
         #[qinvokable]
         #[cxx_name = "panelRestore"]
         fn panel_restore(self: Pin<&mut DesktopsActions>) -> bool;
 
-        /// Показать встроенное «Сравнение DE».
+        /// Show the built-in "DE comparison".
         #[qinvokable]
         #[cxx_name = "openCompare"]
         fn open_compare(self: Pin<&mut DesktopsActions>);
 
-        /// Блок «Оболочки»: поставить оболочку `shellId` в композитор `deId`
-        /// (вопрос с предупреждениями, затем пакеты и строка автозапуска).
+        /// The "Shells" block: install shell `shellId` into compositor `deId` (a
+        /// question with warnings, then the packages and the autostart line).
         #[qinvokable]
         #[cxx_name = "shellInstall"]
         fn shell_install(self: Pin<&mut DesktopsActions>, de_id: &QString, shell_id: &QString) -> bool;
 
-        /// Войти в композитор с оболочкой (выход из сеанса).
+        /// Log into the compositor with the shell (logging out of the session).
         #[qinvokable]
         #[cxx_name = "shellSwitch"]
         fn shell_switch(self: Pin<&mut DesktopsActions>, de_id: &QString, shell_id: &QString) -> bool;
 
-        /// Убрать оболочку из композитора; сам стол остаётся.
+        /// Remove the shell from the compositor; the desktop itself stays.
         #[qinvokable]
         #[cxx_name = "shellRemove"]
         fn shell_remove(self: Pin<&mut DesktopsActions>, de_id: &QString, shell_id: &QString) -> bool;
 
-        /// Спросить версию представительного пакета стола в репозиториях.
-        /// Ответ приходит сигналом `versionReady`.
+        /// Ask for the version of the desktop's representative package in the
+        /// repositories. The answer comes with the `versionReady` signal.
         #[qinvokable]
         #[cxx_name = "requestVersion"]
         fn request_version(self: Pin<&mut DesktopsActions>, de_id: &QString);
 
-        /// Версия установленного стола (тот же ключевой пакет, что у
-        /// «Доступно…») и, если в репозитории другая, — она. Ответ приходит
-        /// сигналом `installedVersionReady`.
+        /// The version of the installed desktop (the same key package as for
+        /// "Available…") and, if the repository has a different one, that one. The
+        /// answer comes with the `installedVersionReady` signal.
         #[qinvokable]
         #[cxx_name = "requestInstalledVersion"]
         fn request_installed_version(self: Pin<&mut DesktopsActions>, de_id: &QString);
 
-        /// Сколько пакетов РЕАЛЬНО поставится (группы раскрыты, зависимости
-        /// взяты) и не сломан ли набор в репозитории — пробной транзакцией
-        /// без прав root. Ответ приходит сигналом `packagesReady`.
+        /// How many packages will REALLY be installed (groups expanded,
+        /// dependencies taken) and whether the set in the repository is broken — by
+        /// a trial transaction without root rights. The answer comes with the
+        /// `packagesReady` signal.
         #[qinvokable]
         #[cxx_name = "requestPackages"]
         fn request_packages(self: Pin<&mut DesktopsActions>, de_id: &QString, installed: bool);
 
-        /// «Собрать заново из исходников Arch» под предупреждением о пакете,
-        /// который ждёт пересборки: вопрос, затем сборка и установка тем же
-        /// окном операции (`repo_rebuild::rebuild_live`).
+        /// "Rebuild from the Arch sources" under the warning about a package that
+        /// is waiting to be rebuilt: a question, then building and installing in the
+        /// same operation window (`repo_rebuild::rebuild_live`).
         #[qinvokable]
         #[cxx_name = "rebuildFromSources"]
         fn rebuild_from_sources(self: Pin<&mut DesktopsActions>, de_id: &QString);
 
-        /// Блок «Как в дистрибутиве»: «Применить» образ `look_id`. Сначала
-        /// в фоне собирается план (пробы пакетов — секунды), потом — вопрос
-        /// в окне операции, применение и итог.
+        /// The "As in the distribution" block: "Apply" look `look_id`. First the
+        /// plan is assembled in the background (package probes — seconds), then the
+        /// question in the operation window, applying and the outcome.
         #[qinvokable]
         #[cxx_name = "lookApply"]
         fn look_apply(self: Pin<&mut DesktopsActions>, look_id: &QString);
 
-        /// «Вернуть как было» для образа `look_id`: вопрос, ход и итог.
+        /// "Revert to what it was" for look `look_id`: the question, the progress
+        /// and the outcome.
         #[qinvokable]
         #[cxx_name = "lookRevert"]
         fn look_revert(self: Pin<&mut DesktopsActions>, look_id: &QString);
 
-        /// Галочка «по желанию» в окне вопроса (игровой режим SteamOS)
-        /// переключена: вопрос пересобирается по другому плану.
+        /// The "optional" checkbox in the question window (SteamOS game mode) was
+        /// toggled: the question is rebuilt by a different plan.
         #[qinvokable]
         #[cxx_name = "setOperationOption"]
         fn set_operation_option(self: Pin<&mut DesktopsActions>, checked: bool);
 
-        /// Переключатель варианта в окне вопроса (стиль SteamOS: Vapor или
-        /// VGUI2) — свойство `name` образа получило значение `value`:
-        /// вопрос пересобирается по другому плану.
+        /// A variant switch in the question window (SteamOS style: Vapor or VGUI2)
+        /// — property `name` of the look got value `value`: the question is rebuilt
+        /// by a different plan.
         #[qinvokable]
         #[cxx_name = "setOperationChoice"]
         fn set_operation_choice(self: Pin<&mut DesktopsActions>, name: &QString, value: &QString);
     }
 
-    // Объявление трейта обязано быть В МОСТЕ: cxx-qt печатает по нему алиас
-    // типа потока, без которого фоновый запрос не доедет до сигнала.
+    // The trait declaration must be IN THE BRIDGE: cxx-qt emits the thread type
+    // alias from it, without which the background request would not reach the
+    // signal.
     impl cxx_qt::Threading for DesktopsActions {}
 }
 
@@ -356,50 +371,53 @@ use rexon_core::steamos_sysext as sx;
 use rexon_core::system_plan;
 use rexon_core::utils;
 
-/// Rust-состояние объекта действий.
+/// Rust state of the action object.
 ///
-/// Кэш версий живёт на сессию — ровно как у Python: второй раз за той же
-/// версией пакетный менеджер не дёргается. Рядом список запросов в пути:
-/// страница уже бережётся флажком `versionPending`, но он один на карточку, а
-/// сюда приходят и со сменой стола, и с появлением объекта действий.
+/// The version cache lives for the session — exactly as in Python: the
+/// package manager is not poked a second time for the same version. Next to
+/// it is the list of requests in flight: the page already guards itself with
+/// the `versionPending` flag, but it is one per card, and requests come here
+/// both with a desktop change and with the appearance of the action object.
 #[derive(Default)]
 pub struct DesktopsActionsRust {
     status: String,
-    /// Род строки подвала — от него её срок (`dx::footer_hold`).
+    /// The kind of the footer line — its lifetime depends on it
+    /// (`dx::footer_hold`).
     status_kind: dx::FooterKind,
     versions: Arc<Mutex<HashMap<String, String>>>,
     in_flight: Arc<Mutex<HashSet<String>>>,
-    /// Предпросмотр установки по столу: `None` внутри — спросить не вышло.
-    /// Сбрасывается после каждой операции: состав системы поменялся.
+    /// Installation preview by desktop: `None` inside means asking failed.
+    /// Reset after every operation: the system composition changed.
     previews: Arc<Mutex<HashMap<String, Option<system_plan::InstallPreview>>>>,
     previews_in_flight: Arc<Mutex<HashSet<String>>>,
-    /// Пакеты стола, которые ждут пересборки и собираются из исходников
-    /// Arch (`repo_rebuild::find_candidates`). Живут и сбрасываются вместе
-    /// с предпросмотром.
+    /// The desktop's packages that are waiting to be rebuilt and are built from
+    /// the Arch sources (`repo_rebuild::find_candidates`). They live and are
+    /// reset together with the preview.
     rebuild_offers: Arc<Mutex<HashMap<String, Vec<repo_rebuild::Candidate>>>>,
-    /// Deepin на Treeland (`deepin_treeland::card_state`): что предложить
-    /// на карточке Deepin той же кнопкой под предупреждением. Живёт и
-    /// сбрасывается вместе с предпросмотром.
+    /// Deepin on Treeland (`deepin_treeland::card_state`): what to offer on the
+    /// Deepin card with the same button under the warning. Lives and is reset
+    /// together with the preview.
     treeland_offers: Arc<Mutex<HashMap<String, dt::Offer>>>,
-    /// Конфликт набора снимается заменой с согласия человека
-    /// (`system_plan::conflict_swaps`, River 0.5 → river-classic): что
-    /// заменить. Та же кнопка под предупреждением; живёт и сбрасывается
-    /// вместе с предпросмотром.
+    /// A set conflict is resolved by a replacement with the user's consent
+    /// (`system_plan::conflict_swaps`, River 0.5 → river-classic): what to
+    /// replace. The same button under the warning; lives and is reset together
+    /// with the preview.
     swap_offers: Arc<Mutex<HashMap<String, Vec<system_plan::PkgConflict>>>>,
-    /// Установленные столы, к которым можно добавить недостающий сеанс
-    /// (`system::missing_session`): Wayland или X11. Та же кнопка под
-    /// предупреждением; живёт и сбрасывается вместе с предпросмотром.
+    /// Installed desktops to which a missing session can be added
+    /// (`system::missing_session`): Wayland or X11. The same button under the
+    /// warning; lives and is reset together with the preview.
     session_offers: Arc<Mutex<HashMap<String, system::SessionKind>>>,
     op: OpView,
     pending: Option<PendingOp>,
     cancel: Option<dx::CancelToken>,
 }
 
-/// Что показывает окно операции. Все подписи — из ядра.
+/// What the operation window shows. All labels come from the core.
 ///
-/// Общее у всех владельцев окна `DeOperationDialog.qml` — «Рабочих столов»,
-/// «Сравнения» и «Настроек» (доустановка недостающего): разбор хода и итога
-/// один, чтобы окна не разъехались поведением.
+/// Shared by all owners of the `DeOperationDialog.qml` window — "Desktops",
+/// "Comparison" and "Settings" (installing what is missing): the handling of
+/// the progress and the outcome is one, so that the windows do not drift
+/// apart in behaviour.
 #[derive(Default, Clone)]
 pub(crate) struct OpView {
     pub(crate) phase: String,
@@ -413,27 +431,29 @@ pub(crate) struct OpView {
     pub(crate) close_enabled: bool,
     pub(crate) cancellable: bool,
     pub(crate) result_text: String,
-    /// Необратимое действие: «Да» красным.
+    /// An irreversible action: "Yes" in red.
     pub(crate) danger: bool,
-    /// Своя подпись «Да»/«Нет» вопроса (пусто — «Да»/«Нет»): у восстановления
-    /// оформления это «🛠 Восстановить» и «Не сейчас», как у Python-окна.
+    /// Our own "Yes"/"No" labels of the question (empty — "Yes"/"No"): for
+    /// restoring the look these are "🛠 Restore" and "Not now", as in the Python
+    /// window.
     pub(crate) yes_text: String,
     pub(crate) no_text: String,
-    /// Шаг пароля: почему пароль не принят (пусто — всё хорошо).
+    /// Password step: why the password was not accepted (empty — all is well).
     pub(crate) password_error: String,
-    /// Шаг пароля: `passwd` работает — поля и кнопки гаснут.
+    /// Password step: `passwd` is running — the fields and buttons are
+    /// disabled.
     pub(crate) password_busy: bool,
-    /// Галочка «по желанию» в окне вопроса (пусто — галочки нет) и
-    /// предупреждение под ней (простой HTML).
+    /// The "optional" checkbox in the question window (empty — no checkbox) and
+    /// the warning under it (simple HTML).
     pub(crate) option_text: String,
     pub(crate) option_hint: String,
     pub(crate) option_checked: bool,
-    /// Переключатели вариантов окна вопроса (пусто — их нет).
+    /// Variant switches of the question window (empty — there are none).
     pub(crate) choices: Vec<qd::LookSelect>,
 }
 
 impl OpView {
-    /// Окно хода только что начатой операции.
+    /// The progress window of a just started operation.
     pub(crate) fn running(title: &str) -> Self {
         OpView {
             phase: "running".to_string(),
@@ -444,7 +464,7 @@ impl OpView {
         }
     }
 
-    /// Окно вопроса.
+    /// The question window.
     pub(crate) fn confirm(title: &str, text: &str) -> Self {
         OpView {
             phase: "confirm".to_string(),
@@ -454,8 +474,8 @@ impl OpView {
         }
     }
 
-    /// Шаг пароля SteamOS: у «deck» пароля нет, без него `pkexec` не пройти.
-    /// «Да» — «Задать пароль», «Нет» — «Отмена».
+    /// The SteamOS password step: "deck" has no password, and `pkexec` cannot
+    /// be passed without one. "Yes" — "Set password", "No" — "Cancel".
     pub(crate) fn password(device: sx::Device) -> Self {
         OpView {
             phase: "password".to_string(),
@@ -467,7 +487,7 @@ impl OpView {
         }
     }
 
-    /// Карта для разметки: состояние и подписи кнопок.
+    /// The map for the markup: the state and the button labels.
     pub(crate) fn to_map(&self) -> QMap<QMapPair_QString_QVariant> {
         let mut m = QMap::<QMapPair_QString_QVariant>::default();
         let s = |v: &str| QVariant::from(&QString::from(v));
@@ -526,8 +546,9 @@ impl OpView {
         m
     }
 
-    /// Сообщение хода дела. `false` — окно уже не в ходе, менять нечего;
-    /// иначе строка для журнала окна, если она есть.
+    /// A progress message. `false` means the window is no longer in progress
+    /// and there is nothing to change; otherwise a line for the window's log,
+    /// if there is one.
     pub(crate) fn apply_progress(
         &mut self,
         stage: &str,
@@ -550,8 +571,8 @@ impl OpView {
         Some(update.log_line)
     }
 
-    /// Итог операции. `result` — приписка под журналом при удаче. Отдаёт
-    /// строку для журнала окна, если она есть.
+    /// The outcome of the operation. `result` is the note under the log on
+    /// success. Returns a line for the window's log, if there is one.
     pub(crate) fn apply_done(&mut self, outcome: &dx::DeOpOutcome, result: String) -> Option<String> {
         let done = dp::on_done(outcome.ok, &outcome.message);
         self.phase = "done".to_string();
@@ -576,67 +597,70 @@ impl OpView {
     }
 }
 
-/// Операция, ждущая «Да».
+/// An operation waiting for "Yes".
 #[derive(Clone)]
 enum PendingOp {
-    /// Установка стола — она же проверка и восстановление.
+    /// Installing a desktop — it is also checking and repairing.
     Install {
         de_id: String,
-        /// Установленные пакеты, которые человек согласился заменить
-        /// (пусто — обычная установка).
+        /// Installed packages the user agreed to replace (empty — an ordinary
+        /// installation).
         replace: Vec<String>,
         operation_title: String,
         done_title: String,
         done_text: String,
-        /// Итог, если исполнитель скажет «нужна перезагрузка» (пусто — тот же).
+        /// The outcome if the executor says "a reboot is needed" (empty — the
+        /// same).
         done_text_restart: String,
-        /// Выбранный сеанс (`None` — у стола выбора нет).
+        /// The chosen session (`None` — the desktop has no choice).
         session: Option<system::SessionKind>,
-        /// «➕ Добавить вариант …» на карточке установленного стола: ставится
-        /// только сеанс `session` (`dx::add_session_live`), не набор стола.
+        /// "➕ Add variant …" on an installed desktop's card: only the `session`
+        /// session is installed (`dx::add_session_live`), not the desktop's set.
         add_session: bool,
     },
-    /// Переключение на другой стол с выходом из сессии.
+    /// Switching to another desktop with logging out of the session.
     Switch {
         target: String,
         operation_title: String,
     },
-    /// Удаление стола (защиты уже пройдены, ядро проверит ещё раз).
+    /// Removing a desktop (the safeguards are already passed, the core will
+    /// check once more).
     Remove {
         de_id: String,
         operation_title: String,
     },
-    /// Сборка пакетов, ждущих пересборки, из исходников Arch.
+    /// Building packages waiting to be rebuilt from the Arch sources.
     Rebuild {
         packages: Vec<String>,
         operation_title: String,
     },
-    /// Deepin на Treeland: перевести установленный обычный Deepin (X11) на
-    /// Treeland (`update == false`) или обновить свою сборку deepin-session.
+    /// Deepin on Treeland: move the installed ordinary Deepin (X11) to Treeland
+    /// (`update == false`) or update our deepin-session build.
     Treeland {
         update: bool,
         operation_title: String,
     },
-    /// Связка «композитор + оболочка»: установка, вход, снятие.
+    /// The "compositor + shell" pair: installation, login, removal.
     Shell {
         job: ShellJob,
         wm: String,
         shell: DesktopShell,
         operation_title: String,
-        /// Приписка под журналом при удаче (простой HTML).
+        /// The note under the log on success (simple HTML).
         result: String,
     },
-    /// «Применить» образ «Как в дистрибутиве»: предложение ядра и выбор
-    /// галочки «по желанию»; стол сеанса снят при нажатии.
+    /// "Apply" an "As in the distribution" look: the core's offer and the
+    /// choice of the "optional" checkbox; the session desktop is taken at the
+    /// press.
     Look {
         offer: Box<dl::Offer>,
-        /// Выбранные варианты (пусто — по умолчанию).
+        /// The chosen variants (empty — the defaults).
         values: rexon_core::rxn_manifest::PropValues,
         opt_in: bool,
         de: String,
         operation_title: String,
     },
-    /// «Вернуть как было» образа.
+    /// "Revert to what it was" of a look.
     LookRevert {
         id: String,
         de: String,
@@ -644,7 +668,7 @@ enum PendingOp {
     },
 }
 
-/// Что сделать с оболочкой.
+/// What to do with the shell.
 #[derive(Clone, Copy)]
 enum ShellJob {
     Install,
@@ -652,17 +676,18 @@ enum ShellJob {
     Remove,
 }
 
-/// Что исполняет рабочий поток.
+/// What the worker thread executes.
 enum Job {
     Install(String, Vec<String>, Option<system::SessionKind>),
-    /// Добавить сеанс установленному столу.
+    /// Add a session to an installed desktop.
     AddSession(String, system::SessionKind),
     Switch(String),
     Remove(String),
     Rebuild(Vec<String>),
     Treeland { update: bool },
     Shell(ShellJob, String, DesktopShell),
-    /// Образ, план (`None` — применять нечего), что вернуть первым, стол.
+    /// The look, the plan (`None` — nothing to apply), what to revert first,
+    /// the desktop.
     LookApply {
         look: Box<dl::Look>,
         plan: Option<Box<dl::LookPlan>>,
@@ -675,8 +700,8 @@ enum Job {
     },
 }
 
-/// Простой HTML ядра для окна: переносы строк — `<br>` (в `RichText` голый
-/// перевод строки — пробел).
+/// The core's simple HTML for the window: line breaks become `<br>` (in
+/// `RichText` a bare line break is a space).
 fn html(text: &str) -> String {
     text.replace('\n', "<br>")
 }
@@ -686,9 +711,9 @@ impl qobject::DesktopsActions {
         QString::from(&self.rust().status)
     }
 
-    /// Строка подвала и её род. Повтор той же строки-сведения или ошибки
-    /// тоже оповещает: окно перезаводит её таймер, иначе повторное
-    /// «операция уже идёт» исчезло бы раньше срока.
+    /// The footer line and its kind. A repeat of the same info or error line
+    /// also notifies: the window restarts its timer, otherwise a repeated
+    /// "the operation is already running" would disappear before its time.
     fn set_status(mut self: Pin<&mut Self>, text: String, kind: dx::FooterKind) {
         if self.rust().status == text
             && self.rust().status_kind == kind
@@ -727,7 +752,7 @@ impl qobject::DesktopsActions {
         }
     }
 
-    // ── Читающее и навигационное: исполняет Rust ─────────────────────────
+    // ── Reading and navigation: executed by Rust ─────────────────────────
 
     fn open_compare(mut self: Pin<&mut Self>) {
         self.as_mut().compare_requested();
@@ -739,8 +764,9 @@ impl qobject::DesktopsActions {
             return;
         }
 
-        // Уже спрашивали — ответ отдаём немедленно, тем же сигналом. Пустая
-        // строка в кэше тоже ответ: «пакета нет», и спрашивать снова незачем.
+        // Already asked — we give the answer immediately, with the same signal. An
+        // empty string in the cache is an answer too: "no package", and there is
+        // no reason to ask again.
         let cached = self
             .as_ref()
             .get_ref()
@@ -782,9 +808,8 @@ impl qobject::DesktopsActions {
             });
             if let Err(e) = queued {
                 if !matches!(e, ThreadingQueueError::ObjectDestroyed) {
-                    // Молчать нельзя: без ответа страница осталась бы с
-                    // поднятым `versionPending` и не спросила бы больше
-                    // никогда.
+                    // Silence is not allowed: without an answer the page would stay with
+                    // `versionPending` raised and would never ask again.
                     rexon_core::log_warn!("desktops", "версия стола не доставлена странице: {e:?}");
                 }
             }
@@ -910,20 +935,20 @@ impl qobject::DesktopsActions {
         std::thread::spawn(move || {
             let family = system::DistroDetector::detect_live().family_live();
             let packages = system::get_packages(&de_id, family);
-            // Проба обычного набора. У Deepin её не заменить пробой варианта
-            // целиком: `card_state` берёт её запасным путём (с запретом
-            // deepin-kwin), если проба Treeland не вышла, а вне Arch и на
-            // неизменяемой системе она единственная.
+            // The probe of the ordinary set. For Deepin it cannot be replaced by the
+            // probe of the variant entirely: `card_state` takes it as a fallback (with
+            // deepin-kwin forbidden) if the Treeland probe did not work out, and
+            // outside Arch and on an immutable system it is the only one.
             let preview = system_plan::install_preview_live(family, &packages);
-            // Deepin ставится только на Treeland: стоит обычный (X11) —
-            // предложить перевести его на Treeland; своя сборка уже стоит —
-            // показывать пробу её набора и предложить обновление.
+            // Deepin is installed only on Treeland: if the ordinary (X11) one is
+            // installed, offer to move it to Treeland; if our build is already
+            // installed, show the probe of its set and offer an update.
             let treeland = dt::card_state_live(&de_id, family, preview.as_ref());
             let preview = treeland.preview.map(Some).unwrap_or(preview);
-            // Пакеты из AUR в наборе стола: один запрос RPC на весь список
-            // (признаки риска для строки-предупреждения карточки).
-            // Сюда же — AUR-добавка сеанса Wayland (сейчас ни у кого; для MATE (Polo)): её признаки риска
-            // окно вопроса показывает без сети.
+            // AUR packages in the desktop's set: one RPC request for the whole list
+            // (risk signals for the card's warning line).
+            // Also here — the AUR add-on of a Wayland session (none for now; for MATE
+            // (Polo)): the question window shows its risk signals without the network.
             let session_aur = system::session_aur_packages(&de_id, family, system::SessionKind::Wayland);
             if !installed {
                 let mut names = system::get_aur_packages(&de_id, family);
@@ -932,8 +957,8 @@ impl qobject::DesktopsActions {
             } else {
                 aur_trust_warm(&session_aur);
             }
-            // Стол стоит, а войти в один из его сеансов нельзя — предложить
-            // добавить недостающий.
+            // The desktop is installed, but one of its sessions cannot be logged into
+            // — offer to add the missing one.
             let session_offer = installed_sessions_live(&de_id, family)
                 .filter(|_| installed)
                 .and_then(system::missing_session);
@@ -943,18 +968,18 @@ impl qobject::DesktopsActions {
                     None => map.remove(&de_id),
                 };
             }
-            // Что из набора не ставится, потому что ждёт пересборки против
-            // новой библиотеки, — то можно собрать из исходников Arch. При
-            // конфликте с установленным пересборка не поможет — не
-            // предлагаем (`qd::rebuild_can_help`).
+            // What from the set does not install because it is waiting to be rebuilt
+            // against a new library — that can be built from the Arch sources. With a
+            // conflict with something installed a rebuild will not help — we do not
+            // offer it (`qd::rebuild_can_help`).
             let broken: Vec<String> = preview
                 .as_ref()
                 .filter(|p| qd::rebuild_can_help(p))
                 .map(|p| p.blocked.iter().chain(&p.skipped).cloned().collect())
                 .unwrap_or_default();
             let candidates = repo_rebuild::find_candidates_live(&broken);
-            // Конфликт с другой веткой той же программы (River 0.5) —
-            // кнопка замены с вопросом.
+            // A conflict with another branch of the same program (River 0.5) — a
+            // replacement button with a question.
             let swaps = preview.as_ref().map(system_plan::conflict_swaps).unwrap_or_default();
             let (button, hint) = offer_texts(
                 treeland.offer.as_ref(),
@@ -1009,18 +1034,19 @@ impl qobject::DesktopsActions {
         });
     }
 
-    // ── Установка, смена, удаление: исполнителя у ядра ещё нет ───────────
+    // ── Installation, switching, removal: the core has no executor yet ───
 
     fn install(self: Pin<&mut Self>, de_id: &QString) -> bool {
-        // Порт `DesktopsActions.install`: общий вопрос с разбором
-        // совместимости (`confirm_de_install`), затем `install_de` в ядре.
+        // A port of `DesktopsActions.install`: the shared question with the
+        // compatibility analysis (`confirm_de_install`), then `install_de` in the
+        // core.
         let de_id = de_id.to_string();
         let Some(name) = known_name(&de_id) else {
             self.report_unknown(&de_id);
             return false;
         };
-        // Стол с двумя сеансами (Cinnamon, Xfce, LXQt, MATE): карточки
-        // «X11 / Wayland / Оба» в том же окне, предвыбран рекомендованный.
+        // A desktop with two sessions (Cinnamon, Xfce, LXQt, MATE): "X11 / Wayland
+        // / Both" cards in the same window, with the recommended one preselected.
         if let Some(pick) = session_offer_default(&de_id) {
             self.ask_install_session(&de_id, pick);
             return false;
@@ -1029,22 +1055,23 @@ impl qobject::DesktopsActions {
         false
     }
 
-    /// Вопрос установки с выбранным вариантом сеанса `pick`.
+    /// The installation question with the chosen session variant `pick`.
     fn ask_install_session(self: Pin<&mut Self>, de_id: &str, pick: system::SessionPick) {
         let family = system::DistroDetector::detect_live().family_live();
         let helper = aur_helper_present(family);
         let risk = session_aur_risk(de_id, family);
         let texts = qd::install_texts_with_session(de_id, family, pick, helper, &risk);
         let choice = qd::session_choice(de_id, family, pick, helper);
-        // Wayland недоступен (MATE без помощника AUR) — ставится X11.
+        // Wayland is unavailable (MATE without an AUR helper) — X11 is installed.
         let kind = qd::session_pick_effective(de_id, family, pick, helper).install_kind();
         self.ask_install(de_id, texts, Vec::new(), Some(kind), choice);
     }
 
     fn repair(mut self: Pin<&mut Self>, de_id: &QString) -> bool {
-        // Порт `DesktopsActions.repair`: повторная штатная установка —
-        // пакетный менеджер с `--needed` сам пропускает стоящее. Ход и итог
-        // приходят позже сигналами, поэтому ответ метода всегда `false`.
+        // A port of `DesktopsActions.repair`: a repeated standard installation —
+        // the package manager with `--needed` skips what is installed by itself.
+        // The progress and the outcome come later with signals, so the method
+        // always answers `false`.
         let de_id = de_id.to_string();
         let Some(name) = known_name(&de_id) else {
             self.report_unknown(&de_id);
@@ -1058,9 +1085,9 @@ impl qobject::DesktopsActions {
         false
     }
 
-    /// SteamOS: кнопка, которую карточка показывает неактивной
-    /// (`qd::steamos_button_block`), и при прямом вызове не идёт дальше —
-    /// окно с той же причиной. `true` — отказано.
+    /// SteamOS: a button the card shows as inactive
+    /// (`qd::steamos_button_block`) does not go further on a direct call either
+    /// — a window with the same reason. `true` means refused.
     fn refused_on_steamos(mut self: Pin<&mut Self>, kind: &str, de_id: &str, current: &str, operation_title: &str) -> bool {
         let steamos = rexon_core::distro_compat::running_on_steamos();
         let Some(why) = qd::steamos_button_block(kind, de_id, de_id == current, steamos) else {
@@ -1072,9 +1099,9 @@ impl qobject::DesktopsActions {
     }
 
     fn switch_to(mut self: Pin<&mut Self>, de_id: &QString) -> bool {
-        // Порт `DesktopsActions.switchTo`: вопрос, затем `switch_de` в ядре
-        // (копии, приложения по умолчанию, выход из сессии). На текущий стол
-        // ядро не переключит — кнопки на нём и так нет.
+        // A port of `DesktopsActions.switchTo`: a question, then `switch_de` in the
+        // core (copies, default applications, logging out of the session). The core
+        // will not switch to the current desktop — it has no button anyway.
         let de_id = de_id.to_string();
         let Some(name) = known_name(&de_id) else {
             self.report_unknown(&de_id);
@@ -1084,8 +1111,8 @@ impl qobject::DesktopsActions {
             self.set_status(dx::busy_message(), dx::FooterKind::Notice);
             return false;
         }
-        // Тексты переключения общие с «Сравнением DE» — там они дословно те
-        // же, и вторая копия разъехалась бы молча.
+        // The switching texts are shared with "DE comparison" — they are verbatim
+        // the same there, and a second copy would silently drift apart.
         let texts = qc::switch_texts(&name);
         self.as_mut().rust_mut().pending = Some(PendingOp::Switch {
             target: de_id,
@@ -1103,12 +1130,14 @@ impl qobject::DesktopsActions {
     }
 
     fn remove(mut self: Pin<&mut Self>, de_id: &QString) -> bool {
-        // Порт `DesktopsActions.remove`. Защиты три, и все решает ядро:
-        //   1. кнопки «Удалить» у текущего стола нет (`card_buttons`);
-        //   2. `qt_desktops::remove_plan` — не текущий и не последний
-        //      установленный, иначе окно с объяснением без кнопки удаления;
-        //   3. `remove_de(force=false)` в исполнителе — прямой вызов тоже
-        //      откажет.
+        // A port of `DesktopsActions.remove`. There are three safeguards, and the
+        // core decides all of them:
+        //   1. the current desktop has no "Remove" button (`card_buttons`);
+        //   2. `qt_desktops::remove_plan` — not the current one and not the last
+        //      installed one, otherwise a window with an explanation without a
+        //      remove button;
+        //   3. `remove_de(force=false)` in the executor — a direct call will refuse
+        //      too.
         let de_id = de_id.to_string();
         let Some(name) = known_name(&de_id) else {
             self.report_unknown(&de_id);
@@ -1157,8 +1186,8 @@ impl qobject::DesktopsActions {
     }
 
     fn repair_current(mut self: Pin<&mut Self>) -> bool {
-        // Порт `DesktopsActions.repairCurrent`: восстановление ТЕКУЩЕГО
-        // стола. Не опознан — окно с объяснением, а не молчание.
+        // A port of `DesktopsActions.repairCurrent`: repairing the CURRENT
+        // desktop. Not recognized — a window with an explanation, not silence.
         let current = current_de().filter(|de| known_name(de).is_some());
         let Some(current) = current else {
             let (title, text) = (qd::repair_current_unknown_title(), qd::repair_current_unknown_text());
@@ -1174,7 +1203,7 @@ impl qobject::DesktopsActions {
         false
     }
 
-    // ── Окно операции ────────────────────────────────────────────────────
+    // ── Operation window ─────────────────────────────────────────────────
 
     fn operation(&self) -> QMap<QMapPair_QString_QVariant> {
         self.rust().op.to_map()
@@ -1189,7 +1218,7 @@ impl qobject::DesktopsActions {
         self.rust().op.phase == "running"
     }
 
-    /// Окно-сообщение с одной кнопкой «Понятно».
+    /// A message window with one "Got it" button.
     fn show_notice(self: Pin<&mut Self>, title: &str, text: &str) {
         self.set_op(OpView {
             phase: "blocked".to_string(),
@@ -1199,13 +1228,15 @@ impl qobject::DesktopsActions {
         });
     }
 
-    /// Порт `confirm_de_install`: отказ дистрибутива — окном без кнопки
-    /// «установить» ДО запроса пароля; предупреждение — в том же вопросе.
-    /// `replace` — согласие заменить установленные пакеты (кнопка замены);
-    /// тогда «Да» красное: установленное будет снято.
+    /// A port of `confirm_de_install`: a distribution refusal — as a window
+    /// without an "install" button BEFORE the password prompt; a warning — in
+    /// the same question. `replace` is the consent to replace installed packages
+    /// (the replacement button); then "Yes" is red: what is installed will be
+    /// removed.
     ///
-    /// `session` — сеанс, который поставится (`None` — у стола выбора нет);
-    /// `choice` — переключатель сеанса в окне (`None` — не показывать).
+    /// `session` is the session that will be installed (`None` — the desktop has
+    /// no choice); `choice` is the session switch in the window (`None` — do not
+    /// show).
     fn ask_install(
         mut self: Pin<&mut Self>,
         de_id: &str,
@@ -1218,8 +1249,8 @@ impl qobject::DesktopsActions {
             self.set_status(dx::busy_message(), dx::FooterKind::Notice);
             return;
         }
-        // SteamOS: стол-образ — свой вопрос (сборка из пакетов Valve,
-        // пересборка после обновлений), а не пакетный.
+        // SteamOS: an image desktop gets its own question (built from Valve
+        // packages, rebuilt after updates), not the package one.
         let version = sx::live_release().map(|r| r.version_id);
         let texts = qd::steamos_op_texts(texts, de_id, version.as_deref());
         let verdict = dx::install_verdict_live(de_id);
@@ -1274,8 +1305,9 @@ impl qobject::DesktopsActions {
         let Some(pending) = self.as_mut().rust_mut().pending.take() else {
             return;
         };
-        // SteamOS: у «deck» без пароля `pkexec` не пройти — сначала шаг
-        // пароля в этом же окне, операция ждёт его в `pending`.
+        // SteamOS: "deck" without a password cannot pass `pkexec` — first the
+        // password step in this same window, and the operation waits for it in
+        // `pending`.
         match steamos_admin_gate(&pending) {
             None | Some(sx::AdminGate::Ready) => {}
             Some(sx::AdminGate::AskPassword) => {
@@ -1295,12 +1327,12 @@ impl qobject::DesktopsActions {
         self.start_operation(pending);
     }
 
-    /// Запустить операцию, на которую ответили «Да» (и, если надо, задали
-    /// пароль): окно хода и рабочий поток.
+    /// Start the operation answered with "Yes" (and, if needed, with a password
+    /// set): the progress window and the worker thread.
     fn start_operation(mut self: Pin<&mut Self>, pending: PendingOp) {
-        // Итог «перезагрузите» вместо обычного — когда исполнитель по плану
-        // установки решил, что без перезагрузки сделанное не заработает
-        // (`DeOpOutcome::restart_needed`).
+        // The "reboot" outcome instead of the ordinary one — when the executor
+        // decided by the installation plan that what was done will not work
+        // without a reboot (`DeOpOutcome::restart_needed`).
         let mut restart_result: Option<String> = None;
         let (operation_title, result, job) = match pending {
             PendingOp::Install {
@@ -1316,7 +1348,7 @@ impl qobject::DesktopsActions {
                 if !done_text_restart.is_empty() {
                     restart_result = Some(format!("<b>{done_title}</b><br>{}", html(&done_text_restart)));
                 }
-                // Пустой итог (стол-образ SteamOS): его пишет исполнитель.
+                // An empty outcome (a SteamOS image desktop): the executor writes it.
                 let result = if done_text.is_empty() {
                     String::new()
                 } else {
@@ -1328,7 +1360,8 @@ impl qobject::DesktopsActions {
                 };
                 (operation_title, result, job)
             }
-            // Успех смены — это выход из сессии; итоговой приписки нет.
+            // Success of a switch is logging out of the session; there is no outcome
+            // note.
             PendingOp::Switch {
                 target,
                 operation_title,
@@ -1337,8 +1370,9 @@ impl qobject::DesktopsActions {
                 de_id,
                 operation_title,
             } => (operation_title, String::new(), Job::Remove(de_id)),
-            // Итог (что собрано и что Arch пришлёт свою пересборку) пишет
-            // в журнал окно по `DeOpOutcome`; приписка под журналом не нужна.
+            // The outcome (what was built and that Arch will send its own rebuild) is
+            // written into the log by the window according to `DeOpOutcome`; no note
+            // under the log is needed.
             PendingOp::Rebuild {
                 packages,
                 operation_title,
@@ -1357,8 +1391,8 @@ impl qobject::DesktopsActions {
                 operation_title,
                 result,
             } => (operation_title, result, Job::Shell(job, wm, shell)),
-            // Итог (что применено, что пропущено, что поставить из AUR)
-            // пишет ядро — приписку собирает рабочий поток.
+            // The outcome (what was applied, what was skipped, what to install from
+            // AUR) is written by the core — the worker thread assembles the note.
             PendingOp::Look {
                 offer,
                 values,
@@ -1391,7 +1425,8 @@ impl qobject::DesktopsActions {
             let sink: Arc<dyn dx::DeOpSink> = Arc::new(QtSink {
                 handle: handle.clone(),
             });
-            // Итог образа «Как в дистрибутиве» — словами ядра под журналом.
+            // The outcome of an "As in the distribution" look — in the core's words
+            // under the log.
             let mut job_result: Option<String> = None;
             let outcome = match job {
                 Job::LookApply {
@@ -1431,9 +1466,9 @@ impl qobject::DesktopsActions {
                     dx::shell_remove_live(sink, token, &wm, shell, &current)
                 }
             };
-            // Состав столов мог поменяться (и при неудаче — часть
-            // поставилась): у нескольких демонов уведомлений одно имя шины,
-            // и без нашего выбора уведомления рисовал бы чужой.
+            // The set of desktops may have changed (even on failure — part of it got
+            // installed): several notification daemons have one bus name, and without
+            // our choice someone else's would draw the notifications.
             rexon_core::notifications_slot::sync_live();
             let result = match restart_result {
                 Some(text) if outcome.restart_needed => text,
@@ -1454,8 +1489,8 @@ impl qobject::DesktopsActions {
         let footer = dx::operation_footer(&title, &op.status);
         self.as_mut().set_op(op);
         self.as_mut().set_status(footer, dx::outcome_footer_kind(&outcome));
-        // Состав системы мог поменяться и при неудаче (часть поставилась):
-        // прежний предпросмотр больше не правда.
+        // The system composition may have changed even on failure (part of it got
+        // installed): the previous preview is no longer true.
         if let Ok(mut map) = self.as_ref().get_ref().rust().previews.lock() {
             map.clear();
         }
@@ -1484,9 +1519,9 @@ impl qobject::DesktopsActions {
         if let Some(line) = log_line {
             self.as_mut().operation_log(QString::from(&line));
         }
-        // Большинство строк pacman полосу и подписи не трогают; оповещение
-        // `operation` пересчитывает все привязки окна, поэтому его — только
-        // когда видимое правда поменялось.
+        // Most pacman lines do not touch the bar and the labels; the `operation`
+        // notification recomputes all bindings of the window, so it is sent only
+        // when what is visible has really changed.
         let old = &self.rust().op;
         if op.bar != old.bar || op.status != old.status || op.current != old.current {
             self.set_op(op);
@@ -1506,9 +1541,9 @@ impl qobject::DesktopsActions {
         if self.busy() || self.rust().op.password_busy {
             return;
         }
-        // Окно вопроса или отказа закрыли — строка подвала «ответьте в
-        // открывшемся окне» больше не правда, её надо снять. Итог
-        // завершённой операции остаётся: он по-прежнему верен.
+        // The question or refusal window was closed — the footer line "answer in
+        // the window that opened" is no longer true and has to be removed. The
+        // outcome of a finished operation stays: it is still correct.
         let phase = self.rust().op.phase.clone();
         if phase == "confirm" || phase == "blocked" || phase == "password" {
             self.as_mut().set_status(String::new(), dx::FooterKind::Pending);
@@ -1524,8 +1559,8 @@ impl qobject::DesktopsActions {
         if let Some(token) = &self.rust().cancel {
             token.cancel();
         }
-        // Кнопка гаснет сразу: второй щелчок ничего не добавит, а исполнитель
-        // остановится на ближайшей безопасной точке.
+        // The button is disabled at once: a second click adds nothing, and the
+        // executor will stop at the nearest safe point.
         let mut op = self.rust().op.clone();
         op.cancellable = false;
         self.as_mut().set_op(op);
@@ -1542,8 +1577,8 @@ impl qobject::DesktopsActions {
             self.set_op(op);
             return;
         }
-        // `passwd` с задержками PAM — секунды; окно ждёт с погашенными
-        // полями, закрыть его в это время нельзя.
+        // `passwd` with PAM delays takes seconds; the window waits with the fields
+        // disabled, and it cannot be closed during that time.
         op.password_error = String::new();
         op.password_busy = true;
         self.as_mut().set_op(op);
@@ -1555,8 +1590,8 @@ impl qobject::DesktopsActions {
         });
     }
 
-    /// `passwd` ответил: задан — операция идёт дальше; нет — его слова под
-    /// полями, можно попробовать другой пароль.
+    /// `passwd` answered: set — the operation goes on; not set — its words
+    /// under the fields, another password can be tried.
     fn password_done(mut self: Pin<&mut Self>, result: Result<(), String>) {
         let mut op = self.rust().op.clone();
         if op.phase != "password" {
@@ -1577,20 +1612,21 @@ impl qobject::DesktopsActions {
         self.as_mut().operation_log(QString::from(&sx::password_set_text()));
     }
 
-    // ── Панель KDE: исполняет ядро, тем же вызовом, что и «Настройки» ────
+    // ── KDE panel: executed by the core, with the same call as "Settings" ─
     //
-    // Паритет с Python-вкладкой (`DesktopsActions.panelBackup/panelRestore`
-    // в `rexon/qt_desktops/window.py`): копия снимается без вопроса, возврат
-    // — только после «Да» на тот же вопрос ядра; итог — тексты ядра
-    // `panel_*_result`. Оба метода возвращают `false`: состав установленных
-    // столов от панели не меняется, пересчитывать его странице незачем.
+    // Parity with the Python tab (`DesktopsActions.panelBackup/panelRestore`
+    // in `rexon/qt_desktops/window.py`): the copy is taken without a question,
+    // the restore only after "Yes" to the same question of the core; the
+    // outcome is the core's `panel_*_result` texts. Both methods return
+    // `false`: the set of installed desktops does not change from the panel,
+    // and there is no reason for the page to recompute it.
 
     fn panel_backup(self: Pin<&mut Self>) -> bool {
         let data_home = utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref().filter(|v| !v.is_empty()), &std::env::var("HOME").unwrap_or_default());
         let (ok, message) = match current_de().as_deref() {
-            // MATE и XFCE держат ОДНУ копию: новая заменяет прежнюю, а у
-            // MATE это ещё и копия «Вернуть прежнюю панель» — без спроса не
-            // затираем.
+            // MATE and XFCE keep ONE copy: a new one replaces the previous one, and for
+            // MATE it is also the "Restore the previous panel" copy — we do not
+            // overwrite it without asking.
             Some(de @ ("mate" | "xfce")) => {
                 let exists = if de == "mate" {
                     std::path::Path::new(&rexon_core::mate_panel::PanelCtx::from_env().backup_path()).is_file()
@@ -1609,7 +1645,7 @@ impl qobject::DesktopsActions {
                     rexon_core::backup::xfce_panel_save_live(&data_home)
                 }
             }
-            // Прочие столы: одна копия на стол (`backup::panel_copy_*`).
+            // Other desktops: one copy per desktop (`backup::panel_copy_*`).
             Some(de) if de != "kde" && rexon_core::backup::live_panel_copy_spec(de).is_some() => {
                 if rexon_core::backup::panel_copy_exists_live(de) {
                     let (title, text) = qd::panel_backup_replace_confirm(false);
@@ -1620,9 +1656,9 @@ impl qobject::DesktopsActions {
                 rexon_core::backup::panel_copy_save_live(de)
             }
             _ => crate::settings_actions::panel_backup_now("manual")
-                // Отказ ДИСКА (каталог не создался, мета-файл не записался) — у
-                // Python это было исключение, и оно шло в тот же итог «не
-                // удалось» со своим текстом.
+                // A DISK refusal (the directory was not created, the meta file was not
+                // written) — in Python this was an exception, and it went into the same
+                // "failed" outcome with its own text.
                 .unwrap_or_else(|detail| (false, detail)),
         };
         self.set_status(panel_status(&qd::panel_backup_result(ok, &message)), dx::result_footer_kind(ok));
@@ -1635,12 +1671,12 @@ impl qobject::DesktopsActions {
             &QString::from(&qd::panel_restore_confirm_text()),
         );
         if !agreed {
-            // Человек передумал — сказать нечего (как у Python).
+            // The user changed their mind — there is nothing to say (as in Python).
             return false;
         }
         let (ok, message) = match current_de().as_deref() {
-            // Та же копия, что у «Вернуть прежнюю панель» раздела «Раскладка
-            // панели» (`mate_panel::restore`).
+            // The same copy as for "Restore the previous panel" of the "Panel layout"
+            // section (`mate_panel::restore`).
             Some("mate") => {
                 let text = rexon_core::mate_panel::restore(&rexon_core::animations::SystemIo, &rexon_core::mate_panel::PanelCtx::from_env());
                 (text.starts_with('✅'), text)
@@ -1656,9 +1692,10 @@ impl qobject::DesktopsActions {
         };
         let status = panel_status(&qd::panel_restore_result(ok, &message));
         self.as_mut().set_status(status.clone(), dx::result_footer_kind(ok));
-        // GNOME: настройки вернулись, недостающие расширения из копии ставятся
-        // с extensions.gnome.org в рабочем потоке (окно подтверждения
-        // оболочки ждёт человека); итог дописывается к строке состояния.
+        // GNOME: the settings were restored, the missing extensions from the copy
+        // are installed from extensions.gnome.org in a worker thread (the shell's
+        // confirmation window waits for the user); the outcome is appended to the
+        // status line.
         if ok && current_de().as_deref() == Some("gnome") {
             let handle = self.as_mut().qt_thread();
             std::thread::spawn(move || {
@@ -1676,14 +1713,15 @@ impl qobject::DesktopsActions {
         false
     }
 
-    // ── Блок «Оболочки» ──────────────────────────────────────────────────
+    // ── The "Shells" block ───────────────────────────────────────────────
     //
-    // Вопрос, отказ и ход — тем же окном операции, что у столов. Отказы
-    // (SteamOS, нет в репозиториях, нет самого стола) — окном без «Да» ДО
-    // пароля; пароль спрашивает исполнитель ядра, только если пакеты нужно
-    // ставить или снимать.
+    // The question, the refusal and the progress — in the same operation
+    // window as for desktops. Refusals (SteamOS, not in the repositories, no
+    // desktop itself) — as a window without "Yes" BEFORE the password; the
+    // password is asked by the core's executor only if packages need to be
+    // installed or removed.
 
-    /// Разобрать пару «композитор, оболочка» и показать отказ, если её нет.
+    /// Parse the "compositor, shell" pair and show a refusal if there is none.
     fn shell_target(mut self: Pin<&mut Self>, de_id: &QString, shell_id: &QString) -> Option<(String, DesktopShell)> {
         let wm = de_id.to_string();
         let shell = sb::shell_by_id(&shell_id.to_string());
@@ -1702,7 +1740,7 @@ impl qobject::DesktopsActions {
         }
     }
 
-    // ── Пакет, ждущий пересборки: собрать из исходников Arch ─────────────
+    // ── A package waiting to be rebuilt: build from the Arch sources ─────
 
     fn rebuild_from_sources(mut self: Pin<&mut Self>, de_id: &QString) {
         let de_id = de_id.to_string();
@@ -1710,8 +1748,8 @@ impl qobject::DesktopsActions {
             self.set_status(dx::busy_message(), dx::FooterKind::Notice);
             return;
         }
-        // Та же кнопка на карточке Deepin — перевести обычный Deepin на
-        // Treeland (`Offer::Install`) или обновить свою сборку.
+        // The same button on the Deepin card — move the ordinary Deepin to
+        // Treeland (`Offer::Install`) or update our build.
         let treeland = self
             .as_ref()
             .get_ref()
@@ -1733,8 +1771,9 @@ impl qobject::DesktopsActions {
             self.set_op(OpView::confirm(&operation_title, &text));
             return;
         }
-        // Та же кнопка — замена другой ветки той же программы (River 0.5):
-        // обычный вопрос установки с текстом замены и согласием на неё.
+        // The same button — replacing another branch of the same program (River
+        // 0.5): the ordinary installation question with the replacement text and
+        // the consent to it.
         let swaps = self
             .as_ref()
             .get_ref()
@@ -1769,9 +1808,8 @@ impl qobject::DesktopsActions {
             .ok()
             .and_then(|map| map.get(&de_id).cloned())
             .unwrap_or_default();
-        // Та же кнопка — добавить недостающий сеанс (Wayland или X11) к
-        // установленному столу (уступает пересборке: так же решает
-        // `offer_texts`).
+        // The same button — add a missing session (Wayland or X11) to an installed
+        // desktop (it yields to a rebuild: `offer_texts` decides the same way).
         let session = self
             .as_ref()
             .get_ref()
@@ -1788,7 +1826,7 @@ impl qobject::DesktopsActions {
                 system::SessionKind::Wayland => system::SessionPick::Wayland,
             };
             if qd::session_pick_effective(&de_id, family, pick, helper) != pick {
-                // MATE без помощника AUR: объяснить, а не ставить впустую.
+                // MATE without an AUR helper: explain rather than install in vain.
                 let name = qd::display_name(&de_id).to_string();
                 let title = qd::session_add_texts(&de_id, family, kind, helper, "").confirm_title;
                 self.show_notice(&title, &qd::session_no_aur_helper_text(&name));
@@ -1802,8 +1840,8 @@ impl qobject::DesktopsActions {
             return;
         }
         if candidates.is_empty() {
-            // Кнопка пережила предложение: состав системы сменился после
-            // операции, и собирать больше нечего.
+            // The button outlived the offer: the system composition changed after the
+            // operation, and there is nothing to build any more.
             self.set_status(repo_rebuild::offer_gone(), dx::FooterKind::Notice);
             return;
         }
@@ -1854,7 +1892,7 @@ impl qobject::DesktopsActions {
             self.show_notice(&texts_title, &why);
             return false;
         }
-        // DMS смотрит в ~/.config/hypr мимо XDG_CONFIG_HOME — и мы туда же.
+        // DMS looks into ~/.config/hypr bypassing XDG_CONFIG_HOME — and so do we.
         let hypr = format!("{}/.config/hypr", std::env::var("HOME").unwrap_or_default());
         let hypr_lua = std::path::Path::new(&format!("{hypr}/hyprland.lua")).is_file();
         let hypr_strays = std::path::Path::new(&format!("{hypr}/hyprland.conf")).is_file()
@@ -1862,7 +1900,7 @@ impl qobject::DesktopsActions {
                 .map(|d| d.flatten().any(|e| e.path().extension().is_some_and(|x| x == "conf")))
                 .unwrap_or(false);
         let warnings = sb::install_warnings(shell, &wm, hypr_lua, hypr_strays);
-        // Что реально поставится — то и называем (пусто — пароль не нужен).
+        // We name what will really be installed (empty — no password is needed).
         let candidates = sb::packages(shell, &wm, family).unwrap_or_default();
         self.ask_shell_after_query(candidates, false, move |packages| {
             let t = qd::shell_install_texts(shell, &wm, packages, &warnings);
@@ -1878,12 +1916,13 @@ impl qobject::DesktopsActions {
         false
     }
 
-    /// Задать вопрос про связку, когда станет ясно, какие пакеты из
-    /// `candidates` стоят: оставляются стоящие (`installed`) или нестоящие.
+    /// Ask the question about the pair once it becomes clear which packages
+    /// from `candidates` are installed: the installed ones (`installed`) or the
+    /// not installed ones are kept.
     ///
-    /// `pacman -Q` по каждому пакету занимает секунды — в потоке интерфейса
-    /// окно на это время замирало. Проверка идёт в фоне, вопрос приходит в
-    /// поток Qt готовым.
+    /// `pacman -Q` for each package takes seconds — in the interface thread the
+    /// window froze for that time. The check runs in the background, and the
+    /// question arrives in the Qt thread ready.
     fn ask_shell_after_query(
         mut self: Pin<&mut Self>,
         candidates: Vec<&'static str>,
@@ -1943,11 +1982,12 @@ impl qobject::DesktopsActions {
         false
     }
 
-    // ── Блок «Как в дистрибутиве» ────────────────────────────────────────
+    // ── The "As in the distribution" block ───────────────────────────────
     //
-    // Тем же окном операции, что у столов: план в фоне → вопрос (галочка
-    // «по желанию») → (пароль SteamOS) → ход в рабочем потоке → итог.
-    // Тексты и решения — ядро (`qt_desktops::look_*`, `distro_looks`).
+    // In the same operation window as for desktops: the plan in the
+    // background → the question (the "optional" checkbox) → (the SteamOS
+    // password) → the progress in a worker thread → the outcome. Texts and
+    // decisions are the core's (`qt_desktops::look_*`, `distro_looks`).
 
     fn look_apply(mut self: Pin<&mut Self>, look_id: &QString) {
         if self.busy() {
@@ -1972,7 +2012,7 @@ impl qobject::DesktopsActions {
         });
     }
 
-    /// План собран: вопрос или отказ.
+    /// The plan is assembled: a question or a refusal.
     fn look_offered(mut self: Pin<&mut Self>, offer: Result<dl::Offer, String>, de: String, title: String) {
         match offer {
             Ok(offer) => self.show_look_confirm(offer, Default::default(), false, de, title),
@@ -2066,13 +2106,13 @@ impl qobject::DesktopsActions {
                 values.insert(name.to_string(), serde_json::Value::String(value.to_string()));
                 self.show_look_confirm(*offer, values, opt_in, de, operation_title)
             }
-            // Переключатель сеанса в окне «Установить?»: вопрос
-            // пересобирается — меняются пояснение и строка итога.
+            // The session switch in the "Install?" window: the question is rebuilt —
+            // the explanation and the outcome line change.
             Some(PendingOp::Install { de_id, replace, .. })
                 if name.to_string() == qd::SESSION_CHOICE_NAME && replace.is_empty() =>
             {
-                // Значения приходят из наших же вариантов; незнакомое —
-                // безопасный X11, а не окно без ответа на «Да».
+                // The values come from our own variants; an unknown one is the safe X11,
+                // not a window without an answer to "Yes".
                 let pick = system::SessionPick::from_value(&value.to_string()).unwrap_or(system::SessionPick::X11);
                 self.ask_install_session(&de_id, pick);
             }
@@ -2116,10 +2156,11 @@ impl qobject::DesktopsActions {
 }
 
 // ============================================================================
-// Доставка хода дела из рабочего потока
+// Delivering the progress from the worker thread
 // ============================================================================
 
-/// Приёмник хода исполнителя ядра: каждое событие уходит в поток Qt.
+/// Receiver of the core executor's progress: every event goes to the Qt
+/// thread.
 struct QtSink {
     handle: CxxQtThread<qobject::DesktopsActions>,
 }
@@ -2137,7 +2178,8 @@ impl dx::DeOpSink for QtSink {
     }
 }
 
-/// Поставить работу в поток Qt; окно уже закрыто — молча, иначе в журнал.
+/// Queue work into the Qt thread; if the window is already closed —
+/// silently, otherwise into the log.
 fn deliver(
     handle: &CxxQtThread<qobject::DesktopsActions>,
     work: impl FnOnce(Pin<&mut qobject::DesktopsActions>) + Send + 'static,
@@ -2149,19 +2191,22 @@ fn deliver(
     }
 }
 
-/// Строка подвала из итога ядра по панели KDE. У Python это было окно с
-/// заголовком и текстом; в подвале — одна строка, поэтому перенос строки
-/// внутри текста становится пробелом.
+/// A footer line from the core's KDE panel outcome. In Python this was a
+/// window with a title and text; the footer has one line, so a line break
+/// inside the text becomes a space.
 fn panel_status(texts: &qd::PanelTexts) -> String {
     format!("{} — {}", texts.title, texts.text.replace('\n', " "))
 }
 
-/// Отображаемое имя стола; `None` — ядро такого не знает.
-/// SteamOS и стол-образ (установка, проверка, удаление): что сделать до
-/// помощника под паролем. `None` — не SteamOS или операция не образа.
+/// The display name of a desktop; `None` means the core does not know such
+/// a desktop.
+/// SteamOS and an image desktop (installation, check, removal): what to do
+/// before the helper under the password. `None` — not SteamOS or not an
+/// image operation.
 fn steamos_admin_gate(pending: &PendingOp) -> Option<sx::AdminGate> {
-    // Образ ставит программы окном пароля — на SteamOS у «deck» без пароля
-    // его не пройти. Ничего не ставит — пароль не нужен.
+    // The look installs programs through the password window — on SteamOS
+    // "deck" without a password cannot pass it. If it installs nothing, no
+    // password is needed.
     if let PendingOp::Look { offer, values, opt_in, .. } = pending {
         let installs = qd::look_chosen_plan(offer, values, *opt_in).is_some_and(|p| !p.install.is_empty());
         if !installs || sx::live_release().is_none() {
@@ -2179,7 +2224,8 @@ fn steamos_admin_gate(pending: &PendingOp) -> Option<sx::AdminGate> {
     Some(sx::admin_gate(sx::live_password_state(), sx::live_device()))
 }
 
-/// Заголовок операции, что ждёт «Да», — для подвала и окна отказа.
+/// Title of the operation waiting for "Yes" — for the footer and the
+/// refusal window.
 fn pending_title(pending: &PendingOp) -> String {
     match pending {
         PendingOp::Install { operation_title, .. }
@@ -2193,9 +2239,9 @@ fn pending_title(pending: &PendingOp) -> String {
     }
 }
 
-/// Итог применения или возврата образа: удача — приписка под журналом
-/// словами ядра; неудача — причина строкой ошибки в журнале (итог окна при
-/// неудаче своей строки не пишет).
+/// The outcome of applying or reverting a look: success — a note under the
+/// log in the core's words; failure — the reason as an error line in the log
+/// (the window's outcome on failure does not write its own line).
 fn look_outcome(sink: &dyn dx::DeOpSink, result: Result<String, String>, job_result: &mut Option<String>) -> dx::DeOpOutcome {
     match result {
         Ok(message) => {
@@ -2226,10 +2272,12 @@ fn known_name(de_id: &str) -> Option<String> {
         .map(|meta| meta.display_name.to_string())
 }
 
-/// Текущий рабочий стол по окружению сессии; `None` — не опознан.
+/// The current desktop by the session environment; `None` means not
+/// recognized.
 ///
-/// Тот же ответ даёт `SystemInfo.current_de` на Python и `DesktopsModel`
-/// рядом: третьей копии детекции здесь нет, зовётся ядро.
+/// The same answer is given by `SystemInfo.current_de` in Python and by
+/// `DesktopsModel` next door: there is no third copy of the detection here,
+/// the core is called.
 fn current_de() -> Option<String> {
     let xdg = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
     let session = std::env::var("DESKTOP_SESSION").unwrap_or_default();
@@ -2237,11 +2285,11 @@ fn current_de() -> Option<String> {
     system::detect_current_de(&xdg, &session, wayland).filter(|de| !de.is_empty())
 }
 
-/// Блок «пакеты» карточки по ответу пробной транзакции; без ответа — счёт
-/// имён ядра, как у страницы до ответа.
-/// Подписи предложения пересборки: пустые — предлагать нечего.
-/// Подпись кнопки и пояснение: перевести обычный Deepin на Treeland или
-/// обновить свою сборку deepin-session.
+/// The card's "packages" block from the trial transaction's answer; without
+/// an answer — the core's name count, as on the page before the answer.
+/// Labels of the rebuild offer: empty means there is nothing to offer.
+/// The button label and the explanation: move the ordinary Deepin to
+/// Treeland or update our deepin-session build.
 fn treeland_offer_texts(offer: &dt::Offer) -> (String, String) {
     match offer {
         dt::Offer::Install => (dt::install_button(), dt::install_hint()),
@@ -2249,12 +2297,11 @@ fn treeland_offer_texts(offer: &dt::Offer) -> (String, String) {
     }
 }
 
-/// Подписи кнопки под предупреждением карточки: вариант Deepin на
-/// Treeland, иначе замена конфликтующего, иначе пересборка.
+/// Labels of the button under the card's warning: the Deepin on Treeland
+/// variant, otherwise replacing the conflicting one, otherwise a rebuild.
 ///
-/// Последним — добавить сеанс Wayland к установленному столу
-/// (`session_de` — стол, которому это предлагается): поломка набора
-/// важнее пожелания.
+/// Last — adding a Wayland session to an installed desktop (`session_de` is
+/// the desktop it is offered to): a broken set matters more than a wish.
 fn offer_texts(
     treeland: Option<&dt::Offer>,
     swaps: &[system_plan::PkgConflict],
@@ -2292,7 +2339,7 @@ fn packages_view_of(
     let main = system::get_packages(de_id, family).len();
     let aur_names = system::get_aur_packages(de_id, family);
     let mut view = qd::packages_view(installed, preview, main, aur_names.len());
-    // Какие сеансы установленного стола работают: «Сеансы: X11 + Wayland».
+    // Which sessions of an installed desktop work: "Sessions: X11 + Wayland".
     if installed {
         let line = installed_sessions_live(de_id, family)
             .map(|s| qd::session_status_line(de_id, family, s))
@@ -2301,9 +2348,10 @@ fn packages_view_of(
             view.text = if view.text.is_empty() { line } else { format!("{}\n{line}", view.text) };
         }
     }
-    // Признаки риска у пакетов из AUR (то же, что значок на плитке AUR в
-    // «Оформлении»): только данные, уже полученные `aur_trust_warm`, — без
-    // сети, этот путь зовётся и из потока Qt. Установку не запрещает.
+    // Risk signals of AUR packages (the same as the badge on an AUR tile in
+    // "Appearance"): only data already obtained by `aur_trust_warm` — without
+    // the network, this path is called from the Qt thread too. It does not
+    // forbid the installation.
     if !installed && !aur_names.is_empty() {
         let now = rexon_core::aur_trust::now_secs();
         let views = rexon_core::aur_trust::rpc_views(None, &aur_names, now);
@@ -2319,11 +2367,12 @@ fn packages_view_of(
     view
 }
 
-/// Спросить AUR про пакеты набора стола (один запрос RPC, ответ держится в
-/// памяти). Без сети — молча ничего.
-/// Сеанс по умолчанию, если в окне установки нужен переключатель «X11 /
-/// Wayland»: у стола оба сеанса в этом семействе и это не SteamOS (там
-/// столы ставятся образом, без пакетного набора).
+/// Ask AUR about the packages of the desktop's set (one RPC request, the
+/// answer is kept in memory). Without the network — silently nothing.
+/// The default session if the installation window needs the "X11 / Wayland"
+/// switch: the desktop has both sessions in this family and this is not
+/// SteamOS (there desktops are installed as an image, without a package
+/// set).
 fn session_offer_default(de_id: &str) -> Option<system::SessionPick> {
     if rexon_core::distro_compat::running_on_steamos() {
         return None;
@@ -2332,8 +2381,9 @@ fn session_offer_default(de_id: &str) -> Option<system::SessionPick> {
     qd::session_default(de_id, family)
 }
 
-/// Сеансы установленного стола по файлам системы (`system::installed_sessions`).
-/// На SteamOS столы ставятся образом — выбора сеанса там нет.
+/// Sessions of an installed desktop from the system files
+/// (`system::installed_sessions`). On SteamOS desktops are installed as an
+/// image — there is no session choice there.
 fn installed_sessions_live(de_id: &str, family: system::PkgFamily) -> Option<(bool, bool)> {
     if rexon_core::distro_compat::running_on_steamos() {
         return None;
@@ -2346,13 +2396,15 @@ fn installed_sessions_live(de_id: &str, family: system::PkgFamily) -> Option<(bo
     )
 }
 
-/// Есть ли помощник AUR (yay, paru…) — тот же выбор, что у исполнителя.
+/// Whether there is an AUR helper (yay, paru…) — the same choice as the
+/// executor's.
 fn aur_helper_present(family: system::PkgFamily) -> bool {
     system_plan::pick_aur_helper(family, &system::binary_in_path).is_some()
 }
 
-/// Признаки риска AUR-добавки сеанса Wayland — из уже полученного
-/// `aur_trust_warm`, без сети (зовётся из потока Qt).
+/// Risk signals of the AUR add-on of a Wayland session — from what
+/// `aur_trust_warm` already obtained, without the network (called from the
+/// Qt thread).
 fn session_aur_risk(de_id: &str, family: system::PkgFamily) -> String {
     let names = system::session_aur_packages(de_id, family, system::SessionKind::Wayland);
     if names.is_empty() {
@@ -2373,22 +2425,23 @@ fn aur_trust_warm(names: &[String]) {
 }
 
 // ============================================================================
-// Версия пакета из репозиториев дистрибутива
+// Package version from the distribution's repositories
 // ============================================================================
 
-/// Версия представительного пакета стола в репозиториях ТЕКУЩЕГО дистрибутива
-/// либо `None`.
+/// The version of the desktop's representative package in the repositories
+/// of the CURRENT distribution, or `None`.
 ///
-/// Порт `rexon.system.query_repo_version`: решения принимает ядро (выбор
-/// команды и разбор вывода), здесь только `which` и запуск. Тихо, без паники:
-/// «спросить не вышло» для этой строки — то же, что «пакета нет», её просто
-/// не покажут.
+/// A port of `rexon.system.query_repo_version`: the core makes the decisions
+/// (choosing the command and parsing the output), here there is only
+/// `which` and the launch. Quietly, without panicking: "asking failed" for
+/// this line is the same as "no package", it simply will not be shown.
 fn repo_version(de_id: &str) -> Option<String> {
     let package = system::get_check_binary(de_id)?;
     let family = system::DistroDetector::detect_live().family_live();
     let query = system_plan::repo_version_query(family, package)?;
-    // Бинарь проверяется ДО запуска — как в оригинале: на дистрибутиве без
-    // этого менеджера запуск дал бы «не нашлось» вместо честного «не знаю».
+    // The binary is checked BEFORE the launch — as in the original: on a
+    // distribution without this manager the launch would give "not found"
+    // instead of an honest "I do not know".
     utils::which(&query.binary, None)?;
 
     let report = utils::run(
@@ -2412,8 +2465,9 @@ fn repo_version(de_id: &str) -> Option<String> {
     system_plan::parse_repo_version(family, &stdout)
 }
 
-/// Установленная версия ключевого пакета стола (без эпохи и номера сборки,
-/// как и версия из репозитория) либо `None`.
+/// The installed version of the desktop's key package (without the epoch
+/// and the release number, like the version from the repository), or
+/// `None`.
 fn installed_version(de_id: &str) -> Option<String> {
     let package = system::get_check_binary(de_id)?;
     let family = system::DistroDetector::detect_live().family_live();
@@ -2435,8 +2489,9 @@ fn installed_version(de_id: &str) -> Option<String> {
     (!clean.is_empty()).then_some(clean)
 }
 
-/// Новее ли версия в репозитории установленной: `vercmp` из pacman (Arch).
-/// Где его нет — `None`, и строка не утверждает, что вышло обновление.
+/// Whether the version in the repository is newer than the installed one:
+/// `vercmp` from pacman (Arch). Where there is none — `None`, and the line
+/// does not claim an update came out.
 fn repo_is_newer(installed: &str, available: &str) -> Option<bool> {
     if installed.is_empty() || available.is_empty() || installed == available {
         return Some(false);
@@ -2460,12 +2515,14 @@ fn repo_is_newer(installed: &str, available: &str) -> Option<bool> {
 mod tests {
     use super::*;
 
-    // Образцы ответов панели берутся отсюда же, откуда их берёт продукт.
+    // Panel answer samples are taken from the same place the product takes
+    // them.
     use rexon_core::backup;
 
-    /// Договор со страницей: у каждого стола базы есть представительный
-    /// пакет, за которым можно сходить в репозитории. Забытый стол молча
-    /// оставил бы карточку без строки «Доступно в твоём дистрибутиве».
+    /// The contract with the page: every desktop of the database has a
+    /// representative package that can be looked up in the repositories. A
+    /// forgotten desktop would silently leave its card without the "Available in
+    /// your distribution" line.
     #[test]
     fn every_desktop_has_a_package_to_ask_about() {
         for meta in system::DE_META {
@@ -2477,7 +2534,8 @@ mod tests {
         }
     }
 
-    /// Неизвестный стол не роняет объект и не выдаёт себя за известный.
+    /// An unknown desktop does not bring the object down and does not pretend
+    /// to be a known one.
     #[test]
     fn unknown_desktop_is_reported_not_swallowed() {
         assert!(known_name("no-such-de").is_none());
@@ -2485,19 +2543,22 @@ mod tests {
         assert!(repo_version("no-such-de").is_none());
     }
 
-    /// Итог по панели KDE — тексты ядра (те же, что в окне Python-вкладки),
-    /// собранные в ОДНУ строку подвала: заголовок, тире, текст без переноса.
+    /// The KDE panel outcome — the core's texts (the same as in the Python tab
+    /// window), assembled into ONE footer line: the title, a dash, the text
+    /// without a line break.
     ///
-    /// ⚠️ВХОДНЫЕ ОБРАЗЦЫ БЕРУТСЯ ИЗ ЯДРА, А НЕ НАБИРАЮТСЯ ЗДЕСЬ РУКАМИ.
-    /// Сюда приходит ровно то, что вернул `backup::plasma_backup_run` /
-    /// `plasma_restore_run`, и переписанная от руки копия молча устаревает:
-    /// строка проходит подвал насквозь, тест остаётся зелёным и описывает
-    /// продукт, которого уже нет (так и случилось с прежними «Бэкап создан
-    /// (2 файлов)» и «Нет бэкапов Plasma» — продукт давно говорит иначе).
+    /// Warning: THE INPUT SAMPLES ARE TAKEN FROM THE CORE, NOT TYPED HERE BY
+    /// HAND. What arrives here is exactly what `backup::plasma_backup_run` /
+    /// `plasma_restore_run` returned, and a copy rewritten by hand silently goes
+    /// stale: the line passes through the footer, the test stays green and
+    /// describes a product that no longer exists (that is exactly what happened
+    /// with the former "Backup created (2 files)" and "No Plasma backups" — the
+    /// product has long been saying something else).
     #[test]
     fn panel_result_is_one_footer_line_of_core_texts() {
-        // Язык закреплён исходный: сверка не зависит от локали машины, а
-        // русский текст сторожит сверка ядра (`qt_desktops_parity`).
+        // The source language is pinned: the comparison does not depend on the
+        // machine's locale, and the Russian text is guarded by the core's
+        // comparison (`qt_desktops_parity`).
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
         let created = backup::msg_backup_created(2);
         let line = panel_status(&qd::panel_backup_result(true, &created));
@@ -2506,8 +2567,9 @@ mod tests {
             format!("Panel Saved — A copy of your panel settings has been saved. {created}")
         );
 
-        // Возврат прошёл: у итога ядра есть СВОЙ перенос строки (хвост о
-        // перезапуске панели), и подвал обязан расправить его в пробел.
+        // The restore went through: the core's outcome has ITS OWN line break (the
+        // tail about restarting the panel), and the footer must straighten it into
+        // a space.
         let restored = format!(
             "{}{}",
             backup::msg_restored_files(3, "20260730_010203"),
@@ -2524,7 +2586,8 @@ mod tests {
         );
         assert!(!line.contains('\n'), "{line}");
 
-        // Возврата не вышло: причина ядра доезжает до подвала целиком.
+        // The restore did not work out: the core's reason reaches the footer
+        // whole.
         let why = backup::msg_no_plasma_backups();
         let line = panel_status(&qd::panel_restore_result(false, &why));
         assert!(line.starts_with("Couldn't Restore — "), "{line}");

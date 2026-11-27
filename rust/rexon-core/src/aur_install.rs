@@ -1,72 +1,79 @@
-//! Установка пакетов из AUR помощником (yay/paru) — одна на весь Rexon.
+//! Installing packages from the AUR with a helper (yay/paru): one for the
+//! whole of Rexon.
 //!
-//! Здесь три решения, общие для КАЖДОГО места, где Rexon зовёт помощника
-//! AUR (оформление, доустановка рабочих столов, починка проверки, SteamOS —
-//! правило #12):
+//! There are three decisions here, shared by EVERY place where Rexon calls
+//! an AUR helper (appearance, adding to desktops, repairs from the check,
+//! SteamOS; rule #12):
 //!
-//! 1. **Команда** ([`install_argv`]). Rexon запускают из меню приложений —
-//!    терминала у него нет. Обычный `sudo`, которым помощник ставит
-//!    собранный пакет, без терминала пароль спросить не может и падает
-//!    («a terminal is required to read the password»). Поэтому права
-//!    просятся графическим окном polkit (`--sudo pkexec`), как это уже
-//!    делает пересборка AeroShell ([`crate::aeroshell::rebuild_command`]).
-//!    Все вопросы помощника получают ответ заранее: показ изменений и чистка
-//!    сборочных файлов — «нет», сборочные зависимости — убрать после
-//!    установки. Замена конфликтующих пакетов (`--ask=4`) — ТОЛЬКО когда
-//!    человек её явно подтвердил ([`plan_install`]): молча снести системный
-//!    пакет ради темы — ровно та ловушка, от которой защищает правило #13.
+//! 1. **The command** ([`install_argv`]). Rexon is launched from the
+//!    application menu, so it has no terminal. Plain `sudo`, which the
+//!    helper uses to install the built package, cannot ask for a password
+//!    without a terminal and fails ("a terminal is required to read the
+//!    password"). So privileges are requested through a graphical polkit
+//!    window (`--sudo pkexec`), as the AeroShell rebuild already does
+//!    ([`crate::aeroshell::rebuild_command`]). All of the helper's
+//!    questions are answered in advance: showing diffs and cleaning build
+//!    files is "no", build dependencies are removed after installation.
+//!    Replacing conflicting packages (`--ask=4`) happens ONLY when the
+//!    person has explicitly confirmed it ([`plan_install`]): silently
+//!    removing a system package for the sake of a theme is exactly the
+//!    trap rule #13 protects against.
 //!
-//! 2. **Причина отказа** ([`failure_cause`] → [`failure_text`]). Вывод
-//!    помощника разбирается, и человек читает «пакет X конфликтует с Y» или
-//!    «не скачался исходник», а не «подробности в журнале». Разбор понимает
-//!    и английский вывод, и русский (`LANG=ru_RU`): часть мест запускает
-//!    помощника в языке системы.
+//! 2. **The failure reason** ([`failure_cause`] -> [`failure_text`]). The
+//!    helper's output is parsed, and the person reads "package X conflicts
+//!    with Y" or "the source failed to download" rather than "details in
+//!    the log". The parser understands both English and Russian output
+//!    (`LANG=ru_RU`): some places run the helper in the system language.
 //!
-//! 3. **Комплекты** ([`AurKit`]). Пакет, который на деле не тема, а форк
-//!    Plasma (AeroThemePlasma), ставится комплектом в порядке инструкции его
-//!    авторов и только после предупреждения: что заменится, что придётся
-//!    пересобирать после обновлений Plasma.
+//! 3. **Kits** ([`AurKit`]). A package that is really not a theme but a
+//!    Plasma fork (AeroThemePlasma) is installed as a kit in the order of
+//!    its authors' instructions and only after a warning: what will be
+//!    replaced, what will have to be rebuilt after Plasma updates.
 //!
-//! Дефект-образец (живьём 03.10.2026): «Оформление → Глобальные темы → AUR →
-//! aerothemeplasma-desktop-git → Установить» собрало пять зависимостей и
-//! упало на первой же установке собранного (sudo без терминала), а человек
-//! прочитал только «подробности в журнале yay» — журнал при этом никуда не
-//! сохранялся.
+//! The model defect (live 03.10.2026): "Appearance -> Global themes -> AUR
+//! -> aerothemeplasma-desktop-git -> Install" built five dependencies and
+//! failed on the very first install of what was built (sudo without a
+//! terminal), and the person read only "details in the yay log", while the
+//! log was not saved anywhere.
 
 use crate::i18n::{ntr, tr, trc, trf};
 
-/// Помощники, которые понимают `--sudo`/`--sudoflags`/`--removemake` и
-/// передают `--ask` самому pacman (проверено 03-04.10.2026 на yay 13.0.1 и
-/// paru подставным `--sudo`, который записывает свою командную строку:
-/// оба зовут `<sudo> pacman -U … --ask 4 …`).
-/// Остальные (trizen, pikaur, aurman) зовутся как раньше — их флагов мы
-/// не проверяли и наугад не подставляем.
+/// Helpers that understand `--sudo`/`--sudoflags`/`--removemake` and pass
+/// `--ask` to pacman itself (verified 03-04.10.2026 on yay 13.0.1 and paru
+/// with a fake `--sudo` that records its command line: both call
+/// `<sudo> pacman -U … --ask 4 …`).
+/// The others (trizen, pikaur, aurman) are called as before: we have not
+/// verified their flags and do not substitute them at random.
 pub const FLAG_AWARE_HELPERS: &[&str] = &["yay", "paru"];
 
-/// argv установки пакетов из AUR.
+/// argv for installing packages from the AUR.
 ///
-/// * `--needed` — уже стоящее не пересобирается;
-/// * `--noconfirm` — ни одного вопроса в никуда;
-/// * yay: `--answerclean None --answerdiff None --answeredit None` — меню
-///   чистки/показа изменений/правки сборочных файлов отвечены «ни одного»
-///   (под `--noconfirm` yay их и так пропускает, но печатает пустые
-///   вопросы; явный ответ не зависит от чужого `~/.config/yay/config.json`);
-/// * paru: `--skipreview` — то же для paru (иначе он ждёт просмотра
-///   PKGBUILD в пейджере и стоит вечно);
-/// * `--removemake` — сборочные зависимости убрать после установки, иначе
-///   каждая тема оставляла бы в системе компиляторы и cmake;
-/// * `--sudo pkexec --sudoflags ""` — права графическим окном polkit
-///   (терминала нет, см. шапку модуля). Пустые `--sudoflags` обязательны:
-///   у человека в конфиге могут стоять флаги sudo, которых pkexec не знает.
-///   В окне Rexon с помощником сеанса прав вместо pkexec — шим сеанса
-///   ([`push_sudo`], пункт Б10);
-/// * paru: `--nosudoloop` — «держать sudo живым» paru делает вызовом
-///   `<sudo> -v`, а у pkexec такого ключа нет;
-/// * `replace_conflicts` → `--ask=4`: pacman обращает ответ по умолчанию на
-///   вопрос «X и Y конфликтуют. Удалить Y?» (бит 4 — конфликт пакетов) и
-///   ставит замену. Только после явного согласия человека.
-///   ⚠️ НЕ `--useask`: у yay 13 он до `pacman -U` собранных пакетов не
-///   доходит (проверено подставным sudo 03.10.2026 — флага в строке нет).
+/// * `--needed`: what is already installed is not rebuilt;
+/// * `--noconfirm`: not a single question into the void;
+/// * yay: `--answerclean None --answerdiff None --answeredit None`: the
+///   menus for cleaning/showing diffs/editing build files are answered
+///   "none" (under `--noconfirm` yay skips them anyway, but prints empty
+///   questions; an explicit answer does not depend on someone else's
+///   `~/.config/yay/config.json`);
+/// * paru: `--skipreview`: the same for paru (otherwise it waits for the
+///   PKGBUILD to be reviewed in a pager and hangs forever);
+/// * `--removemake`: remove build dependencies after installation,
+///   otherwise every theme would leave compilers and cmake in the system;
+/// * `--sudo pkexec --sudoflags ""`: privileges through a graphical polkit
+///   window (there is no terminal, see the module header). Empty
+///   `--sudoflags` are mandatory: the person's config may have sudo flags
+///   pkexec does not know. In the Rexon window with the privilege session
+///   helper, the session shim is used instead of pkexec ([`push_sudo`],
+///   item B10);
+/// * paru: `--nosudoloop`: paru "keeps sudo alive" by calling `<sudo> -v`,
+///   and pkexec has no such option;
+/// * `replace_conflicts` -> `--ask=4`: pacman inverts the default answer to
+///   the question "X and Y are in conflict. Remove Y?" (bit 4 is a package
+///   conflict) and installs the replacement. Only after the person's
+///   explicit consent.
+///   ⚠️ NOT `--useask`: in yay 13 it does not reach the `pacman -U` of the
+///   built packages (verified with a fake sudo on 03.10.2026: the flag is
+///   not in the line).
 pub fn install_argv(helper: &str, packages: &[String], replace_conflicts: bool) -> Vec<String> {
     let mut argv: Vec<String> = vec![
         helper.to_string(),
@@ -98,16 +105,18 @@ pub fn install_argv(helper: &str, packages: &[String], replace_conflicts: bool) 
     argv
 }
 
-/// `--sudo`/`--sudoflags` сборщика (пункт Б10). В окне Rexon с помощником
-/// сеанса прав — шим `rexon-sudo-shim` и метка новой операции
-/// ([`crate::privilege::aur::sudo_for`]): вызовы pacman сборщика идут в
-/// сеанс прав (один пароль), и пропускается только то, что относится к
-/// сборке `packages`. Иначе — `pkexec` с пустыми флагами, как раньше.
+/// The builder's `--sudo`/`--sudoflags` (item B10). In the Rexon window
+/// with the privilege session helper: the `rexon-sudo-shim` shim and the
+/// new operation marker ([`crate::privilege::aur::sudo_for`]): the
+/// builder's pacman calls go to the privilege session (one password), and
+/// only what relates to building `packages` is let through. Otherwise
+/// `pkexec` with empty flags, as before.
 ///
-/// paru с шимом получает ещё `--nochroot --nolocalrepo`: в чистом окружении
-/// и в локальном репозитории paru зовёт через sudo не pacman
-/// (`mkarchroot`, `arch-nspawn`, `install -d`), а такое шим не пропустит —
-/// настройка человека в `paru.conf` уронила бы сборку.
+/// paru with the shim additionally gets `--nochroot --nolocalrepo`: in a
+/// clean chroot and with a local repository paru calls through sudo not
+/// pacman but other things (`mkarchroot`, `arch-nspawn`, `install -d`),
+/// which the shim will not let through: the person's setting in
+/// `paru.conf` would break the build.
 fn push_sudo(argv: &mut Vec<String>, helper: &str, packages: &[String], replace: bool) {
     match crate::privilege::aur::sudo_for(packages, replace) {
         Some(sudo) => {
@@ -120,25 +129,27 @@ fn push_sudo(argv: &mut Vec<String>, helper: &str, packages: &[String], replace:
     }
 }
 
-/// Ключи сборки рецептов AUR (переменные, которые PKGBUILD читает из
-/// окружения: `: ${_build_x:=true}`): пакет из списка Rexon → что
-/// выставить `makepkg` под помощником. Помощник окружение не чистит,
-/// `makepkg` — тоже.
+/// Build switches of AUR recipes (variables a PKGBUILD reads from the
+/// environment: `: ${_build_x:=true}`): a package from the Rexon list ->
+/// what to set for `makepkg` under the helper. The helper does not clean
+/// the environment, and neither does `makepkg`.
 ///
-/// * `vala-panel-appmenu` 25.04 (AUR, pkgbase на всех `-mate`, `-xfce`,
-///   `-registrar`…) по умолчанию собирает и модуль для Budgie, а тот ищет
-///   `budgie-1.0`; budgie-desktop 10.10 даёт только `budgie-3.0` — build()
-///   падает у всех (живьём 08.11.2026: «Dependency "budgie-1.0" not
-///   found»). Rexon ставит из этого рецепта только `-mate`/`-registrar`
-///   (`system.rs`), модуль Budgie ему не нужен.
+/// * `vala-panel-appmenu` 25.04 (AUR, pkgbase for all of `-mate`, `-xfce`,
+///   `-registrar`…) builds the Budgie module by default too, and that one
+///   looks for `budgie-1.0`; budgie-desktop 10.10 provides only
+///   `budgie-3.0`, so build() fails for everyone (live 08.11.2026:
+///   "Dependency "budgie-1.0" not found"). Rexon installs only
+///   `-mate`/`-registrar` from this recipe (`system.rs`) and does not need
+///   the Budgie module.
 pub const BUILD_ENV: &[(&str, &[(&str, &str)])] = &[
     ("vala-panel-appmenu-mate", &[("_build_budgie", "false")]),
     ("vala-panel-appmenu-registrar", &[("_build_budgie", "false")]),
     ("vala-panel-appmenu-xfce", &[("_build_budgie", "false")]),
 ];
 
-/// Окружение для команды помощника AUR из [`install_argv`]: ключи сборки
-/// ([`BUILD_ENV`]) пакетов, которые она ставит. Другая команда — пусто.
+/// Environment for an AUR helper command from [`install_argv`]: the build
+/// switches ([`BUILD_ENV`]) of the packages it installs. Another command
+/// gets an empty one.
 pub fn build_env(argv: &[String]) -> Vec<(String, String)> {
     let helper = argv.first().map(|a| a.rsplit('/').next().unwrap_or(a)).unwrap_or("");
     if !FLAG_AWARE_HELPERS.contains(&helper) {
@@ -157,13 +168,13 @@ pub fn build_env(argv: &[String]) -> Vec<(String, String)> {
     out
 }
 
-/// Флаги [`install_argv`], за которыми идёт значение, — чтобы разбор
-/// командной строки не принял `pkexec` или `None` за имя пакета.
+/// Flags of [`install_argv`] followed by a value, so that command-line
+/// parsing does not take `pkexec` or `None` for a package name.
 pub const VALUE_FLAGS: &[&str] =
     &["--answerclean", "--answerdiff", "--answeredit", "--sudo", "--sudoflags"];
 
-/// Пакеты из командной строки [`install_argv`] (всё после `-S`, кроме
-/// флагов и их значений).
+/// Packages from the [`install_argv`] command line (everything after `-S`
+/// except flags and their values).
 pub fn argv_packages(argv: &[String]) -> Vec<String> {
     let Some(pos) = argv.iter().position(|a| a == "-S") else {
         return Vec::new();
@@ -182,8 +193,9 @@ pub fn argv_packages(argv: &[String]) -> Vec<String> {
     out
 }
 
-/// Команда для терминала, которую можно показать человеку («попробуйте
-/// сами»): без флагов неинтерактивности — в терминале он ответит сам.
+/// A terminal command that can be shown to the person ("try it yourself"):
+/// without the non-interactivity flags, since in a terminal they will
+/// answer themselves.
 pub fn terminal_command(helper: &str, packages: &[String]) -> String {
     let mut parts = vec![helper.to_string(), "-S".to_string(), "--needed".to_string()];
     parts.extend(packages.iter().cloned());
@@ -191,37 +203,38 @@ pub fn terminal_command(helper: &str, packages: &[String]) -> String {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Комплекты: пакет-форк ставится вместе со своими частями и с вопросом
+// Kits: a fork package is installed together with its parts and a question
 // ════════════════════════════════════════════════════════════════════════
 
-/// Комплект пакетов AUR, который ставится одним заходом и только после
-/// предупреждения.
+/// An AUR package kit that is installed in one go and only after a
+/// warning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AurKit {
-    /// Имя комплекта для человека.
+    /// The kit name for the person.
     pub title: &'static str,
-    /// Пакеты, по которым комплект узнаётся (кнопка «Установить» на них
-    /// ставит комплект целиком).
+    /// Packages by which the kit is recognised (the "Install" button on them
+    /// installs the whole kit).
     pub triggers: &'static [&'static str],
-    /// Состав в порядке инструкции авторов (INSTALL.md AeroThemePlasma,
-    /// раздел «Arch Linux»): сначала форк libplasma, потом части оболочки
-    /// AeroShell, потом звуки и значки, последней — сама оболочка. Помощник
-    /// и сам строит порядок по зависимостям; явный список нужен, чтобы форк
-    /// libplasma был выбран ИМЕННО этим пакетом, а не первым попавшимся
-    /// поставщиком, и чтобы комплект был тем же, что у авторов.
+    /// Contents in the order of the authors' instructions (AeroThemePlasma
+    /// INSTALL.md, the "Arch Linux" section): first the libplasma fork, then
+    /// the parts of the AeroShell shell, then sounds and icons, and the shell
+    /// itself last. The helper builds the order from dependencies by itself;
+    /// the explicit list is needed so that the libplasma fork is provided by
+    /// EXACTLY this package rather than the first provider that comes along,
+    /// and so that the kit is the same as the authors'.
     pub packages: &'static [&'static str],
-    /// Что комплект ЗАМЕНЯЕТ в системе: (системный пакет, пакет форка).
+    /// What the kit REPLACES in the system: (system package, fork package).
     pub replaces: &'static [(&'static str, &'static str)],
-    /// Ставит ли комплект отдельный сеанс на экран входа (имя сеанса).
+    /// Whether the kit installs a separate session on the login screen (session name).
     pub session: Option<&'static str>,
 }
 
-/// AeroThemePlasma — оболочка «как Windows 7» поверх KDE Plasma.
+/// AeroThemePlasma: a "like Windows 7" shell on top of KDE Plasma.
 ///
-/// ⚠️ Это форк Plasma, а не тема: `aeroshell-libplasma-git` замещает
-/// системную `libplasma` (Conflicts: libplasma), эффекты KWin собираются
-/// против заголовков установленной Plasma и после её обновления требуют
-/// пересборки (её делает [`crate::aeroshell`]).
+/// ⚠️ This is a Plasma fork, not a theme: `aeroshell-libplasma-git`
+/// replaces the system `libplasma` (Conflicts: libplasma), the KWin
+/// effects are built against the headers of the installed Plasma and need
+/// a rebuild after it is updated ([`crate::aeroshell`] does that).
 pub const AEROTHEMEPLASMA: AurKit = AurKit {
     title: "AeroThemePlasma",
     triggers: &["aerothemeplasma-desktop-git"],
@@ -238,9 +251,9 @@ pub const AEROTHEMEPLASMA: AurKit = AurKit {
     session: Some("AeroThemePlasma (Wayland)"),
 };
 
-/// AeroThemePlasma для сеанса X11: тот же комплект плюс части под
-/// `kwin-x11` (их зависимости по AUR RPC 04.10.2026: desktop-x11 тянет
-/// desktop, kwin-components-x11 и smodglow-x11).
+/// AeroThemePlasma for an X11 session: the same kit plus the parts for
+/// `kwin-x11` (their dependencies per AUR RPC 04.10.2026: desktop-x11 pulls
+/// in desktop, kwin-components-x11 and smodglow-x11).
 pub const AEROTHEMEPLASMA_X11: AurKit = AurKit {
     title: "AeroThemePlasma (X11)",
     triggers: &["aerothemeplasma-desktop-x11-git"],
@@ -260,41 +273,43 @@ pub const AEROTHEMEPLASMA_X11: AurKit = AurKit {
     session: Some("AeroThemePlasma (X11)"),
 };
 
-/// Все комплекты. Новый — сюда (правило #12: одна таблица).
+/// All kits. A new one goes here (rule #12: one table).
 pub const KITS: &[AurKit] = &[AEROTHEMEPLASMA, AEROTHEMEPLASMA_X11];
 
-/// Комплект, в который входит кнопка «Установить» на пакете `name`.
+/// The kit that the "Install" button on package `name` belongs to.
 pub fn kit_for(name: &str) -> Option<&'static AurKit> {
     KITS.iter().find(|k| k.triggers.contains(&name))
 }
 
-/// Вопрос перед установкой: заголовок и текст.
+/// The question before installation: a title and a text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallQuestion {
     pub title: String,
     pub text: String,
 }
 
-/// Что и как ставить по кнопке «Установить» на пакете AUR.
+/// What to install and how for the "Install" button on an AUR package.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallPlan {
-    /// Пакеты в порядке установки.
+    /// Packages in installation order.
     pub packages: Vec<String>,
-    /// Разрешить pacman заменить конфликтующий системный пакет.
+    /// Allow pacman to replace a conflicting system package.
     pub replace_conflicts: bool,
-    /// Спросить человека до начала (None — ставить сразу).
+    /// Ask the person before starting (None means install right away).
     pub question: Option<InstallQuestion>,
-    /// Комплект, если это он.
+    /// The kit, if this is one.
     pub kit: Option<&'static AurKit>,
 }
 
-/// План установки пакета `name`. `installed` — стоит ли пакет в системе.
+/// Installation plan for package `name`. `installed` tells whether the
+/// package is in the system.
 ///
-/// Обычный пакет — ставится один, без вопроса и без права заменять
-/// системные пакеты. Пакет комплекта — весь комплект (уже стоящие части
-/// пропускаются: помощник со `--needed` их не тронет, но и в список мы их
-/// не тянем, чтобы вопрос называл правду), с вопросом; замена системного
-/// пакета разрешается только если она действительно предстоит.
+/// A plain package is installed alone, without a question and without the
+/// right to replace system packages. A kit package means the whole kit
+/// (parts already installed are skipped: the helper with `--needed` would
+/// not touch them, but we do not pull them into the list either, so the
+/// question tells the truth), with a question; replacing a system package
+/// is allowed only if it is really about to happen.
 pub fn plan_install(name: &str, installed: &dyn Fn(&str) -> bool) -> InstallPlan {
     let Some(kit) = kit_for(name) else {
         return InstallPlan {
@@ -316,7 +331,7 @@ pub fn plan_install(name: &str, installed: &dyn Fn(&str) -> bool) -> InstallPlan
     }
 }
 
-/// Предупреждение перед комплектом-форком.
+/// Warning before a fork kit.
 fn kit_question(kit: &AurKit, count: usize, replacing: &[&(&str, &str)]) -> InstallQuestion {
     let mut text = trf(
         // TRANSLATORS: %1 is a theme name (AeroThemePlasma), %2 a number of packages.
@@ -352,7 +367,7 @@ fn kit_question(kit: &AurKit, count: usize, replacing: &[&(&str, &str)]) -> Inst
     }
 }
 
-/// Итог удачной установки комплекта: куда идти дальше.
+/// Result of a successful kit installation: where to go next.
 pub fn kit_done_message(kit: &AurKit) -> String {
     match kit.session {
         Some(session) => trf(
@@ -364,69 +379,73 @@ pub fn kit_done_message(kit: &AurKit) -> String {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Разбор вывода помощника: настоящая причина отказа
+// Parsing the helper's output: the real reason for a failure
 // ════════════════════════════════════════════════════════════════════════
 
-/// Почему помощник AUR не поставил пакет.
+/// Why the AUR helper did not install the package.
 ///
-/// Права различаются по тому, ЧТО человеку делать дальше (живой случай
-/// 05.10.2026: три установки подряд → три окна пароля; агент KDE отказал
-/// второму и третьему «Another client is already authenticating», pkexec
-/// ответил «Not authorized», а Rexon написал «пароль не принят» — неправда,
-/// пароля никто не вводил):
-/// * [`AurFailure::WrongPassword`] — пароль введён, но неверный;
-/// * [`AurFailure::PasswordDismissed`] — окно пароля закрыли (pkexec 126);
-/// * [`AurFailure::NotAuthorized`] — права не выданы, а почему — система не
-///   сказала (pkexec 127): окно закрыто, не дождалось или не открылось;
-/// * [`AurFailure::PasswordWindowBusy`] — окно не открылось, потому что уже
-///   было открыто другое (уточняется по журналу агента,
+/// Privilege failures differ by WHAT the person should do next (a live
+/// case on 05.10.2026: three installations in a row -> three password
+/// windows; the KDE agent refused the second and third with "Another
+/// client is already authenticating", pkexec answered "Not authorized",
+/// and Rexon wrote "password not accepted": untrue, nobody had entered a
+/// password):
+/// * [`AurFailure::WrongPassword`]: a password was entered but is wrong;
+/// * [`AurFailure::PasswordDismissed`]: the password window was closed
+///   (pkexec 126);
+/// * [`AurFailure::NotAuthorized`]: privileges were not granted, and the
+///   system did not say why (pkexec 127): the window was closed, timed out
+///   or did not open;
+/// * [`AurFailure::PasswordWindowBusy`]: the window did not open because
+///   another one was already open (refined from the agent's journal,
 ///   [`refine_with_agent_journal`]);
-/// * [`AurFailure::NoPasswordAgent`] — окну пароля вообще неоткуда взяться.
+/// * [`AurFailure::NoPasswordAgent`]: there is nowhere for a password
+///   window to come from at all.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AurFailure {
-    /// sudo без терминала не смог спросить пароль.
+    /// sudo without a terminal could not ask for the password.
     NoTerminalForPassword,
-    /// Окно пароля закрыли / нажали «Отмена».
+    /// The password window was closed / "Cancel" was pressed.
     PasswordDismissed,
-    /// Права не выданы, причину система не назвала.
+    /// Privileges were not granted; the system did not name the reason.
     NotAuthorized,
-    /// Пароль введён неверно.
+    /// The password was entered incorrectly.
     WrongPassword,
-    /// Окно пароля не открылось: уже было открыто другое.
+    /// The password window did not open: another one was already open.
     PasswordWindowBusy,
-    /// Нет агента polkit — окну пароля неоткуда взяться.
+    /// No polkit agent: there is nowhere for a password window to come from.
     NoPasswordAgent,
-    /// Собранные пакеты не установились, и pacman не назвал причину —
-    /// команда повышения прав вернула ошибку молча.
+    /// The built packages were not installed, and pacman named no reason: the
+    /// privilege escalation command returned an error silently.
     PrivilegeFailed,
-    /// Пакет `new` конфликтует с установленным `old`.
+    /// Package `new` conflicts with the installed `old`.
     Conflict { new: String, old: String },
-    /// Файл уже есть в системе (чужой или ничей).
+    /// The file already exists in the system (owned by someone else or by nobody).
     FileExists { path: String },
-    /// Установка или удаление сломали бы чужую зависимость.
+    /// Installing or removing would break someone else's dependency.
     BreaksDependency { line: String },
-    /// Не скачался исходник.
+    /// The source failed to download.
     Download { what: String },
-    /// Неизвестный ключ PGP у исходников.
+    /// Unknown PGP key for the sources.
     PgpKey,
-    /// Контрольная сумма скачанного не сошлась.
+    /// The checksum of the download did not match.
     Checksum,
-    /// Сборка пакета упала.
+    /// The package build failed.
     Build { package: String },
-    /// Зависимость не нашлась ни в репозиториях, ни в AUR.
+    /// A dependency was found neither in the repositories nor in the AUR.
     MissingDependency { name: String },
-    /// Сборке `package` не хватило зависимостей `names`, которые к этому
-    /// моменту должны были стоять (makepkg «Missing dependencies»): их
-    /// ставила другая установка или они сами не встали.
+    /// The build of `package` lacked the dependencies `names` that should have
+    /// been installed by then (makepkg "Missing dependencies"): another
+    /// installation was installing them, or they failed to install themselves.
     DependencyNotInstalled { package: String, names: Vec<String> },
-    /// База пакетов занята другой установкой.
+    /// The package database is held by another installation.
     DatabaseLocked,
-    /// Кончилось место на диске.
+    /// The disk ran out of space.
     DiskFull,
 }
 
-/// Убрать цветовые escape-последовательности (`\x1b[1m` и т. п.) и
-/// перерисовки строки прогресса (`\r`).
+/// Remove colour escape sequences (`\x1b[1m` etc.) and progress line
+/// redraws (`\r`).
 pub fn clean_line(raw: &str) -> String {
     let raw = raw.rsplit('\r').next().unwrap_or(raw);
     let mut out = String::with_capacity(raw.len());
@@ -448,23 +467,23 @@ pub fn clean_line(raw: &str) -> String {
     out.trim().to_string()
 }
 
-/// Значимые строки вывода (без пустых и без шума прогресса).
+/// Meaningful output lines (without empty ones and progress noise).
 fn lines(log: &str) -> Vec<String> {
     log.lines().map(clean_line).filter(|l| !l.is_empty()).collect()
 }
 
-/// Текст между первой парой одинарных кавычек (`'…'`) либо None.
+/// The text between the first pair of single quotes (`'…'`) or None.
 fn quoted(line: &str) -> Option<String> {
     let start = line.find('\'')? + 1;
     let end = line[start..].find('\'')? + start;
     Some(line[start..end].to_string())
 }
 
-/// Имя пакета без версии: `libplasma-6.7.4-1` → `libplasma`.
+/// Package name without the version: `libplasma-6.7.4-1` -> `libplasma`.
 fn strip_version(spec: &str) -> String {
     let parts: Vec<&str> = spec.split('-').collect();
-    // Версия pacman — это два последних куска «ver-rel», где ver
-    // начинается с цифры (или с эпохи «N:»).
+    // A pacman version is the last two pieces "ver-rel", where ver starts
+    // with a digit (or with an epoch "N:").
     if parts.len() >= 3 {
         let ver = parts[parts.len() - 2];
         if ver.chars().next().is_some_and(|c| c.is_ascii_digit()) {
@@ -474,11 +493,11 @@ fn strip_version(spec: &str) -> String {
     spec.to_string()
 }
 
-/// Найти настоящую причину отказа в выводе помощника.
+/// Find the real reason for the failure in the helper's output.
 ///
-/// Причины проверяются от первопричины к следствию: «нет пароля» важнее
-/// «не удалось установить слой», конфликт важнее «не удалось подготовить
-/// транзакцию». None — ничего узнаваемого (тогда показывается хвост).
+/// Reasons are checked from root cause to consequence: "no password" beats
+/// "failed to install the layer", a conflict beats "failed to prepare the
+/// transaction". None means nothing recognisable (then the tail is shown).
 pub fn failure_cause(log: &str) -> Option<AurFailure> {
     let lines = lines(log);
     let has = |needles: &[&str]| lines.iter().any(|l| needles.iter().any(|n| l.contains(n)));
@@ -486,7 +505,7 @@ pub fn failure_cause(log: &str) -> Option<AurFailure> {
         lines.iter().rev().find(|l| needles.iter().any(|n| l.contains(n))).cloned()
     };
 
-    // ── Права ──
+    // ── Privileges ──
     if has(&["a terminal is required to read the password", "для ввода пароля требуется терминал", "no askpass program specified"]) {
         return Some(AurFailure::NoTerminalForPassword);
     }
@@ -496,10 +515,11 @@ pub fn failure_cause(log: &str) -> Option<AurFailure> {
     if has(&["Request dismissed", "Запрос отклонён", "Запрос отклонен"]) {
         return Some(AurFailure::PasswordDismissed);
     }
-    // Неверный пароль называют текстовый агент polkit (pkttyagent:
-    // «AUTHENTICATION FAILED», помощник PAM «Authentication failure») и
-    // sudo («incorrect password attempt»). Графический агент сам в вывод
-    // pkexec не пишет — его случай уточняет журнал агента.
+    // A wrong password is reported by the text polkit agent (pkttyagent:
+    // "AUTHENTICATION FAILED", the PAM helper "Authentication failure") and
+    // by sudo ("incorrect password attempt"). The graphical agent does not
+    // write to pkexec's output itself; its case is refined by the agent's
+    // journal.
     if has(&[
         "AUTHENTICATION FAILED",
         "ОШИБКА АУТЕНТИФИКАЦИИ",
@@ -514,8 +534,9 @@ pub fn failure_cause(log: &str) -> Option<AurFailure> {
     if has(&["Not authorized", "Не авторизован"]) {
         return Some(AurFailure::NotAuthorized);
     }
-    // Слов pkexec нет, но код возврата его: 126 — окно закрыли, 127 —
-    // права не выданы («error installing: […] - exit status 127»).
+    // No pkexec words, but its exit code: 126 means the window was closed,
+    // 127 means privileges were not granted ("error installing: […] - exit
+    // status 127").
     if let Some(line) = find(&["error installing:", "ошибка установки:"]) {
         if line.ends_with("exit status 126") {
             return Some(AurFailure::PasswordDismissed);
@@ -525,8 +546,8 @@ pub fn failure_cause(log: &str) -> Option<AurFailure> {
         }
     }
 
-    // ── Конфликты пакетов: «:: a-1-1 and b-2-1 are in conflict» ──
-    // (строка pacman в русском каталоге не переведена — всегда английская).
+    // ── Package conflicts: ":: a-1-1 and b-2-1 are in conflict" ──
+    // (this pacman line is not translated in the Russian catalog: always English).
     if let Some(line) = find(&[" are in conflict"]) {
         let body = line.trim_start_matches(':').trim();
         let body = body.split(" are in conflict").next().unwrap_or("");
@@ -547,7 +568,7 @@ pub fn failure_cause(log: &str) -> Option<AurFailure> {
         return Some(AurFailure::BreaksDependency { line: line.trim_start_matches(':').trim().to_string() });
     }
 
-    // ── Исходники ──
+    // ── Sources ──
     if has(&["One or more PGP signatures could not be verified", "PGP-подписей не могут быть проверены", "unknown public key"]) {
         return Some(AurFailure::PgpKey);
     }
@@ -569,11 +590,12 @@ pub fn failure_cause(log: &str) -> Option<AurFailure> {
         return Some(AurFailure::Download { what });
     }
 
-    // ── Зависимости ──
-    // makepkg без `-s` (так его зовёт помощник): «==> Missing dependencies:»,
-    // за ней строки «  -> имя», потом «==> ERROR: Could not resolve all
-    // dependencies.» Так выглядела гонка 05.10: зависимость ставила
-    // соседняя установка и не успела.
+    // ── Dependencies ──
+    // makepkg without `-s` (as the helper calls it): "==> Missing
+    // dependencies:", followed by lines "  -> name", then "==> ERROR: Could
+    // not resolve all dependencies." This is what the race of 05.10 looked
+    // like: a neighbouring installation was installing the dependency and did
+    // not make it in time.
     if let Some(pos) = lines.iter().rposition(|l| {
         l.contains("Missing dependencies:") || l.contains("Отсутствуют зависимости:")
     }) {
@@ -601,10 +623,11 @@ pub fn failure_cause(log: &str) -> Option<AurFailure> {
         return Some(AurFailure::MissingDependency { name });
     }
 
-    // ── Сборка ──
+    // ── Build ──
     if has(&["A failure occurred in", "Произошел сбой в"]) || has(&["error making:", "ошибка сборки:"]) {
-        // Имя — из последнего «==> Making package: имя версия» (makepkg,
-        // формат стабилен); запасной — первое слово после «error making:».
+        // The name comes from the last "==> Making package: name version"
+        // (makepkg, the format is stable); the fallback is the first word after
+        // "error making:".
         let package = find(&["==> Making package:", "==> Создание пакета:"])
             .and_then(|l| {
                 l.split_once(':').and_then(|(_, r)| r.split_whitespace().next()).map(String::from)
@@ -618,24 +641,25 @@ pub fn failure_cause(log: &str) -> Option<AurFailure> {
         return Some(AurFailure::Build { package });
     }
 
-    // ── Прочее ──
+    // ── Other ──
     if has(&["unable to lock database", "не удалось заблокировать базу"]) {
         return Some(AurFailure::DatabaseLocked);
     }
     if has(&["not enough free disk space", "No space left on device", "недостаточно места на диске"]) {
         return Some(AurFailure::DiskFull);
     }
-    // Собранное не встало, а сам pacman ни на что не пожаловался — значит,
-    // ему не дали прав: команда повышения прав вернула ошибку молча (так
-    // выглядит и отказ подставного `--sudo /bin/false`). yay пишет
-    // «error installing: [пакеты] - exit status N».
+    // What was built did not install, and pacman itself complained about
+    // nothing, so it was not given privileges: the privilege escalation
+    // command returned an error silently (a fake `--sudo /bin/false` refusal
+    // looks the same). yay writes "error installing: [packages] - exit status
+    // N".
     if has(&["error installing:", "ошибка установки:"]) {
         return Some(AurFailure::PrivilegeFailed);
     }
     None
 }
 
-/// Причина отказа словами человека.
+/// The failure reason in the person's words.
 pub fn failure_text(cause: &AurFailure) -> String {
     match cause {
         AurFailure::NoTerminalForPassword => tr(
@@ -706,27 +730,29 @@ pub fn failure_text(cause: &AurFailure) -> String {
     }
 }
 
-/// Последние `n` значимых строк вывода — для окна хода установки.
+/// The last `n` meaningful output lines, for the installation progress window.
 pub fn tail_lines(log: &str, n: usize) -> Vec<String> {
     let all = lines(log);
     let from = all.len().saturating_sub(n);
     all[from..].to_vec()
 }
 
-/// Сколько строк хвоста показать при отказе.
+/// How many tail lines to show on failure.
 pub const FAILURE_TAIL_LINES: usize = 8;
 
-/// Итог отказа для человека: что не встало, почему и где полный журнал.
+/// The failure result for the person: what did not install, why, and where
+/// the full log is.
 ///
-/// `log_path` — куда сохранён полный вывод помощника (пусто — не сохранён).
-/// Для причин, которые лечатся только в терминале ответом «да» (конфликт,
-/// файл в системе), к тексту приложена команда.
+/// `log_path` is where the helper's full output was saved (empty means not
+/// saved). For reasons that can only be cured in a terminal by answering
+/// "yes" (a conflict, a file in the system), the command is attached to
+/// the text.
 pub fn failure_message(name: &str, helper: &str, packages: &[String], log: &str, log_path: &str) -> String {
     failure_message_for(name, helper, packages, log, log_path, failure_cause(log).as_ref())
 }
 
-/// То же, что [`failure_message`], но с уже найденной (и, может быть,
-/// уточнённой по журналу агента — [`refine_with_agent_journal`]) причиной.
+/// The same as [`failure_message`], but with a reason already found (and
+/// possibly refined from the agent's journal, [`refine_with_agent_journal`]).
 pub fn failure_message_for(
     name: &str,
     helper: &str,
@@ -767,8 +793,9 @@ pub fn failure_message_for(
     msg
 }
 
-/// Что делать человеку после отказа — одна фраза к причине (None — сказать
-/// нечего сверх самой причины и команды для терминала).
+/// What the person should do after the failure: one phrase for the reason
+/// (None means there is nothing to say beyond the reason itself and the
+/// terminal command).
 pub fn failure_advice(cause: &AurFailure) -> Option<String> {
     Some(match cause {
         AurFailure::PasswordDismissed | AurFailure::NotAuthorized => {
@@ -810,9 +837,10 @@ pub fn failure_advice(cause: &AurFailure) -> Option<String> {
     })
 }
 
-/// Короткая причина для подписи на плитке (без имени пакета и советов).
-/// Строчной буквой: на плитке она идёт после «Ошибка:», а первым словом
-/// причины бывает имя пакета, которое заглавной искажалось бы.
+/// A short reason for the tile label (without the package name and
+/// advice). Lower case: on the tile it follows "Error:", and the first
+/// word of a reason is sometimes a package name, which capitalisation
+/// would distort.
 pub fn failure_short(cause: Option<&AurFailure>) -> String {
     match cause {
         Some(c) => failure_text(c),
@@ -820,15 +848,16 @@ pub fn failure_short(cause: Option<&AurFailure>) -> String {
     }
 }
 
-/// Уточнить причину «права не выданы» по журналу системы за время
-/// установки (`journalctl -o cat --since …`).
+/// Refine the "privileges not granted" reason from the system journal for
+/// the duration of the installation (`journalctl -o cat --since …`).
 ///
-/// pkexec говорит одно и то же «Not authorized», когда окно пароля закрыли
-/// и когда агент polkit его даже не открыл, потому что уже показывал
-/// другое. Графический агент пишет настоящую причину только в свой журнал:
-/// агент KDE — «Another client is already authenticating, please try again
-/// later.», а неверный пароль виден по записи PAM «authentication failure»
-/// службы `polkit-1` (замер 05.10.2026, KDE Plasma 6.7).
+/// pkexec says the same "Not authorized" both when the password window was
+/// closed and when the polkit agent did not even open it because it was
+/// already showing another. The graphical agent writes the real reason
+/// only to its own journal: the KDE agent writes "Another client is
+/// already authenticating, please try again later.", and a wrong password
+/// shows up as the PAM "authentication failure" entry of the `polkit-1`
+/// service (measured 05.10.2026, KDE Plasma 6.7).
 pub fn refine_with_agent_journal(cause: Option<AurFailure>, journal: &str) -> Option<AurFailure> {
     match cause {
         Some(AurFailure::NotAuthorized) | Some(AurFailure::PrivilegeFailed) => {
@@ -847,30 +876,30 @@ pub fn refine_with_agent_journal(cause: Option<AurFailure>, journal: &str) -> Op
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Стадии установки: что сейчас делает помощник
+// Installation stages: what the helper is doing right now
 // ════════════════════════════════════════════════════════════════════════
 
-/// Где установка пакета AUR сейчас — для подписи на плитке и строки сверху.
+/// Where an AUR package installation is now, for the tile label and the top line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AurStage {
-    /// Ждёт своей очереди: в Rexon установки AUR идут строго по одной.
+    /// Waiting for its turn: in Rexon AUR installations run strictly one at a time.
     Queued,
-    /// Ждёт, пока чужая установка отпустит базу пакетов.
+    /// Waiting for another installation to release the package database.
     WaitingLock,
-    /// Скачивает сборочные файлы и исходники (и пакеты из репозиториев).
+    /// Downloading build files and sources (and packages from the repositories).
     Downloading,
-    /// Собирает (makepkg).
+    /// Building (makepkg).
     Building,
-    /// Ставит собранное (pacman).
+    /// Installing what was built (pacman).
     Installing,
-    /// Встало.
+    /// Installed.
     Done,
-    /// Не встало.
+    /// Failed to install.
     Failed,
 }
 
 impl AurStage {
-    /// Имя для обмена со страницей.
+    /// Name for the exchange with the page.
     pub fn as_str(self) -> &'static str {
         match self {
             AurStage::Queued => "queued",
@@ -883,7 +912,7 @@ impl AurStage {
         }
     }
 
-    /// Обратно из [`AurStage::as_str`].
+    /// Back from [`AurStage::as_str`].
     pub fn parse(s: &str) -> Option<AurStage> {
         [
             AurStage::Queued,
@@ -898,12 +927,12 @@ impl AurStage {
         .find(|st| st.as_str() == s)
     }
 
-    /// Ещё идёт (в очереди или в работе).
+    /// Still running (queued or in progress).
     pub fn active(self) -> bool {
         !matches!(self, AurStage::Done | AurStage::Failed)
     }
 
-    /// Подпись на кнопке плитки.
+    /// Label on the tile button.
     pub fn label(self) -> String {
         match self {
             AurStage::Queued => trc("AUR install stage", "In queue"),
@@ -916,7 +945,7 @@ impl AurStage {
         }
     }
 
-    /// Та же стадия строчными — для строки «пакет: сборка…».
+    /// The same stage in lower case, for the "package: building…" line.
     fn status_word(self) -> String {
         match self {
             AurStage::Queued => trc("AUR install status", "in queue"),
@@ -932,29 +961,30 @@ impl AurStage {
     }
 }
 
-/// Что строка вывода помощника говорит о ходе установки.
+/// What a line of the helper's output says about the installation progress.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LineStage {
-    /// Новая стадия (None — стадия прежняя).
+    /// The new stage (None means the stage is unchanged).
     pub stage: Option<AurStage>,
-    /// Пакет, за который помощник взялся (None — прежний).
+    /// The package the helper took up (None means unchanged).
     pub package: Option<String>,
 }
 
-/// Стадия по строке вывода помощника (yay/paru → makepkg → pacman) и имя
-/// пакета, если строка его называет. None — строка о ходе ничего не говорит.
+/// Stage by a line of the helper's output (yay/paru -> makepkg -> pacman)
+/// and the package name, if the line names it. None means the line says
+/// nothing about progress.
 ///
-/// Строки makepkg и pacman в русском каталоге частично переведены, поэтому
-/// узнаются обе формы; помощник Rexon запускает под `LANG=C`.
+/// makepkg and pacman lines are partly translated in the Russian catalog,
+/// so both forms are recognised; Rexon runs the helper under `LANG=C`.
 pub fn stage_of_line(raw: &str) -> Option<LineStage> {
     let line = clean_line(raw);
     let after_colon = |l: &str| {
         l.split_once(':').and_then(|(_, r)| r.split_whitespace().next()).map(String::from)
     };
-    // «==> Making package: имя версия (дата)» — makepkg взялся за очередной
-    // пакет. Стадию строка не меняет: yay зовёт makepkg на один пакет до
-    // трёх раз (скачать, собрать, упаковать), и что именно сейчас — скажут
-    // следующие строки.
+    // "==> Making package: name version (date)": makepkg took up the next
+    // package. The line does not change the stage: yay calls makepkg on one
+    // package up to three times (download, build, package), and the
+    // following lines tell which it is now.
     if line.contains("==> Making package:") || line.contains("==> Создание пакета:") {
         return Some(LineStage { stage: None, package: after_colon(&line) });
     }
@@ -1003,7 +1033,7 @@ pub fn stage_of_line(raw: &str) -> Option<LineStage> {
     if INSTALLING.iter().any(|m| line.contains(m)) {
         return stage(AurStage::Installing);
     }
-    // «installing имя...» — pacman ставит конкретный пакет.
+    // "installing name...": pacman is installing a specific package.
     if let Some(rest) = line.strip_prefix("installing ").or_else(|| line.strip_prefix("установка ")) {
         let name = rest.trim_end_matches("...").trim().to_string();
         return Some(LineStage {
@@ -1014,10 +1044,10 @@ pub fn stage_of_line(raw: &str) -> Option<LineStage> {
     None
 }
 
-/// Строка состояния сверху: «aerothemeplasma-desktop-git: сборка…».
+/// The status line at the top: "aerothemeplasma-desktop-git: building…".
 ///
-/// `current` — пакет, над которым помощник работает сейчас (у комплекта —
-/// его часть), `queued` — сколько установок ждут после этой.
+/// `current` is the package the helper is working on now (for a kit, its
+/// part), `queued` is how many installations wait after this one.
 pub fn stage_status_line(name: &str, current: &str, stage: AurStage, queued: usize) -> String {
     let who = if current.is_empty() || current == name {
         name.to_string()
@@ -1034,28 +1064,28 @@ pub fn stage_status_line(name: &str, current: &str, stage: AurStage, queued: usi
     line
 }
 
-/// Плитка пакета AUR, у которого есть установка в очереди этой сессии.
+/// The tile of an AUR package that has an installation in this session's queue.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardJobState {
-    /// Подпись кнопки.
+    /// Button label.
     pub button_text: String,
-    /// Кнопку можно нажать («Повторить» — можно, «Сборка…» — нет).
+    /// The button can be pressed ("Retry" can, "Building…" cannot).
     pub button_enabled: bool,
-    /// Вид кнопки для `appearance_page::card_button_colors`: «true» —
-    /// контур состояния, «false» — залитая кнопка-действие.
+    /// Button look for `appearance_page::card_button_colors`: "true" is a
+    /// status outline, "false" a filled action button.
     pub button_state: &'static str,
-    /// Подсказка к кнопке.
+    /// Button tooltip.
     pub button_tooltip: String,
-    /// Строка под кнопками (причина отказа), пусто — строки нет.
+    /// The line under the buttons (failure reason); empty means no line.
     pub note: String,
-    /// Подсказка к строке — полный итог с советом и путём журнала.
+    /// Tooltip for the line: the full result with advice and the log path.
     pub note_tooltip: String,
-    /// Подпись ссылки «Журнал» (пусто — ссылки нет).
+    /// Label of the "Log" link (empty means no link).
     pub log_text: String,
 }
 
-/// Что показать на плитке по стадии установки. `short` — короткая причина
-/// отказа, `message` — полный итог.
+/// What to show on the tile for an installation stage. `short` is the
+/// short failure reason, `message` the full result.
 pub fn card_job_state(stage: AurStage, short: &str, message: &str) -> CardJobState {
     match stage {
         AurStage::Failed => CardJobState {
@@ -1097,56 +1127,58 @@ pub fn card_job_state(stage: AurStage, short: &str, message: &str) -> CardJobSta
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Очередь: установки AUR строго по одной на всё приложение
+// The queue: AUR installations strictly one at a time for the whole app
 // ════════════════════════════════════════════════════════════════════════
 //
-// Живой случай 05.10.2026: три «Установить» подряд запустили три помощника
-// разом. Окон пароля стало три, агент polkit два из них отклонил, а сборка
-// одного комплекта шла раньше, чем соседний процесс поставил её
-// зависимость. Поэтому — одна очередь, и в ней по одной установке.
+// A live case on 05.10.2026: three "Install" clicks in a row started
+// three helpers at once. There were three password windows, the polkit
+// agent rejected two of them, and one kit's build ran before a
+// neighbouring process had installed its dependency. Hence one queue,
+// with one installation at a time.
 //
-// ⚠️ Подряд нажатые НЕ сливаются в один вызов помощника. Пароль это не
-// сократило бы до одного: yay просит права на каждый `pacman -U` слоя
-// сборки и ещё раз на `pacman -D --asexplicit` (видно в журнале 05.10 —
-// пять окон на один комплект). А отказ одного пакета в общем вызове
-// обрывал бы и все остальные, и стадию на плитках было бы не разделить.
+// ⚠️ Clicks in a row are NOT merged into one helper call. That would not
+// reduce the passwords to one: yay asks for privileges on every
+// `pacman -U` of a build layer and once more on `pacman -D --asexplicit`
+// (visible in the 05.10 log: five windows for one kit). And a failure of
+// one package in a combined call would cut off all the others too, and
+// the stage on the tiles could not be told apart.
 
-/// Одна установка в очереди.
+/// One installation in the queue.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AurJob {
-    /// Пакет, на котором нажали «Установить».
+    /// The package on which "Install" was pressed.
     pub name: String,
-    /// Что ставить (у комплекта — весь комплект).
+    /// What to install (for a kit, the whole kit).
     pub plan: InstallPlan,
-    /// Каким помощником.
+    /// With which helper.
     pub helper: String,
     pub stage: AurStage,
-    /// Пакет, над которым помощник работает сейчас.
+    /// The package the helper is working on now.
     pub current: String,
-    /// Итог для человека (после конца).
+    /// The result for the person (after the end).
     pub message: String,
-    /// Короткая причина отказа — для подписи на плитке.
+    /// Short failure reason, for the tile label.
     pub short: String,
-    /// Полный журнал помощника.
+    /// The helper's full log.
     pub log_path: String,
 }
 
-/// Очередь установок AUR. Чистое состояние: запуск и потоки — у
-/// вызывающего; здесь только решения «что дальше» и «надо ли будить
-/// исполнителя».
+/// The AUR installation queue. Pure state: launching and threads belong to
+/// the caller; here only the decisions "what next" and "should the
+/// executor be woken".
 #[derive(Debug, Default, Clone)]
 pub struct AurQueue {
     jobs: Vec<AurJob>,
-    /// Исполнитель работает (поток жив и сам заберёт следующую).
+    /// The executor is running (the thread is alive and will pick up the next one itself).
     worker_busy: bool,
 }
 
-/// Ответ [`AurQueue::enqueue`].
+/// Answer of [`AurQueue::enqueue`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Enqueued {
-    /// Установка встала в очередь (false — она уже там или идёт).
+    /// The installation was queued (false means it is already there or running).
     pub added: bool,
-    /// Исполнителя нет — его надо запустить.
+    /// There is no executor: it must be started.
     pub start_worker: bool,
 }
 
@@ -1155,9 +1187,9 @@ impl AurQueue {
         Self::default()
     }
 
-    /// Поставить установку в очередь. Пакет, который уже ждёт или
-    /// ставится, второй раз не встаёт; закончившийся (в том числе с
-    /// ошибкой — «Повторить») встаёт заново в конец.
+    /// Queue an installation. A package that is already waiting or being
+    /// installed is not queued a second time; a finished one (including with
+    /// an error, "Retry") is queued again at the end.
     pub fn enqueue(&mut self, name: &str, plan: InstallPlan, helper: &str, log_path: &str) -> Enqueued {
         if self.jobs.iter().any(|j| j.name == name && j.stage.active()) {
             return Enqueued { added: false, start_worker: false };
@@ -1178,10 +1210,10 @@ impl AurQueue {
         Enqueued { added: true, start_worker }
     }
 
-    /// Исполнитель берёт следующую. None — очередь пуста, и исполнитель
-    /// обязан завершиться (флаг снимается здесь же, под тем же замком, —
-    /// иначе установка, вставшая между «пусто» и выходом, осталась бы
-    /// ждать вечно).
+    /// The executor takes the next one. None means the queue is empty, and
+    /// the executor must exit (the flag is cleared right here, under the same
+    /// lock; otherwise an installation queued between "empty" and the exit
+    /// would wait forever).
     pub fn take_next(&mut self) -> Option<AurJob> {
         match self.jobs.iter_mut().find(|j| j.stage == AurStage::Queued) {
             Some(job) => {
@@ -1195,7 +1227,7 @@ impl AurQueue {
         }
     }
 
-    /// Новая стадия идущей установки. true — что-то изменилось.
+    /// A new stage of the running installation. true means something changed.
     pub fn set_stage(&mut self, name: &str, stage: Option<AurStage>, current: Option<&str>) -> bool {
         let Some(job) = self.jobs.iter_mut().find(|j| j.name == name && j.stage.active()) else {
             return false;
@@ -1214,7 +1246,7 @@ impl AurQueue {
         changed
     }
 
-    /// Установка кончилась.
+    /// The installation has ended.
     pub fn finish(&mut self, name: &str, ok: bool, message: &str, short: &str) {
         if let Some(job) = self.jobs.iter_mut().find(|j| j.name == name && j.stage.active()) {
             job.stage = if ok { AurStage::Done } else { AurStage::Failed };
@@ -1224,13 +1256,13 @@ impl AurQueue {
         }
     }
 
-    /// Все установки — идущие, ждущие и закончившиеся за сессию.
+    /// All installations: running, waiting and finished during the session.
     pub fn jobs(&self) -> &[AurJob] {
         &self.jobs
     }
 
-    /// Строка состояния сверху: идущая установка с именем пакета; пусто —
-    /// ничего не идёт.
+    /// The status line at the top: the running installation with the package
+    /// name; empty means nothing is running.
     pub fn status_line(&self) -> String {
         let Some(job) = self.jobs.iter().find(|j| j.stage.active() && j.stage != AurStage::Queued) else {
             return String::new();
@@ -1239,10 +1271,10 @@ impl AurQueue {
         stage_status_line(&job.name, &job.current, job.stage, queued)
     }
 
-    /// Состояние для страницы: `{"jobs": [...], "status": "..."}`.
+    /// State for the page: `{"jobs": [...], "status": "..."}`.
     ///
-    /// У идущей установки комплекта в `packages` — весь комплект: плитка
-    /// его части показывает ту же стадию.
+    /// For a running kit installation, `packages` holds the whole kit: the
+    /// tile of any of its parts shows the same stage.
     pub fn snapshot_json(&self) -> String {
         let jobs: Vec<serde_json::Value> = self
             .jobs
@@ -1264,8 +1296,8 @@ impl AurQueue {
     }
 }
 
-/// Куда сохранить полный вывод помощника: `aur/<пакет>.log` в кеше
-/// «Оформления» (`~/.cache/rexon`, [`crate::appearance_cache::cache_dir`]).
+/// Where to save the helper's full output: `aur/<package>.log` in the
+/// "Appearance" cache (`~/.cache/rexon`, [`crate::appearance_cache::cache_dir`]).
 pub fn log_path(home: &str, name: &str) -> String {
     let safe: String = name
         .chars()
@@ -1275,11 +1307,12 @@ pub fn log_path(home: &str, name: &str) -> String {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// Ход сборки в окне: что из вывода помощника показать человеку
+// Build progress in the window: what of the helper's output to show
 // ════════════════════════════════════════════════════════════════════════
 
-/// Убрать цвет терминала: `ESC[1m`, `ESC[0;32m` и тот же код без ESC
-/// (`[1m … [0m` — так он доходит, когда ESC съеден по дороге).
+/// Strip terminal colour: `ESC[1m`, `ESC[0;32m` and the same code without
+/// ESC (`[1m … [0m`: that is how it arrives when the ESC was eaten on the
+/// way).
 pub fn strip_ansi(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -1294,7 +1327,7 @@ pub fn strip_ansi(text: &str) -> String {
             }
         }
         if let Some(b) = after_esc {
-            // Прочие ESC-последовательности (`ESC[K`, `ESC(B`) — до буквы.
+            // Other ESC sequences (`ESC[K`, `ESC(B`) run up to a letter.
             let skip = b.char_indices().find(|(_, c)| c.is_ascii_alphabetic()).map_or(b.len(), |(i, _)| i + 1);
             rest = &b[skip..];
             continue;
@@ -1305,10 +1338,10 @@ pub fn strip_ansi(text: &str) -> String {
     out
 }
 
-/// Вопрос помощника, на который Rexon ответил заранее (`--answerclean`,
-/// `--answerdiff`, `--noconfirm`): «Пакеты для чистой сборки?», меню
-/// «[N]one [A]ll … (1 2 3, 1-3, ^4)», эхо ответа «None», «[Y/n]».
-/// Человеку тут читать нечего — ответа он не даёт.
+/// A helper question Rexon answered in advance (`--answerclean`,
+/// `--answerdiff`, `--noconfirm`): "Packages to cleanBuild?", the menu
+/// "[N]one [A]ll … (1 2 3, 1-3, ^4)", the answer echo "None", "[Y/n]".
+/// There is nothing for the person to read here: they give no answer.
 fn is_answered_question(body: &str) -> bool {
     let b = body.trim();
     b.ends_with('?')
@@ -1317,14 +1350,16 @@ fn is_answered_question(body: &str) -> bool {
         || matches!(b, "None" | "none" | "All" | "N" | "A")
 }
 
-/// Строка вывода помощника AUR → строка окна хода (или `None` — скрыть).
+/// A line of the AUR helper's output -> a line of the progress window (or
+/// `None` to hide it).
 ///
-/// Цвет терминала вычищается; вопросы, на которые ответ дан заранее,
-/// скрыты; строки pacman, которые сборщик передаёт от установки
-/// зависимостей и собранного, — тем же разбором, что у установки из
-/// репозиториев ([`crate::system_plan::parse_pacman_line`]): по-русски или
-/// никак. Прочее — только стадии `makepkg` (`==>`), сообщения помощника
-/// (`::`) и переходы (` -> `), всё остальное — шум компилятора.
+/// Terminal colour is stripped; questions answered in advance are hidden;
+/// pacman lines the builder passes on from installing dependencies and the
+/// built packages go through the same parser as installation from the
+/// repositories ([`crate::system_plan::parse_pacman_line`]): in Russian or
+/// not at all. Of the rest, only `makepkg` stages (`==>`), helper messages
+/// (`::`) and transitions (` -> `) are shown; everything else is compiler
+/// noise.
 pub fn progress_line(raw: &str) -> Option<String> {
     let clean = strip_ansi(raw);
     let line = clean.trim();
@@ -1335,7 +1370,7 @@ pub fn progress_line(raw: &str) -> Option<String> {
     if body.is_empty() || is_answered_question(body) {
         return None;
     }
-    // `-> librda-0.0.5-1 is up to date -- skipping` (yay о стоящем пакете).
+    // `-> librda-0.0.5-1 is up to date -- skipping` (yay about an installed package).
     if let Some(stem) = body.trim_start_matches("->").trim().strip_suffix(" is up to date -- skipping") {
         let mut parts = stem.rsplitn(3, '-');
         let name = match (parts.next(), parts.next(), parts.next()) {
@@ -1345,9 +1380,9 @@ pub fn progress_line(raw: &str) -> Option<String> {
         return Some(format!("    {}", trf("✅ already installed: %1", &[&name])));
     }
     if let Some(p) = crate::system_plan::parse_pacman_line(line) {
-        // Пустое сообщение разбора — «показывать нечего» (вопрос pacman,
-        // служебный заголовок); раздел «📌 …» — чужой заголовок, его
-        // показываем как есть ниже.
+        // An empty parse message means "nothing to show" (a pacman question, a
+        // service header); a "📌 …" section is someone else's header, shown as
+        // is below.
         if p.stage == "nothing" {
             return None;
         }
@@ -1420,7 +1455,7 @@ mod tests {
 
     #[test]
     fn aero_kit_in_authors_order_with_warning() {
-        // Чистая Plasma: libplasma системная, форка нет.
+        // Clean Plasma: libplasma is the system one, no fork.
         let plan = plan_install("aerothemeplasma-desktop-git", &|p| p == "libplasma");
         assert_eq!(plan.packages, AEROTHEMEPLASMA.packages.iter().map(|p| p.to_string()).collect::<Vec<_>>());
         assert_eq!(plan.packages.first().unwrap(), "aeroshell-libplasma-git");
@@ -1433,7 +1468,7 @@ mod tests {
 
     #[test]
     fn aero_kit_on_machine_with_fork_already_installed() {
-        // Как у владельца 03.10: форк libplasma уже стоит — замены не будет.
+        // As on the owner's machine on 03.10: the libplasma fork is already installed, so no replacement.
         let plan = plan_install("aerothemeplasma-desktop-git", &|p| p == "aeroshell-libplasma-git");
         assert!(!plan.packages.contains(&"aeroshell-libplasma-git".to_string()));
         assert_eq!(plan.packages.len(), 6);
@@ -1469,9 +1504,9 @@ mod tests {
         assert_eq!(failure_cause(log), Some(AurFailure::NoTerminalForPassword));
     }
 
-    /// Хвост настоящего сухого прогона 03.10.2026 (`yay -S --sudo /bin/false
-    /// aerothemeplasma-desktop-git`): пять зависимостей собраны, установка
-    /// слоя отказала — ровно то, что было у владельца.
+    /// The tail of a real dry run on 03.10.2026 (`yay -S --sudo /bin/false
+    /// aerothemeplasma-desktop-git`): five dependencies built, the layer
+    /// installation refused: exactly what the owner had.
     #[test]
     fn cause_dry_run_install_layer_refused() {
         let log = "==> Sources are ready.\n -> error installing: [/b/aeroshell-smod-git/aeroshell-smod-git-6.7.4_66.rf58780d-1-x86_64.pkg.tar.zst /b/aerothemeplasma-icons-git/aerothemeplasma-icons-git-13.r0100536-1-any.pkg.tar.zst] - exit status 1\n\
@@ -1533,16 +1568,16 @@ mod tests {
         assert_eq!(clean_line("Updating 1%\rUpdating 100%, done."), "Updating 100%, done.");
     }
 
-    /// Хвост журнала владельца 05.10.2026 (aerothemeplasma-icons-git):
-    /// агент KDE уже показывал окно другой установке, pkexec ответил «Not
-    /// authorized» с кодом 127. Пароля никто не вводил — «пароль не принят»
-    /// было неправдой.
+    /// The tail of the owner's log on 05.10.2026 (aerothemeplasma-icons-git):
+    /// the KDE agent was already showing a window to another installation,
+    /// pkexec answered "Not authorized" with code 127. Nobody had entered a
+    /// password, so "password not accepted" was untrue.
     const OWNER_ICONS_TAIL: &str = "==> Sources are ready.\n -> /var/lib/pacman/db.lck is present.\n\
          -> There may be another Pacman instance running. Waiting...\n\
         Error executing command as another user: Not authorized\n\nThis incident has been reported.\n\
          -> error installing: [/home/user/.cache/yay/aerothemeplasma-icons-git/aerothemeplasma-icons-git-13.r0100536-1-any.pkg.tar.zst] - exit status 127\n";
 
-    /// Тот же отказ в журнале системы за время установки (journalctl -o cat).
+    /// The same refusal in the system journal for the duration of the installation (journalctl -o cat).
     const OWNER_AGENT_JOURNAL: &str = "Initiating authentication\n\
         Another client is already authenticating, please try again later.\n\
         Operator of unix-session:2 FAILED to authenticate to gain authorization for action org.freedesktop.policykit.exec\n";
@@ -1552,7 +1587,7 @@ mod tests {
         let cause = failure_cause(OWNER_ICONS_TAIL);
         assert_eq!(cause, Some(AurFailure::NotAuthorized));
         assert!(!failure_text(&AurFailure::NotAuthorized).contains("not accepted"));
-        // По журналу агента — точная причина: окно было занято другим.
+        // From the agent's journal, the exact reason: the window was busy with another one.
         let refined = refine_with_agent_journal(cause, OWNER_AGENT_JOURNAL);
         assert_eq!(refined, Some(AurFailure::PasswordWindowBusy));
         let msg = failure_message_for("aerothemeplasma-icons-git", "yay", &s(&["aerothemeplasma-icons-git"]), OWNER_ICONS_TAIL, "/l", refined.as_ref());
@@ -1564,12 +1599,12 @@ mod tests {
     fn journal_refines_wrong_password_only_for_unclear_refusals() {
         let journal = "pam_unix(polkit-1:auth): authentication failure; logname= uid=1000\n";
         assert_eq!(refine_with_agent_journal(Some(AurFailure::NotAuthorized), journal), Some(AurFailure::WrongPassword));
-        // Ясная причина журналом не перебивается.
+        // A clear reason is not overridden by the journal.
         assert_eq!(
             refine_with_agent_journal(Some(AurFailure::PasswordDismissed), OWNER_AGENT_JOURNAL),
             Some(AurFailure::PasswordDismissed)
         );
-        // Пустой журнал — причина та же.
+        // An empty journal: the reason stays the same.
         assert_eq!(refine_with_agent_journal(Some(AurFailure::NotAuthorized), ""), Some(AurFailure::NotAuthorized));
     }
 
@@ -1579,7 +1614,7 @@ mod tests {
         assert_eq!(failure_cause(log), Some(AurFailure::PasswordDismissed));
         let log = " -> error installing: [/b/x.pkg.tar.zst] - exit status 127\n";
         assert_eq!(failure_cause(log), Some(AurFailure::NotAuthorized));
-        // Иной код — права отказали молча, как раньше.
+        // A different code: privileges were refused silently, as before.
         let log = " -> error installing: [/b/x.pkg.tar.zst] - exit status 1\n";
         assert_eq!(failure_cause(log), Some(AurFailure::PrivilegeFailed));
     }
@@ -1597,8 +1632,8 @@ mod tests {
         assert!(failure_advice(&AurFailure::NoPasswordAgent).is_some());
     }
 
-    /// Гонка 05.10: часть комплекта собиралась раньше, чем соседний процесс
-    /// поставил форк libplasma.
+    /// The race of 05.10: part of the kit was built before a neighbouring
+    /// process installed the libplasma fork.
     #[test]
     fn missing_dependencies_race() {
         let log = "==> Making package: aeroshell-workspace-git 6.7.5_22.rad919f4-1 (Mon Oct  5 02:10:01 2026)\n\
@@ -1659,7 +1694,7 @@ mod tests {
         plan_install(name, &|_| false)
     }
 
-    /// Три «Установить» подряд: исполнитель один, остальные ждут.
+    /// Three "Install" clicks in a row: one executor, the others wait.
     #[test]
     fn queue_runs_one_at_a_time() {
         let mut q = AurQueue::new();
@@ -1667,7 +1702,7 @@ mod tests {
         assert_eq!(a, Enqueued { added: true, start_worker: true });
         let b = q.enqueue("b", plain("b"), "yay", "/lb");
         assert_eq!(b, Enqueued { added: true, start_worker: false });
-        // Повторное нажатие на ждущий пакет ничего не добавляет.
+        // Pressing again on a waiting package adds nothing.
         assert!(!q.enqueue("b", plain("b"), "yay", "/lb").added);
         let first = q.take_next().unwrap();
         assert_eq!(first.name, "a");
@@ -1677,7 +1712,7 @@ mod tests {
         assert_eq!(q.status_line(), "a: building… (1 more in queue)");
         q.finish("a", false, "msg", "short");
         assert_eq!(q.jobs()[0].stage, AurStage::Failed);
-        // Нажатие во время работы исполнителя его второй раз не запускает.
+        // A click while the executor is working does not start it a second time.
         let c = q.enqueue("c", plain("c"), "yay", "/lc");
         assert!(c.added && !c.start_worker);
         assert_eq!(q.take_next().unwrap().name, "b");
@@ -1685,7 +1720,7 @@ mod tests {
         assert_eq!(q.take_next().unwrap().name, "c");
         q.finish("c", true, "ok", "");
         assert!(q.take_next().is_none());
-        // Исполнитель вышел — следующее нажатие обязано его запустить.
+        // The executor has exited: the next click must start it.
         let again = q.enqueue("a", plain("a"), "yay", "/la");
         assert_eq!(again, Enqueued { added: true, start_worker: true });
         assert_eq!(q.jobs().iter().filter(|j| j.name == "a").count(), 1);
@@ -1702,7 +1737,7 @@ mod tests {
 
     #[test]
     fn ход_сборки_без_цвета_и_вопросов() {
-        // Живьём 08.11.2026, «Проверить / Восстановить» MATE (yay 13.1.0, LANG=ru).
+        // Live 08.11.2026, MATE "Check / Restore" (yay 13.1.0, LANG=ru).
         assert_eq!(strip_ansi("\u{1b}[1;34m::\u{1b}[0m\u{1b}[1m Проверка\u{1b}[0m"), ":: Проверка");
         assert_eq!(strip_ansi("[1m==> [0mСборка"), "==> Сборка");
         assert_eq!(strip_ansi("массив[1] и [x]"), "массив[1] и [x]");

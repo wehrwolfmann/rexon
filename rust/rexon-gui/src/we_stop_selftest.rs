@@ -1,18 +1,21 @@
-//! Стенд синхронного снятия живых обоев (`we_socket::stop_active_on_port`)
-//! против подставного демона waywallen.
+//! Test bench for synchronously removing the live wallpaper
+//! (`we_socket::stop_active_on_port`) against a fake waywallen daemon.
 //!
-//! Зачем. 15.11.2026 вживую (Cinnamon 6.8 Wayland, обои Axon) снятие WE-обоев
-//! перед своими кончалось «⚠ Не удалось остановить живые обои», хотя снимать
-//! было нечего: сокет открывался в рабочем потоке std::thread, где у Qt ещё
-//! не было диспетчера событий, — подключение никто не слышал, рукопожатие
-//! WebSocket не уходило, а закрытие писало кадр в неподключённый сокет
-//! (демон: «Handshake not finished»). Стенд гоняет снятие из такого же
-//! потока и из главного против сервера на `std::net`, который сам делает
-//! рукопожатие RFC 6455 и отвечает кадрами протокола демона.
+//! Why. On 15.11.2026, live (Cinnamon 6.8 Wayland, Axon wallpapers),
+//! removing WE wallpapers before our own ended with "⚠ Failed to stop the
+//! live wallpaper", although there was nothing to remove: the socket was
+//! opened in a std::thread worker thread where Qt had no event dispatcher
+//! yet — nobody heard the connection, the WebSocket handshake never went
+//! out, and the close wrote a frame into an unconnected socket (daemon:
+//! "Handshake not finished"). The bench runs the removal from such a
+//! thread and from the main one against a server on `std::net` that does
+//! the RFC 6455 handshake itself and answers with the daemon's protocol
+//! frames.
 //!
-//! Случаи: снимать нечего; два рендерера; медленное рукопожатие (клиент не
-//! смеет слать кадры до ответа сервера); сервер молчит (выход по таймауту,
-//! а не зависание); порт закрыт (выход сразу, без таймаута).
+//! Cases: nothing to remove; two renderers; a slow handshake (the client
+//! must not send frames before the server answers); the server stays silent
+//! (exit by timeout, not a hang); the port is closed (exit at once, without
+//! a timeout).
 //!
 //!     QT_QPA_PLATFORM=offscreen cargo run -p rexon-gui --bin rexon-gui-selftest -- --we-stop-selftest
 
@@ -26,27 +29,27 @@ use rexon_core::we_client;
 
 pub const ARG: &str = "--we-stop-selftest";
 
-/// Как ведёт себя подставной демон.
+/// How the fake daemon behaves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
-    /// Рукопожатие сразу, рендереров нет.
+    /// Handshake at once, no renderers.
     Empty,
-    /// Рукопожатие сразу, два рендерера — оба надо снять.
+    /// Handshake at once, two renderers — both must be removed.
     Two,
-    /// Ответ на рукопожатие через полсекунды, рендереров нет.
+    /// Handshake answer after half a second, no renderers.
     SlowHandshake,
-    /// Принял TCP и молчит.
+    /// Accepted TCP and stays silent.
     Mute,
 }
 
-/// Что увидел сервер.
+/// What the server saw.
 #[derive(Debug, Default)]
 struct Seen {
-    /// Пришёл GET с `Upgrade: websocket` и ключом.
+    /// A GET arrived with `Upgrade: websocket` and a key.
     handshake: bool,
-    /// Байты от клиента ДО ответа сервера на рукопожатие (гонка).
+    /// Bytes from the client BEFORE the server answered the handshake (a race).
     premature: usize,
-    /// Снятые рендереры по порядку.
+    /// The removed renderers in order.
     kills: Vec<String>,
 }
 
@@ -77,8 +80,8 @@ fn accept_key(key: &str) -> String {
     base64(&h.finalize())
 }
 
-/// Прочитать HTTP-запрос рукопожатия. Возвращает ключ и лишние байты,
-/// пришедшие следом в том же чтении.
+/// Read the handshake HTTP request. Returns the key and the extra bytes
+/// that arrived right after it in the same read.
 fn read_request(stream: &mut TcpStream) -> Option<(String, usize)> {
     let mut buf = Vec::new();
     let mut chunk = [0u8; 1024];
@@ -106,7 +109,7 @@ fn read_request(stream: &mut TcpStream) -> Option<(String, usize)> {
     }
 }
 
-/// Один кадр клиента: (опкод, полезная нагрузка). Клиент обязан маскировать.
+/// One client frame: (opcode, payload). The client must mask.
 fn read_frame(stream: &mut TcpStream) -> Option<(u8, Vec<u8>)> {
     let mut head = [0u8; 2];
     stream.read_exact(&mut head).ok()?;
@@ -169,13 +172,13 @@ fn serve(listener: TcpListener, mode: Mode) -> Seen {
     seen.premature += extra;
     match mode {
         Mode::Mute => {
-            // Держим связь, пока клиент не бросит сам.
+            // Keep the connection until the client drops it itself.
             let mut sink = [0u8; 256];
             while matches!(stream.read(&mut sink), Ok(n) if n > 0) {}
             return seen;
         }
         Mode::SlowHandshake => {
-            // Всё, что клиент пришлёт за эти полсекунды, — нарушение.
+            // Anything the client sends during this half second is a violation.
             let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
             let mut early = [0u8; 256];
             if let Ok(n) = stream.read(&mut early) {
@@ -219,8 +222,8 @@ fn serve(listener: TcpListener, mode: Mode) -> Seen {
     seen
 }
 
-/// Один прогон: сервер в своём потоке, снятие — в новом потоке std::thread
-/// (как у «Применить» обоев) либо в главном.
+/// One run: the server in its own thread, the removal in a new std::thread
+/// (as with "Apply" for wallpapers) or in the main one.
 fn run_case(mode: Mode, timeout_ms: i32, in_worker: bool) -> ((String, i64), Seen, Duration) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("порт для подставного демона");
     let port = i64::from(listener.local_addr().unwrap().port());
@@ -250,15 +253,15 @@ pub fn run() -> i32 {
     let stopped = we_client::STOP_STOPPED.to_string();
     let error = we_client::STOP_ERROR.to_string();
 
-    // Прогрев без проверки: первый сокет Qt в процессе подгружает сетевые
-    // библиотеки с диска, и на холодном кэше под чужими сборками это шло
-    // 4,8 с (15.11.2026, итог при этом верный) — замеры времени ниже
-    // меряли бы диск, а не снятие.
+    // Warm-up without checking: the first Qt socket in the process loads the
+    // network libraries from disk, and with a cold cache under other people's
+    // builds this took 4.8 s (15.11.2026, the result was correct) — the timing
+    // measurements below would measure the disk, not the removal.
     let (_, _, warm) = run_case(Mode::Empty, 10_000, false);
     println!("прогрев: {warm:?}");
 
     for (in_worker, place) in [(true, "рабочий поток"), (false, "главный поток")] {
-        // Снимать нечего — «сняли 0», а не ошибка (иначе предупреждение).
+        // Nothing to remove — "removed 0", not an error (otherwise a warning).
         let (answer, seen, took) = run_case(Mode::Empty, 4000, in_worker);
         check(
             answer == (stopped.clone(), 0) && seen.handshake && seen.premature == 0,
@@ -285,7 +288,7 @@ pub fn run() -> i32 {
         format!("сервер молчит: выход по таймауту → {answer:?}, {seen:?}, {took:?}"),
     );
 
-    // Закрытый порт: занять и сразу отпустить.
+    // A closed port: take it and release it at once.
     let port = {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         i64::from(l.local_addr().unwrap().port())

@@ -1,14 +1,14 @@
-// Перечисления `QExtra.Image` — замена C++-типа на QML.
+// `QExtra.Image` enumerations — a QML replacement for the C++ type.
 //
-// НАШ файл, не вендорный. С waywallen 0.6.0 вендорная разметка
-// (`component/ThumbnailImage.qml`, страницы «Скрытые обои» и плейлисты)
-// читает у QExtra не только `AnimatedImage`, но и перечисления базового
-// типа `Image`: режим загрузки (`QE.Image.Automatic`/`Prefetch`/
-// `Suspended`) и состояние (`QE.Image.Ready`/`Error`…). Без типа с этим
-// именем выражения дают `undefined`, и карточка не понимает, готова ли
-// картинка. Сам элемент здесь не рисует ничего: картинки показывает
-// `AnimatedImage.qml` рядом. Значения совпадают по порядку с C++-типом
-// (QExtra 3fcb45c, `image.hpp`) и со `status` штатного `Image` Qt.
+// OUR file, not vendored. Since waywallen 0.6.0 the vendor markup
+// (`component/ThumbnailImage.qml`, the «Hidden wallpapers» pages and playlists)
+// reads from QExtra not only `AnimatedImage` but also the enumerations of the base
+// type `Image`: the loading mode (`QE.Image.Automatic`/`Prefetch`/
+// `Suspended`) and the status (`QE.Image.Ready`/`Error`…). Without a type with this
+// name the expressions yield `undefined`, and the card cannot tell whether the
+// picture is ready. The element itself draws nothing here: pictures are shown by
+// `AnimatedImage.qml` next to it. The values match the C++ type in order
+// (QExtra 3fcb45c, `image.hpp`) and the `status` of the stock Qt `Image`.
 import QtQuick
 
 Item {

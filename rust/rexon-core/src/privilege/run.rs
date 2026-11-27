@@ -1,34 +1,37 @@
-//! Единая точка привилегированной операции (пункт Б8 плана, см. [`super`]).
+//! The single entry point of a privileged operation (item B8 of the plan, see
+//! [`super`]).
 //!
-//! [`run`] — то, что зовут исполнители окна вместо `pkexec`: операция
-//! ([`PrivOp`]) уходит помощнику сеанса прав, сеанс поднимается при первом
-//! запросе и дальше живёт один на процесс окна (один пароль). Клиент —
-//! процессный синглтон за мьютексом: поток, который ждёт итога, мьютекс не
-//! держит, поэтому «Запретить сейчас» ([`shutdown`]) из другого потока не
-//! ждёт конца операции.
+//! [`run`] is what the window's executors call instead of `pkexec`: the
+//! operation ([`PrivOp`]) goes to the privilege session helper, the session is
+//! raised on the first request and then lives as one per window process (one
+//! password). The client is a process singleton behind a mutex: the thread
+//! waiting for the result does not hold the mutex, so "Revoke now"
+//! ([`shutdown`]) from another thread does not wait for the operation to end.
 //!
-//! # Когда прежний путь (правило З5)
+//! # When the old path is used (rule Z5)
 //!
-//! | Итог клиента | [`RunOutcome`] | Прежний путь |
+//! | Client result | [`RunOutcome`] | Old path |
 //! |---|---|---|
-//! | исполнено (`Done`, успех или нет) | [`RunOutcome::Done`] | нет |
-//! | помощника нет / недопустим владелец | [`RunOutcome::Legacy`] ([`LegacyReason::HelperUnavailable`]) | **да** |
-//! | помощник эту операцию не исполняет (`not_supported_yet`, `not_for_helper`) | [`RunOutcome::Legacy`] ([`LegacyReason::NotSupported`]) | **да** |
-//! | отказ проверки (`Refused` прочими ключами) | [`RunOutcome::Failed`] | нет |
-//! | пароль не подтверждён (126/127) | [`RunOutcome::Failed`] | нет: второе окно пароля на отказ человека |
-//! | `BuildMismatch` | [`RunOutcome::Failed`] | нет: «Rexon обновлён — перезапустите» |
-//! | `Revoked`, `SessionLost`, `Closed`, `Busy`, `Spawn`, `HelperFailed` | [`RunOutcome::Failed`] | нет |
-//! | `Cancelled`, `InvalidRequest` | [`RunOutcome::Failed`] | нет |
+//! | executed (`Done`, success or not) | [`RunOutcome::Done`] | no |
+//! | no helper / unacceptable owner | [`RunOutcome::Legacy`] ([`LegacyReason::HelperUnavailable`]) | **yes** |
+//! | the helper does not execute this operation (`not_supported_yet`, `not_for_helper`) | [`RunOutcome::Legacy`] ([`LegacyReason::NotSupported`]) | **yes** |
+//! | check refusal (`Refused` with other keys) | [`RunOutcome::Failed`] | no |
+//! | password not confirmed (126/127) | [`RunOutcome::Failed`] | no: a second password dialog after the person's refusal |
+//! | `BuildMismatch` | [`RunOutcome::Failed`] | no: "Rexon was updated — restart it" |
+//! | `Revoked`, `SessionLost`, `Closed`, `Busy`, `Spawn`, `HelperFailed` | [`RunOutcome::Failed`] | no |
+//! | `Cancelled`, `InvalidRequest` | [`RunOutcome::Failed`] | no |
 //!
-//! Прежний путь [`run`] сам НЕ исполняет: он возвращает [`RunOutcome::Legacy`],
-//! и вызывающий идёт своим прежним исполнителем (`io.run`, `run_logged`,
-//! скрипт через `pkexec bash`) — тем же argv, что и до «Б». Для мест без
-//! своего argv есть [`legacy_command`] (`PrivOp::pkexec_argv` / скрипт).
-//! Своего запуска `pkexec` здесь нет.
+//! [`run`] does NOT execute the old path itself: it returns
+//! [`RunOutcome::Legacy`], and the caller goes through its own old executor
+//! (`io.run`, `run_logged`, a script via `pkexec bash`) — with the same argv as
+//! before "B". For places without their own argv there is [`legacy_command`]
+//! (`PrivOp::pkexec_argv` / a script). There is no `pkexec` launch of its own
+//! here.
 //!
-//! Операцию, которую помощник заведомо не исполняет
-//! ([`super::helper::executes`]), [`run`] отдаёт прежнему пути, не поднимая
-//! сеанс: иначе человек ввёл бы пароль ради отказа и потом ещё раз.
+//! An operation the helper is known not to execute
+//! ([`super::helper::executes`]) is handed by [`run`] to the old path without
+//! raising the session: otherwise the person would enter the password for a
+//! refusal and then once more.
 
 use std::os::fd::OwnedFd;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -40,22 +43,22 @@ use super::op::{Helpers, PrivOp};
 use super::revoke::Reason;
 
 // ============================================================================
-// Шов к клиенту
+// Seam to the client
 // ============================================================================
 
-/// Ожидание итога поставленной операции.
+/// Waiting for the result of a submitted operation.
 pub trait Waiter: Send {
     fn wait(self: Box<Self>, on_progress: &mut dyn FnMut(&str)) -> Result<Outcome, ClientError>;
 }
 
-/// Клиент сеанса прав глазами [`run`]. Живой — [`Client`]; в тестах —
-/// подделка.
+/// The privilege session client as [`run`] sees it. Live — [`Client`]; in tests
+/// — a fake.
 pub trait Backend: Send {
-    /// Поставить операцию (поднимает сеанс, если его нет).
+    /// Submit an operation (raises the session if there is none).
     fn submit(&mut self, op: &PrivOp, fds: Vec<OwnedFd>) -> Result<Box<dyn Waiter>, ClientError>;
-    /// Есть живой сеанс.
+    /// There is a live session.
     fn has_session(&self) -> bool;
-    /// Закрыть сеанс (окно закрыто, «Запретить сейчас»).
+    /// Close the session (window closed, "Revoke now").
     fn shutdown(&mut self);
 }
 
@@ -80,47 +83,48 @@ impl Backend for Client {
 }
 
 // ============================================================================
-// Итог
+// Result
 // ============================================================================
 
-/// Почему операция идёт прежним путём.
+/// Why the operation goes the old way.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LegacyReason {
-    /// Помощника сеанса нет или он недопустим (владелец, права):
+    /// There is no session helper or it is unacceptable (owner, permissions):
     /// [`ClientError::raw_fallback_allowed`].
     HelperUnavailable(ClientError),
-    /// Помощник такую операцию не исполняет: ключ
-    /// [`helper::NOT_SUPPORTED_YET`] или [`helper::NOT_FOR_HELPER`].
+    /// The helper does not execute such an operation: key
+    /// [`helper::NOT_SUPPORTED_YET`] or [`helper::NOT_FOR_HELPER`].
     NotSupported(String),
 }
 
-/// Итог [`run`].
+/// Result of [`run`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunOutcome {
-    /// Помощник исполнил операцию (успех — `ok`).
+    /// The helper executed the operation (success — `ok`).
     Done(Outcome),
-    /// Идти прежним путём — исполнителем вызывающего, как до «Б».
+    /// Go the old way — through the caller's executor, as before "B".
     Legacy(LegacyReason),
-    /// Не исполнено (или исход неизвестен); прежнего пути НЕТ (З5).
+    /// Not executed (or the outcome is unknown); there is NO old path (Z5).
     Failed(ClientError),
 }
 
 impl RunOutcome {
-    /// Разрешён прежний путь.
+    /// The old path is allowed.
     pub fn is_legacy(&self) -> bool {
         matches!(self, RunOutcome::Legacy(_))
     }
 
-    /// Итог в виде ответа исполнителя команды — для мест, которые дальше
-    /// разбирают код и вывод `pkexec` ([`crate::system_exec::RunOut`]).
-    /// `None` — [`RunOutcome::Legacy`]: пусть исполнитель сам запустит
-    /// прежнюю команду. Строки хода помощника — `stdout`.
+    /// The result in the form of a command executor's answer — for places that then
+    /// parse the code and output of `pkexec` ([`crate::system_exec::RunOut`]).
+    /// `None` — [`RunOutcome::Legacy`]: let the executor run the old command itself.
+    /// The helper's progress lines go to `stdout`.
     ///
-    /// Исполнено — код программы, `stderr` пуст: пояснение помощник уже
-    /// прислал строкой хода на языке окна, и разбор «последняя строка —
-    /// причина» берёт её из `stdout`. Отказ пароля отдаётся кодом `pkexec`
-    /// (126/127): у вызывающих уже есть понятное человеку объяснение на
-    /// него. Прочие отказы — код 1 и текст ошибки в `stderr`.
+    /// Executed — the program's code, `stderr` empty: the helper has already sent
+    /// the explanation as a progress line in the window's language, and the "last
+    /// line is the reason" parsing takes it from `stdout`. A password refusal is
+    /// returned with a `pkexec` code (126/127): the callers already have an
+    /// explanation for it that the person understands. Other refusals — code 1 and
+    /// the error text in `stderr`.
     pub fn to_run_out(&self, stdout: String) -> Option<crate::system_exec::RunOut> {
         use crate::utils::RunOutcome as Rc;
         let (outcome, returncode, stderr) = match self {
@@ -133,9 +137,9 @@ impl RunOutcome {
         Some(crate::system_exec::RunOut { outcome, returncode, stdout, stderr })
     }
 
-    /// Текст отказа для человека на языке окна
-    /// ([`ClientError::human_text`], пункт Б13). Техническая строка
-    /// (`Display`) уходит в журнал: человеку она ничего не скажет.
+    /// The refusal text for the person in the window's language
+    /// ([`ClientError::human_text`], item B13). The technical line (`Display`) goes
+    /// to the log: it would tell the person nothing.
     fn failure_text(&self) -> String {
         match self {
             RunOutcome::Failed(e) => {
@@ -147,18 +151,18 @@ impl RunOutcome {
     }
 }
 
-/// Команда прежнего пути, если у вызывающего нет своей.
+/// The old-path command, if the caller has none of its own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LegacyCommand {
-    /// argv (`pkexec <прежний помощник> …` или сырой `pkexec …`).
+    /// argv (`pkexec <old helper> …` or plain `pkexec …`).
     Argv(Vec<String>),
-    /// `pkexec bash <файл>`: префикс временного файла и текст скрипта.
+    /// `pkexec bash <file>`: the temporary file prefix and the script text.
     Script { prefix: &'static str, text: String },
 }
 
-/// Прежний путь операции: [`PrivOp::pkexec_argv`], иначе
-/// [`PrivOp::fallback_script`]. `None` — прежнего пути нет (З5:
-/// `switch-dm`, системные темы без помощника) или он не одна команда.
+/// The operation's old path: [`PrivOp::pkexec_argv`], otherwise
+/// [`PrivOp::fallback_script`]. `None` — there is no old path (Z5: `switch-dm`,
+/// system themes without a helper) or it is not a single command.
 pub fn legacy_command(op: &PrivOp, helpers: &Helpers) -> Option<LegacyCommand> {
     if let Some(argv) = op.pkexec_argv(helpers) {
         return Some(LegacyCommand::Argv(argv));
@@ -166,7 +170,7 @@ pub fn legacy_command(op: &PrivOp, helpers: &Helpers) -> Option<LegacyCommand> {
     op.fallback_script().map(|(prefix, text)| LegacyCommand::Script { prefix, text })
 }
 
-/// Разбор ошибки клиента по правилу З5.
+/// Interpreting a client error per rule Z5.
 fn classify(err: ClientError) -> RunOutcome {
     if err.raw_fallback_allowed() {
         return RunOutcome::Legacy(LegacyReason::HelperUnavailable(err));
@@ -182,23 +186,23 @@ fn classify(err: ClientError) -> RunOutcome {
 }
 
 // ============================================================================
-// Исполнитель
+// Executor
 // ============================================================================
 
-/// Клиент сеанса прав за мьютексом. Процессу нужен один — [`run`]; свой
-/// экземпляр — для тестов.
+/// The privilege session client behind a mutex. A process needs one — [`run`];
+/// a separate instance is for tests.
 ///
-/// ⚠️ Постановка держит мьютекс и через окно пароля (подъём сеанса —
-/// `pkexec` и рукопожатие), то есть сколько угодно долго. Поэтому
-/// [`Runner::has_session`] и [`Runner::shutdown`], которые зовёт поток окна
-/// (опрос «Настроек», меню значка, крестик), мьютекса не ждут: занят — ответ
-/// по последнему известному состоянию, а «закрыть» откладывается до момента,
-/// когда постановка его отпустит (Б13).
+/// Warning: submission holds the mutex through the password dialog as well
+/// (raising the session is `pkexec` and the handshake), i.e. arbitrarily long.
+/// So [`Runner::has_session`] and [`Runner::shutdown`], which the window thread
+/// calls (the "Settings" poll, the tray icon menu, the close button), do not
+/// wait for the mutex: if it is busy, the answer is the last known state, and
+/// "close" is postponed until submission releases it (B13).
 pub struct Runner {
     backend: Mutex<Box<dyn Backend>>,
-    /// Последний ответ `has_session` клиента.
+    /// The client's last `has_session` answer.
     session_seen: AtomicBool,
-    /// Закрыть сеанс, как только мьютекс освободится.
+    /// Close the session as soon as the mutex is free.
     shutdown_pending: AtomicBool,
 }
 
@@ -208,14 +212,14 @@ impl Runner {
     }
 
     fn backend(&self) -> MutexGuard<'_, Box<dyn Backend>> {
-        // Паника в чужом потоке не должна запирать права навсегда: клиент
-        // сам следит за живостью сеанса.
+        // A panic in another thread must not lock the privileges forever: the client
+        // itself watches the session's liveness.
         let mut guard = self.backend.lock().unwrap_or_else(|e| e.into_inner());
         self.apply_pending(&mut guard);
         guard
     }
 
-    /// Отложенное «закрыть» — под взятым мьютексом.
+    /// The postponed "close" — under the acquired mutex.
     fn apply_pending(&self, backend: &mut Box<dyn Backend>) {
         if self.shutdown_pending.swap(false, Ordering::SeqCst) {
             backend.shutdown();
@@ -223,13 +227,13 @@ impl Runner {
         self.session_seen.store(backend.has_session(), Ordering::SeqCst);
     }
 
-    /// Исполнить операцию (см. [`run`]).
+    /// Execute an operation (see [`run`]).
     pub fn run(&self, op: &PrivOp, fds: Vec<OwnedFd>, progress: &mut dyn FnMut(&str)) -> RunOutcome {
         if let Err(key) = helper::executes(op) {
             return RunOutcome::Legacy(LegacyReason::NotSupported(key.to_string()));
         }
-        // Мьютекс — только на постановку: ожидание идёт без него. «Закрыть»,
-        // пришедшее за время окна пароля, исполняется сразу после неё.
+        // The mutex is only for submission: waiting goes on without it. A "close"
+        // that arrived during the password dialog is executed right after it.
         let pending = {
             let mut backend = self.backend();
             let pending = backend.submit(op, fds);
@@ -239,9 +243,9 @@ impl Runner {
         match pending.and_then(|p| p.wait(progress)) {
             Ok(outcome) => RunOutcome::Done(outcome),
             Err(e) => {
-                // Помощник другой сборки — пакет обновили при открытом окне:
-                // то же уведомление «Rexon обновлён», что у сторожа бинаря,
-                // сразу, а не к его опросу (Б13).
+                // A helper from another build — the package was updated while the window
+                // was open: the same "Rexon was updated" notification as the binary
+                // guard's, right away rather than at its poll (B13).
                 if matches!(e, ClientError::BuildMismatch { .. } | ClientError::HelperOtherBuild { .. }) {
                     crate::single_instance::nudge_self_update_watch();
                 }
@@ -250,8 +254,8 @@ impl Runner {
         }
     }
 
-    /// Есть живой сеанс. Не ждёт: пока идёт постановка (окно пароля) —
-    /// последнее известное состояние.
+    /// There is a live session. Does not wait: while submission is in progress (the
+    /// password dialog) — the last known state.
     pub fn has_session(&self) -> bool {
         match self.backend.try_lock() {
             Ok(mut guard) => {
@@ -269,8 +273,9 @@ impl Runner {
         }
     }
 
-    /// Закрыть сеанс. Не ждёт: пока идёт постановка — закроет сразу после
-    /// неё (поставленная операция тогда получит отказ, а не исполнится).
+    /// Close the session. Does not wait: while submission is in progress, it will
+    /// close right after it (the submitted operation then gets a refusal rather than
+    /// being executed).
     pub fn shutdown(&self) {
         self.shutdown_pending.store(true, Ordering::SeqCst);
         self.session_seen.store(false, Ordering::SeqCst);
@@ -281,14 +286,16 @@ impl Runner {
         }
     }
 
-    /// Закрыть сеанс по причине `reason` (окно ушло в лоток, «Запретить
-    /// сейчас» в меню значка). `Some(reason)` — живое право было и погасло,
-    /// человеку надо сказать, что пароль спросят снова; `None` — гасить было
-    /// нечего. Не ждёт, как и [`Runner::shutdown`].
+    /// Close the session for reason `reason` (the window went to the tray, "Revoke
+    /// now" in the icon menu). `Some(reason)` — there was a live privilege and it
+    /// expired, and the person must be told that the password will be asked again;
+    /// `None` — there was nothing to expire. Does not wait, like
+    /// [`Runner::shutdown`].
     ///
-    /// Причину знает только окно: помощник видит лишь конец связи и
-    /// понимает его как закрытие окна, о котором сообщать некому. Поэтому
-    /// текст причины показывает окно, а не ответ помощника.
+    /// Only the window knows the reason: the helper sees only the end of the
+    /// connection and takes it as the window closing, which there is no one to
+    /// report to. So the reason text is shown by the window, not by the helper's
+    /// answer.
     pub fn end_session(&self, reason: Reason) -> Option<Reason> {
         let had = self.has_session();
         self.shutdown();
@@ -298,25 +305,25 @@ impl Runner {
 
 static LIVE: OnceLock<Runner> = OnceLock::new();
 
-/// Процессный исполнитель на живом клиенте ([`Client::live`]). Сам клиент
-/// ничего не запускает, пока нет запроса.
+/// The process executor on the live client ([`Client::live`]). The client itself
+/// launches nothing until there is a request.
 pub fn live() -> &'static Runner {
     LIVE.get_or_init(|| Runner::new(Box::new(Client::live())))
 }
 
-/// Исполнить привилегированную операцию через сеанс прав окна.
+/// Execute a privileged operation through the window's privilege session.
 ///
-/// `fds` — открытые файлы операции в порядке [`PrivOp::local_files`];
-/// `progress` — строки хода. Итог — [`RunOutcome`]; при
-/// [`RunOutcome::Legacy`] вызывающий исполняет прежнюю команду сам.
+/// `fds` — the operation's open files in the order of [`PrivOp::local_files`];
+/// `progress` — progress lines. The result is [`RunOutcome`]; on
+/// [`RunOutcome::Legacy`] the caller executes the old command itself.
 pub fn run(op: &PrivOp, fds: Vec<OwnedFd>, progress: &mut dyn FnMut(&str)) -> RunOutcome {
     live().run(op, fds, progress)
 }
 
-/// Открыть файл операции стороной окна: обычный файл — как есть, каталог
-/// (тема, раскладка экрана входа) — несжатым ustar в памяти
-/// ([`super::unpack::pack_tree_memfd`]): каталог по дескриптору помощник не
-/// принимает (З2).
+/// Open an operation file on the window's side: a regular file as is, a
+/// directory (a theme, a login screen layout) as an uncompressed ustar in memory
+/// ([`super::unpack::pack_tree_memfd`]): the helper does not accept a directory
+/// by descriptor (Z2).
 pub fn open_local(path: &str) -> std::io::Result<OwnedFd> {
     let p = std::path::Path::new(path);
     if std::fs::metadata(p)?.is_dir() {
@@ -326,15 +333,15 @@ pub fn open_local(path: &str) -> std::io::Result<OwnedFd> {
     }
 }
 
-/// [`run`] для живых исполнителей: `files` — пути файлов операции в
-/// порядке [`PrivOp::local_files`] (открываются здесь — [`open_local`] — и
-/// уходят дескрипторами), строки хода дописываются в журнал `log_path` (если
-/// есть), отдаются в `line` и собираются в `stdout` ответа. `None` — прежний
-/// путь ([`RunOutcome::Legacy`]): исполнитель запускает свою прежнюю команду.
+/// [`run`] for live executors: `files` — paths of the operation's files in the
+/// order of [`PrivOp::local_files`] (they are opened here — [`open_local`] — and
+/// sent as descriptors), progress lines are appended to the log `log_path` (if
+/// any), passed to `line` and collected into the answer's `stdout`. `None` — the
+/// old path ([`RunOutcome::Legacy`]): the executor runs its old command.
 ///
-/// Файлы открываются только после того, как ясно, что помощник операцию
-/// исполняет ([`helper::executes`]): каталог не упаковывается ради прежнего
-/// пути.
+/// Files are opened only once it is clear that the helper executes the operation
+/// ([`helper::executes`]): a directory is not packed for the sake of the old
+/// path.
 pub fn run_live(
     op: &PrivOp,
     files: &[String],
@@ -349,11 +356,11 @@ pub fn run_live(
     for f in files {
         match open_local(f) {
             Ok(h) => fds.push(h),
-            // Помощника сеанса нет — решает прежний путь, как до «Б» (каталог
-            // со ссылкой прежний помощник принимал).
+            // There is no session helper — the old path decides, as before "B" (the
+            // old helper accepted a directory with a symlink).
             Err(_) if !session_possible() => return None,
-            // Файла нет (или каталог не упаковать) — помощнику сеанса нечего
-            // передать, а прежнего пути при нём нет (З5).
+            // There is no file (or the directory cannot be packed) — the session helper
+            // has nothing to receive, and there is no old path when it is present (Z5).
             Err(_) => return Some(crate::system_exec::RunOut::missing()),
         }
     }
@@ -370,41 +377,42 @@ pub fn run_live(
     outcome.to_run_out(stdout)
 }
 
-/// Сеанс прав есть или его можно поднять: помощник найден и прошёл
-/// проверку владения ([`super::client::locate_helper`]).
+/// A privilege session exists or can be raised: the helper is found and has
+/// passed the ownership check ([`super::client::locate_helper`]).
 fn session_possible() -> bool {
     use super::client::{helper_candidates, locate_helper, Located, RealFs};
     has_session() || matches!(locate_helper(&RealFs, &helper_candidates()), Located::Ready(_))
 }
 
-/// Есть живой сеанс прав (следующая операция пароля не спросит).
+/// There is a live privilege session (the next operation will not ask for the
+/// password).
 pub fn has_session() -> bool {
     LIVE.get().is_some_and(Runner::has_session)
 }
 
-/// Закрыть сеанс прав, если он есть: окно закрыто или свёрнуто в лоток,
-/// «Запретить сейчас» (Б13).
+/// Close the privilege session if there is one: the window is closed or
+/// minimized to the tray, "Revoke now" (B13).
 pub fn shutdown() {
     if let Some(r) = LIVE.get() {
         r.shutdown();
     }
 }
 
-/// Закрыть сеанс прав по причине `reason` ([`Runner::end_session`]).
-/// `Some` — право было и погасло.
+/// Close the privilege session for reason `reason` ([`Runner::end_session`]).
+/// `Some` — there was a privilege and it expired.
 pub fn end_session(reason: Reason) -> Option<Reason> {
     LIVE.get().and_then(|r| r.end_session(reason))
 }
 
-/// Что сказать человеку, когда крестик спрятал окно в лоток:
-/// `(заголовок, текст)` уведомления или `None` — молчать.
+/// What to tell the person when the close button hid the window in the tray:
+/// `(title, text)` of a notification or `None` — stay silent.
 ///
-/// `first_time` — подсказку «Rexon остался в лотке» ещё не показывали (она
-/// одна на установку: каждый раз — навязчиво). `ended` — итог
-/// [`end_session`]. О погасшем праве говорим КАЖДЫЙ раз, а не однажды:
-/// иначе человек, увидевший подсказку вчера, не узнает, почему сегодня
-/// снова спрашивают пароль (отметка «подсказку видели» глушила и это —
-/// текст причины `window-to-tray` не показывался никогда).
+/// `first_time` — the hint "Rexon stayed in the tray" has not been shown yet
+/// (it is shown once per installation: every time would be intrusive). `ended` —
+/// the result of [`end_session`]. We report an expired privilege EVERY time, not
+/// once: otherwise a person who saw the hint yesterday would not learn why the
+/// password is being asked again today (the "hint seen" mark used to silence
+/// this too — the text of the `window-to-tray` reason was never shown).
 pub fn tray_close_notice(first_time: bool, ended: Option<Reason>) -> Option<(String, String)> {
     let (title, hint) = crate::tray::hidden_notice();
     let body = match (first_time, ended) {
@@ -416,8 +424,8 @@ pub fn tray_close_notice(first_time: bool, ended: Option<Reason>) -> Option<(Str
     Some((title, body))
 }
 
-/// Уведомление «право погасло» по причине `reason`, когда окна может не
-/// быть на экране (пункт «Запретить сейчас» в меню значка).
+/// The "privilege expired" notification for reason `reason`, when the window
+/// may not be on screen (the "Revoke now" item in the icon menu).
 pub fn permission_ended_notice(reason: Reason) -> (String, String) {
     (crate::tray::APP_ID.to_string(), reason.message())
 }
@@ -440,7 +448,7 @@ mod tests {
 
     const HELPER: &str = "/usr/lib/rexon-priv-helper";
     const BUILD: &str = "0.5.0+run-test";
-    /// Предел ожидания любого итога в тестах: зависание — ошибка теста.
+    /// Limit on waiting for any result in tests: a hang is a test failure.
     const LIMIT: Duration = Duration::from_secs(20);
 
     fn names(v: &[&str]) -> Vec<String> {
@@ -451,8 +459,8 @@ mod tests {
         PrivOp::PkgInstall { family: PkgFamily::Arch, packages: names(&["sddm"]), source: PkgSource::DisplayManager }
     }
 
-    /// ФС: каталоги и (если `with_helper`) помощник — root 0755; иначе
-    /// помощник принадлежит пользователю (`bad_owner`) или его нет.
+    /// File system: directories and (if `with_helper`) the helper — root 0755;
+    /// otherwise the helper belongs to the user (`bad_owner`) or is missing.
     struct Fs {
         helper: Option<u32>,
     }
@@ -473,7 +481,7 @@ mod tests {
         }
     }
 
-    /// Что поддельный помощник отвечает на запрос.
+    /// What the fake helper answers to a request.
     #[derive(Clone)]
     enum Reply {
         Done,
@@ -503,7 +511,7 @@ mod tests {
         }
     }
 
-    /// Помощник, отвечающий на рукопожатие и на каждый запрос `reply`.
+    /// A helper that answers the handshake and every request with `reply`.
     fn helper_script(build: &'static str, reply: Reply, seen: Arc<AtomicUsize>) -> Arc<Script> {
         Arc::new(move |sock: OwnedFd| {
             let Ok(Some(ClientMsg::Hello(Hello { .. }))) = proto::recv_msg::<ClientMsg<PrivOp>>(sock.as_fd()) else {
@@ -532,7 +540,7 @@ mod tests {
         })
     }
 
-    /// Исполнитель на настоящем [`Client`] с подделанными ФС и запуском.
+    /// Executor on a real [`Client`] with a faked file system and launching.
     fn runner(fs: Fs, script: Arc<Script>) -> (Arc<Runner>, Arc<AtomicUsize>) {
         let spawns = Arc::new(AtomicUsize::new(0));
         let spawner = CountingSpawner { spawns: Arc::clone(&spawns), script };
@@ -541,7 +549,7 @@ mod tests {
         (Arc::new(Runner::new(Box::new(client))), spawns)
     }
 
-    /// `run` в отдельном потоке с пределом времени.
+    /// `run` in a separate thread with a time limit.
     fn run_limited(r: &Arc<Runner>, op: PrivOp) -> (RunOutcome, Vec<String>) {
         let (tx, rx) = mpsc::channel();
         let r = Arc::clone(r);
@@ -569,9 +577,9 @@ mod tests {
         assert!(!r.has_session());
     }
 
-    /// Deepin на Treeland целиком: сборочные пересборки, своя сборка
-    /// deepin-session и набор стола — один подъём помощника (один пароль).
-    /// SteamOS: поставить и снять образ стола — тоже одним.
+    /// Deepin on Treeland as a whole: build rebuilds, our own deepin-session build
+    /// and the desktop set — one helper launch (one password). SteamOS: installing
+    /// and removing the desktop image — also one.
     #[test]
     fn deepin_rebuild_and_set_and_sysext_one_spawner() {
         use crate::privilege::op::SysextOp;
@@ -624,7 +632,7 @@ mod tests {
         assert_eq!(out, RunOutcome::Legacy(LegacyReason::HelperUnavailable(ClientError::HelperMissing)));
         assert_eq!(out.to_run_out(String::new()), None);
         assert_eq!(spawns.load(Ordering::SeqCst), 0);
-        // Прежняя команда — та же, что строит план установки сегодня.
+        // The old command is the same one the install plan builds today.
         for pkg in [true, false] {
             let helpers = Helpers { pkg, ..Helpers::default() };
             let today = plan::install_plan(PkgFamily::Arch, &names(&["sddm"]), false, None, pkg).unwrap();
@@ -638,12 +646,12 @@ mod tests {
                 .unwrap();
             assert_eq!(legacy_command(&install_op(), &helpers), Some(LegacyCommand::Argv(want)));
         }
-        // Скрипт там, где одной команды нет.
+        // A script where there is no single command.
         assert_eq!(
             legacy_command(&PrivOp::MateGschemaCleanup, &Helpers::default()),
             Some(LegacyCommand::Script { prefix: "rexon_gschema_", text: plan::mate_gschema_cleanup_script() })
         );
-        // switch-dm без помощника — прежнего пути нет.
+        // switch-dm without a helper — there is no old path.
         let switch = PrivOp::SwitchDm { family: PkgFamily::Arch, unit: "sddm".into(), greeter: None };
         assert_eq!(legacy_command(&switch, &Helpers::default()), None);
     }
@@ -667,14 +675,14 @@ mod tests {
         assert!(!out.is_legacy());
         let ro = out.to_run_out(String::new()).unwrap();
         assert_eq!(ro.returncode, Some(1));
-        // Человеку — фраза на языке окна, а не ключ помощника (Б13).
+        // The person gets a phrase in the window's language, not the helper's key (B13).
         assert_eq!(ro.stderr, crate::privilege::client::key_text("refused.not-in-table"));
         assert!(!ro.stderr.contains("refused.") && !ro.stderr.contains("rexon-priv-helper"), "{ro:?}");
     }
 
     #[test]
     fn dismissed_password_and_build_mismatch_have_no_raw_path() {
-        // Окно пароля закрыто: pkexec вышел с 126 до рукопожатия.
+        // The password dialog was closed: pkexec exited with 126 before the handshake.
         let dismissed: Arc<Script> = Arc::new(|sock: OwnedFd| {
             drop(sock);
             126
@@ -682,13 +690,13 @@ mod tests {
         let (r, _) = runner(Fs { helper: Some(0) }, dismissed);
         let (out, _) = run_limited(&r, install_op());
         assert_eq!(out, RunOutcome::Failed(ClientError::NotAuthorized { code: 126 }));
-        // Код pkexec сохраняется: у исполнителей есть объяснение на него.
+        // The pkexec code is kept: the executors have an explanation for it.
         assert_eq!(out.to_run_out(String::new()).unwrap().returncode, Some(126));
 
         let (r, spawns) = runner(Fs { helper: Some(0) }, helper_script("0.4.0+other", Reply::Done, Arc::default()));
         let (out, _) = run_limited(&r, install_op());
         assert!(matches!(out, RunOutcome::Failed(ClientError::BuildMismatch { .. })), "{out:?}");
-        // Повтор не поднимает сеанс снова и сырого пути тоже не даёт.
+        // A repeat does not raise the session again and does not give the raw path either.
         let (again, _) = run_limited(&r, install_op());
         assert!(matches!(again, RunOutcome::Failed(ClientError::BuildMismatch { .. })), "{again:?}");
         assert_eq!(spawns.load(Ordering::SeqCst), 1);
@@ -702,7 +710,7 @@ mod tests {
             assert_eq!(out, RunOutcome::Legacy(LegacyReason::NotSupported(key.into())));
             assert_eq!(out.to_run_out(String::new()), None);
         }
-        // Похожий, но другой ключ — отказ.
+        // A similar but different key — refusal.
         assert!(matches!(
             classify(ClientError::Refused { message_key: "not_supported".into() }),
             RunOutcome::Failed(_)
@@ -751,9 +759,9 @@ mod tests {
         }
     }
 
-    // ---------------------------------------------------------------- подмена трейтом
+    // ---------------------------------------------------------------- substitution via the trait
 
-    /// Подделка клиента: помнит операции, отвечает заданным.
+    /// Fake client: remembers operations, answers with what it is given.
     struct FakeBackend {
         calls: Arc<Mutex<Vec<(PrivOp, usize)>>>,
         answer: Result<Outcome, ClientError>,
@@ -795,17 +803,17 @@ mod tests {
         assert_eq!(out, RunOutcome::Done(ok));
         assert_eq!(lines, ["строка"]);
         assert_eq!(calls.lock().unwrap().as_slice(), [(op, 1)]);
-        // Неуспех программы — это исполнено, а не повод для прежнего пути.
+        // A program failure means executed, not a reason for the old path.
         let ro = out.to_run_out("строка\n".into()).unwrap();
         assert_eq!((ro.returncode, ro.stdout.as_str()), (Some(3), "строка\n"));
         assert_eq!(ro.outcome, crate::utils::RunOutcome::Failed);
     }
 
-    /// Клиент, у которого постановка висит, пока не отпустят (окно пароля).
+    /// A client whose submission hangs until released (the password dialog).
     struct StuckBackend {
         release: Arc<Mutex<mpsc::Receiver<()>>>,
-        /// Весть «постановка началась» (мьютекс уже взят и `apply_pending`
-        /// перед ней отработал).
+        /// The "submission started" signal (the mutex is already taken and
+        /// `apply_pending` before it has run).
         entered: mpsc::Sender<()>,
         alive: Arc<std::sync::atomic::AtomicBool>,
         shutdowns: Arc<AtomicUsize>,
@@ -827,9 +835,9 @@ mod tests {
         }
     }
 
-    /// Б13: пока висит окно пароля, поток окна спрашивает «есть ли сеанс» и
-    /// жмёт «Запретить сейчас» / прячет окно в лоток — и не встаёт. Закрытие
-    /// исполняется сразу, как постановка отпустит клиента.
+    /// B13: while the password dialog is up, the window thread asks "is there a
+    /// session" and presses "Revoke now" / hides the window in the tray — and does
+    /// not block. The close is executed as soon as submission releases the client.
     #[test]
     fn window_thread_never_waits_for_password() {
         let (tx, rx) = mpsc::channel();
@@ -846,10 +854,9 @@ mod tests {
             let r = Arc::clone(&r);
             thread::spawn(move || r.run(&install_op(), vec![], &mut |_| {}))
         };
-        // Дождаться, пока исполнитель войдёт в постановку. Ждать одного
-        // «мьютекс занят» мало: занят он и в `apply_pending` до неё, и
-        // «закрыть» тогда исполнялось раньше постановки — тест падал
-        // наперегонки.
+        // Wait until the executor enters submission. Waiting for "mutex busy" alone
+        // is not enough: it is also busy in `apply_pending` before it, and "close"
+        // was then executed before submission — the test failed as a race.
         entered_rx.recv_timeout(LIMIT).expect("постановка не началась");
         assert!(r.backend.try_lock().is_err());
         let started = std::time::Instant::now();
@@ -866,8 +873,9 @@ mod tests {
         assert!(!r.has_session());
     }
 
-    /// Крестик прячет окно в лоток: живое право гаснет, и окно знает
-    /// причину, чтобы сказать её человеку; второй раз гасить нечего.
+    /// The close button hides the window in the tray: the live privilege expires,
+    /// and the window knows the reason so it can tell the person; the second time
+    /// there is nothing to expire.
     #[test]
     fn end_session_reports_reason_only_when_permission_was_alive() {
         let (_tx, rx) = mpsc::channel::<()>();
@@ -887,8 +895,8 @@ mod tests {
         assert_eq!(r.end_session(Reason::WindowToTray), None, "права уже нет — молчим");
     }
 
-    /// Текст причины «свёрнут в лоток» доходит до человека каждый раз, когда
-    /// право погасло, а подсказка «остался в лотке» — только впервые.
+    /// The text of the "minimized to tray" reason reaches the person every time the
+    /// privilege expired, while the "stayed in the tray" hint — only the first time.
     #[test]
     fn tray_close_notice_tells_ended_permission_every_time() {
         let (title, hint) = crate::tray::hidden_notice();
@@ -907,7 +915,7 @@ mod tests {
 
     #[test]
     fn module_shutdown_without_live_client_is_noop() {
-        // Живой клиент не создаётся ради вопроса «есть ли сеанс».
+        // A live client is not created just to answer "is there a session".
         if LIVE.get().is_none() {
             assert!(!has_session());
             shutdown();

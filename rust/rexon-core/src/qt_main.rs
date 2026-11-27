@@ -1,93 +1,93 @@
-//! Каркас главного окна Rexon: заголовок, размер и состав разделов.
+//! Skeleton of the Rexon main window: title, size and the set of sections.
 //!
-//! Зачем отдельный модуль. До сих пор состав вкладок главного окна знал
-//! ТОЛЬКО Python: таблица `_TABS` в `rexon/qt_main/window.py` держала
-//! порядок, подписи и значки, а ядро — только переводы подписей для меню
-//! лотка (`crate::tray`, ключи `tab.*`). Пока хозяин окна один, это
-//! терпимо; как только хозяев становится два (виджетный на PySide6 и
-//! Rust-каркас на QML), две копии порядка разъезжаются молча — ровно тот
-//! класс, который запрещает правило #12. Здесь живёт ПОРЯДОК и ничего
-//! больше: подписи и значки берутся у `crate::tray` (`LABELS` и таблица
-//! значков), второй их копии не заводится.
+//! Why a separate module. Until now ONLY Python knew the set of tabs of the main
+//! window: the `_TABS` table in `rexon/qt_main/window.py` held their order,
+//! labels and icons, while the core only had label translations for the tray
+//! menu (`crate::tray`, keys `tab.*`). While the window has one owner this is
+//! tolerable; as soon as there are two owners (the PySide6 widget one and the
+//! Rust skeleton on QML), two copies of the order silently drift apart — exactly
+//! the class of problem rule #12 forbids. What lives here is the ORDER and
+//! nothing else: labels and icons come from `crate::tray` (`LABELS` and the icon
+//! table), no second copy of them is made.
 //!
-//! ⚠️ Модуль НЕ знает, чем раздел наполнен: какая страница QML или какой
-//! виджет встают в раздел — дело хозяина окна. Здесь только то, что
-//! одинаково для любого хозяина.
+//! Warning: the module does NOT know what a section is filled with: which QML
+//! page or which widget goes into a section is up to the window's owner. Only
+//! what is the same for any owner is here.
 
 use crate::i18n::{tr, trf};
 use crate::tray;
 
 // ============================================================================
-// Окно
+// Window
 // ============================================================================
 
-/// Заголовок главного окна на языке интерфейса. Русский — тот же текст, что
-/// стоит в `RexonMainWindow.__init__` («Rexon — менеджер рабочих столов»).
+/// Main window title in the interface language. The Russian is the same text as
+/// in `RexonMainWindow.__init__` («Rexon — менеджер рабочих столов»).
 pub fn window_title() -> String {
     tr("Rexon — Desktop Environment Manager")
 }
 
-/// Минимальный размер главного окна (ширина, высота).
+/// Minimum size of the main window (width, height).
 ///
-/// 1100×750 — не круглое число из головы: при меньшей ширине сетка карточек
-/// «Оформления» схлопывается в одну колонку, а таб-бар из шести разделов
-/// уезжает в стрелки прокрутки.
+/// 1100×750 is not a number pulled out of thin air: at a smaller width the card
+/// grid of "Appearance" collapses into a single column and the tab bar of six
+/// sections spills into scroll arrows.
 pub const WINDOW_MIN_SIZE: (i32, i32) = (1100, 750);
 
 // ============================================================================
-// Полоса вкладок
+// Tab bar
 // ============================================================================
 
-/// Заливка НЕАКТИВНОЙ вкладки — доля нейтрального серого
+/// Fill of an INACTIVE tab — a share of neutral gray
 /// ([`crate::ui_base::neutral_rgba`]).
 ///
-/// ⚠️ Это не украшение, а РАЗДЕЛИТЕЛЬ. Без своей заливки и зазоров
-/// неактивные вкладки сливаются в сплошную полосу, и не видно, где кончается
-/// одна и начинается следующая (замечание Wehrwolfmann 18.09.2026 по
-/// окну на QML). У виджетного окна плашка есть с 2026-06-11, и её числа
-/// стоят здесь, чтобы у второго хозяина окна не завелось своих.
+/// Warning: this is not decoration but a SEPARATOR. Without their own fill and
+/// gaps, inactive tabs merge into a solid strip and you cannot see where one
+/// ends and the next begins (remark by Wehrwolfmann on 18.09.2026 about the QML
+/// window). The widget window has had the plate since 2026-06-11, and its
+/// numbers live here so that the second window owner does not grow its own.
 pub const TAB_IDLE_FILL_ALPHA: f64 = 0.10;
 
-/// Заливка неактивной вкладки ПОД КУРСОРОМ — доля того же серого.
+/// Fill of an inactive tab UNDER THE CURSOR — a share of the same gray.
 pub const TAB_HOVER_FILL_ALPHA: f64 = 0.20;
 
-/// Скругление плашки вкладки, точек.
+/// Corner radius of the tab plate, in points.
 pub const TAB_RADIUS: i32 = 6;
 
-/// Зазор слева и справа у каждой вкладки, точек, — то самое расстояние,
-/// по которому глаз видит границу между соседями.
+/// Gap to the left and right of each tab, in points — the very distance by which
+/// the eye sees the boundary between neighbors.
 pub const TAB_MARGIN_H: i32 = 3;
 
-/// Отступ плашки вкладки сверху и снизу, точек.
+/// Top and bottom padding of the tab plate, in points.
 pub const TAB_MARGIN_V: i32 = 5;
 
-/// Краска неактивной вкладки записью QSS `rgba(...)`.
+/// Paint of an inactive tab as a QSS `rgba(...)` notation.
 pub fn tab_idle_fill() -> String {
     crate::ui_base::neutral_rgba(TAB_IDLE_FILL_ALPHA)
 }
 
-/// Краска неактивной вкладки под курсором записью QSS `rgba(...)`.
+/// Paint of an inactive tab under the cursor as a QSS `rgba(...)` notation.
 pub fn tab_hover_fill() -> String {
     crate::ui_base::neutral_rgba(TAB_HOVER_FILL_ALPHA)
 }
 
 // ============================================================================
-// Разделы
+// Sections
 // ============================================================================
 
-/// Разделы главного окна В ПОРЯДКЕ ОКНА.
+/// Main window sections IN WINDOW ORDER.
 ///
-/// Единственный источник правды о ПОРЯДКЕ. Ни подписей, ни значков здесь
-/// нет и быть не должно: и то и другое живёт в [`crate::tray`] — подписи в
-/// `LABELS`, значки в таблице значков, — и вторая их копия разошлась бы с
-/// первой молча (правило #12).
+/// The single source of truth about the ORDER. There are no labels or icons
+/// here, and there must not be: both live in [`crate::tray`] — labels in
+/// `LABELS`, icons in the icon table — and a second copy would silently drift
+/// from the first (rule #12).
 ///
-/// Новый раздел — одна строка здесь плюс подпись `tab.<id>` и значок в
-/// `crate::tray`; таб-бар окна, подменю «Разделы» в лотке и обучение
-/// получают его сами.
+/// A new section is one line here plus a `tab.<id>` label and an icon in
+/// `crate::tray`; the window tab bar, the "Sections" submenu in the tray and the
+/// onboarding pick it up on their own.
 ///
-/// «Сравнение DE» отдельным разделом НЕ идёт: с 08.07.2026 оно живёт
-/// внутри «Рабочих столов» — так его и открывает продукт.
+/// "DE comparison" is NOT a separate section: since 08.07.2026 it lives inside
+/// "Desktops" — and that is how the product opens it.
 pub const SECTIONS: &[&str] = &[
     "desktops",
     "appearance",
@@ -97,23 +97,23 @@ pub const SECTIONS: &[&str] = &[
     "settings",
 ];
 
-/// Идентификаторы разделов в порядке окна — вход `tray::menu`.
+/// Section identifiers in window order — the input of `tray::menu`.
 pub fn section_ids() -> Vec<&'static str> {
     SECTIONS.to_vec()
 }
 
-/// Подпись вкладки — ровно та строка, которую видит покупатель в полосе
-/// разделов («🖥 Рабочие столы»), на его языке.
+/// Tab label — exactly the string the buyer sees in the section bar
+/// ("🖥 Desktops"), in their language.
 ///
-/// Своей сборки значка и текста здесь нет: и то и другое собирает
-/// `tray::titled` — та же функция, по которой сверяется каркас
-/// (`tests/qt_main_parity.rs`). Разница с подменю лотка только в том, что
-/// туда идёт `tray::section_label` без значка.
+/// There is no separate assembly of icon and text here: both are assembled by
+/// `tray::titled` — the same function the skeleton is checked against
+/// (`tests/qt_main_parity.rs`). The only difference from the tray submenu is
+/// that the latter gets `tray::section_label` without an icon.
 pub fn section_tab_label(id: &str) -> String {
     let titled = tray::titled(&format!("tab.{id}"));
     if titled.is_empty() {
-        // Незнакомый раздел подписывается собой, а не пустотой: так новая
-        // вкладка окажется видна хоть как-то.
+        // An unknown section is labeled with its own id rather than nothing: that way a
+        // new tab will at least be visible somehow.
         id.to_string()
     } else {
         titled
@@ -121,28 +121,28 @@ pub fn section_tab_label(id: &str) -> String {
 }
 
 // ============================================================================
-// Окно на Rust
+// The Rust window
 // ============================================================================
 //
-// Своего заголовка у окна на Rust больше нет: ярлык рабочего стола переходит
-// на него, и подпись обязана быть продуктовой (`WINDOW_TITLE`). Прежняя
-// приписка «(Rust-каркас)» была жаргоном для разработчика.
+// The Rust window no longer has a title of its own: the desktop launcher is
+// moving to it, and the caption has to be the product one (`WINDOW_TITLE`). The
+// former suffix "(Rust skeleton)" was developer jargon.
 
-/// Текст на месте раздела, который это окно ещё не показывает.
+/// Text in place of a section this window does not show yet.
 ///
-/// Пустая страница читается как поломка (правило #13), поэтому окно
-/// говорит прямо и простыми словами — без «каркасов» и названий языков.
+/// An empty page reads as breakage (rule #13), so the window says it directly
+/// and in simple words — without "skeletons" or names of programming languages.
 pub fn not_ported_notice(id: &str) -> String {
     let name = tray::section_label(id);
     // TRANSLATORS: %1 is the name of a tab of the main window.
     trf("The “%1” section is not available in this window yet.", &[&name])
 }
 
-/// Подпись подраздела, который каркас уже показывает по-настоящему.
+/// Label of a subsection the skeleton already shows for real.
 ///
-/// Раздел и подраздел — разные вещи: «Сравнение DE» живёт ВНУТРИ «Рабочих
-/// столов», и подписывать его как отдельную вкладку было бы враньём о
-/// строении окна.
+/// A section and a subsection are different things: "DE comparison" lives
+/// INSIDE "Desktops", and labeling it as a separate tab would be lying about
+/// the structure of the window.
 pub fn subsection_label(id: &str) -> String {
     match id {
         "compare" => tr("Compare Desktops"),
@@ -154,7 +154,7 @@ pub fn subsection_label(id: &str) -> String {
 mod tests {
     use super::*;
 
-    /// Русский «как было» — в `tests/qt_main_parity.rs` на `po/ru.po`.
+    /// The Russian "as it was" is in `tests/qt_main_parity.rs` against `po/ru.po`.
     fn english() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
     }
@@ -162,8 +162,8 @@ mod tests {
     #[test]
     fn every_section_has_a_label_and_an_icon() {
         for id in SECTIONS {
-            // `section_label` отдаёт сам идентификатор, когда подписи нет:
-            // именно это и ловим — раздел без подписи в меню лотка.
+            // `section_label` returns the identifier itself when there is no label: that
+            // is exactly what we catch — a section without a label in the tray menu.
             assert!(
                 tray::label_msgid(&format!("tab.{id}")).is_some(),
                 "у раздела «{id}» нет подписи tab.{id}"
@@ -184,9 +184,9 @@ mod tests {
         assert_eq!(total, ids.len(), "идентификаторы разделов повторяются");
     }
 
-    /// Подпись вкладки и подпись пункта в лотке — один и тот же текст,
-    /// разница только в значке. Разъезд этих двух строк означал бы, что
-    /// один раздел называется в окне и в лотке по-разному.
+    /// The tab label and the tray item label are the same text; the only difference
+    /// is the icon. If these two strings drifted apart, one section would be called
+    /// differently in the window and in the tray.
     #[test]
     fn tab_label_is_the_tray_label_plus_icon() {
         english();
@@ -205,7 +205,7 @@ mod tests {
         english();
         assert_eq!(section_tab_label("desktops"), "🖥️ Desktops");
         assert_eq!(section_tab_label("steam"), "🎮 Steam");
-        // Незнакомый раздел не выдумывает себе значок.
+        // An unknown section does not invent an icon for itself.
         assert_eq!(section_tab_label("nope"), "nope");
     }
 }

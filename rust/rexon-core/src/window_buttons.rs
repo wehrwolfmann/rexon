@@ -1,78 +1,78 @@
-//! «Кнопки заголовка окна» и «Размер рамки» вкладки «Настройки» — во всех
-//! окружениях родным ключом.
+//! «Title bar buttons» and «Border size» of the «Settings» tab — in all
+//! environments by their native key.
 //!
-//! Кнопки. Человек выбирает СТОРОНУ кнопок управления (справа, как в
-//! Windows, или слева, как в macOS) и НАБОР — все кнопки модуля «Оформление
-//! окон» KDE: меню окна, меню приложения, «на всех рабочих столах»,
-//! свернуть, развернуть, закрыть, справка, «под другими», «поверх других»,
-//! «скрыть от снимков», промежуток; сверх KDE — «свернуть в заголовок»
-//! (у Marco и xfwm4 она есть, у KWin 6.8 буквы для неё нет). Справка и
-//! кнопки управления стоят на своей стороне, меню и «булавки» — на
-//! противоположной. Кнопки, которых окружение не знает (у GNOME
-//! `appmenu`, `icon`), остаются на своей стороне как были — поэтому
-//! раскладки по умолчанию переживают разбор и сборку без единого изменения.
-//! Чего у окружения нет из набора KDE — раздел называет поимённо
+//! Buttons. The person chooses the SIDE of the control buttons (on the right, as in
+//! Windows, or on the left, as in macOS) and the SET — all buttons of the KDE «Window
+//! Decorations» module: window menu, application menu, «On all desktops»,
+//! minimize, maximize, close, help, «Keep below others», «Keep above others»,
+//! «Hide from screenshots…», spacer; beyond KDE — «Roll up into title bar»
+//! (Marco and xfwm4 have it, KWin 6.8 has no letter for it). Help and
+//! the control buttons stand on their side, the menu and the "pins" — on the
+//! opposite one. Buttons the environment does not know (for GNOME
+//! `appmenu`, `icon`) stay on their side as they were — so the
+//! default layouts survive parsing and building without a single change.
+//! What the environment lacks from the KDE set, the section names one by one
 //! ([`unavailable_note`]).
 //!
-//! Где что лежит (сверено со схемами и бинарями в системе):
+//! Where things live (checked against the schemas and binaries in the system):
 //! * KDE — `kwinrc [org.kde.kdecoration2] ButtonsOnLeft/ButtonsOnRight`
-//!   (буквы KWin 6.8, `decorations/settings.cpp`: M меню, N меню
-//!   приложения, S на всех столах, H справка, I свернуть, A развернуть,
-//!   X закрыть, F поверх, B под, E скрыть от снимков, `_` промежуток; по
-//!   умолчанию `MSE` / `HIAX`). Там же три флажка модуля — [`FLAGS`];
+//!   (KWin 6.8 letters, `decorations/settings.cpp`: M menu, N application
+//!   menu, S on all desktops, H help, I minimize, A maximize,
+//!   X close, F keep above, B keep below, E hide from screenshots, `_` spacer; by
+//!   default `MSE` / `HIAX`). The module's three check boxes are there too — [`FLAGS`];
 //! * GNOME, Pantheon — `org.gnome.desktop.wm.preferences button-layout`
-//!   (его же GTK берёт для окон с клиентским заголовком);
-//! * Budgie — `com.solus-project.budgie-wm button-layout` + ключ GNOME;
+//!   (GTK takes the same one for windows with a client-side title bar);
+//! * Budgie — `com.solus-project.budgie-wm button-layout` + the GNOME key;
 //! * Cinnamon — `org.cinnamon.desktop.wm.preferences button-layout`
-//!   (Muffin знает и `spacer`);
+//!   (Muffin also knows `spacer`);
 //! * MATE — `org.mate.Marco.general button-layout` +
-//!   `org.mate.interface gtk-decoration-layout` (окна GTK с CSD);
-//!   у Marco есть `appmenu`, `stick`, `above`, `shade`, `spacer`, у Muffin
-//!   и Mutter `stick`/`above`/`shade` нет;
-//! * XFCE — `xfwm4 /general/button_layout` (`O|SHMC`: O меню, H свернуть,
-//!   M развернуть, C закрыть, T на всех столах, S свернуть в заголовок,
-//!   `|` заголовок; промежутка, справки, «поверх» и «под» нет);
-//!   xfsettingsd сам переносит раскладку в `Gtk/DecorationLayout`;
-//! * COSMIC — только «свернуть» и «развернуть» вкл/выкл
+//!   `org.mate.interface gtk-decoration-layout` (GTK windows with CSD);
+//!   Marco has `appmenu`, `stick`, `above`, `shade`, `spacer`, Muffin
+//!   and Mutter have no `stick`/`above`/`shade`;
+//! * XFCE — `xfwm4 /general/button_layout` (`O|SHMC`: O menu, H minimize,
+//!   M maximize, C close, T on all desktops, S roll up into title bar,
+//!   `|` the title; no spacer, help, «keep above» or «keep below»);
+//!   xfsettingsd itself carries the layout over to `Gtk/DecorationLayout`;
+//! * COSMIC — only «minimize» and «maximize» on/off
 //!   (`com.system76.CosmicTk/v1/show_minimize`, `show_maximize`);
-//! * Deepin (Treeland) — своей раскладки нет, рамки Deepin и программы
-//!   DTK кнопки не меняют: общая ветка GTK ниже, раздел честно об этом
-//!   говорит ([`note`]);
-//! * Hyprland, niri, river — заголовков у композитора нет вовсе; у sway
-//!   заголовки есть, но кнопок на них нет (sway(5): `border normal` — рамка и
-//!   заголовок, кнопок в описании нет). Кнопки рисуют только сами
-//!   GTK-программы: пишем `gtk-decoration-layout` в `settings.ini` и ключ
-//!   GNOME (его читает портал GTK). Так и говорим ([`note`]);
-//! * Openbox — `<theme><titleLayout>` в `openbox/rc.xml` (буквы из
-//!   описания в системном `rc.xml` Openbox 3.6: N значок окна — он же меню
-//!   окна, L название, I свернуть, M развернуть, C закрыть, S свернуть в
-//!   заголовок, D на всех столах; каждая не больше раза, по умолчанию
-//!   `NLIMC`); перечитывает `openbox --reconfigure`;
-//! * labwc — `<theme><titlebar><layout>` в `labwc/rc.xml` (labwc-config(5)
-//!   0.20: `icon` значок окна, `menu` меню окна, `iconify`, `max`, `close`,
-//!   `shade`, `desk` на всех столах; двоеточие обязательно, по умолчанию
-//!   `icon:iconify,max,close`); перечитывает `labwc --reconfigure`. Свой
-//!   `rc.xml` у обоих заменяет системный целиком, поэтому без своего он
-//!   заводится копией системного (так же, как для шрифта заголовка,
+//! * Deepin (Treeland) — no layout of its own, Deepin frames and DTK
+//!   programs do not change buttons: the shared GTK branch below, the section honestly
+//!   says so ([`note`]);
+//! * Hyprland, niri, river — the compositor has no title bars at all; sway has
+//!   title bars, but no buttons on them (sway(5): `border normal` — border and
+//!   title, no buttons in the description). Buttons are drawn only by
+//!   GTK programs themselves: we write `gtk-decoration-layout` into `settings.ini` and the
+//!   GNOME key (the GTK portal reads it). That is what we say ([`note`]);
+//! * Openbox — `<theme><titleLayout>` in `openbox/rc.xml` (letters from the
+//!   description in the system `rc.xml` of Openbox 3.6: N window icon — also the window
+//!   menu, L title, I minimize, M maximize, C close, S roll up into
+//!   title bar, D on all desktops; each at most once, by default
+//!   `NLIMC`); re-read by `openbox --reconfigure`;
+//! * labwc — `<theme><titlebar><layout>` in `labwc/rc.xml` (labwc-config(5)
+//!   0.20: `icon` window icon, `menu` window menu, `iconify`, `max`, `close`,
+//!   `shade`, `desk` on all desktops; the colon is mandatory, by default
+//!   `icon:iconify,max,close`); re-read by `labwc --reconfigure`. For both, a personal
+//!   `rc.xml` replaces the system one entirely, so without a personal one it
+//!   is created as a copy of the system one (the same as for the title font,
 //!   `qt_settings::rc_xml_with_title_font`);
-//! * LXQt — раскладку пишет тот менеджер окон, что выбран в его сеансе
-//!   ([`wm_key`] по `qt_settings::title_wm_for`): Openbox и labwc — как выше,
-//!   KWin, xfwm4 и Marco — теми же ключами, что в KDE, XFCE и MATE.
-//!   Незнакомый менеджер — подпись говорит, что Rexon его кнопок не пишет.
-//! В KDE тот же `gtk-decoration-layout` дублируется в `settings.ini`, чтобы
-//! GTK-программы с CSD следовали раскладке и без модуля kde-gtk-config.
+//! * LXQt — the layout is written by the window manager chosen in its session
+//!   ([`wm_key`] via `qt_settings::title_wm_for`): Openbox and labwc — as above,
+//!   KWin, xfwm4 and Marco — with the same keys as in KDE, XFCE and MATE.
+//!   An unknown manager — the label says Rexon does not write its buttons.
+//! In KDE the same `gtk-decoration-layout` is duplicated in `settings.ini`, so that
+//! GTK programs with CSD follow the layout even without the kde-gtk-config module.
 //!
-//! Рамка. KDE — `BorderSize` (None … Oversized) и `BorderSizeAuto`
-//! («как задумано оформлением», по умолчанию); Hyprland —
-//! `general.border_size`; niri — ширина кольца фокуса и рамки; sway —
-//! `default_border`/`default_floating_border <стиль> N` (sway(5); стиль —
-//! с заголовком или без — берём из конфига человека, меняем только
-//! толщину); labwc — `border.width` в `themerc-override` (labwc-theme(5)).
-//! В MATE и XFCE рамку рисует тема окон Marco/xfwm4 (у них свои разделы
-//! «Оформления»); в GNOME, Pantheon и Cinnamon — тема GTK: Mutter и Muffin
-//! берут заголовки из CSS темы программ (у Muffin ключ `org.cinnamon.desktop.
-//! wm.preferences theme` не читается с версии 5.4 — в `src/core/prefs.c` его
-//! больше нет). Отдельной толщины там нет, раздел честно об этом говорит.
+//! Border. KDE — `BorderSize` (None … Oversized) and `BorderSizeAuto`
+//! ("as intended by the decoration", the default); Hyprland —
+//! `general.border_size`; niri — the width of the focus ring and border; sway —
+//! `default_border`/`default_floating_border <style> N` (sway(5); the style —
+//! with or without a title — is taken from the person's config, only the
+//! thickness is changed); labwc — `border.width` in `themerc-override` (labwc-theme(5)).
+//! In MATE and XFCE the border is drawn by the Marco/xfwm4 window theme (they have their own
+//! «Appearance» sections); in GNOME, Pantheon and Cinnamon — by the GTK theme: Mutter and Muffin
+//! take title bars from the CSS of the program theme (Muffin has not read the `org.cinnamon.desktop.
+//! wm.preferences theme` key since version 5.4 — it is no longer in `src/core/prefs.c`).
+//! There is no separate thickness there, the section honestly says so.
 
 use std::collections::BTreeMap;
 
@@ -85,7 +85,7 @@ use crate::animations::{
 use crate::i18n::{n_, tr, trf};
 use crate::themes::WmSyntax;
 
-/// Кнопка.
+/// A button.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Btn {
     Menu,
@@ -94,23 +94,23 @@ pub enum Btn {
     Close,
     Sticky,
     Above,
-    /// Меню приложения (KDE `N`, Marco `appmenu`).
+    /// Application menu (KDE `N`, Marco `appmenu`).
     AppMenu,
-    /// Справка «Что это?» (KDE `H`).
+    /// «What's this?» help (KDE `H`).
     Help,
-    /// Под другими окнами (KDE `B`).
+    /// Below other windows (KDE `B`).
     Below,
-    /// Свернуть в заголовок (Marco `shade`, xfwm4 `S`; у KWin буквы нет).
+    /// Roll up into title bar (Marco `shade`, xfwm4 `S`; KWin has no letter).
     Shade,
-    /// Скрыть от снимков и записи экрана (KDE `E`).
+    /// Hide from screenshots and screen recordings (KDE `E`).
     ExcludeCapture,
-    /// Промежуток (KDE `_`, `spacer` у Marco и Muffin).
+    /// Spacer (KDE `_`, `spacer` in Marco and Muffin).
     Spacer,
-    /// Родное имя кнопки, которой мы не управляем — сохраняется как есть.
+    /// Native name of a button we do not manage — kept as is.
     Other(String),
 }
 
-/// Управляемые кнопки: (id, подпись) — в порядке списка модуля KDE.
+/// Managed buttons: (id, label) — in the order of the KDE module list.
 pub const MANAGED: &[(&str, &str)] = &[
     ("menu", n_("Window menu")),
     ("appmenu", n_("Application menu")),
@@ -126,9 +126,9 @@ pub const MANAGED: &[(&str, &str)] = &[
     ("spacer", n_("Spacer")),
 ];
 
-/// Набор кнопок модуля «Оформление окон» KDE — мерило «чего нет» у
-/// остальных окружений («свернуть в заголовок» в него не входит: у KWin её
-/// нет).
+/// The button set of the KDE «Window Decorations» module — the yardstick of "what is missing" in
+/// the other environments («Roll up into title bar» is not part of it: KWin does not
+/// have it).
 const KDE_SET: &[&str] =
     &["menu", "appmenu", "sticky", "minimize", "maximize", "close", "help", "below", "above", "exclude_capture", "spacer"];
 
@@ -169,23 +169,23 @@ impl Btn {
     }
 }
 
-/// Раскладка: левая и правая стороны заголовка.
+/// Layout: the left and right sides of the title bar.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
     pub left: Vec<Btn>,
     pub right: Vec<Btn>,
 }
 
-/// Как окружение пишет раскладку.
+/// How the environment writes the layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Codec {
-    /// Буквы KWin, две строки.
+    /// KWin letters, two strings.
     Kde,
     /// `menu,minimize:maximize,close` (GNOME, GTK, Marco, Muffin).
     Gnome,
     /// `O|HMC` xfwm4.
     Xfwm,
-    /// `NLIMC` Openbox: буквы, `L` — название окна между сторонами.
+    /// Openbox `NLIMC`: letters, `L` — the window title between the sides.
     Openbox,
     /// `icon:iconify,max,close` labwc.
     Labwc,
@@ -204,7 +204,7 @@ fn kde_char(b: &Btn) -> String {
         Btn::Below => "B".into(),
         Btn::ExcludeCapture => "E".into(),
         Btn::Spacer => "_".into(),
-        // У KWin 6.8 буквы для «свернуть в заголовок» нет.
+        // KWin 6.8 has no letter for «Roll up into title bar».
         Btn::Shade => String::new(),
         Btn::Other(s) => s.clone(),
     }
@@ -238,7 +238,7 @@ fn gnome_token(b: &Btn) -> String {
         Btn::AppMenu => "appmenu".into(),
         Btn::Shade => "shade".into(),
         Btn::Spacer => "spacer".into(),
-        // Справки, «под» и «скрыть от снимков» в этой записи нет.
+        // This record has no help, «Keep below others» or «Hide from screenshots…».
         Btn::Help | Btn::Below | Btn::ExcludeCapture => String::new(),
         Btn::Other(s) => s.clone(),
     }
@@ -334,7 +334,7 @@ fn labwc_btn(t: &str) -> Btn {
     }
 }
 
-/// Разбор родной записи. У KDE — `left` и `right` отдельно.
+/// Parsing the native record. For KDE — `left` and `right` separately.
 pub fn parse(codec: Codec, left: &str, right: &str) -> Layout {
     match codec {
         Codec::Kde => Layout { left: left.chars().map(kde_btn).collect(), right: right.chars().map(kde_btn).collect() },
@@ -347,7 +347,7 @@ pub fn parse(codec: Codec, left: &str, right: &str) -> Layout {
             let (l, r) = left.split_once('|').unwrap_or(("", left));
             Layout { left: l.chars().map(xfwm_btn).collect(), right: r.chars().map(xfwm_btn).collect() }
         }
-        // Без `L` Openbox названия не рисует, а кнопки ставит подряд слева.
+        // Without `L` Openbox draws no title and puts the buttons in a row on the left.
         Codec::Openbox => {
             let (l, r) = left.trim().split_once('L').unwrap_or((left.trim(), ""));
             Layout { left: l.chars().map(openbox_btn).collect(), right: r.chars().map(openbox_btn).collect() }
@@ -360,7 +360,7 @@ pub fn parse(codec: Codec, left: &str, right: &str) -> Layout {
     }
 }
 
-/// Сборка родной записи: (левая, правая) у KDE, одна строка в `.0` у прочих.
+/// Building the native record: (left, right) for KDE, one string in `.0` for the others.
 pub fn format(codec: Codec, layout: &Layout) -> (String, String) {
     match codec {
         Codec::Kde => (
@@ -386,10 +386,10 @@ pub fn format(codec: Codec, layout: &Layout) -> (String, String) {
     }
 }
 
-/// Выбор человека: управляемые кнопки на каждой стороне заголовка, по
-/// порядку слева направо. Обе стороны хранятся отдельно — раскладка вроде
-/// `close:maximize` (Pantheon) переживает разбор и сборку как есть, а не
-/// сваливается на одну сторону.
+/// The person's choice: managed buttons on each side of the title bar, in
+/// order from left to right. Both sides are stored separately — a layout like
+/// `close:maximize` (Pantheon) survives parsing and building as is, rather than
+/// collapsing onto one side.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Choice {
     pub left: Vec<String>,
@@ -397,7 +397,7 @@ pub struct Choice {
 }
 
 impl Choice {
-    /// Все выбранные кнопки (левая сторона, потом правая).
+    /// All chosen buttons (the left side, then the right).
     pub fn all(&self) -> Vec<String> {
         self.left.iter().chain(self.right.iter()).cloned().collect()
     }
@@ -414,15 +414,15 @@ fn is_control(b: &Btn) -> bool {
     matches!(b, Btn::Minimize | Btn::Maximize | Btn::Close)
 }
 
-/// Что выбрано в раскладке: управляемые кнопки по сторонам, как стоят.
+/// What is chosen in the layout: managed buttons by side, as they stand.
 pub fn choice_of(layout: &Layout) -> Choice {
     let ids = |v: &[Btn]| v.iter().map(Btn::id).filter(|id| !id.is_empty()).map(str::to_string).collect();
     Choice { left: ids(&layout.left), right: ids(&layout.right) }
 }
 
-/// На какой стороне кнопки управления: `left` — как в macOS, `right` —
-/// как в Windows. По «закрыть», а без него — по остальным кнопкам
-/// управления.
+/// Which side the control buttons are on: `left` — as in macOS, `right` —
+/// as in Windows. By «Close», and without it — by the other control
+/// buttons.
 pub fn side_of(layout: &Layout) -> &'static str {
     if layout.left.contains(&Btn::Close) {
         "left"
@@ -435,11 +435,11 @@ pub fn side_of(layout: &Layout) -> &'static str {
     }
 }
 
-/// Порядок кнопок на каждой стороне слева направо: слева — как в macOS
-/// («закрыть» у края), справа — как в Windows («закрыть» у края, перед ним
-/// «развернуть» и «свернуть»). Справка стоит при кнопках управления, как в
-/// раскладке KDE по умолчанию `MSE|HIAX`; меню и «булавки» — по порядку
-/// модуля KDE.
+/// Button order on each side from left to right: on the left — as in macOS
+/// («Close» at the edge), on the right — as in Windows («Close» at the edge, before it
+/// «Maximize» and «Minimize»). Help stands next to the control buttons, as in the
+/// KDE default layout `MSE|HIAX`; the menu and the "pins" — in the order of the
+/// KDE module.
 const LEFT_ORDER: &[&str] = &[
     "close", "minimize", "maximize", "help", "menu", "appmenu", "sticky", "shade", "below", "above", "exclude_capture", "spacer",
 ];
@@ -447,8 +447,8 @@ const RIGHT_ORDER: &[&str] = &[
     "menu", "appmenu", "sticky", "shade", "below", "above", "exclude_capture", "spacer", "help", "minimize", "maximize", "close",
 ];
 
-/// Кнопки, которые готовая раскладка ставит на сторону кнопок управления
-/// («свернуть в заголовок» — как у xfwm4 по умолчанию `O|SHMC`).
+/// Buttons that a ready-made layout puts on the control buttons' side
+/// («Roll up into title bar» — as in the xfwm4 default `O|SHMC`).
 const CONTROL_SIDE: &[&str] = &["shade", "help", "minimize", "maximize", "close"];
 
 fn order_index(side: &str, id: &str) -> usize {
@@ -456,8 +456,8 @@ fn order_index(side: &str, id: &str) -> usize {
     order.iter().position(|x| *x == id).unwrap_or(order.len())
 }
 
-/// Готовая раскладка: кнопки управления на стороне `side`, меню и
-/// «булавки» — на противоположной.
+/// A ready-made layout: control buttons on side `side`, the menu and the
+/// "pins" — on the opposite one.
 pub fn preset(side: &str, buttons: &[String]) -> Choice {
     let has = |id: &str| buttons.iter().any(|b| b == id);
     let other = if side == "left" { RIGHT_ORDER } else { LEFT_ORDER };
@@ -473,11 +473,11 @@ pub fn preset(side: &str, buttons: &[String]) -> Choice {
     }
 }
 
-/// Поставить (`on`) кнопку `id` на сторону `side` или снять её. Кнопка
-/// живёт на одной стороне: поставленная сюда уходит с другой. Новая встаёт
-/// по порядку стороны ([`LEFT_ORDER`] / [`RIGHT_ORDER`]), уже стоящие не
-/// двигаются. Промежуток — не кнопка: он бывает на обеих сторонах сразу, и
-/// галочка трогает только свою сторону.
+/// Put (`on`) button `id` on side `side` or remove it. A button
+/// lives on one side: one put here leaves the other. A new one takes its place
+/// in the side's order ([`LEFT_ORDER`] / [`RIGHT_ORDER`]), those already standing do not
+/// move. A spacer is not a button: it can be on both sides at once, and a
+/// check box touches only its own side.
 pub fn toggle(choice: &Choice, side: &str, id: &str, on: bool) -> Choice {
     let mut c = choice.clone();
     if id == "spacer" {
@@ -495,24 +495,24 @@ pub fn toggle(choice: &Choice, side: &str, id: &str, on: bool) -> Choice {
     c
 }
 
-/// Полка редактора перетаскиванием: место кнопок, которых нет в заголовке.
+/// The shelf of the drag-and-drop editor: the place of buttons that are not in the title bar.
 pub const SHELF: &str = "shelf";
 
 fn is_side(place: &str) -> bool {
     place == "left" || place == "right"
 }
 
-/// Перенос кнопки, как перетаскиванием в модуле «Оформление окон» KDE: из
-/// `from` (`left` / `right` с позицией `from_index` или полки [`SHELF`]) на
-/// сторону `to` в позицию `to_index` — место в стороне уже без переносимой
-/// кнопки (больше длины — в конец), — либо на полку (снять). Кнопка стоит в
-/// одном месте: поставленная уходит со старого. Промежуток — не кнопка: их
-/// сколько угодно, с полки он всегда берётся новым.
+/// Moving a button, as by drag and drop in the KDE «Window Decorations» module: from
+/// `from` (`left` / `right` with position `from_index`, or the shelf [`SHELF`]) to
+/// side `to` at position `to_index` — the place in the side already without the moved
+/// button (beyond the length — to the end) — or to the shelf (remove). A button stands in
+/// one place: a placed one leaves the old one. A spacer is not a button: there can be
+/// any number of them, from the shelf it is always taken new.
 pub fn move_button(choice: &Choice, id: &str, from: &str, from_index: usize, to: &str, to_index: usize) -> Choice {
     let mut c = choice.clone();
     if is_side(from) {
         let list = c.side_mut(from);
-        // Позиция устарела (раздел перечитан) — берём первую такую кнопку.
+        // The position is stale (the section was re-read) — take the first such button.
         let at = if list.get(from_index).map(String::as_str) == Some(id) {
             Some(from_index)
         } else {
@@ -534,10 +534,10 @@ pub fn move_button(choice: &Choice, id: &str, from: &str, from_index: usize, to:
     c
 }
 
-/// Шаг кнопкой или клавишей (геймпад, клавиатура): `left` / `right` — на
-/// место левее или правее по заголовку (крайняя кнопка стороны переходит
-/// через название на другую сторону, к названию), [`SHELF`] — снять. Ответ —
-/// новый выбор и где кнопка теперь (`None` — на полке или шага нет).
+/// A step with a button or key (gamepad, keyboard): `left` / `right` — to
+/// the place further left or right along the title bar (the outermost button of a side crosses
+/// over the title to the other side, next to the title), [`SHELF`] — remove. The answer is
+/// the new choice and where the button is now (`None` — on the shelf or there is no step).
 pub fn nudge(choice: &Choice, side: &str, index: usize, dir: &str) -> (Choice, Option<(String, usize)>) {
     let list = if side == "left" { &choice.left } else { &choice.right };
     let Some(id) = list.get(index).cloned() else {
@@ -549,7 +549,7 @@ pub fn nudge(choice: &Choice, side: &str, index: usize, dir: &str) -> (Choice, O
         ("right", "left") => Some(("left", choice.left.len())),
         ("left", "right") | ("right", "right") if index + 1 < list.len() => Some((side, index + 1)),
         ("left", "right") => Some(("right", 0)),
-        // Дальше края окна шагать некуда.
+        // There is nowhere to step beyond the window edge.
         _ => return (choice.clone(), Some((side.to_string(), index))),
     };
     match target {
@@ -558,8 +558,8 @@ pub fn nudge(choice: &Choice, side: &str, index: usize, dir: &str) -> (Choice, O
     }
 }
 
-/// Кнопка с полки — кнопкой «Добавить слева / справа»: встаёт по порядку
-/// стороны, как галочкой ([`toggle`]); промежуток — к названию окна.
+/// A button from the shelf with the «Add on the left / right» button: it takes its place in the side's
+/// order, as with a check box ([`toggle`]); a spacer — next to the window title.
 pub fn add_button(choice: &Choice, id: &str, side: &str) -> Choice {
     if id != "spacer" {
         return toggle(choice, side, id, true);
@@ -568,8 +568,8 @@ pub fn add_button(choice: &Choice, id: &str, side: &str) -> Choice {
     move_button(choice, id, SHELF, 0, side, at)
 }
 
-/// Значок кнопки на макете заголовка и на полке (знак шрифта: значков
-/// оформления, как у KDE, вне KWin нет).
+/// The button icon on the title bar mock-up and on the shelf (a font glyph: decoration
+/// icons, as in KDE, do not exist outside KWin).
 pub fn glyph(id: &str) -> &'static str {
     match id {
         "menu" => "≡",
@@ -587,7 +587,7 @@ pub fn glyph(id: &str) -> &'static str {
     }
 }
 
-/// Почему кнопки на полке нет у этого окружения (подсказка недоступной).
+/// Why a shelf button is missing in this environment (tooltip of an unavailable one).
 pub fn missing_reason(de: &str) -> String {
     let wm = match de {
         "kde" => "KWin",
@@ -602,10 +602,10 @@ pub fn missing_reason(de: &str) -> String {
     trf("%1 has no such title bar button.", &[&wm])
 }
 
-/// Одна сторона: управляемые кнопки по выбору; чужие остаются на ней же —
-/// стоявшие до первой управляемой встают перед ними, прочие — после.
-/// Стороне без управляемых чужие идут к краю окна: слева — перед, справа —
-/// после.
+/// One side: managed buttons by the choice; foreign ones stay on it —
+/// those that stood before the first managed one go before them, the rest — after.
+/// For a side without managed buttons the foreign ones go to the window edge: on the left — before,
+/// on the right — after.
 fn build_side(chosen: &[String], current: &[Btn], left: bool) -> Vec<Btn> {
     let first_managed = current.iter().position(|b| !matches!(b, Btn::Other(_)));
     let (mut lead, mut trail) = (Vec::new(), Vec::new());
@@ -627,23 +627,23 @@ fn build_side(chosen: &[String], current: &[Btn], left: bool) -> Vec<Btn> {
     lead
 }
 
-/// Раскладка по выбору; чужие кнопки остаются на своих сторонах.
+/// A layout by the choice; foreign buttons stay on their sides.
 pub fn build(choice: &Choice, current: &Layout) -> Layout {
     Layout { left: build_side(&choice.left, &current.left, true), right: build_side(&choice.right, &current.right, false) }
 }
 
-/// Какие кнопки окружение умеет.
+/// Which buttons the environment supports.
 ///
-/// * KDE — все кнопки модуля «Оформление окон» KWin 6.8 ([`KDE_SET`]);
-/// * MATE (Marco) — `appmenu`, `stick`, `above`, `shade`, `spacer` сверх
-///   общих (описание ключа в схеме `org.mate.marco` и функции кнопок Marco);
-/// * XFCE (xfwm4) — `T` на всех столах и `S` свернуть в заголовок;
-/// * Cinnamon (Muffin) — промежуток `spacer` (описание ключа в схеме);
-/// * Openbox и labwc — меню окна, на всех столах, свернуть, развернуть,
-///   закрыть и свернуть в заголовок (буквы `NDIMCS` / слова labwc-config(5));
-/// * GNOME, Budgie, Pantheon и прочие — то, что рисует и GTK у окон со
-///   своим заголовком: меню, свернуть, развернуть, закрыть (промежутка GTK
-///   не знает, а в GNOME заголовки почти всех окон рисует GTK).
+/// * KDE — all buttons of the KWin 6.8 «Window Decorations» module ([`KDE_SET`]);
+/// * MATE (Marco) — `appmenu`, `stick`, `above`, `shade`, `spacer` beyond the
+///   common ones (the key description in the `org.mate.marco` schema and Marco's button functions);
+/// * XFCE (xfwm4) — `T` on all desktops and `S` roll up into title bar;
+/// * Cinnamon (Muffin) — the `spacer` (the key description in the schema);
+/// * Openbox and labwc — window menu, on all desktops, minimize, maximize,
+///   close and roll up into title bar (letters `NDIMCS` / labwc-config(5) words);
+/// * GNOME, Budgie, Pantheon and others — what GTK also draws for windows with
+///   their own title bar: menu, minimize, maximize, close (GTK does not know the
+///   spacer, and in GNOME the title bars of almost all windows are drawn by GTK).
 pub fn supported_buttons(de: &str) -> Vec<&'static str> {
     match de {
         "kde" => KDE_SET.to_vec(),
@@ -656,9 +656,9 @@ pub fn supported_buttons(de: &str) -> Vec<&'static str> {
     }
 }
 
-/// Чего из набора KDE у окружения нет — поимённо, с причиной. Пусто — всё
-/// есть (KDE). Там, где кнопки не пишутся вовсе (подпись [`note`] уже это
-/// говорит), — тоже пусто.
+/// What the environment lacks from the KDE set — by name, with the reason. Empty — everything
+/// is there (KDE). Where buttons are not written at all (the [`note`] label already
+/// says so) — also empty.
 pub fn unavailable_note(de: &str) -> String {
     let supported = supported_buttons(de);
     let missing: Vec<String> = MANAGED
@@ -691,10 +691,10 @@ fn codec(de: &str) -> Codec {
     }
 }
 
-/// Кто пишет раскладку: окружение, а в LXQt — менеджер окон его сеанса
-/// (`qt_settings::title_wm_for` по `lxqt/session.conf`): Openbox → `openbox`,
-/// labwc → `labwc`, KWin → `kde`, xfwm4 → `xfce`, Marco → `mate` (ключи их
-/// родных окружений). Незнакомый или не выбранный — `lxqt` как есть.
+/// Who writes the layout: the environment, and in LXQt — the window manager of its session
+/// (`qt_settings::title_wm_for` by `lxqt/session.conf`): Openbox → `openbox`,
+/// labwc → `labwc`, KWin → `kde`, xfwm4 → `xfce`, Marco → `mate` (the keys of their
+/// native environments). Unknown or not chosen — `lxqt` as is.
 pub fn wm_key(io: &dyn LookIo, ctx: &LookCtx) -> String {
     use crate::qt_settings::TitleWm;
     if ctx.de != "lxqt" {
@@ -714,14 +714,14 @@ pub fn wm_key(io: &dyn LookIo, ctx: &LookCtx) -> String {
     .to_string()
 }
 
-/// Контекст с окружением, заменённым на [`wm_key`].
+/// A context with the environment replaced by [`wm_key`].
 fn wm_ctx(io: &dyn LookIo, ctx: &LookCtx) -> LookCtx {
     let mut c = ctx.clone();
     c.de = wm_key(io, ctx);
     c
 }
 
-/// Менеджер с раскладкой в `rc.xml` и путь узла раскладки в `<theme>`.
+/// A manager with the layout in `rc.xml` and the path of the layout node in `<theme>`.
 fn rc_layout_node(de: &str) -> Option<(crate::qt_settings::TitleWm, &'static [&'static str])> {
     use crate::qt_settings::TitleWm;
     match de {
@@ -731,15 +731,15 @@ fn rc_layout_node(de: &str) -> Option<(crate::qt_settings::TitleWm, &'static [&'
     }
 }
 
-/// Свой `rc.xml` менеджера, его текст (свой либо системный образец).
+/// The manager's own `rc.xml`, its text (the personal one or the system sample).
 fn rc_xml_of(io: &dyn LookIo, ctx: &LookCtx, wm: crate::qt_settings::TitleWm) -> (String, Option<String>) {
     let dirs = std::env::var("XDG_CONFIG_DIRS").unwrap_or_default();
     let (own, text, _) = crate::qt_settings::rc_xml_source(wm, &ctx.config_home, &dirs, &|p| io.read(p));
     (own, text)
 }
 
-/// Почему раскладку в `rc.xml` записать нельзя (`None` — можно): у Openbox
-/// нет ни своего, ни системного файла, либо файл не разбирается.
+/// Why the layout cannot be written into `rc.xml` (`None` — it can): Openbox
+/// has neither a personal nor a system file, or the file does not parse.
 pub fn rc_refusal(io: &dyn LookIo, ctx: &LookCtx) -> Option<String> {
     let (wm, node) = rc_layout_node(&ctx.de)?;
     let (own, text) = rc_xml_of(io, ctx, wm);
@@ -754,10 +754,10 @@ pub fn rc_refusal(io: &dyn LookIo, ctx: &LookCtx) -> Option<String> {
     })
 }
 
-/// Раскладка GTK по умолчанию (`gtk-decoration-layout`).
+/// The default GTK layout (`gtk-decoration-layout`).
 const GTK_DEFAULT: &str = "menu:minimize,maximize,close";
 
-/// Где окружение хранит раскладку: (схема, ключ) для gsettings.
+/// Where the environment stores the layout: (schema, key) for gsettings.
 fn gsettings_key(de: &str) -> (&'static str, &'static str) {
     match de {
         "cinnamon-mint" => ("org.cinnamon.desktop.wm.preferences", "button-layout"),
@@ -776,7 +776,7 @@ fn cosmic_path(ctx: &LookCtx, key: &str) -> String {
     ctx.cfg(&format!("cosmic/com.system76.CosmicTk/v1/{key}"))
 }
 
-/// Раскладка как она стоит сейчас (родная запись).
+/// The layout as it stands now (the native record).
 pub fn read_layout(io: &dyn LookIo, ctx: &LookCtx) -> Layout {
     let de = ctx.de.as_str();
     match de {
@@ -817,7 +817,7 @@ pub fn read_layout(io: &dyn LookIo, ctx: &LookCtx) -> Layout {
     }
 }
 
-/// Раскладка для GTK (`gtk-decoration-layout`): только то, что GTK знает.
+/// The layout for GTK (`gtk-decoration-layout`): only what GTK knows.
 pub fn gtk_layout(layout: &Layout) -> String {
     let side = |v: &[Btn]| {
         v.iter()
@@ -829,7 +829,7 @@ pub fn gtk_layout(layout: &Layout) -> String {
     format!("{}:{}", side(&layout.left), side(&layout.right))
 }
 
-/// План записи раскладки.
+/// The layout write plan.
 pub fn plan_layout(io: &dyn LookIo, ctx: &LookCtx, new: &Layout) -> Vec<LookStep> {
     let old = read_layout(io, ctx);
     let de = ctx.de.as_str();
@@ -851,7 +851,7 @@ pub fn plan_layout(io: &dyn LookIo, ctx: &LookCtx, new: &Layout) -> Vec<LookStep
         }
         "xfce" => steps.push(xfconf_set("xfwm4", "/general/button_layout", "string", &format(Codec::Xfwm, new).0)),
         "cosmic" => {
-            // У COSMIC есть только два флажка — сторону не сравниваем.
+            // COSMIC has only two check boxes — the side is not compared.
             let has = |l: &Layout, b: &Btn| l.right.contains(b) || l.left.contains(b);
             for (key, b) in [("show_minimize", Btn::Minimize), ("show_maximize", Btn::Maximize)] {
                 if has(new, &b) != has(&old, &b) {
@@ -863,14 +863,14 @@ pub fn plan_layout(io: &dyn LookIo, ctx: &LookCtx, new: &Layout) -> Vec<LookStep
             let (wm, node) = rc_layout_node(de).expect("у openbox и labwc раскладка в rc.xml");
             let (own, text) = rc_xml_of(io, ctx, wm);
             let value = format(codec(de), new).0;
-            // Файл не разбирается (или у Openbox его нет вовсе) — шагов нет,
-            // отказ с причиной говорит [`rc_refusal`].
+            // The file does not parse (or Openbox has none at all) — no steps,
+            // the refusal with the reason is given by [`rc_refusal`].
             let Some(content) = crate::qt_settings::rc_xml_with_theme_value(text.as_deref(), wm, node, &value) else {
                 return Vec::new();
             };
             steps.push(LookStep::WriteFile { path: own, content });
             steps.push(LookStep::Notify(vec![crate::animations::argv(&[wm.program(), "--reconfigure"])]));
-            // GTK-программы со своим заголовком — тот же общий слой.
+            // GTK programs with their own title bar — the same shared layer.
             steps.push(LookStep::GtkIni { key: "gtk-decoration-layout".into(), value: gtk_layout(new) });
         }
         "gnome" | "budgie" | "pantheon" | "cinnamon-mint" | "mate" => {
@@ -885,9 +885,9 @@ pub fn plan_layout(io: &dyn LookIo, ctx: &LookCtx, new: &Layout) -> Vec<LookStep
             }
         }
         _ => {
-            // Композитор без заголовков: кнопки рисуют только GTK-программы.
-            // Ключ GNOME читает портал GTK — пишем, если есть gsettings
-            // (неудача не беда: settings.ini уже записан).
+            // A compositor without title bars: buttons are drawn only by GTK programs.
+            // The GNOME key is read by the GTK portal — write it if there is gsettings
+            // (failure is no problem: settings.ini is already written).
             steps.push(LookStep::GtkIni { key: "gtk-decoration-layout".into(), value: gtk_layout(new) });
             if io.have("gsettings") {
                 steps.push(LookStep::Notify(vec![crate::animations::argv(&[
@@ -901,19 +901,19 @@ pub fn plan_layout(io: &dyn LookIo, ctx: &LookCtx, new: &Layout) -> Vec<LookStep
         }
     }
     if de == "kde" {
-        // GTK-программы с CSD — тот же общий слой, без kde-gtk-config.
+        // GTK programs with CSD — the same shared layer, without kde-gtk-config.
         steps.push(LookStep::GtkIni { key: "gtk-decoration-layout".into(), value: gtk_layout(new) });
     }
     steps
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Флажки заголовка KDE
+// KDE title bar check boxes
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Флажки окна «Кнопки заголовка» модуля «Оформление окон» KDE: (id, ключ
-/// `kwinrc [org.kde.kdecoration2]`, значение по умолчанию, подпись). Ключи
-/// и умолчания — из `kwindecorationsettings.kcfg` KWin 6.8.
+/// Check boxes of the «Titlebar Buttons» window of the KDE «Window Decorations» module: (id, the
+/// `kwinrc [org.kde.kdecoration2]` key, default value, label). Keys
+/// and defaults — from `kwindecorationsettings.kcfg` of KWin 6.8.
 pub const FLAGS: &[(&str, &str, bool, &str)] = &[
     ("close_on_double_click", "CloseOnDoubleClickOnMenu", false, n_("Close windows by double-clicking the window menu button")),
     ("show_tooltips", "ShowToolTips", true, n_("Show title bar button tooltips")),
@@ -927,20 +927,20 @@ pub const FLAGS: &[(&str, &str, bool, &str)] = &[
 
 const DECO_GROUP: &str = "org.kde.kdecoration2";
 
-/// Флажок для раздела.
+/// A check box for the section.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FlagOption {
     pub id: String,
     pub label: String,
     pub checked: bool,
-    /// Можно менять (у «всегда показывать „скрыть от снимков“» — только
-    /// когда сама кнопка стоит в заголовке, как у KDE).
+    /// Can be changed (the "always show 'hide from screenshots'" one — only
+    /// when the button itself is in the title bar, as in KDE).
     pub enabled: bool,
-    /// Пояснение под флажком (пусто — нет).
+    /// Explanation under the check box (empty — none).
     pub hint: String,
 }
 
-/// Логическое значение KConfig (`true`, `1`, `on`, `yes` — истина).
+/// KConfig boolean value (`true`, `1`, `on`, `yes` — true).
 fn kconfig_bool(raw: Option<String>, default: bool) -> bool {
     match raw {
         Some(v) => matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "on" | "yes"),
@@ -956,7 +956,7 @@ fn has_button(layout: &Layout, b: &Btn) -> bool {
     layout.left.contains(b) || layout.right.contains(b)
 }
 
-/// Флажки окружения: у KDE — три флажка KWin, у остальных их нет
+/// The environment's check boxes: KDE has three KWin check boxes, the others have none
 /// ([`flags_note`]).
 pub fn flags(io: &dyn LookIo, ctx: &LookCtx, layout: &Layout) -> Vec<FlagOption> {
     if ctx.de != "kde" {
@@ -984,9 +984,9 @@ pub fn flags(io: &dyn LookIo, ctx: &LookCtx, layout: &Layout) -> Vec<FlagOption>
         .collect()
 }
 
-/// Почему флажков нет: это настройки KWin, у других оконных менеджеров
-/// таких нет (Marco, xfwm4, Mutter, Muffin — ни в схемах gsettings, ни в
-/// свойствах xfconf).
+/// Why there are no check boxes: these are KWin settings, other window managers
+/// have no such thing (Marco, xfwm4, Mutter, Muffin — neither in gsettings schemas nor in
+/// xfconf properties).
 pub fn flags_note(de: &str) -> String {
     match de {
         "kde" => String::new(),
@@ -997,8 +997,8 @@ pub fn flags_note(de: &str) -> String {
     }
 }
 
-/// План флажка. Значение по умолчанию не пишется, а снимается — как у
-/// модуля KDE, чтобы `kwinrc` не обрастал лишними строками.
+/// The check box plan. The default value is not written but removed — as in the
+/// KDE module, so that `kwinrc` does not accumulate extra lines.
 pub fn plan_flag(io: &dyn LookIo, ctx: &LookCtx, id: &str, on: bool) -> Vec<LookStep> {
     if ctx.de != "kde" {
         return Vec::new();
@@ -1016,7 +1016,7 @@ pub fn plan_flag(io: &dyn LookIo, ctx: &LookCtx, id: &str, on: bool) -> Vec<Look
     vec![kwrite("kwinrc", DECO_GROUP, key, value, true), kwin_reconfigure()]
 }
 
-/// Возврат флажков к умолчанию: снять записанные ключи.
+/// Returning the check boxes to the default: remove the written keys.
 fn reset_flags_steps(io: &dyn LookIo, ctx: &LookCtx) -> Vec<LookStep> {
     if ctx.de != "kde" {
         return Vec::new();
@@ -1038,10 +1038,10 @@ pub fn apply_flag(io: &dyn LookIo, ctx: &LookCtx, id: &str, on: bool) -> String 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Рамка
+// Border
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Размеры рамки KDE (имена KWin) и подписи как в KDE.
+/// KDE border sizes (KWin names) and labels as in KDE.
 const KDE_BORDERS: &[(&str, &str)] = &[
     ("auto", n_("Theme's default")),
     ("None", n_("No borders")),
@@ -1055,7 +1055,7 @@ const KDE_BORDERS: &[(&str, &str)] = &[
     ("Oversized", n_("Oversized")),
 ];
 
-/// Толщина в точках у тайловых композиторов.
+/// Thickness in points for tiling compositors.
 const PX_BORDERS: &[u32] = &[0, 1, 2, 3, 4, 5, 6, 8, 10];
 
 pub const BORDER_TAG: &str = "window borders";
@@ -1065,16 +1065,16 @@ pub fn border_supported(de: &str) -> bool {
     matches!(de, "kde" | "hyprland" | "niri" | "sway" | "labwc")
 }
 
-/// Файл поправок темы labwc (labwc-theme(5): `themerc-override` в каталоге
-/// настроек labwc перекрывает ключи темы).
+/// The labwc theme override file (labwc-theme(5): `themerc-override` in the labwc
+/// settings directory overrides theme keys).
 pub fn labwc_override_path(ctx: &LookCtx) -> String {
     ctx.cfg("labwc/themerc-override")
 }
 
-/// Ключ толщины рамки labwc.
+/// The labwc border thickness key.
 pub const LABWC_BORDER_KEY: &str = "border.width";
 
-/// Значение ключа `key: value` в тексте `themerc` (пусто — ключа нет).
+/// Value of a `key: value` key in the `themerc` text (empty — no key).
 pub fn themerc_value(text: &str, key: &str) -> Option<String> {
     text.lines().rev().find_map(|line| {
         let (k, v) = line.trim().split_once(':')?;
@@ -1082,8 +1082,8 @@ pub fn themerc_value(text: &str, key: &str) -> Option<String> {
     })
 }
 
-/// Текст `themerc` с ключом `key`, заменённым на `value` (`None` — убрать
-/// ключ). Остальные строки человека — как были.
+/// The `themerc` text with key `key` replaced by `value` (`None` — remove
+/// the key). The person's other lines — as they were.
 pub fn themerc_with(text: &str, key: &str, value: Option<&str>) -> String {
     let mut out: Vec<String> = text
         .lines()
@@ -1103,10 +1103,10 @@ pub fn themerc_with(text: &str, key: &str, value: Option<&str>) -> String {
     joined
 }
 
-/// Стиль рамки sway из конфига человека: последние `default_border` и
-/// `default_floating_border` (sway(5): `normal|none|pixel [<n>]`; по
-/// умолчанию `normal`). Толщину человек выбирает, значит рамка нужна: `none`
-/// становится `pixel` — без заголовка, как и было.
+/// The sway border style from the person's config: the last `default_border` and
+/// `default_floating_border` (sway(5): `normal|none|pixel [<n>]`; by
+/// default `normal`). The person chooses a thickness, so a border is needed: `none`
+/// becomes `pixel` — without a title, as it was.
 pub fn sway_border_styles(config: Option<&str>) -> (String, String) {
     let mut tiled = "normal".to_string();
     let mut floating = "normal".to_string();
@@ -1129,10 +1129,10 @@ pub fn sway_border_styles(config: Option<&str>) -> (String, String) {
     (tiled, floating)
 }
 
-/// Рамка sway из конфига человека как она есть — для возврата «как в
-/// конфиге» командой: стиль и толщина последних `default_border` и
-/// `default_floating_border`. Без них — умолчание sway(5) `normal 2`;
-/// `none` толщины не несёт.
+/// The sway border from the person's config as it is — for returning "as in the
+/// config" by a command: style and thickness of the last `default_border` and
+/// `default_floating_border`. Without them — the sway(5) default `normal 2`;
+/// `none` carries no thickness.
 pub fn sway_border_defaults(config: Option<&str>) -> (String, String) {
     let mut tiled = "normal 2".to_string();
     let mut floating = "normal 2".to_string();
@@ -1156,7 +1156,7 @@ pub fn sway_border_defaults(config: Option<&str>) -> (String, String) {
     (tiled, floating)
 }
 
-/// Варианты рамки: (id, подпись).
+/// Border options: (id, label).
 pub fn border_options(de: &str) -> Vec<(String, String)> {
     match de {
         "kde" => KDE_BORDERS.iter().map(|(id, l)| (id.to_string(), tr(l))).collect(),
@@ -1191,12 +1191,12 @@ pub fn read_border(io: &dyn LookIo, ctx: &LookCtx) -> String {
     }
 }
 
-/// Наш файл рамки у композитора.
+/// Our border file for the compositor.
 pub fn border_content(de: &str, syntax: WmSyntax, value: &str) -> String {
     border_content_styled(de, syntax, value, &("normal".to_string(), "normal".to_string()))
 }
 
-/// То же с готовыми стилями рамки sway ([`sway_border_styles`]).
+/// The same with the ready sway border styles ([`sway_border_styles`]).
 pub fn border_content_styled(de: &str, syntax: WmSyntax, value: &str, sway: &(String, String)) -> String {
     let c = syntax.comment();
     let mut st = BTreeMap::new();
@@ -1238,7 +1238,7 @@ pub fn plan_border(io: &dyn LookIo, ctx: &LookCtx, value: &str) -> Vec<LookStep>
             steps.push(LookStep::Wm(wm_include(ctx, &ctx.de, BORDER_TAG, BORDER_STEM, &move |s| border_content(&de, s, &v))));
         }
         "sway" => {
-            // Стиль (с заголовком или без) — тот, что у человека в конфиге.
+            // The style (with or without a title) — the one in the person's config.
             let config = crate::animations::wm_targets(ctx, "sway", BORDER_STEM, &|_| String::new())
                 .into_iter()
                 .find_map(|t| io.read(&t.config));
@@ -1248,12 +1248,12 @@ pub fn plan_border(io: &dyn LookIo, ctx: &LookCtx, value: &str) -> Vec<LookStep>
             steps.push(LookStep::Wm(wm_include(ctx, "sway", BORDER_TAG, BORDER_STEM, &move |s| {
                 border_content_styled("sway", s, &v, &inc_styles)
             })));
-            // sway сам конфиг не перечитывает, а `default_border` действует
-            // только на новые окна (sway(5)). Работающему sway то же самое
-            // говорим командами: новым окнам — `default_border`, открытым —
-            // `border`. Не `swaymsg reload`: он перезапускает swaybg самого
-            // sway, и фон из его конфига ложится ПОВЕРХ обоев Rexon (сверено
-            // на sway 1.12 без экрана). Сеанса нет — молча мимо.
+            // sway does not re-read its config by itself, and `default_border` applies
+            // only to new windows (sway(5)). We tell the running sway the same thing
+            // by commands: to new windows — `default_border`, to open ones —
+            // `border`. Not `swaymsg reload`: it restarts sway's own swaybg,
+            // and the background from its config lies ON TOP of Rexon's wallpaper (checked
+            // on sway 1.12 headless). No session — silently skipped.
             let notify = |cmd: String| LookStep::Notify(vec![crate::animations::argv(&["swaymsg", &cmd])]);
             if value == "default" {
                 let (tiled, floating) = sway_border_defaults(config.as_deref());
@@ -1272,7 +1272,7 @@ pub fn plan_border(io: &dyn LookIo, ctx: &LookCtx, value: &str) -> Vec<LookStep>
             let before = io.read(&path).unwrap_or_default();
             let after = themerc_with(&before, LABWC_BORDER_KEY, (value != "default").then_some(value));
             steps.push(LookStep::WriteFile { path, content: after });
-            // labwc(1): `--reconfigure` перечитывает конфиг и тему.
+            // labwc(1): `--reconfigure` re-reads the config and the theme.
             steps.push(LookStep::Notify(vec![crate::animations::argv(&["labwc", "--reconfigure"])]));
         }
         _ => {}
@@ -1281,7 +1281,7 @@ pub fn plan_border(io: &dyn LookIo, ctx: &LookCtx, value: &str) -> Vec<LookStep>
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Снимок и применение
+// Snapshot and applying
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1293,45 +1293,45 @@ pub struct ButtonOption {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ButtonsState {
     pub de: String,
-    /// Сторона выбирается (нет у COSMIC).
+    /// The side is selectable (not on COSMIC).
     pub has_side: bool,
-    /// Где кнопки управления: `right` (как в Windows) | `left` (как в macOS).
+    /// Where the control buttons are: `right` (as in Windows) | `left` (as in macOS).
     pub side: String,
     pub buttons: Vec<ButtonOption>,
-    /// Выбранные кнопки на левой и на правой стороне (по порядку).
+    /// The chosen buttons on the left and on the right side (in order).
     pub left: Vec<String>,
     pub right: Vec<String>,
-    /// Все выбранные — для готовых раскладок «как в Windows / macOS».
+    /// All chosen ones — for the ready-made "as in Windows / macOS" layouts.
     pub selected: Vec<String>,
-    /// Сейчас стоит раскладка, которую выбор не передаёт дословно.
+    /// The current layout is one the choice does not convey verbatim.
     pub custom: String,
     pub note: String,
-    /// Каких кнопок KDE у окружения нет — поимённо, с причиной.
+    /// Which KDE buttons the environment lacks — by name, with the reason.
     pub unavailable: String,
-    /// Флажки заголовка (только KDE) и почему их нет у остальных.
+    /// Title bar check boxes (KDE only) and why the others do not have them.
     pub flags: Vec<FlagOption>,
     pub flags_note: String,
     pub has_border: bool,
     pub border: String,
     pub border_options: Vec<ButtonOption>,
     pub border_note: String,
-    /// Редактор перетаскиванием (макет заголовка + полка) — у окружений со
-    /// стороной; у COSMIC только галочки.
+    /// Drag-and-drop editor (title bar mock-up + shelf) — for environments with
+    /// a side; COSMIC has only check boxes.
     pub drag: bool,
-    /// Полка: все кнопки модуля KDE (и сверх них умелые окружения), по
-    /// порядку списка KDE.
+    /// Shelf: all buttons of the KDE module (and capable environments on top of them), in
+    /// the order of the KDE list.
     pub shelf: Vec<ShelfButton>,
 }
 
-/// Кнопка полки редактора перетаскиванием.
+/// A shelf button of the drag-and-drop editor.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ShelfButton {
     pub id: String,
     pub label: String,
     pub glyph: String,
-    /// Уже стоит в заголовке (промежуток — никогда: их сколько угодно).
+    /// Already in the title bar (a spacer — never: there can be any number of them).
     pub placed: bool,
-    /// Окружение такую кнопку умеет; нет — `reason` говорит почему.
+    /// The environment supports such a button; if not, `reason` says why.
     pub available: bool,
     pub reason: String,
 }
@@ -1373,19 +1373,19 @@ pub fn note(de: &str) -> String {
     match de {
         "kde" | "gnome" | "budgie" | "pantheon" | "cinnamon-mint" | "mate" | "xfce" | "openbox" | "labwc" => String::new(),
         "sway" => tr("sway's title bars have no buttons: windows are closed and moved with keyboard shortcuts. The layout applies to applications that draw their title bar themselves (GTK)."),
-        // LXQt с менеджером, которого Rexon не знает ([`wm_key`]): с
-        // Openbox, labwc, KWin, xfwm4 и Marco сюда не попадаем.
+        // LXQt with a manager Rexon does not know ([`wm_key`]): with
+        // Openbox, labwc, KWin, xfwm4 and Marco we do not get here.
         "lxqt" => tr("In LXQt, title bars are drawn by the window manager chosen in Session Settings. Rexon changes their buttons under Openbox, labwc, KWin, xfwm4 and Marco, and this session uses another one (or none is chosen): the layout applies only to applications that draw their title bar themselves (GTK)."),
         "cosmic" => tr("COSMIC keeps the Close button on the right; only Minimize and Maximize can be turned on or off."),
-        // Своей раскладки кнопок у Treeland нет: рамки Deepin и окна
-        // программ DTK рисуют кнопки по-своему, раскладка доходит только до
-        // GTK-программ с собственным заголовком (общая ветка GTK).
+        // Treeland has no button layout of its own: Deepin frames and the windows
+        // of DTK programs draw buttons their own way, the layout reaches only
+        // GTK programs with their own title bar (the shared GTK branch).
         "deepin" => tr("Deepin's window frames and its own apps keep their buttons as they are: the layout applies only to applications that draw their title bar themselves (GTK)."),
         "hyprland" | "niri" | "river" => trf(
             "%1 draws no title bars of its own: the layout applies to applications that draw their title bar themselves (GTK).",
             &[&crate::animations::de_label(de)],
         ),
-        // Незнакомый композитор: про его заголовки ничего не утверждаем.
+        // Unknown compositor: we claim nothing about its title bars.
         other => trf(
             "Rexon can't change the title bar buttons of %1: the layout applies only to applications that draw their title bar themselves (GTK).",
             &[&crate::animations::de_label(other)],
@@ -1402,7 +1402,7 @@ pub fn border_note(de: &str) -> String {
         "budgie" | "mate" | "xfce" | "openbox" => {
             trf("In %1 the window border is drawn by the window theme; choose another window theme to change it.", &[&crate::animations::de_label(de)])
         }
-        // Mutter и Muffin рисуют заголовки и рамки по CSS темы GTK.
+        // Mutter and Muffin draw title bars and frames by the GTK theme CSS.
         "gnome" | "pantheon" | "cinnamon-mint" => trf(
             "In %1 window borders and title bars are drawn by the application theme (GTK); choose another GTK theme to change them.",
             &[&crate::animations::de_label(de)],
@@ -1447,7 +1447,7 @@ pub fn read_state(io: &dyn LookIo, ctx: &LookCtx) -> ButtonsState {
     }
 }
 
-/// Применить выбор кнопок по сторонам.
+/// Apply the choice of buttons by side.
 pub fn apply_choice(io: &dyn LookIo, ctx: &LookCtx, choice: &Choice) -> String {
     let ctx = &wm_ctx(io, ctx);
     if let Some(why) = rc_refusal(io, ctx) {
@@ -1455,10 +1455,10 @@ pub fn apply_choice(io: &dyn LookIo, ctx: &LookCtx, choice: &Choice) -> String {
     }
     let current = read_layout(io, ctx);
     let mut choice = choice.clone();
-    // Неумелые кнопки этого окружения не трогаем: как стояли, так стоят —
-    // на своей стороне.
-    // Стоявшие до первой умелой встают перед выбранными, прочие — после
-    // (у GNOME `appmenu:close` → «как в macOS» даёт `appmenu,close,…:`).
+    // Buttons this environment cannot handle are not touched: they stay as they were —
+    // on their own side.
+    // Those that stood before the first capable one go before the chosen ones, the rest — after
+    // (for GNOME `appmenu:close` → "as in macOS" gives `appmenu,close,…:`).
     let supported = supported_buttons(&ctx.de);
     let cur = choice_of(&current);
     for (side, ids) in [("left", &cur.left), ("right", &cur.right)] {
@@ -1485,22 +1485,22 @@ pub fn apply_choice(io: &dyn LookIo, ctx: &LookCtx, choice: &Choice) -> String {
     finish(io, ctx, plan_layout(io, ctx, &new))
 }
 
-/// Готовая раскладка «как в Windows» (`right`) или «как в macOS» (`left`)
-/// с набором `buttons`.
+/// The ready-made layout "as in Windows" (`right`) or "as in macOS" (`left`)
+/// with the set `buttons`.
 pub fn apply_preset(io: &dyn LookIo, ctx: &LookCtx, side: &str, buttons: &[String]) -> String {
     apply_choice(io, ctx, &preset(side, buttons))
 }
 
-/// Поставить или снять одну кнопку на стороне `side`; остальное как стоит.
+/// Put or remove one button on side `side`; the rest stays as it is.
 pub fn apply_toggle(io: &dyn LookIo, ctx: &LookCtx, side: &str, id: &str, on: bool) -> String {
     let ctx = &wm_ctx(io, ctx);
     let current = choice_of(&read_layout(io, ctx));
     apply_choice(io, ctx, &toggle(&current, side, id, on))
 }
 
-/// Выбор, как его видит раздел: только умелые кнопки окружения (позиции
-/// редактора перетаскиванием считаются по нему; прочее [`apply_choice`]
-/// оставляет на месте само).
+/// The choice as the section sees it: only the environment's capable buttons (positions
+/// of the drag-and-drop editor are counted by it; [`apply_choice`] leaves
+/// the rest in place itself).
 fn shown_choice(io: &dyn LookIo, ctx: &LookCtx) -> Choice {
     let supported = supported_buttons(&ctx.de);
     let c = choice_of(&read_layout(io, ctx));
@@ -1508,8 +1508,8 @@ fn shown_choice(io: &dyn LookIo, ctx: &LookCtx) -> Choice {
     Choice { left: known(&c.left), right: known(&c.right) }
 }
 
-/// Перетаскивание ([`move_button`]); кнопку, которой у окружения нет,
-/// ставить отказывается с причиной.
+/// Drag and drop ([`move_button`]); a button the environment does not have
+/// is refused with a reason.
 pub fn apply_move(
     io: &dyn LookIo,
     ctx: &LookCtx,
@@ -1527,15 +1527,15 @@ pub fn apply_move(
     apply_choice(io, ctx, &move_button(&current, id, from, from_index, to, to_index))
 }
 
-/// Шаг кнопкой «влево / вправо / на полку» ([`nudge`]): сообщение и где
-/// кнопка теперь (чтобы выделение шло за ней).
+/// A step with the "left / right / to the shelf" buttons ([`nudge`]): the message and where
+/// the button is now (so that the selection follows it).
 pub fn apply_nudge(io: &dyn LookIo, ctx: &LookCtx, side: &str, index: usize, dir: &str) -> (String, Option<(String, usize)>) {
     let ctx = &wm_ctx(io, ctx);
     let (next, at) = nudge(&shown_choice(io, ctx), side, index, dir);
     (apply_choice(io, ctx, &next), at)
 }
 
-/// «Добавить слева / справа» с полки ([`add_button`]).
+/// "Add on the left / right" from the shelf ([`add_button`]).
 pub fn apply_add(io: &dyn LookIo, ctx: &LookCtx, id: &str, side: &str) -> String {
     let ctx = &wm_ctx(io, ctx);
     if !supported_buttons(&ctx.de).contains(&id) {
@@ -1549,7 +1549,7 @@ pub fn apply_border(io: &dyn LookIo, ctx: &LookCtx, value: &str) -> String {
     finish(io, ctx, plan_border(io, ctx, value))
 }
 
-/// Вернуть раскладку по умолчанию окружения.
+/// Restore the environment's default layout.
 pub fn default_layout(de: &str) -> Layout {
     match de {
         "kde" => parse(Codec::Kde, "MSE", "HIAX"),
@@ -1559,7 +1559,7 @@ pub fn default_layout(de: &str) -> Layout {
         "mate" => parse(Codec::Gnome, "menu:minimize,maximize,close", ""),
         "budgie" => parse(Codec::Gnome, "appmenu:minimize,maximize,close", ""),
         "cosmic" => Layout { left: Vec::new(), right: vec![Btn::Minimize, Btn::Maximize, Btn::Close] },
-        // Умолчания самих менеджеров: Openbox — `NLIMC` (его системный
+        // Defaults of the managers themselves: Openbox — `NLIMC` (its system
         // rc.xml), labwc — `icon:iconify,max,close` (labwc-config(5)).
         "openbox" => parse(Codec::Openbox, "NLIMC", ""),
         "labwc" => parse(Codec::Labwc, "icon:iconify,max,close", ""),
@@ -1567,9 +1567,9 @@ pub fn default_layout(de: &str) -> Layout {
     }
 }
 
-/// Возврат раскладки к умолчанию: у gsettings и xfconf — сбросом ключа
-/// (умолчание схемы с поправками дистрибутива, а не наша догадка о нём), у
-/// KDE — удалением ключей, у остальных — записью раскладки по умолчанию.
+/// Returning the layout to the default: for gsettings and xfconf — by resetting the key
+/// (the schema default with the distribution's adjustments, not our guess about it), for
+/// KDE — by deleting the keys, for the rest — by writing the default layout.
 pub fn reset_layout_steps(io: &dyn LookIo, ctx: &LookCtx) -> Vec<LookStep> {
     let de = ctx.de.as_str();
     let reset = |schema: &str, key: &str| LookStep::Cmd(crate::animations::argv(&["gsettings", "reset", schema, key]));
@@ -1664,15 +1664,15 @@ mod tests {
         }
     }
 
-    /// Pantheon `close:maximize`: обе стороны читаются как стоят, и меню,
-    /// поставленное слева, остаётся слева (раньше уезжало направо).
+    /// Pantheon `close:maximize`: both sides are read as they are, and a menu
+    /// put on the left stays on the left (it used to move to the right).
     #[test]
     fn two_sided_layout_is_kept() {
         let p = parse(Codec::Gnome, "close:maximize", "");
         assert_eq!(choice_of(&p), Choice { left: ids(&["close"]), right: ids(&["maximize"]) });
         let wanted = Choice { left: ids(&["close", "minimize", "maximize", "menu"]), right: vec![] };
         assert_eq!(format(Codec::Gnome, &build(&wanted, &p)).0, "close,minimize,maximize,menu:");
-        // Кнопки на обеих сторонах в любом сочетании.
+        // Buttons on both sides in any combination.
         let both = Choice { left: ids(&["close", "minimize"]), right: ids(&["maximize", "menu"]) };
         assert_eq!(format(Codec::Gnome, &build(&both, &p)).0, "close,minimize:maximize,menu");
         assert_eq!(gtk_layout(&build(&both, &p)), "close,minimize:maximize,menu");
@@ -1681,8 +1681,8 @@ mod tests {
     #[test]
     fn two_sided_layout_in_every_codec() {
         let both = Choice { left: ids(&["close", "minimize"]), right: ids(&["maximize", "menu"]) };
-        // KDE: ButtonsOnLeft / ButtonsOnRight; S, E и H теперь управляемые —
-        // не выбраны, значит сняты.
+        // KDE: ButtonsOnLeft / ButtonsOnRight; S, E and H are managed now —
+        // not chosen means removed.
         let kde = build(&both, &parse(Codec::Kde, "MSE", "HIAX"));
         assert_eq!(format(Codec::Kde, &kde), ("XI".into(), "AM".into()));
         // GNOME / Cinnamon / MATE / Budgie / Pantheon: «a,b:c,d».
@@ -1690,7 +1690,7 @@ mod tests {
         assert_eq!(format(Codec::Gnome, &g).0, "close,minimize:maximize,menu");
         let mate = build(&Choice { left: ids(&["close", "sticky"]), right: ids(&["above"]) }, &parse(Codec::Gnome, "menu:minimize,maximize,close", ""));
         assert_eq!(format(Codec::Gnome, &mate).0, "close,stick:above");
-        // XFCE: «ab|cd»; S («свернуть в заголовок») управляемая — не выбрана.
+        // XFCE: «ab|cd»; S («Roll up into title bar») is managed — not chosen.
         let x = build(&both, &parse(Codec::Xfwm, "O|SHMC", ""));
         assert_eq!(format(Codec::Xfwm, &x).0, "CH|MO");
     }
@@ -1700,22 +1700,22 @@ mod tests {
         let all = ids(&["menu", "minimize", "maximize", "close"]);
         assert_eq!(preset("right", &all), Choice { left: ids(&["menu"]), right: ids(&["minimize", "maximize", "close"]) });
         assert_eq!(preset("left", &all), Choice { left: ids(&["close", "minimize", "maximize"]), right: ids(&["menu"]) });
-        // Поставить меню слева у Pantheon: справа не появляется.
+        // Putting the menu on the left in Pantheon: it does not appear on the right.
         let c = Choice { left: ids(&["close"]), right: ids(&["maximize"]) };
         let c = toggle(&c, "left", "menu", true);
         assert_eq!(c, Choice { left: ids(&["close", "menu"]), right: ids(&["maximize"]) });
-        // «Свернуть» слева встаёт между «закрыть» и меню, по порядку.
+        // «Minimize» on the left goes between «Close» and the menu, in order.
         let c = toggle(&c, "left", "minimize", true);
         assert_eq!(c.left, ids(&["close", "minimize", "menu"]));
-        // Перенос на другую сторону: слева уходит, справа встаёт у края.
+        // Moving to the other side: it leaves the left and takes its place on the right at the edge.
         let c = toggle(&c, "right", "close", true);
         assert_eq!(c, Choice { left: ids(&["minimize", "menu"]), right: ids(&["maximize", "close"]) });
-        // Снятие.
+        // Removal.
         let c = toggle(&c, "right", "maximize", false);
         assert_eq!(c.right, ids(&["close"]));
     }
 
-    /// Машина с одним ключом gsettings — раскладкой кнопок.
+    /// A machine with one gsettings key — the button layout.
     struct GsIo(std::cell::RefCell<String>);
 
     impl LookIo for GsIo {
@@ -1743,8 +1743,8 @@ mod tests {
         }
     }
 
-    /// Живой путь Pantheon: снимок показывает обе стороны, а галочка «меню
-    /// слева» пишет `close,menu:maximize`, не трогая правую сторону.
+    /// The live Pantheon path: the snapshot shows both sides, and the "menu
+    /// on the left" check box writes `close,menu:maximize` without touching the right side.
     #[test]
     fn pantheon_state_and_toggle_keep_both_sides() {
         let io = GsIo(std::cell::RefCell::new("close:maximize".into()));
@@ -1757,39 +1757,39 @@ mod tests {
         assert_eq!(*io.0.borrow(), "close,menu:maximize");
         apply_toggle(&io, &ctx, "right", "minimize", true);
         assert_eq!(*io.0.borrow(), "close,menu:minimize,maximize");
-        // Готовая раскладка «как в Windows» по-прежнему собирает всё справа.
+        // The ready-made "as in Windows" layout still gathers everything on the right.
         apply_preset(&io, &ctx, "right", &st.selected);
         assert_eq!(*io.0.borrow(), ":maximize,close");
     }
 
     #[test]
     fn mac_style_keeps_foreign_buttons() {
-        // KDE по умолчанию: справка при кнопках управления, меню, «на всех
-        // столах» и «скрыть от снимков» — напротив; туда и обратно без потерь.
+        // KDE by default: help next to the control buttons, the menu, «On all
+        // desktops» and «Hide from screenshots…» — opposite; there and back without loss.
         let kde = parse(Codec::Kde, "MSE", "HIAX");
         let selected = choice_of(&kde).all();
         let mac = build(&preset("left", &selected), &kde);
         assert_eq!(format(Codec::Kde, &mac), ("XIAH".into(), "MSE".into()));
         assert_eq!(gtk_layout(&mac), "close,minimize,maximize:menu");
         assert_eq!(format(Codec::Kde, &build(&preset("right", &selected), &mac)), ("MSE".into(), "HIAX".into()));
-        // Чужая кнопка (GTK `icon`) остаётся на своей стороне.
+        // A foreign button (GTK `icon`) stays on its side.
         let gnome = parse(Codec::Gnome, "icon:close", "");
         assert_eq!(format(Codec::Gnome, &build(&preset("left", &ids(&["close", "minimize"])), &gnome)).0, "icon,close,minimize:");
-        // `appmenu` GNOME в своём наборе не держит — и снимком она не
-        // теряется: остаётся впереди, где стояла.
+        // GNOME does not keep `appmenu` in its set — and the snapshot does not
+        // lose it: it stays in front, where it stood.
         let io = GsIo(std::cell::RefCell::new("appmenu:close".into()));
         let ctx = LookCtx::new("gnome", "/home/t", None);
         apply_preset(&io, &ctx, "left", &ids(&["close", "minimize"]));
         assert_eq!(*io.0.borrow(), "appmenu,close,minimize:");
-        // xfwm4: «свернуть в заголовок» — при кнопках управления, как в `O|SHMC`.
+        // xfwm4: «Roll up into title bar» — next to the control buttons, as in `O|SHMC`.
         let x = parse(Codec::Xfwm, "O|SHMC", "");
         let all = choice_of(&x).all();
         assert_eq!(format(Codec::Xfwm, &build(&preset("right", &all), &x)).0, "O|SHMC");
         assert_eq!(format(Codec::Xfwm, &build(&preset("left", &all), &x)).0, "CHMS|O");
     }
 
-    /// Все кнопки модуля KDE (11, с промежутком) переживают разбор и сборку;
-    /// промежуток бывает на обеих сторонах, и галочка трогает только свою.
+    /// All buttons of the KDE module (11, with the spacer) survive parsing and building;
+    /// a spacer can be on both sides, and a check box touches only its own.
     #[test]
     fn all_kde_buttons_and_spacer() {
         let kde = parse(Codec::Kde, "MN_SE", "HB_FIAX");
@@ -1803,16 +1803,16 @@ mod tests {
         assert!(off.right.contains(&"spacer".to_string()), "справа промежуток остался");
         let on = toggle(&off, "left", "spacer", true);
         assert_eq!(on.left.last().map(String::as_str), Some("spacer"));
-        // Справка встаёт при кнопках управления, «под» — среди «булавок».
+        // Help goes next to the control buttons, «Keep below others» — among the "pins".
         let c = toggle(&Choice { left: vec![], right: ids(&["minimize", "maximize", "close"]) }, "right", "help", true);
         assert_eq!(c.right, ids(&["help", "minimize", "maximize", "close"]));
         let c = toggle(&Choice { left: ids(&["menu", "sticky"]), right: vec![] }, "left", "below", true);
         assert_eq!(c.left, ids(&["menu", "sticky", "below"]));
     }
 
-    /// Кнопки, которых в записи окружения нет, в неё не попадают: у GNOME —
-    /// справка, «под», «скрыть от снимков»; у xfwm4 — ещё и промежуток; у
-    /// KDE — «свернуть в заголовок» (у KWin для неё нет буквы).
+    /// Buttons that the environment's record lacks do not get into it: for GNOME —
+    /// help, «Keep below others», «Hide from screenshots…»; for xfwm4 — also the spacer; for
+    /// KDE — «Roll up into title bar» (KWin has no letter for it).
     #[test]
     fn codecs_skip_buttons_they_lack() {
         let l = Layout { left: vec![Btn::Help, Btn::Menu, Btn::Shade], right: vec![Btn::Below, Btn::Spacer, Btn::ExcludeCapture, Btn::Close] };
@@ -1825,9 +1825,9 @@ mod tests {
         assert_eq!(format(Codec::Labwc, &l).0, "menu,shade:close");
     }
 
-    /// Openbox: буквы `NDSLIMC` (L — название между сторонами), labwc —
-    /// слова labwc-config(5) через `:`; умолчания переживают разбор и
-    /// сборку без изменений, чужое (`icon`) остаётся на месте.
+    /// Openbox: the letters `NDSLIMC` (L — the title between the sides), labwc —
+    /// the labwc-config(5) words separated by `:`; defaults survive parsing and
+    /// building unchanged, a foreign one (`icon`) stays in place.
     #[test]
     fn openbox_and_labwc_codecs() {
         for (codec, raw) in [
@@ -1844,11 +1844,11 @@ mod tests {
         let ob = parse(Codec::Openbox, "NDLSIMC", "");
         assert_eq!(ob.left, vec![Btn::Menu, Btn::Sticky]);
         assert_eq!(ob.right, vec![Btn::Shade, Btn::Minimize, Btn::Maximize, Btn::Close]);
-        // Без `L` Openbox ставит всё слева.
+        // Without `L` Openbox puts everything on the left.
         assert_eq!(parse(Codec::Openbox, "NIMC", "").right, Vec::<Btn>::new());
         let lw = parse(Codec::Labwc, "icon:iconify,max,close", "");
         assert_eq!(lw.left, vec![Btn::Other("icon".into())]);
-        // «Как в macOS»: кнопки управления слева, меню — справа.
+        // "As in macOS": control buttons on the left, the menu — on the right.
         let mac = build(&preset("left", &ids(&["menu", "minimize", "maximize", "close"])), &parse(Codec::Openbox, "NLIMC", ""));
         assert_eq!(format(Codec::Openbox, &mac).0, "CIMLN");
         let mac = build(&preset("left", &ids(&["minimize", "maximize", "close"])), &lw);
@@ -1857,7 +1857,7 @@ mod tests {
         assert_eq!(default_layout("labwc"), lw);
     }
 
-    /// Чего нет — названо поимённо и с оконным менеджером; у KDE — пусто.
+    /// What is missing is named by name and with the window manager; for KDE — empty.
     #[test]
     fn unavailable_buttons_are_named() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -1869,7 +1869,7 @@ mod tests {
         assert!(x.contains("xfwm4") && x.contains("Spacer") && x.contains("Keep above others"), "{x}");
         assert!(unavailable_note("cinnamon-mint").contains("Muffin"));
         assert!(unavailable_note("gnome").contains("GTK"));
-        // У каждого окружения — только кнопки, которые его запись умеет.
+        // Each environment has only the buttons its record supports.
         let ob = unavailable_note("openbox");
         assert!(ob.contains("Openbox") && ob.contains("Keep above others") && !ob.contains("Roll up"), "{ob}");
         assert!(unavailable_note("labwc").starts_with("labwc"));
@@ -1880,8 +1880,8 @@ mod tests {
         }
     }
 
-    /// Deepin: рамки deepin-kwin кнопки не меняют — подпись раздела так и
-    /// говорит, а не уверяет, что заголовков у Deepin нет вовсе.
+    /// Deepin: deepin-kwin frames do not change buttons — the section label says exactly
+    /// that, rather than claiming that Deepin has no title bars at all.
     #[test]
     fn deepin_note_is_honest() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -1889,7 +1889,7 @@ mod tests {
         assert!(n.contains("Deepin's window frames") && !n.contains("draws no title bars"), "{n}");
     }
 
-    /// Файловый `LookIo`: что записано, то и читается; команды — в журнал.
+    /// A file-backed `LookIo`: what is written is what is read; commands go to the log.
     #[derive(Default)]
     struct FileIo {
         files: std::cell::RefCell<BTreeMap<String, String>>,
@@ -1916,8 +1916,8 @@ mod tests {
         }
     }
 
-    /// sway: рамка есть (`default_border <стиль> N`, sway(5)); стиль из
-    /// конфига человека сохраняется, открытые окна получают её командой.
+    /// sway: there is a border (`default_border <style> N`, sway(5)); the style from
+    /// the person's config is kept, open windows get it by a command.
     #[test]
     fn sway_border_keeps_the_title_bar_style() {
         assert!(border_supported("sway"));
@@ -1937,16 +1937,16 @@ mod tests {
         {
             let ran = io.ran.borrow();
             let has = |c: &str| ran.contains(&vec!["swaymsg".to_string(), c.to_string()]);
-            // `swaymsg reload` перезапускает swaybg самого sway, и его фон
-            // ложится ПОВЕРХ обоев Rexon (сверено на sway 1.12 без экрана):
-            // новые окна получают рамку командами, без перечитывания.
+            // `swaymsg reload` restarts sway's own swaybg, and its background
+            // lies ON TOP of Rexon's wallpaper (checked on sway 1.12 headless):
+            // new windows get the border by commands, without re-reading.
             assert!(!has("reload"), "{ran:?}");
             assert!(has("default_border pixel 4"), "{ran:?}");
             assert!(has("default_floating_border normal 4"), "{ran:?}");
             assert!(has("[tiling] border pixel 4"), "{ran:?}");
         }
-        // «Как в конфиге» возвращает значения из конфига человека (у sway по
-        // умолчанию — `normal 2`), тоже без перечитывания.
+        // "As in the config" returns the values from the person's config (sway's
+        // default is `normal 2`), also without re-reading.
         io.ran.borrow_mut().clear();
         assert_eq!(apply_border(&io, &ctx, "default"), tr("Title bar settings applied."));
         let ran = io.ran.borrow();
@@ -1961,12 +1961,12 @@ mod tests {
         assert_eq!(border_note("sway"), tr("Only the width changes: whether windows have a title bar stays as set in the sway config."));
     }
 
-    /// sway своего конфига НЕ заводит (в отличие от niri и Hyprland): без
-    /// личного он читает `/etc/sway/config`. Прежде рамка отвечала «запустите
-    /// sway один раз, чтобы он создал свой конфиг» — совет, после которого
-    /// ничего не меняется. Теперь системный копируется на место личного (так
-    /// советует sway(5)), и рамка ставится. Конфиг i3 sway тоже читает — его
-    /// не заслоняем.
+    /// sway does NOT create its own config (unlike niri and Hyprland): without
+    /// a personal one it reads `/etc/sway/config`. Previously the border answered "start
+    /// sway once so that it creates its config" — advice after which
+    /// nothing changes. Now the system one is copied in place of the personal one (as
+    /// sway(5) advises), and the border is set. sway also reads the i3 config — we
+    /// do not shadow it.
     #[test]
     fn sway_without_own_config_seeds_it_from_system() {
         let io = FileIo::default();
@@ -1985,8 +1985,8 @@ mod tests {
         assert!(io.read("/c/sway/config").is_none(), "конфиг i3 заслонён");
     }
 
-    /// labwc: `border.width` в `themerc-override` (labwc-theme(5)); чужие
-    /// строки файла не трогаются, «как в конфиге» убирает только наш ключ.
+    /// labwc: `border.width` in `themerc-override` (labwc-theme(5)); other
+    /// lines of the file are not touched, "as in the config" removes only our key.
     #[test]
     fn labwc_border_edits_themerc_override() {
         let io = FileIo::default();
@@ -2002,9 +2002,9 @@ mod tests {
         assert_eq!(read_border(&io, &ctx), "default");
     }
 
-    /// Подписи без неправды: у sway заголовки есть (без кнопок), labwc и
-    /// LXQt рисуют заголовки с кнопками; «нет заголовков» — только там, где
-    /// их действительно нет. В GNOME/Cinnamon рамку рисует тема GTK.
+    /// Labels without falsehood: sway has title bars (without buttons), labwc and
+    /// LXQt draw title bars with buttons; "no title bars" — only where
+    /// there really are none. In GNOME/Cinnamon the border is drawn by the GTK theme.
     #[test]
     fn title_bar_notes_are_honest() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -2012,8 +2012,8 @@ mod tests {
             assert!(!note(de).contains("draws no title bars"), "{de}: {}", note(de));
         }
         assert!(note("sway").contains("no buttons"));
-        // labwc и Openbox свои кнопки пишут — оговорки нет; LXQt с
-        // незнакомым менеджером называет, под какими пишет.
+        // labwc and Openbox write their own buttons — no caveat; LXQt with
+        // an unknown manager names which ones it writes for.
         assert_eq!(note("labwc"), "");
         assert_eq!(note("openbox"), "");
         assert!(note("lxqt").contains("Openbox") && note("lxqt").contains("labwc"));
@@ -2031,31 +2031,31 @@ mod tests {
         Choice { left: ids(l), right: ids(r) }
     }
 
-    /// Перетаскивание как в модуле KDE: внутри стороны, между сторонами, с
-    /// полки и на полку; позиция — место в стороне уже без кнопки.
+    /// Drag and drop as in the KDE module: within a side, between sides, from
+    /// the shelf and to the shelf; the position is the place in the side already without the button.
     #[test]
     fn move_button_like_kde_drag() {
         let kde = ch(&["menu", "sticky", "exclude_capture"], &["help", "minimize", "maximize", "close"]);
-        // Внутри стороны: «закрыть» в начало правой.
+        // Within a side: «Close» to the start of the right one.
         assert_eq!(move_button(&kde, "close", "right", 3, "right", 0).right, ids(&["close", "help", "minimize", "maximize"]));
-        // Вперёд по стороне: «меню» за «на всех столах».
+        // Forward along the side: «Window menu» after «On all desktops».
         assert_eq!(move_button(&kde, "menu", "left", 0, "left", 1).left, ids(&["sticky", "menu", "exclude_capture"]));
-        // Между сторонами: «справка» в конец левой.
+        // Between sides: «Context help» to the end of the left one.
         let c = move_button(&kde, "help", "right", 0, "left", 9);
         assert_eq!(c, ch(&["menu", "sticky", "exclude_capture", "help"], &["minimize", "maximize", "close"]));
-        // На полку — снять.
+        // To the shelf — remove.
         assert_eq!(move_button(&kde, "sticky", "left", 1, SHELF, 0).left, ids(&["menu", "exclude_capture"]));
-        // С полки — новая кнопка в позицию.
+        // From the shelf — a new button at the position.
         assert_eq!(move_button(&kde, "above", SHELF, 0, "right", 1).right, ids(&["help", "above", "minimize", "maximize", "close"]));
-        // С полки уже стоящая — переносится, а не двоится.
+        // An already placed one from the shelf is moved, not duplicated.
         let c = move_button(&kde, "close", SHELF, 0, "left", 0);
         assert_eq!(c, ch(&["close", "menu", "sticky", "exclude_capture"], &["help", "minimize", "maximize"]));
-        // Устаревшая позиция — берётся первая такая кнопка.
+        // A stale position — the first such button is taken.
         assert_eq!(move_button(&kde, "close", "right", 0, SHELF, 0).right, ids(&["help", "minimize", "maximize"]));
     }
 
-    /// Промежуток — не кнопка: с полки всегда новый, на полку уходит тот,
-    /// что тащили.
+    /// A spacer is not a button: from the shelf it is always new, to the shelf goes the one
+    /// that was dragged.
     #[test]
     fn spacers_are_many() {
         let c = ch(&["menu", "spacer"], &["spacer", "close"]);
@@ -2068,7 +2068,7 @@ mod tests {
         assert_eq!(add_button(&c, "spacer", "right").right, ids(&["spacer", "spacer", "close"]));
     }
 
-    /// Шаги кнопками: через название на другую сторону, у края окна — стоп.
+    /// Steps with buttons: across the title to the other side, at the window edge — stop.
     #[test]
     fn nudge_steps_across_the_title() {
         let c = ch(&["menu", "sticky"], &["minimize", "close"]);
@@ -2081,15 +2081,15 @@ mod tests {
         let (n, at) = nudge(&c, "left", 0, "right");
         assert_eq!(n, ch(&["sticky", "menu"], &["minimize", "close"]));
         assert_eq!(at, Some(("left".into(), 1)));
-        // Край окна.
+        // Window edge.
         assert_eq!(nudge(&c, "left", 0, "left"), (c.clone(), Some(("left".into(), 0))));
         assert_eq!(nudge(&c, "right", 1, "right"), (c.clone(), Some(("right".into(), 1))));
-        // На полку и мимо списка.
+        // To the shelf and past the list.
         assert_eq!(nudge(&c, "right", 1, SHELF), (ch(&["menu", "sticky"], &["minimize"]), None));
         assert_eq!(nudge(&c, "right", 7, "left"), (c.clone(), None));
     }
 
-    /// Перенос сводится в родные строки каждого менеджера окон.
+    /// Moving is reduced to the native strings of each window manager.
     #[test]
     fn moves_format_for_every_wm() {
         let c = move_button(&ch(&["menu"], &["minimize", "maximize", "close"]), "close", "right", 2, "left", 0);
@@ -2101,8 +2101,8 @@ mod tests {
         assert_eq!(format(Codec::Labwc, &layout).0, "close,menu:iconify,max");
     }
 
-    /// Полка: все 11 кнопок KDE; чего у окружения нет — недоступно с
-    /// причиной; стоящие помечены, промежуток — никогда.
+    /// Shelf: all 11 KDE buttons; what the environment lacks is unavailable with
+    /// a reason; placed ones are marked, the spacer — never.
     #[test]
     fn shelf_marks_missing_and_placed() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));

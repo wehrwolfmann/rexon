@@ -1,38 +1,38 @@
-//! Библиотека обоев Razer Axon, поставленного под Wine.
+//! The wallpaper library of Razer Axon installed under Wine.
 //!
-//! Razer Axon — программа живых обоев для Windows. Под Linux её ставят в
-//! префикс Wine (свой `~/.wine`, бутылка Bottles, префикс Lutris или
-//! Proton), и скачанные в ней обои лежат внутри префикса. Модуль только
-//! ЧИТАЕТ эту библиотеку: какие обои у человека есть, как они называются,
-//! кто автор, видео это или картинка, есть ли звук, скачаны ли они и где
-//! лежат их файлы. Сам этот модуль префикс Axon не меняет никогда — ни
-//! запись, ни переименование, ни удаление; подготовку обоев заранее прямо в
-//! библиотеке Axon (по согласию человека, с резервной копией описания)
-//! делает отдельный модуль [`crate::axon_prepare`].
+//! Razer Axon is a live wallpaper program for Windows. On Linux it is installed into
+//! a Wine prefix (its own `~/.wine`, a Bottles bottle, a Lutris or
+//! Proton prefix), and the wallpapers downloaded in it live inside the prefix. The module only
+//! READS this library: which wallpapers the person has, what they are called,
+//! who the author is, whether it is a video or a picture, whether there is sound, whether they are downloaded and where
+//! their files are. This module itself never changes the Axon prefix — no
+//! writing, no renaming, no deleting; preparing wallpapers in advance right in
+//! the Axon library (with the person's consent, with a backup of the description)
+//! is done by a separate module, [`crate::axon_prepare`].
 //!
-//! Раскладка внутри префикса (`<prefix>/drive_c/users/<user>/AppData/Local/
+//! The layout inside the prefix (`<prefix>/drive_c/users/<user>/AppData/Local/
 //! Razer/RazerAxon/`):
 //!
-//! * `<учётная запись>/WallPaperData` — JSON-массив библиотеки (UTF-8 с BOM):
-//!   `Id`, `Title`, `Author.author_name`, `Type` либо `WallPaperType`
+//! * `<account>/WallPaperData` — the library JSON array (UTF-8 with BOM):
+//!   `Id`, `Title`, `Author.author_name`, `Type` or `WallPaperType`
 //!   (`VIDEO`/`IMAGE`/`WEB`…), `EffectType`, `Audible` (`"1"`/`"0"`),
 //!   `Resolution` (`3840x2160`), `WallPaperStatus`, `PlayResoucePath`
-//!   (так, с опечаткой, пишет сам Axon), `ThumbnailSource`, `PreviewSource`;
-//! * `<учётная запись>/PlayListSetting` — плейлисты по экранам: какие обои и
-//!   какие из них сейчас на экране;
-//! * `<учётная запись>/UserSetting` — `SourceSavedPath`, где лежат скачанные;
-//! * `WallpaperSource/{Id}{Высота}{Ширина}/` — скачанные обои:
-//!   `ResourceConfig.txt` (вид и путь к файлу) и `Resource/…` — контейнер,
-//!   который перед показом нужно подготовить: это работа [`AxonExtractor`]
-//!   (встроенная — [`BuiltinExtractor`], `crate::axon_extract`).
+//!   (that is how Axon itself spells it, with a typo), `ThumbnailSource`, `PreviewSource`;
+//! * `<account>/PlayListSetting` — playlists per screen: which wallpapers and
+//!   which of them are on screen now;
+//! * `<account>/UserSetting` — `SourceSavedPath`, where the downloads are;
+//! * `WallpaperSource/{Id}{Height}{Width}/` — downloaded wallpapers:
+//!   `ResourceConfig.txt` (the kind and the file path) and `Resource/…` — a container
+//!   that must be prepared before showing: this is the job of [`AxonExtractor`]
+//!   (the built-in one — [`BuiltinExtractor`], `crate::axon_extract`).
 //!
-//! Учётных записей в одном каталоге бывает несколько (`RZR_<uid>` после
-//! входа, `guest-<…>` до него): берутся все, у кого есть библиотека, а
-//! одинаковые обои — из самой свежей.
+//! There can be several accounts in one directory (`RZR_<uid>` after
+//! logging in, `guest-<…>` before): all that have a library are taken, and
+//! identical wallpapers come from the freshest one.
 //!
-//! Искать префиксы по всему диску модуль не будет: смотрит в известные места
+//! The module will not search for prefixes across the whole disk: it looks in known places
 //! (`$WINEPREFIX`, `~/.wine`, Bottles, Lutris, Heroic, umu, PlayOnLinux,
-//! префиксы Proton в библиотеках Steam) на один уровень вглубь.
+//! Proton prefixes in Steam libraries) one level deep.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -43,46 +43,46 @@ use serde_json::Value;
 
 use crate::i18n::{tr, trf};
 
-/// Путь от каталога пользователя Windows до корня Axon.
+/// The path from the Windows user directory to the Axon root.
 pub const AXON_SUBDIR: &[&str] = &["AppData", "Local", "Razer", "RazerAxon"];
-/// Файл библиотеки в каталоге учётной записи.
+/// The library file in the account directory.
 pub const LIBRARY_FILE: &str = "WallPaperData";
-/// Плейлисты учётной записи.
+/// The account's playlists.
 pub const PLAYLIST_FILE: &str = "PlayListSetting";
-/// Настройки учётной записи (`SourceSavedPath`).
+/// The account's settings (`SourceSavedPath`).
 pub const USER_SETTING_FILE: &str = "UserSetting";
-/// Описание скачанных обоев в их каталоге.
+/// The description of downloaded wallpapers in their directory.
 pub const RESOURCE_CONFIG: &str = "ResourceConfig.txt";
-/// Каталог скачанного по умолчанию (когда `UserSetting` молчит).
+/// The default downloads directory (when `UserSetting` is silent).
 pub const DEFAULT_SOURCE_DIR: &str = "WallpaperSource";
 
 
-/// Отметка готового файла в каталоге кэша.
+/// The mark of a ready file in the cache directory.
 pub const READY_STAMP: &str = "ready.json";
 
 // ============================================================================
-// Окружение
+// Environment
 // ============================================================================
 
-/// Всё, что модуль берёт из окружения процесса. Сверки подставляют своё.
+/// Everything the module takes from the process environment. Checks substitute their own.
 #[derive(Debug, Clone, Default)]
 pub struct AxonEnv {
     pub home: PathBuf,
-    /// `$WINEPREFIX`, если задан.
+    /// `$WINEPREFIX`, if set.
     pub wineprefix: Option<PathBuf>,
-    /// `$XDG_CACHE_HOME`, если задан.
+    /// `$XDG_CACHE_HOME`, if set.
     pub cache_home: Option<PathBuf>,
-    /// `$XDG_DATA_HOME`, если задан.
+    /// `$XDG_DATA_HOME`, if set.
     pub data_home: Option<PathBuf>,
-    /// `$XDG_CONFIG_HOME`, если задан.
+    /// `$XDG_CONFIG_HOME`, if set.
     pub config_home: Option<PathBuf>,
-    /// Папки с обоями (`WallpaperSource`), указанные человеком вручную
-    /// (настройка [`SETTINGS_KEY`]).
+    /// Wallpaper folders (`WallpaperSource`) specified by the person by hand
+    /// (the [`SETTINGS_KEY`] setting).
     pub source_dirs: Vec<PathBuf>,
 }
 
 impl AxonEnv {
-    /// Окружение живого процесса.
+    /// The live process environment.
     pub fn from_process() -> AxonEnv {
         let dir = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
         AxonEnv {
@@ -95,7 +95,7 @@ impl AxonEnv {
         }
     }
 
-    /// Окружение «только дом» — для сверок.
+    /// A "home only" environment — for checks.
     pub fn with_home(home: impl Into<PathBuf>) -> AxonEnv {
         AxonEnv { home: home.into(), ..AxonEnv::default() }
     }
@@ -108,13 +108,13 @@ impl AxonEnv {
         self.config_home.clone().unwrap_or_else(|| self.home.join(".config"))
     }
 
-    /// Резервные копии исходных описаний (`ResourceConfig.txt`) обоев,
-    /// подготовленных заранее: `~/.local/share/rexon/axon-originals`.
+    /// Backups of the original descriptions (`ResourceConfig.txt`) of wallpapers
+    /// prepared in advance: `~/.local/share/rexon/axon-originals`.
     pub fn originals_root(&self) -> PathBuf {
         self.data_home().join("rexon").join("axon-originals")
     }
 
-    /// Каталог кэша Rexon для обоев Axon: `~/.cache/rexon/axon`.
+    /// Rexon's cache directory for Axon wallpapers: `~/.cache/rexon/axon`.
     pub fn cache_root(&self) -> PathBuf {
         self.cache_home
             .clone()
@@ -125,15 +125,15 @@ impl AxonEnv {
 }
 
 // ============================================================================
-// Поиск префиксов
+// Finding prefixes
 // ============================================================================
 
-/// Похож ли каталог на префикс Wine.
+/// Whether a directory looks like a Wine prefix.
 fn is_prefix(dir: &Path) -> bool {
     dir.join("drive_c").is_dir()
 }
 
-/// Подкаталоги `dir` (один уровень, по имени), без ошибок наружу.
+/// Subdirectories of `dir` (one level, by name), without errors leaking out.
 fn children(dir: &Path) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = match fs::read_dir(dir) {
         Ok(rd) => rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect(),
@@ -143,8 +143,8 @@ fn children(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Каталоги библиотек Steam: основная и перечисленные в
-/// `steamapps/libraryfolders.vdf` (строки `"path" "…"`).
+/// Steam library directories: the main one and those listed in
+/// `steamapps/libraryfolders.vdf` (lines `"path" "…"`).
 fn steam_libraries(env: &AxonEnv) -> Vec<PathBuf> {
     let roots = [
         env.data_home().join("Steam"),
@@ -162,7 +162,7 @@ fn steam_libraries(env: &AxonEnv) -> Vec<PathBuf> {
         let vdf = fs::read_to_string(root.join("steamapps/libraryfolders.vdf")).unwrap_or_default();
         for line in vdf.lines() {
             let parts: Vec<&str> = line.split('"').collect();
-            // `\t\t"path"\t\t"/mnt/games/SteamLibrary"` → 5 кусков.
+            // `\t\t"path"\t\t"/mnt/games/SteamLibrary"` → 5 pieces.
             if parts.len() >= 4 && parts[1] == "path" {
                 libs.push(PathBuf::from(parts[3].replace("\\\\", "\\")));
             }
@@ -171,7 +171,7 @@ fn steam_libraries(env: &AxonEnv) -> Vec<PathBuf> {
     libs
 }
 
-/// Префиксы Lutris из описаний игр (`prefix:` в `games/*.yml`).
+/// Lutris prefixes from game descriptions (`prefix:` in `games/*.yml`).
 fn lutris_prefixes(env: &AxonEnv) -> Vec<PathBuf> {
     let dirs = [
         env.config_home().join("lutris/games"),
@@ -204,10 +204,10 @@ fn lutris_prefixes(env: &AxonEnv) -> Vec<PathBuf> {
     out
 }
 
-/// Префиксы Wine, в которых МОЖЕТ стоять Axon, — без проверки на Axon.
+/// Wine prefixes where Axon MAY be installed — without checking for Axon.
 ///
-/// Порядок — от явного к общему: `$WINEPREFIX`, `~/.wine`, затем менеджеры
-/// игр. Повторы (тот же префикс по двум дорогам) убраны.
+/// The order is from explicit to general: `$WINEPREFIX`, `~/.wine`, then game
+/// managers. Repeats (the same prefix by two routes) are removed.
 pub fn candidate_prefixes(env: &AxonEnv) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = Vec::new();
     let mut push = |p: PathBuf| {
@@ -246,16 +246,16 @@ pub fn candidate_prefixes(env: &AxonEnv) -> Vec<PathBuf> {
     found
 }
 
-/// Каталог Axon одного пользователя Windows в префиксе.
+/// The Axon directory of one Windows user in a prefix.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AxonRoot {
-    /// Префикс Wine.
+    /// The Wine prefix.
     pub prefix: PathBuf,
-    /// Корень Axon: `<prefix>/drive_c/users/<user>/AppData/Local/Razer/RazerAxon`.
+    /// The Axon root: `<prefix>/drive_c/users/<user>/AppData/Local/Razer/RazerAxon`.
     pub root: PathBuf,
 }
 
-/// Каталоги Axon в префиксе — по одному на пользователя Windows.
+/// Axon directories in a prefix — one per Windows user.
 pub fn roots_in_prefix(prefix: &Path) -> Vec<AxonRoot> {
     children(&prefix.join("drive_c/users"))
         .into_iter()
@@ -265,12 +265,12 @@ pub fn roots_in_prefix(prefix: &Path) -> Vec<AxonRoot> {
         .collect()
 }
 
-/// Каталоги учётных записей Axon с библиотекой (`WallPaperData`).
+/// Axon account directories with a library (`WallPaperData`).
 pub fn account_dirs(root: &Path) -> Vec<PathBuf> {
     children(root).into_iter().filter(|d| d.join(LIBRARY_FILE).is_file()).collect()
 }
 
-/// Все каталоги Axon с библиотекой в известных местах.
+/// All Axon directories with a library in known places.
 pub fn find_roots(env: &AxonEnv) -> Vec<AxonRoot> {
     candidate_prefixes(env)
         .iter()
@@ -280,15 +280,15 @@ pub fn find_roots(env: &AxonEnv) -> Vec<AxonRoot> {
 }
 
 // ============================================================================
-// Пути Windows → Linux
+// Windows → Linux paths
 // ============================================================================
 
-/// Путь Windows (`C:\users\…`) внутри префикса → путь Linux.
+/// A Windows path (`C:\users\…`) inside a prefix → a Linux path.
 ///
-/// `C:` — `drive_c`; другие буквы — через `dosdevices/<x>:` (так Wine их и
-/// хранит; `Z:` обычно ведёт в `/`). Регистр букв в именах каталогов Wine
-/// на диске сохраняет, поэтому сегменты берутся как есть, а несовпадение
-/// регистра поправляется поиском без учёта регистра.
+/// `C:` is `drive_c`; other letters go through `dosdevices/<x>:` (that is how Wine
+/// stores them; `Z:` usually leads to `/`). Wine preserves the case of letters in directory names
+/// on disk, so segments are taken as is, and a case mismatch
+/// is corrected by a case-insensitive search.
 pub fn windows_to_linux(prefix: &Path, win: &str) -> Option<PathBuf> {
     let win = win.trim();
     let bytes = win.as_bytes();
@@ -334,8 +334,8 @@ fn find_case_insensitive(dir: &Path, name: &str) -> Option<PathBuf> {
         .map(|e| e.path())
 }
 
-/// Относительный путь из `ResourceConfig.txt` (`Resource\\a.mp4`) внутри
-/// каталога обоев. Выход за каталог (`..`, абсолютный путь) — `None`.
+/// A relative path from `ResourceConfig.txt` (`Resource\\a.mp4`) inside
+/// the wallpaper directory. Leaving the directory (`..`, an absolute path) — `None`.
 pub fn resource_relative(dir: &Path, rel: &str) -> Option<PathBuf> {
     let rel = rel.replace('\\', "/");
     let p = Path::new(&rel);
@@ -346,19 +346,19 @@ pub fn resource_relative(dir: &Path, rel: &str) -> Option<PathBuf> {
 }
 
 // ============================================================================
-// Разбор файлов Axon
+// Parsing Axon files
 // ============================================================================
 
-/// Вид обоев.
+/// Wallpaper kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AxonKind {
-    /// Ролик (`VIDEO`).
+    /// A video (`VIDEO`).
     Video,
-    /// Картинка (`IMAGE`).
+    /// A picture (`IMAGE`).
     Image,
-    /// Веб-страница (`WEB`, `LOCALWEB`).
+    /// A web page (`WEB`, `LOCALWEB`).
     Web,
-    /// Прочее — как написал Axon.
+    /// Other — as Axon wrote it.
     Other(String),
 }
 
@@ -372,7 +372,7 @@ impl AxonKind {
         }
     }
 
-    /// Подпись вида для плитки.
+    /// The kind label for the tile.
     pub fn label(&self) -> String {
         match self {
             AxonKind::Video => tr("🎞️ Video"),
@@ -384,14 +384,14 @@ impl AxonKind {
     }
 }
 
-/// Тип обоев из записи: `WallPaperType` (новые версии) либо `Type` (старые).
+/// The wallpaper type from a record: `WallPaperType` (new versions) or `Type` (old ones).
 pub fn kind_field(v: &Value) -> Option<&str> {
     ["WallPaperType", "Type"]
         .iter()
         .find_map(|k| v.get(*k).and_then(Value::as_str).filter(|s| !s.trim().is_empty()))
 }
 
-/// Текст файла Axon: без BOM в начале.
+/// The text of an Axon file: without the BOM at the start.
 pub fn strip_bom(text: &str) -> &str {
     text.strip_prefix('\u{feff}').unwrap_or(text)
 }
@@ -402,7 +402,7 @@ fn read_json(path: &Path) -> Result<Value, String> {
     serde_json::from_str(strip_bom(&text)).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// Строка из поля, где Axon пишет то число, то строку.
+/// A string from a field where Axon writes sometimes a number, sometimes a string.
 fn loose_str(v: Option<&Value>) -> String {
     match v {
         Some(Value::String(s)) => s.trim().to_string(),
@@ -412,73 +412,73 @@ fn loose_str(v: Option<&Value>) -> String {
     }
 }
 
-/// Одна запись `WallPaperData` — как её записал Axon.
+/// One `WallPaperData` record — as Axon wrote it.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LibraryEntry {
     pub id: String,
     pub title: String,
     pub author: String,
-    /// Тип из записи (`VIDEO`…); пусто — Axon не написал.
+    /// The type from the record (`VIDEO`…); empty — Axon did not write it.
     pub kind: String,
     pub effect: String,
     pub audible: bool,
     /// `3840x2160` → (3840, 2160).
     pub resolution: Option<(u32, u32)>,
     pub status: String,
-    /// Путь Windows к файлу показа (`PlayResoucePath`).
+    /// The Windows path to the display file (`PlayResoucePath`).
     pub play_path: String,
     pub thumbnail_url: String,
     pub preview_url: String,
     pub description: String,
     pub tags: String,
-    /// Сведения для фильтров, подробностей и свойств показа.
+    /// Information for filters, details and display properties.
     pub details: AxonDetails,
 }
 
-/// Сведения записи `WallPaperData`, которые нужны фильтрам библиотеки,
-/// окну подробностей и свойствам показа, — всё как записал Axon.
+/// Information of a `WallPaperData` record needed by library filters,
+/// the details window and display properties — all as Axon wrote it.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AxonDetails {
-    /// В избранном (`IsFavorite` = 1). Это лишь копия признака с сервера
-    /// Razer: переключить его без учётки нельзя, годится только для фильтра.
+    /// In favorites (`IsFavorite` = 1). This is only a copy of the flag from the Razer
+    /// server: it cannot be toggled without an account, it is only good for a filter.
     pub is_favorite: bool,
-    /// Цена в серебре (`Silver`): больше нуля — «премиальные» обои.
+    /// Price in silver (`Silver`): above zero — "premium" wallpapers.
     pub silver: u64,
-    /// Куплены за серебро (`IsRedeemed` = 1).
+    /// Bought for silver (`IsRedeemed` = 1).
     pub is_redeemed: bool,
-    /// Награда за скачивание (`DownloadReward`); в библиотеке 2.11.1.0 поля
-    /// нет, и фильтр «Награды» тогда пуст — как у самого Axon.
+    /// Download reward (`DownloadReward`); the 2.11.1.0 library has no such field,
+    /// and then the "Rewards" filter is empty — as in Axon itself.
     pub download_reward: u64,
-    /// `PaperType`: `Generate` — обои, созданные ИИ-генератором Axon.
+    /// `PaperType`: `Generate` — wallpapers created by the Axon AI generator.
     pub paper_type: String,
-    /// `Method` — способ создания (у ИИ-обоев), как записан.
+    /// `Method` — the creation method (for AI wallpapers), as written.
     pub method: String,
-    /// `DetailId` — номер ИИ-творения; ненулевой у ИИ-обоев.
+    /// `DetailId` — the AI creation number; non-zero for AI wallpapers.
     pub detail_id: u64,
-    /// Номера категорий каталога (`Category`: `"18,17"`).
+    /// Catalog category numbers (`Category`: `"18,17"`).
     pub categories: Vec<String>,
-    /// Серии (`CollectionInfos`): номер и название.
+    /// Collections (`CollectionInfos`): number and title.
     pub collections: Vec<(String, String)>,
-    /// Лайки (`Upvoted`).
+    /// Likes (`Upvoted`).
     pub upvoted: u64,
-    /// Скачивания (`Downloads`).
+    /// Downloads (`Downloads`).
     pub downloads: u64,
-    /// Звук этих обоев выключен (`IsMute`).
+    /// The sound of these wallpapers is muted (`IsMute`).
     pub is_mute: bool,
-    /// Свойства показа (`PlayEffects`): яркость, контраст, тон, насыщенность,
-    /// скорость, стиль заполнения… Значения — строками, как у Axon.
+    /// Display properties (`PlayEffects`): brightness, contrast, hue, saturation,
+    /// speed, fill style… Values as strings, as in Axon.
     pub play_effects: BTreeMap<String, String>,
 }
 
 impl AxonDetails {
-    /// ИИ-обои: так их отбирает сам Axon (`DetailId` есть); `PaperType`
-    /// `Generate` — тот же признак у записей, пришедших из облака.
+    /// AI wallpapers: this is how Axon itself selects them (`DetailId` is present); `PaperType`
+    /// `Generate` — the same sign for records that came from the cloud.
     pub fn is_ai(&self) -> bool {
         self.detail_id != 0 || self.paper_type.eq_ignore_ascii_case("generate")
     }
 }
 
-/// Число из поля, где Axon пишет то число, то строку; прочее — 0.
+/// A number from a field where Axon writes sometimes a number, sometimes a string; anything else — 0.
 fn loose_u64(v: Option<&Value>) -> u64 {
     match v {
         Some(Value::Number(n)) => n
@@ -491,7 +491,7 @@ fn loose_u64(v: Option<&Value>) -> u64 {
     }
 }
 
-/// Признак: `1`, `"1"`, `true`, `"true"`.
+/// A flag: `1`, `"1"`, `true`, `"true"`.
 fn loose_bool(v: Option<&Value>) -> bool {
     match v {
         Some(Value::Bool(b)) => *b,
@@ -501,8 +501,8 @@ fn loose_bool(v: Option<&Value>) -> bool {
     }
 }
 
-/// `PlayEffects`: словарь, либо он же строкой JSON (так его пишет
-/// проигрыватель Axon). Значения — строками.
+/// `PlayEffects`: a dictionary, or the same as a JSON string (that is how the Axon
+/// player writes it). Values as strings.
 fn parse_play_effects(v: Option<&Value>) -> BTreeMap<String, String> {
     let parsed;
     let obj = match v {
@@ -520,7 +520,7 @@ fn parse_play_effects(v: Option<&Value>) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// Сведения из сырой записи библиотеки.
+/// Information from a raw library record.
 fn parse_details(raw: &Value) -> AxonDetails {
     let categories = loose_str(raw.get("Category"))
         .split(',')
@@ -553,12 +553,12 @@ fn parse_details(raw: &Value) -> AxonDetails {
     }
 }
 
-/// Теги записи (`AllTags`: `" Cyberpunk,Some Artist, 3D"`) списком.
+/// The record's tags (`AllTags`: `" Cyberpunk,Some Artist, 3D"`) as a list.
 pub fn tag_list(tags: &str) -> Vec<String> {
     tags.split(',').map(str::trim).filter(|t| !t.is_empty()).map(str::to_string).collect()
 }
 
-/// `3840x2160` → (ширина, высота).
+/// `3840x2160` → (width, height).
 pub fn parse_resolution(s: &str) -> Option<(u32, u32)> {
     let (w, h) = s.trim().split_once(['x', 'X', '×'])?;
     let w = w.trim().parse().ok()?;
@@ -566,8 +566,8 @@ pub fn parse_resolution(s: &str) -> Option<(u32, u32)> {
     (w > 0 && h > 0).then_some((w, h))
 }
 
-/// Разбор `WallPaperData`. Записи без `Id` пропускаются; файл, который не
-/// JSON-массив, — ошибка (её текст — для журнала).
+/// Parsing `WallPaperData`. Records without an `Id` are skipped; a file that is not
+/// a JSON array is an error (its text is for the log).
 pub fn parse_library(text: &str) -> Result<Vec<LibraryEntry>, String> {
     let v: Value = serde_json::from_str(strip_bom(text)).map_err(|e| e.to_string())?;
     let list = v.as_array().ok_or_else(|| "WallPaperData: ожидался массив".to_string())?;
@@ -601,69 +601,69 @@ pub fn parse_library(text: &str) -> Result<Vec<LibraryEntry>, String> {
     Ok(out)
 }
 
-/// Плейлист (очередь показа) одного экрана.
+/// The playlist (display queue) of one screen.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PlayList {
     pub monitor: String,
     pub wallpaper_ids: Vec<String>,
     pub current_index: usize,
     pub mute: bool,
-    /// Громкость экрана 0–100 (`MaxVolume`).
+    /// Screen volume 0–100 (`MaxVolume`).
     pub volume: u32,
-    /// Показ остановлен кнопкой «Стоп» (`IsStopped`).
+    /// Display stopped with the "Stop" button (`IsStopped`).
     pub stopped: bool,
-    /// Этот экран выбран в панели очереди (`IsSelect`).
+    /// This screen is selected in the queue panel (`IsSelect`).
     pub selected: bool,
 }
 
 impl PlayList {
-    /// Обои, которые Axon показывает на этом экране сейчас.
+    /// The wallpapers Axon is showing on this screen now.
     pub fn current(&self) -> Option<&str> {
         self.wallpaper_ids.get(self.current_index).map(String::as_str)
     }
 }
 
-/// Порядок смены обоев в очереди (`PlayOrder`).
+/// The order of changing wallpapers in the queue (`PlayOrder`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PlayOrder {
-    /// «По порядку» (`Ordered`).
+    /// "In order" (`Ordered`).
     #[default]
     Ordered,
-    /// «Случайно» (`Random`).
+    /// "Random" (`Random`).
     Random,
 }
 
-/// Как обои ложатся на несколько экранов (`PlayMode`).
+/// How wallpapers are laid out across several screens (`PlayMode`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PlayMode {
-    /// Разные обои на каждом экране (`None`).
+    /// Different wallpapers on each screen (`None`).
     #[default]
     Separate,
-    /// Выбранный экран повторяется на остальных (`Duplicate`).
+    /// The selected screen is repeated on the others (`Duplicate`).
     Duplicate,
-    /// Обои выбранного экрана растянуты на все (`Span`).
+    /// The selected screen's wallpaper is stretched across all (`Span`).
     Span,
 }
 
-/// Таймер смены обоев «Никогда» (`SwitchIntervalSeconds` не больше нуля).
+/// The wallpaper change timer "Never" (`SwitchIntervalSeconds` not above zero).
 pub const SWITCH_NEVER: i64 = -1;
 
-/// `PlayListSetting` целиком: очереди экранов и общие настройки показа.
+/// The whole `PlayListSetting`: screen queues and shared display settings.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayListSetting {
-    /// Через сколько секунд менять обои; [`SWITCH_NEVER`] — никогда.
+    /// After how many seconds to change wallpapers; [`SWITCH_NEVER`] — never.
     pub switch_interval_seconds: i64,
-    /// Таймер задан своим числом («Пользовательский»), а не из списка.
+    /// The timer is set with its own number ("Custom"), not from the list.
     pub is_custom_interval: bool,
     pub play_order: PlayOrder,
     pub play_mode: PlayMode,
-    /// «Общий режим»: пауза на экране, где окно развёрнуто во весь экран
+    /// "General mode": pause on the screen where a window is maximized to full screen
     /// (`IsPauseWhenFullScreen`).
     pub pause_when_fullscreen: bool,
-    /// «Экономичный режим»: пауза на всех экранах при полноэкранной игре
+    /// "Economy mode": pause on all screens during a full-screen game
     /// (`IsPauseAllWhenD3dFullScreen`).
     pub pause_all_when_game_fullscreen: bool,
-    /// Громкость по умолчанию 0–100 (`DefaultVolume`).
+    /// Default volume 0–100 (`DefaultVolume`).
     pub default_volume: u32,
     pub playlists: Vec<PlayList>,
 }
@@ -683,7 +683,7 @@ impl Default for PlayListSetting {
     }
 }
 
-/// Громкость 0–100; поля нет — `fallback`.
+/// Volume 0–100; no field — `fallback`.
 fn volume_of(v: Option<&Value>, fallback: u32) -> u32 {
     match v {
         None | Some(Value::Null) => fallback,
@@ -691,8 +691,8 @@ fn volume_of(v: Option<&Value>, fallback: u32) -> u32 {
     }
 }
 
-/// Разбор `PlayListSetting` вместе с настройками показа. Нет массива
-/// `PlayLists` — ошибка (файл не тот); недостающие настройки — умолчания.
+/// Parsing `PlayListSetting` together with the display settings. No `PlayLists`
+/// array — an error (the wrong file); missing settings — defaults.
 pub fn parse_playlist_setting(text: &str) -> Result<PlayListSetting, String> {
     let v: Value = serde_json::from_str(strip_bom(text)).map_err(|e| e.to_string())?;
     let lists = v
@@ -741,28 +741,28 @@ pub fn parse_playlist_setting(text: &str) -> Result<PlayListSetting, String> {
     })
 }
 
-/// Разбор `PlayListSetting`: только очереди экранов.
+/// Parsing `PlayListSetting`: only the screen queues.
 pub fn parse_playlists(text: &str) -> Result<Vec<PlayList>, String> {
     parse_playlist_setting(text).map(|s| s.playlists)
 }
 
-/// Настройки показа учётной записи (`PlayListSetting`), если файл есть и
-/// читается. Только чтение: файлы Axon Rexon не правит.
+/// The account's display settings (`PlayListSetting`), if the file exists and
+/// is readable. Read-only: Rexon does not edit Axon files.
 pub fn read_playlist_setting(account: &Path) -> Option<PlayListSetting> {
     fs::read(account.join(PLAYLIST_FILE))
         .ok()
         .and_then(|b| parse_playlist_setting(&String::from_utf8_lossy(&b)).ok())
 }
 
-/// Описание скачанных обоев (`ResourceConfig.txt`).
+/// The description of downloaded wallpapers (`ResourceConfig.txt`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResourceConfig {
     pub kind: AxonKind,
-    /// Путь к файлу показа относительно каталога обоев, как записан.
+    /// The path to the display file relative to the wallpaper directory, as written.
     pub source: String,
 }
 
-/// Разбор `ResourceConfig.txt`: оба имени поля типа и BOM.
+/// Parsing `ResourceConfig.txt`: both type field names and the BOM.
 pub fn parse_resource_config(text: &str) -> Result<ResourceConfig, String> {
     let v: Value = serde_json::from_str(strip_bom(text)).map_err(|e| e.to_string())?;
     Ok(ResourceConfig {
@@ -772,47 +772,47 @@ pub fn parse_resource_config(text: &str) -> Result<ResourceConfig, String> {
 }
 
 // ============================================================================
-// Модель обоев
+// Wallpaper model
 // ============================================================================
 
-/// Одни обои библиотеки Axon — всё, что нужно плитке и «Применить».
+/// One wallpaper of the Axon library — everything the tile and "Apply" need.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AxonWallpaper {
     pub id: String,
     pub title: String,
     pub author: String,
     pub kind: AxonKind,
-    /// `Dynamic` — «динамические» обои Axon.
+    /// `Dynamic` — Axon's "dynamic" wallpapers.
     pub effect: String,
-    /// Звук у ролика есть и задуман.
+    /// The video has sound and it is intended.
     pub audible: bool,
     pub resolution: Option<(u32, u32)>,
-    /// Обложка в сети (CDN Axon).
+    /// The cover on the network (Axon's CDN).
     pub cover_url: String,
-    /// Обложка на диске, если Axon её сохранил.
+    /// The cover on disk, if Axon saved it.
     pub cover_local: Option<PathBuf>,
-    /// Каталог скачанных обоев (`WallpaperSource/{Id}{H}{W}`), если есть.
+    /// The downloaded wallpaper directory (`WallpaperSource/{Id}{H}{W}`), if any.
     pub resource_dir: Option<PathBuf>,
-    /// Файл-контейнер внутри него, если есть.
+    /// The container file inside it, if any.
     pub container: Option<PathBuf>,
-    /// Скачаны ли обои целиком (каталог, описание и контейнер на месте).
+    /// Whether the wallpaper is fully downloaded (the directory, description and container in place).
     pub downloaded: bool,
-    /// Показывает ли их Axon сейчас (по плейлисту).
+    /// Whether Axon is showing it now (per the playlist).
     pub playing: bool,
-    /// Состояние из библиотеки (`WallPaperStatus`: `Installed`, `Playing`…).
+    /// The state from the library (`WallPaperStatus`: `Installed`, `Playing`…).
     pub status: String,
     pub description: String,
-    /// Теги (`AllTags`), как записаны: через запятую.
+    /// Tags (`AllTags`), as written: comma-separated.
     pub tags: String,
-    /// Сведения для фильтров, подробностей и свойств показа.
+    /// Information for filters, details and display properties.
     pub details: AxonDetails,
-    /// Префикс Wine, из которого обои.
+    /// The Wine prefix the wallpaper is from.
     pub prefix: PathBuf,
 }
 
 impl AxonWallpaper {
-    /// Ключ каталога кэша: номер Axon без символов, которым не место в
-    /// имени каталога.
+    /// The cache directory key: the Axon number without characters that do not belong in
+    /// a directory name.
     pub fn cache_key(&self) -> String {
         sanitize_id(&self.id)
     }
@@ -826,8 +826,8 @@ fn sanitize_id(id: &str) -> String {
     if s.is_empty() { "_".to_string() } else { s }
 }
 
-/// Каталог скачанных обоев: путь показа из библиотеки, а без него —
-/// `{Id}{H}{W}` в хранилище, затем любой `{Id}…` с описанием внутри.
+/// The downloaded wallpaper directory: the display path from the library, and without it —
+/// `{Id}{H}{W}` in the storage, then any `{Id}…` with a description inside.
 fn locate_resource_dir(prefix: &Path, store: &Path, e: &LibraryEntry) -> Option<PathBuf> {
     let has_config = |d: &Path| d.join(RESOURCE_CONFIG).is_file();
     if !e.play_path.is_empty() {
@@ -845,8 +845,8 @@ fn locate_resource_dir(prefix: &Path, store: &Path, e: &LibraryEntry) -> Option<
             return Some(d);
         }
     }
-    // Без разрешения в записи: самый длинный `{Id}<цифры>` — родная
-    // раскладка Axon; сам `{Id}` — раскладка сторонних загрузчиков.
+    // No resolution in the record: the longest `{Id}<digits>` — the native
+    // Axon layout; `{Id}` itself — the layout of third-party downloaders.
     let mut best: Option<PathBuf> = None;
     for d in children(store) {
         let name = d.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -865,7 +865,7 @@ fn locate_resource_dir(prefix: &Path, store: &Path, e: &LibraryEntry) -> Option<
     best
 }
 
-/// Где у учётной записи хранилище скачанного.
+/// Where the account's download storage is.
 fn store_dir(prefix: &Path, root: &Path, account: &Path) -> PathBuf {
     read_json(&account.join(USER_SETTING_FILE))
         .ok()
@@ -876,7 +876,7 @@ fn store_dir(prefix: &Path, root: &Path, account: &Path) -> PathBuf {
         .unwrap_or_else(|| root.join(DEFAULT_SOURCE_DIR))
 }
 
-/// Обложка, сохранённая Axon (`WallpaperCovers/<Id>.*`), если есть.
+/// The cover saved by Axon (`WallpaperCovers/<Id>.*`), if any.
 fn local_cover(root: &Path, id: &str) -> Option<PathBuf> {
     let dir = root.join("WallpaperCovers");
     let rd = fs::read_dir(&dir).ok()?;
@@ -886,7 +886,7 @@ fn local_cover(root: &Path, id: &str) -> Option<PathBuf> {
         .find(|p| p.file_stem().map(|s| s.to_string_lossy() == id).unwrap_or(false))
 }
 
-/// Описание и контейнер скачанных обоев в каталоге `dir`.
+/// The description and container of downloaded wallpapers in the directory `dir`.
 fn read_resource(dir: &Path) -> (Option<ResourceConfig>, Option<PathBuf>) {
     let config = fs::read(dir.join(RESOURCE_CONFIG))
         .ok()
@@ -898,7 +898,7 @@ fn read_resource(dir: &Path) -> (Option<ResourceConfig>, Option<PathBuf>) {
     (config, container)
 }
 
-/// Обои из записи библиотеки (если есть) и каталога скачанного (если есть).
+/// A wallpaper from a library record (if any) and the download directory (if any).
 fn build(
     prefix: &Path,
     root: Option<&Path>,
@@ -912,12 +912,12 @@ fn build(
         None => (None, None),
     };
     let downloaded = container.as_ref().is_some_and(|c| c.is_file());
-    // Вид — из описания скачанного (оно точнее), иначе из библиотеки.
+    // The kind — from the download description (it is more precise), otherwise from the library.
     let kind = match &config {
         Some(c) if !matches!(&c.kind, AxonKind::Other(s) if s.is_empty()) => c.kind.clone(),
         _ => AxonKind::parse(entry.map_or("", |e| e.kind.as_str())),
     };
-    // Разрешение: из библиотеки, иначе из имени файла (`3840x2160.mp4`).
+    // Resolution: from the library, otherwise from the file name (`3840x2160.mp4`).
     let resolution = entry.and_then(|e| e.resolution).or_else(|| {
         container
             .as_ref()
@@ -947,7 +947,7 @@ fn build(
     }
 }
 
-/// Что Axon показывает сейчас по плейлистам учётной записи.
+/// What Axon is showing now according to the account's playlists.
 fn playing_ids(account: &Path) -> Vec<String> {
     read_playlist_setting(account)
         .map(|s| s.playlists.iter().filter_map(|p| p.current().map(str::to_string)).collect())
@@ -959,7 +959,7 @@ fn read_entries(account: &Path) -> Result<Vec<LibraryEntry>, String> {
     parse_library(&String::from_utf8_lossy(&bytes))
 }
 
-/// Обои одной учётной записи.
+/// The wallpapers of one account.
 pub fn read_account(prefix: &Path, root: &Path, account: &Path) -> Result<Vec<AxonWallpaper>, String> {
     let entries = read_entries(account)?;
     let playing = playing_ids(account);
@@ -977,13 +977,13 @@ fn mtime(p: &Path) -> SystemTime {
     fs::metadata(p).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH)
 }
 
-// ── Папка с обоями, указанная вручную ──────────────────────────────────
+// ── A wallpaper folder specified by hand ───────────────────────────────
 
-/// Ключ настройки Rexon: папки с обоями Axon, указанные вручную (массив
-/// строк в `settings.json`).
+/// The Rexon setting key: Axon wallpaper folders specified by hand (an array
+/// of strings in `settings.json`).
 pub const SETTINGS_KEY: &str = "axon_wallpaper_dirs";
 
-/// Папки из настроек Rexon (только строки, пустые и повторы — прочь).
+/// Folders from Rexon's settings (strings only, empty ones and repeats dropped).
 pub fn saved_source_dirs(settings: &serde_json::Map<String, Value>) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
     for v in settings.get(SETTINGS_KEY).and_then(Value::as_array).into_iter().flatten() {
@@ -997,7 +997,7 @@ pub fn saved_source_dirs(settings: &serde_json::Map<String, Value>) -> Vec<PathB
     out
 }
 
-/// Список для настроек после добавления `dir` (без повторов, в конец).
+/// The list for the settings after adding `dir` (without repeats, at the end).
 pub fn with_source_dir(saved: &[PathBuf], dir: &Path) -> Value {
     let mut list: Vec<PathBuf> = saved.to_vec();
     if !list.iter().any(|p| p == dir) {
@@ -1006,14 +1006,14 @@ pub fn with_source_dir(saved: &[PathBuf], dir: &Path) -> Value {
     Value::Array(list.iter().map(|p| Value::from(p.to_string_lossy().into_owned())).collect())
 }
 
-/// Каталоги обоев (`{Id}{H}{W}` с `ResourceConfig.txt`) в папке.
+/// Wallpaper directories (`{Id}{H}{W}` with `ResourceConfig.txt`) in a folder.
 fn resource_dirs_in(dir: &Path) -> Vec<PathBuf> {
     children(dir).into_iter().filter(|d| d.join(RESOURCE_CONFIG).is_file()).collect()
 }
 
-/// Проверить папку, которую выбрал человек: это должна быть папка с обоями
-/// Axon (`WallpaperSource`). Выбран каталог одних обоев — берётся папка над
-/// ним. Ошибка — текст для человека.
+/// Check the folder the person chose: it must be an Axon wallpaper folder
+/// (`WallpaperSource`). If the directory of a single wallpaper is chosen, the folder above
+/// it is taken. An error is text for the person.
 pub fn check_source_dir(dir: &Path) -> Result<PathBuf, String> {
     if !dir.is_dir() {
         return Err(folder_missing_text());
@@ -1029,14 +1029,14 @@ pub fn check_source_dir(dir: &Path) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// Высоты и ширины экранов, которыми Axon подписывает каталоги
-/// (`{Id}{Высота}{Ширина}`), — чтобы отделить номер, когда библиотеки рядом нет.
+/// Screen heights and widths Axon names directories with
+/// (`{Id}{Height}{Width}`) — to separate the number when there is no library nearby.
 const HEIGHTS: &[u32] = &[720, 768, 800, 900, 1080, 1200, 1440, 1600, 1800, 2160, 2400, 2880, 4320];
 const WIDTHS: &[u32] = &[1280, 1366, 1440, 1600, 1920, 2048, 2560, 2880, 3440, 3840, 5120, 7680];
 
-/// Номер обоев из имени каталога `{Id}{H}{W}`, когда библиотеки нет: по
-/// разрешению из имени файла, иначе по известным разрешениям экрана, иначе
-/// всё имя.
+/// The wallpaper number from a `{Id}{H}{W}` directory name when there is no library: by
+/// the resolution from the file name, otherwise by known screen resolutions, otherwise
+/// the whole name.
 pub fn id_from_dir_name(name: &str, resolution: Option<(u32, u32)>) -> String {
     let strip = |w: u32, h: u32| {
         name.strip_suffix(&format!("{h}{w}"))
@@ -1056,9 +1056,9 @@ pub fn id_from_dir_name(name: &str, resolution: Option<(u32, u32)>) -> String {
     name.to_string()
 }
 
-/// Обои из папки `WallpaperSource`, указанной вручную. Название, автора и
-/// обложку берём из библиотеки рядом (папка над ней → `*/WallPaperData`),
-/// если она есть; иначе — что знает `ResourceConfig.txt`, и номер.
+/// Wallpapers from a `WallpaperSource` folder specified by hand. The title, author and
+/// cover are taken from the library nearby (the folder above it → `*/WallPaperData`)
+/// if there is one; otherwise — what `ResourceConfig.txt` knows, and the number.
 pub fn read_source_dir(dir: &Path) -> Result<Vec<AxonWallpaper>, String> {
     let dir = check_source_dir(dir)?;
     let root = dir.parent().map(Path::to_path_buf);
@@ -1068,7 +1068,7 @@ pub fn read_source_dir(dir: &Path) -> Result<Vec<AxonWallpaper>, String> {
         .and_then(Path::parent)
         .map(Path::to_path_buf)
         .unwrap_or_default();
-    // Библиотека рядом: самая свежая запись побеждает.
+    // A library nearby: the freshest record wins.
     let mut entries: Vec<LibraryEntry> = Vec::new();
     let mut playing: Vec<String> = Vec::new();
     if let Some(root) = &root {
@@ -1086,8 +1086,8 @@ pub fn read_source_dir(dir: &Path) -> Result<Vec<AxonWallpaper>, String> {
     let mut out: Vec<AxonWallpaper> = Vec::new();
     for res in resource_dirs_in(&dir) {
         let name = res.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        // Запись библиотеки, чей номер — начало имени, а остальное — цифры;
-        // из нескольких — с самым длинным номером.
+        // A library record whose number is the start of the name, and the rest is digits;
+        // of several — the one with the longest number.
         let entry = entries
             .iter()
             .filter(|e| name.strip_prefix(&e.id).is_some_and(|r| r.chars().all(|c| c.is_ascii_digit())))
@@ -1109,9 +1109,9 @@ pub fn read_source_dir(dir: &Path) -> Result<Vec<AxonWallpaper>, String> {
     Ok(out)
 }
 
-/// Добавить обои в список: такие же (тот же номер) уже есть — оставить
-/// скачанные, а из двух скачанных — родную раскладку Axon (длинное имя
-/// каталога `{Id}{H}{W}`), не сторонний `{Id}`.
+/// Add a wallpaper to the list: if the same one (the same number) is already there — keep
+/// the downloaded one, and of two downloaded ones — the native Axon layout (a long
+/// `{Id}{H}{W}` directory name), not a third-party `{Id}`.
 fn merge(list: &mut Vec<AxonWallpaper>, w: AxonWallpaper) {
     let name_len = |x: &AxonWallpaper| {
         x.resource_dir.as_ref().and_then(|d| d.file_name()).map_or(0, |n| n.len())
@@ -1123,7 +1123,7 @@ fn merge(list: &mut Vec<AxonWallpaper>, w: AxonWallpaper) {
             let better = (!old.downloaded && w.downloaded)
                 || (old.downloaded == w.downloaded && name_len(&w) > name_len(old));
             if better {
-                // Сведения библиотеки не теряем, если у новой записи их нет.
+                // We do not lose the library information if the new record does not have it.
                 let mut w = w;
                 if w.title.is_empty() {
                     w.title = old.title.clone();
@@ -1139,20 +1139,20 @@ fn merge(list: &mut Vec<AxonWallpaper>, w: AxonWallpaper) {
     }
 }
 
-/// Библиотека Axon на машине: все найденные каталоги и учётные записи.
+/// The Axon library on the machine: all found directories and accounts.
 #[derive(Debug, Clone, Default)]
 pub struct AxonLibrary {
     pub wallpapers: Vec<AxonWallpaper>,
-    /// Папки с обоями (`WallpaperSource`), откуда они взяты: найденные и
-    /// указанные вручную, без повторов. Первая — для «Открыть папку».
+    /// Wallpaper folders (`WallpaperSource`) they were taken from: found ones and
+    /// those specified by hand, without repeats. The first one is for "Open folder".
     pub source_dirs: Vec<PathBuf>,
-    /// Найдена ли хоть одна библиотека или папка с обоями.
+    /// Whether at least one library or wallpaper folder was found.
     pub found: bool,
-    /// Настройки показа (`PlayListSetting`) самой свежей учётной записи,
-    /// у которой они есть. Только для чтения: очередь, таймер и паузы Rexon
-    /// держит в своих настройках, а отсюда берёт начальные значения.
+    /// The display settings (`PlayListSetting`) of the freshest account
+    /// that has them. Read-only: Rexon keeps the queue, timer and pauses
+    /// in its own settings, and takes the initial values from here.
     pub play_setting: Option<PlayListSetting>,
-    /// Что не прочиталось (для журнала): файл и причина.
+    /// What could not be read (for the log): the file and the reason.
     pub problems: Vec<String>,
 }
 
@@ -1162,10 +1162,10 @@ impl AxonLibrary {
     }
 }
 
-/// Прочитать библиотеку из найденных каталогов. Одинаковые обои (тот же
-/// `Id` у двух учётных записей или префиксов) — из самой свежей
-/// библиотеки, но если там они не скачаны, а в другой скачаны — скачанные.
-/// Порядок — как в библиотеке Axon (свежая учётная запись первой).
+/// Read the library from the found directories. Identical wallpapers (the same
+/// `Id` in two accounts or prefixes) come from the freshest
+/// library, but if they are not downloaded there and are downloaded in another — the downloaded ones.
+/// The order is as in the Axon library (the freshest account first).
 pub fn read_roots(roots: &[AxonRoot]) -> AxonLibrary {
     let mut accounts: Vec<(SystemTime, &AxonRoot, PathBuf)> = Vec::new();
     for r in roots {
@@ -1195,7 +1195,7 @@ pub fn read_roots(roots: &[AxonRoot]) -> AxonLibrary {
     lib
 }
 
-/// Библиотека Axon машины: найденные префиксы плюс папки, указанные вручную.
+/// The machine's Axon library: found prefixes plus folders specified by hand.
 pub fn load_library(env: &AxonEnv) -> AxonLibrary {
     let mut lib = read_roots(&find_roots(env));
     for dir in &env.source_dirs {
@@ -1217,19 +1217,19 @@ pub fn load_library(env: &AxonEnv) -> AxonLibrary {
 }
 
 // ============================================================================
-// Подготовка к показу
+// Preparing for display
 // ============================================================================
 
-/// Почему обои не удалось подготовить.
+/// Why the wallpaper could not be prepared.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AxonExtractError {
-    /// Подготовить нечем: в этой сборке такой возможности нет.
+    /// Nothing to prepare with: this build does not have that capability.
     Unavailable,
-    /// Такой вид обоев подготовка не знает.
+    /// The preparation does not know this wallpaper kind.
     Unsupported(String),
-    /// Файлы обоев неполные или испорчены.
+    /// The wallpaper files are incomplete or corrupted.
     Damaged(String),
-    /// Прочая неудача — текст для журнала.
+    /// Any other failure — text for the log.
     Failed(String),
 }
 
@@ -1244,17 +1244,17 @@ impl std::fmt::Display for AxonExtractError {
     }
 }
 
-/// Подготовка скачанных обоев к показу.
+/// Preparing downloaded wallpapers for display.
 ///
-/// Получает каталог обоев Axon (`WallpaperSource/{Id}{H}{W}`, только
-/// чтение) и пустой либо прежний каталог кэша; кладёт туда готовый к
-/// показу файл (ролик или картинку) и отдаёт путь к нему. Каталог Axon
-/// трогать нельзя.
+/// It receives an Axon wallpaper directory (`WallpaperSource/{Id}{H}{W}`, read-only)
+/// and an empty or previous cache directory; it puts a file ready for
+/// display (a video or a picture) there and returns its path. The Axon directory
+/// must not be touched.
 pub trait AxonExtractor: Send + Sync {
     fn extract(&self, resource_dir: &Path, out_dir: &Path) -> Result<PathBuf, AxonExtractError>;
 }
 
-/// Встроенная подготовка (`crate::axon_extract`).
+/// The built-in preparation (`crate::axon_extract`).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BuiltinExtractor;
 
@@ -1263,8 +1263,8 @@ impl AxonExtractor for BuiltinExtractor {
         use crate::axon_extract::{extract, ExtractError};
         extract(resource_dir, out_dir).map_err(|e| match e {
             ExtractError::Config(m) => AxonExtractError::Damaged(m),
-            // Неизвестная схема или не тот пароль — такой вид обоев мы ещё
-            // не знаем; прочее (не ZIP, обрыв) — файлы испорчены.
+            // An unknown scheme or the wrong password — we do not know this wallpaper kind
+            // yet; anything else (not a ZIP, truncated) — the files are corrupted.
             ExtractError::Format(m) if m.starts_with("unsupported") || m.contains("wrong password") => {
                 AxonExtractError::Unsupported(m)
             }
@@ -1274,14 +1274,14 @@ impl AxonExtractor for BuiltinExtractor {
     }
 }
 
-/// Чем готовить обои в этой сборке — встроенной подготовкой.
+/// What to prepare wallpapers with in this build — the built-in preparation.
 pub fn default_extractor() -> Box<dyn AxonExtractor> {
     Box::new(BuiltinExtractor)
 }
 
-/// Как применять готовый файл: формат общего исполнителя обоев
-/// (`WallpaperExec::apply_with_audio`). `None` — такой файл обоями не
-/// поставить.
+/// How to apply a ready file: the format of the shared wallpaper executor
+/// (`WallpaperExec::apply_with_audio`). `None` — such a file cannot be set
+/// as a wallpaper.
 pub fn apply_format(path: &Path) -> Option<&'static str> {
     let ext = path.extension()?.to_string_lossy().to_ascii_lowercase();
     if ext == "gif" {
@@ -1297,18 +1297,18 @@ pub fn apply_format(path: &Path) -> Option<&'static str> {
     }
 }
 
-/// Готовые к применению обои.
+/// A wallpaper ready to apply.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Prepared {
     pub path: PathBuf,
-    /// Формат общего исполнителя: `video`, `static`, `animated`.
+    /// The shared executor's format: `video`, `static`, `animated`.
     pub format: &'static str,
-    /// Звук ролика — как задумано в Axon (`Audible`).
+    /// The video's sound — as intended in Axon (`Audible`).
     pub audio: bool,
     pub name: String,
 }
 
-/// Отметка кэша: из какого контейнера сделан готовый файл.
+/// The cache mark: which container the ready file was made from.
 fn stamp_of(container: &Path) -> Option<Value> {
     let m = fs::metadata(container).ok()?;
     let secs = m.modified().ok()?.duration_since(SystemTime::UNIX_EPOCH).ok()?.as_secs();
@@ -1319,7 +1319,7 @@ fn stamp_of(container: &Path) -> Option<Value> {
     }))
 }
 
-/// Готовый файл из прошлого раза, если контейнер с тех пор не менялся.
+/// The ready file from last time, if the container has not changed since.
 fn cached(out_dir: &Path, container: &Path) -> Option<PathBuf> {
     let saved = read_json(&out_dir.join(READY_STAMP)).ok()?;
     let now = stamp_of(container)?;
@@ -1332,8 +1332,8 @@ fn cached(out_dir: &Path, container: &Path) -> Option<PathBuf> {
     (file.is_file() && fs::metadata(&file).map(|m| m.len() > 0).unwrap_or(false)).then_some(file)
 }
 
-/// Подготовить обои к применению: отказы без подготовки, кэш, подготовка,
-/// проверка ответа. Ошибка — текст для человека.
+/// Prepare a wallpaper for applying: refusals without preparation, the cache, preparation,
+/// checking the answer. An error is text for the person.
 pub fn prepare(
     w: &AxonWallpaper,
     extractor: Option<&dyn AxonExtractor>,
@@ -1375,7 +1375,7 @@ pub fn prepare(
             });
         }
     };
-    // Ответу верим, только если файл настоящий и лежит в выданном каталоге.
+    // We trust the answer only if the file is real and lies in the given directory.
     let inside = match (path.canonicalize(), out_dir.canonicalize()) {
         (Ok(p), Ok(o)) => p.starts_with(&o) && p.is_file(),
         _ => false,
@@ -1396,10 +1396,10 @@ pub fn prepare(
 }
 
 // ============================================================================
-// Плитки раздела
+// Section tiles
 // ============================================================================
 
-/// Название для показа (без названия — номер).
+/// The title to show (no title — the number).
 pub fn display_title(w: &AxonWallpaper) -> String {
     if w.title.trim().is_empty() {
         format!("Razer Axon {}", w.id)
@@ -1408,8 +1408,8 @@ pub fn display_title(w: &AxonWallpaper) -> String {
     }
 }
 
-/// Строка под названием плитки: вид, звук, разрешение; у нескачанных —
-/// что их нет на диске.
+/// The line under the tile title: kind, sound, resolution; for those not downloaded —
+/// that they are not on disk.
 pub fn tile_line(w: &AxonWallpaper) -> String {
     let mut parts = vec![w.kind.label()];
     if w.audible && w.kind == AxonKind::Video {
@@ -1424,104 +1424,104 @@ pub fn tile_line(w: &AxonWallpaper) -> String {
     parts.join(" · ")
 }
 
-/// Отбор по строке поиска: название, автор.
+/// Filtering by the search string: title, author.
 pub fn matches(w: &AxonWallpaper, query: &str) -> bool {
     let q = query.trim().to_lowercase();
     q.is_empty() || format!("{} {}", w.title, w.author).to_lowercase().contains(&q)
 }
 
-// ── Тексты ─────────────────────────────────────────────────────────────
+// ── Texts ──────────────────────────────────────────────────────────────
 
-/// Обои ещё не скачаны в Axon.
+/// The wallpaper is not downloaded in Axon yet.
 pub fn not_downloaded_text(name: &str) -> String {
     // TRANSLATORS: %1 is the name of a Razer Axon wallpaper.
     trf("“%1” is not downloaded yet. Download it in Razer Axon first.", &[&name])
 }
 
-/// Веб-обои Rexon не показывает.
+/// Rexon does not show web wallpapers.
 pub fn web_unsupported_text(name: &str) -> String {
     // TRANSLATORS: %1 is the name of a Razer Axon wallpaper.
     trf("“%1” is a web page wallpaper — Rexon can't show this kind from Razer Axon yet.", &[&name])
 }
 
-/// Подготовить нечем.
+/// Nothing to prepare with.
 pub fn unavailable_text() -> String {
     tr("Razer Axon wallpapers can't be shown in this version of Rexon yet.")
 }
 
-/// Вид обоев подготовка не знает.
+/// The preparation does not know the wallpaper kind.
 pub fn kind_unsupported_text(name: &str) -> String {
     // TRANSLATORS: %1 is the name of a Razer Axon wallpaper.
     trf("“%1”: this kind of Razer Axon wallpaper is not supported yet.", &[&name])
 }
 
-/// Файлы обоев неполные.
+/// The wallpaper files are incomplete.
 pub fn damaged_text(name: &str) -> String {
     // TRANSLATORS: %1 is the name of a Razer Axon wallpaper.
     trf("The files of “%1” look incomplete. Download the wallpaper again in Razer Axon.", &[&name])
 }
 
-/// Прочая неудача подготовки.
+/// Any other preparation failure.
 pub fn prepare_failed_text(name: &str) -> String {
     // TRANSLATORS: %1 is the name of a Razer Axon wallpaper.
     trf("Could not prepare “%1” for playback.", &[&name])
 }
 
-/// Подготовка пошла.
+/// Preparation started.
 pub fn preparing_text(name: &str) -> String {
     // TRANSLATORS: %1 is the name of a Razer Axon wallpaper.
     trf("Preparing “%1”…", &[&name])
 }
 
-/// Пустая библиотека.
+/// An empty library.
 pub fn empty_text() -> String {
     tr("The Razer Axon library is empty: add wallpapers in Razer Axon.")
 }
 
-/// Библиотеки нет ни в известных местах, ни в указанных папках.
+/// There is no library either in known places or in the specified folders.
 pub fn not_found_text() -> String {
     tr("Razer Axon library not found. If Razer Axon is installed under Wine, \
         choose the folder with its wallpapers (WallpaperSource).")
 }
 
-/// Кнопка выбора папки.
+/// The folder selection button.
 pub fn pick_folder_text() -> String {
     tr("📁 Choose Axon wallpaper folder…")
 }
 
-/// Подсказка кнопки выбора папки и заголовок окна выбора.
+/// The folder selection button tooltip and the chooser window title.
 pub fn pick_folder_tooltip() -> String {
     tr("The WallpaperSource folder of Razer Axon: …/AppData/Local/Razer/RazerAxon/WallpaperSource \
         inside the Wine prefix where Razer Axon is installed.")
 }
 
-/// Заголовок окна выбора папки.
+/// The folder chooser window title.
 pub fn pick_folder_title() -> String {
     tr("Folder with Razer Axon wallpapers")
 }
 
-/// Кнопка «Открыть папку» у раздела и у плитки.
+/// The "Open folder" button of the section and of the tile.
 pub fn open_folder_text() -> String {
     tr("📂 Open folder")
 }
 
-/// Подсказка «Открыть папку».
+/// The "Open folder" tooltip.
 pub fn open_folder_tooltip() -> String {
     tr("Open the folder with these wallpapers in the file manager")
 }
 
-/// Выбранной папки нет.
+/// The chosen folder does not exist.
 pub fn folder_missing_text() -> String {
     tr("This folder doesn't exist anymore.")
 }
 
-/// В выбранной папке нет обоев Axon.
+/// The chosen folder has no Axon wallpapers.
 pub fn folder_not_axon_text() -> String {
     tr("No Razer Axon wallpapers in this folder. Choose the WallpaperSource folder \
         (…/AppData/Local/Razer/RazerAxon/WallpaperSource).")
 }
 
-/// Папка добавлена.
+/// The folder was added.
 pub fn folder_added_text(count: usize) -> String {
     // TRANSLATORS: %1 is a number of wallpapers found in the chosen folder.
     trf("Razer Axon folder added: wallpapers found — %1.", &[&count])

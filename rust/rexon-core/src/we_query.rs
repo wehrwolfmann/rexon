@@ -1,71 +1,71 @@
-//! База `Query` и простые запросы вкладки Wallpaper Engine — порт
-//! `qextra::QAsyncResult`/`qextra::Query` + `ui/src/query/{health,renderer,
-//! tag}_query.cpp` waywallen (MIT, (c) hypengw; атрибуция в NOTICE).
+//! The `Query` base and simple requests of the Wallpaper Engine tab — port
+//! of waywallen's `qextra::QAsyncResult`/`qextra::Query` + `ui/src/query/{health,renderer,
+//! tag}_query.cpp` (MIT, (c) hypengw; attribution in NOTICE).
 //!
-//! База — конечный автомат асинхронного результата: статус
-//! (Uninitialized/Querying/Finished/Error), текст ошибки, флаг пересылки
-//! ошибки в глобальный обработчик. Вся решающая часть здесь: переход
-//! состояния и ПОРЯДОК сигналов Qt, которые обязан разослать шим.
-//! Наследники добавляют разбор своего ответа: сырые байты кадра →
-//! prost → новые значения свойств + сигналы `<имя>Changed`.
+//! The base is a state machine of an asynchronous result: status
+//! (Uninitialized/Querying/Finished/Error), the error text, a flag for
+//! forwarding the error to the global handler. All the deciding part lives
+//! here: the state transition and the ORDER of Qt signals the shim must emit.
+//! Descendants add parsing of their response: raw frame bytes →
+//! prost → new property values + `<name>Changed` signals.
 //!
-//! Почему не cxx-qt: он не умеет наследование Rust-QObject от
-//! Rust-QObject, а вся иерархия запросов вкладки — именно наследование
-//! от одной базы. Поэтому состояние базы ВСТРОЕНО структурой
-//! ([`QueryState`]) в каждый запрос, а QObject'ами остаются
-//! PySide6-оболочки в `qml_ui/bridge.py` — ровно как у `Notify`/`Util`.
+//! Why not cxx-qt: it cannot inherit a Rust QObject from a
+//! Rust QObject, and the whole request hierarchy of the tab is exactly
+//! inheritance from one base. So the base state is EMBEDDED as a struct
+//! ([`QueryState`]) into every request, while the QObjects remain the
+//! PySide6 wrappers in `qml_ui/bridge.py` — just like `Notify`/`Util`.
 //!
-//! ⚠️ Расхождения с оригиналом (осознанные, правило #16):
-//!   1. Сигналы свойств (`serviceChanged`, `tagsChanged`, …) шлются
-//!      ТОЛЬКО при реальном изменении значения. Оригинал шлёт их
-//!      безусловно на каждый успешный ответ (`Q_EMIT self->tagsChanged()`
-//!      сразу после присваивания) — то есть перевычисляет привязки QML
-//!      даже когда демон вернул тот же список. Тот же класс, что был
-//!      починен в `Notify` (`statusChanged` на каждый StatusSync).
-//!      Наблюдаемое поведение не меняется: ни один обработчик
-//!      `on<Свойство>Changed` в вендоренном QML на эти сигналы не
-//!      подписан (проверено grep'ом по `ui/qml`), они питают только
-//!      привязки свойств, а привязке нужен сигнал лишь при изменении.
-//!   2. `HealthQuery` в нашем прежнем Python-мосту УЖЕ сравнивал
-//!      значения, а `TagListQuery`/`RendererListQuery` — нет. Теперь
-//!      правило одно на все запросы (правило #12: чиним движок, а не
-//!      отдельные места).
+//! ⚠️ Deviations from the original (deliberate, rule #16):
+//!   1. Property signals (`serviceChanged`, `tagsChanged`, …) are emitted
+//!      ONLY when the value really changes. The original emits them
+//!      unconditionally on every successful response (`Q_EMIT self->tagsChanged()`
+//!      right after the assignment) — i.e. it re-evaluates QML bindings
+//!      even when the daemon returned the same list. Same class of issue that
+//!      was fixed in `Notify` (`statusChanged` on every StatusSync).
+//!      Observable behaviour does not change: no `on<Property>Changed`
+//!      handler in the vendored QML subscribes to these signals (checked
+//!      by grep over `ui/qml`), they only feed property bindings, and a
+//!      binding needs a signal only on a change.
+//!   2. `HealthQuery` in our former Python bridge ALREADY compared
+//!      values, while `TagListQuery`/`RendererListQuery` did not. Now
+//!      there is one rule for all requests (rule #12: fix the engine, not
+//!      individual places).
 //!
-//! Отличие транспорта: у оригинала `reload()` сначала ставит Querying и
-//! лишь потом узнаёт об ошибке отправки; у нас соединение проверяется
-//! ДО отправки ([`begin_call`]), поэтому при мёртвом демоне статус идёт
-//! сразу в Error, минуя Querying. Это наша ветка (у оригинала её нет —
-//! он всегда «отправляет» в backend), сохранено как было в мосту.
+//! Transport difference: the original's `reload()` first sets Querying and
+//! only then learns about a send error; we check the connection
+//! BEFORE sending ([`begin_call`]), so with a dead daemon the status goes
+//! straight to Error, skipping Querying. This is our branch (the original
+//! has none — it always "sends" to the backend), kept as it was in the bridge.
 
 use crate::proto::control as pb;
 use crate::we_notify::{plugin_text, PluginText};
 use prost::Message;
 use serde::{ser::SerializeMap, Serialize, Serializer};
 
-/// `qextra::QAsyncResult::Status` — значения перечисления Qt как есть
-/// (QML читает их числами через `Query.Status`).
+/// `qextra::QAsyncResult::Status` — Qt enum values as they are
+/// (QML reads them as numbers via `Query.Status`).
 pub const STATUS_UNINITIALIZED: i32 = 0;
-/// Запрос отправлен, ответа нет.
+/// The request was sent, no response yet.
 pub const STATUS_QUERYING: i32 = 1;
-/// Ответ получен и разобран.
+/// The response was received and parsed.
 pub const STATUS_FINISHED: i32 = 2;
-/// Ошибка соединения, транспорта или демона.
+/// Connection, transport or daemon error.
 pub const STATUS_ERROR: i32 = 3;
 
-/// Текст, которым мост объясняет отсутствие соединения с демоном.
+/// The text the bridge uses to explain a missing daemon connection.
 ///
-/// Английский msgid каталога; на экран идёт перевод (`tr`) в [`set_error`]-
-/// вызове ниже.
+/// An English catalog msgid; the screen gets the translation (`tr`) in the
+/// [`set_error`] call below.
 pub const NO_CONNECTION: &str = crate::i18n::n_("no connection to the daemon");
 
-/// Состояние базы `Query`, встроенное в каждый запрос.
+/// State of the `Query` base, embedded into every request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryState {
     pub status: i32,
     pub error: String,
-    /// `forwardError` — дублировать ли ошибку в глобальный обработчик
-    /// (`App.errorOccurred` → тост в Window.qml). Оригинал: `true` по
-    /// умолчанию, страницы с собственным показом ошибки ставят `false`.
+    /// `forwardError` — whether to duplicate the error to the global handler
+    /// (`App.errorOccurred` → toast in Window.qml). Original: `true` by
+    /// default, pages with their own error display set `false`.
     pub forward_error: bool,
 }
 
@@ -79,41 +79,41 @@ impl Default for QueryState {
     }
 }
 
-/// Сигнал Qt, который шим обязан отправить (строго в порядке возврата).
+/// A Qt signal the shim must emit (strictly in the returned order).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QuerySignal {
-    /// `statusChanged(Status)` — аргумент читают обработчики QML вида
-    /// `function onStatusChanged(status)`.
+    /// `statusChanged(Status)` — the argument is read by QML handlers of the
+    /// form `function onStatusChanged(status)`.
     StatusChanged(i32),
-    /// `queryingChanged()` — производное свойство `status == Querying`.
+    /// `queryingChanged()` — the derived property `status == Querying`.
     QueryingChanged,
     /// `errorChanged()`.
     ErrorChanged,
     /// `forwardErrorChanged()`.
     ForwardErrorChanged,
-    /// `finished()` — статус стал Finished.
+    /// `finished()` — the status became Finished.
     Finished,
-    /// `errorOccurred(error)` — статус стал Error.
+    /// `errorOccurred(error)` — the status became Error.
     ErrorOccurred(String),
-    /// Глобальная пересылка: `App.errorOccurred(error)`. Отдельный
-    /// вариант, потому что сигнал шлёт НЕ сам запрос, а синглтон App.
+    /// Global forwarding: `App.errorOccurred(error)`. A separate
+    /// variant, because the signal is emitted NOT by the request but by the App singleton.
     AppErrorOccurred(String),
-    /// `<имя>Changed()` конкретного запроса (`service`, `tags`, …).
+    /// `<name>Changed()` of a specific request (`service`, `tags`, …).
     Property(&'static str),
 }
 
-/// Форма сигнала наружу — словарь `{signal: имя, ...аргументы}`, ровно тот,
-/// что читает шим и вкладка.
+/// The outward shape of a signal — a map `{signal: name, ...arguments}`, exactly
+/// the one the shim and the tab read.
 ///
-/// ⚠️ `Serialize` написан РУКАМИ намеренно, и вот почему: у трёх вариантов
-/// полезная нагрузка — голый скаляр (`StatusChanged(i32)`,
-/// `ErrorOccurred(String)`, `Property(&str)`), а `#[serde(tag = "...")]`
-/// с такими не работает вовсе — внутренний тег требует, чтобы содержимое
-/// само сериализовалось картой. Переписывать перечисление на именованные
-/// поля ради вывода — 126 мест правки в пятнадцати файлах, включая чужие;
-/// цена не стоит выигрыша. Взамен форма объявлена ОДИН раз и рядом с самим
-/// типом: новый вариант перечисления обязан появиться здесь же (компилятор
-/// потребует ветку), а не в мосту за границей крейта.
+/// ⚠️ `Serialize` is written BY HAND on purpose, and here is why: three variants
+/// carry a bare scalar payload (`StatusChanged(i32)`,
+/// `ErrorOccurred(String)`, `Property(&str)`), and `#[serde(tag = "...")]`
+/// does not work with those at all — an internal tag requires the content
+/// to serialize as a map itself. Rewriting the enum with named
+/// fields just for output means 126 edits in fifteen files, including foreign ones;
+/// the cost is not worth the gain. Instead the shape is declared ONCE, right next
+/// to the type: a new enum variant has to appear here as well (the compiler
+/// will demand a branch), not in the bridge beyond the crate boundary.
 impl Serialize for QuerySignal {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         let (name, arg): (&str, Option<(&str, Arg<'_>)>) = match self {
@@ -138,14 +138,14 @@ impl Serialize for QuerySignal {
     }
 }
 
-/// Полезная нагрузка сигнала одного из двух видов (см. [`QuerySignal`]).
+/// A signal payload of one of two kinds (see [`QuerySignal`]).
 enum Arg<'a> {
     Int(i32),
     Str(&'a str),
 }
 
-/// Текст ошибки из ответа демона: `message`, а при пустом — «status N»
-/// (так делает `backend.cpp` оригинала, чтобы UI не показывал пустоту).
+/// Error text from a daemon response: `message`, and when empty — "status N"
+/// (that is what the original's `backend.cpp` does, so the UI never shows emptiness).
 pub fn response_error_text(status: i32, message: &str) -> String {
     if message.is_empty() {
         format!("status {status}")
@@ -154,7 +154,7 @@ pub fn response_error_text(status: i32, message: &str) -> String {
     }
 }
 
-/// `setError` базы: свойство биндабельное, сигнал только при изменении.
+/// The base's `setError`: a bindable property, signal only on change.
 pub fn set_error(st: &mut QueryState, text: &str) -> Vec<QuerySignal> {
     if st.error == text {
         return Vec::new();
@@ -163,7 +163,7 @@ pub fn set_error(st: &mut QueryState, text: &str) -> Vec<QuerySignal> {
     vec![QuerySignal::ErrorChanged]
 }
 
-/// `setForwardError` базы.
+/// The base's `setForwardError`.
 pub fn set_forward_error(st: &mut QueryState, value: bool) -> Vec<QuerySignal> {
     if st.forward_error == value {
         return Vec::new();
@@ -172,13 +172,13 @@ pub fn set_forward_error(st: &mut QueryState, value: bool) -> Vec<QuerySignal> {
     vec![QuerySignal::ForwardErrorChanged]
 }
 
-/// `setStatus` базы — весь порядок рассылки оригинала в одном месте.
+/// The base's `setStatus` — the whole emission order of the original in one place.
 ///
-/// `QAsyncResult` в конструкторе вешает на `statusChanged` лямбду:
-/// сначала `finished()`/`errorOccurred(error)`, и только затем, если
-/// стоит `forwardError`, ошибка уходит в глобальный обработчик.
-/// `querying` — производное свойство (`status == Querying`), его сигнал
-/// летит лишь когда производное значение действительно изменилось.
+/// `QAsyncResult` attaches a lambda to `statusChanged` in its constructor:
+/// first `finished()`/`errorOccurred(error)`, and only then, if
+/// `forwardError` is set, the error goes to the global handler.
+/// `querying` is a derived property (`status == Querying`), its signal
+/// fires only when the derived value really changed.
 pub fn set_status(st: &mut QueryState, value: i32) -> Vec<QuerySignal> {
     if st.status == value {
         return Vec::new();
@@ -200,10 +200,10 @@ pub fn set_status(st: &mut QueryState, value: i32) -> Vec<QuerySignal> {
     out
 }
 
-/// Начало запроса: `(отправлять ли кадр, сигналы)`.
+/// Start of a request: `(whether to send the frame, signals)`.
 ///
-/// Нет живого соединения — кадр не отправляется, запрос сразу в Error с
-/// текстом [`NO_CONNECTION`] (ветка нашего транспорта, см. заголовок).
+/// No live connection — the frame is not sent, the request goes straight to
+/// Error with the [`NO_CONNECTION`] text (our transport's branch, see the header).
 pub fn begin_call(st: &mut QueryState, connected: bool) -> (bool, Vec<QuerySignal>) {
     if !connected {
         let mut out = set_error(st, &crate::i18n::tr(NO_CONNECTION));
@@ -213,16 +213,16 @@ pub fn begin_call(st: &mut QueryState, connected: bool) -> (bool, Vec<QuerySigna
     (true, set_status(st, STATUS_QUERYING))
 }
 
-/// Снять `Response` с сырого кадра сервера и обработать не-OK статус.
+/// Take the `Response` off a raw server frame and handle a non-OK status.
 ///
-/// `None` в первом поле = демон ответил ошибкой, состояние уже переведено
-/// в Error и полезную нагрузку читать не нужно (так же `inspect_set`
-/// оригинала зовёт лямбду разбора только на успехе).
+/// `None` in the first field = the daemon answered with an error, the state is
+/// already switched to Error and the payload need not be read (likewise the
+/// original's `inspect_set` calls the parsing lambda only on success).
 ///
-/// Битый кадр — `Err`: шим пишет отладку и живёт дальше (демон может
-/// быть новее нас, падать посреди приёма нельзя). Кадр с событием
-/// вместо ответа для запроса невозможен (клиент маршрутизирует ответы по
-/// `request_id`), но трактуется так же — как неразобранный.
+/// A broken frame is `Err`: the shim logs debug output and carries on (the daemon
+/// may be newer than us, crashing in the middle of receiving is not allowed). A
+/// frame with an event instead of a response is impossible for a request (the
+/// client routes responses by `request_id`), but is treated the same — as unparsed.
 pub(crate) fn take_response(
     st: &mut QueryState,
     frame_bytes: &[u8],
@@ -240,20 +240,20 @@ pub(crate) fn take_response(
     Ok((Some(rsp), Vec::new()))
 }
 
-/// Общий хвост успешного разбора: свойства уже обновлены — статус в
+/// Common tail of a successful parse: properties are already updated — status to
 /// Finished.
 pub fn finish(st: &mut QueryState, mut out: Vec<QuerySignal>) -> Vec<QuerySignal> {
     out.extend(set_status(st, STATUS_FINISHED));
     out
 }
 
-/// Разбор ответа на запрос-действие: полезной нагрузки нет, важен только
-/// исход.
+/// Parse a response to an action request: there is no payload, only the
+/// outcome matters.
 ///
-/// У оригинала это `inspect_set(result, [](const Response&) {})` — пустая
-/// лямбда разбора: команда либо принята демоном (статус Finished), либо
-/// отклонена (Error с его текстом). Одна точка на все такие запросы вкладки
-/// (правило #12), а не по копии в каждом.
+/// In the original this is `inspect_set(result, [](const Response&) {})` — an empty
+/// parsing lambda: the command is either accepted by the daemon (status Finished)
+/// or rejected (Error with its text). One point for all such requests of the tab
+/// (rule #12), not a copy in each.
 pub fn apply_ack(
     st: &mut QueryState,
     frame_bytes: &[u8],
@@ -265,7 +265,7 @@ pub fn apply_ack(
     Ok(finish(st, out))
 }
 
-/// Присвоить значение и отметить сигнал, если оно изменилось.
+/// Assign a value and mark the signal if it changed.
 pub fn assign<T: PartialEq>(
     slot: &mut T,
     value: T,
@@ -278,20 +278,20 @@ pub fn assign<T: PartialEq>(
     }
 }
 
-// ── HealthQuery (страница «Статус», Window.qml) ─────────────────────────
+// ── HealthQuery (the «Status» page, Window.qml) ─────────────────────────
 
-/// Свойства `HealthQuery`.
+/// Properties of `HealthQuery`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HealthData {
     pub service: String,
     pub state: String,
-    /// Система, на которой работает демон (v0.3.5). Вендорная страница
-    /// «Статус» показывает строку и прячет ярлык, пока она пуста
+    /// The system the daemon runs on (v0.3.5). The vendor «Status» page
+    /// shows the line and hides the label while it is empty
     /// (`StatusPage.qml:222`).
     pub os_name: String,
 }
 
-/// Разобрать ответ `health`.
+/// Parse the `health` response.
 pub fn apply_health(
     st: &mut QueryState,
     data: &mut HealthData,
@@ -309,14 +309,14 @@ pub fn apply_health(
     Ok(finish(st, out))
 }
 
-// ── DaemonLogQuery (диалог «Журнал демона», v0.3.8) ─────────────────────
+// ── DaemonLogQuery (the «Daemon log» dialog, v0.3.8) ────────────────────
 
-/// Свойства `DaemonLogQuery`.
+/// Properties of `DaemonLogQuery`.
 ///
-/// waywallen 0.3.8 научился отдавать свой журнал одним запросом
-/// (`log_read`), а страница «Статус» — показывать его в окне. Полей три, и
-/// все три идут прямо из ответа: путь файла, его содержимое и признак, что
-/// демон отдал не весь файл, а хвост.
+/// waywallen 0.3.8 learned to hand out its log in one request
+/// (`log_read`), and the «Status» page to show it in a window. There are three
+/// fields, all three straight from the response: the file path, its contents and
+/// a flag that the daemon returned not the whole file but its tail.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DaemonLogData {
     pub path: String,
@@ -324,7 +324,7 @@ pub struct DaemonLogData {
     pub truncated: bool,
 }
 
-/// Разобрать ответ `log_read`.
+/// Parse the `log_read` response.
 pub fn apply_log_read(
     st: &mut QueryState,
     data: &mut DaemonLogData,
@@ -342,10 +342,10 @@ pub fn apply_log_read(
     Ok(finish(st, out))
 }
 
-// ── RendererListQuery (страница «Статус») ───────────────────────────────
+// ── RendererListQuery (the «Status» page) ───────────────────────────────
 
-/// `RendererInstance` в виде, в котором его читает QML (ключи карты
-/// `_renderer_info_dict` моста: `id` вместо `renderer_id`, остальное
+/// `RendererInstance` in the form QML reads it (map keys of the
+/// bridge's `_renderer_info_dict`: `id` instead of `renderer_id`, the rest
 /// camelCase).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -368,8 +368,8 @@ pub struct RendererInstance {
     pub runtime_tags: Vec<RuntimeTag>,
 }
 
-/// Одно `RuntimeCondition` в виде, в котором его читает QML: строковые
-/// `kind`/`origin` вместо чисел перечисления.
+/// One `RuntimeCondition` in the form QML reads it: string
+/// `kind`/`origin` instead of enum numbers.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeCondition {
@@ -380,25 +380,25 @@ pub struct RuntimeCondition {
     pub related_display_id: u64,
 }
 
-/// Пара `key`/`value` из `RendererRuntimeTag`.
+/// A `key`/`value` pair from `RendererRuntimeTag`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct RuntimeTag {
     pub key: String,
     pub value: String,
 }
 
-/// Строка `status` рендерера из дерева `RendererState` (v0.3.5).
+/// The renderer's `status` string from the `RendererState` tree (v0.3.5).
 ///
-/// До v0.3.5 демон присылал готовую строку в `RendererInstance.status`
-/// (поле 3). В v0.3.5 поле снесено в `reserved`, а состояние приезжает
-/// деревом `RendererState`; вендорный QML при этом по-прежнему читает
-/// `status` и `running` (`StatusPage.qml:344/347/374`). Значит строку
-/// собираем сами — ОДНОЙ функцией на всех потребителей (ответ
-/// `renderer_list` здесь и живые модели `rexon-gui`), правило #12.
+/// Before v0.3.5 the daemon sent a ready string in `RendererInstance.status`
+/// (field 3). In v0.3.5 the field moved to `reserved`, and the state arrives
+/// as a `RendererState` tree; the vendor QML still reads
+/// `status` and `running` (`StatusPage.qml:344/347/374`). So we build the
+/// string ourselves — with ONE function for all consumers (the
+/// `renderer_list` response here and the live models of `rexon-gui`), rule #12.
 ///
-/// Соответствие один в один с `Renderer::status` вендора
-/// (`ui/src/objmodel/renderer.cpp`), включая пустую строку на неизвестное
-/// состояние: на ней вендорный QML прячет ярлык состояния целиком.
+/// One-to-one match with the vendor's `Renderer::status`
+/// (`ui/src/objmodel/renderer.cpp`), including the empty string for an unknown
+/// state: on it the vendor QML hides the state label entirely.
 pub fn renderer_status(info: &pb::RendererInstance) -> &'static str {
     let Some(kind) = info.state.as_ref().and_then(|s| s.kind.as_ref()) else {
         return "";
@@ -420,13 +420,13 @@ pub fn renderer_status(info: &pb::RendererInstance) -> &'static str {
     }
 }
 
-/// `running` рендерера — порт `Renderer::running`: живым считается только
-/// работающий процесс (играет, на паузе или без звука).
+/// The renderer's `running` — port of `Renderer::running`: only a working
+/// process counts as alive (playing, paused or muted).
 pub fn renderer_running(status: &str) -> bool {
     matches!(status, "playing" | "paused" | "muted")
 }
 
-/// `keep` — порт `Renderer::keep`: процесс придержан после остановки.
+/// `keep` — port of `Renderer::keep`: the process is held after stopping.
 pub fn renderer_keep(info: &pb::RendererInstance) -> bool {
     match info.state.as_ref().and_then(|s| s.kind.as_ref()) {
         Some(pb::renderer_state::Kind::Stopping(s)) => s.keep,
@@ -436,7 +436,7 @@ pub fn renderer_keep(info: &pb::RendererInstance) -> bool {
     }
 }
 
-/// `processGeneration` — порт одноимённого свойства вендора.
+/// `processGeneration` — port of the vendor property of the same name.
 pub fn renderer_process_generation(info: &pb::RendererInstance) -> u64 {
     match info.state.as_ref().and_then(|s| s.kind.as_ref()) {
         Some(pb::renderer_state::Kind::Starting(s)) => s.generation,
@@ -446,7 +446,7 @@ pub fn renderer_process_generation(info: &pb::RendererInstance) -> u64 {
     }
 }
 
-/// `lastExitReason` — порт одноимённого свойства вендора.
+/// `lastExitReason` — port of the vendor property of the same name.
 pub fn renderer_last_exit_reason(info: &pb::RendererInstance) -> String {
     let reason = |exit: Option<&pb::RendererExit>| {
         exit.map(|e| e.reason.clone()).unwrap_or_default()
@@ -459,9 +459,9 @@ pub fn renderer_last_exit_reason(info: &pb::RendererInstance) -> String {
     }
 }
 
-/// `RuntimeCondition` → форма QML — порт `runtimeConditionsFromPb`
-/// вендора (`ui/src/proto.cpp`). Неизвестные значения перечислений
-/// вырождаются в `issue`/`unknown`, как у оригинала.
+/// `RuntimeCondition` → QML shape — port of the vendor's `runtimeConditionsFromPb`
+/// (`ui/src/proto.cpp`). Unknown enum values
+/// degrade to `issue`/`unknown`, as in the original.
 pub fn runtime_conditions(list: &[pb::RuntimeCondition]) -> Vec<RuntimeCondition> {
     list.iter()
         .map(|c| RuntimeCondition {
@@ -486,7 +486,7 @@ pub fn runtime_conditions(list: &[pb::RuntimeCondition]) -> Vec<RuntimeCondition
         .collect()
 }
 
-/// `RendererRuntimeTag` → форма QML — порт `runtimeTagsFromPb` вендора.
+/// `RendererRuntimeTag` → QML shape — port of the vendor's `runtimeTagsFromPb`.
 pub fn runtime_tags(list: &[pb::RendererRuntimeTag]) -> Vec<RuntimeTag> {
     list.iter()
         .map(|t| RuntimeTag { key: t.key.clone(), value: t.value.clone() })
@@ -516,18 +516,18 @@ impl From<pb::RendererInstance> for RendererInstance {
     }
 }
 
-/// Свойства `RendererListQuery`.
+/// Properties of `RendererListQuery`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RendererListData {
     pub renderers: Vec<String>,
     pub instances: Vec<RendererInstance>,
 }
 
-/// Разобрать ответ `renderer_list`.
+/// Parse the `renderer_list` response.
 ///
-/// Синхронизация `RendererManager` остаётся за шимом: менеджер держит
-/// живые QObject'ы рендереров, их жизненный цикл — Qt-часть. Шим
-/// кормит его тем же списком `instances`.
+/// Syncing `RendererManager` stays with the shim: the manager holds the
+/// live renderer QObjects, their life cycle is the Qt part. The shim
+/// feeds it the same `instances` list.
 pub fn apply_renderer_list(
     st: &mut QueryState,
     data: &mut RendererListData,
@@ -546,17 +546,17 @@ pub fn apply_renderer_list(
     Ok(finish(st, out))
 }
 
-// ── RendererPluginListQuery (страница «Статус», детали обои, «Обои») ────
+// ── RendererPluginListQuery («Status» page, wallpaper details, «Wallpapers») ──
 
-/// `SettingSchema` — схема одной настройки плагина-рендерера.
+/// `SettingSchema` — the schema of one renderer plugin setting.
 ///
-/// ⚠️ Ключи карты в мосту SNAKE_CASE, а не camelCase: `SettingField.qml`
-/// написан против `default_value`/`label_key`/`description_key`
-/// оригинала (`plugin_query.cpp`), camelCase он бы не прочитал.
+/// ⚠️ Map keys in the bridge are SNAKE_CASE, not camelCase: `SettingField.qml`
+/// is written against the original's `default_value`/`label_key`/`description_key`
+/// (`plugin_query.cpp`), it would not read camelCase.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct SettingSchema {
     pub key: String,
-    /// ⚠️ Наружу — под именем `type`: так его читает `SettingField.qml`.
+    /// ⚠️ Exposed under the name `type`: that is how `SettingField.qml` reads it.
     #[serde(rename = "type")]
     pub value_type: i32,
     pub default_value: String,
@@ -569,26 +569,26 @@ pub struct SettingSchema {
     pub choices: Vec<String>,
     pub group: String,
     pub order: i32,
-    /// Переводимая подпись из каталога плагина (`SettingSchema.label`,
-    /// поле 13 протокола). Запасной текст — `label_key`, как у
-    /// `pluginMessageFromPb` вендора.
+    /// Translatable label from the plugin catalog (`SettingSchema.label`,
+    /// protocol field 13). Fallback text — `label_key`, as in the vendor's
+    /// `pluginMessageFromPb`.
     ///
-    /// ⚠️ Без этих трёх полей страница настроек плагина показывала
-    /// человеку ТЕХНИЧЕСКИЙ ключ вместо подписи: `SettingField.qml` читает
-    /// `schema.label`/`schema.description`, а заголовок группы —
-    /// `schema.group_label`. С выпуска v0.3.9 потеря стала заметнее:
-    /// вендор перестал печатать неразрешённый ключ как подпись
-    /// (`isUnresolvedKey`), и описание пропадало вовсе.
+    /// ⚠️ Without these three fields the plugin settings page showed the
+    /// user a TECHNICAL key instead of a label: `SettingField.qml` reads
+    /// `schema.label`/`schema.description`, and the group header —
+    /// `schema.group_label`. Since release v0.3.9 the loss became more visible:
+    /// the vendor stopped printing an unresolved key as the label
+    /// (`isUnresolvedKey`), and the description disappeared altogether.
     pub label: PluginText,
-    /// Переводимое описание (`SettingSchema.description`, поле 14);
-    /// запасной текст — `description_key`.
+    /// Translatable description (`SettingSchema.description`, field 14);
+    /// fallback text — `description_key`.
     pub description: PluginText,
-    /// Переводимый заголовок группы (`SettingSchema.group_label`,
-    /// поле 15); запасной текст — `group`.
+    /// Translatable group header (`SettingSchema.group_label`,
+    /// field 15); fallback text — `group`.
     pub group_label: PluginText,
-    /// waywallen 0.6.0: переводимые подписи вариантов выбора (поле 16), по
-    /// одной на `choices`. Подписи нет — `SettingField.qml` показывает само
-    /// значение.
+    /// waywallen 0.6.0: translatable labels of choice options (field 16), one
+    /// per `choices` entry. No label — `SettingField.qml` shows the value
+    /// itself.
     pub choice_labels: Vec<PluginText>,
 }
 
@@ -615,63 +615,63 @@ impl From<pb::SettingSchema> for SettingSchema {
     }
 }
 
-// ── Границы вкладки «Wallpaper Engine» ──────────────────────────────────
+// ── Boundaries of the «Wallpaper Engine» tab ────────────────────────────
 //
-// Решение Wehrwolfmann (06.11.2026): вкладка — копия оригинального
-// Wallpaper Engine. В ней Мастерская Steam (плагин OWE), локальные видео и
-// картинки, плейлисты, и ничего сверх того. Демон waywallen несёт больше:
-// каталог Wallhaven (уже в v0.5.0), Sketchfab и тип обоев «gltf» (в main
-// после v0.5.0). Wallhaven переезжает в «Оформление → Обои HD», 3D-обоям
-// место тоже вне этой вкладки.
+// Wehrwolfmann's decision (06.11.2026): the tab is a copy of the original
+// Wallpaper Engine. It holds the Steam Workshop (the OWE plugin), local videos and
+// pictures, playlists, and nothing beyond that. The waywallen daemon carries more:
+// the Wallhaven catalog (already in v0.5.0), Sketchfab and the «gltf» wallpaper type (in main
+// after v0.5.0). Wallhaven moves to «Appearance → HD wallpapers», 3D wallpapers
+// also belong outside this tab.
 //
-// Отбор делается здесь, в нашем порте запросов, а не патчем вендорного QML:
-// патч конфликтует при каждом обновлении вендора, а эти функции
-// `rexon-vendor-update` не задевает.
+// The filtering happens here, in our port of the requests, not as a patch to the
+// vendor QML: a patch conflicts on every vendor update, while these functions
+// are not touched by `rexon-vendor-update`.
 
-/// Плагины, чьи каталоги «Обзора» вкладка показывает (`owner_plugin_id`
-/// из `RemoteSourceInfo`).
+/// Plugins whose «Discover» catalogs the tab shows (`owner_plugin_id`
+/// from `RemoteSourceInfo`).
 ///
-/// ⭐ Белый, а не чёрный список: каталог, который апстрим добавит завтра,
-/// по умолчанию во вкладку НЕ попадает. Пустой владелец тоже не проходит:
-/// неизвестно, чей это каталог.
+/// ⭐ An allow list, not a deny list: a catalog upstream adds tomorrow
+/// does NOT get into the tab by default. An empty owner does not pass either:
+/// it is unknown whose catalog it is.
 pub const WE_TAB_REMOTE_OWNERS: &[&str] = &[crate::engine_update::OWE_PLUGIN_ID];
 
-/// Типы обоев, которых во вкладке нет: ни в фильтре типов, ни в списке
-/// рендереров, ни среди источников библиотек, ни в самой библиотеке.
+/// Wallpaper types the tab does not have: neither in the type filter, nor in the
+/// renderer list, nor among library sources, nor in the library itself.
 ///
-/// Здесь список чёрный, и это сознательно: типы обоев оригинала
-/// («scene», «video», «web», «application», «image» и что ещё отдаст OWE)
-/// полностью не перечислены, а белый список спрятал бы обои пользователя
-/// при первом же незнакомом типе. Новый тип апстрима сверх WE дописывать
-/// сюда при обновлении вендора.
+/// Here the list is a deny list, and that is deliberate: the original's wallpaper
+/// types («scene», «video», «web», «application», «image» and whatever else OWE
+/// hands out) are not fully enumerated, and an allow list would hide the user's
+/// wallpapers at the first unfamiliar type. Add any new upstream type beyond WE
+/// here when updating the vendor.
 pub const WE_TAB_HIDDEN_TYPES: &[&str] = &["gltf"];
 
-/// Показывать ли во вкладке каталог «Обзора» этого плагина-владельца.
+/// Whether the tab shows the «Discover» catalog of this owner plugin.
 pub fn we_tab_shows_remote_owner(owner_plugin_id: &str) -> bool {
     WE_TAB_REMOTE_OWNERS.contains(&owner_plugin_id)
 }
 
-/// Показывать ли во вкладке тип обоев.
+/// Whether the tab shows the wallpaper type.
 pub fn we_tab_shows_type(wp_type: &str) -> bool {
     !WE_TAB_HIDDEN_TYPES.contains(&wp_type)
 }
 
-/// Типы без скрытых, порядок сохраняется.
+/// Types without the hidden ones, order preserved.
 pub fn we_tab_types(types: Vec<String>) -> Vec<String> {
     types.into_iter().filter(|t| we_tab_shows_type(t)).collect()
 }
 
-/// Остаётся ли во вкладке плагин с таким набором типов (рендерер или
-/// источник библиотек): да, если у него есть хоть один видимый тип. Пустой
-/// набор не повод прятать — по нему ничего не известно.
+/// Whether a plugin with this set of types stays in the tab (a renderer or a
+/// library source): yes, if it has at least one visible type. An empty
+/// set is no reason to hide — nothing is known from it.
 pub fn we_tab_keeps_plugin(types: &[String]) -> bool {
     types.is_empty() || types.iter().any(|t| we_tab_shows_type(t))
 }
 
-/// `skip_types` запроса библиотеки: выбор пользователя плюс скрытые типы.
+/// `skip_types` of the library request: the user's choice plus the hidden types.
 ///
-/// Скрытые добавляются только в кадр, свойство `skipTypes` остаётся
-/// выбором пользователя: оно уходит в настройки и в быстрый фильтр.
+/// The hidden ones are added only to the frame, the `skipTypes` property stays the
+/// user's choice: it goes to the settings and to the quick filter.
 pub fn we_tab_skip_types(user: &[String]) -> Vec<String> {
     let mut out = user.to_vec();
     for t in WE_TAB_HIDDEN_TYPES {
@@ -682,7 +682,7 @@ pub fn we_tab_skip_types(user: &[String]) -> Vec<String> {
     out
 }
 
-/// `RendererPluginInfo` в виде карты моста.
+/// `RendererPluginInfo` as a bridge map.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RendererPlugin {
@@ -709,18 +709,18 @@ impl From<pb::RendererPluginInfo> for RendererPlugin {
     }
 }
 
-/// Свойства `RendererPluginListQuery`.
+/// Properties of `RendererPluginListQuery`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RendererPluginListData {
     pub renderers: Vec<RendererPlugin>,
     pub supported_types: Vec<String>,
-    /// waywallen 0.4.2: подписи типов обоев `ключ → подпись` — только для
-    /// тех ключей, чей рендерер подпись объявил. Нет ключа — страница
-    /// показывает сам ключ, как до появления поля.
+    /// waywallen 0.4.2: wallpaper type labels `key → label` — only for
+    /// the keys whose renderer declared a label. No key — the page
+    /// shows the key itself, as before the field appeared.
     pub type_labels: std::collections::BTreeMap<String, PluginText>,
 }
 
-/// Разобрать ответ `renderer_plugin_list`.
+/// Parse the `renderer_plugin_list` response.
 pub fn apply_renderer_plugin_list(
     st: &mut QueryState,
     data: &mut RendererPluginListData,
@@ -731,8 +731,8 @@ pub fn apply_renderer_plugin_list(
         return Ok(out);
     };
     if let Some(pb::response::Payload::RendererPluginList(pl)) = rsp.payload {
-        // Границы вкладки: рендерер, умеющий только скрытые типы (gltf),
-        // не показывается; у остальных скрытые типы вычеркнуты.
+        // Tab boundaries: a renderer that supports only hidden types (gltf)
+        // is not shown; the others have the hidden types struck out.
         let renderers: Vec<RendererPlugin> = pl
             .renderers
             .into_iter()
@@ -750,8 +750,8 @@ pub fn apply_renderer_plugin_list(
             "supportedTypes",
             &mut out,
         );
-        // Порт `renderer_query.cpp` v0.4.2: пустой ключ пропускается,
-        // подпись — `pluginMessageFromPb(label_text, label)`.
+        // Port of `renderer_query.cpp` v0.4.2: an empty key is skipped,
+        // the label is `pluginMessageFromPb(label_text, label)`.
         let type_labels = pl
             .type_labels
             .iter()
@@ -763,23 +763,23 @@ pub fn apply_renderer_plugin_list(
     Ok(finish(st, out))
 }
 
-// ── Сверка паритета схемы (скрытая страница «Разработчик») ──────────────
+// ── Schema parity check (the hidden «Developer» page) ───────────────────
 
-/// Свойства сверки паритета: отчёт по последнему ответу
-/// `renderer_plugin_list`.
+/// Parity check properties: the report on the last
+/// `renderer_plugin_list` response.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ParitySchemaData {
-    /// Отчёт последней сверки; `None` — сверка ещё не проходила.
+    /// Report of the last check; `None` — no check has run yet.
     pub report: Option<crate::we_parity::ParityReport>,
 }
 
-/// Разобрать ответ `renderer_plugin_list` и СРАЗУ свести схему с реестром
-/// UI Rexon.
+/// Parse the `renderer_plugin_list` response and IMMEDIATELY reconcile the schema
+/// with Rexon's UI registry.
 ///
-/// Отдельный вход, а не разбор поверх [`apply_renderer_plugin_list`]: для
-/// страницы «Разработчик» ценен не список рендереров, а вердикт сверки, и
-/// собрать его из уже разложенных по QML-картам данных значило бы завести
-/// второй разборщик того же ответа (правило #12).
+/// A separate entry, not a parse on top of [`apply_renderer_plugin_list`]: for
+/// the «Developer» page what matters is not the renderer list but the check
+/// verdict, and assembling it from data already laid out into QML maps would
+/// mean a second parser of the same response (rule #12).
 pub fn apply_parity_schema(
     st: &mut QueryState,
     data: &mut ParitySchemaData,
@@ -799,15 +799,15 @@ pub fn apply_parity_schema(
     Ok(finish(st, out))
 }
 
-// ── TagListQuery / ContentRatingListQuery (диалог фильтров) ─────────────
+// ── TagListQuery / ContentRatingListQuery (the filter dialog) ───────────
 
-/// Свойство-список строк (`tags` у одного запроса, `ratings` у другого).
+/// A string-list property (`tags` of one request, `ratings` of the other).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StringListData {
     pub items: Vec<String>,
 }
 
-/// Разобрать ответ `tag_list` (свойство `tags`).
+/// Parse the `tag_list` response (the `tags` property).
 pub fn apply_tag_list(
     st: &mut QueryState,
     data: &mut StringListData,
@@ -823,7 +823,7 @@ pub fn apply_tag_list(
     Ok(finish(st, out))
 }
 
-/// Разобрать ответ `content_rating_list` (свойство `ratings`).
+/// Parse the `content_rating_list` response (the `ratings` property).
 pub fn apply_content_rating_list(
     st: &mut QueryState,
     data: &mut StringListData,
@@ -839,15 +839,15 @@ pub fn apply_content_rating_list(
     Ok(finish(st, out))
 }
 
-// ── Видеокарты (`App.gpuManager`: «Состояние», «Мониторы», настройки) ───
+// ── GPUs (`App.gpuManager`: «State», «Monitors», settings) ──────────────
 
-/// Список видеокарт из ответа `gpu_list`.
+/// The GPU list from the `gpu_list` response.
 ///
-/// `None` — кадр не про видеокарты: не разобрался, это событие, демон
-/// отказал или ответил другой нагрузкой (так выглядит и кадр обрыва
-/// соединения, которым транспорт закрывает ждущие запросы). Прежний список
-/// при этом трогать нельзя — пустой `Some` значит «карт нет», а не «ответа
-/// нет».
+/// `None` — the frame is not about GPUs: it did not parse, it is an event, the
+/// daemon refused or answered with another payload (the connection-drop frame
+/// the transport uses to close pending requests looks like that too). The
+/// previous list must not be touched then — an empty `Some` means "no cards", not
+/// "no response".
 pub fn gpu_list_from_frame(frame_bytes: &[u8]) -> Option<Vec<pb::GpuInfo>> {
     let frame = pb::ServerFrame::decode(frame_bytes).ok()?;
     let Some(pb::server_frame::Kind::Response(rsp)) = frame.kind else {
@@ -862,13 +862,13 @@ pub fn gpu_list_from_frame(frame_bytes: &[u8]) -> Option<Vec<pb::GpuInfo>> {
     }
 }
 
-// ── Текущие показы обоев (`App.presentationManager`, карточка рейки) ────
+// ── Current wallpaper showings (`App.presentationManager`, rail card) ───
 
-/// Обоины из ответа `wallpaper_lookup`.
+/// Wallpapers from the `wallpaper_lookup` response.
 ///
-/// `None` — кадр не про них (не разобрался, событие, отказ демона, другая
-/// нагрузка, кадр обрыва соединения): уже известные обоины остаются как
-/// есть.
+/// `None` — the frame is not about them (did not parse, an event, a daemon refusal,
+/// another payload, a connection-drop frame): already known wallpapers stay as
+/// they are.
 pub fn wallpaper_lookup_from_frame(frame_bytes: &[u8]) -> Option<Vec<pb::WallpaperEntry>> {
     let frame = pb::ServerFrame::decode(frame_bytes).ok()?;
     let Some(pb::server_frame::Kind::Response(rsp)) = frame.kind else {
@@ -883,8 +883,8 @@ pub fn wallpaper_lookup_from_frame(frame_bytes: &[u8]) -> Option<Vec<pb::Wallpap
     }
 }
 
-/// Идентификаторы обоев снимка показов — по одному разу, в порядке снимка:
-/// их спрашивают у демона одним запросом.
+/// Wallpaper ids of a showings snapshot — each once, in snapshot order:
+/// they are asked from the daemon in one request.
 pub fn presentation_wallpaper_ids(presentations: &[pb::WallpaperPresentationInfo]) -> Vec<String> {
     let mut ids: Vec<String> = Vec::new();
     for presentation in presentations {
@@ -895,8 +895,8 @@ pub fn presentation_wallpaper_ids(presentations: &[pb::WallpaperPresentationInfo
     ids
 }
 
-/// Подпись целей показа: имена дисплеев и холстов через « · », повторы
-/// сняты, порядок — как в снимке.
+/// Label of the showing targets: display and canvas names joined with « · »,
+/// duplicates removed, order as in the snapshot.
 pub fn presentation_target_summary(labels: &[String]) -> String {
     let mut unique: Vec<&str> = Vec::new();
     for label in labels {
@@ -907,11 +907,11 @@ pub fn presentation_target_summary(labels: &[String]) -> String {
     unique.join(" · ")
 }
 
-/// Какой карте принадлежит узел DRM `major:minor`.
+/// Which card a DRM node `major:minor` belongs to.
 ///
-/// Номер подходит и узла отрисовки (`renderD128`), и основного (`card1`):
-/// рисовальщик несёт первый, а дисплей — узел своего потребителя, и оба
-/// ищут карту одним вызовом. `major == 0` — узел неизвестен, карты нет.
+/// The number fits both the render node (`renderD128`) and the primary one (`card1`):
+/// the renderer carries the first, the display carries its consumer's node, and both
+/// look up the card with one call. `major == 0` — the node is unknown, no card.
 pub fn find_gpu(gpus: &[pb::GpuInfo], major: u32, minor: u32) -> Option<usize> {
     if major == 0 {
         return None;
@@ -948,7 +948,7 @@ mod we_tab_scope_tests {
         assert!(we_tab_shows_remote_owner("org.waywallen.open-wallpaper-engine"));
         assert!(!we_tab_shows_remote_owner("org.waywallen.wallhaven"));
         assert!(!we_tab_shows_remote_owner("org.waywallen.sketchfab"));
-        // Каталог, которого апстрим ещё не придумал, и каталог без владельца.
+        // A catalog upstream has not invented yet, and a catalog without an owner.
         assert!(!we_tab_shows_remote_owner("org.waywallen.some-future-catalog"));
         assert!(!we_tab_shows_remote_owner(""));
     }

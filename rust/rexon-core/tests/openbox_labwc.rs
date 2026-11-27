@@ -1,10 +1,10 @@
-//! Рамки окон и кнопки заголовка Openbox и labwc (пункт 5.10 паритета):
-//! узлы `<theme>` в `rc.xml`, раскладка кнопок через менеджер окон сеанса,
-//! тема рамок кнопкой раздела, образец рамки по `themerc`.
+//! Openbox and labwc window frames and title bar buttons (parity item 5.10):
+//! the `<theme>` nodes in `rc.xml`, the button layout via the session's window manager,
+//! the frame theme via the section button, the frame sample from `themerc`.
 //!
-//! Эталон — `golden/openbox_labwc_cases.json`. Переснимать осознанно:
-//! `REXON_UPDATE_GOLDEN=1 cargo test-core --test openbox_labwc`, затем
-//! прочитать разницу глазами.
+//! The golden is `golden/openbox_labwc_cases.json`. Recapture deliberately:
+//! `REXON_UPDATE_GOLDEN=1 cargo test-core --test openbox_labwc`, then
+//! read the diff by eye.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -17,8 +17,8 @@ use serde_json::{json, Value};
 
 const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/openbox_labwc_cases.json");
 
-/// Системный `rc.xml` Openbox — выдержка с теми же узлами `<theme>`, что в
-/// поставке Openbox 3.6.
+/// The system Openbox `rc.xml` — an excerpt with the same `<theme>` nodes as in
+/// the Openbox 3.6 distribution.
 const OPENBOX_SYSTEM: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <openbox_config xmlns=\"http://openbox.org/3.4/rc\" xmlns:xi=\"http://www.w3.org/2001/XInclude\">
 <resistance>
@@ -45,7 +45,7 @@ const OPENBOX_SYSTEM: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 </openbox_config>
 ";
 
-/// Файлы в памяти и запущенные команды.
+/// Files in memory and commands run.
 #[derive(Default)]
 struct FakeIo {
     files: RefCell<BTreeMap<String, String>>,
@@ -90,7 +90,7 @@ fn look(de: &str, wayland: bool) -> LookCtx {
 
 const LXQT_SESSION: &str = "[General]\nwindow_manager=openbox\ncompositor=labwc\n";
 
-/// Узлы `<theme>`: что меняется и что остаётся байт в байт.
+/// `<theme>` nodes: what changes and what stays byte for byte.
 fn rc_xml_cases() -> Value {
     let cases: Vec<(&str, TitleWm, Option<&str>, &[&str], &str)> = vec![
         ("openbox: тема — меняется только <theme><name>, не <name> шрифта и не в комментарии", TitleWm::Openbox, Some(OPENBOX_SYSTEM), &["name"], "Onyx-Citrus"),
@@ -136,14 +136,14 @@ fn rc_xml_cases() -> Value {
         }
         out.push(json!({"name": name, "path": path, "value": value, "input": input, "expected": got}));
     }
-    // Чтение: имя темы — прямой потомок `<theme>`, не `<name>` шрифта.
+    // Reading: the theme name is a direct child of `<theme>`, not the font's `<name>`.
     assert_eq!(qs::rc_xml_theme_value(OPENBOX_SYSTEM, &["name"]).as_deref(), Some("Clearlooks"));
     assert_eq!(qs::rc_xml_theme_value(OPENBOX_SYSTEM, &["titleLayout"]).as_deref(), Some("NLIMC"));
     assert_eq!(qs::rc_xml_theme_value(OPENBOX_SYSTEM, &["titlebar", "layout"]), None);
     Value::Array(out)
 }
 
-/// Снимок того, что сделала кнопка: файлы, команды, сообщение, состояние.
+/// A snapshot of what the button did: files, commands, message, state.
 fn outcome(io: &FakeIo, message: &str, ctx: &LookCtx) -> Value {
     let state = wb::read_state(io, ctx);
     json!({
@@ -162,7 +162,7 @@ fn button_cases() -> Value {
     let mut out = serde_json::Map::new();
     let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
 
-    // LXQt на X11 с Openbox: своего rc.xml нет — заводится копией системного.
+    // LXQt on X11 with Openbox: no rc.xml of its own — created as a copy of the system one.
     let io = FakeIo::with(&[("/c/lxqt/session.conf", LXQT_SESSION), ("/etc/xdg/openbox/rc.xml", OPENBOX_SYSTEM)]);
     let ctx = look("lxqt", false);
     let before = wb::read_state(&io, &ctx);
@@ -173,7 +173,7 @@ fn button_cases() -> Value {
     assert!(io.ran.borrow().iter().any(|a| a == &ids(&["openbox", "--reconfigure"])));
     out.insert("lxqt X11 + Openbox: «как в macOS» из системного rc.xml".into(), outcome(&io, &msg, &ctx));
 
-    // LXQt на Wayland с labwc: свой rc.xml, «свернуть в заголовок» справа.
+    // LXQt on Wayland with labwc: its own rc.xml, «shade» on the right.
     let own = "<?xml version=\"1.0\"?>\n<labwc_config>\n  <theme>\n    <name>Onyx</name>\n  </theme>\n</labwc_config>\n";
     let io = FakeIo::with(&[("/c/lxqt/session.conf", LXQT_SESSION), ("/c/labwc/rc.xml", own)]);
     let ctx = look("lxqt", true);
@@ -181,31 +181,31 @@ fn button_cases() -> Value {
     assert!(io.ran.borrow().iter().any(|a| a == &ids(&["labwc", "--reconfigure"])));
     out.insert("lxqt Wayland + labwc: поставить «свернуть в заголовок»".into(), outcome(&io, &msg, &ctx));
 
-    // Сеанс labwc без rc.xml: заводится с одной <theme>.
+    // A labwc session without rc.xml: created with a single <theme>.
     let io = FakeIo::default();
     let ctx = look("labwc", true);
     let msg = wb::apply_toggle(&io, &ctx, "left", "sticky", true);
     out.insert("labwc без rc.xml: «на всех рабочих столах» слева".into(), outcome(&io, &msg, &ctx));
 
-    // Сброс к умолчанию у Openbox — `NLIMC`.
+    // The reset to default for Openbox is `NLIMC`.
     let io = FakeIo::with(&[("/c/lxqt/session.conf", LXQT_SESSION), ("/c/openbox/rc.xml", &OPENBOX_SYSTEM.replace("NLIMC", "CMIL"))]);
     let ctx = look("lxqt", false);
     let msg = wb::apply_defaults(&io, &ctx);
     out.insert("Openbox: «по умолчанию» возвращает NLIMC".into(), outcome(&io, &msg, &ctx));
 
-    // Openbox без единого rc.xml: отказ с причиной, ничего не записано.
+    // Openbox without a single rc.xml: a refusal with a reason, nothing written.
     let io = FakeIo::with(&[("/c/lxqt/session.conf", LXQT_SESSION)]);
     let ctx = look("lxqt", false);
     let msg = wb::apply_toggle(&io, &ctx, "right", "shade", true);
     assert!(io.files.borrow().keys().all(|k| k == "/c/lxqt/session.conf"));
     out.insert("Openbox без rc.xml: отказ".into(), outcome(&io, &msg, &ctx));
 
-    // LXQt с KWin: кнопки пишутся ключами KDE.
+    // LXQt with KWin: buttons are written with KDE keys.
     let io = FakeIo::with(&[("/c/lxqt/session.conf", "[General]\nwindow_manager=kwin_x11\n")]);
     let ctx = look("lxqt", false);
     assert_eq!(wb::read_state(&io, &ctx).de, "kde");
 
-    // LXQt с незнакомым менеджером — подпись, а не запись.
+    // LXQt with an unknown manager — a label, not a write.
     let io = FakeIo::with(&[("/c/lxqt/session.conf", "[General]\nwindow_manager=icewm\n")]);
     let ctx = look("lxqt", false);
     out.insert("LXQt с незнакомым менеджером".into(), outcome(&io, "", &ctx));
@@ -263,8 +263,8 @@ fn openbox_labwc_golden() {
     assert_eq!(text, want, "разошлось с эталоном {GOLDEN}");
 }
 
-/// Раздел рамок Openbox: виден в LXQt и labwc, у прочих тайловых — нет, с
-/// объяснением; ключ раздела ведёт к типу матрицы.
+/// The Openbox frames section: visible in LXQt and labwc, not in other tiling ones, with
+/// an explanation; the section key leads to the matrix type.
 #[test]
 fn openbox_section_visibility() {
     use rexon_core::categories as c;
@@ -281,8 +281,8 @@ fn openbox_section_visibility() {
     assert!(c::WINDOW_BORDER_SECTIONS.contains(&c::OPENBOX_KEY));
 }
 
-/// Образец рамки: тема без своей картинки рисуется по цветам `themerc` и
-/// рисункам кнопок `.xbm`; пустой `themerc` — заглушка.
+/// Frame sample: a theme without its own picture is drawn from the `themerc` colors and
+/// the `.xbm` button images; an empty `themerc` gives a placeholder.
 #[test]
 fn openbox_sample_from_themerc() {
     use rexon_core::local_preview::{card_picture, DrawOp, PreviewSource, SampleInput};
@@ -314,14 +314,14 @@ fn openbox_sample_from_themerc() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-/// Стенд, не для обычного прогона: в изолированном сеансе (Xvfb + Openbox,
-/// labwc без экрана) сделать то же, что кнопки Rexon, настоящими файлами и
-/// командами. Что делать — `REXON_STAND_ACTION`: `theme=<имя>` (кнопка
-/// раздела рамок), `buttons=left|right` (готовая раскладка «как в macOS /
-/// Windows» со всеми кнопками менеджера), `defaults`, `state`. Окружение —
-/// переменные процесса, как у окна Rexon (`HOME`, `XDG_CONFIG_HOME`,
-/// `XDG_CURRENT_DESKTOP`, `DISPLAY`, `LABWC_PID`). Запускать собранный
-/// исполняемый файл теста ТОЛЬКО с окружением стенда.
+/// A bench, not for an ordinary run: in an isolated session (Xvfb + Openbox,
+/// labwc without a screen) do the same as the Rexon buttons, with real files and
+/// commands. What to do is `REXON_STAND_ACTION`: `theme=<name>` (the frames section
+/// button), `buttons=left|right` (a ready layout «as in macOS /
+/// Windows» with all of the manager's buttons), `defaults`, `state`. The environment is
+/// the process variables, as for the Rexon window (`HOME`, `XDG_CONFIG_HOME`,
+/// `XDG_CURRENT_DESKTOP`, `DISPLAY`, `LABWC_PID`). Run the built
+/// test executable ONLY with the bench environment.
 #[test]
 #[ignore]
 fn stand_apply() {

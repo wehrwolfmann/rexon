@@ -1,50 +1,53 @@
-//! Общий журнал установки: что положил план и что снимать при удалении.
+//! The shared install journal: what a plan placed and what to remove on uninstall.
 //!
-//! ЗАЧЕМ. До шага 3 слияния установщиков у Rexon было два журнала, и ни один
-//! не говорил «что лежит на диске от этой установки»:
-//!   * `.rxn` — `extensions_state.json` (только «включено ли») и копия пакета
-//!     в каталоге расширений; что снимать, удаление выводило заново из плана
-//!     по копии пакета (`ext_exec::uninstall`);
-//!   * магазин «Оформления» — `ocs_installed.json`: карточка товара и голый
-//!     список путей без вида и владельца (`ocs_store`,
+//! WHY. Before step 3 of the installer merge Rexon had two journals, and
+//! neither said "what is on disk from this install":
+//!   * `.rxn` — `extensions_state.json` (only "is it enabled") and a copy of
+//!     the package in the extensions directory; what to remove was derived
+//!     anew by uninstall from the plan, using the package copy
+//!     (`ext_exec::uninstall`);
+//!   * the "Appearance" store — `ocs_installed.json`: the item card and a bare
+//!     list of paths with no kind and no owner (`ocs_store`,
 //!     `appearance_installer::uninstall_from_log`).
 //!
-//! Здесь одна запись на установленный элемент ([`Entry`]): откуда он
-//! ([`Source`]), положенные пути с видом и меткой владельца ([`Placed`]),
-//! раздел, включён ли, карточка магазина целиком и — заделом под `.rxn` v5 —
-//! элементы пакета с выбором нагрузки ([`Element`], [`ElementChoice`]).
+//! Here there is one record per installed item ([`Entry`]): where it came
+//! from ([`Source`]), the placed paths with kind and owner mark ([`Placed`]),
+//! the section, whether it is enabled, the whole store card and — groundwork
+//! for `.rxn` v5 — package elements with the payload choice ([`Element`],
+//! [`ElementChoice`]).
 //!
-//! ПЕРЕХОДНЫЙ ПОРЯДОК (переезд на общий журнал `.rxn` v5). Шаги 3–4: старые
-//! файлы были источником для своих читателей, общий журнал писался рядом
-//! (двойная запись). Шаг 5б: источник правды — общий журнал. Писатели
-//! (покупка магазина, «Удалить» на плитке, подъём вложенных тем, спайсы
-//! Cinnamon, установка, удаление и переключение `.rxn`) пишут ТОЛЬКО его
-//! ([`put_store_log`], [`record_rxn_at`], [`set_rxn_enabled_at`]), а старые
-//! `ocs_installed.json` и `extensions_state.json` получают его зеркало
-//! одной функцией (`mirror_legacy`) — тем же текстом, что писала прежняя
-//! логика: вернувшийся на прежнюю версию Rexon (она читает только старые
-//! файлы) не теряет ни одной установки. Старые файлы не удаляются.
+//! TRANSITION ORDER (moving to the shared `.rxn` v5 journal). Steps 3–4: the
+//! old files were the source for their readers, the shared journal was
+//! written alongside (double write). Step 5b: the source of truth is the
+//! shared journal. Writers (store purchase, "Remove" on a tile, lifting
+//! nested themes, Cinnamon spices, installing, removing and toggling `.rxn`)
+//! write ONLY it ([`put_store_log`], [`record_rxn_at`], [`set_rxn_enabled_at`]),
+//! and the old `ocs_installed.json` and `extensions_state.json` get its mirror
+//! from one function (`mirror_legacy`) — the same text the old logic wrote:
+//! someone who goes back to an older Rexon version (it reads only the old
+//! files) loses no install. The old files are not deleted.
 //!
-//! Читаются старые файлы только для переноса ([`reconcile`]): у установок,
-//! сделанных до журнала, и у правок, сделанных прежней версией Rexon после
-//! отката. Как это узнаётся — [`LegacySeen`]: журнал помнит отпечаток
-//! каждого старого файла, каким его видел; совпал — файл писали только мы.
-//! Пакеты `.rxn` сверяются с каталогом расширений всегда (его читают и
-//! карточки «Расширений»). Точные пути `.rxn` журнал узнаёт от самой
-//! установки ([`placed_from_steps`]); у пакетов, поставленных до журнала,
-//! их нет ([`Entry::placed_known`] = `false`) — такие снимаются прежним
-//! путём, по плану.
+//! The old files are read only for migration ([`reconcile`]): for installs
+//! made before the journal, and for edits made by an older Rexon version
+//! after a downgrade. How that is detected — [`LegacySeen`]: the journal
+//! remembers a fingerprint of each old file as it last saw it; if it matches,
+//! only we wrote the file. `.rxn` packages are always reconciled against the
+//! extensions directory (the "Extensions" cards read it too). The journal
+//! learns the exact `.rxn` paths from the install itself
+//! ([`placed_from_steps`]); packages installed before the journal don't have
+//! them ([`Entry::placed_known`] = `false`) — such ones are removed the old
+//! way, by the plan.
 //!
-//! Удаление по журналу ([`removal_plan`], [`remove`]) общее для обоих
-//! источников и снимает ТОЛЬКО записанное и только своё: каталог с меткой
-//! владельца — если метка всё ещё наша; ссылка — если там всё ещё ссылка;
-//! каталог, бывший на месте до установки, не снимается вовсе.
+//! Removal by journal ([`removal_plan`], [`remove`]) is shared by both sources
+//! and removes ONLY what was recorded and only what is ours: a directory with
+//! an owner mark — if the mark is still ours; a link — if there is still a
+//! link there; a directory that existed before the install is not removed at all.
 //!
-//! Шаг 3г: этим путём снимают файлы все удаления — `.rxn`
-//! (`ext_exec::uninstall`, [`rxn_removal`]: выключение и перезагрузка
-//! оболочки остаются шагами его плана вокруг файлового снятия), покупка
-//! магазина (`appearance_installer::uninstall_from_log`), её тема с плитки
-//! (`theme_removal::commit`, [`part_removal`]) и спайс Cinnamon
+//! Step 3g: every removal takes this path to remove files — `.rxn`
+//! (`ext_exec::uninstall`, [`rxn_removal`]: disabling and restarting the
+//! shell remain steps of its plan around the file removal), a store purchase
+//! (`appearance_installer::uninstall_from_log`), its theme from a tile
+//! (`theme_removal::commit`, [`part_removal`]) and a Cinnamon spice
 //! (`cinnamon_spices::uninstall_with`, [`merge_into_plan`]).
 
 use std::collections::BTreeMap;
@@ -55,45 +58,45 @@ use serde_json::{Map, Value};
 
 use crate::ext_manager::{ExtStep, OWNER_MARK};
 
-/// Имя файла журнала в каталоге конфигов Rexon (`~/.config/rexon`).
+/// Journal file name in the Rexon config directory (`~/.config/rexon`).
 pub const JOURNAL_NAME: &str = "install_journal.json";
 
-/// Версия формата журнала.
+/// Journal format version.
 pub const JOURNAL_FORMAT: u32 = 1;
 
-/// Старые журналы рядом с новым (их имена — у их владельцев).
+/// Old journals next to the new one (their names belong to their owners).
 const STORE_LOG_NAME: &str = "ocs_installed.json";
 const EXT_STATE_NAME: &str = "extensions_state.json";
 const EXT_DIR_NAME: &str = "extensions";
 
 // ============================================================================
-// Модель
+// Model
 // ============================================================================
 
-/// Журнал целиком.
+/// The whole journal.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Journal {
     pub format: u32,
-    /// Ключ — [`Entry::key`]: `rxn:<id>` или `store:<content_id>`.
+    /// Key — [`Entry::key`]: `rxn:<id>` or `store:<content_id>`.
     #[serde(default)]
     pub items: BTreeMap<String, Entry>,
-    /// Порядок покупок магазина (`content_id`) — как в `ocs_installed.json`:
-    /// читатели получают карточки в прежнем порядке ([`store_log_of`]).
+    /// Order of store purchases (`content_id`) — as in `ocs_installed.json`:
+    /// readers get the cards in the old order ([`store_log_of`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub store_order: Vec<String>,
-    /// Отпечатки старых журналов, какими общий журнал видел их согласованными
-    /// с собой ([`LegacySeen`]).
+    /// Fingerprints of the old journals as the shared journal saw them in sync
+    /// with itself ([`LegacySeen`]).
     #[serde(default, skip_serializing_if = "LegacySeen::is_empty")]
     pub legacy_seen: LegacySeen,
-    /// Последнее «Применить» по разделам: где лежит снимок «что было»
-    /// ([`Applied`], шаг 5а). Ключ — раздел ([`Applied::section`]).
+    /// The last "Apply" per section: where the "what was there" snapshot lies
+    /// ([`Applied`], step 5a). Key — the section ([`Applied::section`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub applied: BTreeMap<String, Applied>,
-    /// Прежние значения стола (`gsettings`/`dconf`, `xfconf`), которые
-    /// переписало последнее «Применить» раздела, — в порядке записи
-    /// ([`AppliedValue`]). Ключ — раздел, как у [`Self::applied`]; живут и
-    /// снимаются вместе с его записью. Отдельно от [`Applied`], чтобы старые
-    /// журналы и записи без значений читались как прежде.
+    /// Previous desktop values (`gsettings`/`dconf`, `xfconf`) overwritten by the
+    /// section's last "Apply", in write order ([`AppliedValue`]). Key — the
+    /// section, as in [`Self::applied`]; they live and are removed together with
+    /// its record. Kept apart from [`Applied`] so that old journals and records
+    /// without values read as before.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub applied_values: BTreeMap<String, Vec<AppliedValue>>,
 }
@@ -111,14 +114,15 @@ impl Default for Journal {
     }
 }
 
-/// Отпечатки ([`fingerprint`]) старых журналов — `ocs_installed.json` и
-/// `extensions_state.json` — в том виде, в каком общий журнал последний раз
-/// видел их согласованными с собой (шаг 5б).
+/// Fingerprints ([`fingerprint`]) of the old journals — `ocs_installed.json`
+/// and `extensions_state.json` — as the shared journal last saw them in sync
+/// with itself (step 5b).
 ///
-/// Отпечаток совпал с файлом — с тех пор файл никто, кроме нас, не писал, и
-/// источник правды — общий журнал. Не совпал (или отпечатка нет) — файл писала
-/// прежняя версия Rexon (откат версии и возврат) либо общего журнала тогда ещё
-/// не было: записи этой части переносятся из старого файла ([`reconcile`]).
+/// The fingerprint matches the file — nobody but us has written the file
+/// since, and the source of truth is the shared journal. It doesn't match (or
+/// there is no fingerprint) — the file was written by an older Rexon version
+/// (downgrade and back) or the shared journal didn't exist yet: the records
+/// of this part are migrated from the old file ([`reconcile`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LegacySeen {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -133,17 +137,17 @@ impl LegacySeen {
     }
 }
 
-/// Кто поставил элемент.
+/// Who installed the item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Source {
-    /// Пакет `.rxn` (вкладка «Расширения», импорт тем Windows).
+    /// A `.rxn` package (the «Extensions» tab, Windows theme import).
     Rxn,
-    /// Магазин «Оформления» (KDE Store, спайсы Cinnamon).
+    /// The «Appearance» store (KDE Store, Cinnamon spices).
     Store,
-    /// Образ «Как в дистрибутиве» (`distro_looks`): набор `.rxn` v5,
-    /// применённый целиком. Старых журналов у него нет — запись живёт
-    /// только здесь и при сверке переносится как есть.
+    /// A «Distro Looks» look (`distro_looks`): a `.rxn` v5 set applied as a
+    /// whole. It has no old journals — the record lives only here and is carried
+    /// over as is during reconciliation.
     Look,
 }
 
@@ -157,40 +161,40 @@ impl Source {
     }
 }
 
-/// Одна установка.
+/// One install.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
     pub source: Source,
-    /// id пакета `.rxn` или `content_id` товара магазина.
+    /// `.rxn` package id or the store item's `content_id`.
     pub id: String,
     pub name: String,
-    /// Вид по старому пути: тип пакета `.rxn` (`theme-icons`) или
-    /// `rexon_type` магазина.
+    /// Kind on the old path: `.rxn` package type (`theme-icons`) or the store's
+    /// `rexon_type`.
     pub kind: String,
-    /// Раздел, которому элемент принадлежит: `appearance`/`extensions` у
-    /// `.rxn`, `rexon_type` у магазина.
+    /// Section the item belongs to: `appearance`/`extensions` for `.rxn`,
+    /// `rexon_type` for the store.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub section: Option<String>,
-    /// Включён ли (`None` — у источника такого понятия нет: магазин).
+    /// Whether it is enabled (`None` — the source has no such notion: the store).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub installed_at: Option<String>,
-    /// Копия пакета `.rxn` в каталоге расширений.
+    /// Copy of the `.rxn` package in the extensions directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package_copy: Option<String>,
-    /// Известны ли положенные пути. `false` — запись сверена из старого
-    /// журнала `.rxn`, где путей не было: снимать прежним путём, по плану.
+    /// Whether the placed paths are known. `false` — the record was reconciled
+    /// from the old `.rxn` journal, which had no paths: remove the old way, by the plan.
     #[serde(default = "yes")]
     pub placed_known: bool,
-    /// Что положено, в порядке установки (снимается в обратном).
+    /// What was placed, in install order (removed in reverse).
     #[serde(default)]
     pub placed: Vec<Placed>,
-    /// Элементы пакета `.rxn` v5 (пусто у прежних форматов).
+    /// Elements of a `.rxn` v5 package (empty for older formats).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub elements: Vec<Element>,
-    /// Карточка товара магазина — запись `ocs_installed.json` как есть
-    /// (ничего не теряется при сверке).
+    /// The store item card — the `ocs_installed.json` record as is (nothing is
+    /// lost during reconciliation).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub card: Option<Map<String, Value>>,
 }
@@ -205,123 +209,125 @@ impl Entry {
     }
 }
 
-/// Ключ записи.
+/// Record key.
 pub fn key_of(source: Source, id: &str) -> String {
     format!("{}:{id}", source.prefix())
 }
 
-/// Один положенный путь.
+/// One placed path.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Placed {
     pub path: String,
-    /// Что положено. `None` — путь из старого журнала магазина, которого при
-    /// сверке на диске не было: вид неизвестен, удаление смотрит по диску.
+    /// What was placed. `None` — a path from the old store journal that was not
+    /// on disk at reconciliation: kind unknown, removal looks at the disk.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub what: Option<What>,
-    /// Текст метки владельца ([`OWNER_MARK`]) в корне каталога, если она
-    /// есть: каталог снимается, только пока метка та же.
+    /// Text of the owner mark ([`OWNER_MARK`]) at the directory root, if there is
+    /// one: the directory is removed only while the mark is the same.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
-    /// Каталог уже был на месте до установки (план сложил файлы в чужой
-    /// каталог): удаление его не трогает.
+    /// The directory already existed before the install (the plan put files into
+    /// someone else's directory): removal does not touch it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pre_existed: bool,
-    /// Путь записи, которому этот служит: ссылка `~/.themes/<тема>` — теме
-    /// в `~/.local/share/themes`. Снимается вместе с ним (и «Удалить» на
-    /// плитке темы — тоже, [`part_removal`]); сверка пересобирает такие
-    /// пути заново.
+    /// The record path this one serves: the link `~/.themes/<theme>` serves the
+    /// theme in `~/.local/share/themes`. Removed together with it (and by
+    /// «Remove» on the theme tile too, [`part_removal`]); reconciliation rebuilds
+    /// such paths anew.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub of: Option<String>,
 }
 
-/// Вид положенного пути.
+/// Kind of a placed path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum What {
     File,
     Dir,
     Link,
-    /// Каталог, заведённый планом по пути (база вроде
-    /// `~/.local/share/fonts/rexon-<id>`): снимается, только если пуст.
+    /// A directory created by the plan along a path (a base like
+    /// `~/.local/share/fonts/rexon-<id>`): removed only if empty.
     CreatedDir,
 }
 
-/// «Применить» в разделе (шаг 5а слияния установщиков): что нажатие
-/// переписало и где лежит снимок того, что было до него.
+/// «Apply» in a section (step 5a of the installer merge): what the press
+/// overwrote and where the snapshot of what was there before it lies.
 ///
-/// Записывается после УСПЕШНОГО нажатия, исполненного общим планом
-/// (`appearance_installer::LiveInstaller::apply`): откат нажатия
-/// (`install_plan::Undo`) не стирает отложенные копии, а переносит их в
-/// снимок ([`applied_snapshot_dir`]). Повторное нажатие в том же разделе
-/// дописывает только новые пути — у прежних остаётся самое раннее «что
-/// было». Вернуть — [`revert_applied_at`].
+/// Recorded after a SUCCESSFUL press executed by the shared plan
+/// (`appearance_installer::LiveInstaller::apply`): the press rollback
+/// (`install_plan::Undo`) doesn't erase the stashed copies but moves them into
+/// the snapshot ([`applied_snapshot_dir`]). A repeated press in the same
+/// section adds only new paths — the earlier ones keep the earliest "what was
+/// there". Restore — [`revert_applied_at`].
 ///
-/// Курсор (и смена его размера) и цвета вне Plasma пишутся сюда тем же
-/// путём. У цветов при этом остаётся и своя памятка слоя
-/// (`shell_palette::read_layer_memo`, возврат `revert_scheme_layer`): сама
-/// памятка — первый путь снимка, поэтому возврат по `applied` возвращает
-/// её вместе с файлами, а возврат по памятке оставляет запись `applied`,
-/// которая потом возвращает то же самое (сверка — `rxn_live_roundtrip_parity`).
+/// The cursor (and its size change) and colors outside Plasma are recorded
+/// here the same way. Colors also keep their own layer memo
+/// (`shell_palette::read_layer_memo`, restore via `revert_scheme_layer`): the
+/// memo itself is the first path of the snapshot, so restoring via `applied`
+/// restores it together with the files, and restoring via the memo leaves the
+/// `applied` record, which later restores the same thing (checked by
+/// `rxn_live_roundtrip_parity`).
 ///
-/// Значения стола, которые хранит не файл, а служба (`gsettings`/`dconf`,
-/// `xfconf-query`), снимаются до команды нажатия
-/// (`install_plan::Undo::keeping_values`) и лежат рядом с записью —
-/// [`Journal::applied_values`]; возврат их тоже возвращает.
+/// Desktop values stored not in a file but by a service (`gsettings`/`dconf`,
+/// `xfconf-query`) are captured before the press command
+/// (`install_plan::Undo::keeping_values`) and lie next to the record —
+/// [`Journal::applied_values`]; restore brings them back too.
 ///
-/// Задел: возвраты, у которых путь свой (`shell_palette::revert_flow` —
-/// палитра шелла, копии `.rexon-bak` анимаций и конфига композитора,
-/// снимки `backup`), сюда пока не сведены. Файл KDE, который пишет
-/// команда `kwriteconfig6`, снимается копией до неё — как прочие файлы.
+/// Groundwork: restores that have their own path (`shell_palette::revert_flow`
+/// — the shell palette, `.rexon-bak` copies of animations and the compositor
+/// config, `backup` snapshots) are not folded in here yet. A KDE file written
+/// by the `kwriteconfig6` command is captured as a copy before it — like any
+/// other file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Applied {
-    /// Раздел «Оформления» (ключ категории: `gtk`, `icons`…).
+    /// «Appearance» section (category key: `gtk`, `icons`…).
     pub section: String,
-    /// Применённая тема (последнее нажатие).
+    /// The applied theme (last press).
     pub theme: String,
-    /// Запись общего журнала, которой тема принадлежит (`store:<id>`), если
-    /// она там есть.
+    /// The shared journal record the theme belongs to (`store:<id>`), if it is
+    /// there.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub applied_at: Option<String>,
-    /// Каталог снимка «что было».
+    /// Directory of the "what was there" snapshot.
     pub snapshot: String,
-    /// Тронутые пути в порядке записи (возвращаются в обратном).
+    /// Touched paths in write order (restored in reverse).
     #[serde(default)]
     pub files: Vec<AppliedFile>,
 }
 
-/// Путь, который переписало нажатие «Применить».
+/// A path overwritten by an «Apply» press.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppliedFile {
     pub path: String,
-    /// Копия прежнего содержимого в снимке. `None` — до нажатия пути не
-    /// было (возврат его снимает).
+    /// Copy of the previous content in the snapshot. `None` — the path didn't
+    /// exist before the press (restore removes it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub before: Option<String>,
-    /// Каталог, заведённый нажатием (снимается, только если пуст).
+    /// A directory created by the press (removed only if empty).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub dir: bool,
 }
 
-/// Прежнее значение ключа стола, которое переписало «Применить»
-/// ([`Journal::applied_values`]): какой ключ и команда, которая вернёт
-/// прежнее (ключ не был задан — сброс: `gsettings reset`, `dconf reset`,
-/// `xfconf-query … -r`).
+/// The previous value of a desktop key overwritten by «Apply»
+/// ([`Journal::applied_values`]): which key, and the command that restores
+/// the previous value (the key was unset — a reset: `gsettings reset`,
+/// `dconf reset`, `xfconf-query … -r`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppliedValue {
-    /// `gsettings <схема> <ключ>`, `dconf <путь>`, `xfconf <канал> <свойство>`.
+    /// `gsettings <schema> <key>`, `dconf <path>`, `xfconf <channel> <property>`.
     pub key: String,
     pub restore: Vec<String>,
 }
 
-/// Невернувшееся из [`revert_applied_with`] — ключ настройки стола
-/// ([`AppliedValue::key`]), а не путь файла.
+/// Something [`revert_applied_with`] failed to restore — a desktop setting
+/// key ([`AppliedValue::key`]), not a file path.
 pub fn is_value_key(failed: &str) -> bool {
     !failed.starts_with('/')
 }
 
-/// Ключ настройки стола для человека — без имени программы хранилища
+/// A desktop setting key for the person — without the storage program name
 /// (`gsettings org.a k` → `org.a k`).
 pub fn value_key_label(key: &str) -> &str {
     key.split_once(' ').map_or(key, |(_, rest)| rest)
@@ -333,7 +339,7 @@ impl From<crate::install_plan::ValueBefore> for AppliedValue {
     }
 }
 
-/// Каталог снимка «что было» раздела `section` в каталоге конфигов Rexon.
+/// Directory of the "what was there" snapshot of section `section` in the Rexon config directory.
 pub fn applied_snapshot_dir(rexon_dir: &Path, section: &str) -> PathBuf {
     let safe: String = section
         .chars()
@@ -342,25 +348,25 @@ pub fn applied_snapshot_dir(rexon_dir: &Path, section: &str) -> PathBuf {
     rexon_dir.join("applied").join(if safe.is_empty() { "_".to_string() } else { safe })
 }
 
-/// Элемент пакета `.rxn` v5 (`rxn_manifest::Item`) — что именно встало.
-/// Модель на будущее: установку v5 Rexon ещё не исполняет.
+/// An element of a `.rxn` v5 package (`rxn_manifest::Item`) — what exactly
+/// got installed. A model for the future: Rexon doesn't execute v5 installs yet.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Element {
-    /// Абстрактный вид (`window-decoration`, `icons`…).
+    /// Abstract kind (`window-decoration`, `icons`…).
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
-    /// Потребитель, для которого положено (`aurorae`, `xfwm4`, `gtk`…).
+    /// The consumer it was placed for (`aurorae`, `xfwm4`, `gtk`…).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub consumer: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chosen: Option<ElementChoice>,
-    /// Пути из [`Entry::placed`], которые положил этот элемент.
+    /// Paths from [`Entry::placed`] placed by this element.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub paths: Vec<String>,
 }
 
-/// Какой вариант элемента поставлен (`rxn_manifest::Choice` без отказов).
+/// Which variant of the element was installed (`rxn_manifest::Choice` without refusals).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "choice", rename_all = "kebab-case")]
 pub enum ElementChoice {
@@ -371,8 +377,8 @@ pub enum ElementChoice {
 }
 
 impl ElementChoice {
-    /// Выбор из правил `.rxn` v5 и его потребитель; отказ и «выключено»
-    /// ничего не ставят — записи нет.
+    /// A choice from the `.rxn` v5 rules and its consumer; a refusal and "off"
+    /// install nothing — there is no record.
     pub fn from_choice(choice: &crate::rxn_manifest::Choice) -> Option<(String, ElementChoice)> {
         use crate::rxn_manifest::{Accuracy, Choice};
         match choice {
@@ -400,17 +406,17 @@ impl ElementChoice {
 }
 
 // ============================================================================
-// Текст файла
+// File text
 // ============================================================================
 
-/// Разобрать журнал. `None` — нет текста или он не журнал (битый JSON,
-/// чужая версия формата).
+/// Parse the journal. `None` — no text, or it isn't a journal (broken JSON,
+/// a foreign format version).
 pub fn parse(text: Option<&str>) -> Option<Journal> {
     let j: Journal = serde_json::from_str(text?).ok()?;
     (j.format == JOURNAL_FORMAT).then_some(j)
 }
 
-/// Текст файла: JSON с отступами и переводом строки в конце.
+/// File text: indented JSON with a trailing newline.
 pub fn serialize(journal: &Journal) -> String {
     let mut text = serde_json::to_string_pretty(journal).expect("журнал сериализуется");
     text.push('\n');
@@ -418,20 +424,20 @@ pub fn serialize(journal: &Journal) -> String {
 }
 
 // ============================================================================
-// Что на диске
+// What is on disk
 // ============================================================================
 
-/// Что лежит по пути (ссылка не разыменовывается).
+/// What lies at a path (a link is not dereferenced).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Probe {
     Missing,
     File,
     Link,
-    /// Каталог и текст его метки владельца, если она есть.
+    /// A directory and the text of its owner mark, if there is one.
     Dir { owner: Option<String> },
 }
 
-/// Живая проба пути.
+/// Live probe of a path.
 pub fn probe_live(path: &str) -> Probe {
     let p = Path::new(path);
     match std::fs::symlink_metadata(p) {
@@ -451,10 +457,10 @@ impl Probe {
 }
 
 // ============================================================================
-// Сверка «старые журналы → новый»
+// Reconciliation "old journals → new"
 // ============================================================================
 
-/// Пакет `.rxn`, лежащий в каталоге расширений.
+/// A `.rxn` package lying in the extensions directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LegacyExt {
     pub id: String,
@@ -464,24 +470,23 @@ pub struct LegacyExt {
     pub dir: String,
 }
 
-/// Старые журналы: текст `ocs_installed.json` и установленные пакеты `.rxn`
-/// (каталог расширений, прочитанный с картой `extensions_state.json`).
+/// Old journals: the text of `ocs_installed.json` and installed `.rxn` packages
+/// (the extensions directory, read with the `extensions_state.json` map).
 #[derive(Debug, Clone, Default)]
 pub struct Legacy {
     pub store_log: Option<String>,
     pub extensions: Vec<LegacyExt>,
-    /// Наши ссылки `~/.themes/<имя>` на темы магазина из
-    /// `~/.local/share/themes` (их ставит `installed_scan::sync_theme_links`):
-    /// путь темы → путь ссылки ([`theme_links_of`]). Пишутся в запись покупки
-    /// видом «ссылка» сразу после самой темы — удаление по журналу снимет и
-    /// её.
+    /// Our links `~/.themes/<name>` to store themes from `~/.local/share/themes`
+    /// (installed by `installed_scan::sync_theme_links`): theme path → link path
+    /// ([`theme_links_of`]). Written into the purchase record with kind "link"
+    /// right after the theme itself — removal by journal removes it too.
     pub theme_links: BTreeMap<String, String>,
 }
 
-/// Наши ссылки `~/.themes` на темы из записей журнала магазина `store`:
-/// путь темы в `~/.local/share/themes` → путь ссылки. Ссылка «наша», только
-/// если ведёт ровно туда, куда её ставит `sync_theme_links`
-/// (`installed_scan::is_theme_link`): занятое человеком имя не попадает.
+/// Our `~/.themes` links to themes from records of the store journal `store`:
+/// theme path in `~/.local/share/themes` → link path. A link is "ours" only if
+/// it points exactly where `sync_theme_links` puts it
+/// (`installed_scan::is_theme_link`): a name taken by the person doesn't count.
 pub fn theme_links_of(store: &Map<String, Value>) -> BTreeMap<String, String> {
     theme_links_of_paths(
         store
@@ -492,10 +497,10 @@ pub fn theme_links_of(store: &Map<String, Value>) -> BTreeMap<String, String> {
     )
 }
 
-/// То же у записей `.rxn` журнала `journal`: их каталоги, легшие в
-/// `~/.local/share/themes` (на 25.10.2026 ни один тип `.rxn` туда не кладёт —
-/// тема GTK ложится в `~/.themes`, — но ссылку на такую тему
-/// `sync_theme_links` поставит, и снять её обязано удаление пакета).
+/// The same for `.rxn` records of journal `journal`: their directories that
+/// landed in `~/.local/share/themes` (as of 25.10.2026 no `.rxn` type puts
+/// anything there — a GTK theme goes to `~/.themes` — but `sync_theme_links`
+/// will link such a theme, and removing the package must remove the link).
 pub fn rxn_theme_links_of(journal: &Journal) -> BTreeMap<String, String> {
     theme_links_of_paths(
         journal
@@ -508,7 +513,7 @@ pub fn rxn_theme_links_of(journal: &Journal) -> BTreeMap<String, String> {
     )
 }
 
-/// Наши ссылки `~/.themes` на темы из путей `paths` (см. [`theme_links_of`]).
+/// Our `~/.themes` links to themes from paths `paths` (see [`theme_links_of`]).
 pub fn theme_links_of_paths<'a>(paths: impl Iterator<Item = &'a str>) -> BTreeMap<String, String> {
     const XDG_THEMES: &str = "/.local/share/themes";
     let mut out = BTreeMap::new();
@@ -544,8 +549,8 @@ fn placed_of_probe(path: &str, probe: &Probe) -> Placed {
     Placed { path: path.to_string(), what, owner, pre_existed: false, of: None }
 }
 
-/// Ссылка `~/.themes` на тему `theme` (если она наша, [`Legacy::theme_links`])
-/// — в `placed` сразу вслед за темой: удаление снимает её раньше.
+/// The `~/.themes` link to theme `theme` (if it is ours, [`Legacy::theme_links`])
+/// — into `placed` right after the theme: removal takes it out earlier.
 fn push_theme_link(placed: &mut Vec<Placed>, theme: &str, legacy: &Legacy) {
     if let Some(link) = legacy.theme_links.get(theme) {
         if !placed.iter().any(|q| &q.path == link) {
@@ -560,16 +565,16 @@ fn push_theme_link(placed: &mut Vec<Placed>, theme: &str, legacy: &Legacy) {
     }
 }
 
-/// Сверить журнал со старыми: ничего из старых не теряется, ушедшее из
-/// старых уходит и отсюда. `journal` — прочитанный новый журнал (`None` —
-/// его ещё нет: первое чтение).
+/// Reconcile the journal with the old ones: nothing from the old ones is lost,
+/// and what left the old ones leaves here too. `journal` — the new journal as
+/// read (`None` — it doesn't exist yet: first read).
 ///
-/// * Магазин: записи пересобираются из `ocs_installed.json` целиком
-///   (карточка — как есть, пути — с видом и меткой по диску); элементы v5
-///   прежней записи сохраняются.
-/// * `.rxn`: имя, вид, «включено» и копия пакета — из каталога расширений;
-///   положенные пути прежней записи сохраняются, у новой их нет
-///   (`placed_known = false`).
+/// * Store: records are rebuilt from `ocs_installed.json` in full (the card —
+///   as is, paths — with kind and mark from the disk); v5 elements of the
+///   previous record are kept.
+/// * `.rxn`: name, kind, "enabled" and the package copy — from the extensions
+///   directory; placed paths of the previous record are kept, a new record
+///   has none (`placed_known = false`).
 pub fn reconcile(journal: Option<Journal>, legacy: &Legacy, probe: &dyn Fn(&str) -> Probe) -> Journal {
     let old = journal.unwrap_or_default();
     let mut items: BTreeMap<String, Entry> = BTreeMap::new();
@@ -633,7 +638,7 @@ pub fn reconcile(journal: Option<Journal>, legacy: &Legacy, probe: &dyn Fn(&str)
         entry.section = section_of_rxn(&ext.kind);
         entry.enabled = Some(ext.enabled);
         entry.package_copy = Some(ext.dir.clone());
-        // Ссылки `~/.themes` на темы пакета — заново по диску, как у магазина.
+        // `~/.themes` links to the package's themes — anew from the disk, as for the store.
         let own: Vec<Placed> = entry.placed.drain(..).filter(|p| p.of.is_none()).collect();
         for p in own {
             let theme = (p.what == Some(What::Dir) && !p.pre_existed).then(|| p.path.clone());
@@ -645,14 +650,14 @@ pub fn reconcile(journal: Option<Journal>, legacy: &Legacy, probe: &dyn Fn(&str)
         items.insert(key, entry);
     }
 
-    // Образы старых журналов не имеют — переносятся как есть.
+    // Looks have no old journals — carried over as is.
     for (key, entry) in &old.items {
         if entry.source == Source::Look {
             items.insert(key.clone(), entry.clone());
         }
     }
 
-    // «Применить» к установкам отношения не имеет — переносится как есть.
+    // «Apply» has nothing to do with installs — carried over as is.
     Journal {
         format: JOURNAL_FORMAT,
         items,
@@ -663,10 +668,11 @@ pub fn reconcile(journal: Option<Journal>, legacy: &Legacy, probe: &dyn Fn(&str)
     }
 }
 
-/// Журнал магазина глазами общего журнала: `content_id` → карточка покупки
-/// (запись `ocs_installed.json` как есть), в порядке [`Journal::store_order`].
-/// Так читатели установленного (карточки, «установлено ли», решения по
-/// удалению) берут данные из общего журнала, а видят то же, что раньше.
+/// The store journal as seen through the shared journal: `content_id` →
+/// purchase card (the `ocs_installed.json` record as is), in
+/// [`Journal::store_order`] order. This way readers of the installed set
+/// (cards, "is it installed", removal decisions) take data from the shared
+/// journal but see the same as before.
 pub fn store_log_of(journal: &Journal) -> Map<String, Value> {
     let mut out = Map::new();
     let ordered = journal.store_order.iter().map(|cid| key_of(Source::Store, cid));
@@ -684,22 +690,22 @@ pub fn store_log_of(journal: &Journal) -> Map<String, Value> {
 }
 
 // ============================================================================
-// Что положил план
+// What the plan placed
 // ============================================================================
 
-/// Положенные пути по файловому плану установки — до его исполнения.
+/// Placed paths according to the install file plan — before it runs.
 ///
-/// `existed` — был ли путь на диске ДО плана. Учитываются шаги, кладущие
-/// что-то в профиль: `CopyTree`/`ExtractZip` (каталог), `CopyFile`
-/// (файл), `Symlink` (ссылка), `WriteFile` (файл; метка владельца —
-/// владелец каталога, а не отдельный путь), `MakeDirs` и недостающие
-/// родители (заведённые каталоги — снимаются, только если пусты). Раскладка
-/// под `/tmp` (`Stage`), команды и заметки ничего в профиле не оставляют.
-/// Снятое планом раньше (`RemoveTree` своей прежней копии) считается
-/// отсутствующим.
+/// `existed` — whether the path was on disk BEFORE the plan. Steps that put
+/// something into the profile count: `CopyTree`/`ExtractZip` (directory),
+/// `CopyFile` (file), `Symlink` (link), `WriteFile` (file; the owner mark
+/// belongs to the directory's owner, not a separate path), `MakeDirs` and
+/// missing parents (created directories — removed only if empty). Staging
+/// under `/tmp` (`Stage`), commands and notes leave nothing in the profile.
+/// Whatever the plan removed earlier (`RemoveTree` of its own previous copy)
+/// counts as absent.
 pub fn placed_from_steps(steps: &[ExtStep], existed: &dyn Fn(&str) -> bool) -> Vec<Placed> {
     let mut out: Vec<Placed> = Vec::new();
-    // Состояние пути по ходу плана поверх `existed`.
+    // Path state over the course of the plan, on top of `existed`.
     let mut now: BTreeMap<String, bool> = BTreeMap::new();
     let present = |now: &BTreeMap<String, bool>, p: &str| -> bool {
         if let Some(v) = now.get(p) {
@@ -718,8 +724,8 @@ pub fn placed_from_steps(steps: &[ExtStep], existed: &dyn Fn(&str) -> bool) -> V
     fn put(out: &mut Vec<Placed>, now: &mut BTreeMap<String, bool>, path: &str, what: What, pre: bool) {
         now.insert(path.to_string(), true);
         if let Some(p) = out.iter_mut().find(|p| p.path == path) {
-            // Повторный шаг по тому же пути: вид — последний, «был до
-            // установки» — от первого.
+            // A repeated step on the same path: kind — the last one, "existed
+            // before the install" — from the first.
             if what != What::CreatedDir {
                 p.what = Some(what);
             }
@@ -728,7 +734,7 @@ pub fn placed_from_steps(steps: &[ExtStep], existed: &dyn Fn(&str) -> bool) -> V
         out.push(Placed { path: path.to_string(), what: Some(what), owner: None, pre_existed: pre, of: None });
     }
 
-    // Недостающие родители `path` (сверху вниз) — заведённые каталоги.
+    // Missing parents of `path` (top down) — created directories.
     let parents = |now: &BTreeMap<String, bool>, path: &str| -> Vec<String> {
         let mut missing = Vec::new();
         let mut cur = Path::new(path).parent();
@@ -775,7 +781,7 @@ pub fn placed_from_steps(steps: &[ExtStep], existed: &dyn Fn(&str) -> bool) -> V
         };
         let pre = present(&now, path);
         if what == What::CreatedDir && pre {
-            continue; // база уже была — она не наша
+            continue; // the base already existed — it isn't ours
         }
         if !pre {
             for parent in parents(&now, path) {
@@ -784,7 +790,7 @@ pub fn placed_from_steps(steps: &[ExtStep], existed: &dyn Fn(&str) -> bool) -> V
         }
         put(&mut out, &mut now, path, what, pre && what == What::Dir);
     }
-    // Файл, положенный ВНУТРЬ своего каталога, снимается вместе с ним.
+    // A file placed INSIDE its own directory is removed together with it.
     let dirs: Vec<String> = out
         .iter()
         .filter(|p| p.what == Some(What::Dir) && !p.pre_existed)
@@ -794,7 +800,7 @@ pub fn placed_from_steps(steps: &[ExtStep], existed: &dyn Fn(&str) -> bool) -> V
     out
 }
 
-/// Запись установленного пакета `.rxn` с путями от его плана.
+/// Record of an installed `.rxn` package with the paths from its plan.
 pub fn rxn_entry(ext: &LegacyExt, placed: Vec<Placed>, placed_known: bool, installed_at: &str) -> Entry {
     Entry {
         source: Source::Rxn,
@@ -813,36 +819,36 @@ pub fn rxn_entry(ext: &LegacyExt, placed: Vec<Placed>, placed_known: bool, insta
 }
 
 // ============================================================================
-// Удаление по журналу
+// Removal by journal
 // ============================================================================
 
-/// Почему записанный путь не снимается.
+/// Why a recorded path is not removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeptWhy {
-    /// Метка владельца не наша (или пропала): каталог теперь чужой.
+    /// The owner mark is not ours (or is gone): the directory belongs to someone else now.
     NotOwner,
-    /// На месте лежит не то, что клали (была ссылка — стал каталог…).
+    /// What lies there is not what was placed (it was a link — now a directory…).
     Changed,
-    /// Каталог был на месте до установки.
+    /// The directory existed before the install.
     PreExisted,
 }
 
-/// План снятия одной записи.
+/// Removal plan of one record.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Removal {
-    /// Файловые шаги для общего исполнителя ([`crate::install_plan::exec`]).
+    /// File steps for the shared executor ([`crate::install_plan::exec`]).
     pub steps: Vec<ExtStep>,
-    /// Заведённые планом каталоги — снимаются после шагов, только пустые.
+    /// Directories created by the plan — removed after the steps, only if empty.
     pub prune: Vec<String>,
-    /// Что из записанного оставлено и почему.
+    /// What of the recorded set is kept, and why.
     pub kept: Vec<(String, KeptWhy)>,
 }
 
-/// Что снять у записи `entry` — только записанное и только своё.
+/// What to remove for record `entry` — only what was recorded and only what is ours.
 ///
-/// Пути снимаются в обратном порядке установки, копия пакета `.rxn` — в
-/// конце. У записи без известных путей (`placed_known = false`) файловых
-/// шагов нет: такую снимает прежний путь, по плану.
+/// Paths are removed in reverse install order, the `.rxn` package copy — at
+/// the end. A record without known paths (`placed_known = false`) has no file
+/// steps: it is removed the old way, by the plan.
 pub fn removal_plan(entry: &Entry, probe: &dyn Fn(&str) -> Probe) -> Removal {
     let mut r = Removal::default();
     for p in entry.placed.iter().rev() {
@@ -866,8 +872,8 @@ pub fn removal_plan(entry: &Entry, probe: &dyn Fn(&str) -> Probe) -> Removal {
             (Some(What::Dir), Probe::Dir { .. }) => r.steps.push(tree(&p.path)),
             (Some(What::File), Probe::File) | (Some(What::Link), Probe::Link) => r.steps.push(file(&p.path)),
             (Some(What::CreatedDir), Probe::Dir { .. }) => r.prune.push(p.path.clone()),
-            // Вид неизвестен (путь старого журнала магазина): как прежде —
-            // по тому, что на диске.
+            // Kind unknown (a path from the old store journal): as before —
+            // by what is on disk.
             (None, Probe::Dir { .. }) => r.steps.push(tree(&p.path)),
             (None, Probe::File | Probe::Link) => r.steps.push(file(&p.path)),
             _ => r.kept.push((p.path.clone(), KeptWhy::Changed)),
@@ -881,10 +887,11 @@ pub fn removal_plan(entry: &Entry, probe: &dyn Fn(&str) -> Probe) -> Removal {
     r
 }
 
-/// Записан ли путь `path` в записи `entry`: сам или внутри записанного
-/// своего каталога (не бывшего до установки и не заведённого — у тех своё
-/// только то, что записано поимённо). Записанное снимает журнал — и решает,
-/// снимать ли (чужое и бывшее до установки остаются).
+/// Whether path `path` is recorded in record `entry`: itself, or inside a
+/// recorded directory of ours (not one that existed before the install and
+/// not a created one — those own only what is recorded by name). What is
+/// recorded is removed by the journal — which also decides whether to remove
+/// it (foreign and pre-existing stuff stays).
 pub fn records(entry: &Entry, path: &str) -> bool {
     let path = path.trim_end_matches('/');
     entry.placed.iter().any(|p| {
@@ -897,15 +904,15 @@ pub fn records(entry: &Entry, path: &str) -> bool {
     })
 }
 
-/// Вписать файловое снятие по журналу в план удаления `plan` старого пути.
+/// Fold the journal's file removal into the removal plan `plan` of the old path.
 ///
-/// Шаги плана, кроме файловых (`path_of` → `Some`), остаются как были и где
-/// были: выключение (gsettings, `kpackagetool -r`, Conky…) — до файлов,
-/// перезагрузка оболочки и кеши (`qdbus … reconfigure`, `fc-cache`) — после.
-/// Файловый шаг по записанному пути ([`records`]) уходит: его снимает
-/// журнал, своими шагами `ours`, на месте первого файлового шага плана.
-/// Файловый шаг по НЕзаписанному пути остаётся — так снимается то, что
-/// положила не сама установка (программа из плана), как раньше.
+/// Plan steps other than file steps (`path_of` → `Some`) stay as and where
+/// they were: disabling (gsettings, `kpackagetool -r`, Conky…) — before the
+/// files, shell restart and caches (`qdbus … reconfigure`, `fc-cache`) —
+/// after. A file step on a recorded path ([`records`]) goes away: the journal
+/// removes it with its own `ours` steps, in place of the plan's first file
+/// step. A file step on a NON-recorded path stays — that is how things not
+/// placed by the install itself (a program from the plan) are removed, as before.
 pub fn merge_into_plan<S: Clone>(
     plan: &[S],
     path_of: &dyn Fn(&S) -> Option<String>,
@@ -932,7 +939,7 @@ pub fn merge_into_plan<S: Clone>(
     out
 }
 
-/// Путь файлового шага снятия (`RemoveTree`/`RemoveFile`).
+/// Path of a removal file step (`RemoveTree`/`RemoveFile`).
 pub fn removal_path(step: &ExtStep) -> Option<String> {
     match step {
         ExtStep::RemoveTree { path, .. } | ExtStep::RemoveFile { path } => Some(path.clone()),
@@ -940,10 +947,10 @@ pub fn removal_path(step: &ExtStep) -> Option<String> {
     }
 }
 
-/// Удаление пакета `.rxn` по журналу внутри его плана удаления `plan`
-/// ([`merge_into_plan`]); копию пакета снимает вызывающий, как прежде.
-/// `None` — путей у записи нет (`placed_known = false`, пакет поставлен до
-/// журнала): снимать прежним планом целиком.
+/// Removal of a `.rxn` package by journal within its removal plan `plan`
+/// ([`merge_into_plan`]); the caller removes the package copy, as before.
+/// `None` — the record has no paths (`placed_known = false`, the package was
+/// installed before the journal): remove by the old plan in full.
 pub fn rxn_removal(plan: &[ExtStep], entry: &Entry, probe: &dyn Fn(&str) -> Probe) -> Option<Removal> {
     if !entry.placed_known {
         return None;
@@ -954,9 +961,9 @@ pub fn rxn_removal(plan: &[ExtStep], entry: &Entry, probe: &dyn Fn(&str) -> Prob
     Some(r)
 }
 
-/// Снятие одного пути `path` записи `entry` и того, что ему служит (ссылка
-/// `~/.themes` на тему, [`Placed::of`]) — «Удалить» на плитке темы. `None` —
-/// путь в записи не записан.
+/// Removal of one path `path` of record `entry` and whatever serves it (the
+/// `~/.themes` link to a theme, [`Placed::of`]) — «Remove» on a theme tile.
+/// `None` — the path is not recorded in the record.
 pub fn part_removal(entry: &Entry, path: &str, probe: &dyn Fn(&str) -> Probe) -> Option<Removal> {
     let path = path.trim_end_matches('/');
     let mine = |p: &Placed| p.path.trim_end_matches('/') == path || p.of.as_deref().map(|o| o.trim_end_matches('/')) == Some(path);
@@ -971,17 +978,17 @@ pub fn part_removal(entry: &Entry, path: &str, probe: &dyn Fn(&str) -> Probe) ->
     Some(removal_plan(&part, probe))
 }
 
-/// Снять пустые заведённые планом каталоги снятия `removal`.
+/// Remove empty plan-created directories of removal `removal`.
 pub fn prune(removal: &Removal) {
     for dir in &removal.prune {
-        let _ = std::fs::remove_dir(dir); // не пуст — значит, не только наше
+        let _ = std::fs::remove_dir(dir); // not empty — so not only ours
     }
 }
 
-/// Снять запись `key`: план [`removal_plan`] — общим исполнителем с
-/// контекстом `ctx`, затем пустые заведённые каталоги; запись забывается,
-/// когда всё своё снято. Ошибка шага — запись остаётся («Удалить» можно
-/// нажать ещё раз).
+/// Remove record `key`: the [`removal_plan`] plan via the shared executor with
+/// context `ctx`, then the empty created directories; the record is forgotten
+/// once everything of ours is removed. A step error — the record stays
+/// («Remove» can be pressed again).
 pub fn remove(
     journal: &mut Journal,
     key: &str,
@@ -1001,16 +1008,16 @@ pub fn remove(
 }
 
 // ============================================================================
-// Файл на диске
+// File on disk
 // ============================================================================
 
-/// Путь журнала в каталоге конфигов Rexon `rexon_dir`.
+/// Journal path in the Rexon config directory `rexon_dir`.
 pub fn journal_path(rexon_dir: &Path) -> PathBuf {
     rexon_dir.join(JOURNAL_NAME)
 }
 
-/// Где лежат журналы: каталог конфигов Rexon и журнал магазина в нём (у
-/// сверок он бывает и под своим именем — общий журнал тогда рядом с ним).
+/// Where the journals live: the Rexon config directory and the store journal
+/// in it (in checks it may have its own name — the shared journal then sits next to it).
 struct Files {
     dir: PathBuf,
     store_log: PathBuf,
@@ -1035,7 +1042,7 @@ impl Files {
     }
 }
 
-/// Тексты старых журналов на диске (`None` — файла нет или он не читается).
+/// Texts of the old journals on disk (`None` — no file, or it is unreadable).
 struct Disk {
     store: Option<String>,
     state: Option<String>,
@@ -1048,9 +1055,9 @@ fn disk_of(files: &Files) -> Disk {
     }
 }
 
-/// Отпечаток текста старого журнала для [`LegacySeen`]: FNV-1a (64 бита) и
-/// длина; у отсутствующего файла — `none`. Алгоритм закреплён здесь, а не
-/// взят у `std` (у того хэш между выпусками Rust не обещан).
+/// Fingerprint of an old journal's text for [`LegacySeen`]: FNV-1a (64 bits)
+/// and length; for a missing file — `none`. The algorithm is pinned here
+/// rather than taken from `std` (its hash is not promised across Rust releases).
 pub fn fingerprint(text: Option<&str>) -> String {
     let Some(text) = text else { return "none".to_string() };
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -1068,19 +1075,19 @@ fn seen_of(disk: &Disk) -> LegacySeen {
     }
 }
 
-/// Журнал магазина `disk` с тех пор, как его видел журнал `journal`, писали
-/// только мы (см. [`LegacySeen`]).
+/// Since journal `journal` last saw it, the store journal `disk` has been
+/// written only by us (see [`LegacySeen`]).
 fn trusts_store(journal: Option<&Journal>, disk: &Disk) -> bool {
     journal.and_then(|j| j.legacy_seen.store.as_deref()) == Some(fingerprint(disk.store.as_deref()).as_str())
 }
 
-/// То же у карты состояний `.rxn`.
+/// The same for the `.rxn` state map.
 fn trusts_state(journal: Option<&Journal>, disk: &Disk) -> bool {
     journal.and_then(|j| j.legacy_seen.state.as_deref()) == Some(fingerprint(disk.state.as_deref()).as_str())
 }
 
-/// Карта «включено ли» пакетов `.rxn` журнала — в формате
-/// `extensions_state.json`.
+/// The journal's "is it enabled" map of `.rxn` packages — in the
+/// `extensions_state.json` format.
 fn state_map_of(journal: &Journal) -> Map<String, Value> {
     journal
         .items
@@ -1090,9 +1097,9 @@ fn state_map_of(journal: &Journal) -> Map<String, Value> {
         .collect()
 }
 
-/// Текст журнала магазина, по которому сверяются записи магазина: свой
-/// (общий журнал), если старый файл с тех пор писали только мы, иначе —
-/// старый файл (перенос).
+/// The store journal text that store records are reconciled against: our own
+/// (the shared journal) if the old file has since been written only by us,
+/// otherwise — the old file (migration).
 fn store_source(journal: Option<&Journal>, disk: &Disk) -> Option<String> {
     match journal {
         Some(j) if trusts_store(journal, disk) => {
@@ -1102,10 +1109,11 @@ fn store_source(journal: Option<&Journal>, disk: &Disk) -> Option<String> {
     }
 }
 
-/// Источники сверки ([`Legacy`]) для журнала `journal` каталога `files`:
-/// записи магазина и «включено» `.rxn` — из общего журнала либо, если старый
-/// файл менялся без нас, из него ([`LegacySeen`]); пакеты `.rxn` — всегда
-/// из каталога расширений (его карточки «Расширений» и читают).
+/// Reconciliation sources ([`Legacy`]) for journal `journal` of directory
+/// `files`: store records and `.rxn` "enabled" — from the shared journal or,
+/// if the old file changed without us, from it ([`LegacySeen`]); `.rxn`
+/// packages — always from the extensions directory (the "Extensions" cards
+/// read it).
 fn sources(files: &Files, journal: Option<&Journal>, disk: &Disk) -> Legacy {
     let store_log = store_source(journal, disk);
     let theme_links = theme_links_of(&crate::ocs_store::parse_installed_log(store_log.as_deref()));
@@ -1117,22 +1125,22 @@ fn sources(files: &Files, journal: Option<&Journal>, disk: &Disk) -> Legacy {
     Legacy { store_log, extensions, theme_links }
 }
 
-/// Старые журналы в `rexon_dir` как есть — те же файлы, что читают их
-/// владельцы (без общего журнала).
+/// The old journals in `rexon_dir` as is — the same files their owners read
+/// (without the shared journal).
 pub fn legacy_at(rexon_dir: &Path) -> Legacy {
     let files = Files::of_dir(rexon_dir);
     sources(&files, None, &disk_of(&files))
 }
 
-/// Текст файла; не UTF-8 — с заменой (так журнал магазина читали его
-/// читатели: битый байт не делает журнал пустым).
+/// File text; not UTF-8 — with replacement (that is how the store journal's
+/// readers read it: a broken byte doesn't make the journal empty).
 fn read_lossy(path: &Path) -> Option<String> {
     std::fs::read(path).ok().map(|raw| String::from_utf8_lossy(&raw).into_owned())
 }
 
-/// Общий журнал каталога конфигов `rexon_dir` для читателя: прочитан и
-/// сверен ([`reconcile`]; старые файлы — только если их писали без нас), но
-/// НЕ записан (см. [`store_log_view`]).
+/// The shared journal of config directory `rexon_dir` for a reader: read and
+/// reconciled ([`reconcile`]; old files — only if written without us), but
+/// NOT written (see [`store_log_view`]).
 pub fn view_at(rexon_dir: &Path) -> Journal {
     let files = Files::of_dir(rexon_dir);
     let journal = read_lossy(&journal_path(rexon_dir)).and_then(|t| parse(Some(&t)));
@@ -1141,7 +1149,7 @@ pub fn view_at(rexon_dir: &Path) -> Journal {
     reconcile(journal, &legacy, &probe_live)
 }
 
-/// Старые журналы плюс ссылки `~/.themes` на темы пакетов `.rxn` журнала.
+/// Old journals plus `~/.themes` links to themes of the journal's `.rxn` packages.
 fn legacy_with_rxn_links(mut legacy: Legacy, journal: Option<&Journal>) -> Legacy {
     if let Some(j) = journal {
         legacy.theme_links.extend(rxn_theme_links_of(j));
@@ -1149,19 +1157,19 @@ fn legacy_with_rxn_links(mut legacy: Legacy, journal: Option<&Journal>) -> Legac
     legacy
 }
 
-/// Журнал магазина `log_path` для читателя — через общий журнал рядом
-/// (тот же каталог конфигов), сверенный с ним ([`reconcile`],
-/// [`store_log_of`]). Только чтение: ни общий, ни старый журнал не
-/// пишутся — читатель на чужом или подставном HOME ничего не оставляет;
-/// записывают журнал установка и удаление ([`put_store_log`]).
+/// Store journal `log_path` for a reader — through the shared journal next to
+/// it (the same config directory), reconciled with it ([`reconcile`],
+/// [`store_log_of`]). Read only: neither the shared nor the old journal is
+/// written — a reader on a foreign or substitute HOME leaves nothing behind;
+/// install and removal write the journal ([`put_store_log`]).
 pub fn store_log_view(log_path: &str) -> Map<String, Value> {
     store_log_of(&store_view(log_path))
 }
 
-/// Записи магазина общего журнала рядом с журналом магазина `log_path`,
-/// сверенные с ним ([`reconcile`]) — пути с видом по диску и ссылки
-/// `~/.themes`. Только чтение (см. [`store_log_view`]); удаления магазина
-/// берут отсюда, что снимать.
+/// Store records of the shared journal next to store journal `log_path`,
+/// reconciled with it ([`reconcile`]) — paths with kind from the disk and
+/// `~/.themes` links. Read only (see [`store_log_view`]); store removals take
+/// from here what to remove.
 pub fn store_view(log_path: &str) -> Journal {
     let disk = Disk { store: read_lossy(Path::new(log_path)), state: None };
     let journal = rexon_dir_of_store_log(log_path)
@@ -1173,7 +1181,7 @@ pub fn store_view(log_path: &str) -> Journal {
     reconcile(journal, &legacy, &probe_live)
 }
 
-/// Пакет из каталога расширений глазами журнала.
+/// A package from the extensions directory as seen by the journal.
 pub fn legacy_ext(ext: &crate::extension::Extension) -> LegacyExt {
     let id = ext.ext_id().to_string();
     LegacyExt {
@@ -1185,16 +1193,16 @@ pub fn legacy_ext(ext: &crate::extension::Extension) -> LegacyExt {
     }
 }
 
-/// Записать журнал атомарно: при сбое прежний файл цел и полуфайла нет.
+/// Write the journal atomically: on failure the previous file is intact and there is no half-file.
 pub fn save_at(rexon_dir: &Path, journal: &Journal) -> std::io::Result<()> {
     std::fs::create_dir_all(rexon_dir)?;
     crate::utils::atomic_write(&journal_path(rexon_dir).to_string_lossy(), &serialize(journal))
 }
 
-// ── Запись: только общий журнал, старые файлы — его зеркало ─────────────────
+// ── Writing: only the shared journal, the old files are its mirror ─────────
 
-/// Прочитанный писателем журнал: текст файла, сверенный журнал и то, из
-/// чего он сверен.
+/// A journal as read by a writer: the file text, the reconciled journal and
+/// what it was reconciled from.
 struct Loaded {
     files: Files,
     text: Option<String>,
@@ -1203,8 +1211,8 @@ struct Loaded {
     disk: Disk,
 }
 
-/// Прочитать журнал для записи. Нечитаемый журнал откладывается рядом
-/// (`.broken`) и собирается заново из старых файлов.
+/// Read the journal for writing. An unreadable journal is set aside next to it
+/// (`.broken`) and rebuilt from the old files.
 fn load_files(files: Files) -> Loaded {
     let path = journal_path(&files.dir);
     let text = std::fs::read_to_string(&path).ok();
@@ -1218,23 +1226,23 @@ fn load_files(files: Files) -> Loaded {
     Loaded { files, text, journal, legacy, disk }
 }
 
-/// Какие старые журналы затронуты.
+/// Which old journals are affected.
 #[derive(Debug, Clone, Copy, Default)]
 struct Parts {
     store: bool,
     state: bool,
 }
 
-/// Совпадают ли две карты вместе с порядком записей (порядок — часть текста
-/// старого журнала).
+/// Whether two maps match including record order (the order is part of the
+/// old journal's text).
 fn same_entries(a: &Map<String, Value>, b: &Map<String, Value>) -> bool {
     a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| x == y)
 }
 
-/// Пары карты состояний `.rxn` по журналу — в том порядке, в каком их писал
-/// прежний писатель (`ext_exec::save_state_with`): пакеты каталога
-/// расширений по порядку чтения каталога, затем записанные, которых в
-/// каталоге (ещё) не видно.
+/// Pairs of the `.rxn` state map from the journal — in the order the old
+/// writer wrote them (`ext_exec::save_state_with`): extensions directory
+/// packages in directory read order, then recorded ones not (yet) visible in
+/// the directory.
 fn state_pairs_of(files: &Files, journal: &Journal) -> Vec<(String, bool)> {
     let state = state_map_of(journal);
     let mut pairs: Vec<(String, bool)> = crate::qt_extensions::installed_in(&files.ext_dir(), &state)
@@ -1251,12 +1259,13 @@ fn state_pairs_of(files: &Files, journal: &Journal) -> Vec<(String, bool)> {
     pairs
 }
 
-/// Зеркало: старые журналы из общего — тем же текстом, что писала прежняя
-/// логика (`ocs_store::serialize_installed_log`,
-/// `ext_manager::save_state_text`), атомарно. Пишутся только части `parts`.
-/// Нужны они ровно тому, кто вернётся на прежнюю версию Rexon: она читает
-/// только старые файлы. Возвращает, какие части записаны; сбой — в журнал
-/// событий (общий журнал уже записан, следующая запись повторит зеркало).
+/// Mirror: the old journals from the shared one — with the same text the old
+/// logic wrote (`ocs_store::serialize_installed_log`,
+/// `ext_manager::save_state_text`), atomically. Only parts `parts` are
+/// written. They matter exactly to whoever goes back to an older Rexon
+/// version: it reads only the old files. Returns which parts were written; a
+/// failure goes to the event log (the shared journal is already written, the
+/// next write will retry the mirror).
 fn mirror_legacy(files: &Files, journal: &Journal, parts: Parts) -> Parts {
     let mut wrote = Parts::default();
     let write = |path: &Path, text: &str| -> std::io::Result<()> {
@@ -1282,17 +1291,18 @@ fn mirror_legacy(files: &Files, journal: &Journal, parts: Parts) -> Parts {
     wrote
 }
 
-/// Записать журнал `after` (прочитанный как `loaded`) и его зеркало.
+/// Write journal `after` (read as `loaded`) and its mirror.
 ///
-/// Зеркалится часть, которую правил писатель (`touched`), если старый файл
-/// с ней разошёлся (или его нет) — как всегда писал прежний писатель; и
-/// часть, которую никто не правил, но чьё зеркало прошлой записью не легло
-/// (файл тот же, что мы видели, а с журналом расходится). Старый файл,
-/// который писали без нас, сам по себе не переписывается: он уже перенесён.
+/// The part the writer edited (`touched`) is mirrored if the old file has
+/// drifted from it (or is missing) — as the old writer always did; so is a
+/// part nobody edited but whose mirror didn't land on the previous write (the
+/// file is the one we saw, yet it disagrees with the journal). An old file
+/// written without us is not rewritten on its own: it has already been migrated.
 ///
-/// Порядок защищает от обрыва посредине: сначала журнал (с отпечатками
-/// старых файлов, из которых он собран), затем зеркало, затем — отпечатки
-/// записанного зеркала. Ошибка — только у записи самого журнала.
+/// The order protects against interruption midway: first the journal (with
+/// fingerprints of the old files it was built from), then the mirror, then
+/// the fingerprints of the written mirror. An error is reported only for
+/// writing the journal itself.
 fn commit(loaded: Loaded, mut after: Journal, touched: Parts) -> std::io::Result<Journal> {
     let Loaded { files, text, journal: before, disk, .. } = loaded;
     let store_want = store_log_of(&after);
@@ -1323,17 +1333,17 @@ fn commit(loaded: Loaded, mut after: Journal, touched: Parts) -> std::io::Result
     Ok(after)
 }
 
-/// Прочитать журнал, сверив его ([`reconcile`]), и записать, если он
-/// изменился (на первом чтении — всегда); зеркало — только недописанное
-/// прошлой записью ([`commit`]). Старые файлы, писанные без нас, читаются
-/// один раз — для переноса — и не удаляются: это страховка отката версии.
+/// Read the journal, reconcile it ([`reconcile`]) and write it if it changed
+/// (on the first read — always); the mirror — only what the previous write
+/// didn't finish ([`commit`]). Old files written without us are read once —
+/// for migration — and are not deleted: they are insurance for a downgrade.
 pub fn load_at(rexon_dir: &Path) -> std::io::Result<Journal> {
     let loaded = load_files(Files::of_dir(rexon_dir));
     let journal = loaded.journal.clone();
     commit(loaded, journal, Parts::default())
 }
 
-/// Записать установку пакета `.rxn` (после её успеха).
+/// Record the install of a `.rxn` package (after it succeeded).
 pub fn record_rxn_at(rexon_dir: &Path, entry: Entry) -> std::io::Result<()> {
     let loaded = load_files(Files::of_dir(rexon_dir));
     let mut journal = loaded.journal.clone();
@@ -1341,7 +1351,7 @@ pub fn record_rxn_at(rexon_dir: &Path, entry: Entry) -> std::io::Result<()> {
     commit(loaded, journal, Parts { state: true, ..Parts::default() }).map(drop)
 }
 
-/// Записать применённый образ «Как в дистрибутиве» (после успеха).
+/// Record an applied «Distro Looks» look (after success).
 pub fn record_look_at(rexon_dir: &Path, entry: Entry) -> std::io::Result<()> {
     let loaded = load_files(Files::of_dir(rexon_dir));
     let mut journal = loaded.journal.clone();
@@ -1349,7 +1359,7 @@ pub fn record_look_at(rexon_dir: &Path, entry: Entry) -> std::io::Result<()> {
     commit(loaded, journal, Parts::default()).map(drop)
 }
 
-/// Забыть запись `key` (образ снят «Вернуть как было»).
+/// Forget record `key` (the look was removed via «Restore as it was»).
 pub fn forget_at(rexon_dir: &Path, key: &str) -> std::io::Result<()> {
     let loaded = load_files(Files::of_dir(rexon_dir));
     let mut journal = loaded.journal.clone();
@@ -1357,9 +1367,9 @@ pub fn forget_at(rexon_dir: &Path, key: &str) -> std::io::Result<()> {
     commit(loaded, journal, Parts::default()).map(drop)
 }
 
-/// Отметить пакет `.rxn` `id` включённым или выключенным (`Some`) либо
-/// забыть его (`None` — пакет снят). Пакет, которого в каталоге расширений
-/// (ещё) не видно, всё равно записывается — как у прежней карты состояний.
+/// Mark `.rxn` package `id` enabled or disabled (`Some`) or forget it (`None`
+/// — the package was removed). A package not (yet) visible in the extensions
+/// directory is recorded anyway — as with the old state map.
 pub fn set_rxn_enabled_at(rexon_dir: &Path, id: &str, enabled: Option<bool>) -> std::io::Result<()> {
     let loaded = load_files(Files::of_dir(rexon_dir));
     let mut journal = loaded.journal.clone();
@@ -1392,10 +1402,10 @@ pub fn set_rxn_enabled_at(rexon_dir: &Path, id: &str, enabled: Option<bool>) -> 
     commit(loaded, journal, Parts { state: true, ..Parts::default() }).map(drop)
 }
 
-/// Записать покупки магазина: `data` — журнал магазина целиком в прежнем
-/// формате (`content_id` → карточка), каким его сделал писатель из
-/// [`store_log_view`]. Пишется общий журнал (записи магазина пересобраны,
-/// `.rxn` — как были) и зеркало `log_path`.
+/// Record store purchases: `data` is the whole store journal in the old format
+/// (`content_id` → card), as the writer produced it from [`store_log_view`].
+/// The shared journal is written (store records rebuilt, `.rxn` as they were)
+/// together with the `log_path` mirror.
 pub fn put_store_log(log_path: &str, data: &Map<String, Value>) -> std::io::Result<()> {
     let files = Files::of_store_log(log_path)
         .ok_or_else(|| std::io::Error::other(format!("{log_path}: у пути нет каталога")))?;
@@ -1412,21 +1422,21 @@ pub fn put_store_log(log_path: &str, data: &Map<String, Value>) -> std::io::Resu
     commit(loaded, journal, Parts { store: true, ..Parts::default() }).map(drop)
 }
 
-/// Записать «Применить» раздела (после успеха нажатия). Запись раздела уже
-/// есть — дописываются только новые пути (их ранний снимок — правда о
-/// том, что было до Rexon); лишние копии нового снимка стираются.
+/// Record a section's «Apply» (after the press succeeded). If the section
+/// already has a record, only new paths are added (their early snapshot is the
+/// truth about what was there before Rexon); extra copies in the new snapshot are erased.
 pub fn record_applied_at(rexon_dir: &Path, applied: Applied) -> std::io::Result<()> {
     record_applied_values_at(rexon_dir, applied, Vec::new())
 }
 
-/// [`record_applied_at`] вместе с прежними значениями стола `values`:
-/// значение ключа, уже записанного раньше, не заменяется — раннее и есть
-/// «что было до Rexon».
+/// [`record_applied_at`] together with the previous desktop values `values`:
+/// the value of a key recorded earlier is not replaced — the early one is
+/// exactly "what was there before Rexon".
 pub fn record_applied_values_at(rexon_dir: &Path, applied: Applied, values: Vec<AppliedValue>) -> std::io::Result<()> {
     let loaded = load_files(Files::of_dir(rexon_dir));
     let mut journal = loaded.journal.clone();
-    // Значения без записи раздела — осиротевшие (их запись сняли не мы):
-    // начинаем с чистого листа.
+    // Values without a section record are orphans (their record was removed
+    // not by us): start from a clean slate.
     if !journal.applied.contains_key(&applied.section) {
         journal.applied_values.remove(&applied.section);
     }
@@ -1460,24 +1470,25 @@ pub fn record_applied_values_at(rexon_dir: &Path, applied: Applied, values: Vec<
     commit(loaded, journal, Parts::default()).map(drop)
 }
 
-/// «Вернуть как было» по записи [`Applied`] раздела `section`: прежнее
-/// содержимое — на место, заведённое нажатием — снять (каталог — только
-/// пустой), прежние значения стола — вернуть командами
-/// ([`Journal::applied_values`]); запись и снимок стираются. `Ok(None)` —
-/// записи нет; `Ok(Some(не вернулось))` — пути и ключи, которые вернуть не
-/// вышло (их копии остаются в снимке, запись — тоже).
+/// «Restore as it was» by the [`Applied`] record of section `section`: previous
+/// content goes back in place, whatever the press created is removed (a
+/// directory — only if empty), previous desktop values are restored by
+/// commands ([`Journal::applied_values`]); the record and the snapshot are
+/// erased. `Ok(None)` — no record; `Ok(Some(not restored))` — paths and keys
+/// that couldn't be restored (their copies stay in the snapshot, and so does
+/// the record).
 ///
-/// ⚠️ Команды возврата значений идут на ЖИВОЙ машине
-/// ([`crate::install_plan::run_live`]); проверкам — [`revert_applied_with`]
-/// с подменным запуском.
+/// ⚠️ Value-restoring commands run on the LIVE machine
+/// ([`crate::install_plan::run_live`]); for checks — [`revert_applied_with`]
+/// with a substitute runner.
 pub fn revert_applied_at(rexon_dir: &Path, section: &str) -> std::io::Result<Option<Vec<String>>> {
     revert_applied_with(rexon_dir, section, &|_| false, &crate::install_plan::run_live)
 }
 
-/// [`revert_applied_at`], но пути, для которых `handled` отвечает `true`,
-/// не трогаются: их уже вернул свой путь (памятка слоя цветов,
-/// `shell_palette::revert_scheme_layer`, который бережёт правки после
-/// Rexon). Их копии уходят вместе со снимком.
+/// [`revert_applied_at`], but paths for which `handled` answers `true` are not
+/// touched: their own path has already restored them (the color layer memo,
+/// `shell_palette::revert_scheme_layer`, which preserves edits made after
+/// Rexon). Their copies go away together with the snapshot.
 pub fn revert_applied_except_at(
     rexon_dir: &Path,
     section: &str,
@@ -1486,8 +1497,8 @@ pub fn revert_applied_except_at(
     revert_applied_with(rexon_dir, section, handled, &crate::install_plan::run_live)
 }
 
-/// [`revert_applied_except_at`] с запуском команд `run` (возврат значений
-/// стола).
+/// [`revert_applied_except_at`] running commands via `run` (restoring desktop
+/// values).
 pub fn revert_applied_with(
     rexon_dir: &Path,
     section: &str,
@@ -1507,7 +1518,7 @@ pub fn revert_applied_with(
         let path = Path::new(&f.path);
         let ok = match (&f.before, f.dir) {
             (Some(copy), _) => restore_copy(Path::new(copy), path).is_ok(),
-            // Не пуст — там уже не только наше, остаётся; нет — и не надо.
+            // Not empty — there's more than ours there, it stays; missing — fine too.
             (None, true) => {
                 let _ = std::fs::remove_dir(path);
                 true
@@ -1534,7 +1545,7 @@ pub fn revert_applied_with(
         journal.applied.remove(section);
         journal.applied_values.remove(section);
         let snap = Path::new(&rec.snapshot);
-        // Стираем только свой каталог снимка.
+        // We erase only our own snapshot directory.
         if snap.starts_with(rexon_dir.join("applied")) {
             let _ = std::fs::remove_dir_all(snap);
         }
@@ -1543,7 +1554,7 @@ pub fn revert_applied_with(
     Ok(Some(failed))
 }
 
-/// Вернуть копию из снимка на место `path` (поверх того, что там сейчас).
+/// Put the copy from the snapshot back at `path` (over whatever is there now).
 fn restore_copy(copy: &Path, path: &Path) -> std::io::Result<()> {
     if let Ok(m) = std::fs::symlink_metadata(path) {
         if m.is_dir() {
@@ -1553,8 +1564,8 @@ fn restore_copy(copy: &Path, path: &Path) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    // Копия, а не перенос: сбой посреди возврата не теряет снимок. Ссылку
-    // на месте не снимаем — пишем сквозь неё, как писало нажатие.
+    // A copy, not a move: a failure midway through the restore doesn't lose the
+    // snapshot. A link in place is not removed — we write through it, as the press did.
     let data = std::fs::read(copy)?;
     crate::utils::atomic_write_bytes(&path.to_string_lossy(), &data)?;
     if let Ok(m) = std::fs::metadata(copy) {
@@ -1563,13 +1574,13 @@ fn restore_copy(copy: &Path, path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Каталог конфигов Rexon, в котором лежит журнал магазина `store_log`.
+/// The Rexon config directory that holds store journal `store_log`.
 pub fn rexon_dir_of_store_log(store_log: &str) -> Option<PathBuf> {
     Path::new(store_log).parent().map(Path::to_path_buf)
 }
 
 // ============================================================================
-// Проверки
+// Checks
 // ============================================================================
 
 #[cfg(test)]
@@ -1595,7 +1606,7 @@ mod tests {
     }
     fn no_spawn(_: &[String]) {}
 
-    /// Подменный контекст: ни одной настоящей программы.
+    /// Substitute context: not a single real program.
     fn ctx() -> crate::install_plan::Ctx<'static> {
         crate::install_plan::Ctx {
             install: false,
@@ -1609,8 +1620,8 @@ mod tests {
         }
     }
 
-    /// Профиль с обоими старыми журналами: магазин (тема GTK — каталог, цвета
-    /// — файл, путь, которого уже нет) и пакет `.rxn` (выключен в карте).
+    /// A profile with both old journals: store (a GTK theme — a directory, colors
+    /// — a file, a path that no longer exists) and a `.rxn` package (disabled in the map).
     fn legacy_profile(root: &Path) -> (PathBuf, String) {
         let rexon = root.join("config/rexon");
         let gtk = root.join("data/themes/Nordic");
@@ -1641,8 +1652,8 @@ mod tests {
         (rexon, store_text)
     }
 
-    /// Первое чтение переносит ОБА старых формата, ничего не теряя, и
-    /// старые файлы не трогает.
+    /// The first read migrates BOTH old formats, losing nothing, and does not
+    /// touch the old files.
     #[test]
     fn first_read_migrates_both_legacy_formats() {
         let root = scratch("migrate");
@@ -1659,7 +1670,7 @@ mod tests {
         assert_eq!(store.installed_at.as_deref(), Some("2026-10-01T10:00:00"));
         let whats: Vec<Option<What>> = store.placed.iter().map(|p| p.what).collect();
         assert_eq!(whats, vec![Some(What::Dir), Some(What::File), None], "пустой путь отброшен, пропавший — без вида");
-        // Карточка — запись старого журнала как есть.
+        // The card is the old journal record as is.
         let old: Value = serde_json::from_str(&store_text).unwrap();
         assert_eq!(Value::Object(store.card.clone().unwrap()), old["12345"]);
 
@@ -1673,14 +1684,14 @@ mod tests {
         assert_eq!(std::fs::read_to_string(rexon.join(STORE_LOG_NAME)).unwrap(), store_text);
         assert_eq!(std::fs::read_to_string(rexon.join(EXT_STATE_NAME)).unwrap(), state_before);
 
-        // Второе чтение — тот же журнал, файл не переписывается.
+        // The second read gives the same journal, the file is not rewritten.
         let again = load_at(&rexon).unwrap();
         assert_eq!(again, j);
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Сверка: ушедшее из старых уходит, точные пути `.rxn` сохраняются,
-    /// «включено» берётся из карты.
+    /// Reconciliation: what left the old ones leaves, exact `.rxn` paths are kept,
+    /// "enabled" is taken from the map.
     #[test]
     fn reconcile_keeps_recorded_paths_and_follows_legacy() {
         let ext = LegacyExt { id: "a".into(), name: "A".into(), kind: "theme-icons".into(), enabled: true, dir: "/x/a".into() };
@@ -1700,9 +1711,9 @@ mod tests {
         assert_eq!(out.items["rxn:a"].enabled, Some(false));
     }
 
-    /// Пути из плана: каталог с меткой — с владельцем, база, которая уже
-    /// была, — не наша, недостающая — заведённая, файл внутри своего
-    /// каталога отдельно не пишется, своя прежняя копия — не «была до».
+    /// Paths from the plan: a marked directory — with an owner, a base that
+    /// already existed — not ours, a missing one — created, a file inside its own
+    /// directory is not recorded separately, our own previous copy is not "existed before".
     #[test]
     fn placed_from_plan_steps() {
         let have = ["/h/.themes", "/h/.local/share/icons", "/h/.local/share/icons/Mine", "/h/.local/share"];
@@ -1740,9 +1751,9 @@ mod tests {
         );
     }
 
-    /// Удаление по журналу у `.rxn`: своё снято, заведённые каталоги — только
-    /// пустые, чужая метка и бывший до установки каталог — на месте, копия
-    /// пакета снята, запись забыта; программ не запускается.
+    /// Removal by journal for `.rxn`: ours is removed, created directories — only
+    /// empty ones, a foreign mark and a pre-existing directory stay in place, the
+    /// package copy is removed, the record forgotten; no programs are run.
     #[test]
     fn remove_rxn_entry_by_journal() {
         let root = scratch("rm-rxn");
@@ -1796,14 +1807,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Удаление по журналу у магазина (запись из сверки старого журнала):
-    /// каталог и файл сняты; путь, ставший ссылкой вместо каталога, — чужой.
+    /// Removal by journal for the store (a record reconciled from the old journal):
+    /// directory and file removed; a path that became a link instead of a directory is foreign.
     #[test]
     fn remove_store_entry_by_journal() {
         let root = scratch("rm-store");
         let (rexon, _) = legacy_profile(&root);
         let mut j = load_at(&rexon).unwrap();
-        // После сверки на месте каталога темы появилась ссылка человека.
+        // After reconciliation the person's link appeared in place of the theme directory.
         let swapped = root.join("data/themes/Swapped");
         std::fs::create_dir_all(&swapped).unwrap();
         j.items.get_mut("store:12345").unwrap().placed.push(Placed {
@@ -1825,12 +1836,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Сбой записи журнала не оставляет полуфайла и не трогает старые.
+    /// A failed journal write leaves no half-file and doesn't touch the old ones.
     #[test]
     fn failed_write_leaves_no_partial_file() {
         let root = scratch("fail-write");
         let (rexon, store_text) = legacy_profile(&root);
-        // На месте журнала — каталог: подмена имени не пройдёт.
+        // A directory in place of the journal: the name swap won't go through.
         std::fs::create_dir_all(journal_path(&rexon)).unwrap();
         assert!(save_at(&rexon, &Journal::default()).is_err());
         assert!(load_at(&rexon).is_err());
@@ -1847,10 +1858,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Шаг 5б: старые файлы читаются для переноса один раз. Дальше источник —
-    /// общий журнал: его правка видна читателям, хотя старый файл о ней не
-    /// знает. Правка старого файла без нас (прежняя версия Rexon после
-    /// отката) — снова перенос, и сам старый файл при этом не переписывается.
+    /// Step 5b: old files are read for migration once. After that the source is
+    /// the shared journal: its edit is visible to readers even though the old
+    /// file doesn't know about it. An edit of the old file without us (an older
+    /// Rexon version after a downgrade) — migration again, and the old file
+    /// itself is not rewritten.
     #[test]
     fn legacy_is_read_once_then_journal_is_the_source() {
         let root = scratch("once");
@@ -1860,14 +1872,14 @@ mod tests {
         assert_eq!(j.legacy_seen.store.as_deref(), Some(fingerprint(Some(&store_text)).as_str()));
         assert!(j.legacy_seen.state.is_some());
 
-        // Правка только в общем журнале (старый файл тот же) — видна.
+        // An edit only in the shared journal (the old file unchanged) — visible.
         j.items.get_mut("store:12345").unwrap().card.as_mut().unwrap().insert("name".into(), "Nordic (журнал)".into());
         save_at(&rexon, &j).unwrap();
         assert_eq!(store_log_view(&log)["12345"]["name"], "Nordic (журнал)", "старый файл перечитан вместо журнала");
         assert_eq!(view_at(&rexon).items["store:12345"].card.as_ref().unwrap()["name"], "Nordic (журнал)");
         assert_eq!(std::fs::read_to_string(&log).unwrap(), store_text, "читатель переписал старый файл");
 
-        // Прежняя версия Rexon дописала покупку в старый файл — перенос.
+        // An older Rexon version added a purchase to the old file — migration.
         let mut old = crate::ocs_store::parse_installed_log(Some(&store_text));
         old.insert("777".into(), serde_json::json!({"name": "Neon", "rexon_type": "icons", "paths": []}));
         let rolled = crate::ocs_store::serialize_installed_log(&old);
@@ -1881,11 +1893,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Писатели пишут общий журнал, а старые файлы — его зеркало ТЕМ ЖЕ
-    /// текстом, что писала прежняя логика: журнал магазина —
-    /// `serialize_installed_log` карты писателя, карта состояний —
-    /// `save_state_text` в порядке каталога расширений. Нетронутый файл не
-    /// переписывается.
+    /// Writers write the shared journal, and the old files are its mirror with
+    /// THE SAME text the old logic wrote: the store journal —
+    /// `serialize_installed_log` of the writer's map, the state map —
+    /// `save_state_text` in extensions directory order. An untouched file is not
+    /// rewritten.
     #[test]
     fn writers_write_journal_and_mirror_in_old_format() {
         let root = scratch("mirror");
@@ -1894,7 +1906,7 @@ mod tests {
         let state = rexon.join(EXT_STATE_NAME);
         let state_before = std::fs::read_to_string(&state).unwrap();
 
-        // Покупка магазина.
+        // A store purchase.
         let mut data = store_log_view(&log);
         let item = crate::ocs_store::InstalledItem {
             content_id: "777".into(),
@@ -1913,7 +1925,7 @@ mod tests {
         assert_eq!(j.legacy_seen.store.as_deref(), Some(fingerprint(Some(&mirror)).as_str()));
         assert_eq!(std::fs::read_to_string(&state).unwrap(), state_before, "покупка магазина переписала карту состояний");
 
-        // Переключение пакета `.rxn` и второй пакет: порядок — каталога.
+        // Toggling a `.rxn` package and a second package: the order is the directory's.
         let pkg = rexon.join("extensions/a-first");
         std::fs::create_dir_all(&pkg).unwrap();
         std::fs::write(pkg.join("manifest.json"), r#"{"id": "a-first", "name": "A", "type": "theme-icons"}"#).unwrap();
@@ -1926,7 +1938,7 @@ mod tests {
         assert_eq!(j.items["rxn:a-first"].enabled, Some(false));
         assert_eq!(std::fs::read_to_string(&log).unwrap(), mirror, "переключение .rxn переписало журнал магазина");
 
-        // Снятие пакета и покупки.
+        // Removing the package and the purchase.
         std::fs::remove_dir_all(&pkg).unwrap();
         set_rxn_enabled_at(&rexon, "a-first", None).unwrap();
         assert_eq!(std::fs::read_to_string(&state).unwrap(), crate::ext_manager::save_state_text(&[("my-icons".into(), true)]));
@@ -1939,9 +1951,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Зеркало не легло (каталог старого файла закрыт на запись): установка
-    /// всё равно записана — в общем журнале, — полуфайла нигде нет, старый
-    /// файл прежний, а следующая запись дописывает зеркало.
+    /// The mirror didn't land (the old file's directory is write-protected): the
+    /// install is recorded anyway — in the shared journal — there is no half-file
+    /// anywhere, the old file is unchanged, and the next write completes the mirror.
     #[test]
     fn failed_mirror_keeps_journal_and_leaves_no_partial_file() {
         use std::os::unix::fs::PermissionsExt;
@@ -1975,14 +1987,14 @@ mod tests {
         assert_eq!(rexon_names, vec!["extensions", EXT_STATE_NAME, JOURNAL_NAME, STORE_LOG_NAME], "полуфайл журнала");
         assert!(view.is_empty(), "снятая покупка видна: источник — старый файл, а не журнал");
 
-        // Следующая запись (или чтение писателем) дописывает зеркало.
+        // The next write (or a read by a writer) completes the mirror.
         load_at(&rexon).unwrap();
         assert_eq!(std::fs::read_to_string(&log).unwrap(), "{}");
         assert!(std::fs::symlink_metadata(&log).unwrap().file_type().is_symlink(), "ссылка на файл заменена файлом");
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Нечитаемый журнал откладывается и собирается заново из старых.
+    /// An unreadable journal is set aside and rebuilt from the old ones.
     #[test]
     fn broken_journal_is_rebuilt() {
         let root = scratch("broken");
@@ -1994,7 +2006,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Элемент v5 переживает запись и чтение; выбор берётся из правил v5.
+    /// A v5 element survives a write and a read; the choice is taken from the v5 rules.
     #[test]
     fn v5_element_round_trips() {
         use crate::rxn_manifest::{Accuracy, Choice};
@@ -2021,11 +2033,11 @@ mod tests {
         assert_eq!(parse(Some(&text)), Some(j));
     }
 
-    /// Читатель установленного на перенесённых старых данных видит то же,
-    /// что раньше видел в `ocs_installed.json`: те же карточки как есть, в
-    /// том же порядке (не по алфавиту ключей), с битым байтом — с заменой,
-    /// как прежде. Есть старый общий журнал (шаг 3б, без порядка) — то же
-    /// самое. Чтение ничего не пишет.
+    /// A reader of the installed set on migrated old data sees the same as it
+    /// used to see in `ocs_installed.json`: the same cards as is, in the same
+    /// order (not by key alphabet), with a broken byte — replaced, as before. With
+    /// an old shared journal (step 3b, without order) — the same. Reading writes
+    /// nothing.
     #[test]
     fn store_view_shows_old_log_as_is_and_writes_nothing() {
         let root = scratch("view");
@@ -2039,7 +2051,7 @@ mod tests {
   "1": {"name": "One BAD", "rexon_type": "kvantum", "paths": ["/nope/kv/One"]}
 }
 "#;
-        // Битый байт UTF-8 в имени.
+        // A broken UTF-8 byte in the name.
         let mut raw = Vec::new();
         let (head, tail) = text.split_once("BAD").unwrap();
         raw.extend_from_slice(head.as_bytes());
@@ -2056,7 +2068,7 @@ mod tests {
         assert_eq!(store_log_of(&view_at(&rexon)), old, "вид всего каталога конфигов — тот же");
         assert!(!journal_path(&rexon).exists(), "view_at записал общий журнал");
 
-        // Общий журнал шага 3б (без порядка, с прежней записью) — вид тот же.
+        // Step 3b shared journal (no order, with the previous record) — the view is the same.
         let prev = reconcile(None, &Legacy { store_log: Some(String::from_utf8_lossy(&raw).into_owned()), ..Default::default() }, &probe_live);
         let mut text = serialize(&Journal { store_order: Vec::new(), ..prev });
         assert!(!text.contains("store_order"));
@@ -2065,16 +2077,16 @@ mod tests {
         assert_eq!(store_log_view(&s(&log)), old, "журнал магазина главнее записи общего");
         assert_eq!(std::fs::read_to_string(journal_path(&rexon)).unwrap(), text, "чтение переписало общий журнал");
 
-        // Нет журнала магазина — пусто, как прежде.
+        // No store journal — empty, as before.
         std::fs::remove_file(&log).unwrap();
         assert!(store_log_view(&s(&log)).is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Ссылка `~/.themes/<тема>`, которую ставит `sync_theme_links` у темы
-    /// GTK магазина, записана в журнал видом «ссылка» вслед за темой, и
-    /// удаление по журналу снимает её раньше темы. Имя, занятое своей темой
-    /// или чужой ссылкой, в журнал не попадает.
+    /// The `~/.themes/<theme>` link that `sync_theme_links` sets for a store GTK
+    /// theme is recorded in the journal with kind "link" right after the theme,
+    /// and removal by journal removes it before the theme. A name taken by the
+    /// person's own theme or a foreign link doesn't get into the journal.
     #[test]
     fn store_theme_link_in_dot_themes_is_recorded_as_link() {
         let root = scratch("links");
@@ -2084,8 +2096,8 @@ mod tests {
             std::fs::create_dir_all(xdg.join(t).join("gtk-3.0")).unwrap();
             std::fs::write(xdg.join(t).join("gtk-3.0/gtk.css"), "x").unwrap();
         }
-        // «Mine» в ~/.themes — своя тема человека, «Other» — его же ссылка
-        // в другое место.
+        // "Mine" in ~/.themes is the person's own theme, "Other" is their own link
+        // to a different place.
         std::fs::create_dir_all(home.join(".themes/Mine")).unwrap();
         std::os::unix::fs::symlink("/elsewhere/Other", home.join(".themes/Other")).unwrap();
         let lines = crate::installed_scan::sync_theme_links(&s(&home));
@@ -2107,12 +2119,12 @@ mod tests {
         for cid in ["101", "102"] {
             assert_eq!(j.items[&key_of(Source::Store, cid)].placed.len(), 1, "{cid}: чужое имя в ~/.themes записано");
         }
-        // Записано в файле, а вид для читателей — без ссылки, как журнал магазина.
+        // Recorded in the file, while the readers' view has no link, like the store journal.
         let on_disk = parse(std::fs::read_to_string(journal_path(&rexon)).ok().as_deref()).unwrap();
         assert!(on_disk.items[&key_of(Source::Store, "100")].placed.iter().any(|p| p.path == link));
         assert_eq!(Value::Object(store_log_view(&s(&rexon.join(STORE_LOG_NAME)))), log);
 
-        // Удаление по журналу: ссылка — раньше темы.
+        // Removal by journal: the link goes before the theme.
         let r = removal_plan(nord, &probe_live);
         assert_eq!(
             r.steps,
@@ -2121,17 +2133,17 @@ mod tests {
                 ExtStep::RemoveTree { path: s(&xdg.join("Nord")), safe: true, ignore_errors: false },
             ]
         );
-        // Ссылки больше нет (сняли руками) — запись её забывает.
+        // The link is gone (removed by hand) — the record forgets it.
         std::fs::remove_file(&link).unwrap();
         let j = load_at(&rexon).unwrap();
         assert_eq!(j.items[&key_of(Source::Store, "100")].placed.len(), 1);
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Удаление `.rxn` внутри его плана: выключение — до файлов, перезагрузка
-    /// оболочки — после, записанное снимает журнал (и решает: бывший до
-    /// установки каталог остаётся), незаписанное — прежний шаг плана; копия
-    /// пакета — не здесь. Пакет без путей — `None` (прежний план целиком).
+    /// Removing `.rxn` within its plan: disabling — before the files, shell
+    /// restart — after, what is recorded is removed by the journal (which decides:
+    /// a pre-existing directory stays), what isn't — by the old plan step; the
+    /// package copy — not here. A package without paths — `None` (the old plan in full).
     #[test]
     fn rxn_removal_keeps_plan_around_journal_steps() {
         let root = scratch("merge");
@@ -2161,8 +2173,8 @@ mod tests {
         let plan = vec![
             off.clone(),
             tree(p("aurorae/T")),
-            tree(p("icons/Mine/sub")), // внутри бывшего до установки — не записано
-            tree(p("cache/T")),        // положила программа — не записано
+            tree(p("icons/Mine/sub")), // inside a pre-existing one — not recorded
+            tree(p("cache/T")),        // placed by a program — not recorded
             tree(p("themes/T")),
             reload.clone(),
         ];
@@ -2187,9 +2199,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Ссылка `~/.themes` на тему пакета `.rxn`, легшую в
-    /// `~/.local/share/themes`, записывается вслед за темой (как у магазина)
-    /// и снимается раньше неё; пропала — уходит из записи.
+    /// The `~/.themes` link to a `.rxn` package theme that landed in
+    /// `~/.local/share/themes` is recorded right after the theme (as for the store)
+    /// and removed before it; if it is gone — it leaves the record.
     #[test]
     fn rxn_theme_link_in_dot_themes_is_recorded() {
         let root = scratch("rxn-link");
@@ -2227,8 +2239,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// «Удалить» на плитке темы покупки: снимается только эта тема и её
-    /// ссылка `~/.themes`, прочие пути покупки — нет; незаписанный путь — `None`.
+    /// «Remove» on a purchase's theme tile: only that theme and its `~/.themes`
+    /// link are removed, other paths of the purchase are not; an unrecorded path — `None`.
     #[test]
     fn part_removal_takes_theme_and_its_link_only() {
         let link = Placed { path: "/h/.themes/N".into(), what: Some(What::Link), owner: None, pre_existed: false, of: Some("/h/.local/share/themes/N".into()) };
@@ -2253,7 +2265,7 @@ mod tests {
         assert!(part_removal(&e, &link.path, &probe).is_some_and(|r| r.steps == vec![ExtStep::RemoveFile { path: link.path.clone() }]));
     }
 
-    /// Всё под `root` побайтно (кроме `skip`): путь, вид, содержимое.
+    /// Everything under `root` byte for byte (except `skip`): path, kind, content.
     fn bytes_under(root: &Path, skip: &Path) -> Vec<(String, String)> {
         let mut out = Vec::new();
         let mut stack = vec![root.to_path_buf()];
@@ -2279,10 +2291,10 @@ mod tests {
         out
     }
 
-    /// Шаг 5а: нажатие «Применить» общим планом → снимок «что было» в
-    /// запись `applied` общего журнала → «вернуть как было» по ней: конфиги
-    /// побайтно прежние, запись и снимок сняты. Второе нажатие в том же
-    /// разделе не затирает раннее «что было».
+    /// Step 5a: an «Apply» press via the shared plan → a "what was there" snapshot
+    /// into the shared journal's `applied` record → «Restore as it was» from it:
+    /// configs byte-for-byte as before, record and snapshot removed. A second
+    /// press in the same section doesn't overwrite the earlier "what was there".
     #[test]
     fn applied_press_snapshot_and_revert() {
         use crate::install_plan::{exec_undoable, Ctx, Step, Undo};
@@ -2345,11 +2357,11 @@ mod tests {
             [s(&cfg.join("gtk-3.0/settings.ini")), s(&cfg.join("gtk-4.0")), s(&cfg.join("gtk-4.0/settings.ini")), s(&cfg.join("kdeglobals"))],
             "пути записаны не по разу или не в порядке записи"
         );
-        // Ранний снимок: у settings.ini GTK 3 — содержимое до ПЕРВОГО нажатия.
+        // Early snapshot: GTK 3 settings.ini has the content from before the FIRST press.
         let copy = rec.files[0].before.clone().expect("копия прежнего");
         assert_eq!(std::fs::read_to_string(copy).unwrap(), "[Settings]\ngtk-icon-theme-name=Old\n");
         assert_eq!(std::fs::read_dir(applied_snapshot_dir(&rexon, "icons")).unwrap().count(), 2, "лишние копии второго нажатия остались");
-        // Другие записи журнала «Применить» не трогает и сверка их не теряет.
+        // «Apply» doesn't touch other journal records and reconciliation doesn't lose them.
         assert!(j.items.is_empty());
 
         assert_eq!(revert_applied_at(&rexon, "icons").unwrap(), Some(Vec::new()));
@@ -2360,11 +2372,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// «Применить» меняет значения стола (`gsettings`, `dconf`, `xfconf`) —
-    /// прежние ложатся рядом с записью раздела, «вернуть как было»
-    /// возвращает их: заданное — прежним значением, не заданное — сбросом.
-    /// Второе нажатие раннее «что было» не затирает. Команды — подменный
-    /// стол, настоящие программы не запускаются.
+    /// «Apply» changes desktop values (`gsettings`, `dconf`, `xfconf`) — the
+    /// previous ones are stored next to the section record, «Restore as it was»
+    /// brings them back: a set one — with the previous value, an unset one — with
+    /// a reset. A second press doesn't overwrite the earlier "what was there".
+    /// Commands go to a substitute desktop, no real programs are run.
     #[test]
     fn applied_press_values_snapshot_and_revert() {
         use crate::install_plan::tests::{v, FakeDesk};
@@ -2393,9 +2405,9 @@ mod tests {
             let steps: Vec<Step> = vec![
                 ApplyStep::Primary(cmd(&["gsettings", "set", "org.a", "gtk-theme", &q])).into(),
                 ApplyStep::BestEffort(cmd(&["gsettings", "set", "org.a", "icon-theme", &q])).into(),
-                // Тот же ключ второй раз — снимок один, первый.
+                // The same key a second time — one snapshot, the first.
                 ApplyStep::BestEffort(cmd(&["gsettings", "set", "org.a", "gtk-theme", &q])).into(),
-                // Схемы нет — запись не удалась, снимать нечего.
+                // No schema — the write failed, nothing to capture.
                 ApplyStep::BestEffort(cmd(&["gsettings", "set", "org.nope", "k", &q])).into(),
                 ExtStep::Run { argv: v(&["dconf", "write", "/org/mate/marco/general/theme", &q]), timeout_secs: None }.into(),
                 ApplyStep::IfOk(cmd(&["xfconf-query", "-c", "xsettings", "-p", "/Net/ThemeName", "-s", theme])).into(),
@@ -2429,7 +2441,7 @@ mod tests {
             "прежние значения не те или не по разу"
         );
 
-        // Возврат, который не удался, — запись и значения остаются.
+        // A restore that failed — the record and the values stay.
         let refuse = |_: &[String], _: Option<u64>| crate::utils::RunReport { returncode: Some(1), ..Default::default() };
         let left = revert_applied_with(&rexon, "gtk", &|_| false, &refuse).unwrap().unwrap();
         assert_eq!(left.len(), 5, "{left:?}");
@@ -2443,8 +2455,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Журнал прежнего формата (без значений стола) читается как прежде, а
-    /// записи без значений не пишут лишнего поля.
+    /// A journal in the old format (without desktop values) reads as before, and
+    /// records without values don't write an extra field.
     #[test]
     fn applied_values_keep_old_journals() {
         let old = r#"{"format":1,"applied":{"icons":{"section":"icons","theme":"T","snapshot":"/s","files":[{"path":"/p","before":"/s/0001"}]}}}"#;

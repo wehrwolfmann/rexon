@@ -1,51 +1,52 @@
-//! Исполнитель операций над рабочими столами — порт ДЕЙСТВУЮЩЕЙ половины
-//! `install_de` из `rexon/system.py` вместе с тем, что она зовёт:
-//! `PackageManager.install_batch`, `ensure_display_manager`, пост-установкой
-//! MATE, подключением overlay Gentoo и защитой приложений по умолчанию
-//! (`SystemDefaultsProtector`).
+//! Executor of desktop operations: a port of the ACTING half of `install_de`
+//! from `rexon/system.py` together with what it calls:
+//! `PackageManager.install_batch`, `ensure_display_manager`, the MATE
+//! post-install, enabling the Gentoo overlay and the default application
+//! protection (`SystemDefaultsProtector`).
 //!
-//! ЗАЧЕМ. Решения этих операций переехали в ядро давно: планы и тексты
-//! скриптов — [`crate::system_plan`], совместимость дистрибутива —
-//! [`crate::distro_compat`], показ хода — [`crate::de_progress`], защита
-//! умолчаний — [`crate::defaults`]. Исполнял их только Python, и поэтому окно
-//! на Rust на кнопках «Установить», «Проверить / Восстановить» и «Проверить
-//! мой стол» могло лишь отослать человека в классическое окно.
+//! WHY. The decisions of these operations moved into the core long ago:
+//! plans and script texts in [`crate::system_plan`], distribution
+//! compatibility in [`crate::distro_compat`], progress display in
+//! [`crate::de_progress`], defaults protection in [`crate::defaults`]. Only
+//! Python executed them, so the Rust window could only send the person to
+//! the classic window on the «Install», «Check / Repair» and «Check my
+//! desktop» buttons.
 //!
-//! Разделение то же, что у соседа [`crate::system_exec`]: **ядро решает,
-//! исполнитель делает**.
-//!   * ЧТО делать — планы и тексты ядра; здесь нет ни одной своей команды
-//!     пакетного менеджера, ни одного своего пути к привилегированному
-//!     помощнику;
-//!   * ЧЕМ делать — трейт [`DeOpsIo`] (надстройка над [`SystemIo`]): в
-//!     продукте [`LiveDeOpsIo`], в сверках — подставной, и живая машина при
-//!     этом не трогается вовсе;
-//!   * ПОРЯДОК шагов и ход дела — [`DeOpsExec`], события — в [`DeOpSink`].
+//! The split is the same as in the neighbour [`crate::system_exec`]: **the
+//! core decides, the executor does**.
+//!   * WHAT to do: the core's plans and texts; there is not a single package
+//!     manager command of our own here, nor a single path of our own to a
+//!     privileged helper;
+//!   * WITH WHAT: the [`DeOpsIo`] trait (an extension of [`SystemIo`]): in
+//!     the product [`LiveDeOpsIo`], in parity checks a fake one, and the live
+//!     machine is not touched at all;
+//!   * the ORDER of steps and progress: [`DeOpsExec`], events go to [`DeOpSink`].
 //!
-//! ⛔ ЗАЩИТА ОТ ДУРАКА, которая обязана работать и здесь:
-//!   * отказ дистрибутива объясняется ДО первого побочного действия — ни
-//!     снимка умолчаний, ни копии панели, ни запроса пароля;
-//!   * экран входа после установки обязан быть: если включённого нет,
-//!     SDDM ставится и включается САМ, без вопроса (решение —
-//!     [`plan::ensure_dm_plan`], зовётся для ЛЮБОГО стола, как в оригинале).
+//! ⛔ FOOLPROOF GUARDS that must work here too:
+//!   * a distribution refusal is explained BEFORE the first side effect: no
+//!     defaults snapshot, no panel copy, no password prompt;
+//!   * there must be a login screen after the install: if none is enabled,
+//!     SDDM is installed and enabled AUTOMATICALLY, without asking (decision:
+//!     [`plan::ensure_dm_plan`], called for ANY desktop, as in the original).
 //!
-//! ⭐ ОТМЕНА. У Python её не было вовсе: кнопка окна хода была выключена до
-//! конца. Здесь отменить можно, но ТОЛЬКО пока система не тронута: до
-//! первого запуска пакетного менеджера и во время ожидания чужого замка
-//! (оно длится до пяти минут, и сидеть перед окном без выхода — ровно та
-//! ловушка, которую правило #13 запрещает). Как только пошла транзакция,
-//! отмена выключается: оборвать `pacman` посреди установки — значит
-//! сломать систему своими руками.
+//! ⭐ CANCELLATION. Python had none at all: the progress window button was
+//! disabled until the end. Here one can cancel, but ONLY while the system is
+//! untouched: before the first package manager run and while waiting for
+//! someone else's lock (that lasts up to five minutes, and sitting in front
+//! of a window with no way out is exactly the trap rule #13 forbids). As soon
+//! as the transaction starts, cancellation is disabled: aborting `pacman` in
+//! the middle of an install means breaking the system with our own hands.
 //!
-//! ⭐ ЧТО ПОЧИНЕНО ПРИ ПЕРЕНОСЕ (правило #16):
-//!   1. Строки хода, которые оригинал писал человеку жаргоном («Сохранение
-//!      текущих defaults», «MIME-ассоциации DE», «ensure_display_manager:
-//!      установка sddm код 1»), здесь сказаны по-русски.
-//!   2. Хвост сборки из AUR на пост-установке MATE больше не отбрасывает
-//!      полосу хода назад: оригинал слал его стадией `aur` с долей 75 %
-//!      посреди этапа, стоящего на 85 %.
-//!   3. План установки проверяется на незнакомые шаги ДО первого из них, а
-//!      не посреди исполнения: незнакомый шаг, найденный после записи
-//!      скрипта, оставлял бы мусор во временном каталоге.
+//! ⭐ WHAT WAS FIXED IN THE PORT (rule #16):
+//!   1. Progress lines the original wrote to the person in jargon ("Saving
+//!      current defaults", "DE MIME associations", "ensure_display_manager:
+//!      installing sddm code 1") are said here in plain language.
+//!   2. The AUR build tail of the MATE post-install no longer moves the
+//!      progress bar back: the original sent it as the `aur` stage with a 75 %
+//!      share in the middle of a stage standing at 85 %.
+//!   3. The install plan is checked for unknown steps BEFORE the first of
+//!      them, not in the middle of execution: an unknown step found after the
+//!      script was written would leave garbage in the temporary directory.
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -66,40 +67,41 @@ use crate::system_plan::{self as plan, LockWaitStep, LogTailKind, PlanStep, RunS
 use crate::i18n::{ntr, tr, trf};
 use crate::utils::{self, RunOutcome};
 
-/// Связка «композитор + оболочка»: установка, вход и снятие.
+/// The "compositor + shell" bundle: install, login and removal.
 mod shells;
 pub use shells::{shell_install_live, shell_remove_live, shell_switch_live};
 
 // ============================================================================
-// Тексты хода дела
+// Progress texts
 // ============================================================================
 
-/// Стол, которого нет в базе ядра.
+/// A desktop that is not in the core's database.
 pub fn unknown_de_message(de_id: &str) -> String {
     // TRANSLATORS: %1 is a desktop environment id.
     trf("Rexon doesn't know the “%1” desktop.", &[&de_id])
 }
 
-/// Итог отменённой операции. Отмена возможна только пока система не
-/// тронута, поэтому это обещание, а не надежда.
+/// Result of a cancelled operation. Cancellation is possible only while the
+/// system is untouched, so this is a promise, not a hope.
 pub fn cancelled_message() -> String {
     tr("The operation was cancelled. The system wasn't changed.")
 }
-/// Заголовок окна хода после отмены — ключ этапа хода (его пишет и
-/// `installer_exec` в `progress`), не подпись: подпись — [`status_cancelled`].
+/// Progress window title after cancellation: the progress stage key (also
+/// written by `installer_exec` into `progress`), not a caption: the caption
+/// is [`status_cancelled`].
 pub const STATUS_CANCELLED: &str = "Отменено";
-/// Заголовок окна хода после отмены — на языке интерфейса.
+/// Progress window title after cancellation, in the UI language.
 pub fn status_cancelled() -> String {
     // TRANSLATORS: status line of the operation window after cancelling.
     tr("Cancelled")
 }
-/// Вторая операция, пока идёт первая.
+/// A second operation while the first one is running.
 pub fn busy_message() -> String {
     tr("A desktop operation is already running — wait until it finishes.")
 }
 
-/// Подписи кнопок окна операции. «Да» и «Нет» — как у вопроса классического
-/// окна; безопасный ответ («Нет») стоит под фокусом первым кадром.
+/// Operation window button captions. «Yes» and «No» as in the classic
+/// window's question; the safe answer («No») has focus on the first frame.
 pub fn dialog_yes() -> String {
     // TRANSLATORS: button in a question dialog.
     tr("Yes")
@@ -108,57 +110,58 @@ pub fn dialog_no() -> String {
     // TRANSLATORS: button in a question dialog.
     tr("No")
 }
-/// Кнопка отмены — видна только пока система не тронута.
+/// The cancel button: visible only while the system is untouched.
 pub fn dialog_cancel() -> String {
     // TRANSLATORS: button that cancels a running desktop operation.
     tr("Cancel")
 }
 
-/// Строка подвала, пока окно ждёт ответа человека.
+/// Footer line while the window waits for the person's answer.
 pub fn awaiting_answer(title: &str) -> String {
     // TRANSLATORS: %1 is the title of a question window.
     trf("“%1” — answer in the window that opened.", &[&title])
 }
 
-/// Строка подвала с итогом операции.
+/// Footer line with the operation result.
 pub fn operation_footer(title: &str, status: &str) -> String {
     format!("{title} — {status}")
 }
 
-/// Какого рода строка подвала главного окна — от этого зависит, сколько
-/// она живёт.
+/// What kind of main window footer line this is: this decides how long it
+/// lives.
 ///
-/// ЗАЧЕМ. Подвал раньше держал последнее сообщение вечно: «Восстановление
-/// Wayfire — Завершено ✅» висело часами, когда человек давно работал в
-/// «Оформлении» (снимок 16.11.2026), и читалось как что-то происходящее
-/// сейчас. Решение о сроке — здесь; окно только исполняет.
+/// WHY. The footer used to keep the last message forever: «Wayfire repair:
+/// Done ✅» hung for hours while the person had long been working in
+/// «Appearance» (screenshot of 16.11.2026), and read as something happening
+/// now. The lifetime decision is made here; the window only executes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FooterKind {
-    /// Ждёт человека или дела: открыт вопрос или отказ, идёт проверка.
-    /// Таймера нет — строку снимает само окно операции (закрытие вопроса
-    /// или отказа) либо следующий итог.
+    /// Waiting for the person or for work: a question or refusal is open, a
+    /// check is running. No timer: the line is removed by the operation window
+    /// itself (closing the question or refusal) or by the next result.
     #[default]
     Pending,
-    /// Итог удачи, отмена, сведение («операция уже идёт»): видна
-    /// [`FOOTER_NOTICE_MS`] и уходит при переходе в другой раздел.
+    /// A success result, a cancellation, a notice ("an operation is already
+    /// running"): visible for [`FOOTER_NOTICE_MS`] and gone when switching to
+    /// another section.
     Notice,
-    /// Ошибка: держится, пока человек не щёлкнет по подвалу (или не придёт
-    /// новое сообщение). Смена раздела её не снимает — неудачу легко
-    /// проглядеть, если она исчезает сама.
+    /// An error: stays until the person clicks the footer (or a new message
+    /// arrives). Switching sections does not remove it: a failure is easy to
+    /// miss if it disappears by itself.
     Error,
 }
 
-/// Сколько видно сведение подвала, мс.
+/// How long a footer notice is visible, ms.
 pub const FOOTER_NOTICE_MS: u32 = 12_000;
 
-/// Как окно обходится со строкой подвала данного рода.
+/// How the window treats a footer line of a given kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FooterHold {
-    /// Через сколько миллисекунд строка снимается сама; 0 — не снимается.
+    /// After how many milliseconds the line is removed by itself; 0: it is not removed.
     pub timeout_ms: u32,
-    /// Снимается ли при переходе в другой раздел окна.
+    /// Whether it is removed when switching to another window section.
     pub clear_on_section_change: bool,
-    /// Снимается ли щелчком по подвалу.
+    /// Whether it is removed by clicking the footer.
     pub click_dismisses: bool,
 }
 
@@ -182,8 +185,8 @@ pub fn footer_hold(kind: FooterKind) -> FooterHold {
     }
 }
 
-/// Род строки с итогом операции: неудача — ошибка, удача и отмена
-/// (система не тронута) — сведение.
+/// Kind of the result line: a failure is an error, success and cancellation
+/// (the system is untouched) are a notice.
 pub fn outcome_footer_kind(outcome: &DeOpOutcome) -> FooterKind {
     if outcome.ok || outcome.cancelled {
         FooterKind::Notice
@@ -192,7 +195,7 @@ pub fn outcome_footer_kind(outcome: &DeOpOutcome) -> FooterKind {
     }
 }
 
-/// Род строки по признаку удачи (сохранение и возврат панели и т. п.).
+/// Kind of the line by the success flag (saving and restoring the panel, etc.).
 pub fn result_footer_kind(ok: bool) -> FooterKind {
     if ok {
         FooterKind::Notice
@@ -238,8 +241,9 @@ fn install_intro(main: usize, aur: usize) -> String {
     }
 }
 
-/// Вступление «Проверить / Восстановить»: стол уже стоит, пакетный менеджер
-/// только сверит набор и доставит недостающее — «Установка» тут неправда.
+/// Intro of «Check / Repair»: the desktop is already installed, the package
+/// manager will only verify the set and add what is missing, so «Install»
+/// would be untrue here.
 fn check_intro(main: usize, aur: usize) -> String {
     let head = ntr("🔍 Checking: %n package", "🔍 Checking: %n packages", main as u64);
     if aur > 0 {
@@ -249,56 +253,56 @@ fn check_intro(main: usize, aur: usize) -> String {
     }
 }
 
-/// Итог главного шага, когда pacman ответил «there is nothing to do».
+/// Result of the main step when pacman answered "there is nothing to do".
 fn main_already_installed() -> String {
     tr("✅ The main packages are all in place — nothing to install")
 }
 
-/// Итог «Проверить / Восстановить»: ничего не понадобилось.
+/// Result of «Check / Repair»: nothing was needed.
 fn checked_message(display: &str) -> String {
     // TRANSLATORS: %1 is a desktop environment name.
     trf("✅ %1 checked — everything is in place", &[&display])
 }
 
-/// Итог «Проверить / Восстановить»: недостающее доставлено.
+/// Result of «Check / Repair»: what was missing has been added.
 fn repaired_message(display: &str) -> String {
     // TRANSLATORS: %1 is a desktop environment name.
     trf("✅ %1 checked — the missing parts are installed", &[&display])
 }
 
-/// Итог «Проверить / Восстановить»: не всё удалось доставить (почему —
-/// строками выше).
+/// Result of «Check / Repair»: not everything could be added (why: in the
+/// lines above).
 fn repair_incomplete_message(display: &str) -> String {
     // TRANSLATORS: %1 is a desktop environment name.
     trf("⚠️ %1 checked, but not everything could be installed — see above", &[&display])
 }
 
-/// Приложения по умолчанию под стол записаны (подробности — в журнал Rexon).
+/// Default applications for the desktop are written (details in the Rexon log).
 fn defaults_set_message(display: &str) -> String {
     // TRANSLATORS: %1 is a desktop environment name.
     trf("✅ Default apps for %1 are set", &[&display])
 }
 
-/// Защищённые умолчания все на месте — возвращать нечего.
+/// All protected defaults are in place: nothing to restore.
 fn defaults_kept_message() -> String {
     tr("✅ Your default apps are in place")
 }
 
-/// Защищённое умолчание, которое установка перетёрла, возвращено.
+/// A protected default that the install overwrote has been restored.
 fn default_restored_line(label: &str) -> String {
     // TRANSLATORS: %1 is an app kind with its icon, e.g. “🗂️ File Manager”.
     trf("%1: your choice is back", &[&label])
 }
 
-/// Свои списки «чем открывать» записаны для столов `names`.
+/// Our own "open with" lists are written for the desktops `names`.
 fn mimeapps_written_message(names: &str) -> String {
     // TRANSLATORS: %1 is a comma-separated list of desktop environment names.
     trf("✅ File associations saved for: %1", &[&names])
 }
 
-/// Строки журнала приложений по умолчанию → что показать человеку в окне:
-/// только предупреждения и ошибки, без номеров процессов. Всё остальное
-/// (имена служб D-Bus, пути файлов, «уже так») — для журнала Rexon.
+/// Default application log lines → what to show the person in the window:
+/// only warnings and errors, without process numbers. Everything else (D-Bus
+/// service names, file paths, "already so") is for the Rexon log.
 pub fn window_defaults_lines(lines: &[String]) -> Vec<String> {
     lines
         .iter()
@@ -308,8 +312,8 @@ pub fn window_defaults_lines(lines: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Убрать из строки «(pid 4613)» и «pid 4613, » — номер процесса человеку
-/// ничего не говорит (в журнале Rexon строка остаётся целиком).
+/// Remove "(pid 4613)" and "pid 4613, " from the line: a process number
+/// tells the person nothing (the Rexon log keeps the line in full).
 fn strip_pids(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
     let mut rest = line;
@@ -325,7 +329,7 @@ fn strip_pids(line: &str) -> String {
         let before = &rest[..i];
         let after = &rest[end..];
         if before.ends_with('(') && after.starts_with(')') {
-            // « (pid 1)» целиком.
+            // " (pid 1)" in full.
             out.push_str(before[..before.len() - 1].trim_end());
             rest = &after[1..];
         } else if after.starts_with(", ") {
@@ -341,7 +345,7 @@ fn strip_pids(line: &str) -> String {
     out
 }
 
-/// pacman ничего не ставил: весь набор уже стоял (`--needed`).
+/// pacman installed nothing: the whole set was already installed (`--needed`).
 pub fn pacman_nothing_to_do(log: &str) -> bool {
     log.lines().any(|l| l.trim().trim_start_matches("::").trim().eq_ignore_ascii_case("there is nothing to do"))
 }
@@ -370,7 +374,7 @@ fn restore_failed(e: &str) -> String {
     trf("Couldn't restore the default apps: %1", &[&e])
 }
 
-/// Начало «Добавить вариант …»: без перечня всего набора стола.
+/// Start of «Add variant …»: without listing the desktop's whole set.
 fn session_adding_message(kind: system::SessionKind, display: &str) -> String {
     match kind {
         // TRANSLATORS: %1 is a desktop environment name.
@@ -380,7 +384,7 @@ fn session_adding_message(kind: system::SessionKind, display: &str) -> String {
     }
 }
 
-/// Итог «Добавить вариант …» с сеансом, как его пишет экран входа.
+/// Result of «Add variant …» with the session as the login screen writes it.
 fn session_added_message(kind: system::SessionKind, display: &str, session: &str) -> String {
     match kind {
         system::SessionKind::Wayland => trf(
@@ -433,7 +437,7 @@ fn ensure_dm_enable_failed(why: &str) -> String {
     trf("Couldn't enable the login screen: %1", &[&why])
 }
 
-/// Код возврата либо «не ответила» — для строк хода.
+/// Exit code or "did not answer", for progress lines.
 fn run_why(out: &RunOut) -> String {
     match out.outcome {
         RunOutcome::Timeout => tr("the command ran out of time"),
@@ -453,21 +457,21 @@ fn run_why(out: &RunOut) -> String {
 }
 
 // ============================================================================
-// Трейт исполнителя
+// Executor trait
 // ============================================================================
 
-/// Показания часов для имён файлов и отметок времени.
+/// Clock readings for file names and timestamps.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Clock {
     /// `datetime.now().isoformat()`.
     pub iso: String,
     /// `datetime.now().isoformat(timespec="seconds")`.
     pub iso_seconds: String,
-    /// Миллисекунды эпохи — для событий моста.
+    /// Epoch milliseconds, for bridge events.
     pub epoch_ms: u64,
 }
 
-/// Событие моста BonziBuddy об операции со столом.
+/// BonziBuddy bridge event about a desktop operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BridgeEvent {
     DeInstalled(String),
@@ -479,8 +483,8 @@ fn removing_message(display: &str) -> String {
     trf("🗑️ Removing %1", &[&display])
 }
 
-/// Всё, что есть у удаляемого стола, нужно столу, в котором человек сидит,
-/// или его экрану входа: снимать нечего.
+/// Everything the desktop being removed has is needed by the desktop the
+/// person is sitting in, or by its login screen: nothing to remove.
 fn remove_all_shared_message(display: &str) -> String {
     // TRANSLATORS: %1 is a desktop environment name.
     trf(
@@ -494,7 +498,7 @@ fn removed_message(display: &str) -> String {
     trf("✅ %1 removed", &[&display])
 }
 
-/// Удаление не уложилось во время — это не то же, что «не удалось».
+/// The removal did not fit into the time limit: not the same as "failed".
 pub fn remove_timeout_message() -> String {
     tr("The removal ran out of time. Check whether another program is using the package manager.")
 }
@@ -529,74 +533,74 @@ fn logout_not_started(cmd: &str) -> String {
     trf("%1: didn't start", &[&cmd])
 }
 
-/// Побочные действия операций над столами СВЕРХ [`SystemIo`]. Ни одного
-/// решения: каждый метод — один поход наружу или один готовый исполнитель
-/// ядра.
+/// Side effects of desktop operations ON TOP of [`SystemIo`]. Not a single
+/// decision: each method is one trip outside or one ready executor of the core.
 pub trait DeOpsIo: SystemIo {
-    /// Запуск с выводом (stdout и stderr вместе) в файл — для сборки AUR,
-    /// чей ход читается из этого файла на лету.
+    /// Run with output (stdout and stderr together) into a file: for AUR builds,
+    /// whose progress is read from that file on the fly.
     fn run_to_file(&self, argv: &[String], timeout_secs: Option<u64>, log_path: &str) -> RunOut;
-    /// `tempfile.mkstemp(prefix, suffix)` → путь.
+    /// `tempfile.mkstemp(prefix, suffix)` → path.
     fn temp_file(&self, prefix: &str, suffix: &str) -> Result<String, String>;
-    /// `tempfile.mkdtemp(prefix, dir=parent)` → путь.
+    /// `tempfile.mkdtemp(prefix, dir=parent)` → path.
     fn temp_dir(&self, prefix: &str, parent: Option<&str>) -> Result<String, String>;
-    /// Записать файл целиком и выставить права.
+    /// Write a whole file and set permissions.
     fn write_file_mode(&self, path: &str, content: &str, mode: u32) -> Result<(), String>;
     /// `os.makedirs(path, exist_ok=True)`.
     fn make_dirs(&self, path: &str) -> Result<(), String>;
-    /// Удалить файл; ошибки не важны.
+    /// Delete a file; errors do not matter.
     fn remove_file(&self, path: &str);
     /// `shutil.rmtree(path, ignore_errors=True)`.
     fn remove_tree(&self, path: &str);
-    /// Монотонные секунды — для ожидания замка.
+    /// Monotonic seconds, for waiting on the lock.
     fn elapsed_secs(&self) -> f64;
-    /// Поспать.
+    /// Sleep.
     fn sleep_secs(&self, secs: u64);
-    /// Часы.
+    /// Clock.
     fn clock(&self) -> Clock;
-    /// Читать растущий журнал, отдавая строки хода. `None` — читать нечем
-    /// (подставной исполнитель).
+    /// Read a growing log, emitting progress lines. `None`: nothing to read with
+    /// (a fake executor).
     fn tail_log(
         &self,
         path: &str,
         kind: LogTailKind,
         emit: Arc<dyn Fn(&str, &str) + Send + Sync>,
     ) -> Option<plan::LogTail>;
-    /// Полная копия настроек Plasma (`PlasmaProtector.backup_panel(full=True)`).
+    /// Full copy of the Plasma settings (`PlasmaProtector.backup_panel(full=True)`).
     fn plasma_backup(&self, reason: &str) -> Result<(bool, String), String>;
-    /// Приложения по умолчанию под стол (`DEAppSwitcher.on_switch_de`).
+    /// Default applications for the desktop (`DEAppSwitcher.on_switch_de`).
     fn app_defaults_switch(&self, de_id: &str) -> (bool, Vec<String>);
-    /// Копия конфигов стола (`BackupManager.create_backup`) → имя копии и
-    /// сколько путей в неё легло.
+    /// Copy of the desktop configs (`BackupManager.create_backup`) → the copy
+    /// name and how many paths went into it.
     fn de_config_backup(&self, de_id: &str, paths: &[String]) -> Result<(String, usize), String>;
-    /// Событие моста BonziBuddy. Мост вспомогательный — отказ не важен.
+    /// BonziBuddy bridge event. The bridge is auxiliary: a failure does not matter.
     fn bridge_notify(&self, event: &BridgeEvent);
-    /// Lock-файлы пакетного менеджера, которых ждать перед его запуском.
+    /// Package manager lock files to wait for before running it.
     ///
-    /// Путь — факт о машине, а не о порядке действий, поэтому приходит от
-    /// исполнителя: стенд на подставных `pkexec`/`pacman` ждёт свой замок во
-    /// временном каталоге, а не настоящий `/var/lib/pacman/db.lck`, который
-    /// держит живой `pacman -Syu` владельца (до 300 с ожидания).
+    /// The path is a fact about the machine, not about the order of actions, so
+    /// it comes from the executor: a test bench on fake `pkexec`/`pacman` waits
+    /// for its own lock in a temporary directory, not for the real
+    /// `/var/lib/pacman/db.lck` held by the owner's live `pacman -Syu` (up to
+    /// 300 s of waiting).
     fn pkg_lock_paths(&self, family: PkgFamily) -> Vec<String> {
         plan::lock_paths(family).iter().map(|p| p.to_string()).collect()
     }
-    /// Довести переменные из `~/.config/environment.d` до сеансов, которые
-    /// этот каталог не читают (`compositor_autostart::sync_session_env`).
-    /// Подставной исполнитель живой профиль не трогает — по умолчанию
-    /// ничего не делает; живой зовёт настоящую синхронизацию.
+    /// Carry the variables from `~/.config/environment.d` to sessions that do not
+    /// read that directory (`compositor_autostart::sync_session_env`). A fake
+    /// executor does not touch the live profile: by default it does nothing; the
+    /// live one calls the real sync.
     fn sync_session_env(&self) {}
 }
 
-/// Куда исполнитель отдаёт ход дела. Зовётся из рабочего потока И из потока
-/// чтения журнала — отсюда `Send + Sync`.
+/// Where the executor sends progress. Called from the worker thread AND from
+/// the log reader thread, hence `Send + Sync`.
 pub trait DeOpSink: Send + Sync {
-    /// Сообщение о ходе: этап, текст, доля (`None` — полосу не двигать).
+    /// Progress message: stage, text, share (`None`: do not move the bar).
     fn progress(&self, stage: &str, message: &str, fraction: Option<f64>);
-    /// Можно ли сейчас отменить операцию.
+    /// Whether the operation can be cancelled now.
     fn cancellable(&self, allowed: bool);
 }
 
-/// Флаг отмены, общий для окна и рабочего потока.
+/// Cancellation flag shared by the window and the worker thread.
 #[derive(Debug, Clone, Default)]
 pub struct CancelToken(Arc<AtomicBool>);
 
@@ -612,20 +616,20 @@ impl CancelToken {
     }
 }
 
-/// Чем кончилась операция.
+/// How the operation ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeOpOutcome {
     pub ok: bool,
     pub message: String,
-    /// Отменена человеком, пока система не была тронута.
+    /// Cancelled by the person while the system was untouched.
     pub cancelled: bool,
-    /// Сделанное заработает только после перезагрузки (новое ядро или модуль
-    /// ядра, впервые включённый экран входа) — тогда итог установки стола
-    /// говорит «перезагрузите», иначе «выйдите из сеанса».
+    /// What was done takes effect only after a reboot (a new kernel or kernel
+    /// module, a login screen enabled for the first time): then the desktop
+    /// install result says "reboot", otherwise "log out".
     pub restart_needed: bool,
 }
 
-/// Почему операция остановилась раньше конца.
+/// Why the operation stopped before the end.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Stop {
     Failed(String),
@@ -634,8 +638,8 @@ enum Stop {
 
 type Step<T> = Result<T, Stop>;
 
-/// Отправитель событий: помнит, объявлялась ли ошибка (для правила
-/// [`de_progress::worker_error_emit`]), и годится для потока чтения журнала.
+/// Event sender: remembers whether an error was announced (for the
+/// [`de_progress::worker_error_emit`] rule), and is fit for the log reader thread.
 #[derive(Clone)]
 struct Emitter {
     sink: Arc<dyn DeOpSink>,
@@ -650,8 +654,8 @@ impl Emitter {
         self.sink.progress(stage, message, fraction);
     }
 
-    /// Сообщение шагов пакетного менеджера: долю полосы по стадии считает
-    /// ядро (`install_de_fraction`) — порт замыкания `_pkg_cb`.
+    /// Message of package manager steps: the bar share per stage is computed by
+    /// the core (`install_de_fraction`): a port of the `_pkg_cb` closure.
     fn pkg(&self, stage: &str, message: &str) {
         self.emit(stage, message, plan::install_de_fraction(stage, message));
     }
@@ -662,9 +666,9 @@ impl Emitter {
     }
 }
 
-/// Журнал Rexon: какие члены групп выкинуты из установки из-за конфликта
-/// (`plan::InstallPreview::conflict_skipped`) — окно показывает объяснение,
-/// а здесь остаются пакеты и пара конфликта для разбора.
+/// Rexon log: which group members were dropped from the install because of a
+/// conflict (`plan::InstallPreview::conflict_skipped`): the window shows an
+/// explanation, and the packages and the conflict pair stay here for analysis.
 fn log_conflict_skips(p: &plan::InstallPreview) {
     for s in &p.conflict_skipped {
         let c = &s.conflict;
@@ -684,19 +688,19 @@ fn log_conflict_skips(p: &plan::InstallPreview) {
 }
 
 // ============================================================================
-// Исполнитель
+// Executor
 // ============================================================================
 
-/// Порядок шагов операций над столами поверх [`DeOpsIo`].
+/// Order of desktop operation steps on top of [`DeOpsIo`].
 pub struct DeOpsExec<'a, IO: DeOpsIo + ?Sized> {
     io: &'a IO,
     sys: SystemExec<'a, IO>,
     out: Emitter,
     cancel: CancelToken,
     cancellable: Cell<Option<bool>>,
-    /// См. [`DeOpOutcome::restart_needed`]; ставят шаги операции.
+    /// See [`DeOpOutcome::restart_needed`]; set by the operation steps.
     restart_needed: Cell<bool>,
-    /// Главный шаг установки ничего не ставил (всё уже стояло).
+    /// The main install step installed nothing (everything was already there).
     main_nothing_to_do: Cell<bool>,
 }
 
@@ -728,8 +732,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         self.emit(de_progress::STAGE_RAW, message, None);
     }
 
-    /// Журнал приложений по умолчанию: целиком — в журнал Rexon, в окно —
-    /// предупреждения ([`window_defaults_lines`]) и одна строка итога.
+    /// Default applications log: in full to the Rexon log, to the window the
+    /// warnings ([`window_defaults_lines`]) and one result line.
     fn show_defaults_lines(&self, lines: &[String], display: &str) {
         for line in lines {
             crate::log_info!("appdefaults", "{}", line.trim());
@@ -747,7 +751,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
     }
 
-    /// Точка, где отмена ещё безопасна.
+    /// A point where cancellation is still safe.
     fn checkpoint(&self) -> Step<()> {
         if self.cancel.is_cancelled() {
             Err(Stop::Cancelled)
@@ -756,15 +760,15 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
     }
 
-    /// Дальше отмены нет: пошли изменения системы.
+    /// No cancellation from here on: system changes have started.
     fn point_of_no_return(&self) -> Step<()> {
         self.checkpoint()?;
         self.set_cancellable(false);
         Ok(())
     }
 
-    /// Итог: ошибка, о которой по ходу никто не сказал, объявляется здесь —
-    /// тем же правилом ядра, что у Python-воркера.
+    /// Result: an error nobody mentioned along the way is announced here, by the
+    /// same core rule as in the Python worker.
     fn finish(&self, result: Step<String>) -> DeOpOutcome {
         self.set_cancellable(false);
         match result {
@@ -798,7 +802,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
     }
 
-    // ── Окружение ────────────────────────────────────────────────────────
+    // ── Environment ──────────────────────────────────────────────────────
 
     fn home(&self) -> String {
         let h = self.io.env("HOME");
@@ -834,8 +838,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         )
     }
 
-    /// SteamOS ли под нами — тем же детектом, что решает об установке
-    /// (`DistroCompat::is_steamos`), по os-release из того же ввода-вывода.
+    /// Whether we are on SteamOS: the same detection that decides on the install
+    /// (`DistroCompat::is_steamos`), from os-release via the same I/O.
     fn on_steamos(&self) -> bool {
         dc::is_steamos_id(&self.detector().distro_id())
     }
@@ -854,12 +858,12 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         self.io.run(argv, None, false).rc() == Some(0)
     }
 
-    // ── Совместимость дистрибутива ───────────────────────────────────────
+    // ── Distribution compatibility ───────────────────────────────────────
 
-    /// Вердикт «можно ли ставить этот стол здесь» — порт
-    /// `distro_compat.explain_de_install`. Решает ядро
-    /// (`DistroCompat::install_reason`); здесь только сырьё: os-release,
-    /// семейство и, на Astra SE, состояние ЗПС.
+    /// Verdict "can this desktop be installed here": a port of
+    /// `distro_compat.explain_de_install`. The core decides
+    /// (`DistroCompat::install_reason`); here only the raw material: os-release,
+    /// the family and, on Astra SE, the ZPS (closed software environment) state.
     pub fn install_verdict(&self, de_id: &str) -> InstallVerdict {
         let det = self.detector();
         let compat = dc::DistroCompat::new(dc::Detector {
@@ -879,7 +883,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                 .unwrap_or("")
                 .to_string(),
         });
-        // ЗПС спрашивается лениво — только на Astra SE, как у оригинала.
+        // ZPS is asked lazily, only on Astra SE, as in the original.
         let zps = det.distro_id() == "astra" && compat.is_astra_se() && self.zps_enabled();
         let reason = compat.install_reason(de_id, zps);
         let lang = self.lang();
@@ -889,9 +893,9 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             title: reason.title(lang),
             explanation: reason.explanation(lang),
         };
-        // Deepin — только на Treeland (`crate::deepin_treeland`): поверх
-        // обычного Deepin — отказ до пароля, иначе предупреждение
-        // «экспериментально» в том же вопросе.
+        // Deepin only on Treeland (`crate::deepin_treeland`): on top of regular
+        // Deepin a refusal before the password, otherwise an "experimental"
+        // warning in the same question.
         if de_id != crate::deepin_treeland::DE_ID || !verdict.allowed {
             return verdict;
         }
@@ -906,14 +910,14 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
     }
 
-    /// Команда пробы (без прав root) с ответом в виде [`plan::PreviewAnswer`].
+    /// A probe command (without root) with the answer as [`plan::PreviewAnswer`].
     fn preview_run(&self, cmd: &plan::Cmd) -> plan::PreviewAnswer {
         let r = self.io.run(&cmd.argv, cmd.timeout_secs, cmd.lang_c);
         r.rc().map(|rc| (rc, r.stdout.clone(), r.stderr.clone()))
     }
 
-    /// Порт `DistroCompat._is_zps_enabled`: модуль `digsig_verif` в `lsmod`,
-    /// затем файл конфигурации.
+    /// Port of `DistroCompat._is_zps_enabled`: the `digsig_verif` module in
+    /// `lsmod`, then the config file.
     fn zps_enabled(&self) -> bool {
         let r = self.io.run(&["lsmod".to_string()], None, false);
         if r.rc() == Some(0) && dc::zps_enabled_from(Some(&r.stdout), None) {
@@ -923,27 +927,27 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         dc::zps_enabled_from(None, conf.as_deref())
     }
 
-    // ── Установка (она же проверка и восстановление) ─────────────────────
+    // ── Install (also check and repair) ─────────────────────────────────
 
-    /// Порт `install_de`. «Проверить / Восстановить» — это она же: пакетный
-    /// менеджер с `--needed` сам пропускает стоящее.
+    /// Port of `install_de`. «Check / Repair» is the same thing: the package
+    /// manager with `--needed` skips what is installed by itself.
     pub fn install_de(&self, de_id: &str, current_de: &str) -> DeOpOutcome {
         self.install_de_replacing(de_id, current_de, &[])
     }
 
-    /// [`Self::install_de`] с согласием заменить установленные пакеты
-    /// `replace` («Заменить River 0.5» на карточке): конфликт пробы с ними
-    /// снимается той же транзакцией, если это замена из таблицы
-    /// (`plan::conflict_swap_approved`). Любой другой конфликт — прежний
-    /// отказ до пароля.
+    /// [`Self::install_de`] with consent to replace the installed packages
+    /// `replace` («Replace River 0.5» on the card): the probe's conflict with
+    /// them is resolved in the same transaction if it is a replacement from the
+    /// table (`plan::conflict_swap_approved`). Any other conflict is the old
+    /// refusal before the password.
     pub fn install_de_replacing(&self, de_id: &str, current_de: &str, replace: &[String]) -> DeOpOutcome {
         self.install_de_session(de_id, current_de, replace, None)
     }
 
-    /// [`Self::install_de_replacing`] с выбранным сеансом
-    /// (`system::SESSION_VARIANTS`): для Wayland к набору добавляется его
-    /// добавка (композитор, связка сеанса, бывает и из AUR). `None` и X11 —
-    /// набор как раньше.
+    /// [`Self::install_de_replacing`] with the chosen session
+    /// (`system::SESSION_VARIANTS`): for Wayland its add-on is added to the set
+    /// (a compositor, the session bundle, sometimes from the AUR). `None` and
+    /// X11: the set as before.
     pub fn install_de_session(
         &self,
         de_id: &str,
@@ -968,7 +972,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         let display = meta.display_name;
         self.set_cancellable(true);
 
-        // 1. Совместимость — ДО любых действий.
+        // 1. Compatibility BEFORE any action.
         let verdict = self.install_verdict(de_id);
         if !verdict.allowed {
             let text = format!("{}\n\n{}", verdict.title, verdict.explanation);
@@ -982,10 +986,10 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
 
         let family = self.sys.family();
         let detector = self.detector();
-        // Deepin — только на Treeland: набор без deepin-session (его даёт
-        // своя сборка, поставленная до этого шага), иначе pacman потянул бы
-        // его с deepin-kwin. Своей сборки нет — отказ, группу целиком Rexon
-        // не ставит (`crate::deepin_treeland`).
+        // Deepin only on Treeland: the set without deepin-session (provided by our
+        // own build, installed before this step), otherwise pacman would pull it in
+        // with deepin-kwin. No own build: refusal, Rexon does not install the whole
+        // group (`crate::deepin_treeland`).
         let mut main_pkgs = if de_id == crate::deepin_treeland::DE_ID {
             match crate::deepin_treeland::install_set(family, &|cmd: &plan::Cmd| self.preview_run(cmd)) {
                 Ok(set) => set,
@@ -997,7 +1001,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         } else {
             system::get_packages(de_id, family)
         };
-        // Добавка выбранного сеанса (Wayland у Xfce, LXQt, MATE).
+        // The add-on of the chosen session (Wayland for Xfce, LXQt, MATE).
         let session = session.unwrap_or(system::SessionKind::X11);
         for p in system::session_packages(de_id, family, session) {
             if !main_pkgs.contains(&p) {
@@ -1010,9 +1014,9 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                 aur_wanted.push(p);
             }
         }
-        // Помеченное в базе как AUR, но лежащее в подключённых репозиториях
-        // (CachyOS: темы и значки Mint в `cachyos`), ставит pacman в общей
-        // транзакции — и без AUR-помощника тоже.
+        // What is marked as AUR in the database but is in the enabled repositories
+        // (CachyOS: Mint themes and icons in `cachyos`) is installed by pacman in
+        // the common transaction, without an AUR helper too.
         let (aur_in_repo, aur_pkgs) =
             plan::split_repo_available(family, &aur_wanted, &|cmd: &plan::Cmd| {
                 let r = self.io.run(&cmd.argv, cmd.timeout_secs, cmd.lang_c);
@@ -1024,9 +1028,9 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             }
         }
         let aur_helper = plan::pick_aur_helper(family, &|h| self.io.which(h));
-        // Сеанс Wayland, который бывает только в AUR: без помощника
-        // AUR он молча не встал бы, и человек искал бы его на экране входа.
-        // Отказ — до пароля и до первого действия.
+        // A Wayland session that exists only in the AUR: without an AUR helper it
+        // would silently not get installed, and the person would look for it on the
+        // login screen. Refusal before the password and before the first action.
         let session_aur = system::session_aur_packages(de_id, family, session);
         if aur_helper.is_none() && session_aur.iter().any(|p| aur_pkgs.contains(p)) {
             let text = crate::qt_desktops::session_no_aur_helper_text(display);
@@ -1034,33 +1038,34 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             return Err(Stop::Failed(text));
         }
 
-        // 1а. Пробная транзакция без прав root (Arch): если необязательный
-        //     член группы в репозитории сейчас не ставится (08.10.2026 —
-        //     switchboard-plug-online-accounts у Pantheon ждал пересборки),
-        //     ставим группу без него и предупреждаем; если не ставится то,
-        //     без чего стола нет, — понятный отказ ДО пароля, а не обрыв
-        //     pacman посреди установки. Не ответила — ставим как раньше.
-        // `deepin-kwin` (оконный менеджер Deepin X11) не ставится никогда —
-        // ни членом набора, ни зависимостью.
+        // 1a. A trial transaction without root (Arch): if an optional group member
+        //     in the repository cannot be installed right now (08.10.2026:
+        //     switchboard-plug-online-accounts of Pantheon was waiting for a
+        //     rebuild), we install the group without it and warn; if something the
+        //     desktop cannot exist without cannot be installed, a clear refusal
+        //     BEFORE the password instead of pacman aborting mid-install. No
+        //     answer: install as before.
+        // `deepin-kwin` (the Deepin X11 window manager) is never installed, neither
+        // as a set member nor as a dependency.
         let preview = plan::install_preview(family, &main_pkgs, &|cmd: &plan::Cmd| self.preview_run(cmd)).map(|mut p| {
             crate::deepin_treeland::forbid_x11_wm(&mut p);
             p
         });
-        // Что из набора ставится лишь зависимостью (DKMS-модуль и заголовки
-        // под стоящие ядра) — помечается `--asdeps` в той же транзакции.
+        // What from the set is installed only as a dependency (a DKMS module and
+        // headers for the installed kernels) is marked `--asdeps` in the same transaction.
         let deps_only: Vec<String> = preview.as_ref().map(|p| p.deps_only.clone()).unwrap_or_default();
-        // Замена с согласия: только то, что проба нашла конфликтующим и что
-        // человек согласился заменить; прочие имена из `replace` не идут.
+        // Replacement with consent: only what the probe found conflicting and what
+        // the person agreed to replace; other names from `replace` are not used.
         let replace: Vec<String> = match &preview {
             Some(p) if plan::conflict_swap_approved(p, replace) => {
                 plan::conflict_swaps(p).into_iter().map(|c| c.installed).collect()
             }
             _ => Vec::new(),
         };
-        // Перезагрузка нужна, если встаёт ядро или модуль ядра
-        // (`plan::restart_packages`) либо экрана входа до установки не было:
-        // включённый сейчас он поднимется только при старте, а без него
-        // «выбрать стол на экране входа» негде.
+        // A reboot is needed if a kernel or kernel module is installed
+        // (`plan::restart_packages`) or there was no login screen before the
+        // install: enabled now, it only comes up at boot, and without it there is
+        // nowhere to "choose the desktop on the login screen".
         if preview.as_ref().is_some_and(|p| !p.restart_packages.is_empty()) || !self.sys.display_manager_present() {
             self.restart_needed.set(true);
         }
@@ -1076,15 +1081,15 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                 self.warn(&crate::qt_desktops::packages_notice(&p));
                 p.targets
             }
-            // Проба могла добавить в набор DKMS-модуль и заголовки под
-            // стоящие ядра (`plan::kernel_module_extras`) — ставим то, что
-            // проверено.
+            // The probe may have added a DKMS module and headers for the installed
+            // kernels to the set (`plan::kernel_module_extras`): we install what was
+            // checked.
             Some(p) => p.targets,
             None => main_pkgs,
         };
         self.checkpoint()?;
 
-        // 2. Снимок умолчаний и копия панели — до пакетного менеджера.
+        // 2. Defaults snapshot and panel copy, before the package manager.
         self.emit("snapshot", &snapshot_message(), Some(0.02));
         if let Err(e) = self.defaults_snapshot() {
             self.warn(&snapshot_failed(&e));
@@ -1098,9 +1103,9 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
         self.checkpoint()?;
 
-        // 3. Пакеты. Стол уже стоит — это «Проверить / Восстановить»:
-        // пакетный менеджер сверяет набор (`--needed`) и доставляет только
-        // недостающее, так и говорим.
+        // 3. Packages. If the desktop is already installed, this is «Check /
+        // Repair»: the package manager verifies the set (`--needed`) and adds only
+        // what is missing, and that is what we say.
         let checking = self.sys.is_pkg_installed(system::get_check_binary(de_id).unwrap_or(de_id));
         let aur_missing_before: Vec<String> =
             aur_pkgs.iter().filter(|p| !self.sys.is_pkg_installed(p)).cloned().collect();
@@ -1133,21 +1138,21 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             }
             Err(stop) => return Err(stop),
         };
-        // Сюда можно прийти, так и не запустив пакетный менеджер (нечего
-        // ставить) — дальше всё равно идут изменения системы.
+        // One can get here without ever running the package manager (nothing to
+        // install): system changes follow anyway.
         self.set_cancellable(false);
 
-        // 4. Пост-установка.
+        // 4. Post-install.
         self.emit("post_install", &post_install_message(), Some(0.85));
         let (post_ok, post_msg) = self.run_post_install(de_id, family, aur_helper.as_deref());
         if !post_ok {
             self.warn(&post_install_failed(&post_msg));
         }
 
-        // 5. Экран входа из пакет-листа стола (если помощник его уже не
-        //    включил в том же сеансе авторизации).
-        // Экран входа уже стоит — одна строка «уже настроен» вместо
-        // заголовка и двух повторов (шаг 6 тогда молчит).
+        // 5. The login screen from the desktop's package list (if the helper has
+        //    not already enabled it in the same authorization session).
+        // If the login screen is already installed: one "already configured" line
+        // instead of a header and two repeats (step 6 then stays silent).
         let dm_said = !used_de_helper && self.sys.display_manager_present();
         if dm_said {
             self.emit("dm_enable", &dm_already(&self.sys.active_login_manager()), Some(0.90));
@@ -1165,7 +1170,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                     self.sys.pkg_helper_available(),
                     false,
                 ) {
-                    // Сеанс прав окна; его нет — прежняя команда плана.
+                    // The window's privilege session; without it, the old plan command.
                     let op = PrivOp::EnableDm { family, unit: unit.clone() };
                     let r = self
                         .io
@@ -1180,10 +1185,10 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             }
         }
 
-        // 6. Защита от дурака: включённый экран входа обязан быть.
+        // 6. Foolproof guard: there must be an enabled login screen.
         self.ensure_display_manager(family, dm_said);
 
-        // 7. Приложения по умолчанию под новый стол.
+        // 7. Default applications for the new desktop.
         self.emit("switcher", &switcher_message(display), Some(0.93));
         let (_, lines) = self.io.app_defaults_switch(de_id);
         self.show_defaults_lines(&lines, display);
@@ -1191,7 +1196,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         self.io
             .bridge_notify(&BridgeEvent::DeInstalled(de_id.to_string()));
 
-        // 8. Вернуть защищённые умолчания, которые установка перетёрла.
+        // 8. Restore the protected defaults the install overwrote.
         self.emit("restore", &restore_message(), Some(0.96));
         match self.defaults_restore() {
             Ok(results) => {
@@ -1210,7 +1215,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             Err(e) => self.warn(&restore_failed(&e)),
         }
 
-        // 9. Свой mimeapps.list у каждого установленного стола.
+        // 9. An own mimeapps.list for each installed desktop.
         self.emit("mime", &mime_message(), Some(0.98));
         let mut installed: Vec<String> = system::DE_META
             .iter()
@@ -1244,13 +1249,13 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         Ok(de_progress::MSG_OK.to_string())
     }
 
-    // ── Добавить сеанс установленному столу ─────────────────────────────
+    // ── Add a session to an installed desktop ───────────────────────────
 
-    /// «➕ Добавить вариант Wayland / X11» на карточке установленного стола:
-    /// ставится только то, чего не хватает сеансу `kind`
-    /// (`system::SESSION_VARIANTS`). Стол уже стоит — снимок умолчаний,
-    /// пост-установка, экран входа, приложения по умолчанию и списки «чем
-    /// открывать» не трогаются: сеанс их не меняет.
+    /// «➕ Add Wayland / X11 variant» on the card of an installed desktop: only
+    /// what the `kind` session lacks is installed (`system::SESSION_VARIANTS`).
+    /// The desktop is already installed, so the defaults snapshot, post-install,
+    /// login screen, default applications and "open with" lists are not touched:
+    /// a session does not change them.
     pub fn add_session(&self, de_id: &str, kind: system::SessionKind) -> DeOpOutcome {
         let result = self.add_session_steps(de_id, kind);
         self.finish(result)
@@ -1267,8 +1272,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         };
         self.set_cancellable(true);
         let detector = self.detector();
-        // Сеанс X11 лежит в основных пакетах стола; X-сервер тянет их экран
-        // входа (LightDM и SDDM от него зависят).
+        // The X11 session is in the desktop's main packages; the X server is pulled
+        // in by their login screen (LightDM and SDDM depend on it).
         let mut main_pkgs = match kind {
             system::SessionKind::Wayland => system::session_packages(de_id, family, kind),
             system::SessionKind::X11 => system::get_packages(de_id, family),
@@ -1288,8 +1293,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             self.emit(de_progress::STAGE_ERROR, &text, None);
             return Err(Stop::Failed(text));
         }
-        // Проба без прав root — как у установки стола: не ставится —
-        // понятный отказ до пароля.
+        // A probe without root, as for the desktop install: if it cannot be
+        // installed, a clear refusal before the password.
         let preview = plan::install_preview(family, &main_pkgs, &|cmd: &plan::Cmd| self.preview_run(cmd));
         let deps_only: Vec<String> = preview.as_ref().map(|p| p.deps_only.clone()).unwrap_or_default();
         let main_pkgs = match preview {
@@ -1336,23 +1341,23 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         Ok(de_progress::MSG_OK.to_string())
     }
 
-    // ── Переключение на другой стол ──────────────────────────────────────
+    // ── Switching to another desktop ─────────────────────────────────────
 
-    /// Порт `switch_de`: копия панели и конфигов текущего стола,
-    /// приложения по умолчанию под новый, событие моста, выход из сессии.
+    /// Port of `switch_de`: a copy of the current desktop's panel and configs,
+    /// default applications for the new one, a bridge event, logout.
     pub fn switch_de(&self, target: &str, current_de: &str) -> DeOpOutcome {
         let result = self.switch_de_steps(target, current_de);
         self.finish(result)
     }
 
     fn switch_de_steps(&self, target: &str, current_de: &str) -> Step<String> {
-        // Левая часть карточки: стол САМ ПО СЕБЕ — отметки оболочек этого
-        // композитора снимаются (см. `crate::shell_bundle`).
+        // Left part of the card: the desktop ON ITS OWN: this compositor's shell
+        // marks are removed (see `crate::shell_bundle`).
         self.switch_steps_with(target, current_de, None)
     }
 
-    /// Переключение на стол; `shell` — войти в него с этой оболочкой
-    /// (отметка режима кладётся, а не снимается).
+    /// Switch to a desktop; `shell`: log into it with this shell (the mode mark
+    /// is put, not removed).
     fn switch_steps_with(
         &self,
         target: &str,
@@ -1362,7 +1367,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         let Some(meta) = system::DE_META.iter().find(|m| m.id == target) else {
             return Err(Stop::Failed(unknown_de_message(target)));
         };
-        // Защита ядра: на текущий и на неопознанный стол не переключаемся.
+        // Core guard: we do not switch to the current or to an unrecognised desktop.
         if let Some(refusal) = plan::switch_de_guard(current_de, target, meta.display_name) {
             return Err(Stop::Failed(refusal));
         }
@@ -1396,7 +1401,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             }
         }
 
-        // Дальше меняются приложения по умолчанию и закрывается сессия.
+        // From here on default applications change and the session is closed.
         self.point_of_no_return()?;
         self.set_shell_mode(target, shell)?;
         self.emit("switcher", &switcher_message(meta.display_name), Some(0.60));
@@ -1411,8 +1416,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         self.logout_session()
     }
 
-    /// Порт `logout_session`: команды по окружению — ядро
-    /// (`logout_cmds`), первая успешная выигрывает.
+    /// Port of `logout_session`: the commands per environment come from the core
+    /// (`logout_cmds`), the first successful one wins.
     fn logout_session(&self) -> Step<String> {
         let cmds = plan::logout_cmds(
             &self.io.env("XDG_CURRENT_DESKTOP"),
@@ -1437,11 +1442,12 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }))
     }
 
-    // ── Удаление стола ───────────────────────────────────────────────────
+    // ── Desktop removal ──────────────────────────────────────────────────
 
-    /// Порт `remove_de(force=False)`. ⛔ Обхода защиты у окна НЕТ: текущий
-    /// стол ядро не удалит даже прямым вызовом (правило архитектуры #13,
-    /// второй рубеж — кнопки на текущем столе нет вовсе).
+    /// Port of `remove_de(force=False)`. ⛔ The window has NO way around the
+    /// guard: the core will not remove the current desktop even on a direct call
+    /// (architecture rule #13; the second line of defence: there is no button on
+    /// the current desktop at all).
     pub fn remove_de(&self, de_id: &str, current_de: &str) -> DeOpOutcome {
         let result = self.remove_de_steps(de_id, current_de);
         self.finish(result)
@@ -1451,19 +1457,19 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         let Some(meta) = system::DE_META.iter().find(|m| m.id == de_id) else {
             return Err(Stop::Failed(unknown_de_message(de_id)));
         };
-        // SteamOS (Steam Deck и Steam Machine): пакетов не трогаем ни в какую
-        // сторону — удаление потребовало бы снять защиту системного раздела,
-        // а следующее обновление вернуло бы всё как было. Отказ — до первого
-        // побочного действия, тем же текстом, что стоит у неактивной кнопки.
+        // SteamOS (Steam Deck and Steam Machine): we do not touch packages in either
+        // direction: removal would require lifting the system partition protection,
+        // and the next update would bring everything back. Refusal before the first
+        // side effect, with the same text as on the inactive button.
         if let Some(reason) = dc::SteamOsBlock::Desktops.on(self.on_steamos()) {
             self.emit(de_progress::STAGE_ERROR, &reason, None);
             return Err(Stop::Failed(reason));
         }
         let family = self.sys.family();
         let packages = system::get_packages(de_id, family);
-        // Связка сеанса Wayland (lxqt-wayland-session и такие же из AUR)
-        // держит пакеты стола зависимостью — снимается вместе с ним;
-        // неустановленное отсеет план удаления.
+        // The Wayland session bundle (lxqt-wayland-session and similar ones from
+        // the AUR) holds the desktop's packages as a dependency: removed together
+        // with it; the removal plan filters out what is not installed.
         let mut aur = system::get_aur_packages(de_id, family);
         for p in system::session_removal_packages(de_id, family) {
             if !packages.contains(&p) && !aur.contains(&p) {
@@ -1481,8 +1487,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             plan::RemoveDeDecision::Refused(text) => return Err(Stop::Failed(text)),
             plan::RemoveDeDecision::Proceed(all) => all,
         };
-        // Пакеты текущего стола и его экран входа не снимаются никогда
-        // (общий `lightdm` у Xfce и Cinnamon) — `system::current_desktop_keep`.
+        // The current desktop's packages and its login screen are never removed
+        // (the shared `lightdm` of Xfce and Cinnamon): `system::current_desktop_keep`.
         let keep = system::current_desktop_keep(
             family,
             current_de,
@@ -1508,10 +1514,10 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         Ok(de_progress::MSG_OK.to_string())
     }
 
-    /// Порт `PackageManager.remove`: пробы (группы, установлен ли, кому
-    /// нужен) исполняются при сборке плана ядра, здесь — ожидание замка и
-    /// сама команда удаления.
-    /// Вывод вопроса «что входит в группу» (`pacman -Qg`) при успехе.
+    /// Port of `PackageManager.remove`: the probes (groups, is it installed, who
+    /// needs it) run while the core's plan is built; here, waiting for the lock
+    /// and the removal command itself.
+    /// Output of the "what is in the group" query (`pacman -Qg`) on success.
     fn group_members_output(&self, family: PkgFamily, p: &str) -> Option<String> {
         let q = plan::package_group_query(family, p)?;
         if !self.io.which(&q.binary) {
@@ -1540,7 +1546,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         for step in &removal.steps {
             match step {
                 PlanStep::WaitPkgLock { timeout_secs, .. } => {
-                    // Пути замка — от исполнителя (см. `DeOpsIo::pkg_lock_paths`).
+                    // Lock paths come from the executor (see `DeOpsIo::pkg_lock_paths`).
                     let paths = self.io.pkg_lock_paths(family);
                     let (ok, msg) = self.wait_pkg_lock(&paths, *timeout_secs)?;
                     if !ok {
@@ -1553,8 +1559,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                     ..
                 } => {
                     self.point_of_no_return()?;
-                    // Сеанс прав окна снимает тот же набор (`removal.safe`);
-                    // его нет — прежняя команда плана.
+                    // The window's privilege session removes the same set (`removal.safe`);
+                    // without it, the old plan command.
                     let op = PrivOp::PkgRemove { family, packages: removal.safe.clone() };
                     let r = self
                         .io
@@ -1567,9 +1573,9 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                         return Ok((false, remove_timeout_message()));
                     }
                     if r.returncode == Some(0) {
-                        // Человеку — только что пропущено (нужно другим
-                        // столам); вывод пакетного менеджера остаётся итогом
-                        // для кода, как у оригинала.
+                        // To the person, only what was skipped (needed by other desktops); the
+                        // package manager output stays as the result for the code, as in the
+                        // original.
                         if !removal.success_note.trim().is_empty() {
                             self.raw(removal.success_note.trim());
                         }
@@ -1599,9 +1605,9 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         Ok((true, String::new()))
     }
 
-    // ── Пакетная установка ───────────────────────────────────────────────
+    // ── Batch install ────────────────────────────────────────────────────
 
-    /// Порт `PackageManager.install_batch` → использовался ли rexon-de-helper.
+    /// Port of `PackageManager.install_batch` → whether rexon-de-helper was used.
     fn install_batch(
         &self,
         family: PkgFamily,
@@ -1652,7 +1658,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             }
         };
 
-        // Незнакомый шаг — отказ ДО первого действия (пункт 3 шапки).
+        // Unknown step: refusal BEFORE the first action (item 3 of the header).
         for step in &batch.steps {
             if let PlanStep::Run { id, .. } = step {
                 if !matches!(
@@ -1666,7 +1672,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             }
         }
 
-        // Скрипт-обёртка нужна только прежнему пути; иначе пустой файл долой.
+        // The wrapper script is only needed by the old path; otherwise the empty file goes.
         let writes_sh = batch
             .steps
             .iter()
@@ -1706,13 +1712,13 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             self.out.pkg("update", &tr("📥 Updating the package database…"));
         }
 
-        // Сеансу прав окна: простой набор стола (все имена — из его таблицы,
-        // без DKMS и замены) — `PkgInstall` по таблице; набор сверх неё
-        // (Deepin на Treeland, член группы, DKMS `--asdeps`, замена
-        // конфликтующего) — `DeInstallSet`, его правило ядра помощник
-        // повторяет сам по pacman машины. Сеанса нет — прежняя обёртка
-        // плана. Nix — без прав root; SteamOS ставит столы образом
-        // (`crate::steamos_sysext`), сюда приходит только прежним путём.
+        // To the window's privilege session: a plain desktop set (all names from
+        // its table, no DKMS and no replacement) is `PkgInstall` by the table; a set
+        // beyond it (Deepin on Treeland, a group member, DKMS `--asdeps`, replacing
+        // a conflicting package) is `DeInstallSet`, whose core rule the helper
+        // repeats itself against the machine's pacman. No session: the old plan
+        // wrapper. Nix: without root; SteamOS installs desktops as an image
+        // (`crate::steamos_sysext`), it only gets here by the old path.
         let plain = deps_only.is_empty()
             && replace.is_empty()
             && de_id != crate::deepin_treeland::DE_ID
@@ -1735,10 +1741,10 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                 family,
                 de_id: Some(de_id.to_string()),
                 packages: packages.to_vec(),
-                // Как в плане: пометка — только того, что есть в наборе.
+                // As in the plan: mark only what is in the set.
                 deps_only: deps_only.iter().filter(|d| packages.contains(d)).cloned().collect(),
                 replace: replace.to_vec(),
-                // Обёртка плана обновляет базу перед установкой — так же.
+                // The plan wrapper updates the database before installing: same here.
                 update_first: true,
             })
         } else {
@@ -1747,8 +1753,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         let mut session_used = false;
         let mut r_main: Option<RunOut> = None;
         let mut main_seen = false;
-        // Ожидание замка перед главным шагом фатально; перед хвостом AUR —
-        // нет (как у оригинала).
+        // Waiting for the lock before the main step is fatal; before the AUR tail it
+        // is not (as in the original).
         let mut main_pending = !packages.is_empty();
 
         for step in &batch.steps {
@@ -1804,8 +1810,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                         let mut tail =
                             self.io
                                 .tail_log(&tmp_log, LogTailKind::Pacman, self.out.pkg_callback());
-                        // Ход помощника сеанса — в тот же журнал, что читает
-                        // `tail_log`, поэтому строки человек видит те же.
+                        // The session helper's progress goes to the same log `tail_log` reads, so
+                        // the person sees the same lines.
                         let via_session =
                             session_op.as_ref().and_then(|op| self.io.run_priv(op, &[], Some(&tmp_log)));
                         session_used = via_session.is_some();
@@ -1814,7 +1820,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                         if let Some(t) = tail.as_mut() {
                             t.stop();
                         }
-                        // «there is nothing to do» — набор уже стоял целиком.
+                        // "there is nothing to do": the whole set was already installed.
                         let log = self.io.read_text(&tmp_log).unwrap_or_default();
                         self.main_nothing_to_do
                             .set(pacman_nothing_to_do(&log) || pacman_nothing_to_do(&r.stdout));
@@ -1832,7 +1838,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                         main_pending = false;
                     }
                     RunStepId::PkgAur => {
-                        // Итог главного шага проверяется ДО хвоста AUR.
+                        // The main step result is checked BEFORE the AUR tail.
                         let (ok, msg) =
                             self.batch_main_result(r_main.as_ref(), main_seen, packages, steamos, family);
                         if !ok {
@@ -1845,7 +1851,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                         self.batch_run_aur(&cmd.argv, cmd.timeout_secs, aur_packages, steamos);
                     }
                     _ => {
-                        // Обновление базы на Nix — простая команда.
+                        // Updating the database on Nix is a simple command.
                         let _ = self.io.run(&cmd.argv, cmd.timeout_secs, cmd.lang_c);
                     }
                 },
@@ -1859,12 +1865,12 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                 return Err(Stop::Failed(msg));
             }
         }
-        // Экран входа включает DE-помощник; при сеансе прав его не было —
-        // включение идёт отдельным шагом (`EnableDm`).
+        // The login screen is enabled by the DE helper; with a privilege session it
+        // was not there, so enabling is a separate step (`EnableDm`).
         Ok(batch.used_de_helper && !session_used)
     }
 
-    /// Порт `_batch_main_result`: тексты и строки хода — ядро.
+    /// Port of `_batch_main_result`: texts and progress lines come from the core.
     fn batch_main_result(
         &self,
         r: Option<&RunOut>,
@@ -1883,8 +1889,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         };
         let out = plan::batch_main_result(result, main_seen, packages, steamos, family, &agent, &installed);
         for (stage, message) in &out.logs {
-            // «Основные пакеты установлены (6)» при «ставить нечего» —
-            // неправда: число там — имена набора (группы), а не поставленное.
+            // "Main packages installed (6)" when "nothing to install" is untrue: the
+            // number there is the set's names (groups), not what was installed.
             if stage == "done_main" && self.main_nothing_to_do.get() {
                 self.out.pkg(stage, &main_already_installed());
             } else {
@@ -1894,13 +1900,13 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         (out.ok, out.message)
     }
 
-    /// Запущено ли окно пароля (агент polkit) для нашего сеанса — спрашиваем
-    /// сам polkit (`plan::polkit_agent_probe_argv`). Не вышло спросить —
-    /// считаем, что агент есть (как у оригинала).
+    /// Whether a password window (polkit agent) is running for our session: we
+    /// ask polkit itself (`plan::polkit_agent_probe_argv`). If asking failed, we
+    /// assume there is an agent (as in the original).
     ///
-    /// ⚠️ Починка при порте: оригинал искал `pgrep -f "polkit.*agent|polkitd"`,
-    /// а под `polkitd` попадает системная служба, которая работает всегда, —
-    /// ответ был «да» и без единого агента.
+    /// ⚠️ Fixed in the port: the original searched `pgrep -f "polkit.*agent|polkitd"`,
+    /// and `polkitd` matches the system service, which always runs, so the
+    /// answer was "yes" even without a single agent.
     fn polkit_agent_running(&self) -> bool {
         let mut session = self.io.env("XDG_SESSION_ID");
         if session.is_empty() {
@@ -1916,7 +1922,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         plan::polkit_agent_probe_answer(r.rc(), &r.stderr).unwrap_or(true)
     }
 
-    /// Порт `_batch_run_aur`.
+    /// Port of `_batch_run_aur`.
     fn batch_run_aur(
         &self,
         argv: &[String],
@@ -1951,8 +1957,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         ) {
             self.out.pkg(&stage, &message);
         }
-        // Почему не встало — словами, из вывода помощника, а не «смотрите
-        // журнал» (`aur_install::failure_cause`).
+        // Why it did not install, in words, from the helper's output, not "see the
+        // log" (`aur_install::failure_cause`).
         if !ok && r.outcome != RunOutcome::Timeout && (steamos || !failed.is_empty()) {
             if let Some(cause) = crate::aur_install::failure_cause(&r.stdout) {
                 let reason = crate::aur_install::failure_text(&cause);
@@ -1961,8 +1967,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
     }
 
-    /// Порт `_run_aur_with_progress`: вывод сборки — в файл, ход — читателем
-    /// ядра (вид `aur`).
+    /// Port of `_run_aur_with_progress`: the build output goes to a file, the
+    /// progress is read by the core's reader (the `aur` kind).
     fn run_aur_with_progress(
         &self,
         argv: &[String],
@@ -1986,8 +1992,9 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         r
     }
 
-    /// Ожидание замка пакетного менеджера с отменой. Решение на каждом
-    /// обороте — ядро (`lock_wait_step`); здесь часы, сон и флаг отмены.
+    /// Waiting for the package manager lock with cancellation. The decision on
+    /// each round is the core's (`lock_wait_step`); here the clock, sleep and the
+    /// cancellation flag.
     fn wait_pkg_lock(&self, paths: &[String], timeout_secs: u64) -> Step<(bool, String)> {
         let start = self.io.elapsed_secs();
         let mut notified = false;
@@ -2012,7 +2019,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
     }
 
-    /// Порт `ensure_gentoo_overlay`.
+    /// Port of `ensure_gentoo_overlay`.
     fn ensure_gentoo_overlay(&self, family: PkgFamily, de_id: &str) -> bool {
         if family != PkgFamily::Gentoo {
             return true;
@@ -2031,7 +2038,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             if let Some(tool) =
                 plan::gentoo_overlay_tool_install_cmd(family, self.sys.pkg_helper_available())
             {
-                // Сеанс прав окна; его нет — прежняя команда.
+                // The window's privilege session; without it, the old command.
                 let op = PrivOp::PkgInstall {
                     family,
                     packages: vec![plan::GENTOO_OVERLAY_TOOL_PACKAGE.to_string()],
@@ -2064,10 +2071,11 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         false
     }
 
-    /// Порт `ensure_display_manager`: решение — [`plan::ensure_dm_plan`].
-    /// Не рушит установку: экран входа — лучшее усилие поверх уже
-    /// поставленного стола, но каждая неудача сказана вслух.
-    /// `already_said` — строка «экран входа уже настроен» уже в окне.
+    /// Port of `ensure_display_manager`: the decision is [`plan::ensure_dm_plan`].
+    /// Does not break the install: the login screen is a best effort on top of
+    /// the already installed desktop, but every failure is said out loud.
+    /// `already_said`: the "login screen already configured" line is already in
+    /// the window.
     fn ensure_display_manager(&self, family: PkgFamily, already_said: bool) {
         let dm_plan = plan::ensure_dm_plan(
             family,
@@ -2097,7 +2105,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                 ..
             } => {
                 self.emit("dm_ensure", &message, Some(fraction));
-                // Сеанс прав окна; его нет — прежние команды плана.
+                // The window's privilege session; without it, the old plan commands.
                 let op = PrivOp::PkgInstall {
                     family,
                     packages: vec![package.clone()],
@@ -2111,7 +2119,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                     self.warn(&ensure_dm_install_failed(&package, &run_why(&r)));
                     return;
                 }
-                // Защита ставит и включает именно SDDM (`plan::ensure_dm_plan`).
+                // The guard installs and enables SDDM specifically (`plan::ensure_dm_plan`).
                 let op = PrivOp::EnableDm { family, unit: "sddm".to_string() };
                 let r = self
                     .io
@@ -2126,14 +2134,18 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
     }
 
-    // ── Пост-установка ───────────────────────────────────────────────────
+    // ── Post-install ─────────────────────────────────────────────────────
 
-    /// Порт `run_post_install`: хуки у MATE (вид Ubuntu MATE) и у River
-    /// (стартовый init — без него River стартует без клавиш). Тайловым и
-    /// Wayfire — ещё раскладка клавиатуры в конфиг
-    /// ([`crate::keyboard_layout`]): сами они включают одну `us`. Wayfire и
-    /// LXQt — блокировка экрана (клавиша и команда блокировщика): без неё
-    /// «Заблокировать» у них на чистой машине не работает.
+    /// Port of `run_post_install`: hooks for MATE (the Ubuntu MATE look) and for
+    /// River (the starter init: without it River starts without key bindings).
+    /// For the tiling ones and Wayfire, also the keyboard layout in the config
+    /// ([`crate::keyboard_layout`]): by themselves they enable only `us`. Wayfire
+    /// and LXQt get the screen lock (the key and the locker command): without
+    /// it «Lock» does not work on a clean machine.
+    /// Same for sway, Hyprland and niri: the locker is installed, but their
+    /// stock configs lack the key and/or idle locking. The lock runs before
+    /// the layout: it may create the user's sway config (`include` of the
+    /// system one), and the layout then goes into that file.
     fn run_post_install(
         &self,
         de_id: &str,
@@ -2145,9 +2157,10 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             "river" => self.post_install_river(),
             "wayfire" => self.post_install_wayfire_lock(),
             "lxqt" => self.post_install_lxqt_lock(),
+            "sway" | "hyprland" | "niri" => self.post_install_tiling_lock(de_id),
             _ => (true, String::new()),
         };
-        // Неудача раскладки — предупреждение, а не провал: стол уже стоит.
+        // A layout failure is a warning, not a failure: the desktop is already installed.
         let keyboard = crate::keyboard_layout::ensure_after_install(self.io, de_id, &self.home());
         match &keyboard {
             Some((true, line)) => self.post(line),
@@ -2161,9 +2174,9 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
     }
 
-    /// Стартовый init River — только если своего ещё нет
-    /// ([`plan::river_starter_init`]). Не вышло — предупреждение, а не
-    /// провал установки: пакеты уже стоят.
+    /// River starter init, only if there is no own one yet
+    /// ([`plan::river_starter_init`]). If it fails, a warning rather than an
+    /// install failure: the packages are already installed.
     fn post_install_river(&self) -> (bool, String) {
         let path = plan::river_init_path(&self.io.env("XDG_CONFIG_HOME"), &self.home());
         if self.io.exists(&path) {
@@ -2189,10 +2202,10 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
     }
 
-    /// Блокировка экрана Wayfire: клавиша и swayidle в `wayfire.ini`
-    /// ([`plan::wayfire_lock_edit`]). Файл — тот же, что читает Wayfire:
-    /// `~/.config/wayfire/wayfire.ini`, если он есть, иначе
-    /// `~/.config/wayfire.ini`. Неудача — предупреждение, не провал.
+    /// Wayfire screen lock: the key and swayidle in `wayfire.ini`
+    /// ([`plan::wayfire_lock_edit`]). The file is the same one Wayfire reads:
+    /// `~/.config/wayfire/wayfire.ini` if it exists, otherwise
+    /// `~/.config/wayfire.ini`. A failure is a warning, not a failure.
     fn post_install_wayfire_lock(&self) -> (bool, String) {
         let cfg = self.config_home();
         let vendored = format!("{cfg}/wayfire/wayfire.ini");
@@ -2201,12 +2214,63 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         self.write_lock_setup("Wayfire", "Super+Shift+Esc", &path, plan::wayfire_lock_edit(&current))
     }
 
-    /// Блокировка экрана LXQt: команды обоих сеансов в `session.conf`
+    /// LXQt screen lock: the commands for both sessions in `session.conf`
     /// ([`plan::lxqt_lock_edit`]).
     fn post_install_lxqt_lock(&self) -> (bool, String) {
         let path = format!("{}/lxqt/session.conf", self.config_home());
         let current = self.io.read_text(&path);
         self.write_lock_setup("LXQt", "Ctrl+Alt+L (Wayland: Super+L)", &path, plan::lxqt_lock_edit(current.as_deref()))
+    }
+
+    /// Screen lock for tiling desktops: sway — Super+Shift+Esc and swayidle,
+    /// Hyprland — Super+Shift+Esc → hyprlock and hypridle (+ `hypridle.conf`
+    /// unless the user has one), niri — swayidle (its sample already has the
+    /// key). Same config as the layout uses
+    /// ([`crate::keyboard_layout::load_config`]); the user's own settings are
+    /// left alone ([`plan::sway_lock_edit`] and friends). Lock programs
+    /// missing (no package in this family) — a plain log line, config
+    /// untouched: a binding to a missing program would only confuse.
+    fn post_install_tiling_lock(&self, de_id: &str) -> (bool, String) {
+        let Some(cfg) = crate::keyboard_layout::load_config(self.io, de_id, &self.home()) else {
+            return (true, String::new());
+        };
+        let desktop = cfg.desk.display_name();
+        let (locker, idle, keys) = match de_id {
+            "hyprland" => (plan::HYPR_LOCK_COMMAND, plan::HYPR_IDLE_COMMAND, "Super+Shift+Esc"),
+            "niri" => ("swaylock", "swayidle", "Super+Alt+L"),
+            _ => ("swaylock", "swayidle", "Super+Shift+Esc"),
+        };
+        let missing: Vec<&str> = [locker, idle].into_iter().filter(|p| !self.io.which(p)).collect();
+        if !missing.is_empty() {
+            let line = plan::lock_setup_no_program(desktop, &missing.join(", "));
+            self.post(&line);
+            return (true, line);
+        }
+        let Some(main) = cfg.text.as_deref() else {
+            let line = plan::lock_setup_no_config(desktop, &cfg.path);
+            self.post(&line);
+            return (true, line);
+        };
+        let config_home = self.config_home();
+        let idle_elsewhere = plan::idle_service_paths(&config_home, idle).iter().any(|p| self.io.exists(p));
+        let text = match de_id {
+            "hyprland" => {
+                let lua = cfg.desk == crate::keyboard_layout::Desk::HyprLua;
+                plan::hypr_lock_edit(lua, main, &cfg.included, idle_elsewhere).map(|edit| {
+                    let conf = format!("{config_home}/hypr/hypridle.conf");
+                    if edit.idle && !self.io.exists(&conf) {
+                        let written = self.io.make_dirs(&format!("{config_home}/hypr")).and_then(|()| self.io.write_text(&conf, &plan::hypridle_conf()));
+                        if let Err(e) = written {
+                            self.warn(&plan::lock_setup_failed(desktop, &conf, &e));
+                        }
+                    }
+                    edit.text
+                })
+            }
+            "niri" => plan::niri_idle_edit(main, &cfg.included, idle_elsewhere),
+            _ => plan::sway_lock_edit(main, &cfg.included, idle_elsewhere),
+        };
+        self.write_lock_setup(desktop, keys, &cfg.path, text)
     }
 
     fn write_lock_setup(&self, desktop: &str, keys: &str, path: &str, text: Option<String>) -> (bool, String) {
@@ -2234,12 +2298,12 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         self.out.pkg("post", message);
     }
 
-    /// Порт `_post_install_mate`: доводка MATE до вида Ubuntu MATE.
+    /// Port of `_post_install_mate`: bring MATE to the Ubuntu MATE look.
     fn post_install_mate(&self, family: PkgFamily, aur_helper: Option<&str>) -> (bool, String) {
         let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
         let mut errors: Vec<String> = Vec::new();
 
-        // 1. Подписи «Общих задач» Центра управления на языке человека.
+        // 1. Captions of the Control Center's "Common tasks" in the person's language.
         self.post(&tr("🌐 Fixing the MATE Control Center localization…"));
         let lang = self.io.env("LANG");
         match plan::mate_locale_actions(&lang) {
@@ -2260,7 +2324,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             None => self.post(&format!("  {}", trf("ℹ️ Locale %1 — skipping", &[&lang]))),
         }
 
-        // 2. Все восемь раскладок панели Ubuntu MATE.
+        // 2. All eight Ubuntu MATE panel layouts.
         self.post(&tr("📐 Loading all 8 Ubuntu MATE layouts…"));
         self.post("   (Familiar, Redmond, Cupertino, Mutiny, Pantheon,");
         self.post("    Contemporary, Netbook, Traditional)");
@@ -2272,14 +2336,14 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             self.mate_layouts(&mut errors);
         }
 
-        // 3. Пакеты сверх дистрибутива — ДО записи оформления (см. оригинал:
-        //    иначе в умолчания уходила тема, которая так и не встала).
+        // 3. Packages beyond the distribution, BEFORE writing the look (see the
+        //    original: otherwise a theme that never got installed went into the defaults).
         for (tag, title, pkgs) in plan::MATE_EXTRA_PACKAGES {
             let pkgs: Vec<String> = pkgs.iter().map(|p| p.to_string()).collect();
             self.ensure_extra_packages(family, aur_helper, &tr(title), &pkgs, &mut errors, tag);
         }
 
-        // 4. Оформление — только из того, что реально лежит на диске.
+        // 4. The look, only from what is really on disk.
         self.post(&tr("🎨 Setting up the MATE appearance (Yaru-MATE, Ubuntu fonts)…"));
         let look = self.mate_look();
         let mut all_set = true;
@@ -2298,9 +2362,9 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
         self.drop_legacy_mate_gschema();
 
-        // 5. Экран блокировки — как обои стола, а не штатные «полоски»
-        //    (`wallpaper_engine::mate_lock_follows_desktop_argv`). Своя
-        //    картинка человека остаётся.
+        // 5. The lock screen like the desktop wallpaper, not the stock "stripes"
+        //    (`wallpaper_engine::mate_lock_follows_desktop_argv`). The person's own
+        //    picture stays.
         let get = s(&["gsettings", "get", crate::wallpaper_engine::MATE_SCREENSAVER_SCHEMA, "picture-filename"]);
         let r = self.io.run(&get, None, false);
         if r.rc() == Some(0)
@@ -2327,8 +2391,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                 return;
             }
         };
-        // `git clone` в существующий каталог не пойдёт — как оригинал,
-        // убираем пустой каталог перед клоном.
+        // `git clone` into an existing directory will not work: as in the original,
+        // we remove the empty directory before cloning.
         self.io.remove_tree(&repo);
         let clone = [
             "git",
@@ -2368,7 +2432,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             self.io.remove_tree(&repo);
             return;
         }
-        // Помощник раскладки пускает только каталоги под /tmp.
+        // The layout helper only accepts directories under /tmp.
         let staged = match self.io.temp_dir("rexon_layouts_stage_", Some("/tmp")) {
             Ok(p) => p,
             Err(e) => {
@@ -2392,8 +2456,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             }
         }
         let r2 = match self.sys.privileged_stage_cmd("mate-layouts", "rexon", &staged) {
-            // Сеанс прав окна (каталог раскладки — архивом по дескриптору);
-            // его нет — прежний помощник раскладки.
+            // The window's privilege session (the layout directory as an archive over a
+            // descriptor); without it, the old layout helper.
             Some(argv) => {
                 let op = PrivOp::Stage {
                     category: "mate-layouts".to_string(),
@@ -2430,7 +2494,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         self.io.remove_tree(&repo);
     }
 
-    /// `pkexec bash <временный скрипт>` — скрипт собирает ядро.
+    /// `pkexec bash <temporary script>`: the script is assembled by the core.
     fn run_root_script(&self, prefix: &str, script: &str) -> RunOut {
         let Ok(tmp) = self.io.temp_file(prefix, ".sh") else {
             return RunOut::missing();
@@ -2447,7 +2511,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         r
     }
 
-    /// Порт `_ensure_extra_packages`.
+    /// Port of `_ensure_extra_packages`.
     fn ensure_extra_packages(
         &self,
         family: PkgFamily,
@@ -2478,7 +2542,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             return;
         }
         self.post(&texts.installing);
-        // Ход сборки — без доли: этап стоит на своём месте полосы (пункт 2).
+        // Build progress without a share: the stage stays at its place on the bar (item 2).
         let sink = self.out.clone();
         let forward: Arc<dyn Fn(&str, &str) + Send + Sync> =
             Arc::new(move |_stage: &str, msg: &str| sink.emit("aur", msg, None));
@@ -2494,8 +2558,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
     }
 
-    /// Порт `_names_in`: имена подкаталогов, с `marker` — только те, где он
-    /// есть.
+    /// Port of `_names_in`: subdirectory names; with `marker`, only those that
+    /// contain it.
     fn names_in(&self, dirs: &[&str], marker: Option<&str>) -> Vec<String> {
         let mut found: Vec<String> = Vec::new();
         for d in dirs {
@@ -2522,7 +2586,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         found
     }
 
-    /// Порт `_mate_look`.
+    /// Port of `_mate_look`.
     fn mate_look(&self) -> plan::MateLook {
         const THEME_DIRS: &[&str] = &["/usr/share/themes", "~/.themes", "~/.local/share/themes"];
         const ICON_DIRS: &[&str] = &["/usr/share/icons", "~/.icons", "~/.local/share/icons"];
@@ -2543,7 +2607,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         look
     }
 
-    /// Порт `_drop_legacy_mate_gschema`.
+    /// Port of `_drop_legacy_mate_gschema`.
     fn drop_legacy_mate_gschema(&self) {
         let path = plan::MATE_GSCHEMA_PATH;
         if !self.io.exists(path) {
@@ -2560,11 +2624,11 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
     }
 
-    // ── Защита приложений по умолчанию ───────────────────────────────────
+    // ── Default application protection ───────────────────────────────────
     //
-    // Порт исполняемой половины `SystemDefaultsProtector`: решения —
-    // `crate::defaults`, здесь запросы `xdg-mime`, чтение и запись файлов
-    // `~/.config/rexon/*.json`.
+    // Port of the executing half of `SystemDefaultsProtector`: decisions are in
+    // `crate::defaults`, here the `xdg-mime` queries, reading and writing the
+    // `~/.config/rexon/*.json` files.
 
     fn protector_dir(&self) -> String {
         format!("{}/rexon", self.config_home())
@@ -2625,7 +2689,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         (!v.is_empty()).then_some(v)
     }
 
-    /// Порт `_get_current`: все типы приложений + терминал.
+    /// Port of `_get_current`: all application types + the terminal.
     fn defaults_current(&self) -> Vec<(String, Option<String>)> {
         let mut out: Vec<(String, Option<String>)> = dfl::MIME_TYPES
             .iter()
@@ -2635,10 +2699,10 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         out
     }
 
-    /// Порт `_get_current_terminal` (с той же ленивостью источников).
+    /// Port of `_get_current_terminal` (with the same laziness of sources).
     fn current_terminal(&self) -> Option<String> {
         let de = self.io.env("XDG_CURRENT_DESKTOP");
-        // Список своего стола `xdg-terminal-exec` читает раньше общего.
+        // `xdg-terminal-exec` reads the own desktop's list before the common one.
         let xdg_list = dfl::effective_terminals_list(
             crate::appdefaults::terminals_list_filename(&de)
                 .and_then(|name| self.io.read_text(&format!("{}/{name}", self.config_home()))),
@@ -2682,7 +2746,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         .or_else(|| self.detect_installed_terminal())
     }
 
-    /// Порт `detect_installed_terminal`.
+    /// Port of `detect_installed_terminal`.
     fn detect_installed_terminal(&self) -> Option<String> {
         let available: Vec<String> = dfl::TERMINAL_CANDIDATES
             .iter()
@@ -2724,7 +2788,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                 .exists(&format!("{}/.local/share/applications/{desktop}", self.home()))
     }
 
-    /// Порт `_set_default` вместе с `_set_terminal`.
+    /// Port of `_set_default` together with `_set_terminal`.
     fn set_default(&self, app_type: &str, desktop: &str) {
         match dfl::set_default(app_type, desktop) {
             dfl::SetDefault::Terminal(t) => {
@@ -2753,9 +2817,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                         }
                     }
                 }
-                // `rexon-terminal.conf` лёг в environment.d — без этого
-                // `TERMINAL` дошёл бы до sway/labwc/Hyprland без uwsm только
-                // при следующей правке оформления.
+                // `rexon-terminal.conf` went into environment.d: without this `TERMINAL`
+                // would reach sway/labwc/Hyprland without uwsm only on the next look change.
                 self.io.sync_session_env();
             }
             dfl::SetDefault::Xdg(cmds) => {
@@ -2766,9 +2829,9 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
     }
 
-    /// Порт `SystemDefaultsProtector.snapshot`. Отдаёт, сколько приложений
-    /// теперь запомнено: старт окна пишет это число в журнал, а установке
-    /// стола хватает признака удачи.
+    /// Port of `SystemDefaultsProtector.snapshot`. Returns how many applications
+    /// are now remembered: window startup writes this number to the log, while
+    /// the desktop install only needs the success flag.
     fn defaults_snapshot(&self) -> Result<usize, String> {
         self.io.make_dirs(&self.protector_dir())?;
         let rules = self.protector_rules();
@@ -2779,13 +2842,13 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         Ok(protected.len())
     }
 
-    /// Первое снятие эталона защиты — при старте окна.
+    /// First capture of the protection reference, at window startup.
     ///
-    /// Снимать или нет, решает чистая функция ядра
-    /// ([`dfl::should_snapshot_at_startup`]); само снятие — тот же
-    /// [`Self::defaults_snapshot`], что и перед установкой стола, второй
-    /// копии нет. `None` — снимать было нечего (эталон уже есть либо защита
-    /// выключена), и ни одного запроса к системе не сделано.
+    /// Whether to capture is decided by a pure core function
+    /// ([`dfl::should_snapshot_at_startup`]); the capture itself is the same
+    /// [`Self::defaults_snapshot`] as before a desktop install, there is no
+    /// second copy. `None`: there was nothing to capture (the reference already
+    /// exists or protection is off), and not a single query to the system was made.
     fn defaults_snapshot_if_never(&self) -> Option<Result<usize, String>> {
         let rules = self.protector_rules();
         let remembered = self.protector_protected();
@@ -2795,7 +2858,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         Some(self.defaults_snapshot())
     }
 
-    /// Порт `SystemDefaultsProtector.restore_defaults(de_switched=False)`.
+    /// Port of `SystemDefaultsProtector.restore_defaults(de_switched=False)`.
     fn defaults_restore(&self) -> Result<Vec<(String, String)>, String> {
         let rules = self.protector_rules();
         if !rules.enabled() {
@@ -2821,7 +2884,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         Ok(outcome.results)
     }
 
-    /// Порт `protect_de_mimeapps` → строки для журнала хода.
+    /// Port of `protect_de_mimeapps` → lines for the progress log.
     fn protect_de_mimeapps(&self, current_de: &str, installed: &[String]) -> Vec<String> {
         let config_dir = self.config_home();
         let outcome = dfl::protect_de_mimeapps(
@@ -2832,8 +2895,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             &|d| self.desktop_file_exists(d),
             &|p| self.io.read_text(p),
         );
-        // В окно — одна строка со столами по именам; id, «created/updated»,
-        // число записей и путь — в журнал Rexon.
+        // To the window, one line with the desktops by name; id, "created/updated",
+        // the entry count and the path go to the Rexon log.
         let mut written: Vec<&str> = Vec::new();
         let mut writes = outcome.writes.iter().zip(outcome.valid_counts.iter());
         for (de_id, action) in &outcome.results {
@@ -2865,52 +2928,53 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
 }
 
 // ============================================================================
-// Комплектность рабочего стола: «Проверить и доустановить»
+// Desktop completeness: «Check and install missing»
 // ============================================================================
 //
-// Порт кнопки вкладки «Настройки» (`rexon/qt_settings/window.py`,
-// `_compliance_task`). Python звал проверку ядра сразу с правом лечить, и она
-// ставила недостающее под pkexec молча: без вопроса, без окна хода, по
-// паролю на каждый пакет. Здесь та же проверка ([`comp::Compliance`]) идёт в
-// два шага, и второй — только после «Да»:
-//   1. [`DeOpsExec::completeness_survey`] — проверка БЕЗ пароля и сети (тот
-//      же режим, что при входе в систему): что на месте и что осталось
-//      доустановить ([`comp::deferred_fixes`]);
-//   2. [`DeOpsExec::complete_de`] — та же проверка с правом лечить. Каждая
-//      команда починки (pkexec, помощник AUR, загрузка из сети) идёт через
-//      ЭТОТ исполнитель — `DeOpsIo::run`, ход дела в окно операции, ожидание
-//      чужого замка и отмена теми же точками, что у установки стола. Прочие
-//      запуски проверки (`pacman -Q`, `gsettings`) — её собственным
-//      исполнителем `ComplianceIo`.
+// Port of the «Settings» tab button (`rexon/qt_settings/window.py`,
+// `_compliance_task`). Python called the core check right away with the
+// right to fix, and it installed what was missing under pkexec silently: no
+// question, no progress window, one password per package. Here the same
+// check ([`comp::Compliance`]) runs in two steps, and the second only after
+// «Yes»:
+//   1. [`DeOpsExec::completeness_survey`]: a check WITHOUT a password and
+//      network (the same mode as at login): what is in place and what is
+//      left to install ([`comp::deferred_fixes`]);
+//   2. [`DeOpsExec::complete_de`]: the same check with the right to fix.
+//      Each repair command (pkexec, the AUR helper, a network download) goes
+//      through THIS executor (`DeOpsIo::run`), with progress in the operation
+//      window, waiting for someone else's lock and cancellation at the same
+//      points as the desktop install. Other check runs (`pacman -Q`,
+//      `gsettings`) go through its own executor `ComplianceIo`.
 //
-// ⭐ ЧТО ПОЧИНЕНО ПРИ ПЕРЕНОСЕ (правило #16):
-//   1. Отказ пароля не повторяется по разу на пакет: после первого
-//      закрытого окна пароля остальные команды починки не запускаются, и
-//      человек видит одно объяснение, а не серию окон.
-//   2. Перед каждой установкой ждём, пока освободится установщик пакетов:
-//      post-hook соседней транзакции держит замок до ~30 с, и Python получал
-//      «не удалось установить» на ровном месте.
-//   3. Недостающее называется словами до запроса пароля — Python спрашивал
-//      пароль, не сказав, ради чего.
+// ⭐ WHAT WAS FIXED IN THE PORT (rule #16):
+//   1. A password refusal is not repeated once per package: after the first
+//      closed password window the remaining repair commands do not run, and
+//      the person sees one explanation, not a series of windows.
+//   2. Before each install we wait until the package installer is free: a
+//      neighbouring transaction's post-hook holds the lock for up to ~30 s,
+//      and Python got "failed to install" for no reason.
+//   3. What is missing is named in words before the password prompt: Python
+//      asked for the password without saying what for.
 
-/// Заголовок окна хода доустановки.
+/// Title of the install-missing progress window.
 pub fn completeness_operation_title() -> String {
     tr("Installing What's Missing")
 }
-/// Заголовок окна вопроса.
+/// Title of the question window.
 pub fn completeness_confirm_title() -> String {
     tr("Install What's Missing?")
 }
-/// Первая строка хода: повторная проверка перед установкой.
+/// First progress line: a repeated check before installing.
 pub fn completeness_checking_message() -> String {
     tr("🔍 Checking what's missing")
 }
-/// Итог, когда доустановлено всё, о чём спрашивали.
+/// Result when everything asked about has been installed.
 pub fn completeness_done_message() -> String {
     tr("Everything that was missing is installed.")
 }
 
-/// Текст вопроса: что именно будет доустановлено и что понадобится пароль.
+/// Question text: what exactly will be installed and that a password will be needed.
 pub fn completeness_confirm_text(labels: &[String]) -> String {
     let list: Vec<String> = labels.iter().map(|l| format!("• {l}")).collect();
     trf(
@@ -2921,13 +2985,14 @@ pub fn completeness_confirm_text(labels: &[String]) -> String {
     )
 }
 
-/// Итог, когда доустановить удалось не всё.
+/// Result when not everything could be installed.
 pub fn completeness_partial_message(labels: &[String]) -> String {
     trf("Not everything could be installed. Not installed: %1.", &[&labels.join("; ")])
 }
 
-/// Итог отказа пароля: первая строка — та же, что у отказов установки и
-/// удаления стола; кнопка названа тем же текстом ядра, что написан на ней.
+/// Result of a password refusal: the first line is the same as for the
+/// desktop install and removal refusals; the button is named with the same
+/// core text that is written on it.
 pub fn completeness_denied_message() -> String {
     let button = crate::qt_settings::text("compl.button", &[]).unwrap_or_default();
     trf(
@@ -2938,13 +3003,13 @@ pub fn completeness_denied_message() -> String {
     )
 }
 
-/// Строка хода, когда команда починки не удалась.
+/// Progress line when a repair command failed.
 fn fix_failed_message(why: &str) -> String {
     trf("Didn't work: %1", &[&why])
 }
 
-/// Команда починки — то, что просит пароль администратора или ходит в сеть.
-/// Всё остальное проверка запускает своим исполнителем.
+/// A repair command is something that asks for the administrator password or
+/// goes to the network. Everything else the check runs with its own executor.
 fn is_fix_command(argv: &[String]) -> bool {
     match argv.first().map(String::as_str) {
         Some("pkexec" | "git") => true,
@@ -2953,13 +3018,13 @@ fn is_fix_command(argv: &[String]) -> bool {
     }
 }
 
-/// Пакеты, которые ставит команда (`pacman -S …`, помощник AUR, `… install …`).
+/// Packages the command installs (`pacman -S …`, the AUR helper, `… install …`).
 fn fix_targets(argv: &[String]) -> Vec<String> {
     let Some(pos) = argv.iter().position(|a| a == "-S" || a == "install") else {
         return Vec::new();
     };
-    // Флаги помощника AUR со значением (`--sudo pkexec`, `--answerclean
-    // None`) — значение не пакет.
+    // AUR helper flags with a value (`--sudo pkexec`, `--answerclean None`):
+    // the value is not a package.
     let mut out = Vec::new();
     let mut skip_value = false;
     for a in &argv[pos + 1..] {
@@ -2976,7 +3041,7 @@ fn fix_targets(argv: &[String]) -> Vec<String> {
     out
 }
 
-/// Что сказать в окне хода о команде починки — без argv и путей.
+/// What to say in the progress window about a repair command, without argv and paths.
 pub(crate) fn fix_step_message(argv: &[String]) -> String {
     let prog = argv.first().map(String::as_str).unwrap_or("");
     let targets = fix_targets(argv).join(", ");
@@ -2991,20 +3056,20 @@ pub(crate) fn fix_step_message(argv: &[String]) -> String {
     }
 }
 
-/// Итог первого шага — проверки без пароля.
+/// Result of the first step: the check without a password.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompletenessSurvey {
-    /// Опознанный стол; `None` — проверок не было (стол не опознан).
+    /// Recognised desktop; `None`: there were no checks (the desktop was not recognised).
     pub de_id: Option<String>,
-    /// «Проверка → статус» в порядке проверок.
+    /// "Check → status" in check order.
     pub results: comp::Results,
-    /// Журнал проверки (для журнала программы, не для окна).
+    /// Check log (for the program log, not for the window).
     pub logs: Vec<String>,
-    /// Что осталось доустановить: ключ проверки и подпись для человека.
+    /// What is left to install: the check key and the caption for the person.
     pub fixes: Vec<(String, String)>,
 }
 
-/// Итог второго шага — доустановки.
+/// Result of the second step: installing what is missing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompletenessOutcome {
     pub outcome: DeOpOutcome,
@@ -3012,23 +3077,24 @@ pub struct CompletenessOutcome {
     pub logs: Vec<String>,
 }
 
-/// Исполнитель проверки на время доустановки: команды починки — через
-/// [`DeOpsExec`] (замок, отмена, ход, код pkexec), прочее — исполнителем
-/// проверки как есть.
+/// Check executor for the duration of the install: repair commands go
+/// through [`DeOpsExec`] (lock, cancellation, progress, pkexec code), the
+/// rest goes to the check's executor as is.
 struct FixRouter<'r, 'a, C: ComplianceIo, IO: DeOpsIo + ?Sized> {
     exec: &'r DeOpsExec<'a, IO>,
     inner: &'r mut C,
     lock_paths: Vec<String>,
-    /// Сколько починок ждали по итогам первого шага — для полосы.
+    /// How many repairs were expected after the first step, for the bar.
     expected: usize,
     started: usize,
-    /// Почему дальше команды починки не запускаются.
+    /// Why no more repair commands are run.
     stop: Option<Stop>,
 }
 
 impl<C: ComplianceIo, IO: DeOpsIo + ?Sized> FixRouter<'_, '_, C, IO> {
-    /// `session` — операция и её файлы для сеанса прав окна; его нет —
-    /// прежняя команда `argv` (отказ сеанса ею не повторяется, З5).
+    /// `session`: the operation and its files for the window's privilege
+    /// session; without it, the old `argv` command (a session refusal is not
+    /// repeated with it, Z5).
     fn fix(
         &mut self,
         argv: &[String],
@@ -3036,8 +3102,8 @@ impl<C: ComplianceIo, IO: DeOpsIo + ?Sized> FixRouter<'_, '_, C, IO> {
         session: Option<(&PrivOp, &[String])>,
     ) -> Option<comp::RunResult> {
         let prog = argv.first().map(String::as_str).unwrap_or("");
-        // Замок ждём перед каждой командой, которая может звать пакетный
-        // менеджер: после соседней транзакции его держат post-hook'и.
+        // We wait for the lock before each command that may call the package
+        // manager: after a neighbouring transaction its post-hooks hold it.
         if prog != "git" && !self.lock_paths.is_empty() {
             match self.exec.wait_pkg_lock(&self.lock_paths, plan::PKG_LOCK_TIMEOUT_SECS) {
                 Ok((true, _)) => {}
@@ -3064,7 +3130,7 @@ impl<C: ComplianceIo, IO: DeOpsIo + ?Sized> FixRouter<'_, '_, C, IO> {
             .unwrap_or_else(|| self.exec.io.run(argv, timeout, false));
         if prog == "pkexec" {
             if r.outcome == RunOutcome::Error {
-                // Программы запроса пароля нет — дальше пробовать нечем.
+                // No password prompt program: nothing more to try with.
                 self.stop = Some(Stop::Failed(self.exec.sys.polkit_missing_message()));
                 return None;
             }
@@ -3103,8 +3169,8 @@ impl<C: ComplianceIo, IO: DeOpsIo + ?Sized> ComplianceIo for FixRouter<'_, '_, C
             return self.inner.run(argv, timeout);
         }
         if self.stop.is_some() {
-            // Пароль уже не подтверждён либо операция отменена: следующее
-            // окно пароля человеку не показываем.
+            // The password was already not confirmed or the operation was cancelled:
+            // we do not show the person the next password window.
             return None;
         }
         self.fix(argv, timeout, None)
@@ -3181,8 +3247,8 @@ impl<C: ComplianceIo, IO: DeOpsIo + ?Sized> ComplianceIo for FixRouter<'_, '_, C
 }
 
 impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
-    /// Прогон проверки текущего стола. Окружение и наличие помощников — с
-    /// ЭТОГО исполнителя, как у установки стола.
+    /// Run of the current desktop check. The environment and helper presence
+    /// come from THIS executor, as for the desktop install.
     fn run_compliance<C: ComplianceIo>(
         &self,
         cio: &mut C,
@@ -3208,7 +3274,7 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         (comp::detect_current_de(&desktop), results, logs)
     }
 
-    /// Шаг 1: проверка без пароля и сети — что на месте, чего не хватает.
+    /// Step 1: check without a password and network: what is in place, what is missing.
     pub fn completeness_survey<C: ComplianceIo>(&self, cio: &mut C) -> CompletenessSurvey {
         let (de_id, results, logs) = self.run_compliance(cio, false);
         let fixes = comp::deferred_fixes(&results);
@@ -3220,8 +3286,9 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         }
     }
 
-    /// Шаг 2: доустановка. `expected` — что обещали человеку в вопросе
-    /// (итог шага 1); по нему судится, всё ли получилось.
+    /// Step 2: installing what is missing. `expected` is what the person was
+    /// promised in the question (the result of step 1); it decides whether
+    /// everything worked.
     pub fn complete_de<C: ComplianceIo>(
         &self,
         cio: &mut C,
@@ -3282,7 +3349,7 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
     }
 }
 
-/// Приёмник хода, которому показывать нечего (вопросы без окна хода).
+/// Progress sink with nothing to show (questions without a progress window).
 struct SilentSink;
 
 impl DeOpSink for SilentSink {
@@ -3290,14 +3357,14 @@ impl DeOpSink for SilentSink {
     fn cancellable(&self, _: bool) {}
 }
 
-/// Шаг 1 на живой машине: проверка без пароля и сети.
+/// Step 1 on the live machine: check without a password and network.
 pub fn completeness_survey_live() -> CompletenessSurvey {
     let io = LiveDeOpsIo::new();
     let mut cio = crate::appdefaults_exec::LiveComplianceIo;
     DeOpsExec::new(&io, Arc::new(SilentSink), CancelToken::new()).completeness_survey(&mut cio)
 }
 
-/// Шаг 2 на живой машине: доустановка с ходом дела в окно.
+/// Step 2 on the live machine: install with progress in the window.
 pub fn complete_de_live(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
@@ -3306,8 +3373,8 @@ pub fn complete_de_live(
     complete_de_with(&LiveDeOpsIo::new(), sink, cancel, expected)
 }
 
-/// Шаг 2 на данном исполнителе с живой проверкой — та же проводка, что у
-/// [`complete_de_live`]; стенд подаёт сюда живой исполнитель со своим замком.
+/// Step 2 on the given executor with a live check: the same wiring as
+/// [`complete_de_live`]; a test bench passes a live executor with its own lock here.
 pub fn complete_de_with<IO: DeOpsIo + ?Sized>(
     io: &IO,
     sink: Arc<dyn DeOpSink>,
@@ -3319,33 +3386,36 @@ pub fn complete_de_with<IO: DeOpsIo + ?Sized>(
 }
 
 // ============================================================================
-// Оформление AeroShell: сверка и пересборка
+// The AeroShell look: check and rebuild
 // ============================================================================
 //
-// Порт `check_aeroshell` / `rebuild_aeroshell` (`rexon/system.py`) и окна
-// `offer_aeroshell_rebuild` (`rexon/qt_main/de_progress.py`). Решения — в
-// [`crate::aeroshell`]: расходится ли, чем собирать, команда, разбор итога.
-// Здесь — порядок и походы наружу тем же исполнителем, что ставит столы:
-//   1. [`DeOpsExec::aeroshell_survey`] — сверка без пароля: список пакетов,
-//      версии KWin и Plasma, файлы пакетов оформления;
-//   2. [`DeOpsExec::rebuild_aeroshell`] — пересборка ТОЛЬКО после «Да» в окне:
-//      проверки «чем собирать» до первого побочного действия, ожидание замка
-//      пакетного менеджера (с отменой), запуск сборщика с ходом дела в окно.
+// Port of `check_aeroshell` / `rebuild_aeroshell` (`rexon/system.py`) and of
+// the `offer_aeroshell_rebuild` window (`rexon/qt_main/de_progress.py`).
+// Decisions are in [`crate::aeroshell`]: whether it diverges, what to build
+// with, the command, parsing the result. Here the order and the trips
+// outside, with the same executor that installs desktops:
+//   1. [`DeOpsExec::aeroshell_survey`]: a check without a password: the
+//      package list, KWin and Plasma versions, the look packages' files;
+//   2. [`DeOpsExec::rebuild_aeroshell`]: a rebuild ONLY after «Yes» in the
+//      window: "what to build with" checks before the first side effect,
+//      waiting for the package manager lock (with cancellation), running the
+//      builder with progress in the window.
 //
-// ⭐ ЧТО ПОЧИНЕНО ПРИ ПЕРЕНОСЕ (правило #16):
-//   1. Отменить можно, пока сборка не началась, — в том числе во время
-//      ожидания чужого замка (у Python окно хода не отпускало до пяти минут).
-//   2. Отказ пароля назван отказом пароля, а не пятнадцатью строками вывода
-//      сборщика, и говорит, что делать.
-//   3. Неудача сборки начинается с главного для человека — система цела, —
-//      а хвост вывода идёт следом, а не вместо.
+// ⭐ WHAT WAS FIXED IN THE PORT (rule #16):
+//   1. One can cancel until the build starts, including while waiting for
+//      someone else's lock (in Python the progress window held on for up to
+//      five minutes).
+//   2. A password refusal is called a password refusal, not fifteen lines of
+//      builder output, and says what to do.
+//   3. A build failure starts with what matters most to the person (the
+//      system is intact), and the output tail follows rather than replaces it.
 
 impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
-    /// Сверка оформления с установленной Plasma — без пароля и без сети.
-    /// Не Arch, нет pacman или пакетов оформления — пустой итог.
+    /// Check of the look against the installed Plasma, without a password and
+    /// without network. Not Arch, no pacman or no look packages: an empty result.
     ///
-    /// `read_file` — содержимое модуля эффекта (двоичный файл: у [`SystemIo`]
-    /// чтение только текстовое).
+    /// `read_file`: contents of the effect module (a binary file: [`SystemIo`]
+    /// reads only text).
     pub fn aeroshell_survey(&self, read_file: &dyn Fn(&str) -> Option<Vec<u8>>) -> aeroshell::Report {
         let family = self.sys.family();
         if family != PkgFamily::Arch {
@@ -3370,16 +3440,17 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
                 .and_then(|r| plan::parse_installed_version(family, r.rc() == Some(0), &r.stdout))
         };
         let kwin = version("kwin");
-        // Версия стека — у plasma-workspace: форк libplasma ЗАМЕНЯЕТ стоковый
-        // libplasma, и спрашивать его — сравнивать пакет сам с собой.
+        // The stack version is taken from plasma-workspace: the libplasma fork
+        // REPLACES the stock libplasma, and asking it would compare the package
+        // with itself.
         let plasma = version("plasma-workspace");
         let file_list = |package: &str| {
             ask(plan::package_files_query(family, package))
                 .and_then(|r| plan::package_files_output(r.rc() == Some(0), &r.stdout))
         };
         let qt = version("qt6-base");
-        // `ldd -r` по модулю Qt — ненайденные библиотеки и символы. Только
-        // чтение; нет ldd — шаг пропускается.
+        // `ldd -r` on the Qt module: missing libraries and symbols. Read only; no
+        // ldd, the step is skipped.
         let has_ldd = self.io.which("ldd");
         let ldd = |path: &str| -> Option<String> {
             if !has_ldd {
@@ -3400,28 +3471,28 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         )
     }
 
-    /// Сверка и совет: что предложить человеку. Только чтение — без пароля.
+    /// Check and advice: what to offer the person. Read only, no password.
     ///
-    /// Одинокому форку ([`aeroshell::lonely_libplasma_fork`]) заранее
-    /// делается предпросмотр отката (`pacman -Qi`/`-Si`): если штатного
-    /// пакета в репозиториях нет, предлагать «вернуть» бессмысленно — человек
-    /// получит отказ сразу и словами, а не после пароля.
+    /// For a lonely fork ([`aeroshell::lonely_libplasma_fork`]) a rollback
+    /// preview is made in advance (`pacman -Qi`/`-Si`): if the stock package is
+    /// not in the repositories, offering to "restore" makes no sense: the person
+    /// gets the refusal right away and in words, not after the password.
     pub fn aeroshell_advice(
         &self,
         read_file: &dyn Fn(&str) -> Option<Vec<u8>>,
         file_mtime: &dyn Fn(&str) -> Option<u64>,
     ) -> (aeroshell::Report, aeroshell::Advice) {
         let mut report = self.aeroshell_survey(read_file);
-        // Журнал сеанса — точное подтверждение и уточнение сверки по версиям
-        // (и единственный источник для сторонних модулей). Одинокому форку
-        // он ничего не добавит: совет там — вернуть штатную Plasma.
+        // The session journal is a precise confirmation and refinement of the
+        // version check (and the only source for third-party modules). For a lonely
+        // fork it adds nothing: the advice there is to restore stock Plasma.
         if !report.lonely_fork {
             let findings = self.plugin_journal(read_file, file_mtime);
             aeroshell::apply_journal(&mut report, findings);
         }
         let preview = (report.lonely_fork && !report.restore.is_empty())
             .then(|| self.sys.plasma_fork_reset_preview(Some(&report.restore)));
-        // Сеть — только когда без неё совет был бы «пересобрать».
+        // Network only when without it the advice would be "rebuild".
         let upstream = match aeroshell::advise(&report, preview.clone()) {
             aeroshell::Advice::Rebuild { packages } => self.aeroshell_upstream(&report, &packages),
             _ => None,
@@ -3430,16 +3501,16 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         if advice != aeroshell::Advice::Nothing {
             return (report, advice);
         }
-        // Сейчас всё работает — не ждёт ли в репозиториях Plasma, которая
-        // сломает набор (предупредить ДО обновления).
+        // Everything works now: is a Plasma waiting in the repositories that will
+        // break the set (warn BEFORE the update).
         let advice = self.aeroshell_before_update(&report);
         (report, advice)
     }
 
-    /// Модули KWin и Plasma, которые не загрузились в этом сеансе
-    /// ([`crate::plugin_journal`]). Только чтение, без root: журнал
-    /// пользователя текущей загрузки, `pacman -Qo` / `-Qm`. Нет journalctl
-    /// или журнала — пусто, молча.
+    /// KWin and Plasma modules that failed to load in this session
+    /// ([`crate::plugin_journal`]). Read only, no root: the user journal of the
+    /// current boot, `pacman -Qo` / `-Qm`. No journalctl or journal: empty,
+    /// silently.
     fn plugin_journal(
         &self,
         read_file: &dyn Fn(&str) -> Option<Vec<u8>>,
@@ -3484,7 +3555,7 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
             }
             map
         };
-        // Пакеты не из репозиториев — один вопрос на всю сверку.
+        // Packages not from the repositories: one query for the whole check.
         let foreign_list: std::cell::OnceCell<Vec<String>> = std::cell::OnceCell::new();
         let foreign = |pkg: &str| {
             foreign_list
@@ -3527,10 +3598,11 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         pj::resolve(&failures, &env)
     }
 
-    /// Предупреждение до обновления ([`aeroshell::advise_before_update`]).
-    /// Что придёт — `checkupdates` (своя копия базы, без прав); его нет или
-    /// он не смог — [`aeroshell::Advice::Nothing`]. Сеть к авторам форка —
-    /// только когда в репозиториях новая серия Plasma.
+    /// Warning before an update ([`aeroshell::advise_before_update`]). What will
+    /// come is from `checkupdates` (its own copy of the database, no
+    /// privileges); if it is missing or failed, [`aeroshell::Advice::Nothing`].
+    /// Network access to the fork authors only when the repositories have a new
+    /// Plasma series.
     fn aeroshell_before_update(&self, report: &aeroshell::Report) -> aeroshell::Advice {
         if report.rebuild.is_empty() {
             return aeroshell::Advice::Nothing;
@@ -3544,22 +3616,23 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         aeroshell::advise_before_update(report, &updates, fork.as_deref())
     }
 
-    /// Что придёт с обновлением системы: разобранный вывод `checkupdates`.
-    /// None — не Arch, программы нет или она не смогла (нет сети) — честно
-    /// «не знаем». Код 2 у `checkupdates` — «обновлений нет».
+    /// What a system update will bring: the parsed `checkupdates` output. None:
+    /// not Arch, the program is missing or it failed (no network), an honest
+    /// "we do not know". Code 2 from `checkupdates` means "no updates".
     fn pending_updates(&self) -> Option<Vec<aeroshell::PendingUpdate>> {
         crate::update_guard::pending_updates(self.io, self.sys.family())
     }
 
-    /// Догнали ли авторы форка libplasma Plasma из репозиториев:
-    /// `(версия Plasma, версия форка в ветке по умолчанию)`. `None` — форка
-    /// libplasma в наборе нет либо узнать не удалось (молча: без сети
-    /// проверка просто пропускается). Только чтение, без пароля.
+    /// Whether the libplasma fork authors have caught up with Plasma from the
+    /// repositories: `(Plasma version, fork version in the default branch)`.
+    /// `None`: no libplasma fork in the set, or it could not be found out
+    /// (silently: without network the check is simply skipped). Read only, no
+    /// password.
     fn aeroshell_upstream(&self, report: &aeroshell::Report, packages: &[String]) -> Option<(String, String)> {
         let family = self.sys.family();
         packages.iter().find(|p| p.starts_with(aeroshell::LIBPLASMA_FORK_PREFIX))?;
-        // Plasma, к которой идёт система: установленная или уже лежащая в
-        // базе репозиториев (её подтягивает и Discover) — старшая.
+        // The Plasma the system is heading to: the installed one or one already in
+        // the repository database (Discover pulls it in too), whichever is newer.
         let repo = plan::repo_version_query(family, "libplasma").and_then(|q| {
             if !self.io.which(&q.binary) {
                 return None;
@@ -3571,10 +3644,10 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         Some((plasma, self.aeroshell_fork_version(packages)?))
     }
 
-    /// Версия форка libplasma в ветке по умолчанию его репозитория
-    /// (`PROJECT_VERSION` её `CMakeLists.txt`). None — форка среди
-    /// `packages` нет либо узнать не удалось (нет сети, git, curl, чужой
-    /// хостинг). Только чтение, без пароля.
+    /// Version of the libplasma fork in its repository's default branch
+    /// (`PROJECT_VERSION` of its `CMakeLists.txt`). None: no fork among
+    /// `packages`, or it could not be found out (no network, git, curl, foreign
+    /// hosting). Read only, no password.
     fn aeroshell_fork_version(&self, packages: &[String]) -> Option<String> {
         let family = self.sys.family();
         let fork = packages
@@ -3590,8 +3663,8 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         }
         let timeout = Some(aeroshell::UPSTREAM_TIMEOUT_SECS);
         let argv = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<String>>();
-        // Без вопросов в никуда: git не должен спрашивать логин у закрытого
-        // или переехавшего репозитория.
+        // No questions into the void: git must not ask for a login for a private
+        // or moved repository.
         let head = self.io.run(
             &argv(&["env", "GIT_TERMINAL_PROMPT=0", "git", "ls-remote", "--symref", &git_url, "HEAD"]),
             timeout,
@@ -3610,10 +3683,10 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         aeroshell::cmake_project_version(&cmake.stdout)
     }
 
-    /// Вернуть штатную Plasma вместо оставшегося без оболочки форка.
-    /// ⛔ Зовётся только после «Да» в окне. Сам откат — общий
-    /// (`SystemExec::remove_plasma_forks`, один запрос пароля); здесь —
-    /// ход дела в окно и ожидание чужого замка с отменой.
+    /// Restore stock Plasma instead of a fork left without its shell.
+    /// ⛔ Called only after «Yes» in the window. The rollback itself is shared
+    /// (`SystemExec::remove_plasma_forks`, one password prompt); here, progress
+    /// in the window and waiting for someone else's lock with cancellation.
     pub fn restore_stock_plasma(&self, forks: &[String]) -> DeOpOutcome {
         let step = self.restore_stock_plasma_steps(forks);
         self.finish(step)
@@ -3639,11 +3712,10 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         Ok(message)
     }
 
-    /// Поставить либо снять пользовательские юниты фоновой проверки
-    /// ([`crate::update_guard::watch_plan`]; прежние юниты AeroThemePlasma
-    /// снимаются). Без root: только `~/.config/systemd/user` и
-    /// `systemctl --user`. Всё совпадает — ничего не делается и `systemctl`
-    /// не зовётся.
+    /// Install or remove the background check user units
+    /// ([`crate::update_guard::watch_plan`]; old AeroThemePlasma units are
+    /// removed). No root: only `~/.config/systemd/user` and `systemctl --user`.
+    /// If everything matches, nothing is done and `systemctl` is not called.
     pub fn update_watch(&self, wanted: bool, exec_start: Option<&str>, program: Option<&str>) -> Result<(), String> {
         let plan = crate::update_guard::watch_plan(&self.config_home(), wanted, exec_start, program, &|p| {
             self.io.read_text(p)
@@ -3651,7 +3723,7 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         crate::update_guard::apply_watch_plan(self.io, &plan)
     }
 
-    /// Пересборка пакетов оформления. ⛔ Зовётся только после «Да» в окне.
+    /// Rebuild of the look packages. ⛔ Called only after «Yes» in the window.
     pub fn rebuild_aeroshell(&self, packages: &[String]) -> DeOpOutcome {
         let step = self.rebuild_aeroshell_steps(packages);
         self.finish(step)
@@ -3659,7 +3731,7 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
 
     fn rebuild_aeroshell_steps(&self, packages: &[String]) -> Step<String> {
         self.set_cancellable(true);
-        // Чем собирать и чем спросить права — до первого побочного действия.
+        // What to build with and what to ask for privileges with, before the first side effect.
         let helper = aeroshell::pick_helper(&|name| self.io.which(name));
         let chroot = helper
             .as_deref()
@@ -3678,8 +3750,8 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         self.emit(&rebuild.start_stage, &rebuild.start_message, Some(0.05));
         self.checkpoint()?;
 
-        // Хуки соседней транзакции держат замок до полуминуты: сборщик иначе
-        // падает на ровном месте. Ждать можно с отменой.
+        // Hooks of a neighbouring transaction hold the lock for up to half a
+        // minute: otherwise the builder fails for no reason. Waiting can be cancelled.
         let lock_paths = self.io.pkg_lock_paths(self.sys.family());
         if !lock_paths.is_empty() {
             let (free, message) = self.wait_pkg_lock(&lock_paths, plan::PKG_LOCK_TIMEOUT_SECS)?;
@@ -3697,7 +3769,7 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         let emit: Arc<dyn Fn(&str, &str) + Send + Sync> =
             Arc::new(move |stage: &str, message: &str| out.emit(stage, message, None));
         let mut tail = self.io.tail_log(&log, LogTailKind::Build, emit);
-        // Таймаут — по классу команды (сборка из исходников, часы).
+        // Timeout by command class (building from source, hours).
         let r = self
             .io
             .run_to_file(&aeroshell::rebuild_argv_c_locale(&rebuild.argv), None, &log);
@@ -3706,7 +3778,7 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
         self.io.remove_file(&log);
         let lines: Vec<String> = text.lines().filter_map(aeroshell::rebuild_line).collect();
         if !live_tail {
-            // Читателя нет (подставной исполнитель) — ход дела после конца.
+            // No reader (a fake executor): progress after the end.
             for line in &lines {
                 self.emit(aeroshell::REBUILD_LINE_STAGE, line, None);
             }
@@ -3737,38 +3809,38 @@ impl<IO: DeOpsIo + ?Sized> DeOpsExec<'_, IO> {
     }
 }
 
-/// Сверка оформления на живой машине.
+/// Look check on the live machine.
 pub fn aeroshell_survey_live() -> aeroshell::Report {
     let io = LiveDeOpsIo::new();
     DeOpsExec::new(&io, Arc::new(SilentSink), CancelToken::new())
         .aeroshell_survey(&|path| std::fs::read(path).ok())
 }
 
-/// Модули KWin и Plasma, не загрузившиеся в этом сеансе (журнал
-/// пользователя, `pacman -Qo`) — для сторожа сеанса
-/// ([`crate::session_watch`]): кто виноват в падениях после входа.
+/// KWin and Plasma modules that failed to load in this session (the user
+/// journal, `pacman -Qo`), for the session watchdog
+/// ([`crate::session_watch`]): who is to blame for crashes after login.
 pub fn plugin_findings_live() -> Vec<crate::plugin_journal::Finding> {
     let io = LiveDeOpsIo::new();
     DeOpsExec::new(&io, Arc::new(SilentSink), CancelToken::new())
         .plugin_journal(&|path| std::fs::read(path).ok(), &file_mtime_us_live)
 }
 
-/// Сверка и совет на живой машине.
+/// Check and advice on the live machine.
 pub fn aeroshell_advice_live() -> (aeroshell::Report, aeroshell::Advice) {
     let io = LiveDeOpsIo::new();
     DeOpsExec::new(&io, Arc::new(SilentSink), CancelToken::new())
         .aeroshell_advice(&|path| std::fs::read(path).ok(), &file_mtime_us_live)
 }
 
-/// Время изменения файла, микросекунды эпохи; None — файла нет.
+/// File modification time, epoch microseconds; None: no file.
 fn file_mtime_us_live(path: &str) -> Option<u64> {
     let modified = std::fs::metadata(path).ok()?.modified().ok()?;
     Some(modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_micros() as u64)
 }
 
-/// Юниты фоновой проверки на живой машине: нужны на Arch (пароля не
-/// надо). Заводить Rexon нечем — слежка снимается (мёртвая строка запуска
-/// хуже отсутствия слежки).
+/// Background check units on the live machine: needed on Arch (no password
+/// required). If there is nothing to start Rexon with, watching is removed
+/// (a dead launch line is worse than no watching).
 pub fn update_watch_live() -> Result<(), String> {
     let entry = crate::installer::launch_entry_live();
     let exec = crate::app::unit_launch_command(&entry, None, &[crate::update_guard::CHECK_FLAG]);
@@ -3779,21 +3851,20 @@ pub fn update_watch_live() -> Result<(), String> {
     let io = LiveDeOpsIo::new();
     let ex = DeOpsExec::new(&io, Arc::new(SilentSink), CancelToken::new());
     let wanted = ex.sys.family() == PkgFamily::Arch && exec.is_some();
-    // Сторож входа в Plasma — вместе со слежкой: ставится, пока стоит
-    // AeroThemePlasma, и снимается вместе с ней.
+    // The Plasma login watchdog goes together with watching: installed while
+    // AeroThemePlasma is installed, and removed together with it.
     if let Err(e) = crate::session_guard::sync_env_script_live() {
         crate::log_warn!("session-guard", "сценарий входа: {e}");
     }
     ex.update_watch(wanted, exec.as_deref(), program.as_deref())
 }
 
-/// Безоконная проверка (`rexon --aeroshell-check [--login]`), её зовёт
-/// пользовательский юнит. Дождаться конца транзакции pacman → сверить
-/// (только чтение) → при беде уведомление с кнопкой «Открыть Rexon». Пароль
-/// здесь не спрашивается никогда. → код возврата процесса (0 — проверка
-/// прошла, что бы она ни нашла).
+/// Windowless check (`rexon --aeroshell-check [--login]`), called by the
+/// user unit. Wait for the end of the pacman transaction → check (read only)
+/// → on trouble a notification with an «Open Rexon» button. The password is
+/// never asked here. → process exit code (0: the check ran, whatever it found).
 pub fn aeroshell_check_route_live(login: bool, out: &mut dyn FnMut(&str)) -> i32 {
-    // Проверку выключили в настройках — молчим и здесь.
+    // The check was turned off in the settings: stay silent here too.
     let saved = crate::settings::SettingsManager::new()
         .ok()
         .and_then(|m| m.get(aeroshell::CHECK_ON_START_SETTING).and_then(Value::as_bool));
@@ -3801,8 +3872,8 @@ pub fn aeroshell_check_route_live(login: bool, out: &mut dyn FnMut(&str)) -> i32
         out("aeroshell-check: disabled in settings");
         return 0;
     }
-    // Срабатывание пришлось на середину обновления — ждать его конца:
-    // сверять наполовину обновлённую систему значит пугать зря.
+    // The trigger fell in the middle of an update: wait for its end: checking
+    // a half-updated system means scaring for nothing.
     let started = std::time::Instant::now();
     while std::path::Path::new(aeroshell::PACMAN_DB_LOCK).exists() {
         if started.elapsed().as_secs() > aeroshell::LOCK_WAIT_SECS {
@@ -3826,8 +3897,8 @@ pub fn aeroshell_check_route_live(login: bool, out: &mut dyn FnMut(&str)) -> i32
     let io = LiveDeOpsIo::new();
     let icon = "rexon";
     if io.which("notify-send") {
-        // `--wait` держит процесс до закрытия уведомления; нажатая кнопка
-        // приходит в stdout своим именем.
+        // `--wait` keeps the process until the notification is closed; the pressed
+        // button arrives on stdout by its name.
         let argv: Vec<String> = vec![
             "notify-send".into(),
             format!("--app-name={}", utils::NOTIFY_APP_NAME),
@@ -3843,29 +3914,30 @@ pub fn aeroshell_check_route_live(login: bool, out: &mut dyn FnMut(&str)) -> i32
             open_rexon_for_repair(out);
         }
     } else if io.which("dbus-send") {
-        // Без notify-send кнопки нет: служба уведомлений шлёт нажатие
-        // сигналом, а dbus-send его не ловит. Текст всё равно доходит.
+        // Without notify-send there is no button: the notification service sends
+        // the click as a signal, and dbus-send does not catch it. The text still
+        // gets through.
         let argv = utils::notify_dbus_argv("dbus-send", &notice.summary, &notice.body, icon, 0);
         let _ = io.run(&argv, Some(10), false);
     }
     0
 }
 
-/// Файл с отпечатком состояния, о котором уже сказали
-/// ([`aeroshell::notify_fingerprint`]). Общий у уведомления и окна Rexon:
-/// предупреждение, показанное окном, уведомлением не повторяется.
+/// File with the fingerprint of the state already reported
+/// ([`aeroshell::notify_fingerprint`]). Shared by the notification and the
+/// Rexon window: a warning shown by the window is not repeated as a notification.
 fn aeroshell_notice_stamp_live() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let cache = utils::cache_home(std::env::var("XDG_CACHE_HOME").ok().as_deref().filter(|v| !v.is_empty()), &home);
     format!("{cache}/rexon/aeroshell-notified")
 }
 
-/// Говорили ли уже об этом состоянии (окно Rexon при запуске и уведомление).
+/// Whether this state was already reported (the Rexon window at startup and the notification).
 pub fn aeroshell_notice_seen_live(fingerprint: &str) -> bool {
     std::fs::read_to_string(aeroshell_notice_stamp_live()).is_ok_and(|last| last.trim() == fingerprint)
 }
 
-/// Запомнить, что об этом состоянии сказали.
+/// Remember that this state was reported.
 pub fn aeroshell_notice_mark_live(fingerprint: &str) {
     let stamp = aeroshell_notice_stamp_live();
     if let Some(dir) = std::path::Path::new(&stamp).parent() {
@@ -3874,15 +3946,15 @@ pub fn aeroshell_notice_mark_live(fingerprint: &str) {
     let _ = std::fs::write(&stamp, fingerprint);
 }
 
-/// Открыть Rexon сразу на проверке ([`aeroshell::OPEN_FLAG`]) отдельным
-/// процессом, не дожидаясь его.
+/// Open Rexon right on the check ([`aeroshell::OPEN_FLAG`]) as a separate
+/// process, without waiting for it.
 fn open_rexon_for_repair(out: &mut dyn FnMut(&str)) {
     if let Err(e) = crate::installer::open_rexon_live(&[aeroshell::OPEN_FLAG]) {
         out(&format!("aeroshell-check: {e}"));
     }
 }
 
-/// Возврат штатной Plasma на живой машине с ходом дела в окно.
+/// Restore stock Plasma on the live machine with progress in the window.
 pub fn restore_stock_plasma_live(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
@@ -3892,14 +3964,14 @@ pub fn restore_stock_plasma_live(
     DeOpsExec::new(&io, sink, cancel).restore_stock_plasma(forks)
 }
 
-/// Пересборка оформления на живой машине с ходом дела в окно.
+/// Rebuild the look on the live machine with progress in the window.
 pub fn rebuild_aeroshell_live(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
     packages: &[String],
 ) -> DeOpOutcome {
     let mut outcome = rebuild_aeroshell_with(&LiveDeOpsIo::new(), sink, cancel, packages);
-    // Сторож входа выключал оформление до пересборки — вернуть сохранённое.
+    // The login watchdog turned the look off until the rebuild: restore the saved one.
     if outcome.ok {
         if let Some(extra) = crate::session_guard::after_rebuild_live() {
             outcome.message = format!("{}\n{extra}", outcome.message);
@@ -3908,9 +3980,9 @@ pub fn rebuild_aeroshell_live(
     outcome
 }
 
-/// Пересборка оформления на данном исполнителе — та же проводка, что у
-/// [`rebuild_aeroshell_live`]; стенд подаёт сюда живой исполнитель со своим
-/// замком.
+/// Rebuild the look on the given executor: the same wiring as
+/// [`rebuild_aeroshell_live`]; a test bench passes a live executor with its
+/// own lock here.
 pub fn rebuild_aeroshell_with<IO: DeOpsIo + ?Sized>(
     io: &IO,
     sink: Arc<dyn DeOpSink>,
@@ -3920,8 +3992,8 @@ pub fn rebuild_aeroshell_with<IO: DeOpsIo + ?Sized>(
     DeOpsExec::new(io, sink, cancel).rebuild_aeroshell(packages)
 }
 
-/// Установка стола на живой машине одним вызовом — то, чем пользуется окно.
-/// `session` — выбранный в окне вопроса сеанс (`None` — выбора не было).
+/// Install a desktop on the live machine in one call: what the window uses.
+/// `session`: the session chosen in the question dialog (`None`: there was no choice).
 pub fn install_de_live(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
@@ -3929,12 +4001,12 @@ pub fn install_de_live(
     current_de: &str,
     session: Option<system::SessionKind>,
 ) -> DeOpOutcome {
-    // SteamOS (Steam Deck и Steam Machine): пакетами не ставим — стол
-    // собирается образом systemd-sysext (`crate::steamos_sysext`).
+    // SteamOS (Steam Deck and Steam Machine): we do not install packages: the
+    // desktop is built as a systemd-sysext image (`crate::steamos_sysext`).
     if dc::running_on_steamos() {
         return crate::steamos_sysext::install_live(sink, cancel, de_id);
     }
-    // Deepin — только на Treeland: сначала своя сборка deepin-session.
+    // Deepin only on Treeland: first our own deepin-session build.
     if de_id == crate::deepin_treeland::DE_ID {
         return crate::deepin_treeland::install_from_card_live(sink, cancel, current_de);
     }
@@ -3945,7 +4017,7 @@ pub fn install_de_live(
     install_de_packages_live(sink, cancel, de_id, current_de)
 }
 
-/// «Добавить вариант Wayland / X11» установленному столу на живой машине.
+/// «Add Wayland / X11 variant» to an installed desktop on the live machine.
 pub fn add_session_live(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
@@ -3956,8 +4028,8 @@ pub fn add_session_live(
     DeOpsExec::new(&io, sink, cancel).add_session(de_id, kind)
 }
 
-/// Установка набора стола пакетным менеджером, без особых путей
-/// (Deepin на Treeland зовёт её после своей сборки).
+/// Install the desktop set with the package manager, without special paths
+/// (Deepin on Treeland calls it after its own build).
 pub fn install_de_packages_live(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
@@ -3968,8 +4040,8 @@ pub fn install_de_packages_live(
     DeOpsExec::new(&io, sink, cancel).install_de(de_id, current_de)
 }
 
-/// Установка стола с заменой конфликтующего (`replace`, согласие человека)
-/// на живой машине — кнопка замены на карточке стола.
+/// Install a desktop replacing a conflicting package (`replace`, the
+/// person's consent) on the live machine: the replace button on the desktop card.
 pub fn install_de_replacing_live(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
@@ -3981,7 +4053,7 @@ pub fn install_de_replacing_live(
     if dc::running_on_steamos() {
         return crate::steamos_sysext::install_live(sink, cancel, de_id);
     }
-    // Замены из таблицы у Deepin нет; путь — тот же, что у установки.
+    // Deepin has no replacements in the table; the path is the same as the install.
     if de_id == crate::deepin_treeland::DE_ID {
         return crate::deepin_treeland::install_from_card_live(sink, cancel, current_de);
     }
@@ -3989,7 +4061,7 @@ pub fn install_de_replacing_live(
     DeOpsExec::new(&io, sink, cancel).install_de_session(de_id, current_de, replace, session)
 }
 
-/// Удаление стола на живой машине одним вызовом (защита ядра — внутри).
+/// Remove a desktop on the live machine in one call (the core guard is inside).
 pub fn remove_de_live(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
@@ -4003,7 +4075,7 @@ pub fn remove_de_live(
     DeOpsExec::new(&io, sink, cancel).remove_de(de_id, current_de)
 }
 
-/// Переключение стола на живой машине одним вызовом.
+/// Switch desktops on the live machine in one call.
 pub fn switch_de_live(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
@@ -4014,33 +4086,34 @@ pub fn switch_de_live(
     DeOpsExec::new(&io, sink, cancel).switch_de(target, current_de)
 }
 
-/// Первое снятие эталона защиты приложений на живой машине.
+/// First capture of the application protection reference on the live machine.
 ///
-/// Зовётся при старте окна. `None` — эталон уже снят либо защита выключена;
-/// в этом случае система ни о чём не спрашивается, читаются только два файла
-/// профиля.
+/// Called at window startup. `None`: the reference is already captured or
+/// protection is off; in that case the system is not asked anything, only
+/// two profile files are read.
 pub fn startup_defaults_snapshot_live() -> Option<Result<usize, String>> {
     let io = LiveDeOpsIo::new();
     DeOpsExec::new(&io, Arc::new(SilentSink), CancelToken::new()).defaults_snapshot_if_never()
 }
 
-/// Вердикт совместимости на живой машине — для окна подтверждения.
+/// Compatibility verdict on the live machine, for the confirmation dialog.
 pub fn install_verdict_live(de_id: &str) -> InstallVerdict {
     let io = LiveDeOpsIo::new();
     DeOpsExec::new(&io, Arc::new(SilentSink), CancelToken::new()).install_verdict(de_id)
 }
 
 // ============================================================================
-// Живой исполнитель
+// Live executor
 // ============================================================================
 
-/// Настоящий исполнитель: ФС, подпроцессы, часы. Наблюдения и запуск —
-/// тем же [`crate::system_exec::LiveSystemIo`], своих команд здесь нет.
+/// The real executor: file system, subprocesses, clock. Observations and
+/// runs go through the same [`crate::system_exec::LiveSystemIo`], there are
+/// no commands of its own here.
 pub struct LiveDeOpsIo {
     base: crate::system_exec::LiveSystemIo,
     start: std::time::Instant,
-    /// Свои lock-файлы вместо системных (`None` — системные по семейству,
-    /// замок pacman — из настоящего `DBPath`).
+    /// Own lock files instead of the system ones (`None`: the system ones by
+    /// family, the pacman lock from the real `DBPath`).
     lock_paths: Option<Vec<String>>,
 }
 
@@ -4053,8 +4126,8 @@ impl LiveDeOpsIo {
         }
     }
 
-    /// Живой исполнитель, ждущий ДРУГИЕ lock-файлы — для стендов на
-    /// подставном пакетном менеджере. Продукт зовёт [`LiveDeOpsIo::new`].
+    /// A live executor waiting for OTHER lock files, for test benches on a fake
+    /// package manager. The product calls [`LiveDeOpsIo::new`].
     pub fn with_pkg_lock_paths(paths: Vec<String>) -> Self {
         LiveDeOpsIo {
             lock_paths: Some(paths),
@@ -4138,7 +4211,7 @@ impl DeOpsIo for LiveDeOpsIo {
     fn pkg_lock_paths(&self, family: PkgFamily) -> Vec<String> {
         match &self.lock_paths {
             Some(paths) => paths.clone(),
-            // Замок pacman — из настоящего `DBPath`, а не жёсткий путь.
+            // The pacman lock comes from the real `DBPath`, not a hardcoded path.
             None => plan::lock_paths_live(family),
         }
     }
@@ -4286,7 +4359,7 @@ impl DeOpsIo for LiveDeOpsIo {
         let home = self.env("HOME");
         let xdg_data = std::env::var("XDG_DATA_HOME").ok().filter(|v| !v.is_empty());
         let root = format!("{}/rexon/backups", utils::data_home(xdg_data.as_deref(), &home));
-        // Переезд со старого места — как `BackupManager.__init__`.
+        // Moving from the old location, like `BackupManager.__init__`.
         let old = format!("{home}/.rexon-backups");
         if Path::new(&old).is_dir() && !Path::new(&root).is_dir() {
             if let Some(parent) = Path::new(&root).parent() {
@@ -4320,8 +4393,8 @@ impl DeOpsIo for LiveDeOpsIo {
         metadata.insert(name.clone(), backup::de_meta_entry(de_id, &stamp, &saved, &path));
         let text =
             serde_json::to_string_pretty(&Value::Object(metadata)).map_err(|e| e.to_string())?;
-        // Общая дверь ядра: половина описи — это копии настроек стола,
-        // которые лежат на диске, но восстановить их уже нечем.
+        // The core's shared door: half of the inventory is copies of desktop
+        // settings that are on disk but could no longer be restored otherwise.
         crate::utils::atomic_write(&meta_file, &text).map_err(|e| e.to_string())?;
         Ok((name, saved.len()))
     }
@@ -4348,7 +4421,7 @@ impl DeOpsIo for LiveDeOpsIo {
 }
 
 // ============================================================================
-// Сверки на подставном исполнителе
+// Checks on a fake executor
 // ============================================================================
 
 #[cfg(test)]
@@ -4373,8 +4446,8 @@ pub(crate) mod tests {
         }
     }
 
-    /// Подставной исполнитель: ФС в памяти, журнал вызовов, ответы команд —
-    /// замыканием сценария. Живая машина не трогается вовсе.
+    /// Fake executor: an in-memory file system, a call log, command answers from
+    /// a scenario closure. The live machine is not touched at all.
     pub(crate) struct FakeIo {
         pub calls: RefCell<Vec<String>>,
         pub files: RefCell<HashMap<String, String>>,
@@ -4385,9 +4458,9 @@ pub(crate) mod tests {
         pub clock: Cell<f64>,
         pub temp_n: Cell<u32>,
         pub cancel_on_sleep: Option<CancelToken>,
-        /// Сеанс прав окна есть: ответ его помощника на любую операцию.
+        /// There is a window privilege session: its helper's answer to any operation.
         pub session: Option<RunOut>,
-        /// Операции, ушедшие помощнику сеанса.
+        /// Operations that went to the session helper.
         pub priv_ops: RefCell<Vec<PrivOp>>,
     }
 
@@ -4497,8 +4570,8 @@ pub(crate) mod tests {
     impl DeOpsIo for FakeIo {
         fn run_to_file(&self, argv: &[String], timeout: Option<u64>, log: &str) -> RunOut {
             let r = self.run(argv, timeout, false);
-            // Вывод сборщика — в его журнал, как у живого исполнителя. Только
-            // у журнала пересборки оформления: прочие сверки ждут пустой файл.
+            // The builder output goes to its log, as with the live executor. Only for
+            // the look rebuild log: other checks expect an empty file.
             if log.starts_with("/tmp/rexon_aeroshell_") {
                 self.files
                     .borrow_mut()
@@ -4583,7 +4656,7 @@ pub(crate) mod tests {
         }
     }
 
-    /// Подставной приёмник хода.
+    /// Fake progress sink.
     #[derive(Default)]
     pub(crate) struct Recorder {
         pub events: Mutex<Vec<(String, String, Option<f64>)>>,
@@ -4620,8 +4693,8 @@ pub(crate) mod tests {
         }
     }
 
-    /// Ответы «исправной машины»: экран входа включён, пакеты не стоят,
-    /// пароль принят.
+    /// Answers of a "healthy machine": login screen enabled, packages not
+    /// installed, password accepted.
     pub(crate) fn healthy(argv: &[String]) -> RunOut {
         let a: Vec<&str> = argv.iter().map(String::as_str).collect();
         match a.as_slice() {
@@ -4640,8 +4713,8 @@ pub(crate) mod tests {
         (outcome, rec)
     }
 
-    /// Успех: замок проверен ДО пароля, главный шаг один, временные файлы
-    /// убраны, экран входа не тронут (он уже есть), итог — «done».
+    /// Success: the lock is checked BEFORE the password, one main step, temporary
+    /// files removed, login screen untouched (it already exists), result "done".
     #[test]
     fn install_success_runs_plan_in_order() {
         let io = FakeIo::arch(Box::new(healthy));
@@ -4650,33 +4723,33 @@ pub(crate) mod tests {
         let runs = io.runs();
         let main: Vec<_> = runs.iter().filter(|r| r.starts_with("pkexec bash /tmp/rexon_install_")).collect();
         assert_eq!(main.len(), 1, "{runs:#?}");
-        // Замок проверяется до пароля: шагов сна нет (замка нет), но скрипт
-        // записан до запуска.
+        // The lock is checked before the password: no sleep steps (no lock), but
+        // the script is written before the run.
         let write = io.index_of("write_mode: /tmp/rexon_install_1.sh").unwrap();
         let run = io.index_of("run: pkexec bash").unwrap();
         assert!(write < run);
         assert!(io.index_of("remove: /tmp/rexon_install_1.sh").unwrap() > run);
         assert!(io.index_of("remove: /tmp/rexon_install_2.log").unwrap() > run);
-        // Экран входа уже включён — ни установки SDDM, ни systemctl enable.
+        // The login screen is already enabled: no SDDM install, no systemctl enable.
         assert!(
             !runs.iter().any(|r| r.contains("systemctl enable") || r.contains("-S sddm")),
             "{runs:#?}"
         );
         assert_eq!(rec.stages().last().map(String::as_str), Some("done"));
         assert_eq!(rec.count(de_progress::STAGE_ERROR), 0);
-        // Отмена была доступна в начале и выключена к главному шагу.
+        // Cancellation was available at the start and disabled by the main step.
         let flags = rec.cancellable.lock().unwrap().clone();
         assert_eq!(flags.first(), Some(&true));
         assert_eq!(flags.last(), Some(&false));
-        // Снимок умолчаний записан до пакетного менеджера.
+        // The defaults snapshot is written before the package manager.
         assert!(io.index_of("write: /home/t/.config/rexon/protected_defaults.json").unwrap() < run);
         assert!(io.index_of("bridge: DeInstalled(\"xfce\")").is_some());
     }
 
-    /// Помеченное в базе как AUR, но лежащее в репозиториях машины (CachyOS:
-    /// темы и значки Mint в `cachyos`), уходит в общую транзакцию pacman;
-    /// чего в репозиториях нет — остаётся AUR. Решает `pacman -Si`, а не
-    /// таблица.
+    /// What is marked as AUR in the database but is in the machine's
+    /// repositories (CachyOS: Mint themes and icons in `cachyos`) goes into the
+    /// common pacman transaction; what is not in the repositories stays AUR.
+    /// `pacman -Si` decides, not the table.
     #[test]
     fn install_moves_repo_available_aur_packages_to_pacman() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -4701,7 +4774,7 @@ pub(crate) mod tests {
             assert!(runs.iter().any(|r| r == &format!("pacman -Si {p}")), "{runs:#?}");
         }
 
-        // Ни один не нашёлся — всё остаётся в AUR, как в таблице.
+        // None was found: everything stays in the AUR, as in the table.
         let io = FakeIo::arch(Box::new(|argv: &[String]| {
             let a: Vec<&str> = argv.iter().map(String::as_str).collect();
             match a.as_slice() {
@@ -4714,12 +4787,12 @@ pub(crate) mod tests {
         assert_eq!(rec.messages("install").first(), Some(&install_intro(main, aur)));
     }
 
-    /// Отказ пароля (pkexec 126): человек видит объяснение ОДИН раз, дальше
-    /// установка не идёт — ни приложений по умолчанию, ни экрана входа.
+    /// Password refusal (pkexec 126): the person sees the explanation ONCE, the
+    /// install does not go on: no default applications, no login screen.
     #[test]
     fn install_pkexec_denied_stops_with_one_error() {
-        // Тексты — из каталога перевода; язык исходный (русский сверяют
-        // сверки ядра на po/ru.po).
+        // Texts come from the translation catalog; the source language (Russian is
+        // checked by the core's checks on po/ru.po).
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let io = FakeIo::arch(Box::new(|argv: &[String]| {
             if argv.first().map(String::as_str) == Some("pkexec") {
@@ -4735,13 +4808,13 @@ pub(crate) mod tests {
         assert_eq!(rec.count(de_progress::STAGE_ERROR), 1, "{:#?}", rec.stages());
         assert!(io.index_of("app_defaults:").is_none());
         assert_eq!(io.runs().iter().filter(|r| r.starts_with("pkexec")).count(), 1);
-        // Временные файлы убраны и при отказе.
+        // Temporary files are removed on refusal too.
         assert!(!io.files.borrow().keys().any(|k| k.starts_with("/tmp/rexon_install_")));
     }
 
-    /// «Окно пароля запущено?» спрашивается у самого polkit, а не по именам
-    /// процессов: под прежний шаблон `pgrep` всегда попадала системная
-    /// служба polkitd, и ответ был «да» даже на голом sway.
+    /// "Is a password window running?" is asked of polkit itself, not by process
+    /// names: the old `pgrep` pattern always matched the system service
+    /// polkitd, and the answer was "yes" even on bare sway.
     #[test]
     fn denied_password_asks_polkit_whether_agent_runs() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -4772,9 +4845,9 @@ pub(crate) mod tests {
         }
     }
 
-    /// Нет окна пароля — подсказка называет агент, который реально лежит на
-    /// этой машине (у polkit-gnome путь свой в каждом дистрибутиве), а не
-    /// путь, угаданный за всех.
+    /// No password window: the hint names the agent that is really on this
+    /// machine (polkit-gnome has its own path in each distribution), not a path
+    /// guessed for everyone.
     #[test]
     fn missing_agent_hint_names_agent_found_here() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -4789,7 +4862,7 @@ pub(crate) mod tests {
         assert!(outcome.message.contains(&format!("\n  {agent} &\n")), "{}", outcome.message);
         assert!(!outcome.message.contains("KDE:"), "{}", outcome.message);
 
-        // Ни одного агента на машине — общий совет, без выдуманного пути.
+        // Not a single agent on the machine: general advice, without an invented path.
         let io = FakeIo::arch(Box::new(move |argv: &[String]| match argv[0].as_str() {
             "pkexec" => out(127, "", no_agent),
             _ => healthy(argv),
@@ -4799,8 +4872,8 @@ pub(crate) mod tests {
         assert!(!outcome.message.contains("/usr/lib"), "{}", outcome.message);
     }
 
-    /// Занятый замок, который так и не освободился: пароль НЕ спрашивается,
-    /// итог — текст ядра о зависшей транзакции.
+    /// A busy lock that never got released: the password is NOT asked, the
+    /// result is the core's text about a stuck transaction.
     #[test]
     fn install_lock_never_freed_does_not_ask_password() {
         let io = FakeIo::arch(Box::new(healthy));
@@ -4815,8 +4888,8 @@ pub(crate) mod tests {
         assert!(!io.files.borrow().keys().any(|k| k.starts_with("/tmp/rexon_install_")));
     }
 
-    /// Падение главного шага (транзакция не прошла): текст пакетного
-    /// менеджера доходит до человека, дальнейшие шаги не идут.
+    /// Main step failure (the transaction did not go through): the package
+    /// manager's text reaches the person, the following steps do not run.
     #[test]
     fn install_main_step_failure_reports_manager_error() {
         let io = FakeIo::arch(Box::new(|argv: &[String]| {
@@ -4833,9 +4906,9 @@ pub(crate) mod tests {
         assert!(!rec.stages().contains(&"done".to_string()));
     }
 
-    /// Конфликт, который всё же дошёл до настоящей транзакции (записанный
-    /// вывод pacman 19.10.2026): человек видит объяснение, а не сырой
-    /// английский текст pacman.
+    /// A conflict that still reached the real transaction (recorded pacman
+    /// output of 19.10.2026): the person sees an explanation, not pacman's raw
+    /// English text.
     #[test]
     fn install_conflict_from_pacman_is_explained() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -4866,8 +4939,8 @@ pub(crate) mod tests {
         assert!(outcome.message.contains("KDE Plasma"), "{}", outcome.message);
     }
 
-    /// Конфликт найден пробой ДО пароля: отказ с объяснением, pkexec не
-    /// запускается вовсе.
+    /// A conflict found by the probe BEFORE the password: refusal with an
+    /// explanation, pkexec does not run at all.
     #[test]
     fn install_refuses_conflicting_set_before_password() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -4888,7 +4961,7 @@ pub(crate) mod tests {
         assert_eq!(rec.count(de_progress::STAGE_ERROR), 1);
     }
 
-    /// Пробы набора River на машине с River 0.5 из extra.
+    /// Probes of the River set on a machine with River 0.5 from extra.
     fn river_over_05(argv: &[String]) -> RunOut {
         let a: Vec<&str> = argv.iter().map(String::as_str).collect();
         match a.as_slice() {
@@ -4909,8 +4982,9 @@ pub(crate) mod tests {
         }
     }
 
-    /// River 0.5 стоит, согласия на замену нет: отказ до пароля с текстом
-    /// про ветки River, а не общим «конфликтует с установленным пакетом».
+    /// River 0.5 is installed, no consent to replace: refusal before the
+    /// password with a text about the River branches, not a generic "conflicts
+    /// with an installed package".
     #[test]
     fn install_river_over_05_refuses_without_consent() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -4922,8 +4996,8 @@ pub(crate) mod tests {
         assert_eq!(rec.count(de_progress::STAGE_ERROR), 1);
     }
 
-    /// С согласием заменить river установка идёт: один pkexec обёрткой
-    /// (не помощником), стартовый init River положен.
+    /// With consent to replace river the install goes ahead: one pkexec via the
+    /// wrapper (not the helper), the River starter init is put in place.
     #[test]
     fn install_river_over_05_replaces_with_consent() {
         let io = FakeIo::arch(Box::new(river_over_05));
@@ -4941,8 +5015,8 @@ pub(crate) mod tests {
         assert!(io.files.borrow().contains_key("/home/t/.config/river/init"));
     }
 
-    /// Согласие на замену не снимает чужой конфликт: deepin-kwin рядом с KDE
-    /// Plasma и «согласие» заменить kwin — прежний отказ до пароля.
+    /// Consent to replace does not resolve a foreign conflict: deepin-kwin next
+    /// to KDE Plasma and "consent" to replace kwin is the old refusal before the password.
     #[test]
     fn consent_does_not_lift_a_foreign_conflict() {
         let io = FakeIo::arch(Box::new(|argv: &[String]| {
@@ -4966,8 +5040,8 @@ pub(crate) mod tests {
         assert!(!io.runs().iter().any(|r| r.starts_with("pkexec")), "{:#?}", io.runs());
     }
 
-    /// Ответы машины с поставленной (или нет) своей сборкой deepin-session
-    /// для Treeland.
+    /// Answers of a machine with (or without) our own deepin-session build for
+    /// Treeland installed.
     fn deepin_machine(built: bool) -> impl Fn(&[String]) -> RunOut {
         move |argv: &[String]| {
             let a: Vec<&str> = argv.iter().map(String::as_str).collect();
@@ -4982,8 +5056,8 @@ pub(crate) mod tests {
         }
     }
 
-    /// Deepin без своей сборки: группу целиком (с deepin-session и
-    /// deepin-kwin) исполнитель не ставит — отказ до пароля.
+    /// Deepin without our own build: the executor does not install the whole
+    /// group (with deepin-session and deepin-kwin): refusal before the password.
     #[test]
     fn deepin_without_own_build_is_refused_before_password() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -4995,8 +5069,8 @@ pub(crate) mod tests {
         assert_eq!(rec.count(de_progress::STAGE_ERROR), 1);
     }
 
-    /// Своя сборка стоит: ставится набор варианта — члены группы без
-    /// deepin-session, и ни одна команда не называет deepin-kwin.
+    /// Our own build is installed: the variant set is installed: group members
+    /// without deepin-session, and no command names deepin-kwin.
     #[test]
     fn deepin_with_own_build_installs_the_treeland_set() {
         let io = FakeIo::arch(Box::new(deepin_machine(true)));
@@ -5011,9 +5085,9 @@ pub(crate) mod tests {
         assert!(runs.iter().any(|r| r.starts_with("pkexec bash /tmp/rexon_install_")), "{runs:#?}");
     }
 
-    /// Сеанс есть: Deepin на Treeland — набором варианта операцией
-    /// `DeInstallSet` (правило ядра помощник повторяет сам), без `pkexec` и
-    /// без deepin-session / deepin-kwin.
+    /// There is a session: Deepin on Treeland as a variant set via the
+    /// `DeInstallSet` operation (the helper repeats the core rule itself),
+    /// without `pkexec` and without deepin-session / deepin-kwin.
     #[test]
     fn deepin_set_goes_through_privilege_session() {
         let io = with_session(FakeIo::arch(Box::new(deepin_machine(true))), out(0, "", ""));
@@ -5036,8 +5110,9 @@ pub(crate) mod tests {
         assert!(!set.iter().any(|p| ["deepin", "deepin-session", "deepin-kwin"].contains(&p.as_str())), "{set:?}");
     }
 
-    /// Сеанс есть: замена River 0.5 с согласия — `DeInstallSet` с ровно тем
-    /// `replace`, что одобрила проба (`plan::conflict_swaps`), без `pkexec`.
+    /// There is a session: replacing River 0.5 with consent is `DeInstallSet`
+    /// with exactly the `replace` the probe approved (`plan::conflict_swaps`),
+    /// without `pkexec`.
     #[test]
     fn river_replacement_goes_through_privilege_session() {
         let io = with_session(FakeIo::arch(Box::new(river_over_05)), out(0, "", ""));
@@ -5058,8 +5133,8 @@ pub(crate) mod tests {
         );
     }
 
-    /// Вопрос перед установкой Deepin — с предупреждением «экспериментально»;
-    /// поверх обычного Deepin — отказ.
+    /// The question before installing Deepin, with an "experimental" warning;
+    /// on top of regular Deepin, a refusal.
     #[test]
     fn deepin_verdict_is_experimental_or_refused() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5079,8 +5154,8 @@ pub(crate) mod tests {
         assert_eq!(v.title, "Rexon supports Deepin only on Treeland");
     }
 
-    /// Отмена во время ожидания чужого замка: пароль не спрашивается,
-    /// временные файлы убраны, итог — «отменено, система не изменена».
+    /// Cancellation while waiting for someone else's lock: no password is asked,
+    /// temporary files are removed, the result is "cancelled, system unchanged".
     #[test]
     fn install_cancel_while_waiting_lock_changes_nothing() {
         let mut io = FakeIo::arch(Box::new(healthy));
@@ -5096,7 +5171,7 @@ pub(crate) mod tests {
         assert!(!io.files.borrow().keys().any(|k| k.starts_with("/tmp/rexon_install_")));
     }
 
-    /// Отмена, нажатая до начала: ни снимка, ни копии панели, ни команд.
+    /// Cancellation pressed before the start: no snapshot, no panel copy, no commands.
     #[test]
     fn install_cancelled_before_start_touches_nothing() {
         let io = FakeIo::arch(Box::new(healthy));
@@ -5108,7 +5183,7 @@ pub(crate) mod tests {
         assert!(!io.runs().iter().any(|r| r.starts_with("pkexec")));
     }
 
-    /// Отказ дистрибутива объясняется ДО первого побочного действия.
+    /// A distribution refusal is explained BEFORE the first side effect.
     #[test]
     fn install_blocked_distro_explains_before_any_side_effect() {
         let io = FakeIo::arch(Box::new(healthy));
@@ -5124,15 +5199,15 @@ pub(crate) mod tests {
         assert!(io.runs().is_empty(), "{:#?}", io.runs());
     }
 
-    // ── Сеанс прав окна (Б8) ─────────────────────────────────────────────
+    // ── Window privilege session (B8) ───────────────────────────────────
 
     fn with_session(mut io: FakeIo, answer: RunOut) -> FakeIo {
         io.session = Some(answer);
         io
     }
 
-    /// Сеанс есть: набор стола уходит помощнику операцией с таблицей этого
-    /// стола, ход — в журнал, который читает `tail_log`; `pkexec` нет.
+    /// There is a session: the desktop set goes to the helper as an operation
+    /// with this desktop's table, progress goes to the log `tail_log` reads; no `pkexec`.
     #[test]
     fn install_goes_through_privilege_session() {
         let io = with_session(FakeIo::arch(Box::new(healthy)), out(0, "", ""));
@@ -5149,7 +5224,7 @@ pub(crate) mod tests {
         assert_eq!(rec.stages().last().map(String::as_str), Some("done"));
     }
 
-    /// Набор, ушедший помощнику сеанса одной операцией `PkgInstall`.
+    /// The set that went to the session helper as one `PkgInstall` operation.
     fn session_install_set(io: &FakeIo) -> Vec<String> {
         let ops = io.priv_ops.borrow();
         ops.iter()
@@ -5167,9 +5242,9 @@ pub(crate) mod tests {
         (outcome, rec)
     }
 
-    /// Выбор «Wayland» у Xfce добавляет к набору labwc и Xwayland, и набор
-    /// по-прежнему проходит правило сеанса прав как набор стола (не
-    /// `DeInstallSet`); «X11» и «без выбора» — набор как раньше.
+    /// Choosing «Wayland» for Xfce adds labwc and Xwayland to the set, and the
+    /// set still passes the privilege session rule as a desktop set (not
+    /// `DeInstallSet`); «X11» and "no choice" give the set as before.
     #[test]
     fn install_session_choice_changes_the_set() {
         let base = system::get_packages("xfce", PkgFamily::Arch);
@@ -5189,17 +5264,17 @@ pub(crate) mod tests {
                 assert_eq!(set.iter().any(|p| p == extra), want_labwc, "{session:?}: {set:?}");
             }
         }
-        // LXQt: своя связка сеанса.
+        // LXQt: its own session bundle.
         let io = with_session(FakeIo::arch(Box::new(healthy)), out(0, "", ""));
         let (outcome, _) = run_install_session(&io, "lxqt", Some(system::SessionKind::Wayland));
         assert!(outcome.ok, "{outcome:?}");
         assert!(session_install_set(&io).iter().any(|p| p == "lxqt-wayland-session"));
     }
 
-    /// «➕ Добавить вариант Wayland» у LXQt (живой журнал 08.11.2026): ставится
-    /// только добавка сеанса, без набора стола; шаги установки стола
-    /// (умолчания, пост-установка, экран входа, «чем открывать») не идут;
-    /// итог — про сеанс, с его именем на экране входа.
+    /// «➕ Add Wayland variant» for LXQt (live log of 08.11.2026): only the
+    /// session add-on is installed, without the desktop set; the desktop install
+    /// steps (defaults, post-install, login screen, "open with") do not run; the
+    /// result is about the session, with its name on the login screen.
     #[test]
     fn add_session_installs_only_the_session() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5221,7 +5296,7 @@ pub(crate) mod tests {
         let intro = rec.messages("install");
         assert!(intro.iter().any(|m| m.contains("Adding the Wayland version of LXQt")), "{intro:?}");
 
-        // X11: набор стола (X-сервер — зависимость его экрана входа).
+        // X11: the desktop set (the X server is a dependency of its login screen).
         let io = with_session(FakeIo::arch(Box::new(healthy)), out(0, "", ""));
         let rec = Arc::new(Recorder::default());
         let sink: Arc<dyn DeOpSink> = rec.clone();
@@ -5232,10 +5307,11 @@ pub(crate) mod tests {
         assert!(!set.iter().any(|p| p == "labwc"), "{set:?}");
     }
 
-    /// Сеанс Wayland только из AUR (образец — снятая 16.11.2026 запись MATE
-    /// на Wayfire; механизм ждёт MATE (Polo)): без помощника AUR отказ ДО
-    /// пароля (иначе сеанс молча не встал бы), с помощником — композитор в
-    /// общей транзакции, связка сеанса — помощником AUR.
+    /// A Wayland session only from the AUR (sample: the MATE on Wayfire entry
+    /// removed on 16.11.2026; the mechanism waits for MATE (Polo)): without an
+    /// AUR helper, a refusal BEFORE the password (otherwise the session would
+    /// silently not get installed), with a helper the compositor is in the
+    /// common transaction and the session bundle goes via the AUR helper.
     #[test]
     fn install_aur_wayland_session_needs_aur_helper() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5268,8 +5344,8 @@ pub(crate) mod tests {
         });
     }
 
-    /// MATE ставится только сеансом X11 (16.11.2026): выбор Wayland из окна
-    /// ничего не добавляет — ни Wayfire, ни `mate-wayland-session`.
+    /// MATE is installed only with the X11 session (16.11.2026): choosing
+    /// Wayland in the dialog adds nothing: neither Wayfire nor `mate-wayland-session`.
     #[test]
     fn install_mate_is_x11_only() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5282,8 +5358,8 @@ pub(crate) mod tests {
         assert!(!io.runs().iter().any(|r| r.contains("mate-wayland-session")), "{:#?}", io.runs());
     }
 
-    /// Защита «нет экрана входа» через сеанс: SDDM из таблицы экранов
-    /// входа и включение его юнита — операциями, без `pkexec`.
+    /// The "no login screen" guard through the session: SDDM from the login
+    /// screen table and enabling its unit as operations, without `pkexec`.
     #[test]
     fn missing_login_manager_is_fixed_through_session() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5307,8 +5383,8 @@ pub(crate) mod tests {
         assert!(ops.contains(&PrivOp::EnableDm { family: PkgFamily::Arch, unit: "sddm".into() }), "{ops:?}");
     }
 
-    /// Отказ помощника сеанса — ошибка установки, прежней команды после
-    /// него нет (З5).
+    /// A session helper refusal is an install error, and no old command follows
+    /// it (Z5).
     #[test]
     fn install_session_refusal_has_no_raw_retry() {
         let refused = RunOut {
@@ -5325,8 +5401,8 @@ pub(crate) mod tests {
         assert_eq!(io.priv_ops.borrow().len(), 1);
     }
 
-    /// Сеанс есть: снятие стола — операцией над тем же набором, что
-    /// снимала бы прежняя команда.
+    /// There is a session: desktop removal is an operation on the same set the
+    /// old command would remove.
     #[test]
     fn remove_goes_through_privilege_session() {
         let plain = FakeIo::arch(Box::new(removable));
@@ -5347,12 +5423,12 @@ pub(crate) mod tests {
         assert_eq!(rec.stages().last().map(String::as_str), Some("done"));
     }
 
-    /// Тайловый WM на машине без экрана входа: SDDM ставится и включается
-    /// САМ, без вопроса.
+    /// A tiling WM on a machine without a login screen: SDDM is installed and
+    /// enabled AUTOMATICALLY, without asking.
     #[test]
     fn tiling_wm_without_login_manager_gets_sddm() {
-        // Тексты — из каталога перевода; язык исходный (русский сверяют
-        // сверки ядра на po/ru.po).
+        // Texts come from the translation catalog; the source language (Russian is
+        // checked by the core's checks on po/ru.po).
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let io = FakeIo::arch(Box::new(|argv: &[String]| {
             let a: Vec<&str> = argv.iter().map(String::as_str).collect();
@@ -5367,27 +5443,27 @@ pub(crate) mod tests {
         assert!(runs.iter().any(|r| r.starts_with("pkexec pacman -S") && r.contains("sddm")), "{runs:#?}");
         assert!(runs.iter().any(|r| r == "pkexec systemctl enable sddm.service"), "{runs:#?}");
         assert!(rec.messages("dm_ensure").iter().any(|m| m.contains("SDDM installed")));
-        // Экрана входа не было: поднимется он только при старте — итог
-        // говорит «перезагрузите».
+        // There was no login screen: it only comes up at boot, so the result says
+        // "reboot".
         assert!(outcome.restart_needed, "{outcome:?}");
     }
 
-    /// River: ставится river-classic, а после пакетов кладётся стартовый
-    /// init (исполняемый) — без него River стартует без единой клавиши. Свой
-    /// init человека не трогается.
+    /// River: river-classic is installed, and after the packages a starter init
+    /// (executable) is put in place: without it River starts without a single
+    /// key binding. The person's own init is not touched.
     #[test]
     fn river_gets_starter_init_once() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let io = FakeIo::arch(Box::new(healthy));
         let (outcome, _) = run_install(&io, "river", CancelToken::new());
         assert!(outcome.ok, "{outcome:?}");
-        // Экран входа уже стоит, ни ядра, ни модуля ядра в плане — хватит
-        // выйти из сеанса (живая установка 24.10.2026 звала перезагружаться).
+        // The login screen is already installed, no kernel or kernel module in the
+        // plan: logging out is enough (the live install of 24.10.2026 asked for a reboot).
         assert!(!outcome.restart_needed, "{outcome:?}");
         let runs = io.runs();
         assert!(runs.iter().any(|r| r.starts_with("pacman -Sp") && r.contains(" river-classic ")), "{runs:#?}");
         let init = "/home/t/.config/river/init";
-        // Стартовый init плюс раскладка по языку (у подставной машины LANG=ru).
+        // The starter init plus the layout by language (the fake machine has LANG=ru).
         let kb = crate::keyboard_layout::detect(None, None, None, "ru_RU.UTF-8").unwrap();
         let expected = match crate::keyboard_layout::apply(
             crate::keyboard_layout::Desk::River, plan::river_starter_init(), &[], &kb,
@@ -5399,7 +5475,7 @@ pub(crate) mod tests {
         assert!(expected.contains("riverctl keyboard-layout -options grp:alt_shift_toggle us,ru\n"));
         assert!(io.calls.borrow().iter().any(|c| c == &format!("write_mode: {init} 755")), "{:#?}", io.calls.borrow());
 
-        // Свой init человека: раскладку он задал сам — не трогается вовсе.
+        // The person's own init: they set the layout themselves, not touched at all.
         let mine = "#!/bin/sh\nriverctl keyboard-layout de\nmine\n";
         let io = FakeIo::arch(Box::new(healthy));
         io.files.borrow_mut().insert(init.to_string(), mine.to_string());
@@ -5408,8 +5484,8 @@ pub(crate) mod tests {
         assert_eq!(io.files.borrow().get(init).map(String::as_str), Some(mine));
     }
 
-    /// LXQt: «Заблокировать» получает блокировщик в обоих сеансах (команды в
-    /// `session.conf`); своя команда человека не трогается.
+    /// LXQt: «Lock» gets a locker in both sessions (commands in `session.conf`);
+    /// the person's own command is not touched.
     #[test]
     fn lxqt_gets_lock_commands() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5429,10 +5505,10 @@ pub(crate) mod tests {
         assert_eq!(io.files.borrow().get(conf).map(String::as_str), Some(mine));
     }
 
-    /// Тайловым и Wayfire после установки дописывается раскладка: у sway —
-    /// свой config с `include` системного, у Wayfire — раздел `[input]`.
-    /// Раскладку, заданную человеком, Rexon не трогает; английскому языку
-    /// без системной раскладки писать нечего.
+    /// For the tiling ones and Wayfire the layout is added after the install:
+    /// for sway its own config with an `include` of the system one, for Wayfire
+    /// the `[input]` section. Rexon does not touch a layout set by the person;
+    /// for English without a system layout there is nothing to write.
     #[test]
     fn tiling_desktops_get_keyboard_layout() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5449,12 +5525,12 @@ pub(crate) mod tests {
         assert!(outcome.ok, "{outcome:?}");
         let ini = io.files.borrow().get("/home/t/.config/wayfire.ini").cloned().unwrap_or_default();
         assert!(ini.contains("\n[input]\n") && ini.contains("xkb_layout = us,ru\n"), "{ini}");
-        // Рядом — блокировка экрана (её у Wayfire по умолчанию нет).
+        // Next to it, the screen lock (Wayfire has none by default).
         assert_eq!(plan::wayfire_lock_edit(&ini), None, "{ini}");
         assert!(ini.contains("command_lock = swaylock -f\n"), "{ini}");
 
-        // Своя раскладка в wayfire.ini — её строки прежние, дописана только
-        // блокировка.
+        // An own layout in wayfire.ini: its lines are unchanged, only the lock is
+        // added.
         let own = "[input]\nxkb_layout = de\n";
         let io = FakeIo::arch(Box::new(healthy));
         io.files.borrow_mut().insert("/home/t/.config/wayfire.ini".into(), own.into());
@@ -5464,7 +5540,7 @@ pub(crate) mod tests {
         assert!(expected.starts_with(own));
         assert_eq!(io.files.borrow().get("/home/t/.config/wayfire.ini"), Some(&expected));
 
-        // Своя блокировка и своя раскладка — файл бит-в-бит прежний.
+        // Own lock and own layout: the file is bit for bit the same.
         let own = "[input]\nxkb_layout = de\n\n[autostart]\nidle = swayidle before-sleep swaylock\n\n[command]\nbinding_lock = <super> KEY_L\ncommand_lock = swaylock\n";
         let io = FakeIo::arch(Box::new(healthy));
         io.files.borrow_mut().insert("/home/t/.config/wayfire.ini".into(), own.into());
@@ -5472,23 +5548,111 @@ pub(crate) mod tests {
         assert!(outcome.ok, "{outcome:?}");
         assert_eq!(io.files.borrow().get("/home/t/.config/wayfire.ini").map(String::as_str), Some(own));
 
-        // Английский и пустая система — раскладке писать нечего, в файле
-        // одна блокировка.
+        // English and an empty system: nothing to write for the layout, the file
+        // has only the lock.
         let mut io = FakeIo::arch(Box::new(healthy));
         io.env.insert("LANG".into(), "en_US.UTF-8".into());
         let (outcome, _) = run_install(&io, "wayfire", CancelToken::new());
         assert!(outcome.ok, "{outcome:?}");
         assert_eq!(io.files.borrow().get("/home/t/.config/wayfire.ini"), plan::wayfire_lock_edit("").as_ref());
 
-        // Hyprland без конфига и без образца: файл не заводится (Hyprland
-        // положит свой при первом входе), в журнале — подсказка.
+        // Hyprland without a config and without a template: the file is not created
+        // (Hyprland puts its own at first login), the log has a hint.
         let io = FakeIo::arch(Box::new(healthy));
         let (outcome, _) = run_install(&io, "hyprland", CancelToken::new());
         assert!(outcome.ok, "{outcome:?}");
         assert!(!io.files.borrow().keys().any(|k| k.contains("/hypr/")), "{:?}", io.files.borrow().keys());
     }
 
-    /// Незнакомый стол не доходит ни до одной команды.
+    /// Tiling desktops lock after install: sway gets the key and swayidle in
+    /// the user's config with `include` of the system one (the layout goes
+    /// into the same file), Hyprland a hyprlock binding, hypridle autostart
+    /// and `hypridle.conf`, niri swayidle. The user's own settings are left
+    /// alone; programs missing — config untouched, a plain log line.
+    #[test]
+    fn tiling_desktops_get_screen_lock() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let with_bins = |bins: &[&str]| {
+            let mut io = FakeIo::arch(Box::new(healthy));
+            io.bins.extend(bins.iter().map(|b| b.to_string()));
+            io
+        };
+
+        // sway: no user config — one is created with include of the system one.
+        let io = with_bins(&["swaylock", "swayidle"]);
+        io.files.borrow_mut().insert("/etc/sway/config".into(), "set $mod Mod4\n# exec swayidle -w\n".into());
+        let (outcome, rec) = run_install(&io, "sway", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        let cfg = io.files.borrow().get("/home/t/.config/sway/config").cloned().unwrap_or_default();
+        assert!(cfg.starts_with("include /etc/sway/config\n"), "{cfg}");
+        assert!(cfg.contains("bindsym Mod4+Shift+Escape exec swaylock -f\n"), "{cfg}");
+        assert!(cfg.contains(&format!("exec {}\n", plan::SWAYIDLE_LOCK)), "{cfg}");
+        assert!(cfg.contains("xkb_layout \"us,ru\""), "{cfg}");
+        assert!(rec.messages("post").iter().any(|m| m.contains("screen lock set up")), "{:#?}", rec.messages("post"));
+
+        // sway: the user's own settings — the file stays byte-for-byte.
+        let mine = "include /etc/sway/config\nbindsym $mod+l exec gtklock\nexec swayidle -w timeout 600 gtklock\ninput * xkb_layout de\n";
+        let io = with_bins(&["swaylock", "swayidle"]);
+        io.files.borrow_mut().insert("/home/t/.config/sway/config".into(), mine.into());
+        let (outcome, _) = run_install(&io, "sway", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        assert_eq!(io.files.borrow().get("/home/t/.config/sway/config").map(String::as_str), Some(mine));
+
+        // sway: swayidle enabled as a systemd unit — only the key is added.
+        let io = with_bins(&["swaylock", "swayidle"]);
+        io.files.borrow_mut().insert("/home/t/.config/sway/config".into(), "include /etc/sway/config\ninput * xkb_layout de\n".into());
+        io.files.borrow_mut().insert("/home/t/.config/systemd/user/sway-session.target.wants/swayidle.service".into(), String::new());
+        let (outcome, _) = run_install(&io, "sway", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        let cfg = io.files.borrow().get("/home/t/.config/sway/config").cloned().unwrap_or_default();
+        assert!(cfg.contains("bindsym Mod4+Shift+Escape") && !cfg.contains("exec swayidle"), "{cfg}");
+
+        // Hyprland (Lua) from the package sample: binding, hypridle and its config.
+        let io = with_bins(&["hyprlock", "hypridle"]);
+        io.files.borrow_mut().insert("/usr/share/hypr/hyprland.lua".into(), "local mainMod = \"SUPER\"\nhl.bind(mainMod .. \" + Q\", hl.dsp.exec_cmd(\"kitty\"))\n".into());
+        let (outcome, _) = run_install(&io, "hyprland", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        let lua = io.files.borrow().get("/home/t/.config/hypr/hyprland.lua").cloned().unwrap_or_default();
+        assert!(lua.contains("hl.bind(\"SUPER + SHIFT + Escape\", hl.dsp.exec_cmd(\"hyprlock\"))\n"), "{lua}");
+        assert!(lua.contains("hl.exec_cmd(\"hypridle\")"), "{lua}");
+        assert_eq!(io.files.borrow().get("/home/t/.config/hypr/hypridle.conf"), Some(&plan::hypridle_conf()));
+
+        // Hyprland: own hypridle.conf and own autostart — nothing is touched.
+        let mine = "bind = $mainMod, L, exec, hyprlock\nexec-once = hypridle\n";
+        let io = with_bins(&["hyprlock", "hypridle"]);
+        io.files.borrow_mut().insert("/home/t/.config/hypr/hyprland.conf".into(), mine.into());
+        io.files.borrow_mut().insert("/home/t/.config/hypr/hypridle.conf".into(), "general {}\n".into());
+        let mut io = io;
+        io.env.insert("LANG".into(), "en_US.UTF-8".into());
+        let (outcome, _) = run_install(&io, "hyprland", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        assert_eq!(io.files.borrow().get("/home/t/.config/hypr/hyprland.conf").map(String::as_str), Some(mine));
+        assert_eq!(io.files.borrow().get("/home/t/.config/hypr/hypridle.conf").map(String::as_str), Some("general {}\n"));
+
+        // Hyprland without hyprlock/hypridle (family without packages): the
+        // config is untouched, the log says what is missing.
+        let io = FakeIo::arch(Box::new(healthy));
+        let conf = "input {\n    kb_layout = de\n}\n";
+        io.files.borrow_mut().insert("/home/t/.config/hypr/hyprland.conf".into(), conf.into());
+        let (outcome, rec) = run_install(&io, "hyprland", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        assert_eq!(io.files.borrow().get("/home/t/.config/hypr/hyprland.conf").map(String::as_str), Some(conf));
+        assert!(rec.messages("post").iter().any(|m| m.contains("screen lock programs are missing (hyprlock, hypridle)")), "{:#?}", rec.messages("post"));
+
+        // niri: swayidle goes into the user's config; a second run changes nothing.
+        let io = with_bins(&["swaylock", "swayidle"]);
+        let kdl = "input {\n    keyboard {\n        xkb {\n            layout \"de\"\n        }\n    }\n}\nspawn-at-startup \"waybar\"\n";
+        io.files.borrow_mut().insert("/home/t/.config/niri/config.kdl".into(), kdl.into());
+        let (outcome, _) = run_install(&io, "niri", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        let out = io.files.borrow().get("/home/t/.config/niri/config.kdl").cloned().unwrap_or_default();
+        assert!(out.starts_with(kdl) && out.contains("spawn-at-startup \"swayidle\" \"-w\""), "{out}");
+        let (outcome, _) = run_install(&io, "niri", CancelToken::new());
+        assert!(outcome.ok, "{outcome:?}");
+        assert_eq!(io.files.borrow().get("/home/t/.config/niri/config.kdl"), Some(&out));
+    }
+
+    /// An unknown desktop does not reach a single command.
     #[test]
     fn unknown_desktop_is_refused() {
         let io = FakeIo::arch(Box::new(healthy));
@@ -5506,8 +5670,8 @@ pub(crate) mod tests {
         (outcome, rec)
     }
 
-    /// На текущий стол и на неопознанный не переключаемся — ни копий, ни
-    /// выхода из сессии.
+    /// We do not switch to the current or an unrecognised desktop: no copies, no
+    /// logout.
     #[test]
     fn switch_guard_refuses_without_side_effects() {
         for current in ["xfce", "unknown"] {
@@ -5523,8 +5687,8 @@ pub(crate) mod tests {
         }
     }
 
-    /// Порядок как у оригинала: копии → приложения по умолчанию → мост →
-    /// выход; первая удачная команда выхода — последняя.
+    /// Order as in the original: copies → default applications → bridge →
+    /// logout; the first successful logout command is the last one.
     #[test]
     fn switch_backs_up_then_logs_out() {
         let mut io = FakeIo::arch(Box::new(|argv: &[String]| {
@@ -5550,7 +5714,7 @@ pub(crate) mod tests {
         assert_eq!(rec.messages("done"), vec![logout_message()]);
     }
 
-    /// Ни одна команда выхода не сработала — человек видит, почему.
+    /// No logout command worked: the person sees why.
     #[test]
     fn switch_logout_failure_is_reported() {
         let mut io = FakeIo::arch(Box::new(|argv: &[String]| {
@@ -5578,7 +5742,7 @@ pub(crate) mod tests {
         (outcome, rec)
     }
 
-    /// Пакеты стола стоят, никому снаружи не нужны, пароль принят.
+    /// The desktop's packages are installed, nobody outside needs them, the password is accepted.
     fn removable(argv: &[String]) -> RunOut {
         let a: Vec<&str> = argv.iter().map(String::as_str).collect();
         match a.as_slice() {
@@ -5590,12 +5754,12 @@ pub(crate) mod tests {
         }
     }
 
-    /// ⛔ Текущий стол не удаляется ДАЖЕ прямым вызовом исполнителя — ни
-    /// одной пробы пакетного менеджера, ни пароля. И кнопки на нём нет.
+    /// ⛔ The current desktop is not removed EVEN on a direct executor call: not
+    /// a single package manager probe, no password. And it has no button.
     #[test]
     fn current_desktop_cannot_be_removed_even_by_direct_call() {
-        // Тексты — из каталога перевода; язык исходный (русский сверяют
-        // сверки ядра на po/ru.po).
+        // Texts come from the translation catalog; the source language (Russian is
+        // checked by the core's checks on po/ru.po).
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let io = FakeIo::arch(Box::new(removable));
         let (outcome, rec) = run_remove(&io, "kde", "kde");
@@ -5610,8 +5774,8 @@ pub(crate) mod tests {
         assert!(!kinds.contains(&"remove"), "{kinds:?}");
     }
 
-    /// Обычный путь: пробы → замок → одна привилегированная команда
-    /// удаления → событие моста → «удалён».
+    /// The usual path: probes → lock → one privileged removal command → bridge
+    /// event → "removed".
     #[test]
     fn remove_waits_lock_then_runs_privileged_remove() {
         let io = FakeIo::arch(Box::new(removable));
@@ -5627,8 +5791,8 @@ pub(crate) mod tests {
         assert_eq!(rec.stages().last().map(String::as_str), Some("done"));
     }
 
-    /// Сидишь в Xfce — удаление Cinnamon не снимает общий экран входа
-    /// `lightdm` и приветствия LightDM (дыра 28.10.2026).
+    /// Sitting in Xfce, removing Cinnamon does not remove the shared login
+    /// screen `lightdm` and the LightDM greeters (the hole of 28.10.2026).
     #[test]
     fn remove_other_desktop_keeps_shared_login_screen() {
         let io = FakeIo::arch(Box::new(removable));
@@ -5645,11 +5809,11 @@ pub(crate) mod tests {
         assert!(!names.iter().any(|n| system::is_lightdm_greeter(n)), "{remove}");
     }
 
-    /// Отказ пароля — подсказка ядра, стол не объявлен удалённым.
+    /// Password refusal: the core's hint, the desktop is not announced as removed.
     #[test]
     fn remove_denied_password_shows_hint() {
-        // Тексты — из каталога перевода; язык исходный (русский сверяют
-        // сверки ядра на po/ru.po).
+        // Texts come from the translation catalog; the source language (Russian is
+        // checked by the core's checks on po/ru.po).
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let io = FakeIo::arch(Box::new(|argv: &[String]| {
             if argv.first().map(String::as_str) == Some("pkexec") {
@@ -5665,7 +5829,7 @@ pub(crate) mod tests {
         assert!(io.index_of("bridge:").is_none());
     }
 
-    /// Ничего из пакетов стола не стоит — пароль не спрашивается.
+    /// None of the desktop's packages are installed: no password is asked.
     #[test]
     fn remove_with_nothing_installed_does_not_ask_password() {
         let io = FakeIo::arch(Box::new(healthy));
@@ -5674,7 +5838,7 @@ pub(crate) mod tests {
         assert!(!io.runs().iter().any(|r| r.starts_with("pkexec")));
     }
 
-    /// Строки хода этого модуля — на «вы» и без прежнего жаргона.
+    /// This module's progress lines are polite and without the old jargon.
     #[test]
     fn progress_texts_have_no_jargon() {
         for text in [
@@ -5693,11 +5857,11 @@ pub(crate) mod tests {
         assert_eq!(install_intro(5, 2), "📦 Installing: 5 packages + 2 from the AUR");
     }
 
-    // ── Комплектность рабочего стола ─────────────────────────────────────
+    // ── Desktop completeness ─────────────────────────────────────────────
 
-    /// Подставная сторона проверки: какие пакеты стоят, какие программы
-    /// есть. Команды починки сюда НЕ приходят — их исполняет `FakeIo`, и по
-    /// его журналу видно, спрашивался ли пароль.
+    /// Fake side of the check: which packages are installed, which programs
+    /// exist. Repair commands do NOT come here: `FakeIo` executes them, and its
+    /// log shows whether a password was asked.
     #[derive(Default)]
     struct FakeChecks {
         installed: HashSet<String>,
@@ -5774,8 +5938,8 @@ pub(crate) mod tests {
         fn copy_file(&mut self, _: &str, _: &str) {}
     }
 
-    /// Машина на COSMIC: у этого стола две починки (обои и значки) и одна
-    /// проверка без починки (gnome-keyring).
+    /// A COSMIC machine: this desktop has two repairs (wallpapers and icons) and
+    /// one check without a repair (gnome-keyring).
     fn cosmic_io(responder: Responder) -> FakeIo {
         let mut io = FakeIo::arch(responder);
         io.env
@@ -5807,7 +5971,7 @@ pub(crate) mod tests {
         (outcome, rec)
     }
 
-    /// Всё на месте: доустанавливать нечего, пароль не спрашивается вовсе.
+    /// Everything is in place: nothing to install, no password asked at all.
     #[test]
     fn completeness_all_present_asks_nothing() {
         let io = cosmic_io(Box::new(healthy));
@@ -5820,8 +5984,9 @@ pub(crate) mod tests {
         assert!(io.runs().is_empty(), "проверка без пароля что-то запустила: {:?}", io.runs());
     }
 
-    /// Нехватка → план словами → «Да» → успех: пароль спрашивается только на
-    /// втором шаге, ровно по разу на недостающее, и итог — «всё доустановлено».
+    /// Something missing → plan in words → «Yes» → success: the password is
+    /// asked only in the second step, exactly once per missing item, and the
+    /// result is "everything installed".
     #[test]
     fn completeness_missing_plan_then_success() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5853,20 +6018,21 @@ pub(crate) mod tests {
         let status = |k: &str| done.results.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone());
         assert_eq!(status("cosmic_wallpapers").as_deref(), Some("fixed"));
         assert_eq!(status("cosmic_icons").as_deref(), Some("fixed"));
-        // Ход — словами, без argv; отмена была и погасла к первому паролю.
+        // Progress in words, without argv; cancellation was there and went out by the first password.
         let steps = rec.messages("install");
         assert_eq!(steps, vec!["📦 Installing: cosmic-wallpapers", "📦 Installing: cosmic-icon-theme"]);
         let flags = rec.cancellable.lock().unwrap().clone();
         assert_eq!(flags.first(), Some(&true));
         assert_eq!(flags.last(), Some(&false));
         assert_eq!(rec.count(de_progress::STAGE_ERROR), 0);
-        // Проверка пакетов шла исполнителем проверки, а не через pkexec.
+        // The package check went through the check executor, not through pkexec.
         assert!(checks.runs.iter().any(|r| r == "pacman -Q cosmic-wallpapers"));
         assert!(!checks.runs.iter().any(|r| r.starts_with("pkexec")));
     }
 
-    /// Б9: сеанс прав есть — доустановка уходит помощнику операцией по
-    /// таблице починки (`DesktopRepair`), по пакету на починку; `pkexec` нет.
+    /// B9: there is a privilege session: the install goes to the helper as an
+    /// operation by the repair table (`DesktopRepair`), one package per repair;
+    /// no `pkexec`.
     #[test]
     fn completeness_fix_goes_through_privilege_session() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5885,15 +6051,15 @@ pub(crate) mod tests {
             })
             .collect();
         assert_eq!(io.priv_ops.borrow().as_slice(), want.as_slice());
-        // Каждое имя проходит проверку помощника по этой таблице.
+        // Each name passes the helper's check against this table.
         for op in &want {
             let PrivOp::PkgInstall { family, packages, source } = op else { unreachable!() };
             assert!(crate::privilege::validate::check_install(*family, packages, source.install_source("cosmic")).is_ok());
         }
     }
 
-    /// Отказ пароля: одно окно пароля, одно объяснение; второй пакет пароль
-    /// уже не спрашивает.
+    /// Password refusal: one password window, one explanation; the second
+    /// package no longer asks for the password.
     #[test]
     fn completeness_password_refused_asks_once() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5911,15 +6077,16 @@ pub(crate) mod tests {
         assert!(!done.outcome.cancelled);
         assert_eq!(done.outcome.message, completeness_denied_message());
         assert!(done.outcome.message.starts_with("The administrator password wasn't confirmed"));
-        // Подпись кнопки — из каталога «Настроек» на языке интерфейса.
+        // The button caption comes from the «Settings» catalog in the UI language.
         let button = crate::qt_settings::text("compl.button", &[]).unwrap();
         assert!(done.outcome.message.contains(&format!("“{button}”")));
         assert_eq!(pkexec_runs(&io).len(), 1, "{:#?}", io.runs());
         assert_eq!(rec.count(de_progress::STAGE_ERROR), 1, "{:#?}", rec.stages());
     }
 
-    /// Сбой пакета: второй пакет всё равно ставится, итог называет словами
-    /// только то, что не встало, а причина пакетного менеджера — в ходе.
+    /// A package failure: the second package is still installed, the result
+    /// names in words only what did not install, and the package manager's
+    /// reason is in the progress.
     #[test]
     fn completeness_package_failure_names_what_is_left() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5946,8 +6113,8 @@ pub(crate) mod tests {
         assert_eq!(rec.count(de_progress::STAGE_ERROR), 1);
     }
 
-    /// Отмена до первого пароля: ничего не запущено, итог — «отменено».
-    /// И во время ожидания чужого замка — тоже.
+    /// Cancellation before the first password: nothing was run, the result is
+    /// "cancelled". And while waiting for someone else's lock too.
     #[test]
     fn completeness_cancel_before_password_changes_nothing() {
         let io = cosmic_io(Box::new(healthy));
@@ -5971,7 +6138,7 @@ pub(crate) mod tests {
         assert_eq!(rec.count(plan::PKG_LOCK_WAIT_STAGE), 1);
     }
 
-    /// Замок так и не освободился: пароль не спрашивается, итог — текст ядра.
+    /// The lock never got released: no password asked, the result is the core's text.
     #[test]
     fn completeness_lock_never_freed_does_not_ask_password() {
         let io = cosmic_io(Box::new(healthy));
@@ -5986,9 +6153,9 @@ pub(crate) mod tests {
         assert!(pkexec_runs(&io).is_empty());
     }
 
-    /// ⭐ Сторож полноты подписей: у КАЖДОЙ починки, которую проверка умеет
-    /// отложить, есть подпись для окна вопроса, и в таблице нет лишних.
-    /// Проверки всех столов гоняются на «пустой» машине, где не стоит ничего.
+    /// ⭐ Caption completeness guard: EVERY repair the check can defer has a
+    /// caption for the question window, and the table has no extra ones. The
+    /// checks of all desktops run on an "empty" machine with nothing installed.
     #[test]
     fn every_deferred_fix_has_a_label() {
         let mut deferred = std::collections::BTreeSet::new();
@@ -6009,8 +6176,8 @@ pub(crate) mod tests {
         assert_eq!(deferred, labelled, "таблица подписей разошлась с проверками");
     }
 
-    /// Английские тексты хода операций со столом — без русских букв и
-    /// читаются фразами (правило перевода: русский только в `po/ru.po`).
+    /// English progress texts of desktop operations have no Russian letters and
+    /// read as phrases (translation rule: Russian only in `po/ru.po`).
     #[test]
     fn english_de_op_texts_have_no_russian() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -6084,7 +6251,7 @@ pub(crate) mod tests {
         assert_eq!(unknown_de_message("xyz"), "Rexon doesn't know the “xyz” desktop.");
     }
 
-    /// Тексты доустановки — без служебных слов; ход не показывает argv.
+    /// Install-missing texts have no service words; progress does not show argv.
     #[test]
     fn completeness_texts_have_no_jargon() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -6113,15 +6280,15 @@ pub(crate) mod tests {
         assert_eq!(texts[11], "📦 Installing: budgie-extras");
     }
 
-    // ── Оформление AeroShell ─────────────────────────────────────────────
+    // ── The AeroShell look ───────────────────────────────────────────────
 
     const EFFECT_SO: &str = "/usr/lib/qt6/plugins/kwin/effects/plugins/aeroglide.so";
     const KWIN_COMPONENTS: &str = "aeroshell-kwin-components-git";
     const LIBPLASMA: &str = "aeroshell-libplasma-git";
 
-    /// Машина с оформлением: модуль эффекта собран под KWin 6.7.4, форк
-    /// libplasma — под Plasma 6.7.4, пакет значков без собранного кода.
-    /// `kwin` — версия KWin, стоящая сейчас; `build` — ответ сборщика.
+    /// A machine with the look: the effect module built for KWin 6.7.4, the
+    /// libplasma fork for Plasma 6.7.4, an icon package without built code.
+    /// `kwin` is the KWin version installed now; `build` is the builder's answer.
     fn aero_io(kwin: &'static str, build: Responder) -> FakeIo {
         FakeIo::arch(Box::new(move |argv: &[String]| {
             let a: Vec<&str> = argv.iter().map(String::as_str).collect();
@@ -6173,9 +6340,9 @@ pub(crate) mod tests {
         out(0, "==> Making package: aeroshell-libplasma-git\n\n==> Finished making\n", "")
     }
 
-    /// Машина как у владельца 04.10.2026: от набора остался один форк
-    /// libplasma, оболочки нет, версии сходятся. `si_libplasma` — есть ли
-    /// штатный libplasma в репозиториях; `remove` — ответ транзакции отката.
+    /// A machine like the owner's on 04.10.2026: only the libplasma fork is left
+    /// from the set, no shell, versions match. `si_libplasma`: whether the stock
+    /// libplasma is in the repositories; `remove`: the rollback transaction answer.
     fn lonely_io(si_libplasma: bool, remove: Responder) -> FakeIo {
         FakeIo::arch(Box::new(move |argv: &[String]| {
             let a: Vec<&str> = argv.iter().map(String::as_str).collect();
@@ -6210,8 +6377,8 @@ pub(crate) mod tests {
             .aeroshell_advice(&|_p: &str| None, &|_p: &str| None)
     }
 
-    /// Одинокий форк: совет — вернуть штатную Plasma, пересборки нет и
-    /// пароль до «Да» не спрашивается.
+    /// Lonely fork: the advice is to restore stock Plasma, there is no rebuild,
+    /// and the password is not asked before «Yes».
     #[test]
     fn lonely_fork_advises_restore_without_touching_anything() {
         let io = lonely_io(true, Box::new(|_| out(0, "", "")));
@@ -6223,10 +6390,10 @@ pub(crate) mod tests {
         assert!(runs.iter().any(|r| r == "pacman -Si libplasma"), "{runs:#?}");
     }
 
-    /// Журнал сеанса: KWin назвал эффект набора несовместимым, хотя по
-    /// версиям в файлах всё сходится, — совет «пересобрать», с версиями из
-    /// журнала; сторонний виджет назван отдельной строкой. Читается только
-    /// журнал пользователя и база пакетов, без root.
+    /// Session journal: KWin called the set's effect incompatible, although the
+    /// versions in the files match: the advice is "rebuild", with versions from
+    /// the journal; a third-party widget is named on a separate line. Only the
+    /// user journal and the package database are read, no root.
     #[test]
     fn advice_reads_session_journal() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -6275,7 +6442,7 @@ pub(crate) mod tests {
         assert!(runs.iter().any(|r| r.starts_with("journalctl --user -b") && r.contains("--grep=")), "{runs:#?}");
     }
 
-    /// Штатного libplasma в репозиториях нет — отказ словами сразу.
+    /// Stock libplasma is not in the repositories: a refusal in words right away.
     #[test]
     fn lonely_fork_without_stock_package_is_blocked() {
         let io = lonely_io(false, Box::new(|_| out(0, "", "")));
@@ -6283,7 +6450,7 @@ pub(crate) mod tests {
         assert!(matches!(advice, aeroshell::Advice::RestoreBlocked { .. }), "{advice:?}");
     }
 
-    /// «Да» → одна транзакция отката под одним паролем, ход дела в окно.
+    /// «Yes» → one rollback transaction under one password, progress in the window.
     #[test]
     fn restore_stock_runs_one_transaction() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -6300,9 +6467,9 @@ pub(crate) mod tests {
         assert_eq!(rec.messages("done"), vec![aeroshell::restore_done_message()]);
     }
 
-    /// Оболочка стоит, Plasma ушла на 6.8, а ветка форка ещё 6.7: совет —
-    /// ждать авторов, а не пересобирать. `fork_cmake` — ответ сырого файла
-    /// (None — сеть недоступна).
+    /// The shell is installed, Plasma moved to 6.8, and the fork branch is still
+    /// 6.7: the advice is to wait for the authors, not to rebuild. `fork_cmake`
+    /// is the raw file answer (None: network unavailable).
     fn upstream_io(fork_cmake: Option<&'static str>) -> FakeIo {
         let mut io = FakeIo::arch(Box::new(move |argv: &[String]| {
             let a: Vec<&str> = argv.iter().map(String::as_str).collect();
@@ -6354,7 +6521,7 @@ pub(crate) mod tests {
         assert_eq!(advice, aeroshell::Advice::Rebuild { packages: vec![LIBPLASMA.to_string()] });
     }
 
-    /// Нет сети — проверка молча пропущена, совет прежний.
+    /// No network: the check is silently skipped, the advice is unchanged.
     #[test]
     fn rebuild_offered_without_network() {
         let io = upstream_io(None);
@@ -6362,9 +6529,9 @@ pub(crate) mod tests {
         assert_eq!(advice, aeroshell::Advice::Rebuild { packages: vec![LIBPLASMA.to_string()] });
     }
 
-    /// Сейчас всё работает (6.7.5), а `checkupdates` видит в репозиториях
-    /// 6.8.0. `checkupdates` — его ответ (None — программы нет), `fork_cmake`
-    /// — `CMakeLists.txt` ветки форка по умолчанию.
+    /// Everything works now (6.7.5), and `checkupdates` sees 6.8.0 in the
+    /// repositories. `checkupdates` is its answer (None: no program),
+    /// `fork_cmake` is the `CMakeLists.txt` of the fork's default branch.
     fn before_update_io(checkupdates: Option<(i32, &'static str)>, fork_cmake: &'static str) -> FakeIo {
         let mut io = FakeIo::arch(Box::new(move |argv: &[String]| {
             let a: Vec<&str> = argv.iter().map(String::as_str).collect();
@@ -6398,8 +6565,8 @@ pub(crate) mod tests {
 
     const PENDING_68: &str = "kwin 6.7.5-1.1 -> 6.8.0-1\nplasma-workspace 6.7.5-1.1 -> 6.8.0-1\n";
 
-    /// Новая серия в репозиториях, авторы ещё на 6.7 — «не обновляйтесь»;
-    /// ничего не ставится и пароль не спрашивается.
+    /// A new series in the repositories, the authors still on 6.7: "do not
+    /// update"; nothing is installed and no password is asked.
     #[test]
     fn pending_plasma_series_with_lagging_fork_says_hold() {
         let io = before_update_io(Some((0, PENDING_68)), "set(PROJECT_VERSION \"6.7.5\")\n");
@@ -6411,19 +6578,19 @@ pub(crate) mod tests {
         assert!(!runs.iter().any(|r| r.contains("pkexec") || r.contains("sudo") || r.contains("-Sy")), "{runs:?}");
     }
 
-    /// Авторы уже на 6.8 либо их версию узнать не удалось — мягко:
-    /// пересборка после обновления понадобится.
+    /// The authors are already on 6.8 or their version could not be found out:
+    /// softly, a rebuild will be needed after the update.
     #[test]
     fn pending_plasma_series_caught_up_or_unknown_is_soft() {
         let soft = aeroshell::Advice::RebuildAfterUpdate { from: "6.7.5".into(), to: "6.8.0".into() };
         let io = before_update_io(Some((0, PENDING_68)), "set(PROJECT_VERSION \"6.8.0\")\n");
         assert_eq!(lonely_advice(&io).1, soft);
-        // Сырой файл ветки не разобрался (чужой ответ) — версия неизвестна.
+        // The branch's raw file did not parse (a foreign answer): the version is unknown.
         let io = before_update_io(Some((0, PENDING_68)), "<html>not found</html>");
         assert_eq!(lonely_advice(&io).1, soft);
     }
 
-    /// Точечный выпуск — мягко и без похода к авторам в сеть.
+    /// A point release: softly, and without going to the authors over the network.
     #[test]
     fn pending_point_release_is_soft_without_network() {
         let io = before_update_io(
@@ -6437,8 +6604,8 @@ pub(crate) mod tests {
         assert!(!io.runs().iter().any(|r| r.contains("git ls-remote") || r.starts_with("curl")));
     }
 
-    /// Нет `checkupdates`, он не смог (код 1) или обновлений нет (код 2) —
-    /// молчим, системную базу не трогаем.
+    /// No `checkupdates`, it failed (code 1) or there are no updates (code 2):
+    /// we stay silent and do not touch the system database.
     #[test]
     fn no_checkupdates_or_failure_is_quiet() {
         for answer in [None, Some((1, "")), Some((2, ""))] {
@@ -6448,8 +6615,8 @@ pub(crate) mod tests {
         }
     }
 
-    /// Слежка: ставится один раз (файлы + daemon-reload + enable), повтор
-    /// ничего не делает, снятие — disable, файлы, daemon-reload.
+    /// Watching: installed once (files + daemon-reload + enable), a repeat does
+    /// nothing, removal is disable, files, daemon-reload.
     #[test]
     fn update_watch_installs_once_and_removes() {
         use crate::update_guard as ug;
@@ -6473,19 +6640,19 @@ pub(crate) mod tests {
                 "systemctl --user enable --now rexon-update-check.path rexon-update-check.timer".to_string(),
             ]
         );
-        // Повтор с тем же — ни записи, ни systemctl.
+        // A repeat with the same: no writes, no systemctl.
         ex.update_watch(true, Some(exec), program).unwrap();
         assert_eq!(sc(&io).len(), 2);
-        // Снятие.
+        // Removal.
         ex.update_watch(false, None, None).unwrap();
         let runs = sc(&io);
         assert_eq!(runs[2], "systemctl --user disable --now rexon-update-check.path rexon-update-check.timer");
         assert_eq!(runs[3], "systemctl --user daemon-reload");
         assert!(!io.files.borrow().contains_key(&format!("{dir}/{}", ug::WATCH_PATH_UNIT)));
-        // Снимать нечего — ничего не зовётся.
+        // Nothing to remove: nothing is called.
         ex.update_watch(false, None, None).unwrap();
         assert_eq!(sc(&io).len(), 4);
-        // Прежние юниты AeroThemePlasma снимаются, общие ставятся.
+        // Old AeroThemePlasma units are removed, the shared ones installed.
         io.files.borrow_mut().insert(format!("{dir}/rexon-aeroshell-check.timer"), String::new());
         ex.update_watch(true, Some(exec), program).unwrap();
         let runs = sc(&io);
@@ -6494,7 +6661,7 @@ pub(crate) mod tests {
         assert!(!io.files.borrow().contains_key(&format!("{dir}/rexon-aeroshell-check.timer")));
     }
 
-    /// Всё свежее: сверка только спрашивает pacman, окна нет, сборки нет.
+    /// Everything is fresh: the check only asks pacman, no window, no build.
     #[test]
     fn aeroshell_up_to_date_asks_nothing() {
         let io = aero_io("6.7.4", Box::new(built));
@@ -6507,7 +6674,7 @@ pub(crate) mod tests {
         assert!(runs.iter().all(|r| r.starts_with("pacman ")), "{runs:#?}");
     }
 
-    /// Не Arch: пакетов оформления там не бывает, pacman не спрашивается.
+    /// Not Arch: there are no look packages there, pacman is not asked.
     #[test]
     fn aeroshell_survey_off_arch_is_empty() {
         let io = aero_io("6.7.5", Box::new(built));
@@ -6520,12 +6687,12 @@ pub(crate) mod tests {
         assert!(io.runs().is_empty(), "{:#?}", io.runs());
     }
 
-    /// Устарело → план → «Да» → успех: пересобирается весь собранный набор
-    /// одной командой, ход сборки идёт в окно, временный журнал убран.
+    /// Outdated → plan → «Yes» → success: the whole built set is rebuilt with
+    /// one command, build progress goes to the window, the temporary log is removed.
     #[test]
     fn aeroshell_stale_plan_then_success() {
-        // Тексты — из каталога перевода; язык исходный (русский сверяют
-        // сверки ядра на po/ru.po).
+        // Texts come from the translation catalog; the source language (Russian is
+        // checked by the core's checks on po/ru.po).
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let mut io = aero_io("6.7.5", Box::new(built));
         io.bins.insert("yay".to_string());
@@ -6561,7 +6728,7 @@ pub(crate) mod tests {
         assert!(io.index_of("remove: /tmp/rexon_aeroshell_").unwrap() > run);
     }
 
-    /// paru и devtools есть — сборка в чистом окружении.
+    /// paru and devtools present: a build in a clean environment.
     #[test]
     fn aeroshell_rebuild_prefers_paru_chroot() {
         let mut io = aero_io("6.7.5", Box::new(built));
@@ -6573,8 +6740,8 @@ pub(crate) mod tests {
         assert!(runs[0].starts_with("env LANG=C LC_ALL=C paru -S --rebuild --chroot --skipreview"), "{runs:?}");
     }
 
-    /// Нет ни paru, ни yay: отказ до первого побочного действия — ни замка,
-    /// ни сборщика, одно объяснение.
+    /// Neither paru nor yay: a refusal before the first side effect: no lock, no
+    /// builder, one explanation.
     #[test]
     fn aeroshell_no_builder_refuses_before_anything() {
         let io = aero_io("6.7.5", Box::new(built));
@@ -6586,7 +6753,7 @@ pub(crate) mod tests {
         assert_eq!(rec.count("install"), 0);
     }
 
-    /// Нечем спросить пароль — объяснение ядра с именем пакета.
+    /// Nothing to ask for the password with: the core's explanation with the package name.
     #[test]
     fn aeroshell_without_polkit_refuses() {
         let mut io = aero_io("6.7.5", Box::new(built));
@@ -6598,7 +6765,7 @@ pub(crate) mod tests {
         assert!(builder_runs(&io).is_empty());
     }
 
-    /// Отказ пароля: одно объяснение словами вместо хвоста сборщика.
+    /// Password refusal: one explanation in words instead of the builder's tail.
     #[test]
     fn aeroshell_password_refused_says_so_once() {
         let mut io = aero_io(
@@ -6620,8 +6787,8 @@ pub(crate) mod tests {
         assert_eq!(rec.count(de_progress::STAGE_ERROR), 1, "{:#?}", rec.stages());
     }
 
-    /// Сбой сборки: сначала «система цела», потом хвост вывода; без вывода —
-    /// хотя бы код возврата.
+    /// Build failure: first "the system is intact", then the output tail; without
+    /// output, at least the exit code.
     #[test]
     fn aeroshell_build_failure_keeps_tail() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -6633,7 +6800,7 @@ pub(crate) mod tests {
         let (done, rec) = aero_rebuild(&io, &[LIBPLASMA.to_string()], CancelToken::new());
         assert!(!done.ok);
         assert!(done.message.starts_with(&aeroshell::rebuild_failed_head()), "{}", done.message);
-        // Главное в неудаче — что система цела; текст — тот, что берёт aeroshell.
+        // The main thing in a failure is that the system is intact; the text is the one aeroshell takes.
         let intact = crate::de_progress::aeroshell_fail_note();
         assert!(done.message.contains(&intact), "{}", done.message);
         assert!(done.message.ends_with("==> ERROR: A failure occurred in build().\n    Aborting..."), "{}", done.message);
@@ -6650,8 +6817,8 @@ pub(crate) mod tests {
         assert!(done.message.starts_with("Couldn't start yay"), "{}", done.message);
     }
 
-    /// Отмена до сборки — ничего не запущено; и во время ожидания чужого
-    /// замка — тоже.
+    /// Cancellation before the build: nothing was run; and while waiting for
+    /// someone else's lock too.
     #[test]
     fn aeroshell_cancel_before_build_changes_nothing() {
         let mut io = aero_io("6.7.5", Box::new(built));
@@ -6676,7 +6843,7 @@ pub(crate) mod tests {
         assert_eq!(rec.count(plan::PKG_LOCK_WAIT_STAGE), 1);
     }
 
-    /// Замок так и не освободился: сборщик не запускается, итог — текст ядра.
+    /// The lock never got released: the builder does not run, the result is the core's text.
     #[test]
     fn aeroshell_lock_never_freed_does_not_build() {
         let mut io = aero_io("6.7.5", Box::new(built));
@@ -6690,14 +6857,15 @@ pub(crate) mod tests {
         assert!(builder_runs(&io).is_empty());
     }
 
-    // ── Первое снятие эталона защиты приложений ──────────────────────────
+    // ── First capture of the application protection reference ───────────
     //
-    // Раздел «Защита приложений по умолчанию» включён по умолчанию, но до
-    // первого эталона сверять подмену не с чем. Проверяются обе ветки
-    // решения и то, что второй запуск эталон НЕ переписывает.
+    // The «Default application protection» section is on by default, but until
+    // the first reference there is nothing to compare a hijack against. Both
+    // decision branches are checked, and that a second run does NOT rewrite the
+    // reference.
 
-    /// Подставной профиль без эталона: `xdg-mime` отвечает на любой запрос,
-    /// терминал берётся из `xdg-terminals.list`.
+    /// A fake profile without a reference: `xdg-mime` answers any query, the
+    /// terminal comes from `xdg-terminals.list`.
     fn protector_io() -> FakeIo {
         let mut io = FakeIo::arch(Box::new(|argv: &[String]| {
             if argv.first().map(String::as_str) == Some("xdg-mime") {
@@ -6720,21 +6888,21 @@ pub(crate) mod tests {
             .defaults_snapshot_if_never()
     }
 
-    /// Решение — чистая функция ядра: обе ветки.
+    /// The decision is a pure core function: both branches.
     #[test]
     fn startup_snapshot_decision_both_ways() {
         let rules = dfl::Rules::defaults();
-        // Ничего не запомнено — снимать.
+        // Nothing remembered: capture.
         assert!(dfl::should_snapshot_at_startup(&rules, &[]));
-        // Эталон уже есть — не трогать.
+        // A reference already exists: do not touch.
         let remembered = vec![("file_manager".to_string(), Some("dolphin.desktop".to_string()))];
         assert!(!dfl::should_snapshot_at_startup(&rules, &remembered));
-        // Защита выключена — не снимать, даже если не запомнено ничего.
+        // Protection is off: do not capture, even if nothing is remembered.
         let off = rules.updated(&serde_json::from_str(r#"{"enabled": false}"#).unwrap());
         assert!(!dfl::should_snapshot_at_startup(&off, &[]));
     }
 
-    /// Чистый профиль: эталон снимается сам и получается непустым.
+    /// Clean profile: the reference is captured automatically and is not empty.
     #[test]
     fn startup_snapshot_taken_on_clean_profile() {
         let io = protector_io();
@@ -6743,7 +6911,7 @@ pub(crate) mod tests {
         let text = io.files.borrow().get(SNAPSHOT_FILE).cloned().expect("файл эталона");
         let parsed: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(dfl::load_protected_apps(&parsed).len(), count);
-        // Терминал спрашивается тоже, и он из списка xdg.
+        // The terminal is asked too, and it is from the xdg list.
         assert_eq!(
             dfl::load_protected_apps(&parsed)
                 .iter()
@@ -6753,16 +6921,16 @@ pub(crate) mod tests {
         );
     }
 
-    /// Второй запуск на том же профиле: эталон НЕ переписывается и система
-    /// ни о чём не спрашивается.
+    /// Second run on the same profile: the reference is NOT rewritten and the
+    /// system is not asked anything.
     #[test]
     fn startup_snapshot_not_retaken() {
         let io = protector_io();
         snapshot_if_never(&io).expect("первый запуск снимает").unwrap();
         let first = io.files.borrow().get(SNAPSHOT_FILE).cloned().unwrap();
         io.calls.borrow_mut().clear();
-        // Часы подставного исполнителя идут — при пересъёмке `last_updated`
-        // стал бы другим, и совпадение содержимого это поймает.
+        // The fake executor's clock runs: on a recapture `last_updated` would
+        // differ, and the content comparison would catch it.
         io.clock.set(io.clock.get() + 3600.0);
 
         assert!(snapshot_if_never(&io).is_none(), "второй раз снимать нечего");
@@ -6775,7 +6943,7 @@ pub(crate) mod tests {
         );
     }
 
-    /// Эталон стёрли руками — чинится само на следующем запуске.
+    /// The reference was deleted by hand: it fixes itself on the next run.
     #[test]
     fn startup_snapshot_restored_after_deletion() {
         let io = protector_io();
@@ -6786,8 +6954,8 @@ pub(crate) mod tests {
         assert!(io.files.borrow().contains_key(SNAPSHOT_FILE));
     }
 
-    /// Терминал по умолчанию: после записи `rexon-terminal.conf` переменные
-    /// сеанса сразу доводятся до композиторов без environment.d.
+    /// Default terminal: after writing `rexon-terminal.conf` the session
+    /// variables are immediately carried to compositors without environment.d.
     #[test]
     fn terminal_default_syncs_session_env_after_write() {
         let io = protector_io();
@@ -6799,14 +6967,14 @@ pub(crate) mod tests {
         let sync = io.index_of("sync_session_env").expect("переменные сеанса не синхронизированы");
         assert!(conf < sync, "синхронизация раньше записи: {:#?}", io.calls.borrow());
 
-        // Обычное приложение по умолчанию переменных сеанса не касается.
+        // An ordinary default application does not touch the session variables.
         let io = protector_io();
         DeOpsExec::new(&io, Arc::new(Recorder::default()), CancelToken::new())
             .set_default("browser", "firefox.desktop");
         assert!(io.index_of("sync_session_env").is_none(), "{:#?}", io.calls.borrow());
     }
 
-    /// Защита выключена — профиль не трогается вовсе.
+    /// Protection is off: the profile is not touched at all.
     #[test]
     fn startup_snapshot_skipped_when_protection_off() {
         let io = protector_io();
@@ -6819,9 +6987,9 @@ pub(crate) mod tests {
         assert!(io.runs().is_empty(), "{:#?}", io.runs());
     }
 
-    /// Подвал: итог удачи уходит сам и при смене раздела, ошибка держится
-    /// до щелчка, ожидание ответа таймером не снимается (16.11.2026:
-    /// «Восстановление Wayfire — Завершено ✅» висело часами).
+    /// Footer: a success result goes away by itself and on a section change, an
+    /// error stays until a click, waiting for an answer is not removed by a
+    /// timer (16.11.2026: «Wayfire repair: Done ✅» hung for hours).
     #[test]
     fn footer_lifetime_by_kind() {
         let notice = footer_hold(FooterKind::Notice);

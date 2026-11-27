@@ -1,22 +1,24 @@
-//! Расширения GNOME через саму оболочку: интерфейс D-Bus
-//! `org.gnome.Shell.Extensions` на `/org/gnome/Shell` (сеансовая шина).
+//! GNOME extensions through the shell itself: the D-Bus interface
+//! `org.gnome.Shell.Extensions` at `/org/gnome/Shell` (session bus).
 //!
-//! Ставит, удаляет, включает и выключает не Rexon, а GNOME Shell: установка
-//! (`InstallRemoteExtension`) показывает окно подтверждения оболочки, сама
-//! берёт с extensions.gnome.org сборку под свою версию и сразу её запускает —
-//! без перезахода, в том числе на Wayland. Rexon только просит и честно
-//! пересказывает ответ.
+//! It is not Rexon but GNOME Shell that installs, removes, enables and disables:
+//! installation (`InstallRemoteExtension`) shows the shell's confirmation
+//! dialog, the shell itself fetches the build for its version from
+//! extensions.gnome.org and starts it immediately — without logging out again,
+//! on Wayland too. Rexon only asks and honestly relays the answer.
 //!
-//! Связь с шиной — за типажом [`ShellExtIo`]: живая реализация [`LiveShell`]
-//! (zbus, синхронный вызов из рабочего потока) и подделка в тестах. Вся
-//! логика — разбор `a{sv}`, состояния, отказы и их понятные слова — в
-//! свободных функциях поверх типажа и проверяется без оболочки.
+//! The bus connection is behind the [`ShellExtIo`] trait: the live
+//! implementation [`LiveShell`] (zbus, a synchronous call from a worker thread)
+//! and a fake in tests. All the logic — parsing `a{sv}`, states, refusals and
+//! their understandable wording — is in free functions on top of the trait and
+//! is tested without a shell.
 //!
-//! Когда оболочки нет (Rexon запущен в другом окружении, а раздел GNOME
-//! открыт выбором окружения), есть запасной путь [`install_zip_offline`]:
-//! скачанный zip выпуска проверяется как `.rxn` (пути внутри архива,
-//! исполняемое содержимое) и ставится `gnome-extensions install --force` либо
-//! распаковкой в каталог uuid; заработает при следующем входе в GNOME.
+//! When there is no shell (Rexon is running in another environment, and the
+//! GNOME section was opened by choosing the environment), there is the fallback
+//! path [`install_zip_offline`]: the downloaded release zip is checked like an
+//! `.rxn` (paths inside the archive, executable content) and installed with
+//! `gnome-extensions install --force` or by unpacking into the uuid directory;
+//! it will start working on the next GNOME login.
 
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -25,125 +27,125 @@ use std::time::Duration;
 
 use crate::i18n::{tr, trf};
 
-// ── Константы шины ───────────────────────────────────────────────────────
+// ── Bus constants ────────────────────────────────────────────────────────
 
-/// Имя службы оболочки на сеансовой шине.
+/// Name of the shell service on the session bus.
 pub const BUS_NAME: &str = "org.gnome.Shell";
-/// Объект с интерфейсом расширений.
+/// The object with the extensions interface.
 pub const OBJECT_PATH: &str = "/org/gnome/Shell";
-/// Интерфейс расширений.
+/// The extensions interface.
 pub const INTERFACE: &str = "org.gnome.Shell.Extensions";
 
-/// Таймаут обычного вызова: оболочка отвечает сразу.
+/// Timeout of an ordinary call: the shell answers immediately.
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(25);
-/// Таймаут установки: ответ приходит только после нажатия в окне
-/// подтверждения оболочки (и скачивания), человек может думать минутами.
+/// Install timeout: the answer arrives only after a click in the shell's
+/// confirmation dialog (and the download), and a person may think for minutes.
 pub const INSTALL_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
-/// Схема настроек оболочки.
+/// The shell's settings schema.
 pub const SHELL_SCHEMA: &str = "org.gnome.shell";
-/// Ключ «установка расширений разрешена» (`false` — оболочка откажет).
+/// The "extension installation allowed" key (`false` — the shell will refuse).
 pub const ALLOW_INSTALL_KEY: &str = "allow-extension-installation";
-/// Ключ «расширения пользователя выключены» (общий выключатель).
+/// The "user extensions disabled" key (the global switch).
 pub const DISABLE_USER_KEY: &str = "disable-user-extensions";
 
-/// Ответ `InstallRemoteExtension` при успехе.
+/// `InstallRemoteExtension` answer on success.
 pub const INSTALL_SUCCESSFUL: &str = "successful";
-/// Ответ `InstallRemoteExtension`, когда человек нажал «Отмена» — не ошибка.
+/// `InstallRemoteExtension` answer when the person pressed "Cancel" — not an error.
 pub const INSTALL_CANCELLED: &str = "cancelled";
 
-/// Утилита GNOME для запасных путей.
+/// The GNOME utility for the fallback paths.
 pub const GNOME_EXTENSIONS_BIN: &str = "gnome-extensions";
 
-/// Предел распакованного размера zip выпуска (защита от «бомб»): у
-/// настоящих расширений — единицы мегабайт.
+/// Limit on the unpacked size of a release zip (protection against "bombs"):
+/// real extensions are a few megabytes.
 pub const ZIP_UNPACKED_LIMIT: u64 = 64 * 1024 * 1024;
-/// Предел числа записей в zip выпуска.
+/// Limit on the number of entries in a release zip.
 pub const ZIP_ENTRY_LIMIT: usize = 5000;
-/// Сколько начала файла смотрит классификатор исполняемого.
+/// How much of the start of a file the executable classifier looks at.
 const HEAD_BYTES: u64 = 4096;
 
-// ── Сырые данные шины ────────────────────────────────────────────────────
+// ── Raw bus data ─────────────────────────────────────────────────────────
 
-/// Значение из словаря `a{sv}` оболочки, приведённое к простым видам.
+/// A value from the shell's `a{sv}` dictionary, reduced to simple kinds.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Field {
     Str(String),
-    /// Числа оболочка отдаёт `d` (double): `state`, `type`, `version`.
+    /// The shell returns numbers as `d` (double): `state`, `type`, `version`.
     Num(f64),
     Bool(bool),
-    /// `as` или `av` из строк (`shell-version`, `sessionModes`).
+    /// `as` or `av` of strings (`shell-version`, `sessionModes`).
     List(Vec<String>),
-    /// Словарь со строковыми значениями (`donations`).
+    /// A dictionary with string values (`donations`).
     Map(BTreeMap<String, String>),
-    /// Всё прочее — не нужно Rexon.
+    /// Everything else — Rexon does not need it.
     Other,
 }
 
-/// Словарь сведений об одном расширении (`a{sv}`).
+/// The information dictionary of one extension (`a{sv}`).
 pub type RawInfo = BTreeMap<String, Field>;
 
-/// Сбой вызова на шине.
+/// A call failure on the bus.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BusFailure {
-    /// У имени `org.gnome.Shell` нет владельца (оболочка не запущена или
-    /// перезапускается), либо нет сеансовой шины.
+    /// The name `org.gnome.Shell` has no owner (the shell is not running or is
+    /// restarting), or there is no session bus.
     NoShell,
-    /// Ответа не дождались.
+    /// No answer came in time.
     Timeout,
-    /// Оболочка вернула ошибку D-Bus.
+    /// The shell returned a D-Bus error.
     Method { name: String, message: String },
-    /// Иное (разбор ответа, ввод-вывод).
+    /// Something else (answer parsing, input/output).
     Other(String),
 }
 
-/// Итог внешней команды.
+/// Result of an external command.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CmdOutput {
     pub success: bool,
-    /// stderr, затем stdout — для сообщения человеку.
+    /// stderr, then stdout — for the message to the person.
     pub text: String,
 }
 
-/// Связь с оболочкой и системой. Живая — [`LiveShell`], в тестах — подделка.
+/// Connection to the shell and the system. Live — [`LiveShell`], in tests — a fake.
 pub trait ShellExtIo {
-    /// Есть ли владелец имени [`BUS_NAME`] на сеансовой шине.
+    /// Whether the name [`BUS_NAME`] has an owner on the session bus.
     fn shell_running(&mut self) -> bool;
     fn list(&mut self) -> Result<BTreeMap<String, RawInfo>, BusFailure>;
     fn info(&mut self, uuid: &str) -> Result<RawInfo, BusFailure>;
     fn errors(&mut self, uuid: &str) -> Result<Vec<String>, BusFailure>;
-    /// `InstallRemoteExtension`; ждёт не дольше `timeout`.
+    /// `InstallRemoteExtension`; waits no longer than `timeout`.
     fn install_remote(&mut self, uuid: &str, timeout: Duration) -> Result<String, BusFailure>;
     fn uninstall(&mut self, uuid: &str) -> Result<bool, BusFailure>;
     fn enable(&mut self, uuid: &str) -> Result<bool, BusFailure>;
     fn disable(&mut self, uuid: &str) -> Result<bool, BusFailure>;
     /// `OpenExtensionPrefs(uuid, parent_window, {modal})`.
     fn open_prefs(&mut self, uuid: &str, parent_window: &str, modal: bool) -> Result<(), BusFailure>;
-    /// Устаревший `LaunchExtensionPrefs(uuid)`.
+    /// The obsolete `LaunchExtensionPrefs(uuid)`.
     fn launch_prefs(&mut self, uuid: &str) -> Result<(), BusFailure>;
     fn check_for_updates(&mut self) -> Result<(), BusFailure>;
-    /// Свойство `ShellVersion`.
+    /// The `ShellVersion` property.
     fn shell_version(&mut self) -> Result<String, BusFailure>;
-    /// Свойство `UserExtensionsEnabled`.
+    /// The `UserExtensionsEnabled` property.
     fn user_extensions_enabled(&mut self) -> Result<bool, BusFailure>;
     fn set_user_extensions_enabled(&mut self, on: bool) -> Result<(), BusFailure>;
-    /// Булев ключ схемы [`SHELL_SCHEMA`]; `None` — не прочесть.
+    /// A boolean key of the [`SHELL_SCHEMA`] schema; `None` — cannot be read.
     fn shell_setting_bool(&mut self, key: &str) -> Option<bool>;
-    /// Есть ли команда в PATH.
+    /// Whether a command is in PATH.
     fn which(&mut self, cmd: &str) -> bool;
-    /// Запустить команду и дождаться её.
+    /// Run a command and wait for it.
     fn run(&mut self, argv: &[String]) -> Result<CmdOutput, String>;
 }
 
-// ── Разобранные сведения ─────────────────────────────────────────────────
+// ── Parsed information ───────────────────────────────────────────────────
 
-/// Состояние расширения (поле `state`).
+/// Extension state (the `state` field).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExtState {
     Active,
     Inactive,
     Error,
-    /// Не заявлена текущая версия оболочки.
+    /// The current shell version is not declared.
     OutOfDate,
     Downloading,
     Initialized,
@@ -184,7 +186,7 @@ impl ExtState {
         }
     }
 
-    /// Ключ для интерфейса (QML, строки каталога).
+    /// Key for the interface (QML, catalog strings).
     pub fn key(self) -> &'static str {
         match self {
             ExtState::Active => "active",
@@ -200,13 +202,13 @@ impl ExtState {
         }
     }
 
-    /// Ошибка или устарело — плитке нужен значок беды.
+    /// An error or outdated — the tile needs a trouble icon.
     pub fn is_problem(self) -> bool {
         matches!(self, ExtState::Error | ExtState::OutOfDate)
     }
 }
 
-/// Сведения об установленном расширении.
+/// Information about an installed extension.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtInfo {
     pub uuid: String,
@@ -214,20 +216,20 @@ pub struct ExtInfo {
     pub description: String,
     pub state: ExtState,
     pub enabled: bool,
-    /// Последняя ошибка из `init()/enable()/disable()`; пусто — нет.
+    /// The last error from `init()/enable()/disable()`; empty — none.
     pub error: String,
     pub has_prefs: bool,
-    /// Оболочка уже скачала обновление; применится при следующем входе.
+    /// The shell has already downloaded an update; it will apply on the next login.
     pub has_update: bool,
-    /// `false` — менять нельзя (администратор, режим сеанса).
+    /// `false` — cannot be changed (administrator, session mode).
     pub can_change: bool,
-    /// Системное (`type = 1`): удалить нельзя.
+    /// System-wide (`type = 1`): cannot be removed.
     pub is_system: bool,
     pub path: String,
     pub url: String,
-    /// Номер выпуска (`version`, целое у EGO); пусто — не заявлен.
+    /// Release number (`version`, an integer on EGO); empty — not declared.
     pub version: String,
-    /// Имя выпуска автора (`version-name`).
+    /// The author's release name (`version-name`).
     pub version_name: String,
     pub shell_versions: Vec<String>,
     pub session_modes: Vec<String>,
@@ -265,7 +267,7 @@ fn field_list(raw: &RawInfo, key: &str) -> Vec<String> {
     }
 }
 
-/// Число из `d` без хвоста `.0` (`6.0` → `6`).
+/// A number from `d` without the `.0` tail (`6.0` → `6`).
 pub fn format_number(n: f64) -> String {
     if n.fract() == 0.0 && n.abs() < 1e15 {
         format!("{}", n as i64)
@@ -275,8 +277,8 @@ pub fn format_number(n: f64) -> String {
 }
 
 impl ExtInfo {
-    /// Разбор словаря оболочки. `None` — пустой словарь (оболочка так
-    /// отвечает на неизвестный uuid).
+    /// Parsing the shell's dictionary. `None` — an empty dictionary (that is how the
+    /// shell answers an unknown uuid).
     pub fn from_raw(raw: &RawInfo) -> Option<Self> {
         let uuid = field_str(raw, "uuid");
         if uuid.is_empty() {
@@ -293,13 +295,13 @@ impl ExtInfo {
                 n => n,
             },
             description: field_str(raw, "description"),
-            // Старые оболочки поля `enabled` не дают — тогда по состоянию.
+            // Old shells do not provide the `enabled` field — then go by the state.
             enabled: field_bool(raw, "enabled").unwrap_or(state == ExtState::Active),
             state,
             error: field_str(raw, "error"),
             has_prefs: field_bool(raw, "hasPrefs").unwrap_or(false),
             has_update: field_bool(raw, "hasUpdate").unwrap_or(false),
-            // Нет поля (оболочка до 3.38) — запрета тоже нет.
+            // No field (shell before 3.38) — then there is no prohibition either.
             can_change: field_bool(raw, "canChange").unwrap_or(true),
             is_system: field_num(raw, "type").map(|t| t as i64) == Some(1),
             path: field_str(raw, "path"),
@@ -316,26 +318,26 @@ impl ExtInfo {
         })
     }
 
-    /// Версия для показа: имя выпуска автора, иначе номер.
+    /// Version for display: the author's release name, otherwise the number.
     pub fn display_version(&self) -> &str {
         if self.version_name.is_empty() { &self.version } else { &self.version_name }
     }
 }
 
-// ── Отказы ───────────────────────────────────────────────────────────────
+// ── Refusals ─────────────────────────────────────────────────────────────
 
-/// Чем кончилась установка.
+/// How the installation ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallOutcome {
-    /// Оболочка поставила и запустила расширение — работает сразу.
+    /// The shell installed and started the extension — it works right away.
     Installed,
-    /// Человек нажал «Отмена» в окне оболочки — не ошибка.
+    /// The person pressed "Cancel" in the shell's dialog — not an error.
     Cancelled,
-    /// Запасной путь: файлы на месте, заработает при следующем входе в GNOME.
+    /// Fallback path: the files are in place, it will work on the next GNOME login.
     InstalledNextLogin,
 }
 
-/// Отказ действия — у каждого своя фраза для человека ([`ShellExtError::message`]).
+/// Refusal of an action — each has its own phrase for the person ([`ShellExtError::message`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShellExtError {
     ShellNotRunning,
@@ -345,21 +347,21 @@ pub enum ShellExtError {
     UserExtensionsDisabled,
     /// `canChange = false`.
     Locked,
-    /// Системное расширение не удаляется.
+    /// A system-wide extension cannot be removed.
     SystemExtension,
     NotInstalled,
     NoPrefs,
-    /// Не похоже на uuid расширения.
+    /// Does not look like an extension uuid.
     BadUuid(String),
-    /// Оболочка не ответила вовремя.
+    /// The shell did not answer in time.
     Timeout,
-    /// Оболочка ответила «не вышло» без причины.
+    /// The shell answered "it did not work" without a reason.
     Refused,
-    /// Ошибка шины или оболочки (текст — как есть).
+    /// A bus or shell error (the text as is).
     Bus(String),
-    /// Архив выпуска не прошёл проверку.
+    /// The release archive did not pass the check.
     BadArchive(String),
-    /// Запасная установка не удалась (вывод команды или ошибка ФС).
+    /// The fallback installation failed (command output or a file-system error).
     Offline(String),
 }
 
@@ -400,7 +402,7 @@ impl std::fmt::Display for ShellExtError {
 
 impl std::error::Error for ShellExtError {}
 
-/// Подпись запасного пути.
+/// Caption of the fallback path.
 pub fn next_login_note() -> String {
     tr("The extension will start the next time you log in to GNOME.")
 }
@@ -413,7 +415,7 @@ fn check_uuid(uuid: &str) -> Result<(), ShellExtError> {
     }
 }
 
-/// Сбой шины → отказ; прямо в ответе причины нет — спрашиваем настройки.
+/// Bus failure → refusal; the answer itself gives no reason, so we ask the settings.
 fn failure(io: &mut dyn ShellExtIo, f: BusFailure, installing: bool) -> ShellExtError {
     match f {
         BusFailure::NoShell => ShellExtError::ShellNotRunning,
@@ -434,23 +436,23 @@ fn require_shell(io: &mut dyn ShellExtIo) -> Result<(), ShellExtError> {
     if io.shell_running() { Ok(()) } else { Err(ShellExtError::ShellNotRunning) }
 }
 
-// ── Действия ─────────────────────────────────────────────────────────────
+// ── Actions ──────────────────────────────────────────────────────────────
 
-/// Всё установленное (пустые словари пропускаются), по uuid.
+/// Everything installed (empty dictionaries are skipped), by uuid.
 pub fn list_extensions(io: &mut dyn ShellExtIo) -> Result<Vec<ExtInfo>, ShellExtError> {
     require_shell(io)?;
     let raw = io.list().map_err(|f| failure(io, f, false))?;
     Ok(raw.values().filter_map(ExtInfo::from_raw).collect())
 }
 
-/// Сведения об одном; `None` — не установлено.
+/// Information about one; `None` — not installed.
 pub fn extension_info(io: &mut dyn ShellExtIo, uuid: &str) -> Result<Option<ExtInfo>, ShellExtError> {
     require_shell(io)?;
     let raw = io.info(uuid).map_err(|f| failure(io, f, false))?;
     Ok(ExtInfo::from_raw(&raw))
 }
 
-/// Журнал ошибок расширения (для диалога «Ошибка»).
+/// The extension's error log (for the "Error" dialog).
 pub fn extension_errors(io: &mut dyn ShellExtIo, uuid: &str) -> Result<Vec<String>, ShellExtError> {
     require_shell(io)?;
     io.errors(uuid).map_err(|f| failure(io, f, false))
@@ -461,8 +463,8 @@ fn installed(io: &mut dyn ShellExtIo, uuid: &str) -> Result<ExtInfo, ShellExtErr
     extension_info(io, uuid)?.ok_or(ShellExtError::NotInstalled)
 }
 
-/// Установить через оболочку: её окно подтверждения, её скачивание, запуск
-/// сразу. Зовётся из рабочего потока — ждёт до [`INSTALL_TIMEOUT`].
+/// Install through the shell: its confirmation dialog, its download, starting
+/// immediately. Called from a worker thread — waits up to [`INSTALL_TIMEOUT`].
 pub fn install_remote(io: &mut dyn ShellExtIo, uuid: &str) -> Result<InstallOutcome, ShellExtError> {
     check_uuid(uuid)?;
     require_shell(io)?;
@@ -477,7 +479,7 @@ pub fn install_remote(io: &mut dyn ShellExtIo, uuid: &str) -> Result<InstallOutc
     }
 }
 
-/// Удалить (только расширение пользователя).
+/// Remove (user extensions only).
 pub fn uninstall(io: &mut dyn ShellExtIo, uuid: &str) -> Result<(), ShellExtError> {
     let info = installed(io, uuid)?;
     if info.is_system {
@@ -490,14 +492,14 @@ pub fn uninstall(io: &mut dyn ShellExtIo, uuid: &str) -> Result<(), ShellExtErro
     }
 }
 
-/// Включить или выключить. Оболочка сама правит `enabled-extensions`.
+/// Enable or disable. The shell edits `enabled-extensions` itself.
 pub fn set_enabled(io: &mut dyn ShellExtIo, uuid: &str, on: bool) -> Result<(), ShellExtError> {
     let info = installed(io, uuid)?;
     if !info.can_change {
         return Err(ShellExtError::Locked);
     }
-    // Общий выключатель не даёт включить расширение пользователя: оболочка
-    // ответит «нет» без причины — говорим её сами.
+    // The global switch prevents enabling a user extension: the shell would answer
+    // "no" without a reason — we state the reason ourselves.
     if on && !info.is_system && io.user_extensions_enabled().ok() == Some(false) {
         return Err(ShellExtError::UserExtensionsDisabled);
     }
@@ -512,8 +514,8 @@ pub fn set_enabled(io: &mut dyn ShellExtIo, uuid: &str, on: bool) -> Result<(), 
     }
 }
 
-/// Открыть окно настроек расширения: `OpenExtensionPrefs`, при отказе —
-/// старый `LaunchExtensionPrefs`, при отказе — `gnome-extensions prefs`.
+/// Open the extension's settings window: `OpenExtensionPrefs`, on refusal the
+/// old `LaunchExtensionPrefs`, on refusal `gnome-extensions prefs`.
 pub fn open_prefs(io: &mut dyn ShellExtIo, uuid: &str, parent_window: &str) -> Result<(), ShellExtError> {
     check_uuid(uuid)?;
     let mut last = None;
@@ -545,28 +547,28 @@ pub fn open_prefs(io: &mut dyn ShellExtIo, uuid: &str, parent_window: &str) -> R
     }
 }
 
-/// Попросить оболочку проверить обновления: она сама сверится с сайтом,
-/// скачает новые выпуски и выставит `hasUpdate`.
+/// Ask the shell to check for updates: it will check with the site itself,
+/// download new releases and set `hasUpdate`.
 pub fn check_for_updates(io: &mut dyn ShellExtIo) -> Result<(), ShellExtError> {
     require_shell(io)?;
     io.check_for_updates().map_err(|f| failure(io, f, false))
 }
 
-/// Сколько обновлений скачано и ждёт входа.
+/// How many updates are downloaded and waiting for the login.
 pub fn pending_updates(list: &[ExtInfo]) -> usize {
     list.iter().filter(|e| e.has_update).count()
 }
 
-/// Версия запущенной оболочки (`51.1`).
+/// Version of the running shell (`51.1`).
 pub fn shell_version(io: &mut dyn ShellExtIo) -> Result<String, ShellExtError> {
     require_shell(io)?;
     io.shell_version().map_err(|f| failure(io, f, false))
 }
 
-/// Версия GNOME Shell этой машины для сверки с сайтом расширений: у
-/// запущенной оболочки — свойство `ShellVersion`, без неё — вывод
-/// `gnome-shell --version` («GNOME Shell 51.1»). `None` — GNOME Shell
-/// здесь нет.
+/// GNOME Shell version of this machine for checking against the extensions
+/// site: for a running shell — the `ShellVersion` property, without one — the
+/// output of `gnome-shell --version` ("GNOME Shell 51.1"). `None` — there is no
+/// GNOME Shell here.
 pub fn detect_shell_version(io: &mut dyn ShellExtIo) -> Option<String> {
     if io.shell_running() {
         if let Ok(v) = io.shell_version() {
@@ -586,8 +588,8 @@ pub fn detect_shell_version(io: &mut dyn ShellExtIo) -> Option<String> {
     version_from_output(&out.text)
 }
 
-/// Номер версии из вывода `gnome-shell --version`: строка «GNOME Shell
-/// 51.1» (предупреждения stderr рядом с ней пропускаются).
+/// Version number from the output of `gnome-shell --version`: the line "GNOME
+/// Shell 51.1" (stderr warnings next to it are skipped).
 pub fn version_from_output(text: &str) -> Option<String> {
     text.lines().find_map(|l| {
         let v = l.trim().strip_prefix("GNOME Shell ")?.trim();
@@ -595,7 +597,7 @@ pub fn version_from_output(text: &str) -> Option<String> {
     })
 }
 
-/// Общий выключатель «Расширения пользователя».
+/// The global "User extensions" switch.
 pub fn user_extensions_enabled(io: &mut dyn ShellExtIo) -> Result<bool, ShellExtError> {
     require_shell(io)?;
     io.user_extensions_enabled().map_err(|f| failure(io, f, false))
@@ -606,20 +608,21 @@ pub fn set_user_extensions_enabled(io: &mut dyn ShellExtIo, on: bool) -> Result<
     io.set_user_extensions_enabled(on).map_err(|f| failure(io, f, false))
 }
 
-// ── Запасной путь: zip выпуска без оболочки ──────────────────────────────
+// ── Fallback path: a release zip without the shell ───────────────────────
 
-/// Итог проверки zip выпуска.
+/// Result of checking a release zip.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ZipCheck {
     pub uuid: String,
-    /// Исполняемое содержимое (JavaScript — норма для расширения).
+    /// Executable content (JavaScript is normal for an extension).
     pub executables: Vec<crate::rxn_manifest::ExecFinding>,
 }
 
-/// Проверить zip выпуска тем же, чем `.rxn`: пути внутри архива без `..`,
-/// `\`, NUL и абсолютных; `metadata.json` в корне с тем uuid, что ждали;
-/// исполняемые файлы (ELF) запрещены — расширению GNOME они не нужны, а
-/// сайт таких не пропускает; пределы размера и числа записей.
+/// Check a release zip with the same rules as an `.rxn`: paths inside the
+/// archive without `..`, `\`, NUL and absolute paths; `metadata.json` at the root
+/// with the expected uuid; executable files (ELF) are forbidden — a GNOME
+/// extension does not need them, and the site does not accept such; limits on
+/// size and number of entries.
 pub fn check_extension_zip(zip_path: &Path, expected_uuid: &str) -> Result<ZipCheck, ShellExtError> {
     use crate::rxn_manifest::{scan_executables, ArchiveFile, ExecClass};
     check_uuid(expected_uuid)?;
@@ -679,15 +682,16 @@ pub fn check_extension_zip(zip_path: &Path, expected_uuid: &str) -> Result<ZipCh
     Ok(ZipCheck { uuid: uuid.to_string(), executables })
 }
 
-/// Каталог расширения пользователя.
+/// The user extension directory.
 pub fn user_extension_dir(data_home: &str, uuid: &str) -> PathBuf {
     Path::new(data_home).join("gnome-shell/extensions").join(uuid)
 }
 
-/// Поставить скачанный zip выпуска без оболочки: проверка архива →
-/// `gnome-extensions install --force` (нет утилиты — распаковка в каталог
-/// uuid) → включение сценарием [`crate::de_customization::gnome_extension_enable_script`].
-/// Заработает при следующем входе в GNOME ([`next_login_note`]).
+/// Install a downloaded release zip without the shell: archive check →
+/// `gnome-extensions install --force` (no utility — unpacking into the uuid
+/// directory) → enabling via the script
+/// [`crate::de_customization::gnome_extension_enable_script`]. It will start
+/// working on the next GNOME login ([`next_login_note`]).
 pub fn install_zip_offline(
     io: &mut dyn ShellExtIo,
     zip_path: &Path,
@@ -719,8 +723,9 @@ pub fn install_zip_offline(
     }
 }
 
-/// Распаковать рядом во временный каталог и подменить прежний целиком:
-/// сбой посреди распаковки не оставит полрасширения.
+/// Unpack into a temporary directory next to it and replace the old one
+/// entirely: a failure in the middle of unpacking will not leave half an
+/// extension.
 fn unpack_into(zip_path: &Path, dest: &Path) -> Result<(), ShellExtError> {
     let off = |e: String| ShellExtError::Offline(e);
     let parent = dest.parent().ok_or_else(|| off(dest.display().to_string()))?;
@@ -739,10 +744,10 @@ fn unpack_into(zip_path: &Path, dest: &Path) -> Result<(), ShellExtError> {
     std::fs::rename(&staging, dest).map_err(|e| off(e.to_string()))
 }
 
-// ── Живая шина ───────────────────────────────────────────────────────────
+// ── Live bus ─────────────────────────────────────────────────────────────
 
-/// Живая связь: сеансовая шина через zbus (синхронно; звать не из потока
-/// интерфейса), настройки — `gsettings`, команды — `std::process`.
+/// Live connection: the session bus via zbus (synchronous; do not call from the
+/// interface thread), settings — `gsettings`, commands — `std::process`.
 #[derive(Default)]
 pub struct LiveShell {
     conn: Option<zbus::blocking::Connection>,
@@ -801,7 +806,7 @@ where
     reply.body().deserialize::<R>().map_err(|e| BusFailure::Other(e.to_string()))
 }
 
-/// Ошибка zbus → [`BusFailure`].
+/// zbus error → [`BusFailure`].
 fn bus_failure(e: zbus::Error) -> BusFailure {
     match e {
         zbus::Error::MethodError(name, detail, _) => {
@@ -891,7 +896,7 @@ impl ShellExtIo for LiveShell {
     }
 
     fn install_remote(&mut self, uuid: &str, timeout: Duration) -> Result<String, BusFailure> {
-        // Своё соединение с длинным таймаутом: общее остаётся быстрым.
+        // A separate connection with a long timeout: the shared one stays fast.
         let conn = Self::connect(timeout)?;
         call_on(&conn, BUS_NAME, OBJECT_PATH, INTERFACE, "InstallRemoteExtension", &(uuid,))
     }
@@ -972,14 +977,14 @@ impl ShellExtIo for LiveShell {
     }
 }
 
-// ── Тесты ────────────────────────────────────────────────────────────────
+// ── Tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
 
-    /// Подделка оболочки: словари, ответы и журнал вызовов.
+    /// Fake shell: dictionaries, answers and a call log.
     #[derive(Default)]
     struct FakeShell {
         running: bool,
@@ -1082,12 +1087,12 @@ mod tests {
 
     #[test]
     fn shell_version_from_bus_or_command() {
-        // Оболочка запущена — версия с шины.
+        // The shell is running — the version comes from the bus.
         assert_eq!(detect_shell_version(&mut FakeShell::up()).as_deref(), Some("51.1"));
-        // Оболочки нет и программы gnome-shell нет — GNOME здесь нет.
+        // No shell and no gnome-shell program — there is no GNOME here.
         let mut none = FakeShell { running: false, ..FakeShell::up() };
         assert_eq!(detect_shell_version(&mut none), None);
-        // Вывод `gnome-shell --version`, в том числе с шумом stderr.
+        // Output of `gnome-shell --version`, including with stderr noise.
         assert_eq!(version_from_output("GNOME Shell 51.1
 ").as_deref(), Some("51.1"));
         assert_eq!(
@@ -1101,8 +1106,8 @@ GNOME Shell 50.beta
         assert_eq!(version_from_output(""), None);
     }
 
-    /// Синтетический словарь в том виде, как его отдаёт GNOME 51
-    /// (числа — double, `shell-version` — av).
+    /// A synthetic dictionary in the form GNOME 51 returns it
+    /// (numbers are double, `shell-version` is av).
     fn raw(uuid: &str, state: f64, kind: f64) -> RawInfo {
         let mut m = RawInfo::new();
         m.insert("uuid".into(), Field::Str(uuid.into()));
@@ -1307,7 +1312,7 @@ GNOME Shell 50.beta
         assert_eq!(open_prefs(&mut io, U, ""), Err(ShellExtError::ShellNotRunning));
     }
 
-    // ── zip выпуска ──
+    // ── release zip ──
 
     fn tmp_dir(tag: &str) -> PathBuf {
         use std::sync::atomic::{AtomicU64, Ordering};
@@ -1388,7 +1393,7 @@ GNOME Shell 50.beta
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// Начало третьего слова в журнале `run sh -c <сценарий>` — до перевода строки.
+    /// Start of the third word in the `run sh -c <script>` log — up to the line break.
     fn enable_head(data: &Path) -> String {
         let s = crate::de_customization::gnome_extension_enable_script(U, &user_extension_dir(&data.to_string_lossy(), U).to_string_lossy());
         s.strip_prefix("meta=").unwrap().to_string()

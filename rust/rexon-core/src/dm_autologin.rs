@@ -1,77 +1,82 @@
-//! Автовход и звук экрана входа при смене менеджера входа.
+//! Autologin and login screen sound when switching the display manager.
 //!
-//! ⭐ Дефект 15.11.2026: помощник `switch-dm` («Сделать основным») менял
-//! экран входа, а автовход молча пропадал — у каждого менеджера входа своё
-//! место этой настройки, и Rexon её не переносил. Здесь — чистые решения:
-//! где какой экран входа держит автовход, что сейчас включено у прежнего,
-//! что и куда записать у нового и что честно сказать человеку ДО
-//! переключения, если перенести нельзя. Исполняет помощник
-//! (`privilege::helper::switch_dm`) в том же плане и с тем же откатом.
+//! Defect of 15.11.2026: the `switch-dm` helper ("Make default") changed the
+//! login screen, and autologin silently disappeared — every display manager
+//! keeps this setting in its own place, and Rexon did not carry it over. Here
+//! are the pure decisions: where each login screen keeps autologin, what is
+//! currently enabled in the previous one, what to write and where for the new
+//! one, and what to tell the person honestly BEFORE switching if it cannot be
+//! carried over. The helper (`privilege::helper::switch_dm`) executes it in
+//! the same plan and with the same rollback.
 //!
-//! Где живёт автовход (по man-страницам и строкам самих программ на машине):
-//! * SDDM — `[Autologin] User= Session= Relogin=`; файлы
-//!   `/usr/lib/sddm/sddm.conf.d/*.conf`, `/etc/sddm.conf.d/*.conf`, последним
-//!   `/etc/sddm.conf` (поздний перекрывает).
-//! * Plasma Login Manager — те же ключи; `/usr/lib/plasmalogin/plasmalogin.conf.d`,
-//!   `/etc/plasmalogin.conf.d`, последним `/etc/plasmalogin.conf` (его целиком
-//!   переписывает модуль «Параметров системы» — свой файл Rexon кладёт в каталог).
-//! * DDM 0.4 (Deepin) — `[Autologin] User= Session=` (без `Relogin`);
-//!   `/usr/lib/ddm/ddm.conf.d`, `/etc/ddm.conf.d`, последним `/etc/ddm.conf`.
-//! * GDM — `[daemon] AutomaticLoginEnable= AutomaticLogin=` в одном файле
-//!   (`/etc/gdm/custom.conf`; у Debian `gdm3` — `/etc/gdm3/daemon.conf`, у
-//!   Ubuntu `/etc/gdm3/custom.conf`). Стол для автовхода GDM не задаётся:
-//!   он берёт последний выбранный у AccountsService.
-//! * LightDM — `[Seat:*] autologin-user= autologin-session=` (старое имя
-//!   группы `[SeatDefaults]`, частное `[Seat:seat0]` сильнее); последним
-//!   читается `/etc/lightdm/lightdm.conf`. На Arch PAM `lightdm-autologin`
-//!   пускает без пароля только членов группы `autologin`.
-//! * greetd (и cosmic-greeter поверх него) — `[initial_session] user= command=`:
-//!   команда запуска стола, а не имя сеанса. Читаем, но не пишем.
+//! Where autologin lives (according to the man pages and the strings of the
+//! programs themselves on the machine):
+//! * SDDM — `[Autologin] User= Session= Relogin=`; files
+//!   `/usr/lib/sddm/sddm.conf.d/*.conf`, `/etc/sddm.conf.d/*.conf`, and
+//!   `/etc/sddm.conf` last (later overrides earlier).
+//! * Plasma Login Manager — the same keys; `/usr/lib/plasmalogin/plasmalogin.conf.d`,
+//!   `/etc/plasmalogin.conf.d`, and `/etc/plasmalogin.conf` last (the System
+//!   Settings module rewrites it entirely, so Rexon puts its own file into the
+//!   directory).
+//! * DDM 0.4 (Deepin) — `[Autologin] User= Session=` (without `Relogin`);
+//!   `/usr/lib/ddm/ddm.conf.d`, `/etc/ddm.conf.d`, and `/etc/ddm.conf` last.
+//! * GDM — `[daemon] AutomaticLoginEnable= AutomaticLogin=` in a single file
+//!   (`/etc/gdm/custom.conf`; Debian's `gdm3` uses `/etc/gdm3/daemon.conf`,
+//!   Ubuntu `/etc/gdm3/custom.conf`). GDM's autologin desktop cannot be set:
+//!   it takes the last one selected in AccountsService.
+//! * LightDM — `[Seat:*] autologin-user= autologin-session=` (the old group
+//!   name is `[SeatDefaults]`, the specific `[Seat:seat0]` is stronger);
+//!   `/etc/lightdm/lightdm.conf` is read last. On Arch the
+//!   `lightdm-autologin` PAM service lets in without a password only members
+//!   of the `autologin` group.
+//! * greetd (and cosmic-greeter on top of it) — `[initial_session] user=
+//!   command=`: a desktop launch command, not a session name. We read it but
+//!   do not write it.
 //!
-//! Звук экрана входа: у приветствия свой пользователь и свой PipeWire. Без
-//! сохранённого состояния WirePlumber выставляет железному микшеру громкость
-//! по умолчанию (40 %), и после входа громкость человека падает. Обход —
-//! маски пяти звуковых юнитов в `~/.config/systemd/user` пользователя
-//! приветствия (ссылки на `/dev/null`). Если у прежнего экрана входа такие
-//! маски есть, помощник ставит их и пользователю нового.
+//! Login screen sound: the greeter has its own user and its own PipeWire.
+//! Without saved state, WirePlumber sets the hardware mixer to the default
+//! volume (40 %), and after login the person's volume drops. The workaround is
+//! masking five sound units in `~/.config/systemd/user` of the greeter user
+//! (links to `/dev/null`). If the previous login screen has such masks, the
+//! helper sets them for the new one's user too.
 
 use crate::i18n::trf;
 use crate::login_rescue::ini_value;
 use crate::system_plan::{rewrite_ini_values, sddm_conf_read_order, SessionEdit, SessionKey};
 
-/// Как экран входа хранит автовход.
+/// How a login screen stores autologin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Layout {
-    /// `[Autologin] User= Session=`, с `Relogin=` или без.
+    /// `[Autologin] User= Session=`, with or without `Relogin=`.
     Autologin { relogin: bool },
     /// `[daemon] AutomaticLoginEnable= AutomaticLogin=` (GDM).
     Gdm,
     /// `[Seat:*] autologin-user= autologin-session=` (LightDM).
     LightDm,
-    /// `[initial_session] user= command=` (greetd) — только чтение.
+    /// `[initial_session] user= command=` (greetd), read-only.
     Greetd,
 }
 
-/// Место автовхода у одного экрана входа.
+/// Where one login screen keeps autologin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AutologinSpec {
-    /// Юнит без `.service` (как в `system_plan::LOGIN_MANAGER_SPECS`).
+    /// The unit without `.service` (as in `system_plan::LOGIN_MANAGER_SPECS`).
     pub unit: &'static str,
     pub layout: Layout,
-    /// Каталоги `*.conf` по порядку чтения (внутри — по имени).
+    /// `*.conf` directories in reading order (within each, by name).
     pub dirs: &'static [&'static str],
-    /// Файлы после каталогов. У `Autologin`/`LightDm` читаются все по
-    /// порядку (поздний перекрывает); у `Gdm`/`Greetd` — первый
-    /// существующий (программа читает один файл).
+    /// Files after the directories. For `Autologin`/`LightDm` all of them are read
+    /// in order (later overrides earlier); for `Gdm`/`Greetd` the first existing
+    /// one (the program reads a single file).
     pub files: &'static [&'static str],
-    /// Свой файл Rexon — туда дописывается ключ, которого нет в чужих
-    /// файлах `/etc`. Пусто — тот файл, что читает программа.
+    /// Rexon's own file: a key that is missing from the other `/etc` files is
+    /// appended there. Empty means the file the program reads.
     pub own: &'static str,
-    /// Служба PAM автовхода.
+    /// The autologin PAM service.
     pub pam: &'static str,
 }
 
-/// Экраны входа, у которых Rexon знает место автовхода.
+/// Login screens for which Rexon knows where autologin lives.
 pub const AUTOLOGIN_SPECS: &[AutologinSpec] = &[
     AutologinSpec {
         unit: "plasmalogin",
@@ -122,7 +127,7 @@ pub const AUTOLOGIN_SPECS: &[AutologinSpec] = &[
             "/etc/lightdm/lightdm.conf.d",
         ],
         files: &["/etc/lightdm/lightdm.conf"],
-        // Главный файл читается последним — ключ в нём ничто не перекроет.
+        // The main file is read last, so nothing overrides a key in it.
         own: "",
         pam: "lightdm-autologin",
     },
@@ -144,35 +149,35 @@ pub const AUTOLOGIN_SPECS: &[AutologinSpec] = &[
     },
 ];
 
-/// Место автовхода экрана входа; `None` — Rexon его не знает.
+/// Where a login screen keeps autologin; `None` means Rexon does not know it.
 pub fn autologin_spec(unit: &str) -> Option<&'static AutologinSpec> {
     let unit = unit.trim();
     AUTOLOGIN_SPECS.iter().find(|s| s.unit == unit)
 }
 
-/// Включённый автовход.
+/// An enabled autologin.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Autologin {
     pub user: String,
-    /// Имя файла сеанса без `.desktop`; пусто — последний выбранный.
+    /// The session file name without `.desktop`; empty means the last one selected.
     pub session: String,
-    /// Снова войти после выхода (`Relogin=true`, на нём держится игровой режим).
+    /// Log in again after logging out (`Relogin=true`; game mode relies on it).
     pub relogin: bool,
 }
 
-/// Автовход экрана входа сейчас.
+/// The login screen's autologin right now.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AutologinState {
     Off,
     On(Autologin),
-    /// Rexon не знает, где этот экран входа держит автовход.
+    /// Rexon does not know where this login screen keeps autologin.
     Unknown,
 }
 
 type Read<'a> = &'a dyn Fn(&str) -> Option<String>;
 type List<'a> = &'a dyn Fn(&str) -> Vec<String>;
 
-/// Группы настроек по возрастанию силы.
+/// Settings groups in ascending order of strength.
 fn groups(layout: Layout) -> &'static [&'static str] {
     match layout {
         Layout::Autologin { .. } => &["Autologin"],
@@ -182,7 +187,7 @@ fn groups(layout: Layout) -> &'static [&'static str] {
     }
 }
 
-/// Группа, в которую Rexon дописывает ключ.
+/// The group Rexon appends the key to.
 fn write_group(layout: Layout) -> &'static str {
     match layout {
         Layout::LightDm => "Seat:*",
@@ -190,7 +195,7 @@ fn write_group(layout: Layout) -> &'static str {
     }
 }
 
-/// Файлы, которые экран входа читает, в его порядке.
+/// The files the login screen reads, in its order.
 pub fn config_files(spec: &AutologinSpec, read: Read<'_>, list: List<'_>) -> Vec<String> {
     match spec.layout {
         Layout::Gdm | Layout::Greetd => {
@@ -208,7 +213,7 @@ pub fn config_files(spec: &AutologinSpec, read: Read<'_>, list: List<'_>) -> Vec
     }
 }
 
-/// Итоговое значение ключа у экрана входа (сильная группа перекрывает слабую).
+/// The resulting value of a key for the login screen (a stronger group overrides a weaker one).
 fn effective(spec: &AutologinSpec, key: &str, texts: &[String]) -> Option<String> {
     groups(spec.layout).iter().filter_map(|g| ini_value(texts, g, key)).last()
 }
@@ -217,12 +222,12 @@ fn truthy(v: Option<&str>) -> bool {
     matches!(v.map(|s| s.trim().to_ascii_lowercase()).as_deref(), Some("true" | "1" | "yes"))
 }
 
-/// Имя сеанса без каталога и `.desktop`.
+/// The session name without the directory and `.desktop`.
 pub fn session_name(value: &str) -> String {
     crate::update_guard::session_file_name(value)
 }
 
-/// Автовход, который экран входа выполнит при таких настройках.
+/// The autologin the login screen will perform with these settings.
 pub fn read_autologin(unit: &str, read: Read<'_>, list: List<'_>) -> AutologinState {
     let Some(spec) = autologin_spec(unit) else {
         return AutologinState::Unknown;
@@ -250,7 +255,7 @@ pub fn read_autologin(unit: &str, read: Read<'_>, list: List<'_>) -> AutologinSt
     }
 }
 
-/// Значение флага: пусто и `false` — одно и то же; не флаг — `None`.
+/// A flag value: empty and `false` are the same; not a flag gives `None`.
 fn flag(s: &str) -> Option<bool> {
     match s.to_ascii_lowercase().as_str() {
         "" | "false" | "0" | "no" => Some(false),
@@ -259,15 +264,15 @@ fn flag(s: &str) -> Option<bool> {
     }
 }
 
-/// Одинаковы ли значения для экрана входа: ключа нет = пусто, флаги без
-/// учёта регистра (`True`/`true`), имена — строго.
+/// Whether the values are the same for the login screen: a missing key equals
+/// empty, flags are compared case-insensitively (`True`/`true`), names strictly.
 fn same(a: Option<&str>, b: &str) -> bool {
     let a = a.unwrap_or("").trim();
     let b = b.trim();
     a == b || matches!((flag(a), flag(b)), (Some(x), Some(y)) if x == y)
 }
 
-/// Ключи и значения, которые надо получить у целевого экрана входа.
+/// The keys and values to be achieved in the target login screen.
 fn desired(layout: Layout, want: Option<&Autologin>) -> Vec<(&'static str, String)> {
     match (layout, want) {
         (Layout::Autologin { relogin }, Some(a)) => {
@@ -291,11 +296,11 @@ fn desired(layout: Layout, want: Option<&Autologin>) -> Vec<(&'static str, Strin
     }
 }
 
-/// Правки файлов, после которых у экрана входа `spec` итоговые значения
-/// ключей равны `want`. Сначала меняются уже существующие строки в файлах
-/// `/etc` (прочие строки байт в байт), недостающие ключи дописываются в
-/// свой файл. `None` — итог всё равно другой (значение задаёт файл пакета
-/// поверх `/etc`) — тогда не трогать ничего.
+/// File edits after which the resulting key values of login screen `spec`
+/// equal `want`. Existing lines in `/etc` files are changed first (other lines
+/// stay byte for byte), missing keys are appended to our own file. `None`
+/// means the result would differ anyway (the value is set by a package file
+/// over `/etc`), and then nothing is touched.
 fn plan_keys(spec: &AutologinSpec, want: &[(&'static str, String)], read: Read<'_>, list: List<'_>) -> Option<Vec<SessionEdit>> {
     let files = config_files(spec, read, list);
     let mut edits: Vec<SessionEdit> = Vec::new();
@@ -321,12 +326,12 @@ fn plan_keys(spec: &AutologinSpec, want: &[(&'static str, String)], read: Read<'
         let mut f = files.clone();
         for e in edits {
             if !f.contains(&e.path) {
-                // Свой файл каталога — на своё место по имени.
+                // Our own directory file goes into its place by name.
                 let pos = f.iter().position(|x| x.as_str() > e.path.as_str() && x.rsplit_once('/').map(|p| p.0) == e.path.rsplit_once('/').map(|p| p.0));
                 match pos {
                     Some(i) => f.insert(i, e.path.clone()),
                     None => {
-                        // Каталога в списке ещё нет — перед файлами после каталогов.
+                        // The directory is not in the list yet: before the files that come after the directories.
                         let i = f.iter().position(|x| spec.files.contains(&x.as_str())).unwrap_or(f.len());
                         f.insert(i, e.path.clone());
                     }
@@ -352,20 +357,20 @@ fn plan_keys(spec: &AutologinSpec, want: &[(&'static str, String)], read: Read<'
     ok.then_some(edits)
 }
 
-/// Наблюдения о целевом экране входа, нужные для плана.
+/// Observations about the target login screen needed for the plan.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TargetFacts {
-    /// Текст PAM-службы автовхода целевого экрана входа.
+    /// The text of the target login screen's autologin PAM service.
     pub pam_autologin: Option<String>,
-    /// Члены группы (из `getent group`), если PAM требует группу; `None` —
-    /// группы нет.
+    /// Group members (from `getent group`) if PAM requires a group; `None` means
+    /// there is no such group.
     pub group_members: Option<Vec<String>>,
-    /// Пользователь приветствия целевого экрана входа (`LOGIN_MANAGER_SPECS`).
+    /// The greeter user of the target login screen (`LOGIN_MANAGER_SPECS`).
     pub greeter_user: Option<String>,
 }
 
-/// Группа, без которой PAM автовхода спросит пароль
-/// (`pam_succeed_if.so … user ingroup <группа>` в строке `auth`).
+/// The group without which the autologin PAM service will ask for a password
+/// (`pam_succeed_if.so … user ingroup <group>` in an `auth` line).
 pub fn pam_autologin_group(pam: &str) -> Option<String> {
     pam.lines().map(str::trim).filter(|l| !l.starts_with('#') && l.starts_with("auth")).find_map(|l| {
         if !l.contains("pam_succeed_if") {
@@ -374,42 +379,42 @@ pub fn pam_autologin_group(pam: &str) -> Option<String> {
         let words: Vec<&str> = l.split_whitespace().collect();
         let i = words.iter().position(|w| *w == "ingroup")?;
         let g = words.get(i + 1)?;
-        // Несколько групп через «:» — бессмысленно для автовхода; одна.
+        // Several groups separated by ":" make no sense for autologin; only one.
         (!g.contains(':')).then(|| g.to_string())
     })
 }
 
-/// Что сказать человеку о переносе.
+/// What to tell the person about carrying it over.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Note {
-    /// Автовход пользователя переносится.
+    /// The user's autologin is carried over.
     Moved { user: String },
-    /// Сеанс не задан — откроется последний выбранный.
+    /// No session is set: the last one selected will open.
     LastSession,
-    /// GDM не задаёт стол автовхода.
+    /// GDM does not set the autologin desktop.
     GdmSession,
-    /// Новый не умеет снова входить после выхода.
+    /// The new one cannot log in again after logout.
     ReloginLost,
-    /// Пользователь добавляется в группу для PAM.
+    /// The user is added to the group for PAM.
     Group { user: String, group: String },
-    /// Автовход, настроенный ранее у целевого, выключается.
+    /// Autologin previously configured in the target is turned off.
     TurnedOff { user: String },
-    /// Перенести нельзя: у целевого автовход — команда запуска (greetd).
+    /// Cannot carry over: the target's autologin is a launch command (greetd).
     LostCommand { user: String },
-    /// Перенести нельзя: Rexon не знает, где целевой держит автовход.
+    /// Cannot carry over: Rexon does not know where the target keeps autologin.
     LostUnknown { user: String },
-    /// Перенести нельзя: значение задаёт файл пакета.
+    /// Cannot carry over: the value is set by a package file.
     LostElsewhere { user: String },
-    /// Пользователь автовхода — сам пользователь приветствия.
+    /// The autologin user is the greeter user itself.
     LostGreeterUser { user: String },
 }
 
-/// Решение о переносе автовхода.
+/// The decision about carrying autologin over.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Transfer {
-    /// Что записать (пусто — ничего).
+    /// What to write (empty means nothing).
     pub edits: Vec<SessionEdit>,
-    /// Пользователя добавить в эту группу: `(пользователь, группа, группы ещё нет)`.
+    /// Add the user to this group: `(user, group, the group does not exist yet)`.
     pub group: Option<(String, String, bool)>,
     pub notes: Vec<Note>,
 }
@@ -418,11 +423,11 @@ impl Transfer {
     fn nothing() -> Self {
         Transfer { edits: Vec::new(), group: None, notes: Vec::new() }
     }
-    /// Записывать нечего и говорить нечего.
+    /// Nothing to write and nothing to say.
     pub fn is_nothing(&self) -> bool {
         self.edits.is_empty() && self.group.is_none() && self.notes.is_empty()
     }
-    /// Автовход пропадёт.
+    /// Autologin will be lost.
     pub fn is_lost(&self) -> bool {
         self.notes.iter().any(|n| {
             matches!(n, Note::LostCommand { .. } | Note::LostUnknown { .. } | Note::LostElsewhere { .. } | Note::LostGreeterUser { .. })
@@ -430,13 +435,14 @@ impl Transfer {
     }
 }
 
-/// Что сделать с автовходом при смене экрана входа `from` → `to`.
+/// What to do with autologin when switching the login screen `from` → `to`.
 ///
-/// Перенос — «как у прежнего»: был автовход — тот же пользователь, тот же
-/// сеанс, тот же `Relogin` у нового; не было — у нового он выключается
-/// (иначе после смены экрана входа компьютер вдруг начнёт входить сам).
-/// Прежний экран входа не трогается: вернёт его откат — вернётся и его
-/// автовход.
+/// Carrying over means "as in the previous one": if there was autologin, the
+/// new one gets the same user, the same session and the same `Relogin`; if
+/// there was none, it is turned off in the new one (otherwise after switching
+/// the login screen the computer would suddenly start logging in by itself).
+/// The previous login screen is not touched: if a rollback brings it back, its
+/// autologin comes back too.
 pub fn plan_transfer(from: &str, to: &str, read: Read<'_>, list: List<'_>, facts: &TargetFacts) -> Transfer {
     let source = read_autologin(from, read, list);
     let Some(spec) = autologin_spec(to) else {
@@ -473,7 +479,7 @@ pub fn plan_transfer(from: &str, to: &str, read: Read<'_>, list: List<'_>, facts
         Some(_) => Some((want.user.clone(), g, false)),
         None => Some((want.user.clone(), g, true)),
     });
-    // Всё уже так — у нового тот же автовход.
+    // Everything is already in place: the new one has the same autologin.
     if edits.is_empty() && group.is_none() {
         return Transfer::nothing();
     }
@@ -494,8 +500,8 @@ pub fn plan_transfer(from: &str, to: &str, read: Read<'_>, list: List<'_>, facts
     Transfer { edits, group, notes }
 }
 
-/// Текст для окна подтверждения «Сделать основным» — ДО пароля. `None` —
-/// с автовходом ничего не меняется.
+/// The text for the "Make default" confirmation dialog, BEFORE the password.
+/// `None` means nothing changes about autologin.
 pub fn transfer_note(to_label: &str, t: &Transfer) -> Option<String> {
     let mut parts = Vec::new();
     for n in &t.notes {
@@ -549,7 +555,7 @@ pub fn transfer_note(to_label: &str, t: &Transfer) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" "))
 }
 
-/// После переключения: автовход у нового такой, как задумано?
+/// After switching: is the new one's autologin as intended?
 pub fn transfer_result_note(to_unit: &str, to_label: &str, want: &AutologinState, read: Read<'_>, list: List<'_>) -> Option<String> {
     let AutologinState::On(a) = want else { return None };
     match read_autologin(to_unit, read, list) {
@@ -562,27 +568,27 @@ pub fn transfer_result_note(to_unit: &str, to_label: &str, want: &AutologinState
     }
 }
 
-// ── Звук экрана входа ────────────────────────────────────────────────────
+// ── Login screen sound ───────────────────────────────────────────────────
 
-/// Звуковые юниты пользователя приветствия, которые гасит обход «громкость
-/// падает до 40 % после входа».
+/// The greeter user's sound units that the "volume drops to 40 % after login"
+/// workaround turns off.
 pub const GREETER_AUDIO_UNITS: &[&str] =
     &["pipewire.service", "pipewire.socket", "pipewire-pulse.service", "pipewire-pulse.socket", "wireplumber.service"];
 
-/// Каталог пользовательских юнитов в доме пользователя приветствия.
+/// The user unit directory in the greeter user's home.
 pub fn greeter_user_unit_dir(home: &str) -> String {
     format!("{}/.config/systemd/user", home.trim_end_matches('/'))
 }
 
-/// Маскирован ли юнит: ссылка на `/dev/null` или пустой файл (так systemd
-/// и считает: systemd.unit(5)).
+/// Whether a unit is masked: a link to `/dev/null` or an empty file (that is
+/// how systemd sees it: systemd.unit(5)).
 pub fn unit_masked(link_target: Option<&str>, text: Option<&str>) -> bool {
     link_target == Some("/dev/null") || text.is_some_and(|t| t.is_empty())
 }
 
-/// Юниты, которые надо замаскировать у нового: у прежнего звук погашен
-/// (хоть один юнит), а у нового этого юнита ещё нет вовсе (свою настройку
-/// пользователя приветствия не перетираем).
+/// Units to mask for the new one: the previous one has sound turned off (at
+/// least one unit), and the new one has no such unit at all yet (we do not
+/// overwrite the greeter user's own setting).
 pub fn audio_masks_to_add(old_masked: &[&str], new_present: &dyn Fn(&str) -> bool) -> Vec<&'static str> {
     if old_masked.is_empty() {
         return Vec::new();
@@ -612,7 +618,7 @@ mod tests {
         AutologinState::On(Autologin { user: user.into(), session: session.into(), relogin })
     }
 
-    /// Применить правки поверх «диска».
+    /// Applies the edits on top of the "disk".
     fn apply(m: &BTreeMap<String, String>, t: &Transfer) -> BTreeMap<String, String> {
         let mut out = m.clone();
         for e in &t.edits {
@@ -656,7 +662,7 @@ mod tests {
         assert_eq!(read_autologin("lightdm", &read, &list), AutologinState::Off);
     }
 
-    /// Машина как у Wehrwolfmann: Plasma Login с автовходом → SDDM.
+    /// A machine like Wehrwolfmann's: Plasma Login with autologin → SDDM.
     #[test]
     fn plasma_login_в_sddm_переносит_пользователя_сеанс_и_relogin() {
         let m = fs(&[
@@ -669,17 +675,17 @@ mod tests {
         let t = plan_transfer("plasmalogin", "sddm", &read, &list, &TargetFacts::default());
         assert!(!t.is_lost());
         assert_eq!(t.notes, vec![Note::Moved { user: "alice".into() }]);
-        // Чужая строка Session= в /etc/sddm.conf переписана на месте, недостающее — в свой файл.
+        // The foreign Session= line in /etc/sddm.conf is rewritten in place, the rest goes into our own file.
         let sddm_conf = t.edits.iter().find(|e| e.path == "/etc/sddm.conf").expect("sddm.conf");
         assert_eq!(sddm_conf.text, "[Autologin]\nSession=plasma.desktop\n");
         let own = t.edits.iter().find(|e| e.path == "/etc/sddm.conf.d/zz-rexon-autologin.conf").expect("свой файл");
         assert!(own.text.contains("User=alice") && own.text.contains("Relogin=true"), "{}", own.text);
         assert!(t.edits.iter().all(|e| e.path.starts_with("/etc/")), "файлы пакета не правятся");
-        // Итог читается так же, как читает SDDM.
+        // The result is read the same way SDDM reads it.
         let after = apply(&m, &t);
         let (read2, list2) = io(&after);
         assert_eq!(read_autologin("sddm", &read2, &list2), on("alice", "plasma", true));
-        // Повторный план — делать нечего.
+        // A repeated plan: nothing to do.
         assert!(plan_transfer("plasmalogin", "sddm", &read2, &list2, &TargetFacts::default()).is_nothing());
     }
 
@@ -726,7 +732,7 @@ mod tests {
         assert!(seat < user && user < xdmcp, "ключ в своей группе: {text}");
         let (read2, list2) = io(&after);
         assert_eq!(read_autologin("lightdm", &read2, &list2), on("alice", "plasma", false));
-        // Уже в группе — группу не трогать.
+        // Already in the group: the group is not touched.
         let member = TargetFacts { group_members: Some(vec!["bob".into(), "alice".into()]), ..facts };
         assert_eq!(plan_transfer("sddm", "lightdm", &read, &list, &member).group, None);
     }
@@ -769,7 +775,7 @@ mod tests {
         assert_eq!(after["/etc/sddm.conf.d/kde_settings.conf"], "[Autologin]\nSession=plasma\nUser=\n");
         let (read2, list2) = io(&after);
         assert_eq!(read_autologin("sddm", &read2, &list2), AutologinState::Off);
-        // Нигде нет — ничего.
+        // Nowhere: nothing.
         let empty = fs(&[]);
         let (r, l) = io(&empty);
         assert!(plan_transfer("plasmalogin", "sddm", &r, &l, &TargetFacts::default()).is_nothing());
@@ -779,7 +785,7 @@ mod tests {
     fn нельзя_перенести_честно_говорится() {
         let m = fs(&[
             ("/etc/plasmalogin.conf", "[Autologin]\nSession=plasma\nUser=alice\n"),
-            // Файл пакета, читаемый ПОСЛЕ /etc у LightDM, — частная группа места.
+            // A package file read AFTER /etc by LightDM is the specific group of the place.
             ("/usr/share/lightdm/lightdm.conf.d/99-x.conf", "[Seat:seat0]\nautologin-user=\n"),
         ]);
         let (read, list) = io(&m);
@@ -790,7 +796,7 @@ mod tests {
         assert_eq!(unknown.notes, vec![Note::LostUnknown { user: "alice".into() }]);
         let me = TargetFacts { greeter_user: Some("alice".into()), ..TargetFacts::default() };
         assert!(plan_transfer("plasmalogin", "sddm", &read, &list, &me).is_lost());
-        // [Seat:seat0] из каталога пакета перекрывает [Seat:*] главного файла.
+        // [Seat:seat0] from the package directory overrides [Seat:*] of the main file.
         let elsewhere = plan_transfer("plasmalogin", "lightdm", &read, &list, &TargetFacts::default());
         assert_eq!(elsewhere.notes, vec![Note::LostElsewhere { user: "alice".into() }]);
         assert!(elsewhere.edits.is_empty(), "при «нельзя» ничего не пишется");

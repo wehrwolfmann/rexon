@@ -1,10 +1,10 @@
-// Выпадающий список QML-вкладок Rexon в стандартном скине приложения.
-// Причина отдельного типа — та же, что у RexonButton и RexonCheckBox: стиль
-// Basic не следует палитре приложения.
+// Combo box for Rexon QML tabs in the application's standard skin.
+// The reason for a separate type is the same as for RexonButton and
+// RexonCheckBox: the Basic style does not follow the application palette.
 
-// Делегат списка обращается к id самого контрола. Без этой прагмы проверка
-// QML справедливо ругается на неквалифицированный доступ, а Qt разрешает
-// такие имена лишь через устаревший контекст делегата.
+// The list delegate refers to the id of the control itself. Without this
+// pragma, QML lint rightly complains about unqualified access, and Qt
+// resolves such names only through the deprecated delegate context.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -13,56 +13,61 @@ import QtQuick.Controls
 ComboBox {
     id: control
 
-    /// Палитра скина.
+    /// Skin palette.
     property var pal: null
 
-    /// Показывать ли подсказку списка: под курсором и ТОЛЬКО пока список
-    /// закрыт. Вызывающие пишут `ToolTip.visible: hintVisible`, а не голое
-    /// `hovered`: курсор после щелчка остаётся над контролом, и подсказка
-    /// ложилась поверх раскрытых строк — тот же класс, что у меню
-    /// «Выбрать файлы / папку» (приёмка 10.10.2026) и у меню плитки Axon.
+    /// Whether to show the combo box tooltip: under the cursor and ONLY while
+    /// the list is closed. Callers write `ToolTip.visible: hintVisible`, not a
+    /// bare `hovered`: after a click the cursor stays over the control, and the
+    /// tooltip landed on top of the opened rows — the same class of bug as in
+    /// the "Choose files / folder" menu (acceptance 10.10.2026) and the Axon
+    /// tile menu.
     readonly property bool hintVisible: control.hovered && !control.popup.visible
 
-    /// Что должно быть выбрано — ЗНАЧЕНИЕ из `valueRole`, а не номер строки.
+    /// What should be selected — a VALUE from `valueRole`, not a row number.
     ///
-    /// ⚠️ Заводить выбор привязкой `currentIndex: indexOfValue(...)` НЕЛЬЗЯ, и
-    /// это не вкусовщина. Привязка считается при сборке страницы, когда
-    /// внутренняя модель делегатов у списка ЕЩЁ ПУСТА: `indexOfValue` в этот
-    /// миг отдаёт −1 при любой модели, а пересчитать привязку потом нечему —
-    /// зависимость у неё одна, само значение, и оно уже не меняется. Список
-    /// так и остаётся с −1: подпись пустая, ширина схлопывается до одной
-    /// стрелки, а выпадашка наследует её и режет ВСЕ строки в многоточия.
-    /// Замер 31.08 на живой вкладке «Оформление»: строк 9, среди них нужная
-    /// `kde`, currentIndex −1, displayText пуст, implicitWidth 38 вместо 105;
-    /// тот же `indexOfValue("kde")`, позванный секундой позже, отдаёт 4.
-    /// Здесь выбор ставится ПОСЛЕ того, как модель наполнилась.
+    /// Warning: setting the selection with a `currentIndex: indexOfValue(...)`
+    /// binding is NOT ALLOWED, and this is not a matter of taste. The binding is
+    /// evaluated while the page is being built, when the combo box's internal
+    /// delegate model is STILL EMPTY: at that moment `indexOfValue` returns −1
+    /// for any model, and nothing re-evaluates the binding later — it has a
+    /// single dependency, the value itself, and that no longer changes. The
+    /// combo box stays at −1: the label is empty, the width collapses to a
+    /// single arrow, and the popup inherits it and elides ALL rows.
+    /// Measurement on 31.08 on the live "Appearance" tab: 9 rows, including the
+    /// wanted `kde`, currentIndex −1, displayText empty, implicitWidth 38
+    /// instead of 105; the same `indexOfValue("kde")` called a second later
+    /// returns 4. Here the selection is set AFTER the model has been filled.
     property var selectedValue: undefined
 
-    /// Ширина самой длинной строки модели, без отступов. Считается по месту,
-    /// присваивать снаружи нечего.
+    /// Width of the longest model row, without padding. Computed in place;
+    /// there is nothing to assign from outside.
     ///
-    /// Мерило — оригинал на виджетах: у QComboBox отбор ширины по содержимому
-    /// (`AdjustToContentsOnFirstShow`) стоит по умолчанию, поэтому и контрол,
-    /// и выпадашка там показывают названия целиком. У QML-списка такого
-    /// отбора нет: сам он меряется по ТЕКУЩЕЙ подписи, а выпадашка — по
-    /// контролу, и длинные строки («Тайловые и Wayfire (sway/Hyprland/niri/River)») резались
-    /// бы даже с правильно выбранной строкой.
+    /// The yardstick is the widget original: QComboBox sizes to its contents
+    /// (`AdjustToContentsOnFirstShow`) by default, so both the control and the
+    /// popup show names in full there. A QML combo box has no such sizing: it
+    /// measures itself by the CURRENT label and the popup by the control, and
+    /// long rows ("Tiling and Wayfire (sway/Hyprland/niri/River)") would be cut
+    /// even with the right row selected.
     property real widestTextWidth: 0
 
-    /// Краски от ядра, если контрол перекрыт ТАБЛИЦЕЙ СТИЛЕЙ своей вкладки.
-    /// Ключи те же, что у `tone` кнопки: `background`, `border`, `color`,
-    /// `radius`. Пусто — обычный список скина, крашенный ролью палитры.
+    /// Colours from the core when the control is overridden by its tab's STYLE
+    /// SHEET. The keys are the same as for a button's `tone`: `background`,
+    /// `border`, `color`, `radius`. Empty means an ordinary skin combo box
+    /// painted with a palette role.
     ///
-    /// ЗАЧЕМ. Роль палитры отвечает, чем Qt красит список САМА. Это верно,
-    /// пока у страницы нет своей таблицы стилей; у «Оформления» она есть, и
-    /// список там красится токеном `bg_secondary`, а не ролью `Button`.
+    /// WHY. The palette role says what Qt paints the combo box with ITSELF.
+    /// That holds while the page has no style sheet of its own; "Appearance"
+    /// has one, and the combo box there is painted with the `bg_secondary`
+    /// token, not the `Button` role.
     property var tone: null
 
-    // ⚠️Нередактируемый выпадающий список Qt красит ролью `Button`, а НЕ
-    // `Base`: замер 04.09 на живой Qt дал ему (42,64,85) роли `Button` по
-    // всей высоте, тогда как поле ввода рядом — (22,32,45) роли `Base`.
-    // Список пунктов ниже — уже `Base` (`surface_field`), это разные
-    // поверхности. Обе краски приходят готовыми из ядра.
+    // Warning: Qt paints a non-editable combo box with the `Button` role, NOT
+    // `Base`: a measurement on 04.09 on live Qt gave it (42,64,85) of the
+    // `Button` role over its whole height, while the text field next to it is
+    // (22,32,45) of the `Base` role. The item list below is already `Base`
+    // (`surface_field`); these are different surfaces. Both colours come ready
+    // from the core.
     readonly property color colField: (control.tone
                                        && control.tone.background !== undefined)
                                       ? control.tone.background
@@ -80,44 +85,47 @@ ComboBox {
     readonly property color colPopup: control.pal ? control.pal.surface_field : "#16202d"
     readonly property color colHover: control.pal ? control.pal.bg_card_hover : "#263d52"
 
-    // ⛔Колесо мыши НЕ меняет значение. Это не вкусовщина и не мелочь UX.
+    // Never: the mouse wheel does NOT change the value. This is neither a
+    // matter of taste nor a UX trifle.
     //
-    // Стиль `org.kde.desktop` (он активен на рабочей машине; стилем процесса
-    // мы не управляем) ставит выпадающему списку `wheelEnabled: true`
-    // (`/usr/lib/qt6/qml/org/kde/desktop/ComboBox.qml:31`), тогда как у
-    // самого Qt значение по умолчанию — `false`. Список от этого ловит
-    // колесо СТРАНИЦЫ, проехавшее над ним: молча переставляет выбор и шлёт
-    // `activated`, а обработчик применяет настройку по-настоящему. Замер
-    // 06.09 в «Настройках»: за проходы колесом по странице, без единого
-    // клика по списку, системная звуковая тема KDE сменилась трижды
-    // (oxygen → zorinos2 → ocean) и легла в `kdeglobals` через
-    // `kwriteconfig6` — у покупателя так перепишется ЖИВАЯ тема системы.
-    // Заодно возвращается прокрутка: пока список ел событие, страница под
-    // указателем стояла на месте.
+    // The `org.kde.desktop` style (it is active on the work machine; we do not
+    // control the process style) sets `wheelEnabled: true` on combo boxes
+    // (`/usr/lib/qt6/qml/org/kde/desktop/ComboBox.qml:31`), whereas Qt's own
+    // default is `false`. Because of that the combo box catches the PAGE wheel
+    // passing over it: it silently changes the selection and emits
+    // `activated`, and the handler applies the setting for real. Measurement
+    // on 06.09 in "Settings": while scrolling the page with the wheel, without
+    // a single click on the combo box, the KDE system sound theme changed three
+    // times (oxygen → zorinos2 → ocean) and was written to `kdeglobals` via
+    // `kwriteconfig6` — on a customer's machine this would rewrite the LIVE
+    // system theme. It also brings scrolling back: while the combo box ate the
+    // event, the page under the pointer did not move.
     wheelEnabled: false
 
     implicitHeight: 40
-    // Широкий отступ — под стрелку, узкий — с другой стороны. При языке
-    // справа налево стрелка стоит слева, и отступы меняются местами.
+    // The wide padding is for the arrow, the narrow one is on the other side.
+    // For right-to-left languages the arrow is on the left, and the paddings
+    // swap places.
     leftPadding: control.mirrored ? 28 : 10
     rightPadding: control.mirrored ? 10 : 28
 
-    // Ширина — по самой длинной строке, а не по текущей (см. widestTextWidth).
+    // Width follows the longest row, not the current one (see widestTextWidth).
     implicitWidth: Math.max(control.implicitBackgroundWidth + control.leftInset
                             + control.rightInset,
                             control.widestTextWidth + control.leftPadding
                             + control.rightPadding)
 
-    // Линейка для замера строк. Невидимая и вне сцены: нужен только её счёт.
+    // Ruler for measuring rows. Invisible and outside the scene: only its
+    // measurement is needed.
     TextMetrics {
         id: textRuler
         font: control.font
     }
 
-    /// Пересчитать ширину и восстановить выбор по `selectedValue`.
+    /// Recompute the width and restore the selection from `selectedValue`.
     ///
-    /// Одним проходом, потому что повод у обоих один и тот же: модель
-    /// наполнилась или сменилась.
+    /// In one pass, because both have the same trigger: the model has been
+    /// filled or replaced.
     function refreshFromModel() {
         var widest = 0;
         for (var i = 0; i < control.count; ++i) {
@@ -129,15 +137,16 @@ ComboBox {
         if (control.selectedValue === undefined || control.valueRole === "")
             return;
         var idx = control.indexOfValue(control.selectedValue);
-        // −1 не ставим: значение может прийти раньше строк, и обнулить уже
-        // показанный выбор хуже, чем подождать следующего пересчёта.
+        // We do not set −1: the value may arrive before the rows, and resetting an
+        // already shown selection is worse than waiting for the next recompute.
         if (idx >= 0 && idx !== control.currentIndex)
             control.currentIndex = idx;
     }
 
-    // Пересчёт откладывается на конец текущего круга событий: и строки, и
-    // внутренняя модель делегатов к этому мигу уже на месте (без отсрочки
-    // счёт идёт по пустоте — тот же капкан, что описан у selectedValue).
+    // The recompute is deferred to the end of the current event loop
+    // iteration: by then both the rows and the internal delegate model are in
+    // place (without the delay the count runs over nothing — the same trap as
+    // described for selectedValue).
     Component.onCompleted: Qt.callLater(control.refreshFromModel)
     onCountChanged: Qt.callLater(control.refreshFromModel)
     onModelChanged: Qt.callLater(control.refreshFromModel)
@@ -159,16 +168,16 @@ ComboBox {
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
 
-        // ⚠️ Заглушка для чужого стиля, а не наша нужда. Стиль
-        // `org.kde.desktop` (он активен на рабочей машине, стилем процесса
-        // мы не управляем — рядом живёт вендорный QML вкладки Wallpaper
-        // Engine) безусловно заводит у выпадающего списка курсор для
-        // сенсорного ввода и спрашивает у содержимого `positionToRectangle`.
-        // Такой метод есть у полей ВВОДА; у нас содержимое — надпись, и
-        // каждый список сыпал в журнал «TypeError: positionToRectangle is
-        // not a function» (по четыре записи на открытие «Настроек»).
-        // Списки у нас не редактируются, курсору показывать нечего —
-        // отдаём пустой прямоугольник.
+        // Warning: a stub for a foreign style, not something we need. The
+        // `org.kde.desktop` style (it is active on the work machine; we do not
+        // control the process style — the vendored QML of the Wallpaper Engine tab
+        // lives next door) unconditionally sets up a touch input cursor on combo
+        // boxes and asks the content for `positionToRectangle`. That method exists
+        // on text INPUT fields; our content is a label, and every combo box
+        // spammed the log with "TypeError: positionToRectangle is not a function"
+        // (four entries every time "Settings" was opened). Our combo boxes are not
+        // editable and there is no cursor to show, so we return an empty
+        // rectangle.
         function positionToRectangle(position) {
             return Qt.rect(0, 0, 0, 0);
         }
@@ -185,8 +194,8 @@ ComboBox {
         id: item
         required property int index
         required property var modelData
-        // Строка шириной со СПИСОК, а не с контролом: список бывает шире,
-        // когда контролу ширины не досталось (раскладка задала свою).
+        // A row as wide as the LIST, not as the control: the list can be wider
+        // when the control did not get enough width (the layout set its own).
         width: item.ListView.view ? item.ListView.view.width : control.width
         highlighted: control.highlightedIndex === item.index
 
@@ -205,13 +214,15 @@ ComboBox {
     }
 
     popup: Popup {
-        // Выпадашка шире контрола растёт в сторону конца строки: при языке
-        // справа налево — влево, правым краем вровень с контролом.
+        // A popup wider than the control grows towards the end of the line: for
+        // right-to-left languages to the left, with its right edge flush with the
+        // control.
         x: control.mirrored ? control.width - width : 0
         y: control.height
-        // Не уже контрола, но и не уже самой длинной строки: раскладка вправе
-        // прижать контрол (Layout.preferredWidth), а названия в списке должны
-        // читаться целиком — так же, как в оригинале на виджетах.
+        // No narrower than the control, and no narrower than the longest row
+        // either: the layout may squeeze the control (Layout.preferredWidth), but
+        // the names in the list must be readable in full — just as in the widget
+        // original.
         width: Math.max(control.width, control.widestTextWidth
                         + control.leftPadding + control.rightPadding)
         implicitHeight: Math.min(contentItem.implicitHeight + 2, 320)

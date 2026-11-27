@@ -1,6 +1,6 @@
-//! Защиты снятия пакетов (28.10.2026): удаление стола не трогает текущий
-//! стол и его экран входа, вечное не снимается ни одним путём, помощник
-//! пакетов от root сам держит обе границы и ставит только из таблиц ядра.
+//! Package removal protections (28.10.2026): removing a desktop does not touch the current
+//! desktop and its login screen, the permanent things are not removed by any path, the root
+//! package helper holds both boundaries itself and installs only from the core's tables.
 
 use rexon_core::system::{self, PkgFamily};
 
@@ -19,7 +19,7 @@ fn removal(family: PkgFamily, de: &str, current: &str, dm: Option<&str>) -> Vec<
     system::without_current_desktop(family, &system::desktop_packages(de, family), &keep, &|_| None)
 }
 
-/// Сидишь в Xfce — удаление Cinnamon не трогает lightdm и приветствие.
+/// Sitting in Xfce — removing Cinnamon does not touch lightdm and the greeter.
 #[test]
 fn удаление_cinnamon_из_xfce_не_трогает_lightdm() {
     let arch = PkgFamily::Arch;
@@ -27,13 +27,13 @@ fn удаление_cinnamon_из_xfce_не_трогает_lightdm() {
     assert!(!set.is_empty());
     assert!(set.iter().all(|p| p != "lightdm" && !system::is_lightdm_greeter(p)), "{set:?}");
     assert!(set.iter().any(|p| p.starts_with("cinnamon")), "{set:?}");
-    // и без ответа о экране входа — lightdm в таблице Xfce
+    // and without an answer about the login screen — lightdm is in the Xfce table
     let set = removal(arch, "cinnamon-mint", "xfce", None);
     assert!(!set.iter().any(|p| p == "lightdm"), "{set:?}");
 }
 
-/// Любая пара столов любого семейства: ни один пакет текущего стола не
-/// попадает в набор удаления другого.
+/// Any pair of desktops of any family: not a single package of the current desktop
+/// gets into the removal set of the other one.
 #[test]
 fn ни_одна_пара_столов_не_снимает_пакеты_текущего() {
     let base = |p: &str| p.rsplit('/').next().unwrap_or(p).to_string();
@@ -55,8 +55,8 @@ fn ни_одна_пара_столов_не_снимает_пакеты_теку
     }
 }
 
-/// Активный экран входа держится, даже когда текущий стол неизвестен:
-/// юнит и его пакет (plasmalogin → plasma-login-manager, на Debian gdm → gdm3).
+/// The active login screen is kept even when the current desktop is unknown:
+/// the unit and its package (plasmalogin → plasma-login-manager, on Debian gdm → gdm3).
 #[test]
 fn активный_экран_входа_не_снимается() {
     let all = s(&["plasma-login-manager", "sddm", "gdm", "gdm3", "foo"]);
@@ -66,15 +66,15 @@ fn активный_экран_входа_не_снимается() {
     let keep = system::current_desktop_keep(PkgFamily::Debian, "", Some("gdm"));
     let left = system::without_current_desktop(PkgFamily::Debian, &all, &keep, &|_| None);
     assert_eq!(left, s(&["plasma-login-manager", "sddm", "foo"]));
-    // Gentoo: юнит lightdm держит атом x11-misc/lightdm и приветствие
+    // Gentoo: the lightdm unit keeps the x11-misc/lightdm atom and the greeter
     let all = s(&["x11-misc/lightdm", "x11-misc/lightdm-gtk-greeter", "gnome-extra/nemo"]);
     let keep = system::current_desktop_keep(PkgFamily::Gentoo, "", Some("lightdm"));
     let left = system::without_current_desktop(PkgFamily::Gentoo, &all, &keep, &|_| None);
     assert_eq!(left, s(&["gnome-extra/nemo"]));
 }
 
-/// Группы Arch раскрываются с обеих сторон: член группы текущего стола
-/// остаётся, даже если удаляемый стол называет его по имени.
+/// Arch groups are expanded on both sides: a member of the current desktop's group
+/// stays, even if the desktop being removed names it by name.
 #[test]
 fn член_группы_текущего_стола_остаётся() {
     let qg = |p: &str| -> Option<String> {
@@ -90,7 +90,7 @@ fn член_группы_текущего_стола_остаётся() {
     assert_eq!(left, s(&["other-app", "mine"]));
 }
 
-// ── Помощник пакетов в песочнице: подставные pacman, loginctl, systemctl ──
+// ── The package helper in a sandbox: fake pacman, loginctl, systemctl ────
 
 mod helper {
     use rexon_core::system_plan as plan;
@@ -108,9 +108,9 @@ mod helper {
         script: PathBuf,
     }
 
-    /// Машина стенда: Arch, экран входа LightDM (ссылка display-manager на
-    /// юнит, владелец юнита — `FAKE_OWNER`), один графический сеанс с
-    /// `Desktop=$FAKE_DESKTOP`; группа `xfce4` = `xfce4-panel thunar`.
+    /// The bench machine: Arch, the LightDM login screen (the display-manager link to
+    /// the unit, the unit's owner is `FAKE_OWNER`), one graphical session with
+    /// `Desktop=$FAKE_DESKTOP`; the group `xfce4` = `xfce4-panel thunar`.
     pub fn stand(tag: &str) -> Stand {
         let root = std::env::temp_dir().join(format!("rexon-pkg-guards-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -185,8 +185,8 @@ mod helper {
     }
 }
 
-/// Вечное по семействам: ядра, драйверы, прошивки, микрокод — отказ кодом 2
-/// и ни одного вызова пакетного менеджера; обычный пакет снимается.
+/// Permanent things per family: kernels, drivers, firmware, microcode — a refusal with code 2
+/// and not a single package manager call; an ordinary package is removed.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
 fn помощник_не_снимает_вечное_по_семействам() {
@@ -204,9 +204,9 @@ fn помощник_не_снимает_вечное_по_семействам()
     assert!(out.contains("STUB pacman -Rns --noconfirm some-app"), "{out}");
 }
 
-/// Текущий стол помощник знает сам: экран входа по ссылке
-/// display-manager.service (имя юнита, владелец файла, приветствия LightDM)
-/// и стол графического сеанса по `Desktop=` logind (группы раскрыты).
+/// The helper knows the current desktop by itself: the login screen by the
+/// display-manager.service link (unit name, file owner, LightDM greeters)
+/// and the graphical session's desktop by logind's `Desktop=` (groups expanded).
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
 fn помощник_не_снимает_текущий_стол_и_экран_входа() {
@@ -218,21 +218,21 @@ fn помощник_не_снимает_текущий_стол_и_экран_в
         assert!(err.contains(held), "{err}");
         assert!(!out.contains("STUB pacman"), "{held}: {out}");
     }
-    // Чужой стол (Cinnamon) снимается; сеанс приветствия (Class greeter,
-    // Desktop cinnamon) не в счёт.
+    // Another desktop (Cinnamon) is removed; the greeter session (Class greeter,
+    // Desktop cinnamon) does not count.
     let (code, out, err) = st.run(&["arch", "remove", "cinnamon", "nemo"], &xfce);
     assert_eq!(code, 0, "{err}");
     assert!(out.contains("STUB pacman -Rns --noconfirm cinnamon nemo"), "{out}");
-    // Сеанс Cinnamon: токен X-Cinnamon узнаётся той же таблицей, что у ядра.
+    // A Cinnamon session: the X-Cinnamon token is recognized by the same table as the core's.
     let (code, _, _) = st.run(&["arch", "remove", "cinnamon"], &[("FAKE_DESKTOP", "X-Cinnamon")]);
     assert_eq!(code, 2);
-    // Не графический сеанс стол не держит.
+    // A non-graphical session does not hold a desktop.
     let (code, _, _) = st.run(&["arch", "remove", "xfce4-panel"], &[("FAKE_DESKTOP", "XFCE"), ("FAKE_TYPE", "tty")]);
     assert_eq!(code, 0);
 }
 
-/// Установка — только из таблиц ядра: чужое имя отвергнуто без вызова
-/// pacman, имена каждой таблицы проходят.
+/// Installing — only from the core's tables: a foreign name is rejected without calling
+/// pacman, the names of every table pass.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
 fn помощник_ставит_только_из_таблиц() {
@@ -247,9 +247,9 @@ fn помощник_ставит_только_из_таблиц() {
     assert!(out.contains("STUB pacman -S --needed --noconfirm mpv yt-dlp sddm conky cinnamon"), "{out}");
 }
 
-/// Белый список установки помощника держит каждую таблицу, по которой
-/// живые места ставят пакеты через помощник: убрать таблицу из списка —
-/// значит сломать честную установку (помощник откажет).
+/// The helper's install allow-list holds every table by which
+/// the live places install packages through the helper: removing a table from the list
+/// means breaking an honest install (the helper will refuse).
 #[test]
 fn белый_список_покрывает_все_таблицы() {
     use rexon_core::system_plan as plan;
@@ -279,7 +279,7 @@ fn белый_список_покрывает_все_таблицы() {
             assert!(has(p), "{f}: {p} не в белом списке помощника");
         }
     }
-    // Вечное — правило ядра: точные имена и семейства.
+    // Permanent things are a core rule: exact names and families.
     for v in ["linux-cachyos", "nvidia-utils", "mesa", "amd-ucode", "linux-image-amd64", "sys-kernel/gentoo-kernel"] {
         assert!(plan::is_vital_package(v), "{v}");
     }

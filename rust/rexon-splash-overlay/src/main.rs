@@ -1,29 +1,29 @@
-// rexon-splash-overlay — видео на самом верхнем слое (wlr-layer-shell OVERLAY)
-// в сессии KWin Wayland (Plasma 6).
+// rexon-splash-overlay — video on the very top layer (wlr-layer-shell OVERLAY)
+// in a KWin Wayland session (Plasma 6).
 //
 // CLI: rexon-splash-overlay --video <PATH> [--ipc <SOCK>] [--paused] [--mute]
 //
-// Заводит по layer-поверхности (layer=Overlay, все якоря → на весь вывод,
-// exclusive_zone=-1, клавиатура=None) на КАЖДЫЙ подключённый вывод: при двух
-// мониторах заставку видят оба, а не один. Поднимает EGL (GLES2) на
-// wl_egl_window каждой поверхности — контекст один на процесс, поверхностей
-// столько, сколько экранов, — и проигрывает видео встроенной libmpv через
-// render API (OpenGL): один кадр рисуется в каждую поверхность по очереди.
+// Creates one layer surface (layer=Overlay, all anchors → the whole output,
+// exclusive_zone=-1, keyboard=None) on EACH connected output: with two
+// monitors both see the splash, not just one. Brings up EGL (GLES2) on
+// the wl_egl_window of each surface — one context per process, as many surfaces
+// as there are screens — and plays the video with embedded libmpv through the
+// render API (OpenGL): one frame is drawn into each surface in turn.
 //
-// Звук звучит РОВНО ОДИН РАЗ: проигрыватель в процессе один на все выходы,
-// и звуковую дорожку ведёт он — размножаются только картинки. Основным
-// считается вывод в позиции (0,0) — тот же порядок, что был до появления
-// нескольких поверхностей.
+// Sound plays EXACTLY ONCE: there is one player in the process for all outputs,
+// and it drives the audio track — only the pictures are multiplied. The output at
+// position (0,0) is considered the main one — the same order as before
+// multiple surfaces appeared.
 //
-// Управление — по обычному JSON IPC mpv (--ipc). Держит последний кадр
-// (keep-open=yes) до SIGTERM или команды quit по IPC / события
-// MPV_EVENT_SHUTDOWN. Уход и возврат монитора на ходу поверхности только
-// добавляет и убирает, ПРОЦЕСС ЖИВ: условие окончания заставки — конец
-// файла/quit/сигнал, а не число экранов; при нуле выходов кадры всё равно
-// забираются у mpv (SKIP_RENDERING), иначе воспроизведение встало бы и до
-// конца файла оркестратор не дождался бы никогда.
+// Control is over the regular mpv JSON IPC (--ipc). Holds the last frame
+// (keep-open=yes) until SIGTERM or a quit command over IPC / the
+// MPV_EVENT_SHUTDOWN event. A monitor leaving and returning on the go only
+// adds and removes surfaces, the PROCESS STAYS ALIVE: the splash end condition is end
+// of file/quit/signal, not the number of screens; with zero outputs frames are still
+// taken from mpv (SKIP_RENDERING), otherwise playback would stall and the
+// orchestrator would never wait until the end of the file.
 //
-// На выходе: сначала mpv_render_context_free, затем mpv_terminate_destroy.
+// On exit: first mpv_render_context_free, then mpv_terminate_destroy.
 
 mod mpv;
 
@@ -58,29 +58,29 @@ use wayland_client::{
 };
 use wayland_egl::WlEglSurface;
 
-// --- Глобальное состояние для C-колбэков (единственный поток владеет всем) ---
+// --- Global state for C callbacks (a single thread owns everything) ---
 
-// EGL-инстанс: нужен из extern "C" колбэка get_proc_address для mpv.
+// EGL instance: needed from the extern "C" get_proc_address callback for mpv.
 static EGL: OnceLock<egl::Instance<egl::Static>> = OnceLock::new();
-// eventfd для пробуждения poll из колбэков mpv и обработчика сигнала.
+// eventfd for waking poll from mpv callbacks and the signal handler.
 static EVENTFD: AtomicI32 = AtomicI32::new(-1);
-// Флаг завершения по сигналу (SIGTERM/SIGINT).
+// Termination flag set by a signal (SIGTERM/SIGINT).
 static TERMINATE: AtomicBool = AtomicBool::new(false);
 
-// Размер вывода, когда композитор не сказал ни логического размера, ни режима.
+// Output size when the compositor reported neither a logical size nor a mode.
 const FALLBACK_W: u32 = 1920;
 const FALLBACK_H: u32 = 1080;
 
-// Переменная окружения для отладочных строк на stderr (число выходов и
-// поверхностей). В боевом прогоне молчим: stderr хелпера читает оркестратор.
+// Environment variable for debug lines on stderr (number of outputs and
+// surfaces). In a production run we stay silent: the helper's stderr is read by the orchestrator.
 const DEBUG_ENV: &str = "REXON_SPLASH_DEBUG";
 
-// Сколько кадров подряд получает только что появившаяся поверхность.
+// How many frames in a row a freshly appeared surface gets.
 const FIRST_FRAMES: u8 = 12;
 
-// --- Колбэки ---
+// --- Callbacks ---
 
-// get_proc_address для mpv: резолвим GL-функции через EGL.
+// get_proc_address for mpv: resolve GL functions through EGL.
 extern "C" fn get_proc_address(_ctx: *mut c_void, name: *const c_char) -> *mut c_void {
     if name.is_null() {
         return ptr::null_mut();
@@ -96,8 +96,8 @@ extern "C" fn get_proc_address(_ctx: *mut c_void, name: *const c_char) -> *mut c
     }
 }
 
-// Будим poll: пишем 1 в eventfd. Async-signal-safe (write) — годится и для
-// обработчика сигнала, и для колбэков mpv.
+// Wake poll: write 1 into the eventfd. Async-signal-safe (write) — fine both for
+// the signal handler and for mpv callbacks.
 fn wake_eventfd() {
     let fd = EVENTFD.load(Ordering::Relaxed);
     if fd >= 0 {
@@ -125,13 +125,13 @@ fn debug_on() -> bool {
     std::env::var_os(DEBUG_ENV).is_some()
 }
 
-// --- Минимум GL: очистка свежей поверхности ---
+// --- Minimal GL: clearing a fresh surface ---
 //
-// Страховка на первый кадр только что созданной поверхности: её задний буфер
-// не определён, и если бы кадр лёг не на всю площадь, по краям оказался бы
-// мусор. Замером 16.09 видно, что mpv перекрашивает всю цель сам (заливка
-// красным до отрисовки на снимках не проступила ни разу), так что цена
-// страховки — одна заливка на поверхность.
+// A safeguard for the first frame of a just created surface: its back buffer
+// is undefined, and if the frame did not cover the whole area, there would be
+// garbage at the edges. The measurement on 16.09 shows that mpv repaints the whole target itself (a red
+// fill before drawing never showed through in the snapshots), so the cost of the
+// safeguard is one fill per surface.
 
 type GlClearColorFn = extern "C" fn(f32, f32, f32, f32);
 type GlClearFn = extern "C" fn(u32);
@@ -153,7 +153,7 @@ fn gl_clear_fns() -> Option<(GlClearColorFn, GlClearFn)> {
     })
 }
 
-// Заливает текущую поверхность непрозрачным чёрным.
+// Fills the current surface with opaque black.
 fn clear_current_surface() {
     if let Some((clear_color, clear)) = gl_clear_fns() {
         clear_color(0.0, 0.0, 0.0, 1.0);
@@ -161,7 +161,7 @@ fn clear_current_surface() {
     }
 }
 
-// --- Разбор аргументов ---
+// --- Argument parsing ---
 
 struct Args {
     video: String,
@@ -199,50 +199,50 @@ fn parse_args() -> Result<Args, String> {
     })
 }
 
-// --- Поверхность одного вывода ---
+// --- Surface of one output ---
 
-// Один экран = одна layer-поверхность + своя EGL-поверхность. Контекст EGL
-// общий на процесс: делать по контексту на экран незачем, а обмен текстурами
-// между контекстами mpv не поддерживает.
+// One screen = one layer surface + its own EGL surface. The EGL context is
+// shared per process: there is no point in a context per screen, and mpv does not support
+// sharing textures between contexts.
 struct OutputView {
     output: wl_output::WlOutput,
-    // Держим LayerSurface живой: её Drop сносит роль и wl_surface.
+    // Keep the LayerSurface alive: its Drop tears down the role and the wl_surface.
     layer: LayerSurface,
-    // Держим WlEglSurface живым: он владеет wl_egl_window.
+    // Keep the WlEglSurface alive: it owns the wl_egl_window.
     egl_window: Option<WlEglSurface>,
     egl_surface: Option<egl::Surface>,
-    // Логический размер (то, что прислал композитор) и масштаб экрана.
+    // Logical size (what the compositor sent) and the screen scale.
     width: u32,
     height: u32,
     scale: i32,
     configured: bool,
-    // Экрану нужен кадр, даже если новых кадров у mpv нет (пришёл монитор на
-    // паузе гибридного режима — иначе он остался бы чёрным до снятия паузы).
+    // The screen needs a frame even if mpv has no new frames (a monitor arrived while
+    // the hybrid mode was paused — otherwise it would stay black until unpaused).
     needs_redraw: bool,
-    // Задний буфер ещё не залит: у новой поверхности он не определён.
+    // The back buffer has not been filled yet: on a new surface it is undefined.
     needs_clear: bool,
-    // Сколько кадров подряд ещё должна получить свежая поверхность.
+    // How many more frames in a row a fresh surface must get.
     //
-    // Замер 16.09 (sway headless, заставка на паузе гибридного режима):
-    // вернувшийся монитор оставался чёрным несколько секунд, хотя кадры в него
-    // уходили с первой секунды и swap_buffers их принимал. На паузе mpv отдаёт
-    // перерисовку примерно раз в секунду — свежей поверхности отдаём кадры
-    // подряд, не дожидаясь этой неторопливой выдачи. Задержку это сократило,
-    // но не убрало совсем: остаток — за композитором стенда, на живом
-    // проигрывании (25 кадров в секунду) вернувшийся монитор показывает
-    // заставку сразу.
+    // Measured on 16.09 (sway headless, splash paused in hybrid mode):
+    // a returning monitor stayed black for several seconds, although frames went into it
+    // from the first second and swap_buffers accepted them. When paused, mpv hands out
+    // a redraw roughly once a second — a fresh surface gets frames
+    // in a row without waiting for that leisurely output. This shortened the delay
+    // but did not remove it entirely: the rest is on the bench compositor, during live
+    // playback (25 frames per second) a returning monitor shows the
+    // splash right away.
     first_frames: u8,
 }
 
 impl OutputView {
-    // Размер буфера в пикселях: логический размер × масштаб экрана.
+    // Buffer size in pixels: logical size × screen scale.
     fn buffer_size(&self) -> (i32, i32) {
         let s = self.scale.max(1);
         ((self.width as i32) * s, (self.height as i32) * s)
     }
 }
 
-// --- Состояние приложения (sctk) ---
+// --- Application state (sctk) ---
 
 struct State {
     registry_state: RegistryState,
@@ -252,27 +252,27 @@ struct State {
 
     exit: bool,
 
-    // EGL: заполняется до цикла событий.
+    // EGL: filled in before the event loop.
     egl_display: egl::Display,
     egl_config: egl::Config,
     egl_context: egl::Context,
 
-    // По поверхности на каждый подключённый вывод.
+    // One surface per connected output.
     views: Vec<OutputView>,
 
-    // Нужно сходить в mpv за кадром.
+    // Need to go to mpv for a frame.
     render_pending: bool,
 }
 
 impl State {
-    // Отвязываем контекст от любой поверхности: обязательный шаг перед тем,
-    // как рушить EGL-поверхность ушедшего монитора.
+    // Detach the context from any surface: a mandatory step before
+    // tearing down the EGL surface of a departed monitor.
     fn release_current(&self) {
         let egl = EGL.get().expect("EGL не инициализирован");
         let _ = egl.make_current(self.egl_display, None, None, Some(self.egl_context));
     }
 
-    // Делает EGL-контекст текущим на поверхности вывода.
+    // Makes the EGL context current on the output's surface.
     fn make_current_view(&self, idx: usize) -> bool {
         let egl = EGL.get().expect("EGL не инициализирован");
         match self.views.get(idx).and_then(|v| v.egl_surface) {
@@ -288,9 +288,9 @@ impl State {
         }
     }
 
-    // Основной вывод — тот, что в позиции (0,0); иначе первый заведённый.
-    // Порядок ровно тот же, каким одиночная поверхность выбирала себе экран:
-    // на (0,0) у Plasma стоит главный монитор, и заставка начиналась с него.
+    // The main output is the one at position (0,0); otherwise the first one created.
+    // Exactly the same order in which the single surface used to choose its screen:
+    // Plasma puts the primary monitor at (0,0), and the splash started on it.
     fn primary_index(&self) -> Option<usize> {
         for (i, v) in self.views.iter().enumerate() {
             if let Some(info) = self.output_state.info(&v.output) {
@@ -308,8 +308,8 @@ impl State {
         }
     }
 
-    // Запасной размер вывода: логический размер, иначе текущий режим,
-    // иначе FullHD. Нужен, когда configure пришёл с 0×0.
+    // Fallback output size: the logical size, otherwise the current mode,
+    // otherwise FullHD. Needed when configure came with 0×0.
     fn output_fallback_size(&self, output: &wl_output::WlOutput) -> (u32, u32) {
         if let Some(info) = self.output_state.info(output) {
             if let Some((w, h)) = info.logical_size {
@@ -327,7 +327,7 @@ impl State {
         (FALLBACK_W, FALLBACK_H)
     }
 
-    // Заводит поверхность на выводе, если её ещё нет.
+    // Creates a surface on the output if there is none yet.
     fn add_view(&mut self, qh: &QueueHandle<State>, output: wl_output::WlOutput) {
         if self.views.iter().any(|v| v.output == output) {
             return;
@@ -341,8 +341,8 @@ impl State {
             .max(1);
 
         let surface = self.compositor.create_surface(qh);
-        // Целимся в конкретный вывод явно: без этого композитор вправе
-        // положить все поверхности на один монитор.
+        // Target a specific output explicitly: without this the compositor is free to
+        // put all surfaces on one monitor.
         let layer = self.layer_shell.create_layer_surface(
             qh,
             surface,
@@ -371,9 +371,9 @@ impl State {
         });
     }
 
-    // Снимает поверхность: сначала EGL, потом layer-поверхность. Порядок
-    // важен — рисовать в поверхность снятого монитора нельзя, а первый же
-    // кадр в неё композитор считает протокольной ошибкой и рвёт соединение.
+    // Removes a surface: first EGL, then the layer surface. The order
+    // matters — drawing into the surface of a removed monitor is not allowed, and the very first
+    // frame into it is treated by the compositor as a protocol error and it drops the connection.
     fn drop_view(&mut self, idx: usize) {
         if idx >= self.views.len() {
             return;
@@ -385,7 +385,7 @@ impl State {
             let _ = egl.destroy_surface(self.egl_display, surf);
         }
         view.egl_window = None;
-        // view (а с ним LayerSurface) рушится здесь.
+        // view (and with it the LayerSurface) is torn down here.
     }
 
     fn remove_view_by_output(&mut self, output: &wl_output::WlOutput) {
@@ -437,7 +437,7 @@ impl State {
     }
 }
 
-// --- Обработчики протоколов ---
+// --- Protocol handlers ---
 
 impl CompositorHandler for State {
     fn scale_factor_changed(
@@ -447,9 +447,9 @@ impl CompositorHandler for State {
         surface: &wl_surface::WlSurface,
         factor: i32,
     ) {
-        // Разный DPI у мониторов: буфер каждой поверхности растёт во столько
-        // же раз, во сколько масштабируется её экран, иначе на HiDPI-мониторе
-        // кадр поднимали бы растяжением из логического размера.
+        // Different DPI on monitors: each surface's buffer grows by the same
+        // factor its screen is scaled by, otherwise on a HiDPI monitor the
+        // frame would be upscaled by stretching from the logical size.
         let idx = match self.view_index_by_surface(surface) {
             Some(i) => i,
             None => return,
@@ -495,9 +495,9 @@ impl CompositorHandler for State {
         if !debug_on() {
             return;
         }
-        // Куда поверхность легла НА САМОМ ДЕЛЕ — слово композитора, а не наше
-        // пожелание: «заставка поднялась» и «заставка легла на все мониторы»
-        // это разные утверждения.
+        // Where the surface ACTUALLY landed — the compositor's word, not our
+        // wish: "the splash came up" and "the splash landed on all monitors"
+        // are different statements.
         if let Some(i) = self.view_index_by_surface(surface) {
             let name = self
                 .output_state
@@ -546,7 +546,7 @@ impl OutputHandler for State {
         _q: &QueueHandle<Self>,
         output: wl_output::WlOutput,
     ) {
-        // Монитор сняли: поверхность убираем немедленно, ДО следующего кадра.
+        // A monitor was removed: remove the surface immediately, BEFORE the next frame.
         self.remove_view_by_output(&output);
         self.debug_report("−выход");
     }
@@ -554,10 +554,10 @@ impl OutputHandler for State {
 
 impl LayerShellHandler for State {
     fn closed(&mut self, _c: &Connection, _q: &QueueHandle<Self>, layer: &LayerSurface) {
-        // Закрыли поверхность одного экрана — это не конец заставки: она
-        // обязана доиграть до своего условия окончания. Гасить процесс здесь
-        // значило бы, что снятый монитор оставляет человека без заставки, а
-        // при неудачном стечении — и без входа в сеанс.
+        // The surface of one screen was closed — that is not the end of the splash: it
+        // must play until its own end condition. Killing the process here
+        // would mean that a removed monitor leaves the person without a splash, and
+        // in an unlucky coincidence — without logging into the session either.
         self.remove_view_by_layer(layer);
         self.debug_report("закрыт слой");
     }
@@ -575,7 +575,7 @@ impl LayerShellHandler for State {
             None => return,
         };
 
-        // Размер от композитора; при 0 берём заранее вычисленный fallback.
+        // Size from the compositor; at 0 take the precomputed fallback.
         let (mut w, mut h) = configure.new_size;
         if w == 0 {
             w = self.views[idx].width;
@@ -591,13 +591,13 @@ impl LayerShellHandler for State {
         let egl = EGL.get().expect("EGL не инициализирован");
 
         if self.views[idx].egl_window.is_none() {
-            // Первый configure: создаём wl_egl_window и EGL-оконную поверхность.
+            // First configure: create the wl_egl_window and the EGL window surface.
             let wl_surf = self.views[idx].layer.wl_surface().clone();
             let win = match WlEglSurface::new(wl_surf.id(), bw, bh) {
                 Ok(win) => win,
                 Err(e) => {
                     rexon_core::log_error!("splash-overlay", "не создать WlEglSurface: {e:?}");
-                    // Экран остаётся без картинки, остальные продолжают.
+                    // The screen stays without a picture, the others continue.
                     self.drop_view(idx);
                     return;
                 }
@@ -626,16 +626,16 @@ impl LayerShellHandler for State {
             wl_surf.set_buffer_scale(scale);
 
             if self.make_current_view(idx) {
-                // Ждать вертикальной синхронизации НЕ просим ни на одной
-                // поверхности: погашенному монитору композитор перестаёт
-                // слать frame-события, и блокирующий swap_buffers на нём
-                // подвесил бы весь процесс — заставка не ответила бы ни на
-                // quit, ни на SIGTERM и осталась бы висеть поверх сеанса.
-                // Темп задаёт сам mpv: кадр — колбэк — отрисовка.
+                // We do NOT ask to wait for vertical sync on any
+                // surface: the compositor stops sending frame events to a monitor that is
+                // turned off, and a blocking swap_buffers on it
+                // would hang the whole process — the splash would answer neither
+                // quit nor SIGTERM and would stay hanging over the session.
+                // The pace is set by mpv itself: frame — callback — draw.
                 let _ = egl.swap_interval(self.egl_display, 0);
             }
         } else if let Some(win) = &self.views[idx].egl_window {
-            // Переконфигурация: подгоняем размер окна.
+            // Reconfiguration: adjust the window size.
             win.resize(bw, bh, 0, 0);
         }
 
@@ -661,7 +661,7 @@ impl ProvidesRegistryState for State {
     registry_handlers![OutputState];
 }
 
-// --- Настройка libmpv ---
+// --- libmpv setup ---
 
 fn set_opt(mpv: *mut mpv::mpv_handle, name: &str, val: &str) {
     let cn = CString::new(name).unwrap();
@@ -683,11 +683,11 @@ fn main() {
         }
     };
 
-    // Журнал — общий файл Rexon (`rexon_core::applog`), область
-    // `splash-overlay`: заставку запускает маршрут `--session-splash`
-    // главного бинаря, и её строки встают в одну хронологию с его строками
-    // (номер процесса в каждой). Справка и неверные ключи выше — вывод
-    // команды, не журнал.
+    // The log is the shared Rexon file (`rexon_core::applog`), scope
+    // `splash-overlay`: the splash is started by the `--session-splash` route
+    // of the main binary, and its lines fall into one timeline with its lines
+    // (process id in each). The help and invalid keys above are command
+    // output, not the log.
     rexon_core::applog::init();
     if let Err(e) = run(args) {
         rexon_core::log_error!("splash-overlay", "{e}");
@@ -710,10 +710,10 @@ fn run(args: Args) -> Result<(), String> {
     let output_state = OutputState::new(&globals, &qh);
     let registry_state = RegistryState::new(&globals);
 
-    // Сырой указатель wl_display для EGL и для mpv (WL_DISPLAY).
+    // Raw wl_display pointer for EGL and for mpv (WL_DISPLAY).
     let display_ptr = conn.backend().display_ptr() as *mut c_void;
 
-    // --- EGL: display/config/context (без поверхности пока) ---
+    // --- EGL: display/config/context (no surface yet) ---
     let egl_instance = egl::Instance::new(egl::Static);
     let egl_display = unsafe { egl_instance.get_display(display_ptr) }
         .ok_or("EGL: get_display вернул None")?;
@@ -728,12 +728,12 @@ fn run(args: Args) -> Result<(), String> {
 
     let (egl_config, egl_context) = create_egl_context(&egl_instance, egl_display)?;
 
-    // Делаем контекст текущим без поверхности, чтобы создать render-контекст mpv.
+    // Make the context current without a surface, to create the mpv render context.
     egl_instance
         .make_current(egl_display, None, None, Some(egl_context))
         .map_err(|e| format!("EGL make_current(no-surface): {e:?}"))?;
 
-    // Публикуем EGL-инстанс для колбэка get_proc_address.
+    // Publish the EGL instance for the get_proc_address callback.
     EGL.set(egl_instance)
         .map_err(|_| "EGL уже установлен".to_string())?;
 
@@ -743,7 +743,7 @@ fn run(args: Args) -> Result<(), String> {
         return Err("mpv_create вернул NULL".into());
     }
 
-    // Опции до инициализации.
+    // Options before initialization.
     set_opt(mpv, "config", "no");
     set_opt(mpv, "terminal", "no");
     set_opt(mpv, "msg-level", "all=no");
@@ -768,7 +768,7 @@ fn run(args: Args) -> Result<(), String> {
         return Err("mpv_initialize провалился".into());
     }
 
-    // --- render-контекст mpv (OpenGL) ---
+    // --- mpv render context (OpenGL) ---
     let api_type = CString::new("opengl").unwrap();
     let mut init_params = mpv::mpv_opengl_init_params {
         get_proc_address: Some(get_proc_address),
@@ -800,7 +800,7 @@ fn run(args: Args) -> Result<(), String> {
         return Err(format!("mpv_render_context_create провалился (код {rc})"));
     }
 
-    // Колбэки пробуждения.
+    // Wakeup callbacks.
     unsafe {
         mpv::mpv_set_wakeup_callback(mpv, Some(mpv_wakeup_cb), ptr::null_mut());
         mpv::mpv_render_context_set_update_callback(
@@ -810,18 +810,18 @@ fn run(args: Args) -> Result<(), String> {
         );
     }
 
-    // Загружаем видео.
+    // Load the video.
     let cpath = CString::new(args.video.clone())
         .map_err(|_| "путь к видео содержит NUL".to_string())?;
-    // Имя команды — литерал C-строки (`c"…"`): завершающий NUL ставит сам
-    // компилятор, вручную дописывать его к байтовой строке незачем.
+    // The command name is a C string literal (`c"…"`): the terminating NUL is added by
+    // the compiler itself, there is no need to append it to a byte string by hand.
     let load_cmd: [*const c_char; 3] = [c"loadfile".as_ptr(), cpath.as_ptr(), ptr::null()];
     if unsafe { mpv::mpv_command(mpv, load_cmd.as_ptr()) } < 0 {
         cleanup(mpv_gl, mpv);
         return Err("loadfile провалился".into());
     }
 
-    // --- eventfd + сигналы ---
+    // --- eventfd + signals ---
     let efd = unsafe { libc::eventfd(0, libc::EFD_NONBLOCK | libc::EFD_CLOEXEC) };
     if efd < 0 {
         cleanup(mpv_gl, mpv);
@@ -833,7 +833,7 @@ fn run(args: Args) -> Result<(), String> {
         libc::signal(libc::SIGINT, handle_term as *const () as usize);
     }
 
-    // --- Поверхности: по одной на каждый подключённый вывод ---
+    // --- Surfaces: one per connected output ---
     let mut state = State {
         registry_state,
         output_state,
@@ -847,31 +847,31 @@ fn run(args: Args) -> Result<(), String> {
         render_pending: false,
     };
 
-    // Один обход очереди: он и доносит геометрию выводов (положение, размер,
-    // масштаб), и заводит поверхности — new_output зовётся на каждый уже
-    // существующий вывод. Без обхода положение (0,0) ещё неизвестно, и
-    // «основной экран» выродился бы в «первый попавшийся».
+    // One roundtrip of the queue: it both delivers the output geometry (position, size,
+    // scale) and creates the surfaces — new_output is called for each already
+    // existing output. Without the roundtrip position (0,0) is still unknown, and
+    // the "main screen" would degenerate into "whichever came first".
     if event_queue.roundtrip(&mut state).is_err() {
         cleanup(mpv_gl, mpv);
         return Err("Wayland: первый обход очереди не удался".into());
     }
-    // Страховка на случай, если вывод не прошёл через new_output.
+    // A safeguard in case an output did not go through new_output.
     let known: Vec<wl_output::WlOutput> = state.output_state.outputs().collect();
     for output in known {
         state.add_view(&qh, output);
     }
     state.debug_report("старт");
 
-    // --- Главный цикл ---
+    // --- Main loop ---
     main_loop(&conn, &mut event_queue, &mut state, mpv, mpv_gl, efd);
 
-    // Поверхности сносим до контекста mpv: рисовать больше нечем и некуда.
+    // Tear down the surfaces before the mpv context: there is nothing left to draw with and nowhere to draw.
     while !state.views.is_empty() {
         state.drop_view(0);
     }
     let _ = event_queue.flush();
 
-    // Чистое завершение: сначала render-контекст, потом ядро mpv.
+    // Clean shutdown: first the render context, then the mpv core.
     cleanup(mpv_gl, mpv);
     Ok(())
 }
@@ -887,12 +887,12 @@ fn cleanup(mpv_gl: *mut mpv::mpv_render_context, mpv: *mut mpv::mpv_handle) {
     }
 }
 
-// Пытаемся создать GLES2-контекст, при неудаче — GLES3.
+// Try to create a GLES2 context, on failure — GLES3.
 fn create_egl_context(
     egl: &egl::Instance<egl::Static>,
     display: egl::Display,
 ) -> Result<(egl::Config, egl::Context), String> {
-    // Атрибуты конфигурации: окно, GLES2-рендеринг, RGB8, без альфы.
+    // Config attributes: window, GLES2 rendering, RGB8, no alpha.
     let cfg_attribs = [
         egl::SURFACE_TYPE,
         egl::WINDOW_BIT,
@@ -913,7 +913,7 @@ fn create_egl_context(
         .map_err(|e| format!("EGL choose_first_config: {e:?}"))?
         .ok_or("EGL: подходящей конфигурации не найдено")?;
 
-    // Пробуем версии клиента GLES: 2, затем 3.
+    // Try GLES client versions: 2, then 3.
     for ver in [2, 3] {
         let ctx_attribs = [egl::CONTEXT_MAJOR_VERSION, ver, egl::NONE];
         match egl.create_context(display, config, None, &ctx_attribs) {
@@ -929,7 +929,7 @@ fn create_egl_context(
     Err("EGL: не создать контекст ни GLES2, ни GLES3".into())
 }
 
-// Рисует текущий кадр mpv в поверхность одного вывода.
+// Draws the current mpv frame into the surface of one output.
 fn render_view(
     state: &mut State,
     mpv_gl: *mut mpv::mpv_render_context,
@@ -975,10 +975,10 @@ fn render_view(
     state.views[idx].first_frames = state.views[idx].first_frames.saturating_sub(1);
 }
 
-// Забирает кадр у mpv, никуда его не рисуя: единственный способ не уронить
-// воспроизведение, когда экранов не осталось вовсе. Без этого очередь кадров
-// встала бы, файл никогда не кончился бы, а оркестратор ждал бы конца
-// заставки до своего таймаута.
+// Takes a frame from mpv without drawing it anywhere: the only way not to break
+// playback when no screens are left at all. Without this the frame queue
+// would stall, the file would never end, and the orchestrator would wait for the end of the
+// splash until its timeout.
 fn drain_frame(state: &State, mpv_gl: *mut mpv::mpv_render_context) {
     state.release_current();
     let mut skip: c_int = 1;
@@ -1006,7 +1006,7 @@ fn main_loop(
     efd: i32,
 ) {
     loop {
-        // 1. Отправляем запросы и разбираем уже полученные события.
+        // 1. Send requests and process the events already received.
         let _ = event_queue.flush();
         if event_queue.dispatch_pending(state).is_err() {
             break;
@@ -1015,8 +1015,8 @@ fn main_loop(
             break;
         }
 
-        // 2. Кадр: новый — во все готовые поверхности, иначе только тем,
-        //    кто просил перерисовки (пришёл монитор, сменился масштаб).
+        // 2. Frame: a new one — into all ready surfaces, otherwise only to those
+        //    that asked for a redraw (a monitor arrived, the scale changed).
         if state.render_pending {
             let flags = unsafe { mpv::mpv_render_context_update(mpv_gl) };
             let new_frame = flags & mpv::MPV_RENDER_UPDATE_FRAME != 0;
@@ -1044,12 +1044,12 @@ fn main_loop(
                     mpv::mpv_render_context_report_swap(mpv_gl);
                 }
             }
-            // Пока свежей поверхности не хватает кадров — идём на новый круг
-            // сразу, не засыпая на poll.
+            // While a fresh surface is short of frames — go for a new round
+            // right away, without sleeping on poll.
             state.render_pending = state.views.iter().any(|v| v.first_frames > 0);
         }
 
-        // 3. Разбираем события mpv.
+        // 3. Process mpv events.
         loop {
             let ev = unsafe { mpv::mpv_wait_event(mpv, 0.0) };
             let id = unsafe { (*ev).event_id };
@@ -1059,13 +1059,13 @@ fn main_loop(
             if id == mpv::MPV_EVENT_SHUTDOWN {
                 state.exit = true;
             }
-            // MPV_EVENT_END_FILE игнорируем: keep-open=yes держит последний кадр.
+            // MPV_EVENT_END_FILE is ignored: keep-open=yes holds the last frame.
         }
         if state.exit || TERMINATE.load(Ordering::SeqCst) {
             break;
         }
 
-        // 4. Готовим чтение wayland и ждём на poll(wl_fd, eventfd).
+        // 4. Prepare the wayland read and wait on poll(wl_fd, eventfd).
         match event_queue.prepare_read() {
             Some(guard) => {
                 let wl_fd = conn.as_fd().as_raw_fd();
@@ -1083,7 +1083,7 @@ fn main_loop(
                 ];
                 let r = unsafe { libc::poll(fds.as_mut_ptr(), 2, -1) };
                 if r < 0 {
-                    // Прервано сигналом — проверим флаги в начале цикла.
+                    // Interrupted by a signal — check the flags at the start of the loop.
                     drop(guard);
                     continue;
                 }
@@ -1093,7 +1093,7 @@ fn main_loop(
                     drop(guard);
                 }
                 if fds[1].revents & libc::POLLIN != 0 {
-                    // Осушаем eventfd и планируем кадр.
+                    // Drain the eventfd and schedule a frame.
                     let mut buf: u64 = 0;
                     unsafe {
                         libc::read(efd, &mut buf as *mut u64 as *mut c_void, 8);
@@ -1102,7 +1102,7 @@ fn main_loop(
                 }
             }
             None => {
-                // Есть неразобранные события — вернёмся к dispatch.
+                // There are unprocessed events — go back to dispatch.
             }
         }
     }

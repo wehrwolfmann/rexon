@@ -1,53 +1,53 @@
-//! Порт `rexon/qt_steam/window.py` — вкладка «Steam»: содержимое и решения.
+//! Port of `rexon/qt_steam/window.py`: the «Steam» tab, its content and decisions.
 //!
-//! Вкладка склеивает две витрины, которые роднит только источник данных —
+//! The tab glues together two showcases related only by their data source,
 //! Steam:
 //!
-//!   * 🎬 **Видеозаставка при входе** — витрина роликов (встроенные Valve +
-//!     купленные в Points Shop), выбор, избранное, ротация, автозапуск.
-//!     Механика заставки давно живёт в [`crate::session_splash`]; здесь —
-//!     то, что показывает витрина: бейдж происхождения, подпись-источник,
-//!     чипы фильтра, строка счётчика, крупная карточка и итоговый чип.
-//!   * 🖼 **Фоны профиля Steam** — сетка предметов инвентаря, применяемых
-//!     обоями. Разбор ответов Steam уже перенесён
-//!     ([`crate::steam_profile`], [`crate::steam_profile_items`]); здесь —
-//!     страничная сетка, поиск, карточка, пометка «✓ Применено» и тексты
-//!     состояний.
+//!   * 🎬 **Startup movie at login**: a showcase of movies (Valve built-ins +
+//!     ones bought in the Points Shop), choice, favorites, rotation, autostart.
+//!     The splash mechanics have long lived in [`crate::session_splash`]; here
+//!     is what the showcase shows: the origin badge, the source caption,
+//!     filter chips, the counter line, the large card and the summary chip.
+//!   * 🖼 **Steam profile backgrounds**: a grid of inventory items applied as
+//!     wallpapers. Parsing of Steam responses is already ported
+//!     ([`crate::steam_profile`], [`crate::steam_profile_items`]); here is the
+//!     paged grid, search, the card, the «✓ Applied» mark and the state
+//!     texts.
 //!
-//! Чего здесь НЕТ: сети, файловой системы и Qt. Пути к кэшам строятся, но не
-//! читаются; адреса запросов собираются, но не выполняются — это дело
-//! исполнителя (`rexon-gui/src/steam_workers.rs`).
+//! What is NOT here: network, file system and Qt. Cache paths are built but
+//! not read; request URLs are assembled but not executed: that is the job of
+//! the executor (`rexon-gui/src/steam_workers.rs`).
 //!
-//! ⚠️ Починки оригинала (правило #16 — дефект при переносе чинится, а не
-//! консервируется «ради паритета»), каждая помечена `Починка:` по месту:
-//!   1. пути кэшей и конфигов вкладки были прибиты литералами
-//!      `~/.cache/rexon…` и `~/.config/rexon…` мимо `$XDG_CACHE_HOME` и
-//!      `$XDG_CONFIG_HOME` — тот же класс, что уже починен у
-//!      [`crate::session_splash::preview_cache_dir`] и
-//!      [`crate::utils::config_home`]. При нестандартном XDG список
-//!      инвентаря кэшировался в один каталог, а читался из другого: витрина
-//!      КАЖДЫЙ раз открывалась пустой и ждала сеть;
-//!   2. мёртвая пара `_THUMB_W, _THUMB_H = 96, 54` (размер миниатюры
-//!      списочного режима, которого во вкладке уже нет) не перенесена;
-//!   3. `_download_community` при неудаче оставлял на диске недокачанный
-//!      `<файл>.part`; здесь имя временного файла отдаётся отдельно
-//!      ([`part_path`]) вместе с указанием убрать его на любом исходе;
-//!   4. и `_InventoryWorker`, и `_SplashMetaWorker` тянули ВЕСЬ публичный
-//!      инвентарь каждый сам по себе (до 20 страниц по 2000 предметов —
-//!      дважды на каждое открытие вкладки). Разбор здесь разведён на
-//!      «страницы» и «что из них взять», чтобы исполнитель качал один раз и
-//!      кормил обе витрины ([`splash_item_meta`] и
+//! ⚠️ Fixes to the original (rule #16: a defect found while porting is fixed,
+//! not preserved "for the sake of parity"), each marked `Fix` in place:
+//!   1. the tab's cache and config paths were hard-coded as literals
+//!      `~/.cache/rexon…` and `~/.config/rexon…`, bypassing `$XDG_CACHE_HOME`
+//!      and `$XDG_CONFIG_HOME`: the same class already fixed in
+//!      [`crate::session_splash::preview_cache_dir`] and
+//!      [`crate::utils::config_home`]. With a non-standard XDG the inventory
+//!      list was cached into one directory and read from another: the
+//!      showcase opened empty EVERY time and waited for the network;
+//!   2. the dead pair `_THUMB_W, _THUMB_H = 96, 54` (thumbnail size of the
+//!      list mode, which the tab no longer has) is not ported;
+//!   3. `_download_community` left a partially downloaded `<file>.part` on
+//!      disk on failure; here the temporary file name is given separately
+//!      ([`part_path`]) together with the instruction to remove it on any outcome;
+//!   4. both `_InventoryWorker` and `_SplashMetaWorker` fetched the WHOLE
+//!      public inventory each on its own (up to 20 pages of 2000 items,
+//!      twice on every tab opening). Parsing here is split into "pages" and
+//!      "what to take from them", so the executor downloads once and feeds
+//!      both showcases ([`splash_item_meta`] and
 //!      [`crate::steam_profile_items::parse_inventory_backgrounds`]).
 //!
-//! ПЕРЕВОД (с 28.09.2026). Подписи — английские `msgid` через
-//! [`crate::i18n`]: константы стали функциями (`sv_pick_text()` вместо
-//! `SV_PICK_TEXT` — функцию, в отличие от константы, не забудешь перевести),
-//! русский дословно прежний — в `po/ru.po` (снимок
-//! `tests/golden/qt_steam_ru_before.json`). Язык ответов Steam (метки и
-//! названия предметов инвентаря) следует языку интерфейса —
+//! TRANSLATION (since 28.09.2026). Captions are English `msgid`s through
+//! [`crate::i18n`]: constants became functions (`sv_pick_text()` instead of
+//! `SV_PICK_TEXT`: unlike a constant, a function cannot be forgotten when
+//! translating), the previous Russian text verbatim is in `po/ru.po` (snapshot
+//! `tests/golden/qt_steam_ru_before.json`). The language of Steam responses
+//! (tags and names of inventory items) follows the interface language,
 //! [`steam_language`].
 //!
-//! Сверка — `rust/rexon-core/tests/qt_steam_parity.rs`.
+//! Parity check: `rust/rexon-core/tests/qt_steam_parity.rs`.
 
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -60,7 +60,7 @@ use crate::utils;
 use crate::wallpaper_exec::{WallpaperExec, WpSys};
 
 // ============================================================================
-// Окно и шапка
+// Window and header
 // ============================================================================
 
 pub const WINDOW_TITLE: &str = "Rexon — Steam";
@@ -68,14 +68,14 @@ pub const WINDOW_MIN_SIZE: (u32, u32) = (900, 720);
 
 pub const HEADER_TITLE: &str = "🎮 Steam";
 pub const HEADER_TITLE_POINT_SIZE: i32 = 20;
-/// Кегль заголовка группы («🎬 Видеозаставка при входе»).
+/// Font size of the group title («🎬 Startup Movie at Login»).
 pub const GROUP_TITLE_POINT_SIZE: i32 = 13;
 
-/// Подпись справа в шапке: где нашёлся Steam либо что делать, если не нашёлся.
+/// Caption on the right of the header: where Steam was found, or what to do if it was not.
 ///
-/// Оригинал отдаёт RichText с `<tt>` вокруг пути — разметка остаётся у вида,
-/// ядро отдаёт пару «текст, путь-моноширинным». Пустой второй элемент =
-/// моноширинного куска нет.
+/// The original returns RichText with `<tt>` around the path; the markup stays
+/// with the view, the core returns the pair "text, monospace path". An empty
+/// second element means there is no monospace part.
 pub fn header_found_text(steam_root: Option<&str>) -> (String, String) {
     match steam_root {
         Some(root) if !root.is_empty() => (
@@ -92,24 +92,24 @@ pub fn header_found_text(steam_root: Option<&str>) -> (String, String) {
 }
 
 // ============================================================================
-// Сегментный переключатель подвкладок
+// Segmented subtab switcher
 // ============================================================================
 
-/// Идентификатор подвкладки «Видеозаставка».
+/// Identifier of the «Startup Movie» subtab.
 pub const SEG_SPLASH: &str = "splash";
-/// Идентификатор подвкладки «Steam-фоны».
+/// Identifier of the «Steam Backgrounds» subtab.
 pub const SEG_BG: &str = "bg";
-/// Идентификатор подвкладки «Витрины профиля» (нарезка картинки под витрину,
+/// Identifier of the «Profile Showcases» subtab (cropping a picture for a showcase,
 /// `steam_showcase`).
 pub const SEG_SHOWCASE: &str = "showcase";
-/// Идентификатор подвкладки «Заставка» (заставка Rexon для экрана простоя
-/// Steam Big Picture, `steam_screensaver`).
+/// Identifier of the «Screensaver» subtab (the Rexon screensaver for the idle
+/// screen of Steam Big Picture, `steam_screensaver`).
 pub const SEG_SCREENSAVER: &str = "screensaver";
 
-/// Состав и ПОРЯДОК чипов-переключателей. Заставка первой: она — флагманская
-/// фича вкладки, фоны профиля вторичны.
+/// Set and ORDER of the switcher chips. The splash goes first: it is the
+/// flagship feature of the tab, profile backgrounds are secondary.
 ///
-/// Подпись — `msgid`; показывать через [`segments`].
+/// The caption is a `msgid`; show it through [`segments`].
 pub const SEGMENTS: &[(&str, &str)] = &[
     (SEG_SPLASH, n_("🎬 Startup Movie")),
     (SEG_BG, n_("🖼️ Steam Backgrounds")),
@@ -117,14 +117,14 @@ pub const SEGMENTS: &[(&str, &str)] = &[
     (SEG_SCREENSAVER, n_("🌙 Screensaver")),
 ];
 
-/// Чипы-переключатели с подписями на языке интерфейса.
+/// Switcher chips with captions in the interface language.
 pub fn segments() -> Vec<(&'static str, String)> {
     SEGMENTS.iter().map(|(key, label)| (*key, tr(label))).collect()
 }
 
-/// Индекс страницы стека по ключу подвкладки (0 — видеозаставка, 1 — фоны,
-/// 2 — витрины, 3 — заставка Big Picture). Незнакомый ключ — фоны, как было
-/// до витрин.
+/// Stack page index by subtab key (0 is the startup movie, 1 backgrounds,
+/// 2 showcases, 3 the Big Picture screensaver). An unknown key means
+/// backgrounds, as it was before showcases.
 pub fn segment_index(key: &str) -> u32 {
     match key {
         SEG_SPLASH => 0,
@@ -134,20 +134,20 @@ pub fn segment_index(key: &str) -> u32 {
     }
 }
 
-/// Знакома ли подвкладка (переключение на чужой ключ молча игнорируется).
+/// Whether the subtab is known (switching to a foreign key is silently ignored).
 pub fn is_segment(key: &str) -> bool {
     SEGMENTS.iter().any(|(k, _)| *k == key)
 }
 
 // ============================================================================
-// Группы-секции
+// Section groups
 // ============================================================================
 
 pub const SPLASH_GROUP_OBJECT: &str = "steamSplashGroup";
 pub fn splash_group_title() -> String {
     tr("🎬 Startup Movie at Login")
 }
-/// Главный тезис секции — одной строкой, без жаргона (правило #13).
+/// The main point of the section in one line, without jargon (rule #13).
 pub fn splash_pitch() -> String {
     tr("A video at login is a Steam Deck signature. Rexon brings it to your regular computer: \
         Valve's built-in startup movies and the ones you've already bought in the Points Shop — \
@@ -165,32 +165,32 @@ pub fn bg_group_desc() -> String {
 }
 
 // ============================================================================
-// Витрина заставок: размеры и подписи
+// Startup movie showcase: sizes and captions
 // ============================================================================
 
-/// Пауза перед сменой ролика при наведении: провёл мышью по всей сетке —
-/// плеер не должен дёргаться на каждой карточке.
+/// Pause before switching the movie on hover: when the mouse is moved across
+/// the whole grid, the player must not twitch on every card.
 pub const SV_HOVER_DELAY_MS: u32 = 220;
-/// Служебный ключ чипа «★ Избранное» (остальные чипы — названия групп).
+/// Internal key of the «★ Favorites» chip (the other chips are group names).
 pub const SV_GROUP_FAV: &str = "\u{0}favs";
-/// На столько превью замирает, пока ролик показывается на весь экран
-/// (снимается раньше — по возврату фокуса в окно).
+/// For this long the preview freezes while the movie is shown full screen
+/// (lifted earlier when focus returns to the window).
 pub const SV_TEST_PAUSE_S: f64 = 25.0;
-/// Минимальный промежуток между разворачиванием кадров превью (~15 к/с):
-/// кадр приходит в полном разрешении ролика и стоит ~8 МБ на разворот.
+/// Minimum interval between unpacking preview frames (~15 fps): a frame
+/// arrives at the movie's full resolution and costs ~8 MB per unpack.
 pub const SV_FRAME_MIN_INTERVAL: f64 = 1.0 / 15.0;
 
-/// Превью на карточке витрины, 16:10 — родная пропорция роликов.
+/// Preview on a showcase card, 16:10, the native aspect ratio of the movies.
 pub const SV_THUMB_W: i32 = 176;
 pub const SV_THUMB_H: i32 = 110;
-/// Ширина карточки витрины. ПОСТОЯННАЯ: по ней движок сеток считает столбцы.
+/// Width of a showcase card. CONSTANT: the grid engine counts columns by it.
 pub const SV_CARD_W: i32 = SV_THUMB_W + 24;
 pub const SV_MIN_COLS: u32 = 2;
 pub const SV_MAX_COLS: u32 = 8;
-/// Крупная превьюшка выбранного ролика.
+/// Large preview of the chosen movie.
 pub const SV_HERO_W: i32 = 400;
 pub const SV_HERO_H: i32 = 250;
-/// Ширина, по которой обрезается название на карточке (минус место звёздочки).
+/// Width at which the name on the card is truncated (minus the room for the star).
 pub const SV_TITLE_ELIDE_W: i32 = SV_THUMB_W - 22;
 
 pub fn sv_search_placeholder() -> String {
@@ -236,39 +236,39 @@ pub fn sv_test_tooltip() -> String {
 pub fn sv_test_playing() -> String {
     tr("▶️ Playing…")
 }
-/// Отказ показать заставку, пока ролик не выбран.
+/// Refusal to show the splash while no movie is chosen.
 ///
-/// ⚠️ Копии этой строки было ТРИ (замер 07.09.2026): здесь, в
-/// [`crate::session_splash::MSG_CHOOSE_FIRST`] и в хозяине QML-вкладки на
-/// Python. Смысл у всех трёх один — «сначала выбери заставку», — и
-/// расходиться им нельзя: витрина и автозапуск отказывают по одной и той
-/// же причине. Осталась одна, остальные ссылаются сюда.
+/// ⚠️ There were THREE copies of this string (counted 07.09.2026): here, in
+/// [`crate::session_splash::MSG_CHOOSE_FIRST`] and in the Python host of the
+/// QML tab. All three mean the same, "choose a splash first", and they must
+/// not diverge: the showcase and the autostart refuse for one and the same
+/// reason. One remains, the others refer here.
 pub const SV_TEST_NO_ITEM: &str = crate::session_splash::MSG_CHOOSE_FIRST;
 
-/// Причина отказа, когда подсистема не назвала своей.
+/// Refusal reason when the subsystem did not name its own.
 ///
-/// Побочные действия витрины (автозапуск, показ на весь экран) отвечают
-/// парой «получилось / почему нет». Пустое «почему» — не повод показать
-/// покупателю пустую строку состояния: он нажал кнопку и обязан увидеть
-/// ответ. Виджетный эталон такого случая не знал вовсе и печатал пустоту.
+/// Side actions of the showcase (autostart, full-screen show) answer with a
+/// pair "it worked / why not". An empty "why" is no reason to show the
+/// customer an empty status line: they pressed a button and must see an
+/// answer. The widget reference did not know this case at all and printed nothing.
 pub fn sv_no_reason() -> String {
     // TRANSLATORS: reason shown after a failed action when the system gave no reason of its own.
     tr("it didn't work")
 }
 
-/// Заголовок отказа включить заставку при входе.
+/// Heading of the refusal to turn on the splash at login.
 pub fn sv_autostart_on_failed() -> String {
     tr("❌ Couldn't turn on the startup movie at login")
 }
-/// Заголовок отказа выключить её.
+/// Heading of the refusal to turn it off.
 pub fn sv_autostart_off_failed() -> String {
     tr("❌ Couldn't fully turn off the startup movie at login")
 }
-/// Хвост, когда причину назвать простыми словами нельзя.
+/// The tail when the reason cannot be named in plain words.
 pub fn sv_autostart_try_again() -> String {
     tr("Please try again.")
 }
-/// Причины, которые покупатель может понять и исправить сам.
+/// Reasons the customer can understand and fix themselves.
 pub fn sv_cause_no_access() -> String {
     // TRANSLATORS: reason after "Couldn't turn on…: ", starts in lower case.
     tr("no permission to write to the settings folder")
@@ -282,11 +282,11 @@ pub fn sv_cause_read_only() -> String {
     tr("the settings folder is read-only")
 }
 
-/// Системная ошибка файла → причина простыми словами, если её можно назвать.
+/// A system file error → the reason in plain words, if it can be named.
 ///
-/// Приходит сырой текст: у Rust-исполнителя `… (os error 13)` (первая часть
-/// ещё и на языке системы), у Python-хозяина `[Errno 13] …`. Номер ошибки —
-/// единственное, что в них не зависит от языка, по нему и узнаём.
+/// Raw text arrives: from the Rust executor `… (os error 13)` (with the first
+/// part in the system language, too), from the Python host `[Errno 13] …`.
+/// The error number is the only language-independent part, so it is used to recognize it.
 fn plain_file_cause(reason: &str) -> Option<String> {
     let low = reason.to_lowercase();
     let errno = |n: u32| {
@@ -303,27 +303,27 @@ fn plain_file_cause(reason: &str) -> Option<String> {
     }
 }
 
-/// Что показать покупателю после переключателя «Показывать при входе».
+/// What to show the customer after the «Play at login» switch.
 ///
-/// `on` — что он просил (включить или выключить), `reason` — ответ побочного
-/// действия: пусто — получилось (галочку страница и так перечитает),
-/// иначе причина отказа.
+/// `on` is what they asked for (turn on or off), `reason` is the answer of
+/// the side action: empty means it worked (the page rereads the checkbox
+/// anyway), otherwise the refusal reason.
 ///
-/// ЗАЧЕМ ОТДЕЛЬНО. Причину собирает маршрут заставки для журнала, и она
-/// говорит на языке устройства: «Не удалось включить: Permission denied
-/// (os error 13)», «юнит: …; ksplashrc: kwriteconfig6 не сработал;
-/// autostart: …». Виджетная вкладка печатала это покупателю как есть, а
-/// QML-версия не печатала вовсе — галочка молча отскакивала назад. Здесь
-/// — одна фраза: что не вышло и, если это можно назвать простыми словами,
-/// почему. Подробность остаётся журналу.
+/// WHY SEPARATELY. The reason is put together by the splash route for the
+/// journal, and it speaks the language of the internals: "Could not turn on:
+/// Permission denied (os error 13)", "unit: …; ksplashrc: kwriteconfig6
+/// failed; autostart: …". The widget tab printed this to the customer as is,
+/// and the QML version did not print it at all: the checkbox silently
+/// bounced back. Here it is one phrase: what failed and, if it can be named
+/// in plain words, why. The details stay in the journal.
 pub fn autostart_refusal_text(on: bool, reason: &str) -> Option<String> {
     let reason = reason.trim();
     if reason.is_empty() {
         return None;
     }
-    // Эта причина уже сказана человеческим языком и понятна без заголовка.
-    // Узнаём по `msgid` и по переводу: маршрут заставки отдаёт её уже
-    // на языке интерфейса (`session_splash::msg_choose_first`).
+    // This reason is already said in human language and is clear without a
+    // heading. Recognized by `msgid` and by the translation: the splash route
+    // returns it already in the interface language (`session_splash::msg_choose_first`).
     if reason == SV_TEST_NO_ITEM || reason == tr(SV_TEST_NO_ITEM) {
         return Some(format!("❌ {}", tr(SV_TEST_NO_ITEM)));
     }
@@ -338,16 +338,16 @@ pub fn autostart_refusal_text(on: bool, reason: &str) -> Option<String> {
     })
 }
 
-/// Доклеивать ли к витрине СВОЙ ролик из конфига.
+/// Whether to append the person's OWN movie from the config to the showcase.
 ///
-/// Витрину строит скан стартовых видео Steam, а покупатель мог выбрать
-/// файл откуда угодно с диска. Тогда его выбор в скан не попадает, и без
-/// этой доклейки он пропадал бы из виду — при том, что именно он и
-/// применён.
+/// The showcase is built from a scan of Steam startup videos, while the
+/// customer could choose a file from anywhere on disk. Then their choice is
+/// not in the scan, and without this addition it would disappear from view,
+/// even though it is exactly the one applied.
 ///
-/// `exists` — есть ли файл на диске; это наблюдение среды, и приносит его
-/// исполнитель. Пути к несуществующему файлу карточки не бывает: конфиг
-/// мог пережить удаление ролика.
+/// `exists` is whether the file is on disk; it is an observation of the
+/// environment, and the executor brings it. A card for a path to a missing
+/// file never exists: the config may have outlived the movie's removal.
 pub fn needs_custom_movie(current: &str, scanned: &[String], exists: bool) -> bool {
     !current.is_empty() && exists && !scanned.iter().any(|p| p == current)
 }
@@ -389,55 +389,56 @@ pub fn sv_rotate_need_two() -> String {
     tr("Taking turns needs at least two videos")
 }
 
-/// Что сказать покупателю, когда он переключил «Каждый вход — новый ролик».
+/// What to tell the customer when they toggled «New movie at every login».
 ///
-/// Включил, а крутить нечего, — честно сказать об этом, а не делать вид
-/// (правило #13; так отвечала виджетная вкладка). Выключение и достаточный
-/// пул ответа не требуют: итог и так виден в чипе состояния. Порог — общий
-/// с жребием при входе ([`session_splash::rotation_possible`]).
+/// Turned it on but there is nothing to rotate: say so honestly instead of
+/// pretending (rule #13; that is how the widget tab answered). Turning it off
+/// and a sufficient pool need no answer: the result is visible in the state
+/// chip anyway. The threshold is shared with the draw at login
+/// ([`session_splash::rotation_possible`]).
 pub fn rotation_refusal(on: bool, favs_len: usize, items_len: usize) -> Option<String> {
     (on && !session_splash::rotation_possible(favs_len, items_len)).then(sv_rotate_need_two)
 }
-/// Заглушка карточки, пока кадр ролика не готов.
+/// Card placeholder while the movie frame is not ready.
 pub const SV_THUMB_PLACEHOLDER: &str = "🎬";
 
 // ============================================================================
-// Витрина заставок: решения
+// Startup movie showcase: decisions
 // ============================================================================
 
-/// Метки предмета Steam для одного ролика — то, что показывает инвентарь.
+/// Steam item tags for one movie: what the inventory shows.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct SplashMeta {
-    /// Название предмета в инвентаре.
+    /// Item name in the inventory.
     pub name: String,
-    /// «Видеозаставка из Days Gone» — строка `type` предмета.
+    /// «Startup movie from Days Gone»: the item's `type` string.
     pub source: String,
-    /// Событие/распродажа (метка `event`), если есть.
+    /// Event/sale (the `event` tag), if any.
     pub event: String,
-    /// Редкость, игра, тип предмета, запреты обмена и продажи.
+    /// Rarity, game, item type, trade and market restrictions.
     pub labels: Vec<String>,
 }
 
-/// Строковое поле объекта: "" если ключа нет/`null`/не строка.
+/// A string field of an object: "" if the key is missing/`null`/not a string.
 fn s<'a>(v: &'a Value, key: &str) -> &'a str {
     v.get(key).and_then(Value::as_str).unwrap_or("")
 }
 
-/// `appid` записи ролика (0, если его нет).
+/// `appid` of a movie record (0 if missing).
 pub fn movie_appid(item: &Value) -> i64 {
     item.get("appid").and_then(Value::as_i64).unwrap_or(0)
 }
 
-/// Метки ролика по его `appid` (пустые, если инвентарь ещё не пришёл).
+/// Tags of a movie by its `appid` (empty if the inventory has not arrived yet).
 fn meta_of<'a>(meta: &'a MetaMap, item: &Value) -> Option<&'a SplashMeta> {
     meta.get(&movie_appid(item))
 }
 
-/// appid → метки. `BTreeMap`, а не `HashMap`: порядок обхода обязан быть
-/// устойчивым, иначе чипы фильтра переставлялись бы от запуска к запуску.
+/// appid → tags. `BTreeMap`, not `HashMap`: the iteration order must be
+/// stable, otherwise the filter chips would reorder from run to run.
 pub type MetaMap = std::collections::BTreeMap<i64, SplashMeta>;
 
-/// Короткий бейдж происхождения ролика: событие важнее магазина.
+/// Short origin badge of a movie: the event matters more than the shop.
 pub fn badge_text(item: &Value, meta: &MetaMap) -> String {
     if let Some(m) = meta_of(meta, item) {
         if !m.event.is_empty() {
@@ -451,7 +452,7 @@ pub fn badge_text(item: &Value, meta: &MetaMap) -> String {
     s(item, "origin_label").to_string()
 }
 
-/// Тон бейджа: купленные в Points Shop выделяются акцентом.
+/// Badge tone: ones bought in the Points Shop are highlighted with the accent.
 pub fn badge_tone(item: &Value) -> &'static str {
     if s(item, "origin") == session_splash::ORIGIN_SHOP {
         BADGE_ACCENT
@@ -460,7 +461,7 @@ pub fn badge_tone(item: &Value) -> &'static str {
     }
 }
 
-/// Строка-источник в духе инвентаря Steam: «Видеозаставка из X».
+/// Source line in the style of the Steam inventory: «Startup movie from X».
 pub fn source_text(item: &Value, meta: &MetaMap) -> String {
     if let Some(m) = meta_of(meta, item) {
         if !m.source.is_empty() {
@@ -479,7 +480,7 @@ pub fn source_text(item: &Value, meta: &MetaMap) -> String {
     }
 }
 
-/// Группы, которые реально есть у роликов (в порядке появления).
+/// Groups the movies actually have (in order of appearance).
 pub fn group_keys(items: &[Value], meta: &MetaMap) -> Vec<String> {
     let mut keys: Vec<String> = Vec::new();
     for it in items {
@@ -491,15 +492,15 @@ pub fn group_keys(items: &[Value], meta: &MetaMap) -> Vec<String> {
     keys
 }
 
-/// Есть ли среди роликов хоть один избранный.
+/// Whether at least one of the movies is a favorite.
 pub fn has_favorites(items: &[Value], favs: &[String]) -> bool {
     items
         .iter()
         .any(|it| favs.iter().any(|f| f == s(it, "path")))
 }
 
-/// Выбранная группа могла исчезнуть (сняли звёздочку, пропал ролик) — молча
-/// возвращаемся к «Все», чтобы витрина не оказалась пустой.
+/// The chosen group may have disappeared (star removed, movie gone): silently
+/// go back to «All», so the showcase does not end up empty.
 pub fn normalize_group_key(selected: &str, items: &[Value], favs: &[String], meta: &MetaMap) -> String {
     if selected.is_empty() {
         return String::new();
@@ -518,7 +519,7 @@ pub fn normalize_group_key(selected: &str, items: &[Value], favs: &[String], met
     }
 }
 
-/// Один чип фильтра «откуда заставка».
+/// One chip of the "where the splash comes from" filter.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct GroupChip {
     pub key: String,
@@ -526,11 +527,11 @@ pub struct GroupChip {
     pub checked: bool,
 }
 
-/// Чипы фильтра под текущий набор роликов.
+/// Filter chips for the current set of movies.
 ///
-/// Пустой ответ = строку фильтра показывать НЕ надо: пустых кнопок не бывает,
-/// а если группа всего одна и избранного нет — выбора попросту не существует
-/// (правило #13).
+/// An empty answer means the filter line must NOT be shown: there are no
+/// empty buttons, and if there is only one group and no favorites, there
+/// simply is no choice (rule #13).
 pub fn group_chips(items: &[Value], favs: &[String], meta: &MetaMap, selected: &str) -> Vec<GroupChip> {
     let keys = group_keys(items, meta);
     let favs_present = has_favorites(items, favs);
@@ -560,7 +561,7 @@ pub fn group_chips(items: &[Value], favs: &[String], meta: &MetaMap, selected: &
     out
 }
 
-/// Проходит ли ролик выбранный фильтр «откуда заставка».
+/// Whether the movie passes the chosen "where the splash comes from" filter.
 pub fn in_group(item: &Value, key: &str, favs: &[String], meta: &MetaMap) -> bool {
     if key.is_empty() {
         return true;
@@ -571,8 +572,8 @@ pub fn in_group(item: &Value, key: &str, favs: &[String], meta: &MetaMap) -> boo
     badge_text(item, meta) == key
 }
 
-/// Поиск витрины: название, игра, событие. `needle` уже приведён к нижнему
-/// регистру и обрезан по краям (как `.strip().lower()` оригинала).
+/// Showcase search: name, game, event. `needle` is already lowercased and
+/// trimmed (like `.strip().lower()` of the original).
 pub fn sv_matches(item: &Value, needle: &str, key: &str, favs: &[String], meta: &MetaMap) -> bool {
     if !in_group(item, key, favs, meta) {
         return false;
@@ -594,7 +595,7 @@ pub fn sv_matches(item: &Value, needle: &str, key: &str, favs: &[String], meta: 
     hay.contains(needle)
 }
 
-/// Отобранные поиском и фильтром ролики (порядок исходного списка).
+/// Movies selected by search and filter (in the order of the source list).
 pub fn sv_shown<'a>(items: &'a [Value], needle: &str, key: &str, favs: &[String], meta: &MetaMap) -> Vec<&'a Value> {
     items
         .iter()
@@ -602,7 +603,7 @@ pub fn sv_shown<'a>(items: &'a [Value], needle: &str, key: &str, favs: &[String]
         .collect()
 }
 
-/// Строка-счётчик под чипами фильтра.
+/// The counter line under the filter chips.
 pub fn sv_count_text(shown: usize, total: usize, filtered: bool) -> String {
     if total == 0 {
         sv_empty_text().to_string()
@@ -613,33 +614,33 @@ pub fn sv_count_text(shown: usize, total: usize, filtered: bool) -> String {
     }
 }
 
-/// «Показано 3 из 10» — одна фраза на обе витрины.
+/// «Showing 3 of 10»: one phrase for both showcases.
 fn showing_text(shown: usize, total: usize) -> String {
     // TRANSLATORS: search result counter: %1 shown out of %2 in total.
     trf("Showing %1 of %2", &[&shown, &total])
 }
 
-/// Крупная карточка выбранного (или наведённого) ролика.
+/// Large card of the chosen (or hovered) movie.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct HeroView {
-    /// Есть ли что показывать вообще.
+    /// Whether there is anything to show at all.
     pub present: bool,
     pub title: String,
-    /// «🎮 Видеозаставка из X».
+    /// «🎮 Startup movie from X».
     pub source: String,
-    /// «Метки: …» либо пусто (пустую строку показывать не надо).
+    /// «Tags: …» or empty (an empty line must not be shown).
     pub labels: String,
-    /// «Событие: …» либо пусто.
+    /// «Event: …» or empty.
     pub event: String,
-    /// Подпись кнопки звёздочки.
+    /// Caption of the star button.
     pub star_text: String,
     pub star_on: bool,
-    /// Разъяснение «смотрю одно, а при входе будет другое».
+    /// The explanation "I am looking at one, but at login there will be another".
     pub status: String,
 }
 
-/// Собрать крупную карточку. `shown` — что показывает карточка (наведённое
-/// либо выбранное), `current` — что реально пойдёт при входе.
+/// Build the large card. `shown` is what the card shows (hovered or chosen),
+/// `current` is what will actually play at login.
 pub fn hero(shown: Option<&Value>, current: Option<&Value>, favs: &[String], meta: &MetaMap) -> HeroView {
     let Some(item) = shown else {
         return HeroView {
@@ -663,7 +664,7 @@ pub fn hero(shown: Option<&Value>, current: Option<&Value>, favs: &[String], met
     let labels = m.map(|x| x.labels.clone()).unwrap_or_default();
     let event = m.map(|x| x.event.clone()).unwrap_or_default();
     let star_on = favs.iter().any(|f| f == s(item, "path"));
-    // «Предпросмотр» — когда показываем НЕ тот ролик, что пойдёт при входе.
+    // «Preview» when we show NOT the movie that will play at login.
     let is_current = current.map(|c| s(c, "path") == s(item, "path")).unwrap_or(false);
     HeroView {
         present: true,
@@ -692,15 +693,15 @@ pub fn hero(shown: Option<&Value>, current: Option<&Value>, favs: &[String], met
     }
 }
 
-/// Тон крупного чипа итогового состояния.
+/// Tone of the large summary state chip.
 pub const CHIP_OK: &str = "ok";
 pub const CHIP_WARN: &str = "warn";
 pub const CHIP_OFF: &str = "off";
 
-/// Итоговое состояние ОДНОЙ строкой (вместо россыпи галочек).
+/// The summary state in ONE line (instead of a scatter of checkmarks).
 ///
-/// `favs_len` — сколько роликов в избранном, `items_len` — сколько найдено
-/// всего: при двух и более избранных ротация крутит именно их.
+/// `favs_len` is how many movies are in favorites, `items_len` is how many
+/// were found in total: with two or more favorites the rotation goes through exactly those.
 pub fn state_chip(
     current: Option<&Value>,
     enabled: bool,
@@ -725,10 +726,10 @@ pub fn state_chip(
             CHIP_OFF,
         );
     }
-    // ⚠️ Починка при переносе (правило #16): с одним роликом на диске чип
-    // обещал «случайный ролик из всех (1 шт.)», хотя жребий при входе такой
-    // пул пропускает (`session_splash::rotation_choices`) и покажется тот же
-    // ролик. Теперь ротация, которой не будет, в чипе не обещается.
+    // ⚠️ Fix while porting (rule #16): with one movie on disk the chip promised
+    // "a random movie out of all (1)", although the draw at login skips such a
+    // pool (`session_splash::rotation_choices`) and the same movie is shown.
+    // Now a rotation that will not happen is not promised in the chip.
     if rotate && session_splash::rotation_possible(favs_len, items_len) {
         let by_favs = session_splash::rotation_uses_favorites(favs_len);
         let pool = session_splash::rotation_pool_size(favs_len, items_len);
@@ -757,29 +758,29 @@ pub fn state_chip(
 }
 
 // ============================================================================
-// Витрина фонов профиля: размеры и подписи
+// Profile background showcase: sizes and captions
 // ============================================================================
 
-/// Превью на карточке фона, 16:9 — как обои рабочего стола.
+/// Preview on a background card, 16:9, like a desktop wallpaper.
 pub const BG_THUMB_W: i32 = 140;
 pub const BG_THUMB_H: i32 = 79;
-/// Ширина карточки фона. ПОСТОЯННАЯ по той же причине, что и у витрины:
-/// расчёт столбцов — арифметика по ширине карточки.
+/// Width of a background card. CONSTANT for the same reason as for the showcase:
+/// the column count is arithmetic over the card width.
 pub const BG_CARD_W: i32 = 180;
-/// Пагинация задаётся РЯДАМИ, а не числом предметов: при пяти столбцах
-/// страница выходит 25 штук, при трёх — 15, и последний ряд всегда полный.
+/// Pagination is set in ROWS, not in the number of items: with five columns a
+/// page has 25 items, with three 15, and the last row is always full.
 pub const BG_ROWS: u32 = 5;
 pub const BG_MIN_COLS: u32 = 2;
-/// Потолок столбцов. Был 8, а сетка QML раскладывала карточки сама и на
-/// окне 1920 ставила девять: страница из 8 × 5 = 40 кончалась рядом из
-/// четырёх карточек. Теперь столбцы сетке задаёт ядро ([`bg_columns`]), а
-/// потолок поднят, чтобы широкое окно не растягивало карточки вдвое.
+/// The column ceiling. It was 8, while the QML grid laid out cards by itself
+/// and on a 1920 window put nine: a page of 8 × 5 = 40 ended with a row of
+/// four cards. Now the core sets the grid columns ([`bg_columns`]), and the
+/// ceiling is raised so a wide window does not stretch cards twofold.
 pub const BG_MAX_COLS: u32 = 16;
 
-/// Столбцов в сетке фонов при ширине самой сетки `width` (без полей группы):
-/// сколько карточек `BG_CARD_W` с зазором `CARD_GAP` влезает. Это же число
-/// стоит у сетки QML в `columns`, поэтому страница `cols × BG_ROWS` — всегда
-/// целые ряды.
+/// Columns in the background grid for the grid's own width `width` (without
+/// group margins): how many `BG_CARD_W` cards with the `CARD_GAP` gap fit.
+/// The same number is in `columns` of the QML grid, so a page of
+/// `cols × BG_ROWS` is always whole rows.
 pub fn bg_columns(width: i32) -> u32 {
     ui_base::grid_columns(width, BG_CARD_W, CARD_GAP, 0, BG_MIN_COLS, BG_MAX_COLS)
 }
@@ -815,7 +816,7 @@ pub fn bg_equipped_sub() -> String {
 pub fn bg_animated_tooltip() -> String {
     tr("Animated background (webm) — applies as a live wallpaper")
 }
-/// 📼 у анимированных, 🖼️ у статичных (VS16 = цветное эмодзи, различимы).
+/// 📼 for animated ones, 🖼️ for static ones (VS16 means a color emoji, they are distinguishable).
 pub const BG_ICON_ANIMATED: &str = "📼";
 pub const BG_ICON_STATIC: &str = "🖼️";
 
@@ -839,10 +840,10 @@ pub fn bg_apply_failed() -> String {
     tr("Couldn't apply")
 }
 
-/// Сколько символов ошибки инвентаря показываем (`error[:160]` оригинала).
+/// How many characters of the inventory error are shown (`error[:160]` of the original).
 pub const BG_ERROR_CLIP: usize = 160;
 
-/// Текст неудачи загрузки инвентаря.
+/// Text of an inventory loading failure.
 pub fn bg_error_text(error: &str) -> String {
     let clipped: String = error.chars().take(BG_ERROR_CLIP).collect();
     // TRANSLATORS: %1 is the error text (may be technical, in English).
@@ -852,20 +853,20 @@ pub fn bg_error_text(error: &str) -> String {
     )
 }
 
-/// Подпись секции фонов профиля: причина важнее счёта.
+/// Caption of the profile backgrounds section: the reason matters more than the count.
 ///
-/// Причина («Steam не найден.», «нет userdata», «инвентарь не загрузился»,
-/// «фонов нет») в оригинале пишется в ту же метку, что и счёт фонов
-/// (`rexon/qt_steam/window.py`, `_bg_status`), — и это единственное честное
-/// для неё место: «Найдено фонов: 0» при ненайденном Steam человеку ничего
-/// не объясняет, а всплывающее сообщение поверх соседней секции и подавно
-/// (оно ещё и уходит через три секунды).
+/// The reason ("Steam not found.", "no userdata", "the inventory did not load",
+/// "no backgrounds") is written in the original into the same label as the
+/// background count (`rexon/qt_steam/window.py`, `_bg_status`), and that is
+/// the only honest place for it: «Backgrounds found: 0» with Steam not found
+/// explains nothing to a person, and a popup message on top of the
+/// neighbouring section even less (it also goes away after three seconds).
 pub fn bg_section_text(notice: &str, total: usize, shown: usize, needle: &str) -> String {
     bg_section_text_filtered(notice, total, shown, !needle.is_empty())
 }
 
-/// То же, но «отобрано ли» говорит вызывающий: отбирает не только поиск,
-/// но и фильтр вида (статичные / анимированные).
+/// The same, but the caller says "whether filtered": not only search filters,
+/// but also the kind filter (static / animated).
 pub fn bg_section_text_filtered(notice: &str, total: usize, shown: usize, filtered: bool) -> String {
     if !notice.is_empty() {
         return notice.to_string();
@@ -879,31 +880,31 @@ pub fn bg_section_text_filtered(notice: &str, total: usize, shown: usize, filter
     }
 }
 
-/// Строка состояния под поиском.
+/// Status line under the search.
 pub fn bg_status_text(total: usize, shown: usize, needle: &str) -> String {
     bg_section_text_filtered("", total, shown, !needle.is_empty())
 }
 
-/// Строка «показываю кэш, обновляю по сети».
+/// The line "showing the cache, refreshing over the network".
 pub fn bg_refreshing_text(cached: usize) -> String {
     // TRANSLATORS: %1 is how many backgrounds are shown from the cache while
     // the list is being refreshed from Steam.
     trf("🔄 Updating… (%1 from cache)", &[&cached])
 }
 
-/// Тост «скачиваю и применяю».
+/// Toast "downloading and applying".
 pub fn bg_applying_text(name: &str) -> String {
     // TRANSLATORS: %1 is the name of a profile background.
     trf("⏳ Downloading and applying: %1…", &[&name])
 }
 
-/// Тост успеха.
+/// Success toast.
 pub fn bg_applied_text(name: &str) -> String {
     // TRANSLATORS: %1 is the name of a profile background.
     trf("✅ Applied as wallpaper: %1", &[&name])
 }
 
-/// Тост неудачи.
+/// Failure toast.
 pub fn bg_apply_error_text(msg: &str) -> String {
     if msg.is_empty() {
         format!("❌ {}", bg_apply_failed())
@@ -912,24 +913,24 @@ pub fn bg_apply_error_text(msg: &str) -> String {
     }
 }
 
-/// Применить скачанный фон профиля обоями — общим исполнителем ядра.
+/// Apply a downloaded profile background as the wallpaper through the core's shared executor.
 ///
-/// Порт тела `_ApplyBgWorker.run` после скачивания: формат по расширению
-/// ([`apply_format`]) и название из витрины — исполнитель сам его не
-/// выведет, а мосту оно нужно, чтобы сказать слушателю, ЧТО пошло.
-/// Возвращает «получилось ли» и текст исполнителя для тоста.
+/// Port of the body of `_ApplyBgWorker.run` after the download: the format by
+/// extension ([`apply_format`]) and the name from the showcase; the executor
+/// cannot derive it itself, and the bridge needs it to tell the listener WHAT
+/// was applied. Returns "whether it worked" and the executor's text for the toast.
 ///
-/// ⚠️ Своих правил применения тут нет и быть не должно: картинка, видео,
-/// отказ форматам, которых исполнитель ещё не носит, — всё решает
-/// [`crate::wallpaper_exec::WallpaperExec::apply`], тот же, что у вкладки
-/// «Настройки». До этой функции вкладка «Steam» на Rust не применяла
-/// ничего: на месте движка стояла заглушка «движок обоев недоступен».
+/// ⚠️ There are no own application rules here and there must not be: a
+/// picture, a video, refusing formats the executor does not carry yet are
+/// all decided by [`crate::wallpaper_exec::WallpaperExec::apply`], the same
+/// as for the «Settings» tab. Before this function the Rust «Steam» tab
+/// applied nothing: in place of the engine stood a stub "wallpaper engine unavailable".
 ///
-/// `audio` — галочка «🔊 Звук видео-обоев»: уходит исполнителю тем же
-/// аргументом, каким звук передают «Настройки»
-/// ([`crate::wallpaper_exec::WallpaperExec::apply_with_audio`]); картинке
-/// он не нужен. Громкость и «звук вкл/выкл» живут в `settings.json`
-/// (`wallpaper_audio`) и действуют поверх неё.
+/// `audio` is the «🔊 Live wallpaper sound» checkbox: it goes to the executor
+/// with the same argument «Settings» uses to pass sound
+/// ([`crate::wallpaper_exec::WallpaperExec::apply_with_audio`]); a picture
+/// does not need it. Volume and "sound on/off" live in `settings.json`
+/// (`wallpaper_audio`) and act on top of it.
 pub fn apply_background_with<S: WpSys>(
     exec: &mut WallpaperExec<S>,
     path: &str,
@@ -937,8 +938,8 @@ pub fn apply_background_with<S: WpSys>(
     name: &str,
 ) -> (bool, String) {
     let res = exec.apply_with_audio(path, apply_format(path), name, audio);
-    // Предупреждение исполнителя — следом за сообщением, как было до того,
-    // как его вынесли в своё поле.
+    // The executor's warning follows the message, as it was before it was moved
+    // into its own field.
     let message = match res.warning {
         Some(warning) if res.ok => format!("{} {warning}", res.message).trim().to_string(),
         _ => res.message,
@@ -947,10 +948,10 @@ pub fn apply_background_with<S: WpSys>(
 }
 
 // ============================================================================
-// Витрина фонов профиля: решения
+// Profile background showcase: decisions
 // ============================================================================
 
-/// Поиск по сетке фонов: название и игра.
+/// Search over the background grid: name and game.
 pub fn bg_matches(item: &ProfileBackgroundItem, needle: &str) -> bool {
     if needle.is_empty() {
         return true;
@@ -960,35 +961,35 @@ pub fn bg_matches(item: &ProfileBackgroundItem, needle: &str) -> bool {
         .contains(needle)
 }
 
-/// Анимированный ли фон — ОДНО решение на всю вкладку.
+/// Whether a background is animated: ONE decision for the whole tab.
 ///
-/// Тот же признак, по которому «Применить» выбирает между картинкой и
-/// видео-обоями: Steam прислал ролик (`animated`) либо сам адрес фона ведёт
-/// на ролик или GIF ([`apply_format`] по расширению адреса). Карточка,
-/// отметка на миниатюре и крупный просмотр спрашивают его отсюда, а не
-/// гадают по расширению каждый у себя.
+/// The same sign by which «Apply» chooses between a picture and a live
+/// wallpaper: Steam sent a movie (`animated`), or the background URL itself
+/// points to a movie or GIF ([`apply_format`] by the URL extension). The
+/// card, the mark on the thumbnail and the large view ask it from here
+/// instead of each guessing by extension on its own.
 pub fn bg_is_animated(item: &ProfileBackgroundItem) -> bool {
     item.animated || apply_format(&format!("bg{}", url_ext_or_jpg(&item.url))) != "static"
 }
 
-/// Отметка анимированного фона в подписи крупного просмотра.
+/// Mark of an animated background in the caption of the large view.
 pub fn bg_animated_badge() -> String {
     // TRANSLATORS: short mark shown next to a Steam profile background that
     // is animated (a video), as opposed to a still picture.
     tr("🎞️ Animated background")
 }
 
-/// Отметка анимированного фона в углу миниатюры.
+/// Mark of an animated background in the corner of the thumbnail.
 pub const BG_ANIMATED_MARK: &str = "🎞️";
 
-// ── Фильтр вида: все / статичные / анимированные ────────────────────────
+// ── Kind filter: all / static / animated ────────────────────────────────
 
-/// Ключи фильтра вида фонов. Пустой — «все».
+/// Keys of the background kind filter. Empty means "all".
 pub const BG_KIND_ALL: &str = "";
 pub const BG_KIND_STATIC: &str = "static";
 pub const BG_KIND_ANIMATED: &str = "animated";
 
-/// Привести ключ фильтра к известному: незнакомый значит «все».
+/// Normalize the filter key to a known one: an unknown one means "all".
 pub fn normalize_bg_kind(key: &str) -> &'static str {
     match key {
         BG_KIND_STATIC => BG_KIND_STATIC,
@@ -997,7 +998,7 @@ pub fn normalize_bg_kind(key: &str) -> &'static str {
     }
 }
 
-/// Проходит ли фон фильтр вида.
+/// Whether the background passes the kind filter.
 pub fn bg_kind_matches(item: &ProfileBackgroundItem, kind: &str) -> bool {
     match normalize_bg_kind(kind) {
         BG_KIND_STATIC => !bg_is_animated(item),
@@ -1006,12 +1007,12 @@ pub fn bg_kind_matches(item: &ProfileBackgroundItem, kind: &str) -> bool {
     }
 }
 
-/// Переключатель вида фонов со счётчиками в подписях.
+/// Background kind switcher with counters in the captions.
 ///
-/// Считается то, что прошло ПОИСК: при набранном «portal» в подписях стоит,
-/// сколько статичных и анимированных среди найденного, а не во всём
-/// инвентаре — иначе число на кнопке не сходилось бы с тем, что человек
-/// увидит, нажав её. Пустой ответ — показывать нечего (фонов нет вовсе).
+/// What passed the SEARCH is counted: with "portal" typed, the captions show
+/// how many static and animated ones are among the found ones, not in the
+/// whole inventory; otherwise the number on the button would not match what
+/// the person sees after pressing it. An empty answer means nothing to show (no backgrounds at all).
 pub fn bg_kind_chips(items: &[ProfileBackgroundItem], needle: &str, selected: &str) -> Vec<GroupChip> {
     if items.is_empty() {
         return Vec::new();
@@ -1046,36 +1047,36 @@ pub fn bg_kind_chips(items: &[ProfileBackgroundItem], needle: &str, selected: &s
     ]
 }
 
-// ── Почему в списке нет анимированных фонов ─────────────────────────────
+// ── Why there are no animated backgrounds in the list ───────────────────
 
-/// Чем кончился запрос владеемых предметов профиля — единственный источник
-/// ссылок на анимацию. Публичный инвентарь анимацию не отдаёт вовсе, и когда
-/// этот запрос не вышел, все фоны в списке статичные.
+/// How the request for owned profile items ended: the only source of links
+/// to animations. The public inventory does not give animations at all, and
+/// when this request failed, all backgrounds in the list are static.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum AnimatedGap {
-    /// Список владеемых пришёл: пробела нет.
+    /// The owned list arrived: no gap.
     #[default]
     None,
-    /// Ключа доступа нет; внутри — причина словами ядра
-    /// ([`crate::steam_token::no_login_reason`] и соседние).
+    /// No access key; inside is the reason in the core's words
+    /// ([`crate::steam_token::no_login_reason`] and its neighbours).
     NoKey(String),
-    /// Steam отказал и со свежим ключом.
+    /// Steam refused even with a fresh key.
     Refused,
-    /// Steam не ответил: сеть, срок ожидания, неразборчивый ответ.
+    /// Steam did not answer: network, timeout, unparseable response.
     NoAnswer,
 }
 
-/// Отказ одного запроса владеемых предметов.
+/// Refusal of one request for owned items.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnedError {
-    /// 401/403: ключ не принят.
+    /// 401/403: the key was not accepted.
     Refused,
-    /// Всё прочее: сеть, срок, ответ не разобрался.
+    /// Everything else: network, timeout, the response did not parse.
     NoAnswer,
 }
 
-/// Отказ по коду ответа: «ключ не принят» — это 401 и 403, остальное —
-/// «не ответил».
+/// Refusal by response code: "key not accepted" is 401 and 403, the rest is
+/// "did not answer".
 pub fn owned_error_of_status(code: Option<u16>) -> OwnedError {
     match code {
         Some(401) | Some(403) => OwnedError::Refused,
@@ -1083,12 +1084,12 @@ pub fn owned_error_of_status(code: Option<u16>) -> OwnedError {
     }
 }
 
-/// Добыть владеемые фоны: ключ → запрос, при отказе — свежий ключ и ОДИН
-/// повтор (ключ короткоживущий и мог протухнуть раньше срока кэша).
+/// Get the owned backgrounds: key → request, on refusal a fresh key and ONE
+/// retry (the key is short-lived and may have expired before the cache term).
 ///
-/// `key(force)` отдаёт `(ключ, причина)`: пустой ключ — входа нет, причина
-/// идёт человеку. `fetch(ключ)` — сам запрос. Сеть и чтение ключа приходят
-/// снаружи, здесь только порядок шагов и приговор.
+/// `key(force)` returns `(key, reason)`: an empty key means no login, the
+/// reason goes to the person. `fetch(key)` is the request itself. The network
+/// and key reading come from outside; here only the order of steps and the verdict.
 pub fn owned_backgrounds_with<T>(
     mut key: impl FnMut(bool) -> (String, String),
     mut fetch: impl FnMut(&str) -> Result<Vec<T>, OwnedError>,
@@ -1114,16 +1115,16 @@ pub fn owned_backgrounds_with<T>(
     }
 }
 
-/// Строка над сеткой фонов: почему анимированных нет и что с этим делать.
-/// Пусто — пробела нет, строка не показывается.
+/// The line above the background grid: why there are no animated ones and what
+/// to do about it. Empty means no gap, the line is not shown.
 pub fn bg_animated_gap_text(gap: &AnimatedGap) -> String {
     match gap {
         AnimatedGap::None => String::new(),
         // TRANSLATORS: %1 is the reason in lower case, e.g. "sign in to
         // Steam on this computer". "Retry" is the button next to it.
         AnimatedGap::NoKey(reason) => {
-            // Причина без слов — та же «ключа не дали»: обрывать фразу
-            // двоеточием нельзя.
+            // A reason without words is the same "no key given": the phrase must not be
+            // cut off with a colon.
             let fallback = crate::steam_token::no_token_reason();
             let reason = if reason.trim().is_empty() { &fallback } else { reason };
             trf(
@@ -1140,17 +1141,17 @@ pub fn bg_animated_gap_text(gap: &AnimatedGap) -> String {
     }
 }
 
-/// Кнопка рядом со строкой [`bg_animated_gap_text`].
+/// The button next to the [`bg_animated_gap_text`] line.
 pub fn bg_retry_text() -> String {
     tr("Retry")
 }
 
-/// Отфильтрованный поиском срез (индексы исходного списка).
+/// The slice filtered by search (indices of the source list).
 pub fn bg_filtered<'a>(items: &'a [ProfileBackgroundItem], needle: &str) -> Vec<&'a ProfileBackgroundItem> {
     bg_filtered_by(items, needle, BG_KIND_ALL)
 }
 
-/// Срез, отобранный поиском И фильтром вида разом.
+/// The slice selected by search AND the kind filter at once.
 pub fn bg_filtered_by<'a>(
     items: &'a [ProfileBackgroundItem],
     needle: &str,
@@ -1162,30 +1163,30 @@ pub fn bg_filtered_by<'a>(
         .collect()
 }
 
-/// Карточка сетки фонов.
+/// A card of the background grid.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BgCardView {
     pub id: String,
-    /// 📼 либо 🖼️.
+    /// 📼 or 🖼️.
     pub icon: &'static str,
-    /// Полное название (обрезку по ширине делает вид — у него метрики шрифта).
+    /// The full name (truncation by width is done by the view, it has the font metrics).
     pub name: String,
-    /// Вторая строка: «надет в профиле», игра либо пусто. Пустую строку всё
-    /// равно рисуем — иначе карточки ряда разъезжаются по высоте.
+    /// Second line: "equipped in profile", the game, or empty. An empty line is
+    /// drawn anyway, otherwise the cards of a row diverge in height.
     pub sub: String,
-    /// Подсказка второй строки (пусто, если подсказки нет).
+    /// Tooltip of the second line (empty if there is no tooltip).
     pub sub_tooltip: String,
     pub animated: bool,
-    /// Подсказка превью (только у анимированных).
+    /// Preview tooltip (animated ones only).
     pub thumb_tooltip: String,
-    /// Отметка в углу миниатюры: значок у анимированного, пусто у
-    /// статичного. Подсказка у неё общая с миниатюрой (`thumb_tooltip`).
+    /// Mark in the thumbnail corner: an icon for an animated one, empty for a
+    /// static one. Its tooltip is shared with the thumbnail (`thumb_tooltip`).
     pub mark: &'static str,
-    /// Адрес, по которому тянуть миниатюру (preview, иначе сам фон).
+    /// URL to fetch the thumbnail from (preview, otherwise the background itself).
     pub preview_url: String,
 }
 
-/// Собрать карточку фона.
+/// Build a background card.
 pub fn bg_card(item: &ProfileBackgroundItem) -> BgCardView {
     let animated = bg_is_animated(item);
     let icon = if animated {
@@ -1221,25 +1222,25 @@ pub fn bg_card(item: &ProfileBackgroundItem) -> BgCardView {
     }
 }
 
-/// Полоса пагинации.
+/// The pagination bar.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PagerView {
     pub visible: bool,
     pub prev_enabled: bool,
     pub next_enabled: bool,
     pub text: String,
-    /// Номер страницы после нормализации (0-based).
+    /// Page number after normalization (0-based).
     pub page: u32,
     pub pages: u32,
-    /// Срез текущей страницы: [start, end).
+    /// Slice of the current page: [start, end).
     pub start: usize,
     pub end: usize,
 }
 
-/// Нарезать страницу и собрать полосу пагинации.
+/// Cut the page and build the pagination bar.
 ///
-/// `cols` считает [`ui_base::grid_columns`] по живой ширине — здесь только
-/// арифметика страниц (тот же движок, что у остальных сеток продукта).
+/// `cols` is computed by [`ui_base::grid_columns`] from the live width; here
+/// only page arithmetic (the same engine as the product's other grids).
 pub fn bg_pager(shown: usize, page: u32, cols: u32) -> PagerView {
     let per_page = ui_base::grid_page_size(cols, BG_ROWS);
     let pages = ui_base::grid_page_count(shown as u32, per_page);
@@ -1259,16 +1260,16 @@ pub fn bg_pager(shown: usize, page: u32, cols: u32) -> PagerView {
     }
 }
 
-/// Номер страницы при смене числа столбцов: что было первым на экране, тем и
-/// остаётся (`grid_page_for_index` оригинала).
+/// Page number when the column count changes: what was first on screen stays
+/// first (`grid_page_for_index` of the original).
 pub fn bg_page_after_resize(page: u32, old_cols: u32, new_cols: u32) -> u32 {
     let first = page * ui_base::grid_page_size(old_cols, BG_ROWS);
     ui_base::grid_page_for_index(first, ui_base::grid_page_size(new_cols, BG_ROWS))
 }
 
-/// Формат применения фона обоями по расширению файла.
+/// Format for applying a background as the wallpaper, by file extension.
 ///
-/// webm/mp4 → видео-обои, gif → анимированные, остальное → статичная картинка.
+/// webm/mp4 → live wallpaper, gif → animated, the rest → a static picture.
 pub fn apply_format(path: &str) -> &'static str {
     match splitext_lower(path).as_str() {
         ".webm" | ".mp4" => "video",
@@ -1278,27 +1279,27 @@ pub fn apply_format(path: &str) -> &'static str {
 }
 
 // ============================================================================
-// Аккаунт Steam, инвентарь и кэши
+// Steam account, inventory and caches
 // ============================================================================
 
-/// Смещение SteamID64: accountid (имя папки `userdata/<id>`) + это число.
+/// SteamID64 offset: accountid (the `userdata/<id>` folder name) + this number.
 pub const STEAMID64_BASE: i64 = 76561197960265728;
 
-/// User-Agent запросов вкладки.
+/// User-Agent of the tab's requests.
 pub const USER_AGENT: &str = "Rexon/5.0";
 
-/// Таймаут страницы инвентаря, секунд (`_fetch_inventory_pages`).
+/// Timeout of an inventory page, seconds (`_fetch_inventory_pages`).
 pub const INVENTORY_TIMEOUT_S: u64 = 25;
-/// Потолок числа страниц инвентаря — защита от бесконечного `more_items`.
+/// Ceiling on the number of inventory pages: protection against endless `more_items`.
 pub const INVENTORY_MAX_PAGES: u32 = 20;
-/// Таймаут скачивания полноразмерного фона, секунд.
+/// Timeout of downloading a full-size background, seconds.
 pub const BG_DOWNLOAD_TIMEOUT_S: u64 = 60;
-/// Таймаут скачивания миниатюры, секунд.
+/// Timeout of downloading a thumbnail, seconds.
 pub const THUMB_DOWNLOAD_TIMEOUT_S: u64 = 30;
 
-/// SteamID64 по имени папки `userdata/<accountid>`.
+/// SteamID64 by the folder name `userdata/<accountid>`.
 ///
-/// `None` — имя не число, либо это служебная «0».
+/// `None` means the name is not a number, or it is the internal "0".
 pub fn steamid64_from_accountid(accountid: &str) -> Option<String> {
     if accountid.is_empty() || accountid == "0" || !accountid.chars().all(|c| c.is_ascii_digit()) {
         return None;
@@ -1307,10 +1308,10 @@ pub fn steamid64_from_accountid(accountid: &str) -> Option<String> {
     Some((id + STEAMID64_BASE).to_string())
 }
 
-/// Выбор аккаунта: тот, чей `localconfig.vdf` свежее (последний входивший).
+/// Account choice: the one whose `localconfig.vdf` is newer (the last one logged in).
 ///
-/// Вход — пары «имя папки → время правки localconfig». Отсутствующие файлы
-/// исполнитель просто не кладёт в список.
+/// Input: pairs "folder name → localconfig modification time". The executor
+/// simply does not put missing files into the list.
 pub fn pick_account(entries: &[(String, f64)]) -> Option<String> {
     let mut best: Option<(&str, f64)> = None;
     for (sid, mtime) in entries {
@@ -1325,13 +1326,13 @@ pub fn pick_account(entries: &[(String, f64)]) -> Option<String> {
     best.and_then(|(sid, _)| steamid64_from_accountid(sid))
 }
 
-/// Язык ответов Steam (`l=` инвентаря, `language=` WebAPI) по языку
-/// интерфейса Rexon: названия предметов, типы и метки Steam отдаёт уже
-/// переведёнными, и просить их надо на том языке, на каком говорит вкладка.
+/// Language of Steam responses (`l=` of the inventory, `language=` of WebAPI)
+/// by the Rexon interface language: Steam returns item names, types and tags
+/// already translated, and they must be requested in the language the tab speaks.
 ///
-/// Прежде язык был прибит: `l=russian`, — и английская вкладка показывала бы
-/// русские метки инвентаря. Коды — из списка языков Steam Web API; язык,
-/// которого у Steam нет, — английский.
+/// Previously the language was hard-coded, `l=russian`, and the English tab
+/// would show Russian inventory tags. The codes are from the Steam Web API
+/// language list; a language Steam does not have means English.
 pub fn steam_api_language(ui_language: &str) -> &'static str {
     let lang = ui_language.to_ascii_lowercase().replace('-', "_");
     let base = lang.split(['_', '.', '@']).next().unwrap_or("");
@@ -1368,15 +1369,15 @@ pub fn steam_api_language(ui_language: &str) -> &'static str {
     }
 }
 
-/// Язык ответов Steam для текущего языка интерфейса.
+/// Language of Steam responses for the current interface language.
 pub fn steam_language() -> &'static str {
     steam_api_language(&i18n::current_language())
 }
 
-/// Адрес одной страницы публичного инвентаря (753/6).
+/// URL of one page of the public inventory (753/6).
 ///
-/// `start` пустой — первая страница; иначе `start_assetid` из прошлого ответа.
-/// Язык ответа — язык интерфейса ([`steam_language`]).
+/// An empty `start` means the first page; otherwise `start_assetid` from the
+/// previous response. The response language is the interface language ([`steam_language`]).
 pub fn inventory_page_url(sid: &str, start: &str) -> String {
     let base = format!(
         "https://steamcommunity.com/inventory/{sid}/753/6?l={}&count=2000",
@@ -1389,10 +1390,10 @@ pub fn inventory_page_url(sid: &str, start: &str) -> String {
     }
 }
 
-/// Курсор следующей страницы инвентаря: `None` — страниц больше нет.
+/// Cursor of the next inventory page: `None` means there are no more pages.
 ///
-/// Пустой `last_assetid` при `more_items` тоже означает конец — иначе цикл
-/// вечно перезапрашивал бы первую страницу.
+/// An empty `last_assetid` with `more_items` also means the end; otherwise
+/// the loop would re-request the first page forever.
 pub fn inventory_next_start(page: &Value) -> Option<String> {
     let more = page.get("more_items").map(truthy).unwrap_or(false);
     if !more {
@@ -1413,7 +1414,7 @@ pub fn inventory_next_start(page: &Value) -> Option<String> {
     }
 }
 
-/// Слить страницы инвентаря в один ответ (`assets` + `descriptions`).
+/// Merge inventory pages into one response (`assets` + `descriptions`).
 pub fn merge_inventory_pages(pages: &[Value]) -> Value {
     let mut assets: Vec<Value> = Vec::new();
     let mut descs: Vec<Value> = Vec::new();
@@ -1431,7 +1432,7 @@ pub fn merge_inventory_pages(pages: &[Value]) -> Value {
     Value::Object(m)
 }
 
-/// Локализованное значение метки предмета (или пустая строка).
+/// Localized value of an item tag (or an empty string).
 pub fn item_tag(desc: &Value, category: &str) -> String {
     let Some(tags) = desc.get("tags").and_then(Value::as_array) else {
         return String::new();
@@ -1444,8 +1445,8 @@ pub fn item_tag(desc: &Value, category: &str) -> String {
     String::new()
 }
 
-/// Метки предмета в том же составе, что показывает инвентарь Steam:
-/// редкость, игра/событие, тип предмета, запреты обмена и продажи.
+/// Item tags in the same composition the Steam inventory shows:
+/// rarity, game/event, item type, trade and market restrictions.
 pub fn item_labels(desc: &Value) -> Vec<String> {
     let mut out = vec![
         item_tag(desc, "droprate"),
@@ -1469,13 +1470,13 @@ pub fn item_labels(desc: &Value) -> Vec<String> {
     uniq
 }
 
-/// `internal_name` предмета «видеозаставка».
+/// `internal_name` of the "startup movie" item.
 pub const SPLASH_ITEM_CLASS: &str = "item_class_17";
 
-/// appid игры-источника → метки видеозаставки из инвентаря.
+/// appid of the source game → startup movie tags from the inventory.
 ///
-/// `market_fee_app` указывает на игру (или на страницу события — тогда «Игра»
-/// в метках и есть название распродажи, ровно как в инвентаре Steam).
+/// `market_fee_app` points to the game (or to an event page; then the "Game"
+/// among the tags is the sale's name, exactly as in the Steam inventory).
 pub fn splash_item_meta(descs: &[Value]) -> MetaMap {
     let mut out = MetaMap::new();
     for d in descs {
@@ -1508,7 +1509,7 @@ pub fn splash_item_meta(descs: &[Value]) -> MetaMap {
     out
 }
 
-/// Разобрать дисковый кэш меток заставок (`appid` строкой → метки).
+/// Parse the disk cache of splash tags (`appid` as a string → tags).
 pub fn parse_meta_cache(data: &Value) -> MetaMap {
     let mut out = MetaMap::new();
     let Some(obj) = data.as_object() else {
@@ -1541,7 +1542,7 @@ pub fn parse_meta_cache(data: &Value) -> MetaMap {
     out
 }
 
-/// Содержимое дискового кэша меток заставок (то, что писал `json.dump`).
+/// Contents of the disk cache of splash tags (what `json.dump` wrote).
 pub fn meta_cache_json(meta: &MetaMap) -> String {
     let mut m = Map::new();
     for (appid, v) in meta {
@@ -1553,24 +1554,24 @@ pub fn meta_cache_json(meta: &MetaMap) -> String {
     serde_json::to_string(&Value::Object(m)).unwrap_or_else(|_| "{}".into())
 }
 
-// ── Надетый фон из localconfig.vdf ──────────────────────────────────────
+// ── Equipped background from localconfig.vdf ────────────────────────────
 
-/// Ключ, под которым Steam кэширует ответ `GetEquippedProfileItemsForUser`.
+/// The key under which Steam caches the `GetEquippedProfileItemsForUser` response.
 const EQUIPPED_KEY_PREFIX: &str = "GetEquippedProfileItemsForUser";
 
-/// Выемка JSON надетых предметов профиля из текста `localconfig.vdf`.
+/// Extract the JSON of equipped profile items from the text of `localconfig.vdf`.
 ///
-/// Порт регулярки `"GetEquippedProfileItemsForUser\d+"\s*"(.*?)"\s*[\r\n]` с
-/// последующим un-escape VDF. Регулярного движка в ядре нет и заводить его
-/// ради одного места незачем — разбор построчный и делает ровно то же:
-/// находит ключ, берёт значение до кавычки, за которой (через пробелы) стоит
-/// перевод строки, и снимает экранирование.
+/// Port of the regex `"GetEquippedProfileItemsForUser\d+"\s*"(.*?)"\s*[\r\n]`
+/// with the subsequent VDF un-escape. The core has no regex engine, and adding
+/// one for a single place is pointless: the parsing is line-based and does
+/// exactly the same: finds the key, takes the value up to the quote followed
+/// (after whitespace) by a line break, and removes the escaping.
 pub fn extract_equipped_json(vdf_text: &str) -> Option<String> {
     let bytes = vdf_text.as_bytes();
     let mut from = 0usize;
     while let Some(rel) = vdf_text[from..].find(EQUIPPED_KEY_PREFIX) {
         let key_start = from + rel;
-        // Ключ обязан быть в кавычках: `"GetEquippedProfileItemsForUser<цифры>"`.
+        // The key must be quoted: `"GetEquippedProfileItemsForUser<digits>"`.
         if key_start == 0 || bytes[key_start - 1] != b'"' {
             from = key_start + EQUIPPED_KEY_PREFIX.len();
             continue;
@@ -1584,7 +1585,7 @@ pub fn extract_equipped_json(vdf_text: &str) -> Option<String> {
             from = key_start + EQUIPPED_KEY_PREFIX.len();
             continue;
         }
-        i += 1; // закрывающая кавычка ключа
+        i += 1; // closing quote of the key
         while i < bytes.len() && (bytes[i] as char).is_whitespace() {
             i += 1;
         }
@@ -1592,10 +1593,10 @@ pub fn extract_equipped_json(vdf_text: &str) -> Option<String> {
             from = key_start + EQUIPPED_KEY_PREFIX.len();
             continue;
         }
-        i += 1; // открывающая кавычка значения
+        i += 1; // opening quote of the value
         let val_start = i;
-        // Не-жадный `(.*?)"\s*[\r\n]`: первая кавычка, за которой через
-        // пробелы идёт перевод строки.
+        // Non-greedy `(.*?)"\s*[\r\n]`: the first quote followed, after whitespace,
+        // by a line break.
         let mut j = val_start;
         while j < bytes.len() {
             if bytes[j] == b'"' {
@@ -1614,17 +1615,17 @@ pub fn extract_equipped_json(vdf_text: &str) -> Option<String> {
     None
 }
 
-/// `raw.replace('\\"', '"').replace('\\\\', '\\')` оригинала.
+/// `raw.replace('\\"', '"').replace('\\\\', '\\')` of the original.
 fn unescape_vdf(raw: &str) -> String {
     raw.replace("\\\"", "\"").replace("\\\\", "\\")
 }
 
-// ── Пути кэшей и конфигов ───────────────────────────────────────────────
+// ── Cache and config paths ──────────────────────────────────────────────
 
-/// Корень пользовательского кэша: `$XDG_CACHE_HOME` либо `~/.cache`.
+/// Root of the user cache: `$XDG_CACHE_HOME` or `~/.cache`.
 ///
-/// Починка №1: оригинал вшивал `~/.cache` литералом. Тот же приём, что у
-/// [`crate::session_splash::preview_cache_dir`].
+/// Fix #1: the original hard-coded `~/.cache` as a literal. The same approach
+/// as in [`crate::session_splash::preview_cache_dir`].
 pub fn cache_home(xdg_cache_home: Option<&str>, home: &str) -> String {
     match xdg_cache_home {
         Some(v) if !v.is_empty() => v.trim_end_matches('/').to_string(),
@@ -1632,23 +1633,23 @@ pub fn cache_home(xdg_cache_home: Option<&str>, home: &str) -> String {
     }
 }
 
-/// Каталог кэша вкладки: `<кэш>/rexon`.
+/// The tab's cache directory: `<cache>/rexon`.
 pub fn rexon_cache_dir(xdg_cache_home: Option<&str>, home: &str) -> String {
     format!("{}/rexon", cache_home(xdg_cache_home, home))
 }
 
-/// Кэш скачанных полноразмерных фонов профиля.
+/// Cache of downloaded full-size profile backgrounds.
 pub fn bg_cache_dir(xdg_cache_home: Option<&str>, home: &str) -> String {
     format!("{}/steam_profile_bg", rexon_cache_dir(xdg_cache_home, home))
 }
 
-/// Кэш превью-миниатюр сетки фонов. Отдельно от [`bg_cache_dir`]: миниатюры
-/// мелкие и общие для всех.
+/// Cache of preview thumbnails of the background grid. Separate from
+/// [`bg_cache_dir`]: thumbnails are small and shared by all.
 pub fn thumb_cache_dir(xdg_cache_home: Option<&str>, home: &str) -> String {
     format!("{}/steam_profile_thumb", rexon_cache_dir(xdg_cache_home, home))
 }
 
-/// Дисковый кэш меток видеозаставок для аккаунта.
+/// Disk cache of startup movie tags for the account.
 pub fn splash_meta_cache_path(xdg_cache_home: Option<&str>, home: &str, sid: &str) -> String {
     format!(
         "{}/steam_splash_items_{}.json",
@@ -1657,7 +1658,7 @@ pub fn splash_meta_cache_path(xdg_cache_home: Option<&str>, home: &str, sid: &st
     )
 }
 
-/// Дисковый кэш СПИСКА инвентаря фонов для аккаунта.
+/// Disk cache of the background inventory LIST for the account.
 pub fn inventory_cache_path(xdg_cache_home: Option<&str>, home: &str, sid: &str) -> String {
     format!(
         "{}/steam_profile_inventory_{}.json",
@@ -1666,10 +1667,10 @@ pub fn inventory_cache_path(xdg_cache_home: Option<&str>, home: &str, sid: &str)
     )
 }
 
-/// Конфиг «какой фон профиля сейчас применён обоями».
+/// Config "which profile background is currently applied as the wallpaper".
 ///
-/// Починка №1: оригинал раскрывал `~/.config/rexon/…` через `expand_user`,
-/// который `$XDG_CONFIG_HOME` уважает, — здесь то же самое явным вызовом
+/// Fix #1: the original expanded `~/.config/rexon/…` through `expand_user`,
+/// which respects `$XDG_CONFIG_HOME`; here the same with an explicit call of
 /// [`crate::utils::config_home`].
 pub fn applied_config_path(xdg_config_home: Option<&str>, home: &str) -> String {
     format!(
@@ -1678,26 +1679,26 @@ pub fn applied_config_path(xdg_config_home: Option<&str>, home: &str) -> String 
     )
 }
 
-/// Имя файла кэша полноразмерного фона (`<id><расширение адреса>`).
+/// Cache file name of a full-size background (`<id><URL extension>`).
 pub fn bg_cache_file_name(id: &str, url: &str) -> String {
     format!("{}{}", id, url_ext_or_jpg(url))
 }
 
-/// Имя файла кэша миниатюры. `id` может содержать «/» (фолбэк-ключ из имени) —
-/// обезопасим имя файла.
+/// Cache file name of a thumbnail. `id` may contain "/" (a fallback key from
+/// the name), so the file name is made safe.
 pub fn thumb_cache_file_name(id: &str, url: &str) -> String {
     format!("{}{}", safe_name(id), url_ext_or_jpg(url))
 }
 
-/// Временный файл скачивания. Починка №3: убирать его надо на ЛЮБОМ исходе,
-/// иначе кэш зарастает недокачанными `.part`.
+/// Temporary download file. Fix #3: it must be removed on ANY outcome,
+/// otherwise the cache fills up with partial `.part` files.
 pub fn part_path(path: &str) -> String {
     format!("{path}.part")
 }
 
-// ── Дисковый кэш списка инвентаря ───────────────────────────────────────
+// ── Disk cache of the inventory list ────────────────────────────────────
 
-/// Содержимое файла кэша списка инвентаря.
+/// Contents of the inventory list cache file.
 pub fn inventory_cache_json(sid: &str, items: &[ProfileBackgroundItem], ts: i64) -> String {
     let mut m = Map::new();
     m.insert("ts".into(), Value::from(ts));
@@ -1709,9 +1710,9 @@ pub fn inventory_cache_json(sid: &str, items: &[ProfileBackgroundItem], ts: i64)
     serde_json::to_string(&Value::Object(m)).unwrap_or_else(|_| "{}".into())
 }
 
-/// Разобрать файл кэша списка инвентаря.
+/// Parse the inventory list cache file.
 ///
-/// `None` — кэша нет, он битый, пустой либо принадлежит другому аккаунту.
+/// `None` means there is no cache, or it is broken, empty or belongs to another account.
 pub fn parse_inventory_cache(data: &Value, sid: &str) -> Option<Vec<ProfileBackgroundItem>> {
     let obj = data.as_object()?;
     let cached_sid = match obj.get("sid") {
@@ -1729,8 +1730,8 @@ pub fn parse_inventory_cache(data: &Value, sid: &str) -> Option<Vec<ProfileBackg
     Some(items.iter().map(parse_cached_item).collect())
 }
 
-/// Один предмет из кэша. Недостающие поля — пустые: кэш мог быть записан
-/// прежней версией продукта, и ронять из-за этого витрину нельзя.
+/// One item from the cache. Missing fields are empty: the cache may have been
+/// written by an earlier version of the product, and the showcase must not crash because of it.
 fn parse_cached_item(v: &Value) -> ProfileBackgroundItem {
     ProfileBackgroundItem {
         id: s(v, "id").to_string(),
@@ -1743,7 +1744,7 @@ fn parse_cached_item(v: &Value) -> ProfileBackgroundItem {
     }
 }
 
-/// Содержимое конфига «что применено» (с отступами, как `json.dump(indent=2)`).
+/// Contents of the "what is applied" config (indented, like `json.dump(indent=2)`).
 pub fn applied_config_json(id: &str, name: &str) -> String {
     let mut m = Map::new();
     m.insert("id".into(), Value::from(id));
@@ -1751,7 +1752,7 @@ pub fn applied_config_json(id: &str, name: &str) -> String {
     serde_json::to_string_pretty(&Value::Object(m)).unwrap_or_else(|_| "{}".into())
 }
 
-/// id применённого фона из конфига (пустая строка = нет).
+/// id of the applied background from the config (empty string means none).
 pub fn parse_applied_config(data: &Value) -> String {
     match data.get("id") {
         Some(Value::String(x)) => x.clone(),
@@ -1761,43 +1762,44 @@ pub fn parse_applied_config(data: &Value) -> String {
 }
 
 // ============================================================================
-// Стили: QSS для виджетной вкладки и голые цвета для QML
+// Styles: QSS for the widget tab and bare colors for QML
 // ============================================================================
 
 pub const BADGE_NEUTRAL: &str = "neutral";
 pub const BADGE_ACCENT: &str = "accent";
 pub const BADGE_GOLD: &str = "gold";
 
-/// Акцент вкладки — тот же голубой, что у основных кнопок продукта.
+/// The tab's accent: the same blue as the product's main buttons.
 pub const ACCENT_RGB: (u8, u8, u8) = (59, 130, 246);
-/// Зелёный «применено».
+/// Green "applied".
 pub const APPLIED_RGB: (u8, u8, u8) = (34, 197, 94);
-/// Золотой «в избранном».
+/// Gold "in favorites".
 pub const GOLD_RGB: (u8, u8, u8) = (234, 179, 8);
 
-/// `rgba(r,g,b,a)` из тройки и альфы — ровно та запись, что стоит в QSS.
+/// `rgba(r,g,b,a)` from a triple and an alpha: exactly the notation used in QSS.
 ///
-/// Альфа передаётся СТРОКОЙ, а не числом: у оригинала она набрана литералами
-/// (`0.85`, `1.0`, `0.90`), и любое переформатирование через `%g` сделало бы
-/// таблицу стилей другой строкой при том же цвете. Сверка сравнивает строки.
+/// The alpha is passed as a STRING, not a number: in the original it is typed
+/// as literals (`0.85`, `1.0`, `0.90`), and any reformatting through `%g`
+/// would make the stylesheet a different string for the same color. The
+/// parity check compares strings.
 fn rgba(c: (u8, u8, u8), a: &str) -> String {
     format!("rgba({},{},{},{})", c.0, c.1, c.2, a)
 }
 
-/// `#rrggbb` из тройки — та же краска для QML, который QSS не понимает.
+/// `#rrggbb` from a triple: the same paint for QML, which does not understand QSS.
 pub fn hex(c: (u8, u8, u8)) -> String {
     format!("#{:02x}{:02x}{:02x}", c.0, c.1, c.2)
 }
 
-/// Поля группы-секции: слева/справа, сверху/снизу и зазор между строками.
+/// Margins of a section group: left/right, top/bottom and the gap between rows.
 pub const GROUP_MARGIN_H: i32 = 16;
 pub const GROUP_MARGIN_V: i32 = 14;
 pub const GROUP_SPACING: i32 = 8;
-/// Скругление группы-секции.
+/// Corner radius of a section group.
 pub const GROUP_RADIUS: i32 = 6;
 
-/// Пара «фон, рамка» группы-секции. Одно место на обе стороны: QSS для
-/// виджетов собирается тут же ([`group_qss`]), голые цвета уходят в QML.
+/// The "background, border" pair of a section group. One place for both sides:
+/// the QSS for widgets is built right here ([`group_qss`]), bare colors go to QML.
 pub fn group_colors(dark: bool) -> (String, String) {
     if dark {
         (
@@ -1812,7 +1814,7 @@ pub fn group_colors(dark: bool) -> (String, String) {
     }
 }
 
-/// QSS группы-секции (theme-aware, сброс рамки ТОЛЬКО для QLabel — правило #9).
+/// QSS of a section group (theme-aware, border reset ONLY for QLabel, rule #9).
 pub fn group_qss(name: &str, dark: bool) -> String {
     let sel = format!("QFrame#{name}");
     let (bg, border) = group_colors(dark);
@@ -1822,12 +1824,12 @@ border-radius: 6px; }} {sel} QLabel {{ border: none; background: transparent; }}
     )
 }
 
-/// Цвет текста на «главной» и зелёной кнопках.
+/// Text color on the "main" and green buttons.
 pub const BTN_TEXT_ON_FILL: &str = "white";
-/// Скругление «главной» кнопки.
+/// Corner radius of the "main" button.
 pub const BTN_RADIUS: i32 = 4;
 
-/// Четвёрка «фон, фон под курсором, фон выключенной, текст» главной кнопки.
+/// The quadruple "background, hover background, disabled background, text" of the main button.
 pub fn primary_btn_colors() -> (String, String, String, String) {
     (
         rgba(ACCENT_RGB, "0.85"),
@@ -1837,7 +1839,7 @@ pub fn primary_btn_colors() -> (String, String, String, String) {
     )
 }
 
-/// Тройка «фон, фон под курсором, текст» зелёной кнопки «✓ Применено».
+/// The triple "background, hover background, text" of the green «✓ Applied» button.
 pub fn applied_btn_colors() -> (String, String, String) {
     (
         rgba(APPLIED_RGB, "0.90"),
@@ -1846,7 +1848,7 @@ pub fn applied_btn_colors() -> (String, String, String) {
     )
 }
 
-/// QSS основной кнопки.
+/// QSS of the main button.
 pub fn primary_btn_qss() -> String {
     let (bg, hover, disabled, fg) = primary_btn_colors();
     format!(
@@ -1857,7 +1859,7 @@ QPushButton:disabled {{ background-color: {disabled}; }}"
     )
 }
 
-/// QSS зелёной кнопки «✓ Применено».
+/// QSS of the green «✓ Applied» button.
 pub fn applied_btn_qss() -> String {
     let (bg, hover, fg) = applied_btn_colors();
     format!(
@@ -1867,19 +1869,19 @@ QPushButton:hover {{ background-color: {hover}; }}"
     )
 }
 
-/// Скругление карточки витрины и её внутренние поля.
+/// Corner radius of a showcase card and its inner padding.
 pub const CARD_RADIUS: i32 = 6;
 pub const CARD_MARGIN: i32 = 8;
 pub const CARD_SPACING: i32 = 6;
-/// Зазор между карточками в сетке.
+/// Gap between cards in the grid.
 pub const CARD_GAP: i32 = 10;
 
-/// Тройка «фон, рамка, рамка под курсором» карточки витрины.
+/// The triple "background, border, hover border" of a showcase card.
 pub fn card_colors(selected: bool, dark: bool) -> (String, String, String) {
-    // Заливка — общая поверхность продукта (`ui_base::CARD_FILL_*`): той же
-    // записью красит карточку и QML, только там ядро отдаёт её уже
-    // смешанной с фоном страницы (`surface_card`). Две копии литерала
-    // разошлись бы молча.
+    // The fill is the product's shared surface (`ui_base::CARD_FILL_*`): QML paints
+    // the card with the same notation, only there the core returns it already
+    // blended with the page background (`surface_card`). Two copies of the
+    // literal would diverge silently.
     let (mut bg, mut border, mut hover) = if dark {
         (
             ui_base::CARD_FILL_DARK.to_string(),
@@ -1901,7 +1903,7 @@ pub fn card_colors(selected: bool, dark: bool) -> (String, String, String) {
     (bg, border, hover)
 }
 
-/// QSS карточки витрины — ЕДИНЫЙ для обеих подвкладок (правило #12).
+/// QSS of a showcase card: ONE for both subtabs (rule #12).
 pub fn card_qss(name: &str, selected: bool, dark: bool) -> String {
     let sel = format!("QFrame#{name}");
     let (bg, border, hover) = card_colors(selected, dark);
@@ -1912,7 +1914,7 @@ border-radius: 6px; }} {sel}:hover {{ border-color: {hover}; }} \
     )
 }
 
-/// Пара «фон, текст» бейджа-пилюли.
+/// The "background, text" pair of a pill badge.
 pub fn badge_colors(tone: &str, dark: bool) -> (String, String) {
     match tone {
         BADGE_ACCENT => (rgba(ACCENT_RGB, "0.85"), "white".to_string()),
@@ -1924,7 +1926,7 @@ pub fn badge_colors(tone: &str, dark: bool) -> (String, String) {
     }
 }
 
-/// QSS бейджа-«пилюли» на карточке.
+/// QSS of the "pill" badge on a card.
 pub fn badge_qss(tone: &str, dark: bool) -> String {
     let (bg, fg) = badge_colors(tone, dark);
     format!(
@@ -1933,7 +1935,7 @@ padding: 1px 7px; font-size: 11px; }}"
     )
 }
 
-/// Тройка «фон, рамка, текст» крупного чипа состояния.
+/// The triple "background, border, text" of the large state chip.
 pub fn chip_colors(tone: &str, dark: bool) -> (String, String, String) {
     match tone {
         CHIP_OK => (
@@ -1954,7 +1956,7 @@ pub fn chip_colors(tone: &str, dark: bool) -> (String, String, String) {
     }
 }
 
-/// QSS крупного чипа итогового состояния.
+/// QSS of the large summary state chip.
 pub fn chip_qss(tone: &str, dark: bool) -> String {
     let (bg, border, fg) = chip_colors(tone, dark);
     format!(
@@ -1963,8 +1965,8 @@ color: {fg}; border-radius: 12px; padding: 5px 12px; font-weight: 600; }}"
     )
 }
 
-/// Четвёрка «рамка, фон выбранного, рамка выбранного, фон под курсором»
-/// чипа-переключателя.
+/// The quadruple "border, selected background, selected border, hover background"
+/// of a switcher chip.
 pub fn switch_chip_colors() -> (String, String, String, String) {
     (
         ui_base::neutral_rgba(0.20),
@@ -1974,7 +1976,7 @@ pub fn switch_chip_colors() -> (String, String, String, String) {
     )
 }
 
-/// QSS чипа-переключателя (подвкладки и фильтр витрины выглядят одинаково).
+/// QSS of a switcher chip (subtabs and the showcase filter look the same).
 pub fn switch_chip_qss() -> String {
     let (border, checked_bg, checked_border, hover_bg) = switch_chip_colors();
     format!(
@@ -1985,7 +1987,7 @@ border: 1px solid {border}; }}QToolButton:checked {{ background-color: \
     )
 }
 
-/// Цвет звёздочки «в избранное».
+/// Color of the "to favorites" star.
 pub fn star_color(on: bool) -> String {
     if on {
         rgba(GOLD_RGB, "1.0")
@@ -1994,7 +1996,7 @@ pub fn star_color(on: bool) -> String {
     }
 }
 
-/// QSS звёздочки — прозрачная кнопка без рамки.
+/// QSS of the star: a transparent button without a border.
 pub fn star_btn_qss(on: bool) -> String {
     format!(
         "QToolButton {{ background: transparent; border: none; color: {}; \
@@ -2004,29 +2006,29 @@ font-size: 15px; padding: 0px; }} QToolButton:hover {{ color: {}; }}",
     )
 }
 
-/// Ширина цветной полосы слева у тезиса-врезки и её поля.
+/// Width of the colored stripe on the left of the callout and its padding.
 pub const PITCH_BAR_W: i32 = 3;
 pub const PITCH_RADIUS: i32 = 4;
 pub const PITCH_MARGIN_H: i32 = 12;
 pub const PITCH_MARGIN_V: i32 = 8;
 
-/// Пара «фон, полоса слева» тезиса-врезки над витриной заставок.
+/// The "background, left stripe" pair of the callout above the startup movie showcase.
 pub fn pitch_colors() -> (String, String) {
     (rgba(ACCENT_RGB, "0.12"), rgba(ACCENT_RGB, "0.8"))
 }
 
-/// Подложка миниатюры карточки витрины заставок (за кадром-превью).
+/// Thumbnail backing of a startup movie showcase card (behind the preview frame).
 pub const SV_THUMB_BG: &str = "rgba(0,0,0,0.45)";
-/// Подложка миниатюры карточки фона профиля (за картинкой).
+/// Thumbnail backing of a profile background card (behind the picture).
 pub const BG_THUMB_BG: &str = "rgba(128,128,128,0.18)";
-/// Скругление миниатюры на карточке.
+/// Corner radius of the thumbnail on a card.
 pub const THUMB_RADIUS: i32 = 3;
-/// Скругление крупной превьюшки в карточке выбранного ролика.
+/// Corner radius of the large preview in the chosen movie card.
 pub const HERO_RADIUS: i32 = 5;
-/// Подложка крупной превьюшки.
+/// Backing of the large preview.
 pub const HERO_THUMB_BG: &str = "rgba(0,0,0,0.45)";
 
-/// QSS тезиса-врезки над витриной заставок.
+/// QSS of the callout above the startup movie showcase.
 pub fn pitch_qss() -> String {
     let (bg, bar) = pitch_colors();
     format!(
@@ -2036,10 +2038,10 @@ border-radius: 4px; padding: 8px 12px; }}"
 }
 
 // ============================================================================
-// Мелочи разбора
+// Parsing odds and ends
 // ============================================================================
 
-/// Python-истинность значения JSON (пустая строка/0/пустой список — ложь).
+/// Python truthiness of a JSON value (empty string/0/empty list are false).
 fn truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
@@ -2055,17 +2057,17 @@ fn truthy(v: &Value) -> bool {
 fn splitext_lower(path: &str) -> String {
     let base = path.rsplit('/').next().unwrap_or(path);
     match base.rfind('.') {
-        // Ведущая точка — не расширение (`.bashrc`), как и у Python.
+        // A leading dot is not an extension (`.bashrc`), as in Python.
         Some(0) | None => String::new(),
         Some(i) => base[i..].to_lowercase(),
     }
 }
 
-/// Расширение из пути АДРЕСА (без query и fragment) либо `.jpg`.
+/// Extension from the path of the URL (without query and fragment), or `.jpg`.
 pub fn url_ext_or_jpg(url: &str) -> String {
     let no_frag = url.split('#').next().unwrap_or(url);
     let path = no_frag.split('?').next().unwrap_or(no_frag);
-    // Схема и хост нам не мешают: расширение ищется в последнем сегменте.
+    // The scheme and host do not get in the way: the extension is looked for in the last segment.
     let ext = splitext_lower(path);
     if ext.is_empty() {
         ".jpg".to_string()
@@ -2074,10 +2076,10 @@ pub fn url_ext_or_jpg(url: &str) -> String {
     }
 }
 
-/// `re.sub(r"[^\w.-]", "_", value)` — безопасное имя файла.
+/// `re.sub(r"[^\w.-]", "_", value)`: a safe file name.
 ///
-/// `\w` питоновской строки — буквы, цифры и подчёркивание в юникоде; здесь то
-/// же самое через `char::is_alphanumeric`.
+/// `\w` of a Python string is Unicode letters, digits and underscore; here the
+/// same through `char::is_alphanumeric`.
 pub fn safe_name(value: &str) -> String {
     value
         .chars()
@@ -2091,8 +2093,8 @@ pub fn safe_name(value: &str) -> String {
         .collect()
 }
 
-/// `urllib.parse.quote` для значения курсора инвентаря (там только цифры, но
-/// экранируем честно — курсор приходит от Steam, а не от нас).
+/// `urllib.parse.quote` for the inventory cursor value (only digits there, but
+/// escaped honestly: the cursor comes from Steam, not from us).
 fn url_quote(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for b in value.bytes() {
@@ -2152,7 +2154,7 @@ mod tests {
         let items = vec![movie("/a.webm", "A", "Игра", session_splash::ORIGIN_SHOP, 1)];
         let meta = MetaMap::new();
         assert!(group_chips(&items, &[], &meta, "").is_empty());
-        // Одна группа, но есть избранное — выбор появился.
+        // One group, but there are favorites: a choice appeared.
         let favs = vec!["/a.webm".to_string()];
         assert_eq!(group_chips(&items, &favs, &meta, "").len(), 3);
     }
@@ -2163,7 +2165,7 @@ mod tests {
         assert_eq!((p.start, p.end), (0, 25));
         assert_eq!(p.pages, 9);
         assert!(!p.prev_enabled && p.next_enabled && p.visible);
-        // Страница за пределами списка подтягивается к последней.
+        // A page beyond the list is pulled back to the last one.
         let p = bg_pager(202, 99, 5);
         assert_eq!(p.page, 8);
         assert_eq!((p.start, p.end), (200, 202));
@@ -2185,12 +2187,12 @@ mod tests {
         assert_eq!(url_ext_or_jpg("https://h/a/b"), ".jpg");
     }
 
-    // ── «≥2 видео»: один порог на витрину и на жребий при входе ─────────
+    // ── "≥2 videos": one threshold for the showcase and for the draw at login ──
 
     #[test]
     fn rotation_threshold_is_one_truth() {
         use session_splash as ss;
-        // Витрина отказывает ровно там, где жребий при входе крутить нечего.
+        // The showcase refuses exactly where the draw at login has nothing to rotate.
         for favs in 0..4usize {
             for all in 0..4usize {
                 let fav_paths: Vec<String> = (0..favs).map(|i| format!("/f{i}")).collect();
@@ -2207,9 +2209,9 @@ mod tests {
         assert_eq!(rotation_refusal(true, 1, 5), None);
     }
 
-    /// Язык сверок модуля — исходный (английский): каталога у юнит-сверок
-    /// нет, и `msgid` показывается как есть. Русский «как было» сверяет
-    /// `tests/qt_steam_parity.rs` на настоящем `po/ru.po`.
+    /// The language of the module's checks is the source one (English): unit
+    /// checks have no catalog, and the `msgid` is shown as is. The Russian "as it
+    /// was" is checked by `tests/qt_steam_parity.rs` on the real `po/ru.po`.
     fn en() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
     }
@@ -2225,7 +2227,7 @@ mod tests {
         assert!(state_chip(Some(&cur), true, true, 0, 2).0.contains("out of all (2 in the pool)"));
     }
 
-    // ── Отказ автозапуска: простыми словами, на «вы», без устройства ────
+    // ── Autostart refusal: in plain words, polite, without internals ────
 
     #[test]
     fn autostart_success_says_nothing() {
@@ -2237,8 +2239,8 @@ mod tests {
     fn autostart_refusal_names_plain_causes() {
         use session_splash as ss;
         en();
-        // Причина «сначала выберите» — из чужого модуля (session_splash),
-        // её текст приходит оттуда как есть.
+        // The "choose first" reason comes from another module (session_splash),
+        // its text arrives from there as is.
         assert_eq!(
             autostart_refusal_text(true, ss::MSG_CHOOSE_FIRST),
             Some(format!("❌ {}", crate::i18n::tr(ss::MSG_CHOOSE_FIRST)))
@@ -2252,13 +2254,13 @@ mod tests {
                 .as_deref(),
             Some("❌ Couldn't turn on the startup movie at login: no permission to write to the settings folder.")
         );
-        // Первая часть системной ошибки — на языке системы; узнаём по номеру.
+        // The first part of a system error is in the system language; recognized by the number.
         assert_eq!(
             autostart_refusal_text(true, "Не удалось включить: Нет места на устройстве (os error 28)")
                 .as_deref(),
             Some("❌ Couldn't turn on the startup movie at login: the disk is full.")
         );
-        // Python-хозяин отдаёт текст исключения.
+        // The Python host returns the exception text.
         assert_eq!(
             autostart_refusal_text(false, "[Errno 30] Read-only file system: '/x'").as_deref(),
             Some("❌ Couldn't fully turn off the startup movie at login: the settings folder is read-only.")
@@ -2302,9 +2304,9 @@ mod tests {
         }
     }
 
-    // ── Применение фона: общий исполнитель под подменным швом ───────────
+    // ── Applying a background: the shared executor behind a fake seam ───
 
-    /// Подменная машина: ничего не делает, только записывает команды.
+    /// A fake machine: does nothing, only records the commands.
     #[derive(Default)]
     struct FakeSys {
         files: Vec<String>,
@@ -2382,8 +2384,8 @@ mod tests {
     fn background_video_takes_the_video_route() {
         let path = "/cache/steam-bg/7.webm";
         let mut exec = fake_exec(&[path]);
-        // Хоста видео у подменной машины нет — отказ ровно видеоветки
-        // исполнителя, а не «движок обоев недоступен».
+        // The fake machine has no video host: the refusal comes exactly from the
+        // executor's video branch, not "wallpaper engine unavailable".
         assert_eq!(
             apply_background_with(&mut exec, path, false, "Анимированный"),
             (false, crate::wallpaper_engine::video_host_missing_message())

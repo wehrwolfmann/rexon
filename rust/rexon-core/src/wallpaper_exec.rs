@@ -1,39 +1,39 @@
-//! Живой исполнитель планов обоев: то, чем ПЛАН движка становится делом.
+//! Live executor of wallpaper plans: where the engine's PLAN becomes action.
 //!
-//! ЗАЧЕМ. Решения об обоях давно на Rust целиком — [`wallpaper_engine`]
-//! умеет собрать план любой операции ([`Step`]-ы `static_plan`,
+//! WHY. Wallpaper decisions have long been entirely in Rust — [`wallpaper_engine`]
+//! can build a plan for any operation ([`Step`]s of `static_plan`,
 //! `restore_static_plan`, `animated_plan`, `video_native_plan`,
-//! `youtube_plan`, `web_plan`), знает, чем возвращать стол после остановки,
-//! и знает, где живые обои рисует не наш процесс, а расширение оболочки.
-//! Но ДЕЛАТЬ он не умеет ничего: план — это данные. Исполнителем планов до
-//! сих пор был только Python (`WallpaperApplier` в
-//! `rexon/wallpaper_engine.py`), и из-за этого объект побочных действий
-//! вкладки «Настройки» на Rust честно отвечал «движка нет» на все двенадцать
-//! кнопок обоев (`settings_actions.rs`, граница 1).
+//! `youtube_plan`, `web_plan`), knows what to restore the desktop with after
+//! a stop, and knows where live wallpapers are drawn not by our process but
+//! by a shell extension. But it cannot DO anything: a plan is data. Until now
+//! the only plan executor was Python (`WallpaperApplier` in
+//! `rexon/wallpaper_engine.py`), and because of that the side-effect object
+//! of the «Settings» tab in Rust honestly answered "no engine" to all twelve
+//! wallpaper buttons (`settings_actions.rs`, boundary 1).
 //!
-//! Здесь появляется исполнитель. Разделение прежнее и оно принципиальное —
-//! **движок решает, исполнитель делает**:
-//!   * ЧТО запускать, в каком порядке, какими словами отвечать — [`wpe`];
-//!   * ЧЕМ это делать — шов [`WpSys`] (подпроцессы, файлы, окружение,
-//!     часы, мост) и его живая реализация [`LiveSys`];
-//!   * КАК прогнать план — [`WallpaperExec::run_plan`].
+//! This is where the executor appears. The split is the same as before and it
+//! is fundamental — **the engine decides, the executor acts**:
+//!   * WHAT to launch, in which order, with which words to answer — [`wpe`];
+//!   * WITH WHAT to do it — the [`WpSys`] seam (subprocesses, files,
+//!     environment, clock, bridge) and its live implementation [`LiveSys`];
+//!   * HOW to run the plan — [`WallpaperExec::run_plan`].
 //!
-//! Своих правил здесь нет ни одного. Даже сроки — отсрочка «жив ли
-//! запущенный процесс», шаг опроса, ожидание смерти по сигналу, таймауты
-//! plasmashell и swww — лежат в [`wpe`] рядом со своим обоснованием, а не
-//! числами по коду: ровно на этом уже обжигались, когда у шима завелась
-//! своя копия отсрочки.
+//! There is not a single rule of its own here. Even the timings — the "is the
+//! launched process alive" grace period, the poll step, waiting for death by
+//! signal, the plasmashell and swww timeouts — live in [`wpe`] next to their
+//! justification, not as numbers in the code: we already got burned exactly
+//! on this when the shim grew its own copy of the grace period.
 //!
-//! ⚠️ ПОЧЕМУ ШОВ, А НЕ ПРЯМЫЕ ВЫЗОВЫ. Исполнитель обоев меняет РАБОЧИЙ СТОЛ
-//! владельца машины. Сверка, которая зовёт его напрямую, снимала бы у
-//! человека обои при каждом `cargo test` — поэтому все побочные действия
-//! проходят через [`WpSys`]: живьём это [`LiveSys`], в сверках — подставной
-//! `FakeSys`, который только записывает, что его просили сделать. Это же
-//! даёт возможность проверить порядок шагов и откаты плана без единого
-//! запущенного процесса.
+//! ⚠️ WHY A SEAM AND NOT DIRECT CALLS. The wallpaper executor changes the
+//! machine owner's DESKTOP. A check that called it directly would strip the
+//! person's wallpaper on every `cargo test` — so all side effects go through
+//! [`WpSys`]: live it is [`LiveSys`], in the checks it is a fake `FakeSys`
+//! that only records what it was asked to do. This also makes it possible to
+//! check the order of steps and plan rollbacks without launching a single
+//! process.
 //!
-//! Образец — живые исполнители, которые уже есть в ядре: [`crate::splash_exec`]
-//! (подпроцессы, сокеты, замок, журнал) и [`crate::ext_exec`].
+//! The model is the live executors already in the core: [`crate::splash_exec`]
+//! (subprocesses, sockets, lock, journal) and [`crate::ext_exec`].
 
 use std::collections::HashMap;
 use std::process::{Child, Command, Stdio};
@@ -46,14 +46,14 @@ use crate::utils;
 use crate::wallpaper_engine as wpe;
 
 // ============================================================================
-// Журнал
+// Journal
 // ============================================================================
 
-/// Приёмник журнала обоев: `(уровень, сообщение)`.
+/// Wallpaper journal sink: `(level, message)`.
 ///
-/// Свой, а не общий с заставкой: у Python эти строки уходили в РАЗНЫЕ
-/// логгеры (`rexon.wallpaper_engine` и `rexon.session_splash`), и мост,
-/// поставив один приёмник на оба, склеил бы два журнала в один.
+/// Its own, not shared with the splash: in Python these lines went to
+/// DIFFERENT loggers (`rexon.wallpaper_engine` and `rexon.session_splash`),
+/// and a bridge with one sink on both would glue two journals into one.
 type LogSink = Box<dyn Fn(&str, &str) + Send + Sync>;
 
 fn log_sink() -> &'static Mutex<Option<LogSink>> {
@@ -61,7 +61,7 @@ fn log_sink() -> &'static Mutex<Option<LogSink>> {
     SINK.get_or_init(|| Mutex::new(None))
 }
 
-/// Поставить приёмник журнала (мост направляет его в `rexon.wallpaper_engine`).
+/// Install the journal sink (the bridge routes it to `rexon.wallpaper_engine`).
 pub fn set_log_sink(sink: impl Fn(&str, &str) + Send + Sync + 'static) {
     if let Ok(mut slot) = log_sink().lock() {
         *slot = Some(Box::new(sink));
@@ -79,75 +79,76 @@ fn log_line(level: &str, message: &str) {
 }
 
 // ============================================================================
-// Итог операции
+// Operation result
 // ============================================================================
 
-/// Итог операции с обоями — порт `WallpaperResult`.
+/// Result of a wallpaper operation — port of `WallpaperResult`.
 ///
-/// Сообщение всегда непустое: молчаливый отказ покупатель читает как
-/// поломку кнопки (правило #13), поэтому пустых исходов у исполнителя нет.
+/// The message is never empty: a customer reads a silent refusal as a broken
+/// button (rule #13), so the executor has no empty outcomes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WallpaperResult {
-    /// Получилось ли.
+    /// Whether it worked.
     pub ok: bool,
-    /// Что сказать человеку.
+    /// What to tell the person.
     pub message: String,
-    /// PID поднятого процесса обоев, если он поднимался.
+    /// PID of the started wallpaper process, if one was started.
     pub pid: Option<i64>,
-    /// Обои встали, но есть то, что человек должен знать (живые обои
-    /// Wallpaper Engine остались поверх). Отдельно от `message`: итог с
-    /// предупреждением показывается своим значком, а не зелёной галочкой, и
-    /// не обрезается вместе с длинным названием обоев (правило #13).
+    /// The wallpaper is set, but there is something the person should know (live
+    /// Wallpaper Engine wallpapers stayed on top). Separate from `message`: a
+    /// result with a warning is shown with its own icon rather than a green
+    /// check mark, and is not truncated along with a long wallpaper name (rule #13).
     pub warning: Option<String>,
 }
 
 impl WallpaperResult {
-    /// Удача с сообщением.
+    /// Success with a message.
     pub fn ok(message: impl Into<String>) -> Self {
         WallpaperResult { ok: true, message: message.into(), pid: None, warning: None }
     }
 
-    /// Отказ с сообщением.
+    /// Failure with a message.
     pub fn fail(message: impl Into<String>) -> Self {
         WallpaperResult { ok: false, message: message.into(), pid: None, warning: None }
     }
 }
 
-/// ⚠️ ГРАНИЦА ИСПОЛНИТЕЛЯ, НАЗВАННАЯ ВСЛУХ.
+/// ⚠️ THE EXECUTOR'S BOUNDARY, STATED OUT LOUD.
 ///
-/// Не перенесён один формат — Flash (SWF): у исполнителя нет пути Ruffle
-/// (для него строится отдельный хост). Молчать об этом нельзя (правило
-/// #13): молчаливое «ничего не произошло» покупатель читает как поломку
-/// кнопки, поэтому исполнитель ОТВЕЧАЕТ этой строкой, а не делает вид, что
-/// обои встали.
+/// One format has not been carried over — Flash (SWF): the executor has no
+/// Ruffle path (a separate host is being built for it). Keeping quiet about it
+/// is not allowed (rule #13): a customer reads a silent "nothing happened" as
+/// a broken button, so the executor ANSWERS with this line instead of
+/// pretending the wallpaper was set.
 pub fn live_formats_not_carried() -> String {
     crate::i18n::tr("this kind of live wallpaper is still shown by the old engine")
 }
 
-/// Носит ли исполнитель этот формат обоев сам — то есть применит ли его
-/// [`WallpaperExec::apply`], а не ответит границей [`live_formats_not_carried`].
+/// Whether the executor carries this wallpaper format itself — that is,
+/// whether [`WallpaperExec::apply`] applies it rather than answering with the
+/// [`live_formats_not_carried`] boundary.
 ///
-/// Правило одно на продукт и живёт здесь, рядом с самой границей: окно,
-/// которое решает, звать ли исполнитель или отослать человека в классическое
-/// окно, спрашивает его, а не держит свою копию списка. Иначе перенос
-/// следующего формата сюда молча не доехал бы до кнопки.
+/// There is one rule per product and it lives here, next to the boundary
+/// itself: the window that decides whether to call the executor or send the
+/// person to the classic window asks this function instead of keeping its own
+/// copy of the list. Otherwise moving the next format here would silently
+/// never reach the button.
 ///
-/// Сегодня исполнитель носит ВСЕ форматы: картинку, GIF, видео, YouTube,
-/// веб и — последним переехавший — Flash (SWF), который показывает режим
-/// `rexon-wallpaper-host --mode swf` (Ruffle как библиотека `rexon-swf`).
-/// «Носит» значит и «отвечает окончательно»: сцены, обои-приложения и
-/// незнакомый формат исполнитель отклоняет теми же словами, что и
-/// классическое окно. Функция остаётся точкой решения: если формат когда-то
-/// снова окажется только у классического окна, это объявляется здесь, и
-/// кнопки узнают об этом сами.
+/// Today the executor carries ALL formats: picture, GIF, video, YouTube, web
+/// and — the last to move over — Flash (SWF), shown by the
+/// `rexon-wallpaper-host --mode swf` mode (Ruffle as the `rexon-swf` library).
+/// "Carries" also means "answers definitively": the executor rejects scenes,
+/// application wallpapers and an unknown format with the same words as the
+/// classic window. The function remains the decision point: if a format ever
+/// ends up only in the classic window again, that is declared here, and the
+/// buttons find out by themselves.
 pub fn carries_format(_fmt: &str) -> bool {
     true
 }
 
-/// Окончательный отказ для формата, которого у Rexon нет вовсе, — те же
-/// слова, что у Python (`apply`: `scene_unsupported`,
-/// `application_unsupported`, `unknown_format`). `None` — формат известен и
-/// применяется.
+/// The final refusal for a format Rexon does not have at all — the same words
+/// as in Python (`apply`: `scene_unsupported`, `application_unsupported`,
+/// `unknown_format`). `None` — the format is known and gets applied.
 fn retired_format_refusal(fmt: &str) -> Option<String> {
     match fmt {
         "static" | "animated" | "video" | "youtube" | "web" | "swf" => None,
@@ -157,26 +158,26 @@ fn retired_format_refusal(fmt: &str) -> Option<String> {
     }
 }
 
-/// Громкость потока YouTube, % — у Python `volume` по умолчанию 50: поток
-/// играет mpv/mpvpaper, до которого надзиратель звука хоста не дотягивается.
+/// YouTube stream volume, % — Python's default `volume` is 50: the stream is
+/// played by mpv/mpvpaper, which the host's sound supervisor cannot reach.
 const YOUTUBE_STREAM_VOLUME: i64 = 50;
 
-/// Звук видео и YouTube, когда вызывающий выбора не даёт, — умолчание
-/// Python (`video_has_audio = True`). Громкость и «звук вкл/выкл» при этом
-/// живут в `settings.json` (`wallpaper_audio`) и действуют на ходу.
+/// Video and YouTube sound when the caller gives no choice — the Python
+/// default (`video_has_audio = True`). Volume and "sound on/off" meanwhile
+/// live in `settings.json` (`wallpaper_audio`) and take effect on the fly.
 pub const VIDEO_AUDIO_DEFAULT: bool = true;
 
-/// Нужен ли живым обоям этого формата надзор за нагрузкой: видео и YouTube
-/// (их хост декодирует кадры всё время работы) и Flash (Ruffle рисует кадр за
-/// кадром). Пауза у Flash та же, что у видео, — SIGSTOP/SIGCONT процесса
-/// хоста; после продолжения ролик не проматывается: шаг его времени
-/// ограничен в `rexon-swf` (`Settings::dt_cap`).
+/// Whether live wallpapers of this format need load supervision: video and
+/// YouTube (their host decodes frames the whole time it runs) and Flash
+/// (Ruffle draws frame after frame). Flash pauses the same way as video —
+/// SIGSTOP/SIGCONT to the host process; after resuming, the movie does not
+/// fast-forward: its time step is capped in `rexon-swf` (`Settings::dt_cap`).
 pub fn format_wants_load_monitor(fmt: Option<&str>) -> bool {
     matches!(fmt, Some("video") | Some("youtube") | Some("swf"))
 }
 
-/// Проверки файловой системы для поиска наших хостов — те же, что у Python
-/// `ExecFsProbe`: исполняемый файл на месте и поиск по `PATH`.
+/// File system checks for finding our hosts — the same as Python's
+/// `ExecFsProbe`: the executable is in place, and a lookup in `PATH`.
 struct ExecProbe;
 
 impl crate::we_client::DaemonFs for ExecProbe {
@@ -191,258 +192,260 @@ impl crate::we_client::DaemonFs for ExecProbe {
     }
 }
 
-/// Один фоновый звук: отдельный процесс mpv на каждый.
+/// One background sound: a separate mpv process for each.
 #[derive(Debug, Clone)]
 struct Ambient {
     id: String,
     path: String,
     name: String,
     volume: i64,
-    /// Зацикленный. Разовый звук — законный случай, а не сбой: расширение
-    /// задаёт режим само, и от режима зависит, чем мерить успех запуска.
+    /// Looped. A one-shot sound is a legitimate case, not a failure: the extension
+    /// sets the mode itself, and the mode decides how launch success is measured.
     looped: bool,
     proc: ProcHandle,
 }
 
-/// Играющий фоновый звук — то, что видит вкладка.
+/// A playing background sound — what the tab sees.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AmbientInfo {
-    /// Идентификатор звука.
+    /// Sound identifier.
     pub id: String,
-    /// Название для человека.
+    /// Human-readable name.
     pub name: String,
-    /// Громкость, проценты.
+    /// Volume, percent.
     pub volume: i64,
-    /// Играет ли.
+    /// Whether it is playing.
     pub active: bool,
 }
 
-/// Снимок состояния движка обоев.
+/// Snapshot of the wallpaper engine state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Status {
-    /// Идут ли живые обои прямо сейчас.
+    /// Whether live wallpapers are running right now.
     pub running: bool,
-    /// Формат того, что играет.
+    /// Format of what is playing.
     pub format: Option<String>,
-    /// Путь того, что играет.
+    /// Path of what is playing.
     pub path: Option<String>,
-    /// Опознанное окружение.
+    /// Detected environment.
     pub de: String,
-    /// Опознанный тип сессии.
+    /// Detected session type.
     pub session_type: String,
-    /// PID процесса обоев, пока он жив.
+    /// PID of the wallpaper process while it is alive.
     pub pid: Option<i64>,
-    /// Стоит ли подложка (кадр ролика картинкой стола) либо размытая
-    /// копия обоев.
+    /// Whether a backdrop (a movie frame as the desktop picture) or a blurred
+    /// copy of the wallpaper is set.
     pub blur_active: bool,
-    /// Играющие фоновые звуки.
+    /// Playing background sounds.
     pub ambient: Vec<AmbientInfo>,
 }
 
 // ============================================================================
-// Шов побочных действий
+// Side-effect seam
 // ============================================================================
 
-/// Дескриптор поднятого процесса — не PID: PID переиспользуется системой, а
-/// исполнитель обязан снимать ТОЛЬКО свой процесс и никогда чужой по имени.
+/// Handle of a started process — not a PID: the system reuses PIDs, and the
+/// executor must stop ONLY its own process and never someone else's by name.
 pub type ProcHandle = i64;
 
-/// Всё, чем исполнитель трогает живую машину.
+/// Everything the executor touches the live machine with.
 ///
-/// Ни одно решение сюда не переехало: реализации только делают то, что им
-/// сказали. Живая — [`LiveSys`], подставная — в сверках этого модуля.
+/// Not a single decision has moved here: implementations only do what they are
+/// told. The live one is [`LiveSys`], the fake one is in this module's checks.
 pub trait WpSys {
-    /// Запустить команду и дождаться её. `None` — команды нет или вышло
-    /// время: тот же безопасный дефолт, что давал Python на `OSError`.
+    /// Run a command and wait for it. `None` — the command is missing or timed
+    /// out: the same safe default Python gave on `OSError`.
     fn run(&mut self, argv: &[String], timeout: f64) -> Option<RunOut>;
 
-    /// Поднять процесс. `new_session` — свой сеанс (`start_new_session`),
-    /// чтобы внуки (mpv/ffmpeg) снимались вместе с родителем.
+    /// Start a process. `new_session` — its own session (`start_new_session`),
+    /// so that grandchildren (mpv/ffmpeg) are stopped together with the parent.
     fn spawn(&mut self, argv: &[String], new_session: bool) -> Result<ProcHandle, String>;
 
-    /// Код возврата, если процесс уже завершился; `None` — жив.
+    /// Exit code if the process has already finished; `None` — alive.
     fn poll(&mut self, proc: ProcHandle) -> Option<i64>;
 
-    /// PID процесса — для сообщения `{pid}` и PID-файла.
+    /// Process PID — for the `{pid}` message and the PID file.
     fn pid(&mut self, proc: ProcHandle) -> Option<i64>;
 
-    /// Снять процесс: SIGTERM группе → ждать → SIGKILL группе → ждать.
+    /// Stop the process: SIGTERM to the group → wait → SIGKILL to the group → wait.
     fn kill_process(&mut self, proc: ProcHandle);
 
-    /// Есть ли такая программа в системе.
+    /// Whether such a program exists on the system.
     fn has_tool(&mut self, tool: &str) -> bool;
 
-    /// Подсказка об имени пакета для текущего дистрибутива (или пусто).
+    /// Package name hint for the current distribution (or empty).
     fn package_hint(&mut self, tool: &str) -> String;
 
-    /// Файл или каталог на месте.
+    /// The file or directory is in place.
     fn exists(&mut self, path: &str) -> bool;
 
-    /// Это каталог.
+    /// It is a directory.
     fn is_dir(&mut self, path: &str) -> bool;
 
-    /// Отсортированное содержимое каталога (имена без пути).
+    /// Sorted directory contents (names without the path).
     fn listdir(&mut self, path: &str) -> Vec<String>;
 
-    /// Текст файла или `None`.
+    /// File text or `None`.
     fn read_text(&mut self, path: &str) -> Option<String>;
 
-    /// Записать текст, создав каталоги. Неудача журналируется, не рушит.
+    /// Write text, creating directories. A failure is logged, not fatal.
     fn write_text(&mut self, path: &str, content: &str);
 
-    /// Удалить файл, если он есть.
+    /// Delete the file if it exists.
     fn remove_file(&mut self, path: &str);
 
-    /// Переменная окружения или пустая строка.
+    /// Environment variable or an empty string.
     fn env(&mut self, name: &str) -> String;
 
-    /// Монотонные часы, секунды.
+    /// Monotonic clock, seconds.
     fn monotonic(&mut self) -> f64;
 
-    /// Подождать.
+    /// Wait.
     fn sleep(&mut self, seconds: f64);
 
-    /// Сказать мосту, идут ли живые обои (`announce` — ещё и событием).
+    /// Tell the bridge whether live wallpapers are running (`announce` — also as an event).
     fn bridge_notify(&mut self, live: bool, name: &str, announce: bool);
 
-    /// Размыть картинку `source` и записать JPEG в `output`. По умолчанию —
-    /// отказ: подставные швы размывать не обязаны.
+    /// Blur the `source` picture and write a JPEG to `output`. By default it
+    /// refuses: fake seams are not obliged to blur.
     fn blur_image(&mut self, _source: &str, _output: &str, _radius: i64) -> Result<(), String> {
         Err("размытие этим швом не поддерживается".to_string())
     }
 
-    /// Заморозить (`pause`) либо разморозить процесс обоев — SIGSTOP/SIGCONT
-    /// ему самому, как у Python. По умолчанию — ничего.
+    /// Freeze (`pause`) or unfreeze the wallpaper process — SIGSTOP/SIGCONT to
+    /// the process itself, as in Python. By default nothing.
     fn pause_process(&mut self, _proc: ProcHandle, _pause: bool) {}
 
-    /// Собранный хост обоев (`rexon-wallpaper-host`, режимы видео и веб)
-    /// либо `None` — его нет нигде. Порядок поиска держит движок
+    /// The built wallpaper host (`rexon-wallpaper-host`, video and web modes)
+    /// or `None` — it is nowhere. The search order is kept by the engine
     /// (`wallpaper_engine::find_wallpaper_host_binary`).
     fn wallpaper_host(&mut self) -> Option<String> {
         self.video_host()
     }
 
-    /// ⚠️ Переходное имя [`WpSys::wallpaper_host`] с тех пор, как хостов
-    /// было два. Им ещё отвечает тестовая подстановка в
-    /// `rexon-gui/src/settings_actions.rs` (файл правит соседняя работа);
-    /// своего поиска за ним нет, исполнитель спрашивает только
-    /// `wallpaper_host`. Снять вместе с переходом той подстановки.
+    /// ⚠️ A transitional name for [`WpSys::wallpaper_host`] from the time when
+    /// there were two hosts. The test substitute in
+    /// `rexon-gui/src/settings_actions.rs` still answers to it (that file is
+    /// being edited by parallel work); there is no search of its own behind it,
+    /// the executor asks only `wallpaper_host`. Remove together with migrating
+    /// that substitute.
     fn video_host(&mut self) -> Option<String> {
         None
     }
 
-    /// Размер файла в байтах либо `None`.
+    /// File size in bytes or `None`.
     fn file_size(&mut self, _path: &str) -> Option<u64> {
         None
     }
 
-    /// Путь к faststart-версии видео (moov в начале) — порт
-    /// `_ensure_faststart`. По умолчанию — исходный путь.
+    /// Path to the faststart version of a video (moov at the start) — port of
+    /// `_ensure_faststart`. By default the original path.
     fn ensure_faststart(&mut self, path: &str) -> String {
         path.to_string()
     }
 
-    /// Достать кадр из видео (картинку — скопировать) в `output`. Истина —
-    /// кадр на месте. По умолчанию — нет.
+    /// Extract a frame from a video (copy a picture) into `output`. True — the
+    /// frame is in place. By default no.
     fn extract_frame(&mut self, _source: &str, _output: &str, _timestamp: f64) -> bool {
         false
     }
 
-    /// Чёткий кадр ролика для подложки и кадра вместо падающих обоев,
-    /// масштабированный под экран `screen` ([`wpe::video_still_argv`]).
-    /// По умолчанию — тот же кадр, что [`WpSys::extract_frame`].
+    /// A sharp movie frame for the backdrop and for the frame shown instead of a
+    /// crashing wallpaper, scaled to the `screen` ([`wpe::video_still_argv`]).
+    /// By default the same frame as [`WpSys::extract_frame`].
     fn extract_still(&mut self, source: &str, output: &str, timestamp: f64, _screen: Option<(u64, u64)>) -> bool {
         self.extract_frame(source, output, timestamp)
     }
 
-    /// Время последней правки файла, секунды от эпохи, либо `None`.
+    /// Time of the file's last modification, seconds since the epoch, or `None`.
     fn file_mtime(&mut self, _path: &str) -> Option<i64> {
         None
     }
 
-    /// Кадр взят из кеша кадров: освежить его время, чтобы чистка
-    /// ([`WpSys::prune_video_stills`]) уносила давно не нужные, а не этот.
+    /// The frame was taken from the frame cache: refresh its time so that pruning
+    /// ([`WpSys::prune_video_stills`]) removes long-unneeded ones, not this one.
     fn touch_file(&mut self, _path: &str) {}
 
-    /// Ужать кеш кадров `dir` до предела ([`wpe::video_still_evictions`]),
-    /// не трогая `keep`. По умолчанию — ничего.
+    /// Shrink the frame cache `dir` to the limit ([`wpe::video_still_evictions`]),
+    /// without touching `keep`. By default nothing.
     fn prune_video_stills(&mut self, _dir: &str, _keep: &str) {}
 
-    /// Скачать ролик YouTube в кеш: путь к файлу либо `None`. По умолчанию
-    /// — нет.
+    /// Download a YouTube video into the cache: the file path or `None`. By
+    /// default no.
     fn download_youtube(&mut self, _url: &str, _quality: &str) -> Option<String> {
         None
     }
 
-    /// Чужой шелл (Noctalia, DankMaterialShell), который сейчас держит слой
-    /// обоев в этом окружении: его поверхность легла бы ПОВЕРХ наших обоев.
-    /// По умолчанию — никого: подставные швы живой сеанс не видят. Решение
-    /// «чей фон» принимает ядро (`wallpaper_engine::wallpaper_layer_owner`),
-    /// живая реализация только добывает наблюдения.
+    /// A foreign shell (Noctalia, DankMaterialShell) currently holding the
+    /// wallpaper layer in this environment: its surface would lie ON TOP of our
+    /// wallpaper. By default nobody: fake seams do not see a live session. The
+    /// "whose background" decision is made by the core
+    /// (`wallpaper_engine::wallpaper_layer_owner`), the live implementation only
+    /// gathers observations.
     fn wallpaper_shell_owner(&mut self, _de: &str, _session_type: &str) -> Option<DesktopShell> {
         None
     }
 
-    /// Синхронно снять живые обои Wallpaper Engine (рендереры демона
-    /// waywallen): `(статус, сколько снято)` в словах
-    /// [`crate::we_client::stop_active_result`]. `None` — снимать некому:
-    /// процесс без Qt (ядро, CLI) крюк не ставил.
+    /// Synchronously stop live Wallpaper Engine wallpapers (the waywallen daemon's
+    /// renderers): `(status, how many stopped)` in the words of
+    /// [`crate::we_client::stop_active_result`]. `None` — there is nobody to stop
+    /// them: a process without Qt (core, CLI) did not install the hook.
     ///
-    /// По умолчанию — крюк процесса ([`set_we_stopper`]): сокет к демону
-    /// живёт в Qt, и ставит его окно (`rexon-gui`). Подставные швы его не
-    /// видят, пока не переопределят метод.
+    /// By default — the process hook ([`set_we_stopper`]): the socket to the
+    /// daemon lives in Qt, and the window (`rexon-gui`) installs it. Fake seams
+    /// do not see it unless they override the method.
     fn stop_we_wallpapers(&mut self, timeout_ms: u64) -> Option<(String, i64)> {
         we_stopper().map(|stop| stop(timeout_ms))
     }
 
-    /// Убрать вывод waywallen, который без живых обоев закрывает стол своей
-    /// заглушкой (GNOME: расширение `org.waywallen.gnome` красит стол
-    /// чёрным, [`crate::wallpaper_backend::set_waywallen_gnome_display`]).
-    /// По умолчанию ничего: подставные швы живой сеанс не трогают.
+    /// Remove the waywallen output that, without live wallpapers, covers the
+    /// desktop with its placeholder (GNOME: the `org.waywallen.gnome` extension
+    /// paints the desktop black, [`crate::wallpaper_backend::set_waywallen_gnome_display`]).
+    /// By default nothing: fake seams do not touch the live session.
     fn release_waywallen_display(&mut self) {}
 
-    /// Свои живые обои легли поверхностью слоя фона (видео, веб, Flash, GIF
-    /// на композиторе с layer-shell). На Cinnamon с layer-shell служба фона
-    /// оболочки старше и закрыла бы их — её надо уложить под нашу
-    /// поверхность ([`crate::wallpaper_backend::restack_cinnamon_background_soon`]).
-    /// По умолчанию ничего: подставные швы живой сеанс не трогают.
+    /// Our own live wallpaper went in as a background-layer surface (video, web,
+    /// Flash, GIF on a compositor with layer-shell). On Cinnamon with layer-shell
+    /// the shell's background service is older and would cover it — it has to be
+    /// put under our surface ([`crate::wallpaper_backend::restack_cinnamon_background_soon`]).
+    /// By default nothing: fake seams do not touch the live session.
     fn own_layer_surface_up(&mut self) {}
 
-    /// Cinnamon с layer-shell в этом сеансе
-    /// ([`crate::wallpaper_backend::cinnamon_layer_shell_fact`]). По
-    /// умолчанию — нет: подставные швы живой факт процесса не читают.
+    /// Cinnamon with layer-shell in this session
+    /// ([`crate::wallpaper_backend::cinnamon_layer_shell_fact`]). By default
+    /// no: fake seams do not read the live process fact.
     fn cinnamon_layer_shell(&self) -> bool {
         false
     }
 
-    /// Снять брошенную копию нашего расширения Cinnamon из домашнего
-    /// каталога — та же функция, что у эффектов экрана
-    /// ([`crate::screen_effects::remove_orphan_user_copy`]). `Some` — путь
-    /// снятой копии. По умолчанию ничего: подставные швы домашний каталог
-    /// не трогают.
+    /// Remove an abandoned copy of our Cinnamon extension from the home
+    /// directory — the same function as for screen effects
+    /// ([`crate::screen_effects::remove_orphan_user_copy`]). `Some` — the path of
+    /// the removed copy. By default nothing: fake seams do not touch the home
+    /// directory.
     fn remove_orphan_shell_ext_copy(&mut self, _de: &str) -> Option<String> {
         None
     }
 
-    /// Применение началось (строка «применяю …» журнала): следующий
-    /// процесс хоста получит этот момент в [`wpe::APPLY_STARTED_ENV`] и
-    /// скажет в журнал, сколько человек ждал первого кадра. По умолчанию
-    /// ничего.
+    /// Applying has started (the journal's «applying …» line): the next host
+    /// process gets this moment in [`wpe::APPLY_STARTED_ENV`] and tells the
+    /// journal how long the person waited for the first frame. By default
+    /// nothing.
     fn note_apply_started(&mut self) {}
 
-    /// Rexon поставил обоями стола картинку `path` — следом пересчитать
-    /// «Цвет акцента из обоев» вне Plasma ([`crate::accent::follow_wallpaper`]).
-    /// По умолчанию ничего: подставные швы настоящих настроек не трогают.
+    /// Rexon set the picture `path` as the desktop wallpaper — next, recompute
+    /// «Accent color from wallpaper» outside Plasma ([`crate::accent::follow_wallpaper`]).
+    /// By default nothing: fake seams do not touch real settings.
     fn static_wallpaper_changed(&mut self, _path: &str) {}
 
-    /// Живые обои применены — убедиться, что сторож падений
-    /// ([`crate::renderer_watch::ensure_running`]) работает в этом процессе.
-    /// По умолчанию ничего: подставные швы живого сторожа не поднимают.
+    /// Live wallpapers are applied — make sure the crash watcher
+    /// ([`crate::renderer_watch::ensure_running`]) runs in this process.
+    /// By default nothing: fake seams do not start a live watcher.
     fn start_watch(&mut self) {}
 }
 
-/// Что человек применил своим хостом — то, что сторож падений поднимет
-/// заново тем же применением, что по кнопке.
+/// What the person applied with our own host — what the crash watcher will
+/// bring back up with the same apply as the button does.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HostRequest {
     path: String,
@@ -451,42 +454,42 @@ struct HostRequest {
     audio: bool,
 }
 
-/// Форматы, которые показывает собственный хост обоев и сторожит
+/// Formats shown by our own wallpaper host and watched by
 /// [`crate::renderer_watch::HostWatch`].
 pub fn host_watched_format(fmt: &str) -> bool {
     matches!(fmt, "video" | "web" | "swf")
 }
 
-/// Что исполнитель знает о своём хосте для прохода сторожа.
+/// What the executor knows about its host for a watcher pass.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HostSnapshot {
-    /// Что должно показываться (`формат:путь`); `None` — своих обоев нет.
+    /// What should be shown (`format:path`); `None` — no wallpaper of our own.
     pub subject: Option<String>,
-    /// Наш процесс (или спутник на другом мониторе) завершился сам.
+    /// Our process (or a companion on another monitor) has exited by itself.
     pub exited: bool,
-    /// Номера живых процессов хоста — наших детей.
+    /// PIDs of the live host processes — our children.
     pub pids: Vec<i64>,
-    /// Заморожен надзором за нагрузкой.
+    /// Frozen by load supervision.
     pub paused: bool,
-    /// Хост — ребёнок расширения оболочки (GNOME/Cinnamon-Wayland).
+    /// The host is a child of the shell extension (GNOME/Cinnamon-Wayland).
     pub via_extension: bool,
-    /// Путь бинаря хоста — сверять процессы расширения по нему.
+    /// Path of the host binary — extension processes are matched by it.
     pub host_binary: Option<String>,
 }
 
 // ============================================================================
-// Живые обои Wallpaper Engine под своими
+// Live Wallpaper Engine wallpapers under our own
 // ============================================================================
 //
-// WE-обои рисует демон waywallen своими рендерерами — поверх стола, где бы он
-// ни показывал (плагин Plasma, layer-shell, расширения GNOME/Cinnamon). Свои
-// обои Rexon, поставленные при живой WE-обое, оказываются ПОД её поверхностью:
-// человек жмёт «Применить», а видит прежнюю картинку (правило #13). Поэтому
-// любые свои обои сначала снимают WE-обои — одним запросом к демону
-// (`renderer_list` → `renderer_kill` каждому), без разбора, какой стол их
-// показывает.
+// WE wallpapers are drawn by the waywallen daemon with its own renderers — on
+// top of the desktop, wherever it displays them (Plasma plugin, layer-shell,
+// GNOME/Cinnamon extensions). Rexon's own wallpapers set while a WE
+// wallpaper is live end up UNDER its surface: the person presses «Apply» but
+// sees the previous picture (rule #13). So any wallpaper of our own first
+// stops the WE wallpapers — with one request to the daemon (`renderer_list`
+// → `renderer_kill` for each), without working out which desktop shows them.
 
-/// Крюк «снять живые WE-обои»: таймаут в мс → `(статус, сколько снято)`.
+/// The "stop live WE wallpapers" hook: timeout in ms → `(status, how many stopped)`.
 pub type WeStopper = fn(u64) -> (String, i64);
 
 fn we_stopper_slot() -> &'static Mutex<Option<WeStopper>> {
@@ -494,7 +497,7 @@ fn we_stopper_slot() -> &'static Mutex<Option<WeStopper>> {
     &SLOT
 }
 
-/// Поставить крюк снятия WE-обоев (зовёт окно на Qt один раз при старте).
+/// Install the WE-stopping hook (the Qt window calls it once at startup).
 pub fn set_we_stopper(stop: WeStopper) {
     if let Ok(mut slot) = we_stopper_slot().lock() {
         *slot = Some(stop);
@@ -505,26 +508,27 @@ fn we_stopper() -> Option<WeStopper> {
     we_stopper_slot().lock().ok().and_then(|slot| *slot)
 }
 
-/// Снимают ли обои этого формата живые WE-обои перед собой. Да — все свои
-/// форматы Rexon: каждый ложится на тот же слой стола, что и WE-обоя.
+/// Whether wallpapers of this format stop live WE wallpapers before themselves.
+/// Yes — all of Rexon's own formats: each lands on the same desktop layer as
+/// the WE wallpaper.
 pub fn yields_we_wallpapers(fmt: &str) -> bool {
     matches!(fmt, "static" | "animated" | "video" | "youtube" | "web" | "swf")
 }
 
-/// Сколько дать оболочке на включение расширения перед повторным вопросом.
+/// How long to give the shell to enable the extension before asking again.
 const SHELL_EXT_ENABLE_SETTLE_SEC: f64 = 0.5;
 
-/// Кладут ли обои этого формата на Wayland свою поверхность в слой фона
-/// (наш хост, swww, mpvpaper). Картинка — нет: её рисует сама оболочка.
+/// Whether wallpapers of this format put their own surface into the background
+/// layer on Wayland (our host, swww, mpvpaper). A picture does not: the shell draws it itself.
 pub fn own_layer_surface_format(fmt: &str) -> bool {
     matches!(fmt, "animated" | "video" | "youtube" | "web" | "swf")
 }
 
-/// Что сказать человеку после попытки снять WE-обои: `None` — ничего
-/// (сняли, снимать было нечего, демона нет); `Some` — предупреждение к
-/// итогу: свои обои встали, но WE-обоя, возможно, осталась поверх. Значок
-/// предупреждения ставит строка итога (`qt_settings::wallpaper_done_warned`),
-/// в самом тексте его нет.
+/// What to tell the person after trying to stop WE wallpapers: `None` — nothing
+/// (stopped, nothing to stop, no daemon); `Some` — a warning for the result:
+/// our wallpaper is set, but the WE wallpaper may have stayed on top. The
+/// warning icon is added by the result line (`qt_settings::wallpaper_done_warned`),
+/// it is not in the text itself.
 pub fn we_yield_note(status: &str) -> Option<String> {
     (status == crate::we_client::STOP_ERROR).then(|| {
         crate::i18n::tr(
@@ -535,12 +539,12 @@ pub fn we_yield_note(status: &str) -> Option<String> {
 }
 
 // ============================================================================
-// Значки рабочего стола X11 — швы исполнителя для решений ядра
+// X11 desktop icons — executor seams for core decisions
 // ============================================================================
 
-/// Подготовка и откат значков стола (`wallpaper_backend::prepare_desktop_icons`,
-/// `restore_desktop_icons`) через тот же шов [`WpSys`], что у исполнителя:
-/// один живой путь и одна подстановка в сверках.
+/// Preparing and rolling back desktop icons (`wallpaper_backend::prepare_desktop_icons`,
+/// `restore_desktop_icons`) through the same [`WpSys`] seam as the executor:
+/// one live path and one substitute in the checks.
 pub struct DesktopIconsSys<'a, S: WpSys> {
     sys: &'a mut S,
     state_path: String,
@@ -580,17 +584,17 @@ impl<S: WpSys> crate::wallpaper_backend::DesktopIconsIo for DesktopIconsSys<'_, 
 }
 
 // ============================================================================
-// Живая реализация шва
+// Live implementation of the seam
 // ============================================================================
 
-/// Побочные действия на настоящей машине.
+/// Side effects on the real machine.
 pub struct LiveSys {
     procs: HashMap<ProcHandle, Child>,
     next: ProcHandle,
     epoch: Instant,
     family: String,
-    /// Начало текущего применения (мс от эпохи) — уйдёт следующему хосту
-    /// в [`wpe::APPLY_STARTED_ENV`] ([`WpSys::note_apply_started`]).
+    /// Start of the current apply (ms since the epoch) — goes to the next host
+    /// in [`wpe::APPLY_STARTED_ENV`] ([`WpSys::note_apply_started`]).
     apply_started_ms: Option<u64>,
 }
 
@@ -601,7 +605,7 @@ impl Default for LiveSys {
 }
 
 impl LiveSys {
-    /// Новый исполнитель побочных действий.
+    /// A new side-effect executor.
     pub fn new() -> LiveSys {
         LiveSys {
             procs: HashMap::new(),
@@ -618,9 +622,9 @@ impl LiveSys {
         h
     }
 
-    /// Семейство пакетного менеджера — спрашивается ОДИН раз на процесс:
-    /// подсказку про пакет движок просит на каждый план, а `/etc/os-release`
-    /// за время работы не меняется.
+    /// Package manager family — asked ONCE per process: the engine asks for the
+    /// package hint on every plan, and `/etc/os-release` does not change while
+    /// running.
     fn family(&mut self) -> String {
         if self.family.is_empty() {
             self.family = crate::system::DistroDetector::detect_live()
@@ -631,8 +635,8 @@ impl LiveSys {
         self.family.clone()
     }
 
-    /// Послать сигнал всей группе процесса. `false` — группы нет или это
-    /// НАША группа (самоубийство недопустимо).
+    /// Send a signal to the whole process group. `false` — there is no group or
+    /// it is OUR group (suicide is not allowed).
     fn signal_group(pid: libc::pid_t, sig: libc::c_int) -> bool {
         let pgid = unsafe { libc::getpgid(pid) };
         if pgid <= 0 {
@@ -644,7 +648,7 @@ impl LiveSys {
         unsafe { libc::killpg(pgid, sig) == 0 }
     }
 
-    /// Дождаться завершения ребёнка не дольше срока. `true` — дождались.
+    /// Wait for the child to finish, no longer than the deadline. `true` — it did.
     fn wait_child(child: &mut Child, seconds: f64) -> bool {
         let deadline = Instant::now() + Duration::from_secs_f64(seconds.max(0.0));
         loop {
@@ -672,8 +676,8 @@ impl WpSys for LiveSys {
 
     fn release_waywallen_display(&mut self) {
         crate::wallpaper_backend::set_waywallen_gnome_display_live(false);
-        // Cinnamon с layer-shell: поверхность вывода сцен закрыла бы и
-        // картинку службы фона, и наше окно слоя — клиент вывода снимаем.
+        // Cinnamon with layer-shell: the scene output surface would cover both the
+        // background service's picture and our layer window — stop the output client.
         if crate::wallpaper_backend::cinnamon_layer_shell_fact() {
             crate::wallpaper_backend::set_layer_shell_display_off_live(true);
         }
@@ -711,16 +715,16 @@ impl WpSys for LiveSys {
             return Err(crate::i18n::tr("empty command"));
         };
         let mut cmd = Command::new(bin);
-        // Момент «применяю» — одному процессу, следующему после него: хост
-        // меряет по нему ожидание первого кадра.
+        // The "applying" moment — for one process, the next one after it: the host
+        // measures the wait for the first frame from it.
         if let Some(started) = self.apply_started_ms.take() {
             cmd.env(wpe::APPLY_STARTED_ENV, started.to_string());
         }
         cmd.args(rest)
             .stdin(Stdio::null())
-            // Вывод процесса обоев намеренно не читается — почему, сказано
-            // у `wpe::spawn_died_message`: труба на живых обоях переполнилась
-            // бы и заткнула хост.
+            // The wallpaper process output is deliberately not read — why is explained
+            // at `wpe::spawn_died_message`: the pipe would fill up on a live wallpaper
+            // and choke the host.
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         if new_session {
@@ -759,7 +763,7 @@ impl WpSys for LiveSys {
             return;
         };
         if matches!(child.try_wait(), Ok(Some(_))) {
-            return; // уже умер сам — статус забран, больше ничего не надо
+            return; // already died by itself — status reaped, nothing more needed
         }
         let pid = child.id() as libc::pid_t;
         if !LiveSys::signal_group(pid, libc::SIGTERM) {
@@ -798,8 +802,8 @@ impl WpSys for LiveSys {
         let Ok(rd) = std::fs::read_dir(path) else {
             return Vec::new();
         };
-        // Порядок отсортированный: у `os.listdir` он был порядком ФС, и
-        // «первый попавшийся пакет обоев» менялся от машины к машине.
+        // Sorted order: with `os.listdir` it was file system order, and "the first
+        // wallpaper package found" changed from machine to machine.
         let mut out: Vec<String> = rd
             .filter_map(|e| e.ok())
             .map(|e| e.file_name().to_string_lossy().into_owned())
@@ -862,7 +866,7 @@ impl WpSys for LiveSys {
         let mut header = vec![0u8; wpe::MOOV_HEADER_BYTES];
         let read = std::fs::File::open(path).and_then(|mut f| f.read(&mut header));
         let Ok(n) = read else {
-            return path.to_string(); // не прочитался — файл не трогаем
+            return path.to_string(); // could not be read — leave the file alone
         };
         header.truncate(n);
         if wpe::moov_at_front(&header) {
@@ -921,7 +925,7 @@ impl WpSys for LiveSys {
         }
         let (_, ext) = wpe::split_ext(source);
         if wpe::IMAGE_EXTS.contains(&ext.to_lowercase().as_str()) {
-            // Картинку берём копированием — ffmpeg тут не нужен.
+            // A picture is taken by copying — no ffmpeg needed here.
             return std::fs::copy(source, output).is_ok();
         }
         if utils::which(wpe::FFMPEG_BIN, None).is_none() {
@@ -943,9 +947,8 @@ impl WpSys for LiveSys {
         if utils::which(wpe::FFMPEG_BIN, None).is_none() {
             return false;
         }
-        // Пишем рядом и переименовываем: оборванный ffmpeg не должен
-        // оставить в кеше половину кадра, которую следующий раз взял бы
-        // как готовую.
+        // Write alongside and rename: an interrupted ffmpeg must not leave half a
+        // frame in the cache that the next run would take as a finished one.
         let part = format!("{output}.part.jpg");
         let argv = wpe::video_still_argv(source, &part, timestamp, screen);
         let ok = matches!(crate::splash_exec::run_capture(&argv, 20.0), Some(r) if r.rc == 0)
@@ -1000,7 +1003,7 @@ impl WpSys for LiveSys {
             return;
         };
         if matches!(child.try_wait(), Ok(Some(_))) {
-            return; // уже завершился — сигналить некому
+            return; // already finished — nobody to signal
         }
         let pid = child.id() as libc::pid_t;
         let sig = if pause { libc::SIGSTOP } else { libc::SIGCONT };
@@ -1012,8 +1015,8 @@ impl WpSys for LiveSys {
         let since = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default();
-        // Метку времени печатает ядро (`engine_update::now_iso`) — второй
-        // копии календаря в дереве быть не должно.
+        // The timestamp is printed by the core (`engine_update::now_iso`) — there
+        // must be no second copy of the calendar in the tree.
         let now = crate::engine_update::now_iso(since.as_secs() as i64);
         let epoch_ms = since.as_millis() as u64;
         if let Err(e) = bridge.notify_video_wallpaper(live, name, announce, &now, epoch_ms) {
@@ -1023,44 +1026,44 @@ impl WpSys for LiveSys {
 }
 
 // ============================================================================
-// Выходы (мониторы): один опрос на весь прогон плана
+// Outputs (monitors): one query for the whole plan run
 // ============================================================================
 
-/// Один выход стола: как он зовётся, какое у него разрешение и где он
-/// стоит.
+/// One desktop output: what it is called, its resolution and where it
+/// stands.
 ///
-/// Имя нужно движкам, умеющим адресовать выход (`swww --outputs`,
-/// `mpvpaper <выход>`), разрешение с положением — тем, кто просит геометрию
-/// окна (`xwinwrap -g ШхВ+X+Y`): без смещения окно второго монитора легло
-/// бы поверх первого. Все три величины приходят из ОДНОГО опроса: раньше
-/// имя брал `wlr-randr`, а разрешение — отдельный `xrandr`, и на одной и
-/// той же машине они могли говорить о РАЗНЫХ мониторах.
+/// The name is needed by engines that can address an output (`swww --outputs`,
+/// `mpvpaper <output>`), the resolution with position by those that ask for
+/// window geometry (`xwinwrap -g WxH+X+Y`): without the offset, the second
+/// monitor's window would land on top of the first. All three values come
+/// from ONE query: previously the name came from `wlr-randr` and the
+/// resolution from a separate `xrandr`, and on the same machine they could
+/// be talking about DIFFERENT monitors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScreenOutput {
-    /// Имя выхода (`DP-1`, `eDP-1`, `HDMI-A-1`).
+    /// Output name (`DP-1`, `eDP-1`, `HDMI-A-1`).
     pub name: String,
-    /// Разрешение выхода, `ШхВ`.
+    /// Output resolution, `WxH`.
     pub resolution: String,
-    /// Где выход стоит на столе, `(X, Y)` в точках. `None` — опрос не
-    /// сказал: такое бывает у урезанного вывода и чужих форм ответа.
+    /// Where the output stands on the desktop, `(X, Y)` in points. `None` — the
+    /// query did not say: this happens with truncated output and foreign reply forms.
     pub position: Option<(i64, i64)>,
 }
 
 impl ScreenOutput {
-    /// Геометрия окна на этом выходе, `ШхВ+X+Y` — то, что просит
-    /// `xwinwrap -g`.
+    /// Window geometry on this output, `WxH+X+Y` — what `xwinwrap -g` asks for.
     ///
-    /// ⚠️ Положение неизвестно — смещение нулевое: получается ровно та
-    /// геометрия, что стояла в команде плана до раскладки по мониторам, и
-    /// обои встают как раньше, а не перестают ставиться.
+    /// ⚠️ Position unknown — the offset is zero: this gives exactly the geometry
+    /// the plan's command had before the per-monitor layout, and the wallpaper
+    /// gets set as before instead of no longer being set.
     pub fn geometry(&self) -> String {
         let (x, y) = self.position.unwrap_or((0, 0));
         format!("{}+{x}+{y}", self.resolution)
     }
 
-    /// Размер выхода в точках. `None` — разрешение не разобралось (урезанный
-    /// вывод, чужая форма ответа): такой выход не участвует в сравнении
-    /// размеров, а не считается нулевым.
+    /// Output size in points. `None` — the resolution did not parse (truncated
+    /// output, a foreign reply form): such an output does not take part in size
+    /// comparison rather than being counted as zero.
     pub fn size(&self) -> Option<(u64, u64)> {
         let (w, h) = self.resolution.split_once(['x', 'X'])?;
         let w: u64 = w.trim().parse().ok()?;
@@ -1072,18 +1075,18 @@ impl ScreenOutput {
     }
 }
 
-/// Имя выхода, когда опросить систему не удалось: «все» на языке движков.
+/// Output name when the system could not be queried: "all" in the engines' language.
 const ANY_OUTPUT: &str = "*";
 
-/// Разрешение, когда опросить систему не удалось.
+/// Resolution when the system could not be queried.
 const ANY_RESOLUTION: &str = "1920x1080";
 
-/// Выходы из JSON `wlr-randr --json` или `hyprctl monitors -j`.
+/// Outputs from the JSON of `wlr-randr --json` or `hyprctl monitors -j`.
 ///
-/// Формы разные, а нужное в обеих есть: у `wlr-randr` размер лежит в
-/// текущем режиме (`modes[i].current`), у `hyprctl` — прямо в мониторе
-/// (`width`/`height`). Выключенные выходы пропускаем: обои на погашенный
-/// монитор не ставятся.
+/// The forms differ, but both have what is needed: in `wlr-randr` the size
+/// lies in the current mode (`modes[i].current`), in `hyprctl` directly in
+/// the monitor (`width`/`height`). Disabled outputs are skipped: wallpapers
+/// are not set on a switched-off monitor.
 pub fn parse_outputs_json(stdout: &str) -> Vec<ScreenOutput> {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(stdout) else {
         return Vec::new();
@@ -1132,9 +1135,9 @@ pub fn parse_outputs_json(stdout: &str) -> Vec<ScreenOutput> {
         if resolution.is_empty() {
             resolution = ANY_RESOLUTION.to_string();
         }
-        // Положение: у `wlr-randr` оно вложено (`position.x`), у `hyprctl`
-        // лежит прямо в мониторе (`x`/`y`). Нет ни того, ни другого —
-        // `None`, и геометрия выйдет с нулевым смещением.
+        // Position: in `wlr-randr` it is nested (`position.x`), in `hyprctl` it lies
+        // directly in the monitor (`x`/`y`). Neither one — `None`, and the geometry
+        // comes out with a zero offset.
         let at = |v: &serde_json::Value, key: &str| -> Option<i64> {
             v.get(key).and_then(|n| n.as_i64())
         };
@@ -1153,19 +1156,19 @@ pub fn parse_outputs_json(stdout: &str) -> Vec<ScreenOutput> {
     out
 }
 
-/// Выходы из `xrandr --current`.
+/// Outputs from `xrandr --current`.
 ///
-/// Берём строки подключённых выходов (`DP-1 connected 1920x1080+0+0 …`):
-/// имя — первое слово, разрешение — размер до первого `+`. Режимы
-/// перечислены ниже отдельными строками, и в них имени нет вовсе — поэтому,
-/// если ни одной строки `connected` не нашлось (урезанный вывод, чужая
-/// локаль), отступаем к прежнему правилу «строка с активным режимом» и
-/// отдаём один безымянный выход.
+/// Take the lines of connected outputs (`DP-1 connected 1920x1080+0+0 …`):
+/// the name is the first word, the resolution is the size up to the first
+/// `+`. Modes are listed below as separate lines and contain no name at all —
+/// so if not a single `connected` line is found (truncated output, a foreign
+/// locale), fall back to the old "line with the active mode" rule and return
+/// one nameless output.
 pub fn parse_xrandr_outputs(stdout: &str) -> Vec<ScreenOutput> {
     let mut out = Vec::new();
     for line in stdout.lines() {
         if line.starts_with(char::is_whitespace) {
-            continue; // строка режима, а не выхода
+            continue; // a mode line, not an output line
         }
         let mut words = line.split_whitespace();
         let Some(name) = words.next() else { continue };
@@ -1180,9 +1183,9 @@ pub fn parse_xrandr_outputs(stdout: &str) -> Vec<ScreenOutput> {
             .filter(|r| r.contains('x'))
             .unwrap_or(ANY_RESOLUTION)
             .to_string();
-        // Смещение выхода печатается той же строкой, что и размер
-        // (`1920x1080+1920+0`), — берём его оттуда же, вторым и третьим
-        // куском.
+        // The output offset is printed on the same line as the size
+        // (`1920x1080+1920+0`) — take it from there too, as the second and third
+        // pieces.
         let position = geometry.and_then(|g| {
             let mut parts = g.split('+').skip(1);
             match (parts.next(), parts.next()) {
@@ -1207,10 +1210,10 @@ pub fn parse_xrandr_outputs(stdout: &str) -> Vec<ScreenOutput> {
     out
 }
 
-/// Чем спрашивать выходы: команда и разбор её вывода.
+/// What to query outputs with: the command and the parser of its output.
 ///
-/// Порядок зависит от сеанса — под X11 первым отвечает `xrandr`, под
-/// Wayland его может не быть вовсе (или он покажет один XWayland-экран).
+/// The order depends on the session — under X11 `xrandr` answers first, under
+/// Wayland it may be absent altogether (or show a single XWayland screen).
 fn output_probes(session_type: &str) -> Vec<Vec<String>> {
     let wlr = vec!["wlr-randr".to_string(), "--json".to_string()];
     let hypr = vec![
@@ -1226,22 +1229,22 @@ fn output_probes(session_type: &str) -> Vec<Vec<String>> {
     }
 }
 
-/// ЕДИНСТВЕННЫЙ источник списка выходов.
+/// The SINGLE source of the output list.
 ///
-/// Раньше правило было размазано: имя монитора добывал свой обход
-/// `wlr-randr`/`hyprctl`, разрешение — свой вызов `xrandr`, и оба брали
-/// ПЕРВОЕ, что попалось. Теперь опрос один, отдаёт он все выходы с именем
-/// и разрешением, и все — метки в командах, раскладка по мониторам,
-/// надзор за полноэкранным окном — спрашивают его.
+/// The rule used to be smeared around: the monitor name came from its own walk
+/// over `wlr-randr`/`hyprctl`, the resolution from its own `xrandr` call, and
+/// both took the FIRST thing they found. Now there is one query, it returns
+/// all outputs with name and resolution, and everyone — the placeholders in
+/// commands, the per-monitor layout, full-screen window supervision — asks it.
 ///
-/// Пустой ответ — законный исход: инструмента опроса может не быть в
-/// системе. Тогда вызывающий обязан поставить обои так, как ставил до
-/// всякого перечисления выходов.
+/// An empty answer is a legitimate outcome: the query tool may be missing
+/// from the system. Then the caller must set the wallpaper the way it did
+/// before any output enumeration.
 fn screen_outputs<S: WpSys>(sys: &mut S, session_type: &str) -> Vec<ScreenOutput> {
     for cmd in output_probes(session_type) {
         let timeout = utils::default_timeout_secs(&cmd) as f64;
         let Some(out) = sys.run(&cmd, timeout) else {
-            continue; // нет такой команды или вышло время
+            continue; // no such command or timed out
         };
         if out.rc != 0 || out.stdout.trim().is_empty() {
             continue;
@@ -1259,23 +1262,23 @@ fn screen_outputs<S: WpSys>(sys: &mut S, session_type: &str) -> Vec<ScreenOutput
 }
 
 // ============================================================================
-// Наблюдения, которые план просит метками
+// Observations the plan requests via placeholders
 // ============================================================================
 
-/// Что уже спросили у системы за этот прогон плана.
+/// What has already been asked of the system during this plan run.
 ///
-/// Наблюдения дорогие, а нужны не каждому шагу: ядро просит их метками
-/// `{monitor}`/`{resolution}`, и спрашиваем мы систему только когда шаг с
-/// меткой ДЕЙСТВИТЕЛЬНО дошёл до исполнения. Иначе установка обоев через
-/// swww дёргала бы `wlr-randr` впустую.
+/// Observations are expensive and not every step needs them: the core requests
+/// them with the `{monitor}`/`{resolution}` placeholders, and we ask the
+/// system only when a step with a placeholder has ACTUALLY reached execution.
+/// Otherwise setting a wallpaper via swww would poke `wlr-randr` for nothing.
 #[derive(Debug, Default)]
 struct Seen {
-    /// Тип сеанса — им выбирается порядок опроса выходов.
+    /// Session type — it selects the order of output queries.
     session: String,
-    /// Выходы, если их уже спрашивали за этот прогон (пустой список —
-    /// спрашивали и не узнали, это НЕ повод спрашивать снова).
+    /// Outputs, if they have already been asked for during this run (an empty
+    /// list means asked and not found out; that is NOT a reason to ask again).
     outputs: Option<Vec<ScreenOutput>>,
-    /// Какой выход подставляется в метки по умолчанию: `None` — первый.
+    /// Which output fills the placeholders by default: `None` — the first one.
     pinned: Option<ScreenOutput>,
 }
 
@@ -1284,7 +1287,7 @@ impl Seen {
         Seen { session: session_type.to_string(), ..Seen::default() }
     }
 
-    /// Выходы этого прогона — опрос делается не больше одного раза.
+    /// Outputs of this run — the query is made at most once.
     fn outputs<S: WpSys>(&mut self, sys: &mut S) -> Vec<ScreenOutput> {
         if self.outputs.is_none() {
             let found = screen_outputs(sys, &self.session);
@@ -1300,8 +1303,8 @@ impl Seen {
         self.outputs.clone().unwrap_or_default()
     }
 
-    /// Чем заполнять метки сейчас: закреплённый выход, иначе первый из
-    /// списка, иначе — «все»/умолчание.
+    /// What to fill the placeholders with now: the pinned output, otherwise the
+    /// first in the list, otherwise "all"/the default.
     fn marks<S: WpSys>(&mut self, sys: &mut S) -> ScreenOutput {
         if let Some(one) = &self.pinned {
             return one.clone();
@@ -1314,20 +1317,20 @@ impl Seen {
     }
 }
 
-/// Выход с наибольшей и наименьшей площадью — крайние из перечисленных.
+/// The outputs with the largest and smallest area — the extremes of those listed.
 ///
-/// ЗАЧЕМ ОБА. Когда на стол идёт ОДНА картинка на всех (пачка обоев,
-/// движок-`Whole`), мерить надо по САМОМУ БОЛЬШОМУ выходу: большой монитор
-/// получит свой размер, маленький картинку ужмёт, и это заметно лучше
-/// обратного — растянутой с маленького. Когда спрашивают «занимает ли окно
-/// весь экран», мерить надо по САМОМУ МАЛЕНЬКОМУ: полноэкранная игра живёт
-/// на своём мониторе, и меркой ей служит он, а не сосед.
+/// WHY BOTH. When ONE picture goes to the whole desktop (a wallpaper pack, a
+/// `Whole` engine), measure by the LARGEST output: the big monitor gets its
+/// own size, the small one shrinks the picture, and that is noticeably better
+/// than the reverse — stretched up from the small one. When asked "does the
+/// window occupy the whole screen", measure by the SMALLEST: a full-screen
+/// game lives on its own monitor, and that is its yardstick, not the neighbor.
 ///
-/// Выход с неразобранным разрешением в сравнении не участвует; список пуст
-/// или ни один размер не прочитался — `None`, и вызывающий делает то же,
-/// что делал без всякого перечисления выходов. При равной площади берётся
-/// выход с меньшим именем: одна и та же машина обязана давать один и тот же
-/// ответ.
+/// An output with an unparsed resolution does not take part in the
+/// comparison; an empty list or no readable size at all gives `None`, and
+/// the caller does the same as without any output enumeration. On equal
+/// area the output with the smaller name wins: the same machine must give
+/// the same answer.
 fn extreme_output(outputs: &[ScreenOutput], biggest: bool) -> Option<&ScreenOutput> {
     let mut best: Option<(&ScreenOutput, u64)> = None;
     for o in outputs {
@@ -1352,29 +1355,30 @@ fn extreme_output(outputs: &[ScreenOutput], biggest: bool) -> Option<&ScreenOutp
     best.map(|(o, _)| o)
 }
 
-/// Самый большой выход — мерка для ОДНОЙ картинки на весь стол.
+/// The largest output — the yardstick for ONE picture on the whole desktop.
 pub fn largest_output(outputs: &[ScreenOutput]) -> Option<&ScreenOutput> {
     extreme_output(outputs, true)
 }
 
-/// Самый маленький выход — мерка для «окно занимает весь свой экран».
+/// The smallest output — the yardstick for "the window occupies its whole screen".
 pub fn smallest_output(outputs: &[ScreenOutput]) -> Option<&ScreenOutput> {
     extreme_output(outputs, false)
 }
 
-/// Выходы живой машины — вход для тех, у кого нет своего шва [`WpSys`].
+/// Outputs of the live machine — the entry point for those without their own [`WpSys`] seam.
 ///
-/// Нужен вкладке «Оформление»: она ставит фоном картинку ИЗ ПАЧКИ и меряет
-/// экран, чтобы выбрать какую. Своего опроса у неё больше нет — правда о
-/// выходах одна на продукт и живёт здесь.
+/// Needed by the «Appearance» tab: it sets a picture FROM A PACK as the
+/// background and measures the screen to choose which one. It no longer has
+/// its own query — the truth about outputs is one per product and lives here.
 pub fn live_screen_outputs(session_type: &str) -> Vec<ScreenOutput> {
     screen_outputs(&mut LiveSys::new(), session_type)
 }
 
-/// Метки шага, которыми план просит наблюдения за выходом.
+/// Step placeholders with which the plan requests output observations.
 ///
-/// `{geometry}` — размер ВМЕСТЕ с положением (`xwinwrap -g`), `{resolution}`
-/// — один размер, и старая метка остаётся для тех, кому смещение не нужно.
+/// `{geometry}` — the size TOGETHER with the position (`xwinwrap -g`),
+/// `{resolution}` — the size alone, and the old placeholder stays for those
+/// who do not need the offset.
 fn asks_about_output(text: &str) -> bool {
     text.contains("{monitor}")
         || text.contains("{resolution}")
@@ -1385,8 +1389,8 @@ fn fill<S: WpSys>(sys: &mut S, text: &str, seen: &mut Seen) -> String {
     fill_marks(sys, text, seen, &|v| v.to_string())
 }
 
-/// [`fill`] для сообщения человеку: при языке справа налево каждая
-/// подстановка — изолят ([`crate::i18n::isolate`]). Командам — [`fill`].
+/// [`fill`] for a message to the person: with a right-to-left language each
+/// substitution is an isolate ([`crate::i18n::isolate`]). For commands — [`fill`].
 fn fill_message<S: WpSys>(sys: &mut S, text: &str, seen: &mut Seen) -> String {
     fill_marks(sys, text, seen, &crate::i18n::isolate)
 }
@@ -1406,49 +1410,49 @@ fn fill_argv<S: WpSys>(sys: &mut S, argv: &[String], seen: &mut Seen) -> Vec<Str
 }
 
 // ============================================================================
-// Таблица движков: чем раскладывать обои по выходам
+// Engine table: how to lay wallpapers out over outputs
 // ============================================================================
 
-/// Как движок покрывает несколько мониторов.
+/// How an engine covers several monitors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Spread {
-    /// Движок кладёт обои на все выходы САМ — команда одна, как была.
-    /// Сюда же попадает всё, чей стол принадлежит окружению (gsettings,
-    /// Plasma, xfconf), и демоны, у которых «все выходы» — умолчание.
+    /// The engine puts the wallpaper on all outputs ITSELF — one command, as it was.
+    /// This also covers everything whose desktop belongs to the environment
+    /// (gsettings, Plasma, xfconf), and daemons for which "all outputs" is the default.
     Whole,
-    /// Одна команда, но выходы надо перечислить: флаг и разделитель имён
+    /// One command, but the outputs must be listed: a flag and a name separator
     /// (`swww img --outputs DP-1,HDMI-A-1`).
     List {
-        /// Флаг, после которого идёт список.
+        /// The flag followed by the list.
         flag: &'static str,
-        /// Чем склеены имена выходов.
+        /// What joins the output names.
         sep: &'static str,
     },
-    /// Команда повторяется по разу на выход, и метки `{monitor}`,
-    /// `{resolution}` и `{geometry}` в ней означают КОНКРЕТНЫЙ выход, а не
-    /// первый.
+    /// The command is repeated once per output, and the `{monitor}`,
+    /// `{resolution}` and `{geometry}` placeholders in it mean a SPECIFIC output,
+    /// not the first one.
     Each,
 }
 
-/// Чем раскладывать обои по выходам — свойство движка, а не догадка кода.
+/// How to lay wallpapers out over outputs — a property of the engine, not a guess of the code.
 ///
-/// Имя строки — `Step::backend`, то самое, которым движок зовёт свой шаг.
-/// Чего нет в таблице, то считается `Whole`: незнакомый движок обязан
-/// вести себя ровно так, как вёл до появления раскладки.
+/// The row name is `Step::backend`, the very one the engine calls its step by.
+/// Anything not in the table is treated as `Whole`: an unfamiliar engine must
+/// behave exactly as it did before the layout appeared.
 const ENGINE_SPREAD: &[(&str, Spread)] = &[
-    // `swww img` без флага кроет выходы по своему умолчанию, а оно менялось
-    // от версии к версии, и демон помнит прежнюю раскладку по выходам.
-    // Перечисляем сами — тогда ответ не зависит ни от версии, ни от памяти
-    // демона.
+    // `swww img` without the flag covers outputs by its own default, which has
+    // changed from version to version, and the daemon remembers the previous
+    // per-output layout. We list them ourselves — then the answer depends neither
+    // on the version nor on the daemon's memory.
     ("swww", Spread::List { flag: "--outputs", sep: "," }),
-    // `hyprctl hyprpaper wallpaper ,путь` — своя форма «всем мониторам»:
-    // пустое имя монитора перед запятой и значит «все».
+    // `hyprctl hyprpaper wallpaper ,path` — its own form of "all monitors":
+    // an empty monitor name before the comma means "all".
     ("hyprpaper", Spread::Whole),
-    // swaybg и wbg без `-o` держат ВСЕ выходы; pcmanfm-qt, feh, gsettings,
-    // Plasma и xfconf-query владеют столом целиком.
+    // swaybg and wbg without `-o` hold ALL outputs; pcmanfm-qt, feh, gsettings,
+    // Plasma and xfconf-query own the whole desktop.
     ("swaybg", Spread::Whole),
     ("wbg", Spread::Whole),
-    // `swaymsg output * bg` — все выходы одной командой.
+    // `swaymsg output * bg` — all outputs with one command.
     ("sway", Spread::Whole),
     ("pcmanfm-qt", Spread::Whole),
     ("feh", Spread::Whole),
@@ -1456,19 +1460,18 @@ const ENGINE_SPREAD: &[(&str, Spread)] = &[
     ("kde-dbus", Spread::Whole),
     ("plasma-apply-wallpaperimage", Spread::Whole),
     ("xfconf-query", Spread::Whole),
-    // mpvpaper принимает РОВНО ОДИН выход позиционным аргументом — на
-    // второй монитор он попадает только вторым запуском.
+    // mpvpaper accepts EXACTLY ONE output as a positional argument — it reaches
+    // the second monitor only with a second launch.
     ("mpvpaper", Spread::Each),
-    // xwinwrap кроет корневое окно X по геометрии `-g ШхВ+X+Y`: куда
-    // попадёт окно, решает смещение. Плану оно приходит меткой
-    // `{geometry}` — своей на каждый выход, поэтому на два монитора
-    // xwinwrap поднимается дважды. Тем же путём (xwinwrap) идут веб-обои
-    // через surf.
+    // xwinwrap covers the X root window by the `-g WxH+X+Y` geometry: the offset
+    // decides where the window goes. The plan gets it as the `{geometry}`
+    // placeholder — its own for each output, so on two monitors xwinwrap is
+    // started twice. Web wallpapers via surf go the same way (xwinwrap).
     ("xwinwrap", Spread::Each),
     ("surf", Spread::Each),
 ];
 
-/// Строка таблицы для движка; незнакомый — `Whole`.
+/// Table row for an engine; an unfamiliar one is `Whole`.
 pub fn engine_spread(backend: &str) -> Spread {
     ENGINE_SPREAD
         .iter()
@@ -1478,14 +1481,14 @@ pub fn engine_spread(backend: &str) -> Spread {
 }
 
 // ============================================================================
-// Исполнитель
+// Executor
 // ============================================================================
 
-/// Живой исполнитель планов обоев.
+/// Live executor of wallpaper plans.
 ///
-/// Состояние — ровно то, что было у `WallpaperApplier`: что сейчас играет,
-/// каким процессом, что вернуть после остановки. Ничего сверх этого
-/// исполнитель не помнит и ни о чём не решает сам.
+/// The state is exactly what `WallpaperApplier` had: what is playing now, by
+/// which process, what to restore after a stop. The executor remembers
+/// nothing beyond that and decides nothing by itself.
 pub struct WallpaperExec<S: WpSys> {
     sys: S,
     de: String,
@@ -1495,98 +1498,98 @@ pub struct WallpaperExec<S: WpSys> {
     current_path: Option<String>,
     current_name: String,
 
-    /// Процесс живых обоев.
+    /// The live wallpaper process.
     process: Option<ProcHandle>,
-    /// Процесс, УДЕРЖИВАЮЩИЙ статичный фон (swaybg/wbg): живёт дольше живых.
+    /// The process HOLDING the static background (swaybg/wbg): it outlives the live ones.
     static_holder: Option<ProcHandle>,
-    /// Процессы обоев на ОСТАЛЬНЫХ мониторах: движки вроде `mpvpaper`
-    /// принимают ровно один выход, поэтому на двух экранах процессов
-    /// столько же, сколько экранов. Спутники живут и умирают вместе с
-    /// главным процессом — иначе «Остановить» гасило бы обои на одном
-    /// мониторе и оставляло их играть на другом.
+    /// Wallpaper processes on the OTHER monitors: engines like `mpvpaper` accept
+    /// exactly one output, so on two screens there are as many processes as
+    /// screens. Companions live and die together with the main process —
+    /// otherwise «Stop» would turn off the wallpaper on one monitor and leave it
+    /// playing on the other.
     companions: Vec<ProcHandle>,
 
-    /// Обои, которые стояли до нас, — их возвращает остановка.
+    /// The wallpaper that was there before us — stopping restores it.
     saved_wallpaper: Option<String>,
-    /// Окружение, в котором эти обои были сохранены.
+    /// The environment in which that wallpaper was saved.
     saved_de: Option<String>,
-    /// Cinnamon 6.8+: прежние `picture-uri-list` и `background-mode` как
-    /// есть (текст GVariant) — остановка возвращает их целиком, с подгонкой,
-    /// цветами и картинками по мониторам.
+    /// Cinnamon 6.8+: the previous `picture-uri-list` and `background-mode` as
+    /// they are (GVariant text) — stopping restores them in full, with fitting,
+    /// colors and per-monitor pictures.
     saved_cinnamon_bg: Option<(String, String)>,
-    /// KDE: ЧУЖОЙ плагин обоев стола, если стол был занят им.
+    /// KDE: a FOREIGN desktop wallpaper plugin, if the desktop was taken by one.
     saved_kde_plugin: Option<String>,
-    /// Подложка под живыми обоями (чёткий кадр ролика) либо размытая
-    /// копия обоев — то, что сейчас стоит картинкой стола вместо настоящей.
+    /// The backdrop under live wallpapers (a sharp movie frame) or a blurred copy
+    /// of the wallpaper — what is currently set as the desktop picture instead of the real one.
     blur_path: Option<String>,
-    /// Подложка, отложенная на после показа ([`wpe::BackdropTiming::AfterShow`]):
-    /// её забирает фоновая дверь [`run_in_slot`] ([`spawn_backdrop`]).
+    /// A backdrop deferred until after showing ([`wpe::BackdropTiming::AfterShow`]):
+    /// the background door [`run_in_slot`] picks it up ([`spawn_backdrop`]).
     pending_backdrop: Option<BackdropJob>,
-    /// Счётчик применений и остановок: подложка, готовая после смены обоев,
-    /// уже не к месту.
+    /// Counter of applies and stops: a backdrop that is ready after the wallpaper
+    /// changed is no longer in place.
     backdrop_generation: u64,
-    /// Идёт постановка подложки: удачный шаг плана не трогает формат и путь
-    /// показанного и не шлёт весть мосту — показано по-прежнему видео.
+    /// The backdrop is being set: a successful plan step does not touch the shown
+    /// format and path and sends no notice to the bridge — video is still what is shown.
     quiet_static: bool,
-    /// Фоновые звуки: отдельный процесс на каждый, порядок — как заводили.
+    /// Background sounds: a separate process for each, in the order they were started.
     ambient: Vec<Ambient>,
 
-    /// Что мосту уже сказано — не то, что с обоями на самом деле.
+    /// What the bridge has already been told — not what is really going on with the wallpaper.
     bridge_live: bool,
     bridge_name: String,
     bridge_said_at: Option<f64>,
     bridge_flag: Option<bool>,
 
-    /// Процесс обоев заморожен надзором за нагрузкой (SIGSTOP).
+    /// The wallpaper process is frozen by load supervision (SIGSTOP).
     perf_paused: bool,
-    /// Приписка «WE-обоя осталась поверх» к итогу текущего применения.
+    /// The "WE wallpaper stayed on top" note for the current apply's result.
     we_note: Option<String>,
-    /// Последнее удачное применение своим хостом — для сторожа падений.
+    /// The last successful apply with our own host — for the crash watcher.
     host_request: Option<HostRequest>,
-    /// Расширение Cinnamon уже снято с обоев (Cinnamon с layer-shell).
+    /// The Cinnamon extension has already been taken off the wallpaper (Cinnamon with layer-shell).
     shell_ext_retired: bool,
 }
 
 // ============================================================================
-// Надзор за нагрузкой
+// Load supervision
 // ============================================================================
 
-/// Что надзор за нагрузкой узнал о машине за один замер.
+/// What load supervision learned about the machine in one sample.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct LoadObservation {
-    /// Батарея ниже порога и не заряжается.
+    /// The battery is below the threshold and not charging.
     pub battery_low: bool,
-    /// Активно полноэкранное окно (и человек разрешил на нём паузу).
+    /// A full-screen window is active (and the person allowed pausing on it).
     pub fullscreen: bool,
-    /// Процесс обоев грузит процессор выше порога.
+    /// The wallpaper process loads the CPU above the threshold.
     pub cpu_high: bool,
 }
 
-/// Настройки надзора на один замер.
+/// Supervision settings for one sample.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MonitorConfig {
-    /// Ставить ли обои на паузу при полноэкранном окне.
+    /// Whether to pause the wallpaper while a full-screen window is up.
     pub pause_on_fullscreen: bool,
-    /// Порог батареи, %.
+    /// Battery threshold, %.
     pub battery_pause_pct: i64,
 }
 
-/// Что делать надзору дальше.
+/// What supervision should do next.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MonitorVerdict {
-    /// Следить дальше.
+    /// Keep watching.
     Continue,
-    /// Следить больше не за чем: процесс сменился, упал или остановлен.
+    /// Nothing left to watch: the process changed, crashed or was stopped.
     Done,
 }
 
-/// Настройки надзора из карты настроек Rexon.
+/// Supervision settings from Rexon's settings map.
 ///
-/// ⭐ Починка: у Python пауза на полноэкранном окне была включена жёстко
-/// (`pause_on_fullscreen = True`) и не слушала человека. Если он снимал
-/// «Останавливать обои, когда их не видно», хост переставал ставить плеер
-/// на паузу, а надзор всё равно замораживал процесс. Теперь решение одно
-/// — та же настройка, по которой паузу делает сам хост.
+/// ⭐ A fix: in Python pausing on a full-screen window was hard-wired on
+/// (`pause_on_fullscreen = True`) and did not listen to the person. If they
+/// unchecked «Stop the wallpaper when it is not visible», the host stopped
+/// pausing the player, but supervision froze the process anyway. Now there
+/// is one decision — the same setting by which the host itself pauses.
 pub fn monitor_config_from(settings: &serde_json::Map<String, serde_json::Value>) -> MonitorConfig {
     let audio = crate::wallpaper_audio::AudioSettings::from_map(settings);
     MonitorConfig {
@@ -1595,7 +1598,7 @@ pub fn monitor_config_from(settings: &serde_json::Map<String, serde_json::Value>
     }
 }
 
-/// Корень кеша пользователя живой машины (`$XDG_CACHE_HOME`, иначе
+/// Root of the live machine's user cache (`$XDG_CACHE_HOME`, otherwise
 /// `~/.cache`).
 fn cache_home_live() -> String {
     match std::env::var("XDG_CACHE_HOME") {
@@ -1604,13 +1607,13 @@ fn cache_home_live() -> String {
     }
 }
 
-/// Настройки надзора с диска — перечитываются на каждом замере, чтобы
-/// правка галочки действовала сразу, без перезапуска обоев.
+/// Supervision settings from disk — re-read on every sample so that toggling
+/// the check box takes effect immediately, without restarting the wallpaper.
 pub fn monitor_config_live() -> MonitorConfig {
     monitor_config_from(&crate::settings::load_settings(&crate::settings::settings_file()))
 }
 
-/// Разряжена ли батарея — порт `_is_battery_low` (первая батарея `BAT*`).
+/// Whether the battery is low — port of `_is_battery_low` (the first `BAT*` battery).
 fn battery_low<S: WpSys>(sys: &mut S, threshold: i64) -> bool {
     if !sys.is_dir(wpe::POWER_SUPPLY_DIR) {
         return false;
@@ -1632,8 +1635,8 @@ fn battery_low<S: WpSys>(sys: &mut S, threshold: i64) -> bool {
     false
 }
 
-/// Об отсутствующем инструменте опознания пишем в журнал ОДИН раз: замер
-/// идёт каждые 5 секунд, и журнал заваливался бы одной и той же строкой.
+/// A missing detection tool is logged ONCE: a sample is taken every 5
+/// seconds, and the journal would be flooded with the same line.
 fn probe_tool<S: WpSys>(sys: &mut S, name: &str) -> bool {
     if sys.has_tool(name) {
         return true;
@@ -1650,11 +1653,11 @@ fn probe_tool<S: WpSys>(sys: &mut S, name: &str) -> bool {
     false
 }
 
-/// Активно ли полноэкранное окно — порт `_is_fullscreen_app_active`. Чем
-/// спрашивать и как разбирать ответ — движок.
+/// Whether a full-screen window is active — port of `_is_fullscreen_app_active`.
+/// What to ask and how to parse the answer is up to the engine.
 ///
-/// `wallpaper_pid` — процесс, который прямо сейчас рисует обои: его окно
-/// «окном поверх обоев» не считается (см. [`wpe::WALLPAPER_SAFE_WINDOW_TYPES`]).
+/// `wallpaper_pid` — the process drawing the wallpaper right now: its window
+/// does not count as "a window over the wallpaper" (see [`wpe::WALLPAPER_SAFE_WINDOW_TYPES`]).
 fn fullscreen_active<S: WpSys>(
     sys: &mut S,
     de: &str,
@@ -1671,20 +1674,20 @@ fn fullscreen_active<S: WpSys>(
             let Some(out) = ok_out(sys.run(&wpe::xdotool_geometry_argv(), 5.0)) else {
                 return false;
             };
-            // ⚠️ Мерка — САМЫЙ МАЛЕНЬКИЙ выход, а не первый попавшийся: окно
-            // во весь экран занимает СВОЙ монитор, и на мониторе поменьше оно
-            // меньше первого — прежняя мерка «первое разрешение» такое окно
-            // просто не замечала, и обои не вставали на паузу. Выходы не
-            // перечислились — остаётся умолчание движка, как было.
+            // ⚠️ The yardstick is the SMALLEST output, not the first one found: a
+            // full-screen window occupies ITS OWN monitor, and on a smaller monitor it
+            // is smaller than the first — the old "first resolution" yardstick simply
+            // did not notice such a window, and the wallpaper did not pause. Outputs
+            // not enumerated — the engine default stays, as before.
             let outputs = screen_outputs(sys, session_type);
             let screen = smallest_output(&outputs)
                 .map(|o| o.resolution.clone())
                 .unwrap_or_else(|| ANY_RESOLUTION.to_string());
-            // ⚠️ Одной геометрии мало: активным окном оконный менеджер
-            // называет и сам рабочий стол, а обои и есть рабочий стол во
-            // весь экран, — иначе пауза стояла бы всегда. Решение одно на
-            // все надзиратели и живёт в ядре звука обоев (правило #12):
-            // хост обоев спрашивает ту же функцию.
+            // ⚠️ Geometry alone is not enough: the window manager also calls the
+            // desktop itself the active window, and the wallpaper is exactly a
+            // full-screen desktop — otherwise the pause would always be on. The
+            // decision is one for all supervisors and lives in the wallpaper sound
+            // core (rule #12): the wallpaper host asks the same function.
             let has_xprop = sys.has_tool("xprop");
             crate::wallpaper_audio::x11_window_conditions(
                 &out.stdout,
@@ -1716,8 +1719,8 @@ fn fullscreen_active<S: WpSys>(
             if id.is_empty() {
                 return false;
             }
-            // Состояние окна отдаёт сам KWin (`getWindowInfo`); спрашиваем
-            // тем qdbus, что есть, — разбор понимает его вид ответа.
+            // The window state is given by KWin itself (`getWindowInfo`); ask with
+            // whichever qdbus exists — the parser understands its answer form.
             for tool in ["qdbus6", "qdbus"] {
                 if !sys.has_tool(tool) {
                     continue;
@@ -1739,7 +1742,7 @@ fn fullscreen_active<S: WpSys>(
     }
 }
 
-/// Грузит ли процесс процессор выше порога — порт `_is_process_cpu_high`.
+/// Whether the process loads the CPU above the threshold — port of `_is_process_cpu_high`.
 fn cpu_high<S: WpSys>(sys: &mut S, pid: i64) -> bool {
     let Some(out) = sys.run(&wpe::ps_cpu_argv(pid), 5.0) else {
         return false;
@@ -1756,9 +1759,9 @@ fn cpu_high<S: WpSys>(sys: &mut S, pid: i64) -> bool {
     }
 }
 
-/// Один замер надзора. Идёт БЕЗ замка исполнителя: опрос оконного
-/// менеджера и `ps` — это десятки миллисекунд, и окно в это время не должно
-/// видеть обои «занятыми».
+/// One supervision sample. Runs WITHOUT the executor lock: querying the
+/// window manager and `ps` takes tens of milliseconds, and the window must
+/// not see the wallpaper as "busy" meanwhile.
 pub fn observe_load<S: WpSys>(
     sys: &mut S,
     de: &str,
@@ -1773,22 +1776,23 @@ pub fn observe_load<S: WpSys>(
     }
 }
 
-/// Поднять живой надзор за процессом, который сейчас рисует обои.
+/// Start live supervision of the process currently drawing the wallpaper.
 ///
-/// Порт `_start_performance_monitor` + `_performance_monitor_loop`: замер
-/// раз в [`wpe::MONITOR_INTERVAL_SEC`], решения — у исполнителя
-/// ([`WallpaperExec::monitor_apply`]). Надзор кончается сам, как только
-/// процесс сменился, упал или остановлен, — поэтому звать его можно после
-/// каждого применения живых обоев, без учёта прежнего потока.
+/// Port of `_start_performance_monitor` + `_performance_monitor_loop`: a
+/// sample every [`wpe::MONITOR_INTERVAL_SEC`], decisions are the executor's
+/// ([`WallpaperExec::monitor_apply`]). Supervision ends by itself as soon as
+/// the process changed, crashed or was stopped — so it can be called after
+/// every live wallpaper apply, without tracking the previous thread.
 ///
-/// Окно само его не зовёт: применения идут через [`run_in_slot`], и надзор
-/// поднимается там — в одном месте на все страницы. Шов обобщён ради
-/// сверок: замеры идут тем же швом, что у исполнителя в слоте.
+/// The window does not call it itself: applies go through [`run_in_slot`],
+/// and supervision is started there — in one place for all pages. The seam
+/// is generalized for the checks: samples go through the same seam as the
+/// executor in the slot.
 pub fn spawn_load_monitor<S: WpSys + Default + Send + 'static>(slot: ExecSlot<S>) {
     let target = {
         let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
         guard.as_mut().and_then(|exec| {
-            // Следить нужно не за всякими живыми обоями — решает ядро.
+            // Not every live wallpaper needs watching — the core decides.
             if !format_wants_load_monitor(exec.current_format()) {
                 return None;
             }
@@ -1827,28 +1831,29 @@ pub fn spawn_load_monitor<S: WpSys + Default + Send + 'static>(slot: ExecSlot<S>
 }
 
 // ============================================================================
-// Подложка после показа
+// Backdrop after showing
 // ============================================================================
 
-/// Отложенная подложка: что показано и откуда брать кадр.
+/// A deferred backdrop: what is shown and where to take the frame from.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BackdropJob {
-    /// Файл, из которого брать кадр.
+    /// The file to take the frame from.
     pub source: String,
     cache_home: String,
     session_type: String,
     generation: u64,
-    /// Формат и путь показанного в миг постановки в очередь.
+    /// Format and path of what was shown at the moment of queueing.
     shown: (Option<String>, Option<String>),
-    /// Когда показ удался (часы шва исполнителя) — для строки журнала.
+    /// When showing succeeded (the executor seam's clock) — for the journal line.
     shown_at: f64,
 }
 
-/// Чёткий кадр ролика под экран — из кеша либо ffmpeg. Один на подложку и
-/// на кадр вместо падающих обоев. Кадр масштабируется под самый большой
-/// выход ([`wpe::still_screen_size`]); опросить выходы не вышло — родной
-/// размер ролика. Повторное применение тех же обоев на том же экране
-/// берёт готовый кадр ([`wpe::video_still_key`]).
+/// A sharp movie frame for the screen — from the cache or ffmpeg. One for the
+/// backdrop and for the frame shown instead of a crashing wallpaper. The
+/// frame is scaled to the largest output ([`wpe::still_screen_size`]); if
+/// the outputs could not be queried — the movie's native size. Applying the
+/// same wallpaper again on the same screen takes the ready frame
+/// ([`wpe::video_still_key`]).
 pub fn prepare_video_still<S: WpSys>(sys: &mut S, cache_home: &str, session_type: &str, source: &str) -> Option<String> {
     let sizes: Vec<(u64, u64)> = screen_outputs(sys, session_type).iter().filter_map(ScreenOutput::size).collect();
     let screen = wpe::still_screen_size(&sizes);
@@ -1861,20 +1866,21 @@ pub fn prepare_video_still<S: WpSys>(sys: &mut S, cache_home: &str, session_type
     }
     let ok = sys.extract_still(source, &out, wpe::BACKDROP_FRAME_SEC, screen)
         || sys.extract_still(source, &out, wpe::BACKDROP_FALLBACK_SEC, screen);
-    // После доставания — ужать кеш до предела: этот кадр не трогается,
-    // недописанные остатки и давно не нужные кадры уходят.
+    // After extracting — shrink the cache to the limit: this frame is untouched,
+    // unfinished leftovers and long-unneeded frames go away.
     if let Some((dir, _)) = out.rsplit_once('/') {
         sys.prune_video_stills(dir, &out);
     }
     ok.then_some(out)
 }
 
-/// Отложенная подложка — в фоне, после показа ([`wpe::BackdropTiming::AfterShow`]).
+/// A deferred backdrop — in the background, after showing ([`wpe::BackdropTiming::AfterShow`]).
 ///
-/// Кадр (ffmpeg) готовится БЕЗ замка исполнителя своим швом — окно и
-/// следующее применение его не ждут; ставится — под замком, если обои за
-/// это время не сменились ([`WallpaperExec::finish_backdrop`]). Ошибка —
-/// предупреждение в журнал: итог применения уже сказан по видео.
+/// The frame (ffmpeg) is prepared WITHOUT the executor lock through its own
+/// seam — the window and the next apply do not wait for it; it is set under
+/// the lock, if the wallpaper has not changed in the meantime
+/// ([`WallpaperExec::finish_backdrop`]). An error is a warning in the
+/// journal: the apply result has already been reported for the video.
 pub fn spawn_backdrop<S: WpSys + Default + Send + 'static>(slot: ExecSlot<S>) {
     let job = {
         let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
@@ -1899,44 +1905,44 @@ pub fn spawn_backdrop<S: WpSys + Default + Send + 'static>(slot: ExecSlot<S>) {
 }
 
 // ============================================================================
-// Исполнитель процесса: один на все страницы окна
+// The process executor: one for all window pages
 // ============================================================================
 
-/// Слот исполнителя обоев: пуст до первого обращения.
+/// Wallpaper executor slot: empty until first use.
 pub type ExecSlot<S> = std::sync::Arc<Mutex<Option<WallpaperExec<S>>>>;
 
-/// Слот живого исполнителя.
+/// The live executor slot.
 pub type LiveSlot = ExecSlot<LiveSys>;
 
-/// Слот исполнителя обоев процесса — ОДИН на все страницы окна.
+/// The process's wallpaper executor slot — ONE for all window pages.
 ///
-/// ПОЧЕМУ ОДИН. Исполнитель помнит, какой процесс сейчас рисует обои, что
-/// стояло на столе до нас и что вернуть после остановки. Пока у «Настроек»
-/// и «Steam» были свои исполнители, видео, поставленное одной страницей,
-/// другая не видела и снять не могла, а применение из второй ставило второй
-/// хост поверх первого.
+/// WHY ONE. The executor remembers which process is drawing the wallpaper
+/// now, what was on the desktop before us and what to restore after a stop.
+/// While «Settings» and «Steam» had their own executors, a video set by one
+/// page was invisible to the other, which could not stop it, and an apply
+/// from the second page put a second host on top of the first.
 ///
-/// ПОЧЕМУ В ЯДРЕ, а не в модуле окна. Всё, что должно быть одним на
-/// процесс, уже здесь: живой шов [`LiveSys`] и надзор за нагрузкой
-/// ([`spawn_load_monitor`]), которому нужен именно этот слот. Слот в модуле
-/// одной страницы (так было в `steam_workers`) делал бы остальные страницы
-/// зависимыми от неё ради общего состояния, а отдельный модуль окна был бы
-/// второй дверью к тому же исполнителю. Здесь же — и единственная дверь
-/// применения с надзором ([`run_in_slot`]).
+/// WHY IN THE CORE and not in a window module. Everything that must be one
+/// per process is already here: the live seam [`LiveSys`] and load
+/// supervision ([`spawn_load_monitor`]), which needs exactly this slot. A
+/// slot in the module of a single page (as it was in `steam_workers`) would
+/// make the other pages depend on it for shared state, and a separate window
+/// module would be a second door to the same executor. Here is also the only
+/// door for applying with supervision ([`run_in_slot`]).
 ///
-/// ⚠️ Граница: слот один на КОПИЮ ядра. Все Rust-страницы окна живут в
-/// одном процессе `rexon-main-window` (крейт `rexon-gui` вшит статически)
-/// и видят общий слот.
+/// ⚠️ Boundary: one slot per COPY of the core. All Rust pages of the window
+/// live in one `rexon-main-window` process (the `rexon-gui` crate is linked
+/// statically) and see the shared slot.
 pub fn live_slot() -> LiveSlot {
     static SLOT: OnceLock<LiveSlot> = OnceLock::new();
     SLOT.get_or_init(|| std::sync::Arc::new(Mutex::new(None))).clone()
 }
 
-/// Сделать работу исполнителем слота, заведя его при первом обращении
-/// (окружение опознаётся швом). Замок ждётся — для фоновых потоков.
+/// Do work with the slot's executor, creating it on first use (the
+/// environment is detected by the seam). Waits for the lock — for background threads.
 ///
-/// Замок отравлен — значит, фоновое применение упало с паникой; состояние
-/// исполнителя от этого не портится, работать с ним можно.
+/// A poisoned lock means a background apply panicked; the executor's state
+/// is not corrupted by that, it is fine to keep working with it.
 pub fn with_slot<S: WpSys + Default, R>(
     slot: &Mutex<Option<WallpaperExec<S>>>,
     work: impl FnOnce(&mut WallpaperExec<S>) -> R,
@@ -1946,9 +1952,10 @@ pub fn with_slot<S: WpSys + Default, R>(
     work(exec)
 }
 
-/// То же без ожидания: `None` — исполнитель сейчас занят (применением с
-/// любой страницы либо замером надзора). Для действий из потока окна:
-/// ждать замок там значило бы заморозить окно на время команд оболочки.
+/// The same without waiting: `None` — the executor is busy right now (with
+/// an apply from any page or a supervision sample). For actions from the
+/// window thread: waiting for the lock there would freeze the window for the
+/// duration of shell commands.
 pub fn try_with_slot<S: WpSys + Default, R>(
     slot: &Mutex<Option<WallpaperExec<S>>>,
     work: impl FnOnce(&mut WallpaperExec<S>) -> R,
@@ -1962,10 +1969,11 @@ pub fn try_with_slot<S: WpSys + Default, R>(
     Some(work(exec))
 }
 
-/// Применение обоев исполнителем слота и затем надзор за нагрузкой — ОДНА
-/// дверь для всех страниц окна. Замок отпускается ДО надзора: надзор сам
-/// берёт его на каждом замере. Нужен ли надзор этим обоям, решает
-/// [`spawn_load_monitor`] (видео и YouTube — да, прочим — нет).
+/// Applying a wallpaper with the slot's executor and then load supervision —
+/// ONE door for all window pages. The lock is released BEFORE supervision:
+/// supervision takes it itself on each sample. Whether this wallpaper needs
+/// supervision is decided by [`spawn_load_monitor`] (video and YouTube — yes,
+/// others — no).
 pub fn run_in_slot<S: WpSys + Default + Send + 'static, R>(
     slot: &ExecSlot<S>,
     work: impl FnOnce(&mut WallpaperExec<S>) -> R,
@@ -1981,7 +1989,7 @@ pub fn run_in_slot<S: WpSys + Default + Send + 'static, R>(
 }
 
 impl<S: WpSys> WallpaperExec<S> {
-    /// Исполнитель для явно названного окружения — так его зовут сверки.
+    /// An executor for an explicitly named environment — the way the checks call it.
     pub fn with_env(sys: S, de: &str, session_type: &str) -> WallpaperExec<S> {
         WallpaperExec {
             sys,
@@ -2013,8 +2021,8 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Исполнитель, опознавший окружение сам — по тем же переменным, по
-    /// которым его опознаёт движок.
+    /// An executor that detected the environment itself — by the same variables
+    /// the engine detects it by.
     pub fn detect(mut sys: S) -> WallpaperExec<S> {
         let de = wpe::detect_de(&sys.env("XDG_CURRENT_DESKTOP"), &sys.env("DESKTOP_SESSION"));
         let session = wpe::detect_session_type(
@@ -2025,19 +2033,19 @@ impl<S: WpSys> WallpaperExec<S> {
         WallpaperExec::with_env(sys, &de, &session)
     }
 
-    /// Опознанное окружение.
+    /// Detected environment.
     pub fn de(&self) -> &str {
         &self.de
     }
 
-    /// Опознанный тип сессии.
+    /// Detected session type.
     pub fn session_type(&self) -> &str {
         &self.session_type
     }
 
-    /// Тип сеанса для плана статичных обоев: у Deepin — `treeland`, если
-    /// композитор сеанса и правда Treeland ([`crate::dde::treeland_session_live`]);
-    /// иначе план Deepin — отказ.
+    /// Session type for the static wallpaper plan: for Deepin it is `treeland` if
+    /// the session compositor really is Treeland ([`crate::dde::treeland_session_live`]);
+    /// otherwise the Deepin plan is a refusal.
     fn static_session(&self) -> String {
         if self.de == "deepin" && crate::dde::treeland_session_live() {
             wpe::TREELAND_SESSION.to_string()
@@ -2046,27 +2054,27 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Формат того, что играет сейчас.
+    /// Format of what is playing now.
     pub fn current_format(&self) -> Option<&str> {
         self.current_format.as_deref()
     }
 
-    /// Путь того, что играет сейчас.
+    /// Path of what is playing now.
     pub fn current_path(&self) -> Option<&str> {
         self.current_path.as_deref()
     }
 
-    /// Название сцены для моста (его знает только тот, кто применял обои).
+    /// Scene name for the bridge (only the one who applied the wallpaper knows it).
     pub fn set_current_name(&mut self, name: &str) {
         self.current_name = name.to_string();
     }
 
-    /// Доступ к шву — мосту и сверкам, чтобы посмотреть на побочный след.
+    /// Access to the seam — for the bridge and the checks, to look at the side-effect trail.
     pub fn sys_mut(&mut self) -> &mut S {
         &mut self.sys
     }
 
-    /// Какие из интересных движку программ есть в системе.
+    /// Which of the programs the engine cares about exist on the system.
     pub fn plan_tools(&mut self) -> Vec<String> {
         wpe::PLAN_TOOLS
             .iter()
@@ -2075,7 +2083,7 @@ impl<S: WpSys> WallpaperExec<S> {
             .collect()
     }
 
-    /// Подсказки об именах пакетов текущего дистрибутива.
+    /// Package name hints for the current distribution.
     pub fn hints(&mut self) -> wpe::Hints {
         wpe::Hints {
             mpvpaper: self.sys.package_hint("mpvpaper"),
@@ -2087,9 +2095,9 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    // ── прогон плана ──────────────────────────────────────────────────────
+    // ── plan run ──────────────────────────────────────────────────────────
 
-    /// Исполнить план движка: первый шаг, давший исход, и есть ответ.
+    /// Execute an engine plan: the first step that produced an outcome is the answer.
     pub fn run_plan(&mut self, steps: &[wpe::Step], path: &str) -> WallpaperResult {
         let mut seen = Seen::new(&self.session_type);
         for step in steps {
@@ -2097,8 +2105,8 @@ impl<S: WpSys> WallpaperExec<S> {
                 return res;
             }
         }
-        // Сюда попадаем, только если план кончился, а исхода не дал ни один
-        // шаг: планы движка заканчиваются терминальным шагом или отказом.
+        // We get here only if the plan ended without any step producing an outcome:
+        // engine plans end with a terminal step or a refusal.
         log_line(
             "error",
             &format!("план обоев кончился без исхода ({} шагов)", steps.len()),
@@ -2106,7 +2114,7 @@ impl<S: WpSys> WallpaperExec<S> {
         WallpaperResult::fail(crate::i18n::tr("Could not apply the wallpaper"))
     }
 
-    /// Один шаг плана. `None` — шаг не сработал, пробуем следующий.
+    /// One plan step. `None` — the step did not work, try the next one.
     fn run_step(
         &mut self,
         step: &wpe::Step,
@@ -2135,10 +2143,10 @@ impl<S: WpSys> WallpaperExec<S> {
 
         let (ok, stderr) = match step.kind.as_str() {
             wpe::step_kind::RUN => {
-                // Команд может быть несколько — по одной на выход. Успехом
-                // считается, если обои встали ХОТЯ БЫ на один: отказ на
-                // втором мониторе не повод переставлять всё запасным
-                // движком и терять уже поставленное на первом.
+                // There may be several commands — one per output. It counts as success
+                // if the wallpaper got set on AT LEAST one: a failure on the second
+                // monitor is no reason to redo everything with a fallback engine and
+                // lose what is already set on the first.
                 let mut any_ok = false;
                 let mut first_err = String::new();
                 for (output, cmd) in &cmds {
@@ -2148,9 +2156,8 @@ impl<S: WpSys> WallpaperExec<S> {
                         as f64;
                     let out = self.sys.run(cmd, timeout);
                     let (step_ok, err) = match &out {
-                        // Команды нет или вышло время: успехом это
-                        // считается, только если сам шаг об этом попросил
-                        // (`ok_on_none`).
+                        // No command or timed out: this counts as success only
+                        // if the step itself asked for it (`ok_on_none`).
                         None => (step.ok_on_none, String::new()),
                         Some(r) => (r.rc == 0, r.stderr.clone()),
                     };
@@ -2183,7 +2190,7 @@ impl<S: WpSys> WallpaperExec<S> {
             wpe::step_kind::COSMIC_BG => {
                 let ok = self.write_cosmic_bg(path);
                 if ok {
-                    // Наш прежний swaybg/wbg лёг бы поверх cosmic-bg.
+                    // Our former swaybg/wbg would lie on top of cosmic-bg.
                     self.kill_static_holder();
                 }
                 (ok, String::new())
@@ -2224,14 +2231,14 @@ impl<S: WpSys> WallpaperExec<S> {
         self.failed(step, seen, &stderr)
     }
 
-    /// `$XDG_CONFIG_HOME` сеанса (или `~/.config`).
+    /// The session's `$XDG_CONFIG_HOME` (or `~/.config`).
     fn config_home(&mut self) -> String {
         let home = self.home();
         let cfg = self.sys.env("XDG_CONFIG_HOME");
         utils::config_home(if cfg.is_empty() { None } else { Some(cfg.as_str()) }, &home)
     }
 
-    /// COSMIC: картинка в родной ключ cosmic-bg ([`wpe::apply_cosmic_bg`]).
+    /// COSMIC: the picture into cosmic-bg's native key ([`wpe::apply_cosmic_bg`]).
     fn write_cosmic_bg(&mut self, path: &str) -> bool {
         let cfg = self.config_home();
         let sys = std::cell::RefCell::new(&mut self.sys);
@@ -2246,10 +2253,11 @@ impl<S: WpSys> WallpaperExec<S> {
         )
     }
 
-    /// Записала ли программа обои к себе в настройки (`Step::verify_ini`).
+    /// Whether the program wrote the wallpaper into its own settings (`Step::verify_ini`).
     ///
-    /// Запись у pcmanfm-qt идёт уже запущенным экземпляром, то есть не
-    /// мгновенно: файл смотрим несколько раз с короткой паузой (до ~2 с).
+    /// With pcmanfm-qt the write is done by the already running instance, that
+    /// is, not instantly: the file is checked several times with a short pause
+    /// (up to ~2 s).
     fn ini_written(&mut self, check: &wpe::IniCheck, path: &str) -> bool {
         let home = self.home();
         let cfg = self.sys.env("XDG_CONFIG_HOME");
@@ -2270,17 +2278,18 @@ impl<S: WpSys> WallpaperExec<S> {
         false
     }
 
-    /// Команды шага, разложенные по выходам: пара «имя выхода, команда».
+    /// The step's commands laid out over outputs: pairs of "output name, command".
     ///
-    /// Сколько команд получится, решает [`ENGINE_SPREAD`] — свойство самого
-    /// движка, а не догадка по виду команды. Имя выхода в паре нужно только
-    /// журналу: пустая строка значит «команда общая, про выходы в ней ничего».
+    /// How many commands there will be is decided by [`ENGINE_SPREAD`] — a
+    /// property of the engine itself, not a guess from the look of the command.
+    /// The output name in the pair is only for the journal: an empty string
+    /// means "the command is shared, it says nothing about outputs".
     ///
-    /// ⚠️ Защита от дурака одна на все ветки: как только чего-то не хватает
-    /// — выходы не перечислились, инструмента опроса нет, в команде нет
-    /// меток выхода — отдаём РОВНО ту команду, что была в плане. Обои
-    /// встанут так же, как вставали до появления раскладки, а не перестанут
-    /// ставиться вовсе.
+    /// ⚠️ One foolproofing rule for all branches: as soon as something is
+    /// missing — outputs not enumerated, no query tool, no output placeholders
+    /// in the command — return EXACTLY the command that was in the plan. The
+    /// wallpaper gets set the same way as before the layout appeared, instead of
+    /// not being set at all.
     fn spread_argv(&mut self, step: &wpe::Step, seen: &mut Seen) -> Vec<(String, Vec<String>)> {
         let whole = |sys: &mut S, seen: &mut Seen| {
             vec![(String::new(), fill_argv(sys, &step.argv, seen))]
@@ -2292,9 +2301,9 @@ impl<S: WpSys> WallpaperExec<S> {
                 let mut argv = fill_argv(&mut self.sys, &step.argv, seen);
                 let names: Vec<&str> =
                     outputs.iter().map(|o| o.name.as_str()).collect();
-                // Нечего перечислять; движок уже назвал выходы сам; имя
-                // выхода нам неизвестно («все») — во всех трёх случаях
-                // команда уходит как была.
+                // Nothing to list; the engine already named the outputs itself; the
+                // output name is unknown to us ("all") — in all three cases the
+                // command goes out as it was.
                 if names.is_empty()
                     || argv.iter().any(|a| a == flag)
                     || names.contains(&ANY_OUTPUT)
@@ -2309,8 +2318,8 @@ impl<S: WpSys> WallpaperExec<S> {
             Spread::Each => {
                 let marked = step.argv.iter().any(|a| asks_about_output(a));
                 if !marked {
-                    // Повтор одной и той же команды ничего не добавит:
-                    // выбирать выход ей нечем.
+                    // Repeating the same command adds nothing:
+                    // it has no way to choose an output.
                     log_line(
                         "debug",
                         &format!(
@@ -2322,13 +2331,13 @@ impl<S: WpSys> WallpaperExec<S> {
                 }
                 let outputs = seen.outputs(&mut self.sys);
                 if outputs.len() < 2 {
-                    // Один выход или ни одного — команда одна, метки в ней
-                    // заполнит общий путь.
+                    // One output or none — one command, its placeholders
+                    // are filled by the common path.
                     return whole(&mut self.sys, seen);
                 }
-                // ⚠️ Защита от дурака: команда выбирает монитор геометрией,
-                // а опрос не сказал, где мониторы стоят. Вторая команда
-                // легла бы поверх первой — уходит одна, как было.
+                // ⚠️ Foolproofing: the command chooses the monitor by geometry,
+                // and the query did not say where the monitors stand. A second
+                // command would land on top of the first — one goes out, as before.
                 let by_geometry = step
                     .argv
                     .iter()
@@ -2356,7 +2365,7 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Xfce: перечислить свойства фона и записать путь в каждое `/last-image`.
+    /// Xfce: list the background properties and write the path into each `/last-image`.
     fn run_xfconf(
         &mut self,
         step: &wpe::Step,
@@ -2390,12 +2399,12 @@ impl<S: WpSys> WallpaperExec<S> {
         WallpaperResult::fail(step.alt_message.clone())
     }
 
-    /// Запуск процесса обоев (или удерживающего фон демона).
+    /// Launching the wallpaper process (or the daemon holding the background).
     ///
-    /// Команд может быть несколько — по одной на монитор (движки вроде
-    /// `mpvpaper` принимают ровно один выход). Первая держит стол и живёт
-    /// как «тот самый» процесс обоев, остальные идут спутниками: их
-    /// снимают, замораживают и размораживают вместе с ней.
+    /// There may be several commands — one per monitor (engines like `mpvpaper`
+    /// accept exactly one output). The first holds the desktop and lives as "the"
+    /// wallpaper process, the rest go as companions: they are stopped, frozen
+    /// and unfrozen together with it.
     fn run_spawn(
         &mut self,
         step: &wpe::Step,
@@ -2405,8 +2414,8 @@ impl<S: WpSys> WallpaperExec<S> {
     ) -> WallpaperResult {
         let kind = step.kind.as_str();
         if kind == wpe::step_kind::SPAWN_SESSION {
-            // Прежние живые обои снимаем без отката фона: новые встают
-            // сразу, и откат мигнул бы старой картинкой.
+            // The previous live wallpaper is stopped without rolling back the background:
+            // the new one goes up right away, and a rollback would flash the old picture.
             self.kill_running();
         }
         if kind == wpe::step_kind::SPAWN_HOLD {
@@ -2426,10 +2435,10 @@ impl<S: WpSys> WallpaperExec<S> {
             }
         };
 
-        // Запуск удался — это ещё НЕ значит, что обои встали: все шаги
-        // `spawn*` поднимают процесс, который рисует (или держит) стол,
-        // пока жив, а мёртвый умирает через миллисекунды. Отсрочка и её
-        // обоснование живут в движке, своей копии здесь нет.
+        // The launch succeeded — that does NOT yet mean the wallpaper is set: all
+        // `spawn*` steps start a process that draws (or holds) the desktop while it
+        // lives, and a dead one dies within milliseconds. The grace period and its
+        // justification live in the engine, there is no copy of it here.
         if let Some(rc) = self.wait_alive(proc) {
             log_line(
                 "error",
@@ -2442,9 +2451,9 @@ impl<S: WpSys> WallpaperExec<S> {
                 .unwrap_or_else(|| WallpaperResult::fail(died));
         }
 
-        // Остальные мониторы. Неудача на них НЕ роняет весь шаг: на первом
-        // обои уже идут, и уводить план на запасной движок значило бы
-        // погасить то, что встало.
+        // The other monitors. A failure on them does NOT bring down the whole step:
+        // the wallpaper is already running on the first, and moving the plan to a
+        // fallback engine would turn off what got set.
         for (output, cmd) in cmds.iter().skip(1) {
             let extra = match self.sys.spawn(cmd, new_session) {
                 Ok(p) => p,
@@ -2471,7 +2480,7 @@ impl<S: WpSys> WallpaperExec<S> {
         }
 
         if kind == wpe::step_kind::SPAWN_HOLD {
-            // swaybg/wbg не «ставят и выходят» — они ДЕРЖАТ фон, пока живы.
+            // swaybg/wbg do not "set and exit" — they HOLD the background while alive.
             self.static_holder = Some(proc);
             return self.succeeded(step, path, seen, None);
         }
@@ -2480,7 +2489,7 @@ impl<S: WpSys> WallpaperExec<S> {
         self.succeeded(step, path, seen, pid)
     }
 
-    /// Пережил ли процесс отсрочку? `None` — жив, иначе код возврата.
+    /// Did the process survive the grace period? `None` — alive, otherwise the exit code.
     fn wait_alive(&mut self, proc: ProcHandle) -> Option<i64> {
         let deadline = self.sys.monotonic() + wpe::SPAWN_ALIVE_GRACE_SEC;
         loop {
@@ -2510,8 +2519,8 @@ impl<S: WpSys> WallpaperExec<S> {
         self.current_format = Some(step.format.clone());
         self.current_path = Some(path.to_string());
         let fmt = step.format.clone();
-        // Каким путём поставлены обои — только для журнала: покупателю
-        // служебное имя пути не показывается (`WALLPAPER_SET_MESSAGE`).
+        // Which path set the wallpaper — only for the journal: the internal path
+        // name is not shown to the customer (`WALLPAPER_SET_MESSAGE`).
         log_line(
             "info",
             &format!("обои поставлены: путь {}, формат {fmt}", step.backend),
@@ -2537,19 +2546,19 @@ impl<S: WpSys> WallpaperExec<S> {
         Some(WallpaperResult::fail(message.replace("{stderr}", &crate::i18n::isolate(stderr))))
     }
 
-    // ── общие мелочи прогона ──────────────────────────────────────────────
+    // ── shared run helpers ────────────────────────────────────────────────
 
-    /// Поднять демон swww/awww, если он ещё не отвечает.
+    /// Start the swww/awww daemon if it is not answering yet.
     ///
-    /// Подкоманда `init` в свежих версиях удалена — там демон запускают
-    /// отдельным процессом, поэтому пробуем оба пути. Имена бинарей
-    /// (`swww` → `awww` после переименования апстримом) разрешает общий
-    /// резолвер инструментов, второй таблицы имён здесь нет.
+    /// The `init` subcommand was removed in recent versions — there the daemon is
+    /// started as a separate process, so we try both ways. Binary names (`swww`
+    /// → `awww` after the upstream rename) are resolved by the shared tool
+    /// resolver; there is no second name table here.
     fn ensure_swww_daemon(&mut self) {
         let query = vec!["swww".to_string(), "query".to_string()];
         if let Some(r) = self.sys.run(&query, wpe::SWWW_QUERY_TIMEOUT_SEC) {
             if r.rc == 0 {
-                return; // демон уже отвечает
+                return; // the daemon is already answering
             }
         }
         let init = vec!["swww".to_string(), "init".to_string()];
@@ -2570,7 +2579,7 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Исполнить JS в plasmashell. `None` — не вышло; иначе напечатанное.
+    /// Run JS in plasmashell. `None` — it did not work; otherwise what was printed.
     fn plasma_evaluate(&mut self, script: &str) -> Option<String> {
         let argv = wpe::plasma_dbus_reply_argv(script);
         let out = self.sys.run(&argv, wpe::PLASMA_SCRIPT_TIMEOUT_SEC)?;
@@ -2580,11 +2589,12 @@ impl<S: WpSys> WallpaperExec<S> {
         Some(out.stdout)
     }
 
-    /// Снять ранее запущенный процесс обоев, ничего больше не трогая.
+    /// Stop the previously started wallpaper process without touching anything else.
     ///
-    /// Отличие от остановки: та ещё и возвращает статичные обои, иконки
-    /// стола и фоновые звуки. Здесь обои СРАЗУ сменяются новыми, поэтому
-    /// откатывать нечего — иначе на смене мигал бы старый фон.
+    /// The difference from a stop: that one also restores the static wallpaper,
+    /// desktop icons and background sounds. Here the wallpaper is replaced by a
+    /// new one RIGHT AWAY, so there is nothing to roll back — otherwise the old
+    /// background would flash during the change.
     fn kill_running(&mut self) {
         self.resume_if_paused();
         self.kill_companions();
@@ -2600,14 +2610,14 @@ impl<S: WpSys> WallpaperExec<S> {
         self.sys.kill_process(proc);
     }
 
-    /// Снять процессы обоев на остальных мониторах.
+    /// Stop the wallpaper processes on the other monitors.
     fn kill_companions(&mut self) {
         for proc in std::mem::take(&mut self.companions) {
             self.sys.kill_process(proc);
         }
     }
 
-    /// Разморозить процесс обоев, если его заморозил надзор.
+    /// Unfreeze the wallpaper process if supervision froze it.
     fn resume_if_paused(&mut self) {
         if !self.perf_paused {
             return;
@@ -2619,18 +2629,18 @@ impl<S: WpSys> WallpaperExec<S> {
         self.perf_paused = false;
     }
 
-    /// Заморозить или разморозить обои на остальных мониторах — то же, что
-    /// надзор делает с главным процессом.
+    /// Freeze or unfreeze the wallpaper on the other monitors — the same thing
+    /// supervision does with the main process.
     fn pause_companions(&mut self, pause: bool) {
         for proc in self.companions.clone() {
             self.sys.pause_process(proc, pause);
         }
     }
 
-    // ── надзор за нагрузкой: решения ──────────────────────────────────────
+    // ── load supervision: decisions ───────────────────────────────────────
 
-    /// За каким процессом следить надзору: дескриптор и PID. `None` — живых
-    /// обоев своим процессом сейчас нет.
+    /// Which process supervision should watch: handle and PID. `None` — there is
+    /// no live wallpaper of our own process right now.
     pub fn monitor_target(&mut self) -> Option<(ProcHandle, i64)> {
         let proc = self.process?;
         if self.sys.poll(proc).is_some() {
@@ -2640,12 +2650,12 @@ impl<S: WpSys> WallpaperExec<S> {
         Some((proc, pid))
     }
 
-    /// Применить замер надзора — тело цикла `_performance_monitor_loop`.
+    /// Apply a supervision sample — the body of the `_performance_monitor_loop` loop.
     ///
-    /// Порядок как у Python: процесс сменился — следить не за чем; упал —
-    /// вернуть стол; процессор выше порога [`wpe::CPU_HIGH_STRIKES`] замеров
-    /// подряд — принудительная остановка; разряжена батарея или полноэкранное
-    /// окно — заморозить, причина ушла — разморозить.
+    /// The order is as in Python: the process changed — nothing to watch; it
+    /// crashed — restore the desktop; CPU above the threshold for
+    /// [`wpe::CPU_HIGH_STRIKES`] samples in a row — forced stop; low battery or
+    /// a full-screen window — freeze, the reason went away — unfreeze.
     pub fn monitor_apply(
         &mut self,
         watched: ProcHandle,
@@ -2656,9 +2666,9 @@ impl<S: WpSys> WallpaperExec<S> {
             return MonitorVerdict::Done;
         }
         if let Some(rc) = self.sys.poll(watched) {
-            // Свой хост поднимает сторож падений (`renderer_watch`): вернуть
-            // стол здесь значило бы мигнуть прежней картинкой перед
-            // подъёмом и лишить сторожа того, что поднимать.
+            // Our own host is brought back by the crash watcher (`renderer_watch`):
+            // restoring the desktop here would flash the previous picture before the
+            // restart and leave the watcher with nothing to bring back.
             if self.host_request.is_some() {
                 log_line("warning", &format!("хост обоев завершился сам (код {rc}) — решает сторож падений"));
                 return MonitorVerdict::Done;
@@ -2691,15 +2701,15 @@ impl<S: WpSys> WallpaperExec<S> {
         MonitorVerdict::Continue
     }
 
-    /// Процесс живых обоев упал сам — порт `_on_process_crashed`: вернуть
-    /// стол в тот вид, в каком его вернула бы остановка по кнопке.
+    /// The live wallpaper process crashed by itself — port of `_on_process_crashed`:
+    /// return the desktop to the state a stop by the button would.
     fn on_process_crashed(&mut self, rc: i64) {
         log_line(
             "warning",
             &format!("процесс живых обоев упал (код {rc}) — возвращаю рабочий стол"),
         );
         if let Some(proc) = self.process.take() {
-            // Процесс уже мёртв: снятие только забирает его статус.
+            // The process is already dead: stopping only reaps its status.
             self.sys.kill_process(proc);
         }
         self.kill_companions();
@@ -2711,22 +2721,22 @@ impl<S: WpSys> WallpaperExec<S> {
         self.current_path = None;
         self.current_name.clear();
         self.remove_pidfile();
-        // Для слушателя моста падение — та же остановка, что и по кнопке.
+        // For the bridge listener a crash is the same stop as by the button.
         self.notify_live_wallpaper(None, true);
     }
 
-    // ── сторож падений хоста: исполнение ──────────────────────────────────
+    // ── host crash watcher: execution ─────────────────────────────────────
     //
-    // Решает `renderer_watch::HostWatch`; здесь — только что он видит и
-    // чем его решения делаются.
+    // `renderer_watch::HostWatch` decides; here is only what it sees and what
+    // carries out its decisions.
 
-    /// Что видно о своём хосте прямо сейчас.
+    /// What is visible about our own host right now.
     pub fn host_snapshot(&mut self) -> HostSnapshot {
         let Some(req) = self.host_request.clone() else {
             return HostSnapshot::default();
         };
-        // Формат сменили мимо применения (падение не своим хостом и т. п.)
-        // — следить не за чем.
+        // The format changed bypassing apply (a crash not of our own host, etc.)
+        // — nothing to watch.
         if self.current_format.as_deref() != Some(req.fmt.as_str()) {
             return HostSnapshot::default();
         }
@@ -2749,31 +2759,31 @@ impl<S: WpSys> WallpaperExec<S> {
             None if wpe::needs_shell_extension(&self.de, &self.session_type) => {
                 snap.via_extension = true;
             }
-            // Ни процесса, ни расширения: показывает не хост (запасной путь
-            // плана) — сторожу нечего поднимать.
+            // Neither a process nor an extension: it is not the host showing (the
+            // plan's fallback path) — the watcher has nothing to bring back.
             None => snap.subject = None,
         }
         snap
     }
 
-    /// Поднять те же обои заново — тем же применением, что по кнопке.
+    /// Bring the same wallpaper back up — with the same apply as the button.
     pub fn restart_host(&mut self) -> WallpaperResult {
         let Some(req) = self.host_request.clone() else {
-            // Только для журнала сторожа: человеку этот итог не показывается.
+            // Only for the watcher's journal: this result is not shown to the person.
             return WallpaperResult::fail("nothing to restart".to_string());
         };
         if self.process.is_none() && wpe::needs_shell_extension(&self.de, &self.session_type) {
-            // Расширение перезапускает хост по смене своих настроек, а то же
-            // значение смены не даёт: сначала погасить (пустой источник),
-            // потом применение запишет источник заново.
+            // The extension restarts the host when its settings change, and the same
+            // value gives no change: first turn it off (empty source), then the apply
+            // writes the source again.
             self.shell_extension_stop();
         }
         self.apply_with_audio(&req.path, &req.fmt, &req.name, req.audio)
     }
 
-    /// Обои падают подряд: снять их и поставить неподвижный кадр этих же
-    /// обоев. Истина — кадр встал; ложь — кадра нет, возвращена прежняя
-    /// картинка стола (как по «Остановить»).
+    /// The wallpaper keeps crashing: stop it and set a still frame of the same
+    /// wallpaper. True — the frame is set; false — there is no frame, the
+    /// previous desktop picture was restored (as by «Stop»).
     pub fn show_still_frame(&mut self) -> bool {
         let req = self.host_request.take();
         self.resume_if_paused();
@@ -2791,8 +2801,8 @@ impl<S: WpSys> WallpaperExec<S> {
             let hint = self.sys.package_hint("swww");
             let plan = wpe::static_plan(&self.de, &self.static_session(), &still, &tools, &hint);
             if self.run_plan(&plan, &still).ok {
-                // Прежняя картинка остаётся запомненной: «Остановить» и
-                // следующие живые обои вернут именно её, а не кадр.
+                // The previous picture stays remembered: «Stop» and the next live
+                // wallpaper will restore exactly it, not the frame.
                 self.current_format = Some("static".to_string());
                 self.current_path = Some(still);
                 self.blur_path = None;
@@ -2812,11 +2822,11 @@ impl<S: WpSys> WallpaperExec<S> {
         false
     }
 
-    /// Неподвижный кадр обоев: у видео — кадр из ролика (в кеш), у веба и
-    /// Flash — превью рядом с обоями. `None` — кадра нет.
+    /// A still frame of the wallpaper: for video a frame from the movie (into the
+    /// cache), for web and Flash the preview next to the wallpaper. `None` — no frame.
     fn still_frame_for(&mut self, req: &HostRequest) -> Option<String> {
         if req.fmt == "video" {
-            // Тот же кадр и тот же кеш, что у подложки: обычно он уже готов.
+            // The same frame and the same cache as the backdrop: usually it is already ready.
             let cache = self.cache_home();
             let session = self.session_type.clone();
             return prepare_video_still(&mut self.sys, &cache, &session, &req.path);
@@ -2828,7 +2838,7 @@ impl<S: WpSys> WallpaperExec<S> {
             .find(|c| self.sys.exists(c) && !self.sys.is_dir(c))
     }
 
-    /// Погасить обои расширения оболочки (пустой источник в его настройках).
+    /// Turn off the shell extension's wallpaper (an empty source in its settings).
     fn shell_extension_stop(&mut self) {
         let Some(argv) = wpe::shell_ext_stop_argv(&self.de) else { return };
         let argv = match self.shell_extension_schema_dir() {
@@ -2839,24 +2849,25 @@ impl<S: WpSys> WallpaperExec<S> {
         self.sys.run(&argv, timeout);
     }
 
-    /// Cinnamon с layer-shell: наше расширение обоев не показывает, а всё,
-    /// что лежит в его ключах от прежнего пути (до 6.8, до перехода на слой
-    /// стола), будит в нём хост ВТОРЫМ процессом рядом с нашим — живьём
-    /// 15.11.2026 так шли два видео разом, второе по ключу `source` с
-    /// утреннего применения. Выключаем расширение, если эффекта экрана нет
-    /// (чужие uuid не трогаем), и очищаем обои в его ключах. Раз на процесс:
-    /// ключи после этого пишет только путь расширения, а он здесь не идёт.
-    /// Вернуть расширение на Cinnamon без layer-shell ничего отдельного не
-    /// требует — тот путь включает выключенное сам.
+    /// Cinnamon with layer-shell: our extension does not show the wallpaper, yet
+    /// anything left in its keys from the old path (before 6.8, before the move
+    /// to the desktop layer) wakes up the host in it as a SECOND process next to
+    /// ours — live on 15.11.2026 two videos ran at once this way, the second from
+    /// the `source` key of a morning apply. We disable the extension if there is
+    /// no screen effect (foreign uuids are left alone) and clear the wallpaper in
+    /// its keys. Once per process: after this the keys are written only by the
+    /// extension path, and it does not run here. Bringing the extension back on
+    /// Cinnamon without layer-shell needs nothing special — that path enables
+    /// the disabled one itself.
     fn retire_shell_extension_wallpaper(&mut self) {
         if self.shell_ext_retired || wpe::shell_ext_schema(&self.de).is_none() || self.de == "gnome" {
             return;
         }
         self.shell_ext_retired = true;
         let Some(schema) = wpe::shell_ext_schema(&self.de) else { return };
-        // Брошенная копия от прежней версии (живьём 15.11.2026 — она и
-        // будила второй хост) снимается ДО чтения ключей: каталог схемы
-        // берётся уже системный. Та же функция, что у эффектов экрана.
+        // The abandoned copy from an earlier version (live on 15.11.2026 it was the
+        // one waking the second host) is removed BEFORE reading the keys: the
+        // schema directory is then the system one. The same function as for screen effects.
         let de = self.de.clone();
         let orphan_removed = self.sys.remove_orphan_shell_ext_copy(&de).is_some();
         let schema_dir = self.shell_extension_schema_dir();
@@ -2884,9 +2895,9 @@ impl<S: WpSys> WallpaperExec<S> {
                 ),
             );
         }
-        // Копию сняли, а расширение остаётся (идёт эффект экрана) — пусть
-        // оболочка перечитает его с диска, уже системное: в памяти у неё
-        // код снятой копии. Как в починке эффектов экрана.
+        // The copy was removed, but the extension stays (a screen effect is on) — let
+        // the shell re-read it from disk, now the system one: in memory it has the
+        // code of the removed copy. As in the screen effects fix.
         if orphan_removed && !disabling && enabled.as_deref().is_some_and(|o| o.contains(&format!("'{}'", wpe::SHELL_EXT_ID))) {
             let cmd = crate::screen_effects::cinnamon_reload_argv();
             let timeout = utils::default_timeout_secs(&cmd) as f64;
@@ -2902,17 +2913,17 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Снять удерживающий фон процесс (swaybg/wbg), если он наш.
+    /// Stop the background-holding process (swaybg/wbg) if it is ours.
     fn kill_static_holder(&mut self) {
         if let Some(proc) = self.static_holder.take() {
             self.sys.kill_process(proc);
         }
     }
 
-    /// Сказать мосту, идут ли сейчас живые обои.
+    /// Tell the bridge whether live wallpapers are running now.
     ///
-    /// Какой формат считается живым и когда весть подавляется порогом
-    /// молчания — решает движок; здесь только доставка.
+    /// Which format counts as live and when the notice is suppressed by the
+    /// silence threshold is decided by the engine; here is only the delivery.
     fn notify_live_wallpaper(&mut self, fmt: Option<&str>, announce: bool) {
         let live = fmt.map(wpe::is_live_format).unwrap_or(false);
         let name = if live {
@@ -2930,8 +2941,8 @@ impl<S: WpSys> WallpaperExec<S> {
                 self.bridge_said_at,
                 now,
             );
-        // Ни вести, ни новости в признаке — мост не трогаем вовсе: иначе
-        // каждая картинка плейлиста переписывала бы ему одно и то же.
+        // Neither a notice nor news in the flag — do not touch the bridge at all:
+        // otherwise every playlist picture would rewrite the same thing for it.
         if !say && Some(live) == self.bridge_flag {
             return;
         }
@@ -2944,30 +2955,31 @@ impl<S: WpSys> WallpaperExec<S> {
         self.sys.bridge_notify(live, &name, say);
     }
 
-    // ── применение и остановка ────────────────────────────────────────────
+    // ── apply and stop ────────────────────────────────────────────────────
 
-    /// Применить обои: путь и формат.
+    /// Apply a wallpaper: path and format.
     ///
-    /// `name` — название сцены ДЛЯ ЧЕЛОВЕКА, если вызывающий его знает.
-    /// Пустое — честный ответ «не знаю»: выдумывать имя из имени файла
-    /// нельзя, оно уедет прямо в чужую реплику через мост.
+    /// `name` — the scene name FOR A PERSON, if the caller knows it. Empty is an
+    /// honest "I don't know": making up a name from the file name is not
+    /// allowed, it would go straight into someone else's reply via the bridge.
     ///
-    /// ⚠️ ГРАНИЦА, НАЗВАННАЯ ВСЛУХ. Не перенесён только Flash (SWF) — на
-    /// него исполнитель ОТВЕЧАЕТ строкой [`live_formats_not_carried`], а не
-    /// делает вид, что обои встали (правило #13). Сцены, обои-приложения и
-    /// незнакомый формат получают окончательный отказ теми же словами, что у
-    /// Python, — см. [`carries_format`].
+    /// ⚠️ THE BOUNDARY, STATED OUT LOUD. Only Flash (SWF) has not been carried
+    /// over — for it the executor ANSWERS with the [`live_formats_not_carried`]
+    /// line rather than pretending the wallpaper was set (rule #13). Scenes,
+    /// application wallpapers and an unknown format get a final refusal with the
+    /// same words as in Python — see [`carries_format`].
     ///
-    /// Звук у видео и YouTube — умолчание [`VIDEO_AUDIO_DEFAULT`]; кто даёт
-    /// человеку выбор, зовёт [`WallpaperExec::apply_with_audio`].
-    /// Отказ, если слоем обоев владеет чужой шелл.
+    /// Sound for video and YouTube is the default [`VIDEO_AUDIO_DEFAULT`]; whoever
+    /// gives the person a choice calls [`WallpaperExec::apply_with_audio`].
+    /// Refusal if a foreign shell owns the wallpaper layer.
     ///
-    /// ⚠️ Узел правила #12: зовут ОБА публичных входа применения
-    /// ([`WallpaperExec::apply_with_audio`] — картинки, GIF, видео, веб,
-    /// Flash; [`WallpaperExec::apply_youtube`]) и ДО всякого дела: прежние
-    /// обои не снимаются, стол не запоминается. Положить обои под чужую
-    /// поверхность и отрапортовать успех — ровно то, чего быть не должно;
-    /// текст говорит человеку, что нажать («Отдать обои Rexon»).
+    /// ⚠️ A rule #12 junction: BOTH public apply entries call it
+    /// ([`WallpaperExec::apply_with_audio`] — pictures, GIF, video, web, Flash;
+    /// [`WallpaperExec::apply_youtube`]) and BEFORE doing anything: the previous
+    /// wallpaper is not stopped, the desktop is not remembered. Putting a
+    /// wallpaper under a foreign surface and reporting success is exactly what
+    /// must not happen; the text tells the person what to press («Give the
+    /// wallpaper to Rexon»).
     fn shell_owner_refusal(&mut self) -> Option<WallpaperResult> {
         let (de, session) = (self.de.clone(), self.session_type.clone());
         let shell = self.sys.wallpaper_shell_owner(&de, &session)?;
@@ -2982,22 +2994,22 @@ impl<S: WpSys> WallpaperExec<S> {
         self.apply_with_audio(path, fmt, name, VIDEO_AUDIO_DEFAULT)
     }
 
-    /// Применить обои с выбором звука — порт `apply(path, fmt, audio=…)`.
+    /// Apply a wallpaper with a sound choice — port of `apply(path, fmt, audio=…)`.
     ///
-    /// Путь один на всех вызывающих: `apply` — это он же с умолчанием.
-    /// `audio` действует на видео из файла и на YouTube по умолчаниям
-    /// качества и режима (у YouTube с выбором качества и режима — свой вход
-    /// [`WallpaperExec::apply_youtube`], звук там тем же аргументом); прочим
-    /// форматам звук не нужен, и они его не читают. `false` — ролик идёт
-    /// немым (`--no-audio` хосту либо расширению оболочки).
+    /// One path for all callers: `apply` is the same thing with the default.
+    /// `audio` affects video from a file and YouTube with default quality and
+    /// mode (YouTube with a quality and mode choice has its own entry
+    /// [`WallpaperExec::apply_youtube`], with sound as the same argument); other
+    /// formats do not need sound and do not read it. `false` — the movie plays
+    /// muted (`--no-audio` to the host or to the shell extension).
     ///
-    /// ⚠️ Flash (`swf`) этот аргумент НЕ читает, и это не пропуск. `audio`
-    /// здесь значит «у ЭТОЙ обоины звук предусмотрен» и приходит из
-    /// `project.json` видео-обоины либо из галочки фона Steam; у SWF нет ни
-    /// того, ни другого — Flash-файл кладут как есть. Звук Flash-обоев
-    /// целиком живёт в общих настройках (`wallpaper_audio_*`) и меняется на
-    /// ходу, а разовое «эту обоину — немой» задаётся ключом `--no-audio`
-    /// самому хосту.
+    /// ⚠️ Flash (`swf`) does NOT read this argument, and that is not an omission.
+    /// `audio` here means "THIS wallpaper is meant to have sound" and comes from
+    /// the video wallpaper's `project.json` or from the Steam background check
+    /// box; SWF has neither — a Flash file is put as is. Flash wallpaper sound
+    /// lives entirely in the shared settings (`wallpaper_audio_*`) and changes on
+    /// the fly, and a one-off "mute this wallpaper" is given to the host itself
+    /// with the `--no-audio` switch.
     pub fn apply_with_audio(
         &mut self,
         path: &str,
@@ -3011,9 +3023,9 @@ impl<S: WpSys> WallpaperExec<S> {
         if res.ok && fmt == "static" {
             self.sys.static_wallpaper_changed(path);
         }
-        // Сторожу падений — что поднимать, если хост ляжет. Запоминается
-        // ЗАПРОС человека (исходный путь, не служебная копия видео): подъём
-        // идёт тем же применением, что по кнопке.
+        // For the crash watcher — what to bring back up if the host goes down. The
+        // person's REQUEST is remembered (the original path, not the internal video
+        // copy): the restart goes through the same apply as the button.
         if res.ok {
             self.host_request = host_watched_format(fmt).then(|| HostRequest {
                 path: path.to_string(),
@@ -3022,11 +3034,12 @@ impl<S: WpSys> WallpaperExec<S> {
                 audio,
             });
         }
-        // Видео, веб и Flash показывает наш хост, и о своей поверхности он
-        // скажет сам — когда на экране первый кадр (`cinnamon_layer` в
-        // rexon-gui). Заказ отсюда, со сроком от запуска процесса, только
-        // мешал: 15.11.2026 окно и хост переставляли службу фона почти
-        // одновременно, и хост застал её посреди перезапуска чужим.
+        // Video, web and Flash are shown by our host, and it will report its surface
+        // itself — when the first frame is on screen (`cinnamon_layer` in
+        // rexon-gui). Ordering it from here, with a deadline from process launch,
+        // only got in the way: on 15.11.2026 the window and the host restacked the
+        // background service almost simultaneously, and the host caught it in the
+        // middle of a restart as a foreign one.
         if res.ok
             && own_layer_surface_format(fmt)
             && !host_watched_format(fmt)
@@ -3035,8 +3048,8 @@ impl<S: WpSys> WallpaperExec<S> {
         {
             self.sys.own_layer_surface_up();
         }
-        // Cinnamon с layer-shell: обои слоем стола, расширение с обоями не
-        // нужно — снять с него остатки прежнего пути (лишний второй хост).
+        // Cinnamon with layer-shell: the wallpaper is a desktop layer, the extension
+        // is not needed for it — clear the old path's leftovers from it (a redundant second host).
         if res.ok && self.sys.cinnamon_layer_shell() {
             self.retire_shell_extension_wallpaper();
         }
@@ -3045,11 +3058,11 @@ impl<S: WpSys> WallpaperExec<S> {
         res
     }
 
-    /// Живые обои окном хоста на X11 легли над окном значков стола или под
-    /// ним — подготовить стол и сказать человеку, что со значками
-    /// (`wallpaper_backend::prepare_desktop_icons`). Только для обоев окном
-    /// хоста: картинки окна не создают, а GNOME/Cinnamon-Wayland показывают
-    /// обои расширением оболочки.
+    /// A live wallpaper as a host window on X11 went above or below the desktop
+    /// icons window — prepare the desktop and tell the person what happens to the
+    /// icons (`wallpaper_backend::prepare_desktop_icons`). Only for host-window
+    /// wallpapers: pictures create no window, and GNOME/Cinnamon-Wayland show the
+    /// wallpaper with a shell extension.
     fn attach_desktop_icons_note(&mut self, res: &mut WallpaperResult, fmt: &str) {
         if !res.ok || !matches!(fmt, "video" | "web" | "swf") || wpe::needs_shell_extension(&self.de, &self.session_type) {
             return;
@@ -3063,15 +3076,15 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Снять живые WE-обои перед своими (см. [`yields_we_wallpapers`]) и
-    /// запомнить приписку, если снять не вышло.
+    /// Stop live WE wallpapers before our own (see [`yields_we_wallpapers`]) and
+    /// remember the note if stopping did not work.
     fn yield_we_wallpapers(&mut self, fmt: &str) {
         if !yields_we_wallpapers(fmt) {
             return;
         }
         let stopped = self.sys.stop_we_wallpapers(crate::we_client::STOP_TIMEOUT_MS);
-        // Вывод waywallen — и тогда, когда снимать рендереры было некому
-        // (процесс без Qt): его заглушка закрыла бы наши обои и без них.
+        // The waywallen output — also when there was nobody to stop the renderers
+        // (a process without Qt): its placeholder would cover our wallpaper even without them.
         self.sys.release_waywallen_display();
         let Some((status, killed)) = stopped else {
             return;
@@ -3085,7 +3098,7 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Пометить удачный итог предупреждением «WE-обоя могла остаться поверх».
+    /// Mark a successful result with the "the WE wallpaper may have stayed on top" warning.
     fn attach_we_note(&mut self, res: &mut WallpaperResult) {
         if let Some(note) = self.we_note.take() {
             if res.ok {
@@ -3094,8 +3107,8 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Дойдёт ли применение до дела: без файла или хоста обоев — отказ, и
-    /// чужие обои ради отказа не снимаются.
+    /// Whether the apply will get to work: without the file or the wallpaper
+    /// host — a refusal, and the other wallpaper is not stopped for the sake of a refusal.
     fn apply_can_start(&mut self, path: &str, fmt: &str) -> bool {
         match fmt {
             "static" | "animated" => self.sys.exists(path),
@@ -3127,9 +3140,9 @@ impl<S: WpSys> WallpaperExec<S> {
                 live_formats_not_carried()
             ));
         }
-        // ⭐ Починка при переносе: Python отвечал этот отказ ПОСЛЕ того, как
-        // снял прежние живые обои и запомнил стол, — плитка сцены из
-        // библиотеки молча гасила работающее видео. Отказ — до всякого дела.
+        // ⭐ A fix during the port: Python gave this refusal AFTER it had stopped
+        // the previous live wallpaper and remembered the desktop — a scene tile from
+        // the library silently turned off a running video. Refusal comes before doing anything.
         if let Some(refusal) = retired_format_refusal(fmt) {
             log_line("info", &format!("обои не применены: формат={fmt}: {refusal}"));
             return WallpaperResult::fail(refusal);
@@ -3137,7 +3150,7 @@ impl<S: WpSys> WallpaperExec<S> {
         if let Some(refusal) = self.shell_owner_refusal() {
             return refusal;
         }
-        // YouTube снимает их сам (`apply_youtube`): у него свои проверки.
+        // YouTube stops them itself (`apply_youtube`): it has its own checks.
         if fmt != "youtube" && self.apply_can_start(path, fmt) {
             self.yield_we_wallpapers(fmt);
         }
@@ -3145,7 +3158,7 @@ impl<S: WpSys> WallpaperExec<S> {
             return self.apply_web(path);
         }
         if fmt == "youtube" {
-            // Без выбора качества и режима — умолчания Python: 1080p, поток.
+            // Without a quality and mode choice — the Python defaults: 1080p, stream.
             return self.apply_youtube(path, "1080p", "stream", audio);
         }
         if fmt == "swf" {
@@ -3178,8 +3191,8 @@ impl<S: WpSys> WallpaperExec<S> {
         if fmt == "animated" {
             return self.apply_animated(path);
         }
-        // Прежние живые обои снимаем БЕЗ вести мосту: обои сейчас же
-        // сменятся новыми, и пара «встали — пошли» слушателя обманывала бы.
+        // The previous live wallpaper is stopped WITHOUT a notice to the bridge: the
+        // wallpaper is about to be replaced, and a "stopped — started" pair would mislead the listener.
         if self.process.is_some() {
             self.stop(false);
         }
@@ -3202,7 +3215,7 @@ impl<S: WpSys> WallpaperExec<S> {
         res
     }
 
-    /// Корень кеша пользователя (`$XDG_CACHE_HOME`, иначе `~/.cache`).
+    /// Root of the user cache (`$XDG_CACHE_HOME`, otherwise `~/.cache`).
     fn cache_home(&mut self) -> String {
         let c = self.sys.env("XDG_CACHE_HOME");
         if c.is_empty() {
@@ -3212,15 +3225,15 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Анимация GIF/APNG — порт `_apply_animated`: размытая подложка, затем
-    /// план движка (`animated_plan`: swww, иначе mpvpaper на Wayland;
-    /// xwinwrap + mpv на X11). Надзора за нагрузкой у GIF нет — как у Python.
+    /// GIF/APNG animation — port of `_apply_animated`: a blurred backdrop, then
+    /// the engine plan (`animated_plan`: swww, otherwise mpvpaper on Wayland;
+    /// xwinwrap + mpv on X11). GIF has no load supervision — as in Python.
     ///
-    /// ⭐ Починка при переносе: там, где план — один отказ (GNOME и
-    /// Cinnamon-Wayland: слоя стола для swww и mpvpaper нет), Python успевал
-    /// снять прежние живые обои и поставить размытую подложку, а потом
-    /// отказывал — стол оставался размытым кадром GIF. Здесь отказ говорится
-    /// до всякого дела.
+    /// ⭐ A fix during the port: where the plan is a single refusal (GNOME and
+    /// Cinnamon-Wayland: there is no desktop layer for swww and mpvpaper),
+    /// Python managed to stop the previous live wallpaper and set a blurred
+    /// backdrop, and only then refused — the desktop stayed a blurred GIF frame.
+    /// Here the refusal is given before doing anything.
     fn apply_animated(&mut self, path: &str) -> WallpaperResult {
         let tools = self.plan_tools();
         let hints = self.hints();
@@ -3236,7 +3249,7 @@ impl<S: WpSys> WallpaperExec<S> {
         if plan.first().is_some_and(|s| s.kind == wpe::step_kind::FAIL) {
             return self.run_plan(&plan, path);
         }
-        // Прежние живые обои — без вести мосту: их сейчас же сменят.
+        // The previous live wallpaper — without a notice to the bridge: it is about to be replaced.
         if self.process.is_some() {
             self.stop(false);
         }
@@ -3257,15 +3270,16 @@ impl<S: WpSys> WallpaperExec<S> {
         res
     }
 
-    /// Видеообои своим процессом-хостом — порт `_apply_video`.
+    /// Video wallpaper with our own host process — port of `_apply_video`.
     ///
-    /// Хост ищется ПЕРВЫМ: не нашли — показывать нечем ни своим окном, ни
-    /// расширением оболочки, и готовить файл впустую незачем. Дальше, как у
-    /// Python: проверка файла, faststart-ремукс, запоминание картинки стола
-    /// KDE, показ — расширением оболочки там, где wlr-layer-shell нет
-    /// (GNOME, Cinnamon-Wayland), иначе своим окном. Подложка — до показа
-    /// или после него, как решит [`wpe::backdrop_timing`].
-    /// Надзор за нагрузкой поднимает вызывающий (`spawn_load_monitor`).
+    /// The host is looked up FIRST: if not found, there is nothing to show with,
+    /// neither our own window nor a shell extension, and no point preparing the
+    /// file for nothing. Then, as in Python: file check, faststart remux,
+    /// remembering the KDE desktop picture, showing — with a shell extension
+    /// where there is no wlr-layer-shell (GNOME, Cinnamon-Wayland), otherwise
+    /// with our own window. The backdrop goes before or after showing, as
+    /// [`wpe::backdrop_timing`] decides.
+    /// Load supervision is started by the caller (`spawn_load_monitor`).
     fn apply_video(&mut self, path: &str, has_audio: bool) -> WallpaperResult {
         let Some(host) = self.sys.wallpaper_host() else {
             log_line("error", &wpe::video_host_missing_message());
@@ -3278,13 +3292,14 @@ impl<S: WpSys> WallpaperExec<S> {
             return WallpaperResult::fail(message);
         }
         let original_name = path.rsplit('/').next().unwrap_or(path).to_string();
-        // Кадр подложки — из файла человека: тот же ключ кеша у кадра вместо
-        // падающих обоев (`still_frame_for`), а ffmpeg перенос `moov` не нужен.
+        // The backdrop frame comes from the person's file: the same cache key as the
+        // frame shown instead of a crashing wallpaper (`still_frame_for`), and ffmpeg
+        // does not need `moov` moved.
         let still_source = path.to_string();
         let path = self.sys.ensure_faststart(path);
 
-        // KDE: запомнить настоящую картинку стола ДО подложки, чтобы
-        // остановка вернула её, а не размытый кадр.
+        // KDE: remember the real desktop picture BEFORE the backdrop, so that a
+        // stop restores it rather than the blurred frame.
         if wpe::uses_plasma_config(&self.de) && self.saved_wallpaper.is_none() {
             if let Some(image) = self.kde_current_static_image() {
                 let exists = self.sys.exists(&image);
@@ -3303,8 +3318,8 @@ impl<S: WpSys> WallpaperExec<S> {
             let plan = wpe::video_native_plan(&host, &path, has_audio);
             self.run_plan(&plan, &path)
         };
-        // Играет служебная копия с перенесённым заголовком (имя — отпечаток
-        // вроде `63f038e7….mp4`); человеку называем его собственный файл.
+        // What plays is the internal copy with the moved header (its name is a
+        // fingerprint like `63f038e7….mp4`); to the person we name their own file.
         let mut res = res;
         let played_name = path.rsplit('/').next().unwrap_or(&path).to_string();
         if played_name != original_name {
@@ -3318,14 +3333,14 @@ impl<S: WpSys> WallpaperExec<S> {
         res
     }
 
-    /// YouTube-обои — порт `_apply_youtube`: качество, режим (поток либо
-    /// скачивание) и звук выбирает человек.
+    /// YouTube wallpaper — port of `_apply_youtube`: quality, mode (stream or
+    /// download) and sound are chosen by the person.
     ///
-    /// Режим «поток» там, где он неисполним (GNOME, Cinnamon-Wayland — обои
-    /// показывает расширение оболочки, ему нужен файл), становится
-    /// скачиванием, и человеку говорится почему. Поток играет mpv/mpvpaper
-    /// планом движка; скачанный ролик ставится тем же путём, что видео из
-    /// файла. Надзор за нагрузкой поднимает вызывающий.
+    /// The "stream" mode, where it cannot be carried out (GNOME, Cinnamon-Wayland —
+    /// the wallpaper is shown by a shell extension, which needs a file), becomes
+    /// a download, and the person is told why. A stream is played by mpv/mpvpaper
+    /// through the engine plan; a downloaded video is set the same way as video
+    /// from a file. Load supervision is started by the caller.
     pub fn apply_youtube(
         &mut self,
         url: &str,
@@ -3369,7 +3384,7 @@ impl<S: WpSys> WallpaperExec<S> {
             self.stop(false);
         }
         self.save_current_wallpaper();
-        // Все окружения: скрыть иконки стола (остановка их вернёт).
+        // All environments: hide desktop icons (a stop restores them).
         self.set_desktop_icons(false);
 
         if effective == "download" {
@@ -3383,7 +3398,7 @@ impl<S: WpSys> WallpaperExec<S> {
             let mut res = self.apply_video(&local, audio);
             if res.ok {
                 self.write_pidfile();
-                // Просили поток, а получили скачивание — сказать почему.
+                // A stream was requested, but a download was obtained — say why.
                 if !note.is_empty() {
                     res.message = format!("{} {note}", res.message);
                 }
@@ -3413,13 +3428,14 @@ impl<S: WpSys> WallpaperExec<S> {
         res
     }
 
-    /// Подложка под живыми обоями: чёткий кадр ролика картинкой стола —
-    /// виден при паузе по нагрузке, на экране блокировки и в обзоре, при
-    /// падении показа. Не вышло — не беда: живые обои от неё не зависят.
+    /// The backdrop under live wallpapers: a sharp movie frame as the desktop
+    /// picture — visible during a load pause, on the lock screen and in the
+    /// overview, and when showing fails. If it did not work, no harm: the live
+    /// wallpaper does not depend on it.
     ///
-    /// Здесь — часть ДО показа: где подложку ставить до него
-    /// ([`wpe::BackdropTiming::BeforeShow`]), она ставится сразу; где после
-    /// — её откладывает [`Self::queue_backdrop_after_show`].
+    /// This is the part BEFORE showing: where the backdrop goes before it
+    /// ([`wpe::BackdropTiming::BeforeShow`]), it is set right away; where after
+    /// — it is deferred by [`Self::queue_backdrop_after_show`].
     fn backdrop_before_show(&mut self, source: &str) -> wpe::BackdropTiming {
         let timing = wpe::backdrop_timing(&self.de, &self.session_type);
         match timing {
@@ -3442,9 +3458,9 @@ impl<S: WpSys> WallpaperExec<S> {
         timing
     }
 
-    /// Показ удался: отложить подложку на после него. Её приготовит и
-    /// поставит фоновая дверь ([`spawn_backdrop`]); кто зовёт исполнитель
-    /// мимо неё — [`Self::run_pending_backdrop`].
+    /// Showing succeeded: defer the backdrop until after it. It is prepared and
+    /// set by the background door ([`spawn_backdrop`]); whoever calls the
+    /// executor bypassing it uses [`Self::run_pending_backdrop`].
     fn queue_backdrop_after_show(&mut self, timing: wpe::BackdropTiming, source: &str) {
         if timing != wpe::BackdropTiming::AfterShow {
             return;
@@ -3460,8 +3476,8 @@ impl<S: WpSys> WallpaperExec<S> {
         });
     }
 
-    /// Поставить картинку подложки статичным планом стола — тихо: формат и
-    /// путь показанного не меняются, мосту весть не идёт.
+    /// Set the backdrop picture with the desktop's static plan — quietly: the
+    /// shown format and path do not change, no notice goes to the bridge.
     fn set_backdrop_image(&mut self, still: &str) -> bool {
         let tools = self.plan_tools();
         let hint = self.sys.package_hint("swww");
@@ -3477,22 +3493,22 @@ impl<S: WpSys> WallpaperExec<S> {
         res.ok
     }
 
-    /// Новое применение или остановка: отложенная подложка прежних обоев,
-    /// и та, что уже готовится в фоне, — не к месту.
+    /// A new apply or a stop: the previous wallpaper's deferred backdrop, and the
+    /// one already being prepared in the background, are out of place.
     fn forget_pending_backdrop(&mut self) {
         self.pending_backdrop = None;
         self.backdrop_generation = self.backdrop_generation.wrapping_add(1);
     }
 
-    /// Отложенная подложка, если она есть, — забрать на исполнение.
+    /// The deferred backdrop, if there is one — take it for execution.
     pub fn take_pending_backdrop(&mut self) -> Option<BackdropJob> {
         self.pending_backdrop.take()
     }
 
-    /// Поставить отложенную подложку, кадр которой приготовлен
-    /// ([`prepare_video_still`]; `None` — кадра нет). Истина — подложка
-    /// стоит. Обои с тех пор сменились или остановлены — ничего не делает:
-    /// подложка не к месту, а прежнюю картинку стола уже вернули.
+    /// Set the deferred backdrop whose frame has been prepared
+    /// ([`prepare_video_still`]; `None` — no frame). True — the backdrop is set.
+    /// If the wallpaper has since changed or been stopped, it does nothing: the
+    /// backdrop is out of place, and the previous desktop picture was already restored.
     pub fn finish_backdrop(&mut self, job: &BackdropJob, still: Option<String>) -> bool {
         let shown = (self.current_format.clone(), self.current_path.clone());
         if job.generation != self.backdrop_generation || shown != job.shown {
@@ -3515,8 +3531,8 @@ impl<S: WpSys> WallpaperExec<S> {
         true
     }
 
-    /// Отложенную подложку — сейчас же, этим же швом (для вызывающих мимо
-    /// [`run_in_slot`]: сверки, разовые применения без окна).
+    /// The deferred backdrop — right now, with this same seam (for callers
+    /// bypassing [`run_in_slot`]: checks, one-off applies without a window).
     pub fn run_pending_backdrop(&mut self) -> bool {
         let Some(job) = self.take_pending_backdrop() else {
             return false;
@@ -3525,16 +3541,16 @@ impl<S: WpSys> WallpaperExec<S> {
         self.finish_backdrop(&job, still)
     }
 
-    /// Отдать видео расширению оболочки через его же настройки — порт
-    /// `_video_shell_extension`. Своего процесса здесь нет: хост запускает
-    /// само расширение по готовой строке запуска.
+    /// Hand the video to the shell extension through its own settings — port of
+    /// `_video_shell_extension`. There is no process of our own here: the
+    /// extension itself launches the host from the ready command line.
     fn video_shell_extension(&mut self, path: &str, host: &str, has_audio: bool) -> WallpaperResult {
         let plan = wpe::shell_ext_plan(&self.de, path, host, has_audio);
         self.run_shell_extension(plan, path, "video")
     }
 
-    /// Передать обои расширению оболочки — ОДИН путь для видео и Flash:
-    /// проверка схемы, `engine`, строка запуска демона, весть мосту.
+    /// Hand a wallpaper to the shell extension — ONE path for video and Flash:
+    /// schema check, `engine`, the daemon command line, a notice to the bridge.
     fn run_shell_extension(
         &mut self,
         plan: Option<wpe::ShellExtPlan>,
@@ -3550,28 +3566,28 @@ impl<S: WpSys> WallpaperExec<S> {
             let timeout = utils::default_timeout_secs(argv) as f64;
             matches!(sys.run(argv, timeout), Some(ref out) if out.rc == 0)
         };
-        // Пишем через схему из каталога самого расширения, если он есть:
-        // в общем каталоге схем её может не оказаться (см.
+        // Write through the schema from the extension's own directory, if it
+        // exists: it may be missing from the shared schema directory (see
         // `wpe::shell_ext_schema_dirs`).
         let schema_dir = self.shell_extension_schema_dir();
         let gsettings = |cmd: &[String]| match &schema_dir {
             Some(dir) => wpe::with_schemadir(cmd, dir),
             None => cmd.to_vec(),
         };
-        // Схема есть только у установленного расширения — это и проверка.
+        // Only an installed extension has the schema — this is the check too.
         if !ran_ok(&mut self.sys, &gsettings(&plan.source_argv)) {
             return WallpaperResult::fail(plan.not_installed_message);
         }
         ran_ok(&mut self.sys, &gsettings(&plan.engine_argv));
-        // Итог строки запуска ОБЯЗАТЕЛЬНО проверяется: у устаревшего
-        // расширения ключа нет, и запасного пути у него больше нет.
+        // The result of the command line write MUST be checked: an outdated extension
+        // has no such key, and it no longer has a fallback path.
         if !ran_ok(&mut self.sys, &gsettings(&plan.daemon_argv)) {
             log_line("error", "расширение оболочки не приняло строку запуска хоста");
             return WallpaperResult::fail(plan.daemon_failed_message);
         }
         self.current_format = Some(fmt.to_string());
         self.current_path = Some(path.to_string());
-        // Своего процесса нет и план не исполнялся — мосту говорим сами.
+        // No process of our own and no plan was executed — tell the bridge ourselves.
         self.notify_live_wallpaper(Some(fmt), true);
         let mut state = self.shell_extension_state();
         if state == wpe::ShellExtState::Disabled {
@@ -3590,16 +3606,17 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Flash-обои (SWF) — режим `rexon-wallpaper-host --mode swf`: Ruffle как
-    /// библиотека (крейт `rexon-swf`), без внешнего `ruffle`, скачивания и
-    /// HTML-обёртки классического окна.
+    /// Flash wallpaper (SWF) — the `rexon-wallpaper-host --mode swf` mode: Ruffle
+    /// as a library (the `rexon-swf` crate), without an external `ruffle`,
+    /// downloads or the classic window's HTML wrapper.
     ///
-    /// Всё проверяется ДО снятия прежних обоев: хост (нет — показывать
-    /// нечем) и файл (нет или это каталог — отказ с именем). Дальше как у
-    /// видео: окно слоя или X11 своим сеансом, на GNOME и Cinnamon-Wayland —
-    /// расширение оболочки, которому хост пишет кадры в файл. Размытой
-    /// подложки нет: кадра до старта Ruffle не существует. Надзор за нагрузкой
-    /// поднимает вызывающий ([`format_wants_load_monitor`]).
+    /// Everything is checked BEFORE stopping the previous wallpaper: the host
+    /// (none — nothing to show with) and the file (missing or a directory — a
+    /// refusal with the name). Then as for video: a layer window or X11 in its
+    /// own session, on GNOME and Cinnamon-Wayland — the shell extension, to which
+    /// the host writes frames into a file. There is no blurred backdrop: no
+    /// frame exists before Ruffle starts. Load supervision is started by the
+    /// caller ([`format_wants_load_monitor`]).
     fn apply_swf(&mut self, path: &str) -> WallpaperResult {
         let Some(host) = self.sys.wallpaper_host() else {
             log_line("error", &wpe::video_host_missing_message());
@@ -3608,7 +3625,7 @@ impl<S: WpSys> WallpaperExec<S> {
         if !self.sys.exists(path) || self.sys.is_dir(path) {
             return WallpaperResult::fail(wpe::swf_missing_message(path));
         }
-        // Прежние живые обои — без вести мосту: их сейчас же сменят.
+        // The previous live wallpaper — without a notice to the bridge: it is about to be replaced.
         if self.process.is_some() {
             self.stop(false);
         }
@@ -3635,10 +3652,10 @@ impl<S: WpSys> WallpaperExec<S> {
         res
     }
 
-    /// Каталог собранной схемы нашего расширения — первый из
-    /// [`wpe::shell_ext_schema_dirs`], где лежит `gschemas.compiled`.
-    /// `None` — ни одного: пишем голым `gsettings` (схема, может быть, в
-    /// общем каталоге, куда её кладёт пакет).
+    /// Directory of our extension's compiled schema — the first of
+    /// [`wpe::shell_ext_schema_dirs`] that holds `gschemas.compiled`.
+    /// `None` — none: write with bare `gsettings` (the schema may be in the
+    /// shared directory where the package puts it).
     fn shell_extension_schema_dir(&mut self) -> Option<String> {
         let home = self.sys.env("HOME");
         let data_home = self.sys.env("XDG_DATA_HOME");
@@ -3648,13 +3665,12 @@ impl<S: WpSys> WallpaperExec<S> {
             .find(|dir| self.sys.exists(&format!("{dir}/gschemas.compiled")))
     }
 
-    /// В каком состоянии наше расширение оболочки. Спросить не удалось —
-    /// так и говорим ([`wpe::ShellExtState::Unknown`]): прежде здесь стояло
-    /// «проверить нечем — считаем включённым», и человек получал «готово»
-    /// при пустом столе.
-    /// Включить своё выключенное расширение и спросить состояние снова.
-    /// Обои уже записаны в его настройки: включившись, оно прочтёт их и
-    /// поднимет хост само.
+    /// What state our shell extension is in. If asking failed, we say exactly
+    /// that ([`wpe::ShellExtState::Unknown`]): this used to say "nothing to check
+    /// with — assume enabled", and the person got «done» with an empty desktop.
+    /// Enable our own disabled extension and ask for its state again.
+    /// The wallpaper is already written into its settings: once enabled, it
+    /// reads them and starts the host by itself.
     fn enable_shell_extension(&mut self) -> wpe::ShellExtState {
         let probe = wpe::shell_ext_state_argv(&self.de);
         let timeout = utils::default_timeout_secs(&probe) as f64;
@@ -3671,7 +3687,7 @@ impl<S: WpSys> WallpaperExec<S> {
         if !ok {
             return wpe::ShellExtState::Disabled;
         }
-        // Оболочка подхватывает список не мгновенно.
+        // The shell does not pick up the list instantly.
         self.sys.sleep(SHELL_EXT_ENABLE_SETTLE_SEC);
         self.shell_extension_state()
     }
@@ -3683,21 +3699,22 @@ impl<S: WpSys> WallpaperExec<S> {
         wpe::parse_shell_ext_state(&self.de, out.as_ref().map(|o| o.stdout.as_str()))
     }
 
-    /// Веб-обои: адрес (`http(s)://`, `file://`) либо локальный HTML-файл —
-    /// порт `WallpaperApplier._apply_web` вместе с веткой `apply` для веба.
+    /// Web wallpaper: an address (`http(s)://`, `file://`) or a local HTML file —
+    /// port of `WallpaperApplier._apply_web` together with the web branch of `apply`.
     ///
-    /// Своим сеансом поднимается хост `rexon-wallpaper-host --mode web` (план движка
-    /// `web_plan`); нет хоста — план сам отвечает честным отказом до запуска.
+    /// The `rexon-wallpaper-host --mode web` host is started in its own session
+    /// (the engine's `web_plan`); without a host the plan itself answers with an
+    /// honest refusal before launching.
     fn apply_web(&mut self, path: &str) -> WallpaperResult {
-        // ⭐ Починка: окно превращает локальный путь в `file://…`
-        // (`qt_settings::web_wallpaper_url`), а проверка существования у
-        // Python смотрела на саму эту строку — такого файла нет, и локальный
-        // HTML-файл всегда получал «не найден». Проверяется путь без схемы.
+        // ⭐ A fix: the window turns a local path into `file://…`
+        // (`qt_settings::web_wallpaper_url`), while Python's existence check looked
+        // at that very string — there is no such file, and a local HTML file always
+        // got «not found». The path without the scheme is checked.
         let local = path.strip_prefix("file://").unwrap_or(path);
         if !wpe::is_url(path) && (!self.sys.exists(local) || self.sys.is_dir(local)) {
             return WallpaperResult::fail(wpe::web_missing_message(local));
         }
-        // Прежние живые обои снимаются без вести мосту: их сейчас же сменят.
+        // The previous live wallpaper is stopped without a notice to the bridge: it is about to be replaced.
         if self.process.is_some() {
             self.stop(false);
         }
@@ -3709,8 +3726,8 @@ impl<S: WpSys> WallpaperExec<S> {
         let tools = self.plan_tools();
         let hints = self.hints();
         let host = self.sys.wallpaper_host();
-        // Абсолютный путь нужен только запасному пути surf для локального
-        // файла; окно отдаёт сюда уже готовый адрес, путь — как есть.
+        // The absolute path is needed only by the surf fallback for a local file;
+        // the window passes a ready address here, the path goes as is.
         let plan = wpe::web_plan(
             &self.session_type,
             "",
@@ -3728,48 +3745,48 @@ impl<S: WpSys> WallpaperExec<S> {
         res
     }
 
-    /// Остановить живые обои и вернуть рабочий стол в исходный вид.
+    /// Stop the live wallpaper and return the desktop to its original state.
     ///
-    /// `announce` — рассказывать ли мосту об остановке. Ложь означает
-    /// «обои снимаются под замену»: признак у моста обновится, вести не
-    /// будет.
+    /// `announce` — whether to tell the bridge about the stop. False means "the
+    /// wallpaper is being stopped for a replacement": the bridge's flag gets
+    /// updated, there will be no notice.
     pub fn stop(&mut self, announce: bool) -> WallpaperResult {
-        // Формат снимаем ПЕРВЫМ делом, до всякого возврата: возврат ставит
-        // статичную картинку тем же планом, что и обычное применение, а тот
-        // записывает в состояние свой формат — и собранное в конце сообщение
-        // называло бы `static` даже после видео.
+        // The format is cleared FIRST, before any restore: the restore sets a static
+        // picture with the same plan as a normal apply, and that one writes its own
+        // format into the state — and the message assembled at the end would say
+        // `static` even after a video.
         let fmt = self.current_format.clone();
-        // Остановленное намеренно сторож не поднимает.
+        // The watcher does not bring back what was stopped on purpose.
         self.host_request = None;
         self.forget_pending_backdrop();
 
-        // Замороженный надзором процесс сперва размораживается: SIGTERM до
-        // остановленного процесса не доходит, и остановка ждала бы SIGKILL.
+        // A process frozen by supervision is unfrozen first: SIGTERM does not reach
+        // a stopped process, and the stop would wait for SIGKILL.
         self.resume_if_paused();
         if let Some(proc) = self.process.take() {
             self.sys.kill_process(proc);
         }
-        // Обои на остальных мониторах — часть тех же обоев.
+        // The wallpaper on the other monitors is part of the same wallpaper.
         self.kill_companions();
 
-        // Фоновые звуки — часть тех же обоев: оставить их играть на голом
-        // столе значило бы остановить обои наполовину.
+        // Background sounds are part of the same wallpaper: leaving them playing on
+        // a bare desktop would mean stopping the wallpaper halfway.
         self.stop_all_ambient();
 
-        // Все окружения: вернуть иконки рабочего стола.
+        // All environments: bring back the desktop icons.
         self.set_desktop_icons(true);
-        // X11: вернуть стол, как был до живых обоев (сквозной фон Caja,
-        // композитор Marco). Только по «Остановить» человека: остановка
-        // перед сменой обоев (`announce == false`) переключала бы окно стола
-        // Caja туда-обратно на каждой смене.
+        // X11: return the desktop to how it was before the live wallpaper (Caja's
+        // transparent background, the Marco compositor). Only on the person's
+        // «Stop»: a stop before a wallpaper change (`announce == false`) would
+        // switch Caja's desktop window back and forth on every change.
         if announce {
             crate::wallpaper_backend::restore_desktop_icons(&mut DesktopIconsSys::new(&mut self.sys));
         }
 
-        // KDE: снять с десктоп-контейнментов УДАЛЁННЫЙ плагин обоев Rexon и
-        // вернуть штатный. У обновившегося со старой версии он мог остаться
-        // выбранным — тогда Plasma грузит несуществующий плагин, и рабочий
-        // стол остаётся пустым.
+        // KDE: take Rexon's REMOVED wallpaper plugin off the desktop containments
+        // and restore the stock one. For someone who upgraded from an old version it
+        // may have stayed selected — then Plasma loads a non-existent plugin and the
+        // desktop stays empty.
         if wpe::uses_plasma_config(&self.de) && self.kde_stale_rexon_plugin() {
             let clean = self.kde_clean_static_image();
             let script = wpe::kde_reset_script(&clean);
@@ -3777,37 +3794,38 @@ impl<S: WpSys> WallpaperExec<S> {
             self.sys.run(&argv, wpe::DESKTOP_CMD_TIMEOUT_SEC);
         }
 
-        // GNOME/Cinnamon-Wayland: демоном владеет расширение оболочки, а не
-        // мы — снять его можно только через его же настройки, иначе обои
-        // продолжали бы играть после «Остановить».
+        // GNOME/Cinnamon-Wayland: the daemon is owned by the shell extension, not
+        // by us — it can only be stopped through its own settings, otherwise the
+        // wallpaper would keep playing after «Stop».
         if wpe::needs_shell_extension(&self.de, &self.session_type) {
             self.shell_extension_stop();
         }
 
         self.restore_wallpaper();
-        // …и, если столом до нас владел другой движок обоев, вернуть ему
-        // стол. ПОСЛЕ возврата картинки: тот на KDE безусловно ставит
-        // org.kde.image, и обратный порядок затёр бы возврат плагина.
+        // …and if another wallpaper engine owned the desktop before us, give the
+        // desktop back to it. AFTER restoring the picture: on KDE that one
+        // unconditionally sets org.kde.image, and the reverse order would wipe out
+        // the plugin restore.
         self.restore_kde_wallpaper_plugin();
         self.blur_path = None;
 
         self.current_format = None;
         self.current_path = None;
         if announce {
-            // Под замену название уже принадлежит НОВЫМ обоям: применение
-            // выставляет его до того, как снять прежние. Стереть здесь —
-            // значит потерять его к моменту вести о запуске.
+            // For a replacement the name already belongs to the NEW wallpaper: the apply
+            // sets it before stopping the previous one. Erasing it here would mean
+            // losing it by the time of the launch notice.
             self.current_name.clear();
         }
         self.remove_pidfile();
 
-        // Мост: живых обоев больше нет.
+        // Bridge: there is no live wallpaper any more.
         self.notify_live_wallpaper(None, announce);
 
         WallpaperResult::ok(wpe::stopped_message(fmt.as_deref()))
     }
 
-    /// Снимок состояния движка — то, чем живут кнопки вкладки.
+    /// Snapshot of the engine state — what the tab's buttons live on.
     pub fn status(&mut self) -> Status {
         let running = match self.process {
             Some(p) => self.sys.poll(p).is_none(),
@@ -3831,23 +3849,24 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    // ── фоновые звуки ─────────────────────────────────────────────────────
+    // ── background sounds ─────────────────────────────────────────────────
 
-    /// Запустить фоновый звук. Истина — только если он ЗАЗВУЧАЛ.
+    /// Start a background sound. True only if it has STARTED SOUNDING.
     ///
-    /// ⚠️ Мерило успеха здесь НЕ то же, что у обоев, и это принципиально. У
-    /// обоев процесс рисует стол, пока жив, — там мерило «пережил
-    /// отсрочку». Звук так мерить нельзя: разовый короче отсрочки честно
-    /// кончается сам, и правило «жив через полсекунды» дало бы ЛОЖНЫЙ отказ
-    /// на исправном звуке. Поэтому мерило — соответствие ожиданию:
+    /// ⚠️ The success yardstick here is NOT the same as for wallpapers, and that
+    /// is fundamental. A wallpaper process draws the desktop while alive — there
+    /// the yardstick is "survived the grace period". Sound cannot be measured
+    /// that way: a one-shot sound shorter than the grace period honestly ends by
+    /// itself, and the "alive after half a second" rule would give a FALSE
+    /// refusal on a working sound. So the yardstick is matching the expectation:
     ///
-    ///   * зацикленный обязан играть и дальше — успех только «жив»;
-    ///   * разовый обязан играть ИЛИ честно доиграть — успех «жив или
-    ///     вышел с нулём».
+    ///   * a looped sound must keep playing — success only if "alive";
+    ///   * a one-shot sound must play OR honestly finish — success if "alive or
+    ///     exited with zero".
     ///
-    /// Сама отсрочка одна и та же и берётся из движка: битый файл отдаёт
-    /// отказ за свою десятую долю секунды, полную отсрочку платит только
-    /// тот, кто играет.
+    /// The grace period itself is the same and comes from the engine: a broken
+    /// file gives a refusal within its tenth of a second, only one that plays
+    /// pays the full grace period.
     pub fn play_ambient(
         &mut self,
         id: &str,
@@ -3864,8 +3883,8 @@ impl<S: WpSys> WallpaperExec<S> {
             log_line("error", "mpv не установлен — фоновые звуки недоступны");
             return false;
         }
-        // Прежний экземпляр этого же звука снимаем: иначе два mpv играли бы
-        // одно и то же поверх друг друга.
+        // Stop the previous instance of the same sound: otherwise two mpv processes
+        // would play the same thing on top of each other.
         self.stop_ambient(id);
 
         let argv = wpe::ambient_argv(path, volume, looped);
@@ -3902,16 +3921,16 @@ impl<S: WpSys> WallpaperExec<S> {
             path: path.to_string(),
             name: shown,
             volume,
-            // Режим нужен смене громкости: mpv меняет её только
-            // перезапуском, и перезапускать надо в ТОМ ЖЕ режиме — иначе
-            // разовый звук после правки громкости зацикливался навсегда.
+            // The mode is needed for a volume change: mpv changes it only by
+            // restarting, and it must be restarted in THE SAME mode — otherwise a
+            // one-shot sound looped forever after a volume tweak.
             looped,
             proc,
         });
         true
     }
 
-    /// Остановить один фоновый звук.
+    /// Stop one background sound.
     pub fn stop_ambient(&mut self, id: &str) {
         let Some(idx) = self.ambient.iter().position(|a| a.id == id) else {
             return;
@@ -3921,7 +3940,7 @@ impl<S: WpSys> WallpaperExec<S> {
         log_line("info", &format!("фоновый звук остановлен: {}", sound.name));
     }
 
-    /// Остановить все фоновые звуки.
+    /// Stop all background sounds.
     pub fn stop_all_ambient(&mut self) {
         let ids: Vec<String> = self.ambient.iter().map(|a| a.id.clone()).collect();
         for id in ids {
@@ -3929,7 +3948,7 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Сменить громкость звука — перезапуском в том же режиме.
+    /// Change the sound volume — by restarting in the same mode.
     pub fn set_ambient_volume(&mut self, id: &str, volume: i64) -> bool {
         let Some(sound) = self.ambient.iter().find(|a| a.id == id) else {
             return false;
@@ -3939,7 +3958,7 @@ impl<S: WpSys> WallpaperExec<S> {
         self.play_ambient(id, &path, &name, volume, looped)
     }
 
-    /// Играет ли звук прямо сейчас.
+    /// Whether the sound is playing right now.
     pub fn ambient_playing(&mut self, id: &str) -> bool {
         let Some(proc) = self.ambient.iter().find(|a| a.id == id).map(|a| a.proc) else {
             return false;
@@ -3947,7 +3966,7 @@ impl<S: WpSys> WallpaperExec<S> {
         self.sys.poll(proc).is_none()
     }
 
-    /// Список играющих звуков; доигравшие вычищаются из состояния.
+    /// List of playing sounds; finished ones are cleaned out of the state.
     pub fn active_ambient(&mut self) -> Vec<AmbientInfo> {
         let all: Vec<(String, String, i64, ProcHandle)> = self
             .ambient
@@ -3958,7 +3977,7 @@ impl<S: WpSys> WallpaperExec<S> {
         let mut out = Vec::new();
         for (id, name, volume, proc) in all {
             if self.sys.poll(proc).is_some() {
-                continue; // доиграл — в списке ему не место
+                continue; // finished — it has no place in the list
             }
             alive.push(id.clone());
             out.push(AmbientInfo { id, name, volume, active: true });
@@ -3967,21 +3986,21 @@ impl<S: WpSys> WallpaperExec<S> {
         out
     }
 
-    // ── что вернуть после остановки ───────────────────────────────────────
+    // ── what to restore after a stop ──────────────────────────────────────
 
-    /// Запомнить обои, которые стоят сейчас, — их вернёт остановка.
+    /// Remember the wallpaper that is set now — a stop restores it.
     fn save_current_wallpaper(&mut self) {
-        // Плагин стола KDE запоминается ОТДЕЛЬНО от картинки: при чужом
-        // плагине статичной картинки в конфиге нет вовсе, и ранний выход
-        // ниже потерял бы владельца стола.
+        // The KDE desktop plugin is remembered SEPARATELY from the picture: with a
+        // foreign plugin there is no static picture in the config at all, and the
+        // early return below would lose the desktop's owner.
         self.save_kde_wallpaper_plugin();
 
         if self.saved_wallpaper.is_some() {
-            return; // уже сохранены
+            return; // already saved
         }
         self.saved_de = Some(self.de.clone());
         if self.de == "cosmic" {
-            // Тот же ключ, в который COSMIC-ветка пишет картинку.
+            // The same key the COSMIC branch writes the picture into.
             let all = format!("{}/{}/all", self.config_home(), wpe::COSMIC_BG_DIR_REL);
             self.saved_wallpaper = self.sys.read_text(&all).and_then(|t| wpe::cosmic_bg_source_path(&t));
             return;
@@ -4002,12 +4021,12 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Cinnamon 6.8+: запомнить список картинок и режим как есть; картинку
-    /// для «что стояло» взять из списка, если `picture-uri` пуст (на 6.8 он
-    /// пуст всегда — оболочка его очищает).
+    /// Cinnamon 6.8+: remember the picture list and the mode as they are; take
+    /// the "what was set" picture from the list if `picture-uri` is empty (on 6.8
+    /// it is always empty — the shell clears it).
     fn save_cinnamon_bg_list(&mut self) {
         let Some(list) = self.cinnamon_bg_get(wpe::CINNAMON_BG_LIST_KEY) else {
-            return; // старый Cinnamon: ключа нет
+            return; // old Cinnamon: no such key
         };
         let mode = self.cinnamon_bg_get(wpe::CINNAMON_BG_MODE_KEY).unwrap_or_else(|| "'mirror'".to_string());
         if self.saved_wallpaper.is_none() {
@@ -4016,8 +4035,8 @@ impl<S: WpSys> WallpaperExec<S> {
         self.saved_cinnamon_bg = Some((list, mode));
     }
 
-    /// Значение ключа схемы фона Cinnamon (текст GVariant); `None` — ключа
-    /// нет или gsettings не ответил.
+    /// Value of a Cinnamon background schema key (GVariant text); `None` — no
+    /// such key or gsettings did not answer.
     fn cinnamon_bg_get(&mut self, key: &str) -> Option<String> {
         let argv = wpe::gsettings_get_argv(wpe::CINNAMON_BG_SCHEMA, key);
         let timeout = utils::default_timeout_secs(&argv) as f64;
@@ -4026,7 +4045,7 @@ impl<S: WpSys> WallpaperExec<S> {
         (!raw.is_empty()).then_some(raw)
     }
 
-    /// Cinnamon 6.8+: вернуть запомненные список и режим. Истина — вернули.
+    /// Cinnamon 6.8+: restore the remembered list and mode. True — restored.
     fn restore_cinnamon_bg_list(&mut self) -> bool {
         let Some((list, mode)) = self.saved_cinnamon_bg.take() else {
             return false;
@@ -4050,9 +4069,9 @@ impl<S: WpSys> WallpaperExec<S> {
         ok
     }
 
-    /// Вернуть сохранённые обои.
+    /// Restore the saved wallpaper.
     fn restore_wallpaper(&mut self) {
-        // Cinnamon 6.8+: список целиком — точнее, чем одна картинка.
+        // Cinnamon 6.8+: the whole list — more precise than a single picture.
         if self.restore_cinnamon_bg_list() {
             self.saved_wallpaper = None;
             self.saved_de = None;
@@ -4063,7 +4082,7 @@ impl<S: WpSys> WallpaperExec<S> {
         };
         let de = self.saved_de.take().unwrap_or_else(|| self.de.clone());
 
-        // KDE: сбросить плагин стола на штатный (если стоял наш).
+        // KDE: reset the desktop plugin to the stock one (if ours was set).
         if wpe::uses_plasma_config(&de) {
             let argv = wpe::plasma_dbus_argv(wpe::KDE_PLAIN_RESET_SCRIPT);
             self.sys.run(&argv, wpe::DESKTOP_CMD_TIMEOUT_SEC);
@@ -4080,14 +4099,14 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Ответ plasmashell: какие плагины обоев стоят на ВСЕХ столах.
+    /// plasmashell's answer: which wallpaper plugins are set on ALL desktops.
     ///
-    /// Единственное место, где исполнитель спрашивает про плагин стола: и
-    /// «чей стол, кому его вернуть», и «не остался ли удалённый плагин» —
-    /// оба ответа движок считает из ЭТОЙ строки. Читаем у самой Plasma, а
-    /// не из конфига: файл на диске отстаёт, plasmashell держит настройки в
-    /// памяти и пишет их когда захочет. Молчание отдаём пустой строкой —
-    /// за «плагинов нет» его не выдаёт никто.
+    /// The only place where the executor asks about the desktop plugin: both
+    /// "whose desktop is it, to whom to give it back" and "is the removed plugin
+    /// still there" — the engine computes both answers from THIS string. We read
+    /// it from Plasma itself, not from the config: the file on disk lags behind,
+    /// plasmashell keeps settings in memory and writes them whenever it wants.
+    /// Silence is returned as an empty string — nobody passes it off as "no plugins".
     fn kde_plugin_reply(&mut self) -> String {
         let argv = wpe::plasma_dbus_reply_argv(wpe::KDE_READ_PLUGIN_SCRIPT);
         match self.sys.run(&argv, wpe::DESKTOP_CMD_TIMEOUT_SEC) {
@@ -4096,7 +4115,7 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Запомнить ЧУЖОЙ плагин обоев стола, если он там стоял.
+    /// Remember a FOREIGN desktop wallpaper plugin, if one was set there.
     fn save_kde_wallpaper_plugin(&mut self) {
         if !wpe::uses_plasma_config(&self.de) || self.saved_kde_plugin.is_some() {
             return;
@@ -4111,7 +4130,7 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Вернуть столу KDE прежний чужой плагин обоев.
+    /// Give the KDE desktop back its previous foreign wallpaper plugin.
     fn restore_kde_wallpaper_plugin(&mut self) {
         let Some(plugin) = self.saved_kde_plugin.take() else {
             return;
@@ -4135,18 +4154,18 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Остался ли на столе выбранным УДАЛЁННЫЙ плагин обоев Rexon.
+    /// Whether Rexon's REMOVED wallpaper plugin is still selected on the desktop.
     fn kde_stale_rexon_plugin(&mut self) -> bool {
         let reply = self.kde_plugin_reply();
         wpe::kde_removed_plugin_selected(&reply)
     }
 
-    /// Текущая картинка `org.kde.image` рабочего стола.
+    /// The current `org.kde.image` picture of the desktop.
     ///
-    /// Читается из конфига столов, а не через `kreadconfig6`: тому пришлось
-    /// бы называть номер контейнмента, а он у каждой машины свой — запрос по
-    /// чужому номеру отдавал пустоту, и остановка возвращала не обой
-    /// человека, а умолчание дистрибутива.
+    /// Read from the desktops config rather than via `kreadconfig6`: that one
+    /// would need the containment number, and it differs on every machine — a
+    /// query with someone else's number returned emptiness, and the stop
+    /// restored not the person's wallpaper but the distribution default.
     fn kde_current_static_image(&mut self) -> Option<String> {
         let home = self.home();
         let cfg = format!("{home}/.config/plasma-org.kde.plasma.desktop-appletsrc");
@@ -4154,8 +4173,8 @@ impl<S: WpSys> WallpaperExec<S> {
         wpe::kde_desktop_static_image(&text)
     }
 
-    /// Чистый обой для возврата после остановки: сохранённый настоящий →
-    /// текущий (если это не наш кадр из кеша) → умолчание дистрибутива.
+    /// A clean wallpaper to restore after a stop: the saved real one → the
+    /// current one (if it is not our frame from the cache) → the distribution default.
     fn kde_clean_static_image(&mut self) -> String {
         let saved = self.saved_wallpaper.clone();
         let current = self.kde_current_static_image();
@@ -4173,8 +4192,8 @@ impl<S: WpSys> WallpaperExec<S> {
                 return format!("{dir}/");
             }
         }
-        // Любой установленный пакет обоев Plasma. Порядок отсортированный —
-        // иначе «первый попавшийся» менялся бы от машины к машине.
+        // Any installed Plasma wallpaper package. Sorted order — otherwise "the
+        // first one found" would change from machine to machine.
         for name in self.sys.listdir(wpe::PLASMA_WALLPAPER_ROOT) {
             let pkg = format!("{}/{name}", wpe::PLASMA_WALLPAPER_ROOT);
             if self.sys.is_dir(&format!("{pkg}/contents/images")) {
@@ -4184,9 +4203,9 @@ impl<S: WpSys> WallpaperExec<S> {
         String::new()
     }
 
-    // ── иконки рабочего стола и PID-файл ──────────────────────────────────
+    // ── desktop icons and the PID file ────────────────────────────────────
 
-    /// Показать или скрыть иконки рабочего стола командами движка.
+    /// Show or hide desktop icons with the engine's commands.
     fn set_desktop_icons(&mut self, visible: bool) {
         if let Some(probe) = wpe::desktop_icons_probe_argv(&self.de, visible) {
             let answered_yes = match self.sys.run(&probe, wpe::DESKTOP_CMD_TIMEOUT_SEC) {
@@ -4203,29 +4222,29 @@ impl<S: WpSys> WallpaperExec<S> {
     }
 
 
-    // ── размытие обоев ────────────────────────────────────────────────────
+    // ── wallpaper blur ────────────────────────────────────────────────────
 
-    /// Размыть текущие обои-картинку и поставить размытую копию.
+    /// Blur the current picture wallpaper and set the blurred copy.
     ///
-    /// Истина — копия стоит на столе. Настоящие обои запоминаются тем же
-    /// путём, что перед живыми обоями, — их вернёт [`Self::unblur_wallpaper`]
-    /// или остановка.
+    /// True — the copy is on the desktop. The real wallpaper is remembered the
+    /// same way as before a live wallpaper — [`Self::unblur_wallpaper`] or a stop
+    /// restores it.
     ///
-    /// ⭐ Починка: Python узнавал текущие обои только через gsettings, и на
-    /// KDE «Размыть» отвечало отказом всегда. Здесь картинка стола KDE
-    /// читается из конфига столов (как при возврате после остановки); наш
-    /// кадр из кеша за настоящие обои не принимается.
-    /// Картинка, которая сейчас стоит обоями стола, — только чтение (набор
-    /// виджетов Conky запоминает её рядом с виджетами). Свои обои-картинка
-    /// Rexon — по памяти исполнителя; иначе — из настроек окружения: конфиг
-    /// столов KDE, ключ COSMIC, gsettings. `None` — узнать не вышло или
-    /// стоят не картинка.
+    /// ⭐ A fix: Python learned the current wallpaper only via gsettings, and on
+    /// KDE «Blur» always answered with a refusal. Here the KDE desktop picture is
+    /// read from the desktops config (as when restoring after a stop); our frame
+    /// from the cache is not taken for the real wallpaper.
+    /// The picture currently set as the desktop wallpaper — read-only (a Conky
+    /// widget set remembers it next to the widgets). Rexon's own picture
+    /// wallpaper — from the executor's memory; otherwise from the environment's
+    /// settings: the KDE desktops config, the COSMIC key, gsettings. `None` —
+    /// could not find out, or what is set is not a picture.
     pub fn desktop_static_image(&mut self) -> Option<String> {
         if self.current_format.as_deref() == Some("static") {
             return self.current_path.clone();
         }
         if self.current_format.is_some() {
-            return None; // играют живые обои — картинки нет
+            return None; // a live wallpaper is playing — there is no picture
         }
         let found = if wpe::uses_plasma_config(&self.de) {
             self.kde_current_static_image()
@@ -4233,8 +4252,8 @@ impl<S: WpSys> WallpaperExec<S> {
             let all = format!("{}/{}/all", self.config_home(), wpe::COSMIC_BG_DIR_REL);
             self.sys.read_text(&all).and_then(|t| wpe::cosmic_bg_source_path(&t))
         } else if self.de == "xfce" {
-            // xfdesktop держит картинку у каждого монитора и рабочего стола;
-            // главный стол — первый монитор, рабочий стол 0.
+            // xfdesktop keeps a picture for each monitor and workspace; the main
+            // desktop is the first monitor, workspace 0.
             let list: Vec<String> = ["xfconf-query", "-c", "xfce4-desktop", "-l"].map(String::from).to_vec();
             let timeout = utils::default_timeout_secs(&list) as f64;
             let prop = wpe::xfce_last_image_prop(&self.sys.run(&list, timeout)?.stdout)?;
@@ -4249,7 +4268,7 @@ impl<S: WpSys> WallpaperExec<S> {
                 let raw = wpe::gsettings_path_value(&self.sys.run(&argv, timeout)?.stdout);
                 (!raw.is_empty()).then_some(raw)
             };
-            // GNOME при тёмном оформлении показывает `picture-uri-dark`.
+            // With a dark style GNOME shows `picture-uri-dark`.
             let dark = wpe::gsettings_dark_key(&self.de).and_then(|(s, k)| {
                 let (cs, ck) = crate::themes::COLOR_SCHEME_KEY;
                 get(cs, ck).filter(|v| wpe::prefers_dark(v)).and_then(|_| get(s, k))
@@ -4264,11 +4283,12 @@ impl<S: WpSys> WallpaperExec<S> {
         found.filter(|p| self.sys.exists(p) && !self.sys.is_dir(p))
     }
 
-    /// Картинка, на которой показать снимок виджета (подложка превью Conky,
-    /// `conky_preview`): обои-картинка стола ([`Self::desktop_static_image`]),
-    /// у видеообоев — кадр видео (ffmpeg, в кеш), у анимации GIF — сам файл
-    /// (декодер берёт первый кадр). `None` — живые обои без картинки
-    /// (сцена, веб, Flash) или узнать не вышло: подложка — ровная заливка.
+    /// The picture to show a widget snapshot on (the Conky preview backdrop,
+    /// `conky_preview`): the desktop picture wallpaper ([`Self::desktop_static_image`]),
+    /// for video wallpapers a video frame (ffmpeg, into the cache), for a GIF
+    /// animation the file itself (the decoder takes the first frame). `None` — a
+    /// live wallpaper without a picture (scene, web, Flash) or could not find
+    /// out: the backdrop is a flat fill.
     pub fn desktop_backdrop_image(&mut self) -> Option<String> {
         match self.current_format.clone().as_deref() {
             Some("video") => {
@@ -4329,8 +4349,8 @@ impl<S: WpSys> WallpaperExec<S> {
         true
     }
 
-    /// Снять размытие: вернуть запомненные настоящие обои. Ложь — возвращать
-    /// нечего (то же, что у Python).
+    /// Remove the blur: restore the remembered real wallpaper. False — nothing to
+    /// restore (the same as in Python).
     pub fn unblur_wallpaper(&mut self) -> bool {
         if self.saved_wallpaper.is_none() {
             return false;
@@ -4350,7 +4370,7 @@ impl<S: WpSys> WallpaperExec<S> {
         }
     }
 
-    /// Путь PID-файла процесса обоев.
+    /// Path of the wallpaper process PID file.
     fn pidfile(&mut self) -> String {
         let dir = self.sys.env("XDG_RUNTIME_DIR");
         let dir = if dir.is_empty() {
@@ -4361,14 +4381,14 @@ impl<S: WpSys> WallpaperExec<S> {
         format!("{dir}/{}", wpe::PIDFILE_NAME)
     }
 
-    /// Записать PID живого процесса обоев — по нему подбираются сироты
-    /// прошлого запуска.
+    /// Write the PID of the live wallpaper process — orphans of the previous run
+    /// are picked up by it.
     fn write_pidfile(&mut self) {
         let Some(proc) = self.process else {
             return;
         };
         if self.sys.poll(proc).is_some() {
-            return; // процесс уже мёртв — писать нечего
+            return; // the process is already dead — nothing to write
         }
         let Some(pid) = self.sys.pid(proc) else {
             return;
@@ -4377,7 +4397,7 @@ impl<S: WpSys> WallpaperExec<S> {
         self.sys.write_text(&path, &pid.to_string());
     }
 
-    /// Удалить PID-файл.
+    /// Delete the PID file.
     fn remove_pidfile(&mut self) {
         let path = self.pidfile();
         self.sys.remove_file(&path);
@@ -4388,88 +4408,88 @@ impl<S: WpSys> WallpaperExec<S> {
 mod tests {
     use super::*;
 
-    /// Подставной шов: ничего не делает, всё записывает.
+    /// Fake seam: does nothing, records everything.
     ///
-    /// Живой рабочий стол сверками не трогается вовсе — ни один `cargo test`
-    /// не имеет права снять обои у того, кто его запустил.
+    /// The checks do not touch the live desktop at all — no `cargo test` has the
+    /// right to take the wallpaper away from whoever ran it.
     #[derive(Default)]
     struct FakeSys {
-        /// Что просили запустить и дождаться.
+        /// What was asked to be run and waited for.
         ran: Vec<Vec<String>>,
-        /// Что просили поднять процессом (и своей ли сессией).
+        /// What was asked to be started as a process (and whether in its own session).
         spawned: Vec<(Vec<String>, bool)>,
-        /// Ответы на `run` по первому слову команды.
+        /// Answers to `run` by the first word of the command.
         answers: HashMap<String, RunOut>,
-        /// Команды, которых в системе «нет» (`run` отдаёт `None`).
+        /// Commands that are "missing" from the system (`run` returns `None`).
         missing: Vec<String>,
-        /// Программы, которые «есть».
+        /// Programs that "exist".
         tools: Vec<String>,
-        /// Коды возврата поднятых процессов по порядку: `None` — жив.
+        /// Exit codes of the started processes in order: `None` — alive.
         spawn_rc: Vec<Option<i64>>,
-        /// Снятые процессы.
+        /// Stopped processes.
         killed: Vec<ProcHandle>,
-        /// Вести мосту.
+        /// Notices to the bridge.
         bridge: Vec<(bool, String, bool)>,
-        /// Пути, которых «нет» (всё остальное считается существующим).
+        /// Paths that are "missing" (everything else counts as existing).
         missing_paths: Vec<String>,
-        /// Пути, которые считаются каталогами.
+        /// Paths that count as directories.
         dirs: Vec<String>,
-        /// Содержимое каталогов.
+        /// Directory contents.
         listing: HashMap<String, Vec<String>>,
-        /// Файлы, которые можно прочитать.
+        /// Files that can be read.
         files: HashMap<String, String>,
-        /// Что записали и куда.
+        /// What was written and where.
         written: Vec<(String, String)>,
-        /// Записанное сразу читается обратно (`files`).
+        /// What is written is immediately readable back (`files`).
         write_through: bool,
-        /// Что удалили.
+        /// What was deleted.
         removed: Vec<String>,
-        /// Переменные окружения.
+        /// Environment variables.
         envs: HashMap<String, String>,
         clock: f64,
         next: ProcHandle,
-        /// Что просили размыть: (исходник, копия, сила).
+        /// What was asked to be blurred: (source, copy, strength).
         blurred: Vec<(String, String, i64)>,
-        /// Размытие «не удаётся».
+        /// Blurring "fails".
         blur_fails: bool,
-        /// Заморозки процессов: (дескриптор, заморозить ли).
+        /// Process freezes: (handle, whether to freeze).
         signals: Vec<(ProcHandle, bool)>,
-        /// Где «лежит» хост обоев (один на видео и веб).
+        /// Where the wallpaper host "lives" (one for video and web).
         host: Option<String>,
-        /// Кадр из видео «достаётся».
+        /// A video frame "gets extracted".
         frame_ok: bool,
-        /// Какие кадры просили достать: (исходник, куда).
+        /// Which frames were asked to be extracted: (source, destination).
         frames: Vec<(String, String)>,
-        /// Куда «скачивается» ролик YouTube.
+        /// Where the YouTube video "gets downloaded".
         yt_download: Option<String>,
-        /// Чужой шелл, который «держит» слой обоев.
+        /// A foreign shell that "holds" the wallpaper layer.
         shell_owner: Option<DesktopShell>,
-        /// Ответ демона на «сними WE-обои»; `None` — крюка нет.
+        /// The daemon's answer to "stop WE wallpapers"; `None` — no hook.
         we_stop: Option<(String, i64)>,
-        /// Когда просили снять WE-обои: (запущено команд, поднято процессов)
-        /// на тот миг — по ним видно, что снятие шло ДО своих обоев.
+        /// When stopping WE wallpapers was requested: (commands run, processes started)
+        /// at that moment — they show that stopping happened BEFORE our own wallpaper.
         we_stops: Vec<(usize, usize)>,
-        /// Когда просили убрать вывод waywallen — в тех же мерках.
+        /// When removing the waywallen output was requested — in the same measures.
         display_releases: Vec<(usize, usize)>,
-        /// Сколько раз исполнитель сказал «своя поверхность слоя поднята».
+        /// How many times the executor said "our own layer surface is up".
         layer_ups: usize,
-        /// Ответы на `run` по концу всей строки команды — главнее `answers`.
+        /// Answers to `run` by the end of the whole command line — take precedence over `answers`.
         tail_answers: Vec<(String, RunOut)>,
-        /// Брошенная копия расширения Cinnamon «снимается» по этому пути.
+        /// The abandoned copy of the Cinnamon extension is "removed" at this path.
         orphan_copy: Option<String>,
-        /// Сеанс «Cinnamon с layer-shell».
+        /// A "Cinnamon with layer-shell" session.
         cinnamon_layer: bool,
-        /// Сколько раз исполнитель отметил начало применения.
+        /// How many times the executor marked the start of an apply.
         apply_marks: usize,
-        /// Кадры роликов «уже лежат» в кеше (`rexon/video-stills`); без
-        /// этого кеш пуст, и кадр достаётся заново.
+        /// Movie frames "are already" in the cache (`rexon/video-stills`); without
+        /// this the cache is empty, and the frame is extracted anew.
         stills_cached: bool,
-        /// Сколько команд было запущено к каждому подъёму процесса — по ним
-        /// видно, что шло до показа, а что после.
+        /// How many commands had been run by each process start — they show what
+        /// went before showing and what after.
         spawn_marks: Vec<usize>,
-        /// Кадры, взятые из кеша и освежённые.
+        /// Frames taken from the cache and refreshed.
         touched: Vec<String>,
-        /// Чистки кеша кадров: (папка, что не трогать).
+        /// Frame cache prunes: (folder, what to leave alone).
         pruned: Vec<(String, String)>,
     }
 
@@ -4522,7 +4542,7 @@ mod tests {
             Ok(self.next)
         }
         fn poll(&mut self, proc: ProcHandle) -> Option<i64> {
-            // Порядковый номер процесса = его строка в `spawn_rc`.
+            // The process's sequence number = its row in `spawn_rc`.
             let idx = (proc as usize).checked_sub(1)?;
             self.spawn_rc.get(idx).copied().flatten()
         }
@@ -4634,9 +4654,10 @@ mod tests {
         WallpaperExec::with_env(sys, de, session)
     }
 
-    /// Живая WE-обоя и статичная картинка: исполнитель СНАЧАЛА снимает
-    /// WE-обою (до первой команды плана), потом ставит картинку — иначе она
-    /// легла бы под поверхность WE и человек увидел бы прежние обои.
+    /// A live WE wallpaper and a static picture: the executor FIRST stops the WE
+    /// wallpaper (before the plan's first command), then sets the picture —
+    /// otherwise it would land under the WE surface and the person would see the
+    /// previous wallpaper.
     #[test]
     fn static_wallpaper_stops_live_we_wallpapers_first() {
         let mut sys = FakeSys::default();
@@ -4651,9 +4672,9 @@ mod tests {
         assert!(!res.message.contains("Wallpaper Engine"), "лишняя приписка: {}", res.message);
     }
 
-    /// Вывод waywallen (GNOME: расширение с чёрной заглушкой) убирается
-    /// вместе со снятием WE-обоев — до своих обоев и даже без крюка снятия;
-    /// ради отказа — нет.
+    /// The waywallen output (GNOME: the extension with a black placeholder) is
+    /// removed together with stopping WE wallpapers — before our own wallpaper
+    /// and even without the stop hook; not for the sake of a refusal.
     #[test]
     fn own_wallpaper_releases_waywallen_display() {
         for fmt in ["static", "video"] {
@@ -4672,14 +4693,14 @@ mod tests {
         assert!(e.sys_mut().display_releases.is_empty(), "убрали ради отказа");
     }
 
-    /// Снять WE-обою не вышло: свои обои всё равно ставятся, а человек
-    /// узнаёт, почему их не видно. Нет демона / нет крюка — молча.
+    /// Stopping the WE wallpaper failed: our wallpaper is set anyway, and the
+    /// person learns why it is not visible. No daemon / no hook — silently.
     #[test]
     fn we_stop_failure_is_told_and_absence_is_silent() {
         for (answer, told) in [
             (Some(crate::we_client::STOP_ERROR), true),
-            // Демон ответил, что снимать нечего (нет ни рендереров, ни
-            // мониторов) — молча: предупреждать не о чем.
+            // The daemon answered that there is nothing to stop (neither renderers nor
+            // monitors) — silently: nothing to warn about.
             (Some(crate::we_client::STOP_STOPPED), false),
             (Some(crate::we_client::STOP_NOT_RUNNING), false),
             (Some(crate::we_client::STOP_NO_QT), false),
@@ -4693,14 +4714,14 @@ mod tests {
             assert!(res.ok, "{answer:?}: {}", res.message);
             let note = we_yield_note(crate::we_client::STOP_ERROR).unwrap();
             assert_eq!(res.warning.as_deref() == Some(note.as_str()), told, "{answer:?}: {res:?}");
-            // Предупреждение — отдельным полем, в сообщение об успехе оно
-            // не вклеивается (иначе итог шёл бы под зелёной галочкой).
+            // The warning is a separate field, it is not glued into the success message
+            // (otherwise the result would go under a green check mark).
             assert!(!res.message.contains(&note), "{answer:?}: {}", res.message);
         }
     }
 
-    /// Ради отказа чужие обои не снимаются: файла нет, формат снят с
-    /// продукта, слой держит чужой шелл.
+    /// The other wallpaper is not stopped for the sake of a refusal: the file is
+    /// missing, the format is withdrawn from the product, a foreign shell holds the layer.
     #[test]
     fn refusals_do_not_stop_we_wallpapers() {
         let mut sys = FakeSys::default();
@@ -4719,7 +4740,7 @@ mod tests {
         assert!(e.sys_mut().we_stops.is_empty(), "сняли при чужом шелле");
     }
 
-    /// Свои форматы снимают WE-обои все; снятые с продукта — нет.
+    /// All of our own formats stop WE wallpapers; withdrawn ones do not.
     #[test]
     fn every_own_format_yields_we_wallpapers() {
         for fmt in ["static", "animated", "video", "youtube", "web", "swf"] {
@@ -4730,7 +4751,7 @@ mod tests {
         }
     }
 
-    /// Первый удавшийся шаг заканчивает план: до второго очередь не доходит.
+    /// The first successful step ends the plan: the second one never gets its turn.
     #[test]
     fn the_first_step_that_works_ends_the_plan() {
         let mut sys = FakeSys::default();
@@ -4748,13 +4769,13 @@ mod tests {
         assert_eq!(e.sys_mut().ran.len(), 1, "запущено больше одного шага");
     }
 
-    /// Неудачный НЕтерминальный шаг уводит к следующему, а не к отказу:
-    /// ровно это делает запасные пути плана достижимыми.
+    /// A failed NON-terminal step leads to the next one, not to a refusal:
+    /// exactly this makes the plan's fallback paths reachable.
     #[test]
     fn a_failed_step_hands_over_to_the_next_one() {
         let mut sys = FakeSys::default();
-        // swww отвечает ненулём (демон отвечает на query, картинку не берёт),
-        // и очередь обязана дойти до swaybg.
+        // swww answers non-zero (the daemon answers query but does not take the
+        // picture), and the queue must get to swaybg.
         sys.answer("swww", 1, "");
         sys.tools.push("swww".to_string());
         sys.tools.push("swaybg".to_string());
@@ -4772,8 +4793,8 @@ mod tests {
         );
     }
 
-    /// `{stderr}` терминального шага заполняется настоящим выводом команды —
-    /// иначе покупатель видел бы отказ без причины.
+    /// `{stderr}` of the terminal step is filled with the command's real output —
+    /// otherwise the customer would see a refusal without a reason.
     #[test]
     fn the_terminal_failure_carries_the_real_stderr() {
         let mut sys = FakeSys::default();
@@ -4785,8 +4806,8 @@ mod tests {
         assert!(!res.message.is_empty(), "отказ без слов");
     }
 
-    /// COSMIC: картинка ложится в родной ключ cosmic-bg (ничего не
-    /// запускается), наш прежний swaybg снимается; ключ в `$XDG_CONFIG_HOME`.
+    /// COSMIC: the picture goes into cosmic-bg's native key (nothing is launched),
+    /// our former swaybg is stopped; the key is in `$XDG_CONFIG_HOME`.
     #[test]
     fn cosmic_static_wallpaper_is_written_to_cosmic_bg() {
         let mut sys = FakeSys::default();
@@ -4805,15 +4826,16 @@ mod tests {
         assert_eq!(wpe::cosmic_bg_source_path(&written).as_deref(), Some("/w.png"));
         assert!(e.sys_mut().spawned.is_empty(), "поднят свой демон фона");
         assert_eq!(e.sys_mut().killed, vec![77], "прежний swaybg не снят");
-        // Перед живыми обоями запоминается именно этот ключ.
+        // Exactly this key is remembered before a live wallpaper.
         e.saved_wallpaper = None;
         e.save_current_wallpaper();
         assert_eq!(e.saved_wallpaper.as_deref(), Some("/w.png"));
     }
 
-    /// sway: фон ставит сам sway (`swaymsg output * bg`), свой swaybg не
-    /// поднимается, а прежний наш снимается — иначе он висел бы лишним
-    /// процессом. Нет сеанса sway (swaymsg не ответил) — запасной swaybg.
+    /// sway: the background is set by sway itself (`swaymsg output * bg`), our
+    /// own swaybg is not started, and our former one is stopped — otherwise it
+    /// would hang around as an extra process. No sway session (swaymsg did not
+    /// answer) — fallback swaybg.
     #[test]
     fn sway_static_wallpaper_uses_sway_own_background() {
         let mut sys = FakeSys::default();
@@ -4839,8 +4861,8 @@ mod tests {
         assert_eq!(e.sys_mut().spawned.len(), 1, "запасной swaybg не поднят");
     }
 
-    /// Запись в ключ COSMIC не удалась (не перечиталась) — план идёт дальше,
-    /// к внешнему демону, а не рапортует успех.
+    /// Writing the COSMIC key failed (did not read back) — the plan moves on to
+    /// the external daemon rather than reporting success.
     #[test]
     fn cosmic_bg_failure_falls_back_to_a_daemon() {
         let mut sys = FakeSys::default();
@@ -4854,11 +4876,11 @@ mod tests {
         assert_eq!(e.sys_mut().spawned.len(), 1, "запасной swaybg не поднят");
     }
 
-    /// Шаг `fail` отвечает отказом, ничего не запуская.
+    /// A `fail` step answers with a refusal without launching anything.
     #[test]
     fn a_fail_step_runs_nothing() {
         let sys = FakeSys::default();
-        // GNOME-Wayland: анимацию показать нечем — план из одного отказа.
+        // GNOME-Wayland: nothing to show an animation with — a plan of a single refusal.
         let plan = wpe::animated_plan(
             "gnome",
             "wayland",
@@ -4875,14 +4897,14 @@ mod tests {
         assert!(e.sys_mut().spawned.is_empty(), "отказ что-то поднял");
     }
 
-    /// Мёртвый запуск НЕ считается успехом: процесс, умерший внутри
-    /// отсрочки, уводит план на запасной шаг. Это та самая починка «зелёное
-    /// „обои запущены“ на пустом столе».
+    /// A dead launch does NOT count as success: a process that died within the
+    /// grace period sends the plan to the fallback step. This is exactly the fix
+    /// for the green „wallpaper started“ on an empty desktop.
     #[test]
     fn a_process_that_dies_at_once_is_not_a_success() {
         let mut sys = FakeSys::default();
         sys.tools.push("swaybg".to_string());
-        sys.spawn_rc = vec![Some(1)]; // первый же поднятый уже мёртв
+        sys.spawn_rc = vec![Some(1)]; // the very first started one is already dead
         let plan = wpe::static_plan(
             "sway",
             "wayland",
@@ -4897,12 +4919,12 @@ mod tests {
         assert_eq!(e.sys_mut().killed.len(), 1, "труп не подобран");
     }
 
-    /// Живой запуск — успех, процесс запомнен, а PID подставлен в сообщение.
+    /// A live launch is a success, the process is remembered and the PID is put into the message.
     #[test]
     fn a_living_process_is_remembered() {
         let mut sys = FakeSys::default();
         sys.tools.push("swaybg".to_string());
-        sys.spawn_rc = vec![None]; // жив
+        sys.spawn_rc = vec![None]; // alive
         let plan = wpe::static_plan(
             "sway",
             "wayland",
@@ -4917,8 +4939,8 @@ mod tests {
         assert!(!res.message.contains("{pid}"), "метка PID осталась сырой");
     }
 
-    /// Наблюдения за системой спрашиваются ЛЕНИВО: план без меток не должен
-    /// дёргать `wlr-randr`/`xrandr` вовсе.
+    /// System observations are requested LAZILY: a plan without placeholders must
+    /// not poke `wlr-randr`/`xrandr` at all.
     #[test]
     fn observations_are_asked_only_when_a_step_needs_them() {
         let mut sys = FakeSys::default();
@@ -4941,7 +4963,7 @@ mod tests {
         assert!(!asked.iter().any(|b| b == "wlr-randr" || b == "xrandr"));
     }
 
-    /// А когда метка есть — наблюдение спрашивается ОДИН раз на прогон.
+    /// And when there is a placeholder, the observation is requested ONCE per run.
     #[test]
     fn an_observation_is_asked_once_per_plan() {
         let mut sys = FakeSys::default();
@@ -4977,7 +4999,7 @@ mod tests {
         );
     }
 
-    /// Xfce: путь пишется в КАЖДОЕ свойство `/last-image`, а не в первое.
+    /// Xfce: the path is written into EVERY `/last-image` property, not just the first.
     #[test]
     fn xfce_writes_every_monitor_property() {
         let mut sys = FakeSys::default();
@@ -5001,8 +5023,9 @@ mod tests {
         assert_eq!(writes, 2, "записано {writes} свойств вместо двух");
     }
 
-    /// Xfce без единого свойства фона — отказ ВТОРЫМ сообщением плана, а не
-    /// первым: «нет мониторов» и «xfconf-query не ответил» — разные беды.
+    /// Xfce without a single background property — a refusal with the plan's
+    /// SECOND message, not the first: "no monitors" and "xfconf-query did not
+    /// answer" are different troubles.
     #[test]
     fn xfce_without_properties_says_the_other_reason() {
         let mut sys = FakeSys::default();
@@ -5017,7 +5040,7 @@ mod tests {
         assert_ne!(res.message, err, "две разные беды объяснены одной строкой");
     }
 
-    /// План, который не дал исхода ни одним шагом, всё равно ОТВЕЧАЕТ.
+    /// A plan that produced no outcome from any step still ANSWERS.
     #[test]
     fn an_exhausted_plan_still_answers() {
         let sys = FakeSys::default();
@@ -5027,8 +5050,8 @@ mod tests {
         assert!(!res.message.is_empty(), "пустой план ответил молчанием");
     }
 
-    /// Успех статичных обоев мосту не врёт: статика живыми обоями не
-    /// является, и признак `video_wallpaper_active` обязан лечь ложью.
+    /// A static wallpaper success does not lie to the bridge: static is not a
+    /// live wallpaper, and the `video_wallpaper_active` flag must be false.
     #[test]
     fn static_wallpaper_is_not_announced_as_live() {
         let mut sys = FakeSys::default();
@@ -5047,13 +5070,13 @@ mod tests {
         assert!(!said[0].0, "статика объявлена живыми обоями");
     }
 
-    /// Демон swww поднимается только когда шаг об этом просит, и повторного
-    /// подъёма при живом демоне нет.
+    /// The swww daemon is started only when a step asks for it, and it is not
+    /// started again while the daemon is alive.
     #[test]
     fn the_swww_daemon_is_not_raised_twice() {
         let mut sys = FakeSys::default();
         sys.tools.push("swww".to_string());
-        sys.answer("swww", 0, ""); // и query, и img отвечают нулём
+        sys.answer("swww", 0, ""); // both query and img answer zero
         let plan = wpe::animated_plan(
             "sway",
             "wayland",
@@ -5076,15 +5099,15 @@ mod tests {
         assert_eq!(queries, 1);
     }
 
-    // ── остановка и возврат стола ─────────────────────────────────────────
+    // ── stop and desktop restore ──────────────────────────────────────────
 
-    /// Плоские команды прогона одной строкой — так удобнее искать порядок.
+    /// The run's flat commands as one string — easier to search for the order.
     fn lines(e: &mut WallpaperExec<FakeSys>) -> Vec<String> {
         e.sys_mut().ran.iter().map(|c| c.join(" ")).collect()
     }
 
-    /// Остановка на пустом месте не молчит: покупатель нажал кнопку и обязан
-    /// получить ответ, даже когда снимать было нечего.
+    /// A stop with nothing running is not silent: the customer pressed the button
+    /// and must get an answer, even when there was nothing to stop.
     #[test]
     fn stopping_nothing_still_answers() {
         let sys = FakeSys::default();
@@ -5097,9 +5120,9 @@ mod tests {
         assert!(!said[0].0, "после остановки мосту обещаны живые обои");
     }
 
-    /// Cinnamon с layer-shell: расширение снимается с обоев — сначала
-    /// выключается (чужие uuid на месте), потом очищаются его ключи, и всё
-    /// это один раз; при эффекте экрана расширение остаётся включённым.
+    /// Cinnamon with layer-shell: the extension is taken off the wallpaper — first
+    /// it is disabled (foreign uuids stay in place), then its keys are cleared,
+    /// and all of this once; with a screen effect the extension stays enabled.
     #[test]
     fn cinnamon_layer_shell_retires_extension_wallpaper() {
         let mut sys = FakeSys::default();
@@ -5131,10 +5154,10 @@ mod tests {
         assert!(lines(&mut e).is_empty(), "GNOME — не наш случай");
     }
 
-    /// Брошенная копия расширения снимается той же функцией, что у эффектов
-    /// экрана, и ДО чтения ключей (каталог схемы — уже системный); если
-    /// расширение остаётся ради эффекта — оболочка перечитывает его
-    /// (`ReloadXlet`), если выключается — перечитывать нечего.
+    /// The abandoned copy of the extension is removed with the same function as
+    /// for screen effects, and BEFORE reading the keys (the schema directory is
+    /// then the system one); if the extension stays for the effect, the shell
+    /// re-reads it (`ReloadXlet`), if it is disabled there is nothing to re-read.
     #[test]
     fn cinnamon_layer_shell_removes_orphan_copy_like_screen_effects() {
         let copy = "/home/u/.local/share/cinnamon/extensions/rexon-wallpaper@rexon.app".to_string();
@@ -5161,7 +5184,7 @@ mod tests {
         assert!(ran.iter().any(|l| l.contains("set org.cinnamon enabled-extensions")), "{ran:?}");
         assert!(!ran.iter().any(|l| l.contains("ReloadXlet")), "выключено — перечитывать нечего: {ran:?}");
 
-        // Копии нет — и перечитывать нечего.
+        // No copy — nothing to re-read either.
         let mut sys = FakeSys::default();
         sys.answer_tail("rexon-wallpaper effect-shader", "'/x.glsl'\n");
         sys.answer_tail("get org.cinnamon enabled-extensions", &format!("['{}']\n", wpe::SHELL_EXT_ID));
@@ -5170,9 +5193,9 @@ mod tests {
         assert!(!lines(&mut e).iter().any(|l| l.contains("ReloadXlet")));
     }
 
-    /// Cinnamon без layer-shell: выключенное расширение Rexon включает сам
-    /// (чужие uuid в списке остаются), а не включилось — честный отказ, а
-    /// не «✅ применены» при пустом столе.
+    /// Cinnamon without layer-shell: Rexon enables its disabled extension itself
+    /// (foreign uuids stay in the list), and if it did not get enabled — an
+    /// honest refusal, not «✅ applied» on an empty desktop.
     #[test]
     fn disabled_cinnamon_extension_is_turned_on_or_refused() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5196,10 +5219,10 @@ mod tests {
         assert!(!lines(&mut e).iter().any(|l| l.contains("set org.cinnamon enabled-extensions")), "включённое не трогаем");
     }
 
-    /// Cinnamon 6.8+: прежний список картинок запоминается целиком (с
-    /// подгонкой, цветами, картинками по мониторам), а картинка «что
-    /// стояло» берётся из него; остановка возвращает список и режим как
-    /// были, а не одну картинку через `picture-uri`.
+    /// Cinnamon 6.8+: the previous picture list is remembered in full (with
+    /// fitting, colors, per-monitor pictures), and the "what was set" picture is
+    /// taken from it; a stop restores the list and the mode as they were, not a
+    /// single picture via `picture-uri`.
     #[test]
     fn cinnamon_picture_list_is_saved_and_restored_whole() {
         let list = "[{'picture-uri': <'file:///usr/share/backgrounds/a.jpg'>, 'picture-options': <'scaled'>}]";
@@ -5222,7 +5245,7 @@ mod tests {
         assert!(e.saved_cinnamon_bg.is_none() && e.saved_wallpaper.is_none());
     }
 
-    /// Старый Cinnamon (ключа списка нет): прежний путь одной картинкой.
+    /// Old Cinnamon (no list key): the former single-picture path.
     #[test]
     fn old_cinnamon_without_list_keeps_single_picture() {
         let mut sys = FakeSys::default();
@@ -5232,8 +5255,8 @@ mod tests {
         assert!(e.saved_cinnamon_bg.is_none());
     }
 
-    /// Остановка называет формат, который ИГРАЛ, а не тот, что записал
-    /// возврат фона. Это та самая починка «после видео сказано „static“».
+    /// A stop names the format that WAS PLAYING, not the one the background
+    /// restore wrote. This is exactly the fix for „static“ being said after a video.
     #[test]
     fn stopping_names_the_format_that_played() {
         let mut sys = FakeSys::default();
@@ -5251,8 +5274,8 @@ mod tests {
         );
     }
 
-    /// Возврат ставит именно сохранённые обои — тем же планом, что и обычное
-    /// применение.
+    /// The restore sets exactly the saved wallpaper — with the same plan as a
+    /// normal apply.
     #[test]
     fn stopping_puts_the_saved_wallpaper_back() {
         let mut sys = FakeSys::default();
@@ -5270,8 +5293,8 @@ mod tests {
         );
     }
 
-    /// Обоев, которых на диске нет, возврат не ставит: команда бы прошла, а
-    /// стол остался бы пустым — и мы бы этого не заметили.
+    /// The restore does not set a wallpaper that is not on disk: the command
+    /// would pass, but the desktop would stay empty — and we would not notice.
     #[test]
     fn a_saved_wallpaper_that_vanished_is_not_restored() {
         let mut sys = FakeSys::default();
@@ -5286,8 +5309,8 @@ mod tests {
         );
     }
 
-    /// Обои, стоявшие до нас, читаются ОДИН раз: второе чтение записало бы
-    /// нашу же подмену как «то, что было до нас».
+    /// The wallpaper that was there before us is read ONCE: a second read would
+    /// record our own substitute as "what was there before us".
     #[test]
     fn the_previous_wallpaper_is_read_only_once() {
         let mut sys = FakeSys::default();
@@ -5300,8 +5323,8 @@ mod tests {
         assert_eq!(e.saved_wallpaper.as_deref(), Some("/tmp/старые.png"));
     }
 
-    /// KDE: чужой плагин стола возвращается ПОСЛЕ картинки. Обратный порядок
-    /// затирал возврат — план картинки на KDE безусловно ставит org.kde.image.
+    /// KDE: the foreign desktop plugin is restored AFTER the picture. The reverse
+    /// order wiped out the restore — the picture plan on KDE unconditionally sets org.kde.image.
     #[test]
     fn the_foreign_kde_plugin_comes_back_after_the_image() {
         let sys = FakeSys::default();
@@ -5318,8 +5341,7 @@ mod tests {
         assert!(reset < back, "чужой плагин возвращён ДО картинки — затрётся");
     }
 
-    /// Остановка снимает ТОЛЬКО свой процесс — по дескриптору, никогда по
-    /// имени.
+    /// A stop kills ONLY its own process — by handle, never by name.
     #[test]
     fn stopping_kills_only_our_own_process() {
         let mut sys = FakeSys::default();
@@ -5332,8 +5354,8 @@ mod tests {
         assert!(e.process.is_none());
     }
 
-    /// MATE: иконки не трогаются, если столом владеет не Caja. Проверка есть
-    /// только у гашения — возвращать иконки надо в любом случае.
+    /// MATE: icons are not touched if the desktop is not owned by Caja. Only
+    /// hiding has the check — icons must be brought back in any case.
     #[test]
     fn mate_icons_are_left_alone_when_caja_does_not_own_the_desktop() {
         let mut sys = FakeSys::default();
@@ -5350,8 +5372,8 @@ mod tests {
         assert_eq!(shown, 1, "иконки не вернулись");
     }
 
-    /// PID-файл пишется живым процессом и снимается остановкой: по нему
-    /// подбираются сироты прошлого запуска.
+    /// The PID file is written by a live process and removed by a stop: orphans
+    /// of the previous run are picked up by it.
     #[test]
     fn the_pid_file_follows_the_process() {
         let mut sys = FakeSys::default();
@@ -5369,7 +5391,7 @@ mod tests {
         assert_eq!(e.sys_mut().removed.len(), 1, "PID-файл остался после остановки");
     }
 
-    /// Отсутствующий файл — отказ с ИМЕНЕМ файла, а не общее «не вышло».
+    /// A missing file — a refusal with the file's NAME, not a generic "did not work".
     #[test]
     fn applying_a_missing_file_names_it() {
         let mut sys = FakeSys::default();
@@ -5381,8 +5403,8 @@ mod tests {
         assert!(e.sys_mut().ran.is_empty(), "отказ что-то запустил");
     }
 
-    /// Все живые форматы носит исполнитель — ни один не отвечает границей
-    /// «пока показывает классическое окно». Последним переехал Flash.
+    /// The executor carries all live formats — none answers with the "for now the
+    /// classic window shows it" boundary. Flash was the last to move over.
     #[test]
     fn every_live_format_is_carried() {
         for fmt in wpe::LIVE_FORMATS {
@@ -5393,9 +5415,10 @@ mod tests {
         }
     }
 
-    /// Правило «что носит исполнитель» и сама граница `apply` — одно и то
-    /// же: окно спрашивает `carries_format`, и ответ обязан совпадать с тем,
-    /// что сделает исполнитель, иначе кнопка обещала бы одно, а делала другое.
+    /// The "what the executor carries" rule and the `apply` boundary itself are
+    /// one and the same: the window asks `carries_format`, and the answer must
+    /// match what the executor will do, otherwise the button would promise one
+    /// thing and do another.
     #[test]
     fn the_carried_formats_rule_matches_apply() {
         assert!(carries_format("static"));
@@ -5403,12 +5426,12 @@ mod tests {
         assert!(carries_format("video"));
         assert!(carries_format("youtube"));
         assert!(carries_format("swf"), "Flash снова граница");
-        // Flash без хоста — честный отказ «показывать нечем», не граница.
+        // Flash without a host — an honest "nothing to show with" refusal, not the boundary.
         let mut e = exec("gnome", "wayland", FakeSys::default());
         let res = e.apply("/tmp/ролик.swf", "swf", "");
         assert_eq!(res.message, wpe::video_host_missing_message());
-        // Остальное носится: либо применяется, либо отказ окончательный —
-        // и ни в одном ответе нет «пока показывает прежний движок».
+        // Everything else is carried: either applied or definitively refused —
+        // and no answer says "the previous engine shows it for now".
         for fmt in ["static", "animated", "scene", "application", "", "что-то-новое"] {
             assert!(carries_format(fmt), "формат «{fmt}» отослан бы в классическое окно");
             let mut e = exec("gnome", "wayland", FakeSys::default());
@@ -5417,9 +5440,9 @@ mod tests {
         }
     }
 
-    /// Сцены, обои-приложения и незнакомый формат — те же слова, что у
-    /// Python, и ⭐ починка: отказ НЕ снимает работающие живые обои (Python
-    /// сначала гасил их, а потом отказывал).
+    /// Scenes, application wallpapers and an unknown format — the same words as in
+    /// Python, and ⭐ a fix: the refusal does NOT stop a running live wallpaper
+    /// (Python turned it off first and refused afterwards).
     #[test]
     fn retired_formats_refuse_without_touching_live_wallpaper() {
         for (fmt, want) in [
@@ -5436,10 +5459,10 @@ mod tests {
         }
     }
 
-    /// GIF на sway со swww: план движка исполняется, формат запоминается
-    /// как «анимация» — как у Python `_apply_animated`. `swww img` —
-    /// разовая команда демону swww, своего процесса за ней нет, поэтому и
-    /// PID-файла нет (он пишется только за живым процессом).
+    /// GIF on sway with swww: the engine plan is executed, the format is
+    /// remembered as "animation" — as in Python's `_apply_animated`. `swww img`
+    /// is a one-off command to the swww daemon, there is no process of its own
+    /// behind it, so there is no PID file either (it is written only for a live process).
     #[test]
     fn animated_gif_runs_the_engine_plan() {
         let mut sys = FakeSys::default();
@@ -5460,11 +5483,11 @@ mod tests {
         assert!(!format_wants_load_monitor(e.current_format()), "GIF под надзором — у Python нет");
     }
 
-    /// ⭐ Починка: на GNOME-Wayland план GIF — один отказ, и он говорится
-    /// ДО дела: живые обои не сняты, подложка не ставилась, ничего не
-    /// запущено.
-    /// Английские ответы исполнителя — без русских букв (журнал не в счёт:
-    /// его читаем мы, он не переводится).
+    /// ⭐ A fix: on GNOME-Wayland the GIF plan is a single refusal, and it is
+    /// given BEFORE doing anything: the live wallpaper is not stopped, the
+    /// backdrop was not set, nothing was launched.
+    /// The executor's English answers contain no Russian letters (the journal
+    /// does not count: we read it, it is not translated).
     #[test]
     fn english_exec_answers_have_no_russian() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5495,8 +5518,8 @@ mod tests {
         assert_eq!(e.sys_mut().spawned.len(), spawned_before, "отказ что-то поднял");
     }
 
-    /// Применение статики запоминает то, что стояло до него, — иначе
-    /// возвращать после остановки будет нечего.
+    /// Applying a static wallpaper remembers what was set before it — otherwise
+    /// there would be nothing to restore after a stop.
     #[test]
     fn applying_remembers_what_stood_before() {
         let mut sys = FakeSys::default();
@@ -5508,10 +5531,10 @@ mod tests {
         assert_eq!(e.current_path.as_deref(), Some("/tmp/новые.png"));
     }
 
-    /// Слой обоев держит чужой шелл: ни один вход применения не кладёт
-    /// обои под его поверхность и не рапортует успех. Отказ — до всякого
-    /// дела: прежние живые обои не сняты, стол не запомнен, ничего не
-    /// запущено, а текст называет шелл и кнопку.
+    /// A foreign shell holds the wallpaper layer: no apply entry puts the
+    /// wallpaper under its surface or reports success. The refusal comes before
+    /// doing anything: the previous live wallpaper is not stopped, the desktop is
+    /// not remembered, nothing is launched, and the text names the shell and the button.
     #[test]
     fn a_shell_owning_the_layer_refuses_every_apply_before_any_work() {
         for fmt in ["static", "video", "animated", "web", "swf"] {
@@ -5540,8 +5563,8 @@ mod tests {
         assert!(e.sys_mut().spawned.is_empty() && e.sys_mut().ran.is_empty());
     }
 
-    /// Без чужого шелла вход применения работает как прежде (укус сверки
-    /// выше: тот же стол, тот же файл — и успех).
+    /// Without a foreign shell the apply entry works as before (the bite of the
+    /// check above: the same desktop, the same file — and success).
     #[test]
     fn without_a_shell_the_same_apply_goes_through() {
         let mut sys = FakeSys::default();
@@ -5550,16 +5573,16 @@ mod tests {
         assert!(e.apply("/tmp/новые.png", "static", "").ok);
     }
 
-    /// Д12: LXQt. `pcmanfm-qt --set-wallpaper` отвечает нулём всегда;
-    /// «✅» — только если путь обоев действительно лёг в его настройки.
+    /// D12: LXQt. `pcmanfm-qt --set-wallpaper` always answers zero; «✅» only if
+    /// the wallpaper path really landed in its settings.
     #[test]
     fn lxqt_reports_success_only_when_pcmanfm_saved_the_wallpaper() {
         let conf = "/home/u/.config/pcmanfm-qt/lxqt/settings.conf";
         let run = |saved: Option<&str>| {
             let mut sys = FakeSys::default();
             sys.tools.push("pcmanfm-qt".to_string());
-            // Запасные пути этого стола «не работают»: иначе подставной шов
-            // отрапортовал бы успех за них, и проверялся бы не pcmanfm-qt.
+            // This desktop's fallback paths "do not work": otherwise the fake seam would
+            // report success for them, and it would not be pcmanfm-qt being checked.
             for other in ["gsettings", "feh", "xwallpaper", "nitrogen", "hsetroot", "xsetroot", "swaybg", "swww"] {
                 sys.missing.push(other.to_string());
             }
@@ -5572,7 +5595,7 @@ mod tests {
         };
         let ok = run(Some("[Desktop]\nWallpaperMode=fit\nWallpaper=/tmp/новые.png\n"));
         assert!(ok.ok, "{}", ok.message);
-        // Записан чужой путь, ключа нет, файла нет — успеха нет.
+        // A foreign path written, no key, no file — no success.
         for saved in [
             Some("[Desktop]\nWallpaper=/usr/share/lxqt/wallpapers/старые.png\n"),
             Some("[Desktop]\nWallpaperMode=fit\n"),
@@ -5584,7 +5607,7 @@ mod tests {
         }
     }
 
-    /// Снимок состояния не выдаёт мёртвый процесс за живые обои.
+    /// The state snapshot does not pass off a dead process as a live wallpaper.
     #[test]
     fn the_status_does_not_call_a_dead_process_alive() {
         let mut sys = FakeSys::default();
@@ -5599,9 +5622,9 @@ mod tests {
         assert_eq!(st.de, "generic");
     }
 
-    /// Возврат стола после остановки берёт чистую картинку, а не наш же
-    /// размытый кадр из кеша: иначе «Остановить» оставляло бы человека с
-    /// размытием вместо обоев.
+    /// Restoring the desktop after a stop takes a clean picture, not our own
+    /// blurred frame from the cache: otherwise «Stop» would leave the person with
+    /// a blur instead of a wallpaper.
     #[test]
     fn the_clean_image_is_never_our_blur_frame() {
         let mut sys = FakeSys::default();
@@ -5613,8 +5636,8 @@ mod tests {
         assert_eq!(clean, "/usr/share/wallpapers/Next/");
     }
 
-    /// Нет ни сохранённого обоя, ни каталогов дистрибутива — берётся любой
-    /// установленный пакет обоев Plasma, но только НАСТОЯЩИЙ (с картинками).
+    /// Neither a saved wallpaper nor distribution directories — any installed
+    /// Plasma wallpaper package is taken, but only a REAL one (with pictures).
     #[test]
     fn the_last_resort_package_must_actually_have_images() {
         let mut sys = FakeSys::default();
@@ -5629,7 +5652,7 @@ mod tests {
     }
 
 
-    // ── фоновые звуки ─────────────────────────────────────────────────────
+    // ── background sounds ─────────────────────────────────────────────────
 
     fn with_mpv() -> FakeSys {
         let mut sys = FakeSys::default();
@@ -5637,7 +5660,7 @@ mod tests {
         sys
     }
 
-    /// Зацикленный звук, умерший внутри отсрочки, — сбой: сам он не выходит.
+    /// A looped sound that died within the grace period is a failure: it does not exit by itself.
     #[test]
     fn a_looped_sound_that_dies_is_a_failure() {
         let mut sys = with_mpv();
@@ -5648,9 +5671,9 @@ mod tests {
         assert_eq!(e.sys_mut().killed.len(), 1, "труп mpv не подобран");
     }
 
-    /// ⭐ А РАЗОВЫЙ звук, честно доигравший внутри отсрочки, — успех.
-    /// Мерить его правилом обоев («жив через полсекунды») значило бы
-    /// отказывать на исправном коротком звуке.
+    /// ⭐ But a ONE-SHOT sound that honestly finished within the grace period is a
+    /// success. Measuring it by the wallpaper rule ("alive after half a second")
+    /// would mean refusing a working short sound.
     #[test]
     fn a_one_shot_sound_that_finished_is_a_success() {
         let mut sys = with_mpv();
@@ -5659,8 +5682,8 @@ mod tests {
         assert!(e.play_ambient("щелчок", "/tmp/щелчок.wav", "Щелчок", 50, false));
     }
 
-    /// Но разовый звук, упавший с ненулевым кодом (битый файл), успехом не
-    /// считается.
+    /// But a one-shot sound that failed with a non-zero code (a broken file) does
+    /// not count as success.
     #[test]
     fn a_one_shot_sound_that_broke_is_still_a_failure() {
         let mut sys = with_mpv();
@@ -5669,17 +5692,17 @@ mod tests {
         assert!(!e.play_ambient("битый", "/tmp/битый.wav", "", 50, false));
     }
 
-    /// Нет mpv — отказ, а не тихий вид, что звук пошёл.
+    /// No mpv — a refusal, not a quiet pretense that the sound started.
     #[test]
     fn without_mpv_the_sound_is_refused() {
-        let sys = FakeSys::default(); // mpv в списке нет
+        let sys = FakeSys::default(); // mpv is not in the list
         let mut e = exec("kde", "wayland", sys);
         assert!(!e.play_ambient("дождь", "/tmp/дождь.ogg", "Дождь", 50, true));
         assert!(e.sys_mut().spawned.is_empty(), "mpv запускался без mpv");
     }
 
-    /// Повторный запуск того же звука снимает прежний экземпляр: иначе два
-    /// mpv играли бы одно и то же поверх друг друга.
+    /// Starting the same sound again stops the previous instance: otherwise two
+    /// mpv processes would play the same thing on top of each other.
     #[test]
     fn replaying_a_sound_stops_the_previous_copy() {
         let mut sys = with_mpv();
@@ -5691,8 +5714,8 @@ mod tests {
         assert_eq!(e.active_ambient().len(), 1);
     }
 
-    /// ⭐ Смена громкости перезапускает mpv в ТОМ ЖЕ режиме: раньше разовый
-    /// звук после правки громкости зацикливался навсегда.
+    /// ⭐ A volume change restarts mpv in THE SAME mode: previously a one-shot
+    /// sound looped forever after a volume tweak.
     #[test]
     fn changing_the_volume_keeps_the_playback_mode() {
         let mut sys = with_mpv();
@@ -5714,8 +5737,8 @@ mod tests {
         );
     }
 
-    /// Остановка обоев снимает и фоновые звуки: иначе они играли бы на
-    /// голом столе.
+    /// Stopping the wallpaper also stops background sounds: otherwise they would
+    /// play on a bare desktop.
     #[test]
     fn stopping_the_wallpaper_also_stops_the_sounds() {
         let mut sys = with_mpv();
@@ -5728,8 +5751,8 @@ mod tests {
         assert_eq!(e.sys_mut().killed.len(), 2);
     }
 
-    /// Доигравший звук уходит из списка сам, а имя без подписи берётся из
-    /// имени файла — выдумывать за расширение нечего.
+    /// A finished sound leaves the list by itself, and a name without a label is
+    /// taken from the file name — nothing to make up on the extension's behalf.
     #[test]
     fn a_finished_sound_leaves_the_list_by_itself() {
         let mut sys = with_mpv();
@@ -5740,25 +5763,25 @@ mod tests {
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].name, "дождь.ogg");
         assert_eq!(active[0].volume, 50);
-        // …процесс кончился.
+        // …the process has ended.
         e.sys_mut().spawn_rc = vec![Some(0)];
         assert!(e.active_ambient().is_empty(), "доигравший звук остался в списке");
         assert!(!e.ambient_playing("дождь"));
     }
 
 
-    // ── видео из файла ───────────────────────────────────────────────────
+    // ── video from a file ────────────────────────────────────────────────
 
     const HOST: &str = "/opt/rexon/rexon-wallpaper-host";
 
-    /// Ответ `gdbus` на `GetExtensionInfo` для работающего расширения — вид
-    /// словаря как у gnome-shell (`serializeExtension`: числа упакованы `d`).
+    /// `gdbus` answer to `GetExtensionInfo` for a running extension — a
+    /// dictionary like gnome-shell's (`serializeExtension`: numbers packed as `d`).
     const GDBUS_EXT_ACTIVE: &str = "({'uuid': <'rexon-wallpaper@rexon.app'>, \
         'name': <'Rexon Wallpaper Engine'>, 'version': <1.0>, 'type': <2.0>, \
         'state': <1.0>, 'error': <''>, 'hasPrefs': <false>},)\n";
 
-    /// Видео своим окном: хост поднимается своим сеансом, обои живые,
-    /// надзор за нагрузкой им нужен.
+    /// Video in our own window: the host is started in its own session, the
+    /// wallpaper is live, it needs load supervision.
     #[test]
     fn video_file_raises_our_host() {
         let mut sys = FakeSys::default();
@@ -5780,16 +5803,17 @@ mod tests {
         assert!(e.monitor_target().is_some(), "надзору не за кем следить");
     }
 
-    /// MATE на X11, Caja без ключа сквозного фона: видео применилось, и
-    /// человеку сказано, что значки под обоями; сами значки не выключены.
-    /// «Остановить» без записанного состояния стола ничего не откатывает.
+    /// MATE on X11, Caja without the transparent background key: the video got
+    /// applied, and the person is told the icons are under the wallpaper; the
+    /// icons themselves are not turned off. «Stop» without a recorded desktop
+    /// state rolls nothing back.
     #[test]
     fn video_on_mate_x11_says_icons_are_hidden_and_keeps_them_on() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let mut sys = FakeSys::default();
         sys.host = Some(HOST.to_string());
-        // Любой gsettings отвечает «true»: значки включены, а в списке
-        // ключей Caja нет `transparent-background`.
+        // Any gsettings answers «true»: icons are on, and Caja's key list has no
+        // `transparent-background`.
         sys.answer("gsettings", 0, "true\n");
         let mut e = exec("mate", "x11", sys);
         let res = e.apply("/home/u/волны.mp4", "video", "");
@@ -5799,14 +5823,14 @@ mod tests {
         let ran = lines(&mut e);
         assert!(!ran.iter().any(|l| l.contains("show-desktop-icons false")), "значки выключены: {ran:?}");
 
-        // Картинка окна не создаёт — о значках ни слова.
+        // A picture creates no window — not a word about icons.
         let mut sys = FakeSys::default();
         sys.answer("gsettings", 0, "true\n");
         let mut e = exec("mate", "x11", sys);
         let res = e.apply("/home/u/лес.png", "static", "");
         assert!(!res.message.contains(&hidden), "{}", res.message);
 
-        // «Остановить» с записанным прежним состоянием — ключ Caja назад.
+        // «Stop» with a recorded previous state — the Caja key goes back.
         let mut sys = FakeSys::default();
         sys.host = Some(HOST.to_string());
         sys.answer("gsettings", 0, "true\n");
@@ -5828,7 +5852,7 @@ mod tests {
         assert!(e.sys_mut().removed.contains(&state));
     }
 
-    /// Нет хоста — честный отказ до запуска; не видеофайл — отказ с причиной.
+    /// No host — an honest refusal before launching; not a video file — a refusal with a reason.
     #[test]
     fn video_file_refuses_honestly() {
         let mut e = exec("sway", "wayland", FakeSys::default());
@@ -5846,8 +5870,8 @@ mod tests {
         assert!(e.sys_mut().spawned.is_empty());
     }
 
-    /// GNOME Wayland: видео уходит расширению оболочки — своего процесса
-    /// нет, строка запуска хоста записана; не установлено — отказ.
+    /// GNOME Wayland: the video goes to the shell extension — no process of our
+    /// own, the host command line is written; not installed — a refusal.
     #[test]
     fn video_on_gnome_goes_to_the_shell_extension() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5872,10 +5896,10 @@ mod tests {
         assert!(res.message.contains("shell extension"), "{}", res.message);
     }
 
-    /// Схема расширения лежит только в его каталоге (в общем каталоге схем
-    /// её нет) — ключи пишутся с `--schemadir` этого каталога, своя копия в
-    /// домашнем каталоге перекрывает пакетную; каталога нет — голый
-    /// `gsettings`.
+    /// The extension's schema lies only in its own directory (it is not in the
+    /// shared schema directory) — keys are written with `--schemadir` of that
+    /// directory, a personal copy in the home directory overrides the packaged
+    /// one; no directory — bare `gsettings`.
     #[test]
     fn shell_extension_keys_are_written_through_its_own_schema_dir() {
         let user = format!("/home/u/.local/share/gnome-shell/extensions/{}/schemas", wpe::SHELL_EXT_ID);
@@ -5908,10 +5932,10 @@ mod tests {
         assert!(none.iter().all(|a| a[1] == "set"), "{none:?}");
     }
 
-    /// «Готово» на GNOME говорится, только когда сама оболочка называет
-    /// расширение работающим (`GetExtensionInfo`, state 1). Прежде смотрели
-    /// `gnome-extensions list --enabled`, а без ответа считали «включено» —
-    /// и рапортовали успех при пустом столе.
+    /// «Done» on GNOME is said only when the shell itself calls the extension
+    /// running (`GetExtensionInfo`, state 1). Previously we looked at
+    /// `gnome-extensions list --enabled`, and with no answer assumed "enabled" —
+    /// and reported success on an empty desktop.
     #[test]
     fn gnome_reports_ready_only_when_the_shell_runs_the_extension() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -5936,20 +5960,20 @@ mod tests {
         let res = apply(Some((0, GDBUS_EXT_ACTIVE)));
         assert!(res.ok && res.message == ok_message, "{}", res.message);
 
-        // Ошибка в расширении и «не та версия» — обоев не будет: отказ.
+        // An error in the extension and "wrong version" — there will be no wallpaper: a refusal.
         for state in ["3.0", "4.0"] {
             let out = GDBUS_EXT_ACTIVE.replace("'state': <1.0>", &format!("'state': <{state}>"));
             let res = apply(Some((0, &out)));
             assert!(!res.ok, "state {state}: {}", res.message);
             assert_ne!(res.message, ok_message);
         }
-        // Выключено: Rexon включает расширение сам; оболочка так и говорит
-        // «выключено» — обоев на столе нет, это отказ, а не удача.
+        // Disabled: Rexon enables the extension itself; the shell still says
+        // "disabled" — there is no wallpaper on the desktop, this is a refusal, not a success.
         let disabled = GDBUS_EXT_ACTIVE.replace("'state': <1.0>", "'state': <2.0>");
         let res = apply(Some((0, disabled.as_str())));
         assert!(!res.ok, "выключено: {}", res.message);
-        // Не загружено (пустой словарь), оболочка не ответила или gdbus нет —
-        // обои переданы, но «готово» не говорится.
+        // Not loaded (an empty dictionary), the shell did not answer or there is no
+        // gdbus — the wallpaper is handed over, but «done» is not said.
         for answer in [
             Some((0, "(@a{sv} {},)\n")),
             Some((1, "")),
@@ -5961,8 +5985,8 @@ mod tests {
         }
     }
 
-    /// Flash своим окном: хост `--mode swf` своим сеансом, внешнего `ruffle`
-    /// нет, обои под надзором за нагрузкой — тем же путём, что видео.
+    /// Flash in our own window: the `--mode swf` host in its own session, no
+    /// external `ruffle`, the wallpaper under load supervision — the same way as video.
     #[test]
     fn swf_file_raises_our_host_under_the_load_monitor() {
         let mut sys = FakeSys::default();
@@ -5986,7 +6010,7 @@ mod tests {
         assert!(e.monitor_target().is_some(), "надзору не за кем следить");
     }
 
-    /// Flash: нет хоста или нет файла — отказ ДО снятия прежних обоев.
+    /// Flash: no host or no file — a refusal BEFORE stopping the previous wallpaper.
     #[test]
     fn swf_refuses_before_touching_live_wallpaper() {
         let mut e = exec("sway", "wayland", FakeSys::default());
@@ -6007,7 +6031,7 @@ mod tests {
         assert!(e.sys_mut().ran.is_empty(), "отказ что-то запустил");
     }
 
-    /// Flash на GNOME — расширение оболочки получает строку хоста `--mode swf`.
+    /// Flash on GNOME — the shell extension gets the `--mode swf` host command line.
     #[test]
     fn swf_on_gnome_goes_to_the_shell_extension() {
         let mut sys = FakeSys::default();
@@ -6026,9 +6050,9 @@ mod tests {
         assert_eq!(e.current_format(), Some("swf"));
     }
 
-    /// Подложка на X11: СНАЧАЛА видео (хост поднят, итог сказан), кадр
-    /// ролика ещё не доставался; подложка — следом, чётким кадром из кеша
-    /// кадров, без размытия, и формат показанного остаётся «видео».
+    /// Backdrop on X11: FIRST the video (host started, result reported), no movie
+    /// frame extracted yet; the backdrop comes next, as a sharp frame from the
+    /// frame cache, without blur, and the shown format stays "video".
     #[test]
     fn video_starts_before_its_backdrop() {
         let mut sys = FakeSys::default();
@@ -6064,8 +6088,8 @@ mod tests {
         assert!(!e.run_pending_backdrop(), "подложка поставлена дважды");
     }
 
-    /// GNOME (расширение оболочки): строка запуска хоста записана ДО
-    /// подложки; картинка стола — после, тихо.
+    /// GNOME (shell extension): the host command line is written BEFORE the
+    /// backdrop; the desktop picture comes after, quietly.
     #[test]
     fn gnome_extension_backdrop_goes_after_the_video() {
         let mut sys = FakeSys::default();
@@ -6087,8 +6111,8 @@ mod tests {
         assert_eq!(e.current_format(), Some("video"));
     }
 
-    /// wlroots (sway): картинку стола держит своя поверхность слоя фона —
-    /// подложка ставится ДО показа, иначе легла бы над видео.
+    /// wlroots (sway): the desktop picture is held by our own background-layer
+    /// surface — the backdrop is set BEFORE showing, otherwise it would land over the video.
     #[test]
     fn wlroots_backdrop_stays_before_the_video() {
         let mut sys = FakeSys::default();
@@ -6105,9 +6129,9 @@ mod tests {
         assert_eq!(e.current_format(), Some("video"));
     }
 
-    /// Кадр уже в кеше — ffmpeg не зовётся; обои сменились или остановлены
-    /// раньше, чем подложка готова, — она не ставится вовсе; кадра нет —
-    /// видео идёт без подложки, итог применения прежний.
+    /// The frame is already in the cache — ffmpeg is not called; the wallpaper
+    /// changed or was stopped before the backdrop was ready — it is not set at
+    /// all; no frame — the video runs without a backdrop, the apply result is unchanged.
     #[test]
     fn backdrop_uses_cache_and_drops_when_stale() {
         let mut sys = FakeSys::default();
@@ -6143,10 +6167,10 @@ mod tests {
         assert_eq!(e.current_format(), Some("video"));
     }
 
-    /// Cinnamon 6.8 с layer-shell: подложка — ЧЁТКИЙ кадр ролика, ПОСЛЕ
-    /// показа (до него поверхность службы фона лежит над нашей). Картинка
-    /// уходит в схему фона Cinnamon: из неё её берёт и экран блокировки,
-    /// который без подложки показывал устаревшую картинку (16.11.2026).
+    /// Cinnamon 6.8 with layer-shell: the backdrop is a SHARP movie frame, AFTER
+    /// showing (before it the background service's surface lies over ours). The
+    /// picture goes into the Cinnamon background schema: the lock screen takes it
+    /// from there too, and without a backdrop it showed a stale picture (16.11.2026).
     #[test]
     fn cinnamon_layer_shell_video_sets_a_sharp_backdrop_after_show() {
         let mut sys = FakeSys::default();
@@ -6167,8 +6191,8 @@ mod tests {
         assert_eq!(e.current_format(), Some("video"));
     }
 
-    /// Звук видео выбирает вызывающий: `false` — хост поднят немым,
-    /// `true` и умолчание `apply` — со звуком. Один путь на все вызовы.
+    /// Video sound is chosen by the caller: `false` — the host is started muted,
+    /// `true` and the `apply` default — with sound. One path for all calls.
     #[test]
     fn video_audio_choice_reaches_our_host() {
         let host_argv = |audio: Option<bool>| {
@@ -6193,8 +6217,8 @@ mod tests {
         assert!(!host_argv(None).iter().any(|a| a == "--no-audio"), "умолчание — со звуком");
     }
 
-    /// GNOME Wayland: немое видео — строка запуска хоста у расширения
-    /// оболочки несёт `--no-audio`, со звуком — не несёт.
+    /// GNOME Wayland: a muted video — the host command line at the shell
+    /// extension carries `--no-audio`, with sound it does not.
     #[test]
     fn video_audio_choice_reaches_the_shell_extension() {
         let daemon_line = |audio: bool| {
@@ -6213,7 +6237,7 @@ mod tests {
         assert!(!daemon_line(true).contains("--no-audio"));
     }
 
-    /// Формат YouTube через общий вход: звук доходит до плеера потока.
+    /// The YouTube format through the shared entry: sound reaches the stream player.
     #[test]
     fn youtube_through_apply_keeps_the_audio_choice() {
         let mut sys = FakeSys::default();
@@ -6226,19 +6250,19 @@ mod tests {
         assert!(argv.iter().any(|a| a.contains("no-audio")), "{argv:?}");
     }
 
-    // ── слот исполнителя процесса ────────────────────────────────────────
+    // ── process executor slot ────────────────────────────────────────────
 
-    /// Слот процесса один: каждый вызов отдаёт тот же, и сам он исполнителя
-    /// не заводит (живую машину тест не трогает).
+    /// The process slot is one: every call returns the same one, and it does not
+    /// create an executor itself (the test does not touch the live machine).
     #[test]
     fn live_slot_is_one_per_process() {
         let a = live_slot();
         assert!(std::sync::Arc::ptr_eq(&a, &live_slot()));
     }
 
-    /// Два держателя слота видят одного исполнителя: поставленное через
-    /// первый видно и снимается через второй; занятый замок — `None`, а не
-    /// ожидание.
+    /// Two slot holders see one executor: what was set through the first is
+    /// visible and can be stopped through the second; a busy lock gives `None`,
+    /// not waiting.
     #[test]
     fn slot_holders_share_one_executor() {
         let mut sys = FakeSys::default();
@@ -6262,8 +6286,8 @@ mod tests {
         assert!(!with_slot(&slot, |e| e.sys_mut().killed.is_empty()), "хост не снят");
     }
 
-    /// Дверь применения: итог работы возвращается, статичным обоям надзор
-    /// не поднимается (ядро отказывает само), слот после двери свободен.
+    /// The apply door: the work result is returned, no supervision is started for
+    /// a static wallpaper (the core refuses by itself), the slot is free after the door.
     #[test]
     fn run_in_slot_returns_the_work_and_frees_the_slot() {
         let slot: ExecSlot<FakeSys> =
@@ -6276,8 +6300,8 @@ mod tests {
 
     // ── YouTube ──────────────────────────────────────────────────────────
 
-    /// Поток под Wayland: mpvpaper с форматом по качеству и ссылкой, звук и
-    /// громкость ключами; обои живые, надзор им нужен.
+    /// A stream under Wayland: mpvpaper with a format by quality and the link,
+    /// sound and volume as switches; the wallpaper is live, it needs supervision.
     #[test]
     fn youtube_stream_raises_mpvpaper() {
         let mut sys = FakeSys::default();
@@ -6294,8 +6318,8 @@ mod tests {
         assert!(format_wants_load_monitor(e.current_format()));
     }
 
-    /// GNOME Wayland: поток неисполним — ролик скачивается и ставится как
-    /// видео, а человеку сказано, почему скачивание.
+    /// GNOME Wayland: a stream cannot be carried out — the video is downloaded and
+    /// set as a video, and the person is told why it was downloaded.
     #[test]
     fn youtube_on_gnome_downloads_and_says_why() {
         let mut sys = FakeSys::default();
@@ -6311,7 +6335,7 @@ mod tests {
         assert_eq!(e.current_format(), Some("video"));
     }
 
-    /// Отказы: нет yt-dlp, чужая ссылка, скачивание не удалось.
+    /// Refusals: no yt-dlp, a foreign link, the download failed.
     #[test]
     fn youtube_refuses_honestly() {
         let mut e = exec("sway", "wayland", FakeSys::default());
@@ -6335,19 +6359,19 @@ mod tests {
         assert!(e.sys_mut().spawned.is_empty());
     }
 
-    // ── надзор за нагрузкой ──────────────────────────────────────────────
+    // ── load supervision ─────────────────────────────────────────────────
 
-    /// Исполнитель с живым процессом обоев (веб-хост на sway) — у надзора
-    /// есть за кем следить.
-    /// Веб-обои слоем на Wayland — исполнитель зовёт перестановку фона
-    /// (шов `own_layer_surface_up`); картинка и X11 — нет: картинку рисует
-    /// сама оболочка, на X11 слоя нет.
+    /// An executor with a live wallpaper process (the web host on sway) —
+    /// supervision has someone to watch.
+    /// Web wallpaper as a layer on Wayland — the executor calls the background
+    /// restack (the `own_layer_surface_up` seam); a picture and X11 do not: the
+    /// shell draws the picture itself, X11 has no layer.
     #[test]
     fn own_layer_surface_reported_only_for_live_layer_formats() {
         let (e, _) = exec_with_live_process();
         let mut e = e;
-        // Веб, видео и Flash показывает наш хост: о показе своей поверхности
-        // он говорит сам, по первому кадру, — исполнитель не дублирует.
+        // Web, video and Flash are shown by our host: it reports showing its surface
+        // itself, on the first frame — the executor does not duplicate that.
         assert_eq!(e.sys_mut().layer_ups, 0, "веб на sway — перестановку заказывает сам хост");
         assert_eq!(e.sys_mut().apply_marks, 1, "начало применения отмечено для замера первого кадра");
         let mut sys = FakeSys::default();
@@ -6378,8 +6402,8 @@ mod tests {
     const CALM: LoadObservation =
         LoadObservation { battery_low: false, fullscreen: false, cpu_high: false };
 
-    /// Разряженная батарея замораживает обои, зарядка — размораживает;
-    /// повторный замер с той же причиной второй раз не сигналит.
+    /// A low battery freezes the wallpaper, charging unfreezes it; a repeated
+    /// sample with the same reason does not signal a second time.
     #[test]
     fn monitor_pauses_on_low_battery_and_resumes() {
         let (mut e, h) = exec_with_live_process();
@@ -6392,8 +6416,8 @@ mod tests {
         assert_eq!(e.sys_mut().signals, vec![(h, true), (h, false)]);
     }
 
-    /// Остановка сперва размораживает замороженный процесс — иначе SIGTERM
-    /// до него не дойдёт.
+    /// A stop first unfreezes a frozen process — otherwise SIGTERM would not
+    /// reach it.
     #[test]
     fn stopping_a_paused_wallpaper_resumes_it_first() {
         let (mut e, h) = exec_with_live_process();
@@ -6405,8 +6429,8 @@ mod tests {
         assert_eq!(e.sys_mut().killed, vec![h]);
     }
 
-    /// Процессор выше порога — остановка на N-м замере подряд, не раньше;
-    /// спокойный замер обнуляет счёт.
+    /// CPU above the threshold — a stop on the N-th sample in a row, not
+    /// earlier; a calm sample resets the count.
     #[test]
     fn monitor_stops_a_cpu_leak_after_the_strikes() {
         let (mut e, h) = exec_with_live_process();
@@ -6425,10 +6449,10 @@ mod tests {
         assert_eq!(e.sys_mut().killed, vec![h]);
     }
 
-    /// Упавший процесс: надзор кончается. Свой хост надзор оставляет сторожу
-    /// падений (стол не возвращает — сторож поднимет те же обои); чужой
-    /// процесс (поток YouTube через mpv) — стол возвращается, мост узнаёт об
-    /// остановке.
+    /// A crashed process: supervision ends. Supervision leaves our own host to the
+    /// crash watcher (the desktop is not restored — the watcher brings the same
+    /// wallpaper back); a foreign process (a YouTube stream via mpv) — the desktop
+    /// is restored, the bridge learns about the stop.
     #[test]
     fn monitor_restores_the_desktop_when_the_host_crashes() {
         let (mut e, h) = exec_with_live_process();
@@ -6438,7 +6462,7 @@ mod tests {
         assert_eq!(e.status().format.as_deref(), Some("web"), "надзор вернул стол вместо сторожа");
         assert!(e.host_snapshot().exited);
 
-        // Не свой хост — прежний путь: стол назад.
+        // Not our own host — the former path: desktop back.
         e.host_request = None;
         assert_eq!(e.monitor_apply(h, &mut strikes, &CALM), MonitorVerdict::Done);
         let st = e.status();
@@ -6451,7 +6475,7 @@ mod tests {
         );
     }
 
-    /// Обои сменились — прежний надзор кончается сам.
+    /// The wallpaper changed — the previous supervision ends by itself.
     #[test]
     fn monitor_of_replaced_wallpaper_ends() {
         let (mut e, old) = exec_with_live_process();
@@ -6460,7 +6484,7 @@ mod tests {
         assert_eq!(e.monitor_apply(old, &mut strikes, &CALM), MonitorVerdict::Done);
     }
 
-    /// Батарея: первая `BAT*`, заряд ниже порога и не заряжается.
+    /// Battery: the first `BAT*`, charge below the threshold and not charging.
     #[test]
     fn battery_observation_follows_the_power_supply() {
         let cfg = MonitorConfig { pause_on_fullscreen: false, battery_pause_pct: 20 };
@@ -6483,8 +6507,8 @@ mod tests {
         assert!(!observe_load(&mut sys, "sway", "wayland", 42, &cfg).battery_low, "нет батареи");
     }
 
-    /// Полноэкранное окно на X11: окно во весь экран — да; настройка
-    /// человека выключена — не спрашиваем вовсе; нет xdotool — нет.
+    /// A full-screen window on X11: a window covering the whole screen — yes; the
+    /// person's setting is off — do not ask at all; no xdotool — no.
     #[test]
     fn fullscreen_observation_obeys_the_setting() {
         let on = MonitorConfig { pause_on_fullscreen: true, battery_pause_pct: 20 };
@@ -6504,10 +6528,10 @@ mod tests {
         assert!(!observe_load(&mut sys, "xfce", "x11", 42, &on).fullscreen, "без xdotool");
     }
 
-    /// Окно во весь экран на МЕНЬШЕМ из двух мониторов — тоже полноэкранное.
+    /// A window covering the whole SMALLER of two monitors is full-screen too.
     ///
-    /// Мерка «первое разрешение» видела 1920x1080 и окно на соседнем
-    /// 1600x900 не замечала: обои жгли процессор всю игру.
+    /// The "first resolution" yardstick saw 1920x1080 and did not notice a window
+    /// on the neighboring 1600x900: the wallpaper burned the CPU the whole game.
     #[test]
     fn fullscreen_is_measured_by_the_smaller_monitor() {
         let on = MonitorConfig { pause_on_fullscreen: true, battery_pause_pct: 20 };
@@ -6518,13 +6542,13 @@ mod tests {
         assert!(observe_load(&mut sys, "xfce", "x11", 42, &on).fullscreen);
     }
 
-    /// Надзор за нагрузкой не принимает окно рабочего стола (и наши
-    /// собственные обои) за полноэкранное окно поверх обоев.
+    /// Load supervision does not take the desktop window (and our own wallpaper)
+    /// for a full-screen window over the wallpaper.
     ///
-    /// ⭐ Замер 16.09.2026 на стенде X11 с оконным менеджером: активным
-    /// окном `xdotool getactivewindow` называл САМИ обои — окно во весь
-    /// экран с `_NET_WM_WINDOW_TYPE_DESKTOP`, и обои вставали на паузу
-    /// сами на себя.
+    /// ⭐ Measurement of 16.09.2026 on an X11 test bench with a window manager:
+    /// `xdotool getactivewindow` named THE WALLPAPER ITSELF as the active window —
+    /// a full-screen window with `_NET_WM_WINDOW_TYPE_DESKTOP`, and the wallpaper
+    /// paused because of itself.
     #[test]
     fn the_desktop_window_is_not_a_fullscreen_app() {
         let on = MonitorConfig { pause_on_fullscreen: true, battery_pause_pct: 20 };
@@ -6545,11 +6569,11 @@ mod tests {
         let mut sys = setup("_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_DOCK\n", &both);
         assert!(!observe_load(&mut sys, "xfce", "x11", 42, &on).fullscreen, "панель");
 
-        // Тип не проставился, но окно принадлежит процессу обоев (PID=42).
+        // The type was not set, but the window belongs to the wallpaper process (PID=42).
         let mut sys = setup("_NET_WM_PID(CARDINAL) = 42\n", &both);
         assert!(!observe_load(&mut sys, "xfce", "x11", 42, &on).fullscreen, "свои обои");
 
-        // Чужая игра во весь экран обои по-прежнему ставит на паузу.
+        // A foreign full-screen game still pauses the wallpaper.
         let mut sys = setup(
             "_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_NORMAL\n\
              _NET_WM_PID(CARDINAL) = 7\n",
@@ -6557,18 +6581,18 @@ mod tests {
         );
         assert!(observe_load(&mut sys, "xfce", "x11", 42, &on).fullscreen, "игра");
 
-        // Защита от дурака: xprop в системе нет — поведение ПРЕЖНЕЕ, и
-        // запускать его никто не пробует.
+        // Foolproofing: there is no xprop on the system — the behavior is UNCHANGED,
+        // and nobody tries to run it.
         let mut sys = setup("", &["xdotool"]);
         assert!(observe_load(&mut sys, "xfce", "x11", 42, &on).fullscreen, "без xprop");
         assert!(!sys.ran.iter().any(|a| a[0] == "xprop"), "xprop звали, хотя его нет");
 
-        // xprop есть, но промолчал — тоже прежнее поведение.
+        // xprop exists but stayed silent — also the unchanged behavior.
         let mut sys = setup("", &both);
         assert!(observe_load(&mut sys, "xfce", "x11", 42, &on).fullscreen, "xprop молчит");
     }
 
-    /// Процессор: выше порога — да, ниже или без ответа — нет.
+    /// CPU: above the threshold — yes, below or no answer — no.
     #[test]
     fn cpu_observation_reads_ps() {
         let cfg = MonitorConfig { pause_on_fullscreen: false, battery_pause_pct: 20 };
@@ -6583,7 +6607,7 @@ mod tests {
         assert!(!observe_load(&mut sys, "sway", "wayland", 42, &cfg).cpu_high);
     }
 
-    /// ⭐ Пауза на полноэкранном окне слушает ту же настройку, что хост.
+    /// ⭐ Pausing on a full-screen window listens to the same setting as the host.
     #[test]
     fn monitor_config_follows_the_hide_when_covered_setting() {
         let default = monitor_config_from(&serde_json::Map::new());
@@ -6597,8 +6621,8 @@ mod tests {
         assert!(!monitor_config_from(&off).pause_on_fullscreen, "галочка снята, а пауза осталась");
     }
 
-    /// Веб-обои: хост поднимается СВОИМ сеансом со строкой запуска движка и
-    /// считается живыми обоями — «Остановить» его снимет.
+    /// Web wallpaper: the host is started in ITS OWN session with the engine's
+    /// command line and counts as a live wallpaper — «Stop» will stop it.
     #[test]
     fn web_wallpaper_raises_our_host() {
         let mut sys = FakeSys::default();
@@ -6626,7 +6650,7 @@ mod tests {
         assert!(!e.sys_mut().killed.is_empty(), "остановка не сняла веб-хост");
     }
 
-    /// Нет хоста — отказ до запуска; нет HTML-файла — отказ с его именем.
+    /// No host — a refusal before launching; no HTML file — a refusal with its name.
     #[test]
     fn web_wallpaper_refuses_honestly() {
         let mut e = exec("sway", "wayland", FakeSys::default());
@@ -6643,13 +6667,13 @@ mod tests {
         assert!(!res.ok);
         assert!(res.message.contains("нет.html"), "{}", res.message);
         assert!(e.sys_mut().spawned.is_empty());
-        // Тот же отсутствующий файл адресом `file://` — тоже отказ.
+        // The same missing file as a `file://` address — also a refusal.
         let res = e.apply("file:///home/u/нет.html", "web", "");
         assert!(!res.ok, "адрес отсутствующего файла прошёл");
     }
 
-    /// ⭐ Локальный HTML-файл адресом `file://` (так его отдаёт окно)
-    /// применяется, а не отвечает «не найден».
+    /// ⭐ A local HTML file as a `file://` address (the way the window passes it)
+    /// gets applied rather than answering «not found».
     #[test]
     fn local_web_page_as_file_url_is_applied() {
         let mut sys = FakeSys::default();
@@ -6660,8 +6684,8 @@ mod tests {
         assert_eq!(e.sys_mut().spawned.len(), 1);
     }
 
-    /// Размытие на GNOME: копия берётся с настоящих обоев, пишется в кеш и
-    /// ставится на стол; «Убрать размытие» возвращает настоящие обои.
+    /// Blur on GNOME: the copy is taken from the real wallpaper, written to the
+    /// cache and set on the desktop; «Remove blur» restores the real wallpaper.
     #[test]
     fn blurring_uses_the_real_wallpaper_and_comes_back() {
         let mut sys = FakeSys::default();
@@ -6695,14 +6719,14 @@ mod tests {
         assert!(!e.unblur_wallpaper(), "второй раз возвращать уже нечего");
     }
 
-    /// Размытие не рапортует успех, когда размывать нечего или не вышло.
+    /// Blur does not report success when there is nothing to blur or it failed.
     #[test]
     fn blurring_reports_failures() {
-        // Обоев-картинки нет (окружение без gsettings и не KDE).
+        // There is no picture wallpaper (an environment without gsettings and not KDE).
         let mut e = exec("sway", "wayland", FakeSys::default());
         assert!(!e.blur_current_wallpaper(20));
         assert!(e.sys_mut().blurred.is_empty());
-        // Картинка есть, но не разобралась.
+        // There is a picture, but it did not parse.
         let mut sys = FakeSys::default();
         sys.answer("gsettings", 0, "'/tmp/обои.png'\n");
         sys.blur_fails = true;
@@ -6712,10 +6736,10 @@ mod tests {
     }
 
 
-    // ── живой прогон: настоящие процессы, чужой рабочий стол не трогаем ────
+    // ── live run: real processes, someone else's desktop is left alone ────
 
-    /// Подставной план из безобидных команд: ни одна не имеет отношения к
-    /// обоям, но проходит через ТЕ ЖЕ ветки исполнителя, что и настоящий.
+    /// A fake plan of harmless commands: none has anything to do with wallpapers,
+    /// but they go through THE SAME executor branches as a real one.
     fn harmless_step(kind: &str, backend: &str, argv: &[&str]) -> wpe::Step {
         wpe::Step {
             kind: kind.to_string(),
@@ -6736,20 +6760,20 @@ mod tests {
         }
     }
 
-    /// Живой шов БЕЗ единственного побочного действия, которое выходит за
-    /// пределы сверки, — вести мосту.
+    /// A live seam WITHOUT the only side effect that reaches outside the check —
+    /// notices to the bridge.
     ///
-    /// Мост живёт в `~/.config/rexon/bridge.json`, то есть в настоящем
-    /// профиле того, кто запустил `cargo test`; его слушает постороннее
-    /// приложение. Писать туда из сверки нельзя даже правду — это уже
-    /// разъезд «сверка трогает живой профиль», на котором обжигались с
-    /// мостом в сентябре. Всё остальное — процессы, файлы, PATH, часы —
-    /// здесь настоящее, иначе прогон не был бы живым.
+    /// The bridge lives in `~/.config/rexon/bridge.json`, that is, in the real
+    /// profile of whoever ran `cargo test`; a third-party application listens to
+    /// it. Writing there from a check is not allowed, not even the truth — that
+    /// is already the "check touches the live profile" divergence we got burned
+    /// on with the bridge in September. Everything else — processes, files, PATH,
+    /// clock — is real here, otherwise the run would not be live.
     struct LiveWithoutBridge {
         inner: LiveSys,
         said: Vec<(bool, String, bool)>,
-        /// Подставные `HOME` и `XDG_RUNTIME_DIR`: PID-файл и конфиги должны
-        /// лечь в свой каталог, а не в профиль владельца машины.
+        /// Fake `HOME` and `XDG_RUNTIME_DIR`: the PID file and configs must land in
+        /// their own directory, not in the machine owner's profile.
         sandbox: String,
     }
 
@@ -6810,21 +6834,20 @@ mod tests {
         }
     }
 
-    /// ⭐ ЖИВОЙ ПРОГОН исполнителя настоящими процессами.
+    /// ⭐ A LIVE RUN of the executor with real processes.
     ///
-    /// Всё, что подставной шов изображает, здесь делается по-настоящему:
-    /// команда запускается, её код возврата читается, процесс поднимается и
-    /// снимается сигналом. Проверяются три вещи, ради которых исполнитель и
-    /// написан, — и каждая из них была бы зелёной при поломке, если бы её
-    /// мерили только на подставном шве:
+    /// Everything the fake seam imitates is done for real here: the command is
+    /// run, its exit code is read, the process is started and stopped with a
+    /// signal. Three things are checked, the very ones the executor was written
+    /// for — and each would be green while broken if measured only on the fake seam:
     ///
-    ///   1. неудача НЕтерминального шага уводит к следующему;
-    ///   2. процесс, умерший сразу после запуска, успехом НЕ считается;
-    ///   3. живой процесс переживает отсрочку, попадает в состояние и
-    ///      снимается по своему дескриптору — не по имени.
+    ///   1. a failure of a NON-terminal step leads to the next one;
+    ///   2. a process that died right after launch does NOT count as success;
+    ///   3. a live process survives the grace period, gets into the state and is
+    ///      stopped by its handle — not by name.
     ///
-    /// ⛔ Ни одна команда здесь не имеет отношения к обоям: рабочий стол
-    /// того, кто запустил сверку, не трогается вовсе.
+    /// ⛔ Not a single command here has anything to do with wallpapers: the
+    /// desktop of whoever ran the check is not touched at all.
     #[test]
     #[cfg_attr(
         feature = "isolated-checks",
@@ -6842,7 +6865,7 @@ mod tests {
         };
         let mut e = WallpaperExec::with_env(sys, "generic", "x11");
 
-        // 1. Ненулевой код уводит к следующему шагу.
+        // 1. A non-zero code leads to the next step.
         let plan = vec![
             harmless_step(wpe::step_kind::RUN, "false", &["false"]),
             harmless_step(wpe::step_kind::RUN, "true", &["true"]),
@@ -6851,13 +6874,13 @@ mod tests {
         assert!(res.ok, "живой прогон не дошёл до запасного шага: {}", res.message);
         assert!(res.message.starts_with("true"), "исход отдал не тот шаг: {}", res.message);
 
-        // 2. Процесс, умирающий мгновенно, — не успех. `false` завершается
-        //    сразу, то есть внутри отсрочки «жив ли запущенный».
+        // 2. A process that dies instantly is not a success. `false` exits right
+        //    away, that is, within the "is the launched process alive" grace period.
         let plan = vec![harmless_step(wpe::step_kind::SPAWN_SESSION, "false", &["false"])];
         let res = e.run_plan(&plan, "/tmp/подставной-путь");
         assert!(!res.ok, "мгновенно умерший процесс прошёл как успех: {}", res.message);
 
-        // 3. Живой процесс переживает отсрочку и попадает в состояние.
+        // 3. A live process survives the grace period and gets into the state.
         let plan = vec![harmless_step(
             wpe::step_kind::SPAWN_SESSION,
             "sleep",
@@ -6869,23 +6892,23 @@ mod tests {
         assert!(pid > 0);
         assert!(e.status().running, "живой процесс не считается работающим");
 
-        // …и снимается по СВОЕМУ дескриптору. Остановка на окружении
-        // `generic` не трогает ни иконок, ни плагинов, ни обоев: возвращать
-        // ей нечего, потому что ничего не сохранялось.
+        // …and is stopped by ITS OWN handle. A stop on the `generic` environment
+        // touches neither icons, nor plugins, nor wallpapers: it has nothing to
+        // restore, because nothing was saved.
         let stopped = e.stop(true);
         assert!(stopped.ok, "{}", stopped.message);
         assert!(!e.status().running, "процесс пережил остановку");
-        // PID снятого процесса больше не отзывается (сигнал 0 — только проба).
+        // The stopped process's PID no longer responds (signal 0 is only a probe).
         let alive = unsafe { libc::kill(pid as libc::pid_t, 0) } == 0;
         assert!(!alive, "процесс PID={pid} пережил остановку");
     }
 
 
-    // ── раскладка обоев по мониторам ──────────────────────────────────────
+    // ── per-monitor wallpaper layout ──────────────────────────────────────
 
-    /// Журнал вызовов сверки — печатается при `cargo test -- --nocapture`.
-    /// Это и есть «что за команды ушли»: сверки ниже сравнивают тот же
-    /// журнал строка в строку.
+    /// The check's call journal — printed with `cargo test -- --nocapture`.
+    /// This is exactly "which commands went out": the checks below compare the
+    /// same journal line by line.
     fn journal(title: &str, e: &mut WallpaperExec<FakeSys>) {
         println!("── {title} ──");
         for cmd in e.sys_mut().ran.clone() {
@@ -6896,7 +6919,7 @@ mod tests {
         }
     }
 
-    /// Два выхода в ответе `wlr-randr --json`.
+    /// Two outputs in a `wlr-randr --json` answer.
     const WLR_TWO: &str = r#"[
         {"name":"DP-1","enabled":true,"position":{"x":0,"y":0},
          "modes":[{"width":1280,"height":720,"current":false},
@@ -6906,7 +6929,7 @@ mod tests {
         {"name":"DP-9","enabled":false,"modes":[]}
     ]"#;
 
-    /// Те же два выхода, но опрос не сказал, где они стоят.
+    /// The same two outputs, but the query did not say where they stand.
     const WLR_TWO_NOWHERE: &str = r#"[
         {"name":"DP-1","enabled":true,
          "modes":[{"width":2560,"height":1440,"current":true}]},
@@ -6914,17 +6937,17 @@ mod tests {
          "modes":[{"width":1920,"height":1080,"current":true}]}
     ]"#;
 
-    /// Один выход в ответе `wlr-randr --json`.
+    /// One output in a `wlr-randr --json` answer.
     const WLR_ONE: &str = r#"[{"name":"DP-1","enabled":true,
         "position":{"x":0,"y":0},
         "modes":[{"width":2560,"height":1440,"current":true}]}]"#;
 
-    /// Один выход в ответе `xrandr --current`.
+    /// One output in an `xrandr --current` answer.
     const XRANDR_ONE: &str = "Screen 0: minimum 320 x 200, current 1920 x 1080\n\
         eDP-1 connected primary 1920x1080+0+0 (normal left inverted) 340mm x 190mm\n\
         \x20  1920x1080     60.00*+\n";
 
-    /// Два выхода в ответе `xrandr --current`.
+    /// Two outputs in an `xrandr --current` answer.
     const XRANDR_TWO: &str = "Screen 0: minimum 320 x 200, current 3840 x 1080\n\
         DP-1 connected primary 1920x1080+0+0 (normal left inverted) 530mm x 300mm\n\
         \x20  1920x1080     60.00*+  59.94\n\
@@ -6932,8 +6955,8 @@ mod tests {
         \x20  1600x900      60.00*+\n\
         DP-2 disconnected (normal left inverted right x axis y axis)\n";
 
-    /// Разбор `wlr-randr --json`: имя и размер ТЕКУЩЕГО режима, погашенные
-    /// выходы — мимо.
+    /// Parsing `wlr-randr --json`: name and size of the CURRENT mode, switched-off
+    /// outputs are skipped.
     #[test]
     fn outputs_are_read_out_of_wlr_randr() {
         let got = parse_outputs_json(WLR_TWO);
@@ -6954,8 +6977,8 @@ mod tests {
         );
     }
 
-    /// Разбор `hyprctl monitors -j`: размер лежит прямо в мониторе, а
-    /// выключенный помечен `disabled`.
+    /// Parsing `hyprctl monitors -j`: the size lies directly in the monitor, and a
+    /// disabled one is marked `disabled`.
     #[test]
     fn outputs_are_read_out_of_hyprctl() {
         let json = r#"[{"name":"eDP-1","width":1920,"height":1200,"x":1280,"y":0,
@@ -6971,8 +6994,8 @@ mod tests {
         );
     }
 
-    /// Разбор `xrandr --current`: подключённые выходы со своим размером,
-    /// отключённые — мимо.
+    /// Parsing `xrandr --current`: connected outputs with their size,
+    /// disconnected ones are skipped.
     #[test]
     fn outputs_are_read_out_of_xrandr() {
         assert_eq!(
@@ -6992,9 +7015,9 @@ mod tests {
         );
     }
 
-    /// Урезанный вывод xrandr (одни строки режимов) — не пустота, а один
-    /// безымянный выход с активным разрешением: так вело себя прежнее
-    /// правило, и обои от новой раскладки хуже встать не должны.
+    /// Truncated xrandr output (mode lines only) is not emptiness but one
+    /// nameless output with the active resolution: that is how the old rule
+    /// behaved, and the new layout must not make the wallpaper set any worse.
     #[test]
     fn a_trimmed_xrandr_still_gives_a_resolution() {
         assert_eq!(
@@ -7005,16 +7028,15 @@ mod tests {
                 position: None,
             }]
         );
-        // Положения у такого выхода нет — геометрия выходит с прежним
-        // нулевым смещением.
+        // Such an output has no position — the geometry comes out with the former
+        // zero offset.
         assert_eq!(
             parse_xrandr_outputs("   1280x720     60.00*+\n")[0].geometry(),
             "1280x720+0+0"
         );
     }
 
-    /// swww называет ВСЕ выходы одной командой — это строка таблицы
-    /// `List`.
+    /// swww names ALL outputs in one command — this is the `List` table row.
     #[test]
     fn swww_names_every_output_in_one_command() {
         let mut sys = FakeSys::default();
@@ -7040,7 +7062,7 @@ mod tests {
         );
     }
 
-    /// Один выход — та же одна команда, но выход в ней всё равно назван.
+    /// One output — the same single command, but the output is still named in it.
     #[test]
     fn swww_names_the_only_output_too() {
         let mut sys = FakeSys::default();
@@ -7064,8 +7086,8 @@ mod tests {
         );
     }
 
-    /// ⚠️ Защита от дурака: инструмента опроса выходов в системе нет —
-    /// обои всё равно ставятся, командой ровно той, что была в плане.
+    /// ⚠️ Foolproofing: there is no output query tool on the system — the
+    /// wallpaper is set anyway, with exactly the command that was in the plan.
     #[test]
     fn without_a_probe_tool_the_command_stays_as_it_was() {
         let mut sys = FakeSys::default();
@@ -7096,8 +7118,8 @@ mod tests {
         );
     }
 
-    /// hyprpaper кроет все мониторы СВОЕЙ формой (пустое имя перед
-    /// запятой): команда одна, и выходы для неё не спрашиваются вовсе.
+    /// hyprpaper covers all monitors with ITS OWN form (an empty name before the
+    /// comma): one command, and outputs are not queried for it at all.
     #[test]
     fn hyprpaper_covers_every_output_by_its_own_form() {
         let mut sys = FakeSys::default();
@@ -7124,8 +7146,8 @@ mod tests {
         );
     }
 
-    /// mpvpaper принимает один выход — значит, на двух мониторах его
-    /// поднимают дважды, и в каждом запуске стоит СВОЙ выход.
+    /// mpvpaper accepts one output — so on two monitors it is started twice,
+    /// and each launch carries ITS OWN output.
     #[test]
     fn mpvpaper_is_raised_once_per_output() {
         let mut sys = FakeSys::default();
@@ -7153,14 +7175,14 @@ mod tests {
         assert_eq!(spawned.len(), 2, "{spawned:?}");
         assert!(spawned[0].ends_with("DP-1 /tmp/котик.gif"), "{spawned:?}");
         assert!(spawned[1].ends_with("HDMI-A-1 /tmp/котик.gif"), "{spawned:?}");
-        // Обои на втором мониторе — часть тех же обоев: остановка гасит оба.
+        // The wallpaper on the second monitor is part of the same wallpaper: a stop turns off both.
         assert_eq!(e.companions.len(), 1, "спутник не запомнен");
         e.stop(true);
         assert_eq!(e.sys_mut().killed.len(), 2, "второй монитор остался играть");
         assert!(e.companions.is_empty(), "спутник пережил остановку");
     }
 
-    /// Один монитор — один запуск: лишнего процесса раскладка не плодит.
+    /// One monitor — one launch: the layout does not spawn an extra process.
     #[test]
     fn mpvpaper_with_one_output_is_raised_once() {
         let mut sys = FakeSys::default();
@@ -7189,9 +7211,9 @@ mod tests {
         assert!(e.companions.is_empty(), "лишний процесс на одном мониторе");
     }
 
-    /// ⚠️ Защита от дурака: движок из строки `Each`, а выходы не
-    /// перечислились — поднимаем ОДИН процесс с прежним значением метки,
-    /// а не ноль и не два одинаковых.
+    /// ⚠️ Foolproofing: an engine from the `Each` row, but the outputs were not
+    /// enumerated — start ONE process with the former placeholder value, not
+    /// zero and not two identical ones.
     #[test]
     fn each_engine_without_outputs_is_raised_once() {
         let mut sys = FakeSys::default();
@@ -7221,8 +7243,8 @@ mod tests {
         assert!(spawned[0].ends_with("* /tmp/котик.gif"), "{spawned:?}");
     }
 
-    /// План GIF-обоев под X11 — тот же, что строит исполнитель: геометрию
-    /// он просит меткой `{geometry}`.
+    /// The GIF wallpaper plan under X11 — the same one the executor builds: it
+    /// asks for the geometry with the `{geometry}` placeholder.
     fn x11_gif_plan() -> Vec<wpe::Step> {
         let tools = vec!["xwinwrap".to_string(), "mpv".to_string()];
         wpe::animated_plan(
@@ -7236,7 +7258,7 @@ mod tests {
         )
     }
 
-    /// Исполнитель с xwinwrap и mpv «в системе».
+    /// An executor with xwinwrap and mpv "on the system".
     fn x11_exec(xrandr: Option<&str>) -> WallpaperExec<FakeSys> {
         let mut sys = FakeSys::default();
         sys.tools.push("xwinwrap".to_string());
@@ -7248,14 +7270,14 @@ mod tests {
         exec("generic", "x11", sys)
     }
 
-    /// Что ушло на запуск.
+    /// What went out for launching.
     fn spawned_lines(e: &mut WallpaperExec<FakeSys>) -> Vec<String> {
         e.sys_mut().spawned.iter().map(|(c, _)| c.join(" ")).collect()
     }
 
-    /// Метки `{monitor}` и `{geometry}` берутся из ОДНОГО опроса, и
-    /// спрашивается он ровно один раз на весь план — сколько бы команд из
-    /// шага ни вышло.
+    /// The `{monitor}` and `{geometry}` placeholders come from ONE query, and it is
+    /// asked exactly once for the whole plan — however many commands the step
+    /// produces.
     #[test]
     fn marks_come_from_one_and_the_same_probe() {
         let plan = x11_gif_plan();
@@ -7273,9 +7295,8 @@ mod tests {
         assert_eq!(probes, 1, "выходы спрошены {probes} раз вместо одного");
     }
 
-    /// xwinwrap кроет корневое окно по геометрии — значит, на двух
-    /// мониторах его поднимают дважды, и у каждого запуска СВОЙ размер со
-    /// СВОИМ смещением.
+    /// xwinwrap covers the root window by geometry — so on two monitors it is
+    /// started twice, and each launch has ITS OWN size with ITS OWN offset.
     #[test]
     fn xwinwrap_is_raised_once_per_output() {
         let plan = x11_gif_plan();
@@ -7287,14 +7308,14 @@ mod tests {
         assert_eq!(spawned.len(), 2, "{spawned:?}");
         assert!(spawned[0].contains("-g 1920x1080+0+0"), "{spawned:?}");
         assert!(spawned[1].contains("-g 1600x900+1920+0"), "{spawned:?}");
-        // Обои второго монитора — часть тех же обоев: гаснут вместе.
+        // The second monitor's wallpaper is part of the same wallpaper: they go out together.
         assert_eq!(e.companions.len(), 1, "спутник не запомнен");
         e.stop(true);
         assert_eq!(e.sys_mut().killed.len(), 2, "второй монитор остался играть");
         assert!(e.companions.is_empty(), "спутник пережил остановку");
     }
 
-    /// Один монитор — одна команда, и геометрия в ней прежняя.
+    /// One monitor — one command, and the geometry in it is unchanged.
     #[test]
     fn xwinwrap_with_one_output_is_raised_once() {
         let plan = x11_gif_plan();
@@ -7307,9 +7328,9 @@ mod tests {
         assert!(e.companions.is_empty(), "лишний процесс на одном мониторе");
     }
 
-    /// ⚠️ Защита от дурака: выходов два, а где они стоят — опрос не сказал.
-    /// Вторая команда легла бы поверх первой, поэтому уходит одна, с
-    /// прежним нулевым смещением.
+    /// ⚠️ Foolproofing: there are two outputs, but the query did not say where
+    /// they stand. A second command would land on top of the first, so one goes
+    /// out, with the former zero offset.
     #[test]
     fn xwinwrap_without_output_positions_is_raised_once() {
         let plan = x11_gif_plan();
@@ -7322,8 +7343,8 @@ mod tests {
         assert!(spawned[0].contains("-g 2560x1440+0+0"), "{spawned:?}");
     }
 
-    /// ⚠️ Защита от дурака: перечислить выходы нечем — команда уходит ровно
-    /// та, что была в плане, с умолчанием движка в геометрии.
+    /// ⚠️ Foolproofing: nothing to enumerate outputs with — exactly the command
+    /// from the plan goes out, with the engine default in the geometry.
     #[test]
     fn xwinwrap_without_a_probe_tool_is_raised_once() {
         let plan = x11_gif_plan();
@@ -7338,8 +7359,8 @@ mod tests {
         assert!(spawned[0].contains("-g 1920x1080+0+0"), "{spawned:?}");
     }
 
-    /// Старая метка `{resolution}` цела и по-прежнему означает ТОЛЬКО
-    /// размер: её берут те, кому смещение не нужно.
+    /// The old `{resolution}` placeholder is intact and still means ONLY the size:
+    /// it is used by those who do not need the offset.
     #[test]
     fn the_resolution_mark_still_means_just_the_size() {
         let mut sys = FakeSys::default();
@@ -7356,8 +7377,8 @@ mod tests {
         );
     }
 
-    /// Таблица движков отвечает за выбор, а не догадка по виду команды:
-    /// незнакомый движок ведёт себя как прежде.
+    /// The engine table is responsible for the choice, not a guess from the look
+    /// of the command: an unfamiliar engine behaves as before.
     #[test]
     fn an_unknown_engine_keeps_the_old_behaviour() {
         assert_eq!(engine_spread("нет-такого"), Spread::Whole);
@@ -7366,8 +7387,8 @@ mod tests {
         assert!(matches!(engine_spread("swww"), Spread::List { .. }));
     }
 
-    /// Крайние выходы: одна картинка на весь стол меряется по САМОМУ
-    /// БОЛЬШОМУ монитору, «окно во весь экран» — по самому маленькому.
+    /// Extreme outputs: one picture for the whole desktop is measured by the
+    /// LARGEST monitor, "a window covering the whole screen" by the smallest.
     #[test]
     fn the_extreme_outputs_are_picked_by_area() {
         let two = parse_xrandr_outputs(XRANDR_TWO);
@@ -7377,8 +7398,8 @@ mod tests {
         assert_eq!(smallest_output(&two).and_then(|o| o.size()), Some((1600, 900)));
     }
 
-    /// Один выход — он же и самый большой, и самый маленький: ответ тот же,
-    /// что давал прежний разбор «первого разрешения».
+    /// One output is both the largest and the smallest: the same answer the old
+    /// "first resolution" parsing gave.
     #[test]
     fn a_single_output_answers_as_before() {
         let one = vec![ScreenOutput {
@@ -7390,9 +7411,9 @@ mod tests {
         assert_eq!(smallest_output(&one).and_then(|o| o.size()), Some((2560, 1600)));
     }
 
-    /// ⚠️ Защита от дурака: выходов нет вовсе, разрешение не разобралось,
-    /// размер нулевой — крайнего выхода не находится, и вызывающий уходит
-    /// на своё прежнее поведение.
+    /// ⚠️ Foolproofing: no outputs at all, the resolution did not parse, a zero
+    /// size — no extreme output is found, and the caller falls back to its
+    /// former behavior.
     #[test]
     fn extremes_survive_a_failed_probe() {
         assert!(largest_output(&[]).is_none());
@@ -7403,7 +7424,7 @@ mod tests {
         ];
         assert!(largest_output(&junk).is_none());
         assert!(smallest_output(&junk).is_none());
-        // Разобрался хоть один — берётся он, а не «ничего».
+        // If at least one parsed, it is taken rather than "nothing".
         let mixed = vec![
             ScreenOutput { name: "A".into(), resolution: "нет".into(), position: None },
             ScreenOutput { name: "B".into(), resolution: "1280x720".into(), position: None },
@@ -7411,8 +7432,7 @@ mod tests {
         assert_eq!(largest_output(&mixed).map(|o| o.name.as_str()), Some("B"));
     }
 
-    /// Равная площадь — решает имя: одна и та же машина обязана давать один
-    /// и тот же ответ.
+    /// Equal area — the name decides: the same machine must give the same answer.
     #[test]
     fn an_equal_area_is_settled_by_the_name() {
         let same = vec![
@@ -7423,10 +7443,11 @@ mod tests {
         assert_eq!(smallest_output(&same).map(|o| o.name.as_str()), Some("DP-1"));
     }
 
-    // ── сторож падений хоста ─────────────────────────────────────────────
+    // ── host crash watcher ───────────────────────────────────────────────
 
-    /// Свой хост лёг сам: исполнитель отдаёт это сторожу (стол не
-    /// возвращает, процесс помнит), подъём — то же применение, что по кнопке.
+    /// Our own host went down by itself: the executor hands this to the watcher
+    /// (does not restore the desktop, remembers the process), the restart is the
+    /// same apply as by the button.
     #[test]
     fn a_crashed_host_is_left_to_the_watch_and_restarted_by_apply() {
         let mut sys = FakeSys::default();
@@ -7438,7 +7459,7 @@ mod tests {
         assert!(!snap.exited && !snap.via_extension);
         assert_eq!(snap.pids.len(), 1);
 
-        // Процесс лёг (SIGSEGV).
+        // The process went down (SIGSEGV).
         e.sys_mut().spawn_rc = vec![Some(-1)];
         let watched = e.process.unwrap();
         let mut strikes = 0;
@@ -7457,7 +7478,7 @@ mod tests {
         assert!(!e.host_snapshot().exited, "после подъёма хост всё ещё «мёртв»");
     }
 
-    /// Остановленное человеком и чужие форматы сторож не сторожит.
+    /// The watcher does not watch what the person stopped, nor foreign formats.
     #[test]
     fn stopped_and_foreign_wallpapers_are_not_watched() {
         let mut sys = FakeSys::default();
@@ -7475,8 +7496,8 @@ mod tests {
         assert!(!host_watched_format("youtube") && !host_watched_format("static"));
     }
 
-    /// GNOME: хост — ребёнок расширения. Подъём гасит источник и пишет его
-    /// заново: то же значение расширение за смену не считает.
+    /// GNOME: the host is a child of the extension. The restart clears the source
+    /// and writes it again: the extension does not count the same value as a change.
     #[test]
     fn extension_host_is_restarted_through_its_settings() {
         let mut sys = FakeSys::default();
@@ -7497,8 +7518,8 @@ mod tests {
         assert!(clear < again, "{ran:?}");
     }
 
-    /// Падения подряд: у видео — кадр из ролика встаёт картинкой стола, а
-    /// прежняя картинка остаётся запомненной для «Остановить».
+    /// Crashes in a row: for video a frame from the movie becomes the desktop
+    /// picture, and the previous picture stays remembered for «Stop».
     #[test]
     fn still_frame_of_a_video_replaces_the_live_wallpaper() {
         let mut sys = FakeSys::default();
@@ -7520,8 +7541,8 @@ mod tests {
         assert!(e.process.is_none());
     }
 
-    /// Кадра нет (веб-адрес сайта) — прежняя картинка стола, как по
-    /// «Остановить»; у локальной веб-страницы — превью рядом.
+    /// No frame (a website's web address) — the previous desktop picture, as on
+    /// «Stop»; for a local web page — the preview next to it.
     #[test]
     fn still_frame_falls_back_to_the_previous_picture() {
         let mut sys = FakeSys::default();

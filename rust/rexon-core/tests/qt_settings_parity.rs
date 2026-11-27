@@ -1,65 +1,66 @@
-//! Golden-сверка `qt_settings.rs` — вкладки «Настройки».
+//! Golden comparison of `qt_settings.rs` — the «Настройки» tab.
 //!
-//! ЧТО ЗДЕСЬ ЭТАЛОН (с 02.10.2026). Python в Rexon — только архив: он не
-//! эталон и не мост. `golden/qt_settings_cases.json` и
-//! `golden/qt_settings_ru_before.json` — замороженные СОБСТВЕННЫЕ эталоны
-//! Rust; сверки с исходником виджетной вкладки сняты, их числа и цвета
-//! записаны здесь (`LAYOUT_FROZEN`, `status_colors_are_frozen`).
+//! WHAT THE GOLDEN DATA IS HERE (since 02.10.2026). Python in Rexon is only an
+//! archive: it is neither a reference nor a bridge. `golden/qt_settings_cases.json`
+//! and `golden/qt_settings_ru_before.json` are frozen OWN golden files of the
+//! Rust code; comparisons against the widget tab's source are removed, their
+//! numbers and colours are recorded here (`LAYOUT_FROZEN`, `status_colors_are_frozen`).
 //!
-//! Откуда снимок. Он снят прогоном прежнего модуля
-//! `rexon/qt_settings/window.py` (коммит `94d8d57`) под offscreen-Qt:
-//!   * `_detect_wallpaper_format()` — двадцать путей, включая ловушки
-//!     («каталог с точкой в имени», файл без расширения, ВЕРХНИЙ регистр);
-//!   * звуковые темы — ПРАВИЛО на подставном дереве (`sound_rules`), а не
-//!     состав машины: что считается темой, кто в списке исключений, как
-//!     склеиваются два каталога, какое расширение побеждает, что бывает на
-//!     пустом месте, порядок кнопок «послушать», значки и подписи событий.
-//!     Раньше здесь стоял снимок ЖИВОЙ машины: пять установленных тем.
-//!     Такая сверка врала в обе стороны — краснела там, где `budgie` и
-//!     `mate` не поставлены, и зеленела при сломанном правиле, если нужные
-//!     каталоги случайно оказались на месте; пересъём в сентябре 2026
-//!     развалил четыре раздела, не поменяв ни строчки кода;
-//!   * `_parse_font_str()` — двенадцать записей шрифта (GNOME, KDE, дробный
-//!     кегль, мусор вместо кегля) и три таблицы ключей DE;
+//! Where the snapshot comes from. It was captured by running the former module
+//! `rexon/qt_settings/window.py` (commit `94d8d57`) under offscreen Qt:
+//!   * `_detect_wallpaper_format()` — twenty paths, including traps
+//!     ("a directory with a dot in its name", a file without extension, UPPER case);
+//!   * sound themes — the RULE on a fake tree (`sound_rules`), not the machine's
+//!     contents: what counts as a theme, who is on the exclusion list, how two
+//!     directories are merged, which extension wins, what happens on an empty
+//!     place, the order of the «послушать» buttons, event icons and labels.
+//!     Previously a snapshot of the LIVE machine stood here: five installed themes.
+//!     Such a check lied both ways — it went red where `budgie` and `mate` were
+//!     not installed, and green with a broken rule if the needed directories
+//!     happened to be in place; the September 2026 recapture broke four
+//!     sections without changing a single line of code;
+//!   * `_parse_font_str()` — twelve font entries (GNOME, KDE, fractional size,
+//!     garbage instead of a size) and three DE key tables;
 //!   * `_pretty_desktop_id()`, `_pretty_backup_ts()`, `_files_word()`.
 //!
-//! Санкционированные расхождения (починки оригинала, правило #16) в голдене
-//! НЕ отражены — там записано поведение Python как есть; каждая проверяется
-//! отдельным тестом внизу файла:
-//!   1. кегль терялся, если строка шрифта была в кавычках или с хвостовым
-//!      пробелом (`gsettings get` отдаёт именно кавычки);
-//!   2. `_pretty_backup_ts` теперь считает длину месяца — «30 февраля»
-//!      остаётся как есть (у Python это делал `strptime`, сверяем, что и у
-//!      нас так же);
-//!   3. пользовательский каталог звуковых тем берётся от `XDG_DATA_HOME`.
+//! Sanctioned differences (fixes of the original, rule #16) are NOT reflected
+//! in the golden data — it records Python's behaviour as is; each one is
+//! checked by a separate test at the bottom of the file:
+//!   1. the size was lost if the font string was quoted or had a trailing
+//!      space (`gsettings get` returns exactly the quotes);
+//!   2. `_pretty_backup_ts` now counts the month length — «30 февраля» stays
+//!      as is (in Python `strptime` did that; we check that we do the same);
+//!   3. the user's sound theme directory is taken from `XDG_DATA_HOME`.
 //!
-//! ГРАНИЦА СВЕРКИ ПО ЗВУКУ. Оригинал зашил пару каталогов намертво
-//! (`/usr/share/sounds` и `~/.local/share/sounds`), поэтому у генератора
-//! они подменяются, а ЗДЕСЬ пара собирается [`qs::sound_theme_dirs`] —
-//! это и есть починка 3. Что именно кладётся в пару, сверяет
-//! `sound_dirs_follow_xdg_data_home`; правила обхода этой пары — сверки
-//! ниже; сам факт, что продукт зовёт `sound_theme_dirs` от XDG-каталога
-//! пользователя, ни одной сверкой ядра не покрыт.
+//! SOUND COMPARISON BOUNDARY. The original hard-coded the pair of directories
+//! (`/usr/share/sounds` and `~/.local/share/sounds`), so the generator swaps
+//! them, and HERE the pair is built by [`qs::sound_theme_dirs`] — that is fix 3.
+//! What exactly goes into the pair is checked by
+//! `sound_dirs_follow_xdg_data_home`; the rules for walking this pair by the
+//! checks below; the very fact that the product calls `sound_theme_dirs` with
+//! the user's XDG directory is not covered by any core check.
 //!
-//! ГЕЙТ «голден обязан ловить регрессию» проверен мутацией: девять точечных
-//! поломок реализации (`gif` отнесён к статике; `.tif` потерян из списка
-//! расширений; поиск звука без приоритета расширений; showcase без
-//! узнаваемых событий вперёд; `pretty_desktop_id` берёт первый сегмент
-//! вместо последнего; в `pretty_backup_ts` переставлены день и месяц;
-//! «alsa» и прочие не-темы попадают в список тем; звуки KDE уходят по
-//! ветке gsettings; склонение «файлов» считается по последней цифре) —
-//! каждая красит тесты. Две из них пережили первую редакцию проверок и
-//! потребовали доводки: перебор по самому списку расширений оказался
-//! тавтологией (теперь фильтр пришпилен строкой), а склонение проверялось
-//! только напрямую, минуя строку копии (добавлен случай на 11).
+//! THE "golden data must catch a regression" GATE was verified by mutation:
+//! nine targeted breakages of the implementation (`gif` classed as static;
+//! `.tif` lost from the extension list; sound lookup without extension
+//! priority; showcase without recognizable events first; `pretty_desktop_id`
+//! takes the first segment instead of the last; day and month swapped in
+//! `pretty_backup_ts`; «alsa» and other non-themes get into the theme list;
+//! KDE sounds go down the gsettings branch; the «файлов» plural is computed
+//! from the last digit) — each turns the tests red. Two of them survived the
+//! first edition of the checks and needed polishing: iterating over the
+//! extension list itself turned out to be a tautology (now the filter is
+//! pinned as a string), and the plural was checked only directly, bypassing
+//! the backup string (a case for 11 was added).
 //!
-//! ЯЗЫК СВЕРКИ (с 28.09.2026). Строки вкладки перенесены в каталог перевода:
-//! в ядре — английские `msgid`, русский — в `po/ru.po`. Эталон Python помнит
-//! РУССКИЕ тексты, поэтому сверки с ним идут на русском, собранном из
-//! настоящего `po/ru.po` (`i18n_pin::ru()`), — они и есть проверка «по-русски
-//! как было». Отдельно: `russian_catalog_keeps_old_texts` сверяет ВЕСЬ каталог
-//! вкладки со снимком до переноса (`golden/qt_settings_ru_before.json`), а
-//! `english_*` — английский интерфейс (`i18n_pin::en()`).
+//! COMPARISON LANGUAGE (since 28.09.2026). The tab's strings moved to the
+//! translation catalog: English `msgid` in the core, Russian in `po/ru.po`. The
+//! Python golden data remembers RUSSIAN texts, so comparisons against it run in
+//! Russian built from the real `po/ru.po` (`i18n_pin::ru()`) — they are the
+//! "Russian as before" check. Separately: `russian_catalog_keeps_old_texts`
+//! compares the WHOLE tab catalog with the pre-migration snapshot
+//! (`golden/qt_settings_ru_before.json`), and `english_*` the English
+//! interface (`i18n_pin::en()`).
 
 mod i18n_pin;
 
@@ -70,11 +71,11 @@ use rexon_core::i18n;
 use rexon_core::qt_settings as qs;
 use serde_json::Value;
 
-/// Русская форма слова по числу: «1 файл», «3 файла», «5 файлов» — свой
-/// оракул сверки, независимый от каталога перевода, который она проверяет.
+/// Russian word form by number: «1 файл», «3 файла», «5 файлов» — the check's
+/// own oracle, independent of the translation catalog it verifies.
 ///
-/// Правило — русское из CLDR (one / few / many): последняя цифра 1, кроме
-/// 11, — первая форма; 2–4, кроме 12–14, — вторая; остальное — третья.
+/// The rule is the Russian one from CLDR (one / few / many): last digit 1,
+/// except 11, — first form; 2–4, except 12–14, — second; the rest — third.
 fn plural<'a>(n: i64, one: &'a str, few: &'a str, many: &'a str) -> &'a str {
     let n = n.unsigned_abs();
     let (last, last_two) = (n % 10, n % 100);
@@ -87,19 +88,19 @@ fn plural<'a>(n: i64, one: &'a str, few: &'a str, many: &'a str) -> &'a str {
     }
 }
 
-/// ⭐ СТОРОЖ ПУСТОГО ОБРАЗЦА: «сверять было нечего» — это провал, а не успех.
+/// ⭐ EMPTY SAMPLE GUARD: "there was nothing to compare" is a failure, not a success.
 ///
-/// ⚠️ Это класс, а не один случай. Сверка «в тексте НЕТ запрещённой строки»
-/// на пустом входе проходит сама собой: в пустоте нет ничего, в том числе и
-/// запрещённого. Полностью пустой файл сторожа ловили и раньше — рядом
-/// падали положительные сверки, — а вот ПРОИЗВОДНЫЙ текст (вырезанный
-/// кусок, отфильтрованные строки) мог опустеть незаметно. Замер 19.09:
-/// исходник страницы из ТРЁХ строк-комментариев, в которых стоят искомые
-/// вызовы, проходил сторож плашки ЗЕЛЁНЫМ — положительные сверки читали
-/// комментарии, а запреты смотрели в пустоту, оставшуюся после фильтра.
+/// ⚠️ This is a class, not a single case. A check "the text does NOT contain
+/// a forbidden string" passes by itself on empty input: emptiness contains
+/// nothing, the forbidden included. A completely empty guarded file was caught
+/// before — positive checks next to it failed — but DERIVED text (a cut-out
+/// piece, filtered lines) could become empty unnoticed. Measured 19.09: a page
+/// source of THREE comment lines containing the searched-for calls passed the
+/// banner guard GREEN — the positive checks read the comments, and the
+/// prohibitions looked into the emptiness left after the filter.
 ///
-/// Поэтому каждый образец — и прочитанный с диска, и производный — обязан
-/// сперва доказать, что он непуст, и только потом участвовать в сравнениях.
+/// So every sample — read from disk or derived — must first prove that it is
+/// non-empty, and only then take part in comparisons.
 fn nonempty<'a>(text: &'a str, what: &str) -> &'a str {
     assert!(
         !text.trim().is_empty(),
@@ -108,7 +109,7 @@ fn nonempty<'a>(text: &'a str, what: &str) -> &'a str {
     text
 }
 
-/// Прочитать исходник для текстовой сверки и доказать, что читать было что.
+/// Reads a source for a text check and proves there was something to read.
 fn read_sample(path: &str, what: &str) -> String {
     let text = fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("{what}: не удалось прочитать {path}: {e}"));
@@ -125,13 +126,13 @@ fn golden() -> Value {
     serde_json::from_str(&text).expect("эталон не разбирается как JSON")
 }
 
-/// Подставное дерево звуковых тем из эталона: строится во временном
-/// каталоге ровно по списку `sound_rules.tree`, который записал генератор,
-/// и возвращает пару каталогов «системный, пользовательский» — в том же
-/// порядке, в каком их перебирал оригинал.
+/// A fake sound theme tree from the golden data: built in a temporary
+/// directory exactly by the `sound_rules.tree` list recorded by the generator,
+/// and returns the "system, user" pair of directories — in the same order in
+/// which the original walked them.
 ///
-/// ⚠️ Каталог уникален по имени теста: сверки внутри одного двоичного файла
-/// libtest гоняет ПАРАЛЛЕЛЬНО, и общее дерево они бы вычищали друг у друга.
+/// ⚠️ The directory is unique per test name: libtest runs checks inside one
+/// binary IN PARALLEL, and they would wipe a shared tree from under each other.
 struct SoundTree {
     root: std::path::PathBuf,
 }
@@ -152,14 +153,14 @@ impl SoundTree {
                 fs::write(&full, b"").unwrap();
             }
         }
-        // Оба каталога обязаны существовать даже пустыми: у оригинала они
-        // тоже всегда есть, просто бывают без содержимого.
+        // Both directories must exist even when empty: the original always
+        // has them too, they are just sometimes without contents.
         fs::create_dir_all(root.join("sys")).unwrap();
         fs::create_dir_all(root.join("user")).unwrap();
         Self { root }
     }
 
-    /// Дерево из эталона.
+    /// The tree from the golden data.
     fn from_golden(tag: &str, g: &Value) -> Self {
         let entries: Vec<&str> = g["sound_rules"]["tree"]
             .as_array()
@@ -170,7 +171,7 @@ impl SoundTree {
         Self::new(tag, &entries)
     }
 
-    /// Пара каталогов в порядке оригинала: сперва системный, затем свой.
+    /// The directory pair in the original's order: system first, then the user's.
     fn dirs(&self) -> Vec<String> {
         vec![
             self.root.join("sys").to_string_lossy().into_owned(),
@@ -178,7 +179,7 @@ impl SoundTree {
         ]
     }
 
-    /// Путь внутри дерева — таким его записал генератор.
+    /// A path inside the tree — as the generator recorded it.
     fn rel(&self, path: &str) -> String {
         path.strip_prefix(&format!("{}/", self.root.display()))
             .unwrap_or(path)
@@ -213,20 +214,22 @@ fn wallpaper_format_matches_python() {
     }
 }
 
-/// Список тем: правило «что считается темой», а не состав машины.
+/// The theme list: the rule "what counts as a theme", not the machine's contents.
 ///
-/// ЧТО ЛОМАЛОСЬ. Прежняя редакция звала `qs::list_sound_themes` на ЖИВЫХ
-/// `/usr/share/sounds` и `$HOME/.local/share/sounds` — список тем был
-/// свойством машины, а не кода. Затем сверка шла по эталону Python, где темой
-/// считался и каталог с одними звуками внутри; Python с 02.10.2026 — архив, а
-/// правило оказалось неверным: наборы GNOME/MATE/Budgie без `index.theme` и
-/// обёртки архивов попадали в список, хотя KDE и libcanberra их темами не
-/// считают и подменяют выбранное имя на `freedesktop`.
+/// WHAT BROKE. The previous edition called `qs::list_sound_themes` on the LIVE
+/// `/usr/share/sounds` and `$HOME/.local/share/sounds` — the theme list was a
+/// property of the machine, not of the code. Then the check went by the Python
+/// golden data, where a directory with only sounds inside also counted as a
+/// theme; Python has been an archive since 02.10.2026, and the rule turned out
+/// wrong: GNOME/MATE/Budgie sets without `index.theme` and archive wrappers got
+/// into the list, although KDE and libcanberra do not consider them themes and
+/// replace the chosen name with `freedesktop`.
 ///
-/// КАК ТЕПЕРЬ (03.10.2026). Дерево строится здесь же. Тема — каталог
-/// ВЕРХНЕГО уровня с `index.theme` и разделом `[Sound Theme]`; `alsa`,
-/// `speech-dispatcher` и `sox` не темы даже с ним; каталоги склеиваются без
-/// повторов; порядок — по возрастанию; от имён правило не зависит.
+/// HOW IT IS NOW (03.10.2026). The tree is built right here. A theme is a
+/// TOP-level directory with `index.theme` and a `[Sound Theme]` section;
+/// `alsa`, `speech-dispatcher` and `sox` are not themes even with it;
+/// directories are merged without repeats; the order is ascending; the rule
+/// does not depend on names.
 #[test]
 fn sound_themes_are_only_real_themes() {
     const THEME: &str = "[Sound Theme]\nName=T\nDirectories=stereo\n[stereo]\nOutputProfile=stereo\n";
@@ -262,8 +265,8 @@ fn sound_themes_are_only_real_themes() {
     }
 }
 
-/// Пустое место: обе стороны подставляют тему по умолчанию, а не отдают
-/// покупателю выпадающий список без единого пункта.
+/// An empty place: both sides fall back to the default theme instead of giving
+/// the buyer a drop-down list without a single item.
 #[test]
 fn sound_themes_on_empty_dirs_fall_back() {
     let g = golden();
@@ -294,9 +297,9 @@ fn theme_events_match_python() {
     }
 }
 
-/// Поиск файла события: приоритет расширений (`.oga` → `.ogg` → `.wav`)
-/// сильнее глубины вложения, а порядок каталогов сильнее расширения —
-/// системный отвечает первым, даже когда у пользователя файл «лучше».
+/// Event file lookup: extension priority (`.oga` → `.ogg` → `.wav`) beats
+/// nesting depth, and directory order beats extension — the system one
+/// answers first, even when the user has a "better" file.
 #[test]
 fn find_sound_file_matches_python() {
     let g = golden();
@@ -341,11 +344,11 @@ fn event_meta_matches_python() {
     }
 }
 
-/// Кегль `0` в ядре значит «в строке его не было» — Qt подставляет свой
-/// дефолт. Сверяем только семейство и кегль там, где он в строке ЕСТЬ.
+/// Size `0` in the core means "it was not in the string" — Qt substitutes its
+/// default. Compare only the family, and the size where it IS in the string.
 #[test]
 fn parse_font_matches_python() {
-    // Две записи вынесены в починку `font_spec_keeps_size_with_quotes`.
+    // Two entries are moved to the `font_spec_keeps_size_with_quotes` fix.
     let fixed = ["'Noto Sans 11'", "Ubuntu 11 "];
     for case in golden()["parse_font"].as_array().unwrap() {
         let raw = case[0].as_str().unwrap();
@@ -425,9 +428,9 @@ fn pretty_backup_ts_matches_python() {
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn files_word_matches_python() {
     let _lang = i18n_pin::ru();
-    // Счёт файлов в строке копии теперь склоняет каталог перевода
-    // (`Plural-Forms` в `po/ru.po`), а не своя таблица: сверяем, что его
-    // формы дают те же слова, что и `_files_word` оригинала.
+    // The file count in the backup string is now declined by the translation
+    // catalog (`Plural-Forms` in `po/ru.po`), not by our own table: check that its
+    // forms give the same words as the original's `_files_word`.
     for case in golden()["files_word"].as_array().unwrap() {
         let n = case[0].as_i64().unwrap();
         let want = case[1].as_str().unwrap();
@@ -440,11 +443,11 @@ fn files_word_matches_python() {
     }
 }
 
-// ── Починки оригинала (в голдене не отражены) ────────────────────────────
+// ── Fixes of the original (not reflected in the golden data) ─────────────
 
-/// Починка 1: `gsettings get` отдаёт значение В КАВЫЧКАХ, а хвостовой пробел
-/// оставляет любой ручной ввод. Оригинал в обоих случаях терял кегль и
-/// возвращал шрифт «по умолчанию».
+/// Fix 1: `gsettings get` returns the value IN QUOTES, and any manual input
+/// leaves a trailing space. In both cases the original lost the size and
+/// returned the "default" font.
 #[test]
 fn font_spec_keeps_size_with_quotes() {
     assert_eq!(
@@ -454,8 +457,8 @@ fn font_spec_keeps_size_with_quotes() {
     assert_eq!(qs::parse_font_spec("Ubuntu 11 "), ("Ubuntu".to_string(), 11));
 }
 
-/// Починка 2: длина месяца. `strptime` её знал, ручной разбор мог бы не
-/// знать — сверяем, что «30 февраля» осталось нерасшифрованным.
+/// Fix 2: month length. `strptime` knew it, a hand-written parser might not —
+/// check that «30 февраля» stays undecoded.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn pretty_backup_ts_checks_month_length() {
@@ -465,8 +468,8 @@ fn pretty_backup_ts_checks_month_length() {
     assert_eq!(qs::pretty_backup_ts("20240229_010203"), "29.02.2024 в 01:02");
 }
 
-/// Починка 3: пользовательский каталог тем — от `XDG_DATA_HOME`, а не от
-/// `~/.local/share` наглухо.
+/// Fix 3: the user's theme directory comes from `XDG_DATA_HOME`, not from a
+/// hard-coded `~/.local/share`.
 #[test]
 fn sound_dirs_follow_xdg_data_home() {
     assert_eq!(
@@ -478,12 +481,12 @@ fn sound_dirs_follow_xdg_data_home() {
     );
 }
 
-// ── Логика, у которой в Python не было отдельной функции ─────────────────
+// ── Logic that had no separate function in Python ────────────────────────
 
 #[test]
 fn sound_backend_covers_every_de() {
-    // Тайловые и незнакомые сеансы обязаны попадать на общий gsettings-путь,
-    // а не оставаться без звука (правило #12).
+    // Tiling and unknown sessions must land on the common gsettings path
+    // instead of staying without sound (rule #12).
     for de in ["hyprland", "niri", "sway", "unknown", "", "labwc"] {
         assert!(matches!(
             qs::sound_backend(de, qs::SoundSetting::Theme),
@@ -495,13 +498,13 @@ fn sound_backend_covers_every_de() {
         qs::SoundBackend::KConfig {
             file: "kdeglobals".into(),
             group: "Sounds".into(),
-            // KF6 Notifications читает `[Sounds] Enable` (notifybyaudio.cpp);
-            // прежний `EnableNotificationSounds` не читал никто.
+            // KF6 Notifications reads `[Sounds] Enable` (notifybyaudio.cpp);
+            // nobody read the former `EnableNotificationSounds`.
             key: "Enable".into(),
         }
     );
-    // На чистом профиле ключа нет, а KF6 считает его включённым — читаем
-    // с тем же умолчанием.
+    // On a clean profile the key is absent, and KF6 treats it as enabled — read
+    // with the same default.
     assert_eq!(
         qs::sound_read_argv_for("kde", qs::SoundSetting::EventSounds, "/usr/bin/kreadconfig6")
             .unwrap()
@@ -544,11 +547,11 @@ fn sound_argv_needs_kde_tool() {
     );
 }
 
-/// План смены звуковой темы: основной механизм окружения плюс общая ветка
-/// gsettings для GTK-программ, и обязательная команда проверки.
+/// Sound theme change plan: the environment's main mechanism plus the common
+/// gsettings branch for GTK programs, and a mandatory check command.
 #[test]
 fn sound_theme_plan_writes_both_and_verifies() {
-    // KDE: kdeglobals + gsettings (GTK-программы читают libcanberra).
+    // KDE: kdeglobals + gsettings (GTK programs read libcanberra).
     let plan = qs::sound_theme_plan(
         "kde", "zorinos2", "/usr/bin/kwriteconfig6", "/usr/bin/kreadconfig6", true);
     assert_eq!(plan.write.len(), 2);
@@ -560,25 +563,25 @@ fn sound_theme_plan_writes_both_and_verifies() {
     );
     assert_eq!(plan.verify.unwrap()[0], "/usr/bin/kreadconfig6");
 
-    // Нет gsettings — вспомогательной команды не предлагаем.
+    // No gsettings — no auxiliary command is offered.
     let plan = qs::sound_theme_plan(
         "kde", "zorinos2", "/usr/bin/kwriteconfig6", "/usr/bin/kreadconfig6", false);
     assert_eq!(plan.write.len(), 1);
 
-    // GNOME: основной механизм и есть общая ветка — дубля быть не должно.
+    // GNOME: the main mechanism is the common branch itself — there must be no duplicate.
     let plan = qs::sound_theme_plan("gnome", "ocean", "", "", true);
     assert_eq!(plan.write.len(), 1);
     assert_eq!(plan.write[0][2], "org.gnome.desktop.sound");
 
-    // KDE без kwriteconfig6: писать основным механизмом нечем, но общая
-    // ветка остаётся — единственный доступный путь, без падения.
+    // KDE without kwriteconfig6: nothing to write with the main mechanism, but
+    // the common branch remains — the only available path, without crashing.
     let plan = qs::sound_theme_plan("kde", "ocean", "", "", true);
     assert_eq!(plan.write.len(), 1);
     assert_eq!(plan.write[0][0], "gsettings");
     assert!(plan.verify.is_none());
 
-    // Не-KDE окружение с kwriteconfig6: тема доходит и до KDE/Qt-программ
-    // (kdeglobals [Sounds] Theme, с уведомлением запущенных).
+    // A non-KDE environment with kwriteconfig6: the theme reaches KDE/Qt programs
+    // too (kdeglobals [Sounds] Theme, notifying the running ones).
     let plan = qs::sound_theme_plan(
         "cinnamon-mint", "ocean", "/usr/bin/kwriteconfig6", "/usr/bin/kreadconfig6", true);
     assert_eq!(
@@ -602,8 +605,8 @@ fn svec(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
 
-/// «Звуки событий» — тот же общий план: родной ключ, общий слой GNOME и
-/// KDE, в KDE ещё снятие мусорного ключа прежних версий.
+/// «Звуки событий» — the same common plan: the native key, the common GNOME and
+/// KDE layer, in KDE also removal of a junk key from earlier versions.
 #[test]
 fn event_sounds_plan_per_desktop() {
     let kw = "/usr/bin/kwriteconfig6";
@@ -643,9 +646,9 @@ fn event_sounds_plan_per_desktop() {
     );
 }
 
-/// Д6 (проверка окружений 02.10.2026): шрифт заголовков XFCE на профиле, где
-/// его не меняли, — свойства `/general/title_font` в канале нет, и запись без
-/// `-n -t string` отказывала. Запись обязана уметь завести свойство.
+/// D6 (environment check 02.10.2026): XFCE title font on a profile where it was
+/// never changed — the channel has no `/general/title_font` property, and a
+/// write without `-n -t string` failed. The write must be able to create the property.
 #[test]
 fn xfce_font_write_creates_missing_property() {
     for (target, channel, prop) in [
@@ -666,33 +669,33 @@ fn xfce_font_write_creates_missing_property() {
     );
 }
 
-/// Незаданная тема доходит до подписи «— не задана —», заданная — как есть.
+/// An unset theme reaches the «— не задана —» label, a set one comes as is.
 ///
-/// ЧТО ЛОМАЛОСЬ (живая проверка вкладки 18.09). Пустой ответ подменялся на
-/// `freedesktop`, и на чистом профиле строка «Звуковая тема» показывала имя
-/// темы, которой человек не выбирал; строка-заглушка была недостижима.
+/// WHAT BROKE (live check of the tab 18.09). An empty answer was replaced with
+/// `freedesktop`, and on a clean profile the «Звуковая тема» row showed the name
+/// of a theme the person never chose; the placeholder row was unreachable.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn unset_sound_theme_reaches_the_label() {
     let _lang = i18n_pin::ru();
-    // Нечего показывать — так и сказано пустой строкой: строку-заглушку
-    // страница ставит ровно по этому признаку.
+    // Nothing to show — said so with an empty string: the page sets the
+    // placeholder row exactly by this sign.
     for raw in ["", "  \n", "''\n", "\"\"\n"] {
         assert_eq!(qs::parse_sound_theme(raw), "", "ответ {raw:?}");
     }
-    // Подпись, которую страница поставит вместо пустого места, — в ядре.
+    // The label the page puts instead of the empty place lives in the core.
     assert_eq!(
         qs::text("snd.theme_unset", &[]).as_deref(),
         Some("— не задана —")
     );
-    // Тема задана — показывается она сама, без всякой подстановки.
+    // A theme is set — it is shown itself, without any substitution.
     assert_eq!(qs::parse_sound_theme("'ocean'\n"), "ocean");
     assert_eq!(qs::parse_sound_theme("zorinos2\n"), "zorinos2");
 }
 
-/// Звуку умолчание по-прежнему нужно — но берётся оно ВТОРЫМ путём, у
-/// поиска файла, а не у подписи: пустое имя темы иначе означало бы каталог
-/// тем целиком, и «послушать» играло бы звук чужой темы.
+/// Sound still needs a default — but it is taken by the SECOND path, at the
+/// file lookup, not at the label: otherwise an empty theme name would mean the
+/// whole themes directory, and «послушать» would play a sound of another theme.
 #[test]
 fn unset_theme_plays_freedesktop_and_only_it() {
     let tree = SoundTree::new(
@@ -771,7 +774,7 @@ fn backup_row_label_reads_like_a_sentence() {
         qs::backup_row_label("20260620_011005", "before_install", 1),
         "📁 20.06.2026 в 01:10  ·  авто, перед установкой  ·  1 файл"
     );
-    // 11 — та самая ловушка русского счёта: «11 файлов», не «11 файл».
+    // 11 is the very trap of Russian counting: «11 файлов», not «11 файл».
     assert_eq!(
         qs::backup_row_label("20260620_011005", "manual", 11),
         "📁 20.06.2026 в 01:10  ·  вручную  ·  11 файлов"
@@ -783,12 +786,12 @@ fn backup_row_label_reads_like_a_sentence() {
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn de_display_never_shows_unknown() {
     let _lang = i18n_pin::ru();
-    // Имя стола — как на вкладке «Рабочие столы», а не сокращение.
+    // The desktop name as on the «Рабочие столы» tab, not an abbreviation.
     assert_eq!(qs::de_display("kde", "KDE", ""), "KDE Plasma");
     assert_eq!(qs::de_display("unknown", "niri:wlroots", ""), "NIRI");
     assert_eq!(qs::de_display("unknown", "", "sway"), "SWAY");
-    // Починка (правило #13): запасное имя было «ВАШ WM» — сокращение из
-    // словаря разработчика, покупателю оно ничего не говорит.
+    // Fix (rule #13): the fallback name was «ВАШ WM» — an abbreviation from the
+    // developer's vocabulary that tells the buyer nothing.
     assert_eq!(qs::de_display("unknown", "", ""), "ВАШ РАБОЧИЙ СТОЛ");
     assert_eq!(qs::de_display("", "", ""), "ВАШ РАБОЧИЙ СТОЛ");
 }
@@ -800,7 +803,7 @@ fn youtube_lists_are_paired() {
     let by_label: BTreeMap<String, &str> = qs::yt_qualities().into_iter().collect();
     assert_eq!(by_label["4K"], "4k");
     assert_eq!(by_label["Лучшее"], "best");
-    // Починка (правило #13): было «Стриминг» — калька, а не русское слово.
+    // Fix (rule #13): it was «Стриминг» — a calque, not a Russian word.
     assert_eq!(qs::yt_modes()[0], ("Онлайн".to_string(), "stream"));
     assert_eq!(qs::yt_modes()[1], ("Скачать".to_string(), "download"));
 }
@@ -811,15 +814,15 @@ fn font_gtk_sync_only_for_system() {
     assert!(!qs::font_syncs_to_gtk("mono"));
     assert!(!qs::font_syncs_to_gtk("title"));
     assert_eq!(qs::gnome_font_spec("Noto Sans", 11), "Noto Sans 11");
-    // ⚠️ Расхождение с Python-оригиналом намеренное: его запись
-    // `Noto Sans,11,-1,5,Regular,0,0,0,0,0` Qt 6 читает с весом 100 (Thin) —
-    // десять полей разбираются по старой шкале, «Regular» → 0. Запись Qt 6
-    // из шестнадцати полей даёт обычный вес 400, как у самой Plasma 6.
+    // ⚠️ The difference from the Python original is deliberate: Qt 6 reads its
+    // entry `Noto Sans,11,-1,5,Regular,0,0,0,0,0` with weight 100 (Thin) — ten
+    // fields are parsed by the old scale, "Regular" → 0. The Qt 6 entry of
+    // sixteen fields gives the normal weight 400, as in Plasma 6 itself.
     assert_eq!(
         qs::kde_font_spec("Noto Sans", 11),
         "Noto Sans,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
     );
-    // А разбор понимает обе записи — старые конфиги читаются как прежде.
+    // And the parser understands both entries — old configs are read as before.
     assert_eq!(
         qs::parse_font_spec("Noto Sans,11,-1,5,Regular,0,0,0,0,0"),
         ("Noto Sans".to_string(), 11)
@@ -830,10 +833,9 @@ fn font_gtk_sync_only_for_system() {
     );
 }
 
-/// Что читается и пишется в каждом окружении: родное хранилище, спутники,
-/// команды-спутники. Источники ключей — в документации `font_backend` и
-/// `font_plan` (схемы gsettings, исходники Cinnamon, MATE, Budgie, COSMIC,
-/// LXQt, qt6ct).
+/// What is read and written in each environment: the native store, companions,
+/// companion commands. Key sources are in the `font_backend` and `font_plan`
+/// docs (gsettings schemas, Cinnamon, MATE, Budgie, COSMIC, LXQt, qt6ct sources).
 #[test]
 fn font_plan_table_per_desktop() {
     use qs::{FontFile, FontStore, SoundBackend};
@@ -878,7 +880,7 @@ fn font_plan_table_per_desktop() {
     let g_mono = || gs(IFACE, "monospace-font-name");
     let g_title = || gs("org.gnome.desktop.wm.preferences", "titlebar-font");
 
-    // (окружение, цель, родное хранилище, спутники)
+    // (environment, target, native store, companions)
     let table: Vec<(&str, &str, FontStore, Vec<FontStore>)> = vec![
         ("kde", "system", kc("General", "font"), vec![g_sys()]),
         ("kde", "mono", kc("General", "fixed"), vec![g_mono()]),
@@ -927,15 +929,15 @@ fn font_plan_table_per_desktop() {
         assert_eq!(plan.primary, primary, "{de}/{target}: родное хранилище");
         assert_eq!(plan.also, also, "{de}/{target}: спутники");
         assert_eq!(plan.gtk_ini, target == "system", "{de}/{target}: settings.ini");
-        // Родное хранилище-команда совпадает с тем, что отдаёт font_backend
-        // (им до сих пор пользуется мост Python).
+        // The native command store matches what font_backend returns
+        // (the Python bridge still uses it).
         if let FontStore::Cmd(backend) = &plan.primary {
             assert_eq!(*backend, qs::font_backend(de, target), "{de}/{target}");
         }
     }
 
-    // Заголовок: вместе с titlebar-font снимается titlebar-uses-system-font
-    // той же схемы — иначе ключ шрифта игнорируется.
+    // Title: together with titlebar-font, titlebar-uses-system-font of the same
+    // schema is cleared — otherwise the font key is ignored.
     for (de, schema) in [
         ("gnome", "org.gnome.desktop.wm.preferences"),
         ("budgie", "org.gnome.desktop.wm.preferences"),
@@ -964,9 +966,9 @@ fn font_plan_table_per_desktop() {
     }
 }
 
-/// Шрифт заголовков предлагается только там, где его есть куда записать;
-/// «маленький», «панели инструментов» и «меню» — везде (вне KDE их несёт
-/// общий слой Rexon).
+/// The title font is offered only where there is somewhere to write it;
+/// «маленький», «панели инструментов» and «меню» everywhere (outside KDE they
+/// are carried by Rexon's common layer).
 #[test]
 fn font_title_offered_only_where_a_wm_reads_it() {
     for de in ["kde", "gnome", "budgie"] {
@@ -976,7 +978,7 @@ fn font_title_offered_only_where_a_wm_reads_it() {
             "{de}"
         );
     }
-    // Подписи значков рабочего стола — только там, где у стола есть ключ.
+    // Desktop icon labels — only where the desktop has a key.
     for de in ["xfce", "cinnamon-mint", "cinnamon", "mate"] {
         assert_eq!(
             qs::font_targets_for(de),
@@ -987,16 +989,17 @@ fn font_title_offered_only_where_a_wm_reads_it() {
     for de in ["cosmic", "sway", "hyprland", "niri", "deepin", ""] {
         assert_eq!(qs::font_targets_for(de), vec!["system", "mono", "small", "toolbar", "menu", "document"], "{de}");
     }
-    // LXQt: заголовок — только с опознанным менеджером окон, подписи значков
-    // — у pcmanfm-qt.
+    // LXQt: title only with a recognized window manager, icon labels
+    // — from pcmanfm-qt.
     assert_eq!(qs::font_targets_for("lxqt"), vec!["system", "mono", "small", "toolbar", "menu", "document", "desktop"]);
 }
 
-/// «Маленький», «панели инструментов», «меню»: в KDE — родные ключи
-/// kdeglobals, во всех остальных окружениях — общий слой Rexon: наш блок в
-/// gtk.css GTK 3 (он же родной — из него шрифт читается обратно) и GTK 4,
-/// таблица стилей qt6ct/qt5ct (кроме LXQt, чья платформенная тема таблиц не
-/// читает) и kdeglobals для KDE-программ. Кнопки включены везде.
+/// «Маленький», «панели инструментов», «меню»: in KDE the native kdeglobals
+/// keys, in all other environments Rexon's common layer: our block in GTK 3
+/// gtk.css (it is also the native one — the font is read back from it) and
+/// GTK 4, the qt6ct/qt5ct style sheet (except LXQt, whose platform theme does
+/// not read style sheets) and kdeglobals for KDE programs. Buttons are enabled
+/// everywhere.
 #[test]
 fn extra_fonts_reach_every_desktop() {
     use qs::{FontFile, FontStore, SoundBackend};
@@ -1040,14 +1043,14 @@ fn extra_fonts_reach_every_desktop() {
             ("desktop", false),
         ]
     );
-    // Заголовок там, где писать некуда, по-прежнему не показывается;
-    // подписи значков рабочего стола видны, но выключены.
+    // The title is still not shown where there is nowhere to write;
+    // desktop icon labels are visible but disabled.
     assert!(qs::font_targets_shown("sway").iter().all(|(t, ok)| *t != "title" && (*ok || *t == "desktop")));
     assert!(qs::font_targets_shown("kde").iter().all(|(t, ok)| *ok != (*t == "desktop")));
     assert!(qs::font_targets_shown("mate").iter().all(|(_, ok)| *ok));
 }
 
-/// Подпись «на что действует» — честная по окружению.
+/// The "what it affects" label is honest per environment.
 #[test]
 fn extra_fonts_scope_is_honest() {
     let _lang = i18n_pin::en();
@@ -1064,9 +1067,9 @@ fn extra_fonts_scope_is_honest() {
     }
 }
 
-/// Блок в gtk.css: чужие правила и `@import` на месте, наш блок один и в
-/// конце, три шрифта уживаются, читаются обратно; разорванный блок не
-/// трогается; ссылка на тему заменяется файлом с `@import` этой темы.
+/// The gtk.css block: foreign rules and `@import` stay in place, our block is
+/// single and at the end, three fonts coexist and are read back; a broken block
+/// is not touched; a link to a theme is replaced by a file with that theme's `@import`.
 #[test]
 fn extra_fonts_gtk_css_block() {
     use qs::{FontFile, FontFileIo};
@@ -1093,17 +1096,17 @@ fn extra_fonts_gtk_css_block() {
     assert!(text.contains("statusbar, .caption, .caption-heading {"), "{text}");
     assert!(text.trim_end().ends_with("/* <<< Rexon: fonts */"), "{text}");
     assert!(text.contains("button { color: red; }"));
-    // Кавычки в имени экранируются.
+    // Quotes in the name are escaped.
     let odd = menu.new_text(None, "Odd \"Name\"", 10);
     assert!(odd.contains("font-family: \"Odd \\\"Name\\\"\";"), "{odd}");
-    // GTK 4 — свои узлы.
+    // GTK 4 — its own nodes.
     let gtk4 = FontFile::GtkCss { version: "4.0".to_string(), target: "toolbar".to_string() };
     assert!(gtk4.new_text(None, "Inter", 10).contains(".toolbar, .toolbar button {"));
-    // Разорванный блок: не трогаем.
+    // A broken block: not touched.
     let broken = "a {}\n/* >>> Rexon: fonts (managed by Rexon, edits are overwritten) */\nb {}\n";
     assert_eq!(menu.try_new_text(Some(broken), "X", 10), None);
     assert_eq!(menu.file_writes("/c", &Fake(vec![("gtk-3.0/gtk.css".into(), broken.into())], None), "X", 10), None);
-    // Ссылка на тему: обычный файл с @import темы и нашим блоком.
+    // A link to a theme: a regular file with the theme's @import and our block.
     let w = menu
         .file_writes("/c", &Fake(vec![], Some("/home/u/.themes/My Theme/gtk-3.0/gtk.css".into())), "X", 10)
         .unwrap();
@@ -1112,12 +1115,12 @@ fn extra_fonts_gtk_css_block() {
     assert!(w[0].text.starts_with("@import url(\"file:///home/u/.themes/My%20Theme/gtk-3.0/gtk.css\");\n"), "{}", w[0].text);
 }
 
-/// Начертание шрифтов меню, панелей инструментов и маленького в нашем
-/// блоке: круг «запись → чтение» (Bold Italic, Semi-Bold, Italic), обычное
-/// после жирного — без `font-weight`/`font-style` (толщина темы не
-/// сбивается), невыбранное начертание оставляет прежнее, метки прежних
-/// версий без поля начертания читаются обычным шрифтом. «Изменить все
-/// шрифты» переносит прочитанное начертание дальше — в блок и в kdeglobals.
+/// Style of the menu, toolbar and small fonts in our block: the "write → read"
+/// round trip (Bold Italic, Semi-Bold, Italic), regular after bold — without
+/// `font-weight`/`font-style` (the theme's weight is not overridden), an
+/// unselected style keeps the previous one, markers of earlier versions
+/// without a style field read as the regular font. «Изменить все шрифты»
+/// carries the read style further — into the block and into kdeglobals.
 #[test]
 fn extra_fonts_keep_face() {
     use qs::{FontFace, FontFile, FontStore, SoundBackend};
@@ -1149,11 +1152,11 @@ fn extra_fonts_keep_face() {
         assert_eq!(file.read_spec(&bold), "Noto Sans Bold Italic 9");
         assert!(bold.contains("/* rexon:font ") && bold.contains(" 9 face=700,1 Noto Sans */"), "{bold}");
         assert!(bold.contains("  font-size: 9pt;\n  font-weight: 700;\n  font-style: italic;\n}"), "{bold}");
-        // Начертание не выбрано (старый вызов без окна) — остаётся прежнее.
+        // No style selected (an old call without the dialog) — the previous one stays.
         let kept = file.try_new_text(Some(&bold), "Inter", 10).unwrap();
         assert_eq!(file.read_spec(&kept), "Inter Bold Italic 10");
-        // «Изменить все шрифты»: начертание прочитано из блока и записано
-        // с новым семейством — и в блок, и в kdeglobals.
+        // «Изменить все шрифты»: the style is read from the block and written
+        // with the new family — both into the block and into kdeglobals.
         let (_, _, face) = qs::parse_font_spec_face(&file.read_spec(&bold));
         let changed = file.try_new_text_face(Some(&bold), "Fira Sans", 11, face).unwrap();
         assert_eq!(file.read_spec(&changed), "Fira Sans Bold Italic 11");
@@ -1165,11 +1168,11 @@ fn extra_fonts_keep_face() {
         let argv = qs::font_store_write_argv_face(&kde, "Fira Sans", 11, face, "kwriteconfig6").unwrap();
         assert_eq!(argv.last().map(String::as_str), Some("Fira Sans,11,-1,5,700,1,0,0,0,0,0,0,0,0,0,1"));
     }
-    // QSS: свойства, которые понимают таблицы стилей Qt.
+    // QSS: properties that Qt style sheets understand.
     let qss = FontFile::QtCtQss { tool: "qt6ct".to_string(), target: "toolbar".to_string() };
     let t = qss.try_new_text_face(None, "Inter", 10, FontFace { weight: 600, italic: true }).unwrap();
     assert!(t.contains("QToolButton {\n  font-family: \"Inter\";\n  font-size: 10pt;\n  font-weight: 600;\n  font-style: italic;\n}"), "{t}");
-    // Метка прежней версии — без начертания; соседняя новая — с ним.
+    // A marker of an earlier version — without a style; the new one next to it — with one.
     let old = "/* >>> Rexon: fonts (managed by Rexon, edits are overwritten) */\n/* rexon:font menu 9 Noto Sans */\nmenu {}\n/* rexon:font small 8 face=300,0 Cantarell Light */\n/* <<< Rexon: fonts */\n";
     let fonts = qs::extra_fonts_parse(old);
     assert_eq!(fonts.len(), 2);
@@ -1177,12 +1180,12 @@ fn extra_fonts_keep_face() {
     assert_eq!((fonts[1].family.as_str(), fonts[1].face), ("Cantarell Light", FontFace { weight: 300, italic: false }));
     let menu = FontFile::GtkCss { version: "3.0".to_string(), target: "menu".to_string() };
     assert_eq!(menu.read_spec(old), "Noto Sans 9");
-    // Испорченное поле начертания — часть семейства, как у старых меток.
+    // A corrupted style field is part of the family, as with old markers.
     assert_eq!(qs::extra_fonts_parse("/* >>> Rexon: fonts */\n/* rexon:font menu 9 face=x Odd */\n/* <<< Rexon: fonts */")[0].family, "face=x Odd");
 }
 
-/// qt6ct: таблица пишется, только если qt6ct настроен (`qt6ct.conf` есть);
-/// её путь дописывается в `[Interface] stylesheets` к чужим, повторно — нет.
+/// qt6ct: the style sheet is written only if qt6ct is set up (`qt6ct.conf`
+/// exists); its path is appended to `[Interface] stylesheets` after foreign ones, not twice.
 #[test]
 fn extra_fonts_qtct_stylesheet() {
     use qs::{FontFile, FontFileIo};
@@ -1208,23 +1211,23 @@ fn extra_fonts_qtct_stylesheet() {
         vec!["/usr/share/qt6ct/qss/fusion-fixes.qss".to_string(), "/c/qt6ct/qss/rexon-fonts.qss".to_string()]
     );
     assert!(w[1].text.contains("style=Fusion"));
-    // Уже вписана — conf не переписывается; второй шрифт уживается с первым.
+    // Already listed — conf is not rewritten; the second font coexists with the first.
     let fs = Fake(vec![("qt6ct/qt6ct.conf".into(), w[1].text.clone()), ("qt6ct/qss/rexon-fonts.qss".into(), w[0].text.clone())]);
     let tool = FontFile::QtCtQss { tool: "qt6ct".to_string(), target: "toolbar".to_string() };
     let w2 = tool.file_writes("/c", &fs, "Inter", 9).unwrap();
     assert_eq!(w2.len(), 1);
     assert!(w2[0].text.contains("QToolButton {") && w2[0].text.contains("QMenuBar, QMenu {"), "{}", w2[0].text);
-    // Пустой список QSettings и пути с запятой.
+    // An empty QSettings list and paths with a comma.
     assert_eq!(qs::qtct_conf_with_stylesheet("[Interface]\nstylesheets=@Invalid()\n", "/a.qss").map(|t| qs::qtct_conf_stylesheets(&t)), Some(vec!["/a.qss".to_string()]));
     let t = qs::qtct_conf_with_stylesheet("[Interface]\nstylesheets=\"/x,y.qss\", /z.qss\n", "/a.qss").unwrap();
     assert_eq!(qs::qtct_conf_stylesheets(&t), vec!["/x,y.qss".to_string(), "/z.qss".to_string(), "/a.qss".to_string()]);
 }
 
-/// Запись в каждое хранилище: argv команд и текст файлов.
+/// Writing to each store: command argv and file text.
 #[test]
 fn font_store_writes() {
     use qs::{FontFile, FontStore};
-    // gsettings — «Семейство Кегль», родной ключ Cinnamon.
+    // gsettings — "Family Size", Cinnamon's native key.
     let plan = qs::font_plan("cinnamon-mint", "system");
     assert_eq!(
         qs::font_store_write_argv(&plan.primary, "Noto Sans", 11, ""),
@@ -1236,7 +1239,7 @@ fn font_store_writes() {
             "Noto Sans 11".to_string(),
         ])
     );
-    // kdeglobals — запись QFont, без kwriteconfig6 писать нечем.
+    // kdeglobals — a QFont entry; without kwriteconfig6 there is nothing to write with.
     let plan = qs::font_plan("kde", "system");
     assert_eq!(
         qs::font_store_write_argv(&plan.primary, "Noto Sans", 11, "/usr/bin/kwriteconfig6")
@@ -1246,11 +1249,11 @@ fn font_store_writes() {
         "Noto Sans,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
     );
     assert_eq!(qs::font_store_write_argv(&plan.primary, "Noto Sans", 11, ""), None);
-    // Файл командой не пишется.
+    // A file is not written by a command.
     let cosmic = FontStore::File(FontFile::CosmicTk { key: "interface_font".to_string() });
     assert_eq!(qs::font_store_write_argv(&cosmic, "Noto Sans", 11, ""), None);
 
-    // COSMIC: RON-структура FontConfig, как её пишет cosmic-config.
+    // COSMIC: the FontConfig RON structure, as cosmic-config writes it.
     let FontStore::File(file) = qs::font_plan("cosmic", "mono").primary else {
         panic!("у COSMIC родное хранилище — файл");
     };
@@ -1264,8 +1267,8 @@ fn font_store_writes() {
     assert_eq!(qs::font_value_text(&file.read_spec(&text)).contains("Fira Mono"), true);
     assert!(file.may_create());
 
-    // LXQt: [Qt] font в lxqt.conf, строка QFont в кавычках; соседние ключи и
-    // секции не трогаются.
+    // LXQt: [Qt] font in lxqt.conf, a quoted QFont string; neighbouring keys and
+    // sections are not touched.
     let FontStore::File(file) = qs::font_plan("lxqt", "system").primary else {
         panic!("у LXQt родное хранилище — файл");
     };
@@ -1276,7 +1279,7 @@ fn font_store_writes() {
     assert!(text.contains("theme=frost") && text.contains("style=Fusion"), "{text}");
     assert!(!text.contains("Sans,11,"), "{text}");
     assert_eq!(qs::parse_font_spec(&file.read_spec(&text)), ("Noto Sans".to_string(), 10));
-    // fixedFont не путается с font.
+    // fixedFont is not confused with font.
     let FontStore::File(mono) = qs::font_plan("lxqt", "mono").primary else {
         panic!("у LXQt родное хранилище — файл");
     };
@@ -1285,7 +1288,7 @@ fn font_store_writes() {
     assert!(text.contains("fixedFont=\"Hack,9,"), "{text}");
     assert_eq!(qs::parse_font_spec(&mono.read_spec(&text)), ("Hack".to_string(), 9));
 
-    // qt6ct — только в уже существующий файл.
+    // qt6ct — only into an already existing file.
     let plan = qs::font_plan("sway", "system");
     let Some(FontStore::File(qt6ct)) = plan.also.last() else {
         panic!("последний спутник — qt6ct");
@@ -1296,15 +1299,15 @@ fn font_store_writes() {
     assert!(text.contains("[Fonts]\ngeneral=\"Noto Sans,10,-1,5,400,"), "{text}");
 }
 
-/// Фильтр окна выбора файла собран из тех же списков, что и разбор формата.
+/// The file dialog filter is built from the same lists as format detection.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn dialog_filter_lists_every_known_ext() {
     let _lang = i18n_pin::ru();
-    // Набор пришпилен строкой: перебор по самому списку был бы тавтологией
-    // и пропустил бы потерю расширения (проверено мутацией «.tif забыт»).
-    // Окно открывается на «родной» группе кнопки — она первая, как и была
-    // до появления остальных групп.
+    // The set is pinned as a string: iterating over the list itself would be a
+    // tautology and would miss a lost extension (verified by the ".tif forgotten"
+    // mutation). The dialog opens on the button's "native" group — it is first,
+    // as it was before the other groups appeared.
     assert!(qs::wallpaper_dialog_filter("static").starts_with(
         "Изображения (*.jpg *.jpeg *.png *.webp *.bmp *.tiff *.tif);;"
     ));
@@ -1323,33 +1326,33 @@ fn dialog_filter_lists_every_known_ext() {
     }
 }
 
-/// Flash достижим из окна выбора файла, а не только из манифеста `.rxn`.
+/// Flash is reachable from the file dialog, not only from an `.rxn` manifest.
 ///
-/// Движок разбирает формат `swf` (`WallpaperApplier.apply`, `case "swf"`), но
-/// вкладка о нём не знала: разбор возвращал `"static"`, фильтр `.swf` не
-/// показывал, и выбранный человеком ролик уезжал в показ статичной картинки.
+/// The engine handles the `swf` format (`WallpaperApplier.apply`, `case "swf"`),
+/// but the tab did not know about it: detection returned `"static"`, the filter
+/// did not show `.swf`, and the clip the person picked went to the static image display.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn swf_is_reachable_from_file_dialog() {
     let _lang = i18n_pin::ru();
     assert_eq!(qs::detect_wallpaper_format("/home/w/ролик.swf"), "swf");
     assert_eq!(qs::detect_wallpaper_format("/home/w/РОЛИК.SWF"), "swf");
-    // Кнопок для Flash во вкладке нет, поэтому .swf обязан быть досягаем
-    // из-под ЛЮБОЙ существующей кнопки — иначе формат так и остаётся без
-    // входа. Порядок групп при этом не меняется: окно по-прежнему
-    // открывается на «родной» группе нажатой кнопки.
+    // The tab has no buttons for Flash, so .swf must be reachable from under ANY
+    // existing button — otherwise the format still has no entry point. The group
+    // order does not change: the dialog still opens on the "native" group of the
+    // pressed button.
     for kind in ["static", "video", "auto"] {
         let f = qs::wallpaper_dialog_filter(kind);
         assert!(f.contains("Flash (*.swf)"), "{kind}: {f}");
         assert!(f.contains("Все обои ("), "{kind}: {f}");
     }
     assert!(qs::wallpaper_dialog_filter("swf").starts_with("Flash (*.swf);;"));
-    // Ни одна группа не повторяется дважды.
+    // No group appears twice.
     let f = qs::wallpaper_dialog_filter("static");
     assert_eq!(f.matches("Изображения (").count(), 1, "{f}");
 }
 
-/// Окно «выбрать обои» показывает ВСЕ применимые файлы одним списком.
+/// The "choose wallpaper" dialog shows ALL applicable files in one list.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn auto_dialog_shows_every_wallpaper_kind() {
@@ -1358,15 +1361,15 @@ fn auto_dialog_shows_every_wallpaper_kind() {
     assert!(f.starts_with("Все обои ("), "{f}");
     for ext in qs::all_wallpaper_exts() {
         assert!(f.contains(&format!("*.{ext}")), "{f} без {ext}");
-        // Каждое расширение из фильтра вкладка умеет разобрать в формат,
-        // который движок принимает (не «static по умолчанию» для .swf).
+        // Every extension from the filter can be detected by the tab into a format
+        // the engine accepts (not "static by default" for .swf).
         let fmt = qs::detect_wallpaper_format(&format!("x.{ext}"));
         assert!(
             ["static", "video", "swf"].contains(&fmt),
             "{ext} → {fmt}"
         );
     }
-    // Группы для тех, кто хочет сузить, никуда не делись.
+    // The groups for those who want to narrow down are still there.
     for group in ["Изображения (", "Видео (", "Flash ("] {
         assert!(f.contains(group), "{f} без группы {group}");
     }
@@ -1374,7 +1377,7 @@ fn auto_dialog_shows_every_wallpaper_kind() {
     assert!(qs::wallpaper_dialog_title("swf").contains("Flash"));
 }
 
-// ── Списки и тексты вкладки ─────────────────────────────────────────────
+// ── Tab lists and texts ─────────────────────────────────────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
@@ -1392,10 +1395,10 @@ fn fm_choices_match_python() {
             )
         })
         .collect();
-    // Починка (правило #13): пункт «Автоматически (определять по DE)» называл
-    // рабочий стол сокращением из словаря разработчика. Сверяем с эталоном,
-    // подставив новую формулировку — остальные пункты обязаны совпасть
-    // дословно.
+    // Fix (rule #13): the item «Автоматически (определять по DE)» named the
+    // desktop with an abbreviation from the developer's vocabulary. Compare with
+    // the golden data, substituting the new wording — the other items must match
+    // word for word.
     let want: Vec<(String, String)> = want
         .into_iter()
         .map(|(short, label)| {
@@ -1410,9 +1413,8 @@ fn fm_choices_match_python() {
     assert_eq!(qs::fm_choices(), want, "пункты списка файловых менеджеров");
 }
 
-/// Набор пунктов обязан совпадать с набором, который знает ядро: новый
-/// файловый менеджер, добавленный в `appdefaults`, не должен потеряться по
-/// дороге в окно (правило #12).
+/// The set of items must match the set the core knows: a new file manager
+/// added to `appdefaults` must not get lost on its way to the dialog (rule #12).
 #[test]
 fn fm_display_covers_every_known_manager() {
     use std::collections::BTreeSet;
@@ -1434,9 +1436,9 @@ fn fm_display_covers_every_known_manager() {
 fn font_target_texts_match_python() {
     let _lang = i18n_pin::ru();
     let g = golden();
-    // Починка (правило #13): две подсказки были написаны для разработчика —
-    // «Шрифт UI приложений…» и перечень оконных менеджеров в скобках.
-    // Подписи кнопок при этом обязаны совпадать с оригиналом дословно.
+    // Fix (rule #13): two hints were written for a developer — «Шрифт UI
+    // приложений…» and a list of window managers in parentheses. The button
+    // labels must still match the original word for word.
     let tip_fixes: &[(&str, &str)] = &[
         ("system", "Шрифт UI приложений (заголовки, кнопки, текст)"),
         ("title", "Шрифт заголовков окон (KWin/Mutter/Xfwm)"),
@@ -1457,16 +1459,16 @@ fn font_target_texts_match_python() {
         let (_b, _t, got) = qs::font_target_texts(target);
         assert_eq!(got, title.as_str().unwrap(), "заголовок окна {target}");
     }
-    // Три шрифта оригинала остались, порядок их тот же; к ним добавлены
-    // «маленький», «панели инструментов» и «меню» (как у страницы KDE).
+    // The original's three fonts remain, in the same order; «маленький»,
+    // «панели инструментов» and «меню» are added to them (as on the KDE page).
     let listed: Vec<&str> = g["font_targets"]
         .as_array()
         .unwrap()
         .iter()
         .map(|c| c[0].as_str().unwrap())
         .collect();
-    // Шрифт документов и подписей значков рабочего стола добавлены позже,
-    // по страницам GNOME, Cinnamon и MATE.
+    // The document font and desktop icon labels were added later,
+    // following the GNOME, Cinnamon and MATE pages.
     let kept: Vec<&str> = qs::FONT_TARGETS
         .iter()
         .copied()
@@ -1484,10 +1486,10 @@ fn wallpaper_status_matches_python() {
         let running = st["running"].as_bool().unwrap_or(false);
         let format = st.get("format").and_then(|v| v.as_str());
         let path = st.get("path").and_then(|v| v.as_str());
-        // Починка (правило #13): оригинал вставлял в строку служебное слово
-        // движка — «Активны живые обои: video». Имя для человека берётся у
-        // общего `wallpaper_engine::format_label`, поэтому эталонную строку
-        // сверяем, подставив в неё то же имя.
+        // Fix (rule #13): the original inserted the engine's service word into the
+        // string — «Активны живые обои: video». The human-readable name comes from the
+        // common `wallpaper_engine::format_label`, so the golden string is compared
+        // with the same name substituted into it.
         let want = case[1].as_str().unwrap().to_string();
         let want = match format.filter(|f| !f.is_empty()) {
             Some(fmt) => {
@@ -1517,8 +1519,8 @@ fn restore_native_message_matches_python() {
             .iter()
             .map(|v| v.as_str().unwrap().to_string())
             .collect();
-        // Починка (правило #13): счёт стоял с одним окончанием на все числа
-        // («Восстановлено 1 приложений»), теперь склоняется общим `plural`.
+        // Fix (rule #13): the count had one ending for all numbers
+        // («Восстановлено 1 приложений»), now it is declined by the common `plural`.
         let want = case[3].as_str().unwrap().replace(
             &format!("{restored} приложений"),
             &format!(
@@ -1550,10 +1552,10 @@ fn protection_status_matches_python() {
                 )
             })
             .collect();
-        // Эталон снят с оригинала, у которого эталона защиты как понятия не
-        // было: все его случаи — это «что-то уже запомнено». Их формулировки
-        // сохранены дословно; случай «не запомнено ничего» проверяет
-        // `protection_reports_green_only_after_a_snapshot` ниже.
+        // The golden data was captured from the original, which had no notion of a
+        // protection snapshot at all: all its cases are "something is already
+        // remembered". Their wording is kept word for word; the "nothing remembered"
+        // case is checked by `protection_reports_green_only_after_a_snapshot` below.
         assert_eq!(
             qs::protection_status_text(1, &changed),
             case[1].as_str().unwrap()
@@ -1561,15 +1563,15 @@ fn protection_status_matches_python() {
     }
 }
 
-/// ⭐ «✅ Всё на месте» говорится ТОЛЬКО после того, как эталон снят.
+/// ⭐ «✅ Всё на месте» is said ONLY after a snapshot has been taken.
 ///
-/// Дефект (вкладка «Настройки», раздел «Защита приложений по умолчанию»):
-/// пустой список расхождений считался успехом. На чистом профиле, где не
-/// запомнено ещё ничего и сверять не с чем, раздел показывал зелёное «Всё на
-/// месте» — покупатель читал это как «защита работает», а защищён он не был
-/// никак. Сверка держит обе половины: без эталона зелёного ответа нет и
-/// названа кнопка, которая это чинит; с эталоном прежние формулировки не
-/// тронуты.
+/// Defect (the «Настройки» tab, the «Защита приложений по умолчанию» section):
+/// an empty list of differences counted as success. On a clean profile, where
+/// nothing is remembered yet and there is nothing to compare against, the
+/// section showed a green «Всё на месте» — the buyer read it as "protection
+/// works", while they were not protected at all. The check holds both halves:
+/// without a snapshot there is no green answer and the button that fixes it is
+/// named; with a snapshot the former wording is untouched.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn protection_reports_green_only_after_a_snapshot() {
@@ -1583,14 +1585,14 @@ fn protection_reports_green_only_after_a_snapshot() {
         nothing.contains("не запомнил"),
         "не сказано, что запоминать ещё нечего: {nothing}"
     );
-    // Названа ровно та кнопка, что стоит рядом в разделе, — иначе совет
-    // разъедется с окном при первой же правке подписи.
+    // Exactly the button standing next to it in the section is named — otherwise
+    // the advice drifts away from the window at the first label edit.
     let button = qs::text("prot.snapshot", &[]).unwrap();
     assert!(nothing.contains(&button), "не названа кнопка «{button}»: {nothing}");
 
-    // Эталон снят, расхождений нет — вот теперь зелено.
+    // Snapshot taken, no differences — now it is green.
     assert!(qs::protection_status_text(2, &[]).contains("✅ Всё на месте"));
-    // Эталон снят и приложение подменили — разговор прежний.
+    // Snapshot taken and the application replaced — the conversation as before.
     let changed = vec![(
         "Терминал".to_string(),
         "konsole".to_string(),
@@ -1600,9 +1602,9 @@ fn protection_reports_green_only_after_a_snapshot() {
     assert!(text.contains("Терминал: konsole → gnome-terminal"), "{text}");
 }
 
-/// Починка 4: окно выбора файла темы не показывало `.gadget`, хотя
-/// импортёр такие файлы принимает. Все прежние группы сохранены дословно,
-/// добавлена недостающая.
+/// Fix 4: the theme file dialog did not show `.gadget`, although the importer
+/// accepts such files. All former groups are kept word for word, the missing
+/// one is added.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn import_filter_keeps_old_groups_and_adds_gadget() {
@@ -1612,8 +1614,8 @@ fn import_filter_keeps_old_groups_and_adds_gadget() {
     let now = importers::import_dialog_filter();
     for group in golden_filter.split(";;") {
         if group.starts_with("Все темы Windows") {
-            // Сводная группа выросла ровно на .gadget и (03.10.2026) на
-            // архивы наборов курсоров с файлом ролей .crs — сразу за курсорами.
+            // The combined group grew by exactly .gadget and (03.10.2026) by cursor
+            // set archives with a .crs roles file — right after the cursors.
             let want = group
                 .trim_end_matches(')')
                 .replace("*.curxptheme", "*.curxptheme *.zip *.rar *.7z *.crs")
@@ -1626,15 +1628,15 @@ fn import_filter_keeps_old_groups_and_adds_gadget() {
     assert!(now.contains("Гаджеты рабочего стола (*.gadget)"), "{now}");
     assert!(now.contains("Наборы курсоров (*.zip *.rar *.7z *.crs)"), "{now}");
     assert!(now.ends_with("Все файлы (*)"), "{now}");
-    // Список принимаемых расширений — тот же, что у диспетчера.
+    // The list of accepted extensions is the same as the dispatcher's.
     for ext in [
         ".themepack", ".THEME", ".msstyles", ".ico", ".7tsp", ".cur", ".inf", ".dream", ".wmv",
         ".gadget", ".zip", ".rar", ".7z", ".crs",
     ] {
         assert!(importers::is_importable_ext(ext), "{ext} потерян");
     }
-    // .zip принимается только как набор курсоров: иной ZIP импортёр
-    // отклоняет, заглянув внутрь (`cursor_can_import`).
+    // .zip is accepted only as a cursor set: any other ZIP is rejected by the
+    // importer after looking inside (`cursor_can_import`).
     for ext in [".rxn", ".png", ""] {
         assert!(!importers::is_importable_ext(ext), "{ext} принят зря");
     }
@@ -1652,19 +1654,20 @@ fn ambient_texts() {
 }
 
 // ============================================================================
-// Вторая партия переноса: секции, каталог подписей, решения вкладки
+// Second migration batch: sections, label catalog, tab decisions
 // ============================================================================
 //
-// Эталон снят с версии вкладки ДО этого переноса (коммит `d305e9d`) РАЗБОРОМ
-// ИСХОДНИКА: в `tab_phrases` попали и сообщения, которые видны только по
-// нажатию, и секция MATE, которой на машине сверки не бывает. F-строки
-// приведены к виду с «{}» вместо мест подстановки — с тем же видом
-// сравниваются шаблоны каталога.
+// The golden data was captured from the tab version BEFORE this migration
+// (commit `d305e9d`) by PARSING THE SOURCE: `tab_phrases` got both the
+// messages visible only on click and the MATE section, which never appears
+// on the comparison machine. F-strings are normalized to "{}" in place of
+// substitution points — catalog templates are compared in the same form.
 
-/// Шаблон каталога в том же виде, в каком эталон помнит f-строку Python.
+/// A catalog template in the same form in which the golden data remembers the
+/// Python f-string.
 ///
-/// Места подстановки каталога — `%1`, `%2` (в стиле Qt, так их пишет
-/// `po/ru.po`); прежняя запись `{0}` тоже понимается.
+/// Catalog substitution points are `%1`, `%2` (Qt style, as `po/ru.po` writes
+/// them); the former `{0}` form is understood too.
 fn as_phrase(template: &str) -> String {
     let mut out = String::new();
     let mut chars = template.chars().peekable();
@@ -1677,7 +1680,7 @@ fn as_phrase(template: &str) -> String {
             continue;
         }
         if c == '{' {
-            // «{0}», «{1}», … — место подстановки
+            // "{0}", "{1}", … — a substitution point
             let mut digits = String::new();
             while let Some(&d) = chars.peek() {
                 if d.is_ascii_digit() {
@@ -1701,33 +1704,34 @@ fn as_phrase(template: &str) -> String {
     out
 }
 
-/// Подписи, которых в оригинале нет намеренно (правило #16 — баги при порте
-/// чиним): жаргон в лицо покупателю заменён человеческими словами.
+/// Labels deliberately absent from the original (rule #16 — bugs are fixed
+/// during the port): jargon in the buyer's face is replaced with human words.
 const TEXT_FIXES: &[(&str, &str)] = &[
     ("prot.snapshot_error", "⚠️ Ошибка snapshot: {}"),
     ("plasma.backup_error", "⚠️ Ошибка backup: {}"),
-    // Подсказка перечисляла форматы, а Flash в ней не было — при том что
-    // движок его проигрывает. Умолчание в перечне читается как «не умеем».
+    // The hint listed formats, and Flash was not among them — although the engine
+    // plays it. An omission in a list reads as "we can't".
     (
         "wp.file_hint",
         "Картинка: JPG, PNG, WebP.  Видео: MP4, WebM, MKV, GIF.",
     ),
-    // Галочка звалась «Звук видео-обоев», а распоряжается звуком и Flash-обоев
-    // тоже: ключи настроек у них одни (16.09.2026). Подпись про видео означала
-    // бы, что человек выключает звук Flash кнопкой, которая про Flash молчит.
+    // The checkbox was called «Звук видео-обоев», but it controls the sound of
+    // Flash wallpapers too: they share the settings keys (16.09.2026). A label
+    // about video would mean the person mutes Flash with a button that says
+    // nothing about Flash.
     ("wp.video_audio", "🔊 Звук видео-обоев"),
-    // Название шрифта подставлялось в середину фразы, приведённым к нижнему
-    // регистру, — в немецком так ломаются существительные. Теперь оно идёт
-    // как есть, в начале строки (01.10.2026).
+    // The font name was substituted into the middle of a phrase, lowercased —
+    // in German that breaks nouns. Now it goes as is, at the start of the line
+    // (01.10.2026).
     ("font.failed", "⚠️ Не удалось применить {}"),
-    // ── Проход 06.09: жаргон разработчика по всей вкладке (правило #13) ──
+    // ── Pass of 06.09: developer jargon across the whole tab (rule #13) ──
     //
-    // Вкладку смотрели живьём, и покупатель читал в ней «wallpaper-pack'и»,
-    // «синкается в GTK», «ищи в AUR». Это не три отдельные опечатки, а один
-    // класс: строки писались для себя. Поэтому переписан ВЕСЬ каталог, а не
-    // замеченные места (правило #12). Имена технологий (GTK, AUR, mpv,
-    // Pillow, Vimeo, YouTube) остались латиницей — менялась обвязка вокруг
-    // них.
+    // The tab was reviewed live, and the buyer read «wallpaper-pack'и»,
+    // «синкается в GTK», «ищи в AUR» in it. These are not three separate typos
+    // but one class: the strings were written for ourselves. So the WHOLE catalog
+    // was rewritten, not just the spotted places (rule #12). Technology names
+    // (GTK, AUR, mpv, Pillow, Vimeo, YouTube) stayed in Latin script — the
+    // wording around them changed.
     (
         "skin.hint",
         "💡 «Системный» использует тему Plasma/Qt как есть. Остальные скины \
@@ -1774,20 +1778,21 @@ const TEXT_FIXES: &[(&str, &str)] = &[
         "⚠️ Pillow не установлен — размытие недоступно (<tt>pip install \
          Pillow</tt> или пакет python-pillow)",
     ),
-    // ── Проход 18.09: остатки жаргона в том, что читает покупатель ──
+    // ── Pass of 18.09: remaining jargon in what the buyer reads ──
     //
-    // Значение ползунка силы размытия подписывалось «20px». Радиус в
-    // пикселях — величина для того, кто пишет фильтр, а не для того, кто
-    // двигает ползунок: по ней ничего нельзя решить, и единицы измерения в
-    // подписи рядом со словом «Сила:» только сбивают. Осталось голое деление
-    // шкалы. ⭐Расхождение с оригиналом сознательное: Python говорил
-    // жаргоном, и мы не подгоняем эталон, а расходимся с ним в пользу
-    // человека (правило #13).
+    // The blur strength slider value was labelled «20px». A radius in pixels is
+    // a quantity for whoever writes the filter, not for whoever moves the
+    // slider: nothing can be decided by it, and units in a label next to the
+    // word «Сила:» only confuse. The bare scale division remained. ⭐The
+    // difference from the original is deliberate: Python spoke jargon, and we do
+    // not bend the golden data but diverge from it in favour of the person
+    // (rule #13).
     ("blur.px", "{}px"),
-    // Образцом пути в поле веб-обоев стоял английский «/path/to/index.html».
-    // Покупатель, пришедший с Windows, читает в своём окне чужой язык и
-    // служебное слово «path» — при том что подсказка строкой выше уже
-    // объяснила всё по-русски. ⭐Расхождение с оригиналом сознательное.
+    // The sample path in the web wallpaper field was the English
+    // «/path/to/index.html». A buyer coming from Windows reads a foreign language
+    // and the service word "path" in their window — although the hint one line
+    // above already explained everything in Russian. ⭐The difference from the
+    // original is deliberate.
     (
         "web.url_hint",
         "https://example.com  или  /path/to/index.html",
@@ -1819,8 +1824,8 @@ const TEXT_FIXES: &[(&str, &str)] = &[
          <tt>sound-theme-smooth</tt> или ищи в AUR.",
     ),
     ("snd.event_tip", "Event: {}"),
-    // «(не задан)» читалось как «шрифта нет»; на деле действует шрифт стола
-    // по умолчанию — так и написано (приёмка 10.10.2026).
+    // «(не задан)» read as "there is no font"; in fact the desktop's default
+    // font applies — and that is what it says now (acceptance 10.10.2026).
     ("font.unset", "<i>(не задан)</i>"),
     (
         "plasma.backup_tip",
@@ -1834,24 +1839,23 @@ const TEXT_FIXES: &[(&str, &str)] = &[
     ),
 ];
 
-/// Подписи, которых в оригинале вкладки НЕ БЫЛО и быть не могло: они
-/// появились вместе с настройками звука обоев, которых у вкладки не
-/// существовало (была одна галочка без хранения и без громкости). Список
-/// закрытый — новая строка обязана попасть сюда осознанно, а не проехать
-/// мимо сверки.
+/// Labels that did NOT exist and could not exist in the tab's original: they
+/// appeared together with the wallpaper sound settings, which the tab did not
+/// have (there was one checkbox without storage and without volume). The list
+/// is closed — a new string must get here deliberately, not slip past the check.
 const TEXT_ADDITIONS: &[&str] = &[
-    // Сброс сайтов «без вопроса» (`link_policy`, 16.11.2026).
+    // Resetting sites "without asking" (`link_policy`, 16.11.2026).
     "links.reset",
-    // Защита цветов терминала от тем (`terminal_guard`, 06.11.2026).
+    // Protecting terminal colours from themes (`terminal_guard`, 06.11.2026).
     "prot.terminal_colors",
     "prot.terminal_colors_tip",
-    // Отказ фонового звука при установленном mpv: у оригинала на любой отказ
-    // был один ответ «нужен mpv» — неправда, когда не играет сам файл.
+    // Background sound failure with mpv installed: the original had one answer
+    // for any failure, «нужен mpv» — untrue when it is the file itself that won't play.
     "amb.start_unplayable",
-    // Смена громкости звука, который уже не играет: оригинал об этом молчал.
+    // Changing the volume of a sound that no longer plays: the original kept silent about it.
     "amb.not_playing",
-    // Подтверждение возврата копии панели переехало из окна Qt внутрь
-    // страницы (QML-вкладка): подписи ответов теперь свои.
+    // The panel backup restore confirmation moved from a Qt window into the
+    // page (QML tab): the answer labels are now our own.
     "dialog.yes",
     "dialog.no",
     "wp.audio_live",
@@ -1859,37 +1863,37 @@ const TEXT_ADDITIONS: &[&str] = &[
     "wp.audio_mute_other",
     "wp.audio_mute_covered",
     "wp.audio_hint",
-    // Батарея и игра в общей модели паузы обоев (15.11.2026): у оригинала
-    // вкладки таких условий не было вовсе.
+    // Battery and game in the common wallpaper pause model (15.11.2026): the
+    // tab's original had no such conditions at all.
     "wp.pause_battery",
     "wp.pause_game",
-    // Итог применения обоев с оговоркой (15.11.2026): значок предупреждения
-    // вместо зелёной галочки — у оригинала вкладки такого итога не было.
+    // A wallpaper apply result with a caveat (15.11.2026): a warning icon
+    // instead of a green check — the tab's original had no such result.
     "wp.applied_warn",
-    // Раздел «Значок в системном лотке»: у оригинала вкладки значка не было
-    // вовсе, поэтому и подписей к нему быть не могло.
+    // The «Значок в системном лотке» section: the tab's original had no icon at
+    // all, so it could not have labels for it either.
     "tray.autostart",
     "tray.autostart_hint",
     "tray.autostart_on",
     "tray.autostart_off",
     "tray.autostart_failed",
     "tray.missing",
-    // «Тема не задана»: оригинал вкладки такой строки не знал — при пустой
-    // или неизвестной теме он молча показывал первую установленную.
+    // «Тема не задана»: the tab's original did not know this string — with an
+    // empty or unknown theme it silently showed the first installed one.
     "snd.theme_unset",
-    // В системе названа тема, которой на диске нет: оригинал показывал первую
-    // установленную, Rust-вкладка до 10.10.2026 — «не задана».
+    // The system names a theme that is not on disk: the original showed the first
+    // installed one, the Rust tab until 10.10.2026 said «не задана».
     "snd.theme_missing",
-    // Раздел «Язык» (30.09): выбора языка не было ни у оригинала вкладки,
-    // ни в снимке русских текстов — см. [`AFTER_RU_SNAPSHOT_TEXTS`].
+    // The «Язык» section (30.09): there was no language choice either in the tab's
+    // original or in the Russian text snapshot — see [`AFTER_RU_SNAPSHOT_TEXTS`].
     "lang.row",
     "lang.system",
     "lang.restart_hint",
     "lang.restart",
     "lang.saved",
     "lang.restart_failed",
-    // Сглаживание шрифтов (04.10): у оригинала вкладки были только три
-    // шрифта, отрисовки не было вовсе — см. [`AFTER_RU_SNAPSHOT_TEXTS`].
+    // Font antialiasing (04.10): the tab's original had only three fonts and no
+    // rendering at all — see [`AFTER_RU_SNAPSHOT_TEXTS`].
     "font.render_title",
     "font.aa",
     "font.aa_exclude",
@@ -1902,35 +1906,35 @@ const TEXT_ADDITIONS: &[&str] = &[
     "font.render_native_failed",
     "font.fc_refused",
     "font.fc_failed",
-    // «Изменить все шрифты» и принудительное DPI (04.10).
+    // «Изменить все шрифты» and forced DPI (04.10).
     "font.all_mode",
     "font.dpi",
-    // Готовые наборы отрисовки, как в MATE (14.11).
+    // Ready-made rendering presets, as in MATE (14.11).
     "font.render_presets",
-    // Докачка значков и курсора к теме (17.10): сторожа оформления сеанса
-    // (`theme_watch`) у оригинала не было.
+    // Fetching icons and cursor for the theme (17.10): the original had no session
+    // appearance watcher (`theme_watch`).
     "tray.theme_deps",
     "tray.theme_deps_hint",
     "tray.theme_deps_on",
     "tray.theme_deps_off",
-    // Полоса «Rexon может изменять систему до закрытия окна» и «Запретить
-    // сейчас» (Б13, 29.10): сеанса прав у оригинала не было.
+    // The «Rexon может изменять систему до закрытия окна» bar and «Запретить
+    // сейчас» (B13, 29.10): the original had no privilege session.
     "admin.info",
     "admin.revoke",
 ];
 
-/// Подписи, появившиеся ПОСЛЕ снимка русских текстов
-/// (`golden/qt_settings_ru_before.json`): «как было» у них нет, их русский
-/// сверяется отдельно ([`language_section_russian`]).
+/// Labels that appeared AFTER the Russian text snapshot
+/// (`golden/qt_settings_ru_before.json`): they have no "as before", their
+/// Russian is checked separately ([`language_section_russian`]).
 const AFTER_RU_SNAPSHOT_TEXTS: &[&str] = &[
-    // Сброс сайтов «без вопроса» (16.11.2026) — русский сверяется в
+    // Resetting sites "without asking" (16.11.2026) — Russian is checked in
     // `links_texts_russian`.
     "links.reset",
-    // Батарея и игра в общей модели паузы обоев (15.11.2026) — русский
-    // сверяется в `wallpaper_pause_texts_russian`.
+    // Battery and game in the common wallpaper pause model (15.11.2026) — Russian
+    // is checked in `wallpaper_pause_texts_russian`.
     "wp.pause_battery",
     "wp.pause_game",
-    // Итог с оговоркой (15.11.2026) — русский сверяется в
+    // A result with a caveat (15.11.2026) — Russian is checked in
     // `wallpaper_done_with_warning_is_not_a_green_check`.
     "wp.applied_warn",
     "prot.terminal_colors",
@@ -1942,7 +1946,7 @@ const AFTER_RU_SNAPSHOT_TEXTS: &[&str] = &[
     "lang.restart",
     "lang.saved",
     "lang.restart_failed",
-    // Сглаживание шрифтов — русский сверяется в `font_rendering_texts_russian`.
+    // Font antialiasing — Russian is checked in `font_rendering_texts_russian`.
     "font.render_title",
     "font.aa",
     "font.aa_exclude",
@@ -1955,10 +1959,10 @@ const AFTER_RU_SNAPSHOT_TEXTS: &[&str] = &[
     "font.render_native_failed",
     "font.fc_refused",
     "font.fc_failed",
-    // «Изменить все шрифты» и принудительное DPI (04.10).
+    // «Изменить все шрифты» and forced DPI (04.10).
     "font.all_mode",
     "font.dpi",
-    // Готовые наборы — русский сверяется в `font_render_presets_russian`.
+    // Ready-made presets — Russian is checked in `font_render_presets_russian`.
     "font.render_presets",
     "tray.theme_deps",
     "tray.theme_deps_hint",
@@ -1968,15 +1972,16 @@ const AFTER_RU_SNAPSHOT_TEXTS: &[&str] = &[
     "admin.revoke",
 ];
 
-/// Разделы, появившиеся после снимка русских текстов.
+/// Sections that appeared after the Russian text snapshot.
 const AFTER_RU_SNAPSHOT_SECTIONS: &[&str] = &["langGroup", "linksGroup"];
 
-/// Разделы оригинала, СНЯТЫЕ с вкладки осознанно, и их подписи. Эталоны
-/// заморожены и их помнят; здесь сказано, что пропажа — решение, а не порча.
+/// Sections of the original REMOVED from the tab deliberately, and their
+/// labels. The golden files are frozen and remember them; here it is stated
+/// that the loss is a decision, not damage.
 ///
-/// `mateIconsGroup` (08.11.2026, решение Wehrwolfmann): разделу, нужному
-/// одному MATE, в общих настройках не место. Значки Caja под живыми обоями
-/// Rexon устраивает сам (`wallpaper_backend::prepare_desktop_icons`).
+/// `mateIconsGroup` (08.11.2026, Wehrwolfmann's decision): a section needed by
+/// MATE alone has no place in the common settings. Rexon arranges Caja icons
+/// under live wallpapers itself (`wallpaper_backend::prepare_desktop_icons`).
 const SECTION_REMOVALS: &[&str] = &["mateIconsGroup"];
 const TEXT_REMOVALS: &[&str] = &[
     "mate.icons_on",
@@ -1987,17 +1992,16 @@ const TEXT_REMOVALS: &[&str] = &[
     "mate.caja_restarted",
     "mate.icons_failed",
     "mate.caja_failed",
-    // Звук обоев меняется на ходу (15.11.2026): «применится к следующему
-    // видео» и «⏳ Включаю звук видео-обоев…» были неправдой и нигде не
-    // показывались.
+    // Wallpaper sound changes on the fly (15.11.2026): «применится к следующему
+    // видео» and «⏳ Включаю звук видео-обоев…» were untrue and were shown nowhere.
     "wp.audio_next",
     "wp.audio_reapply",
     "wp.audio_enabling",
     "wp.audio_disabling",
 ];
 
-/// Снятые раздел и подписи действительно сняты: ни в таблицах ядра, ни в
-/// разметке страницы их нет.
+/// The removed section and labels really are removed: neither the core tables
+/// nor the page markup have them.
 #[test]
 fn removed_sections_and_texts_are_gone() {
     const SETTINGS_QML: &str = include_str!("../../rexon-gui/qml/SettingsPage.qml");
@@ -2011,36 +2015,37 @@ fn removed_sections_and_texts_are_gone() {
     }
 }
 
-/// Разделы, чьё описание переписано ПОСЛЕ снимка русских текстов, потому что
-/// раздел стал больше: `(раздел, новое русское описание)`. Снимок обязан
-/// помнить прежнее, а каталог — отдавать новое слово в слово.
+/// Sections whose description was rewritten AFTER the Russian text snapshot
+/// because the section grew: `(section, new Russian description)`. The
+/// snapshot must remember the former one, and the catalog must return the new
+/// one word for word.
 const AFTER_RU_SNAPSHOT_REWORDED: &[(&str, &str)] = &[(
-    // 04.10: к трём шрифтам добавлены маленький, панели инструментов, меню
-    // и сглаживание текста.
+    // 04.10: small, toolbar and menu fonts and text antialiasing were added to
+    // the three fonts.
     "fontsGroup",
     "Шрифты интерфейса, терминала, мелких подписей, панелей инструментов, меню и \
      заголовков окон, а также сглаживание текста. Применяется к текущему рабочему столу \
      и к программам на других библиотеках интерфейса",
 )];
 
-/// Разделы, которых в оригинале вкладки НЕ БЫЛО. Список закрытый по той же
-/// причине, что и [`TEXT_ADDITIONS`]: новый раздел обязан попасть сюда
-/// осознанно, а не проехать мимо сверки.
+/// Sections that did NOT exist in the tab's original. The list is closed for
+/// the same reason as [`TEXT_ADDITIONS`]: a new section must get here
+/// deliberately, not slip past the check.
 const SECTION_ADDITIONS: &[&str] = &[
-    // Вопрос перед внешней ссылкой из чужого текста (16.11.2026): его не
-    // было вовсе — ссылки открывались молча.
+    // The question before an external link from foreign text (16.11.2026): it did
+    // not exist at all — links opened silently.
     "linksGroup",
-    // Значка в лотке у Rexon не было ни в одной версии вкладки.
+    // Rexon had no tray icon in any version of the tab.
     "trayGroup",
-    // Выбора языка интерфейса тоже: Rexon был только русским.
+    // Nor an interface language choice: Rexon was Russian only.
     "langGroup",
 ];
 
-/// Разделы, чей заголовок или описание переписаны с жаргона разработчика на
-/// человеческий русский (правило #13, проход 06.09) — тройка «имя рамки,
-/// прежний заголовок, прежнее описание». Проверка та же, что у
-/// [`TEXT_FIXES`]: эталон обязан помнить прежнюю формулировку, а новая
-/// обязана от неё отличаться, иначе «починка» осталась в комментарии.
+/// Sections whose title or description was rewritten from developer jargon
+/// into human Russian (rule #13, pass of 06.09) — the triple "frame name,
+/// former title, former description". The check is the same as for
+/// [`TEXT_FIXES`]: the golden data must remember the former wording, and the
+/// new one must differ from it, otherwise the "fix" stayed in a comment.
 const SECTION_FIXES: &[(&str, &str, &str)] = &[
     (
         "fmGroup",
@@ -2093,8 +2098,8 @@ fn every_tab_text_comes_from_python() {
     for (key, _) in qs::TEXTS {
         let template = &qs::text_template(key).unwrap();
         if TEXT_ADDITIONS.contains(key) {
-            // Добавленная подпись обязана быть именно НОВОЙ: совпала с
-            // эталонной — значит она не добавление, а порча существующей.
+            // An added label must really be NEW: if it matches the golden one, it is
+            // not an addition but damage to an existing one.
             assert!(
                 !known.contains_key(&as_phrase(template)),
                 "«{key}» помечена как новая, но такая подпись во вкладке уже была"
@@ -2102,8 +2107,8 @@ fn every_tab_text_comes_from_python() {
             continue;
         }
         if let Some((_, was)) = TEXT_FIXES.iter().find(|(k, _)| k == key) {
-            // Починенная строка обязана отличаться от прежней — иначе
-            // «починка» осталась в комментарии, а не в коде.
+            // A fixed string must differ from the former one — otherwise the
+            // "fix" stayed in a comment, not in the code.
             assert!(
                 known.contains_key(*was),
                 "эталон не помнит прежней формулировки {key}"
@@ -2130,13 +2135,13 @@ fn tab_sections_match_python() {
         "число секций разошлось с оригиналом"
     );
     for (id, title, desc) in qs::SECTIONS {
-        // В таблице — английские `msgid`; эталон помнит русский.
-        // Пустой `msgid` gettext отдаёт заголовком каталога — не переводим.
+        // The table holds English `msgid`s; the golden data remembers Russian.
+        // gettext returns the catalog header for an empty `msgid` — not translated.
         let title = &if title.is_empty() { String::new() } else { i18n::tr(title) };
         let desc = &i18n::tr(desc);
         if SECTION_ADDITIONS.contains(id) {
-            // Добавленный раздел обязан быть именно НОВЫМ: нашёлся в
-            // эталоне — значит это не добавление, а порча существующего.
+            // An added section must really be NEW: if it is found in the golden
+            // data, it is not an addition but damage to an existing one.
             assert!(!want.contains_key(*id), "{id} помечен новым, а он был");
             continue;
         }
@@ -2145,8 +2150,8 @@ fn tab_sections_match_python() {
             .unwrap_or_else(|| panic!("в оригинале нет секции {id}"));
         let want_desc = row[1].as_str().unwrap_or("");
         if let Some((_, was_title, was_desc)) = SECTION_FIXES.iter().find(|(k, _, _)| k == id) {
-            // Переписанный раздел: эталон обязан помнить прежние слова, а
-            // новые — от них отличаться хотя бы в одном из двух полей.
+            // A rewritten section: the golden data must remember the former words, and
+            // the new ones must differ from them in at least one of the two fields.
             assert_eq!(want_desc, *was_desc, "эталон не помнит описания {id}");
             assert_eq!(row[0].as_str().unwrap_or(""), *was_title, "эталон {id}");
             assert!(
@@ -2165,8 +2170,8 @@ fn tab_sections_match_python() {
                 *title, want_title,
                 "заголовок секции {id} разошёлся с оригиналом"
             ),
-            // Заголовок секции обучения оригинал складывал на месте —
-            // теперь его собирает ядро из текстов самого обучения.
+            // The original assembled the onboarding section title in place —
+            // now the core builds it from the onboarding texts themselves.
             None => {
                 assert!(title.is_empty(), "{id}: заголовок обязан быть у обучения");
                 let (built, _) = qs::section_texts(id, "KDE").unwrap();
@@ -2195,7 +2200,7 @@ fn section_order_matches_python() {
         .map(str::to_owned)
         .collect();
     assert_eq!(ours, want, "порядок секций вкладки");
-    // Добавленный раздел обязан стоять в порядке показа, а не «где-нибудь».
+    // An added section must stand in display order, not "somewhere".
     for id in SECTION_ADDITIONS {
         assert!(qs::section_order().iter().any(|s| s == id), "{id} не в порядке показа");
     }
@@ -2218,8 +2223,8 @@ fn sound_section_names_current_de() {
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn text_lookup_is_loud_about_unknown_keys() {
     let _lang = i18n_pin::ru();
-    // Пустая надпись в окне выглядит как «так и задумано» — ядро обязано
-    // ответить «нет такого ключа», а не пустой строкой.
+    // An empty label in the window looks "intended" — the core must answer
+    // "no such key", not an empty string.
     assert!(qs::text("такого.ключа.нет", &[]).is_none());
     assert_eq!(
         qs::text("fm.current", &["nemo".to_string()]).unwrap(),
@@ -2231,15 +2236,15 @@ fn text_lookup_is_loud_about_unknown_keys() {
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn clip_counts_letters_not_bytes() {
     let _lang = i18n_pin::ru();
-    // Русская строка, обрезанная по байтам, разваливается посреди буквы.
+    // A Russian string truncated by bytes falls apart in the middle of a letter.
     let text = "яяяяя";
     assert_eq!(qs::clip(text, 3), "яяя");
     assert_eq!(qs::clip(text, 99), text);
     assert_eq!(qs::wallpaper_done(true, &"я".repeat(200)).chars().count(), 160 + "✅ Обои применены: ".chars().count());
 }
 
-/// Обои встали, но есть оговорка: значок предупреждения вместо зелёной
-/// галочки, и сама оговорка не обрезается вместе с длинным названием.
+/// The wallpaper is set, but with a caveat: a warning icon instead of a green
+/// check, and the caveat itself is not truncated together with a long name.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn wallpaper_done_with_warning_is_not_a_green_check() {
@@ -2250,13 +2255,13 @@ fn wallpaper_done_with_warning_is_not_a_green_check() {
     assert!(!line.contains('✅'), "{line}");
     assert!(line.ends_with(warning.trim()), "оговорка обрезана: {line}");
     assert!(qs::status_is_warning(&line));
-    // Без оговорки и при отказе — прежние строки.
+    // Without a caveat and on failure — the former strings.
     assert_eq!(qs::wallpaper_done_warned(true, "лес", None), qs::wallpaper_done(true, "лес"));
     assert_eq!(qs::wallpaper_done_warned(true, "лес", Some("  ")), qs::wallpaper_done(true, "лес"));
     assert_eq!(qs::wallpaper_done_warned(false, "нет", Some("x")), qs::wallpaper_done(false, "нет"));
     assert!(!qs::status_is_warning(&qs::wallpaper_done(true, "лес")));
     assert!(qs::status_is_warning(&qs::wallpaper_done(false, "нет")));
-    // YouTube и веб — та же развилка.
+    // YouTube and web — the same fork.
     let yt = qs::done_or_warned(true, "ролик", Some("оговорка"), qs::youtube_done);
     assert!(yt.starts_with("⚠️ ") && yt.ends_with("оговорка"), "{yt}");
     assert_eq!(qs::done_or_warned(true, "ролик", None, qs::youtube_done), qs::youtube_done(true, "ролик"));
@@ -2266,7 +2271,7 @@ fn wallpaper_done_with_warning_is_not_a_green_check() {
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn ytdlp_button_follows_system() {
     let _lang = i18n_pin::ru();
-    // Починка оригинала: после установки кнопка обязана стать «Обновить».
+    // Fix of the original: after installation the button must become «Обновить».
     let (label, button, action) = qs::ytdlp_row(true, "2026.07.04");
     assert!(label.contains("2026.07.04"));
     assert_eq!(action, "update");
@@ -2284,7 +2289,7 @@ fn ytdlp_button_follows_system() {
 
 #[test]
 fn library_preview_covers_every_video_ext() {
-    // Починка: свой список плитки знал только часть видео.
+    // Fix: the tile's own list knew only part of the video formats.
     for fmt in qs::VIDEO_EXTS {
         assert!(
             qs::library_shows_preview(fmt),
@@ -2297,7 +2302,7 @@ fn library_preview_covers_every_video_ext() {
     for fmt in ["static", "web", "scene", "", "application"] {
         assert!(!qs::library_shows_preview(fmt), "{fmt}");
     }
-    // Прежний набор оригинала — каждый его элемент по-прежнему с кнопкой.
+    // The original's former set — each of its elements still has a button.
     for fmt in ["video", "gif", "swf", "webm", "mkv", "mp4"] {
         assert!(qs::library_shows_preview(fmt), "потеряли прежний {fmt}");
     }
@@ -2309,7 +2314,7 @@ fn web_url_becomes_file_scheme() {
         qs::web_wallpaper_url("/home/u/index.html", true),
         "file:///home/u/index.html"
     );
-    // Файла нет — путь остаётся как есть, движок скажет об этом сам.
+    // No file — the path stays as is, the engine will say so itself.
     assert_eq!(qs::web_wallpaper_url("/nope.html", false), "/nope.html");
     assert_eq!(
         qs::web_wallpaper_url("https://example.com", false),
@@ -2353,7 +2358,7 @@ fn protection_types_keep_terminal_last() {
     let types = qs::protection_types();
     assert_eq!(types.last(), Some(&"terminal"));
     assert_eq!(types.len(), rexon_core::defaults::MIME_TYPES.len() + 1);
-    // Подпись каждой галочки — из ядра, а не из окна.
+    // Each checkbox label comes from the core, not from the window.
     let (label, tip) = qs::protection_row_texts("terminal", "org.kde.konsole.desktop");
     assert_eq!(label, "🖥️ Терминал   ·  запомнено: Konsole");
     assert_eq!(tip, "Файл ярлыка: org.kde.konsole.desktop");
@@ -2390,40 +2395,40 @@ fn plasma_backups_are_counted_and_confirmed() {
     );
     let (title, question) = qs::plasma_restore_confirm("20260620_011005");
     assert_eq!(title, "Восстановить?");
-    // ⭐Сознательное расхождение с оригиналом (правило #13): Python
-    // подставлял в вопрос машинную метку «20260620_011005», хотя строку
-    // списка, на которую человек только что нажал, он же подписывал
-    // «20.06.2026 в 01:10». Одну и ту же копию нельзя звать двумя именами в
-    // одном окне, поэтому вопрос тоже спрашивает человеческой датой.
+    // ⭐A deliberate difference from the original (rule #13): Python put the
+    // machine label «20260620_011005» into the question, although it labelled
+    // the list row the person had just clicked «20.06.2026 в 01:10». The same
+    // backup cannot be called by two names in one window, so the question asks
+    // with the human date too.
     assert!(
         question.contains("20.06.2026 в 01:10") && question.contains("будет заменён"),
         "вопрос о возврате копии показывает машинную метку времени: {question}"
     );
-    // Неразобранная метка остаётся как есть — вопрос не должен превратиться
-    // в «из копии от ?».
+    // An unparsed label stays as is — the question must not turn into
+    // «из копии от ?».
     let (_, broken) = qs::plasma_restore_confirm("мусор");
     assert!(broken.contains("мусор"));
     assert_eq!(qs::PLASMA_BACKUPS_SHOWN, 5);
 }
 
 // ============================================================================
-// Состав разделов и цвета состояний (перенос вкладки на QML, 2026-08-23)
+// Section set and status colours (tab migration to QML, 2026-08-23)
 // ============================================================================
 
-/// Условия показа разделов в ОРИГИНАЛЕ вкладки — те самые `if`-ы, что стояли
-/// в постройке секций до переноса решения в ядро.
+/// Section display conditions in the tab's ORIGINAL — the very `if`s that stood
+/// in section construction before the decision moved to the core.
 ///
-/// Пара «раздел → факт, без которого его не рисовали»:
+/// The pair "section → the fact without which it was not drawn":
 ///   * `obGroup` — `onboarding.available()`;
 ///   * `plasmaGroup` — `PlasmaProtector.is_plasma_running() or has_backups()`;
 ///   * `aeroGroup` — `detect_plasma_forks()`.
-/// Остальные разделы рисовались всегда.
-/// (`mateIconsGroup` с 08.11.2026 снят — см. [`SECTION_REMOVALS`].)
+/// The other sections were always drawn.
+/// (`mateIconsGroup` is removed since 08.11.2026 — see [`SECTION_REMOVALS`].)
 const CONDITIONAL_SECTIONS: &[&str] = &["obGroup", "plasmaGroup", "aeroGroup"];
 
 #[test]
 fn sections_without_conditions_are_always_shown() {
-    // Ни один факт не подтверждён — остаются ровно безусловные разделы.
+    // No fact confirmed — exactly the unconditional sections remain.
     let nothing = qs::SectionFacts::default();
     let shown = qs::visible_sections(&nothing);
     for id in qs::section_order() {
@@ -2438,7 +2443,7 @@ fn sections_without_conditions_are_always_shown() {
 
 #[test]
 fn every_condition_opens_exactly_its_own_section() {
-    // Каждый факт по отдельности: включает свой раздел и НИ ОДНОГО чужого.
+    // Each fact separately: enables its own section and NOT A SINGLE other one.
     let cases: &[(&str, qs::SectionFacts)] = &[
         ("obGroup", qs::SectionFacts::new(true, false, false)),
         ("plasmaGroup", qs::SectionFacts::new(false, true, false)),
@@ -2461,13 +2466,13 @@ fn every_condition_opens_exactly_its_own_section() {
 
 #[test]
 fn all_facts_show_every_section_in_core_order() {
-    // Всё подтверждено — видны ВСЕ разделы, и порядок тот же, что в таблице.
+    // Everything confirmed — ALL sections are visible, in the same order as in the table.
     let everything = qs::SectionFacts::new(true, true, true);
     assert_eq!(qs::visible_sections(&everything), qs::section_order());
 }
 
-/// Цвета состояний вкладки — эталон записан здесь (прежде их сличали с
-/// виджетной вкладкой на Python; с 02.10.2026 Python — только архив).
+/// Tab status colours — the golden values are recorded here (they used to be
+/// compared with the Python widget tab; since 02.10.2026 Python is only an archive).
 #[test]
 fn status_colors_are_frozen() {
     assert_eq!(qs::COLOR_OK, "#4ade80", "всё на месте");
@@ -2476,17 +2481,17 @@ fn status_colors_are_frozen() {
 
     assert_eq!(qs::fm_badge_color(true), qs::COLOR_OK);
     assert_eq!(qs::fm_badge_color(false), qs::COLOR_BAD);
-    // Отметка и её цвет — пара: «установлен» зелёный, «не установлен» красный.
+    // A mark and its colour are a pair: "installed" is green, "not installed" red.
     assert!(qs::fm_badge(true).starts_with("✅"));
     assert!(qs::fm_badge(false).starts_with("❌"));
 }
 
-/// Каждый раздел, который знает ядро, страница обязана уметь построить.
+/// Every section the core knows must be buildable by the page.
 ///
-/// Виджетная вкладка ловит это на запуске (`raise RuntimeError`), у QML —
-/// `switch` в `SettingsPage.qml`. Сторож читает саму разметку: раздел,
-/// добавленный в ядро и забытый в странице, красит тест, а не показывает
-/// покупателю пустую рамку (правило #12).
+/// The widget tab catches this at startup (`raise RuntimeError`), the QML one
+/// has a `switch` in `SettingsPage.qml`. The guard reads the markup itself: a
+/// section added to the core and forgotten in the page turns the test red
+/// instead of showing the buyer an empty frame (rule #12).
 #[test]
 fn qml_page_builds_every_section() {
     let qml = read_sample(
@@ -2494,8 +2499,8 @@ fn qml_page_builds_every_section() {
         "QML-страница «Настройки»",
     );
 
-    // Пустая таблица разделов прогнала бы цикл ни разу и объявила страницу
-    // годной, не проверив ни одного раздела.
+    // An empty section table would run the loop zero times and declare the page
+    // fine without checking a single section.
     assert!(
         !qs::section_order().is_empty(),
         "ядро не знает ни одного раздела: сверять страницу не с чем"
@@ -2508,11 +2513,11 @@ fn qml_page_builds_every_section() {
     }
 }
 
-/// Надпись под кнопкой шрифта не должна быть сырой записью конфига.
+/// The label under the font button must not be a raw config entry.
 ///
-/// Починка при переносе вкладки (правило #16): KDE хранит сериализацию
-/// QFont из десяти полей, и она уезжала покупателю как есть. Теперь строку
-/// разбирает тот же `parse_font_spec`, которым открывается окно выбора.
+/// Fix during the tab migration (rule #16): KDE stores a ten-field QFont
+/// serialization, and it reached the buyer as is. Now the string is parsed by
+/// the same `parse_font_spec` that opens the chooser dialog.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn font_value_is_human_not_config_line() {
@@ -2527,21 +2532,21 @@ fn font_value_is_human_not_config_line() {
         !shown.contains(",-1,"),
         "сырая запись конфига видна покупателю: {shown}"
     );
-    // Запись GNOME и так человеческая — её вид не меняется.
+    // The GNOME entry is human-readable already — its look does not change.
     assert_eq!(qs::font_value_text("Noto Sans 11"), "<i>Noto Sans 11</i>");
-    // Ничего не записано — так и говорим.
+    // Nothing recorded — so we say.
     assert!(qs::font_value_text("   ").contains("по умолчанию"));
-    // Совсем непонятная строка показывается как есть: это честнее, чем
-    // «не задан» там, где что-то записано.
+    // A completely unintelligible string is shown as is: that is more honest than
+    // «не задан» where something is recorded.
     assert!(qs::font_value_text("???").contains("???"));
 }
 
-/// Раскладка и краски вкладки, которые QML-страница берёт из ядра картой
-/// `styles`. Прежде каждое число сличалось с исходником виджетной вкладки на
-/// Python; с 02.10.2026 Python — только архив, и эталон — запись
-/// [`LAYOUT_FROZEN`] ниже, в той же форме, в какой числа стояли в виджетах
-/// (`setSpacing(8)`, `neutral_rgba(0.04)`). Сдвиг любого числа ядра красит
-/// сверку, пока эталон не поправлен осознанно.
+/// Tab layout and paints that the QML page takes from the core through the
+/// `styles` map. Previously each number was compared with the source of the
+/// Python widget tab; since 02.10.2026 Python is only an archive, and the
+/// reference is the [`LAYOUT_FROZEN`] record below, in the same form the
+/// numbers had in the widgets (`setSpacing(8)`, `neutral_rgba(0.04)`). A shift
+/// of any core number turns the check red until the reference is updated deliberately.
 #[test]
 fn layout_and_colors_are_frozen() {
     let (group_bg, group_border) = qs::group_colors();
@@ -2549,8 +2554,8 @@ fn layout_and_colors_are_frozen() {
     let btn = qs::primary_button_colors();
     let (danger_off_bg, danger_off_text) = qs::danger_button_disabled_colors();
     let (lib_border, lib_hover) = qs::lib_card_colors(true);
-    // `neutral_rgba(0.04)` в Python — вызов, в ядре — готовая строка: сверяем
-    // по числу внутри, а не по записи.
+    // `neutral_rgba(0.04)` in Python is a call, in the core a ready string:
+    // compare by the number inside, not by the notation.
     let neutral = |css: &str| {
         let alpha = css
             .trim_start_matches("rgba(127,127,127,")
@@ -2721,22 +2726,22 @@ const LAYOUT_FROZEN: &[&str] = &[
     "setSpacing(0)",
 ];
 
-/// Сторож согласия ВИДЖЕТНОЙ плашки всплывающего сообщения и того, что
-/// уходит в QML. Образец — `widget_qss_and_qml_control_colors_agree`
-/// вкладки «Оформление».
+/// Guard of agreement between the WIDGET toast banner and what goes into QML.
+/// The model is `widget_qss_and_qml_control_colors_agree` of the «Оформление» tab.
 ///
-/// ⚠️ ЗАЧЕМ. Плашка ложится ПОВЕРХ содержимого, её тон не берётся из
-/// палитры скина, и Qt сама её ничем не красит: обе стороны рисуют её
-/// целиком своими руками. Пока QML брал краски токенами
-/// (`bg_secondary`/`border`/`text_primary`), плашка выходила глухой вместо
-/// полупрозрачной, со скруглением 6 вместо 8 и внизу ПО ЦЕНТРУ, тогда как
-/// виджетная стоит внизу СЛЕВА. Сторож держит три места разом: числа внутри
-/// таблицы стилей, дверь в QML (`styles().toast`) и саму разметку.
+/// ⚠️ WHY. The banner lies ON TOP of the content, its tone is not taken from
+/// the skin palette, and Qt itself paints nothing on it: both sides draw it
+/// entirely by hand. While QML took paints via tokens
+/// (`bg_secondary`/`border`/`text_primary`), the banner came out opaque instead
+/// of translucent, with radius 6 instead of 8 and at the bottom CENTRE, while
+/// the widget one sits at the bottom LEFT. The guard holds three places at
+/// once: the numbers inside the style sheet, the door into QML
+/// (`styles().toast`) and the markup itself.
 #[test]
 fn toast_qss_and_qml_toast_style_agree() {
     use rexon_core::ui_base;
 
-    // ── 1. Таблица стилей виджетной плашки собрана из двери ──────────────
+    // ── 1. The widget banner's style sheet is built from the door ────────
     let prop = |body: &str, name: &str| -> String {
         body.split(';')
             .map(str::trim)
@@ -2778,21 +2783,22 @@ fn toast_qss_and_qml_toast_style_agree() {
             "поля"
         );
     }
-    // Тёмная и светлая обязаны РАЗЛИЧАТЬСЯ: одинаковые краски означали бы,
-    // что дверь потеряла наблюдение о теме и одна из тем стала нечитаемой.
+    // Dark and light must DIFFER: identical paints would mean the door lost
+    // track of the theme and one of the themes became unreadable.
     assert_ne!(
         ui_base::toast_colors(true).background,
         ui_base::toast_colors(false).background,
         "краски тоста перестали зависеть от тёмности темы"
     );
 
-    // ── 2. Дверь ОДНА на весь продукт ────────────────────────────────────
+    // ── 2. There is ONE door for the whole product ───────────────────────
     //
-    // ⚠️ Сторож смотрел сюда по старому адресу и упал, когда группу `toast`
-    // вынесли из страницы «Настройки» в общий модуль (коммит про плашку,
-    // одну на все вкладки). Замысел при этом не нарушился, а усилился:
-    // копий чисел стало не две, а ноль. Поэтому адрес исправлен, а правило
-    // ужесточено — теперь проверяется и то, что мимо двери никто не ходит.
+    // ⚠️ The guard looked here at the old address and failed when the `toast`
+    // group was moved from the «Настройки» page into a common module (the commit
+    // about one banner for all tabs). The intent was not violated but
+    // strengthened: the number of copies of the numbers went from two to zero.
+    // So the address was fixed and the rule tightened — now it also checks that
+    // nobody goes around the door.
     let door = read_sample(
         concat!(env!("CARGO_MANIFEST_DIR"), "/../rexon-gui/src/lib.rs"),
         "исходник крейта GUI",
@@ -2826,12 +2832,12 @@ fn toast_qss_and_qml_toast_style_agree() {
         );
     }
 
-    // ── 3. Обе страницы ходят ЧЕРЕЗ дверь, а не мимо ─────────────────────
+    // ── 3. Both pages go THROUGH the door, not around it ─────────────────
     //
-    // Дефект «сообщение не гаснет никогда» заводился трижды, и каждый раз —
-    // потому что вкладка заводила плашку заново. Здесь это и стережётся:
-    // страница обязана брать краски, срок и ширину у двери и не обязана
-    // знать ни одной константы плашки.
+    // The "message never fades" defect was introduced three times, each time
+    // because a tab set up the banner anew. That is what is guarded here: the
+    // page must take paints, timeout and width from the door and must not know
+    // a single banner constant.
     for (name, file) in [
         ("Настройки", "/../rexon-gui/src/settings_page.rs"),
         ("Steam", "/../rexon-gui/src/steam_page.rs"),
@@ -2840,17 +2846,17 @@ fn toast_qss_and_qml_toast_style_agree() {
             &format!("{}{}", env!("CARGO_MANIFEST_DIR"), file),
             &format!("исходник страницы «{name}»"),
         );
-        // Запреты ниже проверяются по КОДУ, а не по прозе: страница обязана
-        // объяснять в комментарии, откуда у плашки числа («срок приходит из
-        // `ui_base::TOAST_TIMEOUT_MS`»), и наказывать её за это — значит
-        // запрещать ей же и объяснение.
+        // The prohibitions below are checked against CODE, not prose: the page must
+        // explain in a comment where the banner's numbers come from ("the timeout
+        // comes from `ui_base::TOAST_TIMEOUT_MS`"), and punishing it for that would
+        // mean forbidding the explanation itself.
         let code: String = src
             .lines()
             .filter(|line| !line.trim_start().starts_with("//"))
             .collect::<Vec<_>>()
             .join("\n");
-        // ⚠️ Вот он, пустой производный образец: запреты ниже смотрят
-        // ИМЕННО сюда, и на одних комментариях им нечего было бы искать.
+        // ⚠️ Here it is, the empty derived sample: the prohibitions below look
+        // EXACTLY here, and with comments alone they would have nothing to search.
         nonempty(&code, &format!("код страницы «{name}» без комментариев"));
         for needle in [
             "crate::toast::style_map(",
@@ -2862,8 +2868,8 @@ fn toast_qss_and_qml_toast_style_agree() {
                 "страница «{name}» не ходит через дверь плашки: нет «{needle}»"
             );
         }
-        // Своих красок и своих чисел у страницы быть не может — за этим
-        // сторож и поставлен.
+        // The page cannot have its own paints and its own numbers — that is what
+        // the guard is for.
         for forbidden in [
             "ui_base::toast_colors",
             "ui_base::TOAST_RADIUS",
@@ -2878,7 +2884,7 @@ fn toast_qss_and_qml_toast_style_agree() {
         }
     }
 
-    // ── 4. Разметка плашки берёт всё из скина двери ──────────────────────
+    // ── 4. The banner markup takes everything from the door's skin ───────
     let qml = read_sample(
         concat!(env!("CARGO_MANIFEST_DIR"), "/../rexon-gui/qml/RexonToast.qml"),
         "общая разметка плашки",
@@ -2895,8 +2901,8 @@ fn toast_qss_and_qml_toast_style_agree() {
         "anchors.leftMargin: plate.skin.margin",
         "anchors.bottomMargin: plate.skin.margin",
         "plate.metrics.toastWidth(",
-        // ⭐ Ради этой строки сторож и переписан: без таймера плашка не
-        // гаснет вовсе, а именно так она и висела 29 минут.
+        // ⭐ This line is why the guard was rewritten: without the timer the
+        // banner never fades, and that is exactly how it hung for 29 minutes.
         "interval: plate.timeoutMs",
     ] {
         assert!(
@@ -2904,8 +2910,8 @@ fn toast_qss_and_qml_toast_style_agree() {
             "разметка плашки потеряла «{needle}»"
         );
     }
-    // Токенов палитры и «привязки по центру» в плашке быть не может: и то,
-    // и другое — ровно та дверь, которую закрывали.
+    // Palette tokens and "centre anchoring" cannot be in the banner: both are
+    // exactly the door that was closed.
     for forbidden in ["root.pal", "root.col", "anchors.horizontalCenter", "anchors.centerIn"] {
         assert!(
             !qml.contains(forbidden),
@@ -2913,7 +2919,7 @@ fn toast_qss_and_qml_toast_style_agree() {
         );
     }
 
-    // ── 5. Вкладки ставят именно её, а не свой прямоугольник ─────────────
+    // ── 5. Tabs place exactly it, not a rectangle of their own ───────────
     for (name, file) in [
         ("Настройки", "/../rexon-gui/qml/SettingsPage.qml"),
         ("Steam", "/../rexon-gui/qml/SteamPage.qml"),
@@ -2931,16 +2937,16 @@ fn toast_qss_and_qml_toast_style_agree() {
     }
 }
 
-/// Слова, после которых имя неопознанного стола обязано стоять в падеже.
-/// Выписаны здесь заново, а не взяты из ядра: сверка со списком, который
-/// сама же проверяет, не проверяла бы ничего.
+/// Words after which an unrecognized desktop's name must be in an inflected
+/// case. Written out here anew, not taken from the core: a check against the
+/// list it itself verifies would verify nothing.
 const CASE_WORDS: &[&str] = &[
     "для", "на", "в", "во", "у", "с", "со", "к", "ко", "о", "об", "из", "от", "под", "при",
     "по", "до", "без", "окружения", "приложения",
 ];
 
-/// Текст, если в нём имя неопознанного стола стоит после предлога либо в
-/// кавычках — то есть прямо подставлено туда, где нужен падеж.
+/// The text, if the unrecognized desktop's name in it stands after a
+/// preposition or in quotes — that is, substituted right where a case is needed.
 fn unknown_de_after_preposition(text: &str) -> Option<String> {
     let name = rexon_core::screenshots::unknown_de_name();
     let name = name.as_str();
@@ -2948,8 +2954,8 @@ fn unknown_de_after_preposition(text: &str) -> Option<String> {
     while let Some(off) = text[from..].find(name) {
         let pos = from + off;
         let head = &text[..pos];
-        // Кавычки сами по себе падежа не требуют («Применяю «{0}»» — это
-        // название обоев); ловится только имя стола в кавычках после слова.
+        // Quotes by themselves do not require a case («Применяю «{0}»» is a
+        // wallpaper name); only a desktop name in quotes after a word is caught.
         if head.to_lowercase().ends_with("окружения «") {
             return Some(text.to_string());
         }
@@ -2972,12 +2978,14 @@ fn unknown_de_after_preposition(text: &str) -> Option<String> {
     None
 }
 
-/// ⭐ Имя неопознанного стола не подставляется в фразу с предлогом как есть.
+/// ⭐ An unrecognized desktop's name is not substituted as is into a phrase
+/// with a preposition.
 ///
-/// Дефект: «Системная звуковая тема для ВАШ РАБОЧИЙ СТОЛ». Заглушка имени
-/// склоняется, а подстановка шла простой заменой. Сверка прогоняет ВЕСЬ
-/// каталог вкладки, все разделы, итог восстановления приложений и отказ
-/// движка обоев с именем неопознанного стола в каждом месте подстановки.
+/// Defect: «Системная звуковая тема для ВАШ РАБОЧИЙ СТОЛ». The name placeholder
+/// is declinable, but substitution was a plain replace. The check runs the
+/// WHOLE tab catalog, all sections, the application restore result and the
+/// wallpaper engine refusal with the unrecognized desktop's name at every
+/// substitution point.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn unknown_desktop_is_never_put_after_a_preposition() {
@@ -2985,7 +2993,7 @@ fn unknown_desktop_is_never_put_after_a_preposition() {
     let name = rexon_core::screenshots::unknown_de_name();
     assert_eq!(name, "ВАШ РАБОЧИЙ СТОЛ");
     let name = name.as_str();
-    // Сама проверка ловит то, что обязана ловить, и не ловит лишнего.
+    // The check itself catches what it must catch, and nothing extra.
     assert!(unknown_de_after_preposition(&format!("для {name}")).is_some());
     assert!(unknown_de_after_preposition(&format!("Для окружения «{name}»")).is_some());
     assert!(unknown_de_after_preposition(&format!("Текущее окружение: <b>{name}</b>")).is_none());
@@ -3017,13 +3025,13 @@ fn unknown_desktop_is_never_put_after_a_preposition() {
         );
     }
 
-    // Грамотные формы действительно на месте.
+    // The correct forms really are in place.
     let (_, sound) = qs::section_texts("soundThemeGroup", name).unwrap();
     assert!(sound.contains("для вашего рабочего стола"), "{sound}");
     let quick = qs::text("quickfix.unknown_de", &[name.to_string()]).unwrap();
     assert!(quick.starts_with("Для вашего рабочего стола набор"), "{quick}");
     assert!(texts.iter().any(|t| t.contains("на вашем рабочем столе")), "отказ обоев не склонён");
-    // Известное имя подставляется как есть.
+    // A known name is substituted as is.
     assert_eq!(
         qs::text("quickfix.button", &["KDE Plasma".to_string()]).unwrap(),
         "Восстановить приложения KDE Plasma"
@@ -3031,8 +3039,8 @@ fn unknown_desktop_is_never_put_after_a_preposition() {
     assert_eq!(rexon_core::screenshots::display_name("unknown"), name);
 }
 
-/// ⭐ Отказ фонового звука называет настоящую причину: «нужен mpv» — только
-/// когда mpv действительно нет; при установленном — что не играет файл.
+/// ⭐ The background sound failure names the real cause: «нужен mpv» only when
+/// mpv really is missing; when it is installed — that the file does not play.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn ambient_failure_names_the_real_reason() {
@@ -3045,9 +3053,9 @@ fn ambient_failure_names_the_real_reason() {
     assert!(!with.is_empty());
 }
 
-/// ⭐ Итог смены громкости: имя звука, а не служебный идентификатор; не
-/// переживший перезапуск звук — отказ, а не «громкость задана»; звука уже
-/// нет — так и сказано.
+/// ⭐ Volume change result: the sound's name, not a service identifier; a
+/// sound that did not survive a restart is a failure, not «громкость задана»;
+/// the sound is gone — and so it says.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn ambient_volume_status_tells_the_truth() {
@@ -3061,8 +3069,8 @@ fn ambient_volume_status_tells_the_truth() {
     assert!(!ok.contains("manual_"), "в ответ попал идентификатор: {ok}");
 }
 
-/// ⭐ Итог остановки звука называет имя, а о звуке, которого уже нет, не
-/// рапортует «остановлен».
+/// ⭐ The sound stop result names the sound, and does not report «остановлен»
+/// about a sound that is already gone.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn ambient_stopped_status_tells_the_truth() {
@@ -3074,10 +3082,10 @@ fn ambient_stopped_status_tells_the_truth() {
 }
 
 // ============================================================================
-// Перевод: русский как было, английский — без единой русской буквы
+// Translation: Russian as before, English without a single Russian letter
 // ============================================================================
 
-/// Галочки батареи и игры раздела «Обои» — по-русски и по-человечески.
+/// The battery and game checkboxes of the «Обои» section — in Russian and in human words.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn wallpaper_pause_texts_russian() {
@@ -3087,7 +3095,7 @@ fn wallpaper_pause_texts_russian() {
     assert_eq!(get("wp.pause_game"), "Ставить обои на паузу во время игры (игровой режим)");
 }
 
-/// Раздел «Ссылки на сайты» (вопрос перед внешней ссылкой, 16.11.2026).
+/// The «Ссылки на сайты» section (the question before an external link, 16.11.2026).
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn links_texts_russian() {
@@ -3097,7 +3105,7 @@ fn links_texts_russian() {
     assert_eq!(i18n::tr(title), "🔗 Ссылки на сайты");
 }
 
-/// Снимок русских текстов вкладки до переноса строк в каталог.
+/// Snapshot of the tab's Russian texts before the strings moved to the catalog.
 fn ru_before() -> Value {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -3107,9 +3115,10 @@ fn ru_before() -> Value {
         .expect("снимок не разбирается как JSON")
 }
 
-/// ⭐ Для русского интерфейса НИЧЕГО не поменялось: каждая подпись каталога,
-/// каждый раздел и каждая собранная фраза вкладки слово в слово те же, что
-/// стояли в коде до переноса (снимок снят с `qt_settings.rs` того дня).
+/// ⭐ NOTHING changed for the Russian interface: every catalog label, every
+/// section and every assembled phrase of the tab is word for word the same as
+/// in the code before the migration (the snapshot was taken from that day's
+/// `qt_settings.rs`).
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn russian_catalog_keeps_old_texts() {
@@ -3161,7 +3170,7 @@ fn russian_catalog_keeps_old_texts() {
         assert_eq!(ru.get(None, msgid), pair[1].as_str(), "фраза «{msgid}»");
     }
 
-    // Собранные строки — целиком, как их видел человек.
+    // Assembled strings — whole, as the person saw them.
     assert_eq!(qs::pretty_backup_ts("20260620_011005"), "20.06.2026 в 01:10");
     assert_eq!(
         qs::restore_native_message(2, &["Терминал".to_string()], "KDE"),
@@ -3185,13 +3194,13 @@ fn russian_catalog_keeps_old_texts() {
     assert_eq!(rexon_core::constants::type_label("theme-gtk").as_deref(), Some("Тема GTK"));
 }
 
-/// Английский интерфейс вкладки: ни одной русской буквы ни в каталоге, ни в
-/// разделах, ни в собранных фразах — забытая строка видна здесь, а не
-/// покупателю.
+/// The tab's English interface: not a single Russian letter in the catalog,
+/// sections or assembled phrases — a forgotten string shows up here, not to
+/// the buyer.
 ///
-/// Исключение одно и названо: имя неопознанного рабочего стола
-/// (`screenshots::UNKNOWN_DE_NAME`) живёт в чужом модуле и в перевод этой
-/// вкладки не входит — поэтому подставляется известное имя.
+/// There is one named exception: the unrecognized desktop's name
+/// (`screenshots::UNKNOWN_DE_NAME`) lives in another module and is not part of
+/// this tab's translation — so a known name is substituted.
 #[test]
 fn english_tab_has_no_russian() {
     let _lang = i18n_pin::en();
@@ -3204,7 +3213,7 @@ fn english_tab_has_no_russian() {
     for id in qs::section_order() {
         let (title, desc) = qs::section_texts(id, "KDE").unwrap();
         all.push(desc);
-        // Заголовок раздела обучения — у самого обучения (уже переведён).
+        // The onboarding section title belongs to the onboarding itself (already translated).
         all.push(title);
     }
     for (_, label) in qs::fm_choices() {
@@ -3268,7 +3277,7 @@ fn english_tab_has_no_russian() {
     }
 }
 
-/// Английские формулировки, собираемые из частей, читаются как фразы.
+/// English wording assembled from parts reads as phrases.
 #[test]
 fn english_phrases_read_naturally() {
     let _lang = i18n_pin::en();
@@ -3303,7 +3312,7 @@ fn english_phrases_read_naturally() {
     let (_, desc) = qs::section_texts("soundThemeGroup", "COSMIC").unwrap();
     assert!(desc.starts_with("System sound theme for COSMIC:"), "{desc}");
     assert!(qs::wallpaper_dialog_filter("static").starts_with("Images (*.jpg"));
-    // Неопознанный стол — запасное имя по-английски, тем же регистром.
+    // An unrecognized desktop — the fallback name in English, same case.
     assert_eq!(qs::de_display("unknown", "", ""), "YOUR DESKTOP");
     assert_eq!(qs::de_display("unknown", "niri:wlroots", ""), "NIRI");
     assert_eq!(qs::wallpaper_dialog_title("video"), "Choose a video");
@@ -3312,16 +3321,16 @@ fn english_phrases_read_naturally() {
         qs::youtube_starting_status("best", "stream", false),
         "⏳ YouTube (Best available, Stream, sound off) — this may take a while…"
     );
-    // Кнопка в совете та же, что на экране.
+    // The button in the advice is the same as on screen.
     assert!(qs::protection_status_text(0, &[]).contains("“📌 Remember Now”"));
     assert_eq!(qs::event_meta("device-added").1, "Device connected");
 }
 
 // ============================================================================
-// Раздел «Язык»
+// The «Язык» section
 // ============================================================================
 
-/// Русские подписи раздела «Язык» — ровно такие, какими их утвердили.
+/// Russian labels of the «Язык» section — exactly as they were approved.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn language_section_russian() {
@@ -3341,8 +3350,8 @@ fn language_section_russian() {
     );
 }
 
-/// Полоса права изменять систему (Б13): по-русски и слово в слово как пункты
-/// меню значка — это одно состояние и одно действие.
+/// The system-change permission bar (B13): in Russian and word for word as the
+/// icon menu items — it is one state and one action.
 #[test]
 fn admin_strip_russian_matches_tray() {
     let _lang = i18n_pin::ru();
@@ -3352,7 +3361,7 @@ fn admin_strip_russian_matches_tray() {
     assert_eq!(qs::text_msgid("admin.revoke"), rexon_core::tray::label_msgid("admin.revoke"));
 }
 
-/// Английские подписи раздела «Язык».
+/// English labels of the «Язык» section.
 #[test]
 fn language_section_english() {
     let _lang = i18n_pin::en();
@@ -3365,9 +3374,9 @@ fn language_section_english() {
     assert_eq!(one("lang.restart", ""), "Restart Rexon");
 }
 
-/// Список языков: первым «как в системе», затем English, каждый язык —
-/// самоназванием, а не переводом (иначе человек, случайно включивший чужой
-/// язык, не нашёл бы свой).
+/// The language list: "as in the system" first, then English, each language
+/// by its own name, not a translation (otherwise a person who accidentally
+/// switched to a foreign language would not find their own).
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn language_choices_use_native_names() {
@@ -3376,7 +3385,7 @@ fn language_choices_use_native_names() {
     assert_eq!(choices[0].0, "system");
     assert!(choices[0].1.starts_with("Как в системе ("), "{:?}", choices[0]);
     assert_eq!(choices[1], ("en".to_string(), "English".to_string()));
-    // Русский каталог сверка собрала сама — значит «Русский» в списке есть.
+    // The check built the Russian catalog itself — so «Русский» is in the list.
     assert!(choices.contains(&("ru".to_string(), "Русский".to_string())), "{choices:?}");
     assert!(qs::language_choice_valid("en"));
     assert!(qs::language_choice_valid("system"));
@@ -3390,8 +3399,8 @@ fn language_choices_use_native_names() {
     assert!(choices[0].1.starts_with("Same as system ("));
 }
 
-/// Перезапуск ради языка открывает окно снова на «Настройках» и не прячет
-/// его в лоток.
+/// A restart for the language reopens the window on «Настройки» and does not
+/// hide it in the tray.
 #[test]
 fn restart_args_reopen_settings() {
     let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
@@ -3402,9 +3411,9 @@ fn restart_args_reopen_settings() {
     );
 }
 
-/// Д5 (проверка окружений 02.10.2026): шрифт интерфейса переносится в
-/// `~/.config/gtk-3.0` и `gtk-4.0`, а не в `gtk-gtk-3.0` — тот каталог GTK
-/// не читает, и GTK-программы на LXQt/X11 и XWayland шрифт не получали.
+/// D5 (environment check 02.10.2026): the interface font is carried into
+/// `~/.config/gtk-3.0` and `gtk-4.0`, not into `gtk-gtk-3.0` — GTK does not read
+/// that directory, and GTK programs on LXQt/X11 and XWayland did not get the font.
 #[test]
 fn gtk_font_goes_to_real_gtk_dirs() {
     assert_eq!(
@@ -3420,19 +3429,19 @@ fn gtk_font_goes_to_real_gtk_dirs() {
     );
 }
 
-/// Мусорный каталог прежней записи снимается, только если в нём ровно наш
-/// файл: один `settings.ini` с одной строкой `gtk-font-name`.
+/// The junk directory of the former entry is removed only if it holds exactly
+/// our file: one `settings.ini` with one `gtk-font-name` line.
 #[test]
 fn stray_gtk_font_dir_removed_only_if_ours() {
     let only = vec!["settings.ini".to_string()];
     let ours = "[Settings]\ngtk-font-name=Noto Serif 13\n";
     assert!(qs::stray_gtk_font_dir_removable(&only, Some(ours)));
-    // Лишний файл рядом — каталог не наш.
+    // An extra file next to it — the directory is not ours.
     assert!(!qs::stray_gtk_font_dir_removable(
         &["settings.ini".to_string(), "gtk.css".to_string()],
         Some(ours)
     ));
-    // Лишний ключ — кто-то правил руками.
+    // An extra key — someone edited it by hand.
     assert!(!qs::stray_gtk_font_dir_removable(
         &only,
         Some("[Settings]\ngtk-font-name=Noto Serif 13\ngtk-theme-name=Adwaita\n")
@@ -3443,9 +3452,9 @@ fn stray_gtk_font_dir_removed_only_if_ours() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Существование темы звуков перед применением (03.10.2026): живьём в
-//  kdeglobals стояла тема «Sounds», которой нет, — вкладка сказала
-//  «применена», а система молча играла freedesktop.
+//  Sound theme existence before applying (03.10.2026): live, kdeglobals had
+//  the theme «Sounds», which does not exist — the tab said «применена», and
+//  the system silently played freedesktop.
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[test]
@@ -3494,13 +3503,13 @@ fn missing_sound_theme_message_names_the_theme() {
     assert!(!msg.contains("примен"), "это отказ, а не «применена»: {msg}");
 }
 
-// ── Отрисовка шрифтов: сглаживание, субпиксели, хинтинг ─────────────────
+// ── Font rendering: antialiasing, subpixels, hinting ─────────────────────
 
-/// Родные ключи отрисовки по окружениям. Источники — схемы gsettings
+/// Native rendering keys per environment. Sources: gsettings schemas
 /// (`org.gnome.desktop.interface`, `org.cinnamon.settings-daemon.plugins.
-/// xsettings`, `org.mate.font-rendering`), канал `xsettings` XFCE
-/// (`xfce4-appearance-settings`) и `kdeglobals [General]` страницы «Шрифты»
-/// Plasma 6.
+/// xsettings`, `org.mate.font-rendering`), the XFCE `xsettings` channel
+/// (`xfce4-appearance-settings`) and `kdeglobals [General]` of the Plasma 6
+/// «Шрифты» page.
 #[test]
 fn font_rendering_native_keys_per_desktop() {
     use qs::{RenderDialect, RenderKey, SoundBackend};
@@ -3558,13 +3567,13 @@ fn font_rendering_native_keys_per_desktop() {
             "{de}"
         );
     }
-    // Своей страницы нет — родным служит сам fonts.conf.
+    // No page of its own — fonts.conf itself is the native store.
     for de in ["lxqt", "cosmic", "deepin", "hyprland", "sway", "niri", "unknown", ""] {
         assert!(qs::render_native_store(de).is_none(), "{de}");
     }
 }
 
-/// Значения в записи каждого хранилища и общий слой GNOME для GTK.
+/// Values in each store's entry and the common GNOME layer for GTK.
 #[test]
 fn font_rendering_plan_values() {
     let r = qs::FontRendering {
@@ -3599,13 +3608,13 @@ fn font_rendering_plan_values() {
         plan.also,
         vec![gs("font-antialiasing", "rgba"), gs("font-hinting", "full"), gs("font-rgba-order", "bgr")]
     );
-    // Без gsettings общий слой не предлагается.
+    // Without gsettings the common layer is not offered.
     assert!(qs::rendering_plan("xfce", &r, "", false).also.is_empty());
-    // В GNOME общий слой и есть родной — дубля нет.
+    // In GNOME the common layer is the native one — no duplicate.
     let gnome = qs::rendering_plan("gnome", &r, "", true);
     assert_eq!(gnome.primary.len(), 3);
     assert!(gnome.also.is_empty());
-    // KDE: без kwriteconfig6 писать нечем, с ним — kdeglobals с уведомлением.
+    // KDE: without kwriteconfig6 nothing to write with, with it — kdeglobals with a notification.
     assert!(qs::rendering_plan("kde", &r, "", true).primary.is_empty());
     let kde = qs::rendering_plan("kde", &r, "/usr/bin/kwriteconfig6", true);
     assert_eq!(
@@ -3615,20 +3624,20 @@ fn font_rendering_plan_values() {
             .map(|s| s.to_string())
             .collect::<Vec<_>>()
     );
-    // Без сглаживания: GNOME «none», субпиксели сняты.
+    // No antialiasing: GNOME "none", subpixels removed.
     let off = qs::FontRendering { antialias: false, ..r.clone() }.normalized();
     assert_eq!(off.subpixel, "none");
     assert_eq!(off.gnome_antialiasing(), "none");
     let gray = qs::FontRendering { subpixel: "none".to_string(), ..r.clone() };
     assert_eq!(gray.gnome_antialiasing(), "grayscale");
     assert_eq!(gray.gnome_rgba_order(), "rgb");
-    // Тайловые сеансы: родного нет, но GTK получает ключи GNOME.
+    // Tiling sessions: no native store, but GTK gets the GNOME keys.
     let tiling = qs::rendering_plan("hyprland", &r, "", true);
     assert!(tiling.primary.is_empty());
     assert_eq!(tiling.also.len(), 3);
 }
 
-/// Ответы хранилищ разбираются в одну настройку; родное главнее fonts.conf.
+/// Store answers are parsed into one setting; the native one beats fonts.conf.
 #[test]
 fn font_rendering_answers_and_merge() {
     use qs::{RenderDialect as D, RenderKey as K};
@@ -3652,7 +3661,7 @@ fn font_rendering_answers_and_merge() {
     );
     assert_eq!(xfce.antialias, Some(false));
     assert_eq!(xfce.hinting.as_deref(), Some("none"));
-    // «-1» у XFCE — не задано.
+    // "-1" in XFCE means unset.
     assert_eq!(qs::parse_render_answers(D::Xfce, &[(K::Antialias, "-1".into())]).antialias, None);
     let kde = qs::parse_render_answers(D::Kde, &[(K::Antialias, "".into()), (K::HintStyle, "hintslight".into())]);
     assert_eq!(kde.antialias, None);
@@ -3688,8 +3697,8 @@ const FOREIGN_FONTS_CONF: &str = r#"<?xml version="1.0"?>
 </fontconfig>
 "#;
 
-/// Наш блок вливается в чужой fonts.conf, не задевая чужого, заменяется
-/// при повторной записи и читается обратно.
+/// Our block merges into a foreign fonts.conf without touching foreign content,
+/// is replaced on a repeated write and is read back.
 #[test]
 fn fontconfig_block_merges_and_round_trips() {
     let r = qs::FontRendering {
@@ -3699,7 +3708,7 @@ fn fontconfig_block_merges_and_round_trips() {
         hinting: "slight".to_string(),
     };
     let block = qs::fontconfig_block(&r, None);
-    // Файла нет — заводится целиком.
+    // No file — it is created whole.
     let fresh = qs::fontconfig_with_block(None, &block).unwrap();
     assert!(fresh.starts_with("<?xml"));
     assert!(fresh.contains("<fontconfig>") && fresh.trim_end().ends_with("</fontconfig>"));
@@ -3708,19 +3717,19 @@ fn fontconfig_block_merges_and_round_trips() {
     assert_eq!(back.subpixel.as_deref(), Some("rgb"));
     assert_eq!(back.hinting.as_deref(), Some("slight"));
     assert_eq!(back.exclude, Some((8, 15)));
-    // Диапазон в пикселях — при 96 DPI 8pt = 11px, 15pt = 20px.
+    // Range in pixels — at 96 DPI 8pt = 11px, 15pt = 20px.
     assert!(fresh.contains("<double>11</double>") && fresh.contains("<double>20</double>"), "{fresh}");
 
-    // Чужой файл: всё чужое на месте, наш блок — последним.
+    // A foreign file: everything foreign in place, our block last.
     let merged = qs::fontconfig_with_block(Some(FOREIGN_FONTS_CONF), &block).unwrap();
     for line in FOREIGN_FONTS_CONF.lines().filter(|l| *l != "</fontconfig>") {
         assert!(merged.contains(line), "пропало «{line}»:\n{merged}");
     }
     assert!(merged.find("Terminus").unwrap() < merged.find(">>> Rexon").unwrap());
-    // Правило человека с <test name="family"> — не наше, его не читаем.
+    // A person's rule with <test name="family"> is not ours, we do not read it.
     assert_eq!(qs::fontconfig_rendering(&merged).antialias, Some(true));
 
-    // Повторная запись заменяет блок, а не копит.
+    // A repeated write replaces the block instead of accumulating.
     let r2 = qs::FontRendering { hinting: "full".to_string(), exclude: None, ..r.clone() };
     let again = qs::fontconfig_with_block(Some(&merged), &qs::fontconfig_block(&r2, Some(120))).unwrap();
     assert_eq!(again.matches(">>> Rexon").count(), 1, "{again}");
@@ -3729,15 +3738,15 @@ fn fontconfig_block_merges_and_round_trips() {
     assert_eq!(back.hinting.as_deref(), Some("full"));
     assert_eq!(back.exclude, None);
     assert_eq!(back.dpi, Some(120));
-    // И то же самое дважды подряд — без дрейфа текста.
+    // And the same thing twice in a row — without text drift.
     let twice = qs::fontconfig_with_block(Some(&again), &qs::fontconfig_block(&r2, Some(120))).unwrap();
     assert_eq!(twice, again);
-    // Чужое при этом не сдвинулось.
+    // The foreign content did not move meanwhile.
     assert!(again.starts_with(&FOREIGN_FONTS_CONF[..FOREIGN_FONTS_CONF.find("</fontconfig>").unwrap()]));
 }
 
-/// Битый файл и надрезанный блок — отказ, а не догадка: ошибка в fonts.conf
-/// ломает шрифты всем программам.
+/// A broken file and a cut block mean refusal, not a guess: an error in
+/// fonts.conf breaks fonts for all programs.
 #[test]
 fn fontconfig_block_refuses_to_guess() {
     let block = qs::fontconfig_block(&qs::FontRendering::default(), None);
@@ -3755,15 +3764,15 @@ fn fontconfig_block_refuses_to_guess() {
     }
     let cut = "<fontconfig>\n  <!-- >>> Rexon: font rendering (managed by Rexon, edits are overwritten) -->\n</fontconfig>\n";
     assert_eq!(qs::fontconfig_with_block(Some(cut), &block), Err(qs::FontconfigRefusal::BrokenBlock));
-    // Пустой корень `<fontconfig/>` раскрывается.
+    // An empty `<fontconfig/>` root is expanded.
     let out = qs::fontconfig_with_block(Some("<?xml version=\"1.0\"?>\n<fontconfig/>\n"), &block).unwrap();
     assert!(out.contains("<fontconfig>\n  <!-- >>> Rexon"), "{out}");
     assert_eq!(qs::fontconfig_rendering(&out).antialias, Some(true));
 }
 
-/// Файл, который ведёт страница «Шрифты» KDE (её форма записи), читается
-/// так же, как наш блок: человек, настроивший шрифты в KDE, видит в Rexon
-/// своё, а не умолчания.
+/// The file maintained by the KDE «Шрифты» page (its form of the entry) is read
+/// the same way as our block: a person who set up fonts in KDE sees their own
+/// settings in Rexon, not defaults.
 #[test]
 fn fontconfig_reads_kde_shaped_file() {
     let kde = r#"<?xml version="1.0"?>
@@ -3804,7 +3813,7 @@ fn fontconfig_reads_kde_shaped_file() {
     assert_eq!(parts.antialias, Some(true));
 }
 
-/// Подписи сглаживания по-русски: каталог их знает, а не отдаёт английский.
+/// Antialiasing labels in Russian: the catalog knows them instead of returning English.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn font_rendering_texts_russian() {
@@ -3821,8 +3830,8 @@ fn font_rendering_texts_russian() {
     assert!(qs::rendering_status(&qs::RenderingOutcome::Saved).starts_with("✅ Сглаживание"));
 }
 
-/// Готовые наборы отрисовки — значения MATE, диапазон «не сглаживать» и
-/// порядок субпикселей человека не теряются, набор узнаётся обратно.
+/// Ready-made rendering presets — MATE values; the person's "do not antialias"
+/// range and subpixel order are not lost, the preset is recognized back.
 #[test]
 fn font_render_presets_follow_mate() {
     let mine = qs::FontRendering {
@@ -3844,14 +3853,14 @@ fn font_render_presets_follow_mate() {
         assert_eq!(p.exclude, Some((6, 10)), "{id}: диапазон остаётся");
         assert_eq!(qs::render_preset_of(&p), Some(id), "{id}: узнаётся обратно");
     }
-    // Без сглаживания субпиксели «нет» — «Субпиксельное» ставит RGB.
+    // Without antialiasing subpixels are "none" — «Субпиксельное» sets RGB.
     let gray = qs::render_preset("best_shapes", &mine).unwrap();
     assert_eq!(qs::render_preset("subpixel", &gray).unwrap().subpixel, "rgb");
     assert!(qs::render_preset("nonsense", &mine).is_none());
     assert_eq!(qs::render_preset_choices().len(), qs::RENDER_PRESETS.len());
 }
 
-/// Подписи готовых наборов по-русски.
+/// Ready-made preset labels in Russian.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn font_render_presets_russian() {
@@ -3862,7 +3871,7 @@ fn font_render_presets_russian() {
     assert!(qs::render_preset_choices().iter().all(|(_, _, tip)| tip.chars().any(|c| ('а'..='я').contains(&c))));
 }
 
-// ── «Изменить все шрифты» и принудительное DPI ──────────────────────────
+// ── «Изменить все шрифты» and forced DPI ─────────────────────────────────
 
 fn now(list: &[(&str, &str, i32)]) -> Vec<qs::FontNow> {
     list.iter()
@@ -3870,8 +3879,8 @@ fn now(list: &[(&str, &str, i32)]) -> Vec<qs::FontNow> {
         .collect()
 }
 
-/// Правила «изменить все» как у страницы KDE: маленький — на 2 пт меньше
-/// (от 9 пт), моноширинный не получает обычное семейство.
+/// "Change all" rules as on the KDE page: small is 2 pt smaller (from 9 pt),
+/// monospace does not get the regular family.
 #[test]
 fn change_all_fonts_rules() {
     let cur = now(&[
@@ -3888,20 +3897,20 @@ fn change_all_fonts_rules() {
         [("system", "Inter", 12), ("mono", "Hack", 12), ("small", "Inter", 10), ("menu", "Inter", 12), ("title", "Inter", 12)]
     );
     assert!(kept);
-    // Моноширинное семейство уходит и в моноширинный.
+    // A monospace family goes into monospace too.
     let (plan, kept) = qs::change_all_fonts(&cur, "JetBrains Mono", 8, "both", true);
     assert!(!kept);
     assert_eq!(plan[1].family, "JetBrains Mono");
     assert_eq!(plan[2].size, 8, "мельче 9 пт маленький не уменьшается");
-    // Только кегль — семейства свои.
+    // Size only — the families stay their own.
     let (plan, _) = qs::change_all_fonts(&cur, "Inter", 11, "size", false);
     assert_eq!(plan[1].family, "Hack");
     assert_eq!(plan[0].family, "Noto Sans");
     assert_eq!(plan[2].size, 9);
-    // Только семейство — кегли свои.
+    // Family only — the sizes stay their own.
     let (plan, _) = qs::change_all_fonts(&cur, "Inter", 20, "family", false);
     assert_eq!(plan.iter().map(|f| f.size).collect::<Vec<_>>(), [10, 10, 8, 10, 10]);
-    // Своего моноширинного нет, а выбран обычный — моноширинный не трогаем.
+    // No monospace of its own, and a regular one is chosen — monospace is not touched.
     let bare = now(&[("system", "Noto Sans", 10), ("mono", "", 0)]);
     let (plan, _) = qs::change_all_fonts(&bare, "Inter", 11, "both", false);
     assert_eq!(plan.len(), 1);
@@ -3917,8 +3926,8 @@ fn fc_spacing_decides_monospace() {
     assert!(!qs::parse_fc_spacing(""), "семейство не найдено");
 }
 
-/// Хранилище DPI по окружениям и запись значений. GNOME-подобным — множитель
-/// текста: из него служба настроек GNOME и считает Xft/DPI (96 × множитель).
+/// DPI store per environment and writing values. For GNOME-like ones it is the
+/// text scaling factor: the GNOME settings daemon computes Xft/DPI from it (96 × factor).
 #[test]
 fn font_dpi_store_per_desktop() {
     use qs::FontDpiStore as S;
@@ -3957,38 +3966,38 @@ fn font_dpi_store_per_desktop() {
     assert_eq!(qs::font_dpi_value(&gnome, Some(1000)), "3.00", "схема не пускает выше 3.0");
     assert_eq!(qs::font_dpi_value(&gnome, None), "1.0");
     assert!(qs::font_dpi_write_argv(&S::Fontconfig, Some(120), "").is_none());
-    // Чтение обратно.
+    // Reading back.
     assert_eq!(qs::parse_font_dpi(&gnome, "1.25\n"), Some(120));
     assert_eq!(qs::parse_font_dpi(&gnome, "1.0"), None);
     assert_eq!(qs::parse_font_dpi(&S::Xfce, "-1"), None);
     assert_eq!(qs::parse_font_dpi(&S::Kde, ""), None);
     assert_eq!(qs::parse_font_dpi(&S::Kde, "0"), None);
     assert_eq!(qs::parse_font_dpi(&S::Mate, "96.0"), Some(96));
-    // Пояснение есть там, где действие не мгновенное или не буквальное.
+    // There is an explanation where the action is not instant or not literal.
     assert!(!qs::font_dpi_note(None).is_empty());
     assert!(!qs::font_dpi_note(Some(&gnome)).is_empty());
     assert!(qs::font_dpi_note(Some(&S::Xfce)).is_empty());
 }
 
-/// Deepin вне Wayland — сеанс X11, его Rexon не поддерживает: хранилища
-/// нет, и подпись говорит «Rexon поддерживает Deepin только на Treeland», а
-/// не про сеанс Plasma.
+/// Deepin outside Wayland is an X11 session, which Rexon does not support: there
+/// is no store, and the label says «Rexon поддерживает Deepin только на
+/// Treeland», not something about a Plasma session.
 #[test]
 fn deepin_x11_font_dpi_is_refused() {
-    // Язык — общий на процесс, а сравниваются ответы разных вызовов: без
-    // закрепления соседняя сверка переключает язык между ними.
+    // The language is process-wide, while answers of different calls are compared:
+    // without pinning, a neighbouring check switches the language between them.
     let _lang = i18n_pin::en();
     assert_eq!(qs::font_dpi_store("deepin", false), None);
     let note = qs::font_dpi_note_for("deepin", None);
     assert_eq!(note, rexon_core::dde::not_treeland_message());
-    // У остальных подпись прежняя.
+    // The others keep the former label.
     assert_eq!(qs::font_dpi_note_for("kde", None), qs::font_dpi_note(None));
     let gnome = qs::FontDpiStore::TextScaling { schema: "org.gnome.desktop.interface".into() };
     assert_eq!(qs::font_dpi_note_for("deepin", Some(&gnome)), qs::font_dpi_note(Some(&gnome)));
 }
 
-/// Старый GNOME: отрисовка — в схеме службы настроек, те же перечисления,
-/// что у новых ключей; пишется и читается, только если ключи есть.
+/// Old GNOME: rendering lives in the settings daemon schema, with the same
+/// enums as the new keys; written and read only if the keys exist.
 #[test]
 fn legacy_gnome_xsettings_rendering() {
     let r = qs::FontRendering {
@@ -4025,7 +4034,7 @@ fn legacy_gnome_xsettings_rendering() {
     assert_eq!(parts.antialias, Some(true));
     assert_eq!(parts.subpixel.as_deref(), Some("none"));
     assert_eq!(parts.hinting.as_deref(), Some("medium"));
-    // Старые ключи читаются, только когда новые ничего не дали.
+    // Old keys are read only when the new ones gave nothing.
     assert!(qs::rendering_needs_legacy(&qs::RenderingParts::default(), true));
     assert!(!qs::rendering_needs_legacy(&qs::RenderingParts::default(), false));
     assert!(!qs::rendering_needs_legacy(&parts, true));
@@ -4037,15 +4046,15 @@ fn legacy_gnome_xsettings_rendering() {
     }
 }
 
-/// DPI шрифтов в сеансе X11 без своей службы настроек — `Xft.dpi` в своём
-/// блоке `~/.Xresources`; LXQt в X11 — ещё и туда.
+/// Font DPI in an X11 session without its own settings daemon — `Xft.dpi` in
+/// our block of `~/.Xresources`; LXQt on X11 — there as well.
 #[test]
 fn font_dpi_xresources() {
     use qs::FontDpiStore as S;
     for de in ["", "i3", "openbox", "hyprland"] {
         assert_eq!(qs::font_dpi_store(de, false), Some(S::Xresources), "{de}");
     }
-    // Deepin вне Wayland — отказ, см. `deepin_x11_font_dpi_is_refused`.
+    // Deepin outside Wayland — refused, see `deepin_x11_font_dpi_is_refused`.
     for de in ["gnome", "budgie", "pantheon"] {
         assert_eq!(
             qs::font_dpi_store(de, false),
@@ -4077,8 +4086,8 @@ fn font_dpi_xresources() {
     assert!(qs::font_dpi_note(Some(&S::Xresources)).contains("~/.Xresources"));
 }
 
-/// «Управление шрифтами»: разбор fc-list, свои/системные, группировка,
-/// поиск, проверка файла и место установки.
+/// «Управление шрифтами»: fc-list parsing, user/system, grouping, search, file
+/// check and install location.
 #[test]
 fn font_manager_list_and_files() {
     let dirs = qs::font_user_dirs("/home/u", "/home/u/.local/share");
@@ -4102,8 +4111,8 @@ fn font_manager_list_and_files() {
     assert!(!qs::font_file_is_user("/home/u/.local/share/fonts", &dirs), "сам каталог — не файл");
     assert!(!qs::font_file_is_user("/home/u/.local/share/fontsX/a.ttf", &dirs));
 
-    // Переменный шрифт: файл целиком (без имени) и его именованные
-    // начертания — лишнего «Regular» у файла курсива нет.
+    // A variable font: the whole file (without a name) and its named styles —
+    // the italic file gets no extra «Regular».
     let var = "Adwaita Sans\t\t/f/AdwaitaSans-Italic.ttf\n\
                Adwaita Sans\tItalic\t/f/AdwaitaSans-Italic.ttf\n\
                Adwaita Sans\tBold Italic\t/f/AdwaitaSans-Italic.ttf\n\
@@ -4144,8 +4153,8 @@ fn font_manager_list_and_files() {
     assert_eq!(qs::fc_cache_argv("/d/fonts").join(" "), "fc-cache -f /d/fonts");
 }
 
-/// Подписи «Управления шрифтами»: вопрос перед удалением называет и
-/// соседей по файлу (.ttc), системные удалить нельзя — сказано честно.
+/// «Управление шрифтами» labels: the question before deletion also names the
+/// file's neighbours (.ttc); system fonts cannot be deleted — said honestly.
 #[test]
 fn font_manager_texts_english() {
     let _lang = i18n_pin::en();
@@ -4177,8 +4186,8 @@ fn font_manager_texts_english() {
     }
 }
 
-/// «Управление шрифтами»: фильтр «Все / Личные / Системные» и поиск по
-/// семейству и начертанию; кегль образца 12–48.
+/// «Управление шрифтами»: the «Все / Личные / Системные» filter and search by
+/// family and style; sample size 12–48.
 #[test]
 fn font_manager_origin_filter_and_sample() {
     let dirs = qs::font_user_dirs("/home/u", "/home/u/.local/share");
@@ -4203,8 +4212,8 @@ fn font_manager_origin_filter_and_sample() {
     assert_eq!(italic[0].styles.iter().map(|f| f.style.as_str()).collect::<Vec<_>>(), vec!["Italic"]);
     assert!(qs::font_group_view(&groups, "system", "mine").is_empty());
     assert_eq!(names(&qs::font_group_view(&groups, "all", "sans")), vec!["Noto Sans"]);
-    // «Для всех пользователей» (/usr/local/share/fonts): не свой и не из
-    // пакета — удаляется с паролем; соседний каталог — не он.
+    // «Для всех пользователей» (/usr/local/share/fonts): neither the user's own
+    // nor from a package — deleted with a password; a neighbouring directory is not it.
     let shared = qs::parse_fc_list_fonts(
         "Ad\tRegular\t/usr/local/share/fonts/Ad.ttf\n\
          Ad\tBold\t/usr/local/share/fonts/sub/Ad-Bold.ttf\n\
@@ -4222,11 +4231,11 @@ fn font_manager_origin_filter_and_sample() {
     let labels: Vec<String> = qs::font_origin_choices().into_iter().map(|(_, l)| l).collect();
     assert_eq!(labels, vec!["All", "Personal", "System"]);
     assert_eq!(qs::FONT_SAMPLE_SIZE, (12, 48, 16));
-    // «Для себя / для всех»: неизвестное значение — для себя (без пароля).
+    // «Для себя / для всех»: an unknown value means "for myself" (no password).
     assert_eq!(qs::FONT_INSTALL_SCOPES, &["user", "all"]);
     let scopes: Vec<String> = qs::font_install_scope_choices(true).into_iter().map(|(_, l)| l).collect();
     assert_eq!(scopes, vec!["Just for me", "For all users"]);
-    // NixOS и SteamOS: «для всех» не предлагается (помощник там откажет).
+    // NixOS and SteamOS: "for everyone" is not offered (the helper would refuse there).
     let only_me: Vec<&str> = qs::font_install_scope_choices(false).into_iter().map(|(id, _)| id).collect();
     assert_eq!(only_me, vec!["user"]);
     use rexon_core::system::PkgFamily;
@@ -4242,10 +4251,10 @@ fn font_manager_origin_filter_and_sample() {
     assert!(sample.contains("%1"), "кегль подставляет страница: {sample}");
 }
 
-/// Выключение шрифта без удаления: наш блок `<rejectfont>` в fonts.conf
-/// (fonts-conf(5)), чужое содержимое файла не трогается, пустой блок
-/// снимается, файл без остатка — голый (его удаляют), разорванный блок и
-/// битый файл — отказ.
+/// Disabling a font without deleting: our `<rejectfont>` block in fonts.conf
+/// (fonts-conf(5)), foreign file content is not touched, an empty block is
+/// removed, a file with nothing left is bare (it gets deleted), a broken block
+/// and a broken file mean refusal.
 #[test]
 fn font_manager_disable_rejectfont_block() {
     let files = vec!["/home/u/.fonts/A&B.ttf".to_string(), "/usr/share/fonts/x/X.otf".to_string()];
@@ -4259,38 +4268,38 @@ fn font_manager_disable_rejectfont_block() {
     assert!(qs::font_glob_safe("/usr/share/fonts/a b.ttf"));
     assert!(!qs::font_glob_safe("/f/a?.ttf") && !qs::font_glob_safe("/f/../a.ttf") && !qs::font_glob_safe("a.ttf"));
 
-    // Новый файл.
+    // A new file.
     let fresh = qs::fontconfig_with_disabled(None, &files).unwrap();
     assert!(fresh.starts_with("<?xml version=\"1.0\"?>\n<!DOCTYPE fontconfig"), "{fresh}");
     assert_eq!(qs::fontconfig_disabled_files(&fresh), files);
-    // Чужой файл с блоком отрисовки и своим rejectfont: всё чужое на месте.
+    // A foreign file with a rendering block and its own rejectfont: everything foreign in place.
     let user = "<?xml version=\"1.0\"?>\n<fontconfig>\n  <selectfont><rejectfont><glob>/theirs/*.pcf.gz</glob></rejectfont></selectfont>\n  <match target=\"pattern\"><edit name=\"dpi\" mode=\"assign\"><double>96</double></edit></match>\n</fontconfig>\n";
     let with_render = qs::fontconfig_with_block(Some(user), &qs::fontconfig_block(&qs::FontRendering::default(), None)).unwrap();
     let text = qs::fontconfig_with_disabled(Some(&with_render), &files).unwrap();
     assert!(text.contains("<glob>/theirs/*.pcf.gz</glob>") && text.contains(">>> Rexon: font rendering"), "{text}");
     assert_eq!(qs::fontconfig_disabled_files(&text), files, "чужой rejectfont — не наш");
     assert_eq!(qs::fontconfig_rendering(&text), qs::fontconfig_rendering(&with_render), "отрисовка не задета");
-    // Повтор — один блок; переписанная отрисовка не трогает выключенные.
+    // A repeat gives one block; rewritten rendering does not touch the disabled ones.
     let again = qs::fontconfig_with_disabled(Some(&text), &files[..1]).unwrap();
     assert_eq!(again.matches(">>> Rexon: disabled fonts").count(), 1);
     assert_eq!(qs::fontconfig_disabled_files(&again), files[..1].to_vec());
     let rerender = qs::fontconfig_with_block(Some(&again), &qs::fontconfig_block(&qs::FontRendering::default(), Some(120))).unwrap();
     assert_eq!(qs::fontconfig_disabled_files(&rerender), files[..1].to_vec());
-    // Сброс шрифтов снимает только блок отрисовки.
+    // A font reset removes only the rendering block.
     let reset = qs::fontconfig_without_block(&rerender).unwrap();
     assert_eq!(qs::fontconfig_disabled_files(&reset), files[..1].to_vec());
-    // Всё включено обратно: блок снят, чужое — как было.
+    // Everything enabled back: the block is removed, foreign content as it was.
     let back = qs::fontconfig_with_disabled(Some(&text), &[]).unwrap();
     assert_eq!(back, with_render);
     assert!(qs::fontconfig_is_bare(&qs::fontconfig_with_disabled(Some(&fresh), &[]).unwrap()), "наш файл без остатка — удалить");
     assert!(qs::fontconfig_is_bare(&qs::fontconfig_with_disabled(None, &[]).unwrap()));
-    // Отказы.
+    // Refusals.
     assert_eq!(qs::fontconfig_with_disabled(Some("<fontconfig><oops></fontconfig>"), &files), Err(qs::FontconfigRefusal::Malformed));
     let broken = "<fontconfig>\n  <!-- >>> Rexon: disabled fonts -->\n</fontconfig>\n";
     assert_eq!(qs::fontconfig_with_disabled(Some(broken), &files), Err(qs::FontconfigRefusal::BrokenBlock));
     assert!(qs::fontconfig_disabled_files(broken).is_empty());
 
-    // Какие файлы переключаются и что выйдет.
+    // Which files are toggled and what comes out.
     let dirs = qs::font_user_dirs("/home/u", "/home/u/.local/share");
     let fonts = qs::parse_fc_list_fonts(
         "Inter\tRegular\t/usr/share/fonts/Inter-Regular.otf\n\
@@ -4304,7 +4313,7 @@ fn font_manager_disable_rejectfont_block() {
     let cur = vec!["/a".to_string()];
     assert_eq!(qs::font_disabled_after(&cur, &["/b".to_string(), "/a".to_string()], false), vec!["/a", "/b"]);
     assert_eq!(qs::font_disabled_after(&cur, &["/a".to_string()], true), Vec::<String>::new());
-    // Защита: шрифт системы и «все шрифты» не выключаются; одно начертание — можно.
+    // Protection: the system font and "all fonts" cannot be disabled; a single style can.
     let all_inter = qs::font_toggle_files(&fonts, "Inter", "");
     assert_eq!(qs::font_disable_refusal(&fonts, &all_inter, &["inter".to_string()]), Some(qs::FontToggleOutcome::InUse("Inter".to_string())));
     assert_eq!(qs::font_disable_refusal(&fonts, &all_inter[..1], &["Inter".to_string()]), None);
@@ -4322,8 +4331,8 @@ fn font_manager_disable_rejectfont_block() {
     assert!(text.contains("Inter Display"), "{text}");
 }
 
-/// Дубликаты: одно семейство и начертание в разных файлах; ссылка на тот
-/// же файл и выключенные — не копии; растровые не спрашиваются.
+/// Duplicates: the same family and style in different files; a link to the same
+/// file and disabled ones are not copies; bitmap fonts are not asked about.
 #[test]
 fn font_manager_duplicates() {
     assert_eq!(
@@ -4366,10 +4375,10 @@ fn font_manager_duplicates() {
     assert!(qs::font_duplicates_summary(0).starts_with("No duplicates"));
 }
 
-/// COSMIC: родные программы (libcosmic) читают только `interface_font` и
-/// `monospace_font` из `com.system76.CosmicTk/v1` — RON `FontConfig`
-/// (family, weight, stretch, style), без кегля. Жирность и наклон из окна
-/// выбора туда переносятся; читается запись обратно тем же разбором.
+/// COSMIC: native programs (libcosmic) read only `interface_font` and
+/// `monospace_font` from `com.system76.CosmicTk/v1` — RON `FontConfig`
+/// (family, weight, stretch, style), without a size. Weight and slant from the
+/// chooser dialog are carried there; the entry is read back by the same parser.
 #[test]
 fn cosmic_font_config_face() {
     use qs::{FontFace, FontFile, FontFileIo, FontStore};
@@ -4386,7 +4395,7 @@ fn cosmic_font_config_face() {
     assert_eq!(text, "// Rexon: font (managed by Rexon)\n(\n    family: \"Fira Sans\",\n    weight: Semibold,\n    stretch: Normal,\n    style: Italic,\n)");
     assert_eq!(file.read_spec(&text), "Fira Sans");
     assert_eq!(qs::cosmic_font_face_fields(&text), ("Semibold".to_string(), "Italic".to_string()));
-    // Через план записи — тот же текст в тот же файл.
+    // Through the write plan — the same text into the same file.
     struct NoFiles;
     impl FontFileIo for NoFiles {
         fn read(&self, _: &str) -> Option<String> { None }
@@ -4395,7 +4404,7 @@ fn cosmic_font_config_face() {
     let w = file.file_writes_face("/c", &NoFiles, "Fira Mono", 12, FontFace { weight: 700, italic: false }).unwrap();
     assert_eq!(w[0].rel_path, "cosmic/com.system76.CosmicTk/v1/interface_font");
     assert_eq!(qs::cosmic_font_face_fields(&w[0].text), ("Bold".to_string(), "Normal".to_string()));
-    // LXQt держит начертание полями QFont (жирность, наклон).
+    // LXQt keeps the style in QFont fields (weight, slant).
     let FontStore::File(lxqt) = qs::font_plan("lxqt", "system").primary else { panic!("файл") };
     assert_eq!(
         lxqt.try_new_text_face(None, "A", 10, FontFace { weight: 700, italic: true }).as_deref(),
@@ -4403,8 +4412,8 @@ fn cosmic_font_config_face() {
     );
 }
 
-/// План сброса шрифтов: снимается ровно наше — чужое остаётся, файл без
-/// остатка удаляется, ссылки и разорванные руками блоки не трогаются.
+/// Font reset plan: exactly ours is removed — foreign content stays, a file
+/// with nothing left is deleted, links and blocks broken by hand are not touched.
 #[test]
 fn font_layers_reset_plan_takes_only_ours() {
     use qs::FontLayerUndo::{Relink, Remove, Write};
@@ -4429,13 +4438,13 @@ fn font_layers_reset_plan_takes_only_ours() {
     files.insert("/c/fontconfig/fonts.conf".to_string(), fc_ours);
     files.insert("/c/gtk-3.0/gtk.css".to_string(), css_ours);
     files.insert("/usr/share/themes/A B/gtk-3.0/gtk.css".to_string(), "x".to_string());
-    // Разорванный руками блок — не трогать.
+    // A block broken by hand — do not touch.
     files.insert("/c/gtk-4.0/gtk.css".to_string(), "/* >>> Rexon: fonts */\nmenu {}\n".to_string());
     files.insert("/h/.Xresources".to_string(), qs::xresources_with_dpi(None, Some(120)).unwrap());
-    // Ссылка — не наш файл, даже с меткой внутри.
+    // A link is not our file, even with a marker inside.
     files.insert("/c/qt6ct/qss/rexon-fonts.qss".to_string(), "/* >>> Rexon: fonts */".to_string());
     let links: BTreeSet<String> = ["/c/qt6ct/qss/rexon-fonts.qss".to_string()].into();
-    // COSMIC без метки — переписан «Параметрами», не наш.
+    // COSMIC without a marker — rewritten by «Параметры», not ours.
     files.insert("/c/cosmic/com.system76.CosmicTk/v1/monospace_font".to_string(), "(family: \"X\")".to_string());
     files.insert(
         "/c/cosmic/com.system76.CosmicTk/v1/interface_font".to_string(),
@@ -4451,12 +4460,12 @@ fn font_layers_reset_plan_takes_only_ours() {
             Remove { path: "/c/cosmic/com.system76.CosmicTk/v1/interface_font".into() },
         ]
     );
-    // Пустой fonts.conf — только наш скелет.
+    // An empty fonts.conf — only our skeleton.
     let bare = qs::fontconfig_with_block(None, &qs::fontconfig_block(&r, None)).unwrap();
     assert!(qs::fontconfig_is_bare(&qs::fontconfig_without_block(&bare).unwrap()));
     assert!(!qs::fontconfig_is_bare(fc_foreign));
     assert!(!qs::fontconfig_is_bare("<fontconfig>\n  <!-- моё -->\n</fontconfig>\n"), "комментарий человека — не пусто");
-    // Чужая строка gtk.css до и после нашего блока остаётся.
+    // A foreign gtk.css line before and after our block stays.
     let mid = qs::text_without_extra_fonts_block(
         "a {}\n/* >>> Rexon: fonts (x) */\nmenu {}\n/* <<< Rexon: fonts */\nb {}\n",
     )
@@ -4466,11 +4475,11 @@ fn font_layers_reset_plan_takes_only_ours() {
     assert_eq!(qs::gtk_css_import_only("@import url(\"colors.css\");"), None, "относительный адрес — не наша ссылка");
 }
 
-// ── Шрифт заголовков в LXQt и labwc ──────────────────────────────────────
+// ── Title font in LXQt and labwc ─────────────────────────────────────────
 
-/// Правка `rc.xml` Openbox и labwc по эталону `golden/rc_xml_title_font.json`:
-/// меняются только имя и кегль у активного и неактивного окна, остальное в
-/// файле — как было; что записано, то и читается обратно.
+/// Editing Openbox and labwc `rc.xml` against `golden/rc_xml_title_font.json`:
+/// only the name and size of the active and inactive window change, the rest
+/// of the file stays as it was; what is written is read back.
 #[test]
 fn rc_xml_title_font_golden() {
     let golden: Value = serde_json::from_str(include_str!("golden/rc_xml_title_font.json")).unwrap();
@@ -4493,8 +4502,8 @@ fn rc_xml_title_font_golden() {
             assert_eq!(qs::rc_xml_title_font(&text), Some((family.to_string(), size)), "{name}: читается обратно");
             assert_eq!(qs::rc_xml_with_title_font(Some(&text), wm, family, size).as_deref(), Some(text.as_str()), "{name}: повтор ничего не меняет");
             let file = qs::FontFile::RcXml { wm };
-            // Строка чтения несёт и начертание из `<weight>`/`<slant>` файла,
-            // которых запись без начертания не трогает.
+            // The read string also carries the style from the file's `<weight>`/`<slant>`,
+            // which a write without a style does not touch.
             let (f, s, face) = qs::parse_font_spec_face(&file.read_spec(&text));
             assert_eq!((f.as_str(), s), (family, size), "{name}");
             assert_eq!(Some(face), qs::rc_xml_title_font_face(&text).map(|t| t.2), "{name}");
@@ -4502,8 +4511,8 @@ fn rc_xml_title_font_golden() {
     }
 }
 
-/// Кто рисует заголовки: LXQt — по `session.conf` (свой раньше системного,
-/// X11 и Wayland — разные ключи), голый labwc — сам labwc.
+/// Who draws the titles: LXQt — by `session.conf` (the user's before the
+/// system one, X11 and Wayland are different keys), bare labwc — labwc itself.
 #[test]
 fn title_wm_from_lxqt_session_conf() {
     use qs::TitleWm as W;
@@ -4514,10 +4523,10 @@ fn title_wm_from_lxqt_session_conf() {
     assert_eq!(qs::title_wm_for("lxqt", &["[General]\nwindow_manager=kwin_x11\n"], false), Some(W::KWin));
     assert_eq!(qs::title_wm_for("lxqt", &["[General]\ncompositor=kwin_wayland\n"], true), Some(W::KWin));
     assert_eq!(qs::title_wm_for("lxqt", &["[General]\nwindow_manager=marco\n"], false), Some(W::Marco));
-    // Свой файл без ключа — действует системный.
+    // The user's file without the key — the system one applies.
     let system = "[General]\nwindow_manager=openbox\n";
     assert_eq!(qs::title_wm_for("lxqt", &["[General]\nleave_confirmation=true\n", system], false), Some(W::Openbox));
-    // Не выбран, незнакомый или чужой сеансу — шрифт заголовка не предлагаем.
+    // Not chosen, unknown or foreign to the session — no title font is offered.
     assert_eq!(qs::title_wm_for("lxqt", &[], false), None);
     assert_eq!(qs::title_wm_for("lxqt", &["[General]\nwindow_manager=icewm\n"], false), None);
     assert_eq!(qs::title_wm_for("lxqt", &["[General]\ncompositor=Hyprland\n"], true), None);
@@ -4526,8 +4535,8 @@ fn title_wm_from_lxqt_session_conf() {
     assert_eq!(qs::title_wm_for("sway", &[user], true), Some(W::Sway));
 }
 
-/// План шрифта заголовков по менеджеру: Openbox/labwc — `rc.xml` и
-/// `--reconfigure` после записи; xfwm4/Marco/KWin — их родные ключи.
+/// Title font plan by window manager: Openbox/labwc — `rc.xml` and
+/// `--reconfigure` after writing; xfwm4/Marco/KWin — their native keys.
 #[test]
 fn title_font_plan_follows_session_wm() {
     use qs::{FontFile, FontStore, TitleWm as W};
@@ -4545,16 +4554,16 @@ fn title_font_plan_follows_session_wm() {
     assert_eq!(qs::font_plan_wm("lxqt", "title", Some(W::Marco)), qs::font_plan("mate", "title"));
     assert_eq!(qs::font_plan_wm("lxqt", "title", Some(W::KWin)), qs::font_plan("kde", "title"));
     assert_eq!(qs::font_plan_wm("labwc", "title", Some(W::Labwc)).primary, FontStore::File(FontFile::RcXml { wm: W::Labwc }));
-    // Прочие цели в LXQt от менеджера не зависят.
+    // Other targets in LXQt do not depend on the window manager.
     assert_eq!(qs::font_plan_wm("lxqt", "system", Some(W::Openbox)), qs::font_plan("lxqt", "system"));
-    // Свои окружения менеджером сеанса не подменяются.
+    // Other environments are not overridden by the session's window manager.
     assert_eq!(qs::font_plan_wm("mate", "title", Some(W::Openbox)), qs::font_plan("mate", "title"));
     assert!(qs::font_targets_shown_wm("lxqt", Some(W::Openbox)).contains(&("title", true)));
     assert!(qs::font_plan("kde", "title").notify.is_empty());
 }
 
-/// sway: шрифт заголовков — строка `font pango:…` в нашем файле, который
-/// подключён управляемым блоком в конфиг sway (механизм акцента).
+/// sway: the title font is a `font pango:…` line in our file, which is
+/// included into the sway config by a managed block (the accent mechanism).
 #[test]
 fn sway_title_font_plan_and_pango() {
     use qs::{FontFace, FontFile, FontStore, TitleWm as W};
@@ -4565,7 +4574,7 @@ fn sway_title_font_plan_and_pango() {
     assert!(plan.also.is_empty() && plan.extra.is_empty() && plan.notify.is_empty() && !plan.gtk_ini);
     assert_eq!(qs::font_plan_wm("sway", "system", Some(W::Sway)), qs::font_plan("sway", "system"));
     assert_eq!(FontFile::SwayConf.rel_path(), "sway/rexon-title-font.conf");
-    // Одним файлом не пишется: нужен блок в конфиге с проверкой sway.
+    // Not written as a single file: a block in the config with a sway check is needed.
     struct NoFiles;
     impl qs::FontFileIo for NoFiles {
         fn read(&self, _: &str) -> Option<String> {
@@ -4577,7 +4586,7 @@ fn sway_title_font_plan_and_pango() {
     }
     assert!(FontFile::SwayConf.file_writes("/h/.config", &NoFiles, "Noto Sans", 11).is_none());
 
-    // Описание Pango: жирность и наклон словами, обычная — без слова.
+    // Pango description: weight and slant as words, regular without a word.
     assert_eq!(qs::pango_font_desc("Noto Sans", 11, FontFace::default()), "Noto Sans 11");
     assert_eq!(qs::pango_font_desc("Noto Sans", 11, FontFace { weight: 700, italic: true }), "Noto Sans Bold Italic 11");
     assert_eq!(qs::pango_font_desc("Inter", 9, FontFace { weight: 600, italic: false }), "Inter Semi-Bold 9");
@@ -4598,15 +4607,15 @@ fn sway_title_font_plan_and_pango() {
     assert!(content.lines().any(|l| l == "font pango:Noto Sans Bold 11"), "{content}");
     assert_eq!(FontFile::SwayConf.read_spec(&content), "Noto Sans Bold 11");
 
-    // Последняя `font` верхнего уровня; `bar { font … }` — шрифт панели.
+    // The last top-level `font`; `bar { font … }` is the bar font.
     let config = "font pango:Old 8\n# font pango:Commented 20\nbar {\n    font pango:Bar 30\n    colors {\n    }\n}\nfont pango:New Bold 12\nmode \"resize\" {\n    font x 1\n}\n";
     assert_eq!(qs::sway_font_value(config).as_deref(), Some("pango:New Bold 12"));
     assert_eq!(qs::sway_font_value("bar {\n font pango:Bar 30\n}\n"), None);
 }
 
-/// Запись и чтение шрифта заголовков sway на подделке: наш файл, блок с
-/// `include` в конфиге, `swaymsg font …`; чтение — из блока, иначе из
-/// конфига, иначе шрифт sway по умолчанию.
+/// Writing and reading the sway title font on a fake: our file, an `include`
+/// block in the config, `swaymsg font …`; reading — from the block, otherwise
+/// from the config, otherwise the sway default font.
 #[test]
 fn sway_title_font_apply_writes_block_and_reads_back() {
     use rexon_core::animations::{LookCtx, LookIo};
@@ -4639,7 +4648,7 @@ fn sway_title_font_apply_writes_block_and_reads_back() {
     let config = "/h/.config/sway/config";
     let own = "/h/.config/sway/rexon-title-font.conf";
     let io = Fake { files: RefCell::new(BTreeMap::new()), ran: RefCell::new(Vec::new()) };
-    // Конфига нет нигде — шрифт sway по умолчанию.
+    // No config anywhere — the sway default font.
     assert_eq!(qs::sway_title_font_current(&io, &ctx), qs::SWAY_DEFAULT_FONT);
     assert_eq!(qs::sway_title_font_spec(&io, &ctx), "monospace 10");
     io.write(config, "font pango:Old Sans 8\nbar {\n    font pango:Bar 30\n}\n");
@@ -4656,17 +4665,17 @@ fn sway_title_font_apply_writes_block_and_reads_back() {
     assert!(!io.ran.borrow().iter().any(|a| a.iter().any(|s| s == "reload")), "без reload: он перезапускает swaybg");
     assert_eq!(qs::sway_title_font_spec(&io, &ctx), "Noto Sans Bold 11");
 
-    // Повтор переписывает тот же блок, а не добавляет второй.
+    // A repeat rewrites the same block instead of adding a second one.
     qs::sway_title_font_apply(&io, &ctx, "Inter", 9, qs::FontFace::default()).unwrap();
     let text = io.read(config).unwrap();
     assert_eq!(text.matches(">>> Rexon: title bar font").count(), 1, "{text}");
     assert_eq!(qs::sway_title_font_spec(&io, &ctx), "Inter 9");
 
-    // Блок сняли руками — наш файл уже не действует, читается конфиг.
+    // The block was removed by hand — our file no longer applies, the config is read.
     io.write(config, "font pango:Old Sans 8\n");
     assert_eq!(qs::sway_title_font_spec(&io, &ctx), "Old Sans 8");
 
-    // Личного конфига нет — засевается системный, и блок ложится в него.
+    // No personal config — the system one is seeded, and the block goes into it.
     let io = Fake { files: RefCell::new(BTreeMap::new()), ran: RefCell::new(Vec::new()) };
     io.write("/etc/sway/config", "font pango:System 10\n");
     assert_eq!(qs::sway_title_font_spec(&io, &ctx), "System 10");
@@ -4676,11 +4685,11 @@ fn sway_title_font_apply_writes_block_and_reads_back() {
     assert_eq!(qs::sway_title_font_spec(&io, &ctx), "Noto Sans 11");
 }
 
-/// Где кнопки шрифта заголовка нет — честная причина; где есть — молчим.
+/// Where there is no title font button — an honest reason; where there is one — silence.
 #[test]
 fn title_font_note_is_honest() {
-    // Язык — общий на процесс, а проверяются английские слова пояснения:
-    // без закрепления соседняя сверка переключает язык на русский.
+    // The language is process-wide, and English words of the explanation are
+    // checked: without pinning, a neighbouring check switches the language to Russian.
     let _lang = i18n_pin::en();
     assert_eq!(qs::title_font_note("kde", None), None);
     assert_eq!(qs::title_font_note("lxqt", Some(qs::TitleWm::Openbox)), None);
@@ -4692,9 +4701,9 @@ fn title_font_note_is_honest() {
     }
 }
 
-/// Шрифт с начертанием в обеих записях: Pango («Sans Bold 10» — gsettings,
-/// xfconf) и QFont (kdeglobals, Qt 6 и старая Qt 5). Жирность и наклон
-/// держатся отдельно от семейства и переносятся между записями без потерь.
+/// A font with a style in both notations: Pango ("Sans Bold 10" — gsettings,
+/// xfconf) and QFont (kdeglobals, Qt 6 and old Qt 5). Weight and slant are kept
+/// separately from the family and carried between notations without loss.
 #[test]
 fn font_face_between_pango_and_qfont() {
     use qs::FontFace;
@@ -4709,10 +4718,10 @@ fn font_face_between_pango_and_qfont() {
         ("Sans,10,-1,5,700,0,0,0,0,0,0,0,0,0,0,1", "Sans", 10, face(700, false)),
         ("Sans,10,-1,5,400,1,0,0,0,0,0,0,0,0,0,1", "Sans", 10, face(400, true)),
         ("Inter,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,SemiBold", "Inter", 9, face(600, false)),
-        // Qt 5: жирность по старой шкале (75 жирная, 63 полужирная).
+        // Qt 5: weight on the old scale (75 bold, 63 semi-bold).
         ("Sans,10,-1,5,75,0,0,0,0,0", "Sans", 10, face(700, false)),
         ("Sans,10,-1,5,63,1,0,0,0,0,Semibold Italic", "Sans", 10, face(600, true)),
-        // Старая запись Rexon со словом в поле жирности.
+        // An old Rexon entry with a word in the weight field.
         ("Noto Sans,11,-1,5,Regular,0,0,0,0,0", "Noto Sans", 11, face(400, false)),
     ] {
         assert_eq!(qs::parse_font_spec_face(raw), (family.to_string(), size, f), "{raw}");
@@ -4720,13 +4729,13 @@ fn font_face_between_pango_and_qfont() {
     assert_eq!(qs::kde_font_spec_face("Sans", 10, face(700, false)), "Sans,10,-1,5,700,0,0,0,0,0,0,0,0,0,0,1");
     assert_eq!(qs::kde_font_spec_face("Sans", 10, face(0, true)), "Sans,10,-1,5,400,1,0,0,0,0,0,0,0,0,0,1");
     assert_eq!(qs::kde_font_spec_face("Sans", 10, FontFace::default()), qs::kde_font_spec("Sans", 10));
-    // Круг Pango → QFont → Pango.
+    // Round trip Pango → QFont → Pango.
     for desc in ["Sans Bold 10", "Sans Italic 10", "Noto Sans Semi-Bold Italic 11", "Ubuntu 11"] {
         let (family, size, f) = qs::parse_font_spec_face(desc);
         let (family, size, f) = qs::parse_font_spec_face(&qs::kde_font_spec_face(&family, size, f));
         assert_eq!(qs::pango_font_desc(&family, size, f), desc);
     }
-    // Запись по хранилищам: KDE — поля QFont, gsettings/xfconf — слова Pango.
+    // Writing per store: KDE — QFont fields, gsettings/xfconf — Pango words.
     let bold = face(700, true);
     assert_eq!(
         qs::font_write_argv_face("mate", "title", "Sans", 10, bold, "").unwrap().last().unwrap(),
@@ -4746,10 +4755,10 @@ fn font_face_between_pango_and_qfont() {
     );
 }
 
-/// Начертание шрифта по кругу «запись → чтение» в каждом хранилище, куда
-/// его пишет вкладка «Оформление»: gsettings MATE, xfconf, kdeglobals,
-/// `rc.xml` Openbox и labwc, строка `font` sway. Жирный, наклонный и
-/// полужирный возвращаются теми же; обычный после жирного — обычным.
+/// Font style through the "write → read" round trip in every store the
+/// «Оформление» tab writes it to: MATE gsettings, xfconf, kdeglobals, Openbox
+/// and labwc `rc.xml`, the sway `font` line. Bold, italic and semi-bold come
+/// back the same; regular after bold comes back regular.
 #[test]
 fn font_face_round_trip_every_store() {
     use qs::{FontFace, FontFile, TitleWm};
@@ -4760,11 +4769,11 @@ fn font_face_round_trip_every_store() {
         ("Bold Italic", FontFace { weight: 700, italic: true }),
         ("Regular", FontFace { weight: 400, italic: false }),
     ];
-    // Обычная жирность читается то как 0 (Pango, rc.xml), то как 400 (QFont).
+    // Regular weight reads sometimes as 0 (Pango, rc.xml), sometimes as 400 (QFont).
     let norm = |(f, s, face): (String, i32, FontFace)| (f, s, if face.weight == 0 { 400 } else { face.weight }, face.italic);
 
-    // Команды: значение — последний аргумент; так же его отдают `gsettings
-    // get` (в кавычках), `xfconf-query` и `kreadconfig6`.
+    // Commands: the value is the last argument; `gsettings get` (quoted),
+    // `xfconf-query` and `kreadconfig6` return it the same way.
     for (de, target, quoted) in [
         ("mate", "title", true),
         ("mate", "system", true),
@@ -4785,14 +4794,14 @@ fn font_face_round_trip_every_store() {
             );
         }
     }
-    // Слова Pango и поля QFont — те, что пишут сами столы.
+    // Pango words and QFont fields — the ones the desktops write themselves.
     let mate = qs::font_write_argv_face("mate", "title", "Sans", 10, faces[2].1, "").unwrap();
     assert_eq!(mate.last().map(String::as_str), Some("Sans Semi-Bold 10"));
     let kde = qs::font_write_argv_face("kde", "title", "Sans", 10, faces[0].1, "kwriteconfig6").unwrap();
     assert_eq!(kde.last().map(String::as_str), Some("Sans,10,-1,5,700,0,0,0,0,0,0,0,0,0,0,1"));
 
-    // rc.xml: у Openbox жирность только `Bold`/`Normal` — полужирный
-    // становится жирным; labwc держит ступени Pango.
+    // rc.xml: Openbox has only `Bold`/`Normal` weight — semi-bold becomes bold;
+    // labwc keeps the Pango steps.
     let openbox = "<?xml version=\"1.0\"?>\n<openbox_config>\n  <theme>\n    <name>Clearlooks</name>\n    <font place=\"ActiveWindow\">\n      <name>sans</name>\n      <size>8</size>\n      <weight>Bold</weight>\n      <slant>Normal</slant>\n    </font>\n  </theme>\n  <keyboard/>\n</openbox_config>\n";
     for (wm, start) in [(TitleWm::Openbox, Some(openbox)), (TitleWm::Labwc, None)] {
         let file = FontFile::RcXml { wm };
@@ -4805,12 +4814,12 @@ fn font_face_round_trip_every_store() {
                 ("Noto Sans".to_string(), 11, want, face.italic),
                 "{wm:?} {name}: {written}"
             );
-            // Неактивное окно — тем же начертанием, второй элемент не заводится.
+            // The inactive window gets the same style, no second element is created.
             assert_eq!(written.matches("place=\"InactiveWindow\"").count(), 1, "{written}");
             assert_eq!(written.matches("<weight>").count(), 2, "{written}");
             text = Some(written);
         }
-        // Начертание не выбрано — `<weight>`/`<slant>` остаются как были.
+        // No style chosen — `<weight>`/`<slant>` stay as they were.
         let bold = file.try_new_text_face(text.as_deref(), "Noto Sans", 11, faces[0].1).unwrap();
         let kept = file.try_new_text_face(Some(&bold), "Inter", 9, FontFace::default()).unwrap();
         assert_eq!(norm(qs::parse_font_spec_face(&file.read_spec(&kept))), ("Inter".to_string(), 9, 700, false));
@@ -4821,7 +4830,7 @@ fn font_face_round_trip_every_store() {
     assert!(ob.contains("<weight>Normal</weight>") && ob.contains("<slant>Italic</slant>"), "{ob}");
     assert!(ob.contains("<name>Clearlooks</name>") && ob.contains("<keyboard/>"), "чужое не тронуто: {ob}");
 
-    // sway: наш файл со строкой `font pango:…`.
+    // sway: our file with a `font pango:…` line.
     for (name, face) in faces {
         let content = qs::sway_title_font_content("Noto Sans", 11, face);
         assert_eq!(
@@ -4831,16 +4840,16 @@ fn font_face_round_trip_every_store() {
         );
     }
 
-    // Подпись во вкладке показывает начертание и из записи QFont.
+    // The tab label shows the style from a QFont entry too.
     assert!(qs::font_value_text("Sans,10,-1,5,700,1,0,0,0,0,0,0,0,0,0,1").contains("Sans Bold Italic 10"));
     assert!(qs::font_value_text("'Sans Semi-Bold 10'").contains("Sans Semi-Bold 10"));
 }
 
-/// Шрифт документов: родной ключ MATE (`org.mate.interface`) с ключом GNOME
-/// рядом; во всех остальных окружениях — ключ GNOME
-/// (`org.gnome.desktop.interface document-font-name`), в том числе в KDE,
-/// XFCE, LXQt и COSMIC, где своего ключа нет. Без qt6ct и settings.ini: Qt и
-/// сам GTK этот шрифт не читают.
+/// Document font: MATE's native key (`org.mate.interface`) with the GNOME key
+/// alongside; in all other environments the GNOME key
+/// (`org.gnome.desktop.interface document-font-name`), including KDE, XFCE,
+/// LXQt and COSMIC, which have no key of their own. Without qt6ct and
+/// settings.ini: neither Qt nor GTK itself reads this font.
 #[test]
 fn document_font_goes_to_gsettings_everywhere() {
     use qs::{FontStore, SoundBackend};
@@ -4861,21 +4870,21 @@ fn document_font_goes_to_gsettings_everywhere() {
             .unwrap(),
         ["gsettings", "set", "org.gnome.desktop.interface", "document-font-name", "Noto Serif Bold 12"]
     );
-    // Пояснение говорит, кто его не читает.
+    // The explanation says who does not read it.
     let _lang = i18n_pin::en();
     assert!(qs::document_font_note().contains("Qt"));
     let (label, _tip, title) = qs::font_target_texts("document");
     assert!(label.contains("Documents") && title == "Document Font", "{label} / {title}");
-    // Сброс шрифтов KDE снимает и его.
+    // A KDE font reset removes it too.
     assert_eq!(
         rexon_core::app::document_font_reset_argv("/usr/bin/gsettings"),
         ["/usr/bin/gsettings", "reset", "org.gnome.desktop.interface", "document-font-name"]
     );
 }
 
-/// Подписи значков рабочего стола: Cinnamon — Nemo, MATE — Caja (описание
-/// Pango), XFCE — только кегль xfdesktop с включателем своего кегля; в
-/// остальных окружениях пункт выключен и честно назван.
+/// Desktop icon labels: Cinnamon — Nemo, MATE — Caja (a Pango description),
+/// XFCE — only the xfdesktop size with its custom-size switch; in other
+/// environments the item is disabled and honestly labelled.
 #[test]
 fn desktop_icon_font_per_desktop() {
     use qs::{FontStore, SoundBackend};
@@ -4893,8 +4902,8 @@ fn desktop_icon_font_per_desktop() {
         ["gsettings", "set", "org.mate.caja.desktop", "font", "Ubuntu Italic 11"]
     );
 
-    // XFCE: кегль числом в /desktop-icons/font-size (double), включатель —
-    // до записи кегля.
+    // XFCE: the size as a number in /desktop-icons/font-size (double), the switch
+    // before writing the size.
     assert!(qs::font_target_size_only("xfce", "desktop"));
     assert!(!qs::font_target_size_only("mate", "desktop") && !qs::font_target_size_only("xfce", "system"));
     let plan = qs::font_plan("xfce", "desktop");
@@ -4915,8 +4924,8 @@ fn desktop_icon_font_per_desktop() {
         qs::font_store_write_argv_face(&store, "Ignored Family", 9, qs::FontFace::default(), "").unwrap(),
         ["xfconf-query", "-c", "xfce4-desktop", "-p", "/desktop-icons/font-size", "-n", "-t", "double", "-s", "9"]
     );
-    // Чтение: свой кегль включён — шрифт интерфейса с этим кеглем; выключен
-    // или не задан — шрифт интерфейса целиком.
+    // Reading: custom size enabled — the interface font with that size; disabled
+    // or unset — the interface font as a whole.
     assert_eq!(qs::xfdesktop_font_spec("true", "12.000000", "Sans Bold 10"), "Sans Bold 12");
     assert_eq!(qs::xfdesktop_font_spec("false", "12.000000", "Sans 10"), "Sans 10");
     assert_eq!(qs::xfdesktop_font_spec("", "", "'Sans 10'"), "Sans 10");
@@ -4926,7 +4935,7 @@ fn desktop_icon_font_per_desktop() {
         ["xfconf-query", "-c", "xfce4-desktop", "-p", "/desktop-icons/use-custom-font-size"]
     );
 
-    // Где ключа нет — выключено, с честной причиной.
+    // Where there is no key — disabled, with an honest reason.
     for de in ["kde", "gnome", "budgie", "pantheon", "cosmic", "sway", "hyprland", "deepin", ""] {
         assert!(!qs::font_target_available(de, "desktop"), "{de}");
         assert!(qs::desktop_font_note(de).is_some(), "{de}");
@@ -4942,11 +4951,11 @@ fn desktop_icon_font_per_desktop() {
     assert!(label.contains("Desktop") && title == "Desktop Font", "{label} / {title}");
 }
 
-// ── Подписи значков рабочего стола LXQt (pcmanfm-qt) ──────────────────────
+// ── LXQt desktop icon labels (pcmanfm-qt) ───────────────────────────────
 
-/// Подделка живого стола: работает ли, выходит ли по просьбе, сколько раз
-/// его закрывали и запускали. «Выход» сохраняет файл, как делает сам
-/// pcmanfm-qt (`Settings::save` в `aboutToQuit`).
+/// A fake of a live desktop: whether it runs, whether it quits on request, how
+/// many times it was closed and started. "Quit" saves the file, as pcmanfm-qt
+/// itself does (`Settings::save` in `aboutToQuit`).
 struct FakeDesktop {
     running: std::cell::Cell<bool>,
     obeys_quit: bool,
@@ -4987,9 +4996,9 @@ impl qs::PcmanfmBus for FakeDesktop {
     fn pause(&self) {}
 }
 
-/// Временные каталоги: свой `$XDG_CONFIG_HOME`, системный каталог вместо
-/// `$XDG_CONFIG_DIRS` (настоящие `/etc/xdg` и `/usr/share` не смотрятся) и
-/// каталог резервной копии.
+/// Temporary directories: our own `$XDG_CONFIG_HOME`, a system directory
+/// instead of `$XDG_CONFIG_DIRS` (the real `/etc/xdg` and `/usr/share` are not
+/// looked at) and the backup directory.
 struct LxqtStand {
     root: std::path::PathBuf,
     paths: qs::PcmanfmPaths,
@@ -5028,22 +5037,22 @@ impl Drop for LxqtStand {
     }
 }
 
-/// Системный файл как у пакета pcmanfm-qt (сокращённо): обои, ярлыки, цвета.
+/// The system file as in the pcmanfm-qt package (abridged): wallpaper, shortcuts, colours.
 const PCMANFM_SYSTEM: &str = "[System]\nIconThemeName=elementary\nTerminal=qterminal\n\n[Desktop]\n\
 DesktopShortcuts=Home, Trash, Computer, Network\nWallpaperMode=stretch\n\
 Wallpaper=/usr/share/lxqt/wallpapers/waves-logo.png\nBgColor=#000000\n\
 Font=\"Sans Serif,12,-1,5,50,0,0,0,0,0\"\n\n[Volume]\nMountOnStartup=true\n";
 
-/// Все строки, кроме `Font`, — те же, в том же порядке.
+/// All lines except `Font` are the same, in the same order.
 fn same_except_font(a: &str, b: &str) {
     let keep =
         |t: &str| t.split_inclusive('\n').filter(|l| !l.starts_with("Font=")).map(str::to_string).collect::<Vec<_>>();
     assert_eq!(keep(a), keep(b));
 }
 
-/// Правка одной строки `Font` оставляет остальные байты как были: `\r\n`,
-/// отсутствие `\n` в конце, порядок; ключа нет — встаёт за `[Desktop]`;
-/// секции нет — дописывается. Значение — QFont в кавычках.
+/// Editing the single `Font` line leaves the other bytes as they were: `\r\n`,
+/// a missing final `\n`, the order; no key — it goes after `[Desktop]`; no
+/// section — it is appended. The value is a quoted QFont.
 #[test]
 fn pcmanfm_font_line_edit_keeps_other_bytes() {
     let v = qs::pcmanfm_font_value("Noto Sans", 9, qs::FontFace { weight: 700, italic: true });
@@ -5057,7 +5066,7 @@ fn pcmanfm_font_line_edit_keeps_other_bytes() {
         qs::pcmanfm_with_desktop_font(Some(crlf), "\"B,2\""),
         "[Desktop]\r\nWallpaper=/a.png\r\nFont=\"B,2\"\r\n[X]\r\nFont=keep"
     );
-    // `Font` чужой секции не трогается и не читается.
+    // `Font` of a foreign section is neither touched nor read.
     assert_eq!(qs::pcmanfm_desktop_font_raw("[X]\nFont=a\n"), None);
     assert_eq!(qs::pcmanfm_with_desktop_font(Some("[X]\nFont=a"), "b"), "[X]\nFont=a\n\n[Desktop]\nFont=b\n");
     assert_eq!(
@@ -5070,7 +5079,7 @@ fn pcmanfm_font_line_edit_keeps_other_bytes() {
         PCMANFM_SYSTEM.replace("Font=\"Sans Serif,12,-1,5,50,0,0,0,0,0\"\n", "")
     );
 
-    // Чтение — запись QFont без кавычек, её понимает общий разбор.
+    // Reading gives a QFont entry without quotes, understood by the common parser.
     let file = qs::FontFile::PcmanfmDesktop;
     assert_eq!(file.rel_path(), "pcmanfm-qt/lxqt/settings.conf");
     assert_eq!(file.read_spec(PCMANFM_SYSTEM), "Sans Serif,12,-1,5,50,0,0,0,0,0");
@@ -5082,8 +5091,8 @@ fn pcmanfm_font_line_edit_keeps_other_bytes() {
     assert!(plan.also.is_empty() && plan.extra.is_empty() && plan.notify.is_empty() && !plan.gtk_ini);
 }
 
-/// Порядок поиска — как `Settings::profileDir`: свой КАТАЛОГ заслоняет
-/// системный, даже пустой; системный — первый существующий.
+/// Lookup order as in `Settings::profileDir`: the user's DIRECTORY shadows the
+/// system one, even when empty; the system one is the first existing.
 #[test]
 fn pcmanfm_seed_follows_profile_dir() {
     let st = LxqtStand::new("seed");
@@ -5098,9 +5107,10 @@ fn pcmanfm_seed_follows_profile_dir() {
     assert_eq!(qs::pcmanfm_config_dirs(""), vec!["/etc/xdg", "/usr/share"]);
 }
 
-/// Своего файла нет: заводится КОПИЕЙ системного с одной другой строкой
-/// (обои и прочее на месте), до правки — запись «как было»; возврат снимает
-/// заведённый файл вместе с каталогами — состояние как до Rexon.
+/// No user file: it is created as a COPY of the system one with one line changed
+/// (wallpaper and the rest in place), before the edit an "as before" record is
+/// made; restore removes the created file together with the directories — the
+/// state as before Rexon.
 #[test]
 fn pcmanfm_no_own_file_seeds_from_system_and_restores() {
     let st = LxqtStand::new("seedcopy");
@@ -5118,10 +5128,10 @@ fn pcmanfm_no_own_file_seeds_from_system_and_restores() {
     assert!(!record.had_file);
     assert_eq!(record.font.as_deref(), Some("\"Sans Serif,12,-1,5,50,0,0,0,0,0\""));
     assert_eq!(record.created_dirs.len(), 2);
-    // Системный файл не тронут.
+    // The system file is untouched.
     assert_eq!(std::fs::read_to_string(st.root.join("sys/pcmanfm-qt/lxqt/settings.conf")).unwrap(), PCMANFM_SYSTEM);
 
-    // Вторая правка: запись «как было» прежняя.
+    // Second edit: the "as before" record is the former one.
     qs::pcmanfm_desktop_font_apply(&st.paths, &bus, "Noto Sans", 10, qs::FontFace::default()).unwrap();
     assert_eq!(qs::pcmanfm_font_record(&st.paths).unwrap().font, record.font);
 
@@ -5133,9 +5143,9 @@ fn pcmanfm_no_own_file_seeds_from_system_and_restores() {
     assert_eq!(qs::pcmanfm_desktop_font_restore(&st.paths, &bus), Ok(false), "второй раз — нечего");
 }
 
-/// Свой файл есть: меняется одна строка, копия файла — в резервной;
-/// возврат кладёт прежнюю строку, а то, что человек поменял после нас
-/// (обои), остаётся.
+/// A user file exists: one line changes, a copy of the file goes to the backup;
+/// restore puts back the former line, and what the person changed after us
+/// (wallpaper) stays.
 #[test]
 fn pcmanfm_own_file_one_line_and_restore_keeps_later_changes() {
     let st = LxqtStand::new("own");
@@ -5150,12 +5160,12 @@ fn pcmanfm_own_file_one_line_and_restore_keeps_later_changes() {
     assert_eq!(std::fs::read_to_string(format!("{}/settings.conf", st.paths.backup_dir)).unwrap(), mine, "копия");
     assert!(qs::pcmanfm_font_record(&st.paths).unwrap().had_file);
 
-    // Человек сменил обои уже после нас.
+    // The person changed the wallpaper after us.
     std::fs::write(st.paths.own_file(), own.replace("my-cat.jpg", "my-dog.jpg")).unwrap();
     assert_eq!(qs::pcmanfm_desktop_font_restore(&st.paths, &bus), Ok(true));
     assert_eq!(st.own().unwrap(), mine.replace("my-cat.jpg", "my-dog.jpg"));
 
-    // Своего `Font` не было — при возврате строка снимается.
+    // There was no `Font` of their own — on restore the line is removed.
     let st = LxqtStand::new("own-nofont");
     st.put_own("[Desktop]\nWallpaper=/w.png\n");
     qs::pcmanfm_desktop_font_apply(&st.paths, &bus, "Ubuntu", 11, qs::FontFace::default()).unwrap();
@@ -5163,8 +5173,8 @@ fn pcmanfm_own_file_one_line_and_restore_keeps_later_changes() {
     qs::pcmanfm_desktop_font_restore(&st.paths, &bus).unwrap();
     assert_eq!(st.own().unwrap(), "[Desktop]\nWallpaper=/w.png\n");
 
-    // Свой каталог без файла: pcmanfm-qt читает встроенные умолчания —
-    // файл с одной строкой равносилен им, системный не подмешивается.
+    // A user directory without a file: pcmanfm-qt reads built-in defaults —
+    // a file with one line is equivalent to them, the system one is not mixed in.
     let st = LxqtStand::new("own-emptydir");
     st.put_system(PCMANFM_SYSTEM);
     std::fs::create_dir_all(st.paths.own_dir()).unwrap();
@@ -5176,7 +5186,7 @@ fn pcmanfm_own_file_one_line_and_restore_keeps_later_changes() {
     assert!(std::path::Path::new(&st.paths.own_dir()).is_dir(), "чужой каталог остаётся");
 }
 
-/// Ни своих, ни системных настроек: не трогаем ничего и говорим почему.
+/// Neither user nor system settings: touch nothing and say why.
 #[test]
 fn pcmanfm_without_any_settings_refuses() {
     let _lang = i18n_pin::en();
@@ -5193,9 +5203,9 @@ fn pcmanfm_without_any_settings_refuses() {
     assert_eq!(qs::pcmanfm_refusal(&st.paths, &bus), None);
 }
 
-/// Живой стол: сначала закрывается (и сам сохраняет свои настройки целиком
-/// — копия делается с ЭТОГО файла), потом правка, потом запуск. Не
-/// закрылся — файл не трогается (при выходе он бы его затёр).
+/// A live desktop: first it is closed (and saves its whole settings itself —
+/// the copy is made from THIS file), then the edit, then the start. If it did
+/// not close, the file is not touched (on quit it would overwrite it).
 #[test]
 fn pcmanfm_live_desktop_closed_first_and_restarted() {
     let _lang = i18n_pin::en();
@@ -5218,7 +5228,7 @@ fn pcmanfm_live_desktop_closed_first_and_restarted() {
     assert!(qs::pcmanfm_applied_note(applied).contains("restarted"));
     assert!(qs::pcmanfm_applied_note(qs::PcmanfmApplied { restarted: false }).contains("next time"));
 
-    // Не закрылся: ни копии, ни правки, и второй не запускаем.
+    // Did not close: no copy, no edit, and no second one is started.
     let st = LxqtStand::new("stuck");
     st.put_own(PCMANFM_SYSTEM);
     let mut bus = FakeDesktop::new(true);
@@ -5230,8 +5240,8 @@ fn pcmanfm_live_desktop_closed_first_and_restarted() {
     assert_eq!(bus.starts.get(), 0);
 }
 
-/// Команды живого стола: выход pcmanfm-qt и запуск модуля `lxqt-session`
-/// (без ожидания ответа — `startModule` его не шлёт).
+/// Live desktop commands: quitting pcmanfm-qt and starting the `lxqt-session`
+/// module (without waiting for a reply — `startModule` does not send one).
 #[test]
 fn pcmanfm_bus_commands() {
     assert_eq!(
@@ -5257,9 +5267,10 @@ fn pcmanfm_bus_commands() {
     assert!(qs::pcmanfm_restore_status(&Ok(false)).contains("nothing"));
 }
 
-/// Заведённый нами каталог pcmanfm-qt уже занял своим (`recent-files.conf`):
-/// снять его нельзя, а пустой он заслонил бы системный и оставил стол без
-/// обоев — в нём остаётся текст, который pcmanfm-qt читал до нас.
+/// The pcmanfm-qt directory we created is already occupied by its own file
+/// (`recent-files.conf`): it cannot be removed, and if empty it would shadow
+/// the system one and leave the desktop without wallpaper — so it keeps the
+/// text pcmanfm-qt read before us.
 #[test]
 fn pcmanfm_restore_keeps_wallpaper_when_dir_stays() {
     let st = LxqtStand::new("dirstays");

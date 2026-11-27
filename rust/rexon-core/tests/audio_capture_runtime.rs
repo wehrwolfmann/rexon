@@ -1,23 +1,23 @@
-//! Golden-сверка ИСПОЛНИТЕЛЬНОЙ части аудиозахвата с записанным эталоном
-//! живого Python-пути.
+//! Golden check of the EXECUTING part of audio capture against the recorded golden file
+//! of the live Python path.
 //!
-//! Сосед [`audio_capture_parity`](../audio_capture_parity.rs) сверяет чистую
-//! математику; здесь — то, что до этого раунда оставалось на Python: сборка
-//! кадра из одного/двух потоков захвата ([`FrameAssembler`], порт
-//! `_read_frame_mixed`) и цикл захвата целиком ([`Engine`], порт
-//! `_rs_capture_loop` вместе с обоими конвейерами), а также план запуска
-//! подпроцессов ([`capture_plan`], порт `available()` / `_find_*` /
+//! The neighbour [`audio_capture_parity`](../audio_capture_parity.rs) checks the pure
+//! math; here is what remained in Python until this round: assembling
+//! a frame from one/two capture streams ([`FrameAssembler`], port of
+//! `_read_frame_mixed`) and the whole capture loop ([`Engine`], port of
+//! `_rs_capture_loop` together with both pipelines), as well as the subprocess
+//! launch plan ([`capture_plan`], port of `available()` / `_find_*` /
 //! `start_multi`).
 //!
-//! Эталон — записанный файл прежней Python-сверки (с 02.10.2026 лежит
-//! здесь, `tests/golden/audio_capture_reference.json`). Он снят с
-//! ЖИВОГО `rexon.audio_capture` до переноса, поэтому совпадение здесь
-//! означает ровно то, что нужно: Rust-путь повторяет поведение, которое было
-//! у Python-пути, включая квирки (floor-деление микса, кадр тишины на
-//! underrun, смерть одного потока из двух).
+//! The golden file is the recorded file of the former Python check (since 02.10.2026 it lives
+//! here, `tests/golden/audio_capture_reference.json`). It was captured from the
+//! LIVE `rexon.audio_capture` before the move, so a match here
+//! means exactly what is needed: the Rust path repeats the behaviour the
+//! Python path had, quirks included (floor division of the mix, a silence frame on
+//! underrun, death of one stream out of two).
 //!
-//! Реальный звук НЕ запускается: потоки — заготовленный синтетический PCM,
-//! наблюдения среды — таблица фикстур вместо `pactl`/`wpctl`/`arecord -l`.
+//! Real sound is NOT launched: the streams are prepared synthetic PCM,
+//! environment observations are a fixture table instead of `pactl`/`wpctl`/`arecord -l`.
 
 use rexon_core::audio_capture as ac;
 use serde_json::Value;
@@ -49,7 +49,7 @@ fn assert_vec_close(got: &[f64], want: &[f64], ctx: &str) {
     }
 }
 
-// ── Синтетический PCM: побайтовый порт `synth_pcm` из Python-сверки ──────
+// ── Synthetic PCM: byte-exact port of `synth_pcm` from the Python check ──
 
 fn synth_pcm(kind: &str, n_samples: usize, t0: i64) -> Vec<u8> {
     let mut out = Vec::with_capacity(n_samples * 4);
@@ -77,8 +77,8 @@ fn synth_pcm(kind: &str, n_samples: usize, t0: i64) -> Vec<u8> {
     out
 }
 
-/// Порт `FakePipe`: `chunk` ограничивает разовое чтение (медленный источник
-/// → underrun-кадры тишины).
+/// Port of `FakePipe`: `chunk` limits a single read (a slow source
+/// → underrun silence frames).
 struct FakePipes {
     data: Vec<Vec<u8>>,
     pos: Vec<usize>,
@@ -123,8 +123,8 @@ impl ac::PcmStreams for FakePipes {
     }
 }
 
-/// Прогнать цикл до конца потока и снять те же величины, что снимал
-/// `_stats` Python-сверки.
+/// Run the loop to the end of the stream and take the same quantities that
+/// `_stats` of the Python check took.
 fn run_loop(
     pipeline: &str,
     num_bands: usize,
@@ -164,7 +164,7 @@ fn check_loop(key: &str, pipeline: &str, num_bands: usize, streams: &mut FakePip
     }
 }
 
-/// Кадры сверки: синус → тишина → клиппинг → второй синус.
+/// Check frames: sine → silence → clipping → a second sine.
 fn scenario_frames() -> Vec<u8> {
     let n = ac::FFT_SIZE;
     let mut f = synth_pcm("sine", n, 0);
@@ -203,8 +203,8 @@ fn loop_legacy_we_and_mono() {
 
 #[test]
 fn loop_both_streams_with_underrun() {
-    // Первый поток медленный (chunk=10000 → underrun-кадры тишины), второй
-    // короче и умирает после первого кадра.
+    // The first stream is slow (chunk=10000 → underrun silence frames), the second
+    // is shorter and dies after the first frame.
     let n = ac::FFT_SIZE;
     let mut s1 = synth_pcm("sine", n, 0);
     s1.extend(synth_pcm("sine2", n, n as i64));
@@ -218,7 +218,7 @@ fn loop_both_streams_with_underrun() {
 fn frame_assembler_matches_recorded_quirks() {
     let r = reference();
 
-    // Квирк floor-деления: (-3 + 0) // 2 = -2 (floor, не усечение к нулю).
+    // Floor division quirk: (-3 + 0) // 2 = -2 (floor, not truncation toward zero).
     let a: Vec<u8> = [-3i16, 5, -32768, 32767]
         .iter()
         .flat_map(|v| v.to_le_bytes())
@@ -242,24 +242,24 @@ fn frame_assembler_matches_recorded_quirks() {
         .collect();
     assert_eq!(got, want, "mix_floor");
 
-    // Одиночный поток — кадр как есть.
+    // A single stream — the frame as is.
     let mut asm = ac::FrameAssembler::new(1, 8);
     let mut pipes = FakePipes::one(a);
     let frame = asm.next_frame(&mut pipes).expect("кадр одиночного потока");
     let hex: String = frame.iter().map(|x| format!("{x:02x}")).collect();
     assert_eq!(hex, r["mix_single"].as_str().unwrap(), "mix_single");
 
-    // Умерший поток → конец цикла.
+    // A dead stream → end of the loop.
     let mut asm = ac::FrameAssembler::new(1, 8);
     let mut pipes = FakePipes::one(Vec::new());
     assert!(asm.next_frame(&mut pipes).is_none(), "mix_dead");
     assert!(r["mix_dead"].is_null(), "эталон mix_dead");
 }
 
-// ── План запуска: наблюдения среды подставные, живых команд нет ──────────
+// ── Launch plan: environment observations are fake, no live commands ────
 
-/// Подставной исполнитель: таблица «argv через пробел → (rc, stdout)»,
-/// порт `with_fixture` из Python-сверки.
+/// Fake executor: a table "space-joined argv → (rc, stdout)",
+/// port of `with_fixture` from the Python check.
 struct FixtureIo {
     present: Vec<&'static str>,
     table: HashMap<String, (i32, String)>,
@@ -298,7 +298,7 @@ const SOURCES_FULL: &str = "55\talsa_output.pci.analog-stereo.monitor\tPipeWire\
      56\talsa_input.pci.analog-stereo\tPipeWire\ts16le 2ch 44100Hz\tRUNNING\n\
      57\tother_sink.monitor\tPipeWire\ts16le\tIDLE\n";
 
-/// Цель `pw-record` из построенного argv (значение после `--target`).
+/// The `pw-record` target from the built argv (the value after `--target`).
 fn pw_target(argv: &[String]) -> &str {
     let i = argv.iter().position(|a| a == "--target").expect("--target");
     &argv[i + 1]
@@ -311,7 +311,7 @@ fn plan_pipewire_targets_match_reference() {
         ("pactl get-default-sink", "alsa_output.pci.analog-stereo\n"),
         ("pactl list short sources", SOURCES_FULL),
     ];
-    // wpctl в системе нет — путь через pactl, ровно как в эталонных кейсах.
+    // No wpctl on the system — the path goes through pactl, exactly as in the golden cases.
     let mut io = FixtureIo::new(vec!["pw-record", "pactl"], &pactl);
     let plan = ac::capture_plan(&mut io, "pipewire", "monitor");
     assert_eq!(plan.argvs.len(), 1);
@@ -321,7 +321,7 @@ fn plan_pipewire_targets_match_reference() {
         "pw_mon_ok"
     );
 
-    // Sink по умолчанию не найден среди источников — берётся первый монитор.
+    // The default sink is not found among the sources — the first monitor is taken.
     let mut io = FixtureIo::new(
         vec!["pw-record", "pactl"],
         &[
@@ -336,7 +336,7 @@ fn plan_pipewire_targets_match_reference() {
         "pw_mon_susp"
     );
 
-    // Ни sink, ни списка — универсальная цель PipeWire.
+    // Neither a sink nor a list — the universal PipeWire target.
     let mut io = FixtureIo::new(vec!["pw-record"], &[]);
     let plan = ac::capture_plan(&mut io, "pipewire", "monitor");
     assert_eq!(
@@ -345,7 +345,7 @@ fn plan_pipewire_targets_match_reference() {
         "pw_mon_empty"
     );
 
-    // Микрофон.
+    // Microphone.
     let mut io = FixtureIo::new(
         vec!["pw-record", "pactl"],
         &[(
@@ -360,13 +360,13 @@ fn plan_pipewire_targets_match_reference() {
         "pw_mic_ok"
     );
 
-    // 'both' — два подпроцесса: монитор и микрофон.
+    // 'both' — two subprocesses: monitor and microphone.
     let mut io = FixtureIo::new(vec!["pw-record", "pactl"], &pactl);
     let plan = ac::capture_plan(&mut io, "pipewire", "both");
     assert_eq!(plan.argvs.len(), 2, "'both' — два подпроцесса");
     assert_eq!(pw_target(&plan.argvs[0]), r["pw_mon_ok"].as_str().unwrap());
-    // Источника по умолчанию в фикстуре нет — микрофон берётся из списка
-    // источников (первый не-монитор), как в эталонном кейсе `pw_mic_mon`.
+    // The fixture has no default source — the microphone is taken from the list
+    // of sources (the first non-monitor), as in the golden case `pw_mic_mon`.
     assert_eq!(
         pw_target(&plan.argvs[1]),
         r["pw_mic_mon"].as_str().unwrap(),
@@ -376,7 +376,7 @@ fn plan_pipewire_targets_match_reference() {
 
 #[test]
 fn plan_pipewire_prefers_wireplumber() {
-    // Тот же снимок графа, что в эталонной ветке wireplumber.
+    // The same graph snapshot as in the golden wireplumber branch.
     let wp = "Audio\n \u{251c}\u{2500} Sinks:\n \u{2502}  *   55. \u{412}\u{441}\u{442}\u{440}\u{43e}\u{435}\u{43d}\u{43d}\u{43e}\u{435} \u{430}\u{443}\u{434}\u{438}\u{43e}                [vol: 0.65]\n \u{2502}      56. HDMI                            [vol: 1.00]\n \u{251c}\u{2500} Sources:\n \u{2502}      60. alsa_output.pci.analog.monitor  [vol: 1.00]\n \u{2502}  *   61. \u{41c}\u{438}\u{43a}\u{440}\u{43e}\u{444}\u{43e}\u{43d}                        [vol: 0.80]\n";
     let r = reference();
     let want = &r["wpctl_targets"][0];
@@ -391,7 +391,7 @@ fn plan_pipewire_prefers_wireplumber() {
 #[test]
 fn plan_pulse_and_alsa() {
     let r = reference();
-    // PulseAudio: устройство есть.
+    // PulseAudio: the device exists.
     let mut io = FixtureIo::new(
         vec!["parec", "pactl"],
         &[
@@ -408,14 +408,14 @@ fn plan_pulse_and_alsa() {
         &format!("--device={}", r["pu_mon_ok"].as_str().unwrap())
     );
 
-    // PulseAudio: устройства нет — подпроцесса нет вовсе (эталон: None).
+    // PulseAudio: no device — no subprocess at all (golden: None).
     assert!(r["pu_mon_empty"].is_null());
     let mut io = FixtureIo::new(vec!["parec"], &[]);
     let plan = ac::capture_plan(&mut io, "pulseaudio", "monitor");
     assert!(plan.argvs.is_empty(), "нет устройства — нет запуска");
     assert!(plan.notes.iter().any(|n| n.contains("source не найден")));
 
-    // ALSA: loopback найден.
+    // ALSA: loopback found.
     let mut io = FixtureIo::new(
         vec!["arecord"],
         &[(
@@ -431,14 +431,14 @@ fn plan_pulse_and_alsa() {
         "loopback в argv"
     );
 
-    // ALSA: loopback не найден — default плюс предупреждение про snd-aloop.
+    // ALSA: loopback not found — default plus a warning about snd-aloop.
     assert!(r["alsa_noloop"].is_null());
     let mut io = FixtureIo::new(vec!["arecord"], &[("arecord -l", "card 0: PCH\n")]);
     let plan = ac::capture_plan(&mut io, "alsa", "monitor");
     assert!(plan.argvs[0].contains(&"default".to_string()));
     assert!(plan.notes.iter().any(|n| n.contains("snd-aloop")));
 
-    // ALSA 'both' не поддерживается — один подпроцесс и предупреждение.
+    // ALSA 'both' is not supported — one subprocess and a warning.
     let mut io = FixtureIo::new(vec!["arecord"], &[]);
     let plan = ac::capture_plan(&mut io, "alsa", "both");
     assert_eq!(plan.argvs.len(), 1);
@@ -468,7 +468,7 @@ fn spawn_argv_matches_reference() {
 fn backend_detection_matches_reference() {
     let r = reference();
     let want = r["detect_backend"].as_array().unwrap();
-    // Те же пять сочетаний доступности, что в эталоне.
+    // The same five availability combinations as in the golden file.
     let combos = [
         (true, true, true),
         (false, true, true),
@@ -503,8 +503,8 @@ fn backend_detection_matches_reference() {
 fn pipeline_normalization() {
     assert_eq!(ac::normalize_pipeline("v9"), "v9");
     assert_eq!(ac::normalize_pipeline("legacy"), "legacy");
-    // Историческая ошибка CLI: default был 'v23' — молчаливый откат на
-    // legacy. Теперь любое неизвестное имя даёт калиброванный v9.
+    // A historical CLI bug: the default was 'v23' — a silent fallback to
+    // legacy. Now any unknown name gives the calibrated v9.
     assert_eq!(ac::normalize_pipeline("v23"), "v9");
     assert_eq!(ac::normalize_pipeline(""), "v9");
 }

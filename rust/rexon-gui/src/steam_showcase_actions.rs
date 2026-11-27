@@ -1,19 +1,22 @@
-// SteamShowcaseActions — объект раздела «Витрины профиля» вкладки «Steam».
+// SteamShowcaseActions — the object of the "Profile showcases" section of
+// the "Steam" tab.
 //
-// Решения (виды витрин, геометрия, проверка исходника, нарезка, сжатие,
-// имена и памятка) — в ядре: `rexon_core::steam_showcase`. Здесь только
-// исполнитель: окна выбора файла, рабочие потоки (нарезка и подготовка фона
-// для предпросмотра) и опрос их состояния из разметки.
+// Decisions (showcase kinds, geometry, source validation, cutting,
+// compression, names and the reminder) are in the core:
+// `rexon_core::steam_showcase`. Here there is only the executor: file
+// picker windows, worker threads (cutting and preparing the background
+// for the preview) and polling their state from the markup.
 //
-// ⛔ В Steam ничего не пишется, от имени учётной записи ничего не делается.
-// Сетевых запросов два, оба без cookie и токенов: картинка фона с
-// публичного CDN Steam (тем же путём, что сетка фонов вкладки) и ПУБЛИЧНАЯ
-// страница профиля для шага «Проверить». Помощник загрузки только открывает
-// человеку страницы Steam, кладёт текст в буфер обмена и показывает папку —
-// всё, что нажимается на страницах Steam, нажимает сам человек.
+// Never: nothing is written to Steam, nothing is done on behalf of the
+// account. There are two network requests, both without cookies or
+// tokens: the background picture from Steam's public CDN (the same path as
+// the tab's background grid) and the PUBLIC profile page for the "Check"
+// step. The upload helper only opens Steam pages for the user, puts text
+// on the clipboard and shows the folder — everything that is clicked on
+// the Steam pages is clicked by the user.
 //
-// Числа в подписях инвокаблов не ходят (см. предупреждение в
-// `steam_page.rs`): параметры приходят одной строкой JSON.
+// Numbers do not travel in invokable signatures (see the warning in
+// `steam_page.rs`): the parameters arrive as one JSON string.
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -29,104 +32,105 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Виды витрин: JSON `[{key, label, hint}]`.
+        /// Showcase kinds: JSON `[{key, label, hint}]`.
         #[qinvokable]
         fn kinds(self: &SteamShowcaseActions) -> QString;
 
-        /// Окно выбора своей картинки. Пусто — человек передумал.
+        /// Picker window for your own picture. Empty means the user changed their
+        /// mind.
         #[qinvokable]
         #[cxx_name = "pickImage"]
         fn pick_image(self: &SteamShowcaseActions) -> QString;
 
-        /// Окно выбора своего фона (картинка или ролик).
+        /// Picker window for your own background (a picture or a clip).
         #[qinvokable]
         #[cxx_name = "pickBackground"]
         fn pick_background(self: &SteamShowcaseActions) -> QString;
 
-        /// Проверка исходника: JSON `{ok, error, info, notes, url}`.
+        /// Source validation: JSON `{ok, error, info, notes, url}`.
         #[qinvokable]
         fn inspect(self: &SteamShowcaseActions, path: &QString) -> QString;
 
-        /// Расчёт макета. Вход — JSON `{kind, width, height, zoom, panX,
-        /// panY}`, выход — JSON макета ядра плюс предупреждения и место
-        /// витрины на фоне.
+        /// Layout calculation. Input — JSON `{kind, width, height, zoom, panX,
+        /// panY}`, output — the core's layout JSON plus warnings and the
+        /// showcase's place on the background.
         #[qinvokable]
         fn layout(self: &SteamShowcaseActions, request: &QString) -> QString;
 
-        /// Начать нарезку. Вход — JSON `{path, kind, zoom, panX, panY}`.
-        /// «» — пошло, иначе причина.
+        /// Start cutting. Input — JSON `{path, kind, zoom, panX, panY}`.
+        /// "" means it started, otherwise the reason.
         #[qinvokable]
         #[cxx_name = "startSlice"]
         fn start_slice(self: &SteamShowcaseActions, request: &QString) -> QString;
 
-        /// Подготовить фон для предпросмотра: JSON `{id, url, path}` —
-        /// фон Steam (по адресу) или свой файл (картинка или ролик).
+        /// Prepare a background for the preview: JSON `{id, url, path}` — a Steam
+        /// background (by address) or your own file (a picture or a clip).
         #[qinvokable]
         #[cxx_name = "startBackground"]
         fn start_background(self: &SteamShowcaseActions, request: &QString) -> QString;
 
-        /// Состояние обеих задач: JSON `{slice: {...}, bg: {...}}`.
+        /// State of both tasks: JSON `{slice: {...}, bg: {...}}`.
         #[qinvokable]
         fn poll(self: &SteamShowcaseActions) -> QString;
 
-        /// Отменить нарезку.
+        /// Cancel cutting.
         #[qinvokable]
         fn cancel(self: &SteamShowcaseActions);
 
-        /// Открыть папку в файловом менеджере.
+        /// Open the folder in the file manager.
         #[qinvokable]
         #[cxx_name = "openFolder"]
         fn open_folder(self: &SteamShowcaseActions, path: &QString) -> bool;
 
-        /// Куда ложатся наборы.
+        /// Where the sets go.
         #[qinvokable]
         #[cxx_name = "outputRoot"]
         fn output_root(self: &SteamShowcaseActions) -> QString;
 
-        // ── Помощник загрузки ───────────────────────────────────────────
+        // ── Upload helper ───────────────────────────────────────────────
 
-        /// Помощник для набора в папке `dir`: JSON `{ok, dir, name, kind,
-        /// step, parts: [{file, label, size, title, uploaded, url}], steps,
-        /// placed, verified, blankTitle}`. Нет набора — `{ok: false}`.
+        /// Helper for the set in folder `dir`: JSON `{ok, dir, name, kind, step,
+        /// parts: [{file, label, size, title, uploaded, url}], steps, placed,
+        /// verified, blankTitle}`. No set — `{ok: false}`.
         #[qinvokable]
         fn wizard(self: &SteamShowcaseActions, dir: &QString) -> QString;
 
-        /// Недавние наборы, к которым можно вернуться: JSON `[{dir, name,
-        /// step}]`, свежие первыми.
+        /// Recent sets that can be returned to: JSON `[{dir, name, step}]`, newest
+        /// first.
         #[qinvokable]
         #[cxx_name = "recentSets"]
         fn recent_sets(self: &SteamShowcaseActions) -> QString;
 
-        /// Отметить часть загруженной. Вход — JSON `{dir, file, on}`,
-        /// выход — как у `wizard`.
+        /// Mark a part as uploaded. Input — JSON `{dir, file, on}`, output — as
+        /// for `wizard`.
         #[qinvokable]
         #[cxx_name = "wizardSetUploaded"]
         fn wizard_set_uploaded(self: &SteamShowcaseActions, request: &QString) -> QString;
 
-        /// Отметить «выставлено в витрине». Вход — JSON `{dir, on}`.
+        /// Mark "placed in the showcase". Input — JSON `{dir, on}`.
         #[qinvokable]
         #[cxx_name = "wizardSetPlaced"]
         fn wizard_set_placed(self: &SteamShowcaseActions, request: &QString) -> QString;
 
-        /// Шаг 1: открыть страницу загрузки иллюстраций (в клиенте Steam,
-        /// иначе в браузере) и папку набора с выделенным первым файлом.
-        /// «» — открылось, иначе что не вышло.
+        /// Step 1: open the artwork upload page (in the Steam client, otherwise in
+        /// the browser) and the set folder with the first file selected.
+        /// "" means it opened, otherwise what failed.
         #[qinvokable]
         #[cxx_name = "openUploadPage"]
         fn open_upload_page(self: &SteamShowcaseActions, dir: &QString) -> QString;
 
-        /// Шаг 2: открыть редактор профиля на разделе витрин.
+        /// Step 2: open the profile editor at the showcases section.
         #[qinvokable]
         #[cxx_name = "openProfileEditor"]
         fn open_profile_editor(self: &SteamShowcaseActions) -> QString;
 
-        /// Текст в буфер обмена.
+        /// Text to the clipboard.
         #[qinvokable]
         #[cxx_name = "copyText"]
         fn copy_text(self: &SteamShowcaseActions, text: &QString);
 
-        /// Шаг 3: прочитать публичную страницу профиля и сверить витрину с
-        /// частями набора `dir`. Итог — в `poll()` под ключом `check`.
+        /// Step 3: read the public profile page and compare the showcase with the
+        /// parts of set `dir`. The result goes into `poll()` under the key `check`.
         #[qinvokable]
         #[cxx_name = "startCheck"]
         fn start_check(self: &SteamShowcaseActions, dir: &QString) -> QString;
@@ -145,17 +149,17 @@ use rexon_core::session_splash as ss;
 use rexon_core::steam_showcase as sc;
 use serde_json::{json, Value};
 
-/// Состояние нарезки.
+/// Cutting state.
 #[derive(Default, Clone)]
 struct SliceJob {
     busy: bool,
     progress: f32,
-    /// Номер задачи — разметка отличает «новый итог» от прежнего.
+    /// Task number — the markup tells a "new result" from the previous one.
     serial: u64,
     result: Option<Result<sc::SliceReport, String>>,
 }
 
-/// Состояние подготовки фона.
+/// Background preparation state.
 #[derive(Default, Clone)]
 struct BgJob {
     busy: bool,
@@ -163,7 +167,7 @@ struct BgJob {
     result: Option<Result<String, String>>,
 }
 
-/// Состояние проверки публичного профиля.
+/// State of the public profile check.
 #[derive(Default, Clone)]
 struct CheckJob {
     busy: bool,
@@ -191,7 +195,7 @@ fn env_opt(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())
 }
 
-/// Каталог «Изображения» по XDG.
+/// The "Pictures" directory per XDG.
 fn pictures() -> PathBuf {
     let home = home();
     let cfg = rexon_core::utils::config_home(env_opt("XDG_CONFIG_HOME").as_deref(), &home);
@@ -199,8 +203,9 @@ fn pictures() -> PathBuf {
     sc::pictures_dir(env_opt("XDG_PICTURES_DIR").as_deref(), user_dirs.as_deref(), &home)
 }
 
-/// Путь → адрес для `Image.source` (спецсимволы — процентами, как в
-/// `steam_page.rs`: `#` в имени иначе обрывает путь).
+/// Path → an address for `Image.source` (special characters
+/// percent-encoded, as in `steam_page.rs`: otherwise a `#` in the name cuts
+/// the path).
 pub(crate) fn file_url(path: &str) -> String {
     if path.is_empty() {
         return String::new();
@@ -228,14 +233,15 @@ fn placement_of(v: &Value) -> sc::Placement {
     .normalized()
 }
 
-/// Ролик ли это (свой фон может быть видео) — по расширению.
+/// Whether this is a clip (your own background may be a video) — by the
+/// extension.
 fn is_video(path: &str) -> bool {
     let low = path.to_lowercase();
     [".webm", ".mp4", ".mkv", ".mov", ".avi"].iter().any(|e| low.ends_with(e))
 }
 
-/// Первый кадр ролика в кэш Rexon (ffmpeg). Решения о запуске — ядро
-/// (`session_splash::preview_ffmpeg_argv`).
+/// The first frame of a clip into the Rexon cache (ffmpeg). Decisions about
+/// the invocation belong to the core (`session_splash::preview_ffmpeg_argv`).
 fn video_frame(video: &str) -> Result<String, String> {
     let home = home();
     let ffmpeg = rexon_core::utils::which("ffmpeg", std::env::var("PATH").ok().as_deref())
@@ -273,8 +279,9 @@ fn video_frame(video: &str) -> Result<String, String> {
     Ok(out)
 }
 
-/// Фон Steam: статичная картинка в кэш миниатюр вкладки (тот же каталог и
-/// то же имя файла, что у сетки фонов — уже скачанное не качается второй раз).
+/// A Steam background: a static picture into the tab's thumbnail cache (the
+/// same directory and the same file name as for the background grid — what
+/// was already downloaded is not downloaded a second time).
 fn steam_background(id: &str, url: &str) -> Result<String, String> {
     if url.is_empty() {
         return Err(tr("This background has no picture to show."));
@@ -285,8 +292,8 @@ fn steam_background(id: &str, url: &str) -> Result<String, String> {
     crate::steam_workers::download_cached(url, &dest, qs::BG_DOWNLOAD_TIMEOUT_S, rexon_core::net::CancelToken::new())
 }
 
-/// SteamID64 человека: тот же способ, каким его находит вкладка (корень
-/// Steam → учётная запись со свежим `localconfig.vdf`).
+/// The user's SteamID64: the same way the tab finds it (Steam root → the
+/// account with the freshest `localconfig.vdf`).
 fn steam_id64() -> Option<String> {
     let home = home();
     let mut io = rexon_core::splash_exec::LiveSplashIo::new(&home, rexon_core::installer::PYTHON_FALLBACK_EXE);
@@ -294,16 +301,16 @@ fn steam_id64() -> Option<String> {
     crate::steam_workers::detect_account(&root)
 }
 
-/// Открыть страницу Steam: сначала в клиенте (там человек уже вошёл),
-/// не вышло — в браузере.
+/// Open a Steam page: first in the client (the user is already logged in
+/// there), and if that fails, in the browser.
 fn open_steam_page(url: &str) -> bool {
     let open = |u: &str| crate::appearance_actions::qobject::open_url_external(&QString::from(u));
     open(&sc::steam_client_url(url)) || open(url)
 }
 
-/// Показать файл в файловом менеджере ВЫДЕЛЕННЫМ — штатным вызовом
-/// рабочего стола `org.freedesktop.FileManager1.ShowItems`. Его понимают
-/// Dolphin, Nautilus, Nemo, Thunar, Caja; нет его — откроется просто папка.
+/// Show the file in the file manager SELECTED — with the desktop's standard
+/// call `org.freedesktop.FileManager1.ShowItems`. Dolphin, Nautilus, Nemo,
+/// Thunar and Caja understand it; without it the folder simply opens.
 fn show_in_file_manager(file: &Path) -> bool {
     let shown = std::process::Command::new("dbus-send")
         .args([
@@ -333,7 +340,7 @@ fn show_in_file_manager(file: &Path) -> bool {
             .unwrap_or(false)
 }
 
-/// Помощник набора в папке `dir` — для разметки.
+/// Helper of the set in folder `dir` — for the markup.
 fn wizard_json(dir: &Path) -> Value {
     let Some(state) = sc::load_wizard_state(dir) else {
         return json!({"ok": false});
@@ -426,7 +433,8 @@ impl qobject::SteamShowcaseActions {
     fn open_upload_page(&self, dir: &QString) -> QString {
         let dir = PathBuf::from(dir.to_string());
         let page = open_steam_page(sc::UPLOAD_PAGE_URL);
-        // Выделяем первую ещё не загруженную часть — её и выбирать на странице.
+        // We select the first part not yet uploaded — that is the one to choose on
+        // the page.
         let first = sc::load_wizard_state(&dir).and_then(|st| {
             st.parts.iter().find(|p| !p.uploaded).or(st.parts.first()).map(|p| dir.join(&p.file_name))
         });
@@ -473,9 +481,9 @@ impl qobject::SteamShowcaseActions {
             job.serial += 1;
             job.result = None;
         }
-        // Поток ходит в сеть, поэтому заводится через общую дверь выхода:
-        // сток видит его и рвёт запрос, а не оставляет выход процесса
-        // наперегонки с незаконченным соединением.
+        // The thread goes to the network, so it is started through the shared exit
+        // door: the drain sees it and aborts the request instead of leaving the
+        // process exit racing an unfinished connection.
         let cancel = rexon_core::net::CancelToken::new();
         {
             let cancel = cancel.clone();
@@ -494,7 +502,8 @@ impl qobject::SteamShowcaseActions {
                 let page = sc::parse_profile_page(&String::from_utf8_lossy(&body));
                 Ok(sc::check_profile(&state, &page))
             })();
-            // Итог проверки запоминается рядом с частями: сошлось — шаг закрыт.
+            // The check result is remembered next to the parts: if it matches, the
+            // step is closed.
             if let Ok(report) = &res {
                 if let Some(mut fresh) = sc::load_wizard_state(&dir) {
                     if fresh.placed || report.ok {
@@ -511,7 +520,8 @@ impl qobject::SteamShowcaseActions {
             job.result = Some(res);
         });
         if started.is_none() {
-            // Программа уже закрывается — проверять некому и незачем.
+            // The program is already closing — there is nobody to check for and no
+            // reason to.
             busy.lock().unwrap().busy = false;
         }
         QString::default()
@@ -620,8 +630,8 @@ impl qobject::SteamShowcaseActions {
             };
             let ctl = sc::SliceControl { progress: &progress, cancel: &cancel };
             let res = sc::slice(&req, &ctl);
-            // Помощник загрузки начинается с этого набора: его состояние
-            // ложится рядом с частями.
+            // The upload helper starts with this set: its state goes next to the
+            // parts.
             if let Ok(report) = &res {
                 let _ = sc::save_wizard_state(
                     Path::new(&report.dir),
@@ -659,7 +669,8 @@ impl qobject::SteamShowcaseActions {
                 steam_background(&id, &url)
             };
             let mut job = slot.lock().unwrap();
-            // Человек успел выбрать другой фон — старый итог не нужен.
+            // The user has already chosen another background — the old result is not
+            // needed.
             if job.serial == serial {
                 job.busy = false;
                 job.result = Some(res);

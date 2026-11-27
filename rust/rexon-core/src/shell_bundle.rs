@@ -1,37 +1,37 @@
-//! Связка «тайловый композитор + оболочка» (Noctalia, DankMaterialShell):
-//! что ставить, куда и какую строку вписать, как снять ровно её.
+//! The «tiling compositor + shell» bundle (Noctalia, DankMaterialShell):
+//! what to install, where and which line to write, how to remove exactly that line.
 //!
-//! Шаг 3 поддержки оболочек (решение владельца 01.10.2026): в карточке
-//! Hyprland, niri и sway справа блок «Оболочки». Здесь — решения без
-//! побочных действий; исполнитель — `system_de_exec` (тот же путь пакетов и
-//! тот же пароль, что у установки столов), подписи — `qt_desktops`.
+//! Step 3 of shell support (owner's decision 01.10.2026): the Hyprland,
+//! niri and sway cards have a «Shells» block on the right. This module holds
+//! side-effect-free decisions; the executor is `system_de_exec` (the same
+//! package path and the same password as desktop installation), labels are in `qt_desktops`.
 //!
-//! Факты (разведка 01.10.2026, noctalia 5.2, DMS 1.6.2, по исходникам и
-//! пакетам):
-//!   * ни одна оболочка не приносит своей сессии в экран входа: «композитор
-//!     с оболочкой» — это строка автозапуска в конфиге композитора;
-//!   * Noctalia в официальных репозиториях Arch (`extra/noctalia`) и Fedora
-//!     44+ (`noctalia`); `cachyos/noctalia-shell` — это ПРЕЖНЯЯ v4 на
-//!     Quickshell, другой продукт, его не ставим;
-//!   * DankMaterialShell в Arch разбит: `dms-shell` требует
-//!     `dms-shell-compositor`, а его дают только `dms-shell-niri` и
-//!     `dms-shell-hyprland`. Для sway варианта нет — в карточке sway DMS
-//!     неактивен с честной подсказкой. На прочих дистрибутивах оба шелла —
-//!     только из сторонних хранилищ (COPR, OBS, PPA, оверлей GURU), а их
-//!     Rexon сам не подключает;
-//!   * строка автозапуска — управляемым блоком общего помощника
-//!     `compositor_autostart` (метки, синтаксисы, обратимость бит-в-бит);
-//!   * DMS ставит юнит `dms.service` с `WantedBy=graphical-session.target`:
-//!     ⛔ `systemctl --user enable dms` поднял бы его и в Plasma. Мы юнит не
-//!     трогаем вовсе — запуск идёт строкой в конфиге того композитора, где
-//!     человек оболочку выбрал (у DMS это штатный путь «без systemd»).
+//! Facts (research 01.10.2026, noctalia 5.2, DMS 1.6.2, from sources and
+//! packages):
+//!   * neither shell brings its own session to the login screen: «compositor
+//!     with a shell» is an autostart line in the compositor config;
+//!   * Noctalia is in the official Arch repositories (`extra/noctalia`) and Fedora
+//!     44+ (`noctalia`); `cachyos/noctalia-shell` is the OLD v4 on
+//!     Quickshell, a different product, we do not install it;
+//!   * DankMaterialShell is split in Arch: `dms-shell` requires
+//!     `dms-shell-compositor`, which only `dms-shell-niri` and
+//!     `dms-shell-hyprland` provide. There is no variant for sway — in the sway card DMS
+//!     is inactive with an honest hint. On other distributions both shells come
+//!     only from third-party repositories (COPR, OBS, PPA, the GURU overlay), and
+//!     Rexon does not enable those itself;
+//!   * the autostart line is a managed block of the shared helper
+//!     `compositor_autostart` (markers, syntaxes, bit-for-bit reversibility);
+//!   * DMS installs a `dms.service` unit with `WantedBy=graphical-session.target`:
+//!     ⛔ `systemctl --user enable dms` would start it in Plasma too. We do not
+//!     touch the unit at all — it is launched by a line in the config of the compositor
+//!     where the person chose the shell (for DMS this is the standard «without systemd» path).
 //!
-//! ⭐ ДВА РЕЖИМА ОДНОГО КОМПОЗИТОРА. Основной стол остаётся самим собой:
-//! строка автозапуска стоит в конфиге постоянно, но срабатывает, только если
-//! лежит отметка `<state>/rexon/shells/<композитор>-<оболочка>`. «Переключиться»
-//! у оболочки кладёт отметку и выходит из сеанса; «Переключиться» у самого
-//! стола (левая часть карточки) отметки этого композитора снимает. Так у
-//! стола и у оболочки — свои входы, хотя запись в экране входа одна.
+//! ⭐ TWO MODES OF ONE COMPOSITOR. The main desktop stays itself:
+//! the autostart line sits in the config permanently, but only fires if
+//! the marker `<state>/rexon/shells/<compositor>-<shell>` exists. «Switch»
+//! on a shell puts the marker and logs out of the session; «Switch» on the
+//! desktop itself (the left part of the card) removes this compositor's markers. So
+//! the desktop and the shell each have their own entry, although the login screen has one record.
 
 use serde::Serialize;
 
@@ -39,12 +39,12 @@ use crate::compositor_autostart::{self as ca, Refusal, Syntax, TextEdit};
 use crate::i18n::trf;
 use crate::system::{DesktopShell, PkgFamily};
 
-/// Композиторы, в карточках которых есть блок «Оболочки», — тот же состав,
-/// что секция «Тайловые» (`qt_desktops::TILING_IDS`). Plasma сюда не входит:
-/// у Noctalia она «not first-class», у DMS поддержки нет вовсе.
+/// Compositors whose cards have the «Shells» block — the same set as
+/// the «Tiling» section (`qt_desktops::TILING_IDS`). Plasma is not included:
+/// for Noctalia it is «not first-class», DMS does not support it at all.
 pub const SHELL_WMS: &[&str] = &["hyprland", "niri", "sway"];
 
-/// Оболочки карточки стола; пусто — блока «Оболочки» в карточке нет.
+/// Shells of a desktop card; empty — the card has no «Shells» block.
 pub fn shells_for(de_id: &str) -> &'static [DesktopShell] {
     if SHELL_WMS.contains(&de_id) {
         DesktopShell::all()
@@ -53,12 +53,12 @@ pub fn shells_for(de_id: &str) -> &'static [DesktopShell] {
     }
 }
 
-/// Оболочка по идентификатору (`DesktopShell::as_str`).
+/// Shell by identifier (`DesktopShell::as_str`).
 pub fn shell_by_id(id: &str) -> Option<DesktopShell> {
     DesktopShell::all().iter().copied().find(|s| s.as_str() == id)
 }
 
-/// Исполняемый файл оболочки — по нему видно, стоит ли пакет.
+/// The shell executable — it shows whether the package is installed.
 pub fn binary(shell: DesktopShell) -> &'static str {
     match shell {
         DesktopShell::Noctalia => "noctalia",
@@ -66,7 +66,7 @@ pub fn binary(shell: DesktopShell) -> &'static str {
     }
 }
 
-/// Команда запуска в сеансе (их документация: `noctalia`, `dms run`).
+/// Launch command in the session (from their documentation: `noctalia`, `dms run`).
 pub fn launch_command(shell: DesktopShell) -> &'static str {
     match shell {
         DesktopShell::Noctalia => "noctalia",
@@ -74,21 +74,21 @@ pub fn launch_command(shell: DesktopShell) -> &'static str {
     }
 }
 
-/// Почему оболочку в этой карточке поставить нельзя.
+/// Why the shell cannot be installed in this card.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Unavailable {
-    /// Карточка не тайлового композитора.
+    /// The card is not a tiling compositor.
     NotForThisDesktop,
-    /// DMS под sway: в репозиториях его ставят только вместе с niri или
+    /// DMS under sway: repositories ship it only together with niri or
     /// Hyprland.
     NotPackagedForWm,
-    /// В официальных репозиториях этого дистрибутива оболочки нет.
+    /// The official repositories of this distribution have no such shell.
     NotInRepos,
 }
 
-/// Объяснение для человека: почему оболочку здесь не поставить. Одна фраза —
-/// её показывают и подсказкой у неактивной кнопки, и отказом исполнителя.
+/// Explanation for the person: why the shell cannot be installed here. One sentence —
+/// it is shown both as the hint on the inactive button and as the executor's refusal.
 pub fn unavailable_text(reason: Unavailable, shell: DesktopShell, wm_name: &str) -> String {
     match reason {
         Unavailable::NotForThisDesktop => trf(
@@ -109,14 +109,14 @@ pub fn unavailable_text(reason: Unavailable, shell: DesktopShell, wm_name: &str)
     }
 }
 
-/// Сначала нужен сам стол — подсказка у неактивной «Установить» и отказ
-/// исполнителя.
+/// The desktop itself is needed first — hint on the inactive «Install» and the
+/// executor's refusal.
 pub fn install_desktop_first(wm_name: &str) -> String {
     // TRANSLATORS: %1 is a desktop (Hyprland, niri, sway).
     trf("Install %1 first", &[&wm_name])
 }
 
-/// Пакеты оболочки для этого композитора и дистрибутива — порядок установки.
+/// Shell packages for this compositor and distribution — in installation order.
 pub fn packages(
     shell: DesktopShell,
     wm: &str,
@@ -143,8 +143,8 @@ pub fn packages(
     }
 }
 
-/// Все пакеты всех оболочек под все композиторы семейства — белый список
-/// установки помощника пакетов (`system_plan::pkg_helper_install_allowlist`).
+/// All packages of all shells for all compositors of the family — the package
+/// helper's install allowlist (`system_plan::pkg_helper_install_allowlist`).
 pub fn all_packages(family: PkgFamily) -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();
     for shell in DesktopShell::all() {
@@ -159,11 +159,11 @@ pub fn all_packages(family: PkgFamily) -> Vec<&'static str> {
     out
 }
 
-/// Пакеты, которые «Убрать» снимает у этого композитора.
+/// Packages that «Remove» uninstalls for this compositor.
 ///
-/// `still_used_by` — другие композиторы, в конфиге которых строка этой же
-/// оболочки остаётся: тогда общие пакеты (`noctalia`, `dms-shell`) живут
-/// дальше, а уходит только своё для композитора (`dms-shell-niri`).
+/// `still_used_by` — other compositors whose config keeps the line of the same
+/// shell: then the shared packages (`noctalia`, `dms-shell`) stay,
+/// and only the compositor-specific one goes (`dms-shell-niri`).
 pub fn packages_to_remove(
     shell: DesktopShell,
     wm: &str,
@@ -179,8 +179,8 @@ pub fn packages_to_remove(
         .filter_map(|other| packages(shell, other, family).ok())
         .flatten()
         .collect();
-    // Сначала зависимые (`dms-shell-niri` держит `dms-shell`): pacman снимет
-    // их одной транзакцией, но порядок в журнале читается естественнее.
+    // Dependents first (`dms-shell-niri` holds `dms-shell`): pacman removes
+    // them in one transaction, but the order reads more naturally in the log.
     own.into_iter()
         .rev()
         .filter(|p| !shared.contains(p))
@@ -188,35 +188,35 @@ pub fn packages_to_remove(
 }
 
 // ============================================================================
-// Где лежит конфиг композитора и что в него вписать
+// Where the compositor config lives and what to write into it
 // ============================================================================
 //
-// ⭐ Управляемый блок — ОБЩИЙ помощник продукта
+// ⭐ The managed block is the product's SHARED helper
 // (`crate::compositor_autostart`: `upsert_text`/`remove_text`/`launch_line`):
-// те же метки, тот же разбор синтаксисов и та же обратимость бит-в-бит, что у
-// строк автозапуска самого Rexon. Своей копии здесь нет. Политика заведения
-// файла тоже его: sway получает свой `config` с `include` системного, а
-// Hyprland и niri без личного конфига не трогаем — при первом входе они
-// кладут свой, и файл из одной нашей строки оставил бы человека без клавиш.
+// the same markers, the same syntax parsing and the same bit-for-bit reversibility as
+// Rexon's own autostart lines. There is no copy of it here. The file creation
+// policy is its too: sway gets its own `config` with an `include` of the system one, while
+// Hyprland and niri without a personal config are left alone — on first login they
+// put their own, and a file with just our line would leave the person without key bindings.
 
-/// Личный конфиг композитора: путь, синтаксис, и чем засеять, если его нет.
+/// The compositor's personal config: path, syntax, and what to seed it with if missing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigFile {
     pub path: String,
     pub syntax: Syntax,
-    /// Файла нет: `Some(преамбула)` — заводить можно, `None` — нельзя.
+    /// No file: `Some(preamble)` — may be created, `None` — may not.
     pub create_with: Option<Vec<String>>,
     pub exists: bool,
 }
 
-/// Файлы, где у композитора может лежать наш блок, в порядке поиска самого
-/// композитора (тот же, что у `compositor_autostart::resolve_target`).
+/// Files where the compositor may hold our block, in the compositor's own
+/// search order (the same as `compositor_autostart::resolve_target`).
 pub fn config_files(wm: &str, home: &str, xdg_config_home: Option<&str>) -> Vec<(String, Syntax)> {
     let cfg = crate::utils::config_home(xdg_config_home, home);
     let home = home.trim_end_matches('/');
     match wm {
-        // Конфиг i3 sway тоже читает: без этих путей мы завели бы свой
-        // `sway/config`, и он заслонил бы конфиг человека.
+        // sway also reads the i3 config: without these paths we would create our own
+        // `sway/config`, and it would shadow the person's config.
         "sway" => vec![
             (format!("{home}/.sway/config"), Syntax::Sway),
             (format!("{cfg}/sway/config"), Syntax::Sway),
@@ -224,7 +224,7 @@ pub fn config_files(wm: &str, home: &str, xdg_config_home: Option<&str>) -> Vec<
             (format!("{cfg}/i3/config"), Syntax::Sway),
         ],
         "niri" => vec![(format!("{cfg}/niri/config.kdl"), Syntax::NiriKdl)],
-        // Hyprland 0.55+: hyprland.lua, если есть, иначе hyprland.conf.
+        // Hyprland 0.55+: hyprland.lua if present, otherwise hyprland.conf.
         "hyprland" => vec![
             (format!("{cfg}/hypr/hyprland.lua"), Syntax::HyprLua),
             (format!("{cfg}/hypr/hyprland.conf"), Syntax::HyprConf),
@@ -233,7 +233,7 @@ pub fn config_files(wm: &str, home: &str, xdg_config_home: Option<&str>) -> Vec<
     }
 }
 
-/// Главный конфиг композитора по пробе `exists`.
+/// The compositor's main config, by probing with `exists`.
 pub fn config_target(
     wm: &str,
     home: &str,
@@ -254,7 +254,7 @@ pub fn config_target(
         _ => files.first()?.clone(),
     };
     let create_with = match wm {
-        // Свой файл заслоняет системный — поэтому первым делом подключаем его.
+        // Our own file shadows the system one — so first of all we include it.
         "sway" if exists("/etc/sway/config") => {
             Some(vec![format!("include {}", crate::themes::sway_path("/etc/sway/config"))])
         }
@@ -268,7 +268,7 @@ pub fn config_target(
     })
 }
 
-/// Каталог отметок «этот композитор — с этой оболочкой».
+/// Directory of «this compositor runs with this shell» markers.
 pub fn marker_dir(home: &str, xdg_state_home: Option<&str>) -> String {
     let base = match xdg_state_home {
         Some(v) if !v.is_empty() => v.trim_end_matches('/').to_string(),
@@ -277,18 +277,18 @@ pub fn marker_dir(home: &str, xdg_state_home: Option<&str>) -> String {
     format!("{base}/rexon/shells")
 }
 
-/// Отметка режима «композитор с оболочкой».
+/// Marker of the «compositor with a shell» mode.
 pub fn marker_path(wm: &str, shell: DesktopShell, home: &str, xdg_state_home: Option<&str>) -> String {
     format!("{}/{wm}-{}", marker_dir(home, xdg_state_home), shell.as_str())
 }
 
-/// Можно ли вписать путь отметки в строку запуска без кавычек внутри.
+/// Whether the marker path can be written into the launch line without inner quotes.
 ///
-/// Команда целиком уходит в `sh -c '…'`, а внутренние кавычки общий помощник
-/// экранирует обратной косой, которую sway снимает ещё до оболочки. Поэтому
-/// путь обязан состоять из «безопасных» для оболочки знаков (буквы любого
-/// алфавита, цифры, `_@%+=:./-`) — домашний каталог с пробелом или кавычкой
-/// встречается редко, и в конфиг человека такое мы не понесём.
+/// The whole command goes into `sh -c '…'`, and the shared helper escapes inner
+/// quotes with a backslash, which sway strips before the shell sees it. So
+/// the path must consist of shell-«safe» characters (letters of any
+/// alphabet, digits, `_@%+=:./-`) — a home directory with a space or a quote
+/// is rare, and we will not carry such a thing into the person's config.
 pub fn path_is_config_safe(path: &str) -> bool {
     path.starts_with('/')
         && path
@@ -296,7 +296,7 @@ pub fn path_is_config_safe(path: &str) -> bool {
             .all(|c| c.is_alphanumeric() || "_@%+=:./-".contains(c))
 }
 
-/// argv строки автозапуска: оболочка стартует, только если лежит отметка.
+/// argv of the autostart line: the shell starts only if the marker exists.
 pub fn autostart_argv(shell: DesktopShell, marker: &str) -> Vec<String> {
     vec![
         "sh".to_string(),
@@ -305,35 +305,35 @@ pub fn autostart_argv(shell: DesktopShell, marker: &str) -> Vec<String> {
     ]
 }
 
-/// Идентификатор управляемого блока оболочки (у каждой свой: стоять могут обе).
+/// Identifier of the shell's managed block (each has its own: both may be installed).
 pub fn block_id(shell: DesktopShell) -> String {
     format!("shell-{}", shell.as_str())
 }
 
-/// Стоит ли в тексте наш блок этой оболочки.
+/// Whether the text holds our block for this shell.
 pub fn has_block(text: &str, syntax: Syntax, shell: DesktopShell) -> bool {
     ca::has_block(text, syntax, &block_id(shell))
 }
 
-/// Что делать с конфигом композитора при установке оболочки.
+/// What to do with the compositor config when installing a shell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EnablePlan {
-    /// Записать файл (`created` — личного конфига не было, он заведён).
+    /// Write the file (`created` — there was no personal config, it was created).
     Write {
         path: String,
         content: String,
         created: bool,
     },
-    /// Блок уже на месте — ничего не писать.
+    /// The block is already in place — write nothing.
     AlreadyThere { path: String },
-    /// Личного конфига нет, а заводить его нельзя.
+    /// There is no personal config, and it may not be created.
     NoConfig,
-    /// Строку в этот конфиг не написать (знаки, устройство файла).
+    /// The line cannot be written into this config (characters, file layout).
     Refused { path: String, reason: Refusal },
 }
 
-/// Решить, что сделать с конфигом композитора `wm`, чтобы оболочка
-/// запускалась в режиме «с оболочкой». `read` — чтение файла (`None` — нет).
+/// Decide what to do with the config of compositor `wm` so that the shell
+/// launches in the «with a shell» mode. `read` — reads a file (`None` — missing).
 pub fn enable_plan(
     wm: &str,
     shell: DesktopShell,
@@ -379,17 +379,17 @@ pub fn enable_plan(
     }
 }
 
-/// Что делать с конфигом при «Убрать».
+/// What to do with the config on «Remove».
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisablePlan {
-    /// Конфиг, в котором нашёлся блок (пусто — блока нет нигде).
+    /// Config where the block was found (empty — the block is nowhere).
     pub path: String,
-    /// `Unchanged` — трогать нечего, `Write` — новый текст, `Delete` —
-    /// файл заводили мы, и без блока он пуст.
+    /// `Unchanged` — nothing to touch, `Write` — new text, `Delete` —
+    /// we created the file, and without the block it is empty.
     pub edit: TextEdit,
 }
 
-/// Найти блок оболочки в конфигах композитора и решить, как его снять.
+/// Find the shell block in the compositor configs and decide how to remove it.
 pub fn disable_plan(
     wm: &str,
     shell: DesktopShell,
@@ -412,7 +412,7 @@ pub fn disable_plan(
     }
 }
 
-/// Стоит ли блок оболочки в конфиге этого композитора.
+/// Whether the shell block is in this compositor's config.
 pub fn block_installed(
     wm: &str,
     shell: DesktopShell,
@@ -424,30 +424,30 @@ pub fn block_installed(
 }
 
 // ============================================================================
-// Предупреждения перед установкой
+// Warnings before installation
 // ============================================================================
 
-/// О чём предупредить человека ДО установки (разведка 01.10.2026).
+/// What to warn the person about BEFORE installation (research 01.10.2026).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Warning {
-    /// Обе оболочки сами пишут `gsettings … color-scheme` (светлая/тёмная) —
-    /// переключатель Rexon они перебьют.
+    /// Both shells write `gsettings … color-scheme` (light/dark) themselves —
+    /// they will override Rexon's switch.
     ColorScheme,
-    /// Обе берут на себя уведомления и `StatusNotifierWatcher` (трей), если
-    /// имя свободно: своя панель (waybar) может остаться без значков.
+    /// Both take over notifications and `StatusNotifierWatcher` (tray) if
+    /// the name is free: one's own panel (waybar) may end up without icons.
     NotificationsAndTray,
-    /// Обе рисуют свои обои на фоновом слое — поверх обоев Rexon.
+    /// Both draw their own wallpaper on the background layer — over Rexon's wallpaper.
     OwnWallpaper,
-    /// DMS под Hyprland при живом `hyprland.lua` при КАЖДОМ запуске переносит
-    /// `hyprland.conf` и `hypr/dms/*.conf` в `.dms-backups/`.
+    /// DMS under Hyprland with a live `hyprland.lua` moves `hyprland.conf` and
+    /// `hypr/dms/*.conf` into `.dms-backups/` on EVERY launch.
     DmsMovesHyprlandConf,
 }
 
-/// Предупреждения для установки `shell` в `wm`. `hypr_lua` и `hypr_strays`
-/// — пробы `~/.config/hypr` (DMS смотрит именно туда, мимо
-/// `XDG_CONFIG_HOME`): есть ли `hyprland.lua` и есть ли рядом
-/// `hyprland.conf` или `dms/*.conf`.
+/// Warnings for installing `shell` into `wm`. `hypr_lua` and `hypr_strays`
+/// are probes of `~/.config/hypr` (DMS looks exactly there, bypassing
+/// `XDG_CONFIG_HOME`): whether `hyprland.lua` exists and whether
+/// `hyprland.conf` or `dms/*.conf` sit next to it.
 pub fn install_warnings(
     shell: DesktopShell,
     wm: &str,
@@ -462,31 +462,31 @@ pub fn install_warnings(
 }
 
 // ============================================================================
-// Состояние оболочки в карточке
+// Shell state in the card
 // ============================================================================
 
-/// Всё, что карточке нужно знать об оболочке, — собирает вызывающий.
+/// Everything the card needs to know about a shell — gathered by the caller.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ShellState {
-    /// Стоит ли сам композитор.
+    /// Whether the compositor itself is installed.
     pub wm_installed: bool,
-    /// Стоит ли исполняемый файл оболочки.
+    /// Whether the shell executable is installed.
     pub binary_present: bool,
-    /// Стоит ли наш блок в конфиге композитора.
+    /// Whether our block is in the compositor config.
     pub block_present: bool,
-    /// Лежит ли отметка «композитор с этой оболочкой».
+    /// Whether the «compositor with this shell» marker exists.
     pub marker_on: bool,
-    /// Работает ли человек сейчас в этом композиторе.
+    /// Whether the person is working in this compositor right now.
     pub is_current_wm: bool,
 }
 
 impl ShellState {
-    /// Оболочка поставлена связкой: и пакет, и строка в конфиге.
+    /// The shell is installed as a bundle: both the package and the config line.
     pub fn installed(&self) -> bool {
         self.binary_present && self.block_present
     }
 
-    /// Сейчас человек в этом композиторе и с этой оболочкой.
+    /// The person is in this compositor with this shell right now.
     pub fn running_now(&self) -> bool {
         self.installed() && self.marker_on && self.is_current_wm
     }

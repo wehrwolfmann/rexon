@@ -1,28 +1,28 @@
-//! Прослушивание темы звуков — ядро кнопок «послушать» раздела «Звуки».
+//! Sound theme preview — the core of the «listen» buttons in the «Sounds» section.
 //!
-//! Три части:
-//! * **пять звуков темы** ([`PREVIEW_SLOTS`]) — тот же набор, что у модуля
-//!   KDE «Системные звуки»: звонок окна, предупреждение, новое сообщение,
-//!   батарея, подключение устройства; у каждой кнопки свой запасной список
-//!   событий (`dialog-warning` → `dialog-information` и т.д.);
-//! * **поиск файла события по спецификации freedesktop sound-theme**
-//!   ([`find_event_file`]): каталоги темы из `Directories` с профилем
-//!   `stereo` первыми, расширения `.disabled`/`.oga`/`.ogg`/`.wav`, цепочка
-//!   `Inherits`, затем тема `freedesktop`; имя события укорачивается по
-//!   последнему `-` (`message-new-instant` → `message-new` → `message`);
-//! * **прослушивание темы из Магазина до установки**
-//!   ([`prepare_store_preview`]): архив скачивается во временный кеш
-//!   `~/.cache/rexon/sound-preview/<id>/`, распаковывается, корень темы
-//!   ищет тот же помощник, что у установки
-//!   ([`crate::appearance_installer::find_theme_roots`]), — ничего не ставится.
+//! Three parts:
+//! * **five theme sounds** ([`PREVIEW_SLOTS`]) — the same set as the KDE
+//!   «System Sounds» module: window bell, warning, new message,
+//!   battery, device plugged in; each button has its own fallback list
+//!   of events (`dialog-warning` → `dialog-information` etc.);
+//! * **finding an event file per the freedesktop sound-theme spec**
+//!   ([`find_event_file`]): theme directories from `Directories` with the
+//!   `stereo` profile first, extensions `.disabled`/`.oga`/`.ogg`/`.wav`, the
+//!   `Inherits` chain, then the `freedesktop` theme; the event name is shortened at
+//!   the last `-` (`message-new-instant` → `message-new` → `message`);
+//! * **previewing a Store theme before installing**
+//!   ([`prepare_store_preview`]): the archive is downloaded into a temporary cache
+//!   `~/.cache/rexon/sound-preview/<id>/`, unpacked, and the theme root is
+//!   found by the same helper the installer uses
+//!   ([`crate::appearance_installer::find_theme_roots`]) — nothing is installed.
 //!
-//! Проигрывание — [`play_argv`]: установленную тему играет libcanberra по
-//! событию (ровно то, что услышит система), иначе — файл первым подходящим
-//! проигрывателем ([`crate::utils::sound_play_argv`]).
+//! Playback — [`play_argv`]: an installed theme is played by libcanberra by
+//! event (exactly what the system will sound like), otherwise the file is played
+//! by the first suitable player ([`crate::utils::sound_play_argv`]).
 //!
-//! ⚠️ Подкаталоги локалей спецификации (`stereo/<язык>/`) не просматриваются:
-//! у тем на машине и в Магазине их не встречено; файл в корне каталога
-//! профиля находится как обычно.
+//! ⚠️ Locale subdirectories from the spec (`stereo/<language>/`) are not scanned:
+//! none were seen in themes on the machine or in the Store; a file in the root of
+//! the profile directory is found as usual.
 
 use std::path::{Path, PathBuf};
 
@@ -30,15 +30,15 @@ use serde::Serialize;
 
 use crate::i18n::{tr, trf};
 
-/// Кнопка прослушивания: ключ (для значка в QML) и события по порядку.
+/// Preview button: key (for the icon in QML) and events in order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PreviewSlot {
     pub key: &'static str,
     pub events: &'static [&'static str],
 }
 
-/// Пять звуков темы — набор и запасные события как у модуля KDE
-/// «Системные звуки» (`kcm_soundtheme`).
+/// Five theme sounds — the set and fallback events as in the KDE
+/// «System Sounds» module (`kcm_soundtheme`).
 pub const PREVIEW_SLOTS: &[PreviewSlot] = &[
     PreviewSlot { key: "bell", events: &["bell-window-system"] },
     PreviewSlot { key: "warning", events: &["dialog-warning", "dialog-information"] },
@@ -47,24 +47,24 @@ pub const PREVIEW_SLOTS: &[PreviewSlot] = &[
     PreviewSlot { key: "device", events: &["device-added", "device-removed"] },
 ];
 
-/// «Демонстрация темы» (по нажатию на саму тему) — тот же порядок поиска.
+/// «Theme demo» (on clicking the theme itself) — the same search order.
 pub const DEMO_EVENTS: &[&str] = &["theme-demo", "desktop-login", "service-login"];
 
-/// Тема, в которую уходит поиск, когда ни тема, ни её родители звука не дали.
+/// Theme the search falls back to when neither the theme nor its parents gave a sound.
 pub const FALLBACK_THEME: &str = "freedesktop";
 
-/// Расширения по спецификации; `disabled` — «звук этого события выключен».
+/// Extensions per the spec; `disabled` means «this event's sound is turned off».
 const LOOKUP_EXTS: &[&str] = &["disabled", "oga", "ogg", "wav"];
 
-/// Разобранный `index.theme` звуковой темы.
+/// Parsed `index.theme` of a sound theme.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SoundThemeIndex {
     pub inherits: Vec<String>,
-    /// `(подкаталог, OutputProfile)` в порядке `Directories`.
+    /// `(subdirectory, OutputProfile)` in `Directories` order.
     pub dirs: Vec<(String, String)>,
 }
 
-/// Разбор `index.theme`; `None` — нет раздела `[Sound Theme]` (не тема).
+/// Parse `index.theme`; `None` — no `[Sound Theme]` section (not a theme).
 pub fn parse_sound_index(text: &str) -> Option<SoundThemeIndex> {
     let mut section = String::new();
     let mut is_theme = false;
@@ -111,17 +111,17 @@ pub fn parse_sound_index(text: &str) -> Option<SoundThemeIndex> {
     Some(SoundThemeIndex { inherits, dirs })
 }
 
-/// Итог поиска в одной теме.
+/// Result of a search in one theme.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Lookup {
     Found(String),
-    /// `<событие>.disabled`: звук выключен темой — дальше не искать.
+    /// `<event>.disabled`: the sound is turned off by the theme — stop searching.
     Disabled,
     NotFound,
 }
 
-/// Поиск `name` в самой теме (без родителей): каталоги профиля `stereo`
-/// первыми, затем остальные; без `Directories` — корень темы.
+/// Search for `name` in the theme itself (without parents): `stereo` profile
+/// directories first, then the rest; without `Directories` — the theme root.
 fn lookup_in_theme(root: &Path, index: &SoundThemeIndex, name: &str) -> Lookup {
     let mut subdirs: Vec<&str> = index
         .dirs
@@ -149,7 +149,7 @@ fn lookup_in_theme(root: &Path, index: &SoundThemeIndex, name: &str) -> Lookup {
     Lookup::NotFound
 }
 
-/// Тема и её родители (`Inherits`, вглубь, без повторов).
+/// The theme and its parents (`Inherits`, depth-first, no repeats).
 fn lookup_chain(
     resolve: &dyn Fn(&str) -> Option<PathBuf>,
     theme: &str,
@@ -180,7 +180,7 @@ fn lookup_chain(
     Lookup::NotFound
 }
 
-/// Имена события от точного к общему: `a-b-c`, `a-b`, `a`.
+/// Event names from exact to generic: `a-b-c`, `a-b`, `a`.
 pub fn event_name_fallbacks(event: &str) -> Vec<String> {
     let mut out = vec![event.to_string()];
     let mut cur = event;
@@ -194,8 +194,8 @@ pub fn event_name_fallbacks(event: &str) -> Vec<String> {
     out
 }
 
-/// Файл события `event` темы `theme` по спецификации; `None` — звука нет
-/// либо тема его выключила (`.disabled`). `resolve` — каталог темы по имени.
+/// File of event `event` in theme `theme` per the spec; `None` — no sound
+/// or the theme turned it off (`.disabled`). `resolve` — theme directory by name.
 pub fn find_event_file(
     resolve: &dyn Fn(&str) -> Option<PathBuf>,
     theme: &str,
@@ -216,7 +216,7 @@ pub fn find_event_file(
     None
 }
 
-/// Поиск темы по имени в каталогах `dirs` (первый с настоящей темой).
+/// Find a theme by name in the `dirs` directories (the first with a real theme).
 pub fn resolver_for(dirs: Vec<String>) -> impl Fn(&str) -> Option<PathBuf> {
     move |name: &str| {
         if name.is_empty() || name.contains('/') {
@@ -228,7 +228,7 @@ pub fn resolver_for(dirs: Vec<String>) -> impl Fn(&str) -> Option<PathBuf> {
     }
 }
 
-/// Звук одной кнопки: какое событие нашлось и где файл (`""` — нечего играть).
+/// The sound of one button: which event was found and where the file is (`""` — nothing to play).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PreviewSound {
     pub key: String,
@@ -236,8 +236,8 @@ pub struct PreviewSound {
     pub file: String,
 }
 
-/// Пять звуков темы. У кнопки без звука `file` пустой, `event` — первое из
-/// её событий (чтобы canberra хотя бы попробовала).
+/// Five theme sounds. A button without a sound has an empty `file`, and `event` is
+/// the first of its events (so canberra at least tries).
 pub fn preview_sounds(resolve: &dyn Fn(&str) -> Option<PathBuf>, theme: &str) -> Vec<PreviewSound> {
     PREVIEW_SLOTS
         .iter()
@@ -256,13 +256,13 @@ pub fn preview_sounds(resolve: &dyn Fn(&str) -> Option<PathBuf>, theme: &str) ->
         .collect()
 }
 
-/// Команда проигрывания.
+/// Playback command.
 ///
-/// Установленная тема (`installed`) при наличии `canberra-gtk-play` играется
-/// ПО СОБЫТИЮ с явным именем темы — так звучит система. Ключа `--theme` у
-/// утилиты нет; тема задаётся свойством `canberra.xdg-theme.name`. Иначе
-/// (тема из Магазина до установки, либо нет canberra) — файл первым
-/// подходящим проигрывателем. `None` — играть нечем.
+/// An installed theme (`installed`), when `canberra-gtk-play` exists, is played
+/// BY EVENT with an explicit theme name — that is how the system sounds. The tool
+/// has no `--theme` flag; the theme is set via the `canberra.xdg-theme.name`
+/// property. Otherwise (a Store theme before installing, or no canberra) the file
+/// is played by the first suitable player. `None` — nothing to play with.
 pub fn play_argv(
     available: &[String],
     installed: bool,
@@ -284,7 +284,7 @@ pub fn play_argv(
     crate::utils::sound_play_argv(available, file)
 }
 
-/// Проигрыватели из [`crate::utils::SOUND_PLAYERS`], найденные в `PATH`.
+/// Players from [`crate::utils::SOUND_PLAYERS`] found in `PATH`.
 pub fn live_available_players() -> Vec<String> {
     let path = std::env::var("PATH").unwrap_or_default();
     crate::utils::SOUND_PLAYERS
@@ -295,7 +295,7 @@ pub fn live_available_players() -> Vec<String> {
         .collect()
 }
 
-/// Запустить проигрыватель и не ждать: процесс досматривает свой поток.
+/// Start the player and do not wait: the process plays its stream to the end.
 pub fn live_play(argv: &[String]) -> Result<(), String> {
     let Some((bin, args)) = argv.split_first() else {
         return Err(tr("Nothing to play"));
@@ -307,30 +307,30 @@ pub fn live_play(argv: &[String]) -> Result<(), String> {
         .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| trf("Couldn't start the player: %1", &[&e]))?;
-    // Зомби не оставляем: ждём завершения в стороне.
+    // Leave no zombies: wait for completion on the side.
     std::thread::spawn(move || {
         let _ = child.wait();
     });
     Ok(())
 }
 
-// ── прослушивание темы из Магазина до установки ─────────────────────────────
+// ── previewing a Store theme before installing ──────────────────────────────
 
-/// Потолок скачиваемого архива для прослушивания.
+/// Size cap of the archive downloaded for preview.
 pub const PREVIEW_MAX_ARCHIVE: i64 = 64 * 1024 * 1024;
-/// Потолок распакованного (защита от архива-бомбы).
+/// Cap on unpacked size (protection against an archive bomb).
 pub const PREVIEW_MAX_EXTRACTED: u64 = 256 * 1024 * 1024;
-/// Сколько последних прослушанных тем держать в кеше.
+/// How many recently previewed themes to keep in the cache.
 pub const PREVIEW_KEEP: usize = 6;
-/// Таймаут скачивания, секунды.
+/// Download timeout, seconds.
 pub const PREVIEW_TIMEOUT_SECS: u64 = 120;
 
-/// Кеш прослушивания: `<cache>/rexon/sound-preview`.
+/// Preview cache: `<cache>/rexon/sound-preview`.
 pub fn preview_cache_root(cache_home: &str) -> String {
     format!("{}/rexon/sound-preview", cache_home.trim_end_matches('/'))
 }
 
-/// Имя подкаталога кеша для товара: только безопасные символы.
+/// Cache subdirectory name for an item: safe characters only.
 pub fn preview_slot_name(content_id: &str) -> String {
     let s: String = content_id
         .chars()
@@ -344,7 +344,7 @@ pub fn preview_slot_name(content_id: &str) -> String {
     }
 }
 
-/// Тема из архива, готовая к прослушиванию.
+/// A theme from the archive, ready for preview.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ThemePreview {
     pub theme: String,
@@ -363,9 +363,9 @@ fn dir_size(p: &Path) -> u64 {
         .sum()
 }
 
-/// Распакованный в `slot_dir/extracted` архив → темы звуков с их пятью
-/// звуками. Родители тем (`Inherits`) ищутся среди тем этого же архива,
-/// затем в установленных (`installed_dirs`).
+/// Archive unpacked into `slot_dir/extracted` → sound themes with their five
+/// sounds. Theme parents (`Inherits`) are looked up among the themes of the same
+/// archive, then among the installed ones (`installed_dirs`).
 pub fn previews_from_extracted(extracted: &str, installed_dirs: &[String]) -> Result<Vec<ThemePreview>, String> {
     let snap = crate::appearance_installer::install_tree_snapshot(extracted, &[]);
     let roots = crate::appearance_installer::find_theme_roots(&snap, extracted, "sounds");
@@ -390,8 +390,8 @@ pub fn previews_from_extracted(extracted: &str, installed_dirs: &[String]) -> Re
         .collect())
 }
 
-/// Разложить уже скачанный архив `archive` в кеш `slot_dir` и найти темы.
-/// Архив после распаковки удаляется; перебор по размеру — отказ с очисткой.
+/// Unpack an already downloaded `archive` into the `slot_dir` cache and find themes.
+/// The archive is deleted after unpacking; exceeding the size limit is a refusal with cleanup.
 pub fn preview_from_archive(
     slot_dir: &str,
     archive: &str,
@@ -410,8 +410,8 @@ pub fn preview_from_archive(
     previews_from_extracted(&extracted, installed_dirs)
 }
 
-/// Оставить в кеше не больше `keep` последних товаров (по времени
-/// изменения); `current` не трогать.
+/// Keep no more than `keep` most recent items in the cache (by modification
+/// time); do not touch `current`.
 pub fn prune_preview_cache(root: &str, keep: usize, current: &str) {
     let Ok(rd) = std::fs::read_dir(root) else { return };
     let mut slots: Vec<(std::time::SystemTime, PathBuf)> = rd
@@ -429,9 +429,9 @@ pub fn prune_preview_cache(root: &str, keep: usize, current: &str) {
     }
 }
 
-/// Скачать архив товара `content_id` по `url` в кеш, распаковать, найти
-/// темы и их пять звуков. Уже распакованный ранее товар не качается
-/// повторно. Ничего не устанавливается.
+/// Download the archive of item `content_id` from `url` into the cache, unpack,
+/// find themes and their five sounds. An item unpacked earlier is not downloaded
+/// again. Nothing is installed.
 pub fn prepare_store_preview<IO: crate::net::NetIo + ?Sized>(
     io: &mut IO,
     cache_root: &str,
@@ -453,8 +453,8 @@ pub fn prepare_store_preview<IO: crate::net::NetIo + ?Sized>(
     let _ = std::fs::remove_dir_all(&slot_dir);
     std::fs::create_dir_all(&slot_dir).map_err(|e| e.to_string())?;
     let archive = format!("{slot_dir}/archive");
-    // Ход скачивания — через `NetIo::progress`: страница показывает его,
-    // пока архив идёт (без прогресса крупная тема выглядела зависшей).
+    // Download progress goes through `NetIo::progress`: the page shows it while
+    // the archive arrives (without progress a large theme looked frozen).
     if !crate::ocs::http_download(io, url, &archive, true, PREVIEW_TIMEOUT_SECS, PREVIEW_MAX_ARCHIVE) {
         let _ = std::fs::remove_dir_all(&slot_dir);
         return Err(tr("Couldn't download the theme to preview it"));
@@ -485,7 +485,7 @@ mod tests {
 
     const IDX: &str = "[Sound Theme]\nName=T\nInherits=Base\nDirectories=stereo,surround\n\n[stereo]\nOutputProfile=stereo\n\n[surround]\nOutputProfile=5.1\n";
 
-    /// Каталоги: `T` (наследует `Base`), `Base`, `freedesktop`.
+    /// Directories: `T` (inherits `Base`), `Base`, `freedesktop`.
     fn themes(base: &Path) -> Vec<String> {
         let d = base.join("sounds");
         put(&d.join("T/index.theme"), IDX);
@@ -514,15 +514,15 @@ mod tests {
         assert_eq!(
             short,
             [
-                // stereo раньше 5.1, хотя .oga «лучше» .ogg
+                // stereo before 5.1, even though .oga is «better» than .ogg
                 ("bell-window-system".into(), "T/stereo/bell-window-system.ogg".into()),
-                // dialog-warning нет нигде — запасное событие кнопки, из freedesktop
+                // dialog-warning exists nowhere — the button's fallback event, from freedesktop
                 ("dialog-information".into(), "freedesktop/stereo/dialog-information.oga".into()),
-                // точное имя в freedesktop сильнее укороченного «message» в теме
+                // the exact name in freedesktop beats the shortened «message» in the theme
                 ("message-new-instant".into(), "freedesktop/stereo/message-new-instant.oga".into()),
-                // battery-caution выключен темой (.disabled) → запасное battery-low
+                // battery-caution is turned off by the theme (.disabled) → fallback battery-low
                 ("battery-low".into(), "freedesktop/stereo/battery-low.oga".into()),
-                // device-added — у родителя по Inherits
+                // device-added — in the parent via Inherits
                 ("device-added".into(), "Base/stereo/device-added.oga".into()),
             ]
         );
@@ -537,13 +537,13 @@ mod tests {
             play_argv(&all, true, "Ocean", "bell-window-system", "/x/bell.oga").unwrap(),
             ["canberra-gtk-play", "--id", "bell-window-system", "--property=canberra.xdg-theme.name=Ocean"]
         );
-        // Тема из Магазина не установлена — canberra её не найдёт, играем файл.
+        // A Store theme is not installed — canberra will not find it, so we play the file.
         assert_eq!(play_argv(&all, false, "X", "bell", "/x/bell.oga").unwrap(), ["pw-play", "/x/bell.oga"]);
         assert_eq!(play_argv(&[], false, "X", "bell", "/x/bell.oga"), None);
         assert_eq!(play_argv(&all, false, "X", "bell", ""), None);
     }
 
-    /// Подставной проигрыватель: пишет свои аргументы в файл — живой звук не трогается.
+    /// Fake player: writes its arguments to a file — real sound is not touched.
     #[test]
     fn live_play_runs_given_player() {
         let base = tmp("player");
@@ -562,8 +562,8 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&out).unwrap(), "/x/bell.oga");
     }
 
-    /// Архив как у живого товара: две темы глубоко, обои рядом. Ничего не
-    /// ставится, архив после распаковки удалён, пять звуков найдены.
+    /// Archive like a real item: two themes deep, wallpapers next to them. Nothing
+    /// is installed, the archive is deleted after unpacking, five sounds are found.
     #[test]
     fn store_archive_preview_without_install() {
         let base = tmp("store");
@@ -591,9 +591,9 @@ mod tests {
         let names: Vec<&str> = got.iter().map(|t| t.theme.as_str()).collect();
         assert_eq!(names, ["Zorin", "Zorin2"]);
         assert!(got[0].sounds[0].file.ends_with("Zorin/stereo/bell-window-system.oga"));
-        // Чего в теме нет — из установленной freedesktop.
+        // What the theme lacks comes from the installed freedesktop.
         assert!(got[0].sounds[1].file.ends_with("freedesktop/stereo/dialog-information.oga"));
-        // Без темы звуков — честный отказ.
+        // Without a sound theme — an honest refusal.
         let empty = base.join("cache/empty");
         put(&empty.join("x/readme"), "r");
         let a2 = base.join("cache/e.tar.gz");

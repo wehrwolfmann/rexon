@@ -1,55 +1,55 @@
-//! Установщик/применятор тем каталога оформления — порт
-//! `rexon/appearance/installer.py` (чистая часть).
+//! Installer/applier for appearance catalog themes — port of
+//! `rexon/appearance/installer.py` (the pure part).
 //!
-//! Поток установки оригинала:
-//!   скачать архив → распаковать в temp → определить реальный тип →
-//!   скопировать в целевую папку (по cat_id) → apply через ThemeManager →
-//!   gtk-update-icon-cache → gtk_sanitizer → журнал.
+//! The original's install flow:
+//!   download the archive → unpack into temp → detect the actual type →
+//!   copy into the target folder (by cat_id) → apply via ThemeManager →
+//!   gtk-update-icon-cache → gtk_sanitizer → log.
 //!
-//! Портируется ДЕТЕРМИНИРОВАННАЯ ЛОГИКА без исполнения:
-//!   * определение реального типа распакованной KDE-темы
-//!     ([`detect_actual_kde_type`], порт `ocs_store._detect_actual_kde_type`,
-//!     который зовёт установщик) — по снимку дерева;
-//!   * разбор корня контента / имени темы / имени Plymouth-темы
+//! What is ported is the DETERMINISTIC LOGIC, without execution:
+//!   * detecting the actual type of an unpacked KDE theme
+//!     ([`detect_actual_kde_type`], port of `ocs_store._detect_actual_kde_type`,
+//!     which the installer calls) — from a tree snapshot;
+//!   * resolving the content root / theme name / Plymouth theme name
 //!     ([`find_content_root`], [`theme_id_from`], [`plymouth_theme_name`]);
-//!   * детект товара, отданного одним голым файлом ([`single_file_accepted`],
-//!     правила видов — [`kind_single_file_rule`]) и проверка безопасности
-//!     записей архива ([`safe_extract_entry`], anti-traversal);
-//!   * маппинги `actual → целевой каталог` / `actual → apply_kind` /
+//!   * detecting an item delivered as one bare file ([`single_file_accepted`],
+//!     per-kind rules — [`kind_single_file_rule`]) and the safety check of
+//!     archive entries ([`safe_extract_entry`], anti-traversal);
+//!   * the mappings `actual → target directory` / `actual → apply_kind` /
 //!     `apply_kind → rexon_type` ([`actual_type_dir`], [`actual_to_kind`],
-//!     [`kind_to_rexon_type`]) — привязка к apply_kind, а не к OCS cat_id;
-//!   * ПЛАН установки как чистая последовательность шагов общего плана
-//!     ([`ExtStep`], тот же, что у `.rxn`):
-//!     выбор целевой папки с переклассификацией по реальному типу, копии
-//!     `.colors`/каталога, `gtk-update-icon-cache` argv, запись журнала —
-//!     тексты сообщений байт-в-байт с Python ([`plan_install`]);
-//!   * товар одним файлом ([`plan_single_file`]): вычисление имени файла
-//!     (basename → url → запасное имя, гарантия ожидаемого категорией
-//!     расширения) и место укладки (каталог вида либо своя подпапка);
-//!   * системная тема SDDM/Plymouth ([`plan_root_install`]): валидационные
-//!     гейты (PLM / нет pkexec / нет helper / SteamOS), имя темы, `pkexec`
-//!     argv, тексты сообщений/кодов возврата;
-//!   * применение ([`apply_action_for`] + планы записи конфигов
+//!     [`kind_to_rexon_type`]) — keyed by apply_kind, not by OCS cat_id;
+//!   * the install PLAN as a pure sequence of shared-plan steps
+//!     ([`ExtStep`], the same one `.rxn` uses):
+//!     choosing the target folder with reclassification by actual type, copies
+//!     of `.colors`/the directory, the `gtk-update-icon-cache` argv, the log record —
+//!     message texts byte-for-byte with Python ([`plan_install`]);
+//!   * a single-file item ([`plan_single_file`]): computing the file name
+//!     (basename → url → fallback name, guaranteeing the extension the category
+//!     expects) and where it goes (the kind's directory or its own subfolder);
+//!   * a system SDDM/Plymouth theme ([`plan_root_install`]): validation
+//!     gates (PLM / no pkexec / no helper / SteamOS), theme name, `pkexec`
+//!     argv, message texts/return codes;
+//!   * applying ([`apply_action_for`] + config write plans
 //!     [`widget_style_plan`]/[`lnf_component_plan`]/[`lock_wallpaper_plan`]/
-//!     [`aurorae_plan`], детект устаревшей Global Theme
-//!     [`global_theme_missing_metadata_json`], тексты сообщений по apply_kind);
-//!   * выбор картинки из пачки обоев ([`pack_images`], [`pick_pack_image`]) —
-//!     детерминированное правило под разрешение экрана; звуковая тема
-//!     применяется общим движком звука ([`crate::qt_settings::sound_theme_plan`]);
-//!   * какие виды вообще имеют «применена сейчас» ([`kind_has_active_state`])
-//!     и какие принимают одиночный файл вместо архива
+//!     [`aurorae_plan`], detecting an outdated Global Theme
+//!     [`global_theme_missing_metadata_json`], message texts per apply_kind);
+//!   * picking a picture from a wallpaper pack ([`pack_images`], [`pick_pack_image`]) —
+//!     a deterministic rule for the screen resolution; a sound theme
+//!     is applied by the shared sound engine ([`crate::qt_settings::sound_theme_plan`]);
+//!   * which kinds have an "applied right now" state at all ([`kind_has_active_state`])
+//!     and which accept a single file instead of an archive
 //!     ([`kind_single_file_rule`]);
-//!   * удаление ([`plan_uninstall`]): план снятия путей из журнала.
+//!   * uninstalling ([`plan_uninstall`]): the plan for removing paths from the log.
 //!
-//! ФАЙЛОВАЯ СИСТЕМА — за интерфейсом [`FsSnapshot`] (как `installed_scan.rs`):
-//! вход — снимок распакованного дерева в порядке `os.scandir` эталона.
+//! The FILE SYSTEM is behind the [`FsSnapshot`] interface (as in `installed_scan.rs`):
+//! the input is a snapshot of the unpacked tree in the reference's `os.scandir` order.
 //!
-//! НЕ портировано (исполнение — остаётся Python): скачивание, реальная
-//! распаковка/копирование (`shutil`), `subprocess`/`pkexec`, реальный apply
-//! через `ThemeManager` (планы записей отдаются вызывающему), `gtk_sanitizer`,
-//! персистентный журнал (`record_installed`/`load_installed_log` — I/O), сам
-//! `tempfile.mkdtemp` (пути даёт исполнитель). Найденные баги оригинала —
-//! исправлены прямо здесь (помечено «починен баг оригинала»).
+//! NOT ported (execution — stays in Python): downloading, the actual
+//! unpacking/copying (`shutil`), `subprocess`/`pkexec`, the actual apply
+//! via `ThemeManager` (write plans are handed to the caller), `gtk_sanitizer`,
+//! the persistent log (`record_installed`/`load_installed_log` — I/O), and
+//! `tempfile.mkdtemp` itself (paths come from the executor). Bugs found in the
+//! original are fixed right here (marked "fixed a bug of the original").
 
 use std::path::Path;
 
@@ -64,16 +64,16 @@ use crate::models::{ThemeCategory, ThemeItem};
 use crate::privilege::op::{PkgSource, PrivOp};
 
 // ============================================================================
-// Константы: расширения и magic-сигнатуры картинок
+// Constants: picture extensions and magic signatures
 // ============================================================================
 
-/// Расширения одиночных файлов-обоев — порт `_IMAGE_EXTS`.
+/// Extensions of single wallpaper files — port of `_IMAGE_EXTS`.
 pub const IMAGE_EXTS: &[&str] = &[
     ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff", ".avif",
     ".jxl", ".apng", ".svg",
 ];
 
-/// Magic-сигнатуры распространённых форматов картинок — порт `_IMAGE_MAGIC`.
+/// Magic signatures of common picture formats — port of `_IMAGE_MAGIC`.
 pub const IMAGE_MAGIC: &[&[u8]] = &[
     b"\x89PNG\r\n\x1a\n", // PNG
     b"\xff\xd8\xff",      // JPEG
@@ -84,29 +84,29 @@ pub const IMAGE_MAGIC: &[&[u8]] = &[
     b"MM\x00*",  // TIFF BE
 ];
 
-/// Расширения цветовой схемы KDE: схема — это ОДИН файл, и Магазин так её и
-/// раздаёт (архив вокруг единственного `.colors` кладут не всегда).
+/// KDE color scheme extensions: a scheme is ONE file, and the Store serves it
+/// that way (an archive around a lone `.colors` is not always there).
 pub const COLOR_SCHEME_EXTS: &[&str] = &[".colors"];
 
-/// Расширения шрифтовых файлов: шрифт тоже самодостаточен одним файлом.
+/// Font file extensions: a font is also self-contained in one file.
 pub const FONT_EXTS: &[&str] = &[
     ".ttf", ".otf", ".ttc", ".otc", ".pfb", ".pfa", ".pcf", ".bdf", ".woff",
     ".woff2",
 ];
 
-/// Расширения темы Kvantum: `.kvconfig` — описание темы целиком.
+/// Kvantum theme extensions: `.kvconfig` describes the whole theme.
 pub const KVANTUM_EXTS: &[&str] = &[".kvconfig"];
 
 // ============================================================================
-// Path-хелперы (семантика os.path)
+// Path helpers (os.path semantics)
 // ============================================================================
 
 fn join(dir: &str, rel: &str) -> String {
     format!("{dir}/{rel}")
 }
 
-/// `os.path.join(a, b)`: абсолютный `b` (ведущий `/`) заменяет `a`; иначе
-/// склейка через `/` (без дублирования, если `a` уже кончается `/`).
+/// `os.path.join(a, b)`: an absolute `b` (leading `/`) replaces `a`; otherwise
+/// joined with `/` (without doubling if `a` already ends with `/`).
 fn py_join(a: &str, b: &str) -> String {
     if b.starts_with('/') {
         b.to_string()
@@ -117,7 +117,7 @@ fn py_join(a: &str, b: &str) -> String {
     }
 }
 
-/// `os.path.basename` (последний компонент после `/`).
+/// `os.path.basename` (the last component after `/`).
 fn basename(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
@@ -127,16 +127,16 @@ fn rstrip_slashes(s: &str) -> &str {
     s.trim_end_matches('/')
 }
 
-/// `os.path.splitext` — (root, ext). Ведущие точки basename не считаются
-/// разделителем расширения (как в CPython): `.bashrc` → (".bashrc", "").
+/// `os.path.splitext` — (root, ext). Leading dots of the basename do not count
+/// as an extension separator (as in CPython): `.bashrc` → (".bashrc", "").
 fn py_splitext(name: &str) -> (String, String) {
     let base = basename(name);
     let prefix_len = name.len() - base.len();
-    // индекс последней точки в base
+    // index of the last dot in base
     let Some(dot) = base.rfind('.') else {
         return (name.to_string(), String::new());
     };
-    // все символы до точки — точки → нет расширения (leading dots)
+    // all characters before the dot are dots → no extension (leading dots)
     if base[..dot].chars().all(|c| c == '.') {
         return (name.to_string(), String::new());
     }
@@ -144,7 +144,7 @@ fn py_splitext(name: &str) -> (String, String) {
     (name[..split_at].to_string(), name[split_at..].to_string())
 }
 
-/// Нижний регистр расширения из имени/URL (без query/fragment) — порт
+/// Lowercased extension from a name/URL (without query/fragment) — port of
 /// `_file_ext`.
 pub fn file_ext(name: &str) -> String {
     if name.is_empty() {
@@ -156,20 +156,21 @@ pub fn file_ext(name: &str) -> String {
 }
 
 // ============================================================================
-// Маппинги apply_kind / actual-type
+// apply_kind / actual-type mappings
 // ============================================================================
 
-/// apply_kind → rexon_type для журнала.
+/// apply_kind → rexon_type for the log.
 ///
-/// У каждого вида оформления тип СВОЙ. Двух свалок, которые тут были, больше
-/// нет: `wallpaper-pack` собирал обои, звуки, шрифты и виджеты в одну кучу
-/// (звуковая тема из Магазина ложилась в журнал как пачка обоев), а `plugin`
-/// — заставку, экран блокировки, GTK-тему и стиль приложений. По типу из
-/// журнала вкладка узнаёт, с какой строкой карты активных тем сверять имя, и
-/// на свалке этот вопрос ответа не имел. Wehrwolfmann 2026-08-22.
+/// Every appearance kind has its OWN type. The two catch-alls that used to be
+/// here are gone: `wallpaper-pack` lumped wallpapers, sounds, fonts and widgets
+/// together (a sound theme from the Store went into the log as a wallpaper pack),
+/// and `plugin` — the splash, the lock screen, the GTK theme and the application
+/// style. The log type tells the tab which row of the active-theme map to match
+/// the name against, and with a catch-all that question had no answer.
+/// Wehrwolfmann 2026-08-22.
 ///
-/// `plugin` остаётся дефолтом — но теперь только для того, что и правда вне
-/// таблицы видов.
+/// `plugin` stays the default — but now only for what really is outside
+/// the kind table.
 pub fn kind_to_rexon_type(apply_kind: &str) -> &'static str {
     match apply_kind {
         "global" => "theme-kde-global",
@@ -179,8 +180,8 @@ pub fn kind_to_rexon_type(apply_kind: &str) -> &'static str {
         "icons" => "theme-icons",
         "cursor" => "theme-cursors",
         "kvantum" => "theme-kvantum",
-        // Обои: и пачка, и одиночная картинка, и фон экрана блокировки —
-        // один тип контента, различает их apply_kind записи.
+        // Wallpapers: a pack, a single picture and the lock screen background are
+        // all one content type; the record's apply_kind tells them apart.
         "wallpapers" | "lockwallpaper" => "wallpaper-pack",
         "wallpaper_plugins" => "kde-wallpaper-plugin",
         "sounds" => "theme-sounds",
@@ -192,8 +193,8 @@ pub fn kind_to_rexon_type(apply_kind: &str) -> &'static str {
         "lockscreen" => "theme-kde-lockscreen",
         "sddm" => "theme-sddm",
         "plymouth" => "theme-plymouth",
-        // Разделы окружений (скрипты и эффекты KWin, переключатель окон из
-        // магазина): тип — тот же, что у раздела в матрице, второго списка нет.
+        // Desktop sections (KWin scripts and effects, the window switcher from
+        // the store): the type is the same as the section's in the matrix, no second list.
         k if crate::categories::DE_SECTIONS.iter().any(|(_, key)| *key == k) => {
             crate::categories::category_kind(k).unwrap_or("plugin")
         }
@@ -201,14 +202,14 @@ pub fn kind_to_rexon_type(apply_kind: &str) -> &'static str {
     }
 }
 
-/// Виды, у которых есть понятие «применена ПРЯМО СЕЙЧАС», — то есть те, что
-/// встречаются ключом в карте активных тем
+/// Kinds that have a notion of "applied RIGHT NOW", i.e. those that
+/// appear as a key in the active-theme map
 /// ([`crate::installed_scan::active_map_from_sources`]).
 ///
-/// Вкладка спрашивает это перед тем, как читать конфиги: у шрифтов, виджетов
-/// и плагинов обоев активной темы не бывает, и дёргать ради них kreadconfig6
-/// незачем. Список живёт рядом с картой, а не списком-двойником в интерфейсе
-/// (правило #12): добавили вид в карту — добавили сюда.
+/// The tab asks this before reading configs: fonts, widgets and wallpaper
+/// plugins never have an active theme, and there is no point calling
+/// kreadconfig6 for them. The list lives next to the map, not as a twin list
+/// in the UI (rule #12): add a kind to the map — add it here.
 pub fn kind_has_active_state(apply_kind: &str) -> bool {
     matches!(
         apply_kind,
@@ -230,13 +231,13 @@ pub fn kind_has_active_state(apply_kind: &str) -> bool {
     ) || de_section_has_active_theme(apply_kind)
 }
 
-/// Раздел окружения с темой (рамки xfwm4 и Marco, оболочки GNOME, Cinnamon,
-/// LXQt, раскладка Alt+Tab): одно значение ключа окружения — «применена
-/// сейчас» у него есть, и карта активных тем держит его под ключом раздела
-/// (`installed_scan::LiveScan::de_active`). Без этого товар такого раздела,
-/// поставленный и применённый из магазина, оставался «✅ Установлено».
-/// Дополнения и Conky сюда не входят: у них не одно имя, а список
-/// включённого.
+/// A desktop section with a theme (xfwm4 and Marco frames, GNOME, Cinnamon
+/// and LXQt shells, the Alt+Tab layout): one desktop key value — it does have
+/// "applied now", and the active-theme map keeps it under the section key
+/// (`installed_scan::LiveScan::de_active`). Without this, an item of such a
+/// section installed and applied from the store stayed at "✅ Installed".
+/// Extensions and Conky are not included: they have a list of enabled items
+/// rather than one name.
 fn de_section_has_active_theme(apply_kind: &str) -> bool {
     crate::categories::DE_SECTIONS.iter().any(|(_, key)| *key == apply_kind)
         && crate::categories::category_kind(apply_kind)
@@ -244,34 +245,35 @@ fn de_section_has_active_theme(apply_kind: &str) -> bool {
             .is_some_and(|m| matches!(m, crate::de_apply::Mode::Theme(_)))
 }
 
-/// Правило «Магазин отдал не архив, а один голый файл» для вида оформления.
+/// The rule "the Store served one bare file rather than an archive" for an
+/// appearance kind.
 ///
-/// Обои были не исключением, а первым замеченным случаем: цветовая схема,
-/// шрифт и тема Kvantum тоже самодостаточны одним файлом, и часть товаров
-/// выложена именно так — без обёртки в zip/tar. Раньше на них срабатывал
-/// распаковщик и пользователь получал «Не удалось распаковать архив» на
-/// исправном товаре. Wehrwolfmann 2026-08-29.
+/// Wallpapers were not the exception, just the first case noticed: a color
+/// scheme, a font and a Kvantum theme are also self-contained in one file, and
+/// some items are published exactly like that — without a zip/tar wrapper. The
+/// unpacker used to fire on them and the user got "Could not unpack the archive"
+/// on a perfectly good item. Wehrwolfmann 2026-08-29.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SingleFileRule {
-    /// Расширения, которые вид согласен принять голым файлом. Первое —
-    /// то, чем достраивается имя, если расширения у скачанного нет вовсе.
+    /// Extensions the kind accepts as a bare file. The first is the one used
+    /// to complete the name if the download has no extension at all.
     pub exts: &'static [&'static str],
-    /// Есть ли у содержимого этого вида надёжная подпись в первых байтах:
-    /// имя из Магазина иногда пустое, и тогда решает только она. Такая
-    /// подпись известна нам лишь у картинок.
+    /// Whether this kind's content has a reliable signature in the first bytes:
+    /// the name from the Store is sometimes empty, and then only the signature
+    /// decides. We know such a signature only for pictures.
     pub has_magic: bool,
-    /// Класть файл в подпапку с именем-основой (Kvantum ищет тему как
-    /// `<каталог>/<имя>/<имя>.kvconfig`), а не прямо в каталог вида.
+    /// Put the file into a subfolder named after the stem (Kvantum looks for a theme as
+    /// `<dir>/<name>/<name>.kvconfig`) rather than directly into the kind's directory.
     pub own_dir: bool,
-    /// Имя темы — основа имени файла. У обоев наоборот: обоя адресуется
-    /// файлом целиком, и отрезанное расширение сломало бы путь применения.
+    /// The theme name is the file name's stem. Wallpapers are the opposite: a
+    /// wallpaper is addressed by the whole file, and a cut extension would break the apply path.
     pub name_is_stem: bool,
-    /// Из чего собрать имя, когда Магазин не дал ни имени, ни ссылки.
+    /// What to build the name from when the Store gave neither a name nor a link.
     pub fallback_stem: &'static str,
 }
 
-/// Правило одиночного файла для вида — `None`, если вид бывает только архивом
-/// (иконки, курсоры, Global Theme и прочее, что физически является деревом).
+/// Single-file rule for a kind — `None` if the kind only comes as an archive
+/// (icons, cursors, Global Theme and anything else that physically is a tree).
 pub fn kind_single_file_rule(apply_kind: &str) -> Option<SingleFileRule> {
     match apply_kind {
         "wallpapers" | "wallpaper_plugins" | "lockwallpaper" => Some(SingleFileRule {
@@ -306,7 +308,7 @@ pub fn kind_single_file_rule(apply_kind: &str) -> Option<SingleFileRule> {
     }
 }
 
-/// Реальный тип → apply_kind — порт `_actual_to_kind` (дефолт `"none"`).
+/// Actual type → apply_kind — port of `_actual_to_kind` (default `"none"`).
 pub fn actual_to_kind(actual: &str) -> &'static str {
     match actual {
         "look-and-feel" => "global",
@@ -319,9 +321,9 @@ pub fn actual_to_kind(actual: &str) -> &'static str {
     }
 }
 
-/// Реальный тип → целевой каталог установки — порт `_ACTUAL_TYPE_DIR`
-/// (`_dir_for(kind) = category_by_kind(kind).install_dir`). `None`, если тип
-/// вне таблицы (не участвует в переклассификации).
+/// Actual type → target install directory — port of `_ACTUAL_TYPE_DIR`
+/// (`_dir_for(kind) = category_by_kind(kind).install_dir`). `None` if the type
+/// is outside the table (does not take part in reclassification).
 pub fn actual_type_dir(home: &Path, actual: &str) -> Option<String> {
     let kind = match actual {
         "look-and-feel" => "global",
@@ -340,12 +342,12 @@ pub fn actual_type_dir(home: &Path, actual: &str) -> Option<String> {
 }
 
 // ============================================================================
-// Определение реального типа KDE-темы — порт _detect_actual_kde_type
+// Detecting the actual type of a KDE theme — port of _detect_actual_kde_type
 // ============================================================================
 
-/// Реальный тип распакованной KDE-темы по содержимому каталога — порт
-/// `ocs_store._detect_actual_kde_type` (его зовёт установщик). `None` —
-/// определить не удалось.
+/// Actual type of an unpacked KDE theme by the directory contents — port of
+/// `ocs_store._detect_actual_kde_type` (the installer calls it). `None` —
+/// could not be determined.
 pub fn detect_actual_kde_type(fs: &FsSnapshot, content_root: &str) -> Option<String> {
     if !fs.is_dir(content_root) {
         return None;
@@ -353,7 +355,7 @@ pub fn detect_actual_kde_type(fs: &FsSnapshot, content_root: &str) -> Option<Str
     let files: &[String] = fs.scandir(content_root);
     let is_dir_child = |name: &str| fs.is_dir(&join(content_root, name));
 
-    // Bundle: ≥2 KDE-компонента как топ-уровневые ПАПКИ.
+    // Bundle: ≥2 KDE components as top-level FOLDERS.
     const BUNDLE_MARKERS: &[&str] = &[
         "aurorae", "color-schemes", "kvantum", "Kvantum", "plasma", "icons",
         "wallpaper", "wallpapers", "sddm",
@@ -366,12 +368,12 @@ pub fn detect_actual_kde_type(fs: &FsSnapshot, content_root: &str) -> Option<Str
         return Some("bundle".to_string());
     }
 
-    // Color scheme — .colors в корне.
+    // Color scheme — .colors in the root.
     if files.iter().any(|f| f.ends_with(".colors")) {
         return Some("color-scheme".to_string());
     }
 
-    // Aurorae — характерные SVG окон в корне.
+    // Aurorae — the characteristic window SVGs in the root.
     const AURORAE_MARKERS: &[&str] = &[
         "decoration.svg", "decoration.svgz", "close.svg", "minimize.svg",
         "maximize.svg",
@@ -385,7 +387,7 @@ pub fn detect_actual_kde_type(fs: &FsSnapshot, content_root: &str) -> Option<Str
         return Some("kvantum".to_string());
     }
 
-    // Icon theme — index.theme + типичная подпапка иконок.
+    // Icon theme — index.theme + a typical icon subfolder.
     if files.iter().any(|f| f == "index.theme") {
         const ICON_SUBDIRS: &[&str] = &[
             "apps", "places", "mimetypes", "actions", "categories", "devices",
@@ -416,7 +418,7 @@ pub fn detect_actual_kde_type(fs: &FsSnapshot, content_root: &str) -> Option<Str
         }
     }
 
-    // metadata.desktop с явным ServiceType.
+    // metadata.desktop with an explicit ServiceType.
     let metadata = join(content_root, "metadata.desktop");
     if fs.is_file(&metadata) {
         if let Some(content) = fs.read_text(&metadata) {
@@ -433,11 +435,11 @@ pub fn detect_actual_kde_type(fs: &FsSnapshot, content_root: &str) -> Option<Str
 }
 
 // ============================================================================
-// Разбор распакованного дерева
+// Parsing the unpacked tree
 // ============================================================================
 
-/// Спуск в единственную верхнюю папку — порт `_find_content_root`.
-/// Скрытые (`.`-префикс) элементы игнорируются при подсчёте.
+/// Descend into the single top-level folder — port of `_find_content_root`.
+/// Hidden (`.`-prefixed) entries are ignored in the count.
 pub fn find_content_root(fs: &FsSnapshot, extract_dir: &str) -> String {
     let entries: Vec<&String> = fs
         .scandir(extract_dir)
@@ -454,53 +456,53 @@ pub fn find_content_root(fs: &FsSnapshot, extract_dir: &str) -> String {
 }
 
 // ============================================================================
-// Корни тем внутри распакованного архива
+// Theme roots inside an unpacked archive
 // ============================================================================
 //
-// ⛔ Дефект, пойманный живьём 03.10.2026: архив ставился «как есть» — обёртка
-// целиком уходила в каталог вида. Пример из Магазина: тема звуков легла как
-// `~/.local/share/sounds/zorinos2/sounds/{Zorin,Zorin2}/index.theme`, рядом —
-// обои, xml и ReadMe. Тема глубже верхнего уровня не видна ни Rexon, ни KDE,
-// ни libcanberra: все они ищут `<каталог вида>/<Имя>/index.theme`. Тот же
-// класс у значков, курсоров, тем GTK и Aurorae — архивы авторов часто несут
-// несколько вариантов под общей папкой (`Orchis/Orchis-Dark/gtk-3.0`).
+// ⛔ Defect caught live on 03.10.2026: an archive was installed "as is" — the
+// whole wrapper went into the kind's directory. An example from the Store: a sound theme
+// landed as `~/.local/share/sounds/zorinos2/sounds/{Zorin,Zorin2}/index.theme`, next to
+// wallpapers, xml and a ReadMe. A theme below the top level is invisible to Rexon, KDE
+// and libcanberra alike: they all look for `<kind dir>/<Name>/index.theme`. Icons,
+// cursors, GTK themes and Aurorae have the same class of problem — authors' archives
+// often carry several variants under a common folder (`Orchis/Orchis-Dark/gtk-3.0`).
 //
-// Решение одно на все эти виды: найти в распакованном КАЖДЫЙ каталог, который
-// сам является темой своего вида, и поставить каждый на верхний уровень
-// каталога вида под его собственным именем. Всё остальное из архива не
-// копируется.
+// One solution for all these kinds: find EVERY directory in the unpacked tree that
+// is itself a theme of its kind, and install each at the top level of the kind's
+// directory under its own name. Nothing else from the archive is
+// copied.
 
-/// Виды, у которых установка ищет корни тем ([`find_theme_roots`]).
+/// Kinds for which installation looks for theme roots ([`find_theme_roots`]).
 pub fn kind_uses_theme_roots(apply_kind: &str) -> bool {
     matches!(apply_kind, "sounds" | "icons" | "cursor" | "gtk" | "aurorae")
         || de_theme_marker(apply_kind).is_some()
 }
 
-/// По чему узнаётся корень темы раздела окружения.
+/// How the theme root of a desktop section is recognized.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeThemeMarker {
-    /// Подкаталог в корне темы (`xfwm4/`, `metacity-1/`, `gnome-shell/`,
-    /// `cinnamon/`) — строка матрицы с [`crate::de_customization::Payload::ThemeSubdir`].
+    /// A subdirectory in the theme root (`xfwm4/`, `metacity-1/`, `gnome-shell/`,
+    /// `cinnamon/`) — a matrix row with [`crate::de_customization::Payload::ThemeSubdir`].
     Subdir(&'static str),
-    /// Файл в корне темы: тема LXQt без `lxqt-panel.qss` панель не меняет
-    /// (примечание строки матрицы `theme-lxqt`).
+    /// A file in the theme root: an LXQt theme without `lxqt-panel.qss` does not change the panel
+    /// (note on the `theme-lxqt` matrix row).
     File(&'static str),
 }
 
-/// Файл, без которого каталог темы LXQt — не тема LXQt.
+/// The file without which an LXQt theme directory is not an LXQt theme.
 const LXQT_THEME_FILE: &str = "lxqt-panel.qss";
 
-/// Признак корня темы для раздела окружения `apply_kind` (`xfwm4`, `marco`,
-/// `gnomeshell`, `cinnamontheme`, `lxqttheme`); `None` — раздел не тема.
+/// Theme root marker for the desktop section `apply_kind` (`xfwm4`, `marco`,
+/// `gnomeshell`, `cinnamontheme`, `lxqttheme`); `None` — the section is not a theme.
 ///
-/// Подкаталог берётся из строки матрицы, второго списка нет (правило #12):
-/// у новой строки `ThemeSubdir` раскладка архивов заработает сама.
+/// The subdirectory comes from the matrix row, there is no second list (rule #12):
+/// for a new `ThemeSubdir` row, archive layout will just work.
 ///
-/// ⛔ Дефект, пойманный стендом на настоящих архивах pling 17.10.2026:
-/// разделы окружений ставились ветвью «копируем каталог как есть». Архив с
-/// несколькими вариантами (`Win8-Metacity`: 16 тем в корне; `ChrButtons/
-/// Chr*/xfwm4`; `Marble-shell`; `QTStep`) ложился одной папкой `extracted`
-/// или обёрткой, и ни Rexon, ни само окружение темы в ней не видели.
+/// ⛔ Defect caught by the test bench on real pling archives on 17.10.2026:
+/// desktop sections were installed via the "copy the directory as is" branch. An archive with
+/// several variants (`Win8-Metacity`: 16 themes in the root; `ChrButtons/
+/// Chr*/xfwm4`; `Marble-shell`; `QTStep`) landed as a single `extracted` folder
+/// or as the wrapper, and neither Rexon nor the desktop itself saw the themes in it.
 pub fn de_theme_marker(apply_kind: &str) -> Option<DeThemeMarker> {
     if !crate::categories::DE_SECTIONS.iter().any(|(_, key)| *key == apply_kind) {
         return None;
@@ -514,31 +516,31 @@ pub fn de_theme_marker(apply_kind: &str) -> Option<DeThemeMarker> {
     }
 }
 
-/// Каталоги, по которым узнаётся тема GTK (лежат прямо в её корне).
+/// Directories by which a GTK theme is recognized (they sit right in its root).
 const GTK_THEME_MARKERS: &[&str] = &[
     "gtk-2.0", "gtk-3.0", "gtk-4.0", "gnome-shell", "xfwm4", "metacity-1",
     "cinnamon",
 ];
 
-/// Есть ли в `index.theme` каталога `dir` раздел `section` (`[Sound Theme]`,
-/// `[Icon Theme]`). Сравнение без учёта пробелов вокруг строки.
+/// Whether the `index.theme` of directory `dir` has the section `section` (`[Sound Theme]`,
+/// `[Icon Theme]`). Compared ignoring whitespace around the line.
 fn index_theme_has(fs: &FsSnapshot, dir: &str, section: &str) -> bool {
     fs.read_text(&join(dir, "index.theme"))
         .map(|t| t.lines().any(|l| l.trim() == section))
         .unwrap_or(false)
 }
 
-/// Является ли каталог `dir` САМ темой вида `apply_kind`:
-/// * звуки — `index.theme` с разделом `[Sound Theme]` (спецификация
-///   freedesktop sound-theme);
-/// * значки и курсоры — `index.theme` с `[Icon Theme]` либо подкаталог
-///   `cursors/` (у курсоров `index.theme` бывает не всегда). Оба вида ставятся
-///   в один каталог `icons`, поэтому признаки общие: архив «значки + курсоры»
-///   встаёт целиком;
-/// * GTK — в корне есть `gtk-3.0/`, `gtk-2.0/`, `gnome-shell/` и т.п.;
-/// * Aurorae — `decoration.svg(z)` в корне;
-/// * разделы окружений — по [`de_theme_marker`]: подкаталог рамок или
-///   оболочки, у LXQt — `lxqt-panel.qss`.
+/// Whether directory `dir` IS ITSELF a theme of kind `apply_kind`:
+/// * sounds — `index.theme` with a `[Sound Theme]` section (the freedesktop
+///   sound-theme specification);
+/// * icons and cursors — `index.theme` with `[Icon Theme]` or a `cursors/`
+///   subdirectory (cursors do not always have `index.theme`). Both kinds are
+///   installed into the same `icons` directory, so the markers are shared: an
+///   "icons + cursors" archive installs whole;
+/// * GTK — the root has `gtk-3.0/`, `gtk-2.0/`, `gnome-shell/` and so on;
+/// * Aurorae — `decoration.svg(z)` in the root;
+/// * desktop sections — per [`de_theme_marker`]: a frame or shell subdirectory,
+///   for LXQt — `lxqt-panel.qss`.
 pub fn is_theme_root(fs: &FsSnapshot, dir: &str, apply_kind: &str) -> bool {
     let has_child_dir = |name: &str| fs.is_dir(&join(dir, name));
     match apply_kind {
@@ -556,17 +558,17 @@ pub fn is_theme_root(fs: &FsSnapshot, dir: &str, apply_kind: &str) -> bool {
     }
 }
 
-/// Все корни тем вида `apply_kind` под `root` (включая сам `root`), в порядке
-/// обхода снимка. В найденный корень обход не спускается: внутри темы другой
-/// темы не бывает, а `stereo/` или `cursors/` — её же части. Скрытые
-/// каталоги (`.git` и т.п.) пропускаются.
+/// All theme roots of kind `apply_kind` under `root` (including `root` itself), in
+/// snapshot traversal order. The traversal does not descend into a found root: there is
+/// no theme inside a theme, and `stereo/` or `cursors/` are its own parts. Hidden
+/// directories (`.git` and the like) are skipped.
 pub fn find_theme_roots(fs: &FsSnapshot, root: &str, apply_kind: &str) -> Vec<String> {
     fn walk(fs: &FsSnapshot, dir: &str, kind: &str, depth: usize, out: &mut Vec<String>) {
         if is_theme_root(fs, dir, kind) {
             out.push(dir.to_string());
             return;
         }
-        // Предохранитель от безумной вложенности (и петель в снимке).
+        // Guard against insane nesting (and loops in the snapshot).
         if depth >= 12 {
             return;
         }
@@ -587,7 +589,7 @@ pub fn find_theme_roots(fs: &FsSnapshot, root: &str, apply_kind: &str) -> Vec<St
     out
 }
 
-/// Все `*.colors` под `root` в порядке обхода снимка: `(путь, имя файла)`.
+/// All `*.colors` under `root` in snapshot traversal order: `(path, file name)`.
 fn colors_files(fs: &FsSnapshot, root: &str) -> Vec<(String, String)> {
     fn walk(fs: &FsSnapshot, dir: &str, depth: usize, out: &mut Vec<(String, String)>) {
         for name in fs.scandir(dir) {
@@ -606,9 +608,9 @@ fn colors_files(fs: &FsSnapshot, root: &str) -> Vec<(String, String)> {
     out
 }
 
-/// Занят ли путь одиночного файла `dest` чужим: что-то на месте есть, эта
-/// покупка его не ставила (`replaceable`), и это не тот же файл байт в
-/// байт (тексты `.colors` снимок читает — [`install_tree_snapshot`]).
+/// Whether the path of a single file `dest` is taken by someone else: something is
+/// there, this purchase did not install it (`replaceable`), and it is not the same file byte
+/// for byte (the snapshot reads `.colors` texts — [`install_tree_snapshot`]).
 fn file_taken(fs: &FsSnapshot, replaceable: Option<&[String]>, src: &str, dest: &str) -> bool {
     if !(fs.is_file(dest) || fs.is_dir(dest)) {
         return false;
@@ -621,7 +623,7 @@ fn file_taken(fs: &FsSnapshot, replaceable: Option<&[String]>, src: &str, dest: 
     !same
 }
 
-/// Почему тема из архива не поставлена (см. [`plan_theme_roots`]).
+/// Why a theme from the archive was not installed (see [`plan_theme_roots`]).
 fn skipped_note(name: &str, reason: SkipReason) -> String {
     match reason {
         SkipReason::DuplicateInArchive => trf(
@@ -639,9 +641,9 @@ fn skipped_note(name: &str, reason: SkipReason) -> String {
     }
 }
 
-/// Тема значков или курсоров с именем общего набора (`hicolor`, `locolor`):
-/// такой каталог в профиле делят все программы, и его `index.theme`
-/// перекрыл бы системный — значки пропали бы по всему столу (дефект
+/// An icon or cursor theme named after a shared set (`hicolor`, `locolor`):
+/// all programs share such a directory in the profile, and its `index.theme`
+/// would shadow the system one — icons would vanish across the whole desktop (defect of
 /// 09.11.2026, [`crate::icon_hygiene`]).
 fn is_shared_icon_set(apply_kind: &str, name: &str) -> bool {
     matches!(apply_kind, "icons" | "cursor") && crate::icon_hygiene::is_reserved_icon_set(name)
@@ -651,26 +653,26 @@ fn is_shared_icon_set(apply_kind: &str, name: &str) -> bool {
 enum SkipReason {
     DuplicateInArchive,
     TakenByOther,
-    /// Общий набор значков (`hicolor`, `locolor`) — не тема.
+    /// A shared icon set (`hicolor`, `locolor`) — not a theme.
     SharedIconSet,
 }
 
-/// Сообщение «в архиве нет темы этого вида» — только для звуков: у остальных
-/// видов установка без найденных корней идёт прежним путём.
+/// The message "the archive has no theme of this kind" — only for sounds: for other
+/// kinds, installation without found roots goes the old way.
 pub fn no_sound_theme_message() -> String {
     tr("The archive contains no sound theme: no index.theme with a [Sound Theme] section was found.")
 }
 
-/// Ветка [`plan_install_with`] для видов с корнями тем: каждый корень — на
-/// верхний уровень `dest_base` под своим именем.
+/// The [`plan_install_with`] branch for kinds with theme roots: each root goes to the
+/// top level of `dest_base` under its own name.
 ///
-/// `replaceable` — пути, которые эта же покупка ставила раньше (из журнала):
-/// их можно снять и поставить заново. `None` — прежнее поведение «занятое
-/// имя перезаписывается». С `Some` каталог, занятый ЧУЖОЙ темой (поставленной
-/// руками или другой покупкой), не трогается — тема пропускается с честной
-/// строкой в сообщении, а не затирает чужое молча.
-/// Годится ли строка в имя одного каталога: не пустая, не `.`/`..`, без
-/// разделителя пути и нуля.
+/// `replaceable` — paths this same purchase installed earlier (from the log):
+/// they may be removed and installed again. `None` — the old "a taken name
+/// is overwritten" behavior. With `Some`, a directory taken by SOMEONE ELSE's theme (installed
+/// by hand or by another purchase) is not touched — the theme is skipped with an honest
+/// line in the message instead of silently overwriting someone else's.
+/// Whether a string is fit to be one directory name: not empty, not `.`/`..`, without
+/// a path separator or NUL.
 fn is_single_path_component(name: &str) -> bool {
     !name.is_empty() && name != "." && name != ".." && !name.contains('/') && !name.contains('\0')
 }
@@ -689,8 +691,8 @@ fn plan_theme_roots(
     let mut notes: Vec<String> = Vec::new();
     for (root, name) in roots {
         let name = name.clone();
-        // Имя каталога темы — один компонент пути, иначе `dest` уходит
-        // выше каталога вида (`..`) или в него самого (`.`).
+        // The theme directory name is one path component, otherwise `dest` goes
+        // above the kind's directory (`..`) or into it itself (`.`).
         if !is_single_path_component(&name) {
             notes.push(skipped_note(&name, SkipReason::TakenByOther));
             continue;
@@ -704,8 +706,8 @@ fn plan_theme_roots(
             continue;
         }
         let dest = join(dest_base, &name);
-        // Рамка окон (оболочка) с именем уже стоящей темы GTK: ложится
-        // подпапкой внутрь неё, как у Mint и Xubuntu (`Arc/xfwm4`).
+        // A window frame (shell) named like an already installed GTK theme: goes
+        // as a subfolder inside it, as in Mint and Xubuntu (`Arc/xfwm4`).
         if let Some(nest) = plan_nested_part(fs, root, &name, &dest, dest_base, apply_kind, replaceable) {
             match nest {
                 Ok((part_steps, part)) => {
@@ -763,10 +765,10 @@ fn plan_theme_roots(
     }
 }
 
-/// Папка темы с именем `name`, в которую ляжет часть раздела окружения
-/// (`xfwm4/`, `metacity-1/`, `gnome-shell/`, `cinnamon/`): настоящая папка
-/// темы GTK в `~/.local/share/themes` (на неё ведёт наша ссылка в
-/// `~/.themes`), иначе сама `~/.themes/<name>`. `None` — папки нет.
+/// The theme folder named `name` that a desktop section part will go into
+/// (`xfwm4/`, `metacity-1/`, `gnome-shell/`, `cinnamon/`): the real GTK theme
+/// folder in `~/.local/share/themes` (our link in `~/.themes` points to it),
+/// otherwise `~/.themes/<name>` itself. `None` — there is no folder.
 fn nest_host(fs: &FsSnapshot, name: &str, dest: &str, dest_base: &str) -> Option<String> {
     if let Some(home) = rstrip_slashes(dest_base).strip_suffix("/.themes") {
         let xdg = join(&crate::installed_scan::xdg_themes_dir(home), name);
@@ -777,17 +779,17 @@ fn nest_host(fs: &FsSnapshot, name: &str, dest: &str, dest_base: &str) -> Option
     fs.is_dir(dest).then(|| dest.to_string())
 }
 
-/// Решение 3в Wehrwolfmann 20.10.2026: рамка окон (Marco — `metacity-1/`,
-/// xfwm4 — `xfwm4/`; так же оболочки GNOME и Cinnamon) с тем же именем, что
-/// уже стоящая тема GTK, ложится ВНУТРЬ её папки своей подпапкой —
-/// стандартное устройство тем freedesktop (Mint-Y, Greybird). Отдельной
-/// папкой она лечь не может: имя занято, а `~/.themes/<имя>` — наша ссылка
-/// на тему GTK.
+/// Decision 3c by Wehrwolfmann, 20.10.2026: a window frame (Marco — `metacity-1/`,
+/// xfwm4 — `xfwm4/`; likewise the GNOME and Cinnamon shells) with the same name as
+/// an already installed GTK theme goes INSIDE its folder as its own subfolder —
+/// the standard layout of freedesktop themes (Mint-Y, Greybird). It cannot go in a
+/// separate folder: the name is taken, and `~/.themes/<name>` is our link
+/// to the GTK theme.
 ///
-/// `None` — вкладывать некуда (папки с этим именем нет, раздел не такой или
-/// это прежняя отдельная папка этой же покупки): обычный путь. Иначе —
-/// шаги и путь части для журнала, либо причина пропуска: подпапка уже есть
-/// и она не этой покупки.
+/// `None` — nowhere to nest (no folder with that name, the section is not of this kind, or
+/// it is an earlier separate folder of this same purchase): the usual path. Otherwise —
+/// the steps and the part's path for the log, or the reason to skip: the subfolder already exists
+/// and it is not this purchase's.
 fn plan_nested_part(
     fs: &FsSnapshot,
     root: &str,
@@ -800,15 +802,15 @@ fn plan_nested_part(
     let Some(DeThemeMarker::Subdir(sub)) = de_theme_marker(apply_kind) else { return None };
     let own = |p: &str| replaceable.is_some_and(|own| own.iter().any(|o| rstrip_slashes(o) == p));
     if own(dest) {
-        return None; // своя отдельная папка — ставится заново целиком
+        return None; // our own separate folder — reinstalled whole
     }
     let host = nest_host(fs, name, dest, dest_base)?;
     let part = join(&host, sub);
     let mut steps = Vec::new();
     if fs.is_dir(&part) || fs.is_file(&part) {
-        // Чужая подпапка (своя рамка темы GTK, поставленная руками) не
-        // затирается; без журнала (`None`) — прежнее «занятое
-        // перезаписывается», но только сама подпапка.
+        // Someone else's subfolder (the GTK theme's own frame, installed by hand) is not
+        // overwritten; without a log (`None`) — the old "a taken one is
+        // overwritten", but only the subfolder itself.
         if replaceable.is_some() && !own(&part) {
             return Some(Err(SkipReason::TakenByOther));
         }
@@ -818,7 +820,7 @@ fn plan_nested_part(
     Some(Ok((steps, part)))
 }
 
-/// Имя темы из metadata.desktop/json, иначе имя папки — порт `_theme_id_from`.
+/// Theme name from metadata.desktop/json, otherwise the folder name — port of `_theme_id_from`.
 pub fn theme_id_from(fs: &FsSnapshot, content_root: &str) -> String {
     let theme_id = basename(rstrip_slashes(content_root)).to_string();
     let md = join(content_root, "metadata.desktop");
@@ -826,12 +828,12 @@ pub fn theme_id_from(fs: &FsSnapshot, content_root: &str) -> String {
     if fs.is_file(&md) {
         if let Some(text) = fs.read_text(&md) {
             for line in text.split_inclusive('\n') {
-                // Python итерирует строки файла (с '\n'); .strip() убирает его.
+                // Python iterates the file's lines (with '\n'); .strip() removes it.
                 if line.trim().starts_with("X-KDE-PluginInfo-Name=") {
                     // split("=", 1)[1].strip()
                     let val = line.split_once('=').map(|(_, v)| v).unwrap_or("").trim();
-                    // Имя из чужого metadata — только как имя одного каталога:
-                    // «../..» вывело бы установку из каталога вида.
+                    // A name from foreign metadata — only as a single directory name:
+                    // "../.." would lead the installation out of the kind's directory.
                     return if is_single_path_component(val) { val.to_string() } else { theme_id };
                 }
             }
@@ -849,14 +851,14 @@ pub fn theme_id_from(fs: &FsSnapshot, content_root: &str) -> String {
                     return id.to_string();
                 }
             }
-            // не-объект / нет KPlugin.Id / ошибка разбора → имя папки.
+            // not an object / no KPlugin.Id / parse error → folder name.
         }
     }
     theme_id
 }
 
-/// Имя Plymouth-темы по `<name>.plymouth` в корне — порт `_plymouth_theme_name`
-/// (первый по порядку `os.listdir`; `""` — файла нет).
+/// Plymouth theme name from `<name>.plymouth` in the root — port of `_plymouth_theme_name`
+/// (the first in `os.listdir` order; `""` — no such file).
 pub fn plymouth_theme_name(fs: &FsSnapshot, content_root: &str) -> String {
     for f in fs.scandir(content_root) {
         if let Some(stem) = f.strip_suffix(".plymouth") {
@@ -867,18 +869,18 @@ pub fn plymouth_theme_name(fs: &FsSnapshot, content_root: &str) -> String {
 }
 
 // ============================================================================
-// Детект товара, отданного одним файлом / безопасность распаковки
+// Detecting an item delivered as one file / unpacking safety
 // ============================================================================
 
-/// True, если скачанный файл — одиночная картинка (не архив).
+/// True if the downloaded file is a single picture (not an archive).
 ///
-/// Составная часть [`single_file_accepted`]: у картинок, в отличие от прочих
-/// одиночных файлов, содержимое опознаётся подписью, и это единственный
-/// способ узнать обою, когда Магазин не дал имени файла.
+/// A component of [`single_file_accepted`]: unlike other single files, a picture's
+/// content is recognized by its signature, and that is the only way to recognize
+/// a wallpaper when the Store gave no file name.
 ///
-/// `is_archive` — результат `zipfile.is_zipfile(path) or tarfile.is_tarfile`
-/// (исполнитель вычисляет по реальному файлу; архив имеет приоритет).
-/// `head` — первые ≤16 байт файла. `hints` — download_name / download_url.
+/// `is_archive` — the result of `zipfile.is_zipfile(path) or tarfile.is_tarfile`
+/// (the executor computes it on the real file; an archive takes priority).
+/// `head` — the first ≤16 bytes of the file. `hints` — download_name / download_url.
 pub fn looks_like_image(is_archive: bool, head: &[u8], hints: &[&str]) -> bool {
     if is_archive {
         return false;
@@ -891,26 +893,26 @@ pub fn looks_like_image(is_archive: bool, head: &[u8], hints: &[&str]) -> bool {
     if IMAGE_MAGIC.iter().any(|sig| head.starts_with(sig)) {
         return true;
     }
-    // WEBP: «RIFF»…«WEBP» (байты 0..3 = RIFF, 8..11 = WEBP).
+    // WEBP: "RIFF"…"WEBP" (bytes 0..3 = RIFF, 8..11 = WEBP).
     if head.len() >= 12 && &head[..4] == b"RIFF" && &head[8..12] == b"WEBP" {
         return true;
     }
     false
 }
 
-/// Надо ли ставить скачанное как ОДИН голый файл, а не распаковывать.
+/// Whether to install the download as ONE bare file instead of unpacking it.
 ///
-/// Решение по двум фактам, и оба обязательны:
-///   1. распаковать нечем — `is_archive` (реальная проба zip/tar исполнителем)
-///      ложно, то есть распаковщик на этом файле только и может, что отказать;
-///   2. файл похож на то, чего ждёт сама категория — расширение из её правила
-///      ([`kind_single_file_rule`]), а у картинок ещё и подпись содержимого,
-///      потому что имя из Магазина бывает пустым.
+/// Decided by two facts, both required:
+///   1. there is nothing to unpack with — `is_archive` (a real zip/tar probe by the executor)
+///      is false, i.e. the unpacker could do nothing but fail on this file;
+///   2. the file looks like what the category itself expects — an extension from its rule
+///      ([`kind_single_file_rule`]), and for pictures also a content signature,
+///      because the name from the Store can be empty.
 ///
-/// Раньше эта развилка существовала только для обоев, и любой другой вид,
-/// выложенный голым файлом, упирался в «Не удалось распаковать архив».
+/// This fork used to exist only for wallpapers, and any other kind
+/// published as a bare file ran into "Could not unpack the archive".
 ///
-/// `head` — первые ≤16 байт файла, `hints` — download_name / download_url.
+/// `head` — the first ≤16 bytes of the file, `hints` — download_name / download_url.
 pub fn single_file_accepted(
     apply_kind: &str,
     is_archive: bool,
@@ -932,18 +934,18 @@ pub fn single_file_accepted(
     rule.has_magic && looks_like_image(is_archive, head, hints)
 }
 
-/// Безопасна ли запись архива относительно каталога распаковки — порт
-/// проверки `_safe` из `_safe_extract` (anti path-traversal).
+/// Whether an archive entry is safe relative to the unpack directory — port of
+/// the `_safe` check from `_safe_extract` (anti path-traversal).
 ///
-/// `dest_abs` — `os.path.abspath(dest)` (каталог распаковки), `name` — имя
-/// записи внутри архива. True, если цель == dest_abs либо под `dest_abs/`.
+/// `dest_abs` — `os.path.abspath(dest)` (the unpack directory), `name` — the name
+/// of the entry inside the archive. True if the target == dest_abs or is under `dest_abs/`.
 pub fn safe_extract_entry(dest_abs: &str, name: &str) -> bool {
     let target = normpath(&py_join(dest_abs, name));
     target == dest_abs || target.starts_with(&format!("{dest_abs}/"))
 }
 
-/// Лексическая нормализация абсолютного пути (аналог `os.path.abspath` без
-/// доступа к ФС): схлопывает `.`/`..`/повторные `/`. Ведущий `/` сохраняется.
+/// Lexical normalization of an absolute path (like `os.path.abspath` without
+/// touching the FS): collapses `.`/`..`/repeated `/`. The leading `/` is kept.
 fn normpath(path: &str) -> String {
     let absolute = path.starts_with('/');
     let mut stack: Vec<&str> = Vec::new();
@@ -971,10 +973,10 @@ fn normpath(path: &str) -> String {
 }
 
 // ============================================================================
-// План установки
+// Install plan
 // ============================================================================
 
-/// Запись в журнал установленных (что должен зафиксировать исполнитель).
+/// A record for the installed log (what the executor must record).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RecordInfo {
     pub apply_kind: String,
@@ -982,17 +984,17 @@ pub struct RecordInfo {
     pub paths: Vec<String>,
 }
 
-/// Результат планирования установки — `(ok, message, names)` оригинала плюс
-/// план шагов и запись журнала.
+/// Result of install planning — the original's `(ok, message, names)` plus
+/// the step plan and the log record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InstallOutcome {
     pub ok: bool,
     pub message: String,
     pub names: Vec<String>,
     pub steps: Vec<ExtStep>,
-    /// Переклассификация по реальному типу (`None`, если не было).
+    /// Reclassification by actual type (`None` if there was none).
     pub reclassified: Option<String>,
-    /// Запись журнала (только при успехе).
+    /// Log record (only on success).
     pub record: Option<RecordInfo>,
 }
 
@@ -1009,42 +1011,42 @@ impl InstallOutcome {
     }
 }
 
-/// apply_kind'ы, для которых категория точна и переклассификация запрещена.
-/// Содержимое видов-контейнеров (обои, звуки, шрифты, виджеты, плагины обоев)
-/// похоже на что угодно, и «распознавание реального типа» уводило бы их в
-/// чужой каталог. Разделы окружений (скрипты и эффекты KWin, переключатель
-/// окон — KPackage с `metadata.json`) тоже точны: их место знает только
-/// категория, — их проверяет [`keeps_category`], а не этот список.
+/// apply_kinds whose category is exact and for which reclassification is forbidden.
+/// The contents of container kinds (wallpapers, sounds, fonts, widgets, wallpaper plugins)
+/// look like anything, and "detecting the actual type" would lead them into
+/// someone else's directory. Desktop sections (KWin scripts and effects, the window
+/// switcher — a KPackage with `metadata.json`) are exact too: only the category
+/// knows their place — they are checked by [`keeps_category`], not by this list.
 const NO_RECLASSIFY: &[&str] = &[
     "colors", "none", "wallpapers", "wallpaper_plugins", "fonts", "sounds",
     "plasmoids", "lockwallpaper", "splash", "lockscreen",
 ];
 
-/// Ставится ли вид KPackage-ом — решает матрица (`Payload::KPackage`):
-/// виджеты Plasma, плагины обоев, скрипты и эффекты KWin, переключатель окон.
+/// Whether a kind is installed as a KPackage — the matrix decides (`Payload::KPackage`):
+/// Plasma widgets, wallpaper plugins, KWin scripts and effects, the window switcher.
 pub(crate) fn is_kpackage_kind(apply_kind: &str) -> bool {
     crate::categories::category_kind(apply_kind)
         .and_then(crate::de_customization::row)
         .is_some_and(|r| matches!(r.payload, crate::de_customization::Payload::KPackage { .. }))
 }
 
-/// Отказ для товара вида KPackage, который не готовый пакет; `None` —
-/// пакет готов (или вид ставится не KPackage-ом). Готов — значит описание
-/// пакета и каталог `contents/` в корне: то же требует KNewStuff в Discover.
+/// Refusal for a KPackage-kind item that is not a ready package; `None` —
+/// the package is ready (or the kind is not installed as a KPackage). Ready means the
+/// package description and a `contents/` directory in the root: KNewStuff in Discover requires the same.
 ///
-/// Живые замеры магазина 04.10.2026 — без проверки дерево ложилось в
-/// каталог вида мусором, а «Включить»/«Добавить виджет» потом молча ничего
-/// не находили:
-/// * эффекты KWin (719): семь из 46 — исходники на C++ или пакеты pacman;
-/// * виджеты (705): из 80 товаров три — исходники на C++ с CMake
-///   (`awesome-widgets-4.1.0-src.tar.xz`, `jarvis-main.zip`) и меню
-///   Dolphin со скриптом, выложенное в виджеты (`Print-Selected-image`);
-/// * плагины обоев (715): из 40 один — пакет pacman
-///   (`WallpaperEngine-kde6-…-x86-64.pkg.tar.zst`), ложился каталогом `usr`.
+/// Live store measurements on 04.10.2026 — without the check, the tree landed in
+/// the kind's directory as junk, and "Enable"/"Add widget" then silently found
+/// nothing:
+/// * KWin effects (719): seven of 46 are C++ sources or pacman packages;
+/// * widgets (705): of 80 items, three are C++ sources with CMake
+///   (`awesome-widgets-4.1.0-src.tar.xz`, `jarvis-main.zip`) plus a Dolphin
+///   menu with a script, published under widgets (`Print-Selected-image`);
+/// * wallpaper plugins (715): of 40, one is a pacman package
+///   (`WallpaperEngine-kde6-…-x86-64.pkg.tar.zst`), it landed as a `usr` directory.
 ///
-/// Причины две, и человеку они говорятся разные: исходники или пакет под
-/// одну систему (собирать) — [`not_a_package_message`]; готового пакета нет
-/// вовсе — [`no_package_inside_message`].
+/// There are two reasons, and the person is told different things: sources or a package for
+/// one system (needs building) — [`not_a_package_message`]; no ready package
+/// at all — [`no_package_inside_message`].
 fn kpackage_refusal(fs: &FsSnapshot, apply_kind: &str, content_root: &str) -> Option<String> {
     if !is_kpackage_kind(apply_kind) {
         return None;
@@ -1061,12 +1063,12 @@ fn kpackage_refusal(fs: &FsSnapshot, apply_kind: &str, content_root: &str) -> Op
     })
 }
 
-/// Исходники, которые надо собирать (CMake, Meson, C++), либо пакет pacman.
+/// Sources that need building (CMake, Meson, C++), or a pacman package.
 ///
-/// Пакет pacman узнаётся по `.PKGINFO`: он лежит в корне распакованного
-/// рядом с `usr/`, а корнем содержимого [`find_content_root`] берёт `usr/`
-/// (служебные имена с точкой он пропускает) — поэтому смотрим и на уровень
-/// выше. Глубина обхода ограничена: исходники лежат у самого верха архива.
+/// A pacman package is recognized by `.PKGINFO`: it sits in the root of the unpacked tree
+/// next to `usr/`, while [`find_content_root`] takes `usr/` as the content root
+/// (it skips service names starting with a dot) — so we also look one level
+/// up. Traversal depth is limited: sources sit at the very top of the archive.
 fn has_build_sources(fs: &FsSnapshot, content_root: &str) -> bool {
     let parent = rstrip_slashes(content_root).rsplit_once('/').map(|(d, _)| d).unwrap_or("");
     let pacman = fs.is_file(&join(content_root, ".PKGINFO"))
@@ -1089,9 +1091,9 @@ fn has_build_sources(fs: &FsSnapshot, content_root: &str) -> bool {
     walk(fs, content_root, 0)
 }
 
-/// Подсказка в конце отказа: что делать дальше. Кнопка страницы товара
-/// уже есть в карточке ([`crate::appearance_page::detail_open_site_btn`]),
-/// а там автор обычно и пишет, как ставить свою работу.
+/// A hint at the end of a refusal: what to do next. The item page button
+/// is already in the card ([`crate::appearance_page::detail_open_site_btn`]),
+/// and that is usually where the author explains how to install their work.
 fn author_page_hint() -> String {
     trf(
         "How to install it is usually written on the author's page — the “%1” button in the item's card.",
@@ -1099,8 +1101,8 @@ fn author_page_hint() -> String {
     )
 }
 
-/// Отказ установки для товара, который не готовый пакет: исходники или
-/// пакет под одну систему.
+/// Install refusal for an item that is not a ready package: sources or a
+/// package for one system.
 pub fn not_a_package_message() -> String {
     format!(
         "{} {}",
@@ -1111,8 +1113,8 @@ pub fn not_a_package_message() -> String {
     )
 }
 
-/// Отказ установки для товара, в котором готового пакета этого вида нет
-/// вовсе (в разделе виджетов выложено что-то другое).
+/// Install refusal for an item that has no ready package of this kind
+/// at all (something else was published in the widgets section).
 pub fn no_package_inside_message() -> String {
     format!(
         "{} {}",
@@ -1122,18 +1124,18 @@ pub fn no_package_inside_message() -> String {
     )
 }
 
-/// Запрещена ли виду переклассификация по содержимому.
+/// Whether reclassification by content is forbidden for the kind.
 fn keeps_category(apply_kind: &str) -> bool {
     NO_RECLASSIFY.contains(&apply_kind)
         || crate::categories::DE_SECTIONS.iter().any(|(_, key)| *key == apply_kind)
 }
 
-/// Порт «архивной» ветки `ThemeInstaller.install` (после распаковки): выбор
-/// целевой папки с переклассификацией, копии, `gtk-update-icon-cache`, запись.
+/// Port of the "archive" branch of `ThemeInstaller.install` (after unpacking): choosing
+/// the target folder with reclassification, copies, `gtk-update-icon-cache`, the record.
 ///
-/// `home` раскрывает `~` при переклассификации; `cat` — категория по
-/// `item.category_id`; `content_root` — корень распакованного (его снимок в
-/// `fs`). Гейт requires_root/одиночный файл — снаружи (см.
+/// `home` expands `~` during reclassification; `cat` — the category by
+/// `item.category_id`; `content_root` — the root of the unpacked tree (its snapshot is in
+/// `fs`). The requires_root/single-file gate is outside (see
 /// [`plan_root_install`] / [`plan_single_file`]).
 pub fn plan_install(
     home: &Path,
@@ -1144,10 +1146,10 @@ pub fn plan_install(
     plan_install_with(home, fs, cat, content_root, None)
 }
 
-/// [`plan_install`] с проверкой занятых имён: `replaceable` — пути, которые
-/// ставила эта же покупка (из журнала). Каталог темы, занятый другим, не
-/// перезаписывается (см. [`plan_theme_roots`]). Живой установщик зовёт
-/// именно эту форму.
+/// [`plan_install`] with a check for taken names: `replaceable` — paths that
+/// this same purchase installed (from the log). A theme directory taken by something else is not
+/// overwritten (see [`plan_theme_roots`]). The live installer calls
+/// exactly this form.
 pub fn plan_install_with(
     home: &Path,
     fs: &FsSnapshot,
@@ -1158,25 +1160,25 @@ pub fn plan_install_with(
     plan_install_inner(home, fs, cat, content_root, replaceable, None)
 }
 
-/// Откуда взялось распакованное: каталог распаковки и имя темы на случай,
-/// когда у темы своей папки в архиве нет.
+/// Where the unpacked tree came from: the unpack directory and the theme name for the case
+/// when the theme has no folder of its own in the archive.
 #[derive(Debug, Clone, Copy)]
 pub struct ArchiveOrigin<'a> {
-    /// Каталог, куда распакован архив (его имя служебное, `extracted`).
+    /// The directory the archive was unpacked into (its name is a service one, `extracted`).
     pub extract_dir: &'a str,
-    /// Имя темы, если её корень — сам каталог распаковки
+    /// The theme name, if its root is the unpack directory itself
     /// ([`archive_theme_name`]).
     pub fallback_name: &'a str,
 }
 
-/// Имя темы для архива без своей папки: имя файла из магазина без
-/// расширения архива и без номера-приставки старого gnome-look
-/// (`99823-Miu.tar.gz` → `Miu`), иначе название товара.
+/// Theme name for an archive without its own folder: the file name from the store without
+/// the archive extension and without the old gnome-look number prefix
+/// (`99823-Miu.tar.gz` → `Miu`), otherwise the item title.
 ///
-/// ⛔ Дефект стенда 17.10.2026: архив `Rosepine-B-GS-Dark.tar.xz` несёт в
-/// корне сразу `gnome-shell/`, а `Marble-shell.zip` — варианты без обёртки.
-/// Каталог распаковки называется `extracted`, и тема ложилась как
-/// `~/.themes/extracted` (или `~/.themes/gnome-shell`).
+/// ⛔ Test bench defect of 17.10.2026: the archive `Rosepine-B-GS-Dark.tar.xz` carries
+/// `gnome-shell/` right in its root, and `Marble-shell.zip` carries variants without a wrapper.
+/// The unpack directory is called `extracted`, and the theme landed as
+/// `~/.themes/extracted` (or `~/.themes/gnome-shell`).
 pub fn archive_theme_name(download_name: &str, item_name: &str) -> String {
     let file = basename(rstrip_slashes(download_name));
     let lower = file.to_lowercase();
@@ -1190,8 +1192,8 @@ pub fn archive_theme_name(download_name: &str, item_name: &str) -> String {
             stem = rest;
         }
     }
-    // Проверяется уже обрезанное имя: « ..» после обрезки — «..», и
-    // `~/.themes/..` — это сам HOME.
+    // The already trimmed name is checked: " .." after trimming is "..", and
+    // `~/.themes/..` is HOME itself.
     let ok = |n: &str| {
         let n = n.trim();
         !n.is_empty() && !n.starts_with('.') && !n.contains('/') && !n.contains('\0')
@@ -1206,10 +1208,10 @@ pub fn archive_theme_name(download_name: &str, item_name: &str) -> String {
     "theme".to_string()
 }
 
-/// [`plan_install_with`] для архива, распакованного в `extract_dir`: корни
-/// тем ищутся от самого каталога распаковки (тема без своей папки — тоже
-/// тема), а безымянный корень получает `fallback_name`. Живой установщик
-/// зовёт именно эту форму.
+/// [`plan_install_with`] for an archive unpacked into `extract_dir`: theme roots
+/// are searched from the unpack directory itself (a theme without its own folder is still a
+/// theme), and a nameless root gets `fallback_name`. The live installer
+/// calls exactly this form.
 pub fn plan_install_archive(
     home: &Path,
     fs: &FsSnapshot,
@@ -1229,7 +1231,7 @@ fn plan_install_inner(
     replaceable: Option<&[String]>,
     origin: Option<ArchiveOrigin>,
 ) -> InstallOutcome {
-    // Имя корня `dir`: у каталога распаковки своего имени нет.
+    // Name of root `dir`: the unpack directory has no name of its own.
     let name_of = |dir: &str, own: String| match origin {
         Some(o) if rstrip_slashes(dir) == rstrip_slashes(o.extract_dir) => o.fallback_name.to_string(),
         _ => own,
@@ -1243,8 +1245,8 @@ fn plan_install_inner(
     if let Some(actual) = actual.as_deref() {
         if !keeps_category(&cat.apply_kind) {
             if let Some(actual_dir) = actual_type_dir(home, actual) {
-                // `actual in _ACTUAL_TYPE_DIR` истинно ровно когда
-                // actual_type_dir вернул Some.
+                // `actual in _ACTUAL_TYPE_DIR` is true exactly when
+                // actual_type_dir returned Some.
                 if actual_dir != dest_base {
                     dest_base = actual_dir;
                     apply_kind = actual_to_kind(actual).to_string();
@@ -1260,9 +1262,9 @@ fn plan_install_inner(
 
     let mut steps = vec![ExtStep::MakeDirs { path: dest_base.clone() }];
 
-    // color-scheme: копируем .colors файлы — с ЛЮБОЙ глубины архива (тот же
-    // дефект вложенности, что у корней тем: схема в `Pack/colors/X.colors`
-    // раньше давала «файл .colors не найден»). Одноимённый второй — пропуск.
+    // color-scheme: copy .colors files — from ANY depth of the archive (the same
+    // nesting defect as with theme roots: a scheme in `Pack/colors/X.colors`
+    // used to give ".colors file not found"). A second one with the same name is skipped.
     if apply_kind == "colors" {
         let mut names: Vec<String> = Vec::new();
         let mut paths = Vec::new();
@@ -1275,9 +1277,9 @@ fn plan_install_inner(
                 }
                 seen.push(stem.to_string());
                 let dst = join(&dest_base, &f);
-                // Правило владельца для файлов (как у `.rxn`): на месте схема,
-                // которую эта покупка не ставила, с другим содержимым — схема
-                // человека или другой покупки: не перезаписывается.
+                // The owner rule for files (as with `.rxn`): if there is a scheme in place
+                // that this purchase did not install, with different content, it is the
+                // person's or another purchase's scheme: it is not overwritten.
                 if replaceable.is_some() && file_taken(fs, replaceable, &src, &dst) {
                     notes.push(skipped_note(stem, SkipReason::TakenByOther));
                     continue;
@@ -1311,26 +1313,26 @@ fn plan_install_inner(
         };
     }
 
-    // Звуки, значки, курсоры, GTK, Aurorae: каждый корень темы — на верхний
-    // уровень каталога вида, обёртка архива и всё лишнее остаются за бортом.
+    // Sounds, icons, cursors, GTK, Aurorae: each theme root goes to the top
+    // level of the kind's directory; the archive wrapper and everything extra stay out.
     if kind_uses_theme_roots(&apply_kind) {
-        // От каталога распаковки, а не от единственной папки в нём: архив
-        // `gnome-shell/…` без обёртки — тоже тема оболочки.
+        // From the unpack directory, not from the single folder in it: an archive
+        // `gnome-shell/…` without a wrapper is still a shell theme.
         let search_from = origin.map(|o| o.extract_dir).unwrap_or(content_root);
         let roots = find_theme_roots(fs, search_from, &apply_kind);
         let single_top = roots.len() == 1 && roots[0] == content_root;
         if roots.is_empty() && apply_kind == "sounds" {
             return InstallOutcome::err(no_sound_theme_message());
         }
-        // Раздел окружения без единой темы своего вида в архиве (шрифты и
-        // обои под видом темы Cinnamon, тема Openbox в разделе LXQt): ставить
-        // нечего — каталог-мусор окружение всё равно не покажет.
+        // A desktop section with not a single theme of its kind in the archive (fonts and
+        // wallpapers posing as a Cinnamon theme, an Openbox theme in the LXQt section): nothing
+        // to install — the desktop would not show a junk directory anyway.
         if roots.is_empty() && de_theme_marker(&apply_kind).is_some() {
             return InstallOutcome::err(no_package_inside_message());
         }
         if !roots.is_empty() && (!single_top || replaceable.is_some()) {
             let pairs: Vec<(String, String)> = if single_top {
-                // Тема в самом корне: имя прежнее (metadata либо папка).
+                // A theme in the root itself: the old name (metadata or folder).
                 vec![(content_root.to_string(), name_of(content_root, theme_id_from(fs, content_root)))]
             } else {
                 roots
@@ -1340,12 +1342,12 @@ fn plan_install_inner(
             };
             return plan_theme_roots(fs, &pairs, &dest_base, &apply_kind, replaceable, reclassified);
         }
-        // Корней не нашлось (значки без index.theme и т.п.) — прежний путь.
+        // No roots found (icons without index.theme and the like) — the old path.
     }
 
-    // Пакет тем Conky (`.cmtp.7z` и архивы, разложенные так же): виджеты
-    // лежат папками в `.conky/` (`.Conky/`, `.config/conky/`), шрифты — в
-    // `.fonts/`. Каждый виджет встаёт своей плиткой.
+    // A Conky theme pack (`.cmtp.7z` and archives laid out the same way): widgets
+    // sit as folders in `.conky/` (`.Conky/`, `.config/conky/`), fonts — in
+    // `.fonts/`. Each widget becomes its own tile.
     if apply_kind == "conky" {
         let search_from = origin.map(|o| o.extract_dir).unwrap_or(content_root);
         let parts = conky_pack_parts(fs, search_from);
@@ -1355,7 +1357,7 @@ fn plan_install_inner(
         }
     }
 
-    // обои/шрифты и всё прочее — копируем директорию.
+    // wallpapers/fonts and everything else — copy the directory.
     let own_id = theme_id_from(fs, content_root);
     let theme_id = if own_id == basename(rstrip_slashes(content_root)) {
         name_of(content_root, own_id)
@@ -1366,13 +1368,13 @@ fn plan_install_inner(
         return InstallOutcome::err(skipped_note(&theme_id, SkipReason::SharedIconSet));
     }
     let dest = join(&dest_base, &theme_id);
-    // Правило владельца (как у корней тем и у `.rxn`): снимается только то,
-    // что общий журнал записал за этой покупкой. Каталог (файл, ссылка) с
-    // тем же именем, поставленный человеком или другой покупкой, не
-    // трогается; ставить больше нечего — отказ с причиной, профиль цел.
-    // Метку `.rexon-owner` магазин не кладёт: его записи своего — журнал,
-    // а файл-метка лёг бы внутрь обоев, шрифтов и чужих для Rexon тем.
-    // `None` — прежнее поведение «занятое перезаписывается» (эталон Python).
+    // The owner rule (as with theme roots and `.rxn`): only what the shared log
+    // recorded for this purchase is removed. A directory (file, link) with
+    // the same name, installed by the person or by another purchase, is not
+    // touched; there is nothing more to install — a refusal with a reason, the profile is intact.
+    // The store does not put a `.rexon-owner` marker: its record of what is its own is the log,
+    // and a marker file would land inside wallpapers, fonts and themes foreign to Rexon.
+    // `None` — the old "a taken one is overwritten" behavior (the Python reference).
     let own = |p: &str| replaceable.is_none_or(|own| own.iter().any(|o| rstrip_slashes(o) == p));
     let mut notes: Vec<String> = Vec::new();
     if fs.is_dir(&dest) || fs.is_file(&dest) {
@@ -1387,17 +1389,17 @@ fn plan_install_inner(
     });
     let mut paths = vec![dest.clone()];
 
-    // Виджет Conky рисует шрифтами, которые автор положил в архив (`fonts/`,
-    // `.fonts/` пакетов менеджера Conky) и просил поставить руками. Они
-    // ставятся в СВОЮ папку виджета внутри каталога шрифтов: одноимённый
-    // шрифт человека или другого виджета не перезаписывается, а «Удалить»
-    // снимает ровно эти файлы (папка записана в журнал рядом с виджетом).
+    // A Conky widget draws with fonts the author put into the archive (`fonts/`,
+    // `.fonts/` of Conky manager packs) and asked to install by hand. They are
+    // installed into the widget's OWN folder inside the fonts directory: a font with the same name
+    // belonging to the person or another widget is not overwritten, and "Remove"
+    // removes exactly these files (the folder is recorded in the log next to the widget).
     if apply_kind == "conky" {
         let fonts = conky_archive_fonts(fs, content_root);
         let font_dir = format!("{}/.local/share/fonts/rexon-conky-{theme_id}", home.to_string_lossy());
-        // Папка шрифтов с тем же именем от другой покупки (или человека) не
-        // снимается и не пополняется: виджет ставится без шрифтов, с
-        // заметкой, а чужая папка в журнал этой покупки не попадает.
+        // A fonts folder with the same name from another purchase (or the person) is not
+        // removed and not added to: the widget is installed without fonts, with
+        // a note, and the foreign folder does not get into this purchase's log.
         let font_dir_taken = (fs.is_dir(&font_dir) || fs.is_file(&font_dir)) && !own(&font_dir);
         if !fonts.is_empty() && font_dir_taken {
             notes.push(skipped_note(basename(&font_dir), SkipReason::TakenByOther));
@@ -1457,23 +1459,23 @@ fn plan_install_inner(
     }
 }
 
-/// Каталоги пакета тем Conky, в которых лежат виджеты: так раскладывает
-/// архив программа-менеджер conky (относительно домашней папки), и так же
-/// собраны некоторые архивы магазина (`.Conky/conkyx` + `.fonts/`).
+/// Directories of a Conky theme pack that hold widgets: this is how the conky
+/// manager program lays out an archive (relative to the home folder), and some
+/// store archives are built the same way (`.Conky/conkyx` + `.fonts/`).
 pub const CONKY_PACK_DIRS: [&str; 4] = [".conky", ".Conky", ".config/conky", ".config/Conky"];
 
-/// Одна часть пакета тем Conky: папка виджета или голый файл настроек.
+/// One part of a Conky theme pack: a widget folder or a bare config file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConkyPackPart {
-    /// Путь в распакованном.
+    /// Path in the unpacked tree.
     pub src: String,
-    /// Имя виджета (папки в `~/.config/conky/`).
+    /// Widget name (the folder in `~/.config/conky/`).
     pub name: String,
-    /// Голый файл — ляжет внутрь папки с тем же именем.
+    /// A bare file — goes inside a folder with the same name.
     pub loose_file: bool,
 }
 
-/// Документ, а не виджет: `README`, `LICENSE`, `*.txt`…
+/// A document, not a widget: `README`, `LICENSE`, `*.txt`…
 fn is_pack_document(name: &str) -> bool {
     let l = name.to_ascii_lowercase();
     ["readme", "license", "licence", "copying", "changelog", "credits", "source"].iter().any(|p| l.starts_with(p))
@@ -1481,13 +1483,13 @@ fn is_pack_document(name: &str) -> bool {
         || l.ends_with(".nfo")
 }
 
-/// Части пакета тем Conky в распакованном `root` (сам `root` и одна папка-
-/// обёртка в нём). Пусто — это не пакет, а один виджет.
+/// Parts of a Conky theme pack in the unpacked `root` (`root` itself and one wrapper
+/// folder in it). Empty — this is not a pack but a single widget.
 ///
-/// Папка шрифтов (`fonts`, только шрифты внутри) виджетом не считается: её
-/// содержимое ставится шрифтами. Голый файл — виджетом, если по имени он не
-/// сценарий, картинка, шрифт или документ (содержимое проверит раздел при
-/// показе: снимок установки текстов файлов не держит).
+/// A fonts folder (`fonts`, only fonts inside) does not count as a widget: its
+/// contents are installed as fonts. A bare file counts as a widget unless by name it is a
+/// script, a picture, a font or a document (the section checks the content when
+/// showing it: the install snapshot does not hold file texts).
 pub fn conky_pack_parts(fs: &FsSnapshot, root: &str) -> Vec<ConkyPackPart> {
     let root = rstrip_slashes(root);
     let mut bases = vec![root.to_string()];
@@ -1531,11 +1533,11 @@ pub fn conky_pack_parts(fs: &FsSnapshot, root: &str) -> Vec<ConkyPackPart> {
     out
 }
 
-/// План установки пакета тем Conky: каждая часть — своя папка в
-/// `dest_base`, все шрифты пакета — в одну папку
-/// `~/.local/share/fonts/rexon-conky-<пакет>/` (её снимет «Удалить» товара).
-/// Занятое чужим виджетом имя не затирается — часть пропускается с
-/// пояснением, как у тем с несколькими корнями.
+/// Install plan for a Conky theme pack: each part is its own folder in
+/// `dest_base`, all of the pack's fonts go into one folder
+/// `~/.local/share/fonts/rexon-conky-<pack>/` (the item's "Remove" removes it).
+/// A name taken by someone else's widget is not overwritten — the part is skipped with
+/// an explanation, as with themes that have several roots.
 fn plan_conky_pack(
     home: &Path,
     fs: &FsSnapshot,
@@ -1586,9 +1588,9 @@ fn plan_conky_pack(
     let font_dir_present = fs.is_dir(&font_dir) || fs.is_file(&font_dir);
     let font_dir_own = replaceable.is_none_or(|own| own.iter().any(|p| rstrip_slashes(p) == font_dir));
     if !fonts.is_empty() && font_dir_present && !font_dir_own {
-        // Чужая папка шрифтов с тем же именем (другая покупка, человек) не
-        // пополняется и в журнал этой покупки не пишется — прежде шрифты
-        // ложились в неё, и «Удалить» этой покупки снимало её целиком.
+        // Someone else's fonts folder with the same name (another purchase, the person) is not
+        // added to and not written into this purchase's log — previously fonts
+        // landed in it, and "Remove" of this purchase removed it entirely.
         notes.push(skipped_note(basename(&font_dir), SkipReason::TakenByOther));
     } else if !fonts.is_empty() {
         if fs.is_dir(&font_dir) {
@@ -1628,8 +1630,8 @@ fn plan_conky_pack(
     }
 }
 
-/// Файлы шрифтов в распакованном виджете Conky (до 5 уровней вглубь, по
-/// порядку обхода).
+/// Font files in an unpacked Conky widget (up to 5 levels deep, in
+/// traversal order).
 fn conky_archive_fonts(fs: &FsSnapshot, root: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut stack = vec![(root.to_string(), 0usize)];
@@ -1651,24 +1653,24 @@ fn conky_archive_fonts(fs: &FsSnapshot, root: &str) -> Vec<String> {
     out
 }
 
-/// Установка товара, который Магазин отдал ОДНИМ голым файлом (не архивом).
+/// Installing an item that the Store served as ONE bare file (not an archive).
 ///
-/// Распаковывать нечего — файл кладётся в каталог вида (а для Kvantum, где
-/// тема ищется как `<имя>/<имя>.kvconfig`, — в подпапку с именем темы).
-/// Гейт «а этот ли случай» — [`single_file_accepted`].
+/// There is nothing to unpack — the file goes into the kind's directory (and for Kvantum, where
+/// a theme is looked up as `<name>/<name>.kvconfig`, into a subfolder named after the theme).
+/// The "is this the case at all" gate — [`single_file_accepted`].
 ///
-/// `archive_path` — скачанный файл: он и есть источник копии (явно в шаге,
-/// а не «пустой источник = то, что скачано», как было до слияния
-/// установщиков).
+/// `archive_path` — the downloaded file: it is the copy source (explicit in the step,
+/// rather than "empty source = what was downloaded", as it was before the installers
+/// were merged).
 pub fn plan_single_file(item: &ThemeItem, cat: &ThemeCategory, archive_path: &str) -> InstallOutcome {
     plan_single_file_with(item, cat, archive_path, &|_| false)
 }
 
-/// [`plan_single_file`] с правилом владельца: `taken(путь)` — на месте
-/// записываемого пути (файла или папки темы) лежит чужое: эта покупка его
-/// не ставила, и это не тот же файл байт в байт. Тогда ставить нечего —
-/// отказ с причиной, на диске ничего не тронуто. Живой установщик зовёт
-/// именно эту форму.
+/// [`plan_single_file`] with the owner rule: `taken(path)` — the place of the
+/// path being written (a file or a theme folder) holds something foreign: this purchase did not
+/// install it, and it is not the same file byte for byte. Then there is nothing to install —
+/// a refusal with a reason, nothing on disk is touched. The live installer calls
+/// exactly this form.
 pub fn plan_single_file_with(
     item: &ThemeItem,
     cat: &ThemeCategory,
@@ -1684,16 +1686,16 @@ pub fn plan_single_file_with(
     let fname = single_file_fname(item, cat);
     let stem = basename(&py_splitext(&fname).0).to_string();
 
-    // Каталог, который придётся создать, и путь файла в нём.
+    // The directory that will have to be created, and the file's path in it.
     let dest_base = if rule.own_dir {
         join(&cat.install_dir, &stem)
     } else {
         cat.install_dir.clone()
     };
     let dest = join(&dest_base, &fname);
-    // В журнал уходит то, что снимет удаление: у собственной папки — папка
-    // целиком, иначе сам файл. Оставь тут файл при own_dir — и после
-    // удаления в каталоге вида болталась бы пустая папка темы.
+    // The log gets what uninstalling will remove: for an own folder — the whole
+    // folder, otherwise the file itself. Leave the file here with own_dir — and after
+    // uninstalling an empty theme folder would be left dangling in the kind's directory.
     let recorded = if rule.own_dir { dest_base.clone() } else { dest.clone() };
     let name = if rule.name_is_stem { stem } else { fname };
     if taken(&recorded) {
@@ -1711,9 +1713,9 @@ pub fn plan_single_file_with(
         steps,
         reclassified: None,
         record: Some(RecordInfo {
-            // Починен баг оригинала: вид писался жёстким "none" независимо от
-            // категории, и одиночная картинка для фона блокировки ложилась в
-            // журнал тем же видом, что обычная обоя.
+            // Fixed a bug of the original: the kind was written as a hard-coded "none" regardless of the
+            // category, and a single picture for the lock background went into the
+            // log as the same kind as a regular wallpaper.
             rexon_type: kind_to_rexon_type(&cat.apply_kind).to_string(),
             apply_kind: cat.apply_kind.clone(),
             paths: vec![recorded],
@@ -1721,12 +1723,12 @@ pub fn plan_single_file_with(
     }
 }
 
-/// Имя файла для одиночного товара: basename download_name → basename url →
-/// запасное имя вида; расширение достраивается тем, которое ждёт категория.
+/// File name for a single-file item: basename of download_name → basename of url →
+/// the kind's fallback name; the extension the category expects is appended.
 ///
-/// Расширение важно не косметически: по нему KDE вообще находит содержимое
-/// (`plasma-apply-colorscheme` ищет `.colors`, fontconfig — шрифтовые), и
-/// файл без него молча не подхватится.
+/// The extension matters not cosmetically: it is how KDE finds the content at all
+/// (`plasma-apply-colorscheme` looks for `.colors`, fontconfig for font ones), and
+/// a file without it is silently not picked up.
 pub fn single_file_fname(item: &ThemeItem, cat: &ThemeCategory) -> String {
     let rule = kind_single_file_rule(&cat.apply_kind).unwrap_or(SingleFileRule {
         exts: IMAGE_EXTS,
@@ -1760,46 +1762,46 @@ pub fn single_file_fname(item: &ThemeItem, cat: &ThemeCategory) -> String {
 }
 
 // ============================================================================
-// Системная установка (SDDM / Plymouth) — план и гейты
+// System installation (SDDM / Plymouth) — plan and gates
 // ============================================================================
 
-/// Окружение системной установки — все внешние probes инъекцией.
+/// The system installation environment — all external probes are injected.
 pub struct RootEnv<'a> {
-    /// Активен ли Plasma Login Manager (plasmalogin) — блокирует SDDM-темы.
+    /// Whether Plasma Login Manager (plasmalogin) is active — blocks SDDM themes.
     pub is_plasmalogin: bool,
     /// `shutil.which("pkexec")` != None.
     pub has_pkexec: bool,
-    /// Путь SYSTEM_HELPER (для текста ошибки).
+    /// SYSTEM_HELPER path (for the error text).
     pub system_helper_path: &'a str,
-    /// Помощник на месте (исполняемый файл по [`crate::installer::system_helper_path`]).
+    /// The helper is in place (the executable at [`crate::installer::system_helper_path`]).
     pub system_helper_exists: bool,
     /// SteamOS / immutable (/usr read-only).
     pub is_steamos_or_immutable: bool,
-    /// Именно SteamOS (Steam Deck и Steam Machine) — у неё своя причина
-    /// отказа для человека (`distro_compat::SteamOsBlock`).
+    /// Specifically SteamOS (Steam Deck and Steam Machine) — it has its own refusal
+    /// reason for the person (`distro_compat::SteamOsBlock`).
     pub is_steamos: bool,
-    /// Семейство пакетов Debian (→ argv "debian"), иначе "arch".
+    /// Debian package family (→ argv "debian"), otherwise "arch".
     pub family_is_debian: bool,
 }
 
-/// Системные темы ставит системная часть Rexon, а её нет — отказ до распаковки.
+/// System themes are installed by Rexon's system part, and it is missing — refusal before unpacking.
 pub fn root_system_part_missing_message() -> String {
-    // ⭐ 28.09.2026: совет «переустановите в систему» и обещание «один пароль
-    // за сеанс» сняты — системная часть едет и в пакете, а пароль держится
-    // минуты, а не сеанс.
+    // ⭐ 28.09.2026: the advice "reinstall into the system" and the promise "one password
+    // per session" were removed — the system part ships in the package too, and the password lasts
+    // minutes, not a session.
     tr("Login screen (SDDM) and boot splash (Plymouth) themes are installed by Rexon's \
         system component, and it isn't installed. Nothing was changed.\nUpdate or \
         reinstall Rexon — the system component comes with it.")
 }
 
-/// Гейты `_install_root` ДО распаковки. `Some(outcome)` — ранний отказ с
-/// точным текстом; `None` — можно продолжать к [`plan_root_install`].
+/// The `_install_root` gates BEFORE unpacking. `Some(outcome)` — an early refusal with
+/// the exact text; `None` — may proceed to [`plan_root_install`].
 pub fn root_preflight(env: &RootEnv, cat: &ThemeCategory) -> Option<InstallOutcome> {
     let kind = cat.apply_kind.as_str();
-    // ⭐ 28.09.2026: система только для чтения проверяется ПЕРВОЙ. Прежде
-    // она шла после «нет системной части Rexon», и на SteamOS, где в версии
-    // для Steam этой части нет и быть не может, человек получал совет
-    // «переустановите Rexon в систему» — невыполнимый.
+    // ⭐ 28.09.2026: a read-only system is checked FIRST. Previously
+    // it came after "no Rexon system part", and on SteamOS, where the Steam
+    // build has no such part and cannot have one, the person got the advice
+    // "reinstall Rexon into the system" — impossible to follow.
     if env.is_steamos {
         let block = if kind == "plymouth" {
             crate::distro_compat::SteamOsBlock::BootSplash
@@ -1823,22 +1825,22 @@ pub fn root_preflight(env: &RootEnv, cat: &ThemeCategory) -> Option<InstallOutco
              Login Screen”.",
         )));
     }
-    // ⭐ Починка 15.09.2026: прежде «pkexec не найден — … Установите пакет
-    // polkit.» — служебное слово и совет, который не срабатывал в Debian и
-    // Ubuntu. Текст общий с восстановлением форков, Plymouth и SDDM.
+    // ⭐ Fix of 15.09.2026: previously "pkexec not found — … Install the polkit
+    // package." — a service word and advice that did not work on Debian and
+    // Ubuntu. The text is shared with fork restore, Plymouth and SDDM.
     if !env.has_pkexec {
         return Some(InstallOutcome::err(crate::system_plan::pkexec_missing_message()));
     }
-    // ⭐ Починка 15.09.2026: прежде «Системный helper Rexon не установлен
-    // (<путь>)…» — служебное слово и путь к файлу в тексте для покупателя.
-    // Путь по-прежнему нужен, но только в argv плана ниже.
+    // ⭐ Fix of 15.09.2026: previously "The Rexon system helper is not installed
+    // (<path>)…" — a service word and a file path in text meant for the buyer.
+    // The path is still needed, but only in the plan's argv below.
     if !env.system_helper_exists {
         return Some(InstallOutcome::err(root_system_part_missing_message()));
     }
     None
 }
 
-/// Успешный план системной установки (после распаковки и гейтов).
+/// A successful system install plan (after unpacking and the gates).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RootPlan {
     /// `pkexec <helper> <kind> <theme_id> <content_root> <family>`.
@@ -1846,14 +1848,14 @@ pub struct RootPlan {
     pub timeout_secs: u64,
     pub theme_id: String,
     pub dest: String,
-    /// Сообщение при успехе (returncode == 0).
+    /// Message on success (returncode == 0).
     pub success_message: String,
     pub rexon_type: String,
 }
 
-/// Порт `_install_root` после распаковки: имя темы + `pkexec` argv.
-/// `Err(outcome)` — Plymouth без `<name>.plymouth`. `content_root` — снимок в `fs`.
-/// (`InstallOutcome` в боксе — clippy::result_large_err.)
+/// Port of `_install_root` after unpacking: theme name + `pkexec` argv.
+/// `Err(outcome)` — Plymouth without `<name>.plymouth`. `content_root` — the snapshot is in `fs`.
+/// (`InstallOutcome` is boxed — clippy::result_large_err.)
 pub fn plan_root_install(
     env: &RootEnv,
     fs: &FsSnapshot,
@@ -1863,12 +1865,12 @@ pub fn plan_root_install(
     plan_root_install_with(env, fs, cat, content_root, &|_| false)
 }
 
-/// [`plan_root_install`] с правилом владельца: `taken(путь)` — на месте
-/// системного каталога темы (`/usr/share/<вид>/themes/<имя>`) лежит чужое:
-/// эта покупка его не ставила (тема пакета системы, человека, другой
-/// покупки). Помощник копирует поверх (`cp --remove-destination`), поэтому
-/// решение принимается здесь, до окна пароля: отказ с причиной, ничего не
-/// тронуто. Живой установщик зовёт именно эту форму.
+/// [`plan_root_install`] with the owner rule: `taken(path)` — the place of the
+/// system theme directory (`/usr/share/<kind>/themes/<name>`) holds something foreign:
+/// this purchase did not install it (a theme from a system package, the person, another
+/// purchase). The helper copies over it (`cp --remove-destination`), so the
+/// decision is made here, before the password window: a refusal with a reason, nothing
+/// touched. The live installer calls exactly this form.
 pub fn plan_root_install_with(
     env: &RootEnv,
     fs: &FsSnapshot,
@@ -1886,8 +1888,8 @@ pub fn plan_root_install_with(
         }
         id
     } else {
-        // SDDM: sanity metadata.desktop/Main.qml — только предупреждение,
-        // на план не влияет.
+        // SDDM: metadata.desktop/Main.qml sanity — a warning only,
+        // does not affect the plan.
         theme_id_from(fs, content_root)
     };
 
@@ -1905,7 +1907,7 @@ pub fn plan_root_install_with(
     Ok(RootPlan {
         argv: [
             vec!["pkexec".to_string(), env.system_helper_path.to_string()],
-            // Язык сообщений помощника (решение 30.09.2026), как в ext_manager.
+            // Language of the helper's messages (decision of 30.09.2026), as in ext_manager.
             crate::system_l10n::lang_args(env.system_helper_path),
             vec![
                 kind.to_string(),
@@ -1923,17 +1925,17 @@ pub fn plan_root_install_with(
     })
 }
 
-/// Сообщение отмены polkit (returncode 126/127) — порт строки `_install_root`.
+/// polkit cancellation message (returncode 126/127) — port of the `_install_root` line.
 ///
-/// ⭐ Починка 15.09.2026: прежде было «Установка отменена (pkexec/polkit)» —
-/// служебные слова в скобках. Причина теперь названа теми же словами, что у
-/// прочих отказов пароля (`system_plan::pkexec_denied_message`).
+/// ⭐ Fix of 15.09.2026: previously it was "Installation cancelled (pkexec/polkit)" —
+/// service words in parentheses. The reason is now named in the same words as
+/// the other password refusals (`system_plan::pkexec_denied_message`).
 pub fn root_cancelled_message() -> String {
     tr("Installation canceled: the administrator password was not confirmed.")
 }
 
-/// Сообщение ошибки установки (returncode != 0) — порт строки `_install_root`:
-/// последние ≤3 строки stderr через « / », иначе «см. журнал».
+/// Install error message (returncode != 0) — port of the `_install_root` line:
+/// the last ≤3 lines of stderr joined with " / ", otherwise "see the log".
 pub fn root_error_message(returncode: i32, stderr: &str) -> String {
     let err = stderr.trim();
     let tail: Vec<&str> = if err.is_empty() {
@@ -1950,13 +1952,13 @@ pub fn root_error_message(returncode: i32, stderr: &str) -> String {
     trf("Installation error (code %1): %2", &[&returncode, &detail])
 }
 
-/// «Применить» системной темы — решения и строка вызова; исполнитель и
-/// проба каталога — снаружи (сверки подставляют свой «pkexec»).
+/// "Apply" for a system theme — decisions and the command line; the executor and
+/// the directory probe are outside (the checks substitute their own "pkexec").
 ///
-/// `theme_dir_exists` — есть ли каталог `/usr/share/<вид>/themes/<тема>`:
-/// выбрать можно только то, что уже стоит, и человек узнаёт об этом до окна
-/// пароля. `run` — запуск с таймаутом (у Plymouth пересборка образа ядра
-/// идёт минутами).
+/// `theme_dir_exists` — whether the directory `/usr/share/<kind>/themes/<theme>` exists:
+/// only what is already installed can be selected, and the person learns this before the password
+/// window. `run` — a run with a timeout (for Plymouth, rebuilding the kernel image
+/// takes minutes).
 pub fn system_theme_apply_with(
     env: &RootEnv,
     cat: &ThemeCategory,
@@ -2002,11 +2004,11 @@ pub fn system_theme_apply_with(
     (true, format!("{}. {note}", trf("✅ Applied: %1", &[&theme])))
 }
 
-/// Итог «Применить» у темы SDDM, когда экран входа сейчас показывает другой
-/// менеджер (LightDM, GDM, greetd…): «при следующем входе» было бы неправдой —
-/// тема выбрана для SDDM и подействует, только если экраном входа станет он.
-/// `None` — показывает SDDM или менеджер неизвестен (прежний текст).
-/// Plasma Login Manager сюда не доходит: у него свой раздел и отказ заранее
+/// Result of "Apply" for an SDDM theme when the login screen is currently shown by another
+/// manager (LightDM, GDM, greetd…): "on the next login" would be untrue —
+/// the theme is selected for SDDM and takes effect only if it becomes the login screen.
+/// `None` — SDDM is showing it or the manager is unknown (the old text).
+/// Plasma Login Manager does not get here: it has its own section and an early refusal
 /// ([`root_preflight`]).
 pub fn sddm_elsewhere_note(login_unit: &str) -> Option<String> {
     let unit = login_unit.trim();
@@ -2020,13 +2022,13 @@ pub fn sddm_elsewhere_note(login_unit: &str) -> Option<String> {
     })
 }
 
-/// «Удалить» системной темы — решения и строка вызова; исполнитель, список
-/// выбранных сейчас тем (`active`) и запуск — снаружи.
+/// "Remove" for a system theme — decisions and the command line; the executor, the list
+/// of currently selected themes (`active`) and the run are outside.
 ///
-/// Выбранную сейчас тему не снимаем: экран входа остался бы без темы, а
-/// заставка — без файлов при следующей сборке образа ядра. Человек узнаёт
-/// это до окна пароля; помощник от root проверяет то же ещё раз и вдобавок
-/// не трогает каталоги, принадлежащие пакетам системы.
+/// The currently selected theme is not removed: the login screen would be left without a theme,
+/// and the splash without files at the next kernel image build. The person learns
+/// this before the password window; the helper running as root checks the same again and additionally
+/// does not touch directories owned by system packages.
 pub fn system_theme_remove_with(
     env: &RootEnv,
     cat: &ThemeCategory,
@@ -2081,13 +2083,13 @@ pub fn system_theme_remove_with(
 }
 
 // ============================================================================
-// Применение (apply)
+// Applying (apply)
 // ============================================================================
 
-/// Действие применения для apply_kind категории — порт диспетчера `apply`.
+/// The apply action for a category's apply_kind — port of the `apply` dispatcher.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApplyAction {
-    /// Делегирование в ThemeManager (themes.rs планы) по apply_kind.
+    /// Delegation to ThemeManager (themes.rs plans) by apply_kind.
     KdeGlobal,
     KdePlasma,
     KdeColors,
@@ -2100,26 +2102,26 @@ pub enum ApplyAction {
     Splash,
     Lockscreen,
     LockWallpaper,
-    /// Одиночная картинка → фон рабочего стола (реальные обои).
+    /// A single picture → desktop background (real wallpapers).
     WallpaperBackground,
-    /// Пачка обоев (каталог с картинками) → фон рабочего стола: картинка
-    /// выбирается из пачки детерминированно ([`pick_pack_image`]).
+    /// A wallpaper pack (a directory of pictures) → desktop background: the picture
+    /// is picked from the pack deterministically ([`pick_pack_image`]).
     WallpaperPack,
-    /// Звуковая тема → имя темы в настройку звука текущего окружения.
+    /// A sound theme → the theme name into the current desktop's sound setting.
     SoundTheme,
-    /// Раздел окружения (рамки xfwm4/Marco, темы оболочек, переключатель
-    /// окон, дополнения, Conky): «Применить» / «Включить» / «Запустить» —
-    /// [`crate::de_apply::press`] по матрице кастомизации.
+    /// A desktop section (xfwm4/Marco frames, shell themes, the window
+    /// switcher, extensions, Conky): "Apply" / "Enable" / "Start" —
+    /// [`crate::de_apply::press`] per the customization matrix.
     DeSection,
-    /// Экран входа (SDDM) или заставка загрузки (Plymouth): выбор уже
-    /// установленной темы системным помощником (режим `apply-<вид>`).
+    /// The login screen (SDDM) or the boot splash (Plymouth): selecting an already
+    /// installed theme via the system helper (mode `apply-<kind>`).
     SystemTheme,
-    /// apply не требуется (шрифты/виджеты/плагины обоев/архивные плагины).
+    /// No apply needed (fonts/widgets/wallpaper plugins/archive plugins).
     Noop,
 }
 
-/// Выбор действия применения — порт цепочки `if kind == …` в `apply`.
-/// `cat` — категория по `item.category_id` (None → apply_kind "none").
+/// Choosing the apply action — port of the `if kind == …` chain in `apply`.
+/// `cat` — the category by `item.category_id` (None → apply_kind "none").
 pub fn apply_action_for(cat: Option<&ThemeCategory>, theme_name: &str) -> ApplyAction {
     let kind = cat.map(|c| c.apply_kind.as_str()).unwrap_or("none");
     match kind {
@@ -2136,16 +2138,16 @@ pub fn apply_action_for(cat: Option<&ThemeCategory>, theme_name: &str) -> ApplyA
         "lockscreen" => ApplyAction::Lockscreen,
         "lockwallpaper" => ApplyAction::LockWallpaper,
         "sounds" => ApplyAction::SoundTheme,
-        // Обои: одиночная картинка — прямо фоном, каталог — пачка (картинку
-        // из неё выбираем сами). Плагины обоев одиночной картинкой тоже
-        // приходят, но каталог у них — kpackage, применять нечего.
+        // Wallpapers: a single picture goes straight to the background, a directory is a pack (we
+        // pick the picture from it ourselves). Wallpaper plugins also arrive as a single
+        // picture, but their directory is a kpackage, nothing to apply.
         _ if is_wallpaper_image(cat, theme_name) => ApplyAction::WallpaperBackground,
         "wallpapers" => ApplyAction::WallpaperPack,
-        // Экран входа и заставка загрузки: установка теперь только кладёт
-        // тему в системный каталог, выбирает её «Применить» (04.10.2026).
+        // The login screen and the boot splash: installation now only puts the
+        // theme into the system directory; "Apply" selects it (04.10.2026).
         "sddm" | "plymouth" => ApplyAction::SystemTheme,
-        // Разделы окружений — по матрице: у раздела есть кнопка, если его тип
-        // включается ключом окружения, списком или запуском (`de_apply::mode`).
+        // Desktop sections — per the matrix: a section has a button if its type
+        // is enabled by a desktop key, a list or a launch (`de_apply::mode`).
         k if crate::categories::category_kind(k)
             .and_then(crate::de_apply::mode)
             .is_some() =>
@@ -2156,30 +2158,30 @@ pub fn apply_action_for(cat: Option<&ThemeCategory>, theme_name: &str) -> ApplyA
     }
 }
 
-/// True, если apply должен поставить картинку фоном рабочего стола — порт
+/// True if apply should set the picture as the desktop background — port of
 /// `_is_wallpaper_image`.
 pub fn is_wallpaper_image(cat: Option<&ThemeCategory>, theme_name: &str) -> bool {
     let Some(cat) = cat else { return false };
-    // Раздел обоев (и обычный, и плагины): там же, где Магазин раздаёт
-    // одиночные картинки. Фон блокировки сюда не входит — у него своё
-    // действие (`LockWallpaper`).
+    // The wallpapers section (both the regular one and plugins): the same place where the Store serves
+    // single pictures. The lock background is not included — it has its own
+    // action (`LockWallpaper`).
     if !matches!(cat.apply_kind.as_str(), "wallpapers" | "wallpaper_plugins") {
         return false;
     }
     IMAGE_EXTS.contains(&file_ext(theme_name).as_str())
 }
 
-/// Включает ли тип `.rxn` кнопка «Применить» вкладки «Оформление» — то есть
-/// есть ли у него раздел, чьё [`apply_action_for`] что-то делает.
+/// Whether the "Apply" button of the "Appearance" tab turns on a `.rxn` type — i.e.
+/// whether it has a section whose [`apply_action_for`] does something.
 ///
-/// ⛔ Такой тип установка ТОЛЬКО кладёт на диск, а выбор делает человек
-/// кнопкой (дефект 03.10.2026: установка темы курсоров из `.rxn` молча
-/// писала `~/.icons/default`, и курсор у X11-программ менялся до
-/// «Применить»; так же молча применялись цвета, стиль Plasma, глобальная
-/// тема, Kvantum, рамки окон, заставка и экран блокировки). Ответ выводится
-/// из тех же разделов и того же диспетчера, что у самой кнопки, — второго
-/// списка нет (правило #12): появился у раздела «Применить» — установка его
-/// типа сама перестаёт включать тему.
+/// ⛔ Installation ONLY puts such a type on disk, and the person makes the choice with
+/// the button (defect of 03.10.2026: installing a cursor theme from `.rxn` silently
+/// wrote `~/.icons/default`, and the cursor of X11 programs changed before
+/// "Apply"; colors, the Plasma style, the global theme, Kvantum, window frames, the splash and
+/// the lock screen were applied silently the same way). The answer is derived
+/// from the same sections and the same dispatcher as the button itself — there is no second
+/// list (rule #12): once a section gets "Apply", installing its
+/// type stops turning the theme on by itself.
 pub fn applied_by_button(rxn_kind: &str) -> bool {
     crate::categories::categories(Path::new("/")).iter().any(|cat| {
         crate::categories::category_kind(&cat.key) == Some(rxn_kind)
@@ -2187,10 +2189,10 @@ pub fn applied_by_button(rxn_kind: &str) -> bool {
     })
 }
 
-/// Сообщение делегирующего apply_kind по результату `ok` — порт строк `apply`
-/// (для KdeGlobal/KdePlasma/KdeColors/Cursor/Icons/Kvantum/Aurorae/Gtk/
-/// Splash/Lockscreen/Noop). LockWallpaper/WallpaperBackground имеют свои
-/// сообщения (см. соответствующие функции), здесь не покрыты.
+/// Message of a delegating apply_kind by the `ok` result — port of the `apply` lines
+/// (for KdeGlobal/KdePlasma/KdeColors/Cursor/Icons/Kvantum/Aurorae/Gtk/
+/// Splash/Lockscreen/Noop). LockWallpaper/WallpaperBackground have their own
+/// messages (see the corresponding functions), not covered here.
 pub fn apply_message(action: &ApplyAction, ok: bool) -> String {
     match action {
         ApplyAction::KdeGlobal => {
@@ -2258,25 +2260,25 @@ pub fn apply_message(action: &ApplyAction, ok: bool) -> String {
     }
 }
 
-/// Сообщение о работе gtk-санитайзера после apply — порт строки
-/// `f"🛡 GTK-санитайзер: исправлено {n} ссылок"` (n = число правок, >0).
+/// Message about the gtk sanitizer's work after apply — port of the line
+/// `f"🛡 GTK sanitizer: fixed {n} links"` (n = number of fixes, >0).
 pub fn gtk_sanitizer_message(changes: usize) -> String {
     trf("🛡️ GTK sanitizer: fixed %1 links", &[&changes])
 }
 
-// ── apply: выбор картинки из пачки обоев ────────────────────────────────────
+// ── apply: picking a picture from a wallpaper pack ─────────────────────────────
 
-/// Штатная подпапка картинок пачки обоев KDE (KPackage).
+/// The standard pictures subfolder of a KDE wallpaper pack (KPackage).
 const PACK_IMAGES_SUBDIR: &str = "contents/images";
 
-/// Все картинки пачки обоев в порядке снимка.
+/// All pictures of a wallpaper pack in snapshot order.
 ///
-/// Если у пачки есть штатная подпапка `contents/images` (раскладка KPackage,
-/// которой пользуются обои KDE Store) — берём только её: рядом лежат
-/// логотипы, превью и картинки-заглушки, и подмешивать их к выбору нельзя.
-/// Иначе обходим всё дерево пачки. Своё превью, которое Rexon кладёт рядом с
-/// темой при установке из Магазина, из кандидатов исключается — иначе фоном
-/// поехал бы скриншот карточки.
+/// If the pack has the standard `contents/images` subfolder (the KPackage layout
+/// used by KDE Store wallpapers) — only it is taken: next to it lie
+/// logos, previews and placeholder pictures, and they must not be mixed into the choice.
+/// Otherwise the whole pack tree is traversed. Our own preview, which Rexon puts next to
+/// the theme when installing from the Store, is excluded from the candidates — otherwise the background
+/// would become a screenshot of the card.
 pub fn pack_images(fs: &FsSnapshot, pack_dir: &str) -> Vec<String> {
     let pack_dir = rstrip_slashes(pack_dir);
     let standard = join(pack_dir, PACK_IMAGES_SUBDIR);
@@ -2286,9 +2288,9 @@ pub fn pack_images(fs: &FsSnapshot, pack_dir: &str) -> Vec<String> {
     out
 }
 
-/// Рекурсивный сбор картинок (в порядке снимка каталога, вглубь после файлов
-/// того же уровня — порядок обхода на выбор не влияет, он полностью
-/// определяется ключом сортировки [`pick_pack_image`]).
+/// Recursive picture collection (in directory snapshot order, deeper after the files
+/// of the same level — the traversal order does not affect the choice, it is fully
+/// determined by the sort key of [`pick_pack_image`]).
 fn collect_images(fs: &FsSnapshot, dir: &str, out: &mut Vec<String>) {
     let mut subdirs = Vec::new();
     for name in fs.scandir(dir) {
@@ -2309,8 +2311,8 @@ fn collect_images(fs: &FsSnapshot, dir: &str, out: &mut Vec<String>) {
     }
 }
 
-/// Разрешение из имени файла вида `1920x1080.png` (штатное имя картинок в
-/// пачках KDE). `None` — в имени разрешения нет.
+/// Resolution from a file name like `1920x1080.png` (the standard picture name in
+/// KDE packs). `None` — the name has no resolution.
 fn size_from_name(path: &str) -> Option<(u64, u64)> {
     let stem = py_splitext(basename(path)).0;
     let stem = basename(&stem).to_string();
@@ -2326,8 +2328,8 @@ fn size_from_name(path: &str) -> Option<(u64, u64)> {
     Some((w, h))
 }
 
-/// Ключ «естественной» сортировки имени: числа сравниваются как числа
-/// (`10.png` после `9.png`, а не перед ним).
+/// "Natural" sort key of a name: numbers compare as numbers
+/// (`10.png` after `9.png`, not before it).
 fn natural_key(name: &str) -> Vec<(u64, String)> {
     let mut out = Vec::new();
     let mut chars = name.chars().peekable();
@@ -2342,8 +2344,8 @@ fn natural_key(name: &str) -> Vec<(u64, String)> {
                 num.push(d);
                 chars.next();
             }
-            // Числа длиннее u64 берём хвостом — на именах картинок не бывает,
-            // а падать из-за такого имени нельзя.
+            // Numbers longer than u64 are taken by their tail — picture names never have them,
+            // but crashing on such a name is not allowed.
             out.push((num.parse::<u64>().unwrap_or(u64::MAX), std::mem::take(&mut text)));
         } else {
             text.push(c);
@@ -2356,23 +2358,23 @@ fn natural_key(name: &str) -> Vec<(u64, String)> {
     out
 }
 
-/// Какую картинку пачки ставить фоном — ДЕТЕРМИНИРОВАННОЕ правило.
+/// Which pack picture to set as the background — a DETERMINISTIC rule.
 ///
-/// Порядок ключей (первый решающий):
-///   1. **есть ли разрешение в имени** — файлы `ШxВ.ext` (штатная раскладка
-///      пачек KDE) идут раньше безымянных по размеру: про них мы точно знаем,
-///      подойдут ли они экрану;
-///   2. **разница пропорций с экраном** — картинка не того соотношения сторон
-///      либо обрежется, либо ляжет с полями, и это видно сразу;
-///   3. **разница площади с экраном** — из двух одинаковых по пропорции берём
-///      ту, что ближе к разрешению экрана: масштабирование в любую сторону
-///      портит картинку, а «ближайшая» портится меньше всех;
-///   4. **естественная сортировка имени** — снимает остаток неоднозначности,
-///      чтобы одна и та же пачка на одной и той же машине всегда давала одну
-///      и ту же картинку.
+/// Key order (the first one decides):
+///   1. **whether the name has a resolution** — `WxH.ext` files (the standard layout
+///      of KDE packs) come before ones without a size in the name: for them we know for sure
+///      whether they fit the screen;
+///   2. **aspect ratio difference from the screen** — a picture with the wrong aspect ratio
+///      is either cropped or letterboxed, and that is immediately visible;
+///   3. **area difference from the screen** — of two with the same ratio we take
+///      the one closer to the screen resolution: scaling in either direction
+///      spoils the picture, and the "closest" one is spoiled the least;
+///   4. **natural sort of the name** — removes the remaining ambiguity,
+///      so that the same pack on the same machine always gives the same
+///      picture.
 ///
-/// Экран нулевого размера (спросить не у кого) — пропорция и площадь
-/// сравниваться не могут, остаётся сортировка имени.
+/// A zero-size screen (nobody to ask) — ratio and area
+/// cannot be compared, only the name sort remains.
 pub fn pick_pack_image(files: &[String], screen_w: u64, screen_h: u64) -> Option<String> {
     let known_screen = screen_w > 0 && screen_h > 0;
     let screen_ar = if known_screen {
@@ -2404,7 +2406,7 @@ pub fn pick_pack_image(files: &[String], screen_w: u64, screen_h: u64) -> Option
     best.map(|(_, f)| f.clone())
 }
 
-/// Ключ выбора картинки пачки: чем меньше по порядку полей, тем лучше.
+/// Pack picture selection key: the smaller in field order, the better.
 struct PickKey {
     no_size: bool,
     ar_diff: f64,
@@ -2420,15 +2422,15 @@ impl PickKey {
     }
 }
 
-/// Сообщение, когда в пачке нет ни одной картинки: ставить нечего, но
-/// установка состоялась — карточка честно остаётся на «✓ Установлено».
+/// Message when the pack has not a single picture: nothing to set, but the
+/// installation happened — the card honestly stays at "✓ Installed".
 pub fn pack_no_images_message() -> String {
     tr("Installed. This pack has no images — nothing to apply.")
 }
 
-// ── apply: планы записи конфигов (kwriteconfig6 / dbus) ─────────────────────
+// ── apply: config write plans (kwriteconfig6 / dbus) ──────────────────────────
 
-/// Одна команда плана применения (argv + опциональный таймаут).
+/// One command of an apply plan (argv + an optional timeout).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CfgCmd {
     pub argv: Vec<String>,
@@ -2438,10 +2440,10 @@ fn cfg(parts: &[&str]) -> CfgCmd {
     CfgCmd { argv: parts.iter().map(|s| (*s).to_string()).collect() }
 }
 
-/// Порт `_apply_widget_style` — форма плана для KDE (`kwriteconfig6` +
-/// dbus-уведомление при успехе). Осталась для моста и эталона Python;
-/// исполнитель идёт через [`crate::themes::apply_qt_style_plan`], который
-/// выбирает запись по окружению, а для KDE даёт ровно эти же две команды.
+/// Port of `_apply_widget_style` — the plan form for KDE (`kwriteconfig6` +
+/// a dbus notification on success). Kept for the bridge and the Python reference;
+/// the executor goes through [`crate::themes::apply_qt_style_plan`], which
+/// picks the write by desktop, and for KDE gives exactly these same two commands.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WidgetStylePlan {
     pub primary: CfgCmd,
@@ -2460,8 +2462,8 @@ pub fn widget_style_plan(name: &str) -> WidgetStylePlan {
     WidgetStylePlan { primary: argv(0), notify_if_ok: argv(1) }
 }
 
-/// Порт `_apply_lnf_component`: запись имени темы в ksplashrc[KSplash]Theme
-/// (`component == "splash"`) или kscreenlockerrc[Greeter]Theme (иначе).
+/// Port of `_apply_lnf_component`: writing the theme name into ksplashrc[KSplash]Theme
+/// (`component == "splash"`) or kscreenlockerrc[Greeter]Theme (otherwise).
 pub fn lnf_component_plan(component: &str, name: &str) -> CfgCmd {
     if component == "splash" {
         cfg(&[
@@ -2476,24 +2478,24 @@ pub fn lnf_component_plan(component: &str, name: &str) -> CfgCmd {
     }
 }
 
-// ── Заставка KDE: «Нет» и «Продемонстрировать» ───────────────────────────
+// ── KDE splash: "None" and "Preview" ──────────────────────────────────────────
 //
-// Сверено с исходниками Plasma 6.8 (plasma-desktop `kcms/ksplash/kcm.cpp`,
+// Checked against the Plasma 6.8 sources (plasma-desktop `kcms/ksplash/kcm.cpp`,
 // plasma-workspace `startkde/startplasma.cpp`, `ksplash/ksplashqml`):
-//   * плитка «Нет» у KDE — тема с именем `None`; при сохранении модуль пишет
-//     ОБА ключа: `[KSplash] Theme=None` и `Engine=none` (у любой другой темы —
-//     `Engine=KSplashQML`). При входе startplasma запускает ksplashqml только
-//     при `Engine == KSplashQML` (нет ключа — тоже KSplashQML);
-//   * «Продемонстрировать» — `ksplashqml <тема> --test`: заставка во весь
-//     экран проходит этапы и закрывается сама, по щелчку или Esc (флага
-//     `--window` модуль не передаёт).
+//   * KDE's "None" tile is a theme named `None`; on save the module writes
+//     BOTH keys: `[KSplash] Theme=None` and `Engine=none` (any other theme gets
+//     `Engine=KSplashQML`). At login startplasma starts ksplashqml only
+//     when `Engine == KSplashQML` (no key — also KSplashQML);
+//   * "Preview" is `ksplashqml <theme> --test`: a full-screen splash
+//     goes through its stages and closes by itself, on a click or Esc (the module
+//     does not pass the `--window` flag).
 
-/// Имя «темы» плитки «Нет» — то же, что пишет модуль KDE.
+/// The "theme" name of the "None" tile — the same the KDE module writes.
 pub const SPLASH_NONE: &str = "None";
-/// `Engine` выключенной заставки — как у модуля KDE.
+/// `Engine` of a disabled splash — as in the KDE module.
 pub const SPLASH_ENGINE_NONE: &str = "none";
 
-/// Значение `[KSplash] Engine` для выбранной темы.
+/// The `[KSplash] Engine` value for the selected theme.
 pub fn splash_engine_for(theme: &str) -> &'static str {
     if theme == SPLASH_NONE {
         SPLASH_ENGINE_NONE
@@ -2502,8 +2504,8 @@ pub fn splash_engine_for(theme: &str) -> &'static str {
     }
 }
 
-/// Запись `[KSplash] Engine` к выбранной теме. Без неё после «Нет» никакая
-/// другая заставка не вернулась бы: startplasma смотрит на `Engine`.
+/// Writing `[KSplash] Engine` for the selected theme. Without it, after "None" no
+/// other splash would come back: startplasma looks at `Engine`.
 pub fn splash_engine_plan(theme: &str) -> CfgCmd {
     cfg(&[
         "kwriteconfig6", "--file", "ksplashrc", "--group", "KSplash",
@@ -2511,11 +2513,11 @@ pub fn splash_engine_plan(theme: &str) -> CfgCmd {
     ])
 }
 
-/// Какую плитку раздела «Заставка» считать текущей по `ksplashrc`.
+/// Which tile of the "Splash" section counts as current according to `ksplashrc`.
 ///
-/// `Engine` задан и не `KSplashQML` — заставка при входе не запускается
-/// вовсе (так решает startplasma), текущая — «Нет», что бы ни стояло в
-/// `Theme`. Иначе — значение `Theme` как есть.
+/// `Engine` is set and is not `KSplashQML` — the splash does not run at login
+/// at all (startplasma decides so), the current one is "None", whatever is in
+/// `Theme`. Otherwise — the `Theme` value as is.
 pub fn splash_active_value(theme: Option<String>, engine: Option<&str>) -> Option<String> {
     match engine.map(str::trim) {
         Some(e) if !e.is_empty() && e != crate::session_splash::KSPLASH_ENGINE => {
@@ -2525,8 +2527,8 @@ pub fn splash_active_value(theme: Option<String>, engine: Option<&str>) -> Optio
     }
 }
 
-/// Команда «Продемонстрировать заставку» — та же, что у модуля KDE.
-/// `None` — показывать нечего (плитка «Нет», пустое или странное имя).
+/// The "Preview splash" command — the same as the KDE module's.
+/// `None` — nothing to show (the "None" tile, an empty or odd name).
 pub fn splash_demo_argv(theme: &str) -> Option<Vec<String>> {
     let theme = theme.trim();
     if theme.is_empty() || theme == SPLASH_NONE || theme.starts_with('-') || theme.contains('/') {
@@ -2539,21 +2541,21 @@ pub fn splash_demo_argv(theme: &str) -> Option<Vec<String>> {
     ])
 }
 
-/// Подпись кнопки показа заставки на плитке.
+/// Label of the splash preview button on a tile.
 pub fn splash_demo_label() -> String {
     // TRANSLATORS: button on a KDE splash screen tile: shows the splash screen full screen for a few seconds.
     tr("Show Splash Screen")
 }
 
-/// Подсказка кнопки показа заставки.
+/// Tooltip of the splash preview button.
 pub fn splash_demo_tooltip() -> String {
     tr("Shows the splash screen full screen for a few seconds. Click or press Esc to close it.")
 }
 
-/// Показ не удался; `detail` — что сказала программа (может быть пусто).
+/// Preview failed; `detail` — what the program said (may be empty).
 pub fn splash_demo_failed(detail: &str) -> String {
     let head = tr("Failed to show the splash screen preview.");
-    // Программа бывает многословна: человеку — последние строки, где причина.
+    // The program can be verbose: the person gets the last lines, where the cause is.
     let lines: Vec<&str> = detail.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
     if lines.is_empty() {
         head
@@ -2562,29 +2564,29 @@ pub fn splash_demo_failed(detail: &str) -> String {
     }
 }
 
-/// Нечем показать: нет `ksplashqml` (заставка KDE стоит вместе с Plasma).
+/// Nothing to preview with: no `ksplashqml` (the KDE splash comes with Plasma).
 pub fn splash_demo_missing() -> String {
     tr("Can't show the splash screen: ksplashqml (part of Plasma) isn't installed.")
 }
 
-/// Название плитки «Нет».
+/// Title of the "None" tile.
 pub fn splash_none_name() -> String {
     // TRANSLATORS: tile in the KDE splash screen section that turns the splash screen off.
     trc("splash screen", "None")
 }
 
-/// Описание плитки «Нет» — как у модуля KDE.
+/// Description of the "None" tile — as in the KDE module.
 pub fn splash_none_description() -> String {
     tr("No splash screen will be shown")
 }
 
-/// Итог применения плитки «Нет».
+/// Result of applying the "None" tile.
 pub fn splash_off_message() -> String {
     tr("Splash screen turned off — takes effect the next time you log in")
 }
 
-/// Порт `_apply_aurorae`: primary kwriteconfig6 theme + (только при ok) две
-/// попытки reconfigure KWin (qdbus / qdbus6).
+/// Port of `_apply_aurorae`: the primary kwriteconfig6 theme + (only when ok) two
+/// attempts to reconfigure KWin (qdbus / qdbus6).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AuroraePlan {
     pub primary: CfgCmd,
@@ -2608,30 +2610,30 @@ pub fn aurorae_plan(name: &str) -> AuroraePlan {
     }
 }
 
-/// Порт `_apply_lock_wallpaper`: обои экрана блокировки.
-/// `install_dir` = `cat.install_dir`. `Err(msg)` — файла нет (одиночная
-/// картинка обязательна). `Ok(plan)` — запись картинки и сопутствующие.
+/// Port of `_apply_lock_wallpaper`: lock screen wallpaper.
+/// `install_dir` = `cat.install_dir`. `Err(msg)` — the file is missing (a single
+/// picture is required). `Ok(plan)` — writing the picture and the accompanying writes.
 ///
-/// KDE — `kscreenlockerrc` (Image, затем PreviewImage и WallpaperPlugin);
-/// Deepin — только в сеансе Treeland, через Центр управления
-/// ([`lock_wallpaper_plan_in`]). Где ещё работает этот режим —
+/// KDE — `kscreenlockerrc` (Image, then PreviewImage and WallpaperPlugin);
+/// Deepin — only in a Treeland session, via the Control Center
+/// ([`lock_wallpaper_plan_in`]). Where else this mode works —
 /// [`crate::categories::lock_wallpaper_supported`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LockWallpaperPlan {
-    /// file://-URI с percent-кодированием не-ASCII (`Path.as_uri`).
+    /// A file:// URI with percent-encoding of non-ASCII (`Path.as_uri`).
     pub uri: String,
-    /// Запись картинки (её returncode определяет ok/сообщение).
+    /// Writing the picture (its returncode determines ok/the message).
     pub image: CfgCmd,
-    /// Best-effort записи после неё (KDE: PreviewImage и
-    /// WallpaperPlugin=org.kde.image; Deepin — нет).
+    /// Best-effort writes after it (KDE: PreviewImage and
+    /// WallpaperPlugin=org.kde.image; Deepin — none).
     pub extra: Vec<CfgCmd>,
     pub success_message: String,
     pub failure_message: String,
 }
 
-/// `path_is_file` — существует ли файл `install_dir/theme_name` (probe снаружи).
-/// `de` — идентификатор окружения (`deepin`, `kde`…); всё, кроме Deepin, —
-/// путь KDE, как раньше.
+/// `path_is_file` — whether the file `install_dir/theme_name` exists (probe outside).
+/// `de` — the desktop identifier (`deepin`, `kde`…); everything except Deepin is
+/// the KDE path, as before.
 pub fn lock_wallpaper_plan(
     de: &str,
     install_dir: &str,
@@ -2641,10 +2643,10 @@ pub fn lock_wallpaper_plan(
     lock_wallpaper_plan_in(de, false, install_dir, theme_name, path_is_file)
 }
 
-/// То же с учётом сеанса: `treeland` — идёт ли сеанс Treeland. В нём экран
-/// блокировки Deepin рисует Treeland, а обои ему отдаёт Центр управления
-/// ([`crate::dde::control_center_wallpaper_argv`]); другие сеансы Deepin
-/// Rexon не поддерживает — отказ ([`crate::dde::not_treeland_message`]).
+/// The same, taking the session into account: `treeland` — whether a Treeland session is running. In it, the
+/// Deepin lock screen is drawn by Treeland, and the Control Center hands it the wallpaper
+/// ([`crate::dde::control_center_wallpaper_argv`]); Rexon does not support other Deepin
+/// sessions — a refusal ([`crate::dde::not_treeland_message`]).
 pub fn lock_wallpaper_plan_in(
     de: &str,
     treeland: bool,
@@ -2700,8 +2702,8 @@ pub fn lock_wallpaper_plan_in(
     })
 }
 
-/// `pathlib.Path(abs).as_uri()`: `file://` + percent-кодирование
-/// (unreserved `A-Za-z0-9_.-~` и `/` не кодируются).
+/// `pathlib.Path(abs).as_uri()`: `file://` + percent-encoding
+/// (unreserved `A-Za-z0-9_.-~` and `/` are not encoded).
 pub fn path_as_uri(abs_path: &str) -> String {
     let mut out = String::from("file://");
     for &b in abs_path.as_bytes() {
@@ -2715,9 +2717,9 @@ pub fn path_as_uri(abs_path: &str) -> String {
     out
 }
 
-/// Устарела ли установленная Global Theme (Plasma 5 без metadata.json) — порт
-/// `_global_theme_missing_metadata_json`. Проверяет системный и
-/// пользовательский каталоги look-and-feel по снимку.
+/// Whether the installed Global Theme is outdated (Plasma 5 without metadata.json) — port of
+/// `_global_theme_missing_metadata_json`. Checks the system and
+/// user look-and-feel directories from the snapshot.
 pub fn global_theme_missing_metadata_json(
     fs: &FsSnapshot,
     home: &str,
@@ -2737,12 +2739,12 @@ pub fn global_theme_missing_metadata_json(
 }
 
 // ============================================================================
-// Удаление
+// Uninstalling
 // ============================================================================
 
-/// План удаления по записи журнала — порт `uninstall`. `paths` — из
-/// `rec["paths"]`; `is_dir`/`is_file` — probes существования (снаружи).
-/// Каталоги → RemoveTree, файлы → RemoveFile; несуществующее — пропуск.
+/// Uninstall plan from a log record — port of `uninstall`. `paths` — from
+/// `rec["paths"]`; `is_dir`/`is_file` — existence probes (outside).
+/// Directories → RemoveTree, files → RemoveFile; nonexistent ones — skipped.
 pub fn plan_uninstall(
     paths: &[String],
     is_dir: &dyn Fn(&str) -> bool,
@@ -2759,27 +2761,27 @@ pub fn plan_uninstall(
     steps
 }
 
-/// Сообщение об удалении — порт строки `uninstall`
-/// (`f"Удалено ({removed} путей): {name}"`). `removed` = число снятых путей.
+/// Uninstall message — port of the `uninstall` line
+/// (`f"Removed ({removed} paths): {name}"`). `removed` = number of removed paths.
 pub fn uninstall_message(removed: usize, name: &str) -> String {
     trf("Removed (%1 paths): %2", &[&removed, &name])
 }
 
 // ============================================================================
-// Куда положить скачанный из Магазина скриншот — порт _save_ocs_preview
+// Where to put a screenshot downloaded from the Store — port of _save_ocs_preview
 // ============================================================================
 
-/// Путь, куда копируется скачанный OCS-скриншот, чтобы локальный скан показывал
-/// его вместо плейсхолдера («Вариант 1») — порт РЕШЕНИЯ `_save_ocs_preview`.
+/// The path a downloaded OCS screenshot is copied to, so that the local scan shows
+/// it instead of a placeholder ("Option 1") — port of the `_save_ocs_preview` DECISION.
 ///
-/// * тип с каталогом → `<theme_dir>/.rexon-preview.png`;
-/// * цвет-схема (`apply_kind == "colors"`, каталога нет) либо путь-файл →
-///   сайдкар-кеш `~/.cache/rexon/local_previews/<kind>__<имя>.png`;
-/// * `None` — имени нет вообще (копировать некуда, оригинал тихо выходит).
+/// * a type with a directory → `<theme_dir>/.rexon-preview.png`;
+/// * a color scheme (`apply_kind == "colors"`, no directory) or a file path →
+///   sidecar cache `~/.cache/rexon/local_previews/<kind>__<name>.png`;
+/// * `None` — no name at all (nowhere to copy, the original quietly returns).
 ///
-/// Само копирование (`shutil.copyfile`), `makedirs` и поиск источника
-/// (`_ocs_preview_source`: `preview_local` либо файл из кеша превью) — side
-/// effect, остаются на вызывающем. `theme_dir_is_dir` — наблюдение
+/// The copying itself (`shutil.copyfile`), `makedirs` and finding the source
+/// (`_ocs_preview_source`: `preview_local` or a file from the preview cache) are side
+/// effects, they stay with the caller. `theme_dir_is_dir` — the observation
 /// `os.path.isdir(theme_dir)`.
 pub fn ocs_preview_dest(
     home: &str,
@@ -2789,15 +2791,15 @@ pub fn ocs_preview_dest(
     item_name: &str,
 ) -> Option<String> {
     if apply_kind != "colors" && !theme_dir.is_empty() && theme_dir_is_dir {
-        // os.path.join не удваивает разделитель, если левая часть уже на «/».
+        // os.path.join does not double the separator if the left part already ends with "/".
         let sep = if theme_dir.ends_with('/') { "" } else { "/" };
         return Some(format!(
             "{theme_dir}{sep}{}",
             crate::installed_scan::REXON_PREVIEW_NAME
         ));
     }
-    // Имя темы: своё либо последний сегмент пути (без замыкающих слэшей) —
-    // порт `item.name or os.path.basename(theme_dir.rstrip("/"))`.
+    // Theme name: its own, or the last path segment (without trailing slashes) —
+    // port of `item.name or os.path.basename(theme_dir.rstrip("/"))`.
     let name = if item_name.is_empty() {
         let trimmed = theme_dir.trim_end_matches('/');
         trimmed.rsplit('/').next().unwrap_or("").to_string()
@@ -2811,88 +2813,88 @@ pub fn ocs_preview_dest(
 }
 
 // ============================================================================
-// ЖИВОЙ ИСПОЛНИТЕЛЬ: установка, применение и удаление тем оформления
+// LIVE EXECUTOR: installing, applying and uninstalling appearance themes
 // ============================================================================
 //
-// ЗАЧЕМ. Всё, что выше, — РЕШЕНИЯ: куда положить тему, чем её применить, что
-// стереть. ДЕЛАТЬ ядро до сих пор не умело ничего: исполнителем этих планов
-// был Python (`rexon/appearance/installer.py`, класс `ThemeInstaller`), и
-// поэтому вкладка «Оформление» в процессе без Python не могла ни поставить
-// тему, ни применить её, ни снять — кнопки были, а за ними пусто.
+// WHY. Everything above is DECISIONS: where to put a theme, what to apply it with, what to
+// delete. Until now the core could not DO anything: the executor of these plans
+// was Python (`rexon/appearance/installer.py`, the `ThemeInstaller` class), and
+// so the "Appearance" tab in a process without Python could neither install
+// a theme nor apply it nor remove it — the buttons were there, but nothing behind them.
 //
-// Здесь дописан исполнитель: те же побочные вызовы, что делал Python
-// (`shutil`/`os`/`subprocess`/`pkexec`), но на Rust. Разделение прежнее и оно
-// принципиальное — **планировщик решает, исполнитель делает**:
-//   * что копировать и что запускать — [`plan_install`] / [`plan_single_file`] /
+// The executor is written here: the same side calls Python made
+// (`shutil`/`os`/`subprocess`/`pkexec`), but in Rust. The split is the same and it is
+// fundamental — **the planner decides, the executor does**:
+//   * what to copy and what to run — [`plan_install`] / [`plan_single_file`] /
 //     [`plan_root_install`] / [`plan_uninstall`];
-//   * чем применять — [`apply_action_for`] плюс планы [`crate::themes`];
-//   * снимок ФС для планировщика — [`install_tree_snapshot`];
-//   * прогон шагов — [`exec_install_steps`] и [`exec_apply_plan`];
-//   * конвейеры целиком — [`LiveInstaller`].
+//   * what to apply with — [`apply_action_for`] plus the [`crate::themes`] plans;
+//   * the FS snapshot for the planner — [`install_tree_snapshot`];
+//   * running the steps — [`exec_install_steps`] and [`exec_apply_plan`];
+//   * whole pipelines — [`LiveInstaller`].
 //
-// ⛔ ВТОРОЙ КОПИИ ПРАВИЛ ЗДЕСЬ НЕТ. Ни одного решения «какой каталог», «какое
-// имя», «какой ключ конфига» этот раздел не принимает: все они уже приняты
-// выше или у соседей. Установщик — самое опасное место для тихого расхождения
-// (две копии решают, КУДА копировать и ЧТО удалять), и ровно поэтому граница
-// проведена так строго.
+// ⛔ THERE IS NO SECOND COPY OF THE RULES HERE. This section makes not a single decision of
+// "which directory", "which name", "which config key": they are all already made
+// above or by the neighbors. The installer is the most dangerous place for silent divergence
+// (two copies deciding WHERE to copy and WHAT to delete), and that is exactly why the boundary
+// is drawn so strictly.
 //
-// Живую WE-обою перед статичной снимает общий исполнитель обоев
-// ([`crate::wallpaper_exec::WallpaperExec::apply`] → крюк процесса
-// `wallpaper_exec::set_we_stopper`, его ставит окно на Qt): здесь второй
-// копии снятия нет.
+// A live WE wallpaper is stopped before a static one by the shared wallpaper executor
+// ([`crate::wallpaper_exec::WallpaperExec::apply`] → the process hook
+// `wallpaper_exec::set_we_stopper`, set by the Qt window): there is no second
+// copy of stopping here.
 //
-// ⚠️ ЧЕГО ЖИВЬЁМ НЕ ВЫХОДИТ (названо, а не замолчано):
-//   * шаги плана обоев, поднимающие ДЕРЖАЩИЙ процесс (`swww`, `swaybg`, `wbg`,
-//     `hyprpaper`): такой процесс обязан жить дольше вызова, а учёт таких
-//     процессов ведёт движок обоев, живого исполнителя которого в ядре нет.
-//     Такой шаг отвечает честным отказом со словами, а не молчанием.
+// ⚠️ WHAT DOES NOT WORK LIVE (named, not hushed up):
+//   * wallpaper plan steps that start a HOLDING process (`swww`, `swaybg`, `wbg`,
+//     `hyprpaper`): such a process must outlive the call, and such processes
+//     are tracked by the wallpaper engine, whose live executor is not in the core.
+//     Such a step answers with an honest refusal in words, not with silence.
 
 use std::path::PathBuf;
 
 use crate::themes::ApplyStep;
 use crate::utils::{RunOutcome, RunOutput, RunReport, RunSpec};
 
-/// Реальные типы распаковки, у которых есть свой каталог установки, — ключи
-/// [`actual_type_dir`] (порт `_ACTUAL_TYPE_DIR`).
+/// Actual unpack types that have their own install directory — the keys of
+/// [`actual_type_dir`] (port of `_ACTUAL_TYPE_DIR`).
 ///
-/// Список нужен исполнителю ровно для одного: подать планировщику снимок ВСЕХ
-/// каталогов, куда установка может уехать после переклассификации, — иначе
-/// [`plan_install`] не увидит уже стоящую тему и не снимет её перед копией.
-/// Сторож расхождения с таблицей — сверка `actual_types_have_dirs`.
+/// The executor needs the list for exactly one thing: to give the planner a snapshot of ALL
+/// directories the installation may move to after reclassification — otherwise
+/// [`plan_install`] will not see an already installed theme and will not remove it before copying.
+/// The divergence guard against the table is the `actual_types_have_dirs` check.
 const ACTUAL_TYPES_WITH_DIR: &[&str] = &[
     "look-and-feel", "plasma-theme", "color-scheme", "aurorae", "kvantum",
     "icons",
 ];
 
-/// Имена файлов, чей текст попадает в снимок дерева — порт `_META_NAMES`.
+/// Names of files whose text goes into the tree snapshot — port of `_META_NAMES`.
 ///
-/// `index.theme` добавлен 03.10.2026: по его разделу (`[Sound Theme]`,
-/// `[Icon Theme]`) [`find_theme_roots`] узнаёт корни тем в архиве.
+/// `index.theme` was added on 03.10.2026: by its section (`[Sound Theme]`,
+/// `[Icon Theme]`) [`find_theme_roots`] recognizes theme roots in an archive.
 const SNAPSHOT_META_NAMES: &[&str] = &["metadata.desktop", "metadata.json", "index.theme"];
 
-// ── мелочи окружения ────────────────────────────────────────────────────────
+// ── environment odds and ends ──────────────────────────────────────────────────
 
-/// `$HOME` — тот же, что подставлял Python (`os.path.expanduser("~")`).
+/// `$HOME` — the same one Python substituted (`os.path.expanduser("~")`).
 fn live_home() -> String {
     std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
 }
 
-/// Значение переменной окружения либо пустая строка.
+/// An environment variable's value or an empty string.
 fn env_str(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
 }
 
-/// `$PATH` для поиска бинарей (`None` — переменной нет вовсе).
+/// `$PATH` for finding binaries (`None` means there is no such variable at all).
 fn path_env() -> Option<String> {
     std::env::var("PATH").ok()
 }
 
-/// Все пути журнала установленных (что и куда ставил сам Rexon) — по ним
-/// скан диска узнаёт системные темы, поставленные Rexon
+/// All paths of the installed log (what Rexon itself installed and where):
+/// by them the disk scan recognises system themes installed by Rexon
 /// ([`crate::installed_scan::scan_rexon_system`]).
 pub fn installed_log_paths() -> Vec<String> {
     let log = crate::ocs_store::install_log_path_xdg(xdg_config_home().as_deref(), &env_str("HOME"));
-    // Читается через общий журнал установки (шаг 3 слияния установщиков).
+    // Read through the common install log (step 3 of merging the installers).
     crate::install_journal::store_log_view(&log)
         .values()
         .filter_map(|e| e.get("paths")?.as_array().cloned())
@@ -2901,30 +2903,32 @@ pub fn installed_log_paths() -> Vec<String> {
         .collect()
 }
 
-/// `$XDG_CONFIG_HOME`, если он задан.
+/// `$XDG_CONFIG_HOME`, if it is set.
 fn xdg_config_home() -> Option<String> {
     let v = env_str("XDG_CONFIG_HOME");
     if v.is_empty() { None } else { Some(v) }
 }
 
-/// `$XDG_DATA_HOME`, если он задан.
+/// `$XDG_DATA_HOME`, if it is set.
 fn xdg_data_home() -> Option<String> {
     let v = env_str("XDG_DATA_HOME");
     if v.is_empty() { None } else { Some(v) }
 }
 
-/// Метка времени журнала установленных — порт
-/// `datetime.datetime.now().isoformat(timespec="seconds")`: МЕСТНОЕ время без
-/// зоны. UTC здесь не годится: журнал показывается человеку в карточке темы.
+/// The installed log timestamp: a port of
+/// `datetime.datetime.now().isoformat(timespec="seconds")`: LOCAL time
+/// without a zone. UTC will not do here: the log is shown to the person in
+/// the theme card.
 fn now_local_iso() -> String {
-    // Местные часы в продукте одни на всех (правило #12): своего
-    // `localtime_r` здесь больше нет, зовётся общий `Timestamp::now_local`.
-    // `microsecond: 0` — это `timespec="seconds"` оригинала: `isoformat`
-    // печатает дробную часть только когда она есть.
+    // There is one local clock in the product for everyone (rule #12): there
+    // is no `localtime_r` of its own here any more, the common
+    // `Timestamp::now_local` is called. `microsecond: 0` is the original's
+    // `timespec="seconds"`: `isoformat` prints the fraction only when there
+    // is one.
     match crate::qt_app::Timestamp::now_local() {
         Some(now) => crate::qt_app::Timestamp { microsecond: 0, ..now }.isoformat(),
         None => {
-            // Зона не читается — лучше UTC с меткой, чем пустая строка.
+            // The zone cannot be read: better UTC with a marker than an empty string.
             let secs = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs() as i64)
@@ -2934,14 +2938,15 @@ fn now_local_iso() -> String {
     }
 }
 
-/// Запуск внешней команды с забором вывода — через ЕДИНСТВЕННУЮ точку запуска
-/// продукта ([`crate::utils::run`]): она же подменяет синонимы бинарей
-/// (`kwriteconfig6` → `kwriteconfig5` на Plasma 5).
+/// Running an external command and capturing its output, through the
+/// product's ONLY launch point ([`crate::utils::run`]): it also substitutes
+/// binary synonyms (`kwriteconfig6` -> `kwriteconfig5` on Plasma 5).
 ///
-/// Команда помощника системных тем (установка, «Применить», «Удалить»)
-/// сперва идёт сеансу прав окна ([`crate::ext_exec::run_system_argv_session`]:
-/// один пароль); его нет — она же прежним путём. Отказ помощника прежним
-/// путём не повторяется (З5).
+/// A system theme helper command (installation, "Apply", "Remove") first
+/// goes to the window's privilege session
+/// ([`crate::ext_exec::run_system_argv_session`]: one password); if there
+/// is none, it goes the old way. A refusal by the helper is not repeated
+/// via the old way (Z5).
 fn run_capture(argv: &[String], timeout_secs: Option<u64>) -> RunReport {
     if let Some(report) = crate::ext_exec::run_system_argv_session(argv, timeout_secs) {
         return report;
@@ -2957,13 +2962,14 @@ fn run_capture(argv: &[String], timeout_secs: Option<u64>) -> RunReport {
     )
 }
 
-/// `safe_run(argv).returncode == 0` — успех команды.
+/// `safe_run(argv).returncode == 0` means the command succeeded.
 fn run_ok(argv: &[String], timeout_secs: Option<u64>) -> bool {
     run_capture(argv, timeout_secs).returncode == Some(0)
 }
 
-/// Тёмная ли тема GTK `theme` ([`crate::themes::gtk_theme_is_dark`]): таблица
-/// стилей GTK 3 (иначе GTK 4) из первого каталога тем, где тема есть.
+/// Whether GTK theme `theme` is dark ([`crate::themes::gtk_theme_is_dark`]):
+/// the GTK 3 style sheet (otherwise GTK 4) from the first themes directory
+/// where the theme exists.
 fn gtk_theme_dark_live(theme: &str, home: &str) -> bool {
     let data = crate::utils::data_home(xdg_data_home().as_deref(), home);
     let css = crate::gtk_sanitizer::theme_dirs("gtk-theme", home, &data)
@@ -2976,9 +2982,10 @@ fn gtk_theme_dark_live(theme: &str, home: &str) -> bool {
     crate::themes::gtk_theme_is_dark(theme, css.as_deref())
 }
 
-/// Стандартная тема роли `role` (`icons`, `cursor`) окружения `de` — ответ
-/// машины на [`crate::themes::standard_theme_read_cmd`]. `None` — у окружения
-/// нет схемы для роли или gsettings не ответил.
+/// The standard theme of role `role` (`icons`, `cursor`) in environment
+/// `de`: the machine's answer to [`crate::themes::standard_theme_read_cmd`].
+/// `None` means the environment has no schema for the role or gsettings
+/// did not answer.
 pub fn live_standard_theme(de: &str, role: &str) -> Option<String> {
     let cmd = crate::themes::standard_theme_read_cmd(de, role)?;
     let report = run_capture(&cmd.argv, cmd.timeout);
@@ -2989,10 +2996,10 @@ pub fn live_standard_theme(de: &str, role: &str) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
-/// Семейство пакетов для установки недостающих иконок и курсора темы. На
-/// SteamOS и неизменяемых системах системный пакет не встанет — пустая
-/// строка: Rexon честно скажет, что набора нет, вместо окна пароля, которое
-/// ничего не даст.
+/// The package family for installing a theme's missing icons and cursor.
+/// On SteamOS and immutable systems a system package will not install, so
+/// an empty string: Rexon honestly says the set is missing instead of a
+/// password window that would achieve nothing.
 pub(crate) fn live_deps_family() -> String {
     let detector = crate::system::DistroDetector::detect_live();
     if detector.is_steamos() || detector.is_immutable() {
@@ -3001,7 +3008,7 @@ pub(crate) fn live_deps_family() -> String {
     detector.family_live().as_str().to_string()
 }
 
-/// Установленный набор под просьбу темы — на живом диске
+/// The installed set for a theme's request, on the live disk
 /// ([`crate::themes::find_installed_dep`]).
 pub(crate) fn live_find_dep(role: crate::themes::DepRole, wanted: &str, roots: &[String]) -> Option<String> {
     let is_dir = |p: &str| Path::new(p).is_dir();
@@ -3014,30 +3021,31 @@ pub(crate) fn live_find_dep(role: crate::themes::DepRole, wanted: &str, roots: &
     crate::themes::find_installed_dep(role, wanted, roots, &is_dir, &list, &read)
 }
 
-/// Поставить пакеты с иконками и курсором темы тем же путём, что вся
-/// установка пакетов Rexon: репозиторий — [`crate::system_plan::install_argv`]
-/// (помощник `org.rexon.pkg` либо `pkexec`), на Arch пакет не из репозитория
-/// — помощником AUR. `Err` — причина для человека.
+/// Install packages with a theme's icons and cursor the same way as all of
+/// Rexon's package installation: a repository package via
+/// [`crate::system_plan::install_argv`] (the `org.rexon.pkg` helper or
+/// `pkexec`), on Arch a package not in the repositories via the AUR
+/// helper. `Err` is a reason for the person.
 ///
-/// Что встало на самом деле, решает не код возврата, а диск: вызывающий
-/// ищет набор заново.
+/// What actually got installed is decided not by the exit code but by the
+/// disk: the caller looks for the set again.
 pub(crate) fn live_install_dep_packages(packages: &[String]) -> Result<(), String> {
     live_install_packages(packages, true, PkgSource::ThemeSets)
 }
 
-/// То же, что [`live_install_dep_packages`], но только из официальных
-/// репозиториев: пакет, которого там нет, из AUR НЕ собирается (сборку из
-/// AUR без вопроса Rexon не запускает), а называется в `Err` — после
-/// установки остальных.
+/// The same as [`live_install_dep_packages`], but only from the official
+/// repositories: a package that is not there is NOT built from the AUR
+/// (Rexon does not start an AUR build without a question) but named in
+/// `Err`, after the others are installed.
 ///
-/// `source` — таблица ядра, из которой имена ([`PkgSource`]): по ней их
-/// проверяет помощник сеанса прав окна.
+/// `source` is the core table the names come from ([`PkgSource`]): the
+/// window's privilege session helper checks them against it.
 pub(crate) fn live_install_repo_packages(packages: &[String], source: PkgSource) -> Result<(), String> {
     live_install_packages(packages, false, source)
 }
 
-/// Операция сеанса прав для пакетов из репозитория — те же имена и то же
-/// семейство, что у прежней команды [`crate::system_plan::install_argv`].
+/// The privilege session operation for repository packages: the same names
+/// and the same family as the old command [`crate::system_plan::install_argv`].
 fn repo_install_op(family: crate::system::PkgFamily, repo: &[String], source: PkgSource) -> PrivOp {
     PrivOp::PkgInstall { family, packages: repo.to_vec(), source }
 }
@@ -3051,8 +3059,8 @@ fn live_install_packages(packages: &[String], allow_aur: bool, source: PkgSource
     if !free {
         return Err(why);
     }
-    // В CachyOS `mint-y-icons` лежит в репозитории, на чистом Arch — только
-    // в AUR: путь выбирается по факту (`pacman -Si`), а не по таблице.
+    // In CachyOS `mint-y-icons` is in the repository, on plain Arch only in
+    // the AUR: the path is chosen by fact (`pacman -Si`), not by the table.
     let (repo, aur): (Vec<String>, Vec<String>) = if family == PkgFamily::Arch {
         packages
             .iter()
@@ -3069,9 +3077,10 @@ fn live_install_packages(packages: &[String], allow_aur: bool, source: PkgSource
         let Some(argv) = sp::install_argv(family, &repo, helper_ok) else {
             return Err(tr("Rexon doesn't know the package manager of this system"));
         };
-        // Сеанс прав окна (один пароль); его нет — прежняя команда. Отказ
-        // помощника прежней командой не повторяется (З5).
-        // Без `pkexec` (NixOS — профиль пользователя) прав не нужно вовсе.
+        // The window's privilege session (one password); if there is none, the
+        // old command. A refusal by the helper is not repeated via the old
+        // command (Z5). Without `pkexec` (NixOS, a user profile) no privileges
+        // are needed at all.
         let op = repo_install_op(family, &repo, source);
         let session = if argv.first().map(String::as_str) == Some("pkexec") {
             crate::privilege::run::run_live(&op, &[], None, &mut |_| {})
@@ -3107,7 +3116,7 @@ fn live_install_packages(packages: &[String], allow_aur: bool, source: PkgSource
         );
         match report.returncode {
             Some(0) => {}
-            // pkexec: окно закрыто (126) или пароль не принят (127).
+            // pkexec: the window was closed (126) or the password was not accepted (127).
             Some(126) | Some(127) => return Err(password_not_confirmed()),
             _ => return Err(tr("the package manager reported an error")),
         }
@@ -3119,19 +3128,19 @@ fn live_install_packages(packages: &[String], allow_aur: bool, source: PkgSource
     Ok(())
 }
 
-/// Причина отказа установки пакетов, когда окно пароля polkit закрыто или
-/// пароль не принят: по ней вызывающий отличает «человек передумал» от
-/// ошибки менеджера пакетов.
+/// The reason a package installation failed when the polkit password
+/// window was closed or the password not accepted: by it the caller tells
+/// "the person changed their mind" from a package manager error.
 pub fn password_not_confirmed() -> String {
     tr("the administrator password wasn't confirmed")
 }
 
-/// Есть ли программа в системе (`shutil.which`).
+/// Whether a program is in the system (`shutil.which`).
 fn have(binary: &str) -> bool {
     crate::utils::which(binary, path_env().as_deref()).is_some()
 }
 
-/// Уникальный временный каталог (`tempfile.mkdtemp(prefix=…)`).
+/// A unique temporary directory (`tempfile.mkdtemp(prefix=…)`).
 fn mkdtemp_in(base: &Path, prefix: &str) -> Result<PathBuf, String> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -3152,25 +3161,26 @@ fn mkdtemp_in(base: &Path, prefix: &str) -> Result<PathBuf, String> {
     Err(tr("couldn't create a temporary folder: all names are taken"))
 }
 
-/// Текст файла с заменой негодных байт (`errors="replace"`); `None` — не
-/// прочли (аналог `except OSError`).
+/// The file text with invalid bytes replaced (`errors="replace"`); `None`
+/// means it could not be read (the analogue of `except OSError`).
 fn read_text_lossy(path: &str) -> Option<String> {
     std::fs::read(path)
         .ok()
         .map(|raw| String::from_utf8_lossy(&raw).into_owned())
 }
 
-// ── исполнитель шагов установки ─────────────────────────────────────────────
+// ── installation step executor ──────────────────────────────────────────────
 
-/// Исполнить план шагов установки — порт `_rs_exec_steps`.
+/// Execute a plan of installation steps: a port of `_rs_exec_steps`.
 ///
-/// ⭐ Починка при переносе: у оригинала шаг `Run` (`gtk-update-icon-cache`)
-/// ронял ВСЮ установку, если программы в системе нет — `subprocess.run`
-/// поднимал `FileNotFoundError`, и `install` возвращал «Ошибка установки»
-/// уже ПОСЛЕ копирования темы, не дойдя до записи в журнал. Тема оказывалась
-/// на диске, но не в списке установленных, и снять её было нечем. Здесь
-/// неудача внешней команды — не ошибка плана: файлы уже на месте, кеш иконок
-/// пересоберётся при следующем входе.
+/// ⭐ Fixed during the port: in the original the `Run` step
+/// (`gtk-update-icon-cache`) broke the WHOLE installation if the program
+/// was not in the system: `subprocess.run` raised `FileNotFoundError`, and
+/// `install` returned "Installation error" AFTER the theme was already
+/// copied, never reaching the log write. The theme ended up on disk but
+/// not in the installed list, and there was nothing to remove it with.
+/// Here a failure of an external command is not a plan error: the files
+/// are already in place, the icon cache will be rebuilt at the next login.
 pub fn exec_install_steps(steps: &[ExtStep]) -> Result<(), String> {
     use crate::install_plan::{exec, Ctx, Failure};
     let plan: Vec<crate::install_plan::Step> = steps.iter().cloned().map(Into::into).collect();
@@ -3178,7 +3188,7 @@ pub fn exec_install_steps(steps: &[ExtStep]) -> Result<(), String> {
     exec(&plan, &mut Vec::new(), &ctx).map(|_| ()).map_err(|f| match f {
         Failure::MakeDirs { path, err } | Failure::Remove { path, err } => format!("{path}: {err}"),
         Failure::Copy { src, dest, err } => format!("{src} → {dest}: {err}"),
-        // Других шагов в плане магазина нет; текст — как у прочих.
+        // The store plan has no other steps; the text is the same as for the rest.
         Failure::Text(text) => text,
         Failure::Symlink { link: path, err }
         | Failure::Write { path, err }
@@ -3187,20 +3197,23 @@ pub fn exec_install_steps(steps: &[ExtStep]) -> Result<(), String> {
     })
 }
 
-// ── снимок распакованного дерева ────────────────────────────────────────────
+// ── snapshot of the unpacked tree ───────────────────────────────────────────
 
-/// Снимок дерева для планировщика — порт `_rs_tree_snapshot`.
+/// A tree snapshot for the planner: a port of `_rs_tree_snapshot`.
 ///
-/// Рекурсивно `root` (текст читается ТОЛЬКО у `metadata.json`/`metadata.desktop`
-/// — остальные файлы попадают в снимок пустышками, planner'у нужен лишь факт
-/// существования), плюс НЕрекурсивно дети каталогов `dest_dirs`: по ним
-/// [`plan_install`] узнаёт, что тема с таким именем уже стоит, и снимает её.
+/// Recursively `root` (text is read ONLY for
+/// `metadata.json`/`metadata.desktop`; the other files go into the snapshot
+/// as dummies, since the planner only needs the fact that they exist),
+/// plus NON-recursively the children of the `dest_dirs` directories: by
+/// them [`plan_install`] learns that a theme with this name is already
+/// installed and removes it.
 ///
-/// Имена внутри каталога отсортированы. У оригинала здесь был порядок
-/// `os.scandir`, то есть порядок файловой системы: от него зависят и выбор
-/// «первого <name>.plymouth», и порядок имён в сообщении об установке
-/// цветовых схем — от машины к машине он разный. Сортировка делает ответ
-/// одинаковым везде (тот же довод, что у `ext_exec`).
+/// Names inside a directory are sorted. The original had the `os.scandir`
+/// order here, i.e. the filesystem order: both the choice of "the first
+/// <name>.plymouth" and the order of names in the colour scheme
+/// installation message depend on it, and it differs from machine to
+/// machine. Sorting makes the answer the same everywhere (the same
+/// argument as in `ext_exec`).
 pub fn install_tree_snapshot(root: &str, dest_dirs: &[String]) -> FsSnapshot {
     let mut dirs = serde_json::Map::new();
     let mut files = serde_json::Map::new();
@@ -3250,9 +3263,9 @@ pub fn install_tree_snapshot(root: &str, dest_dirs: &[String]) -> FsSnapshot {
         for name in names {
             let path = join(base, &name);
             let Ok(md) = std::fs::symlink_metadata(&path) else { continue };
-            // Папка (и ссылка на папку — наши ссылки `~/.themes/<имя>`) —
-            // с именами первого уровня: по ним рамка окон решает, ложиться ли
-            // подпапкой в тему GTK ([`plan_nested_part`]).
+            // A folder (and a link to a folder: our `~/.themes/<name>` links)
+            // comes with its first-level names: by them window frames decide
+            // whether to land as a subfolder in a GTK theme ([`plan_nested_part`]).
             let dir_like = md.is_dir() || (md.file_type().is_symlink() && Path::new(&path).is_dir());
             if dir_like {
                 let inner = names_of(&path).unwrap_or_default();
@@ -3266,8 +3279,8 @@ pub fn install_tree_snapshot(root: &str, dest_dirs: &[String]) -> FsSnapshot {
                 }
                 dirs.entry(path).or_insert_with(|| Value::from(inner));
             } else {
-                // Схема цветов на месте — с текстом: одинаковая байт в байт
-                // считается своей ([`file_taken`]); ссылка — пустышкой.
+                // A colour scheme in place comes with its text: one identical byte
+                // for byte counts as ours ([`file_taken`]); a link as a dummy.
                 let text = if md.is_file() && name.ends_with(".colors") {
                     read_text_lossy(&path).unwrap_or_default()
                 } else {
@@ -3281,45 +3294,49 @@ pub fn install_tree_snapshot(root: &str, dest_dirs: &[String]) -> FsSnapshot {
     FsSnapshot::from_json(&serde_json::json!({ "dirs": dirs, "files": files }))
 }
 
-// ── подъём вложенных тем: починка уже испорченных установок ─────────────────
+// ── lifting nested themes: repairing already broken installations ───────────
 //
-// Установки до 03.10.2026 клали архив «как есть» (см. [`find_theme_roots`]):
-// на диске владельца лежат `~/.local/share/sounds/zorinos2/sounds/Zorin/…` и
-// `~/.local/share/sounds/Sounds/Zorin/…`. Миграция находит такие обёртки
-// (только СВОИ: с превью Rexon `.rexon-preview.png` внутри либо записанные в
-// журнал установленного), поднимает каждую тему на верхний уровень каталога
-// вида переименованием (атомарно в пределах одной ФС) и уносит остаток
-// обёртки (обои, xml, ReadMe) в `<data>/rexon/theme-leftovers/<вид>/` —
-// ничего не удаляется. Каждый шаг пишется в журнал миграции, запись журнала
-// установленного переписывается на новые пути, чтобы «Удалить» сняло всё.
+// Installations before 03.10.2026 put the archive "as is" (see
+// [`find_theme_roots`]): the owner's disk has
+// `~/.local/share/sounds/zorinos2/sounds/Zorin/…` and
+// `~/.local/share/sounds/Sounds/Zorin/…`. The migration finds such
+// wrappers (only OUR OWN: with a Rexon preview `.rexon-preview.png` inside
+// or recorded in the installed log), lifts each theme to the top level of
+// the kind's directory by renaming (atomic within one filesystem) and
+// carries the rest of the wrapper (wallpapers, xml, ReadMe) away to
+// `<data>/rexon/theme-leftovers/<kind>/`: nothing is deleted. Each step is
+// written to the migration log, and the installed log entry is rewritten
+// to the new paths so that "Remove" removes everything.
 //
-// Занятое имя наверху — честный пропуск: тема остаётся в обёртке, обёртка
-// остаётся на месте, в журнале строка о конфликте.
+// A taken name at the top is an honest skip: the theme stays in the
+// wrapper, the wrapper stays in place, and the log gets a line about the
+// conflict.
 
-/// Перенос одного корня темы.
+/// Moving one theme root.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NestedMove {
     pub from: String,
     pub to: String,
 }
 
-/// План подъёма тем из одной обёртки.
+/// The plan for lifting themes out of one wrapper.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct NestedWrapperPlan {
     pub kind: String,
     pub wrapper: String,
     pub moves: Vec<NestedMove>,
-    /// Корни, которые поднять нельзя: имя наверху занято (или повторяется в
-    /// той же обёртке). Остаются на месте.
+    /// Roots that cannot be lifted: the name at the top is taken (or repeats
+    /// within the same wrapper). They stay in place.
     pub conflicts: Vec<NestedMove>,
-    /// Куда унести остаток обёртки; `None` — обёртка остаётся (есть конфликт).
+    /// Where to carry the rest of the wrapper; `None` means the wrapper stays (there is a conflict).
     pub leftovers_to: Option<String>,
 }
 
-/// Чистое решение по одной обёртке `<base>/<wrapper_name>`.
+/// A pure decision for one wrapper `<base>/<wrapper_name>`.
 ///
-/// `None` — делать нечего: каталог сам тема (стоит правильно) либо тем
-/// внутри нет. `exists` — наблюдение «путь наверху занят».
+/// `None` means nothing to do: the directory is itself a theme (installed
+/// correctly) or there are no themes inside. `exists` is the observation
+/// "the path at the top is taken".
 pub fn plan_nested_wrapper(
     fs: &FsSnapshot,
     base: &str,
@@ -3345,8 +3362,8 @@ pub fn plan_nested_wrapper(
     for root in roots {
         let name = basename(rstrip_slashes(&root)).to_string();
         let to = join(base, &name);
-        // Имя самой обёртки занято ею же: подъём `Sounds/Sounds` поверх
-        // `Sounds` переименованием не сделать — честный конфликт.
+        // The wrapper's own name is taken by itself: lifting `Sounds/Sounds`
+        // over `Sounds` cannot be done by renaming, an honest conflict.
         if taken.contains(&to) || exists(&to) || to == wrapper {
             plan.conflicts.push(NestedMove { from: root, to });
             continue;
@@ -3360,22 +3377,22 @@ pub fn plan_nested_wrapper(
     Some(plan)
 }
 
-/// Журнал миграции: `<data>/rexon/theme-migration.log`.
+/// The migration log: `<data>/rexon/theme-migration.log`.
 pub fn nested_migration_log_path(data_home: &str) -> String {
     format!("{}/rexon/theme-migration.log", data_home.trim_end_matches('/'))
 }
 
-/// Куда уходят остатки обёрток: `<data>/rexon/theme-leftovers`.
+/// Where wrapper leftovers go: `<data>/rexon/theme-leftovers`.
 pub fn nested_leftovers_dir(data_home: &str) -> String {
     format!("{}/rexon/theme-leftovers", data_home.trim_end_matches('/'))
 }
 
-/// Подъём вложенных тем под `home` — исполнение.
+/// Lifting nested themes under `home`: the execution.
 ///
-/// Касается ТОЛЬКО каталогов видов из [`kind_uses_theme_roots`] и только
-/// обёрток с маркером Rexon либо из журнала установленного. Возвращает строки
-/// журнала (пусто — делать было нечего); они же дописываются в
-/// [`nested_migration_log_path`].
+/// Touches ONLY the directories of kinds from [`kind_uses_theme_roots`]
+/// and only wrappers with a Rexon marker or from the installed log.
+/// Returns log lines (empty means there was nothing to do); they are also
+/// appended to [`nested_migration_log_path`].
 pub fn live_migrate_nested_themes(home: &str) -> Vec<String> {
     let data = crate::utils::data_home(xdg_data_home().as_deref(), home);
     let log_path =
@@ -3383,9 +3400,10 @@ pub fn live_migrate_nested_themes(home: &str) -> Vec<String> {
     migrate_nested_themes_at(home, &data, &log_path)
 }
 
-/// Тело [`live_migrate_nested_themes`] с явными каталогами: `data` — каталог
-/// данных (журнал миграции, остатки), `log_path` — журнал установленного.
-/// Сверки зовут его на подставном HOME, не трогая окружение процесса.
+/// The body of [`live_migrate_nested_themes`] with explicit directories:
+/// `data` is the data directory (the migration log, leftovers), `log_path`
+/// the installed log. Parity checks call it on a fake HOME without
+/// touching the process environment.
 pub fn migrate_nested_themes_at(home: &str, data: &str, log_path: &str) -> Vec<String> {
     let home_p = Path::new(home);
     let data = data.to_string();
@@ -3465,7 +3483,7 @@ pub fn migrate_nested_themes_at(home: &str, data: &str, log_path: &str) -> Vec<S
                     lines.push(format!("остаток обёртки оставлен на месте: {wrapper}"));
                 }
             }
-            // Журнал установленного: обёртка → поднятые темы (+ где остаток).
+            // The installed log: wrapper -> lifted themes (+ where the leftovers went).
             for entry in journal.values_mut() {
                 let Some(paths) = entry.get_mut("paths").and_then(Value::as_array_mut) else {
                     continue;
@@ -3505,7 +3523,7 @@ pub fn migrate_nested_themes_at(home: &str, data: &str, log_path: &str) -> Vec<S
     lines
 }
 
-/// Свободное имя: `path`, иначе `path-2`, `path-3`, …
+/// A free name: `path`, otherwise `path-2`, `path-3`, …
 fn unique_path(path: &str) -> String {
     if !Path::new(path).exists() {
         return path.to_string();
@@ -3513,8 +3531,8 @@ fn unique_path(path: &str) -> String {
     (2..).map(|n| format!("{path}-{n}")).find(|p| !Path::new(p).exists()).unwrap()
 }
 
-/// [`live_migrate_nested_themes`] не чаще раза на `home` за процесс — для
-/// вызова из скана диска.
+/// [`live_migrate_nested_themes`] no more than once per `home` per
+/// process, for calling from the disk scan.
 pub fn migrate_nested_themes_once(home: &str) -> Vec<String> {
     use std::sync::Mutex;
     static DONE: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -3528,8 +3546,8 @@ pub fn migrate_nested_themes_once(home: &str) -> Vec<String> {
     live_migrate_nested_themes(home)
 }
 
-/// Мини-снимок каталогов look-and-feel для
-/// [`global_theme_missing_metadata_json`] — порт `_rs_lnf_snapshot`.
+/// A mini snapshot of look-and-feel directories for
+/// [`global_theme_missing_metadata_json`]: a port of `_rs_lnf_snapshot`.
 fn lnf_snapshot(home: &str, theme_name: &str) -> FsSnapshot {
     let mut dirs = serde_json::Map::new();
     let mut files = serde_json::Map::new();
@@ -3550,20 +3568,22 @@ fn lnf_snapshot(home: &str, theme_name: &str) -> FsSnapshot {
     FsSnapshot::from_json(&serde_json::json!({ "dirs": dirs, "files": files }))
 }
 
-/// Стоит ли Global Theme в устаревшем формате Plasma 5 (без `metadata.json`) —
-/// живой порт `ThemeInstaller._global_theme_missing_metadata_json`.
+/// Whether a Global Theme is installed in the outdated Plasma 5 format
+/// (without `metadata.json`): a live port of
+/// `ThemeInstaller._global_theme_missing_metadata_json`.
 ///
-/// Plasma 6 (KPackage v2) требует `metadata.json` с
-/// `KPackageStructure="Plasma/LookAndFeel"`; тема с одним `metadata.desktop`
-/// не регистрируется и молча не применяется. Вкладке «Оформление» ответ нужен
-/// синхронно — отсюда отдельная функция, а не только ветка внутри применения.
+/// Plasma 6 (KPackage v2) requires `metadata.json` with
+/// `KPackageStructure="Plasma/LookAndFeel"`; a theme with only
+/// `metadata.desktop` is not registered and silently does not apply. The
+/// "Appearance" tab needs the answer synchronously, hence a separate
+/// function and not only a branch inside applying.
 pub fn live_global_theme_missing_metadata_json(home: &str, theme_name: &str) -> bool {
     global_theme_missing_metadata_json(&lnf_snapshot(home, theme_name), home, theme_name)
 }
 
-// ── распаковка ──────────────────────────────────────────────────────────────
+// ── unpacking ───────────────────────────────────────────────────────────────
 
-/// Абсолютный нормализованный путь каталога распаковки (`os.path.abspath`).
+/// The absolute normalised path of the unpack directory (`os.path.abspath`).
 fn abs_dest(dest: &str) -> String {
     if dest.starts_with('/') {
         normpath(dest)
@@ -3575,7 +3595,7 @@ fn abs_dest(dest: &str) -> String {
     }
 }
 
-/// Имена записей ZIP-архива; `None` — это не ZIP.
+/// Entry names of a ZIP archive; `None` means it is not a ZIP.
 fn zip_entry_names(archive: &str) -> Option<Vec<String>> {
     let file = std::fs::File::open(archive).ok()?;
     let mut zf = zip::ZipArchive::new(file).ok()?;
@@ -3586,8 +3606,9 @@ fn zip_entry_names(archive: &str) -> Option<Vec<String>> {
     Some(names)
 }
 
-/// Имена записей TAR-архива через системный `tar -tf`; `None` — не TAR либо
-/// `tar` в системе нет (различает эти случаи вызывающий по [`have`]).
+/// Entry names of a TAR archive via the system `tar -tf`; `None` means not
+/// a TAR or there is no `tar` in the system (the caller tells these cases
+/// apart by [`have`]).
 fn tar_entry_names(archive: &str) -> Option<Vec<String>> {
     if !have("tar") {
         return None;
@@ -3606,23 +3627,24 @@ fn tar_entry_names(archive: &str) -> Option<Vec<String>> {
     )
 }
 
-/// Подпись архива 7z в первых байтах файла.
+/// The 7z archive signature in the first bytes of a file.
 const SEVEN_ZIP_MAGIC: &[u8] = b"7z\xBC\xAF\x27\x1C";
 
-/// Чем распаковать архив 7z: `bsdtar` (libarchive; на Arch и SteamOS стоит
-/// всегда — от него зависит pacman) либо 7-Zip под любым из его имён.
+/// What to unpack a 7z archive with: `bsdtar` (libarchive; always installed
+/// on Arch and SteamOS, since pacman depends on it) or 7-Zip under any of
+/// its names.
 fn seven_zip_tool() -> Option<&'static str> {
     ["bsdtar", "7z", "7za", "7zz"].into_iter().find(|b| have(b))
 }
 
-/// Архив ли 7z (по подписи в начале файла, а не по имени).
+/// Whether it is a 7z archive (by the signature at the start of the file, not by name).
 fn is_seven_zip(archive: &str) -> bool {
     read_head(archive, SEVEN_ZIP_MAGIC.len()).starts_with(SEVEN_ZIP_MAGIC)
 }
 
-/// Чем распаковать 7z нечем — отказ для человека с пакетами его семейства
-/// дистрибутива (`family` — `system::PkgFamily`; незнакомое — имена,
-/// как в большинстве дистрибутивов).
+/// There is nothing to unpack 7z with: a refusal for the person with the
+/// packages of their distribution family (`family` is `system::PkgFamily`;
+/// an unknown one gets names as in most distributions).
 pub fn seven_zip_missing(family: &str) -> String {
     trf(
         // TRANSLATORS: %1 and %2 are package names, e.g. “libarchive-tools” and “7zip”.
@@ -3634,9 +3656,9 @@ pub fn seven_zip_missing(family: &str) -> String {
     )
 }
 
-/// Пакет распаковщика 7z (bsdtar), который Rexon может поставить на системе
-/// семейства `family`; `None` — не может (семейство без записи в таблице
-/// пакетов).
+/// The 7z unpacker package (bsdtar) Rexon can install on a system of family
+/// `family`; `None` means it cannot (a family without an entry in the
+/// package table).
 pub fn seven_zip_package(family: &str) -> Option<&'static str> {
     crate::utils::TOOL_PACKAGES
         .iter()
@@ -3647,8 +3669,8 @@ pub fn seven_zip_package(family: &str) -> Option<&'static str> {
         .map(|(_, pkg)| *pkg)
 }
 
-/// [`seven_zip_package`] на ЭТОЙ машине; на SteamOS и неизменяемых системах
-/// системный пакет не встанет — `None`.
+/// [`seven_zip_package`] on THIS machine; on SteamOS and immutable systems a
+/// system package will not install, so `None`.
 pub fn live_seven_zip_package() -> Option<&'static str> {
     let detector = crate::system::DistroDetector::detect_live();
     if detector.is_steamos() || detector.is_immutable() {
@@ -3657,15 +3679,16 @@ pub fn live_seven_zip_package() -> Option<&'static str> {
     seven_zip_package(detector.family_live().as_str())
 }
 
-/// Есть ли на машине чем распаковать 7z.
+/// Whether the machine has something to unpack 7z with.
 pub fn have_seven_zip_tool() -> bool {
     seven_zip_tool().is_some()
 }
 
-/// Пакет распаковщика 7z, который Rexon ставит перед установкой товара
-/// САМ, без вопроса «Да/Нет» (решение владельца 24.10; защита — окно пароля
-/// polkit). `None` — ставить нечего: файл не `.7z`, распаковщик есть либо
-/// поставить его Rexon здесь не может (тогда установка откажет словами
+/// The 7z unpacker package Rexon installs before installing an item BY
+/// ITSELF, without a "Yes/No" question (the owner's decision of 24.10; the
+/// protection is the polkit password window). `None` means nothing to
+/// install: the file is not `.7z`, the unpacker exists, or Rexon cannot
+/// install it here (then the installation refuses with the words of
 /// [`seven_zip_missing`]).
 pub fn seven_zip_install_package(file: &str, have_tool: bool, package: Option<&str>) -> Option<String> {
     if have_tool || !file.to_lowercase().ends_with(".7z") {
@@ -3674,9 +3697,9 @@ pub fn seven_zip_install_package(file: &str, have_tool: bool, package: Option<&s
     package.map(str::to_string)
 }
 
-/// Поставить bsdtar тем же путём, что вся установка пакетов Rexon, только
-/// из официальных репозиториев ([`live_install_repo_packages`]), и
-/// проверить по факту. `Err` — причина для человека.
+/// Install bsdtar the same way as all of Rexon's package installation, only
+/// from the official repositories ([`live_install_repo_packages`]), and
+/// check the fact. `Err` is a reason for the person.
 pub fn install_seven_zip_tool_live() -> Result<(), String> {
     let Some(package) = live_seven_zip_package() else {
         return Err(tr("Rexon can't install programs on this system by itself."));
@@ -3688,9 +3711,10 @@ pub fn install_seven_zip_tool_live() -> Result<(), String> {
     Ok(())
 }
 
-/// Итог, когда bsdtar не встал: товар не ставится вовсе (распаковать его
-/// всё равно нечем), и сказано почему и что сделать. Окно пароля закрыто —
-/// «передумал»: совет повторить установку и ввести пароль.
+/// The result when bsdtar did not install: the item is not installed at
+/// all (there is nothing to unpack it with anyway), and it says why and
+/// what to do. A closed password window means "changed my mind": the
+/// advice is to repeat the installation and enter the password.
 pub fn seven_zip_install_failed(why: &str) -> String {
     if why == password_not_confirmed() {
         return tr(
@@ -3701,14 +3725,15 @@ pub fn seven_zip_install_failed(why: &str) -> String {
     trf("Nothing was installed: couldn't install bsdtar to unpack the .7z archive: %1.", &[&why])
 }
 
-/// Записи архива 7z.
+/// Entries of a 7z archive.
 ///
-/// ⛔ Дефект стенда 17.10.2026: `.7z` стоит в [`crate::ocs::ARCHIVE_EXTS`]
-/// (магазин выбирает такой файл как архив), а распаковщик знал только zip и
-/// tar — «Numix Holo» (xfwm4) и «BlueSky» (Cinnamon) отвечали «неизвестный
-/// формат архива».
+/// ⛔ A bench defect of 17.10.2026: `.7z` is in [`crate::ocs::ARCHIVE_EXTS`]
+/// (the store chooses such a file as an archive), while the unpacker knew
+/// only zip and tar: "Numix Holo" (xfwm4) and "BlueSky" (Cinnamon) answered
+/// "unknown archive format".
 ///
-/// `(имя, символическая ссылка?)`; `None` — не 7z либо распаковать нечем.
+/// `(name, symbolic link?)`; `None` means not 7z or nothing to unpack it
+/// with.
 fn seven_zip_entries(archive: &str) -> Option<Vec<(String, bool)>> {
     if !is_seven_zip(archive) {
         return None;
@@ -3716,15 +3741,15 @@ fn seven_zip_entries(archive: &str) -> Option<Vec<(String, bool)>> {
     seven_zip_entries_with(seven_zip_tool()?, archive)
 }
 
-/// [`seven_zip_entries`] программой `tool` (`bsdtar`, `7z`, `7za`, `7zz`).
+/// [`seven_zip_entries`] with program `tool` (`bsdtar`, `7z`, `7za`, `7zz`).
 fn seven_zip_entries_with(tool: &str, archive: &str) -> Option<Vec<(String, bool)>> {
     let listing = |argv: Vec<String>| {
         let report = run_capture(&argv, Some(120));
         (report.returncode == Some(0)).then(|| crate::utils::decode_text(&report.stdout))
     };
     if tool == "bsdtar" {
-        // `-tf` — имена, `-tvf` — те же записи в том же порядке с правами
-        // (`l…` у ссылки).
+        // `-tf` gives names, `-tvf` the same entries in the same order with
+        // permissions (`l…` for a link).
         let names = listing(vec![tool.into(), "-tf".into(), archive.into()])?;
         let long = listing(vec![tool.into(), "-tvf".into(), archive.into()])?;
         let names: Vec<&str> = names.lines().filter(|l| !l.is_empty()).collect();
@@ -3735,8 +3760,9 @@ fn seven_zip_entries_with(tool: &str, archive: &str) -> Option<Vec<(String, bool
     Some(parse_seven_zip_slt(&text, archive))
 }
 
-/// Разбор `7z l -ba -slt` (p7zip и 7-Zip): записи по `Path = `, ссылка —
-/// права Unix в `Attributes = ` начинаются с `l` (`A lrwxrwxrwx`).
+/// Parsing `7z l -ba -slt` (p7zip and 7-Zip): entries by `Path = `, a link
+/// has Unix permissions in `Attributes = ` starting with `l`
+/// (`A lrwxrwxrwx`).
 fn parse_seven_zip_slt(text: &str, archive: &str) -> Vec<(String, bool)> {
     let mut out: Vec<(String, bool)> = Vec::new();
     for line in text.lines() {
@@ -3754,19 +3780,19 @@ fn parse_seven_zip_slt(text: &str, archive: &str) -> Vec<(String, bool)> {
     out
 }
 
-/// Запись архива, которая ляжет СКВОЗЬ ссылку из того же архива
-/// (`d → /куда-то`, затем `d/файл`): распаковщик записал бы файл за
-/// пределы каталога распаковки. `None` — таких нет.
+/// An archive entry that would be written THROUGH a link from the same
+/// archive (`d -> /somewhere`, then `d/file`): the unpacker would write the
+/// file outside the unpack directory. `None` means there are none.
 pub fn entry_under_archive_link(entries: &[(String, bool)]) -> Option<String> {
     let links: Vec<String> =
         entries.iter().filter(|(_, l)| *l).map(|(n, _)| format!("{}/", n.trim_end_matches('/'))).collect();
     entries.iter().map(|(n, _)| n).find(|n| links.iter().any(|l| n.starts_with(l.as_str()))).cloned()
 }
 
-/// Выводит ли ссылка за пределы каталога распаковки `dest_abs`: `link` —
-/// путь ссылки (под `dest_abs`), `target` — куда она ведёт. Абсолютная цель
-/// — всегда наружу (тема не знает, где будет стоять); относительная — по
-/// каталогу ссылки.
+/// Whether a link leads outside the unpack directory `dest_abs`: `link` is
+/// the link path (under `dest_abs`), `target` where it leads. An absolute
+/// target always leads outside (the theme does not know where it will be
+/// installed); a relative one is resolved against the link's directory.
 pub fn link_escapes(dest_abs: &str, link: &str, target: &str) -> bool {
     if target.starts_with('/') {
         return true;
@@ -3776,10 +3802,10 @@ pub fn link_escapes(dest_abs: &str, link: &str, target: &str) -> bool {
     !(resolved == dest_abs || resolved.starts_with(&format!("{dest_abs}/")))
 }
 
-/// После распаковки: ссылка, которая ведёт наружу ([`link_escapes`]) —
-/// `(путь, цель)`. bsdtar кладёт такие ссылки как есть, 7-Zip абсолютную
-/// переписывает внутрь, p7zip — как есть; тема со ссылкой на `/etc` или в
-/// HOME уехала бы в `~/.themes` вместе с ней.
+/// After unpacking: a link that leads outside ([`link_escapes`]),
+/// `(path, target)`. bsdtar puts such links as is, 7-Zip rewrites an
+/// absolute one to point inside, p7zip as is; a theme with a link to
+/// `/etc` or into HOME would travel to `~/.themes` together with it.
 fn escaping_link_in(dest_abs: &str) -> Option<(String, String)> {
     fn walk(dest_abs: &str, dir: &Path, depth: usize) -> Option<(String, String)> {
         for entry in std::fs::read_dir(dir).ok()?.flatten() {
@@ -3802,37 +3828,39 @@ fn escaping_link_in(dest_abs: &str) -> Option<(String, String)> {
     walk(dest_abs, Path::new(dest_abs), 0)
 }
 
-/// Распаковывается ли файл вообще — порт пробы
-/// `zipfile.is_zipfile(path) or tarfile.is_tarfile(path)` (плюс 7z — по
-/// подписи: и тогда, когда распаковать его нечем, это архив, а не «голый
-/// файл темы», и распаковка скажет, чего не хватает).
+/// Whether a file can be unpacked at all: a port of the probe
+/// `zipfile.is_zipfile(path) or tarfile.is_tarfile(path)` (plus 7z by
+/// signature: even when there is nothing to unpack it with, it is an
+/// archive, not a "bare theme file", and unpacking will say what is
+/// missing).
 fn is_archive_file(archive: &str) -> bool {
     zip_entry_names(archive).is_some() || tar_entry_names(archive).is_some() || is_seven_zip(archive)
 }
 
-/// Безопасно распаковать zip/tar.* в `dest` — живой порт `_safe_extract`.
+/// Safely unpack zip/tar.* into `dest`: a live port of `_safe_extract`.
 ///
-/// Каждое имя записи проходит через [`safe_extract_entry`] ДО извлечения:
-/// защита от «../» — не то место, где допустимы две слегка разные проверки.
-/// ZIP извлекается общим [`crate::ext_utils::safe_zip_extract`] (у него своя,
-/// вторая проверка ZipSlip — так и задумано), TAR — системным `tar` с
-/// `--no-same-owner`.
+/// Every entry name goes through [`safe_extract_entry`] BEFORE extraction:
+/// protection against "../" is not a place where two slightly different
+/// checks are acceptable. ZIP is extracted by the common
+/// [`crate::ext_utils::safe_zip_extract`] (it has its own second ZipSlip
+/// check, by design), TAR by the system `tar` with `--no-same-owner`.
 ///
-/// ⭐ Починка при переносе: оригинал на ЛЮБУЮ неудачу отдавал наверх одно
-/// «Не удалось распаковать архив», а настоящую причину клал в журнал, куда
-/// покупатель не смотрит. «Опасная запись в архиве», «нет программы tar» и
-/// «файл повреждён» — это три разных ответа, и теперь они разные.
+/// ⭐ Fixed during the port: on ANY failure the original passed up a
+/// single "Could not unpack the archive" and put the real reason into the
+/// log, which the customer does not look at. "A dangerous entry in the
+/// archive", "no tar program" and "the file is corrupted" are three
+/// different answers, and now they are different.
 pub fn live_safe_extract(archive: &str, dest: &str) -> Result<(), String> {
     let result = live_safe_extract_any(archive, dest);
-    // Права из архива — одним правилом для всех форматов: x-биты остаются,
-    // setuid/setgid/sticky и запись для группы и прочих снимаются.
+    // Permissions from the archive follow one rule for all formats: x bits
+    // stay, setuid/setgid/sticky and write for group and others are stripped.
     if result.is_ok() {
         crate::ext_utils::clamp_extracted_modes(Path::new(dest));
     }
     result
 }
 
-/// Распаковка по формату — тело [`live_safe_extract`] без приведения прав.
+/// Unpacking by format: the body of [`live_safe_extract`] without fixing permissions.
 fn live_safe_extract_any(archive: &str, dest: &str) -> Result<(), String> {
     std::fs::create_dir_all(dest).map_err(|e| format!("{dest}: {e}"))?;
     let dest_abs = abs_dest(dest);
@@ -3851,8 +3879,8 @@ fn live_safe_extract_any(archive: &str, dest: &str) -> Result<(), String> {
         return seven_zip_extract(seven_zip_tool().unwrap_or("bsdtar"), &entries, archive, dest, &dest_abs);
     }
 
-    // 7z, а распаковать нечем: сказать, ЧТО поставить, а не «неизвестный
-    // формат» (стенд 17.10.2026 без bsdtar и 7-Zip).
+    // 7z, but nothing to unpack it with: say WHAT to install, not "unknown
+    // format" (the bench of 17.10.2026 without bsdtar and 7-Zip).
     if is_seven_zip(archive) && !have_seven_zip_tool() {
         let family = crate::system::DistroDetector::detect_live().family_live();
         return Err(seven_zip_missing(family.as_str()));
@@ -3860,15 +3888,15 @@ fn live_safe_extract_any(archive: &str, dest: &str) -> Result<(), String> {
     live_safe_extract_tar(archive, dest, &dest_abs)
 }
 
-/// Распаковать 7z программой `tool`: имена (обход пути), записи сквозь
-/// ссылку архива, после распаковки — ссылки наружу.
+/// Unpack 7z with program `tool`: names (path traversal), entries through
+/// an archive link, after unpacking, links leading outside.
 fn seven_zip_extract(tool: &str, entries: &[(String, bool)], archive: &str, dest: &str, dest_abs: &str) -> Result<(), String> {
     for (name, _) in entries {
         if !safe_extract_entry(dest_abs, name) {
             return Err(trf("unsafe entry in the archive: %1", &[name]));
         }
     }
-    // Запись сквозь ссылку того же архива — тот же обход пути.
+    // An entry through a link of the same archive is the same path traversal.
     if let Some(name) = entry_under_archive_link(entries) {
         return Err(trf("unsafe entry in the archive: %1", &[&name]));
     }
@@ -3878,9 +3906,9 @@ fn seven_zip_extract(tool: &str, entries: &[(String, bool)], archive: &str, dest
         vec![tool.into(), "x".into(), "-y".into(), format!("-o{dest}"), "--".into(), archive.into()]
     };
     let report = run_capture(&argv, Some(300));
-    // Ссылка наружу — отказ, как обход пути: 7-Zip на такой ссылке ещё
-    // и кончает с кодом 2 («Dangerous link path was ignored»), и
-    // человеку важна причина, а не код.
+    // A link leading outside is a refusal, like path traversal: 7-Zip also
+    // exits with code 2 on such a link ("Dangerous link path was
+    // ignored"), and the person cares about the reason, not the code.
     if let Some((link, target)) = escaping_link_in(dest_abs) {
         let rel = link.strip_prefix(&format!("{dest_abs}/")).unwrap_or(&link).to_string();
         return Err(trf("unsafe entry in the archive: %1", &[&format!("{rel} → {target}")]));
@@ -3894,7 +3922,7 @@ fn seven_zip_extract(tool: &str, entries: &[(String, bool)], archive: &str, dest
     Err(format!("{tool}: {}", if why.is_empty() { out.trim().to_string() } else { why }))
 }
 
-/// tar-ветка [`live_safe_extract`].
+/// The tar branch of [`live_safe_extract`].
 fn live_safe_extract_tar(archive: &str, dest: &str, dest_abs: &str) -> Result<(), String> {
     if !have("tar") {
         return Err(tr(
@@ -3931,9 +3959,9 @@ fn live_safe_extract_tar(archive: &str, dest: &str, dest_abs: &str) -> Result<()
     })
 }
 
-// ── исполнитель планов применения (`crate::themes::ApplyStep`) ──────────────
+// ── apply plan executor (`crate::themes::ApplyStep`) ────────────────────────
 
-/// Живая файловая система для санитайзера GTK/KDE.
+/// The live filesystem for the GTK/KDE sanitizer.
 struct LiveGtkFs;
 
 impl crate::gtk_sanitizer::GtkFs for LiveGtkFs {
@@ -3948,13 +3976,14 @@ impl crate::gtk_sanitizer::GtkFs for LiveGtkFs {
     }
 }
 
-/// КРИТИЧНО после ЛЮБОГО применения: починить битые ссылки в
-/// `gtk-{3,4}.0/settings.ini` и в KDE-конфигах — порт `sanitize_all`.
+/// CRITICAL after ANY application: repair broken references in
+/// `gtk-{3,4}.0/settings.ini` and in KDE configs: a port of `sanitize_all`.
 ///
-/// Без этого GTK4-приложения падают в петлю поиска иконок у темы, которой на
-/// диске уже нет. Решения (что битое и чем заменить) целиком за
-/// [`crate::gtk_sanitizer`]; здесь только чтение, запись и `kwriteconfig6`.
-/// Возвращает список правок — их число уходит в [`gtk_sanitizer_message`].
+/// Without this GTK4 applications loop looking for icons of a theme that
+/// is no longer on disk. The decisions (what is broken and what to replace
+/// it with) belong entirely to [`crate::gtk_sanitizer`]; here only
+/// reading, writing and `kwriteconfig6`. Returns the list of edits; their
+/// number goes into [`gtk_sanitizer_message`].
 pub fn live_gtk_sanitize(home: &str) -> Vec<String> {
     use crate::gtk_sanitizer as gsan;
 
@@ -3980,9 +4009,9 @@ pub fn live_gtk_sanitize(home: &str) -> Vec<String> {
     changes
 }
 
-/// Починка `gtk-{3,4}.0/settings.ini` с явными каталогами — половина
-/// [`live_gtk_sanitize`], которая не запускает чужих программ; сверки зовут
-/// её на подставном HOME.
+/// Repairing `gtk-{3,4}.0/settings.ini` with explicit directories: the half
+/// of [`live_gtk_sanitize`] that does not run other programs; parity checks
+/// call it on a fake HOME.
 pub fn gtk_ini_sanitize_at(home: &str, cfg: &str, data: &str) -> Vec<String> {
     use crate::gtk_sanitizer as gsan;
     let mut fs = LiveGtkFs;
@@ -3993,13 +4022,13 @@ pub fn gtk_ini_sanitize_at(home: &str, cfg: &str, data: &str) -> Vec<String> {
             continue;
         }
         let Some(text) = read_text_lossy(&ini) else {
-            // Файл есть, но не читается — переписывать НЕЛЬЗЯ: пересборка
-            // текста без исходника снесла бы все остальные ключи.
+            // The file exists but cannot be read: rewriting it is NOT allowed:
+            // rebuilding the text without the source would wipe all other keys.
             continue;
         };
         let settings = gsan::read_ini_settings(Some(&text));
         for edit in gsan::plan_gtk_ini_edits(&mut fs, &ini, &settings, home, data) {
-            // Файл перечитывается на каждый ключ — как в оригинале.
+            // The file is reread for every key, as in the original.
             let existing = read_text_lossy(&ini);
             let content = gsan::write_ini_setting(existing.as_deref(), &edit.key, &edit.value);
             if std::fs::write(&ini, content).is_ok() {
@@ -4010,18 +4039,18 @@ pub fn gtk_ini_sanitize_at(home: &str, cfg: &str, data: &str) -> Vec<String> {
     changes
 }
 
-/// Замечания санитайзера о ссылках, которые он НЕ правит: звуковая тема из
-/// `gtk-{3,4}.0/settings.ini`, которой нет на диске
-/// ([`crate::gtk_sanitizer::plan_gtk_ini_notes`]). Только чтение — ни один
-/// файл не меняется; строки идут в журнал при старте окна.
+/// The sanitizer's remarks about references it does NOT fix: a sound theme
+/// from `gtk-{3,4}.0/settings.ini` that is not on disk
+/// ([`crate::gtk_sanitizer::plan_gtk_ini_notes`]). Read only: not a single
+/// file changes; the lines go to the log at window startup.
 pub fn live_gtk_notes(home: &str) -> Vec<String> {
     let cfg = crate::utils::config_home(xdg_config_home().as_deref(), home);
     let data = crate::utils::data_home(xdg_data_home().as_deref(), home);
     gtk_notes_at(home, &cfg, &data)
 }
 
-/// Тело [`live_gtk_notes`] с явными каталогами — сверки зовут его на
-/// подставном HOME, не трогая окружение процесса.
+/// The body of [`live_gtk_notes`] with explicit directories: parity checks
+/// call it on a fake HOME without touching the process environment.
 pub fn gtk_notes_at(home: &str, cfg: &str, data: &str) -> Vec<String> {
     use crate::gtk_sanitizer as gsan;
     let mut fs = LiveGtkFs;
@@ -4035,7 +4064,7 @@ pub fn gtk_notes_at(home: &str, cfg: &str, data: &str) -> Vec<String> {
     notes
 }
 
-/// Прочитать размер курсора (`gsettings get …cursor-size`), дефолт «24».
+/// Read the cursor size (`gsettings get …cursor-size`), default "24".
 fn cursor_size(run: &dyn Fn(&[String], Option<u64>) -> RunReport) -> String {
     let cmd = crate::themes::cursor_size_get_cmd();
     let report = run(&cmd.argv, cmd.timeout);
@@ -4049,17 +4078,17 @@ fn cursor_size(run: &dyn Fn(&[String], Option<u64>) -> RunReport) -> String {
     "24".to_string()
 }
 
-/// Окружение для выбора стиля Qt (Kvantum и «Стиль приложений» — одно на
-/// двоих): работающий переключатель стиля Qt ищется в `PATH`, пусто — идём
-/// запасным путём `QT_STYLE_OVERRIDE`.
+/// The environment for choosing a Qt style (Kvantum and "Application
+/// style" share one): a working Qt style switcher is looked for in `PATH`;
+/// if empty, we take the `QT_STYLE_OVERRIDE` fallback path.
 fn qt_style_env<'a>(
     de: &'a str,
     home: &'a str,
     xdg: Option<&'a str>,
 ) -> crate::themes::KvantumEnv<'a> {
     let platform_theme = ["qt6ct", "qt5ct"].into_iter().find(|t| have(t)).unwrap_or("");
-    // Нынешние значки окружения — для нового конфига qt6ct (Д2). Читаются,
-    // только когда этот конфиг и правда понадобится.
+    // The environment's current icons, for a new qt6ct config (D2). Read only
+    // when this config is really going to be needed.
     let icon_theme = if !platform_theme.is_empty()
         && crate::themes::qt_style_way(de) == crate::themes::QtStyleWay::PlatformTheme
     {
@@ -4076,8 +4105,8 @@ fn qt_style_env<'a>(
     }
 }
 
-/// Тема значков, которую окружение отдаёт программам сейчас (пусто —
-/// прочитать не вышло). Источник решает ядро.
+/// The icon theme the environment gives programs now (empty means it could
+/// not be read). The core decides the source.
 fn current_icon_theme(de: &str, home: &str, xdg: Option<&str>) -> String {
     use crate::themes::IconThemeSource as S;
     match crate::themes::current_icon_theme_source(de, home, xdg) {
@@ -4098,39 +4127,40 @@ fn current_icon_theme(de: &str, home: &str, xdg: Option<&str>) -> String {
     }
 }
 
-/// Исполнить план применения темы — точный порт `ThemeManager._exec_apply_plan`.
+/// Execute a theme apply plan: an exact port of `ThemeManager._exec_apply_plan`.
 ///
-/// Флаг `ok` ведётся строго по семантике тегов ядра: его задаёт `Primary`,
-/// поднимает удавшийся `IfNotOk`, удавшаяся запись `WriteSetsOk` и
-/// безусловный `ForceOk`; `BestEffort` его не трогает. Порядок и argv — из
-/// плана, своих решений здесь нет.
+/// The `ok` flag follows the core's tag semantics strictly: `Primary` sets
+/// it, a successful `IfNotOk`, a successful `WriteSetsOk` write and the
+/// unconditional `ForceOk` raise it; `BestEffort` does not touch it. The
+/// order and argv come from the plan; there are no decisions of its own
+/// here.
 pub fn exec_apply_plan(steps: &[ApplyStep]) -> bool {
     exec_apply_plan_report(steps).ok
 }
 
-/// То же, что [`exec_apply_plan`], но с подробностями для честного
-/// сообщения о курсоре: сменилось ли сразу и что стало с конфигом
-/// композитора.
+/// The same as [`exec_apply_plan`], but with details for an honest cursor
+/// message: whether it changed right away and what happened to the
+/// compositor config.
 pub fn exec_apply_plan_report(steps: &[ApplyStep]) -> crate::themes::CursorReport {
     exec_apply_plan_report_in(steps, crate::dde::treeland_session_live())
 }
 
-/// То же с явным признаком сеанса Treeland (причина стопа
+/// The same with an explicit Treeland session flag (the stop reason of
 /// [`ApplyStep::DdeTreelandGate`]).
 fn exec_apply_plan_report_in(steps: &[ApplyStep], treeland: bool) -> crate::themes::CursorReport {
     let plan: Vec<crate::install_plan::Step> = steps.iter().cloned().map(Into::into).collect();
     let ctx = crate::install_plan::Ctx::live(true, false, None, treeland);
     match crate::install_plan::exec(&plan, &mut Vec::new(), &ctx) {
         Ok(report) => report.apply,
-        // Не удалась запись: всё, что нажатие успело записать, исполнитель
-        // уже вернул — человеку причина.
+        // A write failed: the executor has already returned everything the press
+        // managed to write; the person gets the reason.
         Err(f) => press_failed_report(&f),
     }
 }
 
-/// Итог нажатия «Применить», которое оборвал сбой файловой записи: не
-/// применено, причина — какой файл не записался (записи нажатия уже
-/// возвращены общим исполнителем).
+/// The result of an "Apply" press cut off by a file write failure: not
+/// applied, the reason is which file was not written (the press's writes
+/// have already been returned by the common executor).
 pub(crate) fn press_failed_report(f: &crate::install_plan::Failure) -> crate::themes::CursorReport {
     crate::themes::CursorReport {
         ok: false,
@@ -4142,27 +4172,29 @@ pub(crate) fn press_failed_report(f: &crate::install_plan::Failure) -> crate::th
     }
 }
 
-/// Прогон слоя включения общего плана ([`crate::install_plan::exec`]):
-/// флаг `ok` ведётся строго по семантике тегов ядра — его задаёт `Primary`,
-/// поднимает удавшийся `IfNotOk`, удавшаяся запись `WriteSetsOk` и
-/// безусловный `ForceOk`; `BestEffort` его не трогает. Порядок и argv — из
-/// плана, своих решений здесь нет.
+/// Running the enabling layer of the common plan
+/// ([`crate::install_plan::exec`]): the `ok` flag follows the core's tag
+/// semantics strictly: `Primary` sets it, a successful `IfNotOk`, a
+/// successful `WriteSetsOk` write and the unconditional `ForceOk` raise
+/// it; `BestEffort` does not touch it. The order and argv come from the
+/// plan; there are no decisions of its own here.
 pub(crate) struct ApplyRun<'r> {
     report: crate::themes::CursorReport,
     ok: bool,
-    /// Записано ли что-то в `environment.d` — тогда переменные надо
-    /// отзеркалить в сеансы, которые этот каталог не читают (Д1).
+    /// Whether anything was written to `environment.d`: then the variables
+    /// must be mirrored into sessions that do not read this directory (D1).
     env_written: bool,
-    /// Идёт ли сеанс Treeland (причина стопа [`ApplyStep::DdeTreelandGate`]).
+    /// Whether a Treeland session is running (the stop reason of [`ApplyStep::DdeTreelandGate`]).
     treeland: bool,
-    /// Запуск команд и поиск программ — общие для всего плана
+    /// Running commands and finding programs are shared by the whole plan
     /// ([`crate::install_plan::Ctx::run`], [`crate::install_plan::Ctx::have`]).
     run: &'r dyn Fn(&[String], Option<u64>) -> RunReport,
     have: &'r dyn Fn(&str) -> bool,
-    /// Отзеркалить `environment.d` ([`crate::install_plan::Ctx::sync_env`]).
+    /// Mirror `environment.d` ([`crate::install_plan::Ctx::sync_env`]).
     sync_env: &'r dyn Fn(&mut crate::install_plan::Undo),
-    /// Файлы под [`ApplyStep::Guard`], которых до команд не было: после
-    /// прогона заведённое командами отмечается в откате ([`Self::settle`]).
+    /// Files under [`ApplyStep::Guard`] that did not exist before the
+    /// commands: after the run, what the commands created is marked in the
+    /// rollback ([`Self::settle`]).
     guarded: Vec<(PathBuf, PathBuf)>,
 }
 
@@ -4180,13 +4212,13 @@ impl<'r> ApplyRun<'r> {
         (self.run)(argv, timeout_secs).returncode == Some(0)
     }
 
-    /// Исполнить шаг; `Ok(false)` — план остановлен (Treeland).
+    /// Execute a step; `Ok(false)` means the plan is stopped (Treeland).
     ///
-    /// Файловые записи (ini, наши файлы, конфиг композитора) идут под
-    /// откатом `undo` (шаг 5а слияния установщиков): не удалась запись —
-    /// `Err`, и общий исполнитель возвращает всё, что это нажатие успело
-    /// записать («всё или ничего» внутри одного нажатия). Прежде ошибка
-    /// записи молча пропускалась, и нажатие оставляло конфиги наполовину.
+    /// File writes (ini, our files, the compositor config) go under the `undo`
+    /// rollback (step 5a of merging the installers): a failed write is `Err`,
+    /// and the common executor returns everything this press managed to write
+    /// ("all or nothing" within one press). Previously a write error was
+    /// silently skipped, and the press left the configs half done.
     pub(crate) fn step(
         &mut self,
         step: &ApplyStep,
@@ -4205,9 +4237,9 @@ impl<'r> ApplyRun<'r> {
                 self.ok = false;
                 return Ok(false);
             }
-            // Команды, которые меняют значения стола (`gsettings`, `dconf`,
-            // `xfconf-query`), идут через откат: прежнее значение снимается до
-            // них ([`crate::install_plan::Undo::run_kept`]).
+            // Commands that change desktop values (`gsettings`, `dconf`,
+            // `xfconf-query`) go through the rollback: the previous value is taken
+            // before them ([`crate::install_plan::Undo::run_kept`]).
             ApplyStep::Primary(c) => self.ok = undo.run_kept(self.run, &c.argv, c.timeout).returncode == Some(0),
             ApplyStep::BestEffort(c) => {
                 let _ = undo.run_kept(self.run, &c.argv, c.timeout);
@@ -4265,7 +4297,7 @@ impl<'r> ApplyRun<'r> {
             }
             ApplyStep::IniSetIfOk { path, section, key, value } => {
                 if self.ok {
-                    // Файл ведём не мы — правка одного ключа, не переписывание.
+                    // We do not own the file: editing one key, not rewriting it.
                     let existing = if Path::new(path).exists() { read_text_lossy(path) } else { None };
                     let content = crate::defaults::set_ini_value(existing.as_deref(), section, key, value);
                     undo.write_text(Path::new(path), &content, false).map_err(write(path))?;
@@ -4323,9 +4355,9 @@ impl<'r> ApplyRun<'r> {
         Ok(true)
     }
 
-    /// Отметить в откате файлы, заведённые командами после
-    /// [`ApplyStep::Guard`] (зовётся и при сбое посреди плана — тогда откат
-    /// снимет и их).
+    /// Mark in the rollback the files created by commands after
+    /// [`ApplyStep::Guard`] (also called on a failure in the middle of the
+    /// plan; then the rollback removes them too).
     pub(crate) fn settle(&mut self, undo: &mut crate::install_plan::Undo) {
         undo.after_external(std::mem::take(&mut self.guarded));
     }
@@ -4340,13 +4372,15 @@ impl<'r> ApplyRun<'r> {
     }
 }
 
-/// Исполнить [`crate::themes::WmConfigPlan`]: наш файл + управляемый блок в
-/// конфиге композитора, с копией до первой правки и откатом, если проверка
-/// самого композитора отвергла результат. Отдаёт итог и путь конфига.
+/// Execute [`crate::themes::WmConfigPlan`]: our file + a managed block in
+/// the compositor config, with a copy before the first edit and a rollback
+/// if the compositor's own check rejected the result. Returns the result
+/// and the config path.
 ///
-/// Записи — под откатом `undo` нажатия: сбой ДАЛЬШЕ в том же нажатии
-/// возвращает и их. Сам `Failed` нажатие не роняет (итог сообщается
-/// человеку отдельно, [`crate::themes::CursorReport::wm`]).
+/// The writes are under the press's `undo` rollback: a failure LATER in
+/// the same press returns them too. `Failed` itself does not break the
+/// press (the result is reported to the person separately,
+/// [`crate::themes::CursorReport::wm`]).
 fn exec_wm_config(
     plan: &crate::themes::WmConfigPlan,
     run: &dyn Fn(&[String], Option<u64>) -> RunReport,
@@ -4355,7 +4389,7 @@ fn exec_wm_config(
 ) -> (crate::themes::WmConfigOutcome, String) {
     use crate::themes::WmConfigOutcome as O;
     let first_path = plan.candidates.first().map(|c| c.path.clone()).unwrap_or_default();
-    // 1. Версия: старый композитор не прочтёт строку подключения.
+    // 1. The version: an old compositor will not read the include line.
     if let Some(gate) = &plan.min_version {
         if have(&gate.argv[0]) {
             let out = run(&gate.argv, Some(10));
@@ -4367,7 +4401,7 @@ fn exec_wm_config(
             }
         }
     }
-    // 2. Какой конфиг композитор прочтёт.
+    // 2. Which config the compositor will read.
     let mut chosen = plan.candidates.iter().find(|c| Path::new(&c.path).is_file());
     if chosen.is_none() {
         if let Some(f) = plan.foreign.iter().find(|f| Path::new(f.as_str()).is_file()) {
@@ -4393,7 +4427,7 @@ fn exec_wm_config(
         return (O::NoConfig, first_path);
     };
     let path = file.path.clone();
-    // 3. Наш файл, затем строка подключения.
+    // 3. Our file, then the include line.
     if undo.write_text(Path::new(&file.own_path), &file.own_content, true).is_err() {
         return (O::Failed, path);
     }
@@ -4413,7 +4447,7 @@ fn exec_wm_config(
     if !Path::new(&backup).exists() && undo.write_text(Path::new(&backup), &before, true).is_err() {
         return (O::Failed, path);
     }
-    // 4. Проверка самим композитором — до и после.
+    // 4. A check by the compositor itself, before and after.
     let validator = plan.validate.first().filter(|bin| have(bin)).is_some();
     let valid = |p: &str| -> bool {
         let mut argv = plan.validate.clone();
@@ -4425,15 +4459,16 @@ fn exec_wm_config(
         return (O::Failed, path);
     }
     if was_valid && !valid(&path) {
-        // Копия прежнего уже снята откатом — здесь простая запись.
+        // A copy of the previous one is already taken by the rollback: a plain write here.
         let _ = crate::utils::atomic_write(&path, &before);
         return (O::RolledBack, path);
     }
     (O::Written, path)
 }
 
-/// Текущая тема (`size == false`) или размер курсора в этом окружении —
-/// первый ответ по списку источников ядра ([`crate::themes::cursor_queries`]).
+/// The current theme (`size == false`) or cursor size in this environment:
+/// the first answer from the core's list of sources
+/// ([`crate::themes::cursor_queries`]).
 pub(crate) fn live_cursor_value(de: &str, home: &str, xdg: Option<&str>, size: bool) -> Option<String> {
     use crate::themes::CursorQuery as Q;
     for q in crate::themes::cursor_queries(de, home, xdg, size) {
@@ -4465,13 +4500,14 @@ pub(crate) fn live_cursor_value(de: &str, home: &str, xdg: Option<&str>, size: b
     None
 }
 
-/// argv «KWin, перечитай конфиг» (порт `utils.kwin_reconfigure`) — первым
-/// инструментом шины, который есть. `None` — ни одного нет.
+/// argv for "KWin, reread the config" (a port of `utils.kwin_reconfigure`)
+/// with the first bus tool that exists. `None` means there is none.
 ///
-/// Идём на сессионную шину, а не списком `qdbus`/`qdbus6` из
-/// [`aurorae_plan`]: этих бинарей на большинстве систем нет вовсе, а
-/// `dbus-send` есть везде, где есть сама шина. Порядок инструментов и сборка
-/// argv — общие ([`crate::utils`]), своей копии здесь нет.
+/// We go to the session bus rather than to the `qdbus`/`qdbus6` list from
+/// [`aurorae_plan`]: those binaries do not exist on most systems at all,
+/// while `dbus-send` exists wherever the bus itself does. The order of
+/// tools and the argv building are shared ([`crate::utils`]); there is no
+/// copy of its own here.
 fn kwin_reconfigure_argv() -> Option<Vec<String>> {
     let path = path_env();
     crate::utils::DBUS_TOOL_PREFERENCE.iter().find_map(|(tool, kind)| {
@@ -4481,81 +4517,82 @@ fn kwin_reconfigure_argv() -> Option<Vec<String>> {
     })
 }
 
-// ── План нажатия «Применить» (шаг 5а) ───────────────────────────────────────
+// ── The plan of pressing "Apply" (step 5a) ──────────────────────────────────
 
-/// План одного нажатия «Применить».
+/// The plan of one "Apply" press.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PressPlan {
-    /// Шаги общего плана ([`crate::install_plan::exec`]); при успехе —
-    /// запись в историю тем `(вид, стол)`, если она у действия есть.
+    /// Steps of the common plan ([`crate::install_plan::exec`]); on success, a
+    /// theme history entry `(kind, desktop)` if the action has one.
     Steps {
         steps: Vec<crate::install_plan::Step>,
         history: Option<(&'static str, String)>,
-        /// Что сказать человеку после прогона.
+        /// What to tell the person after the run.
         say: PressSay,
     },
-    /// Кнопка раздела окружения (тема, дополнение): шаги общего плана,
-    /// команды — через подменяемую машину `de_apply`; итог — не коды
-    /// команд, а сверка «окружение отдаёт после записи»
-    /// ([`crate::de_apply::check`]).
+    /// An environment section button (a theme, an add-on): steps of the common
+    /// plan, commands through the substitutable `de_apply` machine; the result
+    /// is not the command codes but the check "what the environment returns
+    /// after the write" ([`crate::de_apply::check`]).
     Desktop { steps: Vec<crate::install_plan::Step>, check: crate::de_apply::Check },
-    /// Отказ до первого шага: ничего не запускается и не пишется.
-    /// `None` — общее «не применено» ([`apply_message`]).
+    /// A refusal before the first step: nothing is launched or written.
+    /// `None` means the common "not applied" ([`apply_message`]).
     Refused(Option<String>),
-    /// Делать нечего — успех (шрифты, плазмоиды…).
+    /// Nothing to do: success (fonts, plasmoids…).
     Nothing,
-    /// Нажатие пока исполняется своим путём, не общим планом: цвета в
-    /// Plasma (`plasma-apply-colorscheme`, затем снятие нашего ключа из
-    /// `kdeglobals` — его текст известен только ПОСЛЕ команды), обои
-    /// рабочего стола, Conky (запуск процессов, `de_apply`), экран входа и
-    /// загрузки (помощник от root).
+    /// The press is still executed its own way, not by the common plan:
+    /// colours in Plasma (`plasma-apply-colorscheme`, then removing our key
+    /// from `kdeglobals`, whose text is known only AFTER the command), the
+    /// desktop wallpaper, Conky (starting processes, `de_apply`), the login and
+    /// boot screens (the root helper).
     Own,
 }
 
-/// Текст итога нажатия, собранного планом ([`PressPlan::Steps`]).
+/// The result text of a press built by a plan ([`PressPlan::Steps`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PressSay {
-    /// Общее «применено»/«не применено» ([`apply_message`]); при неудаче —
-    /// причина, если она известна.
+    /// The common "applied"/"not applied" ([`apply_message`]); on failure, the
+    /// reason if it is known.
     Plain,
-    /// Курсор: что сменилось сразу и что с конфигом композитора
-    /// ([`crate::themes::cursor_apply_message`]).
+    /// The cursor: what changed right away and what happened to the compositor
+    /// config ([`crate::themes::cursor_apply_message`]).
     Cursor,
-    /// Удача — этот текст (цвета слоями Rexon: что получили Qt-программы,
-    /// [`crate::shell_palette::layer_applied_msg`]); неудача — причина.
+    /// On success this text (colours via Rexon layers: what Qt programs got,
+    /// [`crate::shell_palette::layer_applied_msg`]); on failure, the reason.
     Done(String),
-    /// Удача — `done`; неудача — причина из прогона (сбой записи), а без
-    /// неё — `failed` (обои блокировки, звук без команды проверки).
+    /// On success `done`; on failure the reason from the run (a write failure),
+    /// and without one `failed` (lock screen wallpaper, sound without a check
+    /// command).
     Pair { done: String, failed: String },
 }
 
-/// Живые сведения для звуковой темы ([`PressFacts::sound`]).
+/// Live facts for a sound theme ([`PressFacts::sound`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SoundFacts {
-    /// Тема с таким именем есть в каталогах звуковых тем.
+    /// A theme with this name exists in the sound theme directories.
     pub exists: bool,
-    /// Найденные `kwriteconfig6`/`kreadconfig6` (пусто — нет).
+    /// The `kwriteconfig6`/`kreadconfig6` found (empty means none).
     pub kwrite: String,
     pub kread: String,
     pub has_gsettings: bool,
 }
 
-/// Живые сведения для обоев экрана блокировки ([`PressFacts::lock`]).
+/// Live facts for the lock screen wallpaper ([`PressFacts::lock`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LockFacts {
-    /// Каталог раздела (там лежит картинка).
+    /// The section directory (the picture lies there).
     pub install_dir: String,
-    /// Картинка `install_dir/<тема>` — файл.
+    /// The picture `install_dir/<theme>` is a file.
     pub is_file: bool,
-    /// Сеанс Treeland (Deepin: обои отдаёт Центр управления; вне Treeland
-    /// у Deepin обоев блокировки нет).
+    /// A Treeland session (Deepin: the Control Center provides the wallpaper;
+    /// outside Treeland Deepin has no lock screen wallpaper).
     pub treeland: bool,
 }
 
-/// Файлы, которые перепишут команды `kwriteconfig` из `cmds`
-/// (`--file имя` → `<config>/имя`), по разу, в порядке команд. Их «что
-/// было» снимает [`crate::themes::ApplyStep::Guard`]: сами команды мимо
-/// отката.
+/// Files that the `kwriteconfig` commands from `cmds` will rewrite
+/// (`--file name` -> `<config>/name`), once each, in command order. Their
+/// "what was there" is taken by [`crate::themes::ApplyStep::Guard`]: the
+/// commands themselves bypass the rollback.
 pub fn kconfig_files<'a>(cmds: impl IntoIterator<Item = &'a [String]>, config: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for argv in cmds {
@@ -4571,60 +4608,64 @@ pub fn kconfig_files<'a>(cmds: impl IntoIterator<Item = &'a [String]>, config: &
     out
 }
 
-/// Живые сведения для [`press_plan_with`] — всё, что требует опроса машины,
-/// снято заранее ([`LiveInstaller::press_plan`]); в проверках — подставное.
+/// Live facts for [`press_plan_with`]: everything that requires querying
+/// the machine is captured in advance ([`LiveInstaller::press_plan`]); in
+/// checks it is fake.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PressFacts {
     pub de: String,
     pub home: String,
     pub xdg_config_home: Option<String>,
-    /// У глобальной темы есть `metadata.json` (Plasma 6 её прочтёт).
+    /// The global theme has `metadata.json` (Plasma 6 will read it).
     pub global_theme_ok: bool,
-    /// Тема значков валидна ([`crate::themes::is_valid_icon_theme`]).
+    /// The icon theme is valid ([`crate::themes::is_valid_icon_theme`]).
     pub icons_valid: bool,
-    /// Тема GTK тёмная ([`crate::themes::gtk_theme_is_dark`]).
+    /// The GTK theme is dark ([`crate::themes::gtk_theme_is_dark`]).
     pub gtk_dark: bool,
-    /// Тема GTK в программах GTK 4/libadwaita ([`crate::gtk4_theme`]);
-    /// `None` — не собрано, план прежний.
+    /// The GTK theme in GTK 4/libadwaita programs ([`crate::gtk4_theme`]);
+    /// `None` means not gathered, the plan is as before.
     pub gtk4: Option<crate::gtk4_theme::Facts>,
-    /// Переключатель стиля Qt в системе (`qt6ct`/`qt5ct`, пусто — нет).
+    /// The Qt style switcher in the system (`qt6ct`/`qt5ct`, empty means none).
     pub qt_platform_theme: String,
-    /// Тема значков окружения сейчас — для нового конфига qt6ct.
+    /// The environment's current icon theme, for a new qt6ct config.
     pub qt_icon_theme: String,
-    /// argv «KWin, перечитай конфиг»; `None` — звать нечем.
+    /// argv for "KWin, reread the config"; `None` means nothing to call it with.
     pub kwin_reconfigure: Option<Vec<String>>,
-    /// `library` темы Aurorae SVG на этой машине
-    /// ([`crate::kdecoration::svg_library`]); пусто — прежний движок.
+    /// The `library` of an Aurorae SVG theme on this machine
+    /// ([`crate::kdecoration::svg_library`]); empty means the old engine.
     pub aurorae_library: String,
-    /// Тема курсоров безопасна (`Inherits` не ведёт в никуда, порт
+    /// The cursor theme is safe (`Inherits` does not lead nowhere, a port of
     /// `_cursor_preflight`).
     pub cursor_safe: bool,
-    /// Тема курсоров — курсор окружения по умолчанию (Adwaita в GNOME и
-    /// Cinnamon): небезопасная такая — не отказ, а сброс родного ключа.
+    /// The cursor theme is the environment's default cursor (Adwaita in GNOME
+    /// and Cinnamon): an unsafe one of this kind is not a refusal but a reset
+    /// of the native key.
     pub cursor_standard: bool,
-    /// Размер курсора: при выборе темы — тот, что сейчас (он нужен целиком:
-    /// переменные окружения, конфиг композитора), при смене размера — новый.
+    /// The cursor size: when choosing a theme, the current one (it is needed
+    /// in full: environment variables, compositor config), when changing the
+    /// size, the new one.
     pub cursor_size: Option<u32>,
-    /// Цвета вне Plasma: план слоёв Rexon
-    /// ([`crate::shell_palette::scheme_layer_press`]); `Err` — отказ (схемы
-    /// нет), `None` — не собран.
+    /// Colours outside Plasma: the plan of Rexon layers
+    /// ([`crate::shell_palette::scheme_layer_press`]); `Err` is a refusal (no
+    /// scheme), `None` means not gathered.
     pub colors: Option<Result<crate::shell_palette::SchemePress, String>>,
-    /// Звуковая тема: есть ли она и чем писать; `None` — не собрано.
+    /// The sound theme: whether it exists and what to write it with; `None` means not gathered.
     pub sound: Option<SoundFacts>,
-    /// Обои экрана блокировки: где картинка; `None` — не собрано.
+    /// Lock screen wallpaper: where the picture is; `None` means not gathered.
     pub lock: Option<LockFacts>,
-    /// Раздел окружения: план кнопки ([`crate::de_apply::press_plan`]);
-    /// `None` — не собран (своим путём).
+    /// An environment section: the button plan ([`crate::de_apply::press_plan`]);
+    /// `None` means not gathered (its own way).
     pub desktop: Option<crate::de_apply::Plan>,
-    /// Глобальная тема: что отметил человек в окне «Применить «X»?» и что
-    /// несёт тема; `None` — окна не было, применяется оформление
-    /// (`plasma-apply-lookandfeel -a`, как прежде).
+    /// A global theme: what the person ticked in the "Apply "X"?" window and
+    /// what the theme carries; `None` means there was no window, the look is
+    /// applied (`plasma-apply-lookandfeel -a`, as before).
     pub global: Option<crate::themes::GlobalPress>,
 }
 
-/// План нажатия «Применить» действия `action` для темы `theme` — чистая
-/// функция: построители те же, что звало прежнее `apply`, порядок и argv
-/// не менялись (сверка — `appearance_apply_plans_parity.rs`).
+/// The plan of pressing "Apply" for action `action` on theme `theme`: a
+/// pure function: the builders are the same ones the old `apply` called,
+/// the order and argv did not change (checked by
+/// `appearance_apply_plans_parity.rs`).
 pub fn press_plan_with(action: &ApplyAction, theme: &str, facts: &PressFacts) -> PressPlan {
     use crate::install_plan::Step;
     use crate::themes::Cmd;
@@ -4658,8 +4699,8 @@ pub fn press_plan_with(action: &ApplyAction, theme: &str, facts: &PressFacts) ->
             let Some(press) = &facts.global else {
                 return with_history(crate::themes::apply_kde_global_plan(theme), "kde");
             };
-            // Части, отмеченные в окне «Применить «X»?» (вне Plasma — те, что
-            // переносятся на этот стол).
+            // Parts ticked in the "Apply "X"?" window (outside Plasma, those that
+            // carry over to this desktop).
             let Some(got) = crate::themes::apply_global_choice_plan(theme, press, de) else {
                 return PressPlan::Refused(Some(tr("Nothing is selected to apply.")));
             };
@@ -4701,12 +4742,12 @@ pub fn press_plan_with(action: &ApplyAction, theme: &str, facts: &PressFacts) ->
                 (plan, _) => plan,
             }
         }
-        // Модуль рамки (`library`), затем тема, затем (только при успехе)
-        // KWin перечитывает конфиг. Без `library` тема Aurorae под Breeze не
-        // включалась: KWin рисует модуль из `library`, а `theme` читает уже
-        // он. Плитка встроенной рамки (Breeze, Oxygen) — `library/theme`
-        // ([`crate::kdecoration::choice`]). Истории у рамок, стиля Qt и
-        // заставок, как и прежде, нет.
+        // The decoration module (`library`), then the theme, then (only on
+        // success) KWin rereads the config. Without `library` an Aurorae theme
+        // did not switch on under Breeze: KWin draws the module from `library`,
+        // and it is the module that reads `theme`. A built-in decoration tile
+        // (Breeze, Oxygen) is `library/theme` ([`crate::kdecoration::choice`]).
+        // Frames, the Qt style and splashes have no history, as before.
         ApplyAction::Aurorae => {
             let library = if facts.aurorae_library.is_empty() {
                 crate::kdecoration::AURORAE_V1
@@ -4728,8 +4769,9 @@ pub fn press_plan_with(action: &ApplyAction, theme: &str, facts: &PressFacts) ->
             history: None,
             say: PressSay::Plain,
         },
-        // Заставка — как модуль KDE: тема и сразу `Engine` (у «Нет» — `none`,
-        // иначе `KSplashQML`, чтобы после «Нет» заставка вернулась).
+        // The splash, like the KDE module: the theme and right away `Engine`
+        // ("None" gets `none`, otherwise `KSplashQML`, so that the splash comes
+        // back after "None").
         ApplyAction::Splash => PressPlan::Steps {
             steps: vec![
                 primary(lnf_component_plan("splash", theme).argv),
@@ -4744,9 +4786,10 @@ pub fn press_plan_with(action: &ApplyAction, theme: &str, facts: &PressFacts) ->
             say: PressSay::Plain,
         },
         ApplyAction::Noop => PressPlan::Nothing,
-        // Небезопасная тема, которая и есть курсор окружения по умолчанию:
-        // сброс родного ключа (имя темы нигде явно не пишется). Иначе
-        // небезопасная — план не собирается: отказ без единой записи.
+        // An unsafe theme that is the environment's default cursor: a reset of
+        // the native key (the theme name is not written anywhere explicitly).
+        // Otherwise for an unsafe theme no plan is built: a refusal without a
+        // single write.
         ApplyAction::Cursor => {
             let size = facts.cursor_size;
             let standard = (!facts.cursor_safe && facts.cursor_standard)
@@ -4763,7 +4806,7 @@ pub fn press_plan_with(action: &ApplyAction, theme: &str, facts: &PressFacts) ->
                 None => PressPlan::Refused(None),
             }
         }
-        // Вне Plasma — слои Rexon общим планом; в Plasma — своим путём.
+        // Outside Plasma, Rexon layers via the common plan; in Plasma, its own way.
         ApplyAction::KdeColors => match crate::shell_palette::scheme_way(de) {
             crate::shell_palette::SchemeWay::Layer { .. } => match &facts.colors {
                 Some(Ok(press)) => PressPlan::Steps {
@@ -4776,11 +4819,11 @@ pub fn press_plan_with(action: &ApplyAction, theme: &str, facts: &PressFacts) ->
             },
             _ => PressPlan::Own,
         },
-        // Звуковая тема — общий движок звука (тот же, что у вкладки
-        // «Настройки»): записи командами, затем прочитанное обратно имя.
-        // Несуществующее имя не пишем вовсе: система молча играла бы
-        // `freedesktop`, а вкладка говорила бы «применено» (живой случай
-        // 03.10 — в kdeglobals стояла тема «Sounds», которой нет).
+        // A sound theme goes through the common sound engine (the same as in
+        // the "Settings" tab): writes by commands, then the name read back. A
+        // nonexistent name is not written at all: the system would silently
+        // play `freedesktop`, while the tab would say "applied" (a live case on
+        // 03.10: kdeglobals named the theme "Sounds", which does not exist).
         ApplyAction::SoundTheme => {
             let Some(sf) = &facts.sound else { return PressPlan::Refused(None) };
             if !sf.exists {
@@ -4820,10 +4863,10 @@ pub fn press_plan_with(action: &ApplyAction, theme: &str, facts: &PressFacts) ->
             };
             PressPlan::Steps { steps: v, history: None, say }
         }
-        // Обои блокировки: картинка (по ней `ok`), затем вспомогательные
-        // ключи — они идут и при неудаче, как у прежнего своего пути.
-        // `kscreenlockerrc` перепишет `kwriteconfig6` мимо отката — его «что
-        // было» берёт `Guard`.
+        // Lock screen wallpaper: the picture (`ok` depends on it), then the
+        // auxiliary keys: they run even on failure, as in the old own path.
+        // `kscreenlockerrc` will be rewritten by `kwriteconfig6` bypassing the
+        // rollback, so its "what was there" is taken by `Guard`.
         ApplyAction::LockWallpaper => {
             let Some(lf) = &facts.lock else { return PressPlan::Refused(None) };
             match lock_wallpaper_plan_in(de, lf.treeland, &lf.install_dir, theme, lf.is_file) {
@@ -4848,8 +4891,8 @@ pub fn press_plan_with(action: &ApplyAction, theme: &str, facts: &PressFacts) ->
                 }
             }
         }
-        // Раздел окружения: тема и дополнение — шаги общего плана со
-        // сверкой окружения; Conky (процессы) — своим путём.
+        // An environment section: a theme and an add-on are steps of the common
+        // plan with an environment check; Conky (processes) goes its own way.
         ApplyAction::DeSection => match facts.desktop.clone() {
             Some(crate::de_apply::Plan::Refused(m)) => PressPlan::Refused(Some(m)),
             Some(crate::de_apply::Plan::Steps { steps, check }) => PressPlan::Desktop { steps, check },
@@ -4862,11 +4905,12 @@ pub fn press_plan_with(action: &ApplyAction, theme: &str, facts: &PressFacts) ->
 }
 
 
-// ── детекторы среды для системной установки ─────────────────────────────────
+// ── environment detectors for system installation ───────────────────────────
 
-/// `(realpath симлинка display-manager.service, жива ли цель)` — порт
-/// `_dm_symlink_target`. Висячий симлинк после `pacman -R sddm` даёт
-/// `(цель, false)`, и решение по нему принимает ядро.
+/// `(realpath of the display-manager.service symlink, whether the target
+/// is alive)`: a port of `_dm_symlink_target`. A dangling symlink after
+/// `pacman -R sddm` gives `(target, false)`, and the core decides based on
+/// it.
 fn dm_symlink_target() -> (Option<String>, bool) {
     let link = Path::new(crate::system_plan::DM_SYMLINK);
     if link.symlink_metadata().is_err() && !link.exists() {
@@ -4878,7 +4922,7 @@ fn dm_symlink_target() -> (Option<String>, bool) {
             let alive = target.exists();
             (Some(s), alive)
         }
-        // Цель не разрешается — симлинк висячий: путь всё равно называем.
+        // The target does not resolve, the symlink is dangling: we name the path anyway.
         Err(_) => (
             std::fs::read_link(link)
                 .ok()
@@ -4888,16 +4932,18 @@ fn dm_symlink_target() -> (Option<String>, bool) {
     }
 }
 
-/// Имя активного юнита экрана входа — порт `system.active_login_manager`.
+/// The name of the active login screen unit: a port of
+/// `system.active_login_manager`.
 ///
-/// Нужен для одного вопроса — рисует ли экран входа Plasma Login Manager
-/// (Plasma 6.6+), который QML-темы SDDM НЕ грузит: установку такой темы надо
-/// остановить до pkexec, раздел «Оформления» — показать другим, а тему SDDM
-/// не отмечать активной.
+/// Needed for one question: whether the login screen is drawn by Plasma
+/// Login Manager (Plasma 6.6+), which does NOT load SDDM QML themes:
+/// installing such a theme must be stopped before pkexec, the "Appearance"
+/// section must be shown differently, and the SDDM theme must not be marked
+/// active.
 ///
-/// ⚠️ Может опрашивать `systemctl` (до пяти юнитов по 5 с): звать в рабочем
-/// потоке, НЕ в потоке интерфейса. Быстрый путь — живой симлинк
-/// `display-manager.service`, тогда процессов нет вовсе.
+/// ⚠️ May query `systemctl` (up to five units, 5 s each): call it in a
+/// worker thread, NOT in the UI thread. The fast path is a live
+/// `display-manager.service` symlink; then there are no processes at all.
 pub fn active_login_manager() -> String {
     let (target, alive) = dm_symlink_target();
     let has_systemctl = have("systemctl");
@@ -4922,34 +4968,35 @@ pub fn active_login_manager() -> String {
 }
 
 // ============================================================================
-// LiveInstaller — конвейеры вкладки «Оформление»
+// LiveInstaller: the pipelines of the "Appearance" tab
 // ============================================================================
 
-/// Живой установщик тем — исполнитель планов этого модуля.
+/// The live theme installer: the executor of this module's plans.
 pub struct LiveInstaller {
-    /// Рабочий стол, под который применяем (пусто — определить самому).
+    /// The desktop we apply for (empty means detect it ourselves).
     de: String,
     home: String,
     log: Box<dyn FnMut(&str) + Send>,
-    /// Можно ли при «Применить» ставить недостающие иконки и курсор темы
-    /// ([`LiveInstaller::allow_deps_install`]).
+    /// Whether missing icons and the cursor of a theme may be installed on
+    /// "Apply" ([`LiveInstaller::allow_deps_install`]).
     deps_install: bool,
-    /// Включать ли значки, на которые рассчитана тема
-    /// ([`LiveInstaller::set_icons_choice`]); `None` — не решено, значки не
-    /// трогаются.
+    /// Whether to enable the icons the theme was designed for
+    /// ([`LiveInstaller::set_icons_choice`]); `None` means undecided, icons are
+    /// not touched.
     icons_choice: Option<bool>,
-    /// Выбор окна «Применить «X»?» глобальной темы
-    /// ([`LiveInstaller::set_global_choice`]); `None` — окна не было.
+    /// The choice in the "Apply "X"?" window of a global theme
+    /// ([`LiveInstaller::set_global_choice`]); `None` means there was no
+    /// window.
     global_choice: Option<crate::themes::GlobalChoice>,
 }
 
 impl LiveInstaller {
-    /// `log` — строка журнала в интерфейс (у Python это `on_log`).
+    /// `log` is a log line to the interface (in Python it is `on_log`).
     ///
-    /// Пустой `de` СПРАШИВАЕТ систему, а не считает, что это KDE: прежний
-    /// жёсткий фолбэк уводил применение GTK-темы, иконок и курсоров на
-    /// KDE-путь у всех, кто зовёт установщик без аргумента, — под GNOME это
-    /// значило запись в `kdeglobals` вместо `gsettings`.
+    /// An empty `de` ASKS the system rather than assumes KDE: the former
+    /// hardcoded fallback sent applying GTK themes, icons and cursors down the
+    /// KDE path for everyone who calls the installer without an argument;
+    /// under GNOME this meant writing to `kdeglobals` instead of `gsettings`.
     pub fn new(de: &str, log: Box<dyn FnMut(&str) + Send>) -> Self {
         let de = if de.is_empty() {
             crate::system::detect_current_de(
@@ -4964,7 +5011,7 @@ impl LiveInstaller {
         LiveInstaller { de, home: live_home(), log, deps_install: false, icons_choice: None, global_choice: None }
     }
 
-    /// Строка в журнал интерфейса.
+    /// A line to the interface log.
     fn say(&mut self, message: &str) {
         (self.log)(message);
     }
@@ -4973,11 +5020,11 @@ impl LiveInstaller {
         PathBuf::from(&self.home)
     }
 
-    // ── УСТАНОВКА ───────────────────────────────────────────────────────────
+    // ── INSTALLATION ────────────────────────────────────────────────────────
 
-    /// Порт `ThemeInstaller.install` — `(получилось, сообщение, имена тем)`.
+    /// Port of `ThemeInstaller.install`: `(success, message, theme names)`.
     ///
-    /// НЕ применяет: применение — отдельный шаг (см. [`Self::install_and_apply`]).
+    /// Does NOT apply: applying is a separate step (see [`Self::install_and_apply`]).
     pub fn install(
         &mut self,
         item: &crate::models::ThemeItem,
@@ -4992,14 +5039,14 @@ impl LiveInstaller {
             );
         };
         if cat.requires_root {
-            // SDDM/Plymouth: системные пути и активация требуют root —
-            // отдельный путь через polkit-helper.
+            // SDDM/Plymouth: system paths and activation require root, a
+            // separate path through the polkit helper.
             return self.install_root(item, &cat, archive_path);
         }
 
-        // Товар отдан одним голым файлом (не архивом): цветовая схема, шрифт,
-        // тема Kvantum и обои самодостаточны, обёртки в zip/tar у части
-        // товаров просто нет. Распаковывать нечего.
+        // The item is delivered as one bare file (not an archive): a colour
+        // scheme, a font, a Kvantum theme and wallpapers are self-contained,
+        // and some items simply have no zip/tar wrapper. Nothing to unpack.
         let is_archive = is_archive_file(archive_path);
         let head = read_head(archive_path, 16);
         if single_file_accepted(
@@ -5025,10 +5072,10 @@ impl LiveInstaller {
         result
     }
 
-    /// Установить уже распакованное (`extract_dir`) — та же «архивная»
-    /// ветка, что у архива из магазина, без повторной распаковки. Нужна
-    /// источникам, которые сами отбирают, что ставить («Установить из
-    /// файла…», `local_install`).
+    /// Install what is already unpacked (`extract_dir`): the same "archive"
+    /// branch as for a store archive, without unpacking again. Needed by
+    /// sources that choose what to install themselves ("Install from file…",
+    /// `local_install`).
     pub fn install_extracted(
         &mut self,
         item: &crate::models::ThemeItem,
@@ -5042,10 +5089,10 @@ impl LiveInstaller {
                 Vec::new(),
             );
         };
-        // Системный вид (SDDM, Plymouth) — тем же помощником, что у архива
-        // из магазина, с теми же проверками до окна пароля. Помощник берёт
-        // только каталог под `/tmp`: так и распаковывает «Установить из
-        // файла…» (`crate::local_install`).
+        // A system kind (SDDM, Plymouth) uses the same helper as a store
+        // archive, with the same checks before the password window. The helper
+        // takes only a directory under `/tmp`: that is where "Install from
+        // file…" unpacks (`crate::local_install`).
         if cat.requires_root {
             let env = Self::live_root_env(&cat.apply_kind);
             if let Some(pre) = root_preflight(&env, &cat) {
@@ -5056,7 +5103,7 @@ impl LiveInstaller {
         self.install_archive(item, &cat, extract_dir)
     }
 
-    /// «Архивная» ветка установки: план из [`plan_install`], исполнение здесь.
+    /// The "archive" installation branch: the plan from [`plan_install`], execution here.
     fn install_archive(
         &mut self,
         item: &crate::models::ThemeItem,
@@ -5064,12 +5111,13 @@ impl LiveInstaller {
         extract_dir: &str,
     ) -> (bool, String, Vec<String>) {
         let home = self.home_path();
-        // Снимок обязан покрыть и каталог категории, и ВСЕ каталоги, куда
-        // установка может уехать после переклассификации, — иначе уже стоящая
-        // тема не будет замечена и не будет снята перед копией.
+        // The snapshot must cover both the category directory and ALL
+        // directories where the installation may go after reclassification;
+        // otherwise an already installed theme will not be noticed and will not
+        // be removed before copying.
         let mut dest_dirs = vec![cat.install_dir.clone()];
-        // Рамки окон и оболочки ложатся и внутрь темы GTK с тем же именем
-        // (`plan_nested_part`): её каталог — тоже в снимок.
+        // Window frames and shells also land inside a GTK theme with the same
+        // name (`plan_nested_part`): its directory goes into the snapshot too.
         if matches!(de_theme_marker(&cat.apply_kind), Some(DeThemeMarker::Subdir(_))) {
             dest_dirs.push(crate::installed_scan::xdg_themes_dir(&self.home));
         }
@@ -5080,8 +5128,9 @@ impl LiveInstaller {
                 }
             }
         }
-        // Виджет Conky кладёт шрифты в `~/.local/share/fonts/rexon-conky-<имя>`:
-        // занята ли эта папка чужим, план узнаёт по снимку.
+        // A Conky widget puts fonts into `~/.local/share/fonts/rexon-conky-<name>`:
+        // the plan learns from the snapshot whether that folder is taken by
+        // someone else.
         if cat.apply_kind == "conky" {
             let fonts = format!("{}/.local/share/fonts", self.home);
             if !dest_dirs.contains(&fonts) {
@@ -5089,8 +5138,8 @@ impl LiveInstaller {
             }
         }
         let snap = install_tree_snapshot(extract_dir, &dest_dirs);
-        // Что эта же покупка ставила раньше: только это можно снять и
-        // поставить заново, занятое чужой темой — нет.
+        // What this same purchase installed before: only that may be removed and
+        // installed again, not something taken by a foreign theme.
         let own = self.recorded_paths(&item.id);
         let fallback_name = archive_theme_name(&item.download_name, &item.name);
         let origin = ArchiveOrigin { extract_dir, fallback_name: &fallback_name };
@@ -5115,16 +5164,16 @@ impl LiveInstaller {
         if let Err(e) = exec_install_steps(&out.steps) {
             return (false, trf("Installation error: %1", &[&e]), Vec::new());
         }
-        // Тема значков или курсоров встала — заодно проверить общий набор
-        // `hicolor` профиля: урезанный `index.theme` в нём прячет значки
-        // всего стола ([`crate::icon_hygiene`]).
+        // An icon or cursor theme was installed: also check the profile's shared
+        // `hicolor` set: a truncated `index.theme` in it hides the icons of the
+        // whole desktop ([`crate::icon_hygiene`]).
         if matches!(record.apply_kind.as_str(), "icons" | "cursor") {
             if let Some(line) = crate::icon_hygiene::heal_live() {
                 self.say(&line);
             }
         }
-        // Виджет Conky, написанный под `~/.conky/<Имя>/`: пути — на папку,
-        // куда он встал (`de_apply::conky_repair_paths`).
+        // A Conky widget written for `~/.conky/<Name>/`: the paths are pointed at
+        // the folder where it was installed (`de_apply::conky_repair_paths`).
         if record.apply_kind == "conky" {
             for p in &record.paths {
                 crate::de_apply::conky_repair_paths(&self.home, p);
@@ -5141,16 +5190,16 @@ impl LiveInstaller {
         (true, out.message, out.names)
     }
 
-    /// Товар одним голым файлом: план из [`plan_single_file`], копия здесь.
+    /// An item as one bare file: the plan from [`plan_single_file`], the copy here.
     fn install_single_file(
         &mut self,
         item: &crate::models::ThemeItem,
         cat: &ThemeCategory,
         archive_path: &str,
     ) -> (bool, String, Vec<String>) {
-        // Что эта же покупка ставила раньше — его можно заменить; чужой
-        // файл (или папку темы) с тем же именем — нет, если это не тот же
-        // файл байт в байт.
+        // What this same purchase installed before can be replaced; a foreign
+        // file (or theme folder) with the same name cannot, unless it is the
+        // same file byte for byte.
         let own = self.recorded_paths(&item.id);
         let taken = |p: &str| -> bool {
             let Ok(md) = std::fs::symlink_metadata(p) else { return false };
@@ -5180,13 +5229,14 @@ impl LiveInstaller {
         (true, plan.message, plan.names)
     }
 
-    /// Системная тема (SDDM/Plymouth) через polkit-helper Rexon.
+    /// A system theme (SDDM/Plymouth) through the Rexon polkit helper.
     ///
-    /// Пароль спрашивается реже, чем на каждую тему: polkit-action
-    /// `org.rexon.system-install` объявлен с `auth_admin_keep` (минуты для
-    /// окна Rexon) и покрыт «зонтиком» `org.rexon.pkg`
-    /// ([`crate::system_plan::PKG_IMPLIES`]). Гейты, имя темы и argv — ядро;
-    /// наблюдения среды и сам `pkexec` — здесь.
+    /// The password is asked less often than for every theme: the polkit
+    /// action `org.rexon.system-install` is declared with `auth_admin_keep`
+    /// (minutes for the Rexon window) and covered by the `org.rexon.pkg`
+    /// "umbrella" ([`crate::system_plan::PKG_IMPLIES`]). Gates, the theme name
+    /// and argv are in the core; environment observations and `pkexec` itself
+    /// are here.
     fn install_root(
         &mut self,
         item: &crate::models::ThemeItem,
@@ -5198,8 +5248,8 @@ impl LiveInstaller {
             return (false, pre.message, Vec::new());
         }
 
-        // helper принимает staged-путь только под /tmp|/var/tmp — временный
-        // каталог обязан лежать там, а не в $TMPDIR пользователя.
+        // The helper accepts a staged path only under /tmp|/var/tmp: the
+        // temporary directory must lie there, not in the user's $TMPDIR.
         let work = match mkdtemp_in(Path::new("/tmp"), "rexon-ocs-root-") {
             Ok(p) => p,
             Err(e) => return (false, trf("Installation error: %1", &[&e]), Vec::new()),
@@ -5223,8 +5273,9 @@ impl LiveInstaller {
     ) -> (bool, String, Vec<String>) {
         let snap = install_tree_snapshot(extract_dir, &[]);
         let content_root = find_content_root(&snap, extract_dir);
-        // Системный каталог темы с тем же именем, который эта покупка не
-        // ставила (тема пакета, человека, другой покупки), не перезаписывается.
+        // A system theme directory with the same name that this purchase did
+        // not install (a package's theme, the person's, another purchase's) is
+        // not overwritten.
         let own = self.recorded_paths(&item.id);
         let taken = |p: &str| -> bool {
             std::fs::symlink_metadata(p).is_ok() && !own.iter().any(|o| rstrip_slashes(o) == p)
@@ -5234,9 +5285,9 @@ impl LiveInstaller {
             Err(outcome) => return (false, outcome.message.clone(), Vec::new()),
         };
 
-        // Та же проверка, что сделает помощник от root, — до окна пароля:
-        // ссылка в теме, `.so` или чужой модуль Plymouth (код от root при
-        // загрузке) отвергаются сразу и с причиной.
+        // The same check the root helper will make, before the password window:
+        // a link in the theme, a `.so` or a foreign Plymouth module (code run as
+        // root at boot) are rejected right away and with a reason.
         if let Some(problem) = crate::installer::system_theme_problem(
             &cat.apply_kind,
             Path::new(&content_root),
@@ -5249,9 +5300,9 @@ impl LiveInstaller {
             let has_md = Path::new(&join(&content_root, "metadata.desktop")).is_file();
             let has_qml = Path::new(&join(&content_root, "Main.qml")).is_file();
             if !has_md && !has_qml {
-                // ⭐ Починка при переносе: оригинал писал это в файл журнала,
-                // куда покупатель не смотрит, — а речь о том, что тема,
-                // скорее всего, не заработает. Говорим ему прямо.
+                // ⭐ Fixed during the port: the original wrote this to the log
+                // file, which the customer does not look at, while the point is
+                // that the theme will most likely not work. We tell them directly.
                 let line = trf(
                     "⚠️ SDDM theme without metadata.desktop or Main.qml: %1 — the \
                      login screen may not pick it up.",
@@ -5276,15 +5327,15 @@ impl LiveInstaller {
             );
         }
         let Some(rc) = report.returncode else {
-            // pkexec не запустился вовсе — текст ошибки запуска полезнее
-            // молчания (оригинал ронял тут исключение в журнал).
+            // pkexec did not start at all: the launch error text is more useful
+            // than silence (the original dropped an exception into the log here).
             return (
                 false,
                 trf("Installation error: %1", &[&report.error]),
                 Vec::new(),
             );
         };
-        // 126 — polkit-авторизация не получена/отменена; 127 — не запущен.
+        // 126: polkit authorisation not obtained/cancelled; 127: not started.
         if rc == 126 || rc == 127 {
             return (false, root_cancelled_message().to_string(), Vec::new());
         }
@@ -5299,9 +5350,9 @@ impl LiveInstaller {
         (true, plan.success_message, vec![plan.theme_id])
     }
 
-    // ── журнал установленного ───────────────────────────────────────────────
+    // ── installed log ───────────────────────────────────────────────────────
 
-    /// Пути, записанные в журнал для покупки `content_id` (пусто — не было).
+    /// Paths written to the log for purchase `content_id` (empty means there were none).
     fn recorded_paths(&self, content_id: &str) -> Vec<String> {
         if content_id.is_empty() {
             return Vec::new();
@@ -5316,20 +5367,22 @@ impl LiveInstaller {
             .unwrap_or_default()
     }
 
-    /// Запись в журнал установленных — порт `_record`.
+    /// Writing to the installed log: a port of `_record`.
     ///
-    /// ⭐ Починка при переносе: оригинал при неудачной записи журнала только
-    /// шептал в файл журнала. Тема оставалась на диске, но списка
-    /// установленных не видела: карточка показывала «не установлено», а снять
-    /// тему было нечем. Теперь неудача видна человеку.
+    /// ⭐ Fixed during the port: on a failed log write the original only
+    /// whispered into the log file. The theme stayed on disk, but the installed
+    /// list did not see it: the card showed "not installed", and there was
+    /// nothing to remove the theme with. Now the failure is visible to the
+    /// person.
     fn record(
         &mut self,
         item: &crate::models::ThemeItem,
         apply_kind: &str,
         paths: &[String],
     ) {
-        // Тема легла в `~/.local/share/themes` — сразу и ссылка в `~/.themes`
-        // для тех, кто читает только его (окно «Внешний вид» MATE).
+        // The theme went into `~/.local/share/themes`: right away a link in
+        // `~/.themes` too, for those who read only that (MATE's "Appearance"
+        // window).
         let xdg_themes = crate::installed_scan::xdg_themes_dir(&self.home);
         if paths.iter().any(|p| p.rsplit_once('/').is_some_and(|(d, _)| d == xdg_themes)) {
             for line in crate::installed_scan::sync_theme_links(&self.home) {
@@ -5337,7 +5390,7 @@ impl LiveInstaller {
             }
         }
         if item.id.is_empty() {
-            return; // без content_id журналу нечего запоминать
+            return; // without a content_id the log has nothing to remember
         }
         let entry = crate::ocs_store::InstalledItem {
             content_id: item.id.clone(),
@@ -5358,8 +5411,8 @@ impl LiveInstaller {
         };
         let log_path =
             crate::ocs_store::install_log_path_xdg(xdg_config_home().as_deref(), &self.home);
-        // Пишется общий журнал установки, `ocs_installed.json` — его зеркало
-        // (шаг 5б слияния установщиков).
+        // The common install log is written, and `ocs_installed.json` is its
+        // mirror (step 5b of merging the installers).
         let mut data = crate::install_journal::store_log_view(&log_path);
         crate::ocs_store::record_installed(&mut data, &entry, paths, &now_local_iso());
         if let Err(e) = crate::install_journal::put_store_log(&log_path, &data) {
@@ -5370,14 +5423,14 @@ impl LiveInstaller {
             );
             self.say(&line);
         }
-        // Скриншот Магазина рядом с темой — best-effort: локальный скан не
-        // находит превью у GTK/Plasma/иконок/курсоров (в файлах темы его нет),
-        // а мы его уже скачали.
+        // The Store screenshot next to the theme is best-effort: the local scan
+        // does not find previews for GTK/Plasma/icons/cursors (the theme files
+        // have none), and we have already downloaded it.
         self.save_ocs_preview(item, apply_kind, paths);
     }
 
-    /// Положить скачанный из Магазина скриншот туда, где его ищет скан
-    /// установленного — порт `_save_ocs_preview` (адрес решает
+    /// Put the screenshot downloaded from the Store where the installed scan
+    /// looks for it: a port of `_save_ocs_preview` (the address is decided by
     /// [`ocs_preview_dest`]).
     fn save_ocs_preview(
         &mut self,
@@ -5387,10 +5440,11 @@ impl LiveInstaller {
     ) {
         let src = self.ocs_preview_source(item);
         if src.is_empty() {
-            return; // ставилось не через Магазин либо превью не скачалось
+            return; // not installed through the Store, or the preview was not downloaded
         }
-        // Покупка из нескольких тем (архив с двумя темами звуков, вариантами
-        // GTK) — превью у каждой: скан показывает их отдельными карточками.
+        // A purchase of several themes (an archive with two sound themes, GTK
+        // variants) gets a preview for each: the scan shows them as separate
+        // cards.
         let dirs: Vec<&String> = paths.iter().filter(|p| Path::new(p).is_dir()).collect();
         let targets: Vec<String> = if apply_kind != "colors" && dirs.len() > 1 {
             dirs.into_iter().cloned().collect()
@@ -5402,10 +5456,11 @@ impl LiveInstaller {
             let Some(dst) =
                 ocs_preview_dest(&self.home, apply_kind, &theme_dir, is_dir, &item.name)
             else {
-                continue; // имени нет — копировать некуда
+                continue; // no name: nowhere to copy
             };
-            // Каталог сайдкар-кеша создаёт вызывающий; его адрес берём у самого
-            // скана, чтобы второй копии пути в проекте не было.
+            // The caller creates the sidecar cache directory; its address comes
+            // from the scan itself, so there is no second copy of the path in the
+            // project.
             let probe = crate::installed_scan::sidecar_preview_path(&self.home, "k", "n");
             if let Some((sidecar_dir, _)) = probe.rsplit_once('/') {
                 if dst.starts_with(sidecar_dir) {
@@ -5416,8 +5471,8 @@ impl LiveInstaller {
         }
     }
 
-    /// Путь скачанного OCS-скриншота: `preview_local`, иначе файл из кеша
-    /// превью по `preview_url`; `""` — ничего нет.
+    /// The path of the downloaded OCS screenshot: `preview_local`, otherwise the
+    /// file from the preview cache by `preview_url`; `""` means there is none.
     fn ocs_preview_source(&self, item: &crate::models::ThemeItem) -> String {
         let local = item.preview_local.trim();
         if !local.is_empty() && Path::new(local).is_file() {
@@ -5432,8 +5487,9 @@ impl LiveInstaller {
             .unwrap_or_default()
     }
 
-    /// Записать применение в историю тем — порт `ThemeManager._add_history`
-    /// (`~/.config/rexon/theme_history.json`, вставка в начало, обрезка до 50).
+    /// Record an application in the theme history: a port of
+    /// `ThemeManager._add_history` (`~/.config/rexon/theme_history.json`,
+    /// inserted at the start, trimmed to 50).
     fn add_history(&mut self, kind: &str, theme: &str, de: &str) {
         let cfg = crate::utils::config_home(xdg_config_home().as_deref(), &self.home);
         let path = format!("{cfg}/rexon/theme_history.json");
@@ -5451,8 +5507,9 @@ impl LiveInstaller {
         let _ = crate::utils::atomic_write(&path, &crate::themes::serialize_history(&updated));
     }
 
-    /// Валидна ли тема иконок — порт `_is_valid_icon_theme` (снимок
-    /// `index.theme`, решение за [`crate::themes::is_valid_icon_theme`]).
+    /// Whether an icon theme is valid: a port of `_is_valid_icon_theme` (a
+    /// snapshot of `index.theme`, the decision by
+    /// [`crate::themes::is_valid_icon_theme`]).
     fn icon_theme_valid(&self, theme: &str) -> bool {
         let dirs = crate::themes::icon_dirs(&self.home);
         let mut files = serde_json::Map::new();
@@ -5466,8 +5523,9 @@ impl LiveInstaller {
         crate::themes::is_valid_icon_theme(&fs, theme, &dirs)
     }
 
-    /// Безопасно ли применять тему курсоров — порт `_cursor_preflight`
-    /// (GTK4-краш-гард: цепочка `Inherits` не должна вести в никуда).
+    /// Whether it is safe to apply a cursor theme: a port of
+    /// `_cursor_preflight` (a GTK4 crash guard: the `Inherits` chain must not
+    /// lead nowhere).
     fn cursor_safe(&self, theme: &str) -> bool {
         let bases = crate::themes::icon_dirs(&self.home);
         let mut dirs = serde_json::Map::new();
@@ -5500,13 +5558,14 @@ impl LiveInstaller {
         crate::themes::cursor_preflight_ok(&fs, theme, &self.home, parent_has_cursors)
     }
 
-    /// Исполнить план [`crate::themes`] и записать историю при успехе.
-    /// Применить курсор: тема и размер во всех окружениях — `(получилось,
-    /// сообщение)`. Небезопасная тема — отказ без единой записи.
+    /// Execute a [`crate::themes`] plan and record history on success.
+    /// Apply a cursor: the theme and the size in all environments, `(success,
+    /// message)`. An unsafe theme is a refusal without a single write.
     ///
-    /// Тот же план нажатия, что у «Применить» в разделе курсоров
-    /// ([`press_plan_with`], размер — `size`), тот же исполнитель с откатом;
-    /// удача оставляет снимок «что было» раздела `cursor` в общем журнале.
+    /// The same press plan as "Apply" in the cursors section
+    /// ([`press_plan_with`], the size is `size`), the same executor with
+    /// rollback; success leaves a "what was there" snapshot of the `cursor`
+    /// section in the common log.
     fn apply_cursor(&mut self, theme: &str, size: Option<u32>) -> (bool, String) {
         let action = ApplyAction::Cursor;
         let mut facts = PressFacts {
@@ -5523,9 +5582,10 @@ impl LiveInstaller {
         (ok, msg.unwrap_or_else(|| apply_message(&action, ok).to_string()))
     }
 
-    /// Сменить только размер курсора — тема остаётся текущей. Тот же путь,
-    /// что у выбора темы, поэтому размер доходит туда же: родной ключ
-    /// окружения, GTK, переменные окружения, конфиг композитора.
+    /// Change only the cursor size: the theme stays current. The same path as
+    /// choosing a theme, so the size reaches the same places: the
+    /// environment's native key, GTK, environment variables, the compositor
+    /// config.
     pub fn apply_cursor_size(&mut self, size: u32) -> (bool, String) {
         let xdg = xdg_config_home();
         let Some(theme) = live_cursor_value(&self.de, &self.home, xdg.as_deref(), false) else {
@@ -5543,16 +5603,16 @@ impl LiveInstaller {
         (ok, msg)
     }
 
-    /// Тема курсора, включённая в этом окружении (`None` — не узнать).
+    /// The cursor theme enabled in this environment (`None` means cannot tell).
     pub fn active_cursor_theme(&self) -> Option<String> {
         let xdg = xdg_config_home();
         live_cursor_value(&self.de, &self.home, xdg.as_deref(), false)
     }
 
-    /// Применить заново ту же тему курсора — после того как её файлы
-    /// заменены на месте (перевод заново из оригиналов Windows). Тот же
-    /// план, что у «Применить» раздела курсоров, но без записи в историю:
-    /// человек ничего не выбирал, «Вернуть как было» остаётся прежним.
+    /// Reapply the same cursor theme after its files were replaced in place
+    /// (converted again from the Windows originals). The same plan as "Apply"
+    /// in the cursors section, but without a history entry: the person chose
+    /// nothing, and "Restore as it was" stays as before.
     pub fn refresh_cursor(&mut self, theme: &str) -> bool {
         let mut facts = PressFacts {
             de: self.de.clone(),
@@ -5567,39 +5627,41 @@ impl LiveInstaller {
         }
     }
 
-    /// Текущий размер курсора в этом окружении (`None` — никто не задавал).
+    /// The current cursor size in this environment (`None` means nobody set it).
     pub fn cursor_size(&self) -> Option<u32> {
         let xdg = xdg_config_home();
         live_cursor_value(&self.de, &self.home, xdg.as_deref(), true)
             .and_then(|v| crate::themes::parse_cursor_size(&v))
     }
 
-    // ── ЧТО ТЕМА ПРОСИТ В ПРИДАЧУ (иконки и курсор) ────────────────────────
+    // ── WHAT THE THEME ASKS FOR ON TOP (icons and cursor) ──────────────────
 
-    /// Разрешить ставить недостающие иконки и курсор темы при «Применить»
-    /// (после [`Self::prepare_theme_deps`] — ставить там уже нечего; сторож
-    /// сеанса — по кнопке «Установить» уведомления).
+    /// Allow installing a theme's missing icons and cursor on "Apply" (after
+    /// [`Self::prepare_theme_deps`] there is nothing left to install there;
+    /// the session guard installs on the notification's "Install" button).
     pub fn allow_deps_install(&mut self, yes: bool) {
         self.deps_install = yes;
     }
 
-    /// Что применить из глобальной темы — ответ окна «Применить «X»?».
+    /// What to apply from a global theme: the answer of the "Apply "X"?" window.
     pub fn set_global_choice(&mut self, choice: Option<crate::themes::GlobalChoice>) {
         self.global_choice = choice;
     }
 
-    /// Ответ на вопрос о значках темы ([`Self::theme_icons_question`]):
-    /// `Some(true)` — скачать (без отдельного согласия на пакет) и включить,
-    /// `Some(false)` — оставить свои, `None` — не решено (значки не
-    /// трогаются; «Применить» берёт запомненный ответ темы).
+    /// The answer to the question about the theme's icons
+    /// ([`Self::theme_icons_question`]): `Some(true)` means download (without a
+    /// separate consent to the package) and enable, `Some(false)` means keep
+    /// your own, `None` means undecided (icons are not touched; "Apply" takes
+    /// the theme's remembered answer).
     pub fn set_icons_choice(&mut self, yes: Option<bool>) {
         self.icons_choice = yes;
     }
 
-    /// Вопрос «Тема рассчитана на значки «X». Скачать и включить?» перед
-    /// «Применить» у GTK-темы `item` — в потоке интерфейса ДО фоновой
-    /// работы. `None` — спрашивать не о чем ([`crate::themes::icons_question`]:
-    /// значков тема не просит, они уже стоят, ответ для темы запомнен).
+    /// The question "The theme is designed for the "X" icons. Download and
+    /// enable?" before "Apply" for GTK theme `item`, in the UI thread BEFORE
+    /// the background work. `None` means there is nothing to ask
+    /// ([`crate::themes::icons_question`]: the theme asks for no icons, they
+    /// are already installed, or the answer for the theme is remembered).
     pub fn theme_icons_question(&self, item: &crate::models::ThemeItem, theme_name: &str) -> Option<crate::themes::IconsQuestion> {
         let cat = crate::categories::category_by_id(&self.home_path(), item.category_id);
         if apply_action_for(cat.as_ref(), theme_name) != ApplyAction::Gtk {
@@ -5613,9 +5675,9 @@ impl LiveInstaller {
         crate::themes::icons_question(theme_name, &plan, &current, crate::theme_watch::live_icons_choice(theme_name))
     }
 
-    /// Просьбы GTK-темы `theme` к живой системе: что стоит, что можно
-    /// поставить, чего нет нигде. Пусто — у темы нет метатемы или она
-    /// ничего не просит.
+    /// The requests of GTK theme `theme` to the live system: what is
+    /// installed, what can be installed, what is available nowhere. Empty
+    /// means the theme has no metatheme or asks for nothing.
     pub fn theme_deps_plan(&self, theme: &str) -> Vec<crate::themes::DepItem> {
         let data = crate::utils::data_home(xdg_data_home().as_deref(), &self.home);
         let dirs = env_str("XDG_DATA_DIRS");
@@ -5631,14 +5693,16 @@ impl LiveInstaller {
         })
     }
 
-    /// Поставить перед «Применить» у GTK-темы `item` то, с чем она идёт и
-    /// чего нет (курсор; значки — если выбрано «Скачать и включить»), — САМО,
-    /// без вопроса «Да/Нет» (защита — окно пароля polkit). Сначала — в
-    /// домашний каталог без пароля, где можно; остальное — пакетами только
-    /// из официальных репозиториев (сборки из AUR без вопроса нет).
+    /// Before "Apply" for GTK theme `item`, install what it comes with and
+    /// what is missing (the cursor; icons if "Download and enable" was
+    /// chosen) BY ITSELF, without a "Yes/No" question (the protection is the
+    /// polkit password window). First into the home directory without a
+    /// password where possible; the rest as packages only from the official
+    /// repositories (there is no AUR build without a question).
     ///
-    /// «Всё или ничего»: не встало — `Err` с причиной и советом, и тема НЕ
-    /// применяется. Что встало, решает диск, а не код возврата.
+    /// "All or nothing": if something did not install, `Err` with a reason and
+    /// advice, and the theme is NOT applied. What got installed is decided by
+    /// the disk, not by the exit code.
     pub fn prepare_theme_deps(&mut self, item: &crate::models::ThemeItem, theme: &str) -> Result<(), String> {
         use crate::themes::{DepState, deps_to_prepare};
         let cat = crate::categories::category_by_id(&self.home_path(), item.category_id);
@@ -5677,7 +5741,7 @@ impl LiveInstaller {
                 why = Some(e);
             }
         }
-        // Всё, что ставили, на месте — дальше «Применить» берёт готовое.
+        // Everything installed is in place: from here "Apply" takes what is ready.
         let now = self.theme_deps_plan(theme);
         let missing: Vec<crate::themes::DepItem> = wanted
             .into_iter()
@@ -5691,15 +5755,15 @@ impl LiveInstaller {
         Err(crate::themes::deps_refusal(theme, &missing, &why))
     }
 
-    /// Применить иконки и курсор, с которыми идёт GTK-тема `theme`
-    /// (поставив недостающее, если человек согласился). Строки итога — для
-    /// сообщения «Применить».
+    /// Apply the icons and cursor GTK theme `theme` comes with (installing
+    /// what is missing if the person agreed). The result lines are for the
+    /// "Apply" message.
     ///
-    /// ⛔ Имя, которого на диске нет, в настройки не пишется: остаются
-    /// прежние иконки и курсор, и человеку сказано почему.
+    /// ⛔ A name that is not on disk is not written to the settings: the
+    /// previous icons and cursor stay, and the person is told why.
     fn apply_theme_deps(&mut self, theme: &str) -> Vec<String> {
-        // Вопрос о недостающем задан здесь, в Rexon: сторож сеанса
-        // (`theme_watch`) о той же теме второй раз не спрашивает.
+        // The question about what is missing was asked here, in Rexon: the
+        // session guard (`theme_watch`) does not ask about the same theme again.
         crate::theme_watch::note_rexon_applied(self, theme);
         if self.icons_choice.is_none() {
             self.icons_choice = crate::theme_watch::live_icons_choice(theme);
@@ -5708,28 +5772,28 @@ impl LiveInstaller {
         self.apply_dep_items(&items)
     }
 
-    /// Окружение, под которое этот установщик применяет темы.
+    /// The environment this installer applies themes for.
     pub fn de_id(&self) -> &str {
         &self.de
     }
 
-    /// Поставить (если человек согласился — [`Self::allow_deps_install`]) и
-    /// применить наборы `items` — общий путь «Применить» у GTK-темы и
-    /// кнопки «Установить» в уведомлении сторожа сеанса (`theme_watch`).
-    /// Строки итога — для человека.
+    /// Install (if the person agreed, [`Self::allow_deps_install`]) and apply
+    /// the sets `items`: the common path of "Apply" for a GTK theme and of the
+    /// "Install" button in the session guard notification (`theme_watch`).
+    /// The result lines are for the person.
     ///
-    /// ⛔ Имя, которого на диске нет, в настройки не пишется.
+    /// ⛔ A name that is not on disk is not written to the settings.
     pub fn apply_dep_items(&mut self, items: &[crate::themes::DepItem]) -> Vec<String> {
         if items.is_empty() {
             return Vec::new();
         }
-        // Сначала — то, что кладётся в домашний каталог без пароля и без
-        // сборки (решение Wehrwolfmann 17.10.2026): молча, если это не
-        // выключено в настройках, или с согласия человека. Не вышло — дальше
-        // обычный путь пакета.
+        // First what goes into the home directory without a password and
+        // without building (Wehrwolfmann's decision of 17.10.2026): silently,
+        // unless turned off in the settings, or with the person's consent. If
+        // that failed, the usual package path follows.
         let mut items: Vec<crate::themes::DepItem> = items.to_vec();
-        // Значки темы — только по ответу человека (решение 3а): «Оставить
-        // мои» или не решено — набор не качается и не включается.
+        // The theme's icons only by the person's answer (decision 3a): "Keep
+        // mine" or undecided means the set is neither downloaded nor enabled.
         let mut lines = Vec::new();
         let icons_ok = self.icons_choice == Some(true);
         if !icons_ok {
@@ -5740,8 +5804,8 @@ impl LiveInstaller {
             }
             items.retain(|i| i.role != crate::themes::DepRole::Icons);
         }
-        // Согласие на установку: значки — ответом на свой вопрос, прочее —
-        // общим вопросом о пакетах.
+        // Consent to installation: icons by the answer to their own question,
+        // the rest by the common question about packages.
         let deps_install = self.deps_install;
         let consent = move |role: crate::themes::DepRole| deps_install || (icons_ok && role == crate::themes::DepRole::Icons);
         let auto_home = crate::theme_watch::auto_home_enabled();
@@ -5793,7 +5857,7 @@ impl LiveInstaller {
             use crate::themes::DepState;
             let name = match &item.state {
                 DepState::Installed(name) => Some(name.clone()),
-                // Правда — диск после установки, а не код возврата помощника.
+                // The truth is the disk after installation, not the helper's exit code.
                 DepState::Installable(_) if consent(item.role) => live_find_dep(item.role, &item.wanted, &roots),
                 _ => None,
             };
@@ -5826,8 +5890,8 @@ impl LiveInstaller {
         lines
     }
 
-    /// Применить набор иконок, уже найденный на диске в одном из `roots`
-    /// (там же, где его ищет GTK, — включая `~/.icons`).
+    /// Apply an icon set already found on disk in one of `roots` (where GTK
+    /// looks for it, including `~/.icons`).
     fn apply_icons_named(&mut self, name: &str, roots: &[String]) -> bool {
         let valid = self.icon_theme_valid(name) || {
             let read = |p: &str| read_text_lossy(p);
@@ -5844,13 +5908,13 @@ impl LiveInstaller {
         }
     }
 
-    /// Положить набор `wanted` в домашний каталог из его домашнего источника
-    /// ([`crate::themes::dep_home_source`]) — только скачать и распаковать,
-    /// чужих сценариев установки не запускать — и найти его на диске.
-    /// `Ok(имя набора на диске)`; `Err` — причина для человека.
+    /// Put set `wanted` into the home directory from its home source
+    /// ([`crate::themes::dep_home_source`]): only download and unpack, never
+    /// run foreign install scripts, and find it on disk. `Ok(set name on
+    /// disk)`; `Err` is a reason for the person.
     ///
-    /// Ставит тот же установщик, что темы магазина, — с записью в
-    /// журнал установленного, так что «Удалить» в «Оформлении» его снимет.
+    /// It is installed by the same installer as store themes, with an entry
+    /// in the installed log, so "Remove" in "Appearance" will remove it.
     pub fn install_home_set(&mut self, role: crate::themes::DepRole, wanted: &str) -> Result<String, String> {
         use crate::themes::HomeSource;
         let Some(source) = crate::themes::dep_home_source(role, wanted) else {
@@ -5876,9 +5940,9 @@ impl LiveInstaller {
                         .iter()
                         .position(|l| l.get("name").and_then(serde_json::Value::as_str) == Some(file))
                 };
-                // Детали — из кеша магазина (сутки), к сайту бережно. Ссылки на
-                // файлы у магазина подписаны и со временем протухают: не
-                // скачалось по кешу — один раз со свежими деталями.
+                // Details come from the store cache (a day), gently on the site. The
+                // store's file links are signed and expire over time: if the download
+                // by the cache failed, once more with fresh details.
                 let mut downloaded = None;
                 for fresh in [false, true] {
                     let content = if fresh {
@@ -5907,13 +5971,13 @@ impl LiveInstaller {
         }
         let data = crate::utils::data_home(xdg_data_home().as_deref(), &self.home);
         let roots = crate::themes::dep_search_roots(&self.home, &data, &env_str("XDG_DATA_DIRS"));
-        // Правда — диск после распаковки.
+        // The truth is the disk after unpacking.
         live_find_dep(role, wanted, &roots).ok_or_else(|| tr("the download didn't bring it"))
     }
 
-    /// Применить уже стоящий набор `name` роли `role` (значки или курсор) —
-    /// тем же путём, что наборы GTK-темы в [`Self::apply_dep_items`]. Набора
-    /// на диске нет — `false` без единой записи.
+    /// Apply an already installed set `name` of role `role` (icons or cursor)
+    /// the same way as the GTK theme sets in [`Self::apply_dep_items`]. If the
+    /// set is not on disk, `false` without a single write.
     pub fn apply_installed_set(&mut self, role: crate::themes::DepRole, name: &str) -> bool {
         let data = crate::utils::data_home(xdg_data_home().as_deref(), &self.home);
         let roots = crate::themes::dep_search_roots(&self.home, &data, &env_str("XDG_DATA_DIRS"));
@@ -5935,7 +5999,7 @@ impl LiveInstaller {
         self.run_theme_plan_report(plan, theme, de).ok
     }
 
-    /// То же, с причиной отказа, если она известна точно (Deepin).
+    /// The same, with the refusal reason if it is known for sure (Deepin).
     fn run_theme_plan_report(
         &mut self,
         plan: &crate::themes::Plan,
@@ -5949,19 +6013,19 @@ impl LiveInstaller {
         report
     }
 
-    // ── ПРИМЕНЕНИЕ ──────────────────────────────────────────────────────────
+    // ── APPLYING ────────────────────────────────────────────────────────────
 
-    /// Порт `ThemeInstaller.apply` — `(получилось, сообщение)`.
+    /// Port of `ThemeInstaller.apply`: `(success, message)`.
     ///
-    /// Диспетчер — [`apply_action_for`]. Шаг 5а слияния установщиков:
-    /// нажатие сначала СОБИРАЕТ план ([`Self::press_plan`], без единого
-    /// запуска и записи), затем его исполняет общий
-    /// [`crate::install_plan::exec`] — файловые записи нажатия под общим
-    /// откатом, команды через `Ctx::run`. Действия, которые пока исполняются
-    /// своим путём ([`PressPlan::Own`]: цвета в Plasma, обои стола, Conky,
-    /// экран входа), — в [`Self::apply_own`]. После ЛЮБОГО
-    /// применения обязательно идёт GTK-санитайзер: он чинит битые ссылки
-    /// `gtk-{3,4}.0`, которые иначе роняют GTK4-приложения.
+    /// The dispatcher is [`apply_action_for`]. Step 5a of merging the
+    /// installers: a press first BUILDS the plan ([`Self::press_plan`], without
+    /// a single launch or write), then the common [`crate::install_plan::exec`]
+    /// executes it: the press's file writes under the common rollback,
+    /// commands through `Ctx::run`. Actions still executed their own way
+    /// ([`PressPlan::Own`]: colours in Plasma, desktop wallpaper, Conky, the
+    /// login screen) go to [`Self::apply_own`]. After ANY application the GTK
+    /// sanitizer must run: it repairs broken `gtk-{3,4}.0` links that would
+    /// otherwise crash GTK4 applications.
     pub fn apply(
         &mut self,
         item: &crate::models::ThemeItem,
@@ -5977,9 +6041,10 @@ impl LiveInstaller {
 
         let mut message = msg.unwrap_or_else(|| apply_message(&action, ok).to_string());
 
-        // Смена цветов (тема GTK, глобальная тема, цветовая схема) не должна
-        // оставить терминал, берущий цвета темы, нечитаемым: закрепить пару
-        // под запись того же раздела — «Вернуть как было» вернёт и её.
+        // A colour change (a GTK theme, a global theme, a colour scheme) must
+        // not leave a terminal that takes the theme's colours unreadable: pin
+        // the pair under the same section's entry, and "Restore as it was" will
+        // restore it too.
         if ok && matches!(action, ApplyAction::Gtk | ApplyAction::KdeColors | ApplyAction::KdeGlobal) {
             if let Some(cat) = cat.as_ref() {
                 if let Some(line) = crate::terminal_guard::guard_live(&self.de, &cat.key, theme_name, None) {
@@ -5989,7 +6054,7 @@ impl LiveInstaller {
             }
         }
 
-        // КРИТИЧНО: чиним gtk-конфиги после ЛЮБОГО применения.
+        // CRITICAL: repair the gtk configs after ANY application.
         let changes = live_gtk_sanitize(&home_s);
         if !changes.is_empty() {
             let line = gtk_sanitizer_message(changes.len());
@@ -5997,18 +6062,18 @@ impl LiveInstaller {
         }
         self.say(&message);
 
-        // Включённое дополнение или запущенный виджет — не смена темы.
+        // An enabled add-on or a started widget is not a theme change.
         if ok && action != ApplyAction::DeSection {
             self.notify_theme_changed(theme_name);
         }
         (ok, message)
     }
 
-    /// План нажатия «Применить» — без единого запуска команды и записи
-    /// (шаг 5а). Живые пробы (есть ли `metadata.json`, валидна ли тема
-    /// значков, тёмная ли тема GTK, переключатель стиля Qt, чем звать
-    /// KWin) снимаются здесь и только для своего действия; план из них
-    /// собирает [`press_plan_with`].
+    /// The plan of pressing "Apply", without a single command launch or write
+    /// (step 5a). Live probes (whether `metadata.json` exists, whether the icon
+    /// theme is valid, whether the GTK theme is dark, the Qt style switcher,
+    /// what to call KWin with) are taken here and only for their own action;
+    /// [`press_plan_with`] builds the plan from them.
     pub fn press_plan(&self, cat: Option<&ThemeCategory>, action: &ApplyAction, theme_name: &str) -> PressPlan {
         let de = self.de.as_str();
         let home = self.home.as_str();
@@ -6022,8 +6087,9 @@ impl LiveInstaller {
         match action {
             ApplyAction::KdeGlobal => {
                 facts.global_theme_ok = !live_global_theme_missing_metadata_json(home, theme_name);
-                // Вне Plasma `plasma-apply-lookandfeel` звать нельзя: без окна
-                // (нажатие не из «Оформления») — оформление, что переносится.
+                // Outside Plasma `plasma-apply-lookandfeel` must not be called:
+                // without the window (a press not from "Appearance"), the look that
+                // carries over.
                 let choice = self.global_choice.or_else(|| {
                     (de != "kde").then_some(crate::themes::GlobalChoice { appearance: true, layout: false, parts: None })
                 });
@@ -6051,7 +6117,7 @@ impl LiveInstaller {
             }
             ApplyAction::Cursor => {
                 self.cursor_facts(theme_name, &mut facts);
-                // Размер не меняем — берём тот, что сейчас.
+                // The size is not changed: take the current one.
                 facts.cursor_size = live_cursor_value(de, home, xdg.as_deref(), true)
                     .and_then(|v| crate::themes::parse_cursor_size(&v));
             }
@@ -6071,9 +6137,9 @@ impl LiveInstaller {
             }
             ApplyAction::SoundTheme => {
                 let dirs = crate::qt_settings::live_xdg_sound_theme_dirs();
-                // ⭐ Починка при переносе: оригинал искал строго
-                // `kwriteconfig6` и на Plasma 5 отказывался писать вовсе, хотя
-                // там есть `kwriteconfig5`. Ищем общим резолвером синонимов.
+                // ⭐ Fixed during the port: the original looked strictly for
+                // `kwriteconfig6` and refused to write at all on Plasma 5, though
+                // `kwriteconfig5` exists there. We use the common synonym resolver.
                 let path = path_env();
                 let tool = |t: &str| crate::utils::resolve_tool(t, &[], path.as_deref()).unwrap_or_default();
                 facts.sound = Some(SoundFacts {
@@ -6099,10 +6165,10 @@ impl LiveInstaller {
         press_plan_with(action, theme_name, &facts)
     }
 
-    /// Планы разделов для частей глобальной темы, которые отметил человек
-    /// ([`crate::themes::lnf_section_parts`]): та же кнопка «Применить»
-    /// раздела «Значки», «Курсоры», «Цветовые схемы», «Стиль приложений» с
-    /// её пробами, кнопки заголовка — план раздела «Кнопки заголовка».
+    /// Section plans for the parts of a global theme the person ticked
+    /// ([`crate::themes::lnf_section_parts`]): the same "Apply" button of the
+    /// "Icons", "Cursors", "Colour schemes", "Application style" sections with
+    /// its probes; title bar buttons use the "Title bar buttons" section plan.
     fn global_sections(
         &self,
         press: &crate::themes::GlobalPress,
@@ -6117,7 +6183,7 @@ impl LiveInstaller {
             }
             let got = if part == LnfPart::TitlebarLayout {
                 let io = crate::animations::SystemIo;
-                // Стол — тот, под который ставится тема, а не сеанс.
+                // The desktop is the one the theme is installed for, not the session.
                 let ctx = crate::animations::LookCtx::from_env().for_chosen(de);
                 crate::themes::lnf_buttons_steps(&io, &ctx, &press.contents)
             } else {
@@ -6145,17 +6211,17 @@ impl LiveInstaller {
         out
     }
 
-    /// Пробы курсора для плана: безопасна ли тема и не курсор ли она
-    /// окружения по умолчанию (спрашивается, только если небезопасна).
+    /// Cursor probes for the plan: whether the theme is safe and whether it is
+    /// the environment's default cursor (asked only if it is unsafe).
     fn cursor_facts(&self, theme: &str, facts: &mut PressFacts) {
         facts.cursor_safe = self.cursor_safe(theme);
         facts.cursor_standard =
             !facts.cursor_safe && live_standard_theme(&self.de, "cursor").as_deref() == Some(theme);
     }
 
-    /// Исполнить план нажатия — `(получилось, сообщение)`; `None` — общее
-    /// [`apply_message`]. Общий путь «Применить» и кнопок курсора (тема
-    /// набора GTK-темы, смена размера).
+    /// Execute the press plan: `(success, message)`; `None` means the common
+    /// [`apply_message`]. The common path of "Apply" and of the cursor buttons
+    /// (the set theme of a GTK theme, a size change).
     fn run_press(
         &mut self,
         item_id: &str,
@@ -6181,8 +6247,8 @@ impl LiveInstaller {
                         self.add_history(kind, theme_name, &de);
                     }
                 }
-                // Иконки и курсор, с которыми тема GTK задумана, — тем же
-                // путём, что кнопки разделов, во всех окружениях.
+                // The icons and cursor the GTK theme was designed with, the same
+                // way as the section buttons, in all environments.
                 if ok && *action == ApplyAction::Gtk {
                     let lines = self.apply_theme_deps(theme_name);
                     if !lines.is_empty() {
@@ -6206,11 +6272,13 @@ impl LiveInstaller {
         }
     }
 
-    /// Кнопка раздела окружения общим исполнителем под откатом: команды —
-    /// живой машиной `de_apply` (`SystemIo`), итог — сверка окружения. Сбой
-    /// файлового шага — записанное возвращено; удача — снимок «что было» и
-    /// запись раздела в общий журнал ([`Self::record_press`]); не принято
-    /// окружением — записанное остаётся (как прежде), копии стираются.
+    /// An environment section button through the common executor under
+    /// rollback: commands via the live `de_apply` machine (`SystemIo`), the
+    /// result via the environment check. A file step failure returns what was
+    /// written; success records a "what was there" snapshot and the section
+    /// entry in the common log ([`Self::record_press`]); not accepted by the
+    /// environment means what was written stays (as before), and the copies
+    /// are erased.
     fn exec_desktop(
         &mut self,
         item_id: &str,
@@ -6239,13 +6307,14 @@ impl LiveInstaller {
         }
     }
 
-    /// Исполнить план нажатия общим исполнителем на живой машине.
+    /// Execute the press plan with the common executor on the live machine.
     ///
-    /// Сбой записи — всё, что нажатие записало, возвращено (общий откат).
-    /// Успех — отложенные откатом копии не стираются, а ложатся снимком «что
-    /// было», и в общий журнал идёт запись раздела ([`Self::record_press`]).
-    /// Не применилось (`ok = false`) — как прежде: записанное остаётся,
-    /// копии стираются.
+    /// A write failure returns everything the press wrote (the common
+    /// rollback). On success the copies set aside by the rollback are not
+    /// erased but become the "what was there" snapshot, and the section entry
+    /// goes to the common log ([`Self::record_press`]). Not applied
+    /// (`ok = false`): as before, what was written stays, the copies are
+    /// erased.
     fn exec_press(
         &mut self,
         item_id: &str,
@@ -6271,10 +6340,10 @@ impl LiveInstaller {
         }
     }
 
-    /// Снимок «что было» удачного нажатия и запись раздела в общий журнал
-    /// ([`crate::install_journal::Applied`]): файлы и прежние значения стола
-    /// (`gsettings`/`dconf`, `xfconf`). Нажатие не тронуло ни того, ни
-    /// другого — записывать нечего.
+    /// The "what was there" snapshot of a successful press and the section
+    /// entry in the common log ([`crate::install_journal::Applied`]): files and
+    /// the previous desktop values (`gsettings`/`dconf`, `xfconf`). If the
+    /// press touched neither, there is nothing to record.
     fn record_press(&mut self, item_id: &str, cat: &ThemeCategory, theme: &str, mut undo: crate::install_plan::Undo) {
         use crate::install_journal as journal;
         let rexon = PathBuf::from(crate::utils::config_home(xdg_config_home().as_deref(), &self.home)).join("rexon");
@@ -6312,8 +6381,8 @@ impl LiveInstaller {
         }
     }
 
-    /// Действия «Применить», которые пока исполняются своим путём
-    /// ([`PressPlan::Own`]) — `(получилось, сообщение)`.
+    /// "Apply" actions still executed their own way ([`PressPlan::Own`]):
+    /// `(success, message)`.
     fn apply_own(
         &mut self,
         action: &ApplyAction,
@@ -6325,8 +6394,8 @@ impl LiveInstaller {
         let msg: Option<String>;
         match action {
             ApplyAction::KdeColors => {
-                // Сюда — только Plasma (`plasma-apply-colorscheme`); вне
-                // Plasma слои Rexon собирает план нажатия.
+                // Only Plasma comes here (`plasma-apply-colorscheme`); outside
+                // Plasma the press plan builds the Rexon layers.
                 let (o, m) = crate::shell_palette::apply_scheme_live(&de, theme_name);
                 ok = o;
                 if ok {
@@ -6346,8 +6415,8 @@ impl LiveInstaller {
                 ok = o;
                 msg = Some(m);
             }
-            // Сюда — только Conky (запуск и остановка процессов); тема и
-            // дополнение собираются планом нажатия.
+            // Only Conky comes here (starting and stopping processes); a theme and
+            // an add-on are built by the press plan.
             ApplyAction::DeSection => {
                 let kind = cat
                     .as_ref()
@@ -6370,14 +6439,14 @@ impl LiveInstaller {
                 ok = o;
                 msg = Some(m);
             }
-            // Остальное собирается планом (`press_plan`), сюда не приходит.
+            // The rest is built by the plan (`press_plan`) and does not come here.
             _ => msg = Some(apply_message(action, false)),
         }
         (ok, msg)
     }
 
-    /// Окружение системной части для экрана входа и заставки загрузки —
-    /// одно на установку и на «Применить».
+    /// The system part's environment for the login screen and the boot
+    /// splash: one for installation and for "Apply".
     fn live_root_env(kind: &str) -> RootEnv<'static> {
         let is_plasmalogin =
             kind == "sddm" && crate::system_plan::is_plasma_login(&active_login_manager());
@@ -6395,10 +6464,10 @@ impl LiveInstaller {
         }
     }
 
-    /// «Применить» у темы экрана входа (SDDM) или заставки загрузки
-    /// (Plymouth): помощник от root выбирает тему, уже лежащую в системном
-    /// каталоге. Пароль — тем же действием polkit, что у установки
-    /// (`auth_admin_keep`): «Установить и применить» спрашивает его один раз.
+    /// "Apply" for a login screen (SDDM) or boot splash (Plymouth) theme: the
+    /// root helper selects a theme already lying in the system directory. The
+    /// password goes through the same polkit action as installation
+    /// (`auth_admin_keep`): "Install and apply" asks for it once.
     fn apply_system_theme(&mut self, cat: &ThemeCategory, theme: &str) -> (bool, String) {
         let env = Self::live_root_env(&cat.apply_kind);
         let line = trf(
@@ -6422,7 +6491,7 @@ impl LiveInstaller {
         (ok, msg)
     }
 
-    /// Сказать мосту, что тема сменилась (`bridge.json`, поле `current_theme`).
+    /// Tell the bridge the theme has changed (`bridge.json`, the `current_theme` field).
     fn notify_theme_changed(&mut self, theme_name: &str) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -6436,17 +6505,18 @@ impl LiveInstaller {
         );
     }
 
-    /// Поставить картинку фоном рабочего стола — ОБЩИМ исполнителем обоев
-    /// процесса ([`crate::wallpaper_exec::live_slot`]), тем же, что у вкладок
-    /// «Обои», «Настройки» и «Steam»; второго в проекте нет.
+    /// Set a picture as the desktop background with the process's COMMON
+    /// wallpaper executor ([`crate::wallpaper_exec::live_slot`]), the same as
+    /// in the "Wallpapers", "Settings" and "Steam" tabs; there is no second
+    /// one in the project.
     ///
-    /// ⭐ Починка (правило #12): прежде здесь жил свой урезанный исполнитель
-    /// плана. Он не умел поднимать демон swww и держать swaybg/wbg и отвечал
-    /// «поставьте во вкладке Wallpaper Engine», поэтому на Hyprland (без
-    /// запущенного hyprpaper), niri, river и Wayfire обои из магазина не
-    /// ставились никогда; не проверял он и запись pcmanfm-qt (LXQt, Д12).
-    /// Общий исполнитель заодно снимает наши живые обои (видео, веб) перед
-    /// картинкой — раньше статичная ложилась под их поверхность.
+    /// ⭐ Fix (rule #12): previously a cut-down plan executor of its own lived
+    /// here. It could not start the swww daemon or hold swaybg/wbg and
+    /// answered "set it in the Wallpaper Engine tab", so on Hyprland (without
+    /// a running hyprpaper), niri, river and Wayfire store wallpapers were
+    /// never set; it did not check the pcmanfm-qt write either (LXQt, D12). The
+    /// common executor also removes our live wallpapers (video, web) before
+    /// the picture: previously a static one landed under their surface.
     fn apply_wallpaper_background(&mut self, path: &str) -> (bool, String) {
         if !Path::new(path).is_file() {
             return (false, trf("Wallpaper file not found: %1", &[&path]));
@@ -6456,7 +6526,7 @@ impl LiveInstaller {
         if ok {
             return (true, tr("✅ Wallpaper set as the desktop background."));
         }
-        // Мягкая деградация: установка-то состоялась, фон не встал.
+        // Graceful degradation: the installation itself happened, the background did not take.
         (
             true,
             trf(
@@ -6467,13 +6537,14 @@ impl LiveInstaller {
         )
     }
 
-    /// Поставить фоном картинку ИЗ ПАЧКИ обоев — какую именно, решает ядро
-    /// ([`pick_pack_image`]); установка фона — тот же общий движок.
+    /// Set as the background a picture FROM a wallpaper PACK: which one is
+    /// decided by the core ([`pick_pack_image`]); setting the background goes
+    /// through the same common engine.
     ///
-    /// Размер экрана берётся у общего опроса выходов ([`screen_size`]) — по
-    /// самому большому монитору, потому что из пачки на весь стол уходит
-    /// одна картинка. «Не знаю» ядро понимает — выбор тогда идёт по имени
-    /// файла.
+    /// The screen size comes from the common output query ([`screen_size`]),
+    /// by the largest monitor, because one picture from the pack goes to the
+    /// whole desktop. The core understands "I do not know": then the choice
+    /// goes by file name.
     fn apply_wallpaper_pack(&mut self, install_dir: &str, theme_name: &str) -> (bool, String) {
         let pack_dir = join(install_dir, theme_name);
         if !Path::new(&pack_dir).is_dir() {
@@ -6490,8 +6561,8 @@ impl LiveInstaller {
         self.apply_wallpaper_background(&chosen)
     }
 
-    /// Порт `ThemeInstaller.install_and_apply` (поставить и включить
-    /// одним действием).
+    /// Port of `ThemeInstaller.install_and_apply` (install and enable in one
+    /// action).
     pub fn install_and_apply(
         &mut self,
         item: &crate::models::ThemeItem,
@@ -6512,14 +6583,15 @@ impl LiveInstaller {
         }
     }
 
-    // ── УДАЛЕНИЕ ────────────────────────────────────────────────────────────
+    // ── REMOVAL ─────────────────────────────────────────────────────────────
 
-    /// Порт `ThemeInstaller.uninstall`: снять файлы по журналу и забыть запись.
+    /// Port of `ThemeInstaller.uninstall`: remove the files by the log and
+    /// forget the entry.
     ///
-    /// ⭐ Починка при переносе: оригинал отвечал «Удалено» даже когда журнал
-    /// после удаления записать не удалось — тема исчезала с диска, но
-    /// оставалась в списке установленных навсегда. Теперь расхождение с диском
-    /// названо прямо в ответе.
+    /// ⭐ Fixed during the port: the original answered "Removed" even when the
+    /// log could not be written after removal: the theme disappeared from disk
+    /// but stayed in the installed list forever. Now the divergence from the
+    /// disk is named right in the answer.
     pub fn uninstall(&mut self, content_id: &str) -> (bool, String) {
         let log_path =
             crate::ocs_store::install_log_path_xdg(xdg_config_home().as_deref(), &self.home);
@@ -6530,10 +6602,11 @@ impl LiveInstaller {
         })
     }
 
-    /// «Удалить» у системной темы без пакета-владельца и без записи журнала
-    /// (положена руками или чужим установщиком) — по пути из скана. Тот же
-    /// помощник от root, что у темы из магазина: он ещё раз проверяет, что
-    /// каталог не принадлежит пакету и тема не выбрана сейчас.
+    /// "Remove" for a system theme without an owning package and without a log
+    /// entry (placed by hand or by someone else's installer), by the path from
+    /// the scan. The same root helper as for a store theme: it checks once
+    /// more that the directory does not belong to a package and the theme is
+    /// not currently selected.
     pub fn remove_loose_system_theme(&mut self, path: &str) -> (bool, String) {
         let cats = crate::categories::categories(Path::new(&self.home));
         let Some((cat, theme)) = system_theme_of_path(&cats, path) else {
@@ -6549,12 +6622,12 @@ impl LiveInstaller {
         (true, uninstall_message(1, &theme))
     }
 
-    /// «Удалить» у темы экрана входа (SDDM) или заставки загрузки (Plymouth):
-    /// каталог в `/usr/share/<вид>/themes` снимает помощник от root, тем же
-    /// действием polkit, что у установки и «Применить».
+    /// "Remove" for a login screen (SDDM) or boot splash (Plymouth) theme: the
+    /// directory in `/usr/share/<kind>/themes` is removed by the root helper,
+    /// with the same polkit action as installation and "Apply".
     fn remove_system_theme(&mut self, cat: &ThemeCategory, theme: &str) -> (bool, String) {
         let mut env = Self::live_root_env(&cat.apply_kind);
-        // Plasma Login Manager мешает ПРИМЕНИТЬ тему SDDM, но не удалить её.
+        // Plasma Login Manager prevents APPLYING an SDDM theme, but not removing it.
         env.is_plasmalogin = false;
         let active = crate::installed_scan::live_system_theme_active(&cat.apply_kind);
         if !active.iter().any(|a| a == theme) {
@@ -6575,9 +6648,10 @@ impl LiveInstaller {
     }
 }
 
-/// Системная тема по пути из журнала установленных: раздел, которому нужен
-/// root (`requires_root`), и имя темы. Только прямой потомок каталога тем
-/// раздела с безопасным именем; всё прочее — не системная тема.
+/// A system theme by a path from the installed log: the section that needs
+/// root (`requires_root`) and the theme name. Only a direct child of the
+/// section's themes directory with a safe name; anything else is not a
+/// system theme.
 pub fn system_theme_of_path(cats: &[ThemeCategory], path: &str) -> Option<(ThemeCategory, String)> {
     let p = rstrip_slashes(path);
     let (parent, name) = p.rsplit_once('/')?;
@@ -6589,29 +6663,30 @@ pub fn system_theme_of_path(cats: &[ThemeCategory], path: &str) -> Option<(Theme
         .map(|c| (c.clone(), name.to_string()))
 }
 
-/// Есть ли что-то по пути (ссылку не разыменовываем).
+/// Whether something exists at the path (the link is not dereferenced).
 fn path_present(p: &str) -> bool {
     std::fs::symlink_metadata(p).is_ok()
 }
 
-/// Домашняя корзина этой машины (`$XDG_DATA_HOME/Trash`).
+/// This machine's home trash (`$XDG_DATA_HOME/Trash`).
 fn home_trash_live() -> String {
     let xdg_data = std::env::var("XDG_DATA_HOME").ok();
     crate::utils::home_trash_dir(xdg_data.as_deref(), &std::env::var("HOME").unwrap_or_default())
 }
 
-/// Снять покупку `content_id` по журналу `log_path` — порт
-/// `ThemeInstaller.uninstall`, решения и местное удаление.
+/// Remove purchase `content_id` by log `log_path`: a port of
+/// `ThemeInstaller.uninstall`, the decisions and the local removal.
 ///
-/// Пути системных разделов ([`system_theme_of_path`]) уходят в
-/// `remove_system` (помощник от root); остальные снимаются здесь.
+/// Paths of system sections ([`system_theme_of_path`]) go to
+/// `remove_system` (the root helper); the rest are removed here.
 ///
-/// ⛔ Починка 09.10.2026 (дефект «Удалено (1 путей)»): прежде ошибка
-/// удаления глоталась, путь считался снятым, а запись журнала стиралась
-/// всегда. У темы Plymouth/SDDM из магазина это давало «Удалено», пустой
-/// журнал и тему, оставшуюся в `/usr/share`. Теперь снятым считается только
-/// то, чего на диске больше нет; если хоть что-то осталось — запись журнала
-/// не трогается («Удалить» можно нажать ещё раз), а человек видит причину.
+/// ⛔ Fix of 09.10.2026 (the "Removed (1 paths)" defect): previously a
+/// removal error was swallowed, the path counted as removed, and the log
+/// entry was always erased. For a Plymouth/SDDM theme from the store this
+/// gave "Removed", an empty log and the theme remaining in `/usr/share`.
+/// Now only what is no longer on disk counts as removed; if anything
+/// remains, the log entry is not touched ("Remove" can be pressed again),
+/// and the person sees the reason.
 pub fn uninstall_from_log(
     home: &str,
     log_path: &str,
@@ -6637,7 +6712,7 @@ pub fn uninstall_from_log(
     let mut problems: Vec<String> = Vec::new();
     let mut local: Vec<String> = Vec::new();
     for p in &paths {
-        // Виджет Conky: сначала погасить и снять автозапуск, потом удалять.
+        // A Conky widget: first kill it and remove the autostart, then delete.
         crate::de_apply::conky_forget_widget(
             &crate::animations::SystemIo,
             &crate::de_apply::Ctx::live(),
@@ -6646,7 +6721,7 @@ pub fn uninstall_from_log(
         match system_theme_of_path(cats, p) {
             Some((cat, theme)) => {
                 if !path_present(p) {
-                    continue; // уже снята — снимать нечего
+                    continue; // already removed: nothing to remove
                 }
                 let (ok, msg) = remove_system(&cat, &theme);
                 if ok && !path_present(p) {
@@ -6658,11 +6733,11 @@ pub fn uninstall_from_log(
             None => local.push(p.clone()),
         }
     }
-    // Что снимать здесь — по общему журналу установки (шаг 3г слияния
-    // установщиков): записанное покупкой и только своё, вместе со ссылкой
-    // `~/.themes` на тему GTK. Системные темы уже снял помощник выше — их
-    // шаги не повторяются. Записи нет (общий журнал не прочитан) — прежним
-    // путём, по диску.
+    // What to remove here comes from the common install log (step 3g of
+    // merging the installers): what the purchase wrote and only its own,
+    // together with the `~/.themes` link to a GTK theme. System themes were
+    // already removed by the helper above, so their steps are not repeated.
+    // No entry (the common log was not read): the old way, by disk.
     let journal = crate::install_journal::store_view(log_path);
     let entry = journal.items.get(&crate::install_journal::key_of(crate::install_journal::Source::Store, content_id));
     let by_journal = entry.is_some();
@@ -6676,21 +6751,23 @@ pub fn uninstall_from_log(
             .collect(),
         None => plan_uninstall(&local, &|p| Path::new(p).is_dir(), &|p| Path::new(p).is_file()),
     };
-    // Снятые пути покупки считаются в «Удалено (N путей)» — служебная
-    // ссылка `~/.themes` нет (её и раньше снимала уборка, не считая).
+    // The removed purchase paths are counted in "Removed (N paths)"; the
+    // service link `~/.themes` is not (cleanup removed it before as well,
+    // without counting).
     let counted = |path: &str| {
         let path = rstrip_slashes(path);
         paths.iter().any(|p| rstrip_slashes(p) == path)
     };
-    // Виджет Conky уходит в корзину, а не стирается — как у «Удалить» его
-    // плитки (`theme_removal::commit`): у виджета бывают правки человека.
+    // A Conky widget goes to the trash rather than being erased, as with the
+    // "Remove" of its tile (`theme_removal::commit`): a widget may carry the
+    // person's edits.
     let conky_root = format!("{}/", crate::de_apply::conky_root(&crate::de_apply::Ctx::live()));
     let trash = home_trash_live();
     let date = crate::utils::trash_deletion_date_now();
     for step in &steps {
         let path = match step {
             ExtStep::RemoveTree { path, .. } | ExtStep::RemoveFile { path } => path,
-            // Плана удаления из других шагов не бывает — молча пропускаем.
+            // There is no removal plan from other steps: skip silently.
             _ => continue,
         };
         if path.starts_with(&conky_root) {
@@ -6712,16 +6789,16 @@ pub fn uninstall_from_log(
             Ok(()) => {
                 removed += usize::from(counted(path));
                 if by_journal {
-                    // Ссылку ~/.themes снял журнал; остатки спайса (переводы,
-                    // настройки) в журнал не пишутся — их уборка остаётся.
+                    // The ~/.themes link was removed by the log; spice leftovers
+                    // (translations, settings) are not written to the log, so their
+                    // cleanup stays.
                     crate::cinnamon_spices::cleanup_after_removal(
                         &crate::cinnamon_spices::SpiceEnv::for_home(home),
                         path,
                     );
                 } else {
-                    // Та же уборка, что у «Удалить» на плитке (ссылка
-                    // ~/.themes, остатки спайса), — одно поведение у двух
-                    // удалений.
+                    // The same cleanup as "Remove" on the tile (the ~/.themes link,
+                    // spice leftovers): one behaviour for both removals.
                     crate::theme_removal::tidy_after_removal(home, path);
                 }
             }
@@ -6746,8 +6823,9 @@ pub fn uninstall_from_log(
     }
 
     crate::ocs_store::forget_installed(&mut data, content_id);
-    // Части, лёгшие подпапками в снятую папку (рамка окон в теме GTK,
-    // `plan_nested_part`), ушли вместе с ней — их записи тоже забываются.
+    // Parts that were placed as subfolders into the removed folder (window
+    // frames in a GTK theme, `plan_nested_part`) went with it, and their
+    // entries are forgotten too.
     let gone_inside: Vec<String> = data
         .iter()
         .filter(|(_, rec)| {
@@ -6773,7 +6851,7 @@ pub fn uninstall_from_log(
     (true, message)
 }
 
-/// Первые `n` байт файла (для распознавания картинки без имени).
+/// The first `n` bytes of a file (for recognising a picture without a name).
 fn read_head(path: &str, n: usize) -> Vec<u8> {
     use std::io::Read as _;
     let Ok(mut f) = std::fs::File::open(path) else {
@@ -6789,9 +6867,10 @@ fn read_head(path: &str, n: usize) -> Vec<u8> {
     }
 }
 
-/// Картинка фоном рабочего стола исполнителем слота: `(встала ли, текст
-/// исполнителя)`. Название обоины для моста не выдумываем (пусто — «не
-/// знаю», см. [`crate::wallpaper_exec::WallpaperExec::apply`]).
+/// A picture as the desktop background via the slot executor: `(did it
+/// take, executor text)`. We do not invent a wallpaper name for the bridge
+/// (empty means "I do not know", see
+/// [`crate::wallpaper_exec::WallpaperExec::apply`]).
 fn apply_static_with_slot<S: crate::wallpaper_exec::WpSys + Default>(
     slot: &crate::wallpaper_exec::ExecSlot<S>,
     path: &str,
@@ -6802,28 +6881,29 @@ fn apply_static_with_slot<S: crate::wallpaper_exec::WpSys + Default>(
     })
 }
 
-/// Размер экрана, по которому меряют картинку из пачки; `(0, 0)` — спросить
-/// не у кого.
+/// The screen size a picture from a pack is measured against; `(0, 0)`
+/// means there is nobody to ask.
 ///
-/// Оригинал спрашивал Qt (вкладка «Оформление» работает внутри приложения);
-/// из ядра ответ даёт ОБЩИЙ опрос выходов
-/// ([`crate::wallpaper_exec::live_screen_outputs`]) — тот же, которым живут
-/// метки в командах чужих движков и раскладка обоев по мониторам. Своего
-/// разбора `xrandr` здесь больше нет: он брал «первое разрешение со
-/// звёздочкой», и на машине с разными мониторами пачку выбирал первый
-/// активный режим — на большой монитор ехала картинка, растянутая с
-/// меньшего.
+/// The original asked Qt (the "Appearance" tab runs inside the
+/// application); from the core the answer comes from the COMMON output
+/// query ([`crate::wallpaper_exec::live_screen_outputs`]), the same one
+/// that drives the markers in other engines' commands and the per-monitor
+/// wallpaper layout. There is no `xrandr` parsing of its own here any more:
+/// it took "the first resolution with an asterisk", and on a machine with
+/// different monitors the pack was chosen by the first active mode, so the
+/// large monitor got a picture stretched from the smaller one.
 ///
-/// ⚠️ Меркой служит САМЫЙ БОЛЬШОЙ выход. Из пачки на весь стол уходит ОДНА
-/// картинка (её ставит общий движок статичных обоев, а он кроет стол
-/// целиком — по картинке на монитор этот путь не умеет), и из двух зол
-/// «большой монитор показывает свой размер, маленький ужимает» заметно
-/// лучше, чем растянутое с маленького на большой.
+/// ⚠️ The measure is the LARGEST output. ONE picture from the pack goes to
+/// the whole desktop (it is set by the common static wallpaper engine,
+/// which covers the whole desktop; this path cannot do a picture per
+/// monitor), and of the two evils "the large monitor shows its own size,
+/// the small one scales down" is noticeably better than one stretched
+/// from small to large.
 ///
-/// ⚠️ Защита от дурака: инструмента опроса нет, опрос не удался, выходов
-/// ноль, разрешение не разобралось — ответ `(0, 0)`, и ядро понимает его
-/// как «не знаю»: выбор картинки уходит на сортировку по имени, ровно как
-/// до всякого перечисления выходов.
+/// ⚠️ Foolproofing: no query tool, the query failed, zero outputs, the
+/// resolution did not parse: the answer is `(0, 0)`, and the core
+/// understands it as "I do not know": the picture choice falls back to
+/// sorting by name, exactly as before any enumeration of outputs.
 fn screen_size() -> (u64, u64) {
     let session = crate::wallpaper_engine::detect_session_type(
         &env_str("XDG_SESSION_TYPE"),
@@ -6837,25 +6917,28 @@ fn screen_size() -> (u64, u64) {
 }
 
 // ============================================================================
-// Сверки живого исполнителя
+// Parity checks of the live executor
 // ============================================================================
 //
-// Проверяется РАБОТА на настоящей файловой системе, а не тексты планов
-// (тексты сверяет `tests/appearance_installer_parity.rs`): создался ли
-// каталог, лёг ли файл, подставился ли путь скачанного вместо пустого `src`,
-// переживает ли журнал перезапись, отказывает ли распаковка на побеге из
-// каталога. Всё временное — под `std::env::temp_dir()` и убирается за собой.
+// What is checked is the WORK on a real filesystem, not the plan texts
+// (the texts are checked by `tests/appearance_installer_parity.rs`): was
+// the directory created, did the file land, was the downloaded path
+// substituted for an empty `src`, does the log survive a rewrite, does
+// unpacking refuse an escape from the directory. Everything temporary is
+// under `std::env::temp_dir()` and cleaned up afterwards.
 //
-// ⛔ Переменные окружения сверки НЕ трогают: `HOME` и `XDG_CONFIG_HOME` читают
-// соседние модули (и их собственные сверки), а подмена на живой машине уводит
-// запись в НАСТОЯЩИЙ профиль пользователя. Поэтому путь журнала в сверке
-// задаётся явно, а не через `LiveInstaller::record`.
+// ⛔ The parity checks do NOT touch environment variables: `HOME` and
+// `XDG_CONFIG_HOME` are read by neighbouring modules (and their own
+// checks), and substituting them on a live machine sends the write into
+// the user's REAL profile. So the log path in the check is set explicitly,
+// not through `LiveInstaller::record`.
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// «Применить» у темы SDDM при другом экране входа говорит, что тема
-    /// подействует только с SDDM; при SDDM и неизвестном — прежний итог.
+    /// "Apply" for an SDDM theme with another login screen says the theme will
+    /// take effect only with SDDM; with SDDM or an unknown one, the previous
+    /// result.
     #[test]
     fn sddm_theme_note_names_other_login_manager() {
         let n = sddm_elsewhere_note("lightdm").unwrap();
@@ -6866,8 +6949,8 @@ mod tests {
         }
     }
 
-    /// Подменная машина исполнителя обоев: есть только названные программы,
-    /// команды и запуски записываются, ничего не исполняется.
+    /// A fake machine for the wallpaper executor: only the named programs
+    /// exist, commands and launches are recorded, nothing is executed.
     #[derive(Default)]
     struct WpFake {
         tools: Vec<&'static str>,
@@ -6936,10 +7019,10 @@ mod tests {
         crate::wallpaper_exec::with_slot(slot, |e| e.sys_mut().log.clone())
     }
 
-    /// Обои из магазина на тайловых ставит ОБЩИЙ исполнитель процесса: демон
-    /// swww поднимается, swaybg держит фон. Прежний свой исполнитель
-    /// «Оформления» эти шаги отвергал, и на niri/river/Wayfire/Hyprland без
-    /// hyprpaper картинка не вставала никогда.
+    /// Store wallpapers on tiling compositors are set by the process's COMMON
+    /// executor: the swww daemon is started, swaybg holds the background. The
+    /// former own executor of "Appearance" rejected these steps, and on
+    /// niri/river/Wayfire/Hyprland without hyprpaper the picture never took.
     #[test]
     fn store_wallpaper_on_tiling_goes_through_shared_executor() {
         let pic = "/h/.local/share/wallpapers/лес.jpg";
@@ -6949,8 +7032,8 @@ mod tests {
             assert!(ok, "{de}");
             let log = wp_log(&slot);
             assert!(log.iter().any(|l| l == &format!("spawn swaybg -i {pic} -m fill")), "{de}: {log:?}");
-            // Вторая картинка снимает прежний держатель фона, а не кладёт
-            // второй swaybg поверх.
+            // A second picture replaces the previous background holder rather
+            // than putting a second swaybg on top.
             let (ok, _) = apply_static_with_slot(&slot, pic);
             assert!(ok);
             assert!(wp_log(&slot).iter().any(|l| l.starts_with("kill ")), "{de}: держатель не снят");
@@ -6961,20 +7044,20 @@ mod tests {
             assert!(log.iter().any(|l| l == "run swww query"), "{de}: демон swww не проверен: {log:?}");
             assert!(log.iter().any(|l| l == &format!("run swww img {pic}")), "{de}: {log:?}");
         }
-        // Ставить нечем — честный отказ с подсказкой, что поставить.
+        // Nothing to set it with: an honest refusal with a hint about what to install.
         let slot = wp_slot("niri", &[], pic);
         let (ok, msg) = apply_static_with_slot(&slot, pic);
         assert!(!ok);
         assert!(msg.contains("swww"), "{msg}");
-        // Полные окружения — тем же исполнителем, родным ключом.
+        // Full environments use the same executor, with the native key.
         let slot = wp_slot("gnome", &[], pic);
         assert!(apply_static_with_slot(&slot, pic).0);
         assert!(wp_log(&slot).iter().any(|l| l.starts_with("run gsettings set org.gnome.desktop.background picture-uri")));
     }
 
-    /// Темы Deepin: стоп до записи в любом сеансе — `ok = false`, ни одной
-    /// записи; причина — по сеансу: в Treeland «только Центр управления»,
-    /// вне его — «Rexon поддерживает Deepin только на Treeland».
+    /// Deepin themes: a stop before any write in any session, `ok = false`, not
+    /// a single write; the reason depends on the session: in Treeland "Control
+    /// Center only", outside it "Rexon supports Deepin only on Treeland".
     #[test]
     fn deepin_theme_plan_stops_in_every_session() {
         let dir = tmp_dir("treeland");
@@ -6993,8 +7076,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Обои блокировки в Deepin на Treeland — через Центр управления
-    /// (`type=lock`); вне Treeland — отказ.
+    /// Lock screen wallpaper in Deepin on Treeland goes through the Control
+    /// Center (`type=lock`); outside Treeland it is refused.
     #[test]
     fn deepin_lock_wallpaper_in_treeland_goes_to_control_center() {
         let wl = lock_wallpaper_plan_in("deepin", true, "/h/Обои", "a b.png", true).unwrap();
@@ -7006,7 +7089,7 @@ mod tests {
         assert_eq!(lock_wallpaper_plan_in("kde", true, "/h", "a.png", true).unwrap().image.argv[0], "kwriteconfig6");
     }
 
-    /// Свой каталог под сверку в `std::env::temp_dir()`.
+    /// Its own directory for the check in `std::env::temp_dir()`.
     fn tmp_dir(tag: &str) -> PathBuf {
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -7024,9 +7107,9 @@ mod tests {
         p.to_string_lossy().into_owned()
     }
 
-    // ── «Удалить» по журналу установленных (дефект 09.10.2026) ──────────
+    // ── "Remove" by the installed log (defect of 09.10.2026) ────────────
 
-    /// Разделы с каталогами системных тем в песочнице `root`.
+    /// Sections with system theme directories in the `root` sandbox.
     fn sandbox_cats(root: &Path) -> Vec<ThemeCategory> {
         crate::categories::categories(root)
             .into_iter()
@@ -7050,7 +7133,7 @@ mod tests {
         crate::ocs_store::parse_installed_log(read_text_lossy(log).as_deref()).contains_key("777")
     }
 
-    /// Прежде: «Удалено (1 путей)», запись стёрта, каталог на месте.
+    /// Before: "Removed (1 paths)", the entry erased, the directory in place.
     #[test]
     fn uninstall_keeps_log_when_folder_stays() {
         use std::os::unix::fs::PermissionsExt;
@@ -7068,7 +7151,7 @@ mod tests {
         let stays = theme.is_dir();
         std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755)).unwrap();
         std::fs::set_permissions(&theme, std::fs::Permissions::from_mode(0o755)).unwrap();
-        // Под root права не мешают — тогда проверять нечего.
+        // Under root permissions do not get in the way, so there is nothing to check.
         if stays {
             assert!(!ok, "{msg}");
             assert!(log_has_entry(&log), "запись журнала стёрта при оставшейся теме");
@@ -7077,8 +7160,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Д4: удаление по журналу снимает и нашу ссылку `~/.themes/<тема>` —
-    /// как «Удалить» на плитке; чужую ссылку с тем же именем не трогает.
+    /// D4: removal by the log also removes our `~/.themes/<theme>` link, like
+    /// "Remove" on the tile; a foreign link with the same name is not touched.
     #[test]
     fn uninstall_from_log_drops_theme_link() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -7089,7 +7172,7 @@ mod tests {
         std::fs::create_dir_all(root.join(".themes")).unwrap();
         let link = root.join(".themes/Neon");
         std::os::unix::fs::symlink("../.local/share/themes/Neon", &link).unwrap();
-        // Чужая ссылка под другим именем — ведёт не на нашу тему.
+        // A foreign link under another name leads to something other than our theme.
         let other = root.join(".themes/Other");
         std::os::unix::fs::symlink("/usr/share/themes/Other", &other).unwrap();
         let log = write_log(&root, &[&theme]);
@@ -7128,7 +7211,7 @@ mod tests {
         std::fs::create_dir_all(&theme).unwrap();
         let log = write_log(&root, &[&theme]);
         let cats = sandbox_cats(&root);
-        // Помощник отказал — тема на месте, запись цела, причина видна.
+        // The helper refused: the theme is in place, the entry intact, the reason visible.
         let mut calls = Vec::new();
         let (ok, msg) = uninstall_from_log(&s(&root), &log, "777", &cats, &mut |c, n| {
             calls.push((c.apply_kind.clone(), n.to_string()));
@@ -7136,10 +7219,10 @@ mod tests {
         });
         assert!(!ok && msg.contains("REFUSED") && log_has_entry(&log), "{msg}");
         assert_eq!(calls, vec![("plymouth".to_string(), "neon".to_string())]);
-        // Помощник ответил «готово», но каталог остался — это не успех.
+        // The helper answered "done", but the directory remained: that is not success.
         let (ok, _) = uninstall_from_log(&s(&root), &log, "777", &cats, &mut |_, _| (true, String::new()));
         assert!(!ok && log_has_entry(&log));
-        // Помощник снял каталог — запись забыта.
+        // The helper removed the directory: the entry is forgotten.
         let (ok, msg) = uninstall_from_log(&s(&root), &log, "777", &cats, &mut |_, _| {
             std::fs::remove_dir_all(&theme).unwrap();
             (true, String::new())
@@ -7192,7 +7275,7 @@ mod tests {
             stderr: err.as_bytes().to_vec(),
             ..Default::default()
         };
-        // Активная — отказ до окна пароля, помощник не зовётся.
+        // An active one: refusal before the password window, the helper is not called.
         let (ok, msg) = system_theme_remove_with(&env, sddm, "sugar", &[], &["sugar".into()], &|a, _| {
             seen.borrow_mut().push(a.to_vec());
             reply(0, "")
@@ -7201,7 +7284,7 @@ mod tests {
         let (ok, msg) = system_theme_remove_with(&env, ply, "neon", &[], &["neon".into()], &|_, _| reply(0, ""));
         assert!(!ok && msg.contains("current boot splash theme"), "{msg}");
         assert!(seen.borrow().is_empty());
-        // Обычный путь — строка вызова помощника.
+        // The normal path: the helper call line.
         let (ok, _) = system_theme_remove_with(&env, ply, "neon", &["--lang=ru".into()], &["other".into()], &|a, _| {
             seen.borrow_mut().push(a.to_vec());
             reply(0, "")
@@ -7211,14 +7294,14 @@ mod tests {
             seen.borrow()[0],
             vec!["pkexec", "/usr/lib/rexon-system-helper", "--lang=ru", "remove-plymouth", "neon", "-", "arch"]
         );
-        // Пароль не подтверждён; помощник отказал с причиной.
+        // The password was not confirmed; the helper refused with a reason.
         let (ok, msg) = system_theme_remove_with(&env, ply, "neon", &[], &[], &|_, _| reply(126, ""));
         assert!(!ok && msg.contains("password"), "{msg}");
         let (ok, msg) = system_theme_remove_with(&env, ply, "neon", &[], &[], &|_, _| {
             reply(2, "rexon-helper: the theme neon belongs to a system package")
         });
         assert!(!ok && msg.contains("system package"), "{msg}");
-        // Нет помощника; недопустимое имя.
+        // No helper; an invalid name.
         let no_helper = RootEnv { system_helper_exists: false, ..env };
         let (ok, _) = system_theme_remove_with(&no_helper, ply, "neon", &[], &[], &|_, _| panic!());
         assert!(!ok);
@@ -7226,8 +7309,8 @@ mod tests {
         assert!(!ok);
     }
 
-    /// Каталог создаётся, скачанный файл копируется по явному источнику,
-    /// ссылки дерева остаются ссылками.
+    /// The directory is created, the downloaded file is copied by the explicit
+    /// source, links of the tree stay links.
     #[test]
     fn exec_steps_creates_dirs_copies_and_keeps_links() {
         let base = tmp_dir("exec");
@@ -7269,9 +7352,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// `RemoveTree` несуществующего пути не роняет план: у оригинала это
-    /// `shutil.rmtree(..., ignore_errors=True)`, и следующие шаги обязаны
-    /// выполниться.
+    /// `RemoveTree` of a nonexistent path does not break the plan: the
+    /// original has `shutil.rmtree(..., ignore_errors=True)`, and the following
+    /// steps must run.
     #[test]
     fn remove_tree_of_missing_path_does_not_stop_the_plan() {
         let base = tmp_dir("rmtree");
@@ -7285,8 +7368,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Журнал установленных переживает запись и перечитывание: это то, по
-    /// чему вкладка узнаёт, что тема стоит, и по чему её потом снимают.
+    /// The installed log survives writing and rereading: by it the tab learns
+    /// that a theme is installed, and by it the theme is later removed.
     #[test]
     fn install_log_survives_write_and_read() {
         let base = tmp_dir("log");
@@ -7316,7 +7399,7 @@ mod tests {
             vec!["install_journal.json", "ocs_installed.json"],
             "временный файл переименован, а не оставлен рядом"
         );
-        // Зеркало — тот же текст, что писала прежняя запись журнала магазина.
+        // The mirror is the same text the former store log entry wrote.
         assert_eq!(
             read_text_lossy(&log_path).as_deref(),
             Some(crate::ocs_store::serialize_installed_log(&data).as_str())
@@ -7330,8 +7413,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// ZIP с побегом из каталога распаковки ОТКАЗЫВАЕТ и не пишет наружу
-    /// ничего: это единственная защита от подменённого архива из Магазина.
+    /// A ZIP escaping the unpack directory is REFUSED and writes nothing
+    /// outside: this is the only protection against a tampered archive from
+    /// the Store.
     #[test]
     fn zip_with_escaping_entry_is_refused_and_writes_nothing() {
         use std::io::Write as _;
@@ -7349,8 +7433,9 @@ mod tests {
 
         let dest = base.join("extracted");
         let err = live_safe_extract(&s(&archive), &s(&dest)).expect_err("побег отвергнут");
-        // Сверка по исходной строке каталога, а не по тексту: язык процесса
-        // сверок зависит от машины, а подпись переводится.
+        // The check uses the catalog's source string, not the text: the language
+        // of the check process depends on the machine, and the label is
+        // translated.
         let unsafe_entry = crate::i18n::trf("unsafe entry in the archive: %1", &[&"../побег.txt"]);
         assert_eq!(
             err, unsafe_entry,
@@ -7369,10 +7454,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Сторож расхождения: у КАЖДОГО типа из [`ACTUAL_TYPES_WITH_DIR`] есть и
-    /// каталог установки, и вид применения. Разойдись список с таблицами — и
-    /// снимок не покрыл бы каталог, куда уезжает переклассифицированная тема:
-    /// прежняя копия темы осталась бы на диске рядом с новой.
+    /// A divergence guard: EVERY type from [`ACTUAL_TYPES_WITH_DIR`] has both
+    /// an install directory and an apply kind. If the list diverged from the
+    /// tables, the snapshot would not cover the directory where a reclassified
+    /// theme goes: the previous copy of the theme would remain on disk next to
+    /// the new one.
     #[test]
     fn actual_types_have_dirs_and_kinds() {
         let home = Path::new("/home/тест");
@@ -7388,9 +7474,9 @@ mod tests {
         }
     }
 
-    /// Снимок распакованного дерева: тексты читаются только у метаданных, а
-    /// дети целевых каталогов добавляются НЕрекурсивно — по ним планировщик
-    /// узнаёт уже стоящую тему.
+    /// A snapshot of the unpacked tree: texts are read only for metadata, and
+    /// children of the target directories are added NON-recursively: by them
+    /// the planner recognises an already installed theme.
     #[test]
     fn tree_snapshot_reads_metadata_and_lists_dest_dirs() {
         let base = tmp_dir("snap");
@@ -7415,8 +7501,8 @@ mod tests {
             "содержимое обычного файла в снимок не тянется"
         );
         assert!(snap.is_dir(&s(&dest.join("Старая"))), "уже стоящая тема видна");
-        // Первый уровень внутри темы виден (подпапка рамки в теме GTK,
-        // `plan_nested_part`), глубже — нет.
+        // The first level inside a theme is visible (a frame subfolder in a GTK
+        // theme, `plan_nested_part`), deeper levels are not.
         assert!(snap.is_dir(&s(&dest.join("Старая/глубоко"))));
         assert!(
             !snap.is_dir(&s(&dest.join("Старая/глубоко/ещё"))),
@@ -7431,16 +7517,17 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Права файла на диске без типа файла.
+    /// File permissions on disk without the file type.
     fn mode_of(path: &Path) -> u32 {
         use std::os::unix::fs::PermissionsExt;
         std::fs::symlink_metadata(path).expect("файл на месте").permissions().mode() & 0o7777
     }
 
-    /// ZIP: бит исполнения скрипта из архива доезжает до диска (виджет Conky
-    /// «Skyrim Conky Rustic Parchment», 15.11.2026: `scripts/*.sh` вставали
-    /// `-rw-r--r--`, и скрипт, зовущий соседей напрямую, получал «Отказано в
-    /// доступе»). setuid и запись для группы и прочих — сняты.
+    /// ZIP: the executable bit of a script from the archive reaches the disk
+    /// (the Conky widget "Skyrim Conky Rustic Parchment", 15.11.2026:
+    /// `scripts/*.sh` landed as `-rw-r--r--`, and a script calling its
+    /// neighbours directly got "Permission denied"). setuid and write for
+    /// group and others are stripped.
     #[test]
     fn zip_keeps_exec_bits_and_drops_setuid() {
         use std::io::Write as _;
@@ -7461,8 +7548,9 @@ mod tests {
             zip.write_all(b"#!/bin/sh\n").expect("запись удалась");
             zip.finish().expect("архив закрыт");
         }
-        // Писатель crate zip сам отрезает биты сверх 0o777 — setuid и запись
-        // для всех ставятся прямо в каталоге записей архива (external_attr).
+        // The zip crate's writer cuts bits above 0o777 by itself, so setuid and
+        // write for everyone are set directly in the archive's entry directory
+        // (external_attr).
         let mut bytes = std::fs::read(&archive).expect("архив читается");
         let name = b"skyrim/scripts/suid.sh";
         let at = (0..bytes.len() - 46)
@@ -7485,8 +7573,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// TAR (системный `tar`): бит исполнения остаётся, setuid, setgid и
-    /// запись для группы и прочих снимаются.
+    /// TAR (the system `tar`): the executable bit stays, setuid, setgid and
+    /// write for group and others are stripped.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный tar")]
     fn tar_keeps_exec_bits_and_drops_setuid() {
@@ -7522,8 +7610,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Живая распаковка TAR: имена берутся у системного `tar -tf`, извлекает
-    /// он же. Нужен настоящий `tar` — на машине без него сверка не о чем.
+    /// Live TAR unpacking: the names come from the system `tar -tf`, and it
+    /// extracts too. A real `tar` is needed: on a machine without it there is
+    /// nothing to check.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный tar")]
     fn tar_archive_extracts_through_system_tar() {
@@ -7552,8 +7641,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Ссылки в 7z: разбор списка 7-Zip/p7zip, запись сквозь ссылку архива,
-    /// куда ведёт ссылка.
+    /// Links in 7z: parsing the 7-Zip/p7zip listing, a write through an
+    /// archive link, where a link leads.
     #[test]
     fn seven_zip_links_are_judged() {
         let slt = "Path = T\nAttributes = D drwxr-xr-x\n\nPath = T/a\nAttributes = A lrwxrwxrwx\n\n\
@@ -7571,19 +7660,19 @@ mod tests {
         assert!(link_escapes(d, "/tmp/x/T/abs", "/tmp/x/T/f"), "абсолютная — всегда наружу");
     }
 
-    /// Живая распаковка 7z со ссылками — каждой стоящей программой (bsdtar,
-    /// 7-Zip `7z`/`7zz`, p7zip `7za`): ссылка внутри темы сохраняется,
-    /// ссылка наружу, абсолютная и запись сквозь ссылку — отказ.
+    /// Live 7z unpacking with links by every installed program (bsdtar, 7-Zip
+    /// `7z`/`7zz`, p7zip `7za`): a link inside the theme is kept; a link
+    /// outside, an absolute one and a write through a link are refused.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bsdtar или 7z")]
     fn seven_zip_links_extract_safely_with_every_tool() {
         let base = tmp_dir("7z-links");
         let bsdtar_ok = have("bsdtar");
         if !bsdtar_ok {
-            return; // собирать архив нечем
+            return; // nothing to build the archive with
         }
-        // Архив: из каталога (ссылки как есть) либо из tar-потока со своими
-        // записями — `bsdtar --format 7zip @tar`.
+        // The archive: from a directory (links as is) or from a tar stream with
+        // its own entries, `bsdtar --format 7zip @tar`.
         let make = |name: &str, setup: &dyn Fn(&Path)| -> PathBuf {
             let src = base.join(format!("src-{name}"));
             std::fs::create_dir_all(&src).unwrap();
@@ -7606,7 +7695,7 @@ mod tests {
             put(&src.join("T/gtk-3.0/gtk.css"), "css");
             std::os::unix::fs::symlink("/etc/passwd", src.join("T/abs")).unwrap();
         });
-        // Запись сквозь ссылку: `T/d → /куда-то`, потом `T/d/pwned`.
+        // A write through a link: `T/d -> /somewhere`, then `T/d/pwned`.
         let outside = base.join("outside");
         std::fs::create_dir_all(&outside).unwrap();
         let through = {
@@ -7648,9 +7737,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Живая распаковка 7z: `bsdtar` или 7-Zip (стенд 17.10.2026 — «Numix
-    /// Holo» и «BlueSky» из магазина приходят именно так). Архив собирает
-    /// тот же инструмент.
+    /// Live 7z unpacking: `bsdtar` or 7-Zip (bench 17.10.2026: "Numix Holo" and
+    /// "BlueSky" from the store arrive exactly like this). The archive is
+    /// built by the same tool.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bsdtar или 7z")]
     fn seven_zip_archive_extracts_through_system_tool() {
@@ -7669,16 +7758,17 @@ mod tests {
         let dest = base.join("out");
         live_safe_extract(&s(&archive), &s(&dest)).expect("архив распакован");
         assert!(dest.join("NumixHolo/xfwm4/themerc").is_file());
-        // Не 7z, а текст: подпись не совпала — архивом не считается.
+        // Not 7z but text: the signature did not match, so it is not an archive.
         let text = base.join("scheme.colors");
         std::fs::write(&text, "[General]\n").unwrap();
         assert!(!is_archive_file(&s(&text)));
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Распаковать 7z нечем: отказ называет программу и пакеты семейства, а
-    /// перед установкой товара с файлом `.7z` ставится bsdtar (пакеты
-    /// сверены по репозиториям Arch, Debian, Fedora, openSUSE 19.10.2026).
+    /// Nothing to unpack 7z with: the refusal names the program and the
+    /// family's packages, and bsdtar is installed before installing an item
+    /// with a `.7z` file (packages checked against the Arch, Debian, Fedora and
+    /// openSUSE repositories on 19.10.2026).
     #[test]
     fn seven_zip_without_tool_says_what_to_install() {
         let debian = seven_zip_missing("debian");
@@ -7690,20 +7780,20 @@ mod tests {
         assert_eq!(seven_zip_package("suse"), Some("bsdtar"));
         assert_eq!(seven_zip_package("gentoo"), None, "незнакомое семейство — установку не предлагаем");
 
-        // Распаковщика нет — ставится сам, без вопроса «Да/Нет».
+        // No unpacker: it is installed by itself, without a "Yes/No" question.
         assert_eq!(seven_zip_install_package("159304-NumixHolo.7z", false, Some("bsdtar")).as_deref(), Some("bsdtar"));
         assert!(seven_zip_install_package("A.7Z", false, Some("bsdtar")).is_some(), "расширение без регистра");
         assert!(seven_zip_install_package("a.7z", true, Some("bsdtar")).is_none(), "распаковщик есть");
         assert!(seven_zip_install_package("a.tar.xz", false, Some("bsdtar")).is_none());
         assert!(seven_zip_install_package("a.7z", false, None).is_none(), "поставить нечем");
-        // Не встал — товар не ставится; пароль закрыт — совет повторить.
+        // It did not install: the item is not installed; password window closed: advice to retry.
         let canceled = seven_zip_install_failed(&password_not_confirmed());
         assert!(canceled.contains("bsdtar") && !canceled.contains(&password_not_confirmed()), "{canceled}");
         let failed = seven_zip_install_failed("pacman: error");
         assert!(failed.contains("bsdtar") && failed.contains("pacman: error"), "{failed}");
 
-        // 7z по подписи — архив, даже когда распаковать его нечем (не «голый
-        // файл темы»).
+        // 7z by signature is an archive even when there is nothing to unpack it
+        // with (not a "bare theme file").
         let base = tmp_dir("7z-magic");
         let archive = base.join("t.7z");
         let mut bytes = SEVEN_ZIP_MAGIC.to_vec();
@@ -7714,19 +7804,19 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    // ── Разделы окружений: настоящие раскладки архивов pling ─────────────
+    // ── Environment sections: real layouts of pling archives ─────────────
     //
-    // Фикстуры повторяют строение архивов, снятых стендом 17.10.2026
-    // (ChrButtons, Win8-Metacity, Rosepine, Breeze-Lxqt, Semabe, Extra) —
-    // в миниатюре, сами архивы в дерево не кладутся.
+    // The fixtures repeat the structure of archives captured by the bench on
+    // 17.10.2026 (ChrButtons, Win8-Metacity, Rosepine, Breeze-Lxqt, Semabe,
+    // Extra) in miniature; the archives themselves are not put in the tree.
 
-    /// План + исполнение архивной установки так, как её зовёт живой
-    /// установщик: от каталога распаковки, с именем из магазина.
+    /// Plan + execution of an archive installation the way the live installer
+    /// calls it: from the unpack directory, with the name from the store.
     fn install_archive_tree(home: &Path, ex: &Path, kind: &str, download_name: &str) -> InstallOutcome {
         install_archive_tree_own(home, ex, kind, download_name, &[])
     }
 
-    /// [`install_archive_tree`] с путями, которые эта покупка ставила раньше.
+    /// [`install_archive_tree`] with the paths this purchase installed before.
     fn install_archive_tree_own(home: &Path, ex: &Path, kind: &str, download_name: &str, own: &[String]) -> InstallOutcome {
         let cat = category_by_kind(home, kind).expect("раздел окружения");
         let mut dest_dirs = vec![cat.install_dir.clone()];
@@ -7743,10 +7833,11 @@ mod tests {
         out
     }
 
-    /// Виджет Conky из магазина: шрифты архива (любая глубина, в том числе
-    /// `.fonts/` пакетов менеджера Conky) — в свою папку
-    /// `~/.local/share/fonts/rexon-conky-<имя>/`; она записана в журнал
-    /// рядом с виджетом (её снимет «Удалить»), кэш шрифтов обновляется.
+    /// A Conky widget from the store: the archive's fonts (any depth,
+    /// including the `.fonts/` of Conky manager packages) go to their own
+    /// folder `~/.local/share/fonts/rexon-conky-<name>/`; it is written to the
+    /// log next to the widget ("Remove" will remove it), and the font cache is
+    /// refreshed.
     #[test]
     fn conky_store_widget_installs_its_fonts() {
         let base = tmp_dir("conky_fonts");
@@ -7776,7 +7867,7 @@ mod tests {
         assert!(!out.steps.iter().any(|st| matches!(st, ExtStep::CopyFile { dest, .. } if dest.ends_with("readme.txt"))));
         assert!(out.steps.iter().any(|st| matches!(st, ExtStep::Run { argv, .. } if argv[0] == "fc-cache")));
 
-        // Без шрифтов — ни папки шрифтов в журнале, ни fc-cache.
+        // Without fonts: no fonts folder in the log and no fc-cache.
         let bare = base.join("bare");
         put(&bare.join("Gotham/conky.conf"), "conky.text = [[x]]\n");
         let out = plan(&bare, "Gotham");
@@ -7785,10 +7876,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Пакет тем Conky (`.cmtp.7z` и архивы магазина с той же раскладкой):
-    /// каждый виджет из `.conky/` — своя папка, голый файл из `.Conky/` —
-    /// папка с ним же, шрифты `.fonts/` и `.conky/fonts/` — в одну папку
-    /// пакета; занятое чужим виджетом имя не затирается.
+    /// A Conky theme package (`.cmtp.7z` and store archives with the same
+    /// layout): every widget from `.conky/` is its own folder, a bare file from
+    /// `.Conky/` is a folder with that file, fonts from `.fonts/` and
+    /// `.conky/fonts/` go to one package folder; a name taken by someone
+    /// else's widget is not overwritten.
     #[test]
     fn conky_theme_pack_installs_each_widget() {
         let base = tmp_dir("conky_pack");
@@ -7820,7 +7912,7 @@ mod tests {
                 fonts.clone(),
             ]
         );
-        // Чужой «Gotham» человека не тронут — и сказано об этом.
+        // The person's own "Gotham" is not touched, and this is said.
         assert!(out.message.contains("Gotham"), "{}", out.message);
         assert!(!out.steps.iter().any(|st| matches!(st, ExtStep::RemoveTree { path, .. } if path.ends_with("/Gotham"))));
         let loose = ExtStep::CopyFile { src: s(&ex.join(".Conky/conkyx")), dest: format!("{conky}/conkyx/conkyx") };
@@ -7834,7 +7926,7 @@ mod tests {
         assert!(home.join(".config/conky/Conky Seamod/rings.lua").is_file());
         assert!(!home.join(".config/conky/fonts").exists() && !home.join(".config/conky/README").exists());
 
-        // Архив без папок пакета — по-прежнему один виджет.
+        // An archive without package folders is still one widget.
         let one = base.join("one");
         put(&one.join("Mimosa/Mimosa.conf"), "conky.text = [[x]]\n");
         let snap = install_tree_snapshot(&s(&one), &[cat.install_dir.clone()]);
@@ -7844,10 +7936,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Запасная ветка «обои / шрифты и прочее» по правилу владельца: каталог
-    /// с тем же именем, который эта покупка не ставила (человек, другая
-    /// покупка, ссылка), не снимается — отказ с причиной, ни одного шага;
-    /// записанный журналом этой покупки — снимается и ставится заново.
+    /// The fallback branch "wallpapers / fonts and others" by the owner's rule:
+    /// a directory with the same name that this purchase did not install (the
+    /// person, another purchase, a link) is not removed: a refusal with a
+    /// reason, not a single step; one recorded in this purchase's log is
+    /// removed and installed again.
     #[test]
     fn fallback_branch_keeps_foreign_dir() {
         let base = tmp_dir("fallback_owner");
@@ -7863,14 +7956,14 @@ mod tests {
             assert!(out.steps.is_empty() && out.record.is_none(), "{kind}: {:#?}", out.steps);
             assert_eq!(std::fs::read_to_string(dest.join("mine.txt")).unwrap(), "моё", "{kind}");
 
-            // Ссылка на месте — тоже чужое.
+            // A link in place is also foreign.
             std::fs::remove_dir_all(&dest).unwrap();
             std::os::unix::fs::symlink(base.join("outside"), &dest).unwrap();
             let out = install_tree(&home, &ex, kind, Some(&[]));
             assert!(!out.ok, "{kind}: ссылка заменена: {}", out.message);
             std::fs::remove_file(&dest).unwrap();
 
-            // Своя прежняя покупка — снимается и ставится заново.
+            // Our own previous purchase is removed and installed again.
             put(&dest.join("old.jpg"), "v1");
             let own = vec![s(&dest)];
             let out = install_tree(&home, &ex, kind, Some(&own));
@@ -7879,16 +7972,17 @@ mod tests {
             assert!(!dest.join("old.jpg").exists(), "{kind}: прежняя копия не снята");
             assert_eq!(std::fs::read_to_string(dest.join("contents/a.jpg")).unwrap(), "v2", "{kind}");
 
-            // Без журнала (`None`, эталон Python) — прежнее «перезаписывается».
+            // Without a log (`None`, the Python reference): the old "is overwritten".
             let out = install_tree(&home, &ex, kind, None);
             assert!(out.ok, "{kind}: {}", out.message);
         }
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Папка шрифтов виджета Conky (одиночного и пакета) с тем же именем от
-    /// другой покупки не пополняется и в журнал этой покупки не пишется:
-    /// виджет ставится, шрифты пропускаются с причиной. Своя — заменяется.
+    /// The fonts folder of a Conky widget (single and package) with the same
+    /// name from another purchase is not added to and not written to this
+    /// purchase's log: the widget is installed, the fonts are skipped with a
+    /// reason. Our own is replaced.
     #[test]
     fn conky_font_dir_of_other_purchase_is_kept() {
         let base = tmp_dir("conky_font_owner");
@@ -7923,7 +8017,7 @@ mod tests {
                 "{name}: шаги трогают чужую папку шрифтов: {:#?}",
                 out.steps
             );
-            // Своя (записана журналом) — снимается и ставится заново.
+            // Our own (recorded in the log) is removed and installed again.
             let out = plan(ex, name, &[s(&font_dir)]);
             assert!(out.ok, "{name}: {}", out.message);
             assert!(out.record.expect("запись").paths.contains(&s(&font_dir)), "{name}");
@@ -7932,9 +8026,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Системная тема (SDDM, Plymouth): каталог темы с тем же именем, который
-    /// эта покупка не ставила (тема пакета, человека), — отказ до окна
-    /// пароля: помощник копирует поверх, поэтому решение — здесь.
+    /// A system theme (SDDM, Plymouth): a theme directory with the same name
+    /// that this purchase did not install (a package's theme, the person's)
+    /// means refusal before the password window: the helper copies over it, so
+    /// the decision is made here.
     #[test]
     fn root_install_refuses_foreign_system_theme() {
         let base = tmp_dir("root_owner");
@@ -7982,15 +8077,16 @@ mod tests {
         assert_eq!(archive_theme_name("159304-NumixHolo.7z", "x"), "NumixHolo");
         assert_eq!(archive_theme_name("", "Win 8 / Metacity"), "Win 8 - Metacity");
         assert_eq!(archive_theme_name(".tar.gz", ""), "theme");
-        // Имя файла задаёт автор товара: пробел перед точками не должен
-        // превращать имя темы в «..» или «.» — иначе `~/.themes/..` = `~`.
+        // The file name is set by the item's author: a space before the dots
+        // must not turn the theme name into ".." or "."; otherwise
+        // `~/.themes/..` = `~`.
         for dl in [" ...zip", " ..zip", "1- ...tar.gz", " .hidden.zip"] {
             let n = archive_theme_name(dl, "Item");
             assert_eq!(n, "Item", "{dl:?} → {n:?}");
         }
     }
 
-    /// Безымянный корень архива с опасным именем файла не ложится в HOME.
+    /// A nameless archive root with a dangerous file name does not land in HOME.
     #[test]
     fn archive_without_folder_never_lands_above_the_theme_dir() {
         let base = tmp_dir("dotdot_name");
@@ -8002,8 +8098,8 @@ mod tests {
         assert!(!home.join(".evilrc").exists(), "файл архива лёг прямо в HOME");
     }
 
-    /// Имя пакета из metadata — тоже чужие данные: «../..» в `KPlugin.Id` не
-    /// выводит установку из каталога вида.
+    /// The package name from metadata is also foreign data: "../.." in
+    /// `KPlugin.Id` does not lead the installation out of the kind's directory.
     #[test]
     fn metadata_id_cannot_climb_out_of_the_kind_dir() {
         let snap = |file: &str, text: &str| {
@@ -8016,16 +8112,16 @@ mod tests {
         assert_eq!(theme_id_from(&fs, "/x/Pkg"), "Pkg");
         let fs = snap("metadata.desktop", "X-KDE-PluginInfo-Name=..\n");
         assert_eq!(theme_id_from(&fs, "/x/Pkg"), "Pkg");
-        // Обычный Id остаётся.
+        // An ordinary Id stays.
         let fs = snap("metadata.json", r#"{"KPlugin": {"Id": "org.kde.good"}}"#);
         assert_eq!(theme_id_from(&fs, "/x/Pkg"), "org.kde.good");
     }
 
-    /// Рамка окон с именем стоящей темы GTK ложится подпапкой в её папку
-    /// (через нашу ссылку `~/.themes/<имя>` — в `~/.local/share/themes`),
-    /// ссылка остаётся ссылкой; повторная установка той же покупки заменяет
-    /// только подпапку; чужая подпапка не затирается; имени нет — отдельная
-    /// папка, как раньше.
+    /// Window frames named like an installed GTK theme land as a subfolder in
+    /// its folder (through our `~/.themes/<name>` link, into
+    /// `~/.local/share/themes`), the link stays a link; reinstalling the same
+    /// purchase replaces only the subfolder; a foreign subfolder is not
+    /// overwritten; without a name, a separate folder as before.
     #[test]
     fn frame_with_gtk_theme_name_goes_inside_the_gtk_folder() {
         let base = tmp_dir("frame_nest");
@@ -8049,17 +8145,17 @@ mod tests {
         assert!(!xdg.join("Arc/README").exists(), "из архива — только подпапка рамки");
         assert!(std::fs::symlink_metadata(legacy.join("Arc")).unwrap().file_type().is_symlink());
 
-        // Та же покупка ещё раз — заменяется подпапка, тема GTK цела.
+        // The same purchase again: the subfolder is replaced, the GTK theme intact.
         put(&ex.join("Arc/metacity-1/metacity-theme-3.xml"), "<metacity_theme v2/>");
         let again = install_archive_tree_own(&home, &ex, "marco", "Arc-metacity.tar.gz", &[part.clone()]);
         assert!(again.ok, "{}", again.message);
         assert_eq!(std::fs::read_to_string(xdg.join("Arc/metacity-1/metacity-theme-3.xml")).unwrap(), "<metacity_theme v2/>");
         assert!(xdg.join("Arc/gtk-3.0/gtk.css").is_file());
-        // Другая покупка с тем же именем — чужую подпапку не трогает.
+        // Another purchase with the same name does not touch the foreign subfolder.
         let other = install_archive_tree(&home, &ex, "marco", "Arc-metacity.tar.gz");
         assert!(!other.ok, "{}", other.message);
 
-        // xfwm4 в настоящую папку `~/.themes/Plain` (не ссылку).
+        // xfwm4 into a real folder `~/.themes/Plain` (not a link).
         let ex = base.join("xfwm");
         put(&ex.join("Plain/xfwm4/themerc"), "button_offset=0");
         let out = install_archive_tree(&home, &ex, "xfwm4", "Plain.tar.gz");
@@ -8067,7 +8163,7 @@ mod tests {
         assert_eq!(out.record.expect("запись").paths, [s(&legacy.join("Plain/xfwm4"))]);
         assert!(legacy.join("Plain/gtk-2.0/gtkrc").is_file());
 
-        // Имени нет — отдельная папка в `~/.themes`.
+        // No name: a separate folder in `~/.themes`.
         let ex = base.join("solo");
         put(&ex.join("Solo/xfwm4/themerc"), "x");
         let out = install_archive_tree(&home, &ex, "xfwm4", "Solo.tar.gz");
@@ -8075,8 +8171,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Несколько вариантов под общей обёрткой — каждый на верхний уровень
-    /// `~/.themes` (xfwm4: ChrButtons) и без обёртки вовсе (Marco: Win8).
+    /// Several variants under a common wrapper: each goes to the top level of
+    /// `~/.themes` (xfwm4: ChrButtons), and without a wrapper at all (Marco:
+    /// Win8).
     #[test]
     fn de_frame_variants_land_on_top_level() {
         let base = tmp_dir("de_variants");
@@ -8107,8 +8204,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Архив, где в корне сразу `gnome-shell/` (Rosepine): имя — из файла
-    /// магазина, тема — `~/.themes/<имя>/gnome-shell`.
+    /// An archive with `gnome-shell/` right at the root (Rosepine): the name
+    /// comes from the store file, the theme is `~/.themes/<name>/gnome-shell`.
     #[test]
     fn shell_theme_without_own_folder_takes_archive_name() {
         let base = tmp_dir("de_noname");
@@ -8126,10 +8223,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Темы LXQt узнаются по `lxqt-panel.qss` на любой глубине (Breeze-Lxqt:
-    /// `Breeze-Lxqt/themes/<имя>/`); соседние темы Openbox не ставятся.
-    /// Cinnamon: варианты на три уровня вглубь (Semabe), комбинированная
-    /// GTK-тема ставится целиком.
+    /// LXQt themes are recognised by `lxqt-panel.qss` at any depth
+    /// (Breeze-Lxqt: `Breeze-Lxqt/themes/<name>/`); neighbouring Openbox themes
+    /// are not installed. Cinnamon: variants three levels deep (Semabe), a
+    /// combined GTK theme is installed as a whole.
     #[test]
     fn lxqt_and_cinnamon_themes_found_deep_inside() {
         let base = tmp_dir("de_deep");
@@ -8162,8 +8259,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// В архиве нет темы своего вида (шрифты и обои под видом темы
-    /// Cinnamon; тема Openbox в разделе LXQt) — отказ, на диске ничего.
+    /// The archive has no theme of its own kind (fonts and wallpapers posing
+    /// as a Cinnamon theme; an Openbox theme in the LXQt section): refusal,
+    /// nothing on disk.
     #[test]
     fn de_archive_without_theme_of_its_kind_is_refused() {
         let base = tmp_dir("de_none");
@@ -8182,8 +8280,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Одна тема с обёрткой ставится, как и раньше, под своим именем; имя
-    /// из магазина не подменяет имя папки темы.
+    /// A single theme with a wrapper is installed, as before, under its own
+    /// name; the name from the store does not replace the theme folder name.
     #[test]
     fn single_de_theme_keeps_folder_name() {
         let base = tmp_dir("de_single");
@@ -8198,7 +8296,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Тот же дефект безымянного корня у GTK: архив `gtk-3.0/` без обёртки.
+    /// The same nameless root defect for GTK: a `gtk-3.0/` archive without a wrapper.
     #[test]
     fn gtk_theme_without_own_folder_takes_archive_name() {
         let base = tmp_dir("gtk_noname");
@@ -8213,12 +8311,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    /// Картинка из пачки выбирается по САМОМУ БОЛЬШОМУ монитору.
+    /// A picture from a pack is chosen by the LARGEST monitor.
     ///
-    /// На стол из пачки уходит ОДНА картинка, поэтому мерка — большой
-    /// монитор: маленький её ужмёт, и это лучше растянутой с меньшего.
-    /// Прежний разбор `xrandr` брал «первое разрешение со звёздочкой» — на
-    /// такой паре мониторов он выдал бы картинку 1600x900.
+    /// ONE picture from the pack goes to the desktop, so the measure is the
+    /// large monitor: the small one will scale it down, and that is better than
+    /// one stretched from a smaller size. The former `xrandr` parsing took "the
+    /// first resolution with an asterisk": on such a pair of monitors it would
+    /// have given a 1600x900 picture.
     #[test]
     fn the_pack_image_is_chosen_by_the_biggest_monitor() {
         use crate::wallpaper_exec::{largest_output, ScreenOutput};
@@ -8236,19 +8335,19 @@ mod tests {
             pick_pack_image(&files, w, h).map(|f| basename(&f).to_string())
         };
 
-        // Один выход — как было.
+        // One output: as before.
         assert_eq!(measured(&[out("eDP-1", "1920x1080")]).as_deref(), Some("1920x1080.png"));
-        // Два разного размера, маленький первым в списке — берём большой.
+        // Two of different sizes, the small one first in the list: take the large one.
         assert_eq!(
             measured(&[out("HDMI-1", "1600x900"), out("DP-1", "3840x2160")]).as_deref(),
             Some("3840x2160.png")
         );
-        // ⚠️ Опрос не удался (выходов нет) — выбор идёт по имени, как до
-        // всякого перечисления выходов.
+        // ⚠️ The query failed (no outputs): the choice goes by name, as before
+        // any enumeration of outputs.
         assert_eq!(measured(&[]).as_deref(), Some("1600x900.png"));
     }
 
-    // ── корни тем в архиве и подъём вложенных (03.10.2026) ──────────────────
+    // ── theme roots in an archive and lifting nested ones (03.10.2026) ──────
 
     fn put(path: &Path, text: &str) {
         std::fs::create_dir_all(path.parent().expect("есть родитель")).expect("каталог");
@@ -8257,8 +8356,8 @@ mod tests {
 
     const SOUND_INDEX: &str = "[Sound Theme]\nName=Zorin\nDirectories=stereo\n\n[stereo]\nOutputProfile=stereo\n";
 
-    /// Архив как у живого товара «zorinos2»: две темы звуков на два уровня
-    /// глубже, рядом обои, xml и ReadMe.
+    /// An archive like the live item "zorinos2": two sound themes two levels
+    /// deeper, with wallpapers, xml and a ReadMe next to them.
     fn zorin_archive(ex: &Path) {
         let w = ex.join("zorinos2");
         put(&w.join("ReadMe."), "читай меня");
@@ -8270,7 +8369,7 @@ mod tests {
         }
     }
 
-    /// План + исполнение установки распакованного `ex` в категорию `kind`.
+    /// Plan + execution of installing the unpacked `ex` into category `kind`.
     fn install_tree(home: &Path, ex: &Path, kind: &str, own: Option<&[String]>) -> InstallOutcome {
         let cat = category_by_kind(home, kind).expect("категория есть");
         let snap = install_tree_snapshot(&s(ex), &[cat.install_dir.clone()]);
@@ -8306,9 +8405,10 @@ mod tests {
         assert_eq!(rec.paths, [s(&sounds.join("Zorin")), s(&sounds.join("Zorin2"))]);
     }
 
-    /// Товар раздела KWin из магазина (номер товара = номер раздела) ложится
-    /// KPackage-ом: каталог — `KPlugin.Id`, переклассификации нет, тип журнала —
-    /// тип раздела. Исходники на C++ не ставятся — отказ с причиной.
+    /// An item of a KWin section from the store (item number = section number)
+    /// lands as a KPackage: the directory is `KPlugin.Id`, no reclassification,
+    /// the log type is the section type. C++ sources are not installed: a
+    /// refusal with a reason.
     #[test]
     fn kwin_store_items_install_as_kpackage() {
         let base = tmp_dir("kwin_store");
@@ -8319,7 +8419,7 @@ mod tests {
             (721, ".local/share/kwin/tabbox", "kde-window-switcher"),
         ] {
             let ex = base.join(format!("ex{cat_id}"));
-            // Без обёртки: метаданные и contents/ в корне архива (.kwinscript).
+            // Without a wrapper: metadata and contents/ at the archive root (.kwinscript).
             put(&ex.join("metadata.json"), r#"{"KPlugin":{"Id":"pkg-id","Name":"Pkg"}}"#);
             put(&ex.join("contents/code/main.js"), "//");
             let cat = crate::categories::category_by_id(&home, cat_id).expect("раздел");
@@ -8334,7 +8434,7 @@ mod tests {
             assert_eq!(rec.rexon_type, rexon_type);
             assert_eq!(rec.apply_kind, cat.key);
 
-            // Исходники эффекта на C++: метаданные есть только глубже.
+            // C++ sources of an effect: metadata exists only deeper.
             let src = base.join(format!("src{cat_id}"));
             put(&src.join("kwin-fx-main/CMakeLists.txt"), "project(x)");
             put(&src.join("kwin-fx-main/src/metadata.json"), "{}");
@@ -8347,10 +8447,10 @@ mod tests {
         }
     }
 
-    /// Виджеты и плагины обоев — тоже KPackage: исходники на C++, пакет
-    /// pacman и не-пакет (меню Dolphin в разделе виджетов) не ставятся, а
-    /// отказ говорит причину и куда смотреть дальше. Раскладки — с живых
-    /// товаров магазина 04.10.2026.
+    /// Widgets and wallpaper plugins are KPackages too: C++ sources, a pacman
+    /// package and a non-package (a Dolphin menu in the widgets section) are
+    /// not installed, and the refusal gives the reason and where to look next.
+    /// The layouts come from live store items on 04.10.2026.
     #[test]
     fn widget_and_wallpaper_plugin_need_ready_kpackage() {
         let base = tmp_dir("kpkg_ready");
@@ -8362,7 +8462,7 @@ mod tests {
             plan_install_with(&home, &snap, &cat, &root, Some(&[]))
         };
 
-        // Исходники виджета: CMake наверху, пакеты QML — в package/ глубже.
+        // Widget sources: CMake at the top, QML packages deeper in package/.
         let src = base.join("awesome");
         put(&src.join("awesome-widgets/CMakeLists.txt"), "project(aw)");
         put(&src.join("awesome-widgets/awesomewidgets/plugin.cpp"), "//");
@@ -8373,7 +8473,7 @@ mod tests {
         assert_eq!(out.message, not_a_package_message());
         assert!(out.steps.is_empty() && out.record.is_none());
 
-        // Пакет pacman в плагинах обоев: корень содержимого — usr/.
+        // A pacman package among wallpaper plugins: the content root is usr/.
         let pkg = base.join("pacman");
         put(&pkg.join(".PKGINFO"), "pkgname = x");
         put(&pkg.join(".MTREE"), "");
@@ -8383,7 +8483,7 @@ mod tests {
         assert!(!out.ok);
         assert_eq!(out.message, not_a_package_message());
 
-        // Меню Dolphin со скриптом в разделе виджетов: пакета нет вовсе.
+        // A Dolphin menu with a script in the widgets section: there is no package at all.
         let menu = base.join("menu");
         put(&menu.join("Print_Selected_image/bin/print-image.sh"), "#!/bin/sh");
         put(&menu.join("Print_Selected_image/.local/share/kio/servicemenus/PrintImage.desktop"), "");
@@ -8393,8 +8493,9 @@ mod tests {
         assert_eq!(out.message, no_package_inside_message());
         assert_ne!(no_package_inside_message(), not_a_package_message());
 
-        // Готовый плагин обоев — ставится по KPlugin.Id; CMake рядом с
-        // готовым пакетом не мешает (так выложен com.t145.matrixrain).
+        // A ready wallpaper plugin is installed by KPlugin.Id; CMake next to a
+        // ready package does not interfere (that is how com.t145.matrixrain is
+        // published).
         let ready = base.join("ready");
         put(&ready.join("rain/metadata.json"), r#"{"KPlugin":{"Id":"org.example.rain"}}"#);
         put(&ready.join("rain/contents/ui/main.qml"), "Item {}");
@@ -8407,7 +8508,7 @@ mod tests {
         );
     }
 
-    /// Виджет из подкатегории (часы — 708) — это раздел «Виджеты»: плазмоид.
+    /// A widget from a subcategory (clocks, 708) belongs to the "Widgets" section: a plasmoid.
     #[test]
     fn widget_from_subcategory_installs_as_plasmoid() {
         let base = tmp_dir("plasmoid_708");
@@ -8440,7 +8541,7 @@ mod tests {
         assert!(!home.join(".local/share/sounds/pack").exists());
     }
 
-    /// Занятое чужой темой имя не затирается; своё прежнее — заменяется.
+    /// A name taken by a foreign theme is not overwritten; our own previous one is replaced.
     #[test]
     fn taken_name_is_skipped_honestly_but_own_reinstall_replaces() {
         let base = tmp_dir("snd_conflict");
@@ -8457,7 +8558,7 @@ mod tests {
             "[Sound Theme]\nName=Чужая\n",
             "чужая тема не тронута"
         );
-        // Та же покупка ставится снова: её пути из журнала заменяемы.
+        // The same purchase is installed again: its paths from the log are replaceable.
         let own = vec![s(&foreign), s(&home.join(".local/share/sounds/Zorin2"))];
         let again = install_tree(&home, &ex, "sounds", Some(&own));
         assert_eq!(again.names, ["Zorin", "Zorin2"]);
@@ -8476,7 +8577,7 @@ mod tests {
         assert_eq!(out.message.lines().count(), 2, "{}", out.message);
     }
 
-    /// Тема в самом корне архива ставится как раньше: имя — по каталогу.
+    /// A theme at the very root of the archive is installed as before: the name comes from the directory.
     #[test]
     fn top_level_sound_theme_keeps_old_path() {
         let base = tmp_dir("snd_top");
@@ -8488,10 +8589,11 @@ mod tests {
         assert!(home.join(".local/share/sounds/Ocean/index.theme").is_file());
     }
 
-    /// Общий набор `hicolor` из архива темой не ставится: ни рядом с темой
-    /// (корни), ни единственным содержимым (прежний путь), ни при прежнем
-    /// поведении «занятое перезаписывается» (`own = None`). Каталог
-    /// человека со значками программ остаётся как был (дефект 09.11.2026).
+    /// The shared `hicolor` set from an archive is not installed as a theme:
+    /// neither next to a theme (roots), nor as the only content (the old path),
+    /// nor under the old "taken gets overwritten" behaviour (`own = None`). The
+    /// person's directory with program icons stays as it was (defect of
+    /// 09.11.2026).
     #[test]
     fn shared_hicolor_from_archive_is_never_installed() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -8507,7 +8609,7 @@ mod tests {
         put(&ex.join("Pack/hicolor/index.theme"), CUT);
         put(&ex.join("Pack/hicolor/48x48/apps/my.png"), "");
         for (n, own) in [None, Some(&[][..])].into_iter().enumerate() {
-            // Свой дом на проход: иначе второй видит MyIcons первого чужим.
+            // A home of its own per pass: otherwise the second sees the first's MyIcons as foreign.
             let home = base.join(format!("home-{n}"));
             let out = install_tree(&home, &ex, "icons", own);
             assert!(out.ok, "{}", out.message);
@@ -8568,11 +8670,12 @@ mod tests {
         assert!(home.join(".local/share/color-schemes/Nord.colors").is_file());
     }
 
-    /// Откуда у владельца взялось имя «Sounds»: архив товара «ZorinOS 6 Sound
-    /// Theme» — верхняя папка `Sounds` с ReadMe и темой `Zorin` внутри.
-    /// Прежняя установка клала верхнюю папку как тему и применяла её имя.
-    /// Теперь темой встаёт каталог с `index.theme`, а имя обёртки темой не
-    /// считается — применить его нельзя (`sound_theme_exists`).
+    /// Where the owner's "Sounds" name came from: the archive of the item
+    /// "ZorinOS 6 Sound Theme" is a top folder `Sounds` with a ReadMe and the
+    /// theme `Zorin` inside. The old installation put the top folder as the
+    /// theme and applied its name. Now the directory with `index.theme` becomes
+    /// the theme, and the wrapper name does not count as a theme: it cannot be
+    /// applied (`sound_theme_exists`).
     #[test]
     fn archive_wrapper_name_never_becomes_sound_theme_name() {
         let base = tmp_dir("snd_wrapper_name");
@@ -8590,10 +8693,11 @@ mod tests {
         assert!(!crate::qt_settings::sound_theme_exists(&dirs, "Sounds"));
     }
 
-    /// Живой случай 13.10.2026 на подставном HOME: в файлах GTK стоит
-    /// звуковая тема «Sounds», которой нет (наверху лежит Zorin). Санитайзер
-    /// файл НЕ переписывает и говорит об этом замечанием; битая тема значков
-    /// в том же файле по-прежнему чинится, а звук при этом остаётся прежним.
+    /// A live case on 13.10.2026 on a fake HOME: the GTK files name the sound
+    /// theme "Sounds", which does not exist (Zorin lies at the top). The
+    /// sanitizer does NOT rewrite the file and says so in a remark; a broken
+    /// icon theme in the same file is still repaired, while the sound stays as
+    /// it was.
     #[test]
     fn gtk_sanitizer_keeps_missing_sound_theme_and_reports_it() {
         let base = tmp_dir("gtk-sound-kept");
@@ -8615,12 +8719,12 @@ mod tests {
         assert!(notes[0].contains("gtk-3.0/settings.ini: gtk-sound-theme-name"), "{}", notes[0]);
         assert!(notes[1].contains("gtk-4.0/settings.ini: gtk-sound-theme-name"), "{}", notes[1]);
 
-        // Существующая тема — без замечаний.
+        // An existing theme: no remarks.
         put(&ini3, "[Settings]\ngtk-sound-theme-name=Zorin\n");
         put(&ini4, "[Settings]\ngtk-sound-theme-name=Zorin\n");
         assert!(gtk_notes_at(&s(&home), &s(&cfg), &s(&data)).is_empty());
 
-        // Битые значки чинятся, звук рядом не трогается.
+        // Broken icons are repaired, the sound next to them is not touched.
         put(&ini3, "[Settings]\ngtk-icon-theme-name=NoSuchIcons-rexon-test\ngtk-sound-theme-name=Sounds\n");
         let changes = gtk_ini_sanitize_at(&s(&home), &s(&cfg), &s(&data));
         assert_eq!(changes.len(), 1, "{changes:?}");
@@ -8629,7 +8733,7 @@ mod tests {
         assert!(!after.contains("NoSuchIcons-rexon-test"), "{after}");
     }
 
-    /// Миграция на подставном HOME: обёртки Rexon разбираются, чужое не трогается.
+    /// Migration on a fake HOME: Rexon wrappers are taken apart, foreign things are not touched.
     #[test]
     fn migration_lifts_nested_themes_and_rewrites_journal() {
         let base = tmp_dir("migrate");
@@ -8638,7 +8742,7 @@ mod tests {
         let data = home.join(".local/share");
         let log = home.join(".config/rexon/ocs_installed.json");
 
-        // Как у владельца 03.10: zorinos2 (две темы глубоко + обои) и Sounds/Zorin.
+        // As on the owner's machine on 03.10: zorinos2 (two themes deep + wallpapers) and Sounds/Zorin.
         let z = sounds.join("zorinos2");
         put(&z.join(crate::installed_scan::REXON_PREVIEW_NAME), "png");
         put(&z.join("backgrounds/Waves.jpg"), "jpg");
@@ -8648,11 +8752,11 @@ mod tests {
         let w = sounds.join("Sounds");
         put(&w.join("ReadMe"), "r");
         put(&w.join("Zorin/index.theme"), SOUND_INDEX);
-        // Обёртку Sounds знает только журнал (маркера нет).
-        // Чужая (без маркера и не в журнале) — не трогать.
+        // Only the log knows the Sounds wrapper (there is no marker).
+        // A foreign one (no marker and not in the log): do not touch.
         let f = sounds.join("Foreign");
         put(&f.join("Inner/index.theme"), SOUND_INDEX);
-        // Правильная тема наверху — не трогать.
+        // A correct theme at the top: do not touch.
         put(&sounds.join("Ocean/index.theme"), SOUND_INDEX);
         put(
             &log,
@@ -8665,39 +8769,39 @@ mod tests {
 
         let lines = migrate_nested_themes_at(&s(&home), &s(&data), &s(&log));
         assert!(!lines.is_empty());
-        // «Sounds» идёт раньше «zorinos2»: его Zorin занимает имя первым.
+        // "Sounds" comes before "zorinos2": its Zorin takes the name first.
         assert_eq!(listing(&sounds), ["Foreign", "Ocean", "Zorin", "Zorin2", "zorinos2"]);
         assert!(sounds.join("Zorin2/index.theme").is_file());
         assert!(
             sounds.join("Zorin2").join(crate::installed_scan::REXON_PREVIEW_NAME).is_file(),
             "превью Rexon переехало к поднятой теме"
         );
-        // Конфликт: вторая Zorin осталась в обёртке, обёртка на месте.
+        // Conflict: the second Zorin stayed in the wrapper, the wrapper is in place.
         assert!(z.join("sounds/Zorin/index.theme").is_file());
         assert!(f.join("Inner/index.theme").is_file(), "чужое не тронуто");
-        // Остаток обёртки Sounds — в theme-leftovers, ничего не потеряно.
+        // The rest of the Sounds wrapper goes to theme-leftovers; nothing is lost.
         let left = data.join("rexon/theme-leftovers/sounds/Sounds");
         assert!(left.join("ReadMe").is_file());
-        // Журнал установленного указывает на новые места.
+        // The installed log points to the new places.
         let j: Value = serde_json::from_str(&std::fs::read_to_string(&log).unwrap()).unwrap();
         let p1: Vec<&str> = j["1"]["paths"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
         assert_eq!(p1, [s(&sounds.join("Zorin")), s(&left)]);
         let p2: Vec<&str> = j["2"]["paths"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
         assert_eq!(p2, [s(&sounds.join("Zorin2")), s(&z)]);
-        // Журнал миграции записан.
+        // The migration log is written.
         let mlog = std::fs::read_to_string(nested_migration_log_path(&s(&data))).unwrap();
         assert!(mlog.contains("конфликт"), "{mlog}");
     }
 
-    /// Стенд «тема с иконками и курсором» — НЕ для обычного прогона: живые
-    /// команды окружения (gsettings и т.п.). Запускать только под
-    /// `dbus-run-session` с `GSETTINGS_BACKEND=keyfile` и временными
-    /// `HOME`/`XDG_*` (в пути `HOME` обязано быть `deps-stand`), без
+    /// The "theme with icons and a cursor" bench is NOT for a normal run: live
+    /// environment commands (gsettings and the like). Run it only under
+    /// `dbus-run-session` with `GSETTINGS_BACKEND=keyfile` and temporary
+    /// `HOME`/`XDG_*` (the `HOME` path must contain `deps-stand`), without
     /// `DISPLAY`/`WAYLAND_DISPLAY`:
-    /// `REXON_DEPS_STAND_THEME=<тема> REXON_DEPS_STAND_DE=mate cargo test -p
+    /// `REXON_DEPS_STAND_THEME=<theme> REXON_DEPS_STAND_DE=mate cargo test -p
     /// rexon-core --lib theme_deps_stand -- --ignored --nocapture`.
-    /// `REXON_DEPS_STAND_INSTALL=1` — согласие на установку недостающего
-    /// (команды установки на стенде должны быть подменены в `PATH`).
+    /// `REXON_DEPS_STAND_INSTALL=1` is consent to installing what is missing
+    /// (the install commands on the bench must be substituted in `PATH`).
     #[test]
     #[ignore]
     fn theme_deps_stand() {
@@ -8721,8 +8825,8 @@ mod tests {
         println!("итог ({ok}):\n{msg}");
     }
 
-    /// Б9: без помощника сеанса — ровно прежняя команда установки
-    /// пакетов оформления (тот же argv у обоих видов прежнего пути).
+    /// B9: without the session helper, exactly the old command for installing
+    /// appearance packages (the same argv for both kinds of the old path).
     #[test]
     fn repo_install_op_legacy_argv_is_todays() {
         use crate::privilege::op::Helpers;

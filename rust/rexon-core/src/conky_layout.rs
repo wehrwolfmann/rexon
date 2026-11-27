@@ -1,38 +1,41 @@
-//! Мини-карта экрана для виджетов Conky: положение из `conky.config`
-//! (`alignment`, `gap_x`, `gap_y`, `xinerama_head`) ↔ прямоугольник окна
-//! на мониторе — и обратно, когда человек перетащил прямоугольник.
+//! A screen mini-map for Conky widgets: the position from `conky.config`
+//! (`alignment`, `gap_x`, `gap_y`, `xinerama_head`) ↔ the window rectangle on
+//! a monitor, and back again when the person has dragged the rectangle.
 //!
-//! КАК CONKY СТАВИТ ОКНО (исходники conky 1.2x, `update_text_area`, и
-//! справочник настроек; сверено 14.11.2026):
-//! * рабочая область — весь монитор `xinerama_head` (по умолчанию 0; номер
-//!   вне списка — весь экран X целиком). Панели НЕ вычитаются;
-//! * по каждой оси выравнивание — начало, середина или конец:
-//!   начало: `текст = край + gap`; конец: `текст = край − ширина текста − gap`;
-//!   середина: `текст = середина − ширина текста / 2 − gap` (у середины
-//!   положительный `gap` сдвигает к левому/верхнему краю);
-//! * окно больше текста на рамку `b = border_inner_margin + border_outer_margin
-//!   + border_width` (по умолчанию 3 + 1 + 1) с каждой стороны и стоит на
-//!   `текст − b`;
-//! * `gap_*` и рамка умножаются на масштаб `Xft.dpi / 96` (на X11);
-//! * умолчания conky: `alignment = bottom_left`, `gap_x = 5`, `gap_y = 60`;
-//!   `alignment = none` — окно ставит оконный менеджер.
+//! HOW CONKY PLACES THE WINDOW (conky 1.2x sources, `update_text_area`, and
+//! the settings reference; checked 14.11.2026):
+//! * the work area is the whole monitor `xinerama_head` (0 by default; a
+//!   number outside the list means the whole X screen). Panels are NOT
+//!   subtracted;
+//! * on each axis the alignment is start, middle or end:
+//!   start: `text = edge + gap`; end: `text = edge − text width − gap`;
+//!   middle: `text = middle − text width / 2 − gap` (for the middle a
+//!   positive `gap` shifts towards the left/top edge);
+//! * the window is larger than the text by the border `b = border_inner_margin
+//!   + border_outer_margin + border_width` (3 + 1 + 1 by default) on each side
+//!   and sits at `text − b`;
+//! * `gap_*` and the border are multiplied by the scale `Xft.dpi / 96` (on X11);
+//! * conky defaults: `alignment = bottom_left`, `gap_x = 5`, `gap_y = 60`;
+//!   `alignment = none` means the window manager places the window.
 //!
-//! Wayland: conky 1.25 со слоями (KWin, wlroots, Hyprland, niri, COSMIC)
-//! цепляет окно к краю по тому же выравниванию с отступами `gap_*`, монитор
-//! выбирает сам стол (conky умеет только один вывод), поэтому на карте
-//! виджеты стоят на первом экране и между экранами не переносятся. На
-//! GNOME, Cinnamon и Pantheon под Wayland слоёв нет — окно ставит стол,
-//! карта честно говорит, что двигать нечем.
+//! Wayland: conky 1.25 with layers (KWin, wlroots, Hyprland, niri, COSMIC)
+//! anchors the window to an edge with the same alignment and `gap_*`
+//! offsets, and the desktop picks the monitor itself (conky supports only one
+//! output), so on the map widgets sit on the first screen and are not moved
+//! between screens. GNOME, Cinnamon and Pantheon under Wayland have no
+//! layers — the desktop places the window, and the map honestly says there
+//! is nothing to move it with.
 //!
-//! Размер окна: точный — у запущенного из Rexon виджета на X11 (окно из
-//! журнала conky); иначе — по снимку плитки невидимого экрана
-//! (`conky_preview`: поля известны), иначе — грубо по `minimum_width/height`.
-//! На карте приблизительный размер помечен.
+//! Window size: exact for a widget started from Rexon on X11 (the window from
+//! the conky log); otherwise from the tile snapshot of the invisible screen
+//! (`conky_preview`: the margins are known); otherwise roughly from
+//! `minimum_width/height`. An approximate size is marked on the map.
 //!
-//! Запись — тем же путём, что числа в настройках карточки: накладка
-//! `conky_overlay` (файл автора не трогается, «Как у автора» снимает всё),
-//! одно поле `position` пишет выравнивание, отступы и экран разом, чтобы
-//! conky перечитал накладку один раз.
+//! Writing goes the same way as the numbers in the card settings: the
+//! `conky_overlay` overlay (the author's file is not touched, "As the author
+//! made it" removes everything); a single `position` field writes the
+//! alignment, offsets and screen at once, so that conky rereads the overlay
+//! only once.
 
 use std::collections::BTreeMap;
 
@@ -41,25 +44,25 @@ use crate::conky_overlay::{self as ov, Overrides, Value};
 use crate::de_apply::Ctx;
 use crate::i18n::{tr, trf};
 
-/// Умолчания conky.
+/// conky defaults.
 pub const DEFAULT_ALIGNMENT: &str = "bottom_left";
 pub const DEFAULT_GAP_X: i64 = 5;
 pub const DEFAULT_GAP_Y: i64 = 60;
-/// `border_inner_margin` + `border_outer_margin` + `border_width` по
-/// умолчанию.
+/// The default `border_inner_margin` + `border_outer_margin` +
+/// `border_width`.
 pub const DEFAULT_BORDER: i64 = 3 + 1 + 1;
-/// Прилипание к краю и середине — ближе стольких точек экрана.
+/// Snapping to an edge or the middle when closer than this many screen points.
 pub const SNAP_PX: i32 = 24;
-/// Размер окна, когда о нём ничего не известно.
+/// The window size when nothing is known about it.
 pub const GUESS_SIZE: (i32, i32) = (220, 160);
-/// Отступ — в тех же пределах, что у поля в настройках.
+/// The offset, within the same limits as the field in the settings.
 const GAP_LIMIT: i64 = 10000;
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Геометрия
+//  Geometry
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Прямоугольник в точках экрана.
+/// A rectangle in screen points.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Rect {
     pub x: i32,
@@ -79,23 +82,23 @@ impl Rect {
     }
 }
 
-/// Монитор на карте.
+/// A monitor on the map.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Area {
-    /// Номер для `xinerama_head`; `None` — номер conky не понимает
-    /// (Wayland, весь экран).
+    /// The number for `xinerama_head`; `None` means conky does not understand a
+    /// number (Wayland, the whole screen).
     pub head: Option<u32>,
     pub name: String,
     pub rect: Rect,
     pub primary: bool,
 }
 
-/// Масштаб и рамка окна виджета.
+/// The scale and border of the widget window.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Metrics {
-    /// `Xft.dpi / 96` на X11, 1 на Wayland.
+    /// `Xft.dpi / 96` on X11, 1 on Wayland.
     pub scale: f64,
-    /// Рамка в единицах файла настроек (до масштаба).
+    /// The border in settings file units (before scaling).
     pub border: i64,
 }
 
@@ -115,10 +118,10 @@ impl Metrics {
     }
 }
 
-/// Положение в словах conky.
+/// The position in conky's terms.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Placement {
-    /// Полное имя выравнивания (`top_right`).
+    /// The full alignment name (`top_right`).
     pub alignment: String,
     pub gap_x: i64,
     pub gap_y: i64,
@@ -131,7 +134,7 @@ enum Axis {
     End,
 }
 
-/// Оси выравнивания: (по ширине, по высоте).
+/// The alignment axes: (horizontal, vertical).
 fn axes(alignment: &str) -> (Axis, Axis) {
     let full = ov::normalize_alignment(alignment).unwrap_or(DEFAULT_ALIGNMENT);
     let (v, h) = full.split_once('_').unwrap_or(("bottom", "left"));
@@ -162,8 +165,8 @@ fn alignment_name(h: Axis, v: Axis) -> String {
     format!("{v}_{h}")
 }
 
-/// Начало окна по одной оси: `start`/`len` — рабочая область, `size` —
-/// окно целиком, `gap` и `b` — в точках.
+/// The window start on one axis: `start`/`len` is the work area, `size` is
+/// the whole window, `gap` and `b` are in points.
 fn window_start(axis: Axis, start: i64, len: i64, size: i64, gap: i64, b: i64) -> i64 {
     let text = (size - 2 * b).max(0);
     let text_start = match axis {
@@ -174,8 +177,8 @@ fn window_start(axis: Axis, start: i64, len: i64, size: i64, gap: i64, b: i64) -
     text_start - b
 }
 
-/// Отступ по одной оси для окна, начинающегося в `pos` (обратное
-/// [`window_start`]), в точках.
+/// The offset on one axis for a window starting at `pos` (the inverse of
+/// [`window_start`]), in points.
 fn gap_px(axis: Axis, start: i64, len: i64, size: i64, pos: i64, b: i64) -> i64 {
     let text = (size - 2 * b).max(0);
     let text_start = pos + b;
@@ -186,8 +189,8 @@ fn gap_px(axis: Axis, start: i64, len: i64, size: i64, pos: i64, b: i64) -> i64 
     }
 }
 
-/// Где conky поставит окно размера `size` с положением `p` на мониторе
-/// `area`.
+/// Where conky will place a window of size `size` with position `p` on
+/// monitor `area`.
 pub fn rect_of(area: &Rect, p: &Placement, size: (i32, i32), m: &Metrics) -> Rect {
     let (h, v) = axes(&p.alignment);
     let b = m.px(m.border);
@@ -196,10 +199,10 @@ pub fn rect_of(area: &Rect, p: &Placement, size: (i32, i32), m: &Metrics) -> Rec
     Rect { x: x as i32, y: y as i32, w: size.0, h: size.1 }
 }
 
-/// Треть, в которой лежит середина окна: так выбирается угол или край,
-/// ближайший к месту, куда окно положили.
+/// The third in which the window's middle lies: this is how the corner or
+/// edge nearest to where the window was dropped is chosen.
 fn third(start: i64, len: i64, centre2: i64) -> Axis {
-    // centre2 — удвоенная середина: без дробей.
+    // centre2 is the doubled middle: no fractions.
     let rel = centre2 - 2 * start;
     if rel * 3 < 2 * len {
         Axis::Start
@@ -210,8 +213,9 @@ fn third(start: i64, len: i64, centre2: i64) -> Axis {
     }
 }
 
-/// Положение conky для окна `r` на мониторе `area`: угол или край — по
-/// трети экрана, где середина окна, отступы — от этого угла или края.
+/// The conky position for window `r` on monitor `area`: the corner or edge is
+/// chosen by the third of the screen containing the window's middle, and the
+/// offsets are measured from that corner or edge.
 pub fn placement_of(area: &Rect, r: &Rect, m: &Metrics) -> Placement {
     let (cx, cy) = r.centre();
     let h = third(area.x as i64, area.w as i64, cx);
@@ -222,8 +226,8 @@ pub fn placement_of(area: &Rect, r: &Rect, m: &Metrics) -> Placement {
     Placement { alignment: alignment_name(h, v), gap_x: m.units(gx), gap_y: m.units(gy) }
 }
 
-/// Монитор, на котором окно `r`: с наибольшим перекрытием, без перекрытия
-/// — с ближайшей серединой. `None` — мониторов нет.
+/// The monitor window `r` is on: the one with the largest overlap, or without
+/// overlap, the one with the nearest middle. `None` means there are no monitors.
 pub fn area_of(areas: &[Area], r: &Rect) -> Option<usize> {
     let best = areas.iter().enumerate().max_by_key(|(i, a)| (a.rect.overlap(r), -(*i as i64)))?;
     if best.1.rect.overlap(r) > 0 {
@@ -240,8 +244,8 @@ pub fn area_of(areas: &[Area], r: &Rect) -> Option<usize> {
         .map(|(i, _)| i)
 }
 
-/// Поставить окно в пределы монитора и, если `snap`, прилепить к краю или
-/// середине, до которых ближе [`SNAP_PX`].
+/// Keeps the window within the monitor and, if `snap`, snaps it to an edge or
+/// the middle when closer than [`SNAP_PX`].
 pub fn settle(area: &Rect, r: &Rect, snap: bool) -> Rect {
     fn axis(start: i32, len: i32, pos: i32, size: i32, snap: bool) -> i32 {
         let max = start + (len - size).max(0);
@@ -265,7 +269,7 @@ pub fn settle(area: &Rect, r: &Rect, snap: bool) -> Rect {
     }
 }
 
-/// Рамка вокруг всех мониторов (весь экран X).
+/// The frame around all monitors (the whole X screen).
 pub fn bounds(areas: &[Area]) -> Rect {
     let Some(first) = areas.first() else { return Rect::default() };
     let (mut x0, mut y0) = (first.rect.x, first.rect.y);
@@ -280,24 +284,24 @@ pub fn bounds(areas: &[Area]) -> Rect {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Виджет на карте: поля автора + выбор человека
+//  A widget on the map: the author's fields + the person's choice
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Откуда известен размер окна.
+/// Where the window size is known from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SizeFrom {
-    /// Окно запущенного виджета — точно.
+    /// The window of a running widget: exact.
     Window,
-    /// Снимок плитки — почти точно.
+    /// The tile snapshot: almost exact.
     Picture,
-    /// `minimum_width/height` или ничего — примерно.
+    /// `minimum_width/height` or nothing: approximate.
     Guess,
 }
 
-/// Положение виджета, как оно действует: `(положение, номер монитора conky,
-/// неизвестно ли)`. Неизвестно — у автора выражение или `none`; тогда
-/// показываются умолчания conky.
+/// The widget position as it is in effect: `(position, conky monitor number,
+/// whether it is unknown)`. Unknown means the author used an expression or
+/// `none`; then the conky defaults are shown.
 pub fn effective(cfg: &BTreeMap<String, Value>, o: &Overrides) -> (Placement, Option<i64>, bool) {
     let mut unknown = false;
     let alignment = match (&o.alignment, cfg.get("alignment")) {
@@ -305,7 +309,7 @@ pub fn effective(cfg: &BTreeMap<String, Value>, o: &Overrides) -> (Placement, Op
         (None, Some(Value::Str(s))) => match ov::normalize_alignment(s) {
             Some(a) => a.to_string(),
             None => {
-                unknown = true; // `none`: окно ставит оконный менеджер
+                unknown = true; // `none`: the window manager places the window
                 DEFAULT_ALIGNMENT.to_string()
             }
         },
@@ -333,7 +337,7 @@ pub fn effective(cfg: &BTreeMap<String, Value>, o: &Overrides) -> (Placement, Op
     (Placement { alignment, gap_x, gap_y }, head, unknown)
 }
 
-/// Рамка окна из полей автора (выражение — умолчание conky).
+/// The window border from the author's fields (an expression means the conky default).
 pub fn border_of(cfg: &BTreeMap<String, Value>) -> i64 {
     [("border_inner_margin", 3), ("border_outer_margin", 1), ("border_width", 1)]
         .iter()
@@ -341,7 +345,7 @@ pub fn border_of(cfg: &BTreeMap<String, Value>) -> i64 {
         .sum()
 }
 
-/// Грубый размер окна по `minimum_width/height` (в точках, с рамкой).
+/// A rough window size from `minimum_width/height` (in points, with the border).
 pub fn guess_size(cfg: &BTreeMap<String, Value>, o: &Overrides, m: &Metrics) -> (i32, i32) {
     let get = |own: Option<i64>, key: &str| own.or_else(|| cfg.get(key).and_then(Value::as_i64)).unwrap_or(0).max(0);
     let b = 2 * m.px(m.border);
@@ -350,9 +354,10 @@ pub fn guess_size(cfg: &BTreeMap<String, Value>, o: &Overrides, m: &Metrics) -> 
     (w.max(GUESS_SIZE.0 as i64) as i32, h.max(GUESS_SIZE.1 as i64) as i32)
 }
 
-/// Размер окна по снимку плитки `w×h`: плитка — окно плюс поля
-/// `conky_preview::CARD_MARGIN`, если не уменьшена. У края экрана поле
-/// обрезано — размер выйдет чуть больше настоящего.
+/// The window size from a tile snapshot `w×h`: the tile is the window plus the
+/// `conky_preview::CARD_MARGIN` margins, if it was not scaled down. At the
+/// screen edge the margin is cut off, so the size comes out slightly larger
+/// than the real one.
 pub fn size_from_card(w: u32, h: u32) -> Option<(i32, i32)> {
     let m = crate::conky_preview::CARD_MARGIN;
     if w.max(h) >= crate::conky_preview::CARD_MAX || w <= 2 * m + 4 || h <= 2 * m + 4 {
@@ -361,8 +366,8 @@ pub fn size_from_card(w: u32, h: u32) -> Option<(i32, i32)> {
     Some(((w - 2 * m) as i32, (h - 2 * m) as i32))
 }
 
-/// Монитор, на котором conky ставит виджет: `head` conky (нет — 0, вне
-/// списка — весь экран). На Wayland — первый экран.
+/// The monitor conky places the widget on: conky's `head` (none means 0,
+/// outside the list means the whole screen). On Wayland, the first screen.
 pub fn home_area(areas: &[Area], head: Option<i64>, wayland: bool) -> Option<Rect> {
     if wayland {
         return areas.first().map(|a| a.rect);
@@ -375,8 +380,8 @@ pub fn home_area(areas: &[Area], head: Option<i64>, wayland: bool) -> Option<Rec
     }
 }
 
-/// Значение поля `position` для [`ov::set_value`] — выбор человека для
-/// четырёх полей положения (null — как у автора).
+/// The value of the `position` field for [`ov::set_value`]: the person's
+/// choice for the four position fields (null means as the author made it).
 pub fn position_value(o: &Overrides) -> serde_json::Value {
     serde_json::json!({
         "alignment": o.alignment,
@@ -386,11 +391,12 @@ pub fn position_value(o: &Overrides) -> serde_json::Value {
     })
 }
 
-/// Куда перетащили: монитор, окно на нём (в пределах, с прилипанием) и
-/// новое значение поля `position`.
+/// Where it was dragged to: the monitor, the window on it (within bounds,
+/// with snapping) and the new value of the `position` field.
 ///
-/// `fixed` — монитор менять нельзя (Wayland): окно остаётся на `home`.
-/// Номер монитора пишется, только если мониторов X11 больше одного.
+/// `fixed` means the monitor cannot be changed (Wayland): the window stays on
+/// `home`. The monitor number is written only if there is more than one X11
+/// monitor.
 pub fn drop_to(areas: &[Area], home: Option<Rect>, fixed: bool, r: &Rect, snap: bool, m: &Metrics, o: &Overrides) -> Option<(Rect, serde_json::Value)> {
     let (area, head) = if fixed {
         (home?, None)
@@ -411,10 +417,10 @@ pub fn drop_to(areas: &[Area], home: Option<Rect>, fixed: bool, r: &Rect, snap: 
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Для окна: карта целиком
+//  For the window: the whole map
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Виджет на карте.
+/// A widget on the map.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct MapWidget {
     pub item_id: String,
@@ -423,17 +429,17 @@ pub struct MapWidget {
     pub rect: Rect,
     pub size_from: SizeFrom,
     pub running: bool,
-    /// Виджет открытой карточки.
+    /// The widget of the open card.
     pub focus: bool,
-    /// Где стоит, не известно (выражение у автора или `none`) — показан
-    /// по умолчаниям conky; перетаскивание задаст своё.
+    /// Where it stands is unknown (an expression from the author or `none`): it
+    /// is shown at the conky defaults; dragging sets its own position.
     pub unknown: bool,
-    /// Положение сейчас — для «Вернуть» ([`position_value`]).
+    /// The current position, for "Restore" ([`position_value`]).
     pub saved: serde_json::Value,
     pub tooltip: String,
 }
 
-/// Подписи мини-карты.
+/// Mini-map labels.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct MapTexts {
     pub title: String,
@@ -460,32 +466,32 @@ pub fn map_texts() -> MapTexts {
     }
 }
 
-/// Мини-карта.
+/// The mini-map.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct MapView {
-    /// Двигать можно.
+    /// Moving is possible.
     pub available: bool,
-    /// Почему нет.
+    /// Why not.
     pub reason: String,
     pub areas: Vec<Area>,
     pub bounds: Rect,
     pub widgets: Vec<MapWidget>,
-    /// Монитор менять нельзя (Wayland).
+    /// The monitor cannot be changed (Wayland).
     pub fixed_area: bool,
-    /// Оговорка под картой.
+    /// The caveat under the map.
     pub note: Option<String>,
     pub t: MapTexts,
 }
 
-/// Почему на этом столе двигать нечем; `None` — можно.
+/// Why there is nothing to move with on this desktop; `None` means moving is possible.
 pub fn unavailable_reason(ctx: &Ctx) -> Option<String> {
     (ctx.wayland && ov::wayland_without_layers(&ctx.de)).then(|| {
         tr("On this desktop under Wayland the desktop itself decides where the Conky window goes, so it can't be moved here.")
     })
 }
 
-/// Экран для карты со слов окна Rexon: `[{name, x, y, width, height}]`
-/// в логических точках (`Qt.application.screens`).
+/// Screens for the map as reported by the Rexon window:
+/// `[{name, x, y, width, height}]` in logical points (`Qt.application.screens`).
 pub fn parse_gui_screens(json: &str) -> Vec<Area> {
     let Ok(serde_json::Value::Array(list)) = serde_json::from_str::<serde_json::Value>(json) else {
         return Vec::new();
@@ -505,7 +511,7 @@ pub fn parse_gui_screens(json: &str) -> Vec<Area> {
         .collect()
 }
 
-/// Мониторы карты: на X11 — `xrandr` (номера conky), иначе — окно Rexon.
+/// Map monitors: on X11 from `xrandr` (conky numbers), otherwise from the Rexon window.
 pub fn areas(io: &dyn LookIo, ctx: &Ctx, gui: &[Area]) -> Vec<Area> {
     if !ctx.wayland {
         let mons = ov::monitors(io, false);
@@ -524,7 +530,7 @@ pub fn areas(io: &dyn LookIo, ctx: &Ctx, gui: &[Area]) -> Vec<Area> {
     gui.to_vec()
 }
 
-/// Масштаб conky на X11: `Xft.dpi / 96`; не узнать — 1.
+/// The conky scale on X11: `Xft.dpi / 96`; 1 if it cannot be determined.
 pub fn scale(io: &dyn LookIo, ctx: &Ctx) -> f64 {
     if ctx.wayland || !io.have("xrdb") {
         return 1.0;
@@ -533,10 +539,10 @@ pub fn scale(io: &dyn LookIo, ctx: &Ctx) -> f64 {
     ok.then(|| crate::conky_preview::parse_xft_dpi(&out)).flatten().map_or(1.0, |d| d as f64 / 96.0)
 }
 
-/// Чем узнать размер окна — подставляется (живой X11 / подделка в тестах).
+/// How to find the window size: substitutable (live X11 / a fake in tests).
 pub type SizeProbe<'a> = &'a dyn Fn(&str, bool) -> Option<((i32, i32), SizeFrom)>;
 
-/// Один файл настроек на карте. `None` — поля автора не прочитать.
+/// A single settings file on the map. `None` means the author's fields cannot be read.
 #[allow(clippy::too_many_arguments)]
 pub fn map_widget(
     io: &dyn LookIo,
@@ -574,13 +580,13 @@ pub fn map_widget(
     })
 }
 
-/// Подпись угла или края — та же, что у сетки в настройках.
+/// The corner or edge label, the same as for the grid in the settings.
 fn align_label(alignment: &str) -> String {
     ov::align_label(alignment).unwrap_or_else(|| alignment.to_string())
 }
 
-/// Карта: запущенные виджеты `running` (`(id плитки, название, файл)`) и
-/// файл открытой карточки `focus`.
+/// The map: running widgets `running` (`(tile id, title, file)`) and the file
+/// of the open card `focus`.
 #[allow(clippy::too_many_arguments)]
 pub fn map_view(
     io: &dyn LookIo,
@@ -627,15 +633,15 @@ pub fn map_view(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Живое
+//  Live
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Размер видимого окна X11 `window` на дисплее сеанса.
+/// The size of the visible X11 window `window` on the session display.
 pub fn live_window_size(window: u64) -> Option<(i32, i32)> {
     use x11_dl::xlib;
     let lib = xlib::Xlib::open().ok()?;
-    // SAFETY: дисплей открывается и закрывается здесь же; ошибка «нет
-    // такого окна» гасится своим обработчиком.
+    // SAFETY: the display is opened and closed right here; the "no such window"
+    // error is silenced by our own handler.
     unsafe {
         let dpy = (lib.XOpenDisplay)(std::ptr::null());
         if dpy.is_null() {
@@ -654,8 +660,8 @@ pub fn live_window_size(window: u64) -> Option<(i32, i32)> {
     }
 }
 
-/// Размер окна виджета вживую: окно из журнала (X11, запущен из Rexon),
-/// иначе снимок плитки.
+/// The live widget window size: the window from the log (X11, started from
+/// Rexon), otherwise the tile snapshot.
 pub fn live_size(ctx: &Ctx, conf: &str, running: bool) -> Option<((i32, i32), SizeFrom)> {
     if running && !ctx.wayland {
         let log = std::fs::read(crate::conky_log::live_log_path(ctx, conf)).ok();
@@ -669,7 +675,7 @@ pub fn live_size(ctx: &Ctx, conf: &str, running: bool) -> Option<((i32, i32), Si
     size_from_card(w, h).map(|s| (s, SizeFrom::Picture))
 }
 
-/// Запущенные виджеты для карты: `(id плитки, название, файл)`.
+/// Running widgets for the map: `(tile id, title, file)`.
 fn live_running(io: &dyn LookIo, ctx: &Ctx) -> Vec<(String, String, String)> {
     let extra = crate::conky_scan::extra_dirs_for(ctx);
     crate::conky_procs::running_confs(io, ctx)
@@ -681,12 +687,12 @@ fn live_running(io: &dyn LookIo, ctx: &Ctx) -> Vec<(String, String, String)> {
         .collect()
 }
 
-/// Живая карта: запущенные виджеты и файл `focus_conf` виджета
-/// `focus_name` (пусто — без карточки). `gui_screens` — экраны со слов
-/// окна Rexon ([`parse_gui_screens`]).
+/// The live map: running widgets and the file `focus_conf` of widget
+/// `focus_name` (empty means without a card). `gui_screens` are the screens
+/// as reported by the Rexon window ([`parse_gui_screens`]).
 pub fn live_map(focus_name: &str, focus_conf: &str, gui_screens: &str) -> MapView {
     let io = crate::animations::SystemIo;
-    // Через XWayland conky — в сеансе X11: экраны и места — как там.
+    // Through XWayland conky is in an X11 session: screens and positions are as there.
     let ctx = crate::conky_overlay::conky_ctx(&io, &Ctx::live());
     let areas = areas(&io, &ctx, &parse_gui_screens(gui_screens));
     let s = scale(&io, &ctx);
@@ -698,12 +704,12 @@ pub fn live_map(focus_name: &str, focus_conf: &str, gui_screens: &str) -> MapVie
     map_view(&io, &ctx, areas, s, &running, focus, &probe)
 }
 
-/// Человек положил виджет (файл `conf` виджета `name`) в `r` (точки
-/// экрана): выбрать угол или край, пересчитать отступы, записать накладку
-/// и применить — как числа в настройках.
+/// The person dropped the widget (file `conf` of widget `name`) at `r`
+/// (screen points): choose the corner or edge, recompute the offsets, write
+/// the overlay and apply it, like the numbers in the settings.
 pub fn live_move(name: &str, conf: &str, r: Rect, snap: bool, gui_screens: &str) -> (bool, String) {
     let io = crate::animations::SystemIo;
-    // Через XWayland conky — в сеансе X11: экраны и места — как там.
+    // Through XWayland conky is in an X11 session: screens and positions are as there.
     let ctx = crate::conky_overlay::conky_ctx(&io, &Ctx::live());
     if let Some(why) = unavailable_reason(&ctx) {
         return (false, why);
@@ -722,7 +728,7 @@ pub fn live_move(name: &str, conf: &str, r: Rect, snap: bool, gui_screens: &str)
     ov::live_set(name, conf, "position", &value)
 }
 
-/// «Вернуть»: положение файла `conf` — как было (`saved` из карты).
+/// "Restore": the position of file `conf` as it was (`saved` from the map).
 pub fn live_restore(name: &str, conf: &str, saved: &serde_json::Value) -> (bool, String) {
     ov::live_set(name, conf, "position", saved)
 }
@@ -739,16 +745,16 @@ mod tests {
 
     #[test]
     fn rect_follows_conky_formula() {
-        let m = Metrics::default(); // рамка 5
-        // Левый верх: окно = gap − рамка.
+        let m = Metrics::default(); // border 5
+        // Top left: window = gap − border.
         assert_eq!(rect_of(&SCREEN, &p("top_left", 20, 30), (200, 100), &m), Rect { x: 15, y: 25, w: 200, h: 100 });
-        // Правый низ: правый край окна = край − gap + рамка.
+        // Bottom right: the window's right edge = edge − gap + border.
         let r = rect_of(&SCREEN, &p("br", 20, 30), (200, 100), &m);
         assert_eq!((r.x + r.w, r.y + r.h), (1920 - 20 + 5, 1080 - 30 + 5));
-        // Середина: положительный gap — влево/вверх, рамка не влияет.
+        // Middle: a positive gap goes left/up, the border has no effect.
         let r = rect_of(&SCREEN, &p("middle_middle", 10, 0), (200, 100), &m);
         assert_eq!((r.x, r.y), (960 - 100 - 10, 540 - 50));
-        // Масштаб 2: gap и рамка вдвое.
+        // Scale 2: gap and border are doubled.
         let m2 = Metrics { scale: 2.0, border: 5 };
         assert_eq!(rect_of(&SCREEN, &p("top_left", 20, 30), (200, 100), &m2), Rect { x: 30, y: 50, w: 200, h: 100 });
     }
@@ -772,15 +778,15 @@ mod tests {
     #[test]
     fn placement_picks_nearest_corner_and_rounds_with_scale() {
         let m = Metrics { scale: 1.5, border: 0 };
-        // Правая треть, низ: правый нижний угол, отступы от него.
+        // Right third, bottom: the bottom right corner, offsets from it.
         let r = Rect { x: 1600, y: 900, w: 200, h: 100 };
         let pl = placement_of(&SCREEN, &r, &m);
         assert_eq!(pl.alignment, "bottom_right");
         assert_eq!((pl.gap_x, pl.gap_y), ((120.0f64 / 1.5).round() as i64, (80.0f64 / 1.5).round() as i64));
-        // Середина экрана — центр, отступы ноль.
+        // The middle of the screen: center, zero offsets.
         let r = Rect { x: 860, y: 490, w: 200, h: 100 };
         assert_eq!(placement_of(&SCREEN, &r, &Metrics { scale: 1.0, border: 0 }), p("middle_middle", 0, 0));
-        // Левая треть посередине по высоте.
+        // The left third, vertically in the middle.
         let r = Rect { x: 10, y: 500, w: 100, h: 50 };
         assert_eq!(placement_of(&SCREEN, &r, &m).alignment, "middle_left");
     }
@@ -789,14 +795,14 @@ mod tests {
     fn settle_clamps_and_snaps() {
         let r = Rect { x: -50, y: 2000, w: 200, h: 100 };
         assert_eq!(settle(&SCREEN, &r, false), Rect { x: 0, y: 980, w: 200, h: 100 });
-        // Близко к краю — прилип; далеко — нет; близко к середине — в середину.
+        // Close to an edge: snapped; far away: not; close to the middle: to the middle.
         assert_eq!(settle(&SCREEN, &Rect { x: 15, y: 300, w: 200, h: 100 }, true).x, 0);
         assert_eq!(settle(&SCREEN, &Rect { x: 1700, y: 300, w: 200, h: 100 }, true).x, 1720);
         assert_eq!(settle(&SCREEN, &Rect { x: 100, y: 300, w: 200, h: 100 }, true).x, 100);
         assert_eq!(settle(&SCREEN, &Rect { x: 870, y: 300, w: 200, h: 100 }, true).x, 860);
-        // Без прилипания (клавиатура) — точно куда сказали.
+        // Without snapping (keyboard): exactly where told.
         assert_eq!(settle(&SCREEN, &Rect { x: 15, y: 300, w: 200, h: 100 }, false).x, 15);
-        // Окно больше экрана — к началу.
+        // A window larger than the screen goes to the start.
         assert_eq!(settle(&SCREEN, &Rect { x: 100, y: 0, w: 3000, h: 100 }, true).x, 0);
     }
 
@@ -831,7 +837,7 @@ mod tests {
         assert_eq!(v["alignment"], "top_right");
         assert_eq!(v["xinerama_head"], 1);
         assert_eq!((v["gap_x"].as_i64(), v["gap_y"].as_i64()), (Some(5), Some(5)), "край окна = край экрана: gap = рамка");
-        // Один монитор — номер не пишется; Wayland — экран не меняется.
+        // One monitor: no number is written; Wayland: the screen does not change.
         let (_, v) = drop_to(&a[..1], None, false, &Rect { x: 0, y: 0, w: 10, h: 10 }, false, &m, &o).unwrap();
         assert!(v["xinerama_head"].is_null());
         let (placed, v) = drop_to(&a, Some(SCREEN), true, &r, false, &m, &o).unwrap();
@@ -881,7 +887,7 @@ mod tests {
         ov::set_value(&mut o, "position", &v).unwrap();
         assert_eq!(o.alignment.as_deref(), Some("top_right"));
         assert_eq!((o.gap_x, o.gap_y, o.xinerama_head, o.bg_none), (Some(40), None, Some(1), Some(true)));
-        // «Вернуть»: прежние значения, null — как у автора.
+        // "Restore": the previous values; null means as the author made it.
         let before = position_value(&Overrides::default());
         ov::set_value(&mut o, "position", &before).unwrap();
         assert_eq!((o.alignment.clone(), o.gap_x, o.xinerama_head), (None, None, None));

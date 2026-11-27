@@ -1,40 +1,42 @@
-//! extensions.gnome.org (EGO) — магазин раздела «Расширения GNOME».
+//! extensions.gnome.org (EGO) — the store of the "GNOME Extensions" section.
 //!
-//! Свой клиент по официальной схеме API v1 сайта (OpenAPI 3:
-//! <https://extensions.gnome.org/api/schema/?format=json>, страница
-//! <https://extensions.gnome.org/api/docs/>) и собственным замерам ответов
-//! (08.11 и 09.11.2026). Маршруты:
+//! Our own client following the site's official API v1 schema (OpenAPI 3:
+//! <https://extensions.gnome.org/api/schema/?format=json>, page
+//! <https://extensions.gnome.org/api/docs/>) and our own measurements of the
+//! answers (08.11 and 09.11.2026). Routes:
 //!
-//! * листинг `GET /api/v1/extensions/` — `ordering`, `page`, `page_size`,
-//!   `status`, `shell_version`, `uuid` (можно много раз);
-//! * поиск `GET /api/v1/extensions/search/{строка}/` — те же, кроме
-//!   `status` и `uuid` (у маршрута их нет);
-//! * карточка `GET /api/v1/extensions/{uuid}/`;
-//! * выпуски `GET /api/v1/extensions/{uuid}/versions/` (от старых к новым,
-//!   страницами), один выпуск — `…/versions/{N}/?format=json|zip`.
+//! * listing `GET /api/v1/extensions/` — `ordering`, `page`, `page_size`,
+//!   `status`, `shell_version`, `uuid` (may be repeated);
+//! * search `GET /api/v1/extensions/search/{string}/` — the same, except
+//!   `status` and `uuid` (the route does not have them);
+//! * card `GET /api/v1/extensions/{uuid}/`;
+//! * releases `GET /api/v1/extensions/{uuid}/versions/` (oldest to newest, in
+//!   pages), a single release — `…/versions/{N}/?format=json|zip`.
 //!
-//! Что здесь живёт и почему так:
+//! What lives here and why it is this way:
 //!
-//! * **Ставит не Rexon, а GNOME.** Карточка — обычный [`ThemeItem`]
-//!   категории 914 с ПУСТЫМИ `download_links`: установку просит оболочка
-//!   (`InstallRemoteExtension`), она сама берёт с сайта сборку под себя.
-//!   Адрес zip выпуска ([`release_zip_url`]) — только для запасного пути,
-//!   когда оболочки нет.
-//! * **Только одобренное.** Листинг уходит с `status=3`; у выпусков
-//!   «версия для вас» выбирается только среди активных ([`STATUS_ACTIVE`]).
-//! * **Совместимость считает сервер.** С фильтром «только для вашей версии»
-//!   в запрос добавляется `shell_version` в виде сайта
-//!   ([`site_shell_version`]); без фильтра несовместимые помечаются вторым
-//!   запросом — листингом по пачке uuid ([`compat_batch_urls`], до
-//!   [`UUID_BATCH`] за раз).
-//! * **Вежливость.** Опубликованного лимита у сайта нет, но одна страница —
-//!   один запрос, ответы держатся в памяти сессии ([`Gate`]: листинги
-//!   [`LIST_TTL_SECS`], карточки и выпуски [`DETAIL_TTL_SECS`]), после ответа
-//!   5xx сайт не трогаем [`FAIL_BACKOFF_SECS`] (кроме «Обновить»).
-//! * **Картинки — только с самого сайта** по https ([`ego_https`]):
-//!   скриншот и значок приходят адресом из ответа и уходят в загрузчик
-//!   картинок как есть. Описания и скриншоты принадлежат авторам — Rexon их
-//!   только показывает.
+//! * **It is GNOME, not Rexon, that installs.** A card is an ordinary
+//!   [`ThemeItem`] of category 914 with EMPTY `download_links`: installation is
+//!   requested from the shell (`InstallRemoteExtension`), and it fetches the
+//!   build for itself from the site. The release zip address
+//!   ([`release_zip_url`]) is only for the fallback path when there is no shell.
+//! * **Only approved items.** The listing goes out with `status=3`; among
+//!   releases the "version for you" is chosen only from active ones
+//!   ([`STATUS_ACTIVE`]).
+//! * **The server computes compatibility.** With the "only for your version"
+//!   filter, `shell_version` in the site's form ([`site_shell_version`]) is
+//!   added to the request; without the filter, incompatible ones are marked by a
+//!   second request — a listing by a batch of uuids ([`compat_batch_urls`], up to
+//!   [`UUID_BATCH`] at a time).
+//! * **Politeness.** The site has no published limit, but one page is one
+//!   request, answers are kept in the session's memory ([`Gate`]: listings for
+//!   [`LIST_TTL_SECS`], cards and releases for [`DETAIL_TTL_SECS`]), and after
+//!   a 5xx answer we leave the site alone for [`FAIL_BACKOFF_SECS`] (except for
+//!   "Refresh").
+//! * **Pictures — only from the site itself** over https ([`ego_https`]): the
+//!   screenshot and icon come as an address from the answer and go to the
+//!   picture loader as is. Descriptions and screenshots belong to their authors
+//!   — Rexon only shows them.
 
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::sync::{Mutex, OnceLock};
@@ -46,79 +48,79 @@ use crate::i18n::{n_, tr, trf};
 use crate::models::ThemeItem;
 use crate::net::NetError;
 
-/// Адрес сайта.
+/// The site address.
 pub const HOME_URL: &str = "https://extensions.gnome.org";
-/// Корень API v1.
+/// Root of API v1.
 pub const API_BASE: &str = "https://extensions.gnome.org/api/v1";
-/// Ключ источника в переключателе «Магазин:».
+/// Source key in the "Store:" switch.
 pub const SOURCE_KEY: &str = "ego";
-/// Префикс id карточки: `ego:<uuid>`.
+/// Card id prefix: `ego:<uuid>`.
 pub const ID_PREFIX: &str = "ego:";
-/// Поставщик в журнале установленного.
+/// Provider in the installed-items journal.
 pub const PROVIDER_ID: &str = "ego";
-/// Разделы, где EGO — магазин.
+/// Sections where EGO is the store.
 pub const SECTIONS: &[&str] = &["gnomeext"];
-/// Категория раздела «Расширения GNOME» (`categories::CATEGORIES`).
+/// Category of the "GNOME Extensions" section (`categories::CATEGORIES`).
 pub const CATEGORY_ID: i64 = 914;
-/// Карточек на страницу витрины — общий размер страницы вкладки. Сервер
-/// принимает любой `page_size`, поэтому страница Rexon = страница сервера.
+/// Cards per storefront page — the tab's shared page size. The server accepts
+/// any `page_size`, so a Rexon page = a server page.
 pub const PAGE_SIZE: i64 = crate::appearance_page::PAGE_SIZE as i64;
-/// Выпусков на страницу при листании версий (сервер отдаёт до 100).
+/// Releases per page when paging through versions (the server returns up to 100).
 pub const VERSIONS_PAGE_SIZE: i64 = 100;
-/// Больше стольких страниц выпусков не листаем (тысяча выпусков — с
-/// огромным запасом: у самых старых расширений их около ста).
+/// We do not page through more release pages than this (a thousand releases —
+/// with a huge margin: the oldest extensions have about a hundred).
 pub const VERSIONS_MAX_PAGES: usize = 10;
-/// Сколько uuid спрашивать одним листингом при сверке совместимости.
+/// How many uuids to ask for in one listing when checking compatibility.
 pub const UUID_BATCH: usize = 50;
-/// `status` одобренного (активного) выпуска: 0 — не проверен, 1 —
-/// отклонён, 2 — неактивен, 3 — активен, 4 — ждёт автора.
+/// `status` of an approved (active) release: 0 — unreviewed, 1 — rejected,
+/// 2 — inactive, 3 — active, 4 — waiting for the author.
 pub const STATUS_ACTIVE: i64 = 3;
-/// Сколько живёт в памяти ответ листинга или поиска.
+/// How long a listing or search answer lives in memory.
 pub const LIST_TTL_SECS: u64 = 10 * 60;
-/// Сколько живут в памяти карточка и выпуски.
+/// How long a card and releases live in memory.
 pub const DETAIL_TTL_SECS: u64 = 60 * 60;
-/// Сколько не трогать сайт после ответа 5xx (кроме «Обновить»).
+/// How long to leave the site alone after a 5xx answer (except "Refresh").
 pub const FAIL_BACKOFF_SECS: u64 = 2 * 60;
-/// Сколько ответов держать в памяти (старые вытесняются).
+/// How many answers to keep in memory (old ones are evicted).
 pub const CACHE_MAX_ENTRIES: usize = 96;
-/// Таймаут запроса, секунды.
+/// Request timeout, seconds.
 pub const TIMEOUT_SECS: u64 = 15;
-/// Больше этого ответ не читаем (страница из 100 выпусков — ~40 КБ).
+/// We do not read answers larger than this (a page of 100 releases is ~40 KB).
 pub const MAX_RESPONSE_BYTES: usize = 2 << 20;
 
-/// Есть ли EGO в разделе `section`.
+/// Whether section `section` has EGO.
 pub fn has_section(section: &str) -> bool {
     SECTIONS.contains(&section)
 }
 
-/// Карточка отсюда?
+/// Is the card from here?
 pub fn is_item_id(id: &str) -> bool {
     id.starts_with(ID_PREFIX)
 }
 
-/// Подпись чипа «Магазин:».
+/// Label of the "Store:" chip.
 pub fn chip_label() -> String {
     "extensions.gnome.org".to_string()
 }
 
-/// Подсказка чипа.
+/// Tooltip of the chip.
 pub fn chip_tooltip() -> String {
     tr("The official GNOME extensions site. GNOME itself installs the extension you pick \
         and asks you to confirm.")
 }
 
-/// Подсказка строки поиска.
+/// Placeholder of the search line.
 pub fn search_placeholder() -> String {
     tr("🔍 Search GNOME extensions…")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Сортировки
+//  Sort orders
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Сортировки EGO: `(подпись, ключ)`. «Новые» и «Загрузки» — те же ключи,
-/// что у KDE Store (`appearance_page::SORTS`), чтобы выбор переживал смену
-/// магазина.
+/// EGO sort orders: `(label, key)`. "Newest" and "Downloads" are the same keys
+/// as in the KDE Store (`appearance_page::SORTS`), so the choice survives a
+/// change of store.
 pub const SORTS: &[(&str, &str)] = &[
     (n_("🔥 Popular"), "popular"),
     (n_("⬇️ Most Downloaded"), "down"),
@@ -126,13 +128,13 @@ pub const SORTS: &[(&str, &str)] = &[
     (n_("🆕 Newest"), "new"),
 ];
 
-/// Ключ сортировки, который действует: незнакомый EGO («Лучшие», «По
-/// алфавиту» у KDE Store) — «Популярные», как витрина самого сайта.
+/// The sort key that is in effect: one unknown to EGO ("Best", "Alphabetical"
+/// in the KDE Store) becomes "Popular", like the site's own storefront.
 pub fn effective_sort(sort: &str) -> &'static str {
     SORTS.iter().map(|(_, k)| *k).find(|k| *k == sort).unwrap_or("popular")
 }
 
-/// Параметр `ordering` для ключа Rexon.
+/// The `ordering` parameter for a Rexon key.
 pub fn api_ordering(sort: &str) -> &'static str {
     match effective_sort(sort) {
         "down" => "-downloads",
@@ -143,23 +145,24 @@ pub fn api_ordering(sort: &str) -> &'static str {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Версия оболочки
+//  Shell version
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Версия GNOME Shell так, как её считает сайт: с GNOME 40 — главный номер
-/// (`51.1` → 51), у 3.x — пара (`3.38.4` → 3.38). Предвыпуск (`51.beta`,
-/// `51.alpha.2`, `51.rc`) помнится словом: сайт принимает `51.beta`.
+/// The GNOME Shell version as the site counts it: since GNOME 40 — the major
+/// number (`51.1` → 51), for 3.x — a pair (`3.38.4` → 3.38). A pre-release
+/// (`51.beta`, `51.alpha.2`, `51.rc`) is remembered as a word: the site accepts
+/// `51.beta`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShellVersion {
     pub major: i64,
-    /// Только у 3.x.
+    /// Only for 3.x.
     pub minor: Option<i64>,
-    /// `alpha` / `beta` / `rc`, если оболочка — предвыпуск.
+    /// `alpha` / `beta` / `rc`, if the shell is a pre-release.
     pub pre: Option<String>,
 }
 
-/// Разобрать `ShellVersion` (свойство D-Bus или `gnome-shell --version`:
-/// «GNOME Shell 51.1» тоже годится). Мусор — `None`.
+/// Parse `ShellVersion` (a D-Bus property or `gnome-shell --version`: "GNOME
+/// Shell 51.1" also works). Garbage — `None`.
 pub fn parse_shell_version(raw: &str) -> Option<ShellVersion> {
     let s = raw.trim();
     let s = s.rsplit(' ').next().unwrap_or(s);
@@ -189,7 +192,7 @@ pub fn parse_shell_version(raw: &str) -> Option<ShellVersion> {
     Some(ShellVersion { major, minor: None, pre })
 }
 
-/// Значение параметра `shell_version` для сайта: `51`, `51.beta`, `3.38`.
+/// Value of the `shell_version` parameter for the site: `51`, `51.beta`, `3.38`.
 pub fn site_shell_version(v: &ShellVersion) -> String {
     match (&v.minor, &v.pre) {
         (Some(minor), _) => format!("{}.{minor}", v.major),
@@ -198,8 +201,8 @@ pub fn site_shell_version(v: &ShellVersion) -> String {
     }
 }
 
-/// Подпись версии для человека: «51», «3.38» (предвыпуск — без слова: в
-/// подписях «Не поддерживает GNOME 51» оно только мешает).
+/// Version label for the person: "51", "3.38" (a pre-release — without the
+/// word: in labels like "Does not support GNOME 51" it only gets in the way).
 pub fn shell_label(v: &ShellVersion) -> String {
     match v.minor {
         Some(minor) => format!("{}.{minor}", v.major),
@@ -208,10 +211,10 @@ pub fn shell_label(v: &ShellVersion) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Адреса
+//  Addresses
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Кодирование значения параметра запроса и куска пути.
+/// Encoding a query parameter value and a path piece.
 fn quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
@@ -223,8 +226,9 @@ fn quote(s: &str) -> String {
     out
 }
 
-/// Похоже ли на uuid расширения (`dash-to-dock@micxgx.gmail.com`). Из чужого
-/// ответа и из id карточки в адрес попадает только такое.
+/// Whether it looks like an extension uuid (`dash-to-dock@micxgx.gmail.com`).
+/// Only such strings from a foreign answer and from a card id get into an
+/// address.
 pub fn valid_uuid(uuid: &str) -> bool {
     !uuid.is_empty()
         && uuid.len() <= 200
@@ -233,12 +237,12 @@ pub fn valid_uuid(uuid: &str) -> bool {
         && uuid.bytes().all(|b| b.is_ascii_alphanumeric() || b"._@+-".contains(&b))
 }
 
-/// Адрес страницы витрины. `page` — с нуля (как у вкладки), `shell` —
-/// значение [`site_shell_version`] или `None` («показать все»). Пустой
-/// запрос — листинг одобренного, иначе маршрут поиска.
+/// Address of a storefront page. `page` — from zero (as in the tab), `shell` —
+/// the value of [`site_shell_version`] or `None` ("show all"). An empty query
+/// — the listing of approved items, otherwise the search route.
 pub fn listing_url(query: &str, sort: &str, page: i64, size: i64, shell: Option<&str>) -> String {
-    // Косая черта в куске пути сервер путает с разделителем — заменяем
-    // пробелом: искать по ней смысла нет.
+    // The server confuses a slash in a path piece with a separator — we
+    // replace it with a space: there is no point in searching by it.
     let q = query.replace('/', " ");
     let q = q.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut url = if q.is_empty() {
@@ -259,9 +263,9 @@ pub fn listing_url(query: &str, sort: &str, page: i64, size: i64, shell: Option<
     url
 }
 
-/// Адреса сверки совместимости: листинги по пачкам uuid (не больше
-/// [`UUID_BATCH`] в каждом) с тем же `shell_version`. Ответ каждого —
-/// те из пачки, что подходят. Негодные uuid и повторы выпадают.
+/// Addresses of the compatibility check: listings by batches of uuids (no more
+/// than [`UUID_BATCH`] in each) with the same `shell_version`. Each answer is
+/// those from the batch that fit. Invalid uuids and duplicates drop out.
 pub fn compat_batch_urls(uuids: &[&str], shell: &str) -> Vec<String> {
     let mut seen = HashSet::new();
     let clean: Vec<&str> = uuids.iter().copied().filter(|u| valid_uuid(u) && seen.insert(*u)).collect();
@@ -278,12 +282,12 @@ pub fn compat_batch_urls(uuids: &[&str], shell: &str) -> Vec<String> {
         .collect()
 }
 
-/// Адрес карточки.
+/// Card address.
 pub fn detail_url(uuid: &str) -> Option<String> {
     valid_uuid(uuid).then(|| format!("{API_BASE}/extensions/{}/", quote(uuid)))
 }
 
-/// Адрес страницы выпусков (`page` — с единицы, как у сервера).
+/// Address of a page of releases (`page` — from one, as on the server).
 pub fn versions_url(uuid: &str, page: i64) -> Option<String> {
     valid_uuid(uuid).then(|| {
         format!(
@@ -294,23 +298,23 @@ pub fn versions_url(uuid: &str, page: i64) -> Option<String> {
     })
 }
 
-/// Адрес архива выпуска — только для запасного пути без оболочки.
+/// Address of a release archive — only for the fallback path without a shell.
 pub fn release_zip_url(uuid: &str, version: i64) -> Option<String> {
     (valid_uuid(uuid) && version > 0)
         .then(|| format!("{API_BASE}/extensions/{}/versions/{version}/?format=zip", quote(uuid)))
 }
 
-/// id карточки.
+/// Card id.
 pub fn item_id(uuid: &str) -> String {
     format!("{ID_PREFIX}{uuid}")
 }
 
-/// uuid из id карточки.
+/// uuid from a card id.
 pub fn parse_item_id(id: &str) -> Option<&str> {
     id.strip_prefix(ID_PREFIX).filter(|u| valid_uuid(u))
 }
 
-/// Адрес только с самого сайта по https — иначе пусто.
+/// An address only from the site itself over https — otherwise empty.
 pub fn ego_https(url: &str) -> String {
     let url = url.trim();
     if url.starts_with("https://extensions.gnome.org/") && !url.contains("..") && !url.contains(char::is_whitespace)
@@ -321,7 +325,7 @@ pub fn ego_https(url: &str) -> String {
     }
 }
 
-/// Внешняя ссылка (домашняя страница, пожертвования): только http(s).
+/// An external link (home page, donations): only http(s).
 fn web_link(url: &str) -> String {
     let url = url.trim();
     if (url.starts_with("https://") || url.starts_with("http://")) && !url.contains(char::is_whitespace) {
@@ -331,8 +335,8 @@ fn web_link(url: &str) -> String {
     }
 }
 
-/// Страница расширения на сайте: из `link` ответа (`/extension/9419/x/`),
-/// если он похож на путь сайта, иначе из id.
+/// The extension's page on the site: from the answer's `link`
+/// (`/extension/9419/x/`) if it looks like a site path, otherwise from the id.
 pub fn page_url(e: &Extension) -> String {
     let link = e.link.trim();
     let safe = link.starts_with("/extension/")
@@ -348,10 +352,10 @@ pub fn page_url(e: &Extension) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Разбор ответов
+//  Parsing answers
 // ═══════════════════════════════════════════════════════════════════════
 
-/// `null` и отсутствие поля — одно и то же: значение по умолчанию.
+/// `null` and a missing field are the same thing: the default value.
 fn nullable<'de, D, T>(d: D) -> Result<T, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -360,7 +364,8 @@ where
     Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
 }
 
-/// Целое из ответа: число (в том числе дробное) или строка; прочее — 0.
+/// An integer from the answer: a number (including a fractional one) or a
+/// string; anything else — 0.
 fn lenient_i64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
     Ok(match Value::deserialize(d)? {
         Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)).unwrap_or(0),
@@ -369,7 +374,7 @@ fn lenient_i64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i64, D::Error> 
     })
 }
 
-/// Дробное из ответа; прочее — 0.
+/// A float from the answer; anything else — 0.
 fn lenient_f64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
     Ok(match Value::deserialize(d)? {
         Value::Number(n) => n.as_f64().unwrap_or(0.0),
@@ -378,7 +383,7 @@ fn lenient_f64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<f64, D::Error> 
     })
 }
 
-/// Список строк; `null`, не-строки внутри и не-список — терпим.
+/// A list of strings; `null`, non-strings inside and a non-list are tolerated.
 fn lenient_strings<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
     Ok(match Value::deserialize(d)? {
         Value::Array(a) => a.into_iter().filter_map(|v| v.as_str().map(str::to_string)).collect(),
@@ -386,7 +391,7 @@ fn lenient_strings<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>
     })
 }
 
-/// Автор расширения.
+/// The extension's author.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Creator {
@@ -398,7 +403,7 @@ pub struct Creator {
     pub display_name: String,
 }
 
-/// Расширение из листинга, поиска или карточки (поля у всех трёх одни).
+/// An extension from a listing, a search or a card (all three have the same fields).
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Extension {
@@ -424,23 +429,23 @@ pub struct Extension {
     pub screenshot: String,
     #[serde(deserialize_with = "nullable")]
     pub icon: String,
-    /// Средняя оценка 0…5.
+    /// Average rating 0…5.
     #[serde(deserialize_with = "lenient_f64")]
     pub rating: f64,
-    /// Число голосов.
+    /// Number of votes.
     #[serde(deserialize_with = "lenient_i64")]
     pub rated: i64,
-    /// Домашняя страница автора.
+    /// The author's home page.
     #[serde(deserialize_with = "nullable")]
     pub url: String,
     #[serde(deserialize_with = "lenient_strings")]
     pub donation_urls: Vec<String>,
-    /// Путь страницы на сайте.
+    /// Path of the page on the site.
     #[serde(deserialize_with = "nullable")]
     pub link: String,
 }
 
-/// Версия GNOME в выпуске: `minor`/`point` = −1 — «любая».
+/// GNOME version in a release: `minor`/`point` = −1 — "any".
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct ReleaseShell {
@@ -453,7 +458,7 @@ pub struct ReleaseShell {
 }
 
 impl ReleaseShell {
-    /// Подходит ли оболочке: с 40 — по главному номеру, у 3.x — по паре.
+    /// Whether it fits the shell: since 40 — by the major number, for 3.x — by the pair.
     pub fn matches(&self, v: &ShellVersion) -> bool {
         if self.major != v.major {
             return false;
@@ -465,7 +470,7 @@ impl ReleaseShell {
     }
 }
 
-/// Выпуск расширения.
+/// A release of an extension.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Release {
@@ -484,7 +489,7 @@ pub struct Release {
 }
 
 impl Release {
-    /// Подпись выпуска: имя автора («5.1.0»), иначе номер сайта.
+    /// Release label: the author's name ("5.1.0"), otherwise the site's number.
     pub fn label(&self) -> String {
         let name = self.version_name.trim();
         if name.is_empty() {
@@ -494,13 +499,13 @@ impl Release {
         }
     }
 
-    /// Подходит ли оболочке.
+    /// Whether it fits the shell.
     pub fn supports(&self, v: &ShellVersion) -> bool {
         self.shell_versions.iter().any(|s| s.matches(v))
     }
 }
 
-/// Страница ответа сервера: `{count, next, previous, results}`.
+/// A server answer page: `{count, next, previous, results}`.
 #[derive(Deserialize)]
 struct PageBody {
     #[serde(default, deserialize_with = "lenient_i64")]
@@ -510,17 +515,17 @@ struct PageBody {
     results: Vec<Value>,
 }
 
-/// Страница расширений.
+/// A page of extensions.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ExtPage {
     pub items: Vec<Extension>,
-    /// Сколько всего по запросу.
+    /// How many there are in total for the query.
     pub total: i64,
-    /// Есть ли следующая страница.
+    /// Whether there is a next page.
     pub has_more: bool,
 }
 
-/// Страница выпусков.
+/// A page of releases.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ReleasePage {
     pub items: Vec<Release>,
@@ -532,8 +537,8 @@ fn parse_page(body: &[u8]) -> Result<PageBody, String> {
     serde_json::from_slice(body).map_err(|e| format!("EGO: {e}"))
 }
 
-/// Разобрать листинг или поиск. Записи без годного uuid выпадают по одной,
-/// не роняя страницу.
+/// Parse a listing or search. Entries without a valid uuid drop out one by one
+/// without breaking the page.
 pub fn parse_listing(body: &[u8]) -> Result<ExtPage, String> {
     let p = parse_page(body)?;
     let items = p
@@ -545,7 +550,7 @@ pub fn parse_listing(body: &[u8]) -> Result<ExtPage, String> {
     Ok(ExtPage { items, total: p.count, has_more: p.next.is_some_and(|n| !n.is_empty()) })
 }
 
-/// Разобрать карточку.
+/// Parse a card.
 pub fn parse_detail(body: &[u8]) -> Result<Extension, String> {
     let e: Extension = serde_json::from_slice(body).map_err(|e| format!("EGO: {e}"))?;
     if !valid_uuid(&e.uuid) {
@@ -554,7 +559,7 @@ pub fn parse_detail(body: &[u8]) -> Result<Extension, String> {
     Ok(e)
 }
 
-/// Разобрать страницу выпусков. Выпуски без номера выпадают.
+/// Parse a page of releases. Releases without a number drop out.
 pub fn parse_versions(body: &[u8]) -> Result<ReleasePage, String> {
     let p = parse_page(body)?;
     let items = p
@@ -567,11 +572,12 @@ pub fn parse_versions(body: &[u8]) -> Result<ReleasePage, String> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Совместимость и версии
+//  Compatibility and versions
 // ═══════════════════════════════════════════════════════════════════════
 
-/// «Версия для вас»: самый новый АКТИВНЫЙ выпуск, где заявлена текущая
-/// оболочка. Нет такого — `None` (ставить можно, но с предупреждением).
+/// "Version for you": the newest ACTIVE release that declares the current
+/// shell. If there is none — `None` (installing is possible, but with a
+/// warning).
 pub fn release_for<'a>(releases: &'a [Release], v: &ShellVersion) -> Option<&'a Release> {
     releases
         .iter()
@@ -579,8 +585,9 @@ pub fn release_for<'a>(releases: &'a [Release], v: &ShellVersion) -> Option<&'a 
         .max_by_key(|r| r.version)
 }
 
-/// Место версии GNOME в общем ряду выпусков: …3.36, 3.38, 40, 41… идут
-/// подряд. Нечётные 3.x (разработческие) соседей не имеют.
+/// Position of a GNOME version in the overall release sequence: …3.36, 3.38,
+/// 40, 41… follow one another. Odd 3.x (development) versions have no
+/// neighbors.
 fn shell_position(s: &ReleaseShell) -> Option<i64> {
     match s.major {
         3 if s.minor >= 0 && s.minor % 2 == 0 => Some(s.minor / 2),
@@ -597,12 +604,12 @@ fn shell_text(s: &ReleaseShell) -> String {
     }
 }
 
-/// Список версий GNOME, заявленных активными выпусками (нет активных —
-/// всеми), сжатый в промежутки: «3.36–41, 45, 47–50».
+/// The list of GNOME versions declared by active releases (if there are no
+/// active ones — by all), compressed into ranges: "3.36–41, 45, 47–50".
 pub fn supported_summary(releases: &[Release]) -> String {
     let active: Vec<&Release> = releases.iter().filter(|r| r.status == STATUS_ACTIVE).collect();
     let pool: Vec<&Release> = if active.is_empty() { releases.iter().collect() } else { active };
-    // (порядок, позиция в ряду, текст): 3.x раньше 40+.
+    // (order, position in the sequence, text): 3.x before 40+.
     let mut set: BTreeSet<(i64, i64, Option<i64>, String)> = BTreeSet::new();
     for r in pool {
         for s in &r.shell_versions {
@@ -614,7 +621,7 @@ pub fn supported_summary(releases: &[Release]) -> String {
         }
     }
     let mut parts: Vec<String> = Vec::new();
-    let mut run: Option<(String, String, i64)> = None; // (начало, конец, позиция конца)
+    let mut run: Option<(String, String, i64)> = None; // (start, end, position of the end)
     for (_, _, pos, text) in set {
         match (&mut run, pos) {
             (Some((_, end, last)), Some(p)) if p == *last + 1 => {
@@ -638,9 +645,9 @@ pub fn supported_summary(releases: &[Release]) -> String {
     parts.join(", ")
 }
 
-/// Строки диалога «Поддерживаемые версии GNOME»: от новых к старым, у
-/// каждой — подпись выпуска, его версии GNOME и отметки «для вас» и
-/// «установлено» (`installed` — номер сайта из сведений оболочки).
+/// Rows of the "Supported GNOME versions" dialog: newest to oldest, each with
+/// the release label, its GNOME versions and the "for you" and "installed"
+/// marks (`installed` — the site number from the shell's information).
 pub fn release_rows(releases: &[Release], v: Option<&ShellVersion>, installed: Option<i64>) -> Vec<Value> {
     let chosen = v.and_then(|v| release_for(releases, v)).map(|r| r.version);
     let mut rows: Vec<&Release> = releases.iter().filter(|r| r.status == STATUS_ACTIVE).collect();
@@ -658,44 +665,44 @@ pub fn release_rows(releases: &[Release], v: Option<&ShellVersion>, installed: O
         .collect()
 }
 
-/// Какие из показанных uuid НЕ подходят: те, кого нет в ответах сверки.
+/// Which of the shown uuids do NOT fit: those absent from the check answers.
 pub fn unsupported_uuids(shown: &[&str], compatible: &HashSet<String>) -> HashSet<String> {
     shown.iter().filter(|u| !compatible.contains(**u)).map(|u| u.to_string()).collect()
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Подписи
+//  Labels
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Переключатель фильтра совместимости.
+/// The compatibility filter toggle.
 pub fn only_compatible_label() -> String {
     tr("Only for your GNOME version")
 }
 
-/// Положение «показать всё».
+/// The "show all" position.
 pub fn show_all_label() -> String {
     tr("Show all")
 }
 
-/// Пометка несовместимого.
+/// Mark of an incompatible one.
 pub fn unsupported_label(shell: &str) -> String {
     // TRANSLATORS: %1 is a GNOME version: 51, 3.38.
     trf("Doesn't support GNOME %1", &[&shell])
 }
 
-/// Сводка заявленных версий.
+/// Summary of the declared versions.
 pub fn supports_label(summary: &str) -> String {
     // TRANSLATORS: %1 is a list of GNOME versions: 47–50, 3.38.
     trf("Supports GNOME %1", &[&summary])
 }
 
-/// «Версия для вашего GNOME: 12».
+/// "Version for your GNOME: 12".
 pub fn release_for_you_label(release: &str) -> String {
     // TRANSLATORS: %1 is the extension's release: 12, 5.1.0.
     trf("Version for your GNOME: %1", &[&release])
 }
 
-/// Режим сеанса `unlock-dialog`.
+/// The `unlock-dialog` session mode.
 pub fn session_modes_label(modes: &[String]) -> String {
     if modes.iter().any(|m| m == "unlock-dialog") {
         tr("Also works on the lock screen")
@@ -704,22 +711,22 @@ pub fn session_modes_label(modes: &[String]) -> String {
     }
 }
 
-/// Сайт не отвечает (5xx).
+/// The site does not answer (5xx).
 pub fn site_down_message() -> String {
     tr("The GNOME extensions site isn't responding right now. Outages are shown at status.gnome.org — \
         try again later. Installed extensions keep working.")
 }
 
-/// Лицензия карточки.
+/// Card license.
 pub fn license_label() -> String {
     tr("GPL-compatible, as extensions.gnome.org requires")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Карточка
+//  Card
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Имя автора: отображаемое, иначе учётное, иначе сайт.
+/// Author name: the display name, otherwise the account name, otherwise the site.
 pub fn author_name(e: &Extension) -> String {
     [&e.creator.display_name, &e.creator.username]
         .into_iter()
@@ -729,7 +736,7 @@ pub fn author_name(e: &Extension) -> String {
         .to_string()
 }
 
-/// Оценка 0…5 в шкалу магазина 0…100.
+/// Rating 0…5 on the store's 0…100 scale.
 pub fn rating_percent(rating: f64) -> i64 {
     if rating.is_finite() {
         (rating.clamp(0.0, 5.0) * 20.0).round() as i64
@@ -738,7 +745,7 @@ pub fn rating_percent(rating: f64) -> i64 {
     }
 }
 
-/// Дата сайта (`2026-02-25T17:12:27.692638`) без долей секунды.
+/// Site date (`2026-02-25T17:12:27.692638`) without fractions of a second.
 fn iso(date: &str) -> String {
     let d = date.trim();
     match d.find('.') {
@@ -747,9 +754,9 @@ fn iso(date: &str) -> String {
     }
 }
 
-/// Карточка расширения. Ссылок на скачивание нет: ставит оболочка.
-/// Галерея — только настоящий скриншот (значок туда не идёт: человек ждёт
-/// в галерее снимков, а не логотипа).
+/// Extension card. There are no download links: the shell installs it. The
+/// gallery holds only a real screenshot (the icon does not go there: a person
+/// expects screenshots in the gallery, not a logo).
 pub fn theme_item(e: &Extension) -> ThemeItem {
     let shot = ego_https(&e.screenshot);
     let preview = card_picture(e);
@@ -773,7 +780,7 @@ pub fn theme_item(e: &Extension) -> ThemeItem {
     }
 }
 
-/// Картинка плитки витрины: снимок, а без него — значок расширения.
+/// Picture of a storefront tile: the screenshot, and without it the extension icon.
 pub fn card_picture(e: &Extension) -> String {
     let shot = ego_https(&e.screenshot);
     if shot.is_empty() {
@@ -783,21 +790,21 @@ pub fn card_picture(e: &Extension) -> String {
     }
 }
 
-/// Картинки витрины, которые уже пришли со страницами и карточками EGO:
-/// uuid → адрес картинки плитки ([`card_picture`]). По ней установленное
-/// расширение показывает тот же снимок, что его карточка в витрине, — без
-/// своего запроса на сайт (живая проверка 15.11: в витрине снимок, среди
-/// установленного — заглушка).
+/// Storefront pictures that have already arrived with EGO pages and cards:
+/// uuid → address of the tile picture ([`card_picture`]). With it an installed
+/// extension shows the same screenshot as its card in the storefront — without
+/// its own request to the site (live check 15.11: a screenshot in the
+/// storefront, a placeholder among the installed).
 #[derive(Debug, Default)]
 pub struct Pictures {
     by_uuid: HashMap<String, String>,
 }
 
 impl Pictures {
-    /// Сколько адресов держать: память процесса, а не кеш на диске.
+    /// How many addresses to keep: process memory, not an on-disk cache.
     const LIMIT: usize = 4096;
 
-    /// Запомнить картинки страницы (пустые — пропустить).
+    /// Remember the pictures of a page (skip empty ones).
     pub fn remember(&mut self, items: &[Extension]) {
         if self.by_uuid.len() > Self::LIMIT {
             self.by_uuid.clear();
@@ -810,13 +817,13 @@ impl Pictures {
         }
     }
 
-    /// Адрес картинки расширения `uuid`; `None` — витрина его не показывала.
+    /// Address of the picture of extension `uuid`; `None` — the storefront did not show it.
     pub fn get(&self, uuid: &str) -> Option<&str> {
         self.by_uuid.get(uuid).map(String::as_str)
     }
 }
 
-/// Картинки витрины этого процесса ([`Pictures`]).
+/// Storefront pictures of this process ([`Pictures`]).
 pub fn live_pictures() -> &'static Mutex<Pictures> {
     static PICTURES: OnceLock<Mutex<Pictures>> = OnceLock::new();
     PICTURES.get_or_init(|| Mutex::new(Pictures::default()))
@@ -828,7 +835,7 @@ fn remember_pictures(items: &[Extension]) {
     }
 }
 
-/// Строка оценки плитки: «★ 3.5 (17) · ⬇ 149.9K».
+/// The tile's rating line: "★ 3.5 (17) · ⬇ 149.9K".
 pub fn stats_line(e: &Extension) -> String {
     let dl = crate::appearance_page::human_count(e.downloads.max(0));
     if e.rated > 0 {
@@ -842,15 +849,15 @@ pub fn stats_line(e: &Extension) -> String {
     }
 }
 
-/// Подсказка строки оценки.
+/// Tooltip of the rating line.
 pub fn stats_tooltip() -> String {
     tr("Rating, number of votes and downloads on extensions.gnome.org")
 }
 
-/// Строка ответа каталога: карточка плюс то, что знает только EGO.
-/// `unsupported` — подпись версии оболочки, которую расширение НЕ
-/// поддерживает (по сверке), или `None`. Общие ключи сторонних магазинов
-/// (`sitePage`, `siteStats`) — как у Wallhaven.
+/// A catalog answer row: the card plus what only EGO knows. `unsupported` — the
+/// label of the shell version the extension does NOT support (per the check),
+/// or `None`. Common keys of third-party stores (`sitePage`, `siteStats`) — as
+/// for Wallhaven.
 pub fn catalog_row(item: &ThemeItem, e: &Extension, unsupported: Option<&str>) -> Value {
     let mut v = serde_json::to_value(item).unwrap_or(Value::Null);
     if let Some(m) = v.as_object_mut() {
@@ -870,8 +877,8 @@ pub fn catalog_row(item: &ThemeItem, e: &Extension, unsupported: Option<&str>) -
         m.insert("egoHomepage".into(), Value::from(web_link(&e.url)));
         m.insert("egoIcon".into(), Value::from(ego_https(&e.icon)));
         m.insert("egoDonations".into(), Value::Array(donations));
-        // Режимы сеанса знает только выпуск — заполняются подробностями
-        // ([`with_release`]).
+        // Only the release knows the session modes — they are filled in by the
+        // details ([`with_release`]).
         m.insert("egoSessionModes".into(), Value::Array(Vec::new()));
         m.insert("sitePage".into(), Value::from(page));
         m.insert("siteStats".into(), Value::from(stats_line(e)));
@@ -880,8 +887,9 @@ pub fn catalog_row(item: &ThemeItem, e: &Extension, unsupported: Option<&str>) -
     v
 }
 
-/// Дополнить строку каталога сведениями о выпусках: «версия для вас»,
-/// сводка версий GNOME, режимы сеанса выбранного выпуска.
+/// Supplement a catalog row with information about releases: "version for
+/// you", the summary of GNOME versions, the session modes of the chosen
+/// release.
 pub fn with_release(row: &mut Value, releases: &[Release], v: Option<&ShellVersion>) {
     let Some(m) = row.as_object_mut() else { return };
     let chosen = v.and_then(|v| release_for(releases, v));
@@ -905,28 +913,28 @@ pub fn with_release(row: &mut Value, releases: &[Release], v: Option<&ShellVersi
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Память ответов и отступ после сбоев
+//  Answer memory and back-off after failures
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Почему ответа нет.
+/// Why there is no answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FetchError {
-    /// Недавно был ответ 5xx: сайт не трогаем ещё `wait_secs`.
+    /// There was a 5xx answer recently: leave the site alone for another `wait_secs`.
     BackingOff { wait_secs: u64 },
-    /// Сеть или сервер.
+    /// Network or server.
     Net(NetError),
-    /// Ответ не разобрать.
+    /// The answer cannot be parsed.
     Parse(String),
 }
 
 impl FetchError {
-    /// Сайт сказал «такого нет» (404) — у установленного это не ошибка:
-    /// показываются местные сведения.
+    /// The site said "no such thing" (404) — for an installed one this is not an
+    /// error: the local information is shown.
     pub fn is_not_found(&self) -> bool {
         matches!(self, FetchError::Net(NetError::Status { code: 404, .. }))
     }
 
-    /// Текст для строки состояния.
+    /// Text for the status line.
     pub fn message(&self) -> String {
         match self {
             FetchError::BackingOff { .. } => site_down_message(),
@@ -937,16 +945,16 @@ impl FetchError {
     }
 }
 
-/// Память ответов сессии и отступ после 5xx. Время — параметром (мс),
-/// чтобы проверялось без часов.
+/// The session's answer memory and back-off after 5xx. Time is a parameter (ms),
+/// so it can be tested without a clock.
 #[derive(Debug, Default)]
 pub struct Gate {
     failed_until: u64,
-    cache: HashMap<String, (u64, u64, Vec<u8>)>, // адрес → (когда, срок мс, тело)
+    cache: HashMap<String, (u64, u64, Vec<u8>)>, // address → (when, lifetime in ms, body)
     order: VecDeque<String>,
 }
 
-/// Срок жизни ответа по адресу: листинги и поиск — коротко, остальное — час.
+/// Lifetime of an answer by address: listings and search — short, the rest — an hour.
 pub fn ttl_secs(url: &str) -> u64 {
     let path = url.split('?').next().unwrap_or(url);
     if path.ends_with("/extensions/") || path.contains("/extensions/search/") {
@@ -961,13 +969,13 @@ impl Gate {
         Self::default()
     }
 
-    /// Свежий ответ из памяти.
+    /// A fresh answer from memory.
     pub fn cached(&self, url: &str, now_ms: u64) -> Option<Vec<u8>> {
         let (at, ttl, body) = self.cache.get(url)?;
         (now_ms.saturating_sub(*at) < *ttl).then(|| body.clone())
     }
 
-    /// Можно ли идти в сеть; нет — сколько секунд подождать.
+    /// Whether we may go to the network; if not — how many seconds to wait.
     pub fn admit(&self, now_ms: u64) -> Result<(), u64> {
         if now_ms < self.failed_until {
             Err((self.failed_until - now_ms).div_ceil(1000))
@@ -976,12 +984,12 @@ impl Gate {
         }
     }
 
-    /// Сайт ответил 5xx.
+    /// The site answered with 5xx.
     pub fn failed(&mut self, now_ms: u64) {
         self.failed_until = now_ms + FAIL_BACKOFF_SECS * 1000;
     }
 
-    /// Запомнить ответ.
+    /// Remember an answer.
     pub fn store(&mut self, url: &str, body: Vec<u8>, now_ms: u64) {
         let ttl = ttl_secs(url) * 1000;
         if self.cache.insert(url.to_string(), (now_ms, ttl, body)).is_none() {
@@ -996,9 +1004,10 @@ impl Gate {
     }
 }
 
-/// Один запрос через [`Gate`]: память (если не `force`), отступ (если не
-/// `force`), сеть. `get` — транспорт (в бою [`crate::net::UreqNet`], в
-/// тестах — замыкание). Мьютекс на время сети не держится.
+/// One request through [`Gate`]: memory (unless `force`), back-off (unless
+/// `force`), network. `get` — the transport (in production
+/// [`crate::net::UreqNet`], in tests a closure). The mutex is not held during
+/// the network call.
 pub fn fetch_with(
     gate: &Mutex<Gate>,
     url: &str,
@@ -1030,9 +1039,9 @@ pub fn fetch_with(
     }
 }
 
-/// Все выпуски расширения: листает страницы, пока сервер говорит «ещё»
-/// (не больше [`VERSIONS_MAX_PAGES`]). Ошибка первой страницы — ошибка;
-/// поздней — то, что успели.
+/// All releases of an extension: pages through while the server says "more"
+/// (no more than [`VERSIONS_MAX_PAGES`]). An error on the first page is an
+/// error; on a later one — what was gathered so far.
 pub fn collect_releases(
     uuid: &str,
     mut fetch: impl FnMut(&str) -> Result<Vec<u8>, FetchError>,
@@ -1053,7 +1062,7 @@ pub fn collect_releases(
     Ok(all)
 }
 
-/// Память процесса — одна на все страницы «Оформления».
+/// Process memory — one for all pages of "Appearance".
 pub fn live_gate() -> &'static Mutex<Gate> {
     static GATE: OnceLock<Mutex<Gate>> = OnceLock::new();
     GATE.get_or_init(|| Mutex::new(Gate::new()))
@@ -1071,7 +1080,7 @@ fn live_get(token: &crate::net::CancelToken) -> impl FnMut(&str) -> Result<Vec<u
     move |url: &str| crate::net::NetIo::get(&mut net, url, crate::ocs::USER_AGENT, TIMEOUT_SECS)
 }
 
-/// Страница витрины из живого API.
+/// A storefront page from the live API.
 pub fn live_page(
     query: &str,
     sort: &str,
@@ -1088,7 +1097,7 @@ pub fn live_page(
     Ok(page)
 }
 
-/// Какие из `uuids` подходят оболочке `shell` (сверка пачками).
+/// Which of `uuids` fit shell `shell` (checked in batches).
 pub fn live_compatible(
     uuids: &[&str],
     shell: &str,
@@ -1103,7 +1112,7 @@ pub fn live_compatible(
     Ok(ok)
 }
 
-/// Карточка из живого API.
+/// A card from the live API.
 pub fn live_detail(uuid: &str, token: &crate::net::CancelToken) -> Result<Extension, FetchError> {
     let url = detail_url(uuid).ok_or_else(|| FetchError::Parse("EGO: bad uuid".to_string()))?;
     let body = fetch_with(live_gate(), &url, false, &now_ms, &mut live_get(token))?;
@@ -1112,27 +1121,27 @@ pub fn live_detail(uuid: &str, token: &crate::net::CancelToken) -> Result<Extens
     Ok(e)
 }
 
-/// Адрес сведений о расширении по номеру со страницы сайта
-/// (`/extension/<pk>/…`): API v1 ищет только по uuid, а ссылки в чужом тексте
-/// несут номер.
+/// Address of the extension information by the number from a site page
+/// (`/extension/<pk>/…`): API v1 searches only by uuid, while links in foreign
+/// text carry the number.
 pub fn info_by_pk_url(pk: u64) -> String {
     format!("{HOME_URL}/extension-info/?pk={pk}")
 }
 
-/// uuid из ответа `extension-info`.
+/// uuid from the `extension-info` answer.
 pub fn parse_info_uuid(body: &[u8]) -> Option<String> {
     let v: serde_json::Value = serde_json::from_slice(body).ok()?;
     let uuid = v.get("uuid")?.as_str()?;
     valid_uuid(uuid).then(|| uuid.to_string())
 }
 
-/// uuid расширения по номеру со страницы сайта.
+/// Extension uuid by the number from a site page.
 pub fn live_uuid_by_pk(pk: u64, token: &crate::net::CancelToken) -> Result<String, FetchError> {
     let body = fetch_with(live_gate(), &info_by_pk_url(pk), false, &now_ms, &mut live_get(token))?;
     parse_info_uuid(&body).ok_or_else(|| FetchError::Parse("EGO: нет uuid в extension-info".to_string()))
 }
 
-/// Выпуски из живого API.
+/// Releases from the live API.
 pub fn live_releases(uuid: &str, token: &crate::net::CancelToken) -> Result<Vec<Release>, FetchError> {
     let mut get = live_get(token);
     collect_releases(uuid, |url| fetch_with(live_gate(), url, false, &now_ms, &mut get))
@@ -1145,7 +1154,7 @@ mod tests {
     #[test]
     fn uuid_by_site_number() {
         assert_eq!(info_by_pk_url(615), "https://extensions.gnome.org/extension-info/?pk=615");
-        // Ответ сайта (замер 16.11.2026), укорочен.
+        // A site answer (measured 16.11.2026), shortened.
         let body = br#"{"uuid": "appindicatorsupport@rgcjonas.gmail.com", "name": "AppIndicator", "pk": 615}"#;
         assert_eq!(parse_info_uuid(body).as_deref(), Some("appindicatorsupport@rgcjonas.gmail.com"));
         assert_eq!(parse_info_uuid(br#"{"uuid": "../x"}"#), None);
@@ -1194,7 +1203,7 @@ mod tests {
         assert!(!u.contains("status="), "у поиска нет параметра status");
         assert!(listing_url("", "updated", 0, 500, None).contains("ordering=-updated&page=1&page_size=100"));
         assert!(listing_url("", "new", -3, 0, Some("51.beta")).contains("ordering=-created&page=1&page_size=1&shell_version=51.beta"));
-        // Чужие ключи сортировки — «Популярные».
+        // Foreign sort keys become "Popular".
         assert_eq!(api_ordering("alpha"), "-popularity");
         assert_eq!(api_ordering("high"), "-popularity");
     }
@@ -1230,7 +1239,7 @@ mod tests {
     fn batches_of_fifty() {
         let names: Vec<String> = (0..120).map(|i| format!("ext{i}@rexon.example")).collect();
         let mut refs: Vec<&str> = names.iter().map(String::as_str).collect();
-        refs.push("ext0@rexon.example"); // повтор
+        refs.push("ext0@rexon.example"); // a duplicate
         refs.push("../bad");
         let urls = compat_batch_urls(&refs, "51");
         assert_eq!(urls.len(), 3);
@@ -1248,7 +1257,7 @@ mod tests {
         let rs = vec![
             rel(1, STATUS_ACTIVE, &[(45, -1), (46, -1)]),
             rel(2, STATUS_ACTIVE, &[(50, -1), (51, -1)]),
-            rel(3, 1, &[(51, -1)]),                    // отклонён
+            rel(3, 1, &[(51, -1)]),                    // rejected
             rel(4, STATUS_ACTIVE, &[(52, -1)]),
         ];
         assert_eq!(release_for(&rs, &v("51.1")).map(|r| r.version), Some(2));
@@ -1265,11 +1274,11 @@ mod tests {
             rel(1, STATUS_ACTIVE, &[(3, 36), (3, 38), (40, -1), (41, -1)]),
             rel(2, STATUS_ACTIVE, &[(45, -1)]),
             rel(3, STATUS_ACTIVE, &[(47, -1), (48, -1), (49, -1), (50, -1)]),
-            rel(4, 1, &[(51, -1)]), // отклонённый в сводку не идёт
+            rel(4, 1, &[(51, -1)]), // a rejected one does not go into the summary
         ];
         assert_eq!(supported_summary(&rs), "3.36–41, 45, 47–50");
         assert_eq!(supported_summary(&[rel(1, STATUS_ACTIVE, &[(3, 3), (3, 4), (51, -1)])]), "3.3, 3.4, 51");
-        // Нет ни одного активного — по всем.
+        // Not a single active one — by all.
         assert_eq!(supported_summary(&[rel(1, 0, &[(50, -1), (51, -1)])]), "50–51");
         assert_eq!(supported_summary(&[]), "");
     }
@@ -1371,7 +1380,7 @@ mod tests {
         assert_eq!(row["egoUnsupportedText"], "Doesn't support GNOME 51");
         assert_eq!(row["egoPage"], "https://extensions.gnome.org/extension/7/demo/");
         assert_eq!(row["egoDonations"], serde_json::json!(["https://example.org/give"]));
-        // Разделитель дроби — по языку (`format_decimal`).
+        // The decimal separator follows the language (`format_decimal`).
         let expect = format!("★ {} (17) · ⬇ {}", crate::i18n::format_decimal(3.47, 1), crate::appearance_page::human_count(149_933));
         assert_eq!(row["siteStats"], expect.as_str());
         assert_eq!(catalog_row(&it, &e, None)["egoUnsupported"], false);
@@ -1387,15 +1396,16 @@ mod tests {
         assert_eq!(row["egoSessionModes"], serde_json::json!(["unlock-dialog"]));
         assert_eq!(row["egoSessionModesText"], "Also works on the lock screen");
         assert_eq!(row["version"], "5.1.0");
-        // Под 52 подходящего выпуска нет — пометка.
+        // There is no fitting release for 52 — a mark.
         let mut row2 = catalog_row(&it, &e, None);
         with_release(&mut row2, &releases, Some(&v("52")));
         assert_eq!(row2["egoUnsupportedText"], "Doesn't support GNOME 52");
         assert_eq!(row2["egoReleaseForYou"], 0);
     }
 
-    /// Память картинок витрины: снимок, без него — значок; без картинки и
-    /// без uuid — не запоминается; адрес тот же, что у плитки витрины.
+    /// Memory of storefront pictures: a screenshot, without it the icon; without a
+    /// picture and without a uuid — not remembered; the address is the same as for
+    /// the storefront tile.
     #[test]
     fn pictures_remember_showcase_tiles() {
         let shot = Extension {
@@ -1413,7 +1423,7 @@ mod tests {
         assert!(p.get("a@x").unwrap().contains("screenshots"));
         assert_eq!(p.get("b@x"), Some(theme_item(&icon_only).preview_url.as_str()));
         assert_eq!(p.get("c@x"), None);
-        // Чужой сайт картинкой не становится (как у плитки витрины).
+        // A foreign site does not become a picture (as for the storefront tile).
         p.remember(&[Extension { uuid: "d@x".into(), screenshot: "https://evil.example/x.png".into(), ..Extension::default() }]);
         assert_eq!(p.get("d@x"), None);
         assert_eq!(p.by_uuid.len(), 2);
@@ -1454,11 +1464,11 @@ mod tests {
             fetch_with(&gate, "u2", false, &now, &mut never).unwrap_err(),
             FetchError::BackingOff { wait_secs: FAIL_BACKOFF_SECS }
         );
-        // Память во время отступа работает.
+        // Memory works during the back-off.
         assert!(fetch_with(&gate, &card, false, &now, &mut never).is_ok());
-        // «Обновить» пробует сразу.
+        // "Refresh" tries right away.
         assert!(fetch_with(&gate, "u3", true, &now, &mut ok).is_ok());
-        // Удачный ответ снимает отступ.
+        // A successful answer removes the back-off.
         assert!(fetch_with(&gate, "u4", false, &now, &mut ok).is_ok());
 
         let mut missing = |_: &str| Err(NetError::Status { code: 404, reason: "Not Found".into() });

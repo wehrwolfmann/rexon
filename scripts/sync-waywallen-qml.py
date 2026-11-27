@@ -1,80 +1,80 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Синхронизация вендорной разметки waywallen → Rexon (одна команда).
+"""Sync of the vendored waywallen markup → Rexon (one command).
 
-Назначение
+Purpose
 ==========
-Вкладка «Wallpaper Engine» показывает QML-страницы проекта **waywallen**
-(MIT, © hypengw) как есть: каталог
-`data/qt_wallpaper_engine/qml_ui/waywallen/ui` — их `ui/qml`, `ui/i18n` и
-две картинки из `ui/assets`, вендоренные ДОСЛОВНО с тега из `ui/UPSTREAM_TAG`.
-Типы, которые у них печатает C++, у нас печатают крейты `rexon-gui` и
-`rexon-qt-filter` под тем же именем модуля `waywallen.ui`.
+The «Wallpaper Engine» tab shows the QML pages of the **waywallen** project
+(MIT, © hypengw) as is: the directory
+`data/qt_wallpaper_engine/qml_ui/waywallen/ui` — their `ui/qml`, `ui/i18n` and
+two pictures from `ui/assets`, vendored VERBATIM from the tag in `ui/UPSTREAM_TAG`.
+The types their C++ provides are provided here by the `rexon-gui` and
+`rexon-qt-filter` crates under the same module name `waywallen.ui`.
 
-Раньше выпуск апстрима переносился руками, и руками же делались три вещи,
-каждая из которых умеет молча испортить вкладку:
+Previously an upstream release was carried over by hand, and three things were done by hand too,
+each of which can silently break the tab:
 
-  * `ui/qmldir` дописывался построчно, хотя состав модуля лежит у апстрима
-    готовым — списками `qml_files` и `singletons` в `ui/build.lua`;
-  * наши правки жили ВНУТРИ вендорных файлов с пометкой «при обновлении
-    перенеси сюда же» — работает, пока помнишь;
-  * новое имя типа `W.Foo`, появившееся у апстрима, обнаруживалось только
-    пустой страницей на живом запуске.
+  * `ui/qmldir` was appended line by line, although upstream has the module contents
+    ready — as the `qml_files` and `singletons` lists in `ui/build.lua`;
+  * our patches lived INSIDE the vendored files with a note "on update
+    carry this over too" — works as long as you remember;
+  * a new type name `W.Foo` that appeared upstream was discovered only
+    as an empty page on a live run.
 
-Этот скрипт за один запуск:
+This script in one run:
 
-  1. забирает `ui/qml`, каталоги перевода `ui/i18n/waywallen_{ru,de}.ts` и
-     вендоримые `ui/assets` с заданного тега апстрима (локальный клон ИЛИ
-     git) — побайтово;
-  2. ГЕНЕРИРУЕТ `ui/qmldir` из `ui/build.lua` того же тега (рукописных
-     строк в нём не остаётся ни одной) — того же вида, что пишет генератор
-     модуля апстрима (lito-qt `qt.qml_module`, `prefer_resources = false`):
-     `module`, `typeinfo module.qmltypes`, компоненты с версией модуля
-     апстрима, `depends` по списку `imports`. Рядом лежит `module.qmltypes`
-     того же тега — опись C++-типов из сборки апстрима (в исходниках её
-     нет); при смене тега её нужно положить заново, иначе код 4;
-  3. накладывает нашу патч-серию `patches/NNNN-*.patch` (`git apply`);
-     патч, чью правку апстрим уже принял сам (бэкпорт), распознаётся по
-     тому, что ложится задом наперёд, — он пропускается и называется
-     лишним, а не обрывает синхронизацию;
-  4. печатает имена типов `W.*`, которые вендорный QML зовёт, а наш модуль
-     не регистрирует — то есть ровно те строчки, которые «забыли»;
-  5. записывает `ui/UPSTREAM_TAG` и `ui/QML_MATERIAL_PIN` — ревизию
-     библиотеки `Qcm.Material` из `lito.lock` того же выпуска, чтобы
-     разметка и библиотека под ней не разъезжались (её берёт
+  1. takes `ui/qml`, the translation catalogs `ui/i18n/waywallen_{ru,de}.ts` and
+     the vendored `ui/assets` from the given upstream tag (a local clone OR
+     git) — byte for byte;
+  2. GENERATES `ui/qmldir` from `ui/build.lua` of the same tag (not a single handwritten
+     line is left in it) — of the same form the upstream module generator writes
+     (lito-qt `qt.qml_module`, `prefer_resources = false`):
+     `module`, `typeinfo module.qmltypes`, components with the upstream module
+     version, `depends` from the `imports` list. Next to it lies `module.qmltypes`
+     of the same tag — the inventory of C++ types from the upstream build (it is not in the
+     sources); when the tag changes it must be put there again, otherwise exit code 4;
+  3. applies our patch series `patches/NNNN-*.patch` (`git apply`);
+     a patch whose change upstream has already accepted itself (a backport) is recognized by
+     the fact that it applies in reverse — it is skipped and called
+     redundant rather than aborting the sync;
+  4. prints the names of `W.*` types that the vendored QML calls but our module
+     does not register — i.e. exactly the lines that were "forgotten";
+  5. writes `ui/UPSTREAM_TAG` and `ui/QML_MATERIAL_PIN` — the revision of the
+     `Qcm.Material` library from `lito.lock` of the same release, so that
+     the markup and the library under it do not drift apart (it is taken by
      `tools/build_qml_material.sh`);
-  6. выписывает `tools/qextra_plugin/lito.lock` — срез того же `lito.lock`:
-     ревизию QExtra (`QE.AnimatedImage`, `QE.ImageCache`) со всеми её
-     зависимостями, с которой `tools/build_qml_qextra.sh` собирает
-     настоящий плагин; и называет типы `QE.*`, которых нет у нашей
-     QML-подмены `qml_ui/QExtra/`.
+  6. writes out `tools/qextra_plugin/lito.lock` — a slice of the same `lito.lock`:
+     the QExtra revision (`QE.AnimatedImage`, `QE.ImageCache`) with all its
+     dependencies, with which `tools/build_qml_qextra.sh` builds
+     the real plugin; and names the `QE.*` types that our
+     QML stand-in `qml_ui/QExtra/` does not have.
 
-Собирается всё в отдельном каталоге и переносится в дерево ТОЛЬКО когда
-прошли все шаги. Не наложился патч — дерево не тронуто, код возврата != 0.
-То есть «или синхронизировано целиком, или ничего не сломано».
+Everything is assembled in a separate directory and moved into the tree ONLY when
+all steps have passed. A patch did not apply — the tree is untouched, exit code != 0.
+That is, "either synced entirely, or nothing is broken".
 
-Использование
+Usage
 =============
-    # из локального клона (по умолчанию ~/Загрузки/owe-ref/waywallen),
-    # тег берётся из ui/UPSTREAM_TAG:
+    # from a local clone (default ~/Загрузки/owe-ref/waywallen),
+    # the tag is taken from ui/UPSTREAM_TAG:
     scripts/sync-waywallen-qml.py
     scripts/sync-waywallen-qml.py --source /path/to/waywallen --ref v0.3.9
 
-    # напрямую из git-апстрима (клонирует во временную папку):
+    # directly from the git upstream (clones into a temporary directory):
     scripts/sync-waywallen-qml.py --git https://github.com/hypengw/waywallen \\
         --ref v0.3.9
 
-    # только проверить расхождение, ничего не писать (для CI/cron):
+    # only check for divergence, write nothing (for CI/cron):
     scripts/sync-waywallen-qml.py --check
 
-Полная автоматизация
+Full automation
 ====================
-`--check` даёт exit 0 (дерево совпадает с «апстрим + наши патчи») /
-3 (есть расхождение) / 1 (патч не наложился) / 2 (нет источника) /
-4 (сошлось, но у апстрима появился незарегистрированный тип `W.*` или
-`QE.*`) — этого
-хватает и для CI-гейта, и для cron-вотчера: дёргать `--git <url> --ref
-<новый тег> --check`, при коде 3 открывать задачу на обновление вендора.
+`--check` gives exit 0 (the tree matches "upstream + our patches") /
+3 (divergence) / 1 (a patch did not apply) / 2 (no source) /
+4 (matched, but upstream has an unregistered type `W.*` or
+`QE.*`) — this
+is enough both for a CI gate and a cron watcher: run `--git <url> --ref
+<new tag> --check`, on code 3 open a task to update the vendor.
 """
 from __future__ import annotations
 
@@ -89,27 +89,27 @@ import tempfile
 import tomllib
 
 # ---------------------------------------------------------------------------
-# Раскладка
+# Layout
 # ---------------------------------------------------------------------------
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_HERE)
 
-#: Корень вендора: тут лежат ui/, patches/, LICENSE и ATTRIBUTION.md.
+#: Vendor root: ui/, patches/, LICENSE and ATTRIBUTION.md live here.
 VENDOR_DIR = os.path.join(
     _REPO, "data", "qt_wallpaper_engine", "qml_ui", "waywallen")
-#: Само вендорное дерево — его скрипт целиком пересобирает.
+#: The vendored tree itself — the script rebuilds it entirely.
 UI_DIR = os.path.join(VENDOR_DIR, "ui")
-#: Наша патч-серия поверх вендора (накладывается по возрастанию имени).
+#: Our patch series on top of the vendor (applied in ascending name order).
 PATCH_DIR = os.path.join(VENDOR_DIR, "patches")
 
-#: Что берём с апстрима побайтово. Каталог `ui/qml` целиком плюс: каталог
-#: переводов `ui/i18n` ЦЕЛИКОМ (каждый `.ts` компилируется в свой
-#: `waywallen_<язык>.qm`) и ровно те два файла `assets`, которые апстрим
-#: кладёт в свой QML-модуль (`resources` в build.lua) — остальное его
-#: `assets` читает пакет, а не QML. Переводы — каталогом, а не списком
-#: языков: список с ru и de 08.11.2026 потерял китайский, который у
-#: апстрима был с 0.5.0 (сторож — `vendor_has_every_upstream_catalog` в
+#: What we take from upstream byte for byte. The whole `ui/qml` directory plus: the
+#: `ui/i18n` translation directory AS A WHOLE (each `.ts` is compiled into its own
+#: `waywallen_<lang>.qm`) and exactly the two `assets` files that upstream
+#: puts into its QML module (`resources` in build.lua) — the rest of its
+#: `assets` is read by the package, not by QML. Translations — as a directory, not a list
+#: of languages: a list with ru and de lost Chinese on 08.11.2026, which
+#: upstream had since 0.5.0 (the guard is `vendor_has_every_upstream_catalog` in
 #: rust/rexon-core/tests/remote_l10n_parity.rs).
 UPSTREAM_TREE = "ui/qml"
 UPSTREAM_FILES = (
@@ -117,50 +117,50 @@ UPSTREAM_FILES = (
     "ui/assets/waywallen-ui.svg",
     "ui/assets/waywallen-ui.releases.xml",
 )
-#: Описание сборки апстрима — источник состава QML-модуля. Сам не вендорится.
+#: Description of the upstream build — the source of the QML module contents. Not vendored itself.
 BUILD_LUA = "ui/build.lua"
-#: Замок зависимостей апстрима — источник ревизии QmlMaterial (`Qcm.Material`),
-#: которую собирает `tools/build_qml_material.sh`. Сам не вендорится.
+#: The upstream dependency lock — the source of the QmlMaterial (`Qcm.Material`) revision
+#: that `tools/build_qml_material.sh` builds. Not vendored itself.
 LOCK_FILE = "lito.lock"
-#: Куда записывается эта ревизия. Пин обязан ехать ВМЕСТЕ с тегом вендора:
-#: разъехавшись, он даёт самый неприятный класс дефектов — вендорный QML
-#: новый, а библиотека под ним старая, и расхождение видно только глазами на
-#: живой странице (пойманный случай — заголовочный регистр русских подписей,
-#: починенный у hypengw 043c09e и месяц не доезжавший до нашей сборки).
+#: Where this revision is written. The pin must move TOGETHER with the vendor tag:
+#: once they drift apart, it gives the nastiest class of defects — the vendored QML
+#: is new, the library under it is old, and the divergence is visible only by eye on
+#: a live page (a caught case — the title case of Russian labels,
+#: fixed by hypengw in 043c09e and not reaching our build for a month).
 MATERIAL_PIN_NAME = "QML_MATERIAL_PIN"
 
-#: Обёртка плагина QExtra: её `lito.lock` — срез замка апстрима, с ним
-#: `tools/build_qml_qextra.sh` собирает настоящий `QExtra` (`--locked`).
-#: Срез едет ВМЕСТЕ с тегом вендора по той же причине, что и пин выше:
-#: разметка зовёт `QE.*` той ревизии, с которой собран выпуск.
+#: The QExtra plugin wrapper: its `lito.lock` is a slice of the upstream lock, with it
+#: `tools/build_qml_qextra.sh` builds the real `QExtra` (`--locked`).
+#: The slice moves TOGETHER with the vendor tag for the same reason as the pin above:
+#: the markup calls `QE.*` of the revision the release was built with.
 QEXTRA_WRAPPER_DIR = os.path.join(_REPO, "tools", "qextra_plugin")
 QEXTRA_LOCK_PATH = os.path.join(QEXTRA_WRAPPER_DIR, LOCK_FILE)
 QEXTRA_LOCK_REL = os.path.relpath(QEXTRA_LOCK_PATH, _REPO)
-#: Имя среза в каталоге кандидата (рядом с `ui/`, в дерево вендора не идёт).
+#: Name of the slice in the candidate directory (next to `ui/`, does not go into the vendor tree).
 QEXTRA_STAGE_NAME = "qextra.lito.lock"
-#: Наша QML-подмена модуля `QExtra` — её берёт ядро, когда настоящего
-#: плагина нет или он не годится (`qml_modules::choose_qextra`), и всегда
-#: под `offscreen`. Поэтому каждый `QE.*` вендора обязан быть и в ней.
+#: Our QML stand-in for the `QExtra` module — the core takes it when the real
+#: plugin is missing or unusable (`qml_modules::choose_qextra`), and always
+#: under `offscreen`. So every vendor `QE.*` must be in it too.
 QEXTRA_SHIM_QMLDIR = os.path.join(
     _REPO, "data", "qt_wallpaper_engine", "qml_ui", "QExtra", "qmldir")
 
-#: Имя QML-модуля. Версию компонентов qmldir берёт из `version` в
-#: `ui/build.lua` (как lito-qt), а C++-типы Rust регистрирует как 1.0:
-#: вендорный QML импортирует модуль без версии (`import waywallen.ui as W`)
-#: и видит обе половины — это держит случай «вендорный I18n зовёт наш
-#: PluginTranslations» в `rust/rexon-gui/src/qml_int64_probe.rs`.
+#: QML module name. The qmldir component version is taken from `version` in
+#: `ui/build.lua` (as lito-qt does), while Rust registers the C++ types as 1.0:
+#: the vendored QML imports the module without a version (`import waywallen.ui as W`)
+#: and sees both halves — this is kept by the case "the vendored I18n calls our
+#: PluginTranslations" in `rust/rexon-gui/src/qml_int64_probe.rs`.
 QML_MODULE = "waywallen.ui"
 
-#: Опись C++-типов модуля (`module.qmltypes`) из сборки апстрима. В исходниках
-#: её нет: её печатает qmltyperegistrar при `lito build -p waywallen-ui`
-#: (`build/<профиль>/generated/waywallen-ui/lito-qml/waywallen/ui/`). Сверку
-#: с нашими регистрациями делает `rust/rexon-gui/tests/waywallen_qmltypes_contract.rs`.
+#: The inventory of the module's C++ types (`module.qmltypes`) from the upstream build. It is not in the
+#: sources: it is printed by qmltyperegistrar during `lito build -p waywallen-ui`
+#: (`build/<profile>/generated/waywallen-ui/lito-qml/waywallen/ui/`). Comparison
+#: with our registrations is done by `rust/rexon-gui/tests/waywallen_qmltypes_contract.rs`.
 QMLTYPES_NAME = "module.qmltypes"
 
 DEFAULT_SOURCE = os.path.expanduser("~/Загрузки/owe-ref/waywallen")
 
-#: Где искать регистрации типов модуля: C++-шимы наших крейтов зовут
-#: `qmlRegisterType<T>("waywallen.ui", 1, 0, "T")` строковым литералом.
+#: Where to look for the module's type registrations: the C++ shims of our crates call
+#: `qmlRegisterType<T>("waywallen.ui", 1, 0, "T")` with a string literal.
 REGISTRAR_DIRS = (
     os.path.join(_REPO, "rust", "rexon-gui", "cpp"),
     os.path.join(_REPO, "rust", "rexon-qt-filter", "cpp"),
@@ -177,7 +177,7 @@ def _read(path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Тег апстрима
+# Upstream tag
 # ---------------------------------------------------------------------------
 
 def _tag_file() -> str:
@@ -185,7 +185,7 @@ def _tag_file() -> str:
 
 
 def _current_ref() -> str:
-    """Тег, на котором сейчас вендор: первое слово `ui/UPSTREAM_TAG`."""
+    """The tag the vendor is on now: the first word of `ui/UPSTREAM_TAG`."""
     path = _tag_file()
     if not os.path.isfile(path):
         return ""
@@ -194,7 +194,7 @@ def _current_ref() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Апстрим: выкладка нужного поддерева во временный каталог
+# Upstream: laying out the needed subtree into a temporary directory
 # ---------------------------------------------------------------------------
 
 def _git(args: list[str], cwd: str | None = None) -> subprocess.CompletedProcess:
@@ -203,27 +203,27 @@ def _git(args: list[str], cwd: str | None = None) -> subprocess.CompletedProcess
 
 
 def _upstream_tree(args) -> tuple[str, str, tempfile.TemporaryDirectory]:
-    """Выложить нужные пути апстрима во временный каталог.
+    """Lay out the needed upstream paths into a temporary directory.
 
-    Возвращает (каталог, разрешённый ref в виде `<ref> (<короткий sha>)`,
-    временный объект — его cleanup зовёт вызывающий).
+    Returns (directory, the resolved ref as `<ref> (<short sha>)`,
+    the temporary object — its cleanup is called by the caller).
     """
     tmp = tempfile.TemporaryDirectory(prefix="waywallen-qml-")
     ref = args.ref or _current_ref()
     if not ref:
         tmp.cleanup()
-        _eprint("[err] тег не задан и не читается из ui/UPSTREAM_TAG — "
-                "укажите --ref")
+        _eprint("[err] the tag is not given and cannot be read from ui/UPSTREAM_TAG — "
+                "pass --ref")
         raise SystemExit(2)
 
     if args.git:
         repo = os.path.join(tmp.name, "clone")
         cmd = ["clone", "--depth", "1", "--branch", ref, args.git, repo]
-        _eprint(f"[git] клонирую {args.git} (ref={ref})…")
+        _eprint(f"[git] cloning {args.git} (ref={ref})…")
         res = _git(cmd)
         if res.returncode != 0:
             tmp.cleanup()
-            _eprint("[git] клонирование не удалось:\n"
+            _eprint("[git] cloning failed:\n"
                     + (res.stderr or res.stdout).strip())
             raise SystemExit(2)
         source, archive_ref = repo, "HEAD"
@@ -231,13 +231,13 @@ def _upstream_tree(args) -> tuple[str, str, tempfile.TemporaryDirectory]:
         source, archive_ref = args.source, ref
         if not os.path.isdir(os.path.join(source, ".git")):
             tmp.cleanup()
-            _eprint(f"[err] не клон waywallen: {source}")
+            _eprint(f"[err] not a waywallen clone: {source}")
             raise SystemExit(2)
 
     sha = _git(["rev-parse", "--short", archive_ref], cwd=source)
     if sha.returncode != 0:
         tmp.cleanup()
-        _eprint(f"[err] нет такого ref в {source}: {ref}\n"
+        _eprint(f"[err] no such ref in {source}: {ref}\n"
                 + (sha.stderr or "").strip())
         raise SystemExit(2)
 
@@ -248,28 +248,28 @@ def _upstream_tree(args) -> tuple[str, str, tempfile.TemporaryDirectory]:
                          cwd=source, capture_output=True)
     if tar.returncode != 0:
         tmp.cleanup()
-        _eprint("[git] archive не удался:\n"
+        _eprint("[git] archive failed:\n"
                 + tar.stderr.decode("utf-8", "replace").strip())
         raise SystemExit(2)
     untar = subprocess.run(["tar", "-x", "-C", out], input=tar.stdout,
                            capture_output=True)
     if untar.returncode != 0:
         tmp.cleanup()
-        _eprint("[tar] распаковка не удалась:\n"
+        _eprint("[tar] unpacking failed:\n"
                 + untar.stderr.decode("utf-8", "replace").strip())
         raise SystemExit(2)
     return out, f"{ref} ({sha.stdout.strip()})", tmp
 
 
 # ---------------------------------------------------------------------------
-# qmldir из build.lua
+# qmldir from build.lua
 # ---------------------------------------------------------------------------
 
 _LUA_LIST_RE = r"{}\s*=\s*\{{(.*?)\}}"
 
 
 def _lua_list(text: str, key: str) -> list[str]:
-    """Строки из lua-списка `key = { "a", "b" }` в порядке объявления."""
+    """Strings from a lua list `key = { "a", "b" }` in declaration order."""
     m = re.search(_LUA_LIST_RE.format(re.escape(key)), text, re.S)
     if not m:
         return []
@@ -277,27 +277,27 @@ def _lua_list(text: str, key: str) -> list[str]:
 
 
 def _qmldir_text(build_lua: str, ref: str) -> str:
-    """Собрать `ui/qmldir` из `qt.qml_module` апстримного `ui/build.lua`.
+    """Build `ui/qmldir` from `qt.qml_module` of the upstream `ui/build.lua`.
 
-    Тот же текст, что пишет lito-qt (`generate_qmldir` в `qt/qml.lua`) для
-    разложенной копии без `prefer`: тип называется по имени файла,
-    синглтоны помечаются словом `singleton`, версия — `version` модуля,
-    `depends` — его `imports`. Комментариев lito-qt не пишет, и мы тоже:
-    тогда вендорная копия и установленный модуль взаимозаменяемы.
+    The same text lito-qt writes (`generate_qmldir` in `qt/qml.lua`) for
+    a laid-out copy without `prefer`: a type is named after the file,
+    singletons are marked with the word `singleton`, the version is the module `version`,
+    `depends` are its `imports`. lito-qt writes no comments, and neither do we:
+    then the vendored copy and the installed module are interchangeable.
     """
-    del ref  # тег записан в UPSTREAM_TAG; в qmldir его у апстрима нет
+    del ref  # the tag is written into UPSTREAM_TAG; upstream does not have it in qmldir
     files = _lua_list(build_lua, "qml_files")
     singletons = set(_lua_list(build_lua, "singletons"))
     imports = _lua_list(build_lua, "imports")
     version = re.search(r'qt\.qml_module\(\{.*?\bversion\s*=\s*"([^"]+)"',
                         build_lua, re.S)
     if not version:
-        raise RuntimeError("в ui/build.lua не нашлось version у qt.qml_module")
+        raise RuntimeError("no version found for qt.qml_module in ui/build.lua")
     if not files:
-        raise RuntimeError("в ui/build.lua не нашлось списка qml_files")
+        raise RuntimeError("no qml_files list found in ui/build.lua")
     unknown = singletons - set(files)
     if unknown:
-        raise RuntimeError("синглтоны апстрима вне списка qml_files: "
+        raise RuntimeError("upstream singletons outside the qml_files list: "
                            + ", ".join(sorted(unknown)))
 
     lines = [f"module {QML_MODULE}", f"typeinfo {QMLTYPES_NAME}"]
@@ -310,7 +310,7 @@ def _qmldir_text(build_lua: str, ref: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Ревизия QmlMaterial из замка апстрима
+# QmlMaterial revision from the upstream lock
 # ---------------------------------------------------------------------------
 
 _MATERIAL_RE = re.compile(
@@ -318,16 +318,16 @@ _MATERIAL_RE = re.compile(
 
 
 def _material_pin(lock_text: str) -> str:
-    """Коммит QmlMaterial, на котором собран этот выпуск waywallen."""
+    """The QmlMaterial commit this waywallen release was built on."""
     m = _MATERIAL_RE.search(lock_text)
     if not m:
-        raise RuntimeError("в lito.lock апстрима не нашлась ревизия "
+        raise RuntimeError("the upstream lito.lock has no revision "
                            "qml-material")
     return m.group(1)
 
 
 # ---------------------------------------------------------------------------
-# Срез замка апстрима для плагина QExtra
+# Slice of the upstream lock for the QExtra plugin
 # ---------------------------------------------------------------------------
 
 _LOCK_BLOCK_RE = re.compile(r"(?m)^(?=\[\[packages\]\]\n)")
@@ -335,18 +335,18 @@ _QEXTRA_PIN_RE = re.compile(r'QExtra\.git#([0-9a-f]{7,40})')
 
 
 def _qextra_pin(lock_text: str) -> str:
-    """Коммит QExtra из замка (апстрима или нашего среза); '' — не найден."""
+    """QExtra commit from the lock (upstream or our slice); '' — not found."""
     m = _QEXTRA_PIN_RE.search(lock_text)
     return m.group(1) if m else ""
 
 
 def _qextra_lock(lock_text: str) -> str:
-    """Срез замка апстрима: всё, от чего зависит обёртка плагина QExtra.
+    """Slice of the upstream lock: everything the QExtra plugin wrapper depends on.
 
-    Целиком чужой замок обёртке не годится: lito отвергает пакеты, которых
-    нет в её графе. Берётся замыкание зависимостей обёртки (они записаны в
-    её `lito.toml`) плюс запись самой обёртки; блоки — по алфавиту, как их
-    пишет lito, иначе `--locked` сочтёт файл изменённым.
+    The whole foreign lock does not suit the wrapper: lito rejects packages that
+    are not in its graph. The dependency closure of the wrapper is taken (they are written in
+    its `lito.toml`) plus the entry of the wrapper itself; blocks — alphabetically, as
+    lito writes them, otherwise `--locked` would consider the file changed.
     """
     with open(os.path.join(QEXTRA_WRAPPER_DIR, "lito.toml"), "rb") as fh:
         manifest = tomllib.load(fh)
@@ -359,8 +359,8 @@ def _qextra_lock(lock_text: str) -> str:
         if name in need:
             continue
         if name not in packages:
-            raise RuntimeError(f"в lito.lock апстрима нет пакета «{name}», "
-                               f"нужного плагину QExtra ({QEXTRA_LOCK_REL})")
+            raise RuntimeError(f"the upstream lito.lock has no package «{name}» "
+                               f"needed by the QExtra plugin ({QEXTRA_LOCK_REL})")
         need.add(name)
         todo += packages[name].get("dependencies", [])
     head, *raw = _LOCK_BLOCK_RE.split(lock_text)
@@ -379,27 +379,27 @@ def _qextra_lock(lock_text: str) -> str:
 
 
 def _qextra_lock_drift(stage_lock: str) -> str:
-    """'' — срез в дереве совпадает с кандидатом; иначе — чем разошёлся."""
+    """'' — the slice in the tree matches the candidate; otherwise — how it diverged."""
     new = _read(stage_lock)
     try:
         old = _read(QEXTRA_LOCK_PATH)
     except OSError:
-        return "файла в дереве нет"
+        return "no file in the tree"
     if old == new:
         return ""
     was, now = _qextra_pin(old), _qextra_pin(new)
     if was != now:
-        return f"QExtra сменился: {was[:7] or '?'} → {now[:7] or '?'}"
-    return "ревизия QExtra та же, сменились его зависимости"
+        return f"QExtra changed: {was[:7] or '?'} → {now[:7] or '?'}"
+    return "the QExtra revision is the same, its dependencies changed"
 
 
 def _check_qextra_lock(stage_lock: str) -> int:
     drift = _qextra_lock_drift(stage_lock)
     if not drift:
-        print(f"[check] OK: {QEXTRA_LOCK_REL} совпадает со срезом lito.lock "
-              f"апстрима")
+        print(f"[check] OK: {QEXTRA_LOCK_REL} matches the slice of the upstream "
+              f"lito.lock")
         return 0
-    _eprint(f"[check] РАСХОЖДЕНИЕ: {QEXTRA_LOCK_REL} ({drift})")
+    _eprint(f"[check] DIVERGENCE: {QEXTRA_LOCK_REL} ({drift})")
     return 3
 
 
@@ -408,14 +408,14 @@ def _install_qextra_lock(stage_lock: str) -> None:
     if not drift:
         return
     shutil.copyfile(stage_lock, QEXTRA_LOCK_PATH)
-    print(f"[sync] обновлён: {QEXTRA_LOCK_REL} ({drift})")
-    print("[sync] после этого: пересобрать плагин tools/build_qml_qextra.sh "
-          "и обновить списки _qe_git/_qe_reg в packaging/aur/PKGBUILD "
-          "(его prepare() сверяет их с этим файлом)")
+    print(f"[sync] updated: {QEXTRA_LOCK_REL} ({drift})")
+    print("[sync] after this: rebuild the plugin with tools/build_qml_qextra.sh "
+          "and update the _qe_git/_qe_reg lists in packaging/aur/PKGBUILD "
+          "(its prepare() checks them against this file)")
 
 
 # ---------------------------------------------------------------------------
-# Патч-серия
+# Patch series
 # ---------------------------------------------------------------------------
 
 def _patches() -> list[str]:
@@ -424,15 +424,15 @@ def _patches() -> list[str]:
     return sorted(f for f in os.listdir(PATCH_DIR) if f.endswith(".patch"))
 
 
-#: Строка заголовка патча: «Удалить-при: <текст>». Своя правка, которую
-#: апстрим сделал НЕНУЖНОЙ иначе, чем вобрав её дословно (обратное
-#: наложение такое не узнаёт): когда текст-признак появился в файле, который
-#: патч правит, патч не лёг — значит, устарел, а не конфликтует.
+#: A patch header line: «Удалить-при: <text>» ("remove when"). Our own change that
+#: upstream made UNNECESSARY in a way other than absorbing it verbatim (reverse
+#: application does not recognize that): when the marker text appeared in the file the
+#: patch edits, a patch that did not apply is obsolete rather than conflicting.
 OBSOLETE_MARKER = "Удалить-при:"
 
 
 def _obsolete_marker_hit(path: str, root: str) -> str | None:
-    """Признак из «Удалить-при:» найден в целевом файле патча → сам признак."""
+    """The marker from «Удалить-при:» is found in the patch's target file → the marker itself."""
     with open(path, encoding="utf-8") as f:
         text = f.read()
     head = text.split("\n---\n", 1)[0]
@@ -455,66 +455,66 @@ def _obsolete_marker_hit(path: str, root: str) -> str | None:
 
 
 def _apply_patches(root: str) -> list[str]:
-    """Наложить серию на выложенное дерево. Не лёг патч — RuntimeError.
+    """Apply the series to the laid-out tree. A patch did not apply — RuntimeError.
 
-    `root` — каталог, внутри которого лежит `ui/`: пути в патчах записаны
-    от него (`a/ui/qml/...`), так что серия ложится `git apply -p1`.
+    `root` — the directory that contains `ui/`: paths in the patches are written
+    relative to it (`a/ui/qml/...`), so the series applies with `git apply -p1`.
 
-    ⭐ Не наложившийся патч — ещё не конфликт. В серии живут БЭКПОРТЫ: мы
-    берём правку, которую апстрим уже принял, но которая приехала позже
-    тега вендора, и ждать её бумпа не можем. Такой патч обязан перестать
-    накладываться ровно тогда, когда вендор дорастёт до выпуска с этой
-    правкой, — и прежнее правило «первый непришедшийся патч обрывает ВСЮ
-    синхронизацию» превращало собственную починку в замок на бумпе
-    (пойманный случай 19.09.2026). Поэтому перед приговором проверяем
-    обратное наложение: легло задом наперёд — правка УЖЕ в дереве
-    апстрима, патч пропускается и называется лишним. Не легло ни так, ни
-    так — вот это настоящий конфликт.
+    ⭐ A patch that did not apply is not a conflict yet. The series holds BACKPORTS: we
+    take a change that upstream has already accepted but that arrived after
+    the vendor tag, and we cannot wait for its bump. Such a patch must stop
+    applying exactly when the vendor grows up to a release with this
+    change — and the former rule "the first patch that does not apply aborts the WHOLE
+    sync" turned our own fix into a lock on the bump
+    (a caught case on 19.09.2026). So before the verdict we check
+    reverse application: it applied in reverse — the change is ALREADY in the upstream
+    tree, the patch is skipped and called redundant. It applied neither way
+    — that is a real conflict.
 
-    Возвращает имена патчей, которые апстрим уже вобрал в себя: их место
-    в сводке, а не в тишине, иначе серия обрастёт мёртвыми файлами.
+    Returns the names of patches that upstream has already absorbed: their place is
+    in the summary, not in silence, otherwise the series would grow dead files.
     """
     series = _patches()
     if not series:
-        print("[patch] серия пуста — накладывать нечего")
+        print("[patch] the series is empty — nothing to apply")
         return []
     obsolete: list[str] = []
     for name in series:
         path = os.path.join(PATCH_DIR, name)
         res = _git(["apply", "--whitespace=nowarn", path], cwd=root)
         if res.returncode == 0:
-            print(f"[patch] наложен: {name}")
+            print(f"[patch] applied: {name}")
             continue
         back = _git(["apply", "--reverse", "--check", "--whitespace=nowarn",
                      path], cwd=root)
         if back.returncode == 0:
             obsolete.append(name)
-            print(f"[patch] УЖЕ У АПСТРИМА, пропущен: {name}")
+            print(f"[patch] ALREADY UPSTREAM, skipped: {name}")
             continue
         marker = _obsolete_marker_hit(path, root)
         if marker is not None:
             obsolete.append(name)
-            print(f"[patch] УСТАРЕЛ, пропущен: {name} — в апстриме уже есть "
-                  f"«{marker}» (строка «{OBSOLETE_MARKER}» в заголовке патча)")
+            print(f"[patch] OBSOLETE, skipped: {name} — upstream already has "
+                  f"«{marker}» (the «{OBSOLETE_MARKER}» line in the patch header)")
             continue
         raise RuntimeError(
-            f"патч {name} НЕ НАЛОЖИЛСЯ на апстрим:\n"
+            f"patch {name} did NOT APPLY to upstream:\n"
             + (res.stderr or res.stdout).strip()
-            + "\n\nЭто настоящий конфликт: апстрим тронул те же строки "
-              "(правки апстрима в этом месте у нас НЕТ — иначе патч лёг бы "
-              "задом наперёд и был бы пропущен).\nПеренесите правку руками "
-              "и пересоберите патч (`git diff` по вендорному файлу → "
+            + "\n\nThis is a real conflict: upstream touched the same lines "
+              "(we do NOT have the upstream change in this place — otherwise the patch would apply "
+              "in reverse and be skipped).\nPort the change by hand "
+              "and rebuild the patch (`git diff` of the vendored file → "
             + f"{os.path.relpath(path, _REPO)}).")
     if obsolete:
-        print("[patch] ⚠️ апстрим вобрал наши правки или сделал их ненужными — эти файлы серии "
-              "больше не нужны, удалите их вместе с бумпом вендора:")
+        print("[patch] ⚠️ upstream absorbed our changes or made them unnecessary — these series files "
+              "are no longer needed, remove them together with the vendor bump:")
         for name in obsolete:
             print(f"[patch]   patches/{name}")
     return obsolete
 
 
 # ---------------------------------------------------------------------------
-# Новые имена типов W.*
+# New W.* type names
 # ---------------------------------------------------------------------------
 
 _REGISTER_RE = re.compile(
@@ -524,7 +524,7 @@ _USE_QE_RE = re.compile(r"\bQE\.([A-Z]\w*)")
 
 
 def _registered_types() -> set[str]:
-    """Имена, которые наши крейты регистрируют в модуле `waywallen.ui`."""
+    """Names our crates register in the `waywallen.ui` module."""
     names: set[str] = set()
     for d in REGISTRAR_DIRS:
         if not os.path.isdir(d):
@@ -553,7 +553,7 @@ def _qmldir_types(text: str) -> set[str]:
 
 def _used_types(qml_root: str,
                 use_re: re.Pattern = _USE_RE) -> dict[str, list[str]]:
-    """Имена `W.Foo`, встреченные в вендорном QML → файлы, где встречены."""
+    """`W.Foo` names met in the vendored QML → the files where they were met."""
     used: dict[str, list[str]] = {}
     for base, _dirs, files in os.walk(qml_root):
         for f in sorted(files):
@@ -567,30 +567,30 @@ def _used_types(qml_root: str,
 
 
 def _report_new_types(stage_ui: str, qmldir_text: str) -> list[str]:
-    """Напечатать типы `W.*`, которых наш модуль не даёт. Вернуть их список."""
+    """Print the `W.*` types our module does not provide. Return their list."""
     known = _registered_types() | _qmldir_types(qmldir_text)
     used = _used_types(os.path.join(stage_ui, "qml"))
     missing = sorted(n for n in used if n not in known)
     if not missing:
-        print(f"[types] новых имён W.* нет "
-              f"(вендор зовёт {len(used)}, модуль даёт {len(known)})")
+        print(f"[types] no new W.* names "
+              f"(the vendor calls {len(used)}, the module provides {len(known)})")
         return []
-    _eprint("[types] ⚠️ вендорный QML зовёт типы, которых наш модуль НЕ даёт "
-            "— страница молча останется пустой:")
+    _eprint("[types] ⚠️ the vendored QML calls types our module does NOT provide "
+            "— the page will silently stay empty:")
     for name in missing:
         where = ", ".join(used[name][:3])
         _eprint(f"[types]   W.{name}  ← {where}")
-    _eprint("[types] лечится регистрацией в rust/rexon-gui/cpp/"
-            "rexon_register_we.cpp (и типом в rexon-gui).")
+    _eprint("[types] fixed by a registration in rust/rexon-gui/cpp/"
+            "rexon_register_we.cpp (and a type in rexon-gui).")
     return missing
 
 
 def _report_new_qextra_types(stage_ui: str) -> list[str]:
-    """Напечатать типы `QE.*`, которых нет у нашей QML-подмены `QExtra`.
+    """Print the `QE.*` types that our QML stand-in for `QExtra` does not have.
 
-    Сверяется именно подмена: она лежит в дереве и работает всякий раз,
-    когда настоящего плагина нет. Что даёт сам плагин, сверяет шаг
-    «QML-модули» `rexon-vendor-update` — по собранному `module.qmltypes`.
+    It is the stand-in that is checked: it lies in the tree and works every time
+    there is no real plugin. What the plugin itself provides is checked by the
+    «QML modules» step of `rexon-vendor-update` — against the built `module.qmltypes`.
     """
     try:
         known = _qmldir_types(_read(QEXTRA_SHIM_QMLDIR))
@@ -599,42 +599,42 @@ def _report_new_qextra_types(stage_ui: str) -> list[str]:
     used = _used_types(os.path.join(stage_ui, "qml"), _USE_QE_RE)
     missing = sorted(n for n in used if n not in known)
     if not missing:
-        print(f"[types] новых имён QE.* нет "
-              f"(вендор зовёт {len(used)}, подмена даёт {len(known)})")
+        print(f"[types] no new QE.* names "
+              f"(the vendor calls {len(used)}, the stand-in provides {len(known)})")
         return []
-    _eprint("[types] ⚠️ вендорный QML зовёт типы QExtra, которых нет у нашей "
-            "QML-подмены — без настоящего плагина вкладка останется пустой:")
+    _eprint("[types] ⚠️ the vendored QML calls QExtra types that our "
+            "QML stand-in does not have — without the real plugin the tab will stay empty:")
     for name in missing:
         where = ", ".join(used[name][:3])
         _eprint(f"[types]   QE.{name}  ← {where}")
-    _eprint("[types] лечится типом в data/qt_wallpaper_engine/qml_ui/QExtra/ "
-            "(и строкой в его qmldir).")
+    _eprint("[types] fixed by a type in data/qt_wallpaper_engine/qml_ui/QExtra/ "
+            "(and a line in its qmldir).")
     return ["QE." + n for n in missing]
 
 
 # ---------------------------------------------------------------------------
-# Сборка кандидата и сверка с деревом
+# Building the candidate and comparing with the tree
 # ---------------------------------------------------------------------------
 
 def _stage(upstream: str, ref: str, workdir: str) -> tuple[str, list[str]]:
-    """Собрать кандидат вендора: апстрим + qmldir + патчи + UPSTREAM_TAG."""
+    """Build the vendor candidate: upstream + qmldir + patches + UPSTREAM_TAG."""
     root = os.path.join(workdir, "stage")
     os.makedirs(root, exist_ok=True)
     shutil.copytree(os.path.join(upstream, "ui"), os.path.join(root, "ui"))
 
     src_lua = os.path.join(root, BUILD_LUA)
     lua_text = _read(src_lua)
-    os.remove(src_lua)                       # сам build.lua мы не вендорим
-    # Замок лежит в КОРНЕ апстрима, а не в ui/ — читаем оттуда и не
-    # вендорим: из него нужна одна строка, ревизия QmlMaterial.
+    os.remove(src_lua)                       # we do not vendor build.lua itself
+    # The lock lies in the upstream ROOT, not in ui/ — we read it from there and do not
+    # vendor it: only one line is needed from it, the QmlMaterial revision.
     lock_text = _read(os.path.join(upstream, LOCK_FILE))
 
     stage_ui = os.path.join(root, "ui")
     qmldir = _qmldir_text(lua_text, ref)
     with open(os.path.join(stage_ui, "qmldir"), "w", encoding="utf-8") as fh:
         fh.write(qmldir)
-    print(f"[qmldir] сгенерирован из ui/build.lua: "
-          f"{len(qmldir.splitlines())} строк, рукописных 0")
+    print(f"[qmldir] generated from ui/build.lua: "
+          f"{len(qmldir.splitlines())} lines, handwritten 0")
 
     _apply_patches(root)
 
@@ -646,14 +646,14 @@ def _stage(upstream: str, ref: str, workdir: str) -> tuple[str, list[str]]:
     with open(os.path.join(stage_ui, MATERIAL_PIN_NAME), "w",
               encoding="utf-8") as fh:
         fh.write(pin + "\n")
-    print(f"[material] ревизия QmlMaterial этого выпуска: {pin[:7]} "
-          f"(её берёт tools/build_qml_material.sh)")
+    print(f"[material] QmlMaterial revision of this release: {pin[:7]} "
+          f"(taken by tools/build_qml_material.sh)")
 
     with open(os.path.join(root, QEXTRA_STAGE_NAME), "w",
               encoding="utf-8") as fh:
         fh.write(_qextra_lock(lock_text))
-    print(f"[qextra] ревизия QExtra этого выпуска: "
-          f"{_qextra_pin(lock_text)[:7]} (её берёт tools/build_qml_qextra.sh)")
+    print(f"[qextra] QExtra revision of this release: "
+          f"{_qextra_pin(lock_text)[:7]} (taken by tools/build_qml_qextra.sh)")
 
     missing = _carry_qmltypes(stage_ui, ref)
     missing += _report_new_types(stage_ui, qmldir)
@@ -662,42 +662,42 @@ def _stage(upstream: str, ref: str, workdir: str) -> tuple[str, list[str]]:
 
 
 def _carry_qmltypes(stage_ui: str, ref: str) -> list[str]:
-    """Перенести `module.qmltypes` из дерева, если он того же тега.
+    """Carry `module.qmltypes` over from the tree if it is of the same tag.
 
-    Описи в исходниках апстрима нет, поэтому кандидат берёт её из живого
-    дерева — но только для того же тега: опись прежнего выпуска рядом с
-    новым QML врала бы сверке типов. Для нового тега её нет, и это
-    называется вслух (код 4), а дерево остаётся без неё — Rust-сверка
-    `waywallen_qmltypes_contract` тогда краснеет.
+    The upstream sources have no inventory, so the candidate takes it from the live
+    tree — but only for the same tag: the inventory of a previous release next to
+    the new QML would lie to the type check. For a new tag there is none, and this
+    is said out loud (code 4), while the tree stays without it — the Rust check
+    `waywallen_qmltypes_contract` then turns red.
     """
     live = os.path.join(UI_DIR, QMLTYPES_NAME)
     tag = ref.split()[0] if ref else ""
     if os.path.isfile(live) and tag and tag == _current_ref():
         shutil.copy2(live, os.path.join(stage_ui, QMLTYPES_NAME))
-        print(f"[qmltypes] опись C++-типов тега {tag} — из дерева")
+        print(f"[qmltypes] C++ type inventory of tag {tag} — from the tree")
         return []
     if tag and _qmltypes_from_appimage(tag, os.path.join(stage_ui, QMLTYPES_NAME)):
         return []
-    _eprint(f"[qmltypes] НЕТ описи C++-типов для {tag or ref}: собрать "
-            f"waywallen-ui этого тега (lito build -p waywallen-ui) и положить "
-            f"build/<профиль>/generated/waywallen-ui/lito-qml/waywallen/ui/"
-            f"{QMLTYPES_NAME} в {os.path.relpath(UI_DIR, _REPO)}/")
+    _eprint(f"[qmltypes] NO C++ type inventory for {tag or ref}: build "
+            f"waywallen-ui of this tag (lito build -p waywallen-ui) and put "
+            f"build/<profile>/generated/waywallen-ui/lito-qml/waywallen/ui/"
+            f"{QMLTYPES_NAME} into {os.path.relpath(UI_DIR, _REPO)}/")
     return [QMLTYPES_NAME]
 
 
-#: Где в AppImage выпуска лежит опись модуля интерфейса (с waywallen 0.6.0
-#: модуль `waywallen.ui` ставится файлами — waywallen#346).
+#: Where the interface module inventory lies in the release AppImage (since waywallen 0.6.0
+#: the `waywallen.ui` module is installed as files — waywallen#346).
 APPIMAGE_QMLTYPES = "usr/share/qml/waywallen/ui/" + QMLTYPES_NAME
 
 
 def _qmltypes_from_appimage(tag: str, dest: str) -> bool:
-    """Достать `module.qmltypes` тега из официального AppImage выпуска.
+    """Get the tag's `module.qmltypes` from the official release AppImage.
 
-    Собирать waywallen-ui ради одной описи не нужно: тот же файл лежит в
-    образе выпуска. Образ — `$REXON_WAYWALLEN_APPIMAGE`, иначе
-    `~/.cache/rexon/waywallen-<версия>-x86_64.AppImage` (нет — скачивается
-    с выпуска GitHub). Файл вынимается `unsquashfs` по смещению образа, сам
-    образ не запускается (кроме `--appimage-offset` его загрузчика).
+    There is no need to build waywallen-ui for one inventory: the same file lies in
+    the release image. The image is `$REXON_WAYWALLEN_APPIMAGE`, otherwise
+    `~/.cache/rexon/waywallen-<version>-x86_64.AppImage` (missing — downloaded
+    from the GitHub release). The file is extracted with `unsquashfs` at the image offset, the
+    image itself is not run (except for its loader's `--appimage-offset`).
     """
     version = tag[1:] if tag.startswith("v") else tag
     image = os.environ.get("REXON_WAYWALLEN_APPIMAGE") or os.path.expanduser(
@@ -708,12 +708,12 @@ def _qmltypes_from_appimage(tag: str, dest: str) -> bool:
         try:
             import urllib.request
             os.makedirs(os.path.dirname(image), exist_ok=True)
-            print(f"[qmltypes] качаю {url}")
+            print(f"[qmltypes] downloading {url}")
             urllib.request.urlretrieve(url, image + ".part")
             os.replace(image + ".part", image)
             os.chmod(image, 0o755)
-        except Exception as e:  # сеть, нет выпуска
-            _eprint(f"[qmltypes] образ выпуска {tag} не получен: {e}")
+        except Exception as e:  # network, no release
+            _eprint(f"[qmltypes] release image {tag} not obtained: {e}")
             return False
     try:
         offset = subprocess.run([image, "--appimage-offset"], capture_output=True,
@@ -728,9 +728,9 @@ def _qmltypes_from_appimage(tag: str, dest: str) -> bool:
                 return False
             shutil.copy2(got, dest)
     except (OSError, subprocess.SubprocessError) as e:
-        _eprint(f"[qmltypes] из образа {image} не достать: {e}")
+        _eprint(f"[qmltypes] cannot extract from image {image}: {e}")
         return False
-    print(f"[qmltypes] опись C++-типов тега {tag} — из AppImage выпуска ({image})")
+    print(f"[qmltypes] C++ type inventory of tag {tag} — from the release AppImage ({image})")
     return True
 
 
@@ -744,7 +744,7 @@ def _walk_rel(root: str) -> set[str]:
 
 def _diff_trees(stage_ui: str, live_ui: str) -> tuple[list[str], list[str],
                                                       list[str]]:
-    """(различаются, только в кандидате, только в дереве) — по содержимому."""
+    """(differ, only in the candidate, only in the tree) — by content."""
     a, b = _walk_rel(stage_ui), _walk_rel(live_ui)
     differ = [r for r in sorted(a & b)
               if not filecmp.cmp(os.path.join(stage_ui, r),
@@ -754,29 +754,29 @@ def _diff_trees(stage_ui: str, live_ui: str) -> tuple[list[str], list[str],
 
 def _check(stage_ui: str) -> int:
     if not os.path.isdir(UI_DIR):
-        _eprint(f"[check] вендора в дереве нет: {UI_DIR}")
+        _eprint(f"[check] the vendor is not in the tree: {UI_DIR}")
         return 3
     differ, only_new, only_old = _diff_trees(stage_ui, UI_DIR)
     if not (differ or only_new or only_old):
-        print("[check] OK: дерево совпадает с «апстрим + наши патчи» "
-              "побайтово")
+        print("[check] OK: the tree matches \"upstream + our patches\" "
+              "byte for byte")
         return 0
     for r in differ:
-        _eprint(f"[check] РАСХОЖДЕНИЕ: {r}")
+        _eprint(f"[check] DIVERGENCE: {r}")
     for r in only_new:
-        _eprint(f"[check] НЕТ в дереве: {r}")
+        _eprint(f"[check] MISSING in the tree: {r}")
     for r in only_old:
-        _eprint(f"[check] НЕТ у апстрима (лишний файл в дереве): {r}")
+        _eprint(f"[check] MISSING upstream (extra file in the tree): {r}")
     return 3
 
 
 def _install(stage_ui: str) -> int:
-    """Перенести готовый кандидат в дерево. При ошибке вернуть как было."""
+    """Move the finished candidate into the tree. On error put things back as they were."""
     differ, only_new, only_old = ([], [], [])
     if os.path.isdir(UI_DIR):
         differ, only_new, only_old = _diff_trees(stage_ui, UI_DIR)
         if not (differ or only_new or only_old):
-            print("[sync] без изменений: дерево уже совпадает")
+            print("[sync] unchanged: the tree already matches")
             return 0
     backup = UI_DIR + ".bak"
     if os.path.exists(backup):
@@ -786,7 +786,7 @@ def _install(stage_ui: str) -> int:
             os.rename(UI_DIR, backup)
         shutil.copytree(stage_ui, UI_DIR)
     except Exception as exc:
-        _eprint(f"[sync] ОТКАТ из-за ошибки: {exc}")
+        _eprint(f"[sync] ROLLBACK because of an error: {exc}")
         if os.path.isdir(backup):
             if os.path.isdir(UI_DIR):
                 shutil.rmtree(UI_DIR)
@@ -794,31 +794,31 @@ def _install(stage_ui: str) -> int:
         return 1
     shutil.rmtree(backup, ignore_errors=True)
     for r in differ:
-        print(f"[sync] обновлён: {r}")
+        print(f"[sync] updated: {r}")
     for r in only_new:
-        print(f"[sync] добавлен: {r}")
+        print(f"[sync] added: {r}")
     for r in only_old:
-        print(f"[sync] удалён:   {r}")
-    print("[sync] ГОТОВО — вендорная разметка синхронизирована.")
+        print(f"[sync] removed: {r}")
+    print("[sync] DONE — the vendored markup is synced.")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        description="Синхронизация вендорного QML waywallen → Rexon "
-                    "(ui/qml + qmldir из build.lua + наша патч-серия).")
+        description="Sync of the vendored waywallen QML → Rexon "
+                    "(ui/qml + qmldir from build.lua + our patch series).")
     ap.add_argument("--source", default=DEFAULT_SOURCE,
-                    help=f"корень локального клона waywallen "
-                         f"(по умолчанию {DEFAULT_SOURCE})")
+                    help=f"root of the local waywallen clone "
+                         f"(default {DEFAULT_SOURCE})")
     ap.add_argument("--git", default="",
-                    help="git-URL апстрима (клонируется во временную папку; "
-                         "имеет приоритет над --source)")
+                    help="upstream git URL (cloned into a temporary directory; "
+                         "takes priority over --source)")
     ap.add_argument("--ref", default="",
-                    help="тег/ветка апстрима (по умолчанию — тег из "
+                    help="upstream tag/branch (default — the tag from "
                          "ui/UPSTREAM_TAG)")
     ap.add_argument("--check", action="store_true",
-                    help="только сравнить (ничего не писать); "
-                         "exit 0=совпадает, 3=расхождение")
+                    help="only compare (write nothing); "
+                         "exit 0=matches, 3=divergence")
     args = ap.parse_args(argv)
 
     upstream, ref, tmp = _upstream_tree(args)
@@ -832,8 +832,8 @@ def main(argv: list[str] | None = None) -> int:
             stage_lock = os.path.join(os.path.dirname(stage_ui),
                                       QEXTRA_STAGE_NAME)
             if args.check:
-                # Обе сверки до конца: расхождение разметки не должно
-                # заслонить расхождение среза.
+                # Both checks to the end: a markup divergence must not
+                # hide a divergence of the slice.
                 rc = _check(stage_ui)
                 lock_rc = _check_qextra_lock(stage_lock)
                 rc = rc or lock_rc
@@ -841,9 +841,9 @@ def main(argv: list[str] | None = None) -> int:
                 rc = _install(stage_ui)
                 if rc == 0:
                     _install_qextra_lock(stage_lock)
-            # Незарегистрированный тип — не повод рушить синхронизацию
-            # (страница у апстрима уже новая, наш крейт догоняет), но
-            # молчать о нём нельзя: код возврата 4 виден и в CI.
+            # An unregistered type is no reason to break the sync
+            # (the upstream page is already new, our crate is catching up), but
+            # it must not be kept silent: exit code 4 is visible in CI too.
             if rc == 0 and missing:
                 return 4
             return rc

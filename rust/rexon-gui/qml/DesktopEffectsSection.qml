@@ -1,11 +1,12 @@
-// Раздел «Эффекты рабочего стола» вкладки «Оформление»: все эффекты KWin с
-// включением, поиском, группами и «Настроить…» — как модуль KDE «Эффекты
-// рабочего стола». Только в KDE (эффекты — у KWin): вне KDE раздел прячется.
+// The "Desktop effects" section of the "Appearance" tab: all KWin effects
+// with toggling, search, groups and "Configure…" — like the KDE "Desktop
+// Effects" module. Only in KDE (the effects belong to KWin): outside KDE
+// the section is hidden.
 //
-// Только разметка: список, включение и открытие настроек — ядро
+// Markup only: the list, toggling and opening the settings — the core
 // (`AnimationsActions` → rexon_core::animations: `desktop_effects_state`,
-// `set_desktop_effect`, `configure_effect`). Эффекты, которые уже есть в
-// разделе «Анимация», ядро сюда не кладёт — так же делает и KDE.
+// `set_desktop_effect`, `configure_effect`). Effects that are already in
+// the "Animation" section are not put here by the core — KDE does the same.
 
 pragma ComponentBehavior: Bound
 
@@ -17,16 +18,16 @@ import org.rexon.gui 1.0
 Rectangle {
     id: section
 
-    /// Палитра скина и раскладка вкладки — от хозяина страницы.
+    /// Skin palette and tab layout — from the page host.
     property var pal: ({})
     property var sty: ({})
 
-    /// Итог действия для всплывающей плашки хозяина.
+    /// Action result for the host's pop-up banner.
     signal message(string text)
 
     property var st: ({})
 
-    /// Строки после поиска (ядро даёт готовую строку `search`).
+    /// Rows after search (the core provides a ready `search` string).
     readonly property var shown: {
         const q = search.text.trim().toLowerCase();
         return (section.st.effects || []).filter(e => q === "" || e.search.indexOf(q) >= 0);
@@ -107,7 +108,7 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 4
 
-                // Заголовок категории — над первым эффектом категории.
+                // Category header — above the first effect of the category.
                 RexonText {
                     Layout.fillWidth: true
                     Layout.topMargin: item.index === 0 ? 0 : 8

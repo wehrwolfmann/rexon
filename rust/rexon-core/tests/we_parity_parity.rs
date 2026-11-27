@@ -1,25 +1,26 @@
-//! Golden-сверка порта `we_parity.rs` с оригиналом
+//! Golden check of the `we_parity.rs` port against the original
 //! `rexon/qt_wallpaper_engine/parity.py`.
 //!
-//! Эталон снят прогоном ЖИВОГО Python: для каждого сценария собирался
-//! настоящий `RendererPluginListResponse` (protobuf из `proto/control_pb2.py`),
-//! прогонялся через `parity.compare_schema` и `parity.render_report_text`, а в
-//! `golden/we_parity_cases.json` записаны вход, весь отчёт (вид/renderer/ключ/
-//! текст/важность каждого расхождения) и текстовый дамп байт-в-байт. ⛔ Демон
-//! не запускался — сверка чистая, по данным.
+//! The reference was captured by running LIVE Python: for each scenario a real
+//! `RendererPluginListResponse` (protobuf from `proto/control_pb2.py`) was
+//! built, run through `parity.compare_schema` and `parity.render_report_text`,
+//! and `golden/we_parity_cases.json` records the input, the whole report
+//! (kind/renderer/key/text/severity of each divergence) and the text dump byte
+//! for byte. ⛔ The daemon was not started — the check is pure, on data.
 //!
-//! Реестр, таблица типов и набор спец-ключей тоже сняты с живого модуля:
-//! добавление настройки в UI обязано ронять этот тест, пока эталон не
-//! переснят.
+//! The registry, the type table and the set of special keys were also captured
+//! from the live module: adding a setting to the UI must break this test until
+//! the reference is recaptured.
 //!
-//! Две записи фиксируют осознанное расхождение (⚠ правило #16): чтение
-//! `UPSTREAM_TAG` больше не падает на битом байте, а префикс `v` снимается
-//! ровно один раз (`lstrip("v")` оригинала съедал их все).
+//! Two records pin an intentional divergence (⚠ rule #16): reading
+//! `UPSTREAM_TAG` no longer fails on a broken byte, and the `v` prefix is
+//! stripped exactly once (the original's `lstrip("v")` ate them all).
 //!
-//! ⚠️ 10.10.2026 эталон поправлен РУКОЙ, без Python (он в архиве): настройки
-//! рисовальщиков сцен и веб-обоев, которых у движка нет, из расхождений
-//! `stale_in_ui` перенесены в `unchecked` («не проверено»). Причина и живые
-//! замеры — в сверках `absent_plugin_*` и `live_daemon_*` ниже.
+//! ⚠️ On 10.10.2026 the reference was corrected BY HAND, without Python (it is
+//! in the archive): settings of scene and web wallpaper renderers that the
+//! engine does not have were moved from `stale_in_ui` divergences to
+//! `unchecked` («not checked»). The reason and live measurements are in the
+//! `absent_plugin_*` and `live_daemon_*` checks below.
 
 use rexon_core::proto::control as pb;
 use rexon_core::we_parity as p;
@@ -31,8 +32,8 @@ fn fx() -> Value {
     serde_json::from_str(include_str!("golden/we_parity_cases.json")).unwrap()
 }
 
-/// Собрать protobuf-ответ из описания входа в эталоне — тем же способом,
-/// каким его собирал генератор на Python.
+/// Build a protobuf response from the input description in the reference —
+/// the same way the Python generator built it.
 fn build(input: &Value) -> pb::RendererPluginListResponse {
     let mut resp = pb::RendererPluginListResponse::default();
     for t in input["supported_types"].as_array().unwrap() {
@@ -64,7 +65,7 @@ fn build(input: &Value) -> pb::RendererPluginListResponse {
     resp
 }
 
-/// Отчёт в той же форме, в какой его сериализовал генератор на Python.
+/// The report in the same form in which the Python generator serialised it.
 fn report_json(r: &p::ParityReport) -> Value {
     let mut engine_keys = serde_json::Map::new();
     for (name, keys) in &r.engine_keys {
@@ -100,7 +101,7 @@ fn registry_matches_original() {
         want.len(),
         "в реестре UI изменилось число настроек — переснять эталон"
     );
-    // Порядок значим: он задаёт порядок расхождений stale_in_ui.
+    // Order matters: it defines the order of stale_in_ui divergences.
     for (got, exp) in p::REXON_SETTING_REGISTRY.iter().zip(want) {
         assert_eq!(got.key, exp["key"].as_str().unwrap());
         assert_eq!(
@@ -179,44 +180,44 @@ fn compare_schema_matches_original() {
     }
 }
 
-/// Отдельно — самые «хрупкие» места, чтобы падение было адресным, а не
-/// «где-то в сценарии».
+/// Separately — the most «fragile» spots, so a failure is targeted rather
+/// than «somewhere in the scenario».
 #[test]
 fn quirks_preserved() {
     let _lang = i18n_pin::ru();
     let g = fx();
     let cases = &g["cases"];
 
-    // Неизвестный тип на зарегистрированном ключе НЕ даёт type_mismatch:
-    // сторож `vt in KNOWN_VALUE_TYPES` в оригинале глушит его.
+    // An unknown type on a registered key does NOT give type_mismatch: the
+    // `vt in KNOWN_VALUE_TYPES` guard in the original suppresses it.
     let r = p::compare_schema(&build(&cases["unknown_type_regular"]["input"]));
     assert_eq!(r.issues.len(), 1);
     assert_eq!(r.issues[0].kind, p::IssueKind::UnknownType);
     assert_eq!(r.issues[0].severity(), "warning");
 
-    // Спец-ключи не ругаются даже на заведомо чужой тип.
+    // Special keys do not complain even about a clearly foreign type.
     let r = p::compare_schema(&build(&cases["unknown_type_special"]["input"]));
     assert!(r.issues.is_empty(), "спец-ключи должны молчать: {:?}", r.issues);
 
-    // Пустой набор choices у движка сверку не запускает…
+    // An empty choices set on the engine does not trigger the check…
     let r = p::compare_schema(&build(&cases["choices_empty_silent"]["input"]));
     assert!(!r.has_drift());
-    // …а порядок и дубликаты не важны (сравниваются множества).
+    // …and order and duplicates do not matter (sets are compared).
     let r = p::compare_schema(&build(&cases["choices_reordered_silent"]["input"]));
     assert!(!r.has_drift());
 
-    // Одинаковые имена renderer'ов: в списке оба, в карте ключей — последний.
+    // Identical renderer names: both are in the list, the last one in the key map.
     let r = p::compare_schema(&build(&cases["duplicate_renderer_name"]["input"]));
     assert_eq!(r.renderers, vec!["mpv", "mpv"]);
     assert_eq!(r.engine_keys.len(), 1);
     assert_eq!(r.engine_keys_of("mpv"), Some(["volume".to_string()].as_slice()));
     assert_eq!(r.engine_keys_of("weweb"), None);
 
-    // Полная схема без расхождений и пустой ответ — крайние точки.
+    // A full schema without divergences and an empty response — the extreme points.
     assert!(!p::compare_schema(&build(&cases["clean_full"]["input"])).has_drift());
     let empty = p::compare_schema(&build(&cases["empty_response"]["input"]));
-    // Без единого рисовальщика «пропавшими» считаются только настройки
-    // встроенных; настройки плагинных (сцены, веб) — «не проверено».
+    // Without a single renderer only the settings of built-in ones count as
+    // «missing»; settings of plugin ones (scenes, web) — «not checked».
     let builtin = p::REXON_SETTING_REGISTRY.iter().filter(|e| e.only_types.is_empty()).count();
     assert_eq!(empty.issues.len(), builtin);
     assert_eq!(builtin, 7);
@@ -236,19 +237,19 @@ fn upstream_tag_reads_like_original() {
         .iter()
         .map(|v| v.as_u64().unwrap() as u8)
         .collect();
-    // Живой файл rexon/qt_wallpaper_engine/proto/UPSTREAM_TAG, байт в байт.
+    // The live file rexon/qt_wallpaper_engine/proto/UPSTREAM_TAG, byte for byte.
     assert_eq!(
         p::proto_upstream_tag(Some(&bytes)),
         g["upstream_tag_file"]["value"].as_str().unwrap()
     );
-    // Файла нет / файл пуст — тег неизвестен.
+    // No file / empty file — tag unknown.
     assert_eq!(p::proto_upstream_tag(None), "");
     assert_eq!(p::proto_upstream_tag(Some(b"")), "");
     assert_eq!(p::proto_upstream_tag(Some(b"  \n")), "");
 
-    // ⚠ правило #16: оригинал открывал файл строгим UTF-8 и ловил только
-    // OSError, поэтому битый байт ронял всю сверку паритета
-    // UnicodeDecodeError'ом (эталон это зафиксировал).
+    // ⚠ rule #16: the original opened the file as strict UTF-8 and caught only
+    // OSError, so a broken byte crashed the whole parity check with a
+    // UnicodeDecodeError (the reference recorded this).
     assert_eq!(
         g["read_probe"]["invalid_utf8"].as_str().unwrap(),
         "<UnicodeDecodeError>",
@@ -261,9 +262,9 @@ fn upstream_tag_reads_like_original() {
 fn daemon_matches_snapshot_matches_original() {
     let _lang = i18n_pin::ru();
     let g = fx();
-    // Входы, где порт СОЗНАТЕЛЬНО расходится: `lstrip("v")` оригинала снимал
-    // все ведущие «v», а не префикс, поэтому «vv0.2.6» считался равным
-    // «0.2.6». Порт снимает ровно один «v» → эти пары больше не совпадают.
+    // Inputs where the port DELIBERATELY diverges: the original's `lstrip("v")`
+    // stripped all leading «v», not the prefix, so «vv0.2.6» was considered equal
+    // to «0.2.6». The port strips exactly one «v» → these pairs no longer match.
     let fixed: [(&str, &str); 5] = [
         ("vv0.2.6", "0.2.6"),
         ("vv0.2.6", "v0.2.6"),
@@ -287,18 +288,18 @@ fn daemon_matches_snapshot_matches_original() {
     }
     assert_eq!(diverged, fixed.len(), "набор расхождений изменился — пересмотреть эталон");
 
-    // Живой путь: тег из файла уже без пробелов, версия демона — с «v» и без.
+    // Live path: the tag from the file is already trimmed, the daemon version — with and without «v».
     assert_eq!(p::daemon_matches_snapshot("v0.2.6", "0.2.6"), Some(true));
     assert_eq!(p::daemon_matches_snapshot("v0.2.6", "v0.2.6"), Some(true));
     assert_eq!(p::daemon_matches_snapshot("v0.2.6", "0.2.7"), Some(false));
-    // ⚠ правило #16: в живом файле тега рядом с версией стоит хеш коммита
-    // апстрима. Оригинал сравнивал строку целиком и всегда докладывал
-    // расхождение — бейдж «✓ схема» не мог показаться ни при каких версиях.
+    // ⚠ rule #16: in the live tag file the upstream commit hash stands next to
+    // the version. The original compared the whole string and always reported a
+    // divergence — the «✓ schema» badge could never show for any version.
     assert_eq!(p::daemon_matches_snapshot("v0.3.8 (8550258)", "0.3.8"), Some(true));
     assert_eq!(p::daemon_matches_snapshot("v0.3.8 (8550258)", "0.3.7"), Some(false));
-    // Скобок нет — это часть версии, отрезать её нельзя.
+    // No brackets — this is part of the version, it must not be cut.
     assert_eq!(p::daemon_matches_snapshot("v0.3.8", "0.3.8 dirty"), Some(false));
-    // Сравнить нечем.
+    // Nothing to compare with.
     assert_eq!(p::daemon_matches_snapshot("", "0.2.6"), None);
     assert_eq!(p::daemon_matches_snapshot("v0.2.6", ""), None);
     assert_eq!(p::daemon_matches_snapshot("v", "0.2.6"), None);
@@ -312,17 +313,17 @@ fn tag_path_and_read_wrapper() {
         p::upstream_tag_path(dir),
         std::path::Path::new("/что-то/qt_wallpaper_engine/proto/UPSTREAM_TAG")
     );
-    // Каталога нет — пустой тег, без паники (как `except OSError` оригинала).
+    // No directory — empty tag, no panic (like the original's `except OSError`).
     assert_eq!(p::read_proto_upstream_tag(dir), "");
 }
 
-/// Тег снапшота ищется в каталоге ВКЛАДКИ, а не в корне каталога данных.
+/// The snapshot tag is looked up in the TAB directory, not in the data root.
 ///
-/// Сторож на живом дереве: крейту вкладок сообщают каталог данных целиком
-/// (в дереве разработчика — `data/`, в поставке — `rexon/`), а тег лежит на
-/// уровень ниже. Пока шаг между ними отсутствовал, отчёт QML-страницы
-/// «Разработчик» писал «(тег не записан)» при живом файле на диске
-/// (снимок стенда 06.09.2026).
+/// Guard on the live tree: the tabs crate is given the whole data directory
+/// (in the developer tree — `data/`, in the shipped build — `rexon/`), and the
+/// tag lies one level below. While the step between them was missing, the
+/// report of the «Developer» QML page said «(tag not written)» with a live file
+/// on disk (stand snapshot of 06.09.2026).
 #[test]
 fn tag_is_read_from_the_tab_package_inside_rexon() {
     let _lang = i18n_pin::ru();
@@ -332,18 +333,19 @@ fn tag_is_read_from_the_tab_package_inside_rexon() {
         .canonicalize()
         .expect("каталог данных data/ есть в дереве");
     let pkg = pkg.to_str().expect("путь дерева в UTF-8");
-    // Прямо от каталога данных файла нет — именно на это и наступили.
+    // Directly from the data directory there is no file — exactly what was hit.
     assert_eq!(p::read_proto_upstream_tag(std::path::Path::new(pkg)), "");
-    // С шагом в каталог вкладки — есть, и он непустой.
+    // With the step into the tab directory — it is there, and non-empty.
     let tag = p::read_proto_upstream_tag_from_pkg(pkg);
     assert!(!tag.is_empty(), "UPSTREAM_TAG вкладки не прочитался");
     assert!(tag.starts_with('v'), "тег апстрима пишется как «v0.3.7»: {tag}");
 }
 
-/// Отчёт паритета на странице «Разработчик» по-английски: во всех
-/// сценариях эталона нет ни одного слова наших русских шаблонов. Проверка
-/// по словам, а не по буквам: ключи и группы в эталоне нарочно бывают
-/// русскими («мыло», «Эффекты») — это данные движка, а не наш текст.
+/// The parity report on the «Developer» page is in English: no scenario of the
+/// reference contains a single word of our Russian templates. The check is by
+/// words, not letters: keys and groups in the reference are deliberately
+/// Russian sometimes (the Russian words for «blur», «Effects») — that is engine
+/// data, not our text.
 #[test]
 fn english_parity_report_has_no_russian() {
     let _lang = i18n_pin::en();
@@ -365,10 +367,10 @@ fn english_parity_report_has_no_russian() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-//  Демон без плагина сцен и веб-обоев: «не проверено», а не расхождение
+//  A daemon without the scene and web wallpaper plugin: «not checked», not a divergence
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Рисовальщик так, как его отдаёт живой демон: имя, типы обоев, ключи.
+/// A renderer as the live daemon returns it: name, wallpaper types, keys.
 fn renderer(name: &str, types: &[&str], keys: &[&str]) -> pb::RendererPluginInfo {
     pb::RendererPluginInfo {
         name: name.to_string(),
@@ -377,7 +379,7 @@ fn renderer(name: &str, types: &[&str], keys: &[&str]) -> pb::RendererPluginInfo
             .iter()
             .map(|key| pb::SettingSchema {
                 key: key.to_string(),
-                // Тип — тот, что ждёт реестр: здесь проверяется НАЛИЧИЕ.
+                // The type is the one the registry expects: PRESENCE is checked here.
                 r#type: p::expected_for(key).and_then(|e| e.value_type).unwrap_or(5),
                 ..Default::default()
             })
@@ -386,8 +388,8 @@ fn renderer(name: &str, types: &[&str], keys: &[&str]) -> pb::RendererPluginInfo
     }
 }
 
-/// Встроенные рисовальщики демона waywallen 0.5.0 (`plugin.toml` выпуска:
-/// с 0.5.0 у image и video есть `custom_extent`).
+/// Built-in renderers of the waywallen 0.5.0 daemon (the release `plugin.toml`:
+/// since 0.5.0 image and video have `custom_extent`).
 fn builtin_renderers() -> Vec<pb::RendererPluginInfo> {
     vec![
         renderer(
@@ -406,8 +408,8 @@ fn builtin_renderers() -> Vec<pb::RendererPluginInfo> {
     ]
 }
 
-/// Рисовальщики плагина Open Wallpaper Engine 0.3.1 (`plugin.toml` выпуска:
-/// с 0.3.1 `custom_extent` есть и у weweb).
+/// Renderers of the Open Wallpaper Engine 0.3.1 plugin (the release
+/// `plugin.toml`: since 0.3.1 weweb also has `custom_extent`).
 fn plugin_renderers() -> Vec<pb::RendererPluginInfo> {
     vec![
         renderer(
@@ -437,7 +439,7 @@ fn response(types: &[&str], renderers: Vec<pb::RendererPluginInfo>) -> pb::Rende
     }
 }
 
-/// Боевой демон с плагином: всё сошлось и проверено всё.
+/// A production daemon with the plugin: everything matched and everything was checked.
 #[test]
 fn live_daemon_with_plugin_has_no_differences() {
     let _lang = i18n_pin::ru();
@@ -450,16 +452,17 @@ fn live_daemon_with_plugin_has_no_differences() {
     assert!(text.ends_with("Паритет UI: расхождений не найдено ✅"), "{text}");
 }
 
-/// Демон БЕЗ плагина (только image/video): четыре настройки сцен и веб-обоев
-/// раньше давали «Расхождений: 4». Отдавать их некому — это не расхождение,
-/// и отчёт говорит словами, что именно не проверено и почему.
+/// A daemon WITHOUT the plugin (only image/video): four scene and web
+/// wallpaper settings used to give «Divergences: 4». There is no one to serve
+/// them — this is not a divergence, and the report says in words what exactly
+/// was not checked and why.
 #[test]
 fn absent_plugin_settings_are_unchecked_not_differences() {
     let _lang = i18n_pin::ru();
     let r = p::compare_schema(&response(&["image", "video"], builtin_renderers()));
     assert!(r.issues.is_empty(), "расхождения без плагина: {:?}", r.issues);
     assert!(!r.has_drift());
-    // `custom_extent` с 0.5.0 отдают image/video — проверен, не в списке.
+    // `custom_extent` is served by image/video since 0.5.0 — checked, not in the list.
     let scene = ("scene".to_string(), vec!["msaa".to_string()]);
     let web = (
         "web".to_string(),
@@ -476,25 +479,25 @@ Renderer'ы: waywallen-image, waywallen-video\n\
     );
 }
 
-/// Проверка на укус: рисовальщик ЕСТЬ, а настройку не отдаёт — это
-/// настоящее расхождение, и послабление для отсутствующих его не глушит.
+/// Bite test: the renderer IS there but does not serve the setting — this is a
+/// real divergence, and the leniency for absent ones does not suppress it.
 #[test]
 fn present_renderer_missing_its_setting_is_still_a_difference() {
     let _lang = i18n_pin::ru();
-    // Тип «web» назван только у самого рисовальщика, не в общем списке.
+    // The «web» type is named only by the renderer itself, not in the common list.
     let mut all = builtin_renderers();
     all.push(renderer("weweb-renderer", &["web"], &["fps", "shared_texture_enabled"]));
     let r = p::compare_schema(&response(&["image", "video"], all));
     let stale: Vec<&str> = r.issues.iter().map(|i| i.key.as_str()).collect();
     assert_eq!(stale, vec!["remote_debugging_port"]);
     assert_eq!(r.issues[0].kind, p::IssueKind::StaleInUi);
-    // Сцен по-прежнему нет — их настройки не проверены.
+    // There are still no scenes — their settings are not checked.
     assert_eq!(r.unchecked.len(), 1);
     assert_eq!(r.unchecked[0].0, "scene");
 
-    // Тип назван в общем списке, а рисовальщика с настройками нет — тоже
-    // расхождение: движок заявил тип, спросить есть с кого.
-    // С 0.5.0 `custom_extent` отдают image/video — расхождений три, не четыре.
+    // The type is named in the common list, but there is no renderer with
+    // settings — also a divergence: the engine declared the type, someone can be asked.
+    // Since 0.5.0 `custom_extent` is served by image/video — three divergences, not four.
     let r = p::compare_schema(&response(&["image", "video", "scene", "web"], builtin_renderers()));
     assert_eq!(r.issues.len(), 3);
     assert!(r.unchecked.is_empty());

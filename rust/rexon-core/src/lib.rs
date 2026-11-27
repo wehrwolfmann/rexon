@@ -1,20 +1,20 @@
-//! rexon-core — ядро Rexon на Rust (без Qt).
+//! rexon-core — the Rust core of Rexon (without Qt).
 //!
-//! Порт логики из прежнего Python-пакета `rexon/`. Каждый модуль
-//! сверяется побайтово с оригиналом на Python (golden-тесты).
+//! A port of the logic of the former Python package `rexon/`. Each module is
+//! checked byte for byte against the Python original (golden tests).
 
 pub mod accent;
 pub mod aeroshell;
 pub mod animations;
 pub mod app;
-/// Значки в меню и на кнопках, подписи панелей инструментов — во всех окружениях.
+/// Icons in menus and on buttons, toolbar labels — in every environment.
 pub mod app_widgets;
 pub mod appdefaults;
 pub mod appdefaults_exec;
 pub mod appearance_cache;
 pub mod appearance_installer;
 pub mod appearance_page;
-/// Журнал Rexon: файл с ротацией + копия в поток ошибок, уровни, `REXON_LOG`.
+/// The Rexon log: a rotated file + a copy to stderr, levels, `REXON_LOG`.
 pub mod applog;
 pub mod audio_capture;
 pub mod aur;
@@ -28,39 +28,39 @@ pub mod axon_window;
 pub mod backup;
 pub mod categories;
 pub mod cinnamon_spices;
-// Точка входа: маршруты командной строки на живой машине, журнал сообщений
-// Qt, каталоги переводов самой Qt.
+// Entry point: command-line routes on the live machine, the Qt message log,
+// Qt's own translation catalogs.
 pub mod cli;
 pub mod color_scheme_edit;
 pub mod compliance;
-/// Автозапуск при входе в композиторах без XDG autostart (строка в их конфиге).
+/// Autostart on login in compositors without XDG autostart (a line in their config).
 pub mod compositor_autostart;
 pub mod constants;
-/// Опасные директивы виджетов Conky: вопрос перед первым запуском, разрешение по отпечатку файлов.
+/// Dangerous Conky widget directives: a question before the first run, approval by file fingerprint.
 pub mod conky_safety;
-/// Автозапуск виджета Conky: задержка, окружение, строки композиторов.
+/// Conky widget autostart: delay, environment, compositor lines.
 pub mod conky_autostart;
 pub mod conky_layout;
-/// Палитра найденных цветов виджета Conky: замена во всех местах и возврат.
+/// Palette of colors found in a Conky widget: replacing them everywhere and reverting.
 pub mod conky_colors;
 pub mod conky_log;
-/// Настройки виджета Conky поверх файла автора (накладка `rexon.conf`).
+/// Conky widget settings on top of the author's file (the `rexon.conf` overlay).
 pub mod conky_overlay;
 pub mod conky_preview;
 pub mod conky_procs;
 pub mod conky_scan;
 pub mod conky_sets;
 pub mod conky_theme;
-/// Светлое и тёмное оформление по расписанию.
+/// Light and dark appearance on a schedule.
 pub mod day_night;
 pub mod de_apply;
 pub mod de_customization;
-/// Deepin (DDE): служба оформления на шине сеанса и DConfig — куда Deepin кладёт настройки.
+/// Deepin (DDE): the appearance service on the session bus and DConfig — where Deepin keeps its settings.
 pub mod dde;
 pub mod de_progress;
 pub mod desktop_shell;
 pub mod defaults;
-/// Deepin на Treeland — единственный Deepin, который ставит Rexon: своя сборка deepin-session без deepin-kwin.
+/// Deepin on Treeland — the only Deepin Rexon installs: its own deepin-session build without deepin-kwin.
 pub mod deepin_treeland;
 pub mod dm_autologin;
 pub mod distro_compat;
@@ -73,18 +73,18 @@ pub mod ext_utils;
 pub mod extension;
 pub mod favorites;
 pub mod fs_watch;
-/// «Сохранить текущее оформление…» — своя глобальная тема из того, что стоит сейчас.
+/// "Save current appearance…" — a custom global theme from what is set right now.
 pub mod global_save;
-/// Сайт расширений GNOME (extensions.gnome.org): витрина, выпуски, совместимость.
+/// The GNOME extensions site (extensions.gnome.org): storefront, releases, compatibility.
 pub mod gnome_ego;
-/// Раздел «Расширения GNOME»: установленное из оболочки, действия плитки, обновления.
+/// The "GNOME Extensions" section: what the shell has installed, tile actions, updates.
 pub mod gnome_ext_section;
-/// Расширения GNOME через саму оболочку: D-Bus org.gnome.Shell.Extensions и запасной путь zip.
+/// GNOME extensions through the shell itself: D-Bus org.gnome.Shell.Extensions and the zip fallback.
 pub mod gnome_shell_ext;
 pub mod gtk_sanitizer;
 pub mod gtk4_theme;
 pub mod i18n;
-/// Заставка при простое на рабочем столе: маршрут по окружениям, запреты, таймеры блокировки.
+/// Idle screensaver on the desktop: per-environment route, inhibitors, lock timers.
 pub mod idle_screensaver;
 pub mod imp_live;
 pub mod importers;
@@ -94,14 +94,14 @@ pub mod install_journal;
 pub mod install_plan;
 pub mod installed_scan;
 pub mod installer;
-/// Встроенные рамки окон KDE (Breeze, Oxygen, темы QML Aurorae).
+/// Built-in KDE window decorations (Breeze, Oxygen, Aurorae QML themes).
 pub mod kdecoration;
-/// Раскладка клавиатуры в конфигах тайловых столов и Wayfire.
+/// Keyboard layout in the configs of tiling desktops and Wayfire.
 pub mod keyboard_layout;
-/// Исполнитель установки Rexon в систему (порт `install_to_system`).
+/// The executor that installs Rexon into the system (port of `install_to_system`).
 pub mod installer_exec;
 pub mod launch_feedback;
-/// Ссылки из чужого текста: своя карточка, вопрос перед внешним сайтом, доверенные сайты.
+/// Links from foreign text: our own card, a question before an external site, trusted sites.
 pub mod link_policy;
 pub mod local_install;
 pub mod local_preview;
@@ -130,7 +130,7 @@ pub mod qt_settings;
 pub mod qt_steam;
 pub mod remote_l10n;
 pub mod renderer_watch;
-/// Пакет Arch, ждущий пересборки против новой библиотеки: признак и сборка из официальных исходников.
+/// An Arch package waiting to be rebuilt against a new library: the sign and the build from official sources.
 pub mod repo_rebuild;
 pub mod rexon_bridge;
 pub mod ruffle_manager;
@@ -139,28 +139,28 @@ pub mod rxn_manifest;
 pub mod rxn_v4_installer;
 pub mod screen_effects;
 pub mod screenshots;
-/// Мост «не гасить экран»: org.freedesktop.ScreenSaver там, где его нет.
+/// "Keep the screen on" bridge: org.freedesktop.ScreenSaver where it is missing.
 pub mod screensaver_bridge;
-/// Сторож перед сеансом Plasma: вход без AeroThemePlasma, когда оно разошлось с Plasma.
+/// Guard before a Plasma session: logging in without AeroThemePlasma when it has drifted from Plasma.
 pub mod session_guard;
-/// Сторож игрового режима (gamescope-session-plus): карта экрана до входа, отказ вместо чёрного экрана.
+/// Game-mode guard (gamescope-session-plus): the display map before login, a refusal instead of a black screen.
 pub mod gamemode_guard;
-/// Сторож сеанса Plasma: падения KWin и plasmashell из-за AeroThemePlasma сразу после входа.
+/// Plasma session guard: KWin and plasmashell crashes caused by AeroThemePlasma right after login.
 pub mod session_watch;
 pub mod session_splash;
 pub mod settings;
-/// Палитра в обе стороны между Rexon и чужим шеллом (Noctalia, DankMaterialShell).
+/// Palette both ways between Rexon and a foreign shell (Noctalia, DankMaterialShell).
 pub mod shell_palette;
-/// Связка «тайловый композитор + оболочка» (Noctalia, DankMaterialShell).
+/// The "tiling compositor + shell" pairing (Noctalia, DankMaterialShell).
 pub mod shell_bundle;
-/// Один Rexon на сессию: замок второго запуска и слушатель «подними окно».
+/// One Rexon per session: the second-launch lock and the "raise the window" listener.
 pub mod single_instance;
-/// Прослушивание темы звуков: пять звуков, поиск по спецификации, Магазин до установки.
+/// Previewing a sound theme: five sounds, lookup per the specification, the Store before installing.
 pub mod sound_preview;
 pub mod splash_exec;
 pub mod steam_profile;
 pub mod steam_profile_items;
-/// Витрины профиля Steam: нарезка своей картинки и макет предпросмотра (без записи в Steam).
+/// Steam profile showcases: slicing your own picture and the preview layout (without writing to Steam).
 pub mod steam_showcase;
 pub mod steam_screensaver;
 pub mod steam_token;
@@ -175,12 +175,12 @@ pub mod theme_removal;
 pub mod theme_watch;
 pub mod themes;
 pub mod translator;
-/// Живой автоперевод: движок, поиск модели и склейка «текст → перевод».
+/// Live machine translation: the engine, model lookup and the "text → translation" pairing.
 pub mod translator_engine;
-/// Значок Rexon в системном лотке и автозапуск при входе.
+/// The Rexon icon in the system tray and autostart on login.
 pub mod tray;
 pub mod ui_base;
-/// Сторож главного потока окна и журнал действий человека.
+/// Watchdog of the window's main thread and the log of the person's actions.
 pub mod ui_watch;
 pub mod update_guard;
 pub mod upscaler;
@@ -193,7 +193,7 @@ pub mod wallpaper_backend;
 pub mod wallpaper_engine;
 pub mod wallpaper_exec;
 pub mod wallpaper_mmap;
-/// Плейлист собственных обоев Rexon: модель, решения ротатора, таймер.
+/// Playlist of Rexon's own wallpapers: the model, the rotator's decisions, the timer.
 pub mod wallpaper_playlist;
 pub mod wallpaper_screens;
 pub mod waywallen_client;
@@ -211,6 +211,6 @@ pub mod waywallen_kde_plugin;
 pub mod wincursor;
 pub mod window_buttons;
 pub mod window_menu;
-// Снимок настоящих виджетов в стиле Qt и теме GTK для плиток «Оформления».
+// A snapshot of real widgets in the Qt style and GTK theme for the "Appearance" tiles.
 pub mod widget_shot;
 pub mod youtube_wallpaper;

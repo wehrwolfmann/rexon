@@ -1,41 +1,44 @@
-//! Экран входа Plasma Login Manager: фон и перенос оформления стола — тем же
-//! путём, что у модуля «Параметров системы» `kcm_plasmalogin` (PLM 6.8).
+//! The Plasma Login Manager login screen: background and carrying over the
+//! desktop's appearance — by the same route as the System Settings module
+//! `kcm_plasmalogin` (PLM 6.8).
 //!
-//! ЗАЧЕМ ТАК. Пишет в систему не Rexon, а собственный помощник PLM
-//! (`kcmplasmalogin_authhelper`, KAuth, D-Bus-активация от root). Повторять
-//! его запись самим нельзя: ровно на ней PLM получил CVE-2026-25710
-//! (ссылки, гонки и смена владельца в доме `plasmalogin`), и следить за
-//! миграциями прав PLM пришлось бы нам. Поэтому Rexon зовёт помощник так же,
-//! как его зовёт KAuth из kcm (`DBusHelperProxy::executeAction`, KAuth 6.31):
+//! WHY THIS WAY. It is not Rexon that writes to the system but PLM's own helper
+//! (`kcmplasmalogin_authhelper`, KAuth, D-Bus activation as root). Repeating
+//! its write ourselves is not allowed: it was exactly there that PLM got
+//! CVE-2026-25710 (links, races and ownership changes in the `plasmalogin` home),
+//! and we would have to track PLM's permission migrations. So Rexon calls the
+//! helper the same way KAuth calls it from the kcm
+//! (`DBusHelperProxy::executeAction`, KAuth 6.31):
 //!
-//! * системная шина, служба [`HELPER_ID`], объект `/`, интерфейс
-//!   [`KAUTH_INTERFACE`], метод `performAction(s action, ay callerID,
+//! * the system bus, service [`HELPER_ID`], object `/`, interface
+//!   [`KAUTH_INTERFACE`], method `performAction(s action, ay callerID,
 //!   a{sv} details, ay arguments, a{sh} fdArguments) → ay`;
-//! * `arguments` — `QVariantMap` в `QDataStream` (Qt 6, версия 24) без
-//!   дескрипторов; дескрипторы — отдельно в `fdArguments` (KAuth сам
-//!   возвращает их в карту под теми же ключами);
-//! * `callerID` помощник не смотрит: он проверяет у polkit ОТПРАВИТЕЛЯ
-//!   сообщения (`Polkit1Backend::isCallerAuthorized`, флаг
-//!   `AllowUserInteraction`), поэтому окно пароля показывает сам polkit —
-//!   агент сеанса пользователя, политика `auth_admin` PLM;
-//! * ответ — `ActionReply::serialized()`: `QVariantMap data`, `qint32
+//! * `arguments` — a `QVariantMap` in a `QDataStream` (Qt 6, version 24) without
+//!   descriptors; descriptors go separately in `fdArguments` (KAuth itself puts
+//!   them back into the map under the same keys);
+//! * the helper does not look at `callerID`: it checks the message SENDER with
+//!   polkit (`Polkit1Backend::isCallerAuthorized`, flag
+//!   `AllowUserInteraction`), so the password dialog is shown by polkit itself —
+//!   the user session agent, PLM's `auth_admin` policy;
+//! * the answer is `ActionReply::serialized()`: `QVariantMap data`, `qint32
 //!   errorCode`, `quint32 type`, `QString errorDescription`.
 //!
-//! Что передаётся — ровно то, что передаёт kcm (`kcm.cpp` PLM 6.8.2):
-//! * `save`: `config` — ВЕСЬ текст `/etc/plasmalogin.conf` (помощник
-//!   перезаписывает файл целиком), `wallpapers` — имена картинок в
-//!   `~plasmalogin/wallpapers`, `_fd_<имя>` — открытый на чтение файл
-//!   картинки (каталог картинок помощник каждый раз очищает);
-//! * `sync`: тексты файлов стола под их именами внутри `~/.config`;
-//! * `reset`: без аргументов (помощник стирает `.config` и `.cache` дома
-//!   `plasmalogin`).
+//! What is passed is exactly what the kcm passes (`kcm.cpp` of PLM 6.8.2):
+//! * `save`: `config` — the WHOLE text of `/etc/plasmalogin.conf` (the helper
+//!   rewrites the file entirely), `wallpapers` — names of pictures in
+//!   `~plasmalogin/wallpapers`, `_fd_<name>` — a picture file open for reading
+//!   (the helper clears the picture directory every time);
+//! * `sync`: texts of the desktop's files under their names inside `~/.config`;
+//! * `reset`: no arguments (the helper erases `.config` and `.cache` of the
+//!   `plasmalogin` home).
 //!
-//! Намеренное отличие от kcm, как у SDDM: kcm собирает `config` из своих
-//! полей и теряет чужие ключи файла; Rexon берёт текущий текст файла и
-//! меняет в нём только ключи фона — остальное уходит помощнику как было.
+//! A deliberate difference from the kcm, as with SDDM: the kcm assembles
+//! `config` from its own fields and loses the file's other keys; Rexon takes the
+//! current text of the file and changes only the background keys in it — the
+//! rest goes to the helper as it was.
 //!
-//! Логика — чистые функции на подставных фактах и подставной шине
-//! ([`KauthBus`]); живые обёртки `*_live` — в конце файла.
+//! The logic is pure functions over substitute facts and a substitute bus
+//! ([`KauthBus`]); the live `*_live` wrappers are at the end of the file.
 
 use std::collections::HashMap;
 use std::os::fd::OwnedFd;
@@ -46,42 +49,42 @@ use crate::system_plan::{
     SddmLookView,
 };
 
-/// Служба помощника PLM на системной шине (она же `helperId` действий).
+/// PLM helper service on the system bus (also the `helperId` of the actions).
 pub const HELPER_ID: &str = "org.kde.kcontrol.kcmplasmalogin";
-/// Интерфейс помощника KAuth 6.
+/// The KAuth 6 helper interface.
 pub const KAUTH_INTERFACE: &str = "org.kde.kf6auth";
-/// Действия помощника (`kcm_plasmalogin.actions`, политика `auth_admin`).
+/// Helper actions (`kcm_plasmalogin.actions`, `auth_admin` policy).
 pub const ACTION_SAVE: &str = "org.kde.kcontrol.kcmplasmalogin.save";
 pub const ACTION_SYNC: &str = "org.kde.kcontrol.kcmplasmalogin.sync";
 pub const ACTION_RESET: &str = "org.kde.kcontrol.kcmplasmalogin.reset";
-/// Файл активации помощника: нет его — звать некого.
+/// The helper's activation file: without it there is no one to call.
 pub const HELPER_SERVICE_FILE: &str = "/usr/share/dbus-1/system-services/org.kde.kcontrol.kcmplasmalogin.service";
 
-/// Файл, который пишет `save` (`PLASMALOGIN_CONFIG_FILE`).
+/// The file that `save` writes (`PLASMALOGIN_CONFIG_FILE`).
 pub const CONFIG_FILE: &str = "/etc/plasmalogin.conf";
-/// Каталоги и файл, которые PLM читает под ним (поздний перекрывает
-/// ранний; сам [`CONFIG_FILE`] — сильнее всех): значения пакета, затем
-/// администратора.
+/// Directories and the file PLM reads beneath it (a later one overrides an
+/// earlier one; [`CONFIG_FILE`] itself is the strongest): the package's values,
+/// then the administrator's.
 pub const SYSTEM_DEFAULTS_FILE: &str = "/usr/lib/plasmalogin/defaults.conf";
 pub const SYSTEM_CONF_DIR: &str = "/usr/lib/plasmalogin/plasmalogin.conf.d";
 pub const CONF_DIR: &str = "/etc/plasmalogin.conf.d";
-/// Системная учётная запись приветствия PLM.
+/// PLM's system greeter account.
 pub const PLM_USER: &str = "plasmalogin";
-/// Предел текста `config` у помощника (больше — отказ).
+/// The helper's limit on the `config` text (more — refusal).
 pub const CONFIG_MAX_BYTES: usize = 1024 * 1024;
-/// Самый большой файл стола, который уходит в `sync` (как у SDDM).
+/// The largest desktop file that goes into `sync` (as with SDDM).
 pub const LOOK_FILE_MAX_BYTES: u64 = 1024 * 1024;
 
-/// Модуль обоев «Картинка» и группа его настроек в `[Greeter]`.
+/// The "Image" wallpaper module and the group of its settings in `[Greeter]`.
 pub const IMAGE_PLUGIN: &str = "org.kde.image";
 pub const GREETER_GROUP: &str = "Greeter";
 pub const PLUGIN_KEY: &str = "WallpaperPluginId";
 pub const IMAGE_GROUP: &str = "Greeter][Wallpaper][org.kde.image][General";
-/// Имя своей картинки в `~plasmalogin/wallpapers` (+ `.png`/`.jpg`).
+/// Name of our picture in `~plasmalogin/wallpapers` (+ `.png`/`.jpg`).
 pub const BACKGROUND_STEM: &str = "rexon-background";
 
-/// Файлы стола, которые kcm переносит в `~plasmalogin/.config` (ключи
-/// `sync`). Других помощник не пишет.
+/// Desktop files the kcm carries over to `~plasmalogin/.config` (the `sync`
+/// keys). The helper writes no others.
 pub const SYNC_FILES: &[&str] = &[
     "kdeglobals",
     "plasmarc",
@@ -94,8 +97,8 @@ pub const SYNC_FILES: &[&str] = &[
 
 // ── QDataStream (Qt 6) ───────────────────────────────────────────────────
 
-/// Значение `QVariant` — те типы, что ходят через KAuth у PLM, и те, что
-/// может вернуть `ActionReply::data`.
+/// A `QVariant` value — the types that travel through KAuth for PLM, and those
+/// `ActionReply::data` may return.
 #[derive(Debug, Clone, PartialEq)]
 pub enum QVariant {
     Invalid,
@@ -105,7 +108,7 @@ pub enum QVariant {
     LongLong(i64),
     ULongLong(u64),
     Double(f64),
-    /// `None` — нулевая `QString`.
+    /// `None` — a null `QString`.
     String(Option<String>),
     StringList(Vec<String>),
     ByteArray(Option<Vec<u8>>),
@@ -113,7 +116,7 @@ pub enum QVariant {
     List(Vec<QVariant>),
 }
 
-// Номера типов `QMetaType` (Qt 6).
+// `QMetaType` type numbers (Qt 6).
 const QMT_INVALID: u32 = 0;
 const QMT_BOOL: u32 = 1;
 const QMT_INT: u32 = 2;
@@ -131,7 +134,7 @@ fn put_u32(out: &mut Vec<u8>, v: u32) {
     out.extend_from_slice(&v.to_be_bytes());
 }
 
-/// `QString`: длина в байтах UTF-16 (`0xFFFFFFFF` — нулевая), затем UTF-16BE.
+/// `QString`: length in UTF-16 bytes (`0xFFFFFFFF` — null), then UTF-16BE.
 pub fn put_qstring(out: &mut Vec<u8>, s: Option<&str>) {
     let Some(s) = s else {
         put_u32(out, u32::MAX);
@@ -193,9 +196,9 @@ fn put_qvariant(out: &mut Vec<u8>, v: &QVariant) {
     }
 }
 
-/// `QVariantMap` так, как его пишет `QDataStream << QMap`: число пар, затем
-/// пары по возрастанию ключа (порядок `QString` — по единицам UTF-16).
-/// Повтор ключа — остаётся последнее значение, как у `QMap::insert`.
+/// `QVariantMap` the way `QDataStream << QMap` writes it: the number of pairs,
+/// then pairs in ascending key order (`QString` order — by UTF-16 units). A
+/// repeated key keeps the last value, as with `QMap::insert`.
 pub fn put_qvariant_map(out: &mut Vec<u8>, map: &[(String, QVariant)]) {
     let mut entries: Vec<(&String, &QVariant)> = Vec::with_capacity(map.len());
     for (k, v) in map {
@@ -212,14 +215,14 @@ pub fn put_qvariant_map(out: &mut Vec<u8>, map: &[(String, QVariant)]) {
     }
 }
 
-/// Байты `QDataStream << QVariantMap`.
+/// Bytes of `QDataStream << QVariantMap`.
 pub fn encode_qvariant_map(map: &[(String, QVariant)]) -> Vec<u8> {
     let mut out = Vec::new();
     put_qvariant_map(&mut out, map);
     out
 }
 
-/// Чтение `QDataStream`: позиция в байтах.
+/// Reading a `QDataStream`: the position in bytes.
 struct QReader<'a> {
     data: &'a [u8],
     pos: usize,
@@ -255,7 +258,7 @@ impl QReader<'_> {
     }
     fn count(&mut self) -> Result<usize, String> {
         let n = self.u32()? as usize;
-        // Каждый элемент — не меньше 4 байт: защита от безумной длины.
+        // Each element is at least 4 bytes: protection against an insane length.
         if n > (self.data.len() - self.pos) / 4 + 1 {
             return Err("слишком длинный список".into());
         }
@@ -316,7 +319,7 @@ impl QReader<'_> {
     }
 }
 
-/// Разбор `QDataStream >> QVariantMap` (весь буфер).
+/// Parsing `QDataStream >> QVariantMap` (the whole buffer).
 pub fn decode_qvariant_map(data: &[u8]) -> Result<Vec<(String, QVariant)>, String> {
     let mut r = QReader { data, pos: 0 };
     let m = r.map(0)?;
@@ -326,13 +329,13 @@ pub fn decode_qvariant_map(data: &[u8]) -> Result<Vec<(String, QVariant)>, Strin
     Ok(m)
 }
 
-// ── Ответ помощника (KAuth::ActionReply) ─────────────────────────────────
+// ── Helper answer (KAuth::ActionReply) ───────────────────────────────────
 
-/// Вид ответа (`ActionReply::Type`).
+/// Answer type (`ActionReply::Type`).
 pub const REPLY_KAUTH_ERROR: u32 = 0;
 pub const REPLY_HELPER_ERROR: u32 = 1;
 pub const REPLY_SUCCESS: u32 = 2;
-/// Коды ошибок KAuth (`ActionReply::Error`).
+/// KAuth error codes (`ActionReply::Error`).
 pub const ERR_NO_RESPONDER: i32 = 1;
 pub const ERR_NO_SUCH_ACTION: i32 = 2;
 pub const ERR_INVALID_ACTION: i32 = 3;
@@ -348,7 +351,7 @@ pub struct KauthReply {
     pub description: String,
 }
 
-/// Разбор `ActionReply::serialized()`.
+/// Parsing `ActionReply::serialized()`.
 pub fn decode_reply(bytes: &[u8]) -> Result<KauthReply, String> {
     let mut r = QReader { data: bytes, pos: 0 };
     let data = r.map(0)?;
@@ -361,7 +364,7 @@ pub fn decode_reply(bytes: &[u8]) -> Result<KauthReply, String> {
     Ok(KauthReply { data, code, kind, description })
 }
 
-/// Байты `ActionReply::serialized()` (для подставной шины и эталонов).
+/// Bytes of `ActionReply::serialized()` (for the substitute bus and references).
 pub fn encode_reply(reply: &KauthReply) -> Vec<u8> {
     let mut out = encode_qvariant_map(&reply.data);
     out.extend_from_slice(&reply.code.to_be_bytes());
@@ -370,7 +373,8 @@ pub fn encode_reply(reply: &KauthReply) -> Vec<u8> {
     out
 }
 
-/// Итог ответа для человека: `Ok(())` — помощник сделал; иначе готовый текст.
+/// Result of the answer for the person: `Ok(())` — the helper did it; otherwise
+/// a ready text.
 pub fn reply_outcome(reply: &KauthReply) -> Result<(), String> {
     if reply.kind == REPLY_SUCCESS {
         return Ok(());
@@ -403,10 +407,10 @@ pub fn reply_outcome(reply: &KauthReply) -> Result<(), String> {
     })
 }
 
-// ── Шина ─────────────────────────────────────────────────────────────────
+// ── Bus ──────────────────────────────────────────────────────────────────
 
-/// Один вызов `performAction`: действие, `QVariantMap` без дескрипторов
-/// (уже в байтах `QDataStream`) и дескрипторы под своими ключами.
+/// One `performAction` call: the action, a `QVariantMap` without descriptors
+/// (already as `QDataStream` bytes) and descriptors under their keys.
 #[derive(Debug)]
 pub struct KauthCall {
     pub action: String,
@@ -414,14 +418,14 @@ pub struct KauthCall {
     pub fds: Vec<(String, OwnedFd)>,
 }
 
-/// Транспорт до помощника. Живой — [`SystemKauth`]; в сверках — подставной,
-/// который записывает пришедшее и отвечает готовыми байтами.
+/// Transport to the helper. Live — [`SystemKauth`]; in checks — a substitute
+/// that records what arrived and answers with ready bytes.
 pub trait KauthBus {
-    /// Байты ответа помощника или текст ошибки шины.
+    /// Bytes of the helper's answer or the text of a bus error.
     fn perform(&mut self, call: KauthCall) -> Result<Vec<u8>, String>;
 }
 
-/// Вызов действия и ответ для человека.
+/// Calling an action and the answer for the person.
 pub fn run_action(bus: &mut dyn KauthBus, call: KauthCall) -> Result<(), String> {
     let action = call.action.clone();
     let bytes = bus.perform(call).map_err(|e| {
@@ -439,11 +443,11 @@ pub fn run_action(bus: &mut dyn KauthBus, call: KauthCall) -> Result<(), String>
     reply_outcome(&reply)
 }
 
-/// Живая системная шина (zbus, синхронный вызов). Ожидание ответа не
-/// ограничено: внутри вызова помощник ждёт, пока человек введёт пароль в
-/// окне polkit.
+/// The live system bus (zbus, a synchronous call). Waiting for the answer is not
+/// limited: inside the call the helper waits until the person enters the
+/// password in the polkit dialog.
 pub struct SystemKauth {
-    /// Адрес шины; `None` — системная (иначе — стенд с поддельной службой).
+    /// Bus address; `None` — the system bus (otherwise a test stand with a fake service).
     pub address: Option<String>,
 }
 
@@ -461,7 +465,7 @@ impl KauthBus for SystemKauth {
             Some(a) => zbus::blocking::connection::Builder::address(a.as_str()).and_then(|b| b.build()),
         }
         .map_err(|e| e.to_string())?;
-        // KAuth кладёт сюда имя своего соединения; помощник его не смотрит.
+        // KAuth puts the name of its connection here; the helper does not look at it.
         let caller: Vec<u8> = conn.unique_name().map(|n| n.as_str().as_bytes().to_vec()).unwrap_or_default();
         let details: HashMap<String, zvariant::Value<'_>> = HashMap::new();
         let fds: HashMap<String, zvariant::OwnedFd> = call.fds.into_iter().map(|(k, fd)| (k, zvariant::OwnedFd::from(fd))).collect();
@@ -478,38 +482,38 @@ impl KauthBus for SystemKauth {
     }
 }
 
-// ── Факты о машине ───────────────────────────────────────────────────────
+// ── Facts about the machine ──────────────────────────────────────────────
 
-/// Что известно о PLM на машине.
+/// What is known about PLM on the machine.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PlmFacts {
-    /// Текст [`CONFIG_FILE`] (`None` — файла нет).
+    /// Text of [`CONFIG_FILE`] (`None` — no file).
     pub config: Option<String>,
-    /// Тексты слоёв под ним в порядке чтения (поздний перекрывает).
+    /// Texts of the layers beneath it in reading order (a later one overrides).
     pub layers: Vec<String>,
-    /// Дом учётной записи [`PLM_USER`] (`None` — её нет).
+    /// Home of the [`PLM_USER`] account (`None` — there is no such account).
     pub home: Option<String>,
-    /// Помощник установлен ([`HELPER_SERVICE_FILE`]).
+    /// The helper is installed ([`HELPER_SERVICE_FILE`]).
     pub helper: bool,
-    /// Приветствие (Qt 6) покажет WebP: у Qt есть модуль WebP
+    /// The greeter (Qt 6) will show WebP: Qt has a WebP module
     /// ([`crate::system_plan::qt_has_webp`]).
     pub webp: bool,
-    /// Своя копия Rexon картинки фона
+    /// Rexon's own copy of the background picture
     /// ([`crate::system_plan::kept_login_background`]).
     pub kept: Option<String>,
-    /// Картинка из настроек (`Image`) читается этим пользователем.
+    /// The picture from the settings (`Image`) is readable by this user.
     pub image_readable: bool,
 }
 
 impl PlmFacts {
-    /// Значение ключа так, как его прочтёт PLM.
+    /// Value of a key as PLM will read it.
     pub fn value(&self, group: &str, key: &str) -> Option<String> {
         let mut texts = self.layers.clone();
         texts.extend(self.config.clone());
         crate::login_rescue::ini_value(&texts, group, key)
     }
 
-    /// Модуль обоев экрана входа.
+    /// The login screen's wallpaper module.
     pub fn plugin(&self) -> String {
         self.value(GREETER_GROUP, PLUGIN_KEY).filter(|v| !v.is_empty()).unwrap_or_else(|| IMAGE_PLUGIN.to_string())
     }
@@ -520,7 +524,7 @@ impl PlmFacts {
     }
 }
 
-/// Путь картинки из значения `Image` (`file:///…` или путь); пусто — нет.
+/// Picture path from the `Image` value (`file:///…` or a path); empty — none.
 pub fn image_path(value: &str) -> Option<String> {
     let v = value.trim();
     let v = v.strip_prefix("file://").unwrap_or(v);
@@ -528,7 +532,7 @@ pub fn image_path(value: &str) -> Option<String> {
     v.starts_with('/').then(|| v.to_string())
 }
 
-/// Почему менять нельзя (пусто — можно).
+/// Why it cannot be changed (empty — it can).
 pub fn blocked_reason(facts: &PlmFacts, steamos_block: &str) -> String {
     if !steamos_block.is_empty() {
         return steamos_block.to_string();
@@ -549,13 +553,14 @@ pub fn blocked_reason(facts: &PlmFacts, steamos_block: &str) -> String {
     String::new()
 }
 
-// ── Фон ──────────────────────────────────────────────────────────────────
+// ── Background ───────────────────────────────────────────────────────────
 
-/// Текст [`CONFIG_FILE`] после смены фона: `image` — имя своей картинки в
-/// `<home>/wallpapers` (`None` — вернуть стандартный фон). Меняются только
-/// ключи фона, всё прочее остаётся как было. Как kcm: модуль обоев —
-/// «Картинка», если сейчас другой; `Image` — адрес `file://` копии,
-/// временный `PreviewImage` снимается.
+/// Text of [`CONFIG_FILE`] after changing the background: `image` — the name of
+/// our picture in `<home>/wallpapers` (`None` — restore the standard
+/// background). Only the background keys change, everything else stays as it
+/// was. As in the kcm: the wallpaper module is "Image" if another one is set
+/// now; `Image` is the `file://` address of the copy; the temporary
+/// `PreviewImage` is removed.
 pub fn background_config(facts: &PlmFacts, image: Option<&str>) -> String {
     use crate::system_plan::{drop_ini_keys, ini_put, SessionKey};
     let mut text = facts.config.clone().unwrap_or_default();
@@ -581,16 +586,17 @@ pub fn background_config(facts: &PlmFacts, image: Option<&str>) -> String {
     text
 }
 
-/// Свой ли сейчас фон и можно ли его вернуть: в [`CONFIG_FILE`] задана
-/// картинка или другой модуль обоев.
+/// Whether the background is custom now and can be restored: [`CONFIG_FILE`]
+/// sets a picture or another wallpaper module.
 pub fn background_custom(facts: &PlmFacts) -> bool {
     facts.own_value(IMAGE_GROUP, "Image").is_some_and(|v| !v.is_empty())
         || facts.own_value(GREETER_GROUP, PLUGIN_KEY).is_some_and(|v| !v.is_empty())
 }
 
-/// Сменить фон (`image` — путь картинки, `None` — стандартный фон). До
-/// пароля — проверка картинки по первым байтам (`head`); файл открывается
-/// на чтение здесь, помощник получает дескриптор, как от kcm.
+/// Change the background (`image` — the picture path, `None` — the standard
+/// background). Before the password — checking the picture by its first bytes
+/// (`head`); the file is opened for reading here, and the helper gets a
+/// descriptor, as from the kcm.
 pub fn background_with(
     facts: &PlmFacts,
     image: Option<&str>,
@@ -633,19 +639,20 @@ pub fn background_with(
     })
 }
 
-// ── Часы ─────────────────────────────────────────────────────────────────
+// ── Clock ────────────────────────────────────────────────────────────────
 
-/// Ключ «Показывать часы» в `[Greeter]` (kcm: `ShowClock`, по умолчанию да).
+/// The "Show clock" key in `[Greeter]` (kcm: `ShowClock`, yes by default).
 pub const CLOCK_KEY: &str = "ShowClock";
 
-/// Значение «Показывать часы» так, как его прочтёт PLM (нет — да).
+/// The "Show clock" value as PLM will read it (none — yes).
 pub fn show_clock(facts: &PlmFacts) -> bool {
     facts.value(GREETER_GROUP, CLOCK_KEY).and_then(|v| crate::system_plan::kconfig_bool(&v)).unwrap_or(true)
 }
 
-/// Текст [`CONFIG_FILE`] с «Показывать часы» = `show`. Как KConfigSkeleton
-/// модуля: совпадает с умолчанием (слои под файлом, иначе «да») — ключ
-/// снимается, иначе пишется; прочее остаётся как было.
+/// Text of [`CONFIG_FILE`] with "Show clock" = `show`. As the module's
+/// KConfigSkeleton does: if it matches the default (the layers beneath the
+/// file, otherwise "yes") the key is removed, otherwise it is written; the rest
+/// stays as it was.
 pub fn clock_config(facts: &PlmFacts, show: bool) -> String {
     use crate::system_plan::{drop_ini_keys, ini_put, SessionKey};
     let text = facts.config.clone().unwrap_or_default();
@@ -659,12 +666,12 @@ pub fn clock_config(facts: &PlmFacts, show: bool) -> String {
     }
 }
 
-/// «Показывать часы» через помощника PLM (то же действие `save`, что у фона).
-/// `save` у помощника стирает `<home>/wallpapers` и кладёт туда только
-/// переданные картинки, поэтому своя картинка фона пересылается заново
-/// дескриптором (как у kcm: `Image` указывает на её копию); `open` —
-/// открыть обычный файл на чтение. Не открылась — отказ: иначе фон молча
-/// пропал бы.
+/// "Show clock" through the PLM helper (the same `save` action as for the
+/// background). The helper's `save` erases `<home>/wallpapers` and puts only the
+/// passed pictures there, so our background picture is sent again as a
+/// descriptor (as with the kcm: `Image` points to its copy); `open` — open a
+/// regular file for reading. If it fails to open — a refusal: otherwise the
+/// background would silently disappear.
 pub fn clock_with(
     facts: &PlmFacts,
     show: bool,
@@ -709,20 +716,22 @@ pub fn clock_with(
     })
 }
 
-// ── Живое превью ─────────────────────────────────────────────────────────
+// ── Live preview ─────────────────────────────────────────────────────────
 //
-// Сверено с исходниками plasma-login-manager 6.8.2
-// (`src/frontend/greeter/main.cpp`, `mockbackend/MockGreeterProxy.cpp`):
-// приветствие `plasma-login-greeter` (каталог libexec) с флагом `--test`
-// работает без демона, вход идёт в подставной бэкенд. Окна — во весь экран
-// на каждом мониторе, на Wayland — слоем поверх всего с захватом клавиатуры;
-// закрывается приветствие только само: успешный подставной вход любым
-// пользователем с паролем «mypassword». Поэтому превью держит и гасит Rexon
-// ([`crate::system_plan::run_greeter_preview`]), подсказка называет пароль.
-// Кнопки питания там настоящие (`SessionManagement` без подмены) — об этом
-// подсказка тоже говорит. Обои в тестовом режиме не рисуются (серый фон).
+// Checked against the plasma-login-manager 6.8.2 sources
+// (`src/frontend/greeter/main.cpp`, `mockbackend/MockGreeterProxy.cpp`): the
+// greeter `plasma-login-greeter` (libexec directory) with the `--test` flag
+// works without the daemon, and login goes to a substitute backend. The
+// windows are full-screen on every monitor, on Wayland a layer above
+// everything with keyboard grab; the greeter closes only by itself: a
+// successful substitute login by any user with the password "mypassword". So
+// Rexon holds and kills the preview
+// ([`crate::system_plan::run_greeter_preview`]), and the hint names the
+// password. The power buttons there are real (`SessionManagement` without
+// substitution) — the hint says so too. Wallpapers are not drawn in test mode
+// (gray background).
 
-/// Где приветствие PLM лежит в разных раскладках libexec.
+/// Where the PLM greeter lies in different libexec layouts.
 pub const GREETER_PATHS: &[&str] = &[
     "/usr/lib/plasma-login-greeter",
     "/usr/libexec/plasma-login-greeter",
@@ -730,7 +739,7 @@ pub const GREETER_PATHS: &[&str] = &[
     "/usr/lib/x86_64-linux-gnu/libexec/plasma-login-greeter",
 ];
 
-/// Команда превью экрана входа PLM. `Err` — почему показать нельзя.
+/// Command for the PLM login screen preview. `Err` — why it cannot be shown.
 pub fn preview_argv(executable: &dyn Fn(&str) -> bool) -> Result<Vec<String>, String> {
     GREETER_PATHS
         .iter()
@@ -739,7 +748,7 @@ pub fn preview_argv(executable: &dyn Fn(&str) -> bool) -> Result<Vec<String>, St
         .ok_or_else(|| tr("Can't show the preview: Plasma Login Manager's greeter isn't installed."))
 }
 
-// ── Перенос оформления ───────────────────────────────────────────────────
+// ── Carrying over the appearance ─────────────────────────────────────────
 
 fn item_locale() -> String {
     tr("Language and locale settings")
@@ -751,9 +760,9 @@ fn item_screens() -> String {
     tr("Screen arrangement, scale, and orientation settings")
 }
 
-/// Что уйдёт на экран входа PLM с этого стола: файлы (имя из
-/// [`SYNC_FILES`] → путь у пользователя), вне Plasma — курсор и шрифт
-/// значениями, и подписи для человека.
+/// What will go to the PLM login screen from this desktop: files (a name from
+/// [`SYNC_FILES`] → the user's path), outside Plasma — the cursor and font as
+/// values, and labels for the person.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PlmLook {
     pub plasma: bool,
@@ -765,10 +774,11 @@ pub struct PlmLook {
     pub missing: Vec<String>,
 }
 
-/// Оформление стола для PLM по [`DesktopLook`] (значения курсора, шрифта и
-/// NumLock стол уже прочёл). В Plasma — файлы, как у kcm; вне Plasma —
-/// цвета Qt и `fontconfig`, курсор и шрифт значениями (их помощник получит
-/// файлами `kcminputrc` и `kdeglobals`).
+/// The desktop's appearance for PLM from [`DesktopLook`] (the desktop has
+/// already read the cursor, font and NumLock values). In Plasma — files, as in
+/// the kcm; outside Plasma — Qt colors and `fontconfig`, the cursor and font as
+/// values (the helper will get them as the `kcminputrc` and `kdeglobals`
+/// files).
 pub fn plm_look(plasma: bool, config_home: &str, desktop: &DesktopLook, exists: &dyn Fn(&str) -> bool) -> PlmLook {
     let cfg = config_home.trim_end_matches('/');
     let mut out = PlmLook { plasma, ..PlmLook::default() };
@@ -788,7 +798,7 @@ pub fn plm_look(plasma: bool, config_home: &str, desktop: &DesktopLook, exists: 
     let font = if plasma { desktop.look.font.is_some() } else { out.font.is_some() };
     let cursor = if plasma { desktop.look.cursor_theme.is_some() } else { out.cursor_theme.is_some() };
     let numlock = plasma && desktop.look.numlock.is_some();
-    // Порядок — как в окне kcm «Применить параметры Plasma».
+    // Order — as in the kcm's "Apply Plasma Settings" dialog.
     let rows: Vec<(String, bool)> = vec![
         (item_locale(), plasma && has("plasma-localerc")),
         (item_keyboard(), plasma && has("kxkbrc")),
@@ -810,10 +820,10 @@ pub fn plm_look(plasma: bool, config_home: &str, desktop: &DesktopLook, exists: 
     out
 }
 
-/// Аргументы `sync`: имя файла → текст. Файлы больше
-/// [`LOOK_FILE_MAX_BYTES`] не уходят (`size`). Вне Plasma шрифт ложится в
-/// `[General] font` копии `kdeglobals`, курсор — в `[Mouse]` нового
-/// `kcminputrc`.
+/// `sync` arguments: file name → text. Files larger than
+/// [`LOOK_FILE_MAX_BYTES`] are not sent (`size`). Outside Plasma the font goes
+/// into `[General] font` of the `kdeglobals` copy, the cursor into `[Mouse]` of a
+/// new `kcminputrc`.
 pub fn sync_args(
     look: &PlmLook,
     read: &dyn Fn(&str) -> Option<String>,
@@ -849,7 +859,7 @@ pub fn sync_args(
     out
 }
 
-/// Перенести оформление стола (`Some`) или «Сбросить» (`None`).
+/// Carry over the desktop's appearance (`Some`) or "Reset" (`None`).
 pub fn look_with(
     facts: &PlmFacts,
     look: Option<&PlmLook>,
@@ -875,11 +885,11 @@ pub fn look_with(
     }
 }
 
-// ── Вид для окна ─────────────────────────────────────────────────────────
+// ── View for the window ──────────────────────────────────────────────────
 
-/// Раздел «Фон и оформление экрана входа» при PLM — в том же виде, что у
-/// SDDM ([`SddmGreeterView`]); `standard` — картинка стандартного фона
-/// Plasma для превью (пусто — нет).
+/// The "Login screen background and appearance" section with PLM — in the same
+/// form as for SDDM ([`SddmGreeterView`]); `standard` — the picture of the
+/// standard Plasma background for the preview (empty — none).
 pub fn greeter_view(facts: &PlmFacts, look: &PlmLook, standard: &str, steamos_block: &str) -> SddmGreeterView {
     let blocked = blocked_reason(facts, steamos_block);
     let plugin = facts.plugin();
@@ -947,20 +957,20 @@ pub fn greeter_view(facts: &PlmFacts, look: &PlmLook, standard: &str, steamos_bl
     }
 }
 
-// ── Живая машина ─────────────────────────────────────────────────────────
+// ── Live machine ─────────────────────────────────────────────────────────
 
-/// Дом учётной записи `user` (NSS, как `KUser`).
+/// Home of account `user` (NSS, like `KUser`).
 pub fn user_home_live(user: &str) -> Option<String> {
     let name = std::ffi::CString::new(user).ok()?;
     let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
     let mut buf = vec![0 as libc::c_char; 16 * 1024];
     let mut result: *mut libc::passwd = std::ptr::null_mut();
-    // SAFETY: буферы живут до конца вызова; результат читается только при успехе.
+    // SAFETY: the buffers live until the end of the call; the result is read only on success.
     let rc = unsafe { libc::getpwnam_r(name.as_ptr(), &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
     if rc != 0 || result.is_null() || pwd.pw_dir.is_null() {
         return None;
     }
-    // SAFETY: pw_dir указывает в `buf`, строка с нулём на конце.
+    // SAFETY: pw_dir points into `buf`, a NUL-terminated string.
     let dir = unsafe { std::ffi::CStr::from_ptr(pwd.pw_dir) }.to_string_lossy().into_owned();
     (!dir.is_empty()).then_some(dir)
 }
@@ -978,7 +988,7 @@ fn conf_dir_texts(dir: &str) -> Vec<String> {
     names.iter().filter_map(|n| std::fs::read_to_string(format!("{dir}/{n}")).ok()).collect()
 }
 
-/// [`PlmFacts`] на живой машине.
+/// [`PlmFacts`] on the live machine.
 pub fn facts_live() -> PlmFacts {
     let mut layers: Vec<String> = std::fs::read_to_string(SYSTEM_DEFAULTS_FILE).ok().into_iter().collect();
     layers.extend(conf_dir_texts(SYSTEM_CONF_DIR));
@@ -996,7 +1006,7 @@ pub fn facts_live() -> PlmFacts {
 }
 
 impl PlmFacts {
-    /// Отметить, читается ли картинка из настроек этим пользователем.
+    /// Mark whether the picture from the settings is readable by this user.
     fn with_image_readable_live(mut self) -> Self {
         self.image_readable = self.value(IMAGE_GROUP, "Image")
             .and_then(|v| image_path(&v))
@@ -1005,7 +1015,7 @@ impl PlmFacts {
     }
 }
 
-/// Картинка стандартного фона Plasma (`Next`) для превью; пусто — нет.
+/// The picture of the standard Plasma background (`Next`) for the preview; empty — none.
 pub fn standard_background_live() -> String {
     let dir = "/usr/share/wallpapers/Next/contents/images";
     let preferred = format!("{dir}/1920x1080.png");
@@ -1019,13 +1029,13 @@ pub fn standard_background_live() -> String {
     names.into_iter().find(|n| n.ends_with(".png") || n.ends_with(".jpg")).map(|n| format!("{dir}/{n}")).unwrap_or_default()
 }
 
-/// [`plm_look`] на живой машине для стола `de` (`kde` — Plasma).
+/// [`plm_look`] on the live machine for desktop `de` (`kde` — Plasma).
 pub fn plm_look_live(de: &str) -> PlmLook {
     let desktop = crate::system_plan::desktop_greeter_look_live(de);
     plm_look(de == "kde", &crate::utils::config_home_env(), &desktop, &|p| std::path::Path::new(p).is_file())
 }
 
-/// [`greeter_view`] на живой машине.
+/// [`greeter_view`] on the live machine.
 pub fn greeter_view_live(de: &str) -> SddmGreeterView {
     let steamos = if crate::distro_compat::running_on_steamos() {
         crate::distro_compat::SteamOsBlock::LoginScreen.reason()
@@ -1037,10 +1047,11 @@ pub fn greeter_view_live(de: &str) -> SddmGreeterView {
     view
 }
 
-/// [`clock_with`] на живой машине (окно пароля — polkit).
+/// [`clock_with`] on the live machine (password dialog — polkit).
 pub fn clock_live(show: bool) -> Result<String, String> {
-    // Копия в доме `plasmalogin` обычно не читается (дом закрыт) — тогда
-    // своя копия Rexon ([`crate::system_plan::kept_login_background`]).
+    // The copy in the `plasmalogin` home usually cannot be read (the home is
+    // closed) — then Rexon's own copy
+    // ([`crate::system_plan::kept_login_background`]).
     clock_with(
         &facts_live(),
         show,
@@ -1057,7 +1068,7 @@ pub fn clock_live(show: bool) -> Result<String, String> {
     )
 }
 
-/// [`background_with`] на живой машине (окно пароля — polkit).
+/// [`background_with`] on the live machine (password dialog — polkit).
 pub fn background_live(image: Option<&str>) -> Result<String, String> {
     use std::io::Read;
     let head = |p: &str| {
@@ -1067,26 +1078,27 @@ pub fn background_live(image: Option<&str>) -> Result<String, String> {
     };
     let facts = facts_live();
     let done = background_with(&facts, image, &head, &open_regular, &mut SystemKauth::system())?;
-    // Своя копия картинки: дом `plasmalogin` закрыт для чтения, а превью и
-    // `save` помощника (часы, [`clock_with`]) берут её отсюда.
+    // Our own copy of the picture: the `plasmalogin` home is closed for reading,
+    // and the preview and the helper's `save` (clock, [`clock_with`]) take it from
+    // here.
     crate::system_plan::sync_kept_login_background_live(crate::system_plan::LOGIN_BG_PLM, image, facts.webp);
     Ok(done)
 }
 
-/// Обычный файл на чтение (не каталог, не устройство).
+/// A regular file for reading (not a directory, not a device).
 fn open_regular(p: &str) -> Option<OwnedFd> {
     std::fs::File::open(p).ok().filter(|f| f.metadata().is_ok_and(|m| m.is_file())).map(OwnedFd::from)
 }
 
-/// Имя файла — картинка фона, положенная Rexon (`rexon-background.<ext>`).
+/// The file name is a background picture put by Rexon (`rexon-background.<ext>`).
 pub fn is_own_background(name: &str) -> bool {
     name.strip_prefix(BACKGROUND_STEM)
         .and_then(|r| r.strip_prefix('.'))
         .is_some_and(|e| matches!(e, "png" | "jpg" | "webp"))
 }
 
-/// [`look_with`] на живой машине: `de` — стол, с которого переносится
-/// оформление (`None` — «Сбросить»).
+/// [`look_with`] on the live machine: `de` — the desktop the appearance is
+/// carried over from (`None` — "Reset").
 pub fn look_live(de: Option<&str>) -> Result<String, String> {
     let look = de.map(plm_look_live);
     look_with(

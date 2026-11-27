@@ -1,17 +1,18 @@
-// Контрольный стенд транспорта вкладки Wallpaper Engine (партия 7).
+// The control bench of the Wallpaper Engine tab transport (batch 7).
 //
-// Гоняет НЕ макет, а сам продуктовый транспорт `rexon_gui::we_socket`:
-// поиск демона по D-Bus, открытие сокета, отправку кадра `health`,
-// маршрутизацию ответа по `request_id` изнутри `Response` и приём событий.
-// Печатает одну машинно-читаемую строку `REXON-WS-PROBE ...` — в том же
-// духе, что `REXON-SELFTEST ...` у стенда моделей.
+// It runs NOT a mock-up but the product transport `rexon_gui::we_socket`
+// itself: finding the daemon over D-Bus, opening the socket, sending the
+// `health` frame, routing the answer by the `request_id` inside `Response`
+// and receiving events. It prints one machine-readable line
+// `REXON-WS-PROBE ...` — in the same spirit as `REXON-SELFTEST ...` of the
+// model bench.
 //
-// Выход 0 — демон ответил и номер запроса единственный; иначе 1 и причина
-// в поле error=.
+// Exit 0 — the daemon answered and the request number is unique; otherwise
+// 1 and the reason in the error= field.
 //
-// ⚠️ Проверка на укус: `REXON_WS_PROBE_BITE=port` уводит сокет на соседний
-// порт. Стенд, который и в этом случае печатает `health=healthy`, ничего
-// не проверяет — значит, сломан сам стенд.
+// Warning: a bite check: `REXON_WS_PROBE_BITE=port` takes the socket to a
+// neighbouring port. A bench that prints `health=healthy` even in this case
+// checks nothing — it means the bench itself is broken.
 
 use std::cell::{Cell, RefCell};
 use std::ffi::c_char;
@@ -31,8 +32,8 @@ thread_local! {
     static ERROR: RefCell<String> = RefCell::new(String::new());
 }
 
-// Номер, под которым уходит `health`. Выдаёт его тот же счётчик, что и
-// запросам вкладки, — проверка того, что счётчик один.
+// The number `health` goes out under. It is issued by the same counter as
+// for the tab's queries — a check that the counter is one.
 thread_local! {
     static HEALTH_ID: Cell<u64> = const { Cell::new(0) };
 }
@@ -64,7 +65,7 @@ extern "C" fn on_error(data: *const c_char, len: i32) {
     });
 }
 
-/// Ответ, которого не ждал ни один запрос вкладки, — то есть наш `health`.
+/// An answer that no tab query was waiting for — that is, our `health`.
 extern "C" fn on_response(request_id: i64, data: *const c_char, len: i32) {
     FRAMES.with(|c| c.set(c.get() + 1));
     REQUEST_ID.with(|c| c.set(request_id));
@@ -98,8 +99,9 @@ fn text_of(data: *const c_char, len: i32) -> String {
 }
 
 fn main() {
-    // QCoreApplication, а не QGuiApplication: транспорту не нужен ни экран,
-    // ни QPA-платформа — это и есть проверка того, что слой отделим от UI.
+    // QCoreApplication, not QGuiApplication: the transport needs neither a
+    // screen nor a QPA platform — this is exactly the check that the layer is
+    // separable from the UI.
     let _app = QCoreApplication::new();
 
     let status = we_socket::probe();
@@ -119,7 +121,7 @@ fn main() {
         Some(on_event),
     );
     we_socket::open(port);
-    // Реконнект стенду не нужен: он проверяет один прогон, а не живучесть.
+    // The bench does not need reconnection: it checks one run, not robustness.
     rexon_gui::we_socket::qobject::sock_run_loop(4000);
 
     let health = HEALTH.with(|h| h.borrow().clone());

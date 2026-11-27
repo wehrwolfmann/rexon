@@ -1,24 +1,25 @@
-//! Порт `rexon/utils.py` — общих утилит: журналирование, нормализация путей
-//! пользователя, ЕДИНЫЙ поиск внешних инструментов и обращения к сессионной
-//! шине D-Bus.
+//! Port of `rexon/utils.py` — shared utilities: logging, normalizing user
+//! paths, the SINGLE lookup of external tools and calls to the D-Bus session
+//! bus.
 //!
-//! ⚠️ Переключателя `REXON_RUST_BACKEND=off` в проекте больше НЕТ. Он уводил
-//! шимы на Python-копии логики, но копий не осталось ни в одном модуле:
-//! выключать нечего, а единственным действием переменной стало бы «сломать
-//! программу». Вместе с копиями убрана и она — и здешний её эталон.
+//! ⚠️ The project NO LONGER has the `REXON_RUST_BACKEND=off` switch. It sent
+//! the shims to Python copies of the logic, but no copies are left in any
+//! module: there is nothing to turn off, and the variable's only effect would
+//! be «break the program». It was removed together with the copies — and so
+//! was its golden reference here.
 //!
-//! Остальное — настоящая логика (разбор путей, перебор синонимов бинарей,
-//! разбор ответа `dbus-send`, сборка argv), и она портирована целиком.
-//! Запуск процессов и настройка `logging` остаются на Python: там ядро
-//! ничего не добавляет, кроме лишнего перехода через мост.
+//! The rest is real logic (path parsing, iterating over binary synonyms,
+//! parsing the `dbus-send` answer, building argv), and it is ported entirely.
+//! Launching processes and configuring `logging` stay in Python: the core
+//! adds nothing there except an extra hop through the bridge.
 //!
-//! ⚠️ Отличие от Python в ОДНОМ месте: право на исполнение проверяется по
-//! биту `x` в правах файла, а не вызовом `access(2)` (у ядра нет зависимости
-//! на libc, а `std` доступа к `access` не даёт). Для бинарей дистрибутива
-//! (режим 0755) это то же самое; разойтись может лишь файл с правами вида
-//! 0700 от другого владельца. Поэтому Python, получив от ядра «не нашёл»,
-//! всё равно доискивает сам — ложного «инструмента нет» из-за ядра быть не
-//! может (см. `rexon/utils.py::resolve_tool`).
+//! ⚠️ Differs from Python in ONE place: the execute permission is checked by
+//! the `x` bit in the file mode, not by calling `access(2)` (the core has no
+//! libc dependency, and `std` gives no access to `access`). For distribution
+//! binaries (mode 0755) this is the same; only a file with a mode like 0700
+//! owned by someone else could diverge. So Python, having got «not found»
+//! from the core, searches further by itself — a false «the tool is missing»
+//! because of the core is impossible (see `rexon/utils.py::resolve_tool`).
 
 use std::collections::HashSet;
 use std::fs;
@@ -26,33 +27,33 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 // ============================================================================
-// Журналирование
+// Logging
 // ============================================================================
 
-/// Имя корневого журнала приложения.
+/// Name of the application's root logger.
 pub const LOGGER_NAME: &str = "rexon";
 
-/// Формат записи журнала.
+/// Log record format.
 pub const LOG_FORMAT: &str = "%(asctime)s [%(name)s] %(levelname)s: %(message)s";
 
-/// Формат отметки времени.
+/// Timestamp format.
 pub const LOG_DATE_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
-/// Уровень журнала: числовые значения совпадают с `logging` Python.
+/// Log level: the numeric values match Python's `logging`.
 pub const LEVEL_DEBUG: i32 = 10;
-/// Предупреждение.
+/// Warning.
 pub const LEVEL_WARNING: i32 = 30;
 
 // ============================================================================
-// Пути пользователя (ЕДИНЫЙ расширитель на всё ядро)
+// User paths (the SINGLE expander for the whole core)
 // ============================================================================
 
-/// Каталог без хвостовых `/`, но корень остаётся корнем.
+/// A directory without trailing `/`, but the root stays the root.
 ///
-/// Соответствует тому, что делает `os.path.expanduser` со значением `$HOME`
-/// (`userhome.rstrip('/')`), и заодно приводит к одному виду значения
-/// `$XDG_*_HOME`: с хвостовым слешем в переменной пути потом склеивались
-/// через `//`.
+/// Matches what `os.path.expanduser` does with the `$HOME` value
+/// (`userhome.rstrip('/')`), and also brings `$XDG_*_HOME` values to one
+/// form: with a trailing slash in the variable, paths were later glued with
+/// `//`.
 fn norm_dir(dir: &str) -> &str {
     if !dir.is_empty() && dir.chars().all(|c| c == '/') {
         return "/";
@@ -60,11 +61,11 @@ fn norm_dir(dir: &str) -> &str {
     dir.trim_end_matches('/')
 }
 
-/// Склейка пути ровно как `os.path.join(a, b)` для относительного `b`.
+/// Joining a path exactly like `os.path.join(a, b)` for a relative `b`.
 ///
-/// Отдельная функция, потому что наивный `format!("{a}/{b}")` на корне даёт
-/// `//x`, а на пустом `b` — `a/` вместо `a` (или наоборот): расхождение с
-/// Python вылезло бы уже в путях к конфигам.
+/// A separate function because a naive `format!("{a}/{b}")` gives `//x` on
+/// the root, and on an empty `b` — `a/` instead of `a` (or vice versa): the
+/// divergence from Python would already show up in config paths.
 fn join_path(dir: &str, tail: &str) -> String {
     if tail.starts_with('/') {
         return tail.to_string();
@@ -75,15 +76,16 @@ fn join_path(dir: &str, tail: &str) -> String {
     format!("{dir}/{tail}")
 }
 
-/// Корень пользовательских конфигов: `$XDG_CONFIG_HOME` либо `~/.config`.
+/// Root of user configs: `$XDG_CONFIG_HOME` or `~/.config`.
 ///
-/// ⚠️ ЕДИНАЯ точка. Раньше `~/.config` вшивался в каждый модуль по месту, и
-/// при нестандартном `XDG_CONFIG_HOME` пути уезжали мимо реальных файлов:
-/// systemd-юнит вставал туда, где `systemctl --user enable` его не ищет
-/// (автозапуск демона обоев и заставки молча не включался), autostart-
-/// .desktop и правило KWin писались мимо живых файлов, профили
-/// `mimeapps.list` — мимо каталога, откуда их читают DE. Новые пути к
-/// пользовательским конфигам строить ТОЛЬКО отсюда (правило #12).
+/// ⚠️ The SINGLE point. Previously `~/.config` was hard-coded into each module
+/// in place, and with a non-standard `XDG_CONFIG_HOME` paths drifted away
+/// from the real files: a systemd unit landed where `systemctl --user enable`
+/// does not look for it (autostart of the wallpaper daemon and the splash
+/// silently stayed off), the autostart .desktop and the KWin rule were
+/// written past the live files, `mimeapps.list` profiles — past the
+/// directory the DEs read them from. Build new paths to user configs ONLY
+/// from here (rule #12).
 pub fn config_home(xdg_config_home: Option<&str>, home: &str) -> String {
     match xdg_config_home {
         Some(v) if !v.is_empty() => norm_dir(v).to_string(),
@@ -91,14 +93,14 @@ pub fn config_home(xdg_config_home: Option<&str>, home: &str) -> String {
     }
 }
 
-/// Корень пользовательских данных: `$XDG_DATA_HOME` либо `~/.local/share`.
+/// Root of user data: `$XDG_DATA_HOME` or `~/.local/share`.
 ///
-/// Пара к [`config_home`] и такой же ЕДИНЫЙ источник. Заведена по тем же
-/// причинам: путь вшивался литералом больше чем в сотне мест, и при
-/// нестандартном `XDG_DATA_HOME` (Flatpak, Steam-runtime, кастомные профили)
-/// темы, курсоры, шрифты, плазмоиды и расширения `.rxn` ставились мимо
-/// каталога, который читает система, — установка «проходила», а результата
-/// не было.
+/// The pair of [`config_home`] and the same SINGLE source. Introduced for the
+/// same reasons: the path was hard-coded as a literal in more than a hundred
+/// places, and with a non-standard `XDG_DATA_HOME` (Flatpak, Steam runtime,
+/// custom profiles) themes, cursors, fonts, plasmoids and `.rxn` extensions
+/// were installed past the directory the system reads — the install
+/// «succeeded», but there was no result.
 pub fn data_home(xdg_data_home: Option<&str>, home: &str) -> String {
     match xdg_data_home {
         Some(v) if !v.is_empty() => norm_dir(v).to_string(),
@@ -106,8 +108,8 @@ pub fn data_home(xdg_data_home: Option<&str>, home: &str) -> String {
     }
 }
 
-/// Корень пользовательского кэша: `$XDG_CACHE_HOME` либо `~/.cache`. Третий
-/// в паре к [`config_home`] и [`data_home`], с тем же разбором.
+/// Root of the user cache: `$XDG_CACHE_HOME` or `~/.cache`. The third next to
+/// [`config_home`] and [`data_home`], with the same parsing.
 pub fn cache_home(xdg_cache_home: Option<&str>, home: &str) -> String {
     match xdg_cache_home {
         Some(v) if !v.is_empty() => norm_dir(v).to_string(),
@@ -115,92 +117,94 @@ pub fn cache_home(xdg_cache_home: Option<&str>, home: &str) -> String {
     }
 }
 
-/// Имя папки Rexon внутри корня конфигов. Одно на весь продукт: и путь
-/// настроек, и список удаления берут его отсюда.
+/// Name of the Rexon folder inside the config root. One for the whole
+/// product: both the settings path and the removal list take it from here.
 pub const REXON_DIR_NAME: &str = "rexon";
 
-/// Каталог настроек Rexon: `<`[`config_home`]`>/rexon`.
+/// Rexon settings directory: `<`[`config_home`]`>/rexon`.
 ///
-/// ⚠️ ЕДИНАЯ точка для ВСЕХ хранилищ Rexon в конфигах (`settings.json`,
+/// ⚠️ The SINGLE point for ALL Rexon stores in configs (`settings.json`,
 /// `favorites.json`, `bridge.json`, `bridge_commands/`, `screenshots/`,
-/// `extensions/`, `themes.json`, `ruffle/`, `crashes/`…). Раньше половина
-/// модулей склеивала путь сама — часть через `expand_user`/`config_home`
-/// (то есть по `$XDG_CONFIG_HOME`), часть литералом `~/.config/rexon` от
-/// голого `$HOME`. На машине с нестандартным `XDG_CONFIG_HOME` получались
-/// ДВЕ разные папки настроек: одна половина продукта писала в одну, другая
-/// читала другую, а удаление Rexon сносило только XDG-шную. Новые пути к
-/// данным Rexon в конфигах строить ТОЛЬКО отсюда (правило #12).
+/// `extensions/`, `themes.json`, `ruffle/`, `crashes/`…). Previously half of
+/// the modules glued the path themselves — some through
+/// `expand_user`/`config_home` (i.e. by `$XDG_CONFIG_HOME`), some with the
+/// literal `~/.config/rexon` from a bare `$HOME`. On a machine with a
+/// non-standard `XDG_CONFIG_HOME` there were TWO different settings folders:
+/// one half of the product wrote into one, the other read the other, and
+/// removing Rexon deleted only the XDG one. Build new paths to Rexon data in
+/// configs ONLY from here (rule #12).
 pub fn rexon_config_dir_at(xdg_config_home: Option<&str>, home: &str) -> String {
     join_path(&config_home(xdg_config_home, home), REXON_DIR_NAME)
 }
 
-/// Корень конфигов по ОКРУЖЕНИЮ процесса (`$XDG_CONFIG_HOME`, иначе
-/// `$HOME/.config`; пустой/отсутствующий `$HOME` → текущий каталог, как у
+/// Config root from the process ENVIRONMENT (`$XDG_CONFIG_HOME`, otherwise
+/// `$HOME/.config`; an empty/missing `$HOME` → the current directory, like
 /// `os.path.expanduser`).
 ///
-/// Единственное место в ядре, где корень конфигов снимается с окружения:
-/// раньше эти четыре строки были скопированы в `settings.rs`,
-/// `qt_extensions.rs`, `favorites.rs` и `constants.rs` — с разным разбором
-/// пустой строки.
+/// The only place in the core where the config root is taken from the
+/// environment: previously these four lines were copied into `settings.rs`,
+/// `qt_extensions.rs`, `favorites.rs` and `constants.rs` — with different
+/// handling of an empty string.
 pub fn config_home_env() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let home = if home.is_empty() { ".".to_string() } else { home };
     config_home(env_nonempty("XDG_CONFIG_HOME").as_deref(), &home)
 }
 
-/// [`rexon_config_dir_at`] по окружению процесса.
+/// [`rexon_config_dir_at`] from the process environment.
 pub fn rexon_config_dir() -> PathBuf {
     PathBuf::from(join_path(&config_home_env(), REXON_DIR_NAME))
 }
 
 // ============================================================================
-// Запись в профиль покупателя — ОДНА дверь
+// Writing to the customer's profile — ONE door
 // ============================================================================
 
-/// Суффикс имени временного файла атомарной записи. Имя начинается с точки
-/// (скрытый файл) и НЕ повторяет имя цели целиком, поэтому обходы каталогов,
-/// отбирающие файлы по префиксу или расширению (`crash_*.log`, `*.json`),
-/// недописанный файл не видят.
+/// Name suffix of the atomic write's temporary file. The name starts with a
+/// dot (a hidden file) and does NOT repeat the target's whole name, so
+/// directory walks that pick files by prefix or extension (`crash_*.log`,
+/// `*.json`) do not see a half-written file.
 fn atomic_tmp_name(name: &str) -> String {
     format!(".{name}.part-{}", std::process::id())
 }
 
-/// Атомарно записать текст: временный файл в том же каталоге → `fsync` →
-/// `rename`. При ошибке временный файл убирается, окончательный не тронут.
+/// Atomically write text: a temporary file in the same directory → `fsync` →
+/// `rename`. On error the temporary file is removed, the final one is untouched.
 ///
-/// ⚠️ **ЕДИНСТВЕННАЯ дверь записи в профиль покупателя** (`~/.config/rexon`,
-/// `~/.local/share/rexon`, а также настройки рабочего стола и приложений по
-/// умолчанию, которые Rexon переписывает от имени человека). Обычный
-/// `fs::write` файл сначала ОБРЕЗАЕТ и только потом наполняет: закрытое в эту
-/// миллисекунду окно или пропавшее питание оставляют на диске половину.
-/// Половина `settings.json` — это потерянные настройки покупателя, половина
-/// `bridge.json` — переставший отвечать мост, половина `.desktop` автозапуска
-/// — мёртвая строка, которая оживает уже при входе в сеанс, когда объяснить
-/// поломку некому.
+/// ⚠️ **The ONLY door for writing to the customer's profile**
+/// (`~/.config/rexon`, `~/.local/share/rexon`, and also desktop settings and
+/// default applications that Rexon rewrites on the person's behalf). A plain
+/// `fs::write` first TRUNCATES the file and only then fills it: a window
+/// closed in that millisecond or a power loss leaves half on disk. Half a
+/// `settings.json` is the customer's lost settings, half a `bridge.json` — a
+/// bridge that stopped answering, half an autostart `.desktop` — a dead line
+/// that comes alive only at session login, when there is nobody to explain
+/// the breakage.
 ///
-/// Временный файл кладётся РЯДОМ с целевым, а не в `/tmp`: `rename` атомарен
-/// только в пределах одной файловой системы, а `/tmp` здесь — ОЗУ (tmpfs), то
-/// есть другая. Через `/tmp` вместо переименования вышло бы копирование, и
-/// обрезанный файл вернулся бы ровно туда, откуда его убирали.
+/// The temporary file is put NEXT TO the target, not in `/tmp`: `rename` is
+/// atomic only within one file system, and `/tmp` here is RAM (tmpfs), i.e. a
+/// different one. Through `/tmp` a copy would happen instead of a rename, and
+/// the truncated file would come back exactly where it was being removed from.
 ///
-/// `fsync` до переименования — не перестраховка: без него `rename` может
-/// попасть на диск раньше содержимого, и после сбоя питания на месте целого
-/// старого файла окажется целый новый — из нулей.
+/// `fsync` before the rename is not overcaution: without it `rename` may reach
+/// the disk before the contents, and after a power failure in place of the
+/// whole old file there will be a whole new one — of zeros.
 ///
-/// Каталог НЕ создаётся: отсутствие каталога — ошибка, а не повод молча
-/// завести его в неожиданном месте. Кому нужен `mkdir -p`, делает его сам.
+/// The directory is NOT created: a missing directory is an error, not a
+/// reason to silently set it up in an unexpected place. Whoever needs
+/// `mkdir -p` does it themselves.
 pub fn atomic_write(path: &str, text: &str) -> std::io::Result<()> {
     atomic_write_bytes(path, text.as_bytes())
 }
 
-/// Куда на самом деле писать: символьная ссылка разворачивается в свою цель.
+/// Where to actually write: a symlink is resolved to its target.
 ///
-/// ⚠️ Это НЕ придирка. Подмена имени бьёт по самой ссылке: обычная запись шла
-/// сквозь неё и наполняла файл на том конце, а `rename` положил бы на её
-/// место простой файл — и у человека, который держит конфиги в своём
-/// хранилище и расставляет их ссылками, связь с хранилищем молча оборвалась
-/// бы. Разворачиваем только существующую ссылку; битая ссылка (цели нет)
-/// остаётся как есть, её и заменяем.
+/// ⚠️ This is NOT nitpicking. Replacing the name hits the link itself: a
+/// plain write went through it and filled the file at the other end, while
+/// `rename` would put a plain file in its place — and for a person who keeps
+/// configs in their own store and places them with links, the connection to
+/// the store would silently break. Only an existing link is resolved; a
+/// broken link (no target) stays as is, and that is what gets replaced.
 fn atomic_target(path: &Path) -> std::borrow::Cow<'_, Path> {
     match fs::symlink_metadata(path) {
         Ok(meta) if meta.file_type().is_symlink() => match fs::canonicalize(path) {
@@ -211,11 +215,11 @@ fn atomic_target(path: &Path) -> std::borrow::Cow<'_, Path> {
     }
 }
 
-/// То же, что [`atomic_write`], но для сырых байт (снимки экрана, превью).
+/// The same as [`atomic_write`], but for raw bytes (screenshots, previews).
 ///
-/// Права уже лежащего файла сохраняются: подмена имени заводит НОВЫЙ файл, и
-/// без этого закрытый покупателем конфиг (`0600`) после первого же сохранения
-/// стал бы доступен на чтение всем.
+/// The permissions of an already existing file are kept: replacing the name
+/// creates a NEW file, and without this a config the customer locked down
+/// (`0600`) would become world-readable after the very first save.
 pub fn atomic_write_bytes(path: &str, data: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     let target = atomic_target(Path::new(path));
@@ -242,36 +246,36 @@ pub fn atomic_write_bytes(path: &str, data: &[u8]) -> std::io::Result<()> {
     result
 }
 
-/// [`atomic_write`] с сообщением об ошибке строкой — форма для исполнителей,
-/// у которых в договоре `Result<(), String>`.
+/// [`atomic_write`] with the error message as a string — the form for
+/// executors whose contract is `Result<(), String>`.
 pub fn atomic_write_str_err(path: &str, text: &str) -> Result<(), String> {
     atomic_write(path, text).map_err(|e| e.to_string())
 }
 
-/// Переменная окружения, если она задана и НЕ пуста (пустая = не задана —
-/// так её трактует спецификация XDG).
+/// An environment variable if it is set and NOT empty (empty = not set — that
+/// is how the XDG specification treats it).
 fn env_nonempty(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.is_empty())
 }
 
-/// `os.path.expanduser` с поправкой на XDG: `~` → `home`, ветки
-/// `~/.config/…` и `~/.local/share/…` уходят в [`config_home`] и
-/// [`data_home`], остальное раскрывается как обычно.
+/// `os.path.expanduser` adjusted for XDG: `~` → `home`, the `~/.config/…` and
+/// `~/.local/share/…` branches go to [`config_home`] and [`data_home`], the
+/// rest expands as usual.
 ///
-/// Совместимая обёртка над [`expand_user_xdg`] без `$XDG_DATA_HOME` (то есть
-/// `~/.local/share` = `{home}/.local/share` — ровно то, что и получалось до
-/// появления ветки данных).
+/// A compatible wrapper over [`expand_user_xdg`] without `$XDG_DATA_HOME`
+/// (i.e. `~/.local/share` = `{home}/.local/share` — exactly what came out
+/// before the data branch appeared).
 pub fn expand_user(path: &str, home: &str, xdg_config_home: Option<&str>) -> String {
     expand_user_xdg(path, home, xdg_config_home, None)
 }
 
-/// Полный расширитель: обе XDG-ветки.
+/// The full expander: both XDG branches.
 ///
-/// ⚠️ Границы префиксов проверяются ТОЧНО (`~/.config` целиком либо
-/// `~/.config/…`). В оригинале стояло `startswith("~/.config")`, и реальные
-/// пути-соседи резались посередине: `~/.config-old/x` превращался в
-/// `~/.config/-old/x`, а `~/.local/shareX` — в `~/.local/share/X`. Правило
-/// #16: баг оригинала правится в порте, а не консервируется.
+/// ⚠️ Prefix boundaries are checked EXACTLY (`~/.config` whole or
+/// `~/.config/…`). The original had `startswith("~/.config")`, and real
+/// neighbouring paths were cut in the middle: `~/.config-old/x` turned into
+/// `~/.config/-old/x`, and `~/.local/shareX` — into `~/.local/share/X`. Rule
+/// #16: a bug of the original is fixed in the port, not preserved.
 pub fn expand_user_xdg(
     path: &str,
     home: &str,
@@ -283,8 +287,8 @@ pub fn expand_user_xdg(
         return if h.is_empty() { "/".to_string() } else { h.to_string() };
     }
     let Some(rest) = path.strip_prefix("~/") else {
-        // Всё, что не начинается с `~/`, Python отдаёт как есть (кроме
-        // `~имя`, которое ядру не по силам — см. [`expand_user_checked`]).
+        // Python returns anything not starting with `~/` as is (except
+        // `~name`, which the core cannot handle — see [`expand_user_checked`]).
         return path.to_string();
     };
     if let Some(tail) = xdg_tail(rest, ".config") {
@@ -298,10 +302,10 @@ pub fn expand_user_xdg(
     join_path(norm_dir(home), rest)
 }
 
-/// Хвост после XDG-префикса, если путь и правда лежит под ним.
+/// The tail after an XDG prefix, if the path really lies under it.
 ///
-/// `Some("")` — сам каталог, `Some("x/y")` — вложенное, `None` — префикс не
-/// совпал по ГРАНИЦЕ (`.config-old` ≠ `.config`).
+/// `Some("")` — the directory itself, `Some("x/y")` — nested, `None` — the
+/// prefix did not match at a BOUNDARY (`.config-old` ≠ `.config`).
 fn xdg_tail<'a>(rest: &'a str, prefix: &str) -> Option<&'a str> {
     if rest == prefix {
         return Some("");
@@ -311,11 +315,13 @@ fn xdg_tail<'a>(rest: &'a str, prefix: &str) -> Option<&'a str> {
         .map(|t| t.trim_start_matches('/'))
 }
 
-/// Расширитель для моста: `None` — «ядро за это не отвечает, решай сам».
+/// Expander for the bridge: `None` — «the core is not responsible for this,
+/// decide yourself».
 ///
-/// Отдаёт `None` на путях вида `~имя` (нужен `pwd`, которого у ядра нет) и
-/// при неизвестном/пустом `$HOME`. Так живой Python в этих случаях уходит на
-/// `os.path.expanduser` и результат не может разойтись с оригиналом.
+/// Returns `None` on paths like `~name` (needs `pwd`, which the core does not
+/// have) and with an unknown/empty `$HOME`. So live Python goes to
+/// `os.path.expanduser` in these cases and the result cannot diverge from the
+/// original.
 pub fn expand_user_checked(
     path: &str,
     home: Option<&str>,
@@ -329,11 +335,11 @@ pub fn expand_user_checked(
     Some(expand_user_xdg(path, home, xdg_config_home, xdg_data_home))
 }
 
-/// Корень состояния программ: `$XDG_STATE_HOME` либо `~/.local/state`.
+/// Root of program state: `$XDG_STATE_HOME` or `~/.local/state`.
 ///
-/// Четвёртый в паре к [`config_home`]/[`data_home`]/[`cache_home`]. Журнал —
-/// это состояние, а не настройка: по спецификации XDG ему место здесь, и
-/// при переносе настроек на другую машину он не едет вместе с ними.
+/// The fourth next to [`config_home`]/[`data_home`]/[`cache_home`]. The log is
+/// state, not a setting: per the XDG specification it belongs here, and when
+/// settings are moved to another machine it does not travel with them.
 pub fn state_home(xdg_state_home: Option<&str>, home: &str) -> String {
     match xdg_state_home {
         Some(v) if !v.is_empty() => norm_dir(v).to_string(),
@@ -341,27 +347,28 @@ pub fn state_home(xdg_state_home: Option<&str>, home: &str) -> String {
     }
 }
 
-/// Каталог журнала: `<state>/rexon`.
+/// Log directory: `<state>/rexon`.
 pub fn log_dir(home: &str) -> String {
     log_dir_xdg(None, home)
 }
 
-/// Каталог журнала с учётом `$XDG_STATE_HOME`.
+/// Log directory respecting `$XDG_STATE_HOME`.
 ///
-/// ⚠️ До 08.10.2026 журнал лежал в `~/.config/rexon/rexon.log` и рос без
-/// предела (1,5 МБ за месяц у владельца). Прежний файл не переносится и не
-/// удаляется: это чужая уже история, а не наш рабочий файл.
+/// ⚠️ Until 08.10.2026 the log lived in `~/.config/rexon/rexon.log` and grew
+/// without limit (1.5 MB a month at the owner's). The old file is neither
+/// moved nor deleted: it is already someone else's history, not our working
+/// file.
 pub fn log_dir_xdg(xdg_state_home: Option<&str>, home: &str) -> String {
     join_path(&state_home(xdg_state_home, home), REXON_DIR_NAME)
 }
 
-/// Файл журнала (`<state>/rexon/rexon.log`) — без учёта окружения.
+/// Log file (`<state>/rexon/rexon.log`) — without looking at the environment.
 pub fn log_file(home: &str) -> String {
     join_path(&log_dir(home), "rexon.log")
 }
 
-/// Файл журнала по ОКРУЖЕНИЮ процесса — единственный путь, которым пишет
-/// `crate::applog`.
+/// Log file from the process ENVIRONMENT — the only path `crate::applog`
+/// writes to.
 pub fn log_file_env() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let home = if home.is_empty() { ".".to_string() } else { home };
@@ -372,49 +379,51 @@ pub fn log_file_env() -> String {
 }
 
 // ============================================================================
-// Запуск внешних команд
+// Running external commands
 // ============================================================================
 
-/// Таймаут внешней команды по умолчанию, секунды — класс «быстрый опрос».
+/// Default timeout of an external command, seconds — the «quick query» class.
 ///
-/// ⚠️ Имя оставлено прежним, но смысл у него теперь узкий: это дефолт ТОЛЬКО
-/// для быстрых команд. Единого дефолта на все вызовы больше нет — см.
-/// `default_timeout_secs`.
+/// ⚠️ The name was kept, but its meaning is now narrow: this is the default
+/// ONLY for quick commands. There is no single default for all calls anymore
+/// — see `default_timeout_secs`.
 pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
-/// Быстрый опрос: `pacman -Q`, `systemctl is-enabled`, `gsettings get`,
-/// `xdg-mime query`. Секунды. Не ответила за полминуты — что-то не так.
+/// Quick query: `pacman -Q`, `systemctl is-enabled`, `gsettings get`,
+/// `xdg-mime query`. Seconds. Did not answer in half a minute — something is wrong.
 pub const QUICK_TIMEOUT_SECS: u64 = 30;
 
-/// Скачивание и установка из репозиториев: зависит от сети и размера
-/// набора пакетов. Полчаса — с запасом на медленное зеркало и полный стол.
+/// Downloading and installing from repositories: depends on the network and
+/// the size of the package set. Half an hour — with a margin for a slow
+/// mirror and a full desktop.
 pub const DOWNLOAD_TIMEOUT_SECS: u64 = 1800;
 
-/// Сборка из исходников (AUR, Gentoo): десятки минут и целиком зависит от
-/// машины. Четыре часа — не «сколько нужно», а «столько ждать бессмысленно
-/// даже на слабой машине»: это защита от намертво вставшего процесса, а не
-/// оценка времени сборки.
+/// Building from source (AUR, Gentoo): tens of minutes and entirely dependent
+/// on the machine. Four hours is not «as long as needed» but «waiting longer
+/// is pointless even on a weak machine»: it is protection against a process
+/// that is stuck for good, not an estimate of the build time.
 pub const BUILD_TIMEOUT_SECS: u64 = 14400;
 
-/// Класс времени работы внешней команды.
+/// Run-time class of an external command.
 ///
-/// ЗАЧЕМ. Дефолт был один на весь проект — 30 секунд, — и им же меряли
-/// сборку девяти пакетов из AUR. Установка стола MATE 2026-09-01 упала
-/// целиком: `yay` убивали через полминуты, покупатель читал «не
-/// установились AUR (9 из 9)» и про время не знал ничего. Классов ровно
-/// три, и различает их не имя вызывающего, а то, ЧТО команда делает.
+/// WHY. There was one default for the whole project — 30 seconds — and the
+/// build of nine AUR packages was measured with it too. Installing the MATE
+/// desktop on 2026-09-01 failed entirely: `yay` was killed after half a
+/// minute, the customer read «AUR packages were not installed (9 of 9)» and
+/// knew nothing about time. There are exactly three classes, and they are
+/// told apart not by the caller's name but by WHAT the command does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunDuration {
-    /// Опрос состояния: отвечает сразу или не отвечает вовсе.
+    /// State query: answers right away or does not answer at all.
     Quick,
-    /// Скачивание и установка готовых пакетов: минуты, зависит от сети.
+    /// Downloading and installing ready packages: minutes, depends on the network.
     Download,
-    /// Сборка из исходников: десятки минут, зависит от машины.
+    /// Building from source: tens of minutes, depends on the machine.
     Build,
 }
 
 impl RunDuration {
-    /// Таймаут класса, секунды.
+    /// Class timeout, seconds.
     pub fn timeout_secs(self) -> u64 {
         match self {
             RunDuration::Quick => QUICK_TIMEOUT_SECS,
@@ -423,7 +432,7 @@ impl RunDuration {
         }
     }
 
-    /// Короткое имя класса — для журнала и для моста в Python.
+    /// Short class name — for the log and for the bridge to Python.
     pub fn as_str(self) -> &'static str {
         match self {
             RunDuration::Quick => "quick",
@@ -433,19 +442,20 @@ impl RunDuration {
     }
 }
 
-/// Обёртки, за которыми прячется настоящая команда: их снимаем перед
-/// разбором. `env` умеет ещё и `VAR=VAL` перед именем — их тоже пропускаем.
+/// Wrappers the real command hides behind: we strip them before parsing.
+/// `env` can also take `VAR=VAL` before the name — those are skipped too.
 pub const RUN_WRAPPERS: &[&str] = &["pkexec", "sudo", "doas", "env", "nice", "ionice", "stdbuf"];
 
-/// Инструменты, которые СОБИРАЮТ из исходников: помощники AUR, makepkg,
-/// portage. Время работы задаёт машина, а не сеть.
+/// Tools that BUILD from source: AUR helpers, makepkg, portage. The run time
+/// is set by the machine, not the network.
 pub const BUILD_TOOLS: &[&str] = &[
     "yay", "paru", "trizen", "pikaur", "aurman", "aura", "pacaur", "makepkg", "pamac-build",
     "emerge", "nix-env", "nix",
 ];
 
-/// Пакетные менеджеры готовых пакетов и их подкоманды, меняющие систему.
-/// Всё остальное у них (`search`, `info`, `list`, `-Q`) — быстрый опрос.
+/// Package managers of ready packages and their subcommands that change the
+/// system. Everything else of theirs (`search`, `info`, `list`, `-Q`) is a
+/// quick query.
 pub const DOWNLOAD_TOOLS: &[(&str, &[&str])] = &[
     ("apt", &["install", "upgrade", "full-upgrade", "dist-upgrade", "remove", "purge", "build-dep", "update", "reinstall"]),
     ("apt-get", &["install", "upgrade", "full-upgrade", "dist-upgrade", "remove", "purge", "build-dep", "update", "reinstall"]),
@@ -467,14 +477,14 @@ pub const DOWNLOAD_TOOLS: &[(&str, &[&str])] = &[
     ("wget", &[]),
 ];
 
-/// Кусочки путей наших привилегированных обёрток: за `pkexec bash
-/// /tmp/rexon_install_*.sh` прячется установка целого стола, и по argv её
-/// иначе не отличить от любого другого скрипта.
+/// Path fragments of our privileged wrappers: behind `pkexec bash
+/// /tmp/rexon_install_*.sh` hides the installation of a whole desktop, and by
+/// argv it could not be told apart from any other script otherwise.
 pub const REXON_INSTALL_MARKERS: &[&str] =
     &["rexon-de-helper", "rexon_install_", "rexon_steamos_", "rexon-stage-helper"];
 
-/// Снять обёртки (`pkexec`, `sudo`, `env VAR=VAL`, …) — вернуть индекс
-/// первого аргумента настоящей команды.
+/// Strip wrappers (`pkexec`, `sudo`, `env VAR=VAL`, …) — return the index of
+/// the first argument of the real command.
 fn strip_wrappers(argv: &[String]) -> usize {
     let mut i = 0;
     while i < argv.len() {
@@ -483,12 +493,12 @@ fn strip_wrappers(argv: &[String]) -> usize {
             break;
         }
         i += 1;
-        // `env`/`sudo` допускают присваивания перед именем команды.
+        // `env`/`sudo` allow assignments before the command name.
         while i < argv.len() && argv[i].contains('=') && !argv[i].starts_with('-') {
             i += 1;
         }
-        // Флаги самой обёртки (`nice -n 19`, `sudo -u user`) пропускаем
-        // вместе с их значением — иначе примем флаг за имя команды.
+        // Flags of the wrapper itself (`nice -n 19`, `sudo -u user`) are skipped
+        // together with their value — otherwise we would take a flag for the command name.
         while i < argv.len() && argv[i].starts_with('-') {
             i += 1;
         }
@@ -496,13 +506,13 @@ fn strip_wrappers(argv: &[String]) -> usize {
     i
 }
 
-/// Последний компонент пути — имя исполняемого файла.
+/// The last path component — the executable's name.
 fn basename(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
-/// Меняет ли `pacman` систему (установка/удаление/обновление) — в отличие
-/// от опроса (`-Q…`, `-Ss`, `-Si`, `-T`, `-F`).
+/// Whether `pacman` changes the system (install/remove/upgrade) — as opposed
+/// to a query (`-Q…`, `-Ss`, `-Si`, `-T`, `-F`).
 fn pacman_is_mutating(args: &[String]) -> bool {
     for a in args {
         if let Some(long) = a.strip_prefix("--") {
@@ -522,7 +532,7 @@ fn pacman_is_mutating(args: &[String]) -> bool {
         match op {
             'Q' | 'T' | 'F' | 'V' | 'h' => return false,
             'S' => {
-                // `-Ss`/`-Si`/`-Sg`/`-Sl`/`-Sp` — это опросы, не установка.
+                // `-Ss`/`-Si`/`-Sg`/`-Sl`/`-Sp` are queries, not installation.
                 return !letters[1..].chars().any(|c| matches!(c, 's' | 'i' | 'g' | 'l' | 'p'));
             }
             'U' | 'R' | 'D' => return true,
@@ -532,7 +542,7 @@ fn pacman_is_mutating(args: &[String]) -> bool {
     false
 }
 
-/// Только опрос состояния — ни установки, ни сборки.
+/// Only a state query — neither installation nor building.
 fn is_query_only(args: &[String]) -> bool {
     args.iter().any(|a| {
         a.starts_with("-Q")
@@ -544,16 +554,16 @@ fn is_query_only(args: &[String]) -> bool {
     })
 }
 
-/// Класс времени работы команды по её argv.
+/// Run-time class of a command by its argv.
 ///
-/// Разбор идёт по СМЫСЛУ команды, а не по тому, кто её позвал: одно и то же
-/// `pacman -Q` быстро и в проверке соответствия, и в установке стола, а
-/// `yay -S` долго везде.
+/// Parsing goes by the MEANING of the command, not by who called it: the same
+/// `pacman -Q` is quick both in a conformance check and in a desktop install,
+/// while `yay -S` is long everywhere.
 pub fn run_duration(argv: &[String]) -> RunDuration {
     if argv.is_empty() {
         return RunDuration::Quick;
     }
-    // Наши привилегированные обёртки: имя скрипта говорит, что внутри.
+    // Our privileged wrappers: the script name says what is inside.
     if argv
         .iter()
         .any(|a| REXON_INSTALL_MARKERS.iter().any(|m| a.contains(m)))
@@ -568,10 +578,10 @@ pub fn run_duration(argv: &[String]) -> RunDuration {
     let rest = &argv[(start + 1).min(argv.len())..];
 
     if BUILD_TOOLS.contains(&tool) {
-        // Помощник AUR умеет и опрашивать: `yay -Q`, `yay -Ss`. Всё
-        // остальное у него — сборка, и предполагать иное нельзя: ошибка в
-        // эту сторону убивает сборку по таймауту, ошибка в другую — лишь
-        // дольше ждёт зависший опрос.
+        // An AUR helper can also query: `yay -Q`, `yay -Ss`. Everything
+        // else it does is building, and assuming otherwise is not allowed: an
+        // error in this direction kills the build by timeout, an error in the
+        // other direction only waits longer for a hung query.
         return if is_query_only(rest) {
             RunDuration::Quick
         } else {
@@ -603,30 +613,30 @@ pub fn run_duration(argv: &[String]) -> RunDuration {
     RunDuration::Quick
 }
 
-/// Таймаут по умолчанию для команды, секунды, — когда вызывающий свой не
-/// задал.
+/// Default timeout for a command, seconds — when the caller did not set its
+/// own.
 pub fn default_timeout_secs(argv: &[String]) -> u64 {
     run_duration(argv).timeout_secs()
 }
 
-/// Что нужно доставить в вызов внешней команды сверх переданного.
+/// What has to be added to an external command call beyond what was passed.
 ///
-/// Захват вывода без явной кодировки даёт байты и падает на нелатинице в
-/// выводе пакетных менеджеров, поэтому при захвате всегда навязывается
-/// текстовый режим с заменой негодных байт.
+/// Capturing output without an explicit encoding gives bytes and breaks on
+/// non-Latin text in package manager output, so when capturing, text mode
+/// with replacement of invalid bytes is always enforced.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RunDefaults {
-    /// Включить текстовый режим с utf-8 и заменой негодных байт.
+    /// Enable text mode with utf-8 and replacement of invalid bytes.
     pub text_mode: bool,
-    /// Таймаут, если вызывающий его не задал.
+    /// Timeout, if the caller did not set one.
     pub timeout_secs: Option<u64>,
 }
 
-/// Дополнения к вызову внешней команды.
+/// Additions to an external command call.
 ///
-/// Таймаут подставляется ПО КЛАССУ команды (`run_duration`), а не один на
-/// всех: тем же дефолтом, которым меряют `pacman -Q`, нельзя мерить сборку
-/// из AUR.
+/// The timeout is filled in BY THE COMMAND'S CLASS (`run_duration`), not one
+/// for all: the same default that measures `pacman -Q` cannot measure an AUR
+/// build.
 pub fn run_defaults(argv: &[String], has_capture_output: bool, has_timeout: bool) -> RunDefaults {
     RunDefaults {
         text_mode: has_capture_output,
@@ -638,43 +648,44 @@ pub fn run_defaults(argv: &[String], has_capture_output: bool, has_timeout: bool
     }
 }
 
-/// Сообщение о таймауте команды.
+/// Command timeout message.
 pub fn msg_timeout(command: &str, timeout: &str) -> String {
     // TRANSLATORS: %1 is a command, %2 the time limit in seconds.
     crate::i18n::trf("Command %1: timed out (%2 s)", &[&command, &timeout])
 }
 
-/// Сообщение об ошибке запуска.
+/// Launch error message.
 pub fn msg_run_failed(command: &str, error: &str) -> String {
     // TRANSLATORS: %1 is a command, %2 the system's error text.
     crate::i18n::trf("Couldn't run the command %1: %2", &[&command, &error])
 }
 
 // ============================================================================
-// Внешние инструменты — ЕДИНАЯ точка поиска на весь проект
+// External tools — the SINGLE lookup point for the whole project
 // ============================================================================
 //
-// Правило #12 (чинить движок, а не случаи). Один и тот же класс дефекта
-// ловился трижды: код зовёт бинарь по ОДНОМУ имени, а в целевом дистрибутиве
-// он называется иначе или лежит вне PATH — и провал молчаливый: в журнал
-// уходит строчка, а UI рапортует об успехе.
+// Rule #12 (fix the engine, not the cases). One and the same class of defect
+// was caught three times: code calls a binary by ONE name, while on the
+// target distribution it is called differently or lies outside PATH — and
+// the failure is silent: a line goes to the log, and the UI reports success.
 //
-//   • `qdbus` — такого имени нет ни на одной целевой системе (qdbus6 /
-//     qdbus-qt6), а на Kubuntu он ещё и вне PATH (Launchpad #2084278);
-//   • `kwriteconfig6`/`kreadconfig6` — на Ubuntu/Kubuntu 24.04 LTS (Plasma 5)
-//     их нет вообще, есть только `*5`: там молча не применялись тема, цвета,
-//     шрифты, курсор, KSplash, обои экрана блокировки и правила KWin;
-//   • `swww` — апстрим переименовал проект в `awww` (окт. 2025), пакет кладёт
-//     только `awww`/`awww-daemon`.
+//   • `qdbus` — no target system has such a name (qdbus6 / qdbus-qt6), and
+//     on Kubuntu it is also outside PATH (Launchpad #2084278);
+//   • `kwriteconfig6`/`kreadconfig6` — on Ubuntu/Kubuntu 24.04 LTS (Plasma 5)
+//     they do not exist at all, only `*5`: the theme, colors, fonts, cursor,
+//     KSplash, lock screen wallpaper and KWin rules were silently not applied
+//     there;
+//   • `swww` — upstream renamed the project to `awww` (Oct 2025), the package
+//     ships only `awww`/`awww-daemon`.
 //
-// Поэтому имена бинарей проходят через ОДИН резолвер: перебор синонимов →
-// PATH → каталоги вне PATH → одно понятное сообщение с именем пакета для
-// ТЕКУЩЕГО дистрибутива.
+// So binary names go through ONE resolver: iterating over synonyms → PATH →
+// directories outside PATH → one clear message with the package name for the
+// CURRENT distribution.
 
-/// Наборы синонимов: каноническое имя → (кандидаты, каталоги вне PATH).
+/// Synonym sets: canonical name → (candidates, directories outside PATH).
 ///
-/// Каноническое имя — то, которое пишут в argv вызывающие модули. Порядок
-/// кандидатов значим: первый найденный и берётся.
+/// The canonical name is the one calling modules write in argv. The order of
+/// candidates matters: the first one found is taken.
 pub const TOOL_SETS: &[(&str, &[&str], &[&str])] = &[
     // KDE Frameworks: 6 → 5 (Ubuntu/Kubuntu 24.04 LTS = Plasma 5)
     ("kwriteconfig6", &["kwriteconfig6", "kwriteconfig5"], &[]),
@@ -682,21 +693,21 @@ pub const TOOL_SETS: &[(&str, &[&str], &[&str])] = &[
     ("kpackagetool6", &["kpackagetool6", "kpackagetool5"], &[]),
     ("kbuildsycoca6", &["kbuildsycoca6", "kbuildsycoca5"], &[]),
     ("kquitapp6", &["kquitapp6", "kquitapp5"], &[]),
-    // Запуск программы отдельно от вызывающего: в Plasma 6 бинарь зовётся
-    // `kstart`, в Plasma 5 — `kstart5`.
+    // Launching a program detached from the caller: in Plasma 6 the binary is
+    // called `kstart`, in Plasma 5 — `kstart5`.
     ("kstart", &["kstart", "kstart5"], &[]),
     ("kdialog", &["kdialog"], &[]),
-    // Обои под Wayland: swww переименован в awww, аргументы совместимы
+    // Wayland wallpapers: swww was renamed to awww, the arguments are compatible
     ("swww", &["swww", "awww"], &[]),
     ("swww-daemon", &["swww-daemon", "awww-daemon"], &[]),
-    // ImageMagick: на IM7 `magick` — drop-in замена `convert`,
-    // на Ubuntu 24.04 (IM6) наоборот есть только `convert`
+    // ImageMagick: on IM7 `magick` is a drop-in replacement for `convert`,
+    // on Ubuntu 24.04 (IM6) conversely only `convert` exists
     ("convert", &["convert", "magick"], &[]),
-    // 7-Zip: пакет `7zip` кладёт `7zz` (Debian/Ubuntu), старый p7zip — `7za`;
-    // аргументы `x -o<каталог>` у всех троих одинаковые
+    // 7-Zip: the `7zip` package ships `7zz` (Debian/Ubuntu), the old p7zip — `7za`;
+    // the `x -o<dir>` arguments are the same for all three
     ("7z", &["7z", "7zz", "7za"], &[]),
-    // Plymouth: на Debian/openSUSE бинарь лежит в /usr/sbin, которого нет
-    // в PATH обычного пользователя
+    // Plymouth: on Debian/openSUSE the binary lies in /usr/sbin, which is not
+    // in a regular user's PATH
     (
         "plymouth-set-default-theme",
         &["plymouth-set-default-theme"],
@@ -712,12 +723,13 @@ pub const TOOL_SETS: &[(&str, &[&str], &[&str])] = &[
         &["update-initramfs"],
         &["/usr/sbin", "/sbin"],
     ),
-    // ⚠️ pactl СИНОНИМОВ НЕ ИМЕЕТ. wpctl (wireplumber) решает ту же задачу,
-    // но у него другой набор команд и другой вывод — подменять argv[0]
-    // нельзя, это дало бы мусор вместо списка устройств. Ветка wpctl —
-    // в `audio_capture::wpctl_*`, а не подстановкой имени.
-    // Qt-клиент D-Bus: имя своё в каждом дистрибутиве, на Kubuntu ещё и
-    // вне PATH.
+    // ⚠️ pactl HAS NO SYNONYMS. wpctl (wireplumber) solves the same task,
+    // but it has a different command set and different output — argv[0]
+    // must not be swapped, that would give garbage instead of a device
+    // list. The wpctl branch is in `audio_capture::wpctl_*`, not a name
+    // substitution.
+    // Qt D-Bus client: its name differs on each distribution, and on
+    // Kubuntu it is also outside PATH.
     (
         "qdbus6",
         &["qdbus6", "qdbus-qt6", "qdbus", "qdbus-qt5"],
@@ -729,21 +741,23 @@ pub const TOOL_SETS: &[(&str, &[&str], &[&str])] = &[
     ),
 ];
 
-/// Инструменты, у которых своего бинаря может не быть вовсе — только
-/// подкоманда общего.
+/// Tools that may have no binary of their own at all — only a subcommand of a
+/// shared one.
 ///
-/// ImageMagick 7 постепенно убирает отдельные бинари: `convert` ещё живёт в
-/// наборе синонимов выше (там это ОДНО слово: `magick` — drop-in замена), а
-/// `identify` в IM7 существует как `magick identify`, то есть ДВА слова, и
-/// подменой argv[0] это не лечится. Значение — полный префикс команды.
+/// ImageMagick 7 is gradually removing separate binaries: `convert` still
+/// lives in the synonym set above (there it is ONE word: `magick` is a drop-in
+/// replacement), while `identify` in IM7 exists as `magick identify`, i.e. TWO
+/// words, and swapping argv[0] does not cure that. The value is the full
+/// command prefix.
 pub const TOOL_SUBCOMMANDS: &[(&str, &[&str])] = &[("identify", &["magick", "identify"])];
 
-/// Имя пакета по бинарю и семейству пакетного менеджера.
+/// Package name by binary and package manager family.
 ///
-/// Чтобы и в журнале, и в UI (правило #13) говорить человеку, ЧТО поставить,
-/// а не «команда не найдена». Ключи семейств — значения `system::PkgFamily`.
-/// Порядок семейств внутри записи значим: при неизвестном семействе берётся
-/// `debian`, а если и его нет — ПЕРВОЕ значение записи.
+/// So that both in the log and in the UI (rule #13) we tell the person WHAT to
+/// install, not «command not found». Family keys are `system::PkgFamily`
+/// values. The order of families inside an entry matters: for an unknown
+/// family `debian` is taken, and if that is missing too — the FIRST value of
+/// the entry.
 pub const TOOL_PACKAGES: &[(&str, &[(&str, &str)])] = &[
     (
         "convert",
@@ -772,9 +786,9 @@ pub const TOOL_PACKAGES: &[(&str, &[(&str, &str)])] = &[
             ("debian", "imagemagick"),
         ],
     ),
-    // bsdtar (libarchive) распаковывает и 7z. Имена сверены по
-    // репозиториям 19.10.2026: Arch — в libarchive (от него зависит pacman),
-    // Debian/Ubuntu — libarchive-tools, Fedora и openSUSE — отдельный bsdtar.
+    // bsdtar (libarchive) unpacks 7z too. Names checked against the
+    // repositories 19.10.2026: Arch — in libarchive (pacman depends on it),
+    // Debian/Ubuntu — libarchive-tools, Fedora and openSUSE — a separate bsdtar.
     (
         "bsdtar",
         &[
@@ -784,9 +798,9 @@ pub const TOOL_PACKAGES: &[(&str, &[(&str, &str)])] = &[
             ("debian", "libarchive-tools"),
         ],
     ),
-    // Невидимый X-сервер для снимков виджетов Conky (`conky_preview`) —
-    // обязательная зависимость пакета Rexon; на SteamOS — пакет Arch внутри
-    // sysext Rexon. Имена — официальные пакеты дистрибутивов.
+    // Invisible X server for Conky widget snapshots (`conky_preview`) — a
+    // mandatory dependency of the Rexon package; on SteamOS — an Arch package
+    // inside the Rexon sysext. Names are the distributions' official packages.
     (
         "Xvfb",
         &[
@@ -850,10 +864,10 @@ pub const TOOL_PACKAGES: &[(&str, &[(&str, &str)])] = &[
             ("debian", "cabextract"),
         ],
     ),
-    // Переключатель стиля Qt для окружений без своего (всё, кроме KDE и
-    // LXQt): даёт Qt-программам стиль Kvantum вместе со шрифтами и значками.
-    // Имена сверены по repology и репозиториям дистрибутивов; Gentoo хранит
-    // имя с категорией, как и рабочие столы в `_DE_DATABASE`.
+    // Qt style switcher for environments without their own (everything except
+    // KDE and LXQt): gives Qt programs the Kvantum style together with fonts
+    // and icons. Names checked against repology and distribution repositories;
+    // Gentoo keeps the name with the category, like the desktops in `_DE_DATABASE`.
     (
         "qt6ct",
         &[
@@ -866,14 +880,14 @@ pub const TOOL_PACKAGES: &[(&str, &[(&str, &str)])] = &[
             ("void", "qt6ct"),
             ("solus", "qt6ct"),
             ("alt", "qt6ct"),
-            // Бандла с qt6ct в Clear Linux нет, в NixOS пакеты ставятся
-            // правкой конфигурации — там работает запасной путь через
-            // QT_STYLE_OVERRIDE, ничего доставлять не нужно.
+            // Clear Linux has no bundle with qt6ct, in NixOS packages are
+            // installed by editing the configuration — there the fallback via
+            // QT_STYLE_OVERRIDE works, nothing needs to be delivered.
             ("clear", "—"),
             ("nix", "—"),
         ],
     ),
-    // Своего пакета нет нигде, кроме AUR: везде остаётся установка из PyPI
+    // No package of its own anywhere except the AUR: everywhere else it stays an install from PyPI
     (
         "win2xcur",
         &[
@@ -910,7 +924,7 @@ pub const TOOL_PACKAGES: &[(&str, &[(&str, &str)])] = &[
             ("debian", "libnotify-bin"),
         ],
     ),
-    // pw-play/pw-cat: Fedora и openSUSE вынесли их из основного пакета
+    // pw-play/pw-cat: Fedora and openSUSE moved them out of the main package
     (
         "pw-play",
         &[
@@ -974,7 +988,7 @@ pub const TOOL_PACKAGES: &[(&str, &[(&str, &str)])] = &[
             ("debian", "pulseaudio-utils"),
         ],
     ),
-    // Есть везде, где есть PipeWire: wireplumber — обязательная часть стека.
+    // Present wherever PipeWire is: wireplumber is a mandatory part of the stack.
     (
         "wpctl",
         &[
@@ -984,9 +998,9 @@ pub const TOOL_PACKAGES: &[(&str, &[(&str, &str)])] = &[
             ("debian", "wireplumber"),
         ],
     ),
-    // В официальных репозиториях Arch НЕТ (только AUR); в Fedora — с 42;
-    // в Debian/Ubuntu/openSUSE есть, но не ставится ни по умолчанию, ни по
-    // зависимостям — «из коробки» её нет нигде.
+    // NOT in the official Arch repositories (AUR only); in Fedora — since 42;
+    // Debian/Ubuntu/openSUSE have it, but it is installed neither by default
+    // nor by dependencies — it is not there «out of the box» anywhere.
     (
         "xdg-terminal-exec",
         &[
@@ -996,7 +1010,7 @@ pub const TOOL_PACKAGES: &[(&str, &[(&str, &str)])] = &[
             ("debian", "xdg-terminal-exec"),
         ],
     ),
-    // На openSUSE pkexec — отдельный подпакет, тянется лишь через Recommends
+    // On openSUSE pkexec is a separate subpackage, pulled in only via Recommends
     (
         "pkexec",
         &[
@@ -1159,13 +1173,14 @@ pub const TOOL_PACKAGES: &[(&str, &[(&str, &str)])] = &[
             ("debian", "desktop-file-utils"),
         ],
     ),
-    // Программы, которые чаще всего зовут виджеты Conky (`${exec sensors}`,
-    // погода через wget/curl, плеер) — проверка здоровья виджета
-    // (`conky_safety::health`) ставит их пакет перед запуском. Датчики: lm_sensors в
-    // Arch и Fedora, lm-sensors в Debian/Ubuntu, sensors в openSUSE. wget в
-    // Fedora с 40-го выпуска — wget2, а прежнее имя программы даёт пакет
-    // wget2-wget. nvidia-smi сюда намеренно не входит: он приходит с
-    // драйвером NVIDIA, и ставить его отдельным пакетом нельзя.
+    // Programs Conky widgets call most often (`${exec sensors}`, weather
+    // via wget/curl, a player) — the widget health check
+    // (`conky_safety::health`) installs their package before launch. Sensors:
+    // lm_sensors in Arch and Fedora, lm-sensors in Debian/Ubuntu, sensors in
+    // openSUSE. wget in Fedora since release 40 is wget2, and the former
+    // program name comes from the wget2-wget package. nvidia-smi is
+    // deliberately not here: it comes with the NVIDIA driver, and it must not
+    // be installed as a separate package.
     (
         "sensors",
         &[
@@ -1202,9 +1217,9 @@ pub const TOOL_PACKAGES: &[(&str, &[(&str, &str)])] = &[
             ("debian", "jq"),
         ],
     ),
-    // Звуковой визуализатор виджетов-эквалайзеров (`io.popen('cava -p …')`
-    // в Lua). Сверено по репозиториям 24.10.2026: cava есть в Arch (extra),
-    // Debian/Ubuntu, Fedora и openSUSE.
+    // Audio visualizer of equalizer widgets (`io.popen('cava -p …')` in
+    // Lua). Checked against the repositories 24.10.2026: cava is in Arch
+    // (extra), Debian/Ubuntu, Fedora and openSUSE.
     (
         "cava",
         &[
@@ -1234,10 +1249,10 @@ pub const TOOL_PACKAGES: &[(&str, &[(&str, &str)])] = &[
     ),
 ];
 
-/// Кандидаты и каталоги вне PATH для инструмента.
+/// Candidates and directories outside PATH for a tool.
 ///
-/// Неизвестное имя — сам себе единственный кандидат (ровно как
-/// `_TOOL_SETS.get(tool, ((tool,), ()))` в оригинале).
+/// An unknown name is its own single candidate (exactly like
+/// `_TOOL_SETS.get(tool, ((tool,), ()))` in the original).
 pub fn tool_candidates(tool: &str) -> (Vec<&str>, Vec<&str>) {
     for (name, names, dirs) in TOOL_SETS {
         if *name == tool {
@@ -1247,8 +1262,8 @@ pub fn tool_candidates(tool: &str) -> (Vec<&str>, Vec<&str>) {
     (vec![tool], Vec::new())
 }
 
-/// Многословный префикс инструмента-подкоманды (`identify` → `magick
-/// identify`), если он описан.
+/// Multi-word prefix of a subcommand tool (`identify` → `magick identify`),
+/// if it is described.
 pub fn tool_subcommand(tool: &str) -> Option<&'static [&'static str]> {
     TOOL_SUBCOMMANDS
         .iter()
@@ -1256,17 +1271,17 @@ pub fn tool_subcommand(tool: &str) -> Option<&'static [&'static str]> {
         .map(|(_, prefix)| *prefix)
 }
 
-/// Известны ли для имени варианты подмены — то, что проверяет `resolved_argv`
-/// перед тем, как вообще что-то искать.
+/// Whether substitution variants are known for the name — what
+/// `resolved_argv` checks before searching for anything at all.
 pub fn tool_has_variants(tool: &str) -> bool {
     TOOL_SETS.iter().any(|(name, _, _)| *name == tool) || tool_subcommand(tool).is_some()
 }
 
-/// Имя пакета с этим инструментом для указанного семейства, либо `""`.
+/// Name of the package with this tool for the given family, or `""`.
 ///
-/// Единственный источник имён пакетов в UI и в журнале (правило #13:
-/// покупателю нельзя советовать `pacman -S` на Fedora). Семейство приходит
-/// параметром: его определяет `system::DistroDetector`, а не эта таблица.
+/// The single source of package names in the UI and in the log (rule #13: the
+/// customer must not be advised `pacman -S` on Fedora). The family comes as a
+/// parameter: it is determined by `system::DistroDetector`, not by this table.
 pub fn tool_package_name(binary: &str, family: &str) -> String {
     let Some((_, table)) = TOOL_PACKAGES.iter().find(|(name, _)| *name == binary) else {
         return String::new();
@@ -1278,18 +1293,19 @@ pub fn tool_package_name(binary: &str, family: &str) -> String {
             .map(|(_, pkg)| *pkg)
             .filter(|pkg| !pkg.is_empty())
     };
-    // Семейство не в таблице — назовём пакет так, как он зовётся в
-    // большинстве дистрибутивов, но без команды установки.
+    // The family is not in the table — name the package the way it is
+    // called on most distributions, but without an install command.
     let pkg = lookup(family)
         .or_else(|| lookup("debian"))
         .or_else(|| table.first().map(|(_, pkg)| *pkg))
         .unwrap_or("");
-    // «—» в таблице значит «пакета нет вовсе» — советовать нечего.
+    // «—» in the table means «there is no package at all» — nothing to advise.
     if pkg.is_empty() || pkg == "—" {
         String::new()
     } else if let Some(name) = pkg.strip_suffix(AUR_ONLY_MARK) {
-        // Пометка таблицы — признак, подпись — на языке интерфейса. Скобка
-        // остаётся в начале пометки: по ней `dep_package_name` отрезает имя.
+        // The table mark is an identifier, the label is in the interface
+        // language. The bracket stays at the start of the mark: by it
+        // `dep_package_name` cuts off the name.
         // TRANSLATORS: %1 is a package that exists only in the AUR (Arch User Repository).
         crate::i18n::trf("%1 (from the AUR)", &[&name])
     } else {
@@ -1297,14 +1313,16 @@ pub fn tool_package_name(binary: &str, family: &str) -> String {
     }
 }
 
-/// Пометка «пакет только в AUR» в таблице [`TOOL_PACKAGES`] — признак, а не
-/// подпись: показывает её [`tool_package_name`] на языке интерфейса.
+/// The «package only in the AUR» mark in the [`TOOL_PACKAGES`] table is an
+/// identifier, not a label: [`tool_package_name`] shows it in the interface
+/// language.
 pub(crate) const AUR_ONLY_MARK: &str = " (из AUR)";
 
-/// Все пакеты таблицы [`TOOL_PACKAGES`] для семейства — и репозиторные, и
-/// помеченные «только AUR» (без пометки). Белый список установки помощника
-/// пакетов (`system_plan::pkg_helper_install_allowlist`): программы виджетов
-/// Conky и распаковщик 7z ставятся только отсюда.
+/// All packages of the [`TOOL_PACKAGES`] table for the family — both
+/// repository ones and those marked «AUR only» (without the mark). The
+/// install allowlist of the package helper
+/// (`system_plan::pkg_helper_install_allowlist`): Conky widget programs and
+/// the 7z unpacker are installed only from here.
 pub fn tool_packages_for(family: &str) -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();
     for (_, table) in TOOL_PACKAGES {
@@ -1321,7 +1339,7 @@ pub fn tool_packages_for(family: &str) -> Vec<&'static str> {
     out
 }
 
-/// «Установите пакет X» для указанного семейства, либо `""`.
+/// «Install the X package» for the given family, or `""`.
 pub fn tool_package_hint(binary: &str, family: &str) -> String {
     let pkg = tool_package_name(binary, family);
     if pkg.is_empty() {
@@ -1333,37 +1351,37 @@ pub fn tool_package_hint(binary: &str, family: &str) -> String {
 }
 
 // ----------------------------------------------------------------------------
-// Проигрывание звука: ОДИН выбор проигрывателя на весь проект
+// Playing sound: ONE player choice for the whole project
 // ----------------------------------------------------------------------------
 //
-// ⚠️ Почему это здесь, а не по месту. Хвост «paplay → ffplay → aplay →
-// canberra-gtk-play» подводил сразу дважды: `paplay` лежит в
-// `pulseaudio-utils`, которых на чистом PipeWire (Ubuntu 24.04, Kubuntu
-// 24.04, Debian 13) нет, а `canberra-gtk-play` на Debian/Ubuntu лежит не в
-// `libcanberra-gtk*-module`, как обычно пишут в зависимостях, а в
-// `gnome-session-canberra`, который тоже не ставится. Плюс `aplay` (его
-// советовали «надёжным хвостом») понимает ТОЛЬКО WAV, а звуковые темы
-// freedesktop состоят из `.oga` — то есть «хвост» молча ничего не играл.
-// Отсюда таблица: у каждого проигрывателя перечислено, ЧТО он умеет.
+// ⚠️ Why it is here and not in place. The «paplay → ffplay → aplay →
+// canberra-gtk-play» chain failed twice at once: `paplay` lives in
+// `pulseaudio-utils`, which pure PipeWire systems (Ubuntu 24.04, Kubuntu
+// 24.04, Debian 13) do not have, and `canberra-gtk-play` on Debian/Ubuntu
+// lives not in `libcanberra-gtk*-module`, as dependencies usually say, but in
+// `gnome-session-canberra`, which is not installed either. Plus `aplay`
+// (recommended as «a reliable tail») understands ONLY WAV, and freedesktop
+// sound themes consist of `.oga` — that is, the «tail» silently played
+// nothing. Hence the table: for each player it lists WHAT it can do.
 
-/// Проигрыватели звуковых файлов: (бинарь, аргументы до пути, расширения).
+/// Sound file players: (binary, arguments before the path, extensions).
 ///
-/// Порядок — от «есть везде, где есть звук» к узким. Пустой список
-/// расширений значит «умеет всё».
+/// The order goes from «present wherever there is sound» to narrow ones. An
+/// empty extension list means «can play everything».
 pub const SOUND_PLAYERS: &[(&str, &[&str], &[&str])] = &[
-    // pipewire: есть всюду, где PipeWire (то есть на всех целевых)
+    // pipewire: present wherever PipeWire is (that is, on all targets)
     ("pw-play", &[], &["oga", "ogg", "opus", "wav", "flac"]),
-    // pulseaudio-utils: там, где стек ещё pulse
+    // pulseaudio-utils: where the stack is still pulse
     ("paplay", &[], &["oga", "ogg", "opus", "wav", "flac"]),
-    // libcanberra: играет файл ключом -f (не путать с событием -i)
+    // libcanberra: plays a file with the -f key (not to be confused with the -i event)
     ("canberra-gtk-play", &["-f"], &["oga", "ogg", "wav"]),
-    // ffmpeg: понимает всё, но ставится не везде
+    // ffmpeg: understands everything, but is not installed everywhere
     ("ffplay", &["-nodisp", "-autoexit", "-loglevel", "quiet"], &[]),
-    // alsa-utils: последний рубеж, но ТОЛЬКО WAV
+    // alsa-utils: the last line of defense, but ONLY WAV
     ("aplay", &["-q"], &["wav"]),
 ];
 
-/// Расширение файла в нижнем регистре, без точки.
+/// Lowercase file extension, without the dot.
 fn file_ext(path: &str) -> String {
     let name = path.rsplit('/').next().unwrap_or(path);
     match name.rsplit_once('.') {
@@ -1372,10 +1390,10 @@ fn file_ext(path: &str) -> String {
     }
 }
 
-/// argv проигрывания ФАЙЛА первым подходящим проигрывателем.
+/// argv for playing a FILE with the first suitable player.
 ///
-/// `available` — бинари, найденные исполнителем в PATH. `None` — играть
-/// нечем: ни один установленный проигрыватель не понимает этот формат.
+/// `available` — binaries the executor found in PATH. `None` — nothing to
+/// play with: no installed player understands this format.
 pub fn sound_play_argv(available: &[String], file_path: &str) -> Option<Vec<String>> {
     let ext = file_ext(file_path);
     for (binary, args, exts) in SOUND_PLAYERS {
@@ -1393,8 +1411,8 @@ pub fn sound_play_argv(available: &[String], file_path: &str) -> Option<Vec<Stri
     None
 }
 
-/// argv проигрывания СОБЫТИЯ темы (`canberra-gtk-play -i`) — путь на случай,
-/// когда файла события в теме не нашлось.
+/// argv for playing a theme EVENT (`canberra-gtk-play -i`) — the path for
+/// when no event file was found in the theme.
 pub fn sound_play_event_argv(available: &[String], event_id: &str) -> Option<Vec<String>> {
     if available.iter().any(|b| b == "canberra-gtk-play") {
         return Some(vec![
@@ -1406,8 +1424,8 @@ pub fn sound_play_event_argv(available: &[String], event_id: &str) -> Option<Vec
     None
 }
 
-/// Что советовать поставить, если играть нечем: для WAV достаточно
-/// `alsa-utils`, для тем freedesktop (`.oga`) нужен настоящий декодер.
+/// What to advise installing if there is nothing to play with: for WAV
+/// `alsa-utils` is enough, freedesktop themes (`.oga`) need a real decoder.
 pub fn sound_player_suggestion(file_path: &str) -> &'static str {
     if file_ext(file_path) == "wav" {
         "aplay"
@@ -1416,8 +1434,8 @@ pub fn sound_player_suggestion(file_path: &str) -> &'static str {
     }
 }
 
-/// Сообщение UI, когда проиграть нечем (правило #13 — без сырых имён
-/// бинарей в начале фразы). `hint` — «Установите пакет …» либо пусто.
+/// UI message when there is nothing to play with (rule #13 — no raw binary
+/// names at the start of the phrase). `hint` — «Install the … package» or empty.
 pub fn msg_no_sound_player(hint: &str) -> String {
     if hint.is_empty() {
         crate::i18n::tr("Can't play the sound: no audio player is installed")
@@ -1427,13 +1445,13 @@ pub fn msg_no_sound_player(hint: &str) -> String {
     }
 }
 
-/// ОДНА понятная запись в журнал вместо «команда не найдена».
+/// ONE clear log record instead of «command not found».
 ///
-/// Собирается здесь, чтобы текст был один и тот же и в журнале, и в UI:
-/// имя, все опробованные синонимы и пакет для текущего дистрибутива.
+/// Assembled here so the text is the same both in the log and in the UI: the
+/// name, all tried synonyms and the package for the current distribution.
 pub fn msg_missing_tool(names: &[&str], hint: &str) -> String {
-    // Целыми фразами, а не склейкой кусков: переводчику нужен весь порядок
-    // слов, а «(пробовали: …)» и подсказка в другом языке встанут иначе.
+    // Whole phrases rather than glued pieces: the translator needs the whole
+    // word order, and «(tried: …)» and the hint go elsewhere in another language.
     let tool = names.first().copied().unwrap_or("");
     let tried = names.join(", ");
     use crate::i18n::trf;
@@ -1450,20 +1468,20 @@ pub fn msg_missing_tool(names: &[&str], hint: &str) -> String {
 }
 
 // ----------------------------------------------------------------------------
-// Поиск бинаря
+// Binary lookup
 // ----------------------------------------------------------------------------
 
-/// PATH, когда переменной нет вовсе: то же, что отдаёт `confstr("CS_PATH")`
-/// на glibc и что берёт `shutil.which`.
+/// PATH when the variable does not exist at all: the same that
+/// `confstr("CS_PATH")` returns on glibc and that `shutil.which` takes.
 pub const CS_PATH_FALLBACK: &str = "/bin:/usr/bin";
 
-/// Разбор пути как `os.path.split`: (каталог, имя).
+/// Splitting a path like `os.path.split`: (directory, name).
 fn path_split(p: &str) -> (&str, &str) {
     match p.rfind('/') {
         None => ("", p),
         Some(i) => {
             let (head, tail) = p.split_at(i + 1);
-            // Каталог из одних слешей остаётся как есть (`/ls` → `/`).
+            // A directory of slashes only stays as is (`/ls` → `/`).
             let head = if head.chars().all(|c| c == '/') {
                 head
             } else {
@@ -1474,9 +1492,9 @@ fn path_split(p: &str) -> (&str, &str) {
     }
 }
 
-/// Годен ли файл на запуск: существует, не каталог, есть бит `x`.
+/// Whether a file can be executed: it exists, is not a directory, has the `x` bit.
 ///
-/// ⚠️ Про `access(2)` — см. предупреждение в начале модуля.
+/// ⚠️ About `access(2)` — see the warning at the start of the module.
 fn is_executable_file(path: &str) -> bool {
     match fs::metadata(path) {
         Ok(md) => md.is_file() && md.permissions().mode() & 0o111 != 0,
@@ -1484,19 +1502,19 @@ fn is_executable_file(path: &str) -> bool {
     }
 }
 
-/// Путь к команде по PATH — порт `shutil.which(cmd)`.
+/// Path to a command via PATH — port of `shutil.which(cmd)`.
 ///
-/// `path_env` — значение `$PATH` (`None` — переменной нет; пустая строка,
-/// как и в Python, значит «не искать нигде»). Имя с косой чертой ищется
-/// только в своём каталоге, PATH при этом не смотрится.
+/// `path_env` — the `$PATH` value (`None` — no variable; an empty string, as
+/// in Python, means «search nowhere»). A name with a slash is looked up only
+/// in its own directory, PATH is not consulted then.
 pub fn which(cmd: &str, path_env: Option<&str>) -> Option<String> {
     let (dirname, base) = path_split(cmd);
     let dirs: Vec<String> = if !dirname.is_empty() {
         vec![dirname.to_string()]
     } else {
         let path = path_env.unwrap_or(CS_PATH_FALLBACK);
-        // PATH='' не совпадает ни с чем, а PATH=':' смотрит в текущий
-        // каталог — тот же квирк, что у shutil.which.
+        // PATH='' matches nothing, while PATH=':' looks into the current
+        // directory — the same quirk as shutil.which.
         if path.is_empty() {
             return None;
         }
@@ -1515,20 +1533,20 @@ pub fn which(cmd: &str, path_env: Option<&str>) -> Option<String> {
     None
 }
 
-/// Есть ли в шаблоне то, что glob раскрывает.
+/// Whether the pattern has something glob expands.
 ///
-/// Класс символов `[...]` ядро не поддерживает (в наборах синонимов таких
-/// шаблонов нет и не планируется) — шаблон с ним считается буквальным.
+/// The core does not support the `[...]` character class (synonym sets have
+/// no such patterns and none are planned) — a pattern with it counts as literal.
 fn has_glob_magic(part: &str) -> bool {
     part.contains('*') || part.contains('?')
 }
 
-/// Совпадение имени с шаблоном из `*` и `?`.
+/// Matching a name against a pattern of `*` and `?`.
 fn glob_match(name: &str, pattern: &str) -> bool {
     let n: Vec<char> = name.chars().collect();
     let p: Vec<char> = pattern.chars().collect();
-    // Классический двумерный проход: m[i][j] — «первые i символов имени
-    // покрыты первыми j символами шаблона».
+    // The classic two-dimensional pass: m[i][j] — «the first i characters of
+    // the name are covered by the first j characters of the pattern».
     let mut prev = vec![false; p.len() + 1];
     prev[0] = true;
     for j in 1..=p.len() {
@@ -1548,10 +1566,10 @@ fn glob_match(name: &str, pattern: &str) -> bool {
     prev[p.len()]
 }
 
-/// Раскрытие шаблона каталога вместе с именем файла — порт
+/// Expanding a directory pattern together with a file name — port of
 /// `glob.glob(os.path.join(pattern, name))`.
 ///
-/// Результат НЕ сортируется (как и в Python); сортирует вызывающий.
+/// The result is NOT sorted (as in Python); the caller sorts.
 fn glob_paths(pattern: &str) -> Vec<String> {
     if !pattern.split('/').any(has_glob_magic) {
         return if Path::new(pattern).exists() {
@@ -1574,7 +1592,7 @@ fn glob_paths(pattern: &str) -> Vec<String> {
                 };
                 for entry in entries.flatten() {
                     let name = entry.file_name().to_string_lossy().into_owned();
-                    // Скрытые файлы `*` не ловит — как и glob.
+                    // `*` does not catch hidden files — like glob.
                     if name.starts_with('.') && !part.starts_with('.') {
                         continue;
                     }
@@ -1602,18 +1620,18 @@ fn glob_paths(pattern: &str) -> Vec<String> {
     cur
 }
 
-/// Поиск бинаря по всем синонимам: PATH, затем каталоги вне PATH.
+/// Binary lookup over all synonyms: PATH, then directories outside PATH.
 ///
-/// Ровно порядок оригинала: сперва все имена по PATH, и только если ни одно
-/// не нашлось — перебор каталогов (в них шаблон `*` раскрывается, кандидаты
-/// сортируются, берётся первый исполняемый).
+/// Exactly the original's order: first all names via PATH, and only if none
+/// was found — iterating over directories (the `*` pattern is expanded in
+/// them, candidates are sorted, the first executable is taken).
 pub fn lookup_tool(names: &[&str], dirs: &[&str], path_env: Option<&str>) -> Option<String> {
     for name in names {
         if let Some(exe) = which(name, path_env) {
             return Some(exe);
         }
     }
-    // PATH не помог — смотрим в каталоги вне PATH напрямую.
+    // PATH did not help — look into directories outside PATH directly.
     for pattern in dirs {
         for name in names {
             let mut cands = glob_paths(&join_path(pattern, name));
@@ -1626,21 +1644,21 @@ pub fn lookup_tool(names: &[&str], dirs: &[&str], path_env: Option<&str>) -> Opt
     None
 }
 
-/// Путь к внешнему инструменту по каноническому имени, либо `None`.
+/// Path to an external tool by its canonical name, or `None`.
 ///
-/// Без кеша: кеш живёт в вызывающем (в живом Python — `utils._tool_cache`,
-/// с ключом по PATH), чтобы не было двух источников правды.
+/// No cache: the cache lives in the caller (in live Python —
+/// `utils._tool_cache`, keyed by PATH), so there are not two sources of truth.
 pub fn resolve_tool(tool: &str, extra_dirs: &[&str], path_env: Option<&str>) -> Option<String> {
     let (names, mut dirs) = tool_candidates(tool);
     dirs.extend_from_slice(extra_dirs);
     lookup_tool(&names, &dirs, path_env)
 }
 
-/// Готовый argv внешнего инструмента либо `None`, если его нет вовсе.
+/// Ready argv of an external tool, or `None` if it does not exist at all.
 ///
-/// Знает и синонимы (`convert` → `magick`), и многословные варианты
-/// (`identify` → `magick identify`). Отсюда же берётся ответ на вопрос «а
-/// есть ли инструмент» — чтобы проверка и запуск не могли разойтись.
+/// Knows both synonyms (`convert` → `magick`) and multi-word variants
+/// (`identify` → `magick identify`). The answer to «is the tool there» comes
+/// from here too — so the check and the launch cannot diverge.
 pub fn tool_argv(tool: &str, args: &[String], path_env: Option<&str>) -> Option<Vec<String>> {
     if let Some(exe) = resolve_tool(tool, &[], path_env) {
         let mut argv = vec![exe];
@@ -1655,11 +1673,11 @@ pub fn tool_argv(tool: &str, args: &[String], path_env: Option<&str>) -> Option<
     Some(argv)
 }
 
-/// argv с уже разрешённым бинарём.
+/// argv with an already resolved binary.
 ///
-/// Если инструмента нет вовсе, argv[0] остаётся каноническим именем — вызов
-/// честно провалится, но причина уже понятна из журнала. Так вызывающий код
-/// не обязан менять форму.
+/// If the tool does not exist at all, argv[0] stays the canonical name — the
+/// call will honestly fail, but the cause is already clear from the log. That
+/// way the calling code does not have to change form.
 pub fn tool_cmd(tool: &str, args: &[String], path_env: Option<&str>) -> Vec<String> {
     if let Some(argv) = tool_argv(tool, args, path_env) {
         return argv;
@@ -1669,11 +1687,11 @@ pub fn tool_cmd(tool: &str, args: &[String], path_env: Option<&str>) -> Vec<Stri
     argv
 }
 
-/// argv с подменённым инструментом, если для него известны варианты.
+/// argv with a substituted tool, if variants are known for it.
 ///
-/// Всё, чего нет в наборах синонимов, проходит насквозь — накладных расходов
-/// ноль. Подмена достаётся и argv-планам, собранным ядром: процесс всё равно
-/// запускает исполнитель, а он зовёт этот же резолвер.
+/// Everything not in the synonym sets passes straight through — zero
+/// overhead. The substitution also applies to argv plans built by the core:
+/// the executor launches the process anyway, and it calls this same resolver.
 pub fn resolved_argv(cmd: &[String], path_env: Option<&str>) -> Vec<String> {
     let Some(head) = cmd.first() else {
         return cmd.to_vec();
@@ -1682,7 +1700,7 @@ pub fn resolved_argv(cmd: &[String], path_env: Option<&str>) -> Vec<String> {
         return cmd.to_vec();
     }
     match tool_argv(head, &[], path_env) {
-        // Ничего не изменилось — отдаём исходное, чтобы не плодить копии.
+        // Nothing changed — return the original so as not to multiply copies.
         Some(argv) if argv.len() == 1 && argv[0] == *head => cmd.to_vec(),
         Some(argv) => {
             let mut out = argv;
@@ -1694,30 +1712,30 @@ pub fn resolved_argv(cmd: &[String], path_env: Option<&str>) -> Vec<String> {
 }
 
 // ============================================================================
-// Сессионная шина D-Bus — ЕДИНАЯ точка вызова на весь проект
+// D-Bus session bus — the SINGLE call point for the whole project
 // ============================================================================
 //
-// Почему это здесь, а не по месту вызова (правило #12): половина модулей
-// раньше звала бинарь `qdbus` напрямую, а такого бинаря на большинстве
-// целевых систем нет вовсе:
-//   • Arch / CachyOS / SteamOS ....... qdbus6      (пакет qt6-tools)
-//   • Debian / Ubuntu / Kubuntu ...... qdbus-qt6   (пакет qdbus-qt6)
-//   • Fedora / openSUSE .............. qdbus-qt6   (пакет qt6-qttools)
-//   • эпоха Qt5 (и NixOS) ............ qdbus / qdbus-qt5
-// и вдобавок на Kubuntu бинарь кладут в /usr/lib/qt6/bin/, куда PATH не
-// смотрит вовсе — перебором имён это не лечится.
+// Why it is here and not at the call site (rule #12): half of the modules
+// used to call the `qdbus` binary directly, and most target systems have no
+// such binary at all:
+//   • Arch / CachyOS / SteamOS ....... qdbus6      (package qt6-tools)
+//   • Debian / Ubuntu / Kubuntu ...... qdbus-qt6   (package qdbus-qt6)
+//   • Fedora / openSUSE .............. qdbus-qt6   (package qt6-qttools)
+//   • the Qt5 era (and NixOS) ........ qdbus / qdbus-qt5
+// and on top of that Kubuntu puts the binary in /usr/lib/qt6/bin/, where
+// PATH does not look at all — iterating names does not cure that.
 //
-// Поэтому ОСНОВНОЙ путь — `dbus-send`: он из пакета `dbus`, то есть лежит на
-// любой машине, где сессионная шина вообще есть, и называется везде
-// одинаково. `qdbus` остаётся подстраховкой.
+// So the MAIN path is `dbus-send`: it comes from the `dbus` package, i.e.
+// lies on any machine that has a session bus at all, and has the same name
+// everywhere. `qdbus` stays a fallback.
 //
-// Форматы вывода у них РАЗНЫЕ, поэтому ответ приводится к одному виду («как
-// печатает qdbus»): голое значение без типа и кавычек.
+// Their output formats DIFFER, so the answer is brought to one form («as
+// qdbus prints it»): a bare value without type and quotes.
 
-/// Порядок предпочтения: (канон. имя инструмента, вид для вызывающего).
+/// Order of preference: (canonical tool name, kind for the caller).
 pub const DBUS_TOOL_PREFERENCE: &[(&str, &str)] = &[("dbus-send", "dbus-send"), ("qdbus6", "qdbus")];
 
-/// Сообщение, когда на шину сходить нечем.
+/// Message when there is nothing to reach the bus with.
 pub fn msg_no_dbus_tool(qdbus_names: &[&str]) -> String {
     crate::i18n::trf(
         // TRANSLATORS: %1 lists the qdbus program names that were looked for.
@@ -1728,30 +1746,30 @@ pub fn msg_no_dbus_tool(qdbus_names: &[&str]) -> String {
     )
 }
 
-/// Аргумент метода D-Bus в том виде, в каком его принимает `dbus-send`.
+/// A D-Bus method argument in the form `dbus-send` accepts it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DbusArg {
-    /// Логическое значение (`boolean:true`).
+    /// A boolean (`boolean:true`).
     Bool(bool),
-    /// Целое (`int32:…`).
+    /// An integer (`int32:…`).
     Int(i64),
-    /// Всё остальное — строкой, как его печатает Python.
+    /// Everything else — as a string, the way Python prints it.
     Str(String),
 }
 
 impl DbusArg {
-    /// Запись аргумента для `dbus-send` (`string:…`).
+    /// The argument notation for `dbus-send` (`string:…`).
     pub fn to_dbus_send(&self) -> String {
         match self {
-            // Порядок важен: в Python bool — подкласс int, и проверяется он
-            // первым, иначе True уехало бы в int32:1.
+            // The order matters: in Python bool is a subclass of int, and it is
+            // checked first, otherwise True would end up as int32:1.
             DbusArg::Bool(v) => format!("boolean:{}", if *v { "true" } else { "false" }),
             DbusArg::Int(v) => format!("int32:{v}"),
             DbusArg::Str(v) => format!("string:{v}"),
         }
     }
 
-    /// Запись аргумента для `qdbus` — просто значение строкой.
+    /// The argument notation for `qdbus` — just the value as a string.
     pub fn to_qdbus(&self) -> String {
         match self {
             DbusArg::Bool(v) => (if *v { "True" } else { "False" }).to_string(),
@@ -1761,11 +1779,11 @@ impl DbusArg {
     }
 }
 
-/// Ответ `dbus-send` → голое значение, как его напечатал бы qdbus.
+/// A `dbus-send` answer → a bare value, the way qdbus would print it.
 ///
-/// Первая строка служебная («method return time=…»), дальше идут значения с
-/// указанием типа; составные (`array [`, `dict entry(`) пропускаем — нужны
-/// скаляры. Кавычки вокруг строкового значения снимаются.
+/// The first line is service information («method return time=…»), then come
+/// values with their types; compound ones (`array [`, `dict entry(`) are
+/// skipped — scalars are needed. Quotes around a string value are removed.
 pub fn parse_dbus_send_reply(out: &str) -> String {
     let mut values: Vec<&str> = Vec::new();
     for line in out.lines().skip(1) {
@@ -1782,7 +1800,7 @@ pub fn parse_dbus_send_reply(out: &str) -> String {
     values.join("\n")
 }
 
-/// Типы скаляров в выводе `dbus-send`. `object path` — из двух слов.
+/// Scalar types in `dbus-send` output. `object path` is two words.
 const DBUS_SCALAR_TYPES: &[&str] = &[
     "string",
     "object path",
@@ -1798,19 +1816,19 @@ const DBUS_SCALAR_TYPES: &[&str] = &[
     "uint64",
 ];
 
-/// Значение из строки вида «   variant   string "x"  », если она скалярная.
+/// The value from a line like «   variant   string "x"  », if it is a scalar.
 ///
-/// Порт регулярного выражения оригинала; отдельной функцией — чтобы у ядра
-/// не появилась зависимость на движок регулярок ради одного шаблона.
+/// Port of the original's regular expression; a separate function so the core
+/// does not get a regex engine dependency for the sake of one pattern.
 fn dbus_scalar_value(line: &str) -> Option<&str> {
     let rest = line.trim_start();
-    // `variant` — необязательная обёртка, после неё обязателен пробел.
+    // `variant` is an optional wrapper, a space is mandatory after it.
     let rest = match rest.strip_prefix("variant") {
         Some(r) if starts_with_space(r) => r.trim_start(),
         _ => rest,
     };
     for ty in DBUS_SCALAR_TYPES {
-        // `object path` в выводе разделён произвольным числом пробелов.
+        // `object path` in the output is separated by any number of spaces.
         let after = if let Some((first, second)) = ty.split_once(' ') {
             let Some(r) = rest.strip_prefix(first) else {
                 continue;
@@ -1828,7 +1846,7 @@ fn dbus_scalar_value(line: &str) -> Option<&str> {
                 None => continue,
             }
         };
-        // За типом обязан идти пробел, иначе это другое слово («stringy»).
+        // The type must be followed by a space, otherwise it is another word («stringy»).
         if !starts_with_space(after) {
             continue;
         }
@@ -1837,16 +1855,16 @@ fn dbus_scalar_value(line: &str) -> Option<&str> {
     None
 }
 
-/// Начинается ли строка с пробельного символа.
+/// Whether the line starts with a whitespace character.
 fn starts_with_space(s: &str) -> bool {
     s.chars().next().is_some_and(char::is_whitespace)
 }
 
-/// argv вызова метода на сессионной шине.
+/// argv for calling a method on the session bus.
 ///
-/// `kind` — что за бинарь (`dbus-send` либо `qdbus`, см.
-/// [`DBUS_TOOL_PREFERENCE`]): у них разный порядок и разная запись
-/// аргументов, и именно поэтому сборка argv живёт в одном месте.
+/// `kind` — which binary (`dbus-send` or `qdbus`, see
+/// [`DBUS_TOOL_PREFERENCE`]): they have different argument order and
+/// notation, and that is exactly why argv assembly lives in one place.
 pub fn dbus_call_argv(
     kind: &str,
     exe: &str,
@@ -1881,29 +1899,29 @@ pub fn dbus_call_argv(
     cmd
 }
 
-/// Служба, объект и метод перечитывания конфига живым KWin.
+/// Service, object and method for live KWin to reload its config.
 pub const KWIN_RECONFIGURE: (&str, &str, &str) = ("org.kde.KWin", "/KWin", "org.kde.KWin.reconfigure");
 
-/// Служба, объект и метод выполнения JS в plasmashell.
+/// Service, object and method for running JS in plasmashell.
 pub const PLASMA_EVALUATE_SCRIPT: (&str, &str, &str) = (
     "org.kde.plasmashell",
     "/PlasmaShell",
     "org.kde.PlasmaShell.evaluateScript",
 );
 
-/// Имя приложения в уведомлениях.
+/// Application name in notifications.
 pub const NOTIFY_APP_NAME: &str = "Rexon";
 
-/// argv показа уведомления прямо через шину.
+/// argv for showing a notification directly over the bus.
 ///
-/// Идём на `org.freedesktop.Notifications`, а не через бинарь
-/// `notify-send`: его пакет (libnotify / libnotify-bin) не ставится по
-/// умолчанию ни на Debian 13, ни на openSUSE, ни на голом Arch — уведомления
-/// там просто не появлялись, причём молча. Сама служба уведомлений есть в
-/// любой графической среде.
+/// We go to `org.freedesktop.Notifications`, not through the `notify-send`
+/// binary: its package (libnotify / libnotify-bin) is not installed by
+/// default on Debian 13, openSUSE or bare Arch — notifications simply did
+/// not appear there, and silently. The notification service itself exists in
+/// any graphical environment.
 ///
-/// Сигнатура `Notify` — `susssasa{sv}i`: пустые массив действий и словарь
-/// подсказок записываются как `array:string:` и `dict:string:string:`.
+/// The `Notify` signature is `susssasa{sv}i`: the empty actions array and
+/// hints dictionary are written as `array:string:` and `dict:string:string:`.
 pub fn notify_dbus_argv(
     exe: &str,
     summary: &str,
@@ -1930,7 +1948,7 @@ pub fn notify_dbus_argv(
     ]
 }
 
-/// argv запасного пути через бинарь `notify-send`.
+/// argv of the fallback path via the `notify-send` binary.
 pub fn notify_send_argv(exe: &str, summary: &str, body: &str, icon: &str) -> Vec<String> {
     vec![
         exe.to_string(),
@@ -1942,9 +1960,10 @@ pub fn notify_send_argv(exe: &str, summary: &str, body: &str, icon: &str) -> Vec
     ]
 }
 
-/// Показать уведомление рабочего стола (служба уведомлений по шине, иначе
-/// `notify-send`). `false` — показать нечем. Для сообщений без окна:
-/// например, «Rexon не перезапустился», когда своего окна уже нет.
+/// Show a desktop notification (the notification service over the bus,
+/// otherwise `notify-send`). `false` — nothing to show it with. For messages
+/// without a window: e.g. «Rexon did not restart», when its own window is
+/// already gone.
 pub fn notify_live(summary: &str, body: &str) -> bool {
     let path_env = std::env::var("PATH").ok();
     let argv = if let Some(exe) = which("dbus-send", path_env.as_deref()) {
@@ -1958,9 +1977,10 @@ pub fn notify_live(summary: &str, body: &str) -> bool {
     run(&spec, path_env.as_deref()).outcome == RunOutcome::Ok
 }
 
-/// argv `notify-send`, который ждёт ответа: кнопки `(ключ, подпись)`
-/// (`--action`), нажатая придёт в stdout своим ключом
-/// ([`notify_answer`]). Важное — не гаснет само (`--urgency=critical`).
+/// argv of a `notify-send` that waits for an answer: buttons `(key, label)`
+/// (`--action`), the pressed one arrives in stdout as its key
+/// ([`notify_answer`]). An important one does not fade by itself
+/// (`--urgency=critical`).
 pub fn notify_ask_argv(exe: &str, summary: &str, body: &str, actions: &[(String, String)]) -> Vec<String> {
     let mut argv = vec![
         exe.to_string(),
@@ -1977,26 +1997,27 @@ pub fn notify_ask_argv(exe: &str, summary: &str, body: &str, actions: &[(String,
     argv
 }
 
-/// Нажатая кнопка из вывода `notify-send --wait`: последняя непустая
-/// строка, если это ключ одной из `actions`. `None` — закрыли без ответа.
+/// The pressed button from `notify-send --wait` output: the last non-empty
+/// line, if it is the key of one of the `actions`. `None` — closed without an
+/// answer.
 pub fn notify_answer(stdout: &str, actions: &[(String, String)]) -> Option<String> {
     let last = stdout.lines().map(str::trim).rfind(|l| !l.is_empty())?;
     actions.iter().find(|(k, _)| k == last).map(|(k, _)| k.clone())
 }
 
-/// Не знает ли `notify-send` кнопок: libnotify до 0.7.9 (Ubuntu 20.04 и
-/// старше) отвечает на `--action`/`--wait` «Unknown option».
+/// Whether `notify-send` does not know buttons: libnotify before 0.7.9
+/// (Ubuntu 20.04 and older) answers `--action`/`--wait` with «Unknown option».
 pub fn notify_send_lacks_actions(stderr: &str) -> bool {
     let e = stderr.to_lowercase();
     e.contains("unknown option") && (e.contains("action") || e.contains("wait"))
 }
 
-/// Уведомление, которое ждёт действия человека: с кнопками `actions`, если
-/// `notify-send` их умеет, — и ответ (ключ нажатой) после её нажатия.
-/// Кнопок нет (нет `notify-send` либо он старый) — то же уведомление
-/// обычным путём ([`notify_live`]) с запасным текстом `no_buttons`: что
-/// сделать самому. `wait_secs` — сколько ждать ответа. Звать не из потока
-/// интерфейса: ждёт.
+/// A notification that waits for the person's action: with `actions` buttons
+/// if `notify-send` can do them — and the answer (the pressed key) after it
+/// is pressed. No buttons (no `notify-send`, or it is old) — the same
+/// notification the usual way ([`notify_live`]) with the fallback text
+/// `no_buttons`: what to do oneself. `wait_secs` — how long to wait for the
+/// answer. Do not call from the UI thread: it waits.
 pub fn notify_ask_live(
     summary: &str,
     body: &str,
@@ -2023,52 +2044,56 @@ pub fn notify_ask_live(
 }
 
 // ============================================================================
-// Исполнитель внешних команд — ЕДИНСТВЕННОЕ место, где Rexon поднимает процесс
+// External command executor — the ONLY place where Rexon spawns a process
 // ============================================================================
 //
-// ЗАЧЕМ ЭТО ЗДЕСЬ. Решения о запуске уже жили в ядре: какой команде какой
-// таймаут (`run_duration`), под каким именем на этой машине лежит бинарь
-// (`resolved_argv`), какую команду вообще собрать (планы `system_plan`).
-// А сам запуск оставался на Python — `subprocess.run` в `rexon/utils.py`. Из-за
-// этого шва Rust-часть продукта не могла довести до конца ни одного действия:
-// план собирался в ядре и упирался в границу, за которой нужен живой Python.
+// WHY IT IS HERE. Launch decisions already lived in the core: which timeout
+// for which command (`run_duration`), under what name the binary lies on this
+// machine (`resolved_argv`), which command to build at all (`system_plan`
+// plans). But the launch itself stayed in Python — `subprocess.run` in
+// `rexon/utils.py`. Because of this seam the Rust part of the product could
+// not carry a single action to the end: the plan was built in the core and
+// hit the boundary beyond which live Python was needed.
 //
-// Теперь запуск — здесь, и он один на весь продукт. Python не держит своей
-// копии: `rexon/utils.py::safe_run` зовёт эту функцию через мост и только
-// приводит ответ к форме `subprocess.CompletedProcess`.
+// Now the launch is here, and it is one for the whole product. Python keeps
+// no copy of its own: `rexon/utils.py::safe_run` calls this function through
+// the bridge and only brings the answer into the form of
+// `subprocess.CompletedProcess`.
 //
-// ⚠️ ЧТО ИМЕННО ПЕРЕЕХАЛО, кроме самого `spawn`. Три вещи, каждая — цена
-// прошлого дефекта:
-//   • таймаут по КЛАССУ команды, а не один на всё (`pacman -Q` и сборка
-//     девяти пакетов из AUR мерились одними тридцатью секундами);
-//   • `LANG=C`/`LC_ALL=C` для команд, чей вывод РАЗБИРАЕТСЯ: на русской
-//     локали пакетные менеджеры печатают переведённые поля, и регулярные
-//     выражения ядра не находят ничего. Прежде эту пару подставлял по месту
-//     сам Python, глядя на флаг `lang_c` в плане, — то есть решение ядра
-//     исполняли две разные строки в двух файлах;
-//   • `stdin` в /dev/null. Ни одна наша команда не читает клавиатуру, но
-//     stdin ребёнку доставался по наследству, и вопрос вроде «Enter a
-//     selection (default=all):» висел бы на живом, но молчащем вводе до
-//     конца таймаута — а таймаут сборки четыре часа.
+// ⚠️ WHAT EXACTLY MOVED, besides the `spawn` itself. Three things, each the
+// price of a past defect:
+//   • the timeout by the command's CLASS, not one for everything (`pacman -Q`
+//     and a build of nine AUR packages were measured by the same thirty
+//     seconds);
+//   • `LANG=C`/`LC_ALL=C` for commands whose output is PARSED: on a Russian
+//     locale package managers print translated fields, and the core's regular
+//     expressions find nothing. Previously Python itself added this pair in
+//     place, looking at the `lang_c` flag in the plan — that is, the core's
+//     decision was executed by two different lines in two files;
+//   • `stdin` to /dev/null. None of our commands reads the keyboard, but the
+//     child inherited stdin, and a question like «Enter a selection
+//     (default=all):» would hang on a live but silent input until the
+//     timeout ran out — and the build timeout is four hours.
 
-/// Исход запуска — чтобы «не смогли» и «не дождались» нельзя было спутать.
+/// Launch outcome — so that «could not» and «did not wait long enough» cannot
+/// be confused.
 ///
-/// Прежний `safe_run` на оба случая отдавал `None`, и вызывающий честно
-/// писал человеку «не установилось» там, где просто кончилось время.
+/// The former `safe_run` returned `None` for both cases, and the caller
+/// honestly wrote «was not installed» to the person where time simply ran out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunOutcome {
-    /// Команда отработала, код возврата 0.
+    /// The command ran, exit code 0.
     Ok,
-    /// Команда отработала и вернула ненулевой код.
+    /// The command ran and returned a non-zero code.
     Failed,
-    /// Не уложилась в таймаут — это НЕ то же, что «не смогла».
+    /// Did not fit into the timeout — this is NOT the same as «could not».
     Timeout,
-    /// Не запустилась вовсе: нет бинаря, нет прав, не открылся файл вывода.
+    /// Did not start at all: no binary, no permissions, the output file did not open.
     Error,
 }
 
 impl RunOutcome {
-    /// Короткое имя исхода — для журнала и для моста в Python.
+    /// Short outcome name — for the log and for the bridge to Python.
     pub fn as_str(self) -> &'static str {
         match self {
             RunOutcome::Ok => "ok",
@@ -2079,34 +2104,36 @@ impl RunOutcome {
     }
 }
 
-/// Куда девать вывод команды.
+/// Where to put the command's output.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum RunOutput {
-    /// Наследовать вывод родителя (`subprocess.run` без `capture_output`).
+    /// Inherit the parent's output (`subprocess.run` without `capture_output`).
     #[default]
     Inherit,
-    /// Забрать в память ТЕКСТОМ: utf-8 с заменой негодных байт и переводом
-    /// строк по-универсальному — ровно то, что делает `text=True`.
+    /// Capture into memory as TEXT: utf-8 with replacement of invalid bytes and
+    /// universal newlines — exactly what `text=True` does.
     Capture,
-    /// Забрать в память БАЙТАМИ: так работает `run_tool` (конвертеры отдают
-    /// не только текст), и перевод строк там был бы порчей данных.
+    /// Capture into memory as BYTES: that is how `run_tool` works (converters
+    /// return not only text), and newline translation there would corrupt data.
     CaptureBytes,
-    /// Писать в файл. Так идёт долгая установка: вывод уходит в файл, а
-    /// живой ход дела читают из него отдельно, не мешая процессу.
+    /// Write to a file. That is how a long installation goes: the output goes to
+    /// a file, and the live progress is read from it separately without
+    /// disturbing the process.
     File(String),
 }
 
-/// Язык покупателя строкой, как его задаёт окружение: `LANGUAGE`, `LC_ALL`,
-/// `LC_MESSAGES`, `LANG` — в порядке, в котором их читает сама система
-/// локалей. `LANGUAGE` — список через двоеточие, берётся первый.
+/// The customer's language as a string, the way the environment sets it:
+/// `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, `LANG` — in the order the locale
+/// system itself reads them. `LANGUAGE` is a colon-separated list, the first
+/// is taken.
 ///
-/// `C`/`POSIX` — это «локали нет», и подставлять туда `ru` «потому что
-/// продукт русский» нельзя: на английской машине вылез бы русский текст.
-/// Поэтому пусто отвечает `en`.
+/// `C`/`POSIX` means «no locale», and substituting `ru` there «because the
+/// product is Russian» is not allowed: Russian text would show up on an
+/// English machine. So an empty one answers `en`.
 ///
-/// Живёт здесь, а не у вызывающих: тот же цикл нужен и переводу подписей
-/// плагинов в Qt-слое, и человеческим именам тем в сканере установленного
-/// (правило #12 — один движок, не копия на каждое место).
+/// Lives here and not with the callers: the same loop is needed both for
+/// translating plugin labels in the Qt layer and for human theme names in the
+/// installed scanner (rule #12 — one engine, not a copy at each place).
 pub fn env_locale() -> String {
     for name in ["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"] {
         if let Ok(value) = std::env::var(name) {
@@ -2119,30 +2146,31 @@ pub fn env_locale() -> String {
     String::from("en")
 }
 
-/// Переменные, которыми глушится локаль, когда вывод команды РАЗБИРАЕТСЯ.
+/// Variables that mute the locale when the command's output is PARSED.
 ///
-/// Обе, а не одна: `LC_ALL` перебивает `LC_MESSAGES` пользователя, `LANG`
-/// закрывает случай, когда `LC_ALL` в системе не установлена вовсе.
+/// Both, not one: `LC_ALL` overrides the user's `LC_MESSAGES`, `LANG` covers
+/// the case when `LC_ALL` is not set in the system at all.
 pub const PARSED_OUTPUT_ENV: &[(&str, &str)] = &[("LANG", "C"), ("LC_ALL", "C")];
 
-/// Переменные, которые СНИМАЮТСЯ, когда вывод команды разбирается.
+/// Variables that are REMOVED when the command's output is parsed.
 ///
-/// `LANGUAGE` окно Rexon ставит само — язык интерфейса Rexon
-/// (`cli::qt_ui_language_env`), и её наследует каждый дочерний процесс.
-/// GNU gettext при `LC_ALL=C` её не читает, но Qt и KDE берут из неё язык
-/// интерфейса мимо `LC_ALL`, — разбираемому выводу она не нужна вовсе.
+/// The Rexon window sets `LANGUAGE` itself — the Rexon interface language
+/// (`cli::qt_ui_language_env`), and every child process inherits it. GNU
+/// gettext does not read it under `LC_ALL=C`, but Qt and KDE take the
+/// interface language from it bypassing `LC_ALL` — parsed output does not
+/// need it at all.
 pub const PARSED_OUTPUT_ENV_REMOVE: &[&str] = &["LANGUAGE"];
 
-/// Окружение для команды, чей вывод РАЗБИРАЕТСЯ кодом: C-локаль
-/// ([`PARSED_OUTPUT_ENV`]) и без языка интерфейса
+/// Environment for a command whose output is PARSED by code: the C locale
+/// ([`PARSED_OUTPUT_ENV`]) and no interface language
 /// ([`PARSED_OUTPUT_ENV_REMOVE`]).
 ///
-/// Одна точка на весь продукт (правило #12): её зовёт [`run`] при
-/// `lang_c`, и её же — места, что строят `Command` сами. ⛔ Не для команд,
-/// которые ЗАПУСКАЮТ программу для человека (оболочку стола, проигрыватель,
-/// окно настроек): та унаследовала бы C-локаль и заговорила по-английски.
-/// И не для команд, чей вывод только ПОКАЗЫВАЕТСЯ, — он остаётся на языке
-/// человека.
+/// One point for the whole product (rule #12): [`run`] calls it with
+/// `lang_c`, and so do the places that build a `Command` themselves. ⛔ Not
+/// for commands that LAUNCH a program for the person (a desktop shell, a
+/// player, a settings window): it would inherit the C locale and speak
+/// English. And not for commands whose output is only SHOWN — it stays in the
+/// person's language.
 pub fn parsed_output_locale(cmd: &mut std::process::Command) -> &mut std::process::Command {
     for name in PARSED_OUTPUT_ENV_REMOVE {
         cmd.env_remove(name);
@@ -2153,50 +2181,51 @@ pub fn parsed_output_locale(cmd: &mut std::process::Command) -> &mut std::proces
     cmd
 }
 
-/// Заказ на запуск внешней команды.
+/// An order to launch an external command.
 #[derive(Debug, Clone, Default)]
 pub struct RunSpec {
-    /// Команда как есть, до подмены синонимов бинаря.
+    /// The command as is, before binary synonym substitution.
     pub argv: Vec<String>,
-    /// Куда девать вывод.
+    /// Where to put the output.
     pub output: RunOutput,
-    /// Таймаут, секунды. `None` — взять по классу команды.
+    /// Timeout, seconds. `None` — take it by the command's class.
     pub timeout_secs: Option<u64>,
-    /// Вывод команды будет разбираться → глушим локаль (`PARSED_OUTPUT_ENV`).
+    /// The command's output will be parsed → mute the locale (`PARSED_OUTPUT_ENV`).
     pub lang_c: bool,
-    /// ДОБАВКИ к окружению (не замена ему): пары «имя, значение».
+    /// ADDITIONS to the environment (not a replacement): «name, value» pairs.
     pub env: Vec<(String, String)>,
-    /// stderr в тот же поток, что stdout (`stderr=subprocess.STDOUT`).
+    /// stderr into the same stream as stdout (`stderr=subprocess.STDOUT`).
     pub stderr_to_stdout: bool,
 }
 
-/// Что именно будет запущено — БЕЗ запуска.
+/// What exactly will be launched — WITHOUT launching.
 ///
-/// Отдельно от [`run`] потому, что половину наших команд нельзя выполнить в
-/// проверке: за `pkexec` стоит установка стола и запрос пароля. Мерило
-/// такого кода — текстовый паритет собираемой команды, и вот он.
+/// Separate from [`run`] because half of our commands cannot be executed in a
+/// check: behind `pkexec` there is a desktop install and a password prompt.
+/// The yardstick for such code is the textual parity of the built command,
+/// and here it is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunPlan {
-    /// argv после подмены синонимов бинаря (`kwriteconfig6` → `kwriteconfig5`).
+    /// argv after binary synonym substitution (`kwriteconfig6` → `kwriteconfig5`).
     pub argv: Vec<String>,
-    /// Итоговый таймаут, секунды.
+    /// Final timeout, seconds.
     pub timeout_secs: u64,
-    /// Класс времени работы, по которому взят таймаут.
+    /// The run-time class the timeout was taken from.
     pub duration: RunDuration,
-    /// Добавки к окружению в порядке применения: сначала глушение локали,
-    /// потом то, что просил вызывающий.
+    /// Environment additions in the order applied: first muting the locale, then
+    /// what the caller asked for.
     pub env: Vec<(String, String)>,
-    /// Текстовый режим с заменой негодных байт.
+    /// Text mode with replacement of invalid bytes.
     pub text_mode: bool,
-    /// stdin закрыт в /dev/null (всегда: клавиатуры у наших команд нет).
+    /// stdin is closed to /dev/null (always: our commands have no keyboard).
     pub stdin_null: bool,
-    /// Файл, в который уходит stdout, если он задан.
+    /// The file stdout goes to, if set.
     pub stdout_file: Option<String>,
-    /// stderr слит в stdout.
+    /// stderr is merged into stdout.
     pub stderr_to_stdout: bool,
 }
 
-/// Разложить заказ в план запуска. Ничего не запускает и не меняет.
+/// Lay out the order into a launch plan. Launches and changes nothing.
 pub fn run_plan(spec: &RunSpec, path_env: Option<&str>) -> RunPlan {
     let argv = resolved_argv(&spec.argv, path_env);
     let duration = run_duration(&argv);
@@ -2208,8 +2237,8 @@ pub fn run_plan(spec: &RunSpec, path_env: Option<&str>) -> RunPlan {
                 .map(|(k, v)| ((*k).to_string(), (*v).to_string())),
         );
     }
-    // Ключи сборки рецептов AUR (`aur_install::BUILD_ENV`) — для любого
-    // места, что зовёт помощник AUR через общий запуск (правило #12).
+    // AUR recipe build keys (`aur_install::BUILD_ENV`) — for any place that
+    // calls an AUR helper through the shared launch (rule #12).
     env.extend(crate::aur_install::build_env(&spec.argv));
     env.extend(spec.env.iter().cloned());
     RunPlan {
@@ -2227,20 +2256,20 @@ pub fn run_plan(spec: &RunSpec, path_env: Option<&str>) -> RunPlan {
     }
 }
 
-/// Итог запуска.
+/// Launch result.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RunReport {
-    /// Что случилось с командой.
+    /// What happened to the command.
     pub outcome: RunOutcome,
-    /// Код возврата; `None` — процесс не дошёл до кода (таймаут, не запустился).
+    /// Exit code; `None` — the process did not get to a code (timeout, did not start).
     pub returncode: Option<i32>,
-    /// Собранный stdout (пусто, если вывод не забирали в память).
+    /// Collected stdout (empty if the output was not captured into memory).
     pub stdout: Vec<u8>,
-    /// Собранный stderr.
+    /// Collected stderr.
     pub stderr: Vec<u8>,
-    /// Таймаут, с которым шли, — чтобы сообщение человеку называло число.
+    /// The timeout it ran with — so that the message to the person names the number.
     pub timeout_secs: u64,
-    /// Текст ошибки запуска (только при [`RunOutcome::Error`]).
+    /// Launch error text (only with [`RunOutcome::Error`]).
     pub error: String,
 }
 
@@ -2250,11 +2279,11 @@ impl Default for RunOutcome {
     }
 }
 
-/// Байты вывода → строка так, как их отдал бы Python в текстовом режиме.
+/// Output bytes → a string the way Python would return them in text mode.
 ///
-/// `errors="replace"` — то же, что `from_utf8_lossy` (оба ставят U+FFFD).
-/// Перевод строк универсальный (`\r\n` и одиночный `\r` → `\n`): его делает
-/// `text=True`, и без него строки живого хода сборки различались бы.
+/// `errors="replace"` is the same as `from_utf8_lossy` (both put U+FFFD).
+/// Universal newlines (`\r\n` and a lone `\r` → `\n`): `text=True` does it,
+/// and without it the lines of the live build progress would differ.
 pub fn decode_text(raw: &[u8]) -> String {
     let s = String::from_utf8_lossy(raw);
     if !s.contains('\r') {
@@ -2263,12 +2292,12 @@ pub fn decode_text(raw: &[u8]) -> String {
     s.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-/// Запустить внешнюю команду. ЕДИНСТВЕННАЯ точка запуска процесса в продукте.
+/// Launch an external command. The ONLY process launch point in the product.
 ///
-/// Таймаут — по классу команды, если вызывающий не задал свой; локаль
-/// глушится, когда вывод будет разбираться; stdin всегда закрыт. Ни одна
-/// ветка не паникует: «не запустилось» — это [`RunOutcome::Error`] с текстом
-/// причины, а не исключение.
+/// The timeout is by the command's class if the caller did not set their own;
+/// the locale is muted when the output will be parsed; stdin is always
+/// closed. No branch panics: «did not start» is [`RunOutcome::Error`] with
+/// the cause text, not an exception.
 pub fn run(spec: &RunSpec, path_env: Option<&str>) -> RunReport {
     let plan = run_plan(spec, path_env);
     let mut report = RunReport {
@@ -2280,8 +2309,8 @@ pub fn run(spec: &RunSpec, path_env: Option<&str>) -> RunReport {
         return report;
     };
 
-    // Журнал: команда с повышением прав — всегда (что запускается и чем
-    // кончилось), остальные — только в подробном журнале (`REXON_LOG=debug`).
+    // Log: a command with elevated privileges — always (what is launched and
+    // how it ended), the rest — only in the verbose log (`REXON_LOG=debug`).
     let privileged = crate::applog::is_privileged(&plan.argv);
     let log_level = if privileged { crate::applog::Level::Info } else { crate::applog::Level::Debug };
     let logged = crate::applog::enabled(log_level);
@@ -2318,7 +2347,7 @@ fn run_inner(spec: &RunSpec, plan: &RunPlan, bin: &String, rest: &[String], mut 
     let mut cmd = Command::new(bin);
     cmd.args(rest).stdin(Stdio::null());
     if spec.lang_c {
-        // `plan.env` уже несёт C-локаль; здесь — ещё и снятие `LANGUAGE`.
+        // `plan.env` already carries the C locale; here — also removing `LANGUAGE`.
         parsed_output_locale(&mut cmd);
     }
     for (k, v) in &plan.env {
@@ -2331,11 +2360,11 @@ fn run_inner(spec: &RunSpec, plan: &RunPlan, bin: &String, rest: &[String], mut 
         RunOutput::Capture | RunOutput::CaptureBytes => {
             cmd.stdout(Stdio::piped());
         }
-        // ⚠️ Файл открывается ОДИН раз и в режиме дозаписи, а stderr
-        // получает копию того же дескриптора. Прежде stderr открывался
-        // отдельно: у двух открытий разные позиции записи, и stdout
-        // затирал строки stderr поверх (из журнала помощника AUR пропадали
-        // как раз сообщения об ошибке — sudo/pkexec пишут в stderr).
+        // ⚠️ The file is opened ONCE and in append mode, and stderr gets a
+        // copy of the same descriptor. Previously stderr was opened
+        // separately: two opens have different write positions, and stdout
+        // overwrote stderr lines (exactly the error messages vanished from
+        // the AUR helper's log — sudo/pkexec write to stderr).
         RunOutput::File(path) => match fs::File::create(path)
             .and_then(|_| fs::OpenOptions::new().append(true).open(path))
         {
@@ -2360,9 +2389,9 @@ fn run_inner(spec: &RunSpec, plan: &RunPlan, bin: &String, rest: &[String], mut 
         },
     }
     if spec.stderr_to_stdout {
-        // Тот же приёмник, что у stdout: в Python это `stderr=STDOUT`.
+        // The same sink as stdout: in Python this is `stderr=STDOUT`.
         match &spec.output {
-            // Уже отдан копией дескриптора stdout (см. выше).
+            // Already handed over as a copy of the stdout descriptor (see above).
             RunOutput::File(_) => {}
             RunOutput::Capture | RunOutput::CaptureBytes => {
                 cmd.stderr(Stdio::piped());
@@ -2383,7 +2412,7 @@ fn run_inner(spec: &RunSpec, plan: &RunPlan, bin: &String, rest: &[String], mut 
         }
     };
 
-    // Читатели в своих потоках: полный пайп подвесил бы и ребёнка, и нас.
+    // Readers in their own threads: a full pipe would hang both the child and us.
     let mut out_pipe = child.stdout.take();
     let mut err_pipe = child.stderr.take();
     let t_out = std::thread::spawn(move || {
@@ -2404,8 +2433,8 @@ fn run_inner(spec: &RunSpec, plan: &RunPlan, bin: &String, rest: &[String], mut 
     let code = wait_secs(&mut child, plan.timeout_secs);
     report.stdout = t_out.join().unwrap_or_default();
     report.stderr = t_err.join().unwrap_or_default();
-    // stderr, слитый в stdout по пайпу, дописывается к stdout — как это
-    // делает общий дескриптор при `stderr=STDOUT`.
+    // stderr merged into stdout via a pipe is appended to stdout — the way a
+    // shared descriptor does it with `stderr=STDOUT`.
     if spec.stderr_to_stdout && capture {
         let tail = std::mem::take(&mut report.stderr);
         report.stdout.extend_from_slice(&tail);
@@ -2421,8 +2450,9 @@ fn run_inner(spec: &RunSpec, plan: &RunPlan, bin: &String, rest: &[String], mut 
         }
         None => {
             report.outcome = RunOutcome::Timeout;
-            // Собранное до таймаута НЕ отдаём: `subprocess.run` в этом случае
-            // бросает исключение, и вызывающий не видел вывода никогда.
+            // What was collected before the timeout is NOT returned:
+            // `subprocess.run` raises an exception in this case, and the caller
+            // never saw the output.
             report.stdout.clear();
             report.stderr.clear();
         }
@@ -2430,10 +2460,11 @@ fn run_inner(spec: &RunSpec, plan: &RunPlan, bin: &String, rest: &[String], mut 
     report
 }
 
-/// Дождаться процесса не дольше `timeout` секунд; `None` — не дождались.
+/// Wait for the process no longer than `timeout` seconds; `None` — did not
+/// wait long enough.
 ///
-/// По таймауту процесс добивается и дожидается, чтобы не оставить сироту, —
-/// ровно как `subprocess.run(timeout=…)`.
+/// On timeout the process is killed and reaped so as not to leave an orphan —
+/// exactly like `subprocess.run(timeout=…)`.
 fn wait_secs(child: &mut std::process::Child, timeout: u64) -> Option<i32> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
     loop {
@@ -2452,45 +2483,46 @@ fn wait_secs(child: &mut std::process::Child, timeout: u64) -> Option<i32> {
     }
 }
 
-/// Код возврата так, как его видит Python: убитый сигналом процесс — это
-/// отрицательный номер сигнала (`-15`), а не пустое место.
+/// Exit code the way Python sees it: a process killed by a signal is the
+/// negative signal number (`-15`), not an empty place.
 fn exit_code(st: std::process::ExitStatus) -> i32 {
     use std::os::unix::process::ExitStatusExt;
     st.code().unwrap_or_else(|| -st.signal().unwrap_or(0))
 }
 
 // ============================================================================
-// Корзина (freedesktop.org Trash 1.0)
+// Trash (freedesktop.org Trash 1.0)
 // ============================================================================
 //
-// ЗАЧЕМ СВОЯ, а не `gio trash`. Корзина нужна там, где Rexon убирает то, что
-// поставил не он (виджет Conky из `~/.conky`): ошибиться можно, и вещь
-// обязана вернуться из корзины файлового менеджера. `gio` — часть GLib и на
-// урезанной машине (SteamOS, KDE без GTK-программ) может отсутствовать, а
-// ответ его кодом возврата не говорит, переехал ли файл или был скопирован.
-// Спецификация простая, и здесь она исполняется целиком в тех местах, где
-// важна надёжность:
-//   * файл ПЕРЕНОСИТСЯ (`rename(2)`), а не копируется: на том же разделе это
-//     одна атомарная операция, вещь не может «потеряться посередине»;
-//   * на другом разделе — корзина того раздела (`$topdir/.Trash/$uid`, если
-//     администратор её завёл как положено, иначе `$topdir/.Trash-$uid`), тоже
-//     переносом. Копировать между разделами и стирать оригинал НЕ будем
-//     никогда: не удалось перенести — вещь остаётся на месте, и сказано почему;
-//   * имя в корзине занимается созданием `info/<имя>.trashinfo` с `O_EXCL`
-//     ДО переноса (так требует спецификация): две программы, кладущие
-//     одноимённое одновременно, не затрут друг друга. Перенос не удался —
-//     запись снимается;
-//   * ссылка (symlink) уходит в корзину сама, цель её не трогается.
+// WHY OUR OWN rather than `gio trash`. The trash is needed where Rexon
+// removes something it did not install (a Conky widget from `~/.conky`): a
+// mistake is possible, and the item must come back from the file manager's
+// trash. `gio` is part of GLib and may be missing on a stripped-down machine
+// (SteamOS, KDE without GTK programs), and its exit code does not say
+// whether the file was moved or copied. The specification is simple, and
+// here it is implemented fully where reliability matters:
+//   * the file is MOVED (`rename(2)`), not copied: on the same partition it
+//     is one atomic operation, the item cannot «get lost halfway»;
+//   * on another partition — that partition's trash (`$topdir/.Trash/$uid`
+//     if the administrator set it up properly, otherwise
+//     `$topdir/.Trash-$uid`), also by moving. We will NEVER copy between
+//     partitions and erase the original: if moving failed, the item stays in
+//     place, and it is said why;
+//   * the name in the trash is claimed by creating `info/<name>.trashinfo`
+//     with `O_EXCL` BEFORE the move (as the specification requires): two
+//     programs putting a same-named item at the same time will not overwrite
+//     each other. If the move failed, the record is removed;
+//   * a symlink goes to the trash itself, its target is not touched.
 
-/// Каталог «домашней» корзины: `$XDG_DATA_HOME/Trash` (иначе
+/// The «home» trash directory: `$XDG_DATA_HOME/Trash` (otherwise
 /// `~/.local/share/Trash`).
 pub fn home_trash_dir(xdg_data_home: Option<&str>, home: &str) -> String {
     join_path(&data_home(xdg_data_home, home), "Trash")
 }
 
-/// Путь для строки `Path=` записи корзины: байты вне «безопасных» для URI
-/// (`A-Z a-z 0-9 - _ . ~` и `/`) — `%XX`, как требует спецификация (RFC
-/// 2396). Пробел — `%20`, кириллица — по байтам UTF-8.
+/// Path for the `Path=` line of a trash record: bytes outside the URI-«safe»
+/// ones (`A-Z a-z 0-9 - _ . ~` and `/`) become `%XX`, as the specification
+/// requires (RFC 2396). A space is `%20`, Cyrillic — by UTF-8 bytes.
 pub fn trash_escape_path(path: &[u8]) -> String {
     let mut out = String::with_capacity(path.len());
     for &b in path {
@@ -2503,33 +2535,33 @@ pub fn trash_escape_path(path: &[u8]) -> String {
     out
 }
 
-/// Текст записи `.trashinfo`. `path` — уже экранированный путь
-/// ([`trash_escape_path`]), `date` — местное время `ГГГГ-ММ-ДДTчч:мм:сс`.
+/// Text of a `.trashinfo` record. `path` — an already escaped path
+/// ([`trash_escape_path`]), `date` — local time `YYYY-MM-DDThh:mm:ss`.
 pub fn trash_info_text(path: &str, date: &str) -> String {
     format!("[Trash Info]\nPath={path}\nDeletionDate={date}\n")
 }
 
-/// Метка `DeletionDate` для «сейчас» — местное время, без часового пояса
-/// (так в спецификации). Часы не читаются — полночь 1970 года: запись
-/// корзины без даты файловые менеджеры не показывают вовсе.
+/// The `DeletionDate` stamp for «now» — local time, without a time zone (as
+/// in the specification). The clock cannot be read — midnight of 1970: file
+/// managers do not show a trash record without a date at all.
 pub fn trash_deletion_date_now() -> String {
     crate::qt_app::Timestamp::now_local()
         .map(|t| format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}", t.year, t.month, t.day, t.hour, t.minute, t.second))
         .unwrap_or_else(|| "1970-01-01T00:00:00".to_string())
 }
 
-/// Куда положено при переносе в корзину.
+/// Where things were put when moved to the trash.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Trashed {
-    /// Вещь в корзине (`<корзина>/files/<имя>`).
+    /// The item in the trash (`<trash>/files/<name>`).
     pub file: PathBuf,
-    /// Её запись (`<корзина>/info/<имя>.trashinfo`).
+    /// Its record (`<trash>/info/<name>.trashinfo`).
     pub info: PathBuf,
 }
 
-/// Перенести `path` в корзину. `home_trash` — [`home_trash_dir`]; `date` —
-/// [`trash_deletion_date_now`] (подаётся снаружи ради сверок). `Err` — текст
-/// причины; тогда на диске ничего не изменилось.
+/// Move `path` to the trash. `home_trash` — [`home_trash_dir`]; `date` —
+/// [`trash_deletion_date_now`] (passed from outside for the sake of checks).
+/// `Err` — the cause text; then nothing changed on disk.
 pub fn move_to_trash(path: &Path, home_trash: &Path, date: &str) -> Result<Trashed, String> {
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::MetadataExt;
@@ -2539,8 +2571,8 @@ pub fn move_to_trash(path: &Path, home_trash: &Path, date: &str) -> Result<Trash
     let name = path.file_name().ok_or_else(|| format!("no file name: {}", path.display()))?;
     let parent = path.parent().ok_or_else(|| format!("no parent folder: {}", path.display()))?;
     fs::symlink_metadata(path).map_err(|e| e.to_string())?;
-    // Раздел определяется по каталогу, где лежит запись (по ссылке на каталог
-    // — по настоящему каталогу), а не по цели ссылки-виджета.
+    // The partition is determined by the directory holding the entry (for a link
+    // to a directory — by the real directory), not by the widget link's target.
     let dev = fs::metadata(parent).map_err(|e| e.to_string())?.dev();
     let (trash, info_path) = match ensure_trash(home_trash) {
         Ok(()) if fs::metadata(home_trash).map(|m| m.dev()).ok() == Some(dev) => {
@@ -2587,8 +2619,8 @@ pub fn move_to_trash(path: &Path, home_trash: &Path, date: &str) -> Result<Trash
     Err("no free name in the trash".to_string())
 }
 
-/// Завести `files/` и `info/` корзины (права 0700 — содержимое корзины
-/// чужим не видно).
+/// Create the trash's `files/` and `info/` (mode 0700 — the trash contents
+/// are not visible to others).
 fn ensure_trash(trash: &Path) -> std::io::Result<()> {
     for sub in ["files", "info"] {
         let dir = trash.join(sub);
@@ -2601,7 +2633,7 @@ fn ensure_trash(trash: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Точка монтирования раздела `dev`, на котором лежит `dir` (настоящий путь).
+/// Mount point of the partition `dev` on which `dir` lies (a real path).
 fn mount_top(dir: &Path, dev: u64) -> PathBuf {
     use std::os::unix::fs::MetadataExt;
     let mut top = dir.to_path_buf();
@@ -2614,12 +2646,13 @@ fn mount_top(dir: &Path, dev: u64) -> PathBuf {
     top
 }
 
-/// Корзина раздела с корнем `top`: `$top/.Trash/$uid`, если `.Trash` —
-/// настоящий каталог (не ссылка) с битом sticky, иначе `$top/.Trash-$uid`.
-/// Чужой или не-каталог под этим именем — отказ.
+/// Trash of the partition rooted at `top`: `$top/.Trash/$uid` if `.Trash` is a
+/// real directory (not a link) with the sticky bit, otherwise
+/// `$top/.Trash-$uid`. Someone else's or a non-directory under this name —
+/// refusal.
 fn topdir_trash(top: &Path) -> Result<PathBuf, String> {
     use std::os::unix::fs::MetadataExt;
-    // SAFETY: getuid не принимает аргументов и не может завершиться ошибкой.
+    // SAFETY: getuid takes no arguments and cannot fail.
     let uid = unsafe { libc::getuid() };
     let shared = top.join(".Trash");
     if let Ok(m) = fs::symlink_metadata(&shared) {
@@ -2642,7 +2675,7 @@ fn topdir_trash(top: &Path) -> Result<PathBuf, String> {
     Ok(own)
 }
 
-/// Каталог (не ссылка) и принадлежит `uid`.
+/// A directory (not a link) and owned by `uid`.
 fn owned_dir(p: &Path, uid: u32) -> bool {
     use std::os::unix::fs::MetadataExt;
     fs::symlink_metadata(p).is_ok_and(|m| m.is_dir() && m.uid() == uid)
@@ -2652,8 +2685,9 @@ fn owned_dir(p: &Path, uid: u32) -> bool {
 mod notify_ask_tests {
     use super::*;
 
-    /// Уведомление с кнопками: argv `notify-send --wait --action=…`, ответ —
-    /// ключ нажатой; старый `notify-send` без кнопок узнаётся по ответу.
+    /// Notification with buttons: argv `notify-send --wait --action=…`, the
+    /// answer is the pressed key; an old `notify-send` without buttons is
+    /// recognized by its answer.
     #[test]
     fn notify_with_buttons_and_answer() {
         let actions = vec![("open".to_string(), "Открыть".to_string())];
@@ -2691,8 +2725,8 @@ mod trash_tests {
         assert_eq!(&now[10..11], "T");
     }
 
-    /// Папка переносится целиком, запись корзины верна; одноимённая вторая —
-    /// под свободным именем, первая не затирается.
+    /// The folder is moved whole, the trash record is correct; a second one with
+    /// the same name goes under a free name, the first is not overwritten.
     #[test]
     fn folder_moves_with_info_and_names_do_not_clash() {
         let base = sandbox("dir");
@@ -2721,7 +2755,7 @@ mod trash_tests {
         let _ = fs::remove_dir_all(&base);
     }
 
-    /// Ссылка уходит в корзину сама; цель остаётся на месте нетронутой.
+    /// The link goes to the trash itself; the target stays in place untouched.
     #[test]
     fn symlink_goes_to_trash_not_its_target() {
         let base = sandbox("link");
@@ -2739,10 +2773,11 @@ mod trash_tests {
         let _ = fs::remove_dir_all(&base);
     }
 
-    /// Вещь на другом разделе (`/dev/shm` — отдельный tmpfs) — в корзину ТОГО
-    /// раздела (`$topdir/.Trash-$uid`) переносом, путь в записи — от корня
-    /// раздела. Нет отдельного раздела или его корзина уже есть — проверка
-    /// пропускается (чужую корзину не трогаем).
+    /// An item on another partition (`/dev/shm` is a separate tmpfs) goes to THAT
+    /// partition's trash (`$topdir/.Trash-$uid`) by moving, the path in the
+    /// record is relative to the partition root. No separate partition, or its
+    /// trash already exists — the check is skipped (we do not touch someone
+    /// else's trash).
     #[test]
     fn other_partition_uses_its_own_trash_by_move() {
         use std::os::unix::fs::MetadataExt;
@@ -2772,7 +2807,7 @@ mod trash_tests {
         assert_eq!(info, format!("[Trash Info]\nPath={name}\nDeletionDate=2026-10-19T00:00:00\n"));
     }
 
-    /// Нечего переносить или путь не абсолютный — отказ, записи не остаётся.
+    /// Nothing to move or the path is not absolute — refusal, no record remains.
     #[test]
     fn missing_or_relative_is_refused_without_leftovers() {
         let base = sandbox("missing");

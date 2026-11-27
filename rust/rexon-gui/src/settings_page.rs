@@ -1,34 +1,37 @@
-// SettingsModel — вкладка «Настройки» на Rust + cxx-qt + QML.
+// SettingsModel — the "Settings" tab on Rust + cxx-qt + QML.
 //
-// Перенесена на QML по общей схеме вкладок: решения и подписи — ядро,
-// здесь оболочка QObject, в QML только разметка.
+// Moved to QML by the shared tab scheme: decisions and labels come from the
+// core, here is the QObject wrapper, and QML has only markup.
 //
-// Что здесь есть:
-//   * состав разделов вкладки на ЭТОЙ машине — порядок, заголовки, описания
-//     и само решение «показывать ли раздел» приезжают из ядра
-//     (`rexon_core::qt_settings::SECTIONS` и `section_visible`);
-//   * весь каталог постоянных подписей одной картой (`texts`) и подстановка
-//     аргументов в те из них, где есть `{0}`/`{1}`;
-//   * готовые наборы для выпадающих списков и рядов кнопок: скины, файловые
-//     менеджеры, качество и режим YouTube, цели шрифтов, кнопки MATE, типы
-//     защищаемых приложений, границы размытия, громкость фоновых звуков;
-//   * палитра стандартного скина продукта и цвета состояний.
+// What is here:
+//   * the set of the tab's sections on THIS machine — the order, titles,
+//     descriptions and the very decision "whether to show a section" come
+//     from the core (`rexon_core::qt_settings::SECTIONS` and
+//     `section_visible`);
+//   * the whole catalogue of fixed labels as one map (`texts`) and argument
+//     substitution into those of them that have `{0}`/`{1}`;
+//   * ready sets for combo boxes and button rows: skins, file managers,
+//     YouTube quality and mode, font targets, MATE buttons, types of
+//     protected applications, blur limits, background sound volume;
+//   * the product's standard skin palette and the state colours.
 //
-// Чего здесь НЕТ и быть не должно:
-//   * ни одной продуктовой формулировки своими словами — все они в `TEXTS`
-//     ядра. Подпись, которой нет, добавляется туда, а не сюда;
-//   * ни одного побочного действия. Всё, что читает или пишет систему
-//     (kreadconfig6/gsettings, движок обоев, копии панели, фоновые звуки,
-//     установка yt-dlp), живёт в объекте `actions` хозяина страницы
-//     (rexon/qt_settings/window.py) и возвращает странице ГОТОВЫЕ к показу
-//     значения, посчитанные тем же ядром через `rexon_py`. Второй копии
-//     решений не появляется: ядро одно, обёрток две.
+// What is NOT here and must not be:
+//   * not a single product wording in our own words — all of them are in
+//     the core's `TEXTS`. A missing label is added there, not here;
+//   * not a single side action. Everything that reads or writes the system
+//     (kreadconfig6/gsettings, the wallpaper engine, panel copies,
+//     background sounds, installing yt-dlp) lives in the page host's
+//     `actions` object (rexon/qt_settings/window.py) and returns to the page
+//     values READY for display, computed by the same core through
+//     `rexon_py`. No second copy of the decisions appears: one core, two
+//     wrappers.
 //
-// ⚠️ Тип зовётся `SettingsModel`, а не `SettingsPage`: в QML-модуле каждый
-// .qml сам становится типом по имени файла, и `SettingsPage` занят
-// `qml/SettingsPage.qml`. Совпадение даёт «Ambiguous type detected».
+// Warning: the type is called `SettingsModel`, not `SettingsPage`: in a QML
+// module every .qml becomes a type by file name itself, and `SettingsPage`
+// is taken by `qml/SettingsPage.qml`. A clash gives "Ambiguous type
+// detected".
 
-/// Мост cxx-qt: содержимое вкладки «Настройки».
+/// cxx-qt bridge: the content of the "Settings" tab.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -48,7 +51,7 @@ pub mod qobject {
     extern "RustQt" {
         #[qobject]
         #[qml_element]
-        // ── Окно ──────────────────────────────────────────────────────────
+        // ── Window ────────────────────────────────────────────────────────
         #[qproperty(QString, window_title, cxx_name = "windowTitle",
                     READ = window_title, CONSTANT)]
         #[qproperty(i32, window_min_width, cxx_name = "windowMinWidth",
@@ -61,20 +64,20 @@ pub mod qobject {
                     READ = page_title_point_size, CONSTANT)]
         #[qproperty(i32, section_title_point_size, cxx_name = "sectionTitlePointSize",
                     READ = section_title_point_size, CONSTANT)]
-        // ── Оформление ────────────────────────────────────────────────────
+        // ── Styling ───────────────────────────────────────────────────────
         #[qproperty(QMap_QString_QVariant, palette, READ = palette,
                     NOTIFY = palette_changed)]
-        // Раскладка и краски вкладки, которых нет в палитре скина: группа,
-        // полоса polkit, синяя и красные кнопки, строки, плитки, ширины.
-        // Часть красок — пары «тёмная/светлая», поэтому тот же сигнал, что
-        // у палитры.
+        // Layout and colours of the tab that are not in the skin palette: the
+        // group, the polkit strip, the blue and red buttons, rows, tiles, widths.
+        // Some colours are "dark/light" pairs, hence the same signal as for the
+        // palette.
         #[qproperty(QMap_QString_QVariant, styles, READ = styles,
                     NOTIFY = palette_changed)]
-        // ── Каталог подписей: ключ → готовая строка без подстановок ───────
+        // ── Label catalogue: key → ready string without substitutions ─────
         #[qproperty(QMap_QString_QVariant, texts, READ = texts, CONSTANT)]
-        // ── Наборы для списков и рядов кнопок ─────────────────────────────
-        // Список «Язык»: {id, label}, id — значение `ui_language`, подпись —
-        // самоназвание языка (`qt_settings::language_choices`).
+        // ── Sets for lists and button rows ────────────────────────────────
+        // The "Language" list: {id, label}, id is the `ui_language` value, the label
+        // is the language's own name (`qt_settings::language_choices`).
         #[qproperty(QList_QVariant, languages, READ = languages, CONSTANT)]
         #[qproperty(QList_QVariant, skins, READ = skins, CONSTANT)]
         #[qproperty(QList_QVariant, fm_choices, cxx_name = "fmChoices",
@@ -87,7 +90,7 @@ pub mod qobject {
                     READ = font_targets, CONSTANT)]
         #[qproperty(QList_QVariant, protection_types, cxx_name = "protectionTypes",
                     READ = protection_types, CONSTANT)]
-        // ── Числа, заданные ядром ─────────────────────────────────────────
+        // ── Numbers set by the core ───────────────────────────────────────
         #[qproperty(i32, blur_min, cxx_name = "blurMin", READ = blur_min, CONSTANT)]
         #[qproperty(i32, blur_max, cxx_name = "blurMax", READ = blur_max, CONSTANT)]
         #[qproperty(i32, blur_step, cxx_name = "blurStep", READ = blur_step, CONSTANT)]
@@ -109,7 +112,7 @@ pub mod qobject {
                     READ = toast_timeout_ms, CONSTANT)]
         #[qproperty(i32, ambient_refresh_ms, cxx_name = "ambientRefreshMs",
                     READ = ambient_refresh_ms, CONSTANT)]
-        // ── Состав разделов: зависит от машины, поэтому NOTIFY ────────────
+        // ── Set of sections: depends on the machine, hence NOTIFY ─────────
         #[qproperty(QList_QVariant, sections, READ = sections,
                     NOTIFY = sections_changed)]
         #[qproperty(QString, de_display, cxx_name = "deDisplay",
@@ -118,13 +121,13 @@ pub mod qobject {
     }
 
     unsafe extern "RustQt" {
-        /// Скин сменили на лету — палитру пересчитать.
+        /// The skin was changed on the fly — recompute the palette.
         ///
-        /// Свойство `palette` НЕ `CONSTANT` именно поэтому: без сигнала
-        /// привязки QML (`readonly property var pal: page.palette`) не
-        /// пересчитываются, и открытая вкладка остаётся в цветах прошлого
-        /// скина, пока окно на виджетах уже перекрашено. Толчок приходит из
-        /// общего реестра (`crate::skin`), а не отсюда.
+        /// The `palette` property is NOT `CONSTANT` precisely because of this:
+        /// without a signal the QML bindings (`readonly property var pal:
+        /// page.palette`) do not recompute, and an open tab stays in the previous
+        /// skin's colours while the widget window is already repainted. The push
+        /// comes from the shared registry (`crate::skin`), not from here.
         #[qsignal]
         #[cxx_name = "paletteChanged"]
         fn palette_changed(self: Pin<&mut SettingsModel>);
@@ -191,38 +194,39 @@ pub mod qobject {
         fn de_display(self: &SettingsModel) -> QString;
     }
 
-    // ── API для QML ───────────────────────────────────────────────────────
+    // ── API for QML ───────────────────────────────────────────────────────
     extern "RustQt" {
-        /// Принять факты о машине и пересчитать состав разделов.
+        /// Take the facts about the machine and recompute the set of sections.
         ///
-        /// Аргумент — JSON от объекта побочных действий (`actions.facts()`):
-        /// один QString вместо десятка параметров, потому что снаружи (из
-        /// проверок и из Python) зовутся только строковые инвокаблы — у `i32`
-        /// в метаобъекте cxx-qt пишет имя `::std::int32_t`, метатипа с таким
-        /// именем нет, и `QMetaObject.invokeMethod` молча возвращает False.
+        /// The argument is JSON from the side-actions object (`actions.facts()`):
+        /// one QString instead of a dozen parameters, because from outside (from
+        /// checks and from Python) only string invokables are called — for `i32`
+        /// cxx-qt writes the name `::std::int32_t` into the metaobject, there is no
+        /// metatype with that name, and `QMetaObject.invokeMethod` silently returns
+        /// False.
         #[qinvokable]
         fn configure(self: Pin<&mut SettingsModel>, facts_json: &QString);
 
-        /// Подпись из каталога с одной подстановкой.
+        /// A catalogue label with one substitution.
         #[qinvokable]
         fn t1(self: &SettingsModel, key: &QString, a: &QString) -> QString;
 
-        /// Подпись из каталога с двумя подстановками.
+        /// A catalogue label with two substitutions.
         #[qinvokable]
         fn t2(self: &SettingsModel, key: &QString, a: &QString, b: &QString) -> QString;
 
-        /// Описание скина под выпадающим списком.
+        /// Skin description under the combo box.
         #[qinvokable]
         #[cxx_name = "skinDescription"]
         fn skin_description(self: &SettingsModel, skin_id: &QString) -> QString;
 
-        /// Отметка «установлен / не установлен» и её цвет: {text, color}.
+        /// The "installed / not installed" mark and its colour: {text, color}.
         #[qinvokable]
         #[cxx_name = "fmBadge"]
         fn fm_badge(self: &SettingsModel, installed: bool) -> QMap_QString_QVariant;
 
-        /// Подпись галочки защиты приложения и подсказка к ней:
-        /// {label, tip}. `remembered` — что запомнено (пусто — ничего).
+        /// Label of an application protection check box and its tooltip:
+        /// {label, tip}. `remembered` is what is remembered (empty — nothing).
         #[qinvokable]
         #[cxx_name = "protectionRow"]
         fn protection_row(
@@ -231,46 +235,46 @@ pub mod qobject {
             remembered: &QString,
         ) -> QMap_QString_QVariant;
 
-        /// Значок и подпись звукового события: {emoji, label}.
+        /// Icon and label of a sound event: {emoji, label}.
         #[qinvokable]
         #[cxx_name = "eventMeta"]
         fn event_meta(self: &SettingsModel, event_id: &QString) -> QMap_QString_QVariant;
 
-        /// Подпись ползунка громкости обоев.
+        /// Label of the wallpaper volume slider.
         #[qinvokable]
         #[cxx_name = "volumeLabel"]
         fn volume_label(self: &SettingsModel, percent: i32) -> QString;
 
-        /// Показывать ли плитке библиотеки кнопку предпросмотра.
+        /// Whether a library tile should show a preview button.
         #[qinvokable]
         #[cxx_name = "libraryShowsPreview"]
         fn library_shows_preview(self: &SettingsModel, format: &QString) -> bool;
 
-        /// Сколько столбцов положить в сетку библиотеки при такой ширине.
-        /// Тот же расчёт, что у виджетных сеток Rexon (`ui_base::grid_columns`).
+        /// How many columns to put into the library grid at this width. The same
+        /// calculation as for the Rexon widget grids (`ui_base::grid_columns`).
         #[qinvokable]
         #[cxx_name = "libraryColumns"]
         fn library_columns(self: &SettingsModel, viewport_width: i32) -> i32;
 
-        /// Сколько плиток показать при таком числе столбцов.
+        /// How many tiles to show with this number of columns.
         #[qinvokable]
         #[cxx_name = "libraryPageSize"]
         fn library_page_size(self: &SettingsModel, cols: i32) -> i32;
 
-        /// Ширина плашки всплывающего сообщения при такой ширине страницы и
-        /// такой ширине текста в одну строку. Тот же расчёт, что у виджетной
-        /// плашки (`ui_base::toast_width`), поля и потолок — из ядра.
+        /// Width of the pop-up message banner at this page width and this
+        /// single-line text width. The same calculation as for the widget banner
+        /// (`ui_base::toast_width`); the paddings and the cap come from the core.
         #[qinvokable]
         #[cxx_name = "toastWidth"]
         fn toast_width(self: &SettingsModel, page_width: i32, text_width: i32) -> i32;
     }
 
-    // Объявление трейтов обязано быть В МОСТЕ: cxx-qt печатает по этим
-    // строкам и конструктор, и `qt_thread()`.
+    // Trait declarations must be IN THE BRIDGE: cxx-qt emits both the
+    // constructor and `qt_thread()` from these lines.
     impl cxx_qt::Initialize for SettingsModel {}
-    // Подписка на смену скина идёт через `CxxQtThread::queue`, и трейт
-    // потока обязан быть объявлен В МОСТЕ: cxx-qt печатает по этой
-    // строке и сам `qt_thread()`, и его алиас типа.
+    // Subscribing to skin changes goes through `CxxQtThread::queue`, and the
+    // thread trait must be declared IN THE BRIDGE: cxx-qt emits both
+    // `qt_thread()` itself and its type alias from this line.
     impl cxx_qt::Threading for SettingsModel {}
 }
 
@@ -281,25 +285,26 @@ use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use rexon_core::qt_settings as qs;
 use rexon_core::ui_base;
 
-/// Ширина плитки библиотеки обоев. ПОСТОЯННАЯ: по ней общий движок сеток
-/// считает столбцы — вилка «от и до» давала в одном ряду плитки разной
-/// ширины, и «ширины карточки», по которой можно считать, просто не было.
+/// Width of a wallpaper library tile. CONSTANT: the shared grid engine
+/// computes the columns from it — a "from–to" range gave tiles of different
+/// widths in one row, and there simply was no "card width" to compute by.
 pub const LIB_CARD_W: i32 = 260;
 
-/// Высота полоски предпросмотра плитки.
+/// Height of the tile's preview strip.
 pub const LIB_PREVIEW_H: i32 = 108;
 
-/// Как часто перечитывается список играющих фоновых звуков.
+/// How often the list of playing background sounds is re-read.
 pub const AMBIENT_REFRESH_MS: i32 = 3000;
 
-/// Минимальный размер окна вкладки.
+/// Minimum size of the tab window.
 pub const WINDOW_MIN_SIZE: (i32, i32) = (900, 720);
 
-/// Кегль заголовка страницы и заголовка раздела.
+/// Font size of the page title and of the section title.
 pub const PAGE_TITLE_POINT_SIZE: i32 = 20;
 pub const SECTION_TITLE_POINT_SIZE: i32 = 13;
 
-/// Собрать QVariantMap из пар: QML читает такую карту точкой (`row.label`).
+/// Build a QVariantMap from pairs: QML reads such a map with a dot
+/// (`row.label`).
 fn vmap(pairs: Vec<(&str, QVariant)>) -> QMap<QMapPair_QString_QVariant> {
     let mut out = QMap::<QMapPair_QString_QVariant>::default();
     for (key, value) in pairs {
@@ -308,9 +313,9 @@ fn vmap(pairs: Vec<(&str, QVariant)>) -> QMap<QMapPair_QString_QVariant> {
     out
 }
 
-/// Рамка раздела-группы (`sty.group`): фон, рамка, скругление, поля,
-/// промежуток. Одна на вкладки, где стоят разделы-группы: «Настройки» и
-/// «Оформление» (раздел «Панель MATE» переехал из одной в другую).
+/// Frame of a group section (`sty.group`): background, border, rounding,
+/// paddings, spacing. One for the tabs that have group sections: "Settings"
+/// and "Appearance" (the "MATE panel" section moved from one to the other).
 pub(crate) fn group_style() -> QMap<QMapPair_QString_QVariant> {
     let col = |css: &str| qstr(&ui_base::css_color_to_qml(css));
     let num = |v: i32| QVariant::from(&v);
@@ -329,35 +334,36 @@ fn qstr(value: &str) -> QVariant {
     QVariant::from(&QString::from(value))
 }
 
-/// Rust-состояние страницы: только наблюдаемые факты о машине.
+/// Rust state of the page: only the observed facts about the machine.
 ///
-/// Всё остальное — константы ядра, и держать их копию в состоянии значило бы
-/// завести второй источник истины.
+/// Everything else is core constants, and keeping a copy of them in the
+/// state would mean creating a second source of truth.
 #[derive(Default)]
 pub struct SettingsModelRust {
-    /// Номер записи в общем реестре смены скина (`crate::skin`).
-    /// 0 — страница ещё не подписана.
+    /// Entry number in the shared skin change registry (`crate::skin`).
+    /// 0 means the page is not subscribed yet.
     skin_watch: u64,
     facts: qs::SectionFacts,
     de_display: String,
     configured: bool,
 }
 
-/// Снять подписку на смену скина. Без этого реестр держал бы запись
-/// закрытой вкладки до первой рассылки — та её отсеет по
-/// `ObjectDestroyed`, но копить мусор незачем.
+/// Remove the skin change subscription. Without this the registry would
+/// keep the closed tab's entry until the next broadcast — that one would
+/// filter it out by `ObjectDestroyed`, but there is no reason to accumulate
+/// garbage.
 impl Drop for SettingsModelRust {
     fn drop(&mut self) {
         crate::skin::unwatch(self.skin_watch);
     }
 }
 
-/// Единственное, что делает конструктор, — подписывает страницу на смену
-/// скина: остальное состояние приходит от хозяина страницы (`setFacts`).
+/// The only thing the constructor does is subscribe the page to skin
+/// changes: the rest of the state comes from the page host (`setFacts`).
 impl cxx_qt::Initialize for qobject::SettingsModel {
     fn initialize(mut self: Pin<&mut Self>) {
-        // Подписка на смену скина: одна строка на страницу, рассылка — общая
-        // (`crate::skin`). Снимается в `Drop` того же состояния.
+        // Subscribing to skin changes: one line per page, the broadcast is shared
+        // (`crate::skin`). Removed in `Drop` of the same state.
         let watch = crate::skin::watch(
             self.as_ref().get_ref().qt_thread(),
             qobject::SettingsModel::palette_changed,
@@ -366,11 +372,11 @@ impl cxx_qt::Initialize for qobject::SettingsModel {
     }
 }
 
-/// Разобрать факты, присланные хозяином страницы.
+/// Parse the facts sent by the page host.
 ///
-/// Неизвестный или битый JSON — это поломка шва, а не выбор покупателя:
-/// разделы тогда показываются по безопасному минимуму (только те, что есть
-/// всегда), и страница остаётся рабочей.
+/// An unknown or broken JSON is a breakage of the seam, not the customer's
+/// choice: the sections are then shown at a safe minimum (only those that
+/// always exist), and the page stays working.
 fn parse_facts(raw: &str) -> (qs::SectionFacts, String) {
     let value: serde_json::Value = match serde_json::from_str(raw) {
         Ok(v) => v,
@@ -393,7 +399,7 @@ fn parse_facts(raw: &str) -> (qs::SectionFacts, String) {
 }
 
 impl qobject::SettingsModel {
-    // ── Окно ──────────────────────────────────────────────────────────────
+    // ── Window ────────────────────────────────────────────────────────────
 
     fn window_title(&self) -> QString {
         QString::from(&qs::text("window.title", &[]).unwrap_or_default())
@@ -419,11 +425,11 @@ impl qobject::SettingsModel {
         SECTION_TITLE_POINT_SIZE
     }
 
-    // ── Оформление ────────────────────────────────────────────────────────
+    // ── Styling ───────────────────────────────────────────────────────────
 
-    /// Палитра ДЕЙСТВУЮЩЕГО скина (сохранённый `ui_skin`, откат к
-    /// стандартному по правилу #17) плюс цвета состояний вкладки. Своих
-    /// цветов страница не заводит.
+    /// Palette of the ACTIVE skin (the saved `ui_skin`, falling back to the
+    /// standard one by rule #17) plus the tab's state colours. The page defines
+    /// no colours of its own.
     fn palette(&self) -> QMap<QMapPair_QString_QVariant> {
         let mut out = QMap::<QMapPair_QString_QVariant>::default();
         for (key, value) in &ui_base::active_qml_palette() {
@@ -432,28 +438,29 @@ impl qobject::SettingsModel {
         out.insert(QString::from("state_ok"), qstr(qs::COLOR_OK));
         out.insert(QString::from("state_bad"), qstr(qs::COLOR_BAD));
         out.insert(QString::from("state_warn"), qstr(qs::COLOR_WARN));
-        // Вторичные и приглушённые подписи набраны плотнее (`font-weight:
-        // 600` из `secondary_text_qss` у виджетов); число из ядра, ключ тот
-        // же, что у «Сравнения» и «Расширений».
+        // Secondary and muted labels are set bolder (`font-weight: 600` from the
+        // widgets' `secondary_text_qss`); the number comes from the core, the key
+        // is the same as in "Compare" and "Extensions".
         out.insert(
             QString::from("text_secondary_weight"),
             QVariant::from(&ui_base::SECONDARY_TEXT_WEIGHT),
         );
-        // Затемнение под модальным окном — общее решение продукта: тем же
-        // цветом гасит окно обучение и «Сравнение DE».
+        // Dimming under a modal window is a product-wide decision: the tutorial
+        // and "DE comparison" dim the window with the same colour.
         out.insert(
             QString::from("modal_dim"),
             qstr(&ui_base::modal_dim_argb_hex()),
         );
-        // Краски «Да» окна операции (доустановка недостающего) — тем же
-        // помощником по таблице ядра, что у «Рабочих столов» и «Сравнения».
+        // The "Yes" colours of the operation window (installing what is missing) —
+        // with the same helper over the core table as for "Desktops" and
+        // "Compare".
         crate::desktops_page::insert_operation_tones(&mut out);
-        // Подложка ползунка (`track`) приходит с общей палитрой
+        // The slider groove (`track`) comes with the shared palette
         // (`ui_base::qml_palette`).
-        // Цвет НЕОБРАТИМОГО действия («Остановить живые обои», «Остановить
-        // все звуки»). Оттенок и обе прозрачности приезжают из ядра, а сама
-        // кнопка — общий тип `RexonDangerButton`: третьей копии выражения
-        // «красная кнопка» в разметке не появляется (правило #12).
+        // The colour of an IRREVERSIBLE action ("Stop live wallpaper", "Stop all
+        // sounds"). The hue and both opacities arrive from the core, and the
+        // button itself is the shared `RexonDangerButton` type: no third copy of
+        // the "red button" expression appears in the markup (rule #12).
         out.insert(QString::from("danger"), qstr(qs::COLOR_BAD));
         out.insert(
             QString::from("danger_fill_alpha"),
@@ -466,11 +473,12 @@ impl qobject::SettingsModel {
         out
     }
 
-    /// Раскладка и краски виджетной вкладки, которых нет в палитре скина.
+    /// Layout and colours of the widget tab that are not in the skin palette.
     ///
-    /// Все числа — из «Раскладки и оформления» `qt_settings`; QML-разметка
-    /// своих не заводит. Краски идут через `css_color_to_qml`: запись
-    /// `rgba(...)` QML читает как недопустимый цвет и рисует чёрным.
+    /// All numbers come from the "Layout and styling" of `qt_settings`; the QML
+    /// markup defines none of its own. Colours go through `css_color_to_qml`:
+    /// QML reads the `rgba(...)` notation as an invalid colour and draws it
+    /// black.
     fn styles(&self) -> QMap<QMapPair_QString_QVariant> {
         let dark = ui_base::active_skin_is_dark();
         let col = |css: &str| qstr(&ui_base::css_color_to_qml(css));
@@ -493,7 +501,7 @@ impl qobject::SettingsModel {
             ("padding", num(qs::POLKIT_BANNER_PADDING)),
         ]);
 
-        // Тон синей кнопки действия — карта, которую понимает `RexonButton`.
+        // Tone of the blue action button — a map that `RexonButton` understands.
         let btn = qs::primary_button_colors();
         let primary = vmap(vec![
             ("background", col(&btn.background)),
@@ -509,9 +517,9 @@ impl qobject::SettingsModel {
             ("bold", yes.clone()),
         ]);
 
-        // Тон красной кнопки остановки — карта для `RexonDangerButton`:
-        // оттенок и заливка уже в палитре (`danger*`), здесь подпись,
-        // жирность, серое выключенное состояние и поля.
+        // Tone of the red stop button — a map for `RexonDangerButton`: the hue and
+        // fill are already in the palette (`danger*`); here are the label, the
+        // weight, the grey disabled state and the paddings.
         let (danger_off_bg, danger_off_text) = qs::danger_button_disabled_colors();
         let danger = vmap(vec![
             ("textColor", qstr(qs::COLOR_BAD)),
@@ -522,7 +530,7 @@ impl qobject::SettingsModel {
             ("paddingV", num(qs::DANGER_BTN_PADDING_V)),
         ]);
 
-        // Тон кнопки «⏹» в строке звука.
+        // Tone of the "⏹" button in a sound row.
         let ambient_stop = vmap(vec![
             ("color", qstr(qs::AMBIENT_STOP_COLOR)),
             ("fillAlpha", real(qs::AMBIENT_STOP_FILL_ALPHA)),
@@ -578,9 +586,10 @@ impl qobject::SettingsModel {
             ("emptyPadding", num(qs::LIB_EMPTY_PADDING)),
         ]);
 
-        // Всплывающее сообщение. Краски и метрики — ОДНА дверь на весь
-        // продукт (`crate::toast`), и разметка у плашки тоже одна
-        // (`qml/RexonToast.qml`): своей плашке во вкладке завестись негде.
+        // Pop-up message. Colours and metrics have ONE door for the whole product
+        // (`crate::toast`), and the banner markup is also one
+        // (`qml/RexonToast.qml`): there is nowhere for a banner of its own to
+        // appear in the tab.
         let toast = crate::toast::style_map(dark);
 
         let spacing = vmap(vec![
@@ -607,24 +616,24 @@ impl qobject::SettingsModel {
         ])
     }
 
-    // ── Каталог подписей ──────────────────────────────────────────────────
+    // ── Label catalogue ───────────────────────────────────────────────────
 
-    /// Все постоянные строки вкладки одной картой: `page.texts["fm.apply"]`.
+    /// All fixed strings of the tab as one map: `page.texts["fm.apply"]`.
     ///
-    /// Строки с местами подстановки (`{0}`) сюда попадают как есть — их
-    /// собирают `t1`/`t2`. Так у страницы нет ни одной собственной
-    /// формулировки, а забытый ключ виден сразу пустой надписью.
+    /// Strings with substitution places (`{0}`) get here as is — they are
+    /// assembled by `t1`/`t2`. That way the page has not a single wording of its
+    /// own, and a forgotten key shows up at once as an empty label.
     fn texts(&self) -> QMap<QMapPair_QString_QVariant> {
         let mut out = QMap::<QMapPair_QString_QVariant>::default();
-        // Шаблоны уходят переведёнными: в таблице ядра — английские `msgid`.
+        // Templates go out translated: the core table holds English `msgid`s.
         for (key, _) in qs::TEXTS {
             out.insert(
                 QString::from(*key),
                 qstr(&qs::text_template(key).unwrap_or_default()),
             );
         }
-        // Подписи, которые вкладка не хранит строкой, а собирает: кнопка
-        // «пройти обучение заново» подписана самим обучением.
+        // Labels the tab does not store as a string but assembles: the "take the
+        // tutorial again" button is labelled by the tutorial itself.
         out.insert(
             QString::from("ob.replay"),
             qstr(&qs::onboarding_replay_button()),
@@ -642,7 +651,7 @@ impl qobject::SettingsModel {
         )
     }
 
-    // ── Наборы ────────────────────────────────────────────────────────────
+    // ── Sets ──────────────────────────────────────────────────────────────
 
     fn languages(&self) -> QList<QVariant> {
         let mut out = QList::<QVariant>::default();
@@ -699,13 +708,12 @@ impl qobject::SettingsModel {
         out
     }
 
-    /// Цели шрифтов страницы (`qt_settings::font_targets_shown`): кнопку
-    /// шрифта заголовков там, где заголовки рисует не настраиваемый нами
-    /// оконный менеджер (COSMIC, LXQt с неопознанным менеджером,
-    /// sway/Hyprland/niri), не показываем —
-    /// иначе «✅ применено» при нулевом эффекте. Шрифты, которых в этом
-    /// окружении нет («маленький», «панели инструментов», «меню» вне KDE),
-    /// видны, но выключены и подписаны честно: `available = false`.
+    /// The page's font targets (`qt_settings::font_targets_shown`): the title
+    /// font button is not shown where titles are drawn by a window manager we
+    /// do not configure (COSMIC, LXQt with an unrecognized manager,
+    /// sway/Hyprland/niri) — otherwise "✅ applied" with zero effect. Fonts this
+    /// environment does not have ("small", "toolbar", "menu" outside KDE) are
+    /// visible but disabled and honestly labelled: `available = false`.
     fn font_targets(&self) -> QList<QVariant> {
         let mut out = QList::<QVariant>::default();
         let de = crate::settings_actions::current_de();
@@ -730,7 +738,7 @@ impl qobject::SettingsModel {
         out
     }
 
-    // ── Числа ядра ────────────────────────────────────────────────────────
+    // ── Core numbers ──────────────────────────────────────────────────────
 
     fn blur_min(&self) -> i32 {
         qs::BLUR_RANGE.0
@@ -780,20 +788,20 @@ impl qobject::SettingsModel {
         AMBIENT_REFRESH_MS
     }
 
-    // ── Состав разделов ───────────────────────────────────────────────────
+    // ── Set of sections ───────────────────────────────────────────────────
 
-    /// Разделы этой машины: [{id, title, description}] в порядке ядра.
+    /// Sections of this machine: [{id, title, description}] in core order.
     ///
-    /// До вызова `configure` список пуст: рисовать разделы, не спросив
-    /// машину, значит показать покупателю пункты, которых у него нет.
+    /// Before `configure` is called the list is empty: drawing sections without
+    /// asking the machine means showing the customer items they do not have.
     fn sections(&self) -> QList<QVariant> {
         let mut out = QList::<QVariant>::default();
         if !self.rust().configured {
             return out;
         }
         for id in qs::visible_sections(&self.rust().facts) {
-            // Раздел есть в списке — значит, тексты у него есть тоже:
-            // `section_texts` не находит только чужое имя рамки.
+            // A section is in the list — so it has texts too: `section_texts` fails to
+            // find only a foreign frame name.
             let Some((title, description)) = qs::section_texts(id, &self.rust().de_display) else {
                 continue;
             };
@@ -826,7 +834,7 @@ impl qobject::SettingsModel {
         }
     }
 
-    // ── Готовые куски содержимого ─────────────────────────────────────────
+    // ── Ready pieces of content ───────────────────────────────────────────
 
     fn skin_description(&self, skin_id: &QString) -> QString {
         QString::from(ui_base::skin_description(&skin_id.to_string()))
@@ -863,10 +871,10 @@ impl qobject::SettingsModel {
     }
 
     fn library_columns(&self, viewport_width: i32) -> i32 {
-        // Отступы сетки и зазор между плитками — те же, что у виджетной
-        // раскладки: 0 полей внутри рамки раздела и 8 px между плитками.
-        // Промежуток 8 и нулевые поля — те же числа, что стоят у виджетной
-        // сетки библиотеки, поэтому оба пути дают одинаковое число столбцов.
+        // Grid margins and the gap between tiles — the same as in the widget
+        // layout: 0 padding inside the section frame and 8 px between tiles. The
+        // spacing of 8 and zero margins are the same numbers as in the widget
+        // library grid, so both paths give the same number of columns.
         ui_base::grid_columns(viewport_width.max(0), LIB_CARD_W, 8, 0, 1, 99) as i32
     }
 

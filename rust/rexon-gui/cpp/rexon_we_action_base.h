@@ -1,28 +1,30 @@
-// База синглтона Action: один-единственный сигнал `toast` с ДЕФОЛТНЫМИ
-// аргументами.
+// Base of the Action singleton: one single `toast` signal with DEFAULT
+// arguments.
 //
-// Зачем отдельная база, а не сигнал в мосте cxx-qt. У оригинала
-// (`ui/src/action.cppm`) сигнал объявлен так:
+// Why a separate base rather than a signal in the cxx-qt bridge. In the
+// original (`ui/src/action.cppm`) the signal is declared like this:
 //
 //     void toast(QString text, qint32 duration = 3000, qint32 flags = 0,
 //                QObject* action = nullptr);
 //
-// и вендорный QML пользуется дефолтами вовсю — `W.Action.toast(текст)` с
-// ОДНИМ аргументом встречается в девяти местах. Дефолтные аргументы
-// печатает moc: он генерирует укороченные клоны метода, и QML выбирает клон
-// по числу аргументов. cxx-qt дефолтов не умеет, а перегрузки того же имени
-// ломают его же генератор: он соединяет сигнал через `&Action::toast`, и на
-// четырёх одноимённых методах это «unresolved overloaded function type».
+// and the vendored QML uses the defaults heavily — `W.Action.toast(text)`
+// with ONE argument occurs in nine places. Default arguments are emitted
+// by moc: it generates shortened clones of the method, and QML picks a
+// clone by the number of arguments. cxx-qt cannot do defaults, and
+// overloads of the same name break its own generator: it connects the
+// signal through `&Action::toast`, and with four methods of the same name
+// that is an "unresolved overloaded function type".
 //
-// Поэтому сигнал остаётся тем, чем был у оригинала, — обычным Qt-сигналом в
-// moc'аемом заголовке, а мост cxx-qt наследует его через `#[base]`. Заголовки
-// из `cpp_files` cxx-qt-build через moc ПРОГОНЯЕТ (документировано в
-// `CxxQtBuilder::cpp_file`: «compile or run moc on»), .cpp — нет.
+// So the signal stays what it was in the original — an ordinary Qt signal
+// in a moc-processed header, and the cxx-qt bridge inherits it through
+// `#[base]`. cxx-qt-build DOES run moc on headers from `cpp_files`
+// (documented in `CxxQtBuilder::cpp_file`: "compile or run moc on"), but
+// not on .cpp files.
 //
-// ⚠️ Наш Python-мост этого сделать не мог (PySide6-Signal дефолтов не знает)
-// и разошёлся с оригиналом: сигнал там назывался `toasted`, а `toast` был
-// слотом. Из-за переименования вендорный обработчик `Window.qml:86
-// function onToast(...)` не срабатывал никогда.
+// Warning: our Python bridge could not do this (a PySide6 Signal knows no
+// defaults) and diverged from the original: the signal there was called
+// `toasted`, and `toast` was a slot. Because of the renaming the vendored
+// handler `Window.qml:86 function onToast(...)` never fired.
 #pragma once
 
 #include <QtCore/QObject>
@@ -36,7 +38,8 @@ public:
     ~RexonWeActionBase() override = default;
 
 Q_SIGNALS:
-    /// Тост поверх окна. Сигнатура и дефолты — из оригинала.
+    /// A toast over the window. The signature and defaults are from the
+    /// original.
     void toast(QString text, qint32 duration = 3000, qint32 flags = 0,
                QObject* action = nullptr);
 };

@@ -1,16 +1,16 @@
-// Снимок рамки окна KDE для плитки раздела «Оформление окон».
+// Snapshot of a KDE window decoration for a tile of the «Window Decorations» section.
 //
-// Рамку рисует сам модуль KDecoration через QML-модуль KWin
-// org.kde.kwin.private.kdecoration — тот же, которым окно «Оформление окон»
-// Plasma рисует свои плитки (kwin/src/kcms/decoration/ui/Themes.qml):
-// неактивное окно сзади, активное спереди со сдвигом на высоту заголовка.
-// Запускается отдельным процессом `qml` (QT_QPA_PLATFORM=offscreen), чтобы
-// чужой модуль не загружался в процесс Rexon.
+// The decoration is drawn by the KDecoration module itself through the KWin QML module
+// org.kde.kwin.private.kdecoration — the same one the Plasma «Window Decorations» window
+// uses to draw its tiles (kwin/src/kcms/decoration/ui/Themes.qml):
+// an inactive window behind, an active one in front shifted by the title bar height.
+// It is started as a separate `qml` process (QT_QPA_PLATFORM=offscreen) so that
+// the foreign module is not loaded into the Rexon process.
 //
-// Аргументы после `--`: модуль, тема, заголовок окна, номер размера рамки
-// (0 — None … 8 — Oversized), куда сохранить PNG.
-// Выход: 0 — снимок сохранён; 2 — модуль или тема не нашлись; 3 — снимок не
-// сохранился.
+// Arguments after `--`: module, theme, window title, border size index
+// (0 — None … 8 — Oversized), where to save the PNG.
+// Exit: 0 — the snapshot was saved; 2 — the module or theme was not found; 3 — the snapshot
+// was not saved.
 
 import QtQuick
 import QtQuick.Window
@@ -80,8 +80,8 @@ Window {
         }
     }
 
-    // Темы QML движка Aurorae дорисовываются не сразу — снимок через
-    // полсекунды, как только кадр окна готов.
+    // QML themes of the Aurorae engine finish drawing with a delay — the snapshot is taken after
+    // half a second, as soon as the window frame is ready.
     Timer {
         interval: 500
         running: true

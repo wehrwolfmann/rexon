@@ -1,13 +1,13 @@
-//! Часы ролика и темп рендера — чистая логика без GPU (тестируется синтетическими Instant).
+//! Movie clock and render pacing — pure logic without the GPU (tested with synthetic Instants).
 
 use std::time::{Duration, Instant};
 
-/// Один шаг часов.
+/// One clock step.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Step {
-    /// На сколько двигать ролик: реальное время с прошлого шага, но не больше `dt_cap`.
+    /// How far to advance the movie: real time since the last step, but no more than `dt_cap`.
     pub dt: Duration,
-    /// Реальный разрыв, если он больше `dt_cap` (SIGSTOP/SIGCONT надзора, сон, зависание хоста).
+    /// The real gap, if it is larger than `dt_cap` (supervision SIGSTOP/SIGCONT, sleep, a host hang).
     pub gap: Option<Duration>,
 }
 
@@ -20,7 +20,7 @@ pub struct Pacer {
 }
 
 impl Pacer {
-    /// `max_fps` > 0 — рендер не чаще этого; 0 — по готовности кадров ролика.
+    /// `max_fps` > 0 — render no more often than this; 0 — whenever the movie frames are ready.
     pub fn new(max_fps: f64, dt_cap: Duration) -> Self {
         let period = (max_fps > 0.0 && max_fps.is_finite()).then(|| Duration::from_secs_f64(1.0 / max_fps));
         Self { period, dt_cap: dt_cap.max(Duration::from_millis(1)), last: None, next: None }
@@ -30,7 +30,7 @@ impl Pacer {
         self.period
     }
 
-    /// Сдвинуть часы к `now`. Первый вызов даёт dt = 0.
+    /// Move the clock to `now`. The first call gives dt = 0.
     pub fn advance(&mut self, now: Instant) -> Step {
         let step = match self.last {
             None => Step { dt: Duration::ZERO, gap: None },
@@ -43,13 +43,13 @@ impl Pacer {
         step
     }
 
-    /// После паузы внутри процесса: время паузы в ролик не идёт вовсе, рендер — сразу.
+    /// After a pause inside the process: the paused time does not go into the movie at all, render — right away.
     pub fn resume(&mut self, now: Instant) {
         self.last = Some(now);
         self.next = Some(now);
     }
 
-    /// Пора ли рисовать. `movie_wants` — `Player::needs_render()` (используется без потолка fps).
+    /// Whether it is time to draw. `movie_wants` — `Player::needs_render()` (used without an fps cap).
     pub fn due(&self, now: Instant, movie_wants: bool) -> bool {
         match self.period {
             Some(_) => self.next.is_none_or(|n| now >= n),
@@ -57,7 +57,7 @@ impl Pacer {
         }
     }
 
-    /// Отметить отрисованный кадр. Отставание больше периода не копится (кадры не догоняются).
+    /// Mark a drawn frame. A lag longer than a period does not accumulate (frames are not caught up).
     pub fn rendered(&mut self, now: Instant) {
         if let Some(p) = self.period {
             let n = self.next.unwrap_or(now) + p;
@@ -65,7 +65,7 @@ impl Pacer {
         }
     }
 
-    /// Когда хосту звать `tick` снова. `movie_hint` — `Player::time_til_next_frame()`.
+    /// When the host should call `tick` again. `movie_hint` — `Player::time_til_next_frame()`.
     pub fn next_wake(&self, now: Instant, movie_hint: Duration) -> Instant {
         match (self.period, self.next) {
             (Some(_), Some(n)) => n.max(now),
@@ -119,7 +119,7 @@ mod tests {
         assert!(!p.due(t0 + Duration::from_millis(10), true));
         assert!(p.due(t0 + Duration::from_millis(20), false));
         assert_eq!(p.next_wake(t0 + Duration::from_millis(5), Duration::ZERO), t0 + Duration::from_millis(20));
-        // отстали на секунду: следующий кадр через период от «сейчас», а не пачка догоняющих
+        // fell behind by a second: the next frame comes one period from "now", not a burst of catch-up frames
         let late = t0 + Duration::from_secs(1);
         p.rendered(late);
         assert_eq!(p.next_wake(late, Duration::ZERO), late + Duration::from_millis(20));

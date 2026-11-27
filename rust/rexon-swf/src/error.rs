@@ -1,31 +1,31 @@
-//! Ошибки библиотеки. Никаких panic на ошибках окружения: хост получает перечисление и код выхода.
+//! Library errors. No panics on environment errors: the host gets an enum and an exit code.
 
 use std::fmt;
 
 #[derive(Debug)]
 pub enum Error {
-    /// Не передано ни одного вывода.
+    /// No output was passed.
     NoOutputs,
-    /// Размер вывода 0 или больше 16384 по стороне.
+    /// Output size is 0 or larger than 16384 on a side.
     InvalidSize { width: u32, height: u32 },
-    /// Номер вывода вне диапазона (`resize`).
+    /// Output index out of range (`resize`).
     OutputIndex(usize),
-    /// Ролик не прочитан или не разобран.
+    /// The movie was not read or not parsed.
     MovieLoad(String),
-    /// wgpu-поверхность из raw-handle не создана или не поддерживается адаптером.
+    /// The wgpu surface from the raw handle was not created or is not supported by the adapter.
     Surface(String),
-    /// Нет Vulkan-адаптера (для окна — умеющего показывать в эту поверхность).
+    /// No Vulkan adapter (for a window — one able to present to this surface).
     NoAdapter(String),
-    /// Рендер-бэкенд Ruffle или цель рендера не создались.
+    /// The Ruffle render backend or the render target was not created.
     Render(String),
-    /// GPU перестал отвечать (poll/map readback).
+    /// The GPU stopped responding (poll/map readback).
     GpuLost(String),
-    /// Ошибка ввода-вывода mmap-кадра или счётчика поколения.
+    /// I/O error of the mmap frame or the generation counter.
     Output(std::io::Error),
 }
 
 impl Error {
-    /// Код выхода процесса хоста. 2 — вызов/аргументы, 7 — GPU и поверхность, 8 — ролик, 9 — файл кадра.
+    /// Exit code of the host process. 2 — call/arguments, 7 — GPU and surface, 8 — movie, 9 — frame file.
     pub fn exit_code(&self) -> i32 {
         match self {
             Error::NoOutputs | Error::InvalidSize { .. } | Error::OutputIndex(_) => 2,

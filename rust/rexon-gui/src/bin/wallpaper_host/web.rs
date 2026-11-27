@@ -1,9 +1,11 @@
-// Режим «веб» хоста обоев: что показывать и с какими свойствами.
+// "Web" mode of the wallpaper host: what to show and with which
+// properties.
 //
-// Замена удалённого `python -m rexon.web_wallpaper`: тот же контракт
-// окружения (REXON_WP_OUTPUT / WIDTH / HEIGHT / FPS), тот же mmap-файл для
-// расширения оболочки, те же три способа положить окно на задний план.
-// Разбор устройства и границ — src/web_host.rs.
+// Replacement for the removed `python -m rexon.web_wallpaper`: the same
+// environment contract (REXON_WP_OUTPUT / WIDTH / HEIGHT / FPS), the same
+// mmap file for the shell extension, the same three ways to put the window
+// into the background. The design and its boundaries are analysed in
+// src/web_host.rs.
 
 use std::path::{Path, PathBuf};
 
@@ -14,19 +16,19 @@ use rexon_gui::web_host::{init_web_engine, parse_args};
 
 use crate::{variant_str, HostEnv, QmlPlan};
 
-/// Имя модуля в таблице точек входа ядра (`rexon-core::qt_app`).
+/// Module name in the core's entry point table (`rexon-core::qt_app`).
 const ENTRY_MODULE: &str = "rexon.web_wallpaper";
 
-/// Адрес QML внутри статического ресурса модуля `org.rexon.gui`.
+/// QML address inside the static resource of the `org.rexon.gui` module.
 const QML_URL: &str = "qrc:/qt/qml/org/rexon/gui/qml/WallpaperWeb.qml";
 
-/// Метка строк журнала режима.
+/// Log line tag of the mode.
 const TAG: &str = "REXON-WEB";
 
 pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
     let cli = parse_args(argv)?;
-    // Ссылка идёт как есть: канонизировать её нельзя, а `project.json` рядом
-    // с ней взять неоткуда.
+    // A link goes as is: it cannot be canonicalized, and there is nowhere to
+    // take a `project.json` next to it from.
     let (target, user_props) = if rexon_core::wallpaper::is_web_url(&cli.target) {
         (cli.target.clone(), serde_json::Map::new())
     } else {
@@ -42,10 +44,10 @@ pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
     }
     env.common_properties(&mut properties, cli.selftest_ms)?;
 
-    // Подмешиваемый в страницу JS: заглушки Wallpaper Engine и обёртки
-    // паузы/громкости общей модели звука обоев (до первого скрипта
-    // страницы), передача свойств обоев со следующим за ней тиком звука
-    // (после загрузки документа). Все тексты — из ядра.
+    // JS injected into the page: Wallpaper Engine stubs and pause/volume
+    // wrappers of the shared wallpaper audio model (before the page's first
+    // script), passing the wallpaper properties with the audio tick that
+    // follows (after the document loads). All texts come from the core.
     properties.insert(
         QString::from("polyfillJs"),
         variant_str(&format!(
@@ -84,18 +86,19 @@ pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
 }
 
 fn before_app(plan: &QmlPlan) -> Result<(), String> {
-    // ⚠️ Офскрин-режим настраивается ДО инициализации Chromium: переменная
-    // читается при поднятии подсистемы, и после него её правка не делает
-    // ничего. Платформу Qt к этому месту уже выставил общий `run_qml`.
+    // Warning: offscreen mode is configured BEFORE Chromium initializes: the
+    // variable is read when the subsystem comes up, and changing it afterwards
+    // does nothing. The Qt platform has already been set by the shared
+    // `run_qml` at this point.
     if plan.placement == PLACEMENT_OFFSCREEN
         && std::env::var_os("QTWEBENGINE_CHROMIUM_FLAGS").is_none()
     {
-        // ⚠️ Именно `--in-process-gpu` и НИКАКОГО `--disable-gpu`. С
-        // выключенным GPU Chromium не сводит холст (canvas2D/WebGL) в граф
-        // сцены Qt: снятый с окна кадр содержал бы только DOM. Строку флагов
-        // держит ядро.
-        // SAFETY: зовётся из main до создания приложения Qt и до любых
-        // потоков — читателей окружения ещё нет.
+        // Warning: exactly `--in-process-gpu` and NO `--disable-gpu`. With the GPU
+        // disabled Chromium does not composite the canvas (canvas2D/WebGL) into
+        // the Qt scene graph: a frame captured from the window would contain only
+        // the DOM. The flag string is held by the core.
+        // SAFETY: called from main before the Qt application is created and before
+        // any threads — there are no environment readers yet.
         unsafe {
             std::env::set_var(
                 "QTWEBENGINE_CHROMIUM_FLAGS",
@@ -103,15 +106,16 @@ fn before_app(plan: &QmlPlan) -> Result<(), String> {
             )
         };
     }
-    // ⚠️ ПЕРВЫМ Qt-действием и ДО QGuiApplication: инициализация Chromium
-    // выставляет общий контекст OpenGL всем окнам процесса, а после создания
-    // приложения это уже поздно — WebEngineView встал бы пустым. И ТОЛЬКО в
-    // этом режиме: библиотека открывается здесь, видео её не грузит.
+    // Warning: as the FIRST Qt action and BEFORE QGuiApplication: Chromium
+    // initialization sets up a shared OpenGL context for all windows of the
+    // process, and after the application is created it is too late — the
+    // WebEngineView would come up empty. And ONLY in this mode: the library is
+    // opened here, video does not load it.
     init_web_engine()
 }
 
-/// Локальный адрес: сам HTML, каталог обоев с `project.json` либо путь на
-/// файл ВНУТРИ такого каталога.
+/// A local address: the HTML itself, a wallpaper directory with
+/// `project.json`, or a path to a file INSIDE such a directory.
 fn from_local(raw: &str) -> Result<(String, serde_json::Map<String, serde_json::Value>), String> {
     let path = PathBuf::from(raw);
     let path = path.canonicalize().unwrap_or(path);
@@ -120,13 +124,13 @@ fn from_local(raw: &str) -> Result<(String, serde_json::Map<String, serde_json::
         return from_wallpaper_dir(&path);
     }
     if !path.is_file() {
-        // Ровно тот же текст, которым движок обоев отвечает покупателю.
+        // Exactly the same text the wallpaper engine answers the customer with.
         return Err(rexon_core::wallpaper_engine::web_missing_message(raw));
     }
 
-    // Путь на файл ВНУТРИ каталога обоев: рядом может лежать `project.json`
-    // со свойствами, и терять их из-за того, что человек ткнул в index.html,
-    // а не в каталог, нельзя.
+    // A path to a file INSIDE a wallpaper directory: a `project.json` with
+    // properties may lie next to it, and they must not be lost because the
+    // user pointed at index.html rather than at the directory.
     let props = path
         .parent()
         .filter(|dir| dir.join("project.json").is_file())
@@ -135,8 +139,8 @@ fn from_local(raw: &str) -> Result<(String, serde_json::Map<String, serde_json::
     Ok((path.to_string_lossy().into_owned(), props))
 }
 
-/// Каталог обоев с `project.json`: разбор, определение типа и честный отказ
-/// для всего, что рисует не этот режим.
+/// A wallpaper directory with `project.json`: parsing, type detection and
+/// an honest refusal for everything this mode does not draw.
 fn from_wallpaper_dir(
     dir: &Path,
 ) -> Result<(String, serde_json::Map<String, serde_json::Value>), String> {
@@ -150,9 +154,9 @@ fn from_wallpaper_dir(
         rexon_core::log_warn!("wallpaper-host", "{TAG}-WARN {w}");
     }
 
-    // Поля `type` может не быть вовсе — и у части официальных обоев WE, и у
-    // обычных работ Мастерской. Тогда тип определяется по содержимому
-    // каталога, как это делает сам Wallpaper Engine.
+    // The `type` field may be missing altogether — both in some official WE
+    // wallpapers and in ordinary Workshop items. Then the type is determined
+    // by the directory content, as Wallpaper Engine itself does.
     let mut wp_type = project.r#type.clone();
     if wp_type.is_empty() {
         wp_type = rexon_core::user_props::infer_type_fs(dir, &project).to_string();
@@ -189,8 +193,9 @@ fn from_wallpaper_dir(
     ))
 }
 
-/// Свойства из соседнего `project.json`. Разбор не удался — не повод
-/// остаться без обоев: свойства уедут пустыми, страница возьмёт свои.
+/// Properties from the neighbouring `project.json`. A failed parse is no
+/// reason to be left without a wallpaper: the properties go empty, and the
+/// page takes its own.
 fn project_props(dir: &Path) -> serde_json::Map<String, serde_json::Value> {
     match rexon_core::user_props::parse_project_json(&dir.join("project.json")) {
         Ok((project, warnings)) => {

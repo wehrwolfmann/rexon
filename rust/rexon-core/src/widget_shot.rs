@@ -1,58 +1,58 @@
-//! Снимок настоящих виджетов для плитки «Оформления»: стиль Qt (Breeze,
-//! Fusion, Oxygen, Kvantum с его темой) и тема GTK 3.
+//! A shot of real widgets for an «Appearance» tile: a Qt style (Breeze,
+//! Fusion, Oxygen, Kvantum with its theme) and a GTK 3 theme.
 //!
-//! Окно «Стиль приложений» KDE не рисует образец само: каждая плитка — живая
-//! форма из настоящих виджетов (вкладки, кнопка, флажок, переключатель,
-//! список, поле, счётчик, ползунок, полоса хода, полоса прокрутки),
-//! которой назначен выбранный стиль, с палитрой текущей цветовой схемы. Rexon
-//! делает то же, но снимком в ОТДЕЛЬНОМ процессе — помощнике
-//! [`HELPER_BINARY`]: чужой модуль стиля (или движок темы GTK) в процесс
-//! Rexon не загружается, падение или зависание стоит одного снимка, процесс
-//! убивается по сроку, плитка получает прежнюю нарисованную картинку.
+//! The KDE «Application Style» window does not draw the sample itself: every tile is a live
+//! form of real widgets (tabs, button, check box, radio button,
+//! list, field, spin box, slider, progress bar, scroll bar)
+//! that is assigned the chosen style, with the palette of the current color scheme. Rexon
+//! does the same, but as a shot in a SEPARATE process — the helper
+//! [`HELPER_BINARY`]: a foreign style module (or GTK theme engine) is not loaded
+//! into the Rexon process, a crash or hang costs one shot, the process
+//! is killed on timeout, and the tile gets the previous drawn picture.
 //!
-//! * Qt — платформа `offscreen`, экрана не нужно вовсе; виджеты снимаются
+//! * Qt — the `offscreen` platform, no screen is needed at all; widgets are captured with
 //!   `QWidget::grab()`.
-//! * GTK 3 — `GtkOffscreenWindow`: окно никогда не выходит на экран, но
-//!   соединение с дисплеем GTK 3 требует (безэкранного вывода у него нет),
-//!   поэтому снимок GTK берётся только в сеансе с `WAYLAND_DISPLAY` или
+//! * GTK 3 — `GtkOffscreenWindow`: the window never appears on screen, but
+//!   GTK 3 requires a display connection (it has no headless output),
+//!   so a GTK shot is taken only in a session with `WAYLAND_DISPLAY` or
 //!   `DISPLAY`.
 //!
-//! Здесь всё, что решается: что снимать для плитки, строка запуска и
-//! окружение помощника, палитра из схемы KDE, ключ кеша, разбор аргументов
-//! самого помощника. Помощник (`rexon-gui`, `src/bin/theme_shot/`) только
-//! исполняет.
+//! Everything that is decided lives here: what to shoot for a tile, the command line and
+//! environment of the helper, the palette from the KDE scheme, the cache key, parsing of the
+//! helper's own arguments. The helper (`rexon-gui`, `src/bin/theme_shot/`) only
+//! executes.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// Имя помощника. В дереве разработчика он лежит рядом с бинарём окна, в
-/// пакете — в `/usr/lib/rexon` ([`PACKAGE_HELPER`]).
+/// Helper name. In the developer tree it lies next to the window binary, in
+/// the package — in `/usr/lib/rexon` ([`PACKAGE_HELPER`]).
 pub const HELPER_BINARY: &str = "rexon-theme-shot";
-/// Где помощник лежит после установки пакета.
+/// Where the helper lies after the package is installed.
 pub const PACKAGE_HELPER: &str = "/usr/lib/rexon/rexon-theme-shot";
-/// Сколько ждать снимка, секунд.
+/// How long to wait for a shot, seconds.
 pub const SHOT_TIMEOUT_SECS: u64 = 15;
-/// Размер формы с виджетами в логических точках. Плитка
+/// Size of the widget form in logical points. The tile
 /// ([`crate::local_preview::PREVIEW_WIDTH`]×[`crate::local_preview::PREVIEW_HEIGHT`])
-/// для настоящих виджетов мала: форма в полтора раза больше. Рисуется она в
-/// [`render_scale`] раз крупнее и сжимается до кадра [`SHOT_WIDTH`]×
-/// [`SHOT_HEIGHT`] с сохранением сторон.
+/// is too small for real widgets: the form is one and a half times larger. It is drawn
+/// [`render_scale`] times larger and shrunk to a [`SHOT_WIDTH`]×
+/// [`SHOT_HEIGHT`] frame keeping the aspect ratio.
 pub const FORM_WIDTH: i64 = 450;
-/// См. [`FORM_WIDTH`].
+/// See [`FORM_WIDTH`].
 pub const FORM_HEIGHT: i64 = 255;
-/// Размер готового кадра — размер картинки в подробностях темы
+/// Size of the finished frame — the size of the picture in the theme details
 /// ([`crate::appearance_page::DETAIL_PREVIEW_W`]×[`crate::appearance_page::DETAIL_PREVIEW_H`],
-/// ровно вдвое больше плитки). Кадр размером с плитку там растягивался
-/// вдвое и выходил размытым; плитка же крупный кадр просто сжимает.
+/// exactly twice the tile). A tile-sized frame was stretched there
+/// twofold and came out blurry; the tile simply shrinks a large frame.
 pub const SHOT_WIDTH: i32 = crate::appearance_page::DETAIL_PREVIEW_W;
-/// См. [`SHOT_WIDTH`].
+/// See [`SHOT_WIDTH`].
 pub const SHOT_HEIGHT: i32 = crate::appearance_page::DETAIL_PREVIEW_H;
-/// Отметка правил снимка в ключе кеша: меняется — все снимки переснимаются.
+/// Mark of the shot rules in the cache key: when it changes, all shots are retaken.
 pub const SHOT_STYLE: &str = "w2";
 
-/// Во сколько раз крупнее рисовать форму `form`, чтобы кадр `size` из неё
-/// только сжимался, а не растягивался: целое, от 1 до 4. Форма 450×255 в
-/// кадр 600×340 — вдвое (900×510 → 600×340).
+/// How many times larger to draw form `form` so that frame `size` is
+/// only shrunk from it, never stretched: an integer from 1 to 4. A 450×255 form into
+/// a 600×340 frame — twofold (900×510 → 600×340).
 pub fn render_scale(form: (i32, i32), size: (i32, i32)) -> i32 {
     if form.0 <= 0 || form.1 <= 0 {
         return 1;
@@ -61,10 +61,10 @@ pub fn render_scale(form: (i32, i32), size: (i32, i32)) -> i32 {
     (k.ceil() as i32).clamp(1, 4)
 }
 
-/// Роли палитры Qt по группам схемы KDE — то же соответствие, что у палитры
-/// приложения KDE: окно — группа `Colors:Window`, поля и списки —
-/// `Colors:View`, кнопки — `Colors:Button`, выделение — `Colors:Selection`,
-/// подсказки — `Colors:Tooltip`. Имена ролей — имена `QPalette::ColorRole`.
+/// Qt palette roles by KDE scheme groups — the same mapping as the KDE
+/// application palette: window — group `Colors:Window`, fields and lists —
+/// `Colors:View`, buttons — `Colors:Button`, selection — `Colors:Selection`,
+/// tooltips — `Colors:Tooltip`. Role names are `QPalette::ColorRole` names.
 pub const PALETTE_ROLES: &[(&str, &str, &str)] = &[
     ("Window", "Colors:Window", "BackgroundNormal"),
     ("WindowText", "Colors:Window", "ForegroundNormal"),
@@ -81,14 +81,14 @@ pub const PALETTE_ROLES: &[(&str, &str, &str)] = &[
     ("LinkVisited", "Colors:View", "ForegroundVisited"),
     ("PlaceholderText", "Colors:View", "ForegroundInactive"),
 ];
-/// Роли текста, которые у недоступных виджетов бледнеют к своему фону.
+/// Text roles that fade towards their background on disabled widgets.
 const DISABLED_TEXT: &[(&str, &str)] =
     &[("WindowText", "Window"), ("Text", "Base"), ("ButtonText", "Button")];
-/// Префикс роли группы «недоступно» в строке `--color`.
+/// Role prefix of the "disabled" group in the `--color` line.
 pub const DISABLED_PREFIX: &str = "Disabled:";
 
-/// Подписи формы по порядку: две вкладки, главная и вторая кнопка, флажок,
-/// переключатель, список, текст в поле. Помощник берёт их по номеру.
+/// Form labels in order: two tabs, the main and second button, check box,
+/// radio button, list, field text. The helper takes them by index.
 pub fn sample_texts() -> Vec<String> {
     use crate::i18n::tr;
     vec![
@@ -103,27 +103,27 @@ pub fn sample_texts() -> Vec<String> {
     ]
 }
 
-/// Что снимать.
+/// What to shoot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShotKind {
-    /// Стиль Qt по ключу `QStyleFactory`; у темы Kvantum — ещё её имя и
-    /// каталог (Kvantum берёт тему из своего файла настроек, переменной
-    /// окружения для неё нет — помощнику подставляется свой каталог настроек).
+    /// A Qt style by its `QStyleFactory` key; for a Kvantum theme — also its name and
+    /// directory (Kvantum takes the theme from its settings file, there is no
+    /// environment variable for it — the helper is given its own settings directory).
     Qt { style: String, kvantum: Option<(String, String)> },
-    /// Тема GTK 3: имя, каталог, тёмный вариант.
+    /// A GTK 3 theme: name, directory, dark variant.
     Gtk { theme: String, dir: String, dark: bool },
 }
 
-/// Заказ снимка.
+/// A shot order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShotRequest {
     pub kind: ShotKind,
-    /// Палитра Qt: `(роль, #rrggbb)`; роли группы «недоступно» — с
-    /// [`DISABLED_PREFIX`]. Пусто — родная палитра стиля.
+    /// Qt palette: `(role, #rrggbb)`; roles of the "disabled" group carry
+    /// [`DISABLED_PREFIX`]. Empty — the style's native palette.
     pub palette: Vec<(String, String)>,
 }
 
-/// Цвет KConfig «r,g,b» → `#rrggbb`.
+/// KConfig color "r,g,b" → `#rrggbb`.
 fn kconfig_hex(value: &str) -> Option<(u8, u8, u8)> {
     let parts: Vec<u8> = value.split(',').map(|p| p.trim().parse::<u8>().ok()).collect::<Option<_>>()?;
     match parts[..] {
@@ -136,11 +136,11 @@ fn hex((r, g, b): (u8, u8, u8)) -> String {
     format!("#{r:02x}{g:02x}{b:02x}")
 }
 
-/// Палитра Qt из текста `kdeglobals` (или файла схемы `.colors`): роли
-/// [`PALETTE_ROLES`] и бледный текст недоступных виджетов (середина между
-/// текстом и его фоном). Схемы нет (вне KDE `kdeglobals` без цветов) —
-/// пусто: стиль берёт свою родную палитру, как его увидит программа Qt без
-/// платформенной темы KDE.
+/// Qt palette from the text of `kdeglobals` (or a `.colors` scheme file): the
+/// [`PALETTE_ROLES`] roles and the faded text of disabled widgets (midway between
+/// the text and its background). No scheme (outside KDE `kdeglobals` has no colors) —
+/// empty: the style takes its own native palette, as a Qt program would see it without
+/// the KDE platform theme.
 pub fn palette_from_kdeglobals(text: &str) -> Vec<(String, String)> {
     let ini = crate::gtk_sanitizer::read_kde_ini(Some(text));
     let mut got: HashMap<&str, (u8, u8, u8)> = HashMap::new();
@@ -149,8 +149,8 @@ pub fn palette_from_kdeglobals(text: &str) -> Vec<(String, String)> {
             got.insert(role, c);
         }
     }
-    // Без цвета окна и его текста схемы нет: обрывки не смешиваем с чужой
-    // родной палитрой стиля.
+    // Without the window color and its text there is no scheme: we do not mix fragments
+    // with the style's foreign native palette.
     if !got.contains_key("Window") || !got.contains_key("WindowText") {
         return Vec::new();
     }
@@ -167,14 +167,14 @@ pub fn palette_from_kdeglobals(text: &str) -> Vec<(String, String)> {
     out
 }
 
-/// Есть ли у каталога темы GTK таблица стилей GTK 3 (`gtk-3.0/gtk.css` либо
-/// `gtk-3.<N>/gtk.css`). Без неё GTK 3 молча нарисует Adwaita — такой снимок
-/// хуже нарисованного образца.
+/// Whether a GTK theme directory has a GTK 3 style sheet (`gtk-3.0/gtk.css` or
+/// `gtk-3.<N>/gtk.css`). Without it GTK 3 silently draws Adwaita — such a shot is
+/// worse than the drawn sample.
 pub fn has_gtk3(dir: &Path) -> bool {
     gtk3_css(dir, "gtk.css").is_some()
 }
 
-/// Файл `name` в подкаталоге GTK 3 темы.
+/// File `name` in the GTK 3 subdirectory of the theme.
 fn gtk3_css(dir: &Path, name: &str) -> Option<PathBuf> {
     let direct = dir.join("gtk-3.0").join(name);
     if direct.is_file() {
@@ -191,7 +191,7 @@ fn gtk3_css(dir: &Path, name: &str) -> Option<PathBuf> {
     found.pop()
 }
 
-/// Просит ли человек тёмный вариант тем GTK (`settings.ini` GTK 3,
+/// Whether the person asks for the dark variant of GTK themes (GTK 3 `settings.ini`,
 /// `gtk-application-prefer-dark-theme`).
 pub fn prefers_dark(settings_ini: &str) -> bool {
     settings_ini.lines().any(|l| {
@@ -201,8 +201,8 @@ pub fn prefers_dark(settings_ini: &str) -> bool {
     })
 }
 
-/// Что снимать для плитки `local_id` (`local:<вид>:<имя>`). `None` — плитка
-/// не стиль Qt, не тема Kvantum и не тема GTK 3 либо снимать нечем.
+/// What to shoot for tile `local_id` (`local:<kind>:<name>`). `None` — the tile
+/// is not a Qt style, not a Kvantum theme and not a GTK 3 theme, or there is nothing to shoot with.
 pub fn shot_kind(local_id: &str, install_path: &str, gtk_display: bool, gtk_dark: bool) -> Option<ShotKind> {
     let rest = local_id.strip_prefix("local:")?;
     let (kind, name) = rest.split_once(':')?;
@@ -224,7 +224,7 @@ pub fn shot_kind(local_id: &str, install_path: &str, gtk_display: bool, gtk_dark
     }
 }
 
-/// Отметка времени файла, секунды (нет файла — 0).
+/// File timestamp, seconds (no file — 0).
 fn stamp(path: &Path) -> i64 {
     std::fs::metadata(path)
         .and_then(|m| m.modified())
@@ -233,24 +233,24 @@ fn stamp(path: &Path) -> i64 {
         .map_or(0, |d| d.as_secs() as i64)
 }
 
-/// Что известно о снимках на этой машине — собирается один раз на пачку
-/// плиток.
+/// What is known about shots on this machine — collected once per batch
+/// of tiles.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShotSetup {
-    /// Помощник ([`find_helper`]); `None` — снимать нечем.
+    /// The helper ([`find_helper`]); `None` — nothing to shoot with.
     pub helper: Option<String>,
-    /// Палитра текущей схемы KDE ([`palette_from_kdeglobals`]).
+    /// Palette of the current KDE scheme ([`palette_from_kdeglobals`]).
     pub palette: Vec<(String, String)>,
-    /// Отметка `kdeglobals` — палитра в ключе кеша.
+    /// Timestamp of `kdeglobals` — the palette in the cache key.
     pub colors_stamp: i64,
-    /// Есть ли дисплей для GTK.
+    /// Whether there is a display for GTK.
     pub gtk_display: bool,
-    /// Тёмный вариант тем GTK.
+    /// Dark variant of GTK themes.
     pub gtk_dark: bool,
 }
 
-/// Помощник: рядом с бинарём окна (дерево разработчика, `/usr/lib/rexon`
-/// пакета), затем [`PACKAGE_HELPER`], затем `$PATH`.
+/// The helper: next to the window binary (developer tree, the package's
+/// `/usr/lib/rexon`), then [`PACKAGE_HELPER`], then `$PATH`.
 pub fn find_helper(exe_dir: Option<&Path>, is_exec: &dyn Fn(&Path) -> bool, path_var: &str) -> Option<String> {
     let mut cands: Vec<PathBuf> = Vec::new();
     if let Some(d) = exe_dir {
@@ -267,8 +267,8 @@ fn is_exec_file(p: &Path) -> bool {
 }
 
 impl ShotSetup {
-    /// Живая машина: помощник, `kdeglobals` и `gtk-3.0/settings.ini` из
-    /// `$XDG_CONFIG_HOME` (иначе `~/.config`), дисплей сеанса.
+    /// Live machine: the helper, `kdeglobals` and `gtk-3.0/settings.ini` from
+    /// `$XDG_CONFIG_HOME` (otherwise `~/.config`), the session display.
     pub fn live(home: &str) -> Self {
         let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
         let helper = find_helper(exe_dir.as_deref(), &is_exec_file, &std::env::var("PATH").unwrap_or_default());
@@ -286,7 +286,7 @@ impl ShotSetup {
         ShotSetup { helper, palette, colors_stamp: stamp(&kdeglobals), gtk_display, gtk_dark }
     }
 
-    /// Что снимать для плитки (`None` — не тот вид либо снимать нечем).
+    /// What to shoot for a tile (`None` — wrong kind or nothing to shoot with).
     pub fn request(&self, local_id: &str, install_path: &str) -> Option<ShotRequest> {
         self.helper.as_ref()?;
         let kind = shot_kind(local_id, install_path, self.gtk_display, self.gtk_dark)?;
@@ -297,11 +297,11 @@ impl ShotSetup {
         Some(ShotRequest { kind, palette })
     }
 
-    /// Добавка к ключу кеша картинки плитки: кадр зависит от того, есть ли
-    /// чем снимать, от палитры схемы (у стилей Qt), от файлов настроек темы
-    /// Kvantum и таблиц стилей GTK (отметка каталога темы меняется лишь при
-    /// добавлении и удалении файлов) и от тёмного варианта GTK. Пусто —
-    /// плитка снимком не делается.
+    /// Addition to the cache key of the tile picture: the frame depends on whether there is
+    /// something to shoot with, on the scheme palette (for Qt styles), on the Kvantum theme
+    /// settings files and GTK style sheets (the theme directory timestamp changes only when
+    /// files are added and removed) and on the GTK dark variant. Empty — the
+    /// tile is not made with a shot.
     pub fn cache_tag(&self, local_id: &str, install_path: &str) -> String {
         let Some(kind) = shot_kind(local_id, install_path, self.gtk_display, self.gtk_dark) else {
             return String::new();
@@ -325,15 +325,15 @@ impl ShotSetup {
     }
 }
 
-// ── строка запуска помощника ─────────────────────────────────────────────
+// ── helper command line ──────────────────────────────────────────────────
 
-/// Режим помощника: Qt.
+/// Helper mode: Qt.
 pub const MODE_QT: &str = "qt";
-/// Режим помощника: GTK.
+/// Helper mode: GTK.
 pub const MODE_GTK: &str = "gtk";
 
-/// argv помощника: режим, затем `--out`, `--size`, `--form`, у Qt `--style`
-/// и `--color роль=#цвет`, и подписи `--text` по порядку [`sample_texts`].
+/// Helper argv: the mode, then `--out`, `--size`, `--form`, for Qt `--style`
+/// and `--color role=#color`, and the `--text` labels in [`sample_texts`] order.
 pub fn helper_argv(helper: &str, req: &ShotRequest, texts: &[String], out: &str) -> Vec<String> {
     let mut argv = vec![helper.to_string()];
     match &req.kind {
@@ -359,32 +359,32 @@ pub fn helper_argv(helper: &str, req: &ShotRequest, texts: &[String], out: &str)
     argv
 }
 
-/// Окружение помощника: что задать и что убрать. `work` — свой временный
-/// каталог снимка (там лежат подставные настройки Kvantum и каталог тем
-/// GTK).
+/// Helper environment: what to set and what to remove. `work` is the shot's own temporary
+/// directory (it holds the substitute Kvantum settings and the GTK themes
+/// directory).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HelperEnv {
     pub set: Vec<(String, String)>,
     pub remove: Vec<String>,
-    /// Символические ссылки, которые надо сделать до запуска: (ссылка, цель).
+    /// Symbolic links to create before the launch: (link, target).
     pub links: Vec<(PathBuf, PathBuf)>,
-    /// Файлы, которые надо записать до запуска: (путь, текст).
+    /// Files to write before the launch: (path, text).
     pub files: Vec<(PathBuf, String)>,
 }
 
-/// Окружение помощника для заказа `req` с временным каталогом `work`.
+/// Helper environment for order `req` with temporary directory `work`.
 pub fn helper_env(req: &ShotRequest, work: &Path) -> HelperEnv {
     let mut env = HelperEnv::default();
     let set = |env: &mut HelperEnv, k: &str, v: &str| env.set.push((k.to_string(), v.to_string()));
     match &req.kind {
         ShotKind::Qt { kvantum, .. } => {
-            // Без экрана и в масштабе 1: иначе кадр выходит вдвое больше.
+            // No screen and scale 1: otherwise the frame comes out twice as large.
             set(&mut env, "QT_QPA_PLATFORM", "offscreen");
             set(&mut env, "QT_SCALE_FACTOR", "1");
-            // Платформенная тема (KDE, qt6ct) и стиль процесса подменили бы
-            // палитру и шрифт формы: образец — стиль с палитрой схемы и
-            // больше ничего. Метод ввода снимку не нужен, а IBus сеанса
-            // способен задержать его до таймаута (см.
+            // The platform theme (KDE, qt6ct) and the process style would replace
+            // the palette and font of the form: the sample is the style with the scheme palette and
+            // nothing else. The shot needs no input method, and the session IBus
+            // can delay it until the timeout (see
             // `kdecoration::SHOT_ENV_REMOVE`).
             for k in [
                 "QT_QPA_PLATFORMTHEME",
@@ -397,11 +397,11 @@ pub fn helper_env(req: &ShotRequest, work: &Path) -> HelperEnv {
                 env.remove.push(k.to_string());
             }
             if let Some((name, dir)) = kvantum {
-                // Тему Kvantum берёт из `$XDG_CONFIG_HOME/Kvantum/
-                // kvantum.kvconfig` (`[General] theme=`), а саму тему сперва
-                // ищет в `$XDG_CONFIG_HOME/Kvantum/<имя>/`: свой каталог
-                // настроек и ссылка на каталог темы дают ровно эту тему,
-                // где бы она ни лежала, а настройки человека не трогаются.
+                // Kvantum takes the theme from `$XDG_CONFIG_HOME/Kvantum/
+                // kvantum.kvconfig` (`[General] theme=`), and looks for the theme itself first
+                // in `$XDG_CONFIG_HOME/Kvantum/<name>/`: our own settings
+                // directory and a link to the theme directory give exactly this theme,
+                // wherever it lies, and the person's settings are not touched.
                 let cfg = work.join("config");
                 env.files.push((cfg.join("Kvantum/kvantum.kvconfig"), format!("[General]\ntheme={name}\n")));
                 env.links.push((cfg.join("Kvantum").join(name), PathBuf::from(dir)));
@@ -409,9 +409,9 @@ pub fn helper_env(req: &ShotRequest, work: &Path) -> HelperEnv {
             }
         }
         ShotKind::Gtk { theme, dir, dark } => {
-            // GTK ищет тему по имени сперва в `$XDG_DATA_HOME/themes`: ссылка
-            // там даёт ровно этот каталог, даже если одноимённая тема лежит и
-            // в другом месте.
+            // GTK looks a theme up by name first in `$XDG_DATA_HOME/themes`: a link
+            // there gives exactly this directory, even if a theme with the same name also lies
+            // elsewhere.
             let data = work.join("data");
             env.links.push((data.join("themes").join(theme), PathBuf::from(dir)));
             set(&mut env, "XDG_DATA_HOME", &data.to_string_lossy());
@@ -419,8 +419,8 @@ pub fn helper_env(req: &ShotRequest, work: &Path) -> HelperEnv {
             set(&mut env, "GTK_THEME", &value);
             set(&mut env, "GDK_SCALE", "1");
             set(&mut env, "GDK_DPI_SCALE", "1");
-            // Без доступности и сторонних модулей: снимку они не нужны, а
-            // модуль меню приложений тянет шину и замедляет запуск.
+            // No accessibility and no third-party modules: the shot does not need them, and
+            // the application menu module pulls in the bus and slows down the launch.
             set(&mut env, "NO_AT_BRIDGE", "1");
             set(&mut env, "GTK_A11Y", "none");
             env.remove.push("GTK_MODULES".into());
@@ -429,11 +429,11 @@ pub fn helper_env(req: &ShotRequest, work: &Path) -> HelperEnv {
     env
 }
 
-/// Снять форму в `out` (PNG [`SHOT_WIDTH`]×[`SHOT_HEIGHT`]). `work_root` — каталог, где
-/// заводится временный каталог снимка (рядом с кешем картинок). Процесс, не
-/// уложившийся в [`SHOT_TIMEOUT_SECS`], убивается. `false` — снимка нет
-/// (стиль или тема не загрузились, помощник упал, кадр не того размера);
-/// недоделанный файл стирается.
+/// Shoot the form into `out` (PNG [`SHOT_WIDTH`]×[`SHOT_HEIGHT`]). `work_root` is the directory where
+/// the shot's temporary directory is created (next to the picture cache). A process that
+/// does not finish within [`SHOT_TIMEOUT_SECS`] is killed. `false` — no shot
+/// (the style or theme did not load, the helper crashed, the frame has the wrong size);
+/// an unfinished file is erased.
 pub fn take_shot(helper: &str, work_root: &str, req: &ShotRequest, out: &str) -> bool {
     use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -484,7 +484,7 @@ pub fn take_shot(helper: &str, work_root: &str, req: &ShotRequest, out: &str) ->
             }
         }
     };
-    // Ссылки — только ссылки: remove_dir_all их не разыменовывает.
+    // Links are only links: remove_dir_all does not dereference them.
     let _ = std::fs::remove_dir_all(&work);
     let want = (SHOT_WIDTH as f64, SHOT_HEIGHT as f64);
     let good = ok && crate::local_preview::image_size(Path::new(out)) == Some(want);
@@ -494,23 +494,23 @@ pub fn take_shot(helper: &str, work_root: &str, req: &ShotRequest, out: &str) ->
     good
 }
 
-// ── разбор аргументов помощника ──────────────────────────────────────────
+// ── parsing helper arguments ─────────────────────────────────────────────
 
-/// Разобранная строка помощника.
+/// The parsed helper command line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelperArgs {
-    /// [`MODE_QT`] или [`MODE_GTK`].
+    /// [`MODE_QT`] or [`MODE_GTK`].
     pub mode: String,
-    /// Ключ стиля Qt (пусто у GTK).
+    /// Qt style key (empty for GTK).
     pub style: String,
     pub out: String,
-    /// Размер готового кадра.
+    /// Size of the finished frame.
     pub size: (i32, i32),
-    /// Размер формы в логических точках; рисуется она в [`render_scale`]
-    /// раз крупнее.
+    /// Form size in logical points; it is drawn [`render_scale`]
+    /// times larger.
     pub form: (i32, i32),
     pub palette: Vec<(String, String)>,
-    /// Подписи по порядку [`sample_texts`]; недостающие — английские.
+    /// Labels in [`sample_texts`] order; missing ones are English.
     pub texts: Vec<String>,
 }
 
@@ -520,8 +520,8 @@ fn parse_size(v: &str) -> Option<(i32, i32)> {
     ((16..=4096).contains(&w) && (16..=4096).contains(&h)).then_some((w, h))
 }
 
-/// Разбор аргументов помощника (без имени программы). `Err` — текст для
-/// журнала.
+/// Parsing of helper arguments (without the program name). `Err` — text for
+/// the log.
 pub fn parse_helper_args(args: &[String]) -> Result<HelperArgs, String> {
     let mut it = args.iter();
     let mode = it.next().cloned().unwrap_or_default();
@@ -581,8 +581,8 @@ mod tests {
         ForegroundLink=29,153,243\n[Colors:Button]\nBackgroundNormal=41,44,48\nForegroundNormal=252,252,252\n\
         [Colors:Selection]\nBackgroundNormal=61,174,233\nForegroundNormal=255,255,255\n";
 
-    /// Палитра из схемы KDE: роли по группам, недоступный текст — середина
-    /// между текстом и фоном; схемы нет — родная палитра стиля (пусто).
+    /// Palette from the KDE scheme: roles by group, disabled text is midway
+    /// between text and background; no scheme — the style's native palette (empty).
     #[test]
     fn palette_follows_kde_scheme() {
         let p = palette_from_kdeglobals(BREEZE_DARK);
@@ -599,8 +599,8 @@ mod tests {
         assert!(palette_from_kdeglobals("[Colors:Window]\nBackgroundNormal=1,2,300\nForegroundNormal=0,0,0\n").is_empty());
     }
 
-    /// Что снимается: стиль Qt, тема Kvantum, тема GTK 3 при дисплее; тема
-    /// GTK только второй версии и прочие виды — нет.
+    /// What is shot: a Qt style, a Kvantum theme, a GTK 3 theme when there is a display; a
+    /// GTK 2-only theme and other kinds — not.
     #[test]
     fn kinds_that_are_shot() {
         let root = tmp("kinds");
@@ -648,7 +648,7 @@ mod tests {
         assert!(!prefers_dark("[Settings]\ngtk-theme-name=Adwaita\n"));
     }
 
-    /// Помощник: рядом с бинарём окна, затем путь пакета, затем PATH.
+    /// The helper: next to the window binary, then the package path, then PATH.
     #[test]
     fn helper_lookup_order() {
         let all = |_: &Path| true;
@@ -663,8 +663,8 @@ mod tests {
         assert_eq!(find_helper(None, &|_: &Path| false, "/usr/bin"), None);
     }
 
-    /// Строка запуска и её разбор помощником сходятся: что ядро написало, то
-    /// помощник и прочтёт.
+    /// The command line and its parsing by the helper agree: what the core wrote is
+    /// what the helper reads.
     #[test]
     fn argv_round_trip() {
         let req = ShotRequest {
@@ -696,8 +696,8 @@ mod tests {
         assert!(parse_helper_args(&["gtk".into(), "--out".into(), "/o".into(), "--size".into(), "9x9".into()]).is_err());
     }
 
-    /// Форма рисуется крупнее ровно настолько, чтобы кадр из неё только
-    /// сжимался.
+    /// The form is drawn larger exactly enough for the frame to be only
+    /// shrunk from it.
     #[test]
     fn render_scale_never_upscales() {
         assert_eq!(render_scale((FORM_WIDTH as i32, FORM_HEIGHT as i32), (SHOT_WIDTH, SHOT_HEIGHT)), 2);
@@ -706,9 +706,9 @@ mod tests {
         assert_eq!(render_scale((0, 10), (300, 170)), 1);
     }
 
-    /// Окружение: Qt — без экрана и без платформенной темы, у Kvantum — свой
-    /// каталог настроек с выбранной темой и ссылкой на её каталог; GTK — тема
-    /// по имени через свой каталог тем.
+    /// Environment: Qt — no screen and no platform theme, for Kvantum — its own
+    /// settings directory with the chosen theme and a link to its directory; GTK — the theme
+    /// by name through our own themes directory.
     #[test]
     fn helper_environment() {
         let work = Path::new("/c/wshot-1");
@@ -741,8 +741,8 @@ mod tests {
         assert!(!gtk.set.iter().any(|(k, _)| k == "QT_QPA_PLATFORM"));
     }
 
-    /// Ключ кеша: пусто у плиток не снимком; без помощника — свой ключ (чтобы
-    /// после установки помощника кадр пересняли); меняется вместе с палитрой.
+    /// Cache key: empty for tiles not made by a shot; without the helper — its own key (so that
+    /// the frame is retaken after the helper is installed); changes together with the palette.
     #[test]
     fn cache_tag_tracks_inputs() {
         let mut setup = ShotSetup {
@@ -762,7 +762,7 @@ mod tests {
         assert!(setup.request("local:widgetstyle:Fusion", "").is_none());
     }
 
-    /// Помощника нет — снимка нет, файл не остаётся, временный каталог убран.
+    /// No helper — no shot, no file left behind, the temporary directory is removed.
     #[test]
     fn missing_helper_leaves_nothing() {
         let root = tmp("take");

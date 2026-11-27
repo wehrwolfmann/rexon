@@ -6,7 +6,10 @@ singleton I18n 0.3 qml/I18n.qml
 StatusDot 0.3 qml/component/StatusDot.qml
 WindowState 0.3 qml/component/WindowState.qml
 PagePopup 0.3 qml/component/PagePopup.qml
+NavigationStack 0.3 qml/component/NavigationStack.qml
 Tag 0.3 qml/component/Tag.qml
+CardBadges 0.3 qml/component/CardBadges.qml
+singleton WallpaperBadgeSettings 0.3 qml/component/WallpaperBadgeSettings.qml
 singleton GpuDetails 0.3 qml/component/GpuDetails.qml
 GpuTag 0.3 qml/component/GpuTag.qml
 RendererRuntimeTag 0.3 qml/component/RendererRuntimeTag.qml
@@ -42,6 +45,7 @@ DaemonNotRunDialog 0.3 qml/dialog/DaemonNotRunDialog.qml
 WallpaperFilterDialog 0.3 qml/dialog/WallpaperFilterDialog.qml
 RemoteFilterDialog 0.3 qml/dialog/RemoteFilterDialog.qml
 QrLoginDialog 0.3 qml/dialog/QrLoginDialog.qml
+BrowserLoginDialog 0.3 qml/dialog/BrowserLoginDialog.qml
 PluginActionFormDialog 0.3 qml/dialog/PluginActionFormDialog.qml
 DisplayEditDialog 0.3 qml/dialog/DisplayEditDialog.qml
 CanvasDialog 0.3 qml/dialog/CanvasDialog.qml
@@ -50,7 +54,7 @@ WallpaperPage 0.3 qml/page/WallpaperPage.qml
 PlaylistEditPage 0.3 qml/page/PlaylistEditPage.qml
 HiddenWallpapersPage 0.3 qml/page/HiddenWallpapersPage.qml
 WallpaperDetailPanel 0.3 qml/page/WallpaperDetailPanel.qml
-DiscoverState 0.3 qml/page/DiscoverState.qml
+singleton DiscoverState 0.3 qml/page/DiscoverState.qml
 RemoteDetailPanel 0.3 qml/page/RemoteDetailPanel.qml
 WallpaperInfoPage 0.3 qml/page/WallpaperInfoPage.qml
 WallpaperCard 0.3 qml/page/WallpaperCard.qml
@@ -63,6 +67,8 @@ SelectSheetContentState 0.3 qml/page/wallpaper/SelectSheetContentState.qml
 PlaylistListSheet 0.3 qml/page/wallpaper/PlaylistListSheet.qml
 PlaylistListSheetState 0.3 qml/page/wallpaper/PlaylistListSheetState.qml
 DiscoverPage 0.3 qml/page/DiscoverPage.qml
+ArtistPage 0.3 qml/page/ArtistPage.qml
+WallpaperBadgeRulesPage 0.3 qml/page/WallpaperBadgeRulesPage.qml
 RemoteInfoPage 0.3 qml/page/RemoteInfoPage.qml
 RemoteManagePage 0.3 qml/page/RemoteManagePage.qml
 RemoteCard 0.3 qml/page/RemoteCard.qml

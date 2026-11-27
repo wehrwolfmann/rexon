@@ -1,8 +1,10 @@
-// Сборка макета каркаса. Qt ищется через pkg-config — тот же Qt 6, что
-// у PySide6 и продуктовых крейтов: ABI обязан совпадать, иначе макет
-// проверит не то, что поедет в продукт.
+// Build of the frame mock-up. Qt is found through pkg-config — the same
+// Qt 6 as for PySide6 and the product crates: the ABI must match,
+// otherwise the mock-up would test something other than what ships in the
+// product.
 //
-// moc не зовётся намеренно: в макете нет Q_OBJECT (см. Cargo.toml).
+// moc is deliberately not called: the mock-up has no Q_OBJECT (see
+// Cargo.toml).
 
 fn main() {
     println!("cargo:rerun-if-changed=cpp/tab_host_probe.cpp");
@@ -10,7 +12,8 @@ fn main() {
     let mut build = cc::Build::new();
     build.cpp(true).std("c++17").pic(true).file("cpp/tab_host_probe.cpp");
 
-    // Порядок важен: QuickWidgets тянет Quick/Qml, Widgets тянет Gui/Core.
+    // Order matters: QuickWidgets pulls in Quick/Qml, Widgets pulls in
+    // Gui/Core.
     for module in ["Qt6QuickWidgets", "Qt6Widgets", "Qt6Quick", "Qt6Qml", "Qt6Gui", "Qt6Core"] {
         let lib = pkg_config::Config::new()
             .cargo_metadata(true)

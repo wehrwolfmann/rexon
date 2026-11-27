@@ -1,54 +1,58 @@
-//! Живой автоперевод описаний: сборка ядра перевода из готовых частей в ОДНУ
-//! дверь для окна — [`translate_live`] (и [`translate_live_batch`], та же
-//! дверь на несколько текстов сразу).
+//! Live auto-translation of descriptions: assembling the translation core from
+//! ready parts into ONE door for the window — [`translate_live`] (and
+//! [`translate_live_batch`], the same door for several texts at once).
 //!
-//! Части были готовы, а перевода не было: [`crate::translator`] отдаёт решение
-//! («переводить или нет»), сегментацию HTML, ключ кеша и фильтр «проза или
-//! техника»; [`crate::appearance_cache::LiveCache`] умеет читать и писать
-//! переводы; вендоренный `fxtranslate` умеет переводить. Здесь они склеены, и
-//! наружу смотрит одна функция: дал текст и локаль — получил перевод. Вкладке
-//! не нужно знать ни про блоки предложений, ни про ключи кеша, ни про то, где
-//! лежит модель.
+//! The parts were ready, but there was no translation: [`crate::translator`]
+//! gives the decision («translate or not»), HTML segmentation, the cache key
+//! and the «prose or technical» filter; [`crate::appearance_cache::LiveCache`]
+//! can read and write translations; the vendored `fxtranslate` can translate.
+//! Here they are glued together, and one function faces outward: give a text
+//! and a locale — get a translation. The tab does not need to know about
+//! sentence blocks, cache keys, or where the model lies.
 //!
-//! ⚠️ Что здесь ЕСТЬ, кроме склейки (в Python этого не было):
-//!   * **движок один на процесс** ([`LiveEngine`], `OnceLock<Mutex<…>>`).
-//!     Модель — 43 МБ отображённого файла и ~70 МБ подготовленных матриц;
-//!     второй экземпляр на второй открытый товар удвоил бы это молча;
-//!   * **блок для движка — не больше [`MAX_BLOCK_SENTENCES`] предложений**.
-//!     Кодировщик пакетного пути добивает ВЕСЬ блок до самой длинной строки в
-//!     нём, поэтому «переведём разом все сто предложений страницы» —
-//!     не ускорение, а трата: одна длинная строка удорожает все короткие;
-//!   * **блок набирается ПОПЕРЁК текстов** ([`translate_live_batch`]).
-//!     Страница комментариев — это двадцать текстов по одной-две фразы, и
-//!     по-одному они дали бы двадцать почти пустых блоков, то есть пакетный
-//!     путь движка вхолостую;
-//!   * **охраняемые имена от вызывающего** ([`translate_live_guarded`]).
-//!     Название темы движок переводит («Nordic Kvantum theme» →
-//!     «Скандинавская Kvantum тема»), а списка названий у ядра нет и быть не
-//!     может — зато имя товара окно знает и передаёт его рядом с описанием;
-//!   * **подмена имён тратится только по нужде** — два прохода в
-//!     [`translate_misses`]: сначала предложение идёт к движку голым, и лишь
-//!     если имя в ответе потерялось, оно переспрашивается под заполнителями.
-//!     Заполнитель сам сбивает декодировщик (замер 24.09: `@0@` вместо `KDE`
-//!     превращал «Темы» в «Теммы»), поэтому дешевле его не тратить;
-//!   * **регистр первой буквы поднимаем сами** ([`lift_first_letter`]).
-//!     Замер 20.09 на FLORES-200: со строчной буквы приходят 88,6 % строк
-//!     (897 из 1012), и это не лечится ни ядром умножения, ни нашим патчем
-//!     вендора — патч чинит ПОРЧУ первого слова, а регистр остаётся за нами;
-//!   * **кеш — на КАЖДЫЙ сегмент**, а не на текст целиком. Описания
-//!     мастерской повторяют друг друга абзацами («Installation:», «Copy the
-//!     folder to ~/.themes», списки сред), и сегментный ключ делает второй
-//!     показ страницы бесплатным.
+//! ⚠️ What IS here besides the glue (Python did not have this):
+//!   * **one engine per process** ([`LiveEngine`], `OnceLock<Mutex<…>>`). The
+//!     model is 43 MB of mapped file and ~70 MB of prepared matrices; a second
+//!     instance for a second open item would silently double that;
+//!   * **a block for the engine is no more than [`MAX_BLOCK_SENTENCES`]
+//!     sentences**. The batch path's encoder pads the WHOLE block to its
+//!     longest line, so «let us translate all hundred sentences of the page at
+//!     once» is not a speed-up but waste: one long line makes all the short
+//!     ones more expensive;
+//!   * **a block is filled ACROSS texts** ([`translate_live_batch`]). A
+//!     comments page is twenty texts of one or two phrases each, and one by
+//!     one they would give twenty almost empty blocks, i.e. the engine's batch
+//!     path running idle;
+//!   * **guarded names from the caller** ([`translate_live_guarded`]). The
+//!     engine translates a theme name («Nordic Kvantum theme» →
+//!     «Скандинавская Kvantum тема»), and the core has no list of names and
+//!     cannot have one — but the window knows the item name and passes it
+//!     next to the description;
+//!   * **name substitution is spent only when needed** — two passes in
+//!     [`translate_misses`]: first the sentence goes to the engine bare, and
+//!     only if a name got lost in the answer is it asked again under
+//!     placeholders. A placeholder itself confuses the decoder (measured
+//!     24.09: `@0@` instead of `KDE` turned «Темы» into «Теммы»), so it is
+//!     cheaper not to spend it;
+//!   * **we raise the case of the first letter ourselves**
+//!     ([`lift_first_letter`]). Measured 20.09 on FLORES-200: 88.6 % of lines
+//!     (897 of 1012) arrive starting with a lowercase letter, and this is
+//!     cured neither by the multiplication core nor by our vendor patch — the
+//!     patch fixes CORRUPTION of the first word, while the case stays our job;
+//!   * **the cache is per SEGMENT**, not per whole text. Workshop descriptions
+//!     repeat each other paragraph by paragraph («Installation:», «Copy the
+//!     folder to ~/.themes», lists of environments), and the segment key makes
+//!     the second showing of a page free.
 //!
-//! Модель в дереве НЕ лежит (43 МБ) — её место в поставке, каталог
-//! [`MODEL_DIR_REL`] внутри пакета `rexon/`. Нет модели — движок честно
-//! недоступен, [`translate_live`] возвращает оригинал и `was_translated =
-//! false`; ошибок в лицо покупателю при этом нет, перевод — удобство, а не
-//! условие работы вкладки.
+//! The model does NOT lie in the tree (43 MB) — its place is in the delivery,
+//! the [`MODEL_DIR_REL`] directory inside the `rexon/` package. No model — the
+//! engine is honestly unavailable, [`translate_live`] returns the original and
+//! `was_translated = false`; there are no errors in the customer's face then,
+//! translation is a convenience, not a condition for the tab to work.
 //!
-//! Сверки — `rust/rexon-core/tests/translator_engine.rs`: подставной движок со
-//! счётчиком вызовов на временной базе (второй прогон того же текста — ноль
-//! вызовов) и `#[ignore]`-сверка живого перевода на настоящей модели.
+//! Checks — `rust/rexon-core/tests/translator_engine.rs`: a fake engine with a
+//! call counter on a temporary database (a second run of the same text — zero
+//! calls) and an `#[ignore]` check of live translation on the real model.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -63,96 +67,98 @@ use crate::translator::{
 };
 
 // ============================================================================
-// Движок: трейт
+// Engine: the trait
 // ============================================================================
 
-/// Движок перевода — ровно то, что от него нужно склейке.
+/// Translation engine — exactly what the glue needs from it.
 ///
-/// Форма трейта отвечает двум фактам, а не вкусу:
+/// The shape of the trait answers two facts, not taste:
 ///
-///   1. **пара языков — часть вопроса о доступности.** Модели Firefox — по
-///      одной на направление (`en→ru` — отдельный файл), поэтому «движок
-///      доступен» без пары не имеет смысла: `en→ru` может быть в поставке,
-///      `en→de` — нет. Это же и `_ensure_pair` оригинала, наблюдение которого
-///      ждёт [`plan_translate_text`];
-///   2. **перевод — пакетный.** Единица работы — БЛОК предложений, потому что
-///      на блоке движок и мерился (кодировщик обрабатывает блок разом). Дай
-///      трейту одну строку — и пакетный путь стал бы недостижим, а разница
-///      измерима: 217 предложений/с на блоках против ~12 по одному.
+///   1. **the language pair is part of the availability question.** Firefox
+///      models are one per direction (`en→ru` is a separate file), so «the
+///      engine is available» makes no sense without a pair: `en→ru` may be in
+///      the delivery, `en→de` not. This is also the original's
+///      `_ensure_pair`, whose observation [`plan_translate_text`] expects;
+///   2. **translation is batched.** The unit of work is a BLOCK of sentences,
+///      because that is what the engine was measured on (the encoder
+///      processes the block at once). Give the trait one line — and the batch
+///      path would become unreachable, and the difference is measurable: 217
+///      sentences/s in blocks vs ~12 one by one.
 ///
-/// Разбивать текст на предложения, пакетировать, лечить регистр и ходить в кеш
-/// движку НЕ поручено: это делает склейка ([`translate_live`]), одинаково для
-/// живого движка и для подставного в сверках.
+/// Splitting text into sentences, batching, curing case and going to the cache
+/// are NOT assigned to the engine: the glue does that ([`translate_live`]),
+/// the same way for the live engine and for the fake one in checks.
 pub trait TranslateEngine {
-    /// Готов ли перевод `src`→`tgt` прямо сейчас: модель на месте и
-    /// загрузилась. Ложь — не ошибка, а «перевода не будет».
+    /// Whether `src`→`tgt` translation is ready right now: the model is in
+    /// place and loaded. False is not an error but «there will be no translation».
     fn available(&self, src: &str, tgt: &str) -> bool;
 
-    /// Перевести блок предложений одним заходом.
+    /// Translate a block of sentences in one go.
     ///
-    /// Договор: длина и порядок ответа РАВНЫ входу; пустая строка на месте
-    /// предложения — «не справился, бери оригинал». Ответ другой длины
-    /// склейка считает отказом на весь блок.
+    /// Contract: the length and order of the answer EQUAL the input; an empty
+    /// string in place of a sentence means «could not, take the original». An
+    /// answer of a different length the glue counts as a refusal for the
+    /// whole block.
     fn translate_block(&self, src: &str, tgt: &str, block: &[&str]) -> Vec<String>;
 }
 
-/// Сколько предложений отдавать движку за раз.
+/// How many sentences to give the engine at a time.
 ///
-/// ⚠️ Не «чем больше, тем лучше». Пакетный кодировщик добивает блок до самой
-/// длинной строки в нём, то есть одно длинное предложение оплачивается за все
-/// короткие. Замер 20.09 гонял блок 8 (1012 предложений FLORES-200 за 4,67 с
-/// на четырёх потоках); рабочий предел — 8–16, дальше растёт только паддинг.
-/// Берём верхнюю границу: описания оформления короткие и похожей длины.
+/// ⚠️ Not «the more the better». The batch encoder pads the block to its
+/// longest line, i.e. one long sentence is paid for by all the short ones.
+/// The 20.09 measurement ran block 8 (1012 FLORES-200 sentences in 4.67 s on
+/// four threads); the working limit is 8–16, beyond that only padding grows.
+/// We take the upper bound: look descriptions are short and of similar length.
 pub const MAX_BLOCK_SENTENCES: usize = 16;
 
-/// Сколько потоков данных отдавать пакетному пути движка.
+/// How many data threads to give the engine's batch path.
 ///
-/// Не `0` (= все ядра машины) намеренно: перевод идёт, пока человек смотрит на
-/// вкладку, и забирать под него весь процессор незачем — страница из двадцати
-/// описаний переводится около секунды и на одном. Четыре — то число, на котором
-/// сделан замер пропускной способности.
+/// Not `0` (= all the machine's cores) on purpose: translation runs while the
+/// person is looking at the tab, and there is no reason to take the whole CPU
+/// for it — a page of twenty descriptions is translated in about a second even
+/// on one. Four is the number the throughput was measured with.
 const ENGINE_THREADS: usize = 4;
 
 // ============================================================================
-// Где лежит модель
+// Where the model lies
 // ============================================================================
 
-/// Переменная окружения с каталогом модели — путь для РАЗРАБОТКИ (модель в
-/// дерево не кладётся, а стендовая копия лежит у каждого своя).
+/// Environment variable with the model directory — the path for DEVELOPMENT
+/// (the model is not put into the tree, and everyone has their own bench copy).
 pub const MODEL_DIR_ENV: &str = "REXON_TRANSLATE_MODEL_DIR";
 
-/// Каталог моделей перевода внутри пакета данных `rexon/`; внутри него — по
-/// каталогу на направление (`translate/enru`).
+/// Directory of translation models inside the `rexon/` data package; inside it
+/// — a directory per direction (`translate/enru`).
 ///
-/// Владелец решил класть модель В ПАКЕТ, поэтому ищется она там же и тем же
-/// порядком, что вендорный QML вкладки обоев и `themes.json`, —
-/// [`crate::installer::package_data_dir_candidates`] (дерево разработчика →
-/// пакет дистрибутива → установка в систему → установка в домашнюю папку).
-/// Своего порядка поиска здесь не заводится: вторая правда о том, где лежит
-/// продукт, уже однажды стоила нам ненайденных QML-плагинов.
+/// The owner decided to put the model IN THE PACKAGE, so it is looked up in the
+/// same place and in the same order as the wallpaper tab's vendor QML and
+/// `themes.json` — [`crate::installer::package_data_dir_candidates`]
+/// (developer tree → distribution package → system install → home install).
+/// No search order of its own is set up here: a second truth about where the
+/// product lies has already once cost us QML plugins that were not found.
 pub const MODEL_DIR_REL: &str = "translate";
 
-/// Файлы одной модели направления.
+/// Files of one direction's model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelFiles {
-    /// Веса (`model.enru.intgemm.alphas.bin`).
+    /// Weights (`model.enru.intgemm.alphas.bin`).
     pub model: String,
-    /// Словарь источника (`vocab.enru.spm`).
+    /// Source vocabulary (`vocab.enru.spm`).
     pub src_vocab: String,
-    /// Словарь цели: у пар с общим словарём — тот же файл.
+    /// Target vocabulary: for pairs with a shared vocabulary — the same file.
     pub trg_vocab: String,
 }
 
-/// Имя направления в именах файлов Firefox: `en` + `ru` = `enru`.
+/// Direction name in Firefox file names: `en` + `ru` = `enru`.
 pub fn model_pair(src: &str, tgt: &str) -> String {
     format!("{}{}", src.to_lowercase(), tgt.to_lowercase())
 }
 
-/// Каталоги, где может лежать модель направления, по убыванию предпочтения.
+/// Directories where a direction's model may lie, in decreasing preference.
 ///
-/// `env_dir` — значение [`MODEL_DIR_ENV`] (каталог с файлами модели ПЛОСКО,
-/// как его отдаёт стенд); `repo_root` — корень дерева разработчика
-/// ([`crate::cli::repo_root`]), `home` — домашний каталог.
+/// `env_dir` — the [`MODEL_DIR_ENV`] value (a directory with the model files
+/// FLAT, as the bench provides it); `repo_root` — the developer tree root
+/// ([`crate::cli::repo_root`]), `home` — the home directory.
 pub fn model_dir_candidates(
     env_dir: Option<&str>,
     repo_root: &str,
@@ -175,18 +181,20 @@ pub fn model_dir_candidates(
     dirs
 }
 
-/// Файлы модели в ОДНОМ каталоге либо `None`, если их там нет.
+/// Model files in ONE directory, or `None` if they are not there.
 ///
-/// Раскладка плоская — та же, что у скачанной модели Firefox:
-/// `model.<пара>.intgemm.alphas.bin` и `vocab.<пара>.spm`. У пар с раздельными
-/// словарями (CJK) вместо общего `vocab.…` лежат `srcvocab.…`/`trgvocab.…`;
-/// поддержано, хотя в поставке пока только `en→ru` с общим словарём.
+/// The layout is flat — the same as a downloaded Firefox model:
+/// `model.<pair>.intgemm.alphas.bin` and `vocab.<pair>.spm`. Pairs with
+/// separate vocabularies (CJK) have `srcvocab.…`/`trgvocab.…` instead of the
+/// shared `vocab.…`; supported, although the delivery so far has only `en→ru`
+/// with a shared vocabulary.
 ///
-/// ⛔ Короткий список (`lex.*.bin`) не ищется намеренно: замер 20.09 — минус
-/// 0,4 chrF++ и плюс 2,8 МБ поставки за ускорение, которого на десятках
-/// коротких описаний не видно.
+/// ⛔ The shortlist (`lex.*.bin`) is deliberately not looked for: measured
+/// 20.09 — minus 0.4 chrF++ and plus 2.8 MB of delivery for a speed-up that
+/// is not visible on dozens of short descriptions.
 ///
-/// Проба файловой системы приходит колбэком: ядро на диск само не ходит.
+/// The file system probe comes as a callback: the core does not touch the
+/// disk itself.
 pub fn model_files_in(
     dir: &str,
     src: &str,
@@ -211,7 +219,7 @@ pub fn model_files_in(
     None
 }
 
-/// Первая найденная модель направления из [`model_dir_candidates`].
+/// The first found model of a direction from [`model_dir_candidates`].
 pub fn pick_model(
     env_dir: Option<&str>,
     repo_root: &str,
@@ -225,7 +233,7 @@ pub fn pick_model(
         .find_map(|dir| model_files_in(&dir, src, tgt, is_file))
 }
 
-/// Модель направления на ЖИВОЙ машине: окружение + дерево/поставка.
+/// A direction's model on a LIVE machine: the environment + tree/delivery.
 pub fn pick_model_live(src: &str, tgt: &str) -> Option<ModelFiles> {
     let env_dir = std::env::var(MODEL_DIR_ENV).unwrap_or_default();
     let home = std::env::var("HOME").unwrap_or_default();
@@ -240,50 +248,51 @@ pub fn pick_model_live(src: &str, tgt: &str) -> Option<ModelFiles> {
 }
 
 // ============================================================================
-// Движок: живая реализация поверх fxtranslate
+// Engine: the live implementation on top of fxtranslate
 // ============================================================================
 
-/// Работа для потока модели: блок предложений и куда положить ответ.
+/// Work for the model thread: a block of sentences and where to put the answer.
 struct Job {
     block: Vec<String>,
     reply: std::sync::mpsc::Sender<Vec<String>>,
 }
 
-/// Поток, на котором живёт загруженная модель.
+/// The thread the loaded model lives on.
 struct Worker {
     jobs: std::sync::mpsc::Sender<Job>,
 }
 
-/// Направление, для которого движок уже поднимали. `worker = None` — пробовали
-/// и не вышло (модели нет либо файл не прочитался); попытка не повторяется на
-/// каждый сегмент, иначе на каждой строке описания молотили бы диск.
+/// The direction the engine was already brought up for. `worker = None` — it
+/// was tried and failed (no model, or the file did not read); the attempt is
+/// not repeated for every segment, otherwise we would thrash the disk on every
+/// description line.
 struct Loaded {
     pair: String,
     worker: Option<Worker>,
 }
 
-/// Движок — ОДИН на процесс: одна загруженная модель, один поток.
+/// The engine is ONE per process: one loaded model, one thread.
 ///
-/// ⚠️ Почему модель живёт на ОТДЕЛЬНОМ потоке, а в замке лежит только его
-/// почтовый ящик. `Engine` крейта — `Sync` (это в крейте даже проверено
-/// статически), но НЕ `Send`: внутри подготовленной матрицы лежит сырой
-/// указатель на память, выданную шимом на C++. Значит `Mutex<Engine>` в
-/// статической переменной невозможен в принципе — не из-за нашей
-/// осторожности, а по типам, и «пробить» это `unsafe impl Send` значило бы
-/// подписаться за чужую библиотеку без доказательств. Модель загружается там,
-/// где живёт, и никуда не переезжает; наружу ходят только строки.
+/// ⚠️ Why the model lives on a SEPARATE thread and the lock holds only its
+/// mailbox. The crate's `Engine` is `Sync` (the crate even checks this
+/// statically), but NOT `Send`: inside the prepared matrix lies a raw pointer
+/// to memory handed out by a C++ shim. So `Mutex<Engine>` in a static
+/// variable is impossible in principle — not because of our caution but by
+/// types, and «forcing» it with `unsafe impl Send` would mean vouching for
+/// someone else's library without proof. The model is loaded where it lives
+/// and never moves; only strings travel outward.
 ///
-/// Замок при этом по-прежнему нужен, и не ради памяти: он не даёт двум
-/// вкладкам поднять модель дважды (43 МБ отображённого файла и ~70 МБ
-/// подготовленных матриц) и заодно не даёт тяжёлому пакетному проходу
-/// делиться процессором сам с собой.
+/// The lock is still needed, and not for memory's sake: it prevents two tabs
+/// from bringing the model up twice (43 MB of mapped file and ~70 MB of
+/// prepared matrices) and also prevents the heavy batch pass from sharing the
+/// CPU with itself.
 static ENGINE: OnceLock<Mutex<Option<Loaded>>> = OnceLock::new();
 
 fn engine_slot() -> &'static Mutex<Option<Loaded>> {
     ENGINE.get_or_init(|| Mutex::new(None))
 }
 
-/// Поднять поток с моделью направления. `None` — модели нет либо не прочиталась.
+/// Bring up the thread with a direction's model. `None` — no model, or it did not read.
 fn spawn_worker(src: &str, tgt: &str) -> Option<Worker> {
     let files = pick_model_live(src, tgt)?;
     let (jobs, inbox) = std::sync::mpsc::channel::<Job>();
@@ -297,8 +306,9 @@ fn spawn_worker(src: &str, tgt: &str) -> Option<Worker> {
                 &files.trg_vocab,
             ) {
                 Ok(engine) => engine.with_threads(ENGINE_THREADS),
-                // Модель на месте, но не прочиталась (обрезанный файл, чужая
-                // версия) — движок недоступен, вкладка работает без перевода.
+                // The model is in place but did not read (a truncated file, a
+                // foreign version) — the engine is unavailable, the tab works without
+                // translation.
                 Err(_) => {
                     let _ = ready.send(false);
                     return;
@@ -308,7 +318,7 @@ fn spawn_worker(src: &str, tgt: &str) -> Option<Worker> {
                 return;
             }
             drop(ready);
-            // Ящик закрылся вместе с процессом — поток уходит сам.
+            // The mailbox closed together with the process — the thread leaves by itself.
             while let Ok(job) = inbox.recv() {
                 let block: Vec<&str> = job.block.iter().map(String::as_str).collect();
                 let _ = job.reply.send(engine.translate_batch(&block));
@@ -321,12 +331,12 @@ fn spawn_worker(src: &str, tgt: &str) -> Option<Worker> {
     }
 }
 
-/// Дать делу `f` почтовый ящик модели направления `src`→`tgt`, либо `None`.
+/// Give the job `f` the mailbox of the `src`→`tgt` direction's model, or `None`.
 ///
-/// ⚠️ Второе направление в том же процессе НЕ поднимается: это ещё 43 МБ
-/// модели и ~70 МБ матриц за перевод, которого никто не просил (целевой язык у
-/// пользователя один на сессию — его локаль). Спросили другое направление —
-/// ответ «недоступно».
+/// ⚠️ A second direction is NOT brought up in the same process: that is
+/// another 43 MB of model and ~70 MB of matrices for a translation nobody
+/// asked for (the user's target language is one per session — their locale).
+/// Another direction was asked — the answer is «unavailable».
 fn with_worker<R>(src: &str, tgt: &str, f: impl FnOnce(&Worker) -> R) -> Option<R> {
     let pair = model_pair(src, tgt);
     let mut slot = engine_slot().lock().ok()?;
@@ -341,10 +351,10 @@ fn with_worker<R>(src: &str, tgt: &str, f: impl FnOnce(&Worker) -> R) -> Option<
     loaded.worker.as_ref().map(f)
 }
 
-/// Живой движок: вендоренный `fxtranslate` на модели из поставки.
+/// The live engine: the vendored `fxtranslate` on the model from the delivery.
 ///
-/// Экземпляр ничего не держит — вся тяжесть в [`ENGINE`]; заводить его на
-/// каждую работу вкладки можно свободно.
+/// The instance holds nothing — all the weight is in [`ENGINE`]; creating it
+/// for every job of the tab is fine.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LiveEngine;
 
@@ -366,21 +376,22 @@ impl TranslateEngine for LiveEngine {
             worker.jobs.send(Job { block: asked, reply }).ok()?;
             answer.recv().ok()
         });
-        // Поток умер или ящик закрыт — отказ на весь блок (договор трейта).
+        // The thread died or the mailbox is closed — refusal for the whole block (the trait contract).
         done.flatten().unwrap_or_else(|| vec![String::new(); block.len()])
     }
 }
 
 // ============================================================================
-// Лечение регистра первой буквы
+// Curing the case of the first letter
 // ============================================================================
 
-/// Поднять первую букву перевода, если в источнике она заглавная.
+/// Raise the first letter of the translation if it is capital in the source.
 ///
-/// Дефект движка, воспроизведённый на 88,6 % строк FLORES-200: перевод
-/// приходит со строчной буквы («поддерживаемые настольные компьютеры: …»).
-/// Лечим по ИСТОЧНИКУ, а не безусловно: текстовый узел HTML может быть
-/// продолжением фразы после `<b>…</b>` и начинаться со строчной законно.
+/// An engine defect reproduced on 88.6 % of FLORES-200 lines: the translation
+/// arrives starting with a lowercase letter («поддерживаемые настольные
+/// компьютеры: …»). Cured by the SOURCE, not unconditionally: an HTML text
+/// node may be a continuation of a phrase after `<b>…</b>` and legitimately
+/// start with a lowercase letter.
 pub fn lift_first_letter(source: &str, translated: &str) -> String {
     let src_upper = source
         .chars()
@@ -404,11 +415,11 @@ pub fn lift_first_letter(source: &str, translated: &str) -> String {
 }
 
 // ============================================================================
-// Склейка: перевод одного описания
+// Glue: translating one description
 // ============================================================================
 
-/// Итог [`translate_live`]: текст (переведённый либо исходный) и признак того,
-/// что перевод действительно случился (порт `was_translated` оригинала).
+/// Result of [`translate_live`]: the text (translated or original) and a flag
+/// that the translation really happened (port of the original's `was_translated`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveTranslation {
     pub text: String,
@@ -421,28 +432,28 @@ impl LiveTranslation {
     }
 }
 
-/// Перевести описание: от локали пользователя до готовой строки.
+/// Translate a description: from the user's locale to a ready string.
 ///
-/// Порядок — ровно тот, что был у Python, плюс наши две вставки (фильтр прозы
-/// и сегментный кеш):
-///   1. целевой язык — [`user_lang_from_locale`] из строки локали;
-///   2. язык источника — [`detect_lang_heuristic`] по [`probe_text`]
-///      (видимый текст без разметки);
-///   3. РЕШЕНИЕ — [`plan_translate_text`]: пусто, уже на целевом языке или
-///      движка нет → оригинал без всякой работы;
-///   4. разбор на сегменты [`segment_html`] и отбор прозы
-///      ([`translatable_flags`]) — техника движку не достаётся;
-///   5. кеш на каждый сегмент ([`translation_cache_key`]) — ЧТЕНИЕ до движка;
-///   6. движок на то, чего в кеше не нашлось: предложения, блоки по
-///      [`MAX_BLOCK_SENTENCES`], лечение регистра;
-///   7. ЗАПИСЬ в кеш и сборка строки [`render_segments_filtered`].
+/// The order is exactly what Python had, plus our two insertions (the prose
+/// filter and the segment cache):
+///   1. target language — [`user_lang_from_locale`] from the locale string;
+///   2. source language — [`detect_lang_heuristic`] over [`probe_text`]
+///      (visible text without markup);
+///   3. DECISION — [`plan_translate_text`]: empty, already in the target
+///      language or no engine → the original without any work;
+///   4. splitting into segments with [`segment_html`] and selecting prose
+///      ([`translatable_flags`]) — technical text does not reach the engine;
+///   5. cache per segment ([`translation_cache_key`]) — READ before the engine;
+///   6. the engine on what was not found in the cache: sentences, blocks of
+///      [`MAX_BLOCK_SENTENCES`], curing case;
+///   7. WRITE to the cache and assembling the string [`render_segments_filtered`].
 ///
-/// `locale` — строка локали пользователя (`ru_RU.UTF-8`, `en_US`, пусто);
-/// получение её — дело вызывающего, как и в оригинале.
+/// `locale` — the user's locale string (`ru_RU.UTF-8`, `en_US`, empty);
+/// getting it is the caller's business, as in the original.
 ///
-/// Это один текст [`translate_live_batch`], и второго пути перевода в дереве
-/// нет намеренно (правило #12): описание панели и страница комментариев ходят
-/// к движку одной дорогой.
+/// This is one text of [`translate_live_batch`], and there is deliberately no
+/// second translation path in the tree (rule #12): the panel description and
+/// the comments page go to the engine by one road.
 pub fn translate_live(
     text: &str,
     locale: &str,
@@ -452,22 +463,23 @@ pub fn translate_live(
     translate_live_guarded(text, locale, engine, cache, &[])
 }
 
-/// То же, что [`translate_live`], но вызывающий добавляет СВОИ охраняемые
-/// имена: название открытого товара, имя автора — всё, чего в списке ядра быть
-/// не может.
+/// The same as [`translate_live`], but the caller adds ITS OWN guarded names:
+/// the name of the open item, the author's name — everything that cannot be
+/// in the core's list.
 ///
-/// ⭐ ЗАЧЕМ. Имена технологий ядро защищает по своему списку, а НАЗВАНИЕ ТЕМЫ
-/// защитить было нечем — списка названий нет и быть не может. Живой движок
-/// отвечал «Скандинавская Kvantum тема» на «Nordic Kvantum theme» и «Сладкая
-/// Kvantum тема» на «Sweet Kvantum theme». Название товара окно ЗНАЕТ (оно
-/// приходит рядом с описанием), поэтому ядро берёт имена от него и прячет их
-/// тем же приёмом заполнителей — см. [`crate::translator::mask_names`].
+/// ⭐ WHY. The core protects technology names by its own list, but there was
+/// nothing to protect a THEME NAME with — there is no list of names and there
+/// cannot be one. The live engine answered «Скандинавская Kvantum тема» to
+/// «Nordic Kvantum theme» and «Сладкая Kvantum тема» to «Sweet Kvantum
+/// theme». The window KNOWS the item name (it arrives next to the
+/// description), so the core takes names from it and hides them with the
+/// same placeholder trick — see [`crate::translator::mask_names`].
 ///
-/// Договор списка: пустые и коротенькие (1-2 знака) имена ядро отбрасывает
-/// само, так что вызывающему нечего проверять — можно отдать название и имя
-/// автора как есть. Регистр: имя из нескольких слов узнаётся в любом регистре,
-/// имя из ОДНОГО слова — только с большой буквы или заглавными (иначе товар
-/// «Dark» съел бы слово `dark` в прозе).
+/// The list contract: the core drops empty and very short (1-2 characters)
+/// names itself, so the caller has nothing to check — the name and the
+/// author's name can be given as is. Case: a multi-word name is recognized in
+/// any case, a ONE-word name — only Capitalized or in caps (otherwise the item
+/// «Dark» would eat the word `dark` in prose).
 pub fn translate_live_guarded(
     text: &str,
     locale: &str,
@@ -480,24 +492,25 @@ pub fn translate_live_guarded(
         .unwrap_or_else(|| LiveTranslation::untouched(text))
 }
 
-/// Перевести НЕСКОЛЬКО текстов одним походом к движку. Ответ — по тексту на
-/// текст, в том же порядке.
+/// Translate SEVERAL texts in one trip to the engine. The answer is one text
+/// per text, in the same order.
 ///
-/// Порядок работы тот же, что у [`translate_live`], но пакетирование сквозное:
-/// решение и разбор считаются на КАЖДЫЙ текст свои (иначе русский комментарий
-/// среди английских уехал бы к движку), а вот блоки предложений набираются
-/// ПОПЕРЁК ТЕКСТОВ — один заход на всю страницу.
+/// The order of work is the same as [`translate_live`], but batching is
+/// end-to-end: the decision and parsing are computed per text (otherwise a
+/// Russian comment among English ones would go to the engine), while sentence
+/// blocks are filled ACROSS TEXTS — one go for the whole page.
 ///
-/// ⭐ Ради этого функция и появилась: комментарии мастерской короткие (одна-две
-/// фразы) и их двадцать на страницу. Двадцать вызовов `translate_live` дали бы
-/// двадцать блоков по одному-два предложения, то есть пакетный путь движка
-/// вхолостую (217 предложений/с на блоках против ~12 по одному, замер 20.09).
-/// Здесь те же двадцать комментариев уезжают двумя-тремя полными блоками.
+/// ⭐ This is why the function appeared: workshop comments are short (one or
+/// two phrases) and there are twenty of them per page. Twenty calls to
+/// `translate_live` would give twenty blocks of one or two sentences, i.e. the
+/// engine's batch path running idle (217 sentences/s in blocks vs ~12 one by
+/// one, measured 20.09). Here the same twenty comments go as two or three full
+/// blocks.
 ///
-/// Текст, которому [`plan_translate_text`] сказал «не переводить» (пусто, уже
-/// на языке покупателя, движка нет), возвращается неизменным и с
-/// `was_translated = false` — по нему вкладка и понимает, что ссылку «показать
-/// оригинал» рисовать не надо.
+/// A text that [`plan_translate_text`] said «do not translate» to (empty,
+/// already in the customer's language, no engine) is returned unchanged and
+/// with `was_translated = false` — that is how the tab knows it need not draw
+/// the «show original» link.
 pub fn translate_live_batch(
     texts: &[&str],
     locale: &str,
@@ -507,9 +520,9 @@ pub fn translate_live_batch(
     translate_live_batch_guarded(texts, locale, engine, cache, &[])
 }
 
-/// То же, что [`translate_live_batch`], с охраняемыми именами вызывающего
-/// ([`translate_live_guarded`]). Список ОДИН на весь пакет: страница
-/// комментариев — это комментарии к ОДНОМУ товару, и название у них общее.
+/// The same as [`translate_live_batch`], with the caller's guarded names
+/// ([`translate_live_guarded`]). The list is ONE for the whole batch: a
+/// comments page is comments on ONE item, and they share its name.
 pub fn translate_live_batch_guarded(
     texts: &[&str],
     locale: &str,
@@ -519,30 +532,31 @@ pub fn translate_live_batch_guarded(
 ) -> Vec<LiveTranslation> {
     let target = user_lang_from_locale(locale);
 
-    // Доступность пары спрашивается ОДИН раз на пару: у живого движка это
-    // поиск модели на диске и её загрузка, а текстов здесь двадцать.
+    // Pair availability is asked ONCE per pair: for the live engine it is
+    // looking for the model on disk and loading it, and there are twenty
+    // texts here.
     let mut availability: HashMap<String, bool> = HashMap::new();
 
-    // Разбор и решение — на каждый текст свои.
+    // Parsing and decision — per text.
     let mut prepared: Vec<Option<Prepared>> = Vec::with_capacity(texts.len());
-    // Пары языков по порядку появления: обычно она одна (`en`→`ru`), но
-    // страница комментариев вполне может оказаться разноязыкой.
+    // Language pairs in order of appearance: usually there is one (`en`→`ru`),
+    // but a comments page may well turn out multilingual.
     let mut pairs: Vec<(String, String)> = Vec::new();
-    // Уникальные тексты к переводу под каждой парой: описания и комментарии
-    // повторяют друг друга, и дважды платить за одну строку незачем.
+    // Unique texts to translate under each pair: descriptions and comments
+    // repeat each other, and there is no reason to pay twice for one line.
     let mut wanted: Vec<Vec<String>> = Vec::new();
-    // Имена из ссылок-имён всего пакета ([`fold_name_links`]).
+    // Names from the name links of the whole batch ([`fold_name_links`]).
     let mut link_names: Vec<String> = Vec::new();
 
     for text in texts {
         let probe = probe_text(text);
         let detected = detect_lang_heuristic(&probe);
-        // Кандидат источника — тот же, что выберет решение: детект либо `en`.
+        // The source candidate — the same the decision will choose: detected or `en`.
         let candidate = detected.as_deref().filter(|s| !s.is_empty()).unwrap_or("en");
-        // `src_pair_ensurable` оригинала = «путь для ЭТОГО кандидата
-        // собирается»; `engine_available` = «хоть какой-то путь есть» (решение
-        // откатывается на `en`, и если модели нет и для него — переводить
-        // нечем).
+        // The original's `src_pair_ensurable` = «the path for THIS candidate
+        // can be assembled»; `engine_available` = «there is at least some
+        // path» (the decision falls back to `en`, and if there is no model for
+        // it either — there is nothing to translate with).
         let pair_ready = pair_available(engine, &mut availability, candidate, &target);
         let any_ready = pair_ready || pair_available(engine, &mut availability, "en", &target);
 
@@ -552,14 +566,14 @@ pub fn translate_live_batch_guarded(
             continue;
         };
 
-        // ⚠️ Путь один на HTML и на плоский текст, и это не упрощение: у
-        // Python плоский путь выбирался, когда `looks_like_html` ложно, то
-        // есть в тексте НЕТ ни тегов, ни сущностей, — а на таком тексте
-        // `segment_html` даёт ровно один переводимый узел. Поведение то же,
-        // ветки на одну меньше.
-        // Ссылка-имя (`my <a href=…/p/1253385/>Sweet</a> theme`) склеивается с
-        // соседними узлами в одну фразу: движок видит предложение целиком, а
-        // не «Sweet» и «theme» поодиночке ([`fold_name_links`]).
+        // ⚠️ The path is one for HTML and plain text, and this is not a
+        // simplification: Python chose the plain path when `looks_like_html`
+        // was false, i.e. the text has NEITHER tags NOR entities — and on such
+        // text `segment_html` gives exactly one translatable node. Same
+        // behaviour, one branch fewer.
+        // A name link (`my <a href=…/p/1253385/>Sweet</a> theme`) is glued with
+        // neighbouring nodes into one phrase: the engine sees the whole
+        // sentence, not «Sweet» and «theme» separately ([`fold_name_links`]).
         let (segments, runs) = fold_name_links(segment_html(text));
         for run in runs.iter().flatten() {
             for name in run.names() {
@@ -568,9 +582,10 @@ pub fn translate_live_batch_guarded(
                 }
             }
         }
-        // Проза решается ПО ПРЕДЛОЖЕНИЯМ теми же границами, какими текст потом
-        // уезжает движку: узел «hddtemp shows only the first digit. here is a
-        // screenshot http://…» отдаётся не целиком и не отвергается целиком.
+        // Prose is decided BY SENTENCE with the same boundaries the text later
+        // goes to the engine with: the node «hddtemp shows only the first
+        // digit. here is a screenshot http://…» is neither given whole nor
+        // rejected whole.
         let flags = translatable_flags_with_links(&segments, &sentence_texts);
 
         let pair = match pairs.iter().position(|(s, t)| *s == src && *t == tgt) {
@@ -591,13 +606,13 @@ pub fn translate_live_batch_guarded(
         prepared.push(Some(Prepared { segments, flags, runs, pair }));
     }
 
-    // Имена из ссылок охраняются наравне с названием товара: «Sweet» в
-    // «…to fit my Sweet theme» — имя соседней темы, а не «сладкий».
+    // Names from links are guarded on a par with the item name: «Sweet» in
+    // «…to fit my Sweet theme» is the name of a neighbouring theme, not «сладкий».
     let guarded_all: Vec<&str> =
         guarded.iter().copied().chain(link_names.iter().map(String::as_str)).collect();
     let guarded = guarded_all.as_slice();
 
-    // Кеш — ДО движка; движок — на остаток, и ЗАПИСЬ в кеш сразу за ним.
+    // The cache comes BEFORE the engine; the engine on the rest, and the cache WRITE right after it.
     let mut ready: Vec<HashMap<String, String>> = vec![HashMap::new(); pairs.len()];
     for (pair, (src, tgt)) in pairs.iter().enumerate() {
         let mut misses: Vec<&str> = Vec::new();
@@ -612,11 +627,12 @@ pub fn translate_live_batch_guarded(
         if misses.is_empty() {
             continue;
         }
-        // ⚠️ Ключ кеша охраняемых имён НЕ содержит — намеренно. Ключ считается
-        // по тексту сегмента, а имя подменяется только там, где оно в этом
-        // тексте есть; добавь имя в ключ — и общая для всех товаров строка
-        // («Installation:», «Copy the folder to ~/.themes») кешировалась бы
-        // заново на каждый товар, то есть сегментный кеш потерял бы смысл.
+        // ⚠️ The cache key does NOT contain the guarded names — on purpose. The
+        // key is computed from the segment text, and a name is substituted only
+        // where it occurs in that text; add the name to the key — and a line
+        // shared by all items («Installation:», «Copy the folder to ~/.themes»)
+        // would be cached anew for every item, i.e. the segment cache would
+        // lose its point.
         for (w, translated) in
             misses.iter().zip(translate_misses(&misses, src, tgt, engine, guarded))
         {
@@ -644,13 +660,15 @@ pub fn translate_live_batch_guarded(
     out
 }
 
-/// Может ли за этим текстом последовать перевод — то же решение
-/// [`plan_translate_text`], но БЕЗ движка (пара считается доступной).
+/// Whether a translation may follow for this text — the same decision as
+/// [`plan_translate_text`], but WITHOUT the engine (the pair is assumed
+/// available).
 ///
-/// Нужно окну, чтобы решить, показывать ли пометку «Перевожу описание…»:
-/// русский текст для русского покупателя, пустое описание — сразу «нет», и
-/// пометка не мигнёт даже на мгновение. Модель здесь не грузится (у живого
-/// движка вопрос о доступности — это поиск и загрузка 43 МБ).
+/// The window needs it to decide whether to show the «Translating the
+/// description…» mark: Russian text for a Russian customer, an empty
+/// description — «no» right away, and the mark does not flash even for a
+/// moment. The model is not loaded here (for the live engine the availability
+/// question means finding and loading 43 MB).
 pub fn translation_may_follow(text: &str, locale: &str) -> bool {
     let target = user_lang_from_locale(locale);
     let detected = detect_lang_heuristic(&probe_text(text));
@@ -660,33 +678,35 @@ pub fn translation_may_follow(text: &str, locale: &str) -> bool {
     )
 }
 
-/// Текст, которому решение сказало «переводить»: его сегменты, признаки «звать
-/// ли движок» и номер пары языков в общем списке пакета.
+/// A text the decision said «translate» to: its segments, the «call the
+/// engine or not» flags and the number of the language pair in the batch's
+/// shared list.
 ///
-/// Признаки хранятся, а не считаются заново на сборке: считать их дважды —
-/// значит рисковать тем, что отбор и сборка разойдутся, и переведённый узел
-/// уедет в вывод оригиналом.
+/// The flags are stored rather than recomputed during assembly: computing
+/// them twice means risking that selection and assembly diverge, and a
+/// translated node would go to the output as the original.
 struct Prepared {
     segments: Vec<Segment>,
     flags: Vec<bool>,
-    /// Склейки через ссылки-имена — на месте своего узла ([`fold_name_links`]).
+    /// Gluings through name links — in the place of their node ([`fold_name_links`]).
     runs: Vec<Option<NameLinkRun>>,
     pair: usize,
 }
 
-/// Границы предложений одного текста — тем разбивателем, каким пользуется сам
-/// крейт перевода. ОДНА правда о границах на весь модуль: по ней и отбирается
-/// проза, и набираются блоки для движка.
+/// Sentence boundaries of one text — by the splitter the translation crate
+/// itself uses. ONE truth about boundaries for the whole module: both prose
+/// selection and filling engine blocks go by it.
 fn sentence_texts(text: &str) -> Vec<String> {
     use fxtranslate::segment::{BasicSegmenter, Segmenter};
     BasicSegmenter.sentences(text).iter().map(|s| s.of(text).to_string()).collect()
 }
 
-/// Готова ли пара `src`→`tgt`, с памятью об уже спрошенном.
+/// Whether the `src`→`tgt` pair is ready, remembering what was already asked.
 ///
-/// Памятка не украшение: у живого движка [`TranslateEngine::available`] — это
-/// поиск файлов модели и её загрузка, а в пакете страницы комментариев вопрос
-/// задавался бы на каждый из двадцати текстов заново.
+/// The memo is not decoration: for the live engine
+/// [`TranslateEngine::available`] means finding the model files and loading
+/// it, and in a comments page batch the question would be asked anew for each
+/// of twenty texts.
 fn pair_available(
     engine: &dyn TranslateEngine,
     seen: &mut HashMap<String, bool>,
@@ -701,28 +721,30 @@ fn pair_available(
     ready
 }
 
-/// Перевести тексты, которых не было в кеше. `None` на месте текста — движок
-/// не справился (ни одного предложения), такой результат в кеш не пишется:
-/// пусть следующая попытка спросит движок снова.
+/// Translate the texts that were not in the cache. `None` in place of a text —
+/// the engine could not (not a single sentence), such a result is not written
+/// to the cache: let the next attempt ask the engine again.
 ///
-/// ⭐ ДВА ПРОХОДА, и это замер, а не осторожность. Заполнитель имени САМ сбивает
-/// декодировщик: «becoming a supporter for the KDE Themes and Extensions
-/// section» живая модель переводит правильно — «стать сторонником раздела KDE
-/// «Темы и расширения»», — а та же фраза с `@0@` на месте `KDE` возвращается с
-/// «Теммы и расширения» (приёмка 24.09, общий абзац автора у товаров «Nordic
-/// KDE» и «Sweet Mars»). Значит подмену надо тратить только там, где без неё
-/// имя действительно теряется:
-///   * **проход 1** — предложение ГОЛЫМ, как написал человек. Ответ берётся,
-///     если каждое охраняемое имя стоит в нём ДОСЛОВНО;
-///   * **проход 2** — только те предложения, где движок имя перевёл или
-///     склонил («Nordic» → «скандинавская»): они уходят под заполнителями, и
-///     дальше работают прежние сита [`unmask_tech_names`]. С 06.11 под
-///     заполнитель уходят ТОЛЬКО потерянные в первом проходе имена;
-///   * **проход 3** (без движка) — если имя не удержалось и под заполнителем,
-///     но все потерянные имена «мягкие» (слово из названия товара), берётся
-///     голый ответ первого прохода, а не выбрасывается весь абзац.
-/// Второй поход к движку платится только за испорченные предложения, а
-/// большинство фраз описания вообще перестало видеть заполнители.
+/// ⭐ TWO PASSES, and this is a measurement, not caution. A name placeholder
+/// ITSELF confuses the decoder: «becoming a supporter for the KDE Themes and
+/// Extensions section» the live model translates correctly — «стать
+/// сторонником раздела KDE «Темы и расширения»», — while the same phrase with
+/// `@0@` in place of `KDE` comes back with «Теммы и расширения» (acceptance
+/// 24.09, the author's shared paragraph in the items «Nordic KDE» and «Sweet
+/// Mars»). So substitution should be spent only where the name really gets
+/// lost without it:
+///   * **pass 1** — the sentence BARE, as the person wrote it. The answer is
+///     taken if every guarded name stands in it VERBATIM;
+///   * **pass 2** — only the sentences where the engine translated or inflected
+///     a name («Nordic» → «скандинавская»): they go under placeholders, and
+///     then the former [`unmask_tech_names`] sieves work. Since 06.11 ONLY the
+///     names lost in the first pass go under placeholders;
+///   * **pass 3** (without the engine) — if a name did not hold even under a
+///     placeholder, but all lost names are «soft» (a word from the item name),
+///     the bare answer of the first pass is taken instead of throwing away the
+///     whole paragraph.
+/// The second trip to the engine is paid only for corrupted sentences, and most
+/// phrases of a description stopped seeing placeholders at all.
 fn translate_misses(
     misses: &[&str],
     src: &str,
@@ -732,14 +754,14 @@ fn translate_misses(
 ) -> Vec<Option<String>> {
     use fxtranslate::segment::{BasicSegmenter, Segmenter, Span};
 
-    // ⚠️ Предложения, а не целые узлы: пакетный путь движка кормит каждую
-    // строку декодировщику ЦЕЛИКОМ, и абзац длиннее окна модели (127 токенов)
-    // молча обрубается — декодировщик выдаёт EOS раньше конца. Границы берёт
-    // тот же разбиватель, каким пользуется сам крейт.
+    // ⚠️ Sentences, not whole nodes: the engine's batch path feeds each line
+    // to the decoder WHOLE, and a paragraph longer than the model window (127
+    // tokens) is silently cut — the decoder emits EOS before the end. The
+    // boundaries come from the same splitter the crate itself uses.
     let spans: Vec<Vec<Span>> = misses.iter().map(|t| BasicSegmenter.sentences(t)).collect();
 
-    // Плоский список предложений всех текстов — чтобы блок набирался ПОПЕРЁК
-    // узлов: иначе абзац из одного предложения ехал бы к движку в одиночку.
+    // A flat list of sentences of all texts — so the block is filled ACROSS
+    // nodes: otherwise a one-sentence paragraph would go to the engine alone.
     let mut flat: Vec<&str> = Vec::new();
     for (text, spans) in misses.iter().zip(spans.iter()) {
         for span in spans.iter() {
@@ -747,39 +769,42 @@ fn translate_misses(
         }
     }
 
-    // Кого движку не отдавать вовсе: предложение-техника (команда, строка из
-    // одного пути или ссылки) остаётся оригиналом даже посреди переводимого
-    // абзаца — это то же правило, каким отбирался сам узел
-    // ([`translatable_flags_by_sentence`]). Путь или ссылка ВНУТРИ прозы
-    // (с 03.10) предложение не отвергают: [`mask_names`] прячет их наравне с
-    // именами, и ниже они сверяются и возвращаются тем же путём.
+    // What not to give the engine at all: a technical sentence (a command, a
+    // line of a single path or link) stays the original even in the middle
+    // of a translatable paragraph — the same rule that selected the node
+    // itself ([`translatable_flags_by_sentence`]). A path or link INSIDE
+    // prose (since 03.10) does not reject the sentence: [`mask_names`] hides
+    // them on a par with names, and below they are checked and returned the
+    // same way.
     let prose: Vec<bool> = flat.iter().map(|s| is_prose_segment(s)).collect();
 
-    // Края предложения (маркер списка, «### ✨ », двоеточие после жирной
-    // подписи, эмодзи в конце) движку не показываются вовсе и возвращаются
-    // байт в байт ([`split_sentence_edges`]). Дальше всё — про середину.
+    // Sentence edges (a list marker, «### ✨ », the colon after a bold
+    // label, emoji at the end) are not shown to the engine at all and come
+    // back byte for byte ([`split_sentence_edges`]). Everything below is about
+    // the middle.
     let edges: Vec<(&str, &str, &str)> = flat.iter().map(|s| split_sentence_edges(s)).collect();
     let core = |i: usize| edges[i].1;
     let wrap = |i: usize, t: String| format!("{}{t}{}", edges[i].0, edges[i].2);
 
     let mut done: Vec<String> = vec![String::new(); flat.len()];
-    // Пометка «заполнители не сошлись»: перевод этого предложения испорчен.
+    // The «placeholders did not match» mark: this sentence's translation is corrupted.
     let mut spoiled: Vec<bool> = vec![false; flat.len()];
 
-    // ── проход 1: голые предложения, без заполнителей.
+    // ── pass 1: bare sentences, without placeholders.
     let bare: Vec<usize> =
         (0..flat.len()).filter(|i| prose[*i] && core(*i).chars().any(char::is_alphabetic)).collect();
     let asked: Vec<&str> = bare.iter().map(|i| core(*i)).collect();
-    // ⚠️ Имена (технологий — по списку ядра, товара и автора — от вызывающего)
-    // прячутся ЗДЕСЬ, то есть ПОСЛЕ разбиения на предложения, а не до него.
-    // Порядок важен: границы предложений считает сам крейт по исходному тексту,
-    // и подмена, сделанная раньше, сдвинула бы их (а `reassemble` ниже
-    // восстанавливает пробелы по ОРИГИНАЛУ и требует спанов именно от него).
+    // ⚠️ Names (technologies — by the core's list, item and author — from the
+    // caller) are hidden HERE, i.e. AFTER splitting into sentences, not
+    // before. The order matters: the crate itself computes sentence
+    // boundaries from the source text, and a substitution done earlier would
+    // shift them (and `reassemble` below restores spaces from the ORIGINAL
+    // and requires spans exactly from it).
     let mut retry: Vec<(usize, MaskedNames, Vec<bool>, String)> = Vec::new();
     for (i, answer) in bare.iter().zip(translate_blocks(engine, src, tgt, &asked)) {
         let source = core(*i);
         if answer.is_empty() {
-            // Движок не справился — в выводе останется оригинал предложения.
+            // The engine could not — the output will keep the sentence's original.
             continue;
         }
         let masked = mask_names(source, guarded);
@@ -794,16 +819,16 @@ fn translate_misses(
         }
     }
 
-    // ── проход 2: те же предложения, но под заполнителями — ТОЛЬКО те имена,
-    // что движок потерял в первом проходе ([`mask_only`]). Заполнитель сам
-    // сбивает декодировщик, и на четырёх сразу он ломается; на одном — нет.
+    // ── pass 2: the same sentences, but under placeholders — ONLY the names
+    // the engine lost in the first pass ([`mask_only`]). A placeholder itself
+    // confuses the decoder, and with four at once it breaks; with one it does not.
     let hidden: Vec<MaskedNames> =
         retry.iter().map(|(_, masked, lost, _)| mask_only(masked, lost)).collect();
     let asked: Vec<&str> = hidden.iter().map(|m| m.text.as_str()).collect();
     let second = translate_blocks(engine, src, tgt, &asked);
     for (((i, masked, lost, first), only), answer) in retry.iter().zip(hidden.iter()).zip(second) {
         let source = core(*i);
-        // Имена, оставленные голыми, обязаны уцелеть и во втором ответе.
+        // Names left bare must survive in the second answer too.
         let restored = (!answer.is_empty())
             .then(|| unmask_tech_names(&answer, &only.names))
             .flatten()
@@ -814,11 +839,12 @@ fn translate_misses(
             }
             continue;
         }
-        // ── проход 3: имя не удержалось и под заполнителем. Если все
-        // потерянные имена — «мягкие» (слово из названия товара, а не само
-        // название, не имя из списков ядра и не техника,
-        // [`is_soft_guarded_name`]), берём голый перевод: переведённое слово
-        // из названия лучше английского абзаца целиком. Иначе — порча.
+        // ── pass 3: the name did not hold even under a placeholder. If all
+        // lost names are «soft» (a word from the item name, not the name
+        // itself, not a name from the core's lists and not technical text,
+        // [`is_soft_guarded_name`]), we take the bare translation: a translated
+        // word from the name is better than a whole English paragraph.
+        // Otherwise — corruption.
         let soft = masked
             .names
             .iter()
@@ -831,8 +857,8 @@ fn translate_misses(
                 continue;
             }
         }
-        // Заполнители не сошлись — предложение пустое, а сегмент целиком
-        // помечен испорченным (ниже).
+        // The placeholders did not match — the sentence is empty, and the whole
+        // segment is marked corrupted (below).
         spoiled[*i] = true;
     }
 
@@ -842,18 +868,18 @@ fn translate_misses(
         let mine = &done[at..at + spans.len()];
         let broken = spoiled[at..at + spans.len()].iter().any(|b| *b);
         at += spans.len();
-        // ⚠️ Одно испорченное предложение отменяет ВЕСЬ сегмент, а не только
-        // себя. Лучше не перевести, чем отдать кашу: абзац, где одна фраза
-        // русская, а вторая осталась английской, выглядит хуже честного
-        // оригинала, а перевод с потерянным именем — просто неправда. В кеш
-        // такой сегмент не пишется (`None`), и следующая попытка спросит
-        // движок заново.
+        // ⚠️ One corrupted sentence cancels the WHOLE segment, not just itself.
+        // Better not to translate than to hand over a mess: a paragraph where
+        // one phrase is Russian and the second stayed English looks worse than
+        // an honest original, and a translation with a lost name is simply
+        // untrue. Such a segment is not written to the cache (`None`), and the
+        // next attempt will ask the engine anew.
         if broken || mine.is_empty() || mine.iter().all(|s| s.is_empty()) {
             out.push(None);
             continue;
         }
-        // Пустое место — оригинал предложения; пробелы между предложениями
-        // восстанавливает сам крейт из исходной строки.
+        // An empty place is the sentence's original; the crate itself restores
+        // the spaces between sentences from the source string.
         let pieces: Vec<String> = spans
             .iter()
             .zip(mine.iter())
@@ -864,9 +890,9 @@ fn translate_misses(
     out
 }
 
-/// Отдать предложения движку блоками по [`MAX_BLOCK_SENTENCES`]. Ответ — по
-/// строке на каждое предложение и в том же порядке; пустая строка означает
-/// «движок не справился, бери оригинал».
+/// Give sentences to the engine in blocks of [`MAX_BLOCK_SENTENCES`]. The
+/// answer is one line per sentence and in the same order; an empty line means
+/// «the engine could not, take the original».
 fn translate_blocks(
     engine: &dyn TranslateEngine,
     src: &str,
@@ -876,8 +902,9 @@ fn translate_blocks(
     let mut out: Vec<String> = Vec::with_capacity(asked.len());
     for block in asked.chunks(MAX_BLOCK_SENTENCES) {
         let mut answer = engine.translate_block(src, tgt, block);
-        // Ответ не той длины — отказ на весь блок (договор трейта). Молча
-        // сдвинуть переводы на чужие предложения было бы хуже отказа.
+        // An answer of the wrong length — refusal for the whole block (the trait
+        // contract). Silently shifting translations onto other sentences would be
+        // worse than a refusal.
         if answer.len() != block.len() {
             answer = vec![String::new(); block.len()];
         }
@@ -886,13 +913,13 @@ fn translate_blocks(
     out
 }
 
-/// Стоит ли имя в ответе движка ДОСЛОВНО и отдельным словом.
+/// Whether the name stands in the engine's answer VERBATIM and as a separate word.
 ///
-/// ⚠️ Вхождения подстрокой мало, и это не придирка: `Nord` находится внутри
-/// `Nordic`, поэтому ответ «также тема Nordic Kvantum основана на палитре
-/// Севера.» сошёл бы за целый — хотя само слово `Nord` в нём переведено
-/// («Севера»), а именно его мы и охраняем. Границей считается любой
-/// не-буквенно-цифровой знак либо край строки.
+/// ⚠️ A substring occurrence is not enough, and this is not nitpicking: `Nord`
+/// is found inside `Nordic`, so the answer «также тема Nordic Kvantum основана
+/// на палитре Севера.» would pass as intact — although the word `Nord` itself
+/// is translated in it («Севера»), and that is exactly what we guard. Any
+/// non-alphanumeric character or the line edge counts as a boundary.
 fn name_stands_verbatim(answer: &str, name: &str) -> bool {
     let mut from = 0usize;
     while let Some(at) = answer[from..].find(name) {
@@ -909,26 +936,29 @@ fn name_stands_verbatim(answer: &str, name: &str) -> bool {
     false
 }
 
-/// Взять перевод предложения, подняв первую букву, либо `None` — брать нельзя.
+/// Take a sentence's translation, raising the first letter, or `None` — it
+/// must not be taken.
 ///
-/// Отказ один, и он про порчу, которую не видят ни фильтр прозы, ни сита
-/// заполнителей: ВЫДУМАННОЕ латинское слово ([`invented_latin_word`]) — «служба
-/// графических элементов - toolbep, bars» вместо `tooltips` (приёмка 24.09,
-/// «Awesome Widgets»). Отказ действует на ОДНО предложение: остальные фразы
-/// абзаца переводом остаются, а на месте испорченной встанет оригинал.
+/// There is one refusal, and it is about corruption that neither the prose
+/// filter nor the placeholder sieves see: an INVENTED Latin word
+/// ([`invented_latin_word`]) — «служба графических элементов - toolbep, bars»
+/// instead of `tooltips` (acceptance 24.09, «Awesome Widgets»). The refusal
+/// applies to ONE sentence: the other phrases of the paragraph stay
+/// translated, and the original takes the corrupted one's place.
 ///
-/// Перед подъёмом буквы термины правятся по словарю
-/// ([`crate::translator::apply_term_fixes`]: «расстегните» от `unzip` →
-/// «распакуйте»). Здесь, а не раньше: перевод уже с возвращёнными именами и
-/// путями, и сито выдуманной латиницы уже пройдено.
+/// Before raising the letter the terms are fixed by the dictionary
+/// ([`crate::translator::apply_term_fixes`]: «расстегните» from `unzip` →
+/// «распакуйте»). Here and not earlier: the translation already has names and
+/// paths returned, and the invented Latin sieve has already been passed.
 fn take_if_clean(src: &str, tgt: &str, source: &str, translated: &str) -> Option<String> {
     if invented_latin_word(source, translated).is_some() {
         return None;
     }
     let fixed = crate::translator::apply_term_fixes(src, tgt, source, translated);
-    // Выдуманное движком сверх источника — повтор «и и», союз «и» в начале
-    // ([`drop_invented_repeats`]): после поправок терминов (у словаря есть
-    // свои свёртки) и до подъёма буквы (союз мог стоять первым словом).
+    // What the engine invented beyond the source — the repeat «и и», the
+    // conjunction «и» at the start ([`drop_invented_repeats`]): after the term
+    // fixes (the dictionary has its own collapses) and before raising the
+    // letter (the conjunction could be the first word).
     let fixed = drop_invented_repeats(src, tgt, source, &fixed);
     Some(lift_first_letter(source, &fixed))
 }
@@ -937,9 +967,9 @@ fn take_if_clean(src: &str, tgt: &str, source: &str, translated: &str) -> Option
 mod tests {
     use super::*;
 
-    /// Порядок поиска модели: окружение первым, дальше — раскладки поставки,
-    /// и ровно те же, какими ищется вендорный QML (одна правда о том, где
-    /// лежит продукт).
+    /// Model search order: the environment first, then the delivery layouts,
+    /// exactly the same ones the vendor QML is looked up by (one truth about
+    /// where the product lies).
     #[test]
     fn model_dirs_start_with_the_environment_then_follow_the_package() {
         let dirs = model_dir_candidates(Some("/стенд/модель"), "/дерево", "/home/w", "en", "ru");
@@ -949,7 +979,7 @@ mod tests {
         for (candidate, base) in dirs[1..].iter().zip(pkg.iter()) {
             assert_eq!(candidate, &format!("{base}/translate/enru"));
         }
-        // Пустая переменная — не кандидат «» (иначе искали бы от корня).
+        // An empty variable is not the candidate «» (otherwise we would search from the root).
         let blank = model_dir_candidates(Some("  "), "", "", "en", "ru");
         assert!(
             blank.iter().all(|d| d.starts_with('/')),
@@ -957,8 +987,8 @@ mod tests {
         );
     }
 
-    /// Модель признаётся по весам + словарю; общий словарь и раздельные —
-    /// обе раскладки Firefox.
+    /// A model is recognized by weights + vocabulary; a shared vocabulary and
+    /// separate ones — both Firefox layouts.
     #[test]
     fn a_model_needs_both_weights_and_a_vocabulary() {
         let shared = |p: &str| {
@@ -976,24 +1006,24 @@ mod tests {
         let files = model_files_in("/m", "ja", "en", &split).expect("раздельные словари");
         assert_ne!(files.src_vocab, files.trg_vocab);
 
-        // Веса без словаря — не модель.
+        // Weights without a vocabulary are not a model.
         let weights_only = |p: &str| p == "/m/model.enru.intgemm.alphas.bin";
         assert!(model_files_in("/m", "en", "ru", &weights_only).is_none());
-        // Словарь без весов — тоже.
+        // Neither is a vocabulary without weights.
         let vocab_only = |p: &str| p == "/m/vocab.enru.spm";
         assert!(model_files_in("/m", "en", "ru", &vocab_only).is_none());
     }
 
-    /// Регистр поднимается по ИСТОЧНИКУ: заглавная в источнике — поднимаем,
-    /// строчная — оставляем (продолжение фразы после тега).
+    /// The case is raised by the SOURCE: capital in the source — raise it,
+    /// lowercase — leave it (a continuation of a phrase after a tag).
     #[test]
     fn the_first_letter_follows_the_source() {
         assert_eq!(lift_first_letter("This theme", "эта тема"), "Эта тема");
         assert_eq!(lift_first_letter("This theme", "Эта тема"), "Эта тема");
         assert_eq!(lift_first_letter("and also", "и ещё"), "и ещё");
-        // Ведущая не-буква сохраняется, поднимается первая БУКВА.
+        // A leading non-letter is kept, the first LETTER is raised.
         assert_eq!(lift_first_letter("«Dark» theme", "«тёмная» тема"), "«Тёмная» тема");
-        // Букв нет вовсе — строка не трогается.
+        // No letters at all — the line is not touched.
         assert_eq!(lift_first_letter("Theme", "— 1.2.3 —"), "— 1.2.3 —");
     }
 }

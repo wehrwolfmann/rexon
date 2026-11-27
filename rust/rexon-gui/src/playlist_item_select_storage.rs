@@ -1,28 +1,32 @@
-// PlaylistItemSelectStorage — выбор состава плейлиста на странице «Обои».
+// PlaylistItemSelectStorage — choosing the contents of a playlist on the
+// "Wallpapers" page.
 //
-// Появился у вендора в v0.3.7 (`ui/src/model/wallpaper_select_storage.cppm`)
-// и объявлен ПРЯМО в `WallpaperPage.qml:24`: без этого типа страница
-// «Обои» не создаётся вовсе, а не «работает с оговорками».
+// It appeared at the vendor in v0.3.7
+// (`ui/src/model/wallpaper_select_storage.cppm`) and is declared DIRECTLY
+// in `WallpaperPage.qml:24`: without this type the "Wallpapers" page is
+// not created at all, rather than "working with caveats".
 //
-// Чем он отличается от `WallpaperSelectStorage`, поверх которого стоит:
+// How it differs from `WallpaperSelectStorage`, on top of which it stands:
 //
-//   * помнит, состав КАКОГО плейлиста сейчас правят (`playlistId`) и на
-//     какой правке (`revision`) он был прочитан — этот номер уходит
-//     демону в `expected_revision`, и по нему демон ловит гонку двух
-//     правок (`ERROR_CODE_PLAYLIST_REVISION_CONFLICT` протокола 0.3.7);
-//   * держит ИСХОДНЫЙ порядок состава (`initialEntryIds`) и порядок
-//     добавленного (`m_new_entry_ids` оригинала), поэтому
-//     `orderedWallpaperIds()` отдаёт не «что выбрано», а «что выбрано, в
-//     том порядке, в каком плейлист сложился»: сначала уцелевшие старые,
-//     потом добавленные в порядке добавления;
-//   * пока плейлист задан, режим выбора не гаснет на пустом выборе —
-//     плейлист можно опустошить целиком и нажать «Применить».
+//   * it remembers WHICH playlist's contents are being edited
+//     (`playlistId`) and at which revision (`revision`) they were read —
+//     this number goes to the daemon as `expected_revision`, and by it the
+//     daemon catches a race of two edits
+//     (`ERROR_CODE_PLAYLIST_REVISION_CONFLICT` of the 0.3.7 protocol);
+//   * it keeps the ORIGINAL order of the contents (`initialEntryIds`) and
+//     the order of what was added (the original's `m_new_entry_ids`), so
+//     `orderedWallpaperIds()` returns not "what is selected" but "what is
+//     selected, in the order the playlist came together": first the
+//     surviving old ones, then the added ones in the order of adding;
+//   * while a playlist is set, selection mode does not go off on an empty
+//     selection — the playlist can be emptied entirely and "Apply"
+//     pressed.
 //
-// Наследования у cxx-qt нет, поэтому обе базы приходят общим движком
-// `impl_select_storage_base!` (src/select_storage_base.rs) — тем же
-// приёмом, что база `Query` у запросов.
+// cxx-qt has no inheritance, so both bases come from the shared engine
+// `impl_select_storage_base!` (src/select_storage_base.rs) — the same
+// technique as the `Query` base of the queries.
 
-/// Мост cxx-qt: хранилище выбора состава плейлиста.
+/// cxx-qt bridge: the playlist contents selection storage.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -39,18 +43,19 @@ pub mod qobject {
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
     }
 
-    // ⚠️ `type QObject` здесь НЕ объявляется — cxx-qt печатает объявление
-    // сам (см. пояснение в src/wallpaper_select_storage.rs).
+    // Warning: `type QObject` is NOT declared here — cxx-qt emits the
+    // declaration by itself (see the explanation in
+    // src/wallpaper_select_storage.rs).
     unsafe extern "C++" {
         include!("rexon_gui_factory.h");
-        /// Проверенное приведение к модели библиотеки обоев.
+        /// Checked cast to the wallpaper library model.
         ///
-        /// Имя своё, а не общее с мостом соседнего хранилища: одно и то же
-        /// объявление `extern "C++"` в двух мостах одного крейта даёт
-        /// `duplicate symbol` на линковке.
+        /// Its own name, not shared with the neighbouring storage's bridge: the same
+        /// `extern "C++"` declaration in two bridges of one crate gives a
+        /// `duplicate symbol` at link time.
         ///
         /// # Safety
-        /// `object` — либо nullptr, либо живой QObject.
+        /// `object` is either nullptr or a live QObject.
         #[allow(clippy::missing_safety_doc)]
         unsafe fn rexon_as_playlist_wallpaper_list_model(object: *mut QObject) -> *mut QObject;
     }
@@ -58,7 +63,7 @@ pub mod qobject {
     extern "RustQt" {
         #[qobject]
         #[qml_element]
-        // ── база SelectStorage + надстройка обоей ─────────────────────────
+        // ── SelectStorage base + the wallpaper layer ──────────────────────
         #[qproperty(*mut QObject, model, READ = model, WRITE = set_model,
                     NOTIFY = model_changed)]
         #[qproperty(bool, selection_mode, cxx_name = "selectionMode",
@@ -73,17 +78,17 @@ pub mod qobject {
         #[qproperty(i32, removable_selected_count, cxx_name = "removableSelectedCount",
                     READ = removable_selected_count,
                     NOTIFY = selected_removable_count_changed)]
-        /// waywallen 0.4.4: сколько выбранных обоев скрыто — по нему
-        /// страница решает, «Скрыть» или «Вернуть» выбранное.
+        /// waywallen 0.4.4: how many of the selected wallpapers are hidden — by it
+        /// the page decides whether to "Hide" or "Restore" the selection.
         #[qproperty(i32, hidden_selected_count, cxx_name = "hiddenSelectedCount",
                     READ = hidden_selected_count,
                     NOTIFY = selected_hidden_count_changed)]
-        // ── свой уровень: правка состава плейлиста ────────────────────────
-        /// ⚠️ Оба номера уходят наружу `f64`, а не `i64`: 64-битное целое в
-        /// QML не выпускаем — литеральная привязка в такое свойство
-        /// отказывает вместе со всем документом. Разбор и границы точности
-        /// — `src/qvalue.rs`, живая проверка — `src/qml_int64_probe.rs`.
-        /// Внутри поля остаются точными `i64`.
+        // ── our own level: editing the playlist contents ──────────────────
+        /// Warning: both numbers are exposed as `f64`, not `i64`: we do not expose a
+        /// 64-bit integer to QML — a literal binding to such a property fails
+        /// together with the whole document. The analysis and precision limits are
+        /// in `src/qvalue.rs`, the live check in `src/qml_int64_probe.rs`.
+        /// Inside, the fields stay exact `i64`.
         #[qproperty(f64, playlist_id, cxx_name = "playlistId", READ = playlist_id,
                     NOTIFY = playlist_changed)]
         #[qproperty(f64, revision, READ = revision, NOTIFY = playlist_changed)]
@@ -108,26 +113,26 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "activeChanged"]
         fn active_changed(self: Pin<&mut PlaylistItemSelectStorage>);
-        /// Отдельный сигнал оригинала: удаляемых может стать меньше без
-        /// изменения размера выбора (сменился список).
+        /// A separate signal of the original: the number of items to delete may
+        /// decrease without the selection size changing (the list changed).
         #[qsignal]
         #[cxx_name = "selectedRemovableCountChanged"]
         fn selected_removable_count_changed(self: Pin<&mut PlaylistItemSelectStorage>);
-        /// waywallen 0.4.4: скрытых в выборе стало другое число —
-        /// сменился выбор, модель или признак «скрыта» у строки.
+        /// waywallen 0.4.4: the number of hidden items in the selection changed —
+        /// the selection, the model or a row's "hidden" flag changed.
         #[qsignal]
         #[cxx_name = "selectedHiddenCountChanged"]
         fn selected_hidden_count_changed(self: Pin<&mut PlaylistItemSelectStorage>);
-        /// Сменился правимый плейлист: номер, правка и исходный состав.
+        /// The edited playlist changed: number, revision and original contents.
         #[qsignal]
         #[cxx_name = "playlistChanged"]
         fn playlist_changed(self: Pin<&mut PlaylistItemSelectStorage>);
     }
 
-    // unsafe-блок: аксессоры свойства `model` берут голый указатель.
-    // ⚠️ `set_model` — сверх того `unsafe fn` сама по себе: она ПЕРЕДАЁТ
-    // указатель в шим `qobject_cast`, а тот его разыменовывает. Указатель
-    // приходит из QML, за его живость отвечает вызывающая сторона.
+    // unsafe block: the accessors of the `model` property take a raw pointer.
+    // Warning: `set_model` is moreover an `unsafe fn` by itself: it PASSES the
+    // pointer to the `qobject_cast` shim, which dereferences it. The pointer
+    // comes from QML; the caller is responsible for it being alive.
     unsafe extern "RustQt" {
         fn model(self: &PlaylistItemSelectStorage) -> *mut QObject;
         #[cxx_name = "setModel"]
@@ -154,7 +159,7 @@ pub mod qobject {
         fn initial_entry_ids(self: &PlaylistItemSelectStorage) -> QStringList;
     }
 
-    // ── Инвокаблы (имена — из оригинала) ─────────────────────────────────
+    // ── Invokables (names from the original) ─────────────────────────────
     extern "RustQt" {
         #[qinvokable]
         fn begin(self: Pin<&mut PlaylistItemSelectStorage>, row: i32) -> bool;
@@ -203,8 +208,8 @@ pub mod qobject {
         #[cxx_name = "removableSelectedWallpaperIds"]
         fn removable_selected_wallpaper_ids(self: &PlaylistItemSelectStorage) -> QStringList;
 
-        /// Войти в правку состава плейлиста: запомнить номер и правку,
-        /// наполнить выбор его составом, включить режим выбора.
+        /// Enter editing of a playlist's contents: remember the number and the
+        /// revision, fill the selection with its contents, turn on selection mode.
         #[qinvokable]
         #[cxx_name = "beginPlaylistItems"]
         fn begin_playlist_items(
@@ -214,13 +219,13 @@ pub mod qobject {
             entry_ids: &QStringList,
         );
 
-        /// Выбранное В ПОРЯДКЕ плейлиста — этим списком уходит
+        /// The selection IN playlist ORDER — this list goes into
         /// `playlist_set_items`.
         #[qinvokable]
         #[cxx_name = "orderedWallpaperIds"]
         fn ordered_wallpaper_ids(self: &PlaylistItemSelectStorage) -> QList_QVariant;
 
-        /// Пересчитать всё, что зависит от выбора в модели.
+        /// Recompute everything that depends on the selection in the model.
         #[qinvokable]
         #[cxx_name = "onModelSelectionChanged"]
         fn on_model_selection_changed(self: Pin<&mut PlaylistItemSelectStorage>);
@@ -236,20 +241,21 @@ use cxx_qt_lib::{QString, QStringList, QVariant};
 use crate::impl_select_storage_base;
 use crate::wallpaper_select_storage::SelectState;
 
-/// Rust-состояние хранилища.
+/// Rust state of the storage.
 pub struct PlaylistItemSelectStorageRust {
     state: SelectState,
-    /// Модель библиотеки. Голый указатель, как у оригинала QPointer.
+    /// The library model. A raw pointer, like the original's QPointer.
     model: *mut qobject::QObject,
-    /// Подписки на модель (waywallen 0.4.4, см. `watch_model`): сторожа
-    /// рвут связь при смене модели и при уничтожении хранилища.
+    /// Model subscriptions (waywallen 0.4.4, see `watch_model`): the guards
+    /// break the connection when the model changes and when the storage is
+    /// destroyed.
     model_watch: Vec<cxx_qt::QMetaObjectConnectionGuard>,
-    /// Правимый плейлист и его правка на момент чтения.
+    /// The edited playlist and its revision at the time of reading.
     playlist_id: i64,
     revision: i64,
-    /// Исходный состав плейлиста по порядку, без повторов и пустых.
+    /// The original playlist contents in order, without duplicates or empties.
     initial_entry_ids: Vec<String>,
-    /// Добавленные сверх исходного состава — в порядке добавления.
+    /// Items added beyond the original contents — in the order of adding.
     new_entry_ids: Vec<String>,
 }
 
@@ -273,26 +279,27 @@ impl cxx_qt::Initialize for qobject::PlaylistItemSelectStorage {
     }
 }
 
-// Обе базы оригинала — общим движком (src/select_storage_base.rs).
+// Both bases of the original — through the shared engine
+// (src/select_storage_base.rs).
 impl_select_storage_base!(PlaylistItemSelectStorage, rexon_as_playlist_wallpaper_list_model);
 
 impl qobject::PlaylistItemSelectStorage {
-    // ── крючки общего движка ──────────────────────────────────────────────
+    // ── hooks of the shared engine ────────────────────────────────────────
 
-    /// `keepActiveWithoutSelection` этого уровня: пока плейлист задан,
-    /// режим выбора держится и на пустом выборе — иначе плейлист нельзя
-    /// было бы опустошить целиком.
+    /// `keepActiveWithoutSelection` of this level: while a playlist is set,
+    /// selection mode holds even with an empty selection — otherwise the
+    /// playlist could not be emptied entirely.
     fn keep_active(&self) -> bool {
         self.playlist_id > 0
     }
 
-    /// Обработчик `selectedCountChanged`, который оригинал вешает в
-    /// конструкторе подкласса: пересчитать порядок добавленных.
+    /// The `selectedCountChanged` handler that the original attaches in the
+    /// subclass constructor: recompute the order of the added items.
     fn after_selected_count_changed(self: Pin<&mut Self>) {
         self.sync_new_entry_order();
     }
 
-    // ── свойства уровня ───────────────────────────────────────────────────
+    // ── level properties ──────────────────────────────────────────────────
 
     fn playlist_id(&self) -> f64 {
         crate::qvalue::i64_to_qml(self.playlist_id)
@@ -306,7 +313,7 @@ impl qobject::PlaylistItemSelectStorage {
         QStringList::from_iter(self.initial_entry_ids.iter().map(QString::from))
     }
 
-    // ── инвокаблы уровня ──────────────────────────────────────────────────
+    // ── level invokables ──────────────────────────────────────────────────
 
     fn begin_playlist_items(
         mut self: Pin<&mut Self>,
@@ -314,8 +321,8 @@ impl qobject::PlaylistItemSelectStorage {
         revision: f64,
         entry_ids: &QStringList,
     ) {
-        // Порядок как у оригинала: сначала СБРОС базы (старый выбор не
-        // должен просочиться в новый плейлист), потом новое состояние.
+        // Order as in the original: first RESET the base (the old selection must
+        // not leak into the new playlist), then the new state.
         self.as_mut().clear_base();
         {
             let mut rust = self.as_mut().rust_mut();
@@ -346,14 +353,14 @@ impl qobject::PlaylistItemSelectStorage {
             .map(cxx_qt_lib::QString::to_string)
             .collect();
         let mut emitted: Vec<String> = Vec::new();
-        // Сначала уцелевшие из исходного состава — в порядке плейлиста.
+        // First the survivors of the original contents — in playlist order.
         for entry_id in &self.initial_entry_ids {
             if !selected.contains(entry_id) || emitted.contains(entry_id) {
                 continue;
             }
             emitted.push(entry_id.clone());
         }
-        // Затем добавленные — в порядке добавления.
+        // Then the added ones — in the order of adding.
         for entry_id in &self.new_entry_ids {
             if entry_id.is_empty() || emitted.contains(entry_id) {
                 continue;
@@ -363,8 +370,8 @@ impl qobject::PlaylistItemSelectStorage {
             }
             emitted.push(entry_id.clone());
         }
-        // Хвост: выбранное, о котором мы ещё не знаем (модель сменилась
-        // между сигналами) — ветка оригинала, а не подстраховка.
+        // Tail: selected items we do not know about yet (the model changed between
+        // signals) — the original's branch, not a safety net.
         for entry_id in &selected {
             if entry_id.is_empty() || emitted.contains(entry_id) {
                 continue;
@@ -378,8 +385,9 @@ impl qobject::PlaylistItemSelectStorage {
         out
     }
 
-    /// Порядок как у оригинала: сначала снимается плейлист (иначе
-    /// `keepActiveWithoutSelection` не даст выйти из режима), потом выбор.
+    /// Order as in the original: first the playlist is cleared (otherwise
+    /// `keepActiveWithoutSelection` would not let us leave the mode), then the
+    /// selection.
     fn clear(mut self: Pin<&mut Self>) {
         let had_playlist = self.playlist_id > 0
             || self.revision > 0
@@ -397,11 +405,12 @@ impl qobject::PlaylistItemSelectStorage {
         self.clear_base();
     }
 
-    // ── внутреннее ────────────────────────────────────────────────────────
+    // ── internals ─────────────────────────────────────────────────────────
 
-    /// `syncNewEntryOrder` оригинала: снятое с выбора забывается, а
-    /// незнакомое выбранное дописывается в конец — так добавленные
-    /// сохраняют порядок добавления, а не порядок в списке библиотеки.
+    /// The original's `syncNewEntryOrder`: what was deselected is forgotten,
+    /// and unknown selected items are appended at the end — that way the added
+    /// items keep the order of adding rather than the order in the library
+    /// list.
     fn sync_new_entry_order(mut self: Pin<&mut Self>) {
         let selected: Vec<String> = self
             .selected_keys()

@@ -1,7 +1,9 @@
-// DdeLookActions — объект раздела «Окна Deepin» вкладки «Настройки»:
-// объяснение, где в Deepin меняются углы, прозрачность и акцент окон.
+// DdeLookActions — the object of the "Deepin windows" section of the
+// "Settings" tab: an explanation of where window corners, transparency and
+// accent are changed in Deepin.
 //
-// Логики здесь нет: снимок — ядро (`rexon_core::dde::read_state`).
+// There is no logic here: the snapshot comes from the core
+// (`rexon_core::dde::read_state`).
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -17,7 +19,7 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Снимок раздела (JSON `dde::LookState`).
+        /// Section snapshot (JSON `dde::LookState`).
         #[qinvokable]
         fn state(self: &DdeLookActions) -> QString;
     }
@@ -32,7 +34,8 @@ pub struct DdeLookActionsRust;
 impl qobject::DdeLookActions {
     fn state(&self) -> cxx_qt_lib::QString {
         let de = LookCtx::from_env().de;
-        // Опознание Treeland — только в сеансе Deepin: вне его раздел скрыт.
+        // Treeland detection — only in a Deepin session: outside it the section is
+        // hidden.
         let state = dde::read_state(&de, de == "deepin" && dde::treeland_session_live());
         cxx_qt_lib::QString::from(&serde_json::to_string(&state).unwrap_or_default())
     }

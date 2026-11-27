@@ -1,3 +1,4 @@
+pragma Singleton
 pragma ComponentBehavior: Bound
 import QtCore
 import QtQml
@@ -6,6 +7,7 @@ QtObject {
     id: root
 
     property string settingsCategory: "DiscoverView"
+    signal filtersChanged(string sourceId)
 
     readonly property Settings settings: Settings {
         category: root.settingsCategory
@@ -13,10 +15,35 @@ QtObject {
         property string filtersJson: "{}"
         property string matchModesJson: "{}"
         property string excludedTagsJson: "{}"
+        property string hiddenBadgesJson: "{}"
     }
 
     function selectedSourceId() {
         return settings.selectedSourceId;
+    }
+
+    function hiddenBadgesFor(sourceId) {
+        try {
+            const state = JSON.parse(settings.hiddenBadgesJson);
+            const values = state?.[sourceId];
+            return Array.isArray(values) ? normalize(values) : [];
+        } catch (error) {
+            return [];
+        }
+    }
+    function setBadgeVisible(sourceId, id, visible) {
+        if (sourceId.length === 0 || id.length === 0)
+            return;
+        const next = hiddenBadgesFor(sourceId).filter(value => value !== id);
+        if (!visible)
+            next.push(id);
+        settings.hiddenBadgesJson = valuesJson(settings.hiddenBadgesJson, sourceId, next);
+    }
+    function visibleBadges(sourceId, badges, definitions) {
+        const allowed = (definitions ?? []).map(definition => definition.id);
+        const hidden = hiddenBadgesFor(sourceId);
+        return (badges ?? []).filter(badge => allowed.indexOf(badge.id) >= 0
+            && hidden.indexOf(badge.id) < 0).map(badge => badge.text);
     }
 
     function setSelectedSourceId(sourceId) {
@@ -74,11 +101,13 @@ QtObject {
     }
 
     function setExcludedTagsFor(sourceId, values) {
-        if (sourceId.length === 0)
-            return;
+        setFilterSelectionFor(sourceId, filterValuesFor(sourceId), values);
+    }
+
+    function valuesJson(json, sourceId, values) {
         let state = {};
         try {
-            const parsed = JSON.parse(settings.excludedTagsJson);
+            const parsed = JSON.parse(json);
             if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
                 state = parsed;
         } catch (error) {
@@ -88,7 +117,7 @@ QtObject {
             state[sourceId] = normalized;
         else
             delete state[sourceId];
-        settings.excludedTagsJson = JSON.stringify(state);
+        return JSON.stringify(state);
     }
 
     function matchModesFor(sourceId) {
@@ -102,21 +131,27 @@ QtObject {
         const state = readMatchModes();
         state[sourceId] = modes;
         const next = JSON.stringify(state);
-        if (settings.matchModesJson !== next)
-            settings.matchModesJson = next;
+        if (settings.matchModesJson === next)
+            return;
+        settings.matchModesJson = next;
+        filtersChanged(sourceId);
     }
 
     function setFilterValuesFor(sourceId, values) {
+        setFilterSelectionFor(sourceId, values, excludedTagsFor(sourceId));
+    }
+
+    function setFilterSelectionFor(sourceId, values, excluded) {
         if (sourceId.length === 0)
             return;
-        const state = readFilters();
-        const normalized = normalize(values);
-        if (normalized.length > 0)
-            state[sourceId] = normalized;
-        else
-            delete state[sourceId];
-        const next = JSON.stringify(state);
-        if (settings.filtersJson !== next)
-            settings.filtersJson = next;
+        const included = normalize(values);
+        const exclusions = normalize(excluded).filter(value => included.indexOf(value) < 0);
+        const nextValues = valuesJson(settings.filtersJson, sourceId, included);
+        const nextExcluded = valuesJson(settings.excludedTagsJson, sourceId, exclusions);
+        if (settings.filtersJson === nextValues && settings.excludedTagsJson === nextExcluded)
+            return;
+        settings.filtersJson = nextValues;
+        settings.excludedTagsJson = nextExcluded;
+        filtersChanged(sourceId);
     }
 }

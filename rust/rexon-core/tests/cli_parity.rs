@@ -1,31 +1,31 @@
-//! Сторож точки входа: Rust-вход понимает ВСЁ, что понимает продукт.
+//! Entry point guard: the Rust entry understands EVERYTHING the product understands.
 //!
-//! ЗАЧЕМ. Незнакомый аргумент Qt молча игнорирует, поэтому пропущенный флаг
-//! не падает и не ругается — он просто открывает обычное окно вместо
-//! обещанной работы. Дефект такого вида нельзя увидеть глазами: и с
-//! флагом, и без него на экране одно и то же. Значит его обязан ловить
-//! сторож, читающий ОБА исходника.
+//! WHY. Qt silently ignores an unknown argument, so a missing flag
+//! neither crashes nor complains — it just opens the normal window instead of
+//! the promised work. A defect of this kind cannot be seen by eye: with
+//! the flag and without it the screen looks the same. So it must be caught by
+//! a guard that reads BOTH sources.
 //!
-//! ЧТО СТЕРЕЖЁМ. Ожидания — эталон `tests/golden/cli_cases.json`
-//! (`include_str!`, то есть пересобирается при любой правке эталона);
-//! проверки краснеют сами:
+//! WHAT WE GUARD. The expectations are the golden file `tests/golden/cli_cases.json`
+//! (`include_str!`, i.e. rebuilt on any edit of the golden file);
+//! the checks turn red on their own:
 //!
-//!   1. каждый служебный флаг эталона либо отработан в
-//!      [`rexon_core::cli::run_headless`] с кодом возврата, либо переведён
-//!      в раздел окна — молча провалиться в главное окно не может ни один;
-//!   2. каталоги переводов самой Qt и разделитель — как в эталоне, иначе
-//!      посреди русского окна снова появятся английские кнопки Qt (язык и
-//!      откат — язык Rexon, откат на английский);
-//!   3. бюджет и ломоть стока фоновых задач — как в эталоне.
+//!   1. every service flag of the golden file is either handled in
+//!      [`rexon_core::cli::run_headless`] with an exit code, or routed
+//!      to a window section — not one of them can silently fall into the main window;
+//!   2. Qt's own translation catalogs and the separator are as in the golden file, otherwise
+//!      English Qt buttons will again appear in the middle of a Russian window (language and
+//!      fallback — the Rexon language, fallback to English);
+//!   3. the budget and the slice of the background task drain are as in the golden file.
 //!
-//! ПРОИСХОЖДЕНИЕ ЭТАЛОНА. Значения сняты с прежней точки входа на Python
-//! (`rexon/app.py`, `rexon/qt_main/app.py`, `rexon/utils.py`); до 02.10.2026
-//! сверка читала их замороженные исходники. По решению владельца 02.10.2026
-//! Python в Rexon — только архив, и эталон стал собственным договором Rust:
-//! правка нашей стороны красит сверку, пока эталон не поправили осознанно.
+//! ORIGIN OF THE GOLDEN FILE. The values were captured from the former Python entry point
+//! (`rexon/app.py`, `rexon/qt_main/app.py`, `rexon/utils.py`); until 02.10.2026
+//! the check read their frozen sources. By the owner's decision of 02.10.2026
+//! Python in Rexon is only an archive, and the golden file became Rust's own contract:
+//! an edit on our side turns the check red until the golden file is updated deliberately.
 //!
-//! Ни один прогон здесь ничего не запускает и не пишет: маршруты
-//! проверяются на разборе аргументов, а не на исполнении.
+//! No run here launches or writes anything: the routes
+//! are checked on argument parsing, not on execution.
 
 use rexon_core::{app, cli, exit_guard};
 
@@ -47,7 +47,7 @@ fn argv(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
 
-/// Отработать маршрут «на сухую»: печать собирается, ничего не запускается.
+/// Run a route "dry": the output is collected, nothing is launched.
 fn dry(flag: &str) -> (Option<i32>, Vec<String>) {
     let mut said: Vec<String> = Vec::new();
     let rc = {
@@ -58,12 +58,12 @@ fn dry(flag: &str) -> (Option<i32>, Vec<String>) {
 }
 
 // ============================================================================
-// 1. Ни одна ветка маршрута не проваливается в главное окно молча
+// 1. No branch of the route silently falls into the main window
 // ============================================================================
 
-/// Флаги служебных маршрутов — те, что разбираются ДО Qt. Список из
-/// эталона: каждый флаг обязан вести в СВОЙ маршрут, поэтому
-/// переименованный у нас флаг красит сторож, а не тихо выпадает из проверки.
+/// Service route flags — the ones parsed BEFORE Qt. The list comes from the
+/// golden file: every flag must lead to ITS OWN route, so a flag renamed
+/// on our side turns the guard red rather than quietly dropping out of the check.
 fn headless_flags() -> Vec<String> {
     strings(&golden()["headless_flags"])
 }
@@ -86,9 +86,9 @@ fn headless_flags_lead_to_their_own_routes() {
     assert_eq!(app::RECOVER_KDE_FLAG, recover, "флаг аварийного отката");
 }
 
-/// ⭐ ГЛАВНАЯ ПРОВЕРКА. У служебного флага ОБЯЗАН быть код возврата: Python
-/// отдавал 0/1 (`return 0 if ok else 1`), Rust-бинарь до правки не отдавал
-/// вовсе — autostart-хук отчитывался нулём при неудаче.
+/// ⭐ THE MAIN CHECK. A service flag MUST have an exit code: Python
+/// returned 0/1 (`return 0 if ok else 1`), the Rust binary before the fix returned
+/// nothing at all — the autostart hook reported zero on failure.
 #[test]
 fn у_каждого_служебного_флага_есть_код_возврата() {
     for flag in headless_flags() {
@@ -98,28 +98,28 @@ fn у_каждого_служебного_флага_есть_код_возвр�
             "флаг {flag} разбирается как главное окно"
         );
     }
-    // ⛔ САМ ПРОГОН ЗДЕСЬ НЕ ДЕЛАЕТСЯ НИ ДЛЯ ОДНОГО ИЗ НИХ: у всех четырёх
-    // побочные действия на живой машине. `--apply-defaults` применяет
-    // дефолты приложений, `--session-splash` запускает mpv,
-    // `--sanitize-gtk` правит конфиги GTK, а `--recover-kde` меняет тему,
-    // экран входа и обои владельца. Порядок шагов и слова каждого маршрута
-    // проверяются на ПОДСТАВНОМ вводе-выводе в сверках его исполнителя
-    // (`system_exec_parity.rs`, `appdefaults_exec_parity.rs`), где живой
-    // машины нет вовсе.
+    // ⛔ THE RUN ITSELF IS NOT DONE HERE FOR ANY OF THEM: all four have
+    // side effects on a live machine. `--apply-defaults` applies the
+    // application defaults, `--session-splash` launches mpv,
+    // `--sanitize-gtk` edits GTK configs, and `--recover-kde` changes the owner's theme,
+    // login screen and wallpaper. The order of steps and the words of each route
+    // are checked on FAKE I/O in the checks of its executor
+    // (`system_exec_parity.rs`, `appdefaults_exec_parity.rs`), where there is no live
+    // machine at all.
     assert_eq!(
         app::route(&argv(&["--recover-kde"])),
         app::Route::RecoverKde,
         "--recover-kde обязан оставаться маршрутом с кодом возврата"
     );
-    // Прогнать безопасно только маршруты ОКНА: побочных действий у них нет,
-    // и кода возврата они не дают — окно поднимает бинарь.
+    // Only WINDOW routes are safe to run: they have no side effects,
+    // and they give no exit code — the binary raises the window.
     let (rc, said) = dry("--settings-qt");
     assert_eq!(rc, None, "флаг вкладки открывает окно, а не выходит кодом");
     assert!(said.is_empty(), "и ничего не печатает: {said:?}");
 }
 
-/// Пять флагов одиночных вкладок продукта переведены в разделы окна — ни
-/// один не открывает раздел по умолчанию.
+/// The five flags of the product's single tabs are routed to window sections — not
+/// one of them opens the default section.
 #[test]
 fn каждый_флаг_одиночной_вкладки_открывает_свой_раздел() {
     let ours: Vec<String> = app::SINGLE_TAB_FLAGS.iter().map(|(f, _)| f.to_string()).collect();
@@ -140,8 +140,8 @@ fn каждый_флаг_одиночной_вкладки_открывает_с
     }
 }
 
-/// Имена из ярлыка рабочего стола продолжают переводиться — тем же
-/// переводом, что у продукта, а не второй копией таблицы.
+/// Names from the desktop shortcut are still translated — by the same
+/// translation as the product's, not by a second copy of the table.
 #[test]
 fn имена_из_ярлыка_переводятся_как_у_продукта() {
     for (page, section, subpage) in app::PAGE_TARGETS {
@@ -154,13 +154,13 @@ fn имена_из_ярлыка_переводятся_как_у_продукт�
 }
 
 // ============================================================================
-// 2. Русские надписи на кнопках самой Qt
+// 2. Russian labels on Qt's own buttons
 // ============================================================================
 
-/// Каталоги переводов самой Qt — как в эталоне, в том же порядке, плюс
-/// НАМЕРЕННО добавленный `qtdeclarative`: эталон жил на QtWidgets, а меню
-/// правки полей QML (`TextArea`, `TextField`) Qt Quick переводит своим
-/// каталогом (08.11.2026: без него меню было английским при русском Rexon).
+/// Qt's own translation catalogs — as in the golden file, in the same order, plus
+/// a DELIBERATELY added `qtdeclarative`: the golden file lived on QtWidgets, while the edit menu
+/// of QML fields (`TextArea`, `TextField`) is translated by Qt Quick with its own
+/// catalog (08.11.2026: without it the menu was English with Rexon in Russian).
 #[test]
 fn qt_translation_catalogs_match_the_golden() {
     let ours: Vec<String> = cli::QT_TRANSLATION_CATALOGS.iter().map(|c| c.to_string()).collect();
@@ -171,11 +171,11 @@ fn qt_translation_catalogs_match_the_golden() {
     assert_eq!(ours.first().map(String::as_str), Some("qtbase"), "qtbase — первым");
 }
 
-/// Разделитель — как в эталоне. Язык отката — НАМЕРЕННО не прежний:
-/// Python-оригинал грузил каталог по языку СИСТЕМЫ и откатывался на
-/// `qtbase_ru` (весь его интерфейс был русским). У Rexon с переводом язык
-/// кнопок Qt — язык самого Rexon, а откат — на английский, то есть никакого
-/// каталога.
+/// The separator — as in the golden file. The fallback language is DELIBERATELY not the old one:
+/// the Python original loaded the catalog by the SYSTEM language and fell back to
+/// `qtbase_ru` (its whole interface was Russian). In Rexon with translations the language of
+/// Qt buttons is the language of Rexon itself, and the fallback is English, i.e. no
+/// catalog at all.
 #[test]
 fn separator_matches_the_golden_and_fallback_is_english() {
     assert_eq!(
@@ -193,10 +193,10 @@ fn separator_matches_the_golden_and_fallback_is_english() {
     assert_eq!(cli::qt_translation_files("ru", dir, &only_ru).len(), 2);
 }
 
-/// Переводчик обязан быть объектом Qt, а не питоновским: питоновский
-/// зовётся из потока загрузки QML и намертво сцепляет потоки через GIL.
-/// В Rust-входе питоновского нет по построению — стережём, чтобы шим не
-/// подменили обработкой в Rust.
+/// The translator must be a Qt object, not a Python one: a Python one
+/// is called from the QML loading thread and deadlocks the threads through the GIL.
+/// The Rust entry has no Python one by construction — we guard that the shim is not
+/// replaced by handling in Rust.
 #[test]
 fn перевод_кнопок_идёт_каталогом_а_не_колбэком() {
     const SHIM_H: &str = include_str!("../../rexon-gui/cpp/rexon_gui_factory.h");
@@ -213,15 +213,15 @@ fn перевод_кнопок_идёт_каталогом_а_не_колбэк�
         SHIM_CPP.contains("QLibraryInfo::path"),
         "каталог обязан браться у самой Qt, а не носиться своим"
     );
-    // Меню правки полей QML: где у `qtdeclarative` перевода нет (Qt 6.12:
-    // ru, zh_CN), надписи берутся из `qtbase` (контекст `QLineEdit`).
+    // Edit menu of QML fields: where `qtdeclarative` has no translation (Qt 6.12:
+    // ru, zh_CN), the labels are taken from `qtbase` (the `QLineEdit` context).
     for needle in ["RexonQuickEditMenuTranslator", "\"SelectAllAction\"", "\"QLineEdit\""] {
         assert!(SHIM_CPP.contains(needle), "в шиме нет {needle}: меню правки QML снова английское");
     }
 }
 
-/// Каталоги Qt ставит КАЖДЫЙ процесс с окном Qt — у окна о крахе тоже есть
-/// поле с отчётом и его меню правки.
+/// EVERY process with a Qt window installs the Qt catalogs — the crash window also has
+/// a report field with its edit menu.
 #[test]
 fn каталоги_qt_ставит_каждое_окно() {
     const MAIN: &str = include_str!("../../rexon-gui/src/bin/main_window.rs");
@@ -231,7 +231,7 @@ fn каталоги_qt_ставит_каждое_окно() {
 }
 
 // ============================================================================
-// 3. Сток фоновых задач
+// 3. Background task drain
 // ============================================================================
 
 #[test]
@@ -249,9 +249,9 @@ fn stop_budget_and_slice_match_the_golden() {
     );
 }
 
-/// Порядок обязателен: сначала ПОПРОСИТЬ (сетевые запросы рвутся на месте),
-/// потом ждать. Ждать не попросив — значит досидеть до конца сетевого
-/// таймаута, а это и есть «закрытие висло до 30 секунд» у оригинала.
+/// The order is mandatory: first ASK (network requests are cut on the spot),
+/// then wait. Waiting without asking means sitting out the whole network
+/// timeout, and that is exactly the original's "closing hung for up to 30 seconds".
 #[test]
 fn сток_просит_остановиться_прежде_чем_ждать() {
     use std::sync::atomic::{AtomicUsize, Ordering};

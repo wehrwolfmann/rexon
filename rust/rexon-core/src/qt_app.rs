@@ -1,107 +1,110 @@
-//! Порт чистой части точек входа Qt — `rexon/qt_main/app.py` и четырёх
-//! мелких (`qt_extensions/app.py`, `qt_settings/app.py`, `qt_desktops/app.py`,
-//! `qt_compare/app.py`).
+//! Port of the pure part of the Qt entry points — `rexon/qt_main/app.py` and
+//! four small ones (`qt_extensions/app.py`, `qt_settings/app.py`,
+//! `qt_desktops/app.py`, `qt_compare/app.py`).
 //!
-//! Маршрутизация флагов и аварийный откат KDE живут в [`crate::app`] (порт
-//! `rexon/app.py`) — сюда переехало то, чего там нет: **отчёт о крахе** и
-//! **идентичность приложения Qt**.
+//! Flag routing and the KDE emergency rollback live in [`crate::app`] (port of
+//! `rexon/app.py`) — what moved here is what is not there: the **crash report**
+//! and the **Qt application identity**.
 //!
-//! ГРАНИЦА. В ядре — решения, тексты и форматы:
-//!   * шапка отчёта, имя файла, ротация каталога, содержимое диалога,
-//!     решение «печатать/сохранять/показывать» по типу исключения и потоку;
-//!   * таблица `applicationName`/`applicationDisplayName`/`organizationName`/
-//!     `desktopFileName` для каждой точки входа.
+//! BOUNDARY. The core holds decisions, texts and formats:
+//!   * the report header, the file name, directory rotation, the dialog
+//!     contents, the "print/save/show" decision by exception type and thread;
+//!   * the table of `applicationName`/`applicationDisplayName`/
+//!     `organizationName`/`desktopFileName` for each entry point.
 //!
-//! За Qt-слоем остаётся исполнение: сам `QApplication` и вызовы сеттеров,
-//! `QMessageBox` (сборка окна по [`CrashDialog`]), буфер обмена, запуск
-//! `xdg-open`, `faulthandler`/`SIGUSR1`, guard от SEGV нативных диалогов
-//! (KDE 521894), логгер сообщений Qt, скин и прозрачная иконка окна. Ядро не
-//! пишет на диск: файловые операции отчёта идут через трейт [`CrashIo`]
-//! (как `ImpIo` в `importers`), поэтому тесты реальную ФС не трогают.
+//! Execution stays behind the Qt layer: the `QApplication` itself and the setter
+//! calls, `QMessageBox` (building the window from [`CrashDialog`]), the
+//! clipboard, launching `xdg-open`, `faulthandler`/`SIGUSR1`, the guard against
+//! SEGV of native dialogs (KDE 521894), the Qt message logger, the skin and the
+//! transparent window icon. The core does not write to disk: the report's file
+//! operations go through the [`CrashIo`] trait (like `ImpIo` in `importers`), so
+//! tests do not touch the real file system.
 //!
-//! ГРАБЛИ ОРИГИНАЛА ПОЧИНЕНЫ (правило #16, каждая помечена `Починка:` по
-//! месту):
-//!   1. `_crash_header()` звался ДВАЖДЫ — отдельно для файла и отдельно для
-//!      диалога, поэтому строка `Time:` в сохранённом логе и в тексте окна
-//!      расходились (а по ним потом сопоставляют отчёт покупателя с логом);
-//!      здесь шапка строится один раз и передаётся обоим.
-//!   2. `SystemExit` не был исключением-«молчуном». В рабочем потоке
-//!      `sys.exit()` доходит до `threading.excepthook` (проверено на CPython
-//!      3.14), и штатный выход воркера показывал покупателю «Rexon
-//!      неожиданно завершился» и писал отчёт о крахе; здесь `SystemExit`
-//!      приравнен к `KeyboardInterrupt`.
-//!   3. Диалог строился прямо в том потоке, где случилось исключение:
-//!      `threading.excepthook` → `QMessageBox` вне потока GUI = abort Qt.
-//!      Показ диалога не отменён (иначе покупатель Steam опять ничего не
-//!      увидит) — решение несёт флаг
-//!      [`CrashDecision::dialog_needs_main_thread_hop`], по которому Qt-слой
-//!      обязан перебросить показ в поток GUI.
-//!   4. Путь сохранённого лога терялся, если после успешной записи падал
-//!      обход каталога: ротация была внутри общего `try`, и функция
-//!      возвращала `None` при уже существующем файле — диалог тогда молчал
-//!      про сохранённый отчёт. Здесь ошибка ротации путь не отменяет.
+//! PITFALLS OF THE ORIGINAL ARE FIXED (rule #16, each marked `Fix:` in place):
+//!   1. `_crash_header()` was called TWICE — separately for the file and
+//!      separately for the dialog, so the `Time:` line in the saved log and in
+//!      the window text diverged (and those are what a buyer's report is later
+//!      matched to the log by); here the header is built once and passed to
+//!      both.
+//!   2. `SystemExit` was not a "silent" exception. In a worker thread
+//!      `sys.exit()` reaches `threading.excepthook` (checked on CPython 3.14),
+//!      and a regular worker exit showed the buyer "Rexon quit unexpectedly" and
+//!      wrote a crash report; here `SystemExit` is treated like
+//!      `KeyboardInterrupt`.
+//!   3. The dialog was built right in the thread where the exception happened:
+//!      `threading.excepthook` → `QMessageBox` outside the GUI thread = a Qt
+//!      abort. Showing the dialog is not cancelled (otherwise a Steam buyer would
+//!      again see nothing) — the decision carries the flag
+//!      [`CrashDecision::dialog_needs_main_thread_hop`], by which the Qt layer
+//!      must hand the showing over to the GUI thread.
+//!   4. The path of the saved log was lost if walking the directory failed after
+//!      a successful write: rotation was inside a shared `try`, and the function
+//!      returned `None` with the file already existing — the dialog then said
+//!      nothing about the saved report. Here a rotation error does not cancel the
+//!      path.
 //!
-//! Эталон — `tests/golden/qt_app_cases.json`, снятый прогоном ЖИВОГО
-//! `rexon.qt_main.app`: `_crash_header` с подменёнными источниками времени и
-//! окружения, `_save_crash_log` во временном каталоге, `_show_crash_dialog` и
-//! `_install_excepthook` с записывающими заглушками Qt. Сверка —
-//! `tests/qt_app_parity.rs`.
+//! The reference is `tests/golden/qt_app_cases.json`, captured by running the
+//! LIVE `rexon.qt_main.app`: `_crash_header` with substituted time and
+//! environment sources, `_save_crash_log` in a temporary directory,
+//! `_show_crash_dialog` and `_install_excepthook` with recording Qt stubs. The
+//! check is `tests/qt_app_parity.rs`.
 
 use crate::ext_utils::py_repr_str;
 use crate::i18n::{tr, trf};
 
 // ============================================================================
-// Платформа Qt
+// Qt platform
 // ============================================================================
 
-/// Надо ли снять `QT_QPA_PLATFORM` из окружения.
+/// Whether `QT_QPA_PLATFORM` must be removed from the environment.
 ///
-/// Под KDE Plasma 6 на Wayland ПУСТАЯ переменная мешает Qt выбрать нативный
-/// wayland-плагин, поэтому её удаляют. Непустое значение (в том числе `xcb`)
-/// уважается: форсировать `xcb` нельзя — KWin не рисует SSD для xcb-окон
-/// через Xwayland, окно остаётся без заголовка и кнопок.
+/// Under KDE Plasma 6 on Wayland an EMPTY variable prevents Qt from choosing the
+/// native wayland plugin, so it is removed. A non-empty value (including `xcb`)
+/// is respected: `xcb` must not be forced — KWin does not draw SSD for xcb
+/// windows through Xwayland, and the window stays without a title bar and
+/// buttons.
 pub fn should_unset_qt_platform(value: Option<&str>) -> bool {
     value == Some("")
 }
 
 // ============================================================================
-// Идентичность приложения Qt
+// Qt application identity
 // ============================================================================
 
-/// Организация — общая на все точки входа.
+/// The organization — shared by all entry points.
 pub const ORGANIZATION_NAME: &str = "OpenAxon";
 
-/// Имя `.desktop`-файла без расширения. KDE Plasma 6 / Wayland по нему
-/// связывает процесс с `/usr/share/applications/rexon.desktop` и берёт оттуда
-/// иконку для панели задач; без него app_id пустой и плазма рисует дефолтный
-/// логотип Wayland.
+/// Name of the `.desktop` file without the extension. KDE Plasma 6 / Wayland
+/// uses it to associate the process with `/usr/share/applications/rexon.desktop`
+/// and takes the taskbar icon from there; without it the app_id is empty and
+/// Plasma draws the default Wayland logo.
 pub const DESKTOP_FILE_NAME: &str = "rexon";
 
-/// Письменность, для которой приложение ставит свой запасной шрифт.
-/// Перечень наш, а не `QChar::Script`: число за письменностью Qt знает
-/// прослойка (`cpp/rexon_gui_factory.cpp`), ядро говорит только «какая».
+/// A script for which the application sets its own fallback font. The list is
+/// ours, not `QChar::Script`: the Qt number behind a script is known by the glue
+/// layer (`cpp/rexon_gui_factory.cpp`); the core only says "which one".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum FallbackScript {
-    /// Арабское письмо — арабский и персидский.
+    /// Arabic script — Arabic and Persian.
     Arabic = 0,
-    /// Еврейское письмо — иврит.
+    /// Hebrew script — Hebrew.
     Hebrew = 1,
 }
 
-/// Запасные шрифты письменностей справа налево. Без них fontconfig отдаёт
-/// первым DejaVu Sans: арабский у него без вариантов UI-высоты, иврит —
-/// неполный, и строка выходит разнобойной. Семейства — из `noto-fonts`
-/// (зависимость пакета задана явно, а не транзитом от `qt6-webengine`).
-/// `Noto Sans Arabic UI`, а не `Noto Sans Arabic`: у UI-варианта высота
-/// строки подогнана под интерфейс и не раздвигает списки.
+/// Fallback fonts for right-to-left scripts. Without them fontconfig gives
+/// DejaVu Sans first: its Arabic has no UI-height variants, its Hebrew is
+/// incomplete, and the line comes out uneven. The families come from
+/// `noto-fonts` (the package dependency is set explicitly, not transitively via
+/// `qt6-webengine`). `Noto Sans Arabic UI` rather than `Noto Sans Arabic`: the UI
+/// variant has a line height tuned for interfaces and does not stretch lists.
 pub const RTL_FALLBACK_FONTS: [(FallbackScript, &str); 2] = [
     (FallbackScript::Arabic, "Noto Sans Arabic UI"),
     (FallbackScript::Hebrew, "Noto Sans Hebrew"),
 ];
 
-/// Что точка входа сообщает о себе `QApplication`. `None` — сеттер в
-/// оригинале не вызывается вовсе (это НЕ то же самое, что пустая строка).
+/// What an entry point tells `QApplication` about itself. `None` — the setter is
+/// not called at all in the original (this is NOT the same as an empty string).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QtIdentity {
     pub application_name: &'static str,
@@ -110,21 +113,23 @@ pub struct QtIdentity {
     pub desktop_file_name: Option<&'static str>,
 }
 
-/// Идентичность по имени Python-модуля точки входа. Ключи совпадают со
-/// значениями [`crate::app::SINGLE_TAB_FLAGS`], чтобы маршрут и идентичность
-/// не могли разойтись (правило #12).
+/// Identity by the name of the entry point's Python module. The keys match the
+/// values of [`crate::app::SINGLE_TAB_FLAGS`], so that routing and identity
+/// cannot diverge (rule #12).
 ///
-/// Первые шесть — окна с вкладками. Остальные пять — хосты движков обоев
-/// (класс D плана ухода с PySide6): они ставят только имя приложения и
-/// `desktopFileName`, организацию и отображаемое имя не трогают.
+/// The first six are windows with tabs. The other five are wallpaper engine
+/// hosts (class D of the plan for leaving PySide6): they set only the
+/// application name and `desktopFileName`, and do not touch the organization and
+/// the display name.
 pub const ENTRY_IDENTITIES: &[(&str, QtIdentity)] = &[
     (
         "rexon.qt_main.app",
         QtIdentity {
             application_name: "Rexon",
-            // Пустая строка — НАМЕРЕННО, а не «не задано»: KWin/Qt клеит
-            // displayName в хвост заголовка («<title> — <displayName>»), а все
-            // окна и так начинаются с «Rexon — …», и «Rexon» дублировался бы.
+            // An empty string — ON PURPOSE, not "unset": KWin/Qt glues the
+            // displayName onto the end of the title ("<title> — <displayName>"), and
+            // all windows already start with "Rexon — …", so "Rexon" would be
+            // duplicated.
             display_name: Some(""),
             organization_name: Some(ORGANIZATION_NAME),
             desktop_file_name: Some(DESKTOP_FILE_NAME),
@@ -231,7 +236,7 @@ pub const ENTRY_IDENTITIES: &[(&str, QtIdentity)] = &[
     ),
 ];
 
-/// Идентичность точки входа по имени Python-модуля.
+/// Identity of an entry point by the name of its Python module.
 pub fn identity(module: &str) -> Option<QtIdentity> {
     ENTRY_IDENTITIES
         .iter()
@@ -240,10 +245,10 @@ pub fn identity(module: &str) -> Option<QtIdentity> {
 }
 
 // ============================================================================
-// Время отчёта
+// Report time
 // ============================================================================
 
-/// Момент времени без часового пояса — ровно то, что оригинал берёт из
+/// A moment in time without a time zone — exactly what the original takes from
 /// `datetime.datetime.now()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Timestamp {
@@ -257,16 +262,16 @@ pub struct Timestamp {
 }
 
 impl Timestamp {
-    /// МЕСТНОЕ время прямо сейчас — порт `datetime.datetime.now()`.
+    /// LOCAL time right now — port of `datetime.datetime.now()`.
     ///
-    /// `None` — часовой пояс не читается (сломанный `/etc/localtime`,
-    /// урезанный контейнер). Это НЕ повод падать: вызывающий решает сам, чем
-    /// заменить метку.
+    /// `None` — the time zone cannot be read (a broken `/etc/localtime`, a trimmed
+    /// container). This is NOT a reason to crash: the caller decides what to
+    /// replace the mark with.
     ///
-    /// ⚠️ Именно МЕСТНОЕ, а не UTC: этой меткой называются копии панели и
-    /// файлы отчётов, и человек ищет их глазами по своему времени. Второго
-    /// обращения к `localtime_r` в продукте быть не должно (правило #12) —
-    /// всё, чему нужны местные часы, зовёт эту функцию.
+    /// Warning: it is LOCAL time, not UTC: panel copies and report files are named
+    /// by this mark, and a person looks for them by eye using their own time. There
+    /// must be no second call to `localtime_r` in the product (rule #12) —
+    /// everything that needs the local clock calls this function.
     pub fn now_local() -> Option<Self> {
         let epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -287,8 +292,8 @@ impl Timestamp {
         })
     }
 
-    /// Порт `datetime.isoformat()`: дробная часть печатается ТОЛЬКО когда
-    /// микросекунды не нулевые (шесть знаков, без округления до миллисекунд).
+    /// Port of `datetime.isoformat()`: the fractional part is printed ONLY when the
+    /// microseconds are non-zero (six digits, without rounding to milliseconds).
     pub fn isoformat(&self) -> String {
         let base = format!(
             "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
@@ -301,9 +306,9 @@ impl Timestamp {
         }
     }
 
-    /// Порт `strftime("%Y%m%d_%H%M%S")` — основа имени файла отчёта. Формат
-    /// выбран так, что сортировка имён по алфавиту = сортировка по времени,
-    /// на этом держится ротация.
+    /// Port of `strftime("%Y%m%d_%H%M%S")` — the basis of the report file name. The
+    /// format is chosen so that alphabetical sorting of names = sorting by time;
+    /// rotation relies on this.
     pub fn file_stamp(&self) -> String {
         format!(
             "{:04}{:02}{:02}_{:02}{:02}{:02}",
@@ -313,20 +318,21 @@ impl Timestamp {
 }
 
 // ============================================================================
-// Шапка отчёта
+// Report header
 // ============================================================================
 
-/// Длина разделительной линии в шапке (символ `─`).
+/// Length of the separator line in the header (the `─` character).
 pub const CRASH_HEADER_RULE_WIDTH: usize = 60;
 
-/// Источники шапки. Всё, что оригинал читает из `platform`, `PySide6` и
-/// окружения, — снаружи: ядро ни к системе, ни к Qt не обращается.
+/// Header sources. Everything the original reads from `platform`, `PySide6` and
+/// the environment comes from outside: the core accesses neither the system nor
+/// Qt.
 #[derive(Debug, Clone, Default)]
 pub struct CrashHeaderInput<'a> {
     pub now: Timestamp,
     /// `platform.python_version()`.
     pub python_version: &'a str,
-    /// `PySide6.__version__`; `None` — импорт не удался (в шапке `?`).
+    /// `PySide6.__version__`; `None` — the import failed (`?` in the header).
     pub pyside_version: Option<&'a str>,
     /// `platform.platform()`.
     pub os_platform: &'a str,
@@ -336,13 +342,13 @@ pub struct CrashHeaderInput<'a> {
     pub lang: Option<&'a str>,
 }
 
-/// Шапка отчёта о крахе — байт-в-байт как в оригинале.
+/// Crash report header — byte for byte as in the original.
 ///
-/// ⚠️ Два поля живут по РАЗНЫМ правилам, и это не описка оригинала:
-/// рабочий стол берётся через `or` (пустая строка проваливается в
-/// `DESKTOP_SESSION`, потом в `?`), а тип сессии и локаль — через
-/// `get(..., "?")`, где `?` подставляется только при ОТСУТСТВИИ переменной, а
-/// пустая строка печатается пустой.
+/// Warning: two fields live by DIFFERENT rules, and this is not a slip of the
+/// original: the desktop is taken via `or` (an empty string falls through to
+/// `DESKTOP_SESSION`, then to `?`), while the session type and the locale go via
+/// `get(..., "?")`, where `?` is substituted only when the variable is ABSENT,
+/// and an empty string is printed empty.
 pub fn crash_header(input: &CrashHeaderInput) -> String {
     let pyside = input.pyside_version.unwrap_or("?");
     crash_header_with(
@@ -358,15 +364,16 @@ pub fn crash_header(input: &CrashHeaderInput) -> String {
     )
 }
 
-/// Ширина подписи поля шапки вместе с двоеточием и отбивкой: `Time:     `.
-/// Значения всех полей начинаются с одной колонки — отчёты обоих входов
-/// читаются глазами одинаково.
+/// Width of a header field label together with the colon and padding:
+/// `Time:     `. The values of all fields start in one column — the reports of
+/// both entry points read the same by eye.
 const CRASH_HEADER_LABEL_WIDTH: usize = 10;
 
-/// Окружение, общее для шапок обоих входов (Python-хозяин и Rust-окно).
+/// Environment shared by the headers of both entry points (the Python host and
+/// the Rust window).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CrashHeaderEnv<'a> {
-    /// Строка ОС в виде `platform.platform()` — см. [`os_platform`].
+    /// The OS line in the form of `platform.platform()` — see [`os_platform`].
     pub os_platform: &'a str,
     pub xdg_current_desktop: Option<&'a str>,
     pub desktop_session: Option<&'a str>,
@@ -374,9 +381,10 @@ pub struct CrashHeaderEnv<'a> {
     pub lang: Option<&'a str>,
 }
 
-/// Общий построитель шапки: `runtime` — строки «чем собран процесс» между
-/// `Time:` и `OS:` (у Python-хозяина это Python и PySide6, у Rust-окна —
-/// версия Rexon и Qt). Всё прочее — одно на оба входа (правило #12).
+/// Shared header builder: `runtime` — the "what the process is built with" lines
+/// between `Time:` and `OS:` (for the Python host these are Python and PySide6,
+/// for the Rust window the Rexon and Qt versions). Everything else is one for
+/// both entry points (rule #12).
 pub fn crash_header_with(now: &Timestamp, runtime: &[(&str, &str)], env: &CrashHeaderEnv) -> String {
     let de = first_nonempty(&[env.xdg_current_desktop, env.desktop_session]).unwrap_or("?");
     let sess = env.xdg_session_type.unwrap_or("?");
@@ -398,23 +406,23 @@ pub fn crash_header_with(now: &Timestamp, runtime: &[(&str, &str)], env: &CrashH
     out
 }
 
-/// Источники шапки отчёта Rust-окна. Всё, что читается из системы, —
-/// снаружи (`rexon-gui::crash_report`).
+/// Header sources of the Rust window's report. Everything read from the system
+/// comes from outside (`rexon-gui::crash_report`).
 #[derive(Debug, Clone, Default)]
 pub struct RustCrashHeaderInput<'a> {
     pub now: Timestamp,
-    /// Версия Rexon (`CARGO_PKG_VERSION` крейта окна).
+    /// Rexon version (`CARGO_PKG_VERSION` of the window crate).
     pub rexon_version: &'a str,
-    /// Имя исполняемого файла, в котором случилась паника.
+    /// Name of the executable in which the panic happened.
     pub entry: &'a str,
-    /// `qVersion()` загруженной Qt; `None` — неизвестна (в шапке `?`).
+    /// `qVersion()` of the loaded Qt; `None` — unknown (`?` in the header).
     pub qt_version: Option<&'a str>,
     pub env: CrashHeaderEnv<'a>,
 }
 
-/// Шапка отчёта Rust-окна: те же поля и та же раскладка, что у
-/// Python-хозяина, отличаются только строки среды выполнения
-/// (`Rexon:`/`Qt:` вместо `Python:`/`PySide6:`).
+/// Header of the Rust window's report: the same fields and the same layout as
+/// the Python host's; only the runtime lines differ (`Rexon:`/`Qt:` instead of
+/// `Python:`/`PySide6:`).
 pub fn rust_crash_header(input: &RustCrashHeaderInput) -> String {
     let rexon = if input.entry.is_empty() {
         input.rexon_version.to_string()
@@ -428,12 +436,12 @@ pub fn rust_crash_header(input: &RustCrashHeaderInput) -> String {
     )
 }
 
-/// Строка ОС в виде `platform.platform()` Python на Linux:
-/// `Linux-7.2.3-1-cachyos-x86_64-with-glibc2.44`. Одна запись для обоих
-/// входов — чтобы строки `OS:` в отчётах сравнивались как есть.
+/// The OS line in the form of Python's `platform.platform()` on Linux:
+/// `Linux-7.2.3-1-cachyos-x86_64-with-glibc2.44`. One notation for both entry
+/// points — so that the `OS:` lines in reports can be compared as is.
 ///
-/// `libc` — `(имя, версия)`, например `("glibc", "2.44")`; `None` — хвоста
-/// `-with-…` нет (musl и прочие, как у Python).
+/// `libc` — `(name, version)`, for example `("glibc", "2.44")`; `None` — there
+/// is no `-with-…` tail (musl and others, as in Python).
 pub fn os_platform(system: &str, release: &str, machine: &str, libc: Option<(&str, &str)>) -> String {
     let mut parts: Vec<String> = [system, release, machine]
         .iter()
@@ -447,7 +455,7 @@ pub fn os_platform(system: &str, release: &str, machine: &str, libc: Option<(&st
     parts.join("-")
 }
 
-/// Первое непустое значение — порт цепочки `a or b`.
+/// The first non-empty value — port of the `a or b` chain.
 fn first_nonempty<'a>(values: &[Option<&'a str>]) -> Option<&'a str> {
     values
         .iter()
@@ -455,18 +463,19 @@ fn first_nonempty<'a>(values: &[Option<&'a str>]) -> Option<&'a str> {
 }
 
 // ============================================================================
-// Сохранение отчёта и ротация каталога
+// Saving the report and rotating the directory
 // ============================================================================
 
-/// Сколько файлов остаётся в каталоге отчётов после ротации.
+/// How many files remain in the report directory after rotation.
 pub const CRASH_KEEP: usize = 20;
 
-/// Префикс имени файла отчёта; по нему же отбираются кандидаты на удаление,
-/// поэтому чужие файлы в каталоге (README и прочее) ротация не трогает.
+/// Prefix of the report file name; candidates for deletion are selected by it
+/// too, so rotation does not touch other files in the directory (a README and
+/// so on).
 pub const CRASH_PREFIX: &str = "crash_";
 
-/// Каталог отчётов: `~/.config/rexon/crashes` с поправкой на
-/// `$XDG_CONFIG_HOME` (оригинал строит его через `utils.expand_user`).
+/// The report directory: `~/.config/rexon/crashes` adjusted for
+/// `$XDG_CONFIG_HOME` (the original builds it via `utils.expand_user`).
 pub fn crash_dir(xdg_config_home: Option<&str>, home: &str) -> String {
     format!(
         "{}/rexon/crashes",
@@ -474,14 +483,14 @@ pub fn crash_dir(xdg_config_home: Option<&str>, home: &str) -> String {
     )
 }
 
-/// Имя файла отчёта для указанного момента времени.
+/// Report file name for the given moment in time.
 pub fn crash_log_name(ts: &Timestamp) -> String {
     format!("{CRASH_PREFIX}{}.log", ts.file_stamp())
 }
 
-/// Какие имена уходят при ротации: из отсортированного списка отчётов
-/// выкидывается всё, кроме последних `keep`. Файлы без префикса не
-/// рассматриваются вовсе.
+/// Which names go away on rotation: from the sorted list of reports everything
+/// except the last `keep` is thrown out. Files without the prefix are not
+/// considered at all.
 pub fn rotation_victims(names: &[String], keep: usize) -> Vec<String> {
     let mut files: Vec<String> = names
         .iter()
@@ -494,9 +503,9 @@ pub fn rotation_victims(names: &[String], keep: usize) -> Vec<String> {
     files
 }
 
-/// Файловые операции отчёта. Каждый метод — ровно один побочный вызов
-/// оригинала, в порядке исполнения; `false`/`None` = исключение поймано
-/// (в Python весь блок обёрнут в `try/except Exception`).
+/// File operations of the report. Each method is exactly one side-effecting call
+/// of the original, in execution order; `false`/`None` = the exception was
+/// caught (in Python the whole block is wrapped in `try/except Exception`).
 pub trait CrashIo {
     /// `os.makedirs(path, exist_ok=True)`.
     fn makedirs(&mut self, path: &str) -> bool;
@@ -504,17 +513,18 @@ pub trait CrashIo {
     fn write_text(&mut self, path: &str, text: &str) -> bool;
     /// `os.listdir(path)`.
     fn list_dir(&mut self, path: &str) -> Option<Vec<String>>;
-    /// `os.remove(path)`; ошибка глотается самим оригиналом.
+    /// `os.remove(path)`; the original itself swallows the error.
     fn remove(&mut self, path: &str);
 }
 
-/// Сохранить отчёт с ротацией. Возвращает путь к файлу либо `None`, если
-/// каталог не создался или запись не удалась.
+/// Save the report with rotation. Returns the path to the file, or `None` if the
+/// directory was not created or the write failed.
 ///
-/// `header` приходит снаружи и тем же значением уходит в диалог — см. починку
-/// №1 в шапке модуля.
+/// `header` comes from outside and goes to the dialog with the same value — see
+/// fix No. 1 in the module header.
 ///
-/// Починка №4: ошибка обхода каталога больше не отменяет уже записанный путь.
+/// Fix No. 4: an error walking the directory no longer cancels the already
+/// written path.
 pub fn save_crash_log(
     io: &mut dyn CrashIo,
     dir: &str,
@@ -537,17 +547,17 @@ pub fn save_crash_log(
     Some(path)
 }
 
-/// Живой исполнитель [`CrashIo`] — ОДИН на оба входа (Python-мост и
-/// Rust-окно), поэтому живёт здесь, а не в каждом из них.
+/// The live [`CrashIo`] executor — ONE for both entry points (the Python bridge
+/// and the Rust window), so it lives here rather than in each of them.
 ///
-/// Запись атомарная: текст уходит во временный файл рядом
-/// (`.<имя>.part-<pid>`, без префикса [`CRASH_PREFIX`] — ротация его не
-/// видит), сбрасывается на диск и только потом переименовывается в
-/// окончательное имя. Отчёт пишется в момент краха, и процесс может умереть
-/// посреди записи (паника через границу FFI — это `abort` сразу после
-/// перехватчика): при записи по месту в каталоге остался бы обрезанный
-/// `crash_*.log`, который выглядит как настоящий. Здесь файл с таким именем
-/// либо полный, либо его нет.
+/// The write is atomic: the text goes into a temporary file next to it
+/// (`.<name>.part-<pid>`, without the [`CRASH_PREFIX`] prefix — rotation does
+/// not see it), is flushed to disk and only then renamed to the final name. The
+/// report is written at the moment of the crash, and the process may die in the
+/// middle of the write (a panic across the FFI boundary is an `abort` right
+/// after the hook): with an in-place write a truncated `crash_*.log` that looks
+/// like a real one would remain in the directory. Here a file with such a name
+/// is either complete or absent.
 pub struct AtomicCrashIo;
 
 impl CrashIo for AtomicCrashIo {
@@ -573,46 +583,47 @@ impl CrashIo for AtomicCrashIo {
     }
 }
 
-/// Атомарная запись — ОДНА на весь продукт, живёт в [`crate::utils`].
+/// The atomic write — ONE for the whole product, it lives in [`crate::utils`].
 ///
-/// Здесь она только переобъявлена под прежним именем: отчёт о крахе был
-/// первым, кто её получил, и зовут её отсюда оба окна (`rexon-gui`
-/// и мост в Python). Тело переехало в общее место, когда выяснилось, что
-/// мимо этой двери в профиль покупателя пишет ещё полтора десятка мест.
+/// Here it is only re-declared under its former name: the crash report was the
+/// first to get it, and both windows (`rexon-gui` and the Python bridge) call it
+/// from here. The body moved to the shared place when it turned out that another
+/// dozen and a half places were writing into the buyer's profile bypassing this
+/// door.
 pub use crate::utils::atomic_write;
 
 // ============================================================================
-// Диалог о крахе
+// Crash dialog
 // ============================================================================
 
-/// Заголовок окна (на языке интерфейса).
+/// Window title (in the interface language).
 pub fn crash_dialog_title() -> String {
     // TRANSLATORS: title of the window shown after Rexon crashes.
     tr("Rexon — An Error Occurred")
 }
 
-/// Куда покупатель отправляет отчёт о крахе. Одна точка на ОБА окна —
-/// Rust-окно (`rexon-gui::crash_report`) и Python-окно (`qt_main/app.py`
-/// через мост), — чтобы они не разошлись текстом.
+/// Where the buyer sends the crash report. One point for BOTH windows — the Rust
+/// window (`rexon-gui::crash_report`) and the Python window (`qt_main/app.py`
+/// via the bridge) — so that their texts do not diverge.
 ///
-/// `None` — публичного трекера ещё нет: окно ничего и никого не называет,
-/// оно лишь сохраняет отчёт и даёт его скопировать. Так и должно быть, пока
-/// репозитория нет: звать человека «на GitHub», которого не существует, —
-/// прямой путь к тому, что он никуда не напишет (правило #13).
+/// `None` — there is no public tracker yet: the window names nothing and no one,
+/// it only saves the report and lets it be copied. That is how it should be while
+/// there is no repository: sending a person "to GitHub" where nothing exists is
+/// a sure way to make them write nowhere (rule #13).
 ///
-/// `Some("https://github.com/<владелец>/<репозиторий>/issues")` — в окне
-/// появляется кнопка [`crash_button_report`], а текст зовёт сообщить о
-/// проблеме на GitHub. Больше менять нечего: подписи, тексты и кнопка
-/// собираются отсюда сами.
+/// `Some("https://github.com/<owner>/<repository>/issues")` — the
+/// [`crash_button_report`] button appears in the window, and the text asks to
+/// report the problem on GitHub. Nothing else needs to change: labels, texts and
+/// the button are assembled from here by themselves.
 pub const ISSUE_TRACKER_URL: Option<&str> = None;
 
-// Текст окна собирается из двух частей: «что случилось» (зависит от того,
-// выжил ли процесс) и «что с этим делать» (зависит от того, задан ли
-// трекер). Части — отдельные строки каталога, склеенные пустой строкой;
-// имена кнопок в них подставляются из подписей самих кнопок, чтобы текст и
-// кнопка не разошлись ни на одном языке.
+// The window text is assembled from two parts: "what happened" (depends on
+// whether the process survived) and "what to do about it" (depends on whether a
+// tracker is set). The parts are separate catalog strings joined by an empty
+// line; button names in them are substituted from the labels of the buttons
+// themselves, so that the text and the button do not diverge in any language.
 
-/// «Что случилось»: `fatal` — процесс не выживет.
+/// "What happened": `fatal` — the process will not survive.
 pub fn crash_lead(fatal: bool) -> String {
     if fatal {
         tr("Rexon quit unexpectedly.")
@@ -623,8 +634,8 @@ pub fn crash_lead(fatal: bool) -> String {
     }
 }
 
-/// Хвост «что делать», когда адрес трекера не задан (с пустой строкой
-/// впереди — он дописывается к [`crash_lead`]).
+/// The "what to do" tail when the tracker address is not set (with an empty line
+/// in front — it is appended to [`crash_lead`]).
 pub fn crash_tail_plain() -> String {
     format!(
         "\n\n{}",
@@ -637,7 +648,7 @@ pub fn crash_tail_plain() -> String {
     )
 }
 
-/// Хвост «что делать», когда адрес трекера задан.
+/// The "what to do" tail when the tracker address is set.
 pub fn crash_tail_tracker() -> String {
     format!(
         "\n\n{}",
@@ -650,45 +661,45 @@ pub fn crash_tail_tracker() -> String {
     )
 }
 
-/// Подпись кнопки «скопировать».
+/// Label of the "copy" button.
 pub fn crash_button_copy() -> String {
     tr("Copy Report")
 }
-/// Подпись кнопки «открыть папку».
+/// Label of the "open folder" button.
 pub fn crash_button_open() -> String {
     tr("Open Folder")
 }
-/// Подпись кнопки «закрыть».
+/// Label of the "close" button.
 pub fn crash_button_close() -> String {
     tr("Close")
 }
-/// Подпись кнопки «сообщить о проблеме». Кнопки нет, пока не задан
-/// [`ISSUE_TRACKER_URL`], — вести человека некуда.
+/// Label of the "report a problem" button. There is no button until
+/// [`ISSUE_TRACKER_URL`] is set — there is nowhere to send the person.
 pub fn crash_button_report() -> String {
     tr("Report a Problem")
 }
 
-/// Адрес трекера, пригодный к показу: пустая строка — это «не задан».
+/// The tracker address fit for display: an empty string means "not set".
 pub fn issue_tracker_url(url: Option<&str>) -> Option<&str> {
     url.map(str::trim).filter(|u| !u.is_empty())
 }
 
-/// Кнопка «Сообщить о проблеме»: подпись и команда открытия адреса.
-/// `None` — адрес не задан, кнопки в окне нет.
+/// The "Report a problem" button: the label and the command opening the address.
+/// `None` — the address is not set, there is no button in the window.
 ///
-/// Rust-окно открывает адрес само (`QDesktopServices` через
-/// `Qt.openUrlExternally`), Python-окну нужна команда — отсюда argv.
+/// The Rust window opens the address itself (`QDesktopServices` via
+/// `Qt.openUrlExternally`), the Python window needs a command — hence the argv.
 pub fn crash_report_issue_button_for(url: Option<&str>) -> Option<(String, Vec<String>)> {
     issue_tracker_url(url)
         .map(|u| (crash_button_report(), vec!["xdg-open".to_string(), u.to_string()]))
 }
 
-/// То же по адресу продукта ([`ISSUE_TRACKER_URL`]).
+/// The same for the product's address ([`ISSUE_TRACKER_URL`]).
 pub fn crash_report_issue_button() -> Option<(String, Vec<String>)> {
     crash_report_issue_button_for(ISSUE_TRACKER_URL)
 }
 
-/// Роль кнопки в `QMessageBox`.
+/// Button role in `QMessageBox`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ButtonRole {
     Action,
@@ -696,7 +707,7 @@ pub enum ButtonRole {
 }
 
 impl ButtonRole {
-    /// Имя элемента `QMessageBox.ButtonRole` для Qt-слоя.
+    /// Name of the `QMessageBox.ButtonRole` element for the Qt layer.
     pub fn as_str(self) -> &'static str {
         match self {
             ButtonRole::Action => "ActionRole",
@@ -705,7 +716,7 @@ impl ButtonRole {
     }
 }
 
-/// Какую кнопку нажали. Порядок совпадает с порядком добавления в окно.
+/// Which button was pressed. The order matches the order of adding to the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CrashButton {
     Copy,
@@ -713,8 +724,9 @@ pub enum CrashButton {
     Close,
 }
 
-/// Признаки кнопок окна в порядке добавления. Подписи — у [`crash_buttons`]:
-/// порядок и роли от языка не зависят, а подписи — зависят.
+/// Identifiers of the window's buttons in the order of adding. The labels are in
+/// [`crash_buttons`]: the order and roles do not depend on the language, while
+/// the labels do.
 pub const CRASH_BUTTON_ORDER: &[(CrashButton, ButtonRole)] = &[
     (CrashButton::Copy, ButtonRole::Action),
     (CrashButton::OpenFolder, ButtonRole::Action),
@@ -722,7 +734,7 @@ pub const CRASH_BUTTON_ORDER: &[(CrashButton, ButtonRole)] = &[
 ];
 
 impl CrashButton {
-    /// Подпись кнопки на языке интерфейса.
+    /// Button label in the interface language.
     pub fn label(self) -> String {
         match self {
             CrashButton::Copy => crash_button_copy(),
@@ -732,27 +744,27 @@ impl CrashButton {
     }
 }
 
-/// Кнопки окна в порядке добавления: признак, подпись, роль.
+/// Window buttons in the order of adding: identifier, label, role.
 pub fn crash_buttons() -> Vec<(CrashButton, String, ButtonRole)> {
     CRASH_BUTTON_ORDER.iter().map(|&(b, role)| (b, b.label(), role)).collect()
 }
 
-/// Содержимое окна о крахе.
+/// Contents of the crash window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CrashDialog {
     pub title: String,
     pub text: String,
-    /// Процесс не выживет: от этого зависит «что случилось» в тексте, и по
-    /// этому признаку (а не по сравнению текста) системное окно собирает
-    /// свой вариант.
+    /// The process will not survive: "what happened" in the text depends on this,
+    /// and the system window builds its variant by this flag (not by comparing
+    /// text).
     pub fatal: bool,
-    /// `None` — лог сохранить не удалось, строка не показывается.
+    /// `None` — the log could not be saved, the line is not shown.
     pub informative: Option<String>,
-    /// Полный текст отчёта (шапка + traceback) — он же уходит в буфер обмена.
+    /// The full report text (header + traceback) — the same text goes to the clipboard.
     pub detailed: String,
 }
 
-/// Собрать окно о крахе. `header` — та же шапка, что легла в файл.
+/// Build the crash window. `header` — the same header that went into the file.
 pub fn crash_dialog(header: &str, crash_text: &str, log_path: Option<&str>) -> CrashDialog {
     CrashDialog {
         title: crash_dialog_title(),
@@ -763,25 +775,25 @@ pub fn crash_dialog(header: &str, crash_text: &str, log_path: Option<&str>) -> C
     }
 }
 
-/// «Отчёт сохранён» с путём на следующей строке.
+/// "Report saved" with the path on the next line.
 fn msg_report_saved(path: &str) -> String {
     // TRANSLATORS: %1 is the path of the crash report file (shown on its own line).
     trf("Report saved:\n%1", &[&path])
 }
 
-/// Что делать по нажатой кнопке.
+/// What to do on the pressed button.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CrashAction {
-    /// Положить текст в буфер обмена.
+    /// Put the text into the clipboard.
     Copy(String),
-    /// Запустить команду (открытие папки с логом).
+    /// Run a command (opening the folder with the log).
     Run(Vec<String>),
-    /// Ничего.
+    /// Nothing.
     None,
 }
 
-/// Реакция на кнопку. «Открыть папку» без сохранённого лога — пустышка: в
-/// оригинале ветка требует и кнопку, и путь.
+/// Reaction to a button. "Open folder" without a saved log does nothing: in the
+/// original the branch requires both the button and the path.
 pub fn crash_button_action(
     dialog: &CrashDialog,
     button: CrashButton,
@@ -797,13 +809,13 @@ pub fn crash_button_action(
     }
 }
 
-/// argv открытия каталога с логом в файловом менеджере.
+/// argv for opening the log directory in the file manager.
 pub fn crash_open_folder_argv(log_path: &str) -> Vec<String> {
     vec!["xdg-open".to_string(), dirname(log_path)]
 }
 
-/// Порт `os.path.dirname`: часть до последнего `/`, у корня слэш остаётся,
-/// у имени без каталога — пустая строка.
+/// Port of `os.path.dirname`: the part before the last `/`; at the root the slash
+/// remains, for a name without a directory — an empty string.
 fn dirname(path: &str) -> String {
     match path.rfind('/') {
         None => String::new(),
@@ -820,34 +832,35 @@ fn dirname(path: &str) -> String {
 }
 
 // ============================================================================
-// Решение перехватчика исключений
+// The exception hook's decision
 // ============================================================================
 
-/// Исключения, о которых покупателю сообщать НЕ надо: это штатные способы
-/// завершения, а не крах.
+/// Exceptions the buyer must NOT be told about: they are regular ways of
+/// quitting, not a crash.
 ///
-/// `SystemExit` добавлен здесь — починка №2, см. шапку модуля.
+/// `SystemExit` is added here — fix No. 2, see the module header.
 pub const SILENT_EXCEPTIONS: &[&str] = &["KeyboardInterrupt", "SystemExit"];
 
-/// Что делать с пойманным исключением.
+/// What to do with a caught exception.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CrashDecision {
-    /// Отдать traceback штатному `sys.__excepthook__` (для терминала).
+    /// Hand the traceback to the regular `sys.__excepthook__` (for the terminal).
     pub print_stderr: bool,
-    /// Записать отчёт в каталог отчётов.
+    /// Write a report into the report directory.
     pub save_log: bool,
-    /// Показать окно о крахе.
+    /// Show the crash window.
     pub show_dialog: bool,
-    /// Показ обязан быть переброшен в поток GUI: исключение поймано в рабочем
-    /// потоке, а строить `QMessageBox` по месту нельзя (починка №3).
+    /// The showing must be handed over to the GUI thread: the exception was caught in
+    /// a worker thread, and building a `QMessageBox` in place is not allowed (fix
+    /// No. 3).
     pub dialog_needs_main_thread_hop: bool,
 }
 
-/// Решение по имени класса исключения и потоку, где оно поймано.
+/// Decision by the exception class name and the thread where it was caught.
 ///
-/// В главном потоке «молчун» всё равно печатается в stderr (так делает
-/// оригинал: `Ctrl+C` из терминала должен оставить след). В рабочем потоке
-/// «молчун» не делает вообще ничего.
+/// In the main thread a "silent" one is still printed to stderr (the original
+/// does so: `Ctrl+C` from the terminal must leave a trace). In a worker thread a
+/// "silent" one does nothing at all.
 pub fn crash_decision(exc_type_name: &str, main_thread: bool) -> CrashDecision {
     let silent = SILENT_EXCEPTIONS.contains(&exc_type_name);
     if silent {
@@ -867,25 +880,25 @@ pub fn crash_decision(exc_type_name: &str, main_thread: bool) -> CrashDecision {
 }
 
 // ============================================================================
-// Паника Rust-окна
+// Panic of the Rust window
 // ============================================================================
 //
-// У Rust-входа (`rexon-main-window`) вместо исключений — паники, и
-// перехватчик паники зовётся на КАЖДУЮ из них, в том числе на пойманную
-// выше по стеку (`catch_unwind`, задача tokio). Отсюда два отличия от
-// решения для Python:
-//   * отчёт и окно — один раз на процесс: вторая паника (чаще всего —
-//     следствие первой) уходит только в stderr, иначе человек получил бы
-//     пачку окон подряд;
-//   * паника в главном потоке смертельна всегда (выход из `main` или
-//     `abort` на границе с Qt), а в рабочем потоке процесс, как правило,
-//     живёт дальше — и окно обязано сказать правду: «продолжает работать»,
-//     а не «неожиданно завершился». Оригинал говорил «завершился» и там, где
-//     умер только рабочий поток (починка по правилу #16).
+// The Rust entry point (`rexon-main-window`) has panics instead of exceptions,
+// and the panic hook is called for EACH of them, including ones caught higher
+// up the stack (`catch_unwind`, a tokio task). Hence two differences from the
+// decision for Python:
+//   * the report and the window — once per process: a second panic (most often
+//     a consequence of the first) goes only to stderr, otherwise the person
+//     would get a pile of windows in a row;
+//   * a panic in the main thread is always fatal (leaving `main` or an `abort`
+//     at the Qt boundary), while in a worker thread the process as a rule lives
+//     on — and the window must tell the truth: "keeps running", not "quit
+//     unexpectedly". The original said "quit" even where only a worker thread
+//     died (a fix per rule #16).
 
-/// Подписи раскрытия технического текста. Подробности свёрнуты по
-/// умолчанию: покупателю трассировка ни о чём не говорит (правило #13),
-/// она нужна тому, кому он отправит отчёт.
+/// Labels for expanding the technical text. The details are collapsed by
+/// default: a traceback tells the buyer nothing (rule #13), it is needed by the
+/// person they will send the report to.
 pub fn crash_details_show() -> String {
     tr("Show Details")
 }
@@ -893,15 +906,16 @@ pub fn crash_details_hide() -> String {
     tr("Hide Details")
 }
 
-/// Строка после нажатия «Скопировать отчёт». Окно при этом НЕ закрывается:
-/// на Wayland и X11 буфер обмена живёт, пока жив владелец, и закрытие окна
-/// сразу после копирования уносило бы скопированное с собой (если в сеансе
-/// нет менеджера буфера).
+/// The line after pressing "Copy report". The window does NOT close at this
+/// point: on Wayland and X11 the clipboard lives as long as its owner, and
+/// closing the window right after copying would take the copied text away with
+/// it (if the session has no clipboard manager).
 pub fn crash_copied() -> String {
     tr("Report copied — paste it into your message to the developer.")
 }
 
-/// Основной текст окна по тому, умер ли процесс и задан ли адрес трекера.
+/// The window's main text by whether the process died and whether the tracker
+/// address is set.
 pub fn crash_dialog_text_for(fatal: bool, url: Option<&str>) -> String {
     let tail = if issue_tracker_url(url).is_some() {
         crash_tail_tracker()
@@ -911,24 +925,24 @@ pub fn crash_dialog_text_for(fatal: bool, url: Option<&str>) -> String {
     format!("{}{tail}", crash_lead(fatal))
 }
 
-/// То же по адресу продукта ([`ISSUE_TRACKER_URL`]).
+/// The same for the product's address ([`ISSUE_TRACKER_URL`]).
 pub fn crash_dialog_text(fatal: bool) -> String {
     crash_dialog_text_for(fatal, ISSUE_TRACKER_URL)
 }
 
-/// Что делать с паникой.
+/// What to do with a panic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PanicDecision {
-    /// Записать отчёт в каталог отчётов.
+    /// Write a report into the report directory.
     pub save_log: bool,
-    /// Показать окно о крахе (отдельным процессом).
+    /// Show the crash window (as a separate process).
     pub show_dialog: bool,
-    /// Процесс после этой паники не выживет — от этого зависит текст окна.
+    /// The process will not survive this panic — the window text depends on this.
     pub fatal: bool,
 }
 
-/// Решение по потоку паники и по тому, был ли уже отчёт в этом процессе.
-/// В stderr паника печатается ВСЕГДА — это не решается.
+/// Decision by the panic's thread and by whether there has already been a report
+/// in this process. The panic is ALWAYS printed to stderr — this is not decided.
 pub fn panic_decision(main_thread: bool, already_reported: bool) -> PanicDecision {
     PanicDecision {
         save_log: !already_reported,
@@ -937,7 +951,7 @@ pub fn panic_decision(main_thread: bool, already_reported: bool) -> PanicDecisio
     }
 }
 
-/// Тело отчёта о панике — то, что у Python-хозяина занимает трассировка.
+/// Body of a panic report — what the traceback takes for the Python host.
 pub fn panic_crash_text(message: &str, thread: &str, location: Option<&str>, backtrace: &str) -> String {
     let location = location.unwrap_or("?");
     let backtrace = backtrace.trim_end();
@@ -949,12 +963,12 @@ pub fn panic_crash_text(message: &str, thread: &str, location: Option<&str>, bac
     )
 }
 
-/// Окно о крахе по сохранённому файлу отчёта (его читает процесс окна).
+/// The crash window from a saved report file (the window process reads it).
 ///
-/// «Отчёт сохранён» показывается, только если файл лежит прямо в каталоге
-/// отчётов: если сохранить туда не удалось, отчёт едет к окну через
-/// временный файл ([`crash_transport_path`]), и называть его человеку как
-/// сохранённый было бы неправдой — он пропадёт при выходе из сеанса.
+/// "Report saved" is shown only if the file lies right in the report directory:
+/// if saving there failed, the report travels to the window via a temporary file
+/// ([`crash_transport_path`]), and naming it to the person as saved would be
+/// untrue — it will disappear when the session ends.
 pub fn crash_dialog_for_report(report: &str, report_path: &str, crash_dir: &str, fatal: bool) -> CrashDialog {
     let saved = dirname(report_path) == crash_dir.trim_end_matches('/');
     CrashDialog {
@@ -966,32 +980,33 @@ pub fn crash_dialog_for_report(report: &str, report_path: &str, crash_dir: &str,
     }
 }
 
-/// Куда положить отчёт для окна, если в каталог отчётов записать не
-/// удалось. `runtime_dir` — `$XDG_RUNTIME_DIR` (или временный каталог).
+/// Where to put the report for the window if writing into the report directory
+/// failed. `runtime_dir` — `$XDG_RUNTIME_DIR` (or a temporary directory).
 pub fn crash_transport_path(runtime_dir: &str, pid: u32) -> String {
     format!("{}/rexon-crash-{pid}.log", runtime_dir.trim_end_matches('/'))
 }
 
-/// Есть ли куда показать окно о крахе. Без дисплея (выход из сеанса,
-/// запуск из консоли) любое окно — наше и kdialog — падает с `abort`: это
-/// дамп памяти и чужое окно о крахе вместо нашего, а показать всё равно
-/// нечего. Тогда отчёт остаётся файлом и строкой в stderr.
+/// Whether there is anywhere to show the crash window. Without a display (session
+/// logout, launch from a console) any window — ours and kdialog — dies with
+/// `abort`: that means a core dump and someone else's crash window instead of
+/// ours, and there is nothing to show anyway. Then the report stays a file and a
+/// line in stderr.
 pub fn crash_dialog_can_show(wayland_display: Option<&str>, display: Option<&str>) -> bool {
     [wayland_display, display]
         .iter()
         .any(|v| v.is_some_and(|s| !s.is_empty()))
 }
 
-/// Поднимется ли Qt в этом процессе вообще. Дисплей есть
-/// ([`crash_dialog_can_show`]) — да. Нет — да только тогда, когда
-/// `QT_QPA_PLATFORM` явно называет платформу без экрана (`offscreen`,
-/// `minimal`, `eglfs`, `linuxfb`, `vnc`…): у `wayland*` и `xcb` без
-/// дисплея `QGuiApplication` кончается `abort`. Список платформ через `;`
-/// (запасные) и параметры после `:` Qt понимает так же.
+/// Whether Qt will come up in this process at all. There is a display
+/// ([`crash_dialog_can_show`]) — yes. There is none — yes only when
+/// `QT_QPA_PLATFORM` explicitly names a platform without a screen (`offscreen`,
+/// `minimal`, `eglfs`, `linuxfb`, `vnc`…): with `wayland*` and `xcb` without a
+/// display `QGuiApplication` ends in `abort`. A list of platforms separated by
+/// `;` (fallbacks) and parameters after `:` are understood the same way as by Qt.
 ///
-/// Один ответ на тот же класс, что окно о крахе: «Qt без дисплея падает
-/// с abort» — спрашивать его обязан любой вход, который создаёт
-/// `QGuiApplication` и может быть запущен из консоли.
+/// One answer for the same class as the crash window: "Qt without a display dies
+/// with abort" — any entry point that creates a `QGuiApplication` and may be
+/// started from a console must ask it.
 pub fn qt_can_start(wayland_display: Option<&str>, display: Option<&str>, qpa_platform: Option<&str>) -> bool {
     if crash_dialog_can_show(wayland_display, display) {
         return true;
@@ -1002,8 +1017,9 @@ pub fn qt_can_start(wayland_display: Option<&str>, display: Option<&str>, qpa_pl
     })
 }
 
-/// Хвост «что делать» для системного окна без адреса трекера: наших кнопок
-/// там нет, поэтому вместо «скопируйте кнопкой» — «приложите файл».
+/// The "what to do" tail for the system window without a tracker address: our
+/// buttons are not there, so instead of "copy it with the button" — "attach the
+/// file".
 pub fn crash_fallback_file_hint() -> String {
     format!(
         "\n\n{}",
@@ -1012,9 +1028,10 @@ pub fn crash_fallback_file_hint() -> String {
     )
 }
 
-/// Хвост «что делать» для системного окна: кнопок нет, поэтому адрес
-/// трекера называется прямо в тексте, а отчёт предлагается приложить файлом
-/// (если он сохранён — иначе прикладывать нечего, и про файл молчим).
+/// The "what to do" tail for the system window: there are no buttons, so the
+/// tracker address is named right in the text, and the report is offered to be
+/// attached as a file (if it was saved — otherwise there is nothing to attach,
+/// and we keep quiet about the file).
 fn crash_fallback_tail(url: Option<&str>, saved: bool) -> String {
     match (issue_tracker_url(url), saved) {
         (None, true) => crash_fallback_file_hint(),
@@ -1036,23 +1053,25 @@ fn crash_fallback_tail(url: Option<&str>, saved: bool) -> String {
     }
 }
 
-/// Системные окна на случай, когда окно Rexon не поднялось (Qt не
-/// стартует, бинарь не запускается). Порядок — порядок попыток; каждое
-/// окно сообщает то же самое, что окно Rexon, кроме кнопок.
+/// System windows for the case when the Rexon window did not come up (Qt does
+/// not start, the binary does not launch). The order is the order of attempts;
+/// each window reports the same as the Rexon window, except for the buttons.
 ///
-/// kdialog первым: он умеет «подробности» под раскрытием; у zenity только
-/// основной текст (трассировка в нём нечитаема), зато путь к файлу отчёта
-/// есть в обоих.
+/// kdialog first: it can show "details" under an expander; zenity has only the
+/// main text (a traceback is unreadable in it), but both have the path to the
+/// report file.
 pub fn crash_fallback_argvs(dialog: &CrashDialog) -> Vec<Vec<String>> {
     crash_fallback_argvs_for(dialog, ISSUE_TRACKER_URL)
 }
 
-/// То же с явным адресом трекера (продуктовый — [`ISSUE_TRACKER_URL`]).
+/// The same with an explicit tracker address (the product one is
+/// [`ISSUE_TRACKER_URL`]).
 pub fn crash_fallback_argvs_for(dialog: &CrashDialog, url: Option<&str>) -> Vec<Vec<String>> {
-    // Наших кнопок у системных окон нет, поэтому хвост «что делать»
-    // подменяется целиком: советы про кнопки заменяются файлом отчёта и
-    // адресом трекера. «Что случилось» берётся по признаку, а не отрезанием
-    // хвоста от текста: сравнение текста зависело бы от языка.
+    // System windows do not have our buttons, so the "what to do" tail is
+    // replaced entirely: advice about buttons is replaced by the report file
+    // and the tracker address. "What happened" is taken by the flag, not by
+    // cutting the tail off the text: a text comparison would depend on the
+    // language.
     let lead = crash_lead(dialog.fatal);
     let mut body = format!(
         "{lead}{}",
@@ -1086,12 +1105,12 @@ pub fn crash_fallback_argvs_for(dialog: &CrashDialog, url: Option<&str>) -> Vec<
 }
 
 // ============================================================================
-// Диагностические строки запуска
+// Diagnostic start-up lines
 // ============================================================================
 
-/// Строка «какая платформа Qt выбрана» — печатается сразу после создания
-/// `QApplication`. `!r` оригинала: строки в кавычках, отсутствующая
-/// переменная окружения — `None`.
+/// The line "which Qt platform was chosen" — printed right after creating the
+/// `QApplication`. The original's `!r`: strings in quotes, a missing environment
+/// variable — `None`.
 pub fn qt_platform_banner(platform_name: &str, qt_qpa_platform: Option<&str>) -> String {
     let qpa = match qt_qpa_platform {
         Some(v) => py_repr_str(v),
@@ -1103,8 +1122,8 @@ pub fn qt_platform_banner(platform_name: &str, qt_qpa_platform: Option<&str>) ->
     )
 }
 
-/// Строка «с какими флагами и геометрией встало окно» — печатается после
-/// `show()`. Геометрия печатается кортежем Python.
+/// The line "with what flags and geometry the window came up" — printed after
+/// `show()`. The geometry is printed as a Python tuple.
 pub fn qt_window_banner(flags: u64, frame_geometry: (i32, i32, i32, i32)) -> String {
     let (x, y, w, h) = frame_geometry;
     format!("[QT] flags=0x{flags:x}, frameGeom=({x}, {y}, {w}, {h})")
@@ -1114,8 +1133,8 @@ pub fn qt_window_banner(flags: u64, frame_geometry: (i32, i32, i32, i32)) -> Str
 mod tests {
     use super::*;
 
-    /// Шапка настоящего отчёта Python-хозяина (`crash_20260907_220608.log`
-    /// с этой машины) — эталон раскладки для обоих входов.
+    /// The header of a real Python host report (`crash_20260907_220608.log` from
+    /// this machine) — the layout reference for both entry points.
     const PY_SAMPLE_HEADER: &str = "Rexon crash report\n\
         Time:     2026-09-07T22:06:08.454403\n\
         Python:   3.14.7\n\
@@ -1139,8 +1158,8 @@ mod tests {
         }
     }
 
-    /// Каталог для записи — в $HOME, а не в /tmp (там ОЗУ, и там живут
-    /// чужие файлы). Уникален на прогон.
+    /// Directory for writing — in $HOME, not in /tmp (that is RAM, and other
+    /// people's files live there). Unique per run.
     fn home_tmp(tag: &str) -> std::path::PathBuf {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1228,7 +1247,7 @@ mod tests {
 
     #[test]
     fn dialog_for_report_names_only_saved_file() {
-        // Язык исходный: русский текст сторожит `tests/qt_app_parity.rs`.
+        // The source language: the Russian text is guarded by `tests/qt_app_parity.rs`.
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let dir = "/home/u/.config/rexon/crashes";
         let saved = crash_dialog_for_report("R", &format!("{dir}/crash_1.log"), dir, true);
@@ -1237,7 +1256,7 @@ mod tests {
         assert!(saved.fatal);
         assert_eq!(saved.informative.as_deref(), Some("Report saved:\n/home/u/.config/rexon/crashes/crash_1.log"));
         assert_eq!(saved.detailed, "R");
-        // Тот же вид, что у окна Python-хозяина для той же пары шапка+текст.
+        // The same look as the Python host's window for the same header+text pair.
         let py = crash_dialog("", "R", Some(&format!("{dir}/crash_1.log")));
         assert_eq!(saved, py);
 
@@ -1281,7 +1300,7 @@ mod tests {
         assert_eq!(argvs[1][0], "zenity");
         assert!(argvs[1].iter().any(|a| a == "--no-markup"));
         assert!(argvs[1].last().unwrap().ends_with("/c/crash_1.log"));
-        // Совета про несуществующую кнопку в системном окне нет.
+        // There is no advice about a non-existent button in the system window.
         for fatal in [true, false] {
             let tail = crash_tail_plain();
             assert!(
@@ -1300,17 +1319,17 @@ mod tests {
         }
     }
 
-    /// Адрес трекера решает всё: пока его нет — окно никого не называет и
-    /// кнопки «Сообщить о проблеме» не показывает; как только задан —
-    /// появляется и кнопка, и упоминание GitHub. Оба окна, Rust и Python,
-    /// берут это отсюда, поэтому сверяется сама развилка.
+    /// The tracker address decides everything: while there is none, the window names
+    /// no one and does not show the "Report a problem" button; as soon as it is set,
+    /// both the button and the mention of GitHub appear. Both windows, Rust and
+    /// Python, take this from here, so the fork itself is checked.
     #[test]
     fn issue_tracker_switches_text_and_button() {
         const URL: &str = "https://github.com/wehrwolfmann/rexon/issues";
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let (copy, report) = (crash_button_copy(), crash_button_report());
 
-        // Пусто — состояние продукта на сегодня.
+        // Empty — the state of the product today.
         assert_eq!(crash_report_issue_button_for(None), None);
         assert_eq!(crash_report_issue_button_for(Some("   ")), None);
         for fatal in [true, false] {
@@ -1323,7 +1342,7 @@ mod tests {
             assert!(!text.contains(&report));
         }
 
-        // Задан — кнопка и текст с GitHub.
+        // Set — the button and a text with GitHub.
         let (label, argv) = crash_report_issue_button_for(Some(URL)).unwrap();
         assert_eq!(label, report);
         assert_eq!(argv, vec!["xdg-open".to_string(), URL.to_string()]);
@@ -1333,13 +1352,13 @@ mod tests {
             assert!(text.contains(&report) && text.contains(&copy));
         }
 
-        // Подписи кнопок названы в тексте — сверяем, что они не разъехались
-        // с самими кнопками.
+        // The button labels are named in the text — we check that they have not drifted
+        // from the buttons themselves.
         assert!(crash_tail_plain().contains(&copy));
         assert!(crash_tail_tracker().contains(&report));
         assert!(crash_tail_tracker().contains(&copy));
 
-        // Системное окно кнопок не имеет: адрес уходит прямо в текст.
+        // The system window has no buttons: the address goes right into the text.
         let d = crash_dialog_for_report("D", "/c/crash_1.log", "/c", true);
         let with = crash_fallback_argvs_for(&d, Some(URL));
         assert!(with[0][4].contains(URL) && !with[0][4].contains(&copy));
@@ -1348,7 +1367,7 @@ mod tests {
         let moved = crash_dialog_for_report("D", "/run/rexon-crash-1.log", "/c", false);
         assert!(crash_fallback_argvs_for(&moved, Some(URL))[1][7].contains(URL));
 
-        // Продуктовые обёртки берут ровно эту константу.
+        // The product wrappers take exactly this constant.
         assert_eq!(crash_dialog_text(true), crash_dialog_text_for(true, ISSUE_TRACKER_URL));
         assert_eq!(crash_report_issue_button(), crash_report_issue_button_for(ISSUE_TRACKER_URL));
     }
@@ -1376,13 +1395,13 @@ mod tests {
     #[test]
     fn atomic_write_failure_keeps_target_and_cleans_part() {
         let dir = home_tmp("atomic-fail");
-        // На месте файла — непустой каталог: rename обязан отказать.
+        // A non-empty directory in place of the file: rename must refuse.
         let target = dir.join("crash_y.log");
         std::fs::create_dir_all(target.join("inner")).unwrap();
         assert!(atomic_write(target.to_str().unwrap(), "x").is_err());
         assert!(target.join("inner").is_dir());
         assert!(part_files(&dir).is_empty());
-        // Каталога нет вовсе — ошибка, и ничего не создано.
+        // There is no directory at all — an error, and nothing is created.
         let missing = dir.join("nope/crash_z.log");
         assert!(atomic_write(missing.to_str().unwrap(), "x").is_err());
         std::fs::remove_dir_all(&dir).unwrap();

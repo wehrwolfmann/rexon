@@ -1,18 +1,18 @@
-//! Сверка живого перевода: склейка [`rexon_core::translator_engine`] целиком —
-//! от локали до готовой строки.
+//! Check of live translation: the whole [`rexon_core::translator_engine`] glue —
+//! from the locale to the finished string.
 //!
-//! Движок ПОДСТАВНОЙ, со счётчиком вызовов, а база — настоящая, во временном
-//! каталоге. Так проверяется то, чего иначе не увидеть:
-//!   * второй прогон того же текста делает НОЛЬ вызовов движка, то есть кеш
-//!     действительно пишется и читается (а не «вроде работает»);
-//!   * технические сегменты уходят в вывод ДОСЛОВНО — движок их не видит;
-//!   * теги HTML целы, перевод садится только в текстовые узлы;
-//!   * блок для движка не длиннее `MAX_BLOCK_SENTENCES`;
-//!   * строчная первая буква, которой движок отвечает в 88,6 % случаев,
-//!     поднимается склейкой.
+//! The engine is a STAND-IN with a call counter, while the database is real, in a temporary
+//! directory. This checks what cannot be seen otherwise:
+//!   * a second run of the same text makes ZERO engine calls, that is the cache
+//!     is really written and read (and not "seems to work");
+//!   * technical segments go to the output VERBATIM — the engine does not see them;
+//!   * HTML tags are intact, the translation lands only in text nodes;
+//!   * a block for the engine is no longer than `MAX_BLOCK_SENTENCES`;
+//!   * the lowercase first letter the engine answers with in 88.6 % of cases
+//!     is raised by the glue.
 //!
-//! Живой перевод на настоящей модели — `#[ignore]`-сверка в конце файла (по
-//! образцу `fxtranslate_vendor.rs`): модель 43 МБ в дерево не кладётся.
+//! Live translation on the real model is an `#[ignore]` check at the end of the file (following
+//! `fxtranslate_vendor.rs`): the 43 MB model is not put into the tree.
 
 use std::sync::Mutex;
 
@@ -21,10 +21,10 @@ use rexon_core::translator_engine as te;
 use rexon_core::translator_engine::{TranslateEngine, MAX_BLOCK_SENTENCES};
 
 // ============================================================================
-// Стенд
+// Stand
 // ============================================================================
 
-/// Временный дом: своя база кеша на каждую сверку.
+/// A temporary home: its own cache database for each check.
 struct TempHome(String);
 
 impl TempHome {
@@ -45,36 +45,36 @@ impl Drop for TempHome {
     }
 }
 
-/// Подставной движок: считает вызовы и помнит каждый блок.
+/// A stand-in engine: counts calls and remembers every block.
 ///
-/// Переводит нарочито узнаваемо и НАРОЧНО со строчной буквы — ровно так, как
-/// отвечает настоящий движок (замер: 88,6 % строк). Значит заглавная буква в
-/// выводе может прийти только от склейки.
+/// It translates in a deliberately recognizable way and ON PURPOSE with a lowercase letter — exactly as
+/// the real engine answers (measured: 88.6 % of lines). So a capital letter in
+/// the output can only come from the glue.
 #[derive(Default)]
 struct FakeEngine {
     pair: Option<(String, String)>,
     blocks: Mutex<Vec<Vec<String>>>,
-    /// Что движок делает с заполнителями имён в ответе (порча — как живая).
+    /// What the engine does with name placeholders in the answer (corruption — like the live one).
     spoil: Spoil,
 }
 
-/// Порча заполнителя в ответе движка. Все три формы — настоящие, увиденные на
-/// живой модели Firefox при подборе формы заполнителя (стенд 21.09).
+/// Corruption of a placeholder in the engine's answer. All three forms are real, seen on
+/// the live Firefox model while choosing the placeholder form (stand 21.09).
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 enum Spoil {
-    /// Заполнители целы.
+    /// Placeholders intact.
     #[default]
     None,
-    /// `@0@` съеден целиком.
+    /// `@0@` eaten entirely.
     Drop,
-    /// `@0@` пришёл дважды (движок размножил имя).
+    /// `@0@` came twice (the engine multiplied the name).
     Double,
-    /// От `@0@` остался огрызок `@` («Nordic @ Kvantum тема»).
+    /// A stub `@` remained of `@0@` («Nordic @ Kvantum тема»).
     Crumb,
 }
 
 impl FakeEngine {
-    /// Движок, который умеет ровно `en`→`ru`.
+    /// An engine that can do exactly `en`→`ru`.
     fn enru() -> Self {
         FakeEngine {
             pair: Some(("en".to_string(), "ru".to_string())),
@@ -83,27 +83,27 @@ impl FakeEngine {
         }
     }
 
-    /// Тот же движок, но портящий заполнитель имени в ответе.
+    /// The same engine, but corrupting the name placeholder in the answer.
     fn spoiling(spoil: Spoil) -> Self {
         FakeEngine { spoil, ..FakeEngine::enru() }
     }
 
-    /// Движок, которого нет (модели в поставке не оказалось).
+    /// An engine that does not exist (the model turned out to be missing from the package).
     fn missing() -> Self {
         FakeEngine::default()
     }
 
-    /// Сколько раз звали движок.
+    /// How many times the engine was called.
     fn calls(&self) -> usize {
         self.blocks.lock().unwrap().len()
     }
 
-    /// Все предложения, которые движок увидел.
+    /// All sentences the engine saw.
     fn seen(&self) -> Vec<String> {
         self.blocks.lock().unwrap().iter().flatten().cloned().collect()
     }
 
-    /// Длины блоков по порядку.
+    /// Block lengths in order.
     fn block_sizes(&self) -> Vec<usize> {
         self.blocks.lock().unwrap().iter().map(Vec::len).collect()
     }
@@ -125,13 +125,13 @@ impl TranslateEngine for FakeEngine {
             .lock()
             .unwrap()
             .push(block.iter().map(|s| s.to_string()).collect());
-        // Со строчной буквы — как настоящий движок.
+        // With a lowercase letter — like the real engine.
         block
             .iter()
             .map(|s| {
                 let mut answer = format!("перевод: {s}");
-                // Имена «переводятся» — иначе подставной движок был бы честнее
-                // живого (см. MANGLED_NAMES).
+                // Names get "translated" — otherwise the stand-in engine would be more honest than
+                // the live one (see MANGLED_NAMES).
                 for (name, ru) in MANGLED_NAMES.iter().chain(MANGLED_TECH).chain(MANGLED_TERMS) {
                     answer = answer.replace(name, ru);
                 }
@@ -146,14 +146,14 @@ impl TranslateEngine for FakeEngine {
     }
 }
 
-/// Имена, которые подставной движок «переводит», — ровно те, что живая модель
-/// действительно склоняет и переводит (замеры в `live_names_…` ниже).
+/// Names the stand-in engine "translates" — exactly those the live model
+/// really inflects and translates (measurements in `live_names_…` below).
 ///
-/// ⚠️ Без этого подставной движок оказался бы ЧЕСТНЕЕ настоящего: он возвращает
-/// предложение дословно, значит имя в первом (голом) проходе «выживало» бы
-/// всегда, и путь под заполнителями — второй проход — сверки не проверяли бы
-/// вовсе. Порядок важен: длинное имя раньше короткого («KDE Plasma» до
-/// «Plasma», «Nordic» до «Nord»).
+/// ⚠️ Without this the stand-in engine would be MORE HONEST than the real one: it returns
+/// the sentence verbatim, so a name in the first (bare) pass would always "survive",
+/// and the path under placeholders — the second pass — would not be checked
+/// at all. The order matters: a long name before a short one ("KDE Plasma" before
+/// "Plasma", "Nordic" before "Nord").
 const MANGLED_NAMES: &[(&str, &str)] = &[
     ("KDE Plasma", "кде плазма"),
     ("Kvantum", "квантская"),
@@ -164,20 +164,20 @@ const MANGLED_NAMES: &[(&str, &str)] = &[
     ("Nord", "север"),
 ];
 
-/// Техника, которую подставной движок «переводит» в голом проходе, — по той же
-/// причине, что [`MANGLED_NAMES`]: иначе путь в первом проходе выживал бы
-/// всегда, и путь под заполнителем сверки не проверяли бы.
+/// Technical bits the stand-in engine "translates" in the bare pass — for the same
+/// reason as [`MANGLED_NAMES`]: otherwise a path in the first pass would always survive,
+/// and the path under a placeholder would not be checked.
 const MANGLED_TECH: &[(&str, &str)] =
     &[("~/.themes", "~/.темы"), ("/usr/share/sounds", "/usr/доля/звуки")];
 
-/// Термины, которые подставной движок «переводит» так же криво, как живая
-/// модель Firefox (замер 03.10: «Just unzip the file…» → «Просто расстегните
-/// файл…»), — чтобы словарь поправок проверялся на всём пути, а не только
-/// чистой функцией.
+/// Terms the stand-in engine "translates" as crookedly as the live
+/// Firefox model (measured 03.10: "Just unzip the file…" → «Просто расстегните
+/// файл…») — so that the correction dictionary is checked along the whole path, not only
+/// as a pure function.
 const MANGLED_TERMS: &[(&str, &str)] = &[("Unzip", "расстегните")];
 
-/// Живое описание мастерской по составу: проза, заголовок, команда в `<pre>`,
-/// строка с путём, список сред и ссылка.
+/// A workshop description that is live in composition: prose, a heading, a command in `<pre>`,
+/// a line with a path, a desktop list and a link.
 const DESCRIPTION: &str = concat!(
     "<p>This global theme brings a warm, muted palette to the whole desktop. ",
     "It ships matching Plasma, Aurorae and Kvantum styles.</p>",
@@ -188,12 +188,12 @@ const DESCRIPTION: &str = concat!(
 );
 
 // ============================================================================
-// Сверки
+// Checks
 // ============================================================================
 
-/// ⭐ ГЛАВНОЕ: второй прогон того же текста НЕ зовёт движок ни разу, а вывод
-/// байт-в-байт тот же. Это и есть доказательство, что кеш работает на запись,
-/// а ключ считается одинаково в обоих прогонах.
+/// ⭐ THE MAIN THING: a second run of the same text does NOT call the engine even once, and the output is
+/// byte-for-byte the same. This is the proof that the cache works for writing,
+/// and the key is computed identically in both runs.
 #[test]
 fn the_second_run_of_the_same_text_never_calls_the_engine() {
     let home = TempHome::new("cache");
@@ -204,7 +204,7 @@ fn the_second_run_of_the_same_text_never_calls_the_engine() {
     assert!(first.was_translated, "перевод обязан был случиться");
     assert!(first_engine.calls() >= 1, "движок не позвали ни разу");
 
-    // Другая база-соединение, другой счётчик — как у второго открытия товара.
+    // Another database connection, another counter — as when an item is opened a second time.
     let second_engine = FakeEngine::enru();
     let mut cache = LiveCache::open(&home.0);
     let second = te::translate_live(DESCRIPTION, "ru_RU.UTF-8", &second_engine, &mut cache);
@@ -218,9 +218,9 @@ fn the_second_run_of_the_same_text_never_calls_the_engine() {
     assert!(second.was_translated, "перевод из кеша — тоже перевод");
 }
 
-/// Движку достаётся только проза, и притом ПРЕДЛОЖЕНИЯМИ. Технику он не
-/// видит вовсе, а имена технологий уходят под заполнители ВТОРЫМ проходом — и
-/// только те предложения, в которых движок имя потерял.
+/// The engine gets only prose, and AS SENTENCES at that. It does not see
+/// technical bits at all, and technology names go under placeholders in a SECOND pass — and
+/// only for the sentences in which the engine lost the name.
 #[test]
 fn the_engine_only_ever_sees_prose_sentences() {
     let home = TempHome::new("prose");
@@ -232,38 +232,38 @@ fn the_engine_only_ever_sees_prose_sentences() {
     assert_eq!(
         seen,
         vec![
-            // Проход 1 — предложения ГОЛЫМИ, как написал человек: заполнитель
-            // сам сбивает декодировщик, и тратить его без нужды незачем.
+            // Pass 1 — sentences BARE, as the person wrote them: a placeholder
+            // itself throws off the decoder, and there is no point spending it needlessly.
             "This global theme brings a warm, muted palette to the whole desktop.".to_string(),
             "It ships matching Plasma, Aurorae and Kvantum styles.".to_string(),
             "Installation:".to_string(),
-            // С 03.10 — и фразы с путём и ссылкой внутри (команда в `<pre>`
-            // по-прежнему не видна движку вовсе).
+            // Since 03.10 also phrases with a path and a link inside (the command in `<pre>`
+            // is still not visible to the engine at all).
             "Copy the folder to ~/.themes and pick it in Settings.".to_string(),
             "Preview: https://example.invalid/shot.png".to_string(),
-            // Проход 2 — только те предложения, где имя или путь потерялись.
-            // `Plasma, Aurorae` — цепочка имён через запятую, потому под ОДНИМ
-            // заполнителем; `Kvantum` за словом `and` — под своим.
+            // Pass 2 — only the sentences where a name or a path got lost.
+            // `Plasma, Aurorae` is a chain of names separated by a comma, hence under ONE
+            // placeholder; `Kvantum` after the word `and` — under its own.
             "It ships matching @0@ and @1@ styles.".to_string(),
             "Copy the folder to @0@ and pick it in Settings.".to_string(),
         ],
         "движку досталось не то"
     );
-    // Первый проход — ОДИН блок на все пять предложений (пакетный путь, а не
-    // по одному), второй — блок из двух пострадавших.
+    // The first pass is ONE block for all five sentences (the batch path, not
+    // one by one), the second is a block of the two damaged ones.
     assert_eq!(engine.block_sizes(), vec![5, 2]);
 }
 
-/// ⭐ ГЛАВНОЕ ПРО ИМЕНА: движок потерял (размножил, обгрыз) заполнитель — в
-/// вывод идёт ОРИГИНАЛ сегмента, а не испорченный перевод, и в кеш такой
-/// сегмент не пишется (следующая попытка спросит движок заново).
+/// ⭐ THE MAIN THING ABOUT NAMES: the engine lost (multiplied, nibbled) a placeholder — the
+/// ORIGINAL of the segment goes to the output, not the corrupted translation, and such a
+/// segment is not written to the cache (the next attempt asks the engine again).
 ///
-/// Порча подделана подставным движком намеренно: на живой модели она случается
-/// редко и не по заказу, а полагаться на «сегодня не случилось» нельзя.
+/// The corruption is faked by the stand-in engine on purpose: on the live model it happens
+/// rarely and not on demand, and relying on "it did not happen today" is not allowed.
 #[test]
 fn a_lost_placeholder_returns_the_original_segment() {
-    // Абзац из ДВУХ предложений: второе с именем. Одно испорченное предложение
-    // отменяет весь сегмент — иначе вышла бы каша из русского и английского.
+    // A paragraph of TWO sentences: the second one with a name. One corrupted sentence
+    // cancels the whole segment — otherwise we would get a mush of Russian and English.
     let source = concat!(
         "<p>This theme is calm and quiet. ",
         "A Kvantum theme heavily based on Fluent Design elements.</p>"
@@ -282,7 +282,7 @@ fn a_lost_placeholder_returns_the_original_segment() {
             out.text
         );
 
-        // В кеш не записано: второй прогон снова зовёт движок.
+        // Not written to the cache: the second run calls the engine again.
         let again = FakeEngine::spoiling(spoil);
         let mut cache = LiveCache::open(&home.0);
         let second = te::translate_live(source, "ru_RU.UTF-8", &again, &mut cache);
@@ -291,9 +291,9 @@ fn a_lost_placeholder_returns_the_original_segment() {
     }
 }
 
-/// Имя технологии остаётся латиницей и на целом пути: движок имя перевёл —
-/// предложение переспрашивается под заполнителями, и в вывод имя возвращается
-/// дословно.
+/// A technology name stays in Latin letters along the whole path too: the engine translated the name —
+/// the sentence is asked again under placeholders, and the name returns to the output
+/// verbatim.
 #[test]
 fn names_come_back_verbatim_through_the_whole_path() {
     let home = TempHome::new("names");
@@ -310,15 +310,15 @@ fn names_come_back_verbatim_through_the_whole_path() {
         assert!(out.text.contains(name), "имя {name} потерялось: {}", out.text);
     }
     assert!(!out.text.contains('@'), "заполнитель остался в выводе: {}", out.text);
-    // Перевод взят со ВТОРОГО прохода: имена уехали под заполнителями, и
-    // именно его ответ пошёл в вывод.
+    // The translation is taken from the SECOND pass: the names went under placeholders, and
+    // it is its answer that went to the output.
     assert!(
         engine.seen().iter().any(|s| s.contains("@0@")),
         "второго прохода не было — имя спасать было нечем: {:?}",
         engine.seen()
     );
-    // ⚠️ Голым имя движку показывается (проход 1) — но его ответу не верят:
-    // переведённого имени в выводе нет ни в одном виде.
+    // ⚠️ The name is shown to the engine bare (pass 1) — but its answer is not trusted:
+    // the translated name is not in the output in any form.
     for mangled in ["квантская", "корица", "кде плазма"] {
         assert!(
             !out.text.contains(mangled),
@@ -328,17 +328,17 @@ fn names_come_back_verbatim_through_the_whole_path() {
     }
 }
 
-/// ⭐ Дефект приёмки 24.09 (D4b): в узле, где проза стоит рядом со ссылкой,
-/// переводится ПРОЗА, а ссылка остаётся дословно — раньше молча оставался
-/// английским весь узел.
+/// ⭐ Acceptance defect of 24.09 (D4b): in a node where prose stands next to a link,
+/// the PROSE is translated, and the link stays verbatim — previously the whole node silently stayed
+/// in English.
 ///
-/// Живой случай: комментарий maxkaspar к «Awesome Widgets» — «hddtemp shows
-/// only the first digit. here is a screenshot http://…». Движок при этом
-/// получает ТОЛЬКО первое предложение: ссылку ему не показывают вовсе.
+/// The live case: maxkaspar's comment on "Awesome Widgets" — "hddtemp shows
+/// only the first digit. here is a screenshot http://…". The engine
+/// gets ONLY the first sentence: the link is not shown to it at all.
 ///
-/// С 03.10 переводится и вторая фраза — ссылка в ней уходит под заполнитель
-/// только если голый ответ её испортил; здесь движок её не тронул, и она
-/// взята из первого прохода дословно.
+/// Since 03.10 the second phrase is translated too — the link in it goes under a placeholder
+/// only if the bare answer corrupted it; here the engine did not touch it, and it is
+/// taken from the first pass verbatim.
 #[test]
 fn prose_next_to_a_link_is_translated_and_the_link_is_left_alone() {
     let source = concat!(
@@ -371,8 +371,8 @@ fn prose_next_to_a_link_is_translated_and_the_link_is_left_alone() {
     );
 }
 
-/// Технические сегменты уходят в вывод ДОСЛОВНО, а теги целы. Путь и ссылка
-/// ВНУТРИ фразы (с 03.10) — тоже дословно, а фраза вокруг них переведена.
+/// Technical segments go to the output VERBATIM, and the tags are intact. A path and a link
+/// INSIDE a phrase (since 03.10) — verbatim too, and the phrase around them is translated.
 #[test]
 fn technical_segments_and_tags_survive_verbatim() {
     let home = TempHome::new("verbatim");
@@ -381,18 +381,18 @@ fn technical_segments_and_tags_survive_verbatim() {
     let out = te::translate_live(DESCRIPTION, "ru_RU.UTF-8", &engine, &mut cache).text;
 
     for verbatim in [
-        // Внутри `<pre>` не переводится ничего.
+        // Nothing is translated inside `<pre>`.
         "<pre>sudo apt-get install gtk2-engines-murrine</pre>",
-        // Путь внутри фразы: голый ответ движка его испортил («~/.темы»),
-        // взят ответ второго прохода, путь вернулся байт в байт.
+        // A path inside a phrase: the engine's bare answer corrupted it («~/.темы»),
+        // the second pass answer was taken, the path came back byte for byte.
         "<p>Перевод: Copy the folder to ~/.themes and pick it in Settings.</p>",
-        // Ссылка внутри фразы цела.
+        // A link inside a phrase is intact.
         "<p>Перевод: Preview: https://example.invalid/shot.png</p>",
     ] {
         assert!(out.contains(verbatim), "пропал дословный кусок «{verbatim}»\n{out}");
     }
     assert!(!out.contains("~/.темы"), "в вывод пошёл испорченный путь\n{out}");
-    // Разметка на месте: столько же тегов, сколько было.
+    // The markup is in place: as many tags as there were.
     for tag in ["<p>", "</p>", "<pre>", "</pre>"] {
         assert_eq!(
             out.matches(tag).count(),
@@ -400,12 +400,12 @@ fn technical_segments_and_tags_survive_verbatim() {
             "число тегов «{tag}» изменилось\n{out}"
         );
     }
-    // Перевод сел в текстовые узлы, а не поверх разметки.
+    // The translation landed in text nodes, not over the markup.
     assert!(out.starts_with("<p>Перевод: This global theme"), "начало вывода:\n{out}");
 }
 
-/// ⭐ Строчная первая буква, которой отвечает движок, поднимается склейкой —
-/// и поднимается по ИСТОЧНИКУ.
+/// ⭐ The lowercase first letter the engine answers with is raised by the glue —
+/// and raised according to the SOURCE.
 #[test]
 fn the_engine_lowercase_first_letter_is_lifted() {
     let home = TempHome::new("case");
@@ -419,22 +419,22 @@ fn the_engine_lowercase_first_letter_is_lifted() {
     )
     .text;
 
-    // Движок ответил «перевод: …» со строчной; в выводе — «Перевод: …».
+    // The engine answered «перевод: …» in lowercase; the output has «Перевод: …».
     assert!(out.contains("<p>Перевод: This theme is warm."), "не поднята заглавная:\n{out}");
-    // Узел «and also readable.» — продолжение фразы после `<b>`, и в источнике
-    // он начинается со строчной: поднимать его нельзя.
+    // The node "and also readable." continues the phrase after `<b>`, and in the source
+    // it starts with a lowercase letter: it must not be raised.
     assert!(out.contains("перевод: and also readable."), "поднято лишнее:\n{out}");
 }
 
-/// Блок не длиннее предела: у длинного описания их становится несколько.
+/// A block is no longer than the limit: a long description gets several of them.
 #[test]
 fn a_long_description_is_split_into_blocks() {
     let home = TempHome::new("blocks");
     let engine = FakeEngine::enru();
     let mut cache = LiveCache::open(&home.0);
 
-    // Двадцать РАЗНЫХ предложений одним абзацем (одинаковые склеились бы в
-    // один уникальный текст).
+    // Twenty DIFFERENT sentences in one paragraph (identical ones would merge into
+    // one unique text).
     let mut text = String::from("<p>");
     for i in 0..20 {
         text.push_str(&format!("The theme number {i} repaints the whole desktop. "));
@@ -445,10 +445,10 @@ fn a_long_description_is_split_into_blocks() {
     assert_eq!(engine.block_sizes(), vec![MAX_BLOCK_SENTENCES, 20 - MAX_BLOCK_SENTENCES]);
 }
 
-/// Модель из ПОСТАВКИ находится по той же раскладке, какой ищется вендорный
-/// QML вкладки обоев: `<каталог данных>/translate/<пара>` (в дереве
-/// разработчика каталог данных — `data/`). Файлы лепятся настоящие (пустые)
-/// во временном каталоге — проба у поиска живая.
+/// The model from the PACKAGE is found by the same layout used to look for the vendor
+/// QML of the wallpapers tab: `<data directory>/translate/<pair>` (in the developer
+/// tree the data directory is `data/`). The files are made real (empty)
+/// in a temporary directory — the search probe is live.
 #[test]
 fn a_shipped_model_is_found_inside_the_package() {
     let root = TempHome::new("package");
@@ -464,11 +464,11 @@ fn a_shipped_model_is_found_inside_the_package() {
     assert_eq!(found.model, format!("{dir}/model.enru.intgemm.alphas.bin"));
     assert_eq!(found.src_vocab, found.trg_vocab, "у пары общий словарь");
 
-    // Другого направления в поставке нет — и это не ошибка, а «перевода нет».
+    // There is no other direction in the package — and that is not an error but "no translation".
     assert!(te::pick_model(None, &root.0, "/нет-такого-дома", "en", "de", &on_disk).is_none());
 }
 
-/// Нет модели — нет перевода, и нет ошибки: оригинал и `was_translated = false`.
+/// No model — no translation, and no error: the original and `was_translated = false`.
 #[test]
 fn without_a_model_the_original_comes_back_untouched() {
     let home = TempHome::new("nomodel");
@@ -481,7 +481,7 @@ fn without_a_model_the_original_comes_back_untouched() {
     assert_eq!(engine.calls(), 0, "движка нет, а его позвали");
 }
 
-/// Текст уже на языке пользователя — движок не зовут (решение ядра).
+/// The text is already in the user's language — the engine is not called (the core's decision).
 #[test]
 fn text_already_in_the_target_language_is_left_alone() {
     let home = TempHome::new("same");
@@ -495,7 +495,7 @@ fn text_already_in_the_target_language_is_left_alone() {
     assert_eq!(engine.calls(), 0);
 }
 
-/// Пустое описание — пустой ответ без единого вызова.
+/// An empty description — an empty answer without a single call.
 #[test]
 fn empty_text_is_not_translated() {
     let home = TempHome::new("empty");
@@ -509,23 +509,23 @@ fn empty_text_is_not_translated() {
 }
 
 // ============================================================================
-// Пакет из многих коротких текстов (страница комментариев)
+// A batch of many short texts (a comments page)
 // ============================================================================
 
-/// ⭐ ГЛАВНОЕ про пакет: двадцать коротких комментариев уезжают к движку
-/// ПОЛНЫМИ блоками, а не по одному.
+/// ⭐ THE MAIN THING about the batch: twenty short comments go to the engine
+/// in FULL blocks, not one by one.
 ///
-/// Это и есть причина, по которой [`te::translate_live_batch`] существует:
-/// двадцать отдельных `translate_live` дали бы двадцать вызовов по одному
-/// предложению — то есть пакетный путь движка вхолостую.
+/// This is the very reason [`te::translate_live_batch`] exists:
+/// twenty separate `translate_live` calls would give twenty calls of one
+/// sentence each — that is, the engine's batch path idling.
 #[test]
 fn a_page_of_short_comments_goes_to_the_engine_in_full_blocks() {
     let home = TempHome::new("comments");
     let engine = FakeEngine::enru();
     let mut cache = LiveCache::open(&home.0);
 
-    // Двадцать РАЗНЫХ комментариев в одно предложение каждый — как на живой
-    // странице мастерской.
+    // Twenty DIFFERENT comments of one sentence each — as on a live
+    // workshop page.
     let texts: Vec<String> = (0..20)
         .map(|i| format!("Thanks, this theme number {i} looks great on my desktop."))
         .collect();
@@ -539,14 +539,14 @@ fn a_page_of_short_comments_goes_to_the_engine_in_full_blocks() {
         vec![MAX_BLOCK_SENTENCES, 20 - MAX_BLOCK_SENTENCES],
         "блоки набрались не поперёк текстов",
     );
-    // Порядок ответа — порядок вопроса: перевод не съехал на чужой
-    // комментарий.
+    // The answer order is the question order: a translation did not slide onto another
+    // comment.
     assert!(done[7].text.contains("theme number 7"), "съехал порядок: {:?}", done[7].text);
 }
 
-/// Русский комментарий среди английских к движку не уезжает вовсе и приходит
-/// назад с `was_translated = false` — по этому признаку вкладка и не рисует
-/// над ним ссылки «показать оригинал».
+/// A Russian comment among English ones does not go to the engine at all and comes
+/// back with `was_translated = false` — by this sign the tab does not draw
+/// a "show original" link above it.
 #[test]
 fn a_russian_comment_in_the_batch_is_left_alone() {
     let home = TempHome::new("mixed");
@@ -569,27 +569,27 @@ fn a_russian_comment_in_the_batch_is_left_alone() {
 }
 
 // ============================================================================
-// Модель в поставке
+// The model in the package
 // ============================================================================
 
-/// Модель едет В ПАКЕТЕ, и кладут её ровно туда и под теми именами, где ядро
-/// её ищет.
+/// The model ships IN THE PACKAGE, and it is put exactly where and under the names the core
+/// looks for it.
 ///
-/// Разъехавшийся путь или имя — самый тихий отказ из возможных: движок
-/// скажет «модели нет», перевода не будет, и никто не упадёт. Поэтому путь и
-/// имена берутся ИЗ ЯДРА, а не переписываются в сверку руками.
+/// A drifted path or name is the quietest failure possible: the engine
+/// will say "no model", there will be no translation, and nothing will crash. So the path and
+/// the names are taken FROM THE CORE rather than retyped into the check by hand.
 #[test]
 fn модель_едет_в_поставке_туда_где_её_ищет_ядро() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let pkgbuild = std::fs::read_to_string(root.join("packaging/aur/PKGBUILD")).unwrap();
 
-    // Каталог направления: `<данные>/translate/<пара>`.
+    // The direction directory: `<data>/translate/<pair>`.
     let dir = format!("$data/{}/$_mt_pair", te::MODEL_DIR_REL);
     assert!(pkgbuild.contains(&dir), "пакет кладёт модель не в «{dir}»");
     assert!(pkgbuild.contains("_mt_pair=enru"), "в PKGBUILD нет направления en→ru");
 
-    // Имена файлов — те, что ищет `model_files_in`; в PKGBUILD пара вынесена
-    // в переменную, поэтому сверяется шаблон имени.
+    // The file names are those `model_files_in` looks for; in the PKGBUILD the pair is moved
+    // into a variable, so the name pattern is checked.
     let want = te::model_files_in("", "en", "ru", &|_: &str| true).expect("имена файлов модели");
     for path in [want.model, want.src_vocab] {
         let name = path.rsplit('/').next().unwrap().to_string();
@@ -597,9 +597,9 @@ fn модель_едет_в_поставке_туда_где_её_ищет_яд�
         assert!(pkgbuild.contains(&tmpl), "пакет не кладёт файл модели {name}");
     }
 
-    // Суммы сверяются ДВАЖДЫ: архивы — самим makepkg, распакованные файлы —
-    // в prepare(). Вторая сверка и есть гарантия того, что в пакет уехала
-    // измеренная редакция модели, а не порча распаковки.
+    // Checksums are verified TWICE: archives by makepkg itself, unpacked files
+    // in prepare(). The second check is the guarantee that the package got
+    // the measured edition of the model, not an unpacking corruption.
     assert!(
         pkgbuild.contains("sha256sum --check"),
         "PKGBUILD не сверяет sha256 РАСПАКОВАННОЙ модели"
@@ -608,15 +608,15 @@ fn модель_едет_в_поставке_туда_где_её_ищет_яд�
         pkgbuild.contains("LICENSE.translations-model-MPL-2.0"),
         "пакет не ставит лицензию модели (MPL-2.0)"
     );
-    // Обещания перевода на Python в пакете быть не должно: Rust-окно зовёт
-    // свой движок, а не argostranslate.
+    // There must be no promise of Python translation in the package: the Rust window calls
+    // its own engine, not argostranslate.
     assert!(
         !pkgbuild.contains("argostranslate"),
         "в PKGBUILD осталось обещание перевода, которого окно не использует"
     );
 
-    // Ручная установка (не пакетом) копирует каталог данных целиком, и модель
-    // обязана доехать вместе с ним — под пропуск её имена не попадают.
+    // A manual install (not as a package) copies the whole data directory, and the model
+    // must come along with it — its names do not fall under the skip list.
     for name in [
         "translate",
         &te::model_pair("en", "ru"),
@@ -630,13 +630,13 @@ fn модель_едет_в_поставке_туда_где_её_ищет_яд�
     }
 }
 
-/// ⭐ НАЗВАНИЕ ТОВАРА, переданное вызывающим, приходит в вывод ДОСЛОВНО — тем
-/// же приёмом, что имена технологий: перевёл его движок в первом проходе —
-/// предложение идёт вторым проходом под заполнителем.
+/// ⭐ The ITEM TITLE passed by the caller comes to the output VERBATIM — with the same
+/// technique as technology names: if the engine translated it in the first pass, the
+/// sentence goes through the second pass under a placeholder.
 ///
-/// Живой материал: «Nordic Kvantum theme» движок отдавал как «Скандинавская
-/// Kvantum тема», «Sweet Kvantum theme» — как «Сладкая Kvantum тема» (прогоны
-/// 21.09). Списка названий тем у ядра нет, зато название окно знает.
+/// Live material: "Nordic Kvantum theme" was returned by the engine as «Скандинавская
+/// Kvantum тема», "Sweet Kvantum theme" as «Сладкая Kvantum тема» (runs of
+/// 21.09). The core has no list of theme titles, but the window knows the title.
 #[test]
 fn the_item_name_from_the_caller_comes_back_verbatim() {
     for (name, source) in [
@@ -651,8 +651,8 @@ fn the_item_name_from_the_caller_comes_back_verbatim() {
         assert!(out.was_translated, "перевод не случился на {source:?}");
         assert!(out.text.contains(name), "название {name:?} потерялось: {}", out.text);
         assert!(!out.text.contains('@'), "заполнитель уехал в вывод: {}", out.text);
-        // Перевод названия в вывод не попал: «Nordic» не стало
-        // «скандинавской», а «Sweet Kvantum» — «сладкой квантской».
+        // The translation of the title did not get into the output: "Nordic" did not become
+        // «скандинавской», and "Sweet Kvantum" did not become «сладкой квантской».
         for mangled in ["скандинавская", "квантская"] {
             assert!(
                 !out.text.contains(mangled),
@@ -663,8 +663,8 @@ fn the_item_name_from_the_caller_comes_back_verbatim() {
     }
 }
 
-/// Имя автора прячется наравне с названием, а пустые и коротенькие имена в
-/// списке ядро отбрасывает само — вызывающему нечего проверять.
+/// The author's name is hidden on a par with the title, and empty and very short names in
+/// the list are dropped by the core itself — the caller has nothing to check.
 #[test]
 fn the_caller_may_pass_several_names_and_empty_ones() {
     let home = TempHome::new("author");
@@ -684,8 +684,8 @@ fn the_caller_may_pass_several_names_and_empty_ones() {
     assert!(!out.text.contains('@'), "заполнитель остался в выводе: {}", out.text);
 }
 
-/// Старый договор цел: [`te::translate_live`] без охраняемых имён работает ровно
-/// как до правки — окну не нужно ничего менять там, где названия у него нет.
+/// The old contract is intact: [`te::translate_live`] without guarded names works exactly
+/// as before the fix — the window needs to change nothing where it has no title.
 #[test]
 fn the_call_without_guarded_names_behaves_as_before() {
     let source = "<p>Nordic Kvantum theme for the whole desktop.</p>";
@@ -701,15 +701,15 @@ fn the_call_without_guarded_names_behaves_as_before() {
 
     assert_eq!(plain.text, empty.text, "пустой список имён изменил перевод");
     assert_eq!(plain_engine.seen(), empty_engine.seen(), "пустой список изменил вопрос движку");
-    // Без охраны название уходит к движку — то самое, что правка и лечит.
+    // Without guarding, the title goes to the engine — exactly what the fix cures.
     assert!(
         plain_engine.seen().iter().any(|s| s.contains("Nordic")),
         "сверка ни о чём: движок не видел названия и без охраны"
     );
 }
 
-/// Порча заполнителя на охраняемом названии судится так же строго: сегмент
-/// отдаётся ОРИГИНАЛОМ и в кеш не пишется.
+/// Placeholder corruption on a guarded title is judged just as strictly: the segment
+/// is returned as the ORIGINAL and not written to the cache.
 #[test]
 fn a_spoiled_item_name_returns_the_original_segment() {
     let source = "<p>This theme is calm and quiet. Nordic brings the Nord palette.</p>";
@@ -733,14 +733,14 @@ fn a_spoiled_item_name_returns_the_original_segment() {
 }
 
 // ============================================================================
-// Живая сверка на настоящей модели
+// Live check on the real model
 // ============================================================================
 
-/// Каталог модели для живой сверки: по умолчанию стендовый (в дерево модель не
-/// кладётся, её место — поставка).
-/// ⭐ Дефект владельца 03.10 (KDE Store, «ZorinOS 6 Sound Theme»): фраза с
-/// путём внутри переводится, путь возвращается байт в байт — даже когда голый
-/// ответ движка путь испортил (второй проход, путь под заполнителем).
+/// The model directory for the live check: the stand one by default (the model is not put
+/// into the tree, its place is the package).
+/// ⭐ Owner's defect 03.10 (KDE Store, "ZorinOS 6 Sound Theme"): a phrase with
+/// a path inside is translated, the path comes back byte for byte — even when the engine's bare
+/// answer corrupted the path (the second pass, the path under a placeholder).
 #[test]
 fn a_sentence_with_a_path_inside_is_translated_and_the_path_is_kept() {
     let source = concat!(
@@ -768,8 +768,8 @@ fn a_sentence_with_a_path_inside_is_translated_and_the_path_is_kept() {
     );
 }
 
-/// Метку пути движок потерял (съел, размножил, обгрыз) — в вывод идёт
-/// ОРИГИНАЛ, а не перевод с дырой на месте пути.
+/// The engine lost the path mark (ate, multiplied, nibbled it) — the output gets the
+/// ORIGINAL, not a translation with a hole where the path was.
 #[test]
 fn a_lost_path_placeholder_returns_the_original() {
     let source = "<p>Just unzip the file and put in the /usr/share/sounds folder.</p>";
@@ -783,7 +783,7 @@ fn a_lost_path_placeholder_returns_the_original() {
     }
 }
 
-/// ⛔ Строка-команда и строка из одного пути движку по-прежнему не достаются.
+/// ⛔ A command line and a line consisting of one path still do not reach the engine.
 #[test]
 fn pure_commands_never_reach_the_engine() {
     let source = concat!(
@@ -800,8 +800,8 @@ fn pure_commands_never_reach_the_engine() {
     assert_eq!(out.text, source);
 }
 
-/// Словарь поправок терминов стоит на пути движка: «расстегните» от `unzip`
-/// приходит покупателю как «распакуйте», техника и регистр целы.
+/// The term correction dictionary sits on the engine path: «расстегните» from `unzip`
+/// reaches the customer as «распакуйте», technical bits and case intact.
 #[test]
 fn a_term_slip_of_the_engine_is_fixed_on_the_way_out() {
     let home = TempHome::new("term-fix");
@@ -815,23 +815,23 @@ fn a_term_slip_of_the_engine_is_fixed_on_the_way_out() {
     assert!(out.text.starts_with('П'), "регистр первой буквы: {}", out.text);
 }
 
-/// Стендовый каталог модели — в домашнем каталоге того, кто запускает сверку.
+/// The stand model directory is in the home directory of whoever runs the check.
 fn stand_model_dir() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     format!("{home}/file-verify/mt-bench/models/firefox-enru")
 }
 
-/// Живой перевод абзаца en→ru: настоящая модель, настоящий кеш, вся склейка.
+/// Live en→ru translation of a paragraph: the real model, the real cache, the whole glue.
 ///
-/// `#[ignore]` намеренно — нужна скачанная модель (43 МБ). Запуск:
+/// `#[ignore]` on purpose — a downloaded model (43 MB) is needed. Run:
 ///
 /// ```sh
 /// cargo test -p rexon-core --release --test translator_engine \
 ///     -- --ignored --nocapture live_paragraph
 /// ```
 ///
-/// Каталог модели — `REXON_TRANSLATE_MODEL_DIR` (та же переменная, которой
-/// пользуется сторож вендора).
+/// The model directory is `REXON_TRANSLATE_MODEL_DIR` (the same variable
+/// the vendor watchdog uses).
 #[test]
 #[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
 fn live_paragraph_is_translated_by_the_real_engine() {
@@ -861,7 +861,7 @@ fn live_paragraph_is_translated_by_the_real_engine() {
     let cold = te::translate_live(source, "ru_RU.UTF-8", &engine, &mut cache);
     let cold_secs = started.elapsed().as_secs_f64();
 
-    // Второй прогон — из кеша, движок молчит.
+    // The second run comes from the cache, the engine is silent.
     let mut cache = LiveCache::open(&home.0);
     let started = std::time::Instant::now();
     let warm = te::translate_live(source, "ru_RU.UTF-8", &engine, &mut cache);
@@ -879,7 +879,7 @@ fn live_paragraph_is_translated_by_the_real_engine() {
         "в переводе нет русских букв: {}",
         cold.text
     );
-    // Техника цела, разметка цела.
+    // Technical bits intact, markup intact.
     assert!(
         cold.text.contains("<pre>sudo apt-get install gtk2-engines-murrine</pre>"),
         "команду тронули: {}",
@@ -892,19 +892,19 @@ fn live_paragraph_is_translated_by_the_real_engine() {
         "теги поехали: {}",
         cold.text
     );
-    // Первая буква — заглавная (лечение регистра на живом ответе движка).
-    // ⚠️ Считать «первую букву вывода» нельзя: ею окажется `p` из `<p>`. Буква
-    // ищется в ПЕРВОМ текстовом узле, то есть после первого закрытого тега.
+    // The first letter is a capital (case fix on the engine's live answer).
+    // ⚠️ Taking "the first letter of the output" is wrong: it would be the `p` of `<p>`. The letter
+    // is looked for in the FIRST text node, that is after the first closed tag.
     let first_node = cold.text.trim_start_matches(|c: char| c != '>').trim_start_matches('>');
     let first_letter = first_node.chars().find(|c| c.is_alphabetic()).unwrap_or(' ');
     assert!(first_letter.is_uppercase(), "первая буква строчная: {}", cold.text);
 }
 
-/// Живая сверка ЗАЩИТЫ ИМЁН на настоящей модели: одна и та же фраза сначала
-/// отдаётся движку голой (что он делает с именем сам), потом идёт полным путём
-/// через [`te::translate_live`] (имя под заполнителем).
+/// Live check of NAME PROTECTION on the real model: the same phrase is first
+/// handed to the engine bare (what it does with the name by itself), then goes the full path
+/// through [`te::translate_live`] (the name under a placeholder).
 ///
-/// Запуск — как у сверки выше:
+/// Run — as for the check above:
 ///
 /// ```sh
 /// REXON_TRANSLATE_MODEL_DIR=$HOME/file-verify/mt-bench/models/firefox-enru \
@@ -912,19 +912,19 @@ fn live_paragraph_is_translated_by_the_real_engine() {
 ///     -- --ignored --nocapture live_names
 /// ```
 ///
-/// Замер 21.09 на модели Firefox `en→ru` (печатается прогоном):
-///   * голым движком `A Kvantum theme heavily based on Microsoft's Fluent
+/// Measurement 21.09 on the Firefox `en→ru` model (printed by the run):
+///   * bare engine `A Kvantum theme heavily based on Microsoft's Fluent
 ///     Design elements.` → «квантская тема в значительной степени основана на
-///     элементах Microsoft Fluent Design.» — имя переведено и склонено;
-///   * полным путём → «Kvantum тема, в значительной степени основанная на
-///     элементах Microsoft Fluent Design.» — имя латиницей;
-///   * «Copy the Papirus folder and enable it in Dolphin.» голым движком —
-///     «спровочивайте папирусную папирус …», полным путём — «Скройте папку
+///     элементах Microsoft Fluent Design.» — the name translated and inflected;
+///   * full path → «Kvantum тема, в значительной степени основанная на
+///     элементах Microsoft Fluent Design.» — the name in Latin letters;
+///   * "Copy the Papirus folder and enable it in Dolphin." bare engine —
+///     «спровочивайте папирусную папирус …», full path — «Скройте папку
 ///     Papirus и включите ее в Dolphin.».
 ///
-/// Замер 23.09 (ПОТЕРЯ СЛОВА, товар «Iridescent»): «A colorful theme inspired
-/// by sweet kde theme.» голым движком — «красочная тема, вдохновленная сладкой
-/// темой.» (слова `kde` в переводе НЕТ), полным путём — «Красочная тема,
+/// Measurement 23.09 (A LOST WORD, the item "Iridescent"): "A colorful theme inspired
+/// by sweet kde theme." bare engine — «красочная тема, вдохновленная сладкой
+/// темой.» (the word `kde` is NOT in the translation), full path — «Красочная тема,
 /// вдохновленная сладкой kde темой.».
 #[test]
 #[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
@@ -935,24 +935,24 @@ fn live_names_survive_the_real_engine() {
     let engine = te::LiveEngine::new();
     assert!(engine.available("en", "ru"), "модель не загрузилась");
 
-    // Живые фразы: образец 9 («Fluent Dark»), образец 5 (Sweet-Mars),
-    // образец 6 (Nordic KDE) и составной случай с тремя именами.
+    // Live phrases: sample 9 ("Fluent Dark"), sample 5 (Sweet-Mars),
+    // sample 6 (Nordic KDE) and a compound case with three names.
     let phrases = [
         "A Kvantum theme heavily based on Microsoft's Fluent Design elements.",
         "Sweet Kvantum theme",
         "Nordic Kvantum theme",
         "This theme is based on Cinnamon and works with GNOME and KDE Plasma.",
         "Copy the Papirus folder and enable it in Dolphin.",
-        // ⭐ ПОТЕРЯ СЛОВА (товар «Iridescent», приёмка 23.09): строчное `kde`
-        // модель выбрасывала из перевода целиком — «красочная тема,
-        // вдохновленная сладкой темой.». Аббревиатуры списка охраняются в
-        // любом регистре, и слово возвращается на место.
+        // ⭐ A LOST WORD (the item "Iridescent", acceptance 23.09): the lowercase `kde`
+        // was dropped by the model from the translation entirely — «красочная тема,
+        // вдохновленная сладкой темой.». Abbreviations from the list are protected in
+        // any case, and the word returns to its place.
         "A colorful theme inspired by sweet kde theme.",
     ];
 
-    // ДО: движок на голой фразе, без подмены.
+    // BEFORE: the engine on a bare phrase, without substitution.
     let bare = engine.translate_block("en", "ru", &phrases);
-    // ПОСЛЕ: полный путь ядра (фильтр прозы + подмена имён + кеш).
+    // AFTER: the core's full path (prose filter + name substitution + cache).
     let home = TempHome::new("live-names");
     let mut cache = LiveCache::open(&home.0);
     let guarded: Vec<String> = phrases
@@ -965,14 +965,14 @@ fn live_names_survive_the_real_engine() {
         println!("  до     : {before}");
         println!("  после  : {after}");
         assert!(!after.contains('@'), "заполнитель уехал в вывод: {after}");
-        // Каждое имя из фразы стоит в выводе дословно.
+        // Every name from the phrase stands in the output verbatim.
         for name in ["Kvantum", "Cinnamon", "GNOME", "KDE Plasma", "Papirus", "Dolphin", "kde"] {
             if source.contains(name) {
                 assert!(after.contains(name), "имя {name} потерялось: {after}");
             }
         }
     }
-    // Хотя бы одна фраза действительно переведена (а не отдана оригиналом).
+    // At least one phrase is really translated (and not returned as the original).
     assert!(
         guarded.iter().zip(phrases.iter()).any(|(a, s)| a != s
             && a.chars().any(|c| ('а'..='я').contains(&c))),
@@ -980,12 +980,12 @@ fn live_names_survive_the_real_engine() {
     );
 }
 
-/// Живая сверка ТЕХНИКИ ВНУТРИ ПРОЗЫ на настоящей модели (дефект владельца
-/// 03.10, «ZorinOS 6 Sound Theme»): фразы из живых описаний KDE Store (OCS API,
-/// категории «Sounds» 316, «Cursors» 107, «Icons» 132, «GTK» 135, «SDDM» 101,
-/// «Kvantum» 123, «Global» 722) — путь, имя файла, `код` внутри прозы.
+/// Live check of TECHNICAL BITS INSIDE PROSE on the real model (owner's defect
+/// 03.10, "ZorinOS 6 Sound Theme"): phrases from live KDE Store descriptions (OCS API,
+/// categories "Sounds" 316, "Cursors" 107, "Icons" 132, "GTK" 135, "SDDM" 101,
+/// "Kvantum" 123, "Global" 722) — a path, a file name, `code` inside prose.
 ///
-/// Запуск — как у сверок выше:
+/// Run — as for the checks above:
 ///
 /// ```sh
 /// cargo test -p rexon-core --release --test translator_engine \
@@ -1050,11 +1050,11 @@ fn live_technique_inside_prose_survives_the_real_engine() {
     assert!(translated * 3 >= prose.len() * 2, "переведено меньше двух третей: {translated}");
 }
 
-/// Живая сверка ЗАЩИТЫ НАЗВАНИЯ ТОВАРА на настоящей модели: та же фраза сначала
-/// голым движком (что он делает с названием сам), потом полным путём через
-/// [`te::translate_live_guarded`] с названием в охране.
+/// Live check of ITEM TITLE PROTECTION on the real model: the same phrase first
+/// through the bare engine (what it does with the title by itself), then the full path through
+/// [`te::translate_live_guarded`] with the title guarded.
 ///
-/// Запуск — как у сверок выше:
+/// Run — as for the checks above:
 ///
 /// ```sh
 /// REXON_TRANSLATE_MODEL_DIR=$HOME/file-verify/mt-bench/models/firefox-enru \
@@ -1062,53 +1062,53 @@ fn live_technique_inside_prose_survives_the_real_engine() {
 ///     -- --ignored --nocapture live_item_name
 /// ```
 ///
-/// Замер 21.09 на модели Firefox `en→ru`, ДОСЛОВНО как печатает прогон
-/// (слева название товара, потом «до» — голый движок, «после» — полный путь):
-///   * `Sweet Kvantum theme` (Sweet): до — «сладкий Kvantum тема», после —
+/// Measurement 21.09 on the Firefox `en→ru` model, VERBATIM as the run prints it
+/// (on the left the item title, then "before" — the bare engine, "after" — the full path):
+///   * `Sweet Kvantum theme` (Sweet): before — «сладкий Kvantum тема», after —
 ///     «Sweet Kvantum тема»;
 ///
-/// ⚠️ ОГОВОРКА про короткие подписи (замер 24.09, после перехода на два
-/// прохода): `Nordic Kvantum theme` и `Nordic Plasma theme` теперь берутся
-/// ПЕРВЫМ, голым проходом — имя в ответе цело, — и вместе с ним в вывод
-/// попадает «Также», которое движок дописывает к подписи без глагола («Также
-/// тема Nordic Kvantum»). Прежде подмена случайно прибирала это слово, давая
-/// «Nordic Kvantum тема». Терпим осознанно: тот же голый проход и лечит
-/// «Теммы» из приёмки 24.09 (`live_acceptance_defects_of_24_09_are_fixed`), а
-/// выбирать между двумя ответами нам нечем — оба формально целы.
+/// ⚠️ A CAVEAT about short captions (measurement 24.09, after switching to two
+/// passes): `Nordic Kvantum theme` and `Nordic Plasma theme` are now taken from the
+/// FIRST, bare pass — the name in the answer is intact — and together with it the output
+/// gets «Также», which the engine appends to a caption without a verb («Также
+/// тема Nordic Kvantum»). Previously the substitution happened to clean up this word, giving
+/// «Nordic Kvantum тема». We tolerate it deliberately: the same bare pass also cures
+/// «Теммы» from the 24.09 acceptance (`live_acceptance_defects_of_24_09_are_fixed`), and
+/// we have nothing to choose between the two answers with — both are formally intact.
 ///   * `Sweet Mars is a dark global theme with red accents.` (Sweet Mars):
-///     до — «сладкий Марс - темная глобальная тема с красными акцентами.»,
-///     после — «Sweet Mars - это темная глобальная тема с красными акцентами.»;
-///   * `Nordic Kvantum theme based on the Nord palette.` (Nordic): до — «также
-///     тема Nordic Kvantum основана на палитре Севера.», после — «Nordic
+///     before — «сладкий Марс - темная глобальная тема с красными акцентами.»,
+///     after — «Sweet Mars - это темная глобальная тема с красными акцентами.»;
+///   * `Nordic Kvantum theme based on the Nord palette.` (Nordic): before — «также
+///     тема Nordic Kvantum основана на палитре Севера.», after — «Nordic
 ///     Kvantum тема на основе Nord палитры.»;
-///   * `NT Legacy is a global theme for Plasma.` (NT Legacy): до — «NT Legacy
-///     является глобальной темой для плазмы.», после — «NT Legacy является
+///   * `NT Legacy is a global theme for Plasma.` (NT Legacy): before — «NT Legacy
+///     является глобальной темой для плазмы.», after — «NT Legacy является
 ///     глобальной темой для Plasma.»;
 ///   * `Install Layan and enjoy the rounded look of the desktop.` (Layan):
-///     до — «установите Layan и наслаждайтесь округлым видом рабочего стола.»,
-///     после — «Установите Layan и наслаждайтесь округлым видом рабочего
+///     before — «установите Layan и наслаждайтесь округлым видом рабочего стола.»,
+///     after — «Установите Layan и наслаждайтесь округлым видом рабочего
 ///     стола.»;
 ///
-/// Замер 23.09, СОСТАВНЫЕ названия (дословно как печатает прогон):
+/// Measurement 23.09, COMPOUND titles (verbatim as the run prints it):
 ///   * `Nordic is a dark theme created using the awesome Nord color palette.`
-///     (Nordic KDE): до — «и скандинавская - это темная тема, созданная с
-///     использованием удивительной цветовой палитры Nord.», после — «Nordic -
+///     (Nordic KDE): before — «и скандинавская - это темная тема, созданная с
+///     использованием удивительной цветовой палитры Nord.», after — «Nordic -
 ///     это темная тема, созданная с использованием потрясающей Nord цветовой
 ///     палитры.»;
-///   * `Nordic Plasma theme`: до — «также тема Nordic Plasma», после — «Также
-///     тема Nordic Plasma» (см. оговорку про короткие подписи ниже);
-///   * `Nordic color scheme`: до — «скандинавская цветовая схема», после —
+///   * `Nordic Plasma theme`: before — «также тема Nordic Plasma», after — «Также
+///     тема Nordic Plasma» (see the caveat about short captions below);
+///   * `Nordic color scheme`: before — «скандинавская цветовая схема», after —
 ///     «Nordic цветовая схема»;
-///   * `Sweet-Mars Kvantum theme` (Sweet Mars LAF Plasma 6): до — «сладкий
-///     марс квантум тема», после — «Sweet-Mars Kvantum тема»;
-///   * `Sweet Plasma theme`: до — «сладкая плазменная тема», после — «Sweet
+///   * `Sweet-Mars Kvantum theme` (Sweet Mars LAF Plasma 6): before — «сладкий
+///     марс квантум тема», after — «Sweet-Mars Kvantum тема»;
+///   * `Sweet Plasma theme`: before — «сладкая плазменная тема», after — «Sweet
 ///     Plasma тема»;
-///   * `Sweet wallpaper`: до — «сладкие обои», после — «Sweet обои».
+///   * `Sweet wallpaper`: before — «сладкие обои», after — «Sweet обои».
 ///
-///   * ⛔ обратная сторона у товара с именем из словарного слова: `A dark and
-///     quiet theme for everyone` (Dark) — до «темная и тихая тема для всех»,
-///     после «Темная и тихая тема для всех»: строчное `dark` названием НЕ
-///     считается и переводится, как и должно.
+///   * ⛔ the flip side for an item whose name is a dictionary word: `A dark and
+///     quiet theme for everyone` (Dark) — before «темная и тихая тема для всех»,
+///     after «Темная и тихая тема для всех»: the lowercase `dark` does NOT count as a title
+///     and is translated, as it should be.
 #[test]
 #[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
 fn live_item_name_survives_the_real_engine() {
@@ -1118,10 +1118,10 @@ fn live_item_name_survives_the_real_engine() {
     let engine = te::LiveEngine::new();
     assert!(engine.available("en", "ru"), "модель не загрузилась");
 
-    // Названия — живые (образцы 5, 6 и подписи товаров мастерской), последняя
-    // строка — словарное однословное название.
-    // Третий столбец — слово, которое ОБЯЗАНО остаться латиницей, либо `None`
-    // для обратного случая (строчное словарное название переводится).
+    // The titles are live (samples 5, 6 and workshop item captions), the last
+    // line is a single-word dictionary title.
+    // The third column is the word that MUST stay in Latin letters, or `None`
+    // for the opposite case (a lowercase dictionary title is translated).
     let cases = [
         ("Nordic", "Nordic Kvantum theme", Some("Nordic")),
         ("Sweet", "Sweet Kvantum theme", Some("Sweet")),
@@ -1130,9 +1130,9 @@ fn live_item_name_survives_the_real_engine() {
         ("Sweet Mars", "Sweet Mars is a dark global theme with red accents.", Some("Sweet Mars")),
         ("Nordic", "Nordic Kvantum theme based on the Nord palette.", Some("Nordic")),
         ("Dark", "A dark and quiet theme for everyone", None),
-        // ⭐ Приёмка 23.09, СОСТАВНЫЕ названия: строки дословно из описаний
-        // живых товаров «Nordic KDE» (eliverlara) и «Sweet Mars LAF Plasma 6».
-        // Целой цепочки слов названия в них нет ни в одной.
+        // ⭐ Acceptance 23.09, COMPOUND titles: lines verbatim from the descriptions
+        // of the live items "Nordic KDE" (eliverlara) and "Sweet Mars LAF Plasma 6".
+        // None of them contains the whole chain of title words.
         (
             "Nordic KDE",
             "Nordic is a dark theme created using the awesome Nord color palette.",
@@ -1146,9 +1146,9 @@ fn live_item_name_survives_the_real_engine() {
         ("Sweet Mars LAF Plasma 6", "Sweet wallpaper", Some("Sweet")),
     ];
 
-    // ДО: движок на голой фразе, без всякой подмены. Блок из ОДНОЙ фразы — тот
-    // же размер блока, каким её спрашивает полный путь, иначе «до» и «после»
-    // сравнивались бы в разных условиях (соседи по блоку меняют ответ).
+    // BEFORE: the engine on a bare phrase, without any substitution. A block of ONE phrase — the
+    // same block size the full path asks it with, otherwise "before" and "after"
+    // would be compared under different conditions (block neighbors change the answer).
     let bare: Vec<String> = cases
         .iter()
         .map(|(_, text, _)| {
@@ -1173,18 +1173,18 @@ fn live_item_name_survives_the_real_engine() {
                 "фраза не переведена вовсе: {after}"
             );
         } else {
-            // Словарное название в строчной записи — обычное слово, и оно
-            // ПЕРЕВЕДЕНО (иначе правило съедало бы прозу).
+            // A dictionary title in lowercase is an ordinary word, and it is
+            // TRANSLATED (otherwise the rule would eat prose).
             assert!(!after.contains("dark"), "слово `dark` осталось латиницей: {after}");
         }
     }
 }
 
-/// ⭐ ЧЕТЫРЕ ДЕФЕКТА ЖИВОЙ ПРИЁМКИ 24.09 на настоящей модели: дословные строки
-/// товаров и комментариев мастерской, по которым покупатель и увидел «перевод
-/// не доехал».
+/// ⭐ FOUR DEFECTS OF THE 24.09 LIVE ACCEPTANCE on the real model: verbatim lines
+/// of workshop items and comments by which the customer saw "the translation
+/// did not arrive".
 ///
-/// Запуск — как у сверок выше:
+/// Run — as for the checks above:
 ///
 /// ```sh
 /// REXON_TRANSLATE_MODEL_DIR=/usr/lib/rexon/rexon/translate/enru \
@@ -1192,46 +1192,46 @@ fn live_item_name_survives_the_real_engine() {
 ///     -- --ignored --nocapture live_acceptance_defects
 /// ```
 ///
-/// Что нашлось (замер 24.09, дословно как печатает прогон):
-///   * **D4a, комментарий viz67 к «Nordic KDE»** — «Very nice. / Can we expect
-///     soon the Nordic Bluish theme of Gnome for KDE too?». Виноват был НЕ
-///     фильтр прозы (он обе фразы считает прозой), а порча заполнителя:
-///     на «Can we expect soon the @0@ Bluish theme of @1@ for @2@ too?» модель
-///     отвечает «…@0@ Bluish тему @1@ @1@ для @2@ тоже?» — `@1@` слипшимся
-///     повтором, сито отвергало перевод, и англичанином оставался ВЕСЬ
-///     комментарий, включая «Very nice.». ДО: «Very nice.\nCan we expect soon
-///     the Nordic Bluish theme of Gnome for KDE too?» (переведено=false);
-///     ПОСЛЕ: «Очень мило.\nМожем ли мы ожидать в ближайшее время Nordic Bluish
+/// What was found (measurement 24.09, verbatim as the run prints it):
+///   * **D4a, viz67's comment on "Nordic KDE"** — "Very nice. / Can we expect
+///     soon the Nordic Bluish theme of Gnome for KDE too?". The culprit was NOT
+///     the prose filter (it considers both phrases prose) but placeholder corruption:
+///     to "Can we expect soon the @0@ Bluish theme of @1@ for @2@ too?" the model
+///     answers «…@0@ Bluish тему @1@ @1@ для @2@ тоже?» — `@1@` as a glued
+///     repeat, the sieve rejected the translation, and the WHOLE comment stayed
+///     in English, including "Very nice.". BEFORE: "Very nice.\nCan we expect soon
+///     the Nordic Bluish theme of Gnome for KDE too?" (translated=false);
+///     AFTER: «Очень мило.\nМожем ли мы ожидать в ближайшее время Nordic Bluish
 ///     тему Gnome для KDE тоже?».
-///   * **D4b, комментарий maxkaspar к «Awesome Widgets»** — правило 4 фильтра
-///     («значимое слово технично по форме») судило ЦЕЛЫЙ узел по ссылке во
-///     втором предложении. ДО: «hddtemp shows only the first digit. here is a
-///     screenshot http://…» (переведено=false); ПОСЛЕ: «интрампература
-///     показывает только первую цифру. here is a screenshot http://…» — проза
-///     переведена, ссылка дословно. ⛔ `hddtemp` → «интрампература» —
-///     ОСТАЮЩИЙСЯ дефект модели: слова этого в списке имён нет и быть не может,
-///     а голый движок калечит его тем же порядком («темп показывает только
-///     первую цифру.» на целом комментарии).
-///   * **D1, общий абзац автора «Nordic KDE» и «Sweet Mars»** — «Теммы» с
-///     лишней буквой делал НАШ заполнитель, а не модель: «becoming a supporter
-///     for the KDE Themes and Extensions section» голым движком — «стать
-///     сторонником раздела KDE «Темы и расширения»» (верно!), та же фраза с
-///     `@0@` на месте `KDE` — «стать сторонником раздела @0@ «Теммы и
-///     расширения»». ПОСЛЕ (подмена тратится только там, где имя теряется):
+///   * **D4b, maxkaspar's comment on "Awesome Widgets"** — rule 4 of the filter
+///     ("a significant word is technical in form") judged the WHOLE node by the link in
+///     the second sentence. BEFORE: "hddtemp shows only the first digit. here is a
+///     screenshot http://…" (translated=false); AFTER: «интрампература
+///     показывает только первую цифру. here is a screenshot http://…» — the prose
+///     is translated, the link verbatim. ⛔ `hddtemp` → «интрампература» is
+///     a REMAINING model defect: this word is not in the name list and cannot be,
+///     and the bare engine mangles it the same way («темп показывает только
+///     первую цифру.» on the whole comment).
+///   * **D1, the shared paragraph of the author of "Nordic KDE" and "Sweet Mars"** — «Теммы» with
+///     an extra letter was made by OUR placeholder, not the model: "becoming a supporter
+///     for the KDE Themes and Extensions section" through the bare engine — «стать
+///     сторонником раздела KDE «Темы и расширения»» (correct!), the same phrase with
+///     `@0@` in place of `KDE` — «стать сторонником раздела @0@ «Теммы и
+///     расширения»». AFTER (substitution is spent only where the name gets lost):
 ///     «стать сторонником раздела KDE «Темы и расширения»».
-///   * **D2, строка описания «Awesome Widgets»** — «graphical item support -
-///     tooltips, bars» модель отдаёт как «служба графических элементов -
-///     toolbep, bars». Заполнителей в строке нет вовсе (имён в ней нет), а
-///     `toolbep` — не смесь алфавитов, а выдуманное моделью латинское слово
-///     (коды: `U+0074 U+006F U+006F U+006C U+0062 U+0065 U+0070`). Лечению у
-///     нас не подлежит, зато ловится сравнением с источником: ПОСЛЕ строка
-///     остаётся оригиналом, а не кашей.
+///   * **D2, a description line of "Awesome Widgets"** — "graphical item support -
+///     tooltips, bars" is returned by the model as «служба графических элементов -
+///     toolbep, bars». There are no placeholders in the line at all (it has no names), and
+///     `toolbep` is not a mix of alphabets but a Latin word made up by the model
+///     (codes: `U+0074 U+006F U+006F U+006C U+0062 U+0065 U+0070`). We cannot
+///     cure it, but it is caught by comparing with the source: AFTER, the line
+///     stays the original rather than a mush.
 ///
-/// ⛔ **D3 остаётся за движком целиком**: «Nordic is a dark theme created using
-/// the awesome <a …>Nord</a> color palette.» — `Nord` стоит внутри ссылки,
-/// поэтому узлов три, и хвост « color palette.» модель переводит в одиночку как
-/// «цветовая палитра цветов» (та же тавтология у голого движка на том же
-/// обрывке). Наши заполнители тут не при чём — имён в хвосте нет.
+/// ⛔ **D3 stays entirely with the engine**: "Nordic is a dark theme created using
+/// the awesome <a …>Nord</a> color palette." — `Nord` is inside a link,
+/// so there are three nodes, and the tail " color palette." is translated by the model on its own as
+/// «цветовая палитра цветов» (the same tautology from the bare engine on the same
+/// fragment). Our placeholders have nothing to do with it — there are no names in the tail.
 #[test]
 #[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
 fn live_acceptance_defects_of_24_09_are_fixed() {
@@ -1241,7 +1241,7 @@ fn live_acceptance_defects_of_24_09_are_fixed() {
     let engine = te::LiveEngine::new();
     assert!(engine.available("en", "ru"), "модель не загрузилась");
 
-    // (товар, автор, текст) — дословно из приёмки.
+    // (item, author, text) — verbatim from the acceptance.
     let nordic = ("Nordic KDE", "eliverlara");
     let widgets = ("Awesome Widgets", "arcanis");
     let cases = [
@@ -1271,7 +1271,7 @@ fn live_acceptance_defects_of_24_09_are_fixed() {
         out.push(done.text);
     }
 
-    // D4a: переведены ОБА предложения комментария, имена латиницей.
+    // D4a: BOTH sentences of the comment are translated, names in Latin letters.
     let comment = &out[0];
     assert!(comment.starts_with("Очень"), "первая фраза осталась английской: {comment}");
     assert!(!comment.contains("Can we expect"), "вторая фраза осталась английской: {comment}");
@@ -1279,7 +1279,7 @@ fn live_acceptance_defects_of_24_09_are_fixed() {
         assert!(comment.contains(name), "имя {name} потерялось: {comment}");
     }
 
-    // D4b: проза переведена, ссылка дословно.
+    // D4b: the prose is translated, the link verbatim.
     let screenshot = &out[1];
     assert!(
         screenshot.contains("http://i.imgur.com/abc.png"),
@@ -1290,13 +1290,13 @@ fn live_acceptance_defects_of_24_09_are_fixed() {
         "проза рядом со ссылкой так и не переведена: {screenshot}"
     );
 
-    // D1: лишней буквы в «Темы» нет, имя латиницей.
+    // D1: no extra letter in «Темы», the name in Latin letters.
     let supporter = &out[2];
     assert!(!supporter.contains("Теммы"), "лишняя буква на месте: {supporter}");
     assert!(supporter.contains("Темы"), "раздел назван не по-русски: {supporter}");
     assert!(supporter.contains("KDE"), "имя KDE потерялось: {supporter}");
 
-    // D2: выдуманное слово движка в вывод не пошло — строка осталась оригиналом.
+    // D2: the engine's made-up word did not get into the output — the line stayed the original.
     let tooltips = &out[3];
     assert!(!tooltips.contains("toolbep"), "каша движка уехала покупателю: {tooltips}");
     assert_eq!(
@@ -1306,11 +1306,11 @@ fn live_acceptance_defects_of_24_09_are_fixed() {
     );
 }
 
-/// Живая сверка СЛОВАРЯ ПОПРАВОК ТЕРМИНОВ на настоящей модели: 18 фраз
-/// описаний KDE Store с unzip/unpack/extract/download (кеш OCS, 03.10) и две
-/// контрольные, где `extract` значит «извлечь».
+/// Live check of the TERM CORRECTION DICTIONARY on the real model: 18 phrases
+/// of KDE Store descriptions with unzip/unpack/extract/download (OCS cache, 03.10) and two
+/// control ones where `extract` means «извлечь».
 ///
-/// Запуск — как у сверок выше:
+/// Run — as for the checks above:
 ///
 /// ```sh
 /// REXON_TRANSLATE_MODEL_DIR=$HOME/file-verify/mt-bench/models/firefox-enru \
@@ -1318,11 +1318,11 @@ fn live_acceptance_defects_of_24_09_are_fixed() {
 ///     -- --ignored --nocapture live_term_fixes
 /// ```
 ///
-/// Что стережёт: (1) в выводе не осталось ни одной формы, которую словарь
-/// умеет поправить (вывод — неподвижная точка [`apply_term_fixes`]);
-/// (2) «распак…» есть у всех фраз про архив, где движок вообще дал глагол;
-/// (3) контрольные фразы словарь не тронул — «извлеч…» на месте; (4) техника
-/// цела, заполнителей в выводе нет.
+/// What it guards: (1) the output has no form left that the dictionary
+/// can correct (the output is a fixed point of [`apply_term_fixes`]);
+/// (2) «распак…» is present in all archive phrases where the engine gave a verb at all;
+/// (3) the dictionary did not touch the control phrases — «извлеч…» is in place; (4) technical bits
+/// are intact, there are no placeholders in the output.
 #[test]
 #[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
 fn live_term_fixes_survive_the_real_engine() {
@@ -1397,21 +1397,21 @@ fn live_term_fixes_survive_the_real_engine() {
 }
 
 // ============================================================================
-// Описание темы 2380824 (KDE Store, 06.11): правила качества на живых кусках
+// Theme description 2380824 (KDE Store, 06.11): quality rules on live pieces
 // ============================================================================
 //
-// Карточка «Windows XP Professional - Luna Blue and Classic Suite» показала
-// разом весь класс дефектов: «и и», «Базцитовый Linux», «разногласия» вместо
-// Discord, «исследователь», «Лофон», «Лоток системы», ✨ → 👍 и абзац,
-// оставшийся английским целиком. Ниже — по сверке на каждое правило; ответы
-// движка — ДОСЛОВНО те, что дала живая модель Firefox en→ru 06.11.
+// The card "Windows XP Professional - Luna Blue and Classic Suite" showed
+// the whole class of defects at once: «и и», «Базцитовый Linux», «разногласия» instead of
+// Discord, «исследователь», «Лофон», «Лоток системы», ✨ → 👍 and a paragraph
+// that stayed entirely in English. Below is a check for each rule; the engine's
+// answers are VERBATIM those the live Firefox en→ru model gave on 06.11.
 
-/// Название товара и автор — как их передаёт окно.
+/// The item title and the author — as the window passes them.
 const XP_NAME: &str = "Windows XP Professional - Luna Blue and Classic Suite";
 const XP_AUTHOR: &str = "ruissoftware";
 
-/// Движок «по сценарию»: на известное предложение отвечает записанным живым
-/// ответом, остальное — как [`FakeEngine`] («перевод: …»).
+/// A "scripted" engine: answers a known sentence with the recorded live
+/// answer, the rest as [`FakeEngine`] does («перевод: …»).
 struct ScriptedEngine {
     answer: Box<dyn Fn(&str) -> Option<String>>,
     seen: Mutex<Vec<String>>,
@@ -1441,22 +1441,22 @@ impl TranslateEngine for ScriptedEngine {
     }
 }
 
-/// Прогон куска описания с охраной названия и автора, на свежей базе.
+/// Run a piece of the description with the title and the author guarded, on a fresh database.
 fn xp_translate(source: &str, engine: &ScriptedEngine) -> te::LiveTranslation {
     let home = TempHome::new("xp");
     let mut cache = LiveCache::open(&home.0);
     te::translate_live_guarded(source, "ru_RU.UTF-8", engine, &mut cache, &[XP_NAME, XP_AUTHOR])
 }
 
-/// (а) Имена из таблиц ядра (дистрибутивы, программы) — латиницей. Узел
-/// «Bazzite Linux» целиком из имён, движку он не достаётся вовсе; «Discord»
-/// внутри фразы движок перевёл («раздор»), и фраза переспрошена под
-/// заполнителем.
+/// (a) Names from the core's tables (distributions, programs) — in Latin letters. The node
+/// "Bazzite Linux" consists entirely of names, it does not reach the engine at all; "Discord"
+/// inside a phrase was translated by the engine («раздор»), and the phrase was asked again under a
+/// placeholder.
 #[test]
 fn xp_product_names_from_core_tables_stay_latin() {
     let engine = ScriptedEngine::new(|s| {
         if s.contains("Discord") {
-            // Голый проход: живой ответ модели.
+            // Bare pass: the model's live answer.
             return Some(
                 "светло-голубая область уведомлений Luna, показывающая живые фоновые приложения \
                  (раздор, Steam и т. Д.), контроль громкости."
@@ -1483,16 +1483,16 @@ fn xp_product_names_from_core_tables_stay_latin() {
         "узел из одних имён ушёл движку: {:?}",
         engine.seen()
     );
-    // Строчные обычные слова — по-прежнему проза: «a steam cloud» не имя.
+    // Ordinary lowercase words are still prose: "a steam cloud" is not a name.
     assert!(rexon_core::translator::is_prose_segment("a steam cloud over windows"));
 }
 
-/// (б) Знаки-картинки движку не показываются: ✨ на краю отрезается и
-/// возвращается, ✨ внутри фразы уходит под заполнитель.
+/// (b) Picture characters are not shown to the engine: ✨ at an edge is cut off and
+/// returned, ✨ inside a phrase goes under a placeholder.
 #[test]
 fn xp_pictographs_survive_byte_for_byte() {
     let engine = ScriptedEngine::new(|s| match s {
-        // Ровно то, что модель делала с целой строкой: «### 👍 Особенности:».
+        // Exactly what the model did with the whole line: «### 👍 Особенности:».
         "### ✨ Features:" => Some("### 👍 Особенности:".to_string()),
         "Features:" => Some("особенности:".to_string()),
         _ if s.contains('✨') => Some(s.replace('✨', "👍").replace("Enjoy the", "наслаждайтесь")),
@@ -1510,7 +1510,7 @@ fn xp_pictographs_survive_byte_for_byte() {
     );
 }
 
-/// Двоеточие после жирной подписи — край: модель меняла его на тире.
+/// A colon after a bold caption is an edge: the model replaced it with a dash.
 #[test]
 fn xp_leading_colon_after_bold_label_is_kept() {
     let engine = ScriptedEngine::new(|s| {
@@ -1528,8 +1528,8 @@ fn xp_leading_colon_after_bold_label_is_kept() {
     );
 }
 
-/// (в) Выдуманное движком сверх источника: «и и» на одинокое «and», союз «и»
-/// в начале фразы, тире в начале. Авторский повтор остаётся.
+/// (c) What the engine made up beyond the source: «и и» for a single "and", the conjunction «и»
+/// at the start of a phrase, a dash at the start. An author's repeat stays.
 #[test]
 fn xp_invented_repeats_and_leading_marks_are_dropped() {
     let engine = ScriptedEngine::new(|s| match s {
@@ -1553,8 +1553,8 @@ fn xp_invented_repeats_and_leading_marks_are_dropped() {
     assert!(out.text.contains("Это очень очень мило."), "авторский повтор съеден: {}", out.text);
 }
 
-/// Поправки терминов на одиноких подписях: «Explorer», «Logon», «Windows XP
-/// System Tray (», «Classic Start Menu (» — живые ответы модели.
+/// Term corrections on lone captions: "Explorer", "Logon", "Windows XP
+/// System Tray (", "Classic Start Menu (" — the model's live answers.
 #[test]
 fn xp_windows_terms_are_fixed() {
     let engine = ScriptedEngine::new(|s| match s {
@@ -1574,11 +1574,11 @@ fn xp_windows_terms_are_fixed() {
     }
 }
 
-/// (г) Абзац «: Full Windows XP Explorer replica … Classic View …» оставался
-/// английским ЦЕЛИКОМ: голый перевод был хорош, но потерял `Classic` (слово
-/// из названия товара), второй проход прятал все четыре имени и движок
-/// размножил `@0@`. Теперь второй проход прячет только потерянное, а если и
-/// он не удался — берётся голый перевод: потерянное имя «мягкое».
+/// (d) The paragraph ": Full Windows XP Explorer replica … Classic View …" stayed
+/// in English ENTIRELY: the bare translation was good but lost `Classic` (a word
+/// from the item title), the second pass hid all four names and the engine
+/// multiplied `@0@`. Now the second pass hides only what was lost, and if
+/// it fails too, the bare translation is taken: the lost name is "soft".
 #[test]
 fn xp_paragraph_with_a_lost_title_word_is_not_left_in_english() {
     const CORE: &str = "Full Windows XP Explorer replica with Category View, Classic View, System \
@@ -1593,21 +1593,21 @@ fn xp_paragraph_with_a_lost_title_word_is_not_left_in_english() {
                     .to_string(),
             );
         }
-        // Второй проход: живая порча — заполнитель размножен.
+        // Second pass: live corruption — the placeholder multiplied.
         s.contains("@0@").then(|| "полная @0@ реплика @0@ с видом категории.".to_string())
     });
     let out = xp_translate(&format!("<p><strong>Explorer</strong>: {CORE}</p>"), &engine);
     assert!(out.was_translated);
     assert!(out.text.contains(": Полная копия проводника Windows XP"), "{}", out.text);
     assert!(!out.text.contains("Full Windows"), "абзац остался английским: {}", out.text);
-    // Второй проход прятал ОДНО имя — потерянное `Classic`, а не все четыре.
+    // The second pass hid ONE name — the lost `Classic`, not all four.
     let masked: Vec<String> = engine.seen().into_iter().filter(|s| s.contains('@')).collect();
     assert_eq!(masked.len(), 1, "{masked:?}");
     assert!(masked[0].contains("@0@ View") && !masked[0].contains("@1@"), "{masked:?}");
 }
 
-/// Строгость прежняя для «твёрдых» имён: имя из списков ядра, не удержанное
-/// ни голым, ни под заполнителем, по-прежнему отменяет сегмент.
+/// The strictness is as before for "hard" names: a name from the core's lists that is kept
+/// neither bare nor under a placeholder still cancels the segment.
 #[test]
 fn xp_a_lost_core_name_still_returns_the_original() {
     let engine = ScriptedEngine::new(|s| {
@@ -1623,9 +1623,9 @@ fn xp_a_lost_core_name_still_returns_the_original() {
     assert!(!out.was_translated);
 }
 
-/// Кеш со старыми правилами не читается: запись прежней версии (`6`) с плохим
-/// переводом лежит под другим ключом, и человек сразу видит новый перевод —
-/// без ручной чистки базы.
+/// A cache with old rules is not read: a record of the previous version (`6`) with a bad
+/// translation lies under another key, and the person immediately sees the new translation —
+/// without cleaning the database by hand.
 #[test]
 fn xp_translations_cached_under_old_rules_are_not_shown() {
     use rexon_core::translator::{translation_cache_key, translation_cache_key_versioned};
@@ -1649,14 +1649,14 @@ fn xp_translations_cached_under_old_rules_are_not_shown() {
     assert!(out.text.contains("Проводник"), "{}", out.text);
 }
 
-/// Чистые части правил: края фразы, повторно спрятанные имена, «мягкость».
+/// Pure parts of the rules: phrase edges, names hidden again, "softness".
 #[test]
 fn xp_rule_helpers() {
     use rexon_core::translator as tr;
     assert_eq!(tr::split_sentence_edges("### ✨ Features:"), ("### ✨ ", "Features:", ""));
     assert_eq!(tr::split_sentence_edges(": Full text."), (": ", "Full text.", ""));
     assert_eq!(tr::split_sentence_edges("Enjoy! 🎉"), ("", "Enjoy!", " 🎉"));
-    // Ключ команды и скобка — не край.
+    // A command flag and a bracket are not an edge.
     assert_eq!(tr::split_sentence_edges("-r flag"), ("", "-r flag", ""));
     assert_eq!(tr::split_sentence_edges("(Discord)"), ("", "(Discord)", ""));
 
@@ -1678,21 +1678,21 @@ fn xp_rule_helpers() {
 
 
 // ============================================================================
-// Описание «Candy icons» (KDE Store 1305251, eliverlara, 08.11): ссылки-имена
-// и устойчивые термины
+// The "Candy icons" description (KDE Store 1305251, eliverlara, 08.11): link names
+// and set terms
 // ============================================================================
 //
-// Живая проверка 08.11: «…чтобы соответствовать моему Сладкий тема темы»
-// (текст ссылки «Sweet» переведён, «icon theme» → «икона темы»), «Note» →
-// «Записка», «open an issue» → «открыть вопрос», «pull request» → «вытащить
-// запрос». Описание — ДОСЛОВНО из OCS API KDE Store.
+// Live check 08.11: «…чтобы соответствовать моему Сладкий тема темы»
+// (the link text "Sweet" translated, "icon theme" → «икона темы»), "Note" →
+// «Записка», "open an issue" → «открыть вопрос», "pull request" → «вытащить
+// запрос». The description is VERBATIM from the KDE Store OCS API.
 
 const CANDY_DESCRIPTION: &str = "<h2>Support Me &hearts;<br />Your support is truly vital to keep this and my other linux projects alive, so it would be great if you consider becoming a supporter on any of the different platforms, any help means a lot<br /><br />- <a href=\"https://github.com/sponsors/eliverlara\">Become a sponsor on github</a><br />- <a href=\"https://ko-fi.com/eliverlara\">Become a sponsor on Ko-fi</a><br />- <a href=\"https://www.paypal.com/paypalme/eliverlara\">Donate using PayPal</a><br /><br />Sweet gradient icon theme originally created to fit my <a href=\"https://www.gnome-look.org/p/1253385/\">Sweet</a> theme<br /><br />If you want you can combine them with any of the options provided in <a href=\"https://www.opendesktop.org/p/1284047/\">sweet-folders</a> as shown in the second screenshot<br /><br /><b>Note</b><br /><br />To request for icons please <a href=\"https://github.com/EliverLara/candy-icons/issues\">open an issue</a> on github, or if you want to contribute open a <a href=\"https://github.com/EliverLara/candy-icons/pulls\">pull request</a></h2>";
 
 const CANDY_NAME: &str = "Candy icons";
 const CANDY_AUTHOR: &str = "eliverlara";
 
-/// Общие требования к переводу описания «Candy icons».
+/// General requirements for the translation of the "Candy icons" description.
 fn assert_candy_is_fixed(text: &str) {
     let lower = text.to_lowercase();
     assert!(
@@ -1711,8 +1711,8 @@ fn assert_candy_is_fixed(text: &str) {
     }
 }
 
-/// Сценарий на ответах живой модели (замер 08.11, Firefox en→ru): фраза со
-/// ссылкой-именем уходит движку ЦЕЛИКОМ, а не «Sweet» и «theme» поодиночке.
+/// A script on the live model's answers (measurement 08.11, Firefox en→ru): a phrase with
+/// a link name goes to the engine AS A WHOLE, not "Sweet" and "theme" separately.
 #[test]
 fn candy_name_link_is_folded_into_its_sentence_and_kept() {
     let engine = ScriptedEngine::new(|s| {
@@ -1749,10 +1749,10 @@ fn candy_name_link_is_folded_into_its_sentence_and_kept() {
     assert!(out.text.contains("тема значков"), "{}", out.text);
     assert!(out.text.contains("темой <a href"), "{}", out.text);
     assert!(out.text.contains("Запросить значки"), "{}", out.text);
-    // Ссылки-проза по-прежнему переводятся: «Become a sponsor on github».
+    // Prose links are still translated: "Become a sponsor on github".
     assert!(!out.text.contains(">Become a sponsor on github<"), "{}", out.text);
-    // Слаг не склеивается: соседние куски уходят движку как прежде, сам слаг —
-    // никогда.
+    // A slug is not glued: neighboring pieces go to the engine as before, the slug itself
+    // never does.
     assert!(
         engine.seen().iter().any(|s| s == "as shown in the second screenshot"),
         "{:?}",
@@ -1761,7 +1761,7 @@ fn candy_name_link_is_folded_into_its_sentence_and_kept() {
     assert!(!engine.seen().iter().any(|s| s.contains("sweet-folders")), "{:?}", engine.seen());
 }
 
-/// Без перевода склеенная фраза возвращается исходной разметкой байт в байт.
+/// Without a translation the glued phrase comes back as the original markup byte for byte.
 #[test]
 fn candy_untranslated_folded_sentence_keeps_its_markup() {
     use rexon_core::translator::{fold_name_links, render_folded, segment_html, translatable_flags};
@@ -1770,11 +1770,11 @@ fn candy_untranslated_folded_sentence_keeps_its_markup() {
     let (segs, runs) = fold_name_links(segment_html(html));
     let flags = translatable_flags(&segs);
     assert_eq!(render_folded(&segs, &flags, &runs, |_| String::new()), html);
-    // Две ссылки в одной фразе — одна склейка, имена по порядку.
+    // Two links in one phrase — one glue, the names in order.
     let run = runs.iter().flatten().next().expect("склейка");
     assert_eq!(run.names(), ["Sweet", "Nordic"]);
     assert_eq!(run.plain(), "Made to fit my Sweet theme and Nordic.");
-    // Перевод без имени — тоже разметка оригинала, а не потерянная ссылка.
+    // A translation without the name — also the original markup, not a lost link.
     assert_eq!(render_folded(&segs, &flags, &runs, |_| "без имён".to_string()), html);
     let linked = render_folded(&segs, &flags, &runs, |_| "под мою тему Sweet и Nordic.".to_string());
     assert_eq!(
@@ -1782,7 +1782,7 @@ fn candy_untranslated_folded_sentence_keeps_its_markup() {
         "<p>под мою тему <a href=\"https://www.gnome-look.org/p/1253385/\">Sweet</a> и \
          <a href=\"https://github.com/EliverLara/Nordic\">Nordic</a>.</p>"
     );
-    // Имя ссылки стоит во фразе дважды: тег встаёт на то же по счёту.
+    // The link name occurs twice in the phrase: the tag goes onto the same occurrence by count.
     let html = "<p>Sweet icons to fit my <a href=\"https://www.gnome-look.org/p/1253385/\">Sweet</a> theme</p>";
     let (segs, runs) = fold_name_links(segment_html(html));
     let flags = translatable_flags(&segs);
@@ -1790,14 +1790,14 @@ fn candy_untranslated_folded_sentence_keeps_its_markup() {
         render_folded(&segs, &flags, &runs, |_| "значки Sweet под мою тему Sweet".to_string()),
         "<p>значки Sweet под мою тему <a href=\"https://www.gnome-look.org/p/1253385/\">Sweet</a></p>"
     );
-    // Движок одно вхождение потерял — берётся ближайшее по месту.
+    // The engine lost one occurrence — the nearest one by position is taken.
     assert_eq!(
         render_folded(&segs, &flags, &runs, |_| "значки под мою тему Sweet".to_string()),
         "<p>значки под мою тему <a href=\"https://www.gnome-look.org/p/1253385/\">Sweet</a></p>"
     );
 }
 
-/// Что считается ссылкой-именем, а что — прозой.
+/// What counts as a link name and what as prose.
 #[test]
 fn candy_name_link_rules() {
     use rexon_core::translator::{is_name_link, is_product_page_url, markdown_name_links, technical_spans};
@@ -1813,7 +1813,7 @@ fn candy_name_link_rules() {
     assert!(!is_name_link("Sweet", "https://www.paypal.com/paypalme/eliverlara"));
     assert!(!is_product_page_url("https://github.com/sponsors/eliverlara"));
     assert!(!is_product_page_url("https://github.com/EliverLara/candy-icons/issues"));
-    // Markdown: имя под охраной целиком, проза-ссылка — нет.
+    // Markdown: the name is guarded as a whole, a prose link is not.
     let md = "Made to fit my [Sweet Dark](https://store.kde.org/p/1294174) theme, [open an issue](https://github.com/a/b/issues).";
     let spans = markdown_name_links(md);
     assert_eq!(spans.len(), 1);
@@ -1821,7 +1821,7 @@ fn candy_name_link_rules() {
     assert!(technical_spans(md).contains(&spans[0]));
 }
 
-/// Словарь устойчивых терминов — на живых ответах модели (замер 08.11).
+/// The dictionary of set terms — on the model's live answers (measurement 08.11).
 #[test]
 fn candy_stable_terms_are_fixed() {
     use rexon_core::translator::apply_term_fixes;
@@ -1830,7 +1830,7 @@ fn candy_stable_terms_are_fixed() {
     assert_eq!(fix("Note:", "заметка:"), "примечание:");
     assert_eq!(fix("NOTE", "НОТЕ ПРИМЕЧАНИЕ"), "Примечание");
     assert_eq!(fix("Note: requires Kvantum.", "заметка: требует Kvantum."), "примечание: требует Kvantum.");
-    // «Note» не в начале — слово как слово.
+    // "Note" not at the start is just a word.
     assert_eq!(fix("Take a note of it.", "сделайте заметку."), "сделайте заметку.");
     assert_eq!(fix("open an issue", "открыть вопрос"), "создать заявку");
     assert_eq!(
@@ -1848,17 +1848,17 @@ fn candy_stable_terms_are_fixed() {
     );
     assert_eq!(fix("This icon set is based on Papirus.", "этот набор иконок основан на Papirus."), "этот набор значков основан на Papirus.");
     assert_eq!(fix("To request for icons please", "запросить иконки, пожалуйста"), "запросить значки, пожалуйста");
-    // «иконки» при единственном `icon` — может быть родительным падежом.
+    // «иконки» with a single `icon` may be the genitive case.
     assert_eq!(fix("The icon color", "цвет иконки"), "цвет иконки");
     assert_eq!(fix("A cursor theme for Linux.", "курсорная тема для Linux."), "тема курсоров для Linux.");
     assert_eq!(fix("theme", "тема темы"), "тема");
     assert_eq!(fix("Please star the repository if you like it.", "пожалуйста, отведайте репозиторий, если вам это нравится."), "пожалуйста, отметьте звёздочкой репозиторий, если вам это нравится.");
     assert_eq!(fix("A plasma widget that shows the weather.", "плазменный виджет, который показывает погоду."), "виджет Plasma, который показывает погоду.");
-    // Уже верное — не трогается.
+    // Already correct — not touched.
     assert_eq!(fix("A dark GTK theme with Kvantum support.", "темная тема GTK с поддержкой Kvantum."), "темная тема GTK с поддержкой Kvantum.");
 }
 
-/// Живая сверка всего описания на настоящей модели.
+/// Live check of the whole description on the real model.
 #[test]
 #[ignore = "нужна скачанная модель Firefox en→ru (REXON_TRANSLATE_MODEL_DIR), в дерево не кладётся"]
 fn live_candy_icons_description_is_fixed() {

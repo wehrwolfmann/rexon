@@ -1,55 +1,55 @@
-//! Курсоры Windows (`.cur` / `.ani`) → Xcursor: разбор и запись своим кодом.
+//! Windows cursors (`.cur` / `.ani`) → Xcursor: parsing and writing with our own code.
 //!
-//! ЗАЧЕМ СВОЙ КОД. Рабочий стол Linux (KWin, Mutter, Hyprland, X-сервер)
-//! рисует курсор сам и понимает только Xcursor; «проигрывателя» `.cur`/`.ani`
-//! у него нет, поэтому перевод обязателен. Прежний путь держался на чужих
-//! программах (`win2xcur` из pip или `convert` + `xcursorgen`) и брал ТОЛЬКО
-//! первый кадр (`convert file[0]`): анимированный курсор становился
-//! неподвижным, а без `xcursorgen` (его нет в большинстве систем) импорт не
-//! работал вовсе. Здесь всё — на Rust, без внешних программ.
+//! WHY OUR OWN CODE. The Linux desktop (KWin, Mutter, Hyprland, the X server)
+//! draws the cursor itself and understands only Xcursor; it has no `.cur`/`.ani`
+//! "player", so conversion is mandatory. The previous path relied on foreign
+//! programs (`win2xcur` from pip or `convert` + `xcursorgen`) and took ONLY
+//! the first frame (`convert file[0]`): an animated cursor became
+//! static, and without `xcursorgen` (missing on most systems) the import did not
+//! work at all. Here everything is in Rust, without external programs.
 //!
-//! Форматы (по документации Microsoft и собственному разбору файлов):
-//!   * `.cur`/`.ico` — каталог ICONDIR: 6 байт заголовка (0, тип 1/2, число
-//!     записей) + записи по 16 байт; у курсора (тип 2) поля «плоскости/биты»
-//!     записи — это горячая точка X/Y. Картинка записи — либо PNG целиком,
-//!     либо DIB (BITMAPINFOHEADER, высота удвоена: XOR-картинка + AND-маска).
-//!   * `.ani` — RIFF `ACON`: `anih` (36 байт: число кадров, число шагов,
-//!     частота по умолчанию в 1/60 с, флаги), `rate` (задержка каждого шага),
-//!     `seq ` (номер кадра каждого шага), `LIST fram` → чанки `icon`, каждый
-//!     — целый `.cur`/`.ico` со своими горячими точками; `LIST INFO` →
-//!     `INAM` (название), `IART` (автор).
-//!   * Xcursor — `Xcur`, оглавление, картинки `0xfffd0002` с номинальным
-//!     размером, горячей точкой, задержкой в мс и пикселями ARGB с
-//!     предумноженной альфой (libXcursor берёт ВСЕ картинки ближайшего
-//!     номинала по порядку — это и есть анимация).
+//! Formats (from Microsoft documentation and our own analysis of files):
+//!   * `.cur`/`.ico` — an ICONDIR directory: a 6-byte header (0, type 1/2, number of
+//!     entries) + 16-byte entries; for a cursor (type 2) the "planes/bits" fields
+//!     of an entry are the X/Y hotspot. The entry picture is either a whole PNG
+//!     or a DIB (BITMAPINFOHEADER, height doubled: XOR picture + AND mask).
+//!   * `.ani` — RIFF `ACON`: `anih` (36 bytes: number of frames, number of steps,
+//!     default rate in 1/60 s, flags), `rate` (the delay of each step),
+//!     `seq ` (the frame number of each step), `LIST fram` → `icon` chunks, each
+//!     a whole `.cur`/`.ico` with its own hotspots; `LIST INFO` →
+//!     `INAM` (title), `IART` (author).
+//!   * Xcursor — `Xcur`, a table of contents, `0xfffd0002` images with a nominal
+//!     size, a hotspot, a delay in ms and ARGB pixels with
+//!     premultiplied alpha (libXcursor takes ALL images of the nearest
+//!     nominal size in order — that is the animation).
 //!
-//! Размеры. Курсор Windows любого холста (32…256 px) показывается в
-//! номинале 32 при 100 % масштаба, поэтому холст приводится к номиналам
-//! 24/32/48 (+64/96 для HiDPI, если исходник не меньше). Уменьшение —
-//! Ланцош по предумноженной альфе (без тёмной каймы); увеличение — сначала
-//! точное целое повторение пикселей, и лишь остаток — Ланцошем, чтобы
-//! мелкий пиксель-арт не «замыливался».
+//! Sizes. A Windows cursor of any canvas (32…256 px) is shown at
+//! nominal size 32 at 100 % scale, so the canvas is brought to the nominal sizes
+//! 24/32/48 (+64/96 for HiDPI, if the source is not smaller). Downscaling —
+//! Lanczos on premultiplied alpha (no dark fringe); upscaling — first an
+//! exact integer repetition of pixels, and only the remainder with Lanczos, so that
+//! small pixel art does not get "blurred".
 //!
-//! Роли. Файл набора знает роль только по описателю: `install.inf`
-//! (строки реестра `HKCU,"Control Panel\Cursors",Arrow,…` и список схемы
-//! `…\Cursors\Schemes` в фиксированном порядке Windows) или `.crs`
-//! (RW-Designer: `[Arrow] Path=…`). Имена файлов — только запасной путь.
+//! Roles. A set file knows its role only from the descriptor: `install.inf`
+//! (registry lines `HKCU,"Control Panel\Cursors",Arrow,…` and the scheme list
+//! `…\Cursors\Schemes` in the fixed Windows order) or `.crs`
+//! (RW-Designer: `[Arrow] Path=…`). File names are only a fallback.
 
 use std::collections::HashMap;
 
-/// Предел входного файла курсора (больше — не курсор, а мусор/бомба).
+/// Limit of the cursor input file (larger — not a cursor but garbage/a bomb).
 pub const MAX_INPUT_BYTES: usize = 16 << 20;
-/// Предел стороны картинки кадра (у Windows — 256).
+/// Limit of a frame picture side (Windows has 256).
 const MAX_SIDE: u32 = 512;
-/// Пределы записей каталога, кадров и шагов анимации.
+/// Limits of directory entries, frames and animation steps.
 const MAX_ENTRIES: usize = 64;
 const MAX_FRAMES: usize = 1024;
 const MAX_STEPS: usize = 4096;
-/// Бюджет одного файла Xcursor: при превышении сначала отпадают 96, потом 64.
+/// Budget of one Xcursor file: when exceeded, 96 drops first, then 64.
 pub const XCURSOR_BUDGET: usize = 8 << 20;
 
 // ============================================================================
-// Чтение чисел
+// Reading numbers
 // ============================================================================
 
 fn u16_at(b: &[u8], o: usize) -> Option<u16> {
@@ -66,10 +66,10 @@ fn i32_at(b: &[u8], o: usize) -> Option<i32> {
 }
 
 // ============================================================================
-// Картинка курсора и анимация
+// Cursor picture and animation
 // ============================================================================
 
-/// Одна картинка курсора: RGBA с прямой (не предумноженной) альфой.
+/// One cursor picture: RGBA with straight (not premultiplied) alpha.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CurImage {
     pub width: u32,
@@ -79,32 +79,32 @@ pub struct CurImage {
     pub rgba: Vec<u8>,
 }
 
-/// Шаг анимации: какой кадр и сколько его держать.
+/// An animation step: which frame and how long to hold it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Step {
     pub frame: usize,
     pub delay_ms: u32,
 }
 
-/// Разобранный курсор: кадры (у каждого — все размеры из файла) и шаги.
-/// У неподвижного `.cur` — один кадр и один шаг.
+/// A parsed cursor: frames (each with all sizes from the file) and steps.
+/// A static `.cur` has one frame and one step.
 #[derive(Clone, Debug, Default)]
 pub struct Animation {
     pub frames: Vec<Vec<CurImage>>,
     pub steps: Vec<Step>,
-    /// `INAM` из `.ani`, если есть.
+    /// `INAM` from `.ani`, if present.
     pub title: Option<String>,
-    /// `IART` из `.ani`, если есть.
+    /// `IART` from `.ani`, if present.
     pub artist: Option<String>,
 }
 
 impl Animation {
-    /// Анимирован ли курсор (больше одного шага).
+    /// Whether the cursor is animated (more than one step).
     pub fn is_animated(&self) -> bool {
         self.steps.len() > 1
     }
 
-    /// Наибольшая сторона картинок во всех кадрах.
+    /// The largest picture side across all frames.
     pub fn max_side(&self) -> u32 {
         self.frames
             .iter()
@@ -115,9 +115,9 @@ impl Animation {
     }
 }
 
-/// Разобрать файл курсора по содержимому (`RIFF…ACON` — `.ani`, иначе
-/// каталог `.cur`/`.ico`). Расширению файла не верим: в наборах встречаются
-/// `.cur`, переименованные из `.ani`.
+/// Parse a cursor file by its contents (`RIFF…ACON` — `.ani`, otherwise
+/// a `.cur`/`.ico` directory). We do not trust the file extension: sets contain
+/// `.cur` files renamed from `.ani`.
 pub fn parse_cursor_file(data: &[u8]) -> Result<Animation, String> {
     if data.len() > MAX_INPUT_BYTES {
         return Err(format!("file is too large ({} bytes)", data.len()));
@@ -138,10 +138,10 @@ pub fn parse_cursor_file(data: &[u8]) -> Result<Animation, String> {
 // ICONDIR (.cur / .ico)
 // ============================================================================
 
-/// Горячая точка записи ICO-типа (тип 1). В «иконке» поля записи — это
-/// плоскости и биты на пиксель; но редакторы `.ani` порой пишут тип 1 и
-/// кладут туда настоящую горячую точку. Похоже на плоскости/биты — (0, 0)
-/// (левый верхний угол, как у стрелки), иначе — поля как точка.
+/// Hotspot of an ICO-type entry (type 1). In an "icon" the entry fields are
+/// planes and bits per pixel; but `.ani` editors sometimes write type 1 and
+/// put the real hotspot there. Looks like planes/bits — (0, 0)
+/// (the top-left corner, as for an arrow), otherwise — the fields as a point.
 fn icon_entry_hotspot(f1: u16, f2: u16, w: u32, h: u32) -> (u32, u32) {
     let looks_like_planes_bpp =
         f1 <= 1 && matches!(f2, 0 | 1 | 2 | 4 | 8 | 16 | 24 | 32);
@@ -152,7 +152,7 @@ fn icon_entry_hotspot(f1: u16, f2: u16, w: u32, h: u32) -> (u32, u32) {
     }
 }
 
-/// Разобрать каталог `.cur`/`.ico`: все записи, которые удалось прочесть.
+/// Parse a `.cur`/`.ico` directory: all entries that could be read.
 pub fn parse_icondir(data: &[u8]) -> Result<Vec<CurImage>, String> {
     let (Some(reserved), Some(kind), Some(count)) =
         (u16_at(data, 0), u16_at(data, 2), u16_at(data, 4))
@@ -188,8 +188,8 @@ pub fn parse_icondir(data: &[u8]) -> Result<Vec<CurImage>, String> {
                 } else {
                     icon_entry_hotspot(f1, f2, ew, eh)
                 };
-                // Запись врёт о размере (бывает у самодельных наборов) —
-                // точку переносим пропорционально настоящей картинке.
+                // The entry lies about its size (happens in home-made sets) —
+                // move the point proportionally to the real picture.
                 if w != ew {
                     hx = hx * w / ew;
                 }
@@ -213,7 +213,7 @@ pub fn parse_icondir(data: &[u8]) -> Result<Vec<CurImage>, String> {
     Ok(out)
 }
 
-/// Картинка записи: PNG целиком или DIB с AND-маской.
+/// The entry picture: a whole PNG or a DIB with an AND mask.
 fn decode_entry(blob: &[u8], entry_h: u32) -> Result<(u32, u32, Vec<u8>), String> {
     if blob.starts_with(b"\x89PNG\r\n\x1a\n") {
         let img = image::load_from_memory_with_format(blob, image::ImageFormat::Png)
@@ -228,8 +228,8 @@ fn decode_entry(blob: &[u8], entry_h: u32) -> Result<(u32, u32, Vec<u8>), String
     decode_dib(blob, entry_h)
 }
 
-/// DIB записи иконки: 1/4/8 бит с палитрой, 16/24/32 бита; строки снизу
-/// вверх; за XOR-картинкой — AND-маска 1 бит (1 = прозрачно).
+/// DIB of an icon entry: 1/4/8 bits with a palette, 16/24/32 bits; rows bottom
+/// to top; after the XOR picture — a 1-bit AND mask (1 = transparent).
 fn decode_dib(b: &[u8], entry_h: u32) -> Result<(u32, u32, Vec<u8>), String> {
     let hs = u32_at(b, 0).ok_or("bitmap header is missing")? as usize;
     if !(40..=b.len()).contains(&hs) {
@@ -243,7 +243,7 @@ fn decode_dib(b: &[u8], entry_h: u32) -> Result<(u32, u32, Vec<u8>), String> {
     let w = w as u32;
     let top_down = h2 < 0;
     let h2a = h2.unsigned_abs();
-    // Обычно высота удвоена (картинка + маска); у редких писателей — нет.
+    // Usually the height is doubled (picture + mask); with rare writers it is not.
     let (h, has_mask) = if h2a == entry_h && h2a != 2 * entry_h {
         (h2a, false)
     } else {
@@ -333,9 +333,9 @@ fn decode_dib(b: &[u8], entry_h: u32) -> Result<(u32, u32, Vec<u8>), String> {
             rgba[o..o + 4].copy_from_slice(&[r, g, bl, a]);
         }
     }
-    // 32 бита с настоящей альфой — маска не нужна. Иначе прозрачность — из
-    // AND-маски; «инвертирующие» точки (маска 1 при ненулевом цвете) Xcursor
-    // не умеет — рисуем их чёрными, как это делают системы без инверсии.
+    // 32 bits with real alpha — no mask needed. Otherwise transparency comes from
+    // the AND mask; Xcursor cannot do "inverting" points (mask 1 with a non-zero color) —
+    // we draw them black, as systems without inversion do.
     if !(bpp == 32 && any_alpha) {
         for y in 0..hu {
             let row = if top_down { y } else { hu - 1 - y };
@@ -361,20 +361,20 @@ fn decode_dib(b: &[u8], entry_h: u32) -> Result<(u32, u32, Vec<u8>), String> {
 // ANI (RIFF ACON)
 // ============================================================================
 
-/// Заголовок `anih`.
+/// The `anih` header.
 #[derive(Clone, Copy, Debug)]
 struct AniHeader {
     steps: u32,
     rate: u32,
 }
 
-/// Разобрать `.ani`: кадры, шаги (`seq`), задержки (`rate`, 1/60 с → мс).
+/// Parse `.ani`: frames, steps (`seq`), delays (`rate`, 1/60 s → ms).
 pub fn parse_ani(data: &[u8]) -> Result<Animation, String> {
     if data.get(0..4) != Some(b"RIFF") || data.get(8..12) != Some(b"ACON") {
         return Err("not an animated cursor".into());
     }
     let riff_len = u32_at(data, 4).unwrap_or(0) as usize;
-    // Длина RIFF у части файлов врёт — верим меньшему из двух.
+    // The RIFF length lies in some files — trust the smaller of the two.
     let end = 8usize.saturating_add(riff_len).min(data.len());
     let mut header: Option<AniHeader> = None;
     let mut rate: Option<Vec<u32>> = None;
@@ -433,7 +433,7 @@ pub fn parse_ani(data: &[u8]) -> Result<Animation, String> {
         pos = body_start.saturating_add(size) + (size & 1);
     }
     let header = header.ok_or("animated cursor has no header")?;
-    // Битый кадр не роняет весь курсор: его место занимает соседний целый.
+    // A broken frame does not bring down the whole cursor: an adjacent intact one takes its place.
     let Some(first_ok) = frames.iter().position(|f| f.is_some()) else {
         return Err(if frame_err.is_empty() {
             "animated cursor has no frames".into()
@@ -483,7 +483,7 @@ fn u32_list(body: &[u8]) -> Vec<u32> {
         .collect()
 }
 
-/// Обойти подчанки RIFF-списка (с выравниванием на чётный байт).
+/// Walk the subchunks of a RIFF list (aligned to an even byte).
 fn walk_chunks(mut b: &[u8], mut f: impl FnMut(&[u8], &[u8])) {
     while b.len() >= 8 {
         let size = u32_at(b, 4).unwrap_or(0) as usize;
@@ -498,10 +498,10 @@ fn walk_chunks(mut b: &[u8], mut f: impl FnMut(&[u8], &[u8])) {
 }
 
 // ============================================================================
-// Масштаб и Xcursor
+// Scaling and Xcursor
 // ============================================================================
 
-/// Отрисованная картинка одного номинала: RGBA с ПРЕДУМНОЖЕННОЙ альфой.
+/// A rendered picture of one nominal size: RGBA with PREMULTIPLIED alpha.
 #[derive(Clone, Debug)]
 struct Rendered {
     width: u32,
@@ -511,7 +511,7 @@ struct Rendered {
     premul: Vec<u8>,
 }
 
-/// Номиналы для анимации: 24/32/48 всегда, 64 и 96 — если исходник не меньше.
+/// Nominal sizes for the animation: 24/32/48 always, 64 and 96 — if the source is not smaller.
 pub fn target_sizes(anim: &Animation) -> Vec<u32> {
     let m = anim.max_side();
     let mut v = vec![24, 32, 48];
@@ -552,7 +552,7 @@ fn unpremultiply(premul: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Масштаб предумноженной картинки без «мыла» на увеличении.
+/// Scaling of a premultiplied picture without "blur" on upscaling.
 fn scale_premul(src: &[u8], sw: u32, sh: u32, dw: u32, dh: u32) -> Vec<u8> {
     use image::imageops::{resize, FilterType};
     if (sw, sh) == (dw, dh) {
@@ -560,7 +560,7 @@ fn scale_premul(src: &[u8], sw: u32, sh: u32, dw: u32, dh: u32) -> Vec<u8> {
     }
     let img = image::RgbaImage::from_raw(sw, sh, src.to_vec()).expect("размер буфера");
     let out = if dw >= sw && dh >= sh {
-        // Целое повторение пикселей, остаток — Ланцошем вниз.
+        // Integer repetition of pixels, the remainder — Lanczos downwards.
         let k = dw.div_ceil(sw).max(dh.div_ceil(sh)).max(1);
         let nn = resize(&img, sw * k, sh * k, FilterType::Nearest);
         if (sw * k, sh * k) == (dw, dh) {
@@ -572,7 +572,7 @@ fn scale_premul(src: &[u8], sw: u32, sh: u32, dw: u32, dh: u32) -> Vec<u8> {
         resize(&img, dw, dh, FilterType::Lanczos3)
     };
     let mut raw = out.into_raw();
-    // Звон Ланцоша не должен дать цвет ярче альфы (Xcursor — предумноженный).
+    // Lanczos ringing must not give a color brighter than alpha (Xcursor is premultiplied).
     for px in raw.chunks_exact_mut(4) {
         let a = px[3];
         for c in &mut px[0..3] {
@@ -584,8 +584,8 @@ fn scale_premul(src: &[u8], sw: u32, sh: u32, dw: u32, dh: u32) -> Vec<u8> {
     raw
 }
 
-/// Картинка кадра в номинале `size`: берётся наименьшая из файла, что не
-/// меньше номинала (иначе наибольшая), холст приводится к номиналу.
+/// Frame picture at nominal size `size`: the smallest one from the file that is not
+/// smaller than the nominal is taken (otherwise the largest), the canvas is brought to the nominal.
 fn render_frame(images: &[CurImage], size: u32) -> Rendered {
     let side = |i: &CurImage| i.width.max(i.height);
     let src = images
@@ -613,18 +613,18 @@ fn render_frame(images: &[CurImage], size: u32) -> Rendered {
 const XCUR_MAGIC: &[u8; 4] = b"Xcur";
 const XCUR_IMAGE: u32 = 0xfffd_0002;
 
-/// Итог перевода одного курсора.
+/// Result of converting one cursor.
 #[derive(Clone, Debug)]
 pub struct XcursorOut {
     pub bytes: Vec<u8>,
-    /// Номиналы, попавшие в файл.
+    /// Nominal sizes that made it into the file.
     pub sizes: Vec<u32>,
-    /// Шагов анимации в файле (после склейки соседних одинаковых).
+    /// Animation steps in the file (after merging adjacent identical ones).
     pub steps: usize,
 }
 
-/// Шаги для записи: соседние шаги одного кадра склеиваются (сумма задержек),
-/// у неподвижного курсора задержка 0.
+/// Steps to write: adjacent steps of one frame are merged (sum of delays),
+/// a static cursor has delay 0.
 pub fn merged_steps(anim: &Animation) -> Vec<Step> {
     let mut steps: Vec<Step> = Vec::new();
     for s in &anim.steps {
@@ -642,7 +642,7 @@ pub fn merged_steps(anim: &Animation) -> Vec<Step> {
     steps
 }
 
-/// Собрать файл Xcursor со ВСЕМИ шагами анимации во всех номиналах.
+/// Build an Xcursor file with ALL animation steps at all nominal sizes.
 pub fn to_xcursor(anim: &Animation, budget: usize) -> XcursorOut {
     let steps = merged_steps(anim);
     let mut sizes = target_sizes(anim);
@@ -704,7 +704,7 @@ pub fn to_xcursor(anim: &Animation, budget: usize) -> XcursorOut {
     XcursorOut { bytes: out, sizes, steps: steps.len() }
 }
 
-/// Сведения о картинке файла Xcursor (для сверок и проверки результата).
+/// Information about a picture of an Xcursor file (for checks and verifying the result).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct XcurImageInfo {
     pub nominal: u32,
@@ -715,7 +715,7 @@ pub struct XcurImageInfo {
     pub delay: u32,
 }
 
-/// Прочесть оглавление и заголовки картинок файла Xcursor.
+/// Read the table of contents and the picture headers of an Xcursor file.
 pub fn read_xcursor(data: &[u8]) -> Result<Vec<XcurImageInfo>, String> {
     if data.get(0..4) != Some(XCUR_MAGIC) {
         return Err("not an Xcursor file".into());
@@ -748,7 +748,7 @@ pub fn read_xcursor(data: &[u8]) -> Result<Vec<XcurImageInfo>, String> {
     Ok(out)
 }
 
-/// Обложка набора: первые кадры курсоров в сетке на прозрачном фоне (PNG).
+/// Set cover: the first frames of the cursors in a grid on a transparent background (PNG).
 pub fn preview_png(cursors: &[&Animation], width: u32, height: u32, cell: u32) -> Option<Vec<u8>> {
     if cursors.is_empty() {
         return None;
@@ -780,10 +780,10 @@ pub fn preview_png(cursors: &[&Animation], width: u32, height: u32, cell: u32) -
 }
 
 // ============================================================================
-// Роли курсоров Windows и имена Xcursor
+// Windows cursor roles and Xcursor names
 // ============================================================================
 
-/// Роль курсора в схеме Windows (имя значения в `HKCU\Control Panel\Cursors`).
+/// Cursor role in a Windows scheme (the value name in `HKCU\Control Panel\Cursors`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Role {
     Arrow,
@@ -810,7 +810,7 @@ pub enum Role {
     ZoomOut,
 }
 
-/// Порядок путей в значении схемы `…\Cursors\Schemes` (так его читает Windows).
+/// Order of paths in the `…\Cursors\Schemes` scheme value (as Windows reads it).
 pub const SCHEME_ORDER: [Role; 17] = [
     Role::Arrow,
     Role::Help,
@@ -831,7 +831,7 @@ pub const SCHEME_ORDER: [Role; 17] = [
     Role::Person,
 ];
 
-/// Все роли (для обхода).
+/// All roles (for iteration).
 pub const ALL_ROLES: [Role; 22] = [
     Role::Arrow,
     Role::Help,
@@ -858,7 +858,7 @@ pub const ALL_ROLES: [Role; 22] = [
 ];
 
 impl Role {
-    /// Имя значения реестра Windows.
+    /// Windows registry value name.
     pub fn reg_name(self) -> &'static str {
         match self {
             Role::Arrow => "Arrow",
@@ -886,7 +886,7 @@ impl Role {
         }
     }
 
-    /// Роль по имени значения реестра / секции `.crs` (регистр не важен).
+    /// Role by registry value name / `.crs` section (case-insensitive).
     pub fn from_reg_name(name: &str) -> Option<Role> {
         let n = name.trim().trim_matches('"').to_ascii_lowercase();
         if n == "precisionhair" {
@@ -895,8 +895,8 @@ impl Role {
         ALL_ROLES.iter().copied().find(|r| r.reg_name().eq_ignore_ascii_case(&n))
     }
 
-    /// Имена Xcursor роли; первое — файл, остальные — ссылки на него.
-    /// Набор: имена CSS, старые имена X11 и хеши, которые спрашивают Qt/GTK.
+    /// Xcursor names of the role; the first is the file, the rest are links to it.
+    /// The set: CSS names, old X11 names and the hashes that Qt/GTK ask for.
     pub fn xcursor_names(self) -> &'static [&'static str] {
         match self {
             Role::Arrow => &[
@@ -955,8 +955,8 @@ impl Role {
                 "pointer", "hand", "hand1", "hand2", "pointing_hand",
                 "9d800788f1b08800ae810202380a0822", "e29285e634086352946a0e7090d73106",
             ],
-            // У Linux своих курсоров «место»/«человек» нет — файл остаётся,
-            // чтобы набор был полным, но никто его не спросит.
+            // Linux has no "location"/"person" cursors of its own — the file stays
+            // so that the set is complete, but nobody will ask for it.
             Role::Pin => &["pin"],
             Role::Person => &["person"],
             Role::Pan => &["all-scroll"],
@@ -969,8 +969,8 @@ impl Role {
         }
     }
 
-    /// Чем заменить роль, если в наборе её нет (ближайший по смыслу курсор
-    /// ТОГО ЖЕ набора лучше курсора чужой темы). Пусто — наследуется.
+    /// What to substitute for the role if the set lacks it (the nearest cursor in meaning
+    /// from THE SAME set is better than a cursor of a foreign theme). Empty — inherited.
     pub fn fallbacks(self) -> &'static [Role] {
         match self {
             Role::AppStarting => &[Role::Wait],
@@ -984,8 +984,8 @@ impl Role {
     }
 }
 
-/// Нормализовать имя ключа/файла: строчные латиница и цифры, без ведущих
-/// цифр («01 - Normal Select» → «normalselect»).
+/// Normalise a key/file name: lowercase Latin letters and digits, without leading
+/// digits («01 - Normal Select» → «normalselect»).
 fn norm_key(s: &str) -> String {
     let k: String = s
         .chars()
@@ -995,9 +995,9 @@ fn norm_key(s: &str) -> String {
     k.trim_start_matches(|c: char| c.is_ascii_digit()).to_string()
 }
 
-/// Роль по имени ключа `[Strings]` или файла. `hand` здесь не решается:
-/// в шаблоне `install.inf` это перо (NWPen), в именах файлов — смотря по
-/// набору (см. [`roles_from_filenames`]).
+/// Role by a `[Strings]` key name or a file name. `hand` is not decided here:
+/// in the `install.inf` template it is the pen (NWPen), in file names — it depends on
+/// the set (see [`roles_from_filenames`]).
 fn role_from_key(key: &str) -> Option<Role> {
     let k = norm_key(key);
     let r = match k.as_str() {
@@ -1033,7 +1033,7 @@ fn role_from_key(key: &str) -> Option<Role> {
     Some(r)
 }
 
-/// Имя файла из пути Windows (`%10%\Cursors\X\Normal.ani` → `Normal.ani`).
+/// File name from a Windows path (`%10%\Cursors\X\Normal.ani` → `Normal.ani`).
 pub fn win_basename(p: &str) -> String {
     let p = p.trim().trim_matches('"').trim();
     p.rsplit(['\\', '/']).next().unwrap_or(p).trim().to_string()
@@ -1044,14 +1044,14 @@ fn is_cursor_name(name: &str) -> bool {
     l.ends_with(".cur") || l.ends_with(".ani")
 }
 
-/// Роли из описателя: (роль, имя файла как в описателе) + имя схемы.
+/// Roles from the descriptor: (role, file name as in the descriptor) + scheme name.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SchemeInfo {
     pub roles: Vec<(Role, String)>,
     pub name: Option<String>,
 }
 
-/// Поля строки реестра INF через запятую, с учётом кавычек.
+/// Comma-separated fields of an INF registry line, honouring quotes.
 fn split_inf_fields(line: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
@@ -1067,7 +1067,7 @@ fn split_inf_fields(line: &str) -> Vec<String> {
     out
 }
 
-/// Подставить `%имя%` из `[Strings]` (регистр не важен; `%%` → `%`).
+/// Substitute `%name%` from `[Strings]` (case-insensitive; `%%` → `%`).
 fn expand_inf(s: &str, strings: &HashMap<String, String>) -> String {
     let mut out = String::new();
     let mut rest = s;
@@ -1098,9 +1098,9 @@ fn expand_inf(s: &str, strings: &HashMap<String, String>) -> String {
     out
 }
 
-/// Роли из `install.inf`: явные строки `…\Cursors",<Роль>,…` важнее списка
-/// схемы `…\Cursors\Schemes` (в нём порядок Windows, см. [`SCHEME_ORDER`]);
-/// нет ни того, ни другого — ключи `[Strings]` (`pointer`, `work`, `hand`…).
+/// Roles from `install.inf`: explicit `…\Cursors",<Role>,…` lines take precedence over the
+/// `…\Cursors\Schemes` scheme list (it has the Windows order, see [`SCHEME_ORDER`]);
+/// neither is present — the `[Strings]` keys (`pointer`, `work`, `hand`…).
 pub fn roles_from_inf(text: &str) -> SchemeInfo {
     let mut section = String::new();
     let mut strings: HashMap<String, String> = HashMap::new();
@@ -1143,7 +1143,7 @@ pub fn roles_from_inf(text: &str) -> SchemeInfo {
         let path = expand_inf(&f[1], &strings).to_ascii_lowercase().replace('/', "\\");
         let path = path.trim_end_matches('\\');
         let value_name = expand_inf(&f[2], &strings);
-        // Значение могло разойтись по полям, если его не взяли в кавычки.
+        // The value could have spread over several fields if it was not quoted.
         let value = expand_inf(&f[4..].join(","), &strings);
         if path.ends_with("control panel\\cursors\\schemes") {
             if name.is_none() && !value_name.trim().is_empty() {
@@ -1166,9 +1166,9 @@ pub fn roles_from_inf(text: &str) -> SchemeInfo {
             }
         }
     }
-    // Список схемы верен, только если сходится с явными строками: у части
-    // наборов (macOS-Windows 2.0.1) он сложен не в порядке Windows, и тогда
-    // «Недоступно» досталось бы курсору вертикального размера.
+    // The scheme list is right only if it agrees with the explicit lines: in some
+    // sets (macOS-Windows 2.0.1) it is not in the Windows order, and then
+    // «Unavailable» would go to the vertical resize cursor.
     let scheme_trusted = explicit.iter().all(|(role, file)| {
         scheme
             .iter()
@@ -1183,19 +1183,19 @@ pub fn roles_from_inf(text: &str) -> SchemeInfo {
             }
         }
     }
-    // Остальные роли — по ключам `[Strings]` (`pointer`, `unavailiable`,
-    // `dgn1`…): у шаблона install.inf имя ключа и есть роль.
+    // The remaining roles — by the `[Strings]` keys (`pointer`, `unavailiable`,
+    // `dgn1`…): in the install.inf template the key name is the role.
     let used: Vec<String> = roles.iter().map(|(_, f)| f.to_ascii_lowercase()).collect();
     for (k, v) in &string_order {
         if !is_cursor_name(v) {
             continue;
         }
         let file = win_basename(v);
-        // Файл уже стоит на роли по реестру — ключ его не переназначает.
+        // The file already holds a role from the registry — the key does not reassign it.
         if !roles.is_empty() && used.contains(&file.to_ascii_lowercase()) {
             continue;
         }
-        // В шаблоне install.inf ключ `hand` — это перо (Handwriting).
+        // In the install.inf template the `hand` key is the pen (Handwriting).
         let role = if norm_key(k) == "hand" { Some(Role::NWPen) } else { role_from_key(k) };
         if let Some(role) = role {
             if !roles.iter().any(|(r, _)| *r == role) {
@@ -1212,7 +1212,7 @@ pub fn roles_from_inf(text: &str) -> SchemeInfo {
     SchemeInfo { roles, name }
 }
 
-/// Роли из `.crs` (RW-Designer): `[Arrow]` / `Path=pointer.cur`.
+/// Roles from `.crs` (RW-Designer): `[Arrow]` / `Path=pointer.cur`.
 pub fn roles_from_crs(text: &str) -> SchemeInfo {
     let mut roles: Vec<(Role, String)> = Vec::new();
     let mut current: Option<Role> = None;
@@ -1237,8 +1237,8 @@ pub fn roles_from_crs(text: &str) -> SchemeInfo {
     SchemeInfo { roles, name: None }
 }
 
-/// Запасной путь: роли по именам файлов. `hand` — перо, если в наборе есть
-/// отдельный курсор ссылки (`link`), иначе — рука-ссылка.
+/// Fallback: roles by file names. `hand` is the pen if the set has
+/// a separate link cursor (`link`), otherwise — the link hand.
 pub fn roles_from_filenames(files: &[String]) -> Vec<(Role, String)> {
     let stem = |f: &str| f.rsplit_once('.').map(|(s, _)| s.to_string()).unwrap_or_default();
     let has_link = files.iter().any(|f| role_from_key(&stem(f)) == Some(Role::Hand));
@@ -1263,10 +1263,10 @@ pub fn roles_from_filenames(files: &[String]) -> Vec<(Role, String)> {
 }
 
 // ============================================================================
-// Текст описателей: кодировки
+// Descriptor text: encodings
 // ============================================================================
 
-/// Windows-1251 (0x80..0xBF); 0xC0..0xFF — «А»…«я» подряд.
+/// Windows-1251 (0x80..0xBF); 0xC0..0xFF — «А»…«я» in a row.
 const CP1251_HIGH: [u16; 64] = [
     0x0402, 0x0403, 0x201A, 0x0453, 0x201E, 0x2026, 0x2020, 0x2021, 0x20AC, 0x2030, 0x0409,
     0x2039, 0x040A, 0x040C, 0x040B, 0x040F, 0x0452, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022,
@@ -1284,8 +1284,8 @@ fn decode_utf16(b: &[u8], le: bool) -> String {
     String::from_utf16_lossy(&units)
 }
 
-/// Текст описателя набора: UTF-16 (с BOM или без), UTF-8, иначе
-/// Windows-1251 (наборы с русских сайтов пишутся в ней).
+/// Text of a set descriptor: UTF-16 (with or without BOM), UTF-8, otherwise
+/// Windows-1251 (sets from Russian sites are written in it).
 pub fn decode_text(b: &[u8]) -> String {
     if let Some(rest) = b.strip_prefix(&[0xFF, 0xFE]) {
         return decode_utf16(rest, true);
@@ -1294,7 +1294,7 @@ pub fn decode_text(b: &[u8]) -> String {
         return decode_utf16(rest, false);
     }
     let b = b.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(b);
-    // UTF-16LE без BOM: латиница даёт нулевой каждый второй байт.
+    // UTF-16LE without BOM: Latin text gives every second byte zero.
     let head = &b[..b.len().min(64) & !1];
     if head.len() >= 8 && head.iter().skip(1).step_by(2).all(|c| *c == 0)
         && head.iter().step_by(2).all(|c| *c != 0)
@@ -1315,27 +1315,27 @@ pub fn decode_text(b: &[u8]) -> String {
 }
 
 // ============================================================================
-// Приметы курсора — для области действия исправлений переводчика
+// Cursor traits — for the scope of converter fixes
 // ============================================================================
 //
-// Исправление переводчика касается не всех курсоров, а определённого рода:
-// анимированных, с горячей точкой не в центре, с картинками на палитре.
-// По приметам оригиналов решается, переводить ли тему заново
+// A converter fix does not concern all cursors, but a certain kind:
+// animated ones, with an off-center hotspot, with palette pictures.
+// The traits of the originals decide whether to convert a theme again
 // ([`crate::importers::cursor_retranslate_due`]).
 
-/// Чем примечателен курсор (или весь набор — [`CursorTraits::merge`]).
+/// What is notable about a cursor (or the whole set — [`CursorTraits::merge`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CursorTraits {
-    /// Анимированный `.ani` (больше одного шага).
+    /// An animated `.ani` (more than one step).
     pub animated: bool,
-    /// Горячая точка хотя бы одной картинки не в её центре (дальше 1 пикселя).
+    /// The hotspot of at least one picture is off its center (farther than 1 pixel).
     pub hotspot_off_center: bool,
-    /// Хотя бы одна картинка — DIB на палитре (1/4/8 бит на пиксель).
+    /// At least one picture is a palette DIB (1/4/8 bits per pixel).
     pub paletted: bool,
 }
 
 impl CursorTraits {
-    /// Приметы набора: примета есть у набора, если есть хотя бы у одного курсора.
+    /// Set traits: the set has a trait if at least one cursor has it.
     pub fn merge(self, other: CursorTraits) -> CursorTraits {
         CursorTraits {
             animated: self.animated || other.animated,
@@ -1345,7 +1345,7 @@ impl CursorTraits {
     }
 }
 
-/// Есть ли в каталоге `.cur`/`.ico` запись-DIB на палитре.
+/// Whether a `.cur`/`.ico` directory has a palette DIB entry.
 fn icondir_paletted(data: &[u8]) -> bool {
     let count = u16_at(data, 4).unwrap_or(0) as usize;
     (0..count.min(MAX_ENTRIES)).any(|i| {
@@ -1361,7 +1361,7 @@ fn icondir_paletted(data: &[u8]) -> bool {
     })
 }
 
-/// Приметы файла курсора; `None` — файл не читается как курсор.
+/// Traits of a cursor file; `None` — the file does not read as a cursor.
 pub fn cursor_file_traits(data: &[u8]) -> Option<CursorTraits> {
     let anim = parse_cursor_file(data).ok()?;
     let hotspot_off_center = anim.frames.iter().flatten().any(|i| {
@@ -1389,15 +1389,15 @@ pub fn cursor_file_traits(data: &[u8]) -> Option<CursorTraits> {
 }
 
 // ============================================================================
-// Сверки на подставных байтах
+// Checks on synthetic bytes
 // ============================================================================
 
 #[cfg(test)]
 pub(crate) mod testbytes {
-    //! Сборщики подставных `.cur`/`.ani` для сверок (своих и импортёра).
+    //! Builders of synthetic `.cur`/`.ani` for checks (our own and the importer's).
 
-    /// `.cur` с одной 32-битной картинкой `w`×`w`: пиксель (x, y) =
-    /// (x, y, 7, 255), остальное по `alpha_at`; горячая точка (hx, hy).
+    /// A `.cur` with one 32-bit `w`×`w` picture: pixel (x, y) =
+    /// (x, y, 7, 255), the rest by `alpha_at`; hotspot (hx, hy).
     pub fn cur32(w: u32, hx: u16, hy: u16, tint: u8) -> Vec<u8> {
         let mut dib = Vec::new();
         for v in [40u32, w, w * 2] {
@@ -1406,7 +1406,7 @@ pub(crate) mod testbytes {
         dib.extend_from_slice(&1u16.to_le_bytes());
         dib.extend_from_slice(&32u16.to_le_bytes());
         dib.extend_from_slice(&[0u8; 24]);
-        // строки снизу вверх
+        // rows bottom to top
         for y in (0..w).rev() {
             for x in 0..w {
                 dib.extend_from_slice(&[tint, y as u8, x as u8, 255]);
@@ -1416,8 +1416,8 @@ pub(crate) mod testbytes {
         icondir(2, &[(w, hx, hy, dib)])
     }
 
-    /// `.cur` с одной 1-битной картинкой `w`×`w` на палитре (чёрный/белый),
-    /// горячая точка (hx, hy).
+    /// A `.cur` with one 1-bit `w`×`w` palette picture (black/white),
+    /// hotspot (hx, hy).
     pub fn cur1(w: u32, hx: u16, hy: u16) -> Vec<u8> {
         let mut dib = Vec::new();
         for v in [40u32, w, w * 2] {
@@ -1433,7 +1433,7 @@ pub(crate) mod testbytes {
         icondir(2, &[(w, hx, hy, dib)])
     }
 
-    /// Каталог: (сторона, поле1, поле2, тело записи).
+    /// Directory: (side, field1, field2, entry body).
     pub fn icondir(kind: u16, entries: &[(u32, u16, u16, Vec<u8>)]) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(&0u16.to_le_bytes());
@@ -1465,7 +1465,7 @@ pub(crate) mod testbytes {
         c
     }
 
-    /// `.ani` из кадров-`.cur`, с `rate`/`seq` (None — чанк не пишется).
+    /// An `.ani` from `.cur` frames, with `rate`/`seq` (None — the chunk is not written).
     pub fn ani(frames: &[Vec<u8>], disp_rate: u32, rate: Option<&[u32]>, seq: Option<&[u32]>, steps: u32) -> Vec<u8> {
         let mut anih = Vec::new();
         for v in [36u32, frames.len() as u32, steps, 0, 0, 0, 0, disp_rate, 1 | if seq.is_some() { 2 } else { 0 }] {
@@ -1507,7 +1507,7 @@ mod tests {
         assert!(!a.is_animated());
         let img = &a.frames[0][0];
         assert_eq!((img.width, img.height, img.hot_x, img.hot_y), (32, 32, 5, 9));
-        // (x=4, y=2) сверху: R=x, G=y, B=tint (BGRA в файле → RGBA здесь)
+        // (x=4, y=2) from the top: R=x, G=y, B=tint (BGRA in the file → RGBA here)
         let o = (2 * 32 + 4) * 4;
         assert_eq!(&img.rgba[o..o + 4], &[4, 2, 3, 255]);
     }
@@ -1517,7 +1517,7 @@ mod tests {
         let f0 = cur32(32, 1, 2, 10);
         let f1 = cur32(32, 3, 4, 20);
         let f2 = cur32(32, 5, 6, 30);
-        // seq: 0,1,2,1 ; rate в 1/60 с: 6,12,3,60
+        // seq: 0,1,2,1 ; rate in 1/60 s: 6,12,3,60
         let data = ani(&[f0, f1, f2], 10, Some(&[6, 12, 3, 60]), Some(&[0, 1, 2, 1]), 4);
         let a = parse_cursor_file(&data).unwrap();
         assert_eq!(a.frames.len(), 3);
@@ -1541,7 +1541,7 @@ mod tests {
             at32.iter().map(|i| (i.hot_x, i.hot_y, i.delay)).collect::<Vec<_>>(),
             vec![(1, 2, 100), (3, 4, 200), (5, 6, 50), (3, 4, 1000)]
         );
-        // 48 = ×1.5: точка (5,6) → floor(5.5·1.5)=8, floor(6.5·1.5)=9
+        // 48 = ×1.5: point (5,6) → floor(5.5·1.5)=8, floor(6.5·1.5)=9
         let at48: Vec<_> = imgs.iter().filter(|i| i.nominal == 48).collect();
         assert_eq!((at48[2].width, at48[2].hot_x, at48[2].hot_y), (48, 8, 9));
     }
@@ -1585,7 +1585,7 @@ mod tests {
 
     #[test]
     fn integer_upscale_is_pixel_exact() {
-        // 24 → 48: каждый пиксель ровно квадратом 2×2, без смешивания.
+        // 24 → 48: each pixel exactly as a 2×2 square, without blending.
         let a = parse_cursor_file(&cur32(24, 0, 0, 9)).unwrap();
         let r = render_frame(&a.frames[0], 48);
         assert_eq!((r.width, r.height), (48, 48));
@@ -1596,9 +1596,9 @@ mod tests {
 
     #[test]
     fn monochrome_cursor_uses_and_mask() {
-        // 1 бит, 32×32: палитра чёрный/белый; XOR = 1 в левой половине,
-        // AND = 1 в верхней половине → верх-лево «инверсия» (чёрный),
-        // верх-право прозрачно, низ-лево белый, низ-право чёрный.
+        // 1 bit, 32×32: black/white palette; XOR = 1 in the left half,
+        // AND = 1 in the top half → top-left "inversion" (black),
+        // top-right transparent, bottom-left white, bottom-right black.
         let w = 32u32;
         let mut dib = Vec::new();
         for v in [40u32, w, w * 2] {
@@ -1643,7 +1643,7 @@ mod tests {
         for data in [&b""[..], b"RIFF\x04\0\0\0ACON", b"\0\0\x02\0\x01\0", b"MZ\x90\0"] {
             assert!(parse_cursor_file(data).is_err(), "{data:?}");
         }
-        // Битая запись с огромным смещением — ошибка, а не паника.
+        // A broken entry with a huge offset is an error, not a panic.
         let mut bad = cur32(32, 0, 0, 0);
         bad[18..22].copy_from_slice(&u32::MAX.to_le_bytes());
         assert!(parse_cursor_file(&bad).is_err());
@@ -1651,7 +1651,7 @@ mod tests {
 
     #[test]
     fn inf_registry_lines_beat_file_names() {
-        // Как у BlueTransCursor: «Pointer.ani» стоит на месте прицела.
+        // As in BlueTransCursor: «Pointer.ani» sits in the crosshair slot.
         let inf = r#"
 [DefaultInstall]
 AddReg    = Scheme.Reg
@@ -1700,8 +1700,8 @@ HKCU,\"Control Panel\\Cursors\\Schemes\",\"S\",,\"%10%\\a\\p.CUR,%10%\\a\\h.cur\
 
     #[test]
     fn misordered_scheme_list_is_not_trusted() {
-        // Как у macOS-Windows 2.0.1: в списке схемы после пера идут vert,
-        // horz… (без «Недоступно» и диагоналей) — порядок Windows нарушен.
+        // As in macOS-Windows 2.0.1: in the scheme list the pen is followed by vert,
+        // horz… (without «Unavailable» and the diagonals) — the Windows order is broken.
         let inf = r#"
 [Scheme.Reg]
 HKCU,"Control Panel\Cursors\Schemes","S",,"%10%\%pointer%,%10%\%help%,%10%\%work%,%10%\%busy%,%10%\%cross%,%10%\%text%,%10%\%handwriting%,%10%\%vert%,%10%\%horz%"
@@ -1774,7 +1774,7 @@ dng1 = "Dng1.cur"
         assert_eq!(get(Role::NWPen), Some("hand.cur"));
         assert_eq!(get(Role::Hand), Some("link.cur"));
         assert_eq!(get(Role::Help), Some("01 - Help Select.ani"));
-        // Без отдельного link «hand» — рука-ссылка.
+        // Without a separate link, «hand» is the link hand.
         let r = roles_from_filenames(&["hand.cur".to_string()]);
         assert_eq!(r, vec![(Role::Hand, "hand.cur".to_string())]);
     }
@@ -1807,19 +1807,19 @@ dng1 = "Dng1.cur"
 
     #[test]
     fn traits_tell_animated_off_center_and_paletted_cursors() {
-        // Стрелка: точка в углу (не в центре), 32 бита, без анимации.
+        // Arrow: hotspot in the corner (not in the center), 32 bits, no animation.
         let arrow = cursor_file_traits(&cur32(32, 0, 0, 1)).unwrap();
         assert_eq!(arrow, CursorTraits { animated: false, hotspot_off_center: true, paletted: false });
-        // Перекрестие: точка в центре.
+        // Crosshair: hotspot in the center.
         let cross = cursor_file_traits(&cur32(32, 16, 16, 1)).unwrap();
         assert_eq!(cross, CursorTraits::default());
-        // Палитра 1 бит.
+        // 1-bit palette.
         let mono = cursor_file_traits(&cur1(32, 16, 16)).unwrap();
         assert_eq!(mono, CursorTraits { paletted: true, ..CursorTraits::default() });
-        // Анимация из кадров на палитре: обе приметы видны и внутри .ani.
+        // Animation from palette frames: both traits are visible inside the .ani too.
         let busy = cursor_file_traits(&ani(&[cur1(32, 16, 16), cur1(32, 16, 16)], 10, None, None, 2)).unwrap();
         assert_eq!(busy, CursorTraits { animated: true, paletted: true, ..CursorTraits::default() });
-        // Набор — объединение примет; мусор — не курсор.
+        // The set is the union of traits; garbage is not a cursor.
         assert_eq!(cross.merge(busy).merge(arrow), CursorTraits { animated: true, hotspot_off_center: true, paletted: true });
         assert_eq!(cursor_file_traits(b"garbage"), None);
     }

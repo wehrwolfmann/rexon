@@ -1,31 +1,31 @@
-//! Сверка КАРКАСА главного окна: состав и порядок вкладок, их подписи,
-//! заголовок и наименьший размер окна, пункты меню.
+//! Check of the main window FRAME: the set and order of tabs, their labels,
+//! the title and the minimum window size, menu items.
 //!
-//! ЧТО ЗДЕСЬ ЭТАЛОН (с 02.10.2026). Python в Rexon — только архив: он не
-//! эталон и не мост. Эталон — снимок `tests/golden/qt_main_cases.json`,
-//! замороженный как собственная запись Rust: подписи и порядок вкладок,
-//! заголовок, размер окна, пункты меню. Каждое из этих значений сличается с
-//! ядром (`qt_main`, `tray`): подписи вкладок и пункт «Выход» живут ещё и в
-//! `tray.rs` (значок в лотке строит по ним подменю «Разделы»), и две копии
-//! человеческого текста — ровно тот класс, который правило #12 велит сводить
-//! к одному движку.
+//! WHAT THE GOLDEN IS HERE (since 02.10.2026). Python in Rexon is only an archive: it is not
+//! a golden and not a bridge. The golden is the snapshot `tests/golden/qt_main_cases.json`,
+//! frozen as Rust's own record: tab labels and order,
+//! title, window size, menu items. Each of these values is compared with
+//! the core (`qt_main`, `tray`): the tab labels and the «Quit» item also live in
+//! `tray.rs` (the tray icon builds its «Sections» submenu from them), and two copies
+//! of human text are exactly the class that rule #12 tells us to reduce
+//! to one engine.
 //!
-//! Прежние сторожа «строка снимка обязана стоять в замороженной редакции
-//! Python-каркаса» и «живой `rexon/qt_main/` совпадает с ней побайтово»
-//! сняты вместе с Python. Сняты и проверки, которые смотрели только в
-//! описание Python-окна (заглушка «Загрузка…», QSS полосы меню, аварийный
-//! ход `REXON_WIDGET_TAB`): двойника в Rust у них нет, сверять было не с чем.
-//! Атрибуцию LGPL в «О программе» держит `window_menu_parity.rs` — по тексту
-//! ядра.
+//! The former guards "a snapshot line must stand in the frozen edition of the
+//! Python frame" and "the live `rexon/qt_main/` matches it byte-wise" were
+//! removed together with Python. The checks that looked only at
+//! the description of the Python window (the «Loading…» placeholder, the menu bar QSS, the emergency
+//! `REXON_WIDGET_TAB` path) were removed too: they have no Rust counterpart, there was nothing to compare with.
+//! The LGPL attribution in «About» is held by `window_menu_parity.rs` — by the text of
+//! the core.
 //!
-//! ЧЕГО ЭТА СВЕРКА НЕ МЕРИТ. Вид окна: расположение полосы вкладок, отступы,
-//! краски. Это мерит прогон окна (`rexon-main-window --selftest`) и глаз.
+//! WHAT THIS CHECK DOES NOT MEASURE. The look of the window: the tab bar placement, margins,
+//! colours. That is measured by a window run (`rexon-main-window --selftest`) and the eye.
 //!
-//! ЧТО СВЕРКА ПОЙМАЛА ПРИ ЗАВЕДЕНИИ (07.09.2026). Копии подписей уже
-//! разъехались: окно показывало «🖥 Рабочие столы» и «🚪 Выход», ядро знало
-//! «Рабочие столы»/«Desktops» и «Выход»/«Quit». Починено таблицей
-//! `tray::ICONS` и `tray::titled`: значок переехал в ядро, подпись осталась
-//! одна на окно и на лоток.
+//! WHAT THE CHECK CAUGHT WHEN IT WAS ADDED (07.09.2026). The label copies had already
+//! diverged: the window showed «🖥 Рабочие столы» and «🚪 Выход», the core knew
+//! «Рабочие столы»/«Desktops» and «Выход»/«Quit». Fixed with the table
+//! `tray::ICONS` and `tray::titled`: the icon moved into the core, the label stayed
+//! one for the window and the tray.
 
 use rexon_core::tray::{self, ItemKind};
 use serde_json::Value;
@@ -50,15 +50,15 @@ fn tabs() -> Vec<(String, String)> {
 }
 
 // ============================================================================
-// Таблица вкладок: окно против ядра
+// Tab table: the window versus the core
 // ============================================================================
 
-/// Состав и порядок вкладок в окне — тот же, что снят эталоном, и каждая
-/// вкладка известна ядру.
+/// The set and order of tabs in the window are the same as captured by the golden, and every
+/// tab is known to the core.
 ///
-/// Порядок здесь не косметика: значок в лотке нумерует подменю «Разделы»
-/// НОМЕРОМ вкладки (`tray::ID_SECTION_BASE + порядковый`), и переставленная
-/// вкладка увела бы пункт меню на чужой раздел.
+/// The order here is not cosmetics: the tray icon numbers the «Sections» submenu
+/// by the tab NUMBER (`tray::ID_SECTION_BASE + index`), and a moved
+/// tab would send a menu item to someone else's section.
 #[test]
 fn tab_table_is_known_to_core() {
     let ids: Vec<String> = tabs().into_iter().map(|(id, _)| id).collect();
@@ -76,12 +76,12 @@ fn tab_table_is_known_to_core() {
     }
 }
 
-/// ⭐ГЛАВНАЯ ПРОВЕРКА. Подпись вкладки в окне и подпись, которую отдаёт ядро,
-/// — одна и та же строка, а не две разошедшиеся копии.
+/// ⭐THE MAIN CHECK. The tab label in the window and the label the core returns
+/// are one and the same string, not two diverged copies.
 ///
-/// Ядро обязано уметь выдать ИМЕННО ТО, что видит покупатель, вместе со
-/// значком: иначе перенести каркас нечем, а лоток и окно называют один и тот
-/// же раздел по-разному.
+/// The core must be able to return EXACTLY what the buyer sees, together with
+/// the icon: otherwise there is nothing to move the frame with, and the tray and the window call one and the
+/// same section differently.
 #[test]
 fn tab_labels_match_core() {
     let _lang = i18n_pin::ru();
@@ -94,9 +94,9 @@ fn tab_labels_match_core() {
     }
 }
 
-/// Вкладка переводится так же, как её пункт в лотке: значок остаётся,
-/// текст меняется. Русский и английский обязаны различаться везде, кроме
-/// собственных имён («Steam», «Wallpaper Engine»).
+/// A tab is translated the same way as its tray item: the icon stays,
+/// the text changes. Russian and English must differ everywhere except
+/// proper names («Steam», «Wallpaper Engine»).
 #[test]
 fn tab_labels_are_translated() {
     let _lang = i18n_pin::en();
@@ -113,7 +113,7 @@ fn tab_labels_are_translated() {
     }
 }
 
-/// Подменю «Разделы» строится по тем же вкладкам и в том же порядке.
+/// The «Sections» submenu is built from the same tabs and in the same order.
 #[test]
 fn tray_sections_follow_window_tabs() {
     let _lang = i18n_pin::ru();
@@ -133,14 +133,14 @@ fn tray_sections_follow_window_tabs() {
 }
 
 // ============================================================================
-// Окно и меню
+// Window and menu
 // ============================================================================
 
 #[test]
 fn window_title_and_minimum_size() {
     let _lang = i18n_pin::ru();
     let g = fx();
-    // Ядро по-русски говорит то же, что снято с окна.
+    // The core in Russian says the same as what was captured from the window.
     assert_eq!(rexon_core::qt_main::window_title(), s(&g["window"]["title"]));
     let (w, h) = (
         g["window"]["min_width"].as_i64().unwrap(),
@@ -151,13 +151,13 @@ fn window_title_and_minimum_size() {
         (w as i32, h as i32),
         "наименьший размер окна разошёлся с эталоном"
     );
-    // Правило #16 (Steam Deck): окно не должно требовать экрана больше того,
-    // что даёт режим рабочего стола Steam Deck (1280×800).
+    // Rule #16 (Steam Deck): the window must not require a screen larger than
+    // what the Steam Deck desktop mode gives (1280×800).
     assert!(w <= 1280 && h <= 800, "окно не влезет на Steam Deck: {w}×{h}");
 }
 
-/// Пункты меню каркаса — те же, что сняты эталоном, и «Выход» подписан так
-/// же, как в лотке.
+/// The frame's menu items are the same as captured by the golden, and «Quit» is labelled the
+/// same way as in the tray.
 #[test]
 fn menu_items_match_snapshot_and_core() {
     let _lang = i18n_pin::ru();
@@ -170,7 +170,7 @@ fn menu_items_match_snapshot_and_core() {
         assert_eq!(s(&a["label"]), item.label, "пункт меню");
         assert_eq!(a["shortcut"].as_str().unwrap_or(""), item.shortcut, "горячая клавиша пункта меню");
     }
-    // Единственный пункт с двойником в ядре: он же «Выход» в лотке.
+    // The only item with a counterpart in the core: it is also «Quit» in the tray.
     assert_eq!(
         tray::titled("quit"),
         s(&actions[3]["label"]),
@@ -179,12 +179,12 @@ fn menu_items_match_snapshot_and_core() {
 }
 
 // ============================================================================
-// Перевод: лоток и каркас окна на каталоге
+// Translation: the tray and the window frame on the catalog
 // ============================================================================
 //
-// Подписи лотка, вкладок и заголовок окна были зашиты по-русски (лоток —
-// парами «русский/английский»); теперь исходный язык английский, а русский
-// живёт в `po/ru.po`. Ниже — ДОСЛОВНЫЕ русские тексты до переноса.
+// The labels of the tray, the tabs and the window title used to be hard-coded in Russian (the tray in
+// "Russian/English" pairs); now the source language is English, and Russian
+// lives in `po/ru.po`. Below are the VERBATIM Russian texts before the move.
 
 const TRAY_RU_BEFORE: &[(&str, &str)] = &[
     ("open", "Открыть Rexon"),
@@ -243,7 +243,7 @@ fn russian_catalog_keeps_old_texts() {
     let (title, body) = tray::hidden_notice();
     assert_eq!(title, "Rexon свернулся в лоток");
     assert!(body.starts_with("Окно закрыто"), "{body}");
-    // Запись автозапуска не зависит от языка интерфейса: русский в ней свой.
+    // The autostart entry does not depend on the interface language: it has its own Russian.
     let desktop = tray::autostart_desktop_content("/x --tray");
     assert!(desktop.contains("\nComment[ru]=Запускать Rexon в системном лотке при входе\n"));
     assert!(desktop.contains("\nGenericName[ru]=Менеджер рабочих столов\n"));
@@ -286,8 +286,8 @@ fn english_tray_and_frame_have_no_russian() {
     }
 }
 
-/// Английский — витрина: пункты меню и вкладки с большой буквы в каждом
-/// слове (Title Case), фразы — обычным предложением.
+/// English is the storefront: menu items and tabs capitalize every
+/// word (Title Case), phrases are written as an ordinary sentence.
 #[test]
 fn english_labels_read_naturally() {
     let _lang = i18n_pin::en();

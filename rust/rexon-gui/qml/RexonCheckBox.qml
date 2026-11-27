@@ -1,14 +1,14 @@
-// Галочка QML-вкладок Rexon в стандартном скине приложения.
+// Check box for Rexon QML tabs in the application's standard skin.
 //
-// Та же причина, что у RexonButton: стиль QtQuick Controls по умолчанию
-// (Basic) НЕ следует палитре приложения — его цвета прибиты внутри самого
-// стиля, и галочка на тёмной странице осталась бы светлой. Менять стиль
-// процессу целиком нельзя: в том же процессе живёт вкладка Wallpaper Engine
-// с вендорным QML.
+// Same reason as for RexonButton: the default QtQuick Controls style
+// (Basic) does NOT follow the application palette — its colours are
+// hard-coded inside the style itself, and the check box would stay light on
+// a dark page. Changing the style for the whole process is not possible:
+// the Wallpaper Engine tab with vendored QML lives in the same process.
 //
-// Цвета приходят снаружи свойством `pal` — картой из
-// `ui_base::skin_colors("steam_dark")`. Своих цветов контрол не заводит
-// (правило #17: скин один на весь продукт).
+// Colours come from outside through the `pal` property — a map from
+// `ui_base::skin_colors("steam_dark")`. The control defines no colours of
+// its own (rule #17: one skin for the whole product).
 
 import QtQuick
 import QtQuick.Controls
@@ -16,50 +16,52 @@ import QtQuick.Controls
 CheckBox {
     id: control
 
-    /// Палитра скина; без неё контрол встаёт на безопасные цвета steam_dark.
+    /// Skin palette; without it the control falls back to safe steam_dark colours.
     property var pal: null
 
     readonly property color colBox: control.pal ? control.pal.border : "#2a4055"
     readonly property color colAccent: control.pal ? control.pal.accent : "#66c0f4"
     readonly property color colText: control.pal ? control.pal.text_primary : "#ffffff"
 
-    // Минимум контрола из канона (Big Picture / Steam Deck): вкладки обязаны
-    // быть управляемы не только мышью.
+    // Control minimum from the canon (Big Picture / Steam Deck): tabs must be
+    // operable not only with the mouse.
     implicitHeight: 40
     padding: 6
 
     indicator: Rectangle {
         implicitWidth: 20
         implicitHeight: 20
-        // Квадрат — в начале строки: слева, при языке справа налево справа.
+        // The square goes at the start of the line: on the left, on the right for
+        // right-to-left languages.
         x: control.mirrored ? control.width - width - control.rightPadding
                             : control.leftPadding
         y: control.topPadding + (control.availableHeight - height) / 2
         radius: 3
-        // Включённый флажок — сам знак «✅»: это уже зелёный квадрат с
-        // галочкой, и своя заливка с рамкой под ним дали бы «квадрат в
-        // квадрате». Поэтому у включённого рамка и заливка убраны, а знак
-        // занимает всё место индикатора. Пустой флажок — прежняя рамка.
+        // A checked box is the "✅" glyph itself: it already is a green square
+        // with a check mark, and our own fill with a border under it would give a
+        // "square in a square". So the checked state drops the border and fill,
+        // and the glyph takes the whole indicator area. An empty box keeps the
+        // old border.
         color: "transparent"
         border.color: control.checked ? "transparent"
                       : (control.activeFocus || control.hovered
                          ? control.colAccent : control.colBox)
         border.width: control.activeFocus ? 2 : 1
 
-        // Сама галочка: знак шрифта, а не картинка — иначе понадобился бы
-        // внешний файл, а страница обязана оставаться самодостаточной.
+        // The check mark itself: a font glyph, not an image — otherwise an
+        // external file would be needed, and the page must stay self-contained.
         RexonText {
             anchors.centerIn: parent
             visible: control.checked
             text: "✅"
-            // Цветной знак краски текста не слушается, поэтому недоступный
-            // флажок гасится прозрачностью самого знака.
+            // A colour glyph ignores the text colour, so a disabled box is dimmed
+            // through the opacity of the glyph itself.
             opacity: control.enabled ? 1.0 : 0.4
             font.pixelSize: 21
         }
 
-        // Рамка фокуса и наведения у включённого флажка — поверх знака:
-        // под ним её не было бы видно.
+        // The focus and hover frame of a checked box goes over the glyph:
+        // underneath it would not be visible.
         Rectangle {
             anchors.fill: parent
             visible: control.checked && (control.activeFocus || control.hovered)
@@ -70,7 +72,7 @@ CheckBox {
         }
     }
 
-    // Место под квадрат — с той стороны, где он стоит.
+    // Space for the square on the side where it sits.
     contentItem: RexonText {
         leftPadding: control.mirrored ? 0 : control.indicator.width + control.spacing
         rightPadding: control.mirrored ? control.indicator.width + control.spacing : 0

@@ -1,16 +1,16 @@
-//! Настройки приложения — порт `rexon/settings.py`.
+//! Application settings — port of `rexon/settings.py`.
 //!
-//! JSON-стор `~/.config/rexon/settings.json`: дефолты, слияние с файлом,
-//! get/set, детект файлового менеджера. Сериализация побайтово совпадает
-//! с Python `json.dump(..., indent=2, ensure_ascii=False)` — см.
-//! golden-тест `tests/settings_parity.rs`.
+//! JSON store `~/.config/rexon/settings.json`: defaults, merging with the file,
+//! get/set, file manager detection. Serialization matches Python
+//! `json.dump(..., indent=2, ensure_ascii=False)` byte for byte — see the
+//! golden test `tests/settings_parity.rs`.
 
 use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
 
-/// Дефолты в ТОМ ЖЕ порядке, что `_DEFAULTS` в settings.py — порядок
-/// ключей виден в сохранённом файле, поэтому важен для сверки.
+/// Defaults in the SAME order as `_DEFAULTS` in settings.py — key order
+/// is visible in the saved file, so it matters for comparison.
 pub fn defaults() -> Map<String, Value> {
     let mut m = Map::new();
     m.insert("file_manager".into(), Value::from("auto"));
@@ -22,13 +22,13 @@ pub fn defaults() -> Map<String, Value> {
     m
 }
 
-/// Файловые менеджеры в порядке приоритета (как в settings.py).
+/// File managers in priority order (as in settings.py).
 const FILE_MANAGERS: [&str; 6] = ["nemo", "nautilus", "thunar", "caja", "dolphin", "pcmanfm"];
 
-/// Слить дефолты с содержимым файла: `dict(_DEFAULTS)` затем `.update(json)`.
-/// insert по существующему ключу сохраняет его позицию (как dict.update),
-/// новые ключи дописываются в конец. Любая ошибка чтения/парса → дефолты
-/// (Python логирует и возвращает дефолты — здесь просто дефолты).
+/// Merge the defaults with the file content: `dict(_DEFAULTS)` then `.update(json)`.
+/// insert on an existing key keeps its position (like dict.update),
+/// new keys are appended at the end. Any read/parse error → defaults
+/// (Python logs and returns the defaults — here just the defaults).
 pub fn load_settings(config_file: &Path) -> Map<String, Value> {
     let mut result = defaults();
     if let Ok(text) = std::fs::read_to_string(config_file) {
@@ -41,15 +41,15 @@ pub fn load_settings(config_file: &Path) -> Map<String, Value> {
     result
 }
 
-/// Сериализация настроек в строку — байт-в-байт как `json.dump(indent=2,
-/// ensure_ascii=False)`: 2 пробела отступа, UTF-8 без экранирования,
-/// без хвостового перевода строки.
+/// Serialize the settings to a string — byte for byte like `json.dump(indent=2,
+/// ensure_ascii=False)`: 2-space indent, UTF-8 without escaping,
+/// no trailing newline.
 pub fn serialize_settings(settings: &Map<String, Value>) -> String {
     serde_json::to_string_pretty(&Value::Object(settings.clone()))
         .expect("serde_json Map всегда сериализуется")
 }
 
-/// Менеджер настроек — аналог `SettingsManager`.
+/// Settings manager — counterpart of `SettingsManager`.
 pub struct SettingsManager {
     pub config_dir: PathBuf,
     pub config_file: PathBuf,
@@ -57,8 +57,8 @@ pub struct SettingsManager {
 }
 
 impl SettingsManager {
-    /// Создать: `$XDG_CONFIG_HOME/rexon/settings.json` (по умолчанию
-    /// `~/.config/rexon`), создать каталог, загрузить.
+    /// Create: `$XDG_CONFIG_HOME/rexon/settings.json` (default
+    /// `~/.config/rexon`), create the directory, load.
     pub fn new() -> std::io::Result<Self> {
         let config_dir = crate::utils::rexon_config_dir();
         let config_file = config_dir.join("settings.json");
@@ -67,28 +67,28 @@ impl SettingsManager {
         Ok(Self { config_dir, config_file, settings })
     }
 
-    /// Сохранение через общую дверь — [`crate::utils::atomic_write`].
+    /// Saving goes through the shared door — [`crate::utils::atomic_write`].
     ///
-    /// Здесь лежат ВСЕ настройки покупателя, и второго шанса у них нет:
-    /// обрезанный `settings.json` читается как пустой, то есть всё, что
-    /// человек когда-либо настроил, откатывается к значениям по умолчанию.
+    /// ALL of the user's settings live here, and they get no second chance:
+    /// a truncated `settings.json` reads as empty, i.e. everything the person
+    /// has ever configured rolls back to the defaults.
     pub fn save_settings(&self) -> std::io::Result<()> {
         let data = serialize_settings(&self.settings);
         crate::utils::atomic_write(&self.config_file.to_string_lossy(), &data)
     }
 
-    /// Получить значение (None → отсутствует).
+    /// Get a value (None → missing).
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.settings.get(key)
     }
 
-    /// Установить значение и сохранить.
+    /// Set a value and save.
     pub fn set(&mut self, key: &str, value: Value) -> std::io::Result<()> {
         self.settings.insert(key.to_string(), value);
         self.save_settings()
     }
 
-    /// Текущий файловый менеджер (автодетект если "auto" или отсутствует).
+    /// Current file manager (auto-detected if "auto" or missing).
     pub fn get_file_manager(&self) -> String {
         match self.settings.get("file_manager").and_then(Value::as_str) {
             Some("auto") | None => detect_file_manager(&command_exists),
@@ -97,8 +97,8 @@ impl SettingsManager {
     }
 }
 
-/// Первый установленный файловый менеджер, иначе "nautilus". Предикат
-/// вынесен параметром — для тестов без зависимости от системного PATH.
+/// The first installed file manager, otherwise "nautilus". The predicate
+/// is a parameter — so tests do not depend on the system PATH.
 pub fn detect_file_manager(exists: &dyn Fn(&str) -> bool) -> String {
     for fm in FILE_MANAGERS {
         if exists(fm) {
@@ -108,17 +108,17 @@ pub fn detect_file_manager(exists: &dyn Fn(&str) -> bool) -> String {
     "nautilus".to_string()
 }
 
-/// Есть ли исполняемый файл `cmd` в одном из каталогов PATH.
+/// Whether the executable `cmd` exists in one of the PATH directories.
 fn command_exists(cmd: &str) -> bool {
     let Some(path) = std::env::var_os("PATH") else { return false };
     std::env::split_paths(&path).any(|dir| dir.join(cmd).is_file())
 }
 
-/// Путь к `settings.json` без создания менеджера.
+/// Path to `settings.json` without creating a manager.
 ///
-/// Нужен тем, кто настройки только ЧИТАЕТ и не вправе трогать каталог: хост
-/// обоев следит за этим файлом, чтобы подхватывать правки живьём, и создавать
-/// конфиг за окно настроек ему нечего.
+/// Needed by those who only READ the settings and must not touch the directory:
+/// the wallpaper host watches this file to pick up edits live, and it has no
+/// business creating the config on behalf of the settings window.
 pub fn settings_file() -> PathBuf {
     crate::utils::rexon_config_dir().join("settings.json")
 }

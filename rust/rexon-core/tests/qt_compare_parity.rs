@@ -1,37 +1,37 @@
-//! Golden-сверка порта `qt_compare.rs` с оригиналом —
-//! `rexon/qt_compare/window.py` в версии до переноса (коммит `d305e9d`).
+//! Golden check of the `qt_compare.rs` port against the original —
+//! `rexon/qt_compare/window.py` in its version before the move (commit `d305e9d`).
 //!
-//! Эталон снят прогоном ЖИВОГО модуля под offscreen-Qt
+//! The golden was captured by running the LIVE module under offscreen Qt
 //! (`golden/qt_compare_cases.py` → `golden/qt_compare_cases.json`):
-//!   * таблица значков столов и её запасное значение;
-//!   * стиль карточек на тёмной и светлой темах;
-//!   * полоса памяти на 22 значениях, включая ровно пороговые (419/420,
-//!     779/780) и вылет за шкалу (1201, 5000);
-//!   * `_stars` и `_value_style` на 27 значениях ТТХ;
-//!   * ПОЛНОЕ дерево подписей собранного окна (308 узлов): заголовки,
-//!     легенда, шапки и тела всех карточек, строки рекомендаций — потеря
-//!     любой строки красит сверку;
-//!   * таблица «X против Y» для семи пар и `_bar5`.
+//!   * the table of desktop icons and its fallback value;
+//!   * the card style on dark and light themes;
+//!   * the memory bar on 22 values, including exactly the thresholds (419/420,
+//!     779/780) and going off the scale (1201, 5000);
+//!   * `_stars` and `_value_style` on 27 spec values;
+//!   * the FULL label tree of the built window (308 nodes): titles,
+//!     legend, headers and bodies of all cards, recommendation lines — losing
+//!     any line turns the check red;
+//!   * the "X versus Y" table for seven pairs and `_bar5`.
 //!
-//! Санкционированные расхождения (починки оригинала, правило #16) в голдене
-//! НЕ отражены — там записано поведение Python как есть; каждая проверяется
-//! отдельным тестом внизу файла:
-//!   1. «X11 (Wayland WIP)» больше не зелёное;
-//!   2. подсветка шапки и подложка полосы памяти зависят от темы;
-//!   3. в диалоге сравнения обе кнопки установки выделены одинаково;
-//!   4. оценки в таблице пары — значками (⭐/🎮 и ☆), как в легенде и
-//!      карточках, а не полоской «█░» (`sanctioned_divergences`);
-//!   5. слова «Игры» и «Библиотека интерфейса» вместо «Гейминг» и «Тулкит»;
-//!   6. подписи сеанса по пакетам Arch на 02.11.2026 (`SESSION_SANCTION`);
-//!   7. библиотека интерфейса, композитор и терминал Budgie 10.10
-//!      (`SPEC_SANCTION`), его файловый менеджер (`FM_SANCTION`).
+//! Sanctioned deviations (fixes of the original, rule #16) are NOT reflected
+//! in the golden — it records Python's behaviour as is; each one is checked by
+//! a separate test at the bottom of the file:
+//!   1. «X11 (Wayland WIP)» is no longer green;
+//!   2. the header highlight and the memory bar backing depend on the theme;
+//!   3. in the comparison dialog both install buttons are highlighted the same way;
+//!   4. ratings in the pair table are icons (⭐/🎮 and ☆), as in the legend and
+//!      the cards, not a «█░» bar (`sanctioned_divergences`);
+//!   5. the words «Игры» and «Библиотека интерфейса» instead of «Гейминг» and «Тулкит»;
+//!   6. session labels per the Arch packages as of 02.11.2026 (`SESSION_SANCTION`);
+//!   7. the interface library, compositor and terminal of Budgie 10.10
+//!      (`SPEC_SANCTION`), its file manager (`FM_SANCTION`).
 //!
-//! ГЕЙТ «голден обязан ловить регрессию» проверен мутацией: семь точечных
-//! поломок реализации (порог зелёного сдвинут на 0.36; `stars` не обрезает
-//! пятёркой; в шапке карточки местами тулкит и композитор; в таблице пары
-//! переставлены «Панель» и «Файлы»; `bar5` считает по девяти клеткам; значок
-//! niri заменён запасным; в строке ТТХ потеряна «⚡ CPU нагрузка») — каждая
-//! красит тесты.
+//! The GATE "the golden must catch a regression" was checked by mutation: seven point
+//! breakages of the implementation (the green threshold shifted by 0.36; `stars` does not clamp
+//! at five; the toolkit and the compositor swapped in the card header; «Panel» and «Files»
+//! swapped in the pair table; `bar5` counting over nine cells; the niri icon
+//! replaced by the fallback; «⚡ CPU load» lost from the spec line) — each one
+//! turns the tests red.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -62,7 +62,7 @@ fn installed_from_golden(g: &Value) -> Vec<String> {
         .collect()
 }
 
-// ── значки ──────────────────────────────────────────────────────────────
+// ── icons ───────────────────────────────────────────────────────────────
 
 #[test]
 fn de_icons_match_python() {
@@ -82,11 +82,11 @@ fn de_icons_match_python() {
     }
 }
 
-/// Сторож: у каждого стола из базы есть свой значок.
+/// Guard: every desktop in the database has its own icon.
 ///
-/// Без него добавленный в ядро стол выехал бы на витрину с запасным
-/// «🖥️» — ровно тот случай неполного добавления, который запрещает
-/// правило #12.
+/// Without it a desktop added to the core would go to the storefront with the fallback
+/// «🖥️» — exactly the case of an incomplete addition that rule #12
+/// forbids.
 #[test]
 fn every_de_has_icon() {
     for m in DE_META {
@@ -99,7 +99,7 @@ fn every_de_has_icon() {
     }
 }
 
-/// Сторож: все идентификаторы в быстрых парах и рекомендациях существуют.
+/// Guard: all identifiers in the quick pairs and recommendations exist.
 #[test]
 fn quick_pairs_and_recommendations_point_at_known_de() {
     let known: Vec<&str> = DE_META.iter().map(|m| m.id).collect();
@@ -115,7 +115,7 @@ fn quick_pairs_and_recommendations_point_at_known_de() {
     }
 }
 
-// ── стиль карточек ──────────────────────────────────────────────────────
+// ── card style ──────────────────────────────────────────────────────────
 
 #[test]
 fn card_qss_matches_python() {
@@ -129,7 +129,7 @@ fn card_qss_matches_python() {
     }
 }
 
-// ── полоса памяти ───────────────────────────────────────────────────────
+// ── memory bar ──────────────────────────────────────────────────────────
 
 #[test]
 fn ram_bar_matches_python() {
@@ -137,7 +137,7 @@ fn ram_bar_matches_python() {
     let py = g["ram_bar"].as_object().expect("ram_bar — объект");
     for (mb_s, want) in py {
         let mb: u32 = mb_s.parse().expect("ключ полосы — число");
-        // Эталон снят на светлой подложке (у Python она была единственной).
+        // The golden was captured on a light backing (Python had only that one).
         let bar = qc::ram_bar(mb, false);
         assert_eq!(bar.max as i64, want["max"].as_i64().unwrap(), "max {mb}");
         assert_eq!(
@@ -159,7 +159,7 @@ fn ram_bar_matches_python() {
     }
 }
 
-// ── звёзды, цвет значения, полоска из десяти клеток ─────────────────────
+// ── stars, value colour, a bar of ten cells ─────────────────────────────
 
 #[test]
 fn stars_match_python() {
@@ -175,15 +175,15 @@ fn stars_match_python() {
 
 #[test]
 fn value_style_matches_python_except_wayland_wip() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let py: BTreeMap<String, String> =
         serde_json::from_value(g["value_style"].clone()).expect("value_style");
     for (value, want) in py {
         if value.contains("WIP") {
-            continue; // санкционированное расхождение, проверяется ниже
+            continue; // a sanctioned deviation, checked below
         }
-        // Нагрузка — подпись признака: цвет решает вариант, не текст.
+        // Load is a feature label: the variant decides the colour, not the text.
         let load = [CpuLoad::Low, CpuLoad::Medium, CpuLoad::High]
             .into_iter()
             .find(|l| l.label() == value);
@@ -195,8 +195,8 @@ fn value_style_matches_python_except_wayland_wip() {
     }
 }
 
-/// Полоска оригинала (`_bar5`) — только для сверки с эталоном: в таблице
-/// пары её сменили значки оценки (санкция 4).
+/// The original's bar (`_bar5`) — only for comparison with the golden: in the pair
+/// table it was replaced by rating icons (sanction 4).
 fn legacy_bar5(n: u8) -> String {
     let filled = (n.min(5) as usize) * 2;
     "█".repeat(filled) + &"░".repeat(10 - filled)
@@ -212,7 +212,7 @@ fn legacy_bar5_matches_python() {
     }
 }
 
-// ── быстрые пары и рекомендации ─────────────────────────────────────────
+// ── quick pairs and recommendations ─────────────────────────────────────
 
 #[test]
 fn quick_pairs_match_python() {
@@ -228,7 +228,7 @@ fn quick_pairs_match_python() {
 
 #[test]
 fn recommendations_match_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let py: Vec<Vec<String>> =
         serde_json::from_value(g["recommendations"].clone()).expect("recommendations");
@@ -239,11 +239,11 @@ fn recommendations_match_python() {
     assert_eq!(ours, py, "рекомендации разошлись");
 }
 
-// ── карточки ────────────────────────────────────────────────────────────
+// ── cards ───────────────────────────────────────────────────────────────
 
 #[test]
 fn card_headers_and_bodies_match_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let installed = installed_from_golden(&g);
     let cards = g["cards"].as_object().expect("cards");
@@ -261,8 +261,8 @@ fn card_headers_and_bodies_match_python() {
         );
 
         let body = qc::card_body(de_id, is_installed, false).expect("тело");
-        // Порядок подписей тела ровно тот, что видел покупатель: память,
-        // две оценки, семь пар «подпись / значение», описание.
+        // The order of the body labels is exactly what the buyer saw: memory,
+        // two ratings, seven "label / value" pairs, the description.
         let mut ours = vec![body.ram_label.clone()];
         ours.extend(body.stars_labels.clone());
         for s in &body.specs {
@@ -287,18 +287,18 @@ fn card_headers_and_bodies_match_python() {
     }
 }
 
-/// Санкция 6: подписи сеанса устарели вместе с самими столами, а не по ошибке
-/// порта. Факт на 02.11.2026 (пакеты Arch): Plasma 6.8 (`plasma-workspace`
-/// кладёт только `plasma.desktop`, `plasma-x11-session` из репозиториев
-/// убран), GNOME 51 (`gnome-session` — только `gnome.desktop`), Budgie 10.10
-/// (Wayland через labwc) — только Wayland. У Cinnamon, Xfce и LXQt есть
-/// выбор сеанса при установке (MATE с 16.11.2026 — только X11, как в эталоне), и подпись выводится из таблицы вариантов
-/// `system::SESSION_VARIANTS` (`DeMeta::session_text`). Пометку
-/// «экспериментально» подпись берёт из признака зрелости Wayland там же: на
-/// 03.11.2026 зрелый только у LXQt (проект снял пометку в LXQt 2.3.0).
-/// Pantheon в эталоне нет — его сеанс сверяется в `system_de_db.json`.
+/// Sanction 6: session labels went stale together with the desktops themselves, not because of a port
+/// bug. The facts as of 02.11.2026 (Arch packages): Plasma 6.8 (`plasma-workspace`
+/// ships only `plasma.desktop`, `plasma-x11-session` was removed from the
+/// repositories), GNOME 51 (`gnome-session` — only `gnome.desktop`), Budgie 10.10
+/// (Wayland via labwc) — Wayland only. Cinnamon, Xfce and LXQt have
+/// a session choice at install time (MATE since 16.11.2026 — X11 only, as in the golden), and the label is derived from the variant table
+/// `system::SESSION_VARIANTS` (`DeMeta::session_text`). The label takes the
+/// "experimental" mark from the Wayland maturity flag in the same place: as of
+/// 03.11.2026 only LXQt's is mature (the project dropped the mark in LXQt 2.3.0).
+/// Pantheon is not in the golden — its session is checked in `system_de_db.json`.
 ///
-/// Стол → (значение в эталоне оригинала, значение теперь, по-русски).
+/// Desktop → (value in the original's golden, value now, in Russian).
 const SESSION_SANCTION: &[(&str, &str, &str)] = &[
     ("cinnamon-mint", "X11", "X11 + Wayland (экспериментально)"),
     ("xfce", "X11", "X11 + Wayland (экспериментально)"),
@@ -308,8 +308,8 @@ const SESSION_SANCTION: &[(&str, &str, &str)] = &[
     ("budgie", "X11 (Wayland WIP)", "Wayland"),
 ];
 
-/// Значение сеанса стола после санкции 6. Санкция точечная: в эталоне
-/// обязано стоять ровно записанное старое значение — иначе она устарела.
+/// The desktop's session value after sanction 6. The sanction is pinpoint: the golden
+/// must contain exactly the recorded old value — otherwise it is stale.
 fn session_now(de_id: &str, original: &str) -> String {
     match SESSION_SANCTION.iter().find(|(id, _, _)| *id == de_id) {
         Some((_, old, new)) => {
@@ -320,8 +320,8 @@ fn session_now(de_id: &str, original: &str) -> String {
     }
 }
 
-/// Санкция 6 в списке подписей: значение после строки «🖥️ Сессия». Строки
-/// сеанса идут по одной на карточку, в порядке `order`.
+/// Sanction 6 in the label list: the value after the «🖥️ Session» line. Session
+/// lines go one per card, in `order`.
 fn sanction_sessions(labels: Vec<String>, order: &[&str]) -> Vec<String> {
     let mut des = order.iter();
     let mut pending: Option<&str> = None;
@@ -344,7 +344,7 @@ fn sanction_sessions(labels: Vec<String>, order: &[&str]) -> Vec<String> {
     out
 }
 
-/// Санкция 6 в таблице пары «X против Y»: строка «Сессия».
+/// Sanction 6 in the "X versus Y" pair table: the «Session» row.
 fn sanction_pair_session(html: &str, a: &str, b: &str) -> String {
     const HEAD: &str = "<tr><td><b>Сессия</b></td><td>";
     html.split_inclusive("</tr>")
@@ -361,8 +361,8 @@ fn sanction_pair_session(html: &str, a: &str, b: &str) -> String {
         .collect()
 }
 
-/// Санкция 6 жива: каждая запись нужна (стол есть в эталоне) и совпадает с
-/// тем, что показывает ядро; у столов «только Wayland» — ровно «Wayland».
+/// Sanction 6 is alive: every entry is needed (the desktop is in the golden) and matches
+/// what the core shows; for "Wayland only" desktops it is exactly «Wayland».
 #[test]
 fn session_sanction_is_current() {
     let _lang = i18n_pin::ru();
@@ -378,33 +378,33 @@ fn session_sanction_is_current() {
     }
 }
 
-/// Санкция 7: ТТХ Budgie устарели вместе с самим столом. Факт на 02.11.2026
-/// (Arch, `budgie-desktop` 10.10.2): окнами управляет labwc — сеанс
-/// `budgie-desktop.desktop` запускает `startbudgielabwc`, пакет зависит от
-/// `labwc`; Budgie WM на Mutter ушёл вместе с X11, Magpie так и не вышел.
-/// Сам стол — на GTK3: в зависимостях `gtk3`, GTK4 нет («GTK3 → GTK4» —
-/// обещание, а не состояние).
+/// Sanction 7: the Budgie specs went stale together with the desktop itself. The facts as of 02.11.2026
+/// (Arch, `budgie-desktop` 10.10.2): windows are managed by labwc — the
+/// `budgie-desktop.desktop` session starts `startbudgielabwc`, the package depends on
+/// `labwc`; Budgie WM on Mutter left together with X11, Magpie never came out.
+/// The desktop itself is on GTK3: `gtk3` is in the dependencies, GTK4 is not ("GTK3 → GTK4" is
+/// a promise, not a state).
 ///
-/// Терминал — `xfce4-terminal`, а не «GNOME Terminal»: его ставит набор
-/// пакетов Budgie (сам `budgie-desktop` терминала не тянет) и назначает
-/// программа по умолчанию, как в Ubuntu Budgie на 10.10
-/// (`ubuntu-budgie-desktop` рекомендует `xfce4-terminal`).
+/// The terminal is `xfce4-terminal`, not «GNOME Terminal»: it is installed by the Budgie
+/// package set (`budgie-desktop` itself does not pull in a terminal) and assigned as
+/// the default program, as in Ubuntu Budgie on 10.10
+/// (`ubuntu-budgie-desktop` recommends `xfce4-terminal`).
 ///
-/// Стол → (значение в эталоне оригинала, значение теперь). Значения в
-/// эталоне есть только у этого стола, поэтому замена — по тексту.
+/// Desktop → (value in the original's golden, value now). Only this desktop has these values
+/// in the golden, so the replacement is by text.
 const SPEC_SANCTION: &[(&str, &str, &str)] = &[
     ("budgie", "GTK3 → GTK4", "GTK3"),
     ("budgie", "Budgie WM / Magpie", "labwc"),
     ("budgie", "GNOME Terminal", "xfce4-terminal"),
 ];
 
-/// Санкция 7 в любом тексте эталона: шапке, теле карточки, таблице пары.
+/// Sanction 7 in any golden text: the header, the card body, the pair table.
 fn sanction_specs(original: &str) -> String {
     SPEC_SANCTION.iter().fold(original.to_string(), |t, (_, old, new)| t.replace(old, new))
 }
 
-/// Санкция 7 жива: старое значение стоит в эталоне (в шапке и теле карточки
-/// своего стола), новое — в мете стола.
+/// Sanction 7 is alive: the old value is in the golden (in the header and body of its
+/// desktop's card), the new one is in the desktop's meta.
 #[test]
 fn spec_sanction_is_current() {
     let g = golden();
@@ -419,18 +419,18 @@ fn spec_sanction_is_current() {
     }
 }
 
-/// Санкция 7, файловый менеджер Budgie: Nemo, а не Nautilus. Набор пакетов
-/// Budgie и его программы по умолчанию приведены к Ubuntu Budgie 26.04
-/// (`ubuntu-budgie-desktop-minimal` рекомендует `nemo`, её `defaults.list`
-/// открывает им папки). «Nautilus» в эталоне стоит и у GNOME, поэтому замена
-/// не по тексту, а по столу: значение после «📁 Файловый менеджер» в
-/// карточке и столбец стола в строке «Файлы» таблицы пары.
+/// Sanction 7, the Budgie file manager: Nemo, not Nautilus. The Budgie package set
+/// and its default programs follow Ubuntu Budgie 26.04
+/// (`ubuntu-budgie-desktop-minimal` recommends `nemo`, its `defaults.list`
+/// opens folders with it). «Nautilus» in the golden is also GNOME's, so the replacement
+/// is not by text but by desktop: the value after «📁 File manager» in
+/// the card and the desktop's column in the «Files» row of the pair table.
 ///
-/// Стол → (значение в эталоне оригинала, значение теперь).
+/// Desktop → (value in the original's golden, value now).
 const FM_SANCTION: &[(&str, &str, &str)] = &[("budgie", "Nautilus", "Nemo")];
 
-/// Файловый менеджер стола после санкции. Точечная: в эталоне обязано стоять
-/// ровно записанное старое значение — иначе она устарела.
+/// The desktop's file manager after the sanction. Pinpoint: the golden must contain
+/// exactly the recorded old value — otherwise it is stale.
 fn fm_now(de_id: &str, original: &str) -> String {
     match FM_SANCTION.iter().find(|(id, _, _)| *id == de_id) {
         Some((_, old, new)) => {
@@ -441,8 +441,8 @@ fn fm_now(de_id: &str, original: &str) -> String {
     }
 }
 
-/// Санкция в списке подписей: значение после «📁 Файловый менеджер», по
-/// одной строке на карточку в порядке `order`.
+/// The sanction in the label list: the value after «📁 File manager», one
+/// line per card in `order`.
 fn sanction_fms(labels: Vec<String>, order: &[&str]) -> Vec<String> {
     let mut des = order.iter();
     let mut pending: Option<&str> = None;
@@ -465,7 +465,7 @@ fn sanction_fms(labels: Vec<String>, order: &[&str]) -> Vec<String> {
     out
 }
 
-/// Санкция в таблице пары «X против Y»: строка «Файлы».
+/// The sanction in the "X versus Y" pair table: the «Files» row.
 fn sanction_pair_fm(html: &str, a: &str, b: &str) -> String {
     const HEAD: &str = "<tr><td><b>Файлы</b></td><td>";
     html.split_inclusive("</tr>")
@@ -482,8 +482,8 @@ fn sanction_pair_fm(html: &str, a: &str, b: &str) -> String {
         .collect()
 }
 
-/// Санкция файлового менеджера жива: стол есть в эталоне, новое значение —
-/// в мете стола.
+/// The file manager sanction is alive: the desktop is in the golden, the new value is
+/// in the desktop's meta.
 #[test]
 fn fm_sanction_is_current() {
     let g = golden();
@@ -495,39 +495,39 @@ fn fm_sanction_is_current() {
     }
 }
 
-/// Санкционированные расхождения с оригиналом: слово «DE» и значки оценок в таблице пары.
+/// Sanctioned deviations from the original: the word "DE" and the rating icons in the pair table.
 ///
-/// Оригинал говорил «📊 Сравнение DE» и «Новый Wayland-native DE от System76»
-/// (описание COSMIC приходит на карточку, в дерево окна и в таблицу пары); ядро
-/// говорит «рабочих столов» / «рабочий стол» — сторож жаргона
-/// `visible_texts_say_desktop_not_de` в qt_desktops_parity. Эталон заморожен и
-/// переснимается из blob'а оригинала (`rexon-golden-update qt_compare`),
-/// поэтому правится не он, а ожидание, и ровно эти две фразы.
+/// The original said «📊 Сравнение DE» and «Новый Wayland-native DE от System76»
+/// (the COSMIC description goes to the card, the window tree and the pair table); the core
+/// says «рабочих столов» / «рабочий стол» — the jargon guard
+/// `visible_texts_say_desktop_not_de` in qt_desktops_parity. The golden is frozen and
+/// recaptured from the original's blob (`rexon-golden-update qt_compare`),
+/// so it is not the golden that is edited but the expectation, and exactly these two phrases.
 fn sanctioned_divergences(original: &str) -> String {
     let text = sanction_specs(original)
         .replace("📊 Сравнение DE", "📊 Сравнение рабочих столов")
         .replace("Wayland-native DE от System76", "Wayland-native рабочий стол от System76");
-    // Санкция 4: оценки в таблице пары — значками, как в легенде и
-    // карточках; в строке «Гейминг» — геймпады, в остальных — звёзды.
+    // Sanction 4: ratings in the pair table are icons, as in the legend and
+    // the cards; gamepads in the «Gaming» row, stars in the others.
     text.split_inclusive("</tr>")
         .map(|row| {
             let emoji = if row.contains("<td><b>Гейминг</b></td>") { "🎮" } else { "⭐" };
             (0..=5u8).fold(row.to_string(), |r, n| r.replace(&legacy_bar5(n), &qc::stars(n, emoji)))
         })
         .collect::<String>()
-        // Санкция 5: слова как во всём Rexon — «Игры», а не «Гейминг»;
-        // «Библиотека интерфейса», а не жаргонное «Тулкит».
+        // Sanction 5: words as everywhere in Rexon — «Игры», not «Гейминг»;
+        // «Библиотека интерфейса», not the jargon «Тулкит».
         .replace("Гейминг", "Игры")
         .replace("Тулкит", "Библиотека интерфейса")
 }
 
 #[test]
 fn sanctioned_divergences_are_exactly_the_de_word() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     assert_eq!(qc::header_title(), sanctioned_divergences("📊 Сравнение DE"));
     let g = golden();
     let text = g.to_string();
-    // Эталон по-прежнему оригинальный: санкция на месте, а не устарела.
+    // The golden is still the original: the sanction is in place, not stale.
     assert_eq!(text.matches("📊 Сравнение DE").count(), 1);
     assert_eq!(text.matches("Wayland-native DE от System76").count(), 3);
     assert!(text.contains("<td><b>Гейминг</b></td><td>█"), "полоски оригинала в эталоне пары");
@@ -536,15 +536,15 @@ fn sanctioned_divergences_are_exactly_the_de_word() {
         .any(|w| w == "DE"));
 }
 
-// ── дерево подписей всего окна ──────────────────────────────────────────
+// ── the label tree of the whole window ──────────────────────────────────
 
-/// Самая жёсткая сверка: все подписи окна в порядке обхода дерева.
+/// The strictest check: all window labels in tree traversal order.
 ///
-/// Собираем ту же последовательность из ядра и сравниваем с записанной с
-/// живого окна. Ловит и потерянную строку, и переставленные блоки.
+/// We build the same sequence from the core and compare it with the one recorded from
+/// the live window. It catches both a lost line and swapped blocks.
 #[test]
 fn window_texts_match_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let installed = installed_from_golden(&g);
     let order: Vec<String> = serde_json::from_value(g["de_order"].clone()).expect("de_order");
@@ -589,7 +589,7 @@ fn window_texts_match_python() {
     assert_eq!(ours, py, "дерево подписей окна разошлось");
 }
 
-/// Полосы памяти в собранном окне — по одной на карточку, в том же порядке.
+/// Memory bars in the built window — one per card, in the same order.
 #[test]
 fn window_ram_bars_match_python() {
     let g = golden();
@@ -611,11 +611,11 @@ fn window_ram_bars_match_python() {
     assert_eq!(ours, py, "полосы памяти в окне разошлись");
 }
 
-// ── диалог «X против Y» ─────────────────────────────────────────────────
+// ── the "X versus Y" dialog ─────────────────────────────────────────────
 
 #[test]
 fn pair_html_and_title_match_python() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let g = golden();
     let html = g["pair_html"].as_object().expect("pair_html");
     for (key, want) in html {
@@ -644,14 +644,14 @@ fn pair_view_unknown_de_is_none() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-//  Санкционированные расхождения с оригиналом (правило #16)
+//  Sanctioned deviations from the original (rule #16)
 // ════════════════════════════════════════════════════════════════════════
 
-/// Починка 1: «X11 (Wayland WIP)» — не готовый Wayland, зелёным не красим.
+/// Fix 1: «X11 (Wayland WIP)» is not a ready Wayland, we do not paint it green.
 #[test]
 fn wayland_wip_is_not_green() {
     assert_eq!(qc::spec_value_qss("X11 (Wayland WIP)"), "");
-    // а настоящий Wayland по-прежнему зелёный
+    // while real Wayland is still green
     assert_eq!(
         qc::spec_value_qss("Wayland"),
         format!("color: {};", qc::GOOD_COLOR)
@@ -660,8 +660,8 @@ fn wayland_wip_is_not_green() {
         qc::spec_value_qss("Wayland + X11"),
         format!("color: {};", qc::GOOD_COLOR)
     );
-    // и починка видна на витрине: сеанс зелёный только у готового Wayland;
-    // столы с экспериментальным Wayland рядом с X11 (санкция 6) — не зелёные
+    // and the fix is visible on the storefront: the session is green only for a ready Wayland;
+    // desktops with experimental Wayland next to X11 (sanction 6) are not green
     for m in DE_META {
         let green = !qc::specs(m.id)[1].color.is_empty();
         let expect_green = m.session_type == "Wayland";
@@ -669,7 +669,7 @@ fn wayland_wip_is_not_green() {
     }
 }
 
-/// Починка 2: подсветка шапки и подложка полосы зависят от темы.
+/// Fix 2: the header highlight and the bar backing depend on the theme.
 #[test]
 fn hover_and_track_follow_theme() {
     let light = qc::card_header_qss(false);
@@ -680,11 +680,11 @@ fn hover_and_track_follow_theme() {
 
     assert!(qc::ram_bar(300, false).qss.contains("rgba(0,0,0,0.1)"));
     assert!(qc::ram_bar(300, true).qss.contains("rgba(255,255,255,0.10)"));
-    // цвет заполнения от темы НЕ зависит — он несёт смысл
+    // the fill colour does NOT depend on the theme — it carries meaning
     assert_eq!(qc::ram_bar(300, false).color, qc::ram_bar(300, true).color);
 }
 
-/// Починка 3: обе кнопки установки в диалоге выделены одинаково.
+/// Fix 3: both install buttons in the dialog are highlighted the same way.
 #[test]
 fn both_pair_install_buttons_are_primary() {
     let view = qc::pair_view("xfce", "kde", false, false).expect("пара");
@@ -692,13 +692,13 @@ fn both_pair_install_buttons_are_primary() {
     for b in &view.buttons {
         assert_eq!(b.qss, qc::INSTALL_BUTTON_QSS, "кнопка {}", b.de_id);
     }
-    // установленный стол кнопки не получает
+    // an installed desktop does not get a button
     let view = qc::pair_view("xfce", "kde", true, false).expect("пара");
     assert_eq!(view.buttons.len(), 1);
     assert_eq!(view.buttons[0].de_id, "kde");
 }
 
-// ── строки рекомендаций ─────────────────────────────────────────────────
+// ── recommendation lines ────────────────────────────────────────────────
 
 #[test]
 fn rec_rows_mark_installed_and_offer_install() {
@@ -713,9 +713,9 @@ fn rec_rows_mark_installed_and_offer_install() {
     assert_eq!(kde.qss, qc::REC_BADGE_QSS);
 }
 
-/// Цвета вкладки описаны дважды: строкой QSS для виджетов и голым цветом для
-/// QML. Разъехавшись, они дали бы двум вкладкам разный вид на одних данных —
-/// и заметно это стало бы не на сборке, а глазами покупателя.
+/// The tab's colours are described twice: as a QSS string for widgets and as a bare colour for
+/// QML. If they diverged, two tabs would look different on the same data —
+/// and it would be noticed not at build time but by the buyer's eyes.
 #[test]
 fn widget_qss_and_qml_colors_agree() {
     assert_eq!(qc::REC_BADGE_QSS, format!("color: {};", qc::REC_BADGE_COLOR));
@@ -734,14 +734,14 @@ fn widget_qss_and_qml_colors_agree() {
             };
             assert_eq!(qc::spec_value_qss(value), want, "цвет значения «{value}»");
         }
-        // Строки карточки несут цвет и стиль одним решением.
+        // Card lines carry colour and style as one decision.
         for row in qc::specs(m.id) {
             assert_eq!(row.qss, qc::color_qss(row.color), "{} / {}", m.id, row.label);
         }
     }
 
-    // Канавка полосы памяти: в QSS она записана как `rgba(r,g,b,a)`, в QML —
-    // как `#AARRGGBB`. Сторож переводит первую во вторую и сверяет.
+    // The memory bar groove: in QSS it is written as `rgba(r,g,b,a)`, in QML
+    // as `#AARRGGBB`. The guard converts the first into the second and compares.
     for dark in [false, true] {
         let qss = qc::ram_bar(300, dark).qss;
         let css = qss
@@ -756,8 +756,8 @@ fn widget_qss_and_qml_colors_agree() {
         );
     }
 
-    // Синяя кнопка установки: подложка и подложка под курсором в QSS и в
-    // QML-константах — один и тот же цвет, а скругление — то же число.
+    // The blue install button: the backing and the hover backing in QSS and in
+    // the QML constants are one and the same colour, and the rounding is the same number.
     let mut backgrounds = qc::INSTALL_BUTTON_QSS
         .split("background-color: ")
         .skip(1)
@@ -772,7 +772,7 @@ fn widget_qss_and_qml_colors_agree() {
     );
 }
 
-/// `rgba(r,g,b,a)` из QSS → `#AARRGGBB`, как этот же цвет пишут в QML.
+/// `rgba(r,g,b,a)` from QSS → `#AARRGGBB`, as the same colour is written in QML.
 fn rgba_css_to_argb_hex(css: &str) -> String {
     let inner = css
         .trim()
@@ -787,11 +787,11 @@ fn rgba_css_to_argb_hex(css: &str) -> String {
     format!("#{a:02x}{r:02x}{g:02x}{b:02x}")
 }
 
-/// Затемнение фона — одно решение на продукт. Гасят фон двое: обучение
-/// (накладка на всё окно) и модальное окно вкладки на QML; разъехавшись,
-/// они показали бы покупателю два разных «выключенных» фона в одном окне.
-/// Сторож смотрит и на .qml: там цвет обязан приезжать из палитры, а не
-/// быть набранным руками.
+/// Background dimming is one decision for the whole product. Two parties dim the background: the tutorial
+/// (an overlay over the whole window) and the QML tab's modal window; if they diverged,
+/// they would show the buyer two different "disabled" backgrounds in one window.
+/// The guard looks at the .qml too: there the colour must come from the palette rather than
+/// be typed by hand.
 #[test]
 fn modal_dim_is_one_decision() {
     assert_eq!(
@@ -816,11 +816,11 @@ fn modal_dim_is_one_decision() {
     );
 }
 
-// ── тексты установки и переключения ─────────────────────────────────────
+// ── install and switch texts ────────────────────────────────────────────
 
 #[test]
 fn install_and_switch_texts_are_intact() {
-    let _lang = i18n_pin::ru(); // эталон Python — русский, он в po/ru.po
+    let _lang = i18n_pin::ru(); // the Python golden is Russian, it lives in po/ru.po
     let t = qc::install_texts("KDE Plasma");
     assert_eq!(t.confirm_title, "Установить?");
     assert!(t.confirm_html.contains("<b>KDE Plasma</b>"));
@@ -835,13 +835,13 @@ fn install_and_switch_texts_are_intact() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-//  Перевод: русский как было, английский — без единой русской буквы
+//  Translation: Russian as before, English without a single Russian letter
 // ════════════════════════════════════════════════════════════════════════
 
-/// ⭐ Русский интерфейс вкладки не изменился: подписи, которых нет в эталоне
-/// Python (заголовок окна, кнопки диалога пары, тексты переключения),
-/// сверяются с прежними литералами слово в слово (сняты с HEAD 28.09);
-/// остальное сторожат golden-сверки выше, идущие на `po/ru.po`.
+/// ⭐ The tab's Russian interface did not change: labels that are not in the Python
+/// golden (the window title, the pair dialog buttons, the switch texts)
+/// are compared with the former literals word for word (taken from HEAD on 28.09);
+/// the rest is guarded by the golden checks above, which run on `po/ru.po`.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn russian_catalog_keeps_old_texts() {
@@ -861,7 +861,7 @@ fn russian_catalog_keeps_old_texts() {
 Rexon сохранит копию настроек текущего рабочего стола и выйдет из сеанса."
     );
     assert_eq!(s.operation_title, "Переключение на XFCE");
-    // Нагрузка — подпись признака, у каждого варианта своя.
+    // Load is a feature label, each variant has its own.
     assert_eq!(CpuLoad::Low.label(), "Низкое");
     assert_eq!(CpuLoad::Medium.label(), "Среднее");
     assert_eq!(CpuLoad::High.label(), "Высокое");
@@ -871,7 +871,7 @@ fn cyrillic(s: &str) -> bool {
     s.chars().any(|c| matches!(c, 'а'..='я' | 'А'..='Я' | 'ё' | 'Ё'))
 }
 
-/// Все тексты вкладки для всех столов — как их видит покупатель.
+/// All texts of the tab for all desktops — as the buyer sees them.
 fn all_texts() -> Vec<String> {
     let mut all = vec![
         qc::window_title(),
@@ -909,11 +909,11 @@ fn all_texts() -> Vec<String> {
     all
 }
 
-/// Английский интерфейс вкладки: ни одной русской буквы — забытая строка
-/// видна здесь, а не покупателю.
+/// The tab's English interface: not a single Russian letter — a forgotten string
+/// shows up here, not to the buyer.
 ///
-/// Исключение названо: тексты УСТАНОВКИ стола (`install_texts`) берутся у
-/// `qt_desktops` — это заход вкладки «Рабочие столы», сюда не входят.
+/// The exception is named: the desktop INSTALL texts (`install_texts`) are taken from
+/// `qt_desktops` — that is the «Desktops» tab's pass, they are not included here.
 #[test]
 fn english_compare_has_no_russian() {
     let _lang = i18n_pin::en();
@@ -924,8 +924,8 @@ fn english_compare_has_no_russian() {
     }
 }
 
-/// Английские фразы читаются как фразы, а цвет нагрузки не потерялся с
-/// переводом подписи.
+/// English phrases read as phrases, and the load colour was not lost with
+/// the label's translation.
 #[test]
 fn english_phrases_read_naturally() {
     let _lang = i18n_pin::en();
@@ -957,7 +957,7 @@ fn english_phrases_read_naturally() {
     assert!(v.html.contains("<td><b>CPU load</b></td><td>Low</td><td>Medium</td>"));
 }
 
-/// Цвет нагрузки одинаков на любом языке: решает признак, а не подпись.
+/// The load colour is the same in any language: the feature decides, not the label.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn cpu_color_does_not_depend_on_language() {

@@ -28,7 +28,7 @@ RexonSsbCallDone g_on_call_done = nullptr;
 RexonSsbVanished g_on_vanished = nullptr;
 RexonSsbLost g_on_lost = nullptr;
 
-// Квитанции: пришедшие вызовы, ответа на которые Rust ещё не дал.
+// Receipts: incoming calls that Rust has not answered yet.
 std::map<uint64_t, QDBusMessage> g_pending;
 uint64_t g_next_token = 1;
 
@@ -36,7 +36,7 @@ QDBusServiceWatcher *g_watcher = nullptr;
 QDBusServiceWatcher *g_self_watcher = nullptr;
 QStringList g_paths;
 
-/// Значение аргумента строкой: так оно и уходит через границу.
+/// The argument value as a string: that is how it crosses the boundary.
 QByteArray to_text(QVariant value)
 {
     if (value.canConvert<QDBusVariant>())
@@ -44,7 +44,7 @@ QByteArray to_text(QVariant value)
     return value.toString().toUtf8();
 }
 
-/// Строки Rust → значения D-Bus по сигнатуре из простых типов.
+/// Rust strings → D-Bus values by a signature of simple types.
 QList<QVariant> from_texts(const char *signature, const char *const *values, int32_t count)
 {
     QList<QVariant> out;
@@ -69,7 +69,8 @@ QList<QVariant> from_texts(const char *signature, const char *const *values, int
     return out;
 }
 
-/// Объект на шине: каждый вызов — в Rust как есть, решения здесь нет.
+/// The object on the bus: every call goes to Rust as is, there are no
+/// decisions here.
 class Bridge : public QDBusVirtualObject
 {
 public:
@@ -166,8 +167,8 @@ int32_t rexon_ssb_start(const char *service, const char *const *paths, int32_t c
                 return 2;
             if (g_bridge != nullptr)
                 return 0;
-            // Сначала объект, потом имя: клиент, увидевший имя, сразу шлёт
-            // вызов — объект к этому моменту обязан уже стоять.
+            // Object first, then the name: a client that sees the name sends a call
+            // right away — the object must already be in place by then.
             auto *bridge = new Bridge(xml);
             bool all = true;
             for (const QString &p : where)
@@ -178,9 +179,10 @@ int32_t rexon_ssb_start(const char *service, const char *const *paths, int32_t c
                 delete bridge;
                 return 3;
             }
-            // Без очереди: занято — значит, у сеанса уже есть настоящий
-            // хозяин, и вставать за ним в очередь незачем. С уступкой: если
-            // хозяин появится позже и попросит имя с заменой, оно уйдёт ему.
+            // No queueing: if the name is taken, the session already has a real
+            // owner, and there is no reason to queue up behind it. With allowing
+            // replacement: if the owner appears later and asks for the name with
+            // replacement, it goes to them.
             const auto reply = bus.interface()->registerService(
                 name, QDBusConnectionInterface::DontQueueService,
                 QDBusConnectionInterface::AllowReplacement);
@@ -199,8 +201,8 @@ int32_t rexon_ssb_start(const char *service, const char *const *paths, int32_t c
                                  if (g_on_vanished != nullptr)
                                      g_on_vanished(gone.toUtf8().constData());
                              });
-            // Своё имя — под отдельной слежкой: хозяин, попросивший его с
-            // заменой, забирает его, и мосту пора сойти.
+            // Our own name is watched separately: an owner that asked for it with
+            // replacement takes it away, and it is time for the bridge to step down.
             g_paths = where;
             g_self_watcher = new QDBusServiceWatcher(name, bus,
                                                      QDBusServiceWatcher::WatchForOwnerChange, bridge);
@@ -247,9 +249,10 @@ void rexon_ssb_call(uint64_t ctx, const char *service, const char *path, const c
         QString::fromUtf8(method));
     msg.setArguments(from_texts(signature, values, count));
     QDBusPendingCall pending = QDBusConnection::sessionBus().asyncCall(msg, timeout_ms);
-    // Родитель — приложение, а не мост: мост сходит (`rexon_ssb_stop`), а
-    // поздний ответ сеанса на проброс должен дойти до ядра — иначе выданную
-    // им куки никто не снимет.
+    // The parent is the application, not the bridge: the bridge steps down
+    // (`rexon_ssb_stop`), but a late answer of the session to the forwarding
+    // must reach the core — otherwise nobody would release the cookie it
+    // handed out.
     auto *watcher = new QDBusPendingCallWatcher(pending, QCoreApplication::instance());
     QObject::connect(watcher, &QDBusPendingCallWatcher::finished, watcher,
                      [ctx](QDBusPendingCallWatcher *w) {
@@ -293,7 +296,7 @@ extern "C" void rexon_ssb_stop(const char *service)
     for (const QString &p : g_paths)
         bus.unregisterObject(p);
     bus.unregisterService(QString::fromUtf8(service));
-    // Квитанции без ответа закрыть: клиенты не должны ждать до таймаута.
+    // Close the unanswered receipts: clients must not wait until a timeout.
     for (auto &kv : g_pending)
         bus.send(kv.second.createErrorReply(QStringLiteral("org.freedesktop.DBus.Error.Failed"),
                                             QString()));

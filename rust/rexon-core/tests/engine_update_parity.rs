@@ -1,35 +1,35 @@
-//! Golden-сверка порта `engine_update.rs` с оригиналом
+//! Golden check of the `engine_update.rs` port against the original
 //! `rexon/qt_wallpaper_engine/engine_update.py`.
 //!
-//! Эталон снят с ЖИВОГО `rexon.qt_wallpaper_engine.engine_update` одноразовым
-//! генератором: `_api_json` замокан фикстурой (реальных запросов к GitHub НЕ
-//! было), ФС — временный HOME (в golden нормализован в `/HOME`, временный
-//! каталог — в `/TMP`), `_now_iso` заморожен. Покрыто: пути и константы,
-//! состав `TARGETS`, `_ver_tuple`, формат `_now_iso`, разбор вывода busctl,
-//! разбор ответов Releases/Commits API, все ветки `check_target` вместе с
-//! записью отчёта в стейт, `render_changelog_text`, формат файла стейта и
-//! `mark_installed`/`mark_seen`, `installed_version`, чтение `plugin.toml`,
-//! гейт совместимости OWE, вердикт `validate_appimage`, план установки
-//! AppImage, `validate_plugin_zip` (на архивах, собранных Python) и план
-//! ФС-установки плагина.
+//! The golden file was captured from the LIVE `rexon.qt_wallpaper_engine.engine_update` by a one-off
+//! generator: `_api_json` was mocked with a fixture (there were NO real requests to GitHub),
+//! the FS is a temporary HOME (normalized to `/HOME` in the golden, the temporary
+//! directory to `/TMP`), `_now_iso` frozen. Covered: paths and constants,
+//! the `TARGETS` composition, `_ver_tuple`, the `_now_iso` format, busctl output parsing,
+//! parsing Releases/Commits API responses, all branches of `check_target` together with
+//! writing the report into the state, `render_changelog_text`, the state file format and
+//! `mark_installed`/`mark_seen`, `installed_version`, reading `plugin.toml`,
+//! the OWE compatibility gate, the `validate_appimage` verdict, the AppImage install
+//! plan, `validate_plugin_zip` (on archives built by Python) and the plugin's
+//! FS install plan.
 //!
-//! `golden/engine_update_cases.json` — снятые значения.
+//! `golden/engine_update_cases.json` — the captured values.
 //!
-//! ⚠️ Намеренные расхождения с эталоном (правило авто-починки, подробности —
-//! в докстринге модуля):
-//! * плагин-zip качается с правами `0o644`, а не `0o755` (golden хранит
-//!   оригинальные `0o755` — тест проверяет починенное значение);
-//! * `version.lstrip("v")` заменён на `removeprefix("v")`;
-//! * текст ошибки разбора TOML отличается (у Rust свой парсер) — сверяется
-//!   только префикс сообщения;
-//! * у целей появилось поле `asset_prefix`, а `asset_suffix` waywallen стал
-//!   `-x86_64.AppImage` вместо `.AppImage` — починка дефекта 9 оригинала
-//!   (выбор release-ассета, см. шапку `engine_update.rs`). Golden снят
-//!   ДО починки, поэтому эти два поля в нём поправлены руками; остальные
-//!   значения сверки не менялись — старое правило и новое выбирают в
-//!   golden-релизах ОДИН И ТОТ ЖЕ ассет (там у каждого релиза по одному
-//!   подходящему файлу), расхождение видно только на живых релизах
-//!   v0.2.8 OWE и v0.3.1+ waywallen (тест `asset_choice_survives_extra_files`).
+//! ⚠️ Deliberate divergences from the golden file (the auto-fix rule, details are
+//! in the module docstring):
+//! * the plugin zip is downloaded with permissions `0o644`, not `0o755` (the golden keeps
+//!   the original `0o755` — the test checks the fixed value);
+//! * `version.lstrip("v")` was replaced with `removeprefix("v")`;
+//! * the TOML parse error text differs (Rust has its own parser) — only
+//!   the message prefix is checked;
+//! * the targets got an `asset_prefix` field, and the waywallen `asset_suffix` became
+//!   `-x86_64.AppImage` instead of `.AppImage` — a fix of the original's defect 9
+//!   (release asset choice, see the header of `engine_update.rs`). The golden was captured
+//!   BEFORE the fix, so these two fields were edited in it by hand; the other
+//!   check values did not change — the old rule and the new one choose
+//!   THE SAME asset in the golden releases (there each release has one
+//!   matching file), the divergence is visible only on the live releases
+//!   v0.2.8 of OWE and v0.3.1+ of waywallen (test `asset_choice_survives_extra_files`).
 
 use std::io::Write;
 
@@ -49,7 +49,7 @@ fn s(v: &Value) -> &str {
 const HOME: &str = "/HOME";
 
 // ============================================================================
-// Пути, константы, цели
+// Paths, constants, targets
 // ============================================================================
 
 #[test]
@@ -78,7 +78,7 @@ fn paths_and_constants() {
         eu::plugins_dir(Some("/xdg/data"), HOME),
         s(&g["plugins_dir_xdg"])
     );
-    // пустая переменная окружения = незаданная (`os.environ.get(...) or ...`)
+    // an empty environment variable = unset (`os.environ.get(...) or ...`)
     assert_eq!(
         eu::plugins_dir(Some(""), HOME),
         s(&g["plugins_dir_empty_xdg"])
@@ -121,7 +121,7 @@ fn targets_match_original() {
 }
 
 // ============================================================================
-// Версии и время
+// Versions and time
 // ============================================================================
 
 #[test]
@@ -156,7 +156,7 @@ fn busctl_output_parsing() {
     for (out, want) in g["busctl"].as_object().unwrap() {
         assert_eq!(eu::parse_busctl_version(out), s(want), "busctl {out:?}");
     }
-    // argv — в точности как в оригинале
+    // argv — exactly as in the original
     assert_eq!(
         eu::busctl_version_argv(),
         vec![
@@ -174,7 +174,7 @@ fn busctl_output_parsing() {
 #[test]
 fn current_version_priority() {
     let _lang = i18n_pin::ru();
-    // бинарь важнее живого демона, демон важнее busctl, busctl важнее стейта
+    // the binary beats the live daemon, the daemon beats busctl, busctl beats the state
     assert_eq!(
         eu::current_version(Some("0.3.7"), Some("0.3.5"), Some("s \"0.2.5\""), "0.2.1"),
         "0.3.7"
@@ -195,33 +195,33 @@ fn current_version_priority() {
     assert_eq!(eu::current_version(None, None, None, ""), "");
 }
 
-/// Дефект 27.08.2026: установленная версия «помнилась» с момента установки.
-/// Первым источником обязан быть `--version` бинаря — того самого, который
-/// реально запускается; всё остальное (демон, busctl, стейт) устаревает.
+/// Defect of 27.08.2026: the installed version was "remembered" from the moment of installation.
+/// The first source must be `--version` of the binary — the very one that
+/// is actually launched; everything else (daemon, busctl, state) goes stale.
 #[test]
 fn installed_version_comes_from_binary() {
     let _lang = i18n_pin::ru();
-    // разбор ответа бинаря
+    // parsing the binary's answer
     assert_eq!(eu::parse_binary_version("waywallen 0.3.7\n"), "0.3.7");
     assert_eq!(eu::parse_binary_version("waywallen v0.3.7"), "0.3.7");
     assert_eq!(eu::parse_binary_version("0.2.4-x86_64"), "0.2.4");
     assert_eq!(eu::parse_binary_version("waywallen 0.3.7+git1"), "0.3.7");
-    // старая сборка печатает usage — версии нет вовсе
+    // an old build prints usage — no version at all
     assert_eq!(
         eu::parse_binary_version("usage: waywallen [OPTIONS] --fps 60"),
         ""
     );
-    // числа без точки версией не считаются
+    // numbers without a dot are not considered a version
     assert_eq!(eu::parse_binary_version("waywallen build 60"), "");
     assert_eq!(eu::parse_binary_version("   "), "");
-    // argv строится вокруг найденного бинаря
+    // argv is built around the found binary
     assert_eq!(
         eu::binary_version_argv("/home/u/.local/bin/waywallen"),
         vec!["/home/u/.local/bin/waywallen", "--version"]
     );
 
-    // живой расклад дефекта: на диске 0.3.7, демон рапортует 0.3.5,
-    // в стейте с 26.07 лежит 0.2.6 — «наша версия» обязана быть 0.3.7
+    // the live layout of the defect: 0.3.7 on disk, the daemon reports 0.3.5,
+    // the state has had 0.2.6 since 26.07 — "our version" must be 0.3.7
     let binary = eu::parse_binary_version("waywallen 0.3.7\n");
     let live = eu::current_version(Some(&binary), Some("0.3.5"), None, "0.2.6");
     assert_eq!(live, "0.3.7");
@@ -229,7 +229,7 @@ fn installed_version_comes_from_binary() {
         eu::installed_version("waywallen", &live, "", "0.2.6", ""),
         "0.3.7"
     );
-    // бинарь молчит (старая сборка) → прежняя цепочка источников цела
+    // the binary is silent (an old build) → the former chain of sources is intact
     let live_old = eu::current_version(Some(""), Some("0.3.5"), None, "0.2.6");
     assert_eq!(live_old, "0.3.5");
 }
@@ -239,7 +239,7 @@ fn installed_version_priority() {
     let _lang = i18n_pin::ru();
     let g = fx();
     for (key, want) in g["installed_version"].as_object().unwrap() {
-        // ключ: "<target>|<json стейта>|<версия из plugin.toml или None>"
+        // key: "<target>|<state json>|<version from plugin.toml or None>"
         let parts: Vec<&str> = key.splitn(3, '|').collect();
         let ts: Value = serde_json::from_str(parts[1]).unwrap();
         let fs_ver = if parts[2] == "None" { "" } else { parts[2] };
@@ -256,7 +256,7 @@ fn installed_version_priority() {
             "installed_version {key}"
         );
     }
-    // waywallen всегда берёт живую версию движка
+    // waywallen always takes the live engine version
     assert_eq!(
         eu::installed_version("waywallen", "0.2.6", "x", "0.1.0", "0.1.1"),
         "0.2.6"
@@ -277,7 +277,7 @@ fn owe_version_from_plugin_toml() {
 }
 
 // ============================================================================
-// Разбор ответов GitHub API
+// Parsing GitHub API responses
 // ============================================================================
 
 fn entries_from_golden(v: &Value) -> Vec<eu::ChangelogEntry> {
@@ -322,13 +322,13 @@ fn releases_and_commits_parsing() {
         entries_from_golden(&g["fetch_commits"])
     );
 
-    // не-массив на верхнем уровне — пустой список (как `if isinstance(...)`)
+    // a non-array at the top level — an empty list (like `if isinstance(...)`)
     assert!(eu::parse_releases("{}").unwrap().is_empty());
     assert!(eu::parse_commits("null").unwrap().is_empty());
-    // битое тело — ошибка (в Python исключение json.loads ловил check_target)
+    // a broken body — an error (in Python the json.loads exception was caught by check_target)
     assert!(eu::parse_releases("не json").is_err());
 
-    // ⚠️ починка: явный null в поле не должен ронять разбор
+    // ⚠️ fix: an explicit null in a field must not crash the parse
     let nulls = r#"[{"tag_name":null,"name":null,"published_at":null,
                      "body":null,"assets":[{"name":null,
                      "browser_download_url":null}]}]"#;
@@ -363,11 +363,11 @@ fn api_urls_and_headers() {
     );
 }
 
-/// Дефект 27.08.2026, вторая половина: «актуально» при установленной 0.2.6
-/// и свежайшим тегом v0.3.5. Сравнение обязано быть ЧИСЛЕННЫМ и не спотыкаться
-/// о префикс `v` (строковое `"0.2.6" >= "0.3.5"` дало бы ровно ту неправду).
-/// Заодно фиксируем, что проверка кладёт в стейт ту версию, с которой
-/// сравнивала, — файл больше не показывает две разные «наши версии».
+/// Defect of 27.08.2026, the second half: "up to date" with 0.2.6 installed
+/// and the newest tag v0.3.5. The comparison must be NUMERIC and must not trip
+/// over the `v` prefix (a string comparison `"0.2.6" >= "0.3.5"` would give exactly that falsehood).
+/// We also pin that the check puts into the state the version it
+/// compared with — the file no longer shows two different "our versions".
 #[test]
 fn older_installed_against_v_prefixed_tag_is_an_update() {
     let _lang = i18n_pin::ru();
@@ -390,17 +390,17 @@ fn older_installed_against_v_prefixed_tag_is_an_update() {
     assert_eq!(st.latest, "v0.3.5");
     assert!(st.asset_url.ends_with("w.AppImage"));
 
-    // разряды и префикс: там, где строковое сравнение врёт
+    // digits and the prefix: where the string comparison lies
     assert!(eu::ver_tuple("v0.3.5") > eu::ver_tuple("0.2.6"));
     assert!(eu::ver_tuple("v0.10.0") > eu::ver_tuple("0.9.9"));
     assert!(eu::ver_tuple("v0.3.7") > eu::ver_tuple("0.3.5"));
 
-    // та же версия, что и тег → «актуально», обновления нет
+    // the same version as the tag → "up to date", no update
     let same = eu::check_target(&target, "0.3.5", &fetch);
     assert!(!same.update_available);
     assert_eq!(same.note, "актуально (0.3.5)");
 
-    // стейт после проверки: installed_version = то, с чем сравнивали
+    // state after the check: installed_version = what was compared with
     let mut state = eu::load_state(None);
     eu::store_report(&mut state, &target.key, &st, "2026-08-27T00:00:00Z");
     assert_eq!(
@@ -409,7 +409,7 @@ fn older_installed_against_v_prefixed_tag_is_an_update() {
     );
     assert!(eu::state_field(&state, "waywallen", "note").starts_with("доступна"));
 
-    // версию определить не удалось → прежняя запись установки не затирается
+    // the version could not be determined → the former install record is not overwritten
     let unknown = eu::check_target(&target, "", &fetch);
     let mut state2 = eu::load_state(Some(
         r#"{"targets": {"waywallen": {"installed_version": "0.2.6"}}}"#,
@@ -430,8 +430,8 @@ fn extra_target(key: &str, title: &str, repo: &str, suffix: &str, installable: b
         key: key.into(),
         title: title.into(),
         repo: repo.into(),
-        // цель «со стороны»: имени артефакта не знаем, работает старое
-        // правило «только суффикс»
+        // an "outside" target: we do not know the artifact name, the old
+        // "suffix only" rule works
         asset_prefix: String::new(),
         asset_suffix: suffix.into(),
         managed_path: String::new(),
@@ -445,7 +445,7 @@ fn extra_target(key: &str, title: &str, repo: &str, suffix: &str, installable: b
     }
 }
 
-/// Сценарий: цель, наша версия, чем кончился поход в API.
+/// Scenario: target, our version, how the trip to the API ended.
 fn scenario(g: &Value, name: &str) -> (eu::UpstreamTarget, String, eu::FetchOutcome) {
     let t = eu::targets(HOME);
     let releases = |k: &str| {
@@ -538,25 +538,25 @@ fn check_target_all_branches() {
         ordered.push(st);
     }
 
-    // ветка «релизов нет, коммиты недоступны» проверяется отдельно: в
-    // оригинале она собиралась вне общего прогона
+    // the "no releases, commits unavailable" branch is checked separately: in
+    // the original it was built outside the common run
     let want = &g["check"]["commits_error"]["status"];
     let (target, installed, fetch) = scenario(&g, "commits_error");
     let st = eu::check_target(&target, &installed, &fetch);
     assert_eq!(st.note, s(&want["note"]));
     assert!(!st.ok);
 
-    // текст отчёта «копировать всё» — по тем же статусам и в том же порядке
+    // the "copy everything" report text — by the same statuses and in the same order
     assert_eq!(eu::render_changelog_text(&ordered), s(&g["render_changelog"]));
     assert_eq!(eu::render_changelog_text(&[]), s(&g["render_changelog_empty"]));
 }
 
-/// Выбор release-ассета не должен ломаться от лишних файлов в релизе.
+/// Release asset choice must not break because of extra files in a release.
 ///
-/// ⚠️ Golden сюда не годится: он снят с оригинала, а оригинал здесь и был
-/// неправ (дефект 9). Имена ассетов взяты ЖИВЫЕ — `gh api` по релизам обеих
-/// целей, 31.08.2026. До починки выбирался ПЕРВЫЙ подходящий под суффикс, то
-/// есть `debug-symbols-linux-x86_64.zip` у OWE и `…-aarch64.AppImage` у
+/// ⚠️ The golden file does not fit here: it was captured from the original, and the original was
+/// wrong exactly here (defect 9). The asset names are LIVE — `gh api` over the releases of both
+/// targets, 31.08.2026. Before the fix the FIRST one matching the suffix was chosen, i.e.
+/// `debug-symbols-linux-x86_64.zip` for OWE and `…-aarch64.AppImage` for
 /// waywallen.
 #[test]
 fn asset_choice_survives_extra_files() {
@@ -564,7 +564,7 @@ fn asset_choice_survives_extra_files() {
     let t = eu::targets(HOME);
     let (ww, owe) = (&t[0], &t[1]);
 
-    // ── имена как в живых релизах ────────────────────────────────────
+    // ── names as in the live releases ────────────────────────────────
     let owe_v028 = [
         "debug-symbols-linux-aarch64.zip",
         "debug-symbols-linux-x86_64.zip",
@@ -597,7 +597,7 @@ fn asset_choice_survives_extra_files() {
         "waywallen v0.3.7: выбрана чужая архитектура"
     );
 
-    // исторические имена waywallen с довеском между версией и архитектурой
+    // historical waywallen names with an addition between the version and the architecture
     for name in [
         "waywallen-0.1.4-g8233394-x86_64.AppImage",
         "waywallen-0.1.7-1-x86_64.AppImage",
@@ -609,8 +609,8 @@ fn asset_choice_survives_extra_files() {
         );
     }
 
-    // побочные файлы, которых в релизах ещё не было, но которые появляются
-    // у любого проекта: правило держится на том, чем артефакт ЯВЛЯЕТСЯ
+    // side files that were not yet in the releases but appear
+    // in any project: the rule rests on what the artifact IS
     for name in [
         "sha256sums.txt",
         "waywallen-0.3.7-x86_64.AppImage.sha256",
@@ -634,10 +634,10 @@ fn asset_choice_survives_extra_files() {
         );
     }
 
-    // пустой asset_prefix = прежнее поведение (только суффикс)
+    // empty asset_prefix = the former behaviour (suffix only)
     assert!(eu::asset_matches("что-угодно.AppImage", "", ".AppImage"));
 
-    // ── и то же самое через полный check_target ──────────────────────
+    // ── and the same through the full check_target ───────────────────
     let release = |tag: &str, names: &[&str]| {
         eu::FetchOutcome::Releases(vec![eu::ChangelogEntry {
             tag: tag.into(),
@@ -661,7 +661,7 @@ fn asset_choice_survives_extra_files() {
     let st = eu::check_target(ww, "0.3.5", &release("v0.3.7", &ww_v037));
     assert_eq!(st.asset_url, "https://example/waywallen-0.3.7-x86_64.AppImage");
 
-    // ни одного своего файла в релизе — прежняя приписка к note
+    // not a single own file in the release — the former addition to note
     let st = eu::check_target(ww, "0.3.5", &release("v0.3.7", &["notes.txt"]));
     assert!(st.asset_url.is_empty());
     assert!(st.note.ends_with("; в релизе нет подходящего ассета"));
@@ -683,7 +683,7 @@ fn check_target_stores_report_in_state() {
         };
         let (target, installed, fetch) = scenario(&g, name);
         let st = eu::check_target(&target, &installed, &fetch);
-        // «no_releases_commits» стартовал с уже записанным last_check
+        // "no_releases_commits" started with last_check already written
         let mut state = if name == "no_releases_commits" {
             eu::load_state(Some(
                 r#"{"targets": {"waywallen": {"last_check": "2026-07-01T00:00:00Z"}}}"#,
@@ -697,7 +697,7 @@ fn check_target_stores_report_in_state() {
 }
 
 // ============================================================================
-// Стейт
+// State
 // ============================================================================
 
 #[test]
@@ -710,7 +710,7 @@ fn state_marks_and_serialization() {
     eu::mark_seen(&mut state, "owe", "v0.1.12", now);
     assert_eq!(eu::serialize_state(&state), s(&g["state_after_marks"]));
 
-    // повторное чтение того же текста даёт тот же объект
+    // re-reading the same text gives the same object
     let reloaded = eu::load_state(Some(s(&g["state_after_marks"])));
     assert_eq!(
         eu::state_field(&reloaded, "waywallen", "installed_version"),
@@ -738,8 +738,8 @@ fn broken_state_is_survived() {
             case["load"],
             "load_state {name}"
         );
-        // ⚠️ починка: оригинал ронял AttributeError на не-объекте внутри
-        // «targets»; здесь любая запись нормализуется, и марки применяются
+        // ⚠️ fix: the original crashed with AttributeError on a non-object inside
+        // "targets"; here any entry is normalized, and the marks are applied
         let mut state = state;
         eu::mark_seen(&mut state, "owe", "1", "T");
         assert_eq!(eu::state_field(&state, "owe", "seen_version"), "1");
@@ -800,11 +800,11 @@ fn appimage_install_plan_and_messages() {
     assert_eq!(plan.bak, format!("{}.bak-update", plan.dest));
     assert_eq!(plan.tmp, format!("{}.new-update", plan.dest));
     assert_eq!(plan.mode, 0o755);
-    // ⚠️ починка: removeprefix("v") вместо lstrip("v")
+    // ⚠️ fix: removeprefix("v") instead of lstrip("v")
     assert_eq!(plan.state_version, "0.2.5");
     assert_eq!(eu::appimage_install_plan(HOME, "").state_version, "");
     assert_eq!(eu::version_tag_to_state("vv1"), "v1");
-    // вариант от явного пути даёт тот же план
+    // the variant from an explicit path gives the same plan
     assert_eq!(
         eu::appimage_install_plan_for_dest(s(&g["managed_appimage"]), "v0.2.5"),
         plan
@@ -825,14 +825,14 @@ fn appimage_install_plan_and_messages() {
         "ошибка установки, откат: бум"
     );
 
-    // состояние после установки — стейт с той же версией
+    // the state after installation — the state with the same version
     let mut state = eu::load_state(None);
     eu::mark_installed(&mut state, "waywallen", &plan.state_version, "2026-07-27T12:34:56Z");
     assert_eq!(eu::serialize_state(&state), s(&fresh["state"]));
 }
 
 // ============================================================================
-// OWE-плагин
+// OWE plugin
 // ============================================================================
 
 #[test]
@@ -851,7 +851,7 @@ fn owe_min_gate() {
     assert_eq!(msg, s(&want[1]));
 }
 
-/// Собрать zip с теми же записями, что снимал генератор golden.
+/// Build a zip with the same entries the golden generator captured.
 fn build_zip(dir: &std::path::Path, name: &str, entries: &[(String, String)]) -> std::path::PathBuf {
     let path = dir.join(format!("{name}.zip"));
     let file = std::fs::File::create(&path).unwrap();
@@ -899,7 +899,7 @@ fn plugin_zip_validation() {
         };
         assert_eq!(got.ok, want_ok, "{name} ok (msg: {})", got.msg);
         if name == "broken_toml" {
-            // текст ошибки парсера у Rust свой — сверяем только префикс
+            // Rust has its own parser error text — we compare only the prefix
             assert!(
                 got.msg.starts_with("архив не читается: "),
                 "{name}: {}",
@@ -955,13 +955,13 @@ fn plugin_install_plan_and_messages() {
         eu::plugin_install_ok_message(&plan.info.id, &plan.target),
         s(&fresh["msg"])
     );
-    // пустой plugins_root → каталог по умолчанию
+    // empty plugins_root → the default directory
     assert_eq!(
         eu::plugin_install_plan(&ok_validation, "/DEFAULT", "", "").root,
         "/DEFAULT"
     );
 
-    // валидация не пройдена
+    // validation failed
     let bad = eu::PluginValidation {
         ok: false,
         msg: "в корне архива нет plugin.toml".into(),
@@ -978,7 +978,7 @@ fn plugin_install_plan_and_messages() {
         "ошибка установки плагина, откат: бум"
     );
 
-    // стейт после установки
+    // the state after installation
     let mut state = eu::load_state(None);
     eu::mark_installed(&mut state, "owe", "0.2.0", "2026-07-27T12:34:56Z");
     assert_eq!(eu::serialize_state(&state), s(&fresh["state"]));
@@ -999,8 +999,8 @@ fn zip_modes_and_rollback() {
     );
     assert_eq!(eu::zip_entry_mode(0), modes["zero"].as_u64().unwrap() as u32);
 
-    // ⚠️ починка: target удаляется только если мы сами его создали —
-    // иначе сбой распаковки стирал рабочий установленный плагин
+    // ⚠️ fix: target is removed only if we created it ourselves —
+    // otherwise an unpack failure wiped a working installed plugin
     assert_eq!(
         eu::plugin_rollback_plan(false, false),
         eu::PluginRollbackPlan {
@@ -1025,7 +1025,7 @@ fn zip_modes_and_rollback() {
 }
 
 // ============================================================================
-// Скачивание
+// Download
 // ============================================================================
 
 #[test]
@@ -1043,7 +1043,7 @@ fn download_specs() {
     let zipd = eu::download_spec(eu::DownloadKind::PluginZip);
     assert_eq!(zipd.prefix, s(&d["plugin_local_copy"]["basename_prefix"]));
     assert_eq!(zipd.suffix, s(&d["plugin_local_copy"]["suffix"]));
-    // ⚠️ починка: оригинал ставил 0o755 и архиву тоже (golden хранит его)
+    // ⚠️ fix: the original set 0o755 on the archive too (the golden keeps it)
     assert_eq!(s(&d["plugin_local_copy"]["mode"]), "0o755");
     assert_eq!(zipd.mode, 0o644);
 
@@ -1052,7 +1052,7 @@ fn download_specs() {
 }
 
 // ============================================================================
-// Язык: страница «Разработчик» по-английски и по-русски
+// Language: the «Разработчик» page in English and in Russian
 // ============================================================================
 
 fn has_cyrillic(s: &str) -> bool {
@@ -1069,8 +1069,8 @@ fn one_release(tag: &str, asset: &str) -> eu::FetchOutcome {
     }])
 }
 
-/// Всё, что ядро обновлений говорит человеку на странице «Разработчик»,
-/// по-английски — без единой русской буквы.
+/// Everything the update core tells the person on the «Разработчик» page,
+/// in English — without a single Russian letter.
 #[test]
 fn english_engine_update_texts_have_no_russian() {
     let _lang = i18n_pin::en();
@@ -1118,7 +1118,7 @@ fn english_engine_update_texts_have_no_russian() {
     assert_eq!(eu::waywallen_meets_owe_min("9.9.9").1, "waywallen 9.9.9 is compatible");
 }
 
-/// По-русски — дословно как было до перевода (снимок прежних строк).
+/// In Russian — verbatim as before the translation (a snapshot of the former strings).
 #[test]
 fn russian_engine_update_texts_read_as_before() {
     let _lang = i18n_pin::ru();
@@ -1160,9 +1160,9 @@ fn russian_engine_update_texts_read_as_before() {
     );
 }
 
-/// Цель, стоящую пакетом дистрибутива, страница «Разработчик» не качает:
-/// вторая копия в домашнем каталоге перекрыла бы пакетную и застряла бы
-/// мимо обновлений системы. Отказ — по каждой цели отдельно.
+/// A target installed as a distro package is not downloaded by the «Разработчик» page:
+/// a second copy in the home directory would shadow the packaged one and get stuck
+/// outside system updates. The refusal is per target.
 #[test]
 fn system_package_targets_are_not_downloaded() {
     assert_eq!(eu::system_update_refusal("waywallen", false, false), None);

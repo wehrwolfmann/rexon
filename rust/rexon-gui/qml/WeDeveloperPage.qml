@@ -1,32 +1,37 @@
-// Скрытая страница «Разработчик» вкладки «Wallpaper Engine» — РАЗМЕТКА.
+// The hidden "Developer" page of the "Wallpaper Engine" tab — MARKUP.
 //
-// Порт `DeveloperPageWidget` из `rexon/qt_wallpaper_engine/window.py`.
-// Данные, решения и ВСЕ подписи — Rust-объект `WeDeveloperModel`
-// (rust/rexon-gui/src/we_dev_page.rs) поверх `rexon_core::we_window`.
-// Здесь нет ни одной строки для человека и ни одного числа раскладки:
-// подписи приезжают картой `texts`, числа — картой `metrics`.
+// A port of `DeveloperPageWidget` from `rexon/qt_wallpaper_engine/window.py`.
+// Data, decisions and ALL labels come from the Rust object
+// `WeDeveloperModel` (rust/rexon-gui/src/we_dev_page.rs) on top of
+// `rexon_core::we_window`. There is not a single human-readable string and
+// not a single layout number here: labels arrive as the `texts` map,
+// numbers as the `metrics` map.
 //
-// ⚠️ Страница НАША, а не вендорная: она лежит в статическом ресурсе модуля
-// `org.rexon.gui` рядом с шеллом вкладки, а не в каталоге waywallen. Пункт
-// рейла «Разраб.» так и помечен в ядре (`RailItem.vendor == false`), иначе
-// шелл искал бы её файл среди страниц waywallen.
+// Warning: the page is OURS, not vendored: it lies in the static resource
+// of the `org.rexon.gui` module next to the tab shell, not in the
+// waywallen directory. The "Dev" rail item is marked so in the core
+// (`RailItem.vendor == false`), otherwise the shell would look for its
+// file among the waywallen pages.
 //
-// ⚠️ Панели секций у оригинала БЕЗ фона и рамки. Их `QFrame` носит
-// `objectName="wePane"`, но таблицы стилей с таким селектором в продукте
-// нет ни одной (проверено `grep` по дереву 06.09) — то есть на экране это
-// просто отступы. Своего фона здесь не заводим: это была бы отсебятина, а
-// мерило страницы — паритет с виджетной версией.
+// Warning: in the original the section panels have NO background or
+// border. Their `QFrame` carries `objectName="wePane"`, but there is not a
+// single style sheet with such a selector in the product (checked with
+// `grep` over the tree on 06.09) — so on screen these are just margins. We
+// define no background of our own here: that would be an invention, and
+// the page's yardstick is parity with the widget version.
 //
-// ⚠️ Три вещи страница делает НЕ сама:
-//   * версию живого демона называет синглтон шины `DaemonDBusClient` —
-//     Rust-модель в Qt не ходит и спросить его не может;
-//   * установку плагина через демона ведёт `PluginInstallQuery` — общий
-//     запрос вкладки, второго способа говорить с демоном заводить незачем;
-//   * сторож ответа демона — обычный `Timer`, и номер попытки он несёт с
-//     собой: старый сторож не должен обрывать НОВУЮ установку (починка 2
-//     в `rexon_core::we_window`).
+// Warning: the page does three things NOT by itself:
+//   * the version of the live daemon is named by the bus singleton
+//     `DaemonDBusClient` — the Rust model does not reach into Qt and
+//     cannot ask it;
+//   * installing a plugin through the daemon is driven by
+//     `PluginInstallQuery` — a shared request of the tab; there is no
+//     reason to create a second way of talking to the daemon;
+//   * the daemon answer guard is an ordinary `Timer`, and it carries the
+//     attempt number with it: an old guard must not abort a NEW
+//     installation (fix 2 in `rexon_core::we_window`).
 
-// Делегаты Repeater'а обращаются к id внешних элементов.
+// Repeater delegates refer to ids of outer elements.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -37,24 +42,25 @@ import org.rexon.gui 1.0
 Item {
     id: root
 
-    // ── Наружу ────────────────────────────────────────────────────────────
+    // ── To the outside ────────────────────────────────────────────────────
 
-    /// Расхождение паритета: шелл вкладки вешает по нему пометку на кнопку
-    /// «Разраб.» в рейле — как это делал сигнал `parity_drift_changed`
-    /// виджетной страницы.
+    /// Parity divergence: the tab shell uses it to put a mark on the "Dev"
+    /// button in the rail — as the `parity_drift_changed` signal of the widget
+    /// page did.
     signal parityDrift(bool drift)
 
-    // ── Ядро страницы ─────────────────────────────────────────────────────
+    // ── Page core ─────────────────────────────────────────────────────────
 
     WeDeveloperModel {
         id: page
 
-        // Имя нужно проверкам: объект достают
-        // `root.findChild(QObject, "weDeveloperModel")` и спрашивают, не
-        // трогая разметку.
+        // The name is needed by checks: the object is fetched with
+        // `root.findChild(QObject, "weDeveloperModel")` and queried without
+        // touching the markup.
         objectName: "weDeveloperModel"
 
-        // Архив плагина проверен и ждёт установки ЧЕРЕЗ демона.
+        // The plugin archive is verified and waits to be installed THROUGH the
+        // daemon.
         onOweIpcRequested: (zipPath, attempt) => {
             oweIpc.zipPath = zipPath;
             oweIpc.reload();
@@ -66,31 +72,32 @@ Item {
     readonly property var txt: page.texts
     readonly property var m: page.metrics
 
-    // ── Палитра действующего скина ────────────────────────────────────────
+    // ── Palette of the active skin ────────────────────────────────────────
 
     readonly property var pal: page.palette
     readonly property color colBg: root.pal.bg_primary
     readonly property color colText: root.pal.text_primary
     readonly property color colBorder: root.pal.border
-    // Приглушённый текст: та же роль текста с долей прозрачности из ядра —
-    // так его красит виджетная версия (`muted_qss` поверх роли `Text`).
+    // Muted text: the same text role with a share of opacity from the core —
+    // that is how the widget version paints it (`muted_qss` over the `Text`
+    // role).
     readonly property color colTextMuted: Qt.rgba(root.colText.r, root.colText.g,
                                                   root.colText.b, page.variantAlpha)
 
-    /// Краска строки статуса: пустая краска у ядра означает «обычный текст».
+    /// Status line colour: an empty colour from the core means "ordinary text".
     function statusColor(color) {
         return color === "" ? root.colText : color;
     }
 
-    // ── Версия живого демона ──────────────────────────────────────────────
+    // ── Version of the live daemon ────────────────────────────────────────
     //
-    // Её знает только Qt-слой (D-Bus), поэтому спрашиваем синглтон вкладки.
-    // Оригинал звал `self._daemon.probe()` на каждой сверке паритета; здесь
-    // опрос идёт один раз при открытии страницы, а дальше свойство ведёт
-    // сам синглтон — он подписан на события шины.
+    // Only the Qt layer (D-Bus) knows it, so we ask the tab singleton. The
+    // original called `self._daemon.probe()` on every parity reconciliation;
+    // here the query runs once when the page opens, and after that the
+    // singleton itself drives the property — it is subscribed to bus events.
     readonly property string daemonVersion: DaemonDBusClient.daemonVersion
 
-    // ── Сверка паритета UI ────────────────────────────────────────────────
+    // ── UI parity reconciliation ──────────────────────────────────────────
 
     WeParityQuery {
         id: parity
@@ -100,7 +107,7 @@ Item {
         onChecked: (drift) => root.parityDrift(drift)
     }
 
-    // ── Установка OWE-плагина через демона (hot-install) ──────────────────
+    // ── Installing the OWE plugin through the daemon (hot-install) ────────
 
     PluginInstallQuery {
         id: oweIpc
@@ -115,9 +122,10 @@ Item {
         }
     }
 
-    // Сторож ответа демона. Помнит СВОЮ попытку: ответ на первую установку
-    // приходит быстро, а сторож живёт ещё до минуты — и следующая
-    // установка, начатая в этом окне, получила бы чужой будильник.
+    // Daemon answer guard. It remembers ITS OWN attempt: the answer to the
+    // first installation arrives quickly, while the guard lives for up to a
+    // minute — and the next installation started in this window would get
+    // someone else's alarm.
     Timer {
         id: oweIpcGuard
 
@@ -128,11 +136,11 @@ Item {
         onTriggered: page.oweIpcTimeout(oweIpcGuard.attempt)
     }
 
-    // ── Очередь событий фоновых задач ─────────────────────────────────────
+    // ── Background task event queue ───────────────────────────────────────
     //
-    // Задачи (сеть, распаковка, подпроцессы) живут в своём рантайме и
-    // складывают исходы в очередь; страница вычерпывает её из своего
-    // потока. Тот же приём и тот же период, что у вкладки «Steam».
+    // Tasks (network, unpacking, subprocesses) live in their own runtime and
+    // put their outcomes into a queue; the page drains it from its own
+    // thread. The same approach and the same period as in the "Steam" tab.
     Timer {
         interval: 120
         repeat: true
@@ -140,16 +148,17 @@ Item {
         onTriggered: page.pump()
     }
 
-    // Отложенный старт: подпись версии и, если стоит галка, авто-проверка
-    // обновлений и авто-сверка паритета. Задержку называет ядро — та же,
-    // с какой стартует детект демона у самой вкладки.
+    // Delayed start: the version label and, if the box is checked, the
+    // automatic update check and automatic parity reconciliation. The delay
+    // is named by the core — the same one the tab itself starts daemon
+    // detection with.
     Timer {
         interval: root.m.startupDelayMs
         repeat: false
         running: true
         onTriggered: {
-            // Разовый опрос шины: без него синглтон отдаёт пустую версию,
-            // пока по шине ничего не случилось.
+            // One-off bus query: without it the singleton returns an empty version
+            // until something happens on the bus.
             DaemonDBusClient.refreshWsPort();
             page.refreshVersion(root.daemonVersion);
             if (page.autoUpstream)
@@ -161,7 +170,7 @@ Item {
 
     Component.onDestruction: page.shutdown()
 
-    // ── Разметка ──────────────────────────────────────────────────────────
+    // ── Markup ────────────────────────────────────────────────────────────
 
     Rectangle {
         anchors.fill: parent
@@ -172,14 +181,14 @@ Item {
         anchors.fill: parent
         anchors.margins: root.m.pageMargin
         contentWidth: availableWidth
-        // Горизонтальной полосы у оригинала нет вовсе (`ScrollBarAlwaysOff`).
+        // The original has no horizontal bar at all (`ScrollBarAlwaysOff`).
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
         ColumnLayout {
             width: parent.width
             spacing: root.m.columnSpacing
 
-            // ── Заголовок страницы ────────────────────────────────────────
+            // ── Page title ────────────────────────────────────────────────
             RexonText {
                 Layout.fillWidth: true
                 text: root.txt.title
@@ -196,7 +205,7 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            // ══ Секция «Обновления upstream» ══════════════════════════════
+            // ══ "Upstream updates" section ════════════════════════════════
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: root.m.panePadding
@@ -231,8 +240,8 @@ Item {
                     onToggled: page.autoDownload = checked
                 }
 
-                // Подпись версии движка — одна на всю жизнь поля (починка 3
-                // ядра: раньше поле называлось двумя разными именами).
+                // The engine version label — one for the whole life of the field (core
+                // fix 3: previously the field went by two different names).
                 RexonText {
                     Layout.fillWidth: true
                     objectName: "devVersionLabel"
@@ -242,9 +251,9 @@ Item {
                     wrapMode: Text.WordWrap
                 }
 
-                // Строка статуса на каждую цель: waywallen (её ставим) и
-                // open-wallpaper-engine (о ней отчитываемся). Состав целей
-                // называет ядро, разметка их только рисует.
+                // A status line per target: waywallen (we install it) and
+                // open-wallpaper-engine (we report on it). The set of targets is named by
+                // the core; the markup only draws them.
                 Repeater {
                     model: page.targets
 
@@ -252,9 +261,8 @@ Item {
                         required property var modelData
 
                         Layout.fillWidth: true
-                        // Текст выделяется мышью — как у оригинала
-                        // (`TextSelectableByMouse`): строку статуса
-                        // копируют в отчёты.
+                        // The text is selectable with the mouse — as in the original
+                        // (`TextSelectableByMouse`): the status line is copied into reports.
                         readOnly: true
                         selectByMouse: true
                         text: modelData.text
@@ -262,8 +270,8 @@ Item {
                         font.pixelSize: root.m.statusFontSize
                         font.bold: modelData.bold
                         wrapMode: Text.WordWrap
-                        // Начало строки: без явного выравнивания поле берёт его из самого
-                        // текста, а явное `AlignLeft` зеркалирование переворачивает.
+                        // Start of the line: without explicit alignment the field takes it from
+                        // the text itself, and mirroring flips an explicit `AlignLeft`.
                         horizontalAlignment: TextEdit.AlignLeft
                     }
                 }
@@ -290,9 +298,9 @@ Item {
                                             () => page.startEngineInstall())
                     }
 
-                    // OWE-плагин: hot-install через демона (waywallen ≥
-                    // 0.2.3) либо распаковка в каталог плагинов, если демон
-                    // не запущен. Развилку решает ядро.
+                    // OWE plugin: hot-install through the daemon (waywallen ≥ 0.2.3) or
+                    // unpacking into the plugin directory if the daemon is not running. The
+                    // core decides which way.
                     RexonButton {
                         objectName: "devOweButton"
                         pal: root.pal
@@ -303,8 +311,8 @@ Item {
                                             () => page.startOweInstall(root.daemonVersion))
                     }
 
-                    // «Изучено» — для случая «прочитал changelog, ставить
-                    // не буду»: фиксирует базовую версию следующего отчёта.
+                    // "Reviewed" is for the case "I read the changelog and will not install":
+                    // it fixes the base version of the next report.
                     RexonButton {
                         objectName: "devSeenButton"
                         pal: root.pal
@@ -347,7 +355,7 @@ Item {
                     Item { Layout.fillWidth: true }
                 }
 
-                // Панель changelog диапазона «наша версия → последняя».
+                // Changelog panel for the range "our version → the latest one".
                 ScrollView {
                     Layout.fillWidth: true
                     Layout.minimumHeight: root.m.changelogMinHeight
@@ -365,21 +373,20 @@ Item {
                         font.family: "monospace"
                         font.pixelSize: root.m.monoFontSize
                         wrapMode: TextEdit.NoWrap
-                        // Список изменений — заголовки коммитов движка —
-                        // читается слева направо при любом языке интерфейса, поэтому
-                        // поле физически слева: явное `AlignLeft` зеркалирование
-                        // перевернуло бы вправо, а `AlignRight` при зеркалировании даёт
-                        // левый край (как окно PKGBUILD в «Оформлении»).
+                        // The change list — engine commit titles — reads left to right in any
+                        // interface language, so the field is physically on the left: mirroring
+                        // would flip an explicit `AlignLeft` to the right, while `AlignRight`
+                        // under mirroring gives the left edge (like the PKGBUILD window in
+                        // "Appearance").
                         horizontalAlignment: LayoutMirroring.enabled ? TextEdit.AlignRight
                                                                      : TextEdit.AlignLeft
 
-                        // ⚠️ Подложка панели ЕСТЬ и она темнее страницы. У
-                        // виджетной версии её рисует сам `QPlainTextEdit`
-                        // ролью `Base`, а прозрачная панель QML показывала
-                        // фон страницы: замер стенда 06.09 — сплошная
-                        // область 232 910 точек, (22,32,45) против
-                        // (27,40,56). Краска берётся из скина
-                        // (`bg_secondary`), своей здесь нет.
+                        // Warning: the panel HAS a backing, and it is darker than the page. In the
+                        // widget version it is drawn by the `QPlainTextEdit` itself with the
+                        // `Base` role, while a transparent QML panel showed the page background:
+                        // test bench measurement 06.09 — a solid area of 232 910 pixels, (22,32,45)
+                        // versus (27,40,56). The colour is taken from the skin (`bg_secondary`);
+                        // there is none of our own here.
                         background: Rectangle {
                             color: root.pal.bg_secondary
                             border.color: root.colBorder
@@ -389,7 +396,7 @@ Item {
                 }
             }
 
-            // ══ Секция «Отчёт о паритете UI» ══════════════════════════════
+            // ══ "UI parity report" section ════════════════════════════════
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: root.m.panePadding
@@ -423,8 +430,8 @@ Item {
                         objectName: "devParityButton"
                         pal: root.pal
                         text: root.txt.btnParity
-                        // Пока движок отвечает, кнопка заперта — как у
-                        // виджетной версии на время запроса.
+                        // While the engine is answering, the button is locked — as in the widget
+                        // version for the duration of the request.
                         enabled: !parity.querying
                         onClicked: parity.reload()
                     }
@@ -451,8 +458,8 @@ Item {
                     font.family: "monospace"
                     font.pixelSize: root.m.monoFontSize
                     wrapMode: Text.WordWrap
-                    // Начало строки: без явного выравнивания поле берёт его из самого
-                    // текста, а явное `AlignLeft` зеркалирование переворачивает.
+                    // Start of the line: without explicit alignment the field takes it from
+                    // the text itself, and mirroring flips an explicit `AlignLeft`.
                     horizontalAlignment: TextEdit.AlignLeft
                 }
             }
@@ -461,15 +468,14 @@ Item {
         }
     }
 
-    // ── Вопрос перед установкой ───────────────────────────────────────────
+    // ── Question before installing ────────────────────────────────────────
     //
-    // У виджетной версии это `QMessageBox.question`; в Big Picture
-    // множественные системные окна неудобны (канон, п. 16), поэтому вопрос
-    // задаётся своим модальным окном страницы — как это уже сделано в
-    // «Настройках».
+    // In the widget version this is `QMessageBox.question`; in Big Picture
+    // multiple system windows are awkward (canon, item 16), so the question is
+    // asked with the page's own modal window — as already done in "Settings".
 
-    /// Спросить и, при согласии, выполнить. Пустой текст — спрашивать не о
-    /// чем (ставить нечего), тогда не открываем ничего.
+    /// Ask and, if agreed, execute. An empty text means there is nothing to ask
+    /// about (nothing to install), and then nothing is opened.
     function ask(title, question, accepted) {
         if (question === "")
             return;
@@ -502,8 +508,8 @@ Item {
             radius: 8
         }
 
-        // Затемнение под модальным окном — общее решение продукта
-        // (`ui_base::modal_dim_argb_hex`, ключ `modal_dim`).
+        // Dimming under a modal window is a product-wide decision
+        // (`ui_base::modal_dim_argb_hex`, key `modal_dim`).
         Overlay.modal: Rectangle {
             color: root.pal.modal_dim
         }
@@ -558,8 +564,8 @@ Item {
             }
         }
 
-        // Фокус при открытии — на безопасном ответе: случайный Enter не
-        // должен запускать установку на ~200 МиБ (защита от дурака).
+        // Focus on opening is on the safe answer: an accidental Enter must not
+        // start a ~200 MiB installation (foolproofing).
         onOpened: confirmNo.forceActiveFocus()
     }
 }

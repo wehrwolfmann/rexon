@@ -1,43 +1,47 @@
-//! Обои чужого шелла (Noctalia, DankMaterialShell): рисует ли он фон, и —
-//! с согласия человека — «Отдать обои Rexon» / «Вернуть оболочке».
+//! Wallpaper of a third-party shell (Noctalia, DankMaterialShell): whether
+//! it draws the background, and, with the person's consent, "Give the
+//! wallpaper to Rexon" / "Return to the shell".
 //!
-//! ЗАЧЕМ. Оба шелла рисуют фон САМИ, своей полноэкранной поверхностью на
-//! слое Background, и она ложится поверх обоев Rexon (разбор — над
-//! `system::DesktopShell`). Драться за слой бесполезно, молчать нельзя.
-//! Честный путь один: спросить человека и выключить обои шелла его же
-//! штатным выключателем, запомнив прежнее значение, чтобы «Вернуть»
-//! восстановило ровно его.
+//! WHY. Both shells draw the background THEMSELVES, with their own full
+//! screen surface on the Background layer, and it lies on top of the Rexon
+//! wallpaper (analysis above `system::DesktopShell`). Fighting for the
+//! layer is pointless, staying silent is not allowed. There is one honest
+//! way: ask the person and turn off the shell's wallpaper with the shell's
+//! own regular switch, remembering the previous value so "Return" restores
+//! exactly it.
 //!
-//! Выключатели (сверено по исходникам noctalia v5.2.0 и DMS v1.6.2, разведка
-//! 01.10.2026):
-//!   * Noctalia — `[wallpaper] enabled = false`. Писать ТОЛЬКО в файл
-//!     состояния `settings.toml` (`$NOCTALIA_STATE_HOME/noctalia/`,
-//!     `$XDG_STATE_HOME/noctalia/` или `~/.local/state/noctalia/`): он
-//!     грузится последним и перебивает `~/.config/noctalia/*.toml`, туда же
-//!     пишет и GUI шелла. Правку в `~/.config` состояние перебило бы. Через
-//!     `noctalia msg` выключить нельзя — такой команды нет. Шелл следит за
-//!     файлом и перечитывает его сам.
-//!   * DMS — `screenPreferences.wallpaper = []` в
-//!     `$XDG_CONFIG_HOME/DankMaterialShell/settings.json` («Disable Built-in
-//!     Wallpapers»). Пустой список убирает и основную поверхность, и вторую
-//!     (`dms:blurwallpaper` на niri) — обе строятся по одному фильтру
-//!     экранов. ⚠️ `dms ipc call wallpaper clear` НЕ годится: он стирает
-//!     путь, а поверхность остаётся и заливается цветом. Через
-//!     `dms ipc call settings set` массив не поставить (массивы там
-//!     запрещены). Файл шелл перечитывает сам.
+//! The switches (checked against the sources of noctalia v5.2.0 and DMS
+//! v1.6.2, survey of 01.10.2026):
+//!   * Noctalia: `[wallpaper] enabled = false`. Write ONLY to the state
+//!     file `settings.toml` (`$NOCTALIA_STATE_HOME/noctalia/`,
+//!     `$XDG_STATE_HOME/noctalia/` or `~/.local/state/noctalia/`): it is
+//!     loaded last and overrides `~/.config/noctalia/*.toml`, and the
+//!     shell's GUI writes there too. The state would override an edit in
+//!     `~/.config`. It cannot be turned off through `noctalia msg`: there
+//!     is no such command. The shell watches the file and rereads it
+//!     itself.
+//!   * DMS: `screenPreferences.wallpaper = []` in
+//!     `$XDG_CONFIG_HOME/DankMaterialShell/settings.json` ("Disable
+//!     Built-in Wallpapers"). An empty list removes both the main surface
+//!     and the second one (`dms:blurwallpaper` on niri): both are built by
+//!     the same screen filter. ⚠️ `dms ipc call wallpaper clear` will NOT
+//!     do: it erases the path, but the surface stays and is filled with a
+//!     colour. An array cannot be set through `dms ipc call settings set`
+//!     (arrays are forbidden there). The shell rereads the file itself.
 //!
-//! Правило записи: правится ОДИН управляемый ключ, остальной файл остаётся
-//! байт в байт; правка проверяется разбором до и после (новое значение
-//! обязано отличаться от старого РОВНО этим ключом — иначе отказ, а не
-//! порча); прежнее содержимое кладётся рядом резервной копией; запись —
-//! подменой имени (`utils::atomic_write`, символьная ссылка разворачивается
-//! в цель). Прежнее значение ключа запоминается в
-//! `$XDG_STATE_HOME/rexon/shell-wallpaper.json` ДО записи в файл шелла:
-//! упади запись памятки после правки — вернуть было бы нечем.
+//! The writing rule: ONE managed key is edited, the rest of the file stays
+//! byte for byte; the edit is verified by parsing before and after (the new
+//! value must differ from the old one by EXACTLY this key, otherwise a
+//! refusal rather than damage); the previous content is placed next to it
+//! as a backup; writing is done by renaming over (`utils::atomic_write`, a
+//! symlink is resolved to its target). The previous value of the key is
+//! remembered in `$XDG_STATE_HOME/rexon/shell-wallpaper.json` BEFORE the
+//! shell's file is written: if writing the note failed after the edit,
+//! there would be nothing to restore.
 //!
-//! ⚠️ Граница: ни один шелл на машине разработки не установлен. Всё здесь
-//! проверено подставными файлами (`tests/desktop_shell.rs`) и стендом с
-//! приватным HOME, живьём — нет.
+//! ⚠️ Limitation: neither shell is installed on the development machine.
+//! Everything here is verified with fake files (`tests/desktop_shell.rs`)
+//! and a bench with a private HOME, not live.
 
 use std::path::{Path, PathBuf};
 
@@ -49,25 +53,25 @@ use crate::system::{detect_shell, DesktopShell, ShellDetection, ShellFacts, SHEL
 use crate::wallpaper_engine::{wallpaper_layer_owner, WallpaperOwner};
 
 // ============================================================================
-// Где лежат настройки шеллов
+// Where the shells keep their settings
 // ============================================================================
 
-/// Домашние корни, от которых шеллы считают свои пути. Пустая строка —
-/// переменная не задана (пустая = не задана, как у XDG).
+/// Home roots from which the shells compute their paths. An empty string
+/// means the variable is not set (empty = unset, as with XDG).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ShellHome {
     pub home: String,
     pub xdg_config_home: String,
     pub xdg_state_home: String,
-    /// `NOCTALIA_CONFIG_HOME` — корень вида XDG (шелл читает `<он>/noctalia`).
+    /// `NOCTALIA_CONFIG_HOME`: an XDG-style root (the shell reads `<it>/noctalia`).
     pub noctalia_config_home: String,
-    /// `NOCTALIA_STATE_HOME` — то же для состояния.
+    /// `NOCTALIA_STATE_HOME`: the same for state.
     pub noctalia_state_home: String,
 }
 
 impl ShellHome {
-    /// Корни по функции чтения окружения — так их добывает и живой вызов, и
-    /// сверка.
+    /// Roots via an environment reading function: this is how both the live
+    /// call and the parity check obtain them.
     pub fn from_env(get: impl Fn(&str) -> String) -> ShellHome {
         ShellHome {
             home: get("HOME"),
@@ -78,7 +82,7 @@ impl ShellHome {
         }
     }
 
-    /// Корни этого процесса.
+    /// Roots of this process.
     pub fn live() -> ShellHome {
         ShellHome::from_env(|k| std::env::var(k).unwrap_or_default())
     }
@@ -99,8 +103,8 @@ impl ShellHome {
         }
     }
 
-    /// Каталог конфигурации Noctalia (все `*.toml` в нём грузятся по
-    /// алфавиту). Порядок корней — как у самого шелла.
+    /// Noctalia configuration directory (all `*.toml` in it are loaded
+    /// alphabetically). The order of roots is as in the shell itself.
     pub fn noctalia_config_dir(&self) -> PathBuf {
         if !self.noctalia_config_home.is_empty() {
             Path::new(&self.noctalia_config_home).join("noctalia")
@@ -109,8 +113,8 @@ impl ShellHome {
         }
     }
 
-    /// Файл состояния Noctalia `settings.toml` — слой, который перебивает
-    /// конфигурацию; сюда и пишем.
+    /// Noctalia state file `settings.toml`: the layer that overrides the
+    /// configuration; this is where we write.
     pub fn noctalia_state_file(&self) -> PathBuf {
         let dir = if !self.noctalia_state_home.is_empty() {
             Path::new(&self.noctalia_state_home).join("noctalia")
@@ -120,12 +124,12 @@ impl ShellHome {
         dir.join("settings.toml")
     }
 
-    /// Настройки DankMaterialShell (`StandardPaths.ConfigLocation`).
+    /// DankMaterialShell settings (`StandardPaths.ConfigLocation`).
     pub fn dms_settings_file(&self) -> PathBuf {
         self.config_home().join("DankMaterialShell/settings.json")
     }
 
-    /// Файл, в котором правит Rexon для этого шелла.
+    /// The file Rexon edits for this shell.
     pub fn managed_file(&self, shell: DesktopShell) -> PathBuf {
         match shell {
             DesktopShell::Noctalia => self.noctalia_state_file(),
@@ -133,14 +137,14 @@ impl ShellHome {
         }
     }
 
-    /// Памятки Rexon: чей выключатель и какое значение было до нас (список —
-    /// по записи на шелл).
+    /// Rexon notes: whose switch and what value was there before us (a list,
+    /// one entry per shell).
     pub fn handover_file(&self) -> PathBuf {
         self.state_home().join("rexon/shell-wallpaper.json")
     }
 }
 
-/// Имя резервной копии рядом с файлом шелла.
+/// Name of the backup next to the shell's file.
 pub fn backup_path(file: &Path) -> PathBuf {
     let mut name = file.file_name().map(|n| n.to_os_string()).unwrap_or_default();
     name.push(".rexon-backup");
@@ -148,10 +152,10 @@ pub fn backup_path(file: &Path) -> PathBuf {
 }
 
 // ============================================================================
-// Рисует ли шелл обои
+// Whether the shell draws the wallpaper
 // ============================================================================
 
-/// Значение `[wallpaper] enabled` в разобранной таблице Noctalia.
+/// The value of `[wallpaper] enabled` in a parsed Noctalia table.
 fn noctalia_enabled_in(table: &toml::Table) -> Option<bool> {
     table
         .get("wallpaper")
@@ -160,21 +164,23 @@ fn noctalia_enabled_in(table: &toml::Table) -> Option<bool> {
         .and_then(|v| v.as_bool())
 }
 
-/// Рисует ли Noctalia обои при таких слоях настроек.
+/// Whether Noctalia draws the wallpaper with these settings layers.
 ///
-/// `config_layers` — тексты конфигурации В ПОРЯДКЕ ЗАГРУЗКИ (как их сложил
-/// [`noctalia_config_layers`]: для каждого файла сначала его `[include]`,
-/// потом он сам); `state` — `settings.toml` или `None`, если файла нет.
-/// Побеждает последний слой, где ключ задан; по умолчанию обои включены.
+/// `config_layers` are the configuration texts IN LOADING ORDER (as
+/// [`noctalia_config_layers`] put them together: for each file first its
+/// `[include]`, then the file itself); `state` is `settings.toml` or `None`
+/// if there is no file. The last layer where the key is set wins; by
+/// default the wallpaper is on.
 ///
-/// `None` — ответить нельзя (какой-то слой не разобрался: шелл в таком
-/// случае ведёт себя по-своему, и гадать за него мы не будем). Вызывающий
-/// трактует `None` как «рисует» — осторожная сторона, см.
+/// `None` means no answer is possible (some layer did not parse: in that
+/// case the shell behaves in its own way, and we will not guess for it).
+/// The caller treats `None` as "draws", the cautious side, see
 /// [`wallpaper_layer_owner`].
 ///
-/// ⚠️ Помониторные `[wallpaper.monitor.<выход>] enabled = false` здесь не
-/// учитываются: ответ «рисует хотя бы на одном выходе» при общем `enabled =
-/// true` верен, а какие выходы есть, ядро не знает.
+/// ⚠️ Per-monitor `[wallpaper.monitor.<output>] enabled = false` is not
+/// taken into account here: the answer "draws on at least one output" is
+/// correct with a general `enabled = true`, and the core does not know
+/// which outputs exist.
 pub fn noctalia_draws_wallpaper(config_layers: &[String], state: Option<&str>) -> Option<bool> {
     let mut enabled = true;
     for text in config_layers.iter().map(String::as_str).chain(state) {
@@ -186,10 +192,11 @@ pub fn noctalia_draws_wallpaper(config_layers: &[String], state: Option<&str>) -
     Some(enabled)
 }
 
-/// Рисует ли DMS обои при таком `settings.json` (`None` — файла нет).
+/// Whether DMS draws the wallpaper with this `settings.json` (`None` means
+/// there is no file).
 ///
-/// Ключа нет, `null` или список с экранами — рисует (на всех либо на
-/// названных); пустой список — не рисует нигде. `None` — файл не разобран.
+/// No key, `null` or a list with screens: draws (on all or on the named
+/// ones); an empty list: draws nowhere. `None`: the file did not parse.
 pub fn dms_draws_wallpaper(settings: Option<&str>) -> Option<bool> {
     let Some(text) = settings else {
         return Some(true);
@@ -199,15 +206,17 @@ pub fn dms_draws_wallpaper(settings: Option<&str>) -> Option<bool> {
     Some(!matches!(prefs, Some(Value::Array(a)) if a.is_empty()))
 }
 
-/// Тексты конфигурации Noctalia в порядке загрузки: все `*.toml` каталога
-/// по алфавиту, для каждого — сначала его `[include]` (файлы и каталоги,
-/// пути от каталога включающего файла, `~` раскрывается), потом он сам.
-/// Если хоть один корневой файл ставит `[include] autoload = false`,
-/// грузятся только такие файлы (так делает шелл).
+/// Noctalia configuration texts in loading order: all `*.toml` of the
+/// directory alphabetically, for each one first its `[include]` (files and
+/// directories, paths relative to the including file's directory, `~` is
+/// expanded), then the file itself. If even one root file sets
+/// `[include] autoload = false`, only such files are loaded (the shell
+/// does the same).
 ///
-/// Нечитаемый файл пропускается молча, неразборный — попадает в список как
-/// есть, чтобы [`noctalia_draws_wallpaper`] честно ответила «не знаю».
-/// Пути с `$VAR` не раскрываются (редкость; такой файл просто не учтён).
+/// An unreadable file is skipped silently, an unparsable one goes into the
+/// list as is, so that [`noctalia_draws_wallpaper`] honestly answers "I do
+/// not know". Paths with `$VAR` are not expanded (rare; such a file is
+/// simply not counted).
 pub fn noctalia_config_layers(home: &ShellHome) -> Vec<String> {
     let dir = home.noctalia_config_dir();
     let roots = toml_files_in(&dir);
@@ -294,7 +303,7 @@ fn push_layer(
     out.push(text.to_string());
 }
 
-/// Рисует ли шелл обои — по настоящим файлам под `home`.
+/// Whether the shell draws the wallpaper, judging by the real files under `home`.
 pub fn shell_draws_wallpaper(shell: DesktopShell, home: &ShellHome) -> Option<bool> {
     match shell {
         DesktopShell::Noctalia => {
@@ -309,7 +318,7 @@ pub fn shell_draws_wallpaper(shell: DesktopShell, home: &ShellHome) -> Option<bo
     }
 }
 
-/// Текст файла; `Ok(None)` — файла нет; `Err` — есть, но не читается.
+/// File text; `Ok(None)` means no file; `Err` means it exists but cannot be read.
 fn read_optional(path: &Path) -> Result<Option<String>, std::io::Error> {
     match std::fs::read_to_string(path) {
         Ok(t) => Ok(Some(t)),
@@ -319,45 +328,45 @@ fn read_optional(path: &Path) -> Result<Option<String>, std::io::Error> {
 }
 
 // ============================================================================
-// Правка одного ключа: что было до нас
+// Editing one key: what was there before us
 // ============================================================================
 
-/// Что стояло на месте управляемого ключа до правки Rexon. Ровно это и
-/// возвращает «Вернуть оболочке».
+/// What stood in place of the managed key before Rexon's edit. Exactly this
+/// is what "Return to the shell" restores.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Previous {
-    /// Файла не было — Rexon создал его сам; возврат снимает ключ и, если
-    /// в файле больше ничего нет, удаляет файл.
+    /// There was no file: Rexon created it; restoring removes the key and, if
+    /// nothing else is left in the file, deletes the file.
     FileAbsent,
-    /// Ключа не было. `parent_created` — Rexon завёл и родителя (таблицу
-    /// `[wallpaper]` у Noctalia, объект `screenPreferences` у DMS);
-    /// `prefix` — что Rexon дописал перед новой таблицей в конец файла
-    /// (переводы строк), чтобы возврат снял ровно это.
+    /// There was no key. `parent_created`: Rexon also created the parent (the
+    /// `[wallpaper]` table in Noctalia, the `screenPreferences` object in
+    /// DMS); `prefix` is what Rexon appended before the new table at the end
+    /// of the file (newlines), so that restoring removes exactly that.
     KeyAbsent {
         parent_created: bool,
         #[serde(default)]
         prefix: String,
     },
-    /// Ключ был — его значение ДОСЛОВНО, как стояло в файле.
+    /// There was a key: its value VERBATIM, as it stood in the file.
     Value { raw: String },
 }
 
-/// Итог возврата: новый текст файла либо «удалить файл» (его создал Rexon,
-/// и после возврата в нём пусто).
+/// Result of restoring: the new file text or "delete the file" (Rexon
+/// created it, and after restoring it is empty).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Restored {
     Write(String),
     Delete,
 }
 
-/// Почему править нельзя. Тексты — для человека.
+/// Why editing is not possible. The texts are for the person.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditError {
-    /// Файл не разбирается (шелл в таком виде его и сам не прочтёт).
+    /// The file does not parse (the shell itself would not read it in this form).
     Unparsable,
-    /// Файл разбирается, но записан в форме, которую Rexon не правит
-    /// безопасно (ключ через точку, таблица в строку, не тот тип…).
+    /// The file parses, but is written in a form Rexon does not edit safely
+    /// (a dotted key, an inline table, the wrong type…).
     UnsafeForm,
 }
 
@@ -372,14 +381,14 @@ impl EditError {
     }
 }
 
-// ── Noctalia: TOML построчно ───────────────────────────────────────────────
+// ── Noctalia: TOML line by line ────────────────────────────────────────────
 
-/// Строки текста с их концами (`\n` остаётся в строке).
+/// Text lines with their endings (the `\n` stays in the line).
 fn lines_with_ends(text: &str) -> Vec<&str> {
     text.split_inclusive('\n').collect()
 }
 
-/// Имя таблицы в строке-заголовке `[имя]` (без `[[…]]`), иначе `None`.
+/// Table name in a `[name]` header line (without `[[…]]`), otherwise `None`.
 fn toml_header(line: &str) -> Option<Option<String>> {
     let t = line.trim_start();
     if !t.starts_with('[') {
@@ -396,8 +405,9 @@ fn toml_header(line: &str) -> Option<Option<String>> {
     Some(Some(t[1..close].trim().to_string()))
 }
 
-/// Строки внутри многострочных строк TOML (`"""`/`'''`) — не заголовки и не
-/// ключи. Грубый счёт кавычек; ошибку счёта ловит сверка разбором.
+/// Lines inside TOML multiline strings (`"""`/`'''`) are neither headers
+/// nor keys. A rough quote count; a counting error is caught by the parse
+/// check.
 fn toml_line_kinds(lines: &[&str]) -> Vec<bool> {
     let mut inside: Option<&str> = None;
     let mut out = Vec::with_capacity(lines.len());
@@ -432,12 +442,12 @@ fn toml_line_kinds(lines: &[&str]) -> Vec<bool> {
     out
 }
 
-/// Где в тексте таблица `[wallpaper]` и ключ `enabled` в ней.
+/// Where in the text the `[wallpaper]` table and its `enabled` key are.
 struct NoctaliaSpot {
-    /// Номер строки заголовка `[wallpaper]`.
+    /// Line number of the `[wallpaper]` header.
     header: Option<usize>,
-    /// Номер строки `enabled = …` в этой таблице и байтовые границы
-    /// значения внутри строки.
+    /// Line number of `enabled = …` in this table and the byte bounds of the
+    /// value within the line.
     key: Option<(usize, usize, usize)>,
 }
 
@@ -475,8 +485,8 @@ fn noctalia_spot(lines: &[&str]) -> NoctaliaSpot {
     NoctaliaSpot { header, key }
 }
 
-/// Разобранная таблица с подменённым `[wallpaper] enabled`: `Some(v)` —
-/// поставить, `None` — снять ключ (и пустую таблицу, если `drop_empty`).
+/// The parsed table with `[wallpaper] enabled` replaced: `Some(v)` sets
+/// it, `None` removes the key (and the empty table, if `drop_empty`).
 fn noctalia_expect(base: &toml::Table, value: Option<toml::Value>, drop_empty: bool) -> toml::Table {
     let mut t = base.clone();
     match value {
@@ -504,8 +514,8 @@ fn parse_toml(text: &str) -> Result<toml::Table, EditError> {
     toml::from_str::<toml::Table>(text).map_err(|_| EditError::Unparsable)
 }
 
-/// Выключить обои Noctalia в тексте `settings.toml` (`None` — файла нет).
-/// Возвращает новый текст и то, что стояло до правки.
+/// Turn off the Noctalia wallpaper in the `settings.toml` text (`None`
+/// means no file). Returns the new text and what stood there before.
 pub fn noctalia_disable(text: Option<&str>) -> Result<(String, Previous), EditError> {
     let Some(text) = text else {
         let new = "[wallpaper]\nenabled = false\n".to_string();
@@ -570,11 +580,11 @@ pub fn noctalia_disable(text: Option<&str>) -> Result<(String, Previous), EditEr
     Ok((new, prev))
 }
 
-/// Вернуть обоям Noctalia то, что стояло до правки Rexon.
+/// Give the Noctalia wallpaper back what stood there before Rexon's edit.
 pub fn noctalia_restore(text: Option<&str>, prev: &Previous) -> Result<Restored, EditError> {
     let Some(text) = text else {
-        // Файл удалили без нас. Было «ключа нет» или «файла нет» — так и
-        // осталось. Было значение — ставим его обратно в новый файл.
+        // The file was deleted without us. If it was "no key" or "no file", it
+        // stays that way. If there was a value, we put it back into a new file.
         return Ok(match prev {
             Previous::Value { raw } => Restored::Write(format!("[wallpaper]\nenabled = {raw}\n")),
             _ => Restored::Delete,
@@ -643,9 +653,9 @@ pub fn noctalia_restore(text: Option<&str>, prev: &Previous) -> Result<Restored,
     Ok(Restored::Write(new))
 }
 
-/// Снять строку `enabled` из `[wallpaper]`; если таблицу заводил Rexon и
-/// она опустела — снять и заголовок; если правка стояла в самом конце —
-/// снять и дописанный тогда `prefix`.
+/// Remove the `enabled` line from `[wallpaper]`; if Rexon created the table
+/// and it became empty, remove the header too; if the edit was at the very
+/// end, also remove the `prefix` appended back then.
 fn noctalia_remove_key(lines: &[&str], spot: &NoctaliaSpot, drop_empty: bool, prefix: &str) -> String {
     let Some((ki, _, _)) = spot.key else {
         return lines.concat();
@@ -653,21 +663,21 @@ fn noctalia_remove_key(lines: &[&str], spot: &NoctaliaSpot, drop_empty: bool, pr
     let mut drop: Vec<usize> = vec![ki];
     if drop_empty {
         if let Some(h) = spot.header {
-            // Таблица пуста, если до следующего заголовка (или конца) нет
-            // ничего, кроме снимаемой строки.
+            // The table is empty if up to the next header (or the end) there is
+            // nothing but the line being removed.
             let end = (h + 1..lines.len())
                 .find(|&j| toml_header(lines[j]).is_some())
                 .unwrap_or(lines.len());
-            // Пустые строки внутри не в счёт (их мог добавить сам шелл,
-            // переписав файл) и остаются на месте — снимаются только
-            // заголовок и ключ.
+            // Empty lines inside do not count (the shell itself could have
+            // added them when rewriting the file) and stay in place; only the
+            // header and the key are removed.
             if (h + 1..end).all(|j| j == ki || lines[j].trim().is_empty()) {
                 drop.push(h);
             }
         }
     }
-    // Правка стояла в самом конце, если после первой снятой строки не
-    // остаётся ничего, кроме снятых.
+    // The edit was at the very end if nothing but removed lines remains
+    // after the first removed line.
     let first = drop.iter().copied().min().unwrap_or(lines.len());
     let at_end = (first..lines.len()).all(|j| drop.contains(&j));
     let mut out: String = lines
@@ -682,9 +692,9 @@ fn noctalia_remove_key(lines: &[&str], spot: &NoctaliaSpot, drop_empty: bool, pr
     out
 }
 
-// ── DMS: JSON по байтовым границам ─────────────────────────────────────────
+// ── DMS: JSON by byte bounds ───────────────────────────────────────────────
 
-/// Член объекта JSON: ключ и байтовые границы значения.
+/// A JSON object member: the key and the byte bounds of the value.
 #[derive(Debug, Clone)]
 struct Member {
     key: String,
@@ -700,7 +710,7 @@ fn skip_ws(b: &[u8], mut i: usize) -> usize {
     i
 }
 
-/// Конец строки JSON, начинающейся в `i` (на кавычке): индекс после неё.
+/// End of the JSON string starting at `i` (on the quote): the index after it.
 fn string_end(b: &[u8], mut i: usize) -> Option<usize> {
     i += 1;
     while i < b.len() {
@@ -713,7 +723,7 @@ fn string_end(b: &[u8], mut i: usize) -> Option<usize> {
     None
 }
 
-/// Конец значения JSON, начинающегося в `i`.
+/// End of the JSON value starting at `i`.
 fn value_end(b: &[u8], i: usize) -> Option<usize> {
     match *b.get(i)? {
         b'"' => string_end(b, i),
@@ -749,7 +759,7 @@ fn value_end(b: &[u8], i: usize) -> Option<usize> {
     }
 }
 
-/// Члены объекта, открытого в `open` (`{`).
+/// Members of the object opened at `open` (`{`).
 fn object_members(text: &str, open: usize) -> Option<Vec<Member>> {
     let b = text.as_bytes();
     let mut out = Vec::new();
@@ -779,8 +789,8 @@ fn object_members(text: &str, open: usize) -> Option<Vec<Member>> {
     }
 }
 
-/// Вставить член первым в объект `{` на `open` — с тем же отступом, что у
-/// бывшего первого члена.
+/// Insert a member first into the `{` object at `open`, with the same
+/// indent as the former first member.
 fn insert_member(text: &str, open: usize, members: &[Member], member: &str) -> String {
     let mut out = String::with_capacity(text.len() + member.len() + 8);
     out.push_str(&text[..open + 1]);
@@ -797,7 +807,7 @@ fn insert_member(text: &str, open: usize, members: &[Member], member: &str) -> S
     out
 }
 
-/// Снять член `idx` из объекта `{` на `open` вместе с его запятой.
+/// Remove member `idx` from the `{` object at `open` together with its comma.
 fn remove_member(text: &str, open: usize, members: &[Member], idx: usize) -> String {
     let b = text.as_bytes();
     let m = &members[idx];
@@ -817,7 +827,7 @@ fn remove_member(text: &str, open: usize, members: &[Member], idx: usize) -> Str
     format!("{}{}", &text[..start], &text[end..])
 }
 
-/// Где объект `screenPreferences` и ключ `wallpaper` в нём.
+/// Where the `screenPreferences` object and its `wallpaper` key are.
 struct DmsSpot {
     root_open: usize,
     root: Vec<Member>,
@@ -855,7 +865,7 @@ fn parse_json(text: &str) -> Result<Value, EditError> {
     Ok(v)
 }
 
-/// Разобранные настройки с подменённым `screenPreferences.wallpaper`.
+/// The parsed settings with `screenPreferences.wallpaper` replaced.
 fn dms_expect(base: &Value, value: Option<Value>, drop_empty: bool) -> Value {
     let mut v = base.clone();
     let root = v.as_object_mut().expect("корень — объект (проверено разбором)");
@@ -884,8 +894,8 @@ fn dms_expect(base: &Value, value: Option<Value>, drop_empty: bool) -> Value {
 
 const DMS_EMPTY: &str = "[]";
 
-/// Выключить встроенные обои DMS в тексте `settings.json` (`None` — файла
-/// нет).
+/// Turn off the DMS built-in wallpaper in the `settings.json` text (`None`
+/// means no file).
 pub fn dms_disable(text: Option<&str>) -> Result<(String, Previous), EditError> {
     let Some(text) = text else {
         return Ok(("{\"screenPreferences\": {\"wallpaper\": []}}\n".to_string(), Previous::FileAbsent));
@@ -921,7 +931,7 @@ pub fn dms_disable(text: Option<&str>) -> Result<(String, Previous), EditError> 
     Ok((new, prev))
 }
 
-/// Вернуть встроенным обоям DMS то, что стояло до правки Rexon.
+/// Give the DMS built-in wallpaper back what stood there before Rexon's edit.
 pub fn dms_restore(text: Option<&str>, prev: &Previous) -> Result<Restored, EditError> {
     let Some(text) = text else {
         return Ok(match prev {
@@ -989,17 +999,17 @@ pub fn dms_restore(text: Option<&str>, prev: &Previous) -> Result<Restored, Edit
 }
 
 // ============================================================================
-// Исполнение: файлы на диске
+// Execution: files on disk
 // ============================================================================
 
-/// Памятка Rexon о выключенных обоях шелла.
+/// Rexon's note about a turned-off shell wallpaper.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Handover {
     /// `noctalia` | `dms`.
     pub shell: String,
-    /// Какой файл правили (как назван, до разворота ссылки).
+    /// Which file was edited (as named, before resolving the link).
     pub file: String,
-    /// Что стояло до правки.
+    /// What stood there before the edit.
     pub previous: Previous,
 }
 
@@ -1009,10 +1019,10 @@ impl Handover {
     }
 }
 
-/// Все памятки: по одной на шелл, чьи обои Rexon сейчас держит
-/// выключенными. Шеллов на машине бывает больше одного (DMS под niri,
-/// Noctalia под Hyprland), и выключение одного не должно затирать память о
-/// другом.
+/// All notes: one per shell whose wallpaper Rexon currently keeps turned
+/// off. A machine can have more than one shell (DMS under niri, Noctalia
+/// under Hyprland), and turning off one must not erase the memory of the
+/// other.
 pub fn read_handovers(home: &ShellHome) -> Vec<Handover> {
     std::fs::read_to_string(home.handover_file())
         .ok()
@@ -1020,12 +1030,12 @@ pub fn read_handovers(home: &ShellHome) -> Vec<Handover> {
         .unwrap_or_default()
 }
 
-/// Памятка об этом шелле, если Rexon держит его обои выключенными.
+/// The note about this shell, if Rexon keeps its wallpaper turned off.
 pub fn read_handover(home: &ShellHome, shell: DesktopShell) -> Option<Handover> {
     read_handovers(home).into_iter().find(|h| h.desktop_shell() == Some(shell))
 }
 
-/// Записать памятки; пусто — файла памяток нет вовсе.
+/// Write the notes; empty means there is no notes file at all.
 fn write_handovers(home: &ShellHome, list: &[Handover]) -> Result<(), String> {
     if list.is_empty() {
         return match std::fs::remove_file(home.handover_file()) {
@@ -1049,8 +1059,8 @@ fn shell_edit_error(shell: DesktopShell, reason: &str) -> String {
     trf("Could not change the settings of %1: %2. Nothing was changed.", &[&shell.label(), &reason])
 }
 
-/// Разрешена ли запись: существующий файл только для чтения — отказ
-/// (DMS сам так помечает настройки, которые человек закрыл от правок).
+/// Whether writing is allowed: an existing read-only file means refusal
+/// (DMS itself marks this way the settings the person locked from edits).
 fn writable(path: &Path) -> bool {
     match std::fs::metadata(path) {
         Ok(m) => !m.permissions().readonly(),
@@ -1058,18 +1068,19 @@ fn writable(path: &Path) -> bool {
     }
 }
 
-/// «Отдать обои Rexon»: выключить обои шелла, запомнив прежнее значение.
+/// "Give the wallpaper to Rexon": turn off the shell's wallpaper,
+/// remembering the previous value.
 ///
-/// Порядок: прочитать → посчитать правку (с проверкой разбором) →
-/// записать памятку → резервная копия → подмена файла. Неудача на любом шаге
-/// до подмены ничего у шелла не меняет; неудача подмены снимает памятку.
-/// Возвращает текст для человека.
+/// Order: read -> compute the edit (with the parse check) -> write the note
+/// -> backup -> replace the file. A failure at any step before the replace
+/// changes nothing for the shell; a failure of the replace removes the
+/// note. Returns a text for the person.
 pub fn hand_over(shell: DesktopShell, home: &ShellHome) -> Result<String, String> {
     let before = read_handovers(home);
     let ours = before.iter().any(|h| h.desktop_shell() == Some(shell));
     if ours && shell_draws_wallpaper(shell, home) == Some(false) {
-        // Уже выключены нами — вторая правка затёрла бы в памятке значение,
-        // стоявшее ДО Rexon, нашим же `false`.
+        // Already turned off by us: a second edit would overwrite the value that
+        // stood BEFORE Rexon in the note with our own `false`.
         return Ok(hand_over_done(shell));
     }
     let file = home.managed_file(shell);
@@ -1114,8 +1125,8 @@ fn hand_over_done(shell: DesktopShell) -> String {
     )
 }
 
-/// «Вернуть оболочке»: поставить обоям `shell` на место то, что стояло до
-/// Rexon. Памятку снимает только удавшийся возврат.
+/// "Return to the shell": put back for the `shell` wallpaper what stood
+/// there before Rexon. Only a successful restore removes the note.
 pub fn give_back(shell: DesktopShell, home: &ShellHome) -> Result<String, String> {
     let all = read_handovers(home);
     let Some(record) = all.iter().find(|h| h.desktop_shell() == Some(shell)).cloned() else {
@@ -1155,18 +1166,18 @@ pub fn give_back(shell: DesktopShell, home: &ShellHome) -> Result<String, String
 }
 
 // ============================================================================
-// Живой сеанс
+// The live session
 // ============================================================================
 
-/// Отсеять протухшие служебные файлы: файл в каталоге сеанса доказывает,
-/// что шелл ТУТ БЫЛ (после падения файлы остаются).
+/// Filter out stale service files: a file in the session directory proves
+/// that the shell WAS HERE (files remain after a crash).
 ///
-/// * `danklinux-<pid>.*` — живой, только если жив процесс `<pid>` (это PID
-///   бэкенда, он же в имени);
-/// * `noctalia-*.sock|.lock` — только если есть живой процесс `noctalia`
-///   (флок на чужой файл блокировки не берём: в миг запуска шелла он отнял
-///   бы у него единственность);
-/// * остальное — как есть.
+/// * `danklinux-<pid>.*` is live only if process `<pid>` is alive (that is
+///   the backend PID, also in the name);
+/// * `noctalia-*.sock|.lock` only if there is a live `noctalia` process
+///   (we do not take a flock on someone else's lock file: at the moment the
+///   shell starts it would steal its single-instance lock);
+/// * the rest as is.
 pub fn live_runtime_files(
     files: &[String],
     pid_alive: impl Fn(u32) -> bool,
@@ -1188,7 +1199,7 @@ pub fn live_runtime_files(
         .collect()
 }
 
-/// Наблюдения за сеансом, добытые на этой машине (владеющая форма
+/// Session observations gathered on this machine (the owning form of
 /// [`ShellFacts`]).
 #[derive(Debug, Clone, Default)]
 pub struct LiveFacts {
@@ -1199,11 +1210,11 @@ pub struct LiveFacts {
 }
 
 impl LiveFacts {
-    /// Собрать без единого внешнего процесса: каталог сеанса, `/proc` своего
-    /// пользователя и своё окружение. Имена на шине и юниты systemd здесь
-    /// НЕ собираются — это вызовы `busctl`/`systemctl`, а сбор зовут из
-    /// потока интерфейса; файла, процесса и метки окружения для живого
-    /// шелла достаточно.
+    /// Gather without a single external process: the session directory, our
+    /// own user's `/proc` and our own environment. Bus names and systemd units
+    /// are NOT gathered here: those are `busctl`/`systemctl` calls, and the
+    /// gathering is called from the UI thread; a file, a process and an
+    /// environment marker are enough for a live shell.
     pub fn collect() -> LiveFacts {
         let procs = own_processes();
         let names: Vec<String> = procs.iter().map(|(_, n)| n.clone()).collect();
@@ -1225,8 +1236,8 @@ impl LiveFacts {
             .iter()
             .filter_map(|k| {
                 let v = std::env::var(k).ok()?;
-                // Метка-путь к сокету, которого больше нет, — память о
-                // прошлом шелле, а не он сам.
+                // A marker path to a socket that no longer exists is a memory
+                // of a past shell, not the shell itself.
                 if *k == "DMS_SOCKET" && !v.is_empty() && !Path::new(&v).exists() {
                     return None;
                 }
@@ -1241,7 +1252,7 @@ impl LiveFacts {
         }
     }
 
-    /// Ответ ядра по этим наблюдениям.
+    /// The core's answer for these observations.
     pub fn detect(&self) -> Option<ShellDetection> {
         let env: Vec<(&str, &str)> = self.env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         detect_shell(&ShellFacts {
@@ -1255,7 +1266,7 @@ impl LiveFacts {
     }
 }
 
-/// Процессы своего пользователя: (pid, имя из `/proc/<pid>/comm`).
+/// Processes of our own user: (pid, name from `/proc/<pid>/comm`).
 fn own_processes() -> Vec<(u32, String)> {
     use std::os::unix::fs::MetadataExt;
     let my_uid = std::fs::metadata("/proc/self").map(|m| m.uid()).ok();
@@ -1273,40 +1284,41 @@ fn own_processes() -> Vec<(u32, String)> {
 }
 
 // ============================================================================
-// Что показать человеку
+// What to show the person
 // ============================================================================
 
-/// Полоса «чей фон» на вкладке обоев.
+/// The "whose background" bar on the wallpaper tab.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ShellBanner {
     pub visible: bool,
     pub text: String,
-    /// Показать «Отдать обои Rexon».
+    /// Show "Give the wallpaper to Rexon".
     pub can_give: bool,
-    /// Показать «Вернуть оболочке».
+    /// Show "Return to the shell".
     pub can_return: bool,
-    /// Какой шелл (`as_str`), пусто — никакой.
+    /// Which shell (`as_str`); empty means none.
     pub shell: String,
 }
 
-/// Подпись кнопки «Отдать обои Rexon».
+/// Label of the "Give the wallpaper to Rexon" button.
 pub fn give_label() -> String {
     // TRANSLATORS: button; turns off the desktop shell's own wallpaper so Rexon's wallpaper shows.
     tr("Give Wallpaper to Rexon")
 }
 
-/// Подпись кнопки «Вернуть оболочке».
+/// Label of the "Return to the shell" button.
 pub fn return_label() -> String {
     // TRANSLATORS: button; turns the desktop shell's own wallpaper back on, as it was before Rexon.
     tr("Return to Shell")
 }
 
-/// Решение полосы. Показывается ТОЛЬКО при живом шелле:
-///   * фон держит шелл — «Отдать обои Rexon»;
-///   * фон наш, потому что обои этого шелла выключил Rexon, — «Вернуть
-///     оболочке»;
-///   * фон наш по иной причине (человек выключил обои шелла сам, X11,
-///     GNOME) — полосы нет: спорить не о чем.
+/// The bar's decision. Shown ONLY with a live shell:
+///   * the shell holds the background: "Give the wallpaper to Rexon";
+///   * the background is ours because Rexon turned off this shell's
+///     wallpaper: "Return to the shell";
+///   * the background is ours for another reason (the person turned off
+///     the shell's wallpaper themselves, X11, GNOME): no bar, there is
+///     nothing to argue about.
 pub fn shell_banner(
     detected: Option<DesktopShell>,
     owner: WallpaperOwner,
@@ -1349,7 +1361,7 @@ pub fn shell_banner(
     ShellBanner::default()
 }
 
-/// Состояние «чей фон» в этом сеансе.
+/// The "whose background" state in this session.
 #[derive(Debug, Clone)]
 pub struct ShellWallpaperState {
     pub detection: Option<ShellDetection>,
@@ -1358,7 +1370,7 @@ pub struct ShellWallpaperState {
     pub banner: ShellBanner,
 }
 
-/// Собрать состояние по готовым наблюдениям и корням настроек.
+/// Assemble the state from ready observations and settings roots.
 pub fn shell_wallpaper_state(
     de: &str,
     session_type: &str,
@@ -1373,8 +1385,8 @@ pub fn shell_wallpaper_state(
     ShellWallpaperState { detection, owner, handed_over, banner }
 }
 
-/// То же по живой машине: окружение и сеанс опознаются так же, как их
-/// опознаёт движок обоев.
+/// The same for the live machine: the environment and the session are
+/// recognised the same way the wallpaper engine recognises them.
 pub fn live_shell_wallpaper_state() -> ShellWallpaperState {
     let env = |k: &str| std::env::var(k).unwrap_or_default();
     let de = crate::wallpaper_engine::detect_de(&env("XDG_CURRENT_DESKTOP"), &env("DESKTOP_SESSION"));

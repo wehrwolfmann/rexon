@@ -1,14 +1,16 @@
-//! Отрисовка картинки плитки местной темы — исполняющий слой.
+//! Rendering of a local theme tile picture — the executing layer.
 //!
-//! Раскладка та же, что у вкладок: решения в ядре
-//! (`rexon_core::local_preview::card_picture` — что нарисовать, вся
-//! геометрия, цвета, какие файлы темы взять), исполнение здесь. Qt-примитивы
-//! даёт `cpp/rexon_local_preview.cpp` — в cxx-qt-lib 0.9 нет ни QPainter
-//! поверх устройства, ни drawText с прямоугольником, ни QSvgRenderer.
+//! The layout is the same as for the tabs: the decisions are in the core
+//! (`rexon_core::local_preview::card_picture` — what to draw, all geometry,
+//! colours, which theme files to take), the execution is here. The Qt
+//! primitives come from `cpp/rexon_local_preview.cpp` — cxx-qt-lib 0.9 has
+//! neither a QPainter over a device, nor drawText with a rectangle, nor a
+//! QSvgRenderer.
 //!
-//! Кадр рисуется в QImage, а не в QPixmap: так его можно рисовать вне потока
-//! интерфейса. Первый показ раздела — это сотни кадров с чтением файлов тем,
-//! и в потоке интерфейса окно на это время замирало.
+//! The frame is drawn into a QImage, not a QPixmap: that way it can be
+//! drawn outside the interface thread. The first show of a section is
+//! hundreds of frames with theme files being read, and in the interface
+//! thread the window froze for that time.
 
 use std::ffi::{c_char, c_void, CString};
 
@@ -147,14 +149,15 @@ unsafe extern "C" {
     fn rexon_lp_finish_png(canvas: *mut c_void, path: *const c_char) -> bool;
 }
 
-/// Картинка плитки (образец темы или заглушка вида, `lp::card_picture`)
-/// файлом PNG. `false` — записать не вышло.
+/// The tile picture (a theme sample or a placeholder of its kind,
+/// `lp::card_picture`) as a PNG file. `false` means writing failed.
 ///
-/// Можно звать из любого потока: кадр рисуется в QImage. Каталог назначения
-/// создаётся здесь же — иначе первая же плитка молча не нарисовалась бы на
-/// чистой машине. Файл появляется по пути `dest` сразу целым (запись идёт в
-/// соседний файл, затем переименование): плитка не подхватит половину кадра,
-/// и два потока, рисующие одну и ту же плитку, друг другу не мешают.
+/// Can be called from any thread: the frame is drawn into a QImage. The
+/// destination directory is created right here — otherwise the very first
+/// tile would silently fail to draw on a clean machine. The file appears
+/// at the path `dest` whole at once (writing goes into a neighbouring file,
+/// then a rename): a tile will not pick up half a frame, and two threads
+/// drawing the same tile do not get in each other's way.
 pub fn render_picture_to_png(picture: &lp::CardPicture, dest: &str) -> bool {
     let dest_path = std::path::Path::new(dest);
     if let Some(dir) = dest_path.parent() {
@@ -175,8 +178,8 @@ pub fn render_picture_to_png(picture: &lp::CardPicture, dest: &str) -> bool {
     false
 }
 
-/// Куда встаёт картинка `iw`×`ih` в прямоугольнике с сохранением сторон:
-/// целиком по центру либо, при `cover`, во весь прямоугольник.
+/// Where a picture of `iw`×`ih` goes in a rectangle with the aspect ratio
+/// preserved: whole and centred, or with `cover`, over the whole rectangle.
 fn fitted(rect: lp::Rect, iw: f64, ih: f64, cover: bool) -> lp::Rect {
     let (x, y, w, h) = rect;
     let (sx, sy) = (w / iw, h / ih);
@@ -185,12 +188,12 @@ fn fitted(rect: lp::Rect, iw: f64, ih: f64, cover: bool) -> lp::Rect {
     (x + (w - dw) / 2.0, y + (h - dh) / 2.0, dw, dh)
 }
 
-/// Рамка из девяти частей рисунка SVG: углы в своём размере, стороны и
-/// середина растянуты. Берётся первый из `prefixes`, чья середина есть в
-/// файле; нет ни одного — рамка не рисуется.
+/// A frame of nine parts of an SVG drawing: the corners at their own size,
+/// the sides and the middle stretched. The first of `prefixes` whose middle
+/// exists in the file is taken; if none does, no frame is drawn.
 ///
 /// # Safety
-/// `canvas` — живой холст от `rexon_lp_canvas_new`.
+/// `canvas` is a live canvas from `rexon_lp_canvas_new`.
 unsafe fn svg_frame(canvas: *mut c_void, rect: lp::Rect, path: &CString, prefixes: &[String]) {
     let id_of = |prefix: &str, part: &str| {
         let name = if prefix.is_empty() { part.to_string() } else { format!("{prefix}-{part}") };
@@ -207,8 +210,9 @@ unsafe fn svg_frame(canvas: *mut c_void, rect: lp::Rect, path: &CString, prefixe
     let id = |part: &str| id_of(prefix, part);
     let size = |part: &str| size_of(prefix, part);
     let (x, y, w, h) = rect;
-    // Толщина каймы — по сторонам, а где стороны нет — по углу; не шире
-    // половины рамки, иначе углы наехали бы друг на друга.
+    // The border thickness comes from the sides, and where there is no side —
+    // from the corner; no wider than half the frame, otherwise the corners
+    // would overlap.
     let edge = |side: &str, corner: &str, pick: fn((f64, f64)) -> f64, limit: f64| {
         size(side).or_else(|| size(corner)).map(pick).unwrap_or(0.0).clamp(0.0, limit)
     };
@@ -235,10 +239,9 @@ unsafe fn svg_frame(canvas: *mut c_void, rect: lp::Rect, path: &CString, prefixe
     }
 }
 
-/// Холст с исполненными операциями ядра.
+/// A canvas with the core's operations executed.
 ///
-/// Возвращает ЖИВОЙ холст — закрыть его обязан вызывающий
-/// (`rexon_lp_finish_png`).
+/// Returns a LIVE canvas — the caller must close it (`rexon_lp_finish_png`).
 fn paint_ops(width: i64, height: i64, base: &str, ops: &[lp::DrawOp]) -> *mut c_void {
     let base = CString::new(base).unwrap_or_default();
     unsafe {

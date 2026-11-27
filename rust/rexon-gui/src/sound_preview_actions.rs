@@ -1,13 +1,15 @@
-// SoundPreviewActions — кнопки «послушать» для тем звуков (раздел «Звуки»
-// вкладки «Оформление» и деталка товара Магазина).
+// SoundPreviewActions — "listen" buttons for sound themes (the "Sounds"
+// section of the "Appearance" tab and the Store item details).
 //
-// Логики здесь нет: пять звуков, поиск файла по спецификации, выбор
-// проигрывателя и разбор архива Магазина — ядро (`rexon_core::sound_preview`).
-// Объект только переводит вызовы QML в вызовы ядра. Скачивание архива для
-// прослушивания идёт в рабочем потоке, итог — сигналом `storePreviewReady`.
+// There is no logic here: the five sounds, finding a file by the
+// specification, choosing a player and unpacking a Store archive belong to
+// the core (`rexon_core::sound_preview`). The object only translates QML
+// calls into core calls. Downloading an archive for listening runs in a
+// worker thread, and the result comes with the `storePreviewReady` signal.
 //
-// Отдельный объект, а не методы `AppearanceActions`: так звуки подключаются в
-// QML одной строкой, не задевая объект вкладки.
+// A separate object rather than methods of `AppearanceActions`: that way
+// the sounds are hooked up in QML with one line, without touching the tab
+// object.
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -23,46 +25,47 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Пять звуков установленной темы (JSON
+        /// Five sounds of an installed theme (JSON
         /// `{"theme", "installed", "sounds": [{"key","event","file"}]}`).
-        /// `installed: false` — темы с таким именем на диске нет.
+        /// `installed: false` means there is no theme with that name on disk.
         #[qinvokable]
         #[cxx_name = "themeSounds"]
         fn theme_sounds(self: &SoundPreviewActions, theme: &QString) -> QString;
 
-        /// Проиграть событие установленной темы. Пусто — заиграло; иначе
-        /// фраза для человека (нечем играть, звука нет).
+        /// Play an event of an installed theme. Empty means it started playing;
+        /// otherwise a phrase for the user (nothing to play with, no sound).
         #[qinvokable]
         #[cxx_name = "playThemeSound"]
         fn play_theme_sound(self: &SoundPreviewActions, theme: &QString, event: &QString) -> QString;
 
-        /// Проиграть файл (звуки темы из Магазина до установки).
+        /// Play a file (sounds of a Store theme before installation).
         #[qinvokable]
         #[cxx_name = "playFile"]
         fn play_file(self: &SoundPreviewActions, path: &QString) -> QString;
 
-        /// Скачать товар Магазина во временный кеш и найти пять звуков.
-        /// Итог — сигналом `storePreviewReady`.
+        /// Download a Store item into a temporary cache and find the five sounds.
+        /// The result comes with the `storePreviewReady` signal.
         #[qinvokable]
         #[cxx_name = "previewStoreTheme"]
         fn preview_store_theme(self: Pin<&mut SoundPreviewActions>, content_id: &QString, download_url: &QString);
 
-        /// Поднять темы, которые прежние установки положили глубже (то же,
-        /// что делает первый скан вкладки). Строки журнала через `\n`.
+        /// Lift themes that earlier installations put deeper (the same as the
+        /// tab's first scan does). Log lines separated by `\n`.
         #[qinvokable]
         #[cxx_name = "migrateNestedThemes"]
         fn migrate_nested_themes(self: &SoundPreviewActions) -> QString;
 
-        /// Итог `previewStoreTheme` (JSON
+        /// Result of `previewStoreTheme` (JSON
         /// `{"contentId","ok","error","themes":[{"theme","root","sounds"}]}`).
         #[qsignal]
         #[cxx_name = "storePreviewReady"]
         fn store_preview_ready(self: Pin<&mut SoundPreviewActions>, payload: QString);
 
-        /// Ход скачивания `previewStoreTheme`: байт пришло и всего (`0` —
-        /// сервер размер не назвал). Шлётся не чаще смены процента.
-        /// Числа — `f64`: 64-битное целое QML не принимает (сторож
-        /// `qml_int64` в `src/lib.rs`), байтам до 2^53 далеко.
+        /// Download progress of `previewStoreTheme`: bytes received and the total
+        /// (`0` — the server did not name the size). Sent no more often than the
+        /// percentage changes. The numbers are `f64`: QML does not accept a 64-bit
+        /// integer (the `qml_int64` guard in `src/lib.rs`), and bytes are far from
+        /// 2^53.
         #[qsignal]
         #[cxx_name = "storePreviewProgress"]
         fn store_preview_progress(self: Pin<&mut SoundPreviewActions>, content_id: QString, done: f64, total: f64);
@@ -86,8 +89,9 @@ fn home() -> String {
     std::env::var("HOME").unwrap_or_else(|_| "/".to_string())
 }
 
-/// Сыграть argv из ядра; `None` — звука нет либо нечем играть (с подсказкой,
-/// какой пакет поставить, — те же слова, что у раздела звуков «Настроек»).
+/// Play the argv from the core; `None` means there is no sound or nothing
+/// to play with (with a hint which package to install — the same words as
+/// in the sounds section of "Settings").
 fn play(argv: Option<Vec<String>>, theme: &str, file: &str) -> QString {
     let Some(argv) = argv else {
         if file.is_empty() {
@@ -147,8 +151,8 @@ impl qobject::SoundPreviewActions {
             let progress_id = id.clone();
             let mut last: i64 = -1;
             let mut net = rexon_core::net::UreqNet::new().with_progress(move |done, total| {
-                // Процент, если размер известен, иначе каждые 256 КиБ: очередь
-                // главного потока не заваливаем на каждом куске.
+                // A percentage if the size is known, otherwise every 256 KiB: we do not
+                // flood the main thread's queue on every chunk.
                 let step = if total > 0 { done * 100 / total } else { done / (256 * 1024) };
                 if step == last {
                     return;

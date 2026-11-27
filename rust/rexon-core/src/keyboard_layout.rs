@@ -1,38 +1,39 @@
-//! Раскладка клавиатуры в конфигах тайловых столов и Wayfire.
+//! Keyboard layout in the configs of tiling desktops and Wayfire.
 //!
-//! sway, Hyprland, niri, river и Wayfire берут раскладку только из своего
-//! конфига, а без строки там включают одну `us` (niri с пустым `xkb {}`
-//! читает org.freedesktop.locale1, но и там у многих пусто). Полные
-//! окружения (KDE, GNOME, XFCE…) берут раскладку из системы сами, а здесь
-//! русский человек после входа печатать по-русски не мог. Поэтому после
-//! установки такого стола Rexon дописывает раскладку в его конфиг.
+//! sway, Hyprland, niri, river and Wayfire take the layout only from their
+//! own config, and without a line there they turn on a single `us` (niri with
+//! an empty `xkb {}` reads org.freedesktop.locale1, but many have it empty
+//! too). Full environments (KDE, GNOME, XFCE…) take the layout from the
+//! system themselves, while here a Russian speaker could not type in Russian
+//! after logging in. So after installing such a desktop Rexon adds the
+//! layout to its config.
 //!
-//! Устройство — одна функция определения раскладки ([`detect`]) и по
-//! функции вывода на стол ([`apply`]); обе чистые, I/O — в
+//! Structure: one function that determines the layout ([`detect`]) and one
+//! output function per desktop ([`apply`]); both are pure, I/O lives in
 //! [`ensure_after_install`].
 //!
-//! Откуда раскладка (по порядку):
-//! 1. то, что уже настроено в системе: `localectl status` (X11 Layout /
-//!    Variant / Options), без него `/etc/X11/xorg.conf.d/00-keyboard.conf`
-//!    и `XKBLAYOUT=` в `/etc/vconsole.conf`;
-//! 2. если там пусто или одна `us` — по языку системы (`LC_ALL`,
+//! Where the layout comes from (in order):
+//! 1. what is already set up in the system: `localectl status` (X11 Layout /
+//!    Variant / Options), without it `/etc/X11/xorg.conf.d/00-keyboard.conf`
+//!    and `XKBLAYOUT=` in `/etc/vconsole.conf`;
+//! 2. if that is empty or a single `us`, by the system language (`LC_ALL`,
 //!    `LC_MESSAGES`, `LANG`): ru → `us,ru`, de → `us,de`, uk → `us,ua`…
-//!    ([`LANGUAGE_LAYOUTS`]); английский и языки с методом ввода (CJK) —
-//!    одна `us`, писать нечего.
+//!    ([`LANGUAGE_LAYOUTS`]); English and languages with an input method
+//!    (CJK) get a single `us`, nothing to write.
 //!
-//! Переключение — Alt+Shift (`grp:alt_shift_toggle`), если в системе нет
-//! своего `grp:`.
+//! Switching is Alt+Shift (`grp:alt_shift_toggle`), unless the system has
+//! its own `grp:`.
 //!
-//! ⚠️ Раскладку, которую человек уже задал (в главном конфиге или во
-//! включаемом файле), Rexon не трогает никогда ([`Apply::Kept`]).
-//! Исключение одно — `kb_layout = us` у Hyprland: это строка его образца
-//! конфига, а не выбор человека.
+//! ⚠️ A layout the person has already set (in the main config or in an
+//! included file) is never touched by Rexon ([`Apply::Kept`]).
+//! There is one exception: `kb_layout = us` in Hyprland, which is a line of
+//! its sample config, not the person's choice.
 //!
-//! | стол     | файл                                   | что пишется                                         |
+//! | desktop  | file                                   | what is written                                     |
 //! |----------|----------------------------------------|-----------------------------------------------------|
 //! | sway     | `~/.config/sway/config`                | `input type:keyboard { xkb_layout …; xkb_options … }` |
 //! | Hyprland | `hypr/hyprland.lua` / `hyprland.conf`  | `hl.config({ input = { kb_layout = … } })` / `input { kb_layout = … }` |
-//! | niri     | `niri/config.kdl`                      | `layout "…"` / `options "…"` в `input { keyboard { xkb { } } }` |
+//! | niri     | `niri/config.kdl`                      | `layout "…"` / `options "…"` in `input { keyboard { xkb { } } }` |
 //! | river    | `river/init`                           | `riverctl keyboard-layout -options … …`             |
 //! | Wayfire  | `wayfire.ini`                          | `[input]` `xkb_layout = …`, `xkb_options = …`       |
 
@@ -40,10 +41,10 @@ use crate::i18n::trf;
 use crate::system_de_exec::DeOpsIo;
 
 // ============================================================================
-// Определение раскладки
+// Determining the layout
 // ============================================================================
 
-/// Раскладка, как её задаёт XKB: строки через запятую.
+/// A layout as XKB defines it: comma-separated strings.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct KbLayout {
     pub layout: String,
@@ -56,22 +57,22 @@ impl KbLayout {
         KbLayout { layout: layout.trim().into(), variant: variant.trim().into(), options: options.trim().into() }
     }
 
-    /// Ничего не задано или одна `us` без вариантов и опций.
+    /// Nothing set, or a single `us` without variants and options.
     fn is_plain_us(&self) -> bool {
         (self.layout.is_empty() || self.layout == "us") && self.variant.is_empty()
     }
 
-    /// Переключение Alt+Shift — его называет строка журнала.
+    /// Alt+Shift switching, as named by the log line.
     pub fn switches_with_alt_shift(&self) -> bool {
         self.options.split(',').any(|o| o.trim() == ALT_SHIFT)
     }
 }
 
-/// Переключение раскладок по умолчанию.
+/// Default layout switching.
 pub const ALT_SHIFT: &str = "grp:alt_shift_toggle";
 
-/// Язык → раскладка XKB. Языки, где латиница и так своя или где пишут
-/// методом ввода (китайский, японский, корейский), здесь не нужны.
+/// Language → XKB layout. Languages whose Latin script is already native or
+/// that are typed with an input method (Chinese, Japanese, Korean) are not needed here.
 pub const LANGUAGE_LAYOUTS: &[(&str, &str)] = &[
     ("ru", "ru"), ("uk", "ua"), ("be", "by"), ("kk", "kz"), ("ky", "kg"),
     ("tg", "tj"), ("uz", "uz"), ("az", "az"), ("hy", "am"), ("ka", "ge"),
@@ -85,21 +86,21 @@ pub const LANGUAGE_LAYOUTS: &[(&str, &str)] = &[
     ("ga", "ie"), ("mt", "mt"), ("sq", "al"), ("eo", "epo"),
 ];
 
-/// Язык с особой раскладкой страны (`pt_BR` → бразильская и т. п.).
+/// A language with a country-specific layout (`pt_BR` → Brazilian, etc.).
 const COUNTRY_LAYOUTS: &[(&str, &str)] = &[
     ("pt_BR", "br"), ("de_CH", "ch"), ("fr_CH", "ch"), ("de_AT", "at"),
     ("fr_CA", "ca"), ("fr_BE", "be"), ("nl_BE", "be"),
 ];
 
-/// Раскладки без латиницы: одна такая в системе — и в терминале не набрать
-/// ни одной команды, поэтому впереди ставится `us`.
+/// Layouts without Latin letters: with only one of them in the system not a
+/// single command can be typed in a terminal, so `us` goes first.
 const NON_LATIN: &[&str] = &[
     "ru", "ua", "by", "kz", "kg", "tj", "bg", "rs", "mk", "gr", "il", "ara",
     "ir", "ge", "am", "th", "in",
 ];
 
-/// Значение locale, которое решает язык: `LC_ALL`, потом `LC_MESSAGES`,
-/// потом `LANG`; `C`/`POSIX` языком не считаются.
+/// The locale value that decides the language: `LC_ALL`, then `LC_MESSAGES`,
+/// then `LANG`; `C`/`POSIX` do not count as a language.
 pub fn pick_locale<'a>(lc_all: &'a str, lc_messages: &'a str, lang: &'a str) -> &'a str {
     [lc_all, lc_messages, lang]
         .into_iter()
@@ -108,7 +109,7 @@ pub fn pick_locale<'a>(lc_all: &'a str, lc_messages: &'a str, lang: &'a str) -> 
         .unwrap_or("")
 }
 
-/// Раскладка для языка (`ru_RU.UTF-8` → `ru`); `None` — писать нечего.
+/// The layout for a language (`ru_RU.UTF-8` → `ru`); `None` means nothing to write.
 pub fn layout_for_language(locale: &str) -> Option<&'static str> {
     let base = locale.split(['.', '@']).next().unwrap_or("");
     if let Some((_, l)) = COUNTRY_LAYOUTS.iter().find(|(k, _)| *k == base) {
@@ -118,8 +119,8 @@ pub fn layout_for_language(locale: &str) -> Option<&'static str> {
     LANGUAGE_LAYOUTS.iter().find(|(k, _)| *k == lang).map(|(_, l)| *l)
 }
 
-/// `localectl status` (с `LANG=C`): строки `X11 Layout:`, `X11 Variant:`,
-/// `X11 Options:`.
+/// `localectl status` (with `LANG=C`): the `X11 Layout:`, `X11 Variant:`,
+/// `X11 Options:` lines.
 pub fn parse_localectl(text: &str) -> KbLayout {
     let field = |name: &str| {
         text.lines()
@@ -132,7 +133,7 @@ pub fn parse_localectl(text: &str) -> KbLayout {
     KbLayout::new(&field("X11 Layout"), &field("X11 Variant"), &field("X11 Options"))
 }
 
-/// `00-keyboard.conf`: `Option "XkbLayout" "…"` и родня.
+/// `00-keyboard.conf`: `Option "XkbLayout" "…"` and its kin.
 pub fn parse_xorg_keyboard_conf(text: &str) -> KbLayout {
     let field = |name: &str| {
         text.lines()
@@ -149,7 +150,7 @@ pub fn parse_xorg_keyboard_conf(text: &str) -> KbLayout {
 }
 
 /// `/etc/vconsole.conf`: `XKBLAYOUT=`, `XKBVARIANT=`, `XKBOPTIONS=`
-/// (их пишет systemd-localed).
+/// (written by systemd-localed).
 pub fn parse_vconsole(text: &str) -> KbLayout {
     let field = |name: &str| {
         text.lines()
@@ -161,13 +162,13 @@ pub fn parse_vconsole(text: &str) -> KbLayout {
     KbLayout::new(&field("XKBLAYOUT"), &field("XKBVARIANT"), &field("XKBOPTIONS"))
 }
 
-/// Опции с переключением: `grp:` добавляется, только если своего нет.
+/// Options with switching: `grp:` is added only if there is none of its own.
 fn with_switch(options: &str) -> String {
     merge_options(options, ALT_SHIFT)
 }
 
-/// Слить опции: свои остаются, из `ours` добавляется то, чего нет, а
-/// `grp:` — только если своего переключения нет вовсе.
+/// Merge options: the existing ones stay, whatever is missing is added from
+/// `ours`, and `grp:` only if there is no switching of its own at all.
 pub fn merge_options(theirs: &str, ours: &str) -> String {
     let mut out: Vec<&str> = theirs.split(',').map(str::trim).filter(|o| !o.is_empty()).collect();
     let has_grp = out.iter().any(|o| o.starts_with("grp:"));
@@ -180,9 +181,9 @@ pub fn merge_options(theirs: &str, ours: &str) -> String {
     out.join(",")
 }
 
-/// Раскладка для стола. `localectl`, `xorg`, `vconsole` — тексты источников
-/// (`None` — источника нет), `locale` — из [`pick_locale`]. `None` — писать
-/// нечего: в системе и по языку одна `us`.
+/// The layout for a desktop. `localectl`, `xorg`, `vconsole` are the texts of
+/// the sources (`None` means no source), `locale` comes from [`pick_locale`].
+/// `None` means nothing to write: a single `us` both in the system and by language.
 pub fn detect(localectl: Option<&str>, xorg: Option<&str>, vconsole: Option<&str>, locale: &str) -> Option<KbLayout> {
     let system: Vec<KbLayout> = [
         localectl.map(parse_localectl),
@@ -193,7 +194,7 @@ pub fn detect(localectl: Option<&str>, xorg: Option<&str>, vconsole: Option<&str
     .flatten()
     .collect();
 
-    // 1. Своя раскладка системы — как есть.
+    // 1. The system's own layout, as is.
     if let Some(kb) = system.iter().find(|k| !k.is_plain_us() && !k.layout.is_empty()) {
         let mut kb = kb.clone();
         if NON_LATIN.contains(&kb.layout.as_str()) {
@@ -208,7 +209,7 @@ pub fn detect(localectl: Option<&str>, xorg: Option<&str>, vconsole: Option<&str
         return Some(kb);
     }
 
-    // 2. В системе одна `us` (возможно, с опциями) — раскладка языка.
+    // 2. A single `us` in the system (possibly with options): the language's layout.
     let us = system.iter().find(|k| !k.options.is_empty()).cloned().unwrap_or_default();
     match layout_for_language(locale) {
         Some(l) => Some(KbLayout {
@@ -222,10 +223,10 @@ pub fn detect(localectl: Option<&str>, xorg: Option<&str>, vconsole: Option<&str
 }
 
 // ============================================================================
-// Вывод на стол
+// Output to the desktop
 // ============================================================================
 
-/// Стол, в чей конфиг ложится раскладка.
+/// The desktop whose config receives the layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Desk {
     Sway,
@@ -248,15 +249,15 @@ impl Desk {
     }
 }
 
-/// Что делать с конфигом.
+/// What to do with the config.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Apply {
-    /// Раскладку человек уже задал — не трогаем.
+    /// The person has already set a layout: leave it alone.
     Kept,
-    /// Новый текст файла.
+    /// The new text of the file.
     Write(String),
-    /// Куда вставить, не понять (необычное устройство файла): человеку
-    /// показывается готовый кусок.
+    /// Cannot tell where to insert (unusual file structure): the person is
+    /// shown a ready-made snippet.
     Manual(String),
 }
 
@@ -266,7 +267,7 @@ fn quote(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// Кусок для sway (`sway-input(5)`).
+/// Snippet for sway (`sway-input(5)`).
 pub fn sway_snippet(kb: &KbLayout) -> String {
     let mut s = format!("# {HEADER}\ninput type:keyboard {{\n    xkb_layout {}\n", quote(&kb.layout));
     if !kb.variant.is_empty() {
@@ -279,8 +280,8 @@ pub fn sway_snippet(kb: &KbLayout) -> String {
     s
 }
 
-/// Кусок для `hyprland.conf` (hyprlang): категория `input` может
-/// открываться повторно, позднее значение перекрывает раннее.
+/// Snippet for `hyprland.conf` (hyprlang): the `input` category may be
+/// opened again, a later value overrides an earlier one.
 pub fn hypr_conf_snippet(kb: &KbLayout) -> String {
     let mut s = format!("# {HEADER}\ninput {{\n    kb_layout = {}\n", kb.layout);
     if !kb.variant.is_empty() {
@@ -290,8 +291,8 @@ pub fn hypr_conf_snippet(kb: &KbLayout) -> String {
     s
 }
 
-/// Кусок для `hyprland.lua`: `hl.config` задаёт перечисленные ключи, и
-/// поздний вызов перекрывает ранний.
+/// Snippet for `hyprland.lua`: `hl.config` sets the listed keys, and a
+/// later call overrides an earlier one.
 pub fn hypr_lua_snippet(kb: &KbLayout) -> String {
     let mut fields = vec![format!("kb_layout = {}", quote(&kb.layout))];
     if !kb.variant.is_empty() {
@@ -302,7 +303,7 @@ pub fn hypr_lua_snippet(kb: &KbLayout) -> String {
     format!("-- {HEADER}\nhl.config({{\n    input = {{\n{body}    }},\n}})\n")
 }
 
-/// Строки для блока `xkb` niri (без отступа).
+/// Lines for the niri `xkb` block (without indent).
 fn niri_xkb_lines(kb: &KbLayout, with_options: bool) -> Vec<String> {
     let mut v = vec![format!("// {HEADER}"), format!("layout {}", quote(&kb.layout))];
     if !kb.variant.is_empty() {
@@ -314,7 +315,7 @@ fn niri_xkb_lines(kb: &KbLayout, with_options: bool) -> Vec<String> {
     v
 }
 
-/// Весь блок `input` для niri (конфиг без `input`).
+/// The whole `input` block for niri (a config without `input`).
 pub fn niri_snippet(kb: &KbLayout) -> String {
     let inner: String = niri_xkb_lines(kb, true).iter().map(|l| format!("            {l}\n")).collect();
     format!("input {{\n    keyboard {{\n        xkb {{\n{inner}        }}\n    }}\n}}\n")
@@ -328,7 +329,7 @@ fn sh_quote(s: &str) -> String {
     }
 }
 
-/// Строка для `river/init` (`riverctl(1)`, `keyboard-layout`).
+/// Line for `river/init` (`riverctl(1)`, `keyboard-layout`).
 pub fn river_snippet(kb: &KbLayout) -> String {
     let mut s = format!("# {HEADER}\nriverctl keyboard-layout");
     if !kb.variant.is_empty() {
@@ -341,7 +342,7 @@ pub fn river_snippet(kb: &KbLayout) -> String {
     s
 }
 
-/// Строки раздела `[input]` Wayfire.
+/// Lines of the Wayfire `[input]` section.
 fn wayfire_lines(kb: &KbLayout) -> Vec<(&'static str, String)> {
     let mut v = vec![("xkb_layout", kb.layout.clone())];
     if !kb.variant.is_empty() {
@@ -353,17 +354,17 @@ fn wayfire_lines(kb: &KbLayout) -> Vec<(&'static str, String)> {
     v
 }
 
-/// Строки без комментария `#` (кавычки не разбираются: в значениях
-/// раскладок `#` не бывает).
-fn hash_code(line: &str) -> &str {
+/// Lines without a `#` comment (quotes are not parsed: layout values never
+/// contain `#`).
+pub(crate) fn hash_code(line: &str) -> &str {
     line.split('#').next().unwrap_or("").trim()
 }
 
-/// Значение после ключевого слова: `xkb_layout "us"` → `us`,
+/// The value after a keyword: `xkb_layout "us"` → `us`,
 /// `kb_layout = us,ru` → `us,ru`, `kb_layout = "us",` → `us`.
 fn value_after<'a>(code: &'a str, key: &str) -> Option<&'a str> {
     let pos = code.find(key)?;
-    // Ключ — отдельное слово (`kb_layout`, а не `xkb_layout` у Hyprland).
+    // The key is a separate word (`kb_layout`, not `xkb_layout` in Hyprland).
     let before = code[..pos].chars().last();
     if before.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_') {
         return None;
@@ -376,7 +377,7 @@ fn value_after<'a>(code: &'a str, key: &str) -> Option<&'a str> {
     Some(rest.trim_end_matches([',', ';', '}', ')']).trim().trim_matches(['"', '\'']).trim())
 }
 
-/// Последнее значение ключа в живых строках `texts`.
+/// The last value of the key in the live lines `texts`.
 fn last_value(texts: &[&str], keys: &[&str], code: fn(&str) -> &str) -> Option<String> {
     let mut found = None;
     for t in texts {
@@ -392,11 +393,11 @@ fn last_value(texts: &[&str], keys: &[&str], code: fn(&str) -> &str) -> Option<S
     found
 }
 
-fn lua_code(line: &str) -> &str {
+pub(crate) fn lua_code(line: &str) -> &str {
     line.split("--").next().unwrap_or("").trim()
 }
 
-fn append(text: &str, snippet: &str) -> String {
+pub(crate) fn append(text: &str, snippet: &str) -> String {
     let mut out = text.to_string();
     if !out.is_empty() && !out.ends_with('\n') {
         out.push('\n');
@@ -408,7 +409,7 @@ fn append(text: &str, snippet: &str) -> String {
     out
 }
 
-/// Раскладка с опциями, слитыми с уже заданными человеком.
+/// The layout with options merged with those the person already set.
 fn with_their_options(kb: &KbLayout, theirs: Option<String>) -> KbLayout {
     match theirs {
         Some(t) if !t.is_empty() => KbLayout { options: merge_options(&t, &kb.options), ..kb.clone() },
@@ -416,9 +417,9 @@ fn with_their_options(kb: &KbLayout, theirs: Option<String>) -> KbLayout {
     }
 }
 
-/// Дописать раскладку `kb` в конфиг стола. `main` — текст главного
-/// файла, `included` — тексты файлов, которые он подключает (там раскладка
-/// тоже считается заданной человеком).
+/// Add the layout `kb` to the desktop config. `main` is the text of the main
+/// file, `included` are the texts of the files it includes (a layout there
+/// also counts as set by the person).
 pub fn apply(desk: Desk, main: &str, included: &[String], kb: &KbLayout) -> Apply {
     let mut all: Vec<&str> = vec![main];
     all.extend(included.iter().map(String::as_str));
@@ -434,7 +435,7 @@ pub fn apply(desk: Desk, main: &str, included: &[String], kb: &KbLayout) -> Appl
             let code = if desk == Desk::HyprLua { lua_code } else { hash_code };
             let file = last_value(&all, &["kb_file"], code).is_some_and(|v| !v.is_empty());
             let layout = last_value(&all, &["kb_layout"], code);
-            // `us` — строка образца конфига Hyprland, а не выбор человека.
+            // `us` is a line of the Hyprland sample config, not the person's choice.
             if file || layout.is_some_and(|v| !v.is_empty() && v != "us") {
                 return Apply::Kept;
             }
@@ -459,9 +460,9 @@ pub fn apply(desk: Desk, main: &str, included: &[String], kb: &KbLayout) -> Appl
     }
 }
 
-/// Вставить кусок после шапки скрипта (`#!` и идущих следом комментариев):
-/// river исполняет init уже с готовым сокетом, и `riverctl` работает с
-/// первой строки — а дописанное в конец не выполнилось бы после `exec`.
+/// Insert the snippet after the script header (`#!` and the comments right
+/// after it): river runs init with the socket already in place, and `riverctl`
+/// works from the first line, while anything appended at the end would not run after `exec`.
 fn insert_after_header(text: &str, snippet: &str) -> String {
     let lines: Vec<&str> = text.split_inclusive('\n').collect();
     let header = lines.iter().take_while(|l| l.trim_start().starts_with('#')).count();
@@ -481,26 +482,26 @@ fn insert_after_header(text: &str, snippet: &str) -> String {
 
 // ── niri (KDL) ──────────────────────────────────────────────────────────────
 
-/// Что нашлось в `config.kdl` по пути `input` → `keyboard` → `xkb`.
+/// What was found in `config.kdl` along the path `input` → `keyboard` → `xkb`.
 #[derive(Debug, Default)]
 struct NiriScan {
-    /// Живой `layout` или `file` внутри `xkb`.
+    /// A live `layout` or `file` inside `xkb`.
     layout_set: bool,
-    /// Строка с живым `options "…"` в `xkb` (вся строка — только он) и
-    /// его значение.
+    /// The line with a live `options "…"` in `xkb` (the whole line is just that) and
+    /// its value.
     options: Option<(usize, String)>,
-    /// Строки, где открыт блок (и после `{` на строке пусто).
+    /// Lines where the block opens (with nothing after `{` on the line).
     xkb_open: Option<usize>,
-    /// `xkb {}` одной строкой.
+    /// `xkb {}` on one line.
     xkb_empty_line: Option<usize>,
     keyboard_open: Option<usize>,
     input_open: Option<usize>,
-    /// Блок нужного узла есть, но открыт не так, чтобы в него вставлять.
+    /// The block of the wanted node exists but is not opened in a way that allows inserting into it.
     odd: bool,
 }
 
-/// Убрать комментарии KDL (`//` до конца строки, `/* … */`) вне строк.
-fn kdl_strip(line: &str, in_block: &mut bool) -> String {
+/// Strip KDL comments (`//` to the end of the line, `/* … */`) outside strings.
+pub(crate) fn kdl_strip(line: &str, in_block: &mut bool) -> String {
     let mut out = String::new();
     let mut chars = line.chars().peekable();
     let mut in_str = false;
@@ -541,7 +542,7 @@ fn kdl_strip(line: &str, in_block: &mut bool) -> String {
 
 fn niri_scan(text: &str) -> NiriScan {
     let mut scan = NiriScan::default();
-    // (имя узла, жив ли — `/-` выключает узел со всеми детьми)
+    // (node name, whether it is live: `/-` disables a node with all its children)
     let mut stack: Vec<(String, bool)> = Vec::new();
     let mut in_block = false;
     for (i, raw) in text.lines().enumerate() {
@@ -650,7 +651,7 @@ fn apply_niri(main: &str, included: &[String], kb: &KbLayout) -> Apply {
     let xkb = |with_options| niri_xkb_lines(kb, with_options);
     if let Some(i) = scan.xkb_open {
         let ind = format!("{}    ", indent_of(&lines[i]));
-        // Свои `options` человека остаются, к ним дописывается переключение.
+        // The person's own `options` stay, switching is appended to them.
         let own_options = scan.options.clone();
         if let Some((oi, v)) = &own_options {
             if *oi != usize::MAX {
@@ -735,7 +736,7 @@ fn apply_wayfire(main: &str, kb: &KbLayout) -> Apply {
     let mut pending: Vec<(&'static str, String)> = Vec::new();
     for (key, value) in wayfire_lines(&kb) {
         let new_line = format!("{key} = {value}");
-        // Пустой ключ (или свои опции) — та же строка, новое значение.
+        // Empty key (or own options): the same line, a new value.
         match found.iter().rev().find(|(_, k, _)| *k == key) {
             Some((i, _, _)) => lines[*i] = new_line,
             None => pending.push((key, value)),
@@ -764,11 +765,11 @@ fn apply_wayfire(main: &str, kb: &KbLayout) -> Apply {
     Apply::Write(out)
 }
 
-// ── Подключаемые файлы ──────────────────────────────────────────────────────
+// ── Included files ──────────────────────────────────────────────────────────
 
-/// Файлы, которые подключает конфиг (раскладка в них — тоже выбор
-/// человека). Пути как в файле, `~` раскрыт, относительные — от `dir`;
-/// `*` в последнем звене раскрывает вызывающий.
+/// Files the config includes (a layout in them is also the person's
+/// choice). Paths as in the file, `~` expanded, relative ones resolved from
+/// `dir`; a `*` in the last component is expanded by the caller.
 pub fn included_paths(desk: Desk, text: &str, dir: &str, home: &str) -> Vec<String> {
     let resolve = |p: &str| -> String {
         let p = p.trim().trim_matches(['"', '\'']);
@@ -825,16 +826,16 @@ pub fn included_paths(desk: Desk, text: &str, dir: &str, home: &str) -> Vec<Stri
 }
 
 // ============================================================================
-// Исполнение после установки стола
+// Execution after a desktop is installed
 // ============================================================================
 
-/// Пути конфигов стола. Главный файл — тот, что стол читает первым.
+/// Config paths of a desktop. The main file is the one the desktop reads first.
 struct Paths {
     desk: Desk,
     path: String,
     exists: bool,
-    /// Файла нет — его начало (`include` системного у sway) или образец,
-    /// с которого его завести; `None` — заводить нельзя.
+    /// When the file is missing: its beginning (`include` of the system one for
+    /// sway) or a sample to create it from; `None` means it must not be created.
     seed: Option<Seed>,
 }
 
@@ -863,8 +864,8 @@ fn resolve<IO: DeOpsIo + ?Sized>(io: &IO, de_id: &str, home: &str) -> Option<Pat
             if let Some((p, d)) = first(&cands) {
                 return found(p, d);
             }
-            // Свой файл заслонил бы системный целиком (вместе с клавишами):
-            // заводится только с `include` системного впереди.
+            // An own file would shadow the system one entirely (keybindings included):
+            // it is created only with an `include` of the system one in front.
             let system = ["/etc/sway/config", "/etc/i3/config"].into_iter().find(|p| io.is_file(p));
             let seed = system.map(|s| Seed::Text(format!("include {}\n", crate::themes::sway_path(s))));
             Some(Paths { desk: Desk::Sway, path: format!("{cfg}/sway/config"), exists: false, seed })
@@ -878,9 +879,9 @@ fn resolve<IO: DeOpsIo + ?Sized>(io: &IO, de_id: &str, home: &str) -> Option<Pat
             if io.is_file(&conf) {
                 return found(conf, Desk::HyprConf);
             }
-            // Без конфига Hyprland при первом входе кладёт свой — а файл из
-            // одних строк раскладки оставил бы человека без клавиш. Поэтому
-            // заводится только копией образца из пакета.
+            // Without a config Hyprland puts its own on first login, while a file made
+            // of layout lines only would leave the person without keybindings. So it
+            // is created only as a copy of the sample from the package.
             for (sample, path, desk) in
                 [("/usr/share/hypr/hyprland.lua", lua, Desk::HyprLua), ("/usr/share/hypr/hyprland.conf", conf, Desk::HyprConf)]
             {
@@ -895,8 +896,8 @@ fn resolve<IO: DeOpsIo + ?Sized>(io: &IO, de_id: &str, home: &str) -> Option<Pat
             if io.is_file(&p) {
                 return found(p, Desk::Niri);
             }
-            // То же, что у Hyprland: niri кладёт конфиг сам при первом входе,
-            // и он же лежит образцом в документации пакета.
+            // Same as Hyprland: niri puts a config itself on first login, and the same
+            // one lies as a sample in the package documentation.
             let sample = ["/usr/share/doc/niri/default-config.kdl", "/usr/share/niri/default-config.kdl"]
                 .into_iter()
                 .find(|s| io.is_file(s))
@@ -912,15 +913,15 @@ fn resolve<IO: DeOpsIo + ?Sized>(io: &IO, de_id: &str, home: &str) -> Option<Pat
             let vendored = format!("{cfg}/wayfire/wayfire.ini");
             let p = if io.is_file(&vendored) { vendored } else { format!("{cfg}/wayfire.ini") };
             let exists = io.is_file(&p);
-            // Свой wayfire.ini ничего не отключает: умолчания Wayfire читает
-            // из defaults.ini.
+            // An own wayfire.ini disables nothing: Wayfire reads the defaults
+            // from defaults.ini.
             Some(Paths { desk: Desk::Wayfire, path: p, exists, seed: Some(Seed::Text(String::new())) })
         }
         _ => None,
     }
 }
 
-/// Раскладка системы на живой машине (через `io`).
+/// The system layout on a live machine (through `io`).
 pub fn detect_with<IO: DeOpsIo + ?Sized>(io: &IO) -> Option<KbLayout> {
     let localectl = if io.which("localectl") {
         let r = io.run(&["localectl".to_string(), "status".to_string()], Some(10), true);
@@ -965,7 +966,7 @@ fn read_included<IO: DeOpsIo + ?Sized>(io: &IO, desk: Desk, text: &str, dir: &st
     out
 }
 
-/// Строка журнала: раскладка дописана.
+/// Log line: the layout has been added.
 fn written_line(desk: Desk, kb: &KbLayout, path: &str) -> String {
     if kb.switches_with_alt_shift() {
         // TRANSLATORS: %1 is a desktop (Sway, Hyprland…), %2 the keyboard
@@ -978,37 +979,71 @@ fn written_line(desk: Desk, kb: &KbLayout, path: &str) -> String {
     }
 }
 
-/// После установки стола `de_id` (и при «Проверить / Восстановить»)
-/// дописать раскладку в его конфиг. `None` — стол не из этих или писать
-/// нечего; иначе (успех, строка журнала). Неудача — предупреждение, не
-/// провал установки.
-pub fn ensure_after_install<IO: DeOpsIo + ?Sized>(io: &IO, de_id: &str, home: &str) -> Option<(bool, String)> {
+/// A desktop's config as the desktop itself will see it: the main file (or
+/// its starting text when there is no file yet) and the texts of included
+/// files. Shared by the keyboard layout and the screen lock
+/// ([`crate::system_de_exec`]).
+pub(crate) struct DeskConfig {
+    pub desk: Desk,
+    /// The main file — the one the desktop reads first.
+    pub path: String,
+    /// Text to edit: the file itself, or, when it is missing, a starting text
+    /// (sway: `include` of the system config) or the package's sample.
+    /// `None` — no file and none may be created.
+    pub text: Option<String>,
+    /// Texts of included files (settings there are the user's choice too).
+    pub included: Vec<String>,
+}
+
+impl DeskConfig {
+    pub fn dir(&self) -> String {
+        self.path.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_else(|| ".".into())
+    }
+
+    /// File mode on write: River's init is executable.
+    pub fn mode(&self) -> u32 {
+        if self.desk == Desk::River { 0o755 } else { 0o644 }
+    }
+}
+
+/// Read the config of desktop `de_id`; `None` — not a tiling desktop or Wayfire.
+pub(crate) fn load_config<IO: DeOpsIo + ?Sized>(io: &IO, de_id: &str, home: &str) -> Option<DeskConfig> {
     let paths = resolve(io, de_id, home)?;
-    let kb = detect_with(io)?;
-    let name = paths.desk.display_name();
-    let main = if paths.exists {
-        io.read_text(&paths.path).unwrap_or_default()
+    let text = if paths.exists {
+        Some(io.read_text(&paths.path).unwrap_or_default())
     } else {
         match &paths.seed {
-            Some(Seed::Text(t)) => t.clone(),
-            Some(Seed::File(f)) => match io.read_text(f) {
-                Some(t) => t,
-                None => return Some((true, no_config_line(name, &paths.path))),
-            },
-            None => return Some((true, no_config_line(name, &paths.path))),
+            Some(Seed::Text(t)) => Some(t.clone()),
+            Some(Seed::File(f)) => io.read_text(f),
+            None => None,
         }
     };
-    let dir = paths.path.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_else(|| ".".into());
-    let included = read_included(io, paths.desk, &main, &dir, home, 1);
-    match apply(paths.desk, &main, &included, &kb) {
-        Apply::Kept => Some((true, kept_line(name, &paths.path))),
-        Apply::Manual(snippet) => Some((true, manual_line(name, &paths.path, &snippet))),
+    let mut cfg = DeskConfig { desk: paths.desk, path: paths.path, text, included: Vec::new() };
+    if let Some(t) = &cfg.text {
+        cfg.included = read_included(io, cfg.desk, t, &cfg.dir(), home, 1);
+    }
+    Some(cfg)
+}
+
+/// After installing the desktop `de_id` (and on «Check / Repair») add the
+/// layout to its config. `None` means the desktop is not one of these or
+/// there is nothing to write; otherwise (success, log line). A failure is a
+/// warning, not a failed install.
+pub fn ensure_after_install<IO: DeOpsIo + ?Sized>(io: &IO, de_id: &str, home: &str) -> Option<(bool, String)> {
+    let cfg = load_config(io, de_id, home)?;
+    let kb = detect_with(io)?;
+    let name = cfg.desk.display_name();
+    let Some(main) = &cfg.text else {
+        return Some((true, no_config_line(name, &cfg.path)));
+    };
+    match apply(cfg.desk, main, &cfg.included, &kb) {
+        Apply::Kept => Some((true, kept_line(name, &cfg.path))),
+        Apply::Manual(snippet) => Some((true, manual_line(name, &cfg.path, &snippet))),
         Apply::Write(text) => {
-            let mode = if paths.desk == Desk::River { 0o755 } else { 0o644 };
-            let written = io.make_dirs(&dir).and_then(|()| io.write_file_mode(&paths.path, &text, mode));
+            let written = io.make_dirs(&cfg.dir()).and_then(|()| io.write_file_mode(&cfg.path, &text, cfg.mode()));
             match written {
-                Ok(()) => Some((true, written_line(paths.desk, &kb, &paths.path))),
-                Err(e) => Some((false, failed_line(name, &paths.path, &e))),
+                Ok(()) => Some((true, written_line(cfg.desk, &kb, &cfg.path))),
+                Err(e) => Some((false, failed_line(name, &cfg.path, &e))),
             }
         }
     }
@@ -1076,24 +1111,24 @@ mod tests {
 
     #[test]
     fn system_layout_wins_language_fills_in() {
-        // Система уже настроена — берётся как есть.
+        // The system is already set up: taken as is.
         assert_eq!(detect(Some(LOCALECTL_RU), None, None, "de_DE.UTF-8"), Some(kb("us,ru", "grp:alt_shift_toggle")));
-        // Свой grp: системы остаётся, второй не добавляется.
+        // The system's own grp: stays, a second one is not added.
         let x = "Option \"XkbLayout\" \"us,de\"\nOption \"XkbOptions\" \"grp:win_space_toggle\"\n";
         assert_eq!(detect(Some(LOCALECTL_EMPTY), Some(x), None, "ru_RU.UTF-8"), Some(kb("us,de", "grp:win_space_toggle")));
-        // Пусто — по языку.
+        // Empty: by language.
         assert_eq!(detect(Some(LOCALECTL_EMPTY), None, None, "ru_RU.UTF-8"), Some(kb("us,ru", ALT_SHIFT)));
         assert_eq!(detect(None, None, None, "uk_UA.UTF-8"), Some(kb("us,ua", ALT_SHIFT)));
-        // Одна us с опциями — опции сохраняются.
+        // A single us with options: the options are kept.
         let us = "      X11 Layout: us\n     X11 Options: ctrl:nocaps\n";
         assert_eq!(detect(Some(us), None, None, "fr_FR.UTF-8"), Some(kb("us,fr", &format!("ctrl:nocaps,{ALT_SHIFT}"))));
-        // Английский и одна us — писать нечего; us с опциями — опции.
+        // English and a single us: nothing to write; us with options: the options.
         assert_eq!(detect(Some(LOCALECTL_EMPTY), None, None, "en_US.UTF-8"), None);
         assert_eq!(detect(Some(us), None, None, "en_US.UTF-8"), Some(kb("us", "ctrl:nocaps")));
-        // Одна кириллица в системе — впереди us, иначе команду не набрать.
+        // A single Cyrillic layout in the system: us goes first, or no command could be typed.
         let ru = "      X11 Layout: ru\n";
         assert_eq!(detect(Some(ru), None, None, "ru_RU.UTF-8"), Some(kb("us,ru", ALT_SHIFT)));
-        // Одна латинская (de) — как есть, без переключения.
+        // A single Latin one (de): as is, without switching.
         let de = "      X11 Layout: de\n";
         assert_eq!(detect(Some(de), None, None, "ru_RU.UTF-8"), Some(kb("de", "")));
     }
@@ -1123,14 +1158,14 @@ mod tests {
             out,
             format!("include /etc/sway/config\n\n# {HEADER}\ninput type:keyboard {{\n    xkb_layout \"us,ru\"\n    xkb_options \"grp:alt_shift_toggle\"\n}}\n")
         );
-        // Раскладка своя — в главном или во включаемом файле.
+        // The layout is the person's own, in the main or in an included file.
         assert_eq!(apply(Desk::Sway, &out, &[], &ru()), Apply::Kept);
         let own = "input * xkb_layout de\n".to_string();
         assert_eq!(apply(Desk::Sway, "include ~/.config/sway/config.d/*\n", &[own], &ru()), Apply::Kept);
-        // Закомментированная строка образца — не своя.
+        // A commented-out sample line is not the person's own.
         let sample = "#   input type:keyboard {\n#       xkb_layout \"eu\"\n#   }\n".to_string();
         assert!(matches!(apply(Desk::Sway, "x\n", &[sample], &ru()), Apply::Write(_)));
-        // Свои опции без раскладки — сохраняются.
+        // Own options without a layout are kept.
         let out = write(apply(Desk::Sway, "input type:keyboard xkb_options ctrl:nocaps\n", &[], &ru()));
         assert!(out.contains("xkb_options \"ctrl:nocaps,grp:alt_shift_toggle\""), "{out}");
     }
@@ -1151,13 +1186,13 @@ mod tests {
             "-- {HEADER}\nhl.config({{\n    input = {{\n        kb_layout = \"us,ru\",\n        kb_options = \"grp:alt_shift_toggle\",\n    }},\n}})\n"
         )), "{out}");
         assert_eq!(apply(Desk::HyprLua, &out, &[], &ru()), Apply::Kept);
-        // Закомментированное в Lua — не своё.
+        // Commented out in Lua is not the person's own.
         assert!(matches!(apply(Desk::HyprLua, "-- kb_layout = \"de\"\n", &[], &ru()), Apply::Write(_)));
         assert_eq!(apply(Desk::HyprLua, "hl.config({ [\"input.kb_layout\"] = \"de\" })\n", &[], &ru()), Apply::Kept);
     }
 
-    /// Начало образца niri (`default-config.kdl`): пустой `xkb` с
-    /// комментариями и `numlock` рядом.
+    /// The beginning of the niri sample (`default-config.kdl`): an empty `xkb` with
+    /// comments and `numlock` next to it.
     const NIRI_SAMPLE: &str = "input {\n    keyboard {\n        xkb {\n            // For example:\n            // layout \"us,ru\"\n        }\n\n        numlock\n    }\n}\n\n/-output \"eDP-1\" {\n    mode \"1920x1080\"\n}\n";
 
     #[test]
@@ -1167,24 +1202,24 @@ mod tests {
             "        xkb {{\n            // {HEADER}\n            layout \"us,ru\"\n            options \"grp:alt_shift_toggle\"\n            // For example:"
         )), "{out}");
         assert_eq!(apply(Desk::Niri, &out, &[], &ru()), Apply::Kept);
-        // Свои options остаются, к ним — переключение.
+        // Own options stay, switching is added to them.
         let own = "input {\n    keyboard {\n        xkb {\n            options \"ctrl:nocaps\"\n        }\n    }\n}\n";
         let out = write(apply(Desk::Niri, own, &[], &ru()));
         assert!(out.contains("            options \"ctrl:nocaps,grp:alt_shift_toggle\"\n"), "{out}");
         assert_eq!(out.matches("options").count(), 1, "{out}");
-        // Выключенный `/-xkb` — не своя раскладка; узел input без keyboard.
+        // A disabled `/-xkb` is not an own layout; an input node without keyboard.
         let off = "input {\n    /-keyboard {\n        xkb {\n            layout \"de\"\n        }\n    }\n    focus-follows-mouse\n}\n";
         let out = write(apply(Desk::Niri, off, &[], &ru()));
         assert!(out.starts_with("input {\n    keyboard {\n        xkb {\n            // "), "{out}");
-        // Нет input вовсе — блок в конце.
+        // No input at all: the block goes at the end.
         let out = write(apply(Desk::Niri, "layout { gaps 16; }\n", &[], &ru()));
         assert!(out.ends_with("input {\n    keyboard {\n        xkb {\n            layout \"us,ru\"\n            options \"grp:alt_shift_toggle\"\n        }\n    }\n}\n"), "{out}");
-        // Пустой xkb одной строкой.
+        // An empty xkb on one line.
         let out = write(apply(Desk::Niri, "input {\n    keyboard {\n        xkb {}\n    }\n}\n", &[], &ru()));
         assert!(out.contains("        xkb {\n            // "), "{out}");
-        // Раскладка в подключённом файле.
+        // The layout is in an included file.
         assert_eq!(apply(Desk::Niri, NIRI_SAMPLE, &["input { keyboard { xkb { layout \"de\"; } } }\n".into()], &ru()), Apply::Kept);
-        // Однострочный keyboard с узлами — не гадаем.
+        // A one-line keyboard with nodes: no guessing.
         assert!(matches!(apply(Desk::Niri, "input {\n    keyboard { numlock; }\n}\n", &[], &ru()), Apply::Manual(_)));
     }
 
@@ -1209,7 +1244,7 @@ mod tests {
         assert!(out.contains(&format!("[input]\n# {HEADER}\nxkb_options = grp:alt_shift_toggle\nxkb_layout = us,ru\nmouse_accel_profile = flat\n")), "{out}");
         assert_eq!(apply(Desk::Wayfire, &out, &[], &ru()), Apply::Kept);
         assert_eq!(apply(Desk::Wayfire, "[input]\nxkb_layout = de\n", &[], &ru()), Apply::Kept);
-        // Ключ в чужом разделе не считается.
+        // A key in someone else's section does not count.
         assert!(matches!(apply(Desk::Wayfire, "[core]\nxkb_layout = de\n", &[], &ru()), Apply::Write(_)));
     }
 

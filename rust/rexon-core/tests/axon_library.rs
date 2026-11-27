@@ -1,11 +1,11 @@
-//! Библиотека Razer Axon под Wine (`rexon_core::axon_library`) на
-//! подставных файлах: поиск префиксов, разбор библиотеки (оба имени поля
-//! типа, BOM, битый JSON), пути Windows → Linux, папка с обоями, указанная
-//! вручную, подготовка к показу через подменную и внешнюю программу.
+//! The Razer Axon library under Wine (`rexon_core::axon_library`) on
+//! fake files: finding prefixes, parsing the library (both names of the type
+//! field, BOM, broken JSON), Windows → Linux paths, a wallpaper folder given
+//! by hand, preparing for display through a fake and an external program.
 //!
-//! Итог разбора всего подставного дома сверяется с эталоном
-//! `golden/axon_library.json` (пути дома заменены на `$HOME`);
-//! `REXON_UPDATE_GOLDEN=1` — переснять.
+//! The parse result of the whole fake home is checked against the golden file
+//! `golden/axon_library.json` (home paths replaced with `$HOME`);
+//! `REXON_UPDATE_GOLDEN=1` — recapture.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use rexon_core::axon_library as ax;
 use serde_json::{json, Value};
 
-/// Пустой каталог для одного теста.
+/// An empty directory for one test.
 fn bench(name: &str) -> PathBuf {
     let d = Path::new(env!("CARGO_TARGET_TMPDIR")).join("axon_library").join(name);
     let _ = fs::remove_dir_all(&d);
@@ -34,8 +34,8 @@ fn axon_root(prefix: &Path, user: &str) -> PathBuf {
     prefix.join("drive_c/users").join(user).join("AppData/Local/Razer/RazerAxon")
 }
 
-/// Конфиг скачанных обоев: новый вид (`WallPaperType`, в строку) либо
-/// старый (`Type`, с отступами).
+/// Config of a downloaded wallpaper: the new form (`WallPaperType`, on one line) or
+/// the old one (`Type`, indented).
 fn resource_config(kind: &str, source: &str, old: bool) -> String {
     let source = source.replace('\\', "\\\\");
     if old {
@@ -50,7 +50,7 @@ fn download(dir: &Path, kind: &str, file: &str, old: bool) {
     put(&dir.join("Resource").join(file), "контейнер");
 }
 
-/// Запись библиотеки.
+/// A library entry.
 fn entry(id: &str, title: &str, type_key: &str, kind: &str, extra: Value) -> Value {
     let mut v = json!({
         "Id": id,
@@ -71,8 +71,8 @@ fn entry(id: &str, title: &str, type_key: &str, kind: &str, extra: Value) -> Val
     v
 }
 
-/// Подставной дом: `~/.wine` с Axon (вход выполнен + гость), префикс
-/// Proton с битой библиотекой, бутылка Bottles без Axon.
+/// Fake home: `~/.wine` with Axon (logged in + guest), a Proton
+/// prefix with a broken library, a Bottles bottle without Axon.
 fn home_with_axon(home: &Path) {
     let wine = home.join(".wine");
     let root = axon_root(&wine, "wehrwolfmann");
@@ -92,12 +92,12 @@ fn home_with_axon(home: &Path) {
             "Downloads": 9218,
             "PlayEffects": {"Brightness": "0.8", "PlayRate": 1.5, "Hue": null},
         })),
-        // Путь показа пуст, разрешение есть — каталог по `{Id}{H}{W}`.
+        // The display path is empty, the resolution is there — the directory by `{Id}{H}{W}`.
         entry("10038", "The Beauty of Space", "Type", "VIDEO", json!({
             "Resolution": "3840x2160",
             "WallPaperStatus": "Playing",
         })),
-        // ИИ-обои: номер творения и `PaperType`; свойства — строкой JSON.
+        // Generated wallpapers: the creation number and `PaperType`; properties as a JSON string.
         entry("13300", "Skyline GTR", "Type", "VIDEO", json!({
             "Audible": "1",
             "DetailId": 5,
@@ -106,7 +106,7 @@ fn home_with_axon(home: &Path) {
             "IsMute": true,
             "PlayEffects": "{\"WallpaperFillingMode\":\"Fill\"}",
         })),
-        // Новый ключ типа в библиотеке.
+        // The new type key in the library.
         entry("13479", "Neo Rey by Night", "WallPaperType", "IMAGE", json!({
             "Resolution": "3840x2400",
             "WallPaperStatus": "Installed",
@@ -115,7 +115,7 @@ fn home_with_axon(home: &Path) {
             "EffectType": "Static",
         })),
         entry("14001", "Web demo", "WallPaperType", "WEB", json!({})),
-        // Записи без номера пропускаются.
+        // Entries without a number are skipped.
         {"Title": "без номера"},
     ]);
     put(&account.join(ax::LIBRARY_FILE), &format!("{BOM}{lib}"));
@@ -138,24 +138,24 @@ fn home_with_axon(home: &Path) {
     );
     download(&store.join("1203421603840"), "VIDEO", "3840x2160.mp4", false);
     download(&store.join("1003821603840"), "VIDEO", "RazerSpace_3840x2160.mp4", false);
-    // Раскладка стороннего загрузчика (`{Id}`), старый ключ `Type`.
+    // Layout of a third-party downloader (`{Id}`), the old `Type` key.
     download(&store.join("10038"), "VIDEO", "RazerSpace_3840x2160.mp4", true);
     download(&store.join("1347924003840"), "IMAGE", "3840x2400.jpg", false);
-    // Служебные каталоги без описания — не обои.
+    // Service directories without a description are not wallpapers.
     fs::create_dir_all(store.join("ResourceTmp/12034")).unwrap();
     fs::create_dir_all(store.join("Extracted")).unwrap();
-    // Гость (до входа): старая библиотека с теми же обоями под другим именем.
+    // Guest (before login): the old library with the same wallpapers under a different name.
     let guest = root.join("guest-2b48d659");
     put(&guest.join(ax::LIBRARY_FILE), &json!([entry("12034", "Skyline (гость)", "Type", "VIDEO", json!({}))]).to_string());
     let old = fs::File::options().write(true).open(guest.join(ax::LIBRARY_FILE)).unwrap();
     old.set_modified(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000)).unwrap();
-    // Гость без библиотеки — не учётная запись.
+    // A guest without a library is not an account.
     put(&root.join("guest-0000/UserSetting"), "{}");
 
-    // Proton: битая библиотека — в журнал, остальное читается.
+    // Proton: a broken library goes to the log, the rest is read.
     let pfx = home.join(".local/share/Steam/steamapps/compatdata/1493710/pfx");
     put(&axon_root(&pfx, "steamuser").join("RZR_x/WallPaperData"), "[{\"Id\": \"1\",");
-    // Bottles без Axon.
+    // Bottles without Axon.
     fs::create_dir_all(home.join(".local/share/bottles/bottles/Games/drive_c/users/u")).unwrap();
 }
 
@@ -172,7 +172,7 @@ fn summary(home: &Path, lib: &ax::AxonLibrary) -> Value {
         "found": lib.found,
         "sourceDirs": lib.source_dirs.iter().map(|d| d.to_string_lossy().replace(&h, "$HOME")).collect::<Vec<_>>(),
         "problems": lib.problems.iter().map(|p| {
-            // Текст ошибки разбора — от serde, сверяем только файл.
+            // The parse error text comes from serde; we check only the file.
             p.split(": ").next().unwrap_or("").replace(&h, "$HOME")
         }).collect::<Vec<_>>(),
         "wallpapers": lib.wallpapers.iter().map(|w| json!({
@@ -259,11 +259,11 @@ fn golden_library_of_fake_home() {
     english();
     let home = bench("golden");
     home_with_axon(&home);
-    // Ручная папка без библиотеки рядом: номер — из имени каталога.
+    // A manual folder without a library next to it: the number comes from the directory name.
     let manual = home.join("Copies/AxonCopy/WallpaperSource");
     download(&manual.join("1349424003840"), "IMAGE", "3840x2400.jpg", false);
     download(&manual.join("777"), "VIDEO", "clip.mp4", true);
-    // Те же обои, что уже в префиксе, — без повтора.
+    // The same wallpapers that are already in the prefix — without a repeat.
     download(&manual.join("1203421603840"), "VIDEO", "3840x2160.mp4", false);
     let mut env = ax::AxonEnv::with_home(&home);
     env.source_dirs = vec![manual.clone(), home.join("нет-такой")];
@@ -278,14 +278,14 @@ fn prefixes_are_found_without_walking_the_disk() {
     put(&home.join("Games/umu/umu-default/drive_c/.keep"), "");
     let other = bench("prefixes-env");
     fs::create_dir_all(other.join("drive_c")).unwrap();
-    // Префикс Lutris из описания игры.
+    // A Lutris prefix from the game description.
     let lutris = bench("prefixes-lutris");
     fs::create_dir_all(lutris.join("drive_c")).unwrap();
     put(
         &home.join(".config/lutris/games/axon-1.yml"),
         &format!("game:\n  exe: x.exe\n  prefix: '{}'\n", lutris.display()),
     );
-    // Глубже одного уровня не ищем.
+    // We do not search deeper than one level.
     fs::create_dir_all(home.join("Games/a/b/drive_c")).unwrap();
     let mut env = ax::AxonEnv::with_home(&home);
     env.wineprefix = Some(other.clone());
@@ -301,7 +301,7 @@ fn prefixes_are_found_without_walking_the_disk() {
         assert!(found.contains(&want), "{want:?} не найден: {found:?}");
     }
     assert!(!found.contains(&home.join("Games/a/b")));
-    // Каталоги Axon — только с библиотекой.
+    // Axon directories — only with a library.
     let roots = ax::find_roots(&env);
     assert_eq!(roots.len(), 2, "{roots:?}");
 }
@@ -310,17 +310,17 @@ fn prefixes_are_found_without_walking_the_disk() {
 fn source_shows_only_with_axon_or_a_chosen_folder() {
     use rexon_core::axon_window::show_source;
     let empty = bench("tab-empty");
-    // Префикс Wine есть, Axon в нём нет — источника нет.
+    // There is a Wine prefix, but no Axon in it — no source.
     fs::create_dir_all(empty.join(".wine/drive_c/users/u")).unwrap();
     assert!(!show_source(&ax::AxonEnv::with_home(&empty)));
-    // Каталог Axon без библиотеки (не входил ни разу) — тоже нет.
+    // An Axon directory without a library (never logged in) — none either.
     put(&axon_root(&empty.join(".wine"), "u").join("guest-0/UserSetting"), "{}");
     assert!(!show_source(&ax::AxonEnv::with_home(&empty)));
-    // Папка, указанная вручную, держит источник, даже если её уже нет.
+    // A folder given by hand keeps the source even if it is already gone.
     let mut env = ax::AxonEnv::with_home(&empty);
     env.source_dirs = vec![empty.join("пропавшая")];
     assert!(show_source(&env));
-    // Axon с библиотекой найден сам.
+    // Axon with a library is found by itself.
     let home = bench("tab-axon");
     home_with_axon(&home);
     assert!(show_source(&ax::AxonEnv::with_home(&home)));
@@ -391,7 +391,7 @@ fn playlist_setting_reads_timer_order_mode_and_pauses() {
     assert!(!s.pause_when_fullscreen && s.pause_all_when_game_fullscreen);
     assert_eq!(s.default_volume, 100, "громкость не выше 100");
     assert_eq!((s.playlists[0].volume, s.playlists[0].stopped), (30, true));
-    // Голый файл: «Никогда», по порядку, разные обои на экранах.
+    // A bare file: «Никогда», in order, different wallpapers on the screens.
     let bare = ax::parse_playlist_setting("{\"PlayLists\": [{\"SwitchIntervalSeconds\": 1}]}").unwrap();
     assert_eq!(bare.switch_interval_seconds, ax::SWITCH_NEVER);
     assert_eq!((bare.play_order, bare.play_mode), (ax::PlayOrder::Ordered, ax::PlayMode::Separate));
@@ -446,7 +446,7 @@ fn chosen_folder_is_checked() {
     assert_eq!(ax::check_source_dir(&d.join("Empty")), Err(ax::folder_not_axon_text()));
     download(&d.join("WallpaperSource/1203421603840"), "VIDEO", "3840x2160.mp4", false);
     assert_eq!(ax::check_source_dir(&d.join("WallpaperSource")), Ok(d.join("WallpaperSource")));
-    // Выбрали каталог одних обоев — берём папку над ним.
+    // The directory of a single wallpaper was chosen — take the folder above it.
     assert_eq!(
         ax::check_source_dir(&d.join("WallpaperSource/1203421603840")),
         Ok(d.join("WallpaperSource"))
@@ -490,9 +490,9 @@ fn settings_list_without_repeats() {
     assert!(ax::saved_source_dirs(&serde_json::Map::new()).is_empty());
 }
 
-// ── Подготовка к показу ─────────────────────────────────────────────────
+// ── Preparing for display ───────────────────────────────────────────────
 
-/// Подменная подготовка: кладёт файл `name` в каталог кэша и считает вызовы.
+/// Fake preparation: puts the file `name` into the cache directory and counts the calls.
 struct Fake {
     name: &'static str,
     calls: AtomicUsize,
@@ -540,12 +540,12 @@ fn prepare_uses_extractor_once_then_cache() {
     let again = ax::prepare(sky, Some(&fake), &cache).unwrap();
     assert_eq!(again, got);
     assert_eq!(fake.calls.load(Ordering::SeqCst), 1, "второй раз — из кэша");
-    // Контейнер сменился (Axon скачал заново) — готовим снова.
+    // The container changed (Axon downloaded it again) — prepare again.
     let container = sky.container.clone().unwrap();
     fs::write(&container, "новый контейнер, другой размер").unwrap();
     ax::prepare(sky, Some(&fake), &cache).unwrap();
     assert_eq!(fake.calls.load(Ordering::SeqCst), 2);
-    // Картинка — «static», звука нет.
+    // A picture — "static", no sound.
     let pic = ax::prepare(lib.get("13479").unwrap(), Some(&Fake::ok("3840x2400.jpg")), &cache).unwrap();
     assert_eq!((pic.format, pic.audio), ("static", false));
 }
@@ -572,15 +572,15 @@ fn prepare_refusals_have_human_reasons() {
         let f = Fake { result: Some(err), ..Fake::ok("x.mp4") };
         assert_eq!(ax::prepare(sky, Some(&f), &cache), Err(want));
     }
-    // Файл вне выданного каталога — не верим.
+    // A file outside the given directory — not trusted.
     let f = Fake { outside: true, ..Fake::ok("x.mp4") };
     assert_eq!(ax::prepare(sky, Some(&f), &cache), Err(ax::prepare_failed_text("Skyline")));
-    // Файл неизвестного вида.
+    // A file of an unknown kind.
     assert_eq!(
         ax::prepare(sky, Some(&Fake::ok("x.bin")), &cache),
         Err(ax::kind_unsupported_text("Skyline"))
     );
-    // Тексты отказов не говорят о внутреннем устройстве файлов Axon.
+    // The refusal texts say nothing about the internals of Axon files.
     for t in [ax::unavailable_text(), ax::prepare_failed_text("S"), ax::damaged_text("S")] {
         let low = t.to_lowercase();
         for word in ["module", "decrypt", "encrypt", "password", "key"] {
@@ -594,13 +594,13 @@ fn builtin_extractor_through_prepare() {
     english();
     let (home, lib) = library("builtin");
     let cache = home.join(".cache/rexon/axon");
-    // Подставной файл без шифрования (старая раскладка) — копируется как есть.
+    // A fake file without encryption (the old layout) — copied as is.
     let sky = lib.get("12034").unwrap();
     let ex = ax::default_extractor();
     let got = ax::prepare(sky, Some(ex.as_ref()), &cache).unwrap();
     assert_eq!(got.path, cache.join("12034/3840x2160.mp4"));
     assert_eq!(fs::read_to_string(&got.path).unwrap(), "контейнер");
-    // Объявлена неизвестная схема — «вид не поддерживается».
+    // An unknown scheme is declared — "the kind is not supported".
     let dir = sky.resource_dir.clone().unwrap();
     put(
         &dir.join(ax::RESOURCE_CONFIG),
@@ -608,7 +608,7 @@ fn builtin_extractor_through_prepare() {
     );
     fs::write(sky.container.as_ref().unwrap(), "другой").unwrap();
     assert_eq!(ax::prepare(sky, Some(ex.as_ref()), &cache), Err(ax::kind_unsupported_text("Skyline")));
-    // Объявлен ZIP, а лежит не ZIP — «файлы неполные».
+    // ZIP is declared, but what lies there is not ZIP — "the files are incomplete".
     put(
         &dir.join(ax::RESOURCE_CONFIG),
         r#"{"WallPaperType":"VIDEO","Source":"Resource/3840x2160.mp4","SourceEncryptedTypes":"ZIP"}"#,

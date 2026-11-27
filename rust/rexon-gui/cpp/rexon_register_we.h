@@ -1,32 +1,38 @@
-// Регистрация Rust-типов rexon-gui в QML-модуле вендорного интерфейса
-// waywallen (`waywallen.ui`). Зовётся из Rust-обёртки `register_we_types`
-// (src/lib.rs) при подготовке процесса (`we_env::prepare_process`).
+// Registration of rexon-gui Rust types in the QML module of waywallen's
+// vendored interface (`waywallen.ui`). Called from the Rust wrapper
+// `register_we_types` (src/lib.rs) while preparing the process
+// (`we_env::prepare_process`).
 //
-// Регистрация именно императивная, а не через QML-модуль `org.rexon.gui`:
-// вендорный QML импортирует `waywallen.ui`, и Rust-тип обязан встать под
-// тем же URI и тем же именем, что раньше занимал Python-класс.
+// The registration is imperative rather than through the `org.rexon.gui`
+// QML module: the vendored QML imports `waywallen.ui`, and a Rust type must
+// stand under the same URI and the same name that a Python class used to
+// occupy.
 #pragma once
 
 #include <QtCore/QString>
 
 extern "C" void rexon_do_register_we_types();
 
-/// Язык подписей плагинов демона — вслед за языком интерфейса.
+/// Language of the daemon's plugin labels — following the interface
+/// language.
 ///
-/// Оригинал делает это прямо в `App::setUiLanguage`
-/// (`PluginTranslationStore::instance()->setLocale(...)`): каталоги плагинов
-/// приходят на все языки сразу, и какой из них показывать, решает выбор
-/// покупателя. Дверь здесь, а не в шиме синглтонов, потому что тип
-/// `PluginTranslations` печатает cxx-qt и виден он только в этом файле.
+/// The original does this right in `App::setUiLanguage`
+/// (`PluginTranslationStore::instance()->setLocale(...)`): plugin catalogues
+/// arrive for all languages at once, and which one to show is decided by the
+/// customer's choice. The door is here rather than in the singletons shim
+/// because the `PluginTranslations` type is emitted by cxx-qt and is visible
+/// only in this file.
 ///
-/// `locale` — разрешённый язык в форме BCP 47 (`ru`, `zh-CN`).
+/// `locale` is the resolved language in BCP 47 form (`ru`, `zh-CN`).
 extern "C" void rexon_we_set_plugin_locale(const QString& locale);
 
-/// Перевод подписи плагина по её `localized_text` из схемы свойств обоины.
+/// Translating a plugin label by its `localized_text` from the wallpaper's
+/// property schema.
 ///
-/// Оригинал зовёт `PluginTranslationStore::instance()->translate(...)` прямо
-/// из модели свойств; у нас синглтон печатает cxx-qt и виден он только в
-/// `rexon_register_we.cpp`, поэтому дверь здесь. На входе — сырой JSON
-/// объекта `{pluginId, msgid}`; пустая строка на выходе означает «перевода
-/// нет», и модель показывает подпись из схемы.
+/// The original calls `PluginTranslationStore::instance()->translate(...)`
+/// right from the property model; for us the singleton is emitted by cxx-qt
+/// and is visible only in `rexon_register_we.cpp`, so the door is here. The
+/// input is the raw JSON of a `{pluginId, msgid}` object; an empty string on
+/// output means "no translation", and the model shows the label from the
+/// schema.
 QString rexon_we_plugin_translate(const QString& message_json);

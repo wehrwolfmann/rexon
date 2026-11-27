@@ -1,29 +1,31 @@
-//! Заставка Rexon для экрана простоя Steam Big Picture (этап 1 заставки при
-//! простое).
+//! Rexon screensaver for the Steam Big Picture idle screen (stage 1 of the idle
+//! screensaver).
 //!
-//! Steam ищет свои заставки в папках
-//! `<Steam>/config/uioverrides/screensavers/<имя>/index.html` и показывает их
-//! в «Настройки → Кастомизация → Скринсейвер» как «<имя> (пользовательский)».
-//! Страницу Steam открывает в своём браузере, на отдельном хосте; доступа к
-//! диску у неё нет, а адреса относительные. Поэтому Rexon кладёт в папку
-//! УМЕНЬШЕННЫЕ КОПИИ картинок плоским списком рядом с `index.html` (как
-//! устроена встроенная заставка Steam: файлы рядом со страницей) и
-//! `manifest.js` с их списком. Скрипт, а не JSON: `<script src>` грузится и
-//! в Steam, и в обычном браузере с `file://`, где `fetch` локального JSON
-//! запрещён.
+//! Steam looks for its screensavers in the folders
+//! `<Steam>/config/uioverrides/screensavers/<name>/index.html` and shows them in
+//! "Settings → Customization → Screensaver" as "<name> (User Created)". Steam
+//! opens the page in its own browser, on a separate host; it has no disk access,
+//! and the addresses are relative. So Rexon puts DOWNSCALED COPIES of the
+//! pictures into the folder as a flat list next to `index.html` (the way the
+//! built-in Steam screensaver is laid out: files next to the page) and
+//! `manifest.js` with their list. A script, not JSON: `<script src>` loads both
+//! in Steam and in a regular browser with `file://`, where `fetch` of a local
+//! JSON is forbidden.
 //!
-//! Что берём: арт недавних игр (`LastPlayed` в `localconfig.vdf`, картинки
-//! `appcache/librarycache/<appid>/`, свой арт из `userdata/<id>/config/grid`
-//! важнее) и последние скриншоты (`userdata/<id>/760/screenshots.vdf`).
+//! What we take: art of recent games (`LastPlayed` in `localconfig.vdf`, the
+//! pictures in `appcache/librarycache/<appid>/`, own art from
+//! `userdata/<id>/config/grid` takes precedence) and the latest screenshots
+//! (`userdata/<id>/760/screenshots.vdf`).
 //!
-//! ⛔ Выбор заставки в Steam (`screensaver_current_id`) Rexon НЕ трогает:
-//! заставку выбирает сам человек в настройках Steam. Чужие папки заставок не
-//! трогаются: своя папка опознаётся по файлу-метке [`MARKER_FILE`], без неё
-//! папку с нашим именем Rexon не перепишет и не удалит. Логотип Steam Rexon
-//! не рисует (товарный знак Valve) — только свой логотип и логотипы игр.
+//! ⛔ Rexon does NOT touch the screensaver choice in Steam
+//! (`screensaver_current_id`): the person picks the screensaver in the Steam
+//! settings. Other screensaver folders are not touched: our folder is recognized
+//! by the marker file [`MARKER_FILE`]; without it Rexon will neither overwrite
+//! nor delete a folder with our name. Rexon does not draw the Steam logo (a Valve
+//! trademark) — only its own logo and game logos.
 //!
-//! Разбор и план — чистые функции; исполнение ([`install`], [`remove`],
-//! [`status`]) — в конце модуля.
+//! Parsing and the plan are pure functions; execution ([`install`], [`remove`],
+//! [`status`]) is at the end of the module.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -33,63 +35,65 @@ use serde_json::{json, Value};
 
 use crate::i18n::{ntr, tr, trf};
 
-/// Имя папки заставки — его Steam и покажет в списке: «rexon (User Created)».
+/// Name of the screensaver folder — Steam shows it in the list: "rexon (User
+/// Created)".
 ///
-/// ⛔ Только строчные буквы. Steam открывает заставку по адресу
-/// `uioverride-<имя>.steamscreensavers.host`, а встроенный браузер приводит
-/// имя хоста к нижнему регистру: папку `Rexon` Steam ищет как `rexon`, на
-/// Linux не находит и показывает «Код ошибки: -105» (проверено живьём
+/// ⛔ Lowercase letters only. Steam opens the screensaver at the address
+/// `uioverride-<name>.steamscreensavers.host`, and the built-in browser
+/// lowercases the host name: Steam looks for the folder `Rexon` as `rexon`,
+/// doesn't find it on Linux and shows "Error code: -105" (verified live
 /// 09.11.2026, Steam Big Picture).
 pub const DIR_NAME: &str = "rexon";
-/// Прежние имена нашей папки (с заглавной — не открывались в Steam). Папку
-/// с меткой Rexon под таким именем установка и удаление убирают.
+/// Former names of our folder (with a capital letter — they did not open in
+/// Steam). Install and removal clean up a folder with the Rexon marker under
+/// such a name.
 pub const LEGACY_DIR_NAMES: &[&str] = &["Rexon"];
-/// ID, под которым Steam запоминает выбор этой заставки (`uioverride-<имя>`).
-/// Только для подсказок: сами мы его никуда не пишем.
+/// The ID under which Steam remembers choosing this screensaver
+/// (`uioverride-<name>`). For hints only: we never write it anywhere ourselves.
 pub const STEAM_ID: &str = "uioverride-rexon";
-/// Метка «папку сделал Rexon» + настройки, с которыми её собрали.
+/// The "Rexon made this folder" marker + the settings it was built with.
 pub const MARKER_FILE: &str = "rexon-screensaver.json";
-/// Версия раскладки папки.
+/// Version of the folder layout.
 pub const LAYOUT_VERSION: u32 = 1;
 
-/// Страница, стили и скрипт заставки — в бинаре, чтобы папка собиралась
-/// одинаково из дерева и из пакета.
+/// The page, styles and script of the screensaver are in the binary, so the
+/// folder is built the same way from the tree and from the package.
 pub const PAGE_HTML: &str = include_str!("../../../data/steam-screensaver/index.html");
 pub const PAGE_CSS: &str = include_str!("../../../data/steam-screensaver/screensaver.css");
 pub const PAGE_JS: &str = include_str!("../../../data/steam-screensaver/screensaver.js");
-/// Логотип Rexon для «прыгающего логотипа».
+/// Rexon logo for the "bouncing logo".
 pub const REXON_LOGO_PNG: &[u8] = include_bytes!("../../../rexon_icon_512.png");
 pub const REXON_LOGO_NAME: &str = "rexon-logo.png";
 
-/// Кадр слайд-шоу вписывается в это (Full HD хватает и Деку, и телевизору).
+/// A slideshow frame is fitted into this (Full HD is enough for both the Deck and a TV).
 pub const PHOTO_MAX: (u32, u32) = (1920, 1080);
-/// Логотип игры поверх кадра.
+/// Game logo over the frame.
 pub const LOGO_MAX: (u32, u32) = (960, 540);
-/// Размытый фон под вертикальной обложкой: мелкий, всё равно размыт.
+/// Blurred background under a vertical cover: small, it is blurred anyway.
 pub const BACKDROP_MAX: (u32, u32) = (640, 360);
 pub const JPEG_QUALITY: u8 = 85;
 
 // ============================================================================
-// Настройки
+// Settings
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
-    /// Арт недавних игр и скриншоты.
+    /// Art of recent games and screenshots.
     #[default]
     Slideshow,
-    /// Прыгающий логотип.
+    /// Bouncing logo.
     Bounce,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum LogoChoice {
-    /// Логотип Rexon (по умолчанию).
+    /// Rexon logo (default).
     #[default]
     Rexon,
-    /// Логотипы недавних игр по очереди.
+    /// Logos of recent games in turn.
     Games,
 }
 
@@ -101,7 +105,7 @@ pub struct Options {
     pub game_art: bool,
     pub screenshots: bool,
     pub clock: bool,
-    /// Длина кадра слайд-шоу, секунд.
+    /// Length of a slideshow frame, seconds.
     pub interval_s: u32,
     pub max_games: usize,
     pub max_screenshots: usize,
@@ -123,10 +127,10 @@ impl Default for Options {
 }
 
 // ============================================================================
-// Текстовый VDF (KeyValues)
+// Text VDF (KeyValues)
 // ============================================================================
 
-/// Узел текстового VDF: строка или вложенный блок (порядок ключей сохранён).
+/// A text VDF node: a string or a nested block (key order preserved).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Kv {
     Str(String),
@@ -134,7 +138,7 @@ pub enum Kv {
 }
 
 impl Kv {
-    /// Дочерний узел по ключу без учёта регистра (Steam пишет ключи по-разному).
+    /// Child node by key, case-insensitive (Steam writes keys in different ways).
     pub fn get(&self, key: &str) -> Option<&Kv> {
         match self {
             Kv::Obj(items) => items.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v),
@@ -161,9 +165,9 @@ impl Kv {
     }
 }
 
-/// Разбор текстового VDF в корневой блок. Битый хвост не роняет разбор:
-/// что успели прочитать — то и возвращаем (файлы Steam пишет сам, но
-/// обрезанный при сбое файл не должен ломать всю заставку).
+/// Parse a text VDF into the root block. A broken tail does not break parsing:
+/// whatever was read is returned (Steam writes the files itself, but a file
+/// truncated by a crash must not break the whole screensaver).
 pub fn parse_kv(text: &str) -> Kv {
     let tokens = kv_tokens(text);
     let mut pos = 0;
@@ -209,7 +213,7 @@ fn kv_tokens(text: &str) -> Vec<Tok> {
             }
             c if c.is_whitespace() => {}
             c => {
-                // Ключ без кавычек (встречается в старых файлах).
+                // A key without quotes (occurs in old files).
                 let mut s = String::from(c);
                 while let Some(&n) = it.peek() {
                     if n.is_whitespace() || n == '{' || n == '}' || n == '"' {
@@ -234,7 +238,7 @@ fn kv_block(tokens: &[Tok], pos: &mut usize) -> Vec<(String, Kv)> {
                 return items;
             }
             Tok::Open => {
-                // Блок без ключа — пропускаем его содержимое.
+                // A block without a key — skip its contents.
                 *pos += 1;
                 kv_block(tokens, pos);
             }
@@ -259,29 +263,29 @@ fn kv_block(tokens: &[Tok], pos: &mut usize) -> Vec<(String, Kv)> {
 }
 
 // ============================================================================
-// Что лежит у Steam
+// What Steam has
 // ============================================================================
 
-/// Скриншот из описи `760/screenshots.vdf`.
+/// A screenshot from the `760/screenshots.vdf` listing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Shot {
     pub appid: String,
-    /// Путь относительно `userdata/<id>/760/remote/`.
+    /// Path relative to `userdata/<id>/760/remote/`.
     pub filename: String,
-    /// Время снимка (unix).
+    /// Time of the shot (unix).
     pub creation: i64,
 }
 
-/// Опись скриншотов, свежие первыми. Ярлыки не-Steam игр (огромные id) и
-/// записи без файла пропускаются не здесь, а при сборке плана — по наличию
-/// файла.
+/// The screenshot listing, newest first. Shortcuts of non-Steam games (huge ids)
+/// and records without a file are skipped not here but when building the plan —
+/// by whether the file exists.
 pub fn parse_screenshots(text: &str) -> Vec<Shot> {
     let root = parse_kv(text);
     let Some(shots) = root.get("screenshots") else { return Vec::new() };
     let mut out = Vec::new();
     for (appid, block) in shots.entries() {
         if !appid.chars().all(|c| c.is_ascii_digit()) {
-            continue; // shortcutnames и прочие служебные блоки
+            continue; // shortcutnames and other service blocks
         }
         for (_, item) in block.entries() {
             let Some(filename) = item.str_at("filename") else { continue };
@@ -296,8 +300,8 @@ pub fn parse_screenshots(text: &str) -> Vec<Shot> {
     out
 }
 
-/// Недавно запущенные игры из `localconfig.vdf`: `(appid, LastPlayed)`,
-/// свежие первыми; без `LastPlayed` или с нулём — не «недавние».
+/// Recently launched games from `localconfig.vdf`: `(appid, LastPlayed)`,
+/// newest first; without `LastPlayed` or with zero — not "recent".
 pub fn parse_last_played(text: &str) -> Vec<(String, i64)> {
     let root = parse_kv(text);
     let Some(apps) = root.path(&["UserLocalConfigStore", "Software", "Valve", "Steam", "apps"]) else {
@@ -316,7 +320,7 @@ pub fn parse_last_played(text: &str) -> Vec<(String, i64)> {
     out
 }
 
-/// Пути библиотек из `steamapps/libraryfolders.vdf`.
+/// Library paths from `steamapps/libraryfolders.vdf`.
 pub fn parse_library_paths(text: &str) -> Vec<String> {
     let root = parse_kv(text);
     let Some(folders) = root.get("libraryfolders") else { return Vec::new() };
@@ -328,14 +332,14 @@ pub fn parse_library_paths(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Название игры из `appmanifest_<appid>.acf`.
+/// Game title from `appmanifest_<appid>.acf`.
 pub fn parse_manifest_name(text: &str) -> Option<String> {
     let root = parse_kv(text);
     let name = root.get("AppState")?.str_at("name")?.trim();
     (!name.is_empty()).then(|| name.to_string())
 }
 
-/// Картинки одной игры: имена файлов в её папке кэша или полные пути.
+/// Pictures of one game: file names in its cache folder or full paths.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Art {
     pub hero: Option<String>,
@@ -350,9 +354,9 @@ impl Art {
     }
 }
 
-/// Выбор картинок из листинга `appcache/librarycache/<appid>/`: сначала
-/// вариант на языке Steam (`*_russian.*`), потом базовый. Размытая копия hero
-/// (`library_hero_blur`) героем не считается.
+/// Picking pictures from the `appcache/librarycache/<appid>/` listing: first the
+/// variant in the Steam language (`*_russian.*`), then the base one. The blurred
+/// hero copy (`library_hero_blur`) does not count as a hero.
 pub fn pick_cache_art(names: &[String], steam_lang: &str) -> Art {
     let set: HashSet<&str> = names.iter().map(String::as_str).collect();
     let find = |stems: &[&str], exts: &[&str]| -> Option<String> {
@@ -381,8 +385,8 @@ pub fn pick_cache_art(names: &[String], steam_lang: &str) -> Art {
     }
 }
 
-/// Свой арт из `userdata/<id>/config/grid` (кнопка «Изменить картинку» в
-/// библиотеке): `<appid>_hero.*`, `<appid>_logo.*`, `<appid>p.*`, `<appid>.*`.
+/// Own art from `userdata/<id>/config/grid` (the "Set custom artwork" button in
+/// the library): `<appid>_hero.*`, `<appid>_logo.*`, `<appid>p.*`, `<appid>.*`.
 pub fn pick_grid_art(names: &[String], appid: &str) -> Art {
     let find = |stem: String| -> Option<String> {
         ["png", "jpg", "jpeg", "webp"]
@@ -398,7 +402,7 @@ pub fn pick_grid_art(names: &[String], appid: &str) -> Art {
     }
 }
 
-/// Свой арт поверх кэша: что задал человек, то и берём.
+/// Own art over the cache: whatever the person set is what we take.
 pub fn merge_art(grid: Art, cache: Art) -> Art {
     Art {
         hero: grid.hero.or(cache.hero),
@@ -409,21 +413,21 @@ pub fn merge_art(grid: Art, cache: Art) -> Art {
 }
 
 // ============================================================================
-// План: что показать и куда скопировать
+// Plan: what to show and where to copy it
 // ============================================================================
 
-/// Как уменьшать файл.
+/// How to downscale a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fit {
-    /// Кадр: вписать в [`PHOTO_MAX`], JPEG.
+    /// Frame: fit into [`PHOTO_MAX`], JPEG.
     Photo,
-    /// Логотип: вписать в [`LOGO_MAX`], PNG с прозрачностью.
+    /// Logo: fit into [`LOGO_MAX`], PNG with transparency.
     Logo,
-    /// Размытый фон под обложкой: [`BACKDROP_MAX`], размыть, JPEG.
+    /// Blurred background under a cover: [`BACKDROP_MAX`], blur, JPEG.
     Backdrop,
 }
 
-/// Одна копия: откуда, под каким именем в папке заставки и как ужать.
+/// One copy: from where, under which name in the screensaver folder and how to shrink it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Copy {
     pub src: PathBuf,
@@ -431,7 +435,7 @@ pub struct Copy {
     pub fit: Fit,
 }
 
-/// Игра-кандидат: найденный арт с полными путями.
+/// A candidate game: the found art with full paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameArt {
     pub appid: String,
@@ -439,7 +443,7 @@ pub struct GameArt {
     pub art: Art,
 }
 
-/// Скриншот с полным путём.
+/// A screenshot with its full path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShotFile {
     pub appid: String,
@@ -448,15 +452,15 @@ pub struct ShotFile {
     pub creation: i64,
 }
 
-/// Итог плана: список копий и манифест для страницы.
+/// Result of the plan: the list of copies and the manifest for the page.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plan {
     pub copies: Vec<Copy>,
     pub manifest: Value,
 }
 
-/// Собрать план из найденного. Кадры идут вперемешку: арт игры, скриншот,
-/// арт игры… — пока не кончится одно, потом остаток другого.
+/// Build the plan from what was found. Frames are interleaved: game art,
+/// screenshot, game art… — until one runs out, then the rest of the other.
 pub fn build_plan(games: &[GameArt], shots: &[ShotFile], opts: &Options, locale: &str) -> Plan {
     let mut copies: Vec<Copy> = Vec::new();
     let mut by_src: HashMap<(PathBuf, &'static str), String> = HashMap::new();
@@ -534,8 +538,8 @@ pub fn build_plan(games: &[GameArt], shots: &[ShotFile], opts: &Options, locale:
     Plan { copies, manifest }
 }
 
-/// Текст `manifest.js`. `</` экранируется, чтобы название игры не закрыло
-/// тег скрипта.
+/// Text of `manifest.js`. `</` is escaped so that a game title cannot close the
+/// script tag.
 pub fn manifest_js(manifest: &Value) -> String {
     let body = serde_json::to_string_pretty(manifest).unwrap_or_else(|_| "{}".into());
     format!(
@@ -545,7 +549,7 @@ pub fn manifest_js(manifest: &Value) -> String {
     )
 }
 
-/// Язык интерфейса → тег для `Intl` страницы (`ru_RU.UTF-8` → `ru-RU`).
+/// UI language → tag for the page's `Intl` (`ru_RU.UTF-8` → `ru-RU`).
 pub fn page_locale(ui_language: &str) -> String {
     let base = ui_language.split(['.', '@']).next().unwrap_or("").replace('_', "-");
     if base.is_empty() || base == "C" || base == "POSIX" {
@@ -555,19 +559,19 @@ pub fn page_locale(ui_language: &str) -> String {
     }
 }
 
-/// Папка заставок Steam в корне `root`.
+/// Steam screensavers folder in the root `root`.
 pub fn screensavers_dir(root: &Path) -> PathBuf {
     root.join("config").join("uioverrides").join("screensavers")
 }
 
-/// Папка заставки Rexon.
+/// The Rexon screensaver folder.
 pub fn target_dir(root: &Path) -> PathBuf {
     screensavers_dir(root).join(DIR_NAME)
 }
 
-/// Папки прежних имён с меткой Rexon. На файловой системе без учёта
-/// регистра прежнее имя — это та же папка, что и [`target_dir`]; её не
-/// считаем.
+/// Folders of former names with the Rexon marker. On a case-insensitive file
+/// system the former name is the same folder as [`target_dir`]; it is not
+/// counted.
 fn legacy_dirs(root: &Path) -> Vec<(PathBuf, Marker)> {
     let target = std::fs::canonicalize(target_dir(root)).ok();
     LEGACY_DIR_NAMES
@@ -578,8 +582,8 @@ fn legacy_dirs(root: &Path) -> Vec<(PathBuf, Marker)> {
         .collect()
 }
 
-/// Где лежит установленная заставка Rexon: своя папка или папка прежнего
-/// имени (до первого «Обновить»).
+/// Where the installed Rexon screensaver is: our own folder or the folder of the
+/// former name (until the first «Update Screensaver»).
 pub fn installed_dir(root: &Path) -> Option<PathBuf> {
     let target = target_dir(root);
     if read_marker(&target).is_some() {
@@ -588,18 +592,18 @@ pub fn installed_dir(root: &Path) -> Option<PathBuf> {
     legacy_dirs(root).into_iter().next().map(|(d, _)| d)
 }
 
-/// Корни Steam, куда можно поставить заставку: обычный и Flatpak (общий
-/// список [`crate::steam_token::steam_roots`], уже без дублей по realpath) —
-/// только настоящие установки клиента, где есть `config/`.
+/// Steam roots where the screensaver can be installed: the usual one and Flatpak
+/// (the shared list [`crate::steam_token::steam_roots`], already without
+/// duplicates by realpath) — only real client installations that have `config/`.
 pub fn steam_roots(home: &str) -> Vec<PathBuf> {
     crate::steam_token::steam_roots(home).into_iter().filter(|r| r.join("config").is_dir()).collect()
 }
 
 // ============================================================================
-// Исполнение
+// Execution
 // ============================================================================
 
-/// Метка папки: кто собрал, с какими настройками, что создали попутно.
+/// Folder marker: who built it, with which settings, what was created along the way.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Marker {
@@ -608,17 +612,17 @@ pub struct Marker {
     pub options: Options,
     pub slides: usize,
     pub updated: i64,
-    /// Папки, которых не было до Rexon (`uioverrides`, `screensavers`):
-    /// при удалении убираем их, если они пусты.
+    /// Folders that did not exist before Rexon (`uioverrides`, `screensavers`):
+    /// on removal we remove them if they are empty.
     pub created_dirs: Vec<String>,
 }
 
-/// Состояние в одном корне Steam.
+/// State in one Steam root.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Status {
     pub root: String,
     pub installed: bool,
-    /// Папка с нашим именем есть, но её сделал не Rexon — не трогаем.
+    /// A folder with our name exists, but Rexon did not make it — don't touch it.
     pub foreign: bool,
     pub slides: usize,
     pub updated: i64,
@@ -635,8 +639,8 @@ pub fn status(root: &Path) -> Status {
     let dir = target_dir(root);
     let own = read_marker(&dir);
     let foreign = own.is_none() && dir.exists();
-    // Папка прежнего имени: показываем как установленную, «Обновить»
-    // перенесёт её под новое имя с теми же настройками.
+    // Folder of the former name: shown as installed; «Update Screensaver» moves
+    // it under the new name with the same settings.
     let marker = own.or_else(|| legacy_dirs(root).into_iter().next().map(|(_, m)| m));
     Status {
         root: root.display().to_string(),
@@ -654,8 +658,9 @@ fn list_names(dir: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Аккаунт Steam (папка `userdata/<accountid>`) — тот, чей `localconfig.vdf`
-/// свежее; выбор тот же, что у вкладки ([`crate::qt_steam::pick_account`]).
+/// The Steam account (folder `userdata/<accountid>`) — the one whose
+/// `localconfig.vdf` is newer; the same choice as the tab's
+/// ([`crate::qt_steam::pick_account`]).
 pub fn active_account(root: &Path) -> Option<String> {
     let userdata = root.join("userdata");
     let entries: Vec<(String, f64)> = list_names(&userdata)
@@ -670,7 +675,7 @@ pub fn active_account(root: &Path) -> Option<String> {
     Some((id64 - crate::qt_steam::STEAMID64_BASE).to_string())
 }
 
-/// Названия игр по манифестам всех библиотек.
+/// Game titles from the manifests of all libraries.
 fn game_titles(root: &Path) -> HashMap<String, String> {
     let mut libs = vec![root.display().to_string()];
     if let Ok(t) = std::fs::read_to_string(root.join("steamapps/libraryfolders.vdf")) {
@@ -695,7 +700,7 @@ fn game_titles(root: &Path) -> HashMap<String, String> {
     out
 }
 
-/// Собрать кандидатов с диска Steam (только чтение).
+/// Collect candidates from the Steam disk (read-only).
 pub fn collect(root: &Path, steam_lang: &str) -> (Vec<GameArt>, Vec<ShotFile>) {
     let Some(account) = active_account(root) else { return (Vec::new(), Vec::new()) };
     let user = root.join("userdata").join(&account);
@@ -728,7 +733,7 @@ pub fn collect(root: &Path, steam_lang: &str) -> (Vec<GameArt>, Vec<ShotFile>) {
         };
         let art = merge_art(grid_art, cache_art);
         if art.is_empty() {
-            continue; // инструменты и рантаймы без арта
+            continue; // tools and runtimes without art
         }
         games.push(GameArt { title: title_of(&appid), appid, art });
     }
@@ -744,7 +749,7 @@ pub fn collect(root: &Path, steam_lang: &str) -> (Vec<GameArt>, Vec<ShotFile>) {
     (games, shots)
 }
 
-/// Уменьшить картинку под заставку.
+/// Downscale a picture for the screensaver.
 pub fn write_fitted(src: &Path, out: &Path, fit: Fit) -> Result<(), String> {
     let img = image::ImageReader::open(src)
         .and_then(|r| r.with_guessed_format())
@@ -773,7 +778,7 @@ pub fn write_fitted(src: &Path, out: &Path, fit: Fit) -> Result<(), String> {
     }
 }
 
-/// Итог установки в одном корне.
+/// Result of the install in one root.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InstallReport {
     pub root: String,
@@ -789,9 +794,9 @@ fn now_unix() -> i64 {
         .unwrap_or(0)
 }
 
-/// Записать готовую папку заставки (страница, логотип, копии, манифест,
-/// метка) в `dir`, которой ещё нет. Кадры, чьи картинки не открылись,
-/// из манифеста выкидываются. Возвращает (кадров, пропущено).
+/// Write the finished screensaver folder (page, logo, copies, manifest, marker)
+/// into `dir`, which does not exist yet. Frames whose pictures could not be
+/// opened are dropped from the manifest. Returns (frames, skipped).
 pub fn write_folder(dir: &Path, plan: &Plan, marker: &Marker) -> Result<(usize, usize), String> {
     std::fs::create_dir_all(dir).map_err(|e| trf("couldn't create %1: %2", &[&dir.display(), &e]))?;
     let put = |name: &str, data: &[u8]| {
@@ -834,11 +839,12 @@ pub fn write_folder(dir: &Path, plan: &Plan, marker: &Marker) -> Result<(usize, 
     Ok((slides, skipped))
 }
 
-/// Поставить или обновить заставку в корне Steam `root`.
+/// Install or update the screensaver in the Steam root `root`.
 ///
-/// Папка собирается рядом во временной и подменяется целиком: Steam,
-/// открывший заставку в эту минуту, не увидит полупустую папку. Чужую папку
-/// с нашим именем (без метки) не трогаем.
+/// The folder is built next to it in a temporary one and swapped in whole: a
+/// Steam that opened the screensaver at that minute won't see a half-empty
+/// folder. Someone else's folder with our name (without the marker) is not
+/// touched.
 pub fn install(root: &Path, opts: &Options, steam_lang: &str, locale: &str) -> Result<InstallReport, String> {
     let parent = screensavers_dir(root);
     let target = target_dir(root);
@@ -849,7 +855,7 @@ pub fn install(root: &Path, opts: &Options, steam_lang: &str, locale: &str) -> R
             &[&target.display()],
         ));
     }
-    // Какие папки создаём впервые — чтобы при удалении вернуть как было.
+    // Which folders we create for the first time — to restore things as they were on removal.
     let legacy = legacy_dirs(root);
     let old_marker = old_marker.or_else(|| legacy.first().map(|(_, m)| m.clone()));
     let mut created_dirs = old_marker.as_ref().map(|m| m.created_dirs.clone()).unwrap_or_default();
@@ -890,7 +896,7 @@ pub fn install(root: &Path, opts: &Options, steam_lang: &str, locale: &str) -> R
         })?;
     }
     if let Err(e) = std::fs::rename(&staging, &target) {
-        // Вернуть прежнюю папку на место.
+        // Put the previous folder back.
         let _ = std::fs::rename(&old, &target);
         let _ = std::fs::remove_dir_all(&staging);
         return Err(trf("couldn't replace %1: %2", &[&target.display(), &e]));
@@ -902,9 +908,9 @@ pub fn install(root: &Path, opts: &Options, steam_lang: &str, locale: &str) -> R
     Ok(InstallReport { root: root.display().to_string(), dir: target.display().to_string(), slides, skipped })
 }
 
-/// Удалить заставку Rexon из корня `root`. `Ok(false)` — её там не было.
-/// Папки `uioverrides`/`screensavers`, созданные Rexon, убираются, только
-/// если в них больше ничего нет.
+/// Remove the Rexon screensaver from the root `root`. `Ok(false)` — it was not
+/// there. The `uioverrides`/`screensavers` folders created by Rexon are removed
+/// only if nothing else is left in them.
 pub fn remove(root: &Path) -> Result<bool, String> {
     let target = target_dir(root);
     let own = read_marker(&target);
@@ -922,8 +928,8 @@ pub fn remove(root: &Path) -> Result<bool, String> {
     for (d, _) in &found {
         std::fs::remove_dir_all(d).map_err(|e| trf("couldn't remove %1: %2", &[&d.display(), &e]))?;
     }
-    // Сначала вложенная (screensavers), потом uioverrides; remove_dir не
-    // тронет непустую папку.
+    // First the nested one (screensavers), then uioverrides; remove_dir won't
+    // touch a non-empty folder.
     let mut dirs = marker.created_dirs.clone();
     dirs.sort_by_key(|d| std::cmp::Reverse(d.len()));
     for d in dirs {
@@ -935,7 +941,7 @@ pub fn remove(root: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
-/// Подсказка человеку: где выбрать заставку в Steam.
+/// Hint for the person: where to choose the screensaver in Steam.
 pub fn how_to_select() -> String {
     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("In Steam Big Picture open Settings → Customization → Screensaver and choose «rexon (User Created)». \
@@ -943,18 +949,18 @@ pub fn how_to_select() -> String {
 }
 
 // ============================================================================
-// Подвкладка «Заставка» вкладки «Steam»: выборы, подписи, разбор настроек
+// The «🌙 Screensaver» subtab of the «Steam» tab: choices, captions, settings parsing
 // ============================================================================
 //
-// Разметка (`SteamScreensaverSection.qml`) и её исполнитель
-// (`rexon-gui::steam_screensaver_actions`) ничего не решают: варианты,
-// пределы и все фразы для человека — здесь.
+// The markup (`SteamScreensaverSection.qml`) and its executor
+// (`rexon-gui::steam_screensaver_actions`) decide nothing: the options, limits
+// and all phrases for the person are here.
 
-/// Пределы длины кадра слайд-шоу, секунд (те же держит страница).
+/// Limits of the slideshow frame length, seconds (the page holds the same ones).
 pub const INTERVAL_MIN: u32 = 4;
 pub const INTERVAL_MAX: u32 = 60;
 
-/// Вариант выбора для разметки: ключ, подпись, пояснение.
+/// A choice option for the markup: key, caption, explanation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Choice {
     pub key: &'static str,
@@ -962,7 +968,7 @@ pub struct Choice {
     pub hint: String,
 }
 
-/// Что показывает заставка.
+/// What the screensaver shows.
 pub fn mode_choices() -> Vec<Choice> {
     vec![
         Choice {
@@ -978,8 +984,8 @@ pub fn mode_choices() -> Vec<Choice> {
     ]
 }
 
-/// Какой логотип прыгает. Логотипа Steam здесь нет и не будет: это
-/// товарный знак Valve.
+/// Which logo bounces. There is no Steam logo here and there won't be: it is a
+/// Valve trademark.
 pub fn logo_choices() -> Vec<Choice> {
     vec![
         Choice { key: "rexon", label: tr("Rexon logo"), hint: tr("Changes colour every time it hits an edge.") },
@@ -992,8 +998,8 @@ pub fn logo_choices() -> Vec<Choice> {
 }
 
 impl Options {
-    /// Настройки, присланные разметкой (JSON), поверх `base`. Незнакомое и
-    /// пустое берётся из `base`, длина кадра зажимается в пределы.
+    /// Settings sent by the markup (JSON) over `base`. Unknown and empty values are
+    /// taken from `base`, the frame length is clamped to the limits.
     pub fn from_ui(v: &Value, base: &Options) -> Options {
         let flag = |key: &str, dflt: bool| v.get(key).and_then(Value::as_bool).unwrap_or(dflt);
         let mode = match v.get("mode").and_then(Value::as_str) {
@@ -1023,7 +1029,7 @@ impl Options {
         }
     }
 
-    /// Настройки для разметки — те же ключи, что принимает [`Options::from_ui`].
+    /// Settings for the markup — the same keys that [`Options::from_ui`] accepts.
     pub fn to_ui(&self) -> Value {
         json!({
             "mode": self.mode,
@@ -1036,7 +1042,7 @@ impl Options {
     }
 }
 
-/// Как назвать корень Steam человеку: обычный или Flatpak.
+/// How to name a Steam root to the person: the usual one or Flatpak.
 pub fn root_label(root: &Path) -> String {
     if root.to_string_lossy().contains("/.var/app/com.valvesoftware.Steam/") {
         tr("Steam (Flatpak)")
@@ -1045,7 +1051,7 @@ pub fn root_label(root: &Path) -> String {
     }
 }
 
-/// Строка состояния подвкладки по всем корням Steam.
+/// Status line of the subtab across all Steam roots.
 pub fn status_text(statuses: &[Status]) -> String {
     if statuses.is_empty() {
         return tr("Steam was not found on this computer — install Steam and start it once.");
@@ -1063,7 +1069,7 @@ pub fn status_text(statuses: &[Status]) -> String {
     tr("⚪ Not installed yet.")
 }
 
-/// Что из найденного попадёт в слайд-шоу: (кадров с артом игр, скриншотов).
+/// What of the found will go into the slideshow: (frames with game art, screenshots).
 pub fn planned_counts(games: &[GameArt], shots: &[ShotFile], opts: &Options) -> (usize, usize) {
     let plan = build_plan(games, shots, opts, "en");
     let slides = plan.manifest["slides"].as_array().cloned().unwrap_or_default();
@@ -1071,7 +1077,7 @@ pub fn planned_counts(games: &[GameArt], shots: &[ShotFile], opts: &Options) -> 
     (art, slides.len() - art)
 }
 
-/// «Найдено в Steam: …» — сколько картинок наберётся.
+/// «Found in your Steam: …» — how many pictures there will be.
 pub fn found_text(art: usize, shots: usize) -> String {
     if art == 0 && shots == 0 {
         return tr("No game artwork or screenshots were found in Steam yet. Play a game or take a screenshot (F12) — \
@@ -1086,7 +1092,7 @@ pub fn found_text(art: usize, shots: usize) -> String {
     )
 }
 
-/// Сообщение после установки или обновления во все корни.
+/// Message after installing or updating into all roots.
 pub fn installed_message(reports: &[InstallReport], errors: &[String]) -> String {
     if reports.is_empty() {
         return errors.first().cloned().unwrap_or_else(|| tr("Steam was not found on this computer."));
@@ -1099,7 +1105,7 @@ pub fn installed_message(reports: &[InstallReport], errors: &[String]) -> String
     msg
 }
 
-/// Сообщение после удаления.
+/// Message after removal.
 pub fn removed_message(removed: usize, errors: &[String]) -> String {
     match (removed, errors.first()) {
         (_, Some(e)) => e.clone(),
@@ -1108,7 +1114,7 @@ pub fn removed_message(removed: usize, errors: &[String]) -> String {
     }
 }
 
-/// Подсказка, если заставки нет в списке Steam.
+/// Hint if the screensaver is not in the Steam list.
 pub fn restart_hint() -> String {
     tr("Not in the list? Close Steam completely and start it again.")
 }
@@ -1236,7 +1242,7 @@ mod tests {
         assert_eq!(slides[0]["logo"], "logo-001.png");
         assert_eq!(slides[2]["framed"], true);
         assert_eq!(slides[2]["backdrop"], "blur-001.jpg");
-        // Все копии плоско рядом со страницей, без подпапок и выхода наружу.
+        // All copies flat next to the page, without subfolders and without escaping outside.
         assert!(p.copies.iter().all(|c| !c.name.contains('/') && !c.name.starts_with('.')));
         assert_eq!(p.manifest["logos"].as_array().unwrap().len(), 2);
         assert_eq!(p.manifest["mode"], "slideshow");
@@ -1248,7 +1254,7 @@ mod tests {
         let opts = Options { game_art: false, screenshots: false, mode: Mode::Bounce, logo: LogoChoice::Games, ..Options::default() };
         let p = build_plan(&[game("70", true)], &[], &opts, "en");
         assert!(p.manifest["slides"].as_array().unwrap().is_empty());
-        // Логотипы игр нужны прыгающему логотипу и без арта в слайд-шоу.
+        // Game logos are needed by the bouncing logo even without art in the slideshow.
         assert_eq!(p.manifest["logos"].as_array().unwrap().len(), 1);
         let many: Vec<GameArt> = (0..40).map(|i| game(&i.to_string(), true)).collect();
         let p = build_plan(&many, &[], &Options::default(), "en");
@@ -1294,7 +1300,7 @@ mod tests {
         d
     }
 
-    /// Мини-Steam: аккаунт, недавняя игра с артом, скриншот.
+    /// Mini Steam: an account, a recent game with art, a screenshot.
     fn fake_steam(name: &str) -> PathBuf {
         let root = scratch(name);
         let user = root.join("userdata/1234");
@@ -1323,7 +1329,7 @@ mod tests {
     #[test]
     fn install_update_remove_roundtrip() {
         let root = fake_steam("roundtrip");
-        // Чужая заставка рядом — не трогается.
+        // Someone else's screensaver next to it is not touched.
         let other = screensavers_dir(&root).join("Other");
         assert!(!root.join("config").exists());
         let r = install(&root, &Options::default(), "english", "en").unwrap();
@@ -1339,7 +1345,7 @@ mod tests {
         std::fs::create_dir_all(&other).unwrap();
         std::fs::write(other.join("index.html"), "x").unwrap();
 
-        // Обновление: настройки меняются, папка подменяется целиком.
+        // Update: the settings change, the folder is swapped in whole.
         let opts = Options { mode: Mode::Bounce, ..Options::default() };
         install(&root, &opts, "english", "en").unwrap();
         let st = status(&root);
@@ -1350,7 +1356,7 @@ mod tests {
         assert!(remove(&root).unwrap());
         assert!(!dir.exists());
         assert!(other.join("index.html").is_file(), "чужая заставка цела");
-        // screensavers не пуста (Other) — осталась.
+        // screensavers is not empty (Other) — it stayed.
         assert!(screensavers_dir(&root).is_dir());
         assert!(!remove(&root).unwrap());
         let _ = std::fs::remove_dir_all(&root);
@@ -1358,7 +1364,7 @@ mod tests {
 
     #[test]
     fn dir_name_is_lowercase() {
-        // Steam ищет папку по имени хоста, а имя хоста всегда строчное.
+        // Steam looks for the folder by the host name, and the host name is always lowercase.
         assert_eq!(DIR_NAME, DIR_NAME.to_lowercase());
         assert!(!LEGACY_DIR_NAMES.contains(&DIR_NAME));
     }
@@ -1366,7 +1372,7 @@ mod tests {
     #[test]
     fn legacy_folder_moves_on_update_and_goes_on_remove() {
         let root = fake_steam("legacy");
-        // Заставка прежней версии — в папке «Rexon».
+        // The screensaver of the previous version is in the "Rexon" folder.
         install(&root, &Options { mode: Mode::Bounce, ..Options::default() }, "english", "en").unwrap();
         let legacy = screensavers_dir(&root).join(LEGACY_DIR_NAMES[0]);
         std::fs::rename(target_dir(&root), &legacy).unwrap();
@@ -1375,13 +1381,13 @@ mod tests {
         assert_eq!(st.options.mode, Mode::Bounce);
         assert_eq!(installed_dir(&root).as_deref(), Some(legacy.as_path()));
 
-        // «Обновить» переносит под новое имя.
+        // «Update Screensaver» moves it under the new name.
         install(&root, &st.options, "english", "en").unwrap();
         assert!(read_marker(&target_dir(&root)).is_some());
         assert!(!legacy.exists(), "старая папка убрана");
         assert_eq!(installed_dir(&root), Some(target_dir(&root)));
 
-        // Удаление убирает и старую папку, если она вдруг осталась.
+        // Removal also clears the old folder if it happens to remain.
         std::fs::rename(target_dir(&root), &legacy).unwrap();
         assert!(remove(&root).unwrap());
         assert!(!legacy.exists() && !target_dir(&root).exists());
@@ -1434,14 +1440,14 @@ mod tests {
             ..base.clone()
         };
         assert_eq!(Options::from_ui(&o.to_ui(), &base), o);
-        // Пустое и незнакомое — из основы.
+        // Empty and unknown — from the base.
         assert_eq!(Options::from_ui(&json!({}), &o), o);
         assert_eq!(Options::from_ui(&json!({"mode": "steam", "logo": "steam"}), &base), base);
-        // Длина кадра — в пределах страницы.
+        // Frame length — within the page limits.
         assert_eq!(Options::from_ui(&json!({"interval": 1}), &base).interval_s, INTERVAL_MIN);
         assert_eq!(Options::from_ui(&json!({"interval": 999.4}), &base).interval_s, INTERVAL_MAX);
         assert_eq!(Options::from_ui(&json!({"interval": 12.6}), &base).interval_s, 13);
-        // Пределы разметки и страницы одни.
+        // The markup and page limits are the same.
         assert!(PAGE_JS.contains(&format!("Math.min({INTERVAL_MAX}, Math.max({INTERVAL_MIN},")));
     }
 
@@ -1454,7 +1460,7 @@ mod tests {
         for key in modes.iter().chain(&logos) {
             assert!(!key.contains("steam"), "логотип Steam не предлагаем");
         }
-        // Каждый ключ разбирается в настройку и возвращается тем же.
+        // Each key parses into a setting and comes back the same.
         for key in modes {
             assert_eq!(Options::from_ui(&json!({"mode": key}), &Options::default()).to_ui()["mode"], key);
         }

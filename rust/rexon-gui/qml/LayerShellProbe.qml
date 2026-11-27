@@ -1,12 +1,14 @@
-// Подопытное окно стенда слоя обоев: то же самое окно, что поднимает
-// действующий Python-путь (rexon/qml/WebWallpaper.qml), но слой ему ставит
-// Rust — через WallpaperLayer из org.rexon.gui, без Python в процессе.
+// Test subject window of the wallpaper layer test bench: the same window
+// that the active Python path brings up (rexon/qml/WebWallpaper.qml), but
+// the layer is set by Rust — through WallpaperLayer from org.rexon.gui,
+// without Python in the process.
 //
-// Окно намеренно почти прозрачное: стенд запускается на ЖИВОМ рабочем столе,
-// и заслонять обои Wehrwolfmann'а ему незачем. Виден только маленький ярлык
-// в центре, да и тот полторы секунды и в ФОНОВОМ слое, то есть под всеми
-// окнами. Обои пользователя стенд не трогает вообще — он лишь показывает
-// поверх них своё окно и закрывает его.
+// The window is deliberately almost transparent: the test bench runs on
+// the LIVE desktop, and it has no business covering Wehrwolfmann's
+// wallpaper. Only a small label in the centre is visible, and only for a
+// second and a half, in the BACKGROUND layer, i.e. below all windows. The
+// test bench does not touch the user's wallpaper at all — it only shows
+// its own window on top of it and closes it.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -16,9 +18,10 @@ import org.rexon.gui 1.0
 Window {
     id: root
 
-    // ⚠️ Порядок: окно создаётся НЕВИДИМЫМ, слой ставится в
-    // Component.onCompleted, и только потом visible = true. Наоборот нельзя —
-    // показанное окно уже стало обычным xdg_toplevel и в слой не переселится.
+    // Warning: order matters: the window is created INVISIBLE, the layer is
+    // set in Component.onCompleted, and only then visible = true. The other
+    // way round is impossible — a shown window has already become an ordinary
+    // xdg_toplevel and will not move into the layer.
     visible: false
     color: "transparent"
     flags: Qt.FramelessWindowHint
@@ -26,8 +29,9 @@ Window {
     height: Screen.height
     title: ""
 
-    // Настройщик слоя на Rust. Значения по умолчанию у него — уже слой обоев;
-    // applyWallpaperLayer() ставит канонический набор, не глядя на свойства.
+    // The Rust layer configurator. Its defaults are already the wallpaper
+    // layer; applyWallpaperLayer() sets the canonical set regardless of the
+    // properties.
     WallpaperLayer {
         id: layerShell
         scope: "rexon-layer-shell-selftest"
@@ -36,26 +40,29 @@ Window {
     property bool applied: false
     property bool reported: false
 
-    // ⚠️ Проверка на укус: стенд, который зеленеет всегда, ничего не
-    // доказывает. Здесь задаётся ЗАВЕДОМАЯ поломка слоя, и родительская
-    // половина стенда требует, чтобы прогон покраснел. Значение приходит
-    // из Rust через setInitialProperties (переменная REXON_LS_BITE), по
-    // умолчанию пусто — обычный прогон.
+    // Warning: a bite test: a test bench that is always green proves nothing.
+    // Here a KNOWN breakage of the layer is set up, and the parent half of the
+    // test bench requires the run to go red. The value comes from Rust through
+    // setInitialProperties (the REXON_LS_BITE variable); empty by default —
+    // a normal run.
     //
-    // Мутации не выдуманные: каждая — реальный способ испортить обои.
-    //   layer    — слой Top: обои встанут ПОВЕРХ окон;
-    //   anchors  — один якорь: обои не растянутся на экран;
-    //   zone     — зона 0: панели начнут отодвигать обои;
-    //   keyboard — обои перехватывают клавиатуру;
-    //   size     — якорей нет вовсе, окно 640×360 вместо экрана;
-    //   late     — слой ставится ПОСЛЕ показа окна: оно уже стало обычным
-    //              xdg_toplevel и в слой не переселится (грабля порядка).
+    // The mutations are not made up: each one is a real way to break a
+    // wallpaper.
+    //   layer    — layer Top: the wallpaper would sit ON TOP of windows;
+    //   anchors  — a single anchor: the wallpaper would not stretch over the
+    //              screen;
+    //   zone     — zone 0: panels would start pushing the wallpaper aside;
+    //   keyboard — the wallpaper grabs the keyboard;
+    //   size     — no anchors at all, a 640×360 window instead of the screen;
+    //   late     — the layer is set AFTER the window is shown: it has already
+    //              become an ordinary xdg_toplevel and will not move into the
+    //              layer (the ordering trap).
     property string bite: ""
 
     Component.onCompleted: {
         if (root.bite === "size") {
-            // Заведомо неверный размер: без якорей поверхность слоя берёт
-            // размер из set_size, и проверка «во весь экран» обязана пасть.
+            // A deliberately wrong size: without anchors the layer surface takes its
+            // size from set_size, and the "full screen" check must fail.
             root.width = 640;
             root.height = 360;
         }
@@ -70,7 +77,7 @@ Window {
         settle.start();
     }
 
-    // Ставит слой: канонический набор либо испорченный укусом.
+    // Sets the layer: the canonical set or one spoiled by the bite.
     function applyLayer() {
         switch (root.bite) {
         case "":
@@ -81,7 +88,7 @@ Window {
             layerShell.layer = 2;            // LayerTop
             break;
         case "anchors":
-            layerShell.anchors = 1;          // только верх
+            layerShell.anchors = 1;          // top only
             break;
         case "zone":
             layerShell.exclusionZone = 0;
@@ -94,21 +101,21 @@ Window {
             break;
         }
         if (root.bite === "size")
-            layerShell.anchors = 0;          // AnchorNone: размер решает окно
-        // Канонический слой ставится ТОЛЬКО в чистом прогоне: apply() берёт
-        // свойства объекта, то есть донесёт до композитора укус.
+            layerShell.anchors = 0;          // AnchorNone: the window decides the size
+        // The canonical layer is set ONLY in a clean run: apply() takes the
+        // object's properties, i.e. it would carry the bite to the compositor.
         return root.bite === ""
             ? layerShell.applyWallpaperLayer(root)
             : layerShell.apply(root);
     }
 
-    // Пауза на круг протокола: между показом окна и ответом композитора
-    // (configure) проходит несколько кадров, и без неё геометрия читалась бы
-    // до того, как KWin её выдал.
+    // Pause for a protocol round trip: several frames pass between showing the
+    // window and the compositor's reply (configure), and without it the
+    // geometry would be read before KWin handed it out.
     Timer {
         id: settle
-        // Значение ставится в Component.onCompleted: прогону с укусом
-        // столько ждать незачем, а окно висит на ЖИВОМ рабочем столе.
+        // The value is set in Component.onCompleted: a bite run has no reason to
+        // wait that long, and the window hangs on the LIVE desktop.
         interval: 1500
         repeat: false
         onTriggered: root.report()
@@ -121,9 +128,9 @@ Window {
 
         console.log("REXON-LS-APPLY applied=" + root.applied
                     + " available=" + layerShell.available());
-        // Обратное чтение из LayerShellQt: доказывает лишь, что сеттеры не
-        // проигнорированы. Настоящее доказательство — протокол, его разбирает
-        // родительский процесс стенда.
+        // Reading back from LayerShellQt only proves that the setters were not
+        // ignored. The real proof is the protocol; the parent process of the test
+        // bench parses it.
         console.log("REXON-LS-READBACK layer=" + layerShell.readLayer(root)
                     + " anchors=" + layerShell.readAnchors(root)
                     + " exclusionZone=" + layerShell.readExclusionZone(root)
@@ -133,19 +140,19 @@ Window {
                     + " screenW=" + Screen.width
                     + " screenH=" + Screen.height);
 
-        // Окно убирается ДО выхода, а не «когда-нибудь при завершении
-        // процесса»: на живом столе лишний кадр чужого окна — это уже дефект.
+        // The window is removed BEFORE exit, not "sometime when the process ends":
+        // on a live desktop an extra frame of a foreign window is already a defect.
         root.visible = false;
         Qt.exit(0);
     }
 
-    // Ярлык — чтобы прогон был виден человеку, а не только в журнале.
+    // The label makes the run visible to a human, not only in the log.
     Rectangle {
         anchors.centerIn: parent
         width: label.implicitWidth + 32
         height: label.implicitHeight + 20
         radius: 6
-        // Base/Text из скина steam_dark (правило #17).
+        // Base/Text from the steam_dark skin (rule #17).
         color: "#16202d"
         opacity: 0.85
 

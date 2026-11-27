@@ -1,74 +1,76 @@
-//! Сверка UI-паритета вкладки Wallpaper Engine с движком waywallen — порт
-//! `rexon/qt_wallpaper_engine/parity.py` (dev-инструмент, не для покупателя).
+//! UI parity check of the Wallpaper Engine tab against the waywallen engine —
+//! port of `rexon/qt_wallpaper_engine/parity.py` (a dev tool, not for the
+//! customer).
 //!
-//! Движок по управляющему протоколу (`RendererPluginList` →
-//! `RendererPluginInfo.settings: repeated SettingSchema`) отдаёт ПОЛНУЮ
-//! типизированную схему своих renderer-настроек. Это источник правды того,
-//! ЧТО движок умеет. Здесь:
+//! Over the control protocol (`RendererPluginList` →
+//! `RendererPluginInfo.settings: repeated SettingSchema`) the engine returns
+//! the FULL typed schema of its renderer settings. That is the source of truth
+//! for WHAT the engine can do. Here:
 //!
-//!   * [`REXON_SETTING_REGISTRY`] — машинно-сравнимый реестр того, что UI
-//!     Rexon реально показывает (ключи + ожидаемый тип/набор choices).
-//!     Настройка, которой в реестре нет, — «дыра» в UI.
-//!   * [`compare_schema`] — diff схемы движка с реестром: чего нет в UI,
-//!     что устарело в реестре, расхождения по типу/choices, неизвестные UI
-//!     типы значений.
-//!   * [`render_report_text`] — текстовый дамп отчёта (лог / панель вкладки).
+//!   * [`REXON_SETTING_REGISTRY`] — a machine-comparable registry of what the
+//!     Rexon UI really shows (keys + expected type/set of choices). A setting
+//!     missing from the registry is a «hole» in the UI.
+//!   * [`compare_schema`] — a diff of the engine schema against the registry:
+//!     what is missing in the UI, what is stale in the registry, type/choices
+//!     mismatches, value types unknown to the UI.
+//!   * [`render_report_text`] — a text dump of the report (log / tab panel).
 //!
-//! Ввод — уже разобранный `RendererPluginListResponse` из [`crate::proto`];
-//! всё остальное чистые функции без ввода-вывода. Единственный побочный
-//! эффект оригинала — чтение файла `proto/UPSTREAM_TAG` — вынесен в тонкую
-//! обёртку [`read_proto_upstream_tag`] над чистой [`proto_upstream_tag`]
-//! (та же граница, что у `favorites.rs`: ядро над содержимым, обёртка над
-//! путём).
+//! Input — an already parsed `RendererPluginListResponse` from
+//! [`crate::proto`]; everything else is pure functions without I/O. The
+//! original's only side effect — reading the `proto/UPSTREAM_TAG` file — is
+//! moved into a thin wrapper [`read_proto_upstream_tag`] over the pure
+//! [`proto_upstream_tag`] (the same boundary as in `favorites.rs`: the core
+//! over the contents, the wrapper over the path).
 //!
-//! ⚠️ Реестр описывает generic-рендер настроек: в Python-эпоху это была форма
-//! `_PluginSettingsDialog._make_field`, после QML-миграции — вендорный
-//! `ui/qml/component/settings/SettingField.qml` (тот же набор типов 1..5 и
-//! те же два спец-ключа `render_node`/`resolution`; неизвестный тип падает
-//! в `default: stringField`). Ссылка на удалённый `_PluginSettingsDialog` в
-//! оригинале устарела — здесь исправлена.
+//! ⚠️ The registry describes the generic settings renderer: in the Python era
+//! it was the `_PluginSettingsDialog._make_field` form, after the QML
+//! migration — the vendor `ui/qml/component/settings/SettingField.qml` (the
+//! same set of types 1..5 and the same two special keys
+//! `render_node`/`resolution`; an unknown type falls into
+//! `default: stringField`). The reference to the removed
+//! `_PluginSettingsDialog` in the original is stale — fixed here.
 //!
-//! ⚠ правило #16 — починенные при порте дефекты оригинала:
-//!   1. `proto_upstream_tag()` открывал файл как UTF-8 и ловил только
-//!      `OSError`. Битый байт в `UPSTREAM_TAG` давал `UnicodeDecodeError`
-//!      (это `ValueError`, не `OSError`) — исключение улетало наружу через
-//!      `_on_parity_resp`, и вся сверка паритета падала вместо честного
-//!      «тег не записан». Здесь чтение всегда lossy: тег читается как есть,
-//!      мусорные байты заменяются, сверка продолжается.
-//!   2. `daemon_matches_snapshot` резал префикс `v` через `str.lstrip("v")`
-//!      — это удаление МНОЖЕСТВА ведущих символов из набора, а не префикса:
-//!      `"vv0.2.6"` превращалось в `"0.2.6"` и совпадало с версией демона
-//!      `0.2.6`. Здесь снимается ровно один ведущий `v`.
+//! ⚠ rule #16 — defects of the original fixed during the port:
+//!   1. `proto_upstream_tag()` opened the file as UTF-8 and caught only
+//!      `OSError`. A broken byte in `UPSTREAM_TAG` gave `UnicodeDecodeError`
+//!      (that is a `ValueError`, not an `OSError`) — the exception flew out
+//!      through `_on_parity_resp`, and the whole parity check crashed instead
+//!      of an honest «tag not recorded». Here reading is always lossy: the tag
+//!      is read as is, garbage bytes are replaced, the check continues.
+//!   2. `daemon_matches_snapshot` cut the `v` prefix with `str.lstrip("v")` —
+//!      that removes a SET of leading characters, not a prefix: `"vv0.2.6"`
+//!      turned into `"0.2.6"` and matched daemon version `0.2.6`. Here exactly
+//!      one leading `v` is removed.
 //!
-//! Сохранённые квирки оригинала (осознанно, поведение не меняется):
-//!   * `TYPE_MISMATCH` не выдаётся, когда движок прислал НЕИЗВЕСТНЫЙ тип
-//!     (сторож `vt in KNOWN_VALUE_TYPES`) — про такую настройку уже сказано
-//!     через `UNKNOWN_TYPE`, а для спец-ключей не сказано ничего;
-//!   * сверка `choices` молчит, когда движок не объявил ни одного варианта,
-//!     и сравнивает МНОЖЕСТВА (порядок и дубли не важны);
-//!   * два renderer'а с одинаковым именем: в `renderers` попадут оба, а в
-//!     `engine_keys` останется набор ключей последнего (семантика `dict`).
+//! Kept quirks of the original (deliberately, behaviour does not change):
+//!   * `TYPE_MISMATCH` is not reported when the engine sent an UNKNOWN type
+//!     (the guard `vt in KNOWN_VALUE_TYPES`) — such a setting is already
+//!     reported via `UNKNOWN_TYPE`, and nothing is said for the special keys;
+//!   * the `choices` check stays silent when the engine declared no variants,
+//!     and compares SETS (order and duplicates do not matter);
+//!   * two renderers with the same name: both go into `renderers`, while
+//!     `engine_keys` keeps the key set of the last one (`dict` semantics).
 
 use crate::proto::control as pb;
 
-/// Известные UI типы значений — зеркало `enum SettingValueType` из proto.
-/// Порядок = возрастание номера: он виден в тексте отчёта
-/// (`известные: [1, 2, 3, 4, 5]`).
+/// Value types known to the UI — a mirror of `enum SettingValueType` from the
+/// proto. Order = ascending number: it is visible in the report text (the
+/// list of known types `[1, 2, 3, 4, 5]`).
 pub const KNOWN_VALUE_TYPES: &[(i32, &str)] = &[
     (1, "u32"),
     (2, "f32"),
     (3, "string"),
     (4, "bool"),
-    // SETTING_VALUE_TYPE_I32 (появился к v0.2.x; им демон отдаёт
-    // resolution-пресеты)
+    // SETTING_VALUE_TYPE_I32 (appeared by v0.2.x; the daemon returns
+    // resolution presets with it)
     (5, "i32"),
 ];
 
-/// Ключи со спец-виджетом (чипы пресетов разрешения / выбор GPU): UI рисует
-/// их корректно даже без «обычного» типа из [`KNOWN_VALUE_TYPES`].
+/// Keys with a special widget (resolution preset chips / GPU choice): the UI
+/// draws them correctly even without a «regular» type from [`KNOWN_VALUE_TYPES`].
 pub const SPECIAL_KEYS: &[&str] = &["render_node", "resolution"];
 
-/// Имя типа значения по номеру; `None` — тип UI неизвестен.
+/// Value type name by number; `None` — the type is unknown to the UI.
 pub fn value_type_name(vt: i32) -> Option<&'static str> {
     KNOWN_VALUE_TYPES
         .iter()
@@ -84,26 +86,27 @@ fn is_special_key(key: &str) -> bool {
     SPECIAL_KEYS.contains(&key)
 }
 
-/// Что UI Rexon ОЖИДАЕТ увидеть для данного ключа настройки.
+/// What the Rexon UI EXPECTS to see for a given setting key.
 ///
-/// Поля со значением `None` при сверке не проверяются (UI к ним
-/// нечувствителен). Реестр намеренно нестрогий: цель — ловить НОВЫЕ
-/// настройки и явные несовместимости, а не дублировать всю схему.
+/// Fields with value `None` are not checked during comparison (the UI is
+/// insensitive to them). The registry is deliberately lax: the goal is to
+/// catch NEW settings and clear incompatibilities, not to duplicate the whole
+/// schema.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExpectedSetting {
     pub key: &'static str,
-    /// Ожидаемый `SettingValueType`.
+    /// Expected `SettingValueType`.
     pub value_type: Option<i32>,
-    /// Если важен набор вариантов.
+    /// If the set of variants matters.
     pub choices: Option<&'static [&'static str]>,
     pub note: &'static str,
-    /// Типы обоев, чьи рисовальщики дают эту настройку. Пусто — настройку
-    /// дают встроенные рисовальщики демона, и она обязана быть всегда.
+    /// Wallpaper types whose renderers provide this setting. Empty — the
+    /// daemon's built-in renderers provide it, and it must always be there.
     ///
-    /// Сцены и веб-обои Wallpaper Engine рисует ОТДЕЛЬНЫЙ плагин: у демона
-    /// без него таких рисовальщиков нет вовсе, и спрашивать с него их
-    /// настройки не с кого. Такой ключ уходит в
-    /// [`ParityReport::unchecked`], а не в расхождения (см. п. 5 в
+    /// Wallpaper Engine scenes and web wallpapers are drawn by a SEPARATE
+    /// plugin: without it the daemon has no such renderers at all, and there
+    /// is nobody to ask for their settings. Such a key goes into
+    /// [`ParityReport::unchecked`], not into mismatches (see point 5 in
     /// [`compare_schema`]).
     pub only_types: &'static [&'static str],
 }
@@ -126,70 +129,72 @@ impl ExpectedSetting {
     }
 }
 
-/// РЕЕСТР: что UI Rexon реально реализует.
+/// REGISTRY: what the Rexon UI really implements.
 ///
-/// Перечислены ключи, которые встречаются в схемах движка waywallen 0.2.x и
-/// которые UI показывает осознанно. Новый ключ от движка, которого тут нет →
-/// отчёт «движок умеет настройку X, в UI Rexon нет» (см. [`compare_schema`]).
-/// Порядок записей = порядок, в котором выдаются `STALE_IN_UI`-расхождения
-/// (в Python это порядок вставки в `dict`), поэтому он значим.
+/// Listed are keys that occur in waywallen 0.2.x engine schemas and that the
+/// UI shows deliberately. A new key from the engine that is not here → the
+/// report «the engine supports setting X, the Rexon UI does not» (see
+/// [`compare_schema`]). The order of entries = the order in which
+/// `STALE_IN_UI` mismatches are reported (in Python that is the `dict`
+/// insertion order), so it matters.
 ///
-/// Поддерживать вручную ПРОЩЕ, чем кажется: сверка сама подскажет, что
-/// добавить, при первом же расхождении.
+/// Maintaining it by hand is EASIER than it seems: the check itself suggests
+/// what to add at the very first mismatch.
 pub const REXON_SETTING_REGISTRY: &[ExpectedSetting] = &[
     ExpectedSetting::new("enable_audio", Some(4)),
     ExpectedSetting::new("volume", Some(1)),
     ExpectedSetting::new("fps", Some(1)),
     ExpectedSetting::new("hwdec", Some(3))
         .with_choices(&["auto", "vaapi", "vulkan", "none"]),
-    // resolution: движок отдаёт спец-тип (enum-пресет), UI рисует чипами
-    // пресетов → тип НЕ проверяем (value_type = None). С waywallen 0.5.0
-    // у image/video пресеты пришли списком choices (-2 «авто» … 4) и
-    // умолчание стало -2 (у сцен и веба плагина OWE — с 0.3.1); набор
-    // choices здесь не сверяется — чип «авто» появится с разметкой 0.5.0.
+    // resolution: the engine returns a special type (an enum preset), the UI
+    // draws it as preset chips → the type is NOT checked (value_type = None).
+    // Since waywallen 0.5.0 image/video presets came as a choices list (-2
+    // «auto» … 4) and the default became -2 (for OWE plugin scenes and web —
+    // since 0.3.1); the choices set is not compared here — the «auto» chip
+    // will appear with the 0.5.0 markup.
     ExpectedSetting::new("resolution", None).with_note("спец-виджет: чипы пресетов"),
-    // С waywallen 0.5.0 «своё разрешение» дают и встроенные рисовальщики
-    // image/video, с OWE 0.3.1 — и weweb. Привязка к сценам оставлена: ключ,
-    // отданный другими рисовальщиками, сверке уже виден, а «не проверено»
-    // нужно лишь демону без них.
+    // Since waywallen 0.5.0 the built-in image/video renderers provide «own
+    // resolution» too, since OWE 0.3.1 — weweb too. The binding to scenes is
+    // kept: a key provided by other renderers is already visible to the
+    // check, and «not checked» is needed only for a daemon without them.
     ExpectedSetting::new("custom_extent", Some(1)).for_types(&["scene"]),
     ExpectedSetting::new("msaa", Some(1)).for_types(&["scene"]),
     ExpectedSetting::new("render_node", Some(3)).with_note("спец-виджет: выбор GPU"),
     ExpectedSetting::new("loop_file", Some(3)).with_choices(&["inf", "no"]),
     ExpectedSetting::new("shared_texture_enabled", Some(4)).for_types(&["web"]),
-    // remote_debugging_port — порт CDP weweb-рендера (Chromium). Здесь только
-    // регистрируем её наличие в UI.
+    // remote_debugging_port — the CDP port of the weweb renderer (Chromium).
+    // Here we only register its presence in the UI.
     ExpectedSetting::new("remote_debugging_port", Some(1))
         .with_note("ХУК weweb/Chromium (второй агент)")
         .for_types(&["web"]),
 ];
 
-/// Найти ожидание реестра по ключу настройки.
+/// Find the registry expectation by setting key.
 pub fn expected_for(key: &str) -> Option<&'static ExpectedSetting> {
     REXON_SETTING_REGISTRY.iter().find(|e| e.key == key)
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-//  Результат сверки
+//  Check result
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Вид расхождения (значения строк — как в `IssueKind` Python).
+/// Mismatch kind (string values — as in Python's `IssueKind`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IssueKind {
-    /// Движок умеет, UI не знает.
+    /// The engine supports it, the UI does not know it.
     MissingInUi,
-    /// UI знает, движок не отдаёт.
+    /// The UI knows it, the engine does not provide it.
     StaleInUi,
-    /// Тип значения вне [`KNOWN_VALUE_TYPES`].
+    /// A value type outside [`KNOWN_VALUE_TYPES`].
     UnknownType,
-    /// Тип ≠ ожидаемого реестром.
+    /// Type ≠ the one the registry expects.
     TypeMismatch,
-    /// Набор choices разошёлся.
+    /// The choices set diverged.
     ChoicesMismatch,
 }
 
 impl IssueKind {
-    /// Строковое значение перечисления (`IssueKind.MISSING_IN_UI.value`).
+    /// String value of the enum (`IssueKind.MISSING_IN_UI.value`).
     pub fn as_str(self) -> &'static str {
         match self {
             IssueKind::MissingInUi => "missing_in_ui",
@@ -201,20 +206,20 @@ impl IssueKind {
     }
 }
 
-/// Одно расхождение отчёта.
+/// One mismatch of the report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParityIssue {
     pub kind: IssueKind,
-    /// Имя renderer-плагина (или пусто для глобальных).
+    /// Renderer plugin name (or empty for global ones).
     pub renderer: String,
     pub key: String,
-    /// Человекочитаемое пояснение.
+    /// Human-readable explanation.
     pub detail: String,
 }
 
 impl ParityIssue {
-    /// MISSING/UNKNOWN — настройка может «пропасть» из UI → `warning`;
-    /// STALE/типы — скорее `info` (UI просто покажет лишнее/иначе).
+    /// MISSING/UNKNOWN — a setting may «vanish» from the UI → `warning`;
+    /// STALE/types — rather `info` (the UI will just show something extra/differently).
     pub fn severity(&self) -> &'static str {
         match self.kind {
             IssueKind::MissingInUi | IssueKind::UnknownType => "warning",
@@ -223,20 +228,20 @@ impl ParityIssue {
     }
 }
 
-/// Отчёт о сверке.
+/// Check report.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ParityReport {
     pub supported_types: Vec<String>,
     pub renderers: Vec<String>,
     pub issues: Vec<ParityIssue>,
-    /// Все ключи настроек, реально пришедшие от движка: renderer → keys.
-    /// Упорядоченная карта с семантикой Python `dict`: повторная запись по
-    /// существующему имени заменяет значение, НЕ меняя позицию.
+    /// All setting keys that really came from the engine: renderer → keys.
+    /// An ordered map with Python `dict` semantics: a repeated write under an
+    /// existing name replaces the value WITHOUT changing its position.
     pub engine_keys: Vec<(String, Vec<String>)>,
-    /// Настройки, которые сверить НЕ С ЧЕМ: тип обоев → ключи реестра.
-    /// Рисовальщика этого типа обоев у движка нет (плагин не установлен),
-    /// поэтому молчание движка о них — не расхождение, но и не «сошлось».
-    /// Порядок — как в реестре.
+    /// Settings there is NOTHING to check against: wallpaper type → registry keys.
+    /// The engine has no renderer for this wallpaper type (the plugin is not
+    /// installed), so the engine's silence about them is not a mismatch, but
+    /// not «matched» either. The order is as in the registry.
     pub unchecked: Vec<(String, Vec<String>)>,
 }
 
@@ -249,7 +254,7 @@ impl ParityReport {
         self.issues.iter().filter(|i| i.severity() == "warning").count()
     }
 
-    /// Ключи настроек данного renderer'а.
+    /// Setting keys of the given renderer.
     pub fn engine_keys_of(&self, renderer: &str) -> Option<&[String]> {
         self.engine_keys
             .iter()
@@ -266,10 +271,10 @@ impl ParityReport {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-//  Сверка
+//  Comparison
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Сверить `RendererPluginListResponse` с реестром UI Rexon.
+/// Compare a `RendererPluginListResponse` against the Rexon UI registry.
 pub fn compare_schema(resp: &pb::RendererPluginListResponse) -> ParityReport {
     let mut report = ParityReport {
         supported_types: resp.supported_types.clone(),
@@ -286,7 +291,7 @@ pub fn compare_schema(resp: &pb::RendererPluginListResponse) -> ParityReport {
             }
             let vt = s.r#type;
 
-            // 1) Неизвестный UI тип значения.
+            // 1) A value type unknown to the UI.
             if !is_known_type(vt) && !is_special_key(&s.key) {
                 report.issues.push(ParityIssue {
                     kind: IssueKind::UnknownType,
@@ -301,7 +306,7 @@ the widget may be drawn as a plain field",
             }
 
             let Some(exp) = expected_for(&s.key) else {
-                // 2) Настройка есть в движке, но UI её не регистрирует.
+                // 2) The setting exists in the engine, but the UI does not register it.
                 report.issues.push(ParityIssue {
                     kind: IssueKind::MissingInUi,
                     renderer: ri.name.clone(),
@@ -318,7 +323,7 @@ the widget may be drawn as a plain field",
                 continue;
             };
 
-            // 3) Тип разошёлся с ожиданием реестра.
+            // 3) The type diverged from the registry expectation.
             if let Some(want) = exp.value_type {
                 if is_known_type(vt) && vt != want {
                     report.issues.push(ParityIssue {
@@ -327,16 +332,16 @@ the widget may be drawn as a plain field",
                         key: s.key.clone(),
                         detail: crate::i18n::trf(
                             "the UI expects type %1, the engine returns %2",
-                            // `KNOWN_VALUE_TYPES.get(exp.value_type)` без
-                            // значения по умолчанию: неизвестный тип в самом
-                            // реестре печатался бы как `None`.
+                            // `KNOWN_VALUE_TYPES.get(exp.value_type)` without
+                            // a default: an unknown type in the registry
+                            // itself would be printed as `None`.
                             &[&value_type_name(want).unwrap_or("None"), &type_label(vt)],
                         ),
                     });
                 }
             }
 
-            // 4) Набор choices разошёлся.
+            // 4) The choices set diverged.
             if let Some(want) = exp.choices {
                 let eng: Vec<&str> = s.choices.iter().map(String::as_str).collect();
                 if !eng.is_empty() && !same_set(&eng, want) {
@@ -354,11 +359,11 @@ the widget may be drawn as a plain field",
         }
     }
 
-    // 5) Реестр UI знает ключ, которого движок больше не отдаёт нигде.
-    //    Исключение — настройка рисовальщика, которого у движка НЕТ: её
-    //    некому отдавать, и это «не проверено», а не «удалена». Иначе
-    //    демон без плагина сцен и веб-обоев давал четыре расхождения на
-    //    ровном месте (снимок стенда 10.10.2026).
+    // 5) The UI registry knows a key the engine no longer provides anywhere.
+    //    The exception is a setting of a renderer the engine does NOT have:
+    //    there is nobody to provide it, and that is «not checked», not
+    //    «removed». Otherwise a daemon without the scene and web wallpaper
+    //    plugin gave four mismatches out of nowhere (bench snapshot 10.10.2026).
     for exp in REXON_SETTING_REGISTRY {
         if !seen_keys.contains(&exp.key) {
             if !exp.only_types.is_empty()
@@ -387,8 +392,8 @@ any more (the setting may have been removed)",
     report
 }
 
-/// Есть ли у движка рисовальщик обоев данного типа: тип назван либо в общем
-/// списке ответа, либо у самого рисовальщика.
+/// Whether the engine has a renderer for wallpapers of this type: the type is
+/// named either in the response's shared list or in the renderer itself.
 fn serves_type(resp: &pb::RendererPluginListResponse, wallpaper_type: &str) -> bool {
     resp.supported_types.iter().any(|t| t == wallpaper_type)
         || resp
@@ -397,12 +402,12 @@ fn serves_type(resp: &pb::RendererPluginListResponse, wallpaper_type: &str) -> b
             .any(|r| r.types.iter().any(|t| t == wallpaper_type))
 }
 
-/// `KNOWN_VALUE_TYPES.get(vt, vt)` — имя типа либо сам номер.
+/// `KNOWN_VALUE_TYPES.get(vt, vt)` — the type name or the number itself.
 fn type_label(vt: i32) -> String {
     value_type_name(vt).map_or_else(|| vt.to_string(), str::to_string)
 }
 
-/// `sorted(KNOWN_VALUE_TYPES)` в f-строке — список номеров по возрастанию.
+/// `sorted(KNOWN_VALUE_TYPES)` in an f-string — a list of numbers in ascending order.
 fn known_types_repr() -> String {
     let mut nums: Vec<i32> = KNOWN_VALUE_TYPES.iter().map(|(k, _)| *k).collect();
     nums.sort_unstable();
@@ -410,13 +415,13 @@ fn known_types_repr() -> String {
     format!("[{}]", body.join(", "))
 }
 
-/// Сравнение как `set(a) != set(b)` в Python: порядок и дубли не важны.
+/// Comparison like `set(a) != set(b)` in Python: order and duplicates do not matter.
 fn same_set(a: &[&str], b: &[&str]) -> bool {
     a.iter().all(|x| b.contains(x)) && b.iter().all(|x| a.contains(x))
 }
 
-/// `repr(list[str])` Python: `['auto', 'vaapi']`. Кавычка выбирается как в
-/// Python (одинарные, но двойные — если внутри есть `'` и нет `"`).
+/// Python's `repr(list[str])`: `['auto', 'vaapi']`. The quote is chosen as in
+/// Python (single, but double if there is a `'` inside and no `"`).
 fn py_str_list(items: &[&str]) -> String {
     let body: Vec<String> = items.iter().map(|s| py_repr_str(s)).collect();
     format!("[{}]", body.join(", "))
@@ -443,7 +448,7 @@ fn py_repr_str(s: &str) -> String {
     out
 }
 
-/// Текстовый дамп отчёта (для логов / CLI / тестов).
+/// Text dump of the report (for logs / CLI / tests).
 pub fn render_report_text(report: &ParityReport) -> String {
     let mut lines: Vec<String> = Vec::new();
     lines.push(crate::i18n::trf(
@@ -468,7 +473,7 @@ pub fn render_report_text(report: &ParityReport) -> String {
         };
         lines.push(format!("  {tag} {where_}{}: {}", it.key, it.detail));
     }
-    // Не расхождение и не «сошлось»: сверять было не с чем — говорим словами.
+    // Neither a mismatch nor «matched»: there was nothing to check against — say it in words.
     for (types, keys) in &report.unchecked {
         lines.push(crate::i18n::trf(
             "Not checked: the engine has no renderer for “%1” wallpapers, \
@@ -479,8 +484,8 @@ so there is nothing to compare these settings with: %2",
     lines.join("\n")
 }
 
-/// `', '.join(items) or '—'`: пустая строка (в т.ч. от пустого списка) —
-/// прочерк.
+/// `', '.join(items) or '—'`: an empty string (including from an empty list)
+/// gives a dash.
 fn join_or_dash(items: &[String]) -> String {
     let joined = items.join(", ");
     if joined.is_empty() {
@@ -491,18 +496,18 @@ fn join_or_dash(items: &[String]) -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-//  Тег proto-снапшота
+//  Proto snapshot tag
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Тег апстрима waywallen из содержимого файла `proto/UPSTREAM_TAG`.
+/// The waywallen upstream tag from the contents of the `proto/UPSTREAM_TAG` file.
 ///
-/// Файл пишется при каждом прогоне `scripts/sync-waywallen-proto.py` (или
-/// вручную при resync), формат «v0.2.4». `None` (файла нет) и пустое
-/// содержимое дают пустую строку — снапшот неизвестного возраста.
+/// The file is written on every run of `scripts/sync-waywallen-proto.py` (or
+/// by hand on a resync), format «v0.2.4». `None` (no file) and empty contents
+/// give an empty string — a snapshot of unknown age.
 ///
-/// ⚠ правило #16: декодирование lossy. Оригинал открывал файл строгим UTF-8
-/// и ловил только `OSError`, поэтому единственный битый байт ронял всю
-/// сверку паритета `UnicodeDecodeError`'ом.
+/// ⚠ rule #16: decoding is lossy. The original opened the file as strict
+/// UTF-8 and caught only `OSError`, so a single broken byte brought down the
+/// whole parity check with a `UnicodeDecodeError`.
 pub fn proto_upstream_tag(raw: Option<&[u8]>) -> String {
     match raw {
         Some(bytes) => String::from_utf8_lossy(bytes).trim().to_string(),
@@ -510,51 +515,53 @@ pub fn proto_upstream_tag(raw: Option<&[u8]>) -> String {
     }
 }
 
-/// Путь к файлу тега относительно каталога пакета `qt_wallpaper_engine`.
+/// Path to the tag file relative to the `qt_wallpaper_engine` package directory.
 pub fn upstream_tag_path(package_dir: &std::path::Path) -> std::path::PathBuf {
     package_dir.join("proto").join("UPSTREAM_TAG")
 }
 
-/// Тонкая обёртка с реальным чтением: ошибка ввода-вывода → пустой тег.
+/// A thin wrapper with the real read: an I/O error → an empty tag.
 pub fn read_proto_upstream_tag(package_dir: &std::path::Path) -> String {
     let path = upstream_tag_path(package_dir);
     proto_upstream_tag(std::fs::read(path).ok().as_deref())
 }
 
-/// Каталог пакета вкладки внутри пакета `rexon/`.
+/// The tab's package directory inside the `rexon/` package.
 ///
-/// ⚠️ Отдельный шаг, и он не формальность. Питоновская сверка считает
-/// `package_dir` от `parity.py`, то есть от каталога ВКЛАДКИ, а крейту
-/// Python сообщает каталог пакета `rexon/` целиком (`we_env::pkg_dir`) —
-/// на уровень выше. Без этого шага тег снапшота не находился, отчёт писал
-/// «(тег не записан)», а бейдж не мог сказать, что схему сверяли по
-/// устаревшему протоколу: расхождение версий просто не считалось. Поймано
-/// снимком стенда 06.09.2026 — у виджетной версии «v0.3.7 (9540f8c)», у
-/// QML пусто. Путь между двумя каталогами держит ядро, как и у каталога
-/// `.qm` (`remote_l10n::UI_MODULE_REL`).
+/// ⚠️ A separate step, and it is not a formality. The Python check computes
+/// `package_dir` from `parity.py`, i.e. from the TAB directory, while Python
+/// tells the crate the directory of the whole `rexon/` package
+/// (`we_env::pkg_dir`) — one level up. Without this step the snapshot tag was
+/// not found, the report wrote «(tag not recorded)», and the badge could not
+/// say that the schema was checked against an outdated protocol: the version
+/// mismatch simply was not counted. Caught by a bench snapshot 06.09.2026 —
+/// the widget version had «v0.3.7 (9540f8c)», QML had nothing. The core keeps
+/// the path between the two directories, as for the `.qm` directory
+/// (`remote_l10n::UI_MODULE_REL`).
 pub const TAB_PACKAGE_REL: &str = "qt_wallpaper_engine";
 
-/// Тег proto-снапшота по каталогу пакета `rexon/`.
+/// Proto snapshot tag by the `rexon/` package directory.
 pub fn read_proto_upstream_tag_from_pkg(pkg_dir: &str) -> String {
     read_proto_upstream_tag(&std::path::Path::new(pkg_dir).join(TAB_PACKAGE_REL))
 }
 
-/// Совпадает ли версия живого демона с версией proto-снапшота.
+/// Whether the live daemon's version matches the proto snapshot's version.
 ///
-/// `None` — сравнить нечем (нет версии демона или тега). Сравнение по
-/// «числовой» части: `v0.2.4` == `0.2.4`.
+/// `None` — nothing to compare (no daemon version or no tag). Comparison by
+/// the «numeric» part: `v0.2.4` == `0.2.4`.
 ///
-/// ⚠ правило #16: у оригинала префикс `v` снимался через `lstrip("v")` —
-/// это удаление всех ведущих символов из набора, из-за чего `vv0.2.6`
-/// считался равным `0.2.6`. Здесь снимается ровно один ведущий `v`.
+/// ⚠ rule #16: the original removed the `v` prefix with `lstrip("v")` — that
+/// removes all leading characters from the set, so `vv0.2.6` counted as equal
+/// to `0.2.6`. Here exactly one leading `v` is removed.
 ///
-/// ⚠ правило #16, вторая починка (06.09.2026): в файле тега рядом с версией
-/// живёт хеш коммита — `v0.3.7 (9540f8c)`, так его пишет рука при resync'е.
-/// Оригинал сравнивал строку целиком, поэтому бейдж докладывал расхождение
-/// ВСЕГДА, даже когда демон и снапшот одной версии, — «✓ схема» на странице
-/// «Разработчик» не мог показаться в принципе. Хвост с хешем отрезается —
-/// всё остальное поведение оригинала (в том числе то, что тег НЕ обрезается
-/// по краям, а версия демона обрезается) сохранено как было.
+/// ⚠ rule #16, the second fix (06.09.2026): in the tag file the commit hash
+/// lives next to the version — `v0.3.7 (9540f8c)`, that is how a hand writes
+/// it on a resync. The original compared the whole string, so the badge
+/// ALWAYS reported a mismatch, even when the daemon and the snapshot were the
+/// same version — «✓ schema» on the «Developer» page could not appear in
+/// principle. The hash tail is cut off — all other behaviour of the original
+/// (including that the tag is NOT trimmed at the edges while the daemon
+/// version is) is kept as it was.
 pub fn daemon_matches_snapshot(tag_file: &str, daemon_version: &str) -> Option<bool> {
     let tag = strip_v(strip_commit(tag_file));
     let ver = strip_v(strip_commit(daemon_version.trim()));
@@ -564,10 +571,12 @@ pub fn daemon_matches_snapshot(tag_file: &str, daemon_version: &str) -> Option<b
     Some(tag == ver)
 }
 
-/// Отрезать хвост «` (хеш)`», которым в файле тега подписан коммит апстрима.
+/// Cut off the «` (hash)`» tail with which the upstream commit is signed in
+/// the tag file.
 ///
-/// Скобки обязательны обе: строка без них — обычная версия, её трогать
-/// нельзя (иначе `0.3.8 dirty` молча стал бы `0.3.8`).
+/// Both parentheses are required: a string without them is a normal version
+/// and must not be touched (otherwise `0.3.8 dirty` would silently become
+/// `0.3.8`).
 fn strip_commit(s: &str) -> &str {
     match s.find(" (") {
         Some(i) if s.trim_end().ends_with(')') => &s[..i],

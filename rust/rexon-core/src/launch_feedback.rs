@@ -1,31 +1,32 @@
-//! «Отклик при запуске» вкладки «Настройки»: что показывает, что программа
-//! запускается, — курсор и кнопка на панели задач, и через сколько секунд
-//! анимация гаснет.
+//! "Launch feedback" in the "Settings" tab: what shows that a program is
+//! starting — the cursor and the taskbar button — and after how many seconds
+//! the animation stops.
 //!
-//! Эталон — окно «Отклик при запуске» модуля «Курсоры» Параметров системы
-//! KDE 6.8 (`kcm_cursortheme`, `LaunchFeedbackDialog.qml`). Ключи — из его
-//! `launchfeedbacksettings.kcfg`, файл `klaunchrc`:
-//! * `[FeedbackStyle] BusyCursor` (по умолчанию `true`) — курсор вообще
-//!   показывает запуск;
-//! * `[BusyCursorSettings] Blinking` (`false`), `Bouncing` (`true`) — вид:
-//!   «нет» = `BusyCursor=false`, «неподвижный» = оба `false`, «мигающий»,
-//!   «прыгающий». Читает эффект KWin `startupfeedback` в том же порядке:
-//!   выключен → прыгающий → мигающий → неподвижный;
-//! * `[FeedbackStyle] TaskbarButton` (`true`) — анимация на панели задач
-//!   (читает модель задач Plasma);
-//! * `[BusyCursorSettings] Timeout` и `[TaskbarButtonSettings] Timeout`
-//!   (оба 5, 1…60 с) — модуль KDE пишет одно число в оба ключа, так и мы.
+//! The reference is the "Launch Feedback" dialog of the "Cursors" module of KDE
+//! 6.8 System Settings (`kcm_cursortheme`, `LaunchFeedbackDialog.qml`). The keys
+//! come from its `launchfeedbacksettings.kcfg`, file `klaunchrc`:
+//! * `[FeedbackStyle] BusyCursor` (default `true`) — whether the cursor shows
+//!   a launch at all;
+//! * `[BusyCursorSettings] Blinking` (`false`), `Bouncing` (`true`) — the style:
+//!   "none" = `BusyCursor=false`, "static" = both `false`, "blinking",
+//!   "bouncing". The KWin effect `startupfeedback` reads them in the same order:
+//!   off → bouncing → blinking → static;
+//! * `[FeedbackStyle] TaskbarButton` (`true`) — the animation on the taskbar
+//!   (read by the Plasma task model);
+//! * `[BusyCursorSettings] Timeout` and `[TaskbarButtonSettings] Timeout`
+//!   (both 5, 1…60 s) — the KDE module writes one number into both keys, and so
+//!   do we.
 //!
-//! И KWin, и панель следят за `klaunchrc` сами (`KConfigWatcher`), поэтому
-//! после `kwriteconfig6 --notify` перечитывать ничего не нужно. Ключ,
-//! совпавший со значением по умолчанию, снимается, а не пишется.
+//! Both KWin and the panel watch `klaunchrc` themselves (`KConfigWatcher`), so
+//! nothing needs to be reloaded after `kwriteconfig6 --notify`. A key that
+//! matches its default value is removed rather than written.
 //!
-//! Вне KDE такой настройки нет ни у одного оконного менеджера, с которым
-//! работает Rexon: Mutter, Muffin, Marco и xfwm4 отслеживают запуск по
-//! протоколу startup-notification, но ни ключа gsettings, ни свойства
-//! xfconf для его вида или времени у них нет (сверено со схемами в системе
-//! и свойствами xfwm4); у Hyprland, niri, sway, labwc такого отклика нет
-//! вовсе. Раздел говорит это прямо ([`note`]).
+//! Outside KDE none of the window managers Rexon works with has such a setting:
+//! Mutter, Muffin, Marco and xfwm4 track launches via the startup-notification
+//! protocol, but none of them has a gsettings key or an xfconf property for its
+//! style or duration (checked against the schemas on the system and the xfwm4
+//! properties); Hyprland, niri, sway and labwc have no such feedback at all. The
+//! section says so plainly ([`note`]).
 
 use serde::Serialize;
 
@@ -37,19 +38,19 @@ const STYLE: &str = "FeedbackStyle";
 const CURSOR: &str = "BusyCursorSettings";
 const TASKBAR: &str = "TaskbarButtonSettings";
 
-/// Время по умолчанию и пределы — как у счётчика модуля KDE.
+/// Default time and limits — the same as the KDE module's spin box.
 pub const DEFAULT_TIMEOUT: u32 = 5;
 pub const MIN_TIMEOUT: u32 = 1;
 pub const MAX_TIMEOUT: u32 = 60;
 
-/// Ступени выбора времени (секунды).
+/// Steps for choosing the time (seconds).
 const TIMEOUT_STEPS: &[u32] = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 45, 60];
 
-/// Виды курсора — как переключатели модуля KDE.
+/// Cursor styles — the same as the KDE module's radio buttons.
 pub const CURSOR_STYLES: &[&str] = &["none", "static", "blinking", "bouncing"];
 
-/// Подпись вида курсора (с уточнением: «Static» в каталоге уже есть с
-/// другим смыслом).
+/// Label of a cursor style (with a qualifier: "Static" already exists in the
+/// catalog with a different meaning).
 fn cursor_label(id: &str) -> String {
     match id {
         "none" => trc("launch feedback pointer", "No feedback"),
@@ -68,21 +69,21 @@ pub struct Opt {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LaunchFeedbackState {
     pub de: String,
-    /// Настройка есть (только KDE).
+    /// The setting exists (KDE only).
     pub supported: bool,
     pub cursor: String,
     pub cursor_options: Vec<Opt>,
     pub taskbar: bool,
-    /// Секунды (строкой — id варианта).
+    /// Seconds (as a string — the option id).
     pub timeout: String,
     pub timeout_options: Vec<Opt>,
-    /// Время что-то значит: курсор или панель показывают запуск.
+    /// The time matters: the cursor or the panel shows the launch.
     pub timeout_enabled: bool,
-    /// Почему настройки нет (вне KDE).
+    /// Why the setting is unavailable (outside KDE).
     pub note: String,
 }
 
-/// Настройка как она стоит.
+/// The setting as it currently stands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Feedback {
     pub cursor: String,
@@ -104,7 +105,7 @@ fn kint(io: &dyn LookIo, ctx: &LookCtx, group: &str, key: &str) -> u32 {
         .clamp(MIN_TIMEOUT, MAX_TIMEOUT)
 }
 
-/// Прочитать `klaunchrc` так же, как его читает эффект KWin.
+/// Read `klaunchrc` the same way the KWin effect reads it.
 pub fn read(io: &dyn LookIo, ctx: &LookCtx) -> Feedback {
     let busy = kbool(io, ctx, STYLE, "BusyCursor", true);
     let blinking = kbool(io, ctx, CURSOR, "Blinking", false);
@@ -161,7 +162,7 @@ pub fn read_state(io: &dyn LookIo, ctx: &LookCtx) -> LaunchFeedbackState {
     }
 }
 
-/// Записать ключ: значение по умолчанию снимается.
+/// Write a key: a default value is removed.
 fn put(steps: &mut Vec<LookStep>, io: &dyn LookIo, ctx: &LookCtx, group: &str, key: &str, value: &str, default: &str, bool_type: bool) {
     let current = kconfig_value(io, ctx, FILE, group, key);
     if value == default {
@@ -181,7 +182,7 @@ fn b(v: bool) -> &'static str {
     }
 }
 
-/// План записи целиком (как сохраняет модуль KDE).
+/// The whole write plan (the way the KDE module saves it).
 pub fn plan(io: &dyn LookIo, ctx: &LookCtx, want: &Feedback) -> Vec<LookStep> {
     if !supported(&ctx.de) || !CURSOR_STYLES.contains(&want.cursor.as_str()) {
         return Vec::new();

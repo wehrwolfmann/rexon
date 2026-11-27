@@ -1,12 +1,12 @@
-//! Писатель кадра для GNOME/Cinnamon (расширение оболочки читает файл, окна нет).
+//! Frame writer for GNOME/Cinnamon (the shell extension reads the file, there is no window).
 //!
-//! Договор Rexon (`rexon-core::wallpaper_mmap`, коммит 09081e3), который писатель соблюдает, но НЕ вычисляет сам:
-//! - файл кадра — ровно width×height×4 байт RGBA8888 без заголовка; при старте прежний файл отцепляется
-//!   (unlink) и открывается свежий inode нулевой длины — «файл дорос до w·h·4» = «первый кадр готов»;
-//! - счётчик поколения — отдельный файл, u64 little-endian; при старте 0; перед записью кадра нечётное,
-//!   после — следующее чётное (seqlock для читателей без flock);
-//! - сама запись кадра — под flock(LOCK_EX) файла кадра;
-//! - путь счётчика (`frame_generation_path`) и права (`FRAME_FILE_MODE`) хост берёт из ядра и передаёт в [`MmapSpec`].
+//! The Rexon contract (`rexon-core::wallpaper_mmap`, commit 09081e3) that the writer follows but does NOT compute itself:
+//! - the frame file is exactly width×height×4 bytes of RGBA8888 without a header; at start the previous file is unlinked
+//!   and a fresh zero-length inode is opened — "the file grew to w·h·4" = "the first frame is ready";
+//! - the generation counter is a separate file, u64 little-endian; 0 at start; odd before writing a frame,
+//!   the next even value after (a seqlock for readers without flock);
+//! - the frame write itself is under flock(LOCK_EX) of the frame file;
+//! - the host takes the counter path (`frame_generation_path`) and the permissions (`FRAME_FILE_MODE`) from the core and passes them in [`MmapSpec`].
 
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -14,16 +14,16 @@ use std::os::fd::AsRawFd;
 use std::os::unix::fs::{FileExt, OpenOptionsExt};
 use std::path::PathBuf;
 
-/// Куда и какого размера писать кадры.
+/// Where and at what size to write frames.
 #[derive(Debug, Clone)]
 pub struct MmapSpec {
-    /// Файл кадра (`REXON_WP_OUTPUT`).
+    /// Frame file (`REXON_WP_OUTPUT`).
     pub frame_path: PathBuf,
-    /// Файл счётчика поколения; `None` — без счётчика (как хост прежней сборки).
+    /// Generation counter file; `None` — no counter (like a host of an older build).
     pub generation_path: Option<PathBuf>,
     pub width: u32,
     pub height: u32,
-    /// Права создаваемых файлов (в Rexon — `wallpaper_mmap::FRAME_FILE_MODE` = 0o600).
+    /// Permissions of created files (in Rexon — `wallpaper_mmap::FRAME_FILE_MODE` = 0o600).
     pub file_mode: u32,
 }
 
@@ -98,12 +98,12 @@ impl MmapWriter {
         (self.width, self.height)
     }
 
-    /// Текущее значение счётчика поколения (чётное между кадрами).
+    /// Current value of the generation counter (even between frames).
     pub fn generation(&self) -> u64 {
         self.generation
     }
 
-    /// Сколько кадров записано целиком.
+    /// How many frames have been written completely.
     pub fn frames(&self) -> u64 {
         self.frames
     }
@@ -116,7 +116,7 @@ impl MmapWriter {
         }
     }
 
-    /// Записать кадр RGBA8888 плотной раскладки (stride = width·4), ровно `frame_len()` байт.
+    /// Write an RGBA8888 frame with a dense layout (stride = width·4), exactly `frame_len()` bytes.
     pub fn write_frame(&mut self, rgba: &[u8]) -> io::Result<()> {
         if rgba.len() != self.frame_len() {
             return Err(io::Error::new(
@@ -126,10 +126,10 @@ impl MmapWriter {
         }
         flock(&self.frame, libc::LOCK_EX)?;
         let result = (|| {
-            self.bump_generation()?; // нечётное: кадр пишется
+            self.bump_generation()?; // odd: the frame is being written
             write_all_at(&self.frame, rgba, 0)
         })();
-        // Чётное — даже после ошибки записи: иначе читатели пропускали бы кадры навсегда.
+        // Even — even after a write error: otherwise readers would skip frames forever.
         let closed = if self.generation % 2 == 1 { self.bump_generation() } else { Ok(()) };
         let _ = flock(&self.frame, libc::LOCK_UN);
         result?;

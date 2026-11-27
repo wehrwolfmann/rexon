@@ -1,32 +1,35 @@
-//! Единая дверь точки входа Rexon — порт тела `main()` из `rexon/app.py`
-//! (ветки маршрутов) плюс то, что Python делал ПЕРЕД поднятием Qt.
+//! The single door of the Rexon entry point: a port of the `main()` body
+//! from `rexon/app.py` (the route branches) plus what Python did BEFORE
+//! starting Qt.
 //!
-//! РАЗДЕЛЕНИЕ ТРУДА. [`crate::app::route`] отвечает «что делать», этот
-//! модуль — «сделать это на живой машине и с каким кодом выйти». Бинарь
-//! (`rexon-gui/src/bin/main_window.rs`) не знает ни одной ветки: он зовёт
-//! [`run_headless`], и если та ответила кодом — выходит с ним, а если
-//! `None` — поднимает Qt на разделе из [`start_section`]. Правило одной
-//! двери: новая ветка появляется ЗДЕСЬ, бинарь не правится.
+//! DIVISION OF LABOUR. [`crate::app::route`] answers "what to do"; this
+//! module "does it on the live machine and decides the exit code". The
+//! binary (`rexon-gui/src/bin/main_window.rs`) knows no branch at all: it
+//! calls [`run_headless`], and if that answered with a code it exits with
+//! it, and if `None` it starts Qt on the section from [`start_section`].
+//! The one-door rule: a new branch appears HERE, the binary is not edited.
 //!
-//! ЧТО ЗАКРЫВАЕТ. До этого модуля Rust-бинарь понимал только `--section=` и
-//! `--page=`, а служебные флаги продукта — `--apply-defaults`,
-//! `--sanitize-gtk`, `--session-splash`, пять флагов одиночных вкладок —
-//! молча уходили в никуда: Qt незнакомый аргумент игнорирует, и бинарь
-//! открывал главное окно вместо обещанной работы. Хуже того, КОДОВ ВОЗВРАТА
-//! маршрутов он не отдавал вовсе: autostart-хук `--apply-defaults`
-//! отчитывался нулём при неудаче применения дефолтов, то есть скрипт видел
-//! успех там, где ничего не применилось. Оригинал возвращал 0/1 (`os._exit(rc)`
-//! в `rexon.py`), и это ровно та подмена «тихий выход = успех», которую в
-//! проекте уже ловили у сторожа самопроверки окна.
+//! WHAT IT CLOSES. Before this module the Rust binary understood only
+//! `--section=` and `--page=`, while the product's service flags
+//! (`--apply-defaults`, `--sanitize-gtk`, `--session-splash`, five
+//! standalone tab flags) silently went nowhere: Qt ignores an unknown
+//! argument, and the binary opened the main window instead of the promised
+//! work. Worse, it did not return the routes' EXIT CODES at all: the
+//! `--apply-defaults` autostart hook reported zero when applying the
+//! defaults failed, so the script saw success where nothing had been
+//! applied. The original returned 0/1 (`os._exit(rc)` in `rexon.py`), and
+//! this is exactly the "silent exit = success" substitution the project had
+//! already caught in the window self-check guard.
 //!
-//! ⭐ `--recover-kde` ЗАКРЫТ ЗДЕСЬ ЖЕ. Последний маршрут, который упирался в
-//! интерпретатор, теперь целиком на Rust: разбор аргумента — [`crate::app`],
-//! порядок шагов и походы наружу —
-//! [`crate::system_exec::SystemExec::recover_kde`], код возврата — отсюда.
-//! Это и был последний крупный пробел точки входа: пока аварийный откат
-//! оформления умел только Python, Rust-бинарь не мог стать `/usr/bin/rexon`
-//! — по ярлыку «Восстановить оформление рабочего стола» человек получил бы
-//! отказ ровно в тот момент, когда оформление уже сломано.
+//! ⭐ `--recover-kde` IS CLOSED HERE TOO. The last route that depended on
+//! the interpreter is now entirely Rust: argument parsing is in
+//! [`crate::app`], the order of steps and the trips outside in
+//! [`crate::system_exec::SystemExec::recover_kde`], the exit code here.
+//! That was the last big gap of the entry point: while only Python could do
+//! the appearance emergency rollback, the Rust binary could not become
+//! `/usr/bin/rexon`; the "Restore desktop appearance" shortcut would have
+//! refused the person exactly at the moment the appearance was already
+//! broken.
 
 use std::path::{Path, PathBuf};
 
@@ -34,26 +37,28 @@ use crate::app::Route;
 use crate::i18n::{ntr, tr, trf};
 
 // ============================================================================
-// Одиночные Qt-вкладки → раздел главного окна
+// Standalone Qt tabs -> main window section
 // ============================================================================
 //
-// В оригинале каждый из пяти флагов поднимал ОТДЕЛЬНОЕ приложение с одним
-// окном — это было единственным способом открыть одну вкладку, пока вкладки
-// были разными процессами. У Rust-бинаря все шесть разделов живут в одном
-// окне, и «одна вкладка» — это то же окно, открытое на нужном разделе, то
-// есть уже существующий `--section=`. Поэтому пять модулей сводятся к
-// таблице «флаг → раздел», а не к пяти точкам входа: вторая копия состава
-// разделов разъехалась бы с первой молча (правило #12).
+// In the original each of the five flags started a SEPARATE application
+// with one window; that was the only way to open one tab while the tabs
+// were different processes. In the Rust binary all six sections live in
+// one window, and "one tab" is the same window opened on the right
+// section, i.e. the already existing `--section=`. So the five modules
+// boil down to a "flag -> section" table rather than five entry points: a
+// second copy of the section list would silently drift from the first
+// (rule #12).
 
-/// Модуль одиночной вкладки → (раздел окна, подраздел внутри него).
+/// Standalone tab module -> (window section, subsection inside it).
 ///
-/// Ключи — значения [`crate::app::SINGLE_TAB_FLAGS`], значения — разделы из
-/// [`crate::qt_main::SECTIONS`]; сверка обоих списков в
-/// `tests/cli_parity.rs`.
+/// Keys are the values of [`crate::app::SINGLE_TAB_FLAGS`], values are
+/// sections from [`crate::qt_main::SECTIONS`]; the two lists are compared
+/// in `tests/cli_parity.rs`.
 ///
-/// «Сравнение DE» отдельным разделом не идёт — с 08.07.2026 оно живёт ВНУТРИ
-/// «Рабочих столов», поэтому у `qt_compare` тот же раздел, что у
-/// `qt_desktops`, и отличает их подраздел (ровно как у `--page=compare`).
+/// "DE comparison" is not a section of its own: since 08.07.2026 it lives
+/// INSIDE "Desktops", so `qt_compare` has the same section as
+/// `qt_desktops`, and the subsection tells them apart (exactly as with
+/// `--page=compare`).
 pub const SINGLE_TAB_SECTIONS: &[(&str, &str, &str)] = &[
     ("rexon.appearance_page", "appearance", ""),
     ("rexon.qt_extensions.app", "extensions", ""),
@@ -62,7 +67,7 @@ pub const SINGLE_TAB_SECTIONS: &[(&str, &str, &str)] = &[
     ("rexon.qt_desktops.app", "desktops", ""),
 ];
 
-/// Раздел и подраздел для модуля одиночной вкладки.
+/// Section and subsection for a standalone tab module.
 pub fn single_tab_section(module: &str) -> Option<(&'static str, &'static str)> {
     SINGLE_TAB_SECTIONS
         .iter()
@@ -70,26 +75,28 @@ pub fn single_tab_section(module: &str) -> Option<(&'static str, &'static str)> 
         .map(|(_, section, subpage)| (*section, *subpage))
 }
 
-/// Раздел, на котором обязано открыться окно по всей командной строке.
+/// The section the window must open on, judging by the whole command line.
 ///
-/// Три источника в порядке убывания точности: `--section=<id>` (вход
-/// разработчика, идентификатор как есть), флаг одиночной вкладки продукта и
-/// `--page=<имя>` из ярлыка рабочего стола. Ни один не сработал — `None`,
-/// и окно откроется на разделе по умолчанию.
+/// Three sources in decreasing order of precision: `--section=<id>` (the
+/// developer entry, the identifier as is), a product standalone tab flag
+/// and `--page=<name>` from a desktop shortcut. If none applies, `None`,
+/// and the window opens on the default section.
 ///
-/// `--section=` первым не по старшинству, а потому что это единственный
-/// источник, у которого идентификатор задан буквально: остальные два —
-/// переводы, и переводить то, что уже назвали точно, значит терять точность.
+/// `--section=` comes first not by seniority but because it is the only
+/// source whose identifier is given literally: the other two are
+/// translations, and translating what has already been named precisely
+/// means losing precision.
 pub fn start_section(args: &[String]) -> Option<(String, String)> {
-    // Окно из уведомления о поломке AeroThemePlasma — на «Настройках»: там
-    // проверка оформления и её итог (сама проверка начинается сразу).
+    // The window from the AeroThemePlasma breakage notification opens on
+    // "Settings": the appearance check and its result are there (the check
+    // itself starts right away).
     if args.iter().any(|a| a == crate::aeroshell::OPEN_FLAG) {
         return Some(("settings".to_string(), String::new()));
     }
     if let Some(id) = args.iter().find_map(|a| a.strip_prefix(SECTION_FLAG)) {
-        // `--section=appearance/screeneffects` — сразу и подраздел (ключ
-        // раздела боковой панели «Оформления»): так стенд открывает нужный
-        // раздел без щелчков.
+        // `--section=appearance/screeneffects` gives the subsection too (the key
+        // of the "Appearance" sidebar section): this way the test bench opens the
+        // right section without clicks.
         let (id, sub) = id.split_once('/').unwrap_or((id, ""));
         let id = id.trim();
         if !id.is_empty() {
@@ -104,37 +111,39 @@ pub fn start_section(args: &[String]) -> Option<(String, String)> {
     crate::app::start_page(args).map(|(s, p)| (s.to_string(), p.to_string()))
 }
 
-/// Флаг раздела: `--section=appearance` (с подразделом —
+/// Section flag: `--section=appearance` (with a subsection:
 /// `--section=appearance/screeneffects`).
 pub const SECTION_FLAG: &str = "--section=";
 
 // ============================================================================
-// Окно о крахе отдельным процессом
+// The crash window as a separate process
 // ============================================================================
 //
-// Упавший процесс окно о крахе не рисует: паника бывает в чужом потоке и в
-// состоянии, где Qt уже неработоспособна, а паника через границу с Qt — это
-// `abort` сразу после перехватчика. Поэтому перехватчик
-// (`rexon-gui::crash_report`) запускает ТОТ ЖЕ бинарь с этими флагами, и
-// свежий процесс показывает окно по файлу отчёта.
+// A crashed process does not draw the crash window: a panic happens in
+// another thread and in a state where Qt is already unusable, and a panic
+// across the Qt boundary is an `abort` right after the hook. So the hook
+// (`rexon-gui::crash_report`) launches THE SAME binary with these flags,
+// and a fresh process shows the window from the report file.
 
-/// Флаг процесса окна о крахе: `--crash-dialog <файл отчёта>`.
+/// Flag of the crash window process: `--crash-dialog <report file>`.
 pub const CRASH_DIALOG_FLAG: &str = "--crash-dialog";
 
-/// Добавка к [`CRASH_DIALOG_FLAG`]: упавший процесс выжил (паника в рабочем
-/// потоке), окно говорит «продолжает работать», а не «завершился».
+/// Addition to [`CRASH_DIALOG_FLAG`]: the crashed process survived (a panic
+/// in a worker thread), so the window says "keeps running" rather than
+/// "has exited".
 pub const CRASH_NONFATAL_FLAG: &str = "--crash-nonfatal";
 
-/// Запрос на окно о крахе из командной строки.
+/// A request for the crash window from the command line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CrashDialogRequest {
     pub report_path: String,
     pub fatal: bool,
 }
 
-/// Разобрать `--crash-dialog <файл>` (или `--crash-dialog=<файл>`).
-/// `None` — это не процесс окна о крахе. Флаг без файла — тоже `None`:
-/// показывать нечего, и такой запуск идёт обычным путём.
+/// Parse `--crash-dialog <file>` (or `--crash-dialog=<file>`). `None`
+/// means this is not a crash window process. The flag without a file is
+/// `None` too: there is nothing to show, and such a launch takes the usual
+/// path.
 pub fn crash_dialog_request(args: &[String]) -> Option<CrashDialogRequest> {
     let eq = format!("{CRASH_DIALOG_FLAG}=");
     let mut path = None;
@@ -156,8 +165,8 @@ pub fn crash_dialog_request(args: &[String]) -> Option<CrashDialogRequest> {
     })
 }
 
-/// Аргументы процесса окна о крахе — обратная сторона
-/// [`crash_dialog_request`], чтобы разбор и сборка не разошлись.
+/// Arguments of the crash window process: the reverse side of
+/// [`crash_dialog_request`], so parsing and building do not diverge.
 pub fn crash_dialog_argv(report_path: &str, fatal: bool) -> Vec<String> {
     let mut argv = vec![CRASH_DIALOG_FLAG.to_string(), report_path.to_string()];
     if !fatal {
@@ -167,31 +176,32 @@ pub fn crash_dialog_argv(report_path: &str, fatal: bool) -> Vec<String> {
 }
 
 // ============================================================================
-// Маршруты без Qt
+// Routes without Qt
 // ============================================================================
 
-/// Отработать маршрут, которому Qt не нужен. → код возврата процесса.
+/// Run a route that does not need Qt. -> the process exit code.
 ///
-/// `None` — маршрут требует окна: главное окно либо одиночная вкладка,
-/// которая теперь тот же раздел того же окна.
+/// `None`: the route needs a window, either the main window or a
+/// standalone tab, which is now the same section of the same window.
 ///
-/// `--recover-kde` окна не открывает вовсе — и это не экономия, а условие
-/// работы: его зовут, когда оформление уже сломано, и Qt в таком сеансе
-/// может не подняться. Код возврата тот же, что у оригинала: 0 —
-/// восстановили, 1 — не тот рабочий стол либо тема не применилась.
+/// `--recover-kde` does not open a window at all, and that is not a saving
+/// but a condition for working: it is called when the appearance is
+/// already broken, and Qt may not come up in such a session. The exit code
+/// is the same as the original's: 0 means restored, 1 means the wrong
+/// desktop or the theme did not apply.
 ///
-/// `out` — приёмник строк (в бинаре `println!`): строки идут ровно в том
-/// порядке и теми словами, какими их печатал оригинал.
+/// `out` is the line sink (`println!` in the binary): the lines go in
+/// exactly the order and with the words the original printed them.
 pub fn run_headless(args: &[String], out: &mut dyn FnMut(&str)) -> Option<i32> {
     let route = crate::app::route(args);
-    // Сторож входа в Plasma (`--session-guard*`): его зовёт сценарий до
-    // KWin — раньше всех маршрутов и без окна. Справку и версию он не
-    // перехватывает: `--help` ничего не делает, только рассказывает.
+    // The Plasma login guard (`--session-guard*`): the session script calls
+    // it before KWin, ahead of all routes and without a window. It does not
+    // intercept help and version: `--help` does nothing but explain.
     if !matches!(route, Route::Help | Route::Version) {
         if let Some(rc) = crate::session_guard::cli_route(args, out) {
             return Some(rc);
         }
-        // Сторож игрового режима: его зовёт сценарий gamescope-session-plus.
+        // The game mode guard: the gamescope-session-plus script calls it.
         if let Some(rc) = crate::gamemode_guard::cli_route(args, out) {
             return Some(rc);
         }
@@ -220,24 +230,25 @@ pub fn run_headless(args: &[String], out: &mut dyn FnMut(&str)) -> Option<i32> {
     }
 }
 
-/// `rexon --version`: имя, версия и коммит сборки — та же строка, что
-/// пишет журнал при запуске (`applog::version_line`).
+/// `rexon --version`: name, version and build commit, the same line the
+/// log writes at startup (`applog::version_line`).
 pub fn version_text() -> String {
     format!("Rexon {}", crate::applog::version_line())
 }
 
-/// `rexon --help`: что можно набрать в консоли. Имена команд и флагов —
-/// буквально (их набирают руками), переводится только пояснение.
+/// `rexon --help`: what can be typed in the console. Command and flag names
+/// are literal (they are typed by hand); only the explanation is
+/// translated.
 ///
-/// В справке — то, что пригодится человеку. Хуки, которые зовут юниты и
-/// сценарии входа (`--apply-defaults`, `--session-splash`,
+/// The help contains what is useful to a person. The hooks called by units
+/// and login scripts (`--apply-defaults`, `--session-splash`,
 /// `--update-check`, `--aeroshell-check`, `--session-guard`,
-/// `--session-guard-notice`), в ней
-/// намеренно нет: руками их не запускают.
+/// `--session-guard-notice`) are
+/// deliberately left out: nobody runs them by hand.
 pub fn help_lines() -> Vec<String> {
     let row = |cmd: &str, what: String| format!("  {cmd:<32}{what}");
-    // Страницы — из той же таблицы, что разбирает флаг: новая страница
-    // ярлыка попадёт в справку сама.
+    // Pages come from the same table that parses the flag: a new shortcut
+    // page gets into the help by itself.
     let pages: Vec<&str> = crate::app::PAGE_TARGETS.iter().map(|(p, _, _)| *p).collect();
     let page_flags = format!("{}{}", crate::app::PAGE_FLAG, pages.join("|"));
     vec![
@@ -274,11 +285,12 @@ pub fn help_lines() -> Vec<String> {
     ]
 }
 
-/// Можно ли этому процессу поднять окно: есть дисплей (`WAYLAND_DISPLAY`,
-/// `DISPLAY`) либо явно выбрана платформа Qt без экрана
-/// (`QT_QPA_PLATFORM=offscreen` у самопроверки). Без этого
-/// `QGuiApplication` падает с `abort` («could not connect to display») —
-/// дамп памяти вместо слов. Решение — [`crate::qt_app::qt_can_start`].
+/// Whether this process may bring up a window: there is a display
+/// (`WAYLAND_DISPLAY`, `DISPLAY`) or a screenless Qt platform was chosen
+/// explicitly (`QT_QPA_PLATFORM=offscreen` for the self-check). Without it
+/// `QGuiApplication` dies with `abort` ("could not connect to display"), a
+/// core dump instead of words. The decision is
+/// [`crate::qt_app::qt_can_start`].
 pub fn window_can_open(env: &dyn Fn(&str) -> Option<String>) -> bool {
     crate::qt_app::qt_can_start(
         env("WAYLAND_DISPLAY").as_deref(),
@@ -287,8 +299,8 @@ pub fn window_can_open(env: &dyn Fn(&str) -> Option<String>) -> bool {
     )
 }
 
-/// Что сказать, когда окно запросили там, где его показать негде (SSH,
-/// текстовая консоль). Вместе с кодом возврата 1 — вместо `abort`.
+/// What to say when a window was requested where there is nowhere to show
+/// it (SSH, a text console). Together with exit code 1, instead of `abort`.
 pub fn no_display_lines() -> Vec<String> {
     vec![
         // TRANSLATORS: printed when `rexon` is run where no window can be shown (SSH, text console).
@@ -298,18 +310,19 @@ pub fn no_display_lines() -> Vec<String> {
     ]
 }
 
-/// Маршрут `--sanitize-gtk` — порт ветки `rexon/app.py:640`.
+/// The `--sanitize-gtk` route, a port of the `rexon/app.py:640` branch.
 ///
-/// Починить ссылки на отсутствующие темы иконок/курсоров/цветов в
-/// `~/.config/gtk-{3,4}.0/settings.ini`, `kdeglobals` и `kcminputrc`. Без
-/// этого GTK-приложения (Firefox, Nautilus) уходят в петлю поиска иконок у
-/// темы, которой на диске уже нет, и падают с SIGSEGV после применения
-/// Global Theme.
+/// Repair references to missing icon/cursor/colour themes in
+/// `~/.config/gtk-{3,4}.0/settings.ini`, `kdeglobals` and `kcminputrc`.
+/// Without it GTK applications (Firefox, Nautilus) loop looking for icons
+/// of a theme no longer on disk and crash with SIGSEGV after a Global Theme
+/// is applied.
 ///
-/// Решения — целиком [`crate::gtk_sanitizer`], исполнение — живой
-/// санитайзер установщика, текст отчёта — `gtk_sanitizer::verbose_report`
-/// (тот же, что печатает Python: `print(report, end="")`, поэтому отчёт
-/// разбирается на строки, а не печатается одним куском с лишним переводом).
+/// The decisions are entirely [`crate::gtk_sanitizer`], the execution is
+/// the installer's live sanitizer, the report text is
+/// `gtk_sanitizer::verbose_report` (the same Python prints:
+/// `print(report, end="")`, so the report is split into lines rather than
+/// printed in one chunk with an extra newline).
 pub fn sanitize_gtk_route(out: &mut dyn FnMut(&str)) -> i32 {
     let changes = crate::appearance_installer::live_gtk_sanitize(&home());
     for line in crate::gtk_sanitizer::verbose_report(&changes).lines() {
@@ -321,13 +334,13 @@ pub fn sanitize_gtk_route(out: &mut dyn FnMut(&str)) -> i32 {
     0
 }
 
-/// Санитайзер GTK при старте окна — порт блока «Авто-санитайзер GTK-конфигов
-/// перед стартом» из `rexon/app.py`.
+/// The GTK sanitizer at window startup, a port of the "GTK config
+/// auto-sanitizer before startup" block from `rexon/app.py`.
 ///
-/// Тот же живой санитайзер, что у маршрута `--sanitize-gtk` выше, но
-/// молчаливый, если чинить нечего: при старте отчёт нужен только о
-/// сделанном. Битые ссылки на темы в gtk-{3,4}.0 роняют чужие
-/// GTK-приложения, поэтому чиним до первого окна.
+/// The same live sanitizer as the `--sanitize-gtk` route above, but silent
+/// when there is nothing to repair: at startup a report is needed only
+/// about what was done. Broken theme references in gtk-{3,4}.0 crash other
+/// GTK applications, so we repair them before the first window.
 pub fn startup_gtk_sanitize(out: &mut dyn FnMut(&str)) {
     let home = home();
     for line in startup_gtk_report(&crate::appearance_installer::live_gtk_sanitize(&home)) {
@@ -338,13 +351,14 @@ pub fn startup_gtk_sanitize(out: &mut dyn FnMut(&str)) {
     }
 }
 
-/// Строки о ссылках, которые санитайзер заметил, но НЕ правил (звуковая
-/// тема, которой нет: выбор человека не подменяется). Пусто — замечаний нет.
+/// Lines about references the sanitizer noticed but did NOT fix (a sound
+/// theme that does not exist: the person's choice is not replaced). Empty
+/// means no remarks.
 fn gtk_note_lines(notes: &[String]) -> Vec<String> {
     notes.iter().map(|n| format!("⚠️ {n}")).collect()
 }
 
-/// Строки стартового отчёта санитайзера; пусто — чинить было нечего.
+/// Lines of the sanitizer's startup report; empty means there was nothing to repair.
 fn startup_gtk_report(changes: &[String]) -> Vec<String> {
     if changes.is_empty() {
         return Vec::new();
@@ -358,24 +372,28 @@ fn startup_gtk_report(changes: &[String]) -> Vec<String> {
     lines
 }
 
-/// Первое снятие эталона защиты приложений при старте окна.
+/// The first snapshot of the application protection baseline at window
+/// startup.
 ///
-/// Раздел «Защита приложений по умолчанию» включён по умолчанию, но до
-/// первого эталона Rexon не помнит НИЧЕГО и подмены не заметит. Покупателю
-/// для этого нажимать нечего не должно быть: эталон снимается сам, молча для
-/// глаз — ни окна, ни вопроса.
+/// The "Default application protection" section is on by default, but
+/// until the first baseline Rexon remembers NOTHING and will not notice a
+/// substitution. The customer must not have to press anything for this:
+/// the baseline is taken by itself, invisibly, with no window and no
+/// question.
 ///
-/// ⚠️ ОТДЕЛЬНЫМ ПОТОКОМ, а не в пути запуска окна. Снятие спрашивает систему
-/// о приложении по умолчанию для каждого типа — это `xdg-mime` и `gsettings`,
-/// то есть с десяток подпроцессов. ⭐Замер на стенде (приватный профиль,
-/// xvfb, эта машина): **573 мс** на чистом профиле — и это ещё быстрый
-/// случай, на медленной машине или при тормозящем `xdg-mime` больше.
-/// В пути запуска это дало бы висящее окно без единого слова —
-/// ровно тот дефект, который в продукте уже ловили на ожидании демона обоев.
-/// Того же вида зацепка, что у объявления в мост у входа окна.
+/// ⚠️ IN A SEPARATE THREAD, not on the window startup path. Taking the
+/// snapshot asks the system for the default application of every type:
+/// that is `xdg-mime` and `gsettings`, about a dozen subprocesses.
+/// ⭐Measured on the bench (private profile, xvfb, this machine): **573 ms**
+/// on a clean profile, and that is still the fast case; on a slow machine
+/// or with a sluggish `xdg-mime` it is more. On the startup path this would
+/// give a hanging window without a single word, exactly the defect the
+/// product had already caught while waiting for the wallpaper daemon. The
+/// same kind of hook as the bridge announcement at window entry.
 ///
-/// Молча для глаз — но НЕ для журнала: разбирающий потом должен видеть, что
-/// эталон сняли сами, сколько запомнили и сколько это заняло.
+/// Invisible to the eye, but NOT to the log: whoever investigates later
+/// must see that the baseline was taken automatically, how much was
+/// remembered and how long it took.
 pub fn startup_defaults_snapshot(mut out: Box<dyn FnMut(&str) + Send>) {
     std::thread::spawn(move || {
         let started = std::time::Instant::now();
@@ -387,7 +405,7 @@ pub fn startup_defaults_snapshot(mut out: Box<dyn FnMut(&str) + Send>) {
     });
 }
 
-/// Строки журнала о первом снятии эталона; пусто — снимать было нечего.
+/// Log lines about the first baseline snapshot; empty means there was nothing to take.
 fn startup_snapshot_report(
     outcome: &Option<Result<usize, String>>,
     elapsed_ms: u128,
@@ -405,8 +423,9 @@ fn startup_snapshot_report(
     }
 }
 
-/// Поля объявления Rexon в мост — порт `announce_self` (`rexon/rexon_bridge.py`):
-/// версия всегда, окружение и его человеческое имя — если известны.
+/// Fields of the Rexon announcement to the bridge, a port of
+/// `announce_self` (`rexon/rexon_bridge.py`): the version always, the
+/// environment and its human name if known.
 fn announce_fields(version: &str, current_de: &str, display: &str) -> serde_json::Map<String, serde_json::Value> {
     let mut fields = serde_json::Map::new();
     fields.insert("rexon_version".into(), version.into());
@@ -419,12 +438,13 @@ fn announce_fields(version: &str, current_de: &str, display: &str) -> serde_json
     fields
 }
 
-/// Объявить Rexon в мост при старте окна (`rexon_installed`, версия,
-/// окружение) — то, что окно на Python делает `announce_self`.
+/// Announce Rexon to the bridge at window startup (`rexon_installed`,
+/// version, environment): what the Python window does with `announce_self`.
 ///
-/// Без объявления флаг `rexon_installed` в `bridge.json` не выставляется, и
-/// первая же проверка внешнего приложения «Rexon вообще стоит?» отвечает
-/// «нет». Дорогих проб нет: только окружение и имя из ядра.
+/// Without the announcement the `rexon_installed` flag in `bridge.json` is
+/// not set, and the very first check by an external application "is Rexon
+/// installed at all?" answers "no". There are no expensive probes: only
+/// the environment and the name from the core.
 pub fn announce_to_bridge() -> std::io::Result<()> {
     let env = |name: &str| std::env::var(name).unwrap_or_default();
     let de = crate::appdefaults::detect_current_de(
@@ -443,36 +463,37 @@ pub fn announce_to_bridge() -> std::io::Result<()> {
     bridge.update_rexon_state(fields, &crate::engine_update::now_iso(now.as_secs() as i64))
 }
 
-/// Маршрут `--recover-kde` — порт ветки `rexon/app.py:682` и девятнадцати
-/// её помощников (376 строк).
+/// The `--recover-kde` route, a port of the `rexon/app.py:682` branch and
+/// its nineteen helpers (376 lines).
 ///
-/// Аварийный откат оформления: вернуть Global Theme из резервной копии,
-/// снять переопределения шрифтов и эффекты KWin от форк-тем, вернуть
-/// загрузочную заставку и экран входа к стоку дистрибутива, обои — к
-/// стандартным. Ни одной строки Qt на пути: маршрут обязан работать в
-/// сеансе, где Qt уже не поднимается.
+/// Appearance emergency rollback: restore the Global Theme from the backup,
+/// remove font overrides and KWin effects from fork themes, return the boot
+/// splash and the login screen to the distribution stock, the wallpapers to
+/// the standard ones. Not a single line of Qt on the way: the route must
+/// work in a session where Qt no longer comes up.
 ///
-/// Решения и тексты — [`crate::app`], порядок шагов и походы наружу —
-/// [`crate::system_exec`]; здесь только заведение живого исполнителя и код
-/// возврата.
+/// Decisions and texts are in [`crate::app`], the order of steps and the
+/// trips outside in [`crate::system_exec`]; here only the live executor is
+/// set up and the exit code returned.
 pub fn recover_kde_route(out: &mut dyn FnMut(&str)) -> i32 {
     crate::system_exec::live().recover_kde(out)
 }
 
-/// Маршрут `--session-splash` — порт ветки `rexon/app.py:679`.
+/// The `--session-splash` route, a port of the `rexon/app.py:679` branch.
 ///
-/// Autostart-`.desktop` дёргает его при входе в сессию: проиграть выбранный
-/// webm полноэкранно и выбрать ролик на следующий вход. Qt здесь не
-/// поднимается вовсе — ни одной строки Qt на пути.
+/// An autostart `.desktop` triggers it at login: play the chosen webm full
+/// screen and pick the clip for the next login. Qt is not started here at
+/// all: not a single line of Qt on the way.
 ///
-/// Код возврата всегда 0, и это НЕ небрежность: так решает ядро
-/// (`session_splash::Splash::main`) — неудача заставки не смеет мешать
-/// входу в сессию, она уходит предупреждением в журнал.
+/// The exit code is always 0, and that is NOT sloppiness: the core decides
+/// so (`session_splash::Splash::main`): a splash failure must not get in
+/// the way of logging in; it goes to the log as a warning.
 pub fn session_splash_route() -> i32 {
     let home = home();
     let repo = repo_root();
-    // Интерпретатор — не `sys.executable` оригинала: в Rust-процессе его нет.
-    // Нужен только откату строки автозапуска на Python-вход.
+    // The interpreter is not the original's `sys.executable`: a Rust process
+    // has none. It is needed only for rolling back the autostart line to the
+    // Python entry.
     let mut io = crate::splash_exec::LiveSplashIo::new(
         &home,
         crate::installer::PYTHON_FALLBACK_EXE,
@@ -482,37 +503,39 @@ pub fn session_splash_route() -> i32 {
 }
 
 // ============================================================================
-// Сообщения Qt и QML в журнал Rexon
+// Qt and QML messages to the Rexon log
 // ============================================================================
 
-/// Ставился ли уже логгер сообщений Qt (идемпотентность как у оригинала).
+/// Whether the Qt message logger was already installed (idempotent like the original).
 static QT_LOGGER_INSTALLED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-/// Завести сообщения Qt и QML в журнал Rexon — порт
-/// `ui_base.install_qt_message_logger` (59 строк).
+/// Route Qt and QML messages into the Rexon log, a port of
+/// `ui_base.install_qt_message_logger` (59 lines).
 ///
-/// Ошибка в делегате списка, не найденный QML-модуль, TypeError в привязке —
-/// всё это диагностика того же уровня, что остальные записи, и обязана
-/// лежать в том же файле. У Rust-бинаря не попадало НИ ОДНО сообщение QML, а
-/// пустой журнал читается как «QML молчит, ошибок нет».
+/// An error in a list delegate, a QML module not found, a TypeError in a
+/// binding: all of this is diagnostics of the same level as the other
+/// entries and must lie in the same file. In the Rust binary NOT A SINGLE
+/// QML message got there, and an empty log reads as "QML is silent, no
+/// errors".
 ///
-/// ⛔ ОБРАБОТЧИКА СООБЩЕНИЙ СВОИМ КОДОМ ЗДЕСЬ НЕТ. Qt печатает не только из
-/// главного потока (QQmlThread компилирует QML и сам ругается на него), а
-/// разбирать сообщение в чужом потоке — тот самый капкан, из-за которого в
-/// Python-части маршрут сделан переменными окружения. Печатает штатный
-/// обработчик Qt на C++, мы лишь задаём ему формат и направление.
+/// ⛔ THERE IS NO MESSAGE HANDLER OF OUR OWN HERE. Qt prints not only from
+/// the main thread (QQmlThread compiles QML and complains about it itself),
+/// and handling a message in a foreign thread is the very trap because of
+/// which the Python part's route is done through environment variables.
+/// Qt's stock C++ handler prints; we only give it the format and the
+/// destination.
 ///
-/// Ставить ДО создания `QGuiApplication` — тогда видно и сообщения самой
-/// инициализации Qt. Отвечает `true`, если дескриптор 2 заведён в файл
-/// журнала.
+/// Install BEFORE `QGuiApplication` is created: then the messages of Qt's
+/// own initialisation are visible too. Returns `true` if descriptor 2 was
+/// redirected into the log file.
 pub fn install_qt_message_logger() -> bool {
     use std::sync::atomic::Ordering;
     if QT_LOGGER_INSTALLED.swap(true, Ordering::SeqCst) {
         return false;
     }
-    // `setdefault`, а не `set`: явно заданный человеком формат или
-    // направление — его выбор, и перебивать его нельзя.
+    // `setdefault`, not `set`: a format or destination set explicitly by the
+    // person is their choice and must not be overridden.
     for (name, value) in crate::ui_base::qt_logging_env() {
         if std::env::var_os(name).is_none() {
             std::env::set_var(name, value);
@@ -521,14 +544,15 @@ pub fn install_qt_message_logger() -> bool {
     redirect_stderr_to_log()
 }
 
-/// Завести дескриптор 2 в файл журнала. `true` — завели.
+/// Redirect descriptor 2 into the log file. `true` means redirected.
 ///
-/// Правило «перехватывать или нет» живёт в ядре
-/// ([`crate::ui_base::should_redirect_stderr`]), здесь только наблюдения за
-/// дескриптором: терминал, файл и труба — явный выбор запустившего, его не
-/// перехватываем, иначе разработчик перестанет видеть сообщения там, где
-/// ожидает. Перехватываем запуск без консоли (ярлык «Пуск», systemd-юнит),
-/// где stderr — сокет journald либо `/dev/null`.
+/// The "redirect or not" rule lives in the core
+/// ([`crate::ui_base::should_redirect_stderr`]); here only the descriptor
+/// is observed: a terminal, a file and a pipe are the launcher's explicit
+/// choice, and we do not intercept them, otherwise the developer would stop
+/// seeing messages where they expect them. We intercept a launch without a
+/// console (the "Start" shortcut, a systemd unit), where stderr is a
+/// journald socket or `/dev/null`.
 fn redirect_stderr_to_log() -> bool {
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
     if unsafe { libc::fstat(2, &mut st) } != 0 {
@@ -545,64 +569,68 @@ fn redirect_stderr_to_log() -> bool {
         return false;
     }
 
-    // Файл и ротация — у общего журнала (`crate::applog`): дескриптор 2
-    // уходит в тот же файл, а исходный поток ошибок (журнал systemd)
-    // остаётся за копиями строк Rexon. Прежде здесь был свой `dup2` в
-    // `~/.config/rexon/rexon.log` без предела роста и без копии в systemd.
+    // The file and rotation belong to the common log (`crate::applog`):
+    // descriptor 2 goes to the same file, while the original error stream
+    // (the systemd journal) keeps getting copies of the Rexon lines. Before,
+    // there was a separate `dup2` into `~/.config/rexon/rexon.log` here,
+    // without a growth limit and without a copy to systemd.
     crate::applog::init();
     crate::applog::redirect_stderr()
 }
 
 // ============================================================================
-// Надписи на СОБСТВЕННЫХ кнопках Qt — на языке Rexon
+// Labels on Qt's OWN buttons in the Rexon language
 // ============================================================================
 //
-// Кнопки, которые рисует сама Qt («OK», «Cancel», «Show Details…»,
-// «Apply», меню правки в полях ввода), переводятся только с загруженным
-// каталогом qtbase — без него посреди русского окна попадаются английские
-// надписи. Каталог берём у самой Qt, а не носим свой.
+// Buttons Qt draws itself ("OK", "Cancel", "Show Details…", "Apply", the
+// edit menu in input fields) are translated only with the qtbase catalog
+// loaded; without it English labels pop up in the middle of a Russian
+// window. The catalog is taken from Qt itself rather than shipped by us.
 //
-// ЯЗЫК — ЯЗЫК REXON, а не системы. Раньше каталог выбирался по
-// `QLocale::system()` с откатом на русский: при английском Rexon на русской
-// системе стандартный диалог говорил «Отмена» посреди английского окна, а
-// на системе без каталога Qt (скажем, японской) кнопки становились
-// русскими. Теперь язык ровно тот, что выбрало ядро для своих строк
-// ([`crate::i18n::current_language`]); у английского (исходного языка Qt)
-// каталога нет вовсе, и откат — тоже на английский: без каталога Qt сама
-// рисует английские надписи.
+// THE LANGUAGE IS THE REXON LANGUAGE, not the system's. Previously the
+// catalog was chosen by `QLocale::system()` with a fallback to Russian:
+// with Rexon in English on a Russian system the standard dialog said
+// a Russian "Cancel" in the middle of an English window, and on a system without a
+// Qt catalog (say, Japanese) the buttons turned Russian. Now the language
+// is exactly the one the core chose for its own strings
+// ([`crate::i18n::current_language`]); English (Qt's source language) has
+// no catalog at all, and the fallback is English too: without a catalog
+// Qt draws English labels itself.
 //
-// В ядре — РЕШЕНИЕ (какие файлы, в каком порядке, для какого языка), в
-// Qt-слое — исполнение (`QTranslator`, `QLibraryInfo`): обёрток ни того, ни
-// другого в cxx-qt-lib 0.9 нет вовсе. Шим отдаёт каталог переводов Qt и
-// грузит ровно те файлы, которые назвало ядро.
+// The core holds the DECISION (which files, in what order, for which
+// language), the Qt layer the execution (`QTranslator`, `QLibraryInfo`):
+// cxx-qt-lib 0.9 has wrappers for neither. The shim returns Qt's
+// translations directory and loads exactly the files the core named.
 
-/// Каталоги переводов самой Qt, в порядке загрузки.
+/// Qt's own translation catalogs, in loading order.
 ///
-/// `qtbase` — кнопки диалогов и меню правки полей QtWidgets; `qtdeclarative`
-/// — строки Qt Quick, среди них меню правки полей QML (`TextArea`,
-/// `TextField`: контексты `CopyAction`, `SelectAllAction`…); `qt` —
-/// исторический сводный каталог старых сборок Qt, он есть не везде.
+/// `qtbase`: dialog buttons and the QtWidgets field edit menu;
+/// `qtdeclarative`: Qt Quick strings, among them the QML field edit menu
+/// (`TextArea`, `TextField`: contexts `CopyAction`, `SelectAllAction`…);
+/// `qt`: the historical combined catalog of old Qt builds, not present
+/// everywhere.
 ///
-/// ⚠️ Поймано 08.11.2026: в Qt 6.12 меню правки QML переведено в
-/// `qtdeclarative` далеко не на все языки (немецкий есть, русского и
-/// китайского нет). Дыры закрывает шим окна: для этих контекстов он берёт
-/// те же надписи из `qtbase` (контекст `QLineEdit`), см.
+/// ⚠️ Caught 08.11.2026: in Qt 6.12 the QML edit menu in `qtdeclarative` is
+/// translated into far from every language (German is there, Russian and
+/// Chinese are not). The window shim plugs the holes: for these contexts it
+/// takes the same labels from `qtbase` (context `QLineEdit`), see
 /// `rexon_gui_factory.cpp`.
 pub const QT_TRANSLATION_CATALOGS: &[&str] = &["qtbase", "qtdeclarative", "qt"];
 
-/// Каталог, без которого стандартные надписи Qt остаются английскими.
+/// The catalog without which Qt's standard labels stay English.
 pub const QT_BASE_CATALOG: &str = "qtbase";
 
-/// Разделитель имени каталога и кода языка (`qtbase_ru.qm`).
+/// Separator between the catalog name and the language code (`qtbase_ru.qm`).
 pub const QT_TRANSLATION_SEPARATOR: &str = "_";
 
-/// Имена файлов (без `.qm`) каталога `catalog` для языка Rexon `language`,
-/// по убыванию предпочтения: `pt_BR` → `qtbase_pt_BR`, `qtbase_pt`.
+/// File names (without `.qm`) of catalog `catalog` for the Rexon language
+/// `language`, in decreasing preference: `pt_BR` -> `qtbase_pt_BR`,
+/// `qtbase_pt`.
 ///
-/// Английский — исходный язык Qt: для него пусто, никакого каталога.
-/// `language` — код из [`crate::i18n::current_language`] (`"ru"`,
-/// `"pt_BR"`, `"en"`); кодировка и модификатор (`.UTF-8`, `@euro`), если
-/// вдруг приехали, отбрасываются.
+/// English is Qt's source language: for it the list is empty, no catalog.
+/// `language` is a code from [`crate::i18n::current_language`] (`"ru"`,
+/// `"pt_BR"`, `"en"`); an encoding and modifier (`.UTF-8`, `@euro`), if
+/// they happen to arrive, are dropped.
 pub fn qt_translation_candidates(catalog: &str, language: &str) -> Vec<String> {
     let code = language.split(['.', '@']).next().unwrap_or("").trim().replace('-', "_");
     let base = code.split('_').next().unwrap_or("").to_string();
@@ -616,14 +644,14 @@ pub fn qt_translation_candidates(catalog: &str, language: &str) -> Vec<String> {
     out
 }
 
-/// Какие файлы `.qm` самой Qt включить для языка Rexon `language`: для
-/// каждого из [`QT_TRANSLATION_CATALOGS`] — первый найденный кандидат в
-/// каталоге переводов Qt `dir`.
+/// Which of Qt's own `.qm` files to load for the Rexon language
+/// `language`: for each of [`QT_TRANSLATION_CATALOGS`], the first candidate
+/// found in Qt's translations directory `dir`.
 ///
-/// Пусто — английский: либо Rexon по-английски, либо для его языка у Qt
-/// нет каталога. На другой язык (прежде — на русский) НЕ откатываемся:
-/// кнопки чужого языка посреди окна хуже английских, которые Qt рисует
-/// сама.
+/// Empty means English: either Rexon is in English, or Qt has no catalog
+/// for its language. We do NOT fall back to another language (previously
+/// Russian): buttons in a foreign language in the middle of the window are
+/// worse than the English ones Qt draws itself.
 pub fn qt_translation_files(
     language: &str,
     dir: &Path,
@@ -640,9 +668,10 @@ pub fn qt_translation_files(
         .collect()
 }
 
-/// Строка журнала, если Rexon не по-английски, а каталога `qtbase` для его
-/// языка (с откатом `zh_CN` → `zh`) в `files` нет: стандартные надписи Qt
-/// тогда английские — без ошибки и без подмены системным языком.
+/// A log line when Rexon is not in English but `files` has no `qtbase`
+/// catalog for its language (with the `zh_CN` -> `zh` fallback): Qt's
+/// standard labels are then English, without an error and without
+/// substituting the system language.
 pub fn qt_translation_missing_note(language: &str, files: &[PathBuf]) -> Option<String> {
     if qt_translation_candidates(QT_BASE_CATALOG, language).is_empty() {
         return None;
@@ -654,27 +683,29 @@ pub fn qt_translation_missing_note(language: &str, files: &[PathBuf]) -> Option<
     (!has_base).then(|| format!("каталога Qt для {language} нет, стандартные надписи по-английски"))
 }
 
-/// Переменная окружения, по которой язык стандартных кнопок выбирает
-/// ТЕМА ПЛАТФОРМЫ (KDE Plasma: `KDEPlasmaPlatformTheme6`).
+/// The environment variable by which the PLATFORM THEME chooses the
+/// language of standard buttons (KDE Plasma: `KDEPlasmaPlatformTheme6`).
 ///
-/// ⭐ Поймано на стенде 30.09.2026: под `XDG_CURRENT_DESKTOP=KDE` кнопки
-/// «Yes/No» стандартного диалога QML рисует не qtbase, а тема Plasma — она
-/// переводит их своим каталогом KF6 (KLocalizedString) по языку СИСТЕМЫ.
-/// Без каталога qtbase на русской системе при английском Rexon диалог всё
-/// равно говорил «Да/Нет». KLocalizedString слушает `LANGUAGE`, поэтому
-/// окно до создания приложения ставит её в язык Rexon — и тема Plasma
-/// (как и любая другая, что слушает gettext) идёт за Rexon.
+/// ⭐ Caught on the bench 30.09.2026: under `XDG_CURRENT_DESKTOP=KDE` the
+/// "Yes/No" buttons of the standard QML dialog are drawn not by qtbase but
+/// by the Plasma theme, which translates them with its KF6 catalog
+/// (KLocalizedString) by the SYSTEM language. Without the qtbase catalog,
+/// on a Russian system with Rexon in English, the dialog still said
+/// "Yes/No" in Russian. KLocalizedString listens to `LANGUAGE`, so the window sets it
+/// to the Rexon language before the application is created, and the Plasma
+/// theme (like any other that listens to gettext) follows Rexon.
 pub const QT_UI_LANGUAGE_ENV: &str = "LANGUAGE";
 
-/// Пробный запуск перед перезапуском: бинарь окна с этой переменной
-/// выходит с нулём первой строкой `main`. Вместе с `LD_BIND_NOW=1` это
-/// проверка «новая копия вообще загружается» — все символы библиотек
-/// привязываются до `main`, и смесь версий Qt видна сразу.
+/// A trial run before a restart: the window binary with this variable
+/// exits with zero on the first line of `main`. Together with
+/// `LD_BIND_NOW=1` this checks "does the new copy load at all": all library
+/// symbols are bound before `main`, and a mix of Qt versions shows up right
+/// away.
 pub const LINK_PROBE_ENV: &str = "REXON_LINK_PROBE";
 
-/// Значение [`QT_UI_LANGUAGE_ENV`] для языка Rexon `language` (код из
-/// [`crate::i18n::current_language`]): сам код без кодировки; пусто или
-/// `C` — английский, исходный язык.
+/// The value of [`QT_UI_LANGUAGE_ENV`] for the Rexon language `language`
+/// (a code from [`crate::i18n::current_language`]): the code itself without
+/// the encoding; empty or `C` means English, the source language.
 pub fn qt_ui_language_env(language: &str) -> String {
     let code = language.split(['.', '@']).next().unwrap_or("").trim().replace('-', "_");
     if code.is_empty() || code == "C" || code == "POSIX" {
@@ -685,11 +716,12 @@ pub fn qt_ui_language_env(language: &str) -> String {
 }
 
 // ============================================================================
-// Строки окна в терминал
+// Window lines to the terminal
 // ============================================================================
 
-/// Что сказать в терминал о значке в лотке при старте окна: `icon_shown` —
-/// значок встал, `starts_hidden` — просили запуск свёрнутым.
+/// What to tell the terminal about the tray icon at window startup:
+/// `icon_shown` means the icon is in place, `starts_hidden` means a
+/// minimised start was requested.
 pub fn tray_status_lines(icon_shown: bool, starts_hidden: bool) -> Vec<String> {
     let status = match (icon_shown, starts_hidden) {
         (true, false) => tr("🔔 Tray: icon added"),
@@ -699,38 +731,39 @@ pub fn tray_status_lines(icon_shown: bool, starts_hidden: bool) -> Vec<String> {
     };
     let mut lines = vec![status];
     if starts_hidden && !icon_shown {
-        // Просили свернуться, но значка нет — окно единственная дверь в
-        // программу, и прятать его нельзя (правило #13).
+        // Asked to minimise, but there is no icon: the window is the only door
+        // into the program and must not be hidden (rule #13).
         lines.push(tr("⚠️ Starting minimized was canceled: there's no tray icon"));
     }
     lines
 }
 
-/// Сколько проигрывателей остановлено перед выходом (печатается, только
-/// если их было больше нуля).
+/// How many players were stopped before exiting (printed only if there
+/// were more than zero).
 pub fn players_stopped_line(players: i64) -> String {
     trf("⏹️ Media players stopped before exit: %1", &[&players])
 }
 
 // ============================================================================
-// Наблюдения, которых у чистого ядра нет
+// Observations the pure core does not have
 // ============================================================================
 
-/// Домашний каталог (`os.path.expanduser("~")` оригинала).
+/// The home directory (the original's `os.path.expanduser("~")`).
 fn home() -> String {
     std::env::var("HOME").unwrap_or_else(|_| "/".to_string())
 }
 
-/// Корень дерева разработки: там ядро ищет собранный
+/// Root of the development tree: the core looks there for the built
 /// `rexon-splash-overlay`.
 ///
-/// Величина не выдумывается, а выводится из пути своего же бинаря
-/// (`…/rust/target/<профиль>/rexon-main-window`); не вывелась — пустая
-/// строка, и ядро уйдёт на поиск по `PATH`, как оно и умеет.
+/// The value is not made up but derived from the path of our own binary
+/// (`…/rust/target/<profile>/rexon-main-window`); if it cannot be derived,
+/// an empty string, and the core falls back to searching `PATH`, as it
+/// knows how to.
 ///
-/// Открыта крейту вкладок: по тому же корню Rust-окно находит пакет
-/// `rexon/` (вендорный интерфейс вкладки обоев), своей второй копии
-/// вывода там нет.
+/// Open to the tabs crate: from the same root the Rust window finds the
+/// `rexon/` package (the vendor interface of the wallpaper tab); there is
+/// no second copy of the derivation there.
 pub fn repo_root() -> String {
     let Ok(exe) = std::env::current_exe() else {
         return String::new();
@@ -738,16 +771,17 @@ pub fn repo_root() -> String {
     repo_root_of(&exe)
 }
 
-/// Тот же вывод, но вокруг ЧУЖОГО файла: первый каталог выше него, в
-/// котором лежит `rust/Cargo.toml`. Пусто — файл не в дереве.
+/// The same derivation, but around SOMEONE ELSE'S file: the first directory
+/// above it that contains `rust/Cargo.toml`. Empty means the file is not in
+/// a tree.
 ///
-/// ⭐ Отдельная дверь нужна не ради красоты. У входа через Python своего
-/// бинаря нет: `current_exe` там — `/usr/bin/python3`, и от него дерево не
-/// выводится никогда. Мост (`rexon-py`) держал ради этого свою копию
-/// правила — вторую правду о том, что считать деревом разработчика; разойдись
-/// они, и решение «предлагать ли мастер первого запуска» стало бы разным у
-/// окна и у Python. Правило живёт здесь, а [`repo_root`] — частный случай
-/// «файл = свой бинарь» (правило #12).
+/// ⭐ A separate door is not for looks. The Python entry has no binary of
+/// its own: `current_exe` there is `/usr/bin/python3`, and the tree can
+/// never be derived from it. The bridge (`rexon-py`) kept its own copy of
+/// the rule for this, a second truth about what counts as a developer
+/// tree; had they diverged, the decision "offer the first-run wizard or
+/// not" would differ between the window and Python. The rule lives here,
+/// and [`repo_root`] is the special case "file = own binary" (rule #12).
 pub fn repo_root_of(path: &std::path::Path) -> String {
     for dir in path.ancestors() {
         if dir.join("rust").join("Cargo.toml").is_file() {
@@ -761,10 +795,10 @@ pub fn repo_root_of(path: &std::path::Path) -> String {
 mod tests {
     use super::*;
 
-    /// Корень вокруг ЧУЖОГО файла — то, ради чего дверь и заведена.
+    /// The root around SOMEONE ELSE'S file: what the door exists for.
     ///
-    /// Дерево лепится настоящее: правило смотрит наличие файла
-    /// `rust/Cargo.toml`, подставным наблюдением его не подменить.
+    /// The tree is built for real: the rule checks that the `rust/Cargo.toml`
+    /// file exists, and a fake observation cannot stand in for it.
     #[test]
     fn repo_root_of_foreign_path() {
         let nanos = std::time::SystemTime::now()
@@ -780,14 +814,15 @@ mod tests {
         let module = root.join("rexon").join("app.py");
         std::fs::write(&module, "").expect("модуль записан");
 
-        // Вход через Python: своего бинаря нет (`current_exe` — интерпретатор),
-        // и дерево выводится вот от этого модуля.
+        // The Python entry: no binary of its own (`current_exe` is the
+        // interpreter), and the tree is derived from this very module.
         assert_eq!(repo_root_of(&module), root.to_string_lossy());
-        // Каталог самого дерева тоже внутри себя.
+        // The tree's own directory is inside itself too.
         assert_eq!(repo_root_of(&root), root.to_string_lossy());
 
-        // Вне дерева — пусто, и это не небрежность: так у покупателя стоит
-        // установленный пакет, и «а вдруг дерево» выдумывать нельзя.
+        // Outside the tree it is empty, and that is not sloppiness: this is how
+        // an installed package sits on a customer's machine, and "what if it is a
+        // tree" must not be invented.
         let outside = base.join("usr").join("lib").join("rexon").join("app.py");
         std::fs::create_dir_all(outside.parent().expect("родитель есть"))
             .expect("каталог установки создан");
@@ -808,7 +843,7 @@ mod tests {
             crash_dialog_request(&a(&["--crash-nonfatal", "--crash-dialog=/c/Отчёт 1.log"])),
             Some(CrashDialogRequest { report_path: "/c/Отчёт 1.log".into(), fatal: false })
         );
-        // Флаг без файла — не процесс окна: показывать нечего.
+        // A flag without a file is not a window process: there is nothing to show.
         assert_eq!(crash_dialog_request(&a(&["--crash-dialog"])), None);
         assert_eq!(crash_dialog_request(&a(&["--crash-dialog", "--tray"])), None);
         assert_eq!(crash_dialog_request(&a(&["--crash-dialog="])), None);
@@ -826,7 +861,7 @@ mod tests {
         items.iter().map(|s| s.to_string()).collect()
     }
 
-    /// Чинить было нечего — при старте молчим; починили — число и список.
+    /// Nothing to repair: silent at startup; repaired: the number and the list.
     #[test]
     fn startup_gtk_report_speaks_only_about_repairs() {
         english();
@@ -836,7 +871,7 @@ mod tests {
         assert_eq!(lines[1], "   • gtk-3.0: icon theme");
     }
 
-    /// Замечание о неправленой ссылке — отдельной строкой, без слова «fixed».
+    /// A remark about an unfixed reference goes on a separate line, without the word "fixed".
     #[test]
     fn gtk_note_lines_do_not_claim_a_fix() {
         assert!(gtk_note_lines(&[]).is_empty());
@@ -844,8 +879,9 @@ mod tests {
         assert_eq!(lines, ["⚠️ gtk-3.0/settings.ini: x"]);
     }
 
-    /// Поля объявления — как у `announce_self`: версия всегда, окружение и
-    /// его имя только если известны (пустые в мост не пишутся).
+    /// Announcement fields as in `announce_self`: the version always, the
+    /// environment and its name only if known (empty ones are not written to
+    /// the bridge).
     #[test]
     fn announce_fields_skip_unknown_desktop() {
         let full = announce_fields("0.0.1", "kde", "KDE Plasma");
@@ -903,8 +939,8 @@ mod tests {
         assert_eq!(start_section(&argv(&[])), None);
     }
 
-    /// Пустой `--section=` — это не «раздел с пустым именем», а опечатка:
-    /// окно обязано открыться на разделе по умолчанию, а не на пустоте.
+    /// An empty `--section=` is not "a section with an empty name" but a typo:
+    /// the window must open on the default section, not on nothing.
     #[test]
     fn пустой_section_не_считается_разделом() {
         assert_eq!(start_section(&argv(&["--section="])), None);
@@ -927,10 +963,10 @@ mod tests {
         assert!(said.is_empty(), "маршруты окна ничего не печатают");
     }
 
-    /// `rexon --help` и `--version` без дисплея: до 30.10.2026 оба
-    /// проваливались в главное окно, и Qt падал с `abort` вместо справки.
-    /// Теперь это маршруты без окна с кодом 0 — и они сильнее любого
-    /// другого флага (`--recover-kde --help` рассказывает, а не откатывает).
+    /// `rexon --help` and `--version` without a display: until 30.10.2026 both
+    /// fell through to the main window, and Qt died with `abort` instead of
+    /// printing help. Now they are windowless routes with code 0, and they beat
+    /// any other flag (`--recover-kde --help` explains rather than rolls back).
     #[test]
     fn справка_и_версия_без_окна_и_с_нулём() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -947,17 +983,17 @@ mod tests {
             assert_eq!(said, vec![version_text()]);
         }
         assert!(version_text().starts_with("Rexon "), "{}", version_text());
-        // Слово `help` — только первым: набор Conky может так называться.
+        // The word `help` counts only in first position: a Conky set may be called that.
         assert_eq!(crate::app::route(&argv(&["--conky-set", "help"])), Route::ConkySet);
-        // В справке есть каждая консольная команда, которую стоит знать.
+        // The help contains every console command worth knowing.
         let text = help_lines().join("\n");
         for cmd in ["doctor", "--recover-kde", "--session-guard-restore", "--sanitize-gtk", "--conky-set", "--version", "--help", "--page=", "--tray"] {
             assert!(text.contains(cmd), "в справке нет {cmd}:\n{text}");
         }
     }
 
-    /// Окно без дисплея: понятные строки вместо `abort` Qt. Самопроверка с
-    /// `QT_QPA_PLATFORM=offscreen` дисплея не требует.
+    /// A window without a display: clear lines instead of Qt's `abort`. The
+    /// self-check with `QT_QPA_PLATFORM=offscreen` needs no display.
     #[test]
     fn окно_без_дисплея_не_поднимается() {
         let env_of = |pairs: &'static [(&'static str, &'static str)]| {
@@ -974,11 +1010,11 @@ mod tests {
         assert!(lines.iter().any(|l| l.contains("rexon doctor")), "{lines:?}");
     }
 
-    /// `--recover-kde` — маршрут с кодом возврата, а не окно. Сам прогон
-    /// здесь не делается НАМЕРЕННО: маршрут меняет живую машину (pkexec,
-    /// plasma-apply-*, перезапуск plasmashell). Его порядок шагов и слова
-    /// проверяются на подставном вводе-выводе в
-    /// `tests/system_exec_parity.rs`, где живой машины нет вовсе.
+    /// `--recover-kde` is a route with an exit code, not a window. The run
+    /// itself is DELIBERATELY not done here: the route changes the live machine
+    /// (pkexec, plasma-apply-*, a plasmashell restart). Its order of steps and
+    /// its words are checked on fake input/output in
+    /// `tests/system_exec_parity.rs`, where there is no live machine at all.
     #[test]
     fn recover_kde_разбирается_маршрутом_а_не_окном() {
         assert_eq!(
@@ -987,8 +1023,8 @@ mod tests {
         );
     }
 
-    /// Каталог переводов Qt этой сборки в миниатюре: русский, немецкий,
-    /// бразильский португальский — и английский, который грузить нельзя.
+    /// This build's Qt translations directory in miniature: Russian, German,
+    /// Brazilian Portuguese, and English, which must not be loaded.
     const QT_DIR: &str = "/qt/translations";
     fn qt_has(files: &'static [&'static str]) -> impl Fn(&Path) -> bool {
         move |p: &Path| {
@@ -1022,30 +1058,30 @@ mod tests {
         }
     }
 
-    /// Какой `.qm` самой Qt выбирается: язык решает Rexon, а не система.
+    /// Which of Qt's own `.qm` is chosen: Rexon decides the language, not the system.
     #[test]
     fn файлы_qt_выбираются_по_языку_rexon() {
         let exists = qt_has(SHIPPED);
         let dir = Path::new(QT_DIR);
-        // Rexon по-русски — оба каталога.
+        // Rexon in Russian: both catalogs.
         assert_eq!(qt_translation_files("ru", dir, &exists), qm(&["qtbase_ru.qm", "qt_ru.qm"]));
-        // По-немецки — только то, что есть (`qt_de` нет).
+        // In German: only what exists (there is no `qt_de`).
         assert_eq!(
             qt_translation_files("de", dir, &exists),
             qm(&["qtbase_de.qm", "qtdeclarative_de.qm"])
         );
-        // Каталога под полный код нет — откат на язык без региона.
+        // No catalog for the full code: fall back to the language without the region.
         assert_eq!(qt_translation_files("zh_CN", dir, &exists), qm(&["qtbase_zh.qm"]));
         assert_eq!(qt_translation_files("pt_BR", dir, &exists), qm(&["qtbase_pt_BR.qm"]));
-        // По-английски — НИЧЕГО, хотя `qtbase_en.qm` на диске есть.
+        // In English: NOTHING, although `qtbase_en.qm` is on disk.
         assert!(qt_translation_files("en", dir, &exists).is_empty());
-        // Языка у Qt нет — откат на английский (пусто), а НЕ на русский.
+        // Qt lacks the language: fall back to English (empty), NOT to Russian.
         assert!(qt_translation_files("ja", dir, &exists).is_empty());
         assert!(qt_translation_files("uk", dir, &exists).is_empty());
     }
 
-    /// Язык Rexon есть, каталога Qt нет: надписи Qt английские, одна
-    /// строка в журнал; системный язык в дело не идёт.
+    /// The Rexon language exists, the Qt catalog does not: Qt labels are
+    /// English, one line goes to the log; the system language plays no part.
     #[test]
     fn нет_каталога_qt_для_языка_rexon_одна_строка_в_журнал() {
         let exists = qt_has(SHIPPED);
@@ -1056,20 +1092,19 @@ mod tests {
             qt_translation_missing_note("ja", &ja).as_deref(),
             Some("каталога Qt для ja нет, стандартные надписи по-английски")
         );
-        // Есть только сводный `qt_*` без `qtbase_*` — тоже «нет».
+        // Only the combined `qt_*` without `qtbase_*` also counts as "none".
         assert!(qt_translation_missing_note("uk", &[dir.join("qt_uk.qm")]).is_some());
-        // Каталог есть (в том числе откатом) — молчим.
+        // The catalog exists (including through the fallback): silent.
         for lang in ["ru", "de", "pt_BR", "zh_CN"] {
             let files = qt_translation_files(lang, dir, &exists);
             assert_eq!(qt_translation_missing_note(lang, &files), None, "{lang}");
         }
-        // Английский — исходный язык Qt, каталог ему не нужен.
+        // English is Qt's source language; it needs no catalog.
         assert_eq!(qt_translation_missing_note("en", &[]), None);
     }
 
-    /// Сквозная сверка: окружение ▸ язык Rexon (как его выбирает
-    /// `i18n::activate`) ▸ файлы Qt. Каталог Rexon в этой сборке есть только
-    /// у русского.
+    /// End-to-end check: environment ▸ Rexon language (as `i18n::activate`
+    /// chooses it) ▸ Qt files. In this build only Russian has a Rexon catalog.
     fn qt_files_for(setting: Option<&str>, env: &[(&str, &str)]) -> Vec<PathBuf> {
         let env: Vec<(String, String)> =
             env.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
@@ -1083,7 +1118,7 @@ mod tests {
         qt_translation_files(&language, Path::new(QT_DIR), &qt_has(SHIPPED))
     }
 
-    /// Тема платформы (KDE) получает язык Rexon через `LANGUAGE`.
+    /// The platform theme (KDE) gets the Rexon language through `LANGUAGE`.
     #[test]
     fn язык_темы_платформы_равен_языку_rexon() {
         assert_eq!(QT_UI_LANGUAGE_ENV, "LANGUAGE");
@@ -1098,17 +1133,18 @@ mod tests {
     #[test]
     fn английский_rexon_на_русской_системе_без_каталога_qt() {
         let ru_system = [("LANG", "ru_RU.UTF-8")];
-        // Система русская, Rexon по-русски — русские кнопки Qt.
+        // A Russian system, Rexon in Russian: Russian Qt buttons.
         assert_eq!(qt_files_for(None, &ru_system), qm(&["qtbase_ru.qm", "qt_ru.qm"]));
-        // `LANGUAGE=en` на русской системе — английские кнопки.
+        // `LANGUAGE=en` on a Russian system: English buttons.
         assert!(qt_files_for(None, &[("LANGUAGE", "en"), ("LANG", "ru_RU.UTF-8")]).is_empty());
-        // Настройка Rexon «английский» на русской системе — то же.
+        // The Rexon setting "English" on a Russian system: the same.
         assert!(qt_files_for(Some("en"), &ru_system).is_empty());
-        // Язык, для которого у Rexon нет каталога (японская система): Rexon
-        // говорит по-английски — и кнопки Qt тоже, а не русские.
+        // A language Rexon has no catalog for (a Japanese system): Rexon speaks
+        // English, and so do the Qt buttons, not Russian.
         assert!(qt_files_for(None, &[("LANG", "ja_JP.UTF-8")]).is_empty());
-        // Немецкий: у Qt каталог есть, у Rexon (в этой сборке) — нет. Кнопки
-        // идут за Rexon, иначе посреди английского окна стояло бы «Abbrechen».
+        // German: Qt has a catalog, Rexon (in this build) does not. The buttons
+        // follow Rexon; otherwise "Abbrechen" would stand in the middle of an
+        // English window.
         assert!(qt_files_for(Some("de"), &ru_system).is_empty());
     }
 
@@ -1156,16 +1192,17 @@ mod tests {
         assert_eq!(players_stopped_line(2), "⏹️ Media players stopped before exit: 2");
     }
 
-    /// Логгер идемпотентен: второй вызов ничего не делает (иначе дескриптор
-    /// 2 заводился бы в журнал по кругу на каждой точке входа).
+    /// The logger is idempotent: a second call does nothing (otherwise
+    /// descriptor 2 would be redirected into the log over and over at every
+    /// entry point).
     #[test]
     fn логгер_ставится_один_раз() {
         install_qt_message_logger();
         assert!(!install_qt_message_logger());
     }
 
-    /// Журнал первого снятия эталона: молчит, когда снимать нечего, и
-    /// называет число запомненного, когда сняли.
+    /// Log of the first baseline snapshot: silent when there is nothing to
+    /// take, and names the number remembered when it was taken.
     #[test]
     fn startup_snapshot_report_lines() {
         english();

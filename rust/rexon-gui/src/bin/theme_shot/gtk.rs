@@ -1,15 +1,16 @@
-// Режим `gtk`: форма из настоящих виджетов GTK 3 в `GtkOffscreenWindow` —
-// окно никогда не выходит на экран, кадр — его же рисунок
-// (`gtk_widget_draw` в холст cairo с увеличением, запасной путь —
-// `gtk_offscreen_window_get_pixbuf`). Тему задаёт окружение (`GTK_THEME` и
-// свой `XDG_DATA_HOME` — решает ядро, `widget_shot::helper_env`).
+// `gtk` mode: a form made of real GTK 3 widgets in a `GtkOffscreenWindow` —
+// the window never goes on screen, and the frame is its own drawing
+// (`gtk_widget_draw` into a cairo surface with scaling, the fallback path
+// is `gtk_offscreen_window_get_pixbuf`). The theme is set by the
+// environment (`GTK_THEME` and our own `XDG_DATA_HOME` — the core decides,
+// `widget_shot::helper_env`).
 //
-// Почему GTK открывается `dlopen`, а не крейтом-обёрткой: обёртки GTK 3 для
-// Rust (gtk-rs 0.18) больше не развиваются и тянут в сборку десятки крейтов и
-// заголовки GTK; нам нужны три десятка функций с указателями и числами. Без
-// библиотеки GTK 3 на машине помощник честно отвечает кодом 5, и плитка
-// получает нарисованный образец. GTK — LGPL: загрузка во время работы,
-// отдельный процесс.
+// Why GTK is opened with `dlopen` rather than with a wrapper crate: the
+// GTK 3 wrappers for Rust (gtk-rs 0.18) are no longer developed and pull
+// dozens of crates and the GTK headers into the build; we need some thirty
+// functions with pointers and numbers. Without the GTK 3 library on the
+// machine the helper honestly answers with code 5, and the tile gets a
+// drawn sample. GTK is LGPL: loading at run time, a separate process.
 
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
 
@@ -20,7 +21,7 @@ type W = *mut c_void;
 const NO_GTK: i32 = 5;
 const SAVE_FAILED: i32 = 4;
 
-/// Таблица функций GTK 3, взятых из библиотеки.
+/// Table of GTK 3 functions taken from the library.
 struct Gtk {
     init_check: unsafe extern "C" fn(*mut c_int, *mut *mut *mut c_char) -> c_int,
     offscreen_window_new: unsafe extern "C" fn() -> W,
@@ -87,16 +88,17 @@ struct Gtk {
 
 const HORIZONTAL: c_int = 0;
 const VERTICAL: c_int = 1;
-/// `GDK_INTERP_HYPER` — лучшее сжатие.
+/// `GDK_INTERP_HYPER` — the best downscaling.
 const INTERP_HYPER: c_int = 3;
 /// `CAIRO_FORMAT_ARGB32`.
 const CAIRO_FORMAT_ARGB32: c_int = 0;
 
 impl Gtk {
-    /// Библиотека GTK 3 и все нужные функции; чего-то нет — `None`.
+    /// The GTK 3 library and all needed functions; if something is missing —
+    /// `None`.
     fn load() -> Option<Gtk> {
-        // SAFETY: dlopen/dlsym с нулём на конце строк; найденный адрес
-        // приводится к сигнатуре, объявленной в документации GTK 3.
+        // SAFETY: dlopen/dlsym with NUL-terminated strings; the address found is
+        // cast to the signature declared in the GTK 3 documentation.
         unsafe {
             let lib = libc::dlopen(c"libgtk-3.so.0".as_ptr(), libc::RTLD_NOW | libc::RTLD_GLOBAL);
             if lib.is_null() {
@@ -168,7 +170,7 @@ impl Gtk {
                 widget_get_allocated_height: sym!("gtk_widget_get_allocated_height"),
                 widget_draw: sym!("gtk_widget_draw"),
                 pixbuf_get_from_surface: sym!("gdk_pixbuf_get_from_surface"),
-                // cairo — зависимость GTK: dlsym по её описателю ищет и в ней.
+                // cairo is a GTK dependency: dlsym on its handle looks there too.
                 cairo_image_surface_create: sym!("cairo_image_surface_create"),
                 cairo_create: sym!("cairo_create"),
                 cairo_scale: sym!("cairo_scale"),
@@ -178,8 +180,8 @@ impl Gtk {
         }
     }
 
-    /// Нарисовать окно `window` в `zoom` раз крупнее (`gtk_widget_draw` в
-    /// холст cairo с увеличением) и вернуть картинкой; не вышло — null.
+    /// Draw window `window` `zoom` times larger (`gtk_widget_draw` into a cairo
+    /// surface with scaling) and return it as a picture; on failure — null.
     unsafe fn draw_zoomed(&self, window: W, zoom: c_int) -> W {
         let (w, h) = ((self.widget_get_allocated_width)(window), (self.widget_get_allocated_height)(window));
         if w <= 0 || h <= 0 {
@@ -198,8 +200,8 @@ impl Gtk {
         pixbuf
     }
 
-    /// Прокрутить очередь событий GTK, пока она не опустеет (не больше
-    /// `limit` шагов: тема с бесконечной анимацией очередь не опустошает).
+    /// Spin the GTK event queue until it is empty (no more than `limit` steps:
+    /// a theme with an endless animation never empties the queue).
     unsafe fn settle(&self, limit: usize) {
         for _ in 0..limit {
             if (self.events_pending)() == 0 {
@@ -214,12 +216,12 @@ fn c(s: &str) -> CString {
     CString::new(s.replace('\0', "")).unwrap_or_default()
 }
 
-/// Снять форму и записать PNG; код возврата помощника.
+/// Capture the form and write the PNG; the helper's exit code.
 pub fn shot(args: &HelperArgs) -> i32 {
     let Some(g) = Gtk::load() else { return NO_GTK };
     let t = |i: usize| c(args.texts.get(i).map(String::as_str).unwrap_or(""));
-    // SAFETY: вызовы GTK из одного (главного) потока в порядке, который
-    // требует GTK 3: init → виджеты → показ → кадр.
+    // SAFETY: GTK calls from one (the main) thread in the order GTK 3
+    // requires: init → widgets → show → frame.
     unsafe {
         if (g.init_check)(std::ptr::null_mut(), std::ptr::null_mut()) == 0 {
             return NO_GTK;
@@ -294,8 +296,8 @@ pub fn shot(args: &HelperArgs) -> i32 {
         (g.widget_queue_draw)(window);
         g.settle(500);
 
-        // Форма рисуется крупнее и потом только сжимается: растянутый кадр
-        // выходил мыльным. Не вышло крупнее — картинка самого окна.
+        // The form is drawn larger and then only shrunk: a stretched frame came
+        // out blurry. If drawing larger failed — the window's own picture.
         let zoom = rexon_core::widget_shot::render_scale(args.form, args.size);
         let mut shot = if zoom > 1 { g.draw_zoomed(window, zoom) } else { std::ptr::null_mut() };
         if shot.is_null() {
@@ -310,7 +312,7 @@ pub fn shot(args: &HelperArgs) -> i32 {
             (g.object_unref)(shot);
             return SAVE_FAILED;
         }
-        // Вписать с сохранением сторон в прозрачный кадр.
+        // Fit with the aspect ratio preserved into a transparent frame.
         let k = (ow as f64 / sw as f64).min(oh as f64 / sh as f64);
         let (dw, dh) = (((sw as f64 * k).round() as c_int).max(1), ((sh as f64 * k).round() as c_int).max(1));
         let (dx, dy) = ((ow - dw) / 2, (oh - dh) / 2);

@@ -12,21 +12,22 @@
 namespace
 {
 
-// Учёт настроенных окон. Нужен не для красоты: LayerShellQt::Window::get()
-// СОЗДАЁТ объект слоя, если его ещё нет, поэтому «прочитать текущее
-// состояние» через get() нельзя — чтение молча превратило бы обычное окно в
-// поверхность слоя. Поэтому читаем только то, что сами и настроили.
+// Bookkeeping of configured windows. It is not there for looks:
+// LayerShellQt::Window::get() CREATES a layer object if there is none yet,
+// so "reading the current state" through get() is not possible — reading
+// would silently turn an ordinary window into a layer surface. So we read
+// only what we configured ourselves.
 //
-// QPointer, а не сырой указатель: объект слоя умирает вместе с окном, и
-// запись обязана обнулиться сама, иначе повторное использование адреса дало
-// бы ложное «окно уже в слое».
+// A QPointer rather than a raw pointer: the layer object dies together
+// with the window, and the entry must reset itself, otherwise reuse of
+// the address would give a false "the window is already in the layer".
 QHash<QObject *, QPointer<LayerShellQt::Window>> &registry()
 {
     static QHash<QObject *, QPointer<LayerShellQt::Window>> map;
     return map;
 }
 
-/// Слой уже настроенного окна либо nullptr. Ничего не создаёт.
+/// The layer of an already configured window, or nullptr. Creates nothing.
 LayerShellQt::Window *known(QObject *window)
 {
     const auto it = registry().constFind(window);
@@ -40,8 +41,9 @@ LayerShellQt::Window *known(QObject *window)
 
 bool rexon_layer_shell_available()
 {
-    // Имя платформы Qt: «wayland» либо «wayland-egl» — под X11 слоя нет
-    // вообще, там путь обоев другой (xprop _NET_WM_WINDOW_TYPE_DESKTOP).
+    // Qt platform name: "wayland" or "wayland-egl" — under X11 there is no
+    // layer at all, the wallpaper path is different there (xprop
+    // _NET_WM_WINDOW_TYPE_DESKTOP).
     if (QGuiApplication::instance() == nullptr) {
         return false;
     }
@@ -60,8 +62,9 @@ bool rexon_layer_shell_configure(QObject *window,
         return false;
     }
 
-    // get() возвращает уже существующий объект слоя, если окно настраивали
-    // раньше, — повторный вызов безопасен и просто переписывает свойства.
+    // get() returns the already existing layer object if the window was
+    // configured before — a repeated call is safe and simply rewrites the
+    // properties.
     LayerShellQt::Window *shell = LayerShellQt::Window::get(w);
     if (shell == nullptr) {
         return false;
@@ -69,10 +72,11 @@ bool rexon_layer_shell_configure(QObject *window,
 
     shell->setLayer(static_cast<LayerShellQt::Window::Layer>(layer));
     shell->setAnchors(static_cast<LayerShellQt::Window::Anchors>(anchors));
-    // ⚠️ Имя метода — setExclusiveZone, а имя свойства — exclusionZone.
-    // Расхождение в самой библиотеке KDE; в QML доступно только второе, и
-    // на этом уже спотыкались (запись в каноне проекта). Здесь оба вида
-    // рядом, чтобы больше не искать.
+    // Warning: the method name is setExclusiveZone, while the property name is
+    // exclusionZone. The discrepancy is in the KDE library itself; only the
+    // latter is available in QML, and people have already tripped over this
+    // (an entry in the project canon). Both forms are side by side here so
+    // nobody has to look again.
     shell->setExclusiveZone(exclusion_zone);
     shell->setKeyboardInteractivity(
         static_cast<LayerShellQt::Window::KeyboardInteractivity>(keyboard));
@@ -81,9 +85,10 @@ bool rexon_layer_shell_configure(QObject *window,
     }
 
     if (!registry().contains(window)) {
-        // Запись живёт ровно столько, сколько окно. Без этого карта росла бы
-        // на каждое окно обоев за сеанс — для видеозаставки и пересозданий
-        // окна при смене монитора это настоящая утечка, а не теория.
+        // The entry lives exactly as long as the window. Without this the map
+        // would grow by every wallpaper window over a session — for the video
+        // splash and window recreation on monitor changes this is a real leak,
+        // not a theory.
         QObject::connect(w, &QObject::destroyed, w, [window]() { registry().remove(window); });
     }
     registry().insert(window, QPointer<LayerShellQt::Window>(shell));
@@ -96,8 +101,9 @@ bool rexon_layer_shell_pin_to_window_screen(QObject *window)
     if (w == nullptr) {
         return false;
     }
-    // ⚠️ known(), а не get(): get() СОЗДАЛ бы поверхность слоя из обычного
-    // окна. Прицеливать можно только то, что уже настроено как слой.
+    // Warning: known(), not get(): get() WOULD CREATE a layer surface from an
+    // ordinary window. Only what is already configured as a layer can be
+    // targeted.
     LayerShellQt::Window *shell = known(window);
     if (shell == nullptr) {
         return false;
@@ -106,8 +112,8 @@ bool rexon_layer_shell_pin_to_window_screen(QObject *window)
     if (screen == nullptr) {
         return false;
     }
-    // setScreen сам снимает «пусть решает композитор»
-    // (wantsToBeOnActiveScreen), поэтому второго вызова не нужно.
+    // setScreen itself clears "let the compositor decide"
+    // (wantsToBeOnActiveScreen), so a second call is not needed.
     shell->setScreen(screen);
     return shell->screen() == screen;
 }
@@ -137,8 +143,8 @@ std::int32_t rexon_layer_shell_anchors(QObject *window)
 std::int32_t rexon_layer_shell_exclusion_zone(QObject *window)
 {
     LayerShellQt::Window *shell = known(window);
-    // -1 — законное значение зоны обоев, поэтому «окно не настроено» здесь
-    // не -1, а заведомо невозможное число.
+    // -1 is a legitimate value of the wallpaper zone, so "the window is not
+    // configured" here is not -1 but a number that is known to be impossible.
     return shell == nullptr ? INT32_MIN : static_cast<std::int32_t>(shell->exclusionZone());
 }
 

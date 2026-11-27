@@ -1,15 +1,17 @@
-//! Побайтовая сверка добычи cookie `steamLoginSecure` с оригиналом
-//! Python-кода (`_decrypt_v10` + `read_login_cookie`; архив, метка git `python-final`).
+//! Byte-for-byte check of extracting the `steamLoginSecure` cookie against
+//! the original Python code (`_decrypt_v10` + `read_login_cookie`; archive,
+//! git tag `python-final`).
 //!
-//! Эталоны в `golden/steam_token_cases.json` сняты с ЖИВОГО Python-оракула:
-//! известные значения зашифрованы тем же ключом схемы v10 (AES-128-CBC,
-//! PBKDF2-HMAC-SHA1 pw="peanuts") и ПРОГНАНЫ через настоящий `_decrypt_v10` —
-//! поле `expect` есть его вывод. sqlite-сценарии описывают фикстуру (какие БД
-//! с какими строками), а `expect` — вывод `read_login_cookie` оригинала на ней;
-//! этот тест собирает те же БД через rusqlite и сверяет результат Rust.
+//! References in `golden/steam_token_cases.json` were captured from a LIVE
+//! Python oracle: known values were encrypted with the same v10 scheme key
+//! (AES-128-CBC, PBKDF2-HMAC-SHA1 pw="peanuts") and RUN through the real
+//! `_decrypt_v10` — the `expect` field is its output. The sqlite scenarios
+//! describe a fixture (which DBs with which rows), and `expect` is the
+//! original `read_login_cookie` output on it; this test builds the same DBs
+//! via rusqlite and compares the Rust result.
 //!
-//! ⚠️ Секреты: все токены в эталоне — СИНТЕТИЧЕСКИЕ (сконструированы для теста),
-//! не реальные значения пользователя.
+//! ⚠️ Secrets: all tokens in the reference are SYNTHETIC (constructed for the
+//! test), not real user values.
 
 use std::path::Path;
 
@@ -22,7 +24,7 @@ fn cases() -> Value {
     serde_json::from_str(CASES).expect("эталон разобран")
 }
 
-// ── маленький декодер base64 (стандартный алфавит, с паддингом) ────────
+// ── small base64 decoder (standard alphabet, with padding) ────────
 fn b64_decode(s: &str) -> Vec<u8> {
     fn val(c: u8) -> Option<u8> {
         match c {
@@ -52,7 +54,7 @@ fn b64_decode(s: &str) -> Vec<u8> {
     out
 }
 
-/// Ожидаемое значение эталона: JSON-строка → Some, null → None.
+/// Expected reference value: JSON string → Some, null → None.
 fn expect_str(v: &Value) -> Option<String> {
     match v {
         Value::Null => None,
@@ -75,7 +77,7 @@ fn decrypt_v10_byte_parity() {
     }
 }
 
-/// Построить фикстуру CEF-БД из описания сценария и сверить `read_login_cookie`.
+/// Build a CEF DB fixture from the scenario description and check `read_login_cookie`.
 #[test]
 fn read_login_cookie_selection_parity() {
     let data = cases();
@@ -100,7 +102,7 @@ fn read_login_cookie_selection_parity() {
     }
 }
 
-/// Собрать SQLite-БД `cookies(name, encrypted_value)` из строк эталона.
+/// Build an SQLite DB `cookies(name, encrypted_value)` from the reference rows.
 fn build_cookie_db(path: &Path, rows: &[Value]) {
     let conn = rusqlite::Connection::open(path).expect("создать БД");
     conn.execute("CREATE TABLE cookies (name TEXT, encrypted_value BLOB)", [])
@@ -120,13 +122,13 @@ fn build_cookie_db(path: &Path, rows: &[Value]) {
     }
 }
 
-// ── прочие свойства, не требующие Python-оракула ──────────────────────
+// ── other properties that need no Python oracle ──────────────────────
 
 #[test]
 fn cookie_db_paths_order_and_dedup() {
     let tmp = tempdir("paths");
     let base = tmp.path().join("config").join("htmlcache");
-    // Default, htmlcache/Cookies и два профиля из glob — проверяем порядок.
+    // Default, htmlcache/Cookies and two profiles from glob — check the order.
     for rel in ["Default", "Zebra", "Alpha"] {
         std::fs::create_dir_all(base.join(rel)).unwrap();
         std::fs::write(base.join(rel).join("Cookies"), b"x").unwrap();
@@ -141,8 +143,8 @@ fn cookie_db_paths_order_and_dedup() {
             parent.to_string_lossy().into_owned()
         })
         .collect();
-    // Default, затем htmlcache/Cookies (родитель = htmlcache), затем glob по
-    // алфавиту: Alpha, Default(дубль отброшен), Zebra.
+    // Default, then htmlcache/Cookies (parent = htmlcache), then glob in
+    // alphabetical order: Alpha, Default (duplicate dropped), Zebra.
     assert_eq!(names, vec!["Default", "htmlcache", "Alpha", "Zebra"]);
 }
 
@@ -154,13 +156,13 @@ fn missing_root_is_no_database() {
 
 #[test]
 fn errors_carry_no_values() {
-    // Сообщение об ошибке не несёт значений (секрет-гигиена): у enum вообще нет
-    // полей, а Debug печатает только имя варианта.
+    // The error message carries no values (secret hygiene): the enum has no
+    // fields at all, and Debug prints only the variant name.
     assert_eq!(format!("{:?}", CookieError::NoDatabase), "NoDatabase");
     assert_eq!(format!("{:?}", CookieError::NotFound), "NotFound");
 }
 
-// ── минимальный tempdir без внешних крейтов ───────────────────────────
+// ── minimal tempdir without external crates ───────────────────────────
 struct TempDir {
     path: std::path::PathBuf,
 }

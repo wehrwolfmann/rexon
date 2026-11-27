@@ -1,21 +1,23 @@
-// Источник «Razer Axon» раздела «Оформление → Обои HD»: библиотека Razer
-// Axon на этом компьютере — как раздел «Библиотека» самого Axon: поиск по
-// названиям или тегам, сортировка, панель фильтров с числом включённых,
-// разделы «Недавно добавленные» и «Можно синхронизировать».
+// The "Razer Axon" source of the "Appearance → HD Wallpapers" section: the
+// Razer Axon library on this computer — like the "Library" section of Axon
+// itself: search by titles or tags, sorting, a filter panel with the
+// number of active filters, the "Recently added" and "Can be synced"
+// sections.
 //
-// Строки поиска здесь НЕТ: слово набирают в общей строке шапки страницы,
-// той же, что у KDE Store и Wallhaven (`query` приходит со страницы), —
-// своя строка уезжала влево вниз и теряла слово при смене магазина (живая
-// проверка 16.11.2026). Где искать — в названиях или в тегах — в «Фильтре».
+// There is NO search field here: the word is typed into the shared field
+// in the page header, the same as for KDE Store and Wallhaven (`query`
+// comes from the page) — a field of our own drifted to the lower left and
+// lost the word when the store changed (live check 16.11.2026). Where to
+// search — titles or tags — is set in the "Filter".
 //
-// Только разметка: что в сетке, в каком порядке и все подписи — ядро
-// (`rexon_core::axon_window`) через `AxonActions`
-// (rust/rexon-gui/src/axon_actions.rs). Библиотека читается сама при
-// заходе в источник — кнопки «Загрузить» нет.
+// Markup only: what is in the grid, in what order, and all labels — the
+// core (`rexon_core::axon_window`) through `AxonActions`
+// (rust/rexon-gui/src/axon_actions.rs). The library is read by itself on
+// entering the source — there is no "Load" button.
 //
-// Плитка: двойной щелчок — подробности, правый щелчок (и клавиша меню) —
-// «Применить» (на все экраны), «Перейти к расположению файла»,
-// «Подробности». Enter на плитке — «Применить».
+// Tile: double click — details, right click (and the menu key) — "Apply"
+// (to all screens), "Go to file location", "Details". Enter on a tile
+// means "Apply".
 
 pragma ComponentBehavior: Bound
 
@@ -28,22 +30,23 @@ import org.rexon.gui 1.0
 Item {
     id: view
 
-    /// Палитра скина страницы.
+    /// Page skin palette.
     property var pal: ({})
 
-    /// Модель страницы «Оформления»: размеры плиток и расчёт столбцов —
-    /// общие с сеткой магазина (`ap::grid_columns`/`grid_cell_width`).
+    /// The "Appearance" page model: tile sizes and the column calculation are
+    /// shared with the store grid (`ap::grid_columns`/`grid_cell_width`).
     property var layout: null
     readonly property int gridSpacing: view.layout ? view.layout.gridSpacing : 14
     readonly property int gridMarginH: view.layout ? view.layout.gridMarginH : 16
     readonly property int previewHeight: view.layout ? view.layout.cardPreviewHeight : 170
 
-    /// Слово общей строки поиска шапки страницы (`AppearanceModel.query`).
+    /// Word from the shared search field of the page header
+    /// (`AppearanceModel.query`).
     property string query: ""
 
-    /// Строка для строки состояния страницы.
+    /// Text for the page status line.
     signal message(string text)
-    /// «Очистить фильтр» сбросил и поиск — очистить строку шапки.
+    /// "Clear filter" also reset the search — clear the header field.
     signal searchCleared()
 
     readonly property color colCard: view.pal.bg_card || "#1e2d3d"
@@ -61,12 +64,12 @@ Item {
         id: playlist
         objectName: "axonPlaylistActions"
     }
-    /// Ответ ядра по запросу (`axon_window::view_json`).
+    /// Core answer to the request (`axon_window::view_json`).
     property var v: ({ screen: "", note: "", sections: [], filter: { text: "", count: 0, flags: [], kinds: [] },
                        query: { sort: "date", mode: "titles", text: "" } })
-    /// Подробности открытых обоев (`axon_window::details_json`).
+    /// Details of the opened wallpaper (`axon_window::details_json`).
     property var detail: ({})
-    /// Обои, для которых открыто меню.
+    /// Wallpaper the menu is open for.
     property string menuId: ""
 
     function refresh() {
@@ -75,7 +78,7 @@ Item {
 
     function reload() {
         axon.reload();
-        // Слово набрали в другом магазине до захода сюда: применить сразу.
+        // The word was typed in another store before coming here: apply it at once.
         searchDebounce.stop();
         axon.setSearch(view.query);
         view.refresh();
@@ -102,7 +105,8 @@ Item {
         id: axon
         objectName: "axonActions"
         onFinished: message => view.message(message)
-        // Обложки докачались в кэш — показать их в сетке и в подробностях.
+        // Covers finished downloading into the cache — show them in the grid and
+        // in the details.
         onCoversReady: {
             view.refresh();
             if (detailPopup.opened && view.detail.id) {
@@ -113,11 +117,11 @@ Item {
         }
     }
 
-    // Источник открыли — библиотека читается сама.
+    // The source was opened — the library is read by itself.
     onVisibleChanged: if (view.visible) view.reload()
     Component.onCompleted: if (view.visible) view.reload()
 
-    // Ввод с задержкой 300 мс — как у поиска Axon.
+    // Input with a 300 ms delay — as in Axon's search.
     Timer {
         id: searchDebounce
         interval: 300
@@ -142,7 +146,7 @@ Item {
         anchors.fill: parent
         spacing: 8
 
-        // ── Сортировка, фильтр ────────────────────────────────────────
+        // ── Sorting, filter ───────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
             Layout.leftMargin: 16
@@ -178,15 +182,9 @@ Item {
                 onClicked: filterPopup.opened ? filterPopup.close() : filterPopup.open()
             }
 
-            RexonButton {
-                objectName: "axonRefresh"
-                pal: view.pal
-                text: "🔄"
-                onClicked: view.reload()
-            }
         }
 
-        // ── Сетка ─────────────────────────────────────────────────────
+        // ── Grid ──────────────────────────────────────────────────────
         ScrollView {
             id: scroll
             Layout.fillWidth: true
@@ -220,12 +218,11 @@ Item {
                             id: tiles
                             Layout.fillWidth: true
                             spacing: view.gridSpacing
-                            // Как у сетки магазина: столбцов столько, сколько
-                            // влезает плиток наименьшей ширины, остаток ширины
-                            // — в плитки. Ширина ячейки зависит только от
-                            // ширины ряда, не от плиток, — цикла пересчёта нет.
-                            // Зазор после последнего столбца ряду не нужен,
-                            // поэтому он прибавлен к ширине.
+                            // As in the store grid: as many columns as tiles of the minimum width
+                            // fit, and the remaining width goes into the tiles. The cell width
+                            // depends only on the row width, not on the tiles, so there is no
+                            // recompute loop. The row does not need the gap after the last column,
+                            // so it is added to the width.
                             readonly property int cellWidth: view.layout
                                 ? view.layout.gridCellWidth(tiles.width + view.gridSpacing) : 314
 
@@ -311,9 +308,9 @@ Item {
                                     }
 
                                     ToolTip.text: view.t.tileTooltip || ""
-                                    // Пока открыто меню плитки (правый щелчок),
-                                    // подсказки нет: курсор остаётся над плиткой,
-                                    // и она висела бы поверх пунктов меню.
+                                    // While the tile menu is open (right click) there is no tooltip: the
+                                    // cursor stays over the tile, and the tooltip would hang over the menu
+                                    // items.
                                     ToolTip.visible: tileMouse.containsMouse
                                                      && !tileMenu.visible
                                     ToolTip.delay: 1200
@@ -325,7 +322,7 @@ Item {
             }
         }
 
-        // ── Пусто, ничего не найдено, библиотеки нет ─────────────────
+        // ── Empty, nothing found, no library ─────────────────────────
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -375,7 +372,7 @@ Item {
         }
     }
 
-    // ── Панель фильтров ──────────────────────────────────────────────
+    // ── Filter panel ─────────────────────────────────────────────────
     Popup {
         id: filterPopup
         objectName: "axonFilterPopup"
@@ -394,7 +391,7 @@ Item {
         ColumnLayout {
             spacing: 4
 
-            // «Искать в: Названия обоев | Теги» — режим общей строки поиска.
+            // "Search in: Wallpaper titles | Tags" — the mode of the shared search field.
             RexonText {
                 text: view.t.searchIn || ""
                 color: view.colTextSecondary
@@ -475,7 +472,7 @@ Item {
         }
     }
 
-    // ── Меню плитки ──────────────────────────────────────────────────
+    // ── Tile menu ────────────────────────────────────────────────────
     component AxonMenuItem: MenuItem {
         id: entry
         contentItem: RexonText {
@@ -497,10 +494,10 @@ Item {
     Menu {
         id: tileMenu
         objectName: "axonTileMenu"
-        // Ширина — по самому широкому пункту: у `Menu` стилей Basic и
-        // Fusion она за подписями не следует, и длинная подпись на другом
-        // языке обрезалась («Перейти к расположению фай…»). Тот же счёт,
-        // что у меню окна (`WindowMenu.qml`).
+        // Width follows the widest item: the `Menu` of the Basic and Fusion styles
+        // does not follow the labels, and a long label in another language was
+        // cut ("Go to file locat…"). The same calculation as in the window menu
+        // (`WindowMenu.qml`).
         implicitWidth: {
             let widest = 0;
             for (let i = 0; i < tileMenu.count; ++i) {
@@ -529,7 +526,7 @@ Item {
             onTriggered: view.apply(view.menuId)
         }
 
-        // Плейлист обоев Rexon (блок в «⚙️ Настройках» раздела).
+        // Rexon wallpaper playlist (the block in the section's "⚙️ Settings").
         AxonMenuItem {
             objectName: "axonMenuPlaylist"
             text: view.playlistTexts.addToPlaylist || ""
@@ -552,7 +549,7 @@ Item {
         }
     }
 
-    // ── Подробности ──────────────────────────────────────────────────
+    // ── Details ──────────────────────────────────────────────────────
     Popup {
         id: detailPopup
         objectName: "axonDetails"

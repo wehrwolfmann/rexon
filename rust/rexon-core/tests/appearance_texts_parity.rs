@@ -1,60 +1,60 @@
-//! Сторож ЕДИНСТВЕННОГО источника подписей вкладки «Оформление».
+//! Guard of the SINGLE source of captions for the «Оформление» tab.
 //!
-//! ЗАЧЕМ. Подписи вкладки живут в ядре (`rexon_core::appearance_page`,
-//! `pub fn имя() -> String { tr("…") }`). Две правды на одну надпись — это
-//! не косметика:
+//! WHY. The tab's captions live in the core (`rexon_core::appearance_page`,
+//! `pub fn name() -> String { tr("…") }`). Two truths for one label are
+//! not cosmetics:
 //!
-//!   * подпись меняют в ядре, а на экране остаётся вчерашняя — расхождение
-//!     никто не видит, пока не наткнётся глазами;
-//!   * подпись работает КЛЮЧОМ решения. Здесь же, в этой вкладке, вид
-//!     локальной карточки определяется поиском бейджа «активна» в подписи
-//!     автора (`local_active_badge`). Переименуй текст в одной из двух
-//!     копий — ветка молча перестаёт срабатывать, и работа «успешно»
-//!     заканчивается, не сделав главного.
+//!   * the caption is changed in the core, while yesterday's stays on screen — nobody
+//!     sees the mismatch until they stumble on it by eye;
+//!   * a caption works as a decision KEY. Right here, in this tab, the look
+//!     of a local card is determined by searching for the «активна» badge in the
+//!     author caption (`local_active_badge`). Rename the text in one of the two
+//!     copies — the branch silently stops firing, and the work ends
+//!     "successfully" without doing the main thing.
 //!
-//! ЧТО СТЕРЕЖЁМ. Проверки читают исходники ядра и Rust-страницы и краснеют
-//! сами, без человека:
+//! WHAT WE GUARD. The checks read the sources of the core and the Rust page and turn
+//! red on their own, without a human:
 //!
-//!   1. у каждой подписи ядра есть русский перевод в `po/ru.po`;
-//!   2. каждую подпись кто-то показывает: Rust-страница (`rexon-gui`) или
-//!      само ядро; заведомо не подключённые названы поимённо
-//!      ([`NOT_YET_SHOWN`]), и список обязан совпадать с правдой в обе
-//!      стороны;
-//!   3. на Rust-странице (`appearance_page.rs`, `appearance_actions.rs`,
-//!      `AppearancePage.qml`) нет строкового литерала, дословно равного
-//!      подписи ядра — ни по-английски, ни по-русски, — то есть второй
-//!      правды нет.
+//!   1. every core caption has a Russian translation in `po/ru.po`;
+//!   2. every caption is shown by someone: the Rust page (`rexon-gui`) or
+//!      the core itself; the ones known not to be wired up are named one by one
+//!      ([`NOT_YET_SHOWN`]), and the list must match the truth in both
+//!      directions;
+//!   3. the Rust page (`appearance_page.rs`, `appearance_actions.rs`,
+//!      `AppearancePage.qml`) has no string literal literally equal to a
+//!      core caption — neither in English nor in Russian — i.e. there is no second
+//!      truth.
 //!
-//! ЧТО БЫЛО РАНЬШЕ. До 02.10.2026 вторая и третья проверки смотрели на
-//! Python: таблицу `apage_texts` моста `rexon-py` и замороженную виджетную
-//! страницу `golden/frozen_appearance_page.py`. По решению владельца
-//! 02.10.2026 Python в Rexon — только архив, не эталон и не мост, поэтому
-//! сторож перенесён на Rust-потребителя подписей.
+//! WHAT IT WAS BEFORE. Until 02.10.2026 the second and third checks looked at
+//! Python: the `apage_texts` table of the `rexon-py` bridge and the frozen widget
+//! page `golden/frozen_appearance_page.py`. By the owner's decision of
+//! 02.10.2026 Python in Rexon is only an archive, neither a golden source nor a bridge, so
+//! the guard was moved to the Rust consumer of the captions.
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Ядро: объявления подписей.
+/// The core: caption declarations.
 const CORE_RS: &str = include_str!("../src/appearance_page.rs");
-/// Rust-страница — потребитель подписей.
+/// The Rust page — the consumer of the captions.
 const GUI_PAGE_RS: &str = include_str!("../../rexon-gui/src/appearance_page.rs");
 const GUI_ACTIONS_RS: &str = include_str!("../../rexon-gui/src/appearance_actions.rs");
 const GUI_PAGE_QML: &str = include_str!("../../rexon-gui/qml/AppearancePage.qml");
-/// Русский каталог: вторая правда могла бы завестись и в русских буквах.
+/// The Russian catalog: a second truth could also appear in Russian letters.
 const RU_PO: &str = include_str!("../../../po/ru.po");
 
-/// Сколько подписей у вкладки заведомо есть.
+/// How many captions the tab is known to have at least.
 ///
-/// Это не смета на будущее, а страховка САМОГО РАЗБОРА: сломайся поиск
-/// объявлений — и «дубликатов не найдено» стало бы правдой на пустом
-/// множестве, а сторож — зелёным и бесполезным. Подписей убыло по делу —
-/// поправьте число вместе с правкой.
+/// This is not an estimate for the future but insurance for THE PARSING ITSELF: should the search
+/// for declarations break, "no duplicates found" would become true on an empty
+/// set, and the guard green and useless. If captions decreased for a reason,
+/// fix the number together with the change.
 const KNOWN_CAPTIONS: usize = 39;
 
-// ── Разбор объявлений ядра ────────────────────────────────────────────
+// ── Parsing the core declarations ─────────────────────────────────────
 
-/// Развернуть экранирование строкового литерала Rust.
+/// Unescape a Rust string literal.
 fn unescape_rust(body: &str) -> String {
     let chars: Vec<char> = body.chars().collect();
     let mut out = String::new();
@@ -66,8 +66,8 @@ fn unescape_rust(body: &str) -> String {
             continue;
         }
         match chars.get(i + 1) {
-            // Перенос строки в исходнике: сам перенос и отступ следующей
-            // строки в значение не входят.
+            // A line break in the source: the break itself and the indent of the next
+            // line are not part of the value.
             Some('\n') => {
                 i += 2;
                 while matches!(chars.get(i), Some(' ') | Some('\t')) {
@@ -102,11 +102,11 @@ fn unescape_rust(body: &str) -> String {
     out
 }
 
-/// Подписи ядра: `pub fn имя() -> String { … tr("…") … }` → (имя, msgid).
+/// Core captions: `pub fn name() -> String { … tr("…") … }` → (name, msgid).
 ///
-/// Берётся первый литерал, отданный `tr`/`trf`, в теле функции без
-/// параметров. Функции без перевода внутри (`gallery_counter_qss`) —
-/// не подписи и в счёт не идут.
+/// The first literal passed to `tr`/`trf` in the body of a function without
+/// parameters is taken. Functions without a translation inside (`gallery_counter_qss`)
+/// are not captions and do not count.
 fn core_captions() -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let mut rest = CORE_RS;
@@ -144,8 +144,8 @@ fn core_captions() -> BTreeMap<String, String> {
     out
 }
 
-/// Перевод подписи на русский — из `po/ru.po` дерева (разбор `.po` здесь
-/// простой: `msgid`/`msgstr` в одну или несколько строк, без контекста).
+/// Russian translation of a caption — from the tree's `po/ru.po` (the `.po` parsing here
+/// is simple: `msgid`/`msgstr` on one or several lines, no context).
 fn russian(msgid: &str) -> Option<String> {
     let mut id: Option<String> = None;
     let mut cur_id = String::new();
@@ -180,16 +180,16 @@ fn russian(msgid: &str) -> Option<String> {
     id
 }
 
-// ── Кто показывает подпись ────────────────────────────────────────────
+// ── Who shows the caption ─────────────────────────────────────────────
 
-/// Подписи ядра, которые не показывает ни Rust-страница, ни само ядро.
-/// Список — долг подключения, а не разрешение: подключили подпись — уберите
-/// её отсюда (сторож покраснеет и напомнит); завели новую подпись без
-/// показа — сторож покраснеет тоже. Последние три (кнопка «Открыть в AUR»
-/// с подсказкой и заглушка «нет превью») подключены 02.10.2026 — долг пуст.
+/// Core captions shown neither by the Rust page nor by the core itself.
+/// The list is a wiring debt, not a permission: wired up a caption — remove
+/// it from here (the guard will turn red and remind you); added a new caption without
+/// showing it — the guard turns red too. The last three (the «Открыть в AUR» button
+/// with its tooltip and the «нет превью» placeholder) were wired up on 02.10.2026 — the debt is empty.
 const NOT_YET_SHOWN: &[&str] = &[];
 
-/// Все `.rs` под каталогом (рекурсивно).
+/// All `.rs` under a directory (recursively).
 fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = fs::read_dir(dir).unwrap_or_else(|e| panic!("нет {}: {e}", dir.display()));
     for entry in entries.flatten() {
@@ -202,8 +202,8 @@ fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Есть ли в тексте вызов `name(` — с границей слова слева и не в самом
-/// объявлении `pub fn name(`.
+/// Whether the text has a call `name(` — with a word boundary on the left and not in the
+/// declaration `pub fn name(` itself.
 fn calls(text: &str, name: &str) -> bool {
     let needle = format!("{name}(");
     let mut from = 0;
@@ -222,13 +222,13 @@ fn calls(text: &str, name: &str) -> bool {
     false
 }
 
-/// Литерал `"text"` в исходнике (в кавычках — так прозаическое упоминание в
-/// комментарии «…» за вторую правду не сойдёт).
+/// A literal `"text"` in the source (in quotes — so a prose mention in
+/// a comment «…» does not count as a second truth).
 fn quoted(src: &str, text: &str) -> bool {
     src.contains(&format!("\"{text}\""))
 }
 
-// ── Сами сверки ───────────────────────────────────────────────────────
+// ── The checks themselves ─────────────────────────────────────────────
 
 #[test]
 fn every_caption_has_a_russian_translation() {
@@ -306,8 +306,8 @@ fn rust_page_keeps_no_second_copy_of_captions() {
     );
 }
 
-/// Самопроверка поиска вызовов и литералов: без неё сверки выше могли бы
-/// стать зелёными просто оттого, что поиск перестал что-либо находить.
+/// Self-check of the call and literal search: without it the checks above could
+/// turn green simply because the search stopped finding anything.
 #[test]
 fn search_helpers_understand_the_tricky_cases() {
     let sample = "\

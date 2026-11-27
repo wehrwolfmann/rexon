@@ -860,6 +860,8 @@
     ],
     "suse": [
      "hyprland",
+     "hyprlock",
+     "hypridle",
      "xdg-desktop-portal-hyprland",
      "waybar",
      "wofi",
@@ -2825,6 +2827,8 @@
    "family": "suse",
    "get_packages": [
     "hyprland",
+    "hyprlock",
+    "hypridle",
     "xdg-desktop-portal-hyprland",
     "waybar",
     "wofi",

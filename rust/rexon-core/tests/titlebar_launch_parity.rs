@@ -1,13 +1,13 @@
-//! Сверка «Кнопок заголовка окна» (все кнопки KDE, флажки KWin) и «Отклика
-//! при запуске» на подставном вводе-выводе: какие команды уходят в систему
-//! и что видит раздел. Ожидания — `tests/golden/titlebar_launch_cases.json`
-//! (ключи и умолчания сверены с `kwindecorationsettings.kcfg` и
-//! `launchfeedbacksettings.kcfg` KDE 6.8).
+//! Check of «Titlebar Buttons» (all KDE buttons, KWin flags) and «Launch
+//! Feedback» on mocked I/O: which commands go to the system and what the
+//! section sees. Expectations — `tests/golden/titlebar_launch_cases.json`
+//! (keys and defaults checked against `kwindecorationsettings.kcfg` and
+//! `launchfeedbacksettings.kcfg` of KDE 6.8).
 //!
-//! Подставная машина: файлы — словарь, `gsettings get` / `xfconf-query`
-//! отвечают из словаря, записи (`kwriteconfig6`, `gsettings set|reset`,
-//! `xfconf-query -s|-r`, уведомления D-Bus) только записываются в журнал —
-//! ничего не исполняется.
+//! Mock machine: files are a map, `gsettings get` / `xfconf-query` answer
+//! from the map, writes (`kwriteconfig6`, `gsettings set|reset`,
+//! `xfconf-query -s|-r`, D-Bus notifications) are only recorded in the log —
+//! nothing is executed.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -62,12 +62,12 @@ fn strings(v: &Value) -> Vec<String> {
     v.as_array().map(|a| a.iter().map(|x| x.as_str().unwrap_or_default().to_string()).collect()).unwrap_or_default()
 }
 
-/// Сравнить только поля, названные в эталоне.
+/// Compare only the fields named in the golden file.
 fn check_subset(name: &str, want: &Value, got: &Value) {
     for (k, w) in want.as_object().expect("state — объект") {
         let g = &got[k];
         if let (Some(wa), Some(ga)) = (w.as_array(), g.as_array()) {
-            // Список объектов: в каждом — только названные поля.
+            // List of objects: only the named fields in each.
             if wa.first().map(Value::is_object).unwrap_or(false) {
                 assert_eq!(wa.len(), ga.len(), "{name}: {k} — число элементов: {g}");
                 for (wi, gi) in wa.iter().zip(ga) {
@@ -110,13 +110,13 @@ fn titlebar_and_launch_feedback_cases() {
                 wb::apply_toggle(&io, &ctx, &arg(1), &arg(2), on(3));
                 None
             }
-            // Перетаскивание: id, откуда, позиция, куда, позиция.
+            // Drag: id, from, position, to, position.
             "move" => {
                 let n = |i: usize| arg(i).parse().unwrap_or(0);
                 let msg = wb::apply_move(&io, &ctx, &arg(1), &arg(2), n(3), &arg(4), n(5));
                 Some(serde_json::json!({ "message": msg }))
             }
-            // Шаг кнопкой: сторона, позиция, направление.
+            // Button step: side, position, direction.
             "nudge" => {
                 let (msg, at) = wb::apply_nudge(&io, &ctx, &arg(1), arg(2).parse().unwrap(), &arg(3));
                 Some(serde_json::json!({ "message": msg, "at": at }))

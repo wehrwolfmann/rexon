@@ -1,307 +1,306 @@
-# Как проверять Rexon
+# How to test Rexon
 
-Сборка, тесты, стенды и отладка: что запускать и на что смотреть.
+Building, tests, test stands and debugging: what to run and what to look at.
 
-## ⚠️ Сборка Rust: голый `cargo build --release` НЕ собирает вкладки
+## ⚠️ Rust build: a bare `cargo build --release` does NOT build the tabs
 
-Первое, что нужно знать перед любым замером UI.
+The first thing to know before any UI measurement.
 
-В `rust/Cargo.toml` стоит `default-members = ["rexon-core"]` — намеренно,
-чтобы голый `cargo test` ядра не тянул Qt6 (rexon-gui, rexon-qt-filter на
-cxx-qt) и интерпретатор Python (rexon-py). Обратная сторона: **голый
-`cargo build --release` собирает одно ядро**, рапортует «Finished» за
-секунды и оставляет окно `rexon-main-window` с вкладками на QML старым.
-Меряешь позавчерашний день, будучи уверен, что собрал сегодняшний. На это наступили 2026-08-29: сборка «прошла успешно»,
-.so была двухдневной давности.
+`rust/Cargo.toml` sets `default-members = ["rexon-core"]` — on purpose,
+so that a bare `cargo test` of the core does not pull in Qt6 (rexon-gui, rexon-qt-filter on
+cxx-qt) and the Python interpreter (rexon-py). The flip side: **a bare
+`cargo build --release` builds the core alone**, reports "Finished" within
+seconds and leaves the `rexon-main-window` window with its QML tabs stale.
+You end up measuring the day before yesterday while being sure you built today's code. This bit us on 2026-08-29: the build "succeeded",
+and the .so was two days old.
 
-Замер после правки исходника вкладки: `cargo build --release` — «Finished
-in 0.05s», сборка вкладок не тронута; `cargo build-app` — 1 мин 45 с, свежая.
+Measurement after editing a tab's source: `cargo build --release` — "Finished
+in 0.05s", the tab build untouched; `cargo build-app` — 1 min 45 s, fresh.
 
-Собирать — псевдонимами из `rust/.cargo/config.toml` (`cargo --list`
-печатает их вместе с разворотом):
+Build with the aliases from `rust/.cargo/config.toml` (`cargo --list`
+prints them together with their expansion):
 
 ```bash
 cd rust
-cargo build-app          # ядро + rexon-main-window + librexon_qt_filter.so — ЭТО «собрать проект»
-cargo build-app-debug    # то же в debug (release при этом остаётся старой!)
-cargo build-splash       # бинарь заставки входа, отдельной командой (почему — ниже)
-cargo test-core          # тесты ядра: без Qt и без Python
-cd rexon-py && maturin build --release   # мост в Python: его собирает maturin, не cargo
+cargo build-app          # core + rexon-main-window + librexon_qt_filter.so — THIS is "build the project"
+cargo build-app-debug    # the same in debug (the release build stays stale!)
+cargo build-splash       # the login splash binary, as a separate command (why — see below)
+cargo test-core          # core tests: no Qt and no Python
+cd rexon-py && maturin build --release   # the Python bridge: maturin builds it, not cargo
 ```
 
-Проверять глазами, а не по слову «Finished»:
+Check with your own eyes, not by the word "Finished":
 
 ```bash
 ls -la --time-style=+%H:%M rust/target/release/rexon-main-window
 ```
 
-⚠️ Колесо моста: `maturin failed … libssl-566862b9.so.3 could not be located`.
-Хеш в имени библиотеки — примета УЖЕ починенного колесом файла: maturin
-переиспользует `rust/target/maturin/librexon_py.so`, оставшийся от прошлой
-сборки, и чинит починенное. Лечится удалением промежуточного каталога, а не
-разбирательством с openssl:
+⚠️ The bridge wheel: `maturin failed … libssl-566862b9.so.3 could not be located`.
+The hash in the library name is the mark of a file ALREADY repaired by the wheel tooling: maturin
+reuses `rust/target/maturin/librexon_py.so` left over from the previous
+build and repairs what was already repaired. The cure is deleting the intermediate directory, not
+digging into openssl:
 
 ```bash
 rm -rf rust/target/maturin && (cd rust/rexon-py && maturin build --release)
 ```
 
-Установка собранного колеса (PEP 668 иначе откажет):
+Installing the built wheel (PEP 668 refuses otherwise):
 
 ```bash
 pip install --user --force-reinstall --no-deps --break-system-packages \
     rust/target/wheels/rexon_py-*-manylinux*.whl
 ```
 
-Почему заставка отдельной командой. `rexon-splash-overlay` тянет свой стек
-(wayland/EGL). Когда он попадает в ОДИН прогон cargo вместе с `rexon-gui`,
-объединение фич общих зависимостей (libc, rustix, bitflags, log…) меняется
-и `rexon-gui` пересобирается целиком: чередование «всё одним прогоном» и
-`build-app` жгло по 1 мин 40 с на ровном месте. Разными прогонами — 0,1 с.
+Why the splash is a separate command. `rexon-splash-overlay` pulls in its own stack
+(wayland/EGL). When it ends up in ONE cargo run together with `rexon-gui`,
+the feature unification of shared dependencies (libc, rustix, bitflags, log…) changes
+and `rexon-gui` is rebuilt from scratch: alternating "everything in one run" and
+`build-app` burned 1 min 40 s for nothing. In separate runs — 0.1 s.
 
-⚠️ Псевдонимы читаются по текущему каталогу, а не по `--manifest-path`:
-работают из `rust/` или изнутри крейта. Из корня репозитория
-(`cargo build --manifest-path rust/Cargo.toml`) cargo этого файла не видит
-— там набор пакетов пишем через `-p` руками.
+⚠️ The aliases are read from the current directory, not from `--manifest-path`:
+they work from `rust/` or from inside a crate. From the repository root
+(`cargo build --manifest-path rust/Cargo.toml`) cargo does not see that file
+— there the package set is written out by hand with `-p`.
 
-Полная установка вкладок на машину (QML-модуль `waywallen.control` +
-обе .so туда, где их ищет приложение) — `tools/build_qml_control.sh`;
-он сам зовёт cargo для `rexon-gui` и `rexon-qt-filter`.
+Full installation of the tabs on the machine (the QML module `waywallen.control` +
+both .so files where the application looks for them) — `tools/build_qml_control.sh`;
+it calls cargo for `rexon-gui` and `rexon-qt-filter` itself.
 
-## Тестирование
+## Testing
 
 ```bash
-# Проверка синтаксиса всех модулей
+# Syntax check of all modules
 find rexon -name "*.py" | xargs -I{} python3 -m py_compile {}
 
-# Запуск приложения
-rexon                       # Единое Qt-окно (default)
-rexon --tray                # сразу в системный лоток, без окна (запуск при входе)
-rexon --desktops-qt         # одиночная Qt-вкладка «Рабочие столы»
-rexon --compare-qt          # «Сравнение DE»
-rexon --appearance-qt       # «Оформление»
-rexon --extensions-qt       # «Расширения»
-rexon --settings-qt         # «Настройки»
-rexon --recover-kde         # аварийный откат KDE-темы
+# Running the application
+rexon                       # Single Qt window (default)
+rexon --tray                # straight to the system tray, no window (start at login)
+rexon --desktops-qt         # standalone Qt tab "Desktops"
+rexon --compare-qt          # "DE comparison"
+rexon --appearance-qt       # "Appearance"
+rexon --extensions-qt       # "Extensions"
+rexon --settings-qt         # "Settings"
+rexon --recover-kde         # emergency rollback of the KDE theme
 
-# Главное окно, у которого ХОЗЯИН — Rust (отдельный вход для разработчика).
-# Виджетов и Python в процессе нет: QGuiApplication + ApplicationWindow на
-# QML. ⚠️ Продукт запускается по-прежнему `rexon` и этого бинаря не знает.
-rust/target/release/rexon-main-window                    # окно целиком
-rust/target/release/rexon-main-window --section=steam    # сразу нужный раздел
-rust/target/release/rexon-main-window --section=appearance/screeneffects  # раздел «Оформления»
+# The main window whose OWNER is Rust (a separate entry point for developers).
+# There are no widgets and no Python in the process: QGuiApplication + ApplicationWindow in
+# QML. ⚠️ The product is still started as `rexon`, and it does not know this binary.
+rust/target/release/rexon-main-window                    # the whole window
+rust/target/release/rexon-main-window --section=steam    # straight to the given section
+rust/target/release/rexon-main-window --section=appearance/screeneffects  # an "Appearance" section
 QT_QPA_PLATFORM=offscreen rust/target/release/rexon-main-window --selftest
-#   0 — проверки прошли, 1 — провал (печатает строки REXON-MAINWINDOW-FAIL),
-#   2 — окно не отчиталось за 30 с. Проверка стенда на укус: тот же прогон с
-#   `--section=steam` ОБЯЗАН покраснеть — у того раздела страницы ещё нет.
+#   0 — checks passed, 1 — failure (prints REXON-MAINWINDOW-FAIL lines),
+#   2 — the window did not report within 30 s. Bite-check of the stand: the same run with
+#   `--section=steam` MUST turn red — that section has no page yet.
 
-# Wallpaper-хост (standalone; прочие типы рисует движок waywallen).
-# Python-хоста больше нет: обои показывает бинарь крейта rexon-gui.
-# Хост один на видео и веб: режим — `--mode video|web` (без ключа — видео).
+# Wallpaper host (standalone; the other types are drawn by the waywallen engine).
+# The Python host is gone: wallpapers are shown by a binary of the rexon-gui crate.
+# One host for video and web: the mode is `--mode video|web` (without the flag — video).
 rust/target/release/rexon-wallpaper-host --mode video /path/to/video.mp4 [--windowed]
-rust/target/release/rexon-wallpaper-host --mode video /path/to/wallpaper_dir  # WE-обои с project.json
+rust/target/release/rexon-wallpaper-host --mode video /path/to/wallpaper_dir  # WE wallpapers with project.json
 rust/target/release/rexon-wallpaper-host --mode video /path/to/video.mp4 --selftest
-rust/target/release/rexon-wallpaper-host --mode web /path/to/index.html --selftest  # код 5 — страница не загрузилась
+rust/target/release/rexon-wallpaper-host --mode web /path/to/index.html --selftest  # code 5 — the page did not load
 
-# Forced X11 mode (для отладки fallback на Wayland-машине)
+# Forced X11 mode (for debugging the fallback on a Wayland machine)
 env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=xcb \
     rust/target/release/rexon-wallpaper-host --mode video /path/video.mp4 --windowed -v
 
-# Проверка импортов
+# Import checks
 python3 -c "from rexon.extensions import Extension, ExtensionManager, VALID_TYPES; print('OK')"
 python3 -c "from rexon.qt_main.window import RexonMainWindow; print('Qt OK')"
 python3 -c "import rexon_py; print('helpers OK', rexon_py.wpm_is_wayland_session('wayland',''))"
 
-# Установка в систему (потребует pkexec пароль)
+# System installation (will ask for the pkexec password)
 python3 -c "from rexon.installer import RexonInstaller; ok,m=RexonInstaller().install_to_system(); print(ok,m)"
 
-# Дамп всех потоков при зависании
+# Dump all threads on a hang
 kill -USR1 $(pgrep -f "python3 /usr/local/bin/rexon")
 
-# Подсчёт строк
+# Line count
 find rexon -name "*.py" | xargs wc -l | tail -1
 ```
 
-### Обход окна: `--tour`
+### Window tour: `--tour`
 
-Окно само проходит разделы и магазины, НЕВИДИМО (`QT_QPA_PLATFORM=offscreen`
-ставит сам режим — на живом столе окна нет), снимает каждый экран и пишет
-отчёт о подозрительном:
+The window walks through its sections and stores by itself, INVISIBLY (`QT_QPA_PLATFORM=offscreen`
+is set by the mode itself — no window appears on the live desktop), takes a screenshot of every screen and writes
+a report on anything suspicious:
 
 ```bash
 rust/target/release/rexon-main-window --tour=appearance/wallpapers --tour-out ~/tour
-rust/target/release/rexon-main-window --tour                 # всё окно
-#   --tour-query <слово>   слово поиска (по умолчанию girl)
-#   --tour-timeout <с>     общий предел (по умолчанию 1200 с)
-#   без --tour-out — ~/.cache/rexon/tour
+rust/target/release/rexon-main-window --tour                 # the whole window
+#   --tour-query <word>    the search word (default: girl)
+#   --tour-timeout <s>     overall limit (default: 1200 s)
+#   without --tour-out — ~/.cache/rexon/tour
 ```
 
-Имена разделов — те же, что у `--section` (подраздел — только у
-`appearance`). В каждом разделе «Оформления»: каждый магазин переключателя
-(KDE Store, AUR, Все, Wallhaven, Razer Axon…) → снимок; затем слово поиска в
-первом магазине и снова каждый магазин — с проверкой, что слово осталось в
-поле. Снимки `NN-<раздел>-<магазин>-<шаг>.png` (`browse`/`search`), рядом
-`report.txt` и `journal.log` (поток ошибок процесса: сообщения Qt/QML и
-журнал Rexon). В отчёте: плитки без превью (k из n), пустая выдача,
-загрузка дольше 5 с или не дождались (20 с), пропавший текст поиска, разная
-шапка между магазинами одного раздела (есть ли поиск и где), строка
-состояния с ошибкой, ошибки сети и предупреждения QML из журнала — у
-снимка, во время которого они появились.
+Section names are the same as for `--section` (only `appearance` has
+subsections). In every "Appearance" section: every store of the switcher
+(KDE Store, AUR, All, Wallhaven, Razer Axon…) → a screenshot; then the search word in
+the first store and again every store — checking that the word stayed in
+the field. Screenshots are `NN-<section>-<store>-<step>.png` (`browse`/`search`), next to them
+`report.txt` and `journal.log` (the process error stream: Qt/QML messages and
+the Rexon log). The report lists: tiles without a preview (k of n), empty results,
+loading longer than 5 s or never finished (20 s), lost search text, a different
+header between stores of the same section (whether there is a search field and where), a status
+line with an error, network errors and QML warnings from the log — attached to the
+screenshot during which they appeared.
 
-Коды: 0 — чисто, 1 — есть подозрительное, 2 — неверные ключи, 3 — общий
-тайм-аут (отчёт пишется и тогда — что успели и на чём встал).
+Codes: 0 — clean, 1 — something suspicious, 2 — invalid flags, 3 — overall
+timeout (the report is written then too — what got done and where it stopped).
 
-⛔ Обход ничего не устанавливает и не применяет: только навигация, поиск и
-просмотр. Порядок, ожидание, разбор и запрет на вызовы — ядро
-(`rexon-core/src/main_window_tour.rs`, тесты там же); окно зовёт страницу
-одной дверью `tourInvoke`, и только методы, разрешённые
-`main_window_tour::call_allowed`. Замка, лотка и журнала профиля обход, как и
-`--selftest`, не берёт. Прочие разделы окна (не «Оформление») — пока один
-снимок на раздел.
+⛔ The tour installs and applies nothing: only navigation, search and
+browsing. The order, the waiting, the analysis and the ban on calls live in the core
+(`rexon-core/src/main_window_tour.rs`, tests right there); the window calls a page
+through a single door, `tourInvoke`, and only the methods allowed by
+`main_window_tour::call_allowed`. Like
+`--selftest`, the tour does not take the lock, the tray or the profile log. The other window sections (not "Appearance") get
+one screenshot per section for now.
 
 ---
 
 
 ## Agent tools
 
-Установлены для усиления agent workflow (2026-05-22):
+Installed to strengthen the agent workflow (2026-05-22):
 
-- **`ast-grep`** (`~/.local/bin/ast-grep`, v0.42.3) — AST-based grep вместо regex. Точно матчит синтаксические конструкции, игнорируя комментарии/строки. Пример:
+- **`ast-grep`** (`~/.local/bin/ast-grep`, v0.42.3) — AST-based grep instead of regex. Matches syntactic constructs precisely, ignoring comments/strings. Example:
   ```bash
-  # Правильно (только подклассы):
+  # Correct (subclasses only):
   ast-grep --pattern 'class $NAME(BaseWallpaper)' --lang python rexon/
-  # Неправильно (ловит и определение, и комментарий):
+  # Wrong (catches both the definition and a comment):
   grep -rn 'class.*BaseWallpaper' rexon/ --include='*.py'
   ```
-  Использовать для рефакторинга, поиска определений, anti-pattern audit.
+  Use it for refactoring, finding definitions, anti-pattern audits.
 
-- **`imagehash` + `Pillow`** — perceptual hash для wallpaper regression detection. Установлены в venv `~/.local/share/rexon-tools-venv/` (`--system-site-packages`, Pillow 12.2.0 из системы, imagehash 4.3.2 в venv). Helper: `scripts/image-diff actual.png reference.png [threshold]` — exit 0 = match (≤ threshold phash distance), 1 = regression, 2 = error. Default threshold = 5.
+- **`imagehash` + `Pillow`** — perceptual hash for wallpaper regression detection. Installed in the venv `~/.local/share/rexon-tools-venv/` (`--system-site-packages`, Pillow 12.2.0 from the system, imagehash 4.3.2 in the venv). Helper: `scripts/image-diff actual.png reference.png [threshold]` — exit 0 = match (≤ threshold phash distance), 1 = regression, 2 = error. Default threshold = 5.
 
-- **`qmllint` Qt 6.11.1** (`/usr/lib/qt6/bin/qmllint`, через qt6-declarative) — pre-flight QML syntax/semantics check. Wrapper: `scripts/qmllint-check file.qml [...]` — exit 0 если только warnings, 1 если errors. Использовать ПОСЛЕ любого edit `.qml` файла — ДО kpackage rebuild и `plasmashell --replace`. Спасает от ситуации «правил весь день, узнал об ошибке после plasmashell restart».
+- **`qmllint` Qt 6.11.1** (`/usr/lib/qt6/bin/qmllint`, via qt6-declarative) — pre-flight QML syntax/semantics check. Wrapper: `scripts/qmllint-check file.qml [...]` — exit 0 if only warnings, 1 if errors. Use it AFTER any edit of a `.qml` file — BEFORE the kpackage rebuild and `plasmashell --replace`. Saves you from "edited all day, learned about the error after a plasmashell restart".
 
-## Эталоны: один вход на всё
+## References: one entry point for everything
 
-Эталонов в дереве больше двух сотен, и обновлялись они четырьмя разными
-способами. Теперь вход один — `scripts/rexon-golden-update`:
-
-```
-scripts/rexon-golden-update --check   # ничего не пишет, говорит, что разошлось (код ≠ 0)
-scripts/rexon-golden-update           # обновляет всё и печатает дельту по каждому файлу
-scripts/rexon-golden-update --list    # таблица «эталон → чем обновляется»
-```
-
-Прогон честно делит эталоны на три рода: снимаемые с кода, требующие ЖИВОГО
-демона waywallen (или `lrelease`) и не поддающиеся пересъёмке вовсе. Второй род
-без предпосылок обязан сказать «НЕ ПРОВЕРЕНО» и назвать причину — тихого
-пропуска здесь нет. Полная карта с причинами — `docs/golden_reference_map.md`.
-
-## Обновление вендорного QML waywallen — одна команда
-
-Каталог `rexon/qt_wallpaper_engine/qml_ui/waywallen/ui` руками не правят:
-его целиком пересобирает `scripts/sync-waywallen-qml.py`.
+There are more than two hundred references in the tree, and they used to be updated in four different
+ways. Now there is one entry point — `scripts/rexon-golden-update`:
 
 ```
-scripts/sync-waywallen-qml.py --ref v0.3.9   # забрать новый выпуск апстрима
-scripts/sync-waywallen-qml.py --check        # 0 — дерево сошлось, 3 — разошлось
+scripts/rexon-golden-update --check   # writes nothing, says what diverged (code ≠ 0)
+scripts/rexon-golden-update           # updates everything and prints the delta for each file
+scripts/rexon-golden-update --list    # the table "reference → what updates it"
+```
+
+The run honestly splits references into three kinds: captured from the code, requiring a LIVE
+waywallen daemon (or `lrelease`), and not recapturable at all. The second kind
+without its prerequisites must say "NOT CHECKED" and name the reason — there is no silent
+skip here. The full map with reasons is `docs/golden_reference_map.md`.
+
+## Updating the vendored waywallen QML — one command
+
+The directory `rexon/qt_wallpaper_engine/qml_ui/waywallen/ui` is not edited by hand:
+`scripts/sync-waywallen-qml.py` rebuilds it as a whole.
+
+```
+scripts/sync-waywallen-qml.py --ref v0.3.9   # take a new upstream release
+scripts/sync-waywallen-qml.py --check        # 0 — the tree matches, 3 — it diverged
 scripts/sync-waywallen-qml.py --git https://github.com/hypengw/waywallen --ref v0.3.9
 ```
 
-За один прогон он: кладёт `ui/qml`, `ui/i18n` и вендоримые `ui/assets`
-побайтово с тега; ГЕНЕРИРУЕТ `ui/qmldir` из их `ui/build.lua` (рукописных
-строк там нет); накладывает нашу серию
-`waywallen/patches/NNNN-*.patch`; выписывает `ui/QML_MATERIAL_PIN` —
-ревизию `Qcm.Material` из `lito.lock` того же выпуска, её берёт
-`tools/build_qml_material.sh`; печатает имена типов `W.*`, которые
-вендорный QML зовёт, а наш модуль не регистрирует (код возврата 4).
+In one run it: puts `ui/qml`, `ui/i18n` and the vendored `ui/assets`
+byte for byte from the tag; GENERATES `ui/qmldir` from their `ui/build.lua` (there are no handwritten
+lines there); applies our series
+`waywallen/patches/NNNN-*.patch`; writes out `ui/QML_MATERIAL_PIN` —
+the `Qcm.Material` revision from `lito.lock` of the same release, which
+`tools/build_qml_material.sh` picks up; prints the names of `W.*` types that the
+vendored QML calls but our module does not register (exit code 4).
 
-Не лёг патч — это настоящий конфликт, дерево остаётся прежним, код 1.
-Свою правку заводят так: поправить файл в `ui/`, снять по нему `git diff`
-и положить в `patches/` следующим номером.
+A patch that does not apply is a real conflict; the tree stays as it was, code 1.
+To add your own change: edit the file in `ui/`, take a `git diff` of it
+and put it into `patches/` under the next number.
 
-⚠️ После синхронизации пересобрать `Qcm.Material` — пин мог поехать:
+⚠️ After a sync, rebuild `Qcm.Material` — the pin may have moved:
 `tools/build_qml_material.sh`.
 
-## После обновления вендорного QML waywallen
+## After updating the vendored waywallen QML
 
-Подписи вендорных страниц переводят ВЕНДОРНЫЕ каталоги
-`data/qt_wallpaper_engine/qml_ui/waywallen/ui/i18n/waywallen_<язык>.ts`
-(на waywallen 0.6.0 — ru, de, zh_CN, fr; каталог берётся целиком) — они вендорятся вместе с `ui/qml`, с того же
-коммита, что указан в `ui/UPSTREAM_TAG`. Своего словаря подписей у нас нет и заводить его не нужно:
-перевод чужой программы правится У НЕЁ (иначе он не достаётся никому, кроме
-нас, и расходится с оригиналом).
+The labels of the vendored pages are translated by the VENDORED catalogs
+`data/qt_wallpaper_engine/qml_ui/waywallen/ui/i18n/waywallen_<language>.ts`
+(waywallen 0.6.1: ru, de, zh_CN, fr, es, uk; the whole catalog is taken) — they are vendored together with `ui/qml`, from the same
+commit as the one in `ui/UPSTREAM_TAG`. We have no label dictionary of our own and do not need one:
+a translation of someone else's program is fixed IN THAT PROGRAM (otherwise nobody but us
+gets it, and it drifts away from the original).
 
-Обновили вендора — обновить **обе** папки, `ui/qml` и `ui/i18n`, и пересобрать
-каталог:
+After updating the vendor, update **both** directories, `ui/qml` and `ui/i18n`, and rebuild
+the catalog:
 
 ```
-scripts/rexon-golden-update waywallen_qm   # каждый .ts → свой waywallen_<язык>.qm
+scripts/rexon-golden-update waywallen_qm   # each .ts → its own waywallen_<language>.qm
 cargo test -p rexon-core --test remote_l10n_parity
 ```
 
-Тест краснеет, если каталог и `ui/qml` разошлись, и говорит, в какую сторону:
-вендорные строки без перевода (покупатель увидит английский) или записи
-каталога, которых в `ui/qml` уже нет. Строка у вендора новая и непереведённая —
-перевод подаётся в waywallen, чтобы достался всем.
+The test turns red if the catalog and `ui/qml` diverged, and says in which direction:
+vendored strings without a translation (the customer will see English) or catalog
+entries that are no longer in `ui/qml`. If a vendor string is new and untranslated,
+the translation is submitted to waywallen so that everyone gets it.
 
-## Стенд помощника сеанса прав («один пароль на запуск»)
+## Test stand for the privilege session helper ("one password per launch")
 
-Привилегированная часть (`rust/rexon-core/src/privilege/`, бинарь
-`rexon-priv-helper`) проверяется без root, без `pkexec`, без настоящего
-`pacman` и без GUI — в три уровня:
+The privileged part (`rust/rexon-core/src/privilege/`, the binary
+`rexon-priv-helper`) is tested without root, without `pkexec`, without a real
+`pacman` and without a GUI — on three levels:
 
-1. **Юнит-тесты** модулей `privilege/*` — в обычном `cargo test-core`.
-2. **Помощник обычным процессом** — `tests/priv_stand.rs` + бинарь
-   `rexon-priv-stand`. Окно — настоящий `privilege::client::Client`; «шим
-   pkexec» теста запускает помощника с сокетом на fd 0/1 и `PKEXEC_UID`, как
-   pkexec после пароля. Помощник — тот же `helper::run_session`, но с «сухим»
-   `RootIo`: программы не запускаются, их argv пишется в журнал стенда, файлы
-   ложатся под корень-префикс `<стенд>/root`. logind, часы и счётчик сна —
-   файлы стенда (`session`, `clock_ms`, `slept_ms`), их читают настоящие
-   `LogindWatch` и `Revoker`. Сценарии: несколько операций одним паролем;
-   закрытие окна (EOF) — выход; EOF и отзыв посреди операции — она
-   доводится; блокировка, 15 минут простоя, сон, неактивный сеанс — новые
-   команды старым правом не идут (нужен новый пароль); отказ на вечное
-   (`linux-cachyos`, `mesa`, `glibc`, `systemd`) и на пакеты текущего стола;
-   чужая сборка до пароля и в рукопожатии (`BuildMismatch`, липкий); чужой
-   сеанс logind; чужой собеседник на сокете и наследование сокета дочками окна.
-3. **Пространство имён пользователя** — `tests/priv_userns.rs`: НАСТОЯЩИЙ
-   `rexon-priv-helper` (живой `LiveRootIo`) от uid 0 в `unshare -r --mount`.
-   `packaging/test/priv-ns-enter.sh` bind-монтирует подменные `/usr/bin`
-   (скрипты `pacman`, `loginctl`, `systemctl`), `/etc`, `/usr/share`,
-   `/var/tmp` — их видит только помощник, на хосте не меняется ничего.
-   Проверяются настоящие файлы: права темы SDDM (0644/0755), ссылка на месте
-   приёмника заменяется, а не пишется насквозь, архивы со ссылкой, `..` и
-   абсолютным путём отвергаются (`openat2`), рабочие каталоги убраны;
-   окружение и дескрипторы программ помощника (чистое, без сокета окна); EOF
-   посреди транзакции; `PR_SET_PDEATHSIG` (умер поток окна, сокет открыт).
-   Нет `unshare` или ядро не даёт пространство имён — тест пишет
-   «ПРОПУЩЕНО (стенд уровня 3): <причина>» и не падает.
+1. **Unit tests** of the `privilege/*` modules — in the regular `cargo test-core`.
+2. **The helper as an ordinary process** — `tests/priv_stand.rs` + the binary
+   `rexon-priv-stand`. The window is a real `privilege::client::Client`; the test's "pkexec
+   shim" starts the helper with the socket on fd 0/1 and `PKEXEC_UID`, like
+   pkexec after the password. The helper is the same `helper::run_session`, but with a "dry"
+   `RootIo`: programs are not started, their argv is written to the stand log, files
+   land under the root prefix `<stand>/root`. logind, the clock and the sleep counter are
+   stand files (`session`, `clock_ms`, `slept_ms`), read by the real
+   `LogindWatch` and `Revoker`. Scenarios: several operations with one password;
+   closing the window (EOF) — exit; EOF and revocation in the middle of an operation — it is
+   carried through; lock, 15 minutes of idle, sleep, an inactive session — new
+   commands do not go through on the old right (a new password is needed); refusal for the permanent ones
+   (`linux-cachyos`, `mesa`, `glibc`, `systemd`) and for the packages of the current desktop;
+   a foreign build before the password and in the handshake (`BuildMismatch`, sticky); a foreign
+   logind session; a foreign peer on the socket and the socket being inherited by the window's children.
+3. **User namespace** — `tests/priv_userns.rs`: the REAL
+   `rexon-priv-helper` (live `LiveRootIo`) as uid 0 in `unshare -r --mount`.
+   `packaging/test/priv-ns-enter.sh` bind-mounts substitute `/usr/bin`
+   (the scripts `pacman`, `loginctl`, `systemctl`), `/etc`, `/usr/share`,
+   `/var/tmp` — only the helper sees them, nothing changes on the host.
+   Real files are checked: SDDM theme permissions (0644/0755), a symlink in place of
+   the destination is replaced rather than written through, archives with a symlink, `..` and
+   an absolute path are rejected (`openat2`), work directories are cleaned up;
+   the environment and descriptors of the helper's programs (clean, without the window socket); EOF
+   in the middle of a transaction; `PR_SET_PDEATHSIG` (the window thread died, the socket is open).
+   No `unshare`, or the kernel does not allow the namespace — the test writes
+   "ПРОПУЩЕНО (стенд уровня 3): <причина>" ("SKIPPED (level 3 stand): <reason>") and does not fail.
 
 ```
-scripts/priv-stand                  # уровни 2 и 3 (через build-queue)
-scripts/priv-stand --release-check  # + в релизном rexon-priv-helper нет строк стенда
-scripts/priv-stand -- screen_lock   # только тесты с этим словом в имени
-# то же руками:
+scripts/priv-stand                  # levels 2 and 3 (via build-queue)
+scripts/priv-stand --release-check  # + the release rexon-priv-helper contains no stand strings
+scripts/priv-stand -- screen_lock   # only tests with this word in the name
+# the same by hand:
 BUILD_QUEUE_SLOTS=1 scripts/build-queue test -p rexon-core --features stand --test priv_stand --test priv_userns
 ```
 
-⛔ Feature `stand` — только для стенда: бинарь `rexon-priv-stand` и тест
-`priv_stand` без неё не собираются (`required-features`), пакет и
-`cargo build-app` её не включают. Код стенда живёт ТОЛЬКО в
-`src/bin/rexon-priv-stand.rs`: библиотека и настоящий помощник от feature не
-меняются. Сторож — `priv_userns::stand_code_stays_out_of_release` (идёт и в
-обычном `cargo test-core`).
+⛔ The `stand` feature is for the stand only: the `rexon-priv-stand` binary and the
+`priv_stand` test do not build without it (`required-features`), the package and
+`cargo build-app` do not enable it. The stand code lives ONLY in
+`src/bin/rexon-priv-stand.rs`: the library and the real helper do not
+change with the feature. The guard is `priv_userns::stand_code_stays_out_of_release` (it also runs in
+the regular `cargo test-core`).
 
-4. **ВМ** (настоящие pkexec, polkitd, logind, PLM) и итоговая приёмка пакетом —
-   по плану, вне этого стенда.
+4. **VM** (real pkexec, polkitd, logind, PLM) and the final acceptance with the package —
+   per the plan, outside this stand.
 
-## Pre-flight checks (обязательно после edit)
+## Pre-flight checks (mandatory after an edit)
 
-После каждого edit:
-- `.py` → `python3 -m py_compile <file>` (+ если установлен — `ruff check <file>`)
+After every edit:
+- `.py` → `python3 -m py_compile <file>` (+ if installed — `ruff check <file>`)
 - `.qml` → `scripts/qmllint-check <file>`
-- `.rs` → `cd rust && cargo build-app` (голый `cargo build` вкладки не пересоберёт — см. раздел о ловушке выше)
-- `.cpp/.hpp` → diagnostics в IDE (clang LSP); полный CMake build — вручную
+- `.rs` → `cd rust && cargo build-app` (a bare `cargo build` will not rebuild the tabs — see the section on the trap above)
+- `.cpp/.hpp` → diagnostics in the IDE (clang LSP); a full CMake build — by hand
 - screenshot-based regression → `scripts/image-diff new.png reference.png`
 
 ---
-

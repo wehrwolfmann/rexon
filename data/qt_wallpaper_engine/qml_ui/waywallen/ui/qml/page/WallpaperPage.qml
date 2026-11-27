@@ -1158,7 +1158,7 @@ MD.Page {
                 wallpaperQuery.reload();
         }
 
-        onApply: {
+        onApplied: {
             doQuery();
             root._persistGlobalChange(g => {
                 g.wallpaperFilters = items();
@@ -1293,6 +1293,7 @@ MD.Page {
         W.TweakSheet {
             popupParent: root
             tweak: wallpaperTweakState
+            localBadges: true
         }
     }
     Component {

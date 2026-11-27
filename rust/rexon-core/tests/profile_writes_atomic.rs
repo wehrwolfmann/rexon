@@ -1,46 +1,46 @@
-//! Сторож ЕДИНСТВЕННОЙ двери записи в профиль покупателя.
+//! Guard of the SINGLE door for writing into the buyer's profile.
 //!
-//! ЗАЧЕМ. `std::fs::write` (и `File::create`) файл сперва ОБРЕЗАЕТ и только
-//! потом наполняет. Между этими двумя шагами покупатель может закрыть окно,
-//! система — уйти в сон, а питание — пропасть; на диске тогда остаётся
-//! обрезанный файл, который выглядит настоящим. Разные файлы профиля платят
-//! за это по-разному:
+//! WHY. `std::fs::write` (and `File::create`) first TRUNCATES the file and only
+//! then fills it. Between these two steps the buyer may close the window,
+//! the system may go to sleep, and power may be lost; then a truncated file is left
+//! on disk that looks real. Different profile files pay
+//! for this in different ways:
 //!
-//!   * `settings.json` — обрезанный читается как пустой объект: ВСЕ
-//!     настройки покупателя молча откатываются к значениям по умолчанию;
-//!   * `favorites.json` — так же молча пустеет «⭐ Избранное»;
-//!   * `bridge.json` и файлы команд моста — чужой процесс считает такой
-//!     файл битым и УДАЛЯЕТ его, команда пропадает без следа;
-//!   * опись копий панели (`backups.json`) и описи снимков рабочего стола —
-//!     сами копии остаются на диске, но найти и восстановить их уже нечем;
-//!   * `mimeapps.list`, `kdeglobals`, строка автозапуска — это файлы не наши,
-//!     а покупателя: их половина означает переставшие открываться ссылки и
-//!     мёртвую строку, которая оживает при входе в сеанс.
+//!   * `settings.json` — a truncated one reads as an empty object: ALL of
+//!     the buyer's settings silently roll back to the defaults;
+//!   * `favorites.json` — «⭐ Favorites» silently empties the same way;
+//!   * `bridge.json` and the bridge command files — another process considers such
+//!     a file broken and DELETES it, the command vanishes without a trace;
+//!   * the panel backup index (`backups.json`) and the desktop snapshot indexes —
+//!     the copies themselves stay on disk, but there is nothing left to find and restore them with;
+//!   * `mimeapps.list`, `kdeglobals`, the autostart line — these files are not ours
+//!     but the buyer's: half of them means links that stopped opening and
+//!     a dead line that comes back to life when logging into the session.
 //!
-//! ⭐ Милость «битое читается как ненаписанное и переснимается само» есть
-//! РОВНО У ОДНОГО файла — эталона защиты приложений: битый JSON там значит
-//! «эталон не снят», и следующий запуск снимает его заново. У соседей по
-//! каталогу такой милости нет, поэтому дверь обязана быть общей, а не
-//! «там, где не повезло».
+//! ⭐ The mercy "broken reads as unwritten and gets recaptured by itself" exists for
+//! EXACTLY ONE file — the app protection reference: there broken JSON means
+//! "the reference has not been taken", and the next launch takes it anew. Its neighbours in
+//! the directory have no such mercy, so the door must be shared, not
+//! "wherever we were unlucky".
 //!
-//! ЧТО СТЕРЕЖЁМ. Проверки читают ИСХОДНИКИ через `include_str!` (то есть
-//! пересобираются при любой их правке) и краснеют сами, без человека:
+//! WHAT WE GUARD. The checks read the SOURCES via `include_str!` (i.e. they are
+//! rebuilt on any change to them) and go red by themselves, without a person:
 //!
-//!   1. сама дверь (`utils::atomic_write_bytes`) на месте и устроена
-//!      правильно: временный файл РЯДОМ с целевым, `fsync`, `rename`;
-//!   2. каждая поимённо названная запись в профиль идёт через эту дверь и
-//!      не содержит сырых `fs::write` / `File::create`;
-//!   3. в модулях, которые кроме профиля ничего не пишут, сырых записей нет
-//!      вовсе — туда новая дверь не пролезет и мимо списка из пункта 2.
+//!   1. the door itself (`utils::atomic_write_bytes`) is in place and built
+//!      correctly: a temporary file NEXT TO the target one, `fsync`, `rename`;
+//!   2. every write into the profile named by name goes through this door and
+//!      contains no raw `fs::write` / `File::create`;
+//!   3. modules that write nothing but the profile have no raw writes
+//!      at all — a new door cannot sneak in there past the list from item 2.
 //!
-//! ⚠️ Добавил новую запись в профиль — добавь её сюда же (правило #12).
-//! Красный тест здесь означает не «тест устарел», а «у профиля снова две
-//! двери».
+//! ⚠️ Added a new write into the profile — add it here too (rule #12).
+//! A red test here does not mean "the test is outdated" but "the profile has two
+//! doors again".
 
-/// Общая дверь.
+/// The shared door.
 const UTILS_RS: &str = include_str!("../src/utils.rs");
 
-/// Исходники, в которых живут поимённо стерегомые записи.
+/// Sources holding the writes guarded by name.
 const SETTINGS_RS: &str = include_str!("../src/settings.rs");
 const FAVORITES_RS: &str = include_str!("../src/favorites.rs");
 const BRIDGE_RS: &str = include_str!("../src/rexon_bridge.rs");
@@ -55,14 +55,14 @@ const WALLPAPER_EXEC_RS: &str = include_str!("../src/wallpaper_exec.rs");
 const APPEARANCE_INSTALLER_RS: &str = include_str!("../src/appearance_installer.rs");
 const QT_APP_RS: &str = include_str!("../src/qt_app.rs");
 
-/// Окно вкладок — второй вход в тот же профиль.
+/// The tab window is the second entrance into the same profile.
 const GUI_SETTINGS_ACTIONS_RS: &str = include_str!("../../rexon-gui/src/settings_actions.rs");
 const GUI_TRAY_RS: &str = include_str!("../../rexon-gui/src/tray.rs");
 const GUI_AUTOSTART_RS: &str = include_str!("../../rexon-gui/src/autostart_queries.rs");
 const GUI_STEAM_WORKERS_RS: &str = include_str!("../../rexon-gui/src/steam_workers.rs");
 const GUI_WE_UPDATE_WORKERS_RS: &str = include_str!("../../rexon-gui/src/we_update_workers.rs");
 
-/// Как записать целый файл МИМО общей двери. Ровно эти обороты и ищем.
+/// How to write a whole file BYPASSING the shared door. Exactly these idioms are searched for.
 const RAW_WRITES: &[&str] = &[
     "fs::write(",
     "File::create(",
@@ -70,8 +70,8 @@ const RAW_WRITES: &[&str] = &[
     "write_all(",
 ];
 
-/// Отрезать от исходника хвост с модулем тестов: в тестах сырые записи
-/// законны — там ими готовят стенд, а не пишут профиль покупателя.
+/// Cut the tail with the test module off the source: raw writes are
+/// legitimate in tests — they prepare the bench there, not write the buyer's profile.
 fn without_tests(src: &str) -> &str {
     match src.find("\n#[cfg(test)]\n") {
         Some(at) => &src[..at],
@@ -79,17 +79,17 @@ fn without_tests(src: &str) -> &str {
     }
 }
 
-/// Тело функции `fn <name>` — от её первой `{` до парной ей `}`.
+/// The body of the function `fn <name>` — from its first `{` to the matching `}`.
 ///
-/// `anchor` — с какого места файла искать. Он нужен там, где имя метода
-/// объявлено СНАЧАЛА в договоре (`trait`, тело без скобок) и только потом
-/// исполнено живым исполнителем: без якоря разбор нашёл бы объявление и
-/// покраснел зря. Пустой якорь — ищем с начала файла.
+/// `anchor` — where in the file to start searching. It is needed where a method name
+/// is declared FIRST in a contract (`trait`, a body without braces) and only then
+/// implemented by the live executor: without the anchor the parser would find the declaration and
+/// go red for nothing. An empty anchor — search from the start of the file.
 ///
-/// Разбор нарочно простой (счётчик скобок): в телах этих функций фигурные
-/// скобки встречаются только в `format!`-шаблонах, а они парные. Если
-/// когда-нибудь перестанет хватать — тест упадёт на поиске, а не соврёт
-/// зелёным.
+/// The parsing is deliberately simple (a brace counter): in the bodies of these functions curly
+/// braces occur only in `format!` templates, and those are paired. If
+/// it ever stops being enough, the test will fail on the search rather than lie
+/// with green.
 fn body_of<'a>(src: &'a str, file: &str, name: &str, anchor: &str) -> &'a str {
     let from = if anchor.is_empty() {
         0
@@ -124,21 +124,21 @@ fn body_of<'a>(src: &'a str, file: &str, name: &str, anchor: &str) -> &'a str {
     panic!("{file}: тело `{name}` не закрылось")
 }
 
-/// Одна стерегомая дверь.
+/// One guarded door.
 struct Door {
-    /// Текст исходника (через `include_str!`).
+    /// The source text (via `include_str!`).
     src: &'static str,
-    /// Путь к нему для человека в сообщении об ошибке.
+    /// Its path, for a person reading the error message.
     file: &'static str,
-    /// Имя функции, которая пишет файл.
+    /// The name of the function that writes the file.
     name: &'static str,
-    /// С какого места файла её искать (пусто — с начала). См. [`body_of`].
+    /// Where in the file to search for it (empty — from the start). See [`body_of`].
     anchor: &'static str,
-    /// Что именно она кладёт покупателю на диск.
+    /// What exactly it puts on the buyer's disk.
     what: &'static str,
 }
 
-/// Поимённый список ВСЕХ дверей записи в профиль покупателя.
+/// The list, by name, of ALL doors for writing into the buyer's profile.
 fn doors() -> Vec<Door> {
     let d = |src, file, name, anchor, what| Door { src, file, name, anchor, what };
     vec![
@@ -165,8 +165,8 @@ fn doors() -> Vec<Door> {
     ]
 }
 
-/// Модули, которым кроме профиля писать нечего: там сырых записей не должно
-/// быть ВООБЩЕ, и новая дверь не проскочит мимо поимённого списка выше.
+/// Modules that have nothing to write but the profile: there must be no raw writes there
+/// AT ALL, and a new door will not slip past the named list above.
 const PROFILE_ONLY: &[(&str, &str)] = &[
     (SETTINGS_RS, "rexon-core/src/settings.rs"),
     (FAVORITES_RS, "rexon-core/src/favorites.rs"),
@@ -200,14 +200,14 @@ fn the_single_door_writes_next_to_the_target_syncs_and_renames() {
         "не получилось — временный файл обязан убраться за собой"
     );
 
-    // Текстовая форма — та же дверь, а не вторая реализация.
+    // The text form is the same door, not a second implementation.
     let text_door = body_of(src, "rexon-core/src/utils.rs", "atomic_write", "");
     assert!(
         text_door.contains("atomic_write_bytes(path, text.as_bytes())"),
         "atomic_write обязан звать байтовую дверь, а не писать своё"
     );
 
-    // Отчёт о крахе получил её первым; имя из `qt_app` зовут оба окна.
+    // The crash report got it first; both windows call the name from `qt_app`.
     assert!(
         QT_APP_RS.contains("pub use crate::utils::atomic_write;"),
         "qt_app::atomic_write обязан быть ПЕРЕОБЪЯВЛЕНИЕМ общей двери, а не \
@@ -243,9 +243,9 @@ fn every_profile_write_goes_through_the_single_door() {
     );
 }
 
-/// Каталог для опытов — в `$HOME/.cache`, а не в `/tmp`: там ОЗУ (и другая
-/// файловая система, на которой `rename` перестал бы быть переименованием).
-/// Уникален на прогон.
+/// The directory for experiments is in `$HOME/.cache`, not in `/tmp`: that is RAM (and a different
+/// file system, on which `rename` would stop being a rename).
+/// Unique per run.
 fn home_tmp(tag: &str) -> std::path::PathBuf {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -258,11 +258,11 @@ fn home_tmp(tag: &str) -> std::path::PathBuf {
     dir
 }
 
-/// Дверь и вправду работает, а не только выглядит правильно в исходнике:
-/// читатель, дёргающий файл в цикле, НИ РАЗУ не видит половины.
+/// The door really works, rather than only looking right in the source:
+/// a reader pulling the file in a loop NEVER sees a half.
 ///
-/// Сырой `fs::write` здесь же, рядом, ловится этой самой проверкой — так она
-/// и писалась: сперва укус, потом починка.
+/// A raw `fs::write` right here next to it is caught by this very check — that is how
+/// it was written: first the bite, then the fix.
 #[test]
 fn a_reader_never_catches_half_a_file() {
     let dir = home_tmp("atomic-reader");
@@ -293,7 +293,7 @@ fn a_reader_never_catches_half_a_file() {
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     let bad = seen_half.join().unwrap();
 
-    // Ни одного огрызка, ни одного забытого временного файла.
+    // Not a single stub, not a single forgotten temporary file.
     let leftovers: Vec<String> = std::fs::read_dir(&dir)
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
@@ -304,22 +304,22 @@ fn a_reader_never_catches_half_a_file() {
     assert!(leftovers.is_empty(), "остались временные файлы: {leftovers:?}");
 }
 
-/// Две цены, которые подмена имени берёт по умолчанию, дверью НЕ платятся:
-/// права уже лежащего файла сохраняются, а символьная ссылка не подменяется
-/// простым файлом.
+/// Two prices that renaming charges by default are NOT paid by the door:
+/// the permissions of an existing file are kept, and a symbolic link is not replaced
+/// by a plain file.
 #[test]
 fn the_door_keeps_file_mode_and_follows_a_symlink() {
     use std::os::unix::fs::PermissionsExt;
     let dir = home_tmp("atomic-mode");
 
-    // Закрытый от посторонних конфиг остаётся закрытым.
+    // A config closed to outsiders stays closed.
     let closed = dir.join("secret.json");
     std::fs::write(&closed, "старое").unwrap();
     std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o600)).unwrap();
     rexon_core::utils::atomic_write(&closed.to_string_lossy(), "новое").unwrap();
     let mode = std::fs::metadata(&closed).unwrap().permissions().mode() & 0o777;
 
-    // Конфиг из хранилища, расставленный ссылкой, остаётся ссылкой.
+    // A config from a store, placed as a link, stays a link.
     let store = dir.join("хранилище.json");
     std::fs::write(&store, "из хранилища").unwrap();
     let link = dir.join("mimeapps.list");
@@ -334,10 +334,10 @@ fn the_door_keeps_file_mode_and_follows_a_symlink() {
     assert_eq!(store_text, "правка", "писать надо в то, на что ссылка смотрит");
 }
 
-/// Временный файл ложится РЯДОМ с целевым — проверено от противного: в
-/// каталог, куда писать нельзя, дверь не пишет даже поверх существующего
-/// файла. Сырой `fs::write` в этом случае как раз прошёл бы (право на файл
-/// есть), и именно этим две двери и различаются на ощупь.
+/// The temporary file lands NEXT TO the target one — checked by contradiction: into
+/// a directory that cannot be written to, the door does not write even over an existing
+/// file. A raw `fs::write` would pass in this case (there is permission on the file),
+/// and that is exactly how the two doors differ to the touch.
 #[test]
 fn the_tmp_file_lands_next_to_the_target_not_in_tmpfs() {
     use std::os::unix::fs::PermissionsExt;

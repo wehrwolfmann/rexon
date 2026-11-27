@@ -1,13 +1,13 @@
-//! Golden-сверка порта моделей с оригиналом `rexon/appearance/models.py`.
+//! Golden check of the models port against the original `rexon/appearance/models.py`.
 //!
-//! Эталоны сняты с самого Python:
+//! The goldens were captured from Python itself:
 //!   json.dumps(dataclasses.asdict(ThemeItem()), ensure_ascii=False, indent=1)
 //!   [ThemeItem(rating=r).rating_stars for r in range(101)]
-//! Любое расхождение — ошибка порта, а не теста.
+//! Any mismatch is a port bug, not a test bug.
 
 use rexon_core::models::{to_json_indent1, ThemeCategory, ThemeItem};
 
-/// Дефолтный ThemeItem сериализуется байт-в-байт как `asdict` + `indent=1`.
+/// The default ThemeItem serializes byte-for-byte like `asdict` + `indent=1`.
 #[test]
 fn default_theme_item_serialize_byte_identical() {
     let golden = include_str!("golden/theme_item_default.json");
@@ -15,8 +15,8 @@ fn default_theme_item_serialize_byte_identical() {
     assert_eq!(to_json_indent1(&value), golden);
 }
 
-/// `local_kind` не сериализуется (аналог рантайм-атрибута `_local_kind`,
-/// которого нет в `dataclasses.fields`): его наличие не меняет вывод.
+/// `local_kind` is not serialized (the analogue of the runtime attribute `_local_kind`,
+/// which is not in `dataclasses.fields`): its presence does not change the output.
 #[test]
 fn local_kind_is_not_serialized() {
     let golden = include_str!("golden/theme_item_default.json");
@@ -25,23 +25,23 @@ fn local_kind_is_not_serialized() {
     assert_eq!(to_json_indent1(&value), golden);
 }
 
-/// Эталон `rating_stars` для rating 0..=100, снятый с Python round.
+/// The `rating_stars` golden for rating 0..=100, captured from Python round.
 const RATING_STARS_GOLDEN: &str = "0.0,0.1,0.1,0.1,0.2,0.2,0.3,0.3,0.4,0.5,0.5,0.6,0.6,0.7,0.7,0.8,0.8,0.8,0.9,0.9,1.0,1.1,1.1,1.1,1.2,1.2,1.3,1.4,1.4,1.4,1.5,1.6,1.6,1.6,1.7,1.8,1.8,1.9,1.9,1.9,2.0,2.0,2.1,2.1,2.2,2.2,2.3,2.4,2.4,2.5,2.5,2.5,2.6,2.6,2.7,2.8,2.8,2.9,2.9,3.0,3.0,3.0,3.1,3.1,3.2,3.2,3.3,3.4,3.4,3.5,3.5,3.5,3.6,3.6,3.7,3.8,3.8,3.9,3.9,4.0,4.0,4.0,4.1,4.2,4.2,4.2,4.3,4.3,4.4,4.5,4.5,4.5,4.6,4.7,4.7,4.8,4.8,4.8,4.9,5.0,5.0";
 
-/// `rating_stars` совпадает с Python `round(rating/20.0, 1)` на ВСЕХ 101
-/// значениях (включая ties-to-even и float-артефакты вроде rating=1 → 0.1).
+/// `rating_stars` matches Python's `round(rating/20.0, 1)` on ALL 101
+/// values (including ties-to-even and float artefacts like rating=1 → 0.1).
 #[test]
 fn rating_stars_matches_python_round_all_101() {
     let expected: Vec<&str> = RATING_STARS_GOLDEN.split(',').collect();
     for r in 0..=100i64 {
         let item = ThemeItem { rating: r, ..Default::default() };
-        // Форматируем так же, как Python repr float с 1 знаком.
+        // Format the same way as Python's repr of a float with 1 digit.
         let got = format!("{:.1}", item.rating_stars());
         assert_eq!(got, expected[r as usize], "rating={r}");
     }
 }
 
-/// `display_description`: перевод если есть, иначе оригинал.
+/// `display_description`: the translation if there is one, otherwise the original.
 #[test]
 fn display_description_prefers_translation() {
     let only_orig = ThemeItem { description: "orig".into(), ..Default::default() };
@@ -55,7 +55,7 @@ fn display_description_prefers_translation() {
     assert_eq!(translated.display_description(), "перевод");
 }
 
-/// `ThemeCategory::new` заполняет обязательные поля и дефолты dataclass.
+/// `ThemeCategory::new` fills the required fields and the dataclass defaults.
 #[test]
 fn theme_category_new_defaults() {
     let c = ThemeCategory::new(0, "popular", "Популярные", "🔥");
@@ -65,7 +65,7 @@ fn theme_category_new_defaults() {
     assert_eq!(c.icon, "🔥");
     assert_eq!(c.default_sort, "new");
     assert!(!c.virtual_);
-    // Каталог по умолчанию — своя категория OCS.
+    // The default catalog is OCS's own category.
     assert!(!c.local_only());
     assert_eq!(c.ocs_cats(), [0]);
 }

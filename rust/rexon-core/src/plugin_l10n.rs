@@ -1,80 +1,82 @@
-//! Подписи плагинов демона waywallen: каталог автора плагина поверх нашего
-//! русского слоя.
+//! Labels of waywallen daemon plugins: the plugin author's catalog on top of
+//! our Russian layer.
 //!
-//! # Зачем
+//! # Why
 //!
-//! С waywallen 0.3.7 плагины-источники отдают подписи не голой строкой, а
-//! парой `PluginMessage{plugin_id, msgid}` (см. `control.proto`), а сам
-//! перевод демон присылает отдельно — каталогами `.po` на запрос
-//! `plugin_translation_list`. Вендорный QML прогоняет КАЖДУЮ подпись через
-//! `I18n.tr()`, то есть через этот механизм.
+//! Since waywallen 0.3.7 source plugins return labels not as a bare string but
+//! as a `PluginMessage{plugin_id, msgid}` pair (see `control.proto`), and the
+//! daemon sends the translation itself separately — as `.po` catalogs in
+//! response to a `plugin_translation_list` request. The vendored QML runs EVERY
+//! label through `I18n.tr()`, i.e. through this mechanism.
 //!
-//! У нас перевод подписей каталогов уже есть — [`crate::remote_l10n`],
-//! русские таблицы Мастерской Steam и Wallhaven. Если просто взять
-//! апстримовский путь, наш перевод пропадёт: у плагина
-//! `org.waywallen.open-wallpaper-engine` (Мастерская Steam) русского
-//! каталога НЕТ вовсе — замерено на живом демоне 0.3.7: каталоги есть у
-//! `image`, `video`, `wallhaven` (ru + zh-CN), а у open-wallpaper-engine
-//! только zh-CN. Именно там живёт основная масса наших подписей.
+//! We already have translations of catalog labels — [`crate::remote_l10n`],
+//! the Russian tables for the Steam Workshop and Wallhaven. If we simply took
+//! the upstream path, our translation would be lost: the plugin
+//! `org.waywallen.open-wallpaper-engine` (Steam Workshop) has NO Russian
+//! catalog at all — measured on a live 0.3.7 daemon: `image`, `video` and
+//! `wallhaven` have catalogs (ru + zh-CN), while open-wallpaper-engine has
+//! only zh-CN. And that is exactly where most of our labels live.
 //!
-//! # Порядок разрешения подписи
+//! # Order of resolving a label
 //!
-//! 1. **каталог плагина** — перевод автора плагина: он обновляется вместе с
-//!    плагином и достаётся всем пользователям waywallen, а не только нам;
-//! 2. **наш [`crate::remote_l10n`]** — заполняет дыры;
-//! 3. **сам `msgid`** — если не нашлось нигде.
+//! 1. **the plugin catalog** — the plugin author's translation: it is updated
+//!    together with the plugin and reaches every waywallen user, not just us;
+//! 2. **our [`crate::remote_l10n`]** — fills the gaps;
+//! 3. **the `msgid` itself** — if nothing was found anywhere.
 //!
-//! ⚠️ Пункт 2 приходит с ДВУХ сторон, и обе — один и тот же наш слой:
+//! Warning: item 2 comes from TWO sides, and both are the same layer of ours:
 //!
-//!   * `fallback` — подпись, которую [`crate::remote_l10n::translate_source`]
-//!     уже посчитал ПО КЛЮЧУ (`trend_day` → «Популярные (Сегодня)»,
-//!     фильтр `mature` → «18+ (для взрослых)», источник `wallpaper_engine` →
-//!     «Мастерская Steam»). Ключа в `PluginMessage` нет вовсе, поэтому
-//!     сюда его приносит сам мост — полем `rexonFallback` в той же карте;
-//!   * [`crate::remote_l10n::text`] — поиск по английской строке
-//!     (`msgid`), которым закрыты кнопки и строки состояния плагинов.
+//!   * `fallback` — a label that [`crate::remote_l10n::translate_source`] has
+//!     already computed BY KEY (`trend_day` → «Популярные (Сегодня)», "Popular
+//!     (Today)"; the `mature` filter → «18+ (для взрослых)», "18+ (adults)";
+//!     the `wallpaper_engine` source → «Мастерская Steam», "Steam Workshop").
+//!     `PluginMessage` has no key at all, so the bridge itself brings it here —
+//!     as the `rexonFallback` field in the same map;
+//!   * [`crate::remote_l10n::text`] — lookup by the English string (`msgid`),
+//!     which covers the plugins' buttons and status lines.
 //!
-//! Без первой половины русский пропал бы у всех сортировок и заголовков
-//! фильтров разом: наши таблицы для них ключевые, а не текстовые — поймано
-//! приёмкой `scripts/test_we_plugin_translations.py` на живом демоне.
+//! Without the first half, Russian would disappear from all sort orders and
+//! filter headings at once: our tables for them are keyed, not text-based —
+//! caught by the acceptance test `scripts/test_we_plugin_translations.py` on a
+//! live daemon.
 //!
-//! Обратный порядок означал бы, что мы молча перебиваем перевод автора
-//! плагина своим — этого делать нельзя. По мере появления апстримовских
-//! каталогов наш слой сам собой ужимается, а подписи не мигают.
+//! The reverse order would mean that we silently override the plugin author's
+//! translation with ours — that must not be done. As upstream catalogs appear,
+//! our layer shrinks by itself, and labels do not flicker.
 //!
-//! ⚠️ `msgid` — это английская исходная строка, а не ключ (проверено на
-//! живом демоне: `labelText.msgid == "Log in to Wallhaven"`). Поэтому
-//! таблицы `remote_l10n`, где ключ — тоже английская строка, ложатся сюда
-//! без единой новой карты (правило #12: чиним общий движок, а не заводим
-//! второй словарь).
+//! Warning: `msgid` is the English source string, not a key (checked on a live
+//! daemon: `labelText.msgid == "Log in to Wallhaven"`). That is why the
+//! `remote_l10n` tables, whose key is also the English string, fit here without
+//! a single new map (rule #12: fix the shared engine instead of starting a
+//! second dictionary).
 //!
-//! # Чего здесь нет
+//! # What is not here
 //!
-//! Ввода-вывода: разбор `.po` и поиск — чистые функции над байтами и
-//! строками. Сеть (запрос `plugin_translation_list`), Qt-свойства и сигналы
-//! — за мостом `rexon-gui/src/plugin_translations.rs`.
+//! Input/output: parsing `.po` and lookup are pure functions over bytes and
+//! strings. The network (the `plugin_translation_list` request), Qt properties
+//! and signals are behind the bridge `rexon-gui/src/plugin_translations.rs`.
 
 use std::collections::BTreeMap;
 
-/// Разобранный каталог одного плагина на одном языке: `msgid` → `msgstr`.
+/// A parsed catalog of one plugin in one language: `msgid` → `msgstr`.
 pub type Messages = BTreeMap<String, String>;
 
-/// Каталоги всех плагинов: `plugin_id` → `locale` → сообщения.
+/// Catalogs of all plugins: `plugin_id` → `locale` → messages.
 pub type Catalogs = BTreeMap<String, BTreeMap<String, Messages>>;
 
 // ============================================================================
-// Разбор .po
+// Parsing .po
 // ============================================================================
 
-/// Снять кавычки и раскрыть экранирование одной строки `.po`.
+/// Strip the quotes from one `.po` line and expand its escapes.
 ///
-/// Возвращает `None`, если в строке нет закавыченного куска: такие строки
-/// (комментарии, `msgid_plural` без кавычек, мусор) просто пропускаются.
+/// Returns `None` if the line has no quoted part: such lines (comments,
+/// `msgid_plural` without quotes, garbage) are simply skipped.
 fn unquote(line: &str) -> Option<String> {
     let start = line.find('"')?;
     let body = &line[start + 1..];
     let end = {
-        // Закрывающая кавычка — последняя неэкранированная.
+        // The closing quote is the last unescaped one.
         let bytes = body.as_bytes();
         let mut found = None;
         let mut i = 0;
@@ -105,8 +107,8 @@ fn unquote(line: &str) -> Option<String> {
             Some('r') => out.push('\r'),
             Some('\\') => out.push('\\'),
             Some('"') => out.push('"'),
-            // Незнакомая пара остаётся как есть: портить чужой текст хуже,
-            // чем показать лишний слэш.
+            // An unknown pair is left as is: corrupting someone else's text is worse than
+            // showing an extra backslash.
             Some(other) => {
                 out.push('\\');
                 out.push(other);
@@ -117,7 +119,7 @@ fn unquote(line: &str) -> Option<String> {
     Some(out)
 }
 
-/// Какую часть записи мы сейчас набираем.
+/// Which part of the entry we are currently collecting.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Field {
     None,
@@ -125,12 +127,12 @@ enum Field {
     Str,
 }
 
-/// Разобрать каталог `.po` в карту `msgid` → `msgstr`.
+/// Parse a `.po` catalog into a `msgid` → `msgstr` map.
 ///
-/// Понимает продолжения строк, экранирование и `msgstr[0]`. Пропускает
-/// заголовок (запись с пустым `msgid`), пустые переводы и `#`-комментарии.
-/// Битый файл не ошибка: разбирается всё, что разобралось, — иначе одна
-/// кривая запись съела бы весь каталог плагина.
+/// Understands line continuations, escapes and `msgstr[0]`. Skips the header
+/// (the entry with an empty `msgid`), empty translations and `#` comments. A
+/// broken file is not an error: everything that parses is parsed — otherwise a
+/// single malformed entry would eat the plugin's whole catalog.
 pub fn parse_po(po: &[u8]) -> Messages {
     let text = String::from_utf8_lossy(po);
     let mut out = Messages::new();
@@ -138,7 +140,7 @@ pub fn parse_po(po: &[u8]) -> Messages {
     let mut msg = String::new();
     let mut field = Field::None;
 
-    // Записать набранную пару и начать следующую.
+    // Record the collected pair and start the next one.
     fn flush(out: &mut Messages, id: &mut String, msg: &mut String) {
         if !id.is_empty() && !msg.is_empty() {
             out.insert(std::mem::take(id), std::mem::take(msg));
@@ -154,8 +156,8 @@ pub fn parse_po(po: &[u8]) -> Messages {
             continue;
         }
         if let Some(rest) = line.strip_prefix("msgid_plural") {
-            // Множественные формы демон не шлёт; продолжения такой записи
-            // не должны попасть в msgid.
+            // The daemon does not send plural forms; continuations of such an entry must
+            // not end up in the msgid.
             let _ = rest;
             field = Field::None;
             continue;
@@ -169,8 +171,8 @@ pub fn parse_po(po: &[u8]) -> Messages {
             continue;
         }
         if let Some(rest) = line.strip_prefix("msgstr") {
-            // `msgstr[0]` — первая множественная форма, годится как перевод;
-            // остальные формы пропускаем.
+            // `msgstr[0]` — the first plural form, good enough as the translation; the
+            // other forms are skipped.
             if rest.starts_with('[') && !rest.starts_with("[0]") {
                 field = Field::None;
                 continue;
@@ -182,12 +184,12 @@ pub fn parse_po(po: &[u8]) -> Messages {
             continue;
         }
         if line.starts_with("msgctxt") {
-            // Контекст мы не различаем: у демона его нет.
+            // We do not distinguish contexts: the daemon has none.
             field = Field::None;
             continue;
         }
         if line.starts_with('"') {
-            // Продолжение предыдущего поля.
+            // Continuation of the previous field.
             if let Some(part) = unquote(line) {
                 match field {
                     Field::Id => id.push_str(&part),
@@ -202,15 +204,15 @@ pub fn parse_po(po: &[u8]) -> Messages {
 }
 
 // ============================================================================
-// Локаль
+// Locale
 // ============================================================================
 
-/// Языковые метки от самой точной к самой общей: `ru_RU.UTF-8` →
+/// Language tags from the most specific to the most general: `ru_RU.UTF-8` →
 /// `["ru-RU", "ru"]`.
 ///
-/// Демон помечает каталоги как `ru` и `zh-CN` (через дефис), поэтому
-/// подчёркивание нормализуется в дефис. Пустая локаль даёт пустой список —
-/// звать каталог не по чему.
+/// The daemon labels catalogs as `ru` and `zh-CN` (with a hyphen), so the
+/// underscore is normalized into a hyphen. An empty locale gives an empty list —
+/// there is nothing to look a catalog up by.
 pub fn locale_candidates(locale: &str) -> Vec<String> {
     let cleaned = locale
         .split(['.', '@'])
@@ -231,10 +233,10 @@ pub fn locale_candidates(locale: &str) -> Vec<String> {
 }
 
 // ============================================================================
-// Разрешение подписи
+// Resolving a label
 // ============================================================================
 
-/// Подпись из каталога плагина — пункт 1 порядка. `None` — в каталоге нет.
+/// A label from the plugin catalog — item 1 of the order. `None` — not in the catalog.
 pub fn catalog_lookup(
     catalogs: &Catalogs,
     plugin_id: &str,
@@ -253,14 +255,14 @@ pub fn catalog_lookup(
     None
 }
 
-/// Подпись для покупателя: каталог плагина → наш `remote_l10n` → сам `msgid`.
+/// A label for the buyer: plugin catalog → our `remote_l10n` → the `msgid` itself.
 ///
-/// `fallback` — наша подпись, посчитанная по ключу (см. шапку модуля);
-/// пустая строка означает «ключевого перевода нет».
+/// `fallback` is our label computed by key (see the module header); an empty
+/// string means "there is no keyed translation".
 ///
-/// Пустой `msgid` возвращается пустым: в протоколе это «подписи нет», и
-/// подставлять туда что-либо нельзя — вендорный QML сам берёт запасной
-/// текст (`I18n.tr(x) || modelData.name`).
+/// An empty `msgid` is returned empty: in the protocol it means "no label", and
+/// nothing may be substituted there — the vendored QML picks the fallback text
+/// itself (`I18n.tr(x) || modelData.name`).
 pub fn resolve(
     catalogs: &Catalogs,
     plugin_id: &str,
@@ -271,12 +273,13 @@ pub fn resolve(
     resolve_with_arguments(catalogs, plugin_id, msgid, fallback, locale, &[])
 }
 
-/// То же, что [`resolve`], но с подстановками `%1`, `%2`… из протокола.
+/// The same as [`resolve`], but with `%1`, `%2`… substitutions from the protocol.
 ///
-/// waywallen 0.3.8 добавил `PluginMessage.arguments`: плагин отдаёт шаблон
-/// («Signed in as %1») и отдельно значения, чтобы переводчику доставался
-/// шаблон, а не склеенная строка. Подстановка идёт ПОСЛЕ перевода — иначе
-/// в каталоге искалась бы строка с уже подставленным именем.
+/// waywallen 0.3.8 added `PluginMessage.arguments`: the plugin returns a
+/// template ("Signed in as %1") and the values separately, so that the
+/// translator gets the template rather than a glued-together string.
+/// Substitution happens AFTER translation — otherwise the catalog would be
+/// searched for a string with the name already substituted.
 pub fn resolve_with_arguments(
     catalogs: &Catalogs,
     plugin_id: &str,
@@ -286,7 +289,7 @@ pub fn resolve_with_arguments(
     arguments: &[String],
 ) -> String {
     if msgid.is_empty() {
-        // Подписи нет вовсе — запасной текст выбирает вендорный QML.
+        // No label at all — the vendored QML chooses the fallback text.
         return String::new();
     }
     let text = if let Some(found) = catalog_lookup(catalogs, plugin_id, msgid, locale) {
@@ -299,11 +302,11 @@ pub fn resolve_with_arguments(
     format_message(&text, arguments)
 }
 
-/// Подставить `arguments` вместо `%1`, `%2`… .
+/// Substitute `arguments` for `%1`, `%2`… .
 ///
-/// Номер — любое число подряд идущих цифр после `%`; вне диапазона и без
-/// цифр место остаётся как было (плагин мог написать «100%»). Пустой список
-/// значений не меняет строку вовсе.
+/// The number is any run of consecutive digits after `%`; out of range or
+/// without digits the place stays as it was (a plugin may have written "100%").
+/// An empty list of values does not change the string at all.
 pub fn format_message(text: &str, arguments: &[String]) -> String {
     if arguments.is_empty() {
         return text.to_string();
@@ -331,12 +334,12 @@ pub fn format_message(text: &str, arguments: &[String]) -> String {
     out
 }
 
-/// Сложить документы ответа демона в каталоги.
+/// Collect the documents of the daemon's response into catalogs.
 ///
-/// Вход — то, что пришло в `PluginTranslationListResponse.documents`:
-/// тройки `(plugin_id, locale, po)`. Разбор здесь один раз на ответ, а не на
-/// подпись: `resolve` обязан быть поиском по карте — его зовут на КАЖДУЮ
-/// подпись страницы.
+/// The input is what came in `PluginTranslationListResponse.documents`:
+/// `(plugin_id, locale, po)` triples. Parsing happens here once per response,
+/// not per label: `resolve` must be a map lookup — it is called for EVERY label
+/// of the page.
 pub fn build_catalogs<'a, I>(documents: I) -> Catalogs
 where
     I: IntoIterator<Item = (&'a str, &'a str, &'a [u8])>,
@@ -394,7 +397,7 @@ msgstr ""
             m.get("Escaped \"quote\"").map(String::as_str),
             Some("Кавычка \"тут\"")
         );
-        // Заголовок (пустой msgid) и пустой перевод в карту не попадают.
+        // The header (empty msgid) and empty translations do not get into the map.
         assert!(!m.contains_key(""));
         assert!(!m.contains_key("Empty translation"));
     }
@@ -407,18 +410,18 @@ msgstr ""
         assert!(locale_candidates("").is_empty());
     }
 
-    /// Пункт 1: перевод автора плагина сильнее нашего.
+    /// Item 1: the plugin author's translation is stronger than ours.
     #[test]
     fn каталог_плагина_бьёт_наш_слой() {
-        // Наш слой говорит на языке интерфейса Rexon; закрепляем исходный
-        // (английский), русский закреплён сверкой `remote_l10n_parity`.
+        // Our layer speaks the language of the Rexon interface; we pin the source
+        // (English) one, the Russian one is pinned by the `remote_l10n_parity` check.
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let catalogs = build_catalogs([(
             "org.waywallen.wallhaven",
             "ru",
             format!("msgid \"{API_KEY_HINT}\"\nmsgstr \"Скопируйте ключ\"\n").as_bytes(),
         )]);
-        // В наших таблицах для этой строки своя подпись; каталог плагина побеждает.
+        // Our tables have their own label for this string; the plugin catalog wins.
         assert_eq!(
             resolve(&catalogs, "org.waywallen.wallhaven", API_KEY_HINT, "", "ru_RU"),
             "Скопируйте ключ"
@@ -426,12 +429,12 @@ msgstr ""
         assert_eq!(crate::remote_l10n::text(API_KEY_HINT), OUR_API_KEY_HINT);
     }
 
-    /// Строка плагина, у которой в наших таблицах СВОЯ подпись (не та же
-    /// английская) — на ней видно, что сработал именно наш слой.
+    /// A plugin string that has ITS OWN label in our tables (not the same English
+    /// one) — on it you can see that it was our layer that worked.
     const API_KEY_HINT: &str = "Copy the API key from Wallhaven Account Settings.";
     const OUR_API_KEY_HINT: &str = "The API key is in your Wallhaven account settings.";
 
-    /// Пункт 2: без каталога держит наш слой — это случай Мастерской Steam.
+    /// Item 2: without a catalog our layer holds — this is the Steam Workshop case.
     #[test]
     fn без_каталога_держит_наш_русский() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -448,7 +451,7 @@ msgstr ""
         );
     }
 
-    /// Пункт 2 действует и когда каталог плагина есть, но строки в нём нет.
+    /// Item 2 also applies when the plugin catalog exists but lacks the string.
     #[test]
     fn дыра_в_каталоге_закрывается_нашим_слоем() {
         let catalogs = build_catalogs([(
@@ -463,7 +466,7 @@ msgstr ""
         );
     }
 
-    /// Пункт 3: незнакомая строка возвращается как есть, а не пустой.
+    /// Item 3: an unknown string is returned as is, not empty.
     #[test]
     fn незнакомое_остаётся_собой() {
         let catalogs = Catalogs::new();
@@ -474,8 +477,8 @@ msgstr ""
         assert_eq!(resolve(&catalogs, "", "", "", "ru"), "");
     }
 
-    /// Чужой язык не подставляется: у Мастерской есть только zh-CN — и он
-    /// НЕ должен всплыть на русской машине.
+    /// A foreign language is not substituted: the Workshop has only zh-CN — and it
+    /// must NOT surface on a Russian machine.
     #[test]
     fn чужой_язык_не_подставляется() {
         let catalogs = build_catalogs([(
@@ -495,8 +498,8 @@ msgstr ""
         );
     }
 
-    /// Ключевой перевод нашего слоя (сортировки, заголовки фильтров) —
-    /// это пункт 2, а не пункт 1: каталог плагина его перебивает.
+    /// The keyed translation of our layer (sort orders, filter headings) is item
+    /// 2, not item 1: the plugin catalog overrides it.
     #[test]
     fn ключевой_перевод_ниже_каталога_но_выше_msgid() {
         let catalogs = build_catalogs([(
@@ -504,7 +507,7 @@ msgstr ""
             "ru",
             "msgid \"Trending\"\nmsgstr \"В тренде\"\n".as_bytes(),
         )]);
-        // Каталог есть — он и побеждает, наш ключевой перевод уступает.
+        // There is a catalog — it wins, our keyed translation gives way.
         assert_eq!(
             resolve(
                 &catalogs,
@@ -515,7 +518,7 @@ msgstr ""
             ),
             "В тренде"
         );
-        // Каталога нет — держит ключевой перевод.
+        // No catalog — the keyed translation holds.
         assert_eq!(
             resolve(
                 &catalogs,
@@ -528,7 +531,7 @@ msgstr ""
         );
     }
 
-    /// Битая запись не съедает остальной каталог.
+    /// A broken entry does not eat the rest of the catalog.
     #[test]
     fn битая_запись_не_рушит_каталог() {
         let po = "msgid \"good\"\nmsgstr \"ок\"\nmsgid broken\nmsgstr also broken\nmsgid \"tail\"\nmsgstr \"хвост\"\n"

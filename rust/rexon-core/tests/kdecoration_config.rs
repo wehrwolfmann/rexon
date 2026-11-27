@@ -1,10 +1,10 @@
-//! «Настроить…» у рамки окна KDE (`kdecoration::config_*`) — как кнопка
-//! правки плитки окна «Оформление окон» Plasma 6.8. Ожидания —
+//! «Configure…» of a KDE window frame (`kdecoration::config_*`) — like the edit
+//! button of a tile in the Plasma 6.8 «Window Decorations» window. Expectations —
 //! `tests/golden/kdecoration_config_cases.json`.
 //!
-//! Последний тест открывает настоящее окно настроек Breeze на стенде, если на
-//! машине есть запускатель `qml` Qt6, модуль превью KWin, Xvfb и
-//! dbus-run-session; иначе печатает «НЕ ПРОВЕРЕНО».
+//! The last test opens the real Breeze settings window on the bench, if the
+//! machine has the Qt6 `qml` launcher, the KWin preview module, Xvfb and
+//! dbus-run-session; otherwise it prints «НЕ ПРОВЕРЕНО».
 
 use rexon_core::kdecoration as kd;
 use serde_json::Value;
@@ -90,8 +90,8 @@ fn button_opens_what_kde_opens_or_says_why_not() {
         assert_eq!(b.argv, strings(&c["argv"]), "{name}");
         if b.visible {
             assert_eq!(b.text, "Настроить…", "{name}");
-            // Нажать нельзя — причина обязана быть сказана; можно — сказано,
-            // что откроется.
+            // Cannot be pressed — the reason must be stated; can be — it is stated
+            // what will open.
             assert!(!b.tooltip.is_empty(), "{name}: нет подсказки");
             assert!(b.tooltip.chars().any(|ch| ('а'..='я').contains(&ch)), "{name}: подсказка не переведена: {}", b.tooltip);
         }
@@ -103,20 +103,20 @@ fn script_is_the_data_file_and_calls_kwin_configure() {
     assert!(kd::CONFIG_SCRIPT.contains("org.kde.kwin.private.kdecoration"));
     assert!(kd::CONFIG_SCRIPT.contains("kcmoduleName"));
     assert!(kd::CONFIG_SCRIPT.contains("bridge.configure("));
-    // Аргументов после `--` ровно столько, сколько кладёт кнопка.
+    // There are exactly as many arguments after `--` as the button puts.
     assert!(kd::CONFIG_SCRIPT.contains("arguments.length - 4"));
     let dir = std::env::temp_dir().join(format!("rexon-kdeco-config-{}", std::process::id()));
     let script = dir.join(kd::CONFIG_SCRIPT_NAME).to_string_lossy().into_owned();
     let argv = vec!["qml".to_string(), "-a".into(), "widget".into(), script.clone()];
     assert!(kd::ensure_config_script(&argv));
     assert_eq!(std::fs::read_to_string(&script).unwrap(), kd::CONFIG_SCRIPT);
-    // Кнопка без сценария (kcmshell6) ничего не пишет.
+    // A button without a script (kcmshell6) writes nothing.
     assert!(kd::ensure_config_script(&["kcmshell6".to_string(), "kcm_kwindecoration".to_string()]));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Живое окно настроек Breeze на своём Xvfb и своей шине: процесс живёт,
-/// пока окно открыто, и сам завершается с кодом 0, когда его закрыли.
+/// A live Breeze settings window on its own Xvfb and its own bus: the process lives
+/// while the window is open and exits with code 0 by itself when it is closed.
 #[test]
 fn live_breeze_dialog_opens_and_exits_on_close() {
     use std::process::{Command, Stdio};
@@ -153,7 +153,7 @@ fn live_breeze_dialog_opens_and_exits_on_close() {
     let facts = kd::ConfigFacts { plasma: true, runner: Some(runner), kcm: breeze_kcm, kcmshell: false };
     let b = kd::config_button(Some(&target), &facts, &script);
     assert!(b.enabled && kd::ensure_config_script(&b.argv));
-    // Своё всё: дисплей, HOME, каталог сеанса, шина — живой сеанс не задет.
+    // Everything is our own: display, HOME, session directory, bus — the live session is not touched.
     let display = format!(":{}", 150 + std::process::id() % 40);
     let mut xvfb = Command::new("Xvfb")
         .args([display.as_str(), "-screen", "0", "1024x768x24", "-nolisten", "tcp"])

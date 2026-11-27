@@ -2,6 +2,12 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="ru_RU">
 <context>
+    <name>BrowserLoginDialog</name>
+    <message><source>Opening the sign-in window…</source><translation>Открытие окна входа…</translation></message>
+    <message><source>Verifying sign-in…</source><translation>Проверка входа…</translation></message>
+    <message><source>Complete sign-in in the browser window.</source><translation>Завершите вход в окне браузера.</translation></message>
+</context>
+<context>
     <name>AboutPage</name>
     <message>
         <location filename="../qml/page/AboutPage.qml" line="36"/>
@@ -2545,12 +2551,12 @@ Unsaved frame state may be lost.</source>
     <message>
         <location filename="../qml/page/wallpaper/TweakSheet.qml" line="125"/>
         <source>Fill cell</source>
-        <translation>Заполнить ячейку</translation>
+        <translation>На всю ячейку</translation>
     </message>
     <message>
         <location filename="../qml/page/wallpaper/TweakSheet.qml" line="131"/>
         <source>Fixed</source>
-        <translation>Фиксированное</translation>
+        <translation>Фиксированный</translation>
     </message>
     <message>
         <location filename="../qml/page/wallpaper/TweakSheet.qml" line="141"/>

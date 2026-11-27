@@ -1,55 +1,55 @@
-//! Проверки root-стороны (пункт Б3 плана, см. [`super`]).
+//! Root-side checks (item B3 of the plan, see [`super`]).
 //!
-//! Помощник «Б» живёт весь сеанс окна, поэтому верить окну он не может ни в
-//! чём: всё, что пришло по сокету, проверяется здесь, ПЕРЕД исполнением, и
-//! только здесь решается «можно или нет». Функции чистые — без ввода-вывода:
-//! всё, что надо знать о машине (текущий стол, ответы `pacman -Qi`, рецепт
-//! пересборки, `PKEXEC_UID`), приходит параметрами. Тип операции
-//! (`PrivOp`, пункт Б1) сюда не заходит: функции на простых аргументах,
-//! `PrivOp` зовёт их сам (пункт Б8).
+//! Helper "B" lives for the whole window session, so it cannot trust the
+//! window in anything: everything that came over the socket is checked here,
+//! BEFORE execution, and only here is "allowed or not" decided. The functions
+//! are pure, without I/O: everything to know about the machine (the current
+//! desktop, `pacman -Qi` answers, the rebuild recipe, `PKEXEC_UID`) comes as
+//! parameters. The operation type (`PrivOp`, item B1) does not enter here:
+//! the functions take simple arguments, and `PrivOp` calls them itself (item B8).
 //!
-//! # Таблицы — ядра, а не свои
+//! # The tables are the core's, not our own
 //!
-//! Списков пакетов здесь нет. Белые списки установки — те же таблицы, по
-//! которым окно строит планы: [`system::DE_DATABASE`] (столы),
-//! [`plan::DM_PAIRS`] (экраны входа), [`crate::compliance`] (доустановка
-//! стола), [`crate::wallpaper_engine::install_deps_packages`] (видеообои),
-//! оболочки, программы виджетов, Conky, части раскладок MATE, значки и
-//! курсоры тем, образы «Как в дистрибутиве» — всё, что перечисляет
-//! [`plan::pkg_helper_install_allowlist`] (сверка
+//! There are no package lists here. The install allowlists are the same
+//! tables the window builds plans from: [`system::DE_DATABASE`] (desktops),
+//! [`plan::DM_PAIRS`] (login screens), [`crate::compliance`] (desktop
+//! completion), [`crate::wallpaper_engine::install_deps_packages`] (live
+//! wallpapers), shells, widget programs, Conky, MATE layout parts, theme
+//! icons and cursors, «Distro Looks» looks: everything listed by
+//! [`plan::pkg_helper_install_allowlist`] (check
 //! `таблицы_сеанса_совпадают_с_белым_списком_помощника_пакетов`),
-//! рецепт пересборки ([`repo_rebuild::build_requirements`]). Вечный список
-//! удаления — [`plan::PKG_HELPER_VITAL`], имя пакета —
-//! [`plan::is_safe_pkg_arg`], замыкание зависимостей —
-//! [`system::filter_removable_transitive`], защита текущего стола —
-//! [`plan::remove_de_decision`]. Так проверка помощника «Б» и проверка
-//! нынешних `rexon-*-helper` не могут разойтись.
+//! and the rebuild recipe ([`repo_rebuild::build_requirements`]). The
+//! permanent removal list is [`plan::PKG_HELPER_VITAL`], the package name is
+//! [`plan::is_safe_pkg_arg`], the dependency closure is
+//! [`system::filter_removable_transitive`], the current desktop protection is
+//! [`plan::remove_de_decision`]. This way the check of helper "B" and the
+//! check of the current `rexon-*-helper` cannot diverge.
 //!
-//! # Запрет — функция
+//! # Prohibition to function
 //!
-//! | Строка плана | Функция |
+//! | Plan row | Function |
 //! |---|---|
-//! | З1 ни флага, ни оболочки в аргументе | [`check_operand`] |
-//! | З2 имя, а не путь | [`check_package_name`], [`check_item_name`], [`check_de_id`] |
-//! | З2 путь только внутри корня пользователя | [`check_user_path`], [`check_built_package`] |
-//! | З2 приёмник — константа ядра | [`stage_destination_roots`] |
-//! | З3 чужой процесс на канале | [`check_peer`], [`parse_pkexec_uid`] |
-//! | З5 никакого сырого pkexec после отказа | [`raw_fallback_allowed`] |
-//! | З6 жизненно важное и текущий стол | [`check_not_vital`], [`check_remove_packages`], [`desktop_removal_set`] |
-//! | З7 код от root из темы | [`check_plymouth_module_name`], [`check_theme_file_not_code`] |
-//! | З8 обход чужого polkit (PLM) | [`check_plm_key`], [`check_plm_wallpaper_name`] |
-//! | установка только из таблиц | [`check_install`], [`check_build_deps`], [`check_build_only`] |
-//! | §1.4 п.5 неизменяемая система | [`check_mutable_system`] |
-//! | стол набором: таблица стола, DKMS по правилу ядра, замена из таблицы замен | [`check_de_set`], [`check_de_set_preview`] |
-//! | образ стола SteamOS | [`check_sysext`] |
-//! | удаление сироты сторожа обновлений | [`check_remove_packages`] + проба машины в `helper.rs` ([`Refusal::NotOrphan`]) |
-//! | откат набора сторожа из кэша pacman | [`check_cache_package`] + файлы кэша (`openat2`, владелец root) и сверка машины в `helper.rs` ([`Refusal::NotRollback`]) |
-//! | шрифты «для всех пользователей»: имя файла шрифта, только каталог ядра, без перезаписи | [`check_font_install`], [`check_font_remove`] + `fc-query` по копии root и проба приёмника в `helper.rs` ([`Refusal::NotAFont`], [`Refusal::FontExists`]) |
-//! | экран входа SDDM: фон темы, «Показывать часы», перенос оформления стола | [`check_sddm_look`] (+ имя темы — [`check_item_name`]) + в `helper.rs`: тема в системном каталоге с файлом настроек ([`Refusal::SddmTheme`]), PNG/JPEG (WebP — при модуле WebP у Qt приветствия темы) по сигнатуре копии root ([`Refusal::LoginImage`]), файлы в доме `sddm` — от его имени |
+//! | Z1 neither a flag nor a shell in an argument | [`check_operand`] |
+//! | Z2 a name, not a path | [`check_package_name`], [`check_item_name`], [`check_de_id`] |
+//! | Z2 a path only inside the user root | [`check_user_path`], [`check_built_package`] |
+//! | Z2 the destination is a core constant | [`stage_destination_roots`] |
+//! | Z3 a foreign process on the channel | [`check_peer`], [`parse_pkexec_uid`] |
+//! | Z5 no raw pkexec after a refusal | [`raw_fallback_allowed`] |
+//! | Z6 vital packages and the current desktop | [`check_not_vital`], [`check_remove_packages`], [`desktop_removal_set`] |
+//! | Z7 code running as root from a theme | [`check_plymouth_module_name`], [`check_theme_file_not_code`] |
+//! | Z8 bypassing someone else's polkit (PLM) | [`check_plm_key`], [`check_plm_wallpaper_name`] |
+//! | install only from tables | [`check_install`], [`check_build_deps`], [`check_build_only`] |
+//! | §1.4 item 5 immutable system | [`check_mutable_system`] |
+//! | desktop as a set: desktop table, DKMS by the core rule, replacement from the replacement table | [`check_de_set`], [`check_de_set_preview`] |
+//! | SteamOS desktop image | [`check_sysext`] |
+//! | removing an orphan of the update guard | [`check_remove_packages`] + machine probe in `helper.rs` ([`Refusal::NotOrphan`]) |
+//! | rolling back an update guard set from the pacman cache | [`check_cache_package`] + cache files (`openat2`, owner root) and machine check in `helper.rs` ([`Refusal::NotRollback`]) |
+//! | fonts "for all users": font file name, only the core directory, no overwriting | [`check_font_install`], [`check_font_remove`] + `fc-query` on the root copy and destination probe in `helper.rs` ([`Refusal::NotAFont`], [`Refusal::FontExists`]) |
+//! | SDDM login screen: theme background, «Show clock», carrying over the desktop look | [`check_sddm_look`] (+ theme name: [`check_item_name`]) + in `helper.rs`: the theme in the system directory with a settings file ([`Refusal::SddmTheme`]), PNG/JPEG (WebP with the WebP module in the theme greeter's Qt) by the signature of the root copy ([`Refusal::LoginImage`]), files in the `sddm` home as that user |
 //!
-//! З4 (жизнь прав после окна) — не проверка аргумента, она в
-//! [`super::revoke`]. Проверки по файловой системе (`openat2`, ссылки,
-//! содержимое `.plymouth`) — в [`super::unpack`].
+//! Z4 (privileges living on after the window) is not an argument check, it is
+//! in [`super::revoke`]. File system checks (`openat2`, links, `.plymouth`
+//! contents) are in [`super::unpack`].
 
 use std::collections::HashSet;
 
@@ -58,118 +58,118 @@ use crate::repo_rebuild::{self, SrcInfo};
 use crate::system::{self, PkgFamily};
 use crate::system_plan as plan;
 
-/// Самое длинное имя (пакета, стола, темы), которое помощник примет.
-/// Имён длиннее нет ни в одной таблице; длинная строка — признак не имени.
+/// The longest name (of a package, desktop, theme) the helper accepts.
+/// No table has longer names; a long string is a sign of a non-name.
 pub const MAX_NAME_LEN: usize = 128;
 
-/// Сколько пакетов помощник примет в одной операции. Самый длинный стол
-/// базы — несколько десятков пакетов; запас — на группы и AUR.
+/// How many packages the helper accepts in one operation. The longest desktop
+/// in the database is a few dozen packages; the margin is for groups and the AUR.
 pub const MAX_PACKAGES: usize = 512;
 
-/// Самый длинный путь, который помощник примет (`PATH_MAX`).
+/// The longest path the helper accepts (`PATH_MAX`).
 pub const MAX_PATH_LEN: usize = 4096;
 
-/// Почему помощник отказал. Отказ — не сбой: операция не началась, система
-/// не тронута, и сырого `pkexec` вместо неё не будет (З5).
+/// Why the helper refused. A refusal is not a failure: the operation did not
+/// start, the system is untouched, and there will be no raw `pkexec` instead of it (Z5).
 ///
-/// Текста человеку здесь нет намеренно: строки появятся вместе с окном
-/// отказа (пункт Б13), а журналу хватает [`Refusal::code`] и данных.
+/// There is no text for a person here on purpose: the strings will come with
+/// the refusal dialog (item B13), and the journal is fine with [`Refusal::code`] and the data.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
-    /// Пустой аргумент или пустой список там, где нужно хоть что-то.
+    /// An empty argument or an empty list where at least something is needed.
     Empty,
-    /// Аргумент длиннее [`MAX_NAME_LEN`] / [`MAX_PATH_LEN`].
+    /// An argument longer than [`MAX_NAME_LEN`] / [`MAX_PATH_LEN`].
     TooLong(String),
-    /// Больше [`MAX_PACKAGES`] имён в одной операции.
+    /// More than [`MAX_PACKAGES`] names in one operation.
     TooMany(usize),
-    /// З1: флаг (`-oX`, `--config=…`), пробел, перевод строки или
-    /// метасимвол оболочки в аргументе.
+    /// Z1: a flag (`-oX`, `--config=…`), a space, a line break or a shell
+    /// metacharacter in an argument.
     Operand(String),
-    /// З2: не имя пакета (путь, файл пакета, чужое `@`).
+    /// Z2: not a package name (a path, a package file, a foreign `@`).
     PackageName(String),
-    /// З2: не имя темы, каталога или категории.
+    /// Z2: not a theme, directory or category name.
     ItemName(String),
-    /// Семейство, на котором помощник пакетами не управляет.
+    /// A family on which the helper does not manage packages.
     Family(&'static str),
-    /// Стола нет в базе Rexon.
+    /// The desktop is not in the Rexon database.
     UnknownDesktop(String),
-    /// Установка: имени нет в таблице, по которой идёт эта операция.
+    /// Install: the name is not in the table this operation goes by.
     NotInTable(String),
-    /// Пересборка: строка не из рецепта или не зависимость.
+    /// Rebuild: the string is not from the recipe or not a dependency.
     BuildDep(String),
-    /// З6: жизненно важный пакет.
+    /// Z6: a vital package.
     Vital(String),
-    /// З6: пакет текущего стола.
+    /// Z6: a package of the current desktop.
     CurrentDesktopPackage(String),
-    /// З6: удаление самого текущего стола (текст ядра —
+    /// Z6: removing the current desktop itself (the core's text:
     /// [`plan::remove_de_decision`]).
     CurrentDesktop(String),
-    /// З6: текущий стол не определён — защищать нечем, удалять нельзя.
+    /// Z6: the current desktop is not determined: nothing to protect with, removal is not allowed.
     CurrentDesktopUnknown,
-    /// З2: путь не абсолютный, с `.`/`..`/`//` или управляющими символами.
+    /// Z2: the path is not absolute, has `.`/`..`/`//` or control characters.
     Path(String),
-    /// З2: путь вне разрешённого корня пользователя.
+    /// Z2: the path is outside the allowed user root.
     OutsideRoot(String),
-    /// Собранный файл назван не как файл makepkg.
+    /// The built file is not named like a makepkg file.
     PackageFile(String),
-    /// Экран входа не из таблицы помощников.
+    /// The login screen is not from the helper table.
     DisplayManager(String),
-    /// З7: тема несёт свой код (`.so`, чужой `ModuleName`).
+    /// Z7: the theme carries its own code (`.so`, a foreign `ModuleName`).
     BootSplashCode(String),
-    /// З3: на канале не тот процесс.
+    /// Z3: the wrong process on the channel.
     Peer,
-    /// З8: ключ настроек PLM вне белого списка.
+    /// Z8: a PLM settings key outside the allowlist.
     PlmKey(String),
-    /// §1.4 п.5: системный раздел только для чтения (SteamOS). Текст —
-    /// ядра ([`SteamOsBlock::reason`]).
+    /// §1.4 item 5: the system partition is read-only (SteamOS). The text is
+    /// the core's ([`SteamOsBlock::reason`]).
     ReadOnlySystem(String),
-    /// Набор стола: замена конфликтующего не из таблицы замен ядра или
-    /// конфликт, которого согласие не покрывает (`--ask=4` снял бы лишнее).
+    /// Desktop set: a replacement of a conflicting package not from the core's
+    /// replacement table, or a conflict the consent does not cover (`--ask=4` would remove too much).
     Conflict(String),
-    /// Набор стола не сходится с правилом ядра по ответам pacman этой
-    /// машины (неставящийся член, DKMS-пакет не по правилу, проба молчит).
+    /// The desktop set does not match the core rule by the pacman answers of this
+    /// machine (a member that does not install, a DKMS package not by the rule, the probe is silent).
     SetRule(String),
-    /// Образ стола (sysext) — только на SteamOS.
+    /// A desktop image (sysext) is SteamOS only.
     NotSteamOs,
-    /// Удаление сироты: пакет не сирота по этой машине (не установлен, есть
-    /// в репозиториях либо не член набора сторожа обновлений).
+    /// Removing an orphan: the package is not an orphan on this machine (not
+    /// installed, present in the repositories, or not a member of an update guard set).
     NotOrphan(String),
-    /// Откат из кэша: не ровно откат набора находки по этой машине (пакет не
-    /// из набора, версия не меньше установленной, набор неполный или сверх).
+    /// Rollback from the cache: not exactly a rollback of the finding's set on this
+    /// machine (the package is not from the set, the version is not lower than the
+    /// installed one, the set is incomplete or exceeded).
     NotRollback(String),
-    /// Шрифты: имя — не имя файла шрифта (путь, скрытый файл, расширение
-    /// не из [`crate::qt_settings::FONT_INSTALL_EXTS`]) либо путь удаления
-    /// не файл шрифта внутри [`crate::qt_settings::SHARED_FONT_DIR`].
+    /// Fonts: the name is not a font file name (a path, a hidden file, an extension
+    /// not from [`crate::qt_settings::FONT_INSTALL_EXTS`]), or the removal path is
+    /// not a font file inside [`crate::qt_settings::SHARED_FONT_DIR`].
     FontFile(String),
-    /// Шрифты: fontconfig (`fc-query` по копии root) не считает файл
-    /// шрифтом.
+    /// Fonts: fontconfig (`fc-query` on the root copy) does not consider the file
+    /// a font.
     NotAFont(String),
-    /// Шрифты: в каталоге для всех пользователей уже лежит файл (или
-    /// ссылка) с этим именем — чужое не перезаписывается.
+    /// Fonts: the directory for all users already has a file (or a link) with
+    /// this name; what is not ours is not overwritten.
     FontExists(String),
-    /// Экран входа SDDM: учётной записи `sddm` (или её домашнего каталога)
-    /// нет.
+    /// SDDM login screen: there is no `sddm` account (or its home directory).
     NoSddmUser,
-    /// Экран входа SDDM: темы нет в системном каталоге или она не принимает
-    /// свой фон (нет файла настроек).
+    /// SDDM login screen: the theme is not in the system directory, or it does not
+    /// accept its own background (no settings file).
     SddmTheme(String),
-    /// Экран входа SDDM: картинка фона — не PNG и не JPEG (и не WebP при
-    /// модуле WebP у Qt приветствия) по сигнатуре.
+    /// SDDM login screen: the background picture is neither PNG nor JPEG (nor WebP
+    /// with the WebP module in the greeter's Qt) by its signature.
     LoginImage(String),
-    /// Перенос оформления: имя файла не из [`plan::SDDM_LOOK_FILES`], повтор,
-    /// файлы при «Сбросить» или содержимое — не текст.
+    /// Look carry-over: a file name not from [`plan::SDDM_LOOK_FILES`], a repeat,
+    /// files with «Reset», or contents that are not text.
     LookFile(String),
-    /// Перенос оформления: значение курсора, шрифта или DPI вне правил.
+    /// Look carry-over: a cursor, font or DPI value outside the rules.
     LookValue(String),
-    /// Перенос оформления: значение перекрыто в файле, который Rexon не
-    /// правит.
+    /// Look carry-over: the value is overridden in a file Rexon does not
+    /// edit.
     LookElsewhere,
-    /// Перенос оформления: нечем писать от имени `sddm` (`setpriv`).
+    /// Look carry-over: nothing to write with as `sddm` (`setpriv`).
     NoSetpriv,
 }
 
 impl Refusal {
-    /// Короткое имя для журнала (не переводится).
+    /// Short name for the journal (not translated).
     pub fn code(&self) -> &'static str {
         match self {
             Refusal::Empty => "empty",
@@ -216,11 +216,11 @@ impl Refusal {
 type Check<T = ()> = Result<T, Refusal>;
 
 // ============================================================================
-// З1 — ни флага, ни оболочки
+// Z1: neither a flag nor a shell
 // ============================================================================
 
-/// Символы, которых нет ни в одном имени таблиц ядра и которые что-то
-/// значат для оболочки или разбора аргументов.
+/// Characters that are in no name of the core tables and that mean something
+/// to a shell or to argument parsing.
 fn is_shell_meta(c: char) -> bool {
     c.is_whitespace()
         || c.is_control()
@@ -231,10 +231,10 @@ fn is_shell_meta(c: char) -> bool {
         )
 }
 
-/// З1: строка от окна, которая станет словом argv. Непустая, не длиннее
-/// [`MAX_NAME_LEN`], не флаг (ведущий `-` — `-oX`, `--config=…`, `--root`)
-/// и без метасимволов оболочки и пробелов. Это ПЕРВЫЙ рубеж любой
-/// именной проверки; второй — правило самого вида имени.
+/// Z1: a string from the window that will become an argv word. Non-empty, no
+/// longer than [`MAX_NAME_LEN`], not a flag (a leading `-`: `-oX`, `--config=…`,
+/// `--root`) and without shell metacharacters and spaces. This is the FIRST
+/// line of any name check; the second is the rule of the name kind itself.
 pub fn check_operand(s: &str) -> Check {
     if s.is_empty() {
         return Err(Refusal::Empty);
@@ -248,17 +248,17 @@ pub fn check_operand(s: &str) -> Check {
     Ok(())
 }
 
-/// Для журнала: длинную строку от окна целиком не носим.
+/// For the journal: a long string from the window is not carried whole.
 fn clip(s: &str) -> String {
     s.chars().take(MAX_NAME_LEN).collect()
 }
 
 // ============================================================================
-// З2 — имя, а не путь
+// Z2: a name, not a path
 // ============================================================================
 
-/// Семейство, на котором помощник управляет пакетами
-/// ([`plan::PKG_HELPER_FAMILIES`]; Nix и неизвестное — нет).
+/// A family on which the helper manages packages
+/// ([`plan::PKG_HELPER_FAMILIES`]; Nix and unknown ones do not count).
 pub fn check_family(family: PkgFamily) -> Check {
     if plan::PKG_HELPER_FAMILIES.contains(&family.as_str()) {
         Ok(())
@@ -267,10 +267,10 @@ pub fn check_family(family: PkgFamily) -> Check {
     }
 }
 
-/// З2: имя пакета. [`check_operand`] + правило ядра
-/// [`plan::is_safe_pkg_arg`] — то же, что у `rexon-pkg-helper`: `/` только в
-/// атоме Gentoo, `@` только у группы dnf, файл пакета (`x.deb`) — отказ
-/// даже без `/`.
+/// Z2: a package name. [`check_operand`] + the core rule
+/// [`plan::is_safe_pkg_arg`], the same as in `rexon-pkg-helper`: `/` only in
+/// a Gentoo atom, `@` only for a dnf group, a package file (`x.deb`) is
+/// refused even without `/`.
 pub fn check_package_name(family: PkgFamily, name: &str) -> Check {
     check_operand(name)?;
     if plan::is_safe_pkg_arg(family, name) {
@@ -280,8 +280,8 @@ pub fn check_package_name(family: PkgFamily, name: &str) -> Check {
     }
 }
 
-/// З2: список имён одной операции — непустой, не длиннее
-/// [`MAX_PACKAGES`], каждое по [`check_package_name`].
+/// Z2: the list of names of one operation: non-empty, no longer than
+/// [`MAX_PACKAGES`], each by [`check_package_name`].
 pub fn check_package_list(family: PkgFamily, names: &[String]) -> Check {
     check_family(family)?;
     if names.is_empty() {
@@ -293,9 +293,9 @@ pub fn check_package_list(family: PkgFamily, names: &[String]) -> Check {
     names.iter().try_for_each(|n| check_package_name(family, n))
 }
 
-/// З2: имя темы, каталога раскладки, фона — правило `rexon-system-helper`
-/// и `rexon-stage-helper` (и [`plan::privileged_stage_cmd`]):
-/// `[A-Za-z0-9._-]+`, без ведущих `-` и `.`, без `..`.
+/// Z2: a theme, staging directory or background name: the rule of
+/// `rexon-system-helper` and `rexon-stage-helper` (and [`plan::privileged_stage_cmd`]):
+/// `[A-Za-z0-9._-]+`, without a leading `-` or `.`, without `..`.
 pub fn check_item_name(name: &str) -> Check {
     check_operand(name)?;
     let ok = !name.starts_with('.')
@@ -308,9 +308,9 @@ pub fn check_item_name(name: &str) -> Check {
     }
 }
 
-/// З2: стол — только из базы ядра ([`system::DE_DATABASE`]). Это строже,
-/// чем символьная проверка `rexon-de-helper`: незнакомое имя не пройдёт,
-/// даже если оно «чистое».
+/// Z2: a desktop only from the core database ([`system::DE_DATABASE`]). This is
+/// stricter than the character check of `rexon-de-helper`: an unknown name
+/// does not pass even if it is "clean".
 pub fn check_de_id(de_id: &str) -> Check {
     check_operand(de_id)?;
     if system::DE_DATABASE.iter().any(|(id, _)| *id == de_id) {
@@ -320,7 +320,7 @@ pub fn check_de_id(de_id: &str) -> Check {
     }
 }
 
-/// Категория раскладки файлов — из [`plan::STAGE_CATEGORIES`].
+/// A file staging category from [`plan::STAGE_CATEGORIES`].
 pub fn check_stage_category(category: &str) -> Check {
     if plan::STAGE_CATEGORIES.contains(&category) {
         Ok(())
@@ -329,10 +329,11 @@ pub fn check_stage_category(category: &str) -> Check {
     }
 }
 
-/// З2: приёмник раскладки — константа ядра по категории
-/// ([`plan::STAGE_DIR_ROOT`] и второй корень webkit
-/// [`plan::WEB_GREETER_ROOT`]). Пусто — у категории приёмник один файл
-/// фона, его путь помощник тоже знает сам. Пути от окна нет вовсе.
+/// Z2: the staging destination is a core constant by category
+/// ([`plan::STAGE_DIR_ROOT`] and the second webkit root
+/// [`plan::WEB_GREETER_ROOT`]). Empty means the category's destination is a
+/// single background file, whose path the helper also knows itself. There is
+/// no path from the window at all.
 pub fn stage_destination_roots(category: &str) -> Vec<&'static str> {
     let mut out: Vec<&'static str> = plan::STAGE_DIR_ROOT
         .iter()
@@ -345,14 +346,14 @@ pub fn stage_destination_roots(category: &str) -> Vec<&'static str> {
     out
 }
 
-/// Вид системной темы (`rexon-system-helper`).
+/// Kind of a system theme (`rexon-system-helper`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemThemeKind {
     Sddm,
     Plymouth,
 }
 
-/// Что сделать с системной темой.
+/// What to do with a system theme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemThemeMode {
     Install,
@@ -360,8 +361,8 @@ pub enum SystemThemeMode {
     Remove,
 }
 
-/// Категория `rexon-system-helper` (`sddm`, `apply-plymouth`,
-/// `remove-sddm`, …) — тот же закрытый список, что `case` помощника.
+/// A `rexon-system-helper` category (`sddm`, `apply-plymouth`,
+/// `remove-sddm`, …): the same closed list as the helper's `case`.
 pub fn parse_system_category(category: &str) -> Check<(SystemThemeMode, SystemThemeKind)> {
     let (mode, kind) = match category.split_once('-') {
         Some(("apply", k)) => (SystemThemeMode::Apply, k),
@@ -375,7 +376,7 @@ pub fn parse_system_category(category: &str) -> Check<(SystemThemeMode, SystemTh
     }
 }
 
-/// Экран входа для `enable-dm` — из [`plan::DE_HELPER_DISPLAY_MANAGERS`].
+/// Login screen for `enable-dm`, from [`plan::DE_HELPER_DISPLAY_MANAGERS`].
 pub fn check_enable_dm_unit(unit: &str) -> Check {
     if plan::DE_HELPER_DISPLAY_MANAGERS.contains(&unit) {
         Ok(())
@@ -384,7 +385,7 @@ pub fn check_enable_dm_unit(unit: &str) -> Check {
     }
 }
 
-/// Экран входа для `switch-dm` — из [`plan::dm_switch_units`].
+/// Login screen for `switch-dm`, from [`plan::dm_switch_units`].
 pub fn check_switch_dm_unit(unit: &str) -> Check {
     if plan::dm_switch_units().contains(&unit) {
         Ok(())
@@ -394,14 +395,14 @@ pub fn check_switch_dm_unit(unit: &str) -> Check {
 }
 
 // ============================================================================
-// З2 — путь только внутри корня пользователя (без ФС)
+// Z2: a path only inside the user root (without the FS)
 // ============================================================================
 
-/// Лексически нормальный абсолютный путь: начинается с `/`, без пустых
-/// компонентов (`//`, хвостовой `/`), без `.` и `..`, без управляющих
-/// символов, не длиннее [`MAX_PATH_LEN`]. Ссылки так не проверить — это
-/// дело [`super::unpack`] (`openat2` без ссылок); здесь — то, что видно по
-/// строке.
+/// A lexically normal absolute path: starts with `/`, without empty components
+/// (`//`, a trailing `/`), without `.` and `..`, without control characters,
+/// no longer than [`MAX_PATH_LEN`]. Links cannot be checked this way; that is
+/// the job of [`super::unpack`] (`openat2` without links); here is what can be
+/// seen from the string.
 fn is_normal_abs_path(p: &str) -> bool {
     p.len() > 1
         && p.len() <= MAX_PATH_LEN
@@ -410,11 +411,11 @@ fn is_normal_abs_path(p: &str) -> bool {
         && p[1..].split('/').all(|seg| !seg.is_empty() && seg != "." && seg != "..")
 }
 
-/// З2: путь от окна — строго ВНУТРИ `root` (сам `root` не годится).
-/// `root` даёт root-сторона, не окно: из домашнего каталога по
-/// `PKEXEC_UID` из passwd ([`user_rebuild_root`]). Чужой абсолютный путь
-/// (`/tmp/x.deb`, `/etc/…`, `/var/cache/pacman/pkg/…`), `..` и
-/// «соседний» корень (`/home/a/.cache/rexon/rebuild2/…`) — отказ.
+/// Z2: a path from the window strictly INSIDE `root` (`root` itself does not do).
+/// `root` is given by the root side, not the window: from the home directory
+/// by `PKEXEC_UID` from passwd ([`user_rebuild_root`]). A foreign absolute path
+/// (`/tmp/x.deb`, `/etc/…`, `/var/cache/pacman/pkg/…`), `..` and a
+/// "neighbouring" root (`/home/a/.cache/rexon/rebuild2/…`) are refused.
 pub fn check_user_path<'a>(path: &'a str, root: &str) -> Check<&'a str> {
     if path.is_empty() {
         return Err(Refusal::Empty);
@@ -425,7 +426,7 @@ pub fn check_user_path<'a>(path: &'a str, root: &str) -> Check<&'a str> {
     if !is_normal_abs_path(path) {
         return Err(Refusal::Path(clip(path)));
     }
-    // Неправильный корень — ошибка root-стороны, но и тогда ответ «нет».
+    // A wrong root is an error of the root side, but even then the answer is "no".
     if !is_normal_abs_path(root) {
         return Err(Refusal::OutsideRoot(clip(path)));
     }
@@ -436,26 +437,26 @@ pub fn check_user_path<'a>(path: &'a str, root: &str) -> Check<&'a str> {
 }
 
 // ============================================================================
-// Шрифты «для всех пользователей»
+// Fonts "for all users"
 // ============================================================================
 
-/// Сколько файлов шрифтов помощник примет в одной операции (семейство с
-/// начертаниями — десятки файлов; запас — на сборники).
+/// How many font files the helper accepts in one operation (a family with
+/// styles is dozens of files; the margin is for collections).
 pub const MAX_FONT_FILES: usize = 256;
 
-/// Предел одного файла шрифта. Самые тяжёлые — сборники CJK (`.ttc`) на
-/// десятки мегабайт.
+/// Limit of one font file. The heaviest are CJK collections (`.ttc`) of
+/// dozens of megabytes.
 pub const MAX_FONT_BYTES: u64 = 256 * 1024 * 1024;
 
-/// Самое длинное имя файла (`NAME_MAX`, байты).
+/// The longest file name (`NAME_MAX`, bytes).
 const MAX_FILE_NAME_BYTES: usize = 255;
 
-/// Имя файла шрифта, под которым он ляжет в каталог для всех: одно имя (без
-/// `/`), не скрытое и не похожее на ключ (`.`, `-` в начале), без `..` и
-/// управляющих символов, с расширением из
-/// [`crate::qt_settings::FONT_INSTALL_EXTS`] (без учёта регистра).
-/// Пробелы и не-латиница можно: имя не уходит ни в оболочку, ни в argv —
-/// помощник только создаёт файл с ним.
+/// The font file name under which it goes into the directory for all: one name
+/// (without `/`), not hidden and not looking like an option (`.`, `-` at the
+/// start), without `..` and control characters, with an extension from
+/// [`crate::qt_settings::FONT_INSTALL_EXTS`] (case-insensitive).
+/// Spaces and non-Latin characters are allowed: the name goes neither into a
+/// shell nor into argv; the helper only creates a file with it.
 pub fn check_font_file_name(name: &str) -> Check {
     if name.is_empty() {
         return Err(Refusal::Empty);
@@ -469,8 +470,8 @@ pub fn check_font_file_name(name: &str) -> Check {
         && !name.contains("..")
         && !name.chars().any(|c| c.is_control())
         && crate::qt_settings::font_install_ext_ok(name)
-        // Одно расширение без имени (`.ttf`) отсечено выше; `ttf` без точки —
-        // не файл шрифта.
+        // A bare extension without a name (`.ttf`) is cut off above; `ttf` without a
+        // dot is not a font file.
         && name.contains('.');
     if ok {
         Ok(())
@@ -479,10 +480,10 @@ pub fn check_font_file_name(name: &str) -> Check {
     }
 }
 
-/// Установка шрифтов для всех: список имён непуст, не длиннее
-/// [`MAX_FONT_FILES`], каждое — [`check_font_file_name`], без повторов.
-/// Каталог приёмника — константа ядра
-/// ([`crate::qt_settings::SHARED_FONT_DIR`]): от окна только имена.
+/// Installing fonts for all: the name list is non-empty, no longer than
+/// [`MAX_FONT_FILES`], each is [`check_font_file_name`], without repeats.
+/// The destination directory is a core constant
+/// ([`crate::qt_settings::SHARED_FONT_DIR`]): only names come from the window.
 pub fn check_font_install(names: &[&str]) -> Check {
     if names.is_empty() {
         return Err(Refusal::Empty);
@@ -500,14 +501,14 @@ pub fn check_font_install(names: &[&str]) -> Check {
     Ok(())
 }
 
-/// Удаление шрифтов для всех: каждый путь — нормальный абсолютный путь
-/// строго внутри [`crate::qt_settings::SHARED_FONT_DIR`] (подкаталоги
-/// можно: так раскладывает и администратор), последний сегмент — имя
-/// файла шрифта ([`check_font_file_name`]), каждый промежуточный — не
-/// скрытый; без повторов, не больше [`MAX_FONT_FILES`]. Шрифты пакетов
-/// (`/usr/share/fonts`), каталог целиком, чужие пути — отказ. Что это
-/// обычный файл, а не ссылка, помощник проверяет по системе сам.
-/// Возвращает пути относительно каталога.
+/// Removing fonts for all: each path is a normal absolute path strictly inside
+/// [`crate::qt_settings::SHARED_FONT_DIR`] (subdirectories are allowed: an
+/// administrator lays them out like that too), the last segment is a font file
+/// name ([`check_font_file_name`]), each intermediate one is not hidden;
+/// without repeats, no more than [`MAX_FONT_FILES`]. Package fonts
+/// (`/usr/share/fonts`), the whole directory, foreign paths are refused. That
+/// it is a regular file and not a link, the helper checks on the system itself.
+/// Returns paths relative to the directory.
 pub fn check_font_remove(files: &[String]) -> Check<Vec<&str>> {
     if files.is_empty() {
         return Err(Refusal::Empty);
@@ -535,26 +536,26 @@ pub fn check_font_remove(files: &[String]) -> Check<Vec<&str>> {
     Ok(out)
 }
 
-/// Корень пересборок пользователя: `<home>/.cache/rexon/rebuild` — как у
-/// `rexon-pkg-helper` (домашний каталог — из passwd по `PKEXEC_UID`, не из
-/// окружения окна, поэтому `XDG_CACHE_HOME` здесь не участвует).
+/// The user's rebuild root: `<home>/.cache/rexon/rebuild`, as in
+/// `rexon-pkg-helper` (the home directory comes from passwd by `PKEXEC_UID`,
+/// not from the window environment, so `XDG_CACHE_HOME` plays no part here).
 pub fn user_rebuild_root(home: &str) -> String {
     repo_rebuild::rebuild_root(&format!("{}/.cache/rexon", home.trim_end_matches('/')))
 }
 
-/// Хвосты файла makepkg (`PKGEXT`) — те же, что у `install-built`
+/// makepkg file suffixes (`PKGEXT`): the same as in `install-built` of
 /// `rexon-pkg-helper`.
 const MAKEPKG_EXT: &[&str] = &[
     ".pkg.tar", ".pkg.tar.zst", ".pkg.tar.xz", ".pkg.tar.gz", ".pkg.tar.bz2",
     ".pkg.tar.lz4", ".pkg.tar.lzo", ".pkg.tar.lrz", ".pkg.tar.lz", ".pkg.tar.Z",
 ];
 
-/// З2: собранный файл для `pacman -U` — только из каталога пересборок
-/// пользователя, и не в самом корне, а в подкаталоге рецепта
-/// (`<rebuild_root>/<рецепт>/<файл>`), имя — имя файла makepkg. Так
-/// `pacman -U` не получит ни `/tmp/x.deb`, ни старую версию из кэша pacman,
-/// ни системный файл. Владельца, ссылки и «обычный ли файл» проверяет
-/// приём по fd ([`super::unpack`]).
+/// Z2: a built file for `pacman -U` only from the user's rebuild directory,
+/// and not in the root itself but in a recipe subdirectory
+/// (`<rebuild_root>/<recipe>/<file>`), the name is a makepkg file name. This
+/// way `pacman -U` gets neither `/tmp/x.deb`, nor an old version from the
+/// pacman cache, nor a system file. The owner, links and "is it a regular
+/// file" are checked by the fd intake ([`super::unpack`]).
 pub fn check_built_package<'a>(path: &'a str, rebuild_root: &str) -> Check<&'a str> {
     let rel = check_user_path(path, rebuild_root)?;
     let Some((_, name)) = rel.rsplit_once('/') else {
@@ -563,11 +564,12 @@ pub fn check_built_package<'a>(path: &'a str, rebuild_root: &str) -> Check<&'a s
     check_package_file_name(name)
 }
 
-/// Собранный AUR-помощником файл для `pacman -U` (`PrivOp::AurInstallBuilt`,
-/// пункт Б10): абсолютный путь без `.`/`..`, имя — имя файла makepkg. Места
-/// не проверяем: каталог сборки задают paru/yay и `PKGDEST` человека. Что
-/// ставится, решает `.PKGINFO` копии root (имя — из тех, что окно просило
-/// собрать); путь root не открывает.
+/// A file built by an AUR helper for `pacman -U` (`PrivOp::AurInstallBuilt`,
+/// item B10): an absolute path without `.`/`..`, the name is a makepkg file
+/// name. The location is not checked: the build directory is set by paru/yay
+/// and the person's `PKGDEST`. What gets installed is decided by the `.PKGINFO`
+/// of the root copy (the name is one of those the window asked to build); root
+/// does not open the path.
 pub fn check_aur_package(path: &str) -> Check<&str> {
     if path.is_empty() {
         return Err(Refusal::Empty);
@@ -579,10 +581,10 @@ pub fn check_aur_package(path: &str) -> Check<&str> {
     check_package_file_name(name)
 }
 
-/// Файл кэша pacman для отката (`PrivOp::CacheRollback`): нормальный
-/// абсолютный путь не в корне, имя — имя файла makepkg. → `(каталог, имя)`.
-/// Входит ли каталог в кэш машины (`pacman-conf CacheDir`) и чей файл,
-/// решает помощник при исполнении: открывает его сам, без ссылок.
+/// A pacman cache file for a rollback (`PrivOp::CacheRollback`): a normal
+/// absolute path not in the root, the name is a makepkg file name. → `(directory, name)`.
+/// Whether the directory belongs to the machine's cache (`pacman-conf CacheDir`)
+/// and whose file it is, the helper decides at execution: it opens it itself, without links.
 pub fn check_cache_package(path: &str) -> Check<(&str, &str)> {
     let name = check_aur_package(path)?;
     match path.rsplit_once('/') {
@@ -591,7 +593,7 @@ pub fn check_cache_package(path: &str) -> Check<(&str, &str)> {
     }
 }
 
-/// Имя файла makepkg: `<имя>-<версия>-<выпуск>-<арх>` + хвост [`MAKEPKG_EXT`].
+/// A makepkg file name: `<name>-<version>-<release>-<arch>` + a [`MAKEPKG_EXT`] suffix.
 fn check_package_file_name(name: &str) -> Check<&str> {
     let name_ok = name
         .chars()
@@ -609,11 +611,11 @@ fn check_package_file_name(name: &str) -> Check<&str> {
 }
 
 // ============================================================================
-// З3 — на канале только окно, которое подняло помощника
+// Z3: only the window that raised the helper is on the channel
 // ============================================================================
 
-/// `PKEXEC_UID` — только десятичные цифры (так же требует
-/// `rexon-pkg-helper`). `None` — помощник запущен не через pkexec.
+/// `PKEXEC_UID`: decimal digits only (`rexon-pkg-helper` requires the same).
+/// `None` means the helper was not started through pkexec.
 pub fn parse_pkexec_uid(s: &str) -> Option<u32> {
     if s.is_empty() || s.len() > 10 || !s.bytes().all(|b| b.is_ascii_digit()) {
         return None;
@@ -621,9 +623,9 @@ pub fn parse_pkexec_uid(s: &str) -> Option<u32> {
     s.parse().ok()
 }
 
-/// З3: `SO_PEERCRED` собеседника против того, кто поднял помощника: UID —
-/// `PKEXEC_UID`, pid — родитель помощника (`getppid()`; pkexec заменяет
-/// себя помощником через exec, родитель — поток окна).
+/// Z3: the peer's `SO_PEERCRED` against whoever raised the helper: the UID is
+/// `PKEXEC_UID`, the pid is the helper's parent (`getppid()`; pkexec replaces
+/// itself with the helper through exec, the parent is the window's thread).
 pub fn check_peer(peer_uid: u32, peer_pid: i32, pkexec_uid: u32, parent_pid: i32) -> Check {
     if peer_pid > 1 && peer_uid == pkexec_uid && peer_pid == parent_pid {
         Ok(())
@@ -633,44 +635,44 @@ pub fn check_peer(peer_uid: u32, peer_pid: i32, pkexec_uid: u32, parent_pid: i32
 }
 
 // ============================================================================
-// З5 — отказ помощника не обходится сырым pkexec
+// Z5: a helper refusal is not bypassed with a raw pkexec
 // ============================================================================
 
-/// Почему операция не прошла через помощник.
+/// Why the operation did not go through the helper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HelperFailure {
-    /// Файла помощника нет.
+    /// There is no helper file.
     Missing,
-    /// Помощник есть, но владелец или права не те (подменён).
+    /// The helper exists, but the owner or permissions are wrong (it was replaced).
     BadOwner,
-    /// Помощник проверил аргумент и отказал ([`Refusal`]).
+    /// The helper checked the argument and refused ([`Refusal`]).
     Refused,
-    /// Сеанс оборвался или кадр испорчен.
+    /// The session broke off or a frame is corrupted.
     SessionLost,
-    /// Человек не подтвердил пароль.
+    /// The person did not confirm the password.
     NotAuthorized,
 }
 
-/// З5: можно ли идти путём «как сейчас» (сырой `pkexec` из того же
-/// `PrivOp`). Только если помощника нет вовсе или он недопустим. После
-/// отказа по проверке, обрыва сеанса и отказа в пароле — никогда (урок
-/// 78bcc84: эталон закреплял обход сырым `pkexec pacman`).
+/// Z5: whether the "as now" path may be taken (a raw `pkexec` from the same
+/// `PrivOp`). Only if there is no helper at all or it is not acceptable. After
+/// a check refusal, a session break and a password refusal, never (lesson of
+/// 78bcc84: the reference enshrined a bypass with a raw `pkexec pacman`).
 pub fn raw_fallback_allowed(failure: HelperFailure) -> bool {
     matches!(failure, HelperFailure::Missing | HelperFailure::BadOwner)
 }
 
 // ============================================================================
-// З6 — жизненно важное и текущий стол
+// Z6: vital packages and the current desktop
 // ============================================================================
 
-/// Жизненно важный пакет — правило ядра [`plan::is_vital_package`] (точные
-/// имена [`plan::PKG_HELPER_VITAL`] и семейства ядер, драйверов, прошивок и
-/// загрузки); тот же шаблон вшит в `rexon-pkg-helper`.
+/// A vital package by the core rule [`plan::is_vital_package`] (the exact names
+/// of [`plan::PKG_HELPER_VITAL`] and the families of kernels, drivers, firmware
+/// and boot); the same pattern is built into `rexon-pkg-helper`.
 pub fn is_vital(name: &str) -> bool {
     plan::is_vital_package(name)
 }
 
-/// З6: жизненно важное не удаляется никогда.
+/// Z6: vital packages are never removed.
 pub fn check_not_vital(name: &str) -> Check {
     if is_vital(name) {
         Err(Refusal::Vital(clip(name)))
@@ -679,12 +681,12 @@ pub fn check_not_vital(name: &str) -> Check {
     }
 }
 
-/// Пакеты стола по таблице ядра — [`system::desktop_packages`].
+/// Desktop packages by the core table: [`system::desktop_packages`].
 pub fn desktop_packages(family: PkgFamily, de_id: &str) -> Vec<String> {
     system::desktop_packages(de_id, family)
 }
 
-/// Текущий стол известен базе: иначе защищать нечем.
+/// The current desktop is known to the database: otherwise there is nothing to protect with.
 fn known_current_de(current_de: &str) -> Check<&str> {
     let id = current_de.trim();
     if id.is_empty() || id == "unknown" || check_de_id(id).is_err() {
@@ -694,10 +696,10 @@ fn known_current_de(current_de: &str) -> Check<&str> {
     }
 }
 
-/// З6: удаление ПО ИМЕНАМ (`remove`, снятие сборочных пакетов): каждое
-/// имя — имя, не жизненно важное и не из пакетов текущего стола
-/// ([`desktop_packages`] для `current_de`; общие у двух столов `lightdm`,
-/// `sddm` тоже под защитой). Текущий стол не определён — отказ.
+/// Z6: removal BY NAMES (`remove`, removing build packages): each name is a
+/// name, not vital and not among the current desktop's packages
+/// ([`desktop_packages`] for `current_de`; `lightdm` and `sddm`, shared by two
+/// desktops, are protected too). The current desktop is not determined: refusal.
 pub fn check_remove_packages(family: PkgFamily, names: &[String], current_de: &str) -> Check {
     check_package_list(family, names)?;
     let current = known_current_de(current_de)?;
@@ -711,18 +713,18 @@ pub fn check_remove_packages(family: PkgFamily, names: &[String], current_de: &s
     Ok(())
 }
 
-/// З6: удаление СТОЛА целиком — набор пакетов root-сторона строит сама,
-/// от окна приходит только `de_id`.
+/// Z6: removing a whole DESKTOP: the root side builds the package set itself,
+/// only `de_id` comes from the window.
 ///
-/// 1. Защита ядра ([`plan::remove_de_decision`], `force = false`): сам
-///    текущий стол — отказ с текстом ядра.
-/// 2. Из набора выпадают жизненно важные и пакеты текущего стола (общий
-///    экран входа: `lightdm` у Cinnamon и Xfce).
-/// 3. Замыкание ядра ([`system::filter_removable_transitive`]): пакет, нужный
-///    кому-то вне набора, и всё, что нужно ему, остаётся. `qi` — вывод
-///    `pacman -Qi <пакет>` (на прочих семействах не зовётся).
+/// 1. The core protection ([`plan::remove_de_decision`], `force = false`): the
+///    current desktop itself is refused with the core's text.
+/// 2. Vital packages and the current desktop's packages drop out of the set
+///    (a shared login screen: `lightdm` for Cinnamon and Xfce).
+/// 3. The core closure ([`system::filter_removable_transitive`]): a package
+///    needed by something outside the set, and everything it needs, stays.
+///    `qi` is the output of `pacman -Qi <package>` (not called on other families).
 ///
-/// `Ok` — что удалять; может быть пустым (всё оказалось общим).
+/// `Ok` is what to remove; it may be empty (everything turned out to be shared).
 pub fn desktop_removal_set(
     family: PkgFamily,
     de_id: &str,
@@ -749,9 +751,9 @@ pub fn desktop_removal_set(
         }
         plan::RemoveDeDecision::Proceed(all) => all,
     };
-    // Защита текущего стола — общая с `remove_de` окна
-    // ([`system::without_current_desktop`]); экран входа root-сторона
-    // определяет сама (помощник «Б», пункт Б8) — здесь его нет.
+    // The current desktop protection is shared with the window's `remove_de`
+    // ([`system::without_current_desktop`]); the root side determines the login
+    // screen itself (helper "B", item B8), so it is not here.
     let keep = system::current_desktop_keep(family, current, None);
     let candidates: Vec<String> = system::without_current_desktop(family, &all, &keep, &|_| None)
         .into_iter()
@@ -765,47 +767,47 @@ pub fn desktop_removal_set(
 }
 
 // ============================================================================
-// Установка — только из таблиц ядра
+// Install: only from the core tables
 // ============================================================================
 
-/// Имя пакета yt-dlp — константа ядра.
+/// The yt-dlp package name is a core constant.
 const YTDLP_PACKAGE: &str = crate::youtube_wallpaper::YTDLP_PACKAGE;
 
-/// По какой таблице идёт установка. Окно называет таблицу, root-сторона
-/// сама знает её содержимое — имя вне таблицы не пройдёт.
+/// Which table the install goes by. The window names the table, the root side
+/// knows its contents itself: a name outside the table does not pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallSource<'a> {
-    /// Стол из базы ([`system::DE_DATABASE`]): основные и AUR-пакеты.
+    /// A desktop from the database ([`system::DE_DATABASE`]): main and AUR packages.
     Desktop { de_id: &'a str },
-    /// Экран входа ([`plan::DM_PAIRS`]): «защита от дурака» — нет DM → SDDM.
+    /// A login screen ([`plan::DM_PAIRS`]): the "foolproofing" of no DM → SDDM.
     DisplayManager,
-    /// «Проверить мой стол»: пакеты ТЕКУЩЕГО стола и таблицы
+    /// «Check My Desktop»: packages of the CURRENT desktop and the tables of
     /// [`crate::compliance`] (Ayatana, MATE).
     DesktopRepair { current_de: &'a str },
-    /// Видеозависимости обоев
-    /// ([`crate::wallpaper_engine::install_deps_packages`], обе сессии).
+    /// Video dependencies of wallpapers
+    /// ([`crate::wallpaper_engine::install_deps_packages`], both sessions).
     VideoDeps,
-    /// yt-dlp для обоев с YouTube.
+    /// yt-dlp for YouTube wallpapers.
     YtDlp,
-    /// Инструмент оверлея Gentoo ([`plan::GENTOO_OVERLAY_TOOL_PACKAGE`]).
+    /// The Gentoo overlay tool ([`plan::GENTOO_OVERLAY_TOOL_PACKAGE`]).
     GentooTool,
-    /// Оболочки стола ([`crate::shell_bundle::all_packages`]).
+    /// Desktop shells ([`crate::shell_bundle::all_packages`]).
     Shell,
-    /// Программы виджетов Conky и распаковщик 7z
+    /// Conky widget programs and the 7z unpacker
     /// ([`crate::utils::tool_packages_for`]).
     Tools,
     /// Conky ([`crate::de_apply::conky_package`]).
     Conky,
-    /// Части раскладок MATE ([`crate::mate_panel::all_part_packages`]).
+    /// MATE layout parts ([`crate::mate_panel::all_part_packages`]).
     MatePanel,
-    /// Значки и курсоры тем ([`crate::themes::known_set_packages`]).
+    /// Theme icons and cursors ([`crate::themes::known_set_packages`]).
     ThemeSets,
-    /// Образы «Как в дистрибутиве»
+    /// «Distro Looks» looks
     /// ([`crate::distro_looks::builtin_package_names`]).
     DistroLook,
 }
 
-/// Белый список одной таблицы. `Err` — таблицы нет (стол неизвестен).
+/// The allowlist of one table. `Err` means there is no table (unknown desktop).
 pub fn install_allowlist(family: PkgFamily, source: InstallSource<'_>) -> Check<Vec<String>> {
     let owned = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     Ok(match source {
@@ -815,7 +817,7 @@ pub fn install_allowlist(family: PkgFamily, source: InstallSource<'_>) -> Check<
         }
         InstallSource::DisplayManager => {
             let mut all: Vec<String> = plan::DM_PAIRS.iter().map(|(pkg, _)| pkg.to_string()).collect();
-            // «Нет экрана входа → SDDM»: имя пакета по семейству (Gentoo — с категорией).
+            // "No login screen → SDDM": the package name by family (Gentoo with a category).
             if let Some((_, p)) = plan::SDDM_PKG_FOR_FAMILY.iter().find(|(f, _)| *f == family.as_str()) {
                 if !all.iter().any(|a| a == p) {
                     all.push(p.to_string());
@@ -856,7 +858,7 @@ pub fn install_allowlist(family: PkgFamily, source: InstallSource<'_>) -> Check<
     })
 }
 
-/// Установка: каждое имя — имя ([`check_package_list`]) и стоит в таблице
+/// Install: each name is a name ([`check_package_list`]) and is in the table
 /// `source`.
 pub fn check_install(family: PkgFamily, names: &[String], source: InstallSource<'_>) -> Check {
     check_package_list(family, names)?;
@@ -867,8 +869,8 @@ pub fn check_install(family: PkgFamily, names: &[String], source: InstallSource<
     }
 }
 
-/// Разбить строку зависимости на имя и ограничение версии (`cmake>=3.20`
-/// → `cmake`, `>=3.20`) — как `dep_ok` в `rexon-pkg-helper`.
+/// Split a dependency string into the name and the version constraint
+/// (`cmake>=3.20` → `cmake`, `>=3.20`), like `dep_ok` in `rexon-pkg-helper`.
 fn split_dep(dep: &str) -> (&str, &str) {
     let at = dep.find(['<', '>', '=']).unwrap_or(dep.len());
     dep.split_at(at)
@@ -888,11 +890,11 @@ fn version_constraint_ok(v: &str) -> bool {
     }
 }
 
-/// Пересборка, `build-deps`: только Arch; каждая строка — имя (правило
-/// ядра) с, возможно, ограничением версии, и стоит в
-/// [`repo_rebuild::build_requirements`] рецепта (`depends` + `makedepends` +
-/// `base-devel`). Рецепт root-сторона разбирает сама из того, что
-/// получила по fd, — не со слов окна.
+/// Rebuild, `build-deps`: Arch only; each string is a name (the core rule)
+/// with possibly a version constraint, and is in the recipe's
+/// [`repo_rebuild::build_requirements`] (`depends` + `makedepends` +
+/// `base-devel`). The root side parses the recipe itself from what it got
+/// over the fd, not from the window's words.
 pub fn check_build_deps(family: PkgFamily, deps: &[String], recipe: &SrcInfo) -> Check {
     if family != PkgFamily::Arch {
         return Err(Refusal::Family(family.as_str()));
@@ -905,8 +907,8 @@ pub fn check_build_deps(family: PkgFamily, deps: &[String], recipe: &SrcInfo) ->
     }
     let wanted = repo_rebuild::build_requirements(recipe);
     for dep in deps {
-        // `>`/`<` в ограничении версии законны, поэтому З1 — на имени
-        // (внутри check_package_name), ограничение — своим правилом.
+        // `>`/`<` are legitimate in a version constraint, so Z1 is applied to the
+        // name (inside check_package_name), the constraint gets its own rule.
         if dep.len() > MAX_NAME_LEN {
             return Err(Refusal::TooLong(clip(dep)));
         }
@@ -919,10 +921,10 @@ pub fn check_build_deps(family: PkgFamily, deps: &[String], recipe: &SrcInfo) ->
     Ok(())
 }
 
-/// Пересборка, хвост `install-built`: что снять после установки — только
-/// то, что нужно ТОЛЬКО для сборки (`makedepends` или `base-devel`, но не
-/// `depends`, правило [`repo_rebuild::build_only`]), и никогда не жизненно
-/// важное. Пусто — можно.
+/// Rebuild, the `install-built` tail: what to remove after the install is only
+/// what is needed ONLY for building (`makedepends` or `base-devel`, but not
+/// `depends`, the rule [`repo_rebuild::build_only`]), and never anything
+/// vital. Empty is allowed.
 pub fn check_build_only(family: PkgFamily, names: &[String], recipe: &SrcInfo) -> Check {
     if family != PkgFamily::Arch {
         return Err(Refusal::Family(family.as_str()));
@@ -941,10 +943,10 @@ pub fn check_build_only(family: PkgFamily, names: &[String], recipe: &SrcInfo) -
     Ok(())
 }
 
-/// Откат тяжёлых форков Plasma: снимаются только форки
-/// ([`plan::filter_plasma_forks`]), ставится только сток, который ядро само
-/// выводит из метаданных форка ([`plan::fork_stock_candidates`]; `qi` —
-/// `pacman -Qi`).
+/// Rolling back heavy Plasma forks: only forks are removed
+/// ([`plan::filter_plasma_forks`]), only the stock package the core derives
+/// itself from the fork metadata is installed ([`plan::fork_stock_candidates`];
+/// `qi` is `pacman -Qi`).
 pub fn check_fork_rollback(
     forks: &[String],
     stock: &[String],
@@ -970,13 +972,13 @@ pub fn check_fork_rollback(
 }
 
 // ============================================================================
-// З7 — код от root из темы
+// Z7: code running as root from a theme
 // ============================================================================
 
-/// З7: `ModuleName=` темы Plymouth — только штатный модуль
-/// ([`crate::installer::PLYMOUTH_SPLASH_MODULES`]). Plymouth строит путь
-/// `<каталог модулей>/<имя>.so` без проверки `../`, и чужое имя — это `.so`
-/// из самой темы от root при загрузке.
+/// Z7: the `ModuleName=` of a Plymouth theme is only a stock module
+/// ([`crate::installer::PLYMOUTH_SPLASH_MODULES`]). Plymouth builds the path
+/// `<module directory>/<name>.so` without checking `../`, and a foreign name
+/// means a `.so` from the theme itself running as root at boot.
 pub fn check_plymouth_module_name(value: &str) -> Check {
     if crate::installer::PLYMOUTH_SPLASH_MODULES.contains(&value.trim()) {
         Ok(())
@@ -985,8 +987,8 @@ pub fn check_plymouth_module_name(value: &str) -> Check {
     }
 }
 
-/// З7: файл внутри темы — не библиотека (`x.so`, `x.so.1`): так же, как у
-/// [`crate::installer::system_theme_problem`]. `rel` — путь внутри темы.
+/// Z7: a file inside a theme is not a library (`x.so`, `x.so.1`): the same as in
+/// [`crate::installer::system_theme_problem`]. `rel` is the path inside the theme.
 pub fn check_theme_file_not_code(rel: &str) -> Check {
     let base = rel.rsplit('/').next().unwrap_or(rel);
     if base.ends_with(".so") || base.contains(".so.") {
@@ -997,15 +999,15 @@ pub fn check_theme_file_not_code(rel: &str) -> Check {
 }
 
 // ============================================================================
-// З8 — PLM: помощник не пересказывает чужой конфиг
+// Z8: PLM: the helper does not retell someone else's config
 // ============================================================================
 
-/// З8: ключ `plasmalogin.conf`, который помощник вправе поменять (план
-/// §3.3): `[Greeter] ShowClock`, `WallpaperPluginId` и
-/// `[Greeter][Wallpaper][<плагин>] Image/Color/FillMode`, где плагин — из
-/// списка PLM (`plugins` даёт root-сторона). `[X11] ServerPath`,
-/// `[Autologin] …`, `[Users] DefaultPath` и всё прочее — отказ.
-/// `groups` — путь групп ключа (`["Greeter", "Wallpaper", "org.kde.image"]`).
+/// Z8: a `plasmalogin.conf` key the helper may change (plan §3.3):
+/// `[Greeter] ShowClock`, `WallpaperPluginId` and
+/// `[Greeter][Wallpaper][<plugin>] Image/Color/FillMode`, where the plugin is
+/// from the PLM list (`plugins` is given by the root side). `[X11] ServerPath`,
+/// `[Autologin] …`, `[Users] DefaultPath` and everything else are refused.
+/// `groups` is the key's group path (`["Greeter", "Wallpaper", "org.kde.image"]`).
 pub fn check_plm_key(groups: &[&str], key: &str, plugins: &[&str]) -> Check {
     let ok = match groups {
         ["Greeter"] => matches!(key, "ShowClock" | "WallpaperPluginId"),
@@ -1021,19 +1023,19 @@ pub fn check_plm_key(groups: &[&str], key: &str, plugins: &[&str]) -> Check {
     }
 }
 
-/// З8: имя файла фона, который помощник положит в
-/// `/var/lib/plasmalogin/wallpapers/` — имя, а не путь.
+/// Z8: the name of the background file the helper puts into
+/// `/var/lib/plasmalogin/wallpapers/`: a name, not a path.
 pub fn check_plm_wallpaper_name(name: &str) -> Check {
     check_item_name(name)
 }
 
 // ============================================================================
-// Экран входа SDDM: перенос оформления стола
+// SDDM login screen: carrying over the desktop look
 // ============================================================================
 
-/// Строка от окна, которая ляжет значением в настройки SDDM (их читает
-/// root-демон): непустая, не длиннее `max`, без управляющих символов
-/// (перевод строки начал бы новую группу или ключ).
+/// A string from the window that becomes a value in the SDDM settings (read by
+/// the root daemon): non-empty, no longer than `max`, without control
+/// characters (a line break would start a new group or key).
 fn check_look_text(v: &str, max: usize) -> Check {
     if v.trim().is_empty() || v.len() > max || v.chars().any(|c| c.is_control()) {
         Err(Refusal::LookValue(clip(v)))
@@ -1042,13 +1044,13 @@ fn check_look_text(v: &str, max: usize) -> Check {
     }
 }
 
-/// Перенос оформления на экран входа SDDM ([`super::op::PrivOp::SddmLook`]):
-/// * тема курсора — имя каталога (пробелы можно, `/`, `\` и ведущие `.`/`-`
-///   — нет), размер — 8…512, шрифт — строка QFont до 256 символов, DPI —
-///   48…480: так в `ServerArguments` уходит только `-dpi <число>`,
-///   собранное помощником;
-/// * файлы — имена из [`plan::SDDM_LOOK_FILES`] без повторов;
-/// * «Сбросить» (`look: None`) — без файлов.
+/// Carrying the look over to the SDDM login screen ([`super::op::PrivOp::SddmLook`]):
+/// * the cursor theme is a directory name (spaces are allowed, `/`, `\` and a
+///   leading `.`/`-` are not), the size is 8…512, the font is a QFont string of
+///   up to 256 characters, DPI is 48…480: this way only `-dpi <number>`,
+///   assembled by the helper, goes into `ServerArguments`;
+/// * the files are names from [`plan::SDDM_LOOK_FILES`] without repeats;
+/// * «Reset» (`look: None`) comes without files.
 pub fn check_sddm_look(look: Option<&plan::SddmLook>, files: &[&str]) -> Check {
     let Some(look) = look else {
         return match files.first() {
@@ -1085,12 +1087,12 @@ pub fn check_sddm_look(look: Option<&plan::SddmLook>, files: &[&str]) -> Check {
 }
 
 // ============================================================================
-// §1.4 п.5 — неизменяемая система
+// §1.4 item 5: immutable system
 // ============================================================================
 
-/// На SteamOS системный раздел только для чтения: пакеты, экран входа,
-/// заставку загрузки помощник не трогает. Правило и текст — ядра
-/// ([`SteamOsBlock`]); `steamos` root-сторона узнаёт сама.
+/// On SteamOS the system partition is read-only: the helper does not touch
+/// packages, the login screen or the boot splash. The rule and the text are
+/// the core's ([`SteamOsBlock`]); the root side finds out `steamos` itself.
 pub fn check_mutable_system(block: SteamOsBlock, steamos: bool) -> Check {
     match block.on(steamos) {
         Some(reason) => Err(Refusal::ReadOnlySystem(reason)),
@@ -1099,31 +1101,32 @@ pub fn check_mutable_system(block: SteamOsBlock, steamos: bool) -> Check {
 }
 
 // ============================================================================
-// Стол набором (DKMS `--asdeps`, замена конфликтующего, Deepin) и SteamOS
+// Desktop as a set (DKMS `--asdeps`, replacing a conflicting package, Deepin) and SteamOS
 // ============================================================================
 
-/// Чего в наборе стола не бывает никогда: `deepin-kwin` (оконный менеджер
-/// Deepin X11, [`crate::deepin_treeland::forbid_x11_wm`]) — ни в каком
-/// наборе; у Deepin ещё рецептный `deepin-session` (его даёт своя сборка) и
-/// группа целиком.
+/// What a desktop set never contains: `deepin-kwin` (the Deepin X11 window
+/// manager, [`crate::deepin_treeland::forbid_x11_wm`]) in no set at all; for
+/// Deepin also the recipe-built `deepin-session` (it comes from our own build)
+/// and the whole group.
 fn forbidden_in_set(de_id: &str, name: &str) -> bool {
     use crate::deepin_treeland as dt;
     name == dt::X11_WM_PACKAGE || (de_id == dt::DE_ID && (name == dt::SESSION_PACKAGE || name == dt::GROUP))
 }
 
-/// Стол набором вне таблицы DE-помощника (`PrivOp::DeInstallSet`) — то, что
-/// видно без вопросов к системе:
-/// * только pacman (DKMS-модули, `--asdeps` и `--ask=4` — его);
-/// * стол из базы, имена — имена, без `deepin-kwin` (у Deepin — и без
-///   рецептного `deepin-session` и группы целиком);
-/// * `deps_only` — из самого набора;
-/// * `replace` (снимется той же транзакцией) — не жизненно важное, не из
-///   набора и не пакет текущего стола; текущий стол должен быть известен и
-///   не быть тем, что ставится (замена под работающим сеансом — нет).
+/// A desktop as a set outside the DE helper table (`PrivOp::DeInstallSet`):
+/// what is visible without asking the system:
+/// * pacman only (DKMS modules, `--asdeps` and `--ask=4` are its things);
+/// * a desktop from the database, names are names, without `deepin-kwin` (for
+///   Deepin also without the recipe-built `deepin-session` and the whole group);
+/// * `deps_only` is from the set itself;
+/// * `replace` (removed by the same transaction) is not vital, not from the
+///   set and not a package of the current desktop; the current desktop must
+///   be known and must not be the one being installed (no replacement under a
+///   running session).
 ///
-/// Имена вне таблицы стола (члены её групп, DKMS-модуль, заголовки ядра) и
-/// сама замена сверяются с правилом ядра по ответам pacman —
-/// [`check_de_set_preview`], перед исполнением.
+/// Names outside the desktop table (members of its groups, a DKMS module,
+/// kernel headers) and the replacement itself are checked against the core
+/// rule by the pacman answers, [`check_de_set_preview`], before execution.
 pub fn check_de_set(
     family: PkgFamily,
     de_id: &str,
@@ -1169,22 +1172,22 @@ pub fn check_de_set(
     Ok(())
 }
 
-/// Правило ядра для набора по пробе, которую root-сторона сделала САМА:
-/// `base` — имена набора из таблицы стола и члены её групп (по `pacman -Sg`
-/// этой машины), `preview` — [`plan::install_preview`] по `base` (группы,
-/// DKMS-модули и заголовки под стоящие ядра — [`plan::kernel_module_extras`],
-/// конфликты с установленным). `None` — проба не ответила: отказ, ставить
-/// непроверенное нельзя.
+/// The core rule for a set by the probe the root side made ITSELF: `base` are
+/// the set names from the desktop table and the members of its groups (by
+/// `pacman -Sg` of this machine), `preview` is [`plan::install_preview`] over
+/// `base` (groups, DKMS modules and headers for the installed kernels:
+/// [`plan::kernel_module_extras`], conflicts with what is installed). `None`
+/// means the probe did not answer: refusal, nothing unchecked may be installed.
 ///
-/// * набор не ставится (`blocked`, в том числе `deepin-kwin` где угодно в
-///   плане) — отказ;
-/// * имя набора вне `base` — только то, что правило ядра само добавило к
-///   пробе (DKMS-вариант, заголовки стоящего ядра);
-/// * `deps_only` — только то, что правило ядра считает зависимостью;
-/// * `replace` — ровно замены из таблицы ядра ([`plan::conflict_swaps`]),
-///   покрывающие ВСЕ конфликты пробы: `--ask=4` отвечает «да» на любой
-///   конфликт, поэтому чужой конфликт при замене — отказ; без конфликтов
-///   замены нет.
+/// * the set does not install (`blocked`, including `deepin-kwin` anywhere in
+///   the plan): refusal;
+/// * a set name outside `base` is only what the core rule itself added to the
+///   probe (the DKMS variant, headers of the installed kernel);
+/// * `deps_only` is only what the core rule considers a dependency;
+/// * `replace` is exactly the replacements from the core table
+///   ([`plan::conflict_swaps`]) covering ALL conflicts of the probe: `--ask=4`
+///   answers "yes" to any conflict, so a foreign conflict with a replacement
+///   means refusal; without conflicts there is no replacement.
 pub fn check_de_set_preview(
     packages: &[String],
     base: &[String],
@@ -1223,11 +1226,11 @@ pub fn check_de_set_preview(
     }
 }
 
-/// Образ стола на SteamOS (`PrivOp::Sysext`) — то же, что разрешает сегодня
-/// `rexon-sysext-helper`: только на SteamOS (root-сторона узнаёт сама), стол
-/// из таблицы [`crate::steamos_sysext::DESKTOPS`]. Снять стол, в котором
-/// человек сейчас работает, нельзя (решение окна `remove_plan` — повторено
-/// здесь).
+/// A desktop image on SteamOS (`PrivOp::Sysext`): the same as
+/// `rexon-sysext-helper` allows today: only on SteamOS (the root side finds
+/// out itself), a desktop from the table [`crate::steamos_sysext::DESKTOPS`].
+/// The desktop the person is working in right now cannot be removed (the
+/// window's `remove_plan` decision, repeated here).
 pub fn check_sysext(de_id: &str, remove: bool, steamos: bool, current_de: &str) -> Check {
     if !steamos {
         return Err(Refusal::NotSteamOs);
@@ -1242,7 +1245,7 @@ pub fn check_sysext(de_id: &str, remove: bool, steamos: bool, current_de: &str) 
 }
 
 // ============================================================================
-// Тесты — по отказу на строку таблицы запретов
+// Tests: one refusal per row of the prohibition table
 // ============================================================================
 
 #[cfg(test)]
@@ -1259,12 +1262,12 @@ mod tests {
         list.iter().map(|x| x.to_string()).collect()
     }
 
-    /// `pacman -Qi`: ничего никому не нужно.
+    /// `pacman -Qi`: nothing is needed by anyone.
     fn qi_none(_: &str) -> Option<String> {
         Some("Depends On      : None\nRequired By     : None\n".into())
     }
 
-    /// Какой-нибудь стол, у которого на Arch есть пакеты, и второй, другой.
+    /// Some desktop that has packages on Arch, and a second, different one.
     fn two_desktops() -> (&'static str, &'static str) {
         let ids: Vec<&str> = system::DE_DATABASE
             .iter()
@@ -1280,7 +1283,7 @@ mod tests {
         (a, b)
     }
 
-    // ── З1 ──────────────────────────────────────────────────────────────
+    // ── Z1 ──────────────────────────────────────────────────────────────
 
     #[test]
     fn з1_флаги_и_оболочка_отказ() {
@@ -1290,7 +1293,7 @@ mod tests {
         ] {
             assert!(check_operand(bad).is_err(), "{bad:?} прошёл");
         }
-        // флаг не проходит и как имя пакета, и как имя темы
+        // a flag passes neither as a package name nor as a theme name
         assert!(matches!(check_package_name(PkgFamily::Arch, "-oX"), Err(Refusal::Operand(_))));
         assert!(matches!(
             check_package_name(PkgFamily::Arch, "--config=x"),
@@ -1302,7 +1305,7 @@ mod tests {
         assert!(check_operand("xfce4-panel").is_ok());
     }
 
-    // ── З2: имена ───────────────────────────────────────────────────────
+    // ── Z2: names ───────────────────────────────────────────────────────
 
     #[test]
     fn з2_путь_вместо_имени_отказ() {
@@ -1310,18 +1313,18 @@ mod tests {
         for bad in ["/tmp/x.deb", "x.deb", "../x", "./x", "a/b", "x.pkg.tar.zst", ".hidden", "@world"] {
             assert!(check_package_name(arch, bad).is_err(), "{bad} прошёл");
         }
-        // Gentoo: ровно один '/', наборов нет
+        // Gentoo: exactly one '/', no sets
         assert!(check_package_name(PkgFamily::Gentoo, "x11-misc/lightdm").is_ok());
         assert!(check_package_name(PkgFamily::Gentoo, "@world").is_err());
         assert!(check_package_name(PkgFamily::Gentoo, "/usr/bin/x").is_err());
-        // Fedora: группа dnf — единственное законное '@'
+        // Fedora: a dnf group is the only legitimate '@'
         assert!(check_package_name(PkgFamily::Fedora, "@cinnamon-desktop-environment").is_ok());
         assert!(check_package_name(arch, "lightdm-slick-greeter").is_ok());
-        // пустой и слишком длинный список
+        // an empty and a too long list
         assert_eq!(check_package_list(arch, &[]), Err(Refusal::Empty));
         let many = vec!["a".to_string(); MAX_PACKAGES + 1];
         assert_eq!(check_package_list(arch, &many), Err(Refusal::TooMany(MAX_PACKAGES + 1)));
-        // семейство без помощника
+        // a family without a helper
         assert!(matches!(check_package_list(PkgFamily::Nix, &s(&["a"])), Err(Refusal::Family(_))));
         assert!(matches!(check_package_list(PkgFamily::Unknown, &s(&["a"])), Err(Refusal::Family(_))));
     }
@@ -1362,7 +1365,7 @@ mod tests {
         assert!(check_switch_dm_unit("sshd").is_err());
     }
 
-    // ── З2: пути ────────────────────────────────────────────────────────
+    // ── Z2: paths ───────────────────────────────────────────────────────
 
     #[test]
     fn з2_пути_вне_корня_отказ() {
@@ -1385,7 +1388,7 @@ mod tests {
             assert!(check_user_path(bad, &root).is_err(), "{bad:?} прошёл");
         }
         assert_eq!(check_user_path("/home/a/.cache/rexon/rebuild/r/f", &root), Ok("r/f"));
-        // испорченный корень — тоже «нет»
+        // a broken root is also "no"
         assert!(check_user_path("/x/y", "/x/../").is_err());
         assert!(check_user_path("/x/y", "").is_err());
     }
@@ -1395,7 +1398,7 @@ mod tests {
         let root = user_rebuild_root("/home/a");
         let ok = "/home/a/.cache/rexon/rebuild/pantheon/switchboard-8.0.2-3-x86_64.pkg.tar.zst";
         assert_eq!(check_built_package(ok, &root), Ok("switchboard-8.0.2-3-x86_64.pkg.tar.zst"));
-        // файл прямо в корне, не пакет makepkg, скрытый, флаг
+        // a file right in the root, not a makepkg package, hidden, a flag
         for bad in [
             "/tmp/x.deb",
             "/home/a/.cache/rexon/rebuild/x-1-1-x86_64.pkg.tar.zst",
@@ -1409,7 +1412,7 @@ mod tests {
         }
     }
 
-    // ── З3 ──────────────────────────────────────────────────────────────
+    // ── Z3 ──────────────────────────────────────────────────────────────
 
     #[test]
     fn з3_чужой_процесс_на_канале_отказ() {
@@ -1418,13 +1421,13 @@ mod tests {
             assert_eq!(parse_pkexec_uid(bad), None, "{bad:?}");
         }
         assert!(check_peer(1000, 4242, 1000, 4242).is_ok());
-        assert_eq!(check_peer(1001, 4242, 1000, 4242), Err(Refusal::Peer)); // чужой UID
-        assert_eq!(check_peer(1000, 4243, 1000, 4242), Err(Refusal::Peer)); // не родитель
-        assert_eq!(check_peer(1000, 1, 1000, 1), Err(Refusal::Peer)); // осиротел — родитель init
+        assert_eq!(check_peer(1001, 4242, 1000, 4242), Err(Refusal::Peer)); // foreign UID
+        assert_eq!(check_peer(1000, 4243, 1000, 4242), Err(Refusal::Peer)); // not the parent
+        assert_eq!(check_peer(1000, 1, 1000, 1), Err(Refusal::Peer)); // orphaned: the parent is init
         assert_eq!(check_peer(0, 0, 0, 0), Err(Refusal::Peer));
     }
 
-    // ── З5 ──────────────────────────────────────────────────────────────
+    // ── Z5 ──────────────────────────────────────────────────────────────
 
     #[test]
     fn з5_после_отказа_сырого_pkexec_нет() {
@@ -1435,7 +1438,7 @@ mod tests {
         assert!(!raw_fallback_allowed(HelperFailure::NotAuthorized));
     }
 
-    // ── З6 ──────────────────────────────────────────────────────────────
+    // ── Z6 ──────────────────────────────────────────────────────────────
 
     #[test]
     fn з6_жизненно_важное_отказ() {
@@ -1461,8 +1464,8 @@ mod tests {
         }
     }
 
-    /// Вечное (и добавка к нему) не задевает ни одного пакета столов: иначе
-    /// удаление стола молча оставляло бы половину пакетов.
+    /// The permanent list (and its addition) does not touch a single desktop
+    /// package: otherwise removing a desktop would silently leave half the packages.
     #[test]
     fn вечное_не_задевает_столы() {
         for (id, _) in system::DE_DATABASE {
@@ -1478,16 +1481,16 @@ mod tests {
     fn з6_текущий_стол_отказ() {
         let (cur, other) = two_desktops();
         let arch = PkgFamily::Arch;
-        // сам текущий стол — текст ядра
+        // the current desktop itself: the core's text
         let r = desktop_removal_set(arch, cur, cur, &qi_none);
         assert!(matches!(r, Err(Refusal::CurrentDesktop(ref t)) if !t.is_empty()), "{r:?}");
-        // пакет текущего стола по имени
+        // a package of the current desktop by name
         let p = system::get_packages(cur, arch)[0].clone();
         assert!(matches!(
             check_remove_packages(arch, std::slice::from_ref(&p), cur),
             Err(Refusal::CurrentDesktopPackage(_))
         ));
-        // текущий стол неизвестен — удалять нельзя ничего
+        // the current desktop is unknown: nothing may be removed
         for unknown in ["", "unknown", "evil"] {
             assert_eq!(
                 check_remove_packages(arch, &s(&["foo"]), unknown),
@@ -1498,18 +1501,18 @@ mod tests {
                 Err(Refusal::CurrentDesktopUnknown)
             );
         }
-        // другой стол — можно, но без общих с текущим пакетов
+        // another desktop is allowed, but without the packages shared with the current one
         let set = desktop_removal_set(arch, other, cur, &qi_none).unwrap();
         let cur_pkgs = desktop_packages(arch, cur);
         assert!(set.iter().all(|p| !cur_pkgs.contains(p)));
         assert!(!set.is_empty());
-        // чужое имя пакета — удаляется
+        // an unrelated package name is removed
         assert!(check_remove_packages(arch, &s(&["some-app"]), cur).is_ok());
     }
 
-    /// Общий экран входа: Cinnamon и Xfce на Arch оба несут `lightdm`. Сидя
-    /// в одном, удаление другого `lightdm` не трогает, хотя `pacman -Qi`
-    /// говорит, что он никому не нужен.
+    /// A shared login screen: Cinnamon and Xfce on Arch both carry `lightdm`.
+    /// While in one, removing the other does not touch `lightdm`, although
+    /// `pacman -Qi` says nobody needs it.
     #[test]
     fn з6_общий_пакет_текущего_стола_остаётся() {
         let arch = PkgFamily::Arch;
@@ -1523,8 +1526,8 @@ mod tests {
         assert!(!set.iter().any(|p| p == "lightdm"), "{set:?}");
     }
 
-    /// Замыкание ядра: пакет, нужный кому-то вне набора, остаётся, и с ним
-    /// всё, что нужно ему.
+    /// The core closure: a package needed by something outside the set stays, and
+    /// with it everything it needs.
     #[test]
     fn з6_замыкание_зависимостей() {
         let (cur, other) = two_desktops();
@@ -1546,7 +1549,7 @@ mod tests {
         assert!(!set.contains(&pkgs[0]) && !set.contains(&pkgs[1]), "{set:?}");
     }
 
-    // ── Установка — только из таблиц ────────────────────────────────────
+    // ── Install: only from tables ───────────────────────────────────────
 
     #[test]
     fn установка_только_из_таблиц() {
@@ -1554,7 +1557,7 @@ mod tests {
         let (de, other) = two_desktops();
         let pkgs = system::get_packages(de, arch);
         assert!(check_install(arch, &pkgs, InstallSource::Desktop { de_id: de }).is_ok());
-        // чужое имя, имя чужого стола, флаг, путь
+        // an unrelated name, a name of another desktop, a flag, a path
         for bad in ["openssh", "-oX", "/tmp/x.deb", "x.deb"] {
             assert!(check_install(arch, &s(&[bad]), InstallSource::Desktop { de_id: de }).is_err(), "{bad}");
         }
@@ -1571,10 +1574,10 @@ mod tests {
             check_install(arch, &s(&["a"]), InstallSource::Desktop { de_id: "evil" }),
             Err(Refusal::UnknownDesktop(_))
         ));
-        // экран входа
+        // login screen
         assert!(check_install(arch, &s(&["sddm"]), InstallSource::DisplayManager).is_ok());
         assert!(check_install(arch, &s(&["xorg-server"]), InstallSource::DisplayManager).is_err());
-        // доустановка стола: свой стол и таблицы compliance, но не чужое
+        // desktop completion: its own desktop and the compliance tables, but nothing foreign
         let repair = InstallSource::DesktopRepair { current_de: de };
         assert!(check_install(arch, &s(&[crate::compliance::AYATANA_PACKAGES[0]]), repair).is_ok());
         assert!(check_install(arch, &pkgs[..1], repair).is_ok());
@@ -1583,15 +1586,15 @@ mod tests {
             check_install(arch, &s(&["a"]), InstallSource::DesktopRepair { current_de: "unknown" }),
             Err(Refusal::CurrentDesktopUnknown)
         );
-        // видеообои и yt-dlp
+        // live wallpapers and yt-dlp
         assert!(check_install(arch, &s(&["mpv", "mpvpaper"]), InstallSource::VideoDeps).is_ok());
         assert!(check_install(PkgFamily::Debian, &s(&["mpvpaper"]), InstallSource::VideoDeps).is_err());
         assert!(check_install(arch, &s(&["yt-dlp"]), InstallSource::YtDlp).is_ok());
         assert!(check_install(arch, &s(&["youtube-dl"]), InstallSource::YtDlp).is_err());
     }
 
-    /// Каждое имя каждой таблицы установки проходит именную проверку: иначе
-    /// помощник отказал бы честной операции.
+    /// Every name of every install table passes the name check: otherwise the
+    /// helper would refuse an honest operation.
     #[test]
     fn таблицы_установки_проходят_проверку_имён() {
         for fam in ALL_FAMILIES {
@@ -1613,11 +1616,11 @@ mod tests {
         }
     }
 
-    /// ⛔ Сторож Б9: таблицы сеанса прав — ровно белый список установки
-    /// помощника пакетов ([`plan::pkg_helper_install_allowlist`]). Таблица,
-    /// которую помощник пакетов ставит, а сеанс не знает, — честная
-    /// установка, которую сеанс откажет без обхода (З5): Conky, апплеты
-    /// MATE, оболочки, значки и курсоры, «Как в дистрибутиве».
+    /// ⛔ Guard B9: the privilege session tables are exactly the install allowlist
+    /// of the package helper ([`plan::pkg_helper_install_allowlist`]). A table
+    /// the package helper installs from but the session does not know is an
+    /// honest install the session would refuse without a bypass (Z5): Conky,
+    /// MATE applets, shells, icons and cursors, «Distro Looks».
     #[test]
     fn таблицы_сеанса_совпадают_с_белым_списком_помощника_пакетов() {
         use super::super::op::PkgSource;
@@ -1635,8 +1638,8 @@ mod tests {
             let helper: HashSet<String> = plan::pkg_helper_install_allowlist(*fam).into_iter().collect();
             let missing: Vec<&String> = helper.iter().filter(|p| !ours.contains(*p)).collect();
             assert!(missing.is_empty(), "{}: нет источника сеанса для {missing:?}", fam.as_str());
-            // Обратно: всё, что сеанс пропустит, пропускает и помощник пакетов
-            // (имена, не прошедшие его проверку имени, не ставит никто).
+            // The other way round: everything the session lets through, the package
+            // helper lets through too (names that fail its name check are installed by nobody).
             let extra: Vec<&String> = ours
                 .iter()
                 .filter(|p| !helper.contains(*p) && plan::is_safe_pkg_arg(*fam, p))
@@ -1667,7 +1670,7 @@ mod tests {
         }
         assert!(matches!(check_build_deps(PkgFamily::Debian, &s(&["meson"]), &r), Err(Refusal::Family(_))));
         assert_eq!(check_build_deps(arch, &[], &r), Err(Refusal::Empty));
-        // снять после сборки: только makedepends/base-devel, не depends
+        // remove after building: only makedepends/base-devel, not depends
         assert!(check_build_only(arch, &s(&["meson", "vala", "base-devel"]), &r).is_ok());
         assert!(check_build_only(arch, &[], &r).is_ok());
         assert!(check_build_only(arch, &s(&["evolution-data-server"]), &r).is_err());
@@ -1675,8 +1678,8 @@ mod tests {
         assert!(check_build_only(arch, &s(&["linux"]), &r).is_err());
     }
 
-    /// Рецепт сам требует жизненно важное в makedepends: снять его всё
-    /// равно нельзя.
+    /// The recipe itself requires something vital in makedepends: it still cannot
+    /// be removed.
     #[test]
     fn сборочное_вечное_не_снимается() {
         let mut r = recipe();
@@ -1700,7 +1703,7 @@ mod tests {
         assert!(check_fork_rollback(&s(&["aeroshell-libplasma"]), &s(&["-oX"]), &qi).is_err());
     }
 
-    // ── З7 ──────────────────────────────────────────────────────────────
+    // ── Z7 ──────────────────────────────────────────────────────────────
 
     #[test]
     fn з7_код_из_темы_plymouth_отказ() {
@@ -1717,7 +1720,7 @@ mod tests {
         assert!(check_theme_file_not_code("t.script").is_ok());
     }
 
-    // ── З8 ──────────────────────────────────────────────────────────────
+    // ── Z8 ──────────────────────────────────────────────────────────────
 
     #[test]
     fn з8_ключи_plm_вне_списка_отказ() {
@@ -1741,7 +1744,7 @@ mod tests {
         assert!(check_plm_wallpaper_name("../../etc/x").is_err());
     }
 
-    // ── §1.4 п.5 ────────────────────────────────────────────────────────
+    // ── §1.4 item 5 ─────────────────────────────────────────────────────
 
     #[test]
     fn неизменяемая_система_отказ() {
@@ -1751,7 +1754,7 @@ mod tests {
         }
     }
 
-    // ── стол набором и образ стола SteamOS ─────────────────────────────
+    // ── desktop as a set and the SteamOS desktop image ─────────────────
 
     fn swap(new: &str, installed: &str) -> plan::PkgConflict {
         plan::PkgConflict { new_package: new.into(), installed: installed.into(), ..plan::PkgConflict::default() }
@@ -1762,25 +1765,25 @@ mod tests {
         let arch = PkgFamily::Arch;
         let river = s(&["river-classic", "waybar"]);
         assert!(check_de_set(arch, "river", &river, &[], &s(&["river"]), "kde").is_ok());
-        // Только pacman; стол — из базы; имена — имена.
+        // pacman only; the desktop from the database; names are names.
         assert!(matches!(check_de_set(PkgFamily::Debian, "river", &river, &[], &[], "kde"), Err(Refusal::Family(_))));
         assert!(matches!(check_de_set(arch, "evil", &river, &[], &[], "kde"), Err(Refusal::UnknownDesktop(_))));
         assert!(matches!(check_de_set(arch, "river", &s(&["-oX"]), &[], &[], "kde"), Err(Refusal::Operand(_))));
         assert_eq!(check_de_set(arch, "river", &[], &[], &[], "kde"), Err(Refusal::Empty));
-        // deepin-kwin — ни в каком наборе; у Deepin — без рецептного сеанса и группы.
+        // deepin-kwin in no set; for Deepin without the recipe-built session and the group.
         assert!(matches!(check_de_set(arch, "river", &s(&["deepin-kwin"]), &[], &[], "kde"), Err(Refusal::NotInTable(_))));
         for bad in ["deepin-session", "deepin", "deepin-kwin"] {
             assert!(matches!(check_de_set(arch, "deepin", &s(&["treeland", bad]), &[], &[], "kde"), Err(Refusal::NotInTable(_))), "{bad}");
         }
         assert!(check_de_set(arch, "deepin", &s(&["treeland", "ddm"]), &[], &[], "kde").is_ok());
-        // --asdeps — только из самого набора.
+        // --asdeps only from the set itself.
         assert!(matches!(check_de_set(arch, "river", &river, &s(&["linux-headers"]), &[], "kde"), Err(Refusal::NotInTable(_))));
-        // Замена: вечное, пакет текущего стола, имя из набора — нет.
+        // Replacement: a permanent package, a current desktop package, a name from the set: no.
         let kde_pkg = desktop_packages(arch, "kde").into_iter().find(|p| !is_vital(p)).unwrap();
         assert!(matches!(check_de_set(arch, "river", &river, &[], &s(&["glibc"]), "kde"), Err(Refusal::Vital(_))));
         assert!(matches!(check_de_set(arch, "river", &river, &[], &[kde_pkg], "kde"), Err(Refusal::CurrentDesktopPackage(_))));
         assert!(matches!(check_de_set(arch, "river", &river, &[], &s(&["waybar"]), "kde"), Err(Refusal::Conflict(_))));
-        // Замена под работающим этим же столом и при неизвестном столе — нет.
+        // Replacement under this same running desktop and with an unknown desktop: no.
         assert!(matches!(check_de_set(arch, "river", &river, &[], &s(&["river"]), "river"), Err(Refusal::CurrentDesktop(_))));
         assert_eq!(check_de_set(arch, "river", &river, &[], &s(&["river"]), ""), Err(Refusal::CurrentDesktopUnknown));
     }
@@ -1798,19 +1801,19 @@ mod tests {
             ..plan::InstallPreview::default()
         };
         assert!(check_de_set_preview(&all, &base, &extras, &[], Some(&p)).is_ok());
-        // Проба молчит — непроверенное не ставится.
+        // The probe is silent: nothing unchecked is installed.
         assert_eq!(check_de_set_preview(&all, &base, &[], &[], None), Err(Refusal::SetRule("pacman".into())));
-        // Постороннее имя — не из пробы root-стороны.
+        // An unrelated name: not from the root side's probe.
         let mut evil = all.clone();
         evil.push("nvidia-dkms".into());
         assert_eq!(check_de_set_preview(&evil, &base, &[], &[], Some(&p)), Err(Refusal::NotInTable("nvidia-dkms".into())));
-        // --asdeps — только то, что правило ядра считает зависимостью.
+        // --asdeps only for what the core rule considers a dependency.
         assert!(matches!(check_de_set_preview(&all, &base, &s(&["treeland"]), &[], Some(&p)), Err(Refusal::SetRule(_))));
-        // deepin-kwin где угодно в плане — отказ.
+        // deepin-kwin anywhere in the plan: refusal.
         let mut kwin = p.clone();
         kwin.new_packages.push("deepin-kwin".into());
         assert!(matches!(check_de_set_preview(&all, &base, &[], &[], Some(&kwin)), Err(Refusal::SetRule(_))));
-        // Замена без конфликта — нет.
+        // A replacement without a conflict: no.
         assert!(matches!(check_de_set_preview(&all, &base, &[], &s(&["river"]), Some(&p)), Err(Refusal::Conflict(_))));
     }
 
@@ -1823,15 +1826,15 @@ mod tests {
             ..plan::InstallPreview::default()
         };
         assert!(check_de_set_preview(&pkgs, &pkgs, &[], &s(&["river"]), Some(&p)).is_ok());
-        // Без согласия конфликт не снимается.
+        // Without consent the conflict is not removed.
         assert_eq!(check_de_set_preview(&pkgs, &pkgs, &[], &[], Some(&p)), Err(Refusal::Conflict("river".into())));
-        // Лишнее имя к замене — нет, даже если конфликт покрыт.
+        // An extra name for replacement: no, even if the conflict is covered.
         assert_eq!(
             check_de_set_preview(&pkgs, &pkgs, &[], &s(&["river", "kwin"]), Some(&p)),
             Err(Refusal::Conflict("kwin".into()))
         );
-        // Конфликт не из таблицы замен (deepin-kwin против kwin) — не снимается
-        // ничьим «согласием»: --ask=4 снял бы KDE Plasma.
+        // A conflict not from the replacement table (deepin-kwin against kwin) is not
+        // removed by anyone's "consent": --ask=4 would remove KDE Plasma.
         let foreign = plan::InstallPreview {
             targets: pkgs.clone(),
             conflicts: vec![swap("river-classic", "river"), swap("mutter49", "mutter")],
@@ -1841,7 +1844,7 @@ mod tests {
             check_de_set_preview(&pkgs, &pkgs, &[], &s(&["river", "mutter"]), Some(&foreign)),
             Err(Refusal::Conflict(_))
         ));
-        // Установленное, которое кто-то требует, тоже не снимается.
+        // Something installed that someone requires is not removed either.
         let mut required = p.clone();
         required.conflicts[0].required_by = s(&["river-tools"]);
         assert!(matches!(check_de_set_preview(&pkgs, &pkgs, &[], &s(&["river"]), Some(&required)), Err(Refusal::Conflict(_))));
@@ -1891,11 +1894,11 @@ mod tests {
         }
     }
 
-    /// Что помощнику теперь разрешено со шрифтами: ПОЛОЖИТЬ файл шрифта под
-    /// своим именем в `/usr/local/share/fonts` и УДАЛИТЬ файл шрифта оттуда
-    /// же (в том числе из подкаталога). Ничего больше: ни другого каталога,
-    /// ни пути вместо имени, ни скрытых файлов, ни не-шрифтов по
-    /// расширению, ни шрифтов пакетов.
+    /// What the helper is now allowed to do with fonts: PUT a font file under its
+    /// own name into `/usr/local/share/fonts` and DELETE a font file from there
+    /// (including from a subdirectory). Nothing more: no other directory, no path
+    /// instead of a name, no hidden files, no non-fonts by extension, no package
+    /// fonts.
     #[test]
     fn шрифты_для_всех_имя_файла() {
         for ok in ["Inter.ttf", "Мой шрифт.TTF", "a b (1).otf", "NotoSansCJK.ttc", "x.woff2", "t.pcf.gz", "fixed.bdf", "Type1.pfb"] {
@@ -1909,7 +1912,7 @@ mod tests {
         }
         let long = format!("{}.ttf", "а".repeat(200));
         assert!(matches!(check_font_file_name(&long), Err(Refusal::TooLong(_))));
-        // Список: пустой, слишком длинный, повтор — отказ.
+        // List: empty, too long, a repeat: refusal.
         assert_eq!(check_font_install(&["a.ttf", "b.otf"]), Ok(()));
         assert_eq!(check_font_install(&[]), Err(Refusal::Empty));
         assert!(matches!(check_font_install(&["a.ttf", "a.ttf"]), Err(Refusal::FontFile(_))));
@@ -1927,25 +1930,25 @@ mod tests {
             Ok(vec!["a.ttf", "sub/Мой.otf"])
         );
         for bad in [
-            // шрифты пакетов, соседи, сам каталог
+            // package fonts, neighbours, the directory itself
             "/usr/share/fonts/noto/NotoSans-Regular.ttf",
             "/usr/local/share/fonts2/a.ttf",
             "/usr/local/share/fonts",
             "/usr/local/share/fonts/",
             "/home/u/.local/share/fonts/a.ttf",
-            // выход за каталог и мусор в пути
+            // leaving the directory and garbage in the path
             "/usr/local/share/fonts/../../../etc/shadow",
             "/usr/local/share/fonts/./a.ttf",
             "/usr/local/share/fonts//a.ttf",
             "usr/local/share/fonts/a.ttf",
             "/usr/local/share/fonts/a.ttf\n",
-            // не шрифт и служебные файлы fontconfig
+            // not a font, and fontconfig service files
             "/usr/local/share/fonts/fonts.dir",
             "/usr/local/share/fonts/fonts.scale",
             "/usr/local/share/fonts/.uuid",
             "/usr/local/share/fonts/sub",
             "/usr/local/share/fonts/run.sh",
-            // скрытый подкаталог
+            // a hidden subdirectory
             "/usr/local/share/fonts/.cache/a.ttf",
         ] {
             assert!(check_font_remove(&s(&[bad])).is_err(), "{bad:?} прошёл");

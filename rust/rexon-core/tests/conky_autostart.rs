@@ -1,7 +1,7 @@
-//! Автозапуск виджета Conky ([`rexon_core::conky_autostart`]): эталоны
-//! `.desktop` (задержка, «только здесь», накладка, KDE после панели),
-//! строки композиторов без XDG-автозапуска и стенд настоящего sway без
-//! экрана в частном домашнем каталоге.
+//! Conky widget autostart ([`rexon_core::conky_autostart`]): golden
+//! `.desktop` files (delay, «только здесь», overlay, KDE after the panel),
+//! lines for compositors without XDG autostart, and a stand of a real headless sway
+//! in a private home directory.
 
 use rexon_core::compositor_autostart::{Compositor, SessionEnv};
 use rexon_core::conky_autostart::{self as ca, Options};
@@ -31,15 +31,15 @@ fn golden_entries() {
          StartupNotify=false\n\
          Terminal=false\n"
     );
-    // Без задержки и окружения — прежний вид плюс «после панели».
+    // Without a delay and a desktop — the old form plus "after the panel".
     let plain = rexon_core::ext_manager::conky_desktop_entry("w", "/h/w/c.conf");
     assert!(!plain.contains("sleep") && !plain.contains("OnlyShowIn") && !plain.contains(ca::DELAY_KEY), "{plain}");
     assert!(plain.contains("\nX-KDE-autostart-after=panel\n"));
-    // С накладкой: conky — с накладкой, задержка — та же.
+    // With an overlay: conky with the overlay, the delay is the same.
     let via = rexon_core::ext_manager::conky_desktop_entry_with("w", "/h/w/c.conf", Some("/s/o.rexon.conf"), None, 5, &[]);
     let exec = via.lines().find_map(|l| l.strip_prefix("Exec=")).unwrap();
     let argv = rexon_core::compositor_autostart::exec_argv(exec).unwrap();
-    // Перед запуском — переход на XWayland, где вывод Wayland не годится.
+    // Before launch — switch to XWayland, where Wayland output is unsuitable.
     let script = format!(
         "sleep 5 && {}cd \"$(dirname \"$1\")\" && exec conky -c \"${{rexon_xw:-$0}}\"",
         rexon_core::conky_overlay::xwayland_shell(false, None)
@@ -47,8 +47,8 @@ fn golden_entries() {
     assert_eq!(argv, ["sh", "-c", script.as_str(), "/s/o.rexon.conf", "/h/w/c.conf"]);
 }
 
-/// Задержка из записи настоящим `sh`: conky запускается не раньше, чем через
-/// N секунд, из папки виджета.
+/// The delay from the entry through a real `sh`: conky starts no earlier than after
+/// N seconds, from the widget's folder.
 #[test]
 fn delay_really_waits() {
     use std::os::unix::fs::PermissionsExt;
@@ -77,9 +77,9 @@ fn delay_really_waits() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// Запись автозапуска настоящим `sh`: в сеансе Wayland Cinnamon conky идёт
-/// через XWayland с файлом, где окно под окнами (если он есть); в KDE и без
-/// файла — с файлом из записи.
+/// The autostart entry through a real `sh`: in a Cinnamon Wayland session conky goes
+/// through XWayland with the file where the window is below windows (if it exists); in KDE and without
+/// the file — with the file from the entry.
 #[test]
 fn autostart_takes_xwayland_file() {
     use std::os::unix::fs::PermissionsExt;
@@ -112,7 +112,7 @@ fn autostart_takes_xwayland_file() {
             .unwrap();
         String::from_utf8_lossy(&out.stdout).trim().to_string()
     };
-    // Файла XWayland ещё нет — conky с файлом автора.
+    // No XWayland file yet — conky with the author's file.
     let before = run(None, "X-Cinnamon");
     std::fs::create_dir_all(d.join("state")).unwrap();
     std::fs::write(&xw, "-- x").unwrap();
@@ -130,7 +130,7 @@ fn sway_env(home: &std::path::Path) -> SessionEnv {
         home: h,
         config_dirs: vec!["/etc/xdg".into()],
         sysconf: {
-            // Системный конфиг sway: свой файл заводится только с его `include`.
+            // The system sway config: our own file is created only with its `include`.
             let etc = home.join("etc");
             std::fs::create_dir_all(etc.join("sway")).unwrap();
             std::fs::write(etc.join("sway/config"), "# system\n").unwrap();
@@ -142,9 +142,9 @@ fn sway_env(home: &std::path::Path) -> SessionEnv {
     }
 }
 
-/// Сеанс sway: строка запуска — управляемым блоком в `~/.config/sway/config`
-/// (файл заводится), запись скрыта от sway (`NotShowIn=sway`), чтобы
-/// виджет не стартовал дважды; снятие возвращает всё, как было.
+/// A sway session: the launch line is a managed block in `~/.config/sway/config`
+/// (the file is created), the entry is hidden from sway (`NotShowIn=sway`) so that
+/// the widget does not start twice; removal restores everything as it was.
 #[test]
 fn sway_gets_its_own_line() {
     let d = tmp("sway");
@@ -162,12 +162,12 @@ fn sway_gets_its_own_line() {
     assert!(text.contains("rexon:conky-Jhalak"), "{text}");
     assert_eq!(built.configs, [cfg.to_string_lossy().into_owned()]);
 
-    // «Только в MATE» в сеансе sway — строки у sway нет.
+    // «Только в MATE» in a sway session — sway has no line.
     let only = Options { delay: 3, only_in: vec!["MATE".into()] };
     let b2 = ca::build(&env, "Jhalak", "Jhalak", "/h/.config/conky/Jhalak/Jhalak.conf", None, None, &only);
     assert!(!cfg.exists(), "заведённый файл снят вместе с блоком");
     assert!(!b2.desktop.contains("NotShowIn") && b2.desktop.contains("\nOnlyShowIn=MATE;\n"));
-    // «Только в sway» — строка только у sway.
+    // «Только в sway» — the line only in sway.
     let here = Options { delay: 0, only_in: ca::current_names(&env) };
     let b3 = ca::build(&env, "Jhalak", "Jhalak", "/h/.config/conky/Jhalak/Jhalak.conf", None, None, &here);
     assert!(std::fs::read_to_string(&cfg).unwrap().contains("rexon:conky-Jhalak"));
@@ -177,8 +177,8 @@ fn sway_gets_its_own_line() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// Путь, который sway не удержит (`$`), — честный отказ с объяснением, а
-/// не строка, которую sway развернёт по-своему.
+/// A path sway cannot hold (`$`) — an honest refusal with an explanation, not
+/// a line that sway will expand its own way.
 #[test]
 fn unsafe_path_is_refused_in_compositor_session() {
     let d = tmp("refuse");
@@ -190,8 +190,8 @@ fn unsafe_path_is_refused_in_compositor_session() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// Переключатель на настоящих файлах: новая запись — с задержкой по
-/// умолчанию; настройки меняются и переживают перезапись старого вида.
+/// The switch on real files: a new entry gets the default delay;
+/// the settings change and survive rewriting an old-form entry.
 #[test]
 fn toggle_and_options_keep_each_other() {
     use rexon_core::animations::SystemIo;
@@ -210,7 +210,7 @@ fn toggle_and_options_keep_each_other() {
 
     let (ok, _) = da::set_conky_autostart_options(&SystemIo, &ctx, "W", &Options { delay: 42, only_in: vec!["MATE".into()] });
     assert!(ok);
-    // Запись старого вида с ключами задержки переписывается без потери их.
+    // An old-form entry with delay keys is rewritten without losing them.
     let old = format!(
         "[Desktop Entry]\nType=Application\nExec=conky -c '{home}/.config/conky/W/conky.conf'\nOnlyShowIn=MATE;\n{}=42\n",
         ca::DELAY_KEY
@@ -220,16 +220,16 @@ fn toggle_and_options_keep_each_other() {
     let now = std::fs::read_to_string(&path).unwrap();
     assert_eq!(ca::options_of(&now), Options { delay: 42, only_in: vec!["MATE".into()] });
     assert!(now.contains("X-KDE-autostart-after=panel") && now.contains("sleep 42 && "), "{now}");
-    // Выключение снимает запись.
+    // Turning it off removes the entry.
     assert!(da::set_conky_autostart(&SystemIo, &ctx, "W", false).0);
     assert!(!std::path::Path::new(&path).exists());
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// Стенд: настоящий sway без экрана (свой HOME и XDG_RUNTIME_DIR) читает
-/// конфиг со строкой Rexon и запускает «conky» (подставной сценарий пишет,
-/// откуда и с чем его позвали). Живой сеанс человека не задействован.
-/// Нет sway — проверка пропускается.
+/// Stand: a real headless sway (its own HOME and XDG_RUNTIME_DIR) reads
+/// a config with the Rexon line and launches "conky" (a fake script records
+/// where it was called from and with what). The person's live session is not involved.
+/// No sway — the check is skipped.
 #[test]
 fn headless_sway_starts_the_widget() {
     use std::os::unix::fs::PermissionsExt;
@@ -251,8 +251,8 @@ fn headless_sway_starts_the_widget() {
     std::fs::set_permissions(bin.join("conky"), std::fs::Permissions::from_mode(0o755)).unwrap();
     let conf = w.join("conky.conf").to_string_lossy().into_owned();
     std::fs::write(&conf, "conky.text = [[x]]\n").unwrap();
-    // Свой минимальный конфиг (без системного: стенду не нужны панель и
-    // клавиши) — Rexon дописывает в него свой блок.
+    // Our own minimal config (without the system one: the stand needs no panel or
+    // keys) — Rexon appends its block to it.
     std::fs::create_dir_all(home.join(".config/sway")).unwrap();
     std::fs::write(home.join(".config/sway/config"), "output * bg #000000 solid_color\n").unwrap();
     let env = sway_env(&home);
@@ -285,10 +285,10 @@ fn headless_sway_starts_the_widget() {
     assert_eq!(got, format!("{}\n-c\n{conf}\n", w.display()), "sway запустил строку Rexon");
 }
 
-/// Решение Wehrwolfmann 23.10.2026: строка пишется только в конфиг
-/// композитора ТЕКУЩЕГО сеанса. Включил в KDE — конфиги sway и Hyprland не
-/// тронуты; включил в sway — Hyprland не тронут; выключение снимает строку
-/// отовсюду, где она осталась от прежних включений.
+/// Wehrwolfmann's decision of 23.10.2026: the line is written only to the config of
+/// the CURRENT session's compositor. Turned on in KDE — the sway and Hyprland configs are
+/// untouched; turned on in sway — Hyprland is untouched; turning off removes the line
+/// from everywhere it remained from earlier enables.
 #[test]
 fn only_the_current_compositor_config_is_touched() {
     let d = tmp("current");
@@ -303,7 +303,7 @@ fn only_the_current_compositor_config_is_touched() {
     let conf = "/h/.config/conky/W/conky.conf";
     let opts = Options { delay: 0, only_in: Vec::new() };
 
-    // KDE: XDG-автозапуск работает сам — ни один конфиг не тронут.
+    // KDE: XDG autostart works by itself — no config is touched.
     let mut kde = env.clone();
     kde.current_desktop = vec!["KDE".into()];
     kde.vars.clear();
@@ -313,21 +313,21 @@ fn only_the_current_compositor_config_is_touched() {
     assert_eq!(std::fs::read_to_string(&sway_cfg).unwrap(), "# мой sway\n");
     assert_eq!(std::fs::read_to_string(&hypr_cfg).unwrap(), "# мой Hyprland\n");
 
-    // sway: строка только у sway, NotShowIn — только sway.
+    // sway: the line only in sway, NotShowIn — only sway.
     let b = ca::build(&env, "W", "W", conf, None, None, &opts);
     assert_eq!(b.configs, [sway_cfg.to_string_lossy().into_owned()]);
     assert!(b.desktop.contains("\nNotShowIn=sway;\n"), "{}", b.desktop);
     assert!(std::fs::read_to_string(&sway_cfg).unwrap().contains("rexon:conky-W"));
     assert_eq!(std::fs::read_to_string(&hypr_cfg).unwrap(), "# мой Hyprland\n");
 
-    // Снова в KDE (перезапись записи): строка sway подновляется и
-    // остаётся скрытой от sway, Hyprland по-прежнему не тронут.
+    // Back in KDE (rewriting the entry): the sway line is refreshed and
+    // stays hidden from sway, Hyprland is still untouched.
     let b = ca::build(&kde, "W", "W", conf, None, None, &Options { delay: 7, only_in: Vec::new() });
     assert!(b.desktop.contains("\nNotShowIn=sway;\n"), "{}", b.desktop);
     assert!(std::fs::read_to_string(&sway_cfg).unwrap().contains("sleep 7 && "));
     assert_eq!(std::fs::read_to_string(&hypr_cfg).unwrap(), "# мой Hyprland\n");
 
-    // Хвост прошлого включения в Hyprland; выключение снимает отовсюду.
+    // A leftover of a previous enable in Hyprland; turning off removes it everywhere.
     let mut hypr = env.clone();
     hypr.current_desktop = vec!["Hyprland".into()];
     hypr.vars.clear();
@@ -335,7 +335,7 @@ fn only_the_current_compositor_config_is_touched() {
     let b = ca::build(&hypr, "W", "W", conf, None, None, &opts);
     assert!(std::fs::read_to_string(&hypr_cfg).unwrap().contains("rexon:conky-W"));
     assert!(b.desktop.contains("\nNotShowIn=sway;Hyprland;\n"), "{}", b.desktop);
-    // «Только в Hyprland» снимает строку sway.
+    // «Только в Hyprland» removes the sway line.
     let here = Options { delay: 0, only_in: ca::current_names(&hypr) };
     ca::build(&hypr, "W", "W", conf, None, None, &here);
     assert_eq!(std::fs::read_to_string(&sway_cfg).unwrap(), "# мой sway\n");

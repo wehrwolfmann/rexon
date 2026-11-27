@@ -1,97 +1,97 @@
-//! Разбор `project.json` обоев Wallpaper Engine и пользовательские свойства
-//! (`userProperties`) — порт `rexon/wallpapers/user_props.py`.
+//! Parsing of the `project.json` of Wallpaper Engine wallpapers and user properties
+//! (`userProperties`) — port of `rexon/wallpapers/user_props.py`.
 //!
-//! Терпимый парсер: неизвестные поля уходят в `extra`, `type`/`mode`
-//! приводятся к нижнему регистру, `workshopid` всегда становится строкой
-//! (в файлах Мастерской он бывает и числом, и строкой), отсутствующие
-//! значения заменяются разумными умолчаниями.
+//! A tolerant parser: unknown fields go to `extra`, `type`/`mode`
+//! are lowercased, `workshopid` always becomes a string
+//! (in Workshop files it is sometimes a number, sometimes a string), missing
+//! values are replaced with sensible defaults.
 //!
-//! Реальные пограничные случаи Мастерской WE, ради которых парсер такой:
-//!   * `type` с заглавной буквы (`"Web"`, `"Video"`) → нижний регистр;
-//!   * `workshopid: 859267594` числом → строка;
-//!   * `preview` бывает `.gif`/`.png`/`.jpg` — читаем как есть;
-//!   * property без `type` — это `label` (HTML/BBCode-врезка);
-//!   * `color.value` — `"0.6 0.6 0.6"` (три float через пробел);
-//!   * заголовки с иероглифами/кириллицей — обязателен UTF-8.
+//! Real edge cases of the WE Workshop that make the parser this way:
+//!   * `type` with a capital letter (`"Web"`, `"Video"`) → lowercase;
+//!   * `workshopid: 859267594` as a number → a string;
+//!   * `preview` can be `.gif`/`.png`/`.jpg` — read as is;
+//!   * a property without `type` is a `label` (an HTML/BBCode insert);
+//!   * `color.value` — `"0.6 0.6 0.6"` (three floats separated by spaces);
+//!   * titles with CJK/Cyrillic characters — UTF-8 is mandatory.
 //!
-//! Ядро чистое: [`parse_project`] работает над уже разобранным JSON,
-//! [`parse_project_text`]/[`parse_project_bytes`] — над содержимым файла, и
-//! только тонкая обёртка [`parse_project_json`] читает файл с диска (та же
-//! граница «чистое ядро + обёртка над путём», что в `favorites.rs`).
+//! The core is pure: [`parse_project`] works on already parsed JSON,
+//! [`parse_project_text`]/[`parse_project_bytes`] on the file contents, and
+//! only the thin wrapper [`parse_project_json`] reads the file from disk (the same
+//! "pure core + wrapper over a path" boundary as in `favorites.rs`).
 //!
-//! ⚠ правило #16 — починенные при порте дефекты оригинала. Модуль объявлен
-//! терпимым, но на деле ронял исключение или выдавал мусор:
+//! ⚠ rule #16 — defects of the original fixed during the port. The module claimed to be
+//! tolerant, but actually raised an exception or produced garbage:
 //!
-//!   1. **`null` превращался в строку `"None"`.** `str(raw.get("preview"))`
-//!      на `"preview": null` давал файл с именем `None`, `"type": null` —
-//!      тип обоев `none`, `"workshopid": null` — идентификатор `"None"`.
-//!      То же для `file`/`title`/`description`/`contentrating`/`visibility`
-//!      и для `text`/`condition`/`mode`/`fileType`/`label` свойства. Здесь
-//!      `null` = «поля нет» → умолчание.
-//!   2. **`int(...)` на `order`/`index` ронял ВЕСЬ разбор.**
+//!   1. **`null` turned into the string `"None"`.** `str(raw.get("preview"))`
+//!      on `"preview": null` gave a file named `None`, `"type": null` —
+//!      wallpaper type `none`, `"workshopid": null` — the identifier `"None"`.
+//!      The same for `file`/`title`/`description`/`contentrating`/`visibility`
+//!      and for the property's `text`/`condition`/`mode`/`fileType`/`label`. Here
+//!      `null` = "no field" → the default.
+//!   2. **`int(...)` on `order`/`index` failed the WHOLE parse.**
 //!      `"order": "abc"` → `ValueError`, `"order": "3.5"` → `ValueError`,
-//!      `"order": [1]` → `TypeError`; из-за одного кривого свойства обои
-//!      оставались вообще без пользовательских настроек. Здесь перевод
-//!      терпимый: нечисловое → `0`, дробное — усечение к нулю (как `int()`).
-//!   3. **Не-объект вместо словаря ронял разбор `AttributeError`'ом.**
-//!      `"general": [1,2]`, `"general": {"properties": [1,2]}` и
-//!      `project.json` с массивом/строкой на верхнем уровне. Здесь: верхний
-//!      уровень не-объект — явная ошибка [`ParseError::NotObject`], а
-//!      `general`/`properties` не-объект — просто пусто.
-//!   4. **`tags` перебирались посимвольно.** `"tags": "abc"` давало
-//!      `["a","b","c"]`, `"tags": {"a":1,"b":2}` — `["a","b"]` (ключи).
-//!      Здесь теги берутся только из массива, элементы `null`/массив/объект
-//!      пропускаются (раньше давали тег `"None"`/`"[1, 2]"`).
-//!   5. **`supportsaudioprocessing: "false"` включал звук.**
-//!      `bool("false")` в Python — истина. Здесь строка разбирается по
-//!      смыслу (`false`/`0`/`no`/`off`/пусто — ложь).
-//!   6. **`version` вопреки сигнатуре `Optional[int]` возвращалось как
-//!      есть** (`3.9`, `"3"`). Здесь — терпимый перевод в целое.
-//!   7. **`localization` вопреки сигнатуре могло оказаться чем угодно**
-//!      (`[1,2]` уезжало в поле типа «язык → ключ → строка»). Здесь
-//!      собирается только из вложенных объектов.
-//!   8. **Битый байт в файле ронял разбор `UnicodeDecodeError`'ом.**
-//!      Файлы Мастерской встречаются и не в UTF-8; теперь декодирование
-//!      lossy — мусорный байт заменяется, остальные поля читаются.
+//!      `"order": [1]` → `TypeError`; because of one bad property the wallpaper
+//!      was left without any user settings at all. Here the conversion is
+//!      tolerant: non-numeric → `0`, fractional — truncation towards zero (as `int()`).
+//!   3. **A non-object instead of a dict failed the parse with `AttributeError`.**
+//!      `"general": [1,2]`, `"general": {"properties": [1,2]}` and
+//!      `project.json` with an array/string at the top level. Here: a non-object
+//!      top level is an explicit error [`ParseError::NotObject`], while a non-object
+//!      `general`/`properties` is just empty.
+//!   4. **`tags` were iterated character by character.** `"tags": "abc"` gave
+//!      `["a","b","c"]`, `"tags": {"a":1,"b":2}` — `["a","b"]` (the keys).
+//!      Here tags are taken only from an array, `null`/array/object elements
+//!      are skipped (they used to give the tag `"None"`/`"[1, 2]"`).
+//!   5. **`supportsaudioprocessing: "false"` enabled audio.**
+//!      `bool("false")` in Python is true. Here the string is parsed by
+//!      meaning (`false`/`0`/`no`/`off`/empty — false).
+//!   6. **`version`, despite the `Optional[int]` signature, was returned as
+//!      is** (`3.9`, `"3"`). Here — a tolerant conversion to an integer.
+//!   7. **`localization`, despite the signature, could end up being anything**
+//!      (`[1,2]` went into a field of type "language → key → string"). Here it
+//!      is built only from nested objects.
+//!   8. **A broken byte in the file failed the parse with `UnicodeDecodeError`.**
+//!      Workshop files are sometimes not in UTF-8; decoding is now
+//!      lossy — a garbage byte is replaced, the other fields are read.
 //!
-//! Сохранённые квирки оригинала (поведение не меняется):
-//!   * `min`/`max`/`step`/`precision`/`fraction` хранятся СЫРЫМИ значениями
-//!     JSON (в WE они бывают и числом, и строкой) — типизированный доступ
-//!     даёт [`UserProperty::min_num`] и соседи;
-//!   * не-объект вместо самого свойства (`"p": "строка"`) остаётся
-//!     свойством типа `label` со значением-строкой;
-//!   * property типа `group`/`label` не попадает в [`Project::defaults_for_js`];
-//!   * свойство без значения (или с пустой строкой) даёт `{}`, а не
-//!     `{"value": ""}` — на это опирается подстановка картинки по умолчанию
-//!     у веб-обоев.
+//! Quirks of the original kept as is (behaviour does not change):
+//!   * `min`/`max`/`step`/`precision`/`fraction` are stored as RAW JSON
+//!     values (in WE they are sometimes numbers, sometimes strings) — typed access
+//!     is given by [`UserProperty::min_num`] and its neighbours;
+//!   * a non-object instead of the property itself (`"p": "string"`) stays
+//!     a `label` property with a string value;
+//!   * a property of type `group`/`label` does not go into [`Project::defaults_for_js`];
+//!   * a property without a value (or with an empty string) gives `{}`, not
+//!     `{"value": ""}` — the default picture substitution of web wallpapers
+//!     relies on this.
 
 use std::path::Path;
 
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-/// Вариант выпадающего списка (`type: combo`).
+/// A drop-down list option (`type: combo`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ComboOption {
     pub label: String,
-    /// WE допускает и строку, и число. `Value::Null` — в файле был `null`,
-    /// `""` — поля `value` не было вовсе (умолчание оригинала).
+    /// WE allows both a string and a number. `Value::Null` — the file had `null`,
+    /// `""` — there was no `value` field at all (the original's default).
     pub value: Value,
 }
 
-/// Одно `user_property` из `project.json::general.properties`.
+/// One `user_property` from `project.json::general.properties`.
 ///
 /// `r#type`: `bool` | `color` | `slider` | `combo` | `textinput` |
-/// `directory` | `file` | `group` | `label`. Формат `color.value` —
-/// `"R G B"` через пробел, float в диапазоне `[0..1]`.
-/// ⚠️ Имена полей здесь — ФОРМА наружу (`r#type` уходит как `type`): она
-/// объявлена у самого типа, а не переписана веткой на каждое поле в мосту.
+/// `directory` | `file` | `group` | `label`. The `color.value` format is
+/// `"R G B"` separated by spaces, floats in the range `[0..1]`.
+/// ⚠️ The field names here are the OUTWARD SHAPE (`r#type` goes out as `type`): it is
+/// declared on the type itself, not rewritten per field by a branch in the bridge.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UserProperty {
     pub name: String,
-    /// `label` — property без `type` (врезка HTML/BBCode).
+    /// `label` — a property without `type` (an HTML/BBCode insert).
     pub r#type: String,
-    /// Значения не было (или оно `null`) — `None`.
+    /// There was no value (or it is `null`) — `None`.
     pub value: Option<Value>,
     pub text: String,
     pub order: i64,
@@ -103,7 +103,7 @@ pub struct UserProperty {
     pub precision: Option<Value>,
     pub fraction: Option<Value>,
     pub options: Vec<ComboOption>,
-    /// Для `type: directory`.
+    /// For `type: directory`.
     pub mode: Option<String>,
     /// `video` | `image`.
     pub file_type: Option<String>,
@@ -134,66 +134,66 @@ impl Default for UserProperty {
 }
 
 impl UserProperty {
-    /// `min` числом (число либо числовая строка), иначе `None`.
+    /// `min` as a number (a number or a numeric string), otherwise `None`.
     pub fn min_num(&self) -> Option<f64> {
         as_f64(self.min.as_ref())
     }
-    /// `max` числом.
+    /// `max` as a number.
     pub fn max_num(&self) -> Option<f64> {
         as_f64(self.max.as_ref())
     }
-    /// `step` числом.
+    /// `step` as a number.
     pub fn step_num(&self) -> Option<f64> {
         as_f64(self.step.as_ref())
     }
-    /// `precision` целым.
+    /// `precision` as an integer.
     pub fn precision_int(&self) -> Option<i64> {
         as_f64(self.precision.as_ref()).map(|v| v.trunc() as i64)
     }
-    /// `fraction` булевым.
+    /// `fraction` as a boolean.
     pub fn fraction_bool(&self) -> Option<bool> {
         self.fraction.as_ref().map(truthy)
     }
 }
 
-/// Разобранный `project.json`.
+/// A parsed `project.json`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Project {
     /// `web` | `scene` | `video` | `application`.
     pub r#type: String,
-    /// Точка входа, путь относительно каталога обоев.
+    /// Entry point, a path relative to the wallpaper directory.
     pub file: String,
     pub title: String,
     pub description: String,
-    /// Умолчание — `preview.jpg`.
+    /// Default — `preview.jpg`.
     pub preview: String,
     pub tags: Vec<String>,
     pub content_rating: String,
-    /// Умолчание — `public`.
+    /// Default — `public`.
     pub visibility: String,
-    /// ВСЕГДА строка (в файлах бывает числом).
+    /// ALWAYS a string (in files it is sometimes a number).
     pub workshop_id: Option<String>,
     pub workshop_url: Option<String>,
     pub version: Option<i64>,
-    /// Свойства в порядке из файла (в Python — обычный `dict`).
+    /// Properties in file order (in Python — a plain `dict`).
     pub properties: Vec<(String, UserProperty)>,
     pub supports_audio: bool,
-    /// `general.localization`: язык → ключ → перевод, в порядке из файла.
+    /// `general.localization`: language → key → translation, in file order.
     pub localization: Vec<(String, Vec<(String, String)>)>,
     pub extra: Map<String, Value>,
 }
 
 impl Project {
-    /// Свойство по имени.
+    /// A property by name.
     pub fn property(&self, name: &str) -> Option<&UserProperty> {
         self.properties.iter().find(|(k, _)| k == name).map(|(_, p)| p)
     }
 
-    /// Формат WE `{ключ: {value: X}}` для `applyUserProperties` в JS.
+    /// The WE format `{key: {value: X}}` for `applyUserProperties` in JS.
     ///
-    /// Пропускает `type: group` и `type: label` (это только оформление UI).
-    /// Property без значения даёт `{}` — важно для подстановки картинки по
-    /// умолчанию у веб-обоев.
+    /// Skips `type: group` and `type: label` (they are UI decoration only).
+    /// A property without a value gives `{}` — important for the default picture
+    /// substitution of web wallpapers.
     pub fn defaults_for_js(&self) -> Map<String, Value> {
         let mut out = Map::new();
         for (name, p) in &self.properties {
@@ -217,15 +217,15 @@ impl Project {
     }
 }
 
-/// Почему `project.json` не разобрался.
+/// Why `project.json` failed to parse.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseError {
-    /// Файл не прочитался (`OSError` оригинала).
+    /// The file could not be read (the original's `OSError`).
     Io(String),
-    /// Содержимое — не JSON (`json.JSONDecodeError`).
+    /// The contents are not JSON (`json.JSONDecodeError`).
     NotJson(String),
-    /// JSON разобрался, но на верхнем уровне не объект. Оригинал падал здесь
-    /// `AttributeError`'ом («'list' object has no attribute 'get'»).
+    /// The JSON parsed, but the top level is not an object. The original crashed here
+    /// with `AttributeError` ("'list' object has no attribute 'get'").
     NotObject(&'static str),
 }
 
@@ -241,7 +241,7 @@ impl std::fmt::Display for ParseError {
     }
 }
 
-/// Название вида значения JSON — для текста ошибки.
+/// Name of the JSON value kind — for the error text.
 fn json_kind(v: &Value) -> &'static str {
     match v {
         Value::Null => "null",
@@ -253,11 +253,11 @@ fn json_kind(v: &Value) -> &'static str {
     }
 }
 
-// ── терпимые переводы значений ───────────────────────────────────────────
+// ── tolerant value conversions ──────────────────────────────────────────
 
-/// Строковое поле: `null` и составные значения = «поля нет» (⚠ правило #16 —
-/// оригинал печатал их через `str()` и получал `"None"` / `"[1, 2]"`).
-/// Скаляры переводятся как в Python: `True`/`False`, число — как записано.
+/// A string field: `null` and compound values = "no field" (⚠ rule #16 —
+/// the original printed them via `str()` and got `"None"` / `"[1, 2]"`).
+/// Scalars are converted as in Python: `True`/`False`, a number — as written.
 fn str_field(raw: Option<&Value>, default: &str) -> String {
     match raw {
         Some(Value::String(s)) => s.clone(),
@@ -268,7 +268,7 @@ fn str_field(raw: Option<&Value>, default: &str) -> String {
     }
 }
 
-/// То же, но «поля не было» отличается от умолчания: `None` вместо строки.
+/// The same, but "there was no field" differs from the default: `None` instead of a string.
 fn opt_str_field(raw: Option<&Value>) -> Option<String> {
     match raw {
         Some(Value::String(s)) => Some(s.clone()),
@@ -279,7 +279,7 @@ fn opt_str_field(raw: Option<&Value>) -> Option<String> {
     }
 }
 
-/// Число из значения JSON: число либо числовая строка (с пробелами по краям).
+/// A number from a JSON value: a number or a numeric string (with surrounding whitespace).
 fn as_f64(raw: Option<&Value>) -> Option<f64> {
     match raw {
         Some(Value::Number(n)) => n.as_f64(),
@@ -288,9 +288,9 @@ fn as_f64(raw: Option<&Value>) -> Option<f64> {
     }
 }
 
-/// Целое поле (`order`/`index`) — терпимо (⚠ правило #16: `int()` оригинала
-/// ронял разбор на нечисловой строке и на списке). `true` → 1, `false`/`null`/
-/// пусто/мусор → 0, дробное усекается к нулю (как `int()` в Python).
+/// An integer field (`order`/`index`) — tolerant (⚠ rule #16: the original's `int()`
+/// failed the parse on a non-numeric string and on a list). `true` → 1, `false`/`null`/
+/// empty/garbage → 0, fractional is truncated towards zero (as `int()` in Python).
 fn int_field(raw: Option<&Value>) -> i64 {
     match raw {
         Some(Value::Bool(b)) => i64::from(*b),
@@ -300,7 +300,7 @@ fn int_field(raw: Option<&Value>) -> i64 {
     }
 }
 
-/// Целое поле, которого может не быть (`version`).
+/// An integer field that may be missing (`version`).
 fn opt_int_field(raw: Option<&Value>) -> Option<i64> {
     match raw {
         Some(Value::Bool(b)) => Some(i64::from(*b)),
@@ -310,11 +310,11 @@ fn opt_int_field(raw: Option<&Value>) -> Option<i64> {
     }
 }
 
-/// Истинность значения. Строка читается по смыслу (⚠ правило #16: у Python
-/// `bool("false")` — истина, из-за чего `supportsaudioprocessing: "false"`
-/// включал захват звука; ложь — `false`/`0`/`no`/`off`/`none`/пусто). Для
-/// остальных видов — правила Python: пустой
-/// контейнер/ноль/пустая строка — ложь.
+/// Truthiness of a value. A string is read by meaning (⚠ rule #16: in Python
+/// `bool("false")` is true, which made `supportsaudioprocessing: "false"`
+/// enable audio capture; false — `false`/`0`/`no`/`off`/`none`/empty). For
+/// the other kinds — Python rules: an empty
+/// container/zero/empty string is false.
 fn truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
@@ -329,7 +329,7 @@ fn truthy(v: &Value) -> bool {
     }
 }
 
-/// Значение поля, где `null` неотличим от отсутствия (как `dict.get`).
+/// Field value where `null` is indistinguishable from absence (as `dict.get`).
 fn present(raw: Option<&Value>) -> Option<Value> {
     match raw {
         None | Some(Value::Null) => None,
@@ -337,15 +337,15 @@ fn present(raw: Option<&Value>) -> Option<Value> {
     }
 }
 
-// ── разбор ───────────────────────────────────────────────────────────────
+// ── parsing ──────────────────────────────────────────────────────────────
 
-/// Поля свойства, которые разобраны явно (остальные уходят в `extra`).
+/// Property fields that are parsed explicitly (the rest go to `extra`).
 const PROPERTY_CONSUMED: &[&str] = &[
     "type", "value", "text", "order", "index", "condition", "min", "max", "step",
     "precision", "fraction", "options", "mode", "fileType",
 ];
 
-/// Поля проекта, которые разобраны явно (остальные уходят в `extra`).
+/// Project fields that are parsed explicitly (the rest go to `extra`).
 const PROJECT_CONSUMED: &[&str] = &[
     "type", "file", "title", "description", "preview", "tags", "contentrating",
     "visibility", "workshopid", "workshopurl", "version", "general",
@@ -358,11 +358,11 @@ fn extra_of(raw: &Map<String, Value>, consumed: &[&str]) -> Map<String, Value> {
         .collect()
 }
 
-/// Разобрать одно property. Терпимо к неизвестным полям.
+/// Parse one property. Tolerant to unknown fields.
 pub fn parse_user_property(name: &str, raw: &Value) -> UserProperty {
     let Value::Object(obj) = raw else {
-        // Пограничный случай: иногда `properties[name]` — просто строка или
-        // число. Такое становится врезкой-`label` с этим значением.
+        // Edge case: sometimes `properties[name]` is just a string or
+        // a number. That becomes a `label` insert with this value.
         return UserProperty {
             name: name.to_string(),
             value: present(Some(raw)),
@@ -376,8 +376,8 @@ pub fn parse_user_property(name: &str, raw: &Value) -> UserProperty {
             if let Value::Object(od) = o {
                 options.push(ComboOption {
                     label: str_field(od.get("label"), ""),
-                    // `o.get("value", "")` — поля нет → пустая строка,
-                    // явный `null` → `null`.
+                    // `o.get("value", "")` — no field → an empty string,
+                    // an explicit `null` → `null`.
                     value: od.get("value").cloned().unwrap_or(Value::String(String::new())),
                 });
             }
@@ -404,18 +404,18 @@ pub fn parse_user_property(name: &str, raw: &Value) -> UserProperty {
     }
 }
 
-/// Разобрать уже прочитанный JSON `project.json`.
+/// Parse an already read `project.json` JSON.
 ///
-/// Второй элемент результата — предупреждения для журнала (сейчас одно:
-/// отсутствие поля `type`, как `log.warning` оригинала).
+/// The second element of the result is warnings for the log (currently one:
+/// the missing `type` field, as the original's `log.warning`).
 pub fn parse_project(raw: &Value) -> Result<(Project, Vec<String>), ParseError> {
     let Value::Object(obj) = raw else {
         return Err(ParseError::NotObject(json_kind(raw)));
     };
     let mut warnings = Vec::new();
 
-    // `general` не-объект — считаем, что его нет (⚠ правило #16: оригинал
-    // падал `AttributeError`'ом на `"general": [1,2]`).
+    // A non-object `general` — treat it as missing (⚠ rule #16: the original
+    // crashed with `AttributeError` on `"general": [1,2]`).
     let empty = Map::new();
     let general = match obj.get("general") {
         Some(Value::Object(g)) => g,
@@ -434,14 +434,14 @@ pub fn parse_project(raw: &Value) -> Result<(Project, Vec<String>), ParseError> 
         warnings.push("project.json: поле type отсутствует".to_string());
     }
 
-    // Теги — только из массива, скаляры переводятся в строки (⚠ правило #16:
-    // оригинал перебирал строку посимвольно, а словарь — по ключам).
+    // Tags — only from an array, scalars are converted to strings (⚠ rule #16:
+    // the original iterated a string character by character and a dict by keys).
     let tags = match obj.get("tags") {
         Some(Value::Array(items)) => items.iter().filter_map(|t| opt_str_field(Some(t))).collect(),
         _ => Vec::new(),
     };
 
-    // Локализация — только вложенные объекты со строковыми значениями.
+    // Localization — only nested objects with string values.
     let mut localization = Vec::new();
     if let Some(Value::Object(langs)) = general.get("localization") {
         for (lang, table) in langs {
@@ -475,71 +475,71 @@ pub fn parse_project(raw: &Value) -> Result<(Project, Vec<String>), ParseError> 
     Ok((project, warnings))
 }
 
-/// Разобрать текст `project.json`.
+/// Parse the text of `project.json`.
 pub fn parse_project_text(text: &str) -> Result<(Project, Vec<String>), ParseError> {
     let raw: Value =
         serde_json::from_str(text).map_err(|e| ParseError::NotJson(e.to_string()))?;
     parse_project(&raw)
 }
 
-/// Разобрать байты `project.json`: декодирование lossy (⚠ правило #16 —
-/// оригинал ронял разбор `UnicodeDecodeError`'ом на файлах Мастерской не в
+/// Parse the bytes of `project.json`: lossy decoding (⚠ rule #16 —
+/// the original failed the parse with `UnicodeDecodeError` on Workshop files not in
 /// UTF-8).
 pub fn parse_project_bytes(bytes: &[u8]) -> Result<(Project, Vec<String>), ParseError> {
     parse_project_text(&String::from_utf8_lossy(bytes))
 }
 
-/// Прочитать и разобрать `project.json` с диска — единственное место с
-/// вводом-выводом.
+/// Read and parse `project.json` from disk — the only place with
+/// input/output.
 pub fn parse_project_json(path: &Path) -> Result<(Project, Vec<String>), ParseError> {
     let bytes = std::fs::read(path).map_err(|e| ParseError::Io(e.to_string()))?;
     parse_project_bytes(&bytes)
 }
 
-// ── Определение типа обои по содержимому ────────────────────────────────
+// ── Detecting the wallpaper type by its contents ────────────────────────
 //
-// Порт `rexon/wallpapers/factory.py::_infer_type`. Часть официальных обоев
-// Wallpaper Engine (techno, audiophile и другие) поля `type` в `project.json`
-// не содержит вовсе — сам WE в таком случае смотрит на входной файл и на то,
-// что лежит рядом. Не повторив это, мы теряем такие обои: они не выпадают с
-// ошибкой, а просто не применяются.
+// Port of `rexon/wallpapers/factory.py::_infer_type`. Some official
+// Wallpaper Engine wallpapers (techno, audiophile and others) have no `type` field
+// in `project.json` at all — in that case WE itself looks at the entry file and at what
+// lies next to it. Without repeating this we lose such wallpapers: they do not fail
+// with an error, they are simply not applied.
 //
-// Из фабрики сюда переехало только это. Всё остальное в ней — выбор класса
-// движка на Python, и оно уходит вместе с Python.
+// Only this moved here from the factory. Everything else in it is choosing the engine
+// class in Python, and it goes away together with Python.
 
-/// Расширения входного файла, по которым обои считаются видео.
+/// Entry file extensions by which a wallpaper is considered a video.
 ///
-/// ⚠️ ДОБАВЛЕН `.ogv` (правило #16). Список видео-хоста на Python знал его с
-/// самого начала — QtMultimedia такие файлы играет, — а этот не знал, и
-/// обои с входным `.ogv` без поля `type` в `project.json` молча не
-/// применялись. Теперь список ОДИН на весь продукт, копии на Python нет.
+/// ⚠️ `.ogv` ADDED (rule #16). The list of the Python video host knew it from
+/// the very beginning — QtMultimedia plays such files — but this one did not, and
+/// wallpapers with an `.ogv` entry and no `type` field in `project.json` were silently
+/// not applied. Now there is ONE list for the whole product, no Python copy.
 ///
-/// `.wmv`, `.mpg`, `.mpeg` (ролики Windows DreamScene) хост играет сам, без
-/// перекодирования: проверено запуском на WMV3+WMA2 в ASF и на MPEG-1/2.
+/// `.wmv`, `.mpg`, `.mpeg` (Windows DreamScene clips) the host plays by itself, without
+/// transcoding: verified by running WMV3+WMA2 in ASF and MPEG-1/2.
 pub const VIDEO_ENTRY_EXTS: &[&str] = &[
     ".mp4", ".webm", ".mkv", ".avi", ".mov", ".m4v", ".ogv", ".wmv", ".mpg", ".mpeg", ".gif",
 ];
 
-/// Расширения входного файла, по которым обои считаются веб-страницей.
+/// Entry file extensions by which a wallpaper is considered a web page.
 ///
-/// ⚠️ ДОБАВЛЕНО (правило #16). Оригинал знал только `.html`, и вход `.htm`
-/// не опознавался НИКАК: такие обои молча не применялись. Соседний разбор в
-/// `wallpaper.rs` `.htm` при этом знает — расхождение внутри одного продукта.
+/// ⚠️ ADDED (rule #16). The original knew only `.html`, and an `.htm` entry
+/// was not recognised AT ALL: such wallpapers were silently not applied. The neighbouring parser in
+/// `wallpaper.rs` does know `.htm` — a divergence within one product.
 pub const WEB_ENTRY_EXTS: &[&str] = &[".html", ".htm"];
 
-/// Имя файла упакованной сцены.
+/// File name of a packed scene.
 pub const SCENE_PKG: &str = "scene.pkg";
-/// Имя файла разложенной сцены.
+/// File name of an unpacked scene.
 pub const SCENE_JSON: &str = "scene.json";
-/// Имя входной страницы, которую ищут, когда входной файл не назван.
+/// Name of the entry page searched for when the entry file is not named.
 pub const INDEX_HTML: &str = "index.html";
 
-/// Что нужно от каталога обои, чтобы определить её тип.
+/// What is needed from a wallpaper directory to determine its type.
 pub trait ProjectDirIo {
     /// `pathlib.Path(path).is_file()`.
     fn is_file(&mut self, path: &str) -> bool;
-    /// `path.read_text(encoding="utf-8")`. `None` — файл не открылся или в
-    /// нём не UTF-8; оригинал глушил и то, и другое.
+    /// `path.read_text(encoding="utf-8")`. `None` — the file did not open or
+    /// it is not UTF-8; the original swallowed both.
     fn read_text(&mut self, path: &str) -> Option<String>;
 }
 
@@ -547,8 +547,8 @@ fn join(dir: &str, name: &str) -> String {
     format!("{}/{}", dir.trim_end_matches('/'), name)
 }
 
-/// Есть ли в файле разложенная сцена: объект с массивом `objects`.
-/// Пустой массив тоже считается сценой — так было в оригинале.
+/// Whether the file holds an unpacked scene: an object with an `objects` array.
+/// An empty array also counts as a scene — as in the original.
 fn is_scene_json<I: ProjectDirIo + ?Sized>(path: &str, io: &mut I) -> bool {
     if !io.is_file(path) {
         return false;
@@ -562,12 +562,12 @@ fn is_scene_json<I: ProjectDirIo + ?Sized>(path: &str, io: &mut I) -> bool {
     matches!(obj.get("objects"), Some(Value::Array(_)))
 }
 
-/// Определить тип обои по содержимому каталога, когда `project.json::type`
-/// пуст. Пустая строка — не подошло ничего.
+/// Determine the wallpaper type by the directory contents when `project.json::type`
+/// is empty. An empty string — nothing matched.
 ///
-/// Порядок проверок значим и сохранён дословно: видео, затем веб, затем
-/// приложение, затем сцена. Из-за этого порядка вход `.exe` рядом с
-/// `index.html` даёт `web`, а не `application` — так вёл себя оригинал.
+/// The order of the checks matters and is kept verbatim: video, then web, then
+/// application, then scene. Because of this order an `.exe` entry next to
+/// `index.html` gives `web`, not `application` — as the original behaved.
 pub fn infer_type<I: ProjectDirIo + ?Sized>(
     wp_dir: &str,
     project: &Project,
@@ -588,9 +588,9 @@ pub fn infer_type<I: ProjectDirIo + ?Sized>(
     if io.is_file(&join(wp_dir, SCENE_PKG)) {
         return "scene";
     }
-    // Входной файл проверяется первым, `scene.json` — запасным. Имя берётся
-    // НЕ приведённым к нижнему регистру: к нижнему приводился только хвост
-    // для сравнения расширения.
+    // The entry file is checked first, `scene.json` as a fallback. The name is taken
+    // NOT lowercased: only the tail was lowercased
+    // for comparing the extension.
     if entry.ends_with(".json") && is_scene_json(&join(wp_dir, &project.file), io) {
         return "scene";
     }
@@ -600,10 +600,10 @@ pub fn infer_type<I: ProjectDirIo + ?Sized>(
     ""
 }
 
-/// Настоящий каталог на диске.
+/// A real directory on disk.
 ///
-/// Оба метода глушат ошибки ровно там же, где их глушил оригинал: файла нет,
-/// прав нет, содержимое не в UTF-8 — всё это «не подошло», а не отказ.
+/// Both methods swallow errors exactly where the original swallowed them: no file,
+/// no permissions, contents not in UTF-8 — all of this is "did not match", not a failure.
 struct FsDirIo;
 
 impl ProjectDirIo for FsDirIo {
@@ -616,14 +616,14 @@ impl ProjectDirIo for FsDirIo {
     }
 }
 
-/// [`infer_type`] по настоящему каталогу на диске.
+/// [`infer_type`] on a real directory on disk.
 ///
-/// Зовётся, когда `project.json::type` пуст. Пустая строка в ответе — не
-/// подошло ничего; решать, что делать дальше, должен вызывающий.
+/// Called when `project.json::type` is empty. An empty string in the result means
+/// nothing matched; the caller decides what to do next.
 ///
-/// ⚠️ Здесь ЕДИНСТВЕННОЕ место, где продукт определяет тип обои по
-/// содержимому. Своих списков расширений заводить рядом нельзя: именно так
-/// разъехались `VIDEO_ENTRY_EXTS` и список видео-хоста на Python.
+/// ⚠️ This is the ONLY place where the product determines the wallpaper type by
+/// contents. Do not create your own extension lists next to it: that is exactly how
+/// `VIDEO_ENTRY_EXTS` and the list of the Python video host drifted apart.
 pub fn infer_type_fs(wp_dir: &Path, project: &Project) -> &'static str {
     infer_type(&wp_dir.to_string_lossy(), project, &mut FsDirIo)
 }

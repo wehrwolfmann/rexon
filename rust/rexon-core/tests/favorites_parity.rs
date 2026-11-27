@@ -1,21 +1,21 @@
-//! Golden-сверка порта избранного с оригиналом `rexon/appearance/favorites.py`.
+//! Golden check of the favorites port against the original `rexon/appearance/favorites.py`.
 //!
-//! Эталон `golden/favorites_store.json` снят с Python: стор из двух записей
-//! (OCS + локальная), как их пишет `toggle_favorite`, `json.dump(ensure_ascii=
-//! False, indent=1)`. Любое расхождение формата — ошибка порта.
+//! The golden `golden/favorites_store.json` was captured from Python: a store of two entries
+//! (OCS + local), as `toggle_favorite` writes them, `json.dump(ensure_ascii=
+//! False, indent=1)`. Any format mismatch is a port bug.
 //!
-//! `golden/favorites_real_names.json` — полный цикл на РЕАЛЬНЫХ установленных
-//! темах этой машины (цветовые схемы `/usr/share/color-schemes`, иконки
-//! `/usr/share/icons`) плюс OCS-элемент с кириллицей/эмодзи/HTML: снят с живого
-//! `favorites.py` во ВРЕМЕННОМ HOME. Именно он поймал `swap_remove`-порядок
-//! при СНЯТИИ звезды (см. `favorites::toggle`). Эталон пишется БЕЗ
-//! `sort_keys`: порядок ключей `download_links` (url/name/size) load-bearing.
+//! `golden/favorites_real_names.json` is a full cycle on REAL installed
+//! themes of this machine (color schemes `/usr/share/color-schemes`, icons
+//! `/usr/share/icons`) plus an OCS item with Cyrillic/emoji/HTML: captured from live
+//! `favorites.py` in a TEMPORARY HOME. It is the one that caught the `swap_remove` order
+//! when REMOVING a star (see `favorites::toggle`). The golden is written WITHOUT
+//! `sort_keys`: the key order of `download_links` (url/name/size) is load-bearing.
 
 use rexon_core::favorites::{is_favorite, list_items, load_raw, save_raw, toggle};
 use rexon_core::models::{to_json_indent1, ThemeItem};
 use serde_json::{Map, Value};
 
-/// Те же две темы, что в python-скрипте снятия эталона.
+/// The same two themes as in the python golden capture script.
 fn ocs_item() -> ThemeItem {
     ThemeItem {
         id: "123456".into(),
@@ -40,31 +40,31 @@ fn local_item() -> ThemeItem {
     }
 }
 
-/// Стор из двух добавленных тем сериализуется байт-в-байт как Python.
-/// Проверяет: порядок вставки, обнуление `preview_local` у OCS-темы и его
-/// сохранение у локальной, кириллицу/emoji без экранирования, `indent=1`.
+/// A store of two added themes serializes byte-for-byte like Python.
+/// Checks: insertion order, `preview_local` cleared on the OCS theme and
+/// kept on the local one, Cyrillic/emoji unescaped, `indent=1`.
 #[test]
 fn store_serialize_byte_identical() {
     let golden = include_str!("golden/favorites_store.json");
     let mut store: Map<String, Value> = Map::new();
-    assert!(toggle(&mut store, &ocs_item())); // → в избранном
+    assert!(toggle(&mut store, &ocs_item())); // → in favorites
     assert!(toggle(&mut store, &local_item()));
     assert_eq!(to_json_indent1(&Value::Object(store)), golden);
 }
 
-/// Повторный toggle убирает элемент и возвращает false.
+/// A repeated toggle removes the item and returns false.
 #[test]
 fn toggle_adds_then_removes() {
     let mut store: Map<String, Value> = Map::new();
     let item = ocs_item();
     assert!(toggle(&mut store, &item));
     assert!(is_favorite(&store, "123456"));
-    assert!(!toggle(&mut store, &item)); // убрали
+    assert!(!toggle(&mut store, &item)); // removed
     assert!(!is_favorite(&store, "123456"));
     assert!(store.is_empty());
 }
 
-/// Пустой id — без изменений, всегда false, не «в избранном».
+/// An empty id — no change, always false, not "in favorites".
 #[test]
 fn empty_id_never_favorite() {
     let mut store: Map<String, Value> = Map::new();
@@ -73,8 +73,8 @@ fn empty_id_never_favorite() {
     assert!(!is_favorite(&store, ""));
 }
 
-/// `list_items`: восстанавливает ThemeItem, а локальным ставит
-/// `local_kind = "downloaded"`; OCS оставляет `None`.
+/// `list_items`: restores ThemeItem and sets `local_kind = "downloaded"`
+/// on local ones; OCS ones keep `None`.
 #[test]
 fn list_items_sets_local_kind() {
     let mut store: Map<String, Value> = Map::new();
@@ -84,13 +84,13 @@ fn list_items_sets_local_kind() {
     assert_eq!(items.len(), 2);
     let ocs = items.iter().find(|i| i.id == "123456").unwrap();
     assert_eq!(ocs.local_kind, None);
-    assert_eq!(ocs.preview_local, ""); // обнулён при добавлении
+    assert_eq!(ocs.preview_local, ""); // cleared on add
     let loc = items.iter().find(|i| i.id == "local:gtk:MyTheme").unwrap();
     assert_eq!(loc.local_kind.as_deref(), Some("downloaded"));
     assert_eq!(loc.preview_local, "/home/u/.themes/MyTheme/preview.png");
 }
 
-/// Неизвестные ключи отбрасываются, отсутствующие берут дефолт — как
+/// Unknown keys are dropped, missing ones take the default — like
 /// `ThemeItem(**{k: v … if k in _FIELDS})`.
 #[test]
 fn list_items_drops_unknown_and_fills_defaults() {
@@ -103,10 +103,10 @@ fn list_items_drops_unknown_and_fills_defaults() {
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].id, "42");
     assert_eq!(items[0].rating, 60);
-    assert_eq!(items[0].name, ""); // дефолт
+    assert_eq!(items[0].name, ""); // default
 }
 
-/// Битый/отсутствующий файл → пустой стор (как except в Python).
+/// A broken/missing file → an empty store (like the except in Python).
 #[test]
 fn load_bad_or_missing_file_is_empty() {
     let dir = std::env::temp_dir();
@@ -118,14 +118,14 @@ fn load_bad_or_missing_file_is_empty() {
     assert!(load_raw(&bad).is_empty());
     let _ = std::fs::remove_file(&bad);
 
-    // JSON-массив (не объект) на верхнем уровне → тоже пустой.
+    // A JSON array (not an object) at the top level → empty too.
     let arr = dir.join(format!("rexon_arr_fav_{}.json", std::process::id()));
     std::fs::write(&arr, "[1, 2, 3]").unwrap();
     assert!(load_raw(&arr).is_empty());
     let _ = std::fs::remove_file(&arr);
 }
 
-/// save→load возвращает тот же стор (атомарная запись через .tmp + rename).
+/// save→load returns the same store (atomic write via .tmp + rename).
 #[test]
 fn save_then_load_roundtrip() {
     let path = std::env::temp_dir()
@@ -138,15 +138,15 @@ fn save_then_load_roundtrip() {
     assert_eq!(loaded, store);
 }
 
-/// Полный цикл избранного на РЕАЛЬНЫХ данных этой машины: настоящие цветовые
-/// схемы `/usr/share/color-schemes` и иконочные темы `/usr/share/icons` как
-/// локальные элементы + OCS-элемент с кириллицей, «ёлочками», эмодзи и HTML в
-/// описании.
+/// A full favorites cycle on REAL data of this machine: real color
+/// schemes `/usr/share/color-schemes` and icon themes `/usr/share/icons` as
+/// local items + an OCS item with Cyrillic, «guillemets», emoji and HTML in
+/// the description.
 ///
-/// Эталон `golden/favorites_real_names.json` снят с ЖИВОГО `favorites.py` во
-/// ВРЕМЕННОМ HOME (реальный `~/.config/rexon/favorites.json` не создавался):
-/// добавление всех элементов → сырой файл → `list_favorite_items` → снятие
-/// первого → файл снова. Сверяются байты файла и восстановленные элементы.
+/// The golden `golden/favorites_real_names.json` was captured from LIVE `favorites.py` in a
+/// TEMPORARY HOME (the real `~/.config/rexon/favorites.json` was not created):
+/// adding all items → raw file → `list_favorite_items` → removing
+/// the first → the file again. The file bytes and the restored items are compared.
 #[test]
 fn real_installed_themes_roundtrip() {
     let g: Value = serde_json::from_str(include_str!("golden/favorites_real_names.json")).unwrap();
@@ -158,13 +158,13 @@ fn real_installed_themes_roundtrip() {
         .collect();
     assert!(items.len() >= 5, "мало реальных элементов в эталоне");
 
-    // 1. Добавление по порядку → те же состояния и те же байты файла.
+    // 1. Adding in order → the same states and the same file bytes.
     let mut store: Map<String, Value> = Map::new();
     let states: Vec<bool> = items.iter().map(|it| toggle(&mut store, it)).collect();
     let want_states: Vec<bool> =
         g["toggle_states"].as_array().unwrap().iter().map(|v| v.as_bool().unwrap()).collect();
     assert_eq!(states, want_states, "состояния toggle");
-    // Python пишет json.dump(..., indent=1) БЕЗ завершающего перевода строки.
+    // Python writes json.dump(..., indent=1) WITHOUT a trailing newline.
     assert_eq!(
         to_json_indent1(&Value::Object(store.clone())),
         g["raw"].as_str().unwrap(),
@@ -174,7 +174,7 @@ fn real_installed_themes_roundtrip() {
     assert!(raw.chars().any(|c| c as u32 > 127), "эталон без не-ASCII — нечего проверять");
     assert!(!raw.contains("\\u"), "кириллица экранирована (ensure_ascii=False нарушен)");
 
-    // 2. Восстановление элементов: поля + рантайм-`_local_kind` у локальных.
+    // 2. Restoring items: fields + the runtime `_local_kind` on local ones.
     let listed = list_items(&store);
     let want_listed = g["listed"].as_array().unwrap();
     assert_eq!(listed.len(), want_listed.len(), "число восстановленных");
@@ -196,11 +196,11 @@ fn real_installed_themes_roundtrip() {
         );
         assert_eq!(got.local_kind.as_deref(), w["_local_kind"].as_str(), "_local_kind {}", got.id);
     }
-    // Локальные темы сохраняют путь превью, OCS-тема — нет (кеш протухает).
+    // Local themes keep the preview path, the OCS theme does not (the cache goes stale).
     assert!(listed[0].preview_local.is_empty(), "у OCS-темы preview_local не обнулён");
     assert!(listed[1..].iter().all(|i| !i.preview_local.is_empty()));
 
-    // 3. Снятие первого элемента → то же состояние и те же байты.
+    // 3. Removing the first item → the same state and the same bytes.
     assert_eq!(
         toggle(&mut store, &items[0]),
         g["untoggle_state"].as_bool().unwrap(),

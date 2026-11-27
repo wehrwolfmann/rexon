@@ -1,29 +1,30 @@
-//! Класс `Extension` (одно расширение `.rxn`) — порт
-//! `rexon/extensions/extension.py` (чистая часть).
+//! The `Extension` class (a single `.rxn` extension): a port of
+//! `rexon/extensions/extension.py` (the pure part).
 //!
-//! Портируется: разбор и валидация `manifest.json` (обязательные поля `id`/
-//! `name`/`type`, проверка `type ∈ VALID_TYPES`), getters-свойства над
-//! манифестом и сборка словаря `get_info()` для UI. Тексты ошибок
-//! воспроизводятся байт-в-байт как `ValueError` Python, а `get_info()`
-//! сверяется побайтово с `json.dumps(..., ensure_ascii=False, indent=1)`
-//! (golden-тест `extension_parity.rs`).
+//! Ported: parsing and validating `manifest.json` (required fields `id`/
+//! `name`/`type`, the `type ∈ VALID_TYPES` check), getter properties over the
+//! manifest, and building the `get_info()` dictionary for the UI. Error texts
+//! are reproduced byte for byte like Python's `ValueError`, and `get_info()`
+//! is compared byte for byte with `json.dumps(..., ensure_ascii=False,
+//! indent=1)` (golden test `extension_parity.rs`).
 //!
-//! НЕ портируется (побочные эффекты, не ядро без Qt): `install.sh`/
-//! `uninstall.sh` (`subprocess`), установка шрифтов/`.desktop`-записей
+//! NOT ported (side effects, not part of the Qt-free core): `install.sh`/
+//! `uninstall.sh` (`subprocess`), installing fonts/`.desktop` entries
 //! (`shutil`/`fc-cache`), `load_plugin`/`unload_plugin` (`importlib`),
-//! `read_readme` (чтение файла для UI). Здесь — только разбор/представление.
+//! `read_readme` (reading a file for the UI). Only parsing/representation
+//! lives here.
 //!
-//! Отклонения от Python (осознанные):
-//!   * `get_info` в Python зависит от файловой системы (`has_preview`/
-//!     `preview_path` и т.п. проверяют файлы в каталоге расширения) — порт
-//!     тоже смотрит на диск; в golden-тесте абсолютный префикс каталога
-//!     (машинно-зависимый, одинаковый с обеих сторон) нормализуется в `DIR`,
-//!     остальное сверяется байт-в-байт.
-//!   * Если корень манифеста — не JSON-объект, Python `"id" not in manifest`
-//!     для списка/скаляра даёт ошибку отсутствия поля `id`; здесь тот же
-//!     результат. Патологический случай «манифест = JSON-строка» (Python
-//!     сработал бы через подстроку) не воспроизводится — в реальных `.rxn`
-//!     манифест всегда объект.
+//! Deviations from Python (deliberate):
+//!   * `get_info` in Python depends on the file system (`has_preview`/
+//!     `preview_path` and so on check files in the extension directory); the
+//!     port looks at the disk too. In the golden test the absolute directory
+//!     prefix (machine-dependent, identical on both sides) is normalized to
+//!     `DIR`, the rest is compared byte for byte.
+//!   * If the manifest root is not a JSON object, Python's `"id" not in
+//!     manifest` for a list/scalar yields a missing `id` field error; here
+//!     the result is the same. The pathological case "manifest = JSON string"
+//!     (Python would match a substring) is not reproduced: in real `.rxn`
+//!     files the manifest is always an object.
 
 use std::path::{Path, PathBuf};
 
@@ -34,17 +35,17 @@ use crate::constants::{
     wallpaper_format_label,
 };
 
-/// Ошибка разбора манифеста (аналог `ValueError`/`FileNotFoundError` в
-/// `Extension._load`). `Display` даёт тот же текст, что Python.
+/// A manifest parsing error (the counterpart of `ValueError`/`FileNotFoundError`
+/// in `Extension._load`). `Display` gives the same text as Python.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExtensionError {
-    /// `manifest.json` не найден в каталоге (`FileNotFoundError`).
+    /// `manifest.json` was not found in the directory (`FileNotFoundError`).
     ManifestNotFound(String),
-    /// `manifest.json` не является валидным JSON (`JSONDecodeError`).
+    /// `manifest.json` is not valid JSON (`JSONDecodeError`).
     BadJson(String),
-    /// Нет обязательного поля `id`/`name`/`type` (`ValueError`).
+    /// A required field `id`/`name`/`type` is missing (`ValueError`).
     MissingField(&'static str),
-    /// Неизвестный `type` (`ValueError`).
+    /// Unknown `type` (`ValueError`).
     UnknownType(String),
 }
 
@@ -73,31 +74,31 @@ impl std::fmt::Display for ExtensionError {
 
 impl std::error::Error for ExtensionError {}
 
-/// Одно расширение Rexon (`.rxn`).
+/// A single Rexon extension (`.rxn`).
 #[derive(Debug, Clone)]
 pub struct Extension {
-    /// Каталог расширения.
+    /// The extension directory.
     pub dir: PathBuf,
-    /// Разобранный `manifest.json` (объект).
+    /// The parsed `manifest.json` (an object).
     pub manifest: Map<String, Value>,
-    /// Включено ли (по `enabled_state`).
+    /// Whether it is enabled (according to `enabled_state`).
     pub enabled: bool,
 }
 
 impl Extension {
-    /// Собрать `Extension` из уже разобранного манифеста и каталога —
-    /// чистое ядро `_load` (без чтения файла).
+    /// Builds an `Extension` from an already parsed manifest and a directory: the
+    /// pure core of `_load` (without reading the file).
     ///
-    /// `enabled_state` — карта `{id: bool}` (как `self.enabled = enabled_state
-    /// .get(id, True)`; отсутствует → включено). Проверяет обязательные поля
-    /// в порядке `id`, `name`, `type` и допустимость типа.
+    /// `enabled_state` is a map `{id: bool}` (like `self.enabled = enabled_state
+    /// .get(id, True)`; missing means enabled). Checks the required fields in the
+    /// order `id`, `name`, `type`, and whether the type is allowed.
     pub fn from_manifest(
         manifest: Value,
         dir: impl Into<PathBuf>,
         enabled_state: &Map<String, Value>,
     ) -> Result<Self, ExtensionError> {
-        // Корень манифеста должен быть объектом. Если нет — как `"id" not in
-        // <не-dict>` в Python: обязательное поле id «отсутствует».
+        // The manifest root must be an object. If not, behave like `"id" not in
+        // <non-dict>` in Python: the required field id is "missing".
         let manifest = match manifest {
             Value::Object(m) => m,
             _ => return Err(ExtensionError::MissingField("id")),
@@ -134,8 +135,8 @@ impl Extension {
         })
     }
 
-    /// Загрузить расширение из каталога: прочитать `manifest.json`, разобрать,
-    /// провалидировать (порт `Extension.__init__`/`_load` целиком, с диском).
+    /// Loads an extension from a directory: reads `manifest.json`, parses and
+    /// validates it (a full port of `Extension.__init__`/`_load`, with the disk).
     pub fn load_from_dir(
         dir: impl Into<PathBuf>,
         enabled_state: &Map<String, Value>,
@@ -152,15 +153,15 @@ impl Extension {
         Self::from_manifest(manifest, dir, enabled_state)
     }
 
-    // ── Свойства над манифестом ──────────────────────────────────────────
+    // ── Properties over the manifest ─────────────────────────────────────
 
-    /// `id` расширения (`manifest.get("id", "")`).
+    /// The extension `id` (`manifest.get("id", "")`).
     pub fn ext_id(&self) -> &str {
         self.manifest.get("id").and_then(Value::as_str).unwrap_or("")
     }
 
-    /// Тип расширения (`manifest.get("type", "plugin")`). После загрузки —
-    /// всегда валидный тип из `VALID_TYPES`.
+    /// The extension type (`manifest.get("type", "plugin")`). After loading it is
+    /// always a valid type from `VALID_TYPES`.
     pub fn ext_type(&self) -> &str {
         self.manifest
             .get("type")
@@ -168,7 +169,7 @@ impl Extension {
             .unwrap_or("plugin")
     }
 
-    /// Основной формат обоев для `wallpaper-pack` (иначе `None`) —
+    /// The main wallpaper format for `wallpaper-pack` (otherwise `None`):
     /// `manifest.get("wallpaper_format", "static")`.
     pub fn wallpaper_format(&self) -> Option<&str> {
         if self.ext_type() != "wallpaper-pack" {
@@ -182,7 +183,7 @@ impl Extension {
         )
     }
 
-    /// Список обоев из манифеста (`manifest.get("wallpapers", [])`).
+    /// The list of wallpapers from the manifest (`manifest.get("wallpapers", [])`).
     fn wallpapers(&self) -> &[Value] {
         self.manifest
             .get("wallpapers")
@@ -191,7 +192,7 @@ impl Extension {
             .unwrap_or(&[])
     }
 
-    /// Фоновые звуки (`manifest.get("ambient_sounds", [])`).
+    /// Ambient sounds (`manifest.get("ambient_sounds", [])`).
     fn ambient_sounds(&self) -> &[Value] {
         self.manifest
             .get("ambient_sounds")
@@ -200,8 +201,9 @@ impl Extension {
             .unwrap_or(&[])
     }
 
-    /// Есть ли звук: непустой `ambient_sounds`, либо `has_audio` у любой обои,
-    /// либо `manifest["has_audio"]` (порт `has_audio`, с Python-истинностью).
+    /// Whether there is sound: a non-empty `ambient_sounds`, or `has_audio` on any
+    /// wallpaper, or `manifest["has_audio"]` (a port of `has_audio`, with Python
+    /// truthiness).
     pub fn has_audio(&self) -> bool {
         if !self.ambient_sounds().is_empty() {
             return true;
@@ -214,7 +216,7 @@ impl Extension {
         is_truthy(self.manifest.get("has_audio").unwrap_or(&Value::Bool(false)))
     }
 
-    /// Конфигурация сцены для формата `scene` (иначе `None`) —
+    /// The scene configuration for the `scene` format (otherwise `None`):
     /// `manifest.get("scene", {})`.
     pub fn scene_config(&self) -> Option<Value> {
         if self.wallpaper_format() != Some("scene") {
@@ -228,7 +230,7 @@ impl Extension {
         )
     }
 
-    /// Названия семейств шрифтов (`manifest.get("font_families", [])`).
+    /// Font family names (`manifest.get("font_families", [])`).
     fn font_families(&self) -> Value {
         self.manifest
             .get("font_families")
@@ -236,19 +238,19 @@ impl Extension {
             .unwrap_or_else(|| Value::Array(Vec::new()))
     }
 
-    // ── Файлы (диск) ─────────────────────────────────────────────────────
+    // ── Files (disk) ─────────────────────────────────────────────────────
 
-    /// Путь к `preview.png`, если файл существует.
+    /// The path to `preview.png`, if the file exists.
     pub fn preview_path(&self) -> Option<PathBuf> {
         file_if_exists(self.dir.join("preview.png"))
     }
 
-    /// Путь к `icon.png`, если файл существует.
+    /// The path to `icon.png`, if the file exists.
     pub fn icon_path(&self) -> Option<PathBuf> {
         file_if_exists(self.dir.join("icon.png"))
     }
 
-    /// Путь к README (первый существующий из четырёх вариантов имени).
+    /// The path to the README (the first existing one of four name variants).
     pub fn readme_path(&self) -> Option<PathBuf> {
         for name in ["README.md", "readme.md", "README.txt", "readme.txt"] {
             if let Some(p) = file_if_exists(self.dir.join(name)) {
@@ -258,11 +260,11 @@ impl Extension {
         None
     }
 
-    /// Файлы шрифтов в `data/` (или в корне, если нет `data/`) для `font-pack`
-    /// — рекурсивно, по расширению из `SUPPORTED_FONT_FORMATS`.
+    /// Font files in `data/` (or in the root if there is no `data/`) for
+    /// `font-pack`, recursively, by extension from `SUPPORTED_FONT_FORMATS`.
     ///
-    /// Сопоставление формата — по суффиксу целиком (`is_supported_font`),
-    /// поэтому составной `.pcf.gz` тоже матчится (см. починку бага там).
+    /// The format is matched by the whole suffix (`is_supported_font`), so the
+    /// compound `.pcf.gz` matches too (see the bug fix there).
     fn font_files(&self) -> Vec<PathBuf> {
         if self.ext_type() != "font-pack" {
             return Vec::new();
@@ -274,13 +276,13 @@ impl Extension {
         out
     }
 
-    // ── Info dict (для UI) ───────────────────────────────────────────────
+    // ── Info dict (for the UI) ───────────────────────────────────────────
 
-    /// Словарь информации о расширении для UI — порт `get_info()`.
+    /// The extension information dictionary for the UI: a port of `get_info()`.
     ///
-    /// Порядок ключей повторяет Python-dict (нужно для побайтовой сверки
-    /// сериализации). Блоки для `wallpaper-pack` и `font-pack` добавляются в
-    /// конце, как в оригинале.
+    /// The key order follows the Python dict (needed for the byte-for-byte
+    /// comparison of the serialization). The blocks for `wallpaper-pack` and
+    /// `font-pack` are appended at the end, as in the original.
     pub fn get_info(&self) -> Map<String, Value> {
         let mut info = Map::new();
         info.insert("id".into(), self.get_or("id", str_val("")));
@@ -348,24 +350,24 @@ impl Extension {
         info
     }
 
-    /// `manifest.get(key, default)` с сохранением JSON-типа значения.
+    /// `manifest.get(key, default)`, keeping the JSON type of the value.
     fn get_or(&self, key: &str, default: Value) -> Value {
         self.manifest.get(key).cloned().unwrap_or(default)
     }
 }
 
-// ── Хелперы ──────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────
 
-/// `VALID_TYPES`, отсортированные лексикографически и склеенные `", "` — для
-/// текста ошибки (как `', '.join(sorted(VALID_TYPES))`).
+/// `VALID_TYPES`, sorted lexicographically and joined with `", "`, for the
+/// error text (like `', '.join(sorted(VALID_TYPES))`).
 fn sorted_valid_types_joined() -> String {
     let mut types: Vec<&str> = constants::valid_types();
     types.sort_unstable();
     types.join(", ")
 }
 
-/// Истинность значения по правилам Python (`bool(v)`): пустые строка/массив/
-/// объект и `0`/`false`/`null` — ложь, остальное — истина.
+/// The truthiness of a value by Python rules (`bool(v)`): an empty
+/// string/array/object and `0`/`false`/`null` are false, everything else is true.
 fn is_truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
@@ -377,7 +379,7 @@ fn is_truthy(v: &Value) -> bool {
     }
 }
 
-/// Путь, если это существующий файл (аналог `p if os.path.isfile(p) else None`).
+/// The path, if it is an existing file (the counterpart of `p if os.path.isfile(p) else None`).
 fn file_if_exists(p: PathBuf) -> Option<PathBuf> {
     if p.is_file() {
         Some(p)
@@ -386,7 +388,7 @@ fn file_if_exists(p: PathBuf) -> Option<PathBuf> {
     }
 }
 
-/// Рекурсивно собрать файлы-шрифты (по суффиксу имени целиком) в `out`.
+/// Recursively collects font files (by the whole name suffix) into `out`.
 fn collect_fonts(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -403,17 +405,17 @@ fn collect_fonts(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// JSON-строка.
+/// A JSON string.
 fn str_val(s: &str) -> Value {
     Value::String(s.to_string())
 }
 
-/// Пустой JSON-массив.
+/// An empty JSON array.
 fn empty_array() -> Value {
     Value::Array(Vec::new())
 }
 
-/// Путь → JSON-строка, либо `null` (как `str | None` в Python).
+/// Path → JSON string, or `null` (like `str | None` in Python).
 fn path_val(p: Option<PathBuf>) -> Value {
     match p {
         Some(p) => Value::String(p.to_string_lossy().into_owned()),

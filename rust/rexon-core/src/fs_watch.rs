@@ -1,56 +1,59 @@
-//! Общая слежка inotify за каталогами: «что-то поменялось на диске» без
-//! опроса.
+//! Shared inotify watching of directories: "something changed on disk" without
+//! polling.
 //!
-//! ЗАЧЕМ ОДНА. Своя слежка была у трёх мест: раздел «Виджеты Conky»
-//! (`conky_scan`), сторож пакета движка обоев (`we_socket` лотка: пакет Rexon
-//! положил новый плагин — живой демон держит старый) и сторож оформления
-//! (`theme_watch`: тему сменили в настройках стола). Каждая копия разбора
-//! событий ядра — копия ошибок в нём (правило #12), поэтому слежка живёт
-//! здесь, а места отдают только свои цели и набор событий.
+//! WHY A SINGLE ONE. Three places had their own watching: the "Conky widgets"
+//! section (`conky_scan`), the wallpaper engine package guard (the tray's
+//! `we_socket`: the Rexon package installed a new plugin while the running
+//! daemon holds the old one) and the appearance guard (`theme_watch`: the theme
+//! was changed in the desktop's settings). Every copy of parsing kernel events
+//! is a copy of its bugs (rule #12), so watching lives here, and the places
+//! only provide their targets and event set.
 //!
-//! КАК. Следим за КАТАЛОГАМИ, а не файлами: пакетные менеджеры, редакторы и
-//! программы настроек заменяют файл (удалить + создать, `rename` поверх), и
-//! слежка за самим файлом после первой же замены глохнет. Каталога ещё нет —
-//! слежка за ним ставится, когда он появится (его родитель тоже должен быть
-//! в целях; иначе — [`Watch::rescan`] по сроку). Каталог удалён или переехал
-//! (`IN_DELETE_SELF`, `IN_MOVE_SELF`) — слежка снимается и встанет заново на
-//! тот же путь; изменение ли это, решает набор событий пользователя.
-//! Переполнение очереди — изменение всегда: что пропущено, уже не узнать.
+//! HOW. We watch DIRECTORIES, not files: package managers, editors and settings
+//! programs replace a file (delete + create, `rename` over it), and a watch on
+//! the file itself goes deaf after the very first replacement. If a directory
+//! does not exist yet, a watch is put on it when it appears (its parent must
+//! also be among the targets; otherwise — [`Watch::rescan`] on a timer). If a
+//! directory is deleted or moved (`IN_DELETE_SELF`, `IN_MOVE_SELF`), the watch
+//! is removed and will be set again on the same path; whether this is a change
+//! is decided by the user's event set. A queue overflow is always a change:
+//! what was missed can no longer be known.
 
 use std::collections::HashMap;
 use std::path::Path;
 
-/// Каталог для слежки и имена, появление, исчезновение или запись которых в
-/// нём что-то значат (пусто — любое имя).
+/// A directory to watch, and the names whose appearance, disappearance or
+/// writes in it mean something (empty — any name).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WatchTarget {
     pub dir: String,
     pub names: Vec<String>,
 }
 
-/// Слежка inotify за набором [`WatchTarget`].
+/// An inotify watch over a set of [`WatchTarget`].
 pub struct Watch {
     fd: i32,
     targets: Vec<WatchTarget>,
-    /// Какие события ядра значат «поменялось» ([`ANY_CHANGE`] или свой набор).
+    /// Which kernel events mean "changed" ([`ANY_CHANGE`] or a custom set).
     events: u32,
-    /// Номер слежки → индекс цели; цели без слежки (каталога нет) — нет в карте.
+    /// Watch number → target index; targets without a watch (no directory) are not
+    /// in the map.
     watches: HashMap<i32, usize>,
 }
 
-/// Чем проснулось ожидание [`Watch::wait_wake`].
+/// What woke up the wait in [`Watch::wait_wake`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Wake {
-    /// В целях что-то поменялось (или очередь событий переполнилась).
+    /// Something changed in the targets (or the event queue overflowed).
     Relevant,
-    /// Проснулись от постороннего события: чужое имя, служебное событие.
+    /// Woken by an unrelated event: a foreign name, a service event.
     Other,
-    /// Срок вышел, событий не было.
+    /// The timeout expired, there were no events.
     Timeout,
 }
 
-/// Набор событий по умолчанию: появление, исчезновение, запись и переезд
-/// имени, а также уход самого каталога.
+/// Default event set: appearance, disappearance, writing and moving of a name,
+/// as well as the directory itself going away.
 pub const ANY_CHANGE: u32 = libc::IN_CREATE
     | libc::IN_DELETE
     | libc::IN_MOVED_TO
@@ -59,20 +62,22 @@ pub const ANY_CHANGE: u32 = libc::IN_CREATE
     | libc::IN_DELETE_SELF
     | libc::IN_MOVE_SELF;
 
-/// Уход самого каталога. Ядру эти события нужны всегда — без них слежка
-/// после переезда каталога продолжала бы смотреть на него по новому месту.
+/// The directory itself going away. The core always needs these events —
+/// without them, after the directory moved, the watch would keep looking at it
+/// in its new location.
 const SELF_GONE: u32 = libc::IN_DELETE_SELF | libc::IN_MOVE_SELF;
 
-/// Значит ли событие ядра «смотреть заново» при наборе [`ANY_CHANGE`].
-/// `names` — имена цели (пусто — любое), `name` — имя из события (у событий
-/// самого каталога пусто). Переполнение очереди и уход самого каталога
-/// значат «да» всегда: что пропущено, уже не узнать.
+/// Whether a kernel event means "look again" with the [`ANY_CHANGE`] set.
+/// `names` — the target's names (empty — any), `name` — the name from the event
+/// (empty for events of the directory itself). A queue overflow and the
+/// directory itself going away always mean "yes": what was missed can no longer
+/// be known.
 pub fn event_matters(mask: u32, names: &[String], name: &str) -> bool {
     matters(ANY_CHANGE, mask, names, name)
 }
 
-/// То же для набора `events`: уход каталога — изменение, только если он в
-/// наборе; переполнение — всегда.
+/// The same for the `events` set: the directory going away is a change only if
+/// it is in the set; an overflow — always.
 fn matters(events: u32, mask: u32, names: &[String], name: &str) -> bool {
     if mask & libc::IN_Q_OVERFLOW != 0 {
         return true;
@@ -86,9 +91,10 @@ fn matters(events: u32, mask: u32, names: &[String], name: &str) -> bool {
     names.is_empty() || names.iter().any(|n| n == name)
 }
 
-/// Сколько ещё ждать конца пачки записей: прошло `elapsed_ms` с первой из
-/// них. `None` — пачка тянется дольше `max_ms`, хватит ждать (смотреть
-/// сейчас). Иначе — пауза тишины `quiet_ms`, но не дальше потолка.
+/// How much longer to wait for the end of a burst of writes: `elapsed_ms` have
+/// passed since the first of them. `None` — the burst drags on longer than
+/// `max_ms`, enough waiting (look now). Otherwise — a quiet pause of
+/// `quiet_ms`, but not beyond the ceiling.
 pub fn burst_wait_ms(elapsed_ms: u64, quiet_ms: i32, max_ms: u64) -> Option<i32> {
     if elapsed_ms >= max_ms {
         return None;
@@ -98,15 +104,15 @@ pub fn burst_wait_ms(elapsed_ms: u64, quiet_ms: i32, max_ms: u64) -> Option<i32>
 }
 
 impl Watch {
-    /// Слежка с набором событий [`ANY_CHANGE`].
+    /// A watch with the [`ANY_CHANGE`] event set.
     pub fn new(targets: Vec<WatchTarget>) -> Option<Self> {
         Self::with_events(targets, ANY_CHANGE)
     }
 
-    /// Слежка, у которой «поменялось» значат только события `events`
-    /// (флаги `IN_*`); остальные будят [`Self::wait_wake`] как [`Wake::Other`].
+    /// A watch for which only the `events` events (`IN_*` flags) mean "changed";
+    /// the rest wake [`Self::wait_wake`] as [`Wake::Other`].
     pub fn with_events(targets: Vec<WatchTarget>, events: u32) -> Option<Self> {
-        // SAFETY: обычный системный вызов без указателей.
+        // SAFETY: an ordinary system call without pointers.
         let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
         if fd < 0 {
             return None;
@@ -116,9 +122,9 @@ impl Watch {
         Some(me)
     }
 
-    /// Поставить слежку за каталогами, у которых её ещё нет (появились).
-    /// После каждого пробуждения от событий это делается само; без событий
-    /// (родителя каталога нет в целях) — звать по сроку.
+    /// Set watches on directories that do not have one yet (that have appeared).
+    /// After each wake-up from events this happens by itself; without events (the
+    /// directory's parent is not among the targets) call it on a timer.
     pub fn rescan(&mut self) {
         let mask = self.events | SELF_GONE;
         for (i, t) in self.targets.iter().enumerate() {
@@ -126,7 +132,7 @@ impl Watch {
                 continue;
             }
             let Ok(path) = std::ffi::CString::new(t.dir.as_str()) else { continue };
-            // SAFETY: `path` — живая C-строка до конца вызова.
+            // SAFETY: `path` is a live C string until the end of the call.
             let wd = unsafe { libc::inotify_add_watch(self.fd, path.as_ptr(), mask) };
             if wd >= 0 {
                 self.watches.insert(wd, i);
@@ -134,16 +140,16 @@ impl Watch {
         }
     }
 
-    /// Ждать до `timeout_ms` (−1 — без срока). `true` — в целях что-то
-    /// поменялось (или очередь событий переполнилась — тогда тоже смотреть).
+    /// Wait up to `timeout_ms` (−1 — no timeout). `true` — something changed in the
+    /// targets (or the event queue overflowed — then look as well).
     pub fn wait(&mut self, timeout_ms: i32) -> bool {
         self.wait_wake(timeout_ms) == Wake::Relevant
     }
 
-    /// Как [`Self::wait`], но отличает постороннее событие от вышедшего срока.
+    /// Like [`Self::wait`], but distinguishes an unrelated event from an expired timeout.
     pub fn wait_wake(&mut self, timeout_ms: i32) -> Wake {
         let mut pfd = libc::pollfd { fd: self.fd, events: libc::POLLIN, revents: 0 };
-        // SAFETY: один дескриптор, структура живёт до конца вызова.
+        // SAFETY: a single descriptor, the structure lives until the end of the call.
         let n = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
         if n <= 0 {
             return Wake::Timeout;
@@ -151,7 +157,7 @@ impl Watch {
         let mut changed = false;
         let mut buf = [0u8; 8192];
         loop {
-            // SAFETY: буфер наш, длина — его размер.
+            // SAFETY: the buffer is ours, the length is its size.
             let len = unsafe { libc::read(self.fd, buf.as_mut_ptr().cast(), buf.len()) };
             if len <= 0 {
                 break;
@@ -160,8 +166,8 @@ impl Watch {
             let head = std::mem::size_of::<libc::inotify_event>();
             let mut off = 0usize;
             while off + head <= len {
-                // SAFETY: ядро кладёт события целиком; выравнивание не
-                // гарантировано — читаем копией.
+                // SAFETY: the kernel writes whole events; alignment is not
+                // guaranteed — we read via a copy.
                 let ev: libc::inotify_event = unsafe { std::ptr::read_unaligned(buf.as_ptr().add(off).cast()) };
                 let name_len = ev.len as usize;
                 let raw = &buf[off + head..(off + head + name_len).min(len)];
@@ -170,12 +176,12 @@ impl Watch {
                 changed |= self.on_event(ev.wd, ev.mask, &name);
             }
         }
-        // Появился каталог-место (или пропал) — переставить слежку.
+        // A target directory appeared (or vanished) — re-set the watch.
         self.rescan();
         if changed { Wake::Relevant } else { Wake::Other }
     }
 
-    /// Учесть одно событие ядра; `true` — это изменение в целях.
+    /// Account for one kernel event; `true` — it is a change in the targets.
     fn on_event(&mut self, wd: i32, mask: u32, name: &str) -> bool {
         if mask & libc::IN_Q_OVERFLOW != 0 {
             return true;
@@ -185,24 +191,24 @@ impl Watch {
         if mask & libc::IN_IGNORED != 0 {
             self.watches.remove(&wd);
         } else if mask & libc::IN_MOVE_SELF != 0 {
-            // Слежка ушла вместе с каталогом на новое место; на прежний
-            // путь её надо ставить заново.
-            // SAFETY: дескриптор и номер слежки наши.
+            // The watch went away together with the directory to its new place; it has to
+            // be set on the old path again.
+            // SAFETY: the descriptor and the watch number are ours.
             unsafe { libc::inotify_rm_watch(self.fd, wd) };
             self.watches.remove(&wd);
         }
         relevant
     }
 
-    /// Дождаться изменения и конца пачки записей: после первого изменения
-    /// ждать, пока `quiet_ms` подряд не будет новых (пакетный менеджер пишет
-    /// десятки файлов подряд), но не дольше `max_ms` от первого.
+    /// Wait for a change and the end of the burst of writes: after the first change,
+    /// wait until there are no new ones for `quiet_ms` in a row (a package manager
+    /// writes dozens of files in a row), but no longer than `max_ms` from the first.
     pub fn wait_burst(&mut self, quiet_ms: i32, max_ms: u64) {
         while !self.wait(-1) {}
         self.settle(quiet_ms, max_ms);
     }
 
-    /// Изменение уже пришло — дождаться конца пачки (как в [`Self::wait_burst`]).
+    /// A change has already arrived — wait for the end of the burst (as in [`Self::wait_burst`]).
     pub fn settle(&mut self, quiet_ms: i32, max_ms: u64) {
         let start = std::time::Instant::now();
         while let Some(ms) = burst_wait_ms(start.elapsed().as_millis() as u64, quiet_ms, max_ms) {
@@ -215,7 +221,7 @@ impl Watch {
 
 impl Drop for Watch {
     fn drop(&mut self) {
-        // SAFETY: дескриптор наш и закрывается один раз.
+        // SAFETY: the descriptor is ours and is closed once.
         unsafe { libc::close(self.fd) };
     }
 }
@@ -242,7 +248,7 @@ mod tests {
         assert!(event_matters(libc::IN_MOVED_TO, &toml, "plugin.toml"));
         assert!(!event_matters(libc::IN_CLOSE_WRITE, &toml, "libowe.so"));
         assert!(event_matters(libc::IN_CREATE | libc::IN_ISDIR, &[], "new-plugin"));
-        // Уход самого каталога и переполнение — всегда повод смотреть.
+        // The directory itself going away and an overflow are always a reason to look.
         assert!(event_matters(libc::IN_DELETE_SELF, &toml, ""));
         assert!(event_matters(libc::IN_MOVE_SELF, &toml, ""));
         assert!(event_matters(libc::IN_Q_OVERFLOW, &toml, ""));
@@ -271,14 +277,15 @@ mod tests {
         let start = std::time::Instant::now();
         w.wait_burst(300, 5000);
         writer.join().unwrap();
-        // Пачка ~200 мс + тишина 300 мс; до потолка далеко.
+        // A burst of ~200 ms + 300 ms of quiet; far from the ceiling.
         let took = start.elapsed().as_millis();
         assert!((300..4000).contains(&took), "{took} мс");
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// Каталог удалили и создали заново (так пакетный менеджер может
-    /// заменить папку плагина): уход замечен, а слежка встаёт на новый.
+    /// The directory was deleted and created again (this is how a package manager
+    /// may replace a plugin folder): the removal is noticed, and the watch is set on
+    /// the new one.
     #[test]
     fn deleted_and_recreated_dir_is_watched_again() {
         let d = tmp("recreate");
@@ -291,14 +298,14 @@ mod tests {
         assert!(w.wait(500));
         std::fs::create_dir_all(&sub).unwrap();
         assert!(w.wait(500));
-        // Слежка встала на новый каталог — запись в него слышна.
+        // The watch is set on the new directory — writes to it are heard.
         while w.wait(100) {}
         std::fs::write(sub.join("plugin.toml"), "x").unwrap();
         assert!(w.wait(500));
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// Каталог подменили через `rename` (новый рядом, потом поверх).
+    /// The directory was replaced via `rename` (a new one next to it, then over it).
     #[test]
     fn dir_replaced_by_rename_is_noticed() {
         let d = tmp("rename");
@@ -317,12 +324,12 @@ mod tests {
         assert!(w.wait(500), "слежка за новым каталогом по прежнему пути");
         let _ = std::fs::remove_dir_all(&d);
     }
-    /// Набор событий сторожа оформления (`theme_watch`): запись и появление
-    /// имени, без исчезновения.
+    /// The event set of the appearance guard (`theme_watch`): writing and
+    /// appearance of a name, without disappearance.
     const WRITES: u32 = libc::IN_CLOSE_WRITE | libc::IN_MOVED_TO | libc::IN_CREATE;
 
-    /// Постороннее имя будит как [`Wake::Other`], а не как вышедший срок:
-    /// сторож оформления на постороннем не обрывает паузу затишья.
+    /// An unrelated name wakes as [`Wake::Other`], not as an expired timeout: the
+    /// appearance guard does not cut its quiet pause short on unrelated events.
     #[test]
     fn wake_tells_unrelated_write_from_timeout() {
         let d = tmp("wake");
@@ -335,9 +342,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// Атомарная запись редактора и dconf: временный файл рядом, потом
-    /// `rename` поверх. Слышно с любым набором событий, и слежка после
-    /// замены не глохнет.
+    /// Atomic write by an editor and dconf: a temporary file next to it, then
+    /// `rename` over it. Heard with any event set, and the watch does not go deaf
+    /// after the replacement.
     #[test]
     fn atomic_save_by_rename_is_heard_every_time() {
         let d = tmp("atomic");
@@ -354,8 +361,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// Удаление файла — изменение для набора по умолчанию и постороннее
-    /// событие для набора без `IN_DELETE`.
+    /// Deleting a file is a change for the default set and an unrelated event for a
+    /// set without `IN_DELETE`.
     #[test]
     fn deletion_counts_only_when_asked_for() {
         let d = tmp("delete");
@@ -366,14 +373,15 @@ mod tests {
         std::fs::remove_file(d.join("a")).unwrap();
         assert_eq!(any.wait_wake(500), Wake::Relevant);
         assert_eq!(writes.wait_wake(500), Wake::Relevant);
-        // Ядро не шлёт того, о чём не просили: срок выходит.
+        // The kernel does not send what was not asked for: the timeout expires.
         assert_eq!(quiet.wait_wake(200), Wake::Timeout);
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// Каталог цели исчез и появился снова (его родитель тоже в целях): для
-    /// набора без ухода каталога это посторонние события, но слежка встаёт
-    /// на новый каталог сама, без [`Watch::rescan`] по сроку.
+    /// The target directory vanished and appeared again (its parent is also among
+    /// the targets): for a set without directory removal these are unrelated
+    /// events, but the watch is set on the new directory by itself, without a timed
+    /// [`Watch::rescan`].
     #[test]
     fn vanished_dir_is_rewatched_with_custom_events() {
         let d = tmp("vanish");
@@ -390,7 +398,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// Каталог переехал: слежка не уходит с ним, а остаётся на прежнем пути.
+    /// The directory moved: the watch does not go with it but stays on the old path.
     #[test]
     fn moved_away_dir_is_not_followed() {
         let d = tmp("moved");
@@ -400,7 +408,7 @@ mod tests {
             Watch::with_events(vec![target(&d, &[]), target(&sub, &["user"])], WRITES).expect("inotify");
         std::fs::rename(&sub, d.join("dconf.old")).unwrap();
         while w.wait_wake(200) != Wake::Timeout {}
-        // Запись в уехавший каталог — уже не наша цель.
+        // Writing to the moved directory is no longer our target.
         std::fs::write(d.join("dconf.old").join("user"), "x").unwrap();
         assert_ne!(w.wait_wake(200), Wake::Relevant, "слежка уехала вместе с каталогом");
         std::fs::create_dir_all(&sub).unwrap();
@@ -410,8 +418,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// Каталога не было при запуске, а родителя нет в целях: событий не
-    /// будет, слежку ставит [`Watch::rescan`].
+    /// The directory did not exist at start-up and its parent is not among the
+    /// targets: there will be no events, the watch is set by [`Watch::rescan`].
     #[test]
     fn rescan_picks_up_dir_without_watched_parent() {
         let d = tmp("rescan");
@@ -425,9 +433,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
-    /// Переполнение очереди ядра — изменение при любом наборе, даже без
-    /// номера слежки (ядро шлёт его с `wd = -1`); уход каталога — только
-    /// если о нём просили.
+    /// A kernel queue overflow is a change with any set, even without a watch number
+    /// (the kernel sends it with `wd = -1`); the directory going away — only if it
+    /// was asked for.
     #[test]
     fn overflow_always_matters() {
         let d = tmp("overflow");

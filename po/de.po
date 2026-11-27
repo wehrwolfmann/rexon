@@ -2445,6 +2445,22 @@ msgid "⚠️ out of date"
 msgstr "⚠️ veraltet"
 
 #: rust/rexon-core/src/appearance_page.rs
+msgid "📦 Set · system package · password"
+msgstr "📦 Set · Systempaket · Passwort"
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid "📦 System package · password"
+msgstr "📦 Systempaket · Passwort"
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid ""
+"Installed as a system package from AUR: it asks for the administrator "
+"password and is removed the same way."
+msgstr ""
+"Wird als Systempaket aus dem AUR installiert: Es fragt nach dem "
+"Administratorpasswort und wird genauso entfernt."
+
+#: rust/rexon-core/src/appearance_page.rs
 msgid "Version: %1"
 msgstr "Version: %1"
 
@@ -2750,6 +2766,22 @@ msgstr ""
 #: rust/rexon-core/src/appearance_page.rs
 msgid "Kvantum themes (Kvantum engine)"
 msgstr "Kvantum-Designs (Kvantum-Engine)"
+
+#: rust/rexon-core/src/aur.rs
+msgid "Font sample — after installation"
+msgstr "Schriftprobe – nach der Installation"
+
+#: rust/rexon-core/src/aur.rs
+msgid "Wallpaper set — the pictures come inside the package"
+msgstr "Hintergrundbild-Set – die Bilder sind im Paket"
+
+#: rust/rexon-core/src/aur.rs
+msgid "The author gave no picture"
+msgstr "Kein Bild vom Autor"
+
+#: rust/rexon-core/src/aur.rs
+msgid "Aa Bb Cc 123"
+msgstr "Aa Bb Ää 123"
 
 #: rust/rexon-core/src/aur.rs
 msgid "AUR RPC returned something other than JSON: %1"
@@ -3878,6 +3910,11 @@ msgstr "KI-Wallpaper"
 msgctxt "Razer Axon"
 msgid "Search wallpapers"
 msgstr "Wallpaper durchsuchen"
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Search in"
+msgstr "Suchen in"
 
 #: rust/rexon-core/src/axon_window.rs
 msgctxt "Razer Axon"
@@ -6971,7 +7008,7 @@ msgstr ""
 "Kontrollzentrum → Personalisierung."
 
 #. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-#. Вход в Treeland — только через DDM (treeland#1656), см. `deepin_treeland`.
+#. Login into Treeland is only possible through DDM (treeland#1656), see `deepin_treeland`.
 #: rust/rexon-core/src/dde.rs
 msgid ""
 "Rexon supports Deepin only on Treeland. To switch, open Rexon → Desktops → "
@@ -11192,7 +11229,9 @@ msgstr "Die externe Website %1 im Browser öffnen?"
 msgid ""
 "The link leads outside Rexon. The page will open in your browser, not in "
 "Rexon."
-msgstr "Der Link führt aus Rexon hinaus. Die Seite öffnet sich in Ihrem Browser, nicht in Rexon."
+msgstr ""
+"Der Link führt aus Rexon hinaus. Die Seite öffnet sich in Ihrem Browser, "
+"nicht in Rexon."
 
 #: rust/rexon-core/src/link_policy.rs
 msgid "Don't ask again for this website"
@@ -14502,8 +14541,8 @@ msgstr "<b>📦 Aufbau von .rxn v3</b>"
 #. translate the prose and the sample values of "name", "author" and
 #. "description". The <pre> blocks stay left-to-right in every language,
 #. so keep their arrows ← as they are.
-#. Без ведущего перевода строки: xgettext срезает его у msgid, и
-#. строка в коде разошлась бы с ключом каталога.
+#. No leading line break: xgettext strips it from the msgid, and the
+#. string in the code would diverge from the catalog key.
 #: rust/rexon-core/src/qt_extensions.rs
 msgid ""
 "<p>A Rexon extension is a plain <b>ZIP archive</b> with the <code>.rxn</"
@@ -16844,7 +16883,10 @@ msgstr "🔗 Links zu Websites"
 msgid ""
 "Links in item descriptions and comments open in your browser only after "
 "Rexon asks. Here are the websites you chose to open without asking."
-msgstr "Links aus Beschreibungen und Kommentaren von Einträgen öffnen sich im Browser erst, nachdem Rexon nachgefragt hat. Hier stehen die Websites, die Sie ohne Nachfrage öffnen lassen."
+msgstr ""
+"Links aus Beschreibungen und Kommentaren von Einträgen öffnen sich im "
+"Browser erst, nachdem Rexon nachgefragt hat. Hier stehen die Websites, die "
+"Sie ohne Nachfrage öffnen lassen."
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid ""
@@ -24483,6 +24525,25 @@ msgstr ""
 "⚠️ River: Die Starteinstellungen konnten nicht geschrieben werden (%1): %2. "
 "Ohne sie startet River ohne Tastenkürzel."
 
+#. TRANSLATORS: %1 is a desktop (Hyprland…), %2 program names (“hyprlock, hypridle”).
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"ℹ️ %1: screen lock programs are missing (%2) — your distribution may not have "
+"them; the screen lock wasn't set up"
+msgstr ""
+"ℹ️ %1: Programme für die Bildschirmsperre fehlen (%2) — Ihre Distribution "
+"bietet sie womöglich nicht an; die Bildschirmsperre wurde nicht eingerichtet"
+
+#. TRANSLATORS: %1 is a desktop (Hyprland, niri…), %2 a file path.
+#: rust/rexon-core/src/system_plan.rs
+msgid ""
+"ℹ️ %1: there is no settings file yet (%2). Log in once, then run “Check / "
+"Repair” and Rexon will set up the screen lock."
+msgstr ""
+"ℹ️ %1: Eine Einstellungsdatei gibt es noch nicht (%2). Melden Sie sich einmal "
+"an dieser Arbeitsumgebung an und drücken Sie dann „Prüfen / Reparieren“ — "
+"Rexon richtet die Bildschirmsperre dann ein."
+
 #. TRANSLATORS: %1 is a desktop (Wayfire, LXQt…), %2 a key combination,
 #. %3 a file path.
 #: rust/rexon-core/src/system_plan.rs
@@ -24491,13 +24552,20 @@ msgstr "🔒 %1: Bildschirmsperre eingerichtet (%3) — sperren mit %2"
 
 #. TRANSLATORS: %1 is a desktop, %2 a file path.
 #: rust/rexon-core/src/system_plan.rs
-msgid "ℹ️ %1: the screen lock is already set up in your settings (%2) — left as is"
-msgstr "ℹ️ %1: Die Bildschirmsperre ist in Ihren Einstellungen schon eingerichtet (%2) — bleibt unverändert"
+msgid ""
+"ℹ️ %1: the screen lock is already set up in your settings (%2) — left as is"
+msgstr ""
+"ℹ️ %1: Die Bildschirmsperre ist in Ihren Einstellungen schon eingerichtet "
+"(%2) — bleibt unverändert"
 
 #. TRANSLATORS: %1 is a desktop, %2 a file path, %3 the reason.
 #: rust/rexon-core/src/system_plan.rs
-msgid "⚠️ %1: couldn't set up the screen lock in %2: %3. Locking the screen may not work."
-msgstr "⚠️ %1: Die Bildschirmsperre ließ sich in %2 nicht einrichten: %3. Der Bildschirm wird sich womöglich nicht sperren."
+msgid ""
+"⚠️ %1: couldn't set up the screen lock in %2: %3. Locking the screen may not "
+"work."
+msgstr ""
+"⚠️ %1: Die Bildschirmsperre ließ sich in %2 nicht einrichten: %3. Der "
+"Bildschirm wird sich womöglich nicht sperren."
 
 #: rust/rexon-core/src/system_plan.rs
 msgid ""
@@ -26539,6 +26607,14 @@ msgid "Nothing new in the Razer Axon queue."
 msgstr "Nichts Neues in der Razer-Axon-Warteschlange."
 
 #: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "kpackagetool6 was not found — KDE Plasma 6 is required"
+msgstr "kpackagetool6 wurde nicht gefunden — KDE Plasma 6 wird benötigt"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
+msgid "the bundled plugin package was not found: %1"
+msgstr "das mitgelieferte Plugin-Paket wurde nicht gefunden: %1"
+
+#: rust/rexon-core/src/waywallen_kde_plugin.rs
 msgid ""
 "Wallpaper Engine wallpapers are not on the desktop yet. Pick a wallpaper or "
 "a playlist and press “Apply” or “Play playlist” — Rexon will put them on the "
@@ -28209,6 +28285,10 @@ msgstr "keine Download-Adresse"
 msgid "The connection to the wallpaper engine was lost"
 msgstr "Die Verbindung zur Hintergrund-Engine wurde unterbrochen"
 
+#: rust/rexon-gui/src/we_socket.rs
+msgid "kpackagetool6 failed to start: %1"
+msgstr "kpackagetool6 konnte nicht gestartet werden: %1"
+
 #: rust/rexon-gui/src/we_update_workers.rs
 msgid "Stopping the wallpaper engine…"
 msgstr "Hintergrund-Engine wird gestoppt …"
@@ -29752,38 +29832,3 @@ msgstr "Größe der Fensterumrandung:"
 
 #~ msgid "About waywallen"
 #~ msgstr "Über waywallen"
-
-#: rust/rexon-core/src/appearance_page.rs
-msgid "📦 Set · system package · password"
-msgstr "📦 Set · Systempaket · Passwort"
-
-#: rust/rexon-core/src/appearance_page.rs
-msgid "📦 System package · password"
-msgstr "📦 Systempaket · Passwort"
-
-#: rust/rexon-core/src/appearance_page.rs
-msgid ""
-"Installed as a system package from AUR: it asks for the administrator "
-"password and is removed the same way."
-msgstr "Wird als Systempaket aus dem AUR installiert: Es fragt nach dem Administratorpasswort und wird genauso entfernt."
-
-#: rust/rexon-core/src/aur.rs
-msgid "Font sample — after installation"
-msgstr "Schriftprobe – nach der Installation"
-
-#: rust/rexon-core/src/aur.rs
-msgid "Wallpaper set — the pictures come inside the package"
-msgstr "Hintergrundbild-Set – die Bilder sind im Paket"
-
-#: rust/rexon-core/src/aur.rs
-msgid "The author gave no picture"
-msgstr "Kein Bild vom Autor"
-
-#: rust/rexon-core/src/aur.rs
-msgid "Aa Bb Cc 123"
-msgstr "Aa Bb Ää 123"
-
-#: rust/rexon-core/src/axon_window.rs
-msgctxt "Razer Axon"
-msgid "Search in"
-msgstr "Suchen in"

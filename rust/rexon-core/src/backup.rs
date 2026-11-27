@@ -1,38 +1,42 @@
-//! Резервные копии конфигов DE — порт детерминированных частей `rexon/backup.py`
-//! (`BackupManager`, `PlasmaProtector`).
+//! Backups of DE configs: a port of the deterministic parts of
+//! `rexon/backup.py` (`BackupManager`, `PlasmaProtector`).
 //!
-//! Портированы ТОЛЬКО чистые вход→выход куски (сверяются golden-тестом
-//! `backup_parity.rs` с самим Python):
-//!   * константы staging/rollback-суффиксов и списки конфигов Plasma
+//! ONLY the pure input->output pieces are ported (checked against Python
+//! itself by the golden test `backup_parity.rs`):
+//!   * the staging/rollback suffix constants and the Plasma config lists
 //!     (`PANEL_CONFIGS`, `FULL_CONFIGS`);
-//!   * имя бэкапа `{de}_{timestamp}` (`backup_name`);
-//!   * безопасное имя файла в снапшоте — `relpath(path, home)` с заменой
-//!     разделителя и срезкой ведущих `.`/`_` (`safe_config_name`, `posix_relpath`);
-//!   * детект Plasma по `XDG_CURRENT_DESKTOP` (`is_plasma_desktop`);
-//!   * раскрытие `~` в списке путей (`expand_tilde`);
-//!   * выборки/сортировки метаданных (`de_backups_for`, `plasma_backups`,
+//!   * the backup name `{de}_{timestamp}` (`backup_name`);
+//!   * the safe file name in a snapshot: `relpath(path, home)` with the
+//!     separator replaced and leading `.`/`_` stripped (`safe_config_name`,
+//!     `posix_relpath`);
+//!   * Plasma detection by `XDG_CURRENT_DESKTOP` (`is_plasma_desktop`);
+//!   * expanding `~` in a list of paths (`expand_tilde`);
+//!   * metadata selections/sorts (`de_backups_for`, `plasma_backups`,
 //!     `plasma_latest_backup`, `plasma_has_backups`).
 //!
-//! С 2026-07-30 портирован и САМ транзакционный движок восстановления
-//! (`transactional_restore`) — он принципиально не выражается «планом»:
-//! staging → atomic swap → commit/rollback это конечный автомат над ФС, и
-//! половина отката жила бы в шиме. Работает напрямую через `std::fs`
-//! (как `ext_utils.rs`/`settings.rs`), сам чинит своё состояние при сбое и
-//! НИКОГДА не паникует: любая ошибка возвращается в [`RestoreOutcome`], так
-//! что для шима «исключение моста» = «до ФС дело не дошло» и фолбэк безопасен.
-//! Вместе с ним портированы решения обоих менеджеров: раскладка снапшота,
-//! выбор записи для восстановления, ротация снимков Plasma, argv перезапуска
-//! plasmashell и все пользовательские сообщения.
+//! Since 2026-07-30 the transactional restore engine ITSELF has been ported
+//! too (`transactional_restore`): it fundamentally cannot be expressed as
+//! a "plan": staging -> atomic swap -> commit/rollback is a state machine
+//! over the filesystem, and half of the rollback would live in the shim. It
+//! works directly through `std::fs` (like `ext_utils.rs`/`settings.rs`),
+//! repairs its own state on failure and NEVER panics: any error is
+//! returned in [`RestoreOutcome`], so for the shim "a bridge exception"
+//! means "the filesystem was never reached", and the fallback is safe.
+//! Together with it the decisions of both managers are ported: the
+//! snapshot layout, choosing the entry to restore, rotation of Plasma
+//! snapshots, the plasmashell restart argv and all user messages.
 //!
-//! ⚠ Правило #16: в оригинале при падении ПОСЕРЕДИНЕ atomic swap элемент,
-//! у которого `rename(dest → rollback)` уже прошёл, а `rename(stage → dest)`
-//! ещё нет, в список `swapped` не попадал — его откат не выполнялся, и
-//! пользователь оставался БЕЗ файла (rollback-копия сиротела рядом). Порт
-//! ведёт такой «полёт» отдельно и откатывает его тоже; тот же фикс внесён в
-//! Python-эталон `_transactional_restore` (он остаётся фолбэком).
+//! ⚠ Rule #16: in the original, on a failure IN THE MIDDLE of the atomic
+//! swap, an item whose `rename(dest -> rollback)` had already happened but
+//! whose `rename(stage -> dest)` had not yet did not get into the `swapped`
+//! list: it was not rolled back, and the user was left WITHOUT the file
+//! (the rollback copy was orphaned next to it). The port tracks such an
+//! "in flight" item separately and rolls it back too; the same fix was
+//! made in the Python reference `_transactional_restore` (it remains the
+//! fallback).
 //!
-//! Остаётся Python-стороне: `glob` шаблонов конфигов, чтение/запись JSON
-//! метаданных, вызов `subprocess` для plasmashell.
+//! What stays on the Python side: `glob` of config patterns, reading/writing
+//! the metadata JSON, calling `subprocess` for plasmashell.
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -42,12 +46,12 @@ use std::path::Path;
 use crate::system_plan::Cmd;
 use crate::i18n::{ntr, tr, trf};
 
-/// Суффикс staging-копии при транзакционном restore (`dest + _STAGE_SUFFIX`).
+/// Suffix of the staging copy in a transactional restore (`dest + _STAGE_SUFFIX`).
 pub const STAGE_SUFFIX: &str = ".rexon-new";
-/// Суффикс rollback-копии оригинала при atomic swap.
+/// Suffix of the rollback copy of the original during the atomic swap.
 pub const ROLLBACK_SUFFIX: &str = ".rexon-rollback";
 
-/// Критичные конфиги панели Plasma (`PlasmaProtector.PANEL_CONFIGS`).
+/// Critical Plasma panel configs (`PlasmaProtector.PANEL_CONFIGS`).
 pub const PANEL_CONFIGS: &[&str] = &[
     "~/.config/plasma-org.kde.plasma.desktop-appletsrc",
     "~/.config/plasmashellrc",
@@ -56,8 +60,8 @@ pub const PANEL_CONFIGS: &[&str] = &[
     "~/.config/plasma-localerc",
 ];
 
-/// Расширенный набор конфигов Plasma (`FULL_CONFIGS = PANEL_CONFIGS + extra`).
-/// Порядок = панель, затем дополнительные (важно для копирования/сверки).
+/// The extended set of Plasma configs (`FULL_CONFIGS = PANEL_CONFIGS + extra`).
+/// Order = the panel ones, then the extra ones (matters for copying/checks).
 pub const FULL_CONFIGS: &[&str] = &[
     "~/.config/plasma-org.kde.plasma.desktop-appletsrc",
     "~/.config/plasmashellrc",
@@ -76,21 +80,22 @@ pub const FULL_CONFIGS: &[&str] = &[
     "~/.local/share/plasma",
 ];
 
-/// Имя бэкапа — `f"{de_name}_{timestamp}"` (`create_backup`).
+/// The backup name: `f"{de_name}_{timestamp}"` (`create_backup`).
 pub fn backup_name(de_name: &str, timestamp: &str) -> String {
     format!("{de_name}_{timestamp}")
 }
 
-/// Раскрытие `~` в каждом пути на `home` (порт `PlasmaProtector._expand`).
-/// Как Python `str.replace("~", home)` — заменяет ВСЕ вхождения `~`.
+/// Expand `~` in each path to `home` (a port of `PlasmaProtector._expand`).
+/// Like Python's `str.replace("~", home)`: replaces ALL occurrences of `~`.
 pub fn expand_tilde(paths: &[&str], home: &str) -> Vec<String> {
     expand_tilde_xdg(paths, home, None)
 }
 
-/// То же с учётом `$XDG_CONFIG_HOME`: ведущий `~/.config` уходит в корень
-/// конфигов (единый расширитель ядра — [`crate::utils::expand_user`]), а
-/// остальные `~` раскрываются в `home` как раньше. Без переменной результат
-/// совпадает с [`expand_tilde`] байт-в-байт.
+/// The same, honouring `$XDG_CONFIG_HOME`: a leading `~/.config` goes to
+/// the config root (the core's single expander,
+/// [`crate::utils::expand_user`]), and the other `~` are expanded to
+/// `home` as before. Without the variable the result matches
+/// [`expand_tilde`] byte for byte.
 pub fn expand_tilde_xdg(
     paths: &[&str],
     home: &str,
@@ -100,23 +105,23 @@ pub fn expand_tilde_xdg(
         .iter()
         .map(|p| {
             let head = crate::utils::expand_user(p, home, xdg_config_home);
-            // хвостовые `~` внутри пути (квирк оригинала: replace ВСЕХ)
+            // trailing `~` inside the path (the original's quirk: replace ALL)
             head.replace('~', home)
         })
         .collect()
 }
 
-/// Детект работающей Plasma по `XDG_CURRENT_DESKTOP`
-/// (`PlasmaProtector.is_plasma_running`): `"kde"` или `"plasma"` в нижнем
-/// регистре строки.
+/// Detect a running Plasma by `XDG_CURRENT_DESKTOP`
+/// (`PlasmaProtector.is_plasma_running`): `"kde"` or `"plasma"` in the
+/// lowercased string.
 pub fn is_plasma_desktop(xdg_current_desktop: &str) -> bool {
     let de = xdg_current_desktop.to_lowercase();
     de.contains("kde") || de.contains("plasma")
 }
 
-/// Нормализованные компоненты абсолютного POSIX-пути (аналог `os.path.normpath`
-/// для абсолютного пути: отбрасываем пустые и `.`, `..` схлопываем, не поднимаясь
-/// выше корня).
+/// Normalised components of an absolute POSIX path (the analogue of
+/// `os.path.normpath` for an absolute path: drop empty ones and `.`,
+/// collapse `..` without going above the root).
 fn norm_abs_components(path: &str) -> Vec<&str> {
     let mut out: Vec<&str> = Vec::new();
     for seg in path.split('/') {
@@ -133,8 +138,9 @@ fn norm_abs_components(path: &str) -> Vec<&str> {
     out
 }
 
-/// Относительный путь от `start` до `path` для абсолютных POSIX-путей —
-/// порт `os.path.relpath` (без разрешения симлинков). `path == start` → `"."`.
+/// The relative path from `start` to `path` for absolute POSIX paths: a
+/// port of `os.path.relpath` (without resolving symlinks). `path == start`
+/// -> `"."`.
 pub fn posix_relpath(path: &str, start: &str) -> String {
     let sc = norm_abs_components(start);
     let pc = norm_abs_components(path);
@@ -148,9 +154,9 @@ pub fn posix_relpath(path: &str, start: &str) -> String {
     }
 }
 
-/// Безопасное имя файла в снапшоте, без коллизий (логика `create_backup`):
-/// `relpath(path, home)` → замена `/` на `_` → срезка ведущих `.`/`_`.
-/// `~/.config/gtk-3.0/settings.ini` → `config_gtk-3.0_settings.ini`.
+/// A safe file name in a snapshot, without collisions (the `create_backup`
+/// logic): `relpath(path, home)` -> replace `/` with `_` -> strip leading
+/// `.`/`_`. `~/.config/gtk-3.0/settings.ini` -> `config_gtk-3.0_settings.ini`.
 pub fn safe_config_name(path: &str, home: &str) -> String {
     let rel = posix_relpath(path, home);
     rel.replace('/', "_")
@@ -158,9 +164,9 @@ pub fn safe_config_name(path: &str, home: &str) -> String {
         .to_string()
 }
 
-// ── Метаданные: выборки и сортировки (чистые) ──────────────────────────────
+// ── Metadata: selections and sorts (pure) ──────────────────────────────────
 
-/// Сводка бэкапа для конкретного DE (`BackupManager.get_backups_for_de`).
+/// Backup summary for a specific DE (`BackupManager.get_backups_for_de`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DeBackupSummary {
     pub name: String,
@@ -168,8 +174,8 @@ pub struct DeBackupSummary {
     pub files_count: usize,
 }
 
-/// Запись метаданных `BackupManager` (значение `metadata[name]`), из которой
-/// берутся `de_name`, `timestamp` и число сохранённых путей.
+/// A `BackupManager` metadata entry (the value of `metadata[name]`), from
+/// which `de_name`, `timestamp` and the number of saved paths are taken.
 #[derive(Debug, Clone)]
 pub struct DeMetaEntry {
     pub name: String,
@@ -178,9 +184,9 @@ pub struct DeMetaEntry {
     pub files_count: usize,
 }
 
-/// Бэкапы для DE, от новых к старым (`get_backups_for_de`): фильтр по `de_name`,
-/// затем стабильная сортировка по `timestamp` по убыванию (как Python
-/// `sorted(..., reverse=True)` — при равных ключах порядок вставки сохраняется).
+/// Backups for a DE, newest first (`get_backups_for_de`): filter by
+/// `de_name`, then a stable sort by `timestamp` descending (like Python's
+/// `sorted(..., reverse=True)`: with equal keys insertion order is kept).
 pub fn de_backups_for(entries: &[DeMetaEntry], de_name: &str) -> Vec<DeBackupSummary> {
     let mut v: Vec<DeBackupSummary> = entries
         .iter()
@@ -195,11 +201,12 @@ pub fn de_backups_for(entries: &[DeMetaEntry], de_name: &str) -> Vec<DeBackupSum
     v
 }
 
-/// Одна запись бэкапа Plasma (`PlasmaProtector._meta["backups"][i]`).
+/// One Plasma backup entry (`PlasmaProtector._meta["backups"][i]`).
 ///
-/// `deny_unknown_fields`: Python возвращает записи мета-файла КАК ЕСТЬ
-/// (вместе с неизвестными ключами) — типизированный разбор молча потерял бы
-/// их; вместо этого ошибка разбора, и шим уходит на Python-фолбэк.
+/// `deny_unknown_fields`: Python returns the meta file entries AS IS
+/// (together with unknown keys); a typed parse would silently lose them;
+/// instead there is a parse error, and the shim goes to the Python
+/// fallback.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlasmaBackup {
@@ -210,26 +217,26 @@ pub struct PlasmaBackup {
     pub full: bool,
 }
 
-/// Список бэкапов Plasma от новых к старым (`get_backups` = `reversed(...)`).
+/// The list of Plasma backups, newest first (`get_backups` = `reversed(...)`).
 pub fn plasma_backups(backups: &[PlasmaBackup]) -> Vec<PlasmaBackup> {
     backups.iter().rev().cloned().collect()
 }
 
-/// Последний бэкап Plasma (`get_latest_backup` = `backups[-1]` или None).
+/// The latest Plasma backup (`get_latest_backup` = `backups[-1]` or None).
 pub fn plasma_latest_backup(backups: &[PlasmaBackup]) -> Option<PlasmaBackup> {
     backups.last().cloned()
 }
 
-/// Есть ли бэкапы Plasma (`has_backups`).
+/// Whether there are Plasma backups (`has_backups`).
 pub fn plasma_has_backups(backups: &[PlasmaBackup]) -> bool {
     !backups.is_empty()
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  Транзакционное восстановление (порт `_transactional_restore`)
+//  Transactional restore (a port of `_transactional_restore`)
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Итог транзакции — кортеж `(ok, message, count_restored)` оригинала.
+/// The transaction result: the original's `(ok, message, count_restored)` tuple.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RestoreOutcome {
     pub ok: bool,
@@ -237,13 +244,14 @@ pub struct RestoreOutcome {
     pub restored: usize,
 }
 
-/// `os.path.exists(p) or os.path.islink(p)` — путь занят (битая ссылка тоже).
+/// `os.path.exists(p) or os.path.islink(p)`: the path is taken (a broken link too).
 fn exists_or_link(p: &Path) -> bool {
     p.symlink_metadata().is_ok()
 }
 
-/// Порт `_remove_path`: симлинк/файл — unlink, каталог — рекурсивно, отсутствие
-/// пути ошибкой не считается (у оригинала `ignore_errors=True`).
+/// A port of `_remove_path`: a symlink/file is unlinked, a directory is
+/// removed recursively, a missing path is not an error (the original has
+/// `ignore_errors=True`).
 fn remove_path(p: &Path) {
     if let Ok(md) = p.symlink_metadata() {
         if md.is_dir() {
@@ -254,10 +262,10 @@ fn remove_path(p: &Path) {
     }
 }
 
-/// Копия файла «как есть» — порт `shutil.copy2(..., follow_symlinks=False)`:
-/// симлинк воспроизводится симлинком, у обычного файла сохраняются права и
-/// время модификации (без времени конфиг выглядел бы только что изменённым —
-/// демоны DE следят за mtime).
+/// A file copy "as is": a port of `shutil.copy2(..., follow_symlinks=False)`:
+/// a symlink is reproduced as a symlink, a regular file keeps its
+/// permissions and modification time (without the time the config would
+/// look freshly changed, and DE daemons watch mtime).
 fn copy_file_like(src: &Path, dst: &Path) -> io::Result<()> {
     let md = fs::symlink_metadata(src)?;
     if md.file_type().is_symlink() {
@@ -278,9 +286,9 @@ fn copy_file_like(src: &Path, dst: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Рекурсивная копия каталога — порт `shutil.copytree(..., symlinks=True)`:
-/// вложенные симлинки НЕ разыменовываются (иначе снапшот раздувается и
-/// теряет структуру `~/.local/share/plasma`).
+/// A recursive directory copy: a port of `shutil.copytree(...,
+/// symlinks=True)`: nested symlinks are NOT dereferenced (otherwise the
+/// snapshot bloats and loses the structure of `~/.local/share/plasma`).
 fn copy_tree(src: &Path, dst: &Path) -> io::Result<()> {
     fs::create_dir_all(dst)?;
     if let Ok(md) = fs::metadata(src) {
@@ -303,15 +311,16 @@ fn copy_tree(src: &Path, dst: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Транзакционное восстановление набора `(src, dest)`.
+/// Transactional restore of a set of `(src, dest)`.
 ///
-/// Гарантии оригинала сохранены: либо заменены ВСЕ dest, либо ни один;
-/// staging рядом с dest (одна ФС → `rename` атомарен); на любой ошибке —
-/// возврат к исходному состоянию. Функция не паникует: ошибки ФС уходят в
-/// `message`, поэтому исключение на границе моста означает, что до ФС дело
-/// не дошло, и фолбэк на Python безопасен.
+/// The original's guarantees are kept: either ALL dest are replaced or
+/// none; staging sits next to dest (one filesystem, so `rename` is
+/// atomic); on any error it returns to the original state. The function
+/// does not panic: filesystem errors go into `message`, so an exception at
+/// the bridge boundary means the filesystem was never reached, and the
+/// fallback to Python is safe.
 pub fn transactional_restore(items: &[(String, String)]) -> RestoreOutcome {
-    // ── Фаза 1: staging — копии рядом с целью, оригиналы не тронуты ──
+    // ── Phase 1: staging: copies next to the target, originals untouched ──
     let mut staged: Vec<(String, String)> = Vec::new();
     for (src, dest) in items {
         let src_p = Path::new(src);
@@ -325,7 +334,7 @@ pub fn transactional_restore(items: &[(String, String)]) -> RestoreOutcome {
             let parent =
                 if parent.as_os_str().is_empty() { Path::new(".") } else { parent };
             fs::create_dir_all(parent)?;
-            // Убрать staging с прошлой неудачной попытки.
+            // Remove staging left from a previous failed attempt.
             remove_path(stage_p);
             if fs::symlink_metadata(src_p)?.is_dir() {
                 copy_tree(src_p, stage_p)
@@ -347,14 +356,15 @@ pub fn transactional_restore(items: &[(String, String)]) -> RestoreOutcome {
         staged.push((dest.clone(), stage));
     }
 
-    // ── Фаза 2: atomic swap — rename(dest → rollback), rename(stage → dest) ──
+    // ── Phase 2: atomic swap: rename(dest -> rollback), rename(stage -> dest) ──
     let mut swapped: Vec<(String, Option<String>)> = Vec::new();
     for (dest, stage) in &staged {
         let dest_p = Path::new(dest);
         let mut rollback: Option<String> = None;
-        // Прошли ли первый rename: только после него цель «уехала» и её
-        // нужно возвращать. Если упал сам первый rename — цель не тронута,
-        // и трогать её в откате НЕЛЬЗЯ (иначе снесём живой конфиг).
+        // Whether the first rename went through: only after it has the target
+        // "moved away" and must be returned. If the first rename itself failed,
+        // the target is untouched, and touching it in the rollback is NOT
+        // allowed (otherwise we would wipe the live config).
         let mut moved = false;
         let swap_one = (|| -> io::Result<()> {
             if exists_or_link(dest_p) {
@@ -367,9 +377,10 @@ pub fn transactional_restore(items: &[(String, String)]) -> RestoreOutcome {
             fs::rename(stage, dest_p)
         })();
         if let Err(e) = swap_one {
-            // ⚠ Правило #16: элемент «в полёте» (цель уехала в rollback, а
-            // stage → dest ещё не прошёл) оригинал в откат НЕ включал — цель
-            // оставалась удалённой. Добавляем его к откатываемым.
+            // ⚠ Rule #16: the original did NOT include an "in flight" item (the
+            // target moved to rollback, but stage -> dest has not happened yet)
+            // in the rollback, and the target stayed deleted. We add it to the
+            // items being rolled back.
             let mut done = swapped.clone();
             if moved {
                 done.push((dest.clone(), rollback));
@@ -384,8 +395,9 @@ pub fn transactional_restore(items: &[(String, String)]) -> RestoreOutcome {
                     }
                 }
             }
-            // Убрать staging, не дошедший до swap: у реально обменянных он
-            // уже переименован в dest, у элемента «в полёте» — на месте.
+            // Remove staging that did not reach the swap: for the actually
+            // swapped ones it has already been renamed to dest, for the "in
+            // flight" item it is still in place.
             let done_stages: Vec<String> = swapped
                 .iter()
                 .map(|(d, _)| format!("{d}{STAGE_SUFFIX}"))
@@ -404,7 +416,7 @@ pub fn transactional_restore(items: &[(String, String)]) -> RestoreOutcome {
         swapped.push((dest.clone(), rollback));
     }
 
-    // ── Commit: rollback-копии больше не нужны ──
+    // ── Commit: the rollback copies are no longer needed ──
     for (_d, rb) in &swapped {
         if let Some(rb) = rb {
             remove_path(Path::new(rb));
@@ -418,33 +430,34 @@ pub fn transactional_restore(items: &[(String, String)]) -> RestoreOutcome {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  BackupManager: раскладка снапшота, выбор источников, сообщения
+//  BackupManager: snapshot layout, choice of sources, messages
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Успешный итог транзакции (внутреннее сообщение `_transactional_restore`).
+/// A successful transaction result (the internal message of
+/// `_transactional_restore`).
 ///
-/// Починка склонения — та же, что у [`msg_restored_items`]: эта строка
-/// попадает человеку на глаза внутри сообщения о неудаче восстановления.
+/// The plural fix is the same as in [`msg_restored_items`]: this string
+/// reaches the person's eyes inside the restore failure message.
 pub fn msg_transaction_restored(n: usize) -> String {
     // TRANSLATORS: goes after a colon inside a restore failure message, hence lowercase.
     ntr("restored %n item", "restored %n items", n as u64)
 }
 
-/// Итог `BackupManager.restore_backup`.
+/// The result of `BackupManager.restore_backup`.
 ///
-/// Починка (правило #16): счёт стоял с одним окончанием на все числа —
-/// покупатель читал «Восстановлено 1 элементов».
+/// Fix (rule #16): the count had one ending for all numbers, so the
+/// customer read the Russian for "Restored 1 items".
 pub fn msg_restored_items(n: usize) -> String {
     ntr("Restored %n item", "Restored %n items", n as u64)
 }
 
-/// `restore_backup`: бэкапа с таким именем нет в метаданных.
+/// `restore_backup`: there is no backup with this name in the metadata.
 pub fn msg_backup_not_found() -> String {
     tr("Backup not found")
 }
 
-/// Соединение путей как `os.path.join` для наших случаев (`base` абсолютный,
-/// `name` всегда относительный — `safe_config_name`/basename).
+/// Joining paths like `os.path.join` for our cases (`base` is absolute,
+/// `name` is always relative: `safe_config_name`/basename).
 fn join(base: &str, name: &str) -> String {
     if base.ends_with('/') {
         format!("{base}{name}")
@@ -453,7 +466,7 @@ fn join(base: &str, name: &str) -> String {
     }
 }
 
-/// Порт `os.path.basename` для POSIX-путей.
+/// A port of `os.path.basename` for POSIX paths.
 fn basename(path: &str) -> &str {
     match path.rfind('/') {
         Some(i) => &path[i + 1..],
@@ -461,8 +474,8 @@ fn basename(path: &str) -> &str {
     }
 }
 
-/// Раскладка снапшота DE (`create_backup`): куда лечь каждому конфигу.
-/// Возвращает `(src, dest)` — имя в снапшоте не теряет структуру пути.
+/// The DE snapshot layout (`create_backup`): where each config goes.
+/// Returns `(src, dest)`; the name in the snapshot keeps the path structure.
 pub fn snapshot_items(
     paths: &[String],
     backup_path: &str,
@@ -474,8 +487,9 @@ pub fn snapshot_items(
         .collect()
 }
 
-/// Источники для `restore_backup`: `safe_config_name` с фолбэком на basename
-/// (обратная совместимость со снапшотами старых версий); чего нет — пропуск.
+/// Sources for `restore_backup`: `safe_config_name` with a fallback to the
+/// basename (backward compatibility with snapshots of old versions); what
+/// is missing is skipped.
 pub fn restore_items(
     backup_path: &str,
     orig_paths: &[String],
@@ -496,8 +510,8 @@ pub fn restore_items(
     items
 }
 
-/// Запись `metadata[backup_name]` (`create_backup`) — порядок ключей как у
-/// Python-словаря, чтобы `metadata.json` совпадал байт-в-байт.
+/// The `metadata[backup_name]` entry (`create_backup`): key order as in the
+/// Python dictionary, so that `metadata.json` matches byte for byte.
 pub fn de_meta_entry(
     de_name: &str,
     timestamp: &str,
@@ -513,89 +527,91 @@ pub fn de_meta_entry(
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  PlasmaProtector: снимки панели, ротация, выбор, перезапуск оболочки
+//  PlasmaProtector: panel snapshots, rotation, choice, shell restart
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Сколько снимков панели держим (`while len(...) > 10` в `backup_panel`).
+/// How many panel snapshots we keep (`while len(...) > 10` in `backup_panel`).
 pub const MAX_PLASMA_SNAPSHOTS: usize = 10;
 
-/// Пауза между остановкой и запуском plasmashell (`time.sleep(2)`).
+/// Pause between stopping and starting plasmashell (`time.sleep(2)`).
 pub const PLASMASHELL_SETTLE_SECS: u64 = 2;
 
-// ⭐ Слова этих сообщений — те же, какими подписана сама секция «Защита
-// панели KDE Plasma»: «Сохранить копию», «Сохранённые копии», «Папка копии».
-// Оригинал (Python) говорил здесь «бэкап» и «снапшот», и покупатель читал в
-// одном окне два разных названия одной вещи. Расхождение с оригиналом
-// намеренное (правила #13 и #16), сторож — `tests/backup_parity.rs`.
+// ⭐ The words of these messages are the same ones the "KDE Plasma panel
+// protection" section itself is labelled with: "Save a copy", "Saved
+// copies", "Copy folder". The original (Python) said "backup" and
+// "snapshot" here, and the customer read two different names for one
+// thing in one window. The divergence from the original is deliberate
+// (rules #13 and #16); the guard is `tests/backup_parity.rs`.
 
-/// `backup_panel`: копировать нечего.
+/// `backup_panel`: there is nothing to copy.
 ///
-/// Было «Нет файлов для бэкапа»: слово «бэкап» покупателю ничего не
-/// объясняет, а из самой фразы не видно, каких файлов не нашлось.
+/// It used to be "No files to back up": the word "backup" explains nothing
+/// to the customer, and the phrase itself does not show which files were
+/// not found.
 pub fn msg_nothing_to_backup() -> String {
     tr("Nothing to copy: there are no panel settings files")
 }
-/// `restore_panel`: снимков панели нет вовсе.
+/// `restore_panel`: there are no panel snapshots at all.
 ///
-/// Было «Нет бэкапов Plasma»; теми же словами подписан и пустой список в
-/// окне («Сохранённых копий пока нет»).
+/// It used to be "No Plasma backups"; the empty list in the window is
+/// labelled with the same words ("No saved copies yet").
 pub fn msg_no_plasma_backups() -> String {
     tr("No saved copies of the panel yet")
 }
-/// `restore_panel`: транзакция прошла, но ни один файл не восстановился.
+/// `restore_panel`: the transaction went through, but not a single file was restored.
 pub fn msg_none_restored() -> String {
     tr("Couldn't restore any files")
 }
-/// Хвост сообщения `restore_panel` после перезапуска оболочки.
+/// The tail of the `restore_panel` message after the shell restart.
 ///
-/// Было «Plasmashell перезапущен» — имя служебной программы вместо того, что
-/// человек видит на экране. Соседняя строка на неудачу
-/// ([`msg_plasmashell_not_restarted`]) с самого начала говорила «панель».
+/// It used to be "Plasmashell restarted": the name of a service program
+/// instead of what the person sees on screen. The neighbouring failure line
+/// ([`msg_plasmashell_not_restarted`]) said "panel" from the very start.
 ///
-/// Хвост начинается с перевода строки — он дописывается к итогу возврата.
+/// The tail starts with a newline: it is appended to the restore result.
 pub fn msg_plasmashell_restarted() -> String {
     format!("\n{}", tr("Panel restarted"))
 }
 
-/// Итог `backup_panel`.
+/// The result of `backup_panel`.
 ///
-/// Починка (правило #16): счёт стоял с одним окончанием на все числа —
-/// «Бэкап создан (1 файлов)». Склоняет каталог перевода ([`ntr`]), как и
-/// остальные счётные строки продукта.
+/// Fix (rule #16): the count had one ending for all numbers, the Russian
+/// for "Backup created (1 files)". The translation catalog handles the
+/// plural ([`ntr`]), as with the product's other counting strings.
 pub fn msg_backup_created(n: usize) -> String {
     ntr("Copy saved (%n file)", "Copy saved (%n files)", n as u64)
 }
 
-/// `restore_panel`: снимка с такой меткой времени нет.
+/// `restore_panel`: there is no snapshot with this timestamp.
 ///
-/// Метку времени показываем в том же человеческом виде, в каком подписаны
-/// строки списка копий, — машинное «20260730_010203» покупателю ни о чём не
-/// говорит.
+/// The timestamp is shown in the same human form the rows of the copies
+/// list are labelled with: the machine "20260730_010203" tells the
+/// customer nothing.
 pub fn msg_snapshot_not_found(timestamp: &str) -> String {
-    // Метка идёт в хвосте, а не в середине фразы: неразобранная метка
-    // остаётся как есть, и «Копия от нет-такой не найдена» читалось бы
-    // ломаным русским.
+    // The timestamp goes at the end, not in the middle of the phrase: an
+    // unparsed timestamp stays as is, and "Copy from no-such not found"
+    // would read as broken Russian.
     // TRANSLATORS: %1 is the date and time the copy was made.
     trf("Copy not found: %1", &[&crate::qt_settings::pretty_backup_ts(timestamp)])
 }
 
-/// `restore_panel`: каталог снимка исчез с диска.
+/// `restore_panel`: the snapshot directory has disappeared from disk.
 pub fn msg_snapshot_dir_missing(dir: &str) -> String {
     // TRANSLATORS: %1 is a folder path.
     trf("The copy's folder wasn't found: %1", &[&dir])
 }
 
-/// `restore_panel`: транзакция не удалась (внутренний текст — от неё).
+/// `restore_panel`: the transaction failed (the internal text comes from it).
 pub fn msg_restore_failed(detail: &str) -> String {
     // TRANSLATORS: %1 explains what went wrong.
     trf("The restore failed: %1", &[&detail])
 }
 
-/// Итог `restore_panel` (до строки о перезапуске оболочки).
+/// The result of `restore_panel` (before the line about the shell restart).
 ///
-/// Те же две починки, что у [`msg_backup_created`] и
-/// [`msg_snapshot_not_found`]: склонение счёта и человеческая метка времени
-/// вместо машинной.
+/// The same two fixes as in [`msg_backup_created`] and
+/// [`msg_snapshot_not_found`]: plural forms of the count and a human
+/// timestamp instead of the machine one.
 pub fn msg_restored_files(n: usize, timestamp: &str) -> String {
     crate::i18n::fill(
         &ntr(
@@ -608,9 +624,10 @@ pub fn msg_restored_files(n: usize, timestamp: &str) -> String {
     )
 }
 
-/// Раскладка снимка панели (`backup_panel`): имя в снимке — basename, потому
-/// что все PANEL/FULL-конфиги лежат в разных каталогах без коллизий имён.
-/// Отсутствующие конфиги в снимок не попадают.
+/// The panel snapshot layout (`backup_panel`): the name in the snapshot is
+/// the basename, because all PANEL/FULL configs lie in different
+/// directories without name collisions. Missing configs do not get into
+/// the snapshot.
 pub fn plasma_snapshot_items(
     configs: &[String],
     snap_dir: &str,
@@ -623,7 +640,7 @@ pub fn plasma_snapshot_items(
         .collect()
 }
 
-/// Запись `_meta["backups"]` для только что снятого снимка.
+/// The `_meta["backups"]` entry for a snapshot just taken.
 pub fn plasma_entry(
     timestamp: &str,
     reason: &str,
@@ -640,9 +657,10 @@ pub fn plasma_entry(
     }
 }
 
-/// Ротация снимков: пока их больше [`MAX_PLASMA_SNAPSHOTS`], выбрасываем
-/// самые старые (с начала списка). Возвращает каталоги, которые исполнителю
-/// нужно удалить, — сам список уже урезан.
+/// Snapshot rotation: while there are more than [`MAX_PLASMA_SNAPSHOTS`],
+/// drop the oldest ones (from the start of the list). Returns the
+/// directories the executor must delete; the list itself is already
+/// trimmed.
 pub fn plasma_rotate(backups: &mut Vec<PlasmaBackup>) -> Vec<String> {
     let mut dropped = Vec::new();
     while backups.len() > MAX_PLASMA_SNAPSHOTS {
@@ -651,8 +669,8 @@ pub fn plasma_rotate(backups: &mut Vec<PlasmaBackup>) -> Vec<String> {
     dropped
 }
 
-/// Выбор снимка для восстановления (`restore_panel`): по метке времени либо
-/// последний. `Err` — готовое сообщение пользователю.
+/// Choosing a snapshot to restore (`restore_panel`): by timestamp or the
+/// latest. `Err` is a ready message for the user.
 pub fn plasma_pick<'a>(
     backups: &'a [PlasmaBackup],
     timestamp: Option<&str>,
@@ -665,13 +683,13 @@ pub fn plasma_pick<'a>(
             .iter()
             .find(|b| b.timestamp == ts)
             .ok_or_else(|| msg_snapshot_not_found(ts)),
-        // `backups[-1]`: последний по порядку добавления, не по метке.
+        // `backups[-1]`: the last by insertion order, not by timestamp.
         None => Ok(backups.last().expect("проверено на пустоту выше")),
     }
 }
 
-/// Источники для восстановления панели: `snap_dir/basename(orig)`, чего нет —
-/// пропуск (порт цикла в `restore_panel`).
+/// Sources for restoring the panel: `snap_dir/basename(orig)`; what is
+/// missing is skipped (a port of the loop in `restore_panel`).
 pub fn plasma_restore_items(
     entry: &PlasmaBackup,
     exists: impl Fn(&str) -> bool,
@@ -684,25 +702,26 @@ pub fn plasma_restore_items(
         .collect()
 }
 
-/// Индекс снимка с данной меткой (`delete_backup`); None — такого нет.
+/// Index of the snapshot with the given timestamp (`delete_backup`); None means there is none.
 pub fn plasma_delete_index(backups: &[PlasmaBackup], timestamp: &str) -> Option<usize> {
     backups.iter().position(|b| b.timestamp == timestamp)
 }
 
-/// Штатный перезапуск оболочки: `systemctl --user restart
+/// The regular shell restart: `systemctl --user restart
 /// plasma-plasmashell.service`.
 ///
-/// ⚠️ Раньше здесь был `kquitapp6 plasmashell`, которого нет на Ubuntu
-/// 24.04 (там Plasma 5 и `kquitapp5`), — то есть штатный путь на самом
-/// массовом целевом дистрибутиве всегда проваливался и оболочку добивали
-/// `killall`. Плюс в двух других местах проекта та же задача уже решалась
-/// правильно — юнитом (`waywallen_kde_plugin.rs::restart_plasmashell_cmds`,
-/// `app.rs::plasmashell_restart_argv`), то есть это был третий, отставший
-/// экземпляр одного механизма (правило #12). Юнит `plasma-plasmashell`
-/// поднимает оболочку сам, поэтому при успехе ни остановка, ни запуск не
-/// нужны; если systemd-юнита нет (не-systemd система, Plasma без
-/// systemd-старта), [`plasma_restart_shell`] уходит на `kquitapp` + `kstart`,
-/// а затем — на PID оболочки своего сеанса.
+/// ⚠️ Previously this was `kquitapp6 plasmashell`, which does not exist on
+/// Ubuntu 24.04 (Plasma 5 and `kquitapp5` there), so the regular path on
+/// the most widespread target distribution always failed and the shell was
+/// finished off with `killall`. Besides, in two other places of the
+/// project the same task was already solved correctly, via the unit
+/// (`waywallen_kde_plugin.rs::restart_plasmashell_cmds`,
+/// `app.rs::plasmashell_restart_argv`), so this was a third, lagging copy
+/// of one mechanism (rule #12). The `plasma-plasmashell` unit brings the
+/// shell up by itself, so on success neither stopping nor starting is
+/// needed; if there is no systemd unit (a non-systemd system, Plasma
+/// without systemd startup), [`plasma_restart_shell`] falls back to
+/// `kquitapp` + `kstart`, and then to the PID of our own session's shell.
 pub fn plasma_quit_cmd() -> Cmd {
     Cmd {
         argv: vec![
@@ -711,19 +730,19 @@ pub fn plasma_quit_cmd() -> Cmd {
             "restart".into(),
             "plasma-plasmashell.service".into(),
         ],
-        // Рестарт синхронный: юнит должен успеть подняться (как в app.rs).
+        // The restart is synchronous: the unit must have time to come up (as in app.rs).
         timeout_secs: Some(15),
         lang_c: false,
     }
 }
 
-/// Штатная остановка оболочки, когда юнита нет: `kquitapp6 plasmashell`
-/// (исполнитель подменяет на `kquitapp5` на Plasma 5 — `utils::TOOL_SETS`).
+/// The regular shell stop when there is no unit: `kquitapp6 plasmashell`
+/// (the executor substitutes `kquitapp5` on Plasma 5, `utils::TOOL_SETS`).
 ///
-/// ⚠️ Прежде здесь был `killall plasmashell`: убийство ПО ИМЕНИ, которое
-/// задевает любой процесс с таким именем у любого сеанса этого человека и
-/// не отличает оболочку текущего сеанса от чужой. `kquitapp` просит
-/// оболочку выйти через D-Bus ЭТОГО сеанса — чужую он не достанет.
+/// ⚠️ This used to be `killall plasmashell`: killing BY NAME, which hits
+/// any process with that name in any session of this person and does not
+/// tell the current session's shell from another's. `kquitapp` asks the
+/// shell to quit over THIS session's D-Bus: it cannot reach another one.
 pub fn plasma_kill_cmd() -> Cmd {
     Cmd {
         argv: vec!["kquitapp6".into(), "plasmashell".into()],
@@ -732,9 +751,10 @@ pub fn plasma_kill_cmd() -> Cmd {
     }
 }
 
-/// Поднять оболочку заново после остановки: `kstart plasmashell` (`kstart5`
-/// на Plasma 5). `kstart` запускает программу отдельно от вызывающего, так
-/// что панель не умрёт вместе с Rexon; таймаута нет — запуск фоновый.
+/// Bring the shell up again after stopping it: `kstart plasmashell`
+/// (`kstart5` on Plasma 5). `kstart` starts the program detached from the
+/// caller, so the panel will not die together with Rexon; there is no
+/// timeout, the start is in the background.
 pub fn plasma_start_cmd() -> Cmd {
     Cmd {
         argv: vec!["kstart".into(), "plasmashell".into()],
@@ -743,8 +763,8 @@ pub fn plasma_start_cmd() -> Cmd {
     }
 }
 
-/// Запуск оболочки напрямую — только когда `kstart` нет вовсе. Отвязку от
-/// нашего процесса делает исполнитель (`setsid`).
+/// Starting the shell directly: only when there is no `kstart` at all. The
+/// executor detaches it from our process (`setsid`).
 pub fn plasma_direct_start_cmd() -> Cmd {
     Cmd {
         argv: vec!["plasmashell".into()],
@@ -754,40 +774,41 @@ pub fn plasma_direct_start_cmd() -> Cmd {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  Исполнитель снимков панели (`PlasmaProtector` на живой ФС)
+//  Panel snapshot executor (`PlasmaProtector` on the live filesystem)
 // ══════════════════════════════════════════════════════════════════════════
 //
-// ЗАЧЕМ ЗДЕСЬ, А НЕ В ШИМЕ. Решения о снимках лежат выше в этом же файле
-// (`plasma_snapshot_items`, `plasma_entry`, `plasma_rotate`, `plasma_pick`,
-// `plasma_restore_items`), а ДЕЛАТЬ их до сих пор умел только Python
-// (`PlasmaProtector` в `rexon/backup.py`). Из-за этого обе вкладки, которые
-// показывают копии панели («Настройки» и «Рабочие столы»), отвечали на
-// кнопку строкой «исполнителя нет». Исполнитель дописан рядом с решениями —
-// там же, где уже живёт транзакционный движок восстановления, и по тем же
-// правилам: прямой `std::fs`, никаких паник, любая беда возвращается словами.
+// WHY HERE AND NOT IN THE SHIM. The snapshot decisions are above in this
+// same file (`plasma_snapshot_items`, `plasma_entry`, `plasma_rotate`,
+// `plasma_pick`, `plasma_restore_items`), while CARRYING THEM OUT was
+// until now possible only in Python (`PlasmaProtector` in
+// `rexon/backup.py`). Because of this both tabs that show panel copies
+// ("Settings" and "Desktops") answered the button with "no executor". The
+// executor is written next to the decisions, where the transactional
+// restore engine already lives, and by the same rules: plain `std::fs`,
+// no panics, any trouble is returned in words.
 //
-// ⚠️ ЗАПУСКА ПРОЦЕССОВ ЗДЕСЬ НЕТ НАМЕРЕННО. Перезапуск оболочки — это
-// единственный шаг, которым снимок трогает ЖИВОЙ рабочий стол, и он вынесен
-// в [`plasma_restart_shell`] с ПОДСТАВНЫМИ запускателями: сверка обязана
-// уметь проверить порядок «юнит → kill+start», ни разу не тронув панель
-// человека.
+// ⚠️ THERE IS DELIBERATELY NO PROCESS LAUNCHING HERE. The shell restart is
+// the only step by which a snapshot touches the LIVE desktop, and it is
+// moved into [`plasma_restart_shell`] with FAKE launchers: the parity
+// check must be able to verify the order "unit -> kill+start" without
+// ever touching the person's panel.
 
-/// Имя файла метаданных снимков панели (`PlasmaProtector._meta_file`).
+/// Name of the panel snapshot metadata file (`PlasmaProtector._meta_file`).
 pub const PLASMA_META_NAME: &str = "plasma_meta.json";
 
-/// Путь к файлу метаданных снимков в каталоге копий.
+/// Path of the snapshot metadata file in the copies directory.
 pub fn plasma_meta_path(dir: &str) -> String {
     join(dir, PLASMA_META_NAME)
 }
 
-/// Записи мета-файла В ПОРЯДКЕ ЗАПИСИ и КАК ЕСТЬ (сырой JSON).
+/// Meta file entries IN WRITE ORDER and AS IS (raw JSON).
 ///
-/// ⚠️ Сырыми они читаются не из лени. У [`PlasmaBackup`] стоит
-/// `deny_unknown_fields`, то есть запись, которую оставила более новая версия
-/// Rexon, типизированным разбором не пройдёт. Если бы мы писали файл обратно
-/// из типизированного списка, такая запись ИСЧЕЗЛА БЫ вместе со ссылкой на
-/// снимок — а снимок остался бы на диске мёртвым грузом. Поэтому на диск
-/// всегда уезжает то же, что с него прочитано, плюс наша новая запись.
+/// ⚠️ They are read raw not out of laziness. [`PlasmaBackup`] has
+/// `deny_unknown_fields`, so an entry left by a newer Rexon version will
+/// not pass a typed parse. If we wrote the file back from a typed list,
+/// such an entry WOULD VANISH together with the reference to the snapshot,
+/// and the snapshot would remain on disk as dead weight. So what goes to
+/// disk is always what was read from it, plus our new entry.
 pub fn plasma_meta_entries(dir: &str) -> Vec<serde_json::Value> {
     let Ok(text) = fs::read_to_string(plasma_meta_path(dir)) else {
         return Vec::new();
@@ -801,29 +822,32 @@ pub fn plasma_meta_entries(dir: &str) -> Vec<serde_json::Value> {
     }
 }
 
-/// Разбор сырых записей в типизованные. Запись незнакомой формы пропускается:
-/// показать её всё равно нечем, а ронять из-за неё весь список нельзя.
+/// Parsing raw entries into typed ones. An entry of an unknown form is
+/// skipped: there is nothing to show it with anyway, and the whole list
+/// must not fail because of it.
 pub fn plasma_parse_entries(raw: &[serde_json::Value]) -> Vec<PlasmaBackup> {
     raw.iter()
         .filter_map(|v| serde_json::from_value(v.clone()).ok())
         .collect()
 }
 
-/// Записать мета-файл (`_save_meta`): те же два пробела отступа и те же живые
-/// буквы (не `\uXXXX`), что у `json.dump(..., indent=2, ensure_ascii=False)`.
+/// Write the meta file (`_save_meta`): the same two-space indent and the
+/// same literal letters (not `\uXXXX`) as
+/// `json.dump(..., indent=2, ensure_ascii=False)`.
 fn plasma_write_meta(dir: &str, raw: &[serde_json::Value]) -> io::Result<()> {
     let mut root = serde_json::Map::new();
     root.insert("backups".into(), serde_json::Value::Array(raw.to_vec()));
     let text = serde_json::to_string_pretty(&serde_json::Value::Object(root))
         .map_err(|e| io::Error::other(e.to_string()))?;
     fs::create_dir_all(dir)?;
-    // Замена целиком, а не дописывание: половина мета-файла хуже, чем его
-    // отсутствие — список копий перестал бы читаться вовсе. Отсюда и общая
-    // дверь: сами копии панели на диске останутся, но найти их будет нечем.
+    // A full replacement rather than appending: half a meta file is worse
+    // than none, since the copies list would stop being readable at all.
+    // Hence the common door: the panel copies themselves would stay on disk,
+    // but there would be nothing to find them with.
     crate::utils::atomic_write(&plasma_meta_path(dir), &text)
 }
 
-/// Копия одного конфига в снимок: файл — как есть, каталог — деревом.
+/// Copy one config into a snapshot: a file as is, a directory as a tree.
 pub(crate) fn copy_config_into(src: &str, dst: &str) -> io::Result<()> {
     let src_p = Path::new(src);
     if src_p.is_dir() {
@@ -836,14 +860,16 @@ pub(crate) fn copy_config_into(src: &str, dst: &str) -> io::Result<()> {
     }
 }
 
-/// Снять копию панели (`backup_panel`) → `(получилось ли, что сказать)`.
+/// Take a panel copy (`backup_panel`) -> `(did it work, what to say)`.
 ///
-/// `Err` — то, что у Python было ИСКЛЮЧЕНИЕМ (каталог не создался, мета-файл
-/// не записался): вкладка показывает такую беду отдельным текстом
-/// («Не удалось сохранить копию: …»), а не общим итогом.
+/// `Err` is what was an EXCEPTION in Python (the directory was not
+/// created, the meta file was not written): the tab shows such trouble as
+/// a separate text ("Could not save the copy: …"), not as the general
+/// result.
 ///
-/// `timestamp` приходит снаружи: часы — не решение, а наблюдение, и подставив
-/// метку, сверка получает воспроизводимый снимок.
+/// `timestamp` comes from outside: the clock is an observation, not a
+/// decision, and by substituting the timestamp the parity check gets a
+/// reproducible snapshot.
 pub fn plasma_backup_run(
     dir: &str,
     configs: &[String],
@@ -856,16 +882,16 @@ pub fn plasma_backup_run(
 
     let mut saved: Vec<String> = Vec::new();
     for (src, dst) in plasma_snapshot_items(configs, &snap_dir, |p| Path::new(p).exists()) {
-        // Не скопировался один конфиг — не повод бросать остальные: у
-        // оригинала здесь `try/except` вокруг КАЖДОГО файла.
+        // One config failing to copy is no reason to drop the others: the
+        // original has a `try/except` around EACH file here.
         if copy_config_into(&src, &dst).is_ok() {
             saved.push(src);
         }
     }
 
     if saved.is_empty() {
-        // Пустой каталог снимка на диске — мусор, который потом выглядит как
-        // сломанная копия.
+        // An empty snapshot directory on disk is garbage that later looks like a
+        // broken copy.
         let _ = fs::remove_dir_all(&snap_dir);
         return Ok((false, msg_nothing_to_backup()));
     }
@@ -874,8 +900,9 @@ pub fn plasma_backup_run(
     let mut raw = plasma_meta_entries(dir);
     raw.push(serde_json::to_value(&entry).map_err(|e| e.to_string())?);
 
-    // Ротация: какие снимки выбросить — решает ядро выше, здесь только
-    // `rmtree` и вычёркивание их записей из сырого списка ПО ПУТИ снимка.
+    // Rotation: which snapshots to drop is decided by the core above; here
+    // only `rmtree` and striking their entries from the raw list BY snapshot
+    // PATH.
     let mut parsed = plasma_parse_entries(&raw);
     let dropped = plasma_rotate(&mut parsed);
     for path in &dropped {
@@ -892,11 +919,11 @@ pub fn plasma_backup_run(
     Ok((true, msg_backup_created(saved.len())))
 }
 
-/// Вернуть копию панели (`restore_panel`) → `(получилось ли, что сказать)`.
+/// Restore a panel copy (`restore_panel`) -> `(did it work, what to say)`.
 ///
-/// Перезапуск оболочки сюда НЕ входит: решение «перезапускать ли» зависит от
-/// того, работает ли Plasma прямо сейчас, и принимается там же, где видно
-/// окружение сессии ([`is_plasma_desktop`]).
+/// The shell restart is NOT included: the decision "restart or not"
+/// depends on whether Plasma is running right now, and is made where the
+/// session environment is visible ([`is_plasma_desktop`]).
 pub fn plasma_restore_run(dir: &str, timestamp: Option<&str>) -> (bool, String) {
     let raw = plasma_meta_entries(dir);
     let backups = plasma_parse_entries(&raw);
@@ -920,21 +947,21 @@ pub fn plasma_restore_run(dir: &str, timestamp: Option<&str>) -> (bool, String) 
     (true, msg_restored_files(outcome.restored, &entry.timestamp))
 }
 
-/// Чем кончился перезапуск оболочки.
+/// How the shell restart ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShellRestart {
-    /// Юнит systemd перезапустил оболочку сам.
+    /// The systemd unit restarted the shell by itself.
     Unit,
-    /// `kquitapp` остановил оболочку, `kstart` поднял заново.
+    /// `kquitapp` stopped the shell, `kstart` brought it up again.
     QuitAndStart,
-    /// Остановлена оболочка ТЕКУЩЕГО сеанса по её PID, затем поднята заново.
+    /// The CURRENT session's shell was stopped by its PID, then brought up again.
     SessionPid,
-    /// Ни один путь не сработал: юнита нет, `kquitapp` не помог, а оболочки
-    /// своего сеанса не нашлось. Чужие процессы при этом не тронуты.
+    /// No path worked: there is no unit, `kquitapp` did not help, and no
+    /// shell of our own session was found. Other processes were not touched.
     NotRestarted,
 }
 
-/// Хвост сообщения о возврате панели, если оболочку перезапустить не вышло.
+/// The tail of the panel restore message if the shell could not be restarted.
 pub fn msg_plasmashell_not_restarted() -> String {
     format!(
         "\n{}",
@@ -942,7 +969,7 @@ pub fn msg_plasmashell_not_restarted() -> String {
     )
 }
 
-/// Хвост сообщения о возврате панели по итогу перезапуска.
+/// The tail of the panel restore message by the restart result.
 pub fn plasma_restart_message(outcome: ShellRestart) -> String {
     match outcome {
         ShellRestart::NotRestarted => msg_plasmashell_not_restarted(),
@@ -950,37 +977,42 @@ pub fn plasma_restart_message(outcome: ShellRestart) -> String {
     }
 }
 
-/// Руки перезапуска. Подставляемые: сверка порядка шагов не должна трогать
-/// живую панель человека, поэтому в тестах вместо них — запись шагов.
+/// The hands of the restart. Substitutable: checking the order of steps
+/// must not touch the person's live panel, so in tests a step log takes
+/// their place.
 pub trait ShellOps {
-    /// Запустить и дождаться; `true` — код возврата 0.
+    /// Run and wait; `true` means exit code 0.
     fn run(&self, cmd: &Cmd) -> bool;
-    /// Запустить отдельно от нашего процесса и не ждать.
+    /// Start detached from our process and do not wait.
     fn spawn(&self, cmd: &Cmd) -> bool;
-    /// Есть ли инструмент (с учётом синонимов `utils::TOOL_SETS`).
+    /// Whether the tool exists (taking the `utils::TOOL_SETS` synonyms into account).
     fn has(&self, tool: &str) -> bool;
-    /// PID оболочек ТЕКУЩЕГО сеанса (см. [`is_session_shell`]).
+    /// PIDs of the CURRENT session's shells (see [`is_session_shell`]).
     fn session_shell_pids(&self) -> Vec<u32>;
-    /// Попросить процесс завершиться (SIGTERM); `true` — сигнал доставлен.
+    /// Ask a process to exit (SIGTERM); `true` means the signal was delivered.
     fn terminate(&self, pid: u32) -> bool;
-    /// Пауза между остановкой и запуском.
+    /// Pause between stopping and starting.
     fn settle(&self);
 }
 
-/// Перезапустить оболочку Plasma — решение и исполнение в ОДНОМ месте на
-/// весь продукт.
+/// Restart the Plasma shell: the decision and the execution in ONE place
+/// for the whole product.
 ///
-/// Порядок — штатная последовательность KDE, от мягкого к точному:
-///   1. `systemctl --user restart plasma-plasmashell.service` — юнит сам
-///      останавливает и поднимает оболочку (второй запуск дал бы две панели);
-///   2. `kquitapp6 plasmashell` + `kstart plasmashell` (`*5` на Plasma 5) —
-///      только если есть ОБА: остановить и не поднять хуже, чем не трогать;
-///   3. PID оболочки ТЕКУЩЕГО сеанса: тот же uid, `/proc/PID/exe` —
-///      `plasmashell`, тот же `XDG_SESSION_ID`; сигнал по PID, затем запуск.
+/// The order is KDE's regular sequence, from gentle to precise:
+///   1. `systemctl --user restart plasma-plasmashell.service`: the unit
+///      stops and brings up the shell itself (a second start would give
+///      two panels);
+///   2. `kquitapp6 plasmashell` + `kstart plasmashell` (`*5` on Plasma 5):
+///      only if BOTH exist: stopping without bringing it up is worse than
+///      not touching it;
+///   3. the PID of the CURRENT session's shell: the same uid,
+///      `/proc/PID/exe` is `plasmashell`, the same `XDG_SESSION_ID`; a
+///      signal by PID, then a start.
 ///
-/// ⚠️ Убийства по имени (`killall plasmashell`) здесь нет и быть не должно:
-/// оно задевает оболочку любого сеанса этого человека. Не нашлось своей
-/// оболочки — [`ShellRestart::NotRestarted`], и ничего не тронуто.
+/// ⚠️ There is no killing by name (`killall plasmashell`) here, and there
+/// must not be: it hits the shell of any session of this person. If our
+/// own shell was not found, [`ShellRestart::NotRestarted`], and nothing is
+/// touched.
 pub fn plasma_restart_shell_with(ops: &impl ShellOps) -> ShellRestart {
     if ops.run(&plasma_quit_cmd()) {
         return ShellRestart::Unit;
@@ -1008,17 +1040,18 @@ pub fn plasma_restart_shell_with(ops: &impl ShellOps) -> ShellRestart {
     ShellRestart::SessionPid
 }
 
-/// Перезапустить оболочку Plasma на живой машине (`_restart_plasmashell`).
+/// Restart the Plasma shell on the live machine (`_restart_plasmashell`).
 pub fn plasma_restart_shell() -> ShellRestart {
     plasma_restart_shell_with(&LiveShellOps)
 }
 
-/// Оболочка ли это ТЕКУЩЕГО сеанса.
+/// Whether this is the CURRENT session's shell.
 ///
-/// Три признака сразу, и ни один не лишний: uid отсекает чужих людей,
-/// `exe` — чужие программы с похожим именем, `XDG_SESSION_ID` — оболочку
-/// другого сеанса того же человека (второй вход, удалённый сеанс). Своего
-/// `XDG_SESSION_ID` нет — не угадываем, а не трогаем никого.
+/// Three signs at once, and none is superfluous: the uid cuts off other
+/// people, `exe` other programs with a similar name, `XDG_SESSION_ID` the
+/// shell of another session of the same person (a second login, a remote
+/// session). Without our own `XDG_SESSION_ID` we do not guess: we touch
+/// nobody.
 pub fn is_session_shell(
     exe: &str,
     proc_uid: u32,
@@ -1029,8 +1062,8 @@ pub fn is_session_shell(
     is_session_process(exe, "plasmashell", proc_uid, environ, my_uid, my_session)
 }
 
-/// Процесс ли это программы `name` ТЕКУЩЕГО сеанса — те же три признака,
-/// что у [`is_session_shell`].
+/// Whether this is a process of program `name` in the CURRENT session: the
+/// same three signs as in [`is_session_shell`].
 pub fn is_session_process(
     exe: &str,
     name: &str,
@@ -1050,9 +1083,10 @@ pub fn is_session_process(
     environ.split(|b| *b == 0).any(|kv| kv == wanted.as_bytes())
 }
 
-/// Живые руки перезапуска. `PATH` берётся из окружения процесса: без него
-/// резолвер смотрел бы в запасной список каталогов, а не туда, где человек
-/// (или стенд проверки) держит свои инструменты.
+/// The live hands of the restart. `PATH` is taken from the process
+/// environment: without it the resolver would look in the fallback
+/// directory list rather than where the person (or the test bench) keeps
+/// their tools.
 struct LiveShellOps;
 
 impl LiveShellOps {
@@ -1087,9 +1121,9 @@ impl ShellOps for LiveShellOps {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        // Свой сеанс: панель не должна умереть вместе с Rexon.
-        // SAFETY: между fork и exec зовётся только setsid — он безопасен
-        // для асинхронного сигнала.
+        // Its own session: the panel must not die together with Rexon.
+        // SAFETY: between fork and exec only setsid is called, and it is
+        // async-signal-safe.
         unsafe {
             command.pre_exec(|| {
                 libc::setsid();
@@ -1098,7 +1132,7 @@ impl ShellOps for LiveShellOps {
         }
         match command.spawn() {
             Ok(mut child) => {
-                // Забрать код завершения, чтобы не оставить зомби.
+                // Collect the exit status so as not to leave a zombie.
                 std::thread::spawn(move || {
                     let _ = child.wait();
                 });
@@ -1119,7 +1153,7 @@ impl ShellOps for LiveShellOps {
         if my_session.is_empty() {
             return Vec::new();
         }
-        // SAFETY: getuid не имеет предусловий и не может провалиться.
+        // SAFETY: getuid has no preconditions and cannot fail.
         let my_uid = unsafe { libc::getuid() };
         let me = std::process::id();
         let Ok(entries) = fs::read_dir("/proc") else {
@@ -1146,8 +1180,8 @@ impl ShellOps for LiveShellOps {
         let Ok(pid) = libc::pid_t::try_from(pid) else {
             return false;
         };
-        // SAFETY: kill с конкретным положительным PID и SIGTERM — обычный
-        // системный вызов без требований к памяти.
+        // SAFETY: kill with a specific positive PID and SIGTERM is an ordinary
+        // system call with no memory requirements.
         unsafe { libc::kill(pid, libc::SIGTERM) == 0 }
     }
 
@@ -1157,58 +1191,60 @@ impl ShellOps for LiveShellOps {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  Сверки исполнителя
+//  Executor parity checks
 // ══════════════════════════════════════════════════════════════════════════
 //
-// ⚠️ ЖИВЫХ ПАНЕЛЕЙ ЗДЕСЬ НЕТ И БЫТЬ НЕ МОЖЕТ. Всё, что ниже, работает в
-// подставном каталоге во временной папке: свои «конфиги», свой каталог
-// копий, свой мета-файл. Ни один путь не ведёт в `~/.config`, а перезапуск
-// оболочки проверяется подставными запускателями, которые ничего не
-// запускают.
+// ⚠️ THERE ARE NO LIVE PANELS HERE AND THERE CANNOT BE. Everything below
+// works in a fake directory in a temporary folder: its own "configs", its
+// own copies directory, its own meta file. No path leads to `~/.config`,
+// and the shell restart is checked with fake launchers that launch
+// nothing.
 // ============================================================================
-// Исходная панель: снимок до первого вмешательства Rexon
+// The original panel: a snapshot before Rexon's first intervention
 // ============================================================================
 //
-// Решение Wehrwolfmann 20.10.2026: «Вернуть прежнюю панель» возвращает
-// панель, какой она была у человека ДО первого вмешательства Rexon, а не
-// предыдущую раскладку Rexon. Раньше каждое применение раскладки
-// перезаписывало единственную копию: после «Как Windows» → «Классическая»
-// возврат давал «Как Windows».
+// Wehrwolfmann's decision of 20.10.2026: "Restore the previous panel"
+// returns the panel as the person had it BEFORE Rexon's first
+// intervention, not Rexon's previous layout. Previously every layout
+// application overwrote the single copy: after "Like Windows" ->
+// "Classic", restoring gave "Like Windows".
 //
-// Поэтому копия панели (одна на стол, путь задаёт сам стол) — исходная: её
-// снимает первое вмешательство, последующие её не трогают и кладут свой
-// снимок рядом (`<копия>.last`, для будущего «шага назад»; кнопки нет).
-// Вернули исходную — рядом ложится отметка `<копия>.returned`, и следующее
-// вмешательство снова снимает исходную: панель после возврата и есть
-// панель человека. «Сохранить панель» — выбор самого человека: копия
-// заменяется (после вопроса) и отметка снимается. Копия без отметки,
-// снятая прежними выпусками, считается исходной.
+// So the panel copy (one per desktop, the path is set by the desktop
+// itself) is the original one: the first intervention takes it, later
+// ones do not touch it and put their own snapshot next to it
+// (`<copy>.last`, for a future "step back"; there is no button). Once the
+// original is restored, a `<copy>.returned` mark is placed next to it,
+// and the next intervention takes the original again: the panel after
+// the restore is the person's panel. "Save panel" is the person's own
+// choice: the copy is replaced (after a question) and the mark is
+// removed. A copy without a mark, taken by earlier releases, counts as
+// the original.
 
-/// Содержимое отметки «исходную панель уже вернули».
+/// Contents of the "the original panel has already been restored" mark.
 pub const PANEL_ORIGINAL_RETURNED: &str = "returned";
 
-/// Отметка «исходную панель вернули» рядом с копией `copy`.
+/// The "original panel restored" mark next to copy `copy`.
 pub fn panel_original_returned_mark(copy: &str) -> String {
     format!("{copy}.returned")
 }
 
-/// Последний снимок перед вмешательством Rexon, когда исходная копия уже
-/// есть (кнопки «шаг назад» пока нет — файл для неё).
+/// The last snapshot before a Rexon intervention when the original copy
+/// already exists (there is no "step back" button yet; the file is for it).
 pub fn panel_last_snapshot_path(copy: &str) -> String {
     format!("{copy}.last")
 }
 
-/// Куда положить снимок панели перед вмешательством Rexon.
+/// Where to put the panel snapshot before a Rexon intervention.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PanelSnapshotSlot {
-    /// Исходная копия: её ещё нет либо её уже вернули.
+    /// The original copy: it does not exist yet or it has already been restored.
     Original,
-    /// Рядом ([`panel_last_snapshot_path`]): исходная копия стоит.
+    /// Next to it ([`panel_last_snapshot_path`]): the original copy is in place.
     Last,
 }
 
-/// Решение по копии `copy_exists` и тексту отметки `returned_mark`
-/// ([`panel_original_returned_mark`], `None` — файла нет).
+/// The decision by copy `copy_exists` and the mark text `returned_mark`
+/// ([`panel_original_returned_mark`], `None` means no file).
 pub fn panel_snapshot_slot(copy_exists: bool, returned_mark: Option<&str>) -> PanelSnapshotSlot {
     let returned = returned_mark.is_some_and(|m| m.trim() == PANEL_ORIGINAL_RETURNED);
     if copy_exists && !returned {
@@ -1219,35 +1255,35 @@ pub fn panel_snapshot_slot(copy_exists: bool, returned_mark: Option<&str>) -> Pa
 }
 
 // ============================================================================
-// Копия панели XFCE
+// XFCE panel copy
 // ============================================================================
 //
-// Снимает и возвращает её `xfce4-panel-profiles` (`save <файл>` /
-// `load <файл>`, CLI программы): архив канала xfconf `xfce4-panel` и
-// файлов `~/.config/xfce4/panel`, при загрузке панель перезапускается им
-// же. Копия одна — у «Сохранить панель» и «Вернуть панель» вкладки
-// «Рабочие столы».
+// It is taken and restored by `xfce4-panel-profiles` (`save <file>` /
+// `load <file>`, the program's CLI): an archive of the `xfce4-panel`
+// xfconf channel and the files in `~/.config/xfce4/panel`; on load it
+// restarts the panel itself. There is one copy, for "Save panel" and
+// "Restore panel" in the "Desktops" tab.
 
-/// Программа копий панели XFCE.
+/// The XFCE panel copy program.
 pub const XFCE_PANEL_PROFILES: &str = "xfce4-panel-profiles";
 
-/// Файл копии панели XFCE (`data_home` — `$XDG_DATA_HOME` либо
+/// The XFCE panel copy file (`data_home` is `$XDG_DATA_HOME` or
 /// `~/.local/share`).
 pub fn xfce_panel_copy_path(data_home: &str) -> String {
     format!("{}/rexon/backups/xfce4-panel.tar.bz2", data_home.trim_end_matches('/'))
 }
 
-/// Команда снятия копии.
+/// The command that takes a copy.
 pub fn xfce_panel_save_argv(path: &str) -> Vec<String> {
     vec![XFCE_PANEL_PROFILES.to_string(), "save".to_string(), path.to_string()]
 }
 
-/// Команда возврата из копии.
+/// The command that restores from a copy.
 pub fn xfce_panel_load_argv(path: &str) -> Vec<String> {
     vec![XFCE_PANEL_PROFILES.to_string(), "load".to_string(), path.to_string()]
 }
 
-/// Снять копию панели XFCE → `(удалось, сообщение)`.
+/// Take an XFCE panel copy -> `(succeeded, message)`.
 pub fn xfce_panel_save_live(data_home: &str) -> (bool, String) {
     let path = xfce_panel_copy_path(data_home);
     if let Some(dir) = Path::new(&path).parent() {
@@ -1263,7 +1299,7 @@ pub fn xfce_panel_save_live(data_home: &str) -> (bool, String) {
     }
 }
 
-/// Вернуть панель XFCE из копии → `(удалось, сообщение)`.
+/// Restore the XFCE panel from the copy -> `(succeeded, message)`.
 pub fn xfce_panel_restore_live(data_home: &str) -> (bool, String) {
     let path = xfce_panel_copy_path(data_home);
     if !Path::new(&path).is_file() {
@@ -1278,120 +1314,126 @@ pub fn xfce_panel_restore_live(data_home: &str) -> (bool, String) {
 }
 
 // ============================================================================
-// Копия панели прочих окружений (Cinnamon, Budgie, LXQt, GNOME с панельными
-// расширениями, Pantheon, COSMIC, бары тайловых композиторов)
+// Panel copy of other environments (Cinnamon, Budgie, LXQt, GNOME with panel
+// extensions, Pantheon, COSMIC, tiling compositor bars)
 // ============================================================================
 //
-// Одна копия на окружение: `~/.local/share/rexon/backups/panel-<стол>/`.
-// Что снимать, у каждого стола своё ([`panel_copy_spec`]): ветки dconf
-// (целиком или ключи корня по приставке), файлы и каталоги от HOME. В копии
-// лежит `manifest.json` — что именно снято, — и «Вернуть» возвращает ровно
-// это. Новая копия собирается рядом (`.new`) и встаёт на место только
-// целиком: неудачное снятие прежнюю копию не портит. Как панель подхватит
-// вернувшееся, тоже решает стол ([`PanelReload`]): большинство следит за
-// своими настройками само.
+// One copy per environment: `~/.local/share/rexon/backups/panel-<desktop>/`.
+// What to take differs per desktop ([`panel_copy_spec`]): dconf branches
+// (whole, or root keys by prefix), files and directories relative to
+// HOME. The copy contains `manifest.json`, what exactly was taken, and
+// "Restore" returns exactly that. A new copy is assembled next to it
+// (`.new`) and takes its place only as a whole: a failed snapshot does
+// not spoil the previous copy. How the panel picks up what was returned
+// is also up to the desktop ([`PanelReload`]): most watch their own
+// settings by themselves.
 
-/// Что входит в копию панели.
+/// What a panel copy contains.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PanelPart {
-    /// Ветка dconf целиком (при возврате — сперва сброс ветки).
+    /// A whole dconf branch (on restore the branch is reset first).
     DconfDir(&'static str),
-    /// Ключи корня ветки dconf, чьи имена начинаются с одной из приставок
-    /// (при возврате — дописываются, остальные ключи ветки не трогаются).
+    /// Root keys of a dconf branch whose names start with one of the prefixes
+    /// (on restore they are written over, the other keys of the branch are
+    /// not touched).
     DconfKeys { dir: &'static str, prefixes: &'static [&'static str] },
-    /// Файл или каталог от HOME (`.config/lxqt/panel.conf`).
+    /// A file or directory relative to HOME (`.config/lxqt/panel.conf`).
     Home(String),
-    /// Каталоги в `parent` (от HOME), чьи имена начинаются с `prefix`.
+    /// Directories in `parent` (relative to HOME) whose names start with `prefix`.
     HomeMatching { parent: &'static str, prefix: &'static str },
-    /// Ресурс DConfig Deepin целиком: все записываемые ключи его схемы
-    /// (`/usr/share/dsg/configs/<appid>/<resource>.json`) через `dde-dconfig`.
-    /// Ключ со значением по умолчанию при возврате сбрасывается, а не
-    /// записывается.
+    /// A whole Deepin DConfig resource: all writable keys of its schema
+    /// (`/usr/share/dsg/configs/<appid>/<resource>.json`) through
+    /// `dde-dconfig`. A key with the default value is reset on restore rather
+    /// than written.
     DdeDconfig { appid: &'static str, resource: &'static str },
-    /// Опись расширений GNOME Shell ([`SavedGnomeExt`]): uuid, включено ли,
-    /// своё или системное. Настройки возвращаются ветками dconf рядом, а
-    /// недостающие расширения доставляются отдельно
-    /// ([`gnome_ext_copy_deliver`]) — с сетью и окном оболочки это долго.
+    /// An inventory of GNOME Shell extensions ([`SavedGnomeExt`]): uuid,
+    /// whether enabled, user or system. The settings are restored by the dconf
+    /// branches next to it, and missing extensions are delivered separately
+    /// ([`gnome_ext_copy_deliver`]): with the network and the shell's window
+    /// this takes long.
     GnomeExtensions,
 }
 
-/// Как панель подхватывает вернувшиеся настройки.
+/// How the panel picks up the restored settings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PanelReload {
-    /// Сама: следит за своими настройками (dconf, файлы).
+    /// By itself: it watches its own settings (dconf, files).
     Live,
-    /// Запустить программу отдельным сеансом (`budgie-panel --replace`).
+    /// Start a program in a separate session (`budgie-panel --replace`).
     Spawn(&'static [&'static str]),
-    /// Модуль сеанса LXQt: остановить и запустить через `org.lxqt.session`.
+    /// An LXQt session module: stop and start it through `org.lxqt.session`.
     LxqtModule(&'static str),
-    /// Послать SIGUSR2 процессам своего сеанса с этим именем (waybar
-    /// перечитывает по нему настройки).
+    /// Send SIGUSR2 to our session's processes with this name (waybar rereads
+    /// its settings on it).
     ReloadSignal(&'static str),
-    /// Перезапустить пользовательскую службу systemd, если она идёт
+    /// Restart a systemd user service if it is running
     /// (`systemctl --user --no-block try-restart`).
     RestartUserUnit(&'static str),
 }
 
-/// Что снимать у стола и как потом перечитать.
+/// What to take from a desktop and how to reread it afterwards.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PanelCopySpec {
     pub parts: Vec<PanelPart>,
     pub reload: Vec<PanelReload>,
 }
 
-/// Что машина говорит о столе — для выбора частей копии.
+/// What the machine says about the desktop, for choosing the parts of the copy.
 pub struct PanelProbe<'a> {
-    /// Есть ли программа в системе.
+    /// Whether the program is in the system.
     pub have: &'a dyn Fn(&str) -> bool,
-    /// Есть ли путь от HOME.
+    /// Whether a path relative to HOME exists.
     pub home_exists: &'a dyn Fn(&str) -> bool,
-    /// Включённые расширения GNOME Shell (`enabled-extensions`).
+    /// Enabled GNOME Shell extensions (`enabled-extensions`).
     pub gnome_extensions: &'a [String],
-    /// Есть ли файл по абсолютному пути (схемы DConfig Deepin).
+    /// Whether a file exists at an absolute path (Deepin DConfig schemas).
     pub system_exists: &'a dyn Fn(&str) -> bool,
 }
 
-/// Приложение DConfig, под которым dde-shell (док Deepin V23/V25) хранит
-/// настройки с выпуска 0.0.35 (август 2024, «correct app id used by
-/// DConfig»); прежнее `org.deepin.ds.dock` осталось лишь копией схем для
-/// совместимости.
+/// The DConfig application under which dde-shell (the Deepin V23/V25 dock)
+/// keeps its settings since release 0.0.35 (August 2024, "correct app id
+/// used by DConfig"); the former `org.deepin.ds.dock` remains only as a
+/// copy of the schemas for compatibility.
 pub const DDE_SHELL_DCONFIG_APPID: &str = "org.deepin.dde.shell";
 
-/// Ресурсы дока dde-shell: сам док (размер, место, скрытие, плагины),
-/// область уведомлений и панель задач (закреплённые программы).
+/// The dde-shell dock resources: the dock itself (size, position, hiding,
+/// plugins), the notification area and the task bar (pinned programs).
 pub const DDE_DOCK_RESOURCES: &[&str] =
     &["org.deepin.ds.dock", "org.deepin.ds.dock.tray", "org.deepin.ds.dock.taskmanager"];
 
-/// Служба systemd дока Deepin (dde-session): `dde-shell -C DDE`.
+/// The systemd service of the Deepin dock (dde-session): `dde-shell -C DDE`.
 pub const DDE_DOCK_UNIT: &str = "dde-shell@DDE.service";
 
-/// Ветка dconf, где расширения GNOME Shell держат свои настройки.
+/// The dconf branch where GNOME Shell extensions keep their settings.
 pub const GNOME_EXTENSIONS_DCONF_DIR: &str = "/org/gnome/shell/extensions/";
 
-/// Что снимать у стола `de` (ключ Rexon). `None` — снимать нечего: кнопок
-/// копии панели у такого стола нет. KDE, MATE и XFCE снимаются своими путями
-/// (`plasma_backup_run`, `mate_panel`, `xfce4-panel-profiles`).
+/// What to take from desktop `de` (a Rexon key). `None` means nothing to
+/// take: such a desktop has no panel copy buttons. KDE, MATE and XFCE are
+/// handled their own ways (`plasma_backup_run`, `mate_panel`,
+/// `xfce4-panel-profiles`).
 pub fn panel_copy_spec(de: &str, probe: &PanelProbe) -> Option<PanelCopySpec> {
     match de {
-        // Budgie: всё о панелях — ветка `com.solus-project.budgie-panel`
-        // (панели, `instance/` апплетов, их настройки). Готовые панели
-        // budgie-panel из dconf не перестраивает — `--replace` поднимает их
-        // заново (так Budgie перезапускают и сами).
-        // LXQt: панели и их модули — один файл `~/.config/lxqt/panel.conf`.
-        // Свой файл панель сама не перечитывает; сеанс LXQt останавливает и
-        // снова запускает её модуль (`org.lxqt.session`, `stopModule` /
-        // `startModule`, имя модуля — файл автозапуска).
+        // Budgie: everything about the panels is the
+        // `com.solus-project.budgie-panel` branch (panels, applet `instance/`,
+        // their settings). budgie-panel does not rebuild existing panels from
+        // dconf; `--replace` brings them up again (that is how Budgie itself is
+        // restarted too).
+        // LXQt: the panels and their plugins are one file,
+        // `~/.config/lxqt/panel.conf`. The panel does not reread its file by
+        // itself; the LXQt session stops and starts its module again
+        // (`org.lxqt.session`, `stopModule` / `startModule`, the module name is
+        // the autostart file).
         "lxqt" if (probe.have)("lxqt-panel") => Some(PanelCopySpec {
             parts: vec![PanelPart::Home(".config/lxqt/panel.conf".to_string())],
             reload: vec![PanelReload::LxqtModule("lxqt-panel.desktop")],
         }),
-        // GNOME: своей панели нет — панель, док и значки в ней дают
-        // расширения. Поэтому копия — все расширения человека: их опись
-        // (uuid, включено ли, своё или системное), настройки всех расширений
-        // (ветка `/org/gnome/shell/extensions/`) и оба списка оболочки
-        // (`enabled-extensions`, `disabled-extensions`). Расширения следят
-        // за своими настройками сами; недостающие при возврате ставятся с
-        // extensions.gnome.org ([`gnome_ext_copy_deliver`]).
+        // GNOME: it has no panel of its own; the panel, the dock and the icons in
+        // it come from extensions. So the copy is all of the person's extensions:
+        // their inventory (uuid, whether enabled, user or system), the settings
+        // of all extensions (the `/org/gnome/shell/extensions/` branch) and both
+        // shell lists (`enabled-extensions`, `disabled-extensions`). Extensions
+        // watch their own settings; missing ones are installed from
+        // extensions.gnome.org on restore ([`gnome_ext_copy_deliver`]).
         "gnome" => {
             if !(probe.have)("gnome-shell") && probe.gnome_extensions.is_empty() {
                 return None;
@@ -1405,10 +1447,10 @@ pub fn panel_copy_spec(de: &str, probe: &PanelProbe) -> Option<PanelCopySpec> {
                 reload: vec![PanelReload::Live],
             })
         }
-        // Pantheon: верхняя панель Wingpanel (`io.elementary.desktop.wingpanel`)
-        // и стоящий док — Plank (`net.launchpad.plank`, значки дока — файлы
-        // `~/.config/plank`) или новый док elementary (`io.elementary.dock`).
-        // Все следят за своими настройками сами.
+        // Pantheon: the Wingpanel top panel (`io.elementary.desktop.wingpanel`)
+        // and the installed dock: Plank (`net.launchpad.plank`, the dock icons
+        // are files in `~/.config/plank`) or the new elementary dock
+        // (`io.elementary.dock`). All of them watch their own settings.
         "pantheon" if (probe.have)("io.elementary.wingpanel") => {
             let mut parts = vec![PanelPart::DconfDir("/io/elementary/desktop/wingpanel/")];
             if (probe.have)("plank") {
@@ -1420,26 +1462,25 @@ pub fn panel_copy_spec(de: &str, probe: &PanelProbe) -> Option<PanelCopySpec> {
             }
             Some(PanelCopySpec { parts, reload: vec![PanelReload::Live] })
         }
-        // Wayfire: панель wf-panel и фон wf-background (wf-shell) — один файл
-        // `~/.config/wf-shell.ini`; wf-shell следит за ним сам (inotify) и
-        // перечитывает при записи.
+        // Wayfire: the wf-panel panel and the wf-background background (wf-shell)
+        // are one file, `~/.config/wf-shell.ini`; wf-shell watches it itself
+        // (inotify) and rereads it on write.
         "wayfire" if (probe.have)("wf-panel") => Some(PanelCopySpec {
             parts: vec![PanelPart::Home(".config/wf-shell.ini".to_string())],
             reload: vec![PanelReload::Live],
         }),
-        // COSMIC: панель, док и их кнопки — каталоги настроек
-        // `~/.config/cosmic/com.system76.CosmicPanel*` (cosmic-config); за
-        // ними панель следит сама.
+        // COSMIC: the panel, the dock and their buttons are the settings
+        // directories `~/.config/cosmic/com.system76.CosmicPanel*`
+        // (cosmic-config); the panel watches them itself.
         "cosmic" if (probe.have)("cosmic-panel") => Some(PanelCopySpec {
             parts: vec![PanelPart::HomeMatching { parent: ".config/cosmic", prefix: "com.system76.CosmicPanel" }],
             reload: vec![PanelReload::Live],
         }),
-        // Тайловые композиторы: панель — это бар. Конфиги того, что стоит:
-        // waybar (`~/.config/waybar`, перечитывает его по SIGUSR2), оболочки
-        // Noctalia (`~/.config/noctalia`) и DankMaterialShell
-        // (`~/.config/DankMaterialShell`), которые следят за своими
-        // настройками сами. River — тоже с waybar (её поднимает стартовый
-        // init Rexon).
+        // Tiling compositors: the panel is a bar. Configs of whatever is
+        // installed: waybar (`~/.config/waybar`, rereads it on SIGUSR2), the
+        // Noctalia (`~/.config/noctalia`) and DankMaterialShell
+        // (`~/.config/DankMaterialShell`) shells, which watch their own settings.
+        // River also uses waybar (brought up by Rexon's startup init).
         "hyprland" | "niri" | "sway" | "river" => {
             let mut parts = Vec::new();
             let mut reload = Vec::new();
@@ -1460,13 +1501,13 @@ pub fn panel_copy_spec(de: &str, probe: &PanelProbe) -> Option<PanelCopySpec> {
             }
             Some(PanelCopySpec { parts, reload })
         }
-        // Deepin V23/V25: док — dde-shell, его настройки — три ресурса
-        // DConfig приложения `org.deepin.dde.shell`. Док за своими ключами
-        // следит лишь частично (область уведомлений подхватывает только
-        // скрытые значки), поэтому после возврата Deepin сам перезапускает
-        // службу дока. Другой выпуск (прежний dde-dock deepin 20, dde-shell
-        // до 0.0.35 со своим приложением DConfig) — кнопок нет: ключей его
-        // мы не знаем.
+        // Deepin V23/V25: the dock is dde-shell, its settings are three DConfig
+        // resources of the `org.deepin.dde.shell` application. The dock watches
+        // its keys only partly (the notification area picks up only hidden
+        // icons), so after a restore Deepin restarts the dock service itself.
+        // Another release (the former dde-dock of deepin 20, dde-shell before
+        // 0.0.35 with its own DConfig application) gets no buttons: we do not
+        // know its keys.
         "deepin"
             if (probe.have)("dde-dconfig")
                 && (probe.have)("dde-shell")
@@ -1486,10 +1527,10 @@ pub fn panel_copy_spec(de: &str, probe: &PanelProbe) -> Option<PanelCopySpec> {
             parts: vec![PanelPart::DconfDir("/com/solus-project/budgie-panel/")],
             reload: vec![PanelReload::Spawn(&["budgie-panel", "--replace"])],
         }),
-        // Панели и апплеты Cinnamon — ключи `org.cinnamon` (`panels-*`,
-        // `panel-zone-*`, `enabled-applets`, `next-applet-id`), настройки
-        // апплетов — файлы `~/.config/cinnamon/spices/`. Cinnamon следит за
-        // обоими сам (смена `enabled-applets` перестраивает панели).
+        // Cinnamon panels and applets are `org.cinnamon` keys (`panels-*`,
+        // `panel-zone-*`, `enabled-applets`, `next-applet-id`), applet settings
+        // are files in `~/.config/cinnamon/spices/`. Cinnamon watches both
+        // itself (changing `enabled-applets` rebuilds the panels).
         "cinnamon" | "cinnamon-mint" => Some(PanelCopySpec {
             parts: vec![
                 PanelPart::DconfKeys {
@@ -1504,12 +1545,12 @@ pub fn panel_copy_spec(de: &str, probe: &PanelProbe) -> Option<PanelCopySpec> {
     }
 }
 
-/// Каталог копии панели стола `de`.
+/// The panel copy directory of desktop `de`.
 pub fn panel_copy_dir(data_home: &str, de: &str) -> String {
     format!("{}/rexon/backups/panel-{de}", data_home.trim_end_matches('/'))
 }
 
-/// Руки копии панели: команды, файлы, процессы. Живые — [`LivePanelIo`].
+/// The hands of the panel copy: commands, files, processes. The live ones are [`LivePanelIo`].
 pub trait PanelIo {
     fn run(&self, argv: &[String]) -> (bool, String);
     fn read(&self, path: &str) -> Option<String>;
@@ -1520,15 +1561,16 @@ pub trait PanelIo {
     fn remove_tree(&self, path: &str) -> Result<(), String>;
     fn rename(&self, from: &str, to: &str) -> Result<(), String>;
     fn spawn(&self, argv: &[String]) -> bool;
-    /// Послать SIGUSR2 процессам своего сеанса с именем `exe`; сколько.
+    /// Send SIGUSR2 to our session's processes named `exe`; returns how many.
     fn reload_signal(&self, exe: &str) -> usize;
     fn pause(&self);
-    /// Снимок расширений от GNOME Shell; `None` — оболочки нет (тогда
-    /// опись — по диску и ключам, [`gnome_ext_inventory`]).
+    /// A snapshot of extensions from GNOME Shell; `None` means there is no
+    /// shell (then the inventory comes from disk and keys,
+    /// [`gnome_ext_inventory`]).
     fn gnome_shell_list(&self) -> Option<Vec<crate::gnome_shell_ext::ExtInfo>> {
         None
     }
-    /// Каталог данных пользователя (`$XDG_DATA_HOME` либо `~/.local/share`).
+    /// The user data directory (`$XDG_DATA_HOME` or `~/.local/share`).
     fn data_home(&self, home: &str) -> String {
         format!("{}/.local/share", home.trim_end_matches('/'))
     }
@@ -1538,13 +1580,13 @@ fn sv(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|s| s.to_string()).collect()
 }
 
-/// Годится ли путь копии/манифеста: относительный, без `..`.
+/// Whether a copy/manifest path is acceptable: relative, without `..`.
 fn safe_rel(p: &str) -> bool {
     !p.is_empty() && !p.starts_with('/') && p.split('/').all(|c| !c.is_empty() && c != "." && c != "..")
 }
 
-/// Ключи корня дампа dconf (группа `[/]`), чьи имена начинаются с одной из
-/// `prefixes`, — готовым дампом для `dconf load`.
+/// Root keys of a dconf dump (the `[/]` group) whose names start with one
+/// of `prefixes`, as a ready dump for `dconf load`.
 pub fn dconf_root_keys(dump: &str, prefixes: &[&str]) -> String {
     let mut out = String::new();
     let mut in_root = false;
@@ -1570,7 +1612,7 @@ pub fn dconf_root_keys(dump: &str, prefixes: &[&str]) -> String {
     }
 }
 
-/// Снять копию панели по `spec` в `copy_dir` → путь копии либо причина.
+/// Take a panel copy by `spec` into `copy_dir` -> the copy path or the reason.
 pub fn panel_copy_save(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, copy_dir: &str) -> Result<String, String> {
     let home = home.trim_end_matches('/');
     let tmp = format!("{copy_dir}.new");
@@ -1652,7 +1694,7 @@ pub fn panel_copy_save(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, copy_
     Ok(copy_dir.to_string())
 }
 
-/// Вернуть панель из копии `copy_dir` и дать столу её перечитать.
+/// Restore the panel from copy `copy_dir` and let the desktop reread it.
 pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, copy_dir: &str) -> Result<String, String> {
     let home = home.trim_end_matches('/');
     let Some(text) = io.read(&format!("{copy_dir}/manifest.json")) else {
@@ -1664,10 +1706,10 @@ pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, co
         match s(e, "kind").as_str() {
             kind @ ("dconf_dir" | "dconf_keys") => {
                 let (dir, file) = (s(e, "dir"), s(e, "file"));
-                // Только ветки, которые этот стол и снимает: манифест — файл
-                // на диске, чужую ветку из него не сбрасываем.
-                // Ветка внутри снимаемой целиком тоже своя: прежние копии
-                // GNOME снимали ветки отдельных расширений.
+                // Only the branches this desktop takes: the manifest is a file
+                // on disk, and we do not reset a foreign branch from it.
+                // A branch inside one taken as a whole is ours too: earlier GNOME
+                // copies took the branches of individual extensions.
                 let known = spec.parts.iter().any(|p| match p {
                     PanelPart::DconfDir(d) => *d == dir || (dir.starts_with(d) && d.ends_with('/') && !dir.contains("..")),
                     PanelPart::DconfKeys { dir: d, .. } => *d == dir,
@@ -1715,7 +1757,7 @@ pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, co
             }
             "dde_dconfig" => {
                 let (appid, resource, file) = (s(e, "appid"), s(e, "resource"), s(e, "file"));
-                // Только ресурсы, которые этот стол и снимает.
+                // Only the resources this desktop takes.
                 let known = spec.parts.iter().any(
                     |p| matches!(p, PanelPart::DdeDconfig { appid: a, resource: r } if *a == appid && *r == resource),
                 );
@@ -1744,8 +1786,9 @@ pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, co
                     }
                 }
             }
-            // Опись расширений GNOME: настройки уже вернулись ветками dconf,
-            // а доставка недостающих — отдельно (`gnome_ext_copy_deliver`).
+            // The GNOME extension inventory: the settings have already been
+            // restored by dconf branches, and delivering the missing ones is
+            // separate (`gnome_ext_copy_deliver`).
             _ => {}
         }
     }
@@ -1782,33 +1825,34 @@ pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, co
     Ok(copy_dir.to_string())
 }
 
-// ── Расширения GNOME в копии ─────────────────────────────────────────────
+// ── GNOME extensions in the copy ─────────────────────────────────────────
 //
-// Копия GNOME помнит, какие расширения стояли: uuid, включено ли, своё или
-// системное. «Вернуть» сперва возвращает настройки (ветки dconf и оба
-// списка оболочки), потом доставляет недостающие свои расширения с
-// extensions.gnome.org: при живой оболочке — её установкой (окно
-// подтверждения, запуск сразу), без неё — запасным путём (zip выпуска,
-// заработает при входе в GNOME). Включённость — как было. Чего на сайте
-// нет, что не поддерживает эту версию GNOME и системное, которого нет на
-// машине, — сказано словами, без попыток.
+// A GNOME copy remembers which extensions were installed: uuid, whether
+// enabled, user or system. "Restore" first returns the settings (dconf
+// branches and both shell lists), then delivers the missing user
+// extensions from extensions.gnome.org: with a live shell through its
+// installation (a confirmation window, started right away), without it
+// through the fallback path (the release zip, it will work at the next
+// GNOME login). Enabled state as it was. What the site does not have,
+// what does not support this GNOME version, and system extensions
+// missing from the machine are stated in words, without attempts.
 
-/// Файл описи расширений в копии.
+/// The extension inventory file in the copy.
 pub const GNOME_EXT_COPY_FILE: &str = "gnome-extensions.json";
 
-/// Каталоги системных расширений GNOME Shell.
+/// Directories of system GNOME Shell extensions.
 pub const GNOME_EXT_SYSTEM_ROOTS: &[&str] =
     &["/usr/share/gnome-shell/extensions", "/usr/local/share/gnome-shell/extensions"];
 
-/// Расширение GNOME в копии.
+/// A GNOME extension in the copy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedGnomeExt {
     pub uuid: String,
-    /// Имя для сообщений; пусто — показывается uuid.
+    /// The name for messages; empty means the uuid is shown.
     #[serde(default)]
     pub name: String,
     pub enabled: bool,
-    /// Системное (из пакета дистрибутива): с сайта не ставится.
+    /// A system one (from a distribution package): not installed from the site.
     #[serde(default)]
     pub system: bool,
 }
@@ -1819,7 +1863,7 @@ impl SavedGnomeExt {
     }
 }
 
-/// Опись по снимку оболочки (она и есть правда).
+/// The inventory from the shell's snapshot (it is the truth).
 pub fn gnome_ext_inventory_from_shell(list: &[crate::gnome_shell_ext::ExtInfo]) -> Vec<SavedGnomeExt> {
     let mut out: Vec<SavedGnomeExt> = list
         .iter()
@@ -1834,9 +1878,9 @@ pub fn gnome_ext_inventory_from_shell(list: &[crate::gnome_shell_ext::ExtInfo]) 
     out
 }
 
-/// Опись без оболочки: каталоги расширений (своё перекрывает системное с
-/// тем же uuid — как у GNOME) и списки настроек (`disabled-extensions`
-/// сильнее `enabled-extensions`).
+/// The inventory without the shell: extension directories (a user one
+/// overrides a system one with the same uuid, as in GNOME) and the
+/// settings lists (`disabled-extensions` beats `enabled-extensions`).
 pub fn gnome_ext_inventory_from_disk(
     user: &[String],
     system: &[String],
@@ -1861,7 +1905,7 @@ pub fn gnome_ext_inventory_from_disk(
         .collect()
 }
 
-/// Опись расширений этой машины: от оболочки, иначе по диску и ключам.
+/// The extension inventory of this machine: from the shell, otherwise from disk and keys.
 pub fn gnome_ext_inventory(io: &dyn PanelIo, data_home: &str) -> Vec<SavedGnomeExt> {
     if let Some(list) = io.gnome_shell_list() {
         return gnome_ext_inventory_from_shell(&list);
@@ -1875,7 +1919,7 @@ pub fn gnome_ext_inventory(io: &dyn PanelIo, data_home: &str) -> Vec<SavedGnomeE
     gnome_ext_inventory_from_disk(&user, &system, &key("enabled-extensions"), &key("disabled-extensions"))
 }
 
-/// Опись расширений из копии `copy_dir`; нет её — пусто.
+/// The extension inventory from copy `copy_dir`; none means empty.
 pub fn gnome_ext_copy_saved(io: &dyn PanelIo, copy_dir: &str) -> Vec<SavedGnomeExt> {
     #[derive(Deserialize)]
     struct Body {
@@ -1901,24 +1945,24 @@ pub fn gnome_ext_copy_saved(io: &dyn PanelIo, copy_dir: &str) -> Vec<SavedGnomeE
         .unwrap_or_default()
 }
 
-/// Итог доставки расширений из копии.
+/// The result of delivering extensions from the copy.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GnomeExtDelivery {
-    /// Поставлено (через оболочку или запасным путём).
+    /// Installed (through the shell or the fallback path).
     pub installed: Vec<String>,
-    /// Не поставлено — по строке на расширение, словами.
+    /// Not installed: one line per extension, in words.
     pub problems: Vec<String>,
-    /// Прочие строки (поставлено, отмена в окне оболочки).
+    /// Other lines (installed, cancelled in the shell's window).
     pub notes: Vec<String>,
 }
 
 impl GnomeExtDelivery {
-    /// Пусто — сказать нечего (всё было на месте).
+    /// Empty means nothing to say (everything was in place).
     pub fn is_empty(&self) -> bool {
         self.installed.is_empty() && self.problems.is_empty() && self.notes.is_empty()
     }
 
-    /// Текст для строки состояния.
+    /// The text for the status line.
     pub fn message(&self) -> String {
         let mut lines = self.notes.clone();
         lines.extend(self.problems.iter().cloned());
@@ -1926,7 +1970,7 @@ impl GnomeExtDelivery {
     }
 }
 
-/// Сообщение: системного расширения из копии на машине нет.
+/// Message: the system extension from the copy is not on the machine.
 pub fn msg_gnome_ext_system_missing(name: &str) -> String {
     trf(
         "“%1” is a system extension and isn't on this computer — it comes with a distribution package.",
@@ -1934,31 +1978,31 @@ pub fn msg_gnome_ext_system_missing(name: &str) -> String {
     )
 }
 
-/// Сообщение: расширения нет на extensions.gnome.org.
+/// Message: the extension is not on extensions.gnome.org.
 pub fn msg_gnome_ext_not_on_site(name: &str) -> String {
     trf("“%1” isn't on extensions.gnome.org, so Rexon can't install it again.", &[&name])
 }
 
-/// Сообщение: у расширения нет выпуска под эту версию GNOME.
+/// Message: the extension has no release for this GNOME version.
 pub fn msg_gnome_ext_unsupported(name: &str, shell: &str) -> String {
     trf("“%1” has no release for GNOME %2, so it wasn't installed.", &[&name, &shell])
 }
 
-/// Сообщение: установка не удалась.
+/// Message: the installation failed.
 pub fn msg_gnome_ext_failed(name: &str, why: &str) -> String {
     trf("“%1” wasn't installed: %2", &[&name, &why])
 }
 
-/// Выпуски расширения с extensions.gnome.org.
+/// Releases of an extension from extensions.gnome.org.
 pub type GnomeExtReleases<'a> =
     dyn FnMut(&str) -> Result<Vec<crate::gnome_ego::Release>, crate::gnome_ego::FetchError> + 'a;
-/// Скачать zip выпуска под версию оболочки (запасной путь без оболочки).
+/// Download the release zip for the shell version (the fallback path without the shell).
 pub type GnomeExtFetchZip<'a> =
     dyn FnMut(&str, Option<&crate::gnome_ego::ShellVersion>) -> Result<std::path::PathBuf, String> + 'a;
 
-/// Доставить расширения из копии `saved`, которых нет среди `present`.
-/// Сеть — только через `releases` и `fetch_zip`, поэтому проверяется
-/// подделками.
+/// Deliver the extensions from copy `saved` that are not among `present`.
+/// The network goes only through `releases` and `fetch_zip`, so it is
+/// checked with fakes.
 pub fn gnome_ext_copy_deliver(
     shell: &mut dyn crate::gnome_shell_ext::ShellExtIo,
     saved: &[SavedGnomeExt],
@@ -2011,8 +2055,9 @@ pub fn gnome_ext_copy_deliver(
                 report.notes.push(crate::gnome_ext_section::install_message(name, InstallOutcome::Cancelled).1);
             }
             Ok(o) => {
-                // Поставленное включено (так ставят и оболочка, и запасной
-                // путь); выключенное в копии — выключить обратно.
+                // What was installed is enabled (both the shell and the fallback
+                // path install that way); what was disabled in the copy gets
+                // disabled back.
                 if !ext.enabled {
                     let _ = crate::gnome_ext_section::set_enabled(shell, &uuid, false, data_home);
                 }
@@ -2025,9 +2070,10 @@ pub fn gnome_ext_copy_deliver(
     report
 }
 
-/// Доставка расширений из копии GNOME на живой машине (сеть, оболочка;
-/// звать из рабочего потока — окно оболочки ждёт человека). `None` —
-/// копии с описью нет или всё на месте.
+/// Delivering extensions from a GNOME copy on the live machine (network,
+/// shell; call it from a worker thread: the shell's window waits for the
+/// person). `None` means there is no copy with an inventory or everything
+/// is in place.
 pub fn gnome_ext_copy_deliver_live() -> Option<String> {
     let (home, dir) = live_copy_dir("gnome");
     let saved = gnome_ext_copy_saved(&LivePanelIo, &dir);
@@ -2050,7 +2096,7 @@ pub fn gnome_ext_copy_deliver_live() -> Option<String> {
     (!report.is_empty()).then(|| report.message())
 }
 
-/// Живые руки копии панели.
+/// The live hands of the panel copy.
 pub struct LivePanelIo;
 
 fn copy_tree_keep_links(src: &Path, dest: &Path) -> io::Result<()> {
@@ -2140,7 +2186,7 @@ impl PanelIo for LivePanelIo {
         let mut sent = 0;
         for pid in session_pids_named(exe) {
             let Ok(pid) = libc::pid_t::try_from(pid) else { continue };
-            // SAFETY: kill с конкретным положительным PID — обычный вызов.
+            // SAFETY: kill with a specific positive PID is an ordinary call.
             if unsafe { libc::kill(pid, libc::SIGUSR2) } == 0 {
                 sent += 1;
             }
@@ -2158,7 +2204,7 @@ impl PanelIo for LivePanelIo {
     }
 }
 
-/// Живая проба стола для [`panel_copy_spec`].
+/// The live desktop probe for [`panel_copy_spec`].
 pub fn live_panel_copy_spec(de: &str) -> Option<PanelCopySpec> {
     let home = std::env::var("HOME").unwrap_or_default();
     let path = std::env::var("PATH").ok();
@@ -2184,13 +2230,13 @@ fn live_copy_dir(de: &str) -> (String, String) {
     (home, panel_copy_dir(&data, de))
 }
 
-/// Есть ли уже копия панели стола `de` (новая её заменит).
+/// Whether desktop `de` already has a panel copy (a new one will replace it).
 pub fn panel_copy_exists_live(de: &str) -> bool {
     let (_, dir) = live_copy_dir(de);
     Path::new(&format!("{dir}/manifest.json")).is_file()
 }
 
-/// «Сохранить панель» у стола `de` → (удалось, путь либо причина).
+/// "Save panel" for desktop `de` -> (succeeded, path or reason).
 pub fn panel_copy_save_live(de: &str) -> (bool, String) {
     let Some(spec) = live_panel_copy_spec(de) else {
         return (false, tr("There is no saved panel copy yet."));
@@ -2202,7 +2248,7 @@ pub fn panel_copy_save_live(de: &str) -> (bool, String) {
     }
 }
 
-/// «Вернуть панель» у стола `de` → (удалось, путь либо причина).
+/// "Restore panel" for desktop `de` -> (succeeded, path or reason).
 pub fn panel_copy_restore_live(de: &str) -> (bool, String) {
     let Some(spec) = live_panel_copy_spec(de) else {
         return (false, tr("There is no saved panel copy yet."));
@@ -2214,15 +2260,15 @@ pub fn panel_copy_restore_live(de: &str) -> (bool, String) {
     }
 }
 
-/// Процессы своего сеанса (uid и `XDG_SESSION_ID`) с исполняемым файлом
-/// `name` — по PID, не по имени в `pkill`.
+/// Processes of our own session (uid and `XDG_SESSION_ID`) with executable
+/// `name`, by PID, not by name in `pkill`.
 fn session_pids_named(name: &str) -> Vec<u32> {
     use std::os::unix::fs::MetadataExt;
     let my_session = std::env::var("XDG_SESSION_ID").unwrap_or_default();
     if my_session.is_empty() {
         return Vec::new();
     }
-    // SAFETY: getuid не имеет предусловий.
+    // SAFETY: getuid has no preconditions.
     let my_uid = unsafe { libc::getuid() };
     let Ok(entries) = fs::read_dir("/proc") else {
         return Vec::new();
@@ -2247,13 +2293,13 @@ mod original_panel_tests {
 
     #[test]
     fn original_copy_is_kept_until_it_is_returned() {
-        // Копии нет — снимается исходная.
+        // No copy: the original is taken.
         assert_eq!(panel_snapshot_slot(false, None), PanelSnapshotSlot::Original);
-        // Исходная стоит (в том числе снятая прежним выпуском, без отметки) —
-        // следующие снимки ложатся рядом.
+        // The original is in place (including one taken by an earlier release,
+        // without a mark): the next snapshots go next to it.
         assert_eq!(panel_snapshot_slot(true, None), PanelSnapshotSlot::Last);
         assert_eq!(panel_snapshot_slot(true, Some("")), PanelSnapshotSlot::Last);
-        // Исходную вернули — следующее вмешательство снимает её заново.
+        // The original was restored: the next intervention takes it again.
         assert_eq!(panel_snapshot_slot(true, Some("returned\n")), PanelSnapshotSlot::Original);
         let copy = "/h/.local/share/rexon/backups/mate-panel.dconf";
         assert_eq!(panel_original_returned_mark(copy), format!("{copy}.returned"));
@@ -2271,7 +2317,7 @@ mod xfce_panel_tests {
         assert_eq!(path, "/home/w/.local/share/rexon/backups/xfce4-panel.tar.bz2");
         assert_eq!(xfce_panel_save_argv(&path), ["xfce4-panel-profiles", "save", path.as_str()]);
         assert_eq!(xfce_panel_load_argv(&path), ["xfce4-panel-profiles", "load", path.as_str()]);
-        // Копии нет — возвращать нечего, программа не зовётся.
+        // No copy: nothing to restore, the program is not called.
         let (ok, msg) = xfce_panel_restore_live("/nonexistent-rexon-test");
         assert!(!ok && !msg.is_empty());
     }
@@ -2281,8 +2327,8 @@ mod xfce_panel_tests {
 mod exec_tests {
     use super::*;
 
-    /// Свой каталог во временной папке (tempfile в зависимостях ядра нет —
-    /// тот же приём, что в `appearance_cache.rs`).
+    /// Its own directory in a temporary folder (tempfile is not among the
+    /// core's dependencies; the same trick as in `appearance_cache.rs`).
     fn scratch(tag: &str) -> String {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -2293,8 +2339,8 @@ mod exec_tests {
         path.to_string_lossy().into_owned()
     }
 
-    /// Подставной «рабочий стол»: каталог конфигов с двумя файлами и одним
-    /// деревом — как `~/.local/share/plasma` у настоящей панели.
+    /// A fake "desktop": a config directory with two files and one tree, like
+    /// `~/.local/share/plasma` for a real panel.
     fn fake_desktop(root: &str) -> Vec<String> {
         let cfg = format!("{root}/config");
         fs::create_dir_all(format!("{cfg}/plasma/look")).unwrap();
@@ -2305,14 +2351,14 @@ mod exec_tests {
             format!("{cfg}/appletsrc"),
             format!("{cfg}/plasmashellrc"),
             format!("{cfg}/plasma"),
-            // Заведомо отсутствующий конфиг: его в снимке быть не должно.
+            // A config known to be missing: it must not be in the snapshot.
             format!("{cfg}/нет-такого-файла"),
         ]
     }
 
-    /// Снимок обязан лечь на диск ЦЕЛИКОМ — вместе с деревом, — а мета-файл
-    /// назвать ровно то, что скопировалось. Без этого «Восстановить» вернуло
-    /// бы половину панели и человек не понял бы, почему.
+    /// The snapshot must land on disk IN FULL, tree included, and the meta
+    /// file must name exactly what was copied. Without this "Restore" would
+    /// return half a panel, and the person would not understand why.
     #[test]
     fn снимок_копирует_файлы_и_дерево() {
         let root = scratch("snap");
@@ -2346,8 +2392,8 @@ mod exec_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// Копировать нечего — на диске не должно остаться пустого каталога,
-    /// который выглядит как сломанная копия, а человеку надо сказать словами.
+    /// Nothing to copy: no empty directory that looks like a broken copy must
+    /// remain on disk, and the person must be told in words.
     #[test]
     fn пустой_снимок_не_остаётся_на_диске() {
         let root = scratch("empty");
@@ -2366,10 +2412,10 @@ mod exec_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// ⚠️ Запись НЕЗНАКОМОЙ формы (её оставила бы более новая версия Rexon)
-    /// обязана пережить нашу запись мета-файла. Потерять её значит потерять
-    /// ссылку на чужой снимок: сам снимок остался бы на диске мёртвым грузом,
-    /// а в списке его бы не было.
+    /// ⚠️ An entry of an UNKNOWN form (a newer Rexon version would leave one)
+    /// must survive our write of the meta file. Losing it means losing the
+    /// reference to someone else's snapshot: the snapshot itself would remain
+    /// on disk as dead weight, and it would not be in the list.
     #[test]
     fn чужая_запись_переживает_новую_копию() {
         let root = scratch("alien");
@@ -2396,9 +2442,9 @@ mod exec_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// Ротация: больше предела снимков не копится, а лишние каталоги
-    /// действительно удаляются с диска — иначе копии панели тихо съели бы
-    /// место, и об этом никто бы не узнал.
+    /// Rotation: no more than the limit of snapshots accumulates, and the
+    /// extra directories are really deleted from disk; otherwise panel copies
+    /// would quietly eat up space, and nobody would know.
     #[test]
     fn ротация_удаляет_старые_каталоги() {
         let root = scratch("rotate");
@@ -2422,8 +2468,9 @@ mod exec_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// Возврат копии: файлы обязаны вернуться к прежнему содержимому, а
-    /// метка времени — попасть в ответ (человек по ней узнаёт, что вернул).
+    /// Restoring a copy: the files must return to their previous content, and
+    /// the timestamp must get into the answer (by it the person learns what
+    /// they restored).
     #[test]
     fn возврат_копии_восстанавливает_файлы() {
         let root = scratch("restore");
@@ -2431,13 +2478,13 @@ mod exec_tests {
         let dir = format!("{root}/backups");
         plasma_backup_run(&dir, &configs, "manual", false, "20260908_160000").unwrap();
 
-        // Панель «сломали» после снятия копии.
+        // The panel was "broken" after the copy was taken.
         fs::write(format!("{root}/config/appletsrc"), "панель=пусто\n").unwrap();
 
         let (ok, msg) = plasma_restore_run(&dir, Some("20260908_160000"));
         assert!(ok, "возврат не удался: {msg}");
-        // Метка попадает в ответ в ЧЕЛОВЕЧЕСКОМ виде — тем же, каким
-        // подписана строка списка копий в окне (правило #13, 18.09).
+        // The timestamp gets into the answer in HUMAN form, the same as the
+        // row of the copies list in the window is labelled (rule #13, 18.09).
         assert!(
             msg.contains(&crate::qt_settings::pretty_backup_ts("20260908_160000"))
                 && msg.contains("08.09.2026"),
@@ -2452,8 +2499,9 @@ mod exec_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// Пустая метка = «последняя копия», как у оригинала (`backups[-1]`), а
-    /// чужая метка — отказ словами, а не молчание.
+    /// An empty timestamp = "the latest copy", as in the original
+    /// (`backups[-1]`), and a foreign timestamp is a refusal in words, not
+    /// silence.
     #[test]
     fn выбор_копии_по_метке_и_без_неё() {
         let root = scratch("pick");
@@ -2476,7 +2524,7 @@ mod exec_tests {
         assert!(!ok);
         assert_eq!(msg, msg_snapshot_not_found("нет-такой-метки"));
 
-        // Копий нет вовсе — тоже словами.
+        // No copies at all: also in words.
         let empty = format!("{root}/пусто");
         let (ok, msg) = plasma_restore_run(&empty, None);
         assert!(!ok);
@@ -2485,8 +2533,8 @@ mod exec_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// Каталог снимка исчез с диска (человек почистил `~/.local/share`) —
-    /// сказать об этом, а не пытаться восстанавливать из пустоты.
+    /// The snapshot directory has disappeared from disk (the person cleaned
+    /// `~/.local/share`): say so rather than try to restore from nothing.
     #[test]
     fn исчезнувший_каталог_снимка_назван() {
         let root = scratch("gone");
@@ -2502,15 +2550,16 @@ mod exec_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// ⚠️ Порядок перезапуска оболочки. Юнит systemd поднимает панель САМ:
-    /// второй запуск после успешного юнита дал бы человеку ДВЕ панели. А если
-    /// юнита нет — обязаны пройти оба запасных шага, иначе панель останется
-    /// лежать. Живая панель при этом не трогается: запускатели подставные.
+    /// ⚠️ The order of the shell restart. The systemd unit brings up the panel
+    /// ITSELF: a second start after a successful unit would give the person
+    /// TWO panels. And if there is no unit, both fallback steps must run,
+    /// otherwise the panel stays down. The live panel is not touched: the
+    /// launchers are fake.
     #[test]
     fn перезапуск_оболочки_не_поднимает_панель_дважды() {
         use std::cell::RefCell;
 
-        /// Подставные руки: что «есть» в системе, что «удаётся», и журнал.
+        /// Fake hands: what "exists" in the system, what "succeeds", and the log.
         struct Fake {
             unit_ok: bool,
             tools: &'static [&'static str],
@@ -2552,12 +2601,12 @@ mod exec_tests {
         };
         let both: &[&str] = &["kquitapp6", "kstart"];
 
-        // Юнит отработал — больше ничего: второй запуск дал бы две панели.
+        // The unit did its job: nothing else; a second start would give two panels.
         let f = fake(true, both, true, vec![7]);
         assert_eq!(plasma_restart_shell_with(&f), ShellRestart::Unit);
         assert_eq!(f.log.borrow().len(), 1, "после юнита сделано лишнее: {:?}", f.log.borrow());
 
-        // Юнита нет — kquitapp останавливает, kstart поднимает отдельно.
+        // No unit: kquitapp stops it, kstart brings it up detached.
         let f = fake(false, both, true, vec![7]);
         assert_eq!(plasma_restart_shell_with(&f), ShellRestart::QuitAndStart);
         assert_eq!(
@@ -2569,18 +2618,19 @@ mod exec_tests {
             ]
         );
 
-        // kquitapp не помог — оболочка СВОЕГО сеанса по PID, потом запуск.
+        // kquitapp did not help: the shell of OUR OWN session by PID, then a start.
         let f = fake(false, both, false, vec![4242]);
         assert_eq!(plasma_restart_shell_with(&f), ShellRestart::SessionPid);
         assert_eq!(f.log.borrow()[2..], ["term: 4242", "spawn: kstart plasmashell"]);
 
-        // Без kstart остановка через kquitapp не начинается вовсе (остановить
-        // и не поднять хуже, чем не трогать), а запуск идёт напрямую.
+        // Without kstart the kquitapp stop does not start at all (stopping
+        // without bringing it up is worse than not touching it), and the start
+        // goes directly.
         let f = fake(false, &["kquitapp6"], true, vec![4242]);
         assert_eq!(plasma_restart_shell_with(&f), ShellRestart::SessionPid);
         assert_eq!(f.log.borrow()[1..], ["term: 4242", "spawn: plasmashell"]);
 
-        // Своей оболочки не нашлось — не тронуто НИЧЕГО, и никакого `killall`.
+        // No shell of our own was found: NOTHING is touched, and no `killall`.
         let f = fake(false, both, false, vec![]);
         assert_eq!(plasma_restart_shell_with(&f), ShellRestart::NotRestarted);
         assert!(f.log.borrow().iter().all(|s| !s.contains("killall")), "{:?}", f.log.borrow());
@@ -2591,23 +2641,23 @@ mod exec_tests {
         );
     }
 
-    /// Оболочка своего сеанса опознаётся по ТРЁМ признакам сразу; любого
-    /// одного мало, чтобы не задеть чужую панель.
+    /// Our own session's shell is recognised by THREE signs at once; any one
+    /// alone is not enough to avoid hitting someone else's panel.
     #[test]
     fn оболочка_своего_сеанса_опознаётся_тремя_признаками() {
         let env = b"HOME=/h\0XDG_SESSION_ID=2\0LANG=ru_RU.UTF-8\0";
         assert!(is_session_shell("/usr/bin/plasmashell", 1000, env, 1000, "2"));
         assert!(is_session_shell("/usr/bin/plasmashell (deleted)", 1000, env, 1000, "2"));
-        // чужой человек
+        // another person
         assert!(!is_session_shell("/usr/bin/plasmashell", 1001, env, 1000, "2"));
-        // другой сеанс того же человека
+        // another session of the same person
         assert!(!is_session_shell("/usr/bin/plasmashell", 1000, env, 1000, "3"));
-        // похожее имя — не оболочка
+        // a similar name, not the shell
         assert!(!is_session_shell("/usr/bin/plasmashell-helper", 1000, env, 1000, "2"));
-        // XDG_SESSION_ID=22 не равен «2»
+        // XDG_SESSION_ID=22 is not equal to "2"
         let env22 = b"XDG_SESSION_ID=22\0";
         assert!(!is_session_shell("/usr/bin/plasmashell", 1000, env22, 1000, "2"));
-        // своего сеанса не знаем — не трогаем никого
+        // we do not know our own session: touch nobody
         assert!(!is_session_shell("/usr/bin/plasmashell", 1000, env, 1000, ""));
     }
 }
@@ -2618,8 +2668,9 @@ mod panel_copy_tests {
     use std::cell::RefCell;
     use std::collections::BTreeMap;
 
-    /// Машина в памяти: файлы (каталог — ключ с `/` на конце не нужен:
-    /// каталог есть, если есть файл под ним), dconf — словарь веток.
+    /// A machine in memory: files (a directory needs no key with a trailing
+    /// `/`: a directory exists if a file under it exists), dconf is a
+    /// dictionary of branches.
     #[derive(Default)]
     pub(super) struct Mem {
         pub files: RefCell<BTreeMap<String, String>>,
@@ -2627,11 +2678,11 @@ mod panel_copy_tests {
         pub runs: RefCell<Vec<Vec<String>>>,
         pub spawned: RefCell<Vec<Vec<String>>>,
         pub signals: RefCell<Vec<String>>,
-        /// DConfig Deepin: `приложение|ресурс|ключ` → ответ `dde-dconfig get`.
+        /// Deepin DConfig: `application|resource|key` -> the `dde-dconfig get` answer.
         pub dde: RefCell<BTreeMap<String, String>>,
-        /// Ключи DConfig со значением по умолчанию.
+        /// DConfig keys with the default value.
         pub dde_default: RefCell<std::collections::BTreeSet<String>>,
-        /// `gsettings get org.gnome.shell <ключ>` → ответ.
+        /// `gsettings get org.gnome.shell <key>` -> the answer.
         pub gsettings: RefCell<BTreeMap<String, String>>,
     }
 
@@ -2658,7 +2709,7 @@ mod panel_copy_tests {
                 ["dde-dconfig", "get", "-a", a, "-r", r, "-k", k] => {
                     (true, self.dde.borrow().get(&format!("{a}|{r}|{k}")).cloned().unwrap_or_default())
                 }
-                // Как печатает `get` после `set`: логические — как есть, прочее — в кавычках.
+                // As `get` prints after `set`: booleans as is, everything else in quotes.
                 ["dde-dconfig", "set", "-a", a, "-r", r, "-k", k, "-v", v] => {
                     let id = format!("{a}|{r}|{k}");
                     let shown = if matches!(*v, "true" | "false") { v.to_string() } else { format!("\"{v}\"") };
@@ -2760,9 +2811,9 @@ mod panel_copy_tests {
         assert_eq!(dconf_root_keys("[sub]\npanels-x=1\n", &["panels-"]), "");
     }
 
-    /// Cinnamon: панели и апплеты — ключи `org.cinnamon`, настройки
-    /// апплетов — `~/.config/cinnamon/spices`; тема и прочее из той же ветки
-    /// при возврате не трогаются.
+    /// Cinnamon: panels and applets are `org.cinnamon` keys, applet settings
+    /// are in `~/.config/cinnamon/spices`; the theme and other things from the
+    /// same branch are not touched on restore.
     #[test]
     fn cinnamon_panel_round_trip() {
         let spec = spec_for("cinnamon-mint", &[], &[], &[]).expect("Cinnamon снимается");
@@ -2779,13 +2830,13 @@ mod panel_copy_tests {
             m.read(&format!("{COPY}/dconf-0.ini")).as_deref(),
             Some("[/]\nenabled-applets=['a']\npanels-enabled=['1:0:bottom']\n")
         );
-        // Человек поменял панель и настройки апплета.
+        // The person changed the panel and the applet settings.
         m.write(&format!("{HOME}/.config/cinnamon/spices/menu@cinnamon.org/0.json"), "{\"a\":2}");
         m.write(&format!("{HOME}/.config/cinnamon/spices/new@x/0.json"), "{}");
         assert!(panel_copy_restore(&m, &spec, HOME, COPY).is_ok());
         assert_eq!(m.read(&format!("{HOME}/.config/cinnamon/spices/menu@cinnamon.org/0.json")).as_deref(), Some("{\"a\":1}"));
         assert!(!m.exists(&format!("{HOME}/.config/cinnamon/spices/new@x")));
-        // Ветку целиком не сбрасывали: только дописали ключи панели.
+        // The whole branch was not reset: only the panel keys were written over.
         assert!(!m.runs.borrow().iter().any(|r| r.get(1).map(String::as_str) == Some("reset")));
     }
 
@@ -2794,7 +2845,7 @@ mod panel_copy_tests {
         let spec = spec_for("cinnamon", &[], &[], &[]).unwrap();
         let m = Mem::default();
         assert!(panel_copy_restore(&m, &spec, HOME, COPY).is_err(), "копии нет");
-        // Манифест — файл на диске: чужая ветка и путь с «..» не исполняются.
+        // The manifest is a file on disk: a foreign branch and a path with ".." are not executed.
         m.write(
             &format!("{COPY}/manifest.json"),
             r#"[{"kind":"dconf_dir","dir":"/org/gnome/","file":"x.ini"},{"kind":"home","path":"../../etc"}]"#,
@@ -2803,9 +2854,9 @@ mod panel_copy_tests {
         assert!(m.runs.borrow().is_empty(), "{:?}", m.runs.borrow());
     }
 
-    /// Budgie: вся ветка `com.solus-project.budgie-panel` (панели,
-    /// апплеты, их настройки); при возврате ветка сбрасывается целиком, и
-    /// `budgie-panel --replace` строит панели заново.
+    /// Budgie: the whole `com.solus-project.budgie-panel` branch (panels,
+    /// applets, their settings); on restore the branch is reset entirely, and
+    /// `budgie-panel --replace` builds the panels again.
     #[test]
     fn budgie_panel_round_trip() {
         assert!(spec_for("budgie", &[], &[], &[]).is_none(), "без budgie-panel снимать нечего");
@@ -2820,8 +2871,8 @@ mod panel_copy_tests {
         assert_eq!(*m.spawned.borrow(), [sv(&["budgie-panel", "--replace"])]);
     }
 
-    /// LXQt: файл `~/.config/lxqt/panel.conf`; панель перечитывает его,
-    /// когда сеанс LXQt останавливает и снова запускает её модуль.
+    /// LXQt: the `~/.config/lxqt/panel.conf` file; the panel rereads it when
+    /// the LXQt session stops and starts its module again.
     #[test]
     fn lxqt_panel_round_trip() {
         let spec = spec_for("lxqt", &["lxqt-panel"], &[], &[]).expect("LXQt снимается");
@@ -2838,8 +2889,8 @@ mod panel_copy_tests {
         assert!(runs.iter().any(|r| r.last().map(String::as_str) == Some("string:lxqt-panel.desktop")));
     }
 
-    /// GNOME: панели нет — снимаются только включённые панельные
-    /// расширения (Dash to Dock, Dash to Panel) и список включённых.
+    /// GNOME: there is no panel, so only the enabled panel extensions (Dash to
+    /// Dock, Dash to Panel) and the enabled list are taken.
     #[test]
     fn gnome_copies_all_extensions() {
         assert!(spec_for("gnome", &[], &[], &[]).is_none(), "ни оболочки, ни расширений — снимать нечего");
@@ -2855,8 +2906,9 @@ mod panel_copy_tests {
         assert!(spec_for("gnome", &[], &[], &["appindicatorsupport@rgcjonas.gmail.com"]).is_some());
     }
 
-    /// Опись без оболочки: своё перекрывает системное, `disabled-extensions`
-    /// сильнее `enabled-extensions`, мусорные имена каталогов не в счёт.
+    /// The inventory without the shell: a user one overrides a system one,
+    /// `disabled-extensions` beats `enabled-extensions`, garbage directory
+    /// names do not count.
     #[test]
     fn gnome_inventory_from_disk_and_shell() {
         let v = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
@@ -2886,9 +2938,9 @@ mod panel_copy_tests {
         );
     }
 
-    /// Копия GNOME: опись, все настройки расширений и оба списка; возврат
-    /// сбрасывает ветку расширений и кладёт снятое, прочие ключи оболочки
-    /// не трогаются; опись читается обратно.
+    /// A GNOME copy: the inventory, all extension settings and both lists;
+    /// restoring resets the extensions branch and puts back what was taken,
+    /// the other shell keys are not touched; the inventory is read back.
     #[test]
     fn gnome_extensions_round_trip() {
         let io = Mem::default();
@@ -2920,13 +2972,13 @@ mod panel_copy_tests {
         assert_eq!(io.dconf.borrow().get("/org/gnome/shell/extensions/").unwrap(), "[own]\nsize=3\n");
         assert!(io.runs.borrow().iter().any(|r| r == &sv(&["dconf", "reset", "-f", "/org/gnome/shell/extensions/"])));
 
-        // Чужая опись в манифесте не читается мимо копии.
+        // A foreign inventory in the manifest is not read from outside the copy.
         io.files.borrow_mut().insert(format!("{COPY}/manifest.json"), r#"[{"kind":"gnome_extensions","file":"../x.json"}]"#.into());
         assert!(gnome_ext_copy_saved(&io, COPY).is_empty());
     }
 
-    /// Копия прежних выпусков (ветка одного расширения) возвращается и
-    /// новой раскладкой: ветка внутри снимаемой целиком — своя.
+    /// A copy from earlier releases (a branch of one extension) is restored
+    /// with the new layout too: a branch inside one taken whole is ours.
     #[test]
     fn old_gnome_copy_with_single_extension_branch() {
         let io = Mem::default();
@@ -2946,13 +2998,13 @@ mod panel_copy_tests {
     }
 
 
-    /// Pantheon: ветка Wingpanel и стоящего дока (Plank или новый док
-    /// elementary).
+    /// Pantheon: the branch of Wingpanel and of the installed dock (Plank or
+    /// the new elementary dock).
     #[test]
     fn pantheon_copies_wingpanel_and_dock() {
         assert!(spec_for("pantheon", &[], &[], &[]).is_none());
         let spec = spec_for("pantheon", &["io.elementary.wingpanel", "plank"], &[], &[]).unwrap();
-        // Значки дока Plank — файлы `~/.config/plank/<док>/launchers`.
+        // Plank dock icons are files in `~/.config/plank/<dock>/launchers`.
         assert_eq!(
             spec.parts,
             [
@@ -2965,9 +3017,9 @@ mod panel_copy_tests {
         assert!(spec.parts.contains(&PanelPart::DconfDir("/io/elementary/dock/")));
     }
 
-    /// COSMIC: каталоги `com.system76.CosmicPanel*` в `~/.config/cosmic`
-    /// (панель, док, их кнопки); лишний каталог, появившийся после
-    /// снятия копии, при возврате убирается.
+    /// COSMIC: the `com.system76.CosmicPanel*` directories in `~/.config/cosmic`
+    /// (the panel, the dock, their buttons); an extra directory that appeared
+    /// after the copy was taken is removed on restore.
     #[test]
     fn cosmic_panel_round_trip() {
         let spec = spec_for("cosmic", &["cosmic-panel"], &[], &[]).expect("COSMIC");
@@ -2985,8 +3037,9 @@ mod panel_copy_tests {
         assert_eq!(m.read(&format!("{base}/com.system76.CosmicTheme.Dark/v1/x")).as_deref(), Some("keep"));
     }
 
-    /// Тайловые композиторы: панель — это бар. Снимается конфиг того, что
-    /// стоит: waybar (перечитывает по SIGUSR2), Noctalia, DankMaterialShell.
+    /// Tiling compositors: the panel is a bar. The config of whatever is
+    /// installed is taken: waybar (rereads on SIGUSR2), Noctalia,
+    /// DankMaterialShell.
     #[test]
     fn tiling_bars_are_copied() {
         for de in ["hyprland", "niri", "sway", "river"] {
@@ -3008,10 +3061,10 @@ mod panel_copy_tests {
         assert_eq!(*m.signals.borrow(), ["waybar"]);
     }
 
-    /// Deepin: три ресурса DConfig дока dde-shell — все записываемые ключи
-    /// схемы; при возврате обычные ключи пишутся, «по умолчанию» —
-    /// сбрасываются, ключи только для чтения не трогаются, и док
-    /// перезапускается своей службой.
+    /// Deepin: three DConfig resources of the dde-shell dock, all writable
+    /// schema keys; on restore normal keys are written, "default" ones are
+    /// reset, read-only keys are not touched, and the dock is restarted by its
+    /// service.
     #[test]
     fn deepin_dock_round_trip() {
         let schema = |r: &str| crate::dde::dconfig_schema_path(DDE_SHELL_DCONFIG_APPID, r);
@@ -3048,7 +3101,7 @@ mod panel_copy_tests {
         ]);
         m.dde_default.borrow_mut().insert(id(dock, "Locked"));
         panel_copy_save(&m, &spec, HOME, COPY).unwrap();
-        // Человек поменял док после копии.
+        // The person changed the dock after the copy.
         for (k, v) in [("Position", "left"), ("Dock_Size", "70"), ("Locked", "true")] {
             m.run(&crate::dde::dconfig_set_key_argv(DDE_SHELL_DCONFIG_APPID, dock, k, v));
         }
@@ -3066,8 +3119,9 @@ mod panel_copy_tests {
         assert!(m.dde_default.borrow().contains(&id(dock, "Locked")));
     }
 
-    /// Док другого выпуска (схем `org.deepin.dde.shell` нет — dde-shell до
-    /// 0.0.35 или старый dde-dock) — кнопок нет, а не копия чужих ключей.
+    /// A dock of another release (no `org.deepin.dde.shell` schemas: dde-shell
+    /// before 0.0.35 or the old dde-dock) gets no buttons rather than a copy
+    /// of foreign keys.
     #[test]
     fn deepin_dock_of_unknown_version_has_no_copy() {
         assert!(spec_for("deepin", &["dde-dconfig", "dde-shell"], &[], &[]).is_none());
@@ -3079,7 +3133,7 @@ mod panel_copy_tests {
         assert!(spec_for("deepin", &["dde-shell"], &refs, &[]).is_none(), "без dde-dconfig писать нечем");
     }
 
-    /// Wayfire: панель — wf-shell, один файл, перечитывается сама.
+    /// Wayfire: the panel is wf-shell, one file, reread by itself.
     #[test]
     fn wayfire_panel_is_wf_shell_ini() {
         assert!(spec_for("wayfire", &[], &[], &[]).is_none(), "без wf-shell кнопок нет");
@@ -3104,7 +3158,7 @@ mod gnome_ext_delivery_tests {
     use std::path::PathBuf;
     use std::time::Duration;
 
-    /// Подделка оболочки: журнал вызовов, без шины и сети.
+    /// A fake shell: a call log, without the bus and the network.
     struct Shell {
         running: bool,
         install_reply: String,
@@ -3188,8 +3242,8 @@ mod gnome_ext_delivery_tests {
         }
     }
 
-    /// Выпуски «сайта»: `gone@` — 404, `old@` — только под GNOME 42,
-    /// `dead@` — ни одного активного, остальные — под 47.
+    /// "Site" releases: `gone@` is 404, `old@` only for GNOME 42, `dead@` has
+    /// no active release, the others are for 47.
     fn site(uuid: &str) -> Result<Vec<Release>, FetchError> {
         match uuid.split('@').next().unwrap_or("") {
             "gone" => Err(FetchError::Net(crate::net::NetError::Status { code: 404, reason: "Not Found".into() })),
@@ -3245,8 +3299,8 @@ mod gnome_ext_delivery_tests {
         assert_eq!(r.notes.len(), 1);
     }
 
-    /// Без оболочки — запасной путь: zip под версию из `gnome-shell
-    /// --version`; сбой скачивания назван.
+    /// Without the shell, the fallback path: a zip for the version from
+    /// `gnome-shell --version`; a download failure is named.
     #[test]
     fn without_shell_zip_is_fetched_for_this_gnome() {
         let mut shell = Shell { running: false, install_reply: String::new(), calls: Vec::new() };

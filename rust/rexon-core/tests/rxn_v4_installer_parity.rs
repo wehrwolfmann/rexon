@@ -1,10 +1,11 @@
-//! Сверка порта `rexon/rxn_v4_installer.py` с живым Python.
+//! Check of the `rexon/rxn_v4_installer.py` port against live Python.
 //!
-//! Эталон `golden/rxn_v4_installer_cases.json` снят read-only из чистой
-//! Python-ветки (Python-путь до его удаления): slug/hash/сбор путей/проверка
-//! наличия/валидация/удаление-slug/раскладка треков при листинге. Реальная
-//! распаковка НЕ исполнялась — план и решения сверяются по наблюдениям.
-//! `golden/sample.rxn` — реальный Python-архив (для `short_hash`).
+//! The reference `golden/rxn_v4_installer_cases.json` was captured read-only
+//! from the pure Python branch (the Python path before its removal):
+//! slug/hash/path collection/presence check/validation/slug removal/track
+//! layout in listing. Real unpacking was NOT executed — the plan and decisions
+//! are compared by observations. `golden/sample.rxn` is a real Python archive
+//! (for `short_hash`).
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -30,7 +31,7 @@ fn obj(v: &Value) -> &Map<String, Value> {
     v.as_object().unwrap()
 }
 
-/// `_slugify` байт-в-байт на разных title (латиница/кириллица/пунктуация).
+/// `_slugify` byte for byte on various titles (Latin/Cyrillic/punctuation).
 #[test]
 fn slugify_matches_python() {
     for c in golden()["slugify"].as_array().unwrap() {
@@ -40,7 +41,7 @@ fn slugify_matches_python() {
     }
 }
 
-/// `short_hash` реального Python-архива совпадает с `_short_hash`.
+/// `short_hash` of a real Python archive matches `_short_hash`.
 #[test]
 fn short_hash_matches_python_sample() {
     let g = golden();
@@ -50,7 +51,7 @@ fn short_hash_matches_python_sample() {
     assert_eq!(short_hash(&data), want);
 }
 
-/// Известные векторы SHA-256 (без Python) — проверяют hex + усечение до 8.
+/// Known SHA-256 vectors (no Python) — check hex + truncation to 8.
 #[test]
 fn short_hash_known_vectors() {
     // sha256("") = e3b0c442..., sha256("abc") = ba7816bf...
@@ -58,7 +59,7 @@ fn short_hash_known_vectors() {
     assert_eq!(short_hash(b"abc"), "ba7816bf");
 }
 
-/// `_collect_manifest_paths`: порядок и состав путей.
+/// `_collect_manifest_paths`: order and set of paths.
 #[test]
 fn collect_paths_matches_python() {
     for c in golden()["collect"].as_array().unwrap() {
@@ -73,7 +74,7 @@ fn collect_paths_matches_python() {
     }
 }
 
-/// `_verify_paths_inside_zip` (чистая часть): ok/err-тексты байт-в-байт.
+/// `_verify_paths_inside_zip` (pure part): ok/err texts byte for byte.
 #[test]
 fn verify_paths_matches_python() {
     for c in golden()["verify"].as_array().unwrap() {
@@ -98,12 +99,12 @@ fn verify_paths_matches_python() {
     }
 }
 
-/// `plan_install_v4`: текст «Неверный manifest: …» на невалидных манифестах.
+/// `plan_install_v4`: the «Invalid manifest: …» text on invalid manifests.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn plan_rejects_invalid_manifest() {
-    // Хвост сообщения — текст валидатора manifest_v4 (каталог перевода),
-    // эталон Python — русский: он в po/ru.po.
+    // The message tail is the manifest_v4 validator text (translation catalog);
+    // the Python reference is Russian: it is in po/ru.po.
     let _lang = i18n_pin::ru();
     let names: HashSet<String> = HashSet::new();
     for c in golden()["validate_msg"].as_array().unwrap() {
@@ -118,10 +119,10 @@ fn plan_rejects_invalid_manifest() {
     }
 }
 
-/// `plan_install_v4`: happy-path даёт план из 3 шагов и корректный каталог.
+/// `plan_install_v4`: the happy path gives a 3-step plan and a correct directory.
 #[test]
 fn plan_install_builds_steps() {
-    // Валидный минимальный v4-манифест.
+    // A valid minimal v4 manifest.
     let manifest = serde_json::json!({
         "format_version": 4,
         "type": "wallpaper-video-adaptive",
@@ -153,7 +154,7 @@ fn plan_install_builds_steps() {
     }
 }
 
-/// `plan_install_v4`: существующий каталог → AlreadyInstalled (без шагов).
+/// `plan_install_v4`: existing directory → AlreadyInstalled (no steps).
 #[test]
 fn plan_install_already_installed() {
     let manifest = serde_json::json!({
@@ -173,7 +174,7 @@ fn plan_install_already_installed() {
     );
 }
 
-/// `plan_install_v4`: недостающий трек → Error с текстом verify.
+/// `plan_install_v4`: missing track → Error with the verify text.
 #[test]
 fn plan_install_missing_track() {
     let manifest = serde_json::json!({
@@ -184,7 +185,7 @@ fn plan_install_missing_track() {
         "fallback_video": "data/video/1080p.mp4",
         "default_locale": "ru"
     });
-    let names: HashSet<String> = HashSet::new(); // архив пуст
+    let names: HashSet<String> = HashSet::new(); // empty archive
     let out = plan_install_v4(&manifest, &names, "abc", "/r", false, "/a.rxn");
     assert_eq!(
         out,
@@ -195,7 +196,7 @@ fn plan_install_missing_track() {
     );
 }
 
-/// `remove_rxn_v4_wallpaper` (чистая часть): валидация slug байт-в-байт.
+/// `remove_rxn_v4_wallpaper` (pure part): slug validation byte for byte.
 #[test]
 fn remove_slug_matches_python() {
     for c in golden()["remove_slug"].as_array().unwrap() {
@@ -207,8 +208,8 @@ fn remove_slug_matches_python() {
     }
 }
 
-/// `list_rxn_v4_wallpapers` (обогащение записи): meta_out 1-в-1 с Python,
-/// включая порядок ключей и раскладку video/audio-треков.
+/// `list_rxn_v4_wallpapers` (record enrichment): meta_out 1:1 with Python,
+/// including key order and the video/audio track layout.
 #[test]
 fn list_entry_matches_python() {
     for c in golden()["list_entries"].as_array().unwrap() {
@@ -222,7 +223,7 @@ fn list_entry_matches_python() {
             c["fallback_audio_exists"].as_bool().unwrap(),
         );
         assert_eq!(got, c["expected"], "entry {sub}");
-        // Порядок ключей meta_out идентичен (preserve_order).
+        // The meta_out key order is identical (preserve_order).
         let got_keys: Vec<&String> = got.as_object().unwrap().keys().collect();
         let want_keys: Vec<&String> = c["expected"].as_object().unwrap().keys().collect();
         assert_eq!(got_keys, want_keys, "порядок ключей entry {sub}");
@@ -230,17 +231,17 @@ fn list_entry_matches_python() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  Корень установки и тексты начала установки
+//  Install root and install-start texts
 // ══════════════════════════════════════════════════════════════════════════
 //
-// `install_root` — починка оригинала (он игнорировал `$XDG_DATA_HOME`):
-// при стандартном окружении путь совпадает с прежним литералом, при
-// нестандартном уходит в XDG-корень данных, как весь остальной Rexon.
+// `install_root` — a fix of the original (it ignored `$XDG_DATA_HOME`):
+// with the standard environment the path matches the old literal, with a
+// non-standard one it goes to the XDG data root, like the rest of Rexon.
 
 #[test]
 fn install_root_follows_xdg_data_home() {
     use rexon_core::rxn_v4_installer as R;
-    // стандартное окружение — путь как у оригинала
+    // standard environment — the path as in the original
     assert_eq!(
         R::install_root("/home/wehr", None),
         "/home/wehr/.local/share/rexon/wallpapers"
@@ -249,12 +250,12 @@ fn install_root_follows_xdg_data_home() {
         R::install_root("/home/wehr", Some("")),
         "/home/wehr/.local/share/rexon/wallpapers"
     );
-    // нестандартный XDG_DATA_HOME — путь уходит туда
+    // non-standard XDG_DATA_HOME — the path goes there
     assert_eq!(
         R::install_root("/home/wehr", Some("/data/xdg")),
         "/data/xdg/rexon/wallpapers"
     );
-    // тот же ответ, что у общего расширителя проекта
+    // the same answer as the project's shared expander
     assert_eq!(
         R::install_root("/home/wehr", Some("/data/xdg")),
         rexon_core::utils::expand_user_xdg(

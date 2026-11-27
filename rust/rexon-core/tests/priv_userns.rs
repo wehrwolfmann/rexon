@@ -1,17 +1,17 @@
-//! Стенд уровня 3 («один пароль на запуск», см. docs/testing.md): НАСТОЯЩИЙ
-//! `rexon-priv-helper` с настоящим `LiveRootIo` от «root» — в пространстве
-//! имён пользователя (`unshare -r --mount`), без root на хосте. Подмены
-//! `/usr/bin` (pacman, loginctl, systemctl — скрипты стенда), `/etc`,
-//! `/usr/share`, `/var/tmp` ставит `packaging/test/priv-ns-enter.sh`
-//! bind-монтированием, видны они только помощнику. Проверяется то, что на
-//! уровне 2 «сухое»: настоящие файловые операции (права, `openat2`,
-//! ссылки при распаковке и на месте приёмника), окружение и дескрипторы
-//! программ помощника, EOF посреди транзакции, `PR_SET_PDEATHSIG`.
+//! Level 3 bench ("one password per launch", see docs/testing.md): the REAL
+//! `rexon-priv-helper` with the real `LiveRootIo` as "root" — in a user
+//! namespace (`unshare -r --mount`), without root on the host. The substitutes for
+//! `/usr/bin` (pacman, loginctl, systemctl — bench scripts), `/etc`,
+//! `/usr/share`, `/var/tmp` are put in place by `packaging/test/priv-ns-enter.sh`
+//! with bind mounts, and only the helper sees them. This checks what is "dry" at
+//! level 2: real file operations (permissions, `openat2`,
+//! links during unpacking and in place of the target), the environment and descriptors
+//! of the helper's programs, EOF in the middle of a transaction, `PR_SET_PDEATHSIG`.
 //!
-//! Нет `unshare` или ядро не даёт пространства имён пользователю — тесты
-//! ПРОПУСКАЮТСЯ с причиной в выводе (`--nocapture`), а не падают.
+//! No `unshare`, or the kernel does not give user namespaces to the user — the tests
+//! are SKIPPED with a reason in the output (`--nocapture`) rather than failing.
 //!
-//! Здесь же сторож «стенд не попадает в релиз».
+//! The "the bench does not get into the release" guard lives here too.
 
 use std::io::Write;
 use std::os::fd::{FromRawFd, OwnedFd};
@@ -41,7 +41,7 @@ fn enter_script() -> PathBuf {
     repo().join("packaging/test/priv-ns-enter.sh")
 }
 
-// ── каталог стенда ──────────────────────────────────────────────────────
+// ── bench directory ─────────────────────────────────────────────────────
 
 struct Ns {
     t: PathBuf,
@@ -71,8 +71,8 @@ impl Ns {
             &format!("{sh}[ \"$1\" = show-session ] && exec $R/cat $T/session\nexit 1\n"),
         );
         script(&t.join("fakebin/systemctl"), &format!("{sh}exit 0\n"));
-        // pacman стенда: argv, окружение и дескрипторы — в файлы стенда;
-        // `hold` держит «транзакцию», пока файл есть.
+        // The bench pacman: argv, environment and descriptors go to bench files;
+        // `hold` keeps the "transaction" going while the file exists.
         script(
             &t.join("fakebin/pacman"),
             &format!(
@@ -103,8 +103,8 @@ impl Ns {
     }
 }
 
-/// Команда запуска помощника в пространстве имён (то, что делает pkexec,
-/// плюс подмены стенда).
+/// The command that starts the helper in the namespace (what pkexec does,
+/// plus the bench substitutes).
 fn ns_command(t: &Path, helper_args: &[String]) -> Command {
     let mut cmd = Command::new("unshare");
     cmd.args(["-r", "--mount"])
@@ -127,10 +127,10 @@ impl Drop for Ns {
     }
 }
 
-/// Пространство имён пользователя с bind-монтированием доступно? `Err` —
-/// причина пропуска.
+/// Is a user namespace with bind mounting available? `Err` is
+/// the reason for skipping.
 fn userns_ready() -> Result<(), String> {
-    // Свой каталог пробы у каждого теста: тесты идут параллельно.
+    // Each test has its own probe directory: the tests run in parallel.
     static N: AtomicU32 = AtomicU32::new(0);
     let n = N.fetch_add(1, Ordering::SeqCst);
     let probe = std::env::temp_dir().join(format!("rexon-priv-userns-probe-{}-{n}", std::process::id()));
@@ -163,7 +163,7 @@ macro_rules! require_userns {
     };
 }
 
-// ── окно ────────────────────────────────────────────────────────────────
+// ── window ──────────────────────────────────────────────────────────────
 
 struct NsSpawner {
     t: PathBuf,
@@ -229,7 +229,7 @@ fn sddm_install(theme: &str) -> PrivOp {
     })
 }
 
-// ── ustar вручную (для злых архивов: pack_tree их не делает) ─────────────
+// ── ustar by hand (for malicious archives: pack_tree does not make them) ─
 
 fn ustar(entries: &[(&str, u8, u32, &[u8], &str)]) -> Vec<u8> {
     let mut out = Vec::new();
@@ -257,13 +257,13 @@ fn ustar(entries: &[(&str, u8, u32, &[u8], &str)]) -> Vec<u8> {
 }
 
 fn memfd(bytes: &[u8]) -> OwnedFd {
-    // SAFETY: литерал с NUL; новый дескриптор — наш.
+    // SAFETY: a literal with NUL; the new descriptor is ours.
     let fd = unsafe { libc::memfd_create(c"stand-tar".as_ptr(), libc::MFD_CLOEXEC) };
     assert!(fd >= 0);
     let fd = unsafe { OwnedFd::from_raw_fd(fd) };
     let mut f = std::fs::File::from(fd.try_clone().unwrap());
     f.write_all(bytes).unwrap();
-    // Смещение у копий дескриптора общее: читать помощник начнёт с начала.
+    // Descriptor copies share the offset: the helper will start reading from the beginning.
     use std::io::Seek;
     f.seek(std::io::SeekFrom::Start(0)).unwrap();
     fd
@@ -273,18 +273,18 @@ fn mode(p: &Path) -> u32 {
     std::fs::symlink_metadata(p).unwrap().permissions().mode() & 0o7777
 }
 
-// ── сценарии ────────────────────────────────────────────────────────────
+// ── scenarios ───────────────────────────────────────────────────────────
 
 fn theme_apply(kind: SystemThemeKind, theme: &str) -> PrivOp {
     PrivOp::SystemTheme(SystemThemeOp::Apply { kind, theme: theme.into(), family: ThemeFamily::Arch })
 }
 
-/// «Применить» у уже установленных системных тем настоящим помощником, без
-/// root: SDDM — тема меняется во ВСЕХ файлах `/etc`, где задана (и в
-/// `/etc/sddm.conf`, который перекрывает `sddm.conf.d`), прочие строки целы;
-/// файл-ссылка — отказ без записи. Plymouth — тема выбрана и образ ядра
-/// пересобран; пересборка не удалась — отказ и прежняя тема в настройках.
-/// Всё одним сеансом — один пароль.
+/// «Apply» for already installed system themes via the real helper, without
+/// root: SDDM — the theme changes in ALL `/etc` files where it is set (including
+/// `/etc/sddm.conf`, which overrides `sddm.conf.d`), other lines are intact;
+/// a link file — a refusal without writing. Plymouth — the theme is selected and the kernel image
+/// is rebuilt; the rebuild failed — a refusal and the previous theme in the settings.
+/// All in one session — one password.
 #[test]
 fn real_helper_applies_installed_system_themes() {
     require_userns!();
@@ -292,12 +292,12 @@ fn real_helper_applies_installed_system_themes() {
     let t = &ns.t;
     let ts = t.to_string_lossy().into_owned();
     let sh = format!("#!{ts}/realbin/sh\nR={ts}/realbin\nT={ts}\n");
-    // Plymouth стенда: без аргументов — текущая тема, с аргументом — выбор.
+    // The bench Plymouth: without arguments — the current theme, with an argument — the choice.
     script(
         &t.join("fakebin/plymouth-set-default-theme"),
         &format!("{sh}if [ $# -eq 0 ]; then exec $R/cat $T/plymouth-current; fi\necho \"$1\" > $T/plymouth-current\n"),
     );
-    // Пересборщики образа: запуск — в журнал; `initrd-fail` — сбой.
+    // Image rebuilders: a run goes to the log; `initrd-fail` is a failure.
     for p in ["mkinitcpio", "update-initramfs", "limine-mkinitcpio"] {
         script(
             &t.join("fakebin").join(p),
@@ -318,14 +318,14 @@ fn real_helper_applies_installed_system_themes() {
     std::fs::write(t.join("etc/sddm.conf"), "[General]\nNumlock=on\n\n[Theme]\nCurrent=breeze\n").unwrap();
     let (mut c, spawned) = client(&ns);
 
-    // 1. SDDM: оба файла, свой файл не нужен.
+    // 1. SDDM: both files, no file of our own needed.
     let out = c.request(&theme_apply(SystemThemeKind::Sddm, "stand-theme"), Vec::new(), &mut |_| {}).unwrap();
     assert!(out.ok, "{out:?}\n{}", ns.read("stderr.log"));
     assert_eq!(ns.read("etc/sddm.conf"), "[General]\nNumlock=on\n\n[Theme]\nCurrent=stand-theme\n");
     assert_eq!(ns.read("etc/sddm.conf.d/kde_settings.conf"), "[Theme]\nCurrent=stand-theme\nCursorTheme=x\n");
     assert!(!t.join("etc/sddm.conf.d/zz-rexon-theme.conf").exists());
 
-    // 2. SDDM: `/etc/sddm.conf` — ссылка наружу: отказ, цель не тронута.
+    // 2. SDDM: `/etc/sddm.conf` is a link pointing outside: a refusal, the target is untouched.
     std::fs::write(t.join("outside/real.conf"), "[Theme]\nCurrent=breeze\n").unwrap();
     std::fs::remove_file(t.join("etc/sddm.conf")).unwrap();
     std::os::unix::fs::symlink(t.join("outside/real.conf"), t.join("etc/sddm.conf")).unwrap();
@@ -333,13 +333,13 @@ fn real_helper_applies_installed_system_themes() {
     assert!(!matches!(r, Ok(ref o) if o.ok), "{r:?}");
     assert_eq!(ns.read("outside/real.conf"), "[Theme]\nCurrent=breeze\n");
 
-    // 3. Plymouth: выбрана и образ пересобран.
+    // 3. Plymouth: selected and the image rebuilt.
     let out = c.request(&theme_apply(SystemThemeKind::Plymouth, "stand"), Vec::new(), &mut |_| {}).unwrap();
     assert!(out.ok, "{out:?}\n{}", ns.read("stderr.log"));
     assert_eq!(ns.read("plymouth-current"), "stand\n");
     assert!(!ns.read("initrd.log").is_empty(), "образ не пересобирался:\n{}", ns.read("stderr.log"));
 
-    // 4. Plymouth: пересборка не удалась — отказ, прежняя тема на месте.
+    // 4. Plymouth: the rebuild failed — a refusal, the previous theme in place.
     std::fs::write(t.join("initrd-fail"), "").unwrap();
     let r = c.request(&theme_apply(SystemThemeKind::Plymouth, "stand2"), Vec::new(), &mut |_| {});
     assert!(!matches!(r, Ok(ref o) if o.ok), "{r:?}");
@@ -348,17 +348,17 @@ fn real_helper_applies_installed_system_themes() {
     assert_eq!(spawned.load(Ordering::SeqCst), 1, "всё одним сеансом — один пароль");
 }
 
-/// Настоящий помощник, один сеанс: pacman стенда с чистым окружением и без
-/// сокета окна; тема SDDM ложится настоящими файлами с нормальными правами,
-/// ссылка на месте приёмника заменяется, а не пишется насквозь; архивы со
-/// ссылкой и `..` отвергаются, не тронув систему; рабочие каталоги убраны.
+/// The real helper, one session: the bench pacman with a clean environment and without
+/// the window's socket; the SDDM theme lands as real files with normal permissions,
+/// a link in place of the target is replaced rather than written through; archives with
+/// a link and `..` are rejected without touching the system; working directories are cleaned up.
 #[test]
 fn real_helper_file_operations() {
     require_userns!();
     let ns = Ns::new("files");
     let (mut c, spawned) = client(&ns);
 
-    // 1. pacman: argv, окружение, дескрипторы.
+    // 1. pacman: argv, environment, descriptors.
     let out = c.request(&install_yt_dlp(), Vec::new(), &mut |_| {}).unwrap();
     assert!(out.ok, "{out:?}\n{}", ns.read("stderr.log"));
     assert!(ns.read("pacman.log").contains("done -S --needed --noconfirm yt-dlp"), "{}", ns.read("pacman.log"));
@@ -372,14 +372,14 @@ fn real_helper_file_operations() {
     assert!(!fds.is_empty());
     assert!(!fds.contains("socket:"), "программа помощника видит сокет окна:\n{fds}");
 
-    // 2. Тема SDDM: файлы пользователя с «плохими» правами.
+    // 2. SDDM theme: user files with "bad" permissions.
     let src = ns.t.join("outside/src/stand-theme");
     std::fs::create_dir_all(src.join("faces")).unwrap();
     std::fs::write(src.join("Main.qml"), "Item {}\n").unwrap();
     std::fs::write(src.join("metadata.desktop"), "[SddmGreeterTheme]\nName=Стенд\n").unwrap();
     std::fs::write(src.join("faces/x.png"), b"png").unwrap();
     std::fs::set_permissions(src.join("Main.qml"), std::fs::Permissions::from_mode(0o600)).unwrap();
-    // На месте приёмника — ссылка наружу: помощник обязан её заменить.
+    // In place of the target — a link pointing outside: the helper must replace it.
     let dest = ns.t.join("share/sddm/themes/stand-theme");
     std::fs::create_dir_all(&dest).unwrap();
     std::fs::write(ns.t.join("outside/victim"), "не трогать").unwrap();
@@ -395,7 +395,7 @@ fn real_helper_file_operations() {
     assert_eq!(mode(&dest), 0o755);
     assert_eq!(mode(&dest.join("faces")), 0o755);
 
-    // 3. Злые архивы: ссылка, `..`, абсолютный путь — отказ, приёмника нет.
+    // 3. Malicious archives: a link, `..`, an absolute path — a refusal, no target.
     let cases: [(&str, Vec<u8>, &str); 3] = [
         ("evil-link", ustar(&[("Main.qml", b'2', 0o777, b"", "/etc/passwd")]), "refused.link"),
         ("evil-dotdot", ustar(&[("../escape.qml", b'0', 0o644, b"x", "")]), "refused.dot-dot"),
@@ -411,7 +411,7 @@ fn real_helper_file_operations() {
     assert!(!ns.t.join("share/sddm/themes/escape.qml").exists());
     assert!(!ns.t.join("share/sddm/escape.qml").exists());
 
-    // 4. Рабочие каталоги помощника за собой убраны.
+    // 4. The helper's working directories are cleaned up after it.
     let left: Vec<_> = std::fs::read_dir(ns.t.join("vartmp")).unwrap().flatten().map(|e| e.file_name()).collect();
     assert!(left.is_empty(), "остались рабочие каталоги: {left:?}");
 
@@ -420,11 +420,11 @@ fn real_helper_file_operations() {
     ns.wait_for("stderr.log", "выход: Revoked(WindowClosed)");
 }
 
-/// Шрифты «для всех пользователей» настоящим помощником: файл ложится в
-/// `/usr/local/share/fonts` читаемым для всех (0644), `fc-cache` каталога
-/// зовётся; не-шрифт, занятое имя и ссылка на месте приёмника — отказ без
-/// следа (жертва ссылки цела); удаляется только обычный файл каталога —
-/// ссылка внутри него на шрифт пакета не удаляется, шрифт пакета цел.
+/// Fonts "for all users" via the real helper: the file lands in
+/// `/usr/local/share/fonts` readable by everyone (0644), `fc-cache` of the directory
+/// is called; a non-font, a taken name and a link in place of the target — a refusal without
+/// a trace (the link's victim is intact); only an ordinary file of the directory is removed —
+/// a link inside it to a package font is not removed, the package font is intact.
 #[test]
 fn real_helper_shared_fonts() {
     require_userns!();
@@ -435,8 +435,8 @@ fn real_helper_shared_fonts() {
     std::fs::write(ns.t.join("share/fonts/noto/N.ttf"), "FONT пакета").unwrap();
     let ts = ns.t.to_string_lossy().into_owned();
     let sh = format!("#!{ts}/realbin/sh\nR={ts}/realbin\nT={ts}\n");
-    // fc-query стенда: «шрифт» — файл, начинающийся с FONT; путь — по копии
-    // root (рабочий каталог в /var/tmp), не по пути пользователя.
+    // The bench fc-query: a "font" is a file starting with FONT; the path is that of root's
+    // copy (the working directory in /var/tmp), not the user's path.
     script(
         &ns.t.join("fakebin/fc-query"),
         &format!("{sh}echo \"$3\" >> $T/fc-query.log\n[ \"$($R/head -c 4 \"$3\")\" = FONT ] || exit 1\necho 'Stand Sans'\n"),
@@ -457,7 +457,7 @@ fn real_helper_shared_fonts() {
             .collect(),
     };
 
-    // 1. Шрифт ложится; каталога ещё нет — заводится 0755.
+    // 1. The font lands; the directory does not exist yet — it is created 0755.
     let out = c.request(&install(&["Мой шрифт.ttf"]), vec![user_font("a", b"FONT a")], &mut |_| {}).unwrap();
     assert!(out.ok, "{out:?}\n{}", ns.read("stderr.log"));
     let dest = fonts.join("Мой шрифт.ttf");
@@ -467,8 +467,8 @@ fn real_helper_shared_fonts() {
     assert!(ns.read("fc-cache.log").contains("-f /usr/local/share/fonts"), "{}", ns.read("fc-cache.log"));
     assert!(ns.read("fc-query.log").starts_with("/var/tmp/"), "fc-query не по копии root: {}", ns.read("fc-query.log"));
 
-    // 2. Отказы без следа: не шрифт, имя занято (в том числе вторым файлом
-    //    операции — первый тоже не ложится), ссылка на месте приёмника.
+    // 2. Refusals without a trace: not a font, the name is taken (including by the second file of
+    //    the operation — the first one does not land either), a link in place of the target.
     std::fs::write(ns.t.join("outside/victim"), "не трогать").unwrap();
     std::os::unix::fs::symlink(ns.t.join("outside/victim"), fonts.join("link.ttf")).unwrap();
     let cases: Vec<(PrivOp, Vec<OwnedFd>, &str)> = vec![
@@ -487,8 +487,8 @@ fn real_helper_shared_fonts() {
     assert_eq!(std::fs::read(&dest).unwrap(), b"FONT a", "чужой файл перезаписан");
     assert_eq!(std::fs::read_to_string(ns.t.join("outside/victim")).unwrap(), "не трогать", "запись сквозь ссылку");
 
-    // 3. Удаление: ссылка внутри каталога на шрифт пакета и сам шрифт
-    //    пакета — отказ; свой файл из подкаталога — удалён, подкаталог снят.
+    // 3. Removal: a link inside the directory to a package font and the package
+    //    font itself — a refusal; a user's own file from a subdirectory — removed, the subdirectory removed.
     std::fs::create_dir_all(fonts.join("sub")).unwrap();
     std::fs::write(fonts.join("sub/s.otf"), "FONT s").unwrap();
     std::os::unix::fs::symlink("/usr/share/fonts/noto/N.ttf", fonts.join("pkg.ttf")).unwrap();
@@ -518,12 +518,12 @@ fn real_helper_shared_fonts() {
     ns.wait_for("stderr.log", "выход: Revoked(WindowClosed)");
 }
 
-/// Экран входа SDDM настоящим помощником: фон темы ложится файлом 0644 в
-/// каталог темы, имя — в `theme.conf.user`; не картинка — отказ без следа;
-/// «фон темы» снимает ключи и свою картинку. Перенос оформления: ключи — в
-/// `/etc/sddm.conf.d/kde_settings.conf`, файлы — в дом `sddm` ТОЛЬКО через
-/// `setpriv` (стенд пишет его argv в журнал); «Сбросить» — снимает их.
-/// Всё одним сеансом.
+/// The SDDM login screen via the real helper: the theme background lands as a 0644 file in
+/// the theme directory, the name goes to `theme.conf.user`; not a picture — a refusal without a trace;
+/// «theme background» removes the keys and the custom picture. Look transfer: keys go to
+/// `/etc/sddm.conf.d/kde_settings.conf`, files go to the `sddm` home ONLY via
+/// `setpriv` (the bench writes its argv to the log); «Reset» removes them.
+/// All in one session.
 #[test]
 fn real_helper_changes_sddm_background_and_look() {
     require_userns!();
@@ -541,7 +541,7 @@ fn real_helper_changes_sddm_background_and_look() {
     std::fs::create_dir_all(home.join(".cache/qml")).unwrap();
     let hs = home.to_string_lossy().into_owned();
     script(&t.join("fakebin/getent"), &format!("{sh}[ \"$2\" = sddm ] && echo 'sddm:x:955:955:SDDM:{hs}:/usr/bin/nologin' && exit 0\nexit 2\n"));
-    // setpriv стенда: argv — в журнал, дальше исполняет команду после `--`.
+    // The bench setpriv: argv goes to the log, then it executes the command after `--`.
     script(
         &t.join("fakebin/setpriv"),
         &format!("{sh}echo \"$*\" >> $T/setpriv.log\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n"),
@@ -557,7 +557,7 @@ fn real_helper_changes_sddm_background_and_look() {
         image: image.then(|| LocalFile { slot: 0, label: "/home/stand/фон.png".into() }),
     };
 
-    // 1. PNG ложится; 2. JPEG его сменяет — прежний свой снят.
+    // 1. A PNG lands; 2. a JPEG replaces it — the previous custom one is removed.
     let out = c.request(&bg(true), vec![user("a.png", b"\x89PNG\r\n\x1a\nPNG-stand")], &mut |_| {}).unwrap();
     assert!(out.ok, "{out:?}\n{}", ns.read("stderr.log"));
     assert_eq!(std::fs::read(theme.join("rexon-background.png")).unwrap(), b"\x89PNG\r\n\x1a\nPNG-stand");
@@ -566,19 +566,19 @@ fn real_helper_changes_sddm_background_and_look() {
     let out = c.request(&bg(true), vec![user("b.jpg", b"\xff\xd8\xff\xe0JPEG")], &mut |_| {}).unwrap();
     assert!(out.ok, "{out:?}");
     assert!(theme.join("rexon-background.jpg").is_file() && !theme.join("rexon-background.png").exists());
-    // 3. Не картинка — отказ без следа.
+    // 3. Not a picture — a refusal without a trace.
     match c.request(&bg(true), vec![user("c.sh", b"#!/bin/sh\nid\n")], &mut |_| {}) {
         Err(ClientError::Refused { message_key }) => assert_eq!(message_key, "refused.login-image"),
         other => panic!("ждали отказ login-image, пришло {other:?}"),
     }
     assert!(ns.read("share/sddm/themes/breeze/theme.conf.user").contains("rexon-background.jpg"));
-    // 4. Фон темы — ключи и своя картинка сняты, файл настроек темы цел.
+    // 4. Theme background — the keys and the custom picture are removed, the theme settings file is intact.
     let out = c.request(&bg(false), Vec::new(), &mut |_| {}).unwrap();
     assert!(out.ok, "{out:?}");
     assert_eq!(ns.read("share/sddm/themes/breeze/theme.conf.user"), "", "опустевшая группа снята");
     assert!(!theme.join("rexon-background.jpg").exists());
     assert!(ns.read("share/sddm/themes/breeze/theme.conf").contains("Next.png"));
-    // 4а. «Показывать часы»: ключ в `.user`, фон темы не трогается.
+    // 4a. «Show clock»: the key goes to `.user`, the theme background is not touched.
     let clock = |show: bool| PrivOp::SddmClock { theme: "breeze".into(), show };
     let out = c.request(&clock(false), Vec::new(), &mut |_| {}).unwrap();
     assert!(out.ok, "{out:?}\n{}", ns.read("stderr.log"));
@@ -590,9 +590,9 @@ fn real_helper_changes_sddm_background_and_look() {
         Err(ClientError::Refused { message_key }) => assert_eq!(message_key, "refused.sddm-theme"),
         other => panic!("ждали отказ sddm-theme, пришло {other:?}"),
     }
-    // 4б. WebP: тема на Qt 5 (нет QtVersion) — принимается, только если у
-    // Qt 5 этой машины есть модуль WebP (каталог /usr/lib стенд не
-    // подменяет — помощник смотрит настоящий).
+    // 4b. WebP: a theme on Qt 5 (no QtVersion) is accepted only if
+    // this machine's Qt 5 has the WebP module (the bench does not substitute the /usr/lib
+    // directory — the helper looks at the real one).
     let webp = b"RIFF\x10\0\0\0WEBPVP8 stand";
     let has = rexon_core::system_plan::qt_has_webp_live(5);
     match c.request(&bg(true), vec![user("d.webp", webp)], &mut |_| {}) {
@@ -609,7 +609,7 @@ fn real_helper_changes_sddm_background_and_look() {
         Err(e) => panic!("{e:?}"),
     }
 
-    // 5. Перенос оформления.
+    // 5. Look transfer.
     let look = PrivOp::SddmLook {
         look: Some(rexon_core::system_plan::SddmLook {
             cursor_theme: Some("Bibata Modern Ice".into()),
@@ -640,7 +640,7 @@ fn real_helper_changes_sddm_background_and_look() {
     assert!(!home.join(".cache").exists(), "кэш приветствия стёрт");
     let log = ns.read("setpriv.log");
     assert!(log.lines().count() >= 4 && log.lines().all(|l| l.starts_with("--reuid=955 --regid=955 --clear-groups -- ")), "{log}");
-    // 6. Сбросить.
+    // 6. Reset.
     let out = c.request(&PrivOp::SddmLook { look: None, files: Vec::new() }, Vec::new(), &mut |_| {}).unwrap();
     assert!(out.ok, "{out:?}\n{}", ns.read("stderr.log"));
     let kde = ns.read("etc/sddm.conf.d/kde_settings.conf");
@@ -652,8 +652,8 @@ fn real_helper_changes_sddm_background_and_look() {
     ns.wait_for("stderr.log", "выход: Revoked(WindowClosed)");
 }
 
-/// Окно закрыто (EOF) посреди транзакции pacman: настоящий помощник её
-/// доводит и только потом выходит.
+/// The window is closed (EOF) in the middle of a pacman transaction: the real helper finishes
+/// it and only then exits.
 #[test]
 fn real_helper_finishes_transaction_after_eof() {
     require_userns!();
@@ -671,8 +671,8 @@ fn real_helper_finishes_transaction_after_eof() {
     assert!(pending.wait(&mut |_| {}).is_err(), "окно ушло раньше итога");
 }
 
-/// `PR_SET_PDEATHSIG`: поток окна, поднявший помощника, умер, а сокет ещё
-/// открыт (держит другой поток) — помощник всё равно выходит сам.
+/// `PR_SET_PDEATHSIG`: the window thread that brought up the helper died, but the socket is still
+/// open (another thread holds it) — the helper exits by itself anyway.
 #[test]
 fn real_helper_exits_on_parent_death_signal() {
     require_userns!();
@@ -690,7 +690,7 @@ fn real_helper_exits_on_parent_death_signal() {
         let welcome: Option<HelperMsg> = proto::recv_msg(ours.as_fd()).unwrap();
         assert!(matches!(welcome, Some(HelperMsg::Welcome { .. })), "{welcome:?}");
         (ours, child)
-        // поток кончается здесь — PDEATHSIG помощника срабатывает
+        // the thread ends here — the helper's PDEATHSIG fires
     })
     .join()
     .unwrap();
@@ -704,11 +704,11 @@ fn real_helper_exits_on_parent_death_signal() {
     };
     assert_eq!(status.code(), Some(0), "{}", ns.read("stderr.log"));
     assert!(ns.read("stderr.log").contains("выход: Revoked(WindowClosed)"), "{}", ns.read("stderr.log"));
-    drop(sock); // сокет жил до конца: вышел помощник не по EOF
+    drop(sock); // the socket lived until the end: the helper did not exit because of EOF
 }
 
-/// Отпечаток сборки настоящего помощника (без root и без канала) совпадает
-/// с отпечатком окна той же сборки.
+/// The build fingerprint of the real helper (without root and without a channel) matches
+/// the fingerprint of the window of the same build.
 #[test]
 fn real_helper_build_id_matches_window() {
     let out = Command::new(HELPER).arg(BUILD_ID_FLAG).env_clear().output().unwrap();
@@ -716,9 +716,9 @@ fn real_helper_build_id_matches_window() {
     assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), proto::build_id());
 }
 
-/// ⛔ Стенд не попадает в релиз: бинарь стенда собирается только с feature
-/// `stand`, библиотека и настоящий помощник от неё не зависят, пакет её не
-/// включает; в настоящем помощнике нет ни строчки стенда.
+/// ⛔ The bench does not get into the release: the bench binary is built only with the
+/// `stand` feature, the library and the real helper do not depend on it, the package does not
+/// include it; the real helper contains not a single line of the bench.
 #[test]
 fn stand_code_stays_out_of_release() {
     let core = Path::new(env!("CARGO_MANIFEST_DIR"));

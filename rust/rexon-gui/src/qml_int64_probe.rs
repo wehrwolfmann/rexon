@@ -1,61 +1,65 @@
-// Проба «64-битное целое в QML»: живой движок QML против мостов cxx-qt.
+// The "64-bit integer in QML" probe: a live QML engine against the cxx-qt
+// bridges.
 //
-// ЧТО ИМЕННО ЛОМАЕТСЯ. cxx-qt печатает `i64`/`u64` как `::std::int64_t` /
-// `::std::uint64_t`, а на 64-битном Linux это `long` / `unsigned long` —
-// ОТДЕЛЬНЫЕ метатипы Qt, не те, что `qlonglong`/`qulonglong`. Движок QML их
-// не знает, и ЛИТЕРАЛЬНАЯ декларативная привязка в такое свойство
-// отказывает: «Cannot assign value 7 to property displayId». Отказ уносит
-// ВЕСЬ документ — страница не создаётся вовсе.
+// WHAT EXACTLY BREAKS. cxx-qt emits `i64`/`u64` as `::std::int64_t` /
+// `::std::uint64_t`, and on 64-bit Linux these are `long` / `unsigned long`
+// — SEPARATE Qt metatypes, not the same as `qlonglong`/`qulonglong`. The
+// QML engine does not know them, and a LITERAL declarative binding to such
+// a property fails: "Cannot assign value 7 to property displayId". The
+// failure takes the WHOLE document down — the page is not created at all.
 //
-// ⚠️ Ни компилятор, ни `cargo test`, ни гейт типов
-// `scripts/test_we_rust_types.py` этого не видят: и сборка, и сигнатуры
-// сходятся. Ломается только на экране. Отсюда и проба: замер живым
-// движком, а не разбор исходников.
+// Warning: neither the compiler, nor `cargo test`, nor the type gate
+// `scripts/test_we_rust_types.py` sees this: both the build and the
+// signatures agree. It breaks only on screen. Hence the probe: a
+// measurement with a live engine, not source analysis.
 //
-// Что замерено 31.08.2026 на Qt 6 (CachyOS), до починки:
+// What was measured on 31.08.2026 on Qt 6 (CachyOS), before the fix:
 //
-//   * `Type { prop: 7 }` в свойство `long`/`unsigned long` — ОТКАЗ,
-//     документ мёртв;
-//   * `prop: root.someInt` и `prop: root.someReal` — работают;
-//   * чтение такого свойства — приезжает числом;
-//   * инвокабл и обработчик сигнала с таким параметром — работают;
-//   * 64-битное целое ВНУТРИ `QVariant` — читается числом (`QVariant` несёт
-//     метатип отдельно, и JS-обёртка Qt его разворачивает).
+//   * `Type { prop: 7 }` into a `long`/`unsigned long` property — FAILS,
+//     the document is dead;
+//   * `prop: root.someInt` and `prop: root.someReal` — work;
+//   * reading such a property — arrives as a number;
+//   * an invokable and a signal handler with such a parameter — work;
+//   * a 64-bit integer INSIDE a `QVariant` — reads as a number (`QVariant`
+//     carries the metatype separately, and Qt's JS wrapper unwraps it).
 //
-// Работает сегодня — не значит «можно оставить»: разница между литералом и
-// привязкой держится на внутренностях движка, а не на договоре. Поэтому
-// наружу 64-битное целое не выпускается ВООБЩЕ (`src/qvalue.rs`), а сторож
-// `qml_int64` в `src/lib.rs` валит `cargo test`, если такое объявление
-// заведётся снова. Проба — эмпирическая половина: она доказывает, что
-// нынешний мост живой движок принимает.
+// Working today does not mean "can be left as is": the difference between
+// a literal and a binding rests on the engine's internals, not on a
+// contract. So a 64-bit integer is NOT exposed at ALL (`src/qvalue.rs`),
+// and the `qml_int64` guard in `src/lib.rs` fails `cargo test` if such a
+// declaration appears again. The probe is the empirical half: it proves
+// that the live engine accepts the current bridge.
 //
-// Запуск:
+// Run:
 //     QT_QPA_PLATFORM=offscreen \
 //     cargo run -p rexon-gui --bin rexon-gui-selftest -- --qml-int64-probe
 //
-// Возврат: 0 — все случаи прошли, 1 — есть провалы, 2 — проба не
-// отчиталась (движок не собрал корневой документ либо не уложился в срок).
+// Return: 0 — all cases passed, 1 — there are failures, 2 — the probe did
+// not report (the engine did not build the root document or did not make
+// the deadline).
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QUrl};
 
 pub const ARG: &str = "--qml-int64-probe";
 
-/// Один случай пробы: имя и тело QML-документа.
+/// One probe case: the name and the body of a QML document.
 ///
-/// ⚠️ Каждый случай — ОТДЕЛЬНЫЙ файл, который бегун грузит
-/// `Qt.createComponent`. Это не украшательство: отказ привязки уносит весь
-/// документ, и в одном файле первый же провал спрятал бы все остальные
-/// случаи. Отдельными файлами провал ловится по имени.
+/// Warning: each case is a SEPARATE file that the runner loads with
+/// `Qt.createComponent`. This is not embellishment: a binding failure takes
+/// the whole document down, and in one file the very first failure would
+/// hide all the other cases. With separate files a failure is caught by
+/// name.
 ///
-/// Тело обязано объявить `probeOk` (приговор) и `probeWhy` (что увидели).
+/// The body must declare `probeOk` (the verdict) and `probeWhy` (what was
+/// seen).
 struct Case {
     name: &'static str,
     body: &'static str,
 }
 
-/// Ожидаемое значение во всех случаях — 7 (`root.probeInt` / `root.probeReal`).
+/// The expected value in all cases is 7 (`root.probeInt` / `root.probeReal`).
 const CASES: &[Case] = &[
-    // ── 1. Литеральная привязка: ТОТ САМЫЙ случай класса ─────────────────
+    // ── 1. A literal binding: THE very case of the class ─────────────────
     Case {
         name: "DisplayLayoutSetQuery.displayId ← литерал",
         body: r#"
@@ -117,7 +121,7 @@ const CASES: &[Case] = &[
     readonly property string probeWhy: "" + target.playlistId + " / " + typeof target.playlistId
 "#,
     },
-    // ── 2. Привязка от свойства: int и double как источник ────────────────
+    // ── 2. Binding from a property: int and double as the source ──────────
     Case {
         name: "DisplayLayoutSetQuery.displayId ← int",
         body: r#"
@@ -136,7 +140,7 @@ const CASES: &[Case] = &[
     readonly property string probeWhy: "" + target.libraryId + " / " + typeof target.libraryId
 "#,
     },
-    // ── 3. Чтение свойств только для чтения ───────────────────────────────
+    // ── 3. Reading read-only properties ───────────────────────────────────
     Case {
         name: "WallpaperSelectStorage.playlistEditTargetId — чтение",
         body: r#"
@@ -186,7 +190,7 @@ const CASES: &[Case] = &[
     readonly property string probeWhy: typeof W.PluginTranslations.revision
 "#,
     },
-    // ── 4. Инвокаблы с числовым параметром ────────────────────────────────
+    // ── 4. Invokables with a numeric parameter ────────────────────────────
     Case {
         name: "DisplayManager.get(id) — вызов",
         body: r#"
@@ -261,7 +265,7 @@ const CASES: &[Case] = &[
     }
 "#,
     },
-    // ── 5. Обработчик сигнала с числовым параметром ───────────────────────
+    // ── 5. A signal handler with a numeric parameter ──────────────────────
     Case {
         name: "CanvasMutationQuery.onCanvasUpdated — обработчик",
         body: r#"
@@ -272,40 +276,42 @@ const CASES: &[Case] = &[
     readonly property string probeWhy: "обработчик объявлен"
 "#,
     },
-    // ── 6. Оборотная сторона починки: `%1` от `double` ────────────────────
+    // ── 6. The flip side of the fix: `%1` from a `double` ─────────────────
     //
-    // ⚠️ Замена `i64` на `f64` чинит привязку, но заводит ВТОРОЙ видимый
-    // покупателю риск. `QString::arg()` для `double` печатает формат 'g' с
-    // шестью значащими цифрами: с 1 000 000 число уходит в экспоненту, и
-    // вендорный QML показал бы «Playlist #1.23457e+06» вместо номера.
+    // Warning: replacing `i64` with `f64` fixes the binding but introduces a
+    // SECOND risk visible to the customer. `QString::arg()` for a `double`
+    // prints the 'g' format with six significant digits: from 1 000 000 the
+    // number goes into exponent notation, and the vendored QML would show
+    // "Playlist #1.23457e+06" instead of the number.
     //
-    // Замерено 31.08.2026 живым движком (`qml6`, Qt 6):
+    // Measured on 31.08.2026 with a live engine (`qml6`, Qt 6):
     //
-    //     .arg(double 999999)    → «999999»      — цел
-    //     .arg(double 1000000)   → «1e+06»       — ОБРЫВ
-    //     .arg(double 1234567)   → «1.23457e+06»
-    //     .arg(int 1234567)      → «1234567»     — цел
-    //     "" + double            → «1234567»     — цел
-    //     .arg(String(double))   → «1234567»     — цел
+    //     .arg(double 999999)    → "999999"      — intact
+    //     .arg(double 1000000)   → "1e+06"       — BROKEN
+    //     .arg(double 1234567)   → "1.23457e+06"
+    //     .arg(int 1234567)      → "1234567"     — intact
+    //     "" + double            → "1234567"     — intact
+    //     .arg(String(double))   → "1234567"     — intact
     //
-    // ⚠️ «Двойственность» ЛИПКАЯ: `Number(x)`, параметр JS-функции,
-    // свойство `var`, поле объектного литерала — всё сохраняет её, и
-    // `.arg()` всё равно уходит в экспоненту. Спасают только явная строка
-    // (`String(x)`, склейка через `+`) и целочисленное приведение (`x | 0`).
+    // Warning: the "doubleness" is STICKY: `Number(x)`, a JS function
+    // parameter, a `var` property, an object literal field — all preserve it,
+    // and `.arg()` still goes into exponent notation. Only an explicit string
+    // (`String(x)`, concatenation with `+`) and an integer cast (`x | 0`) help.
     //
-    // ПОЧЕМУ ВЕНДОРНЫЙ QML НЕ ПРАВИМ. Все шесть мест, где наше `f64`
-    // встречается с `.arg()`, несут номера дисплеев и плейлистов — строки
-    // базы демона, счёт идёт на единицы и десятки. До рубежа 1e6 им шесть
-    // порядков. Единственное значение, которое рубеж заведомо переходит, —
-    // размер сетевого кэша в байтах (64 МиБ = 67 108 864), но вендорный
-    // `SettingsPage.qml:1124` пропускает его через `formatBytes()`, а тот
-    // возвращает СТРОКУ (`toFixed`) — безопасный путь. Править чужой QML
-    // ради недостижимого случая значило бы ломать паритет и ссориться с
-    // каждым обновлением waywallen.
+    // WHY WE DO NOT EDIT THE VENDORED QML. All six places where our `f64` meets
+    // `.arg()` carry display and playlist numbers — rows of the daemon's
+    // database, counted in ones and tens. They are six orders of magnitude
+    // away from the 1e6 boundary. The only value that certainly crosses the
+    // boundary is the network cache size in bytes (64 MiB = 67 108 864), but
+    // the vendored `SettingsPage.qml:1124` passes it through `formatBytes()`,
+    // which returns a STRING (`toFixed`) — a safe path. Editing someone else's
+    // QML for an unreachable case would mean breaking parity and fighting
+    // every waywallen update.
     //
-    // Поэтому не правка, а ЗАМОК: случаи ниже держат оба конца — что при
-    // рабочих величинах номер печатается цифрами, и что рубеж лежит именно
-    // там, где замерено. Уедет любой конец — проба скажет.
+    // So not an edit but a LOCK: the cases below hold both ends — that at
+    // working values the number prints as digits, and that the boundary lies
+    // exactly where it was measured. If either end moves, the probe will say
+    // so.
     Case {
         name: "%1 от f64-свойства при рабочем номере — цифры, не экспонента",
         body: r##"
@@ -365,16 +371,16 @@ const CASES: &[Case] = &[
     }
 "#,
     },
-    // ── Не про 64 бита: договор с разметкой waywallen ────────────────────
-    // Стенд один на все проверки типов `W.*` в живом движке, поэтому эти
-    // случаи живут здесь, а не в отдельной пробе.
+    // ── Not about 64 bits: the contract with the waywallen markup ────────
+    // The bench is one for all checks of the `W.*` types in a live engine, so
+    // these cases live here rather than in a separate probe.
     //
-    // Проверка обновлений waywallen (`W.UpdateChecker`, у апстрима с 0.4.4,
-    // поле `supported` — с #328). Движок едет внутри пакета Rexon и
-    // обновляется вместе с ним, поэтому Rexon даёт тот же синглтон, что
-    // сборка апстрима без `update-check`: не поддерживается, выключен,
-    // запись `enabled` и `check()` ничего не делают. Разметка новее 0.4.4
-    // сама прячет по `supported` кнопки и выключатель.
+    // The waywallen update check (`W.UpdateChecker`, upstream since 0.4.4, the
+    // `supported` field since #328). The engine ships inside the Rexon package
+    // and is updated together with it, so Rexon provides the same singleton as
+    // an upstream build without `update-check`: not supported, disabled,
+    // writing `enabled` and `check()` do nothing. Markup newer than 0.4.4 hides
+    // the buttons and the switch by itself based on `supported`.
     Case {
         name: "UpdateChecker — заглушка: не поддерживается, выключена, запись не проходит",
         body: r#"
@@ -395,9 +401,10 @@ const CASES: &[Case] = &[
         + " enabled=" + W.UpdateChecker.enabled + " checking=" + W.UpdateChecker.checking
 "#,
     },
-    // Логотип и журнал выпусков: разметка апстрима ищет их по абсолютному
-    // адресу `qrc:/waywallen/ui/assets/…` — в ресурсах СВОЕГО бинаря. Rexon
-    // кладёт те же файлы по тому же адресу в свои ресурсы, и QML не правится.
+    // Logo and release log: the upstream markup looks for them by the absolute
+    // address `qrc:/waywallen/ui/assets/…` — in the resources of ITS OWN binary.
+    // Rexon puts the same files at the same address into its own resources,
+    // and the QML is not edited.
     Case {
         name: "логотип waywallen по адресу qrc: апстрима",
         body: r#"
@@ -420,10 +427,10 @@ const CASES: &[Case] = &[
     }
 "#,
     },
-    // Один модуль из двух половин: QML-синглтон `I18n` объявлен вендорным
-    // qmldir (версия модуля апстрима, 0.3), а C++-синглтон
-    // `PluginTranslations`, которого он зовёт, регистрирует Rust (1.0).
-    // Разметка импортирует модуль без версии и обязана видеть обе.
+    // One module of two halves: the QML singleton `I18n` is declared by the
+    // vendored qmldir (the upstream module version, 0.3), while the C++
+    // singleton `PluginTranslations` it calls is registered by Rust (1.0). The
+    // markup imports the module without a version and must see both.
     Case {
         name: "вендорный I18n (qmldir 0.3) зовёт наш PluginTranslations (1.0)",
         body: r#"
@@ -435,10 +442,10 @@ const CASES: &[Case] = &[
     readonly property string probeWhy: "I18n.revision=" + W.I18n.revision
         + " PluginTranslations.revision=" + W.PluginTranslations.revision
 "#,
-    },    // waywallen 0.5.0: скрытые библиотеки у `WallpaperListQuery`. Номера —
-    // список чисел-double (64-битное целое в QML не выставляется): страница
-    // зовёт `Array.from(hiddenLibraryIds)`, `.includes(library.id)` и
-    // `.length`, а глазик — `toggleLibraryHidden(id)`.
+    },    // waywallen 0.5.0: hidden libraries of `WallpaperListQuery`. The numbers are
+    // a list of double numbers (a 64-bit integer is not exposed to QML): the
+    // page calls `Array.from(hiddenLibraryIds)`, `.includes(library.id)` and
+    // `.length`, and the eye icon calls `toggleLibraryHidden(id)`.
     Case {
         name: "WallpaperListQuery.hiddenLibraryIds: [3,1,3] → [1,3], toggle(1) → [3]",
         body: r#"
@@ -474,9 +481,9 @@ const CASES: &[Case] = &[
     }
 "#,
     },
-    // waywallen 0.5.0: `DisplaysPage.qml` объявляет свойства ТИПОВ `W.Display`
-    // и `W.Canvas` (`selected as W.Display`). Неизвестный тип роняет
-    // страницу «Мониторы» целиком — типы обязаны быть в модуле.
+    // waywallen 0.5.0: `DisplaysPage.qml` declares properties of the TYPES
+    // `W.Display` and `W.Canvas` (`selected as W.Display`). An unknown type
+    // crashes the whole "Monitors" page — the types must be in the module.
     Case {
         name: "W.Display и W.Canvas — типы модуля waywallen.ui",
         body: r#"
@@ -487,8 +494,8 @@ const CASES: &[Case] = &[
     readonly property string probeWhy: "display=" + selectedDisplay + " canvas=" + selectedCanvas
 "#,
     },
-    // waywallen 0.5.0: аватар автора в панели деталей Discover
-    // (`details?.authorAvatarUrl`) — строка, пустая до ответа демона.
+    // waywallen 0.5.0: the author's avatar in the Discover details panel
+    // (`details?.authorAvatarUrl`) — a string, empty until the daemon answers.
     Case {
         name: "RemoteDetailsQuery.authorAvatarUrl — пустая строка до ответа",
         body: r#"
@@ -497,11 +504,12 @@ const CASES: &[Case] = &[
     readonly property string probeWhy: "authorAvatarUrl=" + details.authorAvatarUrl
 "#,
     },
-    // waywallen 0.5.0: выборка и страницы `WallpaperListQuery` так, как их
-    // зовёт `PlaylistEditPage.qml`: `baselineSelection = previewQuery.selection`
-    // (непрозрачное значение, в JS — ArrayBuffer), `restoreSelection`,
-    // `onSelectionChanged → matchesSelection(baseline)`, `limit: 50` и
-    // `fetchMore(50)` в конце прокрутки.
+    // waywallen 0.5.0: the selection and pages of `WallpaperListQuery` the way
+    // `PlaylistEditPage.qml` calls them:
+    // `baselineSelection = previewQuery.selection` (an opaque value, an
+    // ArrayBuffer in JS), `restoreSelection`,
+    // `onSelectionChanged → matchesSelection(baseline)`, `limit: 50` and
+    // `fetchMore(50)` at the end of scrolling.
     Case {
         name: "WallpaperListQuery.selection: restore/matches, selectionChanged на каждый сеттер, fetchMore",
         body: r#"
@@ -556,10 +564,10 @@ const CASES: &[Case] = &[
     }
 "#,
     },
-    // waywallen 0.5.0: умный плейлист так, как его сохраняет
-    // `PlaylistEditPage.qml`: `saveSmart(playlistId, …, previewQuery.selection,
-    // draftRevision)` с числами-`double`, а страница создания держит
-    // `PlaylistDetailQuery { playlistId: 0 }` — тот обязан молчать.
+    // waywallen 0.5.0: a smart playlist the way `PlaylistEditPage.qml` saves
+    // it: `saveSmart(playlistId, …, previewQuery.selection, draftRevision)` with
+    // `double` numbers, while the creation page holds
+    // `PlaylistDetailQuery { playlistId: 0 }` — that one must stay silent.
     Case {
         name: "PlaylistMutationQuery.saveSmart и PlaylistDetailQuery с id 0 (waywallen 0.5.0)",
         body: r#"
@@ -593,9 +601,10 @@ const CASES: &[Case] = &[
     }
 "#,
     },
-    // waywallen 0.5.0, патч 0002: строка «Версия %1» на «О программе» берёт
-    // версию вендорного интерфейса, а не `Qt.application.version` (у Rexon
-    // это его собственная версия). Вид — как у версии демона по D-Bus.
+    // waywallen 0.5.0, patch 0002: the "Version %1" line on "About" takes the
+    // version of the vendored interface, not `Qt.application.version` (for
+    // Rexon that is its own version). The look is like the daemon version over
+    // D-Bus.
     Case {
         name: "App.uiVersion — версия вендорного интерфейса из ui/UPSTREAM_TAG",
         body: r#"
@@ -604,15 +613,15 @@ const CASES: &[Case] = &[
     readonly property string probeWhy: "uiVersion=" + version
 "#,
     },
-    // Наш QML и вендорная разметка против СОБРАННОГО `Qcm.Material` пина
-    // (`ui/QML_MATERIAL_PIN`) и наших типов `waywallen.ui`. Ловит то, чего не
-    // видят ни qmllint (свойств модуля он без описи не знает), ни
-    // контракт-тест (он сверяет имена «по слову»): присваивание
-    // несуществующему свойству и обработчик несуществующего сигнала —
-    // ошибка КОМПИЛЯЦИИ документа, и страница не открывается целиком.
-    // Пойманный класс: переход QmlMaterial на InputHost (0.5.0) — у
-    // `StandardIconButton` нет `checked`, у пунктов рейки `onClicked`.
-    // Список файлов подставляет `run()` (`@QML_FILES@`).
+    // Our QML and the vendored markup against the BUILT `Qcm.Material` pin
+    // (`ui/QML_MATERIAL_PIN`) and our `waywallen.ui` types. Catches what
+    // neither qmllint (it does not know the module's properties without a
+    // type description) nor the contract test (it compares names "by word")
+    // sees: assigning to a non-existent property and a handler of a
+    // non-existent signal are document COMPILATION errors, and the page does
+    // not open at all. The class caught: the move of QmlMaterial to InputHost
+    // (0.5.0) — `StandardIconButton` has no `checked`, rail items have no
+    // `onClicked`. The file list is substituted by `run()` (`@QML_FILES@`).
     Case {
         name: "PageHost и вендорные страницы компилируются против Qcm.Material пина",
         body: r#"
@@ -632,8 +641,8 @@ const CASES: &[Case] = &[
     },
 ];
 
-/// Файлы QML, которые случай компиляции грузит по одному: наш `PageHost.qml`
-/// и каждый `.qml` вендорной разметки. JSON-массив адресов `file://`.
+/// QML files the compilation case loads one by one: our `PageHost.qml` and
+/// every `.qml` of the vendored markup. A JSON array of `file://` addresses.
 fn compile_targets() -> String {
     let base = crate::we_env::vendor_qml_dir();
     if base.is_empty() {
@@ -667,17 +676,18 @@ fn compile_targets() -> String {
     .unwrap_or_else(|_| "[]".to_string())
 }
 
-/// Шапка документа случая — общая на все.
-// QtQuick — ради `Image` в случае логотипа.
+/// Header of a case document — shared by all.
+// QtQuick — for `Image` in the logo case.
 const CASE_HEADER: &str =
     "import QtQml\nimport QtQuick\nimport waywallen.ui as W\n\nQtObject {\n    id: root\n";
 
-/// Сколько ждать приговора. Срок держит `Timer` ВНУТРИ цикла событий Qt, а
-/// не сторонний поток: посторонний поток, живой в миг выхода, роняет разбор
-/// статики Qt.
+/// How long to wait for the verdict. The deadline is held by a `Timer`
+/// INSIDE the Qt event loop, not by a separate thread: a foreign thread
+/// alive at the moment of exit crashes the teardown of Qt statics.
 const GUARD_MS: i32 = 30_000;
 
-/// Собрать бегуна: он проходит случаи по одному и печатает приговор.
+/// Build the runner: it goes through the cases one by one and prints the
+/// verdict.
 fn runner_qml(dir: &std::path::Path, names: &[String]) -> String {
     let dir = dir.display();
     let list = names
@@ -745,34 +755,36 @@ QtObject {{
     )
 }
 
-/// Имя файла случая: без пробелов и точек, чтобы годиться в URL и в имя
-/// типа QML (первая буква обязана быть заглавной).
+/// Case file name: without spaces or dots, to fit into a URL and into a QML
+/// type name (the first letter must be uppercase).
 fn file_name(index: usize) -> String {
     format!("Case{index:02}")
 }
 
-/// ⚠️ Возврата НЕТ намеренно: приговор уходит `std::process::exit` прямо
-/// отсюда, как в соседних самопроверках `demo.rs`.
+/// Warning: there is NO return on purpose: the verdict goes out with
+/// `std::process::exit` right from here, as in the neighbouring self-tests
+/// of `demo.rs`.
 pub fn run() -> ! {
     unsafe { std::env::set_var("QT_FORCE_STDERR_LOGGING", "1") };
-    // Случай журнала выпусков читает `qrc:` через XMLHttpRequest, а Qt
-    // считает это чтением локального файла и без переменной отказывает.
+    // The release log case reads `qrc:` through XMLHttpRequest, and Qt treats
+    // that as reading a local file and refuses without the variable.
     unsafe { std::env::set_var("QML_XHR_ALLOW_FILE_READ", "1") };
-    // Модуль вкладок — ради статических архивов cxx-qt (та же причина, что
-    // в стенде `demo.rs`).
+    // The tabs module — for the sake of the cxx-qt static archives (the same
+    // reason as in the `demo.rs` bench).
     cxx_qt::init_qml_module!("org.rexon.gui");
 
-    // ⚠️ Типы `waywallen.ui` регистрирует `prepare_process` ниже — ПОСЛЕ
-    // поиска каталога пакета, как у живого окна. Прежде проба звала
-    // регистрацию первой строкой, ещё до приложения: синглтон `App` (он
-    // создаётся сразу при регистрации) рождался без каталога пакета — без
-    // языков вкладки и без `uiVersion`, — и проба мерила не то, что видит
-    // покупатель.
+    // Warning: the `waywallen.ui` types are registered by `prepare_process`
+    // below — AFTER looking up the package directory, as in the live window.
+    // Previously the probe called registration on its first line, even before
+    // the application: the `App` singleton (it is created right at
+    // registration) was born without the package directory — without the
+    // tab's languages and without `uiVersion` — and the probe measured
+    // something other than what the customer sees.
     let mut app = QGuiApplication::new();
-    // Процесс — как у живого окна: каталог пакета (вендорный qmldir),
-    // модель фильтров, прогрев `waywallen.control`. Звать при живом
-    // приложении — и ДО записи случаев: список файлов для случая компиляции
-    // берётся из найденного здесь каталога пакета.
+    // The process is as in the live window: the package directory (the
+    // vendored qmldir), the filter model, warming up `waywallen.control`. Call
+    // with a live application — and BEFORE recording the cases: the file list
+    // for the compilation case is taken from the package directory found here.
     crate::we_env::prepare_process();
     let targets = compile_targets();
 
@@ -790,7 +802,8 @@ pub fn run() -> ! {
         std::fs::write(dir.join(format!("{name}.qml")), body).expect("файл случая");
         names.push(name);
     }
-    // Имена случаев печатаем сразу: в выводе движка видно только имя файла.
+    // We print the case names right away: the engine's output shows only the
+    // file name.
     for (index, case) in CASES.iter().enumerate() {
         eprintln!("REXON-I64 {} = {}", file_name(index), case.name);
     }
@@ -800,9 +813,10 @@ pub fn run() -> ! {
 
     let mut engine = QQmlApplicationEngine::new();
     if let Some(mut engine) = engine.as_mut() {
-        // Пути импорта — как у живой вкладки: вендорный qmldir модуля
-        // `waywallen.ui` и модули под ним (Qcm.Material, QExtra, …). Без
-        // вендорного qmldir случаи видели бы только C++-половину модуля.
+        // Import paths — as in the live tab: the vendored qmldir of the
+        // `waywallen.ui` module and the modules under it (Qcm.Material, QExtra, …).
+        // Without the vendored qmldir the cases would see only the C++ half of the
+        // module.
         let raw = unsafe { engine.as_mut().get_unchecked_mut() } as *mut QQmlApplicationEngine;
         unsafe { crate::we_env::prepare_engine(raw.cast()) };
         engine.as_mut().load(&QUrl::from(
@@ -814,7 +828,7 @@ pub fn run() -> ! {
         None => 2,
     };
     let _ = std::fs::remove_dir_all(&dir);
-    // Ни `app`, ни `engine` не разбираются: то же, что делают соседние
-    // самопроверки в `demo.rs`.
+    // Neither `app` nor `engine` is torn down: the same as the neighbouring
+    // self-tests in `demo.rs` do.
     std::process::exit(code);
 }

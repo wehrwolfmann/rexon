@@ -1,27 +1,28 @@
 // Rexon Wallpaper Engine — GNOME Shell extension wrapper.
 //
-// Зачем это вообще нужно: у Mutter нет wlr-layer-shell, поэтому обои сюда
-// нельзя положить окном, как на KDE/sway/Hyprland. Движок waywallen тут
-// бессилен — единственный путь показать живые обои на GNOME-Wayland — это
-// расширение оболочки, читающее готовые кадры.
+// Why this is needed at all: Mutter has no wlr-layer-shell, so wallpapers
+// cannot be placed here as a window, as on KDE/sway/Hyprland. The waywallen
+// engine is powerless here — the only way to show live wallpapers on
+// GNOME-Wayland is a shell extension that reads ready-made frames.
 //
-// Архитектура:
-// 1. Хост обоев запускается фоновым процессом через GLib.spawn_async и
-//    рисует обои в невидимое окно. Строку запуска ПРИСЫЛАЕТ Rexon в ключе
-//    настроек `daemon-argv`: расширение — код оболочки, оно не знает, где
-//    лежит бинарь хоста обоев. Запасного пути нет: не прислали строку —
-//    расширение говорит об этом в журнал и обои не запускает.
-// 2. Демон пишет каждый кадр в shared-mmap-файл /run/user/$UID/rexon-wp-frame.rgba
-//    (RGBA8888, без заголовка, под flock LOCK_EX).
-// 3. Этот extension кладёт St.ImageContent на свои актёры поверх фона
-//    GNOME Shell (Main.layoutManager._bgManagers) и обновляет текстуру
-//    каждый tick. Clutter.Image в mutter 48 удалён — см. makeFrameUploader.
-// 4. Эффект экрана (строки развёртки, кинескоп и т. п.) — отдельно от обоев:
-//    шейдер, который пишет Rexon (ключ `effect-shader`), ложится
-//    Shell.GLSLEffect на Main.uiGroup, то есть на весь экран. Обои и эффект
-//    друг от друга не зависят: смена одного не трогает другое.
+// Architecture:
+// 1. The wallpaper host is started as a background process via GLib.spawn_async
+//    and draws the wallpaper into an invisible window. The launch line is SENT
+//    by Rexon in the `daemon-argv` settings key: the extension is shell code,
+//    it does not know where the wallpaper host binary lives. There is no
+//    fallback: no line sent — the extension says so in the log and does not
+//    start the wallpaper.
+// 2. The daemon writes each frame into the shared mmap file /run/user/$UID/rexon-wp-frame.rgba
+//    (RGBA8888, no header, under flock LOCK_EX).
+// 3. This extension puts St.ImageContent on its own actors above the
+//    GNOME Shell background (Main.layoutManager._bgManagers) and updates the
+//    texture every tick. Clutter.Image was removed in mutter 48 — see makeFrameUploader.
+// 4. The screen effect (scanlines, CRT and so on) is separate from the wallpaper:
+//    the shader Rexon writes (key `effect-shader`) is applied as a
+//    Shell.GLSLEffect on Main.uiGroup, i.e. on the whole screen. Wallpaper and
+//    effect do not depend on each other: changing one does not touch the other.
 //
-// GNOME Shell 45+ требует ESM (import) синтаксис.
+// GNOME Shell 45+ requires ESM (import) syntax.
 
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
@@ -38,17 +39,17 @@ import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 const FRAME_PATH = GLib.get_user_runtime_dir() + '/rexon-wp-frame.rgba';
 const DAEMON_TICK_MS = 33;  // ~30 FPS
 
-// Переходник под версии оболочки: как залить кадр в St.ImageContent.
+// Adapter for shell versions: how to upload a frame into St.ImageContent.
 //
-// GNOME 45–47: St.ImageContent — наследник Clutter.Image, своего set_data
-// у него нет, работает унаследованный set_data(data, format, w, h, stride).
-// GNOME 48+: Clutter.Image из mutter удалён (в Clutter-51.gir класса
-// Image нет), St.ImageContent стал самостоятельным и требует первым
-// аргументом контекст Cogl — set_data(cogl, data, format, w, h, stride).
-// Контекст берём так же, как сама оболочка (screenshot.js 48, qrCode.js 51):
+// GNOME 45–47: St.ImageContent is a subclass of Clutter.Image, it has no
+// set_data of its own, the inherited set_data(data, format, w, h, stride) works.
+// GNOME 48+: Clutter.Image was removed from mutter (Clutter-51.gir has no
+// Image class), St.ImageContent became standalone and requires a Cogl
+// context as the first argument — set_data(cogl, data, format, w, h, stride).
+// We get the context the same way the shell itself does (screenshot.js 48, qrCode.js 51):
 // global.stage.context.get_backend().get_cogl_context().
-// Прежде здесь стоял `new Clutter.Image()`: на 48+ он бросал исключение
-// каждый tick, а чёрная подложка актёра закрывала стол.
+// Previously there was `new Clutter.Image()` here: on 48+ it threw an exception
+// every tick, and the actor's black backing covered the desktop.
 function makeFrameUploader() {
     const major = parseInt(Config.PACKAGE_VERSION, 10);
     if (major >= 48) {
@@ -60,20 +61,21 @@ function makeFrameUploader() {
         data, Cogl.PixelFormat.RGBA_8888, w, h, w * 4);
 }
 
-// Строка запуска демона обоев — ТОЛЬКО та, что прислал Rexon.
+// The wallpaper daemon launch line — ONLY the one Rexon sent.
 //
-// Запасной сборки `python3 -m rexon.video_wallpaper` здесь больше нет:
-// Python-хост обоев снят с дерева, подменять бинарь нечем. Пустой массив в
-// настройках = «Rexon ничего не присылал»; разбирается этот случай не
-// здесь, а в общем блоке ниже — вместе с остальными негодными строками
-// запуска, чтобы объяснение человеку было одно на все случаи.
+// The fallback `python3 -m rexon.video_wallpaper` is no longer here:
+// the Python wallpaper host was removed from the tree, there is nothing to
+// substitute the binary with. An empty array in the settings = "Rexon sent
+// nothing"; this case is handled not here but in the shared block below —
+// together with the other unusable launch lines, so that the explanation
+// to the person is the same for all cases.
 function _daemonArgv(settings) {
-    // ⚠️ Наличие ключа спрашиваем У СХЕМЫ, а не через try/catch вокруг
-    // чтения. `get_strv` на ключе, которого в схеме нет, не бросает
-    // перехватываемое исключение: GLib печатает
-    // «does not contain a key named …» и ГАСИТ ПРОЦЕСС (проверено —
-    // SIGABRT, код выхода 134). Здесь процесс — сама оболочка: вместо
-    // «обои не появились» покупатель получил бы вылет сеанса.
+    // ⚠️ Whether the key exists is asked OF THE SCHEMA, not via try/catch around
+    // the read. `get_strv` on a key that is not in the schema does not throw a
+    // catchable exception: GLib prints
+    // "does not contain a key named …" and KILLS THE PROCESS (verified —
+    // SIGABRT, exit code 134). Here the process is the shell itself: instead of
+    // "the wallpaper did not appear" the customer would get a session crash.
     const schema = settings.settings_schema;
     return (schema && schema.has_key('daemon-argv'))
         ? settings.get_strv('daemon-argv')
@@ -81,32 +83,32 @@ function _daemonArgv(settings) {
 }
 
 
-// ─── ОБЩИЙ БЛОК ДИАГНОСТИКИ ЗАПУСКА ────────────────────────────────
+// ─── SHARED LAUNCH DIAGNOSTICS BLOCK ───────────────────────────────
 //
-// Дословно одинаков в расширениях GNOME и Cinnamon: дефект был один на оба
-// файла, значит и лечение одно (правило #12). Сторож от расхождения — тест
-// `rust/rexon-core/tests/wallpaper_mmap_parity.rs`,
-// `shell_extensions_share_launch_diagnostics`: он вырезает этот блок из
-// обоих файлов и сравнивает посимвольно, поэтому правку сюда надо вносить
-// В ОБА ФАЙЛА. Вывод в журнал и показ сообщения сюда НЕ входят: у GNOME
-// это `console.*`, у Cinnamon — `global.log*`, и это единственная разница,
-// которую блок терпит.
+// Verbatim identical in the GNOME and Cinnamon extensions: the defect was the
+// same in both files, so the fix is the same too (rule #12). The guard against
+// divergence is the test `rust/rexon-core/tests/wallpaper_mmap_parity.rs`,
+// `shell_extensions_share_launch_diagnostics`: it cuts this block out of
+// both files and compares them character by character, so an edit here must
+// go INTO BOTH FILES. Logging and showing the message are NOT part of it: on
+// GNOME that is `console.*`, on Cinnamon `global.log*`, and that is the only
+// difference the block tolerates.
 // [rexon-wp:launch-diagnostics:begin]
 const LAUNCH_FAIL_TITLE = 'Rexon: живые обои не запустились';
 
-// Куда идти человеку, когда строка запуска негодна. Чинится это ровно в
-// одном месте: строку пишет сам Rexon, когда передаёт обои расширению.
+// Where to send the person when the launch line is unusable. It is fixed in
+// exactly one place: the line is written by Rexon itself when it hands the wallpaper to the extension.
 const REINSTALL_HINT = 'Откройте в Rexon «Оформление», раздел расширений ' +
     'оболочки, и установите расширение обоев заново — строку запуска пишет туда сам Rexon.';
 
-// Что не так со строкой запуска, ДО того как звать оболочку.
-// `null` — всё в порядке.
+// What is wrong with the launch line, BEFORE calling the shell.
+// `null` — everything is fine.
 //
-// Зачем проверять заранее. `GLib.spawn_async` на негодной строке отвечает
-// голым «Failed to execute child process … (No such file or directory)»,
-// и по этому тексту покупатель не поймёт ни ЧТО не нашлось, ни ГДЕ искали.
-// Поэтому каждый случай называем своими словами и ВСЕГДА показываем сам
-// путь: он и есть ответ на «где искали».
+// Why check in advance. `GLib.spawn_async` on an unusable line answers with a
+// bare "Failed to execute child process … (No such file or directory)",
+// and from that text the customer will understand neither WHAT was not found nor WHERE it was looked for.
+// So each case is named in its own words and the path itself is ALWAYS
+// shown: it is the answer to "where was it looked for".
 function launchProblem(argv) {
     if (!argv || argv.length === 0 || !argv[0]) {
         return 'Rexon не сказал, чем показывать обои: ключ настроек ' +
@@ -136,55 +138,55 @@ function launchProblem(argv) {
     return null;
 }
 
-// Отказ, случившийся уже внутри оболочки: строка была годной, а запуск не
-// вышел. `detail` — текст исключения либо пусто, если причины не назвали.
+// A failure that happened already inside the shell: the line was usable, but the
+// launch did not work. `detail` — the exception text, or empty if no reason was given.
 function spawnFailureText(argv, detail) {
     return 'Оболочка не смогла запустить показ обоев: ' +
         (detail ? detail : 'причину она не назвала') + '. Запускали: ' +
         argv.join(' ');
 }
 
-// Хост поднялся и тут же лёг. Молчать нельзя: актёры уже стоят, и на
-// экране остался бы чёрный прямоугольник поверх обычного фона — ровно то
-// самое «просто не работает», из-за которого баг и завели.
+// The host came up and died right away. Staying silent is not an option: the actors are
+// already in place, and a black rectangle would remain on screen above the normal
+// background — exactly the "it just does not work" that the bug was filed for.
 function earlyExitText(argv, status) {
     return 'Показ обоев запустился и сразу завершился (код ' + status +
         '). Запускали: ' + argv.join(' ') + '. Причину называет сама ' +
         'программа показа — её видно в журнале сеанса.';
 }
 
-// Хост проработал дольше этого и лёг — это уже не отказ запуска, а падение
-// на ходу (сон, сброс видеокарты, ошибка драйвера). Такие Rexon поднимает
-// сам: его сторож видит пропажу хоста по метке сердцебиения и перезапускает
-// обои через настройки расширения, а если падения пойдут подряд — ставит
-// неподвижный кадр и говорит об этом ОДНИМ уведомлением. Сообщение оболочки
-// здесь было бы вторым, и на каждое падение.
+// The host ran longer than this and died — that is no longer a launch failure but a crash
+// on the go (sleep, GPU reset, driver error). Rexon restarts these
+// itself: its watchdog sees the host is gone by the heartbeat mark and restarts
+// the wallpaper through the extension settings, and if crashes come in a row it sets
+// a still frame and says so in ONE notification. A shell message
+// here would be a second one, and for every crash.
 const EARLY_EXIT_MS = 10000;
 
-// Считать ли выход хоста отказом запуска (показать сообщение).
+// Whether the host exit counts as a launch failure (show the message).
 function isLaunchFailure(livedMs) {
     return livedMs < EARLY_EXIT_MS;
 }
 // [rexon-wp:launch-diagnostics:end]
 
 
-// ─── ОБЩИЙ БЛОК ЧТЕНИЯ КАДРА ───────────────────────────────────────
+// ─── SHARED FRAME READ BLOCK ───────────────────────────────────────
 //
-// Дословно одинаков в расширениях GNOME и Cinnamon, сторож —
-// `shell_extensions_share_frame_read` в
-// `rust/rexon-core/tests/wallpaper_mmap_parity.rs`. Правку — В ОБА ФАЙЛА.
+// Verbatim identical in the GNOME and Cinnamon extensions, the guard is
+// `shell_extensions_share_frame_read` in
+// `rust/rexon-core/tests/wallpaper_mmap_parity.rs`. Edits go INTO BOTH FILES.
 // [rexon-wp:frame-read:begin]
-// Счётчик поколения кадра лежит рядом с файлом кадра (договор —
+// The frame generation counter lies next to the frame file (contract —
 // `rexon-core::wallpaper_mmap::frame_generation_path`): u64 little-endian,
-// нечётный — хост сейчас пишет кадр, чётный — кадр записан целиком.
+// odd — the host is writing a frame right now, even — the frame is written completely.
 //
-// Зачем. Хост пишет кадр под flock(LOCK_EX), а взять замок отсюда нечем: у
-// GJS нет ни flock, ни fcntl. Без замка копия попадала на середину записи —
-// замер на 1920×1080 и 30 кадрах: 12 рваных кадров из 180 тиков (верх от
-// одного кадра, низ от другого).
+// Why. The host writes the frame under flock(LOCK_EX), and there is no way to
+// take the lock from here: GJS has neither flock nor fcntl. Without the lock the copy landed
+// in the middle of a write — measured at 1920×1080 and 30 fps: 12 torn frames out of 180 ticks
+// (top from one frame, bottom from another).
 const FRAME_GEN_SUFFIX = '.gen';
 
-// Значение счётчика; null — счётчика нет (хост прежней сборки).
+// The counter value; null — there is no counter (host of an older build).
 function frameGeneration(framePath) {
     let data;
     try {
@@ -196,17 +198,17 @@ function frameGeneration(framePath) {
     return new DataView(data.buffer, data.byteOffset, 8).getBigUint64(0, true);
 }
 
-// Целый кадр (Uint8Array длиной не меньше expected) либо null, если кадра
-// ещё нет, он недописан или хост писал во время копии — тогда тик
-// пропускается и на экране остаётся прежний кадр. Ошибки отображения файла
-// пробрасываются вызывающему: у него свой журнал.
+// A whole frame (Uint8Array no shorter than expected) or null if there is
+// no frame yet, it is incomplete, or the host was writing during the copy — then the tick
+// is skipped and the previous frame stays on screen. File mapping errors
+// are passed to the caller: it has its own log.
 function readWholeFrame(framePath, expected) {
     const before = frameGeneration(framePath);
     if (before !== null && (before & 1n) === 1n) return null;
     const bytes = GLib.MappedFile.new(framePath, false).get_bytes();
     if (bytes.get_size() < expected) return null;
-    // get_data() КОПИРУЕТ (проверено: после перезаписи файла массив прежний),
-    // поэтому сверка счётчика после копии и ограждает именно эту копию.
+    // get_data() COPIES (verified: after the file is overwritten the array is unchanged),
+    // so checking the counter after the copy guards exactly this copy.
     const data = bytes.get_data();
     if (frameGeneration(framePath) !== before) return null;
     return data;
@@ -214,36 +216,36 @@ function readWholeFrame(framePath, expected) {
 // [rexon-wp:frame-read:end]
 
 
-// ─── ОБЩИЙ БЛОК ЭФФЕКТА ЭКРАНА ──────────────────────────────────────
+// ─── SHARED SCREEN EFFECT BLOCK ──────────────────────────────────────
 //
-// Дословно одинаков в расширениях GNOME и Cinnamon, сторож —
-// `shell_extensions_share_screen_effect` в
-// `rust/rexon-core/src/screen_effects.rs`. Правку — В ОБА ФАЙЛА. Разница
-// оболочек (класс эффекта, хук сниппета, журнал, полноэкранные окна)
-// приходит снаружи объектом `host`.
+// Verbatim identical in the GNOME and Cinnamon extensions, the guard is
+// `shell_extensions_share_screen_effect` in
+// `rust/rexon-core/src/screen_effects.rs`. Edits go INTO BOTH FILES. The difference
+// between the shells (effect class, snippet hook, log, fullscreen windows)
+// comes from outside as the `host` object.
 // [rexon-wp:screen-effect:begin]
-// Договор с ядром (`rexon-core::screen_effects`): ключ настроек — путь к
-// файлу шейдера, пусто — эффект выключен. Файл: объявления сниппета Cogl,
-// строка-метка, код сниппета (хук FRAGMENT с заменой). Файл пишется ДО
-// смены ключа, и путь у нового шейдера другой, поэтому расширение никогда
-// не читает недописанный файл.
+// Contract with the core (`rexon-core::screen_effects`): the settings key is the path to
+// the shader file, empty — the effect is off. File: Cogl snippet declarations,
+// a marker line, the snippet code (FRAGMENT hook with replace). The file is written BEFORE
+// the key changes, and the new shader has a different path, so the extension never
+// reads an incomplete file.
 const EFFECT_KEY = 'effect-shader';
 const EFFECT_CODE_MARKER = '//@rexon-cogl-code';
 const EFFECT_NAME = 'rexon-screen-effect';
-// Часы движущихся эффектов: ~30 кадров в секунду.
+// Clock of animated effects: ~30 frames per second.
 const EFFECT_TICK_MS = 33;
-// Время в шейдере идёт по кругу: на больших числах float теряет точность,
-// и шум застывает полосами.
+// Time in the shader wraps around: at large numbers float loses precision,
+// and the noise freezes into stripes.
 const EFFECT_TIME_WRAP = 3600;
-// Rexon пишет файл и ключ отдельными командами — ждём, пока уляжется.
+// Rexon writes the file and the key in separate commands — wait for things to settle.
 const EFFECT_SETTLE_MS = 150;
-// Ответ Rexon: что вышло с последним применением (`shell_status_path` ядра).
-// Rexon говорит «применено» только по этому ответу — без него окно писало
-// «применено», когда расширение вовсе не работало (15.11.2026).
+// Reply to Rexon: what came of the last apply (`shell_status_path` of the core).
+// Rexon says "applied" only on this reply — without it the window said
+// "applied" when the extension did not work at all (15.11.2026).
 const EFFECT_STATUS_PATH = GLib.build_filenamev([
     GLib.get_user_config_dir(), 'rexon', 'screen-effects', 'shell.status']);
 
-// state: 'on' | 'off' | 'error'; path — файл шейдера, о котором ответ.
+// state: 'on' | 'off' | 'error'; path — the shader file the reply is about.
 function writeEffectStatus(state, path, detail) {
     try {
         GLib.mkdir_with_parents(GLib.path_get_dirname(EFFECT_STATUS_PATH), 0o755);
@@ -251,18 +253,18 @@ function writeEffectStatus(state, path, detail) {
             'state=' + state + '\npath=' + (path || '') +
             '\ndetail=' + String(detail || '').replace(/\n/g, ' ') + '\n');
     } catch (e) {
-        // Ответ — подсказка окну Rexon, не повод ронять оболочку.
+        // The reply is a hint to the Rexon window, not a reason to bring down the shell.
     }
 }
 
-// Путь из настроек. Наличие ключа спрашиваем У СХЕМЫ: чтение ключа,
-// которого в схеме нет, гасит саму оболочку (см. `daemon-argv`).
+// Path from the settings. Whether the key exists is asked OF THE SCHEMA: reading a key
+// that is not in the schema kills the shell itself (see `daemon-argv`).
 function effectShaderPath(settings) {
     const schema = settings ? settings.settings_schema : null;
     return (schema && schema.has_key(EFFECT_KEY)) ? settings.get_string(EFFECT_KEY) : '';
 }
 
-// Разобрать файл шейдера. Бросает исключение с понятной причиной.
+// Parse the shader file. Throws an exception with a clear reason.
 function readEffectShader(path) {
     const bytes = GLib.file_get_contents(path)[1];
     const text = new TextDecoder().decode(bytes);
@@ -278,10 +280,10 @@ function readEffectShader(path) {
     };
 }
 
-// Класс эффекта под шейдер. Конвейер GLSLEffect строится ОДИН раз на
-// класс (`build_pipeline` зовётся у первого экземпляра, дальше копия), так
-// что новому шейдеру нужен новый класс. Типы GObject не снимаются, поэтому
-// классы помнятся по тексту шейдера и переиспользуются.
+// Effect class for a shader. The GLSLEffect pipeline is built ONCE per
+// class (`build_pipeline` is called on the first instance, then copied), so
+// a new shader needs a new class. GObject types cannot be unregistered, so
+// classes are remembered by shader text and reused.
 const effectClasses = new Map();
 let effectClassSerial = 0;
 
@@ -290,8 +292,8 @@ function effectClassFor(base, hook, shader) {
     if (klass)
         return klass;
     effectClassSerial += 1;
-    // Имя типа уникально и после выключения-включения расширения: модуль
-    // перечитывается, а типы прежних классов в процессе остаются.
+    // The type name is unique even after the extension is disabled and enabled again: the module
+    // is reloaded, but the types of the previous classes remain in the process.
     const typeName = 'RexonScreenEffect_' + GLib.get_monotonic_time() + '_' + effectClassSerial;
     klass = GObject.registerClass({ GTypeName: typeName },
         class RexonScreenEffect extends base {
@@ -303,7 +305,7 @@ function effectClassFor(base, hook, shader) {
     return klass;
 }
 
-// Эффект на актёре всего экрана.
+// Effect on the whole-screen actor.
 // host: { target, base, hook, log(text), logError(text), unredirect(bool) }.
 class ScreenEffect {
     constructor(host) {
@@ -319,7 +321,7 @@ class ScreenEffect {
         this._start = 0;
     }
 
-    // Настройки сменились: применить, когда Rexon допишет всё.
+    // Settings changed: apply once Rexon has finished writing everything.
     queue(readPath) {
         if (this._settleId)
             GLib.source_remove(this._settleId);
@@ -342,7 +344,7 @@ class ScreenEffect {
         try {
             shader = readEffectShader(path);
         } catch (e) {
-            // Без шейдера экран остаётся как есть — ничего не накладываем.
+            // Without a shader the screen stays as it is — nothing is applied.
             this._host.logError('[rexon-fx] шейдер не прочитан: ' + e.message);
             this._remove();
             writeEffectStatus('error', path, e.message);
@@ -363,9 +365,9 @@ class ScreenEffect {
             this._start = GLib.get_monotonic_time();
             this._setUniforms();
             this._host.target.add_effect_with_name(EFFECT_NAME, effect);
-            // Полноэкранное окно (игра, видео) оболочка отдаёт на экран
-            // мимо себя — эффект там пропал бы. Пока эффект включён, этого
-            // не делаем.
+            // The shell sends a fullscreen window (game, video) to the screen
+            // bypassing itself — the effect would disappear there. While the effect is on,
+            // we do not do that.
             this._host.unredirect(false);
             this._unredirectBlocked = true;
             const target = this._host.target;
@@ -408,7 +410,7 @@ class ScreenEffect {
         }
     }
 
-    // Снять эффект: экран ровно такой, каким был до него.
+    // Remove the effect: the screen is exactly as it was before it.
     _remove() {
         if (this._tickId) {
             GLib.source_remove(this._tickId);
@@ -454,12 +456,12 @@ export default class RexonWallpaperExtension extends Extension {
         this._effect = new ScreenEffect({
             target: Main.uiGroup,
             base: Shell.GLSLEffect,
-            // GNOME 45–47: Shell.SnippetHook; 48+ принимает Cogl.SnippetHook.
+            // GNOME 45–47: Shell.SnippetHook; 48+ accepts Cogl.SnippetHook.
             hook: Shell.SnippetHook ? Shell.SnippetHook.FRAGMENT : Cogl.SnippetHook.FRAGMENT,
             log: text => console.log(text),
             logError: text => console.error(text),
             unredirect: allow => {
-                // mutter 44+: метод композитора; прежде — функция Meta.
+                // mutter 44+: a compositor method; before that — a Meta function.
                 const compositor = global.compositor;
                 if (compositor && compositor.disable_unredirect) {
                     if (allow)
@@ -474,10 +476,10 @@ export default class RexonWallpaperExtension extends Extension {
             },
         });
 
-        // Rexon меняет обои и эффект экрана, записывая настройки
-        // расширения. Без подписки новое появлялось бы только после
-        // перезахода в сеанс. Ключ эффекта обои НЕ перезапускает: иначе
-        // смена эффекта гасила бы и заново поднимала хост обоев.
+        // Rexon changes the wallpaper and the screen effect by writing the
+        // extension settings. Without a subscription the new ones would appear only after
+        // logging into the session again. The effect key does NOT restart the wallpaper: otherwise
+        // changing the effect would stop and bring up the wallpaper host again.
         this._settings_changed_id = this._settings.connect(
             'changed', (_settings, key) => {
                 if (key === EFFECT_KEY)
@@ -507,9 +509,9 @@ export default class RexonWallpaperExtension extends Extension {
         console.log('[rexon-wp] disabled');
     }
 
-    // Перечитать настройки и перезапустить обои под них.
-    // Актёры ставятся ТОЛЬКО когда обои реально запущены: иначе чёрный
-    // актёр перекрыл бы обычный фон и рабочий стол стал бы чёрным.
+    // Reread the settings and restart the wallpaper accordingly.
+    // Actors are placed ONLY when the wallpaper is actually running: otherwise a black
+    // actor would cover the normal background and the desktop would turn black.
     _reload() {
         this._stopTick();
         this._removeActors();
@@ -531,7 +533,7 @@ export default class RexonWallpaperExtension extends Extension {
 
     _loadConfig() {
         // gsettings: org.gnome.shell.extensions.rexon-wallpaper
-        // ключи: 'engine' (string: video), 'source' (string: путь),
+        // keys: 'engine' (string: video), 'source' (string: path),
         //         'fps' (int)
         const engine = this._settings.get_string('engine');
         const source = this._settings.get_string('source');
@@ -543,9 +545,9 @@ export default class RexonWallpaperExtension extends Extension {
         };
     }
 
-    // Сказать об отказе ОБА раза: в журнал (там подробности для разбора) и
-    // всплывающим сообщением оболочки — иначе покупатель видит только, что
-    // «обои не работают», и причину узнать неоткуда.
+    // Report the failure BOTH ways: in the log (details for analysis there) and
+    // as a shell pop-up message — otherwise the customer only sees that
+    // "the wallpaper does not work", and has nowhere to learn the reason.
     _reportFailure(text, cfg) {
         console.error('[rexon-wp] ' + text + ' [обои: движок «' +
             (cfg ? cfg.engine : '?') + '», источник «' +
@@ -571,25 +573,25 @@ export default class RexonWallpaperExtension extends Extension {
         this._frame_w = w;
         this._frame_h = h;
 
-        // ENV: REXON_WP_OUTPUT — путь к mmap-файлу кадров (разбор —
+        // ENV: REXON_WP_OUTPUT — path to the mmap frame file (parsed by
         // rexon-core::wallpaper_mmap),
-        // REXON_WP_WIDTH/HEIGHT — размер кадра (равен размеру primary monitor),
-        // REXON_WP_FPS — частота обновления.
+        // REXON_WP_WIDTH/HEIGHT — frame size (equal to the primary monitor size),
+        // REXON_WP_FPS — refresh rate.
         const env = GLib.get_environ();
         env.push('REXON_WP_OUTPUT=' + FRAME_PATH);
         env.push('REXON_WP_WIDTH=' + w);
         env.push('REXON_WP_HEIGHT=' + h);
         env.push('REXON_WP_FPS=' + cfg.fps);
 
-        // Новый запуск — новая жизнь: пометка «снимаем сами» могла остаться
-        // с прошлого раза, если тот демон так и не отчитался о выходе.
+        // A new launch is a new life: the "we are stopping it ourselves" mark could remain
+        // from last time if that daemon never reported its exit.
         this._daemon_stopping = false;
 
-        // ⚠️ БЕЗ `SpawnFlags.SEARCH_PATH`, и это главная часть починки: с ним
-        // оболочка молча взяла бы ПЕРВУЮ подходящую программу из своего PATH,
-        // а у покупателя с venv, переносным каталогом или Flatpak это не тот
-        // Rexon, что установлен. Запускаем ровно тот файл, путь к которому
-        // прислал сам Rexon, — а годность пути проверена выше.
+        // ⚠️ WITHOUT `SpawnFlags.SEARCH_PATH`, and this is the main part of the fix: with it
+        // the shell would silently take the FIRST matching program from its PATH,
+        // and for a customer with a venv, a portable directory or Flatpak that is not the
+        // Rexon that is installed. We launch exactly the file whose path
+        // Rexon itself sent — and the path was checked for usability above.
         try {
             const [success, pid] = GLib.spawn_async(
                 null, argv, env,
@@ -597,8 +599,8 @@ export default class RexonWallpaperExtension extends Extension {
                 null,
             );
             if (!success) {
-                // Ветка «вернула false, но не бросила»: раньше здесь не
-                // происходило вообще ничего — ни строки в журнале.
+                // The "returned false but did not throw" branch: previously nothing at all
+                // happened here — not a single line in the log.
                 this._reportFailure(spawnFailureText(argv, null), cfg);
                 return;
             }
@@ -607,17 +609,17 @@ export default class RexonWallpaperExtension extends Extension {
             GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, (_pid, status) => {
                 console.log('[rexon-wp] daemon exited, status=' + status);
                 GLib.spawn_close_pid(_pid);
-                // Выход ПРЕЖНЕГО хоста (сняли сами либо перезапуск): текущий
-                // уже другой — его актёров и номер не трогаем. Прежде такой
-                // запоздалый выход снимал актёры только что поднятого хоста.
+                // Exit of the PREVIOUS host (stopped by us or a restart): the current one
+                // is already a different one — its actors and number are left alone. Previously such a
+                // late exit removed the actors of the host that had just come up.
                 if (this._daemon_pid !== _pid) return;
                 this._daemon_pid = null;
-                // Сами сняли демона (смена обоев, выключение) — это не отказ.
+                // We stopped the daemon ourselves (wallpaper change, shutdown) — this is not a failure.
                 const stopping = this._daemon_stopping;
                 this._daemon_stopping = false;
                 if (stopping || status === 0) return;
-                // Демон лёг сам: снимаем чёрные актёры, иначе рабочий стол
-                // так и останется чёрным прямоугольником без обоев.
+                // The daemon died on its own: remove the black actors, otherwise the desktop
+                // would stay a black rectangle without wallpaper.
                 this._stopTick();
                 this._removeActors();
                 const livedMs = (GLib.get_monotonic_time() - startedUs) / 1000;
@@ -634,8 +636,8 @@ export default class RexonWallpaperExtension extends Extension {
 
     _killDaemon() {
         if (this._daemon_pid) {
-            // Пометка для child-watch: следующий выход демона — наших рук
-            // дело, ругаться на него не надо.
+            // Mark for child-watch: the next daemon exit is our own
+            // doing, no need to complain about it.
             this._daemon_stopping = true;
             try {
                 GLib.spawn_command_line_async(`kill ${this._daemon_pid}`);
@@ -649,10 +651,10 @@ export default class RexonWallpaperExtension extends Extension {
     // ── Background actors ──────────────────────────────────────────
 
     _installActors() {
-        // GNOME Shell имеет один bg actor на каждый монитор:
+        // GNOME Shell has one bg actor per monitor:
         // Main.layoutManager._bgManagers[i].backgroundActor.
-        // Добавляем наш актёр (St.Widget) поверх дефолтного wallpaper, под окнами.
-        // Размер экрана пишем в ENV хосту обоев, чтобы кадр совпадал.
+        // We add our actor (St.Widget) above the default wallpaper, below the windows.
+        // The screen size is passed in ENV to the wallpaper host so the frame matches.
         const bgManagers = Main.layoutManager._bgManagers || [];
         for (const bgm of bgManagers) {
             const monitor = bgm._monitorIndex !== undefined
@@ -683,12 +685,12 @@ export default class RexonWallpaperExtension extends Extension {
             a.destroy();
         }
         this._actors = [];
-        // Содержимое привязано к размеру кадра — при перезапуске обоев
-        // размер мог смениться, заводим заново на первом кадре.
+        // The content is tied to the frame size — on a wallpaper restart the
+        // size may have changed, so it is created anew on the first frame.
         this._content = null;
     }
 
-    // ── Frame tick (заглушка) ──────────────────────────────────────
+    // ── Frame tick (stub) ──────────────────────────────────────
 
     _startTick() {
         this._tick_source = GLib.timeout_add(
@@ -705,15 +707,15 @@ export default class RexonWallpaperExtension extends Extension {
     }
 
     _tick() {
-        // Читаем mmap-файл → St.ImageContent → actor.content на каждом мониторе.
-        // GLib.MappedFile берёт zero-copy view на файл; при следующем вызове
-        // create new mapping чтобы получить свежий снимок (хост обоев пишет под
-        // flock, mmap отражает актуальное состояние файла).
+        // Read the mmap file → St.ImageContent → actor.content on every monitor.
+        // GLib.MappedFile takes a zero-copy view of the file; on the next call
+        // create a new mapping to get a fresh snapshot (the wallpaper host writes under
+        // flock, mmap reflects the current state of the file).
         if (!this._frame_w || !this._frame_h) {
             return GLib.SOURCE_CONTINUE;
         }
         if (!GLib.file_test(FRAME_PATH, GLib.FileTest.EXISTS)) {
-            return GLib.SOURCE_CONTINUE;  // демон ещё не запустил рендер
+            return GLib.SOURCE_CONTINUE;  // the daemon has not started rendering yet
         }
 
         let data;
@@ -724,12 +726,12 @@ export default class RexonWallpaperExtension extends Extension {
             return GLib.SOURCE_CONTINUE;
         }
         if (!data) {
-            return GLib.SOURCE_CONTINUE;  // кадра нет, недописан или пишется — ждём
+            return GLib.SOURCE_CONTINUE;  // no frame, incomplete or being written — wait
         }
 
-        // Одна копия на все мониторы: прежде каждый актёр копировал файл
-        // заново, и мониторы могли получить разные кадры. Содержимое тоже
-        // одно — актёры разных мониторов показывают один и тот же кадр.
+        // One copy for all monitors: previously each actor copied the file
+        // anew, and monitors could get different frames. The content is also
+        // one — actors of different monitors show the same frame.
         try {
             if (!this._content) {
                 this._content = St.ImageContent.new_with_preferred_size(

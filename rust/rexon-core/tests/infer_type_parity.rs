@@ -1,14 +1,14 @@
-//! Golden-сверка порта определения типа обои по содержимому
-//! (`user_props::infer_type`) с оригиналом
+//! Golden check of the port of detecting a wallpaper type by content
+//! (`user_props::infer_type`) against the original
 //! `rexon/wallpapers/factory.py::_infer_type`.
 //!
-//! Эталон снят прогоном ЖИВОГО `_infer_type` на настоящих временных
-//! каталогах: под каждый случай раскладывались файлы, собирался `Project` с
-//! нужным входным файлом, и записывался возвращённый тип.
+//! The golden was captured by running the LIVE `_infer_type` on real temporary
+//! directories: for each case files were laid out, a `Project` was built with
+//! the needed entry file, and the returned type was recorded.
 //!
-//! `golden/infer_type_cases.json` — снятые значения: для каждого случая
-//! состав каталога (имя файла → содержимое, `null` — файл не читается в
-//! UTF-8), входной файл и ожидаемый тип.
+//! `golden/infer_type_cases.json` holds the captured values: for each case the
+//! directory contents (file name → content, `null` — the file is not readable as
+//! UTF-8), the entry file and the expected type.
 
 use rexon_core::user_props as up;
 use serde_json::Value;
@@ -18,8 +18,8 @@ fn fx() -> Value {
     serde_json::from_str(include_str!("golden/infer_type_cases.json")).unwrap()
 }
 
-/// Каталог обои из голдена. Содержимое `None` означает файл, который есть,
-/// но не читается как UTF-8.
+/// A wallpaper directory from the golden. Content `None` means a file that exists
+/// but is not readable as UTF-8.
 struct DirIo {
     files: BTreeMap<String, Option<String>>,
 }
@@ -53,18 +53,18 @@ fn project_with_entry(entry: &str) -> up::Project {
     up::parse_project(&raw).unwrap().0
 }
 
-/// Прогнать один случай голдена и вернуть, что получилось.
+/// Run one golden case and return what came out.
 fn infer(case: &Value) -> String {
     let project = project_with_entry(case["entry"].as_str().unwrap());
     let mut io = DirIo::from(case);
     up::infer_type("/обои", &project, &mut io).to_string()
 }
 
-/// Все случаи, кроме тех, где порт намеренно расходится с оригиналом.
+/// All cases except those where the port deliberately differs from the original.
 #[test]
 fn all_cases_match_original() {
     let g = fx();
-    // Расхождения по правилу #16 — разбираются отдельными проверками ниже.
+    // Deviations under rule #16 are handled by separate checks below.
     let fixed = ["web_htm_entry", "web_htm_only"];
 
     let mut checked = 0;
@@ -84,13 +84,13 @@ fn all_cases_match_original() {
     assert!(checked >= 25, "случаев в голдене стало меньше: {checked}");
 }
 
-/// Набор видео-расширений — тот же, что в оригинале, ПЛЮС `.ogv`.
+/// The set of video extensions is the same as in the original, PLUS `.ogv`.
 ///
-/// ⚠️ ПОЧИНЕНО (правило #16). Списков было два: этот и свой у видео-хоста на
-/// Python, и они разъехались — `.ogv` знал только хост. Из-за этого обои с
-/// входным `.ogv` и без поля `type` в `project.json` определялись как «не
-/// подошло ничего» и молча не применялись, хотя сам хост их играет.
-/// Голден хранит исходный набор оригинала, порт добавляет к нему `.ogv`.
+/// ⚠️ FIXED (rule #16). There were two lists: this one and the Python video host's
+/// own, and they diverged — only the host knew `.ogv`. Because of this wallpapers with
+/// an `.ogv` entry and no `type` field in `project.json` were detected as "nothing
+/// matched" and silently not applied, although the host itself plays them.
+/// The golden keeps the original's set, the port adds `.ogv` to it.
 #[test]
 fn video_extensions_match_original() {
     let g = fx();
@@ -101,10 +101,10 @@ fn video_extensions_match_original() {
         .map(|v| v.as_str().unwrap())
         .collect();
     assert!(!want.contains(&".ogv"), "голден оригинала уже знает .ogv");
-    // Порядок значим только для чтения; `.ogv` встал перед `.gif`, как он
-    // стоял в списке видео-хоста.
+    // Order matters only for reading; `.ogv` went before `.gif`, as it
+    // stood in the video host's list.
     want.insert(want.len() - 1, ".ogv");
-    // Ролики Windows DreamScene хост играет сам — встали там же, перед `.gif`.
+    // Windows DreamScene clips are played by the host itself — they went in the same place, before `.gif`.
     for ext in [".wmv", ".mpg", ".mpeg"] {
         assert!(!want.contains(&ext), "голден оригинала уже знает {ext}");
         want.insert(want.len() - 1, ext);
@@ -112,7 +112,7 @@ fn video_extensions_match_original() {
     assert_eq!(up::VIDEO_ENTRY_EXTS.to_vec(), want);
 }
 
-/// Вход `.ogv` теперь опознаётся как видео (см. починку выше).
+/// An `.ogv` entry is now recognized as video (see the fix above).
 #[test]
 fn ogv_entry_is_now_recognised() {
     let project = up::Project {
@@ -131,9 +131,9 @@ fn ogv_entry_is_now_recognised() {
     assert_eq!(up::infer_type("/w", &project, &mut NoFiles), "video");
 }
 
-/// ⚠️ ПОЧИНЕНО (правило #16). Вход `.htm` оригинал не опознавал никак —
-/// возвращалась пустая строка, и такие обои молча не применялись. Голден
-/// хранит именно это поведение, а порт отвечает `web`.
+/// ⚠️ FIXED (rule #16). The original did not recognize an `.htm` entry at all —
+/// an empty string was returned, and such wallpapers were silently not applied. The golden
+/// keeps exactly this behaviour, and the port answers `web`.
 #[test]
 fn htm_entry_is_now_recognised() {
     let g = fx();
@@ -144,28 +144,28 @@ fn htm_entry_is_now_recognised() {
     );
     assert_eq!(infer(&g["web_htm_entry"]), "web", "порт опознаёт");
 
-    // Без входного файла `.htm` рядом по-прежнему ничего не значит: ищется
-    // только index.html, и это поведение НЕ менялось.
+    // Without an entry file, an `.htm` nearby still means nothing: only
+    // index.html is looked for, and this behaviour did NOT change.
     assert_eq!(g["web_htm_only"]["want"].as_str(), Some(""));
     assert_eq!(infer(&g["web_htm_only"]), "");
 }
 
-/// Порядок проверок значим: видео раньше веба, веб раньше приложения,
-/// упакованная сцена раньше разложенной.
+/// The order of checks matters: video before web, web before application,
+/// packed scene before an unpacked one.
 #[test]
 fn probe_order_is_preserved() {
     let g = fx();
     assert_eq!(infer(&g["video_beats_index_html"]), "video");
-    // Вход .exe рядом с index.html даёт web — проверка веба стоит раньше.
+    // An .exe entry next to index.html gives web — the web check comes first.
     assert_eq!(infer(&g["index_html_beats_exe"]), "web");
     assert_eq!(infer(&g["web_index_beats_scene_pkg"]), "web");
     assert_eq!(infer(&g["pkg_beats_json"]), "scene");
-    // Входной .json проверяется раньше scene.json.
+    // An entry .json is checked before scene.json.
     assert_eq!(infer(&g["scene_json_entry_bad_default_good"]), "scene");
 }
 
-/// Сценой считается только объект с массивом `objects`; пустой массив
-/// сценой считается, словарь вместо массива — нет.
+/// Only an object with an `objects` array counts as a scene; an empty array
+/// counts as a scene, a dictionary instead of an array does not.
 #[test]
 fn scene_json_shape_rules() {
     let g = fx();
@@ -173,23 +173,23 @@ fn scene_json_shape_rules() {
     assert_eq!(infer(&g["scene_json_objects_not_list"]), "");
     assert_eq!(infer(&g["scene_json_no_objects"]), "");
     assert_eq!(infer(&g["scene_json_not_dict"]), "");
-    // Битый JSON и нечитаемый в UTF-8 файл оригинал глушил — не падаем тоже.
+    // The original swallowed broken JSON and a file unreadable as UTF-8 — we do not crash either.
     assert_eq!(infer(&g["scene_json_broken"]), "");
     assert_eq!(infer(&g["scene_json_bad_utf8"]), "");
 }
 
-/// Регистр расширения входного файла значения не имеет.
+/// The case of the entry file's extension does not matter.
 #[test]
 fn entry_extension_case_insensitive() {
     let g = fx();
     assert_eq!(infer(&g["video_upper"]), "video");
 }
 
-/// `infer_type_fs` на НАСТОЯЩЕМ каталоге даёт то же, что общая реализация.
+/// `infer_type_fs` on a REAL directory gives the same as the shared implementation.
 ///
-/// Продукт ходит именно этим путём, а весь голден выше снят на подставном
-/// вводе-выводе — без этой проверки файловая обёртка осталась бы
-/// непокрытой, и опечатка в склейке путей прошла бы незамеченной.
+/// The product goes exactly this way, and the whole golden above was captured on fake
+/// I/O — without this check the file wrapper would stay
+/// uncovered, and a typo in path joining would go unnoticed.
 #[test]
 fn fs_wrapper_matches_generic() {
     use std::fs;
@@ -202,11 +202,11 @@ fn fs_wrapper_matches_generic() {
     ));
     let _ = fs::remove_dir_all(&base);
 
-    // (имя случая, файлы каталога, входной файл, ожидаемый тип)
+    // (case name, directory files, entry file, expected type)
     let cases: &[(&str, &[(&str, &str)], &str, &str)] = &[
         ("видео", &[("clip.mp4", "")], "clip.mp4", "video"),
         ("веб по расширению", &[("page.html", "")], "page.html", "web"),
-        // index.html рядом делает обои веб-обоями, даже если вход назван иначе
+        // index.html nearby makes the wallpaper a web wallpaper, even if the entry is named differently
         ("веб по index.html", &[("index.html", "")], "нечто.bin", "web"),
         ("приложение", &[("run.exe", "")], "run.exe", "application"),
         ("упакованная сцена", &[("scene.pkg", "")], "нечто.bin", "scene"),
@@ -223,7 +223,7 @@ fn fs_wrapper_matches_generic() {
             "scene",
         ),
         ("не подошло ничего", &[("нечто.bin", "")], "нечто.bin", ""),
-        // Каталога вовсе нет — не паникуем, отвечаем «не определилось».
+        // No directory at all — we do not panic, we answer "not determined".
         ("каталога нет", &[], "нечто.bin", ""),
     ];
 

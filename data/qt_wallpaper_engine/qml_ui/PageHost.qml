@@ -1,7 +1,7 @@
-// Универсальный шелл Rexon вокруг ЛЮБОЙ вендоренной страницы waywallen
-// (НАШ файл, не upstream). Роль их Window.qml: MD-темизация, тосты и
-// рейка навигации слева. Страница задаётся свойством pageUrl, пункты рейки —
-// свойством railItems (их называет ядро, `we_window::build_rail`).
+// Rexon's universal shell around ANY vendored waywallen page
+// (OUR file, not upstream). It plays the role of their Window.qml: MD theming, toasts and
+// the navigation rail on the left. The page is set by the pageUrl property, the rail items by
+// the railItems property (they are named by the core, `we_window::build_rail`).
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQml
@@ -13,54 +13,54 @@ import QExtra as QE
 Item {
     id: root
 
-    // file:// URL вендоренной страницы (напр. .../page/StatusPage.qml)
+    // file:// URL of the vendored page (e.g. .../page/StatusPage.qml)
     property url pageUrl
 
-    // ── Рейка навигации (как у waywallen) ─────────────────────────────
+    // ── Navigation rail (as in waywallen) ─────────────────────────────
     //
-    // Рейка — та же, что в `ui/qml/Window.qml` вендора, и собрана ЕГО же
-    // компонентами (`MD.NavigationRail`, `MD.RailItem`,
-    // `W.SidebarNowPlaying`): кнопка сворачивания, логотип с названием,
-    // страницы со значками Material, внизу карточка текущих обоев и пункты
-    // «Плагины», «Настройки», «О программе». Разметка повторена, а не взята
-    // из вендорного файла, потому что взять её оттуда нечем: у вендора рейка
-    // — безымянный `sourceComponent` внутри `MD.ApplicationWindow`, то есть
-    // часть ОКНА верхнего уровня. Создать его внутри нашей сцены значит
-    // открыть второе окно рядом с Rexon, а отдельного типа рейки в их
-    // `qmldir` нет. Править вендорный файл нельзя (его сверяет
+    // The rail is the same as in the vendor's `ui/qml/Window.qml`, and is built from ITS own
+    // components (`MD.NavigationRail`, `MD.RailItem`,
+    // `W.SidebarNowPlaying`): the collapse button, the logo with the name,
+    // pages with Material icons, at the bottom the current wallpaper card and the items
+    // «Plugins», «Settings», «About». The layout is repeated rather than taken
+    // from the vendor file because there is no way to take it from there: in the vendor the rail
+    // is a nameless `sourceComponent` inside `MD.ApplicationWindow`, i.e.
+    // part of the TOP-LEVEL window. Creating that inside our scene means
+    // opening a second window next to Rexon, and their `qmldir` has no
+    // separate rail type. The vendor file must not be edited (it is checked by
     // `sync-waywallen-qml.py --check`).
     //
-    // Состав пунктов называет ядро (`railItems`: `id`, `label`, …), а
-    // раскладку «что страница, что всплывающее окно» держит этот файл — так
-    // же, как её держит `Window.qml`: «Плагины», «Настройки» и
-    // «О программе» у waywallen открываются окном поверх
-    // (`component/PagePopup.qml`), а не страницей.
+    // The set of items is named by the core (`railItems`: `id`, `label`, …), and
+    // the layout "which is a page, which is a pop-up window" is kept by this file — the same
+    // way `Window.qml` keeps it: «Plugins», «Settings» and
+    // «About» in waywallen open as a window on top
+    // (`component/PagePopup.qml`), not as a page.
     //
-    // Наш здесь один пункт — «Разраб.» (страница сборки для разработчика):
-    // он приходит от ядра только в режиме разработчика; в свёрнутой рейке
-    // стоит внизу, рядом с «Настройками», в развёрнутой — значком в шапке
-    // (иначе рейка не помещается по высоте). Подписи вендорных пунктов берутся из каталога
-    // перевода ВЕНДОРА его же контекстом (`Window`), подпись нашего — из
-    // ядра.
+    // Ours here is a single item — «Dev» (the build page for the developer):
+    // it comes from the core only in developer mode; in the collapsed rail it
+    // sits at the bottom, next to «Settings», in the expanded one — as an icon in the header
+    // (otherwise the rail does not fit vertically). Labels of vendor items are taken from the
+    // VENDOR's translation catalog with its own context (`Window`), the label of ours — from the
+    // core.
     property var railItems: []
-    // Номер выбранного пункта в `railItems` — его держит хозяин (ядро), а
-    // рейка только просит сменить.
+    // Index of the selected item in `railItems` — kept by the owner (the core), and
+    // the rail only asks to change it.
     property int currentIndex: 0
     signal pageRequested(int index)
 
-    // Страницы можно строить (демон ответил) и показывать (сейчас не экран
-    // «подключение…»). Рейка от обоих не зависит: она видна всегда.
+    // Pages may be built (the daemon answered) and shown (it is not the
+    // "connecting…" screen right now). The rail depends on neither: it is always visible.
     property bool pagesReady: true
     property bool pageVisible: true
-    // Сколько места сверху занято полосами хозяина («чей фон» и т.п.).
+    // How much space at the top is taken by the owner's bars ("whose background" and so on).
     property real pageTopInset: 0
-    // Ширина рейки — хозяин кладёт по ней свои слои справа от неё.
+    // Rail width — the owner places its layers to the right of it.
     readonly property real railWidth: m_rail_loader.active ? m_rail_loader.width : 0
-    // Высота нижней полосы навигации — хозяин кладёт свои слои над ней.
+    // Height of the bottom navigation bar — the owner places its layers above it.
     readonly property real barHeight: m_bar_loader.active ? m_bar_loader.height : 0
 
-    // Узкая вкладка (размерный класс Material «compact», уже 600): рейку
-    // сменяет нижняя полоса навигации — как в `Window.qml` вендора.
+    // A narrow tab (Material size class "compact", narrower than 600): the rail is
+    // replaced by the bottom navigation bar — as in the vendor's `Window.qml`.
     readonly property bool isCompact: MD.MProp.size.isCompact
 
     function _railIndex(id) {
@@ -71,7 +71,7 @@ Item {
         return -1;
     }
 
-    // Страницы рейки: порядок и значки — как в `pageModel` вендора.
+    // Rail pages: order and icons — as in the vendor's `pageModel`.
     readonly property var _railPages: {
         const known = [
             ["wallpapers_qml", MD.Token.icon.wallpaper, qsTranslate("Window", "Wallpapers")],
@@ -95,7 +95,7 @@ Item {
     readonly property int _devIndex: root._railIndex("dev")
     readonly property int _wallpapersIndex: root._railIndex("wallpapers_qml")
 
-    // Какой пункт рейки подсветить; -1 — открыта страница не из списка.
+    // Which rail item to highlight; -1 — a page not from the list is open.
     readonly property int _railCurrent: {
         for (let i = 0; i < root._railPages.length; ++i) {
             if (root._railPages[i].page === root.currentIndex)
@@ -104,7 +104,7 @@ Item {
         return -1;
     }
 
-    // Порт `Window.showAbout` вендора.
+    // Port of the vendor's `Window.showAbout`.
     property var _aboutPresentation: null
 
     function showAbout() {
@@ -115,9 +115,9 @@ Item {
         });
     }
 
-    // Порт `Window.openWallpaper` вендора: карточка текущих обоев открывает
-    // обоину на странице «Обои». Страница грузится асинхронно, поэтому
-    // просьба ждёт её готовности.
+    // Port of the vendor's `Window.openWallpaper`: the current wallpaper card opens
+    // the wallpaper on the «Wallpapers» page. The page loads asynchronously, so
+    // the request waits until it is ready.
     property string _pendingWallpaperId: ""
 
     function openWallpaper(wallpaperId) {
@@ -140,35 +140,35 @@ Item {
         page.openWallpaper(wallpaperId);
     }
 
-    // ── Шапка вендорной страницы (MD.AppBar) ──────────────────────────
+    // ── Header of the vendor page (MD.AppBar) ──────────────────────────
     //
-    // ⚠️ Без этого куска вендорная страница, которая у waywallen живёт во
-    // ВСПЛЫВАЮЩЕМ окне, открывается у нас БЕЗ заголовка и БЕЗ ВСЕХ кнопок
-    // действий. Шапку `MD.Page` рисует по `MD.MProp.page.showHeader`
-    // (`Qcm.Material/qml/control/Page.qml`, строка 25) — то есть по
-    // свойству ХОЗЯИНА, а не своему. Хозяина у нашей страницы не было
-    // вовсе, и ей доставался глобальный `PageContext` со значением по
-    // умолчанию `false` (`src/control/page_context.cpp`, строка 71).
+    // ⚠️ Without this piece a vendor page that in waywallen lives in a
+    // POP-UP window opens here WITHOUT a title and WITHOUT ANY action
+    // buttons. `MD.Page` draws the header according to `MD.MProp.page.showHeader`
+    // (`Qcm.Material/qml/control/Page.qml`, line 25) — i.e. according to a
+    // property of the OWNER, not its own. Our page had no owner
+    // at all, and it got the global `PageContext` with the default
+    // value `false` (`src/control/page_context.cpp`, line 71).
     //
-    // У waywallen хозяев два, и решают они по-разному: контейнер страниц
-    // рейла (`ui/qml/Window.qml`) ставит `showHeader: false`, а
-    // `component/PagePopup.qml` — `showHeader: true`. Страницы рейла либо
-    // шапки не имеют, либо включают её себе сами (`SettingsPage.qml`), а
-    // страницы всплывающего окна на своё `showHeader` не полагаются.
+    // waywallen has two owners, and they decide differently: the rail page
+    // container (`ui/qml/Window.qml`) sets `showHeader: false`, while
+    // `component/PagePopup.qml` sets `showHeader: true`. Rail pages either
+    // have no header or turn it on themselves (`SettingsPage.qml`), and
+    // pop-up window pages do not rely on their own `showHeader`.
     //
-    // Наш рейл держит и те и другие, поэтому шапку включает хозяин, а
-    // знание «какая страница чья» приходит из ядра одним ответом на обе
-    // версии вкладки (`we_window::RailItem::header`). Поймано живым
-    // снимком 08.09.2026: у «Плагинов» рисовался список плагинов, но не
-    // было ни заголовка, ни кнопок «Неактивные плагины», «Проверить
-    // обновления» и «Установить из .zip» — то есть поставить и обновить
-    // плагин было нечем, а снимок при этом выглядел рабочим.
+    // Our rail holds both kinds, so the owner turns the header on, and
+    // the knowledge "which page belongs where" comes from the core as one answer for both
+    // versions of the tab (`we_window::RailItem::header`). Caught by a live
+    // snapshot on 08.09.2026: «Plugins» drew the plugin list, but there was
+    // neither a title nor the buttons «Inactive plugins», «Check for
+    // updates» and «Install from .zip» — i.e. there was no way to install or update
+    // a plugin, while the snapshot looked working.
     //
-    // Фон страницы — как у контейнера страниц в `Window.qml` вендора:
-    // карточка со скруглением, а на узкой вкладке — без фона и скругления.
-    // `leadingAction` пуст осознанно: у waywallen это кнопка «назад»,
-    // закрывающая всплывающее окно, а в рейле закрывать нечего —
-    // `MD.AppBar` прячет её сам (`m_leading.visible: action`).
+    // The page background is as in the page container in the vendor's `Window.qml`:
+    // a rounded card, and on a narrow tab — no background and no rounding.
+    // `leadingAction` is empty on purpose: in waywallen it is the «back» button
+    // that closes the pop-up window, and in the rail there is nothing to close —
+    // `MD.AppBar` hides it itself (`m_leading.visible: action`).
     property bool pageHeader: false
 
     MD.MProp.page: m_page_context
@@ -180,38 +180,38 @@ Item {
         showBackground: !root.isCompact
     }
 
-    // Светлый/тёмный тон интерфейса задаёт СКИН Rexon (host.py передаёт
-    // яркость палитры окна), а НЕ системная тема рабочего стола. Material
-    // v0.2.5 по умолчанию тянет режим из XDG-портала (useSysColorSM=true):
-    // когда портал/styleHints рапортует Light (светлый или неопределённый
-    // рабочий стол), а у Rexon выбран тёмный скин steam_dark — весь текст
-    // (заголовки диалогов, метки чипов, метки боковой панели, имена
-    // мониторов, кнопки диалогов) считается по светлой схеме и становится
-    // тёмно-серым/почти чёрным на тёмном фоне скина. Привязываем режим
-    // Material к скину, чтобы контраст текста был правильным при любой теме
-    // рабочего стола. По умолчанию тёмный — дефолтный скин steam_dark.
+    // The light/dark tone of the interface is set by the Rexon SKIN (host.py passes
+    // the brightness of the window palette), NOT by the desktop's system theme. Material
+    // v0.2.5 by default pulls the mode from the XDG portal (useSysColorSM=true):
+    // when the portal/styleHints reports Light (a light or undetermined
+    // desktop) while Rexon has the dark steam_dark skin selected — all text
+    // (dialog titles, chip labels, sidebar labels, monitor
+    // names, dialog buttons) is computed from the light scheme and becomes
+    // dark gray/almost black on the dark skin background. We bind the Material mode
+    // to the skin so that text contrast is right with any desktop
+    // theme. Dark by default — the default skin is steam_dark.
     property bool skinDark: true
 
-    // Чьими красками рисовать интерфейс (решает ядро,
+    // Whose colors to draw the interface with (decided by the core,
     // `we_window::vendor_theme`).
     //
-    // По умолчанию — скином Rexon, как остальные вкладки: схему Material
-    // плагин СЧИТАЕТ из затравки, и затравкой ставится акцент скина
-    // (тип палитры «по содержимому» — у него основной контейнер ровно
-    // этого цвета), а фон и текст шелла берутся из скина как есть. Фоны,
-    // поверхности и текст схемы (карточки, диалоги, поля) поверх неё
-    // задаются красками скина поштучно — `skinRoles` в
-    // `MD.Token.color.overrides`. У QmlMaterial без этого свойства шаг
-    // молча пропускается, и карточки остаются тонами схемы от акцента.
+    // By default — with the Rexon skin, like the other tabs: the plugin COMPUTES the Material
+    // scheme from a seed, and the skin's accent is set as the seed
+    // (palette type "content" — its primary container is exactly
+    // that color), while the shell background and text are taken from the skin as is. Backgrounds,
+    // surfaces and text of the scheme (cards, dialogs, fields) on top of it
+    // are set from the skin colors one by one — `skinRoles` in
+    // `MD.Token.color.overrides`. With QmlMaterial lacking this property the step
+    // is silently skipped, and cards keep the scheme tones derived from the accent.
     //
-    // `followVendorTheme` — скин «Тёмный (Material)»: шелл не трогает ни тип
-    // палитры, ни акцент, ни тему, и действуют собственные настройки
-    // waywallen («Тема», «Акцент» в его окне «Настройки») — как в его окне.
+    // `followVendorTheme` — the «Dark (Material)» skin: the shell touches neither the palette
+    // type, nor the accent, nor the theme, and waywallen's own settings apply
+    // («Theme», «Accent» in its «Settings» window) — as in its window.
     property bool followVendorTheme: false
     property color skinAccent: "#66c0f4"
     property color skinBackground: "#1b2838"
     property color skinText: "#ffffff"
-    // Роли схемы красками скина: объект JSON «роль → #rrggbb» от ядра.
+    // Scheme roles in skin colors: a JSON object "role → #rrggbb" from the core.
     property string skinRoles: "{}"
     readonly property var _skinRolesMap: {
         try {
@@ -220,7 +220,7 @@ Item {
             return {};
         }
     }
-    // Есть ли у MdColorMgr свойство `overrides` (QmlMaterial с ним).
+    // Whether MdColorMgr has the `overrides` property (QmlMaterial with it).
     readonly property bool _hasColorOverrides: "overrides" in MD.Token.color
 
     function _applyRoles(roles) {
@@ -234,13 +234,13 @@ Item {
     MD.MProp.textColor: root.followVendorTheme
         ? MD.MProp.color.getOn(MD.MProp.backgroundColor) : root.skinText
 
-    // Принудительно держим режим Material = скин Rexon и глушим слежку за
-    // системным порталом. XDG-портал (org.freedesktop.appearance) может
-    // прислать ответ color-scheme АСИНХРОННО, уже ПОСЛЕ первого кадра —
-    // если в этот момент режим отвяжется от скина, on_surface/textColor
-    // пересчитаются по светлой схеме и текст диалогов/листов/боковой панели
-    // становится тёмно-серым на тёмном фоне. Поэтому переприменяем режим не
-    // один раз, а ещё и коротким таймером, перекрывая окно гонки с порталом.
+    // Force the Material mode = the Rexon skin and silence the tracking of the
+    // system portal. The XDG portal (org.freedesktop.appearance) may
+    // send the color-scheme answer ASYNCHRONOUSLY, already AFTER the first frame —
+    // if at that moment the mode detaches from the skin, on_surface/textColor
+    // are recomputed from the light scheme and the text of dialogs/sheets/sidebar
+    // becomes dark gray on a dark background. So the mode is reapplied not
+    // once but also with a short timer, covering the race window with the portal.
     function _applyMode() {
         if (root.followVendorTheme)
             return;
@@ -252,13 +252,13 @@ Item {
         root._applyRoles(root._skinRolesMap);
     }
 
-    // Схема самого waywallen: то, что ставит его `Global` по своим
-    // настройкам. Пока `Global` не родился (демон ещё не ответил) — его
-    // значения по умолчанию: системные тема и акцент, нейтральная палитра
-    // (тип по умолчанию у плагина). Родившись, `Global` сам применит
-    // сохранённый выбор. Если он уже жив (скин сменили при открытых
-    // страницах) — его выбор применяется заново: иначе осталась бы тема и
-    // акцент Rexon до следующего запуска.
+    // waywallen's own scheme: what its `Global` sets from its
+    // settings. While `Global` is not born yet (the daemon has not answered) — its
+    // defaults: system theme and accent, neutral palette
+    // (the plugin's default type). Once born, `Global` applies the
+    // saved choice itself. If it is already alive (the skin was changed with pages
+    // open) — its choice is applied again: otherwise the Rexon theme and
+    // accent would remain until the next launch.
     function _applyVendorTheme() {
         root._applyRoles({});
         MD.Token.color.paletteType = MD.Enum.PaletteNeutral;
@@ -270,8 +270,8 @@ Item {
         }
     }
 
-    // Живы ли страницы, а с ними синглтон `W.Global`. Сам `W.Global` здесь
-    // не спрашивается: спрос его и породил бы, раньше, чем у оригинала.
+    // Whether the pages are alive, and with them the `W.Global` singleton. `W.Global` itself is
+    // not asked here: asking would create it, earlier than in the original.
     readonly property bool _vendorGlobalAlive: root.pagesReady && root._shownPageUrl.toString().length > 0
 
     onFollowVendorThemeChanged: {
@@ -283,48 +283,48 @@ Item {
     onSkinAccentChanged: root._applyMode()
     on_SkinRolesMapChanged: root._applyMode()
 
-    // ── Всплывающие страницы вендора (presentPopup) ────────────────────
+    // ── Vendor pop-up pages (presentPopup) ────────────────────
     //
-    // ⚠️ Без этого куска у вкладки МЁРТВЫ все всплывающие страницы: лист
-    // плейлистов и его редактор, диалоги фильтров обоев и Мастерской,
-    // выбор меток, «Библиотеки», карточка обоины из Мастерской, страница
-    // плагинов. Вендорные страницы зовут `Window.window.presentPopup(...)`
-    // — метод их `Window.qml`, роль которого играет этот файл. Нашего
-    // метода у окна не было ВОВСЕ, и каждое такое нажатие молча падало в
-    // «TypeError: Property 'presentPopup' ... is not a function».
-    // Дефект жил с вендора 0.3.5 и найден живым прогоном 0.3.7.
+    // ⚠️ Without this piece ALL pop-up pages of the tab are DEAD: the
+    // playlist sheet and its editor, the wallpaper and Workshop filter dialogs,
+    // tag selection, «Libraries», the Workshop wallpaper card, the plugins
+    // page. Vendor pages call `Window.window.presentPopup(...)`
+    // — a method of their `Window.qml`, whose role this file plays. The window
+    // had NO such method of ours AT ALL, and every such click silently failed with
+    // "TypeError: Property 'presentPopup' ... is not a function".
+    // The defect lived since vendor 0.3.5 and was found by a live run of 0.3.7.
     //
-    // Почему функция вешается на ОКНО, а не объявлена здесь: `Window.window`
-    // внутри QQuickWidget — это его закадровое окно (QQuickWidgetOffscreenWindow),
-    // чужой C++-тип, и подменить его нечем. Зато обёртка QObject в движке QML
-    // расширяема: свойство, дописанное в неё из JS, живёт вместе с обёрткой.
-    // Обёртку держит живой `hostWindow` — без сильной ссылки сборщик мусора
-    // движка выбросил бы её вместе с дописанным методом.
+    // Why the function is attached to the WINDOW rather than declared here: `Window.window`
+    // inside a QQuickWidget is its offscreen window (QQuickWidgetOffscreenWindow),
+    // a foreign C++ type, and there is nothing to replace it with. But the QObject wrapper in the QML engine
+    // is extensible: a property added to it from JS lives together with the wrapper.
+    // The wrapper is kept alive by `hostWindow` — without a strong reference the engine's garbage
+    // collector would throw it away together with the added method.
     //
-    // ⚠️ ОКНО ПОЯВЛЯЕТСЯ НЕ СРАЗУ, и спросить его ОДИН раз недостаточно.
-    // Здесь стояло присвоение на `Component.onCompleted` — и в ВИДЖЕТНОЙ
-    // версии вкладки оно не срабатывало НИКОГДА: шелл живёт внутри
-    // QQuickWidget, а тот сперва создаёт корневой объект (тогда и приходит
-    // `onCompleted`, `Window.window` ещё пуст) и лишь ПОТОМ кладёт его в
-    // своё закадровое окно. Проверка `if (!w) return;` тихо выходила, и у
-    // окна не оказывалось ни `presentPopup`, ни `showChangelog` — то есть
-    // у виджетной версии были мертвы ВСЕ всплывающие страницы вендора, а
-    // не одна кнопка. Найдено живой пробой 05.09 нажатием «Журнала
-    // изменений»: «TypeError: Property showChangelog of object
-    // QQuickWidgetOffscreenWindow ... is not a function».
-    // Поэтому окно не спрашивается, а ОТСЛЕЖИВАЕТСЯ привязкой: методы
-    // ставятся, как только окно появилось, и переставляются, если оно
-    // сменилось.
+    // ⚠️ THE WINDOW DOES NOT APPEAR RIGHT AWAY, and asking for it ONCE is not enough.
+    // There used to be an assignment in `Component.onCompleted` — and in the WIDGET
+    // version of the tab it NEVER fired: the shell lives inside a
+    // QQuickWidget, which first creates the root object (that is when
+    // `onCompleted` arrives, `Window.window` is still empty) and only THEN puts it into
+    // its offscreen window. The check `if (!w) return;` quietly returned, and the
+    // window ended up with neither `presentPopup` nor `showChangelog` — i.e.
+    // in the widget version ALL vendor pop-up pages were dead, not
+    // just one button. Found by a live probe on 05.09 by clicking «Changelog»:
+    // "TypeError: Property showChangelog of object
+    // QQuickWidgetOffscreenWindow ... is not a function".
+    // So the window is not asked for but TRACKED by a binding: the methods
+    // are installed as soon as the window appears, and reinstalled if it
+    // changes.
     readonly property var hostWindow: root.Window.window
     onHostWindowChanged: {
         root._installWindowApi();
         root._applyTextureCache();
     }
 
-    // waywallen 0.6.0: потолок кэша ТЕКСТУР миниатюр задаётся окну — так
-    // делает вендорный `Window.qml` (при создании и при смене настройки).
-    // Наше окно — хозяин вкладки, поэтому то же самое здесь. У QML-подмены
-    // QExtra вызов ничего не делает.
+    // waywallen 0.6.0: the thumbnail TEXTURE cache cap is set on the window — that is what
+    // the vendor's `Window.qml` does (on creation and when the setting changes).
+    // Our window is the owner of the tab, so the same is done here. With the QML stand-in
+    // for QExtra the call does nothing.
     function _applyTextureCache() {
         if (root.hostWindow)
             QE.ImageCache.setTextureCapacityMiB(root.hostWindow, W.Global.imageTextureCacheMiB);
@@ -338,8 +338,8 @@ Item {
 
     readonly property alias popupPresenter: m_popup_presenter
 
-    // Порт `Window.presentPopup` вендора один-в-один: отказ показа уходит
-    // тостом, а не тонет.
+    // One-to-one port of the vendor's `Window.presentPopup`: a failure to show goes out
+    // as a toast instead of sinking.
     function presentPopup(source, properties) {
         const presentation = m_popup_presenter.present(source, properties || {});
         presentation.failed.connect(presentation, function (error) {
@@ -359,40 +359,40 @@ Item {
         w.showChangelog = root.showChangelog;
     }
 
-    // ── Журнал изменений движка (showChangelog) ───────────────
+    // ── Engine changelog (showChangelog) ───────────────
     //
-    // Второй метод их окна. Кнопка «Журнал изменений» страницы
-    // «О движке» (`page/AboutPage.qml`) зовёт
-    // `Window.window.showChangelog()`, и нажатие падало в «TypeError:
-    // Property showChangelog ... is not a function» — ОДИНАКОВО у обеих
-    // версий вкладки, то есть это не расхождение переноса, а провал
-    // встраивания (приёмка раздела 05.09).
+    // The second method of their window. The «Changelog» button of the
+    // «About engine» page (`page/AboutPage.qml`) calls
+    // `Window.window.showChangelog()`, and the click failed with "TypeError:
+    // Property showChangelog ... is not a function" — EQUALLY in both
+    // versions of the tab, i.e. this is not a porting divergence but an embedding
+    // failure (section acceptance on 05.09).
     //
-    // ⚠️ Класс тот же, что у `presentPopup` выше, поэтому список
-    // закрыт ЦЕЛИКОМ, а не по одному (правило #12). Греп
-    // `Window.window` по вендорному дереву даёт ровно четыре
-    // вещи, которые страницы спрашивают у окна-хозяина:
-    //   * `presentPopup(source, properties)` — 15 вызовов, есть;
-    //   * `popupPresenter` — его же передают диалогам фильтров
-    //     свойством `popupWindow` (`DiscoverPage`, `WallpaperPage`),
-    //     и внутри они зовут тот же `presentPopup` — есть;
-    //   * `showChangelog()` — ставится здесь;
-    //   * `height` (`Window.window?.height` в `WallpaperDetailPanel`) —
-    //     родное свойство окна, ставить нечего.
-    // Больше в вендорном дереве обращений к окну нет ни одного.
+    // ⚠️ The class is the same as `presentPopup` above, so the list is
+    // closed AS A WHOLE, not one by one (rule #12). Grepping
+    // `Window.window` across the vendor tree gives exactly four
+    // things pages ask of the owner window:
+    //   * `presentPopup(source, properties)` — 15 calls, present;
+    //   * `popupPresenter` — the same thing is passed to the filter dialogs
+    //     as the `popupWindow` property (`DiscoverPage`, `WallpaperPage`),
+    //     and inside they call the same `presentPopup` — present;
+    //   * `showChangelog()` — installed here;
+    //   * `height` (`Window.window?.height` in `WallpaperDetailPanel`) —
+    //     a native window property, nothing to install.
+    // There is not a single other access to the window in the vendor tree.
     //
-    // Источник списка выпусков — тот же адрес, что у вендора:
-    // `qrc:/waywallen/ui/assets/waywallen-ui.releases.xml`. У апстрима он
-    // в ресурсах его бинаря, у нас — в ресурсах rexon-gui
-    // (`rust/rexon-gui/waywallen_assets.qrc`, файл вендорный, MIT, тот же
-    // тег — см. `waywallen/ATTRIBUTION.md`). Адрес не зависит от того,
-    // где на диске лежит их разметка.
+    // The release list source is the same address as the vendor's:
+    // `qrc:/waywallen/ui/assets/waywallen-ui.releases.xml`. Upstream it is
+    // in the resources of its binary, here — in the rexon-gui resources
+    // (`rust/rexon-gui/waywallen_assets.qrc`, the file is vendored, MIT, the same
+    // tag — see `waywallen/ATTRIBUTION.md`). The address does not depend on
+    // where on disk their markup lies.
     //
-    // Подпись окна берём из каталога переводов ВЕНДОРА тем же
-    // контекстом, каким её переводит их `Window.qml`
-    // (`qsTranslate("Window", …)`): свой `qsTr()` получил бы контекст
-    // «PageHost», которого в их `.ts` нет, и заголовок остался бы
-    // английским.
+    // The window title is taken from the VENDOR's translation catalog with the same
+    // context their `Window.qml` translates it with
+    // (`qsTranslate("Window", …)`): our own `qsTr()` would get the context
+    // "PageHost", which is not in their `.ts`, and the title would stay
+    // in English.
     property var _changelogPresentation: null
 
     function showChangelog() {
@@ -410,8 +410,8 @@ Item {
         MD.ChangelogDialog {}
     }
 
-    // То же, что `Component.onDestruction` их окна: незакрытое окно
-    // пережило бы свой шелл при смене вкладки.
+    // The same as their window's `Component.onDestruction`: an unclosed window
+    // would outlive its shell when the tab changes.
     Component.onDestruction: {
         root._changelogPresentation?.cancel();
         root._aboutPresentation?.cancel();
@@ -419,35 +419,35 @@ Item {
 
     MD.PopupPresenter {
         id: m_popup_presenter
-        // У вендора хозяин — `win.contentItem`; здесь окно чужое, поэтому
-        // хозяин — сам шелл: он и так растянут на всю вкладку.
+        // In the vendor the owner is `win.contentItem`; here the window is foreign, so
+        // the owner is the shell itself: it is stretched over the whole tab anyway.
         host: root
     }
 
-    // ── Слой окон поверх — только над вкладкой ────────────────────────
+    // ── Overlay window layer — only above the tab ────────────────────────
     //
-    // Окна поверх, их затемнение, меню и подсказки Material кладёт в ОДИН
-    // слой на всё окно (`Qcm.Material.Overlay`: ребёнок `contentItem` окна,
-    // размером с окно). У waywallen окно и есть весь интерфейс, а у нас в том
-    // же окне над вкладкой стоят разделы Rexon — и затемнение «Плагинов»,
-    // «Настроек» и «О программе» накрывало их тоже, а окно поверх на узкой
-    // вкладке раскрывалось на всё окно Rexon.
+    // Material puts windows on top, their dimming, menus and tooltips into ONE
+    // layer for the whole window (`Qcm.Material.Overlay`: a child of the window's `contentItem`,
+    // the size of the window). In waywallen the window is the whole interface, while here in the same
+    // window Rexon's sections stand above the tab — and the dimming of «Plugins»,
+    // «Settings» and «About» covered them too, and a window on top on a narrow
+    // tab expanded over the whole Rexon window.
     //
-    // Поэтому слой ужимается до шелла: так всё, что в нём живёт, считает
-    // «окном» вкладку обоев — как окно оригинала накрывает только своё
-    // содержимое. Размер слою библиотека возвращает сама при каждой смене
-    // размера окна, поэтому он не привязывается, а подгоняется заново по
-    // каждому изменению.
+    // So the layer is shrunk to the shell: that way everything living in it treats
+    // the wallpaper tab as the "window" — the way the original's window covers only its own
+    // content. The library resets the layer size itself on every window
+    // resize, so it is not bound but refitted on
+    // every change.
     //
-    // Слой ещё и обрезает содержимое по себе (`clip`). Дело не в картинке:
-    // под модальным окном Material кладёт в слой невидимую преграду для
-    // наведения, и «попал ли в неё указатель» она отвечает по всему окну, а
-    // не по своему размеру — разделы Rexon над вкладкой переставали
-    // подсвечиваться под мышью. Обрезанный слой события наведения вне себя
-    // детям не раздаёт, и разделы подсвечиваются как обычно.
+    // The layer also clips its content to itself (`clip`). It is not about the picture:
+    // under a modal window Material puts an invisible hover blocker into the layer,
+    // and it answers "is the pointer inside me" for the whole window, not
+    // for its own size — Rexon's sections above the tab stopped
+    // highlighting under the mouse. A clipped layer does not hand out hover events
+    // outside itself to its children, and the sections highlight as usual.
     //
-    // Нажатия вне вкладки при открытом окне поверх — отдельная половина: их
-    // пропускает окну хозяин (`WallpaperEnginePage.qml`).
+    // Clicks outside the tab while a window on top is open are a separate half: they
+    // are passed to the window by the owner (`WallpaperEnginePage.qml`).
     readonly property Item popupLayer: MD.Overlay.overlay
 
     function _fitPopupLayer() {
@@ -482,8 +482,8 @@ Item {
         }
     }
 
-    // Шелл сдвигают и предки (полоса разделов Rexon меняет высоту вместе с
-    // шириной окна): положение в окне сверяется и по смене размеров окна.
+    // The shell is also moved by its ancestors (the Rexon section bar changes height together with
+    // the window width): the position in the window is rechecked on window resizes too.
     Connections {
         target: root.hostWindow
         ignoreUnknownSignals: true
@@ -507,14 +507,14 @@ Item {
 
     onSkinDarkChanged: root._applyMode()
 
-    // ⚠️ Таймера выше мало. Синглтон вендора `W.Global` при рождении сам
-    // ставит режим по своей настройке «Тема» (`setThemeMode` →
-    // `useSysColorSM = true` для «Системной»), а рождается он, когда его
-    // впервые спросит страница — то есть когда демон ответил. Демон 0.4.4
-    // при первом запуске минуту прогоняет миграции базы, таймер к этому
-    // времени давно молчит, и вся вкладка оставалась СВЕТЛОЙ на тёмном
-    // скине Rexon (снимок стенда 09.10.2026). Поэтому режим возвращается к
-    // скину на каждый чужой перевод, а не только в первые две секунды.
+    // ⚠️ The timer above is not enough. The vendor singleton `W.Global` on birth
+    // sets the mode itself from its «Theme» setting (`setThemeMode` →
+    // `useSysColorSM = true` for «System»), and it is born when a page
+    // first asks for it — i.e. when the daemon has answered. Daemon 0.4.4
+    // runs database migrations for a minute on first start, by that
+    // time the timer has long gone quiet, and the whole tab stayed LIGHT on the dark
+    // Rexon skin (bench snapshot 09.10.2026). So the mode returns to the
+    // skin on every foreign switch, not only in the first two seconds.
     Connections {
         target: MD.Token.color
         function onUseSysColorSMChanged() {
@@ -525,9 +525,9 @@ Item {
             if (MD.Token.color.mode !== (root.skinDark ? MD.Enum.Dark : MD.Enum.Light))
                 root._applyMode();
         }
-        // Тот же `Global` при рождении ставит и акцент по своей настройке
-        // «Акцент» (системный или свой) — на скине Rexon акцент остаётся
-        // акцентом скина.
+        // The same `Global` on birth also sets the accent from its
+        // «Accent» setting (system or custom) — on the Rexon skin the accent stays
+        // the skin accent.
         function onUseSysAccentColorChanged() {
             if (MD.Token.color.useSysAccentColor)
                 root._applyMode();
@@ -538,7 +538,7 @@ Item {
         }
     }
 
-    // Догоняем поздний асинхронный ответ портала (несколько тактов подряд).
+    // Catch up with a late asynchronous portal answer (several ticks in a row).
     Timer {
         running: true
         repeat: true
@@ -548,7 +548,7 @@ Item {
         onTriggered: {
             root._applyMode();
             if (++_ticks >= 8)
-                running = false;   // ~2 c достаточно, дальше портал молчит
+                running = false;   // ~2 s is enough, after that the portal is silent
         }
     }
 
@@ -557,31 +557,31 @@ Item {
         color: root.MD.MProp.backgroundColor
     }
 
-    // ── Страницы и их кэш ─────────────────────────────────────────────
+    // ── Pages and their cache ─────────────────────────────────────────────
     //
-    // Страницы держит `MD.PageContainer` — тот же контейнер, что в
-    // `Window.qml` вендора, и зовётся он так же: `switchTo(адрес, {}, кэш)`.
-    // «Обои» и «Обзор» живут в кэше контейнера (`pageCacheable` вендора):
-    // уход на другую страницу их не разрушает, и по возвращении на месте
-    // прокрутка, выбранная обоина, набранный поиск и выдача Мастерской.
-    // «Мониторы» и «Состояние» строятся заново при каждом заходе — тоже как
-    // у вендора.
+    // Pages are held by `MD.PageContainer` — the same container as in the
+    // vendor's `Window.qml`, and it is called the same way: `switchTo(url, {}, cache)`.
+    // «Wallpapers» and «Discover» live in the container cache (the vendor's `pageCacheable`):
+    // going to another page does not destroy them, and on return the
+    // scroll position, the selected wallpaper, the typed search and the Workshop results are in place.
+    // «Monitors» and «Status» are rebuilt on every visit — also as
+    // in the vendor.
     //
-    // Грузит страницы пул контейнера (`MD.Pool`, QQmlIncubator) асинхронно:
-    // синхронная загрузка останавливала бы главный поток до конца
-    // компиляции страницы.
+    // Pages are loaded by the container pool (`MD.Pool`, QQmlIncubator) asynchronously:
+    // synchronous loading would stop the main thread until the page
+    // finished compiling.
     readonly property var _cacheablePages: ["wallpapers_qml", "discover_qml"]
-    // Адрес страницы, которую контейнер уже показывает (или грузит).
+    // URL of the page the container already shows (or is loading).
     property string _shownPageUrl: ""
 
     onPagesReadyChanged: Qt.callLater(root._switchPage)
 
-    // Зовётся отложенно: адрес страницы и номер пункта хозяин присылает
-    // двумя привязками, и к моменту вызова должны прийти оба.
+    // Called deferred: the owner sends the page URL and the item index
+    // in two bindings, and both must have arrived by the time of the call.
     function _switchPage() {
         const url = String(root.pageUrl);
-        // Пустой адрес — открыт пункт без вендорной страницы («Разраб.»):
-        // прежняя страница остаётся в контейнере, хозяин её просто прячет.
+        // Empty URL — an item without a vendor page is open («Dev»):
+        // the previous page stays in the container, the owner just hides it.
         if (!root.pagesReady || url.length === 0 || url === root._shownPageUrl)
             return;
         const item = root.railItems[root.currentIndex];
@@ -606,18 +606,18 @@ Item {
 
             onCurrentItemChanged: Qt.callLater(root._deliverPendingWallpaper)
             onPageLoadFailed: error => {
-                // Отказ не должен запирать страницу: повторный заход на
-                // пункт обязан попробовать снова.
+                // A failure must not lock the page: visiting the item
+                // again must try once more.
                 root._shownPageUrl = "";
                 W.Global.toastError(error);
             }
         }
     }
 
-    // ── Сама рейка ─────────────────────────────────────────────────────
+    // ── The rail itself ─────────────────────────────────────────────────────
     //
-    // Разметка — `Window.qml` вендора, блок «Navigation rail», строка в
-    // строку; отличия помечены словом «REXON».
+    // The layout is the vendor's `Window.qml`, block "Navigation rail", line for
+    // line; differences are marked with the word "REXON".
     Loader {
         id: m_rail_loader
         anchors.left: parent.left
@@ -629,11 +629,11 @@ Item {
         sourceComponent: MD.NavigationRail {
             id: m_rail
             model: root._railPages
-            // REXON: у вендора `win.currentPage`; у нас выбранным бывает и
-            // пункт не из списка рейки («Разраб.»), поэтому подсветку ведёт
-            // хозяин. С QmlMaterial 0.5.0 рейка сама `currentIndex` не пишет,
-            // а только просит (`currentIndexChangeRequested`), и обычной
-            // привязки хватает.
+            // REXON: in the vendor `win.currentPage`; here the selected item may also be
+            // one not from the rail list («Dev»), so the highlight is driven by
+            // the owner. Since QmlMaterial 0.5.0 the rail does not write `currentIndex` itself,
+            // it only asks (`currentIndexChangeRequested`), and a plain
+            // binding is enough.
             currentIndex: root._railCurrent
 
             autoExpand: W.Global.sidebarAutoExpand
@@ -660,17 +660,17 @@ Item {
                     onClicked: m_rail.toggle()
                 }
 
-                // REXON: единственный наш пункт — страница сборки для
-                // разработчика. В развёрнутой рейке он стоит здесь, значком
-                // в свободном углу шапки, а не пунктом внизу: с лишним
-                // пунктом развёрнутая рейка при наименьшей высоте окна Rexon
-                // не помещалась, и «О программе» обрезался снизу. Так
-                // развёрнутая рейка совпадает с вендорной пункт в пункт. В
-                // свёрнутой рейке «О программе» нет и места хватает — там
-                // пункт остаётся внизу (см. подвал). Кнопка — переключатель
-                // (`IconToggleButton`, как у вендора всё, что светится
-                // выбранным): у `StandardIconButton` с QmlMaterial 0.5.0
-                // свойства `checked` нет.
+                // REXON: our only item — the build page for the
+                // developer. In the expanded rail it sits here, as an icon
+                // in the free corner of the header, not as an item at the bottom: with the extra
+                // item the expanded rail did not fit at the minimum Rexon window height,
+                // and «About» was cut off at the bottom. This way
+                // the expanded rail matches the vendor's item for item. In the
+                // collapsed rail there is no «About» and there is enough room — there
+                // the item stays at the bottom (see the footer). The button is a toggle
+                // (`IconToggleButton`, as everything the vendor highlights as
+                // selected): `StandardIconButton` with QmlMaterial 0.5.0 has no
+                // `checked` property.
                 MD.IconToggleButton {
                     id: m_dev_btn
                     visible: root._devIndex >= 0 && opacity > 0
@@ -697,23 +697,23 @@ Item {
                     height: 32
                     x: MD.Util.lerp((m_rail.collapsedWidth - width) / 2, 32, m_rail.expansionProgress)
                     y: m_menu_btn.y + m_menu_btn.height + 16
-                    // Адрес вендора; у нас файл в ресурсах rexon-gui
+                    // The vendor's address; here the file is in the rexon-gui resources
                     // (`rust/rexon-gui/waywallen_assets.qrc`).
                     source: "qrc:/waywallen/ui/assets/waywallen-ui.svg"
                     fillMode: Image.PreserveAspectFit
                     sourceSize.width: 64
                     sourceSize.height: 64
 
-                    // REXON: значка «есть обновление» на логотипе нет
-                    // намеренно. У вендора его зажигает `W.UpdateChecker`
-                    // (новый выпуск waywallen на GitHub), а нажатие ведёт на
-                    // «О программе» к кнопке «Доступна версия N». Движок у нас
-                    // едет внутри пакета Rexon и обновляется вместе с ним:
-                    // проверки выпусков нет (`W.UpdateChecker.supported` —
-                    // ложь, и кнопки на «О программе» вендор прячет сам), и
-                    // значок звал бы за обновлением, которого пакет не
-                    // увидит. Проверка выпуска для разработчика живёт на
-                    // странице «Разраб.» и показывает итог там же.
+                    // REXON: there is no "update available" badge on the logo
+                    // on purpose. In the vendor it is lit by `W.UpdateChecker`
+                    // (a new waywallen release on GitHub), and clicking leads to
+                    // «About» to the «Version N available» button. Here the engine
+                    // ships inside the Rexon package and is updated together with it:
+                    // there is no release check (`W.UpdateChecker.supported` is
+                    // false, and the vendor hides the buttons on «About» itself), and
+                    // the badge would call for an update the package will not
+                    // see. The release check for the developer lives on the
+                    // «Dev» page and shows the result there as well.
                 }
 
                 MD.Label {
@@ -791,11 +791,11 @@ Item {
                         }
                     }
 
-                    // REXON: наш пункт «Разраб.» в свёрнутой рейке. Это
-                    // страница, а не окно поверх, поэтому пункт подсвечивается,
-                    // пока она открыта. При развороте рейки он сходит на нет —
-                    // зеркально пункту «О программе» — и уступает место значку
-                    // в шапке.
+                    // REXON: our «Dev» item in the collapsed rail. This is a
+                    // page, not a window on top, so the item is highlighted
+                    // while it is open. When the rail expands it fades out —
+                    // mirroring the «About» item — and gives way to the icon
+                    // in the header.
                     MD.RailItem {
                         width: parent.width
                         visible: root._devIndex >= 0 && opacity > 0
@@ -831,11 +831,11 @@ Item {
         }
     }
 
-    // ── Нижняя полоса навигации (узкая вкладка) ───────────────────────
+    // ── Bottom navigation bar (narrow tab) ───────────────────────
     //
-    // Разметка — `Window.qml` вендора, блок «Bottom navigation bar». Как и
-    // там, в полосе только страницы: «Плагины», «Настройки» и «О программе»
-    // у вендора на узком окне из навигации пропадают.
+    // The layout is the vendor's `Window.qml`, block "Bottom navigation bar". As
+    // there, the bar holds only pages: «Plugins», «Settings» and «About»
+    // disappear from navigation in the vendor on a narrow window.
     Loader {
         id: m_bar_loader
         anchors.left: parent.left
@@ -874,43 +874,53 @@ Item {
         }
     }
 
-    // ── Вложенные страницы (pushItem / pop контекста страницы) ─────────
+    // ── Nested pages (pushItem / pop of the page context) ─────────
     //
-    // Своей стопки у шелла нет — как нет её у контейнера страниц рейки в
-    // `Window.qml` вендора. `pushItem` зовут три вендорные страницы
-    // («Настройки» → «Исключённые окна», «Библиотеки» → «Добавить
-    // библиотеку»), и все они открываются окном поверх
-    // (`component/PagePopup.qml`): оно само слушает сигналы своего контекста
-    // и ведёт стопку — с кнопкой «назад», заголовком и возвратом состояния.
-    // Прежняя «простая стопка» шелла осталась от времён, когда «Настройки»
-    // были страницей рейки; с переездом в окно поверх до неё не доходил ни
-    // один вызов.
+    // The shell has no stack of its own — just as the rail page container in the
+    // vendor's `Window.qml` has none. `pushItem` is called by three vendor pages
+    // («Settings» → «Excluded windows», «Libraries» → «Add
+    // library»), and all of them open as a window on top
+    // (`component/PagePopup.qml`): it listens to the signals of its context itself
+    // and keeps the stack — with a «back» button, a title and state restoration.
+    // The shell's former "simple stack" was left from the times when «Settings»
+    // was a rail page; after the move into a window on top not a single call
+    // reached it.
     onPageUrlChanged: Qt.callLater(root._switchPage)
 
-    // Вход по QR-коду — как в `Window.qml` вендора: окно живёт в шелле и
-    // само открывается по событию демона `qrLoginProgress`. Событие шлёт
-    // плагин-источник, у которого есть действие входа (вход в Steam по
-    // QR-коду у плагина Мастерской); без этого окна нажатие запускало вход,
-    // а показать код было нечем.
+    // QR-code login — as in the vendor's `Window.qml`: the window lives in the shell and
+    // opens itself on the daemon event `qrLoginProgress`. The event is sent by
+    // a source plugin that has a login action (Steam login by
+    // QR code in the Workshop plugin); without this window the click started the login,
+    // but there was nothing to show the code with.
     W.QrLoginDialog {
-        // REXON: у вендора цвет текста и фона окну входа достаются по
-        // наследству от главного окна (`Window.qml` ставит их на себе). Наш
-        // шелл — не окно, и до слоя окон поверх его цвета не доходят: подпись
-        // под кодом выходила чёрной на тёмном. Те же два значения — явно.
+        // REXON: in the vendor the login window gets its text and background colors by
+        // inheritance from the main window (`Window.qml` sets them on itself). Our
+        // shell is not a window, and its colors do not reach the overlay window layer: the caption
+        // under the code came out black on dark. The same two values — explicitly.
         MD.MProp.textColor: root.MD.MProp.textColor
         MD.MProp.backgroundColor: root.MD.MProp.backgroundColor
     }
 
-    // ── Ctrl+P: приостановить или возобновить все обои ────────────────
+    // waywallen 0.6.1: sign-in through a browser window (a source plugin's
+    // `browser_login` action, e.g. Pixiv). Like the QR dialog above it lives
+    // in the shell, as in the vendor `Window.qml`, and opens itself on the
+    // daemon's `browserLoginProgress` event; the browser window itself is the
+    // daemon's helper. Same explicit colours, for the same reason.
+    W.BrowserLoginDialog {
+        MD.MProp.textColor: root.MD.MProp.textColor
+        MD.MProp.backgroundColor: root.MD.MProp.backgroundColor
+    }
+
+    // ── Ctrl+P: pause or resume all wallpapers ────────────────
     //
-    // Порт сочетания из `Window.qml` вендора: общий переключатель паузы и
-    // тост «Приостановлено» / «Возобновлено».
+    // Port of the shortcut from the vendor's `Window.qml`: a shared pause toggle and
+    // the toast «Paused» / «Resumed».
     //
-    // REXON: у вендора сочетание действует во всём приложении
-    // (`Qt.ApplicationShortcut`) — там приложение и есть обои. У нас в том же
-    // окне живут другие разделы Rexon, и пауза обоев из «Оформления» или
-    // «Настроек» была бы неожиданностью: сочетание действует, только пока
-    // вкладка обоев на экране.
+    // REXON: in the vendor the shortcut works in the whole application
+    // (`Qt.ApplicationShortcut`) — there the application is the wallpaper. Here other
+    // Rexon sections live in the same window, and pausing the wallpaper from «Appearance» or
+    // «Settings» would be a surprise: the shortcut works only while the
+    // wallpaper tab is on screen.
     W.GlobalPauseToggleQuery {
         id: m_pause_toggle
         onToggled: paused => W.Action.toast(paused ? qsTranslate("Window", "Paused") : qsTranslate("Window", "Resumed"))
@@ -923,9 +933,9 @@ Item {
         onActivated: m_pause_toggle.reload()
     }
 
-    // Тосты — как в `Window.qml` вендора: в слое окон поверх, с полями по
-    // 24 слева и справа. Слой шелл ужимает до вкладки (см. выше), поэтому
-    // тост ложится на вкладку обоев, а не на разделы Rexon над ней.
+    // Toasts — as in the vendor's `Window.qml`: in the overlay window layer, with margins of
+    // 24 on the left and right. The shell shrinks the layer to the tab (see above), so
+    // the toast lands on the wallpaper tab, not on the Rexon sections above it.
     MD.SnakeView {
         id: m_snake
         parent: MD.Overlay.overlay
@@ -934,12 +944,12 @@ Item {
         anchors.rightMargin: 24
     }
 
-    // ⚠️ Сигнал зовётся `toast`, а НЕ `toasted`. Прежнее имя осталось от
-    // питоновского моста, который переименовал сигнал оригинала и тем
-    // разошёлся с вендорным `Window.qml`. Мост давно на Rust и сигнал у
-    // него как в оригинале — а обработчик здесь остался старым, и ни один
-    // тост вкладки не показывался НИ РАЗУ: `Connections` на несуществующий
-    // сигнал молча ничего не делает.
+    // ⚠️ The signal is called `toast`, NOT `toasted`. The old name was left from the
+    // Python bridge, which renamed the original's signal and thereby
+    // diverged from the vendor's `Window.qml`. The bridge has long been in Rust and its signal
+    // is as in the original — but the handler here stayed old, and not a single
+    // toast of the tab was EVER shown: `Connections` to a nonexistent
+    // signal silently does nothing.
     Connections {
         target: W.Action
         function onToast(text, duration, flags, action) {
@@ -947,14 +957,14 @@ Item {
         }
     }
 
-    // Ошибка транспорта — тем же тостом, что у вендорного `Window.qml`:
-    // обрыв сокета и отказ запроса иначе не доходят до человека вовсе.
+    // A transport error — with the same toast as the vendor's `Window.qml`:
+    // otherwise a socket drop and a request failure never reach the person at all.
     //
-    // Сообщение, а не ошибка (например, «живые обои не запустились — прежние
-    // обои возвращены»), идёт своим сигналом и гаснет само: срок считает ядро
-    // (`ui_base::toast_timeout_for_text`). Тост ошибки у вендора без срока —
-    // такое сообщение висело больше минуты поверх кнопок панели, в том числе
-    // фильтра (ВМ, 30.10.2026).
+    // A message rather than an error (for example, «live wallpaper did not start — the previous
+    // wallpaper was restored») goes through its own signal and fades by itself: the timeout is computed by the core
+    // (`ui_base::toast_timeout_for_text`). The vendor's error toast has no timeout —
+    // such a message hung for over a minute on top of the panel buttons, including
+    // the filter (VM, 30.10.2026).
     Connections {
         target: W.App
         function onErrorOccurred(error) {
@@ -965,9 +975,9 @@ Item {
         }
     }
 
-    // События демона, о которых окно вендора сообщает тостом с любой
-    // страницы (`Window.qml`, «Global daemon-event toasts»). Подписи — из
-    // каталога перевода вендора, его же контекстом.
+    // Daemon events the vendor window reports with a toast from any
+    // page (`Window.qml`, "Global daemon-event toasts"). Labels — from the
+    // vendor's translation catalog, with its own context.
     Connections {
         target: W.Notify
         function onLibrariesAdded(paths) {

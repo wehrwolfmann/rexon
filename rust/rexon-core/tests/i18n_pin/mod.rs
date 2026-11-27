@@ -1,18 +1,18 @@
-//! Язык интерфейса для сверок: закрепить и не дать соседям его сменить.
+//! Interface language for the checks: pin it and keep neighbours from changing it.
 //!
-//! ЗАЧЕМ. Подписи ядра проходят через `rexon_core::i18n::tr`, а язык там —
-//! состояние ВСЕГО процесса. Без закрепления сверка зависела бы от локали
-//! машины и от того, стоит ли пакет с каталогом в `/usr/share/locale`; а
-//! сверки одного файла идут параллельно, и соседняя, переключив язык,
-//! перекрасила бы чужие ожидания. Поэтому язык выдаётся под замком:
-//! `let _lang = i18n_pin::en();` держит английский до конца сверки.
+//! WHY. The core's labels go through `rexon_core::i18n::tr`, and the language there is
+//! state of the WHOLE process. Without pinning, a check would depend on the machine's locale
+//! and on whether the package with the catalog is installed in `/usr/share/locale`; and
+//! the checks of one file run in parallel, and a neighbour switching the language
+//! would repaint someone else's expectations. So the language is handed out under a lock:
+//! `let _lang = i18n_pin::en();` holds English until the end of the check.
 //!
-//! Русский берётся из НАСТОЯЩЕГО `po/ru.po`, собранного `msgfmt` (пакет
-//! gettext) во временный каталог, — тем же читателем, что и продукт. Так
-//! сверка «по-русски как было» доказывает ровно то, что увидит человек.
+//! Russian is taken from the REAL `po/ru.po`, compiled by `msgfmt` (the gettext
+//! package) into a temporary directory — by the same reader as the product. This way
+//! a "Russian as before" check proves exactly what a person will see.
 //!
-//! Подключение: `mod i18n_pin;` в файле сверки (каталог, а не файл верхнего
-//! уровня — чтобы cargo не счёл его отдельной сверкой).
+//! Wiring: `mod i18n_pin;` in the check file (a directory, not a top-level
+//! file — so that cargo does not take it for a separate check).
 
 #![allow(dead_code)]
 
@@ -23,12 +23,12 @@ use rexon_core::i18n;
 
 fn lock() -> MutexGuard<'static, ()> {
     static LOCK: Mutex<()> = Mutex::new(());
-    // Упавшая сверка не должна валить все остальные «отравленным» замком.
+    // A failed check must not bring down all the others with a "poisoned" lock.
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// `po/ru.po` дерева; `REXON_I18N_PIN_PO` подменяет его черновиком —
-/// проверить свои переводы до того, как они влиты в общий каталог.
+/// The tree's `po/ru.po`; `REXON_I18N_PIN_PO` replaces it with a draft —
+/// to check your translations before they are merged into the shared catalog.
 fn po_file() -> PathBuf {
     match std::env::var_os("REXON_I18N_PIN_PO") {
         Some(p) if !p.is_empty() => PathBuf::from(p),
@@ -36,7 +36,7 @@ fn po_file() -> PathBuf {
     }
 }
 
-/// Каталог с собранным `ru/LC_MESSAGES/rexon.mo` — один на процесс.
+/// Directory with the compiled `ru/LC_MESSAGES/rexon.mo` — one per process.
 fn locale_dir() -> &'static PathBuf {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
@@ -56,14 +56,14 @@ fn locale_dir() -> &'static PathBuf {
     })
 }
 
-/// Английский (исходный язык) до конца сверки.
+/// English (the source language) until the end of the check.
 pub fn en() -> MutexGuard<'static, ()> {
     let guard = lock();
     assert_eq!(i18n::set_language(Some(i18n::SOURCE_LANGUAGE)), "en");
     guard
 }
 
-/// Русский из `po/ru.po` до конца сверки.
+/// Russian from `po/ru.po` until the end of the check.
 pub fn ru() -> MutexGuard<'static, ()> {
     let guard = lock();
     locale_dir();
@@ -71,8 +71,8 @@ pub fn ru() -> MutexGuard<'static, ()> {
     guard
 }
 
-/// Русский каталог для поштучных справок (`msgid` → перевод) без смены
-/// языка процесса.
+/// The Russian catalog for one-off lookups (`msgid` → translation) without changing
+/// the process language.
 pub fn ru_catalog() -> &'static i18n::Catalog {
     static CAT: OnceLock<i18n::Catalog> = OnceLock::new();
     CAT.get_or_init(|| {
@@ -81,15 +81,15 @@ pub fn ru_catalog() -> &'static i18n::Catalog {
     })
 }
 
-/// Текст файла для системы (ярлык, автозапуск, политика polkit, помощник,
-/// метаданные темы) без строк языков, кроме исходного и русского.
+/// Text of a system file (launcher, autostart, polkit policy, helper,
+/// theme metadata) without the language lines other than the source and Russian.
 ///
-/// ЗАЧЕМ. Такие файлы несут СРАЗУ все языки каталога (`system_l10n`):
-/// `Name[de]=`, `<message xml:lang="de">`, `"Description[de]":`, строки
-/// таблицы помощника `de) rx_lang=de ;;` и `de:ключ) rx_t=…`. Эталоны сняты
-/// с английским и русским; новый язык в `po/LINGUAS` не должен перекрашивать
-/// их все разом (так и случилось с немецким 01.10). Сами строки новых языков
-/// проверяет `system_l10n` — здесь сверяется прежнее.
+/// WHY. Such files carry ALL catalog languages at once (`system_l10n`):
+/// `Name[de]=`, `<message xml:lang="de">`, `"Description[de]":`, rows of the
+/// helper table `de) rx_lang=de ;;` and `de:key) rx_t=…`. The goldens were captured
+/// with English and Russian; a new language in `po/LINGUAS` must not repaint
+/// all of them at once (as happened with German on 01.10). The lines of new languages themselves
+/// are checked by `system_l10n` — here the old ones are compared.
 pub fn ru_only(text: &str) -> String {
     text.split_inclusive('\n')
         .filter(|line| match line_language(line) {
@@ -99,7 +99,7 @@ pub fn ru_only(text: &str) -> String {
         .collect()
 }
 
-/// Код языка строки системного файла или `None`, если строка не языковая.
+/// The language code of a system file line, or `None` if the line is not a language one.
 fn line_language(line: &str) -> Option<&str> {
     let code_ok = |c: &str| {
         !c.is_empty() && c.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '@')
@@ -110,7 +110,7 @@ fn line_language(line: &str) -> Option<&str> {
         let rest = &t[at + " xml:lang=\"".len()..];
         return rest.split('"').next().filter(|c| code_ok(c));
     }
-    // "Description[de]": …  и  Name[de]=…
+    // "Description[de]": …  and  Name[de]=…
     let key_part = t.strip_prefix('"').unwrap_or(t);
     if let Some(open) = key_part.find('[') {
         let key = &key_part[..open];
@@ -124,7 +124,7 @@ fn line_language(line: &str) -> Option<&str> {
             }
         }
     }
-    // Таблица помощника: `de) rx_lang=de ;;` и `de:ключ) rx_t=…`.
+    // Helper table: `de) rx_lang=de ;;` and `de:key) rx_t=…`.
     if let Some((head, rest)) = t.split_once(") ") {
         if rest.starts_with("rx_lang=") || rest.starts_with("rx_t=") {
             let code = head.split(':').next().unwrap_or("");

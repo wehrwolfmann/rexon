@@ -1,53 +1,57 @@
-// rexon-tray-probe — контрольный стенд значка в лотке у окна на QML.
+// rexon-tray-probe — the control test bench for the tray icon of the QML
+// window.
 //
-// ЗАЧЕМ ОН ЕСТЬ. Значок в лотке, флаг `--tray`, «крестик прячет окно» и
-// «второй запуск поднимает окно первого» держались на одном допущении шима
-// (`cpp/rexon_tray.cpp`): главное окно — это QWidget, а в процессе живёт
-// QApplication. У бинаря главного окна на Rust не верно ни то, ни другое:
-// приложение — QGuiApplication, окно — QQuickWindow, виджетов нет ни одного.
-// Стенд поднимает ровно ту связку, что нужна продукту (QApplication из
-// cxx-qt-lib-extras + QQmlApplicationEngine + qml/MainWindow.qml), ставит
-// значок и проверяет все четыре двери НА ЖИВОМ ЭКРАНЕ.
+// WHY IT EXISTS. The tray icon, the `--tray` flag, "the close button hides
+// the window" and "a second launch raises the first one's window" relied on
+// one assumption of the shim (`cpp/rexon_tray.cpp`): the main window is a
+// QWidget, and a QApplication lives in the process. For the Rust main
+// window binary neither is true: the application is a QGuiApplication, the
+// window is a QQuickWindow, and there is not a single widget. The bench
+// brings up exactly the combination the product needs (QApplication from
+// cxx-qt-lib-extras + QQmlApplicationEngine + qml/MainWindow.qml), sets up
+// the icon and checks all four doors ON A LIVE SCREEN.
 //
-// ПОЧЕМУ ОТДЕЛЬНЫЙ БИНАРЬ, А НЕ РЕЖИМ ГЛАВНОГО ОКНА. Продукт значок уже
-// ставит сам (`main_window.rs`), и повторять это здесь незачем. Стенд нужен
-// ради одного, чего продукту делать нельзя: собрать процесс СО СЛОМАННЫМ
-// механизмом (QGuiApplication вместо QApplication) и убедиться, что значка
-// тогда нет, а программа при этом не падает. Тащить эту развилку в
-// продуктовую точку входа значило бы держать в ней ветку «а теперь соберись
-// неправильно».
+// WHY A SEPARATE BINARY AND NOT A MODE OF THE MAIN WINDOW. The product
+// already sets up the icon by itself (`main_window.rs`), and there is no
+// reason to repeat that here. The bench is needed for one thing the product
+// must not do: build a process with a BROKEN mechanism (QGuiApplication
+// instead of QApplication) and make sure there is then no icon, while the
+// program does not crash. Dragging that branch into the product entry
+// point would mean keeping a branch "and now build yourself wrongly" in it.
 //
-// Запуск глазами (окно + значок, живёт до выхода из меню значка):
+// Run with eyes (window + icon, lives until quitting from the icon menu):
 //     rust/target/release/rexon-tray-probe
-// Сразу в лоток, без окна:
+// Straight into the tray, without a window:
 //     rust/target/release/rexon-tray-probe --tray
-// Прогон без рук (окно на экране, ответ числами, код возврата — приговор):
+// Hands-free run (window on screen, answer in numbers, the exit code is the
+// verdict):
 //     rust/target/release/rexon-tray-probe --check
 //
-// ⭐ УКУС. Стенд, который зеленеет и со сломанным механизмом, ничего не
-// проверяет. `REXON_TRAY_PROBE_BITE=guiapp` строит QGuiApplication — ровно
-// то, что было до этой работы. Прогон обязан на этом ПОКРАСНЕТЬ (значка нет)
-// и обязан НЕ УПАСТЬ: попытка создать QMenu без QApplication гасит процесс
-// целиком, и защита от этого — часть работы.
+// THE BITE. A bench that goes green with a broken mechanism checks nothing.
+// `REXON_TRAY_PROBE_BITE=guiapp` builds a QGuiApplication — exactly what
+// there was before this work. The run must go RED on it (no icon) and must
+// NOT CRASH: an attempt to create a QMenu without a QApplication kills the
+// whole process, and protection against that is part of the work.
 
 use cxx_qt_lib::{QQmlApplicationEngine, QString, QUrl};
 use cxx_qt_lib_extras::QApplication;
 
-// Ссылка на библиотеку крейта обязательна, а не декоративна: без неё rustc
-// не подтягивает rlib, а вместе с ним статические архивы cxx-qt (модели,
-// moc, QML-плагин с ресурсами) — бинарь собирается, но QML пуст.
+// The link to the crate library is mandatory, not decorative: without it
+// rustc does not pull in the rlib, and with it the cxx-qt static archives
+// (models, moc, the QML plugin with resources) — the binary builds, but the
+// QML is empty.
 #[allow(unused_imports)]
 use rexon_gui::main_window::qobject::MainWindowModel;
 
 use rexon_core::single_instance;
 use rexon_core::tray as core_tray;
 
-/// Сколько ждать, пока QML построит окно, прежде чем дёргать двери.
+/// How long to wait for QML to build the window before poking the doors.
 const SETTLE: std::time::Duration = std::time::Duration::from_millis(2500);
 
-/// Раздел, на который прогон переключает окно из «меню значка». Второй, а не
-/// первый: первый уже открыт, и «переключили» на нём неотличимо от «ничего
-/// не сделали».
+/// The section the run switches the window to from the "icon menu". The
+/// second, not the first: the first is already open, and "switched" on it
+/// is indistinguishable from "did nothing".
 const CHECK_SECTION: i32 = 2;
 
 fn main() {
@@ -55,16 +59,17 @@ fn main() {
     let check = args.iter().any(|a| a == "--check");
     let bite = std::env::var("REXON_TRAY_PROBE_BITE").unwrap_or_default();
 
-    // Замок и сокет второго запуска — в подставном каталоге, если он задан
-    // через XDG_RUNTIME_DIR. Стенд не имеет права отбирать их у живого
-    // Rexon: у продукта они те же самые.
+    // The second-launch lock and socket are in a fake directory if it is set
+    // through XDG_RUNTIME_DIR. The bench has no right to take them away from a
+    // live Rexon: the product uses exactly the same ones.
     let runtime_dir = single_instance::runtime_dir_from_env();
     let sock = single_instance::socket_path(&runtime_dir);
 
     cxx_qt::init_qml_module!("org.rexon.gui");
 
-    // ⭐ Вот она, вся развязка блокера: QApplication на Rust. Под укусом —
-    // QGuiApplication, как было; значок тогда встать не должен.
+    // Here it is, the whole resolution of the blocker: a QApplication in Rust.
+    // Under the bite — a QGuiApplication, as before; then the icon must not
+    // come up.
     let mut gui_app = None;
     let mut app = None;
     if bite == "guiapp" {
@@ -77,9 +82,9 @@ fn main() {
         app.set_organization_name(&QString::from(rexon_core::qt_app::ORGANIZATION_NAME));
     }
     if let Some(app) = app.as_mut().and_then(|a| a.as_mut()) {
-        // То же машинное имя, что у продукта: из него Qt делает свойство `Id`
-        // значка на шине, и стенд обязан мерить ровно ту строку, которая
-        // уедет к покупателю (`rexon_core::tray::APP_ID`).
+        // The same machine name as the product's: Qt makes the icon's `Id` property
+        // on the bus from it, and the bench must measure exactly the string that
+        // will go to the customer (`rexon_core::tray::APP_ID`).
         app.set_application_name(&QString::from(core_tray::APP_ID));
     }
     cxx_qt_lib::QGuiApplication::set_desktop_file_name(&QString::from(
@@ -91,20 +96,22 @@ fn main() {
         engine.load(&QUrl::from("qrc:/qt/qml/org/rexon/gui/qml/MainWindow.qml"));
     }
 
-    // Значок: разделы, файл картинки и `--tray` дверь берёт из ядра сама.
+    // Icon: the door takes the sections, the picture file and `--tray` from the
+    // core by itself.
     let installed = rexon_gui::tray::install_for_main_window(&args);
     println!(
         "ЗНАЧОК: {}",
         if installed { "поставлен" } else { "нет" }
     );
     if core_tray::starts_hidden(&args) && !installed {
-        // Просили свернуться, но значка нет — окно единственная дверь в
-        // программу, прятать его нельзя (правило #13, защита от дурака).
+        // Asked to minimize, but there is no icon — the window is the only door
+        // into the program and must not be hidden (rule #13, foolproofing).
         println!("⚠️ запуск свёрнутым отменён: значка в лотке нет");
     }
 
-    // Слушатель «подними окно» второго запуска. Встаёт ПОСЛЕ загрузки QML:
-    // до неё поднимать нечего, а сокет уже отвечал бы «ok» на пустоту.
+    // The second launch's "raise the window" listener. It comes up AFTER the
+    // QML is loaded: before that there is nothing to raise, and the socket
+    // would already be answering "ok" to emptiness.
     if let Err(e) =
         single_instance::ActivationListener::spawn(&sock, rexon_gui::tray::raise_main_window)
     {
@@ -116,8 +123,8 @@ fn main() {
         std::thread::spawn(move || run_check(installed));
     }
 
-    // Код возврата цикла событий — это приговор прогона, и он обязан стать
-    // кодом возврата процесса.
+    // The event loop's exit code is the run's verdict, and it must become the
+    // process exit code.
     let code = if let Some(app) = app.as_mut() {
         app.as_mut().map(|a| a.exec()).unwrap_or(2)
     } else if let Some(gui) = gui_app.as_mut() {
@@ -127,16 +134,16 @@ fn main() {
     };
     let verdict = VERDICT.load(std::sync::atomic::Ordering::SeqCst);
 
-    // ⚠️ СНЯТЬ СЦЕНУ ДО ВЫХОДА, и именно в этом порядке. Выход из цикла
-    // событий не разбирает построенное окно: движок QML продолжает держать
-    // корневой объект, а вместе с ним живые проигрыватели вкладок — и их
-    // потоки декодирования (QFFmpeg::Stream) продолжают работать. Если
-    // после этого позвать `std::process::exit`, обработчики завершения
-    // разбирают libc под работающим потоком, и Rexon падает на самом
-    // выходе: пойман живьём на «Выходе» из меню значка после открытия
-    // раздела «Steam» с видеозаставкой (SIGSEGV в av_log). Роспуск движка
-    // сносит корневой объект, тот — проигрыватели, те — свои потоки, и
-    // только после этого выходить безопасно.
+    // Warning: TEAR DOWN THE SCENE BEFORE EXITING, and exactly in this order.
+    // Leaving the event loop does not dismantle the built window: the QML
+    // engine keeps holding the root object, and with it the tabs' live players
+    // — and their decoding threads (QFFmpeg::Stream) keep running. If
+    // `std::process::exit` is called after that, the exit handlers tear down
+    // libc under a running thread, and Rexon crashes right at exit: caught
+    // live on "Quit" from the icon menu after opening the "Steam" section with
+    // the video splash (SIGSEGV in av_log). Dropping the engine destroys the
+    // root object, which destroys the players, which stop their threads, and
+    // only after that is exiting safe.
     drop(engine);
     drop(app);
     drop(gui_app);
@@ -144,8 +151,9 @@ fn main() {
     std::process::exit(if check { verdict.max(code) } else { code });
 }
 
-/// Прогон дверей значка ИЗ ЧУЖОГО ПОТОКА — как их зовёт слушатель второго
-/// запуска. Печатает каждую проверку и выходит из процесса приговором.
+/// Run of the icon doors FROM ANOTHER THREAD — the way the second-launch
+/// listener calls them. Prints every check and exits the process with the
+/// verdict.
 fn run_check(installed: bool) {
     std::thread::sleep(SETTLE);
 
@@ -168,9 +176,9 @@ fn run_check(installed: bool) {
         rexon_gui::tray::select_section(CHECK_SECTION),
         &mut failures,
     );
-    // Второй запуск: стучимся в СВОЙ же сокет ровно так, как это делает
-    // второй экземпляр продукта. Проверяется вся цепочка целиком, а не
-    // «функция вернула true».
+    // Second launch: we knock on OUR OWN socket exactly the way a second
+    // instance of the product does. The whole chain is checked, not "the
+    // function returned true".
     let sock = single_instance::socket_path(&single_instance::runtime_dir_from_env());
     say(
         "второй запуск поднял окно через сокет",
@@ -185,13 +193,13 @@ fn run_check(installed: bool) {
         VERDICT.store(1, std::sync::atomic::Ordering::SeqCst);
     }
 
-    // Гасимся ЧЕРЕЗ Qt, а не `std::process::exit` из этого потока: выход из
-    // чужого потока прокручивает обработчики завершения одновременно с живым
-    // циклом событий, и прогон оставлял после себя дамп памяти — приговор
-    // печатался верный, а процесс всё равно падал. Приговор уносит с собой
-    // главный поток, когда цикл событий вернёт управление.
+    // We exit THROUGH Qt, not with `std::process::exit` from this thread:
+    // exiting from another thread runs the exit handlers concurrently with the
+    // live event loop, and the run left a core dump behind — the verdict
+    // printed was correct, but the process still crashed. The verdict is
+    // carried out by the main thread when the event loop returns control.
     rexon_gui::tray::quit();
 }
 
-/// Приговор прогона: 0 — прошёл, 1 — провалился.
+/// Run verdict: 0 — passed, 1 — failed.
 static VERDICT: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);

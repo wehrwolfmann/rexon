@@ -1,38 +1,39 @@
-// UserPropertyListModel — редактор свойств обои в панели деталей вкладки
-// Wallpaper Engine, перенесённый с Python на Rust/cxx-qt.
-// Модель без
-// гаджетов Qt-Protobuf и без сети — на вход только две строки JSON
-// (`userPropertiesSchema` и `userPropertyOverrides` обоины), на выход строки
-// для вендорного QML.
+// UserPropertyListModel — the wallpaper property editor in the details
+// panel of the Wallpaper Engine tab, ported from Python to Rust/cxx-qt.
+// A model without Qt Protobuf gadgets and without network — the input is
+// just two JSON strings (the wallpaper's `userPropertiesSchema` and
+// `userPropertyOverrides`), the output is rows for the vendored QML.
 //
-// Оригинал — rexon/qt_wallpaper_engine/qml_ui/bridge.py:4180 (сам он порт
-// model/user_property_model.cpp waywallen @v0.2.5). Вендорный QML
-// (page/WallpaperDetailPanel.qml) НЕ трогаем, поэтому имена типа, свойств,
-// сигналов, ролей и строк секций обязаны совпадать посимвольно: секция
-// сравнивается в QML строкой (с waywallen 0.3.8 это "property"/"user", до
-// того — "Properties"/"User properties").
+// The original is rexon/qt_wallpaper_engine/qml_ui/bridge.py:4180 (itself a
+// port of waywallen's model/user_property_model.cpp @v0.2.5). We do NOT
+// touch the vendored QML (page/WallpaperDetailPanel.qml), so the names of
+// the type, properties, signals, roles and section strings must match
+// character for character: the section is compared in QML as a string
+// (since waywallen 0.3.8 it is "property"/"user", before that
+// "Properties"/"User properties").
 //
-// Разделение слоёв здесь такое же, как в остальном крейте: весь разбор и всё
-// состояние живут в чистой структуре `UserProperties` без Qt (её и проверяет
-// голден-тест против ЖИВОЙ Python-модели), а QObject только раскладывает
-// готовое по ролям и шлёт сигналы.
+// The layer split here is the same as in the rest of the crate: all
+// parsing and all state live in the plain `UserProperties` struct without
+// Qt (that is what the golden test checks against the LIVE Python model),
+// while the QObject only lays the ready results out by roles and sends
+// signals.
 
-/// Мост cxx-qt: подкласс QAbstractListModel.
+/// cxx-qt bridge: a QAbstractListModel subclass.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
         include!(<QtCore/QAbstractListModel>);
-        /// Базовый Qt-тип: обёртки QAbstractListModel в cxx-qt-lib нет, её
-        /// объявляет сам мост.
+        /// The base Qt type: cxx-qt-lib has no QAbstractListModel wrapper, the
+        /// bridge declares it itself.
         ///
-        /// ⚠️ Здесь он объявлен БЕЗ `#[qobject]`. Причина найдена линкером: на
-        /// каждый `#[qobject]`-тип в `extern "C++Qt"` cxx-qt печатает пару
-        /// шимов приведения `cxx_qt_ffi_<Тип>_upcastPtr/downcastPtr`, и имя
-        /// у них — по имени ТИПА, а не по имени моста. Второй мост в том же
-        /// крейте, объявивший ту же базу, даёт `duplicate symbol` на
-        /// `cxx_qt_ffi_QAbstractListModel_upcastPtr`. Без `#[qobject]` шимы
-        /// не печатаются, а `#[base = QAbstractListModel]`, `#[inherit]` и
-        /// `#[cxx_override]` работают: они висят на наследнике.
+        /// Warning: here it is declared WITHOUT `#[qobject]`. The reason was found by
+        /// the linker: for every `#[qobject]` type in `extern "C++Qt"` cxx-qt emits a
+        /// pair of cast shims `cxx_qt_ffi_<Type>_upcastPtr/downcastPtr`, named after
+        /// the TYPE, not the bridge. A second bridge in the same crate declaring the
+        /// same base gives a `duplicate symbol` on
+        /// `cxx_qt_ffi_QAbstractListModel_upcastPtr`. Without `#[qobject]` the shims
+        /// are not emitted, while `#[base = QAbstractListModel]`, `#[inherit]` and
+        /// `#[cxx_override]` work: they hang on the subclass.
         type QAbstractListModel;
 
         include!("cxx-qt-lib/qhash.h");
@@ -54,14 +55,14 @@ pub mod qobject {
         type QModelIndex = cxx_qt_lib::QModelIndex;
 
         include!("cxx-qt-lib/qvector.h");
-        /// Набор ролей для dataChanged (в Qt6 QVector<int> == QList<int>).
+        /// Set of roles for dataChanged (in Qt6 QVector<int> == QList<int>).
         type QVector_i32 = cxx_qt_lib::QVector<i32>;
 
         include!("rexon_register_we.h");
-        /// Перевод подписи плагина (`localized_text` схемы) синглтоном
-        /// `PluginTranslations` — тем же, к которому оригинал ходит через
-        /// `PluginTranslationStore::instance()`. Пустая строка означает
-        /// «перевода нет», и тогда показывается подпись из схемы.
+        /// Translating a plugin label (the schema's `localized_text`) with the
+        /// `PluginTranslations` singleton — the same one the original reaches
+        /// through `PluginTranslationStore::instance()`. An empty string means "no
+        /// translation", and then the label from the schema is shown.
         #[cxx_name = "rexon_we_plugin_translate"]
         fn plugin_translate(message_json: &QString) -> QString;
     }
@@ -70,9 +71,9 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[base = QAbstractListModel]
-        // Схема и оверрайды приходят из QML привязками к свойствам обоины —
-        // отсюда WRITE. Флаги в 0.9 пишутся ЗАГЛАВНЫМИ, и если передан хоть
-        // один, READ обязателен явно.
+        // The schema and the overrides come from QML through bindings to the
+        // wallpaper's properties — hence WRITE. In 0.9 the flags are written in
+        // CAPITALS, and if at least one is given, READ is required explicitly.
         #[qproperty(QString, schema_json, cxx_name = "schemaJson",
                     READ = schema_json, WRITE = set_schema_json,
                     NOTIFY = schema_json_changed)]
@@ -80,8 +81,8 @@ pub mod qobject {
                     READ = overrides_json, WRITE = set_overrides_json,
                     NOTIFY = overrides_json_changed)]
         #[qproperty(i32, count, READ = count, NOTIFY = count_changed)]
-        // Оба флага «есть что сбрасывать» висят на ОДНОМ сигнале — так же,
-        // как в оригинале: заголовок секции гасит кнопку сброса по ним.
+        // Both "there is something to reset" flags hang on ONE signal — just as in
+        // the original: the section header disables the reset button by them.
         #[qproperty(bool, has_predefined_property_overrides,
                     cxx_name = "hasPredefinedPropertyOverrides",
                     READ = has_predefined_property_overrides,
@@ -93,7 +94,7 @@ pub mod qobject {
         type UserPropertyListModel = super::UserPropertyListModelRust;
     }
 
-    // ── Сигналы ───────────────────────────────────────────────────────────
+    // ── Signals ───────────────────────────────────────────────────────────
     unsafe extern "RustQt" {
         #[qsignal]
         #[cxx_name = "schemaJsonChanged"]
@@ -108,23 +109,23 @@ pub mod qobject {
         #[cxx_name = "overrideStateChanged"]
         fn override_state_changed(self: Pin<&mut UserPropertyListModel>);
 
-        /// Пользователь изменил значение свойства. Эмитится ТОЛЬКО от
-        /// действий пользователя (setValue): QML дебаунсит его таймером и
-        /// шлёт WallpaperPropertySetQuery. Программная установка
-        /// `overridesJson` этот сигнал НЕ поднимает — иначе ответ демона
-        /// закольцевался бы обратно в запись.
+        /// The user changed a property value. Emitted ONLY by user actions
+        /// (setValue): QML debounces it with a timer and sends
+        /// WallpaperPropertySetQuery. Setting `overridesJson` programmatically does
+        /// NOT raise this signal — otherwise the daemon's answer would loop back
+        /// into a write.
         #[qsignal]
         #[cxx_name = "valueChanged"]
         fn value_changed(self: Pin<&mut UserPropertyListModel>, key: QString, value: QString);
 
-        /// Сброс свойства к значению по умолчанию. Отдельный сигнал, а не
-        /// `valueChanged` с пустой строкой: с v0.2.5 пустая строка — ВАЛИДНОЕ
-        /// значение текстовых свойств, ей сбрасывать нельзя.
+        /// Resetting a property to its default value. A separate signal rather than
+        /// `valueChanged` with an empty string: since v0.2.5 an empty string is a
+        /// VALID value of text properties and must not reset.
         #[qsignal]
         #[cxx_name = "resetRequested"]
         fn reset_requested(self: Pin<&mut UserPropertyListModel>, key: QString);
 
-        /// dataChanged базового класса — точечное обновление строки.
+        /// dataChanged of the base class — a targeted row update.
         #[inherit]
         #[qsignal]
         #[cxx_name = "dataChanged"]
@@ -136,23 +137,23 @@ pub mod qobject {
         );
     }
 
-    // ── Наследуемые методы базового класса ────────────────────────────────
+    // ── Inherited methods of the base class ───────────────────────────────
     extern "RustQt" {
         /// # Safety
-        /// Требует парного end_reset_model.
+        /// Requires a paired end_reset_model.
         #[inherit]
         #[cxx_name = "beginResetModel"]
         unsafe fn begin_reset_model(self: Pin<&mut UserPropertyListModel>);
         /// # Safety
-        /// Парный к begin_reset_model.
+        /// Paired with begin_reset_model.
         #[inherit]
         #[cxx_name = "endResetModel"]
         unsafe fn end_reset_model(self: Pin<&mut UserPropertyListModel>);
     }
 
-    // index() безопасен для вызова, но cxx-qt требует, чтобы безопасные
-    // #[inherit]-функции жили в unsafe-блоке (unsafe тут про соответствие
-    // объявления C++-сигнатуре, а не про опасность вызова).
+    // index() is safe to call, but cxx-qt requires safe #[inherit] functions to
+    // live in an unsafe block (unsafe here is about matching the declaration to
+    // the C++ signature, not about the call being dangerous).
     unsafe extern "RustQt" {
         #[inherit]
         fn index(
@@ -163,10 +164,10 @@ pub mod qobject {
         ) -> QModelIndex;
     }
 
-    // ── Переопределения QAbstractListModel ────────────────────────────────
-    // Без #[qinvokable]: инвокабл в наследнике затеняет укороченные клоны
-    // сигнатур базы, которые moc делает ради default-аргументов, и rowCount()
-    // без аргументов из JS падает «Insufficient arguments».
+    // ── QAbstractListModel overrides ──────────────────────────────────────
+    // Without #[qinvokable]: an invokable in a subclass shadows the shortened
+    // clones of the base's signatures that moc makes for default arguments, and
+    // rowCount() without arguments from JS fails with "Insufficient arguments".
     extern "RustQt" {
         #[cxx_override]
         #[cxx_name = "rowCount"]
@@ -180,7 +181,7 @@ pub mod qobject {
         fn data(self: &UserPropertyListModel, index: &QModelIndex, role: i32) -> QVariant;
     }
 
-    // ── Чтение/запись свойств ─────────────────────────────────────────────
+    // ── Property reading/writing ──────────────────────────────────────────
     extern "RustQt" {
         #[cxx_name = "schemaJson"]
         fn schema_json(self: &UserPropertyListModel) -> QString;
@@ -200,45 +201,46 @@ pub mod qobject {
         fn has_user_property_overrides(self: &UserPropertyListModel) -> bool;
     }
 
-    // ── API для QML ───────────────────────────────────────────────────────
+    // ── API for QML ───────────────────────────────────────────────────────
     extern "RustQt" {
-        /// Запись значения пользователем. Пустая строка — обычное значение,
-        /// оверрайд она не снимает (для снятия есть reset*).
+        /// A value written by the user. An empty string is an ordinary value; it
+        /// does not remove the override (reset* exists for that).
         #[qinvokable]
         #[cxx_name = "setValue"]
         fn set_value(self: Pin<&mut UserPropertyListModel>, key: &QString, value: &QString);
 
-        /// Сбросить все свойства к значениям по умолчанию.
+        /// Reset all properties to their default values.
         #[qinvokable]
         #[cxx_name = "resetAll"]
         fn reset_all(self: Pin<&mut UserPropertyListModel>);
 
-        /// Сбросить только предопределённые свойства (секция "Properties").
+        /// Reset only the predefined properties (the "Properties" section).
         #[qinvokable]
         #[cxx_name = "resetPredefinedProperties"]
         fn reset_predefined_properties(self: Pin<&mut UserPropertyListModel>);
 
-        /// Сбросить только пользовательские свойства обоины.
+        /// Reset only the wallpaper's user properties.
         #[qinvokable]
         #[cxx_name = "resetUserProperties"]
         fn reset_user_properties(self: Pin<&mut UserPropertyListModel>);
 
-        /// Номер роли по имени (-1, если роли нет) — чтобы стенд мог сверить,
-        /// какая именно роль приехала в dataChanged.
+        /// Role number by name (-1 if there is no such role) — so that the bench
+        /// can check which role exactly arrived in dataChanged.
         #[qinvokable]
         #[cxx_name = "roleNumber"]
         fn role_number(self: &UserPropertyListModel, name: &QString) -> i32;
 
-        /// Значение роли по номеру строки — проверки без делегата.
+        /// A role's value by row number — checks without a delegate.
         #[qinvokable]
         #[cxx_name = "roleValue"]
         fn role_value(self: &UserPropertyListModel, row: i32, name: &QString) -> QVariant;
     }
 
     impl cxx_qt::Initialize for UserPropertyListModel {}
-    // Подписка на приход каталогов подписей идёт через `CxxQtThread::queue`,
-    // и трейт потока обязан быть объявлен В МОСТЕ: cxx-qt печатает по этой
-    // строке и сам `qt_thread()`, и его алиас типа.
+    // Subscribing to the arrival of label catalogues goes through
+    // `CxxQtThread::queue`, and the thread trait must be declared IN THE
+    // BRIDGE: cxx-qt emits both `qt_thread()` itself and its type alias from
+    // this line.
     impl cxx_qt::Threading for UserPropertyListModel {}
 }
 
@@ -250,24 +252,24 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 
 // ============================================================================
-// Чистый слой: разбор схемы и состояние оверрайдов (Qt здесь нет)
+// Pure layer: parsing the schema and the override state (no Qt here)
 // ============================================================================
 
-/// Ключ предопределённого свойства «цвет схемы» — он есть всегда, даже когда
-/// схема обоины пуста.
+/// Key of the predefined "scheme colour" property — it always exists, even
+/// when the wallpaper's schema is empty.
 pub const SCHEME_COLOR_KEY: &str = "waywallen.scheme_color";
-/// Ключ предопределённого свойства «звук» — строка появляется, только если
-/// ключ есть в схеме.
+/// Key of the predefined "sound" property — the row appears only if the key
+/// is in the schema.
 pub const ENABLE_AUDIO_KEY: &str = "waywallen.enable_audio";
-/// Ключ предопределённого свойства «скорость воспроизведения» — как и звук,
-/// строка появляется только при наличии ключа в схеме.
+/// Key of the predefined "playback speed" property — like sound, the row
+/// appears only when the key is in the schema.
 pub const PLAYBACK_SPEED_KEY: &str = "waywallen.playback_speed";
-/// Ключ предопределённого свойства «параллакс от мыши» (waywallen 0.4.2) —
-/// строка появляется только при наличии ключа в схеме.
+/// Key of the predefined "mouse parallax" property (waywallen 0.4.2) — the
+/// row appears only when the key is in the schema.
 pub const MOUSE_PARALLAX_KEY: &str = "waywallen.mouse_parallax";
 
-/// Все предопределённые ключи: их пропускает разбор пользовательских
-/// свойств, иначе они уехали бы во вторую секцию дважды.
+/// All predefined keys: parsing of the user properties skips them,
+/// otherwise they would end up in the second section twice.
 const PREDEFINED_KEYS: [&str; 4] = [
     SCHEME_COLOR_KEY,
     ENABLE_AUDIO_KEY,
@@ -275,32 +277,35 @@ const PREDEFINED_KEYS: [&str; 4] = [
     MOUSE_PARALLAX_KEY,
 ];
 
-/// Названия секций. Вендорный QML сравнивает секцию со строкой и по ней же
-/// выбирает заголовок (`WallpaperDetailPanel.qml`), поэтому строки
-/// технические и переводу НЕ подлежат.
+/// Section names. The vendored QML compares the section with a string and
+/// chooses the header by it too (`WallpaperDetailPanel.qml`), so the strings
+/// are technical and must NOT be translated.
 ///
-/// ⚠ waywallen 0.3.8 переименовал их из "Properties"/"User properties" в
-/// "property"/"user" — ровно в значения [`KIND_PREDEFINED`]/[`KIND_USER`].
-/// Причина у вендора та же, что была бы у нас: по этим строкам сравнивают,
-/// а показывают перевод `qsTr("Properties")`, и человекочитаемая строка в
-/// роли ключа означала бы, что перевод ломает сравнение.
+/// Warning: waywallen 0.3.8 renamed them from "Properties"/"User properties"
+/// to "property"/"user" — exactly the values of
+/// [`KIND_PREDEFINED`]/[`KIND_USER`]. The vendor's reason is the same as ours
+/// would be: these strings are compared, while the translation
+/// `qsTr("Properties")` is shown, and a human-readable string as a key would
+/// mean that translation breaks the comparison.
 pub const SECTION_PREDEFINED: &str = KIND_PREDEFINED;
 pub const SECTION_USER: &str = KIND_USER;
-/// Вид записи: предопределённое свойство демона либо свойство самой обоины.
+/// Record kind: a predefined property of the daemon or a property of the
+/// wallpaper itself.
 pub const KIND_PREDEFINED: &str = "property";
 pub const KIND_USER: &str = "user";
 
-/// Цвет схемы по умолчанию, когда в схеме его нет или он пуст.
+/// Default scheme colour when the schema has none or it is empty.
 const DEFAULT_SCHEME_COLOR: &str = "0.0000 0.0000 0.0000 1.0000";
-/// Скорость воспроизведения по умолчанию (проценты) — запасное значение
-/// оригинала, когда схема своего не дала.
+/// Default playback speed (percent) — the original's fallback value when
+/// the schema gave none.
 const DEFAULT_PLAYBACK_SPEED: &str = "100";
 
-/// Типы, для которых в панели деталей есть редактор.
+/// Types for which the details panel has an editor.
 const SUPPORTED_TYPES: [&str; 5] = ["color", "slider", "bool", "textinput", "text"];
 
-/// Строка редактора свойств. Всё, кроме текущего значения, посчитано один раз
-/// при разборе схемы: data() зовётся на каждую перерисовку делегата.
+/// A property editor row. Everything except the current value is computed
+/// once when parsing the schema: data() is called on every delegate
+/// repaint.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Entry {
     pub key: String,
@@ -311,25 +316,26 @@ pub struct Entry {
     pub supported: bool,
     pub min_val: f64,
     pub max_val: f64,
-    /// Шаг ползунка из схемы (`step`). Ноль означает «шага нет»: разметка
-    /// сама подбирает его по величине максимума.
+    /// Slider step from the schema (`step`). Zero means "no step": the markup
+    /// picks one itself by the size of the maximum.
     pub step_val: f64,
-    /// Приписка к числу ползунка из схемы (`suffix`), например «%».
+    /// Suffix for the slider number from the schema (`suffix`), for example
+    /// "%".
     pub value_suffix: String,
-    /// Значение по умолчанию из схемы, приведённое к проводному виду.
+    /// The default value from the schema, converted to wire form.
     pub default_wire: String,
     pub option_labels: Vec<String>,
     pub option_values: Vec<String>,
-    /// Подпись плагина (`localized_text`) сырым JSON: переводом её делает
-    /// синглтон `PluginTranslations`, а не чистый слой.
+    /// The plugin label (`localized_text`) as raw JSON: it is translated by the
+    /// `PluginTranslations` singleton, not by the pure layer.
     pub localized_label: String,
-    /// То же для подписей вариантов combo (`localized_label` у опции).
+    /// The same for combo option labels (`localized_label` of an option).
     pub localized_option_labels: Vec<String>,
-    /// Порядок сортировки пользовательских свойств.
+    /// Sort order of the user properties.
     pub order: f64,
 }
 
-/// Состояние модели: разобранная схема + оверрайды пользователя.
+/// Model state: the parsed schema + the user's overrides.
 #[derive(Debug, Default, Clone)]
 pub struct UserProperties {
     entries: Vec<Entry>,
@@ -337,13 +343,14 @@ pub struct UserProperties {
 }
 
 impl UserProperties {
-    /// Пересобрать строки по схеме обоины.
+    /// Rebuild the rows from the wallpaper's schema.
     pub fn set_schema(&mut self, schema_json: &str) {
         self.entries = build_entries(schema_json);
     }
 
-    /// Разобрать карту оверрайдов. Значения-нестроки игнорируются, битый JSON
-    /// даёт пустую карту (как в оригинале — молча, без ошибки в UI).
+    /// Parse the override map. Non-string values are ignored, a broken JSON
+    /// gives an empty map (as in the original — silently, without an error in
+    /// the UI).
     pub fn set_overrides(&mut self, overrides_json: &str) {
         self.overrides.clear();
         let Ok(Value::Object(map)) = serde_json::from_str::<Value>(overrides_json) else {
@@ -368,8 +375,8 @@ impl UserProperties {
         self.entries.is_empty()
     }
 
-    /// Текущее значение строки: оверрайд, если ключ ЕСТЬ в карте (пустая
-    /// строка тоже значение), иначе значение по умолчанию из схемы.
+    /// Current value of a row: the override if the key IS in the map (an empty
+    /// string is a value too), otherwise the default value from the schema.
     pub fn current_value(&self, row: usize) -> &str {
         let Some(entry) = self.entries.get(row) else {
             return "";
@@ -380,30 +387,31 @@ impl UserProperties {
         }
     }
 
-    /// Есть ли у цвета альфа-канал — по числу компонент проводной строки.
+    /// Whether the colour has an alpha channel — by the number of components of
+    /// the wire string.
     pub fn has_alpha(&self, row: usize) -> bool {
         self.current_value(row).split_whitespace().count() >= 4
     }
 
-    /// Есть ли хоть один оверрайд у записей данного вида — этим гасятся
-    /// кнопки сброса в заголовках секций.
+    /// Whether records of the given kind have at least one override — the
+    /// section headers' reset buttons are disabled by this.
     pub fn has_overrides_kind(&self, kind: &str) -> bool {
         self.entries
             .iter()
             .any(|e| e.kind == kind && self.overrides.contains_key(&e.key))
     }
 
-    /// Записать значение. Возвращает номер строки, которую надо обновить;
-    /// None — такой строки нет (значение всё равно запоминается, ровно как в
-    /// оригинале: карта оверрайдов шире набора строк).
+    /// Write a value. Returns the number of the row to update; None means there
+    /// is no such row (the value is remembered anyway, exactly as in the
+    /// original: the override map is wider than the set of rows).
     pub fn set_value(&mut self, key: &str, value: &str) -> Option<usize> {
         self.overrides.insert(key.to_string(), value.to_string());
         self.row_of(key)
     }
 
-    /// Снять оверрайды у записей вида `kind` (None — у всех).
-    /// Возвращает пары «строка, ключ» в порядке строк — в этом же порядке
-    /// оригинал шлёт dataChanged и resetRequested.
+    /// Remove the overrides of records of kind `kind` (None — of all).
+    /// Returns "row, key" pairs in row order — the original sends dataChanged
+    /// and resetRequested in the same order.
     pub fn reset_kind(&mut self, kind: Option<&str>) -> Vec<(usize, String)> {
         let mut reset = Vec::new();
         for (row, entry) in self.entries.iter().enumerate() {
@@ -424,8 +432,8 @@ impl UserProperties {
     }
 }
 
-/// Питоновская истинность значения JSON: пустые строка/список/словарь, ноль,
-/// false и null — ложь. Оригинал опирается на неё (`v.get("text") or key`).
+/// Python truthiness of a JSON value: empty string/list/dict, zero, false and
+/// null are false. The original relies on it (`v.get("text") or key`).
 fn truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
@@ -437,10 +445,10 @@ fn truthy(value: &Value) -> bool {
     }
 }
 
-/// Формат `%g` (шесть значащих цифр, хвостовые нули убраны, показатель для
-/// очень больших и очень малых) — им оригинал печатает числа схемы, и от него
-/// зависит проводная строка: 1234567 обязан стать `1.23457e+06`, а не
-/// `1234567`.
+/// The `%g` format (six significant digits, trailing zeros removed, an
+/// exponent for very large and very small numbers) — the original prints
+/// schema numbers with it, and the wire string depends on it: 1234567 must
+/// become `1.23457e+06`, not `1234567`.
 fn format_g(value: f64) -> String {
     if value.is_nan() {
         return "nan".to_string();
@@ -451,15 +459,16 @@ fn format_g(value: f64) -> String {
     if value == 0.0 {
         return "0".to_string();
     }
-    // Научная запись с 5 знаками после точки = ровно 6 значащих цифр; из неё
-    // берётся показатель уже ПОСЛЕ округления, как того требует %g.
+    // Scientific notation with 5 digits after the point = exactly 6
+    // significant digits; the exponent is taken from it AFTER rounding, as %g
+    // requires.
     let scientific = format!("{value:.5e}");
     let (mantissa, exponent) = scientific
         .split_once('e')
         .expect("научная запись всегда содержит e");
     let exponent: i32 = exponent.parse().unwrap_or(0);
-    // Диапазон показателя, при котором %g печатает обычную запись, а не
-    // научную: от -4 до 6 (не включая).
+    // The exponent range in which %g prints ordinary rather than scientific
+    // notation: from -4 to 6 (exclusive).
     if !(-4..6).contains(&exponent) {
         let sign = if exponent < 0 { '-' } else { '+' };
         format!(
@@ -482,19 +491,21 @@ fn trim_trailing_zeros(text: &str) -> String {
     }
 }
 
-/// Компоненты цвета печатаются с четырьмя знаками — так их ждёт демон.
+/// Colour components are printed with four digits — that is how the daemon
+/// expects them.
 fn components_wire(items: &[Value]) -> String {
     items
         .iter()
-        // Оригинал зовёт float(x) и падает на нечисловой компоненте
-        // (TypeError прямо в data() модели). При порте это чиним: нечисловая
-        // компонента даёт 0.0, схема с мусором просто рисуется чёрным.
+        // The original calls float(x) and crashes on a non-numeric component (a
+        // TypeError right in the model's data()). During the port we fix this: a
+        // non-numeric component gives 0.0, and a schema with garbage is simply
+        // drawn black.
         .map(|item| format!("{:.4}", item.as_f64().unwrap_or(0.0)))
         .collect::<Vec<_>>()
         .join(" ")
 }
 
-/// JSON-значение → проводная строка (`jsonValueToWireString` оригинала).
+/// JSON value → wire string (the original's `jsonValueToWireString`).
 fn json_wire(value: &Value) -> String {
     match value {
         Value::Bool(b) => if *b { "true" } else { "false" }.to_string(),
@@ -505,8 +516,8 @@ fn json_wire(value: &Value) -> String {
     }
 }
 
-/// Значение по умолчанию из схемы → проводная строка с учётом типа
-/// (`coerceDefaultWireString` оригинала).
+/// Default value from the schema → wire string taking the type into
+/// account (the original's `coerceDefaultWireString`).
 fn coerce_default_wire(value: &Value, type_name: &str) -> String {
     if type_name == "color" {
         match value {
@@ -519,8 +530,8 @@ fn coerce_default_wire(value: &Value, type_name: &str) -> String {
         return if truthy(value) { "true" } else { "false" }.to_string();
     }
     if type_name == "slider" {
-        // Оригинал приводит к числу только int/float, всё остальное — 0.0
-        // (bool в Python наследник int, поэтому true даёт «1»).
+        // The original converts to a number only int/float, everything else is 0.0
+        // (bool in Python is a subclass of int, so true gives "1").
         let number = match value {
             Value::Number(n) => n.as_f64().unwrap_or(0.0),
             Value::Bool(b) => f64::from(u8::from(*b)),
@@ -531,9 +542,10 @@ fn coerce_default_wire(value: &Value, type_name: &str) -> String {
     json_wire(value)
 }
 
-/// Число из поля схемы с запасным значением. Оригинал пишет
-/// `float(v.get("max", 1.0) or 1.0)`: ложное значение (в том числе ноль!)
-/// подменяется запасным — это заметный квирк, максимум `0` превращается в `1`.
+/// A number from a schema field with a fallback value. The original writes
+/// `float(v.get("max", 1.0) or 1.0)`: a falsy value (zero included!) is
+/// replaced with the fallback — a noticeable quirk, a maximum of `0` turns
+/// into `1`.
 fn number_or(value: Option<&Value>, fallback: f64) -> f64 {
     let Some(value) = value else {
         return fallback;
@@ -544,14 +556,15 @@ fn number_or(value: Option<&Value>, fallback: f64) -> f64 {
     match value {
         Value::Number(n) => n.as_f64().unwrap_or(fallback),
         Value::Bool(_) => 1.0,
-        // Оригинал зовёт float("...") и падает на нечисловой строке; при
-        // порте вместо исключения берём запасное значение.
+        // The original calls float("...") and crashes on a non-numeric string;
+        // during the port we take the fallback value instead of an exception.
         Value::String(s) => s.trim().parse::<f64>().unwrap_or(fallback),
         _ => fallback,
     }
 }
 
-/// Подпись записи: текст из схемы, а если его нет — сам ключ.
+/// Record label: the text from the schema, and if there is none, the key
+/// itself.
 fn label_or_key(fields: &Map<String, Value>, key: &str) -> String {
     match fields.get("text") {
         Some(value) if truthy(value) => match value {
@@ -562,7 +575,7 @@ fn label_or_key(fields: &Map<String, Value>, key: &str) -> String {
     }
 }
 
-/// Тип свойства в нижнем регистре (в схемах встречается «Slider»).
+/// Property type in lower case (schemas contain "Slider").
 fn type_name(fields: &Map<String, Value>) -> String {
     match fields.get("type") {
         None => String::new(),
@@ -571,7 +584,7 @@ fn type_name(fields: &Map<String, Value>) -> String {
     }
 }
 
-/// Пустая карта полей для записей схемы, которые оказались не словарём.
+/// An empty field map for schema records that turned out not to be a dict.
 fn fields_of(value: &Value) -> Map<String, Value> {
     match value {
         Value::Object(map) => map.clone(),
@@ -579,12 +592,12 @@ fn fields_of(value: &Value) -> Map<String, Value> {
     }
 }
 
-/// Разобрать схему обоины в строки редактора.
+/// Parse the wallpaper's schema into editor rows.
 ///
-/// Порядок строк: сначала предопределённые свойства (цвет схемы, затем звук),
-/// потом пользовательские, отсортированные по полю `order`. Сортировка
-/// устойчивая — при равных `order` порядок остаётся тем, в каком ключи лежат
-/// в JSON (за это отвечает feature `preserve_order` у serde_json).
+/// Row order: first the predefined properties (scheme colour, then sound),
+/// then the user ones sorted by the `order` field. The sort is stable — with
+/// equal `order` the order stays as the keys lie in the JSON (the
+/// `preserve_order` feature of serde_json takes care of that).
 pub fn build_entries(schema_json: &str) -> Vec<Entry> {
     let schema = match serde_json::from_str::<Value>(schema_json) {
         Ok(Value::Object(map)) => map,
@@ -649,11 +662,13 @@ pub fn build_entries(schema_json: &str) -> Vec<Entry> {
     entries
 }
 
-/// Предопределённые свойства демона — они не из схемы обоины, а из протокола.
+/// Predefined properties of the daemon — they come not from the wallpaper's
+/// schema but from the protocol.
 ///
-/// ⚠️ Числовые поля берутся ИЗ СХЕМЫ, а не выдумываются: у «скорости
-/// воспроизведения» демон присылает `min: 10`, `max: 400`, `step: 10` и
-/// `suffix: "%"`, и без них ползунок оказался бы от 0 до 1 без процентов.
+/// Warning: the numeric fields are taken FROM THE SCHEMA, not invented: for
+/// "playback speed" the daemon sends `min: 10`, `max: 400`, `step: 10` and
+/// `suffix: "%"`, and without them the slider would go from 0 to 1 without
+/// percent.
 fn predefined_entries(schema: &Map<String, Value>) -> Vec<Entry> {
     let make = |key: &str,
                 fields: &Map<String, Value>,
@@ -700,14 +715,14 @@ fn predefined_entries(schema: &Map<String, Value>) -> Vec<Entry> {
         DEFAULT_SCHEME_COLOR,
     )];
 
-    // Строка звука появляется, только если ключ есть в схеме: обои без звука
-    // не должны показывать выключатель, которым нечего выключать.
+    // The sound row appears only if the key is in the schema: a wallpaper
+    // without sound must not show a switch with nothing to switch off.
     if schema.contains_key(ENABLE_AUDIO_KEY) {
         let audio = fields_of(schema.get(ENABLE_AUDIO_KEY).unwrap_or(&Value::Null));
         entries.push(make(ENABLE_AUDIO_KEY, &audio, "Enable audio", "bool", "true"));
     }
 
-    // Скорость воспроизведения — тем же порядком и на тех же условиях.
+    // Playback speed — in the same order and under the same conditions.
     if schema.contains_key(PLAYBACK_SPEED_KEY) {
         let speed = fields_of(schema.get(PLAYBACK_SPEED_KEY).unwrap_or(&Value::Null));
         entries.push(make(
@@ -719,8 +734,8 @@ fn predefined_entries(schema: &Map<String, Value>) -> Vec<Entry> {
         ));
     }
 
-    // waywallen 0.4.2 (`user_property_model.cpp`): параллакс от мыши —
-    // выключатель, по умолчанию включён, тем же порядком после скорости.
+    // waywallen 0.4.2 (`user_property_model.cpp`): mouse parallax — a switch,
+    // on by default, in the same order after the speed.
     if schema.contains_key(MOUSE_PARALLAX_KEY) {
         let parallax = fields_of(schema.get(MOUSE_PARALLAX_KEY).unwrap_or(&Value::Null));
         entries.push(make(MOUSE_PARALLAX_KEY, &parallax, "Mouse parallax", "bool", "true"));
@@ -728,8 +743,8 @@ fn predefined_entries(schema: &Map<String, Value>) -> Vec<Entry> {
     entries
 }
 
-/// Шаг ползунка из схемы (`step`). Отсутствие и нечисловое поле дают ноль —
-/// разметка вендора трактует его как «шага нет».
+/// Slider step from the schema (`step`). A missing or non-numeric field
+/// gives zero — the vendor's markup treats it as "no step".
 fn step_of(fields: &Map<String, Value>) -> f64 {
     match fields.get("step") {
         Some(Value::Number(n)) => n.as_f64().unwrap_or(0.0),
@@ -737,8 +752,8 @@ fn step_of(fields: &Map<String, Value>) -> f64 {
     }
 }
 
-/// Строковое поле схемы. Нестроковое значение — пустая строка, ровно как у
-/// `QJsonValue::toString()` оригинала.
+/// A string field of the schema. A non-string value is an empty string,
+/// exactly as with the original's `QJsonValue::toString()`.
 fn text_of(fields: &Map<String, Value>, name: &str) -> String {
     match fields.get(name) {
         Some(Value::String(s)) => s.clone(),
@@ -746,8 +761,8 @@ fn text_of(fields: &Map<String, Value>, name: &str) -> String {
     }
 }
 
-/// Подпись плагина (`{pluginId, msgid}`) сырым JSON. Пусто, когда поля нет
-/// или оно не объект: переводить тогда нечего.
+/// The plugin label (`{pluginId, msgid}`) as raw JSON. Empty when the field
+/// is missing or is not an object: then there is nothing to translate.
 fn localized_of(fields: &Map<String, Value>, name: &str) -> String {
     match fields.get(name) {
         Some(value @ Value::Object(map)) if !map.is_empty() => value.to_string(),
@@ -755,8 +770,9 @@ fn localized_of(fields: &Map<String, Value>, name: &str) -> String {
     }
 }
 
-/// То же, что label_or_key, но запасной вариант — не ключ, а готовая подпись
-/// протокола (у предопределённых свойств ключ пользователю не показывают).
+/// The same as label_or_key, but the fallback is not the key but the
+/// protocol's ready label (the key of predefined properties is not shown to
+/// the user).
 fn label_or_key_default(fields: &Map<String, Value>, fallback: &str) -> String {
     match fields.get("text") {
         Some(value) if truthy(value) => match value {
@@ -768,21 +784,22 @@ fn label_or_key_default(fields: &Map<String, Value>, fallback: &str) -> String {
 }
 
 // ============================================================================
-// Qt-слой
+// Qt layer
 // ============================================================================
 
-/// Роли начинаются с Qt::UserRole + 1 (Qt::UserRole == 256) — те же номера,
-/// что у Python-модели и у оригинала.
+/// Roles start at Qt::UserRole + 1 (Qt::UserRole == 256) — the same numbers
+/// as in the Python model and in the original.
 const ROLE_BASE: i32 = 256 + 1;
 
-/// Имена ролей в порядке номеров — единственный источник истины и для
-/// roleNames, и для data(), и для roleNumber().
-/// ⚠️ Порядок ролей — тот же, что у перечисления `Roles` вендора
-/// (`ui/src/model/user_property_model.cppm`), и он же задаёт их номера.
-/// Роли `stepVal` и `valueSuffix` появились у вендора вместе с ползунком
-/// «скорость воспроизведения»; делегат панели деталей объявляет их
-/// `required property`, а такой делегат без роли просто НЕ СОЗДАЁТСЯ — обе
-/// секции свойств тогда пропадают целиком.
+/// Role names in number order — the single source of truth for roleNames,
+/// data() and roleNumber().
+/// Warning: the role order is the same as the vendor's `Roles` enum
+/// (`ui/src/model/user_property_model.cppm`), and it also sets their
+/// numbers. The `stepVal` and `valueSuffix` roles appeared at the vendor
+/// together with the "playback speed" slider; the details panel delegate
+/// declares them as `required property`, and such a delegate without the
+/// role is simply NOT CREATED — both property sections then disappear
+/// entirely.
 const ROLE_NAMES: [&str; 14] = [
     "key",
     "label",
@@ -800,24 +817,27 @@ const ROLE_NAMES: [&str; 14] = [
     "kind",
 ];
 
-/// Индексы ролей, зависящих от оверрайда: ровно они летят в dataChanged при
-/// правке значения. Остальные роли берутся из схемы и не меняются.
+/// Indices of the roles that depend on the override: exactly they go into
+/// dataChanged when a value is edited. The other roles are taken from the
+/// schema and do not change.
 const ROLE_CURRENT_VALUE: usize = 8;
 const ROLE_HAS_ALPHA: usize = 9;
 
-/// Индексы ролей, зависящих от КАТАЛОГА ПОДПИСЕЙ, а не от схемы: подпись
-/// строки и подписи вариантов combo. Обе считаются в `data()` через
-/// `PluginTranslations`, поэтому приход каталогов обязан их обновить.
+/// Indices of the roles that depend on the LABEL CATALOGUE rather than the
+/// schema: the row label and the combo option labels. Both are computed in
+/// `data()` through `PluginTranslations`, so the arrival of catalogues must
+/// update them.
 const ROLE_LABEL: usize = 1;
 const ROLE_OPTION_LABELS: usize = 10;
 
-/// Rust-состояние модели.
+/// Rust state of the model.
 #[derive(Default)]
 pub struct UserPropertyListModelRust {
     schema_json: String,
     overrides_json: String,
     props: UserProperties,
-    /// Номер подписки на каталоги подписей плагинов; `0` — не подписана.
+    /// Subscription number for the plugin label catalogues; `0` means not
+    /// subscribed.
     translations_watch: u64,
 }
 
@@ -827,8 +847,9 @@ impl Drop for UserPropertyListModelRust {
     }
 }
 
-/// Набор ролей «изменилось текущее значение» — две роли, не пустой вектор.
-/// Пустой означал бы «изменились ВСЕ роли», и QML пересчитал бы весь делегат.
+/// Role set "the current value changed" — two roles, not an empty vector.
+/// An empty one would mean "ALL roles changed", and QML would recompute the
+/// whole delegate.
 fn current_value_roles() -> QVector<i32> {
     let mut roles = QVector::<i32>::default();
     roles.append(ROLE_BASE + ROLE_CURRENT_VALUE as i32);
@@ -836,9 +857,9 @@ fn current_value_roles() -> QVector<i32> {
     roles
 }
 
-/// Набор ролей «приехал каталог подписей» — тоже две, и тоже не пустой:
-/// значение свойства при смене языка не трогается, дёргать из-за подписи
-/// весь делегат незачем.
+/// Role set "a label catalogue arrived" — also two, and also not empty: the
+/// property value is not touched on a language change, and there is no
+/// reason to poke the whole delegate because of a label.
 fn label_roles() -> QVector<i32> {
     let mut roles = QVector::<i32>::default();
     roles.append(ROLE_BASE + ROLE_LABEL as i32);
@@ -847,15 +868,16 @@ fn label_roles() -> QVector<i32> {
 }
 
 impl cxx_qt::Initialize for qobject::UserPropertyListModel {
-    /// Подписка на каталоги подписей плагинов.
+    /// Subscription to the plugin label catalogues.
     ///
-    /// ⭐ Без неё панель свойств показывала покупателю «Enable audio» и
-    /// «Playback speed» по-английски в русском окне: подпись этих
-    /// предопределённых свойств демон отдаёт парой `{pluginId, msgid}`,
-    /// перевод ищется по каталогам, а каталоги грузятся ЛЕНИВО — первым
-    /// же вопросом их и заказывает сам делегат панели. Ответ приходит
-    /// позже, роль `label` к тому времени уже прочитана, и без толчка
-    /// английские слова оставались на экране до пересборки модели.
+    /// ⭐ Without it the property panel showed the customer "Enable audio" and
+    /// "Playback speed" in English in a Russian window: the daemon gives the
+    /// labels of these predefined properties as a `{pluginId, msgid}` pair, the
+    /// translation is looked up in the catalogues, and the catalogues are loaded
+    /// LAZILY — the panel delegate itself orders them with its very first
+    /// question. The answer arrives later, the `label` role has already been
+    /// read by then, and without a push the English words stayed on screen
+    /// until the model was rebuilt.
     fn initialize(mut self: Pin<&mut Self>) {
         let watch = crate::plugin_translations::subscribers::watch(
             self.as_ref().get_ref().qt_thread(),
@@ -866,7 +888,7 @@ impl cxx_qt::Initialize for qobject::UserPropertyListModel {
 }
 
 impl qobject::UserPropertyListModel {
-    // ── Свойства ──────────────────────────────────────────────────────────
+    // ── Properties ────────────────────────────────────────────────────────
     fn schema_json(&self) -> QString {
         QString::from(&self.schema_json)
     }
@@ -887,8 +909,8 @@ impl qobject::UserPropertyListModel {
         self.props.has_overrides_kind(KIND_USER)
     }
 
-    /// Смена схемы = полная замена содержимого, поэтому reset, а не
-    /// insert/remove: строк может стать любое число.
+    /// A schema change = a full replacement of the content, hence a reset
+    /// rather than insert/remove: the number of rows may become anything.
     fn set_schema_json(mut self: Pin<&mut Self>, value: &QString) {
         let value = value.to_string();
         if value == self.schema_json {
@@ -906,9 +928,9 @@ impl qobject::UserPropertyListModel {
         self.as_mut().override_state_changed();
     }
 
-    /// Оверрайды приходят от демона целиком одной строкой. Строки при этом не
-    /// добавляются и не исчезают — меняются только два зависимых от значения
-    /// поля, поэтому reset не нужен, хватает dataChanged по диапазону.
+    /// The overrides come from the daemon as a whole in one string. Rows are not
+    /// added or removed — only the two value-dependent fields change, so a
+    /// reset is not needed, dataChanged over a range is enough.
     fn set_overrides_json(mut self: Pin<&mut Self>, value: &QString) {
         let value = value.to_string();
         if value == self.overrides_json {
@@ -931,10 +953,11 @@ impl qobject::UserPropertyListModel {
         self.as_mut().override_state_changed();
     }
 
-    /// Каталоги подписей приехали (или сменился язык) — перечитать подписи.
+    /// Label catalogues arrived (or the language changed) — re-read the labels.
     ///
-    /// Строки те же и в том же порядке, меняется только текст двух ролей,
-    /// поэтому reset не нужен: хватает `dataChanged` по всему диапазону.
+    /// The rows are the same and in the same order, only the text of two roles
+    /// changes, so a reset is not needed: `dataChanged` over the whole range is
+    /// enough.
     pub fn on_translations_changed(mut self: Pin<&mut Self>) {
         let rows = self.props.len();
         if rows == 0 {
@@ -948,7 +971,7 @@ impl qobject::UserPropertyListModel {
 
     // ── QAbstractListModel ────────────────────────────────────────────────
     fn row_count(&self, parent: &QModelIndex) -> i32 {
-        // У плоского списка дети есть только у корня.
+        // In a flat list only the root has children.
         if parent.is_valid() {
             0
         } else {
@@ -1014,7 +1037,7 @@ impl qobject::UserPropertyListModel {
         }
     }
 
-    // ── API для QML ───────────────────────────────────────────────────────
+    // ── API for QML ───────────────────────────────────────────────────────
     fn set_value(mut self: Pin<&mut Self>, key: &QString, value: &QString) {
         let key = key.to_string();
         let value = value.to_string();
@@ -1023,8 +1046,8 @@ impl qobject::UserPropertyListModel {
             self.as_mut().notify_current_value(row);
         }
         self.as_mut().override_state_changed();
-        // valueChanged — последним: QML в обработчике читает уже обновлённое
-        // состояние модели.
+        // valueChanged goes last: QML reads the already updated model state in the
+        // handler.
         self.as_mut()
             .value_changed(QString::from(&key), QString::from(&value));
     }
@@ -1059,8 +1082,8 @@ impl qobject::UserPropertyListModel {
         self.data(&index, role)
     }
 
-    // ── Внутреннее ────────────────────────────────────────────────────────
-    /// Точечное оповещение об изменении значения одной строки.
+    // ── Internals ─────────────────────────────────────────────────────────
+    /// A targeted notification about a change of one row's value.
     fn notify_current_value(mut self: Pin<&mut Self>, row: usize) {
         let roles = current_value_roles();
         let index = self.index(row as i32, 0, &QModelIndex::default());
@@ -1071,16 +1094,17 @@ impl qobject::UserPropertyListModel {
         let reset = self.as_mut().rust_mut().props.reset_kind(kind);
         for (row, key) in reset {
             self.as_mut().notify_current_value(row);
-            // Сброс уезжает отдельным сигналом: QML шлёт демону reset=true,
-            // а не запись пустой строки.
+            // The reset goes out as a separate signal: QML sends the daemon reset=true,
+            // not a write of an empty string.
             self.as_mut().reset_requested(QString::from(&key));
         }
         self.as_mut().override_state_changed();
     }
 }
 
-/// Перевод подписи плагина по её сырому JSON. Пустой вход — пустой выход:
-/// у большинства свойств `localized_text` в схеме нет вовсе.
+/// Translating a plugin label by its raw JSON. An empty input gives an
+/// empty output: most properties have no `localized_text` in the schema at
+/// all.
 fn plugin_label(localized_json: &str) -> String {
     if localized_json.is_empty() {
         return String::new();
@@ -1088,8 +1112,8 @@ fn plugin_label(localized_json: &str) -> String {
     qobject::plugin_translate(&QString::from(localized_json)).to_string()
 }
 
-/// Список строк для ролей-списков. Отдельная модель под варианты combo не
-/// нужна: QML читает их как обычный массив (`optionValues[index]`).
+/// A string list for list roles. A separate model for combo options is not
+/// needed: QML reads them as an ordinary array (`optionValues[index]`).
 fn string_list(items: &[String]) -> QStringList {
     let mut list = QStringList::default();
     for item in items {
@@ -1102,10 +1126,10 @@ fn string_list(items: &[String]) -> QStringList {
 mod tests {
     use super::*;
 
-    /// Голден снят с ЖИВОЙ Python-модели (см. tests/golden/user_property_cases.py).
-    /// Здесь он прогоняется через чистый слой порта: строки, значения ролей,
-    /// флаги оверрайдов и — главное — сигналы (какие строки и в каком порядке
-    /// попадают в dataChanged/resetRequested).
+    /// The golden file was captured from the LIVE Python model (see
+    /// tests/golden/user_property_cases.py). Here it is run through the port's
+    /// pure layer: rows, role values, override flags and — above all — signals
+    /// (which rows and in what order get into dataChanged/resetRequested).
     #[derive(serde::Deserialize)]
     struct Golden {
         cases: Vec<Case>,
@@ -1178,8 +1202,9 @@ mod tests {
         value: String,
     }
 
-    /// Что порт «испустил бы» сигналами: те же события, что снимает голден с
-    /// Python-модели, но собранные из возвратов чистого слоя.
+    /// What the port "would have emitted" as signals: the same events the
+    /// golden file captures from the Python model, but assembled from the pure
+    /// layer's return values.
     #[derive(Default)]
     struct Emitted {
         data_changed: Vec<(usize, usize, Vec<String>)>,
@@ -1189,7 +1214,8 @@ mod tests {
 
     const VALUE_ROLES: [&str; 2] = ["currentValue", "hasAlpha"];
 
-    /// Имя секции эталона Python-эпохи → имя секции waywallen 0.3.8.
+    /// Section name of the Python-era reference → the waywallen 0.3.8 section
+    /// name.
     fn section_of(golden: &str) -> &'static str {
         match golden {
             "Properties" => SECTION_PREDEFINED,
@@ -1202,15 +1228,15 @@ mod tests {
         let mut props = UserProperties::default();
         let mut out = Emitted::default();
 
-        // Оба присваивания идут через проверку «значение не менялось» — она
-        // живёт в set_schema_json/set_overrides_json и её видно в голдене:
-        // у случая с пустой схемой модель остаётся вообще без строк, потому
-        // что пустая строка равна начальному значению свойства.
+        // Both assignments go through the "value did not change" check — it lives
+        // in set_schema_json/set_overrides_json and is visible in the golden file:
+        // in the case with an empty schema the model stays without any rows at
+        // all, because an empty string equals the initial property value.
         if !case.schema_json.is_empty() {
             props.set_schema(&case.schema_json);
         }
-        // Голден снимает сигналы, начиная с установки оверрайдов: сборка
-        // схемы идёт через reset модели, а не через dataChanged.
+        // The golden file captures signals starting with setting the overrides:
+        // building the schema goes through a model reset, not through dataChanged.
         if !case.overrides_json.is_empty() {
             props.set_overrides(&case.overrides_json);
             if !props.is_empty() {
@@ -1279,11 +1305,11 @@ mod tests {
                 assert_eq!(entry.supported, expected.supported, "{at}: supported");
                 assert_eq!(entry.min_val, expected.min_val, "{at}: minVal");
                 assert_eq!(entry.max_val, expected.max_val, "{at}: maxVal");
-                // ⚠ Эталон снят с ЖИВОЙ Python-модели времён waywallen
-                // ≤0.3.7, где секция звалась человеческой строкой. С 0.3.8
-                // вендор переименовал её в технический ключ, а заголовок
-                // научился переводить сам — поэтому эталон приводится к
-                // новым именам, а не переписывается руками.
+                // Warning: the reference was captured from the LIVE Python model of the
+                // waywallen ≤0.3.7 era, where the section was named with a human-readable
+                // string. Since 0.3.8 the vendor renamed it to a technical key and learned
+                // to translate the header itself — so the reference is converted to the new
+                // names rather than rewritten by hand.
                 assert_eq!(
                     entry.section,
                     section_of(&expected.section),
@@ -1339,8 +1365,8 @@ mod tests {
 
     #[test]
     fn format_g_matches_python() {
-        // Значения снизу — вывод `"%g" % v` в Python (проверено вручную на
-        // тех же числах, что участвуют в схемах обоев).
+        // The values below are the output of `"%g" % v` in Python (checked by hand
+        // on the same numbers that appear in wallpaper schemas).
         for (value, expected) in [
             (0.0, "0"),
             (0.5, "0.5"),
@@ -1360,8 +1386,8 @@ mod tests {
 
     #[test]
     fn empty_override_is_a_value_not_a_reset() {
-        // Регресс v0.2.5: пустая строка — валидное значение текстового
-        // свойства, и она НЕ должна означать «вернуть значение по умолчанию».
+        // Regression of v0.2.5: an empty string is a valid value of a text
+        // property, and it must NOT mean "return to the default value".
         let mut props = UserProperties::default();
         props.set_schema(r#"{"caption": {"type": "textinput", "value": "по умолчанию"}}"#);
         let row = props.entries().len() - 1;
@@ -1373,16 +1399,16 @@ mod tests {
         assert_eq!(props.current_value(row), "по умолчанию");
     }
 
-    /// Сторож договора с вендорной разметкой.
+    /// Guard of the contract with the vendored markup.
     ///
-    /// ЗАЧЕМ. Делегат панели деталей объявляет свои поля `required property`,
-    /// и роль, которой у модели нет, — это не «пустое значение», а отказ
-    /// СОЗДАТЬ делегат: обе секции свойств пропадают с экрана целиком,
-    /// молча. Ровно так и случилось с `stepVal`/`valueSuffix`: они приехали
-    /// с вендорным QML v0.3.5, а модель о них не узнала, и панель свойств
-    /// была пуста с 18.08.2026. Проверка снимает список прямо с вендорного
-    /// файла, поэтому следующее такое поле поймается на `cargo test`, а не
-    /// на живом окне.
+    /// WHY. The details panel delegate declares its fields as `required
+    /// property`, and a role the model does not have is not "an empty value"
+    /// but a refusal to CREATE the delegate: both property sections disappear
+    /// from the screen entirely, silently. That is exactly what happened with
+    /// `stepVal`/`valueSuffix`: they came with the vendored QML v0.3.5, the
+    /// model did not learn about them, and the property panel was empty since
+    /// 18.08.2026. The check takes the list straight from the vendored file, so
+    /// the next such field will be caught by `cargo test`, not on a live window.
     #[test]
     fn delegate_required_properties_are_covered_by_roles() {
         const PANEL_QML: &str = include_str!(concat!(
@@ -1391,17 +1417,17 @@ mod tests {
             "WallpaperDetailPanel.qml"
         ));
 
-        // Делегат модели свойств опознаётся по своему `id`: подстрока
-        // `delegate: ColumnLayout` встречается и у делегата СЕКЦИИ
-        // (`section.delegate:`), а у того объявление ровно одно.
+        // The property model's delegate is recognized by its `id`: the substring
+        // `delegate: ColumnLayout` also occurs in the SECTION delegate
+        // (`section.delegate:`), while that declaration exists exactly once.
         let start = PANEL_QML
             .find("id: m_prop_delegate")
             .expect("в панели деталей обязан быть делегат свойств");
         let block = &PANEL_QML[start..];
-        // waywallen 0.6.0: делегат получает одну `required property
-        // MD.LazyRow row` (источник `MD.ItemModelSource` над нашей моделью),
-        // а роли читает как `row.value.<роль>`. До 0.6.0 каждая роль была
-        // своим `required property`. Понимаем оба вида.
+        // waywallen 0.6.0: the delegate gets a single `required property
+        // MD.LazyRow row` (the source is `MD.ItemModelSource` over our model) and
+        // reads the roles as `row.value.<role>`. Before 0.6.0 every role was its
+        // own `required property`. We understand both forms.
         let mut required: Vec<&str> = Vec::new();
         for line in block.lines() {
             let line = line.trim();
@@ -1426,8 +1452,8 @@ mod tests {
                 continue;
             }
             if !required.is_empty() && !line.is_empty() && !line.starts_with("readonly property") {
-                // Объявления идут одним куском: первая же строка после
-                // них закрывает список.
+                // The declarations come in one piece: the very first line after them
+                // closes the list.
                 break;
             }
         }
@@ -1446,8 +1472,8 @@ mod tests {
         }
     }
 
-    /// Три предопределённых свойства демона — те же, что у вендора
-    /// (`isPredefinedKey`): цвет схемы, звук, скорость воспроизведения.
+    /// The three predefined properties of the daemon — the same as the vendor's
+    /// (`isPredefinedKey`): scheme colour, sound, playback speed.
     #[test]
     fn playback_speed_is_a_predefined_row_with_schema_limits() {
         let mut props = UserProperties::default();

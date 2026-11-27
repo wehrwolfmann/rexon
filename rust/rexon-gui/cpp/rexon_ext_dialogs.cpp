@@ -18,12 +18,13 @@
 
 namespace {
 
-/// Отдельный движок QML для диалогов.
+/// A separate QML engine for the dialogs.
 ///
-/// Не берётся движок страницы намеренно: объект действий может создаваться и
-/// вне QML (проверками, стендом), и тогда `qmlEngine(this)` вернул бы nullptr,
-/// а диалог молча не открылся бы. Свой движок работает одинаково в обоих
-/// случаях и живёт до конца процесса — как и сам значок в лотке.
+/// The page's engine is deliberately not used: the actions object may be
+/// created outside QML too (by checks, by a test bench), and then
+/// `qmlEngine(this)` would return nullptr and the dialog would silently not
+/// open. Our own engine works the same in both cases and lives until the
+/// end of the process — like the tray icon itself.
 QQmlEngine* dialog_engine()
 {
     static QQmlEngine* engine = nullptr;
@@ -33,8 +34,8 @@ QQmlEngine* dialog_engine()
     return engine;
 }
 
-/// Окно приложения, которому диалог станет дочерним. Без него диалог не
-/// модален и на Wayland может открыться за главным окном.
+/// The application window the dialog will become a child of. Without it the
+/// dialog is not modal and on Wayland may open behind the main window.
 QWindow* parent_window()
 {
     const auto windows = QGuiApplication::topLevelWindows();
@@ -45,12 +46,13 @@ QWindow* parent_window()
     return windows.isEmpty() ? nullptr : windows.first();
 }
 
-/// Создать объект из QML-текста и прокрутить вложенный цикл, пока QML не
-/// поднимет свойство `finished`.
+/// Create an object from QML text and spin a nested loop until QML raises
+/// the `finished` property.
 ///
-/// Возврат — сам объект (владение у вызывающего) либо nullptr, если QML не
-/// скомпилировался. Молчать при ошибке нельзя: пустой диалог человек примет
-/// за поломку программы, поэтому причина уходит в предупреждение Qt.
+/// Returns the object itself (owned by the caller) or nullptr if the QML
+/// did not compile. Staying silent on an error is not allowed: the user
+/// would take an empty dialog for a program breakage, so the reason goes to
+/// a Qt warning.
 QObject* run_dialog(const char* qml, const char* name,
                     const QList<QPair<const char*, QVariant>>& props)
 {
@@ -75,9 +77,10 @@ QObject* run_dialog(const char* qml, const char* name,
         root->setProperty(p.first, p.second);
     root->setProperty("win", QVariant::fromValue(parent_window()));
 
-    // Ждём смены свойства `finished`. Сигнал берётся метаметодом, а не
-    // макросом SIGNAL: тип объекта известен только в рантайме (его напечатал
-    // QML), а лямбда-подключение требует указателя на член.
+    // We wait for the `finished` property to change. The signal is taken as a
+    // metamethod, not with the SIGNAL macro: the object type is known only at
+    // run time (QML emitted it), and a lambda connection requires a
+    // pointer-to-member.
     const QMetaObject* mo = root->metaObject();
     const int sig = mo->indexOfSignal("finishedChanged()");
     const int slot = QEventLoop::staticMetaObject.indexOfSlot("quit()");
@@ -93,8 +96,9 @@ QObject* run_dialog(const char* qml, const char* name,
         delete root;
         return nullptr;
     }
-    // `finished` мог подняться прямо в `start()` (портал отказал сразу) — тогда
-    // цикл крутить уже нечего, иначе он не завершился бы никогда.
+    // `finished` may have been raised right in `start()` (the portal refused
+    // at once) — then there is no loop left to spin, otherwise it would never
+    // end.
     if (!root->property("finished").toBool())
         loop.exec();
     if (guard.isNull())
@@ -104,7 +108,7 @@ QObject* run_dialog(const char* qml, const char* name,
 
 }  // namespace
 
-// ── выбор файла ───────────────────────────────────────────────────────────
+// ── choosing a file ───────────────────────────────────────────────────────
 
 QString rexon_ext_pick_file(const QString& title, const QString& filter,
                             const QString& folder)
@@ -156,13 +160,13 @@ QtObject {
     return path;
 }
 
-// ── сохранение файла ──────────────────────────────────────────────────────
+// ── saving a file ─────────────────────────────────────────────────────────
 
 QString rexon_ext_save_file(const QString& title, const QString& filter,
                             const QString& path)
 {
-    // Тот же диалог, что выбор файла, в режиме сохранения: имя подставлено,
-    // о замене существующего файла спрашивает сам диалог.
+    // The same dialog as for choosing a file, in save mode: the name is filled
+    // in, and the dialog itself asks about replacing an existing file.
     static const char* kQml = R"QML(
 import QtQuick
 import QtQuick.Dialogs
@@ -214,14 +218,16 @@ QtObject {
     return chosen;
 }
 
-// ── вопрос «да/нет» ───────────────────────────────────────────────────────
+// ── a "yes/no" question ───────────────────────────────────────────────────
 
 bool rexon_ext_confirm(const QString& title, const QString& text, const QString& skin)
 {
-    // Окно вопроса рисуется самим Rexon, в цветах его скина. Прежде это был
-    // системный `MessageDialog`: светлое окно чужого стиля поверх тёмного
-    // Rexon (приёмка 10.10.2026). Цвета и подписи кнопок приходят строкой
-    // `skin` (`extensions_actions::confirm_skin`) — своих решений у шима нет.
+    // The question window is drawn by Rexon itself, in its skin colours.
+    // Previously it was the system `MessageDialog`: a light window of a
+    // foreign style over the dark Rexon (acceptance 10.10.2026). The button
+    // colours and labels arrive as the `skin` string
+    // (`extensions_actions::confirm_skin`) — the shim has no decisions of its
+    // own.
     static const char* kQml = R"QML(
 import QtQuick
 import QtQuick.Window
@@ -351,7 +357,7 @@ QtObject {
     return ok;
 }
 
-// ── выбор шрифта ──────────────────────────────────────────────────────────
+// ── choosing a font ───────────────────────────────────────────────────────
 
 QString rexon_ext_pick_font(const QString& title, const QString& family,
                             std::int32_t size, std::int32_t weight,
@@ -415,8 +421,9 @@ QtObject {
 
     QObject* root = run_dialog(kQml, "FontPick", props);
     if (root == nullptr) {
-        // Окно не поднялось — это НЕ «передумал»: вкладка обязана сказать
-        // человеку разное, иначе кнопка читается как поломка.
+        // The window did not come up — this is NOT "changed their mind": the tab
+        // must tell the user different things, otherwise the button reads as
+        // broken.
         outcome = -1;
         return QString();
     }
@@ -431,7 +438,7 @@ QtObject {
     return spec;
 }
 
-// ── каталог в файловом менеджере ──────────────────────────────────────────
+// ── a directory in the file manager ───────────────────────────────────────
 
 bool rexon_ext_open_folder(const QString& path)
 {
@@ -440,16 +447,17 @@ bool rexon_ext_open_folder(const QString& path)
     return QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 }
 
-// ── страница товара в браузере ────────────────────────────────────────────
+// ── an item page in the browser ───────────────────────────────────────────
 
 bool rexon_ext_open_url(const QString& url)
 {
     if (url.isEmpty())
         return false;
-    // ⚠️ Не `QUrl::fromLocalFile`, как у каталога выше: сюда приходит адрес
-    // САЙТА (страница темы на pling, страница пакета на aur.archlinux.org).
-    // Локальная обёртка превратила бы «https://…» в путь к несуществующему
-    // файлу, и кнопка «Открыть страницу» молча ничего не делала бы.
+    // Warning: not `QUrl::fromLocalFile` as for the directory above: what comes
+    // here is a SITE address (a theme page on pling, a package page on
+    // aur.archlinux.org). A local wrapper would turn "https://…" into a path to
+    // a non-existent file, and the "Open page" button would silently do
+    // nothing.
     const QUrl parsed(url);
     if (!parsed.isValid() || parsed.scheme().isEmpty())
         return false;

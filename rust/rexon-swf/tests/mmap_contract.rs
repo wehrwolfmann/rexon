@@ -1,5 +1,5 @@
-//! Договор mmap-кадра и счётчика поколения (без GPU). Читатель ниже написан независимо от писателя
-//! и повторяет общий блок чтения `extension.js` Rexon: счётчик до → копия кадра → счётчик после.
+//! Contract of the mmap frame and the generation counter (without the GPU). The reader below is written independently of the writer
+//! and repeats the shared read block of Rexon's `extension.js`: counter before → frame copy → counter after.
 
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -25,7 +25,7 @@ fn spec(d: &Path, w: u32, h: u32, with_gen: bool) -> MmapSpec {
     }
 }
 
-/// Независимый читатель (как extension.js): None — кадр не показывать в этот тик.
+/// An independent reader (like extension.js): None — do not show the frame in this tick.
 fn read_whole_frame(frame: &Path, gen_path: &Path, expected: usize) -> Option<Vec<u8>> {
     let generation = |p: &Path| -> Option<u64> {
         let b = std::fs::read(p).ok()?;
@@ -49,7 +49,7 @@ fn read_whole_frame(frame: &Path, gen_path: &Path, expected: usize) -> Option<Ve
 fn fresh_files_mode_and_initial_state() {
     let d = tmp("fresh");
     let s = spec(&d, 8, 4, true);
-    std::fs::write(&s.frame_path, vec![7u8; 8 * 4 * 4]).unwrap(); // кадр прежних обоев
+    std::fs::write(&s.frame_path, vec![7u8; 8 * 4 * 4]).unwrap(); // frame of the previous wallpaper
     let old = std::fs::File::open(&s.frame_path).unwrap();
     let w = MmapWriter::create(&s).unwrap();
     let meta = std::fs::metadata(&s.frame_path).unwrap();
@@ -87,13 +87,13 @@ fn without_generation_file() {
     let mut w = MmapWriter::create(&s).unwrap();
     w.write_frame(&[1u8; 16]).unwrap();
     assert!(!d.join("rexon-wp-frame.rgba.gen").exists());
-    // читатель без счётчика ведёт себя как прежнее расширение
+    // a reader without a counter behaves like the old extension
     assert_eq!(read_whole_frame(&s.frame_path, &d.join("rexon-wp-frame.rgba.gen"), 16).unwrap(), vec![1u8; 16]);
     std::fs::remove_dir_all(d).unwrap();
 }
 
-/// Писатель пишет однотонные кадры, читатели копируют без замка.
-/// Со счётчиком — ни одного рваного кадра; без счётчика рваные бывают (печатается для сравнения).
+/// The writer writes solid-color frames, readers copy without a lock.
+/// With the counter — not a single torn frame; without the counter torn ones happen (printed for comparison).
 #[test]
 fn concurrent_reader_never_sees_torn_frame() {
     let d = tmp("race");
@@ -126,7 +126,7 @@ fn concurrent_reader_never_sees_torn_frame() {
         (accepted, skipped, torn, raw_reads, raw_torn)
     });
     let mut buf = vec![0u8; len];
-    // Между кадрами пауза, как у хоста (при 60 к/с — 16 мс; здесь 2 мс, чтобы гонка была частой).
+    // A pause between frames, as in the host (16 ms at 60 fps; 2 ms here so the race happens often).
     for i in 0..300u32 {
         buf.fill((i % 251) as u8);
         writer.write_frame(&buf).unwrap();

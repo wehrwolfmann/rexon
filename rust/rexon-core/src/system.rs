@@ -1,44 +1,44 @@
-//! Системный слой — порт `rexon/system.py` (ТОЛЬКО чистая логика).
+//! System layer: a port of `rexon/system.py` (pure logic ONLY).
 //!
-//! Портировано:
-//!   * `PkgFamily` — семейство пакетного менеджера (enum);
-//!   * `DistroDetector.ID_MAP` + детекция дистрибутива: разбор os-release
-//!     (текст подаётся параметром, файловый фолбэк /etc → /usr/lib — в
-//!     `parse_os_release_files`; живое чтение — тонкая обёртка
-//!     `DistroDetector::detect_live`), детекция по бинарникам вынесена за
-//!     предикат `has_binary` (как `command_exists` в settings.rs);
-//!   * `PackageDB` — вся встроенная база DE (`DE_DATABASE`, 15 DE, включая
-//!     LXQt, Wayfire и тайловые niri/sway/river, × семейства пакетов) + мета для UI
-//!     (`DE_META`) и функции выбора
-//!     пакетов для (de, family);
-//!   * чистые алгоритмы установщика: `expand_groups` (раскрытие групп
-//!     pacman), `parse_qi_field`/`qi_field` (разбор `pacman -Qi`),
+//! Ported:
+//!   * `PkgFamily`: the package manager family (enum);
+//!   * `DistroDetector.ID_MAP` + distribution detection: os-release parsing
+//!     (the text is passed as a parameter, the file fallback /etc → /usr/lib
+//!     is in `parse_os_release_files`; live reading is the thin wrapper
+//!     `DistroDetector::detect_live`), binary-based detection is moved behind
+//!     the `has_binary` predicate (like `command_exists` in settings.rs);
+//!   * `PackageDB`: the whole built-in DE database (`DE_DATABASE`, 15 DEs,
+//!     including LXQt, Wayfire and the tiling niri/sway/river, × package
+//!     families) + UI metadata (`DE_META`) and the functions choosing
+//!     packages for (de, family);
+//!   * pure installer algorithms: `expand_groups` (expanding pacman groups),
+//!     `parse_qi_field`/`qi_field` (parsing `pacman -Qi`),
 //!     `required_by_outside`, `filter_removable_transitive` (forbidden set +
-//!     транзитивное замыкание по `Depends On`). Вывод pacman подаётся
-//!     замыканием-фикстурой; live-вызовы `pacman -Qg`/`-Qi` (под LANG=C —
-//!     русская локаль ломает разбор полей, см. тест `russian-locale-*`)
-//!     остаются на стороне исполнителя.
+//!     transitive closure over `Depends On`). The pacman output is passed as
+//!     a fixture closure; the live `pacman -Qg`/`-Qi` calls (under LANG=C: a
+//!     Russian locale breaks field parsing, see the `russian-locale-*` test)
+//!     stay on the executor's side.
 //!
-//! ГРАНИЦА. Всё, что ВЫПОЛНЯЕТ — запускает команды, ходит в pkexec, читает
-//! живую файловую систему, — лежит в двух соседях, а не здесь:
-//!   * решения и argv (тексты helper-скриптов, polkit-политики, планы
-//!     установки, откат форков Plasma / Plymouth / SDDM, детект экрана входа)
-//!     — [`crate::system_plan`];
-//!   * сами походы наружу — [`crate::system_exec`]: `pkexec`-хелперы,
-//!     `systemctl is-enabled`, опрос пакетного менеджера, каталоги
-//!     `/etc/sddm.conf.d` и `/usr/share/plymouth/themes`, `logout_session`.
-//!     Побочные вызовы там инъектируются трейтом `SystemIo`, поэтому
-//!     исполнитель проверяется без живой машины.
+//! BOUNDARY. Everything that EXECUTES (runs commands, goes to pkexec, reads
+//! the live file system) lives in two neighbours, not here:
+//!   * decisions and argv (helper script texts, polkit policies, install
+//!     plans, rollback of Plasma forks / Plymouth / SDDM, login screen
+//!     detection): [`crate::system_plan`];
+//!   * the trips outside themselves: [`crate::system_exec`]: `pkexec`
+//!     helpers, `systemctl is-enabled`, package manager queries, the
+//!     `/etc/sddm.conf.d` and `/usr/share/plymouth/themes` directories,
+//!     `logout_session`. Side calls there are injected via the `SystemIo`
+//!     trait, so the executor is tested without a live machine.
 //!
-//! НА ПИТОНЕ ПОКА ОСТАЛОСЬ (следующий заход): установка, переключение и
-//! удаление рабочих столов (`install_de`/`switch_de`/`remove_de`,
+//! STILL IN PYTHON (next round): installing, switching and removing desktops
+//! (`install_de`/`switch_de`/`remove_de`,
 //! `PackageManager.install/install_batch/remove/update_db/run_post_install`,
-//! `ensure_display_manager`, пересборка AeroShell) и живые проверки
-//! установленности `SystemInfo`/`DesktopEnvironment`.
+//! `ensure_display_manager`, the AeroShell rebuild) and live installation
+//! checks of `SystemInfo`/`DesktopEnvironment`.
 //!
-//! Каждая портированная функция сверяется с Python-оракулом golden-тестами
-//! `tests/system_parity.rs` (фикстуры `tests/golden/system_*.json` сняты с
-//! живого `rexon.system`).
+//! Each ported function is checked against the Python oracle by the golden
+//! tests `tests/system_parity.rs` (fixtures `tests/golden/system_*.json` were
+//! taken from the live `rexon.system`).
 
 use std::collections::HashSet;
 use std::os::unix::fs::PermissionsExt;
@@ -52,12 +52,12 @@ use crate::i18n::n_;
 // PkgFamily
 // ============================================================================
 
-/// Семейство пакетного менеджера — порт `PkgFamily(str, Enum)`.
+/// Package manager family: a port of `PkgFamily(str, Enum)`.
 ///
-/// Значения совпадают со строковыми `PkgFamily.<X>.value`, чтобы сериализация
-/// (`family.value`) и разбор os-release давали то же, что Python.
-/// `distro_compat.rs` реэкспортирует этот тип (в Python enum живёт в
-/// system.py, distro_compat.py его импортирует).
+/// The values match the string `PkgFamily.<X>.value`, so that serialization
+/// (`family.value`) and os-release parsing give the same as Python.
+/// `distro_compat.rs` re-exports this type (in Python the enum lives in
+/// system.py, and distro_compat.py imports it).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PkgFamily {
     Arch,
@@ -75,7 +75,7 @@ pub enum PkgFamily {
 }
 
 impl PkgFamily {
-    /// Строковое значение enum — как `PkgFamily.<X>.value` в Python.
+    /// String value of the enum, like `PkgFamily.<X>.value` in Python.
     pub fn as_str(self) -> &'static str {
         match self {
             PkgFamily::Arch => "arch",
@@ -93,9 +93,10 @@ impl PkgFamily {
         }
     }
 
-    /// Разбор из строкового значения (обратно к `as_str`); неизвестное → None.
-    /// Имя `from_value` — не `from_str` — чтобы не путать со `std::str::FromStr`
-    /// (тот возвращает `Result`, здесь семантика Python `PkgFamily(value)`).
+    /// Parse from the string value (the reverse of `as_str`); unknown → None.
+    /// Named `from_value`, not `from_str`, to avoid confusion with
+    /// `std::str::FromStr` (that returns `Result`, here the semantics are
+    /// Python's `PkgFamily(value)`).
     pub fn from_value(s: &str) -> Option<Self> {
         Some(match s {
             "arch" => PkgFamily::Arch,
@@ -115,7 +116,7 @@ impl PkgFamily {
     }
 }
 
-/// Сериализуется как строковое значение (аналог `PkgFamily.value` в дампах).
+/// Serialized as the string value (the analogue of `PkgFamily.value` in dumps).
 impl Serialize for PkgFamily {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         ser.serialize_str(self.as_str())
@@ -126,11 +127,11 @@ impl Serialize for PkgFamily {
 // DistroDetector
 // ============================================================================
 
-/// Разбор одного текста os-release — порт `DistroDetector._parse_os_release`
-/// (тело цикла): строки с `=` и не-комментарии; ключ/значение обрезаются,
-/// значение чистится от обрамляющих `"` затем `'` (именно в этом порядке,
-/// как `strip('"').strip("'")`). Повторный ключ перезаписывает значение,
-/// сохраняя позицию (семантика dict).
+/// Parse one os-release text: a port of `DistroDetector._parse_os_release`
+/// (the loop body): lines with `=` that are not comments; key/value are
+/// trimmed, the value is stripped of surrounding `"` then `'` (exactly in
+/// this order, like `strip('"').strip("'")`). A repeated key overwrites the
+/// value, keeping the position (dict semantics).
 pub fn parse_os_release(text: &str) -> Map<String, Value> {
     let mut result = Map::new();
     for raw in text.lines() {
@@ -144,10 +145,10 @@ pub fn parse_os_release(text: &str) -> Map<String, Value> {
     result
 }
 
-/// Фолбэк по файлам — порт цикла `for path in ("/etc/os-release",
-/// "/usr/lib/os-release")`: ПЕРВЫЙ существующий файл разбирается и
-/// возвращается (даже если он пуст — второй уже не смотрим); нет обоих → {}.
-/// Параметры — содержимое файлов (None = FileNotFoundError).
+/// File fallback: a port of the loop `for path in ("/etc/os-release",
+/// "/usr/lib/os-release")`: the FIRST existing file is parsed and returned
+/// (even if it is empty, the second is not looked at); neither exists → {}.
+/// The parameters are file contents (None = FileNotFoundError).
 pub fn parse_os_release_files(
     etc: Option<&str>,
     usr_lib: Option<&str>,
@@ -161,8 +162,8 @@ pub fn parse_os_release_files(
     Map::new()
 }
 
-/// Есть ли исполняемый файл в PATH — аналог `shutil.which(name) is not None`.
-/// Живая обёртка для предиката `has_binary`; тесты подают предикат-фикстуру.
+/// Whether an executable is in PATH: the analogue of `shutil.which(name) is not None`.
+/// A live wrapper for the `has_binary` predicate; tests pass a fixture predicate.
 pub fn binary_in_path(name: &str) -> bool {
     let Some(paths) = std::env::var_os("PATH") else {
         return false;
@@ -178,27 +179,27 @@ pub fn binary_in_path(name: &str) -> bool {
     false
 }
 
-/// Поиск семейства по `ID_MAP` (линейный по const-таблице).
+/// Family lookup in `ID_MAP` (linear over the const table).
 pub fn id_map_lookup(id: &str) -> Option<PkgFamily> {
     ID_MAP.iter().find(|(k, _)| *k == id).map(|(_, f)| *f)
 }
 
-/// Определяет дистрибутив и семейство пакетного менеджера —
-/// порт класса `DistroDetector` (без чтения файлов в конструкторе:
-/// `_info` строится из текста os-release, поданного параметром).
+/// Detects the distribution and the package manager family: a port of the
+/// `DistroDetector` class (without reading files in the constructor: `_info`
+/// is built from the os-release text passed as a parameter).
 pub struct DistroDetector {
-    /// Разобранный os-release — `self._info` Python.
+    /// Parsed os-release: Python's `self._info`.
     pub info: Map<String, Value>,
 }
 
 impl DistroDetector {
-    /// Конструктор из содержимого os-release файлов (None = файла нет).
+    /// Constructor from the contents of the os-release files (None = no file).
     pub fn from_os_release_files(etc: Option<&str>, usr_lib: Option<&str>) -> Self {
         Self { info: parse_os_release_files(etc, usr_lib) }
     }
 
-    /// Живая детекция: читает /etc/os-release, затем /usr/lib/os-release —
-    /// как `DistroDetector()` в Python (ошибка чтения = отсутствие файла).
+    /// Live detection: reads /etc/os-release, then /usr/lib/os-release, like
+    /// `DistroDetector()` in Python (a read error = the file is missing).
     pub fn detect_live() -> Self {
         let etc = std::fs::read_to_string("/etc/os-release").ok();
         let usr_lib = std::fs::read_to_string("/usr/lib/os-release").ok();
@@ -209,8 +210,8 @@ impl DistroDetector {
         self.info.get(key).and_then(Value::as_str)
     }
 
-    /// Имя дистрибутива / ОС: NAME → PRETTY_NAME → "Linux" (по НАЛИЧИЮ
-    /// ключа, не по непустоте — пустой NAME="" возвращается как есть).
+    /// Distribution / OS name: NAME → PRETTY_NAME → "Linux" (by the PRESENCE of
+    /// the key, not by being non-empty: an empty NAME="" is returned as is).
     pub fn name(&self) -> String {
         if let Some(v) = self.get("NAME") {
             return v.to_string();
@@ -221,7 +222,7 @@ impl DistroDetector {
         "Linux".to_string()
     }
 
-    /// Красивое имя: PRETTY_NAME → name().
+    /// Pretty name: PRETTY_NAME → name().
     pub fn pretty_name(&self) -> String {
         match self.get("PRETTY_NAME") {
             Some(v) => v.to_string(),
@@ -229,12 +230,12 @@ impl DistroDetector {
         }
     }
 
-    /// ID дистрибутива (из os-release), в нижнем регистре.
+    /// Distribution ID (from os-release), lowercase.
     pub fn distro_id(&self) -> String {
         self.get("ID").unwrap_or("").to_lowercase()
     }
 
-    /// Родительские дистрибутивы (ID_LIKE), в нижнем регистре.
+    /// Parent distributions (ID_LIKE), lowercase.
     pub fn id_like(&self) -> Vec<String> {
         self.get("ID_LIKE")
             .unwrap_or("")
@@ -243,16 +244,16 @@ impl DistroDetector {
             .collect()
     }
 
-    /// Версия дистрибутива (VERSION_ID) или "".
+    /// Distribution version (VERSION_ID) or "".
     pub fn version_id(&self) -> String {
         self.get("VERSION_ID").unwrap_or("").to_string()
     }
 
-    /// Семейство пакетного менеджера — порт свойства `family`.
+    /// Package manager family: a port of the `family` property.
     ///
-    /// Порядок: прямое совпадение ID → фолбэк на ID_LIKE → детекция по
-    /// бинарникам через предикат `has_binary` (live — `binary_in_path`).
-    /// Особый случай APT-RPM: на ALT есть apt-get + rpm, но НЕТ dpkg.
+    /// Order: a direct ID match → fallback to ID_LIKE → detection by binaries
+    /// through the `has_binary` predicate (live: `binary_in_path`).
+    /// Special case APT-RPM: ALT has apt-get + rpm, but NO dpkg.
     pub fn family(&self, has_binary: &dyn Fn(&str) -> bool) -> PkgFamily {
         if let Some(f) = id_map_lookup(&self.distro_id()) {
             return f;
@@ -269,7 +270,7 @@ impl DistroDetector {
             if has_binary("rpm") {
                 return PkgFamily::Alt;
             }
-            return PkgFamily::Debian; // предполагаем Debian
+            return PkgFamily::Debian; // assume Debian
         }
         for (binary, family) in [
             ("pacman", PkgFamily::Arch),
@@ -290,17 +291,17 @@ impl DistroDetector {
         PkgFamily::Unknown
     }
 
-    /// Семейство с живой детекцией бинарников (PATH).
+    /// Family with live binary detection (PATH).
     pub fn family_live(&self) -> PkgFamily {
         self.family(&binary_in_path)
     }
 
-    /// Это SteamOS?
+    /// Is this SteamOS?
     pub fn is_steamos(&self) -> bool {
         self.distro_id().contains("steamos") || self.name().to_lowercase().contains("steamos")
     }
 
-    /// Иммутабельный дистрибутив?
+    /// Immutable distribution?
     pub fn is_immutable(&self) -> bool {
         const IMMUTABLE_IDS: [&str; 7] = [
             "steamos", "nixos", "bazzite", "silverblue", "kinoite", "sericea", "onyx",
@@ -318,28 +319,28 @@ impl DistroDetector {
 }
 
 // ============================================================================
-// PackageDB — ВСТРОЕННАЯ база пакетов (порт класса PackageDB)
+// PackageDB: the BUILT-IN package database (port of the PackageDB class)
 // ============================================================================
 
-/// Запись `_DE_DATABASE[de_id]`. Списки пакетов — в порядке вставки
-/// Python-словаря (для лукапа порядок семейств не важен, но сохранён).
+/// An entry of `_DE_DATABASE[de_id]`. Package lists are in the insertion order
+/// of the Python dict (the family order does not matter for lookup, but is kept).
 pub struct DeEntry {
     pub packages: &'static [(PkgFamily, &'static [&'static str])],
     pub aur: &'static [&'static str],
-    /// Имя ПАКЕТА для вопроса пакетному менеджеру «стоит ли DE». Не бинарник:
-    /// исполняемый файл зовётся иначе (`plasma-desktop` → `plasmashell`,
-    /// `hyprland` → `Hyprland`). См. [`get_check_binary`].
+    /// PACKAGE name for asking the package manager "is the DE installed". Not a
+    /// binary: the executable is named differently (`plasma-desktop` →
+    /// `plasmashell`, `hyprland` → `Hyprland`). See [`get_check_binary`].
     pub check_package: &'static str,
     pub config_paths: &'static [&'static str],
 }
 
-/// Нагрузка стола на процессор — ПРИЗНАК, а не подпись.
+/// CPU load of a desktop: an ATTRIBUTE, not a caption.
 ///
-/// Раньше это была русская строка («Низкое»/«Среднее»/«Высокое»), и
-/// «Сравнение» красило ячейку, сравнивая её текст со списком; с переводом
-/// подпись у каждого языка своя, поэтому решение о цвете опирается на
-/// вариант, а текст — только показ ([`CpuLoad::label`]). `Display` и
-/// `Serialize` отдают готовую подпись на языке интерфейса.
+/// It used to be a Russian string (Low/Medium/High), and «Comparison»
+/// coloured the cell by comparing its text with a list; with translation
+/// each language has its own caption, so the colour decision relies on the
+/// variant, and the text is only for display ([`CpuLoad::label`]). `Display`
+/// and `Serialize` give the ready caption in the UI language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CpuLoad {
     Low,
@@ -348,7 +349,7 @@ pub enum CpuLoad {
 }
 
 impl CpuLoad {
-    /// Подпись на языке интерфейса.
+    /// Caption in the UI language.
     pub fn label(self) -> String {
         match self {
             CpuLoad::Low => crate::i18n::trc("CPU load", "Low"),
@@ -370,20 +371,21 @@ impl Serialize for CpuLoad {
     }
 }
 
-/// Сверки сравнивают готовую подпись ячейки с признаком стола.
+/// Parity checks compare the ready cell caption with the desktop's attribute.
 impl PartialEq<CpuLoad> for String {
     fn eq(&self, other: &CpuLoad) -> bool {
         *self == other.label()
     }
 }
 
-/// Мета-информация DE для UI — элемент `_DE_META`. Порядок полей совпадает
-/// с порядком ключей Python-словаря (важен для сверки дампов).
+/// DE metadata for the UI: an element of `_DE_META`. The field order matches
+/// the key order of the Python dict (important for dump comparison).
 ///
-/// Тексты для человека (`description`, `compositor` у LXQt) — английские
-/// `msgid` каталога перевода; показывать их через [`DeMeta::description_text`]
-/// и [`DeMeta::compositor_text`], а не полем напрямую. Остальные строки —
-/// имена программ и технологий, они не переводятся.
+/// Human-facing texts (`description`, `compositor` for LXQt) are English
+/// `msgid`s of the translation catalog; show them through
+/// [`DeMeta::description_text`] and [`DeMeta::compositor_text`], not the field
+/// directly. The other strings are program and technology names, they are
+/// not translated.
 #[derive(Serialize)]
 pub struct DeMeta {
     pub id: &'static str,
@@ -395,10 +397,11 @@ pub struct DeMeta {
     pub customizable: u8,
     pub gaming_friendly: u8,
     pub toolkit: &'static str,
-    /// Сеанс стола. У столов с выбором X11/Wayland при установке
-    /// ([`SESSION_VARIANTS`]) это исходная запись меты (по ней цвет в
-    /// «Сравнении»); на витрину идёт [`DeMeta::session_text`], а выбор по
-    /// умолчанию — [`SessionVariants::default_session`], оба из той же таблицы.
+    /// Desktop session. For desktops with an X11/Wayland choice at install time
+    /// ([`SESSION_VARIANTS`]) this is the original meta entry (it drives the
+    /// colour in «Comparison»); the showcase uses [`DeMeta::session_text`], and
+    /// the default choice is [`SessionVariants::default_session`], both from the
+    /// same table.
     pub session_type: &'static str,
     pub compositor: &'static str,
     pub panel_type: &'static str,
@@ -407,22 +410,22 @@ pub struct DeMeta {
 }
 
 impl DeMeta {
-    /// Описание стола на языке интерфейса.
+    /// Desktop description in the UI language.
     pub fn description_text(&self) -> String {
         crate::i18n::tr(self.description)
     }
 
-    /// Композитор на языке интерфейса (у большинства — имя программы).
+    /// Compositor in the UI language (for most, the program name).
     pub fn compositor_text(&self) -> String {
         crate::i18n::tr(self.compositor)
     }
 
-    /// Сеанс на языке интерфейса — для «Сравнения» и карточек.
+    /// Session in the UI language, for «Comparison» and the cards.
     ///
-    /// Если у стола есть выбор сеанса ([`SESSION_VARIANTS`]), подпись
-    /// выводится из таблицы вариантов, а не пишется второй раз руками: так
-    /// витрина не разойдётся с окном установки. Таблица описана для Arch —
-    /// по нему и составлена мета столов.
+    /// If the desktop has a session choice ([`SESSION_VARIANTS`]), the caption is
+    /// derived from the variants table instead of being written a second time by
+    /// hand: this way the showcase does not diverge from the install dialog. The
+    /// table is described for Arch, and the desktop metadata is written for it too.
     pub fn session_text(&self) -> String {
         match session_variants(self.id, PkgFamily::Arch).map(|v| v.maturity) {
             Some(WaylandMaturity::Mature) => crate::i18n::tr("X11 + Wayland"),
@@ -435,7 +438,7 @@ impl DeMeta {
     }
 }
 
-/// `DistroDetector.ID_MAP`: os-release ID → семейство, в порядке вставки.
+/// `DistroDetector.ID_MAP`: os-release ID → family, in insertion order.
 pub const ID_MAP: &[(&str, PkgFamily)] = &[
     ("arch", PkgFamily::Arch),
     ("cachyos", PkgFamily::Arch),
@@ -491,16 +494,17 @@ pub const ID_MAP: &[(&str, PkgFamily)] = &[
     ("redos", PkgFamily::Fedora),
     ("rosa", PkgFamily::Fedora),
     ("calculate", PkgFamily::Gentoo),
-    // openKylin: `ID=openkylin` без `ID_LIKE` (base-files openKylin) —
-    // семейство пишем явно, не дожидаясь пробы бинарников. Kylin OS
-    // (`ID=kylin`) здесь намеренно НЕТ: тот же ID у настольной редакции на
-    // Debian и у серверной на RPM, семейство решают бинарники (`family`).
+    // openKylin: `ID=openkylin` without `ID_LIKE` (openKylin base-files): the
+    // family is written explicitly, without waiting for the binary probe. Kylin
+    // OS (`ID=kylin`) is deliberately NOT here: the same ID is used by the
+    // desktop edition on Debian and the server one on RPM, so the binaries
+    // decide the family (`family`).
     ("openkylin", PkgFamily::Debian),
 ];
 
-/// `_DE_DATABASE`: id DE → пакеты по семействам / AUR / проверка /
-/// конфиги. Транскрипция сгенерирована из живого Python (см. заголовок
-/// `tests/system_parity.rs`) и сверяется golden-тестом целиком.
+/// `_DE_DATABASE`: DE id → packages by family / AUR / check / configs. The
+/// transcription was generated from live Python (see the header of
+/// `tests/system_parity.rs`) and is checked in full by a golden test.
 pub const DE_DATABASE: &[(&str, DeEntry)] = &[
     // cinnamon-mint
     ("cinnamon-mint", DeEntry {
@@ -540,23 +544,23 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
                 "lightdm-gtk-greeter",
             ]),
         ],
-        // ⚠️ `lightdm-slick-greeter` отсюда убран: он лежит в extra и уже
-        // стоит в Arch-списке выше. Помеченный AUR-ом пакет из официального
-        // репозитория — не косметика: на машине БЕЗ yay/paru весь этот
-        // список молча выбрасывается (`aur_packages=… if has_aur_helper`),
-        // а карточка стола врёт покупателю «часть пакетов из AUR».
+        // ⚠️ `lightdm-slick-greeter` was removed from here: it is in extra and is
+        // already in the Arch list above. A package from the official repository
+        // marked as AUR is not cosmetic: on a machine WITHOUT yay/paru this whole
+        // list is silently dropped (`aur_packages=… if has_aur_helper`), and the
+        // desktop card lies to the user about "some packages from the AUR".
         //
-        // ⛔ `mint-artwork` сюда НЕ возвращать: он объявляет
-        // `conflicts=(lightdm-gtk-greeter lightdm-gtk-greeter-settings)` и сам
-        // кладёт `/etc/lightdm/lightdm-gtk-greeter.conf`, а экран входа GTK
-        // Rexon ставит с XFCE и MATE — на такой машине pacman отказал бы, а
-        // без отказа снёс бы соседям вход в систему. Вид Mint дают темы,
-        // значки и обои ниже; без него теряются только файлы /etc/skel и
-        // курсор Bibata (AUR RPC, 19.10.2026).
+        // ⛔ Do NOT bring `mint-artwork` back here: it declares
+        // `conflicts=(lightdm-gtk-greeter lightdm-gtk-greeter-settings)` and itself
+        // puts `/etc/lightdm/lightdm-gtk-greeter.conf`, while Rexon installs the GTK
+        // login screen with XFCE and MATE: on such a machine pacman would refuse,
+        // and without a refusal it would break login for the neighbours. The Mint
+        // look comes from the themes, icons and wallpapers below; without it only
+        // the /etc/skel files and the Bibata cursor are lost (AUR RPC, 19.10.2026).
         //
-        // На CachyOS темы и значки Mint лежат в репозитории `cachyos`: что
-        // из этого списка есть в подключённых репозиториях, установка берёт
-        // оттуда по факту (`pacman -Si`), см. `system_plan::split_repo_available`.
+        // On CachyOS the Mint themes and icons are in the `cachyos` repository:
+        // whatever from this list is in the enabled repositories, the install takes
+        // from there as it is (`pacman -Si`), see `system_plan::split_repo_available`.
         aur: &[
             "mint-themes", "mint-x-icons", "mint-y-icons", "mint-backgrounds",
             "lightdm-settings",
@@ -595,8 +599,8 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
     // mate
     ("mate", DeEntry {
         packages: &[
-            // `appmenu-gtk-module` — сторона GTK-программ для глобального
-            // меню (`vala-panel-appmenu-mate` из списка AUR), лежит в extra.
+            // `appmenu-gtk-module` is the GTK program side of the global menu
+            // (`vala-panel-appmenu-mate` from the AUR list), it is in extra.
             (PkgFamily::Arch, &[
                 "mate", "mate-extra", "plank", "lightdm",
                 "lightdm-gtk-greeter", "appmenu-gtk-module",
@@ -624,9 +628,9 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
             "ayatana-indicator-application", "ayatana-indicator-session",
             "ayatana-indicator-datetime", "ayatana-indicator-sound",
             "ayatana-indicator-notifications",
-            // ⛔ Не общий `vala-panel-appmenu`: он зависит от `-budgie` (а тот —
-            // от всего budgie-desktop) и от `-valapanel` (vala-panel). MATE
-            // нужны только своя часть и реестр меню (AUR RPC, 19.10.2026).
+            // ⛔ Not the common `vala-panel-appmenu`: it depends on `-budgie` (which
+            // depends on all of budgie-desktop) and on `-valapanel` (vala-panel). MATE
+            // only needs its own part and the menu registrar (AUR RPC, 19.10.2026).
             "vala-panel-appmenu-mate", "vala-panel-appmenu-registrar",
         ],
         check_package: "mate-session-manager",
@@ -697,20 +701,19 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
     // budgie
     ("budgie", DeEntry {
         packages: &[
-            // Набор программ — как в Ubuntu Budgie 26.04 на Budgie 10.10
-            // (сиды `ubuntu-budgie.resolute`, метапакет `ubuntu-budgie-desktop`
-            // и его `/etc/budgie-desktop/defaults.list`): файлы — Nemo
-            // (с `nemo-fileroller`, он тянет архиватор File Roller), терминал —
-            // `xfce4-terminal` (Tilix убран с 24.10), текст — gedit, картинки —
-            // gThumb, видео — VLC, музыка — Lollypop, PDF — Atril, калькулятор и
-            // монитор — из MATE, диски — GNOME Disks. Сам `budgie-desktop` из
-            // этого не тянет ничего: без строчек ниже поставивший один Budgie
-            // остаётся без терминала и программ. Офис, игры, браузер, торренты
-            // и подкасты Ubuntu Budgie не берём — это не часть стола.
-            // Arch — все пакеты в extra (03.11.2026); остальные семейства
-            // сверены по их базам пакетов (Debian trixie, Fedora rawhide,
-            // openSUSE Factory, Gentoo, Void, Solus, ALT Sisyphus) без
-            // установки.
+            // The program set is as in Ubuntu Budgie 26.04 on Budgie 10.10 (the
+            // `ubuntu-budgie.resolute` seeds, the `ubuntu-budgie-desktop` metapackage
+            // and its `/etc/budgie-desktop/defaults.list`): files: Nemo (with
+            // `nemo-fileroller`, which pulls in the File Roller archiver), terminal:
+            // `xfce4-terminal` (Tilix was dropped in 24.10), text: gedit, images:
+            // gThumb, video: VLC, music: Lollypop, PDF: Atril, calculator and monitor
+            // from MATE, disks: GNOME Disks. `budgie-desktop` itself pulls in none of
+            // this: without the lines below, someone who installs Budgie alone is left
+            // without a terminal and programs. We do not take Ubuntu Budgie's office,
+            // games, browser, torrents and podcasts: they are not part of the desktop.
+            // Arch: all packages in extra (03.11.2026); the other families were checked
+            // against their package databases (Debian trixie, Fedora rawhide, openSUSE
+            // Factory, Gentoo, Void, Solus, ALT Sisyphus) without installing.
             (PkgFamily::Arch, &[
                 "budgie-desktop", "budgie-desktop-view", "budgie-extras",
                 "network-manager-applet", "nemo", "nemo-fileroller",
@@ -730,7 +733,7 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
                 "mate-calc", "mate-system-monitor", "gnome-disk-utility",
                 "lightdm",
             ]),
-            // openSUSE: дополнение Nemo к File Roller — `nemo-extension-fileroller`.
+            // openSUSE: the Nemo add-on for File Roller is `nemo-extension-fileroller`.
             (PkgFamily::Suse, &[
                 "patterns-budgie-budgie", "nemo", "nemo-extension-fileroller",
                 "xfce4-terminal", "gedit", "gthumb", "vlc", "lollypop", "atril",
@@ -757,7 +760,7 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
                 "gedit", "gthumb", "vlc", "lollypop", "atril", "mate-calc",
                 "mate-system-monitor", "gnome-disk-utility", "lightdm",
             ]),
-            // ALT: Atril собран пакетом `mate-document-viewer`.
+            // ALT: Atril is packaged as `mate-document-viewer`.
             (PkgFamily::Alt, &[
                 "budgie-desktop", "nemo", "nemo-fileroller", "xfce4-terminal",
                 "gedit", "gthumb", "vlc", "lollypop", "mate-document-viewer",
@@ -765,9 +768,9 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
                 "lightdm", "lightdm-gtk-greeter",
             ]),
         ],
-        // `budgie-extras` лежит в extra — ставится pacman'ом вместе с
-        // остальными, помощник AUR для него не нужен (и на машине без
-        // помощника он больше не пропадает).
+        // `budgie-extras` is in extra: installed by pacman together with the rest,
+        // no AUR helper is needed for it (and on a machine without a helper it no
+        // longer goes missing).
         aur: &[],
         check_package: "budgie-desktop",
         config_paths: &[
@@ -775,20 +778,21 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
             "~/.config/dconf/user",
         ],
     }),
-    // pantheon — рабочий стол elementary OS (Gala на Mutter, Wingpanel,
-    // Plank, Switchboard). Пакетов нет нигде, кроме Arch (группа `pantheon`
-    // в extra, 02.10.2026) и NixOS (модуль `services.desktopManager.pantheon`):
-    // в Debian/Ubuntu его нет вовсе (только сама elementary OS), в Fedora
-    // отдельные части без сеанса — стола из них не собрать.
+    // pantheon is the elementary OS desktop (Gala on Mutter, Wingpanel, Plank,
+    // Switchboard). There are packages nowhere except Arch (the `pantheon`
+    // group in extra, 02.10.2026) and NixOS (the
+    // `services.desktopManager.pantheon` module): Debian/Ubuntu do not have it
+    // at all (only elementary OS itself), Fedora has separate parts without a
+    // session, and no desktop can be assembled from them.
     ("pantheon", DeEntry {
         packages: &[
-            // Группа тянет сеанс (`pantheon-session` → gala, wingpanel,
-            // plank, gnome-session), настройки по умолчанию, тему,
-            // значки и приложения elementary. ⚠️ `lightdm-gtk-greeter` —
-            // защита от дурака: lightdm в Arch собран с приветствием
-            // lightdm-gtk-greeter по умолчанию, а приветствие Pantheon из
-            // группы без правки `greeter-session` в /etc/lightdm/lightdm.conf
-            // не включается — без gtk-приветствия экран входа не поднимется.
+            // The group pulls in the session (`pantheon-session` → gala, wingpanel,
+            // plank, gnome-session), default settings, the theme, icons and elementary
+            // apps. ⚠️ `lightdm-gtk-greeter` is a foolproof guard: lightdm in Arch is
+            // built with lightdm-gtk-greeter as the default greeter, and the Pantheon
+            // greeter from the group is not enabled without editing `greeter-session`
+            // in /etc/lightdm/lightdm.conf, so without the gtk greeter the login
+            // screen does not come up.
             (PkgFamily::Arch, &["pantheon", "lightdm", "lightdm-gtk-greeter"]),
         ],
         aur: &[],
@@ -797,28 +801,29 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
             "~/.config/dconf/user", "~/.config/plank", "~/.local/share/plank",
         ],
     }),
-    // deepin — рабочий стол Deepin (DDE v25: deepin-session, dde-shell) ТОЛЬКО
-    // на Treeland, Wayland-композиторе Deepin (решение Wehrwolfmann
-    // 26.10.2026): сеанс X11 с deepin-kwin Rexon не ставит никогда. Набор ниже
-    // — сырьё: исполнитель ставит из группы всё, кроме deepin-session (его
-    // заменяет своя сборка без deepin-kwin) — `crate::deepin_treeland`, и
-    // помощнику от root эта запись не отдаётся. Проверено только Arch
-    // (группа `deepin` в extra, 02.10.2026). ⚠️ openSUSE в 2025 исключил
-    // Deepin из своих репозиториев: служебный пакет включал D-Bus-службы и
-    // правила polkit в обход проверки безопасности дистрибутива. Поэтому —
-    // ТОЛЬКО штатная группа дистрибутива и никаких своих служб, правил и
-    // «включателей»; где пакетов нет, стол не предлагается вовсе.
+    // deepin is the Deepin desktop (DDE v25: deepin-session, dde-shell) ONLY on
+    // Treeland, Deepin's Wayland compositor (Wehrwolfmann's decision of
+    // 26.10.2026): Rexon never installs the X11 session with deepin-kwin. The
+    // set below is raw material: the executor installs everything from the
+    // group except deepin-session (replaced by our own build without
+    // deepin-kwin), see `crate::deepin_treeland`, and this entry is not given
+    // to the root helper. Only Arch was checked (the `deepin` group in extra,
+    // 02.10.2026). ⚠️ In 2025 openSUSE removed Deepin from its repositories: a
+    // service package included D-Bus services and polkit rules bypassing the
+    // distribution's security review. Hence ONLY the distribution's stock
+    // group and no services, rules or "enablers" of our own; where there are
+    // no packages, the desktop is not offered at all.
     ("deepin", DeEntry {
         packages: &[
-            // Группа: сеанс, настройки, тему и приложения (её
-            // `deepin-session` тянет deepin-kwin — потому группа целиком и не
-            // ставится, см. выше). Экран входа — lightdm с
-            // приветствием Deepin: его ставит deepin-session-shell, а
-            // `/usr/share/lightdm/lightdm.conf.d/60-deepin.conf` из
-            // deepin-daemon сам задаёт `greeter-session=lightdm-deepin-greeter`.
-            // lightdm назван явно, чтобы защита «нет включённого экрана входа»
-            // знала, какой включать (ddm из группы — ранний и без X11).
-            // `deepin-terminal` лежит в `deepin-extra`, не в группе `deepin`.
+            // The group: session, settings, theme and apps (its `deepin-session` pulls
+            // in deepin-kwin, which is why the group is not installed as a whole, see
+            // above). Login screen: lightdm with the Deepin greeter: it is installed by
+            // deepin-session-shell, and
+            // `/usr/share/lightdm/lightdm.conf.d/60-deepin.conf` from deepin-daemon
+            // itself sets `greeter-session=lightdm-deepin-greeter`. lightdm is named
+            // explicitly so that the "no enabled login screen" guard knows which one to
+            // enable (ddm from the group is early and has no X11).
+            // `deepin-terminal` is in `deepin-extra`, not in the `deepin` group.
             (PkgFamily::Arch, &["deepin", "deepin-terminal", "lightdm"]),
         ],
         aur: &[],
@@ -864,8 +869,9 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
         config_paths: &["~/.config/cosmic", "~/.local/state/cosmic"],
     }),
     // hyprland
-    // SDDM убран: экран входа общесистемный, его гарантирует install_de →
-    // ensure_display_manager (Python-путь), а не per-WM пакет-лист.
+    // SDDM removed: the login screen is system-wide, it is guaranteed by
+    // install_de → ensure_display_manager (the Python path), not by a per-WM
+    // package list.
     ("hyprland", DeEntry {
         packages: &[
             (PkgFamily::Arch, &[
@@ -883,9 +889,17 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
                 "hyprland", "xdg-desktop-portal-hyprland", "waybar", "wofi",
                 "kitty", "grim", "slurp", "wl-clipboard",
             ]),
+            // hyprlock and hypridle (screen lock; the post-install step
+            // writes the key binding and autostart) exist only in Arch and
+            // openSUSE Tumbleweed. Debian has them only in 14/sid and
+            // trixie-backports, Ubuntu since 26.04, Fedora up to 41, Alpine
+            // in testing, ALT in Sisyphus (no hyprlock in p11), Gentoo and
+            // Void not at all: a missing package would fail the whole
+            // install. Without them the post-install step says plainly that
+            // there is nothing to set up the lock with.
             (PkgFamily::Suse, &[
-                "hyprland", "xdg-desktop-portal-hyprland", "waybar", "wofi",
-                "kitty", "grim", "slurp", "wl-clipboard",
+                "hyprland", "hyprlock", "hypridle", "xdg-desktop-portal-hyprland",
+                "waybar", "wofi", "kitty", "grim", "slurp", "wl-clipboard",
             ]),
             (PkgFamily::Gentoo, &[
                 "gui-wm/hyprland", "gui-apps/waybar", "gui-apps/wofi",
@@ -904,9 +918,9 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
                 "wl-clipboard",
             ]),
         ],
-        // Все три лежат в extra и уже перечислены в Arch-списке выше —
-        // дублировать их помощником AUR значило собирать из исходников уже
-        // готовое, а на машине без помощника терять их вовсе.
+        // All three are in extra and are already listed in the Arch list above:
+        // duplicating them via the AUR helper meant building from source what is
+        // already built, and on a machine without a helper losing them entirely.
         aur: &[],
         check_package: "hyprland",
         config_paths: &[
@@ -917,24 +931,21 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
     // lxqt
     ("lxqt", DeEntry {
         packages: &[
-            // `openbox` назван ЯВНО, а не взят «как-нибудь из группы»:
-            // post_install у lxqt-session печатает «An X11 window manager is
-            // also needed» безусловным cat'ом, и полагаться на то, что WM
-            // окажется в системе сам, для чистой машины покупателя нельзя.
-            // `breeze-icons` — тема значков (она же жёсткая зависимость
-            // lxqt-session, но здесь стоит намеренно: список обязан отвечать
-            // за обе просьбы сам).
+            // `openbox` is named EXPLICITLY instead of being taken "somehow from the
+            // group": lxqt-session's post_install prints "An X11 window manager is also
+            // needed" with an unconditional cat, and on a user's clean machine one
+            // cannot rely on a WM showing up by itself. `breeze-icons` is the icon
+            // theme (also a hard dependency of lxqt-session, but it is here on purpose:
+            // the list must cover both requests by itself).
             //
-            // `xscreensaver` — блокировка экрана в X11. Своего блокировщика у
-            // LXQt нет: «Заблокировать» (и Ctrl+Alt+L) зовёт
-            // `xdg-screensaver lock`, а тот умеет только запущенного
-            // xscreensaver (ветки для LXQt у него нет — код возврата 1 и окно
-            // «Ошибка хранителя экрана»). Запускает его при входе сам
-            // lxqt-session (`lxqt-xscreensaver-autostart.desktop`,
-            // TryExec=xscreensaver). Ни в группе `lxqt`, ни в мета-пакетах
-            // других семейств его нет. Для Wayland — swaylock в
-            // `SESSION_VARIANTS`; команды обоих сеансов пишет пост-установка
-            // (`plan::lxqt_lock_edit`).
+            // `xscreensaver` is the screen lock in X11. LXQt has no locker of its own:
+            // «Lock» (and Ctrl+Alt+L) calls `xdg-screensaver lock`, which only knows a
+            // running xscreensaver (it has no LXQt branch: exit code 1 and a
+            // "screensaver error" window). lxqt-session starts it itself at login
+            // (`lxqt-xscreensaver-autostart.desktop`, TryExec=xscreensaver). It is
+            // neither in the `lxqt` group nor in the metapackages of other families.
+            // For Wayland: swaylock in `SESSION_VARIANTS`; the commands for both
+            // sessions are written by the post-install (`plan::lxqt_lock_edit`).
             (PkgFamily::Arch, &["lxqt", "openbox", "breeze-icons", "sddm", "xscreensaver"]),
             (PkgFamily::Debian, &["lxqt", "sddm", "xscreensaver"]),
             (PkgFamily::Fedora, &["@lxqt-desktop-environment", "sddm", "xscreensaver"]),
@@ -959,11 +970,12 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
         ],
     }),
     // niri
-    // Шрифты-иконки для waybar (иначе «тофу» вместо глифов): Font Awesome —
-    // дефолтный конфиг waybar; Nerd-symbols (symbols-only) — из офиц. репо там,
-    // где есть (Arch/openSUSE/Gentoo/Void/Alpine; в Debian/Fedora нет). SDDM убран:
-    // экран входа общесистемный, его гарантирует install_de →
-    // ensure_display_manager (Python-путь), а не per-WM пакет-лист.
+    // Icon fonts for waybar (otherwise "tofu" instead of glyphs): Font Awesome
+    // is waybar's default config; Nerd symbols (symbols-only) from the official
+    // repos where available (Arch/openSUSE/Gentoo/Void/Alpine; not in
+    // Debian/Fedora). SDDM removed: the login screen is system-wide, it is
+    // guaranteed by install_de → ensure_display_manager (the Python path), not
+    // by a per-WM package list.
     ("niri", DeEntry {
         packages: &[
             (PkgFamily::Arch, &[
@@ -996,11 +1008,12 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
         config_paths: &["~/.config/niri", "~/.config/waybar", "~/.config/fuzzel"],
     }),
     // sway
-    // Шрифты-иконки для waybar (иначе «тофу» вместо глифов): Font Awesome —
-    // дефолтный конфиг waybar; Nerd-symbols (symbols-only) — из офиц. репо там,
-    // где есть (Arch/openSUSE/Gentoo/Void/Alpine; в Debian/Fedora нет). SDDM убран:
-    // экран входа общесистемный, его гарантирует install_de →
-    // ensure_display_manager (Python-путь), а не per-WM пакет-лист.
+    // Icon fonts for waybar (otherwise "tofu" instead of glyphs): Font Awesome
+    // is waybar's default config; Nerd symbols (symbols-only) from the official
+    // repos where available (Arch/openSUSE/Gentoo/Void/Alpine; not in
+    // Debian/Fedora). SDDM removed: the login screen is system-wide, it is
+    // guaranteed by install_de → ensure_display_manager (the Python path), not
+    // by a per-WM package list.
     ("sway", DeEntry {
         packages: &[
             (PkgFamily::Arch, &[
@@ -1010,9 +1023,9 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
                 "xdg-desktop-portal-gtk", "xorg-xwayland",
                 "otf-font-awesome", "ttf-nerd-fonts-symbols",
             ]),
-            // Уведомления в Debian/Ubuntu — `mako-notifier`: пакет с именем
-            // `mako` там — исходник шаблонизатора на Python, и `apt-get
-            // install mako` ронял ВСЮ установку sway.
+            // Notifications in Debian/Ubuntu are `mako-notifier`: the package named
+            // `mako` there is the source of a Python template engine, and `apt-get
+            // install mako` broke the WHOLE sway install.
             (PkgFamily::Debian, &[
                 "sway", "swaybg", "swayidle", "swaylock", "waybar", "wofi",
                 "foot", "mako-notifier", "grim", "slurp", "wl-clipboard",
@@ -1060,24 +1073,24 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
         ],
     }),
     // river
-    // ⚠️ Ставится river-classic (ветка 0.3: свой тайлинг `rivertile` и
-    // `riverctl`), а не river 0.4+. Новый river — «немонолитный»: окнами в
-    // нём управляет ОТДЕЛЬНАЯ программа по протоколу
-    // river-window-management-v1, и без неё river сам по себе бесполезен
-    // (river(1): «river is not useful without a compatible window manager»).
-    // Ни одного такого менеджера в официальных репозиториях нет, а голый
-    // river покупатель увидел бы чёрным экраном без единой клавиши (правило
-    // #13). Имена пакета по семействам разные: Arch, Fedora (с 43) и Alpine
-    // (с 3.23) зовут ветку 0.3 `river-classic`, у Void она пока `river`.
-    // Debian, openSUSE, Gentoo и ALT river в официальных репозиториях не
-    // держат — там стол честно «недоступен на этом дистрибутиве».
-    // Без `~/.config/river/init` river-classic тоже стартует без клавиш —
-    // стартовый init кладёт пост-установка (`plan::river_starter_init`).
-    // Панель — waybar (её запускает стартовый init), запуск программ — fuzzel,
-    // терминал — foot (его зовёт и пример init из самого river-classic).
-    // Блокировка экрана — swaylock (Super+Shift+Esc), по простою и перед
-    // сном её зовёт swayidle; оба запускает тот же стартовый init. Своего
-    // блокировщика у river-classic нет.
+    // ⚠️ river-classic is installed (the 0.3 branch: its own `rivertile`
+    // tiling and `riverctl`), not river 0.4+. The new river is "non-monolithic":
+    // windows in it are managed by a SEPARATE program over the
+    // river-window-management-v1 protocol, and without one river by itself is
+    // useless (river(1): "river is not useful without a compatible window
+    // manager"). There is no such manager in the official repositories, and the
+    // user would see bare river as a black screen without a single key binding
+    // (rule #13). Package names differ per family: Arch, Fedora (since 43) and
+    // Alpine (since 3.23) call the 0.3 branch `river-classic`, Void still calls
+    // it `river`. Debian, openSUSE, Gentoo and ALT do not carry river in their
+    // official repositories: there the desktop is honestly "not available on
+    // this distribution". Without `~/.config/river/init` river-classic also
+    // starts without key bindings: the starter init is put by the post-install
+    // (`plan::river_starter_init`). Panel: waybar (started by the starter
+    // init), launcher: fuzzel, terminal: foot (also called by the example init
+    // from river-classic itself). Screen lock: swaylock (Super+Shift+Esc), on
+    // idle and before sleep it is called by swayidle; both are started by the
+    // same starter init. river-classic has no locker of its own.
     ("river", DeEntry {
         packages: &[
             (PkgFamily::Arch, &[
@@ -1111,18 +1124,17 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
         config_paths: &["~/.config/river", "~/.config/waybar", "~/.config/fuzzel"],
     }),
     // wayfire
-    // wf-shell (панель wf-panel с меню программ и фон wf-background) входит
-    // в комплект обязательно: модуль autostart Wayfire сам поднимает их при
-    // входе (`autostart_wf_shell`, по умолчанию true), а без них сеанс —
-    // серый экран без меню и без единой клавиши запуска программ (в
-    // умолчаниях модуля command привязок нет), правило #13. wcm — окно
-    // настроек Wayfire, чтобы не править wayfire.ini руками. swaylock и
-    // swayidle — блокировка экрана: в умолчаниях Wayfire клавиши блокировки
-    // нет вовсе, а пример из документации зовёт swaylock; привязку и
-    // блокировку по простою дописывает пост-установка
-    // (`plan::wayfire_lock_edit`). Alpine держит
-    // Wayfire только в testing, ALT — только в Sisyphus: там стол
-    // «недоступен».
+    // wf-shell (the wf-panel panel with an app menu and the wf-background
+    // background) is a mandatory part of the set: Wayfire's autostart module
+    // starts them at login itself (`autostart_wf_shell`, true by default), and
+    // without them the session is a grey screen with no menu and not a single
+    // key to launch programs (the module defaults have no command bindings),
+    // rule #13. wcm is the Wayfire settings window, so wayfire.ini does not
+    // have to be edited by hand. swaylock and swayidle are the screen lock:
+    // Wayfire's defaults have no lock key at all, and the documentation example
+    // calls swaylock; the binding and idle lock are added by the post-install
+    // (`plan::wayfire_lock_edit`). Alpine has Wayfire only in testing, ALT only
+    // in Sisyphus: there the desktop is "not available".
     ("wayfire", DeEntry {
         packages: &[
             (PkgFamily::Arch, &[
@@ -1163,7 +1175,7 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
     }),
 ];
 
-/// `_DE_META`: мета-информация DE для UI, в исходном порядке.
+/// `_DE_META`: DE metadata for the UI, in the original order.
 pub const DE_META: &[DeMeta] = &[
     DeMeta {
         id: "cinnamon-mint",
@@ -1254,14 +1266,15 @@ pub const DE_META: &[DeMeta] = &[
         cpu_usage: CpuLoad::Medium,
         customizable: 3,
         gaming_friendly: 3,
-        // Budgie 10.10 (Arch, 02.11.2026): сеанс только Wayland, окнами
-        // управляет labwc (`startbudgielabwc`, зависимость `labwc` у
-        // `budgie-desktop`); сам стол — на GTK3 (`gtk3`, GTK4 в зависимостях нет).
+        // Budgie 10.10 (Arch, 02.11.2026): Wayland-only session, windows are
+        // managed by labwc (`startbudgielabwc`, `labwc` is a dependency of
+        // `budgie-desktop`); the desktop itself is on GTK3 (`gtk3`, no GTK4 in the
+        // dependencies).
         toolkit: "GTK3",
         session_type: "Wayland",
         compositor: "labwc",
         panel_type: "Budgie Panel",
-        // Nemo — как в Ubuntu Budgie (набор пакетов `budgie` выше).
+        // Nemo, as in Ubuntu Budgie (the `budgie` package set above).
         file_manager: "Nemo",
         terminal: "xfce4-terminal",
     },
@@ -1329,10 +1342,11 @@ pub const DE_META: &[DeMeta] = &[
         file_manager: "PCManFM-Qt",
         terminal: "QTerminal",
     },
-    // Wayfire — не тайловый: окна плавающие, как в Compiz. Но и не полный
-    // стол: своих программ и общих настроек системы нет, только панель
-    // wf-shell и настройки самого композитора (WCM), — поэтому в списке у
-    // него своя секция «Композиторы с эффектами» (`qt_desktops::EFFECTS_IDS`).
+    // Wayfire is not tiling: windows float, as in Compiz. But it is not a full
+    // desktop either: no programs of its own and no common system settings,
+    // only the wf-shell panel and the compositor's own settings (WCM), so in
+    // the list it has its own section «Compositors with effects»
+    // (`qt_desktops::EFFECTS_IDS`).
     DeMeta {
         id: "wayfire",
         display_name: "Wayfire",
@@ -1349,7 +1363,7 @@ pub const DE_META: &[DeMeta] = &[
         file_manager: "Thunar",
         terminal: "foot",
     },
-    // Тайловые оконные менеджеры — после полных DE.
+    // Tiling window managers come after the full DEs.
     DeMeta {
         id: "hyprland",
         display_name: "Hyprland",
@@ -1420,9 +1434,9 @@ fn de_entry(de_id: &str) -> Option<&'static DeEntry> {
     DE_DATABASE.iter().find(|(k, _)| *k == de_id).map(|(_, e)| e)
 }
 
-/// Список основных пакетов для DE и дистрибутива — порт
-/// `PackageDB.get_packages`. Возвращает [] если DE недоступен на этом
-/// дистрибутиве (fallback на Debian НЕ делается — имена несовместимы).
+/// List of main packages for a DE and distribution: a port of
+/// `PackageDB.get_packages`. Returns [] if the DE is not available on this
+/// distribution (there is NO fallback to Debian: the names are incompatible).
 pub fn get_packages(de_id: &str, family: PkgFamily) -> Vec<String> {
     let Some(entry) = de_entry(de_id) else {
         return Vec::new();
@@ -1435,14 +1449,14 @@ pub fn get_packages(de_id: &str, family: PkgFamily) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Доступен ли DE на данном дистрибутиве — порт `PackageDB.is_available`.
+/// Whether a DE is available on the given distribution: a port of `PackageDB.is_available`.
 pub fn is_available(de_id: &str, family: PkgFamily) -> bool {
     de_entry(de_id)
         .map(|e| e.packages.iter().any(|(f, _)| *f == family))
         .unwrap_or(false)
 }
 
-/// AUR-пакеты (возвращает [] для не-Arch) — порт `PackageDB.get_aur_packages`.
+/// AUR packages (returns [] for non-Arch): a port of `PackageDB.get_aur_packages`.
 pub fn get_aur_packages(de_id: &str, family: PkgFamily) -> Vec<String> {
     if family != PkgFamily::Arch {
         return Vec::new();
@@ -1452,31 +1466,31 @@ pub fn get_aur_packages(de_id: &str, family: PkgFamily) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Имя ПАКЕТА, по которому спрашивают пакетный менеджер, стоит ли DE — порт
-/// `PackageDB.get_check_binary` (None для неизвестного DE).
+/// The PACKAGE name used to ask the package manager whether a DE is
+/// installed: a port of `PackageDB.get_check_binary` (None for an unknown DE).
 ///
-/// ⚠️ Имя функции обманывает и остаётся таким только ради паритета с Python:
-/// возвращается `check_package`, то есть имя ПАКЕТА (`plasma-desktop`,
-/// `mate-session-manager`), а не исполняемого файла. Исполняемых файлов с
-/// такими именами не существует — `which("plasma-desktop")` не найдёт ничего.
-/// Карта «DE → исполняемый файл» (`plasmashell`, `mate-session`, `Hyprland`)
-/// живёт рядом — `de_installed_binaries`.
+/// ⚠️ The function name is misleading and stays that way only for parity
+/// with Python: it returns `check_package`, i.e. a PACKAGE name
+/// (`plasma-desktop`, `mate-session-manager`), not an executable. No
+/// executables with such names exist: `which("plasma-desktop")` finds
+/// nothing. The "DE → executable" map (`plasmashell`, `mate-session`,
+/// `Hyprland`) lives next to it: `de_installed_binaries`.
 pub fn get_check_binary(de_id: &str) -> Option<&'static str> {
     de_entry(de_id).map(|e| e.check_package)
 }
 
-/// Исполняемые файлы, по которым видно, что рабочий стол РЕАЛЬНО установлен.
+/// Executables that show the desktop is REALLY installed.
 ///
-/// `check_package` из базы — имя ПАКЕТА (`plasma-desktop`,
-/// `mate-session-manager`); искать такой файл в PATH бессмысленно, его там
-/// нет. Поэтому у каждого стола свой исполняемый файл, а у Cinnamon их два:
-/// `cinnamon-session` тянется зависимостями и без самого стола, поэтому
-/// подтверждаем ещё и файловым менеджером `nemo`.
+/// `check_package` from the database is a PACKAGE name (`plasma-desktop`,
+/// `mate-session-manager`); looking for such a file in PATH is pointless, it
+/// is not there. So each desktop has its own executable, and Cinnamon has
+/// two: `cinnamon-session` gets pulled in by dependencies even without the
+/// desktop itself, so we also confirm with the `nemo` file manager.
 ///
-/// Забыть новый стол здесь нельзя: неизвестный `de_id` отдаёт пустой
-/// список, а не «имя пакета вместо файла», — установленный стол больше не
-/// показывается вечно отсутствующим (так вело себя прежнее
-/// `_CHECK_BINARIES.get(name) or check_package`).
+/// A new desktop cannot be forgotten here: an unknown `de_id` gives an empty
+/// list rather than "a package name instead of a file", so an installed
+/// desktop is no longer shown as forever missing (which is how the old
+/// `_CHECK_BINARIES.get(name) or check_package` behaved).
 pub fn de_installed_binaries(de_id: &str) -> &'static [&'static str] {
     match de_id {
         "cinnamon-mint" => &["cinnamon", "nemo"],
@@ -1492,53 +1506,54 @@ pub fn de_installed_binaries(de_id: &str) -> &'static [&'static str] {
         "lxqt" => &["lxqt-session"],
         "niri" => &["niri"],
         "sway" => &["sway"],
-        // `rivertile` есть только у river-classic: голый river 0.4+ (тоже
-        // `/usr/bin/river`, но без менеджера окон) не должен выглядеть
-        // установленным столом — войти в него покупатель не сможет.
+        // `rivertile` exists only in river-classic: bare river 0.4+ (also
+        // `/usr/bin/river`, but without a window manager) must not look like an
+        // installed desktop, since the user would not be able to log into it.
         "river" => &["river", "rivertile"],
         "wayfire" => &["wayfire"],
         _ => &[],
     }
 }
 
-/// Пути конфигурации DE — порт `PackageDB.get_config_paths`.
+/// DE config paths: a port of `PackageDB.get_config_paths`.
 pub fn get_config_paths(de_id: &str) -> Vec<String> {
     de_entry(de_id)
         .map(|e| e.config_paths.iter().map(|p| p.to_string()).collect())
         .unwrap_or_default()
 }
 
-/// Список всех известных DE — порт `PackageDB.list_de_ids`.
+/// List of all known DEs: a port of `PackageDB.list_de_ids`.
 pub fn list_de_ids() -> Vec<&'static str> {
     DE_DATABASE.iter().map(|(k, _)| *k).collect()
 }
 
 // ============================================================================
-// Какое окружение запущено
+// Which environment is running
 // ============================================================================
 //
-// ⚠️ ОДНА реализация на весь продукт. Их было ТРИ, и все три отличались:
-//   * `compliance` знал `plasma`, но не знал sway, niri и LXQt — тайловым
-//     проверки соответствия молча не доставались (тест прямо фиксировал
+// ⚠️ ONE implementation for the whole product. There were THREE, and all
+// three differed:
+//   * `compliance` knew `plasma` but not sway, niri and LXQt: the tiling
+//     ones silently got no compliance checks (a test explicitly pinned
 //     `detect_current_de("sway") == None`);
-//   * `appdefaults` знал sway и niri, но сравнивал токены с учётом регистра
-//     и не знал `plasma`;
-//   * `SystemInfo.detect_current_de` в Python искал подстроки и тоже не знал
-//     ни sway, ни niri — а от его ответа зависит запрет удалять ЗАПУЩЕННЫЙ
-//     рабочий стол (правило #13): в сеансе sway ответ был «unknown», и
-//     защита не срабатывала.
-// Разъезд трёх таблиц — ровно то, что запрещает правило #12, поэтому обе
-// прежние функции теперь зовут эту. 30.09 к ней сведён и
-// `wallpaper_engine::detect_de` (четвёртая таблица: подстроки, Cinnamon как
-// `cinnamon`, `plasma` в имени сеанса не узнавался). Отдельно живёт только
-// `we_util::detect_desktop` — порт `Util::desktop` демона waywallen, у него
-// свой перечень ответов.
+//   * `appdefaults` knew sway and niri, but compared tokens case-sensitively
+//     and did not know `plasma`;
+//   * `SystemInfo.detect_current_de` in Python searched for substrings and
+//     also knew neither sway nor niri, and its answer drives the ban on
+//     removing the RUNNING desktop (rule #13): in a sway session the answer
+//     was "unknown", and the guard did not fire.
+// Three diverging tables are exactly what rule #12 forbids, so both former
+// functions now call this one. On 30.09 `wallpaper_engine::detect_de` was
+// folded into it too (a fourth table: substrings, Cinnamon as `cinnamon`,
+// `plasma` in the session name was not recognised). Only
+// `we_util::detect_desktop` lives separately: a port of the waywallen
+// daemon's `Util::desktop`, it has its own list of answers.
 
-/// Токен `XDG_CURRENT_DESKTOP` (в нижнем регистре) → идентификатор DE Rexon.
-/// Порядок важен: `Budgie:GNOME` обязан дать budgie, поэтому перебираются
-/// сначала токены строки, и только внутри — эта таблица. Ей же помощник
-/// пакетов от root узнаёт стол графического сеанса по `Desktop=` logind
-/// (`system_plan::pkg_helper_script`).
+/// `XDG_CURRENT_DESKTOP` token (lowercase) → Rexon DE identifier. Order
+/// matters: `Budgie:GNOME` must give budgie, so the tokens of the string are
+/// iterated first, and only inside that this table. The root package helper
+/// also uses it to learn the graphical session's desktop from logind's
+/// `Desktop=` (`system_plan::pkg_helper_script`).
 pub const XDG_TOKEN_TO_DE: &[(&str, &str)] = &[
     ("kde", "kde"),
     ("plasma", "kde"),
@@ -1548,14 +1563,14 @@ pub const XDG_TOKEN_TO_DE: &[(&str, &str)] = &[
     ("xfce", "xfce"),
     ("mate", "mate"),
     ("budgie", "budgie"),
-    // Сеанс Pantheon: `DesktopNames=Pantheon` в обоих session-файлах
-    // (elementary/session-settings: xsessions/pantheon.desktop.in и
+    // Pantheon session: `DesktopNames=Pantheon` in both session files
+    // (elementary/session-settings: xsessions/pantheon.desktop.in and
     // wayland-sessions/pantheon-wayland.desktop.in).
     ("pantheon", "pantheon"),
-    // Deepin: DDE v23/v25 ставит `XDG_CURRENT_DESKTOP=DDE` сам
-    // (dde-session `environmentsmanager.cpp`), deepin 20 — `Deepin`
-    // (startdde `session.go`); сеанс Wayland объявляет `DesktopNames=Treeland`.
-    // Имена сеансов — `deepin` (X11) и `treeland` (Wayland).
+    // Deepin: DDE v23/v25 sets `XDG_CURRENT_DESKTOP=DDE` itself (dde-session
+    // `environmentsmanager.cpp`), deepin 20 sets `Deepin` (startdde
+    // `session.go`); the Wayland session declares `DesktopNames=Treeland`.
+    // Session names are `deepin` (X11) and `treeland` (Wayland).
     ("dde", "deepin"),
     ("deepin", "deepin"),
     ("treeland", "deepin"),
@@ -1564,44 +1579,46 @@ pub const XDG_TOKEN_TO_DE: &[(&str, &str)] = &[
     ("hyprland", "hyprland"),
     ("sway", "sway"),
     ("niri", "niri"),
-    // river и Wayfire Rexon с 24.10 ставит сам. river-classic
-    // `XDG_CURRENT_DESKTOP` не выставляет (его выставляет стартовый init
-    // Rexon, а сеанс из экрана входа опознаётся по `DESKTOP_SESSION=river`);
-    // Wayfire ставит `wayfire` сам.
+    // Since 24.10 Rexon installs river and Wayfire itself. river-classic does
+    // not set `XDG_CURRENT_DESKTOP` (the Rexon starter init sets it, and a
+    // session from the login screen is recognised by `DESKTOP_SESSION=river`);
+    // Wayfire sets `wayfire` itself.
     ("river", "river"),
     ("wayfire", "wayfire"),
-    // labwc Rexon не ставит, но узнаёт: фон на нём кладёт внешний демон
-    // (`wallpaper_engine::WLROOTS_DE`). Раньше такие композиторы знала только
-    // отдельная таблица движка обоев, а здесь они проходили лишь на Wayland
-    // «первым токеном как есть» — и по имени сеанса не опознавались вовсе.
+    // Rexon does not install labwc but recognises it: the background on it is
+    // put by an external daemon (`wallpaper_engine::WLROOTS_DE`). Previously such
+    // compositors were known only to the wallpaper engine's separate table, and
+    // here they passed only on Wayland "with the first token as is", and were
+    // not recognised by session name at all.
     ("labwc", "labwc"),
-    // UKUI (стол Kylin): `XDG_CURRENT_DESKTOP=UKUI` ставит сам `ukui-session`
-    // (`sessionapplication.cpp`), у Ubuntu Kylin приходит `ubuntukylin:UKUI`.
-    // Имена сеансов — `ukui` (X11, `ukui.desktop`) и `kylin-wlcom` (Wayland,
-    // файл сеанса композитора kylin-wlcom). ⚠️ Только распознавание: стола
-    // нет в каталоге (`DE_DATABASE`, `de_customization::de_from_id`), и
-    // Rexon ведёт себя как на любом незнакомом столе, честно говоря, что его
-    // пока не поддерживает ([`unsupported_desktop_notice`]). Без этой строки
-    // сеанс UKUI на X11 не опознавался вовсе, а на Wayland проходил лишь
-    // «первым токеном как есть».
+    // UKUI (the Kylin desktop): `XDG_CURRENT_DESKTOP=UKUI` is set by
+    // `ukui-session` itself (`sessionapplication.cpp`), Ubuntu Kylin gives
+    // `ubuntukylin:UKUI`. Session names are `ukui` (X11, `ukui.desktop`) and
+    // `kylin-wlcom` (Wayland, the session file of the kylin-wlcom compositor).
+    // ⚠️ Recognition only: the desktop is not in the catalog (`DE_DATABASE`,
+    // `de_customization::de_from_id`), and Rexon behaves as on any unknown
+    // desktop, honestly saying it does not support it yet
+    // ([`unsupported_desktop_notice`]). Without this line a UKUI session on X11
+    // was not recognised at all, and on Wayland it passed only "with the first
+    // token as is".
     ("ukui", "ukui"),
     ("kylin-wlcom", "ukui"),
 ];
 
-/// Столы, которые Rexon узнаёт в сеансе, но пока не поддерживает: в каталоге
-/// (`DE_DATABASE`) их нет — ни установки, ни своих настроек.
-/// Идентификатор → имя для человека (имя собственное, не переводится).
+/// Desktops Rexon recognises in a session but does not support yet: they
+/// are not in the catalog (`DE_DATABASE`), so no install and no settings of
+/// their own. Identifier → name for the person (a proper name, not translated).
 pub const RECOGNIZED_UNSUPPORTED_DES: &[(&str, &str)] = &[("ukui", "UKUI")];
 
-/// Имя стола, который Rexon узнаёт, но пока не поддерживает; `None` — стол
-/// поддерживается или вовсе незнаком.
+/// Name of a desktop Rexon recognises but does not support yet; `None`: the
+/// desktop is supported or entirely unknown.
 pub fn unsupported_desktop_name(de_id: &str) -> Option<&'static str> {
     RECOGNIZED_UNSUPPORTED_DES.iter().find(|(id, _)| *id == de_id).map(|(_, name)| *name)
 }
 
-/// Честная строка для человека в сеансе такого стола; `None` — говорить
-/// нечего. Работает Rexon там как на любом незнакомом столе: обои, темы,
-/// курсоры и шрифты ставятся общим путём.
+/// An honest line for the person in a session of such a desktop; `None`:
+/// nothing to say. Rexon works there as on any unknown desktop: wallpapers,
+/// themes, cursors and fonts are applied the common way.
 pub fn unsupported_desktop_notice(de_id: &str) -> Option<String> {
     let name = unsupported_desktop_name(de_id)?;
     Some(crate::i18n::trf(
@@ -1611,13 +1628,13 @@ pub fn unsupported_desktop_notice(de_id: &str) -> Option<String> {
     ))
 }
 
-/// Какое окружение запущено СЕЙЧАС: по `XDG_CURRENT_DESKTOP`, при неудаче —
-/// по `DESKTOP_SESSION`, при неудаче — первый токен как есть, если сеанс
-/// вообще Wayland (неизвестный композитор лучше «ничего»: обои и шрифты ему
-/// всё равно ставятся).
+/// Which environment is running NOW: by `XDG_CURRENT_DESKTOP`, failing that
+/// by `DESKTOP_SESSION`, failing that the first token as is, if the session
+/// is Wayland at all (an unknown compositor is better than "nothing":
+/// wallpapers and fonts are still applied to it).
 ///
-/// Значения окружения передаются параметрами: функция чистая и проверяется
-/// без подмены `os.environ`.
+/// The environment values are passed as parameters: the function is pure
+/// and is tested without patching `os.environ`.
 pub fn detect_current_de(
     xdg_current_desktop: &str,
     desktop_session: &str,
@@ -1630,8 +1647,8 @@ pub fn detect_current_de(
             return Some((*de).to_string());
         }
     }
-    // Запасной путь — имя сеанса. Ищем подстроку: имена сеансов пишут как
-    // попало (`gnome-xorg`, `plasmawayland`, `cinnamon2d`).
+    // Fallback: the session name. We look for a substring: session names are
+    // written every which way (`gnome-xorg`, `plasmawayland`, `cinnamon2d`).
     let session = desktop_session.to_lowercase();
     if !session.is_empty() {
         if let Some((_, de)) = XDG_TOKEN_TO_DE.iter().find(|(k, _)| session.contains(*k)) {
@@ -1648,49 +1665,51 @@ pub fn detect_current_de(
 }
 
 // ============================================================================
-// Связка «композитор + шелл»: кто ещё живёт в этом сеансе
+// The "compositor + shell" bundle: who else lives in this session
 // ============================================================================
 //
-// ⚠️ Модель «одно окружение = одна строка» неполна. Под niri можно сидеть
-// голым, а можно — с чужим шеллом (Noctalia, DankMaterialShell), и это две
-// РАЗНЫЕ машины: во втором случае фон рисует не наш движок, а шелл — своей
-// полноэкранной поверхностью wlr-layer-shell на слое Background, на каждый
-// выход (у Noctalia она с namespace `noctalia-wallpaper`, у DMS namespace не
-// задан вовсе). Наша поверхность обоев ляжет под неё, и покупатель увидит
-// чужие обои при зелёном рапорте. `detect_current_de` в обоих случаях вернёт
-// «niri», поэтому связку опознаём отдельным ответом.
+// ⚠️ The "one environment = one string" model is incomplete. Under niri one
+// can sit bare, or with a third-party shell (Noctalia, DankMaterialShell),
+// and these are two DIFFERENT machines: in the second case the background
+// is drawn not by our engine but by the shell, with its own fullscreen
+// wlr-layer-shell surface on the Background layer, one per output (Noctalia
+// uses the namespace `noctalia-wallpaper`, DMS sets no namespace at all).
+// Our wallpaper surface ends up under it, and the user sees someone else's
+// wallpaper with a green report. `detect_current_de` returns "niri" in both
+// cases, so the bundle is recognised with a separate answer.
 //
-// Ядро НИЧЕГО не спрашивает у машины: наблюдения приходят параметрами
-// ([`ShellFacts`]) ровно как у `detect_current_de`, добывает их вызывающий.
-// Иначе связку нельзя было бы прогнать сверкой.
+// The core asks the machine NOTHING: observations come in as parameters
+// ([`ShellFacts`]) exactly as with `detect_current_de`, gathered by the
+// caller. Otherwise the bundle could not be run through a parity check.
 //
-// ⚠️ Граница ответственности. Файл в каталоге сеанса доказывает, что шелл
-// ТУТ БЫЛ: свой сокет Noctalia снимает только в деструкторе, после падения
-// файл остаётся. Поэтому «живость» — работа вызывающего (flock на
-// `noctalia-*.lock`, ответ `noctalia msg status`, `systemctl --user
-// is-active`), а ядро принимает уже добытый факт. Имя на шине этим пороком
-// не страдает: протухшим оно быть не может, и это самый надёжный признак.
+// ⚠️ Boundary of responsibility. A file in the session directory proves the
+// shell WAS HERE: Noctalia removes its socket only in the destructor, after
+// a crash the file stays. So "liveness" is the caller's job (flock on
+// `noctalia-*.lock`, the `noctalia msg status` answer, `systemctl --user
+// is-active`), and the core takes the already obtained fact. A bus name does
+// not suffer from this flaw: it cannot be stale, and it is the most
+// reliable sign.
 
-/// Чужой шелл рабочего стола, который сам рисует фон.
+/// A third-party desktop shell that draws the background itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DesktopShell {
-    /// Noctalia (нативный C++/GLES, MIT). Живёт не только на wlroots, но и
-    /// на KDE Plasma, поэтому опознавать его по композитору нельзя.
+    /// Noctalia (native C++/GLES, MIT). It lives not only on wlroots but also on
+    /// KDE Plasma, so it cannot be recognised by the compositor.
     ///
-    /// ⚠️ Plasma у Noctalia — НЕ полноценная интеграция: их собственная
-    /// документация (`docs/user/compositor-settings/kde.mdx`) прямо говорит
-    /// «not a first-class compositor integration», окна там идут через
-    /// внедряемый по D-Bus скрипт KWin (сами называют его «more fragile»).
-    /// И ещё одна ловушка именно Plasma: при каждой смене СВОИХ обоев
-    /// Noctalia зовёт `plasma-apply-wallpaperimage`, то есть переписывает
-    /// обои самой Plasma, — и делает это независимо от `[wallpaper] enabled`.
+    /// ⚠️ Noctalia on Plasma is NOT a full integration: their own documentation
+    /// (`docs/user/compositor-settings/kde.mdx`) says outright "not a
+    /// first-class compositor integration", windows there go through a KWin
+    /// script injected over D-Bus (they themselves call it "more fragile"). And
+    /// one more trap specific to Plasma: on every change of ITS OWN wallpaper
+    /// Noctalia calls `plasma-apply-wallpaperimage`, i.e. rewrites Plasma's own
+    /// wallpaper, and does so regardless of `[wallpaper] enabled`.
     Noctalia,
-    /// DankMaterialShell (на Quickshell, MIT).
+    /// DankMaterialShell (on Quickshell, MIT).
     DankMaterialShell,
 }
 
 impl DesktopShell {
-    /// Идентификатор для настроек и журнала.
+    /// Identifier for settings and the log.
     pub fn as_str(self) -> &'static str {
         match self {
             DesktopShell::Noctalia => "noctalia",
@@ -1698,8 +1717,7 @@ impl DesktopShell {
         }
     }
 
-    /// Имя для покупателя (в тексте на экране идентификатору не место,
-    /// правило #13).
+    /// Name for the user (an identifier has no place in on-screen text, rule #13).
     pub fn label(self) -> &'static str {
         match self {
             DesktopShell::Noctalia => "Noctalia",
@@ -1707,7 +1725,7 @@ impl DesktopShell {
         }
     }
 
-    /// Все известные шеллы — чтобы перебор нигде не разъехался с таблицей.
+    /// All known shells, so that iteration never diverges from the table.
     pub fn all() -> &'static [DesktopShell] {
         &[DesktopShell::Noctalia, DesktopShell::DankMaterialShell]
     }
@@ -1719,57 +1737,56 @@ impl Serialize for DesktopShell {
     }
 }
 
-/// Наблюдения за сеансом, по которым узнаётся шелл. Всё — данные: имена
-/// файлов, имена юнитов, имена на шине, имена процессов, переменные
-/// окружения.
+/// Session observations by which a shell is recognised. All of it is data:
+/// file names, unit names, bus names, process names, environment variables.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ShellFacts<'a> {
-    /// Значение `$WAYLAND_DISPLAY` (пусто — не Wayland либо неизвестно).
+    /// Value of `$WAYLAND_DISPLAY` (empty: not Wayland or unknown).
     pub wayland_display: &'a str,
-    /// Имена файлов (без пути) в `$XDG_RUNTIME_DIR`.
+    /// File names (without path) in `$XDG_RUNTIME_DIR`.
     pub runtime_files: &'a [String],
-    /// Активные пользовательские юниты systemd — с суффиксом, как их
-    /// печатает `systemctl --user`.
+    /// Active systemd user units, with the suffix, as `systemctl --user` prints
+    /// them.
     pub active_user_units: &'a [String],
-    /// Занятые имена на сессионной шине D-Bus.
+    /// Owned names on the D-Bus session bus.
     pub dbus_names: &'a [String],
-    /// Имена работающих процессов пользователя (без пути и аргументов).
+    /// Names of the user's running processes (without path and arguments).
     pub process_names: &'a [String],
-    /// Переменные окружения парами имя→значение (нам достаточно тех, что
-    /// перечислены в [`SHELL_ENV_MARKERS`]; живой сбор —
-    /// [`SHELL_ENV_NAMES`]).
+    /// Environment variables as name→value pairs (we only need those listed in
+    /// [`SHELL_ENV_MARKERS`]; live gathering: [`SHELL_ENV_NAMES`]).
     pub env: &'a [(&'a str, &'a str)],
 }
 
-/// Опознанный шелл вместе с тем, ЧЕМ он опознан.
+/// A recognised shell together with WHAT it was recognised by.
 ///
-/// Список подтверждений — не украшение: при разборе жалобы «обои не
-/// применились» он единственный отвечает на вопрос, почему ядро решило, что
-/// фон чужой.
+/// The list of confirmations is not decoration: when analysing a "wallpaper
+/// did not apply" complaint it is the only thing answering why the core
+/// decided the background is foreign.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ShellDetection {
-    /// Кто именно.
+    /// Who exactly.
     pub shell: DesktopShell,
-    /// Чем подтверждено, человеческим языком.
+    /// What confirmed it, in human language.
     pub evidence: Vec<String>,
 }
 
-/// Точное имя управляющего сокета Noctalia в `$XDG_RUNTIME_DIR`.
+/// Exact name of Noctalia's control socket in `$XDG_RUNTIME_DIR`.
 ///
-/// ⚠️ При пустом `WAYLAND_DISPLAY` сам Noctalia подставляет `wayland-0`, а
-/// при пустом `XDG_RUNTIME_DIR` уходит в `/tmp` — гоняться за этими
-/// запасными путями ядру незачем, каталог и имя добывает вызывающий.
+/// ⚠️ With an empty `WAYLAND_DISPLAY` Noctalia itself substitutes
+/// `wayland-0`, and with an empty `XDG_RUNTIME_DIR` it goes to `/tmp`: the
+/// core has no reason to chase these fallback paths, the directory and the
+/// name are obtained by the caller.
 pub fn noctalia_socket_name(wayland_display: &str) -> String {
     format!("noctalia-{}.sock", noctalia_display(wayland_display))
 }
 
-/// Точное имя файла блокировки Noctalia (по нему шелл держит flock от
-/// второго запуска) — та же формула, что у сокета.
+/// Exact name of Noctalia's lock file (the shell holds a flock on it against
+/// a second launch): the same formula as for the socket.
 pub fn noctalia_lock_name(wayland_display: &str) -> String {
     format!("noctalia-{}.lock", noctalia_display(wayland_display))
 }
 
-/// Дисплей в именах файлов Noctalia: пустой шелл заменяет на `wayland-0`.
+/// Display in Noctalia's file names: the shell replaces an empty one with `wayland-0`.
 fn noctalia_display(wayland_display: &str) -> &str {
     if wayland_display.is_empty() {
         "wayland-0"
@@ -1778,62 +1795,64 @@ fn noctalia_display(wayland_display: &str) -> &str {
     }
 }
 
-/// Имена на сессионной шине, которые шелл занимает БЕЗУСЛОВНО.
+/// Session bus names the shell owns UNCONDITIONALLY.
 ///
-/// У Noctalia своего имени вида `dev.noctalia.Noctalia` нет (это только
-/// app_id окна), но два служебных он берёт всегда. Условные — не годятся:
-/// `dev.noctalia.KWinActiveWindow` бывает только на KDE,
-/// `org.kde.StatusNotifierWatcher` — только если имя свободно, а
-/// `org.freedesktop.Notifications` не принадлежит никому конкретно (его
-/// берут и Noctalia, и DMS, и штатные оболочки).
+/// Noctalia has no name of its own like `dev.noctalia.Noctalia` (that is
+/// only the window app_id), but it always takes two service names.
+/// Conditional ones are no good: `dev.noctalia.KWinActiveWindow` exists only
+/// on KDE, `org.kde.StatusNotifierWatcher` only if the name is free, and
+/// `org.freedesktop.Notifications` belongs to nobody in particular (it is
+/// taken by Noctalia, DMS and stock shells alike).
 const SHELL_DBUS_NAMES: &[(DesktopShell, &[&str])] = &[
     (DesktopShell::Noctalia, &["dev.noctalia.Debug", "dev.noctalia.Mpris"]),
     (DesktopShell::DankMaterialShell, &[]),
 ];
 
-/// Пользовательские юниты, которыми поднимают шелл.
+/// User units that start the shell.
 ///
-/// ⚠️ У Noctalia штатного юнита НЕТ (пакет ставит только бинарь и `.desktop`
-/// с `Exec=noctalia --daemon`); `noctalia.service` заводит лишь модуль
-/// NixOS. Поэтому отсутствие юнита ничего не доказывает — доказывает только
-/// его наличие.
+/// ⚠️ Noctalia has NO stock unit (the package installs only the binary and a
+/// `.desktop` with `Exec=noctalia --daemon`); `noctalia.service` is created
+/// only by the NixOS module. So the absence of the unit proves nothing; only
+/// its presence proves something.
 ///
-/// ⚠️ `dms.service` пакет ставит с `WantedBy=graphical-session.target`. Если
-/// человек сделал `systemctl --user enable dms` (а не `add-wants` к своему
-/// композитору, как советуют сами авторы), юнит поднимется в ЛЮБОМ сеансе,
-/// в том числе в Plasma и GNOME. Поэтому DMS «под Plasma» встретиться может,
-/// хотя официально Plasma он не поддерживает, — признак верен и там.
+/// ⚠️ The package installs `dms.service` with
+/// `WantedBy=graphical-session.target`. If the person ran
+/// `systemctl --user enable dms` (rather than `add-wants` to their
+/// compositor, as the authors themselves advise), the unit comes up in ANY
+/// session, including Plasma and GNOME. So DMS "under Plasma" can occur,
+/// although officially it does not support Plasma: the sign is valid there too.
 const SHELL_UNITS: &[(DesktopShell, &[&str])] = &[
     (DesktopShell::Noctalia, &["noctalia.service"]),
     (DesktopShell::DankMaterialShell, &["dms.service"]),
 ];
 
-/// Метка в окружении: имя переменной и, если важно, её ТОЧНОЕ значение.
+/// An environment marker: the variable name and, if it matters, its EXACT value.
 ///
-/// Значение нужно там, где саму переменную ставит не только наш шелл:
-/// `QS_APP_ID` выставляет общий модуль запуска `dankgo`, а им пользуется не
-/// один DMS (у каждой программы на нём свой идентификатор).
+/// The value is needed where the variable itself is set not only by our
+/// shell: `QS_APP_ID` is set by the shared launcher module `dankgo`, and more
+/// than just DMS uses it (each program on it has its own identifier).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EnvMarker {
-    /// Имя переменной.
+    /// Variable name.
     pub name: &'static str,
-    /// Требуемое значение; `None` — годится любое непустое.
+    /// Required value; `None`: any non-empty one will do.
     pub value: Option<&'static str>,
 }
 
-/// Переменные окружения, которые шелл ставит своему процессу интерфейса и
-/// которые наследуют запущенные ИЗ шелла программы — то есть мы.
+/// Environment variables the shell sets for its UI process and which are
+/// inherited by programs launched FROM the shell, i.e. by us.
 ///
-/// DankMaterialShell: процессу `qs` бэкенд ставит `DMS_SOCKET` и
-/// `QS_APP_ID=com.danklinux.dms` (модуль `dankgo`, `shellapp/env.go`), а
-/// `DMS_EXECUTABLE` — сам `dms` (`core/cmd/dms/shellapp.go`). Чистки
-/// окружения перед запуском программ в шелле нет (запуск идёт через
-/// `systemd-run --user --scope`, он окружение наследует), так что все три
-/// доходят и до нас. ⚠️ `QS_APP_ID` — именно ПЕРЕМЕННАЯ окружения; прежняя
-/// запись здесь («прагма AppId в QML, в окружении её нет») была неверна.
+/// DankMaterialShell: the backend sets `DMS_SOCKET` and
+/// `QS_APP_ID=com.danklinux.dms` for the `qs` process (the `dankgo` module,
+/// `shellapp/env.go`), and `DMS_EXECUTABLE` is set by `dms` itself
+/// (`core/cmd/dms/shellapp.go`). There is no environment cleanup before
+/// launching programs in the shell (launching goes through
+/// `systemd-run --user --scope`, which inherits the environment), so all
+/// three reach us too. ⚠️ `QS_APP_ID` is indeed an environment VARIABLE; the
+/// old note here ("the AppId pragma in QML, not in the environment") was wrong.
 ///
-/// У Noctalia своих переменных нет: `setenv` в её коде встречается только
-/// у хуков и снимков экрана.
+/// Noctalia has no variables of its own: `setenv` in its code occurs only in
+/// hooks and screenshots.
 pub const SHELL_ENV_MARKERS: &[(DesktopShell, &[EnvMarker])] = &[
     (DesktopShell::Noctalia, &[]),
     (
@@ -1846,22 +1865,24 @@ pub const SHELL_ENV_MARKERS: &[(DesktopShell, &[EnvMarker])] = &[
     ),
 ];
 
-/// Имена всех переменных из [`SHELL_ENV_MARKERS`] — что собирать живому
-/// вызывающему. Совпадение с таблицей сторожит сверка
-/// `tests/desktop_shell.rs`, иначе сбор и таблица разъедутся молча.
+/// Names of all variables from [`SHELL_ENV_MARKERS`]: what the live caller
+/// should gather. The match with the table is guarded by the
+/// `tests/desktop_shell.rs` check, otherwise gathering and the table would
+/// silently diverge.
 pub const SHELL_ENV_NAMES: &[&str] = &["DMS_SOCKET", "DMS_EXECUTABLE", "QS_APP_ID"];
 
-/// Суффиксы служебных файлов DankMaterialShell.
+/// Suffixes of DankMaterialShell's service files.
 ///
-/// Имена подтверждены исходниками модуля запуска `dankgo` (тот коммит, что
-/// прибит в `core/go.mod` DMS 1.6.2): сокет `danklinux-<pid бэкенда>.sock`
-/// (`paths/paths.go`, имя = `ID` приложения + `-<pid>.sock`, `ID` у DMS —
-/// `danklinux`), рядом `danklinux-<pid>.pid` (в нём PID процесса `qs`) и
-/// `danklinux-<pid>.session` (в нём `WAYLAND_DISPLAY`) —
-/// `shellapp/pidfile.go`. При штатном выходе оба файла удаляются.
+/// The names are confirmed by the sources of the `dankgo` launcher module
+/// (the commit pinned in `core/go.mod` of DMS 1.6.2): the socket
+/// `danklinux-<backend pid>.sock` (`paths/paths.go`, name = the app `ID` +
+/// `-<pid>.sock`, the `ID` of DMS is `danklinux`), next to it
+/// `danklinux-<pid>.pid` (holding the PID of the `qs` process) and
+/// `danklinux-<pid>.session` (holding `WAYLAND_DISPLAY`), see
+/// `shellapp/pidfile.go`. On a regular exit both files are removed.
 const DMS_RUNTIME_SUFFIXES: &[&str] = &[".sock", ".pid", ".session"];
 
-/// Значение из [`ShellFacts::env`] по имени переменной.
+/// Value from [`ShellFacts::env`] by variable name.
 fn env_value<'a>(facts: &ShellFacts<'a>, name: &str) -> &'a str {
     facts
         .env
@@ -1871,7 +1892,7 @@ fn env_value<'a>(facts: &ShellFacts<'a>, name: &str) -> &'a str {
         .unwrap_or("")
 }
 
-/// Имена шелла из таблицы «шелл → список имён».
+/// The shell's names from a "shell → list of names" table.
 fn names_for(table: &'static [(DesktopShell, &'static [&'static str])], shell: DesktopShell)
     -> &'static [&'static str]
 {
@@ -1882,28 +1903,27 @@ fn names_for(table: &'static [(DesktopShell, &'static [&'static str])], shell: D
         .unwrap_or(&[])
 }
 
-/// Подтверждения присутствия одного шелла.
+/// Confirmations of the presence of one shell.
 ///
-/// Возвращает (число ДОКАЗАТЕЛЬСТВ, список подтверждений). Разница между
-/// доказательством и подтверждением принципиальная: имя процесса
-/// доказательством НЕ является, потому что то же имя носит командная
-/// строка самого шелла (`noctalia msg …`, `dms ipc call …`) — она живёт
-/// миллисекунды и шелла в сеансе не означает. Такие признаки попадают в
-/// список, но решения не принимают.
+/// Returns (number of PROOFS, list of confirmations). The difference between
+/// a proof and a confirmation is fundamental: a process name is NOT a proof,
+/// because the shell's own command line (`noctalia msg …`, `dms ipc call …`)
+/// has the same name: it lives for milliseconds and does not mean the shell
+/// is in the session. Such signs go into the list but do not make the decision.
 fn shell_signs(shell: DesktopShell, facts: &ShellFacts) -> (usize, Vec<String>) {
     let mut proofs = 0usize;
     let mut evidence: Vec<String> = Vec::new();
 
-    // 1. Служебный файл в каталоге сеанса — его создаёт САМ живой шелл.
+    // 1. A service file in the session directory: created by the live shell ITSELF.
     let file = match shell {
-        // Управляющий сокет `noctalia-$WAYLAND_DISPLAY.sock` и файл
-        // блокировки `noctalia-$WAYLAND_DISPLAY.lock` (по нему шелл держит
-        // flock от второго запуска). Сначала — ТОЧНЫЕ имена для нашего
-        // дисплея: они и есть самое точное подтверждение. Запасом — любая
-        // форма `noctalia-*.sock|.lock`: слепнуть из-за пустого или чужого
-        // `WAYLAND_DISPLAY` незачем. Под запас попадает и второй сокет
-        // демона, `noctalia-dmenu-$WAYLAND_DISPLAY.sock`; ложного «шелл
-        // есть» это не даёт — его тоже создаёт сам демон.
+        // The control socket `noctalia-$WAYLAND_DISPLAY.sock` and the lock file
+        // `noctalia-$WAYLAND_DISPLAY.lock` (the shell holds a flock on it against
+        // a second launch). First the EXACT names for our display: they are the
+        // most precise confirmation. As a fallback, any form of
+        // `noctalia-*.sock|.lock`: there is no reason to go blind because of an
+        // empty or foreign `WAYLAND_DISPLAY`. The fallback also catches the
+        // daemon's second socket, `noctalia-dmenu-$WAYLAND_DISPLAY.sock`; this
+        // gives no false "shell present", since the daemon creates it too.
         DesktopShell::Noctalia => {
             let exact = [
                 noctalia_socket_name(facts.wayland_display),
@@ -1919,10 +1939,10 @@ fn shell_signs(shell: DesktopShell, facts: &ShellFacts) -> (usize, Vec<String>) 
                     })
                 })
         }
-        // `danklinux-<pid>.sock` / `.pid` / `.session`. Имя БЕЗ номера
-        // процесса (`danklinux.sock`) сервер не создаёт никогда: это лишь
-        // запасной путь, по которому клиент `dms` ищет сокет
-        // (`core/cmd/dms/server_client.go`). В признаки его не берём.
+        // `danklinux-<pid>.sock` / `.pid` / `.session`. The server never creates a
+        // name WITHOUT the process number (`danklinux.sock`): it is only a fallback
+        // path where the `dms` client looks for the socket
+        // (`core/cmd/dms/server_client.go`). We do not take it as a sign.
         DesktopShell::DankMaterialShell => facts.runtime_files.iter().find(|f| {
             let stem_ok = f.starts_with("danklinux-");
             stem_ok && DMS_RUNTIME_SUFFIXES.iter().any(|s| f.ends_with(s))
@@ -1933,15 +1953,15 @@ fn shell_signs(shell: DesktopShell, facts: &ShellFacts) -> (usize, Vec<String>) 
         evidence.push(format!("файл {name} в каталоге сеанса"));
     }
 
-    // 2. Занятое имя на сессионной шине. Протухшим не бывает — самый
-    //    надёжный признак из всех.
+    // 2. An owned name on the session bus. It is never stale: the most
+    //    reliable sign of all.
     let bus = names_for(SHELL_DBUS_NAMES, shell);
     if let Some(name) = facts.dbus_names.iter().find(|n| bus.contains(&n.as_str())) {
         proofs += 1;
         evidence.push(format!("имя {name} на шине"));
     }
 
-    // 3. Поднятый пользовательский юнит.
+    // 3. A started user unit.
     let units = names_for(SHELL_UNITS, shell);
     if let Some(unit) = facts
         .active_user_units
@@ -1952,7 +1972,7 @@ fn shell_signs(shell: DesktopShell, facts: &ShellFacts) -> (usize, Vec<String>) 
         evidence.push(format!("запущен юнит {unit}"));
     }
 
-    // 4. Метка в нашем окружении: значит, нас запустили ИЗ шелла.
+    // 4. A marker in our environment: it means we were launched FROM the shell.
     let markers = SHELL_ENV_MARKERS
         .iter()
         .find(|(s, _)| *s == shell)
@@ -1974,9 +1994,9 @@ fn shell_signs(shell: DesktopShell, facts: &ShellFacts) -> (usize, Vec<String>) 
         }
     }
 
-    // 5. Имя процесса — только подтверждение (см. докстринг). Имена
-    //    процесса интерфейса (`qs`, `quickshell`) не берём вовсе: под ними
-    //    ходит любой шелл на Quickshell, и запустить его можно руками.
+    // 5. A process name is only a confirmation (see the doc comment). UI
+    //    process names (`qs`, `quickshell`) are not taken at all: any Quickshell
+    //    shell runs under them, and it can be started by hand.
     let procs: &[&str] = match shell {
         DesktopShell::Noctalia => &["noctalia"],
         DesktopShell::DankMaterialShell => &["dms"],
@@ -1990,14 +2010,15 @@ fn shell_signs(shell: DesktopShell, facts: &ShellFacts) -> (usize, Vec<String>) 
     (proofs, evidence)
 }
 
-/// Какой чужой шелл рисует поверх этого композитора. `None` — шелла нет
-/// (или он ничем себя не выдал: тогда фон наш, и это верный ответ —
-/// рисовать поверх нас некому).
+/// Which third-party shell draws on top of this compositor. `None`: no shell
+/// (or it gave itself away in no way: then the background is ours, and that
+/// is the right answer, nobody is there to draw over us).
 ///
-/// Каждое доказательство самодостаточно: хватает ОДНОГО — служебного файла в
-/// каталоге сеанса, имени на шине, поднятого юнита или метки в окружении.
-/// Так и должно быть: шелл поднимают и юнитом, и `.desktop`-автозапуском, и
-/// строкой в конфиге композитора, а слой обоев он занимает одинаково.
+/// Each proof is self-sufficient: ONE is enough, a service file in the
+/// session directory, a bus name, a started unit or an environment marker.
+/// That is how it should be: a shell is started by a unit, by `.desktop`
+/// autostart, or by a line in the compositor config, and it takes the
+/// wallpaper layer the same way.
 pub fn detect_shell(facts: &ShellFacts) -> Option<ShellDetection> {
     let mut best: Option<(usize, ShellDetection)> = None;
     for shell in DesktopShell::all() {
@@ -2005,10 +2026,10 @@ pub fn detect_shell(facts: &ShellFacts) -> Option<ShellDetection> {
         if proofs == 0 {
             continue;
         }
-        // Двух шеллов разом не бывает, но если признаки нашлись у обоих
-        // (остались чужие файлы от прошлого сеанса), берём того, за кого
-        // доказательств больше; при равенстве — порядок таблицы. Для
-        // главного вопроса — «наш ли фон» — ответ в любом случае один.
+        // Two shells at once do not happen, but if signs were found for both
+        // (stale files left from a previous session), we take the one with more
+        // proofs; on a tie, the table order. For the main question, "is the
+        // background ours", the answer is the same either way.
         let better = best.as_ref().map_or(true, |(p, _)| proofs > *p);
         if better {
             best = Some((proofs, ShellDetection { shell: *shell, evidence }));
@@ -2017,16 +2038,16 @@ pub fn detect_shell(facts: &ShellFacts) -> Option<ShellDetection> {
     best.map(|(_, d)| d)
 }
 
-/// Итерация по базе для генераторов helper-таблиц (`system_plan.rs`):
-/// de_id → пакеты по семействам в порядке вставки.
+/// Iteration over the database for the helper table generators
+/// (`system_plan.rs`): de_id → packages by family in insertion order.
 pub fn de_database_packages(
 ) -> impl Iterator<Item = (&'static str, &'static [(PkgFamily, &'static [&'static str])])> {
     DE_DATABASE.iter().map(|(k, e)| (*k, e.packages))
 }
 
-/// Пакеты пары (de_id, family) по строковому значению семейства — как
-/// итерация `db["packages"].items()` в `_de_helper_supports`: None, если
-/// DE или семейство отсутствуют.
+/// Packages of a (de_id, family) pair by the family's string value, like
+/// iterating `db["packages"].items()` in `_de_helper_supports`: None if the
+/// DE or the family is missing.
 pub fn de_entry_packages_for(
     de_id: &str,
     family_value: &str,
@@ -2040,19 +2061,20 @@ pub fn de_entry_packages_for(
 }
 
 // ============================================================================
-// polkit: без pkexec не работает НИ ОДНА привилегированная операция
+// polkit: without pkexec NOT A SINGLE privileged operation works
 // ============================================================================
 //
-// ⚠️ Проверка наличия `pkexec` на весь проект была ровно одна (в установщике
-// тем), и она ничего не говорила человеку. Между тем на openSUSE `pkexec` —
-// отдельный подпакет, который тянется лишь через `Recommends`: при установке
-// системы с `--no-recommends` его нет, и тогда молча не работают установка
-// рабочих столов, системных тем, экранов входа — ВСЁ привилегированное.
-// Поэтому проверка одна, ранняя и с человеческим объяснением (правило #13).
+// ⚠️ There was exactly one `pkexec` presence check in the whole project (in
+// the theme installer), and it told the person nothing. Meanwhile on
+// openSUSE `pkexec` is a separate subpackage pulled in only via
+// `Recommends`: when the system is installed with `--no-recommends` it is
+// missing, and then installing desktops, system themes, login screens
+// (EVERYTHING privileged) silently does not work. So there is one check,
+// early and with a human explanation (rule #13).
 
-/// Что показать/записать, если `pkexec` в системе нет. `hint` — «Установите
-/// пакет …» из `utils::tool_package_hint("pkexec", family)`; пусто — если
-/// имени пакета для семейства не нашлось.
+/// What to show/log if there is no `pkexec` in the system. `hint` is the
+/// "Install the package …" text from `utils::tool_package_hint("pkexec",
+/// family)`; empty if no package name was found for the family.
 pub fn polkit_missing_message(hint: &str) -> String {
     if hint.is_empty() {
         // TRANSLATORS: Shown when the pkexec program (polkit) is missing. pkexec is a program name.
@@ -2073,28 +2095,31 @@ pub fn polkit_missing_message(hint: &str) -> String {
 }
 
 // ============================================================================
-// Чистые алгоритмы установщика (PackageManager, только разбор/фильтры)
+// Pure installer algorithms (PackageManager, parsing/filters only)
 // ============================================================================
 //
-// Вывод pacman подаётся замыканием: `Fn(&str) -> Option<String>` — stdout
-// команды для пакета при returncode == 0, None при ошибке. Живой вызов
-// (`pacman -Qg/-Qi` под LANG=C, LC_ALL=C — русская локаль переводит имена
-// полей и ломает разбор) — исполнение при подключении к живому Python.
+// The pacman output is passed as a closure: `Fn(&str) -> Option<String>` is
+// the command's stdout for a package when returncode == 0, None on error.
+// The live call (`pacman -Qg/-Qi` under LANG=C, LC_ALL=C: a Russian locale
+// translates field names and breaks parsing) is executed when connected to
+// live Python.
 
-/// Члены группы пакетов из вывода [`crate::system_plan::package_group_query`].
+/// Members of a package group from the output of
+/// [`crate::system_plan::package_group_query`].
 ///
-/// `ok` — команда завершилась нулём (не запустилась вовсе → false).
-/// Единственный разбор этого вывода на весь проект.
+/// `ok`: the command exited with zero (did not start at all → false). The
+/// only parser of this output in the whole project.
 ///
-/// `None` значит «это не группа»: либо спросить не вышло, либо такой группы
-/// нет. `pacman -Qg` на не-группе печатает "error: group … was not found" в
-/// stderr, отдаёт код 1 и ПУСТОЙ stdout (проверено на живой машине на
-/// `bash`, на несуществующем имени и на `base-devel`, которого в базе Arch
-/// давно нет). Пустой вывод при нулевом коде трактуется так же — имя
-/// остаётся как есть, и это верно: обычный пакет группой не становится.
+/// `None` means "this is not a group": either asking failed or there is no
+/// such group. `pacman -Qg` on a non-group prints "error: group … was not
+/// found" to stderr, returns code 1 and an EMPTY stdout (checked on a live
+/// machine on `bash`, on a nonexistent name and on `base-devel`, which has
+/// long been gone from the Arch database). An empty output with a zero code
+/// is treated the same: the name stays as is, and that is right: an ordinary
+/// package does not become a group.
 ///
-/// Форма вывода одна — "группа член" в строке; строки короче двух слов
-/// выбрасываются, чем отсеивается и любой мусор.
+/// The output has one form: "group member" per line; lines shorter than two
+/// words are dropped, which also filters out any garbage.
 pub fn parse_group_members(ok: bool, stdout: &str) -> Option<Vec<String>> {
     if !ok || stdout.trim().is_empty() {
         return None;
@@ -2111,19 +2136,19 @@ pub fn parse_group_members(ok: bool, stdout: &str) -> Option<Vec<String>> {
     )
 }
 
-/// Раскрыть имена групп пакетов в реальные пакеты группы — порт
+/// Expand package group names into the group's real packages: a port of
 /// `PackageManager._expand_groups`.
 ///
-/// В `DE_DATABASE` для MATE есть "mate" и "mate-extra" — это группы:
-/// `pacman -Q mate` падает (group != package), а вопрос движка о составе
-/// группы даёт строки "группа член". `qg_output(pkg)` — stdout этого
-/// вопроса при нулевом коде либо None. Успешный, но пустой вывод оставляет
-/// пакет как есть; результат дедуплицируется с сохранением порядка.
+/// In `DE_DATABASE` MATE has "mate" and "mate-extra": these are groups:
+/// `pacman -Q mate` fails (group != package), and the engine's group
+/// membership query gives "group member" lines. `qg_output(pkg)` is the
+/// stdout of that query with a zero code, or None. A successful but empty
+/// output leaves the package as is; the result is deduplicated keeping order.
 ///
-/// Семейства, у которых понятия «группа пакетов» нет, движок отсекает сам
-/// ([`crate::system_plan::package_group_query`] отдаёт им None), но ранний
-/// выход по Arch оставлен: без него не-Arch платил бы вызовом колбэка на
-/// каждое имя.
+/// Families without the notion of a "package group" are cut off by the
+/// engine itself ([`crate::system_plan::package_group_query`] returns None
+/// for them), but the early Arch exit is kept: without it non-Arch would pay
+/// a callback call for every name.
 pub fn expand_groups(
     family: PkgFamily,
     packages: &[String],
@@ -2144,19 +2169,19 @@ pub fn expand_groups(
     expanded.into_iter().filter(|p| seen.insert(p.clone())).collect()
 }
 
-/// Прочитать одно поле из stdout `pacman -Qi <pkg>` — чистая часть
-/// `PackageManager._qi_field` (LANG=C: поля "Required By" | "Depends On" |
-/// "Provides" | …). Возвращает [] если поле пустое ("None") или не найдено.
+/// Read one field from the stdout of `pacman -Qi <pkg>`: the pure part of
+/// `PackageManager._qi_field` (LANG=C: fields "Required By" | "Depends On" |
+/// "Provides" | …). Returns [] if the field is empty ("None") or not found.
 ///
-/// Чистка версионных констрейнтов режет имя по САМОМУ ЛЕВОМУ из разделителей
-/// ("=", ">", "<"). Так "gtk3>=3.24.0" даёт "gtk3".
+/// Stripping version constraints cuts the name at the LEFTMOST of the
+/// separators ("=", ">", "<"). So "gtk3>=3.24.0" gives "gtk3".
 ///
-/// Починен баг оригинала: перебор `for sep in "=><"` брал первый сепаратор,
-/// который вообще присутствует в строке (для "gtk3>=…" это "=" на поз.5),
-/// а не самый левый ("&gt;" на поз.4), из-за чего получалось "gtk3>".
-/// Из-за этого транзитивная защита удаления DE не распознавала пакеты с
-/// версионной зависимостью (`foo>=1.2` — gtk3, qt6-base, lightdm), и
-/// предохранитель против удаления активного DE для них не срабатывал.
+/// Fixed a bug of the original: the loop `for sep in "=><"` took the first
+/// separator present in the string at all (for "gtk3>=…" that is "=" at
+/// pos. 5), not the leftmost one (">" at pos. 4), which gave "gtk3>". Because
+/// of this the transitive DE removal protection did not recognise packages
+/// with a versioned dependency (`foo>=1.2`: gtk3, qt6-base, lightdm), and the
+/// safeguard against removing the active DE did not fire for them.
 pub fn parse_qi_field(stdout: &str, field: &str) -> Vec<String> {
     for line in stdout.lines() {
         if !line.starts_with(field) {
@@ -2182,8 +2207,8 @@ pub fn parse_qi_field(stdout: &str, field: &str) -> Vec<String> {
     Vec::new()
 }
 
-/// Порт `PackageManager._qi_field` целиком: не-Arch → [], ошибка команды →
-/// []. `qi_output(pkg)` — stdout `pacman -Qi pkg` или None.
+/// Port of `PackageManager._qi_field` in full: non-Arch → [], command error →
+/// []. `qi_output(pkg)` is the stdout of `pacman -Qi pkg` or None.
 pub fn qi_field(
     family: PkgFamily,
     package: &str,
@@ -2199,8 +2224,8 @@ pub fn qi_field(
     }
 }
 
-/// Какие установленные пакеты ВНЕ `candidate_set` требуют `package` — порт
-/// `PackageManager._required_by_outside`.
+/// Which installed packages OUTSIDE `candidate_set` require `package`: a port
+/// of `PackageManager._required_by_outside`.
 pub fn required_by_outside(
     family: PkgFamily,
     package: &str,
@@ -2213,13 +2238,14 @@ pub fn required_by_outside(
         .collect()
 }
 
-/// Пакеты стола по таблице ядра: основные и AUR — тот же набор, что
-/// удаляет `remove_de` (`system_plan::remove_de_decision`).
+/// Desktop packages by the core's table: main and AUR, the same set that
+/// `remove_de` removes (`system_plan::remove_de_decision`).
 ///
-/// Сюда же входит добавка сеанса Wayland ([`SESSION_VARIANTS`]): это тоже
-/// пакеты стола — их ставит та же кнопка «Установить», их проверяет сеанс
-/// прав по таблице, и пока стол текущий, удаление соседнего их не снимет
-/// (общий `labwc` у Xfce и Budgie).
+/// The Wayland session add-on ([`SESSION_VARIANTS`]) is included too: these
+/// are also desktop packages: the same «Install» button installs them, the
+/// privilege session checks them by the table, and while the desktop is the
+/// current one, removing a neighbour will not remove them (the shared
+/// `labwc` of Xfce and Budgie).
 pub fn desktop_packages(de_id: &str, family: PkgFamily) -> Vec<String> {
     let mut all = get_packages(de_id, family);
     let extra = session_packages(de_id, family, SessionKind::Wayland)
@@ -2235,39 +2261,40 @@ pub fn desktop_packages(de_id: &str, family: PkgFamily) -> Vec<String> {
 }
 
 // ============================================================================
-// Сеанс X11 или Wayland — выбор при установке
+// X11 or Wayland session: the choice at install time
 // ============================================================================
 //
-// Факты на 02.11.2026 (пакеты Arch/CachyOS, списки файлов archlinux.org):
-//   * KDE Plasma 6.8 — только Wayland: `plasma-workspace` кладёт один
-//     `wayland-sessions/plasma.desktop` и конфликтует с `plasma-x11-session`,
-//     которого в репозиториях больше нет;
-//   * GNOME 51 — только Wayland (`gnome-session`: один `gnome.desktop`);
-//   * Budgie 10.10 — только Wayland (зависит от labwc);
-//   * Pantheon 8 (`pantheon-session` 8.1) — только `pantheon-wayland.desktop`;
-//   * COSMIC и Deepin на Treeland — только Wayland.
-// Выбирать есть из чего у трёх:
-//   * Cinnamon 6.6 — оба сеанса в самом пакете `cinnamon`
-//     (`cinnamon.desktop` и `cinnamon-wayland.desktop`); Wayland пока
-//     экспериментальный (Mint обещает снять пометку со следующего выпуска);
-//   * Xfce 4.20 — `xfce-wayland.desktop` лежит в `xfce4-session`, но
-//     `startxfce4 --wayland` без композитора labwc не запустится
-//     (необязательная зависимость пакета: «recommended compositor for the
-//     experimental Wayland session»);
-//   * LXQt 2.4 — `lxqt-wayland-session` (extra) и композитор; первым
-//     `startlxqtwayland` берёт labwc. Пометку «experimental» с сеанса
-//     Wayland проект снял в LXQt 2.3.0 (lxqt-project.org, «How to Enable
-//     Wayland in Lubuntu 26.04», 01.05.2026) — Wayland зрелый.
-// MATE 1.28 ставится только сеансом X11, без переключателя (решение
-// Wehrwolfmann 16.11.2026): Wayland у него был лишь из AUR
-// (`mate-wayland-session` на Wayfire, один голос, пометка «устарел» с
-// 17.04.2026). Механизм «добавка Wayland из AUR»
+// Facts as of 02.11.2026 (Arch/CachyOS packages, archlinux.org file lists):
+//   * KDE Plasma 6.8 is Wayland only: `plasma-workspace` puts a single
+//     `wayland-sessions/plasma.desktop` and conflicts with
+//     `plasma-x11-session`, which is no longer in the repositories;
+//   * GNOME 51 is Wayland only (`gnome-session`: a single `gnome.desktop`);
+//   * Budgie 10.10 is Wayland only (depends on labwc);
+//   * Pantheon 8 (`pantheon-session` 8.1) has only `pantheon-wayland.desktop`;
+//   * COSMIC and Deepin on Treeland are Wayland only.
+// Three have a choice:
+//   * Cinnamon 6.6: both sessions in the `cinnamon` package itself
+//     (`cinnamon.desktop` and `cinnamon-wayland.desktop`); Wayland is still
+//     experimental (Mint promises to drop the label with the next release);
+//   * Xfce 4.20: `xfce-wayland.desktop` is in `xfce4-session`, but
+//     `startxfce4 --wayland` does not start without the labwc compositor
+//     (an optional dependency of the package: "recommended compositor for
+//     the experimental Wayland session");
+//   * LXQt 2.4: `lxqt-wayland-session` (extra) and a compositor;
+//     `startlxqtwayland` takes labwc first. The project dropped the
+//     "experimental" label from the Wayland session in LXQt 2.3.0
+//     (lxqt-project.org, "How to Enable Wayland in Lubuntu 26.04",
+//     01.05.2026): Wayland is mature.
+// MATE 1.28 is installed only with the X11 session, without a switch
+// (Wehrwolfmann's decision of 16.11.2026): its Wayland was only from the AUR
+// (`mate-wayland-session` on Wayfire, one vote, flagged "out of date" since
+// 17.04.2026). The "Wayland add-on from the AUR" mechanism
 // ([`WaylandMaturity::ExperimentalAur`], [`SessionVariants::wayland_aur`])
-// оставлен — для MATE (Polo), когда появится пакет.
-// Описано только для Arch: в других семействах набор не проверен, там
-// выбора нет и ставится как раньше.
+// is kept for MATE (Polo), once a package appears.
+// Described only for Arch: in other families the set is not verified, there
+// is no choice there and things are installed as before.
 
-/// Сеанс на экране входа.
+/// Session on the login screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionKind {
     X11,
@@ -2275,7 +2302,7 @@ pub enum SessionKind {
 }
 
 impl SessionKind {
-    /// Значение для переключателя окна вопроса.
+    /// Value for the question dialog's switch.
     pub fn as_str(self) -> &'static str {
         match self {
             SessionKind::X11 => "x11",
@@ -2283,7 +2310,7 @@ impl SessionKind {
         }
     }
 
-    /// Обратно к [`Self::as_str`]; незнакомое → `None`.
+    /// Back to [`Self::as_str`]; unknown → `None`.
     pub fn from_value(s: &str) -> Option<Self> {
         match s {
             "x11" => Some(SessionKind::X11),
@@ -2293,12 +2320,12 @@ impl SessionKind {
     }
 }
 
-/// Что человек выбрал в окне «Установить?» у стола с двумя сеансами.
+/// What the person chose in the «Install?» dialog of a desktop with two sessions.
 ///
-/// Пакеты различаются только добавкой Wayland ([`Self::install_kind`]):
-/// сеанс X11 лежит в основных пакетах стола и встаёт всегда, поэтому
-/// «Wayland» и «Оба» ставят одно и то же, а разнятся тем, какой сеанс
-/// Rexon советует выбрать на экране входа.
+/// The packages differ only in the Wayland add-on ([`Self::install_kind`]):
+/// the X11 session is in the desktop's main packages and is always
+/// installed, so «Wayland» and «Both» install the same thing, and differ in
+/// which session Rexon recommends picking on the login screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionPick {
     X11,
@@ -2307,10 +2334,10 @@ pub enum SessionPick {
 }
 
 impl SessionPick {
-    /// Все варианты — в порядке показа.
+    /// All variants, in display order.
     pub const ALL: [SessionPick; 3] = [SessionPick::X11, SessionPick::Wayland, SessionPick::Both];
 
-    /// Значение для переключателя окна вопроса.
+    /// Value for the question dialog's switch.
     pub fn as_str(self) -> &'static str {
         match self {
             SessionPick::X11 => "x11",
@@ -2319,13 +2346,13 @@ impl SessionPick {
         }
     }
 
-    /// Обратно к [`Self::as_str`]; незнакомое → `None`.
+    /// Back to [`Self::as_str`]; unknown → `None`.
     pub fn from_value(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|p| p.as_str() == s)
     }
 
-    /// Какой набор ставит исполнитель: с добавкой Wayland — у «Wayland» и
-    /// «Оба».
+    /// Which set the executor installs: with the Wayland add-on for «Wayland»
+    /// and «Both».
     pub fn install_kind(self) -> SessionKind {
         match self {
             SessionPick::X11 => SessionKind::X11,
@@ -2333,63 +2360,65 @@ impl SessionPick {
         }
     }
 
-    /// Нужна ли добавка Wayland (бывает и из AUR).
+    /// Whether the Wayland add-on is needed (it may also come from the AUR).
     pub fn needs_wayland(self) -> bool {
         self.install_kind() == SessionKind::Wayland
     }
 }
 
-/// Насколько готов сеанс Wayland стола. От этого — выбор по умолчанию
-/// ([`SessionVariants::default_session`]) и подписи в окне и «Сравнении».
-/// Пересматривать, когда проект снимает с Wayland пометку «experimental».
+/// How ready the desktop's Wayland session is. This drives the default
+/// choice ([`SessionVariants::default_session`]) and the captions in the
+/// dialog and in «Comparison». Revisit when the project drops the
+/// "experimental" label from Wayland.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WaylandMaturity {
-    /// Проект больше не зовёт сеанс экспериментальным — он и ставится
-    /// по умолчанию.
+    /// The project no longer calls the session experimental: it is also the
+    /// default.
     Mature,
-    /// Из репозиториев дистрибутива, но сам проект зовёт его
-    /// экспериментальным.
+    /// From the distribution's repositories, but the project itself calls it
+    /// experimental.
     Experimental,
-    /// Экспериментальный и только из AUR (собирается на машине). Сейчас
-    /// таким столом в таблице никто не помечен: прежний MATE на Wayfire
-    /// снят 16.11.2026. Оставлено для MATE (Polo), когда появится пакет;
-    /// под тестом — через `test_session_variants` (только в тестах).
+    /// Experimental and only from the AUR (built on the machine). Currently no
+    /// desktop in the table is marked this way: the former MATE on Wayfire was
+    /// removed on 16.11.2026. Kept for MATE (Polo), once a package appears;
+    /// under test via `test_session_variants` (tests only).
     ExperimentalAur,
 }
 
-/// Два сеанса одного стола: что доставить для Wayland и как сеансы
-/// называются на экране входа (поле `Name=` их `.desktop`).
+/// Two sessions of one desktop: what to add for Wayland and what the
+/// sessions are called on the login screen (the `Name=` field of their `.desktop`).
 pub struct SessionVariants {
     pub family: PkgFamily,
-    /// Сверх основного набора — для сеанса Wayland (из репозиториев).
+    /// On top of the main set: for the Wayland session (from the repositories).
     pub wayland_packages: &'static [&'static str],
-    /// Сверх основного набора — для сеанса Wayland из AUR (сейчас пусто у
-    /// всех; для MATE (Polo), когда появится пакет).
+    /// On top of the main set: for the Wayland session from the AUR (currently
+    /// empty for all; for MATE (Polo), once a package appears).
     pub wayland_aur: &'static [&'static str],
-    /// Что из добавки снимается вместе со столом: связка сеанса держит
-    /// пакеты стола зависимостью. Композиторы (labwc, Wayfire) — нет: они
-    /// бывают нужны другим столам или ставились сами по себе.
+    /// What of the add-on is removed together with the desktop: the session
+    /// bundle holds the desktop's packages as a dependency. Compositors (labwc,
+    /// Wayfire) are not: other desktops may need them or they were installed
+    /// on their own.
     pub remove_with_desktop: &'static [&'static str],
     pub maturity: WaylandMaturity,
     pub x11_session_name: &'static str,
     pub wayland_session_name: &'static str,
-    /// Файл сеанса X11 (кладут основные пакеты стола) — по нему и
-    /// [`X11_SERVER_BINARY`] видно, что войти в X11 можно.
+    /// The X11 session file (put by the desktop's main packages): together with
+    /// [`X11_SERVER_BINARY`] it shows that X11 login is possible.
     pub x11_session_file: &'static str,
-    /// Кто в сеансе Wayland управляет окнами вместо привычного оконного
-    /// менеджера стола (пусто — тот же, что в X11).
+    /// Who manages windows in the Wayland session instead of the desktop's usual
+    /// window manager (empty: the same as in X11).
     pub wayland_compositor: &'static str,
-    /// Файл сеанса Wayland — по нему и [`Self::wayland_binaries`] видно,
-    /// что войти в Wayland уже можно.
+    /// The Wayland session file: together with [`Self::wayland_binaries`] it
+    /// shows that Wayland login is already possible.
     pub wayland_session_file: &'static str,
-    /// Нужен хотя бы один из этих исполняемых файлов.
+    /// At least one of these executables is needed.
     pub wayland_binaries: &'static [&'static str],
 }
 
 pub const SESSION_VARIANTS: &[(&str, SessionVariants)] = &[
     ("cinnamon-mint", SessionVariants {
         family: PkgFamily::Arch,
-        // Оба сеанса — в пакете `cinnamon`; Xwayland тянет muffin.
+        // Both sessions are in the `cinnamon` package; Xwayland is pulled in by muffin.
         wayland_packages: &[],
         wayland_aur: &[],
         remove_with_desktop: &[],
@@ -2412,14 +2441,14 @@ pub const SESSION_VARIANTS: &[(&str, SessionVariants)] = &[
         wayland_session_name: "Xfce Session (Wayland)",
         wayland_compositor: "labwc",
         wayland_session_file: "/usr/share/wayland-sessions/xfce-wayland.desktop",
-        // `startxfce4 --wayland` без аргументов зовёт только labwc.
+        // `startxfce4 --wayland` without arguments calls only labwc.
         wayland_binaries: &["labwc"],
     }),
     ("lxqt", SessionVariants {
         family: PkgFamily::Arch,
-        // swaylock — блокировка экрана в Wayland: `lxqt-leave --lockscreen`
-        // (Super+L у labwc) зовёт `lock_command_wayland`, а по умолчанию он
-        // пуст, и экран не блокировался вовсе.
+        // swaylock is the screen lock in Wayland: `lxqt-leave --lockscreen`
+        // (Super+L in labwc) calls `lock_command_wayland`, which is empty by
+        // default, and the screen did not lock at all.
         wayland_packages: &["lxqt-wayland-session", "labwc", "xorg-xwayland", "swaylock"],
         wayland_aur: &[],
         remove_with_desktop: &["lxqt-wayland-session"],
@@ -2429,14 +2458,14 @@ pub const SESSION_VARIANTS: &[(&str, SessionVariants)] = &[
         wayland_session_name: "LXQt (Wayland)",
         wayland_compositor: "labwc",
         wayland_session_file: "/usr/share/wayland-sessions/lxqt-wayland.desktop",
-        // Композиторы, которые `startlxqtwayland` умеет сам.
+        // Compositors `startlxqtwayland` supports by itself.
         wayland_binaries: &["labwc", "niri", "kwin_wayland", "wayfire", "Hyprland", "sway"],
     }),
 ];
 
 impl SessionVariants {
-    /// Что выбрано, пока человек не тронул переключатель: зрелый Wayland —
-    /// Wayland, экспериментальный — проверенный X11.
+    /// What is selected until the person touches the switch: mature Wayland
+    /// means Wayland, experimental means the proven X11.
     pub fn default_session(&self) -> SessionKind {
         match self.maturity {
             WaylandMaturity::Mature => SessionKind::Wayland,
@@ -2444,13 +2473,13 @@ impl SessionVariants {
         }
     }
 
-    /// Wayland у стола ещё экспериментальный.
+    /// The desktop's Wayland is still experimental.
     pub fn wayland_experimental(&self) -> bool {
         self.maturity != WaylandMaturity::Mature
     }
 
-    /// Рекомендованный вариант окна «Установить?» — тот же выбор по
-    /// зрелости, что [`Self::default_session`].
+    /// Recommended variant of the «Install?» dialog: the same maturity-based
+    /// choice as [`Self::default_session`].
     pub fn default_pick(&self) -> SessionPick {
         match self.default_session() {
             SessionKind::X11 => SessionPick::X11,
@@ -2459,12 +2488,12 @@ impl SessionVariants {
     }
 }
 
-/// X-сервер, без которого сеанс X11 не стартует (у LightDM и SDDM он в
-/// зависимостях, но экран входа бывает и другой).
+/// X server without which the X11 session does not start (LightDM and SDDM
+/// depend on it, but the login screen may be a different one).
 pub const X11_SERVER_BINARY: &str = "Xorg";
 
-/// Какие сеансы установленного стола уже работают: (X11, Wayland).
-/// `None` — выбора сеанса у стола нет.
+/// Which sessions of an installed desktop already work: (X11, Wayland).
+/// `None`: the desktop has no session choice.
 pub fn installed_sessions(
     de_id: &str,
     family: PkgFamily,
@@ -2477,8 +2506,8 @@ pub fn installed_sessions(
     Some((x11, wayland))
 }
 
-/// Какой сеанс можно добавить установленному столу: нет Wayland — его
-/// (как и раньше, что бы ни было с X11), есть только Wayland — X11.
+/// Which session can be added to an installed desktop: no Wayland, then
+/// Wayland (as before, whatever the state of X11); only Wayland, then X11.
 pub fn missing_session(sessions: (bool, bool)) -> Option<SessionKind> {
     match sessions {
         (_, false) => Some(SessionKind::Wayland),
@@ -2487,7 +2516,7 @@ pub fn missing_session(sessions: (bool, bool)) -> Option<SessionKind> {
     }
 }
 
-/// Есть ли у стола выбор сеанса в этом семействе.
+/// Whether the desktop has a session choice in this family.
 pub fn session_variants(de_id: &str, family: PkgFamily) -> Option<&'static SessionVariants> {
     #[cfg(test)]
     let extra = test_session_variants::EXTRA.with(std::cell::Cell::get);
@@ -2500,9 +2529,10 @@ pub fn session_variants(de_id: &str, family: PkgFamily) -> Option<&'static Sessi
         .map(|(_, v)| v)
 }
 
-/// Тестовая подмена таблицы сеансов: в таблице сейчас нет ни одного стола с
-/// Wayland из AUR, а механизм (отказ без помощника AUR, подписи «из AUR»,
-/// сборка помощником) должен оставаться под тестом до MATE (Polo).
+/// Test override of the session table: the table currently has no desktop
+/// with Wayland from the AUR, and the mechanism (refusal without an AUR
+/// helper, "from AUR" captions, building by the helper) must stay under test
+/// until MATE (Polo).
 #[cfg(test)]
 pub(crate) mod test_session_variants {
     use super::*;
@@ -2512,8 +2542,9 @@ pub(crate) mod test_session_variants {
         pub(super) static EXTRA: Cell<&'static [(&'static str, SessionVariants)]> = const { Cell::new(&[]) };
     }
 
-    /// Образец стола с сеансом Wayland только из AUR — бывшая запись MATE
-    /// (`mate-wayland-session` на Wayfire), снятая из продукта 16.11.2026.
+    /// Sample desktop with a Wayland session only from the AUR: the former MATE
+    /// entry (`mate-wayland-session` on Wayfire), removed from the product on
+    /// 16.11.2026.
     pub(crate) const AUR_SAMPLE: &[(&str, SessionVariants)] = &[
         ("mate", SessionVariants {
             family: PkgFamily::Arch,
@@ -2530,8 +2561,8 @@ pub(crate) mod test_session_variants {
         }),
     ];
 
-    /// Выполнить `f`, пока в таблице сеансов есть [`AUR_SAMPLE`] (только в
-    /// этом потоке).
+    /// Run `f` while the session table contains [`AUR_SAMPLE`] (in this thread
+    /// only).
     pub(crate) fn with_aur_sample<R>(f: impl FnOnce() -> R) -> R {
         struct Reset;
         impl Drop for Reset {
@@ -2545,7 +2576,7 @@ pub(crate) mod test_session_variants {
     }
 }
 
-/// Пакеты сверх основного набора для сеанса `kind` (из репозиториев).
+/// Packages on top of the main set for session `kind` (from the repositories).
 pub fn session_packages(de_id: &str, family: PkgFamily, kind: SessionKind) -> Vec<String> {
     match (kind, session_variants(de_id, family)) {
         (SessionKind::Wayland, Some(v)) => v.wayland_packages.iter().map(|p| p.to_string()).collect(),
@@ -2553,7 +2584,7 @@ pub fn session_packages(de_id: &str, family: PkgFamily, kind: SessionKind) -> Ve
     }
 }
 
-/// Пакеты из AUR сверх основного набора для сеанса `kind`.
+/// AUR packages on top of the main set for session `kind`.
 pub fn session_aur_packages(de_id: &str, family: PkgFamily, kind: SessionKind) -> Vec<String> {
     match (kind, session_variants(de_id, family)) {
         (SessionKind::Wayland, Some(v)) => v.wayland_aur.iter().map(|p| p.to_string()).collect(),
@@ -2561,15 +2592,15 @@ pub fn session_aur_packages(de_id: &str, family: PkgFamily, kind: SessionKind) -
     }
 }
 
-/// Что из добавки Wayland снимается вместе со столом.
+/// What of the Wayland add-on is removed together with the desktop.
 pub fn session_removal_packages(de_id: &str, family: PkgFamily) -> Vec<String> {
     session_variants(de_id, family)
         .map(|v| v.remove_with_desktop.iter().map(|p| p.to_string()).collect())
         .unwrap_or_default()
 }
 
-/// Можно ли уже войти в сеанс Wayland стола: файл сеанса есть и есть
-/// композитор. `None` — выбора у стола нет.
+/// Whether the desktop's Wayland session can already be entered: the session
+/// file exists and there is a compositor. `None`: the desktop has no choice.
 pub fn wayland_session_ready(
     de_id: &str,
     family: PkgFamily,
@@ -2580,9 +2611,9 @@ pub fn wayland_session_ready(
     Some(file_exists(v.wayland_session_file) && v.wayland_binaries.iter().any(|b| in_path(b)))
 }
 
-/// Пакет экрана входа по имени его юнита: обычно совпадают; исключения —
-/// таблицы ядра (`plasmalogin` → `plasma-login-manager`, на Debian `gdm` →
-/// `gdm3`).
+/// Login screen package by its unit name: usually the same; the exceptions
+/// are the core's tables (`plasmalogin` → `plasma-login-manager`, on Debian
+/// `gdm` → `gdm3`).
 pub fn dm_package_for_unit(family: PkgFamily, unit: &str) -> String {
     let table = if family == PkgFamily::Debian {
         crate::system_plan::DM_DEBIAN_PKG_FOR_UNIT
@@ -2596,29 +2627,29 @@ pub fn dm_package_for_unit(family: PkgFamily, unit: &str) -> String {
         .unwrap_or_else(|| unit.to_string())
 }
 
-/// Приветствие LightDM (`lightdm-gtk-greeter`, `lightdm-slick-greeter`, …):
-/// сам `lightdm` ни от одного не зависит, и удаление стола, принёсшего
-/// выбранное приветствие, оставило бы экран входа без лица — служба не
-/// стартует. Пока активный экран входа — LightDM, ни одно приветствие не
-/// снимается.
+/// A LightDM greeter (`lightdm-gtk-greeter`, `lightdm-slick-greeter`, …):
+/// `lightdm` itself depends on none of them, and removing the desktop that
+/// brought the selected greeter would leave the login screen without a
+/// face: the service does not start. While the active login screen is
+/// LightDM, no greeter is removed.
 pub fn is_lightdm_greeter(package: &str) -> bool {
     package.starts_with("lightdm-") && package.contains("greeter")
 }
 
-/// Что удаление ДРУГОГО стола не трогает никогда: пакеты текущего стола по
-/// таблице ядра (основные и AUR) и активный экран входа системы — его юнит,
-/// пакет ([`dm_package_for_unit`]) и, у LightDM, приветствия
-/// ([`is_lightdm_greeter`]; их сверяет [`without_current_desktop`]).
+/// What removing ANOTHER desktop never touches: the current desktop's
+/// packages by the core's table (main and AUR) and the system's active login
+/// screen: its unit, package ([`dm_package_for_unit`]) and, for LightDM, the
+/// greeters ([`is_lightdm_greeter`]; checked by [`without_current_desktop`]).
 ///
-/// ⛔ Дыра, которую это закрыло (28.10.2026): защита `remove_de` сравнивала
-/// только идентификаторы столов. Сидя в Xfce, удаление Cinnamon снимало
-/// `lightdm` — общий экран входа обоих, — и после перезагрузки входа в
-/// графику не было. Замыкание зависимостей его не держало: `lightdm` никому
-/// не нужен по `Required By`.
+/// ⛔ The hole this closed (28.10.2026): the `remove_de` guard compared only
+/// desktop identifiers. Sitting in Xfce, removing Cinnamon removed `lightdm`
+/// (the shared login screen of both), and after a reboot there was no
+/// graphical login. The dependency closure did not hold it: nobody needs
+/// `lightdm` by `Required By`.
 ///
-/// `current_de` неизвестен (`""`, `unknown`) — таблицы нет, остаётся экран
-/// входа; `active_dm_unit` — ответ `active_login_manager_opt` (`None` —
-/// определить нечем).
+/// `current_de` is unknown (`""`, `unknown`): there is no table, the login
+/// screen remains; `active_dm_unit` is the `active_login_manager_opt` answer
+/// (`None`: nothing to determine it with).
 pub fn current_desktop_keep(
     family: PkgFamily,
     current_de: &str,
@@ -2635,18 +2666,18 @@ pub fn current_desktop_keep(
     keep
 }
 
-/// Набор удаления стола без того, что держит текущий стол: группы Arch
-/// раскрываются с ОБЕИХ сторон (`qg` — вывод `pacman -Qg`, как у
-/// [`expand_groups`]), и член общей группы тоже под защитой; приветствия
-/// LightDM остаются, пока в `keep` есть `lightdm`. Порядок — как в `all`.
+/// A desktop's removal set without what the current desktop holds: Arch
+/// groups are expanded on BOTH sides (`qg` is the `pacman -Qg` output, as in
+/// [`expand_groups`]), and a member of a shared group is protected too;
+/// LightDM greeters stay while `keep` contains `lightdm`. Order as in `all`.
 pub fn without_current_desktop(
     family: PkgFamily,
     all: &[String],
     keep: &[String],
     qg_output: &dyn Fn(&str) -> Option<String>,
 ) -> Vec<String> {
-    // Сверка по имени без категории Gentoo: юнит `lightdm` держит и
-    // `x11-misc/lightdm` из таблицы.
+    // Compare by name without the Gentoo category: the `lightdm` unit also
+    // holds `x11-misc/lightdm` from the table.
     let base = |p: &str| p.rsplit('/').next().unwrap_or(p).to_string();
     let mut held: HashSet<String> = keep.iter().map(|p| base(p)).collect();
     held.extend(expand_groups(family, keep, qg_output).iter().map(|p| base(p)));
@@ -2660,15 +2691,16 @@ pub fn without_current_desktop(
         .collect()
 }
 
-/// Двухпроходный фильтр для безопасного удаления (Arch only) — порт
-/// `PackageManager._filter_removable_transitive`. Возвращает (safe, skipped)
-/// с сохранением исходного порядка `packages`.
+/// Two-pass filter for safe removal (Arch only): a port of
+/// `PackageManager._filter_removable_transitive`. Returns (safe, skipped)
+/// keeping the original order of `packages`.
 ///
-/// 1. Прямые external deps: пакет требуется кем-то ВНЕ списка → forbidden.
-/// 2. Транзитивно: если forbidden пакет X зависит от Y (Y в списке) — Y тоже
-///    forbidden, иначе pacman упадёт «could not satisfy». Замыкание —
-///    до неподвижной точки; цикл в зависимостях не зацикливает (проверено
-///    golden-кейсом `dependency-cycle`).
+/// 1. Direct external deps: the package is required by someone OUTSIDE the
+///    list → forbidden.
+/// 2. Transitively: if forbidden package X depends on Y (Y in the list), Y is
+///    forbidden too, otherwise pacman fails with "could not satisfy". The
+///    closure runs to a fixed point; a dependency cycle does not loop
+///    (verified by the golden case `dependency-cycle`).
 pub fn filter_removable_transitive(
     family: PkgFamily,
     packages: &[String],
@@ -2684,7 +2716,7 @@ pub fn filter_removable_transitive(
             forbidden.insert(p.clone());
         }
     }
-    // Транзитивное замыкание: deps forbidden-пакетов, попавшие в candidate
+    // Transitive closure: deps of forbidden packages that are in candidate
     let mut changed = true;
     while changed {
         changed = false;

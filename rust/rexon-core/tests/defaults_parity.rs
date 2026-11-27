@@ -1,15 +1,15 @@
-//! Golden-сверка порта `defaults.rs` с оригиналом `rexon/defaults.py`
+//! Golden check of the `defaults.rs` port against the original `rexon/defaults.py`
 //! (`SystemDefaultsProtector`).
 //!
-//! Эталоны сняты с ЖИВОГО Python read-only (без привилегированных действий:
-//! subprocess/safe_run замоканы, HOME — временный каталог) — генератор
-//! прогонял чистые методы протектора на реалистичных входах и записывал
-//! вход→выход в `golden/defaults_cases.json`. Покрыты: сериализация
+//! The golden files were captured from LIVE Python read-only (without privileged actions:
+//! subprocess/safe_run mocked, HOME a temporary directory) — the generator
+//! ran the protector's pure methods on realistic inputs and recorded
+//! input→output into `golden/defaults_cases.json`. Covered: serialization of
 //! snapshot/rules/pending, `_set_ini_value`, `_get_current_terminal`,
-//! план `_set_terminal`, `_set_default`, `snapshot`, `restore_defaults`,
+//! the `_set_terminal` plan, `_set_default`, `snapshot`, `restore_defaults`,
 //! `get_status_summary`, `should_protect`, `resolve_choice`,
-//! `_get_exec_from_desktop`, разбор/генерация `*-mimeapps.list`,
-//! `protect_de_mimeapps` + таблицы-константы.
+//! `_get_exec_from_desktop`, parsing/generating `*-mimeapps.list`,
+//! `protect_de_mimeapps` + constant tables.
 
 mod i18n_pin;
 
@@ -22,9 +22,9 @@ fn fx() -> Value {
     serde_json::from_str(include_str!("golden/defaults_cases.json")).unwrap()
 }
 
-// ── конвертеры JSON → типы ядра ──────────────────────────────────────────
+// ── JSON → core type converters ──────────────────────────────────────────
 
-/// Объект {k: (str|null)} → упорядоченные пары (порядок файла = порядок Python).
+/// Object {k: (str|null)} → ordered pairs (file order = Python order).
 fn obj_pairs_opt(v: &Value) -> Vec<(String, Option<String>)> {
     v.as_object()
         .map(|m| {
@@ -35,7 +35,7 @@ fn obj_pairs_opt(v: &Value) -> Vec<(String, Option<String>)> {
         .unwrap_or_default()
 }
 
-/// Объект {k: str} → упорядоченные пары.
+/// Object {k: str} → ordered pairs.
 fn obj_pairs(v: &Value) -> Vec<(String, String)> {
     v.as_object()
         .map(|m| {
@@ -46,7 +46,7 @@ fn obj_pairs(v: &Value) -> Vec<(String, String)> {
         .unwrap_or_default()
 }
 
-/// Объект {app_type: {"old":.., "new":..}} → pending-пары.
+/// Object {app_type: {"old":.., "new":..}} → pending pairs.
 fn obj_pending(v: &Value) -> Vec<(String, (String, String))> {
     v.as_object()
         .map(|m| {
@@ -65,13 +65,13 @@ fn obj_pending(v: &Value) -> Vec<(String, (String, String))> {
         .unwrap_or_default()
 }
 
-/// Правила из оверрайдов кейса поверх дефолтов (как make_prot в генераторе).
+/// Rules from the case's overrides on top of the defaults (like make_prot in the generator).
 fn rules_from(overrides: &Value) -> D::Rules {
     let map = overrides.as_object().cloned().unwrap_or_default();
     D::Rules::defaults().updated(&map)
 }
 
-// ── сериализация snapshot / rules / pending (байт-в-байт) ─────────────────
+// ── serialization of snapshot / rules / pending (byte for byte) ──────────
 
 #[test]
 fn serialize_snapshot_byte_identical() {
@@ -142,12 +142,12 @@ fn get_current_terminal_parity() {
     }
 }
 
-// ── свой перебор терминалов + предупреждение про xdg-terminal-exec ────────
+// ── our own terminal walk + the xdg-terminal-exec warning ─────────────────
 
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn pick_terminal_parity() {
-    // Эталон Python — русский текст предупреждения.
+    // The Python golden value is the Russian text of the warning.
     let _lang = i18n_pin::ru();
     let fx = fx();
     for (name, c) in fx["pick_terminal"].as_object().unwrap() {
@@ -177,29 +177,29 @@ fn pick_terminal_parity() {
         note["missing"].as_str().unwrap()
     );
 
-    // Каждому кандидату — хотя бы одно имя .desktop, иначе `pick_terminal`
-    // не смог бы вернуть даже канонический id.
+    // Every candidate gets at least one .desktop name, otherwise `pick_terminal`
+    // could not return even the canonical id.
     for (binary, ids) in D::TERMINAL_CANDIDATES {
         assert!(!ids.is_empty(), "у {binary} нет ни одного .desktop");
     }
 }
 
-// ── _set_terminal (план → сложенные runs + files) ─────────────────────────
+// ── _set_terminal (plan → folded runs + files) ───────────────────────────
 
 #[test]
 fn set_terminal_plan_parity() {
     const HOME: &str = "/H";
     const CFG_PREFIX: &str = "/H/.config/";
     for c in fx()["set_terminal"].as_array().unwrap() {
-        // Помощники exo у системы есть (xfce4-terminal ставит их пакет
-        // xfce4-settings) — сверка не зависит от состава машины.
+        // The system has exo helpers (xfce4-terminal gets them from the
+        // xfce4-settings package) — the check does not depend on the machine's contents.
         let plan = D::set_terminal_plan_with(
             c["terminal_desktop"].as_str().unwrap(),
             c["de"].as_str().unwrap(),
             HOME,
             &|_| true,
         );
-        // Сворачиваем план в (runs, files) как это сделал бы исполнитель.
+        // We fold the plan into (runs, files) the way the executor would.
         let mut runs: Vec<Vec<String>> = Vec::new();
         let mut files: HashMap<String, String> = HashMap::new();
         for step in &plan {
@@ -215,7 +215,7 @@ fn set_terminal_plan_parity() {
                 }
             }
         }
-        // Ожидаемые runs.
+        // Expected runs.
         let want_runs: Vec<Vec<String>> = c["runs"]
             .as_array()
             .unwrap()
@@ -224,7 +224,7 @@ fn set_terminal_plan_parity() {
             .collect();
         assert_eq!(runs, want_runs, "runs for {}", c["de"]);
 
-        // Ожидаемые файлы (относительные пути в эталоне).
+        // Expected files (relative paths in the golden file).
         let want_files: HashMap<String, String> = c["files"]
             .as_object()
             .unwrap()
@@ -239,15 +239,15 @@ fn set_terminal_plan_parity() {
     }
 }
 
-// ── Терминал: одна таблица «окружение → родное место» ─────────────────────
+// ── Terminal: one table "desktop → native place" ─────────────────────────
 //
-// Намеренные расхождения с эталоном Python (эталон поправлен поимённо):
-//   * `exec-arg` схемы GNOME — по терминалу: `--` у gnome-terminal (`-e` у него
-//     устарел), `-x` у mate-terminal, иначе `-e`;
-//   * MATE: вторым шагом `exec-arg` своей схемы (`-x` у mate-terminal);
-//   * XFCE: `helpers.rc TerminalEmulator=` — раньше не писался вовсе.
+// Deliberate divergences from the Python golden file (the golden file was edited item by item):
+//   * `exec-arg` of the GNOME schema — by terminal: `--` for gnome-terminal (its `-e`
+//     is deprecated), `-x` for mate-terminal, otherwise `-e`;
+//   * MATE: as a second step, `exec-arg` of its own schema (`-x` for mate-terminal);
+//   * XFCE: `helpers.rc TerminalEmulator=` — was not written at all before.
 
-/// Свернуть план в «окружение → что пишется» (runs + файлы с ключами).
+/// Fold the plan into "desktop → what is written" (runs + files with keys).
 fn term_table(desktop: &str, term: &str) -> Vec<String> {
     D::set_terminal_plan_with(term, desktop, "/H", &|_| true)
         .into_iter()
@@ -266,8 +266,8 @@ fn term_table(desktop: &str, term: &str) -> Vec<String> {
 
 #[test]
 fn terminal_written_to_native_place_of_every_desktop() {
-    // Общий слой: общий список, список своего стола (с пометкой «выбрано
-    // человеком» — его перебивает только новый выбор), схема GNOME, TERMINAL.
+    // The common layer: the common list, the desktop's own list (with the mark "chosen
+    // by the person" — only a new choice overrides it), the GNOME schema, TERMINAL.
     let common = |de: &str, exec: &str, arg: &str, id: &str| {
         let mut v = vec![format!("file:xdg-terminals.list|{id}")];
         if let Some(name) = rexon_core::appdefaults::terminals_list_filename(de) {
@@ -284,7 +284,7 @@ fn terminal_written_to_native_place_of_every_desktop() {
         v.extend(extra.iter().map(|s| s.to_string()));
         v
     };
-    // Cinnamon — и по сырому XDG_CURRENT_DESKTOP, и по идентификатору Rexon.
+    // Cinnamon — both by the raw XDG_CURRENT_DESKTOP and by the Rexon identifier.
     for de in ["X-Cinnamon", "cinnamon-mint", "cinnamon"] {
         assert_eq!(
             term_table(de, "org.gnome.Terminal.desktop"),
@@ -322,12 +322,12 @@ fn terminal_written_to_native_place_of_every_desktop() {
             ]
         )
     );
-    // GNOME: родное место = общий слой, повторов нет.
+    // GNOME: the native place = the common layer, no repeats.
     for de in ["GNOME", "ubuntu:GNOME"] {
         assert_eq!(term_table(de, "org.gnome.Console.desktop"), common(de, "kgx", "-e", "org.gnome.Console.desktop"), "{de}");
     }
-    // Budgie: родное место то же, что у GNOME, плюс схема Cinnamon — её
-    // «Открыть в терминале» читает Nemo, файловый менеджер набора Budgie
+    // Budgie: the native place is the same as GNOME's, plus the Cinnamon schema — its
+    // «Открыть в терминале» is read by Nemo, the file manager of the Budgie set
     // (`defaults::terminal_extra_homes`).
     for de in ["Budgie:GNOME", "budgie"] {
         assert_eq!(
@@ -354,13 +354,13 @@ fn terminal_written_to_native_place_of_every_desktop() {
             ]
         )
     );
-    // Своего места нет — только общий слой, честно без «родной» записи.
+    // No place of its own — only the common layer, honestly without a "native" entry.
     for de in ["COSMIC", "sway", "Hyprland", "niri", ""] {
         assert_eq!(term_table(de, "foot.desktop"), common(de, "foot", "-e", "foot.desktop"), "{de}");
     }
 }
 
-/// Имя программы: явная таблица там, где бинарь не совпадает с хвостом id.
+/// Program name: an explicit table where the binary does not match the id's tail.
 #[test]
 fn terminal_exec_name_table() {
     for (id, exec) in [
@@ -376,8 +376,8 @@ fn terminal_exec_name_table() {
     }
 }
 
-/// helpers.rc XFCE — файл без секций: ключ правится по месту, чужие строки
-/// и комментарии остаются.
+/// The XFCE helpers.rc is a file without sections: the key is edited in place, foreign lines
+/// and comments stay.
 #[test]
 fn sectionless_ini_value() {
     assert_eq!(D::set_ini_value(None, "", "TerminalEmulator", "kitty"), "TerminalEmulator=kitty\n");
@@ -389,7 +389,7 @@ fn sectionless_ini_value() {
         D::set_ini_value(Some("WebBrowser=firefox"), "", "TerminalEmulator", "kitty"),
         "WebBrowser=firefox\nTerminalEmulator=kitty\n"
     );
-    // Если секции всё же есть — ключ встаёт до первого заголовка.
+    // If there are sections after all, the key goes before the first header.
     assert_eq!(
         D::set_ini_value(Some("[X]\nTerminalEmulator=keep\n"), "", "TerminalEmulator", "kitty"),
         "TerminalEmulator=kitty\n[X]\nTerminalEmulator=keep\n"
@@ -457,7 +457,7 @@ fn restore_defaults_parity() {
 
         let out = D::restore_defaults(&protected, &rules, &current, de_switched, &[], &exists);
 
-        // results (упорядочены как в Python dict).
+        // results (ordered as in a Python dict).
         let want_results = obj_pairs(&c["results"]);
         assert_eq!(out.results, want_results, "restore results {c:?}");
 
@@ -524,7 +524,7 @@ fn resolve_choice_parity() {
             &protected,
             &pending,
         );
-        // set_call → список (как set_calls в эталоне).
+        // set_call → a list (like set_calls in the golden file).
         let want_calls: Vec<(String, String)> = c["set_calls"]
             .as_array()
             .unwrap()
@@ -583,7 +583,7 @@ fn desktop_name_for_test(de_id: &str) -> String {
 
 #[test]
 fn protect_de_mimeapps_parity() {
-    // Тот же список «установленных» приложений, что в генераторе.
+    // The same list of "installed" applications as in the generator.
     let valid = [
         "org.kde.dolphin.desktop",
         "org.kde.kate.desktop",
@@ -602,7 +602,7 @@ fn protect_de_mimeapps_parity() {
             .map(|s| s.as_str().unwrap().to_string())
             .collect();
 
-        // existing: de_id → content, преобразуем в path → content.
+        // existing: de_id → content, converted to path → content.
         let mut existing_by_path: HashMap<String, String> = HashMap::new();
         for (de_id, content) in c["existing"].as_object().unwrap() {
             let name = desktop_name_for_test(de_id);
@@ -619,7 +619,7 @@ fn protect_de_mimeapps_parity() {
         // results.
         assert_eq!(out.results, obj_pairs(&c["results"]), "pdm results {c:?}");
 
-        // writes → сравниваем по basename с эталоном written.
+        // writes → compared by basename with the golden `written`.
         let want_written: HashMap<String, String> = c["written"]
             .as_object()
             .unwrap()
@@ -635,7 +635,7 @@ fn protect_de_mimeapps_parity() {
     }
 }
 
-// ── таблицы-константы ─────────────────────────────────────────────────────
+// ── constant tables ───────────────────────────────────────────────────────
 
 #[test]
 fn tables_match_python() {
@@ -668,7 +668,7 @@ fn tables_match_python() {
         D::DE_DESKTOP_NAMES.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
     assert_eq!(got_names, names, "DE_DESKTOP_NAMES");
 
-    // DE_NATIVE_APPS: ключи и содержимое каждого DE.
+    // DE_NATIVE_APPS: the keys and contents of each DE.
     let want_native = t["DE_NATIVE_APPS"].as_object().unwrap();
     for (de_id, apps) in D::DE_NATIVE_APPS {
         let want: Vec<(String, String)> = want_native[*de_id]
@@ -684,15 +684,15 @@ fn tables_match_python() {
             apps.iter().map(|(m, d)| (m.to_string(), d.to_string())).collect();
         assert_eq!(got, want, "DE_NATIVE_APPS[{de_id}]");
     }
-    // и число DE совпадает.
+    // and the number of DEs matches.
     assert_eq!(D::DE_NATIVE_APPS.len(), want_native.len(), "DE_NATIVE_APPS count");
 }
 
-// ── язык интерфейса ─────────────────────────────────────────────────────
+// ── interface language ──────────────────────────────────────────────────
 
-/// Подписи типов программ и предупреждение про xdg-terminal-exec — до
-/// перевода на каталог (снимок `ca42e74^`): по-русски обязаны остаться
-/// дословно прежними.
+/// Program type captions and the xdg-terminal-exec warning — before the
+/// switch to the catalog (snapshot `ca42e74^`): in Russian they must stay
+/// word for word the same.
 const RU_BEFORE: &[(&str, &str)] = &[
     ("terminal", "🖥️ Терминал"),
     ("file_manager", "📁 Файловый менеджер"),
@@ -738,10 +738,10 @@ fn english_defaults_have_no_russian() {
     assert!(note.starts_with("Some apps will open their own terminal"), "{note}");
 }
 
-/// Д7 (проверка окружений 02.10.2026): в XFCE терминал без помощника exo
-/// (konsole, foot, kgx…) получал в `helpers.rc` голое имя, и
-/// `exo-open --launch TerminalEmulator` открывал окно выбора. Теперь для него
-/// заводится свой помощник `custom-TerminalEmulator` — как у xfce4-settings.
+/// D7 (desktop check of 02.10.2026): in XFCE a terminal without an exo helper
+/// (konsole, foot, kgx…) got a bare name in `helpers.rc`, and
+/// `exo-open --launch TerminalEmulator` opened a chooser window. Now an own
+/// helper `custom-TerminalEmulator` is created for it — like xfce4-settings does.
 #[test]
 fn xfce_terminal_without_system_helper_gets_custom_helper() {
     let only_alacritty = |n: &str| n == "alacritty";
@@ -769,12 +769,12 @@ fn xfce_terminal_without_system_helper_gets_custom_helper() {
         key: "TerminalEmulator".into(),
         value: "custom-TerminalEmulator".into(),
     }));
-    // Каталог помощника заводится ДО записи файла.
+    // The helper directory is created BEFORE the file is written.
     let mk = plan.iter().position(|s| matches!(s, D::TermStep::MakeDirs { path } if path == "/H/.local/share/xfce4/helpers"));
     let wr = plan.iter().position(|s| matches!(s, D::TermStep::WriteFile { path, .. } if path == helper));
     assert!(mk.unwrap() < wr.unwrap());
 
-    // Помощник системы есть — пишется его имя, своего файла нет.
+    // The system has a helper — its name is written, no own file.
     let plan = D::set_terminal_plan_with("Alacritty.desktop", "XFCE", "/H", &only_alacritty);
     assert!(!plan.iter().any(|s| matches!(s, D::TermStep::WriteFile { path, .. } if path.contains("xfce4/helpers/"))));
     assert!(plan.contains(&D::TermStep::SetIni {
@@ -783,14 +783,14 @@ fn xfce_terminal_without_system_helper_gets_custom_helper() {
         key: "TerminalEmulator".into(),
         value: "alacritty".into(),
     }));
-    // Вне XFCE своих помощников не заводим.
+    // Outside XFCE we create no helpers of our own.
     let plan = D::set_terminal_plan_with("org.kde.konsole.desktop", "KDE", "/H", &|_| false);
     assert!(!plan.iter().any(|s| matches!(s, D::TermStep::WriteFile { path, .. } if path.contains("xfce4"))));
 }
 
-/// Д7: файловый менеджер из «Настроек» доходит до `helpers.rc` XFCE —
-/// Thunar своим помощником (строчными, как файл `thunar.desktop`), Dolphin и
-/// Nemo — своим `custom-FileManager`; вне XFCE шагов нет.
+/// D7: the file manager from «Настройки» reaches the XFCE `helpers.rc` —
+/// Thunar with its own helper (lowercase, like the `thunar.desktop` file), Dolphin and
+/// Nemo with our `custom-FileManager`; outside XFCE there are no steps.
 #[test]
 fn xfce_file_manager_goes_to_helpers_rc() {
     let ad = |fm: &str, de: &str| {
@@ -823,10 +823,10 @@ fn xfce_file_manager_goes_to_helpers_rc() {
     assert!(ad("thunar.desktop", "GNOME").is_empty());
 }
 
-/// Pantheon: терминал elementary пишется в схему GNOME именем бинаря
-/// `io.elementary.terminal` (хвост после точки дал бы несуществующий
-/// «terminal») и с `-x` — «остаток строки как команда» (`-e` у него берёт
-/// одну строку на флаг). Чтение — той же схемой GNOME.
+/// Pantheon: the elementary terminal is written into the GNOME schema with the binary name
+/// `io.elementary.terminal` (the tail after the dot would give a non-existent
+/// "terminal") and with `-x` — "the rest of the line as a command" (its `-e` takes
+/// one string per flag). Reading — through the same GNOME schema.
 #[test]
 fn pantheon_terminal_goes_to_gnome_schema_with_real_binary() {
     use rexon_core::defaults as d;
@@ -845,14 +845,14 @@ fn pantheon_terminal_goes_to_gnome_schema_with_real_binary() {
     );
 }
 
-// ── Список терминалов своего стола (`<стол>-xdg-terminals.list`) ──────────
+// ── The desktop's own terminal list (`<desktop>-xdg-terminals.list`) ─────
 //
-// `xdg-terminal-exec` читает `~/.config/<стол>-xdg-terminals.list` РАНЬШЕ
-// общего `xdg-terminals.list`. Случай 08.11.2026: в MATE чужой
-// `mate-xdg-terminals.list` с GNOME Terminal перебивал всё, что Rexon писал.
+// `xdg-terminal-exec` reads `~/.config/<desktop>-xdg-terminals.list` BEFORE
+// the common `xdg-terminals.list`. The 08.11.2026 case: in MATE a foreign
+// `mate-xdg-terminals.list` with GNOME Terminal overrode everything Rexon wrote.
 
-/// Имя списка: первый элемент `XDG_CURRENT_DESKTOP` в нижнем регистре; для
-/// идентификаторов Rexon — то же имя стола, что у `<стол>-mimeapps.list`.
+/// The list name: the first element of `XDG_CURRENT_DESKTOP` in lowercase; for
+/// Rexon identifiers — the same desktop name as for `<desktop>-mimeapps.list`.
 #[test]
 fn desktop_terminals_list_names() {
     use rexon_core::appdefaults::terminals_list_filename as name;
@@ -879,8 +879,8 @@ fn desktop_terminals_list_names() {
     assert_eq!(name(""), None);
 }
 
-/// Пометки и чтение: выбор человека узнаётся, чужой список и «родной» — нет;
-/// терминал всегда первой строкой (её читает `get_current_terminal`).
+/// Marks and reading: the person's choice is recognized, a foreign list and the "native" one are not;
+/// the terminal is always the first line (it is read by `get_current_terminal`).
 #[test]
 fn desktop_terminals_list_marks() {
     let chosen = D::desktop_terminals_list_text("org.kde.konsole.desktop", true);
@@ -893,16 +893,16 @@ fn desktop_terminals_list_marks() {
         D::get_current_terminal(Some(&native), "MATE", None, None).as_deref(),
         Some("mate-terminal.desktop")
     );
-    // Список своего стола главнее общего; пустой — не в счёт.
+    // The desktop's own list beats the common one; an empty one does not count.
     let s = |v: &str| Some(v.to_string());
     assert_eq!(D::effective_terminals_list(s("a.desktop\n"), s("b.desktop\n")), s("a.desktop\n"));
     assert_eq!(D::effective_terminals_list(s("\n"), s("b.desktop\n")), s("b.desktop\n"));
     assert_eq!(D::effective_terminals_list(None, s("b.desktop\n")), s("b.desktop\n"));
 }
 
-/// Вход в сеанс: КАЖДЫЙ стол с родным терминалом получает его в свой список
-/// (тот же терминал, что пишется в родное место стола), чужой список
-/// переписывается, выбор человека остаётся, у тайловых списка нет.
+/// Session login: EVERY desktop with a native terminal gets it into its own list
+/// (the same terminal that is written into the desktop's native place), a foreign list
+/// is rewritten, the person's choice stays, tiling ones have no list.
 #[test]
 fn login_puts_native_terminal_into_desktop_list_of_every_desktop() {
     use rexon_core::appdefaults::{native_terminals_list_plan as plan, TerminalsListPlan as P};
@@ -925,7 +925,7 @@ fn login_puts_native_terminal_into_desktop_list_of_every_desktop() {
             terminal: terminal.to_string(),
             content: D::desktop_terminals_list_text(terminal, false),
         };
-        // Тот же родной терминал, что у набора стола.
+        // The same native terminal as in the desktop's set.
         let apps = rexon_core::appdefaults::resolve_de_apps(de_id);
         assert!(apps.iter().any(|(k, v)| *k == "terminal" && v == terminal), "{de_id}: {apps:?}");
         assert_eq!(plan(de_id, desktop, None, &all), want, "{de_id}: файла нет");
@@ -945,25 +945,25 @@ fn login_puts_native_terminal_into_desktop_list_of_every_desktop() {
             "{de_id}"
         );
     }
-    // Родной терминал не установлен — ничего не пишем.
+    // The native terminal is not installed — we write nothing.
     assert_eq!(plan("mate", "MATE", foreign, &|_| false), P::Nothing);
-    // GNOME Console нет — его замена из того же набора (gnome-terminal).
+    // No GNOME Console — its replacement from the same set (gnome-terminal).
     let only_gt = |id: &str| id == "org.gnome.Terminal.desktop";
     assert!(matches!(
         plan("gnome", "GNOME", None, &only_gt),
         P::Write { terminal, .. } if terminal == "org.gnome.Terminal.desktop"
     ));
-    // Тайловые и незнакомые окружения своего терминала не имеют.
+    // Tiling and unfamiliar desktops have no terminal of their own.
     for (de_id, desktop) in [("sway", "sway"), ("hyprland", "Hyprland"), ("niri", "niri"), ("wayfire", "wayfire")] {
         assert_eq!(plan(de_id, desktop, foreign, &all), P::Nothing, "{de_id}");
     }
-    // Имени стола нет — общий список остаётся единственным.
+    // No desktop name — the common list stays the only one.
     assert_eq!(plan("mate", "", None, &all), P::Nothing);
 }
 
-/// Выбор человека главнее родного (решение Wehrwolfmann 08.11.2026): вход в
-/// сеанс ставит выбранный терминал во ВСЕ родные места стола; без выбора —
-/// родной; выбранный, но не установленный — родной и строка в журнале.
+/// The person's choice beats the native one (Wehrwolfmann's decision 08.11.2026): session login
+/// puts the chosen terminal into ALL native places of the desktop; without a choice — the
+/// native one; chosen but not installed — the native one and a line in the log.
 #[test]
 fn login_puts_chosen_terminal_into_native_places_of_every_desktop() {
     use rexon_core::appdefaults::apply_de_specific_with_terminal as apply;
@@ -990,14 +990,14 @@ fn login_puts_chosen_terminal_into_native_places_of_every_desktop() {
         let natural = apply(de_id, None, &all, &all, None, &no_helper);
         assert!(mentions(&natural, native), "{de_id}: без выбора нет родного: {natural:?}");
         assert!(!mentions(&natural, "kitty"), "{de_id}");
-        // Выбранный не установлен — родной и объяснение.
+        // The chosen one is not installed — the native one and an explanation.
         let missing = apply(de_id, Some("kitty.desktop"), &|id: &str| id != "kitty.desktop", &all, None, &no_helper);
         assert!(!mentions(&missing, "kitty"), "{de_id}: {missing:?}");
         assert!(mentions(&missing, native), "{de_id}: {missing:?}");
         assert!(missing.logs[0].contains("kitty"), "{de_id}: {:?}", missing.logs);
     }
-    // XFCE: выбранной программе без помощника exo заводится свой помощник,
-    // и в helpers.rc в итоге стоит он — как во вкладке «Настройки».
+    // XFCE: a chosen program without an exo helper gets its own helper,
+    // and in the end it is the one in helpers.rc — as in the «Настройки» tab.
     let xfce = apply("xfce", Some("org.kde.konsole.desktop"), &all, &all, None, &no_helper);
     let last_ini = xfce.file_steps.iter().rev().find_map(|s| match s {
         D::TermStep::SetIni { key, value, .. } if key == "TerminalEmulator" => Some(value.clone()),

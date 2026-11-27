@@ -1,16 +1,16 @@
-//! Экран входа Plasma Login Manager: фон и перенос оформления через его
-//! собственный помощник KAuth (`plasma_login`). Три слоя сверки:
+//! The Plasma Login Manager login screen: background and look transfer via its
+//! own KAuth helper (`plasma_login`). Three layers of checking:
 //!
-//! * байты `QDataStream` — против снятых один раз настоящими Qt 6.12 и
-//!   KAuth 6.31 (раздел `qt` эталона `golden/plasma_login_cases.json`,
-//!   руками, не переснимается);
-//! * что уходит помощнику — подставная шина записывает действие,
-//!   разобранные аргументы и ключи дескрипторов (раздел `cases`;
-//!   переснять: `REXON_GOLDEN_WRITE=1 cargo test-core --test plasma_login`,
-//!   затем прочитать разницу глазами);
-//! * настоящий D-Bus — частная шина `dbus-daemon` и поддельная служба с
-//!   тем же интерфейсом `org.kde.kf6auth`, которая только записывает
-//!   пришедшее (подпись `s ay a{sv} ay a{sh}` и передача дескриптора).
+//! * `QDataStream` bytes — against ones captured once with real Qt 6.12 and
+//!   KAuth 6.31 (the `qt` section of the golden `golden/plasma_login_cases.json`,
+//!   by hand, not recaptured);
+//! * what goes to the helper — a fake bus records the action,
+//!   the parsed arguments and descriptor keys (the `cases` section;
+//!   to recapture: `REXON_GOLDEN_WRITE=1 cargo test-core --test plasma_login`,
+//!   then read the diff by eye);
+//! * real D-Bus — a private `dbus-daemon` bus and a fake service with
+//!   the same `org.kde.kf6auth` interface, which only records what
+//!   arrived (the `s ay a{sv} ay a{sh}` signature and descriptor passing).
 
 use std::os::fd::OwnedFd;
 
@@ -18,9 +18,9 @@ use rexon_core::plasma_login::{self as plm, KauthBus, KauthCall, KauthReply, Plm
 use rexon_core::system_plan::{DesktopLook, SddmLook, SddmNumlock};
 use serde_json::{json, Value};
 
-// Причины отказа сверяются по-английски, а язык процесса по умолчанию — как
-// у машины (у владельца русский, и каталог стоит в /usr/share/locale).
-// Закрепление под замком: сверки одного файла идут параллельно.
+// Refusal reasons are compared in English, and the process language by default is the
+// machine's (the owner's is Russian, and the catalog is installed in /usr/share/locale).
+// Pinned under a lock: the checks of one file run in parallel.
 mod i18n_pin;
 
 const GOLDEN: &str = "tests/golden/plasma_login_cases.json";
@@ -48,7 +48,7 @@ fn var_json(v: &QVariant) -> Value {
     }
 }
 
-/// Подставная шина: записывает вызовы, отвечает заданными байтами.
+/// A fake bus: records calls, answers with the given bytes.
 struct Fake {
     calls: Vec<Value>,
     reply: Result<Vec<u8>, String>,
@@ -70,7 +70,7 @@ impl KauthBus for Fake {
     }
 }
 
-/// Шина, которую звать нельзя (отказ до пароля).
+/// A bus that must not be called (refusal before the password).
 struct Never;
 impl KauthBus for Never {
     fn perform(&mut self, call: KauthCall) -> Result<Vec<u8>, String> {
@@ -84,7 +84,7 @@ fn some_fd() -> Option<OwnedFd> {
 
 const JPEG: &[u8] = &[0xff, 0xd8, 0xff, 0xe0, 0, 0x10, b'J', b'F', b'I', b'F'];
 
-/// Машина как ВМ стенда: автовход и часы заданы, фон стандартный.
+/// The machine as the bench VM: autologin and clock are set, the background is the default one.
 fn vm_facts() -> PlmFacts {
     PlmFacts {
         config: Some("[Autologin]\nRelogin=false\nSession=plasma\nUser=tester\n\n[Greeter]\nShowClock=false\n".into()),
@@ -143,17 +143,17 @@ fn sync_call(look: &PlmLook) -> Value {
 
 fn cases() -> Value {
     let mut out = serde_json::Map::new();
-    // Фон: своя картинка на машине со стандартным фоном.
+    // Background: a custom picture on a machine with the default background.
     let facts = vm_facts();
     let mut bus = Fake::ok();
     bg(&facts, Some("/home/u/Картинки/Закат.jpg"), &mut bus).unwrap();
     let set = bus.calls.remove(0);
     out.insert("background_set".into(), set.clone());
-    // Вернуть стандартный: ключи фона уходят, чужие остаются.
+    // Restore the default: the background keys go away, others stay.
     let mut bus = Fake::ok();
     bg(&apply_save(&facts, &set), None, &mut bus).unwrap();
     out.insert("background_reset".into(), bus.calls.remove(0));
-    // Сейчас другой модуль обоев (цвет) и временный PreviewImage.
+    // Currently another wallpaper module (color) and a temporary PreviewImage.
     let color = PlmFacts {
         config: Some(
             "[Greeter]\nWallpaperPluginId=org.kde.color\n\n[Greeter][Wallpaper][org.kde.color][General]\nColor=0,0,0\n\n\
@@ -165,13 +165,13 @@ fn cases() -> Value {
     let mut bus = Fake::ok();
     bg(&color, Some("/x/a.jpg"), &mut bus).unwrap();
     out.insert("background_from_color".into(), bus.calls.remove(0));
-    // Перенос оформления: Plasma — файлы как у kcm.
+    // Look transfer: Plasma — files as in the kcm.
     let files = user_files();
     let exists = |p: &str| files.contains_key(p);
     let plasma = plm::plm_look(true, "/home/u/.config", &plasma_desktop(), &exists);
     out.insert("look_plasma_items".into(), json!({"items": plasma.items, "missing": plasma.missing}));
     out.insert("look_plasma_sync".into(), sync_call(&plasma));
-    // Вне Plasma: цвета Qt и fontconfig файлами, шрифт и курсор значениями.
+    // Outside Plasma: Qt colors and fontconfig as files, font and cursor as values.
     let other = DesktopLook {
         look: SddmLook {
             cursor_theme: Some("Adwaita".into()),
@@ -184,7 +184,7 @@ fn cases() -> Value {
     let gnome = plm::plm_look(false, "/home/u/.config", &other, &exists);
     out.insert("look_other_items".into(), json!({"items": gnome.items, "missing": gnome.missing}));
     out.insert("look_other_sync".into(), sync_call(&gnome));
-    // «Сбросить».
+    // «Reset».
     let mut bus = Fake::ok();
     plm::look_with(&vm_facts(), None, &|_| None, &|_| None, &mut bus).unwrap();
     out.insert("look_reset".into(), bus.calls.remove(0));
@@ -209,7 +209,7 @@ fn байты_qdatastream_как_у_qt() {
     assert_eq!(plm::encode_qvariant_map(&[]), qt("empty_map"));
     let config = "[Greeter]\nWallpaperPluginId=org.kde.image\n\n[Greeter][Wallpaper][org.kde.image][General]\n\
                   Image=file:///var/lib/plasmalogin/wallpapers/rexon-background.jpg\n";
-    // Порядок вставки обратный — QMap всё равно пишет по ключам.
+    // The insertion order is reversed — QMap writes by keys anyway.
     let save = vec![
         ("wallpapers".to_string(), QVariant::StringList(vec!["rexon-background.jpg".into()])),
         ("config".to_string(), s(config)),
@@ -226,7 +226,7 @@ fn байты_qdatastream_как_у_qt() {
         ("config".to_string(), QVariant::String(None)),
     ];
     assert_eq!(plm::encode_qvariant_map(&reset), qt("reset_bg_args"));
-    // Разбор Qt-байтов и обратная запись совпадают.
+    // Parsing the Qt bytes and writing them back match.
     for name in ["save_args", "sync_args", "reset_bg_args"] {
         let m = plm::decode_qvariant_map(&qt(name)).unwrap();
         assert_eq!(plm::encode_qvariant_map(&m), qt(name), "{name}");
@@ -251,7 +251,7 @@ fn ответы_помощника_как_у_kauth() {
     assert!(plm::reply_outcome(&r("reply_success")).is_ok());
     assert!(plm::reply_outcome(&r("reply_denied")).unwrap_err().contains("password"));
     assert!(plm::reply_outcome(&r("reply_helper_error_desc")).unwrap_err().ends_with("\nНет"));
-    // Мусор и обрыв — ошибка разбора, а не паника.
+    // Garbage and truncation are a parse error, not a panic.
     assert!(plm::decode_reply(&[0, 0, 0]).is_err());
     assert!(plm::decode_reply(&[0xff, 0xff, 0xff, 0xff]).is_err());
     assert!(plm::decode_qvariant_map(&[0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0x7f, 0xff, 0]).is_err());
@@ -260,19 +260,19 @@ fn ответы_помощника_как_у_kauth() {
 #[test]
 fn отказы_до_пароля_и_ошибки_шины() {
     let _lang = i18n_pin::en();
-    // Не картинка — помощник не зовётся.
+    // Not a picture — the helper is not called.
     let e = plm::background_with(&vm_facts(), Some("/x/a.txt"), &|_| Some(b"hello".to_vec()), &|_| some_fd(), &mut Never)
         .unwrap_err();
     assert!(e.contains("PNG and JPEG"));
-    // Помощника нет / нет учётной записи — честная причина, без вызова.
+    // No helper / no user account — an honest reason, without a call.
     let no_helper = PlmFacts { helper: false, ..vm_facts() };
     assert!(bg(&no_helper, None, &mut Never).unwrap_err().contains("helper isn't installed"));
     let no_user = PlmFacts { home: None, ..vm_facts() };
     assert!(plm::look_with(&no_user, None, &|_| None, &|_| None, &mut Never).unwrap_err().contains("plasmalogin"));
-    // Пароль не введён.
+    // The password was not entered.
     let mut bus = Fake { calls: Vec::new(), reply: Ok(qt("reply_cancelled")) };
     assert!(bg(&vm_facts(), None, &mut bus).unwrap_err().contains("password"));
-    // Шина недоступна и непонятный ответ.
+    // The bus is unavailable, and an incomprehensible answer.
     let mut bus = Fake { calls: Vec::new(), reply: Err("org.freedesktop.DBus.Error.ServiceUnknown".into()) };
     assert!(bg(&vm_facts(), None, &mut bus).unwrap_err().contains("ServiceUnknown"));
     let mut bus = Fake { calls: Vec::new(), reply: Ok(vec![1, 2, 3]) };
@@ -289,8 +289,8 @@ fn вид_раздела() {
     assert!(!std_view.background.can_reset);
     let mut own = vm_facts();
     own.config = Some(plm::background_config(&own, Some("rexon-background.png")));
-    // Своя картинка: дом `plasmalogin` закрыт — превью из копии Rexon; копии
-    // нет — честная подпись без превью.
+    // A custom picture: the `plasmalogin` home is closed — the preview comes from Rexon's copy; no
+    // copy — an honest label without a preview.
     let own_view = plm::greeter_view(&own, &look, "/std.png", "");
     assert_eq!(own_view.background.image, "");
     assert!(own_view.background.state.contains("no preview"), "{}", own_view.background.state);
@@ -299,7 +299,7 @@ fn вид_раздела() {
     let kept_view = plm::greeter_view(&kept, &look, "/std.png", "");
     assert_eq!(kept_view.background.image, "/home/u/.local/share/rexon/login-background/plm.png");
     assert_eq!(kept_view.background.state, "Background: your picture");
-    // Фон поставлен не Rexon: читается — показывается, нет — без превью.
+    // The background was not set by Rexon: readable — shown, not readable — no preview.
     let mut other = vm_facts();
     other.config = Some("[Greeter][Wallpaper][org.kde.image][General]\nImage=file:///var/lib/plasmalogin/wallpapers/mine.jpg\n".into());
     let other_view = plm::greeter_view(&other, &look, "/std.png", "");
@@ -314,10 +314,10 @@ fn вид_раздела() {
     assert_eq!(plm::decode_reply(&plm::encode_reply(&r)).unwrap(), r);
 }
 
-/// «Показывать часы» — как kcm_plasmalogin: `[Greeter] ShowClock`, по
-/// умолчанию да; совпадение с умолчанием снимает ключ (KConfigSkeleton).
-/// Тем же `save`, что фон, а `save` помощника стирает `~/wallpapers` —
-/// своя картинка пересылается заново; не открылась — отказ до пароля.
+/// «Show clock» — as in kcm_plasmalogin: `[Greeter] ShowClock`, yes by
+/// default; matching the default removes the key (KConfigSkeleton).
+/// Through the same `save` as the background, and the helper's `save` wipes `~/wallpapers` —
+/// the custom picture is sent again; if it did not open — a refusal before the password.
 #[test]
 fn часы_как_у_kcm() {
     let _lang = i18n_pin::en();
@@ -330,13 +330,13 @@ fn часы_как_у_kcm() {
     assert!(plm::clock_config(&bare, false).contains("[Greeter]\nShowClock=false"));
     let layered = PlmFacts { config: None, layers: vec!["[Greeter]\nShowClock=false\n".into()], ..vm_facts() };
     assert!(plm::clock_config(&layered, true).contains("ShowClock=true"), "умолчание слоя — нет, «да» пишется");
-    // Без своей картинки — только текст настроек.
+    // Without a custom picture — only the settings text.
     let mut bus = Fake::ok();
     assert!(plm::clock_with(&facts, true, &|_| None, &mut bus).unwrap().contains("show the clock"));
     let call = bus.calls.remove(0);
     assert_eq!(call["action"], plm::ACTION_SAVE);
     assert!(call["arguments"].get("wallpapers").is_none(), "{call}");
-    // Своя картинка пересылается тем же именем.
+    // The custom picture is sent under the same name.
     let mut bus = Fake::ok();
     bg(&facts, Some("/home/u/Картинки/Закат.jpg"), &mut bus).unwrap();
     let own = apply_save(&facts, &bus.calls.remove(0));
@@ -348,16 +348,16 @@ fn часы_как_у_kcm() {
     assert_eq!(call["fds"], json!(["_fd_rexon-background.jpg"]));
     let config = call["arguments"]["config"].as_str().unwrap();
     assert!(config.contains("ShowClock=false") && config.contains("Image=file:///var/lib/plasmalogin/wallpapers/rexon-background.jpg"), "{config}");
-    // Не открылась — отказ, помощник не зван (фон молча не пропадёт).
+    // Did not open — a refusal, the helper is not called (the background will not silently vanish).
     assert!(plm::clock_with(&own, false, &|_| None, &mut Never).unwrap_err().contains("background"));
-    // Вид: галочка всегда есть, состояние — из настроек.
+    // View: the checkbox is always there, the state comes from the settings.
     let look = PlmLook { plasma: true, ..PlmLook::default() };
     let v = plm::greeter_view(&facts, &look, "", "");
     assert!(v.clock.supported && !v.clock.checked);
     assert!(v.preview.tooltip.contains("mypassword"));
 }
 
-/// WebP — только при модуле WebP у Qt 6 (приветствие PLM на Qt 6).
+/// WebP — only with Qt 6's WebP module (the PLM greeter runs on Qt 6).
 #[test]
 fn webp_у_plm() {
     let _lang = i18n_pin::en();
@@ -373,7 +373,7 @@ fn webp_у_plm() {
     assert!(plm::greeter_view(&with, &look, "", "").background.filter.contains("*.webp"));
 }
 
-/// Превью — `plasma-login-greeter --test` из каталога libexec (6.8.2).
+/// The preview is `plasma-login-greeter --test` from the libexec directory (6.8.2).
 #[test]
 fn превью_plm() {
     let _lang = i18n_pin::en();
@@ -385,7 +385,7 @@ fn превью_plm() {
     assert!(plm::preview_argv(&|_| false).unwrap_err().contains("isn't installed"));
 }
 
-/// Настоящий D-Bus: частная шина и поддельная служба помощника.
+/// Real D-Bus: a private bus and a fake helper service.
 mod bus {
     use super::*;
     use std::collections::HashMap;
@@ -477,8 +477,8 @@ mod bus {
     }
 }
 
-/// Живой вызов НАСТОЯЩЕГО помощника PLM — только на стенде (ВМ), никогда на
-/// рабочей машине: `REXON_PLM_LIVE=bg:/путь.jpg | bg-reset | sync:kde |
+/// A live call of the REAL PLM helper — only on the bench (VM), never on
+/// the working machine: `REXON_PLM_LIVE=bg:/path.jpg | bg-reset | sync:kde |
 /// reset cargo test --test plasma_login -- --ignored живой_вызов`.
 #[test]
 #[ignore = "пишет в систему через помощник PLM — только в ВМ стенда"]

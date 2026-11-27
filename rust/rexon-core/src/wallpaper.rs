@@ -1,43 +1,44 @@
-//! Решения точки входа обоев: что запускать и с какими настройками.
+//! Wallpaper entry-point decisions: what to launch and with which settings.
 //!
-//! Портировался с `rexon/wallpaper.py` — прежней ЕДИНОЙ точки входа обоев.
-//! Её в дереве больше нет: обои всех типов, кроме видео, рисует движок
-//! waywallen, а видео-хост стал точкой входа сам. Python-хоста тоже нет
-//! (снят 2026-08-23) — зовёт отсюда бинарь `rexon-wallpaper-host` крейта
-//! `rexon-gui`. Поэтому здесь осталось ровно то, что видео-хост зовёт:
+//! Ported from `rexon/wallpaper.py`, the former SINGLE wallpaper entry point.
+//! It is no longer in the tree: wallpapers of every type except video are
+//! drawn by the waywallen engine, and the video host became an entry point of
+//! its own. The Python host is gone too (removed 2026-08-23); the
+//! `rexon-wallpaper-host` binary of the `rexon-gui` crate calls in here
+//! instead. So what is left here is exactly what the video host calls:
 //!
-//!   * [`use_parent_dir`] — путь ведёт на файл ВНУТРИ каталога обоев;
-//!   * [`mmap_size`] и умолчания [`DEFAULT_MMAP_WIDTH`]/[`DEFAULT_MMAP_HEIGHT`]
-//!     — размер кадра mmap из окружения, с откатом при мусоре;
-//!   * [`parse_user_props_override`] — переопределение свойств из окружения;
-//!   * решения самого видео-хоста: какой QML-файл грузить
-//!     ([`video_qml_file`]), что и с какими умолчаниями класть в контекст
-//!     QML ([`video_context_properties`]), берётся ли обоина этим хостом
-//!     вообще ([`video_host_reject_reason`]).
+//!   * [`use_parent_dir`] — the path points to a file INSIDE the wallpaper directory;
+//!   * [`mmap_size`] and the defaults [`DEFAULT_MMAP_WIDTH`]/[`DEFAULT_MMAP_HEIGHT`]
+//!     — the mmap frame size from the environment, with a fallback on garbage;
+//!   * [`parse_user_props_override`] — property overrides from the environment;
+//!   * the video host's own decisions: which QML file to load
+//!     ([`video_qml_file`]), what to put into the QML context and with which
+//!     defaults ([`video_context_properties`]), and whether this host takes
+//!     the wallpaper at all ([`video_host_reject_reason`]).
 //!
-//! Выбор исполнителя (`runner_id`/`runner_source`, переменная
-//! `REXON_WP_RUNNER`) снят: он обслуживал обои-приложения, а их движок
-//! и пакет исполнителей удалены — переменную не читает никто, кроме
-//! исторических записок в `docs/`.
+//! Runner selection (`runner_id`/`runner_source`, the `REXON_WP_RUNNER`
+//! variable) is gone: it served application wallpapers, and their engine and
+//! runner package were removed — nobody reads the variable any more except
+//! historical notes in `docs/`.
 //!
-//! Сам запуск рендера, чтение `project.json` и работа с файловой системой
-//! остаются исполнителю.
+//! Launching the renderer itself, reading `project.json` and working with the
+//! file system stay with the runner.
 
 use serde_json::{Map, Value};
 
-/// Расширения, при которых путь считается указанием на файл ВНУТРИ каталога
-/// обоев, а не на сам каталог: старые точки входа принимали `index.html`,
-/// `scene.json` и подобное, и такие вызовы должны продолжать работать.
+/// Extensions for which a path is taken to point to a file INSIDE the
+/// wallpaper directory rather than to the directory itself: old entry points
+/// accepted `index.html`, `scene.json` and the like, and such calls must keep working.
 pub const LEGACY_FILE_SUFFIXES: &[&str] =
     &[".html", ".htm", ".json", ".mp4", ".webm", ".exe"];
 
-/// Ширина кадра mmap по умолчанию.
+/// Default mmap frame width.
 pub const DEFAULT_MMAP_WIDTH: i64 = 1920;
-/// Высота кадра mmap по умолчанию.
+/// Default mmap frame height.
 pub const DEFAULT_MMAP_HEIGHT: i64 = 1080;
 
-/// Нужно ли подняться к родительскому каталогу: путь указывает на файл со
-/// «старым» расширением. Регистр расширения не важен.
+/// Whether to go up to the parent directory: the path points to a file with an
+/// "old" extension. The extension's case does not matter.
 pub fn use_parent_dir(path: &str, is_file: bool) -> bool {
     if !is_file {
         return false;
@@ -46,27 +47,27 @@ pub fn use_parent_dir(path: &str, is_file: bool) -> bool {
     LEGACY_FILE_SUFFIXES.iter().any(|s| lower.ends_with(s))
 }
 
-/// Результат разбора переопределения пользовательских свойств.
+/// Result of parsing the user property override.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserPropsOverride {
-    /// Переопределения нет — берутся значения из `project.json`.
+    /// No override — values are taken from `project.json`.
     None,
-    /// Разобранные свойства в каноническом виде `{ключ: {"value": …}}`.
+    /// Parsed properties in the canonical form `{key: {"value": …}}`.
     Props(Map<String, Value>),
-    /// Значение не разобралось — исполнитель предупреждает и идёт на
-    /// значения по умолчанию, а не падает.
+    /// The value did not parse — the runner warns and falls back to the
+    /// default values instead of crashing.
     Broken,
 }
 
-/// Разобрать переопределение свойств из окружения.
+/// Parse a property override from the environment.
 ///
-/// Конфигуратор кладёт сохранённый JSON в переменную окружения. Формат
-/// приводится к каноническому `{ключ: {"value": …}}`: голое значение
-/// заворачивается, уже завёрнутое остаётся как есть. Пустая строка и `{}`
-/// означают «переопределения нет».
+/// The configurator puts the saved JSON into an environment variable. The
+/// format is normalized to the canonical `{key: {"value": …}}`: a bare value
+/// gets wrapped, an already wrapped one stays as is. An empty string and `{}`
+/// mean "no override".
 ///
-/// Валидный JSON, который не является объектом (список, строка, `null`),
-/// трактуется как отсутствие переопределения — так же, как в оригинале.
+/// Valid JSON that is not an object (a list, a string, `null`) is treated as
+/// no override — the same as in the original.
 pub fn parse_user_props_override(raw: &str) -> UserPropsOverride {
     let trimmed = raw.trim();
     if trimmed.is_empty() || trimmed == "{}" {
@@ -94,13 +95,13 @@ pub fn parse_user_props_override(raw: &str) -> UserPropsOverride {
     UserPropsOverride::Props(out)
 }
 
-/// Размер кадра mmap из окружения.
+/// The mmap frame size from the environment.
 ///
-/// ⚠️ Намеренное расхождение с оригиналом (починка при порте): нечисловое
-/// значение переменной там роняло запуск обоев необработанным `ValueError`
-/// прямо на старте. Здесь мусор откатывается к значению по умолчанию —
-/// кривая переменная окружения не должна оставлять пользователя без обоев.
-/// Пробелы по краям срезаются, как это делал `int()` Python.
+/// ⚠️ A deliberate divergence from the original (fixed during the port): there
+/// a non-numeric variable value crashed the wallpaper launch with an unhandled
+/// `ValueError` right at startup. Here garbage falls back to the default — a
+/// broken environment variable must not leave the user without a wallpaper.
+/// Surrounding whitespace is trimmed, as Python's `int()` did.
 pub fn mmap_size(width: Option<&str>, height: Option<&str>) -> (i64, i64) {
     (
         parse_dimension(width, DEFAULT_MMAP_WIDTH),
@@ -115,44 +116,44 @@ fn parse_dimension(value: Option<&str>, default: i64) -> i64 {
     }
 }
 
-// ── видео-хост: что показывать и с какими настройками ──────────────────────
+// ── video host: what to show and with which settings ───────────────────────
 //
-// Решения, снятые с прежнего Python-хоста (`rexon/video_wallpaper.py`,
-// снят с дерева 2026-08-23). Сам Qt (QQmlApplicationEngine, LayerShellQt,
-// QtMultimedia) и протокол композитора живут в крейте `rexon-gui`; здесь —
-// то, что решается до первого Qt-вызова: какой режим показа выбрать, какие
-// свойства класть в контекст QML и с какими значениями, и берётся ли эта
-// обоина этим хостом вообще.
+// Decisions taken over from the former Python host (`rexon/video_wallpaper.py`,
+// removed from the tree 2026-08-23). Qt itself (QQmlApplicationEngine,
+// LayerShellQt, QtMultimedia) and the compositor protocol live in the
+// `rexon-gui` crate; here is what gets decided before the first Qt call:
+// which display mode to choose, which properties to put into the QML context
+// and with which values, and whether this host takes this wallpaper at all.
 
-/// ⚠️ Три константы ниже — ТОКЕНЫ режима показа, а не имена файлов на
-/// диске: файлов с такими именами в дереве нет с тех пор, как сняли
-/// Python-хост. Rust-хост рисует одним `WallpaperVideo.qml`, а токен
-/// переводит в режим `rexon-gui::wallpaper_host::placement`.
+/// ⚠️ The three constants below are display-mode TOKENS, not file names on
+/// disk: no files with these names have existed in the tree since the Python
+/// host was removed. The Rust host draws with a single `WallpaperVideo.qml`
+/// and translates the token into a `rexon-gui::wallpaper_host::placement` mode.
 ///
-/// Офскрин-режим: окна на экране нет, кадры уходят расширению оболочки
-/// через mmap (GNOME/Cinnamon на Wayland — там нет layer-shell).
+/// Offscreen mode: there is no window on screen, frames go to the shell
+/// extension through mmap (GNOME/Cinnamon on Wayland — no layer-shell there).
 pub const QML_OFFSCREEN: &str = "VideoWallpaperOffscreen.qml";
-/// QML-файл Wayland-режима: окно на слое BACKGROUND через LayerShellQt.
+/// QML file of the Wayland mode: a window on the BACKGROUND layer via LayerShellQt.
 pub const QML_WAYLAND: &str = "VideoWallpaper.qml";
-/// QML-файл X11-режима: обычное окно + `_NET_WM_WINDOW_TYPE_DESKTOP`.
+/// QML file of the X11 mode: a regular window + `_NET_WM_WINDOW_TYPE_DESKTOP`.
 pub const QML_X11: &str = "VideoWallpaperX11.qml";
 
-/// Единственный тип обоев, который рисует этот хост. Остальные рисует
-/// движок waywallen.
+/// The only wallpaper type this host draws. The rest are drawn by the
+/// waywallen engine.
 pub const VIDEO_HOST_TYPE: &str = "video";
 
-/// Звук у WE-обоев включён по умолчанию (`audioenabled`).
+/// Sound is on by default for WE wallpapers (`audioenabled`).
 pub const DEFAULT_AUDIO_ENABLED: bool = true;
-/// Громкость по умолчанию в долях единицы (`volume`; WE хранит 0..100).
+/// Default volume as a fraction of one (`volume`; WE stores 0..100).
 pub const DEFAULT_VOLUME: f64 = 0.5;
-/// Зацикливание по умолчанию (`loopvideo`).
+/// Looping by default (`loopvideo`).
 pub const DEFAULT_LOOP: bool = true;
 
-/// Какой QML-файл грузит видео-хост — порт `VideoWallpaper.get_qml_file`.
+/// Which QML file the video host loads — port of `VideoWallpaper.get_qml_file`.
 ///
-/// Порядок проверок значим: офскрин-режим перекрывает всё, потому что при
-/// заданном mmap-выводе окно на экран не выводится вовсе и обслуживать
-/// LayerShellQt там некому.
+/// The order of checks matters: offscreen mode overrides everything, because
+/// with an mmap output set no window is shown on screen at all and there is
+/// nothing there for LayerShellQt to serve.
 pub fn video_qml_file(has_mmap_output: bool, wayland: bool) -> &'static str {
     if has_mmap_output {
         QML_OFFSCREEN
@@ -163,38 +164,38 @@ pub fn video_qml_file(has_mmap_output: bool, wayland: bool) -> &'static str {
     }
 }
 
-/// Значение свойства контекста QML в том виде, в каком его надо положить.
+/// A QML context property value in the form it has to be set.
 #[derive(Debug, Clone, PartialEq)]
 pub enum QmlValue {
-    /// Локальный путь, который шим оборачивает в `QUrl.fromLocalFile`.
+    /// A local path the shim wraps in `QUrl.fromLocalFile`.
     LocalFileUrl(String),
-    /// Готовая ссылка (`http://`, `https://`, `file://`) — её заворачивать
-    /// в `fromLocalFile` НЕЛЬЗЯ: получится «file:///https:/example.com».
+    /// A ready URL (`http://`, `https://`, `file://`) — it must NOT be wrapped
+    /// in `fromLocalFile`: that would produce «file:///https:/example.com».
     Url(String),
     Bool(bool),
-    /// Вещественное (QML `real`).
+    /// A floating-point value (QML `real`).
     Real(f64),
     Int(i64),
 }
 
-/// Одно свойство контекста QML: имя и значение.
+/// One QML context property: name and value.
 #[derive(Debug, Clone, PartialEq)]
 pub struct QmlContextProperty {
     pub name: String,
     pub value: QmlValue,
 }
 
-/// Свойства контекста QML для видео-обоев — порт
-/// `VideoWallpaper.setup_renderer` целиком (имена, порядок, умолчания и
-/// приведение типов).
+/// QML context properties for video wallpapers — a full port of
+/// `VideoWallpaper.setup_renderer` (names, order, defaults and type
+/// conversion).
 ///
-/// `target_file` — абсолютный путь к видеофайлу; `user_props` — свойства из
-/// `project.json` в формате `{ключ: {"value": …}}` либо плоские значения
-/// (принимается и то, и другое: в оригинале сюда приходил `defaults_for_js`,
-/// а из конфигуратора — голые значения).
+/// `target_file` is the absolute path to the video file; `user_props` are the
+/// properties from `project.json` in the `{key: {"value": …}}` form or plain
+/// values (both are accepted: in the original `defaults_for_js` came here,
+/// and bare values came from the configurator).
 ///
-/// ⚠️ Имя `audioVolume`, а НЕ `volume`: одноимённое с `AudioOutput.volume`
-/// свойство контекста уводит QML в рекурсию привязок.
+/// ⚠️ The name is `audioVolume`, NOT `volume`: a context property with the
+/// same name as `AudioOutput.volume` sends QML into binding recursion.
 pub fn video_context_properties(
     target_file: &str,
     windowed: bool,
@@ -227,18 +228,18 @@ pub fn video_context_properties(
             "loopVideo",
             QmlValue::Bool(as_bool(prop("loopvideo"), DEFAULT_LOOP)),
         ),
-        // Размер кадра для офскрин-варианта: окна на экране нет, поэтому
-        // Screen.width/height в QML брать неоткуда.
+        // Frame size for the offscreen variant: there is no window on screen, so
+        // there is nowhere to take Screen.width/height from in QML.
         named("renderWidth", QmlValue::Int(mmap_width)),
         named("renderHeight", QmlValue::Int(mmap_height)),
     ]
 }
 
-/// Свойство WE как булево — порт `_as_bool`.
+/// A WE property as a boolean — port of `_as_bool`.
 ///
-/// WE хранит флаги и настоящим `true`, и числом, и строкой «true»/«1»/«on».
-/// Всё, что не опознано (в т.ч. отсутствие свойства и `null`), даёт
-/// умолчание.
+/// WE stores flags as a real `true`, as a number, and as a string «true»/«1»/«on».
+/// Anything unrecognized (including a missing property and `null`) gives the
+/// default.
 pub fn as_bool(value: Option<&Value>, default: bool) -> bool {
     match value {
         Some(Value::Bool(b)) => *b,
@@ -250,15 +251,15 @@ pub fn as_bool(value: Option<&Value>, default: bool) -> bool {
     }
 }
 
-/// Громкость WE в долях единицы — порт `_as_float01`.
+/// WE volume as a fraction of one — port of `_as_float01`.
 ///
-/// WE хранит громкость в 0..100, а `AudioOutput.volume` в QML ждёт 0..1:
-/// значение больше единицы делится на сто. Неразобранное — умолчание,
-/// результат зажимается в 0..1.
+/// WE stores volume in 0..100, while `AudioOutput.volume` in QML expects 0..1:
+/// a value greater than one is divided by a hundred. Anything unparsed gives
+/// the default; the result is clamped to 0..1.
 pub fn as_volume01(value: Option<&Value>, default: f64) -> f64 {
     let raw = match value {
         Some(Value::Number(n)) => n.as_f64(),
-        // Строку оригинал разбирал тем же `float()`, что и число.
+        // The original parsed a string with the same `float()` as a number.
         Some(Value::String(s)) => s.trim().parse::<f64>().ok(),
         Some(Value::Bool(b)) => Some(if *b { 1.0 } else { 0.0 }),
         _ => None,
@@ -272,56 +273,58 @@ pub fn as_volume01(value: Option<&Value>, default: f64) -> f64 {
     f.clamp(0.0, 1.0)
 }
 
-/// Берётся ли этот тип обоев видео-хостом. `None` — берётся; `Some(текст)`
-/// — отказ с готовым объяснением (порт сообщения `_build_ctx_from_dir`).
+/// Whether the video host takes this wallpaper type. `None` — it does; `Some(text)`
+/// — a refusal with a ready explanation (port of the `_build_ctx_from_dir` message).
 ///
-/// Отказ честный и внятный: пустое окно вместо обоев человеку ничего не
-/// объясняет (правило #13).
+/// The refusal is honest and clear: an empty window instead of a wallpaper
+/// explains nothing to a person (rule #13).
 pub fn video_host_reject_reason(wp_type: &str, project_json: &str) -> Option<String> {
     if wp_type == VIDEO_HOST_TYPE {
         return None;
     }
-    // Кавычки одинарные — как их печатал `repr()` оригинала.
+    // Single quotes — the way the original's `repr()` printed them.
     let shown = if wp_type.is_empty() { "?" } else { wp_type };
     Some(format!(
         "Обои типа '{shown}' рисует движок waywallen, а не этот хост: {project_json}"
     ))
 }
 
-// ── веб-обои ───────────────────────────────────────────────────────────────
+// ── web wallpapers ─────────────────────────────────────────────────────────
 //
-// Решения веб-режима хоста обоев (`rexon-wallpaper-host --mode web`, крейт
-// `rexon-gui`; до 15.09.2026 — отдельный бинарь `rexon-web-host`). Тот же
-// раздел обязанностей, что у видео выше: здесь всё, что считается ДО первого
-// вызова Qt, — что показывать, какие свойства класть в корень QML, какой JS
-// подмешивать в страницу и берётся ли обоина этим хостом.
+// Decisions of the wallpaper host's web mode (`rexon-wallpaper-host --mode web`,
+// `rexon-gui` crate; until 15.09.2026 a separate `rexon-web-host` binary). The
+// same split of duties as for video above: here is everything computed BEFORE
+// the first Qt call — what to show, which properties to put into the QML
+// root, which JS to inject into the page and whether this host takes the
+// wallpaper.
 //
-// ⚠️ Почему это вообще пишется заново. Прежний хост (`rexon/web_wallpaper.py`,
-// 791 строка) удалён 30.07.2026 как «ненужный, рисует waywallen»; вместе с
-// ним ушёл и разбор. А строку запуска `python -m rexon.web_wallpaper`
-// движок обоев продолжал строить — то есть формат «веб» с того дня не
-// показывался НИГДЕ и ни на одном рабочем столе, при том что зависимость
-// `qt6-webengine` продолжала ставиться каждому покупателю.
+// ⚠️ Why this is being written anew at all. The former host
+// (`rexon/web_wallpaper.py`, 791 lines) was deleted on 30.07.2026 as
+// "unneeded, waywallen draws it"; the parsing went away with it. Yet the
+// wallpaper engine kept building the `python -m rexon.web_wallpaper` command
+// line — meaning the "web" format has not been shown ANYWHERE, on any
+// desktop, since that day, while the `qt6-webengine` dependency kept being
+// installed for every customer.
 
-/// Тип обоев, который рисует хост веб-обоев.
+/// The wallpaper type the web wallpaper host draws.
 pub const WEB_HOST_TYPE: &str = "web";
 
-/// Точка входа веб-обоев внутри каталога — так её зовёт Wallpaper Engine.
+/// The web wallpaper entry point inside the directory — as Wallpaper Engine names it.
 pub const WEB_ENTRY_FILE: &str = "index.html";
 
-/// Ссылка ли это (а не путь к файлу).
+/// Whether this is a URL (and not a file path).
 ///
-/// Одно решение на продукт: тем же вопросом задаётся движок обоев
-/// (`wallpaper_engine::is_url`), и второй копии правила быть не должно.
+/// One decision per product: the wallpaper engine asks the same question
+/// (`wallpaper_engine::is_url`), and there must be no second copy of the rule.
 pub fn is_web_url(path: &str) -> bool {
     crate::wallpaper_engine::is_url(path) || path.starts_with("file://")
 }
 
-/// Свойства корня QML для веб-обоев — тот же приём, что у видео.
+/// QML root properties for web wallpapers — the same technique as for video.
 ///
-/// `target` — абсолютный путь к HTML либо готовая ссылка (`http://`,
-/// `https://`, `file://`): у ссылки локального файла нет, и заворачивать её
-/// в `QUrl::fromLocalFile` нельзя — получится «file:///https:/example.com».
+/// `target` is the absolute path to the HTML or a ready URL (`http://`,
+/// `https://`, `file://`): a URL has no local file, and it must not be wrapped
+/// in `QUrl::fromLocalFile` — that would produce «file:///https:/example.com».
 pub fn web_context_properties(
     target: &str,
     windowed: bool,
@@ -347,20 +350,20 @@ pub fn web_context_properties(
     ]
 }
 
-/// Свойства обоев Wallpaper Engine в том виде, в каком их ждёт JS страницы:
-/// `{"имя": {"value": …}}`. Порт `_load_web_defaults` прежнего хоста вместе
-/// с его правилом.
+/// Wallpaper Engine properties in the form the page's JS expects:
+/// `{"name": {"value": …}}`. Port of the former host's `_load_web_defaults`
+/// together with its rule.
 ///
-/// ⚠️ Правило неочевидное и важное: свойство БЕЗ значения (или с пустой
-/// строкой) уезжает как пустой объект `{}`, а не пропускается. У обоев с
-/// файловым свойством (картинка, которую человек не выбирал) от этого
-/// зависит целая ветка их собственного кода: увидев `{}`, обоина грузит
-/// свой запасной файл, а не остаётся пустой.
+/// ⚠️ The rule is non-obvious and important: a property WITHOUT a value (or
+/// with an empty string) goes out as an empty object `{}` rather than being
+/// skipped. For wallpapers with a file property (a picture the person did not
+/// choose) a whole branch of their own code depends on this: on seeing `{}`,
+/// the wallpaper loads its fallback file instead of staying empty.
 pub fn web_defaults_for_js(user_props: &Map<String, Value>) -> Map<String, Value> {
     let mut out = Map::new();
     for (name, raw) in user_props {
-        // Плоское значение (из конфигуратора) заворачивается так же, как
-        // пришедшее из project.json: дальше их не различить.
+        // A plain value (from the configurator) is wrapped the same way as one
+        // coming from project.json: past this point they cannot be told apart.
         let value = match raw {
             Value::Object(obj) => obj.get("value").cloned(),
             other => Some(other.clone()),
@@ -379,23 +382,24 @@ pub fn web_defaults_for_js(user_props: &Map<String, Value>) -> Map<String, Value
     out
 }
 
-/// Те же свойства одной строкой JSON — в таком виде их принимает JS.
+/// The same properties as one JSON string — the form the JS accepts.
 pub fn web_defaults_json(user_props: &Map<String, Value>) -> String {
     serde_json::to_string(&Value::Object(web_defaults_for_js(user_props)))
         .unwrap_or_else(|_| "{}".to_string())
 }
 
-/// Заглушки глобальных функций Wallpaper Engine, подмешиваемые в страницу.
+/// Stubs of Wallpaper Engine global functions injected into the page.
 ///
-/// Без них обои Мастерской падают ещё при разборе HTML: они проверяют
-/// `typeof window.wallpaperRegisterAudioListener === 'function'` синхронно, и
-/// отсутствие функции для них — не «звука не будет», а обрыв всего скрипта.
-/// Поэтому сценарий подмешивается точкой `DocumentCreation`, до первого
-/// скрипта самой страницы.
+/// Without them Workshop wallpapers break while the HTML is still being parsed:
+/// they check `typeof window.wallpaperRegisterAudioListener === 'function'`
+/// synchronously, and a missing function means for them not "there will be no
+/// sound" but an abort of the whole script. That is why the script is injected
+/// at the `DocumentCreation` point, before the page's own first script.
 ///
-/// Слушателя звука заглушка НЕ выбрасывает, а сохраняет: обоина
-/// перерисовывает холст именно из него, и молчаливый `noop` оставил бы на
-/// экране первый кадр с запасными цветами вместо настроенных.
+/// The stub does NOT throw the audio listener away, it keeps it: the
+/// wallpaper redraws its canvas exactly from it, and a silent `noop` would
+/// leave the first frame with fallback colors on screen instead of the
+/// configured ones.
 pub const WE_POLYFILL_JS: &str = r#"(function() {
     if (window.__rexonWePolyfillInstalled) return;
     window.__rexonWePolyfillInstalled = true;
@@ -421,14 +425,15 @@ pub const WE_POLYFILL_JS: &str = r#"(function() {
     }
 })();"#;
 
-/// Первый тик звука пустым спектром — после него холст перерисовывается уже
-/// с настройками человека.
+/// The first audio tick with an empty spectrum — after it the canvas is
+/// redrawn with the person's settings.
 ///
-/// Тик ОДИН, а не поток: настоящего спектра хосту сейчас взять негде
-/// (прежний путь тянул его с Python-стороны через stdin, и вместе с
-/// Python-хостом ушёл). Один тик — это разница между «обои нарисовались
-/// настроенными цветами» и «обои застыли на запасных»; поток без данных был
-/// бы обманом.
+/// ONE tick, not a stream: the host currently has nowhere to take a real
+/// spectrum from (the former path pulled it from the Python side via stdin,
+/// and it went away together with the Python host). One tick is the
+/// difference between "the wallpaper drew with the configured colors" and
+/// "the wallpaper froze on the fallback ones"; a stream without data would be
+/// a deception.
 pub const WE_TICKER_JS: &str = r#"(function() {
     if (window.__rexonInitialTickFired) return;
     window.__rexonInitialTickFired = true;
@@ -446,10 +451,10 @@ pub const WE_TICKER_JS: &str = r#"(function() {
     }, 50);
 })();"#;
 
-/// Сценарий передачи свойств обоев в страницу: `applyUserProperties`.
+/// Script that passes the wallpaper properties into the page: `applyUserProperties`.
 ///
-/// Обёрнут в `try`, потому что слушателя у обоины может не быть вовсе, а
-/// исключение в подмешанном сценарии оборвало бы и наш тик звука следом.
+/// Wrapped in `try`, because the wallpaper may have no listener at all, and an
+/// exception in the injected script would abort our audio tick right after it.
 pub fn web_apply_defaults_js(defaults_json: &str) -> String {
     format!(
         "(function(d){{try{{if(window.wallpaperPropertyListener && \
@@ -459,32 +464,32 @@ pub fn web_apply_defaults_js(defaults_json: &str) -> String {
     )
 }
 
-/// Пауза и громкость веб-обоев изнутри страницы — сценарий точки
-/// `DocumentCreation`, до первого скрипта самой обоины.
+/// Pause and volume of web wallpapers from inside the page — a script at the
+/// `DocumentCreation` point, before the wallpaper's own first script.
 ///
-/// Зачем изнутри. Видео-режим паузит проигрыватель, Flash — свой цикл
-/// кадров; у веб-страницы «проигрывателя» нет, а заморозить страницу
-/// снаружи (`lifecycleState = Frozen`) Chromium не даёт, пока её окно
-/// видно, — а окно обоев видно всегда. Спрятать окно тоже нельзя: на паузе
-/// по батарее человек смотрит на рабочий стол, и вместо обоев увидел бы
-/// чёрный экран. Поэтому пауза делается так, как её понимает сама страница
-/// (стандарт Page Visibility):
+/// Why from inside. Video mode pauses the player, Flash pauses its own frame
+/// loop; a web page has no "player", and Chromium does not allow freezing the
+/// page from outside (`lifecycleState = Frozen`) while its window is visible —
+/// and the wallpaper window is always visible. Hiding the window is not an
+/// option either: during a battery pause the person looks at the desktop and
+/// would see a black screen instead of the wallpaper. So the pause is done
+/// the way the page itself understands it (the Page Visibility standard):
 ///
-///   * `document.hidden` / `visibilityState` отвечают «скрыто», и странице
-///     приходит `visibilitychange` — так её усыпляет браузер, когда вкладку
-///     уводят на задний план, и большинство обоев на это уже умеет;
-///   * колбэки `requestAnimationFrame` придерживаются до возобновления —
-///     это главный двигатель холстов и WebGL;
-///   * CSS-анимации и переходы встают (`animation-play-state: paused`);
-///   * `<video>`/`<audio>` ставятся на паузу (и снова пускаются — только те,
-///     что играли до паузы), `AudioContext` усыпляется.
+///   * `document.hidden` / `visibilityState` answer "hidden", and the page
+///     receives `visibilitychange` — that is how the browser puts it to sleep
+///     when the tab goes to the background, and most wallpapers already handle it;
+///   * `requestAnimationFrame` callbacks are held back until resume — this is
+///     the main engine of canvases and WebGL;
+///   * CSS animations and transitions stop (`animation-play-state: paused`);
+///   * `<video>`/`<audio>` are paused (and started again — only those that
+///     were playing before the pause), `AudioContext` is suspended.
 ///
-/// Кадр при этом остаётся на экране — последний нарисованный. Громкость
-/// доходит до `<video>`/`<audio>` (звук Web Audio громкостью не правится —
-/// он только глушится, свойством окна просмотра `audioMuted`).
+/// The frame stays on screen meanwhile — the last one drawn. Volume reaches
+/// `<video>`/`<audio>` (Web Audio sound cannot be adjusted by volume — it can
+/// only be muted, via the web view's `audioMuted` property).
 ///
-/// Ничего не навязывается странице, пока пауза не включена: без вызова
-/// [`web_state_js`] обёртки пропускают всё как есть.
+/// Nothing is imposed on the page until the pause is on: without a call to
+/// [`web_state_js`] the wrappers let everything through as is.
 pub const WEB_PAUSE_JS: &str = r#"(function() {
     if (window.__rexonWallpaperState) return;
     var w = window, d = document;
@@ -571,12 +576,12 @@ pub const WEB_PAUSE_JS: &str = r#"(function() {
     };
 })();"#;
 
-/// Вызов, который доводит решение модели звука до страницы.
+/// The call that brings the sound model's decision to the page.
 ///
-/// `paused` — держать ли страницу на паузе, `volume01` — громкость в долях
-/// единицы для `<video>`/`<audio>`. Глушение — не здесь: им ведает свойство
-/// окна просмотра, оно накрывает и Web Audio. Страница без нашего сценария
-/// (не успел подмешаться) вызов просто пропускает.
+/// `paused` — whether to keep the page paused, `volume01` — volume as a
+/// fraction of one for `<video>`/`<audio>`. Muting is not here: it is handled
+/// by the web view property, which also covers Web Audio. A page without our
+/// script (it did not get injected in time) simply skips the call.
 pub fn web_state_js(paused: bool, volume01: f64) -> String {
     let v = if volume01.is_finite() { volume01.clamp(0.0, 1.0) } else { 1.0 };
     format!(
@@ -584,15 +589,16 @@ pub fn web_state_js(paused: bool, volume01: f64) -> String {
     )
 }
 
-/// Флаги Chromium для офскрин-режима.
+/// Chromium flags for offscreen mode.
 ///
-/// `--in-process-gpu` и НИКАКОГО `--disable-gpu`: с выключенным GPU Chromium
-/// не сводит холст (canvas2D/WebGL) в граф сцены Qt, и снятый с окна кадр
-/// содержал бы только DOM — прежнему хосту из-за этого приходилось тащить
-/// обходной мост через `canvas.toDataURL` (PNG + base64 на каждый кадр).
+/// `--in-process-gpu` and NO `--disable-gpu`: with the GPU disabled Chromium
+/// does not composite the canvas (canvas2D/WebGL) into the Qt scene graph, and
+/// a frame grabbed from the window would contain only the DOM — because of
+/// this the former host had to drag along a workaround bridge via
+/// `canvas.toDataURL` (PNG + base64 on every frame).
 pub const WEB_OFFSCREEN_CHROMIUM_FLAGS: &str = "--in-process-gpu";
 
-/// Берётся ли этот тип обоев веб-хостом. `None` — берётся.
+/// Whether the web host takes this wallpaper type. `None` — it does.
 pub fn web_host_reject_reason(wp_type: &str, project_json: &str) -> Option<String> {
     if wp_type == WEB_HOST_TYPE {
         return None;

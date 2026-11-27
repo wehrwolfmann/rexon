@@ -1,40 +1,45 @@
-//! Совместимость с российскими/китайскими/индийскими дистрибутивами —
-//! порт `rexon/distro_compat.py`.
+//! Compatibility with Russian/Chinese/Indian distributions, a port of
+//! `rexon/distro_compat.py`.
 //!
-//! Чистые данные + логика: таблицы дистрибутивов (`DISTRO_INFO`), маппинги
-//! пакетов DE для ALT/ROSA, фирменные апплеты ROSA и класс `DistroCompat`
-//! (предупреждения, подбор пакетов, проверка возможности установки, бейдж).
-//! Правильность транскрипции таблиц и всех веток логики проверяется
-//! побайтовой сверкой с самим Python (golden-тест `distro_compat_parity.rs`).
+//! Pure data + logic: distribution tables (`DISTRO_INFO`), DE package
+//! mappings for ALT/ROSA, ROSA branded applets and the `DistroCompat` class
+//! (warnings, package selection, installability check, badge). The
+//! correctness of the table transcription and of every logic branch is
+//! verified by a byte-for-byte comparison with Python itself (the golden
+//! test `distro_compat_parity.rs`).
 //!
-//! Побочные эффекты Python (`_is_zps_enabled` — lsmod+файл, `is_apt_rpm_system`
-//! — which, `detect_alt_variant` — /etc/os-release) вынесены в тонкие обёртки,
-//! а их детерминированная суть портирована чистыми функциями
-//! (`zps_enabled_from`, `is_apt_rpm`, `detect_alt_variant_from`). Состояние
-//! ЗПС в методы `DistroCompat` передаётся параметром `zps_enabled` — как
-//! `settings.rs` выносит предикат `command_exists` параметром.
+//! Python's side effects (`_is_zps_enabled`: lsmod + a file,
+//! `is_apt_rpm_system`: which, `detect_alt_variant`: /etc/os-release) are
+//! moved into thin wrappers, while their deterministic core is ported as
+//! pure functions (`zps_enabled_from`, `is_apt_rpm`,
+//! `detect_alt_variant_from`). The ZPS (closed software environment) state
+//! is passed to the `DistroCompat` methods as the `zps_enabled` parameter,
+//! just as `settings.rs` takes the `command_exists` predicate as a
+//! parameter.
 //!
-//! Решение «можно ли ставить DE» живёт в ОДНОМ месте — `install_reason`. Из
-//! него собираются обе формы: короткая строка для журнала
-//! (`check_install_possible`, историческая, её сверяет записанный эталон) и
-//! человеческое объяснение для окна установки (`InstallReason::title` /
-//! `problem` / `advice` — на языке каталога перевода, 29.09.2026). Развести
-//! их на две копии веток нельзя: они разошлись бы молча (правило #12).
-//! Короткая строка для журнала переводу не подлежит и остаётся русской.
+//! The decision "can a DE be installed" lives in ONE place:
+//! `install_reason`. Both forms are built from it: the short string for the
+//! log (`check_install_possible`, historical, checked against a recorded
+//! golden file) and the human explanation for the install window
+//! (`InstallReason::title` / `problem` / `advice`, in the language of the
+//! translation catalog, 29.09.2026). Splitting them into two copies of the
+//! branches is not allowed: they would drift apart silently (rule #12).
+//! The short log string is not subject to translation and stays Russian.
 
 use serde::Serialize;
 
 use crate::i18n::{n_, tr, trf};
 
-// `PkgFamily` живёт в `system.rs` — как в Python: system.py определяет enum,
-// distro_compat.py его импортирует. Реэкспорт сохраняет прежние пути
-// (`distro_compat::PkgFamily`) для существующего кода и тестов.
+// `PkgFamily` lives in `system.rs`, as in Python: system.py defines the
+// enum, distro_compat.py imports it. The re-export keeps the old paths
+// (`distro_compat::PkgFamily`) for existing code and tests.
 pub use crate::system::PkgFamily;
 
-/// Информация о дистрибутиве (значение `DISTRO_INFO[id]`).
+/// Information about a distribution (the value of `DISTRO_INFO[id]`).
 ///
-/// Порядок полей совпадает с порядком ключей Python-словаря — от него зависит
-/// порядок в `json.dumps(get_info())` (сверяется побайтово).
+/// The field order matches the key order of the Python dictionary: the
+/// order in `json.dumps(get_info())` depends on it (compared byte for
+/// byte).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct DistroInfo {
     pub name: &'static str,
@@ -45,12 +50,12 @@ pub struct DistroInfo {
     pub warnings: &'static [&'static str],
 }
 
-/// Предупреждение дистрибутивов со своим репозиторием (openKylin, Kylin OS).
+/// Warning for distributions with their own repository (openKylin, Kylin OS).
 const OWN_REPOS_WARNING: &str =
     n_("This distribution builds its own packages: some desktop environments may be missing from its repositories.");
 
-/// `DISTRO_INFO`: os-release ID → информация. Порядок вставки важен для
-/// `get_supported_*_distros` (итерируют `DISTRO_INFO.items()`).
+/// `DISTRO_INFO`: os-release ID -> information. Insertion order matters
+/// for `get_supported_*_distros` (they iterate `DISTRO_INFO.items()`).
 pub const DISTRO_INFO: &[(&str, DistroInfo)] = &[
     ("astra", DistroInfo {
         name: "Astra Linux",
@@ -133,9 +138,10 @@ pub const DISTRO_INFO: &[(&str, DistroInfo)] = &[
         has_de_repos: true,
         warnings: &[],
     }),
-    // Ключ не из os-release: у Ubuntu Kylin `ID=ubuntu`, а узнаётся она по
-    // `NAME="Ubuntu Kylin"` (его вписывает пакет ubuntukylin-default-settings),
-    // см. [`info_key`]. До 13.11.2026 запись искалась по ID и была недостижима.
+    // A key not from os-release: Ubuntu Kylin has `ID=ubuntu` and is
+    // recognised by `NAME="Ubuntu Kylin"` (written by the
+    // ubuntukylin-default-settings package), see [`info_key`]. Until
+    // 13.11.2026 the entry was looked up by ID and was unreachable.
     ("ubuntukylin", DistroInfo {
         name: "Ubuntu Kylin",
         family: PkgFamily::Debian,
@@ -152,10 +158,10 @@ pub const DISTRO_INFO: &[(&str, DistroInfo)] = &[
         has_de_repos: true,
         warnings: &[OWN_REPOS_WARNING],
     }),
-    // Kylin OS (银河麒麟): `ID=kylin` у настольной редакции на Debian/Ubuntu и
-    // у серверной на RPM, поэтому семейство в таблице не задано
-    // (`Unknown`) — его решает менеджер пакетов машины
-    // (`system::DistroDetector::family` по бинарникам).
+    // Kylin OS (银河麒麟): `ID=kylin` for the desktop edition on Debian/Ubuntu
+    // and for the server one on RPM, so the family is not set in the table
+    // (`Unknown`): the machine's package manager decides it
+    // (`system::DistroDetector::family` by binaries).
     ("kylin", DistroInfo {
         name: "Kylin OS",
         family: PkgFamily::Unknown,
@@ -187,27 +193,27 @@ pub const DISTRO_INFO: &[(&str, DistroInfo)] = &[
         name: "SteamOS",
         family: PkgFamily::Arch,
         country: "US",
-        // Steam Deck и Steam Machine — одна и та же ОС (`ID=steamos`).
-        // Обновление заменяет системный раздел целиком и стирает всё, что
-        // поставлено поверх, поэтому столы ставятся не пакетами, а образами
-        // systemd-sysext (`crate::steamos_sysext`, 25.10.2026).
+        // Steam Deck and Steam Machine are one and the same OS (`ID=steamos`).
+        // An update replaces the system partition entirely and erases everything
+        // installed on top, so desktops are installed not as packages but as
+        // systemd-sysext images (`crate::steamos_sysext`, 25.10.2026).
         notes: "Arch-based, корень только для чтения, обновление заменяет образ целиком. Рабочие столы Rexon ставит образами-расширениями systemd-sysext.",
         has_de_repos: true,
-        // Тексты для человека: английский — исходник каталога перевода,
-        // переводятся на месте показа (`get_warnings`).
+        // Texts for the person: English is the source of the translation catalog;
+        // they are translated where shown (`get_warnings`).
         warnings: &[STEAMOS_SUMMARY_WORKS, STEAMOS_SUMMARY_DESKTOPS],
     }),
 ];
 
-/// Пакеты DE одного дистрибутива: список пакетов + дисплей-менеджер.
+/// DE packages of one distribution: a package list + the display manager.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct DePackages {
     pub packages: &'static [&'static str],
     pub dm: &'static str,
 }
 
-/// `ALT_DE_PACKAGES`: имена пакетов DE для ALT Linux (собственная база).
-/// Порядок важен для сообщения `', '.join(ALT_DE_PACKAGES.keys())`.
+/// `ALT_DE_PACKAGES`: DE package names for ALT Linux (its own database).
+/// The order matters for the message `', '.join(ALT_DE_PACKAGES.keys())`.
 pub const ALT_DE_PACKAGES: &[(&str, DePackages)] = &[
     ("kde", DePackages { packages: &["kde5", "plasma5-workspace", "konsole", "dolphin", "sddm"], dm: "sddm" }),
     ("gnome", DePackages { packages: &["gnome-shell", "gnome-control-center", "gnome-tweaks", "nautilus", "gdm"], dm: "gdm" }),
@@ -215,13 +221,14 @@ pub const ALT_DE_PACKAGES: &[(&str, DePackages)] = &[
     ("mate", DePackages { packages: &["mate", "mate-terminal", "plank", "lightdm", "lightdm-gtk-greeter"], dm: "lightdm" }),
     ("cinnamon-mint", DePackages { packages: &["cinnamon", "nemo", "gnome-terminal", "lightdm", "lightdm-gtk-greeter"], dm: "lightdm" }),
     ("budgie", DePackages { packages: &["budgie-desktop", "nautilus", "lightdm", "lightdm-gtk-greeter"], dm: "lightdm" }),
-    // Тайловый WM: DM не бандлим — экран входа общесистемный, его ставит
-    // install_de → ensure_display_manager (Python). `dm` — справочный фолбэк.
+    // A tiling WM: we do not bundle a DM: the login screen is system-wide and
+    // is installed by install_de -> ensure_display_manager (Python). `dm` is a
+    // reference fallback.
     ("hyprland", DePackages { packages: &["hyprland", "waybar", "wofi", "kitty", "grim", "slurp", "wl-clipboard"], dm: "sddm" }),
     ("lxqt", DePackages { packages: &["lxqt-session", "lxqt-panel", "lxqt-config", "lxqt-policykit", "lxqt-runner", "lxqt-notificationd", "pcmanfm-qt", "qterminal", "openbox", "sddm"], dm: "sddm" }),
 ];
 
-/// `ROSA_DE_PACKAGES`: собственные метапакеты task-* для ROSA Linux.
+/// `ROSA_DE_PACKAGES`: ROSA Linux's own task-* metapackages.
 pub const ROSA_DE_PACKAGES: &[(&str, DePackages)] = &[
     ("kde", DePackages { packages: &["task-kde5", "sddm"], dm: "sddm" }),
     ("gnome", DePackages { packages: &["task-gnome", "gdm"], dm: "gdm" }),
@@ -230,33 +237,34 @@ pub const ROSA_DE_PACKAGES: &[(&str, DePackages)] = &[
     ("lxqt", DePackages { packages: &["task-lxqt", "sddm"], dm: "sddm" }),
 ];
 
-/// `ROSA_BRANDING_PACKAGES`: опциональные фирменные апплеты ROSA поверх DE.
+/// `ROSA_BRANDING_PACKAGES`: optional ROSA branded applets on top of a DE.
 pub const ROSA_BRANDING_PACKAGES: &[(&str, &[&str])] = &[
     ("kde", &["simplewelcome", "klook"]),
 ];
 
-/// Найти запись в упорядоченной таблице по ключу (аналог `dict.get`).
+/// Find an entry in an ordered table by key (the analogue of `dict.get`).
 fn lookup<'a, V>(table: &'a [(&str, V)], key: &str) -> Option<&'a V> {
     table.iter().find(|(k, _)| *k == key).map(|(_, v)| v)
 }
 
-/// Входные данные детектора (то, что `DistroCompat` берёт из `DistroDetector`
-/// в Python: `distro_id`, `family`, `pretty_name` и поля os-release `_info`).
+/// Detector input data (what `DistroCompat` takes from `DistroDetector` in
+/// Python: `distro_id`, `family`, `pretty_name` and the os-release fields
+/// `_info`).
 #[derive(Debug, Clone)]
 pub struct Detector {
     pub distro_id: String,
     pub family: PkgFamily,
     pub pretty_name: String,
-    /// os-release VARIANT_ID (для детекта Astra SE).
+    /// os-release VARIANT_ID (for detecting Astra SE).
     pub variant_id: String,
-    /// os-release NAME (для детекта Astra SE).
+    /// os-release NAME (for detecting Astra SE).
     pub name: String,
 }
 
-/// Ключ записи `DISTRO_INFO` для детектора. Обычно это os-release `ID`.
-/// Исключение — флейвор, у которого ID родителя: Ubuntu Kylin несёт
-/// `ID=ubuntu`, и отличает её только `NAME="Ubuntu Kylin"` (пакет
-/// ubuntukylin-default-settings переписывает NAME и PRETTY_NAME).
+/// The `DISTRO_INFO` entry key for a detector. Usually the os-release `ID`.
+/// The exception is a flavour that carries its parent's ID: Ubuntu Kylin
+/// has `ID=ubuntu`, and only `NAME="Ubuntu Kylin"` tells it apart (the
+/// ubuntukylin-default-settings package rewrites NAME and PRETTY_NAME).
 pub fn info_key(detector: &Detector) -> &str {
     let named = |needle: &str| {
         detector.name.to_lowercase().contains(needle) || detector.pretty_name.to_lowercase().contains(needle)
@@ -267,26 +275,26 @@ pub fn info_key(detector: &Detector) -> &str {
     &detector.distro_id
 }
 
-/// Расширенная проверка совместимости дистрибутива — порт класса
-/// `DistroCompat`. Держит данные детектора и найденную запись `DISTRO_INFO`.
+/// Extended distribution compatibility check, a port of the `DistroCompat`
+/// class. Holds the detector data and the `DISTRO_INFO` entry found.
 pub struct DistroCompat {
     detector: Detector,
     info: Option<DistroInfo>,
 }
 
 impl DistroCompat {
-    /// Создать из детектора: запись `DISTRO_INFO` по [`info_key`].
+    /// Create from a detector: the `DISTRO_INFO` entry by [`info_key`].
     pub fn new(detector: Detector) -> Self {
         let info = lookup(DISTRO_INFO, info_key(&detector)).copied();
         Self { detector, info }
     }
 
-    /// Является ли дистрибутив российским (`country == "RU"`).
+    /// Whether the distribution is Russian (`country == "RU"`).
     pub fn is_russian_distro(&self) -> bool {
         self.info.map(|i| i.country == "RU").unwrap_or(false)
     }
 
-    /// Название дистрибутива (из базы или `pretty_name` детектора).
+    /// Distribution name (from the database or the detector's `pretty_name`).
     pub fn distro_name(&self) -> String {
         match self.info {
             Some(i) => i.name.to_string(),
@@ -294,49 +302,49 @@ impl DistroCompat {
         }
     }
 
-    /// Есть ли дистрибутив в базе совместимости.
+    /// Whether the distribution is in the compatibility database.
     pub fn is_known(&self) -> bool {
         self.info.is_some()
     }
 
-    /// Доступны ли DE в штатных репозиториях (по умолчанию — да).
+    /// Whether DEs are available in the regular repositories (yes by default).
     pub fn has_de_repos(&self) -> bool {
         self.info.map(|i| i.has_de_repos).unwrap_or(true)
     }
 
-    /// Полная информация о дистрибутиве.
+    /// Full information about the distribution.
     pub fn get_info(&self) -> Option<DistroInfo> {
         self.info
     }
 
-    /// SteamOS ли это — Steam Deck ИЛИ Steam Machine. Решает только
-    /// `ID=steamos` из os-release: у обеих машин он один (образ ОС общий), а
-    /// `VARIANT_ID` у Steam Machine не подтверждён на устройстве, и на него
-    /// полагаться нельзя. Родня по `ID_LIKE` (HoloISO, Bazzite) сюда не
-    /// попадает: у них своё устройство системы.
+    /// Whether this is SteamOS: Steam Deck OR Steam Machine. Only `ID=steamos`
+    /// from os-release decides: both machines share it (the OS image is
+    /// common), while the Steam Machine's `VARIANT_ID` has not been confirmed
+    /// on the device and cannot be relied on. Relatives by `ID_LIKE` (HoloISO,
+    /// Bazzite) do not count: their systems are built differently.
     pub fn is_steamos(&self) -> bool {
         is_steamos_id(&self.detector.distro_id)
     }
 
-    /// Является ли система Astra Linux SE (по os-release NAME/VARIANT_ID).
+    /// Whether the system is Astra Linux SE (by os-release NAME/VARIANT_ID).
     ///
-    /// Повторяет подстрочные проверки Python: `"special" in name`,
-    /// `"smolensk" in variant`, `"se" in variant` (регистронезависимо).
-    /// Публичен для моста rexon-py: по нему шим сохраняет ленивость проверки
-    /// ЗПС 1-в-1 с Python (колбэк зовётся только на Astra SE).
+    /// Repeats Python's substring checks: `"special" in name`,
+    /// `"smolensk" in variant`, `"se" in variant` (case-insensitive). Public
+    /// for the rexon-py bridge: through it the shim keeps the ZPS check lazy
+    /// 1:1 with Python (the callback is called only on Astra SE).
     pub fn is_astra_se(&self) -> bool {
         let variant = self.detector.variant_id.to_lowercase();
         let name = self.detector.name.to_lowercase();
         name.contains("special") || variant.contains("smolensk") || variant.contains("se")
     }
 
-    /// Предупреждения для пользователя. `zps_enabled` — состояние ЗПС
-    /// (в Python `_is_zps_enabled()`; здесь параметр, т.к. это subprocess+fs).
+    /// Warnings for the user. `zps_enabled` is the ZPS state (in Python
+    /// `_is_zps_enabled()`; a parameter here, since it is subprocess+fs).
     pub fn get_warnings(&self, zps_enabled: bool) -> Vec<String> {
         let mut warnings: Vec<String> = Vec::new();
 
         if let Some(i) = self.info {
-            // Строки таблицы помечены `n_`: переводятся здесь, на месте показа.
+            // The table strings are marked `n_`: they are translated here, where shown.
             warnings.extend(i.warnings.iter().map(|s| tr(s)));
         }
 
@@ -362,7 +370,7 @@ impl DistroCompat {
         warnings
     }
 
-    /// Скорректированный список пакетов DE (None → использовать общий PackageDB).
+    /// The adjusted DE package list (None -> use the common PackageDB).
     pub fn get_de_packages(&self, de_id: &str) -> Option<Vec<String>> {
         if self.detector.family == PkgFamily::Alt {
             if let Some(p) = lookup(ALT_DE_PACKAGES, de_id) {
@@ -377,7 +385,7 @@ impl DistroCompat {
         None
     }
 
-    /// Опциональные фирменные апплеты ROSA поверх DE (пусто, если не ROSA).
+    /// Optional ROSA branded applets on top of a DE (empty if not ROSA).
     pub fn get_rosa_branding(&self, de_id: &str) -> Vec<String> {
         if self.detector.distro_id != "rosa" {
             return Vec::new();
@@ -387,14 +395,14 @@ impl DistroCompat {
             .unwrap_or_default()
     }
 
-    /// Бейдж совместимости для UI.
+    /// Compatibility badge for the UI.
     pub fn get_compatibility_badge(&self) -> String {
         let Some(i) = self.info else {
             return format!("ℹ️ {}", self.detector.pretty_name);
         };
         let name = i.name;
-        // Семейство не задано таблицей (Kylin OS: одна ID у Debian- и
-        // RPM-редакции) — берём то, что нашёл детектор на машине.
+        // The family is not set by the table (Kylin OS: one ID for the Debian and
+        // RPM editions): take what the detector found on the machine.
         let family = if i.family == PkgFamily::Unknown { self.detector.family } else { i.family };
         let family = family.as_str();
         if !i.has_de_repos {
@@ -407,14 +415,14 @@ impl DistroCompat {
         format!("✅ {name} ({family})")
     }
 
-    /// Почему установка DE возможна/невозможна — ЕДИНСТВЕННОЕ место, где
-    /// живёт это правило. И короткая строка `check_install_possible`, и
-    /// человеческое объяснение для окна установки собираются из результата:
-    /// две копии одних и тех же веток разошлись бы молча (правило #12).
+    /// Why installing a DE is possible/impossible: the ONLY place where this
+    /// rule lives. Both the short `check_install_possible` string and the human
+    /// explanation for the install window are built from the result: two
+    /// copies of the same branches would drift apart silently (rule #12).
     ///
-    /// `zps_enabled` — состояние ЗПС (параметр, см. `get_warnings`).
+    /// `zps_enabled` is the ZPS state (a parameter, see `get_warnings`).
     pub fn install_reason(&self, de_id: &str, zps_enabled: bool) -> InstallReason {
-        // Astra SE с ЗПС.
+        // Astra SE with ZPS.
         if self.detector.distro_id == "astra" && self.is_astra_se() {
             if zps_enabled {
                 return InstallReason::AstraZps;
@@ -424,17 +432,17 @@ impl DistroCompat {
             }
         }
 
-        // ОСнова — закрытые репозитории.
+        // OSnova: closed repositories.
         if self.detector.distro_id == "osnova" {
             return InstallReason::OsnovaClosed;
         }
 
-        // ALT — проверяем наличие пакетов.
+        // ALT: check that the packages exist.
         if self.detector.family == PkgFamily::Alt && lookup(ALT_DE_PACKAGES, de_id).is_none() {
             return InstallReason::AltUnsupportedDe { de_id: de_id.to_string() };
         }
 
-        // COSMIC: ограниченный список семейств.
+        // COSMIC: a limited list of families.
         if de_id == "cosmic"
             && !matches!(
                 self.detector.family,
@@ -444,17 +452,17 @@ impl DistroCompat {
             return InstallReason::CosmicUnavailable;
         }
 
-        // ROSA: только 4 DE имеют собственные task-*.
+        // ROSA: only 4 DEs have their own task-*.
         if self.detector.distro_id == "rosa" && lookup(ROSA_DE_PACKAGES, de_id).is_none() {
             return InstallReason::RosaNoTaskPackage { de_id: de_id.to_string() };
         }
 
-        // SteamOS (Steam Deck и Steam Machine): пакетами не ставим никогда —
-        // обновление системы стёрло бы стол целиком (до 28.09.2026 здесь
-        // было «можно, с предупреждением» через `steamos-readonly disable`).
-        // С 25.10.2026 проверенные столы ставятся образами systemd-sysext
-        // (`crate::steamos_sysext`, исполнитель сам уводит туда установку);
-        // прочие — честный отказ с причиной.
+        // SteamOS (Steam Deck and Steam Machine): never install as packages: a
+        // system update would erase the whole desktop (until 28.09.2026 this was
+        // "allowed, with a warning" through `steamos-readonly disable`). Since
+        // 25.10.2026 verified desktops are installed as systemd-sysext images
+        // (`crate::steamos_sysext`; the executor redirects the installation there
+        // itself); the others get an honest refusal with a reason.
         if self.is_steamos() {
             return match crate::steamos_sysext::support(de_id) {
                 crate::steamos_sysext::Support::Supported(_) | crate::steamos_sysext::Support::Builtin => {
@@ -469,26 +477,27 @@ impl DistroCompat {
         InstallReason::Ok
     }
 
-    /// Проверить, возможна ли установка DE. Возвращает (ok, сообщение).
-    /// `zps_enabled` — состояние ЗПС (параметр, см. `get_warnings`).
+    /// Check whether installing a DE is possible. Returns (ok, message).
+    /// `zps_enabled` is the ZPS state (a parameter, see `get_warnings`).
     ///
-    /// Короткая форма для журнала и для кода, которому нужна одна строка;
-    /// решение и текст берутся у [`DistroCompat::install_reason`].
+    /// The short form for the log and for code that needs one string; the
+    /// decision and the text come from [`DistroCompat::install_reason`].
     pub fn check_install_possible(&self, de_id: &str, zps_enabled: bool) -> (bool, String) {
         let reason = self.install_reason(de_id, zps_enabled);
         (reason.allowed(), reason.short_message())
     }
 }
 
-// ── Объяснение решения об установке (для окна установки DE) ────────────────
+// ── Explanation of the install decision (for the DE install window) ────────
 
-/// Прежний выбор «русский или английский» парами текстов в коде.
+/// The old "Russian or English" choice via text pairs in the code.
 ///
-/// ⚠️ Уходит (29.09.2026): подписи переезжают на каталог перевода
-/// (`crate::i18n`), язык там один на процесс. У `InstallReason` и мастера
-/// установки параметр `Lang` уже ничего не решает и остался ради
-/// вызывающих; новых `pick` не заводить. Разбор локали не свой: он уже есть
-/// в [`crate::translator::user_lang_from_locale`].
+/// ⚠️ Being phased out (29.09.2026): the labels are moving to the
+/// translation catalog (`crate::i18n`), where there is one language per
+/// process. In `InstallReason` and the install wizard the `Lang` parameter
+/// no longer decides anything and stays only for the callers; do not add
+/// new `pick`s. Locale parsing is not our own: it already exists in
+/// [`crate::translator::user_lang_from_locale`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lang {
     Ru,
@@ -496,14 +505,15 @@ pub enum Lang {
 }
 
 impl Lang {
-    /// Язык по строке локали (`ru_RU.UTF-8` → [`Lang::Ru`]). Всё, что не
-    /// русский, получает английский: он понятнее «сырого» русского тому, кто
-    /// русского не знает, а покрыть все языки мира мы не беремся.
+    /// Language from a locale string (`ru_RU.UTF-8` -> [`Lang::Ru`]). Anything
+    /// not Russian gets English: it is clearer than "raw" Russian to someone
+    /// who does not know Russian, and we do not undertake to cover every
+    /// language in the world.
     pub fn from_locale(locale_str: &str) -> Self {
         Self::from_code(&crate::translator::user_lang_from_locale(locale_str))
     }
 
-    /// Язык по коду ISO 639-1 (`ru` → [`Lang::Ru`]).
+    /// Language from an ISO 639-1 code (`ru` -> [`Lang::Ru`]).
     pub fn from_code(code: &str) -> Self {
         if code.eq_ignore_ascii_case("ru") {
             Lang::Ru
@@ -512,14 +522,15 @@ impl Lang {
         }
     }
 
-    /// Язык покупателя по переменным окружения — в том порядке, в каком их
-    /// читает сама система локалей: `LC_ALL`, `LC_MESSAGES`, `LANG`.
+    /// The customer's language from environment variables, in the order the
+    /// locale system itself reads them: `LC_ALL`, `LC_MESSAGES`, `LANG`.
     ///
-    /// Сам обход переменных — у [`crate::translator::locale_from_env`]: к
-    /// 07.09.2026 один и тот же цикл лежал двумя копиями в Qt-слое (значок в
-    /// лотке и вкладка «Оформление»), а с приходом перевода описаний понадобилась
-    /// не «русский или нет», а СТРОКА локали — правда о ней осталась одна
-    /// (правило #12).
+    /// The walk over the variables itself is in
+    /// [`crate::translator::locale_from_env`]: by 07.09.2026 the same loop lay
+    /// in two copies in the Qt layer (the tray icon and the "Appearance" tab),
+    /// and with the arrival of description translation what was needed was not
+    /// "Russian or not" but the locale STRING; only one truth about it remained
+    /// (rule #12).
     pub fn from_env() -> Self {
         let locale = crate::translator::locale_from_env();
         if locale.is_empty() {
@@ -528,7 +539,7 @@ impl Lang {
         Self::from_locale(&locale)
     }
 
-    /// Код языка строкой — им же помечается ответ моста.
+    /// The language code as a string; the bridge answer is tagged with it too.
     pub fn code(self) -> &'static str {
         match self {
             Lang::Ru => "ru",
@@ -536,7 +547,7 @@ impl Lang {
         }
     }
 
-    /// Выбор одного из двух вариантов текста. Для новых подписей — `tr`.
+    /// Pick one of two text variants. For new labels use `tr`.
     pub fn pick(self, ru: &str, en: &str) -> String {
         match self {
             Lang::Ru => ru.to_string(),
@@ -545,19 +556,19 @@ impl Lang {
     }
 }
 
-/// Исход проверки: ставим молча, ставим с предупреждением или не ставим.
+/// Outcome of the check: install silently, install with a warning, or do not install.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallOutcome {
-    /// Препятствий нет — спрашивать не о чем.
+    /// No obstacles: nothing to ask about.
     Allowed,
-    /// Поставить можно, но человек должен знать, на что идёт.
+    /// Installing is possible, but the person must know what they are getting into.
     Warning,
-    /// Ставить нельзя: установка заведомо не пройдёт.
+    /// Must not install: the installation is certain to fail.
     Blocked,
 }
 
 impl InstallOutcome {
-    /// Исход строкой — для моста и журнала.
+    /// The outcome as a string, for the bridge and the log.
     pub fn code(self) -> &'static str {
         match self {
             InstallOutcome::Allowed => "ok",
@@ -567,32 +578,33 @@ impl InstallOutcome {
     }
 }
 
-/// Причина решения. Тексты — производные от неё, поэтому новый случай
-/// добавляется одним вариантом перечисления и одной строкой в каждом
-/// `match` ниже; ветвление правила при этом не трогается.
+/// The reason for the decision. The texts derive from it, so a new case is
+/// added as one enum variant and one line in each `match` below; the
+/// rule's branching is not touched.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstallReason {
-    /// Ограничений нет.
+    /// No restrictions.
     Ok,
-    /// Astra Linux SE с включённой замкнутой программной средой.
+    /// Astra Linux SE with the closed software environment enabled.
     AstraZps,
-    /// Astra Linux: DE нет в штатных репозиториях.
+    /// Astra Linux: no DE in the regular repositories.
     AstraNoRepos { de_id: String },
-    /// ОСнова: публичных репозиториев нет.
+    /// OSnova: there are no public repositories.
     OsnovaClosed,
-    /// ALT Linux: для этого DE не описано соответствие пакетов.
+    /// ALT Linux: no package mapping is described for this DE.
     AltUnsupportedDe { de_id: String },
-    /// COSMIC не собран для семейства этого дистрибутива.
+    /// COSMIC is not built for this distribution's family.
     CosmicUnavailable,
-    /// ROSA: нет собственного метапакета `task-*` — ставим на свой страх.
+    /// ROSA: no own `task-*` metapackage; installing at one's own risk.
     RosaNoTaskPackage { de_id: String },
-    /// SteamOS (Steam Deck и Steam Machine): этот стол образом systemd-sysext
-    /// ещё не проверен — установка ЗАПРЕЩЕНА (пакетами на SteamOS не ставим
-    /// никогда: обновление ОС стирает всё поставленное поверх).
+    /// SteamOS (Steam Deck and Steam Machine): this desktop has not yet been
+    /// verified as a systemd-sysext image, so installation is FORBIDDEN (we
+    /// never install packages on SteamOS: an OS update erases everything
+    /// installed on top).
     SteamOsNotYet { de_id: String },
 }
 
-/// Перечень DE через запятую из таблицы пакетов.
+/// Comma-separated list of DEs from the package table.
 fn de_list(table: &[(&str, DePackages)]) -> String {
     table
         .iter()
@@ -602,7 +614,7 @@ fn de_list(table: &[(&str, DePackages)]) -> String {
 }
 
 impl InstallReason {
-    /// Стабильный код причины — для журнала, тестов и моста.
+    /// Stable reason code, for the log, tests and the bridge.
     pub fn code(&self) -> &'static str {
         match self {
             InstallReason::Ok => "ok",
@@ -616,7 +628,7 @@ impl InstallReason {
         }
     }
 
-    /// Исход по причине.
+    /// Outcome by reason.
     pub fn outcome(&self) -> InstallOutcome {
         match self {
             InstallReason::Ok => InstallOutcome::Allowed,
@@ -625,13 +637,13 @@ impl InstallReason {
         }
     }
 
-    /// Разрешена ли установка.
+    /// Whether installation is allowed.
     pub fn allowed(&self) -> bool {
         self.outcome() != InstallOutcome::Blocked
     }
 
-    /// Короткая строка для журнала — историческая форма
-    /// `check_install_possible` (её сверяет записанный эталон).
+    /// Short string for the log, the historical form of
+    /// `check_install_possible` (checked against a recorded golden file).
     pub fn short_message(&self) -> String {
         match self {
             InstallReason::Ok => "OK".to_string(),
@@ -652,13 +664,13 @@ impl InstallReason {
                 "⚠️ Для «{de_id}» в ROSA Linux нет собственного метапакета task-*.\nRexon попробует использовать Fedora-группы, но они могут отсутствовать в штатных репозиториях ROSA.\nДоступны без предупреждения: {}.",
                 de_list(ROSA_DE_PACKAGES)
             ),
-            // Та же сводка, что покупатель читает в окне и на странице в
-            // Steam.
+            // The same summary the customer reads in the window and on the Steam
+            // page.
             InstallReason::SteamOsNotYet { .. } => steamos_summary(),
         }
     }
 
-    /// Заголовок окна — одной фразой, без жаргона (правило #13).
+    /// Window title: one phrase, no jargon (rule #13).
     pub fn title(&self, _lang: Lang) -> String {
         match self {
             InstallReason::Ok => String::new(),
@@ -672,7 +684,7 @@ impl InstallReason {
         }
     }
 
-    /// Что мешает — человеческим языком, без имён конфигов и команд.
+    /// What is in the way, in plain language, without config or command names.
     pub fn problem(&self, _lang: Lang) -> String {
         match self {
             InstallReason::Ok => String::new(),
@@ -717,7 +729,7 @@ impl InstallReason {
         }
     }
 
-    /// Что с этим делать. Пусто только тогда, когда делать нечего.
+    /// What to do about it. Empty only when there is nothing to do.
     pub fn advice(&self, _lang: Lang) -> String {
         match self {
             InstallReason::Ok => String::new(),
@@ -754,7 +766,7 @@ impl InstallReason {
         }
     }
 
-    /// Готовое объяснение одним куском: что мешает и что делать.
+    /// A ready explanation in one piece: what is in the way and what to do.
     pub fn explanation(&self, lang: Lang) -> String {
         let problem = self.problem(lang);
         let advice = self.advice(lang);
@@ -767,9 +779,9 @@ impl InstallReason {
     }
 }
 
-/// Один элемент списка региональных дистрибутивов для UI.
+/// One item of the regional distributions list for the UI.
 ///
-/// Порядок полей = порядок ключей Python-словаря в `_get_regional_distros`.
+/// Field order = key order of the Python dictionary in `_get_regional_distros`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RegionalDistro {
     pub id: String,
@@ -780,8 +792,8 @@ pub struct RegionalDistro {
     pub has_warnings: bool,
 }
 
-/// Дистрибутивы по стране (порт `_get_regional_distros`): по одному на имя,
-/// в порядке `DISTRO_INFO`, дубли имён отсеиваются.
+/// Distributions by country (a port of `_get_regional_distros`): one per
+/// name, in `DISTRO_INFO` order, duplicate names filtered out.
 pub fn get_regional_distros(country: &str) -> Vec<RegionalDistro> {
     let mut result = Vec::new();
     let mut seen: Vec<&str> = Vec::new();
@@ -801,13 +813,13 @@ pub fn get_regional_distros(country: &str) -> Vec<RegionalDistro> {
     result
 }
 
-/// Российские дистрибутивы для UI (порт `get_supported_russian_distros`).
+/// Russian distributions for the UI (a port of `get_supported_russian_distros`).
 pub fn get_supported_russian_distros() -> Vec<RegionalDistro> {
     get_regional_distros("RU")
 }
 
-/// Региональные дистрибутивы (порт `get_supported_regional_distros`).
-/// `countries = None` → RU, CN, IN (в этом порядке).
+/// Regional distributions (a port of `get_supported_regional_distros`).
+/// `countries = None` -> RU, CN, IN (in this order).
 pub fn get_supported_regional_distros(countries: Option<&[&str]>) -> Vec<RegionalDistro> {
     let default: [&str; 3] = ["RU", "CN", "IN"];
     let list = countries.unwrap_or(&default);
@@ -818,70 +830,73 @@ pub fn get_supported_regional_distros(countries: Option<&[&str]>) -> Vec<Regiona
     result
 }
 
-// ── SteamOS (Steam Deck и Steam Machine): чего Rexon там не делает ──────────
+// ── SteamOS (Steam Deck and Steam Machine): what Rexon does not do there ───
 //
-// SteamOS — атомарная система: системный раздел `/usr` закрыт на запись, а
-// обновление заменяет его целиком и стирает всё, что было поставлено поверх.
-// Всё, что Rexon
-// пишет в домашнюю папку — темы пользователя, живые обои, заставка при
-// входе, — работает и переживает обновления. Всё, что пишет в систему, —
-// нет, и честнее показать это заранее, чем дать нажать «Применить» и
-// промолчать. Решение «что нельзя» живёт здесь ОДНО, а вкладки только
-// спрашивают (правило #12).
+// SteamOS is an atomic system: the `/usr` system partition is read-only,
+// and an update replaces it entirely and erases everything installed on
+// top. Everything Rexon
+// writes to the home folder (user themes, live wallpapers, the login
+// splash) works and survives updates. Everything it writes to the system
+// does not, and it is more honest to show this up front than to let the
+// person press "Apply" and stay silent. The decision "what is not allowed"
+// lives here, in ONE place, and the tabs only ask (rule #12).
 
-/// Сводка для покупателя, первая половина: что работает.
+/// Summary for the customer, first half: what works.
 pub const STEAMOS_SUMMARY_WORKS: &str =
     // TRANSLATORS: SteamOS runs on Steam Deck and Steam Machine. "Startup movie" is the short video Rexon plays right after you log in.
     n_("Themes, live wallpapers and the startup movie work on SteamOS and survive system updates.");
-/// Сводка для покупателя, вторая половина: какие столы ставятся (список —
-/// `steamos_sysext::DESKTOPS`, сверка `steamos_summary_names_the_built_desktops`).
+/// Summary for the customer, second half: which desktops can be installed
+/// (the list is `steamos_sysext::DESKTOPS`, checked by
+/// `steamos_summary_names_the_built_desktops`).
 pub const STEAMOS_SUMMARY_DESKTOPS: &str = n_(
     "Xfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system \
      extensions and rebuilds them by itself after every system update.",
 );
-/// Заголовок окна отказа в установке рабочего стола (стол не проверен).
+/// Title of the window refusing to install a desktop (the desktop is not verified).
 pub const STEAMOS_DESKTOPS_TITLE: &str =
     n_("SteamOS: this desktop environment can't be installed yet");
 
-/// Сводка целиком — для журнала, короткой формы и страницы в Steam.
+/// The whole summary, for the log, the short form and the Steam page.
 pub fn steamos_summary() -> String {
     format!("{} {}", tr(STEAMOS_SUMMARY_WORKS), tr(STEAMOS_SUMMARY_DESKTOPS))
 }
 
-/// SteamOS ли это по `ID` из os-release. Одна проверка на весь продукт —
-/// её зовут и [`DistroCompat::is_steamos`], и живой [`running_on_steamos`].
+/// Whether this is SteamOS by the `ID` from os-release. One check for the
+/// whole product: both [`DistroCompat::is_steamos`] and the live
+/// [`running_on_steamos`] call it.
 pub fn is_steamos_id(distro_id: &str) -> bool {
     distro_id.trim().eq_ignore_ascii_case("steamos")
 }
 
-/// Живая проверка: SteamOS ли под нами (Steam Deck или Steam Machine).
-/// Читает `/etc/os-release` тем же детектором, что и остальной продукт.
+/// Live check: whether we run on SteamOS (Steam Deck or Steam Machine).
+/// Reads `/etc/os-release` with the same detector as the rest of the
+/// product.
 pub fn running_on_steamos() -> bool {
     is_steamos_id(&crate::system::DistroDetector::detect_live().distro_id())
 }
 
-/// Что Rexon НЕ делает на SteamOS: всё, что пишет в системный раздел.
+/// What Rexon does NOT do on SteamOS: anything that writes to the system partition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SteamOsBlock {
-    /// Пакеты самой SteamOS: доустановка текущего стола, связки оболочек,
-    /// смена экрана входа. Столы ставятся иначе — образами systemd-sysext
-    /// (`crate::steamos_sysext`), и для их карточек причина своя
-    /// ([`steamos_desktop_card_block`]).
+    /// SteamOS's own packages: adding to the current desktop, shell bundles,
+    /// changing the login screen. Desktops are installed differently, as
+    /// systemd-sysext images (`crate::steamos_sysext`), and their cards have a
+    /// reason of their own ([`steamos_desktop_card_block`]).
     Desktops,
-    /// Тема экрана входа. На SteamOS экран входа держит переход в игровой
-    /// режим — его не трогаем вовсе.
+    /// Login screen theme. On SteamOS the login screen handles the switch to
+    /// game mode, so we do not touch it at all.
     LoginScreen,
-    /// Заставка загрузки: обновление SteamOS пересобирает загрузочный образ
-    /// и возвращает свою.
+    /// Boot splash: a SteamOS update rebuilds the boot image and brings its own
+    /// back.
     BootSplash,
-    /// Прочая системная часть темы (фон экрана входа, системные плагины
-    /// панелей, темы оболочки GNOME) — всё, что ставится с паролем
-    /// администратора в системный раздел.
+    /// The rest of a theme's system part (the login screen background, system
+    /// panel plugins, GNOME shell themes): everything installed with the
+    /// administrator password into the system partition.
     SystemPart,
 }
 
 impl SteamOsBlock {
-    /// Причина одной фразой — рядом с неактивной кнопкой или в окне отказа.
+    /// The reason in one phrase, next to a disabled button or in the refusal window.
     pub fn reason(self) -> String {
         match self {
             SteamOsBlock::Desktops => tr(
@@ -902,20 +917,20 @@ impl SteamOsBlock {
         }
     }
 
-    /// Причина, если действие запрещено на этой системе; `None` — можно.
+    /// The reason if the action is forbidden on this system; `None` means allowed.
     pub fn on(self, steamos: bool) -> Option<String> {
         steamos.then(|| self.reason())
     }
 
-    /// То же по живой системе.
+    /// The same for the live system.
     pub fn live(self) -> Option<String> {
         self.on(running_on_steamos())
     }
 }
 
-/// Причина неактивных кнопок установки и удаления на карточке стола
-/// `de_id` на SteamOS; `None` — кнопки работают (стол ставится образом
-/// systemd-sysext) или это не SteamOS.
+/// The reason for disabled install and remove buttons on the card of
+/// desktop `de_id` on SteamOS; `None` means the buttons work (the desktop
+/// is installed as a systemd-sysext image) or this is not SteamOS.
 pub fn steamos_desktop_card_block(de_id: &str, steamos: bool) -> Option<String> {
     if !steamos {
         return None;
@@ -927,16 +942,18 @@ pub fn steamos_desktop_card_block(de_id: &str, steamos: bool) -> Option<String> 
     }
 }
 
-// ── Детерминированные части побочных функций (чистые) ──────────────────────
+// ── Deterministic parts of the side-effect functions (pure) ────────────────
 
-/// Признак APT-RPM (ALT Linux): есть apt-get и rpm, но нет dpkg.
-/// Порт `is_apt_rpm_system` без обращения к PATH (предикаты — параметры).
+/// The APT-RPM sign (ALT Linux): apt-get and rpm exist, but dpkg does not.
+/// A port of `is_apt_rpm_system` without consulting PATH (the predicates
+/// are parameters).
 pub fn is_apt_rpm(has_apt: bool, has_rpm: bool, has_dpkg: bool) -> bool {
     has_apt && has_rpm && !has_dpkg
 }
 
-/// Разбор варианта ALT Linux из содержимого /etc/os-release.
-/// Порт логики `detect_alt_variant` (без чтения файла — эффект в обёртке).
+/// Parse the ALT Linux variant from the contents of /etc/os-release.
+/// A port of the `detect_alt_variant` logic (without reading the file: the
+/// effect is in the wrapper).
 pub fn detect_alt_variant_from(content: &str) -> &'static str {
     let c = content.to_lowercase();
     if c.contains("workstation") || c.contains("рабочая станция") {
@@ -954,9 +971,10 @@ pub fn detect_alt_variant_from(content: &str) -> &'static str {
     }
 }
 
-/// Включена ли ЗПС на Astra SE. Порт логики `_is_zps_enabled` без subprocess/fs:
-/// `lsmod` (если снят) содержит `digsig_verif`, либо конфиг ЗПС содержит
-/// `DIGSIG_ELF_MODE=1`. Эффекты (запуск lsmod, чтение файла) — в обёртке.
+/// Whether ZPS is enabled on Astra SE. A port of the `_is_zps_enabled`
+/// logic without subprocess/fs: `lsmod` (if captured) contains
+/// `digsig_verif`, or the ZPS config contains `DIGSIG_ELF_MODE=1`. The
+/// effects (running lsmod, reading the file) are in the wrapper.
 pub fn zps_enabled_from(lsmod_out: Option<&str>, conf: Option<&str>) -> bool {
     if let Some(out) = lsmod_out {
         if out.contains("digsig_verif") {
@@ -971,7 +989,7 @@ pub fn zps_enabled_from(lsmod_out: Option<&str>, conf: Option<&str>) -> bool {
     false
 }
 
-// ── Тесты объяснения об установке ──────────────────────────────────────────
+// ── Tests of the install explanation ───────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -996,8 +1014,8 @@ mod tests {
         ))
     }
 
-    /// Все причины перебираются одним списком: новый вариант перечисления
-    /// обязан получить и заголовок, и объяснение, и совет — иначе тест падает.
+    /// All reasons are enumerated in one list: a new enum variant must get a
+    /// title, an explanation and advice, otherwise the test fails.
     fn all_reasons() -> Vec<InstallReason> {
         vec![
             InstallReason::AstraZps,
@@ -1010,14 +1028,14 @@ mod tests {
         ]
     }
 
-    /// Короткая строка не изменилась ни в одной ветке: её сверяет записанный
-    /// эталон, поэтому расхождение здесь ловится раньше roundtrip-теста.
+    /// The short string did not change in any branch: a recorded golden file
+    /// checks it, so a divergence is caught here before the roundtrip test.
     ///
-    /// ⚠️ Осознанное изменение 28.09.2026: у SteamOS строка другая — прежняя
-    /// обещала установку через снятие защиты, а теперь установка запрещена
-    /// (первое же обновление SteamOS стёрло бы поставленное). Сверяется
-    /// английский исходник:
-    /// русский живёт в каталоге перевода.
+    /// ⚠️ A deliberate change on 28.09.2026: SteamOS has a different string:
+    /// the old one promised installation by lifting the protection, and now
+    /// installation is forbidden (the very first SteamOS update would erase
+    /// what was installed). The English source is checked:
+    /// the Russian lives in the translation catalog.
     #[test]
     fn short_message_matches_history() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -1032,8 +1050,8 @@ mod tests {
              "COSMIC доступен на Arch, Fedora, openSUSE, Gentoo (через cosmic-overlay), Void и Alpine.\nНа Debian/Ubuntu/Solus/Clear/ALT пакетов пока нет."),
             (DistroCompat::new(detector("rosa", PkgFamily::Fedora, "ROSA", "")), "budgie", false,
              "⚠️ Для «budgie» в ROSA Linux нет собственного метапакета task-*.\nRexon попробует использовать Fedora-группы, но они могут отсутствовать в штатных репозиториях ROSA.\nДоступны без предупреждения: kde, gnome, xfce, mate, lxqt."),
-            // 25.10.2026: на SteamOS проверенные столы ставятся образами
-            // systemd-sysext, отказ — только непроверенным.
+            // 25.10.2026: on SteamOS verified desktops are installed as
+            // systemd-sysext images; only unverified ones are refused.
             (DistroCompat::new(detector("steamos", PkgFamily::Arch, "SteamOS", "")), "gnome", false,
              "Themes, live wallpapers and the startup movie work on SteamOS and survive system updates. Xfce, LXQt and Hyprland can be installed on SteamOS: Rexon builds them as system extensions and rebuilds them by itself after every system update."),
             (DistroCompat::new(detector("steamos", PkgFamily::Arch, "SteamOS", "")), "xfce", false, "OK"),
@@ -1045,7 +1063,7 @@ mod tests {
         }
     }
 
-    /// Решение «можно/нельзя» у короткой и подробной формы всегда одно.
+    /// The short and the detailed form always share the same "allowed/not allowed" decision.
     #[test]
     fn short_and_detailed_agree() {
         let compats = [
@@ -1069,10 +1087,10 @@ mod tests {
         }
     }
 
-    /// Ни одна причина не молчит: у каждой есть заголовок, объяснение и совет,
-    /// и объяснение собрано из них. Русский слово в слово сверяет снимок
-    /// `installer_parity::russian_installer_texts_as_before` (раздел
-    /// `de_reason_*`) под закреплённым русским каталогом.
+    /// No reason stays silent: each has a title, an explanation and advice,
+    /// and the explanation is built from them. The Russian is checked word for
+    /// word by the snapshot `installer_parity::russian_installer_texts_as_before`
+    /// (the `de_reason_*` section) under a pinned Russian catalog.
     #[test]
     fn every_reason_explains_itself() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -1084,12 +1102,12 @@ mod tests {
             assert!(explanation.contains(&reason.problem(Lang::En)), "{}", reason.code());
             assert!(explanation.contains(&reason.advice(Lang::En)), "{}", reason.code());
         }
-        // «Всё в порядке» не объясняет ничего — окну нечего показывать.
+        // "All is fine" explains nothing: the window has nothing to show.
         assert!(InstallReason::Ok.explanation(Lang::En).is_empty());
         assert_eq!(InstallReason::Ok.outcome(), InstallOutcome::Allowed);
     }
 
-    /// Английский текст не содержит кириллицы (типовая ошибка «забыл перевести»).
+    /// The English text contains no Cyrillic (the typical "forgot to translate" mistake).
     #[test]
     fn english_has_no_cyrillic() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -1108,7 +1126,7 @@ mod tests {
         }
     }
 
-    /// Язык берётся из локали тем же разбором, что и автоперевод описаний.
+    /// The language comes from the locale via the same parsing as the automatic description translation.
     #[test]
     fn lang_from_locale() {
         assert_eq!(Lang::from_locale("ru_RU.UTF-8"), Lang::Ru);
@@ -1119,9 +1137,10 @@ mod tests {
         assert_eq!(Lang::Ru.code(), "ru");
     }
 
-    /// os-release Steam Deck (снят с устройства) и Steam Machine (та же ОС;
-    /// `VARIANT_ID` у неё не подтверждён, поэтому проверяется и чужой, и
-    /// отсутствующий). Все три — SteamOS; похожие по родне — нет.
+    /// os-release of the Steam Deck (captured from the device) and the Steam
+    /// Machine (the same OS; its `VARIANT_ID` is not confirmed, so both a
+    /// foreign and a missing one are checked). All three are SteamOS; lookalike
+    /// relatives are not.
     const DECK_OS_RELEASE: &str = "NAME=\"SteamOS\"\nPRETTY_NAME=\"SteamOS\"\n\
         VERSION_CODENAME=holo\nID=steamos\nID_LIKE=arch\nVARIANT_ID=steamdeck\n\
         VERSION_ID=3.7.13\nLOGO=steamos\n";
@@ -1140,9 +1159,9 @@ mod tests {
         })
     }
 
-    /// Steam Deck и Steam Machine опознаются одинаково — по `ID`, а не по
-    /// `VARIANT_ID`; на обеих проверенные столы ставятся образами
-    /// systemd-sysext, прочие запрещены с причиной.
+    /// Steam Deck and Steam Machine are recognised the same way, by `ID`, not
+    /// by `VARIANT_ID`; on both, verified desktops are installed as
+    /// systemd-sysext images, the others are forbidden with a reason.
     #[test]
     fn steam_deck_and_steam_machine_install_only_checked_desktops() {
         for text in [DECK_OS_RELEASE, MACHINE_OS_RELEASE, NO_VARIANT_OS_RELEASE] {
@@ -1164,9 +1183,9 @@ mod tests {
         }
     }
 
-    /// Тексты для покупателя: никаких команд и обещаний «снимем защиту»,
-    /// сказано, что работает, и что установка окружений пока не
-    /// поддерживается — без сроков.
+    /// Texts for the customer: no commands and no "we will lift the
+    /// protection" promises; they say what works and that installing desktop
+    /// environments is not supported yet, without any timeline.
     #[test]
     fn steamos_texts_are_honest() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -1187,7 +1206,7 @@ mod tests {
         assert_eq!(warnings, vec![tr(STEAMOS_SUMMARY_WORKS), tr(STEAMOS_SUMMARY_DESKTOPS)]);
     }
 
-    /// Сводка называет ровно те столы, что собираются образами.
+    /// The summary names exactly the desktops that are built as images.
     #[test]
     fn steamos_summary_names_the_built_desktops() {
         let names: Vec<&str> = crate::steamos_sysext::DESKTOPS.iter().map(|d| d.name).collect();
@@ -1195,8 +1214,8 @@ mod tests {
         assert!(STEAMOS_SUMMARY_DESKTOPS.starts_with("Xfce, LXQt and Hyprland can be installed"));
     }
 
-    /// Карточки на SteamOS: проверенные столы — кнопки работают, Plasma и
-    /// непроверенные — с причиной; вне SteamOS причин нет.
+    /// Cards on SteamOS: verified desktops have working buttons, Plasma and
+    /// unverified ones have a reason; outside SteamOS there are no reasons.
     #[test]
     fn steamos_card_blocks() {
         assert_eq!(steamos_desktop_card_block("xfce", true), None);
@@ -1205,8 +1224,9 @@ mod tests {
         assert_eq!(steamos_desktop_card_block("gnome", false), None);
     }
 
-    /// Каждое запрещённое на SteamOS действие называет причину одной фразой,
-    /// и причины у разных действий разные; вне SteamOS запрета нет.
+    /// Each action forbidden on SteamOS names its reason in one phrase, and
+    /// different actions have different reasons; outside SteamOS nothing is
+    /// forbidden.
     #[test]
     fn steamos_blocks_explain_themselves() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -1229,7 +1249,7 @@ mod tests {
         assert!(!is_steamos_id("") && !is_steamos_id("holoiso"));
     }
 
-    /// Astra SE с ЗПС — блокировка, и она не зависит от выбранного DE.
+    /// Astra SE with ZPS is a block, and it does not depend on the chosen DE.
     #[test]
     fn astra_zps_blocks_every_desktop() {
         for de in ["kde", "gnome", "xfce", "hyprland"] {

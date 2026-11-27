@@ -1,125 +1,133 @@
-//! Исполнитель установки Rexon — в систему, в домашнюю папку и переносной
-//! режим. Порт `RexonInstaller.install` / `install_to_system` /
-//! `install_user` / `_install_portable` (`rexon/installer.py`) поверх данных
-//! ядра ([`crate::installer`], [`crate::system_plan`]). Вход для окна —
-//! диспетчер [`install`].
+//! The Rexon install executor — into the system, into the home folder and
+//! portable mode. Port of `RexonInstaller.install` / `install_to_system` /
+//! `install_user` / `_install_portable` (`rexon/installer.py`) on top of core
+//! data ([`crate::installer`], [`crate::system_plan`]). The entry point for the
+//! window is the dispatcher [`install`].
 //!
-//! Разделение то же, что у соседей [`crate::system_exec`] и
-//! [`crate::system_de_exec`]: **ядро решает, исполнитель делает**.
-//!   * ЧТО ставить и КУДА — раскладка [`InstallLayout`], корневой скрипт
-//!     [`install_script`] и план [`install_plan`];
-//!   * ЧЕМ — трейт [`InstallIo`] (надстройка над [`SystemIo`]): в продукте
-//!     [`LiveInstallIo`], в тестах — подставной, живая машина не трогается;
-//!   * ход дела — в [`DeOpSink`], тем же контрактом, что у операций над
-//!     рабочими столами: окно хода `DeOperationDialog` подключается без
-//!     правок (мост — пункт G5). Все строки для человека — из раздела
-//!     «Тексты мастера» [`crate::installer`] (`InstallStep`,
-//!     `InstallFailure`, `WizardOutcome`); своих букв здесь нет.
+//! The split is the same as in the neighbours [`crate::system_exec`] and
+//! [`crate::system_de_exec`]: **the core decides, the executor does**.
+//!   * WHAT to install and WHERE — the [`InstallLayout`] layout, the root
+//!     script [`install_script`] and the plan [`install_plan`];
+//!   * WITH WHAT — the [`InstallIo`] trait (an extension of [`SystemIo`]): in
+//!     the product [`LiveInstallIo`], in tests — a substitute, the live machine
+//!     is not touched;
+//!   * progress goes to [`DeOpSink`], with the same contract as desktop
+//!     operations: the `DeOperationDialog` progress window plugs in without
+//!     changes (the bridge is item G5). All strings for the person come from
+//!     the "Wizard texts" section of [`crate::installer`] (`InstallStep`,
+//!     `InstallFailure`, `WizardOutcome`); there are no letters of our own here.
 //!
-//! ⭐ ЧТО ПОЧИНЕНО ПРИ ПЕРЕНОСЕ (правило #16), каждое доказано тестом внизу:
-//!   1. Любой сбой корневого скрипта выдавался за «Установка отменена
-//!      пользователем (pkexec)»: ловился весь `CalledProcessError`, и
-//!      упавшая установка зависимостей читалась как отмена. Теперь скрипт
-//!      печатает метки шагов, и исход различается по ФАКТУ
-//!      ([`classify_script_run`]): меток нет и код 126/127 (или отказ
-//!      агента) — пароль не подтверждён, скрипт не запускался; метки есть —
-//!      сломался названный шаг, даже если код 127 дала команда внутри.
-//!   2. Временные файлы и копия пакета оставались в `/tmp` при ошибке и
-//!      отмене (уборка стояла только на пути успеха; у владельца `/tmp` —
-//!      ОЗУ). Теперь всё временное лежит в ОДНОМ каталоге, и он убирается
-//!      на любом исходе после его создания.
-//!   3. Таймаут корневого скрипта 300 с → 600 с
+//! ⭐ WHAT WAS FIXED IN THE PORT (rule #16), each proven by a test below:
+//!   1. Any root script failure was reported as "Installation cancelled by the
+//!      user (pkexec)": the whole `CalledProcessError` was caught, and a
+//!      failed dependency install read as a cancel. Now the script prints step
+//!      markers, and the outcome is told apart by FACT ([`classify_script_run`]):
+//!      no markers and code 126/127 (or an agent refusal) — the password was
+//!      not confirmed, the script didn't run; markers present — the named step
+//!      broke, even if code 127 came from a command inside.
+//!   2. Temporary files and the package copy stayed in `/tmp` on error and
+//!      cancel (cleanup was only on the success path; the owner's `/tmp` is
+//!      RAM). Now everything temporary lives in ONE directory, and it is
+//!      removed on any outcome after it is created.
+//!   3. Root script timeout 300 s → 600 s
 //!      ([`inst::SYSTEM_INSTALL_TIMEOUT_SECS`]).
-//!   4. `chmod -R 755` ставил бит запуска ВСЕМ файлам пакета, а
-//!      `cp -r pkg/*` терял скрытые файлы. Теперь права раскладываются при
-//!      подготовке ([`payload_mode`]: каталоги 755, файлы 644, исполняемые
-//!      755), скрипт копирует `каталог/.` с сохранением прав и отдаёт
-//!      владение root.
-//!   5. Ручная установка ставила ТОЛЬКО Python-пакет и Python-лаунчер.
-//!      Теперь состав — тот же, что у пакета дистрибутива: `rexon-main-window`,
-//!      `rexon-wallpaper-host`, `rexon-splash-overlay`,
-//!      `librexon_qt_filter.so`, каталог QML-модулей и данные продукта
-//!      (вендорный QML вкладки обоев, `themes.json`, шрифты, Plasma-плагин
-//!      и дополнения GNOME и Cinnamon). Исходников Python нет вовсе
-//!      ([`payload_skip`]), команда `rexon` — `sh`-лаунчер на бинарь окна
-//!      ([`inst::system_launcher`]), а поставка без этого бинаря отвергается
-//!      до первого побочного действия ([`payload_has_window`]).
-//!   6. Раскладка установщика расходилась с поиском: пакет клался прямо в
-//!      `LIB_DIR`, а Rust-окно искало `<LIB_DIR>/rexon`; каталог QML-модулей
-//!      и бинарь окна в `/usr/local` не искались вовсе. Раскладка теперь
-//!      одна — та же, что у пакета дистрибутива ([`InstallLayout`]); сторож
-//!      `layout_is_one_for_package_and_manual_install` сверяет её с поиском.
-//!   7. ⭐⭐ Правило `rules.d` молча давало группе wheel БЕЗ пароля все
-//!      `org.rexon.*`, включая установку и удаление ЛЮБЫХ пакетов. Теперь —
-//!      отдельный шаг только по явному согласию
-//!      ([`InstallRequest::passwordless_rule`], по умолчанию
-//!      [`inst::PASSWORDLESS_CONSENT_DEFAULT`]), сужено до
-//!      [`plan::PASSWORDLESS_ACTIONS`] и знает группу администраторов
-//!      семейства ([`plan::polkit_admin_groups`]).
+//!   4. `chmod -R 755` set the execute bit on ALL package files, and
+//!      `cp -r pkg/*` lost hidden files. Now permissions are laid out during
+//!      preparation ([`payload_mode`]: directories 755, files 644, executables
+//!      755), the script copies `dir/.` preserving permissions and hands
+//!      ownership to root.
+//!   5. Manual install installed ONLY the Python package and the Python
+//!      launcher. Now the content is the same as the distribution package's:
+//!      `rexon-main-window`, `rexon-wallpaper-host`, `rexon-splash-overlay`,
+//!      `librexon_qt_filter.so`, the QML module directory and product data
+//!      (vendored QML of the wallpaper tab, `themes.json`, fonts, the Plasma
+//!      plugin and the GNOME and Cinnamon add-ons). There are no Python sources
+//!      at all ([`payload_skip`]), the `rexon` command is an `sh` launcher for
+//!      the window binary ([`inst::system_launcher`]), and a payload without
+//!      this binary is rejected before the first side effect ([`payload_has_window`]).
+//!   6. The installer's layout disagreed with the lookup: the package was put
+//!      straight into `LIB_DIR`, while the Rust window looked for
+//!      `<LIB_DIR>/rexon`; the QML module directory and the window binary in
+//!      `/usr/local` weren't looked up at all. The layout is now one — the same
+//!      as the distribution package's ([`InstallLayout`]); the guard
+//!      `layout_is_one_for_package_and_manual_install` checks it against the lookup.
+//!   7. ⭐⭐ The `rules.d` rule silently gave the wheel group all `org.rexon.*`
+//!      WITHOUT a password, including installing and removing ANY packages.
+//!      Now it is a separate step only with explicit consent
+//!      ([`InstallRequest::passwordless_rule`], default
+//!      [`inst::PASSWORDLESS_CONSENT_DEFAULT`]), narrowed to
+//!      [`plan::PASSWORDLESS_ACTIONS`] and aware of the family's admin group
+//!      ([`plan::polkit_admin_groups`]).
 //!
-//! ⭐ ЧТО ПОЧИНЕНО В ДОМАШНЕЙ ПАПКЕ И ПЕРЕНОСНОМ РЕЖИМЕ (G3b), тоже с тестами:
-//!   8. Установка в домашнюю папку не создавала папку резервных копий
-//!      (system и portable создавали), а переносной режим при пустом
-//!      `XDG_DATA_HOME` создавал `rexon/backups` в ТЕКУЩЕМ каталоге. Папки
-//!      профиля теперь одни на все режимы ([`profile_dirs`]).
-//!   9. Прежняя копия в `~/.local/lib/rexon` удалялась ДО копирования новой:
-//!      сбой посреди копии оставлял человека без обеих. Теперь новая копия
-//!      собирается рядом, и копии меняются местами переименованием; при сбое
-//!      прежняя остаётся на месте.
-//!  10. На неизменяемой системе «в домашнюю папку» выбирается ДО установки в
-//!      систему ([`install`]), а не отказом внутри неё: фраза итога «часть
-//!      изменений могла остаться» была бы неправдой.
-//!  11. Поиск не знал раскладку установки в домашнюю папку: бинарь окна
-//!      (`installer::main_window_candidates`), QML-модули
-//!      (`qml_modules::module_dirs`) и пакет
+//! ⭐ WHAT WAS FIXED FOR THE HOME FOLDER AND PORTABLE MODE (G3b), also with tests:
+//!   8. Installing into the home folder didn't create the backups folder
+//!      (system and portable did), and portable mode with an empty
+//!      `XDG_DATA_HOME` created `rexon/backups` in the CURRENT directory.
+//!      Profile folders are now the same for all modes ([`profile_dirs`]).
+//!   9. The previous copy in `~/.local/lib/rexon` was deleted BEFORE copying
+//!      the new one: a failure in the middle of the copy left the person with
+//!      neither. Now the new copy is assembled next to it, and the copies are
+//!      swapped by renaming; on failure the previous one stays in place.
+//!  10. On an immutable system "into the home folder" is chosen BEFORE the
+//!      system install ([`install`]), not by a refusal inside it: the summary
+//!      phrase "some changes may have remained" would be untrue.
+//!  11. The lookup didn't know the home folder install layout: the window
+//!      binary (`installer::main_window_candidates`), QML modules
+//!      (`qml_modules::module_dirs`) and the package
 //!      (`installer::package_data_dir_candidates`).
-//!  12. Лаунчер, ярлыки и значки писались ПОВЕРХ существующего пути: если там
-//!      ссылка (у разработчика — в дерево), запись ушла бы в её цель. Теперь
-//!      ссылка заменяется, а каталог установки, который сам ссылка, не
-//!      заменяется вовсе ([`is_redirected`]). Путь с апострофом ломал
-//!      Python-лаунчер; значок для pixmaps брался только из 128 px.
-//!  13. Запущенный хост обоев прошлой установки перезаписью не открыть
-//!      (`ETXTBSY`): бинари ставятся через временное имя и переименование.
-//!  14. Кэши меню и значков — одни команды на оба режима
-//!      ([`cache_refresh_groups`]); нет программы — не ошибка, а без
-//!      `update-desktop-database` человек узнаёт, что ярлык появится позже.
+//!  12. The launcher, desktop entries and icons were written OVER the existing
+//!      path: if there was a link (for the developer — into the tree), the
+//!      write would go into its target. Now a link is replaced, and an install
+//!      directory that is itself a link is not replaced at all
+//!      ([`is_redirected`]). A path with an apostrophe broke the Python
+//!      launcher; the pixmaps icon was taken only from 128 px.
+//!  13. A running wallpaper host of the previous install can't be opened for
+//!      overwriting (`ETXTBSY`): binaries are installed via a temporary name
+//!      and a rename.
+//!  14. Menu and icon caches — the same commands for both modes
+//!      ([`cache_refresh_groups`]); a missing program is not an error, and
+//!      without `update-desktop-database` the person learns that the desktop
+//!      entry will appear later.
 //!
-//! ⭐ УДАЛЕНИЕ (G8) — тот же исполнитель, вход [`uninstall`]; у окна меню
-//! «Удалить Rexon» своего исполнителя больше нет. Починено, с тестами:
-//!  15. Хост обоев и заставка в каталоге команд оставались после удаления
-//!      обоих режимов — пути теперь из [`InstallLayout::extra_bin_paths`].
-//!  16. Ссылка на месте папки Rexon (у разработчика `/usr/local/lib/rexon`
-//!      ведёт в рабочее дерево) сносилась корневым скриптом, ссылка на папку
-//!      настроек — тоже. Теперь путь-ссылка не удаляется и не проходится ни
-//!      в каком режиме ([`is_redirected`]); перечень в окне вопроса её не
-//!      называет, итог говорит, что она осталась.
-//!  17. Любой сбой читался одной строкой «Ошибка удаления system: код …».
-//!      Отказ пароля, нечем спросить пароль, таймаут и сбой самого удаления —
-//!      разные исходы ([`classify_script_run`] по метке начала скрипта),
-//!      слова — без жаргона ([`inst::uninstall_failure_line`]).
-//!  18. Временный скрипт удаления лежал прямо в `/tmp` и при сбое оставался;
-//!      теперь он во временной папке, которая убирается на любом исходе.
-//!  19. Когда Rexon не установлен вовсе, удаление всё равно стирало
-//!      `~/.config/rexon` и отвечало «Rexon не установлен». Теперь не
-//!      трогается ничего.
-//!  20. (решение Wehrwolfmann 15.09.2026) «Сохранить» сохраняло только
-//!      резервные копии рабочих столов, а настройки сносило — после
-//!      переустановки человек начинал с нуля. Теперь вариант
-//!      [`UninstallRequest::keep_profile`] не трогает ни настроек (с
-//!      журналом установленных тем), ни резервных копий; «удалить всё» —
-//!      как прежде, обе папки.
-//!  21. (решение Wehrwolfmann 15.09.2026) Ни один выбор не удалял кэш
-//!      (`$XDG_CACHE_HOME/rexon`) и установленные обои, темы и дополнения
-//!      (`$XDG_DATA_HOME/rexon/*`), да и литеральные `~/.cache/rexon` и
-//!      `~/.local/share/rexon`, куда часть ядра пишет мимо XDG. Теперь
-//!      кэш уходит при любом выборе, содержимое данных — только при «удалить
-//!      всё»; перечень один — [`inst::user_data_roots`]. Ссылку на месте
-//!      кэша или содержимого удаляем саму, не проходя по ней.
+//! ⭐ UNINSTALL (G8) — the same executor, entry point [`uninstall`]; the window's
+//! «Uninstall Rexon» menu no longer has an executor of its own. Fixed, with tests:
+//!  15. The wallpaper host and the splash in the command directory remained
+//!      after uninstalling in both modes — the paths now come from
+//!      [`InstallLayout::extra_bin_paths`].
+//!  16. A link in place of the Rexon folder (for the developer
+//!      `/usr/local/lib/rexon` points into the working tree) was wiped by the
+//!      root script, and so was a link to the settings folder. Now a path that
+//!      is a link is neither deleted nor traversed in any mode
+//!      ([`is_redirected`]); the list in the question dialog doesn't name it,
+//!      and the summary says it was left.
+//!  17. Any failure read as one line "Uninstall error system: code …". A
+//!      password refusal, no way to ask for a password, a timeout and a failure
+//!      of the removal itself are different outcomes ([`classify_script_run`]
+//!      by the script start marker), and the words carry no jargon
+//!      ([`inst::uninstall_failure_line`]).
+//!  18. The temporary uninstall script lay right in `/tmp` and stayed there on
+//!      failure; now it is in a temporary folder removed on any outcome.
+//!  19. When Rexon wasn't installed at all, uninstall still wiped
+//!      `~/.config/rexon` and answered "Rexon is not installed". Now nothing is
+//!      touched.
+//!  20. (Wehrwolfmann's decision of 15.09.2026) «Keep» kept only the desktop
+//!      backups and wiped the settings — after reinstalling the person started
+//!      from scratch. Now the [`UninstallRequest::keep_profile`] option touches
+//!      neither the settings (with the installed themes journal) nor the
+//!      backups; «Remove Everything» — as before, both folders.
+//!  21. (Wehrwolfmann's decision of 15.09.2026) No choice removed the cache
+//!      (`$XDG_CACHE_HOME/rexon`) and the installed wallpapers, themes and
+//!      add-ons (`$XDG_DATA_HOME/rexon/*`), nor the literal `~/.cache/rexon` and
+//!      `~/.local/share/rexon` that part of the core writes to bypassing XDG.
+//!      Now the cache goes with any choice, the data content — only with
+//!      «Remove Everything»; the list is one — [`inst::user_data_roots`]. A
+//!      link in place of the cache or content is removed itself, without
+//!      following it.
 //!
-//! ⛔ Живой [`install`] с [`LiveInstallIo`] в тестах не вызывается никогда:
-//! сторож `tests_never_build_live_io`. Тесты домашней папки ходят в
-//! настоящую ФС только внутри своего временного каталога — каждый путь
-//! сверяется с ним, выход за него роняет тест.
+//! ⛔ The live [`install`] with [`LiveInstallIo`] is never called in tests:
+//! guarded by `tests_never_build_live_io`. Home folder tests touch the real FS
+//! only inside their own temporary directory — every path is checked against
+//! it, and leaving it fails the test.
 
 use std::sync::Arc;
 
@@ -138,33 +146,33 @@ use crate::system_plan::{self as plan, Cmd, PlanStep, RunStepId};
 use crate::utils::{self, RunOutcome};
 
 // ============================================================================
-// Раскладка: одна на пакет, ручную установку и архив
+// Layout: one for the package, the manual install and the archive
 // ============================================================================
 
-/// Каталог данных продукта `rexon/` внутри каталога данных Rexon: вендорный
-/// QML вкладки обоев, `themes.json`, шрифты, Plasma-плагин обоев и
-/// дополнения GNOME и Cinnamon. Кода Python там больше нет ([`payload_skip`]).
+/// Product data directory `rexon/` inside the Rexon data directory: vendored
+/// QML of the wallpaper tab, `themes.json`, fonts, the Plasma wallpaper plugin
+/// and the GNOME and Cinnamon add-ons. There is no Python code there any more ([`payload_skip`]).
 pub const PACKAGE_DIR_NAME: &str = "rexon";
-/// Каталог QML-модулей внутри каталога данных Rexon.
+/// QML module directory inside the Rexon data directory.
 pub const QML_MODULES_DIR_NAME: &str = "qml_modules";
-/// Каталог исполняемых файлов внутри распакованного архива.
+/// Executables directory inside the unpacked archive.
 pub const BUNDLE_BIN_DIR: &str = "bin";
-/// Каталог исполняемых файлов пакета дистрибутива (PKGBUILD кладёт туда
-/// хост обоев и заставку).
+/// Executables directory of the distribution package (PKGBUILD puts the
+/// wallpaper host and the splash there).
 pub const PACKAGE_BIN_DIR: &str = "/usr/bin";
 
-/// Где что лежит у установленного Rexon. Раскладка ОДНА на все каналы:
+/// Where things lie in an installed Rexon. The layout is ONE for all channels:
 ///
-/// | канал | `lib_dir` | `bin_dir` |
+/// | channel | `lib_dir` | `bin_dir` |
 /// |---|---|---|
-/// | пакет дистрибутива | `/usr/lib/rexon` | `/usr/bin` |
-/// | установка в систему | `/usr/local/lib/rexon` | `/usr/local/bin` |
-/// | установка в домашнюю папку | `~/.local/lib/rexon` | `~/.local/bin` |
-/// | распакованный архив | `<корень>` | `<корень>/bin` |
+/// | distribution package | `/usr/lib/rexon` | `/usr/bin` |
+/// | system install | `/usr/local/lib/rexon` | `/usr/local/bin` |
+/// | home folder install | `~/.local/lib/rexon` | `~/.local/bin` |
+/// | unpacked archive | `<root>` | `<root>/bin` |
 ///
-/// Внутри `lib_dir`: данные продукта `rexon/`, бинарь окна, каталог
-/// QML-модулей с нашими `.so` в `waywallen/control`. В `bin_dir`: команда
-/// `rexon`, хост обоев и заставка (их ядро ищет по `PATH`).
+/// Inside `lib_dir`: product data `rexon/`, the window binary, the QML module
+/// directory with our `.so` in `waywallen/control`. In `bin_dir`: the `rexon`
+/// command, the wallpaper host and the splash (the core looks them up via `PATH`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallLayout {
     pub lib_dir: String,
@@ -179,23 +187,23 @@ impl InstallLayout {
         }
     }
 
-    /// Раскладка режима установки (`None` у portable — ставить некуда).
+    /// Layout of an install mode (`None` for portable — there is nowhere to install).
     pub fn for_mode(mode: InstallMode, home: &str, xdg_data_home: Option<&str>) -> Option<Self> {
         let p = inst::install_paths(mode, home, xdg_data_home);
         Some(Self::new(p.lib_dir.as_deref()?, p.install_dir.as_deref()?))
     }
 
-    /// Установка в систему.
+    /// System install.
     pub fn system() -> Self {
         Self::new(inst::LIB_DIR, inst::INSTALL_DIR)
     }
 
-    /// Пакет дистрибутива.
+    /// Distribution package.
     pub fn package() -> Self {
         Self::new(inst::package_data_dir(), PACKAGE_BIN_DIR)
     }
 
-    /// Распакованный архив с корнем `root`.
+    /// Unpacked archive with root `root`.
     pub fn bundle(root: &str) -> Self {
         let root = root.trim_end_matches('/');
         Self::new(root, &format!("{root}/{BUNDLE_BIN_DIR}"))
@@ -209,8 +217,8 @@ impl InstallLayout {
         format!("{}/{}", self.lib_dir, crate::window_menu::MAIN_WINDOW_BIN)
     }
 
-    /// Помощник плиток «Оформления» — рядом с окном: там его ищет ядро
-    /// (`widget_shot::find_helper`).
+    /// The «Appearance» tiles helper — next to the window: that is where the core
+    /// looks for it (`widget_shot::find_helper`).
     pub fn theme_shot(&self) -> String {
         format!("{}/{}", self.lib_dir, crate::widget_shot::HELPER_BINARY)
     }
@@ -219,7 +227,7 @@ impl InstallLayout {
         format!("{}/{QML_MODULES_DIR_NAME}", self.lib_dir)
     }
 
-    /// Каталог наших `.so` рядом с плагином `waywallen.control`.
+    /// Directory of our `.so` next to the `waywallen.control` plugin.
     pub fn rust_lib_dir(&self) -> String {
         format!("{}/{}", self.qml_modules(), qm::RUST_LIB_SUBDIR)
     }
@@ -236,50 +244,50 @@ impl InstallLayout {
         format!("{}/{}", self.bin_dir, crate::session_splash::SPLASH_OVERLAY_BINARY)
     }
 
-    /// Команда продукта `rexon` — лаунчер на бинарь окна
+    /// The product command `rexon` — a launcher for the window binary
     /// ([`inst::system_launcher`]).
     pub fn launcher(&self) -> String {
         format!("{}/{}", self.bin_dir, inst::PYTHON_ENTRY_CMD)
     }
 
-    /// Файлы установки в `bin_dir` сверх лаунчера. Отсюда же их берёт
-    /// удаление обоих режимов (`installer::uninstall_system_paths`,
-    /// `installer::uninstall_user_paths`) — правда одна.
+    /// Install files in `bin_dir` beyond the launcher. Uninstall in both modes
+    /// takes them from here too (`installer::uninstall_system_paths`,
+    /// `installer::uninstall_user_paths`) — one source of truth.
     pub fn extra_bin_paths(&self) -> Vec<String> {
         vec![self.wallpaper_host(), self.splash_overlay()]
     }
 }
 
 // ============================================================================
-// Что ставим: источник поставки
+// What we install: the payload source
 // ============================================================================
 
-/// Размеры растровых значков Rexon (`rexon_icon_<N>.png`).
+/// Sizes of the Rexon raster icons (`rexon_icon_<N>.png`).
 pub const ICON_SIZES: &[u32] = &[16, 24, 32, 48, 64, 128, 256, 512];
 
-/// Откуда брать файлы. `None` — этой части в поставке нет (например,
-/// копия без Rust-окна: тогда ярлык ведёт на классическое окно).
+/// Where to take files from. `None` — this part is not in the payload (for
+/// example, a copy without the Rust window: then the desktop entry leads to the classic window).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PayloadSource {
-    /// Пакет `rexon/`.
+    /// The `rexon/` package.
     pub package_dir: String,
-    /// Каталог со значками `rexon_icon_*.png`.
+    /// Directory with the `rexon_icon_*.png` icons.
     pub icon_dir: String,
     pub main_window: Option<String>,
     pub wallpaper_host: Option<String>,
     pub splash_overlay: Option<String>,
-    /// Каталог QML-модулей (`Qcm/Material`, `waywallen/control`).
+    /// QML module directory (`Qcm/Material`, `waywallen/control`).
     pub qml_modules: Option<String>,
     pub filter_lib: Option<String>,
-    /// Помощник сеанса прав `rexon-priv-helper` («один пароль на запуск»).
-    /// Нет в поставке — установка его не ставит и снимает прежний: помощник
-    /// другой сборки окно всё равно отвергло бы.
+    /// The `rexon-priv-helper` privilege session helper ("one password per run").
+    /// Not in the payload — the install doesn't install it and removes the old one:
+    /// the window would reject a helper from a different build anyway.
     pub priv_helper: Option<String>,
 }
 
 impl PayloadSource {
-    /// Распакованный архив: раскладка [`InstallLayout::bundle`], значки — в
-    /// корне. Раскладка архива — предложение для блока H.
+    /// Unpacked archive: layout [`InstallLayout::bundle`], icons at the root. The
+    /// archive layout is a proposal for block H.
     pub fn from_bundle<IO: SystemIo + ?Sized>(io: &IO, root: &str) -> Self {
         let l = InstallLayout::bundle(root);
         let file = |p: String| io.is_file(&p).then_some(p);
@@ -296,9 +304,9 @@ impl PayloadSource {
         }
     }
 
-    /// Дерево разработчика: бинари — из каталога сборки рядом с бинарём
-    /// окна, QML-модули — из пользовательского каталога, куда их кладут
-    /// `tools/build_qml_*.sh`.
+    /// Developer tree: binaries — from the build directory next to the window
+    /// binary, QML modules — from the user directory where
+    /// `tools/build_qml_*.sh` puts them.
     pub fn from_dev_tree<IO: SystemIo + ?Sized>(
         io: &IO,
         root: &str,
@@ -330,9 +338,8 @@ impl PayloadSource {
         }
     }
 
-    /// Поставка того Rexon, что сейчас запущен: дерево разработчика, если
-    /// корень дерева известен (`cli::repo_root`), иначе — архив вокруг
-    /// своего бинаря.
+    /// Payload of the currently running Rexon: the developer tree if the tree root
+    /// is known (`cli::repo_root`), otherwise — the archive around its own binary.
     pub fn for_running<IO: SystemIo + ?Sized>(
         io: &IO,
         own_exe: &str,
@@ -348,34 +355,36 @@ impl PayloadSource {
     }
 }
 
-/// Бывшая библиотека крейта `rexon-gui` (cdylib, 54 МБ). Её грузил через
-/// ctypes хозяин вкладки на Python; он в архиве, крейт теперь только rlib и
-/// вшит в окно статически. Пакет и установщик её больше не кладут, но в
-/// каталоге QML-модулей разработчика (`~/.local/share/rexon/qml_modules`,
-/// откуда берёт поставка [`PayloadSource::from_dev_tree`]) прежняя копия
-/// лежит, пока `tools/build_qml_control.sh` не пересоберёт модуль. Без
-/// пропуска установка унесла бы мёртвый груз в систему.
+/// The former library of the `rexon-gui` crate (cdylib, 54 MB). It was loaded
+/// via ctypes by the Python tab host; that is archived, the crate is now only
+/// an rlib and statically linked into the window. The package and the
+/// installer no longer ship it, but in the developer's QML module directory
+/// (`~/.local/share/rexon/qml_modules`, where the
+/// [`PayloadSource::from_dev_tree`] payload takes from) an old copy lies until
+/// `tools/build_qml_control.sh` rebuilds the module. Without skipping it the
+/// install would carry dead weight into the system.
 const RETIRED_GUI_LIB: &str = "librexon_gui.so";
 
-/// Не копировать в установку: исходники Python, кеши байткода и черновики.
+/// Not copied into the install: Python sources, bytecode caches and drafts.
 ///
-/// ⭐ Починка 16.09.2026 (правило #16): ручная установка клала в систему
-/// ВЕСЬ пакет Python — код классического окна, которого поставка больше не
-/// везёт. Теперь, как и пакет дистрибутива (`packaging/aur/PKGBUILD`:
-/// `find "$data" -name '*.py' -delete`), едут только данные продукта:
-/// вендорный QML вкладки обоев, `themes.json`, шрифты, Plasma-плагин обоев
-/// и дополнения GNOME и Cinnamon. Признак каталога данных
-/// (`installer::PACKAGE_MARKER_REL`) — файл QML, а не `.py`, поэтому поиск
-/// раскладку по-прежнему узнаёт.
+/// ⭐ Fix of 16.09.2026 (rule #16): the manual install put the WHOLE Python
+/// package into the system — the code of the classic window the payload no
+/// longer carries. Now, as with the distribution package
+/// (`packaging/aur/PKGBUILD`: `find "$data" -name '*.py' -delete`), only the
+/// product data goes: vendored QML of the wallpaper tab, `themes.json`, fonts,
+/// the Plasma wallpaper plugin and the GNOME and Cinnamon add-ons. The data
+/// directory marker (`installer::PACKAGE_MARKER_REL`) is a QML file, not a
+/// `.py`, so the lookup still recognises the layout.
 ///
-/// [`RETIRED_GUI_LIB`] — тоже мимо: см. там.
+/// [`RETIRED_GUI_LIB`] — skipped too: see there.
 ///
-/// ⚠️ Модель перевода описаний (`translate/<пара>/model.….bin` и словарь,
-/// 43 МБ) под пропуск НЕ попадает намеренно: каталог данных копируется
-/// целиком, и модель обязана доехать вместе с ним — иначе ручная установка
-/// молча осталась бы без перевода описаний, хотя пакет дистрибутива модель
-/// везёт (`packaging/aur/PKGBUILD`). В дереве разработчика модели нет, брать
-/// её оттуда нечего; из распакованного архива она едет сама.
+/// ⚠️ The description translation model (`translate/<pair>/model.….bin` and
+/// the vocabulary, 43 MB) is deliberately NOT skipped: the data directory is
+/// copied whole, and the model must travel along with it — otherwise the
+/// manual install would silently be left without description translation,
+/// although the distribution package ships the model
+/// (`packaging/aur/PKGBUILD`). The developer tree has no model, there is
+/// nothing to take from there; from an unpacked archive it travels by itself.
 pub fn payload_skip(name: &str) -> bool {
     name == "__pycache__"
         || name == RETIRED_GUI_LIB
@@ -385,11 +394,11 @@ pub fn payload_skip(name: &str) -> bool {
         || name.ends_with(".draft")
 }
 
-/// Права в установке: каталоги и исполняемые файлы — 755, остальное — 644.
-/// `executable` — есть ли бит запуска у источника.
+/// Permissions in the install: directories and executables — 755, the rest — 644.
+/// `executable` — whether the source has the execute bit.
 ///
-/// Починка 4: прежний `chmod -R 755` делал исполняемым каждый `.py`, `.qml`
-/// и картинку.
+/// Fix 4: the old `chmod -R 755` made every `.py`, `.qml` and picture
+/// executable.
 pub fn payload_mode(is_dir: bool, executable: bool) -> u32 {
     if is_dir || executable {
         0o755
@@ -399,28 +408,28 @@ pub fn payload_mode(is_dir: bool, executable: bool) -> u32 {
 }
 
 // ============================================================================
-// Трейт исполнителя
+// Executor trait
 // ============================================================================
 
-/// Побочные действия установки СВЕРХ [`SystemIo`]. Ни одного решения.
+/// Install side effects BEYOND [`SystemIo`]. No decisions.
 pub trait InstallIo: SystemIo {
-    /// Создать уникальный временный каталог (0700) в `parent` (`None` —
-    /// системный временный каталог) → путь.
+    /// Create a unique temporary directory (0700) in `parent` (`None` — the
+    /// system temporary directory) → path.
     fn temp_dir(&self, prefix: &str, parent: Option<&str>) -> Result<String, String>;
-    /// Переименовать файл или каталог (одна файловая система). Ссылку
-    /// переименовывает саму, в её цель не заходит.
+    /// Rename a file or directory (one file system). A link is renamed itself,
+    /// its target is not entered.
     fn rename(&self, src: &str, dst: &str) -> Result<(), String>;
-    /// Создать каталог со всеми родителями. `mode` — права для каждого
-    /// СОЗДАННОГО каталога (`None` — не трогать, как `os.makedirs`).
+    /// Create a directory with all parents. `mode` — permissions for each
+    /// CREATED directory (`None` — leave alone, like `os.makedirs`).
     fn make_dirs(&self, path: &str, mode: Option<u32>) -> Result<(), String>;
-    /// Записать файл целиком и выставить права.
+    /// Write a whole file and set permissions.
     fn write_file_mode(&self, path: &str, content: &str, mode: u32) -> Result<(), String>;
-    /// Скопировать файл (содержимое) и выставить права.
+    /// Copy a file (content) and set permissions.
     fn copy_file_mode(&self, src: &str, dst: &str, mode: u32) -> Result<(), String>;
-    /// Скопировать дерево. Имена, для которых `skip` истинно, пропускаются
-    /// вместе с содержимым; права каждого каталога и файла — `mode(is_dir,
-    /// executable)`. Симлинк на файл копируется содержимым, симлинк на
-    /// каталог и висячий симлинк пропускаются. → число скопированных файлов.
+    /// Copy a tree. Names for which `skip` is true are skipped together with
+    /// their content; permissions of each directory and file — `mode(is_dir,
+    /// executable)`. A symlink to a file is copied as content, a symlink to a
+    /// directory and a dangling symlink are skipped. → number of files copied.
     fn copy_tree(
         &self,
         src: &str,
@@ -428,29 +437,29 @@ pub trait InstallIo: SystemIo {
         skip: &dyn Fn(&str) -> bool,
         mode: &dyn Fn(bool, bool) -> u32,
     ) -> Result<usize, String>;
-    /// Удалить файл; ошибки не важны.
+    /// Delete a file; errors don't matter.
     fn remove_file(&self, path: &str);
-    /// Удалить каталог целиком; ошибки не важны.
+    /// Delete a whole directory; errors don't matter.
     fn remove_tree(&self, path: &str);
 }
 
 // ============================================================================
-// Запрос и исход
+// Request and outcome
 // ============================================================================
 
-/// Что просят установить.
+/// What is requested to be installed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallRequest {
     pub payload: PayloadSource,
     pub family: PkgFamily,
-    /// `ID` из os-release: на неизменяемой системе установка отказывает до
-    /// первого побочного действия (выбор «тогда в домашнюю папку» — G3b).
+    /// `ID` from os-release: on an immutable system the install refuses before
+    /// the first side effect (the "then into the home folder" choice — G3b).
     pub distro_id: String,
-    /// Значение `REXON_ENTRY` (откат на классическое окно).
+    /// Value of `REXON_ENTRY` (fallback to the classic window).
     pub entry_env: Option<String>,
-    /// Человек ЯВНО согласился на правило «без повторного пароля».
+    /// The person EXPLICITLY agreed to the "no repeated password" rule.
     pub passwordless_rule: bool,
-    /// Язык строк хода и итога.
+    /// Language of the progress and summary strings.
     pub lang: Lang,
 }
 
@@ -467,15 +476,15 @@ impl InstallRequest {
     }
 }
 
-/// Чем кончилась установка.
+/// How the install ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallResult {
-    /// Итог для страницы итога (`installer::result_texts`). `None` —
-    /// отменено человеком до запроса пароля, система не тронута.
+    /// Result for the summary page (`installer::result_texts`). `None` —
+    /// cancelled by the person before the password prompt, the system untouched.
     pub outcome: Option<WizardOutcome>,
-    /// Какой вход записан в ярлык (есть, если до ярлыка дошло).
+    /// Which entry is written into the desktop entry (present if it got that far).
     pub entry: Option<LaunchEntry>,
-    /// Одна строка итога — для журнала и `(ok, сообщение)`.
+    /// One summary line — for the log and `(ok, message)`.
     pub message: String,
 }
 
@@ -496,30 +505,30 @@ impl InstallResult {
     }
 }
 
-/// Этап подготовки (заголовок окна хода не меняет; заголовки — дело G5).
+/// Preparation stage (doesn't change the progress window title; titles are G5's business).
 pub const STAGE_PREPARE: &str = "app_prepare";
-/// Этап работы корневого скрипта.
+/// Root script stage.
 pub const STAGE_INSTALL: &str = "app_install";
-/// Этап итога (есть в `de_progress::STAGE_TITLES`).
+/// Summary stage (present in `de_progress::STAGE_TITLES`).
 pub const STAGE_DONE: &str = "done";
 
 // ============================================================================
-// Корневой скрипт и план
+// Root script and plan
 // ============================================================================
 
-/// Метка начала шага в выводе скрипта (stdout).
+/// Step start marker in the script output (stdout).
 pub const STEP_MARK: &str = "REXON-STEP:";
-/// Метка сломавшегося шага (stderr, из ловушки ERR).
+/// Marker of the step that broke (stderr, from the ERR trap).
 pub const FAIL_MARK: &str = "REXON-FAILED:";
-/// Префикс временного каталога установки.
+/// Prefix of the install temporary directory.
 pub const STAGE_PREFIX: &str = "rexon_install_";
-/// Ярлык в меню приложений.
+/// Desktop entry in the application menu.
 pub const DESKTOP_FILE: &str = "rexon.desktop";
-/// Ярлык аварийного отката оформления.
+/// Desktop entry of the emergency appearance rollback.
 pub const RECOVER_DESKTOP_FILE: &str = "rexon-recover.desktop";
 
-/// Метки шагов корневого скрипта → шаг установки для человека. Правило «без
-/// пароля» — ОТДЕЛЬНАЯ метка, хоть для человека это тот же шаг «пароль реже».
+/// Root script step markers → install step for the person. The "no password"
+/// rule is a SEPARATE marker, even though for the person it is the same "fewer passwords" step.
 pub const SCRIPT_MARKS: &[(&str, InstallStep)] = &[
     ("deps", InstallStep::Dependencies),
     ("files", InstallStep::CopyFiles),
@@ -540,8 +549,8 @@ fn basename(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
-/// Раскладка временного каталога установки. Всё временное — внутри одного
-/// каталога, поэтому уборка — одно удаление (починка 2).
+/// Layout of the install temporary directory. Everything temporary is inside
+/// one directory, so cleanup is a single deletion (fix 2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StagePaths {
     pub root: String,
@@ -552,7 +561,7 @@ impl StagePaths {
         StagePaths { root: root.trim_end_matches('/').to_string() }
     }
 
-    /// Та же раскладка, что у цели: `lib/` уходит в `lib_dir`, `bin/` — в
+    /// The same layout as the target: `lib/` goes to `lib_dir`, `bin/` — to
     /// `bin_dir`.
     pub fn layout(&self) -> InstallLayout {
         InstallLayout::new(&format!("{}/lib", self.root), &format!("{}/bin", self.root))
@@ -578,7 +587,7 @@ impl StagePaths {
         format!("{}/polkit", self.root)
     }
 
-    /// Помощники, политики и правило — под именами их мест назначения.
+    /// Helpers, policies and the rule — under the names of their destinations.
     pub fn helpers(&self) -> HelperTmp {
         let p = |dest: &str| format!("{}/{}", self.polkit_dir(), basename(dest));
         HelperTmp {
@@ -594,12 +603,12 @@ impl StagePaths {
         }
     }
 
-    /// Помощник сеанса прав во временном каталоге (копия бинаря поставки).
+    /// The privilege session helper in the temporary directory (a copy of the payload binary).
     pub fn priv_helper(&self) -> String {
         format!("{}/{}", self.polkit_dir(), plan::SESSION_HELPER_NAME)
     }
 
-    /// Политика `org.rexon.session` во временном каталоге.
+    /// The `org.rexon.session` policy in the temporary directory.
     pub fn session_policy(&self) -> String {
         format!("{}/{}", self.polkit_dir(), basename(plan::SESSION_POLICY_PATH))
     }
@@ -609,8 +618,8 @@ impl StagePaths {
     }
 }
 
-/// Путь временного каталога годен для скрипта без кавычек: блоки значков и
-/// помощников ядра подставляют пути как есть.
+/// The temporary directory path is fit for the script without quotes: the
+/// core's icon and helper blocks substitute paths as is.
 fn stage_path_is_plain(path: &str) -> bool {
     path.starts_with('/')
         && path
@@ -618,45 +627,46 @@ fn stage_path_is_plain(path: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '.'))
 }
 
-/// Всё, из чего собирается корневой скрипт.
+/// Everything the root script is assembled from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SystemScriptParams {
     pub target: InstallLayout,
     pub desktop_dir: String,
-    /// Корень значков hicolor (для обновления кэша значков).
+    /// hicolor icon root (for refreshing the icon cache).
     pub icon_root: String,
     pub gnome_ext_dir: String,
     pub cinnamon_ext_dir: String,
     pub stage: StagePaths,
     pub with_wallpaper_host: bool,
     pub with_splash_overlay: bool,
-    /// В поставке есть помощник сеанса прав ([`PayloadSource::priv_helper`]).
+    /// The payload has the privilege session helper ([`PayloadSource::priv_helper`]).
     pub with_priv_helper: bool,
-    /// Значки во временном каталоге.
+    /// Icons in the temporary directory.
     pub icons: IconSet,
     pub passwordless_rule: bool,
-    /// Строки установки зависимостей ([`deps_script_lines`]).
+    /// Dependency install lines ([`deps_script_lines`]).
     pub dep_lines: String,
 }
 
-/// Строки установки зависимостей для корневого скрипта — порт
-/// `_install_deps_cmd`. Разрядов три, и каждый отдельной строкой:
+/// Dependency install lines for the root script — port of
+/// `_install_deps_cmd`. There are three tiers, each on its own line:
 ///
-///   1. ОБЯЗАТЕЛЬНЫЕ ([`inst::dep_packages`]) — строго, под `set -e`: без
-///      Qt6, layer-shell, загрузчика Vulkan и libmpv окно не откроется, и
-///      честный отказ лучше молчаливо поломанного продукта.
-///   2. ЖЕЛАТЕЛЬНЫЕ ([`inst::optional_dep_packages`]) — с `|| true`: это
-///      база (bash, D-Bus, Wayland, GL, OpenSSL, polkit, тема значков),
-///      которая на машине с рабочим столом стоит почти всегда, а имена её
-///      пакетов в одиннадцати семействах из двенадцати выписаны по правилам
-///      именования, а не проверены вживую. Опечатка здесь не должна стоить
-///      человеку всей установки.
-///   3. ПЕРЕКЛЮЧАТЕЛЬ СТИЛЯ Qt ([`inst::qt_style_install_cmd`]) — тоже с
-///      `|| true`: без него Rexon работает.
+///   1. REQUIRED ([`inst::dep_packages`]) — strictly, under `set -e`: without
+///      Qt6, layer-shell, the Vulkan loader and libmpv the window won't open,
+///      and an honest refusal is better than a silently broken product.
+///   2. RECOMMENDED ([`inst::optional_dep_packages`]) — with `|| true`: this is
+///      the base (bash, D-Bus, Wayland, GL, OpenSSL, polkit, an icon theme)
+///      that is almost always present on a machine with a desktop, and its
+///      package names in eleven families out of twelve are written out by
+///      naming rules rather than verified live. A typo here must not cost the
+///      person the whole install.
+///   3. THE Qt STYLE SWITCHER ([`inst::qt_style_install_cmd`]) — also with
+///      `|| true`: Rexon works without it.
 ///
-/// ⚠️ Желательные ставятся ровно тогда же, когда обязательные (`deps_present`
-/// — один ответ пробы `ldd` на всю поставку): если компоновщик доволен, в
-/// системе есть и то, и другое, и звать пакетный менеджер незачем.
+/// ⚠️ Recommended ones are installed exactly when the required ones are
+/// (`deps_present` — one answer of the `ldd` probe for the whole payload): if
+/// the linker is happy, the system has both, and there is no reason to call
+/// the package manager.
 pub fn deps_script_lines(family: PkgFamily, deps_present: bool, qt_style_present: bool) -> String {
     let mut lines: Vec<String> = Vec::new();
     if !deps_present {
@@ -678,15 +688,15 @@ pub fn deps_script_lines(family: PkgFamily, deps_present: bool, qt_style_present
     lines.join("\n")
 }
 
-/// Каталог расширения GNOME Shell внутри данных продукта `rexon/`.
+/// GNOME Shell extension directory inside product data `rexon/`.
 pub const GNOME_EXTENSION_SRC: &str = "gnome-extension";
-/// Каталог расширения Cinnamon внутри данных продукта `rexon/`.
+/// Cinnamon extension directory inside product data `rexon/`.
 pub const CINNAMON_EXTENSION_SRC: &str = "cinnamon-extension";
 
-/// Пары (каталог расширения в пакете, куда его ставить) — одни на установку
-/// в систему и в домашнюю папку. Mutter и Muffin не умеют wlr-layer-shell:
-/// обои там рисует расширение; ставится всегда — на случай перехода на
-/// GNOME или Cinnamon.
+/// Pairs (extension directory in the package, where to install it) — the same
+/// for the system and home folder installs. Mutter and Muffin can't do
+/// wlr-layer-shell: the wallpaper there is drawn by the extension; it is
+/// always installed — in case of switching to GNOME or Cinnamon.
 pub fn extension_targets(gnome_ext_dir: &str, cinnamon_ext_dir: &str) -> [(&'static str, String); 2] {
     [
         (GNOME_EXTENSION_SRC, gnome_ext_dir.trim_end_matches('/').to_string()),
@@ -694,16 +704,16 @@ pub fn extension_targets(gnome_ext_dir: &str, cinnamon_ext_dir: &str) -> [(&'sta
     ]
 }
 
-/// Программа сборки схем настроек расширения.
+/// Program that compiles the extension's settings schemas.
 pub const GLIB_COMPILE_SCHEMAS: &str = "glib-compile-schemas";
-/// Программа обновления базы ярлыков меню.
+/// Program that updates the menu desktop entry database.
 pub const UPDATE_DESKTOP_DATABASE: &str = "update-desktop-database";
-/// Потолок одной команды обновления кэшей, с.
+/// Ceiling of one cache refresh command, s.
 pub const CACHE_TIMEOUT_SECS: u64 = 120;
 
-/// Обновление кэшей меню и значков — одни команды на оба режима. Группа —
-/// взаимозаменяемые команды по порядку: первая удачная закрывает группу.
-/// Ни одной программы группы нет — не ошибка.
+/// Refreshing menu and icon caches — the same commands for both modes. A group
+/// is interchangeable commands in order: the first successful one closes the
+/// group. No program of the group present — not an error.
 pub fn cache_refresh_groups(desktop_dir: &str, icon_root: &str) -> Vec<Vec<Vec<String>>> {
     let argv = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<String>>();
     vec![
@@ -716,7 +726,7 @@ pub fn cache_refresh_groups(desktop_dir: &str, icon_root: &str) -> Vec<Vec<Vec<S
     ]
 }
 
-/// Текст корневого скрипта установки в систему.
+/// Text of the system install root script.
 pub fn install_script(p: &SystemScriptParams) -> String {
     let q = |s: &str| crate::ext_manager::shlex_quote(s);
     let stage = p.stage.layout();
@@ -730,7 +740,7 @@ pub fn install_script(p: &SystemScriptParams) -> String {
     line("# Установка Rexon в систему. Скрипт собран ядром Rexon.".into());
     line("set -eE".into());
     line("umask 022".into());
-    // Терминала нет: команда, спросившая ввод, ждала бы вечно.
+    // No terminal: a command that asked for input would wait forever.
     line("exec </dev/null".into());
     line("REXON_STEP=start".into());
     line(format!("trap 'echo \"{FAIL_MARK}$REXON_STEP\" >&2' ERR"));
@@ -746,7 +756,7 @@ pub fn install_script(p: &SystemScriptParams) -> String {
     line(step("files"));
     line(format!("rm -rf {lib}"));
     line(format!("install -d -m755 {lib}"));
-    // `каталог/.` — со скрытыми файлами; права уже разложены при подготовке.
+    // `dir/.` — with hidden files; permissions were already laid out during preparation.
     line(format!("cp -r --preserve=mode {}/. {lib}/", q(&stage.lib_dir)));
     line(format!("chown -R root:root {lib}"));
 
@@ -775,11 +785,12 @@ pub fn install_script(p: &SystemScriptParams) -> String {
     let h = p.stage.helpers();
     line(step("helpers"));
     line(inst::helper_install_block(&h));
-    // Помощник сеанса прав и его политика (`org.rexon.session`). Бинарь и
-    // каталог над ним — root, без записи для группы и всех: иначе окно
-    // помощника не поднимет (`privilege::client::check_ownership`). Нет
-    // помощника в поставке — снимается прежний: от другой сборки окно его
-    // всё равно отвергло бы, а без файла операции идут прежним путём.
+    // The privilege session helper and its policy (`org.rexon.session`). The
+    // binary and the directory above it are root's, not writable by group and
+    // others: otherwise the window won't start the helper
+    // (`privilege::client::check_ownership`). No helper in the payload — the old
+    // one is removed: the window would reject one from a different build anyway,
+    // and without the file operations take the old path.
     if p.with_priv_helper {
         line(format!("install -Dm755 {} {}", q(&p.stage.priv_helper()), plan::SESSION_HELPER_PATH));
         line(format!("install -Dm644 {} {}", q(&p.stage.session_policy()), plan::SESSION_POLICY_PATH));
@@ -826,15 +837,15 @@ pub fn install_script(p: &SystemScriptParams) -> String {
     lines.join("\n") + "\n"
 }
 
-/// Команда запуска корневого скрипта — тот же вид, что у
-/// [`inst::system_install_cmd`] (argv и таймаут 600 с).
+/// Command running the root script — the same form as
+/// [`inst::system_install_cmd`] (argv and a 600 s timeout).
 pub fn install_cmd(script_path: &str) -> Cmd {
     inst::system_install_cmd(script_path)
 }
 
-/// План: записать скрипт → запустить под паролем → убрать временный
-/// каталог. Уборку исполнитель делает на ЛЮБОМ исходе, а не только после
-/// удачного запуска.
+/// Plan: write the script → run it under a password → remove the temporary
+/// directory. The executor does the cleanup on ANY outcome, not only after a
+/// successful run.
 pub fn install_plan(p: &SystemScriptParams) -> Vec<PlanStep> {
     let script = p.stage.script();
     vec![
@@ -861,10 +872,10 @@ fn check_plan(steps: &[PlanStep]) -> bool {
 }
 
 // ============================================================================
-// Разбор исхода скрипта
+// Parsing the script outcome
 // ============================================================================
 
-/// Метки: начатые шаги по порядку и шаг из ловушки ERR.
+/// Markers: steps started, in order, and the step from the ERR trap.
 pub fn script_marks(out: &RunOut) -> (Vec<InstallStep>, Option<InstallStep>) {
     let mut started = Vec::new();
     let mut failed = None;
@@ -885,7 +896,7 @@ fn script_started(out: &RunOut) -> bool {
     out.stdout.lines().chain(out.stderr.lines()).any(|l| l.trim().starts_with(STEP_MARK))
 }
 
-/// Последние строки вывода без меток — подробности для разработчика.
+/// The last output lines without markers — details for the developer.
 pub fn output_tail(out: &RunOut, max_lines: usize) -> String {
     let lines: Vec<&str> = out
         .stdout
@@ -913,14 +924,14 @@ fn detail_with_code(code: Option<i32>, tail: &str) -> String {
     }
 }
 
-/// Исход запуска корневого скрипта.
+/// Outcome of running the root script.
 ///
-/// Починка 1: «пароль не подтверждён» — только если скрипт НЕ начинался
-/// (меток нет) и pkexec отказал (код 126/127 или текст агента —
-/// [`plan::pkexec_auth_denied`]). Если метки есть — это сбой шага, даже при
-/// коде 127 от команды внутри скрипта. Нечем спросить пароль (запуск не
-/// состоялся) — [`InstallFailure::PasswordPromptMissing`]; таймаут —
-/// [`InstallFailure::TimedOut`].
+/// Fix 1: "password not confirmed" — only if the script did NOT start (no
+/// markers) and pkexec refused (code 126/127 or the agent's text —
+/// [`plan::pkexec_auth_denied`]). If there are markers, it is a step failure,
+/// even with code 127 from a command inside the script. No way to ask for a
+/// password (the run didn't happen) — [`InstallFailure::PasswordPromptMissing`];
+/// timeout — [`InstallFailure::TimedOut`].
 pub fn classify_script_run(out: &RunOut, timeout_secs: u64) -> Result<(), InstallFailure> {
     match out.outcome {
         RunOutcome::Error => return Err(InstallFailure::PasswordPromptMissing),
@@ -948,31 +959,32 @@ pub fn classify_script_run(out: &RunOut, timeout_secs: u64) -> Result<(), Instal
 }
 
 // ============================================================================
-// Исполнитель
+// Executor
 // ============================================================================
 
-/// Программа, показывающая динамические зависимости бинаря.
+/// Program that shows a binary's dynamic dependencies.
 const LDD: &str = "ldd";
-/// Ответ `ldd` о неразрешённой библиотеке (речь английская: запуск идёт с
-/// `lang_c`, иначе перевод сообщения увёл бы проверку в сторону).
+/// `ldd`'s answer about an unresolved library (the wording is English: it runs
+/// with `lang_c`, otherwise a translated message would throw the check off).
 const LDD_MISSING_MARK: &str = "not found";
-/// Потолок одной пробы, с: `ldd` только читает заголовки файла.
+/// Ceiling of one probe, s: `ldd` only reads the file headers.
 const LDD_TIMEOUT_SECS: u64 = 20;
 
-/// Проба «поставка поднимется»: разрешаются ли динамические зависимости у
-/// тех самых файлов, которые установка сейчас положит в систему — окна,
-/// хоста обоев, заставки входа и библиотеки модели фильтров.
+/// The "payload will start" probe: whether the dynamic dependencies resolve
+/// for the very files the install is about to put into the system — the
+/// window, the wallpaper host, the login splash and the filter model library.
 ///
-/// ⚠️ Прежде здесь спрашивали интерпретатор (`python3 -c "import
-/// PySide6.QtWidgets"`) — это был вопрос про классическое окно, которого
-/// поставка больше не везёт: Rust-окну PySide6 не нужен вовсе, а сама проба
-/// падала бы на машине без интерпретатора и звала пакетный менеджер зря.
-/// Спрашиваем ровно то, чем живёт Rust-поставка: библиотеки Qt6, layer-shell,
-/// libmpv, Vulkan — всё это видно динамическому компоновщику.
+/// ⚠️ Previously the interpreter was asked here (`python3 -c "import
+/// PySide6.QtWidgets"`) — that was a question about the classic window the
+/// payload no longer carries: the Rust window doesn't need PySide6 at all,
+/// and the probe itself would fail on a machine without the interpreter and
+/// call the package manager for nothing. We ask exactly what the Rust payload
+/// lives on: Qt6 libraries, layer-shell, libmpv, Vulkan — all visible to the
+/// dynamic linker.
 ///
-/// Нечем проверить (в поставке нет ни одного бинаря либо в системе нет
-/// `ldd`) — отвечаем «на месте»: молчаливое «нет» позвало бы пакетный
-/// менеджер вслепую, а на машине без сети это оборвало бы установку целиком.
+/// Nothing to check with (the payload has no binaries, or the system has no
+/// `ldd`) — we answer "present": a silent "no" would call the package manager
+/// blindly, and on a machine without network that would abort the whole install.
 fn runtime_deps_present<IO: InstallIo + ?Sized>(io: &IO, payload: &PayloadSource) -> bool {
     let files: Vec<&String> = [
         payload.main_window.as_ref(),
@@ -995,14 +1007,14 @@ fn runtime_deps_present<IO: InstallIo + ?Sized>(io: &IO, payload: &PayloadSource
     })
 }
 
-/// Вход ярлыка ПОСЛЕ установки: правило одно с живой машиной, кандидат —
-/// бинарь окна на его будущем месте.
+/// Desktop entry target AFTER the install: the rule is the same as on the live
+/// machine, the candidate is the window binary in its future place.
 pub fn installed_entry(entry_env: Option<&str>, target: &InstallLayout, has_main_window: bool) -> LaunchEntry {
     inst::choose_launch_entry(entry_env, &[target.main_window()], |_| has_main_window)
 }
 
-/// Значки поставки — пути источников. Мастер-копия берётся, только если нет
-/// крупных размеров.
+/// Payload icons — source paths. The master copy is taken only if there are
+/// no large sizes.
 fn payload_icons<IO: SystemIo + ?Sized>(io: &IO, icon_dir: &str) -> IconSet {
     let dir = icon_dir.trim_end_matches('/');
     let mut set = IconSet::default();
@@ -1024,8 +1036,8 @@ fn payload_icons<IO: SystemIo + ?Sized>(io: &IO, icon_dir: &str) -> IconSet {
     set
 }
 
-/// Значки из поставки для установки в систему: набор во временном каталоге
-/// для блока установки ядра + пары (источник, путь во временном каталоге).
+/// Payload icons for the system install: the set in the temporary directory
+/// for the core's install block + pairs (source, path in the temporary directory).
 fn icon_plan<IO: SystemIo + ?Sized>(
     io: &IO,
     icon_dir: &str,
@@ -1052,8 +1064,8 @@ fn icon_plan<IO: SystemIo + ?Sized>(
     (set, copies)
 }
 
-/// Параметры скрипта для этой машины и этого временного каталога.
-/// Исполнитель зовёт ровно её — сверки строят тот же текст.
+/// Script parameters for this machine and this temporary directory. The
+/// executor calls exactly this — the checks build the same text.
 pub fn system_script_params<IO: InstallIo + ?Sized>(
     io: &IO,
     req: &InstallRequest,
@@ -1082,14 +1094,14 @@ pub fn system_script_params<IO: InstallIo + ?Sized>(
     }
 }
 
-/// Ошибка подготовки шага — сбой этого шага, подробность — текст ошибки.
+/// A step preparation error — a failure of that step, the detail is the error text.
 fn prep<T>(step: InstallStep, r: Result<T, String>) -> Result<T, InstallFailure> {
     r.map_err(|detail| InstallFailure::StepFailed { step, detail })
 }
 
-/// Итог установки ЛЮБОГО режима: строка итога в ход дела и проверка, что
-/// каталог команды `rexon` в `PATH` (`command_dir` — `None`, когда команды
-/// нет, как у переносного режима). Одна на все режимы.
+/// Result of an install in ANY mode: the summary line into progress and a
+/// check that the `rexon` command directory is in `PATH` (`command_dir` —
+/// `None` when there is no command, as in portable mode). One for all modes.
 fn finish<IO: InstallIo + ?Sized>(
     io: &IO,
     sink: &dyn DeOpSink,
@@ -1129,10 +1141,10 @@ fn finish<IO: InstallIo + ?Sized>(
     }
 }
 
-/// Папки настроек и резервных копий — одни на все режимы (починка 8).
-/// Пусто, если домашняя папка не определена: относительный путь смотрел бы
-/// в текущий каталог процесса. Пути — из единого перечня
-/// [`inst::user_data_roots`]: первые по XDG настройки и резервные копии.
+/// Settings and backup folders — the same for all modes (fix 8). Empty if the
+/// home folder is not determined: a relative path would look into the
+/// process's current directory. Paths come from the single list
+/// [`inst::user_data_roots`]: the first XDG ones are settings and backups.
 pub fn profile_dirs(home: &str, xdg_config_home: &str, xdg_data_home: &str) -> Vec<String> {
     let roots = inst::user_data_roots(home, xdg_config_home, xdg_data_home, "");
     [inst::UserDataKind::Settings, inst::UserDataKind::Backups]
@@ -1141,18 +1153,18 @@ pub fn profile_dirs(home: &str, xdg_config_home: &str, xdg_data_home: &str) -> V
         .collect()
 }
 
-/// Создать папки профиля. Не беда, если не вышло: Rust создаёт их сам при
-/// первом обращении.
+/// Create the profile folders. No harm if it fails: Rust creates them itself on
+/// first access.
 fn make_profile_dirs<IO: InstallIo + ?Sized>(io: &IO) {
     for dir in profile_dirs(&io.env("HOME"), &io.env("XDG_CONFIG_HOME"), &io.env("XDG_DATA_HOME")) {
         let _ = io.make_dirs(&dir, None);
     }
 }
 
-/// Файлы программы в `staged.lib_dir` с правильными правами: данные
-/// продукта `rexon/` (без исходников Python — [`payload_skip`]), бинарь
-/// окна, QML-модули, наша `.so`. Одна подготовка на установку в систему и в
-/// домашнюю папку.
+/// Program files in `staged.lib_dir` with correct permissions: product data
+/// `rexon/` (without Python sources — [`payload_skip`]), the window binary,
+/// QML modules, our `.so`. One preparation for both the system and home
+/// folder installs.
 fn stage_program_files<IO: InstallIo + ?Sized>(
     io: &IO,
     pay: &PayloadSource,
@@ -1163,8 +1175,8 @@ fn stage_program_files<IO: InstallIo + ?Sized>(
     prep(CopyFiles, io.copy_tree(&pay.package_dir, &staged.package_dir(), &payload_skip, &payload_mode))?;
     if let Some(src) = &pay.main_window {
         prep(CopyFiles, io.copy_file_mode(src, &staged.main_window(), 0o755))?;
-        // Помощник снимков стилей собирается и лежит рядом с окном в любой
-        // поставке; нет его — плитки получат нарисованные образцы.
+        // The style snapshot helper is built and lies next to the window in any
+        // payload; without it the tiles get drawn samples.
         let helper = std::path::Path::new(src).with_file_name(crate::widget_shot::HELPER_BINARY);
         let helper = helper.to_string_lossy();
         if io.is_file(&helper) {
@@ -1181,14 +1193,14 @@ fn stage_program_files<IO: InstallIo + ?Sized>(
     Ok(())
 }
 
-/// Установить Rexon в систему. Окно зовёт не её, а диспетчер [`install`]:
-/// он заранее уводит неизменяемую систему в домашнюю папку.
+/// Install Rexon into the system. The window calls not this but the dispatcher
+/// [`install`]: it redirects an immutable system to the home folder up front.
 ///
-/// Порядок: отказ неизменяемой системы (до побочных действий) → временный
-/// каталог → подготовка файлов с правильными правами → корневой скрипт под
-/// одним паролем → проверка, что Rexon на месте → папки профиля. Временный
-/// каталог убирается на ЛЮБОМ исходе после его создания. Отменить можно,
-/// пока не запрошен пароль.
+/// Order: refusal on an immutable system (before side effects) → temporary
+/// directory → preparing files with correct permissions → the root script
+/// under one password → checking that Rexon is in place → profile folders.
+/// The temporary directory is removed on ANY outcome after it is created.
+/// Cancelling is possible until the password is requested.
 pub fn install_to_system<IO: InstallIo + ?Sized>(
     io: &IO,
     req: &InstallRequest,
@@ -1201,8 +1213,8 @@ pub fn install_to_system<IO: InstallIo + ?Sized>(
         finish(io, sink.as_ref(), lang, InstallMode::System, Some(target.bin_dir.as_str()), res.map(Some))
     };
 
-    // Неизменяемая система: сюда дойти не должно — «в домашнюю папку»
-    // выбирает диспетчер [`install`]. Отказ — до первого побочного действия.
+    // Immutable system: we shouldn't get here — "into the home folder" is chosen
+    // by the dispatcher [`install`]. Refusal — before the first side effect.
     if let Some(reason) = inst::system_mode_blocked_reason_in(&req.distro_id, lang) {
         return done(Err(Some(InstallFailure::StepFailed {
             step: InstallStep::SystemInstall,
@@ -1219,8 +1231,8 @@ pub fn install_to_system<IO: InstallIo + ?Sized>(
         }
     };
     let res = run_staged(io, req, sink.as_ref(), cancel, &StagePaths::new(&root));
-    // Починка 2: уборка на любом исходе — успех, отказ пароля, сбой шага,
-    // ошибка подготовки, отмена, таймаут.
+    // Fix 2: cleanup on any outcome — success, password refusal, step failure,
+    // preparation error, cancel, timeout.
     io.remove_tree(&root);
     sink.cancellable(false);
     done(res)
@@ -1257,7 +1269,7 @@ fn run_staged<IO: InstallIo + ?Sized>(
     let entry = installed_entry(req.entry_env.as_deref(), target, pay.main_window.is_some());
     let cancelled = || cancel.is_cancelled();
 
-    // ── Файлы программы ─────────────────────────────────────────────
+    // ── Program files ───────────────────────────────────────────────
     use InstallStep::*;
     prep(CopyFiles, io.make_dirs(&staged.bin_dir, Some(0o755)))?;
     stage_program_files(io, pay, &staged)?;
@@ -1265,7 +1277,7 @@ fn run_staged<IO: InstallIo + ?Sized>(
         return Err(None);
     }
 
-    // ── Команды запуска ─────────────────────────────────────────────
+    // ── Launch commands ─────────────────────────────────────────────
     say(Launcher, 0.12);
     for (src, dst) in [
         (&pay.wallpaper_host, staged.wallpaper_host()),
@@ -1280,7 +1292,7 @@ fn run_staged<IO: InstallIo + ?Sized>(
         io.write_file_mode(&staged.launcher(), &inst::system_launcher(&target.lib_dir), 0o755),
     )?;
 
-    // ── Ярлык ───────────────────────────────────────────────────────
+    // ── Desktop entry ───────────────────────────────────────────────
     say(MenuShortcuts, 0.18);
     prep(MenuShortcuts, io.make_dirs(&stage.menu_dir(), Some(0o755)))?;
     prep(MenuShortcuts, io.write_file_mode(&stage.desktop(), &inst::desktop_content_for(&entry), 0o644))?;
@@ -1289,7 +1301,7 @@ fn run_staged<IO: InstallIo + ?Sized>(
         io.write_file_mode(&stage.recover_desktop(), &inst::recover_desktop_content_for(&entry), 0o644),
     )?;
 
-    // ── Значки ──────────────────────────────────────────────────────
+    // ── Icons ───────────────────────────────────────────────────────
     say(Icons, 0.24);
     let (_, icon_copies) = icon_plan(io, &pay.icon_dir, stage);
     if icon_copies.is_empty() {
@@ -1301,7 +1313,7 @@ fn run_staged<IO: InstallIo + ?Sized>(
         }
     }
 
-    // ── Помощники и (по согласию) правило ───────────────────────────
+    // ── Helpers and (with consent) the rule ─────────────────────────
     say(FewerPasswords, 0.3);
     let h = stage.helpers();
     prep(FewerPasswords, io.make_dirs(&stage.polkit_dir(), Some(0o755)))?;
@@ -1335,7 +1347,7 @@ fn run_staged<IO: InstallIo + ?Sized>(
         return Err(None);
     }
 
-    // ── План: скрипт → пароль ───────────────────────────────────────
+    // ── Plan: script → password ─────────────────────────────────────
     let mut run_out: Option<(RunOut, u64)> = None;
     for step in &steps {
         match step {
@@ -1348,7 +1360,7 @@ fn run_staged<IO: InstallIo + ?Sized>(
                 let out = io.run(&cmd.argv, cmd.timeout_secs, cmd.lang_c);
                 run_out = Some((out, cmd.timeout_secs.unwrap_or(inst::SYSTEM_INSTALL_TIMEOUT_SECS)));
             }
-            // Уборку делает `install_to_system` на любом исходе.
+            // Cleanup is done by `install_to_system` on any outcome.
             PlanStep::RemoveFiles { .. } => {}
             _ => {
                 return Err(Some(InstallFailure::StepFailed {
@@ -1359,7 +1371,7 @@ fn run_staged<IO: InstallIo + ?Sized>(
         }
     }
     let (out, timeout) = run_out.unwrap_or_else(|| (RunOut::missing(), inst::SYSTEM_INSTALL_TIMEOUT_SECS));
-    // Журнал: шаги, которые скрипт прошёл до конца.
+    // Log: the steps the script completed.
     let verdict = classify_script_run(&out, timeout);
     let (started, _) = script_marks(&out);
     let finished = if verdict.is_ok() { started.len() } else { started.len().saturating_sub(1) };
@@ -1372,7 +1384,7 @@ fn run_staged<IO: InstallIo + ?Sized>(
     }
     verdict.map_err(Some)?;
 
-    // ── Проверка: Rexon на месте ────────────────────────────────────
+    // ── Check: Rexon is in place ────────────────────────────────────
     let sys = inst::install_paths(InstallMode::System, "", None);
     let in_place = inst::system_or_user_installed(&sys, |p| io.exists(p), |p| io.is_dir(p))
         && match &entry {
@@ -1395,29 +1407,29 @@ fn run_staged<IO: InstallIo + ?Sized>(
         }));
     }
 
-    // ── Папки профиля (без пароля) ──────────────────────────────────
+    // ── Profile folders (no password) ───────────────────────────────
     sink.progress(STAGE_INSTALL, &UserFolders.progress_line(lang), Some(0.95));
     make_profile_dirs(io);
     Ok(entry)
 }
 
 // ============================================================================
-// Установка в домашнюю папку, переносной режим и диспетчер
+// Home folder install, portable mode and the dispatcher
 // ============================================================================
 
-/// Префикс временного каталога установки в домашнюю папку: скрытый и рядом
-/// с каталогом установки — та же файловая система, обмен одним
-/// переименованием (починка 9).
+/// Prefix of the home folder install temporary directory: hidden and next to
+/// the install directory — the same file system, the swap is a single
+/// rename (fix 9).
 pub const USER_STAGE_PREFIX: &str = ".rexon_install_";
 
-/// Что просят установить в домашнюю папку — часть [`InstallRequest`]:
-/// пароля, зависимостей и правила «без пароля» у этого режима нет.
+/// What is requested to be installed into the home folder — part of
+/// [`InstallRequest`]: this mode has no password, dependencies or "no password" rule.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserInstallRequest {
     pub payload: PayloadSource,
-    /// Значение `REXON_ENTRY` (откат на классическое окно).
+    /// Value of `REXON_ENTRY` (fallback to the classic window).
     pub entry_env: Option<String>,
-    /// Язык строк хода и итога.
+    /// Language of the progress and summary strings.
     pub lang: Lang,
 }
 
@@ -1428,7 +1440,7 @@ impl UserInstallRequest {
 }
 
 impl InstallRequest {
-    /// Тот же запрос для установки в домашнюю папку.
+    /// The same request for the home folder install.
     pub fn for_user(&self) -> UserInstallRequest {
         UserInstallRequest {
             payload: self.payload.clone(),
@@ -1446,10 +1458,10 @@ fn parent_dir(path: &str) -> &str {
     }
 }
 
-/// Существующий путь ведёт не туда, где лежит, — это ссылка (у разработчика
-/// `~/.local/lib/rexon` бывает ссылкой в дерево). Сравнение через реальный
-/// путь РОДИТЕЛЯ: у Bazzite и Silverblue сама `/home` — ссылка на
-/// `/var/home`, и это не повод отказывать.
+/// An existing path leads somewhere other than where it lies — it is a link
+/// (for the developer `~/.local/lib/rexon` is sometimes a link into the tree).
+/// Compared via the real path of the PARENT: on Bazzite and Silverblue `/home`
+/// itself is a link to `/var/home`, and that is no reason to refuse.
 pub fn is_redirected<IO: SystemIo + ?Sized>(io: &IO, path: &str) -> bool {
     let path = path.trim_end_matches('/');
     if !io.exists(path) {
@@ -1461,9 +1473,9 @@ pub fn is_redirected<IO: SystemIo + ?Sized>(io: &IO, path: &str) -> bool {
     }
 }
 
-/// Поставить файл через временное имя рядом и переименование: запущенный
-/// бинарь перезаписью не открыть (`ETXTBSY`), а ссылку на месте
-/// переименование заменяет, не заходя в её цель (починки 12, 13).
+/// Install a file via a temporary name next to it and a rename: a running
+/// binary can't be opened for overwriting (`ETXTBSY`), and a rename replaces a
+/// link in place without entering its target (fixes 12, 13).
 fn place_file<IO: InstallIo + ?Sized>(io: &IO, src: &str, dst: &str, mode: u32) -> Result<(), String> {
     let tmp = format!("{dst}.rexon-new");
     io.copy_file_mode(src, &tmp, mode).and_then(|()| io.rename(&tmp, dst)).inspect_err(|_| {
@@ -1471,17 +1483,17 @@ fn place_file<IO: InstallIo + ?Sized>(io: &IO, src: &str, dst: &str, mode: u32) 
     })
 }
 
-/// Записать текстовый файл на место существующего: прежний путь сперва
-/// снимается, чтобы запись не ушла в цель ссылки (починка 12).
+/// Write a text file in place of an existing one: the old path is removed
+/// first so the write doesn't go into the link's target (fix 12).
 fn replace_text<IO: InstallIo + ?Sized>(io: &IO, path: &str, content: &str, mode: u32) -> Result<(), String> {
     io.remove_file(path);
     io.write_file_mode(path, content, mode)
 }
 
-/// Кэши меню и значков по [`cache_refresh_groups`]. Нет программы — не
-/// ошибка; без `update-desktop-database` человек узнаёт, что ярлык появится
-/// после повторного входа.
-/// `sink` — `None` у удаления: там «ярлык появится позже» было бы неправдой.
+/// Menu and icon caches per [`cache_refresh_groups`]. A missing program is not
+/// an error; without `update-desktop-database` the person learns that the
+/// desktop entry will appear after logging in again.
+/// `sink` — `None` for uninstall: there "the entry will appear later" would be untrue.
 fn refresh_caches<IO: InstallIo + ?Sized>(
     io: &IO,
     sink: Option<&dyn DeOpSink>,
@@ -1505,9 +1517,9 @@ fn refresh_caches<IO: InstallIo + ?Sized>(
     }
 }
 
-/// Расширение обоев одной оболочки в `dest_base`: прежнее имя (домен чужого
-/// проекта) снимается всегда, иначе обои применяются дважды; своего
-/// расширения в поставке нет — не ошибка.
+/// The wallpaper extension of one shell in `dest_base`: the old name (another
+/// project's domain) is always removed, otherwise the wallpaper is applied
+/// twice; our own extension missing from the payload is not an error.
 fn install_extension<IO: InstallIo + ?Sized>(io: &IO, package_dir: &str, src_name: &str, dest_base: &str) -> Result<(), String> {
     io.remove_tree(&format!("{dest_base}/{}", inst::EXT_ID_LEGACY));
     let src = format!("{}/{src_name}/{}", package_dir.trim_end_matches('/'), inst::EXT_ID);
@@ -1525,14 +1537,15 @@ fn install_extension<IO: InstallIo + ?Sized>(io: &IO, package_dir: &str, src_nam
     Ok(())
 }
 
-/// Установить Rexon в домашнюю папку — порт `RexonInstaller.install_user`.
+/// Install Rexon into the home folder — port of `RexonInstaller.install_user`.
 ///
-/// Без пароля. Порядок: файлы программы собираются во временном каталоге
-/// рядом с каталогом установки → прежняя и новая копии меняются местами →
-/// команды запуска, ярлыки, значки, кэши меню, дополнения обоев → проверка,
-/// что Rexon на месте → папки профиля. Временный каталог (и прежняя копия в
-/// нём) убирается на ЛЮБОМ исходе после его создания. Отменить можно до
-/// обмена копий — тогда установленное прежде не тронуто.
+/// No password. Order: program files are assembled in a temporary directory
+/// next to the install directory → the old and new copies are swapped →
+/// launch commands, desktop entries, icons, menu caches, wallpaper add-ons →
+/// checking that Rexon is in place → profile folders. The temporary directory
+/// (and the old copy in it) is removed on ANY outcome after it is created.
+/// Cancelling is possible until the copies are swapped — then the previous
+/// install is untouched.
 pub fn install_for_user<IO: InstallIo + ?Sized>(
     io: &IO,
     req: &UserInstallRequest,
@@ -1611,13 +1624,13 @@ fn run_user<IO: InstallIo + ?Sized>(
         return Err(None);
     }
 
-    // ── Файлы программы: сборка рядом, затем обмен (починка 9) ──────
+    // ── Program files: assembled alongside, then swapped (fix 9) ────
     let staged = stage.layout();
     stage_program_files(io, pay, &staged)?;
     if cancel.is_cancelled() {
         return Err(None);
     }
-    // Дальше домашняя папка меняется — отмена недоступна.
+    // From here on the home folder changes — cancel is unavailable.
     sink.cancellable(false);
     let previous = format!("{}/previous", stage.root);
     let had_previous = io.exists(&target.lib_dir);
@@ -1631,7 +1644,7 @@ fn run_user<IO: InstallIo + ?Sized>(
         return Err(Some(InstallFailure::StepFailed { step: CopyFiles, detail }));
     }
 
-    // ── Команды запуска ─────────────────────────────────────────────
+    // ── Launch commands ─────────────────────────────────────────────
     say(Launcher, 0.4);
     prep(Launcher, io.make_dirs(&target.bin_dir, None))?;
     for (src, dst) in [
@@ -1645,7 +1658,7 @@ fn run_user<IO: InstallIo + ?Sized>(
     let launcher = inst::user_launcher(&target.lib_dir);
     prep(Launcher, replace_text(io, &target.launcher(), &launcher, 0o755))?;
 
-    // ── Ярлыки ──────────────────────────────────────────────────────
+    // ── Desktop entries ─────────────────────────────────────────────
     say(MenuShortcuts, 0.5);
     let desktop_dir = dir(&paths.desktop_dir);
     prep(MenuShortcuts, io.make_dirs(&desktop_dir, None))?;
@@ -1656,7 +1669,7 @@ fn run_user<IO: InstallIo + ?Sized>(
         prep(MenuShortcuts, replace_text(io, &format!("{desktop_dir}/{name}"), &text, 0o644))?;
     }
 
-    // ── Значки ──────────────────────────────────────────────────────
+    // ── Icons ───────────────────────────────────────────────────────
     say(Icons, 0.6);
     let icon_root = dir(&paths.icon_root);
     let icons = inst::icon_targets(&payload_icons(io, &pay.icon_dir), &icon_root, &dir(&paths.pixmap_dir));
@@ -1668,17 +1681,17 @@ fn run_user<IO: InstallIo + ?Sized>(
         prep(Icons, place_file(io, src, dst, 0o644))?;
     }
 
-    // ── Кэши меню и значков ─────────────────────────────────────────
+    // ── Menu and icon caches ────────────────────────────────────────
     say(MenuRefresh, 0.7);
     refresh_caches(io, Some(sink), lang, &desktop_dir, &icon_root);
 
-    // ── Дополнения обоев GNOME и Cinnamon ───────────────────────────
+    // ── GNOME and Cinnamon wallpaper add-ons ────────────────────────
     say(WallpaperAddons, 0.8);
     for (src_name, dest_base) in extension_targets(&dir(&paths.gnome_ext_dir), &dir(&paths.cinnamon_ext_dir)) {
         prep(WallpaperAddons, install_extension(io, &target.package_dir(), src_name, &dest_base))?;
     }
 
-    // ── Проверка: Rexon на месте ────────────────────────────────────
+    // ── Check: Rexon is in place ────────────────────────────────────
     let in_place = inst::system_or_user_installed(paths, |p| io.exists(p), |p| io.is_dir(p))
         && match &entry {
             LaunchEntry::MainWindow(path) => io.is_executable(path),
@@ -1691,28 +1704,29 @@ fn run_user<IO: InstallIo + ?Sized>(
         }));
     }
 
-    // ── Папки профиля ───────────────────────────────────────────────
+    // ── Profile folders ─────────────────────────────────────────────
     say(UserFolders, 0.95);
     make_profile_dirs(io);
     Ok(entry)
 }
 
-/// Переносной режим — порт `_install_portable`: ставить нечего, готовятся
-/// только папки профиля. Итог — [`inst::portable_no_install_notice`].
+/// Portable mode — port of `_install_portable`: nothing to install, only the
+/// profile folders are prepared. Summary — [`inst::portable_no_install_notice`].
 pub fn install_portable<IO: InstallIo + ?Sized>(io: &IO, lang: Lang, sink: &dyn DeOpSink) -> InstallResult {
     sink.progress(STAGE_PREPARE, &InstallStep::UserFolders.progress_line(lang), Some(0.5));
     make_profile_dirs(io);
     finish(io, sink, lang, InstallMode::Portable, None, Ok(None))
 }
 
-/// Поставки без бинаря окна нет: ставить было бы нечего. Порядок проверки —
-/// до первого побочного действия.
+/// There is no payload without the window binary: there would be nothing to
+/// install. The check comes before the first side effect.
 ///
-/// ⭐ Починка 16.09.2026: прежде такая установка проходила «успешно» и
-/// уводила ярлык на классическое окно (`LaunchEntry::Python`). Питона в
-/// поставке больше нет, а команда `rexon` теперь сама ведёт на бинарь окна
-/// ([`inst::system_launcher`]) — установка без него положила бы в систему
-/// лаунчер, указывающий в пустоту.
+/// ⭐ Fix of 16.09.2026: previously such an install went through
+/// "successfully" and pointed the desktop entry at the classic window
+/// (`LaunchEntry::Python`). There is no Python in the payload any more, and
+/// the `rexon` command now leads to the window binary itself
+/// ([`inst::system_launcher`]) — an install without it would put into the
+/// system a launcher pointing into the void.
 fn payload_has_window(payload: &PayloadSource) -> Result<(), InstallFailure> {
     if payload.main_window.is_some() {
         return Ok(());
@@ -1726,13 +1740,13 @@ fn payload_has_window(payload: &PayloadSource) -> Result<(), InstallFailure> {
     })
 }
 
-/// Установить Rexon в выбранном режиме — вход для окна мастера.
+/// Install Rexon in the chosen mode — the entry point for the wizard window.
 ///
-/// Защита от дурака (правило #13): установка в систему там, где системные
-/// папки неизменяемы ([`inst::system_mode_blocked_reason_in`] — то же
-/// решение, что `first_run_offer` отдаёт окну как `system_blocked`), молча
-/// превращается в установку в домашнюю папку ДО первого побочного действия;
-/// причина уходит в ход дела и в итог (`fell_back`). Починка 10.
+/// Foolproofing (rule #13): a system install where the system folders are
+/// immutable ([`inst::system_mode_blocked_reason_in`] — the same decision
+/// `first_run_offer` gives the window as `system_blocked`) silently turns into
+/// a home folder install BEFORE the first side effect; the reason goes to
+/// progress and the summary (`fell_back`). Fix 10.
 pub fn install<IO: InstallIo + ?Sized>(
     io: &IO,
     mode: InstallMode,
@@ -1763,34 +1777,34 @@ pub fn install<IO: InstallIo + ?Sized>(
 }
 
 // ============================================================================
-// Удаление Rexon
+// Uninstalling Rexon
 // ============================================================================
 //
-// Порт `RexonUninstaller` (`rexon/installer.py`): пакет дистрибутива →
-// установка для всех → установка для себя → настройки и резервные копии.
-// Решения — в ядре ([`inst::uninstall_system_paths`],
-// [`inst::uninstall_user_paths`], [`inst::get_installed_files`]), здесь —
-// исполнение через [`InstallIo`]. Починки 15–19 — в шапке модуля.
+// Port of `RexonUninstaller` (`rexon/installer.py`): distribution package →
+// install for everyone → install for oneself → settings and backups.
+// Decisions are in the core ([`inst::uninstall_system_paths`],
+// [`inst::uninstall_user_paths`], [`inst::get_installed_files`]), here —
+// execution through [`InstallIo`]. Fixes 15–19 are in the module header.
 
-/// Потолок запроса «чей это файл» к пакетному менеджеру, с.
+/// Ceiling of a "whose file is this" query to the package manager, s.
 pub const OWNER_QUERY_TIMEOUT_SECS: u64 = 10;
-/// Префикс временной папки корневого скрипта удаления.
+/// Prefix of the uninstall root script's temporary folder.
 pub const UNINSTALL_STAGE_PREFIX: &str = "rexon_uninstall_";
-/// Этап работы удаления.
+/// Uninstall stage.
 pub const STAGE_UNINSTALL: &str = "app_uninstall";
 
-/// Пакет дистрибутива, которым поставлен Rexon.
+/// The distribution package Rexon was installed with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DistroPackage {
     pub family: PkgFamily,
     pub name: String,
 }
 
-/// Порт `_detect_distro_package`: спросить у пакетного менеджера владельца
-/// наших файлов. `None` — ручная, переносная или разработческая копия.
+/// Port of `_detect_distro_package`: ask the package manager for the owner of
+/// our files. `None` — a manual, portable or developer copy.
 ///
-/// `own_exe` — путь своего исполняемого файла: у Rust нет `__file__`, а
-/// владельца надо спрашивать про тот файл, который реально стоит в системе.
+/// `own_exe` — the path of our own executable: Rust has no `__file__`, and the
+/// owner must be asked about the file that is actually installed in the system.
 pub fn detect_distro_package<IO: SystemIo + ?Sized>(
     io: &IO,
     family: PkgFamily,
@@ -1818,29 +1832,29 @@ pub fn detect_distro_package<IO: SystemIo + ?Sized>(
     })
 }
 
-/// Что удалять.
+/// What to remove.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UninstallRequest {
-    /// Пакет дистрибутива ([`detect_distro_package`]).
+    /// Distribution package ([`detect_distro_package`]).
     pub package: Option<DistroPackage>,
-    /// Найдена установка для всех пользователей.
+    /// An install for all users was found.
     pub system: bool,
-    /// Найдена установка в домашнюю папку.
+    /// A home folder install was found.
     pub user: bool,
-    /// «Удалить, но сохранить настройки и резервные копии» (решение
-    /// Wehrwolfmann 15.09.2026): настройки (`$XDG_CONFIG_HOME/rexon`, в ней
-    /// же журнал установленных тем `ocs_installed.json`), резервные копии
-    /// рабочих столов и установленные обои, темы и дополнения (всё в
-    /// `$XDG_DATA_HOME/rexon`) не трогаются, чтобы после повторной установки
-    /// продолжить с того же места. Временные файлы (`$XDG_CACHE_HOME/rexon`)
-    /// удаляются при любом выборе. Перечень — [`inst::user_data_roots`].
+    /// «Uninstall but Keep Settings and Backups» (Wehrwolfmann's decision of
+    /// 15.09.2026): settings (`$XDG_CONFIG_HOME/rexon`, which also holds the
+    /// installed themes journal `ocs_installed.json`), desktop backups and the
+    /// installed wallpapers, themes and add-ons (all in `$XDG_DATA_HOME/rexon`)
+    /// are not touched, so that after reinstalling one can continue from the same
+    /// place. Temporary files (`$XDG_CACHE_HOME/rexon`) are removed with any
+    /// choice. The list — [`inst::user_data_roots`].
     pub keep_profile: bool,
-    /// Язык строк хода и итога.
+    /// Language of the progress and summary strings.
     pub lang: Lang,
 }
 
-/// Пути установки в домашнюю папку; `None` — домашняя папка не определена
-/// (удалять по относительному пути нельзя).
+/// Home folder install paths; `None` — the home folder is not determined
+/// (removing by a relative path is not allowed).
 fn user_install_paths<IO: SystemIo + ?Sized>(io: &IO) -> Option<inst::InstallPaths> {
     let home = io.env("HOME").trim_end_matches('/').to_string();
     inst::user_install_lib_dir(&home)?;
@@ -1853,7 +1867,7 @@ fn installed_at<IO: SystemIo + ?Sized>(io: &IO, paths: &inst::InstallPaths) -> b
 }
 
 impl UninstallRequest {
-    /// Что установлено на этой машине — только чтение.
+    /// What is installed on this machine — read only.
     pub fn detect<IO: SystemIo + ?Sized>(
         io: &IO,
         package: Option<DistroPackage>,
@@ -1870,11 +1884,11 @@ impl UninstallRequest {
     }
 }
 
-/// Пользовательские данные Rexon на этой машине: (категория, путь), только
-/// существующее. Корень установленного содержимого развёрнут в то, что в нём
-/// лежит, кроме резервных копий; корень, который сам ссылка, остаётся одной
-/// строкой (удалится сама ссылка), и резервные копии по ту сторону такой
-/// ссылки не называются — это уже чужая папка.
+/// Rexon user data on this machine: (category, path), existing ones only. The
+/// root of installed content is expanded into what lies in it, except
+/// backups; a root that is itself a link stays one line (the link itself
+/// will be removed), and backups on the far side of such a link are not
+/// named — that is someone else's folder already.
 fn user_data_entries<IO: SystemIo + ?Sized>(io: &IO) -> Vec<(inst::UserDataKind, String)> {
     use inst::UserDataKind as K;
     let roots = inst::user_data_roots(
@@ -1911,18 +1925,18 @@ fn user_data_entries<IO: SystemIo + ?Sized>(io: &IO) -> Vec<(inst::UserDataKind,
     out
 }
 
-/// Перечень для окна вопроса «Удалить Rexon».
+/// The list for the «Uninstall Rexon» question dialog.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UninstallListing {
-    /// Файлы программы (и пакет дистрибутива) — удаляются при любом выборе.
+    /// Program files (and the distribution package) — removed with any choice.
     pub program: Vec<String>,
-    /// Данные человека по категориям; что из них удалится, решает выбор
-    /// ([`inst::UserDataKind::removed_when_keeping`]).
+    /// The person's data by category; which of it is removed is decided by the
+    /// choice ([`inst::UserDataKind::removed_when_keeping`]).
     pub user_data: Vec<(inst::UserDataKind, String)>,
 }
 
 impl UninstallListing {
-    /// Всё, что удалится при этом выборе, — программа, потом данные.
+    /// Everything removed with this choice — the program, then the data.
     pub fn removed(&self, keep_profile: bool) -> Vec<String> {
         let data = self
             .user_data
@@ -1937,18 +1951,18 @@ impl UninstallListing {
     }
 }
 
-/// Всё, что удалит [`uninstall`], — для окна вопроса. Только чтение.
-/// Ссылки на месте программы, настроек и резервных копий не называются:
-/// удалены они не будут. Ссылка на месте временных файлов или установленного
-/// содержимого называется: удалится сама ссылка. Не установлено ничего —
-/// перечень пуст (удаление тогда ничего не трогает).
+/// Everything [`uninstall`] will remove — for the question dialog. Read only.
+/// Links in place of the program, settings and backups are not named: they
+/// won't be removed. A link in place of temporary files or installed content
+/// is named: the link itself will be removed. Nothing installed — the list is
+/// empty (uninstall then touches nothing).
 pub fn uninstall_files<IO: SystemIo + ?Sized>(io: &IO, req: &UninstallRequest) -> UninstallListing {
     if req.nothing_installed() {
         return UninstallListing::default();
     }
     let sys = inst::install_paths(InstallMode::System, "", None);
     let usr = user_install_paths(io).filter(|_| req.user);
-    // Настройки и копии идут своими категориями, а не путями программы.
+    // Settings and backups go as their own categories, not as program paths.
     let program = inst::get_installed_files(
         req.package.as_ref().map(|p| p.name.as_str()),
         req.system.then_some(&sys),
@@ -1967,22 +1981,22 @@ pub fn uninstall_files<IO: SystemIo + ?Sized>(io: &IO, req: &UninstallRequest) -
     UninstallListing { program, user_data }
 }
 
-/// Чем кончилось удаление.
+/// How the uninstall ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UninstallOutcome {
-    /// Удалено; `kept_links` — ссылки на чужие папки, которые не трогали.
+    /// Removed; `kept_links` — links to foreign folders that were left alone.
     Removed { kept_links: Vec<String> },
-    /// Удалять нечего — ничего не тронуто.
+    /// Nothing to remove — nothing touched.
     NotInstalled,
-    /// Отменено до запроса пароля — ничего не тронуто.
+    /// Cancelled before the password prompt — nothing touched.
     Cancelled,
-    /// Пакет, удалять который Rexon не умеет, — ничего не тронуто.
+    /// A package Rexon doesn't know how to remove — nothing touched.
     PackageUnsupported { name: String },
     Failed(InstallFailure),
 }
 
-/// Исход и строка итога для человека ([`inst::uninstall_done_line`] и
-/// соседи).
+/// Outcome and the summary line for the person ([`inst::uninstall_done_line`]
+/// and neighbours).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UninstallResult {
     pub outcome: UninstallOutcome,
@@ -1995,8 +2009,8 @@ impl UninstallResult {
     }
 }
 
-/// План удаления годен исполнителю: запись скрипта, запуск удаления под
-/// паролем, уборка. Чужой шаг — отказ, а не тихое «сделано».
+/// The uninstall plan is fit for the executor: writing the script, running the
+/// removal under a password, cleanup. A foreign step is a refusal, not a quiet "done".
 fn check_uninstall_plan(steps: &[PlanStep]) -> bool {
     steps.iter().all(|s| {
         matches!(
@@ -2008,13 +2022,13 @@ fn check_uninstall_plan(steps: &[PlanStep]) -> bool {
     })
 }
 
-/// (удалять, ссылки на чужие папки). Ссылку не удаляем и не проходим:
-/// починка 16.
+/// (to remove, links to foreign folders). A link is neither removed nor
+/// traversed: fix 16.
 fn split_links<IO: SystemIo + ?Sized>(io: &IO, paths: Vec<String>) -> (Vec<String>, Vec<String>) {
     paths.into_iter().partition(|p| !is_redirected(io, p))
 }
 
-/// Удалить путь: каталог целиком или файл (висячую ссылку — как файл).
+/// Remove a path: a whole directory or a file (a dangling link — as a file).
 fn remove_path<IO: InstallIo + ?Sized>(io: &IO, path: &str) {
     if io.is_dir(path) {
         io.remove_tree(path)
@@ -2023,8 +2037,8 @@ fn remove_path<IO: InstallIo + ?Sized>(io: &IO, path: &str) {
     }
 }
 
-/// Сбой удаления. Шаг у отказа удаления человеку не называется
-/// ([`inst::uninstall_failure_line`]), поле нужно только типу.
+/// An uninstall failure. The step is not named to the person on an uninstall
+/// refusal ([`inst::uninstall_failure_line`]), the field is only needed by the type.
 fn removal_failed(detail: impl Into<String>) -> UninstallOutcome {
     UninstallOutcome::Failed(InstallFailure::StepFailed {
         step: InstallStep::SystemInstall,
@@ -2032,16 +2046,16 @@ fn removal_failed(detail: impl Into<String>) -> UninstallOutcome {
     })
 }
 
-/// Удалить Rexon — вход окна меню «Удалить Rexon».
+/// Uninstall Rexon — the entry point of the window's «Uninstall Rexon» menu.
 ///
-/// Порядок: отказы до побочных действий (нечего удалять, пакет без
-/// известного способа удаления, отмена) → пакет средствами его менеджера →
-/// установка для всех одним корневым скриптом под паролем → установка для
-/// себя без пароля → временные файлы (при любом выборе) → настройки,
-/// резервные копии и установленные обои, темы и дополнения (при «сохранить»
-/// ничто из этого не трогается).
-/// Сбой останавливает удаление: профиль удаляется последним и только после
-/// удачи всего остального. Отменить можно до первого запроса пароля.
+/// Order: refusals before side effects (nothing to remove, a package with no
+/// known way to remove it, cancel) → the package via its manager → the
+/// install for everyone with one root script under a password → the install
+/// for oneself without a password → temporary files (with any choice) →
+/// settings, backups and installed wallpapers, themes and add-ons (with
+/// «keep» none of these is touched).
+/// A failure stops the uninstall: the profile is removed last and only after
+/// everything else succeeded. Cancelling is possible until the first password prompt.
 pub fn uninstall<IO: InstallIo + ?Sized>(
     io: &IO,
     req: &UninstallRequest,
@@ -2103,7 +2117,7 @@ fn run_uninstall<IO: InstallIo + ?Sized>(
     let say = |part: inst::UninstallPart, fraction: f64| {
         sink.progress(STAGE_UNINSTALL, &part.progress_line(lang), Some(fraction));
     };
-    // ── Отказы до первого побочного действия ────────────────────────
+    // ── Refusals before the first side effect ───────────────────────
     let package_cmd = match &req.package {
         Some(pkg) => match inst::distro_pkg_remove(pkg.family) {
             Some(remove) => Some(inst::pkg_remove_cmd(&remove, &pkg.name)),
@@ -2116,7 +2130,7 @@ fn run_uninstall<IO: InstallIo + ?Sized>(
     }
     let mut kept = Vec::new();
 
-    // ── 1. Пакет дистрибутива — только средствами его менеджера ─────
+    // ── 1. Distribution package — only via its manager ──────────────
     if let Some(cmd) = package_cmd {
         sink.cancellable(false);
         say(inst::UninstallPart::Package, 0.1);
@@ -2124,15 +2138,15 @@ fn run_uninstall<IO: InstallIo + ?Sized>(
         classify_script_run(&out, cmd.timeout_secs.unwrap_or(0)).map_err(UninstallOutcome::Failed)?;
     }
 
-    // ── 2. Установка для всех: один корневой скрипт под паролем ─────
+    // ── 2. Install for everyone: one root script under a password ───
     if req.system {
-        // Отмена ещё возможна, только если пароль не спрашивали.
+        // Cancel is still possible only if the password hasn't been asked.
         let cancel = req.package.is_none().then_some(cancel);
         uninstall_system(io, lang, sink, cancel, &mut kept)?;
     }
     sink.cancellable(false);
 
-    // ── 3. Установка в домашнюю папку: без пароля ───────────────────
+    // ── 3. Home folder install: no password ─────────────────────────
     if let Some(usr) = user_install_paths(io).filter(|_| req.user) {
         say(inst::UninstallPart::User, 0.7);
         let (remove, links) = split_links(io, inst::uninstall_user_paths(&usr, |p| io.exists(p)));
@@ -2144,12 +2158,12 @@ fn run_uninstall<IO: InstallIo + ?Sized>(
         refresh_caches(io, None, lang, &dir(&usr.desktop_dir), &dir(&usr.icon_root));
     }
 
-    // ── 3½. Сторожа входа и сеанса Plasma — при ЛЮБОМ выборе ─────────
-    // Программы больше нет: вернуть откаченное оформление и снять юнит
-    // сейчас, иначе возвращать его станет некому.
+    // ── 3½. Login and Plasma session guards — with ANY choice ───────
+    // The program is gone: restore the rolled-back appearance and remove the unit
+    // now, otherwise there will be no one left to restore it.
     release_session_guard(io);
 
-    // ── 4. Временные файлы — при ЛЮБОМ выборе ────────────────────────
+    // ── 4. Temporary files — with ANY choice ────────────────────────
     let data = user_data_entries(io);
     let mut unlinked = Vec::new();
     let (always, on_full): (Vec<_>, Vec<_>) = data.into_iter().partition(|(k, _)| k.removed_when_keeping());
@@ -2160,14 +2174,14 @@ fn run_uninstall<IO: InstallIo + ?Sized>(
         }
     }
 
-    // ── 5. Настройки, резервные копии, установленные обои и темы ────
-    // Последними и только при «Удалить всё». «Сохранить» оставляет всё
-    // это: человек, который переустановит Rexon, продолжит с того же места.
+    // ── 5. Settings, backups, installed wallpapers and themes ────────
+    // Last, and only with «Remove Everything». «Keep» leaves all of this: a
+    // person who reinstalls Rexon will continue from the same place.
     if !req.keep_profile && !on_full.is_empty() {
         say(inst::UninstallPart::Profile, 0.9);
         for (kind, p) in &on_full {
             match kind {
-                // Как прежде (починка 16): ссылку не удаляем и не проходим.
+                // As before (fix 16): a link is neither removed nor traversed.
                 inst::UserDataKind::Settings | inst::UserDataKind::Backups => {
                     if is_redirected(io, p) {
                         kept.push(p.clone());
@@ -2178,8 +2192,8 @@ fn run_uninstall<IO: InstallIo + ?Sized>(
                 _ => remove_own_data(io, p, &mut unlinked),
             }
         }
-        // Опустевший корень данных — тоже. Непустой (осталась ссылка на
-        // резервные копии) не трогается.
+        // An emptied data root — too. A non-empty one (a link to the backups
+        // remained) is not touched.
         let home = io.env("HOME");
         for (_, root) in inst::user_data_roots(&home, "", &io.env("XDG_DATA_HOME"), "")
             .into_iter()
@@ -2193,11 +2207,11 @@ fn run_uninstall<IO: InstallIo + ?Sized>(
     Ok(Removal { kept, unlinked })
 }
 
-/// Удаление Rexon во время отката AeroThemePlasma
-/// ([`crate::session_guard::release_for_uninstall`]): эффекты KWin —
-/// сразу, раскладка — однократным сценарием при следующем входе; юнит
-/// сторожа сеанса снимается. Без root; сбой — только в журнал: удалению
-/// программы он не помеха.
+/// Uninstalling Rexon during an AeroThemePlasma rollback
+/// ([`crate::session_guard::release_for_uninstall`]): KWin effects — right
+/// away, the layout — with a one-shot script at the next login; the session
+/// guard unit is removed. No root; a failure goes only to the log: it is no
+/// obstacle to removing the program.
 fn release_session_guard<IO: InstallIo + ?Sized>(io: &IO) {
     let home = io.env("HOME");
     if !home.starts_with('/') {
@@ -2232,9 +2246,9 @@ fn release_session_guard<IO: InstallIo + ?Sized>(io: &IO) {
             }
         }
     }
-    // Выбор демона уведомлений (`notifications_slot`): без Rexon его никто
-    // не обновит. Убираем только НАШ файл (метка в первой строке); чужой,
-    // положенный человеком, остаётся. Шина лишь перечитывает конфигурацию.
+    // The notification daemon choice (`notifications_slot`): without Rexon nobody
+    // will update it. We remove only OUR file (the marker in the first line); a
+    // foreign one put there by the person stays. The bus only rereads its configuration.
     let slot = crate::notifications_slot::SlotPaths::from_env(&home, &io.env("XDG_DATA_HOME")).user_file;
     let slot = slot.to_string_lossy();
     if io.read_text(&slot).is_some_and(|t| crate::notifications_slot::is_ours(&t)) {
@@ -2243,9 +2257,9 @@ fn release_session_guard<IO: InstallIo + ?Sized>(io: &IO) {
             io.run(&crate::appdefaults::busctl_reload_cmd(), Some(10), true);
         }
     }
-    // Светлое и тёмное по расписанию: таймер, служба и автозапуск без
-    // Rexon будили бы пустоту. Настройку Plasma (её же «Автоматически»)
-    // не трогаем — это настройка самой Plasma.
+    // Light and dark on a schedule: the timer, the service and autostart would
+    // wake up nothing without Rexon. The Plasma setting (its own «Automatically»)
+    // is left alone — it is Plasma's own setting.
     let dn = crate::day_night::Paths { config_home: config, state_home: state };
     let present: Vec<String> = crate::day_night::uninstall_paths(&dn).into_iter().filter(|p| io.exists(p)).collect();
     if !present.is_empty() {
@@ -2265,18 +2279,18 @@ fn release_session_guard<IO: InstallIo + ?Sized>(io: &IO) {
     }
 }
 
-/// Что осталось и что удалено ссылкой — для итога.
+/// What was left and what was removed as a link — for the summary.
 struct Removal {
-    /// Ссылки на месте программы, настроек и копий: не тронуты.
+    /// Links in place of the program, settings and backups: left untouched.
     kept: Vec<String>,
-    /// Ссылки на месте временных файлов и установленного: удалена сама ссылка.
+    /// Links in place of temporary files and installed content: the link itself was removed.
     unlinked: Vec<String>,
 }
 
-/// Временные файлы и установленное содержимое. Ссылка на другую папку
-/// удаляется САМА, по ней не ходим: то, на что она указывает, — не наше.
-/// Остальное — целиком; ссылки внутри каталога при этом тоже удаляются
-/// как ссылки (удаление дерева по ним не ходит).
+/// Temporary files and installed content. A link to another folder is removed
+/// ITSELF, we don't follow it: what it points to is not ours. The rest — in
+/// full; links inside the directory are removed as links too (tree removal
+/// doesn't follow them).
 fn remove_own_data<IO: InstallIo + ?Sized>(io: &IO, path: &str, unlinked: &mut Vec<String>) {
     if is_redirected(io, path) {
         io.remove_file(path);
@@ -2286,8 +2300,8 @@ fn remove_own_data<IO: InstallIo + ?Sized>(io: &IO, path: &str, unlinked: &mut V
     }
 }
 
-/// Установка для всех: скрипт во временной папке → пароль → уборка папки на
-/// ЛЮБОМ исходе (починка 18). Ссылки из списка в скрипт не попадают.
+/// Install for everyone: the script in a temporary folder → password →
+/// cleanup of the folder on ANY outcome (fix 18). Links from the list don't get into the script.
 fn uninstall_system<IO: InstallIo + ?Sized>(
     io: &IO,
     lang: Lang,
@@ -2334,7 +2348,7 @@ fn run_system_script<IO: InstallIo + ?Sized>(
                 sink.progress(STAGE_UNINSTALL, &inst::UninstallPart::System.progress_line(lang), Some(0.4));
                 run_out = Some((io.run(&cmd.argv, cmd.timeout_secs, cmd.lang_c), cmd.timeout_secs.unwrap_or(0)));
             }
-            // Уборку делает `uninstall_system` — всю папку, на любом исходе.
+            // Cleanup is done by `uninstall_system` — the whole folder, on any outcome.
             PlanStep::RemoveFiles { .. } => {}
             _ => return Err(foreign_step()),
         }
@@ -2343,8 +2357,8 @@ fn run_system_script<IO: InstallIo + ?Sized>(
     classify_script_run(&out, secs).map_err(UninstallOutcome::Failed)
 }
 
-/// Приёмник хода без окна: строки уходят в журнал Rexon (`applog`). Им пользуется
-/// окно меню «Удалить Rexon» — окна хода у него нет, итог приходит сигналом.
+/// A progress receiver without a window: lines go to the Rexon log (`applog`). Used by
+/// the window's «Uninstall Rexon» menu — it has no progress window, the result arrives as a signal.
 pub struct LogSink;
 
 impl DeOpSink for LogSink {
@@ -2355,10 +2369,10 @@ impl DeOpSink for LogSink {
 }
 
 // ============================================================================
-// Живой исполнитель
+// Live executor
 // ============================================================================
 
-/// [`InstallIo`] поверх живой машины — то, чем пользуется продукт.
+/// [`InstallIo`] on top of the live machine — what the product uses.
 pub struct LiveInstallIo {
     de: LiveDeOpsIo,
 }
@@ -2442,10 +2456,10 @@ fn walk_copy(
         let path = entry.path();
         let target = dst.join(&name);
         let Ok(link) = std::fs::symlink_metadata(&path) else { continue };
-        // Висячий симлинк — мимо (как `ignore_dangling_symlinks`).
+        // A dangling symlink — skipped (like `ignore_dangling_symlinks`).
         let Ok(meta) = std::fs::metadata(&path) else { continue };
         if meta.is_dir() {
-            // Симлинк на каталог — мимо: петля или путь вне поставки.
+            // A symlink to a directory — skipped: a loop or a path outside the payload.
             if link.file_type().is_symlink() {
                 continue;
             }
@@ -2514,7 +2528,7 @@ impl InstallIo for LiveInstallIo {
 }
 
 // ============================================================================
-// Тесты — ТОЛЬКО подменный исполнитель
+// Tests — ONLY the substitute executor
 // ============================================================================
 
 #[cfg(test)]
@@ -2547,18 +2561,18 @@ mod tests {
         calls: RefCell<Vec<Call>>,
         files: HashSet<String>,
         dirs: HashSet<String>,
-        /// Содержимое деревьев: (относительный путь, каталог, исполняемый).
+        /// Tree contents: (relative path, directory, executable).
         trees: HashMap<String, Vec<(String, bool, bool)>>,
         env: HashMap<String, String>,
         reply: Reply,
-        /// Скрипт «положил» файлы — цель видна после запуска.
+        /// The script "put" files — the target is visible after the run.
         lands: bool,
         landed: Cell<bool>,
         fail_temp_dir: bool,
         fail_copy_tree: bool,
-        /// Ссылки: путь → куда ведёт (`realpath`).
+        /// Links: path → where it leads (`realpath`).
         links: HashMap<String, String>,
-        /// Программы, которые «есть» (`which`).
+        /// Programs that "exist" (`which`).
         tools: HashSet<String>,
     }
 
@@ -2728,7 +2742,7 @@ mod tests {
             if self.fail_temp_dir {
                 Err("нет места".into())
             } else {
-                // Каталог внутри `parent`, как у живого; без него — прежний.
+                // A directory inside `parent`, as with the live one; without it — the previous one.
                 Ok(parent.map_or_else(|| STAGE.to_string(), |p| format!("{p}/{}", basename(STAGE))))
             }
         }
@@ -2825,7 +2839,7 @@ mod tests {
         io.written(&StagePaths::new(STAGE).script()).expect("скрипт записан").0
     }
 
-    /// Уборка: временный каталог снят ПОСЛЕ всех побочных действий в нём.
+    /// Cleanup: the temporary directory is removed AFTER all side effects in it.
     fn cleaned_last(io: &FakeIo) {
         let calls = io.calls();
         let remove = calls.iter().rposition(|c| *c == Call::RemoveTree(STAGE.into()));
@@ -2844,7 +2858,7 @@ mod tests {
         r.failure().cloned().unwrap_or_else(|| panic!("ждали неудачу: {r:?}"))
     }
 
-    // ── Успех ───────────────────────────────────────────────────────
+    // ── Success ─────────────────────────────────────────────────────
 
     #[test]
     fn success_runs_script_once_under_password_and_cleans_up() {
@@ -2869,14 +2883,14 @@ mod tests {
             "один запуск под паролем; починка 3: таймаут 600 с"
         );
 
-        // Записанный скрипт — ровно текст ядра для этих параметров.
+        // The written script is exactly the core's text for these parameters.
         let params = system_script_params(&io, &req, &StagePaths::new(STAGE));
         let (text, mode) = io.written(&script).unwrap();
         assert_eq!(text, install_script(&params));
         assert_eq!(mode, 0o700);
 
-        // Всё, что пишется и копируется, — во временном каталоге или в
-        // подставном HOME: ни /usr, ни /etc исполнитель сам не трогает.
+        // Everything written and copied is in the temporary directory or in the
+        // substitute HOME: the executor itself touches neither /usr nor /etc.
         for c in io.calls() {
             let dst = match &c {
                 Call::Write(p, ..) | Call::CopyFile(_, p, _) | Call::CopyTree(_, p) | Call::MakeDirs(p, _) => p,
@@ -2911,7 +2925,7 @@ mod tests {
         ));
     }
 
-    // ── Отказ пароля и сбой шага (починка 1) ────────────────────────
+    // ── Password refusal and step failure (fix 1) ───────────────────
 
     #[test]
     fn closed_password_window_is_password_denied_not_a_failed_install() {
@@ -2950,19 +2964,19 @@ mod tests {
             "{detail}"
         );
         assert!(!detail.contains(FAIL_MARK) && !detail.contains(STEP_MARK));
-        // ⭐ 16.09.2026: отказ на этом шаге НАЗЫВАЕТ человеку, чего не
-        // хватило, и говорит, что система не тронута, — общей фразы «не
-        // получилось: установка недостающих компонентов» здесь больше нет.
+        // ⭐ 16.09.2026: a refusal at this step NAMES to the person what was missing
+        // and says the system is untouched — the generic phrase "failed: installing
+        // missing components" is no longer here.
         assert!(r.message.contains(&inst::dependencies_failed_problem(RU)), "{}", r.message);
-        // Слова — английские (исходный язык каталога); русский слово в слово
-        // сверяет `tests/installer_parity.rs`.
+        // The words are English (the catalog's source language); the Russian is
+        // checked word for word by `tests/installer_parity.rs`.
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let message = inst::dependencies_failed_problem(RU);
         for word in ["Qt6", "wallpaper layer", "video player", "Vulkan loader"] {
             assert!(message.contains(word), "не названо «{word}»: {message}");
         }
         assert!(message.contains("Nothing in the system was changed"), "{message}");
-        // Сырое имя пакета — только в подробностях для разработчика.
+        // The raw package name — only in the developer details.
         assert!(!r.message.contains("layer-shell-qt"), "{}", r.message);
         assert!(!sink.has(&format!("✅ {}", InstallStep::Dependencies.progress_line(RU).trim_end_matches('…'))));
         cleaned_last(&io);
@@ -2970,7 +2984,7 @@ mod tests {
 
     #[test]
     fn code_127_from_inside_started_script_is_a_step_failure() {
-        // «команда не найдена» внутри скрипта тоже даёт 127 — но скрипт шёл.
+        // "command not found" inside the script also gives 127 — but the script ran.
         let io = FakeIo::new(|| out(127, &marks(&["deps", "files"]), &format!("cp: not found\n{FAIL_MARK}files\n")));
         let (r, sink) = install(&io, &request());
         assert!(matches!(failure(&r), InstallFailure::StepFailed { step: InstallStep::CopyFiles, .. }));
@@ -3022,7 +3036,7 @@ mod tests {
         ));
     }
 
-    // ── Уборка при ошибке подготовки и отмене (починка 2) ───────────
+    // ── Cleanup on a preparation error and on cancel (fix 2) ────────
 
     #[test]
     fn prepare_failure_cleans_up_and_never_asks_password() {
@@ -3067,7 +3081,7 @@ mod tests {
         assert!(io.calls().is_empty(), "{:?}", io.calls());
     }
 
-    // ── Права файлов (починка 4) ────────────────────────────────────
+    // ── File permissions (fix 4) ────────────────────────────────────
 
     #[test]
     fn modes_dirs_755_files_644_executables_755() {
@@ -3124,7 +3138,7 @@ mod tests {
         assert!(script.contains("chown -R root:root /usr/local/lib/rexon\n"));
     }
 
-    // ── Rust-окно и откат на Python (починка 5) ─────────────────────
+    // ── Rust window and fallback to Python (fix 5) ──────────────────
 
     #[test]
     fn installs_rust_window_and_menu_entry_points_to_it() {
@@ -3134,8 +3148,8 @@ mod tests {
         assert_eq!(r.entry, Some(LaunchEntry::MainWindow(target.main_window())));
         let desktop = io.written(&StagePaths::new(STAGE).desktop()).unwrap().0;
         assert!(desktop.contains(&format!("Exec={}\n", target.main_window())), "{desktop}");
-        // 16.09.2026: пункта «классическое окно» в ярлыке больше нет —
-        // ставить его нечем, команда `rexon` ведёт на то же Rust-окно.
+        // 16.09.2026: there is no "classic window" item in the desktop entry any
+        // more — nothing to install it with, the `rexon` command leads to the same Rust window.
         assert!(!desktop.contains("Classic"), "{desktop}");
 
         let script = script_of(&io);
@@ -3144,11 +3158,11 @@ mod tests {
         }
     }
 
-    /// ⭐ 16.09.2026: поставка без бинаря окна — отказ ДО первого побочного
-    /// действия. Прежде такая установка проходила «успешно» и уводила ярлык
-    /// на классическое окно; питона в поставке больше нет, а команда `rexon`
-    /// сама ведёт на бинарь окна — установка положила бы в систему лаунчер,
-    /// указывающий в пустоту.
+    /// ⭐ 16.09.2026: a payload without the window binary is refused BEFORE the
+    /// first side effect. Previously such an install went through "successfully"
+    /// and pointed the desktop entry at the classic window; there is no Python in
+    /// the payload any more, and the `rexon` command itself leads to the window
+    /// binary — the install would put into the system a launcher pointing into the void.
     #[test]
     fn without_the_window_binary_the_install_refuses_and_touches_nothing() {
         for mode in [InstallMode::System, InstallMode::User] {
@@ -3166,7 +3180,7 @@ mod tests {
             assert!(io.calls().is_empty(), "{mode:?}: система не тронута");
         }
 
-        // Переносному режиму бинарь не нужен — ставить он ничего и не пытается.
+        // Portable mode doesn't need the binary — it doesn't try to install anything.
         let io = FakeIo::ok();
         let mut req = request();
         req.payload.main_window = None;
@@ -3175,9 +3189,9 @@ mod tests {
         assert!(r.ok(), "{r:?}");
     }
 
-    /// Лаунчер `rexon` ручной установки ведёт на бинарь окна — как у пакета
-    /// дистрибутива, но БЕЗ признака пакета: иначе выбор режима счёл бы
-    /// установку переносной и мастер больше не открылся бы.
+    /// The manual install's `rexon` launcher leads to the window binary — as with
+    /// the distribution package, but WITHOUT the package marker: otherwise mode
+    /// selection would consider the install portable and the wizard would never open again.
     #[test]
     fn the_command_leads_to_the_window_binary_without_the_package_mark() {
         let io = FakeIo::ok();
@@ -3190,8 +3204,8 @@ mod tests {
         assert!(!text.contains(inst::PACKAGED_ENV), "{text}");
         assert!(!text.contains("python"), "{text}");
 
-        // Переменная отката ярлык уводит, а лаунчер — нет: вести ему больше
-        // некуда, классического окна в поставке нет.
+        // The fallback variable redirects the desktop entry, but not the launcher:
+        // it has nowhere else to lead, there is no classic window in the payload.
         let io = FakeIo::ok();
         let mut req = request();
         req.entry_env = Some("python".into());
@@ -3203,7 +3217,7 @@ mod tests {
         );
     }
 
-    // ── Раскладка одна (починка 6) ──────────────────────────────────
+    // ── The layout is one (fix 6) ───────────────────────────────────
 
     #[test]
     fn layout_is_one_for_package_and_manual_install() {
@@ -3231,7 +3245,7 @@ mod tests {
             "команда `rexon` ведёт на бинарь окна этой же раскладки"
         );
 
-        // Домашняя папка — та же форма, и поиск её знает (починка 11).
+        // The home folder has the same shape, and the lookup knows it (fix 11).
         let user = InstallLayout::for_mode(InstallMode::User, "/h", None).unwrap();
         assert_eq!(user.main_window(), "/h/.local/lib/rexon/rexon-main-window");
         assert_eq!(user.wallpaper_host(), "/h/.local/bin/rexon-wallpaper-host");
@@ -3258,13 +3272,13 @@ mod tests {
         );
         assert!(InstallLayout::for_mode(InstallMode::Portable, "/h", None).is_none());
 
-        // Пакет кладёт нашу .so туда же (PKGBUILD), а бывшую библиотеку
-        // rexon-gui не кладёт вовсе.
+        // The package puts our .so in the same place (PKGBUILD), and doesn't ship
+        // the former rexon-gui library at all.
         let pkgbuild = include_str!("../../../packaging/aur/PKGBUILD");
         assert!(pkgbuild.contains(&format!("\"$qmod/{}/{}\"", qm::RUST_LIB_SUBDIR, qm::FILTER_LIB_NAME)));
         assert!(!pkgbuild.contains(RETIRED_GUI_LIB));
 
-        // Расширения берутся из пакета внутри <lib>, а не из <lib> напрямую.
+        // Extensions are taken from the package inside <lib>, not from <lib> directly.
         let io = FakeIo::ok();
         install(&io, &request());
         assert!(script_of(&io).contains(&format!("EXT_SRC=/usr/local/lib/rexon/rexon/\"$DE_DIR\"/{}", inst::EXT_ID)));
@@ -3277,7 +3291,7 @@ mod tests {
         assert_eq!(PayloadSource::for_running(&io, "/src/rexon-main-window", "", "/h", None), payload());
     }
 
-    // ── Правило без пароля — только по согласию (починка 7) ─────────
+    // ── The no-password rule — only with consent (fix 7) ────────────
 
     #[test]
     fn no_consent_no_passwordless_rule() {
@@ -3292,14 +3306,14 @@ mod tests {
         assert!(!script.contains(&format!("{} {}", st.helpers().tmp_de_rules, plan::REXON_POLKIT_RULES_PATH)));
         assert!(!script.contains("rexon_step rule"));
         assert!(script.contains(&format!("rm -f {}", plan::REXON_POLKIT_RULES_PATH)), "молчаливое прежнее снимается");
-        // Помощники при этом ставятся все: восемь файлов прежних и два —
-        // сеанса прав (бинарь и политика).
+        // All helpers are installed in this case: eight old files and two of the
+        // privilege session (binary and policy).
         assert_eq!(script.matches(&format!("{}/", st.polkit_dir())).count(), 10);
     }
 
-    /// ⛔ «Один пароль на запуск» (Б11): ручная установка кладёт помощника
-    /// сеанса прав бинарём из поставки (755) и политику `org.rexon.session`
-    /// (644) в шаге помощников; политика указывает на путь ручной установки.
+    /// ⛔ "One password per run" (B11): the manual install puts the privilege
+    /// session helper as the payload binary (755) and the `org.rexon.session`
+    /// policy (644) in the helpers step; the policy points to the manual install path.
     #[test]
     fn installs_session_helper_and_its_policy() {
         let io = FakeIo::ok();
@@ -3323,9 +3337,9 @@ mod tests {
         assert!(!script.contains(&format!("rm -f {}", plan::SESSION_HELPER_PATH)));
     }
 
-    /// Поставка без помощника сеанса: политика не пишется, а прежний
-    /// помощник снимается — окно новой сборки его всё равно отвергло бы
-    /// («Rexon обновлён»), а без файла операции идут прежним путём.
+    /// A payload without the session helper: the policy is not written, and the
+    /// old helper is removed — a window of the new build would reject it anyway
+    /// («Rexon was updated»), and without the file operations take the old path.
     #[test]
     fn payload_without_session_helper_removes_the_old_one() {
         let io = FakeIo::ok();
@@ -3340,8 +3354,8 @@ mod tests {
         assert!(!script.contains(plan::SESSION_POLICY_PATH), "{script}");
     }
 
-    /// Поставка находит помощника там, куда его кладёт сборка: в дереве
-    /// разработчика — рядом с бинарём окна, в архиве — в `bin/`.
+    /// The payload finds the helper where the build puts it: in the developer
+    /// tree — next to the window binary, in the archive — in `bin/`.
     #[test]
     fn payload_finds_session_helper() {
         let mut io = FakeIo::ok();
@@ -3411,10 +3425,10 @@ mod tests {
         assert_eq!(inst::system_install_cmd("/tmp/x.sh").timeout_secs, Some(600));
     }
 
-    // ── Прочее ──────────────────────────────────────────────────────
+    // ── Miscellaneous ───────────────────────────────────────────────
 
-    /// Зависимости спрашиваются у динамического компоновщика по файлам самой
-    /// поставки, а интерпретатор больше не поднимается ни разу.
+    /// Dependencies are asked of the dynamic linker for the payload's own files,
+    /// and the interpreter is never started.
     #[test]
     fn runtime_deps_are_asked_of_the_dynamic_linker() {
         let ran = |io: &FakeIo| -> Vec<Vec<String>> {
@@ -3430,12 +3444,12 @@ mod tests {
                 .collect()
         };
 
-        // Нечем проверить: `ldd` в системе нет — молчим и никого не зовём.
+        // Nothing to check with: the system has no `ldd` — stay quiet and call nobody.
         let io = FakeIo::ok();
         assert!(runtime_deps_present(&io, &payload()));
         assert!(io.calls().is_empty());
 
-        // Все библиотеки на месте: спрошены ровно файлы поставки.
+        // All libraries present: exactly the payload files were asked about.
         let mut io = FakeIo::ok();
         io.tools.insert(LDD.into());
         io.reply = Box::new(|_| out(0, "\tlibQt6Core.so.6 => /usr/lib/libQt6Core.so.6\n", ""));
@@ -3451,7 +3465,7 @@ mod tests {
             .map(|p| vec![LDD.to_string(), p.to_string()])
         );
 
-        // Одна неразрешённая библиотека — и зависимости ставятся.
+        // One unresolved library — and dependencies get installed.
         let mut io = FakeIo::ok();
         io.tools.insert(LDD.into());
         io.reply = Box::new(|argv: &[String]| {
@@ -3465,7 +3479,7 @@ mod tests {
         let st = StagePaths::new(STAGE);
         assert!(!system_script_params(&io, &request(), &st).dep_lines.is_empty());
 
-        // В поставке нет ни одного бинаря — проверять нечего.
+        // The payload has no binaries — nothing to check.
         let mut io = FakeIo::ok();
         io.tools.insert(LDD.into());
         let empty = PayloadSource {
@@ -3488,12 +3502,12 @@ mod tests {
         assert_eq!(deps_script_lines(PkgFamily::Nix, false, false), "", "NixOS: ставить нечем");
     }
 
-    /// ⭐⭐ Сторож разреза 16.09.2026, и проверяется он У ВСЕХ семейств, а не
-    /// у одного Arch: обязательные зависимости уходят СВОЕЙ строкой без
-    /// прикрытия (падение обрывает установку — так и задумано), желательные
-    /// — своей, с `|| true`. Имена желательных в одиннадцати семействах
-    /// выписаны по правилам именования и вживую не проверены: опечатка там
-    /// не должна стоить человеку всей установки.
+    /// ⭐⭐ Guard of the 16.09.2026 split, and it is checked for ALL families, not
+    /// just Arch: required dependencies go on THEIR OWN line without cover (a
+    /// failure aborts the install — as intended), recommended ones — on their own,
+    /// with `|| true`. The recommended names in eleven families are written out by
+    /// naming rules and not verified live: a typo there must not cost the person
+    /// the whole install.
     #[test]
     fn every_family_sends_must_have_and_nice_to_have_in_separate_lines() {
         for family in [
@@ -3502,14 +3516,14 @@ mod tests {
             PkgFamily::Solus, PkgFamily::Clear, PkgFamily::Alt, PkgFamily::Unknown,
         ] {
             let name = family.as_str();
-            // Переключатель стиля уже стоит — в тексте остаются только два
-            // разряда зависимостей.
+            // The style switcher is already installed — only the two dependency tiers
+            // remain in the text.
             let text = deps_script_lines(family, false, true);
             let must = inst::dep_install_cmd(family);
             let want = inst::optional_dep_install_cmd(family);
             if must.is_empty() {
-                // NixOS и «менеджер не опознан» — ставить нечем ни тем, ни
-                // другим разрядом; выдумывать команду нельзя.
+                // NixOS and "manager not recognised" — nothing to install either tier with;
+                // inventing a command is not allowed.
                 assert!(want.is_empty(), "{name}: желательные есть, а обязательных нет");
                 assert_eq!(text, "", "{name}: ставить нечем — строк нет");
                 continue;
@@ -3522,7 +3536,7 @@ mod tests {
                 "{name}: обязательные прикрыты — отказ стал бы молчаливым"
             );
             assert_eq!(lines[1], format!("{want} || true"), "{name}: вторая строка — желательные");
-            // Строки не пересекаются: ни одно имя не ставится дважды.
+            // The lines don't overlap: no name is installed twice.
             for pkg in inst::optional_dep_packages(family) {
                 assert!(
                     !lines[0].split_whitespace().any(|w| w == pkg),
@@ -3532,16 +3546,16 @@ mod tests {
         }
     }
 
-    /// Желательные едут ровно тогда же, когда обязательные: ответ пробы
-    /// `ldd` один на всю поставку, и «компоновщик доволен» значит, что звать
-    /// пакетный менеджер незачем ни за тем, ни за другим разрядом.
+    /// Recommended ones go exactly when the required ones do: the `ldd` probe
+    /// answer is one for the whole payload, and "the linker is happy" means there
+    /// is no reason to call the package manager for either tier.
     #[test]
     fn nice_to_have_packages_ride_with_the_must_have_ones() {
         assert_eq!(deps_script_lines(PkgFamily::Arch, true, true), "");
-        // Стоит только переключатель стиля — и он один с `|| true`.
+        // Only the style switcher is needed — and it alone has `|| true`.
         let only_style = deps_script_lines(PkgFamily::Arch, true, false);
         assert_eq!(only_style, format!("{} || true", inst::qt_style_install_cmd(PkgFamily::Arch)));
-        // Всё сразу — три строки, прикрыты две последние.
+        // Everything at once — three lines, the last two covered.
         let all = deps_script_lines(PkgFamily::Arch, false, false);
         let lines: Vec<&str> = all.lines().collect();
         assert_eq!(lines.len(), 3, "{all}");
@@ -3558,12 +3572,12 @@ mod tests {
         assert_eq!(steps.last(), Some(&PlanStep::RemoveFiles { paths: vec![STAGE.to_string()] }));
         assert!(!check_plan(&[PlanStep::EnsureGentooOverlay { overlay: "x".into() }]));
         assert!(!stage_path_is_plain("/tmp/with space/x"));
-        // Каждая метка скрипта — известный шаг, и все метки из таблицы есть в скрипте.
+        // Every script marker is a known step, and all markers from the table are in the script.
         let script = install_script(&system_script_params(&io, &request(), &st));
         for (id, _) in SCRIPT_MARKS.iter().filter(|(id, _)| *id != "rule") {
             assert!(script.contains(&format!("\nrexon_step {id}\n")), "{id}");
         }
-        // Кэши в скрипте — из той же таблицы, что у установки в домашнюю папку.
+        // Caches in the script come from the same table as for the home folder install.
         for group in cache_refresh_groups(inst::DESKTOP_DIR, "/usr/share/icons/hicolor") {
             for argv in &group {
                 assert!(script.contains(&format!("{} 2>/dev/null", argv.join(" "))), "{argv:?}");
@@ -3585,7 +3599,7 @@ mod tests {
         }
     }
 
-    // ── Домашняя папка: настоящая ФС ТОЛЬКО во временном каталоге теста ──
+    // ── Home folder: the real FS ONLY inside the test's temp dir ──
 
     use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
@@ -3593,18 +3607,18 @@ mod tests {
 
     static SCRATCH_N: AtomicUsize = AtomicUsize::new(0);
 
-    /// Подставной исполнитель с настоящей ФС внутри своего временного
-    /// каталога. КАЖДЫЙ путь записи, переименования и удаления сверяется с
-    /// корнем — выход за него роняет тест, живой HOME недостижим. Внешние
-    /// команды НЕ исполняются, только записываются.
+    /// A substitute executor with a real FS inside its own temporary directory.
+    /// EVERY write, rename and delete path is checked against the root — leaving
+    /// it fails the test, the live HOME is unreachable. External commands are NOT
+    /// executed, only recorded.
     struct ScratchIo {
         base: String,
         env: HashMap<String, String>,
         tools: HashSet<String>,
         runs: RefCell<Vec<Vec<String>>>,
-        /// Сбой копирования дерева, путь назначения которого содержит строку.
+        /// A tree copy failure whose destination path contains the string.
         fail_copy_tree_into: Option<String>,
-        /// Один сбой переименования В этот путь.
+        /// One rename failure INTO this path.
         fail_rename_once_into: RefCell<Option<String>>,
     }
 
@@ -3649,7 +3663,7 @@ mod tests {
                 ("src/bin/rexon-wallpaper-host", "ELF", 0o755),
                 ("src/bin/rexon-splash-overlay", "ELF", 0o755),
                 ("src/qml_modules/Qcm/Material/libqml_materialplugin.so", "so", 0o755),
-                // Залежавшаяся копия бывшей библиотеки — установка её не берёт.
+                // A stale copy of the former library — the install doesn't take it.
                 ("src/qml_modules/waywallen/control/librexon_gui.so", "so", 0o755),
                 ("src/qml_modules/waywallen/control/librexon_qt_filter.so", "so", 0o755),
                 ("src/rexon_icon_16.png", "png", 0o644),
@@ -3688,7 +3702,7 @@ mod tests {
             );
         }
 
-        /// Файл внутри временного каталога теста (путь от корня).
+        /// A file inside the test's temporary directory (path from the root).
         fn put(&self, rel: &str, text: &str, mode: u32) {
             let path = format!("{}/{rel}", self.base);
             std::fs::create_dir_all(parent_dir(&path)).unwrap();
@@ -3826,7 +3840,7 @@ mod tests {
         (r, sink)
     }
 
-    /// Файлы и ссылки под каталогом (без самих каталогов), по порядку.
+    /// Files and links under a directory (without the directories themselves), in order.
     fn tree(dir: &str) -> Vec<String> {
         let mut found = Vec::new();
         let mut stack = vec![std::path::PathBuf::from(dir)];
@@ -3851,7 +3865,7 @@ mod tests {
         std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}"))
     }
 
-    /// Временный каталог установки убран на любом исходе.
+    /// The install temporary directory is removed on any outcome.
     fn no_stage_left(io: &ScratchIo) {
         let parent = parent_dir(&io.layout().lib_dir).to_string();
         let left: Vec<String> = io
@@ -3884,14 +3898,14 @@ mod tests {
         let p = io.paths();
         assert_eq!(r.entry, Some(LaunchEntry::MainWindow(l.main_window())));
 
-        // Программа — по раскладке пакета, права разложены.
+        // The program — per the package layout, permissions laid out.
         let pkg = l.package_dir();
         assert_eq!(mode_of(&format!("{pkg}/themes.json")), 0o644);
         assert_eq!(mode_of(&format!("{pkg}/tools/run.sh")), 0o755);
         assert!(io.is_file(&format!("{pkg}/.hidden.json")), "скрытые файлы не теряются");
         assert!(!io.exists(&format!("{pkg}/__pycache__")), "кеши байткода не ставятся");
-        // Исходников Python в установке нет, а каталог данных всё равно
-        // узнаётся — по вендорному QML вкладки обоев.
+        // There are no Python sources in the install, yet the data directory is
+        // still recognised — by the vendored QML of the wallpaper tab.
         assert!(!io.exists(&format!("{pkg}/app.py")), "исходники Python не ставятся");
         assert!(io.is_file(&format!("{pkg}/{}", inst::PACKAGE_MARKER_REL)));
         assert!(
@@ -3901,12 +3915,12 @@ mod tests {
         for exe in [l.main_window(), l.wallpaper_host(), l.splash_overlay(), l.filter_lib()] {
             assert!(io.is_executable(&exe), "{exe}");
         }
-        // Залежавшаяся бывшая библиотека rexon-gui в каталоге модулей
-        // поставки в установку не едет.
+        // A stale former rexon-gui library in the payload's module directory doesn't
+        // make it into the install.
         assert!(!io.exists(&format!("{}/{RETIRED_GUI_LIB}", l.rust_lib_dir())));
         assert!(io.is_file(&format!("{}/{}", l.qml_modules(), qm::QCM_MATERIAL_REL)));
 
-        // Лаунчер и ярлык ведут на бинарь окна этой же установки.
+        // The launcher and the desktop entry lead to the window binary of this same install.
         assert_eq!(read(&l.launcher()), inst::user_launcher(&l.lib_dir));
         assert!(read(&l.launcher()).contains(&format!("exec {} \"$@\"", l.main_window())));
         assert_eq!(mode_of(&l.launcher()), 0o755);
@@ -3916,21 +3930,21 @@ mod tests {
         assert!(desktop.contains(&format!("Exec={}\n", l.main_window())), "{desktop}");
         assert!(io.is_file(&format!("{desktop_dir}/{RECOVER_DESKTOP_FILE}")));
 
-        // Значки и pixmap — по общему правилу.
+        // Icons and pixmap — by the common rule.
         for rel in ["icons/hicolor/16x16/apps/rexon.png", "icons/hicolor/128x128/apps/rexon.png", "icons/hicolor/scalable/apps/rexon.svg", "pixmaps/rexon.png"] {
             assert!(io.is_file(&format!("{xdg}/{rel}")), "{rel}");
         }
 
-        // Дополнения обоев в пользовательские каталоги.
+        // Wallpaper add-ons into the user directories.
         let gnome = format!("{}/{}", p.gnome_ext_dir.clone().unwrap(), inst::EXT_ID);
         let cinnamon = format!("{}/{}", p.cinnamon_ext_dir.clone().unwrap(), inst::EXT_ID);
         assert!(io.is_file(&format!("{gnome}/extension.js")) && io.is_file(&format!("{cinnamon}/extension.js")));
 
-        // Починка 8: папка резервных копий есть и у этого режима.
+        // Fix 8: this mode has the backups folder too.
         assert!(io.is_dir(&format!("{}/.config/rexon", io.home())));
         assert!(io.is_dir(&format!("{xdg}/rexon/backups")));
 
-        // Внешние команды — только кэши и схемы, без пароля.
+        // External commands — only caches and schemas, no password.
         let icon_root = p.icon_root.clone().unwrap();
         let s = |a: &[&str]| a.iter().map(|x| x.to_string()).collect::<Vec<String>>();
         assert_eq!(
@@ -3944,8 +3958,8 @@ mod tests {
         );
         no_stage_left(&io);
 
-        // Установили → удаление находит всё, включая хост обоев и заставку
-        // (починка G8). Вне его списка — только папки профиля.
+        // Installed → uninstall finds everything, including the wallpaper host and
+        // the splash (fix G8). Outside its list — only the profile folders.
         let removable = inst::uninstall_user_paths(&p, |x| std::fs::symlink_metadata(x).is_ok());
         for extra in l.extra_bin_paths() {
             assert!(removable.contains(&extra), "удаление не знает {extra}");
@@ -4003,7 +4017,7 @@ mod tests {
         );
         assert!(inst::result_texts(&outcome, RU).notes.contains(&inst::command_path_notice(RU)));
 
-        // Косая черта в конце элемента PATH — всё равно «входит».
+        // A trailing slash in a PATH element — still "included".
         let mut io = ScratchIo::new();
         let bin = io.layout().bin_dir;
         io.env.insert("PATH".into(), format!("/usr/bin:{bin}/"));
@@ -4028,7 +4042,7 @@ mod tests {
         assert_eq!(sink.lines.lock().unwrap().last().unwrap().0, de_progress::STAGE_ERROR);
         no_stage_left(&io);
 
-        // Сбой обмена копий — прежняя возвращается на место.
+        // A copy swap failure — the previous one goes back in place.
         let io = ScratchIo::new();
         let l = io.layout();
         let old = format!("{}/app.py", l.package_dir());
@@ -4060,7 +4074,7 @@ mod tests {
 
     #[test]
     fn user_links_are_replaced_never_written_through() {
-        // Каталог установки — ссылка в дерево: не заменяется вовсе.
+        // The install directory is a link into the tree: not replaced at all.
         let io = ScratchIo::new();
         io.put("devtree/rexon/app.py", "dev", 0o644);
         let l = io.layout();
@@ -4073,7 +4087,7 @@ mod tests {
         assert!(tree(&format!("{}/devtree", io.base)).len() == 1, "в дерево ничего не легло");
         no_stage_left(&io);
 
-        // Лаунчер и хост обоев — ссылки: заменяются сами, цель не тронута.
+        // The launcher and the wallpaper host are links: replaced themselves, the target untouched.
         let io = ScratchIo::new();
         io.put("devtree/launcher", "dev", 0o755);
         io.put("devtree/host", "dev", 0o755);
@@ -4088,7 +4102,7 @@ mod tests {
         assert!(!std::fs::symlink_metadata(l.launcher()).unwrap().file_type().is_symlink());
         assert_eq!(read(&l.wallpaper_host()), "ELF");
 
-        // Ссылка выше по пути (Bazzite: /home → /var/home) — не повод отказать.
+        // A link higher up the path (Bazzite: /home → /var/home) is no reason to refuse.
         io.put("realhome/x/y", "", 0o644);
         std::os::unix::fs::symlink(format!("{}/realhome", io.base), format!("{}/linkhome", io.base)).unwrap();
         assert!(!is_redirected(&io, &format!("{}/linkhome/x", io.base)));
@@ -4109,7 +4123,7 @@ mod tests {
     #[test]
     fn portable_prepares_profile_folders_only() {
         let mut io = ScratchIo::new();
-        // Починка 8: пустой XDG_DATA_HOME — «не задан», а не текущий каталог.
+        // Fix 8: an empty XDG_DATA_HOME means "not set", not the current directory.
         io.env.insert("XDG_DATA_HOME".into(), String::new());
         let req = InstallRequest::new(payload(), PkgFamily::Arch, "cachyos", RU);
         let sink = Arc::new(RecSink::default());
@@ -4172,18 +4186,18 @@ mod tests {
         }
     }
 
-    // ── Удаление (G8) ───────────────────────────────────────────────────
+    // ── Uninstall (G8) ──────────────────────────────────────────────────
     //
-    // Установка для всех — подменный `FakeIo` (ни одной записи и ни одного
-    // запуска); домашняя папка — `ScratchIo` (настоящая ФС только внутри
-    // временного каталога теста). `UninstallRequest::detect` на `ScratchIo`
-    // не зовётся: он смотрел бы на живой `/usr/local`.
+    // Install for everyone — the substitute `FakeIo` (not a single write and not
+    // a single run); the home folder — `ScratchIo` (the real FS only inside the
+    // test's temporary directory). `UninstallRequest::detect` is not called on
+    // `ScratchIo`: it would look at the live `/usr/local`.
 
     const SYS_LIB: &str = "/usr/local/lib/rexon";
     const CONFIG: &str = "/scratch/home/.config/rexon";
     const BACKUPS: &str = "/scratch/home/.local/share/rexon/backups";
 
-    /// Найдена установка для всех, профиль на месте.
+    /// An install for everyone was found, the profile is in place.
     fn with_system(mut io: FakeIo) -> FakeIo {
         io.files.insert("/usr/local/bin/rexon".into());
         io.files.insert("/usr/share/applications/rexon.desktop".into());
@@ -4233,7 +4247,7 @@ mod tests {
         let sys = inst::install_paths(InstallMode::System, "", None);
         assert_eq!(text, inst::uninstall_system_script(&sys), "ссылок нет — скрипт целиком из ядра");
         let layout = InstallLayout::system();
-        // Хост обоев и заставка (починка 15), правило «без пароля», папка программы.
+        // The wallpaper host and the splash (fix 15), the "no password" rule, the program folder.
         for must in [
             layout.wallpaper_host(),
             layout.splash_overlay(),
@@ -4243,7 +4257,7 @@ mod tests {
             assert!(text.lines().any(|l| l == format!("rm -rf {must}")), "скрипт не снимает {must}:\n{text}");
         }
 
-        // Уборка временной папки — после запуска; профиль — последним.
+        // Cleanup of the temporary folder — after the run; the profile — last.
         let calls = io.calls();
         let run_at = calls.iter().position(|c| matches!(c, Call::Run(a, _) if a[0] == "pkexec")).unwrap();
         let clean_at = calls.iter().position(|c| *c == Call::RemoveTree(STAGE.into())).unwrap();
@@ -4259,9 +4273,9 @@ mod tests {
         assert_eq!(sink.cancellable.lock().unwrap().last(), Some(&false));
     }
 
-    /// Решение Wehrwolfmann 15.09.2026: «сохранить» — это настройки И
-    /// резервные копии. Прежний тест утверждал обратное (настройки сносятся,
-    /// копии остаются) — ровно то поведение, которое отменено.
+    /// Wehrwolfmann's decision of 15.09.2026: «keep» means settings AND backups.
+    /// The old test asserted the opposite (settings are wiped, backups stay) —
+    /// exactly the behaviour that was revoked.
     #[test]
     fn keep_profile_leaves_settings_and_backups_untouched() {
         let io = with_system(FakeIo::new(removed_ok));
@@ -4273,11 +4287,11 @@ mod tests {
         for kept in [CONFIG, BACKUPS] {
             assert!(gone.iter().all(|p| !kept.starts_with(p.as_str())), "задета {kept}: {gone:?}");
         }
-        // Раз настройки не удаляются, строки «Удаление настроек…» быть не должно.
+        // Since the settings aren't removed, there must be no "Removing settings…" line.
         assert!(!sink.has(&inst::UninstallPart::Profile.progress_line(RU)));
         assert!(sink.has(&inst::UninstallPart::System.progress_line(RU)));
 
-        // «Удалить всё» на той же машине убирает обе папки.
+        // «Remove Everything» on the same machine removes both folders.
         let io = with_system(FakeIo::new(removed_ok));
         let (r, sink) = un(&io, &UninstallRequest::detect(&io, None, false, RU));
         assert_eq!(r.message, inst::uninstall_done_line(false, RU));
@@ -4286,7 +4300,7 @@ mod tests {
         assert!(sink.has(&inst::UninstallPart::Profile.progress_line(RU)));
     }
 
-    /// ⛔ У владельца `/usr/local/lib/rexon` — ссылка в рабочее дерево.
+    /// ⛔ On the owner's machine `/usr/local/lib/rexon` is a link into the working tree.
     #[test]
     fn link_into_developer_tree_is_neither_removed_nor_followed() {
         let mut io = with_system(FakeIo::new(removed_ok));
@@ -4321,7 +4335,7 @@ mod tests {
 
     #[test]
     fn failed_removal_is_not_a_denied_password_and_other_outcomes_are_named() {
-        // Скрипт начался (метка есть) и упал — даже с кодом 127 это сбой удаления.
+        // The script started (the marker is there) and failed — even with code 127 it is an uninstall failure.
         let io = with_system(FakeIo::new(|| {
             out(127, &marks(&[inst::UNINSTALL_SCRIPT_MARK]), "rm: cannot remove: Read-only file system")
         }));
@@ -4428,7 +4442,7 @@ mod tests {
         assert!(io.calls().is_empty(), "{:?}", io.calls());
     }
 
-    /// Починка 19: прежде стирались настройки и звучало «не установлен».
+    /// Fix 19: previously the settings were wiped and it said "not installed".
     #[test]
     fn nothing_installed_touches_nothing_not_even_settings() {
         let mut io = FakeIo::ok();
@@ -4449,7 +4463,7 @@ mod tests {
         assert!(check_uninstall_plan(&steps));
         steps.push(PlanStep::EnsureGentooOverlay { overlay: "чужой".into() });
         assert!(!check_uninstall_plan(&steps));
-        // Запуск установки в плане удаления — тоже чужой шаг.
+        // An install run in the uninstall plan is a foreign step too.
         let install_run = PlanStep::Run {
             id: RunStepId::AppInstall,
             cmd: inst::uninstall_system_cmd("/tmp/x.sh"),
@@ -4484,7 +4498,7 @@ mod tests {
         let q = |p: &str| (vec!["pacman".to_string(), "-Qoq".into(), p.into()], Some(OWNER_QUERY_TIMEOUT_SECS));
         assert_eq!(asked, vec![q("/opt/rexon/rexon-main-window"), q("/usr/bin/rexon")]);
 
-        // Нет менеджера — не спрашиваем; у семейства нет детекта — тоже.
+        // No manager — we don't ask; the family has no detection — likewise.
         let io = FakeIo::ok();
         assert_eq!(detect_distro_package(&io, PkgFamily::Arch, Some("/x")), None);
         assert_eq!(detect_distro_package(&io, PkgFamily::Gentoo, Some("/x")), None);
@@ -4552,7 +4566,7 @@ mod tests {
         let rel = "home/.local/share/dbus-1/services/org.freedesktop.Notifications.service";
         let busctl = crate::appdefaults::busctl_reload_cmd();
 
-        // Наш файл (метка в первой строке) — уходит, шина перечитывает.
+        // Our file (the marker in the first line) — goes away, the bus rereads.
         let mut io = ScratchIo::new();
         io.tools.insert("busctl".to_string());
         assert!(user_install(&io).0.ok());
@@ -4563,7 +4577,7 @@ mod tests {
         assert!(!io.exists(&path), "наш файл выбора демона уведомлений убран");
         assert!(io.runs().contains(&busctl), "{:?}", io.runs());
 
-        // Чужой файл — на месте, шину не дёргаем.
+        // A foreign file — stays in place, the bus is not poked.
         let mut io = ScratchIo::new();
         io.tools.insert("busctl".to_string());
         assert!(user_install(&io).0.ok());
@@ -4599,12 +4613,12 @@ mod tests {
         assert!(!sink.has(&inst::UninstallPart::Profile.progress_line(RU)));
     }
 
-    /// Папки профиля берутся с поправкой на `XDG_CONFIG_HOME` и
-    /// `XDG_DATA_HOME`: «сохранить» оставляет именно их, «удалить всё» —
-    /// убирает именно их. Литеральный `~/.config/rexon` — тоже НАШ: до
-    /// починки 8a45776 настройки писались туда даже при заданном
-    /// `XDG_CONFIG_HOME`, поэтому он уходит вместе с XDG-шным. Чужой сосед
-    /// рядом в `~/.config` не тронут ни там, ни там.
+    /// Profile folders are taken with `XDG_CONFIG_HOME` and `XDG_DATA_HOME`
+    /// applied: «keep» leaves exactly them, «Remove Everything» removes exactly
+    /// them. The literal `~/.config/rexon` is OURS too: before fix 8a45776 the
+    /// settings were written there even with `XDG_CONFIG_HOME` set, so it goes
+    /// along with the XDG one. A foreign neighbour next to it in `~/.config` is
+    /// untouched in either case.
     #[test]
     fn profile_follows_xdg_dirs_in_both_choices() {
         for keep in [true, false] {
@@ -4614,7 +4628,7 @@ mod tests {
             assert!(user_install(&io).0.ok());
             io.put("xdg-config/rexon/settings.json", "мои", 0o644);
             io.put("xdg-data/rexon/backups/plasma-panel/1.json", "копия", 0o644);
-            // Настройки от установки, сделанной до починки 8a45776.
+            // Settings from an install made before fix 8a45776.
             io.put("home/.config/rexon/settings.json", "мои прежние", 0o644);
             io.put("home/.config/not-ours.json", "чужое место", 0o644);
             let config = format!("{}/xdg-config/rexon", io.base);
@@ -4640,10 +4654,10 @@ mod tests {
         }
     }
 
-    /// Данные Rexon у человека: кэш (по XDG и литеральный), настройки,
-    /// резервные копии и установленное содержимое, плюс чужие соседи, которых
-    /// удаление касаться не должно. Возвращает (что уходит всегда, что
-    /// уходит только при «удалить всё», что не наше).
+    /// Rexon data of a person: cache (XDG and literal), settings, backups and
+    /// installed content, plus foreign neighbours the uninstall must not touch.
+    /// Returns (what always goes, what goes only with «Remove Everything», what
+    /// isn't ours).
     fn put_user_data(io: &ScratchIo, cache_root: &str, data_root: &str) -> (Vec<String>, Vec<String>, Vec<String>) {
         let b = &io.base;
         let files = [
@@ -4677,9 +4691,10 @@ mod tests {
         (always, full, foreign.iter().map(|r| format!("{b}/{r}")).collect())
     }
 
-    /// ⭐ Решение 15.09.2026: «сохранить» — кэш удалён, настройки, копии и
-    /// установленные обои и темы целы; «удалить всё» — всё удалено, корни
-    /// `rexon` в кэше и данных тоже. Чужое не тронуто ни там, ни там.
+    /// ⭐ Decision of 15.09.2026: «keep» — the cache is removed, settings, backups
+    /// and installed wallpapers and themes are intact; «Remove Everything» —
+    /// everything removed, the `rexon` roots in the cache and data too. Foreign
+    /// stuff untouched in either case.
     #[test]
     fn cache_goes_always_installed_content_only_with_delete_all() {
         for keep in [true, false] {
@@ -4725,8 +4740,8 @@ mod tests {
         }
     }
 
-    /// `XDG_CACHE_HOME` и `XDG_DATA_HOME`: корни берутся и по XDG, и
-    /// литеральные (часть ядра пишет в `~/.cache/rexon` мимо XDG).
+    /// `XDG_CACHE_HOME` and `XDG_DATA_HOME`: the roots are taken both per XDG and
+    /// literal (part of the core writes to `~/.cache/rexon` bypassing XDG).
     #[test]
     fn cache_and_content_follow_xdg_and_literal_roots() {
         for keep in [true, false] {
@@ -4756,9 +4771,9 @@ mod tests {
         }
     }
 
-    /// ⛔ Ссылки: на месте кэша, установленного содержимого и всего корня
-    /// данных удаляется САМА ссылка; то, на что она указывает, цело. Ссылка
-    /// на резервные копии — как прежде, не удаляется и не проходится.
+    /// ⛔ Links: in place of the cache, installed content and the whole data root
+    /// the link ITSELF is removed; what it points to is intact. A link to the
+    /// backups — as before, neither removed nor traversed.
     #[test]
     fn links_in_cache_and_content_are_removed_themselves_never_followed() {
         let io = ScratchIo::new();
@@ -4776,7 +4791,7 @@ mod tests {
         }
         let link = |target: &str, at: &str| {
             std::fs::create_dir_all(parent_dir(at)).unwrap();
-            // Установка уже создала пустую папку копий — ссылка встаёт на её место.
+            // The install already created an empty backups folder — the link takes its place.
             let _ = std::fs::remove_dir(at);
             std::os::unix::fs::symlink(format!("{b}/{target}"), at).unwrap()
         };
@@ -4807,12 +4822,12 @@ mod tests {
         assert_eq!(read(&format!("{b}/elsewhere/walls/мои.jpg")), "обои на другом диске");
         assert_eq!(read(&format!("{b}/elsewhere/photo.jpg")), "фото");
         assert_eq!(read(&format!("{b}/elsewhere/backups/1.json")), "копии на другом диске");
-        // Корень данных не пуст (осталась ссылка на копии) — не тронут.
+        // The data root is not empty (a link to the backups remained) — untouched.
         assert!(io.is_dir(&format!("{home}/.local/share/rexon")));
     }
 
-    /// Весь корень данных — ссылка: удаляется только она, резервные копии и
-    /// обои по ту сторону целы и не называются по одному.
+    /// The whole data root is a link: only it is removed, the backups and
+    /// wallpapers on the far side are intact and are not named one by one.
     #[test]
     fn linked_data_root_is_unlinked_and_its_backups_are_not_entered() {
         let io = ScratchIo::new();
@@ -4821,7 +4836,7 @@ mod tests {
         io.put("dotfiles/rexon-data/backups/1.json", "копия", 0o644);
         io.put("dotfiles/rexon-data/wallpapers/w.jpg", "обои", 0o644);
         let root = format!("{}/.local/share/rexon", io.home());
-        // Установка создала там папку копий — ссылка встаёт на место корня.
+        // The install created a backups folder there — the link takes the root's place.
         std::fs::remove_dir_all(&root).unwrap();
         std::os::unix::fs::symlink(format!("{b}/dotfiles/rexon-data"), &root).unwrap();
 
@@ -4887,9 +4902,9 @@ mod tests {
         assert!(!io.exists(&l.launcher()), "обычный файл удалён");
     }
 
-    /// ⛔ Живой исполнитель в тестах не создаётся никогда: тест с настоящим
-    /// паролем поставил бы Rexon в систему (память: 15.07 тест с подставным
-    /// HOME тихо заменил прод-симлинк `/usr/local/lib/rexon`).
+    /// ⛔ A live executor is never created in tests: a test with a real password
+    /// would install Rexon into the system (memory: on 15.07 a test with a
+    /// substitute HOME silently replaced the production symlink `/usr/local/lib/rexon`).
     #[test]
     fn tests_never_build_live_io() {
         let whole = include_str!("installer_exec.rs");

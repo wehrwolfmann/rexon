@@ -1,55 +1,56 @@
-//! QML-синглтон `Notify` вкладки Wallpaper Engine — порт `ui/src/notify.cpp`
-//! waywallen (MIT, (c) hypengw; атрибуция в NOTICE).
+//! The `Notify` QML singleton of the Wallpaper Engine tab — port of waywallen's
+//! `ui/src/notify.cpp` (MIT, (c) hypengw; attribution in NOTICE).
 //!
-//! Синглтон — ретранслятор событий демона в QML: держит снимок состояния
-//! (идёт ли скан, сколько задач, фаза демона, бэкенд вывода) и превращает
-//! `GlobalEvent` с провода в сигналы Qt. Здесь — ВСЯ решающая часть:
-//! разбор кадра (prost, схема демона уже в [`crate::proto`]), переход
-//! состояния и список сигналов к отправке. Python-шим остаётся оболочкой
-//! QObject: получил байты — отдал их сюда — разослал полученные сигналы.
+//! The singleton relays daemon events to QML: it keeps a state snapshot
+//! (whether a scan is running, how many tasks, the daemon phase, the output
+//! backend) and turns `GlobalEvent`s from the wire into Qt signals. ALL the
+//! deciding part is here: parsing the frame (prost, the daemon schema is
+//! already in [`crate::proto`]), the state transition and the list of signals
+//! to emit. The Python shim stays a QObject shell: it got bytes — handed them
+//! here — broadcast the resulting signals.
 //!
-//! Это первый модуль, где протобуф демона разбирается на Rust, а не
-//! Python-протобуфом: `Notify` не читает поля ответов (`pb.Response`),
-//! только события, поэтому границу можно двигать по нему отдельно от
-//! остальных классов моста.
+//! This is the first module where the daemon protobuf is parsed in Rust rather
+//! than with Python protobuf: `Notify` does not read response fields
+//! (`pb.Response`), only events, so the boundary could be moved for it
+//! separately from the other bridge classes.
 //!
-//! ⚠️ Починки при порте (правило #16):
-//!   1. `displayConnectionFailed` — сигнал в нашем Python БЫЛ объявлен, но
-//!      не эмитился НИКОГДА: ветки события в обработчике не было. Демон
-//!      сообщает этим событием, что чужой клиент не смог подключиться
-//!      (несовпадение протокола/версии) — сообщение молча терялось.
-//!   2. `statusChanged` эмитился на КАЖДЫЙ `StatusSync`, даже когда ни одно
-//!      поле не изменилось (демон шлёт снимок на любое изменение своего
-//!      состояния, в т.ч. постороннее). Оригинал сравнивает снимок с
-//!      текущим и молчит, если разницы нет; здесь так же — лишние
-//!      пересчёты привязок QML убраны.
-//!   3. Сброс при обрыве WebSocket тоже эмитил сигнал безусловно; теперь —
-//!      только если состояние действительно менялось (как в оригинале).
+//! ⚠️ Fixes during the port (rule #16):
+//!   1. `displayConnectionFailed` — the signal WAS declared in our Python but
+//!      was NEVER emitted: the handler had no branch for the event. The daemon
+//!      uses this event to report that a foreign client could not connect
+//!      (protocol/version mismatch) — the message was silently lost.
+//!   2. `statusChanged` was emitted on EVERY `StatusSync`, even when no field
+//!      changed (the daemon sends a snapshot on any change of its state,
+//!      including unrelated ones). The original compares the snapshot with the
+//!      current one and stays silent if there is no difference; same here —
+//!      needless re-evaluation of QML bindings is gone.
+//!   3. The reset on a WebSocket drop also emitted the signal unconditionally;
+//!      now — only if the state really changed (as in the original).
 //!
-//! v0.2.6: добавлено событие `QrLoginProgress` (вход по QR-коду в
-//! диалоге плагина-источника) — вендоренный QML на него подписан.
+//! v0.2.6: the `QrLoginProgress` event was added (QR-code login in the source
+//! plugin dialog) — the vendored QML subscribes to it.
 //!
-//! НЕ портировано намеренно: `taskProgress` — событие есть у демона и в
-//! свежем апстриме, но вендоренный QML v0.2.5 его не использует (проверено
-//! grep'ом по `ui/qml`), а тащить в мост неиспользуемый сигнал незачем.
-//! Появится при обновлении вендора — ветка добавляется сюда.
+//! Deliberately NOT ported: `taskProgress` — the daemon and fresh upstream
+//! have the event, but the vendored QML v0.2.5 does not use it (checked by
+//! grep over `ui/qml`), and there is no reason to drag an unused signal into
+//! the bridge. When the vendor update brings it — the branch is added here.
 
 use crate::proto::control as pb;
 use prost::Message;
 use serde::{ser::SerializeMap, Serialize, Serializer};
 
-/// `DAEMON_PHASE_READY` протокола демона — берётся ИЗ СХЕМЫ, а не
-/// литералом: в enum есть `Unspecified = 0`, поэтому Ready = 2, и
-/// написанная от руки единица тихо оставляла бы UI в фазе Starting
-/// (поймано roundtrip-тестом при первом же прогоне).
+/// `DAEMON_PHASE_READY` of the daemon protocol — taken FROM THE SCHEMA, not as
+/// a literal: the enum has `Unspecified = 0`, so Ready = 2, and a hand-written
+/// one would quietly leave the UI in the Starting phase (caught by the
+/// roundtrip test on the very first run).
 const DAEMON_PHASE_READY: i32 = pb::DaemonPhase::Ready as i32;
 
-/// Фаза демона в терминах QML-перечисления `Notify.DaemonPhase`.
+/// Daemon phase in terms of the QML enum `Notify.DaemonPhase`.
 pub const PHASE_STARTING: i32 = 0;
-/// Демон готов.
+/// The daemon is ready.
 pub const PHASE_READY: i32 = 1;
 
-/// Снимок `DisplayBackendStatus` в виде, в котором его читает QML.
+/// A `DisplayBackendStatus` snapshot in the form QML reads it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct DisplayBackend {
     pub name: String,
@@ -57,24 +58,23 @@ pub struct DisplayBackend {
     pub desktop: String,
     pub binary: String,
     pub reason: String,
-    /// ⚠️ Наружу уходит как `flatpakId` — так его читает и QML, и шим.
+    /// ⚠️ Goes out as `flatpakId` — that is how both QML and the shim read it.
     #[serde(rename = "flatpakId")]
     pub flatpak_id: String,
 }
 
-/// Состояние синглтона (свойства `scanInProgress`/`activeTaskCount`/
+/// Singleton state (the properties `scanInProgress`/`activeTaskCount`/
 /// `daemonPhase`/`displayBackend`/`globalPaused`/`globalMuted`/
 /// `globalStopped`).
 ///
-/// ⚠️ Три глобальных переключателя приехали в `StatusSync` вместе с
-/// протоколом v0.3.5, и до сих пор их не читал НИКТО: партия 7 привезла
-/// команды `GlobalPauseSetQuery`/`GlobalMuteSetQuery`/`GlobalStopSetQuery`,
-/// а состояние осталось за бортом. Вендорная `StatusPage.qml` читает
-/// ровно `W.Notify.globalPaused`/`globalMuted`/`globalStopped` — на
-/// несуществующих свойствах три ярлыка «Pause all»/«Mute all»/«Stop all»
-/// никогда не показывали, включён режим или нет («Unable to assign
-/// [undefined] to bool»). Правило #12: команда и её состояние — одна
-/// сущность, добавляются вместе.
+/// ⚠️ The three global switches arrived in `StatusSync` together with protocol
+/// v0.3.5, and until now NOBODY read them: batch 7 brought the commands
+/// `GlobalPauseSetQuery`/`GlobalMuteSetQuery`/`GlobalStopSetQuery`, but the
+/// state was left out. The vendor `StatusPage.qml` reads exactly
+/// `W.Notify.globalPaused`/`globalMuted`/`globalStopped` — on non-existent
+/// properties the three labels «Pause all»/«Mute all»/«Stop all» never showed
+/// whether the mode was on («Unable to assign [undefined] to bool»). Rule
+/// #12: a command and its state are one entity, added together.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NotifyState {
     pub scan_in_progress: bool,
@@ -100,18 +100,18 @@ impl Default for NotifyState {
     }
 }
 
-/// Сигнал Qt, который шим обязан отправить (в порядке возврата).
+/// A Qt signal the shim must emit (in return order).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "signal", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum NotifySignal {
-    /// `statusChanged()` — изменился снимок состояния.
+    /// `statusChanged()` — the state snapshot changed.
     StatusChanged,
-    /// `daemonReady()` — фаза перешла Starting → Ready.
+    /// `daemonReady()` — the phase went Starting → Ready.
     DaemonReady,
     /// `wallpaperSyncFinished(count, error)`.
     WallpaperSyncFinished { count: u32, error: String },
-    /// `wallpaperHiddenChanged(wallpaperIds, hidden)` — waywallen 0.4.4:
-    /// демон скрыл обои или вернул их (любым клиентом).
+    /// `wallpaperHiddenChanged(wallpaperIds, hidden)` — waywallen 0.4.4: the
+    /// daemon hid wallpapers or brought them back (by any client).
     WallpaperHiddenChanged { wallpaper_ids: Vec<String>, hidden: bool },
     /// `librariesAdded(paths)`.
     LibrariesAdded { paths: Vec<String> },
@@ -130,10 +130,10 @@ pub enum NotifySignal {
         id: String,
         state: i32,
         error: String,
-        /// waywallen 0.6.0: ход передачи — `Some((принято, всего))`, если
-        /// демон его прислал; «всего» `0` — размер неизвестен. Сигнал
-        /// страницы его не несёт: он уходит в общий склад приобретения
-        /// (`setRemoteAcquisitionState` у оригинала).
+        /// waywallen 0.6.0: transfer progress — `Some((received, total))` if
+        /// the daemon sent it; «total» `0` — size unknown. The page signal
+        /// does not carry it: it goes to the shared acquisition store
+        /// (`setRemoteAcquisitionState` in the original).
         transfer: Option<(u64, u64)>,
     },
     /// `playlistChanged()`.
@@ -144,15 +144,15 @@ pub enum NotifySignal {
     PluginUpdateChanged,
     /// `pluginRestartFailed(pluginId, error)`.
     PluginRestartFailed { plugin_id: String, error: String },
-    /// `pluginStateChanged()` — изменилось состояние плагина-источника
-    /// (v0.2.6; Discover перечитывает список источников).
+    /// `pluginStateChanged()` — the state of a source plugin changed (v0.2.6;
+    /// Discover re-reads the list of sources).
     PluginStateChanged,
-    /// `qrLoginProgress(...)` — вход по QR-коду (v0.2.6, QrLoginDialog).
+    /// `qrLoginProgress(...)` — QR-code login (v0.2.6, QrLoginDialog).
     ///
-    /// ⚠ waywallen 0.3.8: четыре текста диалога переводимы — рядом с
-    /// прежними строками едет `PluginMessage`, и вендорный QML пропускает
-    /// их через `I18n.tr`. Поэтому здесь [`PluginText`], а не `String`:
-    /// строка осталась запаской внутри него.
+    /// ⚠ waywallen 0.3.8: the dialog's four texts are translatable — a
+    /// `PluginMessage` travels next to the former strings, and the vendor QML
+    /// passes them through `I18n.tr`. So here it is [`PluginText`], not
+    /// `String`: the string stayed a fallback inside it.
     QrLoginProgress {
         session_id: String,
         plugin_id: String,
@@ -164,13 +164,26 @@ pub enum NotifySignal {
         title: PluginText,
         instruction: PluginText,
     },
+    /// `browserLoginProgress(...)` — sign-in through a browser window
+    /// (waywallen 0.6.1, BrowserLoginDialog; e.g. the Pixiv source plugin).
+    /// Same shape as [`Self::QrLoginProgress`] minus the QR image.
+    BrowserLoginProgress {
+        session_id: String,
+        plugin_id: String,
+        action_id: String,
+        state: i32,
+        display_value: PluginText,
+        error: PluginText,
+        title: PluginText,
+        instruction: PluginText,
+    },
 }
 
-/// Переводимая строка плагина: либо подпись из его каталога, либо готовый
-/// текст, который демон прислал сам.
+/// A translatable plugin string: either a label from its catalog, or ready
+/// text the daemon sent itself.
 ///
-/// Пустые `plugin_id`/`msgid` означают «каталога нет» — тогда наружу уходит
-/// голая строка `fallback`, как её отдаёт `pluginMessageFromPb` вендора.
+/// Empty `plugin_id`/`msgid` mean «no catalog» — then the bare `fallback`
+/// string goes out, as the vendor's `pluginMessageFromPb` returns it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PluginText {
     pub plugin_id: String,
@@ -180,21 +193,22 @@ pub struct PluginText {
 }
 
 impl PluginText {
-    /// Есть ли подпись в каталоге плагина (иначе наружу идёт `fallback`).
+    /// Whether the label is in the plugin's catalog (otherwise `fallback` goes out).
     pub fn has_catalog_key(&self) -> bool {
         !self.plugin_id.is_empty() && !self.msgid.is_empty()
     }
 }
 
-/// Форма наружу — ОДНА для всех потребителей: словарь
-/// `{pluginId, msgid, arguments, rexonFallback}`, когда у подписи есть ключ
-/// каталога, и голая строка, когда его нет (так же отдаёт `pluginMessageFromPb`
-/// вендора и так же читает вендорный QML).
+/// The outward form is ONE for all consumers: the dictionary
+/// `{pluginId, msgid, arguments, rexonFallback}` when the label has a catalog
+/// key, and a bare string when it does not (the vendor's `pluginMessageFromPb`
+/// returns it the same way and the vendor QML reads it the same way).
 ///
-/// ⚠️ Здесь `Serialize` написан РУКАМИ намеренно: тип разнотипный (строка либо
-/// словарь), а `#[serde(untagged)]` бывает только у перечислений. Взамен форма
-/// объявлена ОДИН раз и рядом с самим типом — переписывать её в мосту на
-/// каждое поле, где встретился `PluginText`, больше не нужно.
+/// ⚠️ `Serialize` is written BY HAND here on purpose: the type is mixed (a
+/// string or a dictionary), and `#[serde(untagged)]` exists only for enums. In
+/// return the form is declared ONCE and next to the type itself — there is no
+/// longer any need to rewrite it in the bridge for every field where a
+/// `PluginText` occurs.
 impl Serialize for PluginText {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         if !self.has_catalog_key() {
@@ -209,12 +223,12 @@ impl Serialize for PluginText {
     }
 }
 
-/// `PluginMessage` протокола + прежнее строковое поле → [`PluginText`].
+/// The protocol's `PluginMessage` + the former string field → [`PluginText`].
 ///
-/// Публичен нарочно: это порт `pluginMessageFromPb` вендора, и он нужен не
-/// только оповещениям — схемы настроек плагинов (`we_query::SettingSchema`)
-/// собирают свои подписи ТЕМ ЖЕ правилом. Вторая копия правила разошлась бы
-/// с этой молча (правило #12).
+/// Public on purpose: it is a port of the vendor's `pluginMessageFromPb`, and
+/// not only notifications need it — plugin settings schemas
+/// (`we_query::SettingSchema`) assemble their labels by THE SAME rule. A second
+/// copy of the rule would silently diverge from this one (rule #12).
 pub fn plugin_text(message: Option<&pb::PluginMessage>, fallback: &str) -> PluginText {
     let (plugin_id, msgid, arguments) = match message {
         Some(m) => (m.plugin_id.clone(), m.msgid.clone(), m.arguments.clone()),
@@ -228,11 +242,11 @@ pub fn plugin_text(message: Option<&pb::PluginMessage>, fallback: &str) -> Plugi
     }
 }
 
-/// Разбор кадра сервера: событие или ничего.
+/// Parsing a server frame: an event or nothing.
 ///
-/// На вход идут СЫРЫЕ байты `ServerFrame` с WebSocket — ровно то, что
-/// пришло от демона. Кадр с ответом (`Response`) событий не даёт: ответы
-/// по-прежнему разбирает Python (их читают колбэки запросов).
+/// The input is RAW `ServerFrame` bytes from the WebSocket — exactly what came
+/// from the daemon. A frame with a response (`Response`) gives no events:
+/// responses are still parsed by Python (request callbacks read them).
 pub fn parse_event(frame_bytes: &[u8]) -> Result<Option<pb::Event>, prost::DecodeError> {
     let frame = pb::ServerFrame::decode(frame_bytes)?;
     Ok(match frame.kind {
@@ -241,11 +255,12 @@ pub fn parse_event(frame_bytes: &[u8]) -> Result<Option<pb::Event>, prost::Decod
     })
 }
 
-/// Применить кадр к состоянию и получить список сигналов.
+/// Apply a frame to the state and get the list of signals.
 ///
-/// Битый кадр — не ошибка вызывающего: демон может быть новее нас, и
-/// падать посреди приёма нельзя. Возвращается `Err`, шим пишет отладку и
-/// живёт дальше (так же ведёт себя Python-эталон).
+/// A broken frame is not the caller's error: the daemon may be newer than us,
+/// and crashing in the middle of receiving is not allowed. `Err` is returned,
+/// the shim writes debug output and carries on (the Python reference behaves
+/// the same way).
 pub fn apply_frame(
     state: &mut NotifyState,
     frame_bytes: &[u8],
@@ -256,7 +271,7 @@ pub fn apply_frame(
     Ok(apply_event(state, &event))
 }
 
-/// Тот же переход состояния от уже разобранного события.
+/// The same state transition from an already parsed event.
 pub fn apply_event(state: &mut NotifyState, event: &pb::Event) -> Vec<NotifySignal> {
     use pb::event::Payload;
     let Some(payload) = event.payload.as_ref() else {
@@ -368,16 +383,31 @@ pub fn apply_event(state: &mut NotifyState, event: &pb::Event) -> Vec<NotifySign
                 instruction: plugin_text(p.instruction_text.as_ref(), &p.instruction),
             });
         }
-        // Снимки/изменения дисплеев, рендереров и библиотек Notify не
-        // касаются — у них свои модели (RendererManager/DisplayManager/
-        // LibraryManager), они читают события сами.
+        Payload::BrowserLoginProgress(p) => {
+            out.push(NotifySignal::BrowserLoginProgress {
+                session_id: p.session_id.clone(),
+                plugin_id: p.plugin_id.clone(),
+                action_id: p.action_id.clone(),
+                state: p.state,
+                display_value: plugin_text(
+                    p.display_value_text.as_ref(),
+                    &p.display_value,
+                ),
+                error: plugin_text(p.error_text.as_ref(), &p.error),
+                title: plugin_text(p.title_text.as_ref(), &p.title),
+                instruction: plugin_text(p.instruction_text.as_ref(), &p.instruction),
+            });
+        }
+        // Snapshots/changes of displays, renderers and libraries do not
+        // concern Notify — they have their own models (RendererManager/
+        // DisplayManager/LibraryManager), which read the events themselves.
         _ => {}
     }
     out
 }
 
-/// Обрыв WebSocket: вернуться к пессимистичному состоянию, чтобы UI не
-/// держал устаревшее «демон готов», пока демона нет.
+/// WebSocket drop: go back to the pessimistic state so the UI does not keep
+/// a stale «daemon ready» while there is no daemon.
 pub fn on_disconnected(state: &mut NotifyState) -> Vec<NotifySignal> {
     let fresh = NotifyState::default();
     if *state == fresh {

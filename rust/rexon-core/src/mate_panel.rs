@@ -1,50 +1,51 @@
-//! «Панель MATE»: готовые раскладки панели (`mate-panel`) одной кнопкой —
-//! «Как Windows», классическая, как в Mint, Fedora, Ubuntu MATE и т.д.
+//! "MATE panel": ready-made panel layouts (`mate-panel`) with one button — "Like
+//! Windows", classic, as in Mint, Fedora, Ubuntu MATE and so on.
 //!
-//! Логика здесь вся, без привязки к вкладке: список с подписями, отметка
-//! текущей, подготовка и применение, возврат прежней панели. Вкладка
-//! («Настройки» сейчас, «Оформление» потом) только показывает снимок
-//! [`read_state`] и зовёт [`apply`] / [`restore`].
+//! All the logic is here, not tied to a tab: the list with labels, marking the
+//! current one, preparing and applying, restoring the previous panel. The tab
+//! ("Settings" now, "Appearance" later) only shows the [`read_state`] snapshot
+//! and calls [`apply`] / [`restore`].
 //!
-//! Как mate-panel обращается с раскладками (mate-panel 1.28, параметры
-//! `--layout` и `--reset` из `mate-panel --help`; поведение — замер на
-//! стенде Xvfb 16.10.2026):
+//! How mate-panel handles layouts (mate-panel 1.28, the `--layout` and `--reset`
+//! options from `mate-panel --help`; behavior measured on an Xvfb test stand on
+//! 16.10.2026):
 //!
-//! * раскладка — файл `<имя>.layout` формата key-file: группы
-//!   `[Toplevel <id>]` (панели) и `[Object <id>]` (апплеты, значки запуска,
-//!   меню). Ищется ТОЛЬКО в каталоге самого mate-panel
-//!   (`/usr/share/mate-panel/layouts`); пользовательского каталога у
-//!   mate-panel нет. Зато ключ `org.mate.panel default-layout` принимает и
-//!   абсолютный путь — им мы и пользуемся для своей исправленной копии;
-//! * `mate-panel --layout <имя|путь> --reset` пишет `default-layout` и
-//!   опустошает списки панелей и объектов. Работающая панель сама замечает
-//!   пустой список, убирает старые панели и строит новые из раскладки —
-//!   перезапуск (`--replace`) не нужен. Апплеты, значки и настройки
-//!   прежней панели при этом теряются — отсюда снимок до применения;
-//! * ⚠️ группа с незнакомым ключом отбрасывается ЦЕЛИКОМ. Раскладки из
-//!   ubuntu-mate-settings (redmond, familiar, eleven…) пишут
-//!   `relative-to-edge=end`, которого mate-panel 1.28 не знает: без правки
-//!   у «Как Windows» пропадали значки, часы и область уведомлений;
-//! * ⚠️ апплет, которого нет в системе (меню Brisk, индикаторы), панель
-//!   встречает окном «Возникла проблема при загрузке апплета…» — человек
-//!   получал панель без меню и окно с ошибкой.
+//! * a layout is a `<name>.layout` file in key-file format: `[Toplevel <id>]`
+//!   groups (panels) and `[Object <id>]` groups (applets, launchers, menus). It
+//!   is looked for ONLY in mate-panel's own directory
+//!   (`/usr/share/mate-panel/layouts`); mate-panel has no user directory. On the
+//!   other hand, the `org.mate.panel default-layout` key also accepts an absolute
+//!   path — that is what we use for our fixed copy;
+//! * `mate-panel --layout <name|path> --reset` writes `default-layout` and
+//!   empties the lists of panels and objects. The running panel notices the
+//!   empty list by itself, removes the old panels and builds new ones from the
+//!   layout — no restart (`--replace`) is needed. The applets, launchers and
+//!   settings of the previous panel are lost in the process — hence the
+//!   snapshot before applying;
+//! * Warning: a group with an unknown key is dropped ENTIRELY. Layouts from
+//!   ubuntu-mate-settings (redmond, familiar, eleven…) write
+//!   `relative-to-edge=end`, which mate-panel 1.28 does not know: without a fix
+//!   "Like Windows" lost its launchers, the clock and the notification area;
+//! * Warning: an applet that is not on the system (the Brisk menu, indicators)
+//!   is greeted by the panel with a "There was a problem loading the applet…"
+//!   dialog — the person got a panel without a menu and an error dialog.
 //!
-//! Поэтому перед применением раскладка ГОТОВИТСЯ ([`prepare`]):
-//! `relative-to-edge=end` → `panel-right-stick=true`, незнакомые ключи и
-//! группы — прочь, недостающее меню → встроенная кнопка меню MATE,
-//! недостающие индикаторы → часы, прочие недостающие апплеты и значки
-//! программ, которых нет, — прочь. Если править нечего, применяется сама
-//! системная раскладка по имени; иначе — исправленная копия
-//! `~/.local/share/mate-panel/layouts/rexon-<имя>.layout` по пути.
+//! So before applying, the layout is PREPARED ([`prepare`]):
+//! `relative-to-edge=end` → `panel-right-stick=true`, unknown keys and groups
+//! are removed, a missing menu → MATE's built-in menu button, missing
+//! indicators → the clock, other missing applets and launchers of programs that
+//! are not installed are removed. If there is nothing to fix, the system layout
+//! itself is applied by name; otherwise — the fixed copy
+//! `~/.local/share/mate-panel/layouts/rexon-<name>.layout` by path.
 //!
-//! Возврат: перед применением Rexon снимает `dconf dump /org/mate/panel/`.
-//! Исходная панель человека — снимок до ПЕРВОГО применения, в
-//! `~/.local/share/rexon/backups/mate-panel.dconf`; последующие применения
-//! его не трогают и кладут свой снимок рядом (`….last`) — правило копии
-//! `backup::panel_snapshot_slot`. «Вернуть прежнюю панель» загружает
-//! исходную ([`restore`]) — работающая панель подхватывает и это без
-//! перезапуска (замер на стенде); после возврата следующее применение
-//! снимает исходную заново.
+//! Restoring: before applying, Rexon takes `dconf dump /org/mate/panel/`. The
+//! person's original panel is the snapshot before the FIRST apply, in
+//! `~/.local/share/rexon/backups/mate-panel.dconf`; subsequent applies do not
+//! touch it and put their own snapshot next to it (`….last`) — the copy rule
+//! `backup::panel_snapshot_slot`. "Restore the previous panel" loads the
+//! original one ([`restore`]) — the running panel picks this up too without a
+//! restart (measured on the stand); after a restore, the next apply takes the
+//! original snapshot again.
 
 use std::collections::BTreeSet;
 
@@ -53,18 +54,18 @@ use serde::Serialize;
 use crate::animations::{argv, gsettings_get, LookIo};
 use crate::i18n::{n_, tr, trf};
 
-/// Каталог раскладок самого mate-panel.
+/// mate-panel's own layout directory.
 pub const SYSTEM_LAYOUTS_DIR: &str = "/usr/share/mate-panel/layouts";
-/// Каталог описаний апплетов по умолчанию (переопределяется
-/// `MATE_PANEL_APPLETS_DIR`, списком через двоеточие).
+/// Default directory of applet descriptions (overridden by
+/// `MATE_PANEL_APPLETS_DIR`, a colon-separated list).
 pub const SYSTEM_APPLETS_DIR: &str = "/usr/share/mate-panel/applets";
-/// Ветка dconf с настройками панели.
+/// The dconf branch with the panel settings.
 pub const PANEL_DCONF_DIR: &str = "/org/mate/panel/";
-/// Приставка наших исправленных копий: по ней копия узнаётся и не
-/// попадает в список второй раз.
+/// Prefix of our fixed copies: a copy is recognized by it and does not get into
+/// the list a second time.
 const COPY_PREFIX: &str = "rexon-";
 
-/// Ключи панели, которые mate-panel 1.28 принимает в раскладке.
+/// Panel keys that mate-panel 1.28 accepts in a layout.
 const TOPLEVEL_KEYS: &[&str] = &[
     "name",
     "screen",
@@ -88,7 +89,7 @@ const TOPLEVEL_KEYS: &[&str] = &[
     "animation-speed",
 ];
 
-/// Ключи объекта панели, которые mate-panel 1.28 принимает в раскладке.
+/// Panel object keys that mate-panel 1.28 accepts in a layout.
 const OBJECT_KEYS: &[&str] = &[
     "object-type",
     "toplevel-id",
@@ -107,26 +108,26 @@ const OBJECT_KEYS: &[&str] = &[
     "action-type",
 ];
 
-/// Часы — ими заменяются недостающие индикаторы (в раскладках Ubuntu MATE
-/// часы живут внутри индикаторов).
+/// The clock — missing indicators are replaced with it (in Ubuntu MATE layouts
+/// the clock lives inside the indicators).
 const CLOCK_IID: &str = "ClockAppletFactory::ClockApplet";
 
-/// Сторонние меню: если их нет, вместо них встаёт встроенная кнопка меню
-/// MATE (`object-type=menu`), которая есть всегда.
+/// Third-party menus: if they are missing, MATE's built-in menu button
+/// (`object-type=menu`), which always exists, takes their place.
 const MENU_IIDS: &[&str] = &[
     "BriskMenuFactory::BriskMenu",
     "MintMenuAppletFactory::MintMenuApplet",
     "MateMenuAppletFactory::MateMenuApplet",
 ];
 
-/// Индикаторы (часы, звук, сеть одним апплетом).
+/// Indicators (clock, sound, network in one applet).
 const INDICATOR_IIDS: &[&str] = &[
     "IndicatorAppletCompleteFactory::IndicatorAppletComplete",
     "IndicatorAppletFactory::IndicatorApplet",
 ];
 
-/// Человеческие имена апплетов — для заметок «будет вместо» и «не будет».
-/// Незнакомый апплет называется своим именем из `applet-iid`.
+/// Human-readable applet names — for the "will be instead" and "will not be
+/// there" notes. An unknown applet is called by its own name from `applet-iid`.
 const APPLET_LABELS: &[(&str, &str)] = &[
     ("BriskMenuFactory::BriskMenu", n_("Brisk menu")),
     ("MintMenuAppletFactory::MintMenuApplet", n_("Mint menu")),
@@ -147,10 +148,10 @@ const APPLET_LABELS: &[(&str, &str)] = &[
     (CLOCK_IID, n_("clock")),
 ];
 
-/// Известные раскладки: имя файла, название и описание. Порядок — порядок
-/// показа («Как Windows» первой: за ней сюда и приходят). Описания
-/// составлены по содержимому файлов; незнакомая раскладка получает
-/// описание из своего состава ([`auto_description`]).
+/// Known layouts: file name, title and description. The order is the display
+/// order ("Like Windows" first: that is what people come here for). The
+/// descriptions were written from the contents of the files; an unknown layout
+/// gets a description from its composition ([`auto_description`]).
 const KNOWN_LAYOUTS: &[(&str, &str, &str)] = &[
     (
         "redmond",
@@ -239,22 +240,22 @@ const KNOWN_LAYOUTS: &[(&str, &str, &str)] = &[
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Недостающие части раскладки: откуда их поставить
+// Missing layout parts: where to install them from
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Откуда ставится часть раскладки в семействе дистрибутивов.
+/// Where a layout part is installed from in a distribution family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PartSource {
-    /// Пакет из репозиториев дистрибутива.
+    /// A package from the distribution's repositories.
     Repo(&'static str),
-    /// Только AUR (собирается). `orphan` — у пакета нет сопровождающего.
+    /// AUR only (it gets built). `orphan` — the package has no maintainer.
     Aur { package: &'static str, orphan: bool },
-    /// Негде взять.
+    /// Nowhere to get it from.
     Missing,
 }
 
-/// Часть раскладки (`applet-iid`) и её пакет по семействам
-/// (`system::PkgFamily::as_str`: `arch`, `debian` — и Ubuntu, `fedora`,
+/// A layout part (`applet-iid`) and its package per family
+/// (`system::PkgFamily::as_str`: `arch`, `debian` — Ubuntu too, `fedora`,
 /// `suse`).
 pub struct PanelPart {
     pub iid: &'static str,
@@ -264,14 +265,14 @@ pub struct PanelPart {
     pub suse: PartSource,
 }
 
-/// Таблица частей раскладок. Сверено 19.10.2026 по самим репозиториям:
-/// archlinux.org и AUR RPC (у `mate-indicator-applet` и
-/// `mate-window-buttons-applet` в AUR нет сопровождающего), Debian trixie
+/// Table of layout parts. Checked on 19.10.2026 against the repositories
+/// themselves: archlinux.org and AUR RPC (`mate-indicator-applet` and
+/// `mate-window-buttons-applet` have no maintainer in AUR), Debian trixie
 /// (packages.debian.org), Ubuntu noble (packages.ubuntu.com), Fedora f43
-/// (mdapi), openSUSE Factory (api.opensuse.org: имя собранного rpm).
-/// Значки запуска программ (Firefox, Evolution) — не части раскладки, их
-/// здесь нет. Док Plank раскладка не запускает (Rexon его не включает) —
-/// его здесь тоже нет.
+/// (mdapi), openSUSE Factory (api.opensuse.org: the name of the built rpm).
+/// Program launchers (Firefox, Evolution) are not layout parts, they are not
+/// here. The layout does not start the Plank dock (Rexon does not enable it) —
+/// it is not here either.
 pub const PANEL_PARTS: &[PanelPart] = {
     use PartSource::{Aur, Missing, Repo};
     &[
@@ -362,7 +363,7 @@ pub const PANEL_PARTS: &[PanelPart] = {
     ]
 };
 
-/// Откуда поставить часть `iid` в семействе `family`.
+/// Where to install part `iid` from in family `family`.
 pub fn part_source(iid: &str, family: &str) -> PartSource {
     let Some(part) = PANEL_PARTS.iter().find(|p| p.iid == iid) else {
         return PartSource::Missing;
@@ -376,9 +377,9 @@ pub fn part_source(iid: &str, family: &str) -> PartSource {
     }
 }
 
-/// Все пакеты частей раскладок для семейства — и из репозиториев, и
-/// помеченные «только AUR» (на CachyOS часть из них лежит в репозитории, и
-/// тогда их ставит помощник пакетов). Белый список установки помощника
+/// All packages of layout parts for a family — both from the repositories and
+/// those marked "AUR only" (on CachyOS some of them are in a repository, and
+/// then the package helper installs them). The helper's install allow-list
 /// (`system_plan::pkg_helper_install_allowlist`).
 pub fn all_part_packages(family: &str) -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();
@@ -395,8 +396,8 @@ pub fn all_part_packages(family: &str) -> Vec<&'static str> {
     out
 }
 
-/// Апплеты раскладки `text`, которых нет в системе (`installed` —
-/// [`installed_applets`]), без повторов, в порядке файла.
+/// Applets of layout `text` that are not on the system (`installed` —
+/// [`installed_applets`]), without duplicates, in file order.
 pub fn missing_parts(text: &str, installed: &BTreeSet<String>) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for g in parse_keyfile(text) {
@@ -411,16 +412,16 @@ pub fn missing_parts(text: &str, installed: &BTreeSet<String>) -> Vec<String> {
     out
 }
 
-/// Что можно поставить из недостающего.
+/// What of the missing parts can be installed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PartsOffer {
-    /// Пакеты репозиториев (окно пароля администратора).
+    /// Repository packages (the administrator password dialog).
     pub repo: Vec<String>,
-    /// Пакеты AUR: имя и «без сопровождающего».
+    /// AUR packages: name and "no maintainer".
     pub aur: Vec<(String, bool)>,
-    /// Что из раскладки они принесут — человеческие имена.
+    /// What of the layout they will bring — human-readable names.
     pub labels: Vec<String>,
-    /// Те из `labels`, что приносят только пакеты AUR.
+    /// Those of `labels` that only AUR packages bring.
     pub aur_labels: Vec<String>,
 }
 
@@ -430,9 +431,9 @@ impl PartsOffer {
     }
 }
 
-/// Что из недостающего `missing` ставится в семействе `family`. Пустое
-/// семейство — Rexon здесь пакеты не ставит (SteamOS, неизменяемая
-/// система, незнакомый менеджер).
+/// What of the missing `missing` can be installed in family `family`. An empty
+/// family — Rexon does not install packages here (SteamOS, an immutable system,
+/// an unknown package manager).
 pub fn parts_offer(missing: &[String], family: &str) -> PartsOffer {
     let mut offer = PartsOffer::default();
     for iid in missing {
@@ -463,18 +464,19 @@ pub fn parts_offer(missing: &[String], family: &str) -> PartsOffer {
 }
 
 impl PartsOffer {
-    /// То, что Rexon ставит САМ, без вопроса (решение владельца 24.10;
-    /// защита — окно пароля polkit): пакеты официальных репозиториев. Сборка
-    /// из AUR без вопроса недопустима — она остаётся за [`parts_question`].
+    /// What Rexon installs BY ITSELF, without a question (the owner's decision of
+    /// 24.10; the protection is the polkit password dialog): packages from the
+    /// official repositories. Building from AUR without a question is not allowed —
+    /// that stays with [`parts_question`].
     pub fn repo_only(&self) -> PartsOffer {
         let labels = self.labels.iter().filter(|l| !self.aur_labels.contains(l)).cloned().collect();
         PartsOffer { repo: self.repo.clone(), aur: Vec::new(), labels, aur_labels: Vec::new() }
     }
 }
 
-/// Вопрос перед применением раскладки `id`, которой не хватает частей:
-/// (заголовок, текст). Задаётся только о сборке из AUR: пакеты из
-/// репозиториев ставятся и без него. `None` — спрашивать не о чем.
+/// The question before applying layout `id` that lacks parts: (title, text).
+/// It is asked only about building from AUR: repository packages are installed
+/// without it. `None` — there is nothing to ask about.
 pub fn parts_question(id: &str, offer: &PartsOffer) -> Option<(String, String)> {
     if offer.aur.is_empty() {
         return None;
@@ -507,8 +509,8 @@ pub fn parts_question(id: &str, offer: &PartsOffer) -> Option<(String, String)> 
     Some((tr("Install the missing parts?"), parts.join("\n\n")))
 }
 
-/// Предложение для живой системы: семейство и запреты — как у пакета
-/// Conky (`de_apply::live_conky_package`).
+/// An offer for the live system: the family and the prohibitions — as for the
+/// Conky package (`de_apply::live_conky_package`).
 pub fn live_parts_offer(io: &dyn LookIo, ctx: &PanelCtx, id: &str) -> PartsOffer {
     let Some((_, path)) = list_layouts(io, ctx).into_iter().find(|(name, _)| name == id) else {
         return PartsOffer::default();
@@ -526,15 +528,15 @@ pub fn live_parts_offer(io: &dyn LookIo, ctx: &PanelCtx, id: &str) -> PartsOffer
     parts_offer(&missing_parts(&text, &installed), &family)
 }
 
-/// Поставить пакеты частей из официальных репозиториев (окно пароля) — тем
-/// же путём, что значки и курсор GTK-темы; из AUR этот путь не собирает.
+/// Install part packages from the official repositories (password dialog) — the
+/// same way as GTK theme icons and cursors; this path does not build from AUR.
 pub fn live_install_repo_parts(packages: &[String]) -> Result<(), String> {
     crate::appearance_installer::live_install_repo_packages(packages, crate::privilege::op::PkgSource::MatePanel)
 }
 
-/// Отказ применения: части, которые ставили, не встали («всё или
-/// ничего»). Окно пароля закрыто — «передумал»: совет применить ещё раз и
-/// ввести пароль; иначе — причина.
+/// Apply refusal: the parts being installed did not install ("all or nothing").
+/// The password dialog was closed — "changed my mind": advice to apply again
+/// and enter the password; otherwise — the reason.
 pub fn parts_refusal(id: &str, offer: &PartsOffer, why: &str) -> String {
     if why == crate::appearance_installer::password_not_confirmed() {
         return crate::i18n::fill(
@@ -556,11 +558,12 @@ pub fn parts_refusal(id: &str, offer: &PartsOffer, why: &str) -> String {
     )
 }
 
-/// Поставить части (`install`), затем применить раскладку — она подхватит
-/// всё, что встало (mate-panel следит за каталогом апплетов сам). «Всё или
-/// ничего»: не встало — раскладка НЕ применяется, и сказано почему и что
-/// сделать. Части, которых взять негде (или из AUR, от сборки которых
-/// человек отказался), раскладка заменяет, как описано под ней.
+/// Install the parts (`install`), then apply the layout — it will pick up
+/// everything that got installed (mate-panel watches the applet directory
+/// itself). "All or nothing": if something did not install, the layout is NOT
+/// applied, and it is said why and what to do. Parts that cannot be obtained
+/// anywhere (or from AUR, whose build the person declined) are replaced by the
+/// layout as described under it.
 pub fn apply_with_parts(
     io: &dyn LookIo,
     ctx: &PanelCtx,
@@ -577,31 +580,30 @@ pub fn apply_with_parts(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Где искать
+// Where to look
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Где лежат раскладки, апплеты и наши файлы.
+/// Where layouts, applets and our files lie.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PanelCtx {
-    /// Окружение как его зовёт ядро (`system::detect_current_de`).
+    /// The environment as the core names it (`system::detect_current_de`).
     pub de: String,
-    /// `$XDG_DATA_HOME` либо `~/.local/share`.
+    /// `$XDG_DATA_HOME` or `~/.local/share`.
     pub data_home: String,
-    /// Каталоги раскладок в порядке поиска: первый найденный файл с именем
-    /// побеждает.
+    /// Layout directories in search order: the first file found with the name wins.
     pub layout_dirs: Vec<String>,
-    /// Каталоги описаний апплетов (`*.mate-panel-applet`).
+    /// Directories of applet descriptions (`*.mate-panel-applet`).
     pub applet_dirs: Vec<String>,
 }
 
 impl PanelCtx {
-    /// `xdg_data_dirs` и `applets_env` — значения `XDG_DATA_DIRS` и
-    /// `MATE_PANEL_APPLETS_DIR` (пусто — не заданы).
+    /// `xdg_data_dirs` and `applets_env` — the values of `XDG_DATA_DIRS` and
+    /// `MATE_PANEL_APPLETS_DIR` (empty — not set).
     pub fn new(de: &str, home: &str, xdg_data_home: Option<&str>, xdg_data_dirs: &str, applets_env: &str) -> Self {
         let data_home = crate::utils::data_home(xdg_data_home, home);
-        // Каталог самого mate-panel — первым: по имени панель ищет только
-        // там. Остальные системные каталоги данных — для сборок с другой
-        // приставкой (/usr/local, NixOS); их раскладки применяются по пути.
+        // mate-panel's own directory — first: by name the panel looks only
+        // there. The other system data directories are for builds with a
+        // different prefix (/usr/local, NixOS); their layouts are applied by path.
         let mut layout_dirs = vec![SYSTEM_LAYOUTS_DIR.to_string()];
         let data_dirs = if xdg_data_dirs.trim().is_empty() { "/usr/local/share:/usr/share" } else { xdg_data_dirs };
         for dir in data_dirs.split(':').filter(|d| !d.is_empty()) {
@@ -610,8 +612,8 @@ impl PanelCtx {
                 layout_dirs.push(candidate);
             }
         }
-        // Свои раскладки человека — последними: имя системной раскладки
-        // они не перекрывают.
+        // The person's own layouts — last: they do not override the name of a
+        // system layout.
         let own = copies_dir_of(&data_home);
         if !layout_dirs.contains(&own) {
             layout_dirs.push(own);
@@ -621,15 +623,15 @@ impl PanelCtx {
         PanelCtx { de: de.to_string(), data_home, layout_dirs, applet_dirs }
     }
 
-    /// Раздел «Раскладка панели» вкладки «Оформление»: стол — выбранный в
-    /// «Текущее окружение» ([`crate::animations::LookCtx::for_look`]).
+    /// The "Panel layout" section of the "Appearance" tab: the desktop is the one
+    /// chosen in "Current environment" ([`crate::animations::LookCtx::for_look`]).
     pub fn for_look() -> Self {
         let mut ctx = Self::from_env();
         ctx.de = crate::animations::LookCtx::for_look().de;
         ctx
     }
 
-    /// Из окружения процесса (окно, стенд).
+    /// From the process environment (window, test stand).
     pub fn from_env() -> Self {
         let env = |n: &str| std::env::var(n).unwrap_or_default();
         let de = crate::animations::LookCtx::from_env().de;
@@ -643,12 +645,12 @@ impl PanelCtx {
         )
     }
 
-    /// Каталог исправленных копий.
+    /// Directory of the fixed copies.
     pub fn copies_dir(&self) -> String {
         copies_dir_of(&self.data_home)
     }
 
-    /// Снимок панели перед последним применением.
+    /// Snapshot of the panel before the last apply.
     pub fn backup_path(&self) -> String {
         format!("{}/rexon/backups/mate-panel.dconf", self.data_home.trim_end_matches('/'))
     }
@@ -659,10 +661,10 @@ fn copies_dir_of(data_home: &str) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Разбор key-file
+// Parsing key-file
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Группа key-file с ключами в порядке файла.
+/// A key-file group with its keys in file order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Group {
     pub name: String,
@@ -685,8 +687,8 @@ impl Group {
         self.keys.retain(|(k, _)| k != key);
     }
 
-    /// Имя после приставки группы (`[Object briskmenu]` → `briskmenu`), если
-    /// группа этого вида.
+    /// The name after the group prefix (`[Object briskmenu]` → `briskmenu`), if the
+    /// group is of this kind.
     fn suffix(&self, prefix: &str) -> Option<&str> {
         let rest = self.name.strip_prefix(prefix)?;
         (rest.is_empty() || rest.starts_with(char::is_whitespace)).then(|| rest.trim())
@@ -701,8 +703,8 @@ impl Group {
     }
 }
 
-/// Разобрать key-file (формат GKeyFile): группы и ключи в порядке файла,
-/// комментарии и пустые строки пропускаются.
+/// Parse a key-file (GKeyFile format): groups and keys in file order, comments
+/// and empty lines are skipped.
 pub fn parse_keyfile(text: &str) -> Vec<Group> {
     let mut groups: Vec<Group> = Vec::new();
     for line in text.lines() {
@@ -737,12 +739,12 @@ fn write_keyfile(groups: &[Group]) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Апплеты в системе
+// Applets on the system
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Апплеты, которые есть в системе, в виде `applet-iid`
-/// (`Фабрика::Апплет`): в файле `*.mate-panel-applet` группа
-/// `[Applet Factory]` называет фабрику (`Id=`), остальные группы — апплеты.
+/// Applets present on the system, as `applet-iid` (`Factory::Applet`): in a
+/// `*.mate-panel-applet` file the `[Applet Factory]` group names the factory
+/// (`Id=`), the other groups are applets.
 pub fn installed_applets(io: &dyn LookIo, dirs: &[String]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for dir in dirs {
@@ -765,7 +767,7 @@ pub fn installed_applets(io: &dyn LookIo, dirs: &[String]) -> BTreeSet<String> {
     out
 }
 
-/// Человеческое имя апплета.
+/// Human-readable applet name.
 pub fn applet_label(iid: &str) -> String {
     match APPLET_LABELS.iter().find(|(id, _)| *id == iid) {
         Some((_, label)) => tr(label),
@@ -774,25 +776,25 @@ pub fn applet_label(iid: &str) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Подготовка раскладки
+// Preparing a layout
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Раскладка, готовая к применению.
+/// A layout ready to be applied.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Prepared {
-    /// Текст раскладки, который примет mate-panel этой системы.
+    /// Text of the layout that this system's mate-panel will accept.
     pub text: String,
-    /// Правилось ли что-нибудь (нет — можно применять исходный файл).
+    /// Whether anything was edited (no — the original file can be applied).
     pub changed: bool,
-    /// Сколько в ней панелей.
+    /// How many panels it has.
     pub panels: usize,
-    /// Заметки для человека: что заменено и чего не будет.
+    /// Notes for the person: what was replaced and what will not be there.
     pub notes: Vec<String>,
 }
 
-/// Подготовить раскладку к применению в ЭТОЙ системе (см. описание модуля):
-/// `installed` — апплеты в системе ([`installed_applets`]), `file_exists`
-/// — есть ли файл значка запуска.
+/// Prepare a layout for applying on THIS system (see the module description):
+/// `installed` — applets on the system ([`installed_applets`]), `file_exists` —
+/// whether a launcher's file exists.
 pub fn prepare(text: &str, installed: &BTreeSet<String>, file_exists: &dyn Fn(&str) -> bool) -> Prepared {
     let groups = parse_keyfile(text);
     let mut changed = false;
@@ -808,13 +810,13 @@ pub fn prepare(text: &str, installed: &BTreeSet<String>, file_exists: &dyn Fn(&s
         } else if group.is_object() {
             OBJECT_KEYS
         } else {
-            // `[Customsetting …]` и прочее, чего mate-panel не читает.
+            // `[Customsetting …]` and anything else mate-panel does not read.
             changed = true;
             continue;
         };
         if group.is_object() {
-            // Ключ GNOME Panel: mate-panel о нём не знает и выбросил бы
-            // объект целиком. Смысл тот же, что у `panel-right-stick`.
+            // A GNOME Panel key: mate-panel does not know it and would drop the
+            // object entirely. The meaning is the same as `panel-right-stick`.
             if let Some(edge) = group.get("relative-to-edge").map(str::to_string) {
                 if edge == "end" && group.get("panel-right-stick").is_none() {
                     group.set("panel-right-stick", "true");
@@ -854,8 +856,8 @@ pub fn prepare(text: &str, installed: &BTreeSet<String>, file_exists: &dyn Fn(&s
                     }
                 }
                 "launcher" => {
-                    // Значок программы, которой нет: панель всё равно его
-                    // пропустит (с жалобой в журнал) — убираем сами.
+                    // A launcher of a program that is not installed: the panel would skip
+                    // it anyway (complaining in the log) — we remove it ourselves.
                     let location = group.get("launcher-location").unwrap_or("");
                     if location.starts_with('/') && !file_exists(location) {
                         changed = true;
@@ -883,10 +885,10 @@ fn capitalize(s: &str) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Подписи
+// Labels
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Описание незнакомой раскладки по её составу: где стоят панели.
+/// Description of an unknown layout from its composition: where the panels are.
 pub fn auto_description(text: &str) -> String {
     let mut sides: Vec<String> = Vec::new();
     for group in parse_keyfile(text).iter().filter(|g| g.is_toplevel()) {
@@ -914,39 +916,39 @@ fn title_of(id: &str) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Снимок раздела
+// Section snapshot
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Одна раскладка в списке.
+/// One layout in the list.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LayoutEntry {
-    /// Имя файла без `.layout`.
+    /// File name without `.layout`.
     pub id: String,
     pub title: String,
     pub description: String,
-    /// Что будет иначе, чем задумано в раскладке (заменено, пропущено).
+    /// What will differ from the layout's design (replaced, skipped).
     pub notes: Vec<String>,
-    /// Выбрана сейчас (`default-layout`).
+    /// Selected now (`default-layout`).
     pub current: bool,
-    /// Полный путь исходного файла.
+    /// Full path of the original file.
     #[serde(skip)]
     pub path: String,
 }
 
-/// Снимок раздела «Панель MATE».
+/// Snapshot of the "MATE panel" section.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PanelState {
-    /// Показывать раздел: сеанс MATE и mate-panel есть.
+    /// Show the section: a MATE session and mate-panel are present.
     pub available: bool,
     pub layouts: Vec<LayoutEntry>,
-    /// Название текущей раскладки (пусто — не знаем).
+    /// Title of the current layout (empty — we do not know).
     pub current_title: String,
-    /// Есть снимок прежней панели — можно вернуть.
+    /// There is a snapshot of the previous panel — it can be restored.
     pub can_restore: bool,
 }
 
-/// Раскладки в системе: известные — в порядке [`KNOWN_LAYOUTS`], остальные
-/// — по алфавиту. Наши копии (`rexon-*`) в список не входят.
+/// Layouts on the system: known ones in the order of [`KNOWN_LAYOUTS`], the rest
+/// alphabetically. Our copies (`rexon-*`) are not included in the list.
 pub fn list_layouts(io: &dyn LookIo, ctx: &PanelCtx) -> Vec<(String, String)> {
     let mut found: Vec<(String, String)> = Vec::new();
     for dir in &ctx.layout_dirs {
@@ -965,8 +967,8 @@ pub fn list_layouts(io: &dyn LookIo, ctx: &PanelCtx) -> Vec<(String, String)> {
     found
 }
 
-/// Имя раскладки из значения `default-layout` (имя, путь к файлу или путь
-/// к нашей копии).
+/// Layout name from the `default-layout` value (a name, a path to a file or a
+/// path to our copy).
 pub fn layout_id_from_setting(value: &str) -> String {
     let value = value.trim();
     if !value.starts_with('/') {
@@ -977,12 +979,12 @@ pub fn layout_id_from_setting(value: &str) -> String {
     stem.strip_prefix(COPY_PREFIX).unwrap_or(stem).to_string()
 }
 
-/// Показывать ли раздел.
+/// Whether to show the section.
 pub fn is_available(io: &dyn LookIo, ctx: &PanelCtx) -> bool {
     ctx.de == "mate" && io.have("mate-panel")
 }
 
-/// Снимок раздела.
+/// Section snapshot.
 pub fn read_state(io: &dyn LookIo, ctx: &PanelCtx) -> PanelState {
     let mut st = PanelState { available: false, layouts: Vec::new(), current_title: String::new(), can_restore: false };
     if !is_available(io, ctx) {
@@ -1016,7 +1018,7 @@ pub fn read_state(io: &dyn LookIo, ctx: &PanelCtx) -> PanelState {
     st
 }
 
-/// Текст подтверждения перед применением: (заголовок, вопрос).
+/// Confirmation text before applying: (title, question).
 pub fn confirm_texts(id: &str) -> (String, String) {
     (
         tr("Replace the MATE panel?"),
@@ -1029,7 +1031,7 @@ pub fn confirm_texts(id: &str) -> (String, String) {
     )
 }
 
-/// Текст подтверждения перед возвратом прежней панели: (заголовок, вопрос).
+/// Confirmation text before restoring the previous panel: (title, question).
 pub fn restore_confirm_texts() -> (String, String) {
     (
         tr("Restore the previous MATE panel?"),
@@ -1039,10 +1041,10 @@ pub fn restore_confirm_texts() -> (String, String) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Применение и возврат
+// Applying and restoring
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Применить раскладку `id` → сообщение для человека.
+/// Apply layout `id` → a message for the person.
 pub fn apply(io: &dyn LookIo, ctx: &PanelCtx, id: &str) -> String {
     if !is_available(io, ctx) {
         return tr("⚠️ The MATE panel is not available in this session.");
@@ -1060,9 +1062,10 @@ pub fn apply(io: &dyn LookIo, ctx: &PanelCtx, id: &str) -> String {
         return trf("⚠️ Panel layout “%1” has no panels.", &[&title]);
     }
 
-    // Снимок прежней панели — до любых изменений. Не вышло — не трогаем.
-    // Исходную панель человека (снимок до первого применения) следующие
-    // применения не перезаписывают: их снимок ложится рядом.
+    // Snapshot of the previous panel — before any changes. If it failed, we
+    // do not touch anything. Subsequent applies do not overwrite the person's
+    // original panel (the snapshot before the first apply): their snapshot
+    // lies next to it.
     let backup = ctx.backup_path();
     let mark = crate::backup::panel_original_returned_mark(&backup);
     let slot = crate::backup::panel_snapshot_slot(io.read(&backup).is_some(), io.read(&mark).as_deref());
@@ -1095,13 +1098,13 @@ pub fn apply(io: &dyn LookIo, ctx: &PanelCtx, id: &str) -> String {
     trf("✅ MATE panel: layout “%1” applied.", &[&title])
 }
 
-/// «Сохранить панель» вкладки «Рабочие столы»: снять копию панели в тот же
-/// файл, что перед применением раскладки ([`PanelCtx::backup_path`]) —
-/// копия у MATE одна, и «Вернуть панель» и «Вернуть прежнюю панель»
-/// возвращают одно и то же. `(удалось, путь либо причина)`.
+/// "Save panel" of the "Desktops" tab: take a copy of the panel into the same
+/// file as before applying a layout ([`PanelCtx::backup_path`]) — MATE has a
+/// single copy, and "Restore panel" and "Restore the previous panel" restore the
+/// same thing. `(succeeded, path or reason)`.
 ///
-/// Копию сохранил сам человек — она и есть его панель: следующие применения
-/// раскладок её не перезаписывают (`backup::panel_snapshot_slot`).
+/// The copy was saved by the person themselves — it is their panel: subsequent
+/// layout applies do not overwrite it (`backup::panel_snapshot_slot`).
 pub fn save_snapshot(io: &dyn LookIo, ctx: &PanelCtx) -> (bool, String) {
     let (ok, dump) = io.run(&argv(&["dconf", "dump", PANEL_DCONF_DIR]));
     if !ok {
@@ -1119,9 +1122,9 @@ pub fn save_snapshot(io: &dyn LookIo, ctx: &PanelCtx) -> (bool, String) {
     }
 }
 
-/// Вернуть исходную панель — какой она была до первого применения
-/// раскладки (или сохранённую «Сохранить панель»). После возврата следующее
-/// применение снимает исходную заново.
+/// Restore the original panel — as it was before the first layout apply (or the
+/// one saved with "Save panel"). After a restore, the next apply takes the
+/// original snapshot again.
 pub fn restore(io: &dyn LookIo, ctx: &PanelCtx) -> String {
     if !is_available(io, ctx) {
         return tr("⚠️ The MATE panel is not available in this session.");
@@ -1130,21 +1133,22 @@ pub fn restore(io: &dyn LookIo, ctx: &PanelCtx) -> String {
     if io.read(&backup).is_none() {
         return tr("⚠️ There is no saved panel to restore.");
     }
-    // Страховка: то, что стоит сейчас. Шаги ниже разрушают панель до
-    // загрузки снимка, и испорченный снимок оставлял бы её пустой и
-    // сброшенной.
+    // Insurance: what is set now. The steps below destroy the panel before
+    // loading the snapshot, and a corrupted snapshot would leave it empty and
+    // reset.
     let undo = format!("{backup}.before-restore");
     let (ok, now) = io.run(&argv(&["dconf", "dump", PANEL_DCONF_DIR]));
     if !ok || !io.write(&undo, &now) {
         let why = if ok { undo } else { now };
         return trf("⚠️ Could not save the current panel, so nothing was changed: %1", &[&why]);
     }
-    // Сначала — пустой список объектов: работающая панель снимает все
-    // апплеты и стирает их ветки. Без этого объект с тем же именем в обеих
-    // раскладках (`notification-area` есть и в «Как Windows», и в
-    // классической) панель не перезагружает, и он оставался на чужой
-    // панели (замер на стенде). Ждём, пока панель управится (ветка
-    // объектов опустела); панели нет — ждать некого, через 3 с идём дальше.
+    // First — an empty object list: the running panel removes all applets and
+    // erases their branches. Without this, an object with the same name in
+    // both layouts (`notification-area` is in both "Like Windows" and the
+    // classic one) is not reloaded by the panel, and it stayed on a foreign
+    // panel (measured on the stand). We wait until the panel has managed (the
+    // object branch became empty); if there is no panel, there is no one to
+    // wait for, and after 3 s we move on.
     let (ok, out) = io.run(&argv(&["dconf", "write", "/org/mate/panel/general/object-id-list", "@as []"]));
     if !ok {
         return trf("⚠️ Could not restore the previous panel: %1", &[&out]);
@@ -1156,9 +1160,10 @@ pub fn restore(io: &dyn LookIo, ctx: &PanelCtx) -> String {
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    // Панели и объекты — начисто: иначе ключи, которых в снимке нет (он
-    // хранит только отличия от умолчаний), остались бы от раскладки.
-    // `default-layout` — туда же: снимок с ним по умолчанию его не несёт.
+    // Panels and objects — wiped clean: otherwise keys that are not in the
+    // snapshot (it stores only differences from the defaults) would remain
+    // from the layout. `default-layout` too: a snapshot with its default value
+    // does not carry it.
     let steps = [
         argv(&["dconf", "reset", "-f", "/org/mate/panel/toplevels/"]),
         argv(&["dconf", "reset", "-f", "/org/mate/panel/objects/"]),
@@ -1168,7 +1173,7 @@ pub fn restore(io: &dyn LookIo, ctx: &PanelCtx) -> String {
     for step in &steps {
         let (ok, out) = io.run(step);
         if !ok {
-            // Вернуть панель, какой она была до нажатия.
+            // Restore the panel as it was before the click.
             for back in [
                 argv(&["dconf", "reset", "-f", "/org/mate/panel/toplevels/"]),
                 argv(&["dconf", "reset", "-f", "/org/mate/panel/objects/"]),
@@ -1179,55 +1184,55 @@ pub fn restore(io: &dyn LookIo, ctx: &PanelCtx) -> String {
             return trf("⚠️ Could not restore the previous panel: %1", &[&out]);
         }
     }
-    // Исходная вернулась: следующее применение снимает её заново. Отметка не
-    // записалась — исходная просто остаётся прежней (это безопасная сторона).
+    // The original came back: the next apply takes it again. If the mark was
+    // not written, the original simply stays the same (that is the safe side).
     io.write(&crate::backup::panel_original_returned_mark(&backup), crate::backup::PANEL_ORIGINAL_RETURNED);
     tr("✅ MATE panel restored to how it was before.")
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Своя раскладка (образы «Как в дистрибутиве»)
+// Custom layout ("Like in a distribution" looks)
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// Образ описывает панели ролями (`native/desktop-model.json`: меню, окна,
-// часы, лоток, значки запуска), а раскладку mate-panel из них собирает
-// [`own_layout_text`] — только из того, что есть в самом mate-panel
-// (кнопка меню, список окон, часы, область уведомлений, значки запуска),
-// поэтому окна «не удалось загрузить апплет» не бывает. Применение и возврат
-// — те же `mate-panel --layout <путь> --reset` и снимок `dconf dump`, что у
-// готовых раскладок выше, но одной командой оболочки на шаг: их исполняет
-// общий прогон образа, а не [`LookIo`].
+// A look describes panels by roles (`native/desktop-model.json`: menu,
+// windows, clock, tray, launchers), and [`own_layout_text`] assembles a
+// mate-panel layout from them — only from what mate-panel itself has (the menu
+// button, the window list, the clock, the notification area, launchers), so a
+// "failed to load the applet" dialog never appears. Applying and restoring are
+// the same `mate-panel --layout <path> --reset` and `dconf dump` snapshot as
+// for the ready-made layouts above, but as one shell command per step: they
+// are executed by the shared run of the look, not by [`LookIo`].
 
-/// Объект своей раскладки.
+/// An object of the custom layout.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OwnObject {
-    /// Встроенная кнопка главного меню MATE.
+    /// MATE's built-in main menu button.
     MainMenu,
     WindowList,
     Clock,
     NotificationArea,
-    /// Значок запуска: полный путь к `.desktop`.
+    /// A launcher: the full path to a `.desktop` file.
     Launcher(String),
 }
 
-/// Панель своей раскладки.
+/// A panel of the custom layout.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnPanel {
-    /// Имя панели в раскладке (`top`, `dock`).
+    /// Panel name in the layout (`top`, `dock`).
     pub id: String,
     pub top: bool,
     pub size: u32,
-    /// Во всю ширину; иначе — по содержимому.
+    /// Full width; otherwise — fitted to the contents.
     pub expand: bool,
-    /// Посередине края (док).
+    /// In the middle of the edge (a dock).
     pub centered: bool,
-    /// Слева направо: объекты у начала края.
+    /// Left to right: objects at the start of the edge.
     pub start: Vec<OwnObject>,
-    /// Справа налево от конца края (`panel-right-stick`).
+    /// Right to left from the end of the edge (`panel-right-stick`).
     pub end: Vec<OwnObject>,
 }
 
-/// Текст раскладки mate-panel из панелей `panels`.
+/// Text of a mate-panel layout from panels `panels`.
 pub fn own_layout_text(panels: &[OwnPanel]) -> String {
     let mut groups: Vec<Group> = Vec::new();
     let mut objects: Vec<Group> = Vec::new();
@@ -1240,9 +1245,9 @@ pub fn own_layout_text(panels: &[OwnPanel]) -> String {
         if p.centered {
             keys.push(("x-centered".to_string(), "true".to_string()));
         }
-        // Панель «по содержимому» mate-panel ставит по координатам и край
-        // выводит из них же: без `y-bottom` док уезжал наверх (стенд Xvfb
-        // 31.10.2026, mate-panel 1.28.7: `orientation='top'` после применения).
+        // mate-panel places a "fitted to contents" panel by coordinates and derives
+        // the edge from them too: without `y-bottom` the dock moved to the top (Xvfb
+        // stand 31.10.2026, mate-panel 1.28.7: `orientation='top'` after applying).
         if !p.expand {
             keys.push((if p.top { "y" } else { "y-bottom" }.to_string(), "0".to_string()));
         }
@@ -1294,8 +1299,8 @@ pub fn own_layout_text(panels: &[OwnPanel]) -> String {
     write_keyfile(&groups)
 }
 
-/// Снять панель в `dump` и применить раскладку `layout` — одной командой:
-/// без снимка раскладка не применяется (как у [`apply`]).
+/// Take a panel snapshot into `dump` and apply layout `layout` — as one
+/// command: without a snapshot the layout is not applied (as with [`apply`]).
 pub fn own_apply_argv(layout: &str, dump: &str) -> Vec<String> {
     argv(&[
         "sh",
@@ -1307,10 +1312,9 @@ pub fn own_apply_argv(layout: &str, dump: &str) -> Vec<String> {
     ])
 }
 
-/// Вернуть панель из снимка `dump` — та же последовательность, что у
-/// [`restore`] (пустой список объектов, ждать, пока панель их снимет,
-/// панели и объекты начисто, загрузить снимок); снимок после загрузки
-/// удаляется.
+/// Restore the panel from snapshot `dump` — the same sequence as in [`restore`]
+/// (an empty object list, wait until the panel removes them, panels and objects
+/// wiped clean, load the snapshot); the snapshot is deleted after loading.
 pub fn own_restore_argv(dump: &str) -> Vec<String> {
     argv(&[
         "sh",
@@ -1330,7 +1334,7 @@ mod tests {
     use std::cell::RefCell;
     use std::collections::BTreeMap;
 
-    /// Копия `/usr/share/mate-panel/layouts/redmond.layout` (ubuntu-mate-settings).
+    /// A copy of `/usr/share/mate-panel/layouts/redmond.layout` (ubuntu-mate-settings).
     const REDMOND: &str = "[Toplevel bottom]
 expand=true
 orientation=bottom
@@ -1398,7 +1402,7 @@ relative-to-edge=end
 locked=true
 ";
 
-    /// Копия `/usr/share/mate-panel/layouts/linuxmint.layout` (mate-panel 1.28.7).
+    /// A copy of `/usr/share/mate-panel/layouts/linuxmint.layout` (mate-panel 1.28.7).
     const LINUXMINT: &str = "[Toplevel bottom]
 expand=true
 orientation=bottom
@@ -1442,7 +1446,7 @@ panel-right-stick=true
 locked=true
 ";
 
-    /// Копия `/usr/share/mate-panel/layouts/default.layout` (mate-panel 1.28.7).
+    /// A copy of `/usr/share/mate-panel/layouts/default.layout` (mate-panel 1.28.7).
     const DEFAULT: &str = "[Toplevel top]
 expand=true
 orientation=top
@@ -1498,7 +1502,7 @@ panel-right-stick=true
 locked=true
 ";
 
-    /// Сокращённая копия `org.mate.panel.Wncklet.mate-panel-applet`.
+    /// A shortened copy of `org.mate.panel.Wncklet.mate-panel-applet`.
     const WNCKLET: &str = "[Applet Factory]
 Id=WnckletFactory
 InProcess=false
@@ -1518,7 +1522,7 @@ Name=Window List
 Name=Show Desktop
 ";
 
-    /// Апплеты этой машины (MATE без brisk-menu, mintmenu и индикаторов).
+    /// Applets of this machine (MATE without brisk-menu, mintmenu and indicators).
     fn plain_mate() -> BTreeSet<String> {
         [
             "WnckletFactory::WindowMenuApplet",
@@ -1549,7 +1553,7 @@ Name=Show Desktop
         assert_eq!(groups[0].name, "Toplevel bottom");
         assert_eq!(groups[0].get("orientation"), Some("bottom"));
         assert_eq!(groups[2].keys[0], ("locked".to_string(), "true".to_string()));
-        // Сборка и разбор сходятся.
+        // Building and parsing agree.
         assert_eq!(parse_keyfile(&write_keyfile(&groups)), groups);
     }
 
@@ -1590,24 +1594,24 @@ Name=Show Desktop
         assert_eq!(p.panels, 1);
         let groups = parse_keyfile(&p.text);
 
-        // Ни одного ключа, которого не знает mate-panel 1.28.
+        // Not a single key that mate-panel 1.28 does not know.
         assert!(!p.text.contains("relative-to-edge"));
-        // Правый край сохранён смыслом.
+        // The right edge is preserved in meaning.
         let tray = object(&groups, "notification-area").expect("область уведомлений осталась");
         assert_eq!(tray.get("panel-right-stick"), Some("true"));
         assert_eq!(object(&groups, "drivemountapplet").unwrap().get("panel-right-stick"), Some("true"));
 
-        // Меню Brisk → встроенная кнопка меню.
+        // Brisk menu → the built-in menu button.
         let menu = object(&groups, "briskmenu").expect("меню осталось");
         assert_eq!(menu.get("object-type"), Some("menu"));
         assert_eq!(menu.get("applet-iid"), None);
 
-        // Индикаторы → часы, справа.
+        // Indicators → the clock, on the right.
         let clock = object(&groups, "indicatorappletcomplete").expect("вместо индикаторов — часы");
         assert_eq!(clock.get("applet-iid"), Some(CLOCK_IID));
         assert_eq!(clock.get("panel-right-stick"), Some("true"));
 
-        // Evolution нет — значка нет; Firefox есть — значок есть.
+        // No Evolution — no launcher; Firefox is there — the launcher is there.
         assert!(object(&groups, "evolution").is_none());
         assert!(object(&groups, "firefox").is_some());
         assert_eq!(p.notes.len(), 2, "{:?}", p.notes);
@@ -1667,14 +1671,14 @@ Name=Show Desktop
         assert_eq!(auto_description("[Object x]\nobject-type=menu\n"), tr("A panel layout without panels."));
     }
 
-    // ── Снимок, применение, возврат на подставной машине ────────────────
+    // ── Snapshot, apply, restore on a substitute machine ────────────────
 
     #[derive(Default)]
     struct Machine {
         files: RefCell<BTreeMap<String, String>>,
         runs: RefCell<Vec<Vec<String>>>,
         dconf_fails: bool,
-        /// `dconf load` снимка падает (снимок испорчен).
+        /// `dconf load` of the snapshot fails (the snapshot is corrupted).
         snapshot_load_fails: bool,
     }
 
@@ -1690,7 +1694,7 @@ Name=Show Desktop
             match argv.first().map(String::as_str) {
                 Some("gsettings") => (true, "'default'\n".into()),
                 Some("dconf") if self.dconf_fails => (false, "dconf: no bus".into()),
-                // Панель уже сняла апплеты: ветка объектов пуста.
+                // The panel has already removed the applets: the object branch is empty.
                 Some("dconf") if argv[1] != "dump" => (true, String::new()),
                 Some("dconf") => (true, "[general]\ntoplevel-id-list=['top']\n".into()),
                 _ => (true, String::new()),
@@ -1733,7 +1737,7 @@ Name=Show Desktop
             "[Applet Factory]\nId=NotificationAreaAppletFactory\n\n[NotificationArea]\nName=Notification Area\n",
         );
         let ctx = PanelCtx::new("mate", "/home/w", None, "/usr/share", "");
-        // Наша прежняя копия не должна попасть в список второй раз.
+        // Our previous copy must not get into the list a second time.
         m.write(&format!("{}/rexon-redmond.layout", ctx.copies_dir()), "[Toplevel x]\n");
         (m, ctx)
     }
@@ -1769,7 +1773,7 @@ Name=Show Desktop
         assert!(!m.read(&copy).unwrap().contains("relative-to-edge"));
         let runs = m.runs.borrow();
         assert_eq!(runs.last().unwrap(), &argv(&["mate-panel", "--layout", &copy, "--reset"]));
-        // Снимок — раньше применения.
+        // The snapshot comes before applying.
         let dump = runs.iter().position(|r| r[0] == "dconf").unwrap();
         assert!(dump < runs.len() - 1);
         drop(runs);
@@ -1803,14 +1807,15 @@ Name=Show Desktop
         assert_eq!(load[0], "sh");
         assert_eq!(load.last().unwrap(), &ctx.backup_path());
         let pos = |want: Vec<String>| runs.iter().position(|r| *r == want).expect("шаг есть");
-        // Сначала панель снимает апплеты, потом ветки стираются и грузится снимок.
+        // First the panel removes the applets, then the branches are erased and the
+        // snapshot is loaded.
         let emptied = pos(argv(&["dconf", "write", "/org/mate/panel/general/object-id-list", "@as []"]));
         let reset = pos(argv(&["dconf", "reset", "-f", "/org/mate/panel/objects/"]));
         assert!(emptied < reset);
     }
 
-    /// Снимок не загрузился — панель возвращается к тому, что было до
-    /// нажатия, а не остаётся пустой и сброшенной.
+    /// The snapshot did not load — the panel returns to what it was before the
+    /// click instead of staying empty and reset.
     #[test]
     fn failed_restore_puts_the_panel_back() {
         let (mut m, ctx) = machine();
@@ -1822,16 +1827,15 @@ Name=Show Desktop
         assert_eq!(loads.len(), 2, "после неудачи нужна загрузка страховки: {runs:?}");
         let undo = loads[1].last().unwrap();
         assert_ne!(undo, &ctx.backup_path());
-        // Страховка — то, что было до нажатия (вывод `dconf dump`).
+        // The insurance is what was there before the click (the `dconf dump` output).
         assert_eq!(m.read(undo).as_deref(), Some("[general]\ntoplevel-id-list=['top']\n"));
     }
 
-    // ── Недостающие части раскладки ───────────────────────────────────────
+    // ── Missing layout parts ──────────────────────────────────────────────
 
-    /// Таблица «часть раскладки → пакет по семейству → источник», сверено
-    /// с репозиториями 19.10.2026 (archlinux.org и AUR RPC,
-    /// packages.debian.org trixie, packages.ubuntu.com noble, Fedora mdapi
-    /// f43, openSUSE Factory).
+    /// The table "layout part → package per family → source", checked against the
+    /// repositories on 19.10.2026 (archlinux.org and AUR RPC, packages.debian.org
+    /// trixie, packages.ubuntu.com noble, Fedora mdapi f43, openSUSE Factory).
     #[test]
     fn parts_table_matches_the_repositories() {
         use PartSource::{Aur, Missing, Repo};
@@ -1852,7 +1856,7 @@ Name=Show Desktop
         assert_eq!(part_source("DriveMountAppletFactory::DriveMountApplet", "arch"), Repo("mate-applets"));
         assert_eq!(part_source("MateWindowPickerFactory::MateWindowPicker", "arch"), Repo("mate-netbook"));
         assert_eq!(part_source("Unknown::Thing", "arch"), Missing);
-        // Каждая часть, которую `prepare` заменяет или выбрасывает, есть в таблице.
+        // Every part that `prepare` replaces or drops is in the table.
         for iid in MENU_IIDS.iter().chain(INDICATOR_IIDS) {
             assert!(PANEL_PARTS.iter().any(|p| p.iid == *iid), "{iid}");
         }
@@ -1875,24 +1879,27 @@ Name=Show Desktop
         assert!(!title.is_empty());
         assert!(text.contains("AUR"), "{text}");
         assert!(text.contains("mate-indicator-applet"), "сирота названа: {text}");
-        // Сам, без вопроса, ставится только то, что из репозиториев.
+        // Only what comes from the repositories is installed by itself, without a question.
         let auto = arch.repo_only();
         assert!(auto.aur.is_empty() && auto.repo == arch.repo, "{auto:?}");
         assert!(!auto.labels.is_empty() && auto.labels.iter().all(|l| !arch.aur_labels.contains(l)), "{auto:?}");
 
         let debian = parts_offer(&missing, "debian");
         assert!(debian.aur.is_empty() && debian.repo.contains(&"mate-applet-brisk-menu".to_string()));
-        // Всё есть в репозиториях — вопроса нет, части ставятся сами.
+        // Everything is in the repositories — there is no question, the parts install
+        // themselves.
         assert!(parts_question("redmond", &debian).is_none());
-        // Fedora: меню Brisk и индикаторов нет — вопрос только о том, что есть.
+        // Fedora: there is no Brisk menu and no indicators — the question is only about
+        // what exists.
         let fedora = parts_offer(&["BriskMenuFactory::BriskMenu".to_string()], "fedora");
         assert!(fedora.is_empty() && parts_question("redmond", &fedora).is_none());
-        // Неизменяемая система / незнакомый менеджер — не предлагать.
+        // An immutable system / an unknown package manager — do not offer.
         assert!(parts_offer(&missing, "").is_empty());
     }
 
-    /// Части ставятся ДО применения, и раскладка встаёт с ними; не встали —
-    /// раскладка НЕ применяется («всё или ничего»), и сказано почему.
+    /// The parts are installed BEFORE applying, and the layout comes up with them;
+    /// if they did not install, the layout is NOT applied ("all or nothing"), and it
+    /// is said why.
     #[test]
     fn apply_with_parts_installs_first_all_or_nothing() {
         let (m, ctx) = machine();
@@ -1908,11 +1915,11 @@ Name=Show Desktop
         let out = apply_with_parts(&m, &ctx, "redmond", &offer, &mut |_| Err("no network".into()));
         assert!(out.contains("no network") && !out.contains('✅'), "{out}");
         assert_eq!((m.files.borrow().clone(), m.runs.borrow().len()), (files, runs), "раскладка не применялась");
-        // Окно пароля закрыто — совет повторить, причина не повторяется.
+        // The password dialog was closed — advice to repeat, the reason is not repeated.
         let pw = crate::appearance_installer::password_not_confirmed();
         let out = apply_with_parts(&m, &ctx, "redmond", &offer, &mut |_| Err(pw.clone()));
         assert!(!out.contains(&pw) && !out.contains('✅') && out.contains(&offer.labels[0]), "{out}");
-        // Ставить нечего — установщик не зовётся.
+        // Nothing to install — the installer is not called.
         let mut called = false;
         apply_with_parts(&m, &ctx, "redmond", &PartsOffer::default(), &mut |_| {
             called = true;
@@ -1921,9 +1928,9 @@ Name=Show Desktop
         assert!(!called);
     }
 
-    /// Исходная панель (снимок до первого применения) не перезаписывается
-    /// следующими применениями; после возврата снимается заново. Снимок,
-    /// снятый прежним выпуском (без отметки), — исходный.
+    /// The original panel (the snapshot before the first apply) is not overwritten
+    /// by subsequent applies; after a restore it is taken again. A snapshot taken by
+    /// an earlier release (without the mark) is the original.
     #[test]
     fn original_panel_survives_later_layouts_until_restored() {
         let (m, ctx) = machine();
@@ -1934,19 +1941,19 @@ Name=Show Desktop
         assert!(apply(&m, &ctx, "default").starts_with('✅'));
         assert_eq!(m.read(&backup).as_deref(), Some("[general]\nисходная\n"), "исходная цела");
         assert_eq!(m.read(&last).as_deref(), Some("[general]\ntoplevel-id-list=['top']\n"));
-        // «Вернуть прежнюю панель» грузит исходную.
+        // "Restore the previous panel" loads the original.
         assert!(restore(&m, &ctx).starts_with('✅'));
         assert_eq!(m.runs.borrow().last().unwrap().last().unwrap(), &backup);
-        // После возврата первое применение снимает исходную заново…
+        // After a restore the first apply takes the original again…
         assert!(apply(&m, &ctx, "redmond").starts_with('✅'));
         assert_eq!(m.read(&backup).as_deref(), Some("[general]\ntoplevel-id-list=['top']\n"));
-        // …а следующее её уже не трогает.
+        // …and the next one no longer touches it.
         m.write(&backup, "[general]\nвторая исходная\n");
         assert!(apply(&m, &ctx, "default").starts_with('✅'));
         assert_eq!(m.read(&backup).as_deref(), Some("[general]\nвторая исходная\n"));
     }
 
-    /// Копия «Сохранить панель» после возврата снова защищена от применений.
+    /// After a restore the "Save panel" copy is protected from applies again.
     #[test]
     fn manual_save_after_restore_is_kept_by_layouts() {
         let (m, ctx) = machine();
@@ -1959,7 +1966,7 @@ Name=Show Desktop
         assert_eq!(m.read(&backup).as_deref(), Some("[general]\nсохранённая\n"));
     }
 
-    /// «Сохранить панель» и «Вернуть прежнюю панель» видят одну копию.
+    /// "Save panel" and "Restore the previous panel" see the same copy.
     #[test]
     fn saved_panel_is_the_same_copy_restore_uses() {
         let (m, ctx) = machine();

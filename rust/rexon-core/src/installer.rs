@@ -1,49 +1,50 @@
-//! Порт ЧИСТОЙ (не-GUI) логики `rexon/installer.py` — системная/пользова-
-//! тельская установка и деинсталляция Rexon.
+//! Port of the PURE (non-GUI) logic of `rexon/installer.py` — system/user
+//! install and uninstall of Rexon.
 //!
-//! Как и `system_plan.rs`, модуль НИЧЕГО не исполняет: он строит ТЕКСТЫ
-//! (bash-скрипты install/uninstall, тела privileged-helper'ов, polkit-XML,
-//! .desktop, лаунчеры) и ПЛАНЫ команд (`Cmd`/`PlanStep` из `system_plan`) —
-//! те же argv/timeout/скрипты, что живой Python передаёт в `subprocess.run`.
-//! Реальное исполнение (pkexec, copytree, ФС-проверки, tempfile.mkstemp) —
-//! забота исполнителя (пока живой Python через мост, позже rexon-gui). Пути
-//! tmp-файлов подаются параметрами, поэтому тексты детерминированы и
-//! сверяемы байт-в-байт (см. `installer_parity.rs`).
+//! Like `system_plan.rs`, the module executes NOTHING: it builds TEXTS (bash
+//! install/uninstall scripts, privileged helper bodies, polkit XML, .desktop,
+//! launchers) and command PLANS (`Cmd`/`PlanStep` from `system_plan`) — the
+//! same argv/timeout/scripts live Python passes to `subprocess.run`. Real
+//! execution (pkexec, copytree, FS checks, tempfile.mkstemp) is the
+//! executor's job (for now live Python via the bridge, later rexon-gui). Temp
+//! file paths are passed as parameters, so the texts are deterministic and
+//! comparable byte for byte (see `installer_parity.rs`).
 //!
-//! Портировано (чистая логика):
-//!   * константы SYSTEM_INSTALL_ACTION / SYSTEM_HELPER_PATH / SYSTEM_POLICY_PATH
+//! Ported (pure logic):
+//!   * the constants SYSTEM_INSTALL_ACTION / SYSTEM_HELPER_PATH / SYSTEM_POLICY_PATH
 //!     + class-level INSTALL_DIR / LIB_DIR / DESKTOP_DIR;
-//!   * тексты `system_helper_script` / `system_policy_xml` (текст-в-текст),
-//!     `desktop_content` / `recover_desktop_content`, лаунчеры установки в
-//!     систему и в домашнюю папку;
-//!   * `detect_default_mode` (Steam-env → portable), `install_paths` (пути по
-//!     режиму system/user/portable, XDG_DATA_HOME/HOME), `*_installed` предикаты;
-//!   * зависимости времени выполнения per `PkgFamily` двумя разрядами (оба с
-//!     fallback на DEBIAN): обязательные `dep_packages`/`dep_install_cmd` —
-//!     строго, желательные `optional_dep_packages`/`optional_dep_install_cmd`
-//!     — отдельной строкой с `|| true`; САМИ команды установки — не здесь,
-//!     их отдаёт движок `system_plan::install_cmd`, здесь только форма
-//!     строки bash;
-//!   * генерация install-скрипта system-режима (icon-блок, helper-блок,
-//!     dep-ветка) + план (WriteFile → pkexec → RemoveFiles) + список очистки;
-//!   * деинсталляция: таблицы `distro_pkg_owner` / `distro_pkg_remove`,
-//!     `parse_owner_output`, кандидаты-бинари, pkg-remove через менеджер,
-//!     system-uninstall-скрипт + план, `installed_files`, список путей
-//!     user-удаления (`uninstall_user_paths`, включая per-user иконки) и
-//!     итоговое сообщение (`uninstall_summary`).
+//!   * the texts `system_helper_script` / `system_policy_xml` (text for text),
+//!     `desktop_content` / `recover_desktop_content`, the launchers of the
+//!     system and home folder installs;
+//!   * `detect_default_mode` (Steam env → portable), `install_paths` (paths by
+//!     system/user/portable mode, XDG_DATA_HOME/HOME), the `*_installed` predicates;
+//!   * runtime dependencies per `PkgFamily` in two tiers (both with a DEBIAN
+//!     fallback): required `dep_packages`/`dep_install_cmd` — strictly,
+//!     recommended `optional_dep_packages`/`optional_dep_install_cmd` — on a
+//!     separate line with `|| true`; the install commands THEMSELVES are not
+//!     here, the `system_plan::install_cmd` engine provides them, here is only
+//!     the form of the bash line;
+//!   * generation of the system-mode install script (icon block, helper block,
+//!     dep branch) + plan (WriteFile → pkexec → RemoveFiles) + cleanup list;
+//!   * uninstall: the `distro_pkg_owner` / `distro_pkg_remove` tables,
+//!     `parse_owner_output`, candidate binaries, pkg-remove via the manager,
+//!     the system uninstall script + plan, `installed_files`, the list of user
+//!     removal paths (`uninstall_user_paths`, including per-user icons) and the
+//!     summary message (`uninstall_summary`).
 //!
-//! НЕ портировано (side-effect / GUI — исполнение при подключении к живому
-//! Python): реальные pkexec/subprocess/copytree/mkstemp/rmtree, ФС-проверки
-//! `check_if_installed`/`_detect_distro_package` (наличие путей и владелец у
-//! пакетного менеджера — подаются параметром/замыканием), user-install и
-//! portable-install как последовательности ФС-операций (кроме их чистых
-//! текстов — лаунчер/desktop), CLI-диалог `run_installer_dialog`, весь
-//! PySide6-класс `QtInstallerWindow`.
+//! NOT ported (side effects / GUI — executed when hooked to live Python): the
+//! real pkexec/subprocess/copytree/mkstemp/rmtree, the FS checks
+//! `check_if_installed`/`_detect_distro_package` (path existence and the
+//! package manager owner — passed as a parameter/closure), user-install and
+//! portable-install as sequences of FS operations (except their pure texts —
+//! launcher/desktop), the CLI dialog `run_installer_dialog`, the whole PySide6
+//! class `QtInstallerWindow`.
 //!
-//! ⚠ Правило #16 (2026-07-21): починен баг оригинала — в `install_to_system`
-//! список `cleanup_paths` НЕ включал `tmp_stage_helper` / `tmp_stage_policy`
-//! (утечка двух временных файлов на каждую установку). В порте
-//! `install_cleanup_paths` их добавляет. См. пометку у функции.
+//! ⚠ Rule #16 (2026-07-21): fixed a bug of the original — in
+//! `install_to_system` the `cleanup_paths` list did NOT include
+//! `tmp_stage_helper` / `tmp_stage_policy` (a leak of two temporary files on
+//! every install). In the port `install_cleanup_paths` adds them. See the note
+//! at the function.
 
 use serde::Serialize;
 
@@ -55,26 +56,27 @@ use crate::system_plan::{
 };
 
 // ============================================================================
-// Константы (порт module-level + class-level RexonInstaller)
+// Constants (port of module-level + class-level RexonInstaller)
 // ============================================================================
 
 pub const SYSTEM_INSTALL_ACTION: &str = "org.rexon.system-install";
-/// Имя помощника тем экрана входа (SDDM) и экрана загрузки (Plymouth).
+/// Name of the helper for login screen (SDDM) and boot screen (Plymouth) themes.
 pub const SYSTEM_HELPER_NAME: &str = "rexon-system-helper";
-/// Путь помощника у РУЧНОЙ установки: по нему установщик кладёт файл и его
-/// же пишет в `exec.path` своей политики. Куда смотреть при запуске,
-/// отвечает [`system_helper_path`] — у пакета помощник лежит в `/usr/lib`.
+/// Helper path of the MANUAL install: the installer puts the file there and
+/// writes the same path into its policy's `exec.path`. Where to look at run
+/// time is answered by [`system_helper_path`] — the package keeps the helper in `/usr/lib`.
 pub const SYSTEM_HELPER_PATH: &str = "/usr/local/lib/rexon-system-helper";
 pub const SYSTEM_POLICY_PATH: &str =
     "/usr/share/polkit-1/actions/org.rexon.system-install.policy";
 
-/// Где на этой машине лежит помощник тем экрана входа и загрузки.
+/// Where the login and boot screen theme helper lies on this machine.
 ///
-/// ⛔ Дефект, который это закрывает (28.09.2026): путь был прибит к
-/// `/usr/local/lib`, а пакет помощника не ставил вовсе — у покупателя пакета
-/// темы SDDM и Plymouth из «Оформления» не ставились никогда («системная
-/// часть не установлена»). Правило выбора то же, что у остальных помощников
-/// ([`crate::system_plan::pick_helper_path`]): пакет раньше ручной установки.
+/// ⛔ The defect this closes (28.09.2026): the path was nailed to
+/// `/usr/local/lib`, and the package didn't install the helper at all — for a
+/// package user SDDM and Plymouth themes from «Appearance» never installed
+/// ("the system part is not installed"). The selection rule is the same as for
+/// the other helpers ([`crate::system_plan::pick_helper_path`]): the package
+/// before the manual install.
 pub fn system_helper_path() -> &'static str {
     static SLOT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     SLOT.get_or_init(|| {
@@ -84,64 +86,66 @@ pub fn system_helper_path() -> &'static str {
     })
 }
 
-/// Class-level пути system-режима (для деинсталлятора / backward compat).
+/// Class-level paths of system mode (for the uninstaller / backward compat).
 pub const INSTALL_DIR: &str = "/usr/local/bin";
 pub const LIB_DIR: &str = "/usr/local/lib/rexon";
 pub const DESKTOP_DIR: &str = "/usr/share/applications";
 
 pub const EXT_ID: &str = "rexon-wallpaper@rexon.app";
-/// Прежнее имя расширения обоев: домен достался от чужого проекта
-/// (порт Razer Axon), к Rexon отношения не имеет. Каталог со старым
-/// именем сносится и при установке, и при удалении — иначе оболочка
-/// увидит два одинаковых расширения и обои нарисуются дважды.
+/// The old name of the wallpaper extension: the domain was inherited from
+/// another project (the Razer Axon port), it has nothing to do with Rexon. The
+/// directory with the old name is wiped both on install and on uninstall —
+/// otherwise the shell will see two identical extensions and draw the wallpaper twice.
 pub const EXT_ID_LEGACY: &str = "rexon-wallpaper@openaxon.io";
 
-/// Таймаут корневого скрипта установки в систему: внутри установка
-/// недостающих компонентов (600 с — запас для установок под паролем).
-/// ⭐ Починка 15.09.2026: было 300 с.
+/// Timeout of the system install root script: it installs missing components
+/// inside (600 s — headroom for installs under a password).
+/// ⭐ Fix of 15.09.2026: it was 300 s.
 pub const SYSTEM_INSTALL_TIMEOUT_SECS: u64 = 600;
 
 // ============================================================================
-// Тексты (текст-в-текст с Python)
+// Texts (text for text with Python)
 // ============================================================================
 
-/// Модули заставки, которые plymouth поставляет сам (`ModuleName=` темы).
-/// Имя модуля plymouth превращает в путь `<каталог модулей>/<имя>.so` БЕЗ
-/// проверки (`ply_boot_splash_load`), и `ModuleName=../../../share/plymouth/
-/// themes/<тема>/evil` загрузил бы `.so` из самой темы — кодом от root,
-/// при каждой загрузке и выключении, да ещё и в initramfs. Поэтому тема
-/// принимается только на штатном модуле, а `.so` внутри темы — отказ.
+/// Splash modules that plymouth ships itself (a theme's `ModuleName=`).
+/// plymouth turns the module name into the path `<modules dir>/<name>.so`
+/// WITHOUT checking (`ply_boot_splash_load`), and `ModuleName=../../../share/plymouth/
+/// themes/<theme>/evil` would load a `.so` from the theme itself — code as
+/// root, on every boot and shutdown, and in the initramfs too. So a theme is
+/// accepted only on a stock module, and a `.so` inside a theme is a refusal.
 pub const PLYMOUTH_SPLASH_MODULES: &[&str] = &[
     "details", "fade-throbber", "script", "space-flares", "text", "tribar", "two-step",
 ];
 
-/// Тело `rexon-system-helper` — привилегированная установка тем SDDM и
-/// Plymouth.
+/// The body of `rexon-system-helper` — privileged install of SDDM and
+/// Plymouth themes.
 ///
-/// ⛔ 28.09.2026 (план «один пароль», пункт Б0c) закрыто три вещи, и
-/// ослаблять ни одну нельзя:
-///   1. **код от root из темы Plymouth.** `ModuleName` — только из
-///      [`PLYMOUTH_SPLASH_MODULES`] (каждое вхождение слова в каждом
-///      `.plymouth`, строго построчно: разбор plymouth через `fscanf`
-///      терпит перевод строки между ключом и `=`, и нестрогая проверка
-///      увидела бы не то, что прочтёт он), `.so` в теме — отказ;
-///   2. **подмена каталога между проверкой и копией.** Прежде: `realpath`,
-///      затем `cp` по пути — каталог пользователя, и любую часть пути можно
-///      было успеть подменить ссылкой (копия чужого каталога root'ом в
-///      общедоступный `/usr/share`). Теперь помощник сначала ВХОДИТ в каталог
-///      (`cd -P`), проверяет место и владельца уже входа, копирует `.` в свой
-///      каталог 0700 и проверяет КОПИЮ — её пользователь не тронет;
-///   3. **ссылки и особые файлы** в теме — отказ (тема — это обычные файлы и
-///      каталоги); запись в назначение — `--remove-destination`, чтобы не
-///      писать сквозь ссылку, оставшуюся в старой версии темы.
+/// ⛔ 28.09.2026 (the "one password" plan, item B0c) three things were closed,
+/// and none of them may be weakened:
+///   1. **root code from a Plymouth theme.** `ModuleName` — only from
+///      [`PLYMOUTH_SPLASH_MODULES`] (every occurrence of the word in every
+///      `.plymouth`, strictly line by line: plymouth's `fscanf` parsing
+///      tolerates a newline between the key and `=`, and a lax check would see
+///      something other than what it reads), a `.so` in the theme — refusal;
+///   2. **swapping the directory between check and copy.** Previously:
+///      `realpath`, then `cp` by path — a user directory, and any part of the
+///      path could be swapped for a link in time (root copying a foreign
+///      directory into the world-readable `/usr/share`). Now the helper first
+///      ENTERS the directory (`cd -P`), checks the location and owner of what
+///      it entered, copies `.` into its own 0700 directory and checks the COPY —
+///      the user won't touch it;
+///   3. **links and special files** in a theme — refusal (a theme is ordinary
+///      files and directories); writing to the destination uses
+///      `--remove-destination` so as not to write through a link left in an
+///      older version of the theme.
 ///
-/// Те же правила до пароля проверяет [`system_theme_problem`] — чтобы
-/// человек увидел причину сразу, а не после окна пароля.
+/// The same rules are checked before the password by [`system_theme_problem`] —
+/// so the person sees the reason right away, not after the password dialog.
 pub fn system_helper_script() -> String {
     let text = SYSTEM_HELPER_SCRIPT_TMPL
         .replace("__PLY_MODULES__", &PLYMOUTH_SPLASH_MODULES.join("|"));
-    // Имя в сообщениях — прежнее «rexon-helper» (так помощник подписывался
-    // всегда; журналы и сверки его знают).
+    // The name in messages is the old "rexon-helper" (the helper has always
+    // signed that way; logs and checks know it).
     crate::system_l10n::localize_script("rexon-helper", &text)
 }
 
@@ -454,25 +458,25 @@ chmod -R a+rX "$dest"
 exit 0
 "#;
 
-/// Почему системная тема не будет поставлена — та же проверка, что делает
-/// помощник от root ([`system_helper_script`]), только ДО окна пароля.
+/// Why a system theme won't be installed — the same check the root helper
+/// does ([`system_helper_script`]), only BEFORE the password dialog.
 ///
-/// Сама по себе она ничего не защищает (проверяет каталог пользователя, и
-/// ставит тему всё равно помощник, который проверяет свою копию), зато
-/// человек узнаёт причину сразу. И она же — единственная проверка на
-/// запасном пути расширений (сырой `pkexec bash`, когда помощника нет).
+/// By itself it protects nothing (it checks the user directory, and the
+/// theme is installed anyway by the helper, which checks its own copy), but
+/// the person learns the reason right away. It is also the only check on the
+/// extensions fallback path (a raw `pkexec bash` when there is no helper).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SystemThemeProblem {
-    /// Ссылка, устройство, канал и т. п. — тема обязана быть обычными
-    /// файлами и каталогами. Внутри — путь относительно корня темы.
+    /// A link, device, pipe etc. — a theme must be ordinary files and
+    /// directories. Inside — the path relative to the theme root.
     OddFile(String),
-    /// Тема загрузки несёт свой исполняемый код: `.so` внутри или
-    /// `ModuleName` не из [`PLYMOUTH_SPLASH_MODULES`] (в т. ч. с `../`).
+    /// A boot theme carries its own executable code: a `.so` inside or a
+    /// `ModuleName` not from [`PLYMOUTH_SPLASH_MODULES`] (including with `../`).
     BootSplashCode(String),
 }
 
 impl SystemThemeProblem {
-    /// Текст для человека.
+    /// Text for the person.
     pub fn message(&self) -> String {
         use crate::i18n::trf;
         match self {
@@ -493,9 +497,9 @@ impl SystemThemeProblem {
     }
 }
 
-/// Проверить каталог системной темы (`kind` — `sddm` или `plymouth`).
-/// `theme_id` — если известно, `<theme_id>.plymouth` обязан назвать
-/// штатный модуль. Ссылки не разыменовываются.
+/// Check a system theme directory (`kind` — `sddm` or `plymouth`).
+/// `theme_id` — if known, `<theme_id>.plymouth` must name a stock module.
+/// Links are not dereferenced.
 pub fn system_theme_problem(
     kind: &str,
     dir: &std::path::Path,
@@ -547,9 +551,9 @@ pub fn system_theme_problem(
     None
 }
 
-/// Сколько в `.plymouth` строк `ModuleName=<штатный модуль>`; `None` —
-/// есть нулевой байт или вхождение слова `ModuleName` (без учёта регистра)
-/// вне такой строки. Правило то же, что у помощника.
+/// How many `ModuleName=<stock module>` lines a `.plymouth` has; `None` —
+/// there is a NUL byte or an occurrence of the word `ModuleName`
+/// (case-insensitive) outside such a line. The rule is the same as the helper's.
 fn plymouth_stock_module_lines(bytes: &[u8]) -> Option<usize> {
     if bytes.contains(&0) {
         return None;
@@ -577,16 +581,16 @@ fn trim_bytes(b: &[u8], is_space: impl Fn(u8) -> bool) -> &[u8] {
     &b[start..end.max(start)]
 }
 
-/// XML polkit-политики SYSTEM_INSTALL_ACTION — порт `_system_policy_xml`
-/// (путь ручной установки; пакет печатает [`system_policy_xml_for`]).
+/// XML of the SYSTEM_INSTALL_ACTION polkit policy — port of `_system_policy_xml`
+/// (the manual install path; the package prints [`system_policy_xml_for`]).
 pub fn system_policy_xml() -> String {
     system_policy_xml_for(SYSTEM_HELPER_PATH)
 }
 
-/// XML той же политики для помощника, лежащего по заданному пути.
+/// XML of the same policy for a helper lying at the given path.
 ///
-/// `exec.path` — договор с polkit: не совпал с тем, что реально
-/// запускается, и pkexec наше действие не выберет (пароль каждый раз).
+/// `exec.path` is a contract with polkit: if it doesn't match what is actually
+/// run, pkexec won't pick our action (a password every time).
 pub fn system_policy_xml_for(helper_path: &str) -> String {
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
@@ -616,81 +620,84 @@ pub fn system_policy_xml_for(helper_path: &str) -> String {
 }
 
 // ============================================================================
-// Вход Rexon: Rust-окно или классическое окно на Python
+// Rexon entry point: the Rust window or the classic Python window
 // ============================================================================
 //
-// РЕШЕНИЕ ВЛАДЕЛЬЦА (11.09.2026). Ярлык Rexon ведёт на Rust-окно
-// `rexon-main-window`; окно на Python остаётся запасным пунктом меню ярлыка
-// «Rexon (классическое окно)».
+// OWNER'S DECISION (11.09.2026). The Rexon desktop entry leads to the Rust
+// window `rexon-main-window`; the Python window remains a fallback item of the
+// entry's menu "Rexon (classic window)".
 //
-// ⚠️ ВХОД ВЫБИРАЕТ ОДНА ФУНКЦИЯ — [`launch_entry_live`], и зовут её ОБА
-// писателя: ярлык ([`desktop_content`]) и запись автозапуска
-// (`tray::autostart_exec`, её пишет `rexon-gui/src/tray.rs` и для Python-,
-// и для Rust-хозяина). Причина жёсткая: лоток — это весь хозяин процесса, а
-// замок «один Rexon на сессию» у обоих входов общий. Ярлык на Rust-окно при
-// автозапуске Python-лотка поднял бы ПИТОНОВСКОЕ окно: Rust-бинарь стучится
-// в занятый замок и выходит. Разъехаться двум писателям нельзя — поэтому
-// вторая копия правила выбора запрещена.
+// ⚠️ THE ENTRY IS CHOSEN BY ONE FUNCTION — [`launch_entry_live`], and it is
+// called by BOTH writers: the desktop entry ([`desktop_content`]) and the
+// autostart entry (`tray::autostart_exec`, written by `rexon-gui/src/tray.rs`
+// for both the Python and the Rust host). The reason is strict: the tray is
+// the whole process host, and the "one Rexon per session" lock is shared by
+// both entries. A desktop entry for the Rust window with a Python tray in
+// autostart would bring up the PYTHON window: the Rust binary knocks on the
+// taken lock and exits. The two writers must not drift apart — so a second
+// copy of the selection rule is forbidden.
 //
-// ГДЕ ПРОВЕРКА. При генерации, без обёртки запуска. Обёртка жила бы в
-// лаунчере `rexon`, а он — Python: Rust-окно без интерпретатора тогда не
-// поднималось бы вовсе, то есть уход с Python потерял бы смысл. Если бинарь
-// позже пропадёт, `TryExec` на тот же путь уберёт пункт из меню вместо
-// ярлыка, который молча ничего не делает; перегенерация вернёт Python-вход.
+// WHERE THE CHECK IS. At generation time, without a launch wrapper. The
+// wrapper would live in the `rexon` launcher, and that is Python: then the
+// Rust window wouldn't start at all without the interpreter, i.e. moving off
+// Python would lose its point. If the binary later disappears, `TryExec` on
+// the same path removes the item from the menu instead of an entry that
+// silently does nothing; regeneration brings back the Python entry.
 //
-// Выбор смотрит только на то, что одинаково для любого процесса-писателя:
-// переменная [`ENTRY_ENV`], PATH и постоянные пути. Путь СВОЕГО исполняемого
-// файла сюда нарочно не входит: из Rust-окна он нашёл бы бинарь, из Python —
-// нет, и ярлык с автозапуском, записанные разными хозяевами, разошлись бы.
+// The choice looks only at what is the same for any writer process: the
+// [`ENTRY_ENV`] variable, PATH and fixed paths. The path of one's OWN
+// executable is deliberately not included: from the Rust window it would find
+// the binary, from Python — not, and the desktop entry and autostart written
+// by different hosts would diverge.
 
-/// Как продукт называет классическое окно на Python. Одно место на весь
-/// продукт: на это имя ссылается ответ Rust-окна про функции, которые пока
-/// есть только в классическом окне (`rexon-gui/src/settings_actions.rs`).
+/// What the product calls the classic Python window. One place for the whole
+/// product: this name is referenced by the Rust window's answer about features
+/// that so far exist only in the classic window (`rexon-gui/src/settings_actions.rs`).
 ///
-/// ⚠️ 16.09.2026 пункт с этим именем снят из ярлыка
-/// ([`desktop_content_for`]): открывать классическое окно из меню больше
-/// нечем, и ответ, который зовёт человека «щёлкнуть по ярлыку», надо
-/// переписать вместе с уходом Python.
+/// ⚠️ On 16.09.2026 the item with this name was removed from the desktop entry
+/// ([`desktop_content_for`]): there is no longer anything to open the classic
+/// window from the menu with, and the answer that tells the person to "click
+/// the desktop entry" must be rewritten together with the move off Python.
 pub const CLASSIC_WINDOW_ENTRY: &str = "Rexon (классическое окно)";
 
-/// Переменная отката: `REXON_ENTRY=python` уводит основной вход на Python.
+/// Fallback variable: `REXON_ENTRY=python` sends the main entry to Python.
 pub const ENTRY_ENV: &str = "REXON_ENTRY";
 
-/// Значение [`ENTRY_ENV`], выбирающее Python-вход.
+/// The [`ENTRY_ENV`] value that selects the Python entry.
 pub const ENTRY_PYTHON: &str = "python";
 
-/// Команда продукта в `PATH` — лаунчер `rexon`, его ставит установщик
-/// (и пакет дистрибутива).
+/// The product command in `PATH` — the `rexon` launcher, installed by the
+/// installer (and the distribution package).
 ///
-/// ⚠️ Имя оставлено прежним, но с 16.09.2026 лаунчер ведёт НЕ на Python:
-/// и пакет, и ручная установка печатают `sh`-лаунчер на бинарь Rust-окна
-/// ([`system_launcher`]). Значение по-прежнему служит запасным `Exec=`
-/// ярлыка ([`LaunchEntry::Python`]) — на случай, когда бинарь окна не
-/// нашёлся и записать в ярлык полный путь нечем.
+/// ⚠️ The name is kept, but since 16.09.2026 the launcher does NOT lead to
+/// Python: both the package and the manual install print an `sh` launcher for
+/// the Rust window binary ([`system_launcher`]). The value still serves as the
+/// desktop entry's fallback `Exec=` ([`LaunchEntry::Python`]) — for when the
+/// window binary wasn't found and there is no full path to write into the entry.
 pub const PYTHON_ENTRY_CMD: &str = "rexon";
 
-/// Интерпретатор для ОТКАТА на Python-вход, когда лаунчера [`PYTHON_ENTRY_CMD`]
-/// в `PATH` нет (дерево разработчика): хуки входа тогда зовут
-/// `python3 -m rexon.app …`. Одно место на весь Rust: при Rust-входе
-/// ([`LaunchEntry::MainWindow`]) величина не используется вовсе.
+/// Interpreter for the FALLBACK to the Python entry when the [`PYTHON_ENTRY_CMD`]
+/// launcher is not in `PATH` (developer tree): the entry hooks then call
+/// `python3 -m rexon.app …`. One place for all of Rust: with the Rust entry
+/// ([`LaunchEntry::MainWindow`]) the value is not used at all.
 pub const PYTHON_FALLBACK_EXE: &str = "python3";
 
-/// Где бинарь окна лежит у пакета (каталог данных Rexon, не в PATH).
+/// Where the package keeps the window binary (the Rexon data directory, not in PATH).
 pub const PACKAGE_MAIN_WINDOW: &str = "/usr/lib/rexon/rexon-main-window";
 
-/// Бинарь окна внутри дерева разработчика, относительно корня дерева.
+/// The window binary inside the developer tree, relative to the tree root.
 pub const DEV_TREE_MAIN_WINDOW_REL: &str = "rust/target/release/rexon-main-window";
 
-/// Каталог данных продукта в дереве разработчика, относительно корня дерева.
-/// Раскладка внутри — та же, что у пакета `rexon/` поставки
-/// (`qt_wallpaper_engine/qml_ui`, `kpackage`, `themes.json`, `assets`,
-/// дополнения GNOME и Cinnamon); до 02.10.2026 данные лежали в `rexon/`
-/// вперемешку с кодом Python, теперь Python — архив (`_archived/`).
+/// The product data directory in the developer tree, relative to the tree root.
+/// The layout inside is the same as the payload's `rexon/` package
+/// (`qt_wallpaper_engine/qml_ui`, `kpackage`, `themes.json`, `assets`, the
+/// GNOME and Cinnamon add-ons); until 02.10.2026 the data lay in `rexon/` mixed
+/// with the Python code, now Python is an archive (`_archived/`).
 pub const DEV_TREE_DATA_DIR: &str = "data";
 
-/// Каталог данных Rexon у пакета дистрибутива — родитель бинаря окна
-/// ([`PACKAGE_MAIN_WINDOW`]). Там же лежат пакет `rexon/` и каталог
-/// QML-модулей (`qml_modules::SYSTEM_MODULE_DIRS`).
+/// The Rexon data directory of the distribution package — the parent of the
+/// window binary ([`PACKAGE_MAIN_WINDOW`]). The `rexon/` package and the QML
+/// module directory (`qml_modules::SYSTEM_MODULE_DIRS`) lie there too.
 pub fn package_data_dir() -> &'static str {
     match PACKAGE_MAIN_WINDOW.rsplit_once('/') {
         Some((dir, _)) => dir,
@@ -698,27 +705,28 @@ pub fn package_data_dir() -> &'static str {
     }
 }
 
-/// Где искать пакет `rexon/` — данные продукта: вендорный интерфейс вкладки
-/// обоев (`qt_wallpaper_engine/qml_ui`), вшитый движок и каталоги переводов.
-/// По убыванию точности, без повторов.
+/// Where to look for the `rexon/` package — the product data: the vendored
+/// interface of the wallpaper tab (`qt_wallpaper_engine/qml_ui`), the
+/// embedded engine and the translation directories. In decreasing order of
+/// precision, without repeats.
 ///
-/// Раскладок четыре, и все живые:
-///   * дерево разработчика — `<корень>/data` ([`DEV_TREE_DATA_DIR`]; корень выводится из пути
-///     своего бинаря, `cli::repo_root`);
-///   * пакет дистрибутива — `<package_data_dir>/rexon` (`/usr/lib/rexon/rexon`);
-///   * установка в систему — `<LIB_DIR>/rexon` (раскладка та же, что у пакета:
-///     `installer_exec::InstallLayout`; прежний Python-установщик клал пакет
-///     прямо в `LIB_DIR`, и эта раскладка его не находила);
-///   * установка в домашнюю папку — `~/.local/lib/rexon/rexon` (та же
-///     раскладка; `home` пустой — кандидата нет).
+/// There are four layouts, and all are alive:
+///   * developer tree — `<root>/data` ([`DEV_TREE_DATA_DIR`]; the root is
+///     derived from the path of one's own binary, `cli::repo_root`);
+///   * distribution package — `<package_data_dir>/rexon` (`/usr/lib/rexon/rexon`);
+///   * system install — `<LIB_DIR>/rexon` (the layout is the same as the
+///     package's: `installer_exec::InstallLayout`; the old Python installer put
+///     the package straight into `LIB_DIR`, and this layout didn't find it);
+///   * home folder install — `~/.local/lib/rexon/rexon` (the same layout;
+///     empty `home` — no candidate).
 ///
-/// Своей переменной-переопределения здесь нет намеренно: у Python-стороны
-/// такой нет тоже (она находит себя по `__file__`), а `REXON_PACKAGED`
-/// говорит о РЕЖИМЕ пакета, а не о пути. Заводить вторую правду о том, где
-/// лежит продукт, нельзя.
+/// There is deliberately no override variable of our own here: the Python side
+/// has none either (it finds itself via `__file__`), and `REXON_PACKAGED`
+/// speaks of the package MODE, not the path. Starting a second truth about
+/// where the product lies is not allowed.
 ///
-/// Годен тот каталог, где действительно лежит вендорный интерфейс, — это
-/// решает исполнитель (у него живая файловая система).
+/// The right directory is the one where the vendored interface actually lies —
+/// the executor decides that (it has the live file system).
 pub fn package_data_dir_candidates(repo_root: &str, home: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let root = repo_root.trim_end_matches('/');
@@ -727,7 +735,7 @@ pub fn package_data_dir_candidates(repo_root: &str, home: &str) -> Vec<String> {
     }
     out.push(format!("{}/rexon", package_data_dir()));
     out.push(format!("{}/rexon", LIB_DIR.trim_end_matches('/')));
-    // Установка в домашнюю папку — та же раскладка (`<~/.local/lib/rexon>/rexon`).
+    // Home folder install — the same layout (`<~/.local/lib/rexon>/rexon`).
     if let Some(lib) = user_install_lib_dir(home) {
         out.push(format!("{lib}/rexon"));
     }
@@ -735,9 +743,9 @@ pub fn package_data_dir_candidates(repo_root: &str, home: &str) -> Vec<String> {
     out
 }
 
-/// Каталог данных установки в домашнюю папку (`~/.local/lib/rexon`), либо
-/// `None` при неизвестном HOME: относительный путь смотрел бы в текущий
-/// каталог процесса.
+/// The data directory of the home folder install (`~/.local/lib/rexon`), or
+/// `None` with an unknown HOME: a relative path would look into the process's
+/// current directory.
 pub fn user_install_lib_dir(home: &str) -> Option<String> {
     let home = home.trim_end_matches('/');
     if !home.starts_with('/') {
@@ -746,16 +754,16 @@ pub fn user_install_lib_dir(home: &str) -> Option<String> {
     install_paths(InstallMode::User, home, None).lib_dir
 }
 
-/// Признак «это и есть пакет `rexon/`»: путь его вендорного интерфейса.
-/// Относительный, от каталога пакета.
+/// The sign "this is the `rexon/` package": the path of its vendored interface.
+/// Relative, from the package directory.
 pub const PACKAGE_MARKER_REL: &str = "qt_wallpaper_engine/qml_ui/PageHost.qml";
 
-/// Выбрать каталог данных Rexon из кандидатов: первый, где лежит вендорный
-/// интерфейс вкладки обоев. `None` — ни одной раскладки рядом нет, и
-/// вкладка честно откроется без вендорных страниц.
+/// Choose the Rexon data directory among the candidates: the first where the
+/// vendored wallpaper tab interface lies. `None` — no layout nearby, and the
+/// tab honestly opens without the vendored pages.
 ///
-/// Проба живой файловой системы приходит колбэком: ядро не ходит на диск
-/// само, а проверка одна на все три раскладки (правило #12).
+/// The live file system probe comes as a callback: the core doesn't go to the
+/// disk itself, and the check is one for all three layouts (rule #12).
 pub fn pick_package_data_dir(
     repo_root: &str,
     is_file: &dyn Fn(&str) -> bool,
@@ -766,17 +774,17 @@ pub fn pick_package_data_dir(
         .find(|dir| is_file(&format!("{dir}/{PACKAGE_MARKER_REL}")))
 }
 
-/// Какой вход пишут ярлык и автозапуск.
+/// Which entry the desktop entry and autostart write.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LaunchEntry {
-    /// Rust-окно; внутри — полный путь к бинарю.
+    /// The Rust window; inside — the full path to the binary.
     MainWindow(String),
-    /// Классическое окно на Python (лаунчер [`PYTHON_ENTRY_CMD`]).
+    /// The classic Python window (the [`PYTHON_ENTRY_CMD`] launcher).
     Python,
 }
 
 impl LaunchEntry {
-    /// Программа для `Exec=` — уже в кавычках, если путь того требует.
+    /// The program for `Exec=` — already quoted if the path requires it.
     pub fn exec_program(&self) -> String {
         match self {
             LaunchEntry::MainWindow(path) => desktop_exec_arg(path),
@@ -784,7 +792,7 @@ impl LaunchEntry {
         }
     }
 
-    /// Строка `Exec=` с аргументами (флаги — свои, без кавычек).
+    /// The `Exec=` line with arguments (the flags are ours, unquoted).
     pub fn exec(&self, args: &[&str]) -> String {
         let mut out = self.exec_program();
         for a in args {
@@ -794,7 +802,7 @@ impl LaunchEntry {
         out
     }
 
-    /// Значение `TryExec=`: путь как есть (это не командная строка).
+    /// The `TryExec=` value: the path as is (it isn't a command line).
     pub fn try_exec(&self) -> String {
         match self {
             LaunchEntry::MainWindow(path) => path.replace('\\', "\\\\"),
@@ -803,12 +811,12 @@ impl LaunchEntry {
     }
 }
 
-/// Аргумент командной строки `Exec=` по спецификации Desktop Entry.
+/// A command line argument of `Exec=` per the Desktop Entry spec.
 ///
-/// Путь с пробелом или зарезервированным символом берётся в двойные
-/// кавычки; внутри кавычек `"`, `` ` ``, `$` и `\` экранируются обратной
-/// косой, а сама косая удваивается ещё раз — значение ключа проходит
-/// разэкранирование строки раньше разбора аргументов. `%` — всегда `%%`.
+/// A path with a space or a reserved character is put in double quotes; inside
+/// the quotes `"`, `` ` ``, `$` and `\` are escaped with a backslash, and the
+/// backslash itself is doubled once more — the key value goes through string
+/// unescaping before argument parsing. `%` — always `%%`.
 pub fn desktop_exec_arg(arg: &str) -> String {
     const RESERVED: &[char] = &[
         ' ', '\t', '"', '\'', '\\', '>', '<', '~', '|', '&', ';', '$', '*', '?', '#', '(',
@@ -832,19 +840,19 @@ pub fn desktop_exec_arg(arg: &str) -> String {
     q
 }
 
-/// Просили ли переменной отката Python-вход.
+/// Whether the fallback variable asked for the Python entry.
 pub fn python_entry_forced(entry_env: Option<&str>) -> bool {
     entry_env.is_some_and(|v| v.trim().eq_ignore_ascii_case(ENTRY_PYTHON))
 }
 
-/// Где искать бинарь окна — по порядку: каталоги PATH, путь пакета,
-/// установка в систему, установка в домашнюю папку, деревья разработчика.
+/// Where to look for the window binary — in order: PATH directories, the
+/// package path, the system install, the home folder install, developer trees.
 ///
-/// Относительные и пустые элементы PATH пропускаются: они смотрят в текущий
-/// каталог писателя, и два процесса получили бы разные ответы.
-/// `home` — домашняя папка (пустая — кандидата домашней установки нет).
-/// `dev_roots` — корни деревьев, куда ведёт установленный каталог Rexon
-/// (у разработчика `/usr/local/lib/rexon` — симлинк в дерево).
+/// Relative and empty PATH elements are skipped: they look into the writer's
+/// current directory, and two processes would get different answers.
+/// `home` — the home folder (empty — no home install candidate).
+/// `dev_roots` — roots of the trees the installed Rexon directory leads to
+/// (for the developer `/usr/local/lib/rexon` is a symlink into the tree).
 pub fn main_window_candidates(
     path_env: Option<&str>,
     home: &str,
@@ -858,12 +866,12 @@ pub fn main_window_candidates(
         }
     }
     out.push(PACKAGE_MAIN_WINDOW.to_string());
-    // Установка в систему кладёт бинарь окна по раскладке пакета
+    // The system install puts the window binary per the package layout
     // (`installer_exec::InstallLayout::main_window`).
     out.push(format!("{}/{bin}", LIB_DIR.trim_end_matches('/')));
-    // ⭐ Починка 15.09.2026: установка в домашнюю папку кладёт окно туда же
-    // по той же раскладке, а поиск её не знал — ярлык после неё уходил на
-    // классическое окно.
+    // ⭐ Fix of 15.09.2026: the home folder install puts the window in the same
+    // place per the same layout, but the lookup didn't know it — after such an
+    // install the desktop entry went to the classic window.
     if let Some(lib) = user_install_lib_dir(home) {
         out.push(format!("{lib}/{bin}"));
     }
@@ -875,11 +883,11 @@ pub fn main_window_candidates(
     out
 }
 
-/// Правило выбора входа — ОДНО на ярлык и автозапуск.
+/// The entry selection rule — ONE for the desktop entry and autostart.
 ///
-/// `REXON_ENTRY=python` → Python. Иначе — первый исполняемый кандидат
-/// бинаря окна; ни одного нет → Python (не битый ярлык). Путь с управляющим
-/// символом в `.desktop` не записать — такой кандидат пропускается.
+/// `REXON_ENTRY=python` → Python. Otherwise — the first executable window
+/// binary candidate; none — Python (not a broken entry). A path with a control
+/// character can't be written into `.desktop` — such a candidate is skipped.
 pub fn choose_launch_entry(
     entry_env: Option<&str>,
     candidates: &[String],
@@ -896,9 +904,9 @@ pub fn choose_launch_entry(
         .unwrap_or(LaunchEntry::Python)
 }
 
-/// Корень дерева разработчика, если установленный каталог Rexon —
-/// симлинк в пакет `rexon/` внутри дерева. Настоящий каталог (копия
-/// user-install, system-install без симлинка) дерева не даёт.
+/// The developer tree root, if the installed Rexon directory is a symlink into
+/// the `rexon/` package inside the tree. A real directory (a user-install copy,
+/// a system install without a symlink) gives no tree.
 fn dev_root_behind(lib_dir: &str) -> Option<String> {
     let link = std::path::Path::new(lib_dir);
     if !std::fs::symlink_metadata(link).ok()?.file_type().is_symlink() {
@@ -915,7 +923,7 @@ fn is_executable_file(path: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Вход по живой машине: [`ENTRY_ENV`], PATH и установленные каталоги.
+/// The entry per the live machine: [`ENTRY_ENV`], PATH and installed directories.
 pub fn launch_entry_live() -> LaunchEntry {
     let home = std::env::var("HOME").unwrap_or_default();
     let user_lib = install_paths(InstallMode::User, &home, None).lib_dir;
@@ -932,10 +940,10 @@ pub fn launch_entry_live() -> LaunchEntry {
     )
 }
 
-/// Открыть окно Rexon отдельным процессом с аргументами `args` (кнопка
-/// уведомления: «Открыть Wallpaper Engine» — `--section=wallpaper_engine`).
-/// Rexon уже запущен — новая копия только поднимает его окно на нужном
-/// разделе (`single_instance`). `Err` — причина для журнала.
+/// Open the Rexon window as a separate process with arguments `args` (a
+/// notification button: «Open Wallpaper Engine» — `--section=wallpaper_engine`).
+/// If Rexon is already running, the new copy only raises its window on the
+/// right section (`single_instance`). `Err` — the reason for the log.
 pub fn open_rexon_live(args: &[&str]) -> Result<(), String> {
     let program = match launch_entry_live() {
         LaunchEntry::MainWindow(path) => path,
@@ -951,14 +959,14 @@ pub fn open_rexon_live(args: &[&str]) -> Result<(), String> {
         .map_err(|e| format!("couldn't start {program}: {e}"))
 }
 
-/// Содержимое `rexon.desktop` по живой машине — вход выбирает
-/// [`launch_entry_live`]. Этой функцией ярлык пишет Python-установщик.
+/// Content of `rexon.desktop` per the live machine — the entry is chosen by
+/// [`launch_entry_live`]. The Python installer writes the desktop entry with this function.
 pub fn desktop_content() -> String {
     desktop_content_for(&launch_entry_live())
 }
 
-// Подписи ярлыков: в файл ложатся все языки каталога сразу (`Name[ru]=`),
-// меню рабочего стола выбирает сам по локали сеанса ([`crate::system_l10n`]).
+// Desktop entry labels: all the catalog's languages go into the file at once
+// (`Name[ru]=`), the desktop menu picks by the session locale itself ([`crate::system_l10n`]).
 // TRANSLATORS: Menu entry of Rexon: GenericName shown under the name "Rexon".
 const DESKTOP_GENERIC_NAME: &str = n_("Desktop Environment Manager");
 // TRANSLATORS: Menu entry of Rexon: tooltip/description.
@@ -986,30 +994,30 @@ const SYSTEM_POLICY_DESCRIPTION: &str = n_("Install a system theme (SDDM / Plymo
 // TRANSLATORS: Text of the system password dialog (polkit).
 pub(crate) const POLICY_MESSAGE_SYSTEM_THEME: &str = n_("Authentication is required to install a system theme");
 
-/// Содержимое `rexon.desktop` для заданного входа — порт
+/// Content of `rexon.desktop` for the given entry — port of
 /// `_get_desktop_content`.
 ///
-/// Быстрые действия идут на тот же вход, что и основной запуск: Rust-окно
-/// понимает `--page=` и `--recover-kde` той же дверью, что Python
+/// Quick actions go to the same entry as the main launch: the Rust window
+/// understands `--page=` and `--recover-kde` through the same door as Python
 /// (`cli::start_section` / `cli::run_headless`).
 ///
-/// ⭐ Починка при переносе: ключи `X-GNOME-UsesNotifications` и
-/// `X-Desktop-File-Install-Version` стояли после последнего
-/// `[Desktop Action]`, то есть принадлежали группе действия, а не
-/// `[Desktop Entry]` — GNOME читает их только из основной группы.
+/// ⭐ Fixed in the port: the keys `X-GNOME-UsesNotifications` and
+/// `X-Desktop-File-Install-Version` came after the last `[Desktop Action]`,
+/// i.e. belonged to the action group rather than `[Desktop Entry]` — GNOME
+/// reads them only from the main group.
 ///
-/// ⭐ Починка 16.09.2026: из ярлыка снят пункт «Rexon (классическое окно)»
-/// (`Exec=rexon --classic`). Классического окна на Python нет ни в пакете
-/// дистрибутива, ни в ручной установке — команда `rexon` у обоих ведёт на
-/// то же самое окно, и пункт открывал бы копию того, что и так открывает
-/// сам ярлык.
+/// ⭐ Fix of 16.09.2026: the "Rexon (classic window)" item
+/// (`Exec=rexon --classic`) was removed from the desktop entry. There is no
+/// classic Python window either in the distribution package or in the manual
+/// install — the `rexon` command in both leads to the same window, and the
+/// item would open a copy of what the entry itself already opens.
 ///
-/// ⭐ Починка 26.09.2026: снят `OnlyShowIn=GNOME;KDE;XFCE;MATE;Cinnamon;`.
-/// Ограничение пришло из первого снимка без обоснования, а продукт сам
-/// ставит и Hyprland, sway, niri, LXQt, COSMIC — там пункта в меню не было
-/// вовсе, и запустить Rexon можно было только из терминала. Главному
-/// ярлыку ограничение не нужно ни в одном окружении. У
-/// `rexon-recover.desktop` оно остаётся ([`recover_desktop_content_for`]).
+/// ⭐ Fix of 26.09.2026: `OnlyShowIn=GNOME;KDE;XFCE;MATE;Cinnamon;` was
+/// removed. The restriction came from the first snapshot without a rationale,
+/// while the product itself installs Hyprland, sway, niri, LXQt, COSMIC too —
+/// there was no menu item there at all, and Rexon could only be started from a
+/// terminal. The main desktop entry needs no restriction in any environment.
+/// `rexon-recover.desktop` keeps it ([`recover_desktop_content_for`]).
 pub fn desktop_content_for(entry: &LaunchEntry) -> String {
     use crate::system_l10n::desktop_key as key;
     let actions = "InstallDE;Backup;Compare;Recover;";
@@ -1068,20 +1076,21 @@ pub fn desktop_content_for(entry: &LaunchEntry) -> String {
     )
 }
 
-/// Содержимое `rexon-recover.desktop` по живой машине — вход тот же, что у
-/// ярлыка ([`launch_entry_live`]).
+/// Content of `rexon-recover.desktop` per the live machine — the entry is the
+/// same as the desktop entry's ([`launch_entry_live`]).
 pub fn recover_desktop_content() -> String {
     recover_desktop_content_for(&launch_entry_live())
 }
 
-/// Содержимое `rexon-recover.desktop` для заданного входа — порт
+/// Content of `rexon-recover.desktop` for the given entry — port of
 /// `_get_recover_desktop_content`.
 ///
-/// `OnlyShowIn=KDE` здесь по делу: `--recover-kde` откатывает Global Theme
-/// Plasma, в других окружениях пункту нечего восстанавливать.
+/// `OnlyShowIn=KDE` is justified here: `--recover-kde` rolls back the Plasma
+/// Global Theme, in other environments the item has nothing to restore.
 ///
-/// Аварийному откату Rust-вход особенно к месту: маршрут `--recover-kde`
-/// целиком в ядре и отрабатывает до подъёма Qt, интерпретатор ему не нужен.
+/// The Rust entry is especially apt for the emergency rollback: the
+/// `--recover-kde` route is entirely in the core and runs before Qt starts, it
+/// doesn't need the interpreter.
 pub fn recover_desktop_content_for(entry: &LaunchEntry) -> String {
     use crate::system_l10n::desktop_key as key;
     format!(
@@ -1111,25 +1120,25 @@ pub fn recover_desktop_content_for(entry: &LaunchEntry) -> String {
     )
 }
 
-/// Команда `rexon` — лаунчер ручной установки. `lib_dir` — каталог данных
-/// Rexon этой установки (`installer_exec::InstallLayout::lib_dir`); бинарь
-/// окна лежит в нём.
+/// The `rexon` command — the manual install launcher. `lib_dir` — the Rexon
+/// data directory of this install (`installer_exec::InstallLayout::lib_dir`);
+/// the window binary lies in it.
 ///
-/// ⭐ Починка 16.09.2026 (правило #16): оба лаунчера были на Python и звали
-/// `from rexon.app import main` — классическое окно, которого поставка
-/// больше не везёт (коммиты 82e2113, b821779). После ручной установки
-/// команда `rexon` и ярлык уходили бы в пустоту. Теперь лаунчер — тот же
-/// `sh`, что печатает пакет дистрибутива, и ведёт на бинарь Rust-окна.
+/// ⭐ Fix of 16.09.2026 (rule #16): both launchers were Python and called
+/// `from rexon.app import main` — the classic window the payload no longer
+/// carries (commits 82e2113, b821779). After a manual install the `rexon`
+/// command and the desktop entry would lead into the void. Now the launcher is
+/// the same `sh` the distribution package prints, and it leads to the Rust
+/// window binary.
 ///
-/// ⚠️ Разница с лаунчером ПАКЕТА ровно одна и она намеренная: здесь НЕ
-/// выставляется [`PACKAGED_ENV`]. Ручная установка — не пакет: признак
-/// пакета увёл бы [`detect_default_mode`] в переносной режим и человек
-/// больше не смог бы ни доустановить, ни переустановить Rexon этим же
-/// мастером.
+/// ⚠️ The difference from the PACKAGE launcher is exactly one, and deliberate:
+/// [`PACKAGED_ENV`] is NOT set here. A manual install is not a package: the
+/// package marker would send [`detect_default_mode`] into portable mode, and
+/// the person could no longer finish or redo the Rexon install with this same
+/// wizard.
 ///
-/// `note` — строка-пояснение в шапке: человек, открывший
-/// `/usr/local/bin/rexon` или `~/.local/bin/rexon`, видит, какая это
-/// установка.
+/// `note` — an explanatory line in the header: a person who opens
+/// `/usr/local/bin/rexon` or `~/.local/bin/rexon` sees which install it is.
 fn launcher_script(lib_dir: &str, note: &str) -> String {
     let bin = format!(
         "{}/{}",
@@ -1144,18 +1153,18 @@ fn launcher_script(lib_dir: &str, note: &str) -> String {
     )
 }
 
-/// Лаунчер установки в систему (`self.LIB_DIR` фиксирован).
+/// The system install launcher (`self.LIB_DIR` is fixed).
 pub fn system_launcher(lib_dir: &str) -> String {
     launcher_script(lib_dir, "установка в систему")
 }
 
-/// Лаунчер установки в домашнюю папку.
+/// The home folder install launcher.
 pub fn user_launcher(lib_dir: &str) -> String {
     launcher_script(lib_dir, "установка в домашнюю папку")
 }
 
 // ============================================================================
-// Режим установки и пути
+// Install mode and paths
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -1175,7 +1184,7 @@ impl InstallMode {
         }
     }
 
-    /// Порт валидации `mode` в `RexonInstaller.__init__` (None — ValueError).
+    /// Port of the `mode` validation in `RexonInstaller.__init__` (None — ValueError).
     pub fn parse(s: &str) -> Option<InstallMode> {
         match s {
             "system" => Some(InstallMode::System),
@@ -1186,42 +1195,43 @@ impl InstallMode {
     }
 }
 
-/// Дистрибутивы с неизменяемой системной частью: `/usr` и `/usr/local`
-/// лежат в read-only снапшоте, а обновление атомарное (A/B), поэтому всё
-/// записанное туда пропадает при следующем обновлении системы.
+/// Distributions with an immutable system part: `/usr` and `/usr/local` lie in
+/// a read-only snapshot, and the update is atomic (A/B), so everything written
+/// there disappears at the next system update.
 ///
-/// SteamOS: юнит `usr-local.mount` удалён из offload-схемы (коммит `d953c8b`
-/// в `steamos-customizations`, янв. 2023) — `/usr/local` больше не отдельный
-/// раздел в `$HOME`, а часть образа. Персистентны только `$HOME`, Flatpak и
-/// offload-каталоги.
+/// SteamOS: the `usr-local.mount` unit was removed from the offload scheme
+/// (commit `d953c8b` in `steamos-customizations`, Jan. 2023) — `/usr/local` is
+/// no longer a separate partition in `$HOME` but part of the image. Only
+/// `$HOME`, Flatpak and the offload directories persist.
 const IMMUTABLE_SYSTEM_DISTROS: &[&str] = &["steamos", "holoiso", "bazzite"];
 
-/// Read-only ли системная часть у этого дистрибутива (по `ID` из os-release).
+/// Whether this distribution's system part is read-only (by `ID` from os-release).
 pub fn has_immutable_system(distro_id: &str) -> bool {
     let id = distro_id.trim().to_ascii_lowercase();
     IMMUTABLE_SYSTEM_DISTROS.contains(&id.as_str())
 }
 
-/// Переменная, которую выставляет лаунчер пакета дистрибутива
+/// The variable set by the distribution package launcher
 /// (`packaging/aur/PKGBUILD`, `/usr/bin/rexon`).
 pub const PACKAGED_ENV: &str = "REXON_PACKAGED";
 
-/// Порт `RexonInstaller.detect_default_mode`. Steam (Deck/Big Picture/клиент)
-/// → portable (запуск без установки). `get_env` возвращает значение
-/// переменной окружения (None — не задана), `distro_id` — `ID` из
-/// os-release (пустая строка, если не определён).
+/// Port of `RexonInstaller.detect_default_mode`. Steam (Deck/Big Picture/client)
+/// → portable (running without install). `get_env` returns the value of an
+/// environment variable (None — not set), `distro_id` — `ID` from os-release
+/// (an empty string if undetermined).
 ///
-/// На SteamOS в режиме рабочего стола (Rexon запущен из меню, а не через
-/// Steam) системный режим выбирать НЕЛЬЗЯ: `/usr/local` и `/usr/share` —
-/// часть read-only образа, установка либо падает, либо исчезает при
-/// следующем обновлении SteamOS. Там ставим в домашнюю папку — она
-/// переживает атомарное обновление.
+/// On SteamOS in desktop mode (Rexon started from the menu, not via Steam) the
+/// system mode must NOT be chosen: `/usr/local` and `/usr/share` are part of
+/// the read-only image, the install either fails or disappears at the next
+/// SteamOS update. There we install into the home folder — it survives the
+/// atomic update.
 ///
-/// Пакет дистрибутива ([`PACKAGED_ENV`] выставляет его лаунчер) — тоже
-/// portable: файлы уже разложил пакетный менеджер, и предлагать установку в
-/// `/usr/local` поверх пакета значило бы показывать диалог установщика при
-/// каждом запуске. Прежде эту проверку вставлял sed в PKGBUILD; когда выбор
-/// режима переехал в ядро, sed потерял свою строку и сборка пакета встала.
+/// The distribution package ([`PACKAGED_ENV`] is set by its launcher) is
+/// portable too: the package manager has already laid out the files, and
+/// offering an install into `/usr/local` on top of the package would mean
+/// showing the installer dialog on every launch. Previously this check was
+/// inserted into PKGBUILD by sed; when mode selection moved into the core, sed
+/// lost its line and the package build broke.
 pub fn detect_default_mode(
     get_env: impl Fn(&str) -> Option<String>,
     distro_id: &str,
@@ -1239,17 +1249,17 @@ pub fn detect_default_mode(
     InstallMode::System
 }
 
-/// Почему системная установка недоступна — человеческий текст для интерфейса
-/// (правило #13), либо `None`, если она доступна.
+/// Why the system install is unavailable — human text for the interface
+/// (rule #13), or `None` if it is available.
 ///
-/// Язык — язык каталога перевода, как у [`system_mode_blocked_reason_in`]
-/// (прежде здесь была закреплённая русская форма).
+/// The language is the translation catalog's, as in
+/// [`system_mode_blocked_reason_in`] (previously a fixed Russian form was here).
 pub fn system_mode_blocked_reason(distro_id: &str) -> Option<String> {
     system_mode_blocked_reason_in(distro_id, crate::distro_compat::Lang::En)
 }
 
-/// Пути установки по режиму. В portable — все `None` (Rexon работает из
-/// текущей папки). Порт `RexonInstaller.__init__`.
+/// Install paths by mode. In portable — all `None` (Rexon runs from the
+/// current folder). Port of `RexonInstaller.__init__`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InstallPaths {
     pub install_dir: Option<String>,
@@ -1261,10 +1271,10 @@ pub struct InstallPaths {
     pub cinnamon_ext_dir: Option<String>,
 }
 
-/// Порт вычисления путей в `RexonInstaller.__init__`.
+/// Port of the path computation in `RexonInstaller.__init__`.
 ///
-/// * `home` — `os.path.expanduser("~")` (нужен для user-режима).
-/// * `xdg_data_home` — значение `XDG_DATA_HOME` (None → `{home}/.local/share`).
+/// * `home` — `os.path.expanduser("~")` (needed for user mode).
+/// * `xdg_data_home` — the value of `XDG_DATA_HOME` (None → `{home}/.local/share`).
 pub fn install_paths(
     mode: InstallMode,
     home: &str,
@@ -1307,8 +1317,8 @@ pub fn install_paths(
     }
 }
 
-/// Порт `check_if_installed` для system/user режимов: rexon-launcher +
-/// каталог lib + rexon.desktop существуют. `exists` — ФС-проверка (исполнитель).
+/// Port of `check_if_installed` for system/user modes: rexon-launcher + the lib
+/// directory + rexon.desktop exist. `exists` — an FS check (executor).
 pub fn system_or_user_installed(
     paths: &InstallPaths,
     exists: impl Fn(&str) -> bool,
@@ -1325,127 +1335,127 @@ pub fn system_or_user_installed(
 }
 
 // ============================================================================
-// Первый запуск: предлагать ли мастер установки
+// First run: whether to offer the install wizard
 // ============================================================================
 //
-// Одно решение на оба входа: Rust-окно и Python-окно (`qt_main/app.py`)
-// обязаны отвечать одинаково, иначе мастер всплывёт в одном и промолчит в
-// другом (правило #12).
+// One decision for both entries: the Rust window and the Python window
+// (`qt_main/app.py`) must answer the same, otherwise the wizard pops up in
+// one and stays silent in the other (rule #12).
 //
-// Решение ЧИСТОЕ: всё, что видно только на живой машине (переменные, путь
-// своего исполняемого файла, наличие файлов, симлинк каталога), приходит
-// через [`FirstRunProbe`]; настройки — готовой картой. Живая проба —
-// [`LiveFirstRunProbe`], вход по живой машине — [`first_run_offer_live`].
+// The decision is PURE: everything visible only on the live machine
+// (variables, the path of one's own executable, file presence, a directory
+// symlink) comes through [`FirstRunProbe`]; settings — as a ready map. The
+// live probe is [`LiveFirstRunProbe`], the entry per the live machine is
+// [`first_run_offer_live`].
 //
-// ⭐ Починки против Python-гейта (`not RexonInstaller().installed`):
-//   * «Не сейчас» не запоминалось — мастер всплывал при КАЖДОМ запуске.
-//     Теперь есть «больше не спрашивать» ([`KEY_FIRST_RUN_DECLINED`]).
-//   * Rust-окно из пакета не получает [`PACKAGED_ENV`]: ярлык пакета зовёт
-//     `/usr/lib/rexon/rexon-main-window` напрямую. Перенесённый как есть
-//     гейт показывал бы мастер каждому, кто поставил пакет. Теперь пакет
-//     узнаётся и по месту своего файла ([`packaged_location`]).
-//   * Проверялся только режим по умолчанию: на Arch это system, и Rexon,
-//     установленный в домашнюю папку, получал мастер при каждом запуске.
-//     Теперь «установлено» — в любом из двух режимов.
-//   * Дерево разработчика не распознавалось вовсе.
+// ⭐ Fixes against the Python gate (`not RexonInstaller().installed`):
+//   * «Not Now» was not remembered — the wizard popped up on EVERY launch.
+//     Now there is "don't ask again" ([`KEY_FIRST_RUN_DECLINED`]).
+//   * The Rust window from the package doesn't get [`PACKAGED_ENV`]: the
+//     package's desktop entry calls `/usr/lib/rexon/rexon-main-window`
+//     directly. The gate carried over as is would show the wizard to everyone
+//     who installed the package. Now the package is also recognised by the
+//     location of its own file ([`packaged_location`]).
+//   * Only the default mode was checked: on Arch that is system, and a Rexon
+//     installed into the home folder got the wizard on every launch. Now
+//     "installed" means in either of the two modes.
+//   * The developer tree wasn't recognised at all.
 
-/// Переменная для приёмки глазами: [`FIRST_RUN_FORCE`] — показать мастер
-/// всегда, [`FIRST_RUN_NEVER`] — не показывать никогда. Иное значение
-/// не действует.
+/// A variable for eyeball acceptance: [`FIRST_RUN_FORCE`] — always show the
+/// wizard, [`FIRST_RUN_NEVER`] — never show it. Any other value has no effect.
 pub const FIRST_RUN_ENV: &str = "REXON_FIRST_RUN";
-/// Значение [`FIRST_RUN_ENV`]: предложить мастер при любых условиях.
+/// [`FIRST_RUN_ENV`] value: offer the wizard under any conditions.
 pub const FIRST_RUN_FORCE: &str = "force";
-/// Значение [`FIRST_RUN_ENV`]: не предлагать мастер.
+/// [`FIRST_RUN_ENV`] value: don't offer the wizard.
 pub const FIRST_RUN_NEVER: &str = "never";
 
-/// Ключ настроек «больше не предлагать установку». Живёт в том же
-/// `settings.json`, что и ключи обучения (`onboarding::KEY_ENABLED`), и
-/// читается тем же способом: не булево значение — «не отказывался».
+/// Settings key "don't offer the install again". It lives in the same
+/// `settings.json` as the onboarding keys (`onboarding::KEY_ENABLED`) and is
+/// read the same way: a non-boolean value means "didn't decline".
 ///
-/// ⚠️ Прежний ключ `wizard_done` из `settings::defaults` сюда НЕ годится:
-/// его никто не читает, а что он значил раньше, неизвестно — взять его
-/// значило бы молча спрятать мастер у тех, у кого там когда-то стояло `true`.
+/// ⚠️ The old `wizard_done` key from `settings::defaults` is NOT fit here:
+/// nobody reads it, and what it meant before is unknown — using it would
+/// silently hide the wizard for those who once had `true` there.
 pub const KEY_FIRST_RUN_DECLINED: &str = "installer_first_run_declined";
 
-/// Переменные, которые выставляет Steam (Deck, Big Picture, клиент), —
-/// при них Rexon работает без установки. Тот же набор, что в
-/// [`detect_default_mode`].
+/// Variables set by Steam (Deck, Big Picture, client) — with them Rexon runs
+/// without an install. The same set as in [`detect_default_mode`].
 const STEAM_ENVS: &[&str] = &["SteamGameId", "SteamAppId", "STEAM_COMPAT_DATA_PATH"];
 
-/// Каталоги, файлы в которых разложил пакетный менеджер: всё под `/usr`,
-/// кроме `/usr/local` (по FHS это территория дистрибутива — `/usr/bin`,
-/// `/usr/lib/rexon`, `/usr/lib64/…`), хранилище NixOS и корень
-/// приложения Flatpak.
+/// Directories whose files were laid out by the package manager: everything
+/// under `/usr` except `/usr/local` (per FHS it is the distribution's
+/// territory — `/usr/bin`, `/usr/lib/rexon`, `/usr/lib64/…`), the NixOS store
+/// and the Flatpak application root.
 const PACKAGE_PREFIXES: &[&str] = &["/usr/", "/nix/store/", "/app/"];
-/// Исключение из [`PACKAGE_PREFIXES`]: сюда ставит ручная установка.
+/// The exception from [`PACKAGE_PREFIXES`]: the manual install puts things here.
 const LOCAL_PREFIX: &str = "/usr/local/";
 
-/// Что решение видит на живой машине. Каждая проба — одно наблюдение без
-/// выводов: выводы делает [`first_run_offer`].
+/// What the decision sees on the live machine. Each probe is one observation
+/// without conclusions: [`first_run_offer`] draws the conclusions.
 pub trait FirstRunProbe {
-    /// Значение переменной окружения (`None` — не задана).
+    /// Value of an environment variable (`None` — not set).
     fn env(&self, key: &str) -> Option<String>;
-    /// `ID` из os-release (пустая строка — не определён).
+    /// `ID` from os-release (an empty string — undetermined).
     fn distro_id(&self) -> String;
-    /// Где лежит сам запущенный Rexon: бинарь окна, а у Python-входа —
-    /// файл модуля (НЕ интерпретатор: `/usr/bin/python3` выглядит пакетом).
+    /// Where the running Rexon itself lies: the window binary, and for the Python
+    /// entry — the module file (NOT the interpreter: `/usr/bin/python3` looks like a package).
     fn own_path(&self) -> Option<String>;
-    /// Корень дерева разработчика, внутри которого лежит [`Self::own_path`]
-    /// (пусто — не в дереве).
+    /// The developer tree root inside which [`Self::own_path`] lies
+    /// (empty — not in a tree).
     fn repo_root(&self) -> String;
-    /// Корень дерева разработчика, если `lib_dir` — симлинк в дерево.
+    /// The developer tree root, if `lib_dir` is a symlink into the tree.
     fn dev_tree_behind(&self, lib_dir: &str) -> Option<String>;
-    /// Существует ли путь.
+    /// Whether the path exists.
     fn exists(&self, path: &str) -> bool;
-    /// Каталог ли это.
+    /// Whether it is a directory.
     fn is_dir(&self, path: &str) -> bool;
 }
 
-/// Почему мастер НЕ предлагается.
+/// Why the wizard is NOT offered.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FirstRunSkip {
     /// `REXON_FIRST_RUN=never`.
     ForcedNever,
-    /// Лаунчер пакета выставил [`PACKAGED_ENV`].
+    /// The package launcher set [`PACKAGED_ENV`].
     PackagedEnv,
-    /// Свой файл лежит там, куда кладёт только пакетный менеджер.
+    /// One's own file lies where only the package manager puts things.
     PackagedLocation(String),
-    /// Запуск из Steam — работает без установки.
+    /// Launched from Steam — runs without an install.
     Steam(&'static str),
-    /// Дерево разработчика: свой файл внутри него либо установленный
-    /// каталог — симлинк в него.
+    /// Developer tree: one's own file is inside it, or the installed directory
+    /// is a symlink into it.
     DevTree(String),
-    /// Уже установлен в систему.
+    /// Already installed into the system.
     InstalledSystem,
-    /// Уже установлен в домашнюю папку.
+    /// Already installed into the home folder.
     InstalledUser,
-    /// Человек ответил «больше не спрашивать».
+    /// The person answered «Don't ask again».
     Declined,
 }
 
-/// Решение «предлагать ли мастер установки».
+/// The decision "whether to offer the install wizard".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FirstRunOffer {
-    /// Предложить.
+    /// Offer.
     Offer {
-        /// Режим, выбранный заранее: system, а на неизменяемой системе — user.
+        /// The mode chosen in advance: system, and on an immutable system — user.
         default_mode: InstallMode,
-        /// Почему установка в систему недоступна (текст для человека).
+        /// Why the system install is unavailable (text for the person).
         system_blocked: Option<String>,
-        /// Показано по `REXON_FIRST_RUN=force`, а не по условиям машины.
+        /// Shown because of `REXON_FIRST_RUN=force`, not because of the machine's conditions.
         forced: bool,
     },
-    /// Не предлагать.
+    /// Don't offer.
     Skip(FirstRunSkip),
 }
 
 impl FirstRunOffer {
-    /// Предлагать ли мастер.
+    /// Whether to offer the wizard.
     pub fn is_offer(&self) -> bool {
         matches!(self, FirstRunOffer::Offer { .. })
     }
 
-    /// Строка для журнала: решение и причина.
+    /// A line for the log: the decision and the reason.
     pub fn log_line(&self) -> String {
         match self {
             FirstRunOffer::Offer { default_mode, forced, .. } => format!(
@@ -1476,8 +1486,8 @@ impl FirstRunOffer {
     }
 }
 
-/// Значение [`FIRST_RUN_ENV`]: `Some(true)` — force, `Some(false)` — never,
-/// `None` — не задано или непонятно.
+/// [`FIRST_RUN_ENV`] value: `Some(true)` — force, `Some(false)` — never,
+/// `None` — not set or unclear.
 pub fn first_run_override(value: Option<&str>) -> Option<bool> {
     let v = value?.trim();
     if v.eq_ignore_ascii_case(FIRST_RUN_FORCE) {
@@ -1489,9 +1499,9 @@ pub fn first_run_override(value: Option<&str>) -> Option<bool> {
     }
 }
 
-/// Лежит ли свой файл там, куда кладёт только пакетный менеджер. Хвост
-/// « (deleted)», который ядро дописывает к пути пересобранного бинаря,
-/// снимается. Относительный путь ничего не доказывает — `false`.
+/// Whether one's own file lies where only the package manager puts things. The
+/// " (deleted)" tail the kernel appends to the path of a rebuilt binary is
+/// stripped. A relative path proves nothing — `false`.
 pub fn packaged_location(own_path: &str) -> bool {
     let path = own_path
         .strip_suffix(" (deleted)")
@@ -1499,9 +1509,9 @@ pub fn packaged_location(own_path: &str) -> bool {
     !path.starts_with(LOCAL_PREFIX) && PACKAGE_PREFIXES.iter().any(|p| path.starts_with(p))
 }
 
-/// Отказался ли человек от мастера — по содержимому настроек. Не булево
-/// значение (файл правили руками) читается как «не отказывался»: лишний
-/// раз предложить безопаснее, чем молча спрятать установку навсегда.
+/// Whether the person declined the wizard — by the settings content. A
+/// non-boolean value (the file was edited by hand) reads as "didn't decline":
+/// offering once more is safer than silently hiding the install forever.
 pub fn first_run_declined_from(settings: &serde_json::Map<String, serde_json::Value>) -> bool {
     settings
         .get(KEY_FIRST_RUN_DECLINED)
@@ -1509,8 +1519,8 @@ pub fn first_run_declined_from(settings: &serde_json::Map<String, serde_json::Va
         .unwrap_or(false)
 }
 
-/// Режим, который мастер выбирает заранее. Portable здесь не бывает: там,
-/// где он уместен (пакет, Steam), мастер не предлагается.
+/// The mode the wizard chooses in advance. Portable never happens here: where
+/// it is appropriate (package, Steam), the wizard is not offered.
 fn offered_mode(distro_id: &str) -> InstallMode {
     if has_immutable_system(distro_id) {
         InstallMode::User
@@ -1519,12 +1529,12 @@ fn offered_mode(distro_id: &str) -> InstallMode {
     }
 }
 
-/// Решение «предлагать ли мастер установки».
+/// The decision "whether to offer the install wizard".
 ///
-/// Порядок проверок (первая сработавшая даёт ответ):
-/// `REXON_FIRST_RUN` → пакет по переменной → пакет по месту файла → Steam →
-/// дерево разработчика → установлен в систему → в домашнюю папку →
-/// «больше не спрашивать» → предложить.
+/// Order of checks (the first that fires gives the answer):
+/// `REXON_FIRST_RUN` → package by variable → package by file location → Steam →
+/// developer tree → installed into the system → into the home folder →
+/// "don't ask again" → offer.
 pub fn first_run_offer(
     probe: &dyn FirstRunProbe,
     settings: &serde_json::Map<String, serde_json::Value>,
@@ -1585,7 +1595,7 @@ pub fn first_run_offer(
     offer(false)
 }
 
-/// Живая проба. Два входа различаются только тем, ЧТО считать своим файлом.
+/// The live probe. The two entries differ only in WHAT to consider one's own file.
 #[derive(Debug, Clone)]
 pub struct LiveFirstRunProbe {
     own_path: Option<String>,
@@ -1593,7 +1603,7 @@ pub struct LiveFirstRunProbe {
 }
 
 impl LiveFirstRunProbe {
-    /// Для бинаря Rust-окна: свой исполняемый файл и дерево вокруг него.
+    /// For the Rust window binary: one's own executable and the tree around it.
     pub fn for_this_binary() -> Self {
         Self {
             own_path: std::env::current_exe()
@@ -1603,10 +1613,10 @@ impl LiveFirstRunProbe {
         }
     }
 
-    /// Для входа, у которого исполняемый файл — чужой (Python-окно:
-    /// `current_exe` там `/usr/bin/python3`). `own_path` — настоящий путь
-    /// своего модуля (`os.path.realpath(__file__)`), `repo_root` — корень
-    /// дерева разработчика вокруг него или пустая строка.
+    /// For an entry whose executable is foreign (the Python window: there
+    /// `current_exe` is `/usr/bin/python3`). `own_path` — the real path of one's
+    /// own module (`os.path.realpath(__file__)`), `repo_root` — the developer tree
+    /// root around it or an empty string.
     pub fn for_path(own_path: Option<String>, repo_root: String) -> Self {
         Self { own_path, repo_root }
     }
@@ -1636,19 +1646,19 @@ impl FirstRunProbe for LiveFirstRunProbe {
     }
 }
 
-/// Решение по живой машине для бинаря Rust-окна. Настройки только
-/// читаются: каталог конфигурации ради ответа не создаётся.
+/// The decision per the live machine for the Rust window binary. Settings are
+/// only read: the config directory is not created for the sake of an answer.
 pub fn first_run_offer_live() -> FirstRunOffer {
     let settings = crate::settings::load_settings(&crate::settings::settings_file());
     first_run_offer(&LiveFirstRunProbe::for_this_binary(), &settings)
 }
 
-/// Ответ на мастер «Не сейчас». `remember` — отмечено «больше не
-/// спрашивать»: тогда отказ записывается и сохраняется сразу. Без отметки
-/// ничего не пишется — мастер предложится при следующем запуске.
+/// The answer to the wizard's «Not Now». `remember` — «Don't ask again» is
+/// checked: then the refusal is recorded and saved right away. Without the
+/// check nothing is written — the wizard will be offered at the next launch.
 ///
-/// Менеджер настроек приходит снаружи, как у `onboarding::session_answer`:
-/// сверки гоняют функцию на временном файле.
+/// The settings manager comes from outside, as in `onboarding::session_answer`:
+/// the checks run the function on a temporary file.
 pub fn session_first_run_decline(
     manager: &mut crate::settings::SettingsManager,
     remember: bool,
@@ -1660,59 +1670,63 @@ pub fn session_first_run_decline(
 }
 
 // ============================================================================
-// Тексты мастера первого запуска
+// Texts of the first-run wizard
 // ============================================================================
 //
-// Все подписи мастера (приветствие с выбором режима, ход, итог) и строки хода
-// и итога установщика живут здесь. Окно (Rust-мост и QML) и исполнитель
-// установки берут их отсюда — второй копии букв нет (правило #12).
+// All wizard labels (the welcome with the mode choice, progress, summary) and
+// the installer's progress and summary lines live here. The window (Rust
+// bridge and QML) and the install executor take them from here — there is no
+// second copy of the letters (rule #12).
 //
-// ⭐ Починки против Python-мастера (`rexon/installer.py`, `QtInstallerWindow`):
-//   * пути `/usr/local/` и `~/.local/` стояли в подписях режимов — теперь
-//     режим назван по-человечески, путь ушёл в подсказку (поле `hint`);
-//   * служебные слова покупателю: «Иконки/extensions через pkexec»,
-//     «PySide6 / qt6-webengine / layer-shell-qt должны быть установлены
-//     отдельно», «User-install», «Portable режим», «$PATH — добавьте в
-//     ~/.bashrc», «(pkexec)», «попробуйте выполнить из терминала», сырая
-//     команда установки зависимостей в журнале;
-//   * «некоторые функции будут недоступны» не говорило, какие
+// ⭐ Fixes against the Python wizard (`rexon/installer.py`, `QtInstallerWindow`):
+//   * the paths `/usr/local/` and `~/.local/` stood in the mode labels — now
+//     the mode is named in human terms, the path moved to the tooltip (the
+//     `hint` field);
+//   * jargon for the user: "Icons/extensions via pkexec", "PySide6 /
+//     qt6-webengine / layer-shell-qt must be installed separately",
+//     "User-install", "Portable mode", "$PATH — add to ~/.bashrc", "(pkexec)",
+//     "try running it from a terminal", the raw dependency install command in
+//     the log;
+//   * "some features will be unavailable" didn't say which ones
 //     ([`without_install_limits`]);
-//   * любой сбой корневого скрипта выдавался за «Установка отменена
-//     пользователем» — отказ пароля, нечем спросить пароль, таймаут и сбой
-//     шага теперь разные исходы со своими советами ([`InstallFailure`]);
-//   * «Пропустить» не запоминалось — есть «Больше не спрашивать»
+//   * any root script failure was reported as "Installation cancelled by the
+//     user" — a password refusal, no way to ask for a password, a timeout and
+//     a step failure are now different outcomes with their own advice
+//     ([`InstallFailure`]);
+//   * «Skip» was not remembered — there is «Don't ask again»
 //     ([`KEY_FIRST_RUN_DECLINED`]);
-//   * о правиле «без пароля для действий Rexon» человека не спрашивали —
-//     теперь это отдельное согласие, по умолчанию выключенное
+//   * the person wasn't asked about the "no password for Rexon actions" rule —
+//     now it is a separate consent, off by default
 //     ([`PASSWORDLESS_CONSENT_DEFAULT`]);
-//   * строка «Зависимости будут установлены вместе с Rexon» выводилась
-//     дважды — теперь одна ([`dependencies_with_rexon_notice`]).
+//   * the line "Dependencies will be installed together with Rexon" was
+//     printed twice — now once ([`dependencies_with_rexon_notice`]).
 //
-// Поля `hint` — техническое уточнение для всплывающей подсказки: пути
-// допустимы только там. Поле `details` — сырой вывод для разработчика.
-// Сторож — `wizard_texts_tests`.
+// The `hint` fields are a technical clarification for the tooltip: paths are
+// allowed only there. The `details` field is raw output for the developer.
+// Guard — `wizard_texts_tests`.
 //
-// ⭐ 29.09.2026 подписи переехали на каталог перевода: английский — ключ
-// (`msgid`), русский — дословно прежний в `po/ru.po` (снимок «как было» —
-// `tests/golden/installer_texts_ru_before.json`). Язык один на процесс и
-// выбирается каталогом; параметр `Lang` у функций ниже больше ничего не
-// решает и остался ради вызывающих вне этого захода (окно мастера, меню,
-// мост в Python). Снимется вместе с `distro_compat::Lang`.
+// ⭐ On 29.09.2026 the labels moved to the translation catalog: English is the
+// key (`msgid`), Russian — verbatim as before in `po/ru.po` (the "as it was"
+// snapshot — `tests/golden/installer_texts_ru_before.json`). The language is
+// one per process and chosen by the catalog; the `Lang` parameter of the
+// functions below no longer decides anything and stays for callers outside
+// this pass (the wizard window, the menu, the Python bridge). It will go away
+// together with `distro_compat::Lang`.
 
 use crate::distro_compat::Lang;
 use crate::i18n::{n_, tr, trf};
 
-/// Согласие «не спрашивать пароль для действий Rexon» по умолчанию выключено:
-/// разрешение снимает защиту паролем, включить его может только сам человек.
+/// The "don't ask for a password for Rexon actions" consent is off by default:
+/// the permission removes password protection, only the person can turn it on.
 pub const PASSWORDLESS_CONSENT_DEFAULT: bool = false;
 
-/// Режимы, из которых мастер даёт выбрать, в порядке показа. Переносного
-/// режима здесь нет: там, где он уместен (пакет, Steam), мастер не
-/// предлагается вовсе ([`first_run_offer`]).
+/// Modes the wizard lets one choose from, in display order. Portable mode is
+/// not here: where it is appropriate (package, Steam), the wizard is not
+/// offered at all ([`first_run_offer`]).
 pub const WIZARD_MODES: [InstallMode; 2] = [InstallMode::System, InstallMode::User];
 
-/// Почему установка в систему недоступна — на языке интерфейса, либо `None`.
-/// Решение то же, что у [`system_mode_blocked_reason`].
+/// Why the system install is unavailable — in the interface language, or
+/// `None`. The decision is the same as in [`system_mode_blocked_reason`].
 pub fn system_mode_blocked_reason_in(distro_id: &str, _lang: Lang) -> Option<String> {
     if !has_immutable_system(distro_id) {
         return None;
@@ -1724,7 +1738,7 @@ pub fn system_mode_blocked_reason_in(distro_id: &str, _lang: Lang) -> Option<Str
     ))
 }
 
-/// Название режима установки для человека.
+/// The install mode name for the person.
 pub fn mode_title(mode: InstallMode, _lang: Lang) -> String {
     match mode {
         InstallMode::System => {
@@ -1735,7 +1749,7 @@ pub fn mode_title(mode: InstallMode, _lang: Lang) -> String {
     }
 }
 
-/// Что даёт режим и чего он стоит — одна-две фразы под названием.
+/// What the mode gives and what it costs — one or two phrases under the name.
 pub fn mode_description(mode: InstallMode, _lang: Lang) -> String {
     match mode {
         InstallMode::System => tr(
@@ -1755,8 +1769,9 @@ pub fn mode_description(mode: InstallMode, _lang: Lang) -> String {
     }
 }
 
-/// Подсказка к режиму: куда лягут файлы. Пути — из [`install_paths`], своих
-/// копий здесь нет. У переносного режима путей нет — пустая строка.
+/// The mode tooltip: where the files will go. Paths come from
+/// [`install_paths`], there are no copies of our own here. Portable mode has no
+/// paths — an empty string.
 pub fn mode_hint(
     mode: InstallMode,
     home: &str,
@@ -1771,47 +1786,47 @@ pub fn mode_hint(
     }
 }
 
-/// Один режим на странице приветствия.
+/// One mode on the welcome page.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WizardModeTexts {
     pub mode: InstallMode,
     pub title: String,
     pub description: String,
-    /// Куда лягут файлы — для всплывающей подсказки.
+    /// Where the files will go — for the tooltip.
     pub hint: String,
-    /// Почему режим выбрать нельзя; пусто — можно.
+    /// Why the mode can't be chosen; empty — it can.
     pub blocked: String,
 }
 
-/// Страница приветствия.
+/// The welcome page.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WizardWelcomeTexts {
     pub window_title: String,
     pub title: String,
-    /// Зачем устанавливать.
+    /// Why install.
     pub description: String,
-    /// Что даёт установка — по пункту на строку.
+    /// What installing gives — one item per line.
     pub benefits: Vec<String>,
     pub modes_title: String,
     pub modes: Vec<WizardModeTexts>,
     pub install_button: String,
     pub skip_button: String,
-    /// Галочка рядом с «Пропустить»; ключ — [`KEY_FIRST_RUN_DECLINED`].
+    /// The checkbox next to «Skip»; the key — [`KEY_FIRST_RUN_DECLINED`].
     pub dont_ask_again: String,
-    /// Что будет, если отметить галочку.
+    /// What happens if the checkbox is ticked.
     pub dont_ask_again_hint: String,
 }
 
-/// Заголовок окна мастера.
+/// The wizard window title.
 pub fn wizard_window_title(_lang: Lang) -> String {
     tr("Install Rexon")
 }
 
-/// Что не будет работать без установки. Этим списком отвечает итог неудачи
-/// и отказ от установки — вместо прежнего «некоторые функции будут
-/// недоступны».
+/// What won't work without an install. This list is the answer of the failure
+/// summary and of declining the install — instead of the old "some features
+/// will be unavailable".
 pub fn without_install_limits(_lang: Lang) -> Vec<String> {
     vec![
         tr(
@@ -1833,8 +1848,8 @@ pub fn without_install_limits(_lang: Lang) -> Vec<String> {
     ]
 }
 
-/// Страница приветствия. `distro_id` решает, доступна ли установка в
-/// систему; `home` и `xdg_data_home` — только для подсказок с путями.
+/// The welcome page. `distro_id` decides whether the system install is
+/// available; `home` and `xdg_data_home` — only for tooltips with paths.
 pub fn welcome_texts(
     distro_id: &str,
     home: &str,
@@ -1882,33 +1897,34 @@ pub fn welcome_texts(
     }
 }
 
-// ── Кнопка «Установить Rexon в систему…» на странице «Настройки» ────────────
+// ── The «Install Rexon on this computer…» button on the «⚙️ Settings» page ──
 //
-// ⭐ Решение Wehrwolfmann 15.09.2026: кнопка стоит рядом с «Пройти обучение
-// заново». Она снимает ответ «больше не спрашивать»
-// ([`KEY_FIRST_RUN_DECLINED`]) и открывает тот же мастер, поэтому и
-// показывается, пока Rexon не установлен: решение [`first_run_offer`] БЕЗ
-// учёта отказа. У установленного Rexon (пакет, Steam, установка для всех
-// или для себя) кнопки нет вовсе — нажимать её было бы не на что.
+// ⭐ Wehrwolfmann's decision of 15.09.2026: the button sits next to «Take the
+// tour again». It clears the «Don't ask again» answer
+// ([`KEY_FIRST_RUN_DECLINED`]) and opens the same wizard, so it is shown while
+// Rexon is not installed: the [`first_run_offer`] decision WITHOUT taking the
+// refusal into account. An installed Rexon (package, Steam, install for
+// everyone or for oneself) has no button at all — there would be nothing for
+// it to do.
 
-/// Подпись кнопки на странице «Настройки».
+/// The button label on the «⚙️ Settings» page.
 pub fn settings_install_button(_lang: Lang) -> String {
     tr("Install Rexon on this computer…")
 }
 
-/// Пояснение под кнопкой: зачем её нажимать.
+/// The explanation under the button: why to press it.
 pub fn settings_install_hint(_lang: Lang) -> String {
     tr("Rexon will appear in the application menu and work like any other program.")
 }
 
-/// Ответ кнопки: окно установки открылось.
+/// The button's answer: the install window opened.
 pub fn settings_install_started(_lang: Lang) -> String {
     tr("Opening the Rexon installation window.")
 }
 
-/// Ответ кнопки, когда открывать окно установки некому: вкладка «Настройки»
-/// показана без главного окна Rexon. Тем же отвечает «Пройти обучение
-/// заново» (`qt_settings`, ключ `ob.no_main_window`).
+/// The button's answer when there is nobody to open the install window: the
+/// «⚙️ Settings» tab is shown without the Rexon main window. «Take the tour
+/// again» answers the same (`qt_settings`, key `ob.no_main_window`).
 pub fn settings_install_no_window(_lang: Lang) -> String {
     tr(
         "Installation is available only in the main Rexon window — open the \
@@ -1916,43 +1932,44 @@ pub fn settings_install_no_window(_lang: Lang) -> String {
     )
 }
 
-/// Отдельный шаг «не спрашивать пароль для действий Rexon».
+/// A separate step "don't ask for a password for Rexon actions".
 ///
-/// Честность текста сверена с самим правилом
-/// ([`crate::system_plan::passwordless_rules_js`]): без пароля — только
-/// перечисленные действия ([`crate::system_plan::PASSWORDLESS_ACTIONS`]),
-/// только для группы администраторов, только в активном локальном сеансе.
-/// Установка и удаление пакетов (`org.rexon.pkg`) сюда НЕ входят. Снимается удалением Rexon
-/// (`uninstall_system_paths` содержит путь правила).
+/// The honesty of the text is checked against the rule itself
+/// ([`crate::system_plan::passwordless_rules_js`]): without a password — only
+/// the listed actions ([`crate::system_plan::PASSWORDLESS_ACTIONS`]), only for
+/// the administrators group, only in an active local session. Installing and
+/// removing packages (`org.rexon.pkg`) is NOT included. Removed by uninstalling
+/// Rexon (`uninstall_system_paths` contains the rule's path).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PasswordlessConsentTexts {
     pub title: String,
-    /// Подпись галочки.
+    /// The checkbox label.
     pub checkbox: String,
     pub description: String,
-    /// Что именно разрешается.
+    /// What exactly is permitted.
     pub what: String,
-    /// Кому.
+    /// To whom.
     pub who: String,
-    /// Чем это рискованно.
+    /// What the risk is.
     pub risk: String,
-    /// Как отменить.
+    /// How to undo it.
     pub undo: String,
-    /// Где лежит разрешение — для всплывающей подсказки.
+    /// Where the permission lies — for the tooltip.
     pub hint: String,
-    /// Состояние галочки при показе — [`PASSWORDLESS_CONSENT_DEFAULT`].
+    /// The checkbox state when shown — [`PASSWORDLESS_CONSENT_DEFAULT`].
     pub default_on: bool,
 }
 
-/// Тексты согласия «не спрашивать пароль для действий Rexon». Шаг есть
-/// только у установки для всех пользователей: у установки «только для вас»
-/// разрешение не ставится.
+/// Texts of the "don't ask for a password for Rexon actions" consent. Only the
+/// install for all users has this step: the "just for you" install doesn't set
+/// the permission.
 ///
-/// ⭐ Починка 29.09.2026: подпись пункта меню вставлялась в русскую фразу
-/// всегда на языке каталога («Uninstall Rexon» посреди русского текста при
-/// английском интерфейсе), а английская фраза пункт не называла вовсе.
-/// Теперь фраза одна, из каталога, и пункт в ней — на том же языке.
+/// ⭐ Fix of 29.09.2026: the menu item label was always inserted into the
+/// Russian phrase in the catalog's language ("Uninstall Rexon" in the middle
+/// of Russian text with an English interface), and the English phrase didn't
+/// name the item at all. Now the phrase is one, from the catalog, and the item
+/// in it is in the same language.
 pub fn passwordless_consent_texts(_lang: Lang) -> PasswordlessConsentTexts {
     let menu = crate::window_menu::MENU_BUTTON;
     let uninstall_label = crate::window_menu::menu_items()
@@ -1968,8 +1985,8 @@ pub fn passwordless_consent_texts(_lang: Lang) -> PasswordlessConsentTexts {
              the system. With this permission on, Rexon actions will not ask for \
              the password. The permission is off by default.",
         ),
-        // Правду о разрешении говорит `system_plan::PASSWORDLESS_ACTIONS`:
-        // установка и удаление произвольных программ туда не входят.
+        // The truth about the permission is told by `system_plan::PASSWORDLESS_ACTIONS`:
+        // installing and removing arbitrary programs is not included.
         what: tr(
             "What is allowed: only installing desktop environments from Rexon's \
              list. Login and boot screen themes and installing or removing other \
@@ -1994,8 +2011,8 @@ pub fn passwordless_consent_texts(_lang: Lang) -> PasswordlessConsentTexts {
              permission is removed together with the application.",
             &[&menu, &uninstall_label],
         ),
-        // Группа — по семейству дистрибутива (`system_plan::polkit_admin_groups`);
-        // название группы Debian в подсказку не выносится: сторож жаргона.
+        // The group — by distribution family (`system_plan::polkit_admin_groups`);
+        // the Debian group name is not put into the tooltip: the jargon guard.
         hint: {
             let arch = crate::system_plan::polkit_admin_groups(PkgFamily::Arch).join(", ");
             // TRANSLATORS: tooltip; %1 is the path of the permission file, %2 the
@@ -2009,13 +2026,13 @@ pub fn passwordless_consent_texts(_lang: Lang) -> PasswordlessConsentTexts {
     }
 }
 
-/// Пояснение сухого прогона (`REXON_INSTALL_DRY_RUN`): мастер проходится
-/// целиком, но машину не трогает.
+/// Explanation of the dry run (`REXON_INSTALL_DRY_RUN`): the wizard is walked
+/// through completely, but the machine is not touched.
 ///
-/// ⚠️ Нужно на странице приветствия: сухой прогон доходит до итога «Готово —
-/// Rexon установлен», ничего не установив, и без этой строки итог читался бы
-/// как настоящая установка. Строка живёт здесь, а не в разметке, по тому же
-/// правилу, что и остальные подписи мастера (правило #12).
+/// ⚠️ Needed on the welcome page: the dry run reaches the «Done — Rexon is
+/// installed» summary without installing anything, and without this line the
+/// summary would read as a real install. The line lives here, not in the
+/// markup, by the same rule as the other wizard labels (rule #12).
 pub fn dry_run_notice(_lang: Lang) -> String {
     tr(
         "Trial run: Rexon will walk through the wizard to the end, but will \
@@ -2023,7 +2040,7 @@ pub fn dry_run_notice(_lang: Lang) -> String {
     )
 }
 
-/// Страница хода установки.
+/// The install progress page.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WizardProgressTexts {
@@ -2031,8 +2048,8 @@ pub struct WizardProgressTexts {
     pub subtitle: String,
 }
 
-/// Тексты страницы хода. У установки для всех пользователей подзаголовок
-/// заранее говорит про окно пароля — чтобы оно не застало врасплох.
+/// Texts of the progress page. For the install for all users the subtitle warns
+/// about the password dialog in advance — so it doesn't catch one off guard.
 pub fn progress_texts(mode: InstallMode, _lang: Lang) -> WizardProgressTexts {
     WizardProgressTexts {
         title: tr("Installing Rexon"),
@@ -2046,34 +2063,34 @@ pub fn progress_texts(mode: InstallMode, _lang: Lang) -> WizardProgressTexts {
     }
 }
 
-/// Шаг установки — для журнала хода и для объяснения сбоя.
+/// An install step — for the progress log and for explaining a failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallStep {
-    /// Копия файлов программы (Python: «Копирование пакета rexon/...»).
+    /// Copying the program files (Python: "Copying the rexon/ package...").
     CopyFiles,
-    /// Команда запуска (Python: «Создание лаунчера...»).
+    /// The launch command (Python: "Creating the launcher...").
     Launcher,
-    /// Ярлыки в меню (Python: «Создание .desktop файла...»).
+    /// Menu entries (Python: "Creating the .desktop file...").
     MenuShortcuts,
-    /// Значки (Python: «Копирование иконок (все размеры + SVG)...»).
+    /// Icons (Python: "Copying icons (all sizes + SVG)...").
     Icons,
-    /// Помощники «пароль реже» (Python: «Polkit helper (один пароль за сессию)...»).
+    /// The "fewer passwords" helpers (Python: "Polkit helper (one password per session)...").
     FewerPasswords,
-    /// Недостающие компоненты (Python: «Зависимости: <сырая команда>»).
+    /// Missing components (Python: "Dependencies: <raw command>").
     Dependencies,
-    /// Запись в систему одним паролем (Python: «Установка в систему (один пароль)...»).
+    /// Writing into the system with one password (Python: "Installing into the system (one password)...").
     SystemInstall,
-    /// Дополнения обоев GNOME и Cinnamon (Python: «GNOME + Cinnamon extensions»).
+    /// GNOME and Cinnamon wallpaper add-ons (Python: "GNOME + Cinnamon extensions").
     WallpaperAddons,
-    /// Обновление меню приложений (Python: кэши без подписи).
+    /// Refreshing the application menu (Python: caches without a label).
     MenuRefresh,
-    /// Папки настроек и резервных копий (Python: голые пути).
+    /// Settings and backup folders (Python: bare paths).
     UserFolders,
 }
 
 impl InstallStep {
-    /// Все шаги в порядке установки.
+    /// All steps in install order.
     pub const ALL: [InstallStep; 10] = [
         InstallStep::CopyFiles,
         InstallStep::Launcher,
@@ -2087,7 +2104,7 @@ impl InstallStep {
         InstallStep::UserFolders,
     ];
 
-    /// Название шага со строчной буквы — для фразы «Не получилось: …».
+    /// The step name starting lowercase — for the phrase "Failed: …".
     pub fn name(self, _lang: Lang) -> String {
         match self {
             InstallStep::CopyFiles => {
@@ -2111,7 +2128,7 @@ impl InstallStep {
         }
     }
 
-    /// Строка журнала хода: «Подготовка файлов программы…».
+    /// A progress log line: "Preparing program files…".
     pub fn progress_line(self, lang: Lang) -> String {
         let name = self.name(lang);
         let mut chars = name.chars();
@@ -2122,31 +2139,31 @@ impl InstallStep {
     }
 }
 
-/// Значков в поставке нет (Python: «⚠ Иконки не найдены в проекте»).
+/// There are no icons in the payload (Python: "⚠ Icons not found in the project").
 pub fn icons_missing_notice(_lang: Lang) -> String {
     tr("Program icons were not found — Rexon will have a generic icon in the menu.")
 }
 
-/// Меню не обновилось сразу (Python: «Ярлык появится в меню после
-/// перезахода в систему (<пакет>)»). Имя пакета — в журнал разработчика.
+/// The menu didn't refresh right away (Python: "The entry will appear in the
+/// menu after logging in again (<package>)"). The package name goes to the developer log.
 pub fn menu_refresh_later_notice(_lang: Lang) -> String {
     tr("The Rexon shortcut will appear in the application menu after you log in again.")
 }
 
-/// Недостающие компоненты поставятся тем же паролем (Python: «Зависимости
-/// будут установлены вместе с Rexon» — выводилось дважды).
+/// Missing components will be installed with the same password (Python:
+/// "Dependencies will be installed together with Rexon" — printed twice).
 pub fn dependencies_with_rexon_notice(_lang: Lang) -> String {
     tr("Missing components will be installed together with Rexon.")
 }
 
-/// Переносной режим (Python: «Portable режим: установка не требуется»).
+/// Portable mode (Python: "Portable mode: no installation required").
 pub fn portable_no_install_notice(_lang: Lang) -> String {
     tr("No installation needed: Rexon runs straight from its folder.")
 }
 
-/// Команда `rexon` не найдётся в терминале (Python: «~/.local/bin не в
-/// $PATH — добавьте в ~/.bashrc / ~/.zshrc / ~/.config/fish/config.fish»).
-/// Покупателю терминал не нужен вовсе: главное — меню.
+/// The `rexon` command won't be found in a terminal (Python: "~/.local/bin is
+/// not in $PATH — add it to ~/.bashrc / ~/.zshrc / ~/.config/fish/config.fish").
+/// The user doesn't need a terminal at all: the menu is what matters.
 pub fn command_path_notice(_lang: Lang) -> String {
     tr(
         "Start Rexon from the application menu: the “rexon” command may not be \
@@ -2154,7 +2171,7 @@ pub fn command_path_notice(_lang: Lang) -> String {
     )
 }
 
-/// Подсказка к [`command_path_notice`]: где лежит команда.
+/// Tooltip for [`command_path_notice`]: where the command lies.
 pub fn command_path_hint(install_dir: &str, _lang: Lang) -> String {
     // TRANSLATORS: tooltip; %1 is a folder path.
     trf(
@@ -2164,9 +2181,9 @@ pub fn command_path_hint(install_dir: &str, _lang: Lang) -> String {
     )
 }
 
-/// Входит ли каталог в список поиска программ (`PATH`). Косая черта в конце
-/// не мешает совпадению — Python сравнивал строки как есть, и
-/// `~/.local/bin/` в `PATH` давал ложное «не входит».
+/// Whether the directory is in the program search list (`PATH`). A trailing
+/// slash doesn't prevent a match — Python compared strings as is, and
+/// `~/.local/bin/` in `PATH` gave a false "not included".
 pub fn command_dir_in_path(dir: &str, path_env: Option<&str>) -> bool {
     let want = dir.trim_end_matches('/');
     !want.is_empty()
@@ -2176,8 +2193,8 @@ pub fn command_dir_in_path(dir: &str, path_env: Option<&str>) -> bool {
             .any(|p| p.trim_end_matches('/') == want)
 }
 
-/// Последняя строка журнала успешной установки (Python: «🎉 Rexon успешно
-/// установлен!» / «🎉 Rexon установлен в ~/.local/ (без root)»).
+/// The last line of a successful install log (Python: "🎉 Rexon installed
+/// successfully!" / "🎉 Rexon installed into ~/.local/ (without root)").
 pub fn install_done_line(mode: InstallMode, lang: Lang) -> String {
     match mode {
         InstallMode::System => tr("Rexon is installed for everyone on this computer."),
@@ -2186,34 +2203,34 @@ pub fn install_done_line(mode: InstallMode, lang: Lang) -> String {
     }
 }
 
-/// Почему установка не завершилась. Каждый исход — свой совет: прежде всё
-/// сливалось в «Установка отменена пользователем (pkexec)».
+/// Why the install didn't finish. Each outcome has its own advice: previously
+/// everything merged into "Installation cancelled by the user (pkexec)".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstallFailure {
-    /// Окно пароля закрыли или пароль не подошёл — ничего не изменено.
+    /// The password dialog was closed or the password didn't fit — nothing changed.
     PasswordDenied,
-    /// Спросить пароль нечем — ничего не изменено.
+    /// There is no way to ask for a password — nothing changed.
     PasswordPromptMissing,
-    /// Установка шла дольше отведённого и остановлена.
+    /// The install took longer than allowed and was stopped.
     TimedOut { secs: u64 },
-    /// Шаг упал; `detail` — хвост вывода для разработчика.
+    /// A step failed; `detail` — the output tail for the developer.
     StepFailed { step: InstallStep, detail: String },
 }
 
-/// Общий отказ «нечем запросить пароль» — на языке интерфейса.
+/// The shared "no way to ask for a password" refusal — in the interface language.
 fn prompt_missing_message() -> String {
     crate::system_plan::pkexec_missing_message()
 }
 
-/// Инструкция из общего отказа «нечем запросить пароль» — вторая строка
-/// [`crate::system_plan::pkexec_missing_message`] (имя пакета в ней — то, что
-/// надо поставить, а не объяснение). Своей копии фразы нет.
+/// The instruction from the shared "no way to ask for a password" refusal — the
+/// second line of [`crate::system_plan::pkexec_missing_message`] (the package
+/// name in it is what must be installed, not an explanation). No copy of the phrase of our own.
 fn prompt_missing_instruction() -> String {
     let message = prompt_missing_message();
     message.split_once('\n').map(|(_, instruction)| instruction.to_string()).unwrap_or_default()
 }
 
-/// Объяснение из того же общего отказа — первая строка.
+/// The explanation from the same shared refusal — the first line.
 fn prompt_missing_explanation() -> String {
     let message = prompt_missing_message();
     match message.split_once('\n') {
@@ -2222,15 +2239,15 @@ fn prompt_missing_explanation() -> String {
     }
 }
 
-/// Отказ на шаге «недостающие части»: ЧТО не встало, названное человеку
-/// словами, а не именами пакетов.
+/// A refusal at the "missing parts" step: WHAT didn't install, named to the
+/// person in words rather than package names.
 ///
-/// ⭐ Починка 16.09.2026: прежде здесь была общая фраза «Не получилось:
-/// установка недостающих компонентов» — человек не понимал ни чего не
-/// хватило, ни тронута ли уже система. Строгая строка в скрипте одна
-/// ([`installer_exec::deps_script_lines`]), стоит первой, и ставит она ровно
-/// четыре вещи — их и называем. Желательная база едет следом с `|| true` и
-/// сюда привести не может.
+/// ⭐ Fix of 16.09.2026: previously there was the generic phrase "Failed:
+/// installing missing components" here — the person understood neither what
+/// was missing nor whether the system had already been touched. The strict
+/// line in the script is one ([`installer_exec::deps_script_lines`]), it comes
+/// first, and it installs exactly four things — those are what we name. The
+/// recommended base follows with `|| true` and can't lead here.
 pub fn dependencies_failed_problem(_lang: Lang) -> String {
     tr(
         "The parts Rexon cannot start without could not be installed: the Qt6 \
@@ -2241,7 +2258,7 @@ pub fn dependencies_failed_problem(_lang: Lang) -> String {
 }
 
 impl InstallFailure {
-    /// Заголовок итога.
+    /// Summary title.
     pub fn title(&self, _lang: Lang) -> String {
         match self {
             InstallFailure::PasswordDenied => {
@@ -2257,7 +2274,7 @@ impl InstallFailure {
         }
     }
 
-    /// Что пошло не так.
+    /// What went wrong.
     pub fn problem(&self, lang: Lang) -> String {
         match self {
             InstallFailure::PasswordDenied => tr(
@@ -2274,9 +2291,9 @@ impl InstallFailure {
                     &[&minutes],
                 )
             }
-            // Недостающие части ставятся ПЕРВЫМ шагом корневого скрипта,
-            // поэтому здесь ещё нечему остаться — и здесь единственное
-            // место, где можно назвать человеку, чего именно не хватило.
+            // Missing parts are installed as the FIRST step of the root script,
+            // so nothing can be left over yet — and this is the only place
+            // where the person can be told what exactly was missing.
             InstallFailure::StepFailed { step: InstallStep::Dependencies, .. } => {
                 dependencies_failed_problem(lang)
             }
@@ -2289,7 +2306,7 @@ impl InstallFailure {
         }
     }
 
-    /// Что делать — по совету на строку.
+    /// What to do — one piece of advice per line.
     pub fn advice(&self, lang: Lang) -> Vec<String> {
         let just_for_you = mode_title(InstallMode::User, lang);
         match self {
@@ -2311,8 +2328,8 @@ impl InstallFailure {
                 "Check your internet connection — missing components are \
                  downloaded — and press “Retry”.",
             )],
-            // Недостающие части скачиваются из сети, и первая причина
-            // отказа — не поломка Rexon, а недоступный источник программ.
+            // Missing parts are downloaded from the network, and the first reason
+            // for a refusal is not a Rexon breakage but an unreachable software source.
             InstallFailure::StepFailed { step: InstallStep::Dependencies, .. } => vec![
                 tr(
                     "Check your internet connection — the missing parts are \
@@ -2331,7 +2348,7 @@ impl InstallFailure {
         }
     }
 
-    /// Сырой вывод для разработчика; пусто — подробностей нет.
+    /// Raw output for the developer; empty — no details.
     pub fn details(&self) -> String {
         match self {
             InstallFailure::StepFailed { detail, .. } => detail.clone(),
@@ -2339,72 +2356,72 @@ impl InstallFailure {
         }
     }
 
-    /// Одна строка для журнала хода и для возврата `(ok, сообщение)`.
+    /// One line for the progress log and for the `(ok, message)` return.
     pub fn log_line(&self, lang: Lang) -> String {
         format!("{}. {}", self.title(lang), self.problem(lang))
     }
 }
 
-/// Чем закончилась установка — вход для [`result_texts`].
+/// How the install ended — the input for [`result_texts`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WizardOutcome {
     Installed {
         mode: InstallMode,
-        /// Просили установку в систему, а она недоступна — текст
-        /// [`system_mode_blocked_reason_in`]; `None` — режим не подменялся.
+        /// A system install was asked for but is unavailable — the text of
+        /// [`system_mode_blocked_reason_in`]; `None` — the mode wasn't substituted.
         fell_back: Option<String>,
-        /// Каталог команды `rexon`, если он не в `PATH`
-        /// ([`command_dir_in_path`]); `None` — всё в порядке.
+        /// The `rexon` command directory if it is not in `PATH`
+        /// ([`command_dir_in_path`]); `None` — all is well.
         command_dir_not_in_path: Option<String>,
     },
     Failed(InstallFailure),
 }
 
-/// Страница итога.
+/// The summary page.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WizardResultTexts {
     pub ok: bool,
     pub title: String,
     pub description: String,
-    /// Советы и оговорки — по строке.
+    /// Advice and caveats — one per line.
     pub notes: Vec<String>,
-    /// Техническое уточнение для всплывающей подсказки.
+    /// Technical clarification for the tooltip.
     pub hint: String,
     pub details_title: String,
-    /// Сырой вывод для разработчика.
+    /// Raw output for the developer.
     pub details: String,
     pub unavailable_title: String,
-    /// Что не будет работать без установки.
+    /// What won't work without an install.
     pub unavailable: Vec<String>,
-    /// Главная кнопка: «Продолжить» при успехе, «Повторить» при неудаче.
+    /// The main button: «Continue» on success, «Retry» on failure.
     pub primary_button: String,
-    /// Вторая кнопка; пусто — её нет.
+    /// The second button; empty — there is none.
     pub secondary_button: String,
 }
 
-/// Подпись главной кнопки итога успеха.
+/// Label of the main button of the success summary.
 ///
-/// ⭐ Починка против Python-мастера: там кнопка звалась «Запустить Rexon» и
-/// ничего не запускала (`rexon/installer.py:1364, 1379`). Запускать ей и
-/// нечего: мастер работает ВНУТРИ уже запущенного Rexon, и человек после
-/// установки возвращается в то же окно. Кнопка названа тем, что делает, —
-/// перезапуск процесса ей не поручен.
+/// ⭐ Fix against the Python wizard: there the button was called "Launch
+/// Rexon" and launched nothing (`rexon/installer.py:1364, 1379`). It has
+/// nothing to launch anyway: the wizard runs INSIDE an already running Rexon,
+/// and after the install the person returns to the same window. The button is
+/// named after what it does — restarting the process is not its job.
 pub fn continue_button(_lang: Lang) -> String {
     tr("Continue")
 }
 
-/// Подпись кнопки «Повторить» итога неудачи.
+/// Label of the «Retry» button of the failure summary.
 pub fn retry_button(_lang: Lang) -> String {
     tr("Retry")
 }
 
-/// Подпись кнопки «Продолжить без установки» итога неудачи.
+/// Label of the «Continue without installing» button of the failure summary.
 pub fn continue_without_install_button(_lang: Lang) -> String {
     tr("Continue without installing")
 }
 
-/// Тексты страницы итога.
+/// Texts of the summary page.
 pub fn result_texts(outcome: &WizardOutcome, lang: Lang) -> WizardResultTexts {
     match outcome {
         WizardOutcome::Installed { mode, fell_back, command_dir_not_in_path } => {
@@ -2460,28 +2477,28 @@ pub fn result_texts(outcome: &WizardOutcome, lang: Lang) -> WizardResultTexts {
     }
 }
 
-// ── Удаление Rexon: ход и итог ──────────────────────────────────────────────
+// ── Uninstalling Rexon: progress and summary ────────────────────────────────
 //
-// Этими словами говорят исполнитель удаления
-// ([`crate::installer_exec::uninstall`]) и окно меню «Удалить Rexon».
-// ⭐ Починка G8: прежде окно показывало «Ошибка удаления system: код 126: …» —
-// отказ пароля, нечем спросить пароль, таймаут и сбой самого удаления одной
-// строкой со служебными словами.
+// These are the words of the uninstall executor
+// ([`crate::installer_exec::uninstall`]) and of the window's «Uninstall Rexon» menu.
+// ⭐ Fix G8: previously the window showed "Uninstall error system: code 126: …" —
+// a password refusal, no way to ask for a password, a timeout and a failure
+// of the removal itself in one line with jargon.
 
-/// Часть удаления — для строки хода.
+/// A part of the uninstall — for the progress line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UninstallPart {
-    /// Пакет дистрибутива.
+    /// Distribution package.
     Package,
-    /// Установка для всех пользователей.
+    /// Install for all users.
     System,
-    /// Установка только для себя.
+    /// Install just for oneself.
     User,
-    /// Временные файлы (кэш) — при любом выборе.
+    /// Temporary files (cache) — with any choice.
     Cache,
-    /// Настройки, резервные копии и установленное содержимое — только при
-    /// «Удалить всё».
+    /// Settings, backups and installed content — only with
+    /// «Remove Everything».
     Profile,
 }
 
@@ -2494,7 +2511,7 @@ impl UninstallPart {
         UninstallPart::Profile,
     ];
 
-    /// Строка журнала хода.
+    /// A progress log line.
     pub fn progress_line(self, _lang: Lang) -> String {
         match self {
             UninstallPart::Package => {
@@ -2508,52 +2525,53 @@ impl UninstallPart {
     }
 }
 
-// ── Пользовательские данные Rexon ───────────────────────────────────────────
+// ── Rexon user data ─────────────────────────────────────────────────────────
 //
-// ⭐ Решение Wehrwolfmann 15.09.2026. Одна правда о том, ЧТО Rexon пишет у
-// человека в домашней папке помимо самой программы, — для удаления и для
-// создания папок профиля при установке
-// ([`crate::installer_exec::profile_dirs`]). Прежде удаление знало только
-// настройки и резервные копии: кэш и установленные обои и темы оставались
-// после любого выбора.
+// ⭐ Wehrwolfmann's decision of 15.09.2026. One truth about WHAT Rexon writes
+// into the person's home folder besides the program itself — for uninstall and
+// for creating the profile folders at install time
+// ([`crate::installer_exec::profile_dirs`]). Previously uninstall knew only
+// the settings and backups: the cache and installed wallpapers and themes
+// remained after any choice.
 //
-// Кто пишет в эти корни (сверено grep'ом по ядру 15.09.2026):
-//   * кэш `<XDG_CACHE_HOME|~/.cache>/rexon` — `youtube_wallpaper::cache_dir`,
+// Who writes into these roots (checked by grepping the core on 15.09.2026):
+//   * cache `<XDG_CACHE_HOME|~/.cache>/rexon` — `youtube_wallpaper::cache_dir`,
 //     `session_splash::preview_cache_dir`, `qt_steam::rexon_cache_dir`,
-//     `qml_modules::net_cache_dir`, кадры размытия `wallpaper_exec`; ЛИТЕРАЛОМ
-//     `~/.cache/rexon` мимо XDG — `appearance_cache::cache_dir` (OCS),
-//     `installed_scan` (превью), запасной PID-файл обоев `wallpaper_exec`;
-//   * данные `<XDG_DATA_HOME|~/.local/share>/rexon` — `rxn_v4_installer`
-//     (`wallpapers/`), резервные копии рабочих столов (`backups/`),
-//     `qml_modules::module_dirs` (`qml_modules/`, сборка разработчика — НЕ
-//     часть установки: установка кладёт модули в `~/.local/lib/rexon`);
-//     ЛИТЕРАЛОМ `~/.local/share/rexon` мимо XDG — `de_customization`
+//     `qml_modules::net_cache_dir`, the blur frames of `wallpaper_exec`; the
+//     LITERAL `~/.cache/rexon` bypassing XDG — `appearance_cache::cache_dir`
+//     (OCS), `installed_scan` (previews), the fallback wallpaper PID file of
+//     `wallpaper_exec`;
+//   * data `<XDG_DATA_HOME|~/.local/share>/rexon` — `rxn_v4_installer`
+//     (`wallpapers/`), desktop backups (`backups/`), `qml_modules::module_dirs`
+//     (`qml_modules/`, the developer build — NOT part of the install: the
+//     install puts modules into `~/.local/lib/rexon`); the LITERAL
+//     `~/.local/share/rexon` bypassing XDG — `de_customization`
 //     (`login-themes/`, `plymouth-themes/`, `bundles/`, `wallpapers/`),
 //     `upscaler::esrgan_local_exe` (`bin/realesrgan`);
-//   * настройки `<XDG_CONFIG_HOME|~/.config>/rexon`; литеральный
-//     `~/.config/rexon` нужен ради установок, сделанных ДО починки 8a45776:
-//     до неё мост и снимки экрана писали настройки литералом даже при
-//     заданном `XDG_CONFIG_HOME`, и без второго корня они пережили бы
-//     «Удалить всё».
-// Поэтому корни всех трёх категорий берутся ОБА — по XDG и литеральный, если
-// они различаются.
+//   * settings `<XDG_CONFIG_HOME|~/.config>/rexon`; the literal
+//     `~/.config/rexon` is needed for installs made BEFORE fix 8a45776: before
+//     it the bridge and screenshots wrote settings to the literal path even
+//     with `XDG_CONFIG_HOME` set, and without the second root they would
+//     survive «Remove Everything».
+// So the roots of all three categories are taken BOTH — per XDG and literal,
+// if they differ.
 
-/// Имя папки резервных копий рабочих столов внутри корня данных Rexon.
+/// Name of the desktop backups folder inside the Rexon data root.
 pub const USER_DATA_BACKUPS_DIR: &str = "backups";
 
-/// Что лежит у человека: для окна вопроса, строк хода и решения, что
-/// удаляет какой выбор.
+/// What the person has: for the question dialog, progress lines and deciding
+/// which choice removes what.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UserDataKind {
-    /// Настройки Rexon (в той же папке журнал установленных тем).
+    /// Rexon settings (the installed themes journal is in the same folder).
     Settings,
-    /// Резервные копии рабочих столов.
+    /// Desktop backups.
     Backups,
-    /// Установленные обои, темы и дополнения — всё в корне данных Rexon,
-    /// кроме резервных копий.
+    /// Installed wallpapers, themes and add-ons — everything in the Rexon data
+    /// root except backups.
     Content,
-    /// Временные файлы (кэш).
+    /// Temporary files (cache).
     Cache,
 }
 
@@ -2561,13 +2579,13 @@ impl UserDataKind {
     pub const ALL: [UserDataKind; 4] =
         [UserDataKind::Cache, UserDataKind::Settings, UserDataKind::Backups, UserDataKind::Content];
 
-    /// Удаляется ли и при «Удалить, но сохранить настройки и резервные
-    /// копии». Кэш — да: без программы он никому не нужен.
+    /// Whether it is removed even with «Uninstall but Keep Settings and
+    /// Backups». The cache — yes: without the program nobody needs it.
     pub fn removed_when_keeping(self) -> bool {
         matches!(self, UserDataKind::Cache)
     }
 
-    /// Название для человека — из каталога перевода, на языке интерфейса.
+    /// The name for the person — from the translation catalog, in the interface language.
     pub fn title(self) -> String {
         match self {
             UserDataKind::Settings => tr("Rexon settings"),
@@ -2580,15 +2598,15 @@ impl UserDataKind {
     }
 }
 
-/// Корни пользовательских данных Rexon по категориям, без повторов, в
-/// порядке [`UserDataKind::ALL`] внутри каждой категории: сначала путь по
-/// XDG, потом литеральный. `Content` — это КОРЕНЬ данных; его содержимое
-/// кроме [`USER_DATA_BACKUPS_DIR`] исполнитель разворачивает сам.
-/// `Backups` — `<корень данных>/backups` каждого корня.
+/// Rexon user data roots by category, without repeats, in [`UserDataKind::ALL`]
+/// order, and within each category: first the XDG path, then the literal one.
+/// `Content` is the data ROOT; its content except [`USER_DATA_BACKUPS_DIR`]
+/// is expanded by the executor itself. `Backups` — `<data root>/backups` of
+/// each root.
 ///
-/// Пусто, если домашняя папка не абсолютна: относительный путь смотрел бы в
-/// текущий каталог процесса. Относительное значение `XDG_*` по спецификации
-/// не учитывается.
+/// Empty if the home folder isn't absolute: a relative path would look into
+/// the process's current directory. A relative `XDG_*` value is ignored per
+/// the spec.
 pub fn user_data_roots(
     home: &str,
     xdg_config_home: &str,
@@ -2643,9 +2661,9 @@ pub fn user_data_roots(
     out
 }
 
-/// Итог успешного удаления. `keep_profile` — выбран вариант «Удалить, но
-/// сохранить настройки и резервные копии»: итог называет ВСЁ сохранённое,
-/// говорит, зачем оно осталось, и что временные файлы удалены и тут.
+/// The summary of a successful uninstall. `keep_profile` — the «Uninstall but
+/// Keep Settings and Backups» option was chosen: the summary names EVERYTHING
+/// kept, says why it was kept, and that temporary files were removed here too.
 pub fn uninstall_done_line(keep_profile: bool, _lang: Lang) -> String {
     if keep_profile {
         tr(
@@ -2661,9 +2679,9 @@ pub fn uninstall_done_line(keep_profile: bool, _lang: Lang) -> String {
     }
 }
 
-/// На месте временных файлов или установленного содержимого стояла ссылка
-/// на другую папку: удалена сама ссылка, по ней Rexon не ходил. Путь в
-/// тексте нужен: файлы по ту сторону ссылки остались.
+/// In place of the temporary files or installed content there was a link to
+/// another folder: the link itself was removed, Rexon didn't follow it. The
+/// path is needed in the text: the files on the far side of the link remained.
 pub fn uninstall_removed_link_note(path: &str, _lang: Lang) -> String {
     // TRANSLATORS: %1 is a folder path.
     trf(
@@ -2673,14 +2691,14 @@ pub fn uninstall_removed_link_note(path: &str, _lang: Lang) -> String {
     )
 }
 
-/// Удалять нечего: ни пакета, ни копии для всех, ни копии для себя.
+/// Nothing to remove: no package, no copy for everyone, no copy for oneself.
 pub fn uninstall_nothing_line(_lang: Lang) -> String {
     tr("Rexon is not installed — there is nothing to remove. Nothing was changed.")
 }
 
-/// Путь из списка удаления оказался ссылкой на другую папку (у разработчика
-/// папка программы ведёт в рабочее дерево) — её не трогали. Путь в тексте
-/// нужен: иначе человек не узнает, что осталось.
+/// A path from the removal list turned out to be a link to another folder (for
+/// the developer the program folder leads into the working tree) — it was left
+/// alone. The path is needed in the text: otherwise the person won't learn what remained.
 pub fn uninstall_kept_link_note(path: &str, _lang: Lang) -> String {
     // TRANSLATORS: %1 is a folder path.
     trf(
@@ -2690,8 +2708,8 @@ pub fn uninstall_kept_link_note(path: &str, _lang: Lang) -> String {
     )
 }
 
-/// Rexon поставлен пакетом, удалять который Rexon не умеет. Отказ — до
-/// первого побочного действия.
+/// Rexon was installed by a package Rexon doesn't know how to remove. The
+/// refusal comes before the first side effect.
 pub fn uninstall_package_unsupported_line(name: &str, _lang: Lang) -> String {
     // TRANSLATORS: %1 is the name of the distribution package.
     trf(
@@ -2701,10 +2719,10 @@ pub fn uninstall_package_unsupported_line(name: &str, _lang: Lang) -> String {
     )
 }
 
-/// Итог неудачного удаления. Разбор исхода общий с установкой
-/// ([`crate::installer_exec::classify_script_run`]); слова свои: заголовки
-/// [`InstallFailure`] говорят об установке. Сырой вывод — хвостом, под
-/// заголовком для разработчика.
+/// The summary of a failed uninstall. Outcome parsing is shared with the
+/// install ([`crate::installer_exec::classify_script_run`]); the words are its
+/// own: the [`InstallFailure`] titles speak about installing. Raw output goes
+/// as a tail, under a heading for the developer.
 pub fn uninstall_failure_line(failure: &InstallFailure, _lang: Lang) -> String {
     let problem = match failure {
         InstallFailure::PasswordDenied => tr(
@@ -2738,51 +2756,51 @@ pub fn uninstall_failure_line(failure: &InstallFailure, _lang: Lang) -> String {
 }
 
 // ============================================================================
-// Зависимости времени выполнения per family (порт _get_dep_packages /
+// Runtime dependencies per family (port of _get_dep_packages /
 // _get_dep_install_cmd)
 // ============================================================================
 
-/// Пакеты, без которых поставка Rexon не поднимется ВОВСЕ, для семейства.
-/// Fallback — DEBIAN (как `dep_map.get(family, dep_map.get(DEBIAN, []))` в
+/// Packages without which the Rexon payload won't start AT ALL, for a family.
+/// Fallback — DEBIAN (like `dep_map.get(family, dep_map.get(DEBIAN, []))` in
 /// Python).
 ///
-/// ⭐ Починка 16.09.2026 (правило #16): список был про PySide6, python-cairo и
-/// классическое окно на Python — того, чего поставка больше не везёт. На
-/// машине покупателя он ставил ненужный интерпретатор с обвязкой и при этом
-/// НЕ ставил ни одной библиотеки, которой живёт Rust-окно. Проба «чего не
-/// хватает» к тому времени уже спрашивала о том же, о чём этот список теперь
-/// говорит: динамический компоновщик по файлам самой поставки
+/// ⭐ Fix of 16.09.2026 (rule #16): the list was about PySide6, python-cairo
+/// and the classic Python window — things the payload no longer carries. On
+/// the user's machine it installed an unneeded interpreter with bindings and
+/// at the same time did NOT install a single library the Rust window lives on.
+/// By then the "what is missing" probe was already asking about the same thing
+/// this list now talks about: the dynamic linker over the payload's own files
 /// (`installer_exec::runtime_deps_present`).
 ///
-/// ⭐⭐ Починка того же дня, вторым заходом: список разрезан надвое. Строка
-/// обязательных идёт в корневом скрипте под `set -e`, и ОДНО неверное имя
-/// обрывало всю установку. Имена выписаны по правилам именования каждого
-/// семейства, а вживую собирался только Arch (`packaging/aur/PKGBUILD`) —
-/// значит цена ошибки должна быть по разряду пакета:
-///   * здесь — то, без чего окно не откроется: Qt6 (база, QML, веб, звук,
-///     веб-сокеты, gRPC), layer-shell, загрузчик Vulkan (Flash-обои) и
-///     libmpv (заставка входа). Не встало — установка честно отказывает и
-///     называет, чего не хватило ([`InstallStep::Dependencies`]);
-///   * в [`optional_dep_packages`] — база, которая на живой машине с
-///     графикой стоит почти всегда (bash, D-Bus, Wayland, GL, OpenSSL,
-///     polkit, тема значков). Она едет отдельной строкой с `|| true`, ровно
-///     как переключатель стиля Qt ([`qt_style_install_cmd`]): опечатка в
-///     имени там стоит ненужной строки в журнале, а не сорванной установки.
+/// ⭐⭐ A fix the same day, second pass: the list was split in two. The required
+/// line goes in the root script under `set -e`, and ONE wrong name aborted the
+/// whole install. The names are written out by each family's naming rules,
+/// while only Arch was built live (`packaging/aur/PKGBUILD`) — so the cost of a
+/// mistake must depend on the package tier:
+///   * here — what the window won't open without: Qt6 (base, QML, web, audio,
+///     websockets, gRPC), layer-shell, the Vulkan loader (Flash wallpapers) and
+///     libmpv (the login splash). If it doesn't install, the install honestly
+///     refuses and names what was missing ([`InstallStep::Dependencies`]);
+///   * in [`optional_dep_packages`] — the base almost always present on a live
+///     machine with graphics (bash, D-Bus, Wayland, GL, OpenSSL, polkit, an icon
+///     theme). It goes on a separate line with `|| true`, exactly like the Qt
+///     style switcher ([`qt_style_install_cmd`]): a typo in a name there costs
+///     an unneeded log line, not a broken install.
 ///
-/// Набор обоих разрядов вместе — тот же, что у `depends` пакета дистрибутива
-/// (`packaging/aur/PKGBUILD`), без `glibc` и `gcc-libs`: это база, без
-/// которой не запустится и сам пакетный менеджер. `qt6ct` в набор не входит
-/// и никогда не входил — он не обязателен (без него тема Kvantum применится
-/// через `QT_STYLE_OVERRIDE`, только без шрифтов и значков).
+/// The two tiers together are the same set as the distribution package's
+/// `depends` (`packaging/aur/PKGBUILD`), without `glibc` and `gcc-libs`: that
+/// is the base without which the package manager itself won't run. `qt6ct` is
+/// not in the set and never was — it is not required (without it a Kvantum
+/// theme applies via `QT_STYLE_OVERRIDE`, only without fonts and icons).
 ///
-/// Порядок внутри записи один на все семейства и читается сверху вниз:
-/// Qt6 (база, QML, веб, звук, веб-сокеты, gRPC), layer-shell, загрузчик
-/// Vulkan, libmpv.
+/// The order inside an entry is the same for all families and reads top down:
+/// Qt6 (base, QML, web, audio, websockets, gRPC), layer-shell, the Vulkan
+/// loader, libmpv.
 ///
-/// ⚠️ Имена выписаны по правилам именования каждого семейства; вживую
-/// проверено только семейство Arch. Поэтому разряд и разрезан: ошибка в
-/// имени здесь видна человеку сразу, а не превращается в молчаливо
-/// недоустановленный продукт.
+/// ⚠️ The names are written out by each family's naming rules; only the Arch
+/// family was verified live. That is why the tier is split: a mistake in a
+/// name here is visible to the person right away instead of turning into a
+/// silently half-installed product.
 pub fn dep_packages(family: PkgFamily) -> Vec<String> {
     let list: &[&str] = match family {
         PkgFamily::Arch => &[
@@ -2820,9 +2838,9 @@ pub fn dep_packages(family: PkgFamily) -> Vec<String> {
             "qt6-base", "qt6-declarative", "qt6-webengine", "qt6-multimedia",
             "qt6-websockets", "layer-shell-qt", "vulkan", "mpv",
         ],
-        // DEBIAN + всё, чего нет в dep_map (nix/clear/alt/unknown) → DEBIAN.
-        // Debian и Ubuntu режут Qt6 на библиотеки и QML-модули по отдельности,
-        // поэтому имена здесь непохожи на остальные семейства.
+        // DEBIAN + everything not in dep_map (nix/clear/alt/unknown) → DEBIAN.
+        // Debian and Ubuntu split Qt6 into libraries and QML modules separately,
+        // so the names here don't look like the other families'.
         _ => &[
             "qt6-qpa-plugins", "qt6-wayland", "qml6-module-qtquick-controls",
             "qml6-module-qtwebengine", "qml6-module-qtmultimedia",
@@ -2833,23 +2851,23 @@ pub fn dep_packages(family: PkgFamily) -> Vec<String> {
     list.iter().map(|s| s.to_string()).collect()
 }
 
-/// Пакеты ЖЕЛАТЕЛЬНЫЕ: без них Rexon тоже не работает, но на машине, где
-/// вообще есть рабочий стол, они стоят уже — их тянет за собой всё
-/// остальное. Fallback — DEBIAN, как и у [`dep_packages`].
+/// RECOMMENDED packages: Rexon doesn't work without them either, but on a
+/// machine that has a desktop at all they are already installed — everything
+/// else pulls them in. Fallback — DEBIAN, as in [`dep_packages`].
 ///
-/// Зачем отдельный разряд: имена в одиннадцати семействах из двенадцати
-/// выписаны по правилам именования, а не проверены на живой машине, и ОДНО
-/// неверное имя в строке под `set -e` обрывало установку у человека, которому
-/// продукт обещал «просто нажмите Установить». Здесь собрано то, за что такой
-/// ценой платить нельзя: bash, D-Bus, Wayland, GL, OpenSSL, polkit и тема
-/// значков. Исполнитель дописывает к этой строке `|| true`
-/// ([`installer_exec::deps_script_lines`]) — не встало, и ладно: если чего-то
-/// из этого на машине правда нет, окно не откроется, и человек увидит это
-/// сразу, а не вместо установки.
+/// Why a separate tier: the names in eleven families out of twelve are written
+/// out by naming rules rather than verified on a live machine, and ONE wrong
+/// name in a line under `set -e` aborted the install for a person whom the
+/// product promised "just press Install". Collected here is what must not be
+/// paid for at such a price: bash, D-Bus, Wayland, GL, OpenSSL, polkit and an
+/// icon theme. The executor appends `|| true` to this line
+/// ([`installer_exec::deps_script_lines`]) — if it doesn't install, fine: if
+/// something of this is really missing on the machine, the window won't open,
+/// and the person will see it right away rather than instead of the install.
 ///
-/// Порядок один на все семейства: Wayland, GL, D-Bus, OpenSSL, polkit, bash,
-/// тема значков. У Debian место polkit занимает `pkexec` — там политика
-/// приезжает отдельным пакетом.
+/// The order is the same for all families: Wayland, GL, D-Bus, OpenSSL,
+/// polkit, bash, icon theme. On Debian `pkexec` takes polkit's place — the
+/// policy arrives there as a separate package.
 pub fn optional_dep_packages(family: PkgFamily) -> Vec<String> {
     let list: &[&str] = match family {
         PkgFamily::Arch => &[
@@ -2889,89 +2907,89 @@ pub fn optional_dep_packages(family: PkgFamily) -> Vec<String> {
     list.iter().map(|s| s.to_string()).collect()
 }
 
-/// Команда установки произвольного набора пакетов **строкой для корневого
-/// скрипта** установки. Пусто — ставить нечем (см. ниже три случая).
+/// The command installing an arbitrary set of packages **as a line for the
+/// install root script**. Empty — nothing to install with (see the three cases below).
 ///
-/// Один форматтер на всё, что ставится этим скриптом (правило #12): и
-/// обязательные зависимости, и доустановка переключателя стиля Qt.
+/// One formatter for everything this script installs (rule #12): both the
+/// required dependencies and the extra install of the Qt style switcher.
 ///
-/// Своей таблицы команд здесь НЕТ: сами команды берутся у движка
-/// ([`crate::system_plan::install_cmd`]) — того же, которым Rexon ставит
-/// пакеты во всех остальных местах. Отличие этой точки от прочих ровно одно:
-/// движок отдаёт argv, а сюда нужна строка bash, поэтому каждое слово
-/// проходит `shlex_quote` (имя пакета приходит из таблиц, но экранирование —
-/// не «на всякий случай»: строка попадает в скрипт, который выполняется от
-/// root).
+/// There is NO command table of our own here: the commands themselves come
+/// from the engine ([`crate::system_plan::install_cmd`]) — the same one Rexon
+/// uses to install packages everywhere else. This point differs from the
+/// others in exactly one thing: the engine returns argv, while a bash line is
+/// needed here, so every word goes through `shlex_quote` (the package name
+/// comes from the tables, but the escaping is not "just in case": the line
+/// goes into a script run as root).
 ///
-/// ⚠️ `pkexec` НЕ дописывается, и это не забывчивость: корневой скрипт целиком
-/// уже выполняется одним `pkexec` (см. [`system_install_script`]), второй
-/// внутри был бы вложенной авторизацией. Поэтому берётся голая
-/// [`crate::system_plan::install_cmd`], а не `install_argv`, который выбирает
-/// привилегированный путь.
+/// ⚠️ `pkexec` is NOT prepended, and that is not forgetfulness: the whole root
+/// script already runs under one `pkexec` (see [`system_install_script`]), a
+/// second one inside would be a nested authorisation. So the bare
+/// [`crate::system_plan::install_cmd`] is taken, not `install_argv`, which
+/// chooses the privileged path.
 ///
-/// Пусто отдаётся в трёх случаях:
-/// * список пакетов пуст — «поставить ничего» командой не выражается (то же
-///   правило, что у `install_argv`);
-/// * семейство `UNKNOWN` — менеджер не опознан, движок отвечает ошибкой;
-/// * **NixOS** — единственное расхождение с движком, и оно осознанное.
-///   Движок знает `nix-env -iA nixpkgs.<пакет>` и специально НЕ ставит перед
-///   ним `pkexec`: эта команда наполняет профиль ТОГО пользователя, который
-///   её запустил. Здесь запускающий — root, потому что скрипт целиком идёт
-///   под `pkexec`, и сбросить права внутри нечем. То есть команда отработала
-///   бы успешно и положила библиотеки в профиль root — покупатель не увидел
-///   бы ни ошибки, ни пакетов. Молчаливая пустышка хуже честного «нечем»:
-///   пакеты в NixOS ставятся правкой конфигурации системы. Тот же факт про
-///   профиль пользователя, что и у движка, в корневом скрипте указывает в
-///   другую сторону.
+/// Empty is returned in three cases:
+/// * the package list is empty — "install nothing" can't be expressed as a
+///   command (the same rule as `install_argv`);
+/// * the `UNKNOWN` family — the manager isn't recognised, the engine answers with an error;
+/// * **NixOS** — the only divergence from the engine, and a deliberate one.
+///   The engine knows `nix-env -iA nixpkgs.<package>` and deliberately does NOT
+///   put `pkexec` before it: that command fills the profile of THE user who ran
+///   it. Here the one running it is root, because the whole script goes under
+///   `pkexec`, and there is nothing to drop privileges with inside. So the
+///   command would succeed and put the libraries into root's profile — the
+///   user would see neither an error nor the packages. A silent dud is worse
+///   than an honest "nothing to install with": in NixOS packages are installed
+///   by editing the system configuration. The same fact about the user profile
+///   as in the engine points the other way in the root script.
 pub fn pkg_install_cmd(family: PkgFamily, packages: &[String]) -> String {
     if packages.is_empty() || family == PkgFamily::Nix {
         return String::new();
     }
     match crate::system_plan::install_cmd(family, packages) {
-        // Строка bash из argv: каждое слово экранировано отдельно. Заголовки
-        // таблицы (`pacman`, `-S`, `--needed`, `--ask=n`…) состоят из
-        // безопасных знаков, поэтому кавычек не получают и вид команды не
-        // меняется — экранирование срабатывает только на именах пакетов.
+        // A bash line from argv: each word escaped separately. The table heads
+        // (`pacman`, `-S`, `--needed`, `--ask=n`…) consist of safe characters, so
+        // they get no quotes and the command's look doesn't change — escaping kicks
+        // in only on package names.
         Ok(argv) => argv
             .iter()
             .map(|word| crate::ext_manager::shlex_quote(word))
             .collect::<Vec<String>>()
             .join(" "),
-        // UNKNOWN: движок отвечает «Пакетный менеджер не определён».
+        // UNKNOWN: the engine answers "Package manager not detected".
         Err(_) => String::new(),
     }
 }
 
-/// Команда установки ОБЯЗАТЕЛЬНЫХ зависимостей времени выполнения для
-/// семейства. В корневом скрипте эта строка идёт строго, под `set -e`.
+/// The command installing the REQUIRED runtime dependencies for a family. In
+/// the root script this line goes strictly, under `set -e`.
 ///
-/// Пусто — по правилам [`pkg_install_cmd`]: пустой список пакетов, `UNKNOWN`
-/// или NixOS (там корневой скрипт наполнил бы профиль root).
+/// Empty — per the [`pkg_install_cmd`] rules: an empty package list, `UNKNOWN`
+/// or NixOS (there the root script would fill root's profile).
 pub fn dep_install_cmd(family: PkgFamily) -> String {
     pkg_install_cmd(family, &dep_packages(family))
 }
 
-/// Команда доустановки ЖЕЛАТЕЛЬНЫХ зависимостей ([`optional_dep_packages`]).
+/// The command installing the RECOMMENDED dependencies ([`optional_dep_packages`]).
 ///
-/// Отдельная команда, а не хвост предыдущей: исполнитель дописывает к ней
-/// `|| true` ([`installer_exec::deps_script_lines`]), и неверное имя пакета
-/// в этом разряде не обрывает установку. Пусто — по тем же трём правилам
-/// [`pkg_install_cmd`].
+/// A separate command, not the tail of the previous one: the executor appends
+/// `|| true` to it ([`installer_exec::deps_script_lines`]), and a wrong package
+/// name in this tier doesn't abort the install. Empty — per the same three
+/// rules of [`pkg_install_cmd`].
 pub fn optional_dep_install_cmd(family: PkgFamily) -> String {
     pkg_install_cmd(family, &optional_dep_packages(family))
 }
 
-/// Команда доустановки переключателя стиля Qt (`qt6ct`) в ТОМ ЖЕ заходе, что
-/// и сам Rexon.
+/// The command installing the Qt style switcher (`qt6ct`) in THE SAME pass as
+/// Rexon itself.
 ///
-/// Зачем отдельно от [`dep_install_cmd`]: без него Rexon работает — тема
-/// Kvantum вне KDE и LXQt применится через `QT_STYLE_OVERRIDE`, только без
-/// шрифтов и значков. Значит недоступный репозиторий не должен обрывать
-/// установку целиком (`set -e` в корневом скрипте), и исполнитель дописывает
-/// к этой строке `|| true`. Обязательные зависимости остаются строгими.
+/// Why separately from [`dep_install_cmd`]: Rexon works without it — a Kvantum
+/// theme outside KDE and LXQt applies via `QT_STYLE_OVERRIDE`, only without
+/// fonts and icons. So an unreachable repository must not abort the whole
+/// install (`set -e` in the root script), and the executor appends `|| true`
+/// to this line. The required dependencies stay strict.
 ///
-/// Пусто — ставить нечем: в NixOS пакеты ставятся правкой конфигурации, в
-/// Clear Linux бандла нет.
+/// Empty — nothing to install with: in NixOS packages are installed by editing
+/// the configuration, Clear Linux has no bundle.
 pub fn qt_style_install_cmd(family: PkgFamily) -> String {
     match crate::themes::qt_style_helper_pkg(family.as_str()) {
         Some(pkg) => pkg_install_cmd(family, &[pkg]),
@@ -2980,17 +2998,17 @@ pub fn qt_style_install_cmd(family: PkgFamily) -> String {
 }
 
 // ============================================================================
-// Генерация install-скрипта (system-режим)
+// Generating the install script (system mode)
 // ============================================================================
 
-/// Набор иконок, подготовленных исполнителем во временных файлах.
+/// The icon set prepared by the executor in temporary files.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct IconSet {
-    /// (размер, tmp-путь) для существующих PNG — порядок 16..512.
+    /// (size, tmp path) for existing PNGs — order 16..512.
     pub sizes: Vec<(u32, String)>,
-    /// tmp-путь к SVG (scalable), если есть.
+    /// tmp path to the SVG (scalable), if any.
     pub svg: Option<String>,
-    /// tmp-путь к master-копии (rexon_icon.png) — только если нет 128/256/512.
+    /// tmp path to the master copy (rexon_icon.png) — only if there is no 128/256/512.
     pub master: Option<String>,
 }
 
@@ -2999,7 +3017,7 @@ impl IconSet {
         self.sizes.iter().find(|(sz, _)| *sz == s).map(|(_, p)| p)
     }
 
-    /// Источник для /usr/share/pixmaps/rexon.png: 128 → 256 → 512 → master.
+    /// Source for /usr/share/pixmaps/rexon.png: 128 → 256 → 512 → master.
     fn pixmap_src(&self) -> Option<&String> {
         self.size(128)
             .or_else(|| self.size(256))
@@ -3007,8 +3025,8 @@ impl IconSet {
             .or(self.master.as_ref())
     }
 
-    /// Все tmp-пути (для списка очистки) в порядке dict-insertion Python:
-    /// размеры, затем svg, затем master.
+    /// All tmp paths (for the cleanup list) in Python dict insertion order:
+    /// sizes, then svg, then master.
     fn tmp_paths(&self) -> Vec<String> {
         let mut out: Vec<String> =
             self.sizes.iter().map(|(_, p)| p.clone()).collect();
@@ -3022,13 +3040,13 @@ impl IconSet {
     }
 }
 
-/// Куда кладётся каждый значок: пары (источник, место назначения) под
-/// `icon_root` (hicolor) и `pixmap_dir`. Правило ОДНО на установку в систему
-/// ([`icon_install_block`]) и в домашнюю папку (`installer_exec`).
+/// Where each icon goes: pairs (source, destination) under `icon_root`
+/// (hicolor) and `pixmap_dir`. The rule is ONE for the system install
+/// ([`icon_install_block`]) and the home folder install (`installer_exec`).
 ///
-/// ⭐ Починка при переносе: Python-установка в домашнюю папку брала значок
-/// для pixmaps только из `rexon_icon_128.png` и не знала запасных 256/512 и
-/// мастер-копии, которые знала установка в систему.
+/// ⭐ Fixed in the port: the Python home folder install took the pixmaps icon
+/// only from `rexon_icon_128.png` and didn't know the 256/512 fallbacks and the
+/// master copy that the system install knew.
 pub fn icon_targets(icons: &IconSet, icon_root: &str, pixmap_dir: &str) -> Vec<(String, String)> {
     let root = icon_root.trim_end_matches('/');
     let mut out: Vec<(String, String)> = Vec::new();
@@ -3044,7 +3062,7 @@ pub fn icon_targets(icons: &IconSet, icon_root: &str, pixmap_dir: &str) -> Vec<(
     out
 }
 
-/// Блок `install -Dm644 …` для иконок — порт построения `icon_install_cmds`.
+/// The `install -Dm644 …` block for icons — port of building `icon_install_cmds`.
 pub fn icon_install_block(icons: &IconSet) -> String {
     let cmds: Vec<String> = icon_targets(icons, "/usr/share/icons/hicolor", "/usr/share/pixmaps")
         .into_iter()
@@ -3057,7 +3075,7 @@ pub fn icon_install_block(icons: &IconSet) -> String {
     }
 }
 
-/// Пути девяти helper/policy/rules tmp-файлов (создаются исполнителем).
+/// Paths of the nine helper/policy/rules tmp files (created by the executor).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HelperTmp {
     pub tmp_helper: String,
@@ -3071,7 +3089,7 @@ pub struct HelperTmp {
     pub tmp_de_rules: String,
 }
 
-/// Блок установки privileged helper'ов + polkit-политик — порт
+/// The block installing the privileged helpers + polkit policies — port of
 /// `helper_install_block`.
 pub fn helper_install_block(h: &HelperTmp) -> String {
     format!(
@@ -3094,13 +3112,12 @@ pub fn helper_install_block(h: &HelperTmp) -> String {
     )
 }
 
-/// Шаг правила «без повторного пароля» в корневом скрипте.
+/// The "no repeated password" rule step in the root script.
 ///
-/// ⭐⭐ Починка 15.09.2026: правило ставилось ВСЕГДА и молча. Теперь — только
-/// при согласии человека ([`PASSWORDLESS_CONSENT_DEFAULT`] = выключено).
-/// Без согласия прежнее правило, поставленное молча, снимается: иначе
-/// повторная установка оставляла бы в системе разрешение, о котором человека
-/// никто не спрашивал.
+/// ⭐⭐ Fix of 15.09.2026: the rule was installed ALWAYS and silently. Now —
+/// only with the person's consent ([`PASSWORDLESS_CONSENT_DEFAULT`] = off).
+/// Without consent an old rule installed silently is removed: otherwise a
+/// reinstall would leave in the system a permission nobody asked the person about.
 pub fn passwordless_rule_block(tmp_rules: &str, consent: bool) -> String {
     if consent {
         format!("install -Dm644 {tmp_rules} {REXON_POLKIT_RULES_PATH}")
@@ -3112,8 +3129,8 @@ pub fn passwordless_rule_block(tmp_rules: &str, consent: bool) -> String {
     }
 }
 
-/// Параметры генерации install-скрипта system-режима. Пути tmp-файлов —
-/// от исполнителя (mkstemp/mkdtemp), поэтому текст детерминирован.
+/// Parameters of the system-mode install script generation. The tmp file paths
+/// come from the executor (mkstemp/mkdtemp), so the text is deterministic.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallScriptParams {
     pub lib_dir: String,
@@ -3125,15 +3142,15 @@ pub struct InstallScriptParams {
     pub tmp_recover: String,
     pub icons: IconSet,
     pub helpers: HelperTmp,
-    /// Команда установки зависимостей ("" → «Зависимости уже установлены»).
+    /// Dependency install command ("" → "Dependencies already installed").
     pub dep_cmd: String,
-    /// Человек согласился на правило «без повторного пароля»
-    /// ([`passwordless_rule_block`]). По умолчанию — нет.
+    /// The person agreed to the "no repeated password" rule
+    /// ([`passwordless_rule_block`]). Default — no.
     pub passwordless_rule: bool,
 }
 
-/// Полный текст bash-скрипта system-установки — порт `install_script`
-/// f-string в `install_to_system`.
+/// The full text of the system install bash script — port of the
+/// `install_script` f-string in `install_to_system`.
 pub fn system_install_script(p: &InstallScriptParams) -> String {
     let dep_line = if p.dep_cmd.is_empty() {
         "# Зависимости уже установлены".to_string()
@@ -3206,7 +3223,7 @@ pub fn system_install_script(p: &InstallScriptParams) -> String {
     )
 }
 
-/// Команда запуска install-скрипта: `pkexec bash {tmp_sh}`, timeout
+/// The command running the install script: `pkexec bash {tmp_sh}`, timeout
 /// [`SYSTEM_INSTALL_TIMEOUT_SECS`].
 pub fn system_install_cmd(tmp_sh: &str) -> Cmd {
     Cmd {
@@ -3216,9 +3233,9 @@ pub fn system_install_cmd(tmp_sh: &str) -> Cmd {
     }
 }
 
-/// План system-установки: записать скрипт → pkexec → очистить временные
-/// файлы. Тексты helper/policy/desktop/launcher пишутся исполнителем из
-/// соответствующих pub-функций (здесь — только скрипт-обёртка и argv).
+/// The system install plan: write the script → pkexec → clean up the temporary
+/// files. The helper/policy/desktop/launcher texts are written by the executor
+/// from the corresponding pub functions (here — only the wrapper script and argv).
 pub fn system_install_plan(p: &InstallScriptParams, tmp_sh: &str) -> Vec<PlanStep> {
     vec![
         PlanStep::WriteFile {
@@ -3238,12 +3255,12 @@ pub fn system_install_plan(p: &InstallScriptParams, tmp_sh: &str) -> Vec<PlanSte
     ]
 }
 
-/// Список временных путей для очистки после установки.
+/// The list of temporary paths to clean up after the install.
 ///
-/// ⚠ Починен баг оригинала (правило #16): Python `cleanup_paths` НЕ включал
-/// `tmp_stage_helper` / `tmp_stage_policy` (оба создавались через mkstemp и
-/// оставались в /tmp мусором после каждой установки). Порт их добавляет
-/// (после pkg-policy, зеркалом порядка установки stage-хелпера).
+/// ⚠ Fixed a bug of the original (rule #16): Python `cleanup_paths` did NOT
+/// include `tmp_stage_helper` / `tmp_stage_policy` (both were created via
+/// mkstemp and remained in /tmp as junk after every install). The port adds
+/// them (after pkg-policy, mirroring the stage helper's install order).
 pub fn install_cleanup_paths(p: &InstallScriptParams, tmp_sh: &str) -> Vec<String> {
     let h = &p.helpers;
     let mut out = vec![
@@ -3259,7 +3276,7 @@ pub fn install_cleanup_paths(p: &InstallScriptParams, tmp_sh: &str) -> Vec<Strin
         h.tmp_de_rules.clone(),
         h.tmp_pkg_helper.clone(),
         h.tmp_pkg_policy.clone(),
-        // ── починка утечки: два stage-файла, забытых в оригинале ──
+        // ── leak fix: two stage files forgotten in the original ──
         h.tmp_stage_helper.clone(),
         h.tmp_stage_policy.clone(),
     ];
@@ -3268,11 +3285,11 @@ pub fn install_cleanup_paths(p: &InstallScriptParams, tmp_sh: &str) -> Vec<Strin
 }
 
 // ============================================================================
-// Деинсталляция
+// Uninstall
 // ============================================================================
 
-/// Аргументы «какой пакет владеет файлом» — порт `_DISTRO_PKG_OWNER`.
-/// None — семейство без поддержки детекта владельца (ручная/portable).
+/// Arguments for "which package owns the file" — port of `_DISTRO_PKG_OWNER`.
+/// None — a family without owner detection support (manual/portable).
 pub fn distro_pkg_owner(family: PkgFamily) -> Option<Vec<String>> {
     let v: &[&str] = match family {
         PkgFamily::Arch => &["pacman", "-Qoq"],
@@ -3285,8 +3302,8 @@ pub fn distro_pkg_owner(family: PkgFamily) -> Option<Vec<String>> {
     Some(v.iter().map(|s| s.to_string()).collect())
 }
 
-/// Команда удаления одного пакета (без каскада) — порт `_DISTRO_PKG_REMOVE`.
-/// None — авто-удаление для семейства не поддержано.
+/// The command removing one package (no cascade) — port of `_DISTRO_PKG_REMOVE`.
+/// None — auto-removal is not supported for the family.
 pub fn distro_pkg_remove(family: PkgFamily) -> Option<Vec<String>> {
     let v: &[&str] = match family {
         PkgFamily::Arch => &["pacman", "-R", "--noconfirm"],
@@ -3302,16 +3319,16 @@ pub fn distro_pkg_remove(family: PkgFamily) -> Option<Vec<String>> {
     Some(v.iter().map(|s| s.to_string()).collect())
 }
 
-/// Кандидаты-бинари, у которых спрашиваем владельца (кроме самого модуля) —
-/// порт списка в `_detect_distro_package`.
+/// Candidate binaries whose owner we ask about (besides the module itself) —
+/// port of the list in `_detect_distro_package`.
 pub fn distro_candidate_bins() -> [&'static str; 2] {
     ["/usr/bin/rexon", "/usr/local/bin/rexon"]
 }
 
-/// Разбор вывода менеджера про владельца файла — порт логики
-/// `_detect_distro_package`. `tool` = `owner[0]` (pacman/dpkg/rpm).
-/// dpkg печатает «pkg: /path» → берём часть до ':'; остальные (`pacman -Qoq`
-/// / `rpm -qf`) → первая строка. Пусто → None.
+/// Parsing the manager's output about the file owner — port of the
+/// `_detect_distro_package` logic. `tool` = `owner[0]` (pacman/dpkg/rpm).
+/// dpkg prints "pkg: /path" → take the part before ':'; the others
+/// (`pacman -Qoq` / `rpm -qf`) → the first line. Empty → None.
 pub fn parse_owner_output(tool: &str, stdout: &str) -> Option<String> {
     let out = stdout.trim();
     if out.is_empty() {
@@ -3329,7 +3346,7 @@ pub fn parse_owner_output(tool: &str, stdout: &str) -> Option<String> {
     }
 }
 
-/// Команда удаления дистрибутивного пакета через менеджер:
+/// The command removing the distribution package via the manager:
 /// `pkexec {remove...} {pkg_name}`, timeout 300.
 pub fn pkg_remove_cmd(remove: &[String], pkg_name: &str) -> Cmd {
     let mut argv = vec!["pkexec".to_string()];
@@ -3338,11 +3355,12 @@ pub fn pkg_remove_cmd(remove: &[String], pkg_name: &str) -> Cmd {
     Cmd { argv, timeout_secs: Some(300), lang_c: false }
 }
 
-/// Файлы установки в каталоге команд сверх лаунчера — хост обоев и заставка.
-/// Правда одна с установкой: [`crate::installer_exec::InstallLayout::extra_bin_paths`].
+/// Install files in the command directory beyond the launcher — the wallpaper
+/// host and the splash. One truth with the install:
+/// [`crate::installer_exec::InstallLayout::extra_bin_paths`].
 ///
-/// ⭐ Починка G8: удаление обоих режимов их не знало, и после «Удалить Rexon»
-/// в `bin` оставались два исполняемых файла.
+/// ⭐ Fix G8: uninstall in both modes didn't know them, and after «Uninstall
+/// Rexon» two executables remained in `bin`.
 fn extra_bin_paths(p: &InstallPaths) -> Vec<String> {
     match (&p.lib_dir, &p.install_dir) {
         (Some(lib), Some(install)) => {
@@ -3352,9 +3370,9 @@ fn extra_bin_paths(p: &InstallPaths) -> Vec<String> {
     }
 }
 
-/// Список путей для удаления в system-uninstall-скрипте (порядок оригинала,
-/// хост обоев и заставка — сразу за лаунчером). Порт `paths_to_remove` в
-/// `RexonUninstaller.uninstall`.
+/// The list of paths to remove in the system uninstall script (the original's
+/// order, the wallpaper host and the splash right after the launcher). Port of
+/// `paths_to_remove` in `RexonUninstaller.uninstall`.
 pub fn uninstall_system_paths(sys: &InstallPaths) -> Vec<String> {
     let lib = sys.lib_dir.clone().unwrap_or_default();
     let install = sys.install_dir.clone().unwrap_or_default();
@@ -3378,36 +3396,36 @@ pub fn uninstall_system_paths(sys: &InstallPaths) -> Vec<String> {
         PKG_POLICY_PATH.to_string(),
         STAGE_HELPER_PATH.to_string(),
         STAGE_POLICY_PATH.to_string(),
-        // Помощник сеанса прав («один пароль на запуск») и его политика.
+        // The privilege session helper ("one password per run") and its policy.
         crate::system_plan::SESSION_HELPER_PATH.to_string(),
         crate::system_plan::SESSION_POLICY_PATH.to_string(),
-        // Он же на SteamOS (вне `/usr`, кладёт `rexon-sysext-helper`).
+        // The same on SteamOS (outside `/usr`, placed by `rexon-sysext-helper`).
         crate::steamos_sysext::SESSION_HELPER_PATH.to_string(),
         crate::steamos_sysext::SESSION_POLICY_PATH.to_string(),
         REXON_POLKIT_RULES_PATH.to_string(),
-        // Следы НАСТРОЙКИ СТОЛА, а не самой программы. Их тоже убираем:
-        // файлы ничьи по учёту пакетов, лежат в общесистемных каталогах и
-        // прежде переживали удаление Rexon — человек сносил программу, а
-        // её след оставался в машине навсегда.
+        // Traces of the DESKTOP SETUP, not of the program itself. We remove them
+        // too: the files are nobody's by package accounting, lie in system-wide
+        // directories and previously survived uninstalling Rexon — the person
+        // removed the program, but its trace stayed on the machine forever.
         crate::system_plan::MATE_GSCHEMA_PATH.to_string(),
     ]);
     paths
 }
 
-/// Текст bash-скрипта system-деинсталляции — порт `script_lines`.
+/// The text of the system uninstall bash script — port of `script_lines`.
 pub fn uninstall_system_script(sys: &InstallPaths) -> String {
     uninstall_system_script_for(sys, &uninstall_system_paths(sys))
 }
 
-/// Тот же скрипт, но снимает ровно `paths` — исполнитель
-/// ([`crate::installer_exec::uninstall`]) вычёркивает из
-/// [`uninstall_system_paths`] ссылки на чужие папки.
+/// The same script, but it removes exactly `paths` — the executor
+/// ([`crate::installer_exec::uninstall`]) strikes links to foreign folders out
+/// of [`uninstall_system_paths`].
 ///
-/// Первой строкой после `set -e` скрипт печатает метку начала
-/// ([`crate::installer_exec::STEP_MARK`]): исход запуска различается по
-/// ФАКТУ, как у установки ([`crate::installer_exec::classify_script_run`]) —
-/// меток нет и pkexec отказал → пароль не подтверждён; метка есть → сломалось
-/// само удаление.
+/// As the first line after `set -e` the script prints the start marker
+/// ([`crate::installer_exec::STEP_MARK`]): the run outcome is told apart by
+/// FACT, as with the install ([`crate::installer_exec::classify_script_run`]) —
+/// no markers and pkexec refused → the password was not confirmed; a marker is
+/// there → the removal itself broke.
 pub fn uninstall_system_script_for(sys: &InstallPaths, paths: &[String]) -> String {
     let desktop = sys.desktop_dir.clone().unwrap_or_default();
     let mut lines = vec![
@@ -3421,15 +3439,15 @@ pub fn uninstall_system_script_for(sys: &InstallPaths, paths: &[String]) -> Stri
     lines.push(format!(
         "update-desktop-database {desktop} 2>/dev/null || true"
     ));
-    // Схемы после удаления оверрайда надо пересобрать, иначе снятые
-    // умолчания продолжают действовать из `gschemas.compiled`.
+    // After removing the override the schemas must be recompiled, otherwise the
+    // removed defaults keep acting from `gschemas.compiled`.
     lines.push(
         "glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || true".to_string(),
     );
-    // Раскладки панели Ubuntu MATE, которые Rexon разложил в общесистемный
-    // каталог. Удаляем ТОЛЬКО ничьи по учёту пакетов: файл с тем же именем
-    // может прийти из дистрибутива, и снести его — сломать чужой стол.
-    // Там, где учёта нет (не Arch), не трогаем ничего.
+    // Ubuntu MATE panel layouts Rexon laid out into a system-wide directory. We
+    // remove ONLY those owned by nobody per package accounting: a file with the
+    // same name may come from the distribution, and removing it would break
+    // someone else's desktop. Where there is no accounting (not Arch), we touch nothing.
     lines.push(
         "if command -v pacman >/dev/null 2>&1; then\n\
 \x20 for f in /usr/share/mate-panel/layouts/*.layout; do\n\
@@ -3443,19 +3461,18 @@ fi"
     lines.join("\n") + "\n"
 }
 
-/// Снять страховку экрана входа, которую разложил помощник `switch-dm`
-/// («Сделать основным»): каталог [`crate::system_plan::DM_FALLBACK_DIR`]
-/// (сценарий отката, его данные и подсказка для консоли), служба-откат и
-/// её drop-in с `OnFailure=` у выбранного экрана входа. Файлы ничьи по
-/// учёту пакетов: без этого они переживали удаление Rexon, а `OnFailure=`
-/// указывал бы на снятую службу. Тот же текст выполняет `post_remove`
-/// пакета (`packaging/aur/rexon-git.install`).
+/// Remove the login screen safeguard laid out by the `switch-dm` helper
+/// («Make default»): the [`crate::system_plan::DM_FALLBACK_DIR`] directory (the
+/// rollback script, its data and the console hint), the rollback service and
+/// its drop-in with `OnFailure=` on the chosen login screen. The files are
+/// nobody's per package accounting: without this they survived uninstalling
+/// Rexon, and `OnFailure=` would point at a removed service. The same text is
+/// run by the package's `post_remove` (`packaging/aur/rexon-git.install`).
 ///
-/// ⚠️ Выбранное приветствие LightDM
-/// ([`crate::system_plan::LIGHTDM_GREETER_CONF`]) НЕ снимается: это
-/// настройка экрана входа, который сейчас основной, и без неё LightDM мог
-/// бы остаться с неустановленным приветствием — то есть без входа
-/// (правило #13). Служб не запускает и не останавливает.
+/// ⚠️ The chosen LightDM greeter ([`crate::system_plan::LIGHTDM_GREETER_CONF`])
+/// is NOT removed: it is a setting of the login screen that is currently the
+/// default, and without it LightDM could be left with an uninstalled greeter —
+/// that is, without a login (rule #13). Doesn't start or stop services.
 pub fn dm_fallback_cleanup_script() -> String {
     use crate::system_plan::{DM_FALLBACK_DIR, DM_FALLBACK_DROPIN, DM_FALLBACK_SERVICE};
     format!(
@@ -3470,7 +3487,7 @@ if command -v systemctl >/dev/null 2>&1; then systemctl daemon-reload 2>/dev/nul
     )
 }
 
-/// Команда запуска uninstall-скрипта: `pkexec bash {tmp_sh}`, timeout 300.
+/// The command running the uninstall script: `pkexec bash {tmp_sh}`, timeout 300.
 pub fn uninstall_system_cmd(tmp_sh: &str) -> Cmd {
     Cmd {
         argv: vec!["pkexec".into(), "bash".into(), tmp_sh.to_string()],
@@ -3479,16 +3496,16 @@ pub fn uninstall_system_cmd(tmp_sh: &str) -> Cmd {
     }
 }
 
-/// Метка начала корневого скрипта удаления (после
+/// Start marker of the uninstall root script (after
 /// [`crate::installer_exec::STEP_MARK`]).
 pub const UNINSTALL_SCRIPT_MARK: &str = "files";
 
-/// План system-деинсталляции: записать скрипт → pkexec → удалить tmp_sh.
+/// The system uninstall plan: write the script → pkexec → delete tmp_sh.
 pub fn uninstall_system_plan(sys: &InstallPaths, tmp_sh: &str) -> Vec<PlanStep> {
     uninstall_system_plan_for(sys, &uninstall_system_paths(sys), tmp_sh)
 }
 
-/// План, снимающий ровно `paths` ([`uninstall_system_script_for`]).
+/// A plan that removes exactly `paths` ([`uninstall_system_script_for`]).
 pub fn uninstall_system_plan_for(sys: &InstallPaths, paths: &[String], tmp_sh: &str) -> Vec<PlanStep> {
     vec![
         PlanStep::WriteFile {
@@ -3506,8 +3523,8 @@ pub fn uninstall_system_plan_for(sys: &InstallPaths, paths: &[String], tmp_sh: &
     ]
 }
 
-/// Кандидаты в список удаляемого для одной установки (system/user) — шесть
-/// путей в порядке `get_installed_files`.
+/// Candidates for the removal list of one install (system/user) — six paths in
+/// `get_installed_files` order.
 pub fn install_candidate_files(p: &InstallPaths) -> Vec<String> {
     let install = p.install_dir.clone().unwrap_or_default();
     let lib = p.lib_dir.clone().unwrap_or_default();
@@ -3528,10 +3545,10 @@ pub fn install_candidate_files(p: &InstallPaths) -> Vec<String> {
     out
 }
 
-/// Порт `RexonUninstaller.get_installed_files`: пакет + system + user + user
-/// data, фильтруя каждый путь через `exists`. `pkg_name` — имя дистрибутивного
-/// пакета (None — не установлен пакетом). `config_dir`/`backup_dir` — пути
-/// пользовательских данных.
+/// Port of `RexonUninstaller.get_installed_files`: package + system + user +
+/// user data, filtering each path through `exists`. `pkg_name` — the
+/// distribution package name (None — not installed as a package).
+/// `config_dir`/`backup_dir` — user data paths.
 #[allow(clippy::too_many_arguments)]
 pub fn get_installed_files(
     pkg_name: Option<&str>,
@@ -3564,23 +3581,23 @@ pub fn get_installed_files(
 }
 
 // ============================================================================
-// User-режим деинсталляции (порт второй половины `RexonUninstaller.uninstall`)
+// User-mode uninstall (port of the second half of `RexonUninstaller.uninstall`)
 // ============================================================================
 
-/// Каталоги размеров hicolor, куда user-install кладёт иконку (порядок
-/// оригинала: PNG-размеры возрастанием + `scalable`).
+/// hicolor size directories where user-install puts the icon (the original's
+/// order: PNG sizes ascending + `scalable`).
 pub const ICON_SIZE_DIRS: &[&str] = &[
     "16x16", "24x24", "32x32", "48x48", "64x64", "128x128", "256x256",
     "512x512", "scalable",
 ];
 
-/// Что чистит user-деинсталляция: шесть основных путей + per-user иконки
-/// (только наши `rexon.png`/`rexon.svg`, не вся папка размера) + pixmap.
+/// What the user uninstall cleans: six main paths + per-user icons (only our
+/// `rexon.png`/`rexon.svg`, not the whole size folder) + the pixmap.
 ///
-/// `lexists` — `os.path.lexists` живого Python: битый симлинк тоже подлежит
-/// удалению, поэтому именно `lexists`, а не `exists`. Основные шесть путей
-/// оригинал не фильтровал вовсе (удалял «как получится»), поэтому они всегда
-/// в списке — фильтр применяется только к иконкам, как и было.
+/// `lexists` — live Python's `os.path.lexists`: a broken symlink is also to be
+/// removed, hence `lexists` rather than `exists`. The original didn't filter
+/// the main six paths at all (it removed "as it goes"), so they are always in
+/// the list — the filter applies only to icons, as before.
 pub fn uninstall_user_paths(
     usr: &InstallPaths,
     lexists: impl Fn(&str) -> bool,
@@ -3617,15 +3634,15 @@ pub fn uninstall_user_paths(
     paths
 }
 
-/// Итог деинсталляции: `ok=false` — ничего не было установлено.
+/// The uninstall summary: `ok=false` — nothing was installed.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UninstallSummary {
     pub ok: bool,
     pub message: String,
 }
 
-/// Порт хвоста `RexonUninstaller.uninstall`: перечисление того, что снесли,
-/// либо честное «не установлен».
+/// Port of the tail of `RexonUninstaller.uninstall`: a list of what was
+/// removed, or an honest "not installed".
 pub fn uninstall_summary(
     pkg_name: Option<&str>,
     has_system: bool,
@@ -3658,16 +3675,16 @@ mod package_data_dir_tests {
     use super::*;
     use std::path::Path;
 
-    /// Сложить раскладку: `<base>/<rel>/qt_wallpaper_engine/qml_ui/PageHost.qml`.
+    /// Lay out a layout: `<base>/<rel>/qt_wallpaper_engine/qml_ui/PageHost.qml`.
     fn lay_out(base: &Path, rel: &str) {
         let dir = base.join(rel).join("qt_wallpaper_engine/qml_ui");
         std::fs::create_dir_all(&dir).expect("каталог раскладки создан");
         std::fs::write(dir.join("PageHost.qml"), b"// stub").expect("метка записана");
     }
 
-    /// Обе живые раскладки — дерево разработчика и пакет — собраны
-    /// настоящими файлами; пакетный префикс подменён пробой, чтобы тест не
-    /// писал в `/usr`.
+    /// Both live layouts — the developer tree and the package — are assembled
+    /// from real files; the package prefix is substituted by a probe so the test
+    /// doesn't write into `/usr`.
     #[test]
     fn picks_dev_tree_then_package_layout() {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
@@ -3686,18 +3703,18 @@ mod package_data_dir_tests {
             Path::new(&mapped).is_file()
         };
 
-        // Дерево разработчика точнее пакета: рядом с ним и правят.
+        // The developer tree is more precise than the package: that's where editing happens.
         let dev_root = format!("{base_str}/tree");
         assert_eq!(
             pick_package_data_dir(&dev_root, &probe),
             Some(format!("{dev_root}/{DEV_TREE_DATA_DIR}"))
         );
-        // Дерева нет (запуск из пакета) — берётся раскладка пакета.
+        // No tree (running from the package) — the package layout is taken.
         assert_eq!(
             pick_package_data_dir("", &probe),
             Some(format!("{pkg_prefix}/rexon"))
         );
-        // Ни одной раскладки рядом — честное «не нашли».
+        // No layout nearby — an honest "not found".
         assert_eq!(pick_package_data_dir("", &|_p: &str| false), None);
 
         std::fs::remove_dir_all(&base).expect("временная раскладка убрана");
@@ -3712,7 +3729,7 @@ mod first_run_tests {
 
     const HOME: &str = "/home/tester";
 
-    /// Подставная машина: ничего не читает с диска и из окружения.
+    /// A substitute machine: reads nothing from disk or the environment.
     #[derive(Default)]
     struct FakeProbe {
         env: HashMap<String, String>,
@@ -3725,7 +3742,7 @@ mod first_run_tests {
     }
 
     impl FakeProbe {
-        /// Обычный неустановленный запуск Rust-окна из распакованного архива на Arch.
+        /// An ordinary uninstalled launch of the Rust window from an unpacked archive on Arch.
         fn plain() -> Self {
             let mut p = FakeProbe {
                 distro: "arch".into(),
@@ -3743,7 +3760,7 @@ mod first_run_tests {
             self.own = Some(path.into());
             self
         }
-        /// Разложить признаки установки по путям режима.
+        /// Lay out the install markers along the mode's paths.
         fn installed(mut self, paths: &InstallPaths) -> Self {
             let install = paths.install_dir.clone().unwrap();
             let desktop = paths.desktop_dir.clone().unwrap();
@@ -3831,12 +3848,12 @@ mod first_run_tests {
     fn packaged_env_skips() {
         let p = FakeProbe::plain().with_env(PACKAGED_ENV, "1");
         assert_eq!(first_run_offer(&p, &no_settings()), skip(FirstRunSkip::PackagedEnv));
-        // Пустое значение — тоже признак: так же читает detect_default_mode.
+        // An empty value is a marker too: detect_default_mode reads it the same way.
         let p = FakeProbe::plain().with_env(PACKAGED_ENV, "");
         assert_eq!(first_run_offer(&p, &no_settings()), skip(FirstRunSkip::PackagedEnv));
     }
 
-    /// Дефект 7 плана: ярлык пакета зовёт бинарь окна без REXON_PACKAGED.
+    /// Defect 7 of the plan: the package's desktop entry calls the window binary without REXON_PACKAGED.
     #[test]
     fn package_binary_without_env_skips() {
         for own in [
@@ -3846,7 +3863,7 @@ mod first_run_tests {
             "/usr/lib/rexon/rexon-main-window (deleted)",
             "/nix/store/abc-rexon/bin/rexon-main-window",
             "/app/bin/rexon-main-window",
-            // Python-вход передаёт путь модуля, а не интерпретатора.
+            // The Python entry passes the module path, not the interpreter's.
             "/usr/lib/rexon/rexon/installer.py",
         ] {
             let p = FakeProbe::plain().with_own(own);
@@ -3872,7 +3889,7 @@ mod first_run_tests {
             let p = FakeProbe::plain().with_own(own);
             assert!(first_run_offer(&p, &no_settings()).is_offer(), "{own}");
         }
-        // Своего пути нет вовсе — по месту не решаем, остальное в силе.
+        // No own path at all — we don't decide by location, the rest still holds.
         let mut p = FakeProbe::plain();
         p.own = None;
         assert!(first_run_offer(&p, &no_settings()).is_offer());
@@ -3897,8 +3914,8 @@ mod first_run_tests {
         );
     }
 
-    /// Машина разработчика: `/usr/local/lib/rexon` — симлинк в дерево, окно
-    /// запущено не из дерева (например, скопированный бинарь).
+    /// Developer machine: `/usr/local/lib/rexon` is a symlink into the tree, the
+    /// window was not launched from the tree (e.g. a copied binary).
     #[test]
     fn dev_tree_by_symlinked_lib_dir_skips() {
         let mut p = FakeProbe::plain();
@@ -3921,7 +3938,7 @@ mod first_run_tests {
         assert_eq!(first_run_offer(&p, &no_settings()), skip(FirstRunSkip::InstalledSystem));
     }
 
-    /// Починка: Python проверял только режим по умолчанию (на Arch — system).
+    /// Fix: Python checked only the default mode (on Arch — system).
     #[test]
     fn installed_user_on_system_default_distro_skips() {
         let p = FakeProbe::plain().installed(&user_paths());
@@ -3935,7 +3952,7 @@ mod first_run_tests {
             .with_env("XDG_DATA_HOME", "/data/xdg")
             .installed(&paths);
         assert_eq!(first_run_offer(&p, &no_settings()), skip(FirstRunSkip::InstalledUser));
-        // Пустой XDG_DATA_HOME по спецификации означает умолчание.
+        // An empty XDG_DATA_HOME means the default per the spec.
         let p = FakeProbe::plain()
             .with_env("XDG_DATA_HOME", "")
             .installed(&user_paths());
@@ -3979,7 +3996,7 @@ mod first_run_tests {
             assert!(!first_run_declined_from(&m), "{v}");
             assert!(first_run_offer(&FakeProbe::plain(), &m).is_offer(), "{v}");
         }
-        // Осиротевший `wizard_done` на решение не влияет.
+        // An orphaned `wizard_done` doesn't affect the decision.
         let mut m = crate::settings::defaults();
         m.insert("wizard_done".into(), Value::Bool(true));
         assert!(first_run_offer(&FakeProbe::plain(), &m).is_offer());
@@ -4003,7 +4020,7 @@ mod first_run_tests {
                 forced: true
             }
         );
-        // На неизменяемой системе и force предлагает домашнюю папку.
+        // On an immutable system even force offers the home folder.
         p.distro = "bazzite".into();
         match first_run_offer(&p, &no_settings()) {
             FirstRunOffer::Offer { default_mode, system_blocked, forced } => {
@@ -4033,8 +4050,8 @@ mod first_run_tests {
         assert_eq!(first_run_override(Some("never")), Some(false));
     }
 
-    /// Порядок: пакет раньше дерева разработчика, дерево раньше «установлен»,
-    /// «установлен» раньше отказа — причина в журнале самая точная.
+    /// Order: the package before the developer tree, the tree before "installed",
+    /// "installed" before the refusal — the reason in the log is the most precise.
     #[test]
     fn reasons_follow_documented_order() {
         let mut p = FakeProbe::plain()
@@ -4055,7 +4072,7 @@ mod first_run_tests {
             first_run_offer(&p, &declined_settings()),
             skip(FirstRunSkip::InstalledSystem)
         );
-        // Пакет по переменной раньше Steam.
+        // The package by variable before Steam.
         let p = FakeProbe::plain()
             .with_env(PACKAGED_ENV, "1")
             .with_env("SteamGameId", "1");
@@ -4091,8 +4108,8 @@ mod first_run_tests {
         assert!(cases[5].log_line().contains("SteamAppId"));
     }
 
-    /// «Больше не спрашивать» пишется в настоящий файл — временный, профиль
-    /// человека не трогается; без отметки не пишется ничего.
+    /// «Don't ask again» is written to a real file — a temporary one, the person's
+    /// profile isn't touched; without the check nothing is written.
     #[test]
     fn decline_session_writes_only_when_remembered() {
         let dir = std::env::temp_dir()
@@ -4129,15 +4146,14 @@ mod wizard_texts_tests {
 
     const HOME: &str = "/home/tester";
 
-    /// Язык сверок — исходный английский, что бы ни стояло в локали машины
-    /// и какой бы каталог ни лежал в системе. Русский слово в слово сверяет
-    /// `tests/installer_parity.rs` под закреплённым русским каталогом.
+    /// The language of the checks is the source English, whatever the machine's
+    /// locale and whatever catalog lies in the system. The Russian is checked word
+    /// for word by `tests/installer_parity.rs` under a pinned Russian catalog.
     fn english() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
     }
 
-    /// Служебные слова, которых покупатель видеть не должен. Сравнение — в
-    /// нижнем регистре.
+    /// Jargon words the user must not see. Compared in lowercase.
     const JARGON: &[&str] = &[
         "pkexec", "polkit", "helper", "хелпер", "лаунчер", "launcher", ".desktop", "$path",
         "bashrc", "zshrc", "config.fish", "pyside", "qt6-webengine", "layer-shell",
@@ -4145,7 +4161,7 @@ mod wizard_texts_tests {
         "/usr/", "~/.local",
     ];
 
-    /// Жаргон в тексте; пути в подсказках разрешены (`allow_paths`).
+    /// Jargon in the text; paths are allowed in tooltips (`allow_paths`).
     fn jargon_in(text: &str, allow_paths: bool) -> Option<String> {
         let checked: String = if allow_paths {
             text.split_whitespace()
@@ -4174,8 +4190,8 @@ mod wizard_texts_tests {
         None
     }
 
-    /// Все строки значения: (имя поля, текст). Поле `mode` — идентификатор,
-    /// не подпись; `details` — сырой вывод для разработчика.
+    /// All the value's strings: (field name, text). The `mode` field is an
+    /// identifier, not a label; `details` — raw output for the developer.
     fn walk(value: &Value, key: &str, out: &mut Vec<(String, String)>) {
         match value {
             Value::String(s) if key != "mode" && key != "details" => {
@@ -4213,8 +4229,7 @@ mod wizard_texts_tests {
         out
     }
 
-    /// Все строки мастера на одном языке — в одном и том же порядке для
-    /// обоих языков.
+    /// All wizard strings in one language — in the same order for both languages.
     fn all_texts(lang: Lang) -> Vec<(String, String)> {
         let mut out = Vec::new();
         let mut push_json = |v: Value| walk(&v, "", &mut out);
@@ -4255,15 +4270,15 @@ mod wizard_texts_tests {
             text(system_mode_blocked_reason_in("steamos", lang).unwrap()),
         ]);
         out.extend(without_install_limits(lang).into_iter().map(text));
-        // Кнопка «Установить Rexon в систему…» на странице «Настройки» (G5).
+        // The «Install Rexon on this computer…» button on the «⚙️ Settings» page (G5).
         out.extend([
             text(settings_install_button(lang)),
             text(settings_install_hint(lang)),
             text(settings_install_started(lang)),
             text(settings_install_no_window(lang)),
         ]);
-        // Удаление Rexon (G8). Сырого вывода в проверяемых строках нет:
-        // подробности идут хвостом, как `details` у мастера.
+        // Uninstalling Rexon (G8). There is no raw output in the checked strings:
+        // the details go as a tail, like the wizard's `details`.
         for part in UninstallPart::ALL {
             out.push(text(part.progress_line(lang)));
         }
@@ -4288,13 +4303,12 @@ mod wizard_texts_tests {
         out
     }
 
-    /// Итог удаления: подробности только хвостом и под своим заголовком;
-    /// «system», «код 126» и прочие служебные слова в словах окна не
-    /// появляются (прежде: «Ошибка удаления system: код 126: …»).
-    /// Страховка экрана входа снимается и удалением из программы, и
-    /// `pacman -R` (сценарий пакета) — одним и тем же текстом; выбранное
-    /// приветствие LightDM остаётся, службы не запускаются и не
-    /// останавливаются.
+    /// The uninstall summary: details only as a tail and under their own heading;
+    /// "system", "code 126" and other jargon don't appear in the window's words
+    /// (previously: "Uninstall error system: code 126: …").
+    /// The login screen safeguard is removed both by uninstalling from the program
+    /// and by `pacman -R` (the package script) — with the same text; the chosen
+    /// LightDM greeter stays, services are neither started nor stopped.
     #[test]
     fn package_post_remove_matches_core_cleanup() {
         let core = dm_fallback_cleanup_script();
@@ -4338,10 +4352,10 @@ mod wizard_texts_tests {
             assert!(!t.contains("system:") && !t.contains("code 126"), "{t}");
         }
         assert_ne!(uninstall_done_line(true, Lang::En), uninstall_done_line(false, Lang::En));
-        // «Сохранить» называет всё сохранённое и что временные файлы удалены;
-        // «удалить всё» — всё удалённое (решение 15.09.2026: кэш — при любом
-        // выборе, обои и темы — только при «удалить всё»). Русский слово в
-        // слово сверяет снимок `installer_parity::russian_installer_texts_as_before`.
+        // «Keep» names everything kept and that the temporary files were removed;
+        // «Remove Everything» — everything removed (decision of 15.09.2026: the cache —
+        // with any choice, wallpapers and themes — only with «Remove Everything»). The
+        // Russian is checked word for word by the `installer_parity::russian_installer_texts_as_before` snapshot.
         let (kept, gone) = (uninstall_done_line(true, Lang::En), uninstall_done_line(false, Lang::En));
         for w in ["settings", "backups", "wallpapers", "themes", "add-ons", "kept", "temporary files were deleted"] {
             assert!(kept.contains(w), "итог «сохранить» молчит про «{w}»: {kept}");
@@ -4350,20 +4364,20 @@ mod wizard_texts_tests {
             assert!(gone.contains(w), "итог «удалить всё» молчит про «{w}»: {gone}");
         }
         assert!(jargon_in(&kept, false).is_none() && jargon_in(&gone, false).is_none());
-        // Без жаргона «кэш» в словах для человека.
+        // No "cache" jargon in the words for the person.
         for t in [&kept, &gone, &UninstallPart::Cache.progress_line(Lang::En), &UserDataKind::Cache.title()] {
             assert!(!t.to_lowercase().contains("cache"), "{t}");
         }
         assert!(uninstall_kept_link_note("/x/y", Lang::En).starts_with("/x/y"));
         assert!(uninstall_removed_link_note("/x/y", Lang::En).starts_with("/x/y"));
-        // Строго: кэш — единственное, что уходит и при «сохранить».
+        // Strictly: the cache is the only thing that goes even with «Keep».
         let when_keeping: Vec<_> =
             UserDataKind::ALL.into_iter().filter(|k| k.removed_when_keeping()).collect();
         assert_eq!(when_keeping, vec![UserDataKind::Cache]);
     }
 
-    /// Корни данных: XDG и литеральные, без повторов; относительные XDG и
-    /// относительная домашняя папка не дают ни одного пути.
+    /// Data roots: XDG and literal, without repeats; relative XDG values and a
+    /// relative home folder give no paths.
     #[test]
     fn user_data_roots_follow_xdg_and_keep_literal_roots() {
         use UserDataKind::*;
@@ -4377,7 +4391,7 @@ mod wizard_texts_tests {
                 (Content, "/h/.local/share/rexon".into()),
             ]
         );
-        // Тот же корень, записанный с хвостовым слешем, — не второй корень.
+        // The same root written with a trailing slash is not a second root.
         assert_eq!(user_data_roots("/h/", "/h/.config/", "/h/.local/share/", "/h/.cache/"), plain);
         let xdg = user_data_roots("/h", "/x/conf", "/x/data", "/x/cache");
         assert_eq!(
@@ -4398,19 +4412,19 @@ mod wizard_texts_tests {
         assert!(user_data_roots("h", "/x", "/x", "/x").is_empty());
     }
 
-    /// ⭐ Сторож: ни одна подпись мастера не несёт служебных слов и путей;
-    /// пути допустимы только в подсказках.
+    /// ⭐ Guard: no wizard label carries jargon or paths; paths are allowed only in
+    /// tooltips.
     #[test]
     fn wizard_texts_have_no_jargon() {
         english();
-        // Инструкция общего отказа «нечем запросить пароль» называет пакет —
-        // это то, что надо поставить (так же решено в system_plan_parity).
+        // The instruction of the shared "no way to ask for a password" refusal names
+        // the package — that is what must be installed (decided the same way in system_plan_parity).
         let instruction = prompt_missing_instruction();
         assert!(instruction.starts_with("Install the polkit package "), "{instruction}");
         let texts = all_texts(Lang::En);
         assert!(texts.len() > 100, "собрано подозрительно мало строк: {}", texts.len());
         for (key, text) in texts {
-            // Та же инструкция бывает хвостом отказа удаления.
+            // The same instruction can be the tail of an uninstall refusal.
             if text.contains(&instruction) {
                 continue;
             }
@@ -4420,7 +4434,7 @@ mod wizard_texts_tests {
         }
     }
 
-    /// Сторож сам себя проверяет на прежних Python-строках.
+    /// The guard checks itself on the old Python strings.
     #[test]
     fn jargon_guard_catches_python_wizard_strings() {
         for bad in [
@@ -4444,9 +4458,9 @@ mod wizard_texts_tests {
         assert!(jargon_in("Файл: /usr/x — через pkexec", true).is_some());
     }
 
-    /// В английском интерфейсе ни одной русской буквы — и ни одной пустой
-    /// подписи там, где она обязана быть. Русский слово в слово сверяет
-    /// снимок `installer_parity::russian_installer_texts_as_before`.
+    /// In the English interface not a single Russian letter — and not a single
+    /// empty label where one must be. The Russian is checked word for word by the
+    /// `installer_parity::russian_installer_texts_as_before` snapshot.
     #[test]
     fn english_wizard_texts_have_no_russian() {
         english();
@@ -4468,7 +4482,7 @@ mod wizard_texts_tests {
         assert!(w.modes.iter().all(|m| m.blocked.is_empty()));
         assert_eq!(w.modes[0].title, "For everyone on this computer");
         assert_eq!(w.modes[1].title, "Just for you");
-        // Пути — только в подсказке и ровно те, что у install_paths.
+        // Paths — only in the tooltip and exactly those of install_paths.
         assert!(w.modes[0].hint.contains(LIB_DIR));
         assert!(w.modes[1].hint.contains(&format!("{HOME}/.local/lib/rexon")));
         let xdg = welcome_texts("arch", HOME, Some("/data/xdg"), Lang::En);
@@ -4483,8 +4497,8 @@ mod wizard_texts_tests {
         assert!(deck.modes[1].blocked.is_empty());
     }
 
-    /// Прежняя функция без языка говорит то же, что и с языком: её читают
-    /// G1 и Python.
+    /// The old function without a language says the same as with a language: G1
+    /// and Python read it.
     #[test]
     fn blocked_reason_forms_agree() {
         english();
@@ -4511,7 +4525,7 @@ mod wizard_texts_tests {
         );
         assert!(r.ok);
         assert_eq!(r.title, "Done — Rexon is installed");
-        // ⭐ Не «Запустить Rexon»: мастер идёт внутри уже запущенного Rexon.
+        // ⭐ Not "Launch Rexon": the wizard runs inside an already running Rexon.
         assert_eq!(r.primary_button, continue_button(Lang::En));
         assert!(r.secondary_button.is_empty() && r.notes.is_empty() && r.hint.is_empty());
         assert!(r.unavailable.is_empty());
@@ -4530,8 +4544,8 @@ mod wizard_texts_tests {
         assert!(r.hint.contains(&dir));
     }
 
-    /// Отказ пароля и сбой шага — разные исходы; ни один не «отменён
-    /// пользователем».
+    /// A password refusal and a step failure are different outcomes; neither is
+    /// "cancelled by the user".
     #[test]
     fn failures_are_told_apart() {
         english();
@@ -4556,12 +4570,12 @@ mod wizard_texts_tests {
             assert!(!all.contains("cancel"), "{all}");
         }
         assert!(InstallFailure::PasswordDenied.title(lang).starts_with("Password"));
-        // Первая строка общего отказа пароля та же, что во всём продукте.
+        // The first line of the shared password refusal is the same as in the whole product.
         assert_eq!(
             InstallFailure::PasswordPromptMissing.problem(lang),
             crate::system_plan::pkexec_missing_message().split('\n').next().unwrap()
         );
-        // Сырой вывод — только в подробностях.
+        // Raw output — only in the details.
         let step = InstallFailure::StepFailed {
             step: InstallStep::SystemInstall,
             detail: "exit 1".into(),
@@ -4585,9 +4599,9 @@ mod wizard_texts_tests {
         assert!(!c.default_on);
         assert!(c.who.contains("administrators group"));
         assert!(c.risk.contains("without your confirmation"));
-        // ⭐ Пункт меню назван, и ровно той подписью, что в меню, — на том
-        // же языке, что и вся фраза (29.09.2026: русская фраза несла
-        // английскую подпись, английская не называла пункт вовсе).
+        // ⭐ The menu item is named, with exactly the label it has in the menu — in
+        // the same language as the whole phrase (29.09.2026: the Russian phrase
+        // carried an English label, the English one didn't name the item at all).
         let item = crate::window_menu::menu_items()
             .into_iter()
             .find(|i| i.id == crate::window_menu::ID_UNINSTALL)
@@ -4597,8 +4611,8 @@ mod wizard_texts_tests {
         assert!(c.undo.contains(&format!("“{item}”")), "{}", c.undo);
         assert!(c.undo.contains(crate::window_menu::MENU_BUTTON), "{}", c.undo);
         assert!(c.hint.contains(crate::system_plan::REXON_POLKIT_RULES_PATH));
-        // Правило, о котором говорит текст: группа администраторов
-        // семейства, только локально, без пакетного помощника.
+        // The rule the text speaks of: the family's administrators group, local
+        // only, without the package helper.
         let rule = crate::system_plan::passwordless_rules_js(PkgFamily::Arch);
         assert!(rule.contains("isInGroup(\"wheel\")") && rule.contains("subject.local"));
         assert!(c.hint.contains("wheel"));
@@ -4606,18 +4620,18 @@ mod wizard_texts_tests {
         assert!(deb.contains("isInGroup(\"sudo\")") && !deb.contains("\"wheel\""));
         assert!(!rule.contains(crate::system_plan::PKG_ACTION));
         assert!(c.what.contains("still ask for the password"), "{}", c.what);
-        // 28.09.2026: темы экрана входа и загрузки из правила сняты — текст
-        // согласия не обещает их «без пароля» ни словом.
+        // 28.09.2026: login and boot screen themes were removed from the rule — the
+        // consent text doesn't promise them "without a password" by a single word.
         assert!(!c.risk.to_lowercase().contains("theme"), "{}", c.risk);
-        // Правило снимается удалением Rexon — иначе «как отменить» лжёт.
+        // The rule is removed by uninstalling Rexon — otherwise "how to undo it" lies.
         let sys = install_paths(InstallMode::System, HOME, None);
         assert!(uninstall_system_paths(&sys)
             .contains(&crate::system_plan::REXON_POLKIT_RULES_PATH.to_string()));
     }
 
-    /// ⛔ Удаление Rexon снимает и помощника сеанса прав, и его политику
-    /// (Б11): иначе в системе остался бы root-помощник с действием polkit,
-    /// которое можно поднять и после удаления программы.
+    /// ⛔ Uninstalling Rexon removes both the privilege session helper and its
+    /// policy (B11): otherwise a root helper with a polkit action that can still be
+    /// raised after the program is gone would remain in the system.
     #[test]
     fn uninstall_removes_session_helper_and_policy() {
         let sys = install_paths(InstallMode::System, HOME, None);
@@ -4657,14 +4671,14 @@ mod wizard_texts_tests {
 }
 
 // ============================================================================
-// Помощник тем экрана входа и загрузки: что он пропускает в систему
+// The login and boot screen theme helper: what it lets into the system
 // ============================================================================
 //
-// ⛔ Сверки стоят на месте настоящей дыры (28.09.2026): plymouth строит
-// путь модуля заставки как `<каталог модулей>/<ModuleName>.so` без проверки
-// `../`, и тема с `.so` внутри давала код от root при каждой загрузке.
-// Помощник гоняется НАСТОЯЩИМ текстом, от обычного пользователя и только до
-// строки «Установка» — в систему тест ничего не пишет.
+// ⛔ The checks stand where a real hole was (28.09.2026): plymouth builds the
+// splash module path as `<modules dir>/<ModuleName>.so` without checking for
+// `../`, and a theme with a `.so` inside gave root code on every boot. The
+// helper is run with its REAL text, as an ordinary user and only up to the
+// "Install" line — the test writes nothing into the system.
 
 #[cfg(test)]
 mod system_helper_tests {
@@ -4673,7 +4687,7 @@ mod system_helper_tests {
     use std::path::{Path, PathBuf};
     use std::process::Command;
 
-    /// Каталог темы под /tmp (помощник принимает только /tmp и /var/tmp).
+    /// A theme directory under /tmp (the helper accepts only /tmp and /var/tmp).
     fn theme_dir(tag: &str) -> PathBuf {
         let dir = PathBuf::from("/tmp").join(format!(
             "rexon-system-helper-test-{tag}-{}",
@@ -4690,7 +4704,7 @@ mod system_helper_tests {
         std::fs::write(p, body).unwrap();
     }
 
-    /// Текст помощника до установки, затем отметка «проверки пройдены».
+    /// The helper text before the install, then a "checks passed" mark.
     fn validation_part() -> String {
         let full = system_helper_script();
         let cut = full.find("# ── Установка").expect("раздел установки в помощнике");
@@ -4702,7 +4716,7 @@ mod system_helper_tests {
         String::from_utf8_lossy(&out.stdout).trim().to_string()
     }
 
-    /// (прошла ли проверка, stderr помощника).
+    /// (whether the check passed, the helper's stderr).
     fn run_helper(category: &str, theme_id: &str, staged: &Path, pkexec_uid: &str) -> (bool, String) {
         let out = Command::new("bash")
             .arg("-c")
@@ -4723,7 +4737,7 @@ mod system_helper_tests {
         write(dir, "img/logo.png", b"\x89PNG");
     }
 
-    /// Оба стража — помощник от root и проверка до пароля — отвечают одно.
+    /// Both guards — the root helper and the pre-password check — answer the same.
     fn both_refuse(tag: &str, category: &str, theme_id: &str, build: impl Fn(&Path)) -> String {
         let dir = theme_dir(tag);
         build(&dir);
@@ -4752,14 +4766,14 @@ mod system_helper_tests {
             write(d, "evil.so", b"\x7fELF");
         });
         assert!(err.contains("library") || err.contains("ModuleName"), "{err}");
-        // Без .so — всё равно отказ: имя модуля обязано быть штатным.
+        // Without a .so — still a refusal: the module name must be a stock one.
         both_refuse("dotdot-noso", "plymouth", "neon", |d| {
             write(d, "neon.plymouth", b"[Plymouth Theme]\nModuleName=../evil\n");
         });
     }
 
-    /// Разбор plymouth (`fscanf " %m[^= \t\n] = %m[^\n] "`) терпит перевод
-    /// строки между ключом и `=`: построчная проверка обязана это видеть.
+    /// plymouth's parser (`fscanf " %m[^= \t\n] = %m[^\n] "`) tolerates a newline
+    /// between the key and `=`: the line-by-line check must see that.
     #[test]
     fn ключ_и_значение_на_разных_строках_отвергнуты() {
         both_refuse("split", "plymouth", "neon", |d| {
@@ -4802,8 +4816,8 @@ mod system_helper_tests {
         }
     }
 
-    /// SDDM-тема работает от пользователя `sddm`, а не root: QML-модуль в
-    /// ней — не повод для отказа.
+    /// An SDDM theme runs as the `sddm` user, not root: a QML module in it is no
+    /// reason to refuse.
     #[test]
     fn тема_sddm_с_модулем_qml_проходит() {
         let dir = theme_dir("sddm");
@@ -4815,22 +4829,22 @@ mod system_helper_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Каталог — по месту входа, а не по строке пути; чужой — отказ.
+    /// The directory — by where we entered, not by the path string; a foreign one — refusal.
     #[test]
     fn чужой_или_внешний_каталог_отвергнут() {
         let dir = theme_dir("where");
         good_plymouth(&dir);
-        // Ссылка под /tmp на каталог вне /tmp.
+        // A link under /tmp to a directory outside /tmp.
         let link = PathBuf::from("/tmp").join(format!("rexon-system-helper-test-lnk-{}", std::process::id()));
         let _ = std::fs::remove_file(&link);
         symlink("/usr", &link).unwrap();
         let (ok, err) = run_helper("plymouth", "neon", &link, &uid());
         assert!(!ok && err.contains("outside /tmp"), "{err}");
         let _ = std::fs::remove_file(&link);
-        // Владелец каталога — не вызвавший.
+        // The directory owner is not the caller.
         let (ok, err) = run_helper("plymouth", "neon", &dir, "0");
         assert!(!ok && err.contains("does not belong to the caller"), "{err}");
-        // Без pkexec — отказ.
+        // Without pkexec — refusal.
         let out = Command::new("bash")
             .arg("-c")
             .arg(validation_part())
@@ -4854,7 +4868,7 @@ mod system_helper_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Каталог модулей и сам список — одна правда в помощнике и в Rust.
+    /// The modules directory and the list itself — one truth in the helper and in Rust.
     #[test]
     fn список_модулей_в_помощнике_из_ядра() {
         let text = system_helper_script();
@@ -4863,18 +4877,18 @@ mod system_helper_tests {
         for m in PLYMOUTH_SPLASH_MODULES {
             assert!(m.chars().all(|c| c.is_ascii_lowercase() || c == '-'), "{m}");
         }
-        // Помощник не исполняет ничего из темы и не принимает путь назначения.
+        // The helper executes nothing from the theme and doesn't accept a destination path.
         for banned in ["eval ", "source ", "bash -c", "sh -c"] {
             assert!(!text.contains(banned), "{banned} в помощнике");
         }
     }
 
-    // ── Режим «Удалить» (remove-<вид>) в подменённом корне ────────────
+    // ── «Remove» mode (remove-<kind>) in a substituted root ───────────
     //
-    // Помощник гоняется ЦЕЛИКОМ, от обычного пользователя: системные пути
-    // текста (`/usr/share/`, `/etc/`, `/usr/lib/sddm`) переписываются на
-    // песочницу под /tmp, менеджеры пакетов — заглушки впереди PATH.
-    // Живой `/usr` тест не трогает.
+    // The helper is run IN FULL, as an ordinary user: the text's system paths
+    // (`/usr/share/`, `/etc/`, `/usr/lib/sddm`) are rewritten to a sandbox under
+    // /tmp, package managers are stubs at the front of PATH. The test doesn't
+    // touch the live `/usr`.
 
     struct Sandbox {
         root: PathBuf,
@@ -4885,7 +4899,7 @@ mod system_helper_tests {
             let root = theme_dir(&format!("rm-{tag}"));
             let stub = root.join("stub");
             std::fs::create_dir_all(&stub).unwrap();
-            // «Пакет владеет» только каталогом pkgtheme.
+            // "The package owns" only the pkgtheme directory.
             write(&stub, "pacman", b"#!/bin/bash\ncase \"${@: -1}\" in */pkgtheme) exit 0 ;; esac\nexit 1\n");
             write(&stub, "dpkg-query", b"#!/bin/bash\nexit 1\n");
             write(&stub, "rpm", b"#!/bin/bash\nexit 1\n");
@@ -4914,7 +4928,7 @@ mod system_helper_tests {
                 .replace("export PATH=/usr/sbin", &format!("export PATH={r}/stub:/usr/sbin"))
         }
 
-        /// (успех, stderr).
+        /// (success, stderr).
         fn remove(&self, category: &str, theme: &str, staged: &str) -> (bool, String) {
             let out = Command::new("bash")
                 .arg("-c")
@@ -4939,7 +4953,7 @@ mod system_helper_tests {
         let sb = Sandbox::new("ok");
         let neon = sb.theme("plymouth", "neon");
         let other = sb.theme("plymouth", "other");
-        // Ссылка внутри темы наружу: снимается сама ссылка, не то, куда она ведёт.
+        // A link inside the theme pointing outside: the link itself is removed, not what it points to.
         let outside = sb.root.join("outside");
         write(&outside, "keep.txt", b"keep");
         symlink(&outside, neon.join("out")).unwrap();
@@ -4960,13 +4974,13 @@ mod system_helper_tests {
         write(&sb.root, "etc/plymouth/plymouthd.conf", b"[Daemon]\nTheme = neon\n");
         let (ok, err) = sb.remove("remove-plymouth", "neon", "-");
         assert!(!ok && neon.is_dir() && err.contains("selected right now"), "{err}");
-        // Выбор через update-alternatives: default.plymouth ведёт в тему.
+        // A choice via update-alternatives: default.plymouth leads into the theme.
         let sb = Sandbox::new("alt");
         let neon = sb.theme("plymouth", "neon");
         symlink(neon.join("neon.plymouth"), sb.root.join("usr/share/plymouth/themes/default.plymouth")).unwrap();
         let (ok, err) = sb.remove("remove-plymouth", "neon", "-");
         assert!(!ok && neon.is_dir(), "{err}");
-        // SDDM: любой файл настроек, в т. ч. системные умолчания.
+        // SDDM: any settings file, including system defaults.
         for conf in ["etc/sddm.conf.d/kde_settings.conf", "usr/lib/sddm/sddm.conf.d/default.conf", "etc/sddm.conf"] {
             let sb = Sandbox::new("sddm-active");
             let sugar = sb.theme("sddm", "sugar");
@@ -4974,7 +4988,7 @@ mod system_helper_tests {
             let (ok, err) = sb.remove("remove-sddm", "sugar", "-");
             assert!(!ok && sugar.is_dir() && err.contains("selected right now"), "{conf}: {err}");
         }
-        // Похожее имя — не та тема.
+        // A similar name is not the same theme.
         let sb = Sandbox::new("similar");
         let sugar = sb.theme("sddm", "sugar");
         write(&sb.root, "etc/sddm.conf", b"[Theme]\nCurrent=sugar-dark\n");
@@ -4985,20 +4999,20 @@ mod system_helper_tests {
     #[test]
     fn удаление_мимо_каталога_тем_отвергнуто() {
         let sb = Sandbox::new("guard");
-        // Каталог пакета системы.
+        // A system package's directory.
         let pkg = sb.theme("plymouth", "pkgtheme");
         let (ok, err) = sb.remove("remove-plymouth", "pkgtheme", "-");
         assert!(!ok && pkg.is_dir() && err.contains("package"), "{err}");
-        // Тема-ссылка на чужой каталог.
+        // A theme that is a link to a foreign directory.
         let target = sb.root.join("elsewhere");
         write(&target, "x", b"x");
         symlink(&target, sb.root.join("usr/share/sddm/themes/lnk")).unwrap();
         let (ok, err) = sb.remove("remove-sddm", "lnk", "-");
         assert!(!ok && target.join("x").is_file() && err.contains("not installed"), "{err}");
-        // Нет такой темы.
+        // No such theme.
         let (ok, _) = sb.remove("remove-sddm", "absent", "-");
         assert!(!ok);
-        // Каталог вместо прочерка, недопустимые имена, чужой вид.
+        // A directory instead of a dash, invalid names, a foreign kind.
         let keep = sb.theme("plymouth", "neon");
         let (ok, _) = sb.remove("remove-plymouth", "neon", "/tmp");
         assert!(!ok && keep.is_dir());

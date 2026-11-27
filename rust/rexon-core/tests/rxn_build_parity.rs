@@ -1,13 +1,13 @@
-//! Golden-сверка порта `rxn_build.rs` с оригиналом
+//! Golden check of the `rxn_build.rs` port against the original
 //! `rexon/scripts/build_rxn_v4.py`.
 //!
-//! Эталон снят НАСТОЯЩЕЙ сборкой: живой `build()` прогонялся на временных
-//! файлах, из полученных архивов читался `manifest.json` и список имён.
-//! Покрыты полный набор (три разрешения, две дорожки, превью, описание),
-//! минимальный (одно видео), и все четыре кода ошибок — нет видео, видео не
-//! найдено, кривое указание дорожки, дорожка не найдена.
+//! The golden was captured by a REAL build: the live `build()` was run on temporary
+//! files, and `manifest.json` and the list of names were read from the resulting archives.
+//! Covered: the full set (three resolutions, two tracks, preview, description),
+//! the minimal one (one video), and all four error codes — no video, video not
+//! found, a malformed track specification, track not found.
 //!
-//! `golden/rxn_build_cases.json` — снятые значения.
+//! `golden/rxn_build_cases.json` — the captured values.
 
 use rexon_core::rxn_build as rxn;
 use serde_json::Value;
@@ -16,16 +16,16 @@ fn fx() -> Value {
     serde_json::from_str(include_str!("golden/rxn_build_cases.json")).unwrap()
 }
 
-/// Ветка `plan` того же голдена — снята ПОВТОРНЫМ прогоном живого `build()`
-/// уже под весь ход сборки: rc, stdout, stderr, список имён в архиве и текст
-/// манифеста для каждого случая. Мост при съёмке был выключен
-/// (Python-путь до его удаления), эталон — чистый путь на Python 3.14.
+/// The `plan` branch of the same golden was captured by a REPEATED run of the live `build()`
+/// now over the whole build process: rc, stdout, stderr, the list of names in the archive and the manifest
+/// text for each case. The bridge was off during capture
+/// (the Python path before its removal), the golden is the pure Python 3.14 path.
 fn plan_fx() -> Value {
     fx()["plan"].clone()
 }
 
-/// Файловая система голдена: существуют ровно те файлы, что создавал
-/// генератор эталона.
+/// The golden's file system: exactly the files that the golden generator created
+/// exist.
 struct GoldenIo {
     existing: Vec<String>,
 }
@@ -71,7 +71,7 @@ fn args_of(videos: &[(&str, String)], audio: &[String]) -> rxn::BuildArgs {
     }
 }
 
-/// Прогнать план и вернуть его, если сборка состоялась.
+/// Run the plan and return it if the build took place.
 fn plan_ok(args: &rxn::BuildArgs) -> rxn::BuildPlan {
     match rxn::plan_build(args, &mut GoldenIo::new()) {
         rxn::BuildOutcome::Ready(plan) => *plan,
@@ -79,9 +79,9 @@ fn plan_ok(args: &rxn::BuildArgs) -> rxn::BuildPlan {
     }
 }
 
-/// stdout, который напечатал бы исполнитель по этому плану. Собирается ровно
-/// из тех же кусков, что печатал оригинал: заголовок, строка на каждый файл,
-/// итог с размером.
+/// The stdout the executor would print for this plan. It is assembled from exactly
+/// the same pieces the original printed: the header, a line for each file,
+/// the result with the size.
 fn stdout_of(plan: &rxn::BuildPlan, out_name: &str, out_path: &str, size: u64) -> String {
     let mut s = format!("{}\n", rxn::msg_start(out_name));
     for e in &plan.entries {
@@ -95,7 +95,7 @@ fn stdout_of(plan: &rxn::BuildPlan, out_name: &str, out_path: &str, size: u64) -
     s
 }
 
-/// stderr плана: предупреждения, каждое со своей строки.
+/// The plan's stderr: warnings, each on its own line.
 fn stderr_of(plan: &rxn::BuildPlan) -> String {
     plan.warnings
         .iter()
@@ -103,7 +103,7 @@ fn stderr_of(plan: &rxn::BuildPlan) -> String {
         .collect::<String>()
 }
 
-/// Имена в архиве: манифест первым, дальше записи плана.
+/// Names in the archive: the manifest first, then the plan's entries.
 fn names_of(plan: &rxn::BuildPlan) -> Vec<String> {
     let mut names = vec!["manifest.json".to_string()];
     names.extend(plan.entries.iter().map(|e| e.archive_path.clone()));
@@ -145,15 +145,15 @@ fn audio_ext_table_matches_original() {
 fn archive_paths() {
     assert_eq!(rxn::video_archive_path("2160p"), "data/video/2160p.mp4");
     assert_eq!(rxn::audio_archive_path("ru", ".ogg"), "data/audio/ru.ogg");
-    // Расширение сохраняется как есть, даже незнакомое.
+    // The extension is kept as is, even an unknown one.
     assert_eq!(
         rxn::audio_archive_path("de", ".exotic"),
         "data/audio/de.exotic"
     );
 }
 
-/// Разделителем считается ПЕРВЫЙ знак равенства: в пути он встречается
-/// законно, и разбор по последнему сломал бы такие пути.
+/// The FIRST equals sign counts as the separator: it occurs legitimately in a path,
+/// and splitting on the last one would break such paths.
 #[test]
 fn audio_spec_parsing() {
     assert_eq!(
@@ -191,7 +191,7 @@ fn exit_codes_and_messages_match_original() {
         Some(rxn::EXIT_AUDIO_NOT_FOUND as i64)
     );
 
-    // Тексты сообщений — дословно те же, что печатал оригинал.
+    // The message texts are verbatim the same as the original printed.
     assert_eq!(g["no_video"]["stderr"].as_str(), Some(rxn::MSG_NO_VIDEO));
     assert_eq!(
         g["bad_audio_spec"]["stderr"].as_str(),
@@ -236,7 +236,7 @@ fn manifest_full_byte_for_byte() {
         description: "Описание".into(),
         author: "Автор".into(),
         has_preview: true,
-        // Порядок разрешений — как в таблице, а не как в командной строке.
+        // The order of resolutions follows the table, not the command line.
         videos: pairs(&[
             ("720p", "data/video/720p.mp4"),
             ("1080p", "data/video/1080p.mp4"),
@@ -252,8 +252,8 @@ fn manifest_full_byte_for_byte() {
     );
 }
 
-/// Запасное видео — `1080p`, если оно есть; иначе первое по порядку
-/// разрешений, а не по порядку аргументов.
+/// The fallback video is `1080p` if it exists; otherwise the first by the order of
+/// resolutions, not by the order of arguments.
 #[test]
 fn fallbacks() {
     let with_1080 = pairs(&[
@@ -273,13 +273,13 @@ fn fallbacks() {
 
     let tracks = pairs(&[("ru", "data/audio/ru.ogg"), ("en", "data/audio/en.mp3")]);
     assert_eq!(rxn::fallback_audio(&tracks, "en"), Some("data/audio/en.mp3"));
-    // Языка по умолчанию нет — берётся первая указанная дорожка.
+    // There is no default language — the first given track is taken.
     assert_eq!(rxn::fallback_audio(&tracks, "de"), Some("data/audio/ru.ogg"));
     assert_eq!(rxn::fallback_audio(&[], "en"), None);
 }
 
-/// Отсутствие превью и дорожек означает ОТСУТСТВИЕ ключей, а не `null`:
-/// оригинал выбрасывал ключи со значением None.
+/// The absence of a preview and tracks means the ABSENCE of the keys, not `null`:
+/// the original dropped keys with a None value.
 #[test]
 fn absent_keys_are_dropped() {
     let g = fx();
@@ -291,17 +291,17 @@ fn absent_keys_are_dropped() {
     );
     assert!(!minimal.contains("null"), "null-значений быть не должно");
 
-    // Язык по умолчанию отсутствует среди дорожек — запасная всё равно есть.
+    // The default language is absent among the tracks — there is still a fallback.
     let locale_miss = g["locale_miss"]["manifest"].as_str().unwrap();
     assert!(locale_miss.contains("\"fallback_audio\": \"data/audio/ru.ogg\""));
 }
 
-// ── Ход сборки целиком ──────────────────────────────────────────────────
+// ── The whole build process ─────────────────────────────────────────────
 
-/// ⚠️ ПОЧИНЕНО (правило #16). Обычный вызов из командной строки: `--volume`
-/// объявлена целым, и эталон пишет `"audio_volume_default": 50`. Через мост
-/// то же самое давало `50.0` — манифест расходился с эталоном побайтно на
-/// каждой сборке. Этот случай и ловит починку.
+/// ⚠️ FIXED (rule #16). An ordinary call from the command line: `--volume`
+/// is declared an integer, and the golden writes `"audio_volume_default": 50`. Through the bridge
+/// the same gave `50.0` — the manifest differed from the golden byte-wise on
+/// every build. This case catches the fix.
 #[test]
 fn cli_default_volume_stays_integer() {
     let g = plan_fx();
@@ -319,7 +319,7 @@ fn cli_default_volume_stays_integer() {
     );
 }
 
-/// Дробную громкость дробной и оставляем — она тоже достижима.
+/// A fractional volume we leave fractional — it is reachable too.
 #[test]
 fn float_volume_stays_float() {
     let g = plan_fx();
@@ -331,8 +331,8 @@ fn float_volume_stays_float() {
     );
 }
 
-/// Полный набор: превью, три разрешения, две дорожки. Разрешения переданы
-/// НЕ в порядке таблицы — в архиве и манифесте они обязаны встать по таблице.
+/// The full set: preview, three resolutions, two tracks. The resolutions are passed
+/// NOT in the table's order — in the archive and the manifest they must line up by the table.
 #[test]
 fn full_build_matches_original() {
     let g = plan_fx();
@@ -364,7 +364,7 @@ fn full_build_matches_original() {
     );
 }
 
-/// Незнакомое расширение звука — предупреждение дословно, но архив собран.
+/// An unknown sound extension — a warning verbatim, but the archive is built.
 #[test]
 fn unknown_audio_ext_warns_but_builds() {
     let g = plan_fx();
@@ -379,7 +379,7 @@ fn unknown_audio_ext_warns_but_builds() {
     assert_eq!(plan.manifest_json, case["manifest"].as_str().unwrap());
 }
 
-/// Имя с замыкающей точкой: расширение — сама точка (Python 3.14).
+/// A name with a trailing dot: the extension is the dot itself (Python 3.14).
 #[test]
 fn trailing_dot_suffix_matches_original() {
     let g = plan_fx();
@@ -394,10 +394,10 @@ fn trailing_dot_suffix_matches_original() {
     assert_eq!(stderr_of(&plan), case["stderr"].as_str().unwrap());
 }
 
-/// Один язык дважды и РАЗНЫЕ расширения: имена в архиве не совпадают, оба
-/// файла помещаются, манифест ссылается на последний. ⚠️ ДОБАВЛЕНО
-/// (правило #16) — оригинал молчал, мы предупреждаем, поэтому stderr эталона
-/// пуст, а наш — нет; всё остальное совпадает.
+/// One language twice with DIFFERENT extensions: the names in the archive do not collide, both
+/// files fit, the manifest refers to the last one. ⚠️ ADDED
+/// (rule #16) — the original was silent, we warn, so the golden's stderr is
+/// empty, while ours is not; everything else matches.
 #[test]
 fn duplicate_language_keeps_both_files() {
     let g = plan_fx();
@@ -423,8 +423,8 @@ fn duplicate_language_keeps_both_files() {
     );
 }
 
-/// Повтор языка НЕ двигает его место в манифесте: словарь Python обновляет
-/// значение, оставляя ключ там, где он появился впервые.
+/// A repeated language does NOT move its place in the manifest: a Python dict updates
+/// the value, leaving the key where it first appeared.
 #[test]
 fn duplicate_language_keeps_key_order() {
     let g = plan_fx();
@@ -442,15 +442,15 @@ fn duplicate_language_keeps_key_order() {
     assert_eq!(names_of(&plan), want_names(case));
 }
 
-/// ⭐ Один язык дважды и ОДНО расширение: место в архиве одно.
+/// ⭐ One language twice with ONE extension: there is one place in the archive.
 ///
-/// ⚠️ ПОЧИНЕНО (правило #16). Оригинал клал под этим именем ДВЕ записи и
-/// молчал: распаковка оставляла последнюю, первая дорожка пропадала — автор
-/// пакета узнавал о потере уже от покупателя. Теперь запись одна, та самая,
-/// на которую ссылается манифест, и о выпавшей сказано вслух. Голдена у
-/// случая нет намеренно: прежнее поведение здесь не эталон, а дефект. Ни
-/// один прежний случай его не покрывал — все повторы языка в наборе шли с
-/// разными расширениями, где имена в архиве не совпадают.
+/// ⚠️ FIXED (rule #16). The original put TWO entries under this name and
+/// kept silent: unpacking kept the last one, the first track was lost — the package
+/// author learned about the loss from the buyer. Now there is one entry, the very one
+/// the manifest refers to, and the dropped one is mentioned out loud. The case deliberately has
+/// no golden: the former behaviour is not a golden here but a defect. Not
+/// a single former case covered it — all language repeats in the set had
+/// different extensions, where the names in the archive do not collide.
 #[test]
 fn duplicate_language_same_extension_keeps_one_entry() {
     let mut io = GoldenIo::new();
@@ -489,7 +489,7 @@ fn duplicate_language_same_extension_keeps_one_entry() {
         .contains("\"ru\": \"data/audio/ru.mp3\""));
 }
 
-/// Язык по умолчанию не встречается среди дорожек.
+/// The default language does not occur among the tracks.
 #[test]
 fn locale_miss_plan() {
     let g = plan_fx();
@@ -503,7 +503,7 @@ fn locale_miss_plan() {
     assert_eq!(plan.manifest_json, case["manifest"].as_str().unwrap());
 }
 
-/// Все четыре отказа: код и текст — дословно как у оригинала.
+/// All four refusals: the code and the text — verbatim as in the original.
 #[test]
 fn failures_match_original() {
     let g = plan_fx();
@@ -526,7 +526,7 @@ fn failures_match_original() {
                 &[format!("ru={}", missing("нет.mp3"))],
             ),
         ),
-        // Очерёдность: видео проверяется раньше дорожек.
+        // The order: video is checked before the tracks.
         (
             "video_beats_audio",
             args_of(
@@ -534,7 +534,7 @@ fn failures_match_original() {
                 &["простослово".to_string()],
             ),
         ),
-        // И раньше — «видео вообще нет».
+        // And before that — "no video at all".
         (
             "no_video_beats_audio",
             args_of(&[], &["простослово".to_string()]),
@@ -561,7 +561,7 @@ fn failures_match_original() {
     }
 }
 
-/// Превью кладётся в архив, но о нём НЕ печатается — так было в оригинале.
+/// The preview is put into the archive, but NOT printed about — that is how the original did it.
 #[test]
 fn preview_is_silent() {
     let mut args = args_of(&[("1080p", src("v1080"))], &[]);
@@ -576,7 +576,7 @@ fn preview_is_silent() {
     assert_eq!(plan.entries[0].archive_path, "preview.png", "превью первым");
 }
 
-/// Итоговая строка: путь и размер с одним знаком после запятой.
+/// The result line: the path and the size with one digit after the decimal point.
 #[test]
 fn done_line_format() {
     assert_eq!(

@@ -1,87 +1,88 @@
-//! Отзыв права сеанса (пункт Б6 плана «один пароль на запуск»).
+//! Revoking the session privilege (item B6 of the "one password per launch"
+//! plan).
 //!
-//! Решение владельца 28.09: право сеанса гаснет, когда
-//! 1. окно Rexon закрыто, в том числе свёрнуто в лоток;
-//! 2. 15 минут не было привилегированных действий;
-//! 3. экран заблокирован;
-//! 4. машина уснула.
+//! The owner's decision of 28.09: the session privilege expires when
+//! 1. the Rexon window is closed, including minimized to the tray;
+//! 2. there have been no privileged actions for 15 minutes;
+//! 3. the screen is locked;
+//! 4. the machine went to sleep.
 //!
-//! Идущая операция при этом доводится до конца, новые отвергаются; следующий
-//! запрос снова спрашивает пароль (поднимает нового помощника).
+//! An operation in progress is still carried through to the end, new ones are
+//! rejected; the next request asks for the password again (starts a new
+//! helper).
 //!
-//! Устройство:
-//! * [`Revoker`] — чистая машина состояний: ни потоков, ни часов, ни
-//!   системы. Время ей приносят аргументом `now` (монотонное, от любого
-//!   начала), события — [`Event`]. Так она целиком проверяется тестами на
-//!   поддельных часах.
-//! * [`Clock`] и [`SessionWatch`] — швы наружу. Живые:
-//!   [`MonotonicClock`] и [`LogindWatch`].
-//! * [`Revoker::poll`] — один шаг: забрать события наблюдателя, проверить
-//!   простой. Цикл с паузой (раз в [`POLL_INTERVAL`]) крутит владелец —
-//!   поток сеанса прав (Б4), здесь потоков нет.
+//! Structure:
+//! * [`Revoker`] — a pure state machine: no threads, no clocks, no system. Time
+//!   is passed to it as the `now` argument (monotonic, from any origin), events
+//!   as [`Event`]. That way it is fully testable with fake clocks.
+//! * [`Clock`] and [`SessionWatch`] — the seams to the outside. The live ones
+//!   are [`MonotonicClock`] and [`LogindWatch`].
+//! * [`Revoker::poll`] — one step: take the watcher's events, check for
+//!   inactivity. The loop with a pause (once per [`POLL_INTERVAL`]) is run by
+//!   the owner — the privilege session thread (B4); there are no threads here.
 //!
-//! Как ловится блокировка и сон. D-Bus крейта в проекте нет,
-//! поэтому сигналы logind (`Lock`, `PrepareForSleep`) не слушаем, а опрашиваем:
-//! * блокировка и уход сеанса — `loginctl show-session <id> -p Active
-//!   -p LockedHint` (тот же `loginctl`, что разбирает `login_rescue.rs`,
-//!   через общий [`SystemIo::run`]);
-//! * сон — по расхождению `CLOCK_BOOTTIME` и `CLOCK_MONOTONIC`: первые часы
-//!   идут во сне, вторые стоят, разница растёт ровно на время сна. Настенные
-//!   часы не годятся — их двигают NTP и человек, а это ложный «сон». Опрос
-//!   сигнала `PrepareForSleep` не поймал бы вовсе; экран блокировки после сна
-//!   поднимается не на каждом столе, так что на `LockedHint` одного не
-//!   полагаемся.
+//! How lock and sleep are caught. The project has no D-Bus crate, so we do not
+//! listen to logind signals (`Lock`, `PrepareForSleep`) but poll instead:
+//! * lock and the session going away — `loginctl show-session <id> -p Active
+//!   -p LockedHint` (the same `loginctl` that `login_rescue.rs` parses, through
+//!   the shared [`SystemIo::run`]);
+//! * sleep — by the divergence of `CLOCK_BOOTTIME` and `CLOCK_MONOTONIC`: the
+//!   former runs during sleep, the latter stands still, and the difference grows
+//!   by exactly the time slept. The wall clock is no good — NTP and the person
+//!   move it, and that would be a false "sleep". Polling would not catch the
+//!   `PrepareForSleep` signal at all; the lock screen does not come up after
+//!   sleep on every desktop, so we do not rely on `LockedHint` alone.
 
 use std::time::Duration;
 
 use crate::i18n::{n_, tr};
 use crate::system_exec::SystemIo;
 
-/// Сколько простоя гасит право (решение владельца 28.09).
+/// How much inactivity expires the privilege (the owner's decision of 28.09).
 pub const IDLE_LIMIT: Duration = Duration::from_secs(15 * 60);
 
-/// Как часто владельцу [`Revoker`] звать [`Revoker::poll`].
+/// How often the owner of [`Revoker`] should call [`Revoker::poll`].
 pub const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
-/// Насколько должна вырасти разница BOOTTIME − MONOTONIC между опросами,
-/// чтобы счесть это сном. Сама по себе она меняется только во сне; запас —
-/// на то, что двое часов читаются не одним вызовом.
+/// How much the BOOTTIME − MONOTONIC difference must grow between polls to count
+/// as sleep. By itself it changes only during sleep; the margin covers the fact
+/// that the two clocks are not read in a single call.
 pub const SLEEP_JUMP: Duration = Duration::from_secs(1);
 
-/// Сколько опросов подряд `loginctl` может молчать (тайм-аут, не
-/// запустился), прежде чем считать сеанс потерянным. Внятный отказ
-/// («No session») гасит право сразу.
+/// How many polls in a row `loginctl` may stay silent (timeout, failed to
+/// start) before the session is considered lost. A clear refusal ("No
+/// session") expires the privilege immediately.
 pub const SILENT_POLLS_LIMIT: u32 = 2;
 
-/// Путь к `loginctl`. Помощник работает от root — берём абсолютный путь, а
-/// не поиск по `PATH`.
+/// Path to `loginctl`. The helper runs as root — we take an absolute path rather
+/// than a `PATH` lookup.
 pub const LOGINCTL: &str = "/usr/bin/loginctl";
 
 // ============================================================================
-// События и причины
+// Events and reasons
 // ============================================================================
 
-/// Что случилось снаружи и гасит право.
+/// What happened outside and expires the privilege.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
-    /// Окно Rexon закрыто (событие GUI, Б13; обрыв сокета помощник тоже
-    /// понимает как закрытие).
+    /// The Rexon window was closed (a GUI event, B13; the helper also treats a
+    /// broken socket as closing).
     WindowClosed,
-    /// Окно свернуто в лоток (событие GUI, Б13).
+    /// The window was minimized to the tray (a GUI event, B13).
     WindowToTray,
-    /// Экран заблокирован (`LockedHint` стал `yes`).
+    /// The screen is locked (`LockedHint` became `yes`).
     ScreenLocked,
-    /// Машина спала.
+    /// The machine was asleep.
     Slept,
-    /// Сеанс окна перестал быть активным: переключили пользователя или VT.
+    /// The window's session is no longer active: the user or VT was switched.
     SessionInactive,
-    /// logind не знает сеанса окна или не отвечает о нём.
+    /// logind does not know the window's session or does not answer about it.
     SessionLost,
-    /// Человек сам нажал «Запретить сейчас».
+    /// The person pressed "Revoke now" themselves.
     RevokeNow,
 }
 
-/// Почему право погашено — для текста человеку и журнала.
+/// Why the privilege expired — for the text shown to the person and for the log.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reason {
     WindowClosed,
@@ -109,7 +110,7 @@ impl From<Event> for Reason {
 }
 
 impl Reason {
-    /// Короткое имя для журнала (не переводится).
+    /// Short name for the log (not translated).
     pub fn code(self) -> &'static str {
         match self {
             Reason::WindowClosed => "window-closed",
@@ -123,7 +124,7 @@ impl Reason {
         }
     }
 
-    /// Причина по короткому имени ([`Reason::code`]); `None` — незнакомое.
+    /// Reason by its short name ([`Reason::code`]); `None` — unknown.
     pub fn from_code(code: &str) -> Option<Self> {
         [
             Reason::WindowClosed,
@@ -139,8 +140,8 @@ impl Reason {
         .find(|r| r.code() == code)
     }
 
-    /// Текст человеку: почему снова спрашиваем пароль (Б13, без служебных
-    /// слов; перевод — `po/`).
+    /// Text for the person: why we are asking for the password again (B13, without
+    /// technical words; translation — `po/`).
     pub fn message(self) -> String {
         let msgid = match self {
             // TRANSLATORS: Permission to change the system lasts while the Rexon window is open.
@@ -174,24 +175,25 @@ impl Reason {
 }
 
 // ============================================================================
-// Машина состояний
+// State machine
 // ============================================================================
 
-/// Монотонные часы: `now` — время от любого начала, не идущее назад.
+/// Monotonic clock: `now` is time from an arbitrary origin that never goes back.
 pub trait Clock {
     fn now(&self) -> Duration;
 }
 
-/// Наблюдатель сеанса: за один опрос отдаёт случившееся с прошлого опроса.
+/// Session watcher: a single poll returns what happened since the previous poll.
 pub trait SessionWatch {
     fn poll(&mut self) -> Vec<Event>;
 }
 
-/// Решает, живо ли ещё право сеанса.
+/// Decides whether the session privilege is still alive.
 ///
-/// Создаётся, когда пароль только что принят. Простой считается от конца
-/// последней операции; пока операция идёт, простоя нет (долгая сборка не
-/// гасит право посреди себя — да и погашенное право её не прервало бы).
+/// Created when the password has just been accepted. Inactivity is counted from
+/// the end of the last operation; while an operation is running there is no
+/// inactivity (a long build does not expire the privilege in the middle of it —
+/// and an expired privilege would not interrupt it anyway).
 #[derive(Debug, Clone)]
 pub struct Revoker {
     idle_limit: Duration,
@@ -201,38 +203,38 @@ pub struct Revoker {
 }
 
 impl Revoker {
-    /// Право только что выдано (пароль принят) в момент `now`.
+    /// The privilege has just been granted (the password accepted) at moment `now`.
     pub fn granted(now: Duration) -> Self {
         Self::with_idle_limit(now, IDLE_LIMIT)
     }
 
-    /// То же с другим пределом простоя (для тестов и отладки).
+    /// The same with a different inactivity limit (for tests and debugging).
     pub fn with_idle_limit(now: Duration, idle_limit: Duration) -> Self {
         Revoker { idle_limit, revoked: None, in_flight: 0, last_action: now }
     }
 
-    /// Право выдано заново (пароль спросили ещё раз). Идущие операции
-    /// остаются в счёте.
+    /// The privilege was granted again (the password was asked once more). Running
+    /// operations remain counted.
     pub fn regrant(&mut self, now: Duration) {
         self.revoked = None;
         self.last_action = now;
     }
 
-    /// Внешнее событие. Гасит живое право; у погашенного остаётся первая
-    /// причина — она и объясняет человеку, что случилось.
+    /// An external event. It expires a live privilege; an expired one keeps its
+    /// first reason — that is what explains to the person what happened.
     pub fn on_event(&mut self, event: Event, now: Duration) {
         self.tick(now);
         self.revoke(event.into());
     }
 
-    /// Проверить простой на момент `now`.
+    /// Check for inactivity at moment `now`.
     pub fn tick(&mut self, now: Duration) {
         if self.revoked.is_none() && self.in_flight == 0 && now.saturating_sub(self.last_action) >= self.idle_limit {
             self.revoke(Reason::Idle);
         }
     }
 
-    /// Один шаг владельца: события наблюдателя, затем простой.
+    /// One step of the owner: the watcher's events, then inactivity.
     pub fn poll(&mut self, watch: &mut impl SessionWatch, clock: &impl Clock) {
         for e in watch.poll() {
             self.on_event(e, clock.now());
@@ -240,8 +242,8 @@ impl Revoker {
         self.tick(clock.now());
     }
 
-    /// Можно ли начать новую операцию. Ничего не отмечает — для этого
-    /// [`Revoker::op_started`].
+    /// Whether a new operation may start. Marks nothing — that is what
+    /// [`Revoker::op_started`] is for.
     pub fn allow_new_op(&mut self, now: Duration) -> Result<(), Reason> {
         self.tick(now);
         match self.revoked {
@@ -250,8 +252,8 @@ impl Revoker {
         }
     }
 
-    /// Операция начинается. Проверяет право сам, так что обойти
-    /// [`Revoker::allow_new_op`] нельзя.
+    /// An operation is starting. Checks the privilege itself, so
+    /// [`Revoker::allow_new_op`] cannot be bypassed.
     pub fn op_started(&mut self, now: Duration) -> Result<(), Reason> {
         self.allow_new_op(now)?;
         self.in_flight += 1;
@@ -259,29 +261,29 @@ impl Revoker {
         Ok(())
     }
 
-    /// Операция закончилась (успехом или нет) — простой считается отсюда.
+    /// An operation has finished (successfully or not) — inactivity is counted from here.
     pub fn op_finished(&mut self, now: Duration) {
         self.in_flight = self.in_flight.saturating_sub(1);
         self.last_action = now;
     }
 
-    /// Причина отзыва; `None` — право живо.
+    /// Reason for revocation; `None` — the privilege is alive.
     pub fn revoked(&self) -> Option<Reason> {
         self.revoked
     }
 
-    /// Сколько операций идёт.
+    /// How many operations are running.
     pub fn in_flight(&self) -> u32 {
         self.in_flight
     }
 
-    /// Помощнику пора выходить: право погашено и доводить нечего.
+    /// Time for the helper to exit: the privilege has expired and nothing is left to finish.
     pub fn may_exit(&self) -> bool {
         self.revoked.is_some() && self.in_flight == 0
     }
 
-    /// Когда право погаснет по простою, если ничего не случится; `None` —
-    /// уже погашено или идёт операция.
+    /// When the privilege will expire from inactivity if nothing happens; `None` —
+    /// already expired or an operation is running.
     pub fn idle_deadline(&self) -> Option<Duration> {
         (self.revoked.is_none() && self.in_flight == 0).then(|| self.last_action + self.idle_limit)
     }
@@ -294,12 +296,12 @@ impl Revoker {
 }
 
 // ============================================================================
-// Живые часы и наблюдатель
+// Live clock and watcher
 // ============================================================================
 
 fn clock_read(id: libc::clockid_t) -> Duration {
     let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
-    // SAFETY: clock_gettime пишет только в переданную структуру.
+    // SAFETY: clock_gettime writes only into the structure passed in.
     let rc = unsafe { libc::clock_gettime(id, &mut ts) };
     if rc != 0 {
         return Duration::ZERO;
@@ -307,8 +309,9 @@ fn clock_read(id: libc::clockid_t) -> Duration {
     Duration::new(ts.tv_sec.max(0) as u64, ts.tv_nsec.clamp(0, 999_999_999) as u32)
 }
 
-/// `CLOCK_MONOTONIC`: во сне стоит, так что простой во сне не копится (сон
-/// гасит право сам, отдельным событием).
+/// `CLOCK_MONOTONIC`: stands still during sleep, so inactivity does not
+/// accumulate while asleep (sleep expires the privilege itself, as a separate
+/// event).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MonotonicClock;
 
@@ -318,7 +321,7 @@ impl Clock for MonotonicClock {
     }
 }
 
-/// Сколько всего машина проспала с загрузки.
+/// How long the machine has slept in total since boot.
 pub trait SuspendGauge {
     fn slept_total(&self) -> Duration;
 }
@@ -335,23 +338,23 @@ impl SuspendGauge for BootMinusMonotonic {
     }
 }
 
-/// Ответ logind о сеансе.
+/// logind's answer about the session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionAnswer {
-    /// Сеанс есть.
+    /// The session exists.
     Seen { active: bool, locked: bool },
-    /// logind внятно сказал «нет такого сеанса» (или ответ без нужных полей).
+    /// logind clearly said "no such session" (or the answer lacks the needed fields).
     Gone,
-    /// Ответа не было: тайм-аут, программа не запустилась.
+    /// There was no answer: timeout, the program failed to start.
     Silent,
 }
 
-/// Откуда берётся состояние сеанса — шов для тестов.
+/// Where the session state comes from — a seam for tests.
 pub trait SessionQuery {
     fn query(&self, session: &str) -> SessionAnswer;
 }
 
-/// Живой запрос через `loginctl show-session` (только чтение).
+/// A live request via `loginctl show-session` (read-only).
 pub struct Loginctl<I: SystemIo>(pub I);
 
 impl<I: SystemIo> SessionQuery for Loginctl<I> {
@@ -367,10 +370,10 @@ impl<I: SystemIo> SessionQuery for Loginctl<I> {
     }
 }
 
-/// Разбор `loginctl show-session -p Active -p LockedHint` (порядок строк —
-/// как отдаст logind). Без `Active` — ответ негоден, считаем сеанс
-/// потерянным. Без `LockedHint` (старый systemd) — «не заблокирован»: сон и
-/// простой право всё равно погасят.
+/// Parsing `loginctl show-session -p Active -p LockedHint` (line order — as
+/// logind returns it). Without `Active` the answer is unusable, we consider the
+/// session lost. Without `LockedHint` (old systemd) — "not locked": sleep and
+/// inactivity will expire the privilege anyway.
 pub fn parse_active_locked(text: &str) -> SessionAnswer {
     let mut active = None;
     let mut locked = false;
@@ -388,19 +391,20 @@ pub fn parse_active_locked(text: &str) -> SessionAnswer {
     }
 }
 
-/// Номер сеанса logind годится в argv: непустой, короткий, только латиница
-/// и цифры (`2`, `c1`). Иначе он мог бы прикинуться ключом `loginctl`.
+/// A logind session id is fit for argv: non-empty, short, only Latin letters
+/// and digits (`2`, `c1`). Otherwise it could pose as a `loginctl` option.
 pub fn valid_session_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 32 && id.bytes().all(|b| b.is_ascii_alphanumeric())
 }
 
-/// Наблюдатель сеанса окна: logind + счётчик сна.
+/// Watcher of the window's session: logind + a sleep counter.
 ///
-/// Блокировка ловится по фронту: `LockedHint` «нет → да». Первый опрос —
-/// точка отсчёта: пароль только что ввели, значит экран не заблокирован, и
-/// `LockedHint=yes` там — залипший признак стола; гасить по нему каждое
-/// новое право нельзя. Неактивный сеанс, напротив, гасит сразу, и на
-/// первом опросе тоже: пароль спрашивали не в нём.
+/// Lock is caught on the edge: `LockedHint` "no → yes". The first poll is the
+/// reference point: the password has just been entered, so the screen is not
+/// locked, and `LockedHint=yes` there is a stuck flag of the desktop; expiring
+/// every new privilege because of it would be wrong. An inactive session, on
+/// the contrary, expires it immediately, on the first poll as well: the
+/// password was not asked in it.
 pub struct LogindWatch<Q: SessionQuery, G: SuspendGauge> {
     query: Q,
     gauge: G,
@@ -411,7 +415,7 @@ pub struct LogindWatch<Q: SessionQuery, G: SuspendGauge> {
 }
 
 impl<Q: SessionQuery, G: SuspendGauge> LogindWatch<Q, G> {
-    /// `None` — номер сеанса негоден (см. [`valid_session_id`]).
+    /// `None` — the session id is unusable (see [`valid_session_id`]).
     pub fn new(query: Q, gauge: G, session: &str) -> Option<Self> {
         if !valid_session_id(session) {
             return None;
@@ -422,7 +426,7 @@ impl<Q: SessionQuery, G: SuspendGauge> LogindWatch<Q, G> {
 }
 
 impl<I: SystemIo, G: SuspendGauge> LogindWatch<Loginctl<I>, G> {
-    /// Живой наблюдатель на `loginctl`.
+    /// Live watcher on `loginctl`.
     pub fn live(io: I, gauge: G, session: &str) -> Option<Self> {
         Self::new(Loginctl(io), gauge, session)
     }
@@ -460,7 +464,7 @@ impl<Q: SessionQuery, G: SuspendGauge> SessionWatch for LogindWatch<Q, G> {
 }
 
 // ============================================================================
-// Тесты
+// Tests
 // ============================================================================
 
 #[cfg(test)]
@@ -497,7 +501,7 @@ mod tests {
         }
     }
 
-    // ── простой ──
+    // ── inactivity ──
 
     #[test]
     fn idle_15_minutes_revokes() {
@@ -549,7 +553,7 @@ mod tests {
         assert_eq!(r.revoked(), Some(Reason::Idle));
     }
 
-    // ── события посреди операции ──
+    // ── events in the middle of an operation ──
 
     fn mid_operation(event: Event, reason: Reason) {
         let c = FakeClock::at(Duration::ZERO);
@@ -558,11 +562,11 @@ mod tests {
         c.advance(Duration::from_secs(30));
         let mut w = FakeWatch(VecDeque::from([vec![event]]));
         r.poll(&mut w, &c);
-        // идущая доводится: помощник не уходит, пока она в счёте
+        // the running one is carried through: the helper does not leave while it is counted
         assert_eq!(r.revoked(), Some(reason));
         assert_eq!(r.in_flight(), 1);
         assert!(!r.may_exit());
-        // новые — отвергаются
+        // new ones are rejected
         assert_eq!(r.allow_new_op(c.now()), Err(reason));
         assert_eq!(r.op_started(c.now()), Err(reason));
         assert_eq!(r.in_flight(), 1);
@@ -616,13 +620,13 @@ mod tests {
 
     #[test]
     fn idle_before_event_wins() {
-        // уснули через 20 минут простоя: право уже погасло по простою
+        // fell asleep after 20 minutes of inactivity: the privilege has already expired from inactivity
         let mut r = Revoker::granted(Duration::ZERO);
         r.on_event(Event::Slept, min(20));
         assert_eq!(r.revoked(), Some(Reason::Idle));
     }
 
-    // ── повторное поднятие ──
+    // ── raising again ──
 
     #[test]
     fn regrant_after_revoke() {
@@ -671,7 +675,7 @@ mod tests {
         }
     }
 
-    // ── наблюдатель logind ──
+    // ── logind watcher ──
 
     #[derive(Clone, Default)]
     struct Script(Rc<RefCell<VecDeque<SessionAnswer>>>, Rc<RefCell<Vec<String>>>);
@@ -698,7 +702,7 @@ mod tests {
         let q = Script::default();
         q.0.borrow_mut().extend(answers.iter().copied());
         let g = FakeGauge::default();
-        g.0.set(Duration::from_secs(7)); // сон до запуска помощника не в счёт
+        g.0.set(Duration::from_secs(7)); // sleep before the helper started does not count
         (LogindWatch::new(q.clone(), g.clone(), "3").unwrap(), q, g)
     }
 
@@ -762,7 +766,7 @@ mod tests {
     fn sleep_is_caught_by_clock_gap() {
         let (mut w, _, g) = watch(&[seen(true, false), seen(true, false), seen(true, false), seen(true, false)]);
         assert!(w.poll().is_empty());
-        g.0.set(g.0.get() + Duration::from_millis(3)); // дрожь чтения — не сон
+        g.0.set(g.0.get() + Duration::from_millis(3)); // read jitter is not sleep
         assert!(w.poll().is_empty());
         g.0.set(g.0.get() + min(40));
         assert_eq!(w.poll(), vec![Event::Slept]);
@@ -784,7 +788,7 @@ mod tests {
         assert_eq!(r.in_flight(), 1);
     }
 
-    // ── живые часы ──
+    // ── live clock ──
 
     #[test]
     fn live_clocks_are_sane() {

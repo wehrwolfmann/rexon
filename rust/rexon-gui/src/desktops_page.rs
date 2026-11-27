@@ -1,35 +1,39 @@
-// DesktopsModel — вкладка «Рабочие столы» на Rust + cxx-qt + QML.
+// DesktopsModel — the "Desktops" tab on Rust + cxx-qt + QML.
 //
-// Вторая вкладка, перенесённая на QML по схеме «Сравнения DE». Данные и решения — ядро
-// (`rexon_core::qt_desktops` поверх базы столов `system::DE_META`), здесь
-// только оболочка QObject: модель списка слева с ролями и карточка
-// выбранного стола одной картой.
+// The second tab moved to QML by the "DE comparison" scheme. Data and
+// decisions come from the core (`rexon_core::qt_desktops` over the desktop
+// database `system::DE_META`); here there is only the QObject wrapper: the
+// list model on the left with roles, and the card of the selected desktop
+// as one map.
 //
-// Чего здесь НЕТ:
-//   * решений «что показать» — секции списка, подсказки, состав кнопок и
-//     обе защиты удаления считает ядро;
-//   * побочных действий — установка, восстановление, переключение и
-//     удаление ходят через pkexec и окна хода дела, пока живущие на Python
-//     (`rexon/qt_desktops/window.py`, объект `desktopsActions`). Страница
-//     зовёт их по именам и по ответу решает, пересчитывать ли состояние.
+// What is NOT here:
+//   * decisions "what to show" — the list sections, hints, the set of
+//     buttons and both removal safeguards are computed by the core;
+//   * side actions — installing, repairing, switching and removing go
+//     through pkexec and progress windows that still live in Python
+//     (`rexon/qt_desktops/window.py`, the `desktopsActions` object). The page
+//     calls them by name and decides from the answer whether to recompute
+//     the state.
 //
-// ⚠️ Состояние «установлен» модель считает САМА (`compare_page::de_installed`
-// — исполняемые файлы стола в PATH), тем же ответом, что даёт
-// `DesktopEnvironment.recheck_installed()` на Python. Одна функция на обе
-// QML-вкладки: второй копией они разъехались бы молча.
+// Warning: the model computes the "installed" state ITSELF
+// (`compare_page::de_installed` — the desktop's executables in PATH), with
+// the same answer as `DesktopEnvironment.recheck_installed()` in Python.
+// One function for both QML tabs: as a second copy they would silently
+// drift apart.
 
-/// Мост cxx-qt: список столов слева плюс карточка выбранного справа.
+/// cxx-qt bridge: the list of desktops on the left plus the card of the
+/// selected one on the right.
 ///
-/// Имя типа — `DesktopsModel`, а не `DesktopsPage`: последнее занято самим
-/// файлом разметки (`qml/DesktopsPage.qml`), и совпадение дало бы
-/// «Ambiguous type detected».
+/// The type name is `DesktopsModel`, not `DesktopsPage`: the latter is taken
+/// by the markup file itself (`qml/DesktopsPage.qml`), and a clash would
+/// give "Ambiguous type detected".
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
         include!(<QtCore/QAbstractListModel>);
-        /// Базовый Qt-тип. ⚠️ БЕЗ `#[qobject]`: на каждый `#[qobject]`-тип в
-        /// `extern "C++Qt"` cxx-qt печатает шимы приведения по имени ТИПА, и
-        /// второй мост крейта с той же базой даёт `duplicate symbol`.
+        /// The base Qt type. Warning: WITHOUT `#[qobject]`: for every `#[qobject]`
+        /// type in `extern "C++Qt"` cxx-qt emits cast shims by the TYPE name, and a
+        /// second bridge of the crate with the same base gives a `duplicate symbol`.
         type QAbstractListModel;
 
         include!("cxx-qt-lib/qhash.h");
@@ -61,7 +65,7 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[base = QAbstractListModel]
-        // ── Неизменные подписи страницы ───────────────────────────────
+        // ── Fixed page labels ─────────────────────────────────────────
         #[qproperty(QString, window_title, cxx_name = "windowTitle",
                     READ = window_title, CONSTANT)]
         #[qproperty(i32, window_min_width, cxx_name = "windowMinWidth",
@@ -86,9 +90,9 @@ pub mod qobject {
                     READ = tools_notice, CONSTANT)]
         #[qproperty(QString, placeholder_text, cxx_name = "placeholderText",
                     READ = placeholder_text, CONSTANT)]
-        // Блок «Как в дистрибутиве» (средняя панель): заголовок, пояснение и
-        // плитки образов. Плитки меняются после «Применить» и «Вернуть как
-        // было» — их перечитывает `refreshInstalled`.
+        // The "Like in the distribution" block (the middle panel): the title, the
+        // explanation and the look tiles. The tiles change after "Apply" and
+        // "Restore as it was" — they are re-read by `refreshInstalled`.
         #[qproperty(QString, looks_header, cxx_name = "looksHeader",
                     READ = looks_header, CONSTANT)]
         #[qproperty(QString, looks_hint, cxx_name = "looksHint",
@@ -110,9 +114,9 @@ pub mod qobject {
                     NOTIFY = palette_changed)]
         #[qproperty(QString, current_de, cxx_name = "currentDe",
                     READ = current_de, CONSTANT)]
-        // ── Меняющееся ────────────────────────────────────────────────
-        // Карточка выбранного стола одной картой: её содержимое зависит и
-        // от выбора, и от состава установленных столов.
+        // ── Changing ──────────────────────────────────────────────────
+        // The card of the selected desktop as one map: its content depends both on
+        // the selection and on the set of installed desktops.
         #[qproperty(QMap_QString_QVariant, card, READ = card, NOTIFY = card_changed)]
         #[qproperty(QString, selected_de, cxx_name = "selectedDe",
                     READ = selected_de, NOTIFY = card_changed)]
@@ -121,13 +125,13 @@ pub mod qobject {
     }
 
     unsafe extern "RustQt" {
-        /// Скин сменили на лету — палитру пересчитать.
+        /// The skin was changed on the fly — recompute the palette.
         ///
-        /// Свойство `palette` НЕ `CONSTANT` именно поэтому: без сигнала
-        /// привязки QML (`readonly property var pal: page.palette`) не
-        /// пересчитываются, и открытая вкладка остаётся в цветах прошлого
-        /// скина, пока окно на виджетах уже перекрашено. Толчок приходит из
-        /// общего реестра (`crate::skin`), а не отсюда.
+        /// The `palette` property is NOT `CONSTANT` precisely because of this:
+        /// without a signal the QML bindings (`readonly property var pal:
+        /// page.palette`) do not recompute, and an open tab stays in the previous
+        /// skin's colours while the widget window is already repainted. The push
+        /// comes from the shared registry (`crate::skin`), not from here.
         #[qsignal]
         #[cxx_name = "paletteChanged"]
         fn palette_changed(self: Pin<&mut DesktopsModel>);
@@ -165,8 +169,9 @@ pub mod qobject {
         ) -> QModelIndex;
     }
 
-    // Без #[qinvokable]: инвокабл в наследнике затеняет укороченные клоны
-    // сигнатур базы, и rowCount() без аргументов из JS падает.
+    // Without #[qinvokable]: an invokable in a subclass shadows the shortened
+    // clones of the base's signatures, and rowCount() without arguments from JS
+    // fails.
     extern "RustQt" {
         #[cxx_override]
         #[cxx_name = "rowCount"]
@@ -201,8 +206,8 @@ pub mod qobject {
         fn tool_buttons(self: &DesktopsModel) -> QList_QVariant;
         #[cxx_name = "toolButtonMinHeight"]
         fn tool_button_min_height(self: &DesktopsModel) -> i32;
-        /// Почему часть кнопок панели неактивна (SteamOS); пусто — все
-        /// активны.
+        /// Why some panel buttons are disabled (SteamOS); empty means all are
+        /// enabled.
         #[cxx_name = "toolsNotice"]
         fn tools_notice(self: &DesktopsModel) -> QString;
         #[cxx_name = "placeholderText"]
@@ -233,79 +238,80 @@ pub mod qobject {
         fn count(self: &DesktopsModel) -> i32;
     }
 
-    // ── API для QML ───────────────────────────────────────────────────
+    // ── API for QML ───────────────────────────────────────────────────
     extern "RustQt" {
-        /// Выбрать стол в списке. Заголовки секций не выбираются — как в
-        /// оригинале, где у них стоял `NoItemFlags`.
+        /// Select a desktop in the list. Section headers are not selectable — as in
+        /// the original, where they had `NoItemFlags`.
         #[qinvokable]
         fn select(self: Pin<&mut DesktopsModel>, de_id: &QString);
 
-        /// Перечитать состав установленных столов и перерисовать карточку.
-        /// Зовётся после каждой успешной операции.
+        /// Re-read the set of installed desktops and redraw the card. Called after
+        /// every successful operation.
         #[qinvokable]
         #[cxx_name = "refreshInstalled"]
         fn refresh_installed(self: Pin<&mut DesktopsModel>);
 
-        /// Что делать по нажатию «Удалить»: обе защиты решает ядро.
-        /// Карта с `kind`/`title`/`text`/`allowed`.
+        /// What to do when "Delete" is pressed: both safeguards are decided by the
+        /// core. A map with `kind`/`title`/`text`/`allowed`.
         #[qinvokable]
         #[cxx_name = "removePlan"]
         fn remove_plan(self: &DesktopsModel, de_id: &QString) -> QVariant;
 
-        /// Подтверждение и заголовки хода дела для операции над столом.
-        /// `kind` — `install`, `repair`, `switch`, `remove`.
+        /// Confirmation and progress titles for an operation on a desktop. `kind`
+        /// is `install`, `repair`, `switch`, `remove`.
         #[qinvokable]
         #[cxx_name = "operationTexts"]
         fn operation_texts(self: &DesktopsModel, kind: &QString, de_id: &QString) -> QVariant;
 
-        /// Отображаемое имя стола.
+        /// Display name of a desktop.
         #[qinvokable]
         #[cxx_name = "displayName"]
         fn display_name(self: &DesktopsModel, de_id: &QString) -> QString;
 
-        /// Строка версии из репозиториев; пустая строка — строку скрыть.
+        /// Version line from the repositories; an empty string means hide the line.
         #[qinvokable]
         #[cxx_name = "versionLine"]
         fn version_line(self: &DesktopsModel, version: &QString) -> QString;
 
-        /// Подсказка полноэкранного просмотра «i из n».
+        /// Full-screen viewer hint "i of n".
         #[qinvokable]
         #[cxx_name = "zoomHint"]
         fn zoom_hint(self: &DesktopsModel, index: i32, count: i32) -> QString;
 
-        /// Точки-индикаторы карусели.
+        /// Carousel indicator dots.
         #[qinvokable]
         #[cxx_name = "carouselDots"]
         fn carousel_dots(self: &DesktopsModel, index: i32, count: i32) -> QString;
 
-        /// Высота рамки скриншота по размеру окна и доступной ширине.
+        /// Height of the screenshot frame by the window size and the available
+        /// width.
         #[qinvokable]
         #[cxx_name = "carouselHeight"]
         fn carousel_height(self: &DesktopsModel, window_height: i32, available_width: i32) -> i32;
 
-        /// Та же высота, ужатая под вьюпорт карточки: `room` — сколько
-        /// высоты остаётся рамке после всего остального в карточке.
+        /// The same height squeezed to fit the card viewport: `room` is how much
+        /// height is left for the frame after everything else in the card.
         #[qinvokable]
         #[cxx_name = "carouselHeightFitted"]
         fn carousel_height_fitted(self: &DesktopsModel, full: i32, room: i32) -> i32;
 
-        /// Потолок ширины правой панели по высоте окна: дальше лишняя ширина
-        /// уходит средней панели («Как в дистрибутиве»), как у сплиттера
-        /// оригинала.
+        /// Width cap of the right panel by the window height: beyond it the extra
+        /// width goes to the middle panel ("Like in the distribution"), as with the
+        /// original's splitter.
         #[qinvokable]
         #[cxx_name = "detailPanelMaxWidth"]
         fn detail_panel_max_width(self: &DesktopsModel, window_height: i32) -> i32;
 
-        /// Ширина средней панели («Как в дистрибутиве») при ширине страницы
-        /// `total`: делёж лишнего места между панелями — как у сплиттера
-        /// оригинала.
+        /// Width of the middle panel ("Like in the distribution") at page width
+        /// `total`: sharing the extra room between the panels — as with the
+        /// original's splitter.
         #[qinvokable]
         #[cxx_name = "looksPanelWidth"]
         fn looks_panel_width(self: &DesktopsModel, total: i32, window_height: i32) -> i32;
 
-        /// Наименьшая ширина средней панели по её же содержимому: подписи
-        /// обязаны читаться целиком на штатном минимуме окна. Ширину надписей
-        /// меряет по шрифту Qt, числа и арифметика — в ядре.
+        /// Minimum width of the middle panel from its own content: the labels must
+        /// read in full at the standard window minimum. Qt measures the label
+        /// widths by the font; the numbers and the arithmetic are in the core.
         #[qinvokable]
         #[cxx_name = "looksPanelMinWidth"]
         fn looks_panel_min_width(
@@ -314,8 +320,9 @@ pub mod qobject {
             column_width: i32,
         ) -> i32;
 
-        /// Встают ли «Как в дистрибутиве» и «Инструменты» рядом в средней
-        /// панели шириной `inner_width` (без полей) — решает ядро.
+        /// Whether "Like in the distribution" and "Tools" go side by side in a
+        /// middle panel of width `inner_width` (without paddings) — the core
+        /// decides.
         #[qinvokable]
         #[cxx_name = "looksToolsSideBySide"]
         fn looks_tools_side_by_side(
@@ -325,34 +332,35 @@ pub mod qobject {
             tools_width: i32,
         ) -> bool;
 
-        /// Ширина одного блока средней панели (рядом — половина, столбиком —
-        /// вся ширина).
+        /// Width of one block of the middle panel (side by side — half, in a column
+        /// — the whole width).
         #[qinvokable]
         #[cxx_name = "looksToolsBlockWidth"]
         fn looks_tools_block_width(self: &DesktopsModel, inner_width: i32, side_by_side: bool)
             -> i32;
 
-        /// Левая распорка обёртки карточки при ширине вьюпорта `viewport`:
-        /// карточка прижата к правому краю панели, как у оригинала.
+        /// Left spacer of the card wrapper at viewport width `viewport`: the card is
+        /// pressed to the right edge of the panel, as in the original.
         #[qinvokable]
         #[cxx_name = "cardLeftSpacer"]
         fn card_left_spacer(self: &DesktopsModel, viewport: i32) -> i32;
 
-        /// Номер роли по имени (-1, если роли нет) — для проверок без делегата.
+        /// Role number by name (-1 if there is no such role) — for checks without a
+        /// delegate.
         #[qinvokable]
         #[cxx_name = "roleNumber"]
         fn role_number(self: &DesktopsModel, name: &QString) -> i32;
 
-        /// Значение роли по номеру строки — проверки без делегата.
+        /// A role's value by row number — checks without a delegate.
         #[qinvokable]
         #[cxx_name = "roleValue"]
         fn role_value(self: &DesktopsModel, row: i32, name: &QString) -> QVariant;
     }
 
     impl cxx_qt::Initialize for DesktopsModel {}
-    // Подписка на смену скина идёт через `CxxQtThread::queue`, и трейт
-    // потока обязан быть объявлен В МОСТЕ: cxx-qt печатает по этой
-    // строке и сам `qt_thread()`, и его алиас типа.
+    // Subscribing to skin changes goes through `CxxQtThread::queue`, and the
+    // thread trait must be declared IN THE BRIDGE: cxx-qt emits both
+    // `qt_thread()` itself and its type alias from this line.
     impl cxx_qt::Threading for DesktopsModel {}
 }
 
@@ -373,8 +381,8 @@ use crate::compare_page::de_installed;
 use rexon_core::shell_bundle::{self as sb, ShellState};
 use rexon_core::system::DesktopShell;
 
-/// Состояние оболочки на ЭТОЙ машине для карточки композитора `wm`: пакет в
-/// `PATH`, наш блок в конфиге, отметка режима. Только чтение.
+/// State of a shell on THIS machine for the card of compositor `wm`: the
+/// package in `PATH`, our block in the config, the mode mark. Read-only.
 fn live_shell_state(wm: &str, shell: DesktopShell, wm_installed: bool, current: &str) -> ShellState {
     let home = std::env::var("HOME").unwrap_or_default();
     let cfg = std::env::var("XDG_CONFIG_HOME").ok().filter(|v| !v.is_empty());
@@ -390,7 +398,8 @@ fn live_shell_state(wm: &str, shell: DesktopShell, wm_installed: bool, current: 
     }
 }
 
-/// Блок «Оболочки» карточки списком карт для QML; пусто — блока нет.
+/// The card's "Shells" block as a list of maps for QML; empty means there is
+/// no block.
 fn shell_rows_qml(wm: &str, family: PkgFamily, wm_installed: bool, current: &str) -> QList<QVariant> {
     let block = SteamOsBlock::Desktops.live();
     let rows = qd::shell_rows(
@@ -425,17 +434,18 @@ fn shell_rows_qml(wm: &str, family: PkgFamily, wm_installed: bool, current: &str
 }
 
 // ============================================================================
-// Живое окружение: семейство пакетов, текущий стол, снимки экрана
+// Live environment: package family, current desktop, screenshots
 // ============================================================================
 
-/// Семейство пакетов этого дистрибутива. Пробуется один раз на объект:
-/// os-release за время работы вкладки не меняется.
+/// Package family of this distribution. Probed once per object: os-release
+/// does not change while the tab is running.
 fn detect_family() -> PkgFamily {
     DistroDetector::detect_live().family_live()
 }
 
-/// Идентификатор стола, в котором работают СЕЙЧАС; пустая строка — не
-/// опознан. Тот же ответ даёт `SystemInfo.current_de` на Python.
+/// Identifier of the desktop running NOW; an empty string means not
+/// recognized. The same answer is given by `SystemInfo.current_de` in
+/// Python.
 fn detect_current() -> String {
     let xdg = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
     let session = std::env::var("DESKTOP_SESSION").unwrap_or_default();
@@ -443,11 +453,12 @@ fn detect_current() -> String {
     system::detect_current_de(&xdg, &session, wayland).unwrap_or_default()
 }
 
-/// Что показать в карусели стола: снимки либо одна заглушка.
+/// What to show in a desktop's carousel: screenshots or a single
+/// placeholder.
 ///
-/// Снимки ищет ядро (`carousel_paths_on_disk`): сначала поставляемые в
-/// пакете (River), затем скачанные — той же проверкой, по которой его
-/// докачка решает, чего не хватает.
+/// The screenshots are found by the core (`carousel_paths_on_disk`): first
+/// those shipped in the package (River), then the downloaded ones — with
+/// the same check its download uses to decide what is missing.
 fn carousel_images(dir: &str, de_id: &str) -> Vec<String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let bundled = screenshots::bundled_screenshot_dirs(&rexon_core::cli::repo_root(), &home);
@@ -455,13 +466,13 @@ fn carousel_images(dir: &str, de_id: &str) -> Vec<String> {
     if !paths.is_empty() {
         return paths;
     }
-    // Заглушку и её подпись («загружается» / «появится, когда будет
-    // интернет» / «пока нет») выбирает ядро по своей закачке.
+    // The placeholder and its label ("loading" / "will appear when there is
+    // internet" / "not yet") are chosen by the core according to its download.
     screenshots::placeholder_on_disk(dir, de_id).into_iter().collect()
 }
 
 // ============================================================================
-// Роли модели
+// Model roles
 // ============================================================================
 
 const ROLE_BASE: i32 = 256 + 1;
@@ -480,7 +491,7 @@ const ROLE_NAMES: [&str; 8] = [
 const ROLE_TOOLTIP: usize = 3;
 const ROLE_INSTALLED: usize = 4;
 
-/// Роли, меняющиеся от установки или удаления стола.
+/// Roles that change when a desktop is installed or removed.
 fn installed_roles() -> QVector<i32> {
     let mut roles = QVector::<i32>::default();
     roles.append(ROLE_BASE + ROLE_INSTALLED as i32);
@@ -489,7 +500,7 @@ fn installed_roles() -> QVector<i32> {
 }
 
 // ============================================================================
-// Мелочи перевода в Qt
+// Translation odds and ends in Qt
 // ============================================================================
 
 fn vmap(pairs: Vec<(&str, QVariant)>) -> QMap<QMapPair_QString_QVariant> {
@@ -508,19 +519,19 @@ fn qint(value: i32) -> QVariant {
     QVariant::from(&value)
 }
 
-/// QSS-цвет ядра в записи, какую понимает QML.
+/// A core QSS colour in the notation QML understands.
 fn qcss(css: &str) -> QVariant {
     qstr(&ui_base::css_color_to_qml(css))
 }
 
-/// Доля нейтрального серого (`ui_base::neutral_rgba`) в записи QML.
+/// A share of the neutral grey (`ui_base::neutral_rgba`) in QML notation.
 fn qneutral(alpha: f64) -> QVariant {
     qcss(&ui_base::neutral_rgba(alpha))
 }
 
-/// Тон «особой» кнопки — карта, какую понимает `RexonButton.tone`:
-/// подложка, подложка под курсором, цвет текста, скругление, жирность и
-/// (необязательно) рамка.
+/// Tone of a "special" button — a map that `RexonButton.tone` understands:
+/// background, hover background, text colour, rounding, weight and
+/// (optionally) a border.
 fn tone(
     background: QVariant,
     hover: QVariant,
@@ -542,12 +553,12 @@ fn tone(
     QVariant::from(&vmap(pairs))
 }
 
-/// Тоны общего окна операции над столом (`DeOperationDialog.qml`) — в
-/// палитру страницы по таблице ядра `qt_desktops::OPERATION_DIALOG_TONES`.
+/// Tones of the shared desktop operation window (`DeOperationDialog.qml`) —
+/// into the page palette by the core table `qt_desktops::OPERATION_DIALOG_TONES`.
 ///
-/// Зовут ОБЕ страницы с этим окном: «Рабочие столы» и «Сравнение DE».
-/// Страница, которая этих ключей не отдаёт, получала «Да» обычной кнопкой
-/// скина вместо синей или красной (так и было у «Сравнения»).
+/// BOTH pages with this window call it: "Desktops" and "DE comparison". A
+/// page that did not provide these keys got "Yes" as an ordinary skin button
+/// instead of a blue or red one (that is how it was in "Compare").
 pub(crate) fn insert_operation_tones(out: &mut QMap<QMapPair_QString_QVariant>) {
     for (key, t) in qd::OPERATION_DIALOG_TONES {
         out.insert(
@@ -557,11 +568,11 @@ pub(crate) fn insert_operation_tones(out: &mut QMap<QMapPair_QString_QVariant>) 
     }
 }
 
-/// Rust-состояние вкладки.
+/// Rust state of the tab.
 #[derive(Default)]
 pub struct DesktopsModelRust {
-    /// Номер записи в общем реестре смены скина (`crate::skin`).
-    /// 0 — страница ещё не подписана.
+    /// Entry number in the shared skin change registry (`crate::skin`).
+    /// 0 means the page is not subscribed yet.
     skin_watch: u64,
     rows: Vec<qd::ListRow>,
     selected: String,
@@ -571,9 +582,10 @@ pub struct DesktopsModelRust {
     loaded: bool,
 }
 
-/// Снять подписку на смену скина. Без этого реестр держал бы запись
-/// закрытой вкладки до первой рассылки — та её отсеет по
-/// `ObjectDestroyed`, но копить мусор незачем.
+/// Remove the skin change subscription. Without this the registry would
+/// keep the closed tab's entry until the next broadcast — that one would
+/// filter it out by `ObjectDestroyed`, but there is no reason to accumulate
+/// garbage.
 impl Drop for DesktopsModelRust {
     fn drop(&mut self) {
         crate::skin::unwatch(self.skin_watch);
@@ -592,15 +604,15 @@ impl DesktopsModelRust {
         self.family = Some(detect_family());
         self.current_de = detect_current();
         let home = std::env::var("HOME").unwrap_or_default();
-        // С учётом `$XDG_CONFIG_HOME`: снимает скриншоты Python по
-        // XDG-осведомлённому пути, и карусель обязана смотреть туда же.
+        // Taking `$XDG_CONFIG_HOME` into account: Python takes the screenshots by
+        // an XDG-aware path, and the carousel must look in the same place.
         let xdg = std::env::var("XDG_CONFIG_HOME").ok().filter(|v| !v.is_empty());
         self.screenshot_dir = screenshots::screenshot_dir_xdg(xdg.as_deref(), &home);
         self.rows = qd::list_rows(self.family(), &de_installed);
-        // Первым показывается ТЕКУЩИЙ рабочий стол: человек открывает
-        // вкладку и видит свой стол, а не первый по списку (у оригинала это
-        // был Cinnamon — просто потому, что он стоит первым). Текущего в
-        // списке нет — первый выбираемый пункт.
+        // The CURRENT desktop is shown first: the user opens the tab and sees their
+        // own desktop, not the first in the list (in the original that was
+        // Cinnamon — simply because it is first). If the current one is not in the
+        // list — the first selectable item.
         let current = self.current_de.clone();
         self.selected = self
             .rows
@@ -616,8 +628,8 @@ impl DesktopsModelRust {
         self.rows.iter().find(|r| r.kind == "de" && r.de_id == de_id)
     }
 
-    /// Сколько ДРУГИХ столов установлено (сам стол не считается) — вход
-    /// второй защиты удаления.
+    /// How many OTHER desktops are installed (the desktop itself is not
+    /// counted) — the input of the second removal safeguard.
     fn other_installed(&self, de_id: &str) -> usize {
         self.rows
             .iter()
@@ -627,7 +639,7 @@ impl DesktopsModelRust {
 }
 
 impl qobject::DesktopsModel {
-    // ── Неизменные подписи ────────────────────────────────────────────
+    // ── Fixed labels ──────────────────────────────────────────────────
     fn window_title(&self) -> QString {
         QString::from(&qd::window_title())
     }
@@ -662,9 +674,9 @@ impl qobject::DesktopsModel {
 
     fn tool_buttons(&self) -> QList<QVariant> {
         let mut out = QList::<QVariant>::default();
-        // SteamOS: «Проверить мой стол» — это доустановка пакетов, её
-        // кнопка видна, но неактивна; причина — строкой под колонкой
-        // (`toolsNotice`), подсказка у неактивной кнопки не всплывает.
+        // SteamOS: "Check my desktop" means installing missing packages, so its
+        // button is visible but disabled; the reason is a line under the column
+        // (`toolsNotice`), since a disabled button's tooltip does not pop up.
         let steamos = rexon_core::distro_compat::running_on_steamos();
         let de = self.rust().current_de.clone();
         let have = |tool: &str| rexon_core::utils::which(tool, std::env::var("PATH").ok().as_deref()).is_some();
@@ -683,8 +695,9 @@ impl qobject::DesktopsModel {
     }
 
     fn tools_notice(&self) -> QString {
-        // Стол сеанса Rexon узнал, но не поддерживает (UKUI) — сказать прямо,
-        // а не молчать над списком, где этого стола нет.
+        // Rexon recognized the session's desktop but does not support it (UKUI) —
+        // say so plainly rather than stay silent above a list where this desktop
+        // is absent.
         let notices: Vec<String> = [
             SteamOsBlock::Desktops.live(),
             system::unsupported_desktop_notice(&self.rust().current_de),
@@ -711,8 +724,9 @@ impl qobject::DesktopsModel {
         QString::from(&qd::looks_hint())
     }
 
-    /// Плитки образов: что показать и какие кнопки — ядро
-    /// (`qt_desktops::look_tiles`); применён ли — по общему журналу.
+    /// Look tiles: what to show and which buttons — the core
+    /// (`qt_desktops::look_tiles`); whether it is applied — by the shared
+    /// journal.
     fn looks(&self) -> QList<QVariant> {
         let rexon = rexon_core::distro_looks::rexon_dir_live();
         let lang = rexon_core::i18n::current_language();
@@ -760,7 +774,7 @@ impl qobject::DesktopsModel {
         qd::CARD_GAP_LEFT
     }
 
-    /// Подписи и числа карусели скриншотов одной картой.
+    /// Labels and numbers of the screenshot carousel as one map.
     fn carousel(&self) -> QMap<QMapPair_QString_QVariant> {
         vmap(vec![
             ("emptyText", qstr(&qd::no_screenshots_text())),
@@ -777,9 +791,9 @@ impl qobject::DesktopsModel {
         ])
     }
 
-    /// Размеры разметки одной картой: поля панелей, кегли, размеры кнопок.
-    /// Все числа — из ядра вкладки, где они выписаны из таблицы стилей
-    /// оригинала; страница своих не заводит.
+    /// Markup sizes as one map: panel paddings, font sizes, button sizes. All
+    /// numbers come from the tab core, where they are written out from the
+    /// original's style sheet; the page defines none of its own.
     fn metrics(&self) -> QMap<QMapPair_QString_QVariant> {
         let (list_l, list_t, list_r, list_b) = qd::LIST_MARGINS;
         let (tools_l, tools_t, tools_r, tools_b) = qd::TOOLS_MARGINS;
@@ -843,9 +857,9 @@ impl qobject::DesktopsModel {
         ])
     }
 
-    /// Палитра ДЕЙСТВУЮЩЕГО скина (сохранённый `ui_skin`, откат к
-    /// стандартному по правилу #17) плюс цвета, которые задаёт сама вкладка
-    /// через ядро. Своих цветов страница не заводит.
+    /// Palette of the ACTIVE skin (the saved `ui_skin`, falling back to the
+    /// standard one by rule #17) plus the colours the tab itself sets through
+    /// the core. The page defines no colours of its own.
     fn palette(&self) -> QMap<QMapPair_QString_QVariant> {
         let colors = ui_base::active_qml_palette();
         let dark = ui_base::active_skin_is_dark();
@@ -869,32 +883,33 @@ impl qobject::DesktopsModel {
             QString::from("current_badge"),
             qstr(qd::CURRENT_BADGE_COLOR),
         );
-        // Насыщенность вторичного текста (описание, ТТХ, пакеты, версия,
-        // точки карусели): у виджетов это `font-weight: 600` из
-        // `secondary_text_qss`; без неё QML набирал те же строки обычным
-        // начертанием (замер 03.09.2026).
+        // Weight of the secondary text (description, specs, packages, version,
+        // carousel dots): in the widgets this is `font-weight: 600` from
+        // `secondary_text_qss`; without it QML set the same lines in the regular
+        // weight (measurement 03.09.2026).
         out.insert(
             QString::from("text_secondary_weight"),
             qint(ui_base::SECONDARY_TEXT_WEIGHT),
         );
-        // Заголовок секции списка: у виджетов — роль PlaceholderText палитры
-        // скина, а не вторичный текст с прозрачностью.
+        // List section header: in the widgets it is the PlaceholderText role of
+        // the skin palette, not secondary text with opacity.
         out.insert(
             QString::from("placeholder_text"),
             qstr(&ui_base::active_placeholder_text_color()),
         );
-        // Список: подложка выбранного пункта и пункта под курсором. Раньше
-        // страница брала акцент скина с прозрачностью 0.4 — свою краску
-        // вместо синей `rgba(59,130,246,0.4)` оригинала.
+        // List: the background of the selected item and of the item under the
+        // cursor. Previously the page took the skin accent with opacity 0.4 — its
+        // own colour instead of the original's blue `rgba(59,130,246,0.4)`.
         out.insert(QString::from("list_selected"), qcss(qd::LIST_SELECTED_QSS));
         out.insert(
             QString::from("list_selected_text"),
             qstr(qd::LIST_SELECTED_TEXT_COLOR),
         );
         out.insert(QString::from("list_hover"), qcss(qd::list_hover_qss(dark)));
-        // Панель инструментов, разделители карточки и рамка карусели — доли
-        // нейтрального серого, как в QSS оригинала.
-        // Рукоятка сплиттера: без неё QML брал светло-серую от стиля Basic.
+        // The toolbar, card separators and the carousel frame are shares of the
+        // neutral grey, as in the original's QSS.
+        // Splitter handle: without it QML took a light grey one from the Basic
+        // style.
         out.insert(
             QString::from("split_handle"),
             qcss(qd::split_handle_qss(dark)),
@@ -909,11 +924,11 @@ impl qobject::DesktopsModel {
             QString::from("carousel_frame"),
             qneutral(qd::CAROUSEL_FRAME_ALPHA),
         );
-        // Кнопки действий карточки: синяя, нейтральная с рамкой и красная.
-        // Красная — свой тон, а не общая `RexonDangerButton`: у оригинала
-        // подложка 0.75 против 0.2 у «Расширений», скругление 6 и жирная
-        // подпись, и общий элемент этого не умеет. Синяя и красная — те же
-        // `primary_tone`/`destructive_tone`, что берёт окно операции.
+        // Card action buttons: blue, neutral with a border, and red. The red one
+        // is a tone of its own, not the shared `RexonDangerButton`: in the original
+        // its background is 0.75 versus 0.2 in "Extensions", rounding 6 and a bold
+        // label, and the shared element cannot do that. Blue and red are the same
+        // `primary_tone`/`destructive_tone` the operation window takes.
         insert_operation_tones(&mut out);
         out.insert(
             QString::from("neutral_tone"),
@@ -922,15 +937,15 @@ impl qobject::DesktopsModel {
                 qneutral(qd::NEUTRAL_BUTTON_HOVER_ALPHA),
                 text_primary,
                 qd::CARD_BUTTON_RADIUS,
-                // Второстепенная кнопка («Проверить / Восстановить») — обычным
-                // начертанием: жирная длинная подпись спорила с главной
-                // кнопкой и выглядела тяжёлой (замечание Wehrwolfmann 10.10.2026).
+                // The secondary button ("Check / Repair") is in the regular weight: a bold
+                // long label competed with the main button and looked heavy
+                // (Wehrwolfmann's remark 10.10.2026).
                 false,
                 Some(qneutral(qd::NEUTRAL_BUTTON_BORDER_ALPHA)),
             ),
         );
-        // Стрелки и лупа поверх скриншота, кнопки полноэкранного просмотра
-        // — круглые тёмные, как в оригинале, а не кнопки скина.
+        // Arrows and the magnifier over the screenshot, the full-screen viewer
+        // buttons — round and dark, as in the original, not skin buttons.
         out.insert(
             QString::from("arrow_tone"),
             tone(
@@ -966,7 +981,7 @@ impl qobject::DesktopsModel {
         );
         out.insert(QString::from("zoom_bg"), qcss(qd::ZOOM_BG_QSS));
         out.insert(QString::from("zoom_hint"), qcss(qd::ZOOM_HINT_QSS));
-        // Затемнение фона под модальным окном — одно на продукт.
+        // Background dimming under a modal window — one for the product.
         out.insert(
             QString::from("modal_dim"),
             qstr(&ui_base::modal_dim_argb_hex()),
@@ -986,11 +1001,11 @@ impl qobject::DesktopsModel {
         self.rust().rows.len() as i32
     }
 
-    // ── Карточка выбранного стола ─────────────────────────────────────
+    // ── Card of the selected desktop ──────────────────────────────────
     fn card(&self) -> QMap<QMapPair_QString_QVariant> {
         let state = self.rust();
         let Some(row) = state.row_of(&state.selected) else {
-            // Ничего не выбрано — страница показывает приглашение выбрать.
+            // Nothing is selected — the page shows an invitation to choose.
             return vmap(vec![("deId", qstr(""))]);
         };
         let de_id = row.de_id.as_str();
@@ -1006,10 +1021,11 @@ impl qobject::DesktopsModel {
             ])));
         }
 
-        // SteamOS (Steam Deck и Steam Machine): проверенные столы ставятся и
-        // удаляются образами systemd-sysext — кнопки живые; у прочих кнопки
-        // видны, но неактивны, а причина стоит строкой рядом — кнопку не
-        // прячем молча (правило #13). Решает ядро (`steamos_button_block`).
+        // SteamOS (Steam Deck and Steam Machine): verified desktops are installed
+        // and removed as systemd-sysext images — the buttons are live; for the
+        // others the buttons are visible but disabled, and the reason stands as a
+        // line next to them — we do not hide a button silently (rule #13). The
+        // core decides (`steamos_button_block`).
         let steamos = rexon_core::distro_compat::running_on_steamos();
         let mut buttons = QList::<QVariant>::default();
         let mut reasons: Vec<String> = Vec::new();
@@ -1025,8 +1041,9 @@ impl qobject::DesktopsModel {
                 ("tooltip", qstr(&button.tooltip)),
                 ("style", qstr(button.style)),
                 ("enabled", QVariant::from(&enabled)),
-                // Ставит набор стола: неактивна, пока он конфликтует с
-                // установленным (ответ `packagesReady`, причина — над кнопками).
+                // It installs the desktop's set: disabled while it conflicts with
+                // something installed (the `packagesReady` answer, the reason is above the
+                // buttons).
                 ("installsSet", QVariant::from(&qd::installs_desktop_set(button.kind))),
             ])));
         }
@@ -1034,12 +1051,13 @@ impl qobject::DesktopsModel {
 
         let main_pkgs = system::get_packages(de_id, state.family()).len();
         let aur_pkgs = system::get_aur_packages(de_id, state.family()).len();
-        // Честный счёт даёт пробная транзакция (Arch, в фоне — объект
-        // действий, `requestPackages`); до её ответа — «считаю», а не
-        // заведомо неверное число имён. Где пробы нет — счёт имён ядра.
-        // На SteamOS проба `pacman -Sp` по пакетам самой системы ничего не
-        // говорит о том, что соберёт образ systemd-sysext, а её «конфликт»
-        // погасил бы живую кнопку «Установить», — её там не делаем.
+        // An honest count is given by a trial transaction (Arch, in the background
+        // — the actions object, `requestPackages`); until its answer — "counting",
+        // not a known-wrong number of names. Where there is no probe — the core's
+        // count of names. On SteamOS a `pacman -Sp` probe over the packages of the
+        // system itself says nothing about what the systemd-sysext image will
+        // build, and its "conflict" would switch off a live "Install" button — so
+        // it is not done there.
         let probe = row.available && state.family() == system::PkgFamily::Arch && !steamos;
         let packages_text = if probe {
             qd::packages_counting()
@@ -1049,7 +1067,7 @@ impl qobject::DesktopsModel {
 
         let mut images = QList::<QVariant>::default();
         for path in carousel_images(&state.screenshot_dir, de_id) {
-            // QML грузит картинку по адресу, а не по пути.
+            // QML loads a picture by address, not by path.
             images.append(qstr(&format!("file://{path}")));
         }
 
@@ -1064,7 +1082,8 @@ impl qobject::DesktopsModel {
             ("statusText", qstr(&status.text)),
             ("statusColor", qstr(status.color)),
             ("statusBold", QVariant::from(&status.bold)),
-            // Цвет «Установлен частично» (замена шапки по ответу пробы пакетов).
+            // The "Partially installed" colour (header replacement from the package
+            // probe answer).
             ("statusPartialColor", qstr(qd::STATUS_UNAVAILABLE_COLOR)),
             ("description", qstr(&qd::description(de_id))),
             ("stats", QVariant::from(&stats)),
@@ -1077,7 +1096,7 @@ impl qobject::DesktopsModel {
             ("currentBadgeTooltip", qstr(&qd::current_badge_tooltip())),
             ("versionChecking", qstr(&qd::version_checking())),
             ("images", QVariant::from(&images)),
-            // Блок «Оболочки» справа: только у Hyprland, niri и sway.
+            // The "Shells" block on the right: only for Hyprland, niri and sway.
             ("shellsHeader", qstr(&qd::shells_header())),
             ("shellsTooltip", qstr(&qd::shells_header_tooltip())),
             (
@@ -1116,9 +1135,9 @@ impl qobject::DesktopsModel {
         self.role_of(entry, ROLE_NAMES.get(slot).copied())
     }
 
-    /// Значение одной роли строки. Отдельно от `data`, чтобы тем же путём
-    /// отвечал `roleValue`: иначе проверки смотрели бы не туда, куда
-    /// смотрит делегат.
+    /// Value of one role of a row. Separate from `data` so that `roleValue`
+    /// answers the same way: otherwise the checks would look somewhere other
+    /// than where the delegate looks.
     fn role_of(&self, entry: &qd::ListRow, name: Option<&str>) -> QVariant {
         match name {
             Some("kind") => qstr(entry.kind),
@@ -1127,7 +1146,7 @@ impl qobject::DesktopsModel {
             Some("tooltip") => qstr(&entry.tooltip),
             Some("installed") => QVariant::from(&entry.installed),
             Some("available") => QVariant::from(&entry.available),
-            // Заголовок секции виден, но не выбирается — в оригинале это был
+            // A section header is visible but not selectable — in the original it was
             // `NoItemFlags`.
             Some("selectable") => QVariant::from(&(entry.kind == "de")),
             Some("isCurrent") => {
@@ -1137,7 +1156,7 @@ impl qobject::DesktopsModel {
         }
     }
 
-    // ── API для QML ───────────────────────────────────────────────────
+    // ── API for QML ───────────────────────────────────────────────────
     fn select(mut self: Pin<&mut Self>, de_id: &QString) {
         let de_id = de_id.to_string();
         {
@@ -1172,7 +1191,7 @@ impl qobject::DesktopsModel {
         }
         self.as_mut().card_changed();
         self.as_mut().count_changed();
-        // Образ применён или возвращён — плитки перечитать.
+        // A look was applied or restored — re-read the tiles.
         self.as_mut().looks_changed();
     }
 
@@ -1224,8 +1243,8 @@ impl qobject::DesktopsModel {
                     ("doneText", qstr(&t.done_text)),
                 ]))
             }
-            // Тексты переключения — общие с «Сравнением DE»: там они
-            // дословно те же, и вторая копия разъехалась бы молча.
+            // The switching texts are shared with "DE comparison": they are word for
+            // word the same there, and a second copy would silently drift apart.
             "switch" => {
                 let t = qc::switch_texts(name);
                 QVariant::from(&vmap(vec![
@@ -1313,16 +1332,16 @@ impl qobject::DesktopsModel {
 }
 
 // ============================================================================
-// Инициализация состояния
+// State initialization
 // ============================================================================
 
 impl cxx_qt::Initialize for qobject::DesktopsModel {
-    /// Список столов собирается сразу: `rowCount` зовётся из QML раньше
-    /// любого нашего кода, и пустая модель на первом кадре означала бы
-    /// пустую вкладку.
+    /// The list of desktops is built at once: `rowCount` is called from QML
+    /// before any of our code, and an empty model on the first frame would mean
+    /// an empty tab.
     fn initialize(mut self: Pin<&mut Self>) {
-        // Подписка на смену скина: одна строка на страницу, рассылка — общая
-        // (`crate::skin`). Снимается в `Drop` того же состояния.
+        // Subscribing to skin changes: one line per page, the broadcast is shared
+        // (`crate::skin`). Removed in `Drop` of the same state.
         let watch = crate::skin::watch(
             self.as_ref().get_ref().qt_thread(),
             qobject::DesktopsModel::palette_changed,
@@ -1334,22 +1353,24 @@ impl cxx_qt::Initialize for qobject::DesktopsModel {
 }
 
 impl qobject::DesktopsModel {
-    /// Докачать официальные снимки столов, которых нет в кэше.
+    /// Download the official desktop screenshots that are missing from the
+    /// cache.
     ///
-    /// Без этого на СВЕЖЕЙ машине карточки навсегда оставались бы с
-    /// заглушками: страница читает снимки только с диска, а качал их Python-
-    /// хозяин, которого Rust-окно не зовёт. Закачку ведёт ядро
-    /// (`auto_download_all_live`) в своём потоке — окно не ждёт; каталог и
-    /// имена файлов те же, что у Python, так что кэш у двух окон общий.
+    /// Without this, on a FRESH machine the cards would stay with placeholders
+    /// forever: the page reads screenshots only from disk, and they were
+    /// downloaded by the Python host, which the Rust window does not call. The
+    /// download is run by the core (`auto_download_all_live`) in its own thread
+    /// — the window does not wait; the directory and the file names are the
+    /// same as in Python, so the two windows share the cache.
     ///
-    /// Карточка перечитывается ОДИН раз — когда пачка показанного стола
-    /// кончилась: пришли снимки либо заглушка сменила «загружается» на
-    /// честную подпись. Смена карточки сбрасывает слайд карусели и заново
-    /// спрашивает версию пакета, поэтому на каждый файл её не дёргаем. На
-    /// тёплом кэше задач нет вовсе.
+    /// The card is re-read ONCE — when the batch of the shown desktop has
+    /// finished: the screenshots arrived or the placeholder changed "loading"
+    /// to an honest label. A card change resets the carousel slide and asks for
+    /// the package version again, so we do not trigger it on every file. With a
+    /// warm cache there are no tasks at all.
     ///
-    /// Поток, «одна закачка на процесс» и состояние заглушек — у ядра
-    /// (`start_auto_download_live`); здесь только перерисовка.
+    /// The thread, "one download per process" and the placeholder state belong
+    /// to the core (`start_auto_download_live`); here there is only redrawing.
     fn start_screenshot_download(mut self: Pin<&mut Self>) {
         let dir = self.rust().screenshot_dir.clone();
         let handle = self.as_mut().qt_thread();
@@ -1358,7 +1379,7 @@ impl qobject::DesktopsModel {
                 return;
             }
             let de = outcome.de.clone();
-            // Страница могла закрыться — тогда перерисовывать некого.
+            // The page may have closed — then there is nobody to redraw.
             let _ = handle.queue(move |mut object| {
                 if object.rust().selected == de {
                     object.as_mut().card_changed();

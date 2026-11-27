@@ -1,33 +1,35 @@
-// Настройки демона: чтение (`SettingsGetQuery`) и запись
+// Daemon settings: reading (`SettingsGetQuery`) and writing
 // (`SettingsSetQuery`).
 //
-// Эталон — waywallen `ui/src/query/settings_query.cpp`.
-// Карту `global` и таблицу плагинов собирает ядро
-// (`we_settings::global_to_map`/`plugins_to_map`), здесь только Qt-сторона.
+// Reference: waywallen `ui/src/query/settings_query.cpp`.
+// The `global` map and the plugin table are assembled by the core
+// (`we_settings::global_to_map`/`plugins_to_map`); here there is only the
+// Qt side.
 //
-// ⚠️ Ключи карты `global` КАСТОМНЫЕ, а не json_name протокола:
-// `pluginUpdateNotifications` = !disable_plugin_update_notifications
-// (ИНВЕРСИЯ), `duplicateRenderers` = duplicate_renderers_for_same_wallpaper
-// (переименование). Обе стороны алиасов живут в ядре ровно затем, чтобы
-// круг «чтение ↔ запись» не мог разъехаться: демон обрабатывает
-// `settings_set` как ПОЛНУЮ замену, и односторонний алиас затирал бы
-// настройки.
+// Warning: the keys of the `global` map are CUSTOM, not the protocol's
+// json_name: `pluginUpdateNotifications` = !disable_plugin_update_notifications
+// (INVERSION), `duplicateRenderers` = duplicate_renderers_for_same_wallpaper
+// (renaming). Both sides of the aliases live in the core precisely so that
+// the "read ↔ write" round trip cannot drift apart: the daemon treats
+// `settings_set` as a FULL replacement, and a one-sided alias would wipe
+// settings.
 //
-// Свойство `global` записи приходит из QML картой, внутри которой лежат
-// Qt-Protobuf-гаджеты (`wallpaperSorts` пишет Rust-модель редактора
-// фильтров). Именно из-за них питоновский мост держал его как `QJSValue`
-// и разбирал схемой по дескриптору: QVariantMap-конверсия гаджетов
-// сегфолтила PySide6. В C++/Rust этой беды нет — карта приходит как есть,
-// а гаджеты разворачивает общий конвертер `qvalue::variant_to_json`, тот
-// же, которым ходят все остальные пути «QML → ядро».
+// The `global` property of a write arrives from QML as a map containing
+// Qt Protobuf gadgets (`wallpaperSorts` is written by the Rust model of
+// the filter editor). Because of them the Python bridge held it as a
+// `QJSValue` and parsed it with a schema by descriptor: QVariantMap
+// conversion of the gadgets segfaulted PySide6. In C++/Rust there is no
+// such trouble — the map arrives as is, and the gadgets are unwrapped by
+// the shared converter `qvalue::variant_to_json`, the same one used by all
+// other "QML → core" paths.
 //
-// ⚠️ `settings_set` у демона — ПОЛНАЯ замена. Страница обязана прислать
-// копию всей карты `global` из `settings_get` с правкой и всех плагинов;
-// гейт «не писать до первого чтения» живёт в QML
-// (`_persistGlobalChange`), дублировать его здесь нельзя — иначе законная
-// запись пустых настроек стала бы невозможной.
+// Warning: the daemon's `settings_set` is a FULL replacement. The page must
+// send a copy of the whole `global` map from `settings_get` with the edit,
+// and all plugins; the "do not write before the first read" gate lives in
+// QML (`_persistGlobalChange`), and it must not be duplicated here —
+// otherwise a legitimate write of empty settings would become impossible.
 
-/// Мост cxx-qt: чтение и запись настроек демона.
+/// cxx-qt bridge: reading and writing the daemon settings.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -51,12 +53,12 @@ pub mod qobject {
                     WRITE = set_forward_error, NOTIFY = forward_error_changed)]
         #[qproperty(QVariant, global, READ = global, NOTIFY = global_changed)]
         #[qproperty(QVariant, plugins, READ = plugins, NOTIFY = plugins_changed)]
-        /// waywallen 0.3.8: каталог журнала демона; страница настроек
-        /// открывает его кнопкой «Открыть».
+        /// waywallen 0.3.8: the daemon's log directory; the settings page opens it
+        /// with the "Open" button.
         #[qproperty(QString, log_dir, cxx_name = "logDir", READ = log_dir,
                     NOTIFY = log_dir_changed)]
-        /// waywallen 0.3.8: уровень журнала задан снаружи (`WW_LOG`) —
-        /// переключатель отладочного журнала выключен и объясняет почему.
+        /// waywallen 0.3.8: the log level is set from outside (`WW_LOG`) — the
+        /// debug log switch is disabled and explains why.
         #[qproperty(bool, ww_log_active, cxx_name = "wwLogActive",
                     READ = ww_log_active, NOTIFY = ww_log_active_changed)]
         type SettingsGetQuery = super::SettingsGetQueryRust;
@@ -271,15 +273,16 @@ impl qobject::SettingsGetQuery {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// SettingsSetQuery — запись настроек (SettingsPage, «Обои», плагины)
+// SettingsSetQuery — writing settings (SettingsPage, "Wallpapers", plugins)
 // ════════════════════════════════════════════════════════════════════════
 
 #[derive(Default)]
 pub struct SettingsSetQueryRust {
     base: QueryState,
-    /// `None` — свойство ещё не писали. Отличать от пустой карты
-    /// обязательно: страница гейтит запись до первого чтения, и запрос без
-    /// присвоенного `global` не должен уходить демону вовсе.
+    /// `None` means the property has not been written yet. It must be told
+    /// apart from an empty map: the page gates writing until the first read,
+    /// and a request without an assigned `global` must not go to the daemon at
+    /// all.
     global: Option<VMap>,
     plugins: VMap,
     pending: std::collections::BTreeSet<i64>,
@@ -287,7 +290,7 @@ pub struct SettingsSetQueryRust {
 
 impl_query_base!(SettingsSetQuery);
 
-/// Значение из QML → карта. Не объект — пустая карта.
+/// Value from QML → a map. Not an object — an empty map.
 fn variant_to_map(value: &QVariant) -> VMap {
     match variant_to_json(value) {
         Value::Object(map) => map,
@@ -297,7 +300,7 @@ fn variant_to_map(value: &QVariant) -> VMap {
 
 impl qobject::SettingsSetQuery {
     pub fn global(&self) -> QVariant {
-        // Зеркало для отладки: ровно то, что уедет демону.
+        // Mirror for debugging: exactly what will go to the daemon.
         json_to_variant(&Value::Object(self.global.clone().unwrap_or_default()))
     }
 
@@ -319,8 +322,8 @@ impl qobject::SettingsSetQuery {
 
     pub fn reload(mut self: Pin<&mut Self>) {
         let Some(global) = self.global.clone() else {
-            // Писать нечего: страница ещё не прочитала настройки. Полная
-            // замена пустой картой затёрла бы всё, что есть у демона.
+            // Nothing to write: the page has not read the settings yet. A full
+            // replacement with an empty map would wipe everything the daemon has.
             let signals = we_query::set_status(
                 &mut self.as_mut().rust_mut().base,
                 we_query::STATUS_FINISHED,

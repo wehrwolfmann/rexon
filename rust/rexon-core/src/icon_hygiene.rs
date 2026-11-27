@@ -1,61 +1,62 @@
-//! Гигиена каталога значков пользователя: общий запасной набор `hicolor`.
+//! Hygiene of the user's icon directory: the shared fallback set `hicolor`.
 //!
-//! Дефект 09.11.2026: в `~/.local/share/icons/hicolor/index.theme` лежал
-//! урезанный файл (только девять каталогов `*/apps`), записанный весенней
-//! версией Rexon на Python. Пользовательский `index.theme` ПЕРЕКРЫВАЕТ
-//! системный `/usr/share/icons/hicolor/index.theme` целиком: GTK и оболочка
-//! GNOME после этого видят в `hicolor` только перечисленные в нём каталоги, и
-//! значки из `actions/`, `status/`, `devices/`, 22×22, `*-symbolic`
-//! пропадают по всему столу («значок не найден»).
+//! Defect of 09.11.2026: `~/.local/share/icons/hicolor/index.theme` held a
+//! truncated file (only nine `*/apps` directories) written by the spring Python
+//! version of Rexon. A user `index.theme` OVERRIDES the system
+//! `/usr/share/icons/hicolor/index.theme` entirely: GTK and the GNOME shell then
+//! see in `hicolor` only the directories listed in it, and icons from
+//! `actions/`, `status/`, `devices/`, 22×22 and `*-symbolic` disappear across
+//! the whole desktop ("icon not found").
 //!
-//! Здесь два правила:
+//! There are two rules here:
 //!
-//! * [`is_reserved_icon_set`] — `hicolor` и `locolor` не темы, а общие
-//!   каталоги, куда кладут значки все программы. Установщики тем (магазин,
-//!   `.rxn`, «Как в дистрибутиве», импорт из Windows) такой каталог не ставят
-//!   и не заменяют: тема с таким именем пропускается с заметкой.
-//! * [`heal_user_hicolor`] — урезанный пользовательский `index.theme` у
-//!   `hicolor` переименовывается в `index.theme.bak-rexon-<дата>` (НЕ
-//!   удаляется) с записью в журнал. Критерий — по смыслу, а не по размеру
-//!   ([`judge_hicolor_index`]): нет раздела `[Icon Theme]`, пустой
-//!   `Directories=` либо в нём нет части каталогов системного файла. Полный
-//!   файл человека (копия системного, в том числе с добавками) не трогается.
+//! * [`is_reserved_icon_set`] — `hicolor` and `locolor` are not themes but
+//!   shared directories where every program puts its icons. Theme installers
+//!   (the store, `.rxn`, "Like in a distribution", import from Windows) neither
+//!   install nor replace such a directory: a theme with such a name is skipped
+//!   with a note.
+//! * [`heal_user_hicolor`] — a truncated user `index.theme` of `hicolor` is
+//!   renamed to `index.theme.bak-rexon-<date>` (NOT deleted) with a log entry.
+//!   The criterion is semantic, not size-based ([`judge_hicolor_index`]): no
+//!   `[Icon Theme]` section, an empty `Directories=`, or some of the system
+//!   file's directories missing from it. A person's complete file (a copy of
+//!   the system one, including one with additions) is left alone.
 
 use std::path::{Path, PathBuf};
 
 use crate::i18n::trf;
 
-/// Общие наборы значков, которые не темы: их каталоги в профиле делят все
-/// программы (спецификация freedesktop: `hicolor` — обязательный запасной
-/// набор, `locolor` — его устаревший спутник для 16 цветов).
+/// Shared icon sets that are not themes: all programs share their directories
+/// in the profile (freedesktop specification: `hicolor` is the mandatory
+/// fallback set, `locolor` its obsolete companion for 16 colors).
 pub const RESERVED_ICON_SETS: &[&str] = &["hicolor", "locolor"];
 
-/// Имя каталога темы — общий набор значков ([`RESERVED_ICON_SETS`]).
+/// The theme directory name is a shared icon set ([`RESERVED_ICON_SETS`]).
 pub fn is_reserved_icon_set(name: &str) -> bool {
     RESERVED_ICON_SETS.contains(&name.trim_end_matches('/'))
 }
 
-/// Что не так с пользовательским `hicolor/index.theme`.
+/// What is wrong with the user's `hicolor/index.theme`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HicolorVerdict {
-    /// Файл полный: оставить как есть.
+    /// The file is complete: leave it as is.
     Healthy,
-    /// Нет раздела `[Icon Theme]` — файл не описывает набор вовсе.
+    /// No `[Icon Theme]` section — the file does not describe a set at all.
     NoSection,
-    /// Раздел есть, а каталогов (`Directories=`/`ScaledDirectories=`) нет.
+    /// The section exists, but there are no directories (`Directories=`/`ScaledDirectories=`).
     NoDirectories,
-    /// Каталогов меньше, чем у системного файла: `missing` из `system`
-    /// системных каталогов в нём нет.
+    /// Fewer directories than in the system file: `missing` of the `system`
+    /// system directories are absent from it.
     MissingSystemDirs { missing: usize, system: usize },
 }
 
 impl HicolorVerdict {
-    /// Файл урезан и перекрывает системный во вред.
+    /// The file is truncated and harmfully overrides the system one.
     pub fn is_truncated(&self) -> bool {
         *self != HicolorVerdict::Healthy
     }
 
-    /// Причина для журнала (по-русски, журнал читает разработчик).
+    /// Reason for the log (in Russian; the log is read by the developer).
     pub fn reason(&self) -> String {
         match self {
             HicolorVerdict::Healthy => "файл полный".into(),
@@ -68,8 +69,8 @@ impl HicolorVerdict {
     }
 }
 
-/// Каталоги раздела `[Icon Theme]`: `Directories=` и `ScaledDirectories=`.
-/// `None` — раздела нет.
+/// Directories of the `[Icon Theme]` section: `Directories=` and `ScaledDirectories=`.
+/// `None` — there is no section.
 fn icon_theme_dirs(text: &str) -> Option<Vec<String>> {
     let mut in_section = false;
     let mut seen_section = false;
@@ -96,9 +97,9 @@ fn icon_theme_dirs(text: &str) -> Option<Vec<String>> {
     seen_section.then_some(dirs)
 }
 
-/// Приговор пользовательскому `hicolor/index.theme` (`user`) против
-/// системного (`system`; `None` — системного не нашлось, тогда судят только
-/// раздел и пустоту списка).
+/// Verdict on the user's `hicolor/index.theme` (`user`) against the system one
+/// (`system`; `None` — no system file was found, then only the section and an
+/// empty list are judged).
 pub fn judge_hicolor_index(user: &str, system: Option<&str>) -> HicolorVerdict {
     let Some(dirs) = icon_theme_dirs(user) else { return HicolorVerdict::NoSection };
     if dirs.is_empty() {
@@ -114,7 +115,7 @@ pub fn judge_hicolor_index(user: &str, system: Option<&str>) -> HicolorVerdict {
     HicolorVerdict::Healthy
 }
 
-/// Переименованный урезанный файл.
+/// The renamed truncated file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HealedIndex {
     pub path: PathBuf,
@@ -122,7 +123,7 @@ pub struct HealedIndex {
     pub verdict: HicolorVerdict,
 }
 
-/// Системный `hicolor/index.theme`: первый с каталогами в `data_dirs`.
+/// The system `hicolor/index.theme`: the first one with directories in `data_dirs`.
 fn system_hicolor_index(data_dirs: &[PathBuf], data_home: &Path) -> Option<String> {
     data_dirs
         .iter()
@@ -132,7 +133,7 @@ fn system_hicolor_index(data_dirs: &[PathBuf], data_home: &Path) -> Option<Strin
         .find(|t| icon_theme_dirs(t).is_some_and(|d| !d.is_empty()))
 }
 
-/// Свободное имя копии: `index.theme.bak-rexon-<дата>`, занято — `-2`, `-3`…
+/// A free name for the copy: `index.theme.bak-rexon-<date>`; if taken, `-2`, `-3`…
 fn free_backup_name(dir: &Path, date: &str) -> PathBuf {
     let base = format!("index.theme.bak-rexon-{date}");
     let mut candidate = dir.join(&base);
@@ -144,13 +145,13 @@ fn free_backup_name(dir: &Path, date: &str) -> PathBuf {
     candidate
 }
 
-/// Лечение `<data_home>/icons/hicolor/index.theme`: урезанный файл
-/// переименовывается в `index.theme.bak-rexon-<date>`. `None` — файла нет,
-/// он полный или переименовать не вышло (тогда строка в журнале).
+/// Healing `<data_home>/icons/hicolor/index.theme`: a truncated file is renamed
+/// to `index.theme.bak-rexon-<date>`. `None` — there is no file, it is
+/// complete, or renaming failed (then there is a line in the log).
 pub fn heal_user_hicolor(data_home: &Path, data_dirs: &[PathBuf], date: &str) -> Option<HealedIndex> {
     let dir = data_home.join("icons/hicolor");
     let path = dir.join("index.theme");
-    // Ссылка тоже судится по содержимому, но переименовывается сама ссылка.
+    // A symlink is also judged by its contents, but the link itself is renamed.
     std::fs::symlink_metadata(&path).ok()?;
     let user = std::fs::read(&path).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
     let system = system_hicolor_index(data_dirs, data_home);
@@ -173,7 +174,7 @@ pub fn heal_user_hicolor(data_home: &Path, data_dirs: &[PathBuf], date: &str) ->
     Some(HealedIndex { path, backup, verdict })
 }
 
-/// Строка человеку о вылеченном файле.
+/// A line for the person about the healed file.
 pub fn healed_message(h: &HealedIndex) -> String {
     trf(
         "Icon protection: a truncated %1 was hiding system icons — renamed to %2",
@@ -181,8 +182,8 @@ pub fn healed_message(h: &HealedIndex) -> String {
     )
 }
 
-/// `$XDG_DATA_HOME` (или `~/.local/share`) и `$XDG_DATA_DIRS` (или
-/// `/usr/local/share:/usr/share`) живого сеанса.
+/// `$XDG_DATA_HOME` (or `~/.local/share`) and `$XDG_DATA_DIRS` (or
+/// `/usr/local/share:/usr/share`) of the live session.
 fn live_dirs() -> (PathBuf, Vec<PathBuf>) {
     let env = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
     let data_home = env("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| {
@@ -197,7 +198,7 @@ fn live_dirs() -> (PathBuf, Vec<PathBuf>) {
     (data_home, data_dirs)
 }
 
-/// Сегодняшняя дата `ГГГГММДД` по местным часам.
+/// Today's date as `YYYYMMDD` by the local clock.
 fn today() -> String {
     match crate::qt_app::Timestamp::now_local() {
         Some(t) => format!("{:04}{:02}{:02}", t.year, t.month, t.day),
@@ -205,12 +206,12 @@ fn today() -> String {
     }
 }
 
-/// Лечение в живом профиле (старт окна, после установки значков или
-/// курсоров). `Some` — строка человеку: файл переименован.
+/// Healing in the live profile (window start, after installing icons or
+/// cursors). `Some` — a line for the person: the file was renamed.
 ///
-/// Проверки модулей ядра живой профиль не трогают: они судят песочницы через
-/// [`heal_user_hicolor`]. Интеграционные прогоны установки подменяют `HOME` и
-/// `XDG_*` сами.
+/// The core module checks do not touch the live profile: they judge sandboxes
+/// through [`heal_user_hicolor`]. Integration installation runs substitute
+/// `HOME` and `XDG_*` themselves.
 pub fn heal_live() -> Option<String> {
     if cfg!(test) {
         return None;
@@ -225,7 +226,7 @@ mod tests {
 
     const SYSTEM: &str = "[Icon Theme]\nName=Hicolor\nHidden=true\nDirectories=16x16/actions,16x16/apps,22x22/apps,48x48/apps,scalable/apps\n\
                           ScaledDirectories=16x16@2/apps\n\n[16x16/actions]\nSize=16\n";
-    /// Как у дефекта 09.11: только `*/apps`.
+    /// As in the 09.11 defect: only `*/apps`.
     const TRUNCATED: &str = "[Icon Theme]\nName=Hicolor\nDirectories=16x16/apps,48x48/apps,scalable/apps\n";
 
     fn scratch(tag: &str) -> PathBuf {
@@ -240,7 +241,7 @@ mod tests {
         std::fs::write(p, text).unwrap();
     }
 
-    /// Песочница: свой `XDG_DATA_HOME` и один системный каталог данных.
+    /// Sandbox: its own `XDG_DATA_HOME` and a single system data directory.
     fn sandbox(tag: &str, user: Option<&str>) -> (PathBuf, PathBuf, PathBuf) {
         let root = scratch(tag);
         let home = root.join("data-home");
@@ -272,14 +273,14 @@ mod tests {
             judge_hicolor_index(TRUNCATED, Some(SYSTEM)),
             HicolorVerdict::MissingSystemDirs { missing: 3, system: 6 }
         );
-        // Копия системного — полная; с добавками человека — тоже.
+        // A copy of the system file is complete; one with the person's additions too.
         assert_eq!(judge_hicolor_index(SYSTEM, Some(SYSTEM)), HicolorVerdict::Healthy);
         let extra = SYSTEM.replace("scalable/apps", "scalable/apps,64x64/apps,");
         assert_eq!(judge_hicolor_index(&extra, Some(SYSTEM)), HicolorVerdict::Healthy);
-        // Огромный файл без нужных каталогов всё равно урезан.
+        // A huge file without the required directories is still truncated.
         let long = format!("[Icon Theme]\nComment={}\nDirectories=48x48/apps\n", "x".repeat(100_000));
         assert!(judge_hicolor_index(&long, Some(SYSTEM)).is_truncated());
-        // Системного нет — судим только раздел и пустоту.
+        // No system file — only the section and emptiness are judged.
         assert_eq!(judge_hicolor_index(TRUNCATED, None), HicolorVerdict::Healthy);
     }
 
@@ -293,7 +294,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&healed.backup).unwrap(), TRUNCATED);
         assert!(dir.join("48x48/apps").is_dir(), "значки программ на месте");
         assert_eq!(std::fs::read_to_string(sys.join("icons/hicolor/index.theme")).unwrap(), SYSTEM);
-        // Второй прогон — файла уже нет, делать нечего.
+        // Second run — the file is already gone, nothing to do.
         assert_eq!(heal_user_hicolor(&home, &[sys], "20261114"), None);
         let _ = std::fs::remove_dir_all(root);
     }
@@ -325,8 +326,8 @@ mod tests {
 
     #[test]
     fn data_home_listed_in_data_dirs_is_not_its_own_reference() {
-        // XDG_DATA_DIRS иногда содержит и сам XDG_DATA_HOME: урезанный файл
-        // не должен служить эталоном самому себе.
+        // XDG_DATA_DIRS sometimes contains XDG_DATA_HOME itself: a truncated file must
+        // not serve as its own reference.
         let (root, home, _sys) = sandbox("self", Some(TRUNCATED));
         assert_eq!(heal_user_hicolor(&home, &[home.clone()], "20261114"), None, "эталона нет — судим по разделу");
         let empty = "[Icon Theme]\nName=Hicolor\nDirectories=\n";

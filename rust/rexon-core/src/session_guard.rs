@@ -1,65 +1,65 @@
-//! Сторож перед сеансом Plasma для AeroThemePlasma: «вход без Aero» на один
-//! вход, когда оформление разошлось с обновлённой Plasma.
+//! Pre-session guard of Plasma for AeroThemePlasma: «login without Aero» for one
+//! login when the theme has drifted from an updated Plasma.
 //!
-//! ЗАЧЕМ. После `pacman -Syu` форки AeroThemePlasma остаются собранными под
-//! прежнюю Plasma. Худшие случаи: эффект KWin с разошедшимся ABI роняет `kwin_wayland` при загрузке —
-//! обёртка перезапускает его до 10 раз и выкидывает к экрану входа; виджет
-//! панели роняет plasmashell — systemd сдаётся после трёх падений, и человек
-//! видит чёрный стол с курсором. Безопасного режима ни у KWin, ни у
-//! plasmashell нет.
+//! WHY. After `pacman -Syu` the AeroThemePlasma forks stay built against the
+//! previous Plasma. The worst cases: a KWin effect with a drifted ABI crashes `kwin_wayland` at load —
+//! the wrapper restarts it up to 10 times and throws the person back to the login screen; a panel
+//! widget crashes plasmashell — systemd gives up after three crashes, and the person
+//! sees a black desktop with a cursor. Neither KWin nor plasmashell has
+//! a safe mode.
 //!
-//! КАК. startplasma выполняет `~/.config/plasma-workspace/env/*.sh` ДО запуска
-//! KWin и plasmashell (`startplasma.cpp`, `runEnvironmentScripts()`). Туда
-//! Rexon кладёт тонкий сценарий ([`env_script`]): он зовёт
-//! `rexon --session-guard` с потолком в 3 секунды и ничего больше; нет бинаря
-//! или он упал — вход идёт как обычно (вход важнее сторожа). Сторож:
-//!   1. быстро сверяет набор с текущими библиотеками — ТЕ ЖЕ проверки, что у
-//!      окна Rexon ([`crate::aeroshell::check_modules_with`]: строка версии в
-//!      эффектах против KWin, версия форка libplasma против plasma-workspace,
-//!      `ldd -r` модулей набора), плюс `ldd -r /usr/bin/plasmashell`. Данные —
-//!      из базы pacman файлами (`/var/lib/pacman/local`), без единого запуска
-//!      pacman; `ldd` — параллельно. Итог — [`decide`];
-//!   2. разошлось по-настоящему — [`fall_back_to_stock`]: эффекты Aero в
-//!      `kwinrc [Plugins] <id>Enabled=false`, а если ломается сторона
-//!      plasmashell — штатная раскладка панелей вместо раскладки с виджетами
-//!      Aero. Всё прежнее — в копии в `$XDG_STATE_HOME/rexon/session-guard/`;
-//!   3. после входа — уведомление «Оформление временно выключено… [Пересобрать]
-//!      [Подробнее]» ([`notice_route_live`], отдельный процесс с задержкой: до
-//!      входа показывать уведомления некому);
-//!   4. после удачной пересборки ([`after_rebuild_live`]) эффекты возвращаются
-//!      сразу, раскладка — при следующем входе (plasmashell, пока жив, держит
-//!      раскладку в памяти и при выходе записал бы её поверх возвращённой).
-//!      Сверка снова сходится при входе — сторож возвращает всё сам.
+//! HOW. startplasma runs `~/.config/plasma-workspace/env/*.sh` BEFORE starting
+//! KWin and plasmashell (`startplasma.cpp`, `runEnvironmentScripts()`). There
+//! Rexon puts a thin script ([`env_script`]): it calls
+//! `rexon --session-guard` with a 3-second cap and nothing more; if there is no binary
+//! or it crashed, the login proceeds as usual (the login matters more than the guard). The guard:
+//!   1. quickly checks the suite against the current libraries — THE SAME checks as
+//!      the Rexon window ([`crate::aeroshell::check_modules_with`]: the version string in
+//!      effects against KWin, the libplasma fork version against plasma-workspace,
+//!      `ldd -r` of the suite's modules), plus `ldd -r /usr/bin/plasmashell`. The data
+//!      comes from the pacman database as files (`/var/lib/pacman/local`), without a single
+//!      pacman run; `ldd` runs in parallel. The result is [`decide`];
+//!   2. a real drift — [`fall_back_to_stock`]: Aero effects get
+//!      `kwinrc [Plugins] <id>Enabled=false`, and if the plasmashell side breaks —
+//!      the stock panel layout instead of the layout with Aero
+//!      widgets. Everything previous is in a copy in `$XDG_STATE_HOME/rexon/session-guard/`;
+//!   3. after login — the notification «The theme is temporarily turned off… [Rebuild]
+//!      [Details]» ([`notice_route_live`], a separate process with a delay: before
+//!      login there is nobody to show notifications);
+//!   4. after a successful rebuild ([`after_rebuild_live`]) the effects come back
+//!      immediately, the layout — at the next login (plasmashell, while alive, keeps
+//!      the layout in memory and on exit would write it over the restored one).
+//!      The check matches again at login — the guard restores everything itself.
 //!
-//! ЗАЩИТА ОТ ДУРАКА.
-//!   * Копия — до правки; правка — атомарной заменой файла. Повторный вход при
-//!     всё ещё сломанном наборе НЕ перетирает копию: прежние значения ключей
-//!     уже записаны, а в файле сейчас наши `false` — сохранять их значило бы
-//!     потерять настройки человека. Добавляются только новые ключи.
-//!   * Возврат идемпотентный и бережный: ключ возвращается, только если в нём
-//!     всё ещё наше `false` (человек сам включил эффект — его выбор остаётся);
-//!     раскладка, которую человек успел поменять во «входе без Aero», перед
-//!     возвратом откладывается копией `appletsrc.during-fallback`.
-//!   * AeroThemePlasma не стоит (нет пакета оболочки) — сторож молчит.
-//!     Вне Plasma не трогает ничего; трогает только два файла: `kwinrc` и
+//! FOOLPROOFING.
+//!   * The copy comes before the edit; the edit is an atomic file replacement. A repeated login with
+//!     the suite still broken does NOT overwrite the copy: the previous key values
+//!     are already recorded, and the file now holds our `false`s — saving them would mean
+//!     losing the person's settings. Only new keys are added.
+//!   * Restoring is idempotent and careful: a key is restored only if it
+//!     still holds our `false` (if the person enabled the effect themselves, their choice stays);
+//!     a layout the person managed to change during the «login without Aero» is set aside
+//!     before restoring as the copy `appletsrc.during-fallback`.
+//!   * AeroThemePlasma is not installed (no shell package) — the guard stays silent.
+//!     Outside Plasma it touches nothing; it touches only two files: `kwinrc` and
 //!     `plasma-org.kde.plasma.desktop-appletsrc`.
-//!   * Ложная тревога → только уведомление. Подмена — лишь по однозначным
-//!     уликам: строка версии эффекта не та (по ней же решает загрузчик KWin),
-//!     `ldd` не находит библиотеку или символ, форк libplasma не той версии.
-//!     Один лишь «приватный интерфейс прежнего Qt» ([`crate::aeroshell::Report::at_risk_only`])
-//!     или беда в самом plasmashell без форка libplasma (это не Aero, менять
-//!     ему раскладку бесполезно) — только уведомление.
-//!   * Выключено «проверять оформление при запуске» в настройках — сторож
-//!     тоже молчит, а сценарий снимается.
+//!   * A false alarm → only a notification. Substitution happens only on unambiguous
+//!     evidence: the effect's version string is wrong (the KWin loader decides by it too),
+//!     `ldd` cannot find a library or a symbol, the libplasma fork has the wrong version.
+//!     Just a «private interface of the previous Qt» ([`crate::aeroshell::Report::at_risk_only`])
+//!     or trouble in plasmashell itself without the libplasma fork (that is not Aero, changing
+//!     its layout is useless) — only a notification.
+//!   * «Check the theme at startup» is turned off in settings — the guard
+//!     stays silent as well, and the script is removed.
 //!
-//! ОБЩЕЕ ДЛЯ СТОРОЖА СЕАНСА. «Откатить оформление на штатное и запомнить, как
-//! было» — [`fall_back_to_stock`] и обратная ей [`restore_saved`]. Их же
-//! позовёт сторож сеанса (ступень 3: падения KWin/plasmashell сразу после
-//! входа). Ему посреди сеанса править раскладку нельзя (plasmashell жив),
-//! поэтому для него есть [`request_fallback`]: отметка «со следующего входа —
-//! штатное оформление», её применяет этот сторож до KWin. Возврат после
-//! такой отметки сам по сходящейся сверке НЕ делается (сверка сходилась и в
-//! тот раз, когда всё упало) — только после пересборки или по
+//! SHARED WITH THE SESSION WATCHDOG. «Roll the theme back to stock and remember how
+//! it was» — [`fall_back_to_stock`] and its inverse [`restore_saved`]. The
+//! session watchdog will call them too (stage 3: KWin/plasmashell crashes right after
+//! login). It must not edit the layout mid-session (plasmashell is alive),
+//! so it has [`request_fallback`]: the marker «stock theme from the next
+//! login», applied by this guard before KWin. Restoring after
+//! such a marker is NOT done by a matching check alone (the check matched also
+//! the time everything crashed) — only after a rebuild or via
 //! `rexon --session-guard-restore`.
 
 use std::path::{Path, PathBuf};
@@ -71,43 +71,43 @@ use crate::i18n::{tr, trf};
 use crate::shell_palette::{ini_apply, ini_get, IniEdit};
 
 // ============================================================================
-// Имена и пути
+// Names and paths
 // ============================================================================
 
-/// Флаг сторожа (его зовёт сценарий в `plasma-workspace/env`).
+/// The guard flag (the script in `plasma-workspace/env` calls it).
 pub const GUARD_FLAG: &str = "--session-guard";
-/// Добавка к [`GUARD_FLAG`]: только сверить и напечатать решение, ничего не
-/// менять (проверка в ВМ и замер времени).
+/// An addition to [`GUARD_FLAG`]: only check and print the decision, change
+/// nothing (a check in a VM and a timing measurement).
 pub const DRY_RUN_FLAG: &str = "--dry-run";
-/// Флаг отложенного уведомления после входа.
+/// Flag of the deferred notification after login.
 pub const NOTICE_FLAG: &str = "--session-guard-notice";
-/// Флаг ручного возврата сохранённого оформления.
+/// Flag of manually restoring the saved theme.
 pub const RESTORE_FLAG: &str = "--session-guard-restore";
 
-/// Имя сценария в `~/.config/plasma-workspace/env/`.
+/// Script name in `~/.config/plasma-workspace/env/`.
 pub const ENV_SCRIPT_NAME: &str = "rexon-session-guard.sh";
-/// Раскладка панелей и рабочего стола plasmashell.
+/// The plasmashell panel and desktop layout.
 pub const APPLETSRC_NAME: &str = "plasma-org.kde.plasma.desktop-appletsrc";
-/// Группа включения модулей KWin.
+/// The KWin module enablement group.
 pub const KWIN_PLUGINS_GROUP: &str = "Plugins";
-/// Бинарь plasmashell — его `ldd -r` ловит разошедшийся форк libplasma.
+/// The plasmashell binary — its `ldd -r` catches a drifted libplasma fork.
 pub const PLASMASHELL_BIN: &str = "/usr/bin/plasmashell";
-/// База установленных пакетов pacman.
+/// The pacman database of installed packages.
 pub const PACMAN_LOCAL: &str = "/var/lib/pacman/local";
-/// Потолок времени сторожа в сценарии, секунды (вход не тормозить).
+/// The guard's time cap in the script, seconds (do not slow down login).
 pub const ENV_TIMEOUT_SECS: u64 = 3;
-/// Через сколько после входа показывать уведомление, секунды: до этого
-/// уведомления показывать некому (служба уведомлений — сам plasmashell).
+/// How long after login to show the notification, seconds: before that there is
+/// nobody to show notifications (the notification service is plasmashell itself).
 pub const NOTICE_DELAY_SECS: u64 = 15;
-/// Сколько ещё пытаться достучаться до службы уведомлений, секунды.
+/// How much longer to keep trying to reach the notification service, seconds.
 pub const NOTICE_RETRY_SECS: u64 = 120;
-/// Потолок одного `ldd -r`, секунды.
+/// Cap of one `ldd -r`, seconds.
 const LDD_TIMEOUT_SECS: u64 = 2;
 
-/// Файлы сторожа: настройки Plasma и каталог копий.
+/// The guard's files: Plasma settings and the copies directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuardPaths {
-    /// `$XDG_CONFIG_HOME` (обычно `~/.config`).
+    /// `$XDG_CONFIG_HOME` (usually `~/.config`).
     pub config_home: PathBuf,
     /// `$XDG_STATE_HOME/rexon/session-guard`.
     pub state_dir: PathBuf,
@@ -118,7 +118,7 @@ impl GuardPaths {
         Self { config_home: config_home.into(), state_dir: state_dir.into() }
     }
 
-    /// Пути живого пользователя.
+    /// Paths of the live user.
     pub fn live() -> Self {
         let home = std::env::var("HOME").unwrap_or_default();
         let state = crate::utils::state_home(std::env::var("XDG_STATE_HOME").ok().as_deref(), &home);
@@ -134,47 +134,47 @@ impl GuardPaths {
     pub fn env_script(&self) -> PathBuf {
         self.config_home.join("plasma-workspace/env").join(ENV_SCRIPT_NAME)
     }
-    /// Что сохранено и почему.
+    /// What was saved and why.
     pub fn saved_json(&self) -> PathBuf {
         self.state_dir.join("saved.json")
     }
-    /// Копия раскладки человека до подмены.
+    /// Copy of the person's layout before substitution.
     pub fn saved_appletsrc(&self) -> PathBuf {
         self.state_dir.join("appletsrc")
     }
-    /// Полная копия `kwinrc` до первой правки (на крайний случай, руками).
+    /// Full copy of `kwinrc` before the first edit (for the worst case, by hand).
     pub fn saved_kwinrc(&self) -> PathBuf {
         self.state_dir.join("kwinrc")
     }
-    /// Раскладка, которую человек менял во «входе без Aero», — отложена
-    /// перед возвратом его настоящей.
+    /// The layout the person changed during the «login without Aero» — set aside
+    /// before restoring their real one.
     pub fn during_fallback_appletsrc(&self) -> PathBuf {
         self.state_dir.join("appletsrc.during-fallback")
     }
-    /// Уведомление, ждущее показа после входа.
+    /// A notification waiting to be shown after login.
     pub fn notice_json(&self) -> PathBuf {
         self.state_dir.join("notice.json")
     }
-    /// Отметка сторожа сеанса: со следующего входа — штатное оформление.
+    /// The session watchdog's marker: stock theme from the next login.
     pub fn request_file(&self) -> PathBuf {
         self.state_dir.join("request")
     }
-    /// О каком «только риске» уже сказали (отпечаток).
+    /// Which «risk only» has already been reported (fingerprint).
     pub fn risk_stamp(&self) -> PathBuf {
         self.state_dir.join("risk-notified")
     }
 }
 
 // ============================================================================
-// База pacman файлами: без запуска pacman
+// The pacman database as files: without running pacman
 // ============================================================================
 //
-// `pacman -Qq`, `-Q`, `-Ql` — это 3–15 запусков по 10–40 мс. До KWin каждые
-// десятки миллисекунд — задержка входа. Та же база лежит текстом:
-// `/var/lib/pacman/local/<имя>-<версия>-<выпуск>/{desc,files}`.
+// `pacman -Qq`, `-Q`, `-Ql` are 3–15 runs of 10–40 ms each. Before KWin every
+// few tens of milliseconds are login delay. The same database lies as text:
+// `/var/lib/pacman/local/<name>-<version>-<release>/{desc,files}`.
 
-/// Имя и версия пакета из имени каталога базы (`kwin-6.8.1-2.1` →
-/// `("kwin", "6.8.1-2.1")`). Имя может содержать `-`, версия и выпуск — нет.
+/// Package name and version from a database directory name (`kwin-6.8.1-2.1` →
+/// `("kwin", "6.8.1-2.1")`). The name may contain `-`, the version and release may not.
 pub fn local_db_entry(dir_name: &str) -> Option<(String, String)> {
     let mut parts = dir_name.rsplitn(3, '-');
     let rel = parts.next()?;
@@ -183,8 +183,8 @@ pub fn local_db_entry(dir_name: &str) -> Option<(String, String)> {
     (!name.is_empty() && !ver.is_empty() && !rel.is_empty()).then(|| (name.to_string(), format!("{ver}-{rel}")))
 }
 
-/// Файл `files` базы → вывод как у `pacman -Ql <pkg>` (`<pkg> /путь`), чтобы
-/// дальше шёл общий разбор ([`crate::aeroshell::package_files`]).
+/// The database `files` file → output like `pacman -Ql <pkg>` (`<pkg> /path`), so that
+/// the shared parsing follows ([`crate::aeroshell::package_files`]).
 pub fn local_files_as_ql(package: &str, files_text: &str) -> String {
     let mut out = String::new();
     let mut in_files = false;
@@ -203,14 +203,14 @@ pub fn local_files_as_ql(package: &str, files_text: &str) -> String {
     out
 }
 
-/// Установленные пакеты: имя → (версия, каталог базы).
+/// Installed packages: name → (version, database directory).
 #[derive(Debug, Clone, Default)]
 pub struct LocalDb {
     pub entries: Vec<(String, String, PathBuf)>,
 }
 
 impl LocalDb {
-    /// Прочитать список каталогов базы. Нет базы (не Arch) — пусто.
+    /// Read the list of database directories. No database (not Arch) — empty.
     pub fn read(root: &Path) -> Self {
         let mut entries = Vec::new();
         if let Ok(rd) = std::fs::read_dir(root) {
@@ -230,7 +230,7 @@ impl LocalDb {
     pub fn version(&self, package: &str) -> Option<String> {
         self.entries.iter().find(|(n, _, _)| n == package).map(|(_, v, _)| v.clone())
     }
-    /// Вывод «как `pacman -Ql`» для пакета либо None.
+    /// Output «like `pacman -Ql`» for a package, or None.
     pub fn file_list(&self, package: &str) -> Option<String> {
         let (_, _, dir) = self.entries.iter().find(|(n, _, _)| n == package)?;
         let text = std::fs::read_to_string(dir.join("files")).ok()?;
@@ -239,32 +239,32 @@ impl LocalDb {
 }
 
 // ============================================================================
-// Из чего состоит набор: эффекты KWin и виджеты Plasma
+// What the suite consists of: KWin effects and Plasma widgets
 // ============================================================================
 
-/// Модуль эффекта KWin из набора.
+/// A KWin effect module from the suite.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectModule {
-    /// Имя файла (`smodglow.so`) — так он назван в бедах сверки.
+    /// File name (`smodglow.so`) — that is how it is named in the check's problems.
     pub file_name: String,
-    /// Опознаватель модуля для `kwinrc [Plugins] <id>Enabled`.
+    /// Module identifier for `kwinrc [Plugins] <id>Enabled`.
     pub id: String,
 }
 
-/// Что из набора включается в настройках: эффекты и виджеты.
+/// What of the suite is enabled in settings: effects and widgets.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AeroParts {
     pub effects: Vec<EffectModule>,
-    /// Опознаватели виджетов и контейнеров Plasma из набора.
+    /// Identifiers of the suite's Plasma widgets and containments.
     pub applets: Vec<String>,
 }
 
-/// Опознаватель модуля KWin: `KPlugin.Id` из вшитых метаданных, иначе имя
-/// файла без `.so` (так же решает и `KPluginMetaData`).
+/// KWin module identifier: `KPlugin.Id` from the embedded metadata, otherwise the file
+/// name without `.so` (`KPluginMetaData` decides the same way).
 ///
-/// Qt 6 вшивает метаданные в CBOR: ключ `KPlugin` (`0x67`+7 букв), внутри —
-/// `Id` (`0x62 'I' 'd'`) и текстовая строка. Старый вид (JSON текстом) тоже
-/// понимается.
+/// Qt 6 embeds metadata as CBOR: the key `KPlugin` (`0x67`+7 letters), inside —
+/// `Id` (`0x62 'I' 'd'`) and a text string. The old form (JSON as text) is also
+/// understood.
 pub fn effect_plugin_id(data: &[u8], file_name: &str) -> String {
     let stem = file_name.strip_suffix(".so").unwrap_or(file_name).to_string();
     let find = |hay: &[u8], needle: &[u8]| hay.windows(needle.len()).position(|w| w == needle);
@@ -303,8 +303,8 @@ pub fn effect_plugin_id(data: &[u8], file_name: &str) -> String {
     stem
 }
 
-/// Опознаватель виджета по пути файла пакета: каталог
-/// `/usr/share/plasma/plasmoids/<id>/…` или модуль `…/plasma/applets/<id>.so`.
+/// Widget identifier by a package file path: the directory
+/// `/usr/share/plasma/plasmoids/<id>/…` or the module `…/plasma/applets/<id>.so`.
 pub fn applet_id_of(path: &str) -> Option<String> {
     if let Some((_, rest)) = path.split_once("/share/plasma/plasmoids/") {
         let id = rest.split('/').next().unwrap_or("");
@@ -317,7 +317,7 @@ pub fn applet_id_of(path: &str) -> Option<String> {
     None
 }
 
-/// Состав набора по файлам его пакетов.
+/// Composition of the suite from the files of its packages.
 pub fn aero_parts(files: &[(String, Vec<String>)], read_file: &dyn Fn(&str) -> Option<Vec<u8>>) -> AeroParts {
     let mut parts = AeroParts::default();
     for (_, list) in files {
@@ -342,36 +342,36 @@ pub fn aero_parts(files: &[(String, Vec<String>)], read_file: &dyn Fn(&str) -> O
 }
 
 // ============================================================================
-// Решение «разошлось или нет»
+// The «drifted or not» decision
 // ============================================================================
 
-/// Итог сверки для сторожа.
+/// Check result for the guard.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {
-    /// Оболочки AeroThemePlasma нет — сторожу здесь делать нечего.
+    /// There is no AeroThemePlasma shell — the guard has nothing to do here.
     NotInstalled,
-    /// Всё сходится.
+    /// Everything matches.
     Healthy,
-    /// Есть только риск либо беда не в наборе — уведомить, ничего не менять.
+    /// There is only a risk, or the trouble is not in the suite — notify, change nothing.
     NoticeOnly { why: Vec<String> },
-    /// Разошлось по-настоящему: что выключить на этот вход.
+    /// A real drift: what to turn off for this login.
     Broken { effects: bool, shell: bool, why: Vec<String> },
 }
 
-/// Имя модуля из строки беды сверки (`smodglow.so: undefined symbol: …`).
+/// Module name from a check problem line (`smodglow.so: undefined symbol: …`).
 fn problem_module(line: &str) -> &str {
     line.split(": ").next().unwrap_or(line)
 }
 
-/// Решить по сверке набора ([`crate::aeroshell::check_modules_with`]) и
-/// `ldd -r` plasmashell ([`crate::aeroshell::ldd_problems`]).
+/// Decide by the suite check ([`crate::aeroshell::check_modules_with`]) and
+/// the `ldd -r` of plasmashell ([`crate::aeroshell::ldd_problems`]).
 pub fn decide(report: &Report, plasmashell_problems: &[String], parts: &AeroParts) -> Verdict {
     if !report.packages.iter().any(|p| p.package.starts_with(aeroshell::SHELL_PACKAGE_PREFIX)) {
         return Verdict::NotInstalled;
     }
     let is_effect = |module: &str| parts.effects.iter().any(|e| e.file_name == module);
-    // «Приватный интерфейс прежнего Qt» — риск, а не поломка: модуль пока
-    // грузится. Подменять по нему настройки — ложная тревога.
+    // «Private interface of the previous Qt» is a risk, not a breakage: the module still
+    // loads. Substituting settings over it is a false alarm.
     let certain = |line: &str| !line.contains(aeroshell::QT_PRIVATE_PROBLEM);
     let differs = |p: &aeroshell::PackageVerdict| matches!((&p.built_for, &p.installed), (Some(b), Some(i)) if b != i);
 
@@ -411,9 +411,9 @@ pub fn decide(report: &Report, plasmashell_problems: &[String], parts: &AeroPart
         for line in plasmashell_problems {
             why.push(format!("plasmashell: {line}"));
         }
-        // plasmashell не грузится при стоящем форке libplasma — это форк.
-        // Без форка беда не в наборе (смесь Qt и т. п.): раскладка Aero тут
-        // ни при чём, и менять её — ложная тревога.
+        // plasmashell does not load while the libplasma fork is installed — it is the fork.
+        // Without the fork the trouble is not in the suite (a Qt mix etc.): the Aero layout
+        // has nothing to do with it, and changing it is a false alarm.
         shell |= fork;
     }
     if effects || shell {
@@ -431,27 +431,27 @@ pub fn decide(report: &Report, plasmashell_problems: &[String], parts: &AeroPart
 }
 
 // ============================================================================
-// kwinrc: выключить эффекты с копией и вернуть
+// kwinrc: turn off effects with a copy and restore them
 // ============================================================================
 
-/// Прежнее значение одного ключа (`None` — ключа не было).
+/// Previous value of one key (`None` — the key did not exist).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedKey {
     pub key: String,
     pub previous: Option<String>,
 }
 
-/// Что сторож выключает: `false` — значение, которое он пишет.
+/// What the guard turns off: `false` is the value it writes.
 const OFF: &str = "false";
 
 fn enabled_key(id: &str) -> String {
     format!("{id}Enabled")
 }
 
-/// Выключить эффекты в тексте `kwinrc`. Прежние значения дописываются в
-/// `saved` — только для ключей, которых там ещё нет (повторный вход не
-/// перетирает копию нашими же `false`). Уже выключенный ключ не трогается и
-/// не запоминается. → новый текст либо None, если менять нечего.
+/// Turn off effects in the `kwinrc` text. Previous values are appended to
+/// `saved` — only for keys not there yet (a repeated login does not
+/// overwrite the copy with our own `false`s). An already disabled key is neither touched nor
+/// remembered. → the new text, or None if there is nothing to change.
 pub fn disable_effects(kwinrc: Option<&str>, ids: &[String], saved: &mut Vec<SavedKey>) -> Option<String> {
     let text = kwinrc.unwrap_or_default();
     let mut edits = Vec::new();
@@ -469,9 +469,9 @@ pub fn disable_effects(kwinrc: Option<&str>, ids: &[String], saved: &mut Vec<Sav
     (!edits.is_empty()).then(|| ini_apply(kwinrc, &edits))
 }
 
-/// Вернуть сохранённые ключи. Ключ, в котором уже не наше `false` (человек
-/// включил эффект сам), остаётся как есть и попадает во второй список.
-/// → (новый текст либо None, если менять нечего; оставленные ключи).
+/// Restore the saved keys. A key that no longer holds our `false` (the person
+/// enabled the effect themselves) stays as is and goes into the second list.
+/// → (the new text or None if there is nothing to change; the keys left alone).
 pub fn restore_effects(kwinrc: Option<&str>, saved: &[SavedKey]) -> (Option<String>, Vec<String>) {
     let text = kwinrc.unwrap_or_default();
     let mut edits = Vec::new();
@@ -493,16 +493,16 @@ pub fn restore_effects(kwinrc: Option<&str>, saved: &[SavedKey]) -> (Option<Stri
 }
 
 // ============================================================================
-// Раскладка plasmashell: штатная вместо раскладки с виджетами Aero
+// plasmashell layout: stock instead of the layout with Aero widgets
 // ============================================================================
 //
-// Группы раскладки: `[Containments][N]` — контейнер (рабочий стол, панель,
-// внутренний контейнер системного лотка), `[Containments][N][Applets][M]` —
-// виджет в нём, глубже — их настройки. Штатная раскладка строится из
-// раскладки человека: рабочие столы остаются (обои, комнаты, экраны), из
-// них убираются только виджеты Aero; все панели уходят, вместо них — одна
-// штатная панель внизу, как у Plasma по умолчанию. Сама раскладка человека
-// целиком лежит в копии и возвращается файлом.
+// Layout groups: `[Containments][N]` — a containment (desktop, panel,
+// the system tray's inner containment), `[Containments][N][Applets][M]` —
+// a widget in it, deeper — their settings. The stock layout is built from
+// the person's layout: desktops stay (wallpapers, activities, screens), only
+// Aero widgets are removed from them; all panels go away, replaced by one
+// stock panel at the bottom, like Plasma's default. The person's layout itself
+// lies in full in the copy and is restored as a file.
 
 struct Group {
     name: Option<String>,
@@ -533,7 +533,7 @@ fn segments(name: &str) -> Vec<&str> {
     name.split("][").collect()
 }
 
-/// Ссылается ли раскладка на виджеты или контейнеры набора.
+/// Whether the layout refers to the suite's widgets or containments.
 pub fn layout_uses(appletsrc: &str, ids: &[String]) -> bool {
     split_groups(appletsrc).iter().any(|g| {
         let Some(name) = &g.name else { return false };
@@ -543,7 +543,7 @@ pub fn layout_uses(appletsrc: &str, ids: &[String]) -> bool {
     })
 }
 
-/// Виджеты штатной панели Plasma (`org.kde.plasma.desktop` `layout.js`).
+/// Widgets of the stock Plasma panel (`org.kde.plasma.desktop` `layout.js`).
 pub const STOCK_PANEL_APPLETS: &[&str] = &[
     "org.kde.plasma.kickoff",
     "org.kde.plasma.icontasks",
@@ -556,8 +556,8 @@ const STOCK_DESKTOP: &str = "org.kde.desktopcontainment";
 const SYSTRAY_APPLET: &str = "org.kde.plasma.systemtray";
 const SYSTRAY_CONTAINMENT: &str = "org.kde.plasma.private.systemtray";
 
-/// Штатная раскладка из раскладки человека. None — раскладка не ссылается
-/// на набор, подменять нечего.
+/// Stock layout from the person's layout. None — the layout does not refer
+/// to the suite, nothing to substitute.
 pub fn stock_layout(appletsrc: &str, aero: &[String]) -> Option<String> {
     if !layout_uses(appletsrc, aero) {
         return None;
@@ -631,8 +631,8 @@ pub fn stock_layout(appletsrc: &str, aero: &[String]) -> Option<String> {
         out.push('\n');
     }
 
-    // Штатная панель. Виджет, который подменяет сам набор (тот же
-    // опознаватель в его пакете), в неё не ставится: он и есть сломанный.
+    // The stock panel. A widget that the suite itself replaces (the same
+    // identifier in its package) is not put into it: it is the broken one.
     let panel = max_id + 1;
     let mut next = panel;
     let mut order = Vec::new();
@@ -662,38 +662,38 @@ pub fn stock_layout(appletsrc: &str, aero: &[String]) -> Option<String> {
 }
 
 // ============================================================================
-// Состояние: что сохранено и почему
+// State: what was saved and why
 // ============================================================================
 
-/// Почему оформление откатили.
+/// Why the theme was rolled back.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FallbackCause {
-    /// Сверка разошлась — сойдётся при входе, всё вернётся само.
+    /// The check drifted — it will match at login and everything will come back by itself.
     #[default]
     Mismatch,
-    /// Попросил сторож сеанса (падения после входа): сверка тогда сходилась,
-    /// поэтому сама по себе сходящаяся сверка — не повод возвращать.
+    /// Requested by the session watchdog (crashes after login): the check matched back then,
+    /// so a matching check by itself is no reason to restore.
     Requested { reason: String },
 }
 
-/// Сохранённое оформление человека.
+/// The person's saved theme.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct SavedLook {
     pub cause: FallbackCause,
-    /// Когда откатили (секунды эпохи).
+    /// When it was rolled back (seconds since the epoch).
     pub since: u64,
-    /// Прежние значения ключей `kwinrc [Plugins]`.
+    /// Previous values of the `kwinrc [Plugins]` keys.
     pub effects: Vec<SavedKey>,
-    /// Раскладка человека лежит копией ([`GuardPaths::saved_appletsrc`]).
+    /// The person's layout lies as a copy ([`GuardPaths::saved_appletsrc`]).
     pub layout: bool,
-    /// Отпечаток записанной нами штатной раскладки — по нему видно, менял ли
-    /// её человек.
+    /// Fingerprint of the stock layout we wrote — it shows whether the person
+    /// changed it.
     pub layout_written: Option<String>,
-    /// Пересборка прошла — возвращать при входе, даже если откат просил
-    /// сторож сеанса.
+    /// The rebuild succeeded — restore at login, even if the rollback was requested by
+    /// the session watchdog.
     pub rebuilt: bool,
-    /// Технические причины (для «Подробнее»).
+    /// Technical reasons (for «Details»).
     pub why: Vec<String>,
 }
 
@@ -703,7 +703,7 @@ impl SavedLook {
     }
 }
 
-/// Отпечаток текста (FNV-1a, 64 бита): стабилен между сборками.
+/// Text fingerprint (FNV-1a, 64 bits): stable between builds.
 pub fn fingerprint(text: &str) -> String {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in text.as_bytes() {
@@ -717,8 +717,8 @@ fn read_text(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()
 }
 
-/// Записать файл атомарно: рядом и переименованием. Прерванная запись
-/// оставляет прежний файл целым.
+/// Write a file atomically: next to it and by renaming. An interrupted write
+/// leaves the previous file intact.
 pub(crate) fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -728,7 +728,7 @@ pub(crate) fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
     std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// Прочитать сохранённое. Нет файла или он испорчен — None.
+/// Read what was saved. No file or it is corrupted — None.
 pub fn load_saved(paths: &GuardPaths) -> Option<SavedLook> {
     serde_json::from_str(&read_text(&paths.saved_json())?).ok()
 }
@@ -743,23 +743,23 @@ fn now_secs() -> u64 {
 }
 
 // ============================================================================
-// ОБЩЕЕ: откатить на штатное и запомнить; вернуть
+// SHARED: roll back to stock and remember; restore
 // ============================================================================
 
-/// Что откатить.
+/// What to roll back.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FallbackPlan {
-    /// Опознаватели эффектов KWin, которые выключить.
+    /// Identifiers of the KWin effects to turn off.
     pub effects: Vec<String>,
-    /// Опознаватели виджетов набора: раскладка, ссылающаяся на них,
-    /// подменяется штатной. Пусто — раскладку не трогать.
+    /// Identifiers of the suite's widgets: a layout referring to them
+    /// is replaced by the stock one. Empty — do not touch the layout.
     pub applets: Vec<String>,
-    /// Технические причины (для «Подробнее»).
+    /// Technical reasons (for «Details»).
     pub why: Vec<String>,
 }
 
 impl FallbackPlan {
-    /// Весь набор: и эффекты, и раскладка (так откатывает сторож сеанса).
+    /// The whole suite: both effects and layout (that is how the session watchdog rolls back).
     pub fn whole(parts: &AeroParts) -> Self {
         Self {
             effects: parts.effects.iter().map(|e| e.id.clone()).collect(),
@@ -769,12 +769,12 @@ impl FallbackPlan {
     }
 }
 
-/// Что сделал откат.
+/// What the rollback did.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FallbackDone {
-    /// Выключенные сейчас эффекты (ключи `kwinrc`).
+    /// Effects turned off now (`kwinrc` keys).
     pub effects_off: Vec<String>,
-    /// Раскладка подменена сейчас.
+    /// The layout was substituted now.
     pub layout_replaced: bool,
 }
 
@@ -784,19 +784,19 @@ impl FallbackDone {
     }
 }
 
-/// Откатить оформление на штатное и запомнить, как было.
+/// Roll the theme back to stock and remember how it was.
 ///
-/// ОБЩАЯ функция: её зовёт сторож до KWin ([`guard_with`]) и позовёт сторож
-/// сеанса. Порядок для каждого файла: копия в `state_dir` (только если её
-/// ещё нет) → запись «что сохранено» → правка файла атомарной заменой.
-/// Прерывание в любом месте не теряет настроек: копия всегда раньше правки.
+/// A SHARED function: the pre-KWin guard calls it ([`guard_with`]) and the session
+/// watchdog will too. Order for each file: a copy in `state_dir` (only if there is none
+/// yet) → the «what was saved» record → editing the file by atomic replacement.
+/// An interruption anywhere loses no settings: the copy always comes before the edit.
 ///
-/// Идемпотентна: повторный вызов при уже откаченном оформлении ничего не
-/// перезаписывает в копиях; доделывает только то, что снова включилось
-/// (новый эффект, раскладка, которую Plasma заново собрала из пакета Aero).
+/// Idempotent: a repeated call with the theme already rolled back overwrites nothing
+/// in the copies; it only finishes what got enabled again
+/// (a new effect, a layout Plasma rebuilt from the Aero package).
 ///
-/// ⚠️ Раскладку править можно, только пока plasmashell не запущен (он
-/// держит её в памяти и записал бы поверх) — посреди сеанса зовите
+/// ⚠️ The layout can only be edited while plasmashell is not running (it
+/// keeps it in memory and would write over it) — mid-session call
 /// [`request_fallback`].
 pub fn fall_back_to_stock(paths: &GuardPaths, plan: &FallbackPlan, cause: FallbackCause) -> Result<FallbackDone, String> {
     let mut saved = load_saved(paths).unwrap_or_default();
@@ -805,8 +805,8 @@ pub fn fall_back_to_stock(paths: &GuardPaths, plan: &FallbackPlan, cause: Fallba
         saved.since = now_secs();
         saved.rebuilt = false;
     } else if matches!(cause, FallbackCause::Requested { .. }) {
-        // Падение после входа сильнее расхождения: такое не возвращается
-        // само по сходящейся сверке.
+        // A crash after login outweighs a drift: such a case is not restored
+        // by a matching check alone.
         saved.cause = cause;
     }
     for w in &plan.why {
@@ -839,12 +839,12 @@ pub fn fall_back_to_stock(paths: &GuardPaths, plan: &FallbackPlan, cause: Fallba
         }
     }
 
-    // ── раскладка ──
+    // ── layout ──
     if !plan.applets.is_empty() {
         if let Some(current) = read_text(&paths.appletsrc()) {
             if let Some(stock) = stock_layout(&current, &plan.applets) {
-                // Копия — только первая: если она уже есть, в файле сейчас
-                // НЕ раскладка человека (Plasma собрала её заново из пакета).
+                // Only the first copy: if it already exists, the file now holds
+                // NOT the person's layout (Plasma rebuilt it from the package).
                 if !saved.layout || !paths.saved_appletsrc().exists() {
                     write_atomic(&paths.saved_appletsrc(), &current)?;
                     saved.layout = true;
@@ -862,32 +862,32 @@ pub fn fall_back_to_stock(paths: &GuardPaths, plan: &FallbackPlan, cause: Fallba
     Ok(done)
 }
 
-/// Что возвращать.
+/// What to restore.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RestoreScope {
-    /// Всё сохранённое (до запуска plasmashell — при входе или вручную).
+    /// Everything saved (before plasmashell starts — at login or by hand).
     All,
-    /// Только эффекты KWin (посреди сеанса: раскладку держит plasmashell).
+    /// Only KWin effects (mid-session: plasmashell holds the layout).
     EffectsOnly,
 }
 
-/// Что вернул возврат.
+/// What the restore brought back.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RestoreDone {
-    /// Было что возвращать.
+    /// There was something to restore.
     pub had_saved: bool,
-    /// Возвращённые ключи `kwinrc`.
+    /// Restored `kwinrc` keys.
     pub effects: Vec<String>,
-    /// Ключи, которые человек поменял сам, — оставлены как есть.
+    /// Keys the person changed themselves — left as is.
     pub kept: Vec<String>,
-    /// Раскладка человека возвращена.
+    /// The person's layout was restored.
     pub layout: bool,
-    /// Раскладка ещё ждёт возврата (следующий вход).
+    /// The layout is still waiting to be restored (next login).
     pub layout_pending: bool,
 }
 
-/// Вернуть сохранённое [`fall_back_to_stock`]. Идемпотентна: возвращать
-/// нечего — `had_saved = false` и ни одного касания файлов.
+/// Restore what [`fall_back_to_stock`] saved. Idempotent: if there is nothing
+/// to restore — `had_saved = false` and not a single file touched.
 pub fn restore_saved(paths: &GuardPaths, scope: RestoreScope) -> Result<RestoreDone, String> {
     let Some(mut saved) = load_saved(paths) else {
         return Ok(RestoreDone::default());
@@ -919,8 +919,8 @@ pub fn restore_saved(paths: &GuardPaths, scope: RestoreScope) -> Result<RestoreD
                     write_atomic(&paths.appletsrc(), &original)?;
                     done.layout = true;
                 }
-                // Копии нет (стёрли руками) — возвращать нечего, но и
-                // помнить о ней незачем.
+                // There is no copy (deleted by hand) — nothing to restore, and
+                // no reason to remember it either.
                 None => {}
             }
             saved.layout = false;
@@ -939,14 +939,14 @@ pub fn restore_saved(paths: &GuardPaths, scope: RestoreScope) -> Result<RestoreD
     Ok(done)
 }
 
-/// Отметка сторожа сеанса: со следующего входа — штатное оформление (её
-/// применит [`guard_with`] до KWin). `reason` — человеческая причина для
-/// уведомления.
+/// The session watchdog's marker: stock theme from the next login (it will be
+/// applied by [`guard_with`] before KWin). `reason` — the human-readable reason for the
+/// notification.
 pub fn request_fallback(paths: &GuardPaths, reason: &str) -> Result<(), String> {
     write_atomic(&paths.request_file(), reason)
 }
 
-/// Пересборка прошла: возвращать при следующем входе, кто бы ни просил отката.
+/// The rebuild succeeded: restore at the next login, whoever requested the rollback.
 pub fn mark_rebuilt(paths: &GuardPaths) -> Result<(), String> {
     let Some(mut saved) = load_saved(paths) else { return Ok(()) };
     saved.rebuilt = true;
@@ -954,43 +954,43 @@ pub fn mark_rebuilt(paths: &GuardPaths) -> Result<(), String> {
 }
 
 // ============================================================================
-// Сторож при входе
+// The guard at login
 // ============================================================================
 
-/// Какое уведомление показать после входа.
+/// Which notification to show after login.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PendingNotice {
-    /// Оформление выключено на этот вход.
+    /// The theme is turned off for this login.
     TurnedOff { effects: bool, layout: bool, why: Vec<String>, reason: Option<String> },
-    /// Сохранённое оформление возвращено.
+    /// The saved theme was restored.
     Restored,
-    /// Только риск — ничего не меняли.
+    /// Only a risk — nothing was changed.
     Risk { why: Vec<String> },
-    /// Сторож сеанса: plasmashell упал из-за набора, раскладка станет
-    /// штатной со следующего входа ([`request_fallback`]).
+    /// Session watchdog: plasmashell crashed because of the suite, the layout will become
+    /// stock from the next login ([`request_fallback`]).
     NextLogin { reason: String },
 }
 
-/// Что сделал сторож.
+/// What the guard did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuardOutcome {
     pub verdict: Verdict,
     pub notice: Option<PendingNotice>,
-    /// Строки для журнала.
+    /// Lines for the log.
     pub log: Vec<String>,
 }
 
-/// Сторож целиком по готовой сверке: решение → откат/возврат → уведомление.
+/// The whole guard on a ready check: decision → rollback/restore → notification.
 ///
-/// `risk_fingerprint` — отпечаток «только риска»: о том же самом второй раз
-/// не говорим.
+/// `risk_fingerprint` — fingerprint of the «risk only» case: we do not speak about the same thing
+/// a second time.
 pub fn guard_with(paths: &GuardPaths, verdict: Verdict, parts: &AeroParts, risk_fingerprint: &str) -> GuardOutcome {
     let mut log = Vec::new();
     let mut notice = None;
     if verdict == Verdict::NotInstalled {
-        // Набор сняли, а сохранённое осталось: возвращать раскладку с
-        // виджетами, которых больше нет, нельзя; оставляем как есть.
+        // The suite was removed, but the saved state remained: restoring a layout with
+        // widgets that no longer exist is not allowed; leave it as is.
         return GuardOutcome { verdict, notice, log: vec!["session-guard: AeroThemePlasma is not installed".into()] };
     }
     let requested = read_text(&paths.request_file());
@@ -1048,8 +1048,8 @@ pub fn guard_with(paths: &GuardPaths, verdict: Verdict, parts: &AeroParts, risk_
             match fall_back_to_stock(paths, &plan, FallbackCause::Mismatch) {
                 Ok(done) => {
                     log.push(format!("session-guard: fallback {done:?}; why {why:?}"));
-                    // Уже откачено прошлым входом — всё равно напомнить: человек
-                    // снова вошёл в оформление без Aero.
+                    // Already rolled back by the previous login — remind anyway: the person
+                    // logged into the theme without Aero again.
                     let saved = load_saved(paths).unwrap_or_default();
                     if done.changed() || !saved.is_empty() {
                         notice = Some(PendingNotice::TurnedOff {
@@ -1068,18 +1068,18 @@ pub fn guard_with(paths: &GuardPaths, verdict: Verdict, parts: &AeroParts, risk_
 }
 
 // ============================================================================
-// Сценарий в plasma-workspace/env
+// The script in plasma-workspace/env
 // ============================================================================
 
 fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
-/// Текст сценария. startplasma ВЫПОЛНЯЕТ эти файлы в общей оболочке (через
-/// `.`), поэтому здесь нет ни `exit`, ни `set -e`, ни переменных: выход или
-/// ошибка оборвали бы чужие сценарии и переменные сеанса. Вывод — в никуда
-/// (startplasma читает вывод этой оболочки). Бинаря нет (Rexon удалили) —
-/// сценарий убирает сам себя.
+/// Script text. startplasma EXECUTES these files in a shared shell (via
+/// `.`), so there is no `exit`, no `set -e`, no variables here: an exit or
+/// an error would cut off other scripts and session variables. Output goes nowhere
+/// (startplasma reads this shell's output). No binary (Rexon was removed) —
+/// the script removes itself.
 pub fn env_script(program: &str, script_path: &str) -> String {
     let bin = sh_quote(program);
     format!(
@@ -1098,7 +1098,7 @@ pub fn env_script(program: &str, script_path: &str) -> String {
     )
 }
 
-/// Что сделать со сценарием.
+/// What to do with the script.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScriptChange {
     Nothing,
@@ -1106,8 +1106,8 @@ pub enum ScriptChange {
     Remove,
 }
 
-/// План: `wanted` — стоит AeroThemePlasma и проверка не выключена;
-/// `program` — бинарь Rexon (None — звать нечего, сценарий снимается).
+/// Plan: `wanted` — AeroThemePlasma is installed and the check is not turned off;
+/// `program` — the Rexon binary (None — nothing to call, the script is removed).
 pub fn env_script_change(wanted: bool, program: Option<&str>, script_path: &str, existing: Option<&str>) -> ScriptChange {
     match (wanted, program) {
         (true, Some(p)) if p.starts_with('/') => {
@@ -1123,7 +1123,7 @@ pub fn env_script_change(wanted: bool, program: Option<&str>, script_path: &str,
     }
 }
 
-/// Применить план сценария.
+/// Apply the script plan.
 pub fn sync_env_script(paths: &GuardPaths, wanted: bool, program: Option<&str>) -> Result<ScriptChange, String> {
     let path = paths.env_script();
     let existing = read_text(&path);
@@ -1136,7 +1136,7 @@ pub fn sync_env_script(paths: &GuardPaths, wanted: bool, program: Option<&str>) 
     Ok(change)
 }
 
-/// Проверка оформления включена в настройках ([`aeroshell::CHECK_ON_START_SETTING`]).
+/// The theme check is enabled in settings ([`aeroshell::CHECK_ON_START_SETTING`]).
 pub(crate) fn check_enabled_live() -> bool {
     let saved = crate::settings::SettingsManager::new()
         .ok()
@@ -1144,13 +1144,13 @@ pub(crate) fn check_enabled_live() -> bool {
     aeroshell::check_on_start(saved)
 }
 
-/// Стоит ли оболочка AeroThemePlasma (по базе pacman, без запуска pacman).
+/// Whether the AeroThemePlasma shell is installed (from the pacman database, without running pacman).
 pub(crate) fn aero_installed(db: &LocalDb) -> bool {
     db.entries.iter().any(|(n, _, _)| n.starts_with(aeroshell::SHELL_PACKAGE_PREFIX))
 }
 
-/// Поставить или снять сценарий на живой машине. Зовётся вместе с
-/// остальной слежкой за обновлениями (при запуске Rexon).
+/// Install or remove the script on the live machine. Called together with
+/// the rest of the update watching (at Rexon startup).
 pub fn sync_env_script_live() -> Result<ScriptChange, String> {
     let db = LocalDb::read(Path::new(PACMAN_LOCAL));
     let entry = crate::installer::launch_entry_live();
@@ -1160,8 +1160,8 @@ pub fn sync_env_script_live() -> Result<ScriptChange, String> {
     };
     let wanted = aero_installed(&db) && check_enabled_live();
     let paths = GuardPaths::live();
-    // Сторож сеанса — при тех же условиях и той же точкой: оба ставятся,
-    // пока стоит AeroThemePlasma, и снимаются вместе с ней.
+    // The session watchdog — under the same conditions and from the same point: both are installed
+    // while AeroThemePlasma is installed, and removed together with it.
     let exec = crate::app::unit_launch_command(&entry, None, &[crate::session_watch::WATCH_FLAG]);
     let program_ref = program.as_deref();
     if let Err(e) = crate::session_watch::sync_unit_live(
@@ -1176,10 +1176,10 @@ pub fn sync_env_script_live() -> Result<ScriptChange, String> {
 }
 
 // ============================================================================
-// Живая сверка (быстрая)
+// Live check (fast)
 // ============================================================================
 
-/// Итог живой сверки.
+/// Result of the live check.
 pub struct LiveFacts {
     pub report: Report,
     pub plasmashell_problems: Vec<String>,
@@ -1202,8 +1202,8 @@ fn ldd_live(path: &str) -> Option<String> {
         .then(|| String::from_utf8_lossy(&r.stdout).to_string())
 }
 
-/// `ldd -r` по всем путям разом (по потоку на ядро): один `ldd` — десятки
-/// миллисекунд, по очереди на два десятка модулей вышла бы секунда.
+/// `ldd -r` over all paths at once (a thread per core): one `ldd` takes tens of
+/// milliseconds, one after another over two dozen modules would add up to a second.
 fn ldd_parallel(paths: &[String]) -> std::collections::HashMap<String, String> {
     let workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(16);
     let next = std::sync::atomic::AtomicUsize::new(0);
@@ -1222,8 +1222,8 @@ fn ldd_parallel(paths: &[String]) -> std::collections::HashMap<String, String> {
     out.into_inner().unwrap_or_default()
 }
 
-/// Сверка на живой машине. None — AeroThemePlasma не стоит (дальше не идём:
-/// это почти весь путь сторожа у всех, кроме владельцев набора).
+/// The check on the live machine. None — AeroThemePlasma is not installed (we go no further:
+/// this is almost the whole guard path for everyone except owners of the suite).
 pub fn facts_live() -> Option<LiveFacts> {
     let db = LocalDb::read(Path::new(PACMAN_LOCAL));
     if !aero_installed(&db) {
@@ -1257,14 +1257,14 @@ pub fn facts_live() -> Option<LiveFacts> {
     Some(LiveFacts { report, plasmashell_problems, parts })
 }
 
-/// Сеанс — Plasma (или о столе ещё ничего не сказано: startplasma может
-/// выставить имя стола позже сценариев).
+/// The session is Plasma (or nothing has been said about the desktop yet: startplasma may
+/// set the desktop name after the scripts).
 fn plasma_session(xdg_current_desktop: Option<&str>) -> bool {
     xdg_current_desktop.is_none_or(|d| d.trim().is_empty() || d.split(':').any(|p| p.eq_ignore_ascii_case("KDE")))
 }
 
-/// `rexon --session-guard [--dry-run]` — его зовёт сценарий до KWin.
-/// Всегда 0: вход важнее сторожа.
+/// `rexon --session-guard [--dry-run]` — called by the script before KWin.
+/// Always 0: the login matters more than the guard.
 pub fn guard_route_live(dry_run: bool, out: &mut dyn FnMut(&str)) -> i32 {
     let started = std::time::Instant::now();
     if !plasma_session(std::env::var("XDG_CURRENT_DESKTOP").ok().as_deref()) {
@@ -1300,8 +1300,8 @@ pub fn guard_route_live(dry_run: bool, out: &mut dyn FnMut(&str)) -> i32 {
     0
 }
 
-/// Уведомление в очередь и отдельный процесс, который его покажет, когда
-/// служба уведомлений поднимется (зовёт и сторож сеанса).
+/// Queue the notification and a separate process that shows it once
+/// the notification service comes up (the session watchdog calls this too).
 pub(crate) fn queue_notice_live(paths: &GuardPaths, notice: &PendingNotice, out: &mut dyn FnMut(&str)) {
     if let Ok(text) = serde_json::to_string(notice) {
         if write_atomic(&paths.notice_json(), &text).is_ok() {
@@ -1310,8 +1310,8 @@ pub(crate) fn queue_notice_live(paths: &GuardPaths, notice: &PendingNotice, out:
     }
 }
 
-/// Отложенное уведомление — отдельным процессом в своей группе: сценарий
-/// (и `timeout` вокруг сторожа) его не ждёт и не гасит.
+/// The deferred notification is a separate process in its own group: the script
+/// (and the `timeout` around the guard) neither waits for it nor kills it.
 fn spawn_notice_live(out: &mut dyn FnMut(&str)) {
     use std::os::unix::process::CommandExt;
     let Ok(exe) = std::env::current_exe() else { return };
@@ -1328,15 +1328,15 @@ fn spawn_notice_live(out: &mut dyn FnMut(&str)) {
 }
 
 // ============================================================================
-// Уведомление после входа
+// Notification after login
 // ============================================================================
 
-/// Заголовок: оформление выключено на этот вход.
+/// Title: the theme is turned off for this login.
 pub fn turned_off_title() -> String {
     tr("AeroThemePlasma Is Turned Off for Now")
 }
 
-/// Текст: что случилось и что делать.
+/// Text: what happened and what to do.
 pub fn turned_off_body(reason: Option<&str>) -> String {
     match reason {
         Some(r) if !r.is_empty() => trf(
@@ -1350,7 +1350,7 @@ pub fn turned_off_body(reason: Option<&str>) -> String {
     }
 }
 
-/// Подробности: что именно выключено.
+/// Details: what exactly was turned off.
 pub fn turned_off_details(effects: bool, layout: bool, why: &[String]) -> String {
     let mut lines = Vec::new();
     if effects {
@@ -1368,12 +1368,12 @@ pub fn turned_off_details(effects: bool, layout: bool, why: &[String]) -> String
     text
 }
 
-/// Заголовок: раскладка станет штатной со следующего входа.
+/// Title: the layout will become stock from the next login.
 pub fn next_login_title() -> String {
     tr("AeroThemePlasma Turns Off at Next Login")
 }
 
-/// Текст: plasmashell упал из-за набора, раскладку сейчас не тронуть.
+/// Text: plasmashell crashed because of the suite, the layout cannot be touched now.
 pub fn next_login_body(reason: &str) -> String {
     trf(
         // TRANSLATORS: %1 says which AeroThemePlasma module crashed.
@@ -1400,7 +1400,7 @@ pub fn details_button() -> String {
     tr("Details")
 }
 
-/// После пересборки: эффекты вернулись; раскладка — при следующем входе.
+/// After a rebuild: the effects are back; the layout — at the next login.
 pub fn after_rebuild_message(layout_pending: bool) -> String {
     if layout_pending {
         tr("Your AeroThemePlasma effects are back on. The panels come back at the next login.")
@@ -1409,7 +1409,7 @@ pub fn after_rebuild_message(layout_pending: bool) -> String {
     }
 }
 
-/// Итог `rexon --session-guard-restore` для печати.
+/// Result of `rexon --session-guard-restore` for printing.
 pub fn restore_report(done: &RestoreDone) -> String {
     if !done.had_saved {
         return tr("Nothing to restore: Rexon hasn't changed your Plasma look.");
@@ -1424,7 +1424,7 @@ pub fn restore_report(done: &RestoreDone) -> String {
     lines.join("\n")
 }
 
-/// notify-send с действиями; ждёт службу уведомлений. → нажатое действие.
+/// notify-send with actions; waits for the notification service. → the pressed action.
 fn notify_live(summary: &str, body: &str, actions: &[(&str, String)], wait: bool) -> Option<String> {
     crate::utils::which("notify-send", None)?;
     let mut argv: Vec<String> = vec![
@@ -1455,7 +1455,7 @@ fn notify_live(summary: &str, body: &str, actions: &[(&str, String)], wait: bool
         if r.returncode == Some(0) {
             return Some(String::from_utf8_lossy(&r.stdout).trim().to_string());
         }
-        // Службы уведомлений ещё нет (plasmashell поднимается) — подождать.
+        // There is no notification service yet (plasmashell is coming up) — wait.
         if started.elapsed().as_secs() > NOTICE_RETRY_SECS {
             return None;
         }
@@ -1463,7 +1463,7 @@ fn notify_live(summary: &str, body: &str, actions: &[(&str, String)], wait: bool
     }
 }
 
-/// `rexon --session-guard-notice` — уведомление после входа.
+/// `rexon --session-guard-notice` — the notification after login.
 pub fn notice_route_live(out: &mut dyn FnMut(&str)) -> i32 {
     let paths = GuardPaths::live();
     let Some(text) = read_text(&paths.notice_json()) else { return 0 };
@@ -1496,8 +1496,8 @@ pub fn notice_route_live(out: &mut dyn FnMut(&str)) -> i32 {
     };
     match notify_live(&summary, &body, &actions, true).as_deref() {
         Some("rebuild") => {
-            // Пересборка — тем же путём, что у окна: Rexon открывается на
-            // проверке, предлагает пересборку, пароль — окном polkit.
+            // Rebuild — by the same path as the window: Rexon opens on the
+            // check, offers a rebuild, the password goes through the polkit window.
             if let Err(e) = crate::installer::open_rexon_live(&[aeroshell::OPEN_FLAG]) {
                 out(&format!("session-guard: {e}"));
             }
@@ -1514,9 +1514,9 @@ pub fn notice_route_live(out: &mut dyn FnMut(&str)) -> i32 {
     0
 }
 
-/// После удачной пересборки ([`crate::system_de_exec::rebuild_aeroshell_live`]):
-/// сверка сходится — вернуть эффекты сейчас (и попросить KWin перечитать
-/// настройки), раскладку — при следующем входе. → строка для итога окна.
+/// After a successful rebuild ([`crate::system_de_exec::rebuild_aeroshell_live`]):
+/// the check matches — restore the effects now (and ask KWin to reread its
+/// settings), the layout — at the next login. → a line for the window's summary.
 pub fn after_rebuild_live() -> Option<String> {
     let paths = GuardPaths::live();
     load_saved(&paths).filter(|s| !s.is_empty())?;
@@ -1533,8 +1533,8 @@ pub fn after_rebuild_live() -> Option<String> {
     Some(after_rebuild_message(done.layout_pending))
 }
 
-/// Попросить KWin перечитать `kwinrc` (как это делает `kwriteconfig` +
-/// `qdbus org.kde.KWin /KWin reconfigure`).
+/// Ask KWin to reread `kwinrc` (as `kwriteconfig` +
+/// `qdbus org.kde.KWin /KWin reconfigure` does).
 pub(crate) fn reconfigure_kwin_live() {
     if crate::utils::which("dbus-send", None).is_none() {
         return;
@@ -1550,7 +1550,7 @@ pub(crate) fn reconfigure_kwin_live() {
     );
 }
 
-/// Команда «KWin, перечитай настройки».
+/// The command «KWin, reread your settings».
 pub fn reconfigure_kwin_argv() -> Vec<String> {
     ["dbus-send", "--session", "--type=method_call", "--dest=org.kde.KWin", "/KWin", "org.kde.KWin.reconfigure"]
         .iter()
@@ -1559,20 +1559,20 @@ pub fn reconfigure_kwin_argv() -> Vec<String> {
 }
 
 // ============================================================================
-// Удаление Rexon во время отката
+// Uninstalling Rexon during a rollback
 // ============================================================================
 //
-// Rexon удаляют, пока оформление откачено: возвращать его потом будет
-// некому (сценарий до KWin без бинаря снимает сам себя). Поэтому при
-// удалении: эффекты — сразу (это `kwinrc`, KWin перечитает его), а
-// раскладку посреди сеанса не вернуть (plasmashell держит её в памяти и при
-// выходе записал бы поверх) — её вернёт ОДНОРАЗОВЫЙ сценарий на чистом sh
-// при следующем входе, до plasmashell, и снимет сам себя. Копии лежат в
-// `$XDG_STATE_HOME/rexon/session-guard/` — удаление Rexon их не трогает.
+// Rexon is uninstalled while the theme is rolled back: there will be nobody
+// to restore it later (the pre-KWin script without a binary removes itself). So on
+// uninstall: effects — immediately (it is `kwinrc`, KWin will reread it), while
+// the layout cannot be restored mid-session (plasmashell keeps it in memory and on
+// exit would write over it) — it is restored by a ONE-SHOT pure sh script
+// at the next login, before plasmashell, and the script removes itself. The copies lie in
+// `$XDG_STATE_HOME/rexon/session-guard/` — uninstalling Rexon does not touch them.
 
-/// Однократный возврат раскладки при следующем входе (без Rexon). Как и
-/// [`env_script`]: ни `exit`, ни `set -e` — файл выполняется в общей оболочке
-/// startplasma.
+/// One-shot layout restore at the next login (without Rexon). As with
+/// [`env_script`]: no `exit`, no `set -e` — the file runs in startplasma's shared
+/// shell.
 pub fn restore_once_script(paths: &GuardPaths) -> String {
     let q = |p: PathBuf| sh_quote(&p.to_string_lossy());
     let saved = q(paths.saved_appletsrc());
@@ -1592,16 +1592,16 @@ pub fn restore_once_script(paths: &GuardPaths) -> String {
     )
 }
 
-/// Что сделано при удалении Rexon.
+/// What was done when uninstalling Rexon.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct UninstallRelease {
     pub restored: RestoreDone,
-    /// Раскладку вернёт однократный сценарий при следующем входе.
+    /// The layout will be restored by the one-shot script at the next login.
     pub layout_next_login: bool,
 }
 
-/// Удаление Rexon: вернуть сохранённое и снять сценарий до KWin.
-/// Ничего не сохранено — только снять сценарий и отметки.
+/// Uninstalling Rexon: restore what was saved and remove the pre-KWin script.
+/// Nothing saved — only remove the script and markers.
 pub fn release_for_uninstall(paths: &GuardPaths) -> Result<UninstallRelease, String> {
     let restored = restore_saved(paths, RestoreScope::EffectsOnly)?;
     let _ = std::fs::remove_file(paths.request_file());
@@ -1616,15 +1616,15 @@ pub fn release_for_uninstall(paths: &GuardPaths) -> Result<UninstallRelease, Str
     Ok(UninstallRelease { restored, layout_next_login })
 }
 
-/// Маршруты командной строки сторожа. None — это не его флаги.
+/// The guard's command-line routes. None — these are not its flags.
 pub fn cli_route(args: &[String], out: &mut dyn FnMut(&str)) -> Option<i32> {
     let has = |f: &str| args.iter().any(|a| a == f);
     if has(NOTICE_FLAG) {
         return Some(notice_route_live(out));
     }
     if has(RESTORE_FLAG) {
-        // Вручную, посреди сеанса: раскладку держит plasmashell — эффекты
-        // сейчас, раскладка при следующем входе (её вернёт сторож).
+        // By hand, mid-session: plasmashell holds the layout — effects
+        // now, the layout at the next login (the guard will restore it).
         let paths = GuardPaths::live();
         let _ = mark_rebuilt(&paths);
         return Some(match restore_saved(&paths, RestoreScope::EffectsOnly) {
@@ -1712,7 +1712,7 @@ mod tests {
     const KWINC: &str = "aeroshell-kwin-components-git";
     const LIBP: &str = "aeroshell-libplasma-git";
 
-    // ── база pacman ──
+    // ── pacman database ──
 
     #[test]
     fn local_db_entry_splits_name_version_release() {
@@ -1745,7 +1745,7 @@ mod tests {
         assert!(!aero_installed(&db));
     }
 
-    // ── состав набора ──
+    // ── suite composition ──
 
     #[test]
     fn effect_id_comes_from_cbor_metadata_else_file_name() {
@@ -1778,7 +1778,7 @@ mod tests {
         assert_eq!(p.effects, vec![EffectModule { file_name: "smodglow.so".into(), id: "smodglow".into() }]);
     }
 
-    // ── решение ──
+    // ── decision ──
 
     #[test]
     fn not_installed_without_the_shell_package() {
@@ -1833,7 +1833,7 @@ mod tests {
         let shell_bad = vec!["undefined symbol: _ZN6Plasma6Applet3fooEv".to_string()];
         let with_fork = report(vec![pkg(SHELL, Marker::None, None, None, &[]), pkg(LIBP, Marker::PlasmaLibrary, Some("6.8.1"), Some("6.8.1"), &[])]);
         assert!(matches!(decide(&with_fork, &shell_bad, &parts()), Verdict::Broken { shell: true, .. }));
-        // Без форка беда не в наборе: только уведомление.
+        // Without the fork the trouble is not in the suite: only a notification.
         let no_fork = report(vec![pkg(SHELL, Marker::None, None, None, &[])]);
         assert!(matches!(decide(&no_fork, &shell_bad, &parts()), Verdict::NoticeOnly { .. }));
     }
@@ -1870,7 +1870,7 @@ mod tests {
                 SavedKey { key: "smodsnapEnabled".into(), previous: None },
             ]
         );
-        // Повтор по уже выключенному: менять нечего, копия не тронута.
+        // A repeat on already disabled keys: nothing to change, the copy is untouched.
         let before = saved.clone();
         assert_eq!(disable_effects(Some(&out), &ids, &mut saved), None);
         assert_eq!(saved, before);
@@ -1888,12 +1888,12 @@ mod tests {
         let out = out.unwrap();
         assert_eq!(ini_get(&out, "Plugins", "smodglowEnabled").as_deref(), Some("true"));
         assert_eq!(ini_get(&out, "Plugins", "smodsnapEnabled"), None);
-        // Человек включил сам — оставлено, и об этом сказано.
+        // The person enabled it themselves — left alone, and this is reported.
         assert_eq!(ini_get(&out, "Plugins", "aeroblurEnabled").as_deref(), Some("true"));
         assert_eq!(kept, vec!["aeroblurEnabled"]);
     }
 
-    // ── раскладка ──
+    // ── layout ──
 
     const APPLETSRC: &str = "[ActionPlugins][0]\nRightButton;NoModifier=org.kde.contextmenu\n\n\
 [Containments][1]\nactivityId=abc-123\nformfactor=0\nimmutability=1\nlastScreen=0\nlocation=0\nplugin=org.kde.desktopcontainment\nwallpaperplugin=org.kde.image\n\n\
@@ -1916,13 +1916,13 @@ mod tests {
         assert!(!out.contains("wackyideas"), "{out}");
         assert!(!out.contains("[Containments][2]"));
         assert!(out.contains("[ActionPlugins][0]") && out.contains("[ScreenMapping]"));
-        // Новая панель — после самого старшего номера (10).
+        // The new panel goes after the highest number (10).
         assert!(out.contains("[Containments][11]\nactivityId=\nformfactor=2"), "{out}");
         assert!(out.contains("plugin=org.kde.panel"));
         assert!(out.contains("[Containments][11][Applets][12]\nimmutability=1\nplugin=org.kde.plasma.kickoff"));
         assert!(out.contains("AppletOrder=12;13;14;15;16;17"));
         assert!(out.contains("SystrayContainmentId=18") && out.contains("plugin=org.kde.plasma.private.systemtray"));
-        // Без виджетов набора менять нечего.
+        // Without the suite's widgets there is nothing to change.
         assert_eq!(stock_layout(&out, &a), None);
     }
 
@@ -1936,7 +1936,7 @@ mod tests {
         assert!(out.contains("AppletOrder=12;13;14;15;16"));
     }
 
-    // ── откат и возврат на временном каталоге ──
+    // ── rollback and restore on a temporary directory ──
 
     fn plan() -> FallbackPlan {
         FallbackPlan::whole(&parts())
@@ -1968,7 +1968,7 @@ mod tests {
         assert_eq!(ini_get(&k, "Plugins", "blurEnabled").as_deref(), Some("false"));
         assert!(!p.saved_json().exists() && !p.saved_appletsrc().exists() && !p.saved_kwinrc().exists());
 
-        // Второй возврат — ничего не трогает.
+        // A second restore touches nothing.
         let again = restore_saved(&p, RestoreScope::All).unwrap();
         assert!(!again.had_saved);
         assert_eq!(read_text(&p.appletsrc()).as_deref(), Some(APPLETSRC));
@@ -1983,9 +1983,9 @@ mod tests {
         fall_back_to_stock(&p, &plan(), FallbackCause::Mismatch).unwrap();
         let saved1 = load_saved(&p).unwrap();
 
-        // Второй вход, набор всё ещё сломан; Plasma тем временем собрала
-        // раскладку заново из пакета (снова с виджетами Aero) — копия
-        // раскладки человека остаётся прежней.
+        // Second login, the suite is still broken; meanwhile Plasma rebuilt
+        // the layout from the package (again with Aero widgets) — the copy of
+        // the person's layout stays the same.
         let regenerated = APPLETSRC.replace("abc-123", "regenerated");
         put(&p.appletsrc(), &regenerated);
         let done = fall_back_to_stock(&p, &plan(), FallbackCause::Mismatch).unwrap();
@@ -1995,7 +1995,7 @@ mod tests {
         let saved2 = load_saved(&p).unwrap();
         assert_eq!(saved2.effects, saved1.effects);
 
-        // Третий вход без перемен — файлы не трогаются вовсе.
+        // Third login without changes — the files are not touched at all.
         let stock = read_text(&p.appletsrc()).unwrap();
         let done = fall_back_to_stock(&p, &plan(), FallbackCause::Mismatch).unwrap();
         assert!(!done.changed());
@@ -2048,7 +2048,7 @@ mod tests {
         assert!(!restore_saved(&p, RestoreScope::All).unwrap().had_saved);
     }
 
-    // ── сторож целиком ──
+    // ── the whole guard ──
 
     fn broken() -> Verdict {
         Verdict::Broken { effects: true, shell: true, why: vec!["x".into()] }
@@ -2062,14 +2062,14 @@ mod tests {
         put(&p.appletsrc(), APPLETSRC);
         let o = guard_with(&p, broken(), &parts(), "fp");
         assert!(matches!(o.notice, Some(PendingNotice::TurnedOff { effects: true, layout: true, .. })), "{o:?}");
-        // Повторный вход всё ещё сломан — снова напомнить, копию не трогать.
+        // A repeated login is still broken — remind again, do not touch the copy.
         let o = guard_with(&p, broken(), &parts(), "fp");
         assert!(matches!(o.notice, Some(PendingNotice::TurnedOff { .. })));
         assert_eq!(read_text(&p.saved_appletsrc()).as_deref(), Some(APPLETSRC));
         let o = guard_with(&p, Verdict::Healthy, &parts(), "fp");
         assert_eq!(o.notice, Some(PendingNotice::Restored));
         assert_eq!(read_text(&p.appletsrc()).as_deref(), Some(APPLETSRC));
-        // И дальше тишина.
+        // And silence after that.
         assert_eq!(guard_with(&p, Verdict::Healthy, &parts(), "fp").notice, None);
     }
 
@@ -2131,7 +2131,7 @@ mod tests {
         assert_eq!(ini_get(&k, "Plugins", "smodglowEnabled").as_deref(), Some("false"));
     }
 
-    // ── сценарий env ──
+    // ── env script ──
 
     #[test]
     fn env_script_text_is_thin_and_safe_to_source() {
@@ -2139,8 +2139,8 @@ mod tests {
         assert!(s.contains("if [ -x '/usr/bin/rexon' ]; then"));
         assert!(s.contains("timeout -k 1 3 '/usr/bin/rexon' --session-guard </dev/null >/dev/null 2>&1 || true"));
         assert!(s.contains("rm -f '/home/u/.config/plasma-workspace/env/rexon-session-guard.sh'"));
-        // Выполняется в общей оболочке startplasma: ни выхода, ни set -e,
-        // ни переменных окружения.
+        // Runs in startplasma's shared shell: no exit, no set -e,
+        // no environment variables.
         assert!(!s.contains("exit") && !s.contains("set -") && !s.contains("export"));
         let q = env_script("/opt/it's/rexon", "/x");
         assert!(q.contains(r"'/opt/it'\''s/rexon'"));
@@ -2169,7 +2169,7 @@ mod tests {
         let o = run(&script);
         assert_eq!(String::from_utf8_lossy(&o.stdout), "alive\n");
         assert_eq!(read_text(&mark).as_deref(), Some("--session-guard\n"));
-        // Бинарь пропал — сценарий убирает себя и всё равно не рвёт оболочку.
+        // The binary is gone — the script removes itself and still does not break the shell.
         std::fs::remove_file(&bin).unwrap();
         let o = run(&script);
         assert_eq!(String::from_utf8_lossy(&o.stdout), "alive\n");
@@ -2186,7 +2186,7 @@ mod tests {
         assert_eq!(sync_env_script(&p, false, Some("/usr/bin/rexon")).unwrap(), ScriptChange::Remove);
         assert!(!p.env_script().exists());
         assert_eq!(sync_env_script(&p, false, None).unwrap(), ScriptChange::Nothing);
-        // Звать нечего — сценарий не ставится.
+        // Nothing to call — the script is not installed.
         assert_eq!(sync_env_script(&p, true, None).unwrap(), ScriptChange::Nothing);
         assert_eq!(sync_env_script(&p, true, Some("rexon")).unwrap(), ScriptChange::Nothing);
     }
@@ -2218,7 +2218,7 @@ mod tests {
         assert_eq!(serde_json::from_str::<PendingNotice>(&serde_json::to_string(&n).unwrap()).unwrap(), n);
     }
 
-    // ── удаление Rexon во время отката ──
+    // ── uninstalling Rexon during a rollback ──
 
     const LAYOUT: &str = "[Containments][1]\nformfactor=0\nlocation=0\nplugin=org.kde.desktopcontainment\n\n\
 [Containments][2]\nformfactor=2\nlocation=4\nplugin=org.kde.panel\n\n[Containments][2][Applets][3]\nplugin=io.gitgud.wackyideas.SevenStart\n";
@@ -2232,7 +2232,7 @@ mod tests {
         let r = release_for_uninstall(&p).unwrap();
         assert!(!r.restored.had_saved && !r.layout_next_login);
         assert!(!p.env_script().exists() && !p.request_file().exists());
-        // Ни сценария, ни копий — повтор тоже ничего не ломает.
+        // Neither a script nor copies — a repeat breaks nothing either.
         assert_eq!(release_for_uninstall(&p).unwrap(), UninstallRelease::default());
     }
 
@@ -2252,13 +2252,13 @@ mod tests {
         assert!(r.restored.had_saved && r.layout_next_login, "{r:?}");
         let kwinrc = std::fs::read_to_string(p.kwinrc()).unwrap();
         assert!(kwinrc.contains("smodglowEnabled=true") && !kwinrc.contains("aeroblurEnabled"), "{kwinrc}");
-        // Посреди сеанса раскладка не тронута; её вернёт сценарий без Rexon.
+        // Mid-session the layout is untouched; the script without Rexon will restore it.
         assert_eq!(std::fs::read_to_string(p.appletsrc()).unwrap(), stock);
         let script = std::fs::read_to_string(p.env_script()).unwrap();
         assert_eq!(script, restore_once_script(&p));
         assert!(!script.contains("exit") && !script.contains("set -e") && !script.contains("rexon --"));
 
-        // Следующий вход: startplasma выполняет файл через `.`.
+        // Next login: startplasma runs the file via `.`.
         let st = std::process::Command::new("sh")
             .arg("-c")
             .arg(format!(". {} ; echo still-running", sh_quote(&p.env_script().to_string_lossy())))

@@ -2,6 +2,12 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN">
 <context>
+    <name>BrowserLoginDialog</name>
+    <message><source>Opening the sign-in window…</source><translation>正在打开登录窗口…</translation></message>
+    <message><source>Verifying sign-in…</source><translation>正在验证登录…</translation></message>
+    <message><source>Complete sign-in in the browser window.</source><translation>请在浏览器窗口中完成登录。</translation></message>
+</context>
+<context>
     <name>AboutPage</name>
     <message>
         <location filename="../qml/page/AboutPage.qml" line="36"/>
@@ -293,6 +299,10 @@
 </context>
 <context>
     <name>DiscoverPage</name>
+    <message>
+        <source>This source is no longer available.</source>
+        <translation>此来源已不可用。</translation>
+    </message>
     <message>
         <source>Retry</source>
         <translation>重试</translation>
@@ -2501,6 +2511,9 @@ Unsaved frame state may be lost.</source>
 </context>
 <context>
     <name>TweakSheet</name>
+    <message><source>Card badges</source><translation>卡片角标</translation></message>
+    <message><source>Show card badges</source><translation>显示卡片角标</translation></message>
+    <message><source>Edit rules</source><translation>编辑规则</translation></message>
     <message>
         <source>Layout</source>
         <translation>布局</translation>
@@ -3239,6 +3252,14 @@ Unsaved frame state may be lost.</source>
 <context>
     <name>Window</name>
     <message>
+        <source>Back</source>
+        <translation>返回</translation>
+    </message>
+    <message>
+        <source>Menu</source>
+        <translation>菜单</translation>
+    </message>
+    <message>
         <location filename="../qml/Window.qml" line="45"/>
         <source>Changelog</source>
         <translation>更新日志</translation>
@@ -3537,5 +3558,40 @@ Unsaved frame state may be lost.</source>
         <source>Delete group</source>
         <translation>删除分组</translation>
     </message>
+</context>
+<context>
+    <name>ArtistPage</name>
+    <message>
+        <source>Artist</source>
+        <translation>作者</translation>
+    </message>
+    <message>
+        <source>Open web page</source>
+        <translation>打开网页</translation>
+    </message>
+</context>
+<context>
+    <name>NavigationStack</name>
+    <message>
+        <source>Failed to open page</source>
+        <translation>无法打开页面</translation>
+    </message>
+</context>
+<context>
+    <name>WallpaperBadgeRulesPage</name>
+    <message><source>Card badge rules</source><translation>卡片角标规则</translation></message>
+    <message><source>Content rating</source><translation>内容分级</translation></message>
+    <message><source>Wallpaper type</source><translation>壁纸类型</translation></message>
+    <message><source>Tag</source><translation>标签</translation></message>
+    <message><source>Rules ignore case and match the whole value. Use * for any number of characters and ? for one character. A tag rule matches any tag on the wallpaper.</source><translation>规则忽略大小写并匹配完整值。* 匹配任意数量的字符，? 匹配单个字符。标签规则匹配壁纸的任一标签。</translation></message>
+    <message><source>%1: %2 → %3</source><translation>%1：%2 → %3</translation></message>
+    <message><source>Edit</source><translation>编辑</translation></message>
+    <message><source>Remove</source><translation>移除</translation></message>
+    <message><source>Match field</source><translation>匹配字段</translation></message>
+    <message><source>Matching value</source><translation>匹配值</translation></message>
+    <message><source>Badge text</source><translation>角标文字</translation></message>
+    <message><source>Save</source><translation>保存</translation></message>
+    <message><source>Add</source><translation>添加</translation></message>
+    <message><source>Cancel</source><translation>取消</translation></message>
 </context>
 </TS>

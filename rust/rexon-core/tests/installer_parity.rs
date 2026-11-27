@@ -1,17 +1,17 @@
-//! Golden-сверка порта `installer.rs` с оригиналом `rexon/installer.py`.
+//! Golden check of the `installer.rs` port against the original `rexon/installer.py`.
 //!
-//! Эталон снят генератором из ЖИВОГО Python (READ-ONLY: pkexec/copytree/
-//! subprocess никогда не исполнялись — перехвачены заглушками; tempfile.mkstemp
-//! перенаправлен в scratch, tmp-пути затем нормализованы к `/tmp/rexon_gen/`).
-//! Снято: тексты helper/policy/desktop/launcher; пути по режимам;
-//! detect_default_mode; зависимости per family; install-скрипт (обе dep-ветки)
-//! с pkexec argv; деинсталляция (скрипт с pkg-remove argv); таблицы owner и
-//! remove; parse владельца; get_installed_files.
+//! The golden was captured by a generator from LIVE Python (READ-ONLY: pkexec/copytree/
+//! subprocess were never executed — they were intercepted by stubs; tempfile.mkstemp
+//! was redirected to scratch, tmp paths were then normalized to `/tmp/rexon_gen/`).
+//! Captured: helper/policy/desktop/launcher texts; paths per mode;
+//! detect_default_mode; dependencies per family; the install script (both dep branches)
+//! with the pkexec argv; uninstall (a script with the pkg-remove argv); the owner and
+//! remove tables; owner parsing; get_installed_files.
 //!
-//! Порт обязан совпасть байт-в-байт. ЕДИНСТВЕННОЕ отступление —
-//! `install_cleanup_paths` (в golden не фиксируется): там ПОЧИНЕН баг
-//! оригинала (утечка tmp_stage_helper/tmp_stage_policy), проверяется
-//! отдельным unit-тестом.
+//! The port must match byte-for-byte. The ONLY deviation is
+//! `install_cleanup_paths` (not recorded in the golden): there a bug of
+//! the original is FIXED (leak of tmp_stage_helper/tmp_stage_policy), checked by
+//! a separate unit test.
 
 use rexon_core::installer as inst;
 use rexon_core::installer::{
@@ -41,7 +41,7 @@ fn str_vec(v: &Value) -> Vec<String> {
 }
 
 // ============================================================================
-// Константы + тексты
+// Constants + texts
 // ============================================================================
 
 #[test]
@@ -60,21 +60,21 @@ fn constants_match() {
 fn texts_match() {
     let g = fx();
     let t = &g["texts"];
-    // ⛔ ОСОЗНАННОЕ РАСХОЖДЕНИЕ С ЖИВЫМ PYTHON (28.09.2026): эталон
-    // `system_helper_script` переснят после закрытия кода от root через тему
-    // Plymouth (`ModuleName=../…` + `.so` в теме) и подмены каталога между
-    // проверкой и копией. Байт-паритет с прежним Python означал бы «верни
-    // дыру»; пин стоит на исправленном тексте и ловит любую его правку.
-    // Переснято 30.09.2026: сообщения помощника переведены (решение
-    // Wehrwolfmann) — ключ из вшитой таблицы (`system_l10n`) и `--lang` из
-    // белого списка po/LINGUAS; проверки темы Plymouth и пути не менялись.
-    // Переснято 09.10.2026: режим «Удалить» (`remove-<вид>`) — только каталог
-    // /usr/share/<вид>/themes/<имя>, не ссылка, не выбранная тема, не из пакета.
+    // ⛔ DELIBERATE DEVIATION FROM LIVE PYTHON (28.09.2026): the
+    // `system_helper_script` golden was recaptured after closing root code execution via a
+    // Plymouth theme (`ModuleName=../…` + a `.so` in the theme) and directory swapping between
+    // the check and the copy. Byte parity with the former Python would mean "bring back the
+    // hole"; the pin is on the fixed text and catches any change to it.
+    // Recaptured 30.09.2026: the helper's messages were translated (Wehrwolfmann's
+    // decision) — a key from the embedded table (`system_l10n`) and `--lang` from
+    // the po/LINGUAS allow-list; the Plymouth theme and path checks did not change.
+    // Recaptured 09.10.2026: the «Remove» mode (`remove-<kind>`) — only the directory
+    // /usr/share/<kind>/themes/<name>, not a link, not the selected theme, not from a package.
     assert_eq!(i18n_pin::ru_only(&inst::system_helper_script()), s(&t["system_helper_script"]));
     assert_eq!(i18n_pin::ru_only(&inst::system_policy_xml()), s(&t["system_policy_xml"]));
-    // Эталон — Python-вход (он же откат): живые `desktop_content()` зависят
-    // от того, есть ли на машине Rust-окно, и в сверке байт-в-байт не
-    // участвуют. Rust-вход накрыт тестами в `app_parity.rs`.
+    // The golden is the Python entry point (which is also the fallback): the live `desktop_content()` depends
+    // on whether the machine has the Rust window, and does not take part in the byte-for-byte
+    // comparison. The Rust entry point is covered by tests in `app_parity.rs`.
     let py = inst::LaunchEntry::Python;
     assert_eq!(i18n_pin::ru_only(&inst::desktop_content_for(&py)), s(&t["desktop_content"]));
     assert_eq!(
@@ -83,10 +83,10 @@ fn texts_match() {
     );
 }
 
-/// ⭐ 16.09.2026 эталон переснят ОСОЗНАННО: оба лаунчера были на Python и
-/// звали `from rexon.app import main` — классическое окно, которого поставка
-/// больше не везёт. Теперь это `sh`-лаунчер на бинарь окна, как у пакета
-/// дистрибутива, но БЕЗ `REXON_PACKAGED`: ручная установка — не пакет.
+/// ⭐ On 16.09.2026 the golden was recaptured DELIBERATELY: both launchers were in Python and
+/// called `from rexon.app import main` — the classic window that the distribution
+/// no longer ships. Now this is an `sh` launcher for the window binary, like the distro
+/// package's, but WITHOUT `REXON_PACKAGED`: a manual install is not a package.
 #[test]
 fn launchers_match() {
     let g = fx();
@@ -102,7 +102,7 @@ fn launchers_match() {
 }
 
 // ============================================================================
-// detect_default_mode + пути по режимам
+// detect_default_mode + paths per mode
 // ============================================================================
 
 #[test]
@@ -120,10 +120,10 @@ fn detect_default_mode_matches() {
     }
 }
 
-/// Лаунчер пакета дистрибутива выставляет `REXON_PACKAGED` → portable, и на
-/// обычном дистрибутиве, и на неизменяемом (иначе там вышел бы user).
-/// Прежде это делал sed в PKGBUILD; он сломался, когда выбор режима
-/// переехал в ядро.
+/// The distro package launcher sets `REXON_PACKAGED` → portable, both on an
+/// ordinary distribution and on an immutable one (otherwise user would come out there).
+/// This used to be done by sed in the PKGBUILD; it broke when the mode choice
+/// moved into the core.
 #[test]
 fn packaged_launcher_means_portable() {
     let packaged = |k: &str| (k == inst::PACKAGED_ENV).then(|| "1".to_string());
@@ -166,20 +166,20 @@ fn install_paths_match() {
 }
 
 // ============================================================================
-// Зависимости времени выполнения per family
+// Runtime dependencies per family
 // ============================================================================
 
-/// ⭐ 16.09.2026 эталон переснят ОСОЗНАННО: до этого он держал список PySide6
-/// и python-cairo — зависимости классического окна на Python, которого
-/// поставка больше не везёт. Теперь список — библиотеки, которыми живёт
-/// Rust-поставка, тот же набор, что у `depends` пакета дистрибутива.
+/// ⭐ On 16.09.2026 the golden was recaptured DELIBERATELY: before that it held the list of PySide6
+/// and python-cairo — dependencies of the classic Python window that the
+/// distribution no longer ships. Now the list is the libraries the
+/// Rust distribution lives on, the same set as the distro package's `depends`.
 ///
-/// ⭐⭐ Переснят ещё раз тем же днём: список разрезан на два разряда, и в
-/// эталоне у каждого семейства стало по четыре поля вместо двух —
-/// `packages`/`cmd` (обязательные, строго под `set -e`) и
-/// `optional_packages`/`optional_cmd` (желательные, отдельной строкой с
-/// `|| true`). Ни одно имя пакета при разрезе не менялось и не пропадало:
-/// это проверяет `dependency_ranks_split_the_same_set` ниже.
+/// ⭐⭐ Recaptured once more the same day: the list was split into two ranks, and in
+/// the golden every family got four fields instead of two —
+/// `packages`/`cmd` (required, strictly under `set -e`) and
+/// `optional_packages`/`optional_cmd` (desirable, a separate line with
+/// `|| true`). Not a single package name changed or disappeared in the split:
+/// this is checked by `dependency_ranks_split_the_same_set` below.
 #[test]
 fn dependencies_match() {
     let g = fx();
@@ -209,22 +209,22 @@ fn dependencies_match() {
     }
 }
 
-/// ⭐⭐ Сторож разреза 16.09.2026. Строка обязательных зависимостей идёт в
-/// корневом скрипте под `set -e`, а имена в одиннадцати семействах из
-/// двенадцати выписаны по правилам именования и вживую не проверены —
-/// собирался только Arch (`packaging/aur/PKGBUILD`). Одно неверное имя
-/// обрывало всю установку. Разряда стало два, и проверяется это У ВСЕХ
-/// семейств, а не у одного Arch:
+/// ⭐⭐ Guard of the 16.09.2026 split. The required dependencies line runs in
+/// the root script under `set -e`, and the names in eleven families out of
+/// twelve were written out by naming rules and not checked live —
+/// only Arch was built (`packaging/aur/PKGBUILD`). A single wrong name
+/// aborted the whole install. Now there are two ranks, and this is checked for ALL
+/// families, not just Arch:
 ///
-///   * в обязательных — только то, без чего окно не откроется: Qt6,
-///     layer-shell, загрузчик Vulkan, libmpv;
-///   * база (bash, D-Bus, Wayland, GL, OpenSSL, polkit, тема значков) —
-///     в желательных;
-///   * разряды не пересекаются и вместе дают прежний список целиком.
+///   * the required ones are only what the window will not open without: Qt6,
+///     layer-shell, the Vulkan loader, libmpv;
+///   * the base (bash, D-Bus, Wayland, GL, OpenSSL, polkit, icon theme) is
+///     among the desirable ones;
+///   * the ranks do not overlap and together give the former list in full.
 #[test]
 fn dependency_ranks_split_the_same_set() {
-    // Прежний (до разреза) список каждого семейства — выписан заново руками,
-    // чтобы разрез нельзя было «починить» правкой одного кода.
+    // The former (pre-split) list of each family — written out again by hand,
+    // so that the split cannot be "fixed" by editing the code alone.
     let whole: [(PkgFamily, usize); 12] = [
         (PkgFamily::Arch, 16),
         (PkgFamily::Debian, 17),
@@ -239,8 +239,8 @@ fn dependency_ranks_split_the_same_set() {
         (PkgFamily::Alt, 17),
         (PkgFamily::Unknown, 17),
     ];
-    // Слова, по которым узнаётся «база». Имена у семейств разные, общий у них
-    // корень — по нему и ищем.
+    // Words by which the "base" is recognized. The families' names differ, but they share
+    // a root — that is what we search for.
     const BASE: [&str; 7] =
         ["wayland", "glvnd", "dbus", "openssl", "polkit", "bash", "hicolor"];
     for (family, total) in whole {
@@ -259,20 +259,20 @@ fn dependency_ranks_split_the_same_set() {
                 family.as_str()
             );
             let low = pkg.to_lowercase();
-            // `qt6-wayland` у Debian — не Wayland, а часть Qt6, которая
-            // рисует окно на Wayland: по корню «wayland» она попала бы под
-            // проверку зря. Части Qt6 узнаются по началу имени.
+            // Debian's `qt6-wayland` is not Wayland but the part of Qt6 that
+            // draws the window on Wayland: by the root "wayland" it would fall under
+            // the check for nothing. Qt6 parts are recognized by the start of the name.
             let is_qt = low.starts_with("qt6-") || low.starts_with("qml6-")
                 || low.starts_with("libqt6") || low.starts_with("dev-qt/");
-            // Debian: `pkexec` — это polkit, и он в желательных; корня
-            // «polkit» в имени нет, поэтому назван отдельно.
+            // Debian: `pkexec` is polkit, and it is among the desirable ones; the name has no
+            // root "polkit", so it is named separately.
             assert!(
                 is_qt || (low != "pkexec" && !BASE.iter().any(|b| low.contains(b))),
                 "{}: «{pkg}» — база, ей место в желательных",
                 family.as_str()
             );
         }
-        // Qt6 и layer-shell в желательные не проваливаются.
+        // Qt6 and layer-shell do not fall into the desirable ones.
         for pkg in &want {
             let low = pkg.to_lowercase();
             assert!(
@@ -283,7 +283,7 @@ fn dependency_ranks_split_the_same_set() {
                 family.as_str()
             );
         }
-        // Обязательных без Qt6 не бывает ни у одного семейства.
+        // No family has required dependencies without Qt6.
         assert!(
             must.iter().any(|p| {
                 let l = p.to_lowercase();
@@ -295,12 +295,12 @@ fn dependency_ranks_split_the_same_set() {
     }
 }
 
-/// Переключатель стиля Qt приезжает вместе с самим Rexon — тем паролем,
-/// который человек и так вводит, устанавливая программу. Вопроса «доставить
-/// библиотеку?» нет намеренно: ответ «нет» даёт худший результат.
+/// The Qt style switcher arrives together with Rexon itself — with the password
+/// the person enters anyway when installing the program. There is deliberately no
+/// "install the library?" question: the answer "no" gives a worse result.
 #[test]
 fn qt_style_helper_installs_with_rexon() {
-    // Команда — та же, что у обязательных зависимостей, только один пакет.
+    // The command is the same as for the required dependencies, only with one package.
     assert_eq!(
         inst::qt_style_install_cmd(PkgFamily::Arch),
         "pacman -S --needed --noconfirm qt6ct"
@@ -314,7 +314,7 @@ fn qt_style_helper_installs_with_rexon() {
         inst::qt_style_install_cmd(PkgFamily::Suse),
         "zypper install -y --no-recommends qt6ct"
     );
-    // Gentoo хранит имя с категорией.
+    // Gentoo stores the name with the category.
     assert_eq!(
         inst::qt_style_install_cmd(PkgFamily::Gentoo),
         "emerge --ask=n --quiet gui-apps/qt6ct"
@@ -325,16 +325,16 @@ fn qt_style_helper_installs_with_rexon() {
         "apk add --no-progress qt6ct"
     );
     assert_eq!(inst::qt_style_install_cmd(PkgFamily::Solus), "eopkg it -y qt6ct");
-    // ALT (APT-RPM) знает qt6ct и знает, чем его поставить: пустой ответ был
-    // дырой в снятой отсюда таблице, а не отсутствием пакета.
+    // ALT (APT-RPM) knows qt6ct and knows how to install it: the empty answer was
+    // a hole in the table captured from here, not a missing package.
     assert_eq!(
         inst::qt_style_install_cmd(PkgFamily::Alt),
         "apt-get install -y qt6ct"
     );
 
-    // Ставить нечем — пусто, и это НЕ отказ: там молча работает
-    // QT_STYLE_OVERRIDE. В Clear Linux бандла с qt6ct нет вовсе, в NixOS
-    // пакеты ставятся правкой конфигурации, у UNKNOWN не опознан менеджер.
+    // Nothing to install with — empty, and this is NOT a refusal: there
+    // QT_STYLE_OVERRIDE works silently. Clear Linux has no bundle with qt6ct at all, in NixOS
+    // packages are installed by editing the configuration, UNKNOWN has no recognized manager.
     for fam in [PkgFamily::Nix, PkgFamily::Clear, PkgFamily::Unknown] {
         assert!(
             inst::qt_style_install_cmd(fam).is_empty(),
@@ -343,13 +343,13 @@ fn qt_style_helper_installs_with_rexon() {
         );
     }
 
-    // Обязательные зависимости не изменились: это ОТДЕЛЬНАЯ строка скрипта,
-    // потому что её падение не должно обрывать установку целиком.
+    // The required dependencies did not change: this is a SEPARATE script line,
+    // because its failure must not abort the whole install.
     assert!(!inst::dep_install_cmd(PkgFamily::Arch).contains("qt6ct"));
 }
 
-/// Все двенадцать значений перечисления — чтобы новое семейство не проехало
-/// мимо сторожей ниже.
+/// All twelve enum values — so that a new family does not slip
+/// past the guards below.
 const ALL_FAMILIES: [PkgFamily; 12] = [
     PkgFamily::Arch,
     PkgFamily::Debian,
@@ -365,13 +365,13 @@ const ALL_FAMILIES: [PkgFamily; 12] = [
     PkgFamily::Unknown,
 ];
 
-/// Золотые случаи строки установки для КОРНЕВОГО СКРИПТА: по одному на каждое
-/// семейство. Ожидаемое записано руками, а не снято с кода.
+/// Golden cases of the install line for the ROOT SCRIPT: one for each
+/// family. The expected values are written by hand, not captured from the code.
 ///
-/// Здесь и виден дефект, ради которого заход: у Gentoo стоял голый `emerge`
-/// без `--ask=n`. Portage спрашивает «Would you like to merge these
-/// packages? [Yes/No]», ответа в корневом скрипте нет, скрипт идёт под
-/// `pkexec` без терминала — установка Rexon вставала молча, внутри `set -e`.
+/// This is where the defect that prompted this pass shows up: Gentoo had a bare `emerge`
+/// without `--ask=n`. Portage asks "Would you like to merge these
+/// packages? [Yes/No]", the root script has no answer, the script runs under
+/// `pkexec` without a terminal — the Rexon install hung silently, inside `set -e`.
 #[test]
 fn pkg_install_cmd_per_family() {
     let pkgs = vec!["foo".to_string(), "bar".to_string()];
@@ -383,12 +383,12 @@ fn pkg_install_cmd_per_family() {
         (PkgFamily::Gentoo, "emerge --ask=n --quiet foo bar"),
         (PkgFamily::Alpine, "apk add --no-progress foo bar"),
         (PkgFamily::Void, "xbps-install -y foo bar"),
-        // NixOS — единственное осознанное расхождение с движком, см. ниже.
+        // NixOS is the only deliberate deviation from the engine, see below.
         (PkgFamily::Nix, ""),
         (PkgFamily::Solus, "eopkg it -y foo bar"),
         (PkgFamily::Clear, "swupd bundle-add foo bar"),
         (PkgFamily::Alt, "apt-get install -y foo bar"),
-        // Менеджер не опознан — выдумывать команду нечем.
+        // The manager is not recognized — there is nothing to make up a command from.
         (PkgFamily::Unknown, ""),
     ];
     for (family, want) in cases {
@@ -399,7 +399,7 @@ fn pkg_install_cmd_per_family() {
             family.as_str()
         );
     }
-    // Список случаев обязан покрывать всё перечисление целиком.
+    // The list of cases must cover the whole enum.
     for family in ALL_FAMILIES {
         assert!(
             cases.iter().any(|(f, _)| *f == family),
@@ -409,9 +409,9 @@ fn pkg_install_cmd_per_family() {
     }
 }
 
-/// «Поставить ничего» командой не выражается: `pacman -S --needed
-/// --noconfirm` без единого имени вернул бы от имени root ошибку
-/// использования. То же правило, что у движка (`install_argv`).
+/// "Install nothing" cannot be expressed as a command: `pacman -S --needed
+/// --noconfirm` without a single name would return a usage error as
+/// root. The same rule as the engine's (`install_argv`).
 #[test]
 fn pkg_install_cmd_refuses_empty_package_list() {
     for family in ALL_FAMILIES {
@@ -424,20 +424,20 @@ fn pkg_install_cmd_refuses_empty_package_list() {
     }
 }
 
-/// Имя пакета попадает в скрипт, который выполняется от root, поэтому каждое
-/// слово экранируется как `shlex.quote`. Заголовок команды из безопасных
-/// знаков состоит целиком и кавычек не получает — вид команды не меняется.
+/// The package name goes into a script that runs as root, so every
+/// word is escaped like `shlex.quote`. The command head consists entirely of safe
+/// characters and gets no quotes — the look of the command does not change.
 ///
-/// ⛔ Правка 25.09.2026: имя с метасимволом, путём или файлом пакета теперь
-/// не «экранируется», а ОТВЕРГАЕТСЯ движком ([`is_safe_pkg_arg`]) — строки
-/// команды не будет вовсе. Кавычки остаются вторым слоем (слово скрипта,
-/// идущего от root, обязано быть одним словом), но первым стоит отказ:
-/// `pacman -S 'foo; rm -rf /'` ставил бы пакет с таким именем, а такого
-/// имени не бывает — бывает подлог.
+/// ⛔ Change of 25.09.2026: a name with a metacharacter, a path or a package file is now
+/// not "escaped" but REJECTED by the engine ([`is_safe_pkg_arg`]) — there will be no
+/// command line at all. Quotes stay as a second layer (a word of a script
+/// running as root must be a single word), but refusal comes first:
+/// `pacman -S 'foo; rm -rf /'` would install a package with such a name, and no such
+/// name exists — only a forgery does.
 #[test]
 fn pkg_install_cmd_quotes_odd_package_names() {
-    // Обычные имена (в том числе с категорией Gentoo и дефисами Debian)
-    // проходят как есть.
+    // Ordinary names (including Gentoo's category and Debian's hyphens)
+    // pass as they are.
     assert_eq!(
         inst::pkg_install_cmd(PkgFamily::Gentoo, &["dev-qt/qtdeclarative".to_string()]),
         "emerge --ask=n --quiet dev-qt/qtdeclarative"
@@ -449,7 +449,7 @@ fn pkg_install_cmd_quotes_odd_package_names() {
         ),
         "apt-get install -y --no-install-recommends qml6-module-org-kde-layershell"
     );
-    // А необычные — никак: команды нет, и честное имя рядом её не спасает.
+    // And unusual ones do not at all: there is no command, and an honest name next to it does not save it.
     for bad in [
         "foo; rm -rf /", "$(id -u)", "it's", "/tmp/evil.deb", "../etc/passwd",
         "-Rns", "evil.rpm",
@@ -474,17 +474,17 @@ fn pkg_install_cmd_quotes_odd_package_names() {
     }
 }
 
-/// Сторож: своей таблицы команд у корневого скрипта БОЛЬШЕ НЕТ. Для каждого
-/// семейства строка обязана слово в слово совпасть с ответом движка
-/// [`rexon_core::system_plan::install_cmd`], проведённым через `shlex.quote`.
+/// Guard: the root script NO LONGER has its own command table. For every
+/// family the line must match word for word the engine's answer
+/// [`rexon_core::system_plan::install_cmd`], passed through `shlex.quote`.
 ///
-/// Два исключения, оба намеренные и оба про контекст, а не про таблицу:
-/// * `UNKNOWN` — движок отвечает ошибкой, строка пуста;
-/// * `NIX` — движок знает `nix-env -iA`, но эта команда наполняет профиль
-///   ЗАПУСТИВШЕГО. Корневой скрипт целиком идёт под одним `pkexec`, сбросить
-///   права внутри нечем, и пакеты легли бы в профиль root: команда отработала
-///   бы успешно, а покупатель не увидел бы ни ошибки, ни библиотек. Пустая
-///   строка честнее молчаливой пустышки.
+/// Two exceptions, both deliberate and both about context, not about the table:
+/// * `UNKNOWN` — the engine answers with an error, the line is empty;
+/// * `NIX` — the engine knows `nix-env -iA`, but this command fills the profile of
+///   the one WHO RAN IT. The root script runs entirely under one `pkexec`, there is no way
+///   to drop privileges inside, and the packages would land in root's profile: the command would
+///   succeed, and the buyer would see neither an error nor the libraries. An empty
+///   line is more honest than a silent dummy.
 #[test]
 fn pkg_install_cmd_has_no_table_of_its_own() {
     let pkgs = vec!["foo".to_string(), "bar".to_string()];
@@ -493,8 +493,8 @@ fn pkg_install_cmd_has_no_table_of_its_own() {
         match family {
             PkgFamily::Unknown | PkgFamily::Nix => {
                 assert_eq!(ours, "", "{}: строки быть не должно", family.as_str());
-                // Движок при этом семейство знает (кроме UNKNOWN) — пустота
-                // здесь именно решение, а не дыра в таблице.
+                // The engine does know the family (except UNKNOWN) — the emptiness
+                // here is precisely a decision, not a hole in the table.
                 if family == PkgFamily::Nix {
                     assert_eq!(
                         rexon_core::system_plan::install_cmd(family, &pkgs).unwrap(),
@@ -522,7 +522,7 @@ fn pkg_install_cmd_has_no_table_of_its_own() {
 }
 
 // ============================================================================
-// Install-скрипт (system) — обе dep-ветки
+// Install script (system) — both dep branches
 // ============================================================================
 
 fn params_from(g: &Value) -> InstallScriptParams {
@@ -561,7 +561,7 @@ fn params_from(g: &Value) -> InstallScriptParams {
         icons,
         helpers,
         dep_cmd: s(&g["dep_cmd"]),
-        // Эталоны сняты без согласия: правило «без пароля» не ставится.
+        // The goldens were captured without consent: the "no password" rule is not installed.
         passwordless_rule: g["passwordless_rule"].as_bool().unwrap_or(false),
     }
 }
@@ -569,7 +569,7 @@ fn params_from(g: &Value) -> InstallScriptParams {
 fn check_install_case(case: &Value) {
     let p = params_from(&case["params"]);
     assert_eq!(inst::system_install_script(&p), s(&case["script"]));
-    // pkexec argv + timeout (последний аргумент — tmp_sh install-скрипта).
+    // pkexec argv + timeout (the last argument is the install script's tmp_sh).
     let argv = str_vec(&case["pkexec"]["argv"]);
     let tmp_sh = argv.last().unwrap().clone();
     let cmd = inst::system_install_cmd(&tmp_sh);
@@ -584,7 +584,7 @@ fn install_system_script_matches() {
     check_install_case(&g["install_system"]["deps_missing"]);
 }
 
-/// Починка бага оригинала (правило #16): cleanup включает stage-файлы.
+/// Fix of the original's bug (rule #16): cleanup includes the stage files.
 #[test]
 fn install_cleanup_includes_stage_files() {
     let g = fx();
@@ -598,7 +598,7 @@ fn install_cleanup_includes_stage_files() {
         paths.contains(&p.helpers.tmp_stage_policy),
         "tmp_stage_policy должен очищаться (баг оригинала)"
     );
-    // Остальные пути тоже присутствуют.
+    // The other paths are present too.
     assert!(paths.contains(&p.tmp_pkg));
     assert!(paths.contains(&"/tmp/rexon_install_X.sh".to_string()));
     for (_, ip) in &p.icons.sizes {
@@ -607,7 +607,7 @@ fn install_cleanup_includes_stage_files() {
 }
 
 // ============================================================================
-// Деинсталляция
+// Uninstall
 // ============================================================================
 
 fn paths_from(g: &Value) -> InstallPaths {
@@ -646,7 +646,7 @@ fn distro_tables_match() {
         let fam = PkgFamily::from_value(fam_str).unwrap();
         assert_eq!(inst::distro_pkg_remove(fam), Some(str_vec(v)), "{fam_str}");
     }
-    // Семейства вне таблиц → None.
+    // Families outside the tables → None.
     assert_eq!(inst::distro_pkg_owner(PkgFamily::Gentoo), None);
     assert_eq!(inst::distro_pkg_owner(PkgFamily::Void), None);
     assert_eq!(inst::distro_pkg_remove(PkgFamily::Unknown), None);
@@ -685,7 +685,7 @@ fn pkg_remove_cmd_matches() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn get_installed_files_matches() {
-    // Эталон Python — русский: строка пакета в перечне идёт из po/ru.po.
+    // The Python golden is Russian: the package line in the list comes from po/ru.po.
     let _lang = i18n_pin::ru();
     let g = fx();
     let want = str_vec(&g["get_installed_files"]["case_pkg_and_system"]);
@@ -696,18 +696,18 @@ fn get_installed_files_matches() {
         None,
         "/home/w/.config/rexon",
         "/home/w/.local/share/rexon/backups",
-        |_| true, // все кандидаты «существуют» (как в golden)
+        |_| true, // all candidates "exist" (as in the golden)
     );
     assert_eq!(got, want);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  User-режим деинсталляции (секция `uninstall_user_v2`)
+//  User mode of uninstall (section `uninstall_user_v2`)
 // ══════════════════════════════════════════════════════════════════════════
 //
-// Эталон снят на РЕАЛЬНЫХ user-путях этой машины (`RexonInstaller("user")`):
-// какие иконки «есть на диске» задано списком, чтобы тест не зависел от
-// состояния ФС и ничего не удалял.
+// The golden was captured on REAL user paths of this machine (`RexonInstaller("user")`):
+// which icons "are on disk" is given by a list, so that the test does not depend on
+// the FS state and removes nothing.
 
 #[test]
 fn uninstall_user_paths_match() {
@@ -755,14 +755,14 @@ fn uninstall_summary_matches() {
 }
 
 // ============================================================================
-// Подписи мастера установки, удаления и отказа в установке DE: перевод
+// Labels of the install wizard, uninstall and DE install refusal: translation
 // ============================================================================
 //
-// Тексты переехали с двуязычных пар `Lang::pick` на каталог перевода
-// (29.09.2026). Снимок `installer_texts_ru_before.json` снят с ПРЕЖНЕГО
-// кода (Lang::Ru) до переезда: по-русски человек обязан видеть то же
-// слово в слово. Английский снимок держит выверенный английский и ловит
-// любую его правку. Переснять осознанно: `REXON_GOLDEN_WRITE=1`.
+// The texts moved from bilingual `Lang::pick` pairs to the translation catalog
+// (29.09.2026). The snapshot `installer_texts_ru_before.json` was captured from the FORMER
+// code (Lang::Ru) before the move: in Russian a person must see the same thing
+// word for word. The English snapshot holds the polished English and catches
+// any change to it. To recapture deliberately: `REXON_GOLDEN_WRITE=1`.
 
 mod i18n_pin;
 
@@ -824,7 +824,7 @@ fn texts_reasons() -> Vec<InstallReason> {
     ]
 }
 
-/// Все подписи на одном языке — картой «где показано → текст».
+/// All labels in one language — as a map "where shown → text".
 fn all_installer_texts(lang: Lang) -> Value {
     let mut m = serde_json::Map::new();
     let mut put = |k: String, v: Value| {
@@ -913,7 +913,7 @@ fn all_installer_texts(lang: Lang) -> Value {
     Value::Object(m)
 }
 
-/// Serialize без дженерика — чтобы звать одной замыкающей функцией.
+/// Serialize without a generic — so it can be called with one closing function.
 mod erased {
     pub trait Ser {
         fn json(&self) -> serde_json::Value;
@@ -936,7 +936,7 @@ fn texts_golden(name: &str, lang: Lang, now: &Value) -> Value {
     serde_json::from_str(&text).expect("снимок — JSON")
 }
 
-/// Сравнение по ключам — чтобы красное называло, ГДЕ разошлось.
+/// Comparison by keys — so that the red output names WHERE it diverged.
 fn assert_same_texts(now: &Value, want: &Value) {
     let (now, want) = (now.as_object().unwrap(), want.as_object().unwrap());
     let mut keys: Vec<&String> = now.keys().chain(want.keys()).collect();
@@ -950,7 +950,7 @@ fn assert_same_texts(now: &Value, want: &Value) {
     assert!(diff.is_empty(), "подписи разошлись со снимком:\n{}", diff.join("\n"));
 }
 
-/// По-русски — слово в слово как до переезда на каталог.
+/// In Russian — word for word as before the move to the catalog.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn russian_installer_texts_as_before() {
@@ -960,7 +960,7 @@ fn russian_installer_texts_as_before() {
     assert_same_texts(&now, &want);
 }
 
-/// Английский — выверенный снимок.
+/// English — the polished snapshot.
 #[test]
 fn english_installer_texts() {
     let _lang = i18n_pin::en();
@@ -969,9 +969,9 @@ fn english_installer_texts() {
     assert_same_texts(&now, &want);
 }
 
-/// Исполнитель расширений (`ext_exec`): ответы строки состояния по-русски —
-/// слово в слово прежние. Своего файла сверки у исполнителя нет, отказы
-/// установки проверяются здесь, рядом с остальными подписями установки.
+/// The extension executor (`ext_exec`): the status line answers in Russian are
+/// word for word the former ones. The executor has no check file of its own, install
+/// refusals are checked here, next to the other install labels.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn ext_exec_errors_in_russian_as_before() {
@@ -986,7 +986,7 @@ fn ext_exec_errors_in_russian_as_before() {
     let broken = ext_exec::install_from_file(&file.to_string_lossy()).err().unwrap_or_default();
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(broken, "Файл повреждён или не является архивом .rxn");
-    // Остальные ответы — поштучно по каталогу: прежний русский текст.
+    // The other answers — one by one from the catalog: the former Russian text.
     let cat = i18n_pin::ru_catalog();
     for (msgid, before) in [
         ("couldn't create the folder %1: %2", "не создать каталог %1: %2"),
@@ -1010,9 +1010,9 @@ fn ext_exec_errors_in_russian_as_before() {
     }
 }
 
-/// Исполнитель установки (`installer_exec`): «подробности для разработчика»
-/// под отказом шага по-русски — слово в слово прежние (поштучно по каталогу;
-/// `%1`/`%2` стоят там, где прежде подставлялись пути и код возврата).
+/// The install executor (`installer_exec`): the «details for the developer»
+/// under a step refusal in Russian are word for word the former ones (one by one from the catalog;
+/// `%1`/`%2` stand where paths and the exit code used to be substituted).
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn installer_exec_details_in_russian_as_before() {

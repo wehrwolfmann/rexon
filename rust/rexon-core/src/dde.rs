@@ -1,41 +1,44 @@
-//! Deepin (DDE): что Rexon умеет в сеансе Treeland и чем отказывает вне его.
-//! Здесь живёт ВСЁ знание Rexon о том, куда Deepin кладёт настройки; модули
-//! тем, звуков, шрифтов и обоев берут отсюда готовые argv и тексты.
+//! Deepin (DDE): what Rexon can do in a Treeland session and what it refuses
+//! outside of it. ALL of Rexon's knowledge about where Deepin keeps its
+//! settings lives here; the theme, sound, font and wallpaper modules take
+//! ready-made argv and texts from here.
 //!
-//! ⭐ Rexon поддерживает Deepin ТОЛЬКО на Treeland — Wayland-композиторе
-//! Deepin (решение Wehrwolfmann 26.10.2026; ставит его
-//! [`crate::deepin_treeland`]). Сеанс X11 с deepin-kwin и любой другой
-//! сеанс Deepin не на Treeland Rexon не настраивает: там одна честная фраза
-//! «Rexon поддерживает Deepin только на Treeland» и путь перехода
-//! ([`not_treeland_message`]). Сеанс Treeland опознаётся по композитору —
-//! процессу на том конце сокета Wayland ([`treeland_session_live`]), а не по
-//! `XDG_SESSION_TYPE=wayland`.
+//! Rexon supports Deepin ONLY on Treeland, Deepin's Wayland compositor
+//! (Wehrwolfmann's decision, 26.10.2026; it is installed by
+//! [`crate::deepin_treeland`]). Rexon does not configure an X11 session with
+//! deepin-kwin or any other Deepin session that is not on Treeland: there it
+//! gives one honest sentence, "Rexon supports Deepin only on Treeland", and a
+//! way to switch ([`not_treeland_message`]). A Treeland session is recognized
+//! by its compositor — the process on the other end of the Wayland socket
+//! ([`treeland_session_live`]) — and not by `XDG_SESSION_TYPE=wayland`.
 //!
-//! Сверено с исходниками linuxdeepin и пакетами Arch (02.10.2026):
+//! Checked against the linuxdeepin sources and the Arch packages (02.10.2026):
 //!
-//! * DConfig — ключи, которые читает сам Deepin в любом сеансе (тема звуков,
-//!   нынешние темы и шрифты, док dde-shell): пишет и читает штатная утилита
-//!   `dde-dconfig` (deepin-app-services), демон берёт пользователя у
-//!   вызывающего, root не нужен;
-//! * обои — через Центр управления ([`control_center_wallpaper_argv`]): в
-//!   Treeland личные настройки идут только через него.
+//! * DConfig: keys that Deepin itself reads in any session (the sound theme,
+//!   the current themes and fonts, the dde-shell dock) are written and read
+//!   by the stock utility `dde-dconfig` (deepin-app-services); the daemon
+//!   takes the user from the caller, root is not needed;
+//! * wallpaper goes through the Control Center
+//!   ([`control_center_wallpaper_argv`]): in Treeland, personal settings go
+//!   only through it.
 //!
-//! ⚠️ Безопасность (openSUSE исключил Deepin в 2025 году за обход проверки
-//! D-Bus-служб и polkit): Rexon в Deepin ТОЛЬКО зовёт пользовательские
-//! интерфейсы самого Deepin. Своих служб, правил polkit и системных файлов
-//! здесь нет и быть не должно.
+//! Warning — security (openSUSE dropped Deepin in 2025 for bypassing the
+//! review of D-Bus services and polkit): in Deepin, Rexon ONLY calls Deepin's
+//! own user-facing interfaces. There are no services, polkit rules or system
+//! files of our own here, and there must not be.
 //!
-//! ⚠️ `--auto-start=no` у вызовов служб на шине: они заведены
-//! D-Bus-активацией, и без запрета вызов из ДРУГОГО окружения (где Deepin
-//! просто установлен) поднял бы в чужом сеансе службу Deepin.
+//! Warning: `--auto-start=no` on bus service calls: these services are started
+//! by D-Bus activation, and without this prohibition a call from ANOTHER
+//! environment (where Deepin is merely installed) would bring up a Deepin
+//! service in someone else's session.
 
 use crate::i18n::tr;
 
-/// Звуки событий DDE v23/v25 (шина сеанса, dde-daemon `soundeffect1`).
+/// DDE v23/v25 event sounds (session bus, dde-daemon `soundeffect1`).
 pub const SOUND_EFFECT_DEST: &str = "org.deepin.dde.SoundEffect1";
 pub const SOUND_EFFECT_PATH: &str = "/org/deepin/dde/SoundEffect1";
 
-/// Ключ DConfig: приложение, ресурс (имя схемы в `/usr/share/dsg/configs`), ключ.
+/// A DConfig key: application, resource (the schema name in `/usr/share/dsg/configs`), key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DConfigKey {
     pub appid: &'static str,
@@ -47,8 +50,8 @@ const fn appearance_key(key: &'static str) -> DConfigKey {
     DConfigKey { appid: "org.deepin.dde.appearance", resource: "org.deepin.dde.appearance", key }
 }
 
-/// Схема `org.deepin.dde.appearance` (пакет deepin-appearance): нынешние
-/// темы и шрифты (только чтение) и тема звуков.
+/// The `org.deepin.dde.appearance` schema (package deepin-appearance): the
+/// current themes and fonts (read-only) and the sound theme.
 pub const GTK_THEME: DConfigKey = appearance_key("Gtk_Theme");
 pub const ICON_THEME: DConfigKey = appearance_key("Icon_Theme");
 pub const CURSOR_THEME: DConfigKey = appearance_key("Cursor_Theme");
@@ -56,11 +59,11 @@ pub const CURSOR_SIZE: DConfigKey = appearance_key("cursorSize");
 pub const FONT_STANDARD: DConfigKey = appearance_key("Font_Standard");
 pub const FONT_MONOSPACE: DConfigKey = appearance_key("Font_Monospace");
 pub const SOUND_THEME: DConfigKey = appearance_key("Sound_Theme");
-/// Схема `org.deepin.XSettings` (пакет deepin-services): её раздаёт
-/// GTK-программам служба XSettings.
+/// The `org.deepin.XSettings` schema (package deepin-services): the XSettings
+/// service hands it out to GTK programs.
 pub const XS_SOUND_THEME: DConfigKey =
     DConfigKey { appid: "org.deepin.dde.daemon", resource: "org.deepin.XSettings", key: "sound-theme-name" };
-/// Звуки событий, общий выключатель (dde-daemon `soundeffect1`).
+/// Event sounds, the master switch (dde-daemon `soundeffect1`).
 pub const EVENT_SOUNDS: DConfigKey = DConfigKey {
     appid: "org.deepin.dde.daemon",
     resource: "org.deepin.dde.daemon.soundeffect",
@@ -71,8 +74,8 @@ fn s(v: &[&str]) -> Vec<String> {
     v.iter().map(|x| (*x).to_string()).collect()
 }
 
-/// Общий выключатель звуков событий: свойство `Enabled` службы звуков
-/// (её обработчик записи ещё и передаёт значение проигрывателю тем).
+/// The master switch for event sounds: the `Enabled` property of the sound
+/// service (its write handler also passes the value on to the theme player).
 pub fn event_sounds_argv(enabled: bool) -> Vec<String> {
     s(&[
         "busctl", "--user", "--auto-start=no", "set-property", SOUND_EFFECT_DEST,
@@ -81,31 +84,31 @@ pub fn event_sounds_argv(enabled: bool) -> Vec<String> {
     ])
 }
 
-/// `dde-dconfig set` — запись ключа DConfig от имени вызывающего.
+/// `dde-dconfig set`: writes a DConfig key on behalf of the caller.
 pub fn dconfig_set_argv(k: DConfigKey, value: &str) -> Vec<String> {
     s(&["dde-dconfig", "set", "-a", k.appid, "-r", k.resource, "-k", k.key, "-v", value])
 }
 
-/// `dde-dconfig get` — текущее значение. Строки утилита печатает в двойных
-/// кавычках (`"deepin"`), числа и логические — как есть.
+/// `dde-dconfig get`: the current value. The utility prints strings in double
+/// quotes (`"deepin"`), numbers and booleans as they are.
 pub fn dconfig_get_argv(k: DConfigKey) -> Vec<String> {
     s(&["dde-dconfig", "get", "-a", k.appid, "-r", k.resource, "-k", k.key])
 }
 
-// ── DConfig по ключам, известным только во время работы (копия дока) ─────
+// ── DConfig by keys known only at runtime (dock copy) ────────────────
 
-/// Схема ресурса DConfig: `/usr/share/dsg/configs/<appid>/<resource>.json`.
+/// The DConfig resource schema: `/usr/share/dsg/configs/<appid>/<resource>.json`.
 pub fn dconfig_schema_path(appid: &str, resource: &str) -> String {
     format!("/usr/share/dsg/configs/{appid}/{resource}.json")
 }
 
-/// Годится ли имя ключа DConfig в команду (имена из чужого файла схемы).
+/// Whether a DConfig key name is fit for a command (names come from someone else's schema file).
 pub fn dconfig_key_ok(key: &str) -> bool {
     !key.is_empty() && !key.starts_with('-') && key.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
 }
 
-/// Ключи схемы, которые можно записать (`permissions: readwrite`), в
-/// порядке схемы. Схема не читается — пусто.
+/// Schema keys that can be written (`permissions: readwrite`), in schema
+/// order. If the schema cannot be read, the result is empty.
 pub fn dconfig_schema_writable_keys(schema: &str) -> Vec<String> {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(schema) else {
         return Vec::new();
@@ -126,7 +129,7 @@ pub fn dconfig_get_key_argv(appid: &str, resource: &str, key: &str) -> Vec<Strin
     s(&["dde-dconfig", "get", "-a", appid, "-r", resource, "-k", key])
 }
 
-/// Стоит ли у ключа значение по умолчанию (ответ `true` / `false`).
+/// Whether the key holds its default value (answer `true` / `false`).
 pub fn dconfig_is_default_argv(appid: &str, resource: &str, key: &str) -> Vec<String> {
     s(&["dde-dconfig", "get", "-a", appid, "-r", resource, "-k", key, "-m", "isDefaultValue"])
 }
@@ -135,15 +138,16 @@ pub fn dconfig_set_key_argv(appid: &str, resource: &str, key: &str, value: &str)
     s(&["dde-dconfig", "set", "-a", appid, "-r", resource, "-k", key, "-v", value])
 }
 
-/// Вернуть ключу значение по умолчанию.
+/// Resets the key to its default value.
 pub fn dconfig_reset_key_argv(appid: &str, resource: &str, key: &str) -> Vec<String> {
     s(&["dde-dconfig", "reset", "-a", appid, "-r", resource, "-k", key])
 }
 
-/// Ответ `dde-dconfig get` → то, что принимает `dde-dconfig set -v`.
-/// Логические и дробные утилита печатает как есть, всё прочее — в двойных
-/// кавычках, списки и словари — развёрнутым JSON внутри кавычек; `set`
-/// разбирает JSON-список или словарь, остальное берёт строкой.
+/// Converts a `dde-dconfig get` answer into what `dde-dconfig set -v`
+/// accepts. The utility prints booleans and floats as they are, everything
+/// else in double quotes, and lists and dictionaries as pretty-printed JSON
+/// inside quotes; `set` parses a JSON list or dictionary and takes anything
+/// else as a string.
 pub fn dconfig_cli_value(raw: &str) -> String {
     let t = raw.trim();
     if t.len() >= 2 && t.starts_with('"') && t.ends_with('"') {
@@ -159,8 +163,8 @@ pub fn dconfig_cli_value(raw: &str) -> String {
     t.to_string()
 }
 
-/// Значение из ответа `dde-dconfig get` или `busctl get-property`: без
-/// подписи типа (`i `, `s `, `d `, `b `) и кавычек.
+/// The value from a `dde-dconfig get` or `busctl get-property` answer, without
+/// the type signature (`i `, `s `, `d `, `b `) and quotes.
 pub fn parse_value(raw: &str) -> String {
     let v = raw.trim();
     let v = match v.split_once(' ') {
@@ -171,32 +175,34 @@ pub fn parse_value(raw: &str) -> String {
 }
 
 // ============================================================================
-// Сеанс Treeland и отказ вне его
+// The Treeland session and the refusal outside of it
 // ============================================================================
 //
-// В сеансе Treeland окна, курсор и обои рисует композитор Treeland, и своё
-// оформление он берёт НЕ у службы оформления: служба там пропускает
-// глобальную тему («в Treeland все личные настройки идут через протокол
-// Центра управления»), обои `Set("background")` отдаёт в никуда, а темы
-// значков, курсора, шрифты, углы и прозрачность Treeland получает от Центра
-// управления по своему протоколу Wayland (`treeland_personalization_manager_v1`,
-// в новых выпусках — `treeland_appearance_manager_v1`, объявлен
-// привилегированным: «только для Центра управления»). Значения Treeland
-// хранит в DConfig `org.deepin.dde.treeland` / `org.deepin.dde.treeland.user`
-// своего процесса, а он в сеансе DDM запущен от служебного пользователя
-// `dde`, — записать туда от имени человека нельзя. Поэтому здесь: обои —
-// через сам Центр управления (`ShowPage("personalization/wallpaper?url=…")`),
-// остальное — честный отказ ([`treeland_message`]).
+// In a Treeland session, windows, the cursor and the wallpaper are drawn by
+// the Treeland compositor, and it does NOT take its appearance from the
+// appearance service: the service skips the global theme there ("in Treeland
+// all personal settings go through the Control Center protocol"), the
+// wallpaper `Set("background")` goes nowhere, and Treeland receives the icon
+// and cursor themes, fonts, corners and transparency from the Control Center
+// over its own Wayland protocol (`treeland_personalization_manager_v1`, in
+// newer releases `treeland_appearance_manager_v1`, declared privileged:
+// "for the Control Center only"). Treeland stores the values in the DConfig
+// `org.deepin.dde.treeland` / `org.deepin.dde.treeland.user` of its own
+// process, and in a DDM session that process runs as the service user
+// `dde`, so they cannot be written on behalf of the person. Hence here: the
+// wallpaper goes through the Control Center itself
+// (`ShowPage("personalization/wallpaper?url=…")`), everything else gets an
+// honest refusal ([`treeland_message`]).
 
-/// Имя процесса композитора Treeland (`/proc/<pid>/comm`).
+/// The process name of the Treeland compositor (`/proc/<pid>/comm`).
 pub const TREELAND_PROCESS: &str = "treeland";
 
-/// Центр управления DDE (шина сеанса).
+/// The DDE Control Center (session bus).
 pub const CONTROL_CENTER_DEST: &str = "org.deepin.dde.ControlCenter1";
 pub const CONTROL_CENTER_PATH: &str = "/org/deepin/dde/ControlCenter1";
 
-/// Сокет Wayland сеанса: `WAYLAND_DISPLAY` — путь или имя в
-/// `XDG_RUNTIME_DIR`. `None` — сеанс не Wayland.
+/// The session's Wayland socket: `WAYLAND_DISPLAY` is a path or a name in
+/// `XDG_RUNTIME_DIR`. `None` means the session is not Wayland.
 pub fn wayland_socket_path(wayland_display: &str, runtime_dir: &str) -> Option<String> {
     let name = wayland_display.trim();
     if name.is_empty() {
@@ -208,14 +214,15 @@ pub fn wayland_socket_path(wayland_display: &str, runtime_dir: &str) -> Option<S
     (!runtime_dir.is_empty()).then(|| format!("{}/{name}", runtime_dir.trim_end_matches('/')))
 }
 
-/// Композитор — Treeland: так зовётся процесс на том конце сокета Wayland.
+/// The compositor is Treeland: that is the name of the process on the other end of the Wayland socket.
 pub fn is_treeland_process(comm: Option<&str>) -> bool {
     comm.map(str::trim) == Some(TREELAND_PROCESS)
 }
 
-/// Имя процесса на том конце сокета Wayland сеанса (`SO_PEERCRED` → pid →
-/// `/proc/<pid>/comm`; `comm` читается и у чужого пользователя — в сеансе
-/// DDM Treeland запущен от `dde`). `None` — сокета нет или ядро не ответило.
+/// The name of the process on the other end of the session's Wayland socket
+/// (`SO_PEERCRED` → pid → `/proc/<pid>/comm`; `comm` can be read for another
+/// user too — in a DDM session Treeland runs as `dde`). `None` means there is
+/// no socket or the kernel did not answer.
 pub fn wayland_compositor_live() -> Option<String> {
     use std::os::fd::AsRawFd;
     let env = |n: &str| std::env::var(n).unwrap_or_default();
@@ -223,7 +230,7 @@ pub fn wayland_compositor_live() -> Option<String> {
     let stream = std::os::unix::net::UnixStream::connect(path).ok()?;
     let mut cred = libc::ucred { pid: 0, uid: 0, gid: 0 };
     let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
-    // SAFETY: буфер — живая `ucred` нужного размера, длина передана верно.
+    // SAFETY: the buffer is a live `ucred` of the right size, and the length is passed correctly.
     let rc = unsafe {
         libc::getsockopt(
             stream.as_raw_fd(),
@@ -239,27 +246,27 @@ pub fn wayland_compositor_live() -> Option<String> {
     std::fs::read_to_string(format!("/proc/{}/comm", cred.pid)).ok().map(|c| c.trim().to_string())
 }
 
-/// Идёт ли сейчас сеанс Treeland — по композитору, а не по типу сеанса.
+/// Whether a Treeland session is running right now, judged by the compositor, not by the session type.
 pub fn treeland_session_live() -> bool {
     is_treeland_process(wayland_compositor_live().as_deref())
 }
 
-/// Отказ «в Treeland это задаёт только Центр управления».
+/// The refusal "in Treeland this is set only by the Control Center".
 pub fn treeland_message() -> String {
     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("In the Deepin Wayland session (Treeland) this is set only by Deepin's Control Center — Rexon can't change it there yet: use Control Center → Personalization.")
 }
 
-/// Отказ в любом сеансе Deepin не на Treeland (X11 с deepin-kwin и прочие):
-/// одна фраза и путь перехода.
+/// The refusal in any Deepin session not on Treeland (X11 with deepin-kwin and
+/// others): one sentence and a way to switch.
 pub fn not_treeland_message() -> String {
     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-    // Вход в Treeland — только через DDM (treeland#1656), см. `deepin_treeland`.
+    // Login into Treeland is only possible through DDM (treeland#1656), see `deepin_treeland`.
     tr("Rexon supports Deepin only on Treeland. To switch, open Rexon → Desktops → Deepin → “Switch to Deepin on Treeland”, then make DDM the login screen and choose Treeland there.")
 }
 
-/// Почему Rexon этого в Deepin не меняет: в Treeland — его задаёт только
-/// Центр управления, вне Treeland — [`not_treeland_message`].
+/// Why Rexon does not change this in Deepin: in Treeland it is set only by the
+/// Control Center; outside Treeland, see [`not_treeland_message`].
 pub fn refusal(treeland: bool) -> String {
     if treeland {
         treeland_message()
@@ -268,19 +275,21 @@ pub fn refusal(treeland: bool) -> String {
     }
 }
 
-/// [`refusal`] для сеанса, который идёт сейчас.
+/// [`refusal`] for the session that is running now.
 pub fn refusal_live() -> String {
     refusal(treeland_session_live())
 }
 
-/// Обои через Центр управления: команда страницы «Обои» с адресом
-/// картинки. С командой Центр управления окна не открывает — ставит обои
-/// своим путём Treeland (на экран, выбранный у него сейчас) и отвечает,
-/// найдя страницу. `lock` — экран блокировки вместо рабочего стола.
+/// Wallpaper through the Control Center: the command for the "Wallpaper" page
+/// with the picture's address. With a command, the Control Center does not
+/// open a window: it sets the wallpaper through its own Treeland path (on the
+/// screen currently selected in it) and answers once it has found the page.
+/// `lock` means the lock screen instead of the desktop.
 ///
-/// ⚠️ Без `--auto-start=no`: Центр управления заводится D-Bus-активацией по
-/// первому вызову, а зовётся это только в сеансе Treeland. Адрес — с
-/// percent-кодированием: команду Центр управления режет по `&` и `=`.
+/// Warning: no `--auto-start=no` here: the Control Center is started by D-Bus
+/// activation on the first call, and this is called only in a Treeland
+/// session. The address is percent-encoded: the Control Center splits the
+/// command at `&` and `=`.
 pub fn control_center_wallpaper_argv(path: &str, lock: bool) -> Vec<String> {
     let url = crate::appearance_installer::path_as_uri(path);
     let kind = if lock { "lock" } else { "desktop" };
@@ -291,34 +300,35 @@ pub fn control_center_wallpaper_argv(path: &str, lock: bool) -> Vec<String> {
     ])
 }
 
-/// Итог передачи обоев Центру управления: прочитать их обратно у Treeland
-/// нельзя, поэтому — что сделано, без «✅ поставлены».
+/// The result of handing the wallpaper to the Control Center: it cannot be
+/// read back from Treeland, so we report what was done, without "✅ set".
 pub fn wallpaper_handed_message() -> String {
     tr("Wallpaper handed to Deepin's Control Center — it sets it on the screen selected there.")
 }
 
-/// Центр управления не принял обои.
+/// The Control Center did not accept the wallpaper.
 pub fn control_center_failed_message() -> String {
     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("Deepin's Control Center didn't take the wallpaper — set it in Control Center → Personalization → Wallpaper.")
 }
 
 // ============================================================================
-// Раздел «Окна Deepin» вкладки «Настройки»
+// The "Deepin windows" section of the "Settings" tab
 // ============================================================================
 
-/// Снимок раздела «Окна Deepin»: углы, прозрачность и акцент окон Treeland
-/// берёт только от Центра управления, поэтому раздел — объяснение, где их
-/// менять (в Treeland) или что Rexon поддерживает Deepin только на Treeland.
+/// A snapshot of the "Deepin windows" section: Treeland takes window corners,
+/// transparency and accent only from the Control Center, so the section is an
+/// explanation of where to change them (in Treeland) or that Rexon supports
+/// Deepin only on Treeland.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct LookState {
-    /// Раздел показывается только в сеансе Deepin.
+    /// The section is shown only in a Deepin session.
     pub available: bool,
     pub note: String,
 }
 
-/// Снимок раздела. `de` — окружение, как его зовёт ядро; `treeland` — идёт
-/// ли сеанс Treeland ([`treeland_session_live`]).
+/// A snapshot of the section. `de` is the environment as the core names it;
+/// `treeland` is whether a Treeland session is running ([`treeland_session_live`]).
 pub fn read_state(de: &str, treeland: bool) -> LookState {
     LookState { available: de == "deepin", note: refusal(treeland) }
 }
@@ -342,8 +352,9 @@ mod tests {
         assert_eq!(parse_value("i 12\n"), "12");
     }
 
-    /// Ответ `dde-dconfig get` → значение для `set -v`: кавычки снимаются,
-    /// развёрнутый JSON списков и словарей сжимается, логические — как есть.
+    /// A `dde-dconfig get` answer → the value for `set -v`: quotes are removed,
+    /// pretty-printed JSON of lists and dictionaries is compacted, booleans stay
+    /// as they are.
     #[test]
     fn dconfig_cli_values_round_trip() {
         assert_eq!(dconfig_cli_value("\"bottom\"\n"), "bottom");
@@ -357,8 +368,8 @@ mod tests {
         assert!(dconfig_schema_writable_keys("not json").is_empty());
     }
 
-    /// Сеанс Treeland — по процессу композитора на том конце сокета
-    /// Wayland, а не по типу сеанса.
+    /// A Treeland session is recognized by the compositor process on the other
+    /// end of the Wayland socket, not by the session type.
     #[test]
     fn treeland_is_recognised_by_its_compositor() {
         assert_eq!(wayland_socket_path("wayland-0", "/run/user/1000/").as_deref(), Some("/run/user/1000/wayland-0"));
@@ -371,8 +382,8 @@ mod tests {
         }
     }
 
-    /// Отказ: в Treeland — «только Центр управления», в любом другом сеансе
-    /// Deepin — «Rexon поддерживает Deepin только на Treeland» с путём перехода.
+    /// The refusal: in Treeland, "only the Control Center"; in any other Deepin
+    /// session, "Rexon supports Deepin only on Treeland" with a way to switch.
     #[test]
     fn refusal_depends_on_the_session() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -382,9 +393,9 @@ mod tests {
         assert!(other.contains("Switch to Deepin on Treeland"), "{other}");
     }
 
-    /// Темы GTK, значков и курсора Deepin Rexon не пишет ни в одном сеансе:
-    /// план — один стоп до записи (причина — [`refusal`] по сеансу), ключи
-    /// GNOME не трогаются.
+    /// Rexon does not write Deepin's GTK, icon and cursor themes in any session:
+    /// the plan is a single stop before writing (the reason is [`refusal`] for
+    /// the session), and GNOME keys are not touched.
     #[test]
     fn deepin_theme_plans_stop_before_writing() {
         use crate::themes::{self, ApplyStep};
@@ -399,8 +410,8 @@ mod tests {
         assert!(matches!(&q[0], themes::CursorQuery::Cmd(c) if c.argv == dconfig_get_argv(CURSOR_THEME)));
     }
 
-    /// Звуки Deepin — в его ключи DConfig (их читает сам Deepin в любом
-    /// сеансе); шрифты — только чтение.
+    /// Deepin sounds go into its DConfig keys (Deepin itself reads them in any
+    /// session); fonts are read-only.
     #[test]
     fn deepin_sounds_use_native_keys_and_fonts_are_read_only() {
         use crate::qt_settings as qs;
@@ -419,9 +430,9 @@ mod tests {
         assert!(!qs::font_target_available("deepin", "title"), "шрифта заголовков у Deepin нет");
     }
 
-    /// Обои: в Treeland их принимает Центр управления командой своей
-    /// страницы (сообщение честно говорит «переданы»); вне Treeland — отказ,
-    /// без сторонних рисовальщиков.
+    /// Wallpaper: in Treeland it is accepted by the Control Center via its page
+    /// command (the message honestly says "handed over"); outside Treeland it is
+    /// refused, without third-party renderers.
     #[test]
     fn deepin_wallpaper_goes_to_control_center_only_in_treeland() {
         use crate::wallpaper_engine::{static_plan, TREELAND_SESSION};
@@ -437,7 +448,7 @@ mod tests {
         }
     }
 
-    /// Раздел «Окна Deepin»: только объяснение; вне Deepin скрыт.
+    /// The "Deepin windows" section: only an explanation; hidden outside Deepin.
     #[test]
     fn look_section_explains_instead_of_writing() {
         assert_eq!(read_state("deepin", true), LookState { available: true, note: treeland_message() });
@@ -445,9 +456,9 @@ mod tests {
         assert!(!read_state("kde", true).available);
     }
 
-    /// Опознание: v23/v25 (`DDE`), deepin 20 (`Deepin`), Wayland-сеанс
-    /// Treeland и имена сеансов — всё это Deepin; во всех местах Rexon,
-    /// которые перечисляют окружения, он есть.
+    /// Recognition: v23/v25 (`DDE`), deepin 20 (`Deepin`), a Treeland Wayland
+    /// session and the session names are all Deepin; it is present in every place
+    /// in Rexon that lists environments.
     #[test]
     fn deepin_is_recognised_everywhere() {
         use crate::system::detect_current_de;
@@ -462,7 +473,7 @@ mod tests {
         assert!(!crate::themes::is_generic_wm("deepin"));
     }
 
-    /// Терминал Deepin — его собственная схема (`app-id` без `.desktop`).
+    /// The Deepin terminal has its own schema (`app-id` without `.desktop`).
     #[test]
     fn deepin_terminal_goes_to_its_schema() {
         use crate::defaults as d;

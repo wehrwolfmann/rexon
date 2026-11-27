@@ -1,28 +1,28 @@
-//! Сверки живого исполнителя системного слоя
+//! Checks of the live executor of the system layer
 //! ([`rexon_core::system_exec`]).
 //!
-//! ЧЕМ ЭТО ПРОВЕРЯЕТСЯ. Исполнитель гоняется на ПОДСТАВНОМ вводе-выводе
-//! ([`FakeIo`]): подставная файловая система, подставной `PATH`, подставные
-//! ответы команд. Ни один файл живой машины не читается, ни один подпроцесс
-//! не запускается, `pkexec` не вызывается ни разу. Ровно ради этого
-//! исполнитель и разделён на «решение» (ядро) и «действие» (трейт): этот
-//! код умеет снести пакеты Plasma, перебрать initramfs и удалить конфиг
-//! экрана входа — трогать им живую машину нельзя, а проверить порядок шагов
-//! и наблюдения обязательно.
+//! HOW THIS IS TESTED. The executor runs on STAND-IN I/O
+//! ([`FakeIo`]): a stand-in file system, a stand-in `PATH`, stand-in
+//! command answers. Not a single file of the live machine is read, not a single subprocess
+//! is started, `pkexec` is never called. This is exactly why the
+//! executor is split into "decision" (the core) and "action" (the trait): this
+//! code can remove Plasma packages, rebuild the initramfs and delete the login
+//! screen config — it must not touch a live machine, yet the order of steps
+//! and the observations must be checked.
 //!
-//! ⚠️ СТОРОЖ. `guard_*`-сверки следят не за текстами, а за границами:
-//!   * `guard_only_pkexec_changes_system` — за весь аварийный откат
-//!     исполнитель не смеет запустить НИ ОДНОЙ изменяющей команды помимо
-//!     `pkexec` из плана ядра;
-//!   * `guard_dangling_symlink_is_not_login_screen` — висячий симлинк
-//!     `display-manager.service` экраном входа не считается (иначе защита от
-//!     дурака молчит ровно тогда, когда нужна);
-//!   * `guard_blocked_fork_reset_runs_nothing` — когда вернуть сток нечем,
-//!     `pacman -Rns` не запускается вовсе;
-//!   * `guard_idempotent_resets_run_nothing` — сброс уже стокового Plymouth
-//!     и SDDM не идёт наружу совсем.
-//! Все четыре проверены на укус: снятие соответствующего условия в
-//! исполнителе валит именно их.
+//! ⚠️ WATCHDOG. The `guard_*` checks watch not texts but boundaries:
+//!   * `guard_only_pkexec_changes_system` — during the whole emergency rollback
+//!     the executor must not run A SINGLE modifying command other than
+//!     `pkexec` from the core's plan;
+//!   * `guard_dangling_symlink_is_not_login_screen` — a dangling
+//!     `display-manager.service` symlink does not count as a login screen (otherwise the
+//!     foolproofing stays silent exactly when it is needed);
+//!   * `guard_blocked_fork_reset_runs_nothing` — when there is nothing to restore the stock with,
+//!     `pacman -Rns` is not run at all;
+//!   * `guard_idempotent_resets_run_nothing` — resetting an already stock Plymouth
+//!     and SDDM does not go outside at all.
+//! All four are tested for their bite: removing the corresponding condition in the
+//! executor fails exactly them.
 
 mod i18n_pin;
 
@@ -35,10 +35,10 @@ use rexon_core::system_plan as plan;
 use rexon_core::utils::RunOutcome;
 
 // ============================================================================
-// Подставной исполнитель
+// Stand-in executor
 // ============================================================================
 
-/// Записанный побочный вызов: имя операции + аргумент.
+/// A recorded side call: operation name + argument.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Op(String, String);
 
@@ -75,7 +75,7 @@ impl Reply {
             stderr: String::new(),
         }
     }
-    /// Команда не запустилась вовсе (нет бинаря, нет прав).
+    /// The command did not start at all (no binary, no permission).
     fn error() -> Self {
         Reply {
             outcome: RunOutcome::Error,
@@ -88,31 +88,31 @@ impl Reply {
 
 #[derive(Default)]
 struct FakeIo {
-    /// Обычные файлы: путь → содержимое.
+    /// Regular files: path → contents.
     files: BTreeMap<String, String>,
-    /// Каталоги.
+    /// Directories.
     dirs: BTreeSet<String>,
-    /// Симлинки: путь → цель (цель может НЕ существовать — висячий симлинк).
+    /// Symlinks: path → target (the target may NOT exist — a dangling symlink).
     links: BTreeMap<String, String>,
-    /// Файлы с битом запуска.
+    /// Files with the executable bit.
     execs: BTreeSet<String>,
-    /// Что «есть в PATH».
+    /// What is "in PATH".
     tools: BTreeSet<String>,
-    /// Переменные окружения.
+    /// Environment variables.
     env: BTreeMap<String, String>,
-    /// Ответы команд по полному argv (`join(" ")`).
+    /// Command answers by the full argv (`join(" ")`).
     replies: BTreeMap<String, Reply>,
-    /// Журнал побочных вызовов в порядке исполнения.
+    /// Log of side calls in execution order.
     log: RefCell<Vec<Op>>,
-    /// Файлы, ЗАПИСАННЫЕ исполнителем: путь → содержимое. Отдельно от
-    /// `files` намеренно — так видно, что маршрут тронул на диске, и
-    /// сторожу есть за чем следить.
+    /// Files WRITTEN by the executor: path → contents. Kept separate from
+    /// `files` on purpose — this shows what the route touched on disk, and
+    /// the watchdog has something to watch.
     written: RefCell<BTreeMap<String, String>>,
-    /// Пути, запись в которые обязана провалиться (нет прав, нет места).
+    /// Paths whose writing must fail (no permission, no space).
     readonly: BTreeSet<String>,
-    /// Сеанс прав окна есть: ответ помощника сеанса на любую операцию.
+    /// The window has a privilege session: the session helper's answer to any operation.
     session: Option<Reply>,
-    /// Операции, ушедшие помощнику сеанса.
+    /// Operations that went to the session helper.
     priv_ops: RefCell<Vec<rexon_core::privilege::op::PrivOp>>,
 }
 
@@ -123,8 +123,8 @@ impl FakeIo {
 
     fn file(mut self, path: &str, content: &str) -> Self {
         self.files.insert(path.to_string(), content.to_string());
-        // Родительские каталоги существуют — иначе `list_dir` пришлось бы
-        // объявлять в каждом тесте.
+        // Parent directories exist — otherwise `list_dir` would have to be
+        // declared in every test.
         let mut p = path;
         while let Some((dir, _)) = p.rsplit_once('/') {
             if dir.is_empty() {
@@ -146,7 +146,7 @@ impl FakeIo {
         self
     }
 
-    /// Файл + бит запуска (так лежит развёрнутый привилегированный helper).
+    /// File + executable bit (that is how a deployed privileged helper lies).
     fn exec_file(mut self, path: &str) -> Self {
         self.execs.insert(path.to_string());
         self.file(path, "#!/bin/bash\n")
@@ -167,15 +167,15 @@ impl FakeIo {
         self
     }
 
-    /// Развёрнутый polkit + все три helper'а Rexon — ровно там, куда
-    /// смотрит движок на ЭТОЙ машине.
+    /// Deployed polkit + all three Rexon helpers — exactly where
+    /// the engine looks on THIS machine.
     ///
-    /// ⚠️ Не константа `*_HELPER_PATH`: каталога два и оба законны
-    /// (`/usr/lib` у пакета, `/usr/local/lib` у ручной установки), а
-    /// `SystemExec` спрашивает путь у `plan::*_helper_path()`. Пока здесь
-    /// стоял путь ручной установки, сверки зеленели только на машине без
-    /// пакета: поставил свой же пакет — и подделка раскладывала помощника
-    /// не по тому пути, который движок собирался запускать.
+    /// ⚠️ Not the `*_HELPER_PATH` constant: there are two directories and both are legitimate
+    /// (`/usr/lib` for the package, `/usr/local/lib` for a manual install), and
+    /// `SystemExec` asks `plan::*_helper_path()` for the path. While the manual install
+    /// path stood here, the checks were green only on a machine without the
+    /// package: install our own package — and the fake laid out the helper
+    /// not at the path the engine was going to run.
     fn with_helpers(self) -> Self {
         self.tool("pkexec")
             .exec_file(plan::pkg_helper_path())
@@ -201,7 +201,7 @@ impl FakeIo {
         self.log.borrow().clone()
     }
 
-    /// argv всех запущенных команд, в порядке запуска.
+    /// argv of all started commands, in start order.
     fn commands(&self) -> Vec<String> {
         self.ops()
             .into_iter()
@@ -215,7 +215,7 @@ impl FakeIo {
         self
     }
 
-    /// Сколько раз перечислялся каталог.
+    /// How many times the directory was listed.
     fn lists_of(&self, dir: &str) -> usize {
         self.ops()
             .into_iter()
@@ -223,12 +223,12 @@ impl FakeIo {
             .count()
     }
 
-    /// Что маршрут записал на диск: (путь, содержимое), в порядке пути.
+    /// What the route wrote to disk: (path, contents), in path order.
     fn written(&self) -> Vec<(String, String)> {
         self.written.borrow().clone().into_iter().collect()
     }
 
-    /// Сколько раз читался путь.
+    /// How many times the path was read.
     fn reads_of(&self, path: &str) -> usize {
         self.ops()
             .into_iter()
@@ -279,8 +279,8 @@ impl SystemIo for FakeIo {
             .borrow_mut()
             .push(Op("read_text".into(), path.into()));
         let r = self.resolve(path);
-        // Записанное перекрывает исходное: маршрут, переписавший файл,
-        // обязан читать СВОЁ содержимое, а не довесок теста.
+        // What was written overrides the original: a route that rewrote a file
+        // must read ITS OWN contents, not the test's addition.
         if let Some(text) = self.written.borrow().get(&r) {
             return Some(text.clone());
         }
@@ -302,8 +302,8 @@ impl SystemIo for FakeIo {
                 }
             }
         }
-        // Порядок НАРОЧНО обратный: обход настоящей ФС произволен, и
-        // порядок обязано задавать ядро, а не исполнитель.
+        // The order is DELIBERATELY reversed: walking a real FS is arbitrary, and
+        // the order must be set by the core, not by the executor.
         Some(names.into_iter().rev().collect())
     }
 
@@ -330,9 +330,9 @@ impl SystemIo for FakeIo {
     }
 
     fn which_path(&self, name: &str) -> Option<String> {
-        // Синонимы имени (`kwriteconfig6` → `kwriteconfig5`) — как у живого
-        // резолвера: иначе сверка на машине с Plasma 5 расходилась бы с
-        // продуктом.
+        // Name synonyms (`kwriteconfig6` → `kwriteconfig5`) — as in the live
+        // resolver: otherwise the check on a machine with Plasma 5 would diverge from
+        // the product.
         let (names, _dirs) = rexon_core::utils::tool_candidates(name);
         names
             .into_iter()
@@ -370,7 +370,7 @@ impl SystemIo for FakeIo {
     }
 }
 
-/// Машина CachyOS (Arch) — общая основа половины сверок.
+/// A CachyOS (Arch) machine — the common base of half the checks.
 fn arch() -> FakeIo {
     FakeIo::new()
         .file("/etc/os-release", "ID=cachyos\nID_LIKE=arch\nNAME=CachyOS\n")
@@ -380,7 +380,7 @@ fn arch() -> FakeIo {
 const DM_LINK: &str = "/etc/systemd/system/display-manager.service";
 
 // ============================================================================
-// Движок пакетов и дистрибутив
+// Package engine and distribution
 // ============================================================================
 
 #[test]
@@ -391,7 +391,7 @@ fn family_read_once_and_cached() {
     assert_eq!(ex.family(), PkgFamily::Arch);
     assert_eq!(ex.family(), PkgFamily::Arch);
     assert_eq!(ex.family(), PkgFamily::Arch);
-    // Оригинал (`_is_pkg_installed`) создавал DistroDetector на КАЖДЫЙ вызов.
+    // The original (`_is_pkg_installed`) created a DistroDetector on EVERY call.
     assert_eq!(io.reads_of("/etc/os-release"), 1);
 }
 
@@ -409,7 +409,7 @@ fn installed_packages_parsed_from_pacman() {
 #[test]
 fn installed_packages_empty_without_manager() {
     let _lang = i18n_pin::en();
-    // Бинаря нет → команда НЕ запускается вовсе (порт `_run_pkg_query`).
+    // No binary → the command is NOT started at all (port of `_run_pkg_query`).
     let io = FakeIo::new().file("/etc/os-release", "ID=arch\n");
     let ex = SystemExec::new(&io);
     assert!(ex.installed_packages(PkgFamily::Arch).is_empty());
@@ -425,7 +425,7 @@ fn is_pkg_installed_reads_return_code() {
     let ex = SystemExec::new(&io);
     assert!(ex.is_pkg_installed("bash"));
     assert!(!ex.is_pkg_installed("nope"));
-    // Не запустилось вовсе — тоже «не установлен», без паники.
+    // Did not start at all — also "not installed", without a panic.
     assert!(!ex.is_pkg_installed("unasked"));
 }
 
@@ -441,18 +441,18 @@ fn repo_target_exists_tells_no_from_cannot_ask() {
         ex.repo_target_exists("plasma-framework", PkgFamily::Arch),
         Some(false)
     );
-    // Ответа не было — это НЕ «нет такого пакета».
+    // There was no answer — this is NOT "no such package".
     assert_eq!(ex.repo_target_exists("silent", PkgFamily::Arch), None);
 }
 
 // ============================================================================
-// Polkit и привилегированные helper'ы
+// Polkit and privileged helpers
 // ============================================================================
 
 #[test]
 fn polkit_missing_named_once_with_package_hint() {
-    // Эталон — русские тексты оригинала: язык закреплён (без замка сверка
-    // краснела или зеленела в зависимости от соседних потоков).
+    // The golden values are the original's Russian texts: the language is pinned (without the lock the check
+    // went red or green depending on neighboring threads).
     let _lang = i18n_pin::ru();
     let io = arch();
     let ex = SystemExec::new(&io);
@@ -476,9 +476,9 @@ fn polkit_present_says_nothing() {
 #[test]
 fn helper_available_requires_exec_bit() {
     let _lang = i18n_pin::en();
-    // ⭐ Починка при переносе: оригинал спрашивал только os.path.exists, и
-    // helper без бита запуска проходил проверку — pkexec падал на exec, а
-    // мягкий откат на сырой путь не включался.
+    // ⭐ Fixed during the port: the original asked only os.path.exists, and
+    // a helper without the executable bit passed the check — pkexec failed on exec, and
+    // the soft fallback to the raw path did not kick in.
     let ok = arch().with_helpers();
     assert!(SystemExec::new(&ok).pkg_helper_available());
 
@@ -486,7 +486,7 @@ fn helper_available_requires_exec_bit() {
     broken.execs.remove(plan::pkg_helper_path());
     let ex = SystemExec::new(&broken);
     assert!(!ex.pkg_helper_available());
-    // …и вызывающий получает None = «иди сырым путём», а не отказ операции.
+    // …and the caller gets None = "take the raw path", not an operation refusal.
     assert_eq!(
         ex.privileged_pkg_cmd(PkgFamily::Arch, "install", &["sddm".to_string()]),
         None
@@ -519,7 +519,7 @@ fn privileged_pkg_cmd_from_plan() {
             "sddm".to_string(),
         ])
     );
-    // Подозрительное имя пакета → сырой путь (двойная защита с bash-хелпером).
+    // A suspicious package name → the raw path (double protection with the bash helper).
     assert_eq!(
         ex.privileged_pkg_cmd(PkgFamily::Arch, "install", &["--root=/".to_string()]),
         None
@@ -544,12 +544,12 @@ fn privileged_stage_cmd_needs_staged_dir_under_tmp() {
             "/tmp/rexon-stage-1".to_string(),
         ])
     );
-    // Не под /tmp — helper не зовём (защита от symlink-escape).
+    // Not under /tmp — the helper is not called (protection against symlink escape).
     assert_eq!(
         ex.privileged_stage_cmd("gdm-bg", "Breeze", "/home/u/theme"),
         None
     );
-    // Каталога нет вовсе.
+    // No directory at all.
     assert_eq!(
         ex.privileged_stage_cmd("gdm-bg", "Breeze", "/tmp/nope"),
         None
@@ -557,7 +557,7 @@ fn privileged_stage_cmd_needs_staged_dir_under_tmp() {
 }
 
 // ============================================================================
-// Экран входа
+// Login screen
 // ============================================================================
 
 #[test]
@@ -573,16 +573,16 @@ fn dm_symlink_target_alive() {
         (Some("/usr/lib/systemd/system/sddm.service".to_string()), true)
     );
     assert_eq!(ex.active_login_manager(), "sddm");
-    // Симлинк жив → `systemctl is-enabled` не спрашивается вовсе.
+    // The symlink is alive → `systemctl is-enabled` is not asked at all.
     assert!(io.commands().is_empty());
 }
 
 #[test]
 fn dm_symlink_target_dangling_is_named() {
     let _lang = i18n_pin::en();
-    // ⭐ Починка при переносе: мёртвая цель теперь называется вслух —
-    // canonicalize на висячем симлинке просто падал, и сказать человеку,
-    // чей юнит удалён, было нечем.
+    // ⭐ Fixed during the port: the dead target is now named out loud —
+    // canonicalize on a dangling symlink simply failed, and there was nothing to tell the person
+    // about whose unit was removed.
     let io = arch()
         .link(DM_LINK, "/usr/lib/systemd/system/sddm.service")
         .tool("systemctl");
@@ -604,7 +604,7 @@ fn dm_symlink_target_absent() {
 #[test]
 fn active_login_manager_probes_units_then_defaults() {
     let _lang = i18n_pin::en();
-    // Симлинка нет (ранние выпуски Plasma Login Manager `Provides: None`).
+    // No symlink (early releases of Plasma Login Manager `Provides: None`).
     let io = arch()
         .tool("systemctl")
         .reply(
@@ -614,7 +614,7 @@ fn active_login_manager_probes_units_then_defaults() {
         .reply("systemctl is-enabled sddm.service", Reply::ok("enabled\n"));
     let ex = SystemExec::new(&io);
     assert_eq!(ex.active_login_manager(), "sddm");
-    // Опрос ЛЕНИВЫЙ: до gdm/lightdm дело не доходит.
+    // The query is LAZY: it never gets to gdm/lightdm.
     assert_eq!(
         io.commands(),
         vec![
@@ -623,7 +623,7 @@ fn active_login_manager_probes_units_then_defaults() {
         ]
     );
 
-    // Никто не ответил — дефолт плана.
+    // Nobody answered — the plan's default.
     let bare = arch().tool("systemctl");
     assert_eq!(
         SystemExec::new(&bare).active_login_manager(),
@@ -634,8 +634,8 @@ fn active_login_manager_probes_units_then_defaults() {
 #[test]
 fn active_login_manager_reads_disabled_from_nonzero_exit() {
     let _lang = i18n_pin::en();
-    // `systemctl is-enabled` печатает `disabled` с НЕнулевым кодом: гасить
-    // ответ по коду возврата нельзя, иначе состояние теряется.
+    // `systemctl is-enabled` prints `disabled` with a NONzero code: the answer
+    // must not be discarded by the exit code, otherwise the state is lost.
     let io = arch()
         .tool("systemctl")
         .reply(
@@ -655,9 +655,9 @@ fn active_login_manager_reads_disabled_from_nonzero_exit() {
 #[test]
 fn guard_dangling_symlink_is_not_login_screen() {
     let _lang = i18n_pin::en();
-    // ⚠️ СТОРОЖ. Записанная ловушка: висячий симлинк умеет выдавать себя за
-    // экран входа, и защита от дурака МОЛЧА пропускала установку. Ни один
-    // юнит не включён → честный ответ «экрана входа нет».
+    // ⚠️ WATCHDOG. A recorded trap: a dangling symlink can pass itself off as a
+    // login screen, and the foolproofing SILENTLY let the installation through. No
+    // unit is enabled → the honest answer is "there is no login screen".
     let dangling = arch()
         .tool("systemctl")
         .link(DM_LINK, "/usr/lib/systemd/system/sddm.service");
@@ -666,8 +666,8 @@ fn guard_dangling_symlink_is_not_login_screen() {
         "висячий симлинк выдал себя за живой экран входа"
     );
 
-    // Укус проверен так: цель симлинка возвращается на диск — и ответ
-    // обязан стать положительным, БЕЗ единого опроса юнитов.
+    // The bite is tested like this: the symlink target is put back on disk — and the answer
+    // must become positive, WITHOUT a single unit query.
     let alive = arch()
         .tool("systemctl")
         .file("/usr/lib/systemd/system/sddm.service", "[Unit]\n")
@@ -680,7 +680,7 @@ fn guard_dangling_symlink_is_not_login_screen() {
 #[test]
 fn display_manager_present_true_without_systemd() {
     let _lang = i18n_pin::en();
-    // Не-systemd система: экраном входа управляет сам init, не вмешиваемся.
+    // A non-systemd system: the login screen is managed by init itself, we do not interfere.
     let io = arch();
     assert!(SystemExec::new(&io).display_manager_present());
     assert!(io.commands().is_empty());
@@ -721,7 +721,7 @@ fn detect_plymouth_theme_from_binary() {
 #[test]
 fn detect_plymouth_theme_falls_back_to_default_link() {
     let _lang = i18n_pin::en();
-    // Ubuntu: бинарь вырезан из пакета, тема видна только через alternatives.
+    // Ubuntu: the binary is cut out of the package, the theme is visible only through alternatives.
     let io = plymouth_theme(arch(), "bgrt").link(
         &format!("{}/default.plymouth", plan::PLYMOUTH_THEMES_DIR),
         &plan::plymouth_theme_file_in(plan::PLYMOUTH_THEMES_DIR, "bgrt"),
@@ -730,7 +730,7 @@ fn detect_plymouth_theme_falls_back_to_default_link() {
         SystemExec::new(&io).detect_plymouth_theme().as_deref(),
         Some("bgrt")
     );
-    // Бинаря нет — запускать нечего.
+    // No binary — nothing to run.
     assert!(io.commands().is_empty());
 }
 
@@ -744,7 +744,7 @@ fn detect_plymouth_theme_none_when_nothing_knows() {
 #[test]
 fn list_plymouth_themes_needs_theme_file() {
     let _lang = i18n_pin::en();
-    // Пустой каталог остаётся после удаления пакета темы — темой он не стал.
+    // An empty directory is left after removing the theme package — it did not become a theme.
     let io = plymouth_theme(plymouth_theme(arch(), "bgrt"), "spinner")
         .dir(&format!("{}/leftover", plan::PLYMOUTH_THEMES_DIR));
     assert_eq!(
@@ -775,14 +775,14 @@ fn target_plymouth_theme_prefers_distro_branding() {
         ex.target_plymouth_theme().as_deref(),
         Some("cachyos-bootanimation")
     );
-    // Брендинг подошёл → plymouthd.defaults не читается (ленивость шагов).
+    // The branding matched → plymouthd.defaults is not read (steps are lazy).
     assert_eq!(io.reads_of(plan::PLYMOUTH_DEFAULTS), 0);
 }
 
 #[test]
 fn target_plymouth_theme_falls_back_to_package_default() {
     let _lang = i18n_pin::en();
-    // Тема брендинга есть, а её пакета нет — это не сток дистро.
+    // The branding theme exists but its package does not — this is not the distro stock.
     let io = plymouth_theme(plymouth_theme(arch(), "bgrt"), "cachyos-bootanimation")
         .file(plan::PLYMOUTH_DEFAULTS, "Theme=bgrt\n")
         .reply(
@@ -940,9 +940,9 @@ fn sddm_reset_plan_keeps_kde_and_user_files() {
 #[test]
 fn apply_sddm_reset_executes_exactly_the_shown_plan() {
     let _lang = i18n_pin::en();
-    // ⭐ Починка при переносе: маршрут показывал план, а исполнял ВТОРОЙ
-    // скан каталога. Здесь исполняется ровно то, что посчитали и показали:
-    // подставляем каталог, у которого к моменту исполнения содержимое ДРУГОЕ.
+    // ⭐ Fixed during the port: the route showed the plan but executed a SECOND
+    // scan of the directory. Here exactly what was computed and shown is executed:
+    // we supply a directory whose contents are DIFFERENT by the time of execution.
     let io = sddm_machine().reply(
         &format!(
             "pkexec sh -c set -e; rm -f {FAKE_CONF_D}/10-wackyideas.conf \
@@ -978,7 +978,7 @@ fn reset_sddm_reports_failure_with_manual_command() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn reset_sddm_denial_shows_manual_command() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
     let io = sddm_machine().reply(
         &format!(
@@ -1008,10 +1008,10 @@ fn sddm_distro_default_theme_from_distro_dir() {
 }
 
 // ============================================================================
-// Форки Plasma
+// Plasma forks
 // ============================================================================
 
-/// Машина с установленным AeroShell: провайдер libplasma + автономный форк.
+/// A machine with AeroShell installed: a libplasma provider + a standalone fork.
 fn aeroshell_machine() -> FakeIo {
     arch()
         .tool("pkexec")
@@ -1050,7 +1050,7 @@ fn plasma_fork_preview_shows_exact_command() {
         msg,
         "sudo pacman -Rns aeroshell-workspace-git  &&  sudo pacman -S libplasma"
     );
-    // Предпросмотр не смеет ходить в pkexec вовсе.
+    // The preview must not go to pkexec at all.
     assert!(
         !io.commands().iter().any(|c| c.starts_with("pkexec")),
         "{:?}",
@@ -1070,9 +1070,9 @@ fn plasma_fork_preview_nothing_when_no_forks() {
 #[test]
 fn guard_blocked_fork_reset_runs_nothing() {
     let _lang = i18n_pin::en();
-    // ⚠️ СТОРОЖ. Сток форка в репозиториях не нашёлся (KDE переименовала
-    // plasma-framework → libplasma). `-Rns` необратим, вернуть нечем —
-    // значит НИ ОДНОЙ команды наружу.
+    // ⚠️ WATCHDOG. The fork's stock was not found in the repositories (KDE renamed
+    // plasma-framework → libplasma). `-Rns` is irreversible, there is nothing to restore with —
+    // so NOT A SINGLE command goes outside.
     let io = arch()
         .tool("pkexec")
         .reply("pacman -Qq", Reply::ok("aeroshell-libplasma-git\n"))
@@ -1084,8 +1084,8 @@ fn guard_blocked_fork_reset_runs_nothing() {
             "pacman -Si plasma-framework",
             Reply::failed(1, "", "error: target not found: plasma-framework"),
         )
-        // Запасная карта ядра предлагает ещё и `libplasma` (форк зовётся
-        // `aeroshell-libplasma-git`) — репозитории не знают и его.
+        // The core's fallback map also offers `libplasma` (the fork is called
+        // `aeroshell-libplasma-git`) — the repositories do not know it either.
         .reply(
             "pacman -Si libplasma",
             Reply::failed(1, "", "error: target not found: libplasma"),
@@ -1122,8 +1122,8 @@ fn remove_plasma_forks_one_pkexec_in_fixed_order() {
     assert_eq!(pkexecs.len(), 1, "один пароль на всю транзакцию: {pkexecs:?}");
 }
 
-/// Окно снимает ровно тот набор, который показало человеку: пакетный
-/// менеджер заново не опрашивается, пароль спрашивается один раз.
+/// The window removes exactly the set it showed the person: the package
+/// manager is not queried again, the password is asked once.
 #[test]
 fn remove_plasma_forks_takes_the_shown_set_without_asking_again() {
     let _lang = i18n_pin::en();
@@ -1151,10 +1151,10 @@ fn remove_plasma_forks_takes_the_shown_set_without_asking_again() {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn remove_plasma_forks_memoizes_repo_probe() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: the check goes through po/ru.po.
     let _lang = i18n_pin::ru();
-    // План и человекочитаемая команда идут по форкам дважды — `pacman -Si`
-    // на одно имя обязан спрашиваться один раз.
+    // The plan and the human-readable command walk the forks twice — `pacman -Si`
+    // for one name must be asked once.
     let shell = "pacman -Rns --noconfirm aeroshell-workspace-git; \
                  pacman -S --noconfirm --needed libplasma";
     let io = aeroshell_machine().reply(
@@ -1175,7 +1175,7 @@ fn remove_plasma_forks_memoizes_repo_probe() {
 }
 
 // ============================================================================
-// Завершение сеанса
+// Ending the session
 // ============================================================================
 
 #[test]
@@ -1197,7 +1197,7 @@ fn logout_session_first_success_wins() {
 #[test]
 fn logout_session_names_timeout() {
     let _lang = i18n_pin::en();
-    // ⭐ Починка при переносе: «не дождались» больше не смешано с «не смогли».
+    // ⭐ Fixed during the port: "did not wait long enough" is no longer mixed with "could not".
     let io = arch()
         .env_var("XDG_CURRENT_DESKTOP", "hyprland")
         .reply("hyprctl dispatch exit", Reply::timeout());
@@ -1216,8 +1216,8 @@ fn logout_session_no_commands_at_all() {
     );
 }
 
-/// Отказ выхода из сеанса по-английски: и «выйти не удалось», и «команда
-/// не запустилась» — без единой русской буквы.
+/// The logout refusal in English: both "logging out failed" and "the command
+/// did not start" — without a single Russian letter.
 #[test]
 fn english_logout_session_has_no_russian() {
     let _lang = i18n_pin::en();
@@ -1234,7 +1234,7 @@ fn english_logout_session_has_no_russian() {
     assert_eq!(msg, "hyprctl: didn't start");
 }
 
-/// То же по-русски — дословно как было до перевода.
+/// The same in Russian — verbatim as it was before translation.
 #[test]
 fn russian_logout_session_reads_as_before() {
     let _lang = i18n_pin::ru();
@@ -1247,11 +1247,11 @@ fn russian_logout_session_reads_as_before() {
 }
 
 // ============================================================================
-// Сторожа границ
+// Boundary watchdogs
 // ============================================================================
 
-/// Команды, которые исполнителю можно запускать без `pkexec`: все только
-/// ЧИТАЮТ. Список закрытый — новая команда обязана сюда попасть осознанно.
+/// Commands the executor may run without `pkexec`: all of them only
+/// READ. The list is closed — a new command must get here deliberately.
 const READ_ONLY_HEADS: &[&str] = &[
     "pacman -Qq",
     "pacman -Q ",
@@ -1271,9 +1271,9 @@ fn is_read_only(cmd: &str) -> bool {
 #[test]
 fn guard_only_pkexec_changes_system() {
     let _lang = i18n_pin::en();
-    // ⚠️ СТОРОЖ. Полный аварийный откат: форки Plasma → Plymouth → SDDM.
-    // Изменять систему исполнителю позволено ТОЛЬКО через `pkexec` с argv
-    // из плана ядра; всё остальное — проба на чтение из закрытого списка.
+    // ⚠️ WATCHDOG. The full emergency rollback: Plasma forks → Plymouth → SDDM.
+    // The executor may change the system ONLY through `pkexec` with argv
+    // from the core's plan; everything else is a read probe from the closed list.
     let fork_shell = "pacman -Rns --noconfirm aeroshell-workspace-git; \
                       pacman -S --noconfirm --needed libplasma";
     let io = aeroshell_machine()
@@ -1321,8 +1321,8 @@ fn guard_only_pkexec_changes_system() {
 #[test]
 fn guard_idempotent_resets_run_nothing() {
     let _lang = i18n_pin::en();
-    // ⚠️ СТОРОЖ. Кнопка «вернуть как из коробки» жмётся повторно: система
-    // уже стоковая, и ни одного похода наружу быть не должно.
+    // ⚠️ WATCHDOG. The "restore to out of the box" button is pressed again: the system
+    // is already stock, and there must be no trips outside at all.
     let io = arch()
         .tool("pkexec")
         .tool("plymouth-set-default-theme")
@@ -1356,16 +1356,16 @@ fn guard_idempotent_resets_run_nothing() {
 }
 
 // ============================================================================
-// Аварийный откат оформления (`--recover-kde`)
+// Emergency appearance rollback (`--recover-kde`)
 // ============================================================================
 //
-// ⛔ ЖИВОЙ МАШИНЫ ЗДЕСЬ НЕТ. Маршрут умеет применить тему, снести оверрайды
-// экрана входа, пересобрать initramfs и переписать раскладку панели — всё
-// это гоняется на [`FakeIo`]: подставные файлы, подставной `PATH`,
-// подставной `$XDG_CONFIG_HOME`. Ни одного подпроцесса, ни одной записи на
-// настоящий диск.
+// ⛔ THERE IS NO LIVE MACHINE HERE. The route can apply a theme, remove login
+// screen overrides, rebuild the initramfs and rewrite the panel layout — all
+// of this runs on [`FakeIo`]: stand-in files, a stand-in `PATH`,
+// a stand-in `$XDG_CONFIG_HOME`. Not a single subprocess, not a single write to
+// the real disk.
 
-/// Машина с Plasma и своим корнем конфигов: общая основа сверок маршрута.
+/// A machine with Plasma and its own config root: the common base of the route checks.
 fn plasma() -> FakeIo {
     arch()
         .env_var("HOME", "/home/tester")
@@ -1378,15 +1378,15 @@ fn plasma() -> FakeIo {
         .reply("plasma-apply-colorscheme BreezeDark", Reply::ok(""))
 }
 
-/// Резервная копия темы в подставном корне конфигов.
+/// The theme backup in the stand-in config root.
 const BACKUP: &str = "/cfg/rexon/last_kde_lookandfeel.txt";
-/// Раскладка рабочих столов и панелей там же.
+/// The desktops and panels layout in the same place.
 const APPLETSRC: &str = "/cfg/plasma-org.kde.plasma.desktop-appletsrc";
-/// Тема из резервной копии — именно её и обязан применить маршрут.
+/// The theme from the backup — exactly the one the route must apply.
 const SAVED_THEME: &str = "org.kde.oxygen.desktop";
 
-/// Раскладка с ОДНИМ рабочим столом и панелью, в которой лежит апплет
-/// «Папки». Панель не должна сойти за рабочий стол (починка оригинала).
+/// A layout with ONE desktop and a panel holding the
+/// «Folder View» applet. The panel must not pass for a desktop (fix of the original).
 const LAYOUT_CLEAN: &str = "\
 [Containments][2]\n\
 plugin=org.kde.plasma.folder\n\
@@ -1397,7 +1397,7 @@ plugin=org.kde.panel\n\
 [Containments][3][Applets][7]\n\
 plugin=org.kde.plasma.folder\n";
 
-/// Та же раскладка, но с апплетом форк-темы в панели.
+/// The same layout, but with a fork theme applet in the panel.
 const LAYOUT_FORKED: &str = "\
 [Containments][2]\n\
 plugin=org.kde.plasma.folder\n\
@@ -1411,7 +1411,7 @@ plugin=org.kde.plasma.sevenstart\n\
 [Containments][3][Applets][5][Configuration]\n\
 size=42\n";
 
-/// Прогнать маршрут и собрать сказанное человеку.
+/// Run the route and collect what was said to the person.
 fn recover(io: &FakeIo) -> (i32, Vec<String>) {
     let mut said: Vec<String> = Vec::new();
     let rc = {
@@ -1422,11 +1422,11 @@ fn recover(io: &FakeIo) -> (i32, Vec<String>) {
     (rc, said)
 }
 
-/// ⛔ На чужом рабочем столе маршрут обязан ОТКАЗАТЬСЯ словами и не тронуть
-/// ничего: восстановление умеет только Plasma, а ярлык назван нейтрально.
+/// ⛔ On another desktop the route must REFUSE in words and touch
+/// nothing: only Plasma can be restored, and the shortcut has a neutral name.
 #[test]
 fn recover_kde_refuses_on_foreign_desktop() {
-    // Слова сверяются русские — как печатал оригинал (каталог `po/ru.po`).
+    // The words compared are Russian — as the original printed them (the `po/ru.po` catalog).
     let _lang = i18n_pin::ru();
     let io = plasma().env_var("XDG_CURRENT_DESKTOP", "GNOME");
     let (rc, said) = recover(&io);
@@ -1441,11 +1441,11 @@ fn recover_kde_refuses_on_foreign_desktop() {
     );
 }
 
-/// Пустой `$XDG_CURRENT_DESKTOP` — это «неизвестно», а не «чужой стол»:
-/// маршрут зовут в том числе из tty, когда сеанс уже не поднимается.
+/// An empty `$XDG_CURRENT_DESKTOP` means "unknown", not "another desktop":
+/// the route is called from a tty too, when the session no longer comes up.
 #[test]
 fn recover_kde_runs_without_desktop_variable() {
-    // Слова сверяются русские — как печатал оригинал (каталог `po/ru.po`).
+    // The words compared are Russian — as the original printed them (the `po/ru.po` catalog).
     let _lang = i18n_pin::ru();
     let io = plasma().env_var("XDG_CURRENT_DESKTOP", "");
     let (rc, said) = recover(&io);
@@ -1453,8 +1453,8 @@ fn recover_kde_runs_without_desktop_variable() {
     assert!(said.iter().any(|l| l.contains("Восстановлено")), "{said:?}");
 }
 
-/// Полный проход по исправной машине: та же последовательность шагов и те
-/// же слова, что печатал оригинал.
+/// A full pass over a healthy machine: the same sequence of steps and the
+/// same words the original printed.
 #[test]
 fn recover_kde_full_route_order() {
     let _lang = i18n_pin::en();
@@ -1486,21 +1486,21 @@ fn recover_kde_full_route_order() {
     );
 
     let cmds = io.commands();
-    // Тема применяется ПЕРВОЙ из изменяющих команд, и ровно та, что лежала
-    // в резервной копии.
+    // The theme is applied FIRST among the modifying commands, and exactly the one that was
+    // in the backup.
     assert_eq!(
         cmds[1],
         format!("plasma-apply-lookandfeel -a {SAVED_THEME}"),
         "{cmds:?}"
     );
     assert_eq!(cmds[2], "plasma-apply-colorscheme BreezeDark");
-    // Обои переписываются ОДНОМУ рабочему столу: апплет «Папки» в панели
-    // рабочим столом не считается (починка оригинала).
+    // The wallpaper is rewritten for ONE desktop: the «Folder View» applet in the panel
+    // does not count as a desktop (fix of the original).
     let wallpaper: Vec<&String> = cmds.iter().filter(|c| c.contains("wallpaperplugin")).collect();
     assert_eq!(wallpaper.len(), 1, "{cmds:?}");
     assert!(wallpaper[0].contains("Containments --group 2"), "{}", wallpaper[0]);
-    // Заканчивается перезапуском plasmashell — иначе записанное подхватится
-    // только при следующем входе.
+    // It ends with a plasmashell restart — otherwise what was written is picked up
+    // only at the next login.
     assert_eq!(
         cmds[cmds.len() - 2..],
         [
@@ -1511,8 +1511,8 @@ fn recover_kde_full_route_order() {
     assert!(io.written().is_empty(), "на исправной машине ничего не переписывается");
 }
 
-/// Тема не применилась — маршрут выходит неудачей СРАЗУ и дальше не идёт:
-/// сбрасывать конфиги поверх несработавшей темы нечего.
+/// The theme did not apply — the route exits with failure RIGHT AWAY and goes no further:
+/// there is no point resetting configs on top of a theme that did not work.
 #[test]
 fn recover_kde_stops_when_theme_fails() {
     let _lang = i18n_pin::en();
@@ -1530,9 +1530,9 @@ fn recover_kde_stops_when_theme_fails() {
     );
 }
 
-/// ⭐ Починка оригинала: отсутствующий `plasma-apply-lookandfeel` у Python
-/// поднимал FileNotFoundError прямо из `main()` — аварийный маршрут падал
-/// трассировкой там, где обязан объяснить.
+/// ⭐ Fix of the original: a missing `plasma-apply-lookandfeel` in Python
+/// raised FileNotFoundError straight out of `main()` — the emergency route crashed
+/// with a traceback exactly where it must explain.
 #[test]
 fn recover_kde_names_missing_plasma_tool() {
     let _lang = i18n_pin::en();
@@ -1543,10 +1543,10 @@ fn recover_kde_names_missing_plasma_tool() {
     assert_eq!(said.last().unwrap(), rexon_core::app::LOOKANDFEEL_MISSING_LINE);
 }
 
-/// Форки Plasma названы ДО сброса, вместе с командой полного отката.
+/// Plasma forks are named BEFORE the reset, together with the full rollback command.
 #[test]
 fn recover_kde_warns_about_plasma_forks_first() {
-    // Слова сверяются русские — как печатал оригинал (каталог `po/ru.po`).
+    // The words compared are Russian — as the original printed them (the `po/ru.po` catalog).
     let _lang = i18n_pin::ru();
     let io = plasma()
         .file(APPLETSRC, LAYOUT_CLEAN)
@@ -1567,11 +1567,11 @@ fn recover_kde_warns_about_plasma_forks_first() {
     );
 }
 
-/// Хирургия панели: убираются только апплеты форк-темы, рядом остаётся
-/// резервная копия, панель целиком не сносится.
+/// Panel surgery: only the fork theme applets are removed, a backup is left
+/// next to it, the panel is not removed as a whole.
 #[test]
 fn recover_kde_strips_fork_applets_and_keeps_backup() {
-    // Слова сверяются русские — как печатал оригинал (каталог `po/ru.po`).
+    // The words compared are Russian — as the original printed them (the `po/ru.po` catalog).
     let _lang = i18n_pin::ru();
     let io = plasma().file(APPLETSRC, LAYOUT_FORKED).dir("/usr/share/wallpapers");
     let (rc, said) = recover(&io);
@@ -1594,8 +1594,8 @@ fn recover_kde_strips_fork_applets_and_keeps_backup() {
     let (_, new_layout) = written.iter().find(|(p, _)| p == APPLETSRC).unwrap();
     assert!(!new_layout.contains("sevenstart"), "{new_layout}");
     assert!(new_layout.contains("org.kde.panel"), "панель на месте: {new_layout}");
-    // Полный `--resetLayout` не звался: хирургия справилась, и
-    // пользовательские виджеты уцелели.
+    // A full `--resetLayout` was not called: the surgery succeeded, and the
+    // user's widgets survived.
     assert!(
         !io.commands().iter().any(|c| c.contains("--resetLayout")),
         "{:?}",
@@ -1603,11 +1603,11 @@ fn recover_kde_strips_fork_applets_and_keeps_backup() {
     );
 }
 
-/// Раскладку переписать не вышло — говорим об этом и НЕ считаем апплеты
-/// удалёнными (иначе полный сброс не сработает как запасной путь).
+/// The layout could not be rewritten — we say so and do NOT consider the applets
+/// removed (otherwise the full reset would not work as the fallback).
 #[test]
 fn recover_kde_says_when_layout_cannot_be_rewritten() {
-    // Слова сверяются русские — как печатал оригинал (каталог `po/ru.po`).
+    // The words compared are Russian — as the original printed them (the `po/ru.po` catalog).
     let _lang = i18n_pin::ru();
     let io = plasma()
         .file(APPLETSRC, LAYOUT_FORKED)
@@ -1618,7 +1618,7 @@ fn recover_kde_says_when_layout_cannot_be_rewritten() {
         said.iter().any(|l| l.contains("Не удалось переписать панель")),
         "{said:?}"
     );
-    // Следы форка остались → включается полный сброс раскладки.
+    // Traces of the fork remained → the full layout reset kicks in.
     assert!(
         io.commands()
             .iter()
@@ -1628,8 +1628,8 @@ fn recover_kde_says_when_layout_cannot_be_rewritten() {
     );
 }
 
-/// Инструмента полного сброса нет — маршрут говорит это словами, а не
-/// молчит (правило #13).
+/// There is no full reset tool — the route says so in words rather than
+/// staying silent (rule #13).
 #[test]
 fn recover_kde_names_missing_lookandfeeltool() {
     let _lang = i18n_pin::en();
@@ -1642,14 +1642,14 @@ fn recover_kde_names_missing_lookandfeeltool() {
     );
 }
 
-/// ⭐ Экран входа сбрасывается ТЕМ ЖЕ планом, который показали человеку.
+/// ⭐ The login screen is reset by THE SAME plan that was shown to the person.
 ///
-/// СТОРОЖ на укус: оригинал считал план, печатал его, а потом сканировал
-/// каталог ЗАНОВО и удалял результат второго скана. Возврат к той форме —
-/// второй `list_dir` того же каталога, и эта сверка краснеет.
+/// A WATCHDOG with a bite: the original computed the plan, printed it, and then scanned
+/// the directory AGAIN and deleted the result of the second scan. Going back to that form means
+/// a second `list_dir` of the same directory, and this check goes red.
 #[test]
 fn guard_sddm_reset_shows_the_plan_it_executes() {
-    // Слова сверяются русские — как печатал оригинал (каталог `po/ru.po`).
+    // The words compared are Russian — as the original printed them (the `po/ru.po` catalog).
     let _lang = i18n_pin::ru();
     let io = plasma()
         .tool("pkexec")
@@ -1684,12 +1684,12 @@ fn guard_sddm_reset_shows_the_plan_it_executes() {
     );
 }
 
-/// Экран входа уже стоковый — `pkexec` не запускается вовсе (на чистой
-/// машине пароль не спрашивается впустую).
+/// The login screen is already stock — `pkexec` is not run at all (on a clean
+/// machine the password is not asked for nothing).
 #[test]
 fn guard_sddm_already_stock_runs_nothing() {
-    // Язык закреплён: строка и ожидание считаются в разные моменты, и
-    // соседняя сверка успевала переключить язык между ними.
+    // The language is pinned: the string and the expectation are computed at different moments, and
+    // a neighboring check managed to switch the language between them.
     let _lang = i18n_pin::en();
     let io = plasma().tool("pkexec").dir("/etc/sddm.conf.d");
     let ex = SystemExec::new(&io);
@@ -1699,9 +1699,9 @@ fn guard_sddm_already_stock_runs_nothing() {
     assert!(io.commands().is_empty(), "{:?}", io.commands());
 }
 
-/// ⭐ Починка оригинала: запасной путь `reconfigure` был мёртвым — тот же
-/// резолвер отдавал тот же бинарь, и команда повторялась дословно. Здесь
-/// после неответившего `dbus-send` пробуется `qdbus`.
+/// ⭐ Fix of the original: the `reconfigure` fallback was dead — the same
+/// resolver returned the same binary, and the command was repeated verbatim. Here
+/// `qdbus` is tried after a `dbus-send` that did not answer.
 #[test]
 fn kwin_reconfigure_falls_back_to_qdbus() {
     let _lang = i18n_pin::en();
@@ -1722,8 +1722,8 @@ fn kwin_reconfigure_falls_back_to_qdbus() {
     assert_eq!(io.commands().len(), 2, "пробуются ОБА бинаря: {:?}", io.commands());
 }
 
-/// Шину не дозвались вовсе — правка легла в файл, и человеку об этом
-/// сказано в журнале, а не «молча ничего не произошло».
+/// The bus could not be reached at all — the edit went into the file, and the person is
+/// told so in the log, instead of "silently nothing happened".
 #[test]
 fn kwin_reconfigure_failure_is_named_in_log() {
     let _lang = i18n_pin::en();
@@ -1735,9 +1735,9 @@ fn kwin_reconfigure_failure_is_named_in_log() {
     assert_eq!(ex.logs(), vec![rexon_core::app::KWIN_RECONFIGURE_FAILED_LOG.to_string()]);
 }
 
-/// ⛔ СТОРОЖ ГРАНИЦЫ. За весь аварийный откат наружу не уходит ни одна
-/// команда, меняющая систему помимо `pkexec` из планов ядра, и не пишется
-/// ни один файл, кроме раскладки панели и её резервной копии.
+/// ⛔ BOUNDARY WATCHDOG. During the whole emergency rollback not a single
+/// command changing the system goes outside other than `pkexec` from the core's plans, and
+/// not a single file is written except the panel layout and its backup.
 #[test]
 fn guard_recover_kde_touches_only_what_it_promised() {
     let _lang = i18n_pin::en();
@@ -1771,8 +1771,8 @@ fn guard_recover_kde_touches_only_what_it_promised() {
     );
 }
 
-/// Живая ФС, но свой каталог вместо `$HOME` и `$XDG_CONFIG_HOME`, а программ
-/// нет вовсе: сброс шрифтов в песочнице.
+/// A live FS, but our own directory instead of `$HOME` and `$XDG_CONFIG_HOME`, and no programs
+/// at all: a font reset in a sandbox.
 struct SandboxIo {
     home: String,
 }
@@ -1809,11 +1809,11 @@ impl SystemIo for SandboxIo {
     }
 }
 
-/// Сброс шрифтов («Восстановить тему KDE») снимает ВСЕ слои, которые кладёт
-/// страница «Шрифты», — на настоящих файлах: слои пишутся теми же функциями
-/// ядра, что и в продукте, чужие строки остаются, наших нет, файлы, где
-/// ничего не осталось, удалены, а `gtk.css`, бывший ссылкой на тему, снова
-/// ссылка.
+/// The font reset («Restore KDE Theme») removes ALL layers put by
+/// the «Fonts» page — on real files: the layers are written by the same core
+/// functions as in the product, other lines remain, ours are gone, files where
+/// nothing remained are deleted, and `gtk.css`, which was a link to the theme, is a
+/// link again.
 #[test]
 fn font_reset_strips_every_rexon_layer_on_real_files() {
     use rexon_core::qt_settings::{self as qs, FontFile, FontFileIo};
@@ -1830,7 +1830,7 @@ fn font_reset_strips_every_rexon_layer_on_real_files() {
     fs::create_dir_all(theme.parent().unwrap()).unwrap();
     fs::write(&theme, "window { color: blue; }\n").unwrap();
 
-    // Чужое до нас.
+    // Someone else's content before us.
     let gtk3_foreign = "@import url(\"colors.css\");\nwindow { color: red; }\n";
     fs::write(cfg.join("gtk-3.0/gtk.css"), gtk3_foreign).unwrap();
     std::os::unix::fs::symlink(&theme, cfg.join("gtk-4.0/gtk.css")).unwrap();
@@ -1845,7 +1845,7 @@ fn font_reset_strips_every_rexon_layer_on_real_files() {
     let cosmic_foreign = "(\n    family: \"Inter\",\n    weight: Normal,\n    stretch: Normal,\n    style: Normal,\n)";
     fs::write(cosmic.join("monospace_font"), cosmic_foreign).unwrap();
 
-    // Наши слои — теми же функциями, что пишет страница «Шрифты».
+    // Our layers — with the same functions the «Fonts» page writes with.
     struct Files(std::path::PathBuf);
     impl FontFileIo for Files {
         fn read(&self, rel: &str) -> Option<String> { fs::read_to_string(self.0.join(rel)).ok() }
@@ -1882,7 +1882,7 @@ fn font_reset_strips_every_rexon_layer_on_real_files() {
     let xr = qs::xresources_with_dpi(Some("Xcursor.size: 24\n"), Some(120)).unwrap();
     fs::write(home.join(".Xresources"), xr).unwrap();
 
-    // Слои на месте — иначе проверять нечего.
+    // The layers are in place — otherwise there is nothing to check.
     assert!(fs::read_to_string(cfg.join("gtk-3.0/gtk.css")).unwrap().contains("Rexon: fonts"));
     assert!(!fs::symlink_metadata(cfg.join("gtk-4.0/gtk.css")).unwrap().file_type().is_symlink());
     assert!(cfg.join("qt6ct/qss/rexon-fonts.qss").exists());
@@ -1912,14 +1912,14 @@ fn font_reset_strips_every_rexon_layer_on_real_files() {
     assert!(!cosmic.join("interface_font").exists());
     assert_eq!(fs::read_to_string(cosmic.join("monospace_font")).unwrap(), cosmic_foreign, "чужой шрифт COSMIC цел");
 
-    // Второй сброс — ничего не трогает.
+    // A second reset touches nothing.
     assert_eq!(ex.reset_font_layers(), 0);
     assert_eq!(fs::read_to_string(home.join(".Xresources")).unwrap(), "Xcursor.size: 24\n");
     fs::remove_dir_all(&root).unwrap();
 }
 
 // ============================================================================
-// Экран входа: какой основной, какие установлены
+// Login screen: which is the default, which are installed
 // ============================================================================
 
 #[test]
@@ -1935,7 +1935,7 @@ fn active_login_manager_opt_reads_symlink_then_units() {
     );
     assert!(live.commands().is_empty(), "живой симлинк решает без systemctl");
 
-    // Висячий симлинк и ничего не включено — «не знаем», без «sddm».
+    // A dangling symlink and nothing enabled — "we do not know", without "sddm".
     let dangling = arch()
         .tool("systemctl")
         .link(DM_LINK, "/usr/lib/systemd/system/sddm.service");
@@ -1962,7 +1962,7 @@ fn installed_login_managers_scan_unit_dirs() {
         .file("/usr/lib/systemd/system/sshd.service", "[Install]\nWantedBy=multi-user.target\n")
         .file("/dev/null", "")
         .dir("/etc/systemd/system")
-        // Маска не перекрывает пакетный lightdm в списке.
+        // A mask does not hide the packaged lightdm in the list.
         .link("/etc/systemd/system/lightdm.service", "/dev/null")
         .link(DM_LINK, "/usr/lib/systemd/system/sddm.service");
     let ex = SystemExec::new(&io);
@@ -2017,7 +2017,7 @@ fn lightdm_greeters_and_session_read_only() {
         .file("/usr/share/xgreeters/lightdm-gtk-greeter.desktop", "[Desktop Entry]\nName=LightDM GTK Greeter\nExec=lightdm-gtk-greeter\n")
         .reply(
             "lightdm --show-config",
-            // LightDM печатает конфиг в stderr.
+            // LightDM prints the config to stderr.
             Reply {
                 outcome: RunOutcome::Ok,
                 returncode: Some(0),
@@ -2032,9 +2032,9 @@ fn lightdm_greeters_and_session_read_only() {
     assert_eq!(io.commands(), vec!["lightdm --show-config"]);
 }
 
-/// Подставная машина как у Wehrwolfmann: plasmalogin основной; sddm,
-/// lightdm (два приветствия, GTK и Slick), greetd с agreety и
-/// cosmic-greeter установлены. Помощников нет — их добавляет тест.
+/// A stand-in machine like Wehrwolfmann's: plasmalogin is the default; sddm,
+/// lightdm (two greeters, GTK and Slick), greetd with agreety and
+/// cosmic-greeter are installed. No helpers — the test adds them.
 fn owner_like_machine() -> FakeIo {
     let sys = "/usr/lib/systemd/system";
     let alias = |exec: &str| format!("[Service]\nExecStart={exec}\n[Install]\nAlias=display-manager.service\n");
@@ -2076,10 +2076,10 @@ fn owner_like_machine() -> FakeIo {
     io.reply("lightdm --show-config", Reply::ok("   [Seat:*]\nA  session-wrapper=/etc/lightdm/Xsession\n"))
 }
 
-/// Машина Wehrwolfmann в подставной ФС: plasmalogin основной; sddm и
-/// cosmic-greeter готовы; LightDM ждёт выбора приветствия (предвыбор —
-/// Slick); greetd заблокирован из-за agreety. Ни одной команды, кроме
-/// чтения `lightdm --show-config`.
+/// Wehrwolfmann's machine in a stand-in FS: plasmalogin is the default; sddm and
+/// cosmic-greeter are ready; LightDM waits for a greeter choice (preselected —
+/// Slick); greetd is blocked because of agreety. Not a single command except
+/// reading `lightdm --show-config`.
 #[test]
 fn login_managers_on_owner_like_machine() {
     let _lang = i18n_pin::en();
@@ -2119,14 +2119,14 @@ fn login_managers_without_systemd_show_only() {
     assert!(io.commands().is_empty());
 }
 
-// ── Раздел «Менеджер входа»: снимок для интерфейса (Г1) ──────────────────
+// ── The «Login manager» section: a snapshot for the interface (G1) ──────────────────
 
 const IS_ACTIVE_ALL: &str =
     "systemctl is-active plasmalogin.service sddm.service lightdm.service greetd.service cosmic-greeter.service";
 
 fn is_active(states: &[&str]) -> Reply {
-    // `is-active` кончается кодом 3, если хоть один не работает, — строки
-    // ответа при этом есть.
+    // `is-active` ends with code 3 if at least one is not running — the answer
+    // lines are still there.
     Reply::failed(3, &(states.join("\n") + "\n"), "")
 }
 
@@ -2168,8 +2168,8 @@ fn login_screen_view_on_owner_like_machine() {
     assert!(io.commands().iter().all(|c| !c.starts_with("pkexec")), "проба только читает");
 }
 
-/// Автовход у основного: окно подтверждения ДО пароля говорит, что с ним
-/// станет у каждого другого экрана входа, — перенесётся или пропадёт.
+/// Autologin on the default one: the confirmation window BEFORE the password says what will
+/// happen to it on every other login screen — it will carry over or disappear.
 #[test]
 fn login_screen_view_warns_about_autologin_before_switch() {
     let _lang = i18n_pin::en();
@@ -2198,9 +2198,9 @@ fn login_screen_view_without_helper_locks_every_button() {
     assert!(view.managers.iter().all(|m| !m.can_switch));
 }
 
-/// Основной уже SDDM (переключили), а работает ещё Plasma Login Manager:
-/// раздел говорит, что вступит после перезагрузки, и показывает подсказку
-/// отката из файла помощника.
+/// The default is already SDDM (switched), but Plasma Login Manager is still running:
+/// the section says it takes effect after a reboot and shows the rollback
+/// hint from the helper's file.
 #[test]
 fn login_screen_view_tells_restart_pending_and_rollback() {
     let _lang = i18n_pin::en();
@@ -2274,7 +2274,7 @@ fn login_screen_view_unknown_login_screen_is_listed_without_button() {
     assert_eq!(lemurs.reason, rexon_core::system_exec::login_manager_cant_switch_reason());
 }
 
-// ── «Сделать основным» (Г2): подменный исполнитель вместо pkexec ─────────
+// ── «Make default» (G2): a stub executor instead of pkexec ─────────
 
 fn switch_argv(unit: &str, greeter: Option<&str>) -> String {
     plan::switch_dm_cmd(PkgFamily::Arch, unit, greeter, true).unwrap().join(" ")
@@ -2284,8 +2284,8 @@ fn pkexec_runs(io: &FakeIo) -> Vec<String> {
     io.commands().into_iter().filter(|c| c.starts_with("pkexec")).collect()
 }
 
-/// Ядро отказывает само, даже если интерфейс кнопку не запер (правило
-/// #13), и пароль при этом не спрашивается.
+/// The core refuses by itself, even if the interface did not lock the button (rule
+/// #13), and the password is not asked.
 #[test]
 fn switch_login_manager_refuses_before_password() {
     let _lang = i18n_pin::en();
@@ -2330,8 +2330,8 @@ fn switch_login_manager_refuses_where_rexon_does_not_switch() {
     assert!(pkexec_runs(&artix).is_empty());
 }
 
-/// Готовый SDDM: один вызов помощника; итог — «вступит после
-/// перезагрузки» и как вернуть прежний из консоли.
+/// A ready SDDM: one helper call; the result is "takes effect after
+/// a reboot" and how to restore the old one from the console.
 #[test]
 fn switch_login_manager_runs_helper_once_and_says_how_to_go_back() {
     let _lang = i18n_pin::en();
@@ -2350,9 +2350,9 @@ fn switch_login_manager_runs_helper_once_and_says_how_to_go_back() {
     );
 }
 
-/// Сеанс прав окна есть: переключение уходит помощнику сеанса операцией
-/// (и без прежнего помощника пакетов тоже), `pkexec` не зовётся. Отказ
-/// помощника сеанса — отказ, без прежней команды (З5).
+/// The window has a privilege session: the switch goes to the session helper as an operation
+/// (and also without the old package helper), `pkexec` is not called. A refusal of
+/// the session helper is a refusal, without the old command (Z5).
 #[test]
 fn switch_login_manager_goes_through_privilege_session() {
     use rexon_core::privilege::op::PrivOp;
@@ -2373,7 +2373,7 @@ fn switch_login_manager_goes_through_privilege_session() {
     let (ok, _) = SystemExec::new(&io).switch_login_manager("sddm", None);
     assert!(!ok);
     assert!(pkexec_runs(&io).is_empty(), "после отказа сеанса прежней команды нет: {:?}", io.commands());
-    // Пароль не подтверждён — прежнее объяснение с ручной командой.
+    // The password was not confirmed — the old explanation with the manual command.
     let io = FakeIo { session: Some(Reply::failed(126, "", "")), ..owner_like_machine().with_helpers() };
     let (ok, msg) = SystemExec::new(&io).switch_login_manager("sddm", None);
     assert!(!ok);
@@ -2389,7 +2389,7 @@ fn switch_login_manager_passes_chosen_greeter_to_helper() {
     let (ok, msg) = SystemExec::new(&io).switch_login_manager("lightdm", Some("lightdm-slick-greeter"));
     assert!(ok, "{msg}");
     assert_eq!(pkexec_runs(&io), vec![argv]);
-    // Готовому не-LightDM приветствие не передаётся вовсе.
+    // A ready non-LightDM gets no greeter passed at all.
     let sddm = switch_argv("sddm", None);
     let io = owner_like_machine().with_helpers().reply(&sddm, Reply::ok(""));
     assert!(SystemExec::new(&io).switch_login_manager("sddm", Some("lightdm-slick-greeter")).0);
@@ -2403,7 +2403,7 @@ fn switch_login_manager_password_not_confirmed() {
     for reply in [
         Reply::failed(126, "", "Error executing command as another user: Not authorized"),
         Reply::failed(127, "", ""),
-        // Код иной, но pkexec сказал «Not authorized» — тот же отказ.
+        // A different code, but pkexec said "Not authorized" — the same refusal.
         Reply::failed(1, "", "Error executing command as another user: Not authorized\n"),
     ] {
         let io = owner_like_machine().with_helpers().reply(&argv, reply);

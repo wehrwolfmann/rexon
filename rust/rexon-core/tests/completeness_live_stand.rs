@@ -1,30 +1,30 @@
-//! Стенд живой проводки «Проверить и доустановить» на подменах.
+//! Stand for the live wiring of «Проверить и доустановить» on fakes.
 //!
-//! Сверки в `system_de_exec` гоняют исполнитель доустановки на подставных
-//! исполнителях в памяти. Здесь — ЖИВЫЕ `completeness_survey_live` и
-//! `complete_de_live`: настоящий запуск процессов ядра (`utils::run`),
-//! настоящие `LiveDeOpsIo` и `LiveComplianceIo`. Подменены только программы:
-//! фальшивые `pkexec` и `pacman` лежат первыми в `PATH` и пишут свои
-//! аргументы в журнал стенда.
+//! The checks in `system_de_exec` run the completion executor on fake
+//! in-memory executors. Here it is the LIVE `completeness_survey_live` and
+//! `complete_de_live`: real process launching by the core (`utils::run`),
+//! the real `LiveDeOpsIo` and `LiveComplianceIo`. Only the programs are faked:
+//! fake `pkexec` and `pacman` come first in `PATH` and write their
+//! arguments to the stand's log.
 //!
-//! ⛔ Настоящий `pkexec` и настоящий `pacman` стенд не зовёт НИКОГДА: до
-//! первого запуска он сверяет, что обе программы находятся в каталоге
-//! подмен, и падает, ничего не запустив, если это не так. `HOME` и
-//! `XDG_CONFIG_HOME` — приватные, во временном каталоге сборки.
+//! ⛔ The stand NEVER calls the real `pkexec` or the real `pacman`: before
+//! the first run it verifies that both programs are found in the fakes
+//! directory, and fails without launching anything otherwise. `HOME` and
+//! `XDG_CONFIG_HOME` are private, in the build's temporary directory.
 //!
-//! Файл отдельный намеренно: стенд меняет переменные окружения процесса, а
-//! у каждого файла `tests/` свой процесс.
+//! The file is separate on purpose: the stand changes the process's environment variables, and
+//! each `tests/` file gets its own process.
 //!
-//! Замок пакетного менеджера тоже подменён: исполнитель ждёт lock-файл во
-//! временном каталоге стенда (`LiveDeOpsIo::with_pkg_lock_paths`), а не
-//! настоящий `/var/lib/pacman/db.lck`. Раньше живой `pacman -Syu` владельца
-//! держал стенд до 300 с. Шпион поверх живого исполнителя записывает каждый
-//! путь, о котором спросили ФС, — по нему сверяется, что системный замок не
-//! читается вовсе.
+//! The package manager lock is faked too: the executor waits for a lock file in the
+//! stand's temporary directory (`LiveDeOpsIo::with_pkg_lock_paths`), not the
+//! real `/var/lib/pacman/db.lck`. Previously the owner's live `pacman -Syu`
+//! held the stand for up to 300 s. A spy on top of the live executor records every
+//! path the FS was asked about — it is used to verify that the system lock is not
+//! read at all.
 //!
-//! Граница: семейство дистрибутива читается из настоящего `/etc/os-release`
-//! (подменить его исполнителю нечем). На не-Arch проверки пакетов не
-//! выполняются вовсе — стенд тогда говорит «НЕ ПРОВЕРЕНО» и выходит.
+//! Boundary: the distro family is read from the real `/etc/os-release`
+//! (the executor has no way to fake it). On non-Arch the package checks are not
+//! run at all — the stand then says «НЕ ПРОВЕРЕНО» and exits.
 
 mod i18n_pin;
 
@@ -38,7 +38,7 @@ use rexon_core::system_exec::{RunOut, SystemIo};
 use rexon_core::system_plan::{self as plan, LogTail, LogTailKind};
 use rexon_core::utils;
 
-/// Живой исполнитель со своим замком + запись путей, о которых спросили ФС.
+/// Live executor with its own lock + a record of the paths the FS was asked about.
 struct SpyIo {
     inner: dx::LiveDeOpsIo,
     exists_calls: Mutex<Vec<String>>,
@@ -164,7 +164,7 @@ fn write_script(path: &Path, body: &str) {
 }
 
 fn set_env(key: &str, value: &str) {
-    // Процесс стенда однопоточный на время подготовки: тест в файле один.
+    // The stand process is single-threaded during setup: there is one test in the file.
     #[allow(unused_unsafe)]
     unsafe {
         std::env::set_var(key, value);
@@ -182,7 +182,7 @@ fn read_log(path: &Path) -> Vec<String> {
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn live_completeness_on_fake_pkexec_and_pacman() {
-    // Эталон — русские тексты оригинала: сверка через po/ru.po.
+    // The golden values are the original's Russian texts: checked through po/ru.po.
     let _lang = i18n_pin::ru();
     if DistroDetector::detect_live().family_live() != PkgFamily::Arch {
         eprintln!("НЕ ПРОВЕРЕНО: машина не Arch — проверки пакетов не выполняются");
@@ -201,7 +201,7 @@ fn live_completeness_on_fake_pkexec_and_pacman() {
     let pkexec_log = root.join("pkexec.log");
     let pacman_log = root.join("pacman.log");
     let rc_file = root.join("pkexec.rc");
-    // Подставной замок пакетного менеджера — вместо /var/lib/pacman/db.lck.
+    // Fake package manager lock — instead of /var/lib/pacman/db.lck.
     let lock = root.join("db.lck");
     let lock_str = lock.display().to_string();
     let io = SpyIo {
@@ -209,7 +209,7 @@ fn live_completeness_on_fake_pkexec_and_pacman() {
         exists_calls: Mutex::new(Vec::new()),
     };
 
-    // Фальшивый pacman: «не установлены» только обои и значки COSMIC.
+    // Fake pacman: only the COSMIC wallpapers and icons are "not installed".
     write_script(
         &bin.join("pacman"),
         &format!(
@@ -218,7 +218,7 @@ fn live_completeness_on_fake_pkexec_and_pacman() {
             pacman_log.display()
         ),
     );
-    // Фальшивый pkexec: записать аргументы и выйти с кодом из файла сценария.
+    // Fake pkexec: record the arguments and exit with the code from the scenario file.
     write_script(
         &bin.join("pkexec"),
         &format!(
@@ -237,7 +237,7 @@ fn live_completeness_on_fake_pkexec_and_pacman() {
     set_env("XDG_CURRENT_DESKTOP", "COSMIC");
     set_env("LANG", "ru_RU.UTF-8");
 
-    // ⛔ Защита: обе программы обязаны находиться в каталоге подмен.
+    // ⛔ Guard: both programs must be in the fakes directory.
     for prog in ["pkexec", "pacman"] {
         let found = utils::which(prog, Some(&path)).unwrap_or_default();
         assert!(
@@ -246,7 +246,7 @@ fn live_completeness_on_fake_pkexec_and_pacman() {
         );
     }
 
-    // ── Шаг 1: проверка без пароля ─────────────────────────────────────
+    // ── Step 1: check without a password ───────────────────────────────
     let survey = dx::completeness_survey_live();
     assert_eq!(survey.de_id.as_deref(), Some("cosmic"), "{survey:?}");
     let keys: Vec<&str> = survey.fixes.iter().map(|(k, _)| k.as_str()).collect();
@@ -254,7 +254,7 @@ fn live_completeness_on_fake_pkexec_and_pacman() {
     assert!(read_log(&pkexec_log).is_empty(), "проверка спросила пароль");
     assert!(read_log(&pacman_log).contains(&"-Q cosmic-wallpapers".to_string()));
 
-    // ── Шаг 2: отказ пароля — одно окно на всё ─────────────────────────
+    // ── Step 2: password refused — one window for everything ───────────
     std::fs::write(&rc_file, "126").unwrap();
     let rec = Arc::new(Recorder::default());
     let sink: Arc<dyn dx::DeOpSink> = rec.clone();
@@ -263,7 +263,7 @@ fn live_completeness_on_fake_pkexec_and_pacman() {
     assert_eq!(denied.outcome.message, dx::completeness_denied_message());
     assert_eq!(read_log(&pkexec_log).len(), 1, "{:?}", read_log(&pkexec_log));
 
-    // ── Шаг 3: пароль принят — доустановлено всё ───────────────────────
+    // ── Step 3: password accepted — everything completed ───────────────
     std::fs::write(&pkexec_log, "").unwrap();
     std::fs::write(&rc_file, "0").unwrap();
     let rec = Arc::new(Recorder::default());
@@ -287,10 +287,10 @@ fn live_completeness_on_fake_pkexec_and_pacman() {
         ["📦 Устанавливаю: cosmic-wallpapers", "📦 Устанавливаю: cosmic-icon-theme"]
     );
 
-    // ── Шаг 4: системный замок стенд не читает ─────────────────────────
-    // Подменить настоящий /var/lib/pacman/db.lck нельзя, поэтому сверяется
-    // сам путь: исполнитель ждёт только замок во временном каталоге стенда,
-    // и ни разу не спросил ФС о системном.
+    // ── Step 4: the stand does not read the system lock ────────────────
+    // The real /var/lib/pacman/db.lck cannot be faked, so the path itself
+    // is checked: the executor waits only for the lock in the stand's temporary directory,
+    // and never asked the FS about the system one.
     let system_locks = plan::lock_paths(PkgFamily::Arch);
     let asked = io.exists_calls.lock().unwrap().clone();
     assert!(asked.contains(&lock_str), "замок стенда не проверялся: {asked:?}");
@@ -310,7 +310,7 @@ fn live_completeness_on_fake_pkexec_and_pacman() {
         );
     }
 
-    // ── Шаг 5: подставной замок занят — стенд ждёт и дожидается ───────
+    // ── Step 5: the fake lock is held — the stand waits and gets it ───
     std::fs::write(&lock, "").unwrap();
     std::fs::write(&pkexec_log, "").unwrap();
     let release = {
@@ -336,7 +336,7 @@ fn live_completeness_on_fake_pkexec_and_pacman() {
         stages.iter().any(|s| s == plan::PKG_LOCK_WAIT_STAGE),
         "человеку не сказали про ожидание замка: {stages:?}"
     );
-    // Дождавшись замка, обе починки прошли.
+    // Having got the lock, both repairs went through.
     assert_eq!(read_log(&pkexec_log).len(), 2, "{:?}", read_log(&pkexec_log));
 
     let _ = std::fs::remove_dir_all(&root);

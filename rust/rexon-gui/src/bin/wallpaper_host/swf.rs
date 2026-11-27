@@ -1,34 +1,40 @@
-// Режим «Flash» хоста обоев: SWF-ролик рисует Ruffle через wgpu (крейт
-// `rexon-swf`), а не QML — поэтому в `run_qml` режим не заходит и возвращает
-// код сам, из той же таблицы ядра (`wallpaper_engine::host_exit`).
+// "Flash" mode of the wallpaper host: the SWF clip is drawn by Ruffle
+// through wgpu (the `rexon-swf` crate), not QML — so the mode does not
+// enter `run_qml` and returns the code by itself, from the same core table
+// (`wallpaper_engine::host_exit`).
 //
-// Чьи решения где:
-//   * как класть окно (слой / X11 / поток кадров) — общий `HostEnv::read`,
-//     то же решение, что у видео и веба; платформу Qt под него выставляет
-//     общий `main.rs` между [`plan`] и [`run`] — как у QML-режимов;
-//   * контракт файла кадров (размер, частота, путь счётчика поколения, права)
-//     — функции ядра `rexon-core::wallpaper_mmap` и `wallpaper::mmap_size`;
-//   * слой — `layer_shell::apply_spec` с `LayerSpec::WALLPAPER`, X11 —
-//     `wallpaper_host::apply_x11_desktop_layer`;
-//   * отрисовка, темп, пауза, звук — `rexon-swf`; здесь только цикл событий Qt.
+// Whose decisions are where:
+//   * how to place the window (layer / X11 / frame stream) — the shared
+//     `HostEnv::read`, the same decision as for video and web; the Qt
+//     platform for it is set by the shared `main.rs` between [`plan`] and
+//     [`run`] — as for the QML modes;
+//   * the frame file contract (size, rate, the generation counter path,
+//     permissions) — the core functions `rexon-core::wallpaper_mmap` and
+//     `wallpaper::mmap_size`;
+//   * the layer — `layer_shell::apply_spec` with `LayerSpec::WALLPAPER`, X11
+//     — `wallpaper_host::apply_x11_desktop_layer`;
+//   * rendering, pace, pause, sound — `rexon-swf`; here only the Qt event
+//     loop.
 //
-// Пауза надзора за нагрузкой — SIGSTOP/SIGCONT процесса, как у видео: после
-// продолжения ролик не проматывается (шаг времени ограничен в `rexon-swf`).
+// The load supervisor's pause is SIGSTOP/SIGCONT of the process, as for
+// video: after continuing, the clip does not fast-forward (the time step
+// is limited in `rexon-swf`).
 //
-// ⚠️ Звук (16.09.2026). До этого Flash шёл немым: громкость ехала ключом
-// запуска, слежения за настройками у режима не было, а шкала Ruffle
-// нелинейна — половина ползунка звучала в десять раз тише, чем та же
-// половина у видео. Теперь всё как у видео и ИЗ ТЕХ ЖЕ мест:
-//   * ЧТО значат настройки и что делать при такой обстановке — ядро
-//     `rexon-core::wallpaper_audio` (ключи `wallpaper_audio_*` в
-//     `settings.json`, один ползунок на оба вида обоев);
-//   * КТО следит за файлом настроек и опрашивает окна со звуковой системой
-//     — общий цикл `rexon-gui::wallpaper_audio::watch`, тот же, что питает
-//     QML видео-обоев;
-//   * перевод громкости в шкалу Ruffle — `rexon_swf::ruffle_volume`, и
-//     больше нигде.
-// Здесь только доставка решения в показ и честные жалобы, когда звука не
-// будет.
+// Warning: sound (16.09.2026). Before this Flash went silent: the volume
+// came as a start option, the mode did not watch the settings, and the
+// Ruffle scale is non-linear — half of the slider sounded ten times quieter
+// than the same half for video. Now everything is as for video and FROM THE
+// SAME places:
+//   * WHAT the settings mean and what to do in a given situation — the core
+//     `rexon-core::wallpaper_audio` (the `wallpaper_audio_*` keys in
+//     `settings.json`, one slider for both kinds of wallpaper);
+//   * WHO watches the settings file and polls the windows and the sound
+//     system — the shared loop `rexon-gui::wallpaper_audio::watch`, the same
+//     one that feeds the video wallpaper QML;
+//   * converting the volume into the Ruffle scale — `rexon_swf::ruffle_volume`,
+//     and nowhere else.
+// Here there is only delivering the decision to the display and honest
+// complaints when there will be no sound.
 
 use std::path::PathBuf;
 
@@ -37,24 +43,26 @@ use rexon_gui::wallpaper_host::{parse_args, Cli, USAGE};
 
 use crate::HostEnv;
 
-/// Метка строк журнала режима.
+/// Log line tag of the mode.
 const TAG: &str = "REXON-SWF";
 
-/// Всё, что нужно показу Flash, посчитанное ДО первого вызова Qt.
+/// Everything the Flash display needs, computed BEFORE the first Qt call.
 pub struct SwfPlan {
     pub cli: Cli,
     pub path: PathBuf,
     pub env: HostEnv,
-    /// Способ показа из общего решения — по нему `main.rs` выставляет платформу Qt.
+    /// The display method from the shared decision — by it `main.rs` sets the
+    /// Qt platform.
     pub placement: &'static str,
 }
 
-/// Разбор ключей и честные отказы до всякого Qt; `Err` — готовый код возврата.
+/// Option parsing and honest refusals before any Qt; `Err` is a ready exit
+/// code.
 pub fn plan(argv: &[String]) -> Result<SwfPlan, i32> {
-    // Отказ драйвера Vulkan или сама библиотека не должны оставлять
-    // покупателю окно «программа аварийно завершилась»: ядро не зовёт
-    // обработчик дампов для non-dumpable процесса.
-    // SAFETY: prctl с PR_SET_DUMPABLE не трогает память процесса.
+    // A Vulkan driver failure or the library itself must not leave the
+    // customer a "the program crashed" window: the kernel does not call the
+    // dump handler for a non-dumpable process.
+    // SAFETY: prctl with PR_SET_DUMPABLE does not touch the process memory.
     unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0) };
 
     let cli = match parse_args(argv) {
@@ -64,7 +72,8 @@ pub fn plan(argv: &[String]) -> Result<SwfPlan, i32> {
             return Err(host_exit::OK);
         }
         Err(message) => {
-            // Разбор общий с видео, и его «не указан файл видео» здесь неправда.
+            // The parsing is shared with video, and its "no video file given" is
+            // untrue here.
             let message = if message.starts_with("не указан файл") {
                 "не указан файл Flash (.swf)".to_string()
             } else {
@@ -79,15 +88,16 @@ pub fn plan(argv: &[String]) -> Result<SwfPlan, i32> {
         rexon_core::log_error!("wallpaper-host", "{TAG}-ERROR {}", swf_missing_message(&cli.path));
         return Err(host_exit::NOTHING_TO_SHOW);
     }
-    // ⚠️ ДО первой звуковой операции: свойства потока звуковой клиент
-    // читает, когда создаёт свой контекст, то есть при открытии выхода в
-    // `rexon-swf`. Тот же список, что у видео (`video.rs`), — иначе обои
-    // попадают в звуковую систему безымянным клиентом, и надзиратель звука
-    // принимает наш собственный поток за «чужую программу» и глушит нас же.
+    // Warning: BEFORE the first audio operation: the sound client reads the
+    // stream properties when it creates its context, that is, when the output
+    // is opened in `rexon-swf`. The same list as for video (`video.rs`) —
+    // otherwise the wallpaper gets into the sound system as a nameless client,
+    // and the audio supervisor takes our own stream for "another program" and
+    // mutes us.
     for (name, value) in rexon_core::wallpaper_audio::stream_env() {
         if std::env::var_os(name).is_none() {
-            // SAFETY: зовётся из main до создания приложения Qt и до любых
-            // потоков — читателей окружения ещё нет.
+            // SAFETY: called from main before the Qt application is created and before
+            // any threads — there are no environment readers yet.
             unsafe { std::env::set_var(name, &value) };
         }
     }
@@ -96,7 +106,8 @@ pub fn plan(argv: &[String]) -> Result<SwfPlan, i32> {
     Ok(SwfPlan { cli, path, env, placement })
 }
 
-/// Показ до сигнала (или до конца самопроверки). Платформа Qt уже выставлена.
+/// Display until a signal (or until the end of the self-test). The Qt
+/// platform is already set.
 pub fn run(plan: SwfPlan) -> i32 {
     #[cfg(feature = "swf")]
     {
@@ -134,45 +145,48 @@ mod imp {
 
     use super::{SwfPlan, TAG};
 
-    /// Имя слоя обоев для порядка внутри фона у композитора.
+    /// Name of the wallpaper layer for ordering within the background at the
+    /// compositor.
     const LAYER_SCOPE: &str = "rexon-swf-wallpaper";
 
-    /// Сколько ждать, пока композитор покажет окно.
+    /// How long to wait for the compositor to show the window.
     const EXPOSE_TIMEOUT: Duration = Duration::from_secs(10);
 
-    /// Сколько играть, прежде чем сказать «в ролике нет звука».
+    /// How long to play before saying "the clip has no sound".
     ///
-    /// Звук в SWF начинается не обязательно с первого кадра, и поспешная
-    /// жалоба была бы враньём наоборот. Пять секунд — заметно дольше
-    /// вступления обычной Flash-заставки и всё ещё «сразу» по человеческим
-    /// меркам.
+    /// Sound in an SWF does not necessarily start from the first frame, and a
+    /// hasty complaint would be a lie the other way round. Five seconds is
+    /// noticeably longer than the intro of an ordinary Flash splash and still
+    /// "at once" by human standards.
     const SILENT_VERDICT_AFTER: Duration = Duration::from_secs(5);
 
-    /// Живое состояние звука обоев в Flash-режиме.
+    /// Live state of the wallpaper audio in Flash mode.
     ///
-    /// Решение целиком считает ядро, доставляет общий цикл наблюдения; здесь
-    /// только перекладывание его в показ и честные жалобы.
+    /// The decision is entirely computed by the core and delivered by the
+    /// shared watching loop; here there is only moving it into the display and
+    /// honest complaints.
     struct AudioLive {
-        /// Последнее пришедшее решение. Цикл показа забирает его и обнуляет:
-        /// доставка идёт из чужого потока, а трогать показ можно только из
-        /// своего.
+        /// The last decision that arrived. The display loop takes it and resets it:
+        /// delivery comes from another thread, while the display may be touched
+        /// only from its own.
         inbox: Arc<Mutex<Option<(Decision, String)>>>,
-        /// Пока живёт — наблюдение работает.
+        /// While it lives, watching works.
         _watch: rexon_gui::wallpaper_audio::AudioWatch,
-        /// Громкость закреплена ключом `--volume` и за настройкой не следует
-        /// (тот же уговор, что у видео: ручной прогон звучит как просили).
+        /// The volume is pinned with the `--volume` option and does not follow the
+        /// setting (the same agreement as for video: a manual run sounds as
+        /// requested).
         fixed_volume: Option<f64>,
         verbose: bool,
-        /// Ролик — для жалобы «звук просили, а его нет».
+        /// The clip — for the complaint "sound was requested, but there is none".
         movie: String,
         started: Instant,
-        /// Про молчащий ролик говорим один раз за прогон.
+        /// We say about a silent clip once per run.
         warned_silent: bool,
     }
 
     impl AudioLive {
-        /// Поднять наблюдение. `screen` — самый маленький экран сеанса: с ним
-        /// ядро сравнивает чужие окна (разбор — `wallpaper_audio::watch`).
+        /// Start watching. `screen` is the smallest screen of the session: the core
+        /// compares foreign windows with it (analysis in `wallpaper_audio::watch`).
         fn start(
             screen: (i64, i64),
             fixed_volume: Option<f64>,
@@ -194,8 +208,8 @@ mod imp {
                     warned_silent: false,
                 }),
                 Err(e) => {
-                    // Обои обязаны играть, а не молчать: без наблюдения звук
-                    // просто останется таким, каким его застали настройки.
+                    // The wallpaper must play, not stay silent: without watching, the sound
+                    // simply stays as the settings were when it was caught.
                     rexon_core::log_warn!(
                         "wallpaper-host",
                         "{TAG}-WARN наблюдение за звуком не поднялось ({e}) — громкость \
@@ -206,16 +220,17 @@ mod imp {
             }
         }
 
-        /// Довести решение до показа. Зовётся из цикла показа каждую итерацию.
+        /// Deliver the decision to the display. Called from the display loop on
+        /// every iteration.
         fn apply(&mut self, wp: &mut Wallpaper) {
             let taken = self.inbox.lock().unwrap().take();
             if let Some((decision, why)) = taken {
                 if self.verbose {
                     rexon_core::log_warn!("wallpaper-host", "{TAG}-AUDIO {why}");
                 }
-                // Пауза — раньше звука: `set_paused` сам трогает звуковой
-                // выход, и порядок «сначала пауза, потом звук» оставляет
-                // последнее слово за решением ядра.
+                // Pause before sound: `set_paused` touches the audio output by itself, and
+                // the order "pause first, then sound" leaves the last word to the core's
+                // decision.
                 wp.set_paused(decision.paused);
                 wp.set_audio(
                     decision.audio_on,
@@ -225,20 +240,20 @@ mod imp {
             self.check_silent(wp);
         }
 
-        /// «Ролик молчит» — отдельная жалоба, и она не придирка.
+        /// "The clip is silent" is a separate complaint, and it is not nitpicking.
         ///
-        /// Сам по себе молчащий SWF с виду неотличим от звучащего: ролик
-        /// идёт, устройство открыто, громкость какая просили. Без этой
-        /// строки человек, поставивший Flash-обои со звуком, видел бы
-        /// «громкость работает» и не понимал, почему тихо.
+        /// A silent SWF by itself looks no different from a sounding one: the clip
+        /// runs, the device is open, the volume is as requested. Without this line
+        /// someone who set a Flash wallpaper with sound would see "the volume
+        /// works" and would not understand why it is quiet.
         fn check_silent(&mut self, wp: &Wallpaper) {
             if self.warned_silent || self.started.elapsed() < SILENT_VERDICT_AFTER {
                 return;
             }
             let state = wp.audio_state();
-            // Спрашивать есть смысл, только когда звук ДОЛЖЕН был звучать:
-            // выход открыт, громкость не ноль, устройство за сэмплами
-            // приходило. Иначе тишина объясняется просьбой, а не роликом.
+            // Asking makes sense only when the sound SHOULD have been playing: the
+            // output is open, the volume is not zero, the device came for samples.
+            // Otherwise the silence is explained by the request, not by the clip.
             if !state.available || !state.on || state.volume01 <= 0.0 || state.callbacks == 0 {
                 return;
             }
@@ -257,7 +272,7 @@ mod imp {
         }
     }
 
-    /// Код возврата по ошибке библиотеки — из таблицы ядра.
+    /// Exit code for a library error — from the core table.
     fn exit_code(e: &Error) -> i32 {
         match e {
             Error::MovieLoad(_) => host_exit::SWF_MOVIE_FAILED,
@@ -276,11 +291,11 @@ mod imp {
         let cli = &cli;
         let path: &Path = &path;
         let mut settings = Settings::new(path);
-        // Звук у Flash-обоев есть по умолчанию, как у видео. Ключ `--no-audio`
-        // остаётся правом вето: он приходит от того, кто запустил обои, а
-        // настройка — от человека, и ни одно не отменяет другое молча.
-        // Дальше звук живёт сам: громкость и «играть/молчать» приходят из
-        // настроек через наблюдение (`AudioLive`).
+        // Flash wallpapers have sound by default, like video. The `--no-audio`
+        // option remains a veto: it comes from whoever started the wallpaper,
+        // while the setting comes from the user, and neither silently cancels the
+        // other. After that the sound lives by itself: the volume and "play/stay
+        // silent" come from the settings through watching (`AudioLive`).
         let audio_allowed = cli.audio != Some(false);
         let audio_settings = rexon_gui::wallpaper_audio::settings_now();
         settings.audio_volume = audio_allowed
@@ -297,8 +312,9 @@ mod imp {
                 cli.volume
             );
         }
-        // Наблюдение поднимается только там, где звук вообще возможен: без
-        // него незачем каждые полсекунды опрашивать окна и звуковую систему.
+        // Watching is started only where sound is possible at all: without it
+        // there is no reason to poll the windows and the sound system every half
+        // second.
         let live = |screen: (i64, i64)| {
             audio_allowed.then(|| {
                 AudioLive::start(screen, cli.volume, cli.verbose, path.display().to_string())
@@ -307,7 +323,7 @@ mod imp {
         };
 
         if env.placement == PLACEMENT_OFFSCREEN {
-            // GNOME/Cinnamon-Wayland: окна нет вовсе, Qt не нужен.
+            // GNOME/Cinnamon Wayland: there is no window at all, Qt is not needed.
             let Some(frame) = env.mmap_output.clone() else {
                 rexon_core::log_error!("wallpaper-host", "{TAG}-ERROR офскрин-режим без REXON_WP_OUTPUT: кадры некуда писать");
                 return verdict(host_exit::NOTHING_TO_SHOW);
@@ -320,29 +336,30 @@ mod imp {
                 height: env.mmap_h.clamp(1, i64::from(u32::MAX)) as u32,
                 file_mode: wallpaper_mmap::FRAME_FILE_MODE,
             };
-            // SAFETY: у mmap-вывода нет внешних хэндлов.
+            // SAFETY: the mmap output has no external handles.
             let wallpaper = unsafe { Wallpaper::new(GpuContext::new(), &settings, vec![OutputTarget::Mmap(spec)]) };
-            // Экранов офскрин-режим не знает — с чужими окнами ядро сравнит
-            // размер кадра, ровно как это делает видео (`audioProbeSize`).
+            // Offscreen mode knows no screens — the core will compare foreign windows
+            // with the frame size, exactly as video does (`audioProbeSize`).
             let audio = live((env.mmap_w, env.mmap_h));
             return verdict(drive(wallpaper, selftest, audio, false, |_| true));
         }
 
         settings.max_fps = 60.0;
-        // VkInstance создаётся до окна: так поверхность и адаптер берутся из одного инстанса.
+        // The VkInstance is created before the window: that way the surface and
+        // the adapter come from one instance.
         let gpu = GpuContext::new();
         let mut app = QGuiApplication::new();
         if app.as_mut().is_none() {
             rexon_core::log_error!("wallpaper-host", "{TAG}-ERROR приложение Qt не создалось");
             return verdict(host_exit::NOTHING_TO_SHOW);
         }
-        // Уход последнего монитора не должен убивать процесс обоев.
+        // The departure of the last monitor must not kill the wallpaper process.
         keep_alive_without_windows();
 
-        // Окон столько, сколько мониторов: обои полагаются КАЖДОМУ экрану,
-        // а не только основному. Отладочное окно — одно, у него экрана нет.
-        // Звук при этом не задваивается: `rexon-swf` заводит звуковой выход
-        // только первому выводу, остальные немые.
+        // There are as many windows as monitors: EVERY screen gets a wallpaper,
+        // not only the primary one. The debug window is one and has no screen.
+        // Sound is not doubled meanwhile: `rexon-swf` creates an audio output only
+        // for the first output, the others are silent.
         let screens = swf_window::screen_count();
         let windows_wanted = if cli.windowed { 1 } else { screens.max(0) };
         if windows_wanted <= 0 {
@@ -356,17 +373,18 @@ mod imp {
         let (w, h) = if cli.windowed { (1280, 720) } else { (0, 0) };
         let mut windows = Vec::with_capacity(windows_wanted as usize);
         for i in 0..windows_wanted {
-            // Отладочному окну экран не назначаем: оно одно и живёт там, куда
-            // его положит композитор.
+            // The debug window gets no screen: it is one and lives wherever the
+            // compositor puts it.
             let screen_index = if cli.windowed { -1 } else { i };
-            // SAFETY: главный поток, приложение Qt живо.
+            // SAFETY: the main thread, the Qt application is alive.
             let window = unsafe { swf_window::create(w, h, screen_index) };
             if window.is_null() {
                 rexon_core::log_error!("wallpaper-host", "{TAG}-ERROR окно не создалось (экран {i})");
                 return verdict(host_exit::NOTHING_TO_SHOW);
             }
             if env.placement == PLACEMENT_LAYER && !cli.windowed {
-                // SAFETY: окно живо и ещё не показано — слой ставится до показа.
+                // SAFETY: the window is alive and not yet shown — the layer is set before
+                // showing.
                 let ok = unsafe { apply_spec(window.cast(), &LayerSpec::WALLPAPER, &QString::from(LAYER_SCOPE)) };
                 if ok {
                     rexon_gui::wallpaper_host::cinnamon_layer::surface_up("Flash-обои слоем стола");
@@ -374,30 +392,31 @@ mod imp {
                 if !ok {
                     rexon_core::log_warn!("wallpaper-host", "{TAG}-WARN слой обоев не поставился: композитор без wlr-layer-shell?");
                 }
-                // ⚠️ И только теперь — выход поверхности. Без этого все окна
-                // легли бы туда, куда решит композитор, то есть скорее всего
-                // на один и тот же монитор.
-                // SAFETY: окно живо, слой ему уже поставлен, показа ещё не было.
+                // Warning: and only now — the surface output. Without this all windows
+                // would lie wherever the compositor decides, that is, most likely on the
+                // same monitor.
+                // SAFETY: the window is alive, the layer is already set, there has been no
+                // show yet.
                 else if !unsafe { pin_to_window_screen(window.cast()) } {
                     rexon_core::log_warn!("wallpaper-host", "{TAG}-WARN поверхность не прицелилась на экран {i}");
                 }
             }
             if env.placement == PLACEMENT_X11 && !cli.windowed {
-                // Тип «рабочий стол» и состояние — ДО показа (EWMH): тип
-                // оконный менеджер читает при показе.
-                // SAFETY: окно из swf_window::create, ещё не показано.
+                // The "desktop" type and state — BEFORE showing (EWMH): the window manager
+                // reads the type when the window is shown.
+                // SAFETY: the window comes from swf_window::create and is not yet shown.
                 let id = unsafe { swf_window::x11_window_id(window) };
                 if id != 0 && !prepare_x11_desktop_layer(id) {
                     rexon_core::log_warn!("wallpaper-host", "{TAG}-WARN окно X11 не подготовлено к роли рабочего стола");
                 }
             }
-            // SAFETY: окно из swf_window::create.
+            // SAFETY: the window comes from swf_window::create.
             unsafe { swf_window::show(window) };
             windows.push(window);
         }
 
         let shown = Instant::now();
-        // SAFETY: окна из swf_window::create.
+        // SAFETY: the windows come from swf_window::create.
         while windows.iter().any(|w| !unsafe { swf_window::exposed(*w) })
             && shown.elapsed() < EXPOSE_TIMEOUT
         {
@@ -406,7 +425,7 @@ mod imp {
         }
         if env.placement == PLACEMENT_X11 && !cli.windowed {
             for window in &windows {
-                // SAFETY: окно показано.
+                // SAFETY: the window is shown.
                 let id = unsafe { swf_window::x11_window_id(*window) };
                 if id != 0 && !apply_x11_desktop_layer(id) {
                     rexon_core::log_warn!("wallpaper-host", "{TAG}-WARN окно X11 не стало рабочим столом (EWMH)");
@@ -420,7 +439,7 @@ mod imp {
             let Some((display, window_handle)) = native_handles(*window) else {
                 return verdict(host_exit::SWF_NO_GPU);
             };
-            // SAFETY: окно показано.
+            // SAFETY: the window is shown.
             let (width, height) = unsafe { swf_window::size(*window) };
             let size = (width.max(1) as u32, height.max(1) as u32);
             sizes.push(size);
@@ -432,13 +451,14 @@ mod imp {
             });
         }
 
-        // SAFETY: окна и соединение живут до выхода из процесса.
+        // SAFETY: the windows and the connection live until the process exits.
         let wallpaper = unsafe { Wallpaper::new(gpu, &settings, targets) };
-        // ⚠️ Экраны, в которые видеокарта рисовать отказалась, уносим вместе с
-        // их окнами: пустое окно обоев — это чёрный прямоугольник на весь
-        // монитор, и он хуже, чем честно оставленный прежний фон. Обои
-        // остаются на тех мониторах, где рисовать МОЖНО: «всё или ничего»
-        // для человека с двумя мониторами — тот же пустой рабочий стол.
+        // Warning: screens the GPU refused to draw into are taken away together
+        // with their windows: an empty wallpaper window is a black rectangle over
+        // the whole monitor, which is worse than honestly leaving the previous
+        // background. The wallpaper stays on the monitors where drawing IS
+        // possible: "all or nothing" for a person with two monitors is the same
+        // empty desktop.
         if let Ok(wp) = &wallpaper {
             for index in wp.refused_targets().iter().rev() {
                 rexon_core::log_warn!(
@@ -446,38 +466,39 @@ mod imp {
                     "{TAG}-WARN на экране {index} обои показать нечем: видеокарта не берётся \
                      рисовать в это окно. Обои остаются на остальных экранах."
                 );
-                // SAFETY: окно наше, поверхность его уже отпущена библиотекой.
+                // SAFETY: the window is ours, its surface has already been released by
+                // the library.
                 unsafe { swf_window::close(windows.remove(*index)) };
                 sizes.remove(*index);
             }
         }
-        // Самый маленький экран — тот же выбор, что у видео: по большому
-        // кино, развёрнутое на маленьком мониторе, не считалось бы
-        // полноэкранным, и обои играли бы поверх него.
+        // The smallest screen — the same choice as for video: by the large one, a
+        // film maximized on a small monitor would not count as full screen, and
+        // the wallpaper would play over it.
         let screen = sizes.iter().fold((i64::MAX, i64::MAX), |acc, (w, h)| {
             (acc.0.min(i64::from(*w)), acc.1.min(i64::from(*h)))
         });
         let audio = live(screen);
-        // Перезапускаться ли при смене набора мониторов. На прогоне
-        // самопроверки — нет: она меряет то, что застала.
+        // Whether to restart when the set of monitors changes. Not in a self-test
+        // run: it measures what it found.
         let may_restart = selftest.is_none() && !cli.windowed;
         verdict(drive(wallpaper, selftest, audio, !cli.windowed, move |wp| {
             swf_window::process_events();
-            // ⚠️ ДО отрисовки, сразу после разбора событий. Когда монитор
-            // отключают, композитор снимает поверхность слоя, и первый же
-            // кадр в снятую поверхность — протокольная ошибка: клиента
-            // отключают, обои исчезают со ВСЕХ мониторов разом (замер
-            // 16.09: код возврата 255, «error in client communication»).
-            // Здесь набор окон задан при создании выводов и на ходу не
-            // меняется (это устройство крейта `rexon-swf`), поэтому
-            // единственный честный ответ на смену конфигурации — начать
-            // заново. Перезапуск на месте, `execv`: номер процесса
-            // сохраняется, и для исполнителя обоев ничего не меняется.
+            // Warning: BEFORE rendering, right after processing events. When a monitor
+            // is disconnected, the compositor destroys the layer surface, and the very
+            // first frame into the destroyed surface is a protocol error: the client
+            // is disconnected, and the wallpaper disappears from ALL monitors at once
+            // (measurement 16.09: exit code 255, "error in client communication").
+            // Here the set of windows is fixed when the outputs are created and does
+            // not change on the fly (that is how the `rexon-swf` crate is built), so
+            // the only honest answer to a configuration change is to start over.
+            // Restarting in place, `execv`: the process number is preserved, and
+            // nothing changes for the wallpaper executor.
             if may_restart && swf_window::screen_count() != windows_wanted {
                 restart_in_place();
             }
             for (index, window) in windows.iter().enumerate() {
-                // SAFETY: окно живо.
+                // SAFETY: the window is alive.
                 let (w, h) = unsafe { swf_window::size(*window) };
                 let size = (w.max(1) as u32, h.max(1) as u32);
                 if size != sizes[index] {
@@ -491,11 +512,11 @@ mod imp {
         }))
     }
 
-    /// Начать показ заново тем же процессом: мониторов стало другое число,
-    /// а набор выводов Flash-режима задаётся при создании.
+    /// Start the display over with the same process: the number of monitors
+    /// changed, and the set of Flash mode outputs is fixed at creation.
     ///
-    /// Возвращается только если запуск не удался — тогда показ продолжается
-    /// на прежних окнах: испорченные обои лучше, чем никаких.
+    /// Returns only if the start failed — then the display continues on the
+    /// previous windows: a spoiled wallpaper is better than none.
     fn restart_in_place() {
         use std::os::unix::process::CommandExt;
 
@@ -505,14 +526,14 @@ mod imp {
         rexon_core::log_warn!("wallpaper-host", "{TAG}-WARN перезапуск не удался ({error}) — обои остаются на прежних экранах");
     }
 
-    /// Хэндлы окна для wgpu: поверхность Wayland либо окно X11. `None` —
-    /// у окна нет ни того, ни другого (жаловаться уже некому).
+    /// Window handles for wgpu: a Wayland surface or an X11 window. `None`
+    /// means the window has neither (there is nobody left to complain to).
     fn native_handles(
         window: *mut rexon_gui::wallpaper_host::qobject::QObject,
     ) -> Option<(rwh::RawDisplayHandle, rwh::RawWindowHandle)> {
         let display = swf_window::wayland_display();
         if display != 0 {
-            // SAFETY: окно показано — поверхность у платформы есть.
+            // SAFETY: the window is shown — the platform has a surface.
             let surface = unsafe { swf_window::wayland_surface(window) };
             let (Some(d), Some(s)) = (
                 std::ptr::NonNull::new(display as *mut std::ffi::c_void),
@@ -526,7 +547,7 @@ mod imp {
                 rwh::RawWindowHandle::Wayland(rwh::WaylandWindowHandle::new(s)),
             ));
         }
-        // SAFETY: окно показано.
+        // SAFETY: the window is shown.
         let id = unsafe { swf_window::x11_window_id(window) };
         let connection = std::ptr::NonNull::new(swf_window::xcb_connection() as *mut std::ffi::c_void);
         let Some(id) = std::num::NonZeroU32::new(id as u32).filter(|_| connection.is_some()) else {
@@ -539,7 +560,8 @@ mod imp {
         ))
     }
 
-    /// Цикл показа до сигнала (или до конца самопроверки) и приговор.
+    /// The display loop until a signal (or until the end of the self-test) and
+    /// the verdict.
     fn drive(
         wallpaper: Result<Wallpaper, Error>,
         selftest: Option<Duration>,
@@ -557,9 +579,9 @@ mod imp {
         for w in wallpaper.warnings() {
             rexon_core::log_info!("wallpaper-host", "{TAG} {w}");
         }
-        // Звук просили, а звуковая система его дать не может. Ровно та
-        // неразличимость, на которой самопроверка обоев уже однажды зеленела:
-        // «громкость выставлена» и «звук идёт» — разные вещи.
+        // Sound was requested, but the sound system cannot provide it. Exactly the
+        // indistinguishability on which the wallpaper self-test once went green:
+        // "the volume is set" and "the sound is playing" are different things.
         if audio.is_some() && !wallpaper.audio_state().available {
             rexon_core::log_warn!(
                 "wallpaper-host",
@@ -568,15 +590,16 @@ mod imp {
             );
         }
         let started = Instant::now();
-        // Сердцебиение для сторожа живых обоев (`rexon-core::renderer_watch`):
-        // отмечаемся между кадрами, не чаще срока ядра. Встал цикл кадров —
-        // встала и метка.
+        // Heartbeat for the live wallpaper watchdog (`rexon-core::renderer_watch`):
+        // we check in between frames, no more often than the core's period. If the
+        // frame loop stops, the mark stops too.
         let beat_every = Duration::from_millis(rexon_core::renderer_watch::HEARTBEAT_INTERVAL_MS);
         let mut last_beat: Option<Instant> = None;
-        // `between` зовётся перед каждым тактом: второй вызов — первый кадр
-        // ролика уже отрисован в окна. Тогда — замер ожидания и, на Cinnamon
-        // с layer-shell, перестановка службы фона под нас (по событию, а не
-        // выдержкой). В режиме потока кадров окна на экране нет — не мерим.
+        // `between` is called before every tick: the second call means the clip's
+        // first frame has already been drawn into the windows. Then — the wait
+        // measurement and, on Cinnamon with layer-shell, moving the background
+        // service under us (on the event, not after a delay). In frame stream mode
+        // there is no window on screen — we do not measure.
         let mut calls: u32 = 0;
         let between = move |wp: &mut Wallpaper| {
             if on_screen && calls < 2 {
@@ -601,10 +624,10 @@ mod imp {
                 }
                 let secs = started.elapsed().as_secs_f64().max(1e-3);
                 let avg = |v: &[f32]| if v.is_empty() { 0.0 } else { v.iter().map(|x| *x as f64).sum::<f64>() / v.len() as f64 };
-                // ⚠️ Звук в отчёте — отдельными величинами, а не одним
-                // «звук=да». «Выход есть», «поток открыт», «громкость» и
-                // «уровень дошёл до устройства» — четыре разных факта, и
-                // зелёный рапорт при тишине получался ровно из их смешения.
+                // Warning: sound in the report goes as separate values, not as a single
+                // "sound=yes". "There is an output", "the stream is open", "the volume" and
+                // "the level reached the device" are four different facts, and a green
+                // report over silence came out exactly from mixing them up.
                 let a = wallpaper.audio_state();
                 eprintln!(
                     "{TAG}-SELFTEST кадров={} к/с={:.2} время_ролика={:.2}с разрывов={} рендер_мс={:.3} запись_кадра_мс={:.3} \

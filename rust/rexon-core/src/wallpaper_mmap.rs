@@ -1,85 +1,88 @@
-//! Чистая логика mmap-стриминга обоев и X11-фолбэка — порт
-//! `rexon/wallpaper_mmap.py` (сам модуль снят с дерева 2026-08-23 вместе
-//! с Python-хостом обоев; здесь — вся уцелевшая логика).
+//! Pure logic of wallpaper mmap streaming and the X11 fallback — port of
+//! `rexon/wallpaper_mmap.py` (the module itself was removed from the tree on
+//! 2026-08-23 together with the Python wallpaper host; here is all the
+//! surviving logic).
 //!
-//! Оригинал обслуживает два пути рендера:
-//!   * **mmap** (GNOME/Cinnamon extension): при заданном `REXON_WP_OUTPUT`
-//!     движки пишут RGBA8888-кадры в shared-файл
-//!     `/run/user/$UID/rexon-wp-frame.rgba` (`width × height × 4` байта),
-//!     extension читает его через `GLib.MappedFile`;
-//!   * **X11-фолбэк** (XFCE/MATE/Budgie/Cinnamon-X11): окно прибивается к
-//!     рабочему столу по EWMH — тип `_NET_WM_WINDOW_TYPE_DESKTOP` и
-//!     состояние до показа, просьбы корневому окну после
+//! The original serves two render paths:
+//!   * **mmap** (GNOME/Cinnamon extension): with `REXON_WP_OUTPUT` set,
+//!     engines write RGBA8888 frames into a shared file
+//!     `/run/user/$UID/rexon-wp-frame.rgba` (`width × height × 4` bytes), the
+//!     extension reads it via `GLib.MappedFile`;
+//!   * **X11 fallback** (XFCE/MATE/Budgie/Cinnamon-X11): the window is pinned
+//!     to the desktop via EWMH — the `_NET_WM_WINDOW_TYPE_DESKTOP` type and
+//!     state before showing, requests to the root window after
 //!     ([`x11_desktop_plan`]).
 //!
-//! Здесь — ТОЛЬКО детерминированная часть (вход → выход): разбор ENV-размера
-//! экрана, пути вывода и частоты кадров, расчёт layout кадра ([`prime_plan`]:
-//! размер файла, число строк, чёрная непрозрачная строка, права), детект
-//! Wayland-сессии, план X11-фолбэка ([`x11_desktop_plan`]: свойства до показа,
-//! просьбы EWMH после, раскладка ClientMessage), интервал headless-тика.
-//! Побочные действия — файлы, mmap, flock, запросы к X-серверу, Qt — у хоста
-//! обоев (`rexon-gui::wallpaper_host`), который исполняет то, что решило
-//! ядро (пути, размеры, байты, атомы). Чисел раскладки в хосте нет.
+//! Here is ONLY the deterministic part (input → output): parsing the ENV
+//! screen size, output path and frame rate, computing the frame layout
+//! ([`prime_plan`]: file size, row count, a black opaque row, permissions),
+//! Wayland session detection, the X11 fallback plan ([`x11_desktop_plan`]:
+//! properties before showing, EWMH requests after, the ClientMessage
+//! layout), the headless tick interval. Side effects — files, mmap, flock,
+//! X server requests, Qt — belong to the wallpaper host
+//! (`rexon-gui::wallpaper_host`), which executes what the core decided
+//! (paths, sizes, bytes, atoms). There are no layout numbers in the host.
 //!
-//! Наблюдения за средой (значения `REXON_WP_*`, `XDG_SESSION_TYPE`,
-//! `WAYLAND_DISPLAY`, runtime-каталог) приходят ПАРАМЕТРАМИ.
+//! Environment observations (the `REXON_WP_*` values, `XDG_SESSION_TYPE`,
+//! `WAYLAND_DISPLAY`, the runtime directory) come in as PARAMETERS.
 //!
-//! Паритет с живым Python — golden `tests/wallpaper_mmap_parity.rs` (эталон
-//! снят read-only: xprop НЕ запускался — subprocess подменён стабом с захватом
-//! argv; Qt не стартовал — PySide6 подменён стабами; файлы prime писались
-//! только во временный каталог).
+//! Parity with the live Python — the golden `tests/wallpaper_mmap_parity.rs`
+//! (the reference was captured read-only: xprop was NOT run — subprocess was
+//! replaced by a stub capturing argv; Qt did not start — PySide6 was replaced
+//! by stubs; prime files were written only into a temporary directory).
 //!
-//! Сохранённый квирк оригинала (не баг): в `env_screen_size` ошибка разбора
-//! ЛЮБОЙ из двух переменных сбрасывает ОБЕ в дефолт 1920×1080 (общий
-//! `try/except ValueError` вокруг обеих `int()`), — атомарный фолбэк.
+//! A preserved quirk of the original (not a bug): in `env_screen_size` a
+//! parse error of EITHER of the two variables resets BOTH to the 1920×1080
+//! default (a shared `try/except ValueError` around both `int()` calls) — an
+//! atomic fallback.
 
-// ── константы ──────────────────────────────────────────────────────────────
+// ── constants ──────────────────────────────────────────────────────────────
 
-/// Ширина кадра по умолчанию (`REXON_WP_WIDTH` не задан/не разобран).
+/// Default frame width (`REXON_WP_WIDTH` not set/not parsed).
 pub const DEFAULT_WIDTH: i64 = 1920;
-/// Высота кадра по умолчанию (`REXON_WP_HEIGHT` не задан/не разобран).
+/// Default frame height (`REXON_WP_HEIGHT` not set/not parsed).
 pub const DEFAULT_HEIGHT: i64 = 1080;
-/// Байт на пиксель RGBA8888.
+/// Bytes per RGBA8888 pixel.
 pub const BYTES_PER_PIXEL: u64 = 4;
-/// Имя mmap-файла кадра в runtime-каталоге (то же, что `FRAME_PATH` в
-/// GNOME/Cinnamon extension.js).
+/// Name of the frame mmap file in the runtime directory (the same as
+/// `FRAME_PATH` in the GNOME/Cinnamon extension.js).
 pub const FRAME_FILE_NAME: &str = "rexon-wp-frame.rgba";
-/// Права mmap-файла — `os.open(..., 0o600)` в `prime_output_file` и
-/// `MmapFrameSink.__init__` (per-user tmpfs, чужим читать нечего).
+/// Permissions of the mmap file — `os.open(..., 0o600)` in `prime_output_file`
+/// and `MmapFrameSink.__init__` (per-user tmpfs, nothing for others to read).
 pub const FRAME_FILE_MODE: u32 = 0o600;
-/// Имя Qt-приложения headless-цикла (`app.setApplicationName`).
+/// Qt application name of the headless loop (`app.setApplicationName`).
 ///
-/// Источник истины — таблица точек входа [`crate::qt_app::ENTRY_IDENTITIES`]
-/// (`rexon.wallpaper_mmap`); здесь дубль для тех, кому не нужен весь
-/// Qt-модуль. Совпадение проверяет `tests/wallpaper_mmap_parity.rs`.
+/// The source of truth is the entry point table [`crate::qt_app::ENTRY_IDENTITIES`]
+/// (`rexon.wallpaper_mmap`); here is a duplicate for those who do not need the
+/// whole Qt module. `tests/wallpaper_mmap_parity.rs` checks that they match.
 pub const HEADLESS_APP_NAME: &str = "RexonWallpaperHeadless";
-/// FPS mmap-потока по умолчанию (`run_headless_loop(..., fps=30)`,
-/// `stream_window_to_mmap(..., fps=30)`, откат `_env_fps`).
+/// Default mmap stream FPS (`run_headless_loop(..., fps=30)`,
+/// `stream_window_to_mmap(..., fps=30)`, the `_env_fps` fallback).
 pub const DEFAULT_FPS: i64 = 30;
-/// Наименьшая осмысленная частота кадров mmap-потока (`1 <= fps` в `_env_fps`).
+/// The lowest meaningful mmap stream frame rate (`1 <= fps` in `_env_fps`).
 pub const MIN_FPS: i64 = 1;
-/// Наибольшая принимаемая частота кадров (`fps <= 120`): выше — почти
-/// наверняка опечатка в переменной окружения, а не желание.
+/// The highest accepted frame rate (`fps <= 120`): above that is almost
+/// certainly a typo in the environment variable, not a wish.
 pub const MAX_FPS: i64 = 120;
 
-// ── пути и layout кадра ────────────────────────────────────────────────────
+// ── paths and frame layout ─────────────────────────────────────────────────
 
-/// Канонический путь mmap-файла кадра: `<runtime_dir>/rexon-wp-frame.rgba`.
+/// The canonical path of the frame mmap file: `<runtime_dir>/rexon-wp-frame.rgba`.
 ///
-/// `runtime_dir` — наблюдение (`/run/user/$UID`, у extension'ов —
-/// `GLib.get_user_runtime_dir()`); Python-сторона кладёт результат в
-/// `REXON_WP_OUTPUT` для движков.
+/// `runtime_dir` is an observation (`/run/user/$UID`, for extensions
+/// `GLib.get_user_runtime_dir()`); the Python side put the result into
+/// `REXON_WP_OUTPUT` for the engines.
 pub fn default_frame_path(runtime_dir: &str) -> String {
     format!("{runtime_dir}/{FRAME_FILE_NAME}")
 }
 
-/// Размер экрана из значений ENV — порт `env_screen_size`.
+/// Screen size from ENV values — port of `env_screen_size`.
 ///
-/// `width`/`height` — сырые значения `REXON_WP_WIDTH`/`REXON_WP_HEIGHT`
-/// (`None` = переменная не задана → дефолт как строка). Разбор — семантика
-/// Python `int()`: обрезка пробелов, знак; дробные/мусор → ValueError.
-/// Ошибка разбора ЛЮБОЙ переменной → обе в 1920×1080 (квирк оригинала,
-/// см. модульный док). Затем `max(1, …)` на каждую.
+/// `width`/`height` — raw `REXON_WP_WIDTH`/`REXON_WP_HEIGHT` values (`None` =
+/// the variable is not set → the default as a string). Parsing has Python
+/// `int()` semantics: whitespace trimming, a sign; fractions/garbage →
+/// ValueError. A parse error of EITHER variable → both become 1920×1080 (a
+/// quirk of the original, see the module doc). Then `max(1, …)` on each.
 pub fn env_screen_size(width: Option<&str>, height: Option<&str>) -> (i64, i64) {
     let w_raw = width.unwrap_or("1920");
     let h_raw = height.unwrap_or("1080");
@@ -90,9 +93,9 @@ pub fn env_screen_size(width: Option<&str>, height: Option<&str>) -> (i64, i64) 
     (w.max(1), h.max(1))
 }
 
-/// Путь mmap-файла из ENV — порт `env_output_path`:
-/// `os.environ.get("REXON_WP_OUTPUT") or None` — не задан или пустая строка
-/// → `None` (обычный QML-режим).
+/// The mmap file path from ENV — port of `env_output_path`:
+/// `os.environ.get("REXON_WP_OUTPUT") or None` — not set or an empty string
+/// → `None` (the regular QML mode).
 pub fn env_output_path(raw: Option<&str>) -> Option<String> {
     match raw {
         Some(s) if !s.is_empty() => Some(s.to_string()),
@@ -100,19 +103,19 @@ pub fn env_output_path(raw: Option<&str>) -> Option<String> {
     }
 }
 
-/// Размер mmap-файла кадра в байтах — `max(1, width) * max(1, height) * 4`
-/// (как в `prime_output_file`; `MmapFrameSink` получает уже клампнутые
-/// размеры из [`env_screen_size`]).
+/// Size of the frame mmap file in bytes — `max(1, width) * max(1, height) * 4`
+/// (as in `prime_output_file`; `MmapFrameSink` gets already clamped sizes from
+/// [`env_screen_size`]).
 pub fn frame_size(width: i64, height: i64) -> u64 {
     width.max(1) as u64 * height.max(1) as u64 * BYTES_PER_PIXEL
 }
 
-/// Одна строка кадра ЧЁРНЫМ НЕПРОЗРАЧНЫМ для прайминга — порт
-/// `row = b"\x00\x00\x00\xff" * max(1, width)` из `prime_output_file`.
+/// One frame row in OPAQUE BLACK for priming — port of
+/// `row = b"\x00\x00\x00\xff" * max(1, width)` from `prime_output_file`.
 ///
-/// RGBA8888: R=0 G=0 B=0 A=255. НЕ нули — нулевая альфа дала бы прозрачный
-/// кадр и «вспышку» на старте scene/web-обоев. Python-шим пишет эту строку
-/// [`PrimePlan::rows`] раз под `flock(LOCK_EX)`.
+/// RGBA8888: R=0 G=0 B=0 A=255. NOT zeros — zero alpha would give a
+/// transparent frame and a "flash" at the start of scene/web wallpapers. The
+/// Python shim wrote this row [`PrimePlan::rows`] times under `flock(LOCK_EX)`.
 pub fn black_row(width: i64) -> Vec<u8> {
     let mut row = Vec::with_capacity(width.max(1) as usize * 4);
     for _ in 0..width.max(1) {
@@ -121,30 +124,30 @@ pub fn black_row(width: i64) -> Vec<u8> {
     row
 }
 
-/// Что именно шим записывает в mmap-файл при прайминге — весь расчёт
-/// `prime_output_file` разом, чтобы `max(1, height)` не оставался числом в
-/// Python.
+/// What exactly the shim writes into the mmap file when priming — the whole
+/// `prime_output_file` computation at once, so that `max(1, height)` does not
+/// remain a number in Python.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrimePlan {
-    /// Ширина кадра после клампа (`max(1, width)`) — столько пикселей в
-    /// строке [`PrimePlan::row`].
+    /// Frame width after clamping (`max(1, width)`) — the number of pixels in the
+    /// [`PrimePlan::row`] row.
     pub width: i64,
-    /// Высота кадра после клампа (`max(1, height)`), она же
+    /// Frame height after clamping (`max(1, height)`), which is also
     /// [`PrimePlan::rows`].
     pub height: i64,
-    /// Итоговый размер файла (`os.ftruncate`), байт.
+    /// The resulting file size (`os.ftruncate`), bytes.
     pub size: u64,
-    /// Сколько раз записать [`PrimePlan::row`] (порт `range(max(1, height))`).
+    /// How many times to write [`PrimePlan::row`] (port of `range(max(1, height))`).
     pub rows: u64,
-    /// Одна строка кадра — чёрный непрозрачный RGBA8888.
+    /// One frame row — opaque black RGBA8888.
     pub row: Vec<u8>,
-    /// Права на файл (`os.open(..., mode)`).
+    /// File permissions (`os.open(..., mode)`).
     pub mode: u32,
 }
 
-/// План прайминга mmap-файла кадра — порт расчётной части
-/// `prime_output_file`. Побочные эффекты (makedirs/open/ftruncate/flock/
-/// write/fsync) остаются шиму, числа приходят отсюда.
+/// The frame mmap file priming plan — port of the computational part of
+/// `prime_output_file`. Side effects (makedirs/open/ftruncate/flock/
+/// write/fsync) stay with the shim, the numbers come from here.
 pub fn prime_plan(width: i64, height: i64) -> PrimePlan {
     PrimePlan {
         width: width.max(1),
@@ -156,117 +159,118 @@ pub fn prime_plan(width: i64, height: i64) -> PrimePlan {
     }
 }
 
-// ── детект Wayland-сессии ──────────────────────────────────────────────────
+// ── Wayland session detection ──────────────────────────────────────────────
 
-/// Wayland ли сессия — порт `is_wayland_session` (выбор между
-/// LayerShellQt-QML и обычным QML с xprop-триком).
+/// Whether the session is Wayland — port of `is_wayland_session` (the choice
+/// between LayerShellQt QML and regular QML with the xprop trick).
 ///
-/// `xdg_session_type`/`wayland_display` — значения одноимённых ENV (не задана
-/// → пустая строка, как `os.environ.get(..., "")`). True, если
-/// `XDG_SESSION_TYPE` == "wayland" (без учёта регистра) ИЛИ `WAYLAND_DISPLAY`
-/// непуст.
+/// `xdg_session_type`/`wayland_display` — values of the ENV variables of the
+/// same names (not set → an empty string, as `os.environ.get(..., "")`).
+/// True if `XDG_SESSION_TYPE` == "wayland" (case-insensitive) OR
+/// `WAYLAND_DISPLAY` is non-empty.
 ///
-/// Своей реализации здесь НЕТ (правило #12): признак сеанса Wayland один на
-/// весь Rexon и живёт в [`crate::wallpaper_backend::is_wayland_session`] —
-/// две копии одного признака уже разъезжались (там пробелы по краям
-/// срезаются, здесь раньше нет), а от него зависит, окном рисовать обои или
-/// отдавать кадры расширению оболочки.
+/// There is NO implementation of its own here (rule #12): the Wayland session
+/// sign is one for all of Rexon and lives in
+/// [`crate::wallpaper_backend::is_wayland_session`] — two copies of the same
+/// sign had already drifted apart (there surrounding whitespace is trimmed,
+/// here it previously was not), and it decides whether wallpapers are drawn
+/// as a window or frames are handed to the shell extension.
 pub fn is_wayland_session(xdg_session_type: &str, wayland_display: &str) -> bool {
     crate::wallpaper_backend::is_wayland_session(xdg_session_type, wayland_display)
 }
 
-// ── X11-фолбэк: окно обоев как рабочий стол (EWMH) ──────────────────────
+// ── X11 fallback: the wallpaper window as the desktop (EWMH) ────────────
 
-// Прежде окно уводилось в фон двумя `xprop -set` ПОСЛЕ показа. По EWMH так
-// работает только половина: тип окна (`_NET_WM_WINDOW_TYPE`) оконный
-// менеджер читает при показе, а `_NET_WM_STATE` показанного окна клиенту
-// писать нельзя вовсе — менеджер его не перечитывает и вправе затереть.
-// Поэтому теперь два шага:
-//   * ДО показа — свойства прямо на окне (тип, состояние, «на всех столах»):
-//     EWMH разрешает клиенту ставить их окну, которое ещё не показано;
-//   * ПОСЛЕ показа — просьбы корневому окну (ClientMessage), как EWMH велит
-//     менять состояние показанного окна. Тип окна переписывается повторно:
-//     Muffin, Marco и xfwm4 перечитывают его по смене свойства.
-// Здесь только расчёт — что и в каком порядке; запрос к X-серверу делает
-// хост обоев (`rexon-gui::wallpaper_host::x11_desktop`).
+// The window used to be sent to the background by two `xprop -set` calls
+// AFTER showing. By EWMH only half of that works: the window manager reads
+// the window type (`_NET_WM_WINDOW_TYPE`) when the window is shown, and a
+// client must not write `_NET_WM_STATE` of a shown window at all — the
+// manager does not re-read it and may overwrite it. So now there are two steps:
+//   * BEFORE showing — properties right on the window (type, state, "on all
+//     desktops"): EWMH allows a client to set them on a window not yet shown;
+//   * AFTER showing — requests to the root window (ClientMessage), as EWMH
+//     prescribes for changing a shown window's state. The window type is
+//     rewritten again: Muffin, Marco and xfwm4 re-read it on a property change.
+// Here is only the computation — what and in which order; the X server
+// request is made by the wallpaper host (`rexon-gui::wallpaper_host::x11_desktop`).
 
-/// Тип окна обоев: рабочий стол — WM кладёт его под все приложения.
+/// Wallpaper window type: desktop — the WM puts it under all applications.
 pub const X11_DESKTOP_WINDOW_TYPE: &str = "_NET_WM_WINDOW_TYPE_DESKTOP";
 
-/// Состояния окна обоев: без панели задач и переключателя, на всех рабочих
-/// столах.
+/// Wallpaper window states: no taskbar and switcher entry, on all workspaces.
 ///
-/// ⚠️ `_NET_WM_STATE_BELOW` (его ставил прежний `xprop`) окну типа «рабочий
-/// стол» не ставится. Marco и Muffin кладут такое окно в слой стола, не
-/// глядя на BELOW (`get_standalone_layer`), а xfwm4 4.20 по BELOW переносит
-/// окно из слоя стола (`WIN_LAYER_DESKTOP`, 0) ВЫШЕ — в `WIN_LAYER_BELOW`
-/// (2; `clientUpdateLayerState`). Там окно обоев закрывало значки
-/// nemo-desktop, и ни ConfigureWindow, ни подъём окна значков его не
-/// опускали: слой важнее порядка (стенд Nemo, 31.10.2026).
+/// ⚠️ `_NET_WM_STATE_BELOW` (the former `xprop` set it) is not set on a
+/// "desktop" type window. Marco and Muffin put such a window into the desktop
+/// layer without looking at BELOW (`get_standalone_layer`), while xfwm4 4.20
+/// moves the window on BELOW out of the desktop layer (`WIN_LAYER_DESKTOP`,
+/// 0) HIGHER — into `WIN_LAYER_BELOW` (2; `clientUpdateLayerState`). There
+/// the wallpaper window covered nemo-desktop's icons, and neither
+/// ConfigureWindow nor raising the icons window lowered it: the layer matters
+/// more than the order (Nemo test bench, 31.10.2026).
 pub const X11_DESKTOP_STATES: [&str; 3] = [
     "_NET_WM_STATE_SKIP_TASKBAR",
     "_NET_WM_STATE_SKIP_PAGER",
     "_NET_WM_STATE_STICKY",
 ];
 
-/// `_NET_WM_DESKTOP` = «на всех рабочих столах» (EWMH: 0xFFFFFFFF).
+/// `_NET_WM_DESKTOP` = "on all desktops" (EWMH: 0xFFFFFFFF).
 pub const NET_WM_DESKTOP_ALL: u32 = 0xFFFF_FFFF;
 
-/// `_NET_WM_STATE_ADD` — действие в `data.l[0]` просьбы `_NET_WM_STATE`.
+/// `_NET_WM_STATE_ADD` — the action in `data.l[0]` of a `_NET_WM_STATE` request.
 pub const NET_WM_STATE_ADD: u32 = 1;
 
-/// Источник просьбы — обычное приложение (EWMH: 1; 2 — пейджер).
+/// Request source — a regular application (EWMH: 1; 2 — a pager).
 pub const EWMH_SOURCE_APPLICATION: u32 = 1;
 
-/// Атомы предопределённых типов свойств X11 (`XA_ATOM`, `XA_CARDINAL`).
+/// Atoms of predefined X11 property types (`XA_ATOM`, `XA_CARDINAL`).
 pub const XA_ATOM: u32 = 4;
 pub const XA_CARDINAL: u32 = 6;
 
-/// Маска событий просьбы к корневому окну:
+/// Event mask of a request to the root window:
 /// `SubstructureRedirectMask | SubstructureNotifyMask` (EWMH, «Root Window
 /// Messages»).
 pub const ROOT_MESSAGE_EVENT_MASK: u32 = (1 << 20) | (1 << 19);
 
-/// Код события ClientMessage в протоколе X11.
+/// The ClientMessage event code in the X11 protocol.
 pub const X11_CLIENT_MESSAGE: u8 = 33;
 
-/// Значение свойства окна или слова просьбы: имя атома (его номер узнаётся у
-/// сервера) либо число.
+/// A window property value or a request word: an atom name (its number is
+/// learned from the server) or a number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum X11Word {
     Atom(&'static str),
     Num(u32),
 }
 
-/// Свойство, которое ставится окну напрямую.
+/// A property set directly on the window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct X11Property {
-    /// Имя свойства (`_NET_WM_WINDOW_TYPE`, …).
+    /// Property name (`_NET_WM_WINDOW_TYPE`, …).
     pub name: &'static str,
-    /// Тип значения: [`XA_ATOM`] или [`XA_CARDINAL`].
+    /// Value type: [`XA_ATOM`] or [`XA_CARDINAL`].
     pub kind: u32,
-    /// Значение — 32-битные слова.
+    /// The value — 32-bit words.
     pub values: Vec<X11Word>,
 }
 
-/// Просьба корневому окну про окно обоев (EWMH ClientMessage, формат 32).
+/// A request to the root window about the wallpaper window (EWMH ClientMessage, format 32).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct X11ClientMessage {
-    /// `message_type` события (`_NET_WM_STATE`, `_NET_WM_DESKTOP`).
+    /// The event's `message_type` (`_NET_WM_STATE`, `_NET_WM_DESKTOP`).
     pub message_type: &'static str,
     /// `data.l[0..5]`.
     pub data: [X11Word; 5],
 }
 
-/// Что сделать с окном обоев на X11 — до показа и после.
+/// What to do with the wallpaper window on X11 — before showing and after.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct X11DesktopPlan {
-    /// Свойства окну ДО показа (тип первым — WM читает его при показе).
+    /// Properties for the window BEFORE showing (type first — the WM reads it on showing).
     pub before_map: Vec<X11Property>,
-    /// Свойства, которые повторно пишутся показанному окну (только тип:
-    /// состояние показанного окна так не меняют).
+    /// Properties rewritten on the shown window (only the type: a shown window's
+    /// state is not changed this way).
     pub after_map_properties: Vec<X11Property>,
-    /// Просьбы корневому окну для показанного окна.
+    /// Requests to the root window for the shown window.
     pub after_map_messages: Vec<X11ClientMessage>,
 }
 
@@ -278,12 +282,12 @@ fn window_type_property() -> X11Property {
     }
 }
 
-/// План X11-фолбэка: тип, состояние и «на всех столах» — до показа окна,
-/// просьбы `_NET_WM_STATE`/`_NET_WM_DESKTOP` — после.
+/// The X11 fallback plan: type, state and "on all desktops" — before showing
+/// the window, `_NET_WM_STATE`/`_NET_WM_DESKTOP` requests — after.
 ///
-/// В одной просьбе `_NET_WM_STATE` — не больше двух состояний
-/// (`data.l[1]`, `data.l[2]`), поэтому три состояния идут двумя
-/// просьбами; пустое второе место — 0 (EWMH).
+/// One `_NET_WM_STATE` request carries at most two states (`data.l[1]`,
+/// `data.l[2]`), so three states go as two requests; an empty second slot is
+/// 0 (EWMH).
 pub fn x11_desktop_plan() -> X11DesktopPlan {
     let [skip_taskbar, skip_pager, sticky] = X11_DESKTOP_STATES;
     let state_add = |first: &'static str, second: Option<&'static str>| X11ClientMessage {
@@ -328,8 +332,8 @@ pub fn x11_desktop_plan() -> X11DesktopPlan {
     }
 }
 
-/// Все имена атомов, которые плану нужно узнать у сервера, без повторов, в
-/// порядке первого упоминания.
+/// All atom names the plan needs to learn from the server, without repeats,
+/// in order of first mention.
 pub fn x11_desktop_plan_atoms(plan: &X11DesktopPlan) -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();
     let mut push = |name: &'static str| {
@@ -357,8 +361,8 @@ pub fn x11_desktop_plan_atoms(plan: &X11DesktopPlan) -> Vec<&'static str> {
     out
 }
 
-/// Слова в числа: атомы — через `atom` (номер от сервера; `None` — сервер
-/// атом не дал, и слово ставить нельзя).
+/// Words into numbers: atoms via `atom` (the number from the server; `None` —
+/// the server did not give the atom, and the word must not be set).
 pub fn x11_resolve_words(
     words: &[X11Word],
     atom: impl Fn(&str) -> Option<u32>,
@@ -372,9 +376,9 @@ pub fn x11_resolve_words(
         .collect()
 }
 
-/// 32 байта события ClientMessage (формат 32) в порядке байтов машины — так,
-/// как его ждёт `xcb_send_event`: код, формат, номер (0, ставит сервер),
-/// окно, `message_type`, пять слов `data.l`.
+/// 32 bytes of a ClientMessage event (format 32) in machine byte order — the
+/// way `xcb_send_event` expects it: code, format, sequence (0, set by the
+/// server), window, `message_type`, five `data.l` words.
 pub fn x11_client_message_bytes(window: u32, message_type: u32, data: [u32; 5]) -> [u8; 32] {
     let mut ev = [0u8; 32];
     ev[0] = X11_CLIENT_MESSAGE;
@@ -388,78 +392,79 @@ pub fn x11_client_message_bytes(window: u32, message_type: u32, data: [u32; 5]) 
     ev
 }
 
-// ── X11: порядок окна обоев и окна значков рабочего стола ─────────────────
+// ── X11: order of the wallpaper window and the desktop icons window ───────
 //
-// Значки стола на X11 рисует файловый менеджер в СВОЁМ окне того же типа
-// «рабочий стол»: Caja (MATE), nemo-desktop (Cinnamon), xfdesktop (XFCE).
-// Оконный менеджер кладёт все такие окна в один нижний слой и внутри слоя
-// упорядочивает по времени показа — кто показан позже, тот выше. Окно
-// обоев показывается после значков и закрывает их (MATE 1.28, 31.10.2026:
-// окно хоста выше окна Caja, значки не видны).
+// Desktop icons on X11 are drawn by the file manager in ITS OWN window of the
+// same "desktop" type: Caja (MATE), nemo-desktop (Cinnamon), xfdesktop
+// (XFCE). The window manager puts all such windows into one bottom layer and
+// orders them within the layer by showing time — whoever is shown later is
+// higher. The wallpaper window is shown after the icons and covers them
+// (MATE 1.28, 31.10.2026: the host window above the Caja window, the icons
+// not visible).
 //
-// Куда ставить окно обоев, решает фон окна значков:
-//   * сквозной (у окна 32-битная глубина — альфа-канал — И работает
-//     композитор): обои — ПОД значками, они просвечивают между значками.
-//     Так всегда у nemo-desktop и у Caja с ключом
-//     `org.mate.caja.desktop transparent-background`;
-//   * непрозрачный (Caja без ключа, xfdesktop, любое окно без композитора):
-//     обои — НАД ним, иначе их не видно вовсе; значки на это время скрыты,
-//     и человеку об этом говорится при применении
-//     (`wallpaper_backend::prepare_desktop_icons`).
-// Окно, которое рисует только фон (`csd-background` Cinnamon под XWayland),
-// остаётся под обоями в любом случае.
+// Where to put the wallpaper window is decided by the icons window background:
+//   * transparent (the window has 32-bit depth — an alpha channel — AND a
+//     compositor is running): the wallpaper goes UNDER the icons, it shows
+//     through between them. This is always the case with nemo-desktop and
+//     with Caja with the `org.mate.caja.desktop transparent-background` key;
+//   * opaque (Caja without the key, xfdesktop, any window without a
+//     compositor): the wallpaper goes ABOVE it, otherwise it is not visible
+//     at all; the icons are hidden meanwhile, and the person is told about
+//     it on apply (`wallpaper_backend::prepare_desktop_icons`).
+// A window that draws only the background (Cinnamon's `csd-background` under
+// XWayland) stays under the wallpaper in any case.
 //
-// Здесь — только решение по наблюдениям; запросы к серверу делает хост
-// (`rexon-gui::wallpaper_host::x11_desktop::keep_order`).
+// Here is only the decision from observations; the server requests are made
+// by the host (`rexon-gui::wallpaper_host::x11_desktop::keep_order`).
 
-/// `WM_CLASS` окон, которые рисуют только фон стола и лежат под обоями.
+/// `WM_CLASS` of windows that draw only the desktop background and lie under the wallpaper.
 pub const X11_BACKGROUND_ONLY_CLASSES: [&str; 1] = ["csd-background"];
 
-/// Корневые свойства, которыми файловые менеджеры называют своё окно стола.
+/// Root properties by which file managers name their desktop window.
 pub const X11_ICONS_WINDOW_ROOT_PROPERTIES: [&str; 2] = ["CAJA_DESKTOP_WINDOW_ID", "NAUTILUS_DESKTOP_WINDOW_ID"];
 
-/// Источник просьбы `_NET_RESTACK_WINDOW` — пейджер: прямое действие,
-/// которое менеджеры исполняют без проверок кражи фокуса (EWMH).
+/// The source of a `_NET_RESTACK_WINDOW` request is a pager: a direct action
+/// that managers carry out without focus-stealing checks (EWMH).
 pub const EWMH_SOURCE_PAGER: u32 = 2;
 
-/// `stack_mode` ConfigureWindow и `detail` `_NET_RESTACK_WINDOW`.
+/// ConfigureWindow's `stack_mode` and `_NET_RESTACK_WINDOW`'s `detail`.
 pub const X11_STACK_ABOVE: u32 = 0;
 pub const X11_STACK_BELOW: u32 = 1;
 
-/// Глубина окна с альфа-каналом (визуал ARGB).
+/// Depth of a window with an alpha channel (an ARGB visual).
 pub const X11_ALPHA_DEPTH: u8 = 32;
 
-/// Наблюдения о чужом окне из `_NET_CLIENT_LIST_STACKING`.
+/// Observations about a foreign window from `_NET_CLIENT_LIST_STACKING`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct X11ClientFacts {
-    /// Тип окна — `_NET_WM_WINDOW_TYPE_DESKTOP`.
+    /// The window type is `_NET_WM_WINDOW_TYPE_DESKTOP`.
     pub desktop_type: bool,
-    /// Корневое окно называет его окном стола файлового менеджера
+    /// The root window names it the file manager's desktop window
     /// ([`X11_ICONS_WINDOW_ROOT_PROPERTIES`]).
     pub announced_icons: bool,
-    /// `WM_CLASS`: имя экземпляра и класс.
+    /// `WM_CLASS`: instance name and class.
     pub instance: String,
     pub class: String,
-    /// Глубина окна (бит на пиксель); 0 — не узнали.
+    /// Window depth (bits per pixel); 0 — unknown.
     pub depth: u8,
 }
 
-/// Чем окно приходится обоям.
+/// What the window is to the wallpaper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum X11StackRole {
-    /// Наше окно обоев.
+    /// Our wallpaper window.
     Own,
-    /// Окно значков стола; `see_through` — его фон сквозной.
+    /// The desktop icons window; `see_through` — its background is transparent.
     Icons { see_through: bool },
-    /// Окно, которое рисует только фон стола.
+    /// A window that draws only the desktop background.
     Background,
-    /// Любое другое окно — на порядок обоев не влияет.
+    /// Any other window — does not affect the wallpaper order.
     Other,
 }
 
-/// Роль чужого окна. `compositing` — у экрана есть композитор (владелец
-/// выбора `_NET_WM_CM_Sn`): без него альфа окна не смешивается, и окно с
-/// 32-битной глубиной всё равно закрывает то, что под ним.
+/// The role of a foreign window. `compositing` — the screen has a compositor
+/// (the owner of the `_NET_WM_CM_Sn` selection): without it window alpha is
+/// not blended, and a 32-bit-deep window still covers what is under it.
 pub fn x11_stack_role(facts: &X11ClientFacts, compositing: bool) -> X11StackRole {
     let named = |names: &[&str]| {
         names
@@ -475,7 +480,7 @@ pub fn x11_stack_role(facts: &X11ClientFacts, compositing: bool) -> X11StackRole
     X11StackRole::Icons { see_through: compositing && facts.depth == X11_ALPHA_DEPTH }
 }
 
-/// Куда переставить окно обоев относительно соседа.
+/// Where to restack the wallpaper window relative to the neighbor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum X11Restack {
     Below(u32),
@@ -483,7 +488,7 @@ pub enum X11Restack {
 }
 
 impl X11Restack {
-    /// Сосед и `stack_mode` для запроса.
+    /// The neighbor and `stack_mode` for the request.
     pub fn sibling_and_mode(self) -> (u32, u32) {
         match self {
             X11Restack::Below(w) => (w, X11_STACK_BELOW),
@@ -492,16 +497,17 @@ impl X11Restack {
     }
 }
 
-/// Нужно ли переставить окно обоев `own` в стеке `stack` (снизу вверх, как
-/// `_NET_CLIENT_LIST_STACKING`), и куда. `None` — стоит где надо.
+/// Whether the wallpaper window `own` must be restacked in the `stack` stack
+/// (bottom to top, like `_NET_CLIENT_LIST_STACKING`), and where. `None` — it
+/// stands where it should.
 ///
-/// * Есть хоть одно непрозрачное окно значков — обои над самым верхним
-///   окном значков (иначе их не видно).
-/// * Все окна значков сквозные — обои под самым нижним из них.
-/// * Окна, рисующие только фон, всегда остаются под обоями.
+/// * There is at least one opaque icons window — the wallpaper goes above the
+///   topmost icons window (otherwise it is not visible).
+/// * All icons windows are transparent — the wallpaper goes under the lowest one.
+/// * Windows that draw only the background always stay under the wallpaper.
 ///
-/// Повторный расчёт после исполненного запроса даёт `None`: на каждом
-/// круге сверки переставляется только то, что стоит не на месте.
+/// Recomputing after a fulfilled request gives `None`: on each check round
+/// only what is out of place gets restacked.
 pub fn x11_restack_goal(stack: &[(u32, X11StackRole)], own: u32) -> Option<X11Restack> {
     let own_at = stack.iter().position(|(w, role)| *w == own && *role == X11StackRole::Own)?;
     let icons: Vec<(usize, bool)> = stack
@@ -533,44 +539,45 @@ pub fn x11_restack_goal(stack: &[(u32, X11StackRole)], own: u32) -> Option<X11Re
     }
 }
 
-/// Сколько раз подряд просить оконный менеджер о том же порядке при том же
-/// стеке, прежде чем признать отказ. Менеджер исполняет просьбу за
-/// миллисекунды, а сверка ходит раз в 2 с — три круга с запасом покрывают
-/// медленный старт.
+/// How many times in a row to ask the window manager for the same order with
+/// the same stack before admitting a refusal. The manager fulfills a request
+/// within milliseconds, and the check runs every 2 s — three rounds cover a
+/// slow start with a margin.
 pub const X11_RESTACK_TRIES: u32 = 3;
 
-/// Что хосту делать на этом круге сверки.
+/// What the host should do on this check round.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum X11RestackStep {
-    /// Попросить менеджер о порядке.
+    /// Ask the manager for the order.
     Ask(X11Restack),
-    /// Просьбы не исполнены [`X11_RESTACK_TRIES`] раз — один раз сказать
-    /// это в журнал и больше не просить.
+    /// The requests were not fulfilled [`X11_RESTACK_TRIES`] times — say so in the
+    /// journal once and stop asking.
     GiveUp(X11Restack),
-    /// Отказ уже признан, стек тот же — молчать.
+    /// The refusal is already admitted, the stack is the same — stay silent.
     Quiet,
 }
 
-/// Учёт просьб о порядке одного окна обоев между кругами сверки.
+/// Bookkeeping of order requests for one wallpaper window between check rounds.
 ///
-/// Оконный менеджер вправе просьбу молча не исполнить: окно в другом слое
-/// (xfwm4 с BELOW держал окно обоев над слоем стола), политика менеджера.
-/// Тогда сверка раз в 2 с просила бы одно и то же бесконечно и столько же
-/// писала в журнал. Отказом считается та же цель при том же стеке после
-/// [`X11_RESTACK_TRIES`] просьб; любое изменение нижнего слоя (окно значков
-/// пересоздано, менеджер сменился, цель стала другой) начинает счёт заново.
+/// The window manager may silently not fulfill a request: the window is in
+/// another layer (xfwm4 with BELOW kept the wallpaper window above the
+/// desktop layer), the manager's policy. Then the check would ask for the
+/// same thing every 2 s forever and write the same to the journal. A refusal
+/// is the same goal with the same stack after [`X11_RESTACK_TRIES`] requests;
+/// any change of the bottom layer (the icons window recreated, the manager
+/// changed, the goal became different) starts the count anew.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct X11RestackTracker {
-    /// Цель и нижний слой (окна не `Other`, снизу вверх) последней просьбы.
+    /// The goal and the bottom layer (non-`Other` windows, bottom to top) of the last request.
     last: Option<(X11Restack, Vec<(u32, X11StackRole)>)>,
     tries: u32,
-    /// Окно значков уже пересоздавали ради этого окна обоев.
+    /// The icons window has already been recreated for this wallpaper window.
     icons_recreated: bool,
 }
 
 impl X11RestackTracker {
-    /// Шаг сверки для окна `own` в стеке `stack` (снизу вверх). `None` —
-    /// окно стоит где надо, просить нечего.
+    /// A check step for the window `own` in the stack `stack` (bottom to top).
+    /// `None` — the window stands where it should, nothing to ask.
     pub fn step(&mut self, stack: &[(u32, X11StackRole)], own: u32) -> Option<X11RestackStep> {
         let Some(goal) = x11_restack_goal(stack, own) else {
             self.last = None;
@@ -592,16 +599,16 @@ impl X11RestackTracker {
         })
     }
 
-    /// После [`X11RestackStep::GiveUp`]: пересоздать ли окно значков.
+    /// After [`X11RestackStep::GiveUp`]: whether to recreate the icons window.
     ///
-    /// xfwm4 окно обоев под окно значков не опускает (просьбы о порядке
-    /// окну типа «рабочий стол» он отбрасывает), но новое окно значков
-    /// кладёт поверх обоев. Значит, сквозные значки, показанные раньше
-    /// хоста, достаются пересозданием их окна (как это сделать — решает
-    /// `wallpaper_backend::icons_window_toggle` по классу окна). Только
-    /// для цели «под значки» (над непрозрачными значками новое окно не
-    /// поможет) и один раз на окно обоев: не помогло — больше не дёргаем
-    /// значки по кругу.
+    /// xfwm4 does not lower the wallpaper window under the icons window (it
+    /// discards order requests for a "desktop" type window), but puts a new icons
+    /// window above the wallpaper. So transparent icons shown before the host are
+    /// reached by recreating their window (how to do that is decided by
+    /// `wallpaper_backend::icons_window_toggle` by the window class). Only for the
+    /// "under the icons" goal (a new window will not help above opaque icons) and
+    /// once per wallpaper window: if it did not help, we do not poke the icons in
+    /// a loop any more.
     pub fn take_icons_recreate(&mut self, goal: X11Restack) -> bool {
         if !matches!(goal, X11Restack::Below(_)) || self.icons_recreated {
             return false;
@@ -611,8 +618,8 @@ impl X11RestackTracker {
     }
 }
 
-/// Номер экрана X из `DISPLAY` (`:0.1` → 1); без номера — 0. Нужен для
-/// имени выбора композитора `_NET_WM_CM_S<номер>`.
+/// The X screen number from `DISPLAY` (`:0.1` → 1); without a number — 0.
+/// Needed for the compositor selection name `_NET_WM_CM_S<number>`.
 pub fn x11_screen_number(display: &str) -> u32 {
     let after_colon = display.rsplit_once(':').map(|(_, rest)| rest).unwrap_or("");
     after_colon
@@ -621,29 +628,29 @@ pub fn x11_screen_number(display: &str) -> u32 {
         .unwrap_or(0)
 }
 
-/// Имя выбора, которым владеет композитор экрана (EWMH).
+/// The name of the selection owned by the screen's compositor (EWMH).
 pub fn x11_compositor_selection(screen: u32) -> String {
     format!("_NET_WM_CM_S{screen}")
 }
 
 // ── headless render-loop ───────────────────────────────────────────────────
 
-/// Интервал тика QTimer (мс) — порт `max(8, int(1000 / max(fps, 1)))` из
-/// `run_headless_loop`. `fps <= 0` → 1000 мс; верх ограничен ~125 Гц (8 мс).
+/// QTimer tick interval (ms) — port of `max(8, int(1000 / max(fps, 1)))` from
+/// `run_headless_loop`. `fps <= 0` → 1000 ms; the top is capped at ~125 Hz (8 ms).
 pub fn headless_tick_ms(fps: i64) -> i64 {
     (1000 / fps.max(1)).max(8)
 }
 
-/// Частота кадров mmap-потока из значения `REXON_WP_FPS` — порт `_env_fps`
-/// из `video_wallpaper.py`.
+/// The mmap stream frame rate from the `REXON_WP_FPS` value — port of
+/// `_env_fps` from `video_wallpaper.py`.
 ///
-/// Переменную выставляет расширение оболочки. Мусор в ней не должен
-/// оставлять человека без обоев, поэтому непонятое значение и значение вне
-/// [`MIN_FPS`]..=[`MAX_FPS`] откатываются к [`DEFAULT_FPS`].
+/// The variable is set by the shell extension. Garbage in it must not leave
+/// the person without a wallpaper, so a value not understood or outside
+/// [`MIN_FPS`]..=[`MAX_FPS`] falls back to [`DEFAULT_FPS`].
 ///
-/// Живёт здесь, а не в `wallpaper.rs`: переменная описывает именно
-/// mmap-поток кадров, рядом с [`headless_tick_ms`], который из неё считает
-/// интервал таймера.
+/// It lives here, not in `wallpaper.rs`: the variable describes exactly the
+/// mmap frame stream, next to [`headless_tick_ms`], which computes the timer
+/// interval from it.
 pub fn env_fps(raw: Option<&str>) -> i64 {
     let Some(v) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
         return DEFAULT_FPS;
@@ -654,67 +661,71 @@ pub fn env_fps(raw: Option<&str>) -> i64 {
     }
 }
 
-// ── платформа Qt хоста в режиме потока кадров ─────────────────────────────
+// ── the host's Qt platform in frame stream mode ───────────────────────────
 
-/// Платформа Qt без окон и без видеокарты: на ней хост живёт, пока отдаёт
-/// кадры расширению, если кадр не рисует `QQuickRenderControl`.
+/// A Qt platform without windows and without a graphics card: the host lives
+/// on it while handing frames to the extension, if the frame is not drawn by
+/// `QQuickRenderControl`.
 pub const OFFSCREEN_QPA_PLATFORM: &str = "offscreen";
-/// Платформа Qt сеанса Wayland (GNOME/Cinnamon-Wayland — `WAYLAND_DISPLAY`).
+/// The Qt platform of a Wayland session (GNOME/Cinnamon-Wayland — `WAYLAND_DISPLAY`).
 pub const WAYLAND_QPA_PLATFORM: &str = "wayland";
-/// Платформа Qt сеанса X11 или XWayland (`DISPLAY`).
+/// The Qt platform of an X11 or XWayland session (`DISPLAY`).
 pub const XCB_QPA_PLATFORM: &str = "xcb";
 
-/// Чем хост снимает кадр в режиме потока кадров.
+/// How the host captures a frame in frame stream mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamCapture {
-    /// Кадр берётся не из сцены Qt Quick: у видео — из `QVideoSink`
-    /// (VideoOutput на `offscreen` не рисует), у Flash — wgpu пишет сам. Рендер
-    /// Qt не нужен, платформа остаётся `offscreen` — там окна нет по устройству.
+    /// The frame is not taken from the Qt Quick scene: for video it comes from
+    /// `QVideoSink` (VideoOutput does not draw on `offscreen`), for Flash wgpu
+    /// writes it itself. Qt rendering is not needed, the platform stays
+    /// `offscreen` — there is no window there by design.
     OwnFrames,
-    /// Сцена Qt Quick рисуется `QQuickRenderControl` в текстуру и читается
-    /// обратно (веб). Окно QML не показывается НИКОГДА, поэтому платформе
-    /// можно быть настоящей — и получить видеокарту.
+    /// The Qt Quick scene is drawn by `QQuickRenderControl` into a texture and
+    /// read back (web). The QML window is NEVER shown, so the platform can be a
+    /// real one — and get the graphics card.
     RenderControl,
 }
 
-/// Чем режим хоста снимает кадр в режиме потока кадров — ОДНА таблица.
+/// How a host mode captures a frame in frame stream mode — ONE table.
 pub fn host_stream_capture(mode: crate::wallpaper_engine::HostMode) -> StreamCapture {
     use crate::wallpaper_engine::HostMode;
     match mode {
         HostMode::Web => StreamCapture::RenderControl,
-        // Клиент вывода в поток кадров не пишет никогда; ответ — ради
-        // полноты таблицы.
+        // The output client never writes into the frame stream; the answer is for
+        // the completeness of the table.
         HostMode::Video | HostMode::Swf | HostMode::Waywallen => StreamCapture::OwnFrames,
     }
 }
 
-/// Что записать в `QT_QPA_PLATFORM` хосту обоев ДО создания приложения Qt.
-/// `None` — ничего не трогать.
+/// What to write into `QT_QPA_PLATFORM` for the wallpaper host BEFORE the Qt
+/// application is created. `None` — touch nothing.
 ///
-/// ОДНО решение на все режимы хоста, правило #12. Прежде его принимал только
-/// веб-хост, и видео-хост на GNOME/Cinnamon-Wayland поднимал обычное окно:
-/// замер под Wayland-композитором без layer-shell — клиент просит
-/// `xdg_surface.get_toplevel` с заголовком «RexonVideoWallpaper» и отдаёт ему
-/// кадры, под Xvfb — видимое окно 1920×1080 (`IsViewable`). На Mutter это
-/// чёрное окно во весь экран поверх рабочего стола.
+/// ONE decision for all host modes, rule #12. Previously only the web host
+/// made it, and the video host on GNOME/Cinnamon-Wayland brought up a regular
+/// window: measured under a Wayland compositor without layer-shell — the
+/// client asks for `xdg_surface.get_toplevel` with the title
+/// «RexonVideoWallpaper» and hands frames to it, under Xvfb — a visible
+/// 1920×1080 window (`IsViewable`). On Mutter this is a black full-screen
+/// window over the desktop.
 ///
-/// Веб (`StreamCapture::RenderControl`) — на НАСТОЯЩЕЙ платформе сеанса
-/// (15.09.2026). На `offscreen` у Qt нет EGL, а GLX только через `DISPLAY`
-/// (qtbase `plugins/platforms/offscreen`), и даже с ним QtWebEngine 6.11 на
-/// `offscreen` при GPU-композиторе не кладёт кадр в сцену вовсе
-/// (`render_widget_host_view_qt_delegate_item.cpp`, QTBUG-132682). Замер на
-/// стенде (1920×1080, поток 30 к/с): `offscreen` — CSS 17 к/с при 157 % CPU,
-/// WebGL нет; `wayland` + `QQuickRenderControl` — видеокарта (ANGLE, Radeon
-/// 780M), CSS 31 к/с при 43 % CPU, WebGL 30 к/с при 25 % с живым кадром; `xcb`
-/// — 38 и 26 %. Окна на экране при этом нет: за весь прогон клиент не создал
-/// ни одной `wl_surface` (0 `create_surface`, 0 `get_toplevel`). Без
-/// `WAYLAND_DISPLAY` и `DISPLAY` — `offscreen`, программный рендер.
+/// Web (`StreamCapture::RenderControl`) — on the session's REAL platform
+/// (15.09.2026). On `offscreen` Qt has no EGL, and GLX only via `DISPLAY`
+/// (qtbase `plugins/platforms/offscreen`), and even with it QtWebEngine 6.11
+/// on `offscreen` with a GPU compositor does not put the frame into the scene
+/// at all (`render_widget_host_view_qt_delegate_item.cpp`, QTBUG-132682).
+/// Measured on the test bench (1920×1080, 30 fps stream): `offscreen` — CSS
+/// 17 fps at 157 % CPU, no WebGL; `wayland` + `QQuickRenderControl` — the
+/// graphics card (ANGLE, Radeon 780M), CSS 31 fps at 43 % CPU, WebGL 30 fps at
+/// 25 % with a live frame; `xcb` — 38 and 26 %. There is no window on screen
+/// meanwhile: during the whole run the client created not a single
+/// `wl_surface` (0 `create_surface`, 0 `get_toplevel`). Without
+/// `WAYLAND_DISPLAY` and `DISPLAY` — `offscreen`, software rendering.
 ///
-/// ⚠️ Уже заданное значение ПЕРЕБИВАЕТСЯ, а не уважается: в режиме потока
-/// кадров окна на экране быть не должно ни при какой платформе, а
-/// `QT_QPA_PLATFORM=wayland` у пользователей GNOME нередко стоит на весь
-/// сеанс (так советуют ради Qt-программ) — видео унаследовало бы его от
-/// оболочки и снова вывело бы окно поверх стола.
+/// ⚠️ An already set value is OVERRIDDEN, not respected: in frame stream mode
+/// there must be no window on screen on any platform, and GNOME users often
+/// have `QT_QPA_PLATFORM=wayland` set for the whole session (that is the
+/// common advice for Qt programs) — the video would inherit it from the shell
+/// and put a window over the desktop again.
 pub fn host_qpa_platform(
     stream_to_file: bool,
     capture: StreamCapture,
@@ -733,15 +744,15 @@ pub fn host_qpa_platform(
     }
 }
 
-/// Можно ли в режиме потока показать окно ради снимка кадра. Только на
-/// `offscreen`: там у окна нет экрана по устройству. На любой настоящей
-/// платформе показанное окно на Mutter выходит поверх рабочего стола —
-/// это дефект, ради которого поток кадров вообще живёт без окна.
+/// Whether a window may be shown in stream mode for the sake of grabbing a
+/// frame. Only on `offscreen`: there the window has no screen by design. On
+/// any real platform a shown window on Mutter comes out over the desktop —
+/// the very defect for which the frame stream lives without a window at all.
 pub fn stream_window_may_show(platform: &str) -> bool {
     platform == OFFSCREEN_QPA_PLATFORM
 }
 
-/// Платформа Qt режима потока кадров — сама по себе, без сверки с текущей.
+/// The Qt platform of frame stream mode — by itself, without checking against the current one.
 pub fn stream_qpa_platform(
     capture: StreamCapture,
     wayland_display: &str,
@@ -757,45 +768,46 @@ pub fn stream_qpa_platform(
     }
 }
 
-// ── счётчик поколения кадра ────────────────────────────────────────────────
+// ── frame generation counter ───────────────────────────────────────────────
 
-/// Окончание имени файла-счётчика рядом с файлом кадра
-/// (`rexon-wp-frame.rgba` → `rexon-wp-frame.rgba.gen`). Та же строка стоит в
-/// общем блоке чтения обоих `extension.js` (сторож —
+/// The ending of the counter file name next to the frame file
+/// (`rexon-wp-frame.rgba` → `rexon-wp-frame.rgba.gen`). The same string stands
+/// in the shared read block of both `extension.js` files (guarded by
 /// `tests/wallpaper_mmap_parity.rs`).
 pub const FRAME_GEN_SUFFIX: &str = ".gen";
 
-/// Размер счётчика: u64 little-endian, больше в файле ничего нет.
+/// Counter size: u64 little-endian, there is nothing else in the file.
 pub const FRAME_GEN_BYTES: usize = 8;
 
-/// Путь счётчика поколения для файла кадра.
+/// The generation counter path for a frame file.
 ///
-/// Зачем он. Хост пишет кадр под `flock(LOCK_EX)`, а расширение оболочки
-/// замок взять не может: у GJS нет ни `flock`, ни `fcntl`. Замер на
-/// 1920×1080 и 30 кадрах: хост держит замок 6 % времени (запись кадра
-/// ~1,9 мс), копия у читателя ~1,7 мс — и 12 рваных кадров из 180 тиков.
+/// Why it exists. The host writes the frame under `flock(LOCK_EX)`, but the
+/// shell extension cannot take the lock: GJS has neither `flock` nor `fcntl`.
+/// Measured at 1920×1080 and 30 frames: the host holds the lock 6 % of the
+/// time (writing a frame ~1.9 ms), the reader's copy takes ~1.7 ms — and 12
+/// torn frames out of 180 ticks.
 ///
-/// Договор (seqlock): перед записью кадра хост кладёт в счётчик НЕЧЁТНОЕ
-/// число, после — следующее чётное. Читатель берёт счётчик до копии кадра и
-/// после; нечётный или изменившийся — кадр пропускается (на экране остаётся
-/// прежний). Раскладка самого файла кадра НЕ меняется: ровно
-/// width×height×4 байта без заголовка, и расширение прежней сборки читает
-/// его как раньше. Нет счётчика (хост прежней сборки) — читатель ведёт себя
-/// по-старому.
+/// The contract (seqlock): before writing a frame the host puts an ODD number
+/// into the counter, after it — the next even one. The reader takes the
+/// counter before and after copying the frame; odd or changed — the frame is
+/// skipped (the previous one stays on screen). The layout of the frame file
+/// itself does NOT change: exactly width×height×4 bytes without a header, and
+/// an extension of an older build reads it as before. No counter (a host of
+/// an older build) — the reader behaves the old way.
 pub fn frame_generation_path(frame_path: &str) -> String {
     format!("{frame_path}{FRAME_GEN_SUFFIX}")
 }
 
-/// Байты счётчика поколения — u64 little-endian.
+/// Generation counter bytes — u64 little-endian.
 pub fn frame_generation_bytes(generation: u64) -> [u8; FRAME_GEN_BYTES] {
     generation.to_le_bytes()
 }
 
-// ── внутреннее ─────────────────────────────────────────────────────────────
+// ── internals ──────────────────────────────────────────────────────────────
 
-/// Семантика Python `int(str)` для ENV-значений: обрезка пробелов, знак,
-/// только целые. (Подчёркивания-разделители Python 3.6+ не поддержаны —
-/// в ENV-размерах экрана не встречаются.)
+/// Python `int(str)` semantics for ENV values: whitespace trimming, a sign,
+/// integers only. (Python 3.6+ underscore separators are not supported — they
+/// do not occur in ENV screen sizes.)
 fn py_int(s: &str) -> Option<i64> {
     let t = s.trim();
     if t.is_empty() {

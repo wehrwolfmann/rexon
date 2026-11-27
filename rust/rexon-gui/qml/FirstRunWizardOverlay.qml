@@ -1,41 +1,47 @@
-// Мастер первого запуска — ОДНО окно поверх главного.
+// First-run wizard — ONE window over the main one.
 //
-// ЗАЧЕМ. Человек, распаковавший архив и запустивший Rexon из папки, не
-// получал ни ярлыка в меню приложений, ни дополнения для живых обоев в
-// GNOME и Cinnamon — и ничего об этом не узнавал. Здесь ему один раз
-// предлагают установку и честно называют цену: пароль администратора либо
-// установка только для себя.
+// WHY. A person who unpacked the archive and launched Rexon from the
+// folder got neither a launcher in the application menu nor the live
+// wallpaper extension for GNOME and Cinnamon — and learned nothing about
+// it. Here they are offered installation once, and the price is stated
+// honestly: an administrator password or an installation just for
+// yourself.
 //
-// ЧЬИ ЗДЕСЬ БУКВЫ — НИ ОДНОЙ СВОЕЙ. Решение «предлагать ли», режимы, все
-// подписи приветствия и согласия на разрешение «не спрашивать пароль»
-// приходят готовой картой от моста `FirstRunWizard`
-// (rust/rexon-gui/src/first_run_wizard.rs), а он берёт их у ядра
-// (`rexon_core::installer`). Набрать подпись здесь значило бы завести
-// вторую копию, которая молча разойдётся с продуктом (правило #12).
+// WHOSE TEXTS ARE HERE — NONE OF OUR OWN. The decision "whether to offer",
+// the modes, all labels of the welcome and of the consent to the "do not
+// ask for a password" permission arrive as a ready map from the
+// `FirstRunWizard` bridge (rust/rexon-gui/src/first_run_wizard.rs), which
+// takes them from the core (`rexon_core::installer`). Typing a label here
+// would create a second copy that silently drifts away from the product
+// (rule #12).
 //
-// ⛔ НИКАКОЙ ЦЕПОЧКИ ОКОН (архитектурное правило #16). Выбор «для кого
-// установить» и согласие на разрешение стоят в ОДНОМ окне: в Big Picture и
-// на Steam Deck череда диалогов неудобна. Ход и итог показывает общее окно
-// операции `DeOperationDialog.qml` — то же, что у «Рабочих столов»: у моста
-// мастера свойство `operation` и сигнал `operationLog` того же вида, и окно
-// подключается строкой `actions: wizard`, без единой правки в нём.
+// Never: NO CHAIN OF WINDOWS (architecture rule #16). The choice "whom to
+// install for" and the consent to the permission are in ONE window: in Big
+// Picture and on the Steam Deck a sequence of dialogs is awkward. Progress
+// and result are shown by the shared operation window
+// `DeOperationDialog.qml` — the same as in "Desktops": the wizard bridge
+// has an `operation` property and an `operationLog` signal of the same
+// shape, and the window is hooked up with the line `actions: wizard`,
+// without a single change inside it.
 //
-// Управление без мыши: фокус встаёт на выбранный режим (случайный Enter
-// только переподтверждает уже выбранное и ничего не запускает), стрелки
-// вверх-вниз ходят по режимам, Tab — дальше по окну, Esc — «Пропустить»
-// без запоминания. Steam Input переводит крестовину в стрелки, A — в Enter,
-// B — в Esc. Высота кнопок и галочек — не меньше 40 (правило #16).
+// Control without a mouse: focus lands on the selected mode (an accidental
+// Enter only reconfirms what is already selected and starts nothing), the
+// up/down arrows move between modes, Tab moves on through the window, Esc
+// means "Skip" without remembering. Steam Input maps the D-pad to arrows,
+// A to Enter, B to Esc. Buttons and check boxes are at least 40 high
+// (rule #16).
 //
-// ⚠️ ИМЯ ФАЙЛА. Накладка зовётся `FirstRunWizardOverlay`, а не
-// `FirstRunWizard`: имя `FirstRunWizard` в модуле `org.rexon.gui` уже занял
-// сам мост (`#[qml_element]`), и файл с таким же именем сделал бы тип
-// двойственным — «Ambiguous type detected. FirstRunWizard 1.0 is defined
-// multiple times», после чего мост из разметки не достать вовсе. Пара
-// «мост + накладка» названа так же, как у обучения: `OnboardingModel` и
+// Warning: THE FILE NAME. The overlay is called `FirstRunWizardOverlay`,
+// not `FirstRunWizard`: the name `FirstRunWizard` in the `org.rexon.gui`
+// module is already taken by the bridge itself (`#[qml_element]`), and a
+// file with the same name would make the type ambiguous — "Ambiguous type
+// detected. FirstRunWizard 1.0 is defined multiple times", after which the
+// bridge cannot be reached from markup at all. The "bridge + overlay" pair
+// is named the same way as for the tutorial: `OnboardingModel` and
 // `OnboardingOverlay.qml`.
 //
-// Подключение: `FirstRunWizardOverlay { anchors.fill: parent; pal: …;
-// onFinished: <отпустить обучение> }`, затем `begin()`.
+// Hook-up: `FirstRunWizardOverlay { anchors.fill: parent; pal: …;
+// onFinished: <release the tutorial> }`, then `begin()`.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -46,19 +52,20 @@ import org.rexon.gui 1.0
 Item {
     id: root
 
-    /// Палитра скина окна (та же карта, что у остальных страниц).
+    /// Window skin palette (the same map as for the other pages).
     property var pal: ({})
 
     readonly property color colAccent: root.pal.accent
 
-    /// Мастер закончил работу: человек установил Rexon, отказался или
-    /// предлагать было нечего. Хозяин окна держит обучение до этого сигнала.
+    /// The wizard has finished: the user installed Rexon, declined, or there
+    /// was nothing to offer. The window host holds back the tutorial until
+    /// this signal.
     signal finished()
 
-    /// Открыт ли мастер — приветствие либо окно хода и итога.
+    /// Whether the wizard is open — the welcome or the progress/result window.
     readonly property bool opened: welcomeDialog.visible || root.opPhase !== ""
 
-    // ── Мост ──────────────────────────────────────────────────────────────
+    // ── Bridge ────────────────────────────────────────────────────────────
 
     FirstRunWizard {
         id: wizard
@@ -69,28 +76,31 @@ Item {
                                        && wizard.operation.phase !== undefined)
                                       ? wizard.operation.phase : ""
 
-    /// Подписи приветствия от ядра: `{windowTitle, title, description,
+    /// Welcome labels from the core: `{windowTitle, title, description,
     /// benefits, modesTitle, modes, installButton, skipButton,
     /// dontAskAgain, dontAskAgainHint}`.
     property var texts: ({})
-    /// Подписи согласия «не спрашивать пароль для действий Rexon».
+    /// Labels of the consent "do not ask for a password for Rexon actions".
     property var consent: ({})
-    /// Выбранный режим: "system" либо "user".
+    /// Selected mode: "system" or "user".
     property string mode: ""
-    /// Сухой прогон: мастер проходится целиком, но машину не трогает.
+    /// Dry run: the wizard goes all the way through but does not touch the
+    /// machine.
     property string dryNotice: ""
-    /// Мастер ведёт человека прямо сейчас (от приветствия до закрытия итога).
+    /// The wizard is guiding the user right now (from the welcome until the
+    /// result is closed).
     property bool active: false
 
-    // ── Ход мастера ───────────────────────────────────────────────────────
+    // ── Wizard flow ───────────────────────────────────────────────────────
 
-    /// Спросить ядро и, если оно предлагает установку, показать приветствие.
-    /// Предлагать нечего — `finished()` сразу, и обучение не ждёт впустую.
+    /// Ask the core and, if it offers installation, show the welcome. If there
+    /// is nothing to offer — `finished()` at once, so the tutorial does not
+    /// wait in vain.
     function begin() {
         if (root.active)
             return;
         const decision = wizard.start();
-        // В журнал: по нему видно, почему мастер показался или нет.
+        // To the log: it shows why the wizard appeared or not.
         console.info("мастер установки: " + decision.reason);
         if (decision.kind !== "offer") {
             root.finished();
@@ -101,22 +111,23 @@ Item {
         root.dryNotice = decision.dryRunNotice !== undefined
                          ? decision.dryRunNotice : "";
         root.mode = decision.defaultMode;
-        // Галочки возвращаются к безопасному состоянию при каждом показе:
-        // разрешение «не спрашивать пароль» выключено (`defaultOn` от ядра),
-        // «больше не спрашивать» снято.
+        // Check boxes return to a safe state on every show: the "do not ask for a
+        // password" permission is off (`defaultOn` from the core), "do not ask
+        // again" is cleared.
         pwCheck.checked = root.consent.defaultOn === true;
         wizard.setPasswordlessRule(pwCheck.checked);
         dontAsk.checked = false;
         root.active = true;
-        // Окно всегда открывается СВЕРХУ: показанный второй раз (кнопка в
-        // «Настройках») мастер помнил прежнюю прокрутку и встречал человека
-        // серединой согласия, а не приветствием.
+        // The window always opens at the TOP: when shown a second time (the
+        // button in "Settings"), the wizard remembered the previous scroll
+        // position and greeted the user with the middle of the consent rather
+        // than the welcome.
         flick.contentY = 0;
         welcomeDialog.open();
         Qt.callLater(root.settle);
     }
 
-    /// Фокус на выбранный режим: первое, о чём человека спрашивают.
+    /// Focus on the selected mode: the first thing the user is asked about.
     function settle() {
         const item = modes.itemAt(root.modeIndex(root.mode));
         if (item && item.enabled)
@@ -125,7 +136,7 @@ Item {
             installButton.forceActiveFocus();
     }
 
-    /// Номер режима в списке ядра; -1 — такого нет.
+    /// Index of the mode in the core list; -1 means there is no such mode.
     function modeIndex(id) {
         const list = root.modeList();
         for (let i = 0; i < list.length; ++i)
@@ -139,8 +150,9 @@ Item {
                ? root.texts.modes : [];
     }
 
-    /// Выбран режим `id`. Недоступный режим не выбирается: объяснение под
-    /// ним уже стоит, и загонять человека в тупик нечем.
+    /// Mode `id` was selected. An unavailable mode cannot be selected: its
+    /// explanation is already shown under it, and there is no dead end to
+    /// drive the user into.
     function selectMode(id) {
         const index = root.modeIndex(id);
         const list = root.modeList();
@@ -149,7 +161,7 @@ Item {
         root.mode = id;
     }
 
-    /// «Установить».
+    /// "Install".
     function install() {
         if (!wizard.install(root.mode)) {
             console.warn("мастер установки: режим «" + root.mode
@@ -159,7 +171,7 @@ Item {
         welcomeDialog.close();
     }
 
-    /// «Пропустить». Галочка «больше не спрашивать» уезжает в настройки.
+    /// "Skip". The "do not ask again" check box goes into the settings.
     function skip() {
         if (!wizard.decline(dontAsk.checked))
             console.warn("мастер установки: отказ не сохранён, "
@@ -173,7 +185,7 @@ Item {
         root.finished();
     }
 
-    // Окно хода закрыли — мастер отработал целиком.
+    // The progress window was closed — the wizard has run to completion.
     onOpPhaseChanged: {
         if (root.active && root.opPhase === "" && !welcomeDialog.visible)
             root.done();
@@ -182,7 +194,7 @@ Item {
     Connections {
         target: wizard
 
-        // Кнопка «Установить Rexon в систему…» на странице «Настройки».
+        // The "Install Rexon into the system…" button on the "Settings" page.
         function onShowRequested() { root.begin(); }
 
         function onInstallFinished(ok) {
@@ -191,7 +203,7 @@ Item {
         }
     }
 
-    // ── Ход и итог: общее окно операции ───────────────────────────────────
+    // ── Progress and result: the shared operation window ──────────────────
 
     DeOperationDialog {
         anchors.fill: parent
@@ -199,7 +211,7 @@ Item {
         pal: root.pal
     }
 
-    // ── Приветствие ───────────────────────────────────────────────────────
+    // ── Welcome ───────────────────────────────────────────────────────────
 
     Popup {
         id: welcomeDialog
@@ -208,8 +220,9 @@ Item {
         parent: root
         modal: true
         visible: false
-        // Закрывается только кнопками: случайный щелчок мимо окна не должен
-        // ни отказаться от установки, ни провалиться в окно под ним.
+        // Closed only with the buttons: an accidental click outside the window
+        // must neither decline the installation nor fall through into the window
+        // underneath.
         closePolicy: Popup.NoAutoClose
         focus: true
         anchors.centerIn: parent
@@ -246,10 +259,10 @@ Item {
                                                                : ScrollBar.AlwaysOff
                 }
 
-                // Место под полосу прокрутки — с её стороны: при языке справа
-                // налево полоса встаёт к левому краю, и якоря с отступом
-                // зеркалятся вместе с ней (ширина «минус полоса» от x = 0
-                // оставила бы текст под полосой).
+                // Room for the scroll bar is on its side: for right-to-left languages the
+                // bar moves to the left edge, and the anchors with their margin are
+                // mirrored along with it (a width of "minus the bar" from x = 0 would
+                // leave the text under the bar).
                 ColumnLayout {
                     id: column
                     anchors.left: parent.left
@@ -257,11 +270,11 @@ Item {
                     anchors.rightMargin: flick.contentHeight > flick.height ? 14 : 0
                     spacing: 10
 
-                    // ── Значок и заголовок ────────────────────────────────
+                    // ── Icon and title ────────────────────────────────────
                     //
-                    // Значок нарисован фигурами, а не картинкой: страница
-                    // обязана оставаться самодостаточной, а файлов значков
-                    // до установки может не быть вовсе.
+                    // The icon is drawn with shapes, not with a picture: the page must stay
+                    // self-contained, and icon files may not exist at all before
+                    // installation.
 
                     RowLayout {
                         Layout.fillWidth: true
@@ -276,7 +289,7 @@ Item {
                             border.color: root.pal.accent
                             border.width: 2
 
-                            // Стилизованное окно рабочего стола: шапка и поле.
+                            // A stylized desktop window: title bar and body.
                             Rectangle {
                                 anchors.left: parent.left
                                 anchors.right: parent.right
@@ -325,7 +338,7 @@ Item {
                         }
                     }
 
-                    // ── Что даёт установка ────────────────────────────────
+                    // ── What installation gives ───────────────────────────
 
                     Repeater {
                         model: root.texts.benefits !== undefined ? root.texts.benefits : []
@@ -356,8 +369,8 @@ Item {
                         }
                     }
 
-                    // Сухой прогон: «готово» без единой записи на диск иначе
-                    // читалось бы как настоящая установка.
+                    // Dry run: otherwise "done" without a single write to disk would read as
+                    // a real installation.
                     RexonText {
                         Layout.fillWidth: true
                         Layout.topMargin: 4
@@ -369,7 +382,7 @@ Item {
                         wrapMode: Text.WordWrap
                     }
 
-                    // ── Для кого установить ───────────────────────────────
+                    // ── Whom to install for ───────────────────────────────
 
                     RexonText {
                         Layout.fillWidth: true
@@ -397,9 +410,9 @@ Item {
                             readonly property bool chosen: root.mode === modeCard.modeId
 
                             Layout.fillWidth: true
-                            // Выбор режима — не кнопка-переключатель: состояние
-                            // держит `root.mode`, иначе щелчок порвал бы
-                            // привязку и два режима остались бы выбранными.
+                            // The mode choice is not a toggle button: the state is held by
+                            // `root.mode`, otherwise a click would break the binding and two modes
+                            // would remain selected.
                             enabled: modeCard.blocked === ""
                             implicitHeight: Math.max(40, modeBody.implicitHeight + 24)
                             padding: 12
@@ -444,7 +457,7 @@ Item {
                                     Layout.fillWidth: true
                                     spacing: 10
 
-                                    // Точка выбора: видно, что вариант один из двух.
+                                    // Selection dot: it shows that the option is one of two.
                                     Rectangle {
                                         Layout.alignment: Qt.AlignTop
                                         Layout.topMargin: 3
@@ -487,8 +500,8 @@ Item {
                                     wrapMode: Text.WordWrap
                                 }
 
-                                // Почему режим недоступен — прямо под ним, а не
-                                // молчанием выключенной кнопки.
+                                // Why a mode is unavailable — right under it, not through the silence of
+                                // a disabled button.
                                 RexonText {
                                     Layout.fillWidth: true
                                     Layout.leftMargin: 28
@@ -501,8 +514,8 @@ Item {
                                 }
                             }
 
-                            // Путь к файлам — уточнение, а не подпись: место
-                            // ему во всплывающей подсказке (так решило ядро).
+                            // The path to the files is a detail, not a label: its place is in a
+                            // tooltip (the core decided so).
                             ToolTip.visible: modeCard.hovered && modeCard.hint !== ""
                             ToolTip.text: modeCard.hint
                             ToolTip.delay: 600
@@ -510,13 +523,12 @@ Item {
                         }
                     }
 
-                    // ── Не спрашивать пароль для действий Rexon ───────────
+                    // ── Do not ask for a password for Rexon actions ───────
                     //
-                    // Отдельное согласие, по умолчанию ВЫКЛЮЧЕННОЕ: разрешение
-                    // снимает защиту паролем, и включить его может только сам
-                    // человек, прочитав, что именно разрешается. Шаг есть
-                    // только у установки для всех пользователей — при
-                    // установке «только для вас» разрешение не ставится.
+                    // A separate consent, OFF by default: the permission removes password
+                    // protection, and only the user can turn it on, after reading what
+                    // exactly is being allowed. The step exists only for installation for all
+                    // users — with installation "just for you" the permission is not set.
 
                     Rectangle {
                         Layout.fillWidth: true
@@ -596,7 +608,7 @@ Item {
                         }
                     }
 
-                    // ── Ответ ─────────────────────────────────────────────
+                    // ── Answer ────────────────────────────────────────────
 
                     RexonCheckBox {
                         id: dontAsk

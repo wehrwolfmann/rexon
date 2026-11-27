@@ -1,34 +1,37 @@
-//! Операции сеанса прав (пункт Б1 плана, см. [`super`]).
+//! Privilege session operations (item B1 of the plan, see [`super`]).
 //!
-//! [`PrivOp`] — закрытый перечень всего, что Rexon делает от root (сведён
-//! по описи всех мест, где код звал root). Каждый вариант несёт
-//! ДАННЫЕ операции (семейство, имена пакетов, юнит, категорию), а не строку
-//! команды (запрет З1): команду строит тот, кто исполняет.
+//! [`PrivOp`] is the closed list of everything Rexon does as root (compiled from
+//! an inventory of all the places where the code called root). Each variant
+//! carries the operation's DATA (family, package names, unit, category), not a
+//! command string (prohibition Z1): the command is built by whoever executes it.
 //!
-//! Два исполнителя у одной операции:
-//! * сеанс прав — операция уходит помощнику в `Request` (`proto.rs`), он
-//!   проверяет её (`validate.rs`) и сам собирает команду из таблиц ядра;
-//! * путь «как сейчас» — [`PrivOp::pkexec_argv`]: та же команда, что сегодня
-//!   строят прежние сборщики (`system_plan`, `repo_rebuild`, `aur_install`,
-//!   `de_apply`, `steamos_sysext`…). Здесь они только ВЫЗЫВАЮТСЯ: второй копии
-//!   флагов и путей помощников быть не должно. Путь нужен, когда помощника
-//!   сеанса нет вовсе (З5: не при отказе его проверки).
+//! One operation has two executors:
+//! * the privilege session — the operation goes to the helper in a `Request`
+//!   (`proto.rs`), which checks it (`validate.rs`) and builds the command itself
+//!   from the core's tables;
+//! * the "as now" path — [`PrivOp::pkexec_argv`]: the same command that the
+//!   former builders build today (`system_plan`, `repo_rebuild`, `aur_install`,
+//!   `de_apply`, `steamos_sysext`…). Here they are only CALLED: there must be no
+//!   second copy of the helpers' flags and paths. The path is needed when there
+//!   is no session helper at all (Z5: not when its check refuses).
 //!
-//! # Локальные файлы (З2)
+//! # Local files (Z2)
 //!
-//! Файл или каталог с машины пользователя (собранный пакет, тема, фон экрана
-//! входа) — [`LocalFile`]: номер дескриптора в `SCM_RIGHTS` того же кадра и
-//! метка. Метка — путь на стороне окна; помощник сеанса по ней ничего не
-//! открывает (только текст журнала). Прежние помощники принимают путь —
-//! поэтому метку в argv кладёт только путь «как сейчас».
+//! A file or directory from the user's machine (a built package, a theme, a
+//! login screen background) is a [`LocalFile`]: the descriptor number in the
+//! `SCM_RIGHTS` of the same frame and a label. The label is the path on the
+//! window's side; the session helper opens nothing by it (it is only log text).
+//! The former helpers accept a path — so only the "as now" path puts the label
+//! into argv.
 
 use serde::{Deserialize, Serialize};
 
 use crate::system::PkgFamily;
 use crate::system_plan as plan;
 
-/// `PkgFamily` в протоколе — строкой `as_str` (у самого типа есть только
-/// `Serialize`; разбор — через `from_value`, чужое слово — ошибка кадра).
+/// `PkgFamily` in the protocol is a string `as_str` (the type itself has only
+/// `Serialize`; parsing goes through `from_value`, a foreign word is a frame
+/// error).
 mod family_serde {
     use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -44,22 +47,22 @@ mod family_serde {
     }
 }
 
-/// Файл или каталог пользователя, переданный открытым дескриптором (З2).
+/// A user's file or directory passed as an open descriptor (Z2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LocalFile {
-    /// Номер дескриптора среди `SCM_RIGHTS` кадра с этой операцией.
+    /// Descriptor number among the `SCM_RIGHTS` of the frame with this operation.
     pub slot: u8,
-    /// Путь на стороне окна: для журнала и для пути «как сейчас». Помощник
-    /// сеанса по нему ничего не открывает.
+    /// Path on the window's side: for the log and for the "as now" path. The
+    /// session helper opens nothing by it.
     pub label: String,
 }
 
-/// Файл шрифта для установки «для всех пользователей»
-/// ([`PrivOp::FontInstall`]): дескриптор и имя, под которым файл ляжет в
-/// [`crate::qt_settings::SHARED_FONT_DIR`]. Имя — только имя файла шрифта
-/// ([`super::validate::check_font_file_name`]), путь приёмника помощник
-/// строит сам.
+/// A font file for installing "for all users" ([`PrivOp::FontInstall`]): the
+/// descriptor and the name under which the file will lie in
+/// [`crate::qt_settings::SHARED_FONT_DIR`]. The name is only a font file name
+/// ([`super::validate::check_font_file_name`]); the helper builds the
+/// destination path itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FontFile {
@@ -67,9 +70,9 @@ pub struct FontFile {
     pub name: String,
 }
 
-/// Файл настроек стола для экрана входа SDDM ([`PrivOp::SddmLook`]):
-/// дескриптор и имя из [`plan::SDDM_LOOK_FILES`] — куда он ляжет в
-/// `~sddm/.config`. Путь приёмника помощник строит сам.
+/// A desktop settings file for the SDDM login screen ([`PrivOp::SddmLook`]): the
+/// descriptor and the name from [`plan::SDDM_LOOK_FILES`] — where it will lie in
+/// `~sddm/.config`. The helper builds the destination path itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LookFile {
@@ -77,47 +80,45 @@ pub struct LookFile {
     pub name: String,
 }
 
-/// По какой таблице ядра идёт установка пакетов ([`PrivOp::PkgInstall`]).
-/// Окно называет таблицу, содержимое root-сторона берёт из своего бинаря
-/// ([`super::validate::install_allowlist`]): имя вне названной таблицы не
-/// пройдёт, даже если оно стоит в другой. Текущий стол для починки окно не
-/// передаёт — помощник узнаёт его у logind сам.
+/// Which core table a package installation follows ([`PrivOp::PkgInstall`]).
+/// The window names the table, the root side takes the contents from its own
+/// binary ([`super::validate::install_allowlist`]): a name outside the named
+/// table will not pass, even if it is in another one. The window does not pass
+/// the current desktop for a repair — the helper learns it from logind itself.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum PkgSource {
-    /// Набор стола из базы ([`crate::system::DE_DATABASE`]).
+    /// A desktop set from the database ([`crate::system::DE_DATABASE`]).
     Desktop { de_id: String },
-    /// Экран входа ([`plan::DM_PAIRS`]).
+    /// Login screen ([`plan::DM_PAIRS`]).
     DisplayManager,
-    /// «Проверить мой стол»: пакеты ТЕКУЩЕГО стола и таблицы `compliance`.
+    /// "Check my desktop": packages of the CURRENT desktop and the `compliance` table.
     DesktopRepair,
-    /// Видеозависимости обоев.
+    /// Video dependencies of wallpapers.
     VideoDeps,
-    /// yt-dlp для обоев с YouTube.
+    /// yt-dlp for YouTube wallpapers.
     YtDlp,
-    /// Инструмент подключения оверлея Gentoo
-    /// ([`plan::GENTOO_OVERLAY_TOOL_PACKAGE`]).
+    /// The Gentoo overlay connection tool ([`plan::GENTOO_OVERLAY_TOOL_PACKAGE`]).
     GentooTool,
-    /// Оболочки стола ([`crate::shell_bundle::all_packages`]).
+    /// Desktop shells ([`crate::shell_bundle::all_packages`]).
     Shell,
-    /// Программы виджетов Conky и распаковщик 7z
+    /// Conky widget programs and the 7z unpacker
     /// ([`crate::utils::tool_packages_for`]).
     Tools,
-    /// Сам Conky ([`crate::de_apply::conky_package`]).
+    /// Conky itself ([`crate::de_apply::conky_package`]).
     Conky,
-    /// Части раскладок MATE ([`crate::mate_panel::all_part_packages`]).
+    /// Parts of MATE layouts ([`crate::mate_panel::all_part_packages`]).
     MatePanel,
-    /// Значки и курсоры тем ([`crate::themes::known_set_packages`]).
+    /// Icons and cursors of themes ([`crate::themes::known_set_packages`]).
     ThemeSets,
-    /// Образы «Как в дистрибутиве»
-    /// ([`crate::distro_looks::builtin_package_names`]).
+    /// "Like in a distribution" looks ([`crate::distro_looks::builtin_package_names`]).
     DistroLook,
 }
 
 impl PkgSource {
-    /// Все таблицы без параметров (кроме [`PkgSource::Desktop`]) — для
-    /// сверок полноты: каждая таблица белого списка помощника пакетов
-    /// названа здесь.
+    /// All tables without parameters (except [`PkgSource::Desktop`]) — for
+    /// completeness checks: every table of the package helper's allow-list is named
+    /// here.
     pub const PLAIN: &'static [PkgSource] = &[
         PkgSource::DisplayManager,
         PkgSource::DesktopRepair,
@@ -132,8 +133,8 @@ impl PkgSource {
         PkgSource::DistroLook,
     ];
 
-    /// Таблица проверки root-стороны; `current_de` — стол, который помощник
-    /// узнал сам (для [`PkgSource::DesktopRepair`]).
+    /// The root side's check table; `current_de` — the desktop the helper learned
+    /// by itself (for [`PkgSource::DesktopRepair`]).
     pub fn install_source<'a>(&'a self, current_de: &'a str) -> super::validate::InstallSource<'a> {
         use super::validate::InstallSource;
         match self {
@@ -153,7 +154,7 @@ impl PkgSource {
     }
 }
 
-/// Вид системной темы (помощник `rexon-system-helper`).
+/// Kind of system theme (the `rexon-system-helper` helper).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SystemThemeKind {
@@ -162,7 +163,7 @@ pub enum SystemThemeKind {
 }
 
 impl SystemThemeKind {
-    /// Слово помощника: `sddm`, `plymouth` (и `apply-…`/`remove-…`).
+    /// The helper's word: `sddm`, `plymouth` (and `apply-…`/`remove-…`).
     pub fn as_str(self) -> &'static str {
         match self {
             SystemThemeKind::Sddm => "sddm",
@@ -171,8 +172,8 @@ impl SystemThemeKind {
     }
 }
 
-/// Семейство для системного помощника: он знает только два пути сборки
-/// образа ядра (`mkinitcpio`/`dracut` и `update-initramfs`).
+/// Family for the system helper: it knows only two ways of building the kernel
+/// image (`mkinitcpio`/`dracut` and `update-initramfs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ThemeFamily {
@@ -189,25 +190,25 @@ impl ThemeFamily {
     }
 }
 
-/// Операции с системной темой (опись Б-1…Б-4, Б-7, Б-8).
+/// Operations with a system theme (inventory B-1…B-4, B-7, B-8).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum SystemThemeOp {
-    /// Положить тему в `/usr/share/<вид>/themes/<theme>` (Plymouth — с
-    /// проверкой `ModuleName` внутри помощника). `source` — каталог темы.
+    /// Put the theme into `/usr/share/<kind>/themes/<theme>` (Plymouth — with a
+    /// `ModuleName` check inside the helper). `source` — the theme directory.
     Install {
         kind: SystemThemeKind,
         theme: String,
         source: LocalFile,
         family: ThemeFamily,
     },
-    /// «Применить» уже стоящую тему.
+    /// "Apply" an already installed theme.
     Apply {
         kind: SystemThemeKind,
         theme: String,
         family: ThemeFamily,
     },
-    /// «Удалить» тему (не активную и не из пакета системы).
+    /// "Remove" a theme (not the active one and not one from a system package).
     Remove {
         kind: SystemThemeKind,
         theme: String,
@@ -215,7 +216,7 @@ pub enum SystemThemeOp {
     },
 }
 
-/// Операция образа стола на SteamOS (опись А-19).
+/// A desktop image operation on SteamOS (inventory A-19).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SysextOp {
@@ -232,7 +233,7 @@ impl SysextOp {
     }
 }
 
-/// Чем подключить оверлей Gentoo (опись А-9).
+/// How to connect a Gentoo overlay (inventory A-9).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GentooOverlayTool {
@@ -240,47 +241,48 @@ pub enum GentooOverlayTool {
     Layman,
 }
 
-/// Чем вернуть штатную заставку загрузки (опись А-18).
+/// How to restore the stock boot splash (inventory A-18).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PlymouthTool {
-    /// `plymouth-set-default-theme <тема> -R`.
+    /// `plymouth-set-default-theme <theme> -R`.
     SetDefaultTheme,
     /// `update-alternatives` + `update-initramfs` (Debian/Ubuntu).
     UpdateAlternatives,
 }
 
-/// Привилегированная операция Rexon. Номера в комментариях — места описи v3.
+/// A privileged Rexon operation. The numbers in comments are places in the v3
+/// inventory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum PrivOp {
-    /// Поставить пакеты из репозиториев (Я1/Я3: А-13, А-20, Б-10, Б-11,
-    /// Б-14, пакет SDDM в А-6, инструмент оверлея Gentoo в А-9).
+    /// Install packages from the repositories (Y1/Y3: A-13, A-20, B-10, B-11, B-14,
+    /// the SDDM package in A-6, the Gentoo overlay tool in A-9).
     PkgInstall {
         #[serde(with = "family_serde")]
         family: PkgFamily,
         packages: Vec<String>,
-        /// Таблица, из которой имена (проверка помощника — только по ней).
+        /// The table the names come from (the helper checks only against it).
         source: PkgSource,
     },
-    /// Снять пакеты (А-7 удаление стола; Б-12 «Как в дистрибутиве»).
+    /// Remove packages (A-7 desktop removal; B-12 "Like in a distribution").
     PkgRemove {
         #[serde(with = "family_serde")]
         family: PkgFamily,
         packages: Vec<String>,
     },
-    /// Поставить стол набором из таблицы DE-помощника (А-1); экран входа
-    /// помощник решает сам. `log_label` — журнал пути «как сейчас»; сеанс
-    /// шлёт ход операции по сокету.
+    /// Install a desktop as a set from the DE helper's table (A-1); the helper
+    /// decides the login screen itself. `log_label` — the log of the "as now" path;
+    /// the session sends the operation's progress over the socket.
     DeInstall {
         #[serde(with = "family_serde")]
         family: PkgFamily,
         de_id: String,
         log_label: String,
     },
-    /// Поставить стол набором вне таблицы помощника (А-2): DKMS `--asdeps`,
-    /// замена конфликтующего, Deepin. Путь «как сейчас» — скрипт обёртки,
-    /// а не одна команда (см. [`PrivOp::pkexec_argv`]).
+    /// Install a desktop as a set outside the helper's table (A-2): DKMS
+    /// `--asdeps`, replacing a conflicting package, Deepin. The "as now" path is a
+    /// wrapper script, not a single command (see [`PrivOp::pkexec_argv`]).
     DeInstallSet {
         #[serde(with = "family_serde")]
         family: PkgFamily,
@@ -290,167 +292,169 @@ pub enum PrivOp {
         replace: Vec<String>,
         update_first: bool,
     },
-    /// Включить экран входа после установки стола (А-5, вторая половина А-6).
+    /// Enable the login screen after installing a desktop (A-5, the second half of A-6).
     EnableDm {
         #[serde(with = "family_serde")]
         family: PkgFamily,
         unit: String,
     },
-    /// «Сделать основным» экран входа с автооткатом (А-8). Сырого пути нет.
+    /// "Make default" a login screen with automatic rollback (A-8). There is no raw path.
     SwitchDm {
         #[serde(with = "family_serde")]
         family: PkgFamily,
         unit: String,
         greeter: Option<String>,
     },
-    /// Сделать сеансом по умолчанию у экрана входа пару X11-сеанса `x11`
-    /// на Wayland ([`plan::X11_SESSION_SUCCESSORS`]): только ключи сеанса
-    /// SDDM и Plasma Login Manager, указывающие на `x11`; автовход не
-    /// включается и не выключается. Что пара установлена и что после правки
-    /// экран входа сам `x11` не открывает, помощник от root проверяет сам.
+    /// Make the default session of the login screen the Wayland pair of the X11
+    /// session `x11` ([`plan::X11_SESSION_SUCCESSORS`]): only SDDM and Plasma Login
+    /// Manager session keys pointing to `x11`; autologin is neither enabled nor
+    /// disabled. That the pair is installed and that after the edit the login
+    /// screen itself does not open `x11`, the root helper checks itself.
     LoginSessionWayland { x11: String },
-    /// Сборочные зависимости пересборки (Я4: А-14…А-16).
+    /// Build dependencies of a rebuild (Y4: A-14…A-16).
     BuildDeps { names: Vec<String> },
-    /// Поставить собранный пользователем пакет и снять сборочные (Я4).
+    /// Install a package built by the user and remove the build dependencies (Y4).
     InstallBuilt {
         package: LocalFile,
         build_only: Vec<String>,
         replace: bool,
     },
-    /// Сборка из AUR (Я5: А-4, А-12, А-22, Б-10, Б-13). От root здесь только
-    /// вызовы pacman у сборщика (пункт Б10); помощнику сеанса не уходит.
+    /// A build from AUR (Y5: A-4, A-12, A-22, B-10, B-13). Only the builder's pacman
+    /// calls run as root here (item B10); it does not go to the session helper.
     AurInstall {
         helper: String,
         packages: Vec<String>,
         replace_conflicts: bool,
     },
-    /// Пересборка AeroShell (А-23); то же, что [`PrivOp::AurInstall`].
+    /// Rebuilding AeroShell (A-23); the same as [`PrivOp::AurInstall`].
     AeroShellRebuild {
         helper: String,
         packages: Vec<String>,
         chroot: bool,
     },
-    /// Шим `rexon-sudo-shim` (пункт Б10, [`super::aur`]): зависимости сборки
-    /// AUR из официальных репозиториев — `pacman -S --needed --asdeps`.
-    /// Помощник сам сверяет каждое имя с sync-базой своей машины.
+    /// The `rexon-sudo-shim` shim (item B10, [`super::aur`]): AUR build
+    /// dependencies from the official repositories — `pacman -S --needed --asdeps`.
+    /// The helper itself checks every name against its machine's sync database.
     AurDeps { names: Vec<String> },
-    /// Шим: собранные paru/yay пакеты — `pacman -U` копий root. `allowed` —
-    /// что окно просило собрать в этой операции: `pkgname` из `.PKGINFO`
-    /// каждой копии обязан быть оттуда.
+    /// Shim: packages built by paru/yay — `pacman -U` of root's copies. `allowed` —
+    /// what the window asked to build in this operation: the `pkgname` from the
+    /// `.PKGINFO` of each copy must come from there.
     AurInstallBuilt {
         packages: Vec<LocalFile>,
         allowed: Vec<String>,
         replace: bool,
     },
-    /// Шим: снять сборочные зависимости после сборки (`--removemake`).
-    /// Помощник снимает только сироты-зависимости (`pacman -Qqdt`).
+    /// Shim: remove build dependencies after the build (`--removemake`). The helper
+    /// removes only orphaned dependencies (`pacman -Qqdt`).
     AurDropMake { names: Vec<String> },
-    /// Разложить каталог в системный по категории (Я2: Б-5, Б-6, А-10, А-21).
-    /// Приёмник — константа ядра по `category`.
+    /// Lay a directory out into a system one by category (Y2: B-5, B-6, A-10,
+    /// A-21). The destination is a core constant by `category`.
     Stage {
         category: String,
         name: String,
         source: LocalFile,
     },
-    /// Системные темы SDDM/Plymouth (Я6, Б-1…Б-4, Б-7, Б-8).
+    /// SDDM/Plymouth system themes (Y6, B-1…B-4, B-7, B-8).
     SystemTheme(SystemThemeOp),
-    /// Собрать/снять стол образом sysext на SteamOS (А-19).
+    /// Build/remove a desktop as a sysext image on SteamOS (A-19).
     Sysext { op: SysextOp, de_id: String },
-    /// `emerge --sync` одного оверлея (А-9).
+    /// `emerge --sync` of a single overlay (A-9).
     GentooSync { repo: String },
-    /// Подключить оверлей Gentoo (А-9).
+    /// Connect a Gentoo overlay (A-9).
     GentooOverlay {
         overlay: String,
         tool: GentooOverlayTool,
     },
-    /// Убрать старое системное переопределение схем MATE (А-11).
+    /// Remove the old system override of MATE schemas (A-11).
     MateGschemaCleanup,
-    /// Снять форки Plasma и вернуть штатные пакеты (А-17): решение окна
-    /// ([`plan::plasma_fork_split`]) — что снять и что поставить.
+    /// Remove Plasma forks and restore the stock packages (A-17): the window's
+    /// decision ([`plan::plasma_fork_split`]) — what to remove and what to install.
     PlasmaForksReset {
         removable: Vec<String>,
         stock: Vec<String>,
     },
-    /// Вернуть штатную заставку загрузки (А-18).
+    /// Restore the stock boot splash (A-18).
     PlymouthReset { target: String, tool: PlymouthTool },
-    /// Снять файлы Rexon из `/etc/sddm.conf.d` (А-18). `files` — имена файлов.
+    /// Remove Rexon's files from `/etc/sddm.conf.d` (A-18). `files` — file names.
     SddmReset { files: Vec<String> },
-    /// Удалить пакет-сироту из окна сторожа обновлений
-    /// ([`crate::update_guard::remove_orphans_live`]): член набора, ушедший
-    /// из репозиториев (`kwin-x11` 6.7.5 при Plasma 6.8). Только pacman.
-    /// Что каждое имя — установленная сирота члена набора, помощник от root
-    /// проверяет сам ([`crate::update_guard::orphan_candidate`], sync-база
-    /// своей машины); окну не верит.
+    /// Remove an orphan package from the update guard window
+    /// ([`crate::update_guard::remove_orphans_live`]): a set member that left the
+    /// repositories (`kwin-x11` 6.7.5 with Plasma 6.8). Only pacman. That each name
+    /// is an installed orphan of a set member, the root helper checks itself
+    /// ([`crate::update_guard::orphan_candidate`], its machine's sync database); it
+    /// does not trust the window.
     OrphanRemove { names: Vec<String> },
-    /// Вернуть прежние версии набора сторожа обновлений из кэша pacman
-    /// ([`crate::update_guard::rollback_live`]). `files` — пути файлов кэша,
-    /// как их нашло окно. Только pacman. Что каждый файл — пакет root в
-    /// каталоге кэша этой машины, что версии (по `.PKGINFO`) строго меньше
-    /// установленных и что это ровно откат набора находки, помощник от root
-    /// проверяет сам; окну не верит.
+    /// Restore previous versions of the update guard's set from the pacman cache
+    /// ([`crate::update_guard::rollback_live`]). `files` — paths of cache files as
+    /// the window found them. Only pacman. That each file is a root package in this
+    /// machine's cache directory, that the versions (per `.PKGINFO`) are strictly
+    /// lower than the installed ones and that this is exactly the rollback of the
+    /// finding's set, the root helper checks itself; it does not trust the window.
     CacheRollback { files: Vec<String> },
-    /// Поставить шрифты для всех пользователей («Управление шрифтами» →
-    /// «Для всех пользователей», как группа «Системные» у KDE): копии root в
-    /// [`crate::qt_settings::SHARED_FONT_DIR`], затем `fc-cache`. Что каждый
-    /// файл — шрифт (`fc-query` по копии root), что имя — имя файла шрифта и
-    /// что такого файла там ещё нет (чужое не перезаписывается), помощник
-    /// проверяет сам.
+    /// Install fonts for all users ("Font management" → "For all users", like the
+    /// "System" group in KDE): root's copies into
+    /// [`crate::qt_settings::SHARED_FONT_DIR`], then `fc-cache`. That each file is
+    /// a font (`fc-query` on root's copy), that the name is a font file name and
+    /// that such a file is not there yet (nothing foreign is overwritten), the
+    /// helper checks itself.
     FontInstall { fonts: Vec<FontFile> },
-    /// Удалить шрифты, поставленные для всех пользователей: только файлы
-    /// внутри [`crate::qt_settings::SHARED_FONT_DIR`] (шрифты пакетов в
-    /// `/usr/share/fonts` — нельзя), затем `fc-cache`.
+    /// Remove fonts installed for all users: only files inside
+    /// [`crate::qt_settings::SHARED_FONT_DIR`] (fonts of packages in
+    /// `/usr/share/fonts` may not be removed), then `fc-cache`.
     FontRemove { files: Vec<String> },
-    /// Фон темы экрана входа SDDM («Изменить фон» модуля KDE): картинка
-    /// ложится в каталог темы под именем [`plan::SDDM_BACKGROUND_STEM`],
-    /// имя — в `<ConfigFile>.user` темы. `image: None` — вернуть фон самой
-    /// темы. Что тема стоит в системном каталоге и принимает фон, что файл —
-    /// PNG или JPEG (по сигнатуре копии root), помощник проверяет сам.
+    /// Background of the SDDM login screen theme (the KDE module's "Change
+    /// background"): the picture goes into the theme directory under the name
+    /// [`plan::SDDM_BACKGROUND_STEM`], the name into the theme's `<ConfigFile>.user`.
+    /// `image: None` — restore the theme's own background. That the theme is in
+    /// the system directory and accepts a background, and that the file is PNG or
+    /// JPEG (by the signature of root's copy), the helper checks itself.
     SddmBackground { theme: String, image: Option<LocalFile> },
-    /// Перенести оформление стола на экран входа SDDM («Применить параметры
-    /// Plasma» модуля KDE): ключи [`plan::SDDM_LOOK_KEYS`] — в настройки SDDM
-    /// по правилу [`plan::plan_sddm_look`], файлы — в `~sddm/.config` от имени
-    /// `sddm`. `look: None` — «Сбросить» (файлов тогда нет).
+    /// Carry the desktop's appearance over to the SDDM login screen (the KDE
+    /// module's "Apply Plasma Settings"): keys [`plan::SDDM_LOOK_KEYS`] go into the
+    /// SDDM settings per the rule [`plan::plan_sddm_look`], files into
+    /// `~sddm/.config` as the `sddm` user. `look: None` — "Reset" (there are no
+    /// files then).
     SddmLook { look: Option<plan::SddmLook>, files: Vec<LookFile> },
-    /// «Показывать часы» у темы экрана входа SDDM (галочка модуля KDE):
-    /// `showClock` — в `<ConfigFile>.user` темы. Что тема стоит в системном
-    /// каталоге и принимает свои настройки, помощник проверяет сам, как у
-    /// [`PrivOp::SddmBackground`].
+    /// "Show clock" of the SDDM login screen theme (the KDE module's checkbox):
+    /// `showClock` goes into the theme's `<ConfigFile>.user`. That the theme is in
+    /// the system directory and accepts its settings, the helper checks itself, as
+    /// for [`PrivOp::SddmBackground`].
     SddmClock { theme: String, show: bool },
 }
 
-/// Что из прежних помощников есть на машине — вход пути «как сейчас».
-/// Заполняет вызывающий теми же пробами, что и сегодня
+/// Which of the former helpers are on the machine — the input of the "as now"
+/// path. Filled in by the caller with the same probes as today
 /// (`pkg_helper_available`, `stage_helper_available`, …).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Helpers {
-    /// `rexon-pkg-helper` и его политика на месте.
+    /// `rexon-pkg-helper` and its policy are in place.
     pub pkg: bool,
     /// `rexon-stage-helper`.
     pub stage: bool,
     /// `rexon-de-helper`.
     pub de: bool,
-    /// `rexon-system-helper` (+ `pkexec`) — путь берётся из
+    /// `rexon-system-helper` (+ `pkexec`) — the path is taken from
     /// [`crate::installer::system_helper_path`].
     pub system: bool,
-    /// Текст установленного `rexon-sysext-helper` (SteamOS), если есть.
+    /// Text of the installed `rexon-sysext-helper` (SteamOS), if any.
     pub sysext_installed: Option<String>,
-    /// Код языка интерфейса для sysext-помощника (`ru`).
+    /// Interface language code for the sysext helper (`ru`).
     pub lang: String,
 }
 
 impl PrivOp {
-    /// argv пути «как сейчас» — то, что сегодня строит соответствующее место
-    /// кода (прежний именованный помощник, иначе сырой `pkexec`).
+    /// argv of the "as now" path — what the corresponding place in the code builds
+    /// today (the former named helper, otherwise a raw `pkexec`).
     ///
-    /// `None` — одной команды нет:
-    /// * сборщик отказал (пусто, имя не прошло проверку, помощника нет там,
-    ///   где сырого пути нет по З5 — `switch-dm`, системные темы);
-    /// * сырой путь сегодня — скрипт во временном файле (`DeInstallSet`,
-    ///   `Stage` и `SystemTheme::Install` без помощника, `MateGschemaCleanup`):
-    ///   его текст — [`PrivOp::fallback_script`] или прежний сборщик плана.
+    /// `None` — there is no single command:
+    /// * the builder refused (empty, a name failed the check, no helper where there
+    ///   is no raw path per Z5 — `switch-dm`, system themes);
+    /// * today's raw path is a script in a temporary file (`DeInstallSet`, `Stage`
+    ///   and `SystemTheme::Install` without a helper, `MateGschemaCleanup`): its
+    ///   text is [`PrivOp::fallback_script`] or the plan's former builder.
     ///
-    /// У NixOS установка и удаление идут без `pkexec` (профиль пользователя) —
-    /// как и сегодня.
+    /// On NixOS installation and removal go without `pkexec` (the user's profile) —
+    /// as today.
     pub fn pkexec_argv(&self, helpers: &Helpers) -> Option<Vec<String>> {
         match self {
             PrivOp::PkgInstall { family, packages, .. } => plan::install_argv(*family, packages, helpers.pkg),
@@ -467,13 +471,14 @@ impl PrivOp {
             PrivOp::SwitchDm { family, unit, greeter } => {
                 plan::switch_dm_cmd(*family, unit, greeter.as_deref(), helpers.pkg)
             }
-            // Сырого пути нет: что меняется ровно ключ сеанса и что пара
-            // установлена, без помощника сеанса проверить некому.
+            // There is no raw path: without the session helper nobody can check that
+            // exactly the session key changes and that the pair is installed.
             PrivOp::LoginSessionWayland { .. } => None,
-            // Пересборка: с помощником пакетов — его `build-deps`/`install-built`
-            // (один пароль на оба шага), без него — `pkexec /bin/bash`.
-            // `helpers.pkg` для `InstallBuilt` вызывающий ставит так же, как
-            // `repo_rebuild`: помощник есть И файл лежит в каталоге пересборок.
+            // Rebuild: with the package helper — its `build-deps`/`install-built`
+            // (one password for both steps), without it — `pkexec /bin/bash`.
+            // The caller sets `helpers.pkg` for `InstallBuilt` the same way as
+            // `repo_rebuild` does: there is a helper AND the file lies in the rebuild
+            // directory.
             PrivOp::BuildDeps { names } => {
                 if names.is_empty() {
                     return None;
@@ -503,25 +508,26 @@ impl PrivOp {
             PrivOp::AeroShellRebuild { helper, packages, chroot } => {
                 crate::aeroshell::rebuild_command(helper, packages, *chroot)
             }
-            // Прежний путь шима — `pkexec` той же строки pacman, что дал
-            // сборщик (решает сам шим по ответу окна, [`super::aur`]).
+            // The shim's old path is `pkexec` of the same pacman command line the
+            // builder gave (the shim itself decides by the window's answer,
+            // [`super::aur`]).
             PrivOp::AurDeps { .. } | PrivOp::AurInstallBuilt { .. } | PrivOp::AurDropMake { .. } => None,
-            // Прежнего пути нет намеренно: «сирота ли это» проверить от root
-            // без помощника сеанса некому, а сырой `pacman -Rns` поверх
-            // слова окна — ровно то, от чего проверка защищает.
+            // There is deliberately no old path: without the session helper nobody can
+            // check as root "is this an orphan", and a raw `pacman -Rns` on the
+            // window's word is exactly what the check protects against.
             PrivOp::OrphanRemove { .. } => None,
-            // То же: «откат ли это ровно набора» без помощника сеанса
-            // проверить некому, сырой `pacman -U` поверх путей окна — то,
-            // от чего проверка защищает.
+            // The same: without the session helper nobody can check "is this exactly
+            // the rollback of the set", and a raw `pacman -U` on the window's paths is
+            // what the check protects against.
             PrivOp::CacheRollback { .. } => None,
-            // Прежнего пути у шрифтов «для всех» нет намеренно: что файл —
-            // шрифт и что чужое не перезаписывается, без помощника сеанса
-            // проверить некому, а сырой `pkexec cp` поверх пути окна — то,
-            // от чего проверка защищает.
+            // Fonts "for all" deliberately have no old path: without the session
+            // helper nobody can check that the file is a font and that nothing foreign
+            // is overwritten, and a raw `pkexec cp` on the window's path is what the
+            // check protects against.
             PrivOp::FontInstall { .. } | PrivOp::FontRemove { .. } => None,
-            // Экран входа SDDM: что картинка — картинка, что ключи — ровно
-            // ключи переноса и что файлы в доме `sddm` пишутся от его имени,
-            // без помощника сеанса проверить некому (З5).
+            // SDDM login screen: without the session helper nobody can check that the
+            // picture is a picture, that the keys are exactly the carry-over keys and
+            // that the files in the `sddm` home are written as that user (Z5).
             PrivOp::SddmBackground { .. } | PrivOp::SddmLook { .. } | PrivOp::SddmClock { .. } => None,
             PrivOp::Stage { category, name, source } => plan::privileged_stage_cmd(
                 category,
@@ -565,8 +571,8 @@ impl PrivOp {
         }
     }
 
-    /// Скрипт сырого пути там, где он сегодня идёт `pkexec bash <файл>` и
-    /// весь текст выводится из данных операции: `(префикс файла, текст)`.
+    /// A raw-path script where today it goes as `pkexec bash <file>` and the whole
+    /// text is derived from the operation's data: `(file prefix, text)`.
     pub fn fallback_script(&self) -> Option<(&'static str, String)> {
         match self {
             PrivOp::MateGschemaCleanup => Some(("rexon_gschema_", plan::mate_gschema_cleanup_script())),
@@ -574,8 +580,8 @@ impl PrivOp {
         }
     }
 
-    /// Файлы, которые клиент прикладывает к кадру `SCM_RIGHTS`, в порядке
-    /// появления в операции.
+    /// Files the client attaches to the `SCM_RIGHTS` frame, in order of appearance
+    /// in the operation.
     pub fn local_files(&self) -> Vec<&LocalFile> {
         match self {
             PrivOp::InstallBuilt { package, .. } => vec![package],
@@ -590,8 +596,8 @@ impl PrivOp {
     }
 }
 
-/// Удаление: именованный путь помощника, иначе сырой `pkexec` поверх
-/// [`plan::remove_cmd`]; NixOS — без `pkexec` (как в [`plan::remove_plan`]).
+/// Removal: the helper's named path, otherwise a raw `pkexec` over
+/// [`plan::remove_cmd`]; NixOS — without `pkexec` (as in [`plan::remove_plan`]).
 fn remove_argv(family: PkgFamily, packages: &[String], helper: bool) -> Option<Vec<String>> {
     if packages.is_empty() {
         return None;
@@ -608,9 +614,9 @@ fn remove_argv(family: PkgFamily, packages: &[String], helper: bool) -> Option<V
     Some(argv)
 }
 
-/// Команда DE-помощника — из того же плана установки стола, что и сегодня
-/// ([`plan::install_batch_plan_with_deps`] с набором из таблицы помощника).
-/// Набор вне таблицы помощник не ставит — тогда `None`.
+/// The DE helper's command — from the same desktop install plan as today
+/// ([`plan::install_batch_plan_with_deps`] with a set from the helper's table).
+/// The helper does not install a set outside its table — then `None`.
 fn de_install_argv(family: PkgFamily, de_id: &str, log: &str, helper: bool) -> Option<Vec<String>> {
     let table = crate::system::de_entry_packages_for(de_id, family.as_str())?;
     let packages: Vec<String> = table.iter().map(|p| p.to_string()).collect();
@@ -639,8 +645,8 @@ fn de_install_argv(family: PkgFamily, de_id: &str, log: &str, helper: bool) -> O
     })
 }
 
-/// Системный помощник. Сырого пути у «Применить»/«Удалить» нет; у установки
-/// он — скрипт (`ext_manager::sddm_fallback_script`), не одна команда.
+/// The system helper. "Apply"/"Remove" have no raw path; for installation it
+/// is a script (`ext_manager::sddm_fallback_script`), not a single command.
 fn system_theme_argv(op: &SystemThemeOp, helper: bool) -> Option<Vec<String>> {
     if !helper {
         return None;
@@ -654,9 +660,9 @@ fn system_theme_argv(op: &SystemThemeOp, helper: bool) -> Option<Vec<String>> {
         SystemThemeOp::Remove { kind, theme, family } => {
             crate::de_apply::system_remove_argv(path, &lang, kind.as_str(), theme, family.as_str())
         }
-        // ⚠️ Отдельного сборщика у этой строки нет: она набрана на месте в
-        // `appearance_installer::plan_root_install_with` и дважды в
-        // `ext_manager` (SDDM, Plymouth). Сверка — тест ниже.
+        // Warning: this line has no builder of its own: it is assembled in place in
+        // `appearance_installer::plan_root_install_with` and twice in
+        // `ext_manager` (SDDM, Plymouth). The check is the test below.
         SystemThemeOp::Install { kind, theme, source, family } => {
             let mut v = vec!["pkexec".to_string(), path.to_string()];
             v.extend(lang);
@@ -671,10 +677,10 @@ fn system_theme_argv(op: &SystemThemeOp, helper: bool) -> Option<Vec<String>> {
     })
 }
 
-/// ⚠️ Литералы `system_de_exec::ensure_gentoo_overlay` — сборщика нет
-/// (метод закрытый); сверка — тест ниже.
+/// Warning: the literals of `system_de_exec::ensure_gentoo_overlay` — there is
+/// no builder (the method is private); the check is the test below.
 fn gentoo_overlay_argv(overlay: &str, tool: GentooOverlayTool) -> Option<Vec<String>> {
-    // Только оверлеи из таблицы ядра — те же, что подключает установка стола.
+    // Only overlays from the core table — the same ones the desktop install connects.
     if !plan::GENTOO_OVERLAYS.iter().any(|(_, o)| *o == overlay) {
         return None;
     }
@@ -687,11 +693,12 @@ fn gentoo_overlay_argv(overlay: &str, tool: GentooOverlayTool) -> Option<Vec<Str
     Some(v)
 }
 
-/// Команда отката форков — из [`plan::plasma_fork_reset_plan`]: решение
-/// окна (`removable`, `stock`) подаётся ему пробами. Сток приходит через
-/// подставные форки `\0<сток>` с `Provides: <сток>`; снимаемые форки идут
-/// своими именами без метаданных — у них, как и при решении окна, кандидатов
-/// нет. Несогласованное решение план отвергнет (`Blocked`) — `None`.
+/// The fork rollback command — from [`plan::plasma_fork_reset_plan`]: the
+/// window's decision (`removable`, `stock`) is fed to it as probes. The stock
+/// comes through substitute forks `\0<stock>` with `Provides: <stock>`; the
+/// forks being removed go under their own names without metadata — like in
+/// the window's decision, they have no candidates. The plan rejects an
+/// inconsistent decision (`Blocked`) — `None`.
 fn plasma_forks_reset_argv(removable: &[String], stock: &[String]) -> Option<Vec<String>> {
     let forks: Vec<String> = removable
         .iter()
@@ -726,7 +733,7 @@ mod tests {
         Helpers { pkg: on, stage: on, de: on, system: on, sysext_installed: None, lang: "ru".into() }
     }
 
-    /// По одному образцу на каждый вариант (и на каждый вид вложенных).
+    /// One sample for each variant (and for each kind of nested ones).
     fn samples() -> Vec<PrivOp> {
         vec![
             PrivOp::PkgInstall { family: PkgFamily::Arch, packages: names(&["sddm", "yt-dlp"]), source: PkgSource::DisplayManager },
@@ -826,11 +833,11 @@ mod tests {
 
     #[test]
     fn foreign_words_are_refused() {
-        // Чужое семейство, лишнее поле, неизвестная операция — ошибка разбора.
+        // A foreign family, an extra field, an unknown operation — a parsing error.
         for bad in [
             r#"{"pkg_install":{"family":"windows","packages":["a"],"source":"yt_dlp"}}"#,
             r#"{"pkg_install":{"family":"arch","packages":["a"],"source":"yt_dlp","argv":["sh"]}}"#,
-            // Без таблицы, с чужой таблицей, с текущим столом от окна.
+            // Without a table, with a foreign table, with the current desktop from the window.
             r#"{"pkg_install":{"family":"arch","packages":["a"]}}"#,
             r#"{"pkg_install":{"family":"arch","packages":["a"],"source":"anything"}}"#,
             r#"{"pkg_install":{"family":"arch","packages":["a"],"source":{"desktop_repair":{"current_de":"x"}}}}"#,
@@ -838,12 +845,12 @@ mod tests {
             r#"{"build_deps":{"names":["a"],"path":"/tmp/x"}}"#,
             r#"{"stage":{"category":"gdm-bg","name":"n","source":{"slot":0,"label":"/tmp/x","path":"/etc"}}}"#,
             r#"{"run_shell":{"cmd":"id"}}"#,
-            // Шрифты: путь приёмника от окна, лишнее поле у файла.
+            // Fonts: the destination path from the window, an extra field in a file.
             r#"{"font_install":{"fonts":[{"source":{"slot":0,"label":"/tmp/a.ttf"},"name":"a.ttf"}],"dest":"/usr/share/fonts"}}"#,
             r#"{"font_install":{"fonts":[{"source":{"slot":0,"label":"/tmp/a.ttf"},"name":"a.ttf","dir":"/etc"}]}}"#,
             r#"{"font_remove":{"files":["/usr/local/share/fonts/a.ttf"],"root":"/"}}"#,
-            // Экран входа SDDM: путь темы или приёмника от окна, чужой ключ
-            // настроек, NumLock не из перечня.
+            // SDDM login screen: a theme or destination path from the window, a foreign
+            // settings key, a NumLock value not from the list.
             r#"{"sddm_background":{"theme":"breeze","image":null,"dir":"/usr/share/sddm/themes/breeze"}}"#,
             r#"{"sddm_look":{"look":{"server_path":"/tmp/x"},"files":[]}}"#,
             r#"{"sddm_look":{"look":{"numlock":"maybe"},"files":[]}}"#,
@@ -873,7 +880,7 @@ mod tests {
                 assert_eq!(op.pkexec_argv(&helpers(on)), Some(run_argv(&plan.steps, plan::RunStepId::PkgInstall)), "{fam:?} {on}");
             }
         }
-        // Починка «Проверить мой стол» — та же команда.
+        // The "Check my desktop" repair — the same command.
         for on in [true, false] {
             let op = PrivOp::PkgInstall { family: PkgFamily::Arch, packages: names(&["xdg-utils"]), source: PkgSource::DesktopRepair };
             assert_eq!(op.pkexec_argv(&helpers(on)), crate::compliance::pkg_install_arch("xdg-utils", on));
@@ -905,7 +912,8 @@ mod tests {
         assert!(batch.used_de_helper);
         let op = PrivOp::DeInstall { family: PkgFamily::Arch, de_id: "pantheon".into(), log_label: "/tmp/a.log".into() };
         assert_eq!(op.pkexec_argv(&helpers(true)), Some(run_argv(&batch.steps, plan::RunStepId::PkgMain)));
-        // Без помощника и для стола вне его таблицы (Deepin) одной команды нет.
+        // Without a helper, and for a desktop outside its table (Deepin), there is no
+        // single command.
         assert_eq!(op.pkexec_argv(&helpers(false)), None);
         let deepin = PrivOp::DeInstall { family: PkgFamily::Arch, de_id: "deepin".into(), log_label: "/tmp/a.log".into() };
         assert_eq!(deepin.pkexec_argv(&helpers(true)), None);
@@ -921,7 +929,7 @@ mod tests {
                 let op = PrivOp::EnableDm { family: PkgFamily::Arch, unit: unit.to_string() };
                 assert_eq!(op.pkexec_argv(&helpers(on)), Some(cmd.argv), "{unit} {on}");
             }
-            // «Нет экрана входа → SDDM»: обе команды плана.
+            // "No login screen → SDDM": both commands of the plan.
             match plan::ensure_dm_plan(PkgFamily::Arch, false, true, on) {
                 plan::EnsureDmPlan::Install { install, enable, .. } => {
                     let en = PrivOp::EnableDm { family: PkgFamily::Arch, unit: "sddm".into() };
@@ -944,15 +952,15 @@ mod tests {
                 assert_eq!(op.pkexec_argv(&helpers(on)), plan::switch_dm_cmd(PkgFamily::Arch, unit, greeter, on));
             }
         }
-        // Сырого пути нет (З5).
+        // There is no raw path (Z5).
         let op = PrivOp::SwitchDm { family: PkgFamily::Arch, unit: "sddm".into(), greeter: None };
         assert_eq!(op.pkexec_argv(&helpers(false)), None);
     }
 
     #[test]
     fn rebuild_steps_match_repo_rebuild() {
-        // Те же начала, что `repo_rebuild::rebuild_ctx_live` кладёт в
-        // `RebuildCtx::pkg_helper`, и те же сборщики, что зовёт пересборка.
+        // The same beginnings that `repo_rebuild::rebuild_ctx_live` puts into
+        // `RebuildCtx::pkg_helper`, and the same builders the rebuild calls.
         let prefix = crate::repo_rebuild::pkg_helper_prefix();
         assert_eq!(&prefix[..2], &["pkexec".to_string(), plan::pkg_helper_path().to_string()]);
         let deps = names(&["vala", "cmake>=3.20"]);
@@ -991,7 +999,7 @@ mod tests {
             (PkgSource::ThemeSets, InstallSource::ThemeSets),
             (PkgSource::DistroLook, InstallSource::DistroLook),
         ];
-        // Каждая таблица без параметров — в перечне сверок.
+        // Every table without parameters is in the list of checks.
         for (src, _) in &cases[1..] {
             assert!(PkgSource::PLAIN.contains(src), "{src:?}");
         }
@@ -1031,7 +1039,7 @@ mod tests {
                 );
             }
         }
-        // Метка вне /tmp — отказ того же сборщика.
+        // A label outside /tmp — the same builder refuses.
         let op = PrivOp::Stage { category: "gdm-bg".into(), name: "n".into(), source: file(0, "/etc") };
         assert_eq!(op.pkexec_argv(&helpers(true)), None);
     }
@@ -1054,7 +1062,7 @@ mod tests {
                 );
                 assert_eq!(apply.pkexec_argv(&helpers(false)), None);
 
-                // Установка — против плана «Оформления» (строка набрана там на месте).
+                // Installation — against the "Appearance" plan (the line is assembled in place there).
                 let root = "/tmp/rexon_x/mytheme";
                 let fs = crate::installed_scan::FsSnapshot::from_json(&serde_json::json!({
                     "dirs": { root: ["mytheme.plymouth", "metadata.desktop"] },
@@ -1111,8 +1119,8 @@ mod tests {
         assert_eq!(op.pkexec_argv(&helpers(true)), plan::sync_repo_cmd(PkgFamily::Gentoo, "mate"));
         let bad = PrivOp::GentooSync { repo: "--evil".into() };
         assert_eq!(bad.pkexec_argv(&helpers(true)), plan::sync_repo_cmd(PkgFamily::Gentoo, "--evil"));
-        // Литералы `system_de_exec::ensure_gentoo_overlay` (метод закрытый —
-        // сверка с его текстом, пока строки не вынесены в сборщик).
+        // The literals of `system_de_exec::ensure_gentoo_overlay` (the method is
+        // private — checked against its text until the lines are moved into a builder).
         let (_, overlay) = plan::GENTOO_OVERLAYS[0];
         let es = PrivOp::GentooOverlay { overlay: overlay.into(), tool: GentooOverlayTool::Eselect };
         assert_eq!(es.pkexec_argv(&helpers(true)), Some(names(&["pkexec", "eselect", "repository", "enable", overlay])));
@@ -1132,8 +1140,8 @@ mod tests {
 
     #[test]
     fn plasma_forks_reset_matches_plan() {
-        // Форк-провайдер (сток по Provides), форк по запасной карте и
-        // автономный форк.
+        // A fork provider (stock via Provides), a fork via the fallback map and a
+        // standalone fork.
         let forks = names(&["aeroshell-kwin-git", "aeroshell-libplasma", "aeroshell-workspace-git"]);
         let qi = |f: &str| match f {
             "aeroshell-kwin-git" => Some("Provides        : kwin\n".to_string()),
@@ -1146,7 +1154,7 @@ mod tests {
         assert!(!removable.is_empty() && !stock.is_empty(), "{removable:?} {stock:?}");
         let op = PrivOp::PlasmaForksReset { removable: removable.clone(), stock: stock.clone() };
         assert_eq!(op.pkexec_argv(&helpers(true)), Some(cmd.argv));
-        // Только снять / только поставить.
+        // Only remove / only install.
         for (r, s) in [(removable.clone(), vec![]), (vec![], stock.clone())] {
             let op = PrivOp::PlasmaForksReset { removable: r, stock: s };
             assert!(op.pkexec_argv(&helpers(true)).is_some());
@@ -1179,8 +1187,8 @@ mod tests {
         assert_eq!(none.pkexec_argv(&helpers(true)), None);
     }
 
-    /// Шрифты «для всех» — только через помощника сеанса: сырого `pkexec`
-    /// нет ни с прежними помощниками, ни без них (З5).
+    /// Fonts "for all" — only through the session helper: there is no raw `pkexec`
+    /// either with the former helpers or without them (Z5).
     #[test]
     fn fonts_have_no_raw_path() {
         for op in samples().iter().filter(|o| matches!(o, PrivOp::FontInstall { .. } | PrivOp::FontRemove { .. })) {
@@ -1190,7 +1198,7 @@ mod tests {
         }
     }
 
-    /// Экран входа SDDM — тоже только через помощника сеанса (З5).
+    /// SDDM login screen — also only through the session helper (Z5).
     #[test]
     fn sddm_greeter_has_no_raw_path() {
         let ops: Vec<PrivOp> = samples()
@@ -1208,9 +1216,8 @@ mod tests {
     #[test]
     fn local_files_are_listed() {
         let with_files: Vec<usize> = samples().iter().map(|o| o.local_files().len()).collect();
-        // InstallBuilt, Stage, SystemTheme::Install, SddmBackground с
-        // картинкой — по файлу; AurInstallBuilt, FontInstall и SddmLook —
-        // по два.
+        // InstallBuilt, Stage, SystemTheme::Install, SddmBackground with a picture —
+        // one file each; AurInstallBuilt, FontInstall and SddmLook — two each.
         assert_eq!(with_files.iter().sum::<usize>(), 10);
     }
 }

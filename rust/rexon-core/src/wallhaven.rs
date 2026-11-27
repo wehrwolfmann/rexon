@@ -1,32 +1,33 @@
-//! Wallhaven (wallhaven.cc) — второй магазин раздела «Обои HD» рядом с
-//! KDE Store.
+//! Wallhaven (wallhaven.cc) — the second store of the «HD Wallpapers» section next to
+//! the KDE Store.
 //!
-//! Свой клиент по официальной документации API v1
-//! (<https://wallhaven.cc/help/api>): поиск и листинги
-//! `GET /api/v1/search`, сведения о картинке `GET /api/v1/w/<id>`.
-//! Решение владельца 06.11.2026.
+//! Our own client built from the official API v1 documentation
+//! (<https://wallhaven.cc/help/api>): search and listings
+//! `GET /api/v1/search`, picture details `GET /api/v1/w/<id>`.
+//! Owner's decision of 06.11.2026, made after an analysis of the
+//! wallpaper sources.
 //!
-//! Что здесь живёт и почему так:
+//! What lives here and why it is done this way:
 //!
-//! * **Только SFW и без ключа.** В каждый запрос уходит `purity=100`; ключа
-//!   API (`X-API-Key`) Rexon не шлёт вовсе — места для секретов в Rexon пока
-//!   нет, а без ключа сервер NSFW и так не отдаёт.
-//! * **Лимит 45 запросов в минуту** («API calls are currently limited to 45
-//!   per minute», сверх — 429). Свой счётчик ([`Gate`]) не выпускает больше
-//!   [`OWN_BUDGET_PER_MINUTE`] за скользящую минуту, после 429 сам молчит
-//!   [`RATE_LIMIT_PAUSE_SECS`], а ответы держит в памяти сессии
-//!   [`CACHE_TTL_SECS`]: вернулся в раздел или листнул назад — сеть не нужна.
-//!   Миниатюры (`th.wallhaven.cc`) и сами файлы (`w.wallhaven.cc`) идут не
-//!   через API и в счёт не входят.
-//! * **Картинки — собственность авторов** («All images remain property of
-//!   their original owners»). Rexon ничего не раздаёт и в пакет не кладёт:
-//!   файл качает сам человек себе, в `~/.local/share/wallpapers`, тем же
-//!   установщиком, что обои KDE Store, а применяет тем же общим
-//!   исполнителем фона (`appearance_installer::apply_wallpaper_background`).
-//!   У карточки — ссылка на страницу картинки на сайте ([`page_url`]).
-//! * Отдельной ветки установки нет: карточка — обычный [`ThemeItem`]
-//!   категории обоев (299) с прямой ссылкой на файл в `download_links`;
-//!   журнал установленного, «Применить» и «Удалить» — общие.
+//! * **SFW only and no key.** Every request carries `purity=100`; Rexon does not
+//!   send an API key (`X-API-Key`) at all — Rexon has no place for secrets yet,
+//!   and without a key the server does not return NSFW anyway.
+//! * **Limit of 45 requests per minute** ("API calls are currently limited to 45
+//!   per minute", beyond that — 429). Our own counter ([`Gate`]) lets out no more than
+//!   [`OWN_BUDGET_PER_MINUTE`] per sliding minute, after a 429 it stays silent for
+//!   [`RATE_LIMIT_PAUSE_SECS`], and it keeps replies in session memory for
+//!   [`CACHE_TTL_SECS`]: coming back to the section or paging back needs no network.
+//!   Thumbnails (`th.wallhaven.cc`) and the files themselves (`w.wallhaven.cc`) do not go
+//!   through the API and do not count.
+//! * **Pictures are the property of their authors** ("All images remain property of
+//!   their original owners"). Rexon distributes nothing and puts nothing in the package:
+//!   the person downloads the file for themselves into `~/.local/share/wallpapers` with
+//!   the same installer as KDE Store wallpapers, and it is applied by the same shared
+//!   background executor (`appearance_installer::apply_wallpaper_background`).
+//!   The card has a link to the picture's page on the site ([`page_url`]).
+//! * There is no separate install branch: the card is an ordinary [`ThemeItem`]
+//!   of the wallpaper category (299) with a direct link to the file in `download_links`;
+//!   the installed journal, «Apply» and «Delete» are shared.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex, OnceLock};
@@ -38,87 +39,87 @@ use crate::i18n::{n_, tr, trc, trf};
 use crate::models::ThemeItem;
 use crate::net::NetError;
 
-/// Адрес сайта.
+/// Site address.
 pub const HOME_URL: &str = "https://wallhaven.cc";
-/// Корень API v1.
+/// Root of API v1.
 pub const API_BASE: &str = "https://wallhaven.cc/api/v1";
-/// Ключ источника в переключателе «Магазин:».
+/// Source key in the «Store:» switcher.
 pub const SOURCE_KEY: &str = "wallhaven";
-/// Префикс id карточки и записи журнала установленного: `wallhaven:<id>`.
+/// Prefix of the card id and of the installed journal entry: `wallhaven:<id>`.
 pub const ID_PREFIX: &str = "wallhaven:";
-/// Разделы, где Wallhaven — ещё один магазин.
+/// Sections where Wallhaven is one more store.
 pub const SECTIONS: &[&str] = &["wallpapers"];
-/// Категория магазина, под которой ставится картинка (обои KDE Store): по
-/// ней установщик берёт каталог и правило одиночного файла.
+/// Store category under which the picture is installed (KDE Store wallpapers): from
+/// it the installer takes the directory and the single-file rule.
 pub const CATEGORY_ID: i64 = 299;
-/// Сколько картинок отдаёт сервер на страницу листинга (документация:
-/// «Listings are limited to 24 results per page»).
+/// How many pictures the server returns per listing page (documentation:
+/// "Listings are limited to 24 results per page").
 pub const API_PAGE_SIZE: i64 = 24;
-/// Лимит сервера на запросы к API в минуту.
+/// Server limit on API requests per minute.
 pub const RATE_LIMIT_PER_MINUTE: usize = 45;
-/// Свой потолок за скользящую минуту — с запасом под сайт, открытый в
-/// браузере той же машины (лимит у сервера общий на адрес).
+/// Our own ceiling per sliding minute — with headroom for the site opened in
+/// a browser on the same machine (the server limit is shared per address).
 pub const OWN_BUDGET_PER_MINUTE: usize = 40;
-/// Сколько молчать после ответа 429.
+/// How long to stay silent after a 429 reply.
 pub const RATE_LIMIT_PAUSE_SECS: u64 = 60;
-/// Сколько ответ API живёт в памяти сессии.
+/// How long an API reply lives in session memory.
 pub const CACHE_TTL_SECS: u64 = 10 * 60;
-/// Сколько ответов держать в памяти (старые вытесняются).
+/// How many replies to keep in memory (old ones are evicted).
 pub const CACHE_MAX_ENTRIES: usize = 64;
-/// Таймаут запроса к API, секунды.
+/// API request timeout, seconds.
 pub const TIMEOUT_SECS: u64 = 15;
-/// Больше этого ответ API не читаем (страница листинга — ~20 КБ).
+/// We do not read an API reply larger than this (a listing page is ~20 KB).
 pub const MAX_RESPONSE_BYTES: usize = 2 << 20;
-/// Полноразмерный файл попадает в галерею карточки, только если он не
-/// больше этого: галерея качает кадры сразу при открытии.
+/// The full-size file goes into the card gallery only if it is no
+/// larger than this: the gallery downloads frames right when opened.
 pub const GALLERY_FULL_MAX_BYTES: i64 = 8 << 20;
 
-/// Есть ли Wallhaven в разделе `section`.
+/// Whether Wallhaven is present in section `section`.
 pub fn has_section(section: &str) -> bool {
     SECTIONS.contains(&section)
 }
 
-/// Карточка отсюда?
+/// Is the card from here?
 pub fn is_item_id(id: &str) -> bool {
     id.starts_with(ID_PREFIX)
 }
 
-/// Подпись чипа «Магазин:».
+/// Label of the «Store:» chip.
 pub fn chip_label() -> String {
     "Wallhaven".to_string()
 }
 
-/// Подсказка чипа.
+/// Chip tooltip.
 pub fn chip_tooltip() -> String {
     tr("Wallpapers from wallhaven.cc, safe-for-work only. The pictures belong to their authors: \
         Rexon downloads the one you pick for you and links to its page on the site.")
 }
 
-/// Подсказка строки поиска.
+/// Placeholder of the search field.
 pub fn search_placeholder() -> String {
     tr("🔍 Search Wallhaven…")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Сортировки
+//  Sorting
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Сортировки Wallhaven в выпадающем списке: `(подпись, ключ)`. Ключи —
-/// те же, что у KDE Store (`appearance_page::SORTS`), чтобы выбор
-/// переживал переключение магазина: «Новые», «Популярные», «Лучшие».
+/// Wallhaven sort orders in the drop-down list: `(label, key)`. The keys are
+/// the same as the KDE Store ones (`appearance_page::SORTS`), so the choice
+/// survives switching the store: «New», «Popular», «Best».
 pub const SORTS: &[(&str, &str)] = &[
     (n_("🆕 Newest"), "new"),
     (n_("🔥 Most Viewed"), "down"),
     (n_("🏆 Top of the Month"), "high"),
 ];
 
-/// Ключ сортировки, который действует: неизвестный Wallhaven (у KDE Store
-/// есть «По алфавиту») — «Новые».
+/// The sort key that takes effect: one unknown to Wallhaven (the KDE Store
+/// has «Alphabetical») — «New».
 pub fn effective_sort(sort: &str) -> &'static str {
     SORTS.iter().map(|(_, k)| *k).find(|k| *k == sort).unwrap_or("new")
 }
 
-/// Параметр `sorting` API для ключа Rexon (и `topRange` у «Лучших»).
+/// The API `sorting` parameter for a Rexon key (and `topRange` for «Best»).
 pub fn api_sorting(sort: &str) -> (&'static str, Option<&'static str>) {
     match effective_sort(sort) {
         "down" => ("views", None),
@@ -128,10 +129,10 @@ pub fn api_sorting(sort: &str) -> (&'static str, Option<&'static str>) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Адреса
+//  Addresses
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Кодирование значения параметра запроса (пробел — `+`).
+/// Encoding of a query parameter value (space — `+`).
 fn quote_plus(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
@@ -144,10 +145,10 @@ fn quote_plus(s: &str) -> String {
     out
 }
 
-/// Адрес страницы листинга. `api_page` — с единицы, как у сервера.
+/// Address of a listing page. `api_page` — from one, as on the server.
 ///
-/// `categories=111` — все три категории сайта (общие, аниме, люди);
-/// `purity=100` — только SFW, всегда.
+/// `categories=111` — all three site categories (general, anime, people);
+/// `purity=100` — SFW only, always.
 pub fn search_url(query: &str, sort: &str, api_page: i64) -> String {
     let (sorting, range) = api_sorting(sort);
     let mut url = format!(
@@ -166,34 +167,34 @@ pub fn search_url(query: &str, sort: &str, api_page: i64) -> String {
     url
 }
 
-/// Похоже ли на id картинки Wallhaven (`94x38z`): латиница и цифры.
-/// Из чужого ответа в адрес попадает только такое.
+/// Whether it looks like a Wallhaven picture id (`94x38z`): Latin letters and digits.
+/// Only this gets from a foreign reply into an address.
 pub fn valid_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 16 && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
 }
 
-/// Адрес сведений о картинке.
+/// Address of the picture details.
 pub fn detail_url(wid: &str) -> Option<String> {
     valid_id(wid).then(|| format!("{API_BASE}/w/{wid}"))
 }
 
-/// Страница картинки на сайте — собирается из id, а не берётся из ответа.
+/// Picture page on the site — built from the id, not taken from the reply.
 pub fn page_url(wid: &str) -> String {
     format!("{HOME_URL}/w/{wid}")
 }
 
-/// id карточки.
+/// Card id.
 pub fn item_id(wid: &str) -> String {
     format!("{ID_PREFIX}{wid}")
 }
 
-/// id картинки из id карточки.
+/// Picture id from the card id.
 pub fn parse_item_id(id: &str) -> Option<&str> {
     id.strip_prefix(ID_PREFIX).filter(|w| valid_id(w))
 }
 
-/// Адрес только с хостов Wallhaven по https — иначе пусто: ссылка на файл и
-/// миниатюры приходит из ответа сервера, и в загрузчик она уйдёт как есть.
+/// An address only from Wallhaven hosts over https — otherwise empty: the file and
+/// thumbnail links come from the server reply and go to the downloader as is.
 fn wallhaven_https(url: &str) -> String {
     let ok = ["https://w.wallhaven.cc/", "https://th.wallhaven.cc/"]
         .iter()
@@ -206,10 +207,10 @@ fn wallhaven_https(url: &str) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Разбор ответов
+//  Parsing replies
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Число из ответа: сервер отдаёт счётчики то числом, то строкой.
+/// A number from the reply: the server returns counters sometimes as a number, sometimes as a string.
 fn lenient_i64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
     let v = Value::deserialize(d)?;
     Ok(match v {
@@ -239,8 +240,8 @@ pub struct Tag {
     pub name: String,
 }
 
-/// Картинка из листинга или из сведений (у сведений есть автор загрузки и
-/// метки).
+/// A picture from a listing or from the details (the details have the uploader and
+/// tags).
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Wallpaper {
@@ -289,7 +290,7 @@ struct DetailBody {
     data: Wallpaper,
 }
 
-/// Страница листинга.
+/// A listing page.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SearchPage {
     pub items: Vec<Wallpaper>,
@@ -298,14 +299,14 @@ pub struct SearchPage {
     pub total: i64,
 }
 
-/// Годится ли картинка для витрины: SFW (сервер без ключа другого не
-/// отдаёт, но проверяем сами), с id и файлом на хосте Wallhaven.
+/// Whether the picture is fit for the showcase: SFW (the server returns nothing else
+/// without a key, but we check ourselves), with an id and a file on a Wallhaven host.
 fn usable(w: &Wallpaper) -> bool {
     valid_id(&w.id) && w.purity == "sfw" && !wallhaven_https(&w.path).is_empty()
 }
 
-/// Разобрать ответ `GET /search`. Негодные записи (не SFW, без файла,
-/// с чужим адресом) молча выпадают — по одной, не роняя страницу.
+/// Parse a `GET /search` reply. Unfit entries (not SFW, without a file,
+/// with a foreign address) silently drop out — one by one, without failing the page.
 pub fn parse_search(body: &[u8]) -> Result<SearchPage, String> {
     let parsed: SearchBody = serde_json::from_slice(body).map_err(|e| format!("Wallhaven: {e}"))?;
     let items = parsed
@@ -322,7 +323,7 @@ pub fn parse_search(body: &[u8]) -> Result<SearchPage, String> {
     })
 }
 
-/// Разобрать ответ `GET /w/<id>`.
+/// Parse a `GET /w/<id>` reply.
 pub fn parse_detail(body: &[u8]) -> Result<Wallpaper, String> {
     let parsed: DetailBody = serde_json::from_slice(body).map_err(|e| format!("Wallhaven: {e}"))?;
     if !usable(&parsed.data) {
@@ -332,10 +333,10 @@ pub fn parse_detail(body: &[u8]) -> Result<Wallpaper, String> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Карточка
+//  Card
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Расширение файла по адресу (`jpg`, `png`) — только знакомые картинки.
+/// File extension from the address (`jpg`, `png`) — known pictures only.
 fn file_ext(w: &Wallpaper) -> &'static str {
     let tail = w.path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
     match tail.as_str() {
@@ -346,13 +347,13 @@ fn file_ext(w: &Wallpaper) -> &'static str {
     }
 }
 
-/// Имя файла в `~/.local/share/wallpapers`: `wallhaven-<id>.<расш>` — как
-/// его называет сам сайт.
+/// File name in `~/.local/share/wallpapers`: `wallhaven-<id>.<ext>` — as
+/// the site itself names it.
 pub fn file_name(w: &Wallpaper) -> String {
     format!("wallhaven-{}.{}", w.id, file_ext(w))
 }
 
-/// Категория сайта для человека.
+/// Site category for a human.
 pub fn category_label(category: &str) -> String {
     match category {
         "general" => trc("wallpaper category", "General"),
@@ -362,13 +363,13 @@ pub fn category_label(category: &str) -> String {
     }
 }
 
-/// `2026-10-10 04:08:04` → `2026-10-10T04:08:04` (ISO, как у магазина).
+/// `2026-10-10 04:08:04` → `2026-10-10T04:08:04` (ISO, as in the store).
 fn iso(created: &str) -> String {
     created.trim().replacen(' ', "T", 1)
 }
 
-/// Карточка картинки — обычный товар раздела обоев: установщик видит
-/// одиночный файл категории 299 и кладёт его в `~/.local/share/wallpapers`.
+/// Picture card — an ordinary item of the wallpaper section: the installer sees
+/// a single file of category 299 and puts it into `~/.local/share/wallpapers`.
 pub fn theme_item(w: &Wallpaper) -> ThemeItem {
     let path = wallhaven_https(&w.path);
     let name = file_name(w);
@@ -406,8 +407,8 @@ pub fn theme_item(w: &Wallpaper) -> ThemeItem {
     }
 }
 
-/// Описание карточки: категория, метки (они есть только в сведениях) и
-/// первоисточник, если сайт его знает.
+/// Card description: category, tags (they exist only in the details) and
+/// the original source, if the site knows it.
 fn description(w: &Wallpaper) -> String {
     let mut lines = vec![trf("Category: %1", &[&category_label(&w.category)])];
     let tags: Vec<&str> = w.tags.iter().map(|t| t.name.trim()).filter(|t| !t.is_empty()).collect();
@@ -422,7 +423,7 @@ fn description(w: &Wallpaper) -> String {
     lines.join("\n")
 }
 
-/// Строка оценки плитки: «♥ 328 · 👁 39.4K».
+/// Rating line of the tile: «♥ 328 · 👁 39.4K».
 pub fn stats_line(w: &Wallpaper) -> String {
     format!(
         "♥ {} · 👁 {}",
@@ -431,14 +432,14 @@ pub fn stats_line(w: &Wallpaper) -> String {
     )
 }
 
-/// Подсказка строки оценки.
+/// Tooltip of the rating line.
 pub fn stats_tooltip() -> String {
     tr("Favorites and views on wallhaven.cc")
 }
 
-/// Строка ответа каталога: карточка плюс то, что знает только Wallhaven
-/// (страница на сайте и своя строка оценки) — ключами `site*`, общими для
-/// всех сторонних магазинов.
+/// A catalog reply row: the card plus what only Wallhaven knows
+/// (the page on the site and its own rating line) — under `site*` keys, shared by
+/// all third-party stores.
 pub fn catalog_row(item: &ThemeItem, w: &Wallpaper) -> Value {
     let mut v = serde_json::to_value(item).unwrap_or(Value::Null);
     if let Some(m) = v.as_object_mut() {
@@ -450,13 +451,13 @@ pub fn catalog_row(item: &ThemeItem, w: &Wallpaper) -> Value {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Страница Rexon из страниц сервера
+//  A Rexon page from server pages
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Какие страницы сервера (с единицы) покрывают страницу Rexon номер
-/// `page` (с нуля) по `size` карточек — плюс одну карточку сверх, чтобы
-/// честно знать, есть ли следующая. Сервер листает ровно по 24 и ничего не
-/// прячет, поэтому окно считается сразу, без прохода с первой страницы.
+/// Which server pages (from one) cover Rexon page number
+/// `page` (from zero) of `size` cards — plus one extra card, to
+/// honestly know whether there is a next one. The server pages by exactly 24 and hides
+/// nothing, so the window is computed at once, without walking from the first page.
 pub fn api_pages_for(page: i64, size: i64) -> (i64, i64) {
     let size = size.max(1);
     let start = page.max(0) * size;
@@ -464,7 +465,7 @@ pub fn api_pages_for(page: i64, size: i64) -> (i64, i64) {
     (start / API_PAGE_SIZE + 1, (end - 1) / API_PAGE_SIZE + 1)
 }
 
-/// Страница Rexon: карточки, сколько всего и есть ли дальше.
+/// A Rexon page: cards, the total count and whether there is more.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Page {
     pub items: Vec<Wallpaper>,
@@ -472,9 +473,9 @@ pub struct Page {
     pub has_more: bool,
 }
 
-/// Собрать страницу Rexon из страниц сервера; `fetch(n)` — страница
-/// сервера `n` (с единицы). Ошибка первой нужной страницы — ошибка
-/// страницы; ошибка второй — просто «дальше не знаем» (по `total`).
+/// Build a Rexon page from server pages; `fetch(n)` is server
+/// page `n` (from one). An error on the first needed page is a page
+/// error; an error on the second just means "we don't know what's next" (by `total`).
 pub fn assemble_page(
     page: i64,
     size: i64,
@@ -517,23 +518,23 @@ pub fn assemble_page(
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Лимит запросов и память ответов
+//  Request limit and reply memory
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Почему ответа нет.
+/// Why there is no reply.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FetchError {
-    /// Свой счётчик или сервер (429) сказал «слишком часто»: подождать
+    /// Our own counter or the server (429) said "too often": wait
     /// `wait_secs`.
     RateLimited { wait_secs: u64 },
-    /// Сеть или сервер.
+    /// Network or server.
     Net(NetError),
-    /// Ответ не разобрать.
+    /// The reply cannot be parsed.
     Parse(String),
 }
 
 impl FetchError {
-    /// Текст для строки состояния.
+    /// Text for the status line.
     pub fn message(&self) -> String {
         match self {
             FetchError::RateLimited { wait_secs } => trf(
@@ -551,8 +552,8 @@ impl FetchError {
     }
 }
 
-/// Счётчик запросов за скользящую минуту, пауза после 429 и память
-/// ответов сессии. Время — параметром (мс), чтобы проверялось без часов.
+/// Request counter per sliding minute, pause after 429 and session reply
+/// memory. Time is a parameter (ms), so it is testable without a clock.
 #[derive(Debug, Default)]
 pub struct Gate {
     sent: VecDeque<u64>,
@@ -566,14 +567,14 @@ impl Gate {
         Self::default()
     }
 
-    /// Свежий ответ из памяти.
+    /// A fresh reply from memory.
     pub fn cached(&self, url: &str, now_ms: u64) -> Option<Vec<u8>> {
         let (at, body) = self.cache.get(url)?;
         (now_ms.saturating_sub(*at) < CACHE_TTL_SECS * 1000).then(|| body.clone())
     }
 
-    /// Можно ли послать запрос сейчас; да — он сразу записан в счёт.
-    /// Нет — сколько секунд подождать.
+    /// Whether a request may be sent now; if yes, it is counted immediately.
+    /// If no — how many seconds to wait.
     pub fn admit(&mut self, now_ms: u64) -> Result<(), u64> {
         if now_ms < self.paused_until {
             return Err((self.paused_until - now_ms).div_ceil(1000));
@@ -589,12 +590,12 @@ impl Gate {
         Ok(())
     }
 
-    /// Сервер ответил 429: молчать минуту.
+    /// The server replied 429: stay silent for a minute.
     pub fn throttled(&mut self, now_ms: u64) {
         self.paused_until = now_ms + RATE_LIMIT_PAUSE_SECS * 1000;
     }
 
-    /// Запомнить ответ.
+    /// Remember a reply.
     pub fn store(&mut self, url: &str, body: Vec<u8>, now_ms: u64) {
         if self.cache.insert(url.to_string(), (now_ms, body)).is_none() {
             self.order.push_back(url.to_string());
@@ -607,9 +608,9 @@ impl Gate {
     }
 }
 
-/// Один запрос к API через [`Gate`]: память (если не `force`), счёт, сеть.
-/// `get` — транспорт (в бою [`crate::net::UreqNet`], в тестах — замыкание).
-/// Мьютекс счётчика на время сети не держится.
+/// One API request through [`Gate`]: memory (unless `force`), counting, network.
+/// `get` is the transport (in production [`crate::net::UreqNet`], in tests a closure).
+/// The counter mutex is not held during the network call.
 pub fn fetch_with(
     gate: &Mutex<Gate>,
     url: &str,
@@ -642,7 +643,7 @@ pub fn fetch_with(
     }
 }
 
-/// Счётчик процесса — один на все страницы «Оформления».
+/// Process-wide counter — one for all «Appearance» pages.
 pub fn live_gate() -> &'static Mutex<Gate> {
     static GATE: OnceLock<Mutex<Gate>> = OnceLock::new();
     GATE.get_or_init(|| Mutex::new(Gate::new()))
@@ -660,7 +661,7 @@ fn live_get(token: &crate::net::CancelToken) -> impl FnMut(&str) -> Result<Vec<u
     move |url: &str| crate::net::NetIo::get(&mut net, url, crate::ocs::USER_AGENT, TIMEOUT_SECS)
 }
 
-/// Страница Rexon из живого API.
+/// A Rexon page from the live API.
 pub fn live_page(
     query: &str,
     sort: &str,
@@ -677,7 +678,7 @@ pub fn live_page(
     })
 }
 
-/// Сведения о картинке из живого API (автор загрузки, метки).
+/// Picture details from the live API (uploader, tags).
 pub fn live_detail(wid: &str, token: &crate::net::CancelToken) -> Result<Wallpaper, FetchError> {
     let url = detail_url(wid).ok_or_else(|| FetchError::Parse("Wallhaven: bad id".to_string()))?;
     let mut get = live_get(token);
@@ -701,7 +702,7 @@ mod tests {
         assert!(u.contains("sorting=toplist") && u.contains("topRange=1M") && u.contains("page=3"));
         assert!(u.ends_with("&q=sky+%26+clouds"), "{u}");
         assert!(search_url("x", "down", 0).contains("sorting=views&order=desc&page=1"));
-        // «По алфавиту» у Wallhaven нет — «Новые».
+        // Wallhaven has no «Alphabetical» — «New».
         assert_eq!(effective_sort("alpha"), "new");
         assert!(search_url("", "alpha", 1).contains("sorting=date_added"));
     }
@@ -723,8 +724,8 @@ mod tests {
     fn parses_saved_search_sample() {
         let p = parse_search(SEARCH).expect("образец разбирается");
         assert_eq!((p.current_page, p.last_page, p.total), (1, 98, 2350));
-        // В образце 24 записи; три испорчены нарочно (NSFW, чужой хост,
-        // кривой id) — выпадают по одной.
+        // The sample has 24 entries; three are broken on purpose (NSFW, foreign host,
+        // bad id) — they drop out one by one.
         assert_eq!(p.items.len(), 21);
         assert!(p.items.iter().all(|w| w.purity == "sfw" && valid_id(&w.id)));
         let w = &p.items[0];
@@ -752,7 +753,7 @@ mod tests {
     fn rejects_garbage() {
         assert!(parse_search(b"<html>").is_err());
         assert!(parse_search(br#"{"error":"x"}"#).is_err());
-        // Строковые счётчики — тоже числа.
+        // String counters are numbers too.
         let p = parse_search(br#"{"data":[],"meta":{"current_page":"2","last_page":"5","per_page":"24","total":"100"}}"#).unwrap();
         assert_eq!((p.current_page, p.last_page, p.total), (2, 5, 100));
         assert!(parse_detail(br#"{"data":{"id":"abc","purity":"nsfw","path":"https://w.wallhaven.cc/full/ab/wallhaven-abc.jpg"}}"#).is_err());
@@ -771,19 +772,19 @@ mod tests {
         assert_eq!(it.download_size, 954);
         assert_eq!(it.created, "2026-10-10T04:08:04");
         assert_eq!(it.preview_url, "https://th.wallhaven.cc/lg/yq/yqkl97.jpg");
-        // Галерея: миниатюра без обрезки и сам файл (он меньше 8 МиБ).
+        // Gallery: the uncropped thumbnail and the file itself (it is under 8 MiB).
         assert_eq!(it.preview_urls, vec!["https://th.wallhaven.cc/orig/yq/yqkl97.jpg".to_string(), w.path.clone()]);
-        // Ссылка на файл — та, что возьмёт общий загрузчик магазина.
+        // The file link is the one the shared store downloader will take.
         assert_eq!(it.download_links.len(), 1);
         assert_eq!(it.download_links[0]["url"], w.path.as_str());
         assert_eq!(crate::ocs::chosen_file_name(&it).as_deref(), Some("wallhaven-yqkl97.jpg"));
-        // Большой файл в галерею не идёт.
+        // A large file does not go into the gallery.
         let big = p.items.iter().find(|w| w.file_size > GALLERY_FULL_MAX_BYTES).expect("в образце есть большой файл");
         assert_eq!(theme_item(big).preview_urls.len(), 1);
         let row = catalog_row(&it, w);
         assert_eq!(row["sitePage"], "https://wallhaven.cc/w/yqkl97");
         assert_eq!(row["siteStats"], "♥ 328 · 👁 39.4K");
-        // Установщик видит одиночную картинку раздела обоев.
+        // The installer sees a single picture of the wallpaper section.
         let cat = crate::categories::category_by_id(std::path::Path::new("/home/u"), it.category_id).unwrap();
         assert_eq!(cat.key, "wallpapers");
         assert_eq!(cat.install_dir, "/home/u/.local/share/wallpapers");
@@ -792,9 +793,9 @@ mod tests {
     #[test]
     fn page_window_math() {
         assert_eq!(api_pages_for(0, 20), (1, 1));
-        assert_eq!(api_pages_for(0, 24), (1, 2)); // 25-я — «есть ли дальше»
+        assert_eq!(api_pages_for(0, 24), (1, 2)); // the 25th — "is there more"
         assert_eq!(api_pages_for(1, 20), (1, 2));
-        assert_eq!(api_pages_for(5, 20), (5, 6)); // карточки 100..=120
+        assert_eq!(api_pages_for(5, 20), (5, 6)); // cards 100..=120
     }
 
     fn fake_page(n: i64, last: i64) -> SearchPage {
@@ -818,7 +819,7 @@ mod tests {
         assert_eq!(p.items[19].id, "p2i15");
         assert!(p.has_more);
         assert_eq!(p.total, 240);
-        // Конец листинга: последняя страница сервера — дальше не просим.
+        // End of the listing: the last server page — we do not ask further.
         let mut asked = Vec::new();
         let p = assemble_page(1, 20, |n| {
             asked.push(n);
@@ -828,7 +829,7 @@ mod tests {
         assert_eq!(asked, vec![1]);
         assert_eq!(p.items.len(), 4);
         assert!(!p.has_more);
-        // Первая нужная страница не пришла — ошибка страницы.
+        // The first needed page did not arrive — a page error.
         let e = assemble_page(0, 20, |_| Err(FetchError::RateLimited { wait_secs: 7 })).unwrap_err();
         assert_eq!(e, FetchError::RateLimited { wait_secs: 7 });
     }
@@ -840,7 +841,7 @@ mod tests {
             assert!(g.admit(1_000 + i).is_ok());
         }
         let wait = g.admit(30_000).unwrap_err();
-        assert_eq!(wait, 31); // самый старый (1 с) выйдет из окна в 61 с
+        assert_eq!(wait, 31); // the oldest one (1 s) leaves the window at 61 s
         assert!(g.admit(61_000).is_ok());
         g.throttled(100_000);
         assert_eq!(g.admit(100_500).unwrap_err(), 60);
@@ -869,7 +870,7 @@ mod tests {
         let mut too_many = |_: &str| Err(NetError::Status { code: 429, reason: "Too Many Requests".into() });
         let e = fetch_with(&gate, "v", false, &now, &mut too_many).unwrap_err();
         assert_eq!(e, FetchError::RateLimited { wait_secs: RATE_LIMIT_PAUSE_SECS });
-        // После 429 в сеть не ходим вовсе, пока не выйдет пауза.
+        // After a 429 we do not go to the network at all until the pause is over.
         let mut never = |_: &str| -> Result<Vec<u8>, NetError> { panic!("сеть после 429") };
         assert!(matches!(fetch_with(&gate, "w", false, &now, &mut never), Err(FetchError::RateLimited { .. })));
         assert!(e.message().contains("45"));

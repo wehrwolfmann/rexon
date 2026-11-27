@@ -1,48 +1,48 @@
-//! Сторож языка справа налево (арабский, персидский, иврит) в разметке.
+//! Guard of right-to-left languages (Arabic, Persian, Hebrew) in the layout.
 //!
-//! Как устроено: зеркалирование включает КОРЕНЬ каждого нашего окна
-//! (`LayoutMirroring.enabled` по `Qt.application.layoutDirection` и
-//! `childrenInherit`), текст выравнивается по началу строки своим типом
-//! `RexonText` (явное `AlignLeft`, которое зеркалирование переворачивает), а
-//! вендорная вкладка Wallpaper Engine остаётся слева направо заглушкой на
-//! хосте. Сверка читает исходники и краснеет, если новое окно завели без
-//! зеркалирования, сняли заглушку или `RexonText` потерял выравнивание.
+//! How it works: mirroring is turned on by the ROOT of each of our windows
+//! (`LayoutMirroring.enabled` by `Qt.application.layoutDirection` and
+//! `childrenInherit`), text is aligned to the start of the line by its own type
+//! `RexonText` (an explicit `AlignLeft`, which mirroring flips), and
+//! the vendored Wallpaper Engine tab stays left-to-right with a stub on
+//! the host. The check reads the sources and goes red if a new window is added without
+//! mirroring, the stub is removed or `RexonText` loses its alignment.
 //!
-//! Свои контролы (`Rexon*`) ставят индикаторы руками — стрелку списка,
-//! квадрат флажка, заливку ползунка, — а ручные `x` зеркалирование не
-//! переворачивает. Поэтому у каждого такого места сверка ждёт учёт
-//! `control.mirrored`, а во всём нашем QML — ни одного голого `Text` (кроме
-//! поимённых исключений и физических зон), и каждое поле `TextArea`/`TextEdit`
-//! задаёт выравнивание явно.
+//! Our own controls (`Rexon*`) place their indicators by hand — the combo box arrow,
+//! the checkbox square, the slider fill — and mirroring does not flip manual `x`
+//! values. So at every such place the check expects `control.mirrored` to be taken into
+//! account, and in all our QML — not a single bare `Text` (except
+//! named exceptions and physical zones), and every `TextArea`/`TextEdit` field
+//! sets its alignment explicitly.
 //!
-//! Направленные значки (❮ ❯ ▸ ◂) и клавиши ← → зеркалирование тоже не
-//! переворачивает: кнопка «назад» уезжает вправо, а значок и клавиша остаются
-//! прежними. Их решает один тип `RexonArrows` по действующему зеркалированию
-//! места; сверка следит, что значки пишутся только в нём, а листалки и
-//! шевроны берут значок, шаг клавиши и стрелку подсказки оттуда.
+//! Directional icons (❮ ❯ ▸ ◂) and the ← → keys are not flipped by mirroring either:
+//! the «back» button moves to the right, while the icon and the key stay
+//! the same. They are decided by one type, `RexonArrows`, by the mirroring in effect at
+//! the place; the check makes sure the icons are written only in it, and that pagers and
+//! chevrons take the icon, the key step and the hint arrow from there.
 //!
-//! Физические зоны — где «лево» и «право» значат настоящую сторону экрана
-//! или окна (кнопки заголовка окна, макет экрана, сетка углов экрана,
-//! снимок профиля Steam), — при языке справа налево НЕ зеркалятся: на их
-//! корне местное `LayoutMirroring.enabled: false`. Сверка держит список зон
-//! поимённо: зону потеряли или сняли заглушку — красное; выключили
-//! зеркалирование где-то ещё без записи — тоже красное. Клавиши ← → мимо
-//! `RexonArrows` разрешены только внутри такой зоны.
+//! Physical zones — where "left" and "right" mean the real side of the screen
+//! or the window (window title buttons, the screen layout, the screen corner grid,
+//! the Steam profile snapshot) — are NOT mirrored in a right-to-left language: their
+//! root has a local `LayoutMirroring.enabled: false`. The check keeps the list of zones
+//! by name: a zone was lost or its stub removed — red; mirroring
+//! was turned off somewhere else without an entry — red too. The ← → keys bypassing
+//! `RexonArrows` are allowed only inside such a zone.
 //!
-//! Ручные координаты `x:` зеркалирование тоже не переворачивает. Отступы
-//! от края пишутся якорями; где якорь не годится — `RexonArrows.placeX`;
-//! прочие `x:` вне физических зон — поимённо в `MANUAL_X` с причиной.
+//! Manual `x:` coordinates are not flipped by mirroring either. Offsets
+//! from an edge are written with anchors; where an anchor does not fit — `RexonArrows.placeX`;
+//! other `x:` values outside physical zones are listed by name in `MANUAL_X` with a reason.
 //!
-//! Подстановки `%1`, которые собирает сам QML, идут через `RexonBidi`
-//! (изолят FSI/PDI, как `i18n::fill` в ядре), а каждая строка каталога со
-//! стрелкой ← → несёт пометку переводчику — стрелку пишут так, как она
-//! смотрит на его языке.
+//! `%1` substitutions that QML assembles itself go through `RexonBidi`
+//! (an FSI/PDI isolate, like `i18n::fill` in the core), and every catalog string with
+//! a ← → arrow carries a note to the translator — the arrow is written the way it
+//! points in their language.
 //!
-//! ЧЕГО СВЕРКА НЕ МЕРИТ: как окно выглядит при `-reverse`. Это — снимок на
-//! стенде.
+//! WHAT THE CHECK DOES NOT MEASURE: how the window looks with `-reverse`. That is a snapshot on
+//! the bench.
 //!
-//! Внутри физических зон `RexonText` нельзя (его `AlignLeft` там не
-//! перевернётся) — подписи зон голым `Text` выравниваются по центру.
+//! Inside physical zones `RexonText` is not allowed (its `AlignLeft` would not
+//! flip there) — zone labels use a bare `Text` aligned to the center.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -51,9 +51,9 @@ const MIRROR_ENABLED: &str =
     "LayoutMirroring.enabled:Qt.application.layoutDirection===Qt.RightToLeft";
 const MIRROR_INHERIT: &str = "LayoutMirroring.childrenInherit:true";
 
-/// Окна, которым зеркалирование не нужно, — поимённо и с причиной.
-/// Оба — служебные стенды проверок: покупатель их не видит, текста для
-/// человека в них нет.
+/// Windows that do not need mirroring — by name and with a reason.
+/// Both are internal test benches: the buyer does not see them, there is no text for
+/// a person in them.
 const WINDOW_EXCEPTIONS: &[&str] = &["LayerShellProbe.qml", "LiveModelsProbe.qml"];
 
 fn root() -> PathBuf {
@@ -65,7 +65,7 @@ fn source(rel: &str) -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("нет исходника {path:?}: {e}"))
 }
 
-/// Код без строк-комментариев и без пробелов: сверка не зависит от записи.
+/// Code without comment lines and without spaces: the check does not depend on formatting.
 fn squash_code(text: &str) -> String {
     text.lines()
         .filter(|l| !l.trim_start().starts_with("//"))
@@ -74,8 +74,8 @@ fn squash_code(text: &str) -> String {
         .collect()
 }
 
-/// Блоки окон в разметке: от строки `ApplicationWindow {` / `Window {` до
-/// парной скобки. Возвращает номер строки и сжатый код блока.
+/// Window blocks in the layout: from the line `ApplicationWindow {` / `Window {` to
+/// the matching brace. Returns the line number and the squashed code of the block.
 fn window_blocks(text: &str) -> Vec<(usize, String)> {
     let lines: Vec<&str> = text.lines().collect();
     let mut out = Vec::new();
@@ -108,8 +108,8 @@ fn window_blocks(text: &str) -> Vec<(usize, String)> {
     out
 }
 
-/// Свойства самого окна, без вложенных объектов: только верхний уровень
-/// блока, чтобы зеркалирование вложенного элемента не засчиталось окну.
+/// Properties of the window itself, without nested objects: only the top level of
+/// the block, so that mirroring of a nested element is not credited to the window.
 fn top_level(block: &str) -> String {
     let mut depth = 0i32;
     let mut out = String::new();
@@ -172,11 +172,11 @@ fn every_window_of_our_qml_mirrors_from_its_root() {
             seen += 1;
         }
     }
-    // Главное окно и полноэкранный просмотр снимков «Рабочих столов».
+    // The main window and the full-screen screenshot view of «Desktops».
     assert!(seen >= 2, "окон найдено {seen} — разбор разметки сломался");
 }
 
-/// Окно о крахе — разметка строкой в Rust, а не файлом модуля.
+/// The crash window — the layout is a string in Rust, not a module file.
 #[test]
 fn crash_dialog_window_mirrors_from_its_root() {
     let text = source("rust/rexon-gui/src/crash_report.rs");
@@ -185,7 +185,7 @@ fn crash_dialog_window_mirrors_from_its_root() {
     assert_mirrored("crash_report.rs", &blocks[0].1);
 }
 
-/// Вендорная вкладка Wallpaper Engine остаётся слева направо до апстрима.
+/// The vendored Wallpaper Engine tab stays left-to-right until upstream handles it.
 #[test]
 fn vendor_wallpaper_tab_stays_left_to_right() {
     let code = squash_code(&source("rust/rexon-gui/qml/WallpaperEnginePage.qml"));
@@ -207,7 +207,7 @@ fn vendor_wallpaper_tab_stays_left_to_right() {
     );
 }
 
-/// `RexonText` есть, собирается в модуль и выравнивает явно по левому краю.
+/// `RexonText` exists, is built into the module and aligns explicitly to the left edge.
 #[test]
 fn rexon_text_exists_and_aligns_left_explicitly() {
     let code = squash_code(&source("rust/rexon-gui/qml/RexonText.qml"));
@@ -224,8 +224,8 @@ fn rexon_text_exists_and_aligns_left_explicitly() {
     );
 }
 
-/// Ручное место индикатора в своих контролах — с учётом зеркалирования.
-/// Каждая строка — сжатый код (без пробелов), который обязан стоять в файле.
+/// The manual indicator place in our own controls — with mirroring taken into account.
+/// Each line is squashed code (without spaces) that must be present in the file.
 const MIRRORED_INDICATORS: &[(&str, &[(&str, &str)])] = &[
     (
         "RexonSlider.qml",
@@ -259,8 +259,8 @@ const MIRRORED_INDICATORS: &[(&str, &[(&str, &str)])] = &[
         ],
     ),
     (
-        // Подсказка поля повторяет его выравнивание, только если оно задано
-        // явно; без него и текст, и подсказка встают по своей строке.
+        // The field's placeholder repeats its alignment only if that is set
+        // explicitly; without it both the text and the placeholder follow their own line.
         "RexonTextField.qml",
         &[(
             "horizontalAlignment:TextInput.AlignLeft",
@@ -282,28 +282,28 @@ fn rexon_controls_place_indicators_with_mirroring() {
     }
 }
 
-/// Где голые `Text` и `Label` разрешены во всём файле — поимённо и с
-/// причиной. В остальном нашем QML всё текстовое — `RexonText`; в файлах с
-/// физической зоной (`PHYSICAL_ZONES`) голый `Text` разрешён только внутри
-/// неё: там `AlignLeft` не перевернётся, и подписи зон стоят по центру.
+/// Where bare `Text` and `Label` are allowed in the whole file — by name and with
+/// a reason. In the rest of our QML everything textual is `RexonText`; in files with
+/// a physical zone (`PHYSICAL_ZONES`) a bare `Text` is allowed only inside
+/// it: there `AlignLeft` would not flip, and the zone labels are centered.
 const BARE_TEXT_EXCEPTIONS: &[(&str, &str)] = &[
-    // Сам тип: он и есть `Text` с выравниванием по началу строки.
+    // The type itself: it is exactly a `Text` aligned to the start of the line.
     ("RexonText.qml", "основа `RexonText`"),
-    // Служебные стенды проверок: покупатель их не видит (как в
+    // Internal test benches: the buyer does not see them (as in
     // `WINDOW_EXCEPTIONS`).
     ("LayerShellProbe.qml", "проба слоя обоев"),
     ("LiveModelsProbe.qml", "проба живых моделей"),
 ];
 
-/// Номера строк, где объявлен объект типа `Text` или `Label` (а не
-/// `RexonText`, `TextMetrics`, `Text.AlignLeft`). `Label` из Qt Quick
-/// Controls выравнивается так же, как `Text`, — по самой строке.
+/// Line numbers where an object of type `Text` or `Label` is declared (and not
+/// `RexonText`, `TextMetrics`, `Text.AlignLeft`). `Label` from Qt Quick
+/// Controls aligns the same way as `Text` — by the line itself.
 fn bare_text_lines(text: &str) -> Vec<usize> {
     object_lines(text, &["Text", "Label"])
 }
 
-/// Номера строк, где объявлен объект одного из типов `types` (имя целиком,
-/// не часть другого и не перечисление после точки).
+/// Line numbers where an object of one of the `types` is declared (the whole name,
+/// not part of another one and not an enum value after a dot).
 fn object_lines(text: &str, types: &[&str]) -> Vec<usize> {
     let mut out = Vec::new();
     for (i, line) in text.lines().enumerate() {
@@ -367,23 +367,23 @@ fn our_qml_uses_rexon_text_only() {
              можно только внутри физической зоны из `PHYSICAL_ZONES`)"
         );
     }
-    // Сам разбор: голый тип ловится, свой и соседние — нет.
+    // The parsing itself: a bare type is caught, ours and the neighbouring ones are not.
     assert_eq!(bare_text_lines("Text {\n  contentItem: Text{\n  Label {\n"), vec![1, 2, 3]);
     assert!(bare_text_lines("RexonText {\nTextMetrics {\nx: Text.AlignLeft\nMyLabel {\n").is_empty());
 }
 
-/// Поля ввода и многострочный текст: их выравнивание без явного значения
-/// тоже берётся из самой строки, а `RexonText` для них не годится.
+/// Input fields and multi-line text: without an explicit value their alignment
+/// is also taken from the line itself, and `RexonText` does not fit them.
 const TEXT_EDIT_TYPES: &[&str] = &["TextArea", "TextEdit", "TextInput", "TextField"];
 
-/// Поля без выравнивания — поимённо (файл, `id`, причина).
+/// Fields without alignment — by name (file, `id`, reason).
 const TEXT_EDIT_EXCEPTIONS: &[(&str, &str, &str)] = &[
-    // Невидимое поле: через него текст кладётся в буфер обмена, на экране
-    // его нет.
+    // An invisible field: text is put into the clipboard through it, it is not
+    // on the screen.
     ("WindowMenuDialogs.qml", "logClipboard", "буфер обмена"),
 ];
 
-/// Блок объекта от строки `line` (с единицы) до парной скобки, сжатый.
+/// An object block from line `line` (1-based) to the matching brace, squashed.
 fn block_from(text: &str, line: usize) -> String {
     let mut depth = 0i32;
     let mut block = String::new();
@@ -407,9 +407,9 @@ fn block_from(text: &str, line: usize) -> String {
     squash_code(&block)
 }
 
-/// Каждое поле `TextArea`/`TextEdit` (и `TextInput`/`TextField`) в нашем QML
-/// задаёт `horizontalAlignment` само: обычный текст — `AlignLeft`
-/// (зеркалирование перевернёт), код, журналы и пути — физически слева
+/// Every `TextArea`/`TextEdit` field (and `TextInput`/`TextField`) in our QML
+/// sets `horizontalAlignment` itself: ordinary text — `AlignLeft`
+/// (mirroring will flip it), code, logs and paths — physically on the left
 /// (`LayoutMirroring.enabled ? AlignRight : AlignLeft`).
 #[test]
 fn text_edits_set_alignment_explicitly() {
@@ -421,7 +421,7 @@ fn text_edits_set_alignment_explicitly() {
         );
     }
     for name in qml_names() {
-        // Служебные стенды проверок покупатель не видит.
+        // The buyer does not see internal test benches.
         if WINDOW_EXCEPTIONS.contains(&name.as_str()) {
             continue;
         }
@@ -442,27 +442,27 @@ fn text_edits_set_alignment_explicitly() {
             );
         }
     }
-    // Сам разбор: поле ловится, вложенная подложка не засчитывается полю.
+    // The parsing itself: a field is caught, a nested backing is not credited to the field.
     let probe = "TextArea {\n  background: Rectangle { horizontalAlignment: 1 }\n}\n";
     assert_eq!(object_lines(probe, TEXT_EDIT_TYPES), vec![1]);
     assert!(!top_level(&block_from(probe, 1)).contains("horizontalAlignment:"));
 }
 
 
-/// Значки со стороной: зеркалирование их не переворачивает, а Qt не
-/// переворачивает надпись из одного значка без букв (замер при `-reverse`).
-/// «▶» сюда не входит: в нашем QML это значок воспроизведения («▶ Предпросмотр»,
-/// очередь звуков), а он справа налево не переворачивается. Треугольник
-/// свёрнутой строки «▶» берётся из `RexonArrows.collapsedRow`, и его пара «◀»
-/// буквально живёт только там.
+/// Icons with a side: mirroring does not flip them, and Qt does not
+/// flip a label consisting of a single icon without letters (measured with `-reverse`).
+/// «▶» is not included here: in our QML it is the play icon («▶ Preview»,
+/// the sound queue), and that one is not flipped right-to-left. The triangle of
+/// a collapsed row «▶» is taken from `RexonArrows.collapsedRow`, and its pair «◀»
+/// literally lives only there.
 const DIRECTIONAL_GLYPHS: &[char] = &['❮', '❯', '▸', '◂', '◀'];
 
-/// Единственный файл, где направленные значки пишутся буквально.
+/// The only file where directional icons are written literally.
 const ARROWS_FILE: &str = "RexonArrows.qml";
 
-/// Места, которые обязаны брать значки и клавиши из `RexonArrows`, — поимённо:
-/// файл и куски кода, без которых значок, клавиша или подсказка в языке справа
-/// налево смотрят не туда.
+/// Places that must take icons and keys from `RexonArrows` — by name:
+/// the file and code pieces without which the icon, key or hint in a right-to-left
+/// language point the wrong way.
 const ARROW_USERS: &[(&str, &[(&str, &str)])] = &[
     (
         "RexonImageViewer.qml",
@@ -503,8 +503,8 @@ const ARROW_USERS: &[(&str, &[(&str, &str)])] = &[
         &[
             ("RexonArrows{mirrored:cardHeader.mirrored}", "свой RexonArrows у шапки карточки"),
             ("(card.expanded?\"▼\":arrows.collapsedRow)", "треугольник свёрнутой карточки"),
-            // Имя стола латиницей сделало бы шапку строкой слева направо, и
-            // треугольник встал бы у её левого конца, посреди карточки.
+            // A desktop name in Latin letters would make the header a left-to-right line, and
+            // the triangle would stand at its left end, in the middle of the card.
             ("(cardHeader.mirrored?\"\\u200f\":\"\")", "знак RLM в начале шапки"),
         ],
     ),
@@ -512,8 +512,8 @@ const ARROW_USERS: &[(&str, &[(&str, &str)])] = &[
         "AppearancePage.qml",
         &[
             ("RexonArrows{mirrored:root.LayoutMirroring.enabled}", "свой RexonArrows у страницы"),
-            // Значки «◀️ ▶️» отдаёт ядро; кнопки зеркалирование
-            // переставляет, а значки — нет, поэтому меняются местами.
+            // The icons «◀️ ▶️» come from the core; mirroring
+            // swaps the buttons but not the icons, so they swap places.
             ("text:root.arrows.mirrored?page.overlayNextText:page.overlayPrevText", "значок «назад» галереи"),
             ("text:root.arrows.mirrored?page.overlayPrevText:page.overlayNextText", "значок «вперёд» галереи"),
             ("text:root.arrows.keyHint(page.detailBackText)", "стрелка «Назад к каталогу»"),
@@ -524,18 +524,18 @@ const ARROW_USERS: &[(&str, &[(&str, &str)])] = &[
     (
         "SteamPage.qml",
         &[
-            // «‹ ›» в Unicode зеркальные: в строке справа налево Qt
-            // переворачивает их сам. Не переведённую строку знак RLM делает
-            // строкой справа налево; поменять значок руками — значит
-            // перевернуть его дважды в переведённой.
+            // «‹ ›» are mirrored in Unicode: in a right-to-left line Qt
+            // flips them itself. An RLM mark makes an untranslated string
+            // a right-to-left line; swapping the icon by hand would mean
+            // flipping it twice in a translated one.
             ("text:(root.LayoutMirroring.enabled?\"\\u200f\":\"\")+page.bgPrevText", "знак RLM у «‹ Prev» листалки фонов"),
             ("text:(root.LayoutMirroring.enabled?\"\\u200f\":\"\")+page.bgNextText", "знак RLM у «Next ›» листалки фонов"),
         ],
     ),
 ];
 
-/// Треугольник шапки «Сравнения» ставит страница: модель отдаёт шапку без
-/// него (ядро о зеркалировании места не знает).
+/// The triangle of the «Comparison» header is placed by the page: the model returns the header without
+/// it (the core knows nothing about the place's mirroring).
 #[test]
 fn compare_card_header_arrow_is_placed_by_the_page() {
     let model = source("rust/rexon-gui/src/compare_page.rs");
@@ -620,18 +620,18 @@ fn pagers_and_chevrons_take_arrows_from_rexon_arrows() {
     }
 }
 
-/// Где клавиши ← → значат ФИЗИЧЕСКУЮ сторону и через `RexonArrows` не идут —
-/// поимённо и с причиной.
+/// Where the ← → keys mean a PHYSICAL side and do not go through `RexonArrows` —
+/// by name and with a reason.
 const ARROW_KEY_EXCEPTIONS: &[(&str, &str)] = &[
-    // Клавиши шлёт, а не разбирает: служебный стенд проверок.
+    // It sends keys rather than parsing them: an internal test bench.
     ("LiveModelsProbe.qml", "стенд"),
 ];
 
 const ARROW_KEYS: &[&str] = &["Qt.Key_Left", "Qt.Key_Right", "onLeftPressed", "onRightPressed"];
 
-/// Клавиши ← → в нашем QML разбираются только там, где шаг берут из
-/// `RexonArrows`, либо внутри физической зоны (там ← — левый край экрана или
-/// окна при любом языке), кроме поимённых исключений.
+/// The ← → keys in our QML are parsed only where the step is taken from
+/// `RexonArrows`, or inside a physical zone (there ← is the left edge of the screen or
+/// the window in any language), except for named exceptions.
 #[test]
 fn arrow_keys_are_handled_only_by_known_pagers() {
     let users: Vec<&str> = ARROW_USERS.iter().map(|(n, _)| *n).collect();
@@ -663,40 +663,40 @@ fn arrow_keys_are_handled_only_by_known_pagers() {
             in_zones += 1;
         }
     }
-    // Кнопки заголовка окна: ← и → у кнопки макета.
+    // Window title buttons: ← and → on the layout button.
     assert!(in_zones >= 2, "клавиш внутри физических зон найдено {in_zones} — разбор сломался");
 }
 
-/// Физические зоны: файл, `id` корня зоны и почему сторона там настоящая.
-/// Корень несёт `LayoutMirroring.enabled: false` и `childrenInherit: true`.
+/// Physical zones: the file, the `id` of the zone root and why the side there is real.
+/// The root carries `LayoutMirroring.enabled: false` and `childrenInherit: true`.
 const PHYSICAL_ZONES: &[(&str, &str, &str)] = &[
-    // Макет заголовка окна: группы кнопок у левого и правого края окна
-    // системы; ← и «Левее» двигают кнопку к левому краю.
+    // The window title layout: button groups at the left and right edges of the system's
+    // window; ← and «Move left» move a button to the left edge.
     ("WindowButtonsSection.qml", "titleBar", "кнопки заголовка окна"),
-    // Пары «Левее/Правее» и «Добавить слева/справа»: левая кнопка пары — левая.
+    // The «Move left/Move right» and «Add on the left/right» pairs: the left button of the pair is the left one.
     ("WindowButtonsSection.qml", "moveRow", "кнопки «Левее/Правее»"),
     ("WindowButtonsSection.qml", "addRow", "кнопки «Добавить слева/справа»"),
-    // Образец рабочего стола под шейдерами эффектов экрана.
+    // The desktop sample under the screen effect shaders.
     ("ScreenEffectsSection.qml", "sample", "картинка экрана"),
-    // Сетка углов и краёв экрана, куда встаёт виджет Conky.
+    // The grid of screen corners and edges where a Conky widget goes.
     ("ConkySettings.qml", "alignmentGrid", "углы экрана"),
-    // Мини-карта экрана: мониторы и окна виджетов Conky на своих местах.
+    // The screen mini-map: monitors and Conky widget windows in their places.
     ("ConkyScreenMap.qml", "canvas", "схема экрана"),
-    // Снимок профиля Steam: части витрины по координатам картинки.
+    // The Steam profile snapshot: storefront parts by picture coordinates.
     ("SteamShowcaseSection.qml", "preview", "профиль Steam"),
-    // Сверка «как в профиле / расчётная»: части витрины — куски одной
-    // картинки рядом, большая слева, боковая справа, как в профиле Steam.
+    // The «as in the profile / computed» comparison: the storefront parts are pieces of one
+    // picture side by side, the large one on the left, the side one on the right, as in the Steam profile.
     ("SteamShowcaseSection.qml", "cmpParts", "части витрины рядом"),
 ];
 
-/// Где зеркалирование выключено не физической зоной — поимённо: вендорная
-/// вкладка Wallpaper Engine (своя сверка выше).
+/// Where mirroring is turned off not by a physical zone — by name: the vendored
+/// Wallpaper Engine tab (its own check above).
 const OTHER_MIRROR_OFF: &[(&str, &str)] = &[("WallpaperEnginePage.qml", "vendorHost")];
 
 const MIRROR_OFF: &str = "LayoutMirroring.enabled:false";
 
-/// Объект разметки, у которого `id: <id>` стоит на его собственном уровне:
-/// номера первой и последней строки (с нуля) и сжатый код блока.
+/// A layout object that has `id: <id>` at its own level:
+/// the numbers of the first and last line (0-based) and the squashed code of the block.
 fn object_by_id(text: &str, id: &str) -> Option<(usize, usize, String)> {
     let lines: Vec<&str> = text.lines().collect();
     let want = format!("id: {id}");
@@ -756,8 +756,8 @@ fn physical_zones_stay_left_to_right() {
              или `childrenInherit: true` — при языке справа налево её стороны перевернутся",
             line + 1
         );
-        // Внутри зоны явное «по левому краю» не переворачивается и для
-        // арабской строки останется левым: подписи зон — по центру.
+        // Inside a zone an explicit "left edge" does not flip and stays left for
+        // an Arabic line too: zone labels are centered.
         for bad in ["RexonText{", "Text.AlignLeft", "Text.AlignRight"] {
             assert!(
                 !block.contains(bad),
@@ -767,14 +767,14 @@ fn physical_zones_stay_left_to_right() {
             );
         }
     }
-    // Сам разбор: `id` вложенного объекта не засчитывается внешнему.
+    // The parsing itself: the `id` of a nested object is not credited to the outer one.
     let probe = "Item {\n    id: outer\n    Row {\n        id: inner\n        x: 1\n    }\n}\n";
     assert_eq!(object_by_id(probe, "inner").map(|(a, b, _)| (a, b)), Some((2, 5)));
     assert_eq!(object_by_id(probe, "outer").map(|(a, b, _)| (a, b)), Some((0, 6)));
 }
 
-/// Выключить зеркалирование можно только в записанных местах: новая зона —
-/// с записью в `PHYSICAL_ZONES` и причиной.
+/// Mirroring may be turned off only in the recorded places: a new zone comes
+/// with an entry in `PHYSICAL_ZONES` and a reason.
 #[test]
 fn mirroring_is_switched_off_only_in_known_places() {
     for name in qml_names() {
@@ -790,13 +790,13 @@ fn mirroring_is_switched_off_only_in_known_places() {
     }
 }
 
-/// Ручная координата `x:` вне физических зон — поимённо, полным выражением
-/// (без пробелов) и с причиной. Зеркалирование её не переворачивает: отступ
-/// от края пишется якорем (`anchors.left` + `leftMargin`, симметричный —
-/// `anchors.left`/`right` + `margins`), а где якорь не годится — через
-/// `RexonArrows.placeX` или `mirrored` самого контрола.
+/// A manual `x:` coordinate outside physical zones — by name, as the full expression
+/// (without spaces) and with a reason. Mirroring does not flip it: an offset
+/// from an edge is written with an anchor (`anchors.left` + `leftMargin`, a symmetric one —
+/// `anchors.left`/`right` + `margins`), and where an anchor does not fit — via
+/// `RexonArrows.placeX` or the control's own `mirrored`.
 const MANUAL_X: &[(&str, &str, &str)] = &[
-    // Свои контролы: индикатор по `control.mirrored` / `visualPosition`.
+    // Our own controls: the indicator by `control.mirrored` / `visualPosition`.
     ("RexonSlider.qml", "x:control.leftPadding", "полоса во всю доступную ширину — симметрична"),
     ("RexonSlider.qml", "x:control.mirrored?parent.width-width:0", "заливка"),
     (
@@ -821,8 +821,8 @@ const MANUAL_X: &[(&str, &str, &str)] = &[
         "x:fmButton.mirrored?fmButton.width-width-fmButton.rightPadding:fmButton.leftPadding",
         "кружок радиокнопки файлового менеджера",
     ),
-    // Слои во всё окно и координаты окна от `mapToItem(null, …)` —
-    // настоящие места на экране при любом языке.
+    // Window-wide layers and window coordinates from `mapToItem(null, …)` —
+    // real places on the screen in any language.
     ("OnboardingOverlay.qml", "x:0", "слой тура во всё окно и его затемнение"),
     ("OnboardingOverlay.qml", "x:tour.hole.x", "вырез вокруг цели в координатах окна"),
     ("RexonImageViewer.qml", "x:0", "слой просмотра во всё окно"),
@@ -831,7 +831,7 @@ const MANUAL_X: &[(&str, &str, &str)] = &[
         "x:Math.round((stage.width-canvas.width)/2+viewer.panX)",
         "картинка по центру и сдвиг рукой",
     ),
-    // Расчёт ядра в отсчёте от начала строки, переведённый `placeX`.
+    // The core's computation relative to the start of the line, converted by `placeX`.
     (
         "AppearancePage.qml",
         "x:root.arrows.placeX(suggestBox.box.x,suggestBox.box.width,root.width)",
@@ -839,8 +839,8 @@ const MANUAL_X: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// Привязка `x:` со строки `start`: сама строка и продолжения до следующего
-/// свойства, скобки или пустой строки — сжатая, без пробелов.
+/// The `x:` binding from line `start`: the line itself and its continuations up to the next
+/// property, brace or empty line — squashed, without spaces.
 fn x_binding(lines: &[&str], start: usize) -> String {
     let mut out = String::new();
     for (k, l) in lines.iter().enumerate().skip(start) {
@@ -854,7 +854,7 @@ fn x_binding(lines: &[&str], start: usize) -> String {
             }
         }
         let code = t.split("//").next().unwrap_or("");
-        // `x: 230; y: 34; …` в одну строку — только сама `x`.
+        // `x: 230; y: 34; …` on one line — only the `x` itself.
         let code = if k == start { code.split(';').next().unwrap_or("") } else { code };
         out.extend(code.chars().filter(|c| !c.is_whitespace()));
     }
@@ -902,16 +902,16 @@ fn manual_x_only_in_known_places() {
     for ((name, binding, what), n) in MANUAL_X.iter().zip(&used) {
         assert!(*n > 0, "{name}: записанной ручной координаты «{what}» (`{binding}`) нет — убрать запись");
     }
-    // Макет экрана и снимок профиля Steam: координаты картинки.
+    // The screen layout and the Steam profile snapshot: picture coordinates.
     assert!(in_zones >= 10, "ручных `x` в физических зонах найдено {in_zones} — разбор сломался");
-    // Сам разбор: продолжение выражения склеивается, соседнее свойство — нет.
+    // The parsing itself: a continuation of the expression is joined, a neighbouring property is not.
     let probe = ["    x: a", "       ? b : c", "    y: 0"];
     assert_eq!(x_binding(&probe, 0), "x:a?b:c");
     assert_eq!(x_binding(&["x: 1; y: 2"], 0), "x:1");
 }
 
-/// `SplitView` зеркалирование не учитывает: панели идут слева направо в
-/// порядке детей. Каждый наш `SplitView` обязан сам переставлять панели по
+/// `SplitView` does not take mirroring into account: the panels go left to right in
+/// the order of the children. Each of our `SplitView`s must reorder the panels itself by
 /// `LayoutMirroring.enabled` (`moveItem`).
 #[test]
 fn split_views_reorder_panels_when_mirrored() {
@@ -934,31 +934,31 @@ fn split_views_reorder_panels_when_mirrored() {
     assert!(found >= 1, "ни одного `SplitView` не найдено — разбор сломался");
 }
 
-/// Где ширину содержимого уменьшают на полосу прокрутки ради РАЗМЕРА, а
-/// место задают якорем, — поимённо: файл, `id` полосы и почему так можно.
+/// Where the content width is reduced by the scroll bar for the sake of SIZE, while
+/// the place is set by an anchor — by name: the file, the bar's `id` and why that is fine.
 const SCROLLBAR_WIDTH_EXCEPTIONS: &[(&str, &str, &str)] = &[
-    // Ширина вьюпорта нужна ядру для расчёта карточки; сама карточка стоит
-    // якорем от начала строки, и справа налево полоса слева её не задевает.
+    // The core needs the viewport width to compute the card; the card itself stands
+    // anchored from the start of the line, and right-to-left the bar on the left does not touch it.
     ("DesktopsPage.qml", "cardScroll", "ширина вьюпорта для расчёта карточки"),
 ];
 
-/// Ширина содержимого «минус полоса прокрутки» (`width - bar.width`,
+/// A content width "minus the scroll bar" (`width - bar.width`,
 /// `availableWidth - 14`, `width - (contentHeight > height ? 14 : 0)`)
-/// держит место под полосу справа. При языке справа налево полоса уходит
-/// влево и наезжает на начало строк, а пустая полоса остаётся справа.
-/// Правильно — ширина якорями `left`/`right` и место под полосу отступом
-/// `anchors.rightMargin`: его зеркалирование переносит к полосе.
+/// keeps room for the bar on the right. In a right-to-left language the bar moves
+/// to the left and covers the start of the lines, while an empty strip stays on the right.
+/// The right way is a width with `left`/`right` anchors and room for the bar via
+/// `anchors.rightMargin`: mirroring moves it over to the bar.
 ///
-/// ЧЕГО ПРОВЕРКА НЕ ЛОВИТ: вычитание голого числа из ширины без связи с
-/// полосой (`parent.width - 14` рядом с `ScrollBar {}` без `id`) — его не
-/// отличить от симметричного отступа; такие места ищутся снимком при
+/// WHAT THE CHECK DOES NOT CATCH: subtracting a bare number from the width without a link to
+/// a bar (`parent.width - 14` next to a `ScrollBar {}` without an `id`) — it cannot be
+/// told apart from a symmetric margin; such places are found by a snapshot with
 /// `-reverse`.
 #[test]
 fn content_width_does_not_subtract_the_scrollbar() {
     fn offences(text: &str) -> Vec<String> {
         let code = squash_code(text);
-        // Для имён полос строки не склеиваются: иначе `id` слипся бы со
-        // следующим свойством.
+        // Lines are not joined for bar names: otherwise the `id` would stick to
+        // the next property.
         let by_lines: String = text
             .lines()
             .filter(|l| !l.trim_start().starts_with("//"))
@@ -966,7 +966,7 @@ fn content_width_does_not_subtract_the_scrollbar() {
             .collect();
         let by_lines = by_lines.replace("{\n", "{");
         let mut out = Vec::new();
-        // Полосы с именем: `ScrollBar { id: bar`.
+        // Named bars: `ScrollBar { id: bar`.
         let mut ids = Vec::new();
         for (at, _) in by_lines.match_indices("ScrollBar{id:") {
             let tail = &by_lines[at + "ScrollBar{id:".len()..];
@@ -981,7 +981,7 @@ fn content_width_does_not_subtract_the_scrollbar() {
                 }
             }
         }
-        // `availableWidth - 14`: место под полосу `ScrollView` числом.
+        // `availableWidth - 14`: room for the `ScrollView` bar as a number.
         for (at, m) in code.match_indices("availableWidth-") {
             if code[at + m.len()..].starts_with(|c: char| c.is_ascii_digit()) {
                 out.push("availableWidth".into());
@@ -1013,7 +1013,7 @@ fn content_width_does_not_subtract_the_scrollbar() {
     for ((name, id, what), n) in SCROLLBAR_WIDTH_EXCEPTIONS.iter().zip(&used) {
         assert!(*n > 0, "{name}: записанного исключения «{what}» (`{id}`) больше нет — убрать запись");
     }
-    // Сам разбор: все три записи ловятся, отступ якорем — нет.
+    // The parsing itself: all three forms are caught, an anchor margin is not.
     let probe = "ScrollBar {\n    id: bar\n    policy: ScrollBar.AlwaysOn\n}\n\
                  Text { width: f.width\n        - (bar.visible ? bar.width : 0) }\n\
                  Label { width: v.availableWidth - 14 }\n\
@@ -1024,14 +1024,14 @@ fn content_width_does_not_subtract_the_scrollbar() {
     assert!(offences(fine).is_empty());
 }
 
-/// Подстановки `%1`, которые собирает сам QML, — только через `RexonBidi`.
+/// `%1` substitutions that QML assembles itself — only via `RexonBidi`.
 ///
-/// Ядро подставляет через `i18n::fill`, и при языке справа налево каждая
-/// подстановка встаёт в изолят FSI/PDI. `String.arg` в QML изолятов не
-/// ставит: имя файла или число в конце арабской фразы перетасует порядок
-/// слов вокруг себя. Поэтому `.arg(` в нашем QML пишется только в
-/// `RexonBidi.qml`, а сам `RexonBidi` обязан ставить изолят по направлению
-/// приложения.
+/// The core substitutes via `i18n::fill`, and in a right-to-left language every
+/// substitution is placed in an FSI/PDI isolate. `String.arg` in QML does not add
+/// isolates: a file name or a number at the end of an Arabic phrase would shuffle the order
+/// of the words around it. So `.arg(` in our QML is written only in
+/// `RexonBidi.qml`, and `RexonBidi` itself must add an isolate by the application's
+/// direction.
 #[test]
 fn qml_substitutions_go_through_rexon_bidi() {
     let bidi = squash_code(&source("rust/rexon-gui/qml/RexonBidi.qml"));
@@ -1065,15 +1065,15 @@ fn qml_substitutions_go_through_rexon_bidi() {
     }
 }
 
-/// Каждая строка каталога со стрелкой ← → несёт пометку переводчику.
+/// Every catalog string with a ← → arrow carries a note to the translator.
 ///
-/// Правило одно на весь продукт (`RexonArrows.keyHint`): переводчик пишет
-/// стрелку так, как она смотрит на его языке, — справа налево «затем»,
-/// «вперёд» и путь меню «Настройки → Экран» пишутся через ←. Без пометки
-/// переводчик перепишет стрелку как в английском исходнике, и путь меню в
-/// арабском интерфейсе покажет назад. Пометку `TRANSLATORS:` ставят над
-/// вызовом `tr`/`n_`; xgettext вешает её на ПЕРВЫЙ вызов в строке кода,
-/// поэтому две переводимые строки в одной строке кода разносятся по разным.
+/// The rule is one for the whole product (`RexonArrows.keyHint`): the translator writes
+/// the arrow the way it points in their language — in right-to-left languages "then",
+/// "forward" and the menu path «Settings → Display» are written with ←. Without the note
+/// the translator will copy the arrow as in the English source, and the menu path in
+/// the Arabic interface will point backwards. The `TRANSLATORS:` note is put above
+/// the `tr`/`n_` call; xgettext attaches it to the FIRST call on a code line,
+/// so two translatable strings on one code line are split onto different lines.
 #[test]
 fn arrows_in_catalog_carry_a_translator_note() {
     let pot = source("po/rexon.pot");
@@ -1098,8 +1098,8 @@ fn arrows_in_catalog_carry_a_translator_note() {
             continue;
         }
         total += 1;
-        // Общая пометка «arrows ← → point the way…» либо своя, как у справки
-        // `.rxn`: «<pre> stay left-to-right…, so keep their arrows ← as they are».
+        // The common note «arrows ← → point the way…» or a custom one, as for the
+        // `.rxn` help: «<pre> stay left-to-right…, so keep their arrows ← as they are».
         if !entry.lines().any(|l| l.starts_with("#.") && l.contains("arrows")) {
             missing.push(msgid);
         }

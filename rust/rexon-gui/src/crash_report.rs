@@ -1,41 +1,45 @@
-//! Отчёт о крахе Rust-окна (`rexon-main-window`).
+//! Crash report of the Rust window (`rexon-main-window`).
 //!
-//! У Python-хозяина отчёт был (`rexon/qt_main/app.py`: `sys.excepthook` →
-//! файл в `~/.config/rexon/crashes` + окно), у Rust-окна не было ничего: при
-//! панике окно просто исчезало, и покупатель не узнавал ни что случилось, ни
-//! что отправить разработчику. Здесь — то же для паник.
+//! The Python host had a report (`rexon/qt_main/app.py`: `sys.excepthook` →
+//! a file in `~/.config/rexon/crashes` + a window), the Rust window had
+//! nothing: on a panic the window simply disappeared, and the customer
+//! learned neither what happened nor what to send to the developer. Here is
+//! the same for panics.
 //!
-//! ГРАНИЦА. Каталог, имя файла, шапка, ротация, тексты окна, решение «один
-//! отчёт на процесс / смертельно ли» — ядро (`rexon_core::qt_app`), флаг
-//! процесса окна — `rexon_core::cli`. Здесь только исполнение: перехватчик,
-//! сбор сведений о системе, запуск окна и само окно.
+//! BOUNDARY. The directory, the file name, the header, rotation, the window
+//! texts, the decision "one report per process / is it fatal" are the
+//! core's (`rexon_core::qt_app`), the window process flag is
+//! `rexon_core::cli`. Here there is only execution: the handler, collecting
+//! system information, starting the window and the window itself.
 //!
-//! ПОЧЕМУ ОКНО — ОТДЕЛЬНЫЙ ПРОЦЕСС. Упавший процесс рисовать не может:
-//!   * паника бывает в рабочем потоке, а Qt разрешает окна только в потоке
-//!     GUI (у Python это лечилось перебросом сигналом — здесь его некому
-//!     принять: цикл событий, возможно, уже мёртв);
-//!   * паника в обработчике, который зовёт Qt, упирается в границу FFI, и
-//!     процесс получает `abort` СРАЗУ после перехватчика — ни на какой
-//!     цикл событий времени нет;
-//!   * причиной паники может быть сама Qt в развале.
+//! WHY THE WINDOW IS A SEPARATE PROCESS. A crashed process cannot draw:
+//!   * a panic may happen in a worker thread, while Qt allows windows only
+//!     in the GUI thread (in Python this was cured by re-throwing through a
+//!     signal — here there is nobody to receive it: the event loop may
+//!     already be dead);
+//!   * a panic in a handler called by Qt hits the FFI boundary, and the
+//!     process gets an `abort` RIGHT after the handler — there is no time
+//!     for any event loop;
+//!   * the cause of the panic may be Qt itself falling apart.
 //!
-//! Поэтому перехватчик пишет файл и запускает ТОТ ЖЕ бинарь с флагом
-//! `--crash-dialog <файл>`: свежий процесс поднимает свою Qt и показывает
-//! окно, а упавший спокойно умирает. Запускается `/proc/self/exe`, а не путь
-//! на диске: при обновлении программы поверх работающей файл по пути уже
-//! другой (или удалён), а образ процесса — тот самый.
+//! So the handler writes a file and starts THE SAME binary with the flag
+//! `--crash-dialog <file>`: a fresh process brings up its own Qt and shows
+//! the window, and the crashed one quietly dies. `/proc/self/exe` is
+//! started, not the path on disk: when the program is updated over a
+//! running one, the file at the path is already different (or removed),
+//! while the process image is the very one.
 //!
-//! Процесс окна двухступенчатый: «сторож» (без Qt) запускает «окно» и ждёт
-//! от него метку «показано». Метки нет — Qt не стартовала (`abort`), QML
-//! не загрузился — сторож показывает системное окно (kdialog, затем
-//! zenity). Нет дисплея вовсе — не показывается ничего: остаются файл и
-//! строка в stderr.
-//! Упавший процесс ждать не может — отсюда отдельный сторож. Не запустился
-//! сам бинарь — системное окно пробует уже перехватчик.
+//! The window process has two stages: a "guard" (without Qt) starts the
+//! "window" and waits for a "shown" mark from it. No mark — Qt did not
+//! start (`abort`), the QML did not load — the guard shows a system window
+//! (kdialog, then zenity). No display at all — nothing is shown: the file
+//! and a line in stderr remain.
+//! The crashed process cannot wait — hence a separate guard. If the binary
+//! itself did not start, the handler already tries a system window.
 //!
-//! Подключение — одна строка первой в `main` бинаря:
-//! `rexon_gui::crash_report::install();` — она же отрабатывает процесс окна
-//! (и тогда из неё не возвращается).
+//! Hook-up — one line, the first in the binary's `main`:
+//! `rexon_gui::crash_report::install();` — it also runs the window process
+//! (and then does not return).
 
 use std::ffi::{c_char, CStr};
 use std::os::unix::process::CommandExt;
@@ -49,41 +53,46 @@ use cxx_qt_lib::{
 };
 use rexon_core::{cli, qt_app, ui_base};
 
-/// Не показывать окно о крахе (только файл и stderr). Для прогонов без
-/// экрана: тесты, CI, скрипты. Любое непустое значение, кроме `0`.
+/// Do not show the crash window (only the file and stderr). For runs
+/// without a screen: tests, CI, scripts. Any non-empty value except `0`.
 pub const NO_DIALOG_ENV: &str = "REXON_CRASH_NO_DIALOG";
 
-/// Ступень процесса окна: без переменной — сторож, `window` — само окно.
-/// Переменная же отличает процесс окна от случайного ручного запуска с
-/// флагом: такой запуск тоже идёт через сторожа, и это правильно.
+/// Stage of the window process: without the variable — the guard, `window`
+/// — the window itself. The variable also tells the window process from an
+/// accidental manual run with the flag: such a run also goes through the
+/// guard, and that is right.
 const STAGE_ENV: &str = "REXON_CRASH_DIALOG_STAGE";
 const STAGE_WINDOW: &str = "window";
 
-/// Код возврата окна «QML не загрузился» — сторожу пора звать запасное.
+/// Window exit code "the QML did not load" — time for the guard to call
+/// the fallback.
 const WINDOW_LOAD_FAILED: i32 = 3;
 
-/// Строка, которой окно говорит сторожу «я на экране» (своим stdout,
-/// сторож держит другой конец трубы). После неё запасные окна не зовутся,
-/// чем бы окно ни кончилось: дисплей пропадает при выходе из сеанса, Qt
-/// выходит с ошибкой — и без этой метки сторож звал бы kdialog туда, где
-/// показать уже нечего (тот падает с `abort`, поймано живым прогоном).
+/// The line with which the window tells the guard "I am on screen" (on its
+/// stdout; the guard holds the other end of the pipe). After it the
+/// fallback windows are not called, however the window ends: the display
+/// disappears on logout, Qt exits with an error — and without this mark the
+/// guard would call kdialog where there is nothing to show any more (it
+/// crashes with `abort`, caught by a live run).
 const WINDOW_SHOWN_MARKER: &str = "crash-dialog-shown";
 
-/// Отчёт в этом процессе уже был (см. `qt_app::panic_decision`).
+/// There has already been a report in this process (see
+/// `qt_app::panic_decision`).
 static REPORTED: AtomicBool = AtomicBool::new(false);
 
-/// Поставить перехватчик паники. Звать ПЕРВОЙ строкой `main`.
+/// Install the panic handler. Call as the FIRST line of `main`.
 ///
-/// Если этот процесс — окно о крахе (`--crash-dialog <файл>`), функция
-/// показывает окно и завершает процесс, не возвращаясь: обычный запуск
-/// (замок «один Rexon на сессию», лоток, главное окно) ему не нужен и
-/// вреден — упавший экземпляр ещё может держать замок.
+/// If this process is the crash window (`--crash-dialog <file>`), the
+/// function shows the window and ends the process without returning: an
+/// ordinary start (the "one Rexon per session" lock, the tray, the main
+/// window) is not needed and is harmful for it — the crashed instance may
+/// still hold the lock.
 pub fn install() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(req) = cli::crash_dialog_request(&args) {
-        // Строки окна о крахе («показать негде», «не поднялось») — в общий
-        // журнал: этот процесс запускается без терминала, и его поток
-        // ошибок иначе никто не прочтёт.
+        // Lines of the crash window ("nowhere to show", "did not come up") go to
+        // the shared log: this process starts without a terminal, and otherwise
+        // nobody would read its error stream.
         rexon_core::applog::init();
         let code = if std::env::var(STAGE_ENV).as_deref() == Ok(STAGE_WINDOW) {
             run_window(&req)
@@ -94,15 +103,15 @@ pub fn install() {
     }
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        // Штатная печать в stderr — всегда и первой: терминал и журнал
-        // обязаны видеть панику, даже если отчёт дальше не запишется.
+        // Standard printing to stderr — always and first: the terminal and the log
+        // must see the panic even if the report is not written afterwards.
         previous(info);
         report_panic(info);
     }));
 }
 
-/// Тело перехватчика. Ни одного `unwrap`: паника внутри перехватчика — это
-/// немедленный `abort` без отчёта.
+/// Body of the handler. Not a single `unwrap`: a panic inside the handler
+/// is an immediate `abort` without a report.
 fn report_panic(info: &PanicHookInfo) {
     let thread = std::thread::current();
     // TRANSLATORS: stands in the crash report for a thread that has no name.
@@ -124,8 +133,8 @@ fn report_panic(info: &PanicHookInfo) {
     let location = info
         .location()
         .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()));
-    // Захват принудительный: переменная RUST_BACKTRACE у покупателя не
-    // стоит, а отчёт без стека почти бесполезен.
+    // Forced capture: the customer does not have the RUST_BACKTRACE variable
+    // set, and a report without a stack is almost useless.
     let backtrace = std::backtrace::Backtrace::force_capture().to_string();
 
     let now = qt_app::Timestamp::now_local().unwrap_or_default();
@@ -135,13 +144,14 @@ fn report_panic(info: &PanicHookInfo) {
 
     let saved = qt_app::save_crash_log(&mut qt_app::AtomicCrashIo, &dir, &now, &header, &body);
     let path = saved.or_else(|| {
-        // Каталог отчётов недоступен (нет места, чужие права) — окну отчёт
-        // всё равно нужен, и он едет через временный файл.
+        // The reports directory is unavailable (no space, foreign permissions) —
+        // the window still needs a report, and it goes through a temporary file.
         let p = qt_app::crash_transport_path(&runtime_dir(), std::process::id());
         qt_app::atomic_write(&p, &format!("{header}{body}")).ok().map(|_| p)
     });
-    // Одна строка в общий журнал (`applog`): паника, где и куда лёг отчёт.
-    // Штатная печать паники уже ушла в поток ошибок выше.
+    // One line to the shared log (`applog`): the panic, where, and where the
+    // report went. The standard panic printing has already gone to the error
+    // stream above.
     rexon_core::log_error!(
         "crash",
         "паника в потоке «{thread_name}»{}: {message}; отчёт: {}",
@@ -160,8 +170,8 @@ fn report_panic(info: &PanicHookInfo) {
         .as_deref()
         .is_some_and(|p| spawn_dialog_process(p, decision.fatal));
     if !launched {
-        // Свой бинарь не запустился (или показывать нечего по файлу) —
-        // системное окно прямо отсюда, без ожидания.
+        // Our own binary did not start (or there is nothing to show from the
+        // file) — a system window right from here, without waiting.
         let report = format!("{header}{body}");
         let dialog = qt_app::crash_dialog_for_report(
             &report,
@@ -188,23 +198,25 @@ fn dialog_disabled() -> bool {
     std::env::var_os(NO_DIALOG_ENV).is_some_and(|v| !v.is_empty() && v != "0")
 }
 
-/// Запустить процесс окна о крахе (ступень «сторож»).
+/// Start the crash window process (the "guard" stage).
 fn spawn_dialog_process(report_path: &str, fatal: bool) -> bool {
     let mut cmd = self_command();
     cmd.args(cli::crash_dialog_argv(report_path, fatal))
         .env_remove(STAGE_ENV)
-        // Окно о крахе — на том же языке, что и упавшее окно. Настройки оно
-        // само не читает (их поломка может быть причиной краха), поэтому
-        // выбранный язык едет к нему окружением: `LANGUAGE` — первое, что
-        // слушает выбор языка при пустой настройке (`i18n::language_candidates`).
+        // The crash window speaks the same language as the crashed window. It does
+        // not read the settings itself (their breakage may be the cause of the
+        // crash), so the chosen language travels to it through the environment:
+        // `LANGUAGE` is the first thing language selection listens to with an
+        // empty setting (`i18n::language_candidates`).
         .env("LANGUAGE", rexon_core::i18n::current_language())
-        // Метка «исходный LANGUAGE» перебила бы выбранный язык выше: окно о
-        // крахе обязано взять именно его.
+        // The "original LANGUAGE" mark would override the language chosen above:
+        // the crash window must take exactly that one.
         .env_remove(rexon_core::i18n::ORIGINAL_LANGUAGE_ENV);
     spawn_detached(&mut cmd, fatal)
 }
 
-/// Команда на свой же образ (см. шапку модуля: `/proc/self/exe`, а не путь).
+/// A command on our own image (see the module header: `/proc/self/exe`, not
+/// the path).
 fn self_command() -> Command {
     let mut cmd = Command::new("/proc/self/exe");
     if let Some(arg0) = std::env::args_os().next() {
@@ -213,11 +225,12 @@ fn self_command() -> Command {
     cmd
 }
 
-/// Запустить без ожидания, своей группой процессов: Ctrl+C в терминале,
-/// которым гасят упавший процесс, не должен гасить окно о нём.
+/// Start without waiting, in our own process group: Ctrl+C in the terminal,
+/// used to kill the crashed process, must not kill the window about it.
 ///
-/// Если процесс выживет (`!fatal`), ребёнка дожидается отдельный поток —
-/// иначе закрытое окно висело бы зомби до выхода Rexon.
+/// If the process survives (`!fatal`), a separate thread waits for the
+/// child — otherwise a closed window would hang as a zombie until Rexon
+/// exits.
 fn spawn_detached(cmd: &mut Command, fatal: bool) -> bool {
     cmd.stdin(Stdio::null()).process_group(0);
     match cmd.spawn() {
@@ -236,7 +249,7 @@ fn spawn_detached(cmd: &mut Command, fatal: bool) -> bool {
 }
 
 // ============================================================================
-// Сведения о системе для шапки
+// System information for the header
 // ============================================================================
 
 fn env_opt(name: &str) -> Option<String> {
@@ -255,9 +268,9 @@ fn runtime_dir() -> String {
 }
 
 extern "C" {
-    /// Версия загруженной Qt. Сишная связь (объявлена в Qt внутри
-    /// `extern "C"`), возвращает статическую строку — безопасно звать и
-    /// тогда, когда сама Qt уже в развале.
+    /// Version of the loaded Qt. C linkage (declared in Qt inside
+    /// `extern "C"`), returns a static string — safe to call even when Qt
+    /// itself is falling apart.
     fn qVersion() -> *const c_char;
 }
 
@@ -291,7 +304,7 @@ fn read_trim(path: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Шапка отчёта по живой системе.
+/// Report header from the live system.
 fn live_header(now: qt_app::Timestamp) -> String {
     let system = Some(read_trim("/proc/sys/kernel/ostype"))
         .filter(|s| !s.is_empty())
@@ -331,11 +344,11 @@ fn live_header(now: qt_app::Timestamp) -> String {
 }
 
 // ============================================================================
-// Процесс окна о крахе
+// Crash window process
 // ============================================================================
 
-/// Содержимое окна по файлу отчёта. Файл не читается — окно всё равно
-/// показывается: человек должен узнать, что программа упала.
+/// Window content from the report file. If the file cannot be read, the
+/// window is shown anyway: the user must learn that the program crashed.
 fn load_dialog(req: &cli::CrashDialogRequest) -> qt_app::CrashDialog {
     let report = std::fs::read(&req.report_path)
         .map(|b| String::from_utf8_lossy(&b).into_owned())
@@ -346,7 +359,8 @@ fn load_dialog(req: &cli::CrashDialogRequest) -> qt_app::CrashDialog {
     qt_app::crash_dialog_for_report(&report, &req.report_path, &crash_dir(), req.fatal)
 }
 
-/// Ступень «сторож»: запустить окно и дождаться; не показалось — запасные.
+/// The "guard" stage: start the window and wait; if it did not show — the
+/// fallbacks.
 fn supervise(req: &cli::CrashDialogRequest, args: &[String]) -> i32 {
     if !can_show() {
         rexon_core::log_warn!("crash", "окно о крахе показать негде (нет дисплея); отчёт: {}", req.report_path);
@@ -367,13 +381,14 @@ fn supervise(req: &cli::CrashDialogRequest, args: &[String]) -> i32 {
     1
 }
 
-/// Запустить ступень «окно» и дождаться. `Ok` — окно успело показаться
-/// (метка [`WINDOW_SHOWN_MARKER`]), как бы оно потом ни завершилось.
+/// Start the "window" stage and wait. `Ok` means the window managed to show
+/// (the [`WINDOW_SHOWN_MARKER`] mark), however it ended afterwards.
 fn run_window_stage(args: &[String]) -> Result<(), String> {
     use std::io::BufRead;
     let (reader, writer) = std::io::pipe().map_err(|e| e.to_string())?;
-    // Команда — временная и умирает в конце выражения вместе с копией
-    // пишущего конца: иначе чтение ниже не дождалось бы конца трубы.
+    // The command is temporary and dies at the end of the expression together
+    // with the copy of the writing end: otherwise the read below would not get
+    // the end of the pipe.
     let mut child = self_command()
         .args(args)
         .env(STAGE_ENV, STAGE_WINDOW)
@@ -381,9 +396,9 @@ fn run_window_stage(args: &[String]) -> Result<(), String> {
         .stdout(writer)
         .spawn()
         .map_err(|e| e.to_string())?;
-    // Только первая строка: после показа окно может запустить файловый
-    // менеджер («Открыть папку»), и тот унаследует трубу — ждать её конца
-    // значило бы висеть, пока человек не закроет файловый менеджер.
+    // Only the first line: after showing, the window may start a file manager
+    // ("Open folder"), which inherits the pipe — waiting for its end would mean
+    // hanging until the user closes the file manager.
     let mut line = String::new();
     let _ = std::io::BufReader::new(reader).read_line(&mut line);
     let status = child.wait();
@@ -396,11 +411,12 @@ fn run_window_stage(args: &[String]) -> Result<(), String> {
     })
 }
 
-/// Ступень «окно»: своя Qt, окно на QML, код 0 — человек его закрыл.
+/// The "window" stage: its own Qt, a QML window, code 0 — the user closed
+/// it.
 fn run_window(req: &cli::CrashDialogRequest) -> i32 {
     let dialog = load_dialog(req);
-    // Пустая QT_QPA_PLATFORM мешает Qt выбрать wayland-плагин — то же
-    // правило ядра, что у всех точек входа. Потоков ещё нет.
+    // An empty QT_QPA_PLATFORM prevents Qt from choosing the wayland plugin —
+    // the same core rule as for all entry points. There are no threads yet.
     if qt_app::should_unset_qt_platform(env_opt("QT_QPA_PLATFORM").as_deref()) {
         unsafe { std::env::remove_var("QT_QPA_PLATFORM") };
     }
@@ -410,25 +426,27 @@ fn run_window(req: &cli::CrashDialogRequest) -> i32 {
         app.set_organization_name(&QString::from(qt_app::ORGANIZATION_NAME));
     }
     if let Some(app) = app.as_mut() {
-        // ⭐ ИМЯ ДЛЯ СИСТЕМЫ — МАШИННОЕ И ОДНО НА ПРОДУКТ. Окно о крахе —
-        // отдельный процесс, и до сих пор он назывался Qt переведённым
-        // заголовком ГЛАВНОГО окна (`qt_main::WINDOW_TITLE`): один продукт
-        // приходил в систему двумя именами сразу — `Rexon` от главного окна и
-        // строкой для человека отсюда. Дверь у имени одна — `rexon_core::tray::APP_ID`,
-        // там же разбор, почему оно обязано быть постоянным и непереводимым.
+        // ⭐ THE NAME FOR THE SYSTEM IS A MACHINE NAME AND ONE PER PRODUCT. The
+        // crash window is a separate process, and until now Qt called it by the
+        // translated title of the MAIN window (`qt_main::WINDOW_TITLE`): one
+        // product came to the system under two names at once — `Rexon` from the
+        // main window and a human-readable string from here. The name has one
+        // door — `rexon_core::tray::APP_ID`, where the analysis of why it must be
+        // constant and untranslatable lives too.
         //
-        // Значка в лотке у этого процесса нет, но имя приложения уходит и мимо
-        // лотка: им подписаны записи краха в системном журнале, его берёт портал
-        // и окна системы. Видимый заголовок самого окна от этого НЕ меняется:
-        // человек читает `qt_app::crash_dialog_title()`, который приходит в QML
-        // свойством `dialogTitle` и с именем приложения никак не связан.
+        // This process has no tray icon, but the application name goes past the
+        // tray as well: crash entries in the system journal are labelled with it,
+        // and the portal and system windows take it. The visible title of the
+        // window itself does NOT change because of this: the user reads
+        // `qt_app::crash_dialog_title()`, which comes into QML as the
+        // `dialogTitle` property and has nothing to do with the application name.
         app.set_application_name(&QString::from(rexon_core::tray::APP_ID));
     }
-    // Значок окна в панели задач X11 — тот же, что у главного окна.
+    // Window icon in the X11 task bar — the same as the main window's.
     crate::tray::set_app_window_icon();
     QGuiApplication::set_desktop_file_name(&QString::from(qt_app::DESKTOP_FILE_NAME));
-    // Окно о крахе говорит на языке Rexon — и справа налево тоже, и
-    // стандартные надписи Qt (меню правки поля с отчётом) тоже.
+    // The crash window speaks Rexon's language — right to left too, and the
+    // standard Qt labels (the edit menu of the report field) too.
     crate::install_qt_translations(&rexon_core::i18n::current_language());
     crate::fonts::install_rtl_fallbacks();
 
@@ -437,9 +455,10 @@ fn run_window(req: &cli::CrashDialogRequest) -> i32 {
         return WINDOW_LOAD_FAILED;
     };
 
-    // Окно в стандартном скине продукта. Скин по умолчанию, а не
-    // выбранный в настройках: окно о крахе не имеет права зависеть от
-    // чтения настроек — их поломка может оказаться причиной краха.
+    // The window is in the product's standard skin. The default skin, not the
+    // one chosen in the settings: the crash window has no right to depend on
+    // reading the settings — their breakage may turn out to be the cause of
+    // the crash.
     let colors = ui_base::skin_colors(ui_base::DEFAULT_SKIN);
     let color = |k: &str| colors.get(k).cloned().unwrap_or_default();
     let folder = dialog
@@ -462,9 +481,9 @@ fn run_window(req: &cli::CrashDialogRequest) -> i32 {
     put("informative", dialog.informative.as_deref().unwrap_or(""));
     put("detailed", &dialog.detailed);
     put("folderUrl", &folder.to_string());
-    // Кнопка «Сообщить о проблеме» есть только тогда, когда у продукта
-    // задан адрес трекера (`qt_app::ISSUE_TRACKER_URL`): пустой адрес —
-    // пустое свойство, и QML прячет кнопку.
+    // The "Report a problem" button exists only when the product has an issue
+    // tracker address set (`qt_app::ISSUE_TRACKER_URL`): an empty address
+    // means an empty property, and QML hides the button.
     let report = qt_app::crash_report_issue_button();
     let report_url = report
         .as_ref()
@@ -511,17 +530,18 @@ fn run_window(req: &cli::CrashDialogRequest) -> i32 {
     }
 }
 
-/// Адрес, под которым движок знает разметку окна (для сообщений об
-/// ошибках; относительных импортов у окна нет).
+/// The address under which the engine knows the window markup (for error
+/// messages; the window has no relative imports).
 const DIALOG_QML_URL: &str = "qrc:/rexon/crash/CrashDialog.qml";
 
-/// Разметка окна о крахе. Строкой, а не файлом модуля `org.rexon.gui`:
-/// окну не нужен ни один наш тип, а статический QML-модуль продукта в
-/// процессе окна — лишняя точка отказа. Ни одной человеческой строки здесь
-/// не набрано — все приходят из ядра свойствами.
+/// Markup of the crash window. As a string, not as a file of the
+/// `org.rexon.gui` module: the window needs none of our types, and the
+/// product's static QML module in the window process is an extra point of
+/// failure. Not a single human-readable string is typed here — all of them
+/// come from the core as properties.
 ///
-/// Стиль Controls — Basic явно: у системного стиля KDE своё оформление
-/// кнопок, и настройка их фона там не действует.
+/// The Controls style is Basic explicitly: the KDE system style has its own
+/// button look, and setting their background has no effect there.
 const DIALOG_QML: &str = r##"
 import QtQuick
 import QtQuick.Controls.Basic
@@ -721,21 +741,22 @@ ApplicationWindow {
 "##;
 
 // ============================================================================
-// Сторожа идентичности
+// Identity guards
 // ============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// ⭐Окно о крахе — отдельный процесс продукта, и системе оно обязано
-    /// называться ТЕМ ЖЕ машинным именем, что главное окно и стенд лотка
-    /// (`rexon_core::tray::APP_ID`; разбор — у самой константы). Живой
-    /// дефект: сюда попадал переведённый заголовок главного окна, и один
-    /// продукт приходил в систему двумя именами сразу.
+    /// ⭐ The crash window is a separate process of the product, and it must
+    /// present itself to the system under THE SAME machine name as the main
+    /// window and the tray bench (`rexon_core::tray::APP_ID`; the analysis is
+    /// at the constant itself). A live defect: the translated title of the main
+    /// window ended up here, and one product came to the system under two
+    /// names at once.
     ///
-    /// Сторож смотрит в ИСХОДНИК, а не в значение: значение само с собой
-    /// всегда сойдётся, а разъехаться может ровно вызов.
+    /// The guard looks at the SOURCE, not at the value: the value always agrees
+    /// with itself, while it is exactly the call that can drift.
     #[test]
     fn имя_для_системы_берётся_из_общей_двери_а_не_из_заголовка() {
         let src = include_str!("crash_report.rs");
@@ -752,13 +773,15 @@ mod tests {
             !call.contains("WINDOW_TITLE"),
             "в имя для системы снова уехал заголовок окна: {call}"
         );
-        // Само имя — машинное: одно слово латиницей, а не подпись для человека.
+        // The name itself is a machine name: one word in Latin letters, not a
+        // label for a human.
         assert!(rexon_core::tray::APP_ID.is_ascii());
         assert!(!rexon_core::tray::APP_ID.contains(' '));
     }
 
-    /// А человек по-прежнему читает человеческое: видимый заголовок окна —
-    /// строка ядра для покупателя, и от машинного имени он не зависит.
+    /// And the human still reads a human-readable string: the visible window
+    /// title is the core's string for the customer and does not depend on the
+    /// machine name.
     #[test]
     fn видимый_заголовок_окна_падения_остался_человеческим() {
         rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
@@ -773,10 +796,11 @@ mod tests {
             "заголовок для человека — фраза, а не машинное имя: {}",
             dialog.title
         );
-        // Заголовок окна берётся из этого свойства, а не из имени приложения.
+        // The window title is taken from this property, not from the application
+        // name.
         assert!(DIALOG_QML.contains("title: dialogTitle"));
-        // Направление письма (`Qt.application.layoutDirection`) брать можно —
-        // нельзя имя приложения.
+        // The writing direction (`Qt.application.layoutDirection`) may be taken —
+        // the application name may not.
         assert!(!DIALOG_QML.contains("Qt.application.name"));
         assert!(!DIALOG_QML.contains("Qt.application.displayName"));
     }

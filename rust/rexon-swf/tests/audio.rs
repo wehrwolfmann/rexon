@@ -1,21 +1,21 @@
-//! Звук без устройства (фича `sound`): декодирование, микширование, громкость и тишина.
+//! Sound without a device (feature `sound`): decoding, mixing, volume and silence.
 #![cfg(feature = "sound")]
 
 use std::path::Path;
 
-/// Ролик из тестов Ruffle (`tests/tests/swfs/audio/stream_incomplete_loop`, MIT OR Apache-2.0):
-/// потоковый звук, который Ruffle декодирует без mp3/aac.
+/// A movie from the Ruffle tests (`tests/tests/swfs/audio/stream_incomplete_loop`, MIT OR Apache-2.0):
+/// streaming sound that Ruffle decodes without mp3/aac.
 fn movie() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/stream_incomplete_loop.swf")
 }
 
 #[test]
 fn ползунок_линеен_как_у_видео_и_ноль_молчит() {
-    // ⚠️ Сверяется не «тише/громче», а ПРОПОРЦИЯ. Своя шкала Ruffle
-    // логарифмическая: половина ползунка даёт там 0,1 уровня, четверть — 0,025.
-    // Проверка «half < loud» такую шкалу пропускала бы зелёной, а человек
-    // слышал бы, что Flash на середине ползунка почти молчит, тогда как видео
-    // на той же середине играет вполголоса.
+    // ⚠️ What is checked is not "quieter/louder" but the PROPORTION. Ruffle's own scale
+    // is logarithmic: half the slider gives 0.1 of the level there, a quarter — 0.025.
+    // A "half < loud" check would let such a scale pass green, while the person
+    // would hear Flash almost silent in the middle of the slider, whereas video
+    // at the same middle plays at half volume.
     let swf = movie();
     let (loud, peak) = rexon_swf::probe_audio(&swf, 4.0, 1.0).unwrap();
     let (half, _) = rexon_swf::probe_audio(&swf, 4.0, 0.5).unwrap();

@@ -1,47 +1,51 @@
-//! Клиент сеанса прав (пункт Б7 плана, см. [`super`]): сторона окна.
+//! The privilege session client (item B7 of the plan, see [`super`]): the
+//! window's side.
 //!
-//! # Что делает
+//! # What it does
 //!
-//! 1. **Ищет помощника** [`HELPER_NAME`] среди [`helper_candidates`] и
-//!    проверяет цепочку владения ([`check_ownership`]): файл и КАЖДЫЙ каталог
-//!    пути принадлежат root, без записи для группы и всех, файл — обычный и
-//!    исполняемый. Помощник, запущенный через `pkexec`, — это root для
-//!    любого, кто успел подменить файл или каталог над ним; поэтому чужой
-//!    владелец — сеанс не поднимается. Нет помощника или он недопустим — это
-//!    единственные случаи, когда вызывающему можно идти путём «как сейчас»
-//!    ([`ClientError::raw_fallback_allowed`], правило З5 в
+//! 1. **Finds the helper** [`HELPER_NAME`] among [`helper_candidates`] and
+//!    checks the ownership chain ([`check_ownership`]): the file and EVERY
+//!    directory of the path belong to root, not writable by group and others,
+//!    the file is regular and executable. A helper started via `pkexec` is root
+//!    for anyone who managed to substitute the file or a directory above it; so
+//!    with a foreign owner the session is not raised. No helper, or an
+//!    unacceptable one, are the only cases when the caller may take the "as
+//!    now" path ([`ClientError::raw_fallback_allowed`], rule Z5 in
 //!    [`validate::raw_fallback_allowed`]).
-//! 2. **Поднимает сеанс** одним `pkexec`: `socketpair` ([`proto::seqpacket_pair`],
-//!    оба конца с `CLOEXEC`), конец помощника — на fd 0 и 1 дочки через
-//!    [`Spawner`]; своя копия этого конца закрывается сразу после запуска.
-//!    Ни один другой потомок окна сокета не наследует (З3): у оригиналов
-//!    `CLOEXEC`, а на fd 0/1 сокет ставит только `dup2` внутри запускаемой
-//!    дочки. Затем [`Hello`] → ждём `Welcome`. Пока человек вводит пароль,
-//!    `Hello` лежит в сокете; закрыл окно пароля — `pkexec` выходит с 126,
-//!    не авторизован — 127, и это [`ClientError::NotAuthorized`]: отказ
-//!    человека, а не повод молча идти сырым путём.
-//! 3. **Держит сеанс** в выделенном потоке «сеанс прав»: очередь запросов,
-//!    по одной операции за раз (помощник берёт по одной), поток `Progress`
-//!    вызывающему, [`Session::cancel`], [`Session::shutdown`] (закрытый сокет
-//!    помощник понимает как «окно закрыто»: доводит идущее и выходит).
+//! 2. **Raises the session** with a single `pkexec`: a `socketpair`
+//!    ([`proto::seqpacket_pair`], both ends with `CLOEXEC`), the helper's end on
+//!    fd 0 and 1 of the child via the [`Spawner`]; our own copy of that end is
+//!    closed right after the launch. No other descendant of the window inherits
+//!    the socket (Z3): the originals have `CLOEXEC`, and only `dup2` inside the
+//!    child being launched puts the socket on fd 0/1. Then [`Hello`] → we wait
+//!    for `Welcome`. While the person is entering the password, `Hello` lies in
+//!    the socket; if they closed the password dialog, `pkexec` exits with 126, if
+//!    not authorized — 127, and that is [`ClientError::NotAuthorized`]: the
+//!    person's refusal, not a reason to silently take the raw path.
+//! 3. **Holds the session** in a dedicated "privilege session" thread: a request
+//!    queue, one operation at a time (the helper takes one at a time), a stream
+//!    of `Progress` to the caller, [`Session::cancel`], [`Session::shutdown`]
+//!    (the helper understands a closed socket as "the window was closed": it
+//!    finishes what is running and exits).
 //!
-//! # Договор с помощником (Б4)
+//! # Contract with the helper (B4)
 //!
-//! `pkexec <помощник> [--session <XDG_SESSION_ID>]`, сокет на fd 0 и 1.
-//! Номер сеанса logind идёт аргументом, потому что `pkexec` чистит окружение,
-//! а протокол ([`proto`]) после `Hello` ничего, кроме операций, не несёт.
-//! Нет годного номера ([`revoke::valid_session_id`]) — флага нет вовсе.
-//! Номер только СУЖАЕТ права помощника (по нему он следит за блокировкой и
-//! сменой сеанса), расширить их им нельзя.
+//! `pkexec <helper> [--session <XDG_SESSION_ID>]`, the socket on fd 0 and 1.
+//! The logind session number goes as an argument because `pkexec` clears the
+//! environment, and the protocol ([`proto`]) carries nothing but operations
+//! after `Hello`. If there is no valid number ([`revoke::valid_session_id`]),
+//! there is no flag at all. The number only NARROWS the helper's privileges (by
+//! it the helper watches for lock and session changes); it cannot widen them.
 //!
-//! # Ошибки — без сырого пути
+//! # Errors — without a raw path
 //!
-//! Обрыв, порченый кадр, нежданное сообщение — сеанс мёртв, исход идущей
-//! операции неизвестен ([`ClientError::SessionLost`]). `BuildMismatch` —
-//! «Rexon обновлён, перезапустите» (решение 28.10): клиент запоминает это и
-//! больше сеанс не поднимает. `Refused` — отказ проверки. `Revoked` — право
-//! отозвано; следующий запрос поднимет сеанс заново (новый пароль). Ни одна
-//! из этих ошибок сырого `pkexec` не разрешает.
+//! A broken connection, a corrupted frame, an unexpected message — the session
+//! is dead, the outcome of the running operation is unknown
+//! ([`ClientError::SessionLost`]). `BuildMismatch` — "Rexon was updated, restart
+//! it" (decision of 28.10): the client remembers this and no longer raises the
+//! session. `Refused` — a check refusal. `Revoked` — the privilege was revoked;
+//! the next request will raise the session again (a new password). None of
+//! these errors allows a raw `pkexec`.
 
 use std::collections::VecDeque;
 use std::fmt;
@@ -60,33 +64,33 @@ use super::validate::{self, HelperFailure};
 use crate::system_plan as plan;
 use crate::i18n::{tr, trf};
 
-/// Имя бинаря помощника сеанса.
+/// Name of the session helper binary.
 pub const HELPER_NAME: &str = "rexon-priv-helper";
 
-/// Каталог помощников вне `/usr` (SteamOS, Steam-депо) — тот же, что у
-/// [`crate::steamos_sysext::HELPER_PATH`]: `/var` переживает обновления.
+/// Directory of helpers outside `/usr` (SteamOS, Steam depot) — the same as
+/// [`crate::steamos_sysext::HELPER_PATH`]: `/var` survives updates.
 pub const STEAMOS_HELPER_DIR: &str = "/var/lib/rexon/bin";
 
-/// Чем поднимается помощник.
+/// What starts the helper.
 pub const PKEXEC: &str = "pkexec";
 
-/// Флаг помощника перед номером сеанса logind (договор с Б4).
+/// The helper's flag before the logind session number (contract with B4).
 pub const SESSION_FLAG: &str = "--session";
 
-/// Флаг языка сообщений помощника (договор с Б4).
+/// The helper's message language flag (contract with B4).
 pub const LANG_FLAG: &str = "--lang";
 
-/// Код выхода `pkexec`: человек закрыл окно пароля.
+/// `pkexec` exit code: the person closed the password dialog.
 pub const PKEXEC_DISMISSED: i32 = 126;
 
-/// Код выхода `pkexec`: не авторизован (неверный пароль, нет агента polkit).
+/// `pkexec` exit code: not authorized (wrong password, no polkit agent).
 pub const PKEXEC_NOT_AUTHORIZED: i32 = 127;
 
-/// Запись для группы и всех.
+/// Write for group and others.
 const GROUP_OTHER_WRITE: u32 = 0o022;
 
-/// Все места помощника по убыванию предпочтения: пакет, ручная установка
-/// ([`plan::HELPER_DIRS`]), затем каталог SteamOS.
+/// All helper locations in decreasing order of preference: the package, a
+/// manual installation ([`plan::HELPER_DIRS`]), then the SteamOS directory.
 pub fn helper_candidates() -> Vec<PathBuf> {
     plan::HELPER_DIRS
         .iter()
@@ -96,13 +100,13 @@ pub fn helper_candidates() -> Vec<PathBuf> {
         .collect()
 }
 
-/// Аргумент языка помощника: `--lang=<код>` — та же форма, что у прежних
-/// помощников ([`crate::system_l10n::lang_args`]). Английский (исходный),
-/// код вне белого списка ([`crate::system_l10n::is_valid_code`]) или язык,
-/// которого нет в каталоге помощников, — аргумента нет: помощник говорит
-/// по-английски. Метку [`crate::system_l10n::LANG_MARKER`] не ищем: она
-/// нужна только скриптам прежней версии, а `--lang` наш помощник понимал
-/// с первой сборки (`helper::parse_args`).
+/// The helper's language argument: `--lang=<code>` — the same form as for the
+/// former helpers ([`crate::system_l10n::lang_args`]). English (the source
+/// language), a code outside the allow-list ([`crate::system_l10n::is_valid_code`])
+/// or a language missing from the helper catalog — no argument: the helper
+/// speaks English. We do not look for the [`crate::system_l10n::LANG_MARKER`]
+/// marker: only the scripts of the previous version need it, while our helper
+/// has understood `--lang` since its first build (`helper::parse_args`).
 pub fn lang_arg(lang: &str) -> Option<String> {
     if lang == crate::i18n::SOURCE_LANGUAGE || !crate::system_l10n::is_valid_code(lang) {
         return None;
@@ -113,7 +117,7 @@ pub fn lang_arg(lang: &str) -> Option<String> {
     Some(format!("{LANG_FLAG}={lang}"))
 }
 
-/// argv подъёма сеанса: `pkexec <помощник> [--session <id>] [--lang=<код>]`.
+/// argv for raising the session: `pkexec <helper> [--session <id>] [--lang=<code>]`.
 pub fn helper_argv(helper: &Path, session_id: Option<&str>, lang: Option<&str>) -> Vec<String> {
     let mut argv = vec![PKEXEC.to_string(), helper.to_string_lossy().into_owned()];
     if let Some(id) = session_id.filter(|id| revoke::valid_session_id(id)) {
@@ -125,10 +129,10 @@ pub fn helper_argv(helper: &Path, session_id: Option<&str>, lang: Option<&str>) 
 }
 
 // ============================================================================
-// Проверка владения
+// Ownership check
 // ============================================================================
 
-/// Вид файла по `lstat` (ссылка не разворачивается).
+/// File kind by `lstat` (a symlink is not followed).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileKind {
     Regular,
@@ -137,25 +141,25 @@ pub enum FileKind {
     Other,
 }
 
-/// То, что проверке владения нужно знать о файле.
+/// What the ownership check needs to know about a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FileMeta {
     pub kind: FileKind,
     pub uid: u32,
-    /// Биты прав (`mode & 0o7777`).
+    /// Permission bits (`mode & 0o7777`).
     pub mode: u32,
 }
 
-/// Файловая система для поиска помощника (подменяется в тестах: создать
-/// файл root без root нельзя).
+/// The file system for finding the helper (substituted in tests: a root file
+/// cannot be created without root).
 pub trait HelperFs: Send {
-    /// `lstat`: ссылка не разворачивается.
+    /// `lstat`: a symlink is not followed.
     fn lstat(&self, path: &Path) -> io::Result<FileMeta>;
     /// `realpath`.
     fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
 }
 
-/// Настоящая файловая система.
+/// The real file system.
 pub struct RealFs;
 
 impl HelperFs for RealFs {
@@ -183,22 +187,22 @@ impl HelperFs for RealFs {
     }
 }
 
-/// Почему помощник недопустим. Путь — то звено цепочки, что не прошло.
+/// Why the helper is unacceptable. The path is the link of the chain that failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OwnerProblem {
-    /// Путь не абсолютный или с `..`.
+    /// The path is not absolute or contains `..`.
     NotAbsolute(PathBuf),
-    /// Владелец не root.
+    /// The owner is not root.
     NotRoot(PathBuf),
-    /// Запись для группы или всех.
+    /// Writable by group or others.
     Writable(PathBuf),
-    /// Сам помощник — не обычный файл (ссылка, каталог, устройство).
+    /// The helper itself is not a regular file (a symlink, a directory, a device).
     NotRegular(PathBuf),
-    /// Звено пути — не каталог и не ссылка.
+    /// A path link is neither a directory nor a symlink.
     NotDirectory(PathBuf),
-    /// У помощника нет бита исполнения.
+    /// The helper has no execute bit.
     NotExecutable(PathBuf),
-    /// Звено не прочесть (кроме «нет файла» у самого помощника).
+    /// A link cannot be read (except "no file" for the helper itself).
     Unreadable(PathBuf, String),
 }
 
@@ -216,11 +220,12 @@ impl fmt::Display for OwnerProblem {
     }
 }
 
-/// Цепочка владения помощника: сам путь и его канонический вид (если путь
-/// идёт через ссылку). У каждого звена владелец root; каталоги — без записи
-/// для группы и всех; ссылка в середине допустима (её каталог проверен
-/// предыдущим звеном, цель — каноническим путём); сам помощник — обычный
-/// исполняемый файл без записи для группы и всех.
+/// The helper's ownership chain: the path itself and its canonical form (if the
+/// path goes through a symlink). Every link is owned by root; directories are
+/// not writable by group and others; a symlink in the middle is acceptable (its
+/// directory was checked by the previous link, its target by the canonical
+/// path); the helper itself is a regular executable file not writable by group
+/// and others.
 pub fn check_ownership(fs: &dyn HelperFs, path: &Path) -> Result<(), OwnerProblem> {
     check_chain(fs, path)?;
     let canon = fs
@@ -279,20 +284,20 @@ fn check_chain(fs: &dyn HelperFs, path: &Path) -> Result<(), OwnerProblem> {
     Ok(())
 }
 
-/// Итог поиска помощника.
+/// Result of the helper search.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Located {
-    /// Найден и прошёл проверку владения.
+    /// Found and passed the ownership check.
     Ready(PathBuf),
-    /// Ни одного кандидата нет.
+    /// Not a single candidate exists.
     Missing,
-    /// Первый найденный кандидат не прошёл проверку. Следующие не
-    /// смотрим: подменённый файл на предпочтительном месте — уже повод
-    /// не поднимать сеанс.
+    /// The first candidate found did not pass the check. We do not look at the
+    /// following ones: a substituted file in the preferred location is already a
+    /// reason not to raise the session.
     BadOwner(OwnerProblem),
 }
 
-/// Найти помощника: первый существующий кандидат решает.
+/// Find the helper: the first existing candidate decides.
 pub fn locate_helper(fs: &dyn HelperFs, candidates: &[PathBuf]) -> Located {
     for path in candidates {
         match fs.lstat(path) {
@@ -310,41 +315,41 @@ pub fn locate_helper(fs: &dyn HelperFs, candidates: &[PathBuf]) -> Located {
 }
 
 // ============================================================================
-// Запуск помощника
+// Launching the helper
 // ============================================================================
 
-/// Запущенный помощник (процесс `pkexec`).
+/// A launched helper (the `pkexec` process).
 pub trait HelperChild: Send {
-    /// Дождаться выхода. `Ok(None)` — убит сигналом.
+    /// Wait for exit. `Ok(None)` — killed by a signal.
     fn wait(&mut self) -> io::Result<Option<i32>>;
 }
 
-/// Как запускается помощник. Договор: `helper_end` встаёт на fd 0 и 1
-/// дочки, своя копия закрывается не позже возврата из `spawn`, другим
-/// потомкам конец не достаётся.
+/// How the helper is launched. The contract: `helper_end` goes onto fd 0 and 1
+/// of the child, our own copy is closed no later than the return from `spawn`,
+/// other descendants do not get the end.
 pub trait Spawner: Send {
     fn spawn(&mut self, argv: &[String], helper_end: OwnedFd) -> io::Result<Box<dyn HelperChild>>;
 
-    /// Отпечаток сборки помощника — запуском `<helper> --build-id` от
-    /// пользователя, без `pkexec`. `None` — не узнали (старый помощник без
-    /// флага, сбой, тайм-аут): тогда сверка — как прежде, в рукопожатии.
+    /// The helper's build fingerprint — by running `<helper> --build-id` as the
+    /// user, without `pkexec`. `None` — not learned (an old helper without the flag,
+    /// a failure, a timeout): then the check happens as before, in the handshake.
     fn probe_build_id(&mut self, _helper: &Path) -> Option<String> {
         None
     }
 }
 
-/// Флаг помощника «напечатай отпечаток сборки и выйди» (без root).
+/// The helper's flag "print the build fingerprint and exit" (without root).
 pub const BUILD_ID_FLAG: &str = "--build-id";
 
-/// Сколько ждать ответа на [`BUILD_ID_FLAG`].
+/// How long to wait for the answer to [`BUILD_ID_FLAG`].
 const BUILD_ID_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// Живой запуск через [`Command`]: `argv[0]` — программа.
+/// Live launch via [`Command`]: `argv[0]` is the program.
 ///
-/// Конец помощника и его копия (`try_clone` = `F_DUPFD_CLOEXEC`) уходят в
-/// `Stdio`; `dup2` на fd 0/1 делает сама дочка между `fork` и `exec`, у
-/// копий в окне `CLOEXEC` остаётся. `Command` с этими `Stdio` уничтожается
-/// сразу после запуска — копии окна закрыты.
+/// The helper's end and its copy (`try_clone` = `F_DUPFD_CLOEXEC`) go into
+/// `Stdio`; the child itself does `dup2` onto fd 0/1 between `fork` and `exec`,
+/// while the copies in the window keep `CLOEXEC`. The `Command` with these
+/// `Stdio` is destroyed right after the launch — the window's copies are closed.
 pub struct CommandSpawner;
 
 struct ProcessChild(std::process::Child);
@@ -373,8 +378,8 @@ impl Spawner for CommandSpawner {
 
     fn probe_build_id(&mut self, helper: &Path) -> Option<String> {
         use std::io::Read;
-        // Файл уже прошёл проверку владения: это программа root, и запуск её
-        // от пользователя ничего не открывает. Окружение — пустое.
+        // The file has already passed the ownership check: it is a root program, and
+        // running it as the user opens nothing. The environment is empty.
         let mut child = Command::new(helper)
             .arg(BUILD_ID_FLAG)
             .env_clear()
@@ -405,8 +410,8 @@ impl Spawner for CommandSpawner {
     }
 }
 
-/// Дождаться процесса в фоне: окно не ждёт помощника, который доводит
-/// операцию после закрытия сокета.
+/// Wait for the process in the background: the window does not wait for a
+/// helper that finishes an operation after the socket is closed.
 fn reap_in_background(mut child: Box<dyn HelperChild>) {
     let _ = thread::Builder::new()
         .name("rexon-priv-reap".into())
@@ -416,63 +421,64 @@ fn reap_in_background(mut child: Box<dyn HelperChild>) {
 }
 
 // ============================================================================
-// Итоги и ошибки
+// Results and errors
 // ============================================================================
 
-/// Операция исполнена помощником ([`HelperMsg::Done`]).
+/// The operation was executed by the helper ([`HelperMsg::Done`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Outcome {
-    /// Программа отработала успешно.
+    /// The program ran successfully.
     pub ok: bool,
-    /// Код выхода программы (`None` — убита сигналом).
+    /// The program's exit code (`None` — killed by a signal).
     pub code: Option<i32>,
-    /// Ключ перевода пояснения, если помощник его знает.
+    /// Translation key of the explanation, if the helper knows it.
     pub message_key: Option<String>,
 }
 
-/// Почему операция не исполнена или исход неизвестен.
+/// Why the operation was not executed or its outcome is unknown.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClientError {
-    /// Помощника нет — вызывающему можно путём «как сейчас» (З5).
+    /// There is no helper — the caller may take the "as now" path (Z5).
     HelperMissing,
-    /// Помощник недопустим (владелец, права) — путь «как сейчас» тоже
-    /// разрешён: сеанс с подменённым файлом не поднимается вовсе.
+    /// The helper is unacceptable (owner, permissions) — the "as now" path is also
+    /// allowed: a session with a substituted file is not raised at all.
     HelperBadOwner(OwnerProblem),
-    /// Человек закрыл окно пароля (126) или не авторизован (127).
+    /// The person closed the password dialog (126) or is not authorized (127).
     NotAuthorized { code: i32 },
-    /// Помощник от другой сборки: Rexon обновлён, нужен перезапуск окна.
-    /// `helper_build` — отпечаток помощника, если он его назвал.
+    /// A helper from another build: Rexon was updated, the window must be restarted.
+    /// `helper_build` — the helper's fingerprint, if it named it.
     BuildMismatch { helper_build: Option<String> },
-    /// Помощник ДРУГОЙ сборки узнан ДО `pkexec` (окно из дерева разработки
-    /// при пакете в системе; пакет обновили при открытом окне). Пароль не
-    /// спрашивался, сеанс не поднимался — для правила З5 это то же, что
-    /// «помощника нет»: путь «как сейчас» разрешён.
+    /// A helper of ANOTHER build was recognized BEFORE `pkexec` (a window from the
+    /// development tree with the package installed in the system; the package was
+    /// updated while the window was open). The password was not asked, the session
+    /// was not raised — for rule Z5 this is the same as "no helper": the "as now"
+    /// path is allowed.
     HelperOtherBuild { helper_build: String },
-    /// Помощник отказал по проверке аргументов.
+    /// The helper refused on the argument check.
     Refused { message_key: String },
-    /// Сбой самого помощника; операция не исполнялась.
+    /// A failure of the helper itself; the operation was not executed.
     HelperFailed { message_key: String },
-    /// Операция отменена до касания системы.
+    /// The operation was cancelled before touching the system.
     Cancelled,
-    /// Право отозвано (простой, блокировка, сон…); следующий запрос
-    /// поднимет сеанс заново, с новым паролем.
+    /// The privilege was revoked (inactivity, lock, sleep…); the next request will
+    /// raise the session again, with a new password.
     Revoked { message_key: String },
-    /// Сеанс оборвался. `outcome_unknown` — операция уже ушла помощнику, и
-    /// исполнена ли она, неизвестно.
+    /// The session broke off. `outcome_unknown` — the operation had already gone to
+    /// the helper, and whether it was executed is unknown.
     SessionLost { outcome_unknown: bool, detail: String },
-    /// Сеанс закрыло окно ([`Session::shutdown`]); операция не уходила.
+    /// The window closed the session ([`Session::shutdown`]); the operation did not go out.
     Closed,
-    /// Помощник занят другой операцией (при очереди клиента не бывает).
+    /// The helper is busy with another operation (does not happen with the client's queue).
     Busy,
-    /// Не запустился `pkexec` или не создан сокет.
+    /// `pkexec` did not start or the socket was not created.
     Spawn(String),
-    /// Запрос негоден (число дескрипторов, слишком большой кадр); помощнику
-    /// не уходил.
+    /// The request is invalid (number of descriptors, a frame too large); it did not
+    /// go to the helper.
     InvalidRequest(String),
 }
 
 impl ClientError {
-    /// Чем ошибка является для правила З5.
+    /// What the error is for rule Z5.
     pub fn helper_failure(&self) -> Option<HelperFailure> {
         Some(match self {
             Self::HelperMissing | Self::HelperOtherBuild { .. } => HelperFailure::Missing,
@@ -490,8 +496,8 @@ impl ClientError {
         })
     }
 
-    /// З5: можно ли вызывающему исполнить ту же операцию путём «как сейчас»
-    /// (`PrivOp::pkexec_argv`). Только когда помощника нет или он недопустим.
+    /// Z5: whether the caller may execute the same operation via the "as now" path
+    /// (`PrivOp::pkexec_argv`). Only when there is no helper or it is unacceptable.
     pub fn raw_fallback_allowed(&self) -> bool {
         self.helper_failure()
             .is_some_and(validate::raw_fallback_allowed)
@@ -534,8 +540,8 @@ impl fmt::Display for ClientError {
 impl std::error::Error for ClientError {}
 
 impl ClientError {
-    /// Текст человеку на языке окна (Б13): что случилось и что делать,
-    /// без служебных слов. `Display` — строка для журнала.
+    /// Text for the person in the window's language (B13): what happened and what
+    /// to do, without technical words. `Display` is the line for the log.
     pub fn human_text(&self) -> String {
         match self {
             Self::HelperMissing => {
@@ -574,17 +580,17 @@ impl ClientError {
     }
 }
 
-/// «Rexon обновлён — перезапустите»: помощник другой сборки. Та же мысль,
-/// что у уведомления о самообновлении (`single_instance::self_update_*`).
+/// "Rexon was updated — restart it": a helper from another build. The same idea
+/// as the self-update notification (`single_instance::self_update_*`).
 fn updated_text() -> String {
     // TRANSLATORS: Rexon was updated while its window was open; a system change needs a restart first.
     tr("Rexon was updated — restart it to continue.")
 }
 
-/// Текст человеку по ключу ответа помощника: `refused.<код>` (отказ
-/// проверки), `revoked.<код>` (право отозвано), прочие ключи (сбой,
-/// порядок кадров). Незнакомый ключ — общий отказ, сам ключ человеку не
-/// показывается.
+/// Text for the person by the key of the helper's answer: `refused.<code>` (a
+/// check refusal), `revoked.<code>` (the privilege was revoked), other keys
+/// (failure, frame order). An unknown key gives a general refusal; the key
+/// itself is not shown to the person.
 pub fn key_text(key: &str) -> String {
     if let Some(code) = key.strip_prefix("revoked.") {
         let reason = revoke::Reason::from_code(code).unwrap_or(revoke::Reason::SessionLost);
@@ -594,7 +600,7 @@ pub fn key_text(key: &str) -> String {
     let Some(code) = key.strip_prefix("refused.") else {
         return tr("Rexon couldn't make this change — nothing was changed.");
     };
-    // Сирота, на которой держится сеанс: текст — из таблицы ядра по имени.
+    // An orphan the session relies on: the text comes from the core table by name.
     if let Some(pkg) = code.strip_prefix("orphan-in-use.") {
         if let Some(s) = crate::update_guard::orphan_session_of(pkg) {
             return crate::update_guard::orphan_in_use_text(s);
@@ -605,8 +611,8 @@ pub fn key_text(key: &str) -> String {
             return crate::update_guard::orphan_login_default_text(s);
         }
     }
-    // Сеанс по умолчанию у экрана входа: текст — из таблицы ядра по имени
-    // X11-сеанса.
+    // The default session of the login screen: the text comes from the core table
+    // by the name of the X11 session.
     let successor = |x11: &str| crate::system_plan::X11_SESSION_SUCCESSORS.iter().find(|s| s.x11 == x11);
     if let Some(s) = key.strip_prefix(crate::system_plan::WAYLAND_SESSION_MISSING).and_then(successor) {
         return crate::system_plan::wayland_session_missing_text(s);
@@ -700,10 +706,10 @@ pub fn key_text(key: &str) -> String {
 }
 
 // ============================================================================
-// Сеанс: поток «сеанс прав»
+// Session: the "privilege session" thread
 // ============================================================================
 
-/// Отчего сеанс кончился.
+/// Why the session ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Death {
     Closed,
@@ -713,7 +719,7 @@ enum Death {
 }
 
 impl Death {
-    /// Ошибка операции, которая помощнику не уходила.
+    /// Error of an operation that did not go to the helper.
     fn queued_error(&self) -> ClientError {
         match self {
             Self::Closed => ClientError::Closed,
@@ -726,7 +732,7 @@ impl Death {
         }
     }
 
-    /// Ошибка операции, что была у помощника, когда сеанс кончился.
+    /// Error of the operation that was with the helper when the session ended.
     fn in_flight_error(&self) -> ClientError {
         let detail = match self {
             Self::Closed => "окно закрыло сеанс".to_string(),
@@ -774,7 +780,7 @@ struct State {
 
 struct Shared {
     sock: OwnedFd,
-    /// `eventfd`: будит поток при новом запросе и закрытии.
+    /// `eventfd`: wakes the thread on a new request and on closing.
     wake: OwnedFd,
     state: Mutex<State>,
 }
@@ -786,7 +792,7 @@ impl Shared {
 
     fn wake(&self) {
         let one: u64 = 1;
-        // SAFETY: пишем 8 байт из живой переменной в свой eventfd.
+        // SAFETY: we write 8 bytes from a live variable into our own eventfd.
         unsafe {
             libc::write(self.wake.as_raw_fd(), (&one as *const u64).cast(), 8);
         }
@@ -794,14 +800,14 @@ impl Shared {
 
     fn drain_wake(&self) {
         let mut buf: u64 = 0;
-        // SAFETY: читаем 8 байт в живую переменную; eventfd неблокирующий.
+        // SAFETY: we read 8 bytes into a live variable; the eventfd is non-blocking.
         unsafe {
             libc::read(self.wake.as_raw_fd(), (&mut buf as *mut u64).cast(), 8);
         }
     }
 
     fn shutdown_socket(&self) {
-        // SAFETY: shutdown своего живого сокета.
+        // SAFETY: shutdown of our own live socket.
         unsafe {
             libc::shutdown(self.sock.as_raw_fd(), libc::SHUT_RDWR);
         }
@@ -809,18 +815,18 @@ impl Shared {
 }
 
 fn new_eventfd() -> io::Result<OwnedFd> {
-    // SAFETY: eventfd без указателей.
+    // SAFETY: eventfd without pointers.
     let fd = unsafe { libc::eventfd(0, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK) };
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
-    // SAFETY: новый дескриптор, владеем им только мы.
+    // SAFETY: a new descriptor, only we own it.
     Ok(unsafe { OwnedFd::from_raw_fd(fd) })
 }
 
-/// Живой сеанс прав. Клон — ещё одна ручка того же сеанса (для отмены из
-/// другого потока); закрывает сеанс [`Session::shutdown`] или
-/// уничтожение [`Client`].
+/// A live privilege session. A clone is one more handle of the same session
+/// (for cancelling from another thread); the session is closed by
+/// [`Session::shutdown`] or by destroying the [`Client`].
 #[derive(Clone)]
 pub struct Session {
     shared: Arc<Shared>,
@@ -845,7 +851,7 @@ impl Session {
         Ok(Self { shared })
     }
 
-    /// Сеанс жив: не закрыт окном и не кончился.
+    /// The session is alive: not closed by the window and not ended.
     pub fn is_alive(&self) -> bool {
         let st = self.shared.lock();
         st.dead.is_none() && !st.closing
@@ -876,10 +882,11 @@ impl Session {
         Ok(Pending { id, rx })
     }
 
-    /// Отменить операцию `id`. Ещё в очереди — снимается сразу (её
-    /// ожидающий получит [`ClientError::Cancelled`]); уже у помощника —
-    /// уходит `Cancel`, а ответит помощник (`Cancelled`, если не успел
-    /// коснуться системы, иначе обычный итог). `false` — такой операции нет.
+    /// Cancel operation `id`. If it is still in the queue, it is removed right away
+    /// (its waiter gets [`ClientError::Cancelled`]); if it is already with the
+    /// helper, a `Cancel` goes out and the helper answers (`Cancelled` if it did not
+    /// manage to touch the system, otherwise the ordinary result). `false` — there
+    /// is no such operation.
     pub fn cancel(&self, id: u64) -> bool {
         let mut st = self.shared.lock();
         if let Some(pos) = st.queue.iter().position(|j| j.id == id) {
@@ -895,8 +902,8 @@ impl Session {
         false
     }
 
-    /// Закрыть сеанс: сокет закрывается, помощник видит «окно закрыто»,
-    /// доводит идущую операцию и выходит. Не ждёт.
+    /// Close the session: the socket is closed, the helper sees "the window was
+    /// closed", finishes the running operation and exits. Does not wait.
     pub fn shutdown(&self) {
         self.shared.lock().closing = true;
         self.shared.shutdown_socket();
@@ -904,19 +911,19 @@ impl Session {
     }
 }
 
-/// Отправленный запрос.
+/// A submitted request.
 pub struct Pending {
     id: u64,
     rx: mpsc::Receiver<JobEvent>,
 }
 
 impl Pending {
-    /// Номер операции (для [`Session::cancel`]).
+    /// Operation number (for [`Session::cancel`]).
     pub fn id(&self) -> u64 {
         self.id
     }
 
-    /// Дождаться итога, отдавая строки хода в `on_progress`.
+    /// Wait for the result, passing progress lines to `on_progress`.
     pub fn wait(self, on_progress: &mut dyn FnMut(&str)) -> Result<Outcome, ClientError> {
         loop {
             match self.rx.recv() {
@@ -933,7 +940,7 @@ impl Pending {
     }
 }
 
-/// Ждать сокет или пробуждение. Возвращает (сокет готов, пробуждение).
+/// Wait for the socket or a wake-up. Returns (socket ready, woken up).
 fn wait_ready(shared: &Shared) -> io::Result<(bool, bool)> {
     let mut fds = [
         libc::pollfd {
@@ -948,7 +955,7 @@ fn wait_ready(shared: &Shared) -> io::Result<(bool, bool)> {
         },
     ];
     loop {
-        // SAFETY: массив из двух живых pollfd.
+        // SAFETY: an array of two live pollfds.
         let rc = unsafe { libc::poll(fds.as_mut_ptr(), 2, -1) };
         if rc >= 0 {
             return Ok((fds[0].revents != 0, fds[1].revents != 0));
@@ -960,7 +967,8 @@ fn wait_ready(shared: &Shared) -> io::Result<(bool, bool)> {
     }
 }
 
-/// Цикл потока «сеанс прав»: отдать следующую операцию, читать ответы.
+/// Loop of the "privilege session" thread: hand out the next operation, read
+/// the answers.
 fn session_loop(shared: &Shared) -> Death {
     loop {
         {
@@ -973,8 +981,8 @@ fn session_loop(shared: &Shared) -> Death {
                     let fds: Vec<BorrowedFd<'_>> = job.fds.iter().map(|f| f.as_fd()).collect();
                     if let Err(e) = proto::send_frame_with_fds(shared.sock.as_fd(), &job.frame, &fds) {
                         let detail = e.to_string();
-                        // Сеанс мёртв ДО ответа ждущему: проснувшись, он не
-                        // должен увидеть «живой» сеанс (см. [`handle_msg`]).
+                        // The session is dead BEFORE the waiter gets its answer: on waking up
+                        // it must not see a "live" session (see [`handle_msg`]).
                         st.dead = Some(Death::Lost(detail.clone()));
                         let _ = job.reply.send(JobEvent::Finished(Err(ClientError::SessionLost {
                             outcome_unknown: false,
@@ -982,7 +990,7 @@ fn session_loop(shared: &Shared) -> Death {
                         })));
                         return Death::Lost(detail);
                     }
-                    // Свои копии файлов закрываются здесь: у помощника — дубликаты.
+                    // Our own copies of the files are closed here: the helper has duplicates.
                     st.current = Some(InFlight {
                         id: job.id,
                         reply: job.reply,
@@ -1024,7 +1032,7 @@ fn session_loop(shared: &Shared) -> Death {
     }
 }
 
-/// Разобрать сообщение помощника. `Some` — сеанс кончился.
+/// Parse a helper message. `Some` — the session has ended.
 fn handle_msg(shared: &Shared, msg: HelperMsg) -> Option<Death> {
     let mut st = shared.lock();
     let current = st.current.as_ref().map(|c| c.id);
@@ -1071,11 +1079,11 @@ fn handle_msg(shared: &Shared, msg: HelperMsg) -> Option<Death> {
                     c.finish(Err(ClientError::HelperFailed { message_key }));
                     None
                 }
-                // Сеанс кончается: отметить смерть ДО ответа ждущему, под тем
-                // же замком. Иначе ждущий просыпается раньше, чем поток сеанса
-                // дойдёт до [`die`], и успевает увидеть «живой» сеанс
-                // (`has_session()` после отзыва права — гонка, ловилась
-                // тестом `revoked_answer_to_operation`).
+                // The session is ending: mark the death BEFORE answering the waiter,
+                // under the same lock. Otherwise the waiter wakes up before the session
+                // thread reaches [`die`] and manages to see a "live" session
+                // (`has_session()` after the privilege was revoked — a race, caught by
+                // the `revoked_answer_to_operation` test).
                 ErrorCode::Revoked => {
                     let death = Death::Revoked(message_key.clone());
                     st.dead = Some(death.clone());
@@ -1112,7 +1120,7 @@ fn handle_msg(shared: &Shared, msg: HelperMsg) -> Option<Death> {
     }
 }
 
-/// Сеанс кончился: всем ожидающим — ошибку, сокет — закрыть.
+/// The session ended: an error for all waiters, the socket is closed.
 fn die(shared: &Shared, death: Death) {
     let (current, queued) = {
         let mut st = shared.lock();
@@ -1129,17 +1137,18 @@ fn die(shared: &Shared, death: Death) {
 }
 
 // ============================================================================
-// Клиент
+// Client
 // ============================================================================
 
 enum HandshakeFail {
-    /// Помощник закрыл канал, не ответив (окно пароля закрыто, нет прав).
+    /// The helper closed the channel without answering (the password dialog was
+    /// closed, no privileges).
     Eof,
     Error(ClientError),
 }
 
-/// `Hello` → `Welcome`. `Welcome` с чужим отпечатком тоже отвергается:
-/// помощник проверяет сам, окно — второй раз.
+/// `Hello` → `Welcome`. A `Welcome` with a foreign fingerprint is also rejected:
+/// the helper checks it itself, the window a second time.
 fn handshake(sock: &OwnedFd, build_id: &str) -> Result<(), HandshakeFail> {
     let hello = ClientMsg::<PrivOp>::Hello(Hello {
         build_id: build_id.to_string(),
@@ -1164,9 +1173,9 @@ fn handshake(sock: &OwnedFd, build_id: &str) -> Result<(), HandshakeFail> {
     };
     match proto::recv_msg::<HelperMsg>(sock.as_fd()) {
         Ok(None) => Err(HandshakeFail::Eof),
-        // Помощник (или сам pkexec) вышел, не прочитав `Hello`: непрочитанный
-        // кадр в его очереди превращает закрытие в ECONNRESET, а не в EOF.
-        // Живой pkexec с 126/127 выходит именно так.
+        // The helper (or pkexec itself) exited without reading `Hello`: the
+        // unread frame in its queue turns the close into ECONNRESET rather than
+        // EOF. A live pkexec with 126/127 exits exactly this way.
         Err(proto::ProtoError::Io(e)) if e.raw_os_error() == Some(libc::ECONNRESET) => {
             Err(HandshakeFail::Eof)
         }
@@ -1193,17 +1202,17 @@ fn handshake(sock: &OwnedFd, build_id: &str) -> Result<(), HandshakeFail> {
     }
 }
 
-/// Клиент сеанса прав окна. Сеанс поднимается при первом запросе и
-/// живёт, пока не кончится (отзыв, обрыв) или окно его не закроет;
-/// следующий запрос после конца поднимает новый (новый пароль). После
-/// `BuildMismatch` — больше никогда: окно должно перезапуститься.
+/// The window's privilege session client. The session is raised on the first
+/// request and lives until it ends (revocation, break) or the window closes it;
+/// the next request after the end raises a new one (a new password). After
+/// `BuildMismatch` — never again: the window must restart.
 pub struct Client {
     spawner: Box<dyn Spawner>,
     fs: Box<dyn HelperFs>,
     candidates: Vec<PathBuf>,
     build_id: String,
     session_id: Option<String>,
-    /// Язык интерфейса окна: помощник переводит свои сообщения.
+    /// The window's interface language: the helper translates its messages.
     lang: Option<String>,
     session: Option<Session>,
     stale_build: Option<Option<String>>,
@@ -1230,8 +1239,8 @@ impl Client {
         }
     }
 
-    /// Живой клиент: `pkexec`, настоящая ФС, отпечаток этой сборки, номер
-    /// сеанса из `XDG_SESSION_ID`, язык интерфейса Rexon.
+    /// Live client: `pkexec`, the real file system, the fingerprint of this build,
+    /// the session number from `XDG_SESSION_ID`, the Rexon interface language.
     pub fn live() -> Self {
         Self::new(
             Box::new(CommandSpawner),
@@ -1242,30 +1251,30 @@ impl Client {
         .with_lang(&crate::i18n::current_language())
     }
 
-    /// Язык сообщений помощника (код интерфейса, `ru`); в argv попадает
-    /// только годный ([`lang_arg`]).
+    /// The helper's message language (the interface code, `ru`); only a valid one
+    /// gets into argv ([`lang_arg`]).
     pub fn with_lang(mut self, lang: &str) -> Self {
         self.lang = Some(lang.to_string());
         self
     }
 
-    /// Свои места поиска помощника (тесты, будущий Б14).
+    /// Custom helper search locations (tests, the future B14).
     pub fn with_candidates(mut self, candidates: Vec<PathBuf>) -> Self {
         self.candidates = candidates;
         self
     }
 
-    /// Живой сеанс, если есть (ручка для отмены из другого потока).
+    /// The live session, if any (a handle for cancelling from another thread).
     pub fn session(&self) -> Option<Session> {
         self.session.as_ref().filter(|s| s.is_alive()).cloned()
     }
 
-    /// Есть живой сеанс: следующий запрос пароля не спросит.
+    /// There is a live session: the next request will not ask for the password.
     pub fn has_session(&self) -> bool {
         self.session().is_some()
     }
 
-    /// Сеанс есть — вернуть его; нет — поднять (окно пароля).
+    /// If there is a session — return it; if not — raise one (the password dialog).
     pub fn ensure_session(&mut self) -> Result<Session, ClientError> {
         if let Some(b) = &self.stale_build {
             return Err(ClientError::BuildMismatch { helper_build: b.clone() });
@@ -1301,8 +1310,9 @@ impl Client {
             Located::Missing => return Err(ClientError::HelperMissing),
             Located::BadOwner(problem) => return Err(ClientError::HelperBadOwner(problem)),
         };
-        // Сверка сборки ДО окна пароля: иначе человек вводил бы пароль ради
-        // одного «Rexon обновлён», а прежний путь после рукопожатия закрыт (З5).
+        // Checking the build BEFORE the password dialog: otherwise the person
+        // would enter the password for a mere "Rexon was updated", and the old
+        // path is closed after the handshake (Z5).
         if let Some(theirs) = self.spawner.probe_build_id(&helper) {
             if theirs != self.build_id {
                 return Err(ClientError::HelperOtherBuild { helper_build: theirs });
@@ -1312,8 +1322,8 @@ impl Client {
         let wake = new_eventfd().map_err(|e| ClientError::Spawn(format!("eventfd: {e}")))?;
         let (ours, theirs) =
             proto::seqpacket_pair().map_err(|e| ClientError::Spawn(format!("socketpair: {e}")))?;
-        // `theirs` уходит в Spawner: он ставит его на fd 0/1 дочки и
-        // закрывает свою копию до возврата.
+        // `theirs` goes to the Spawner: it puts it on fd 0/1 of the child and
+        // closes its own copy before returning.
         let mut child = self
             .spawner
             .spawn(&argv, theirs)
@@ -1346,9 +1356,9 @@ impl Client {
         }
     }
 
-    /// Поставить операцию в очередь сеанса (поднимает сеанс, если нужно).
-    /// `fds` — открытые файлы операции в порядке [`PrivOp::local_files`]
-    /// (номер `slot` = индекс).
+    /// Put an operation into the session queue (raises the session if needed).
+    /// `fds` — the operation's open files in the order of [`PrivOp::local_files`]
+    /// (the `slot` number = the index).
     pub fn submit(&mut self, op: &PrivOp, fds: Vec<OwnedFd>) -> Result<Pending, ClientError> {
         let files = op.local_files();
         if files.len() != fds.len() {
@@ -1376,7 +1386,7 @@ impl Client {
         session.submit(id, frame, fds)
     }
 
-    /// Выполнить операцию и дождаться итога; строки хода — в `on_progress`.
+    /// Execute an operation and wait for the result; progress lines go to `on_progress`.
     pub fn request(
         &mut self,
         op: &PrivOp,
@@ -1386,7 +1396,7 @@ impl Client {
         self.submit(op, fds)?.wait(on_progress)
     }
 
-    /// Закрыть сеанс (окно закрыто, свёрнуто в лоток, «Запретить сейчас»).
+    /// Close the session (window closed, minimized to the tray, "Revoke now").
     pub fn shutdown(&mut self) {
         if let Some(s) = self.session.take() {
             s.shutdown();
@@ -1411,7 +1421,7 @@ mod tests {
     const BUILD: &str = "0.5.0+test";
     const HELPER: &str = "/usr/lib/rexon-priv-helper";
 
-    // ---------------------------------------------------------------- ФС
+    // ---------------------------------------------------------------- file system
 
     #[derive(Default)]
     struct FakeFs {
@@ -1433,7 +1443,7 @@ mod tests {
             self.links.insert(p.into(), target.into());
             self
         }
-        /// Корень и каталоги помощников — root 0755.
+        /// The root and the helper directories — root 0755.
         fn base() -> Self {
             Self::default()
                 .dir("/", 0, 0o755)
@@ -1463,14 +1473,14 @@ mod tests {
         }
     }
 
-    // ---------------------------------------------------------------- помощник
+    // ---------------------------------------------------------------- helper
 
     type Script = dyn Fn(OwnedFd) -> i32 + Send + Sync;
 
     struct FakeSpawner {
         calls: Arc<Mutex<Vec<Vec<String>>>>,
         script: Arc<Script>,
-        /// Что помощник отвечает на `--build-id` (`None` — старый, без флага).
+        /// What the helper answers to `--build-id` (`None` — an old one, without the flag).
         probe: Option<String>,
     }
 
@@ -1520,15 +1530,15 @@ mod tests {
         proto::send_msg(sock.as_fd(), &msg).unwrap();
     }
 
-    /// Принять `Hello` и ответить `Welcome`.
+    /// Accept `Hello` and answer `Welcome`.
     fn accept_hello(sock: &OwnedFd) {
         let hello: ClientMsg<PrivOp> = proto::recv_msg(sock.as_fd()).unwrap().unwrap();
         assert_eq!(hello, ClientMsg::Hello(Hello { build_id: BUILD.into() }));
         send(sock, HelperMsg::Welcome { build_id: BUILD.into() });
     }
 
-    /// Помощник, исполняющий все операции успешно, с одной строкой хода.
-    /// Номера пришедших операций и число файлов — в `seen`.
+    /// A helper that executes all operations successfully, with one progress line.
+    /// The numbers of the arrived operations and the number of files go to `seen`.
     fn obedient(seen: Arc<Mutex<Vec<(u64, usize)>>>) -> impl Fn(OwnedFd) -> i32 + Send + Sync {
         move |sock| {
             accept_hello(&sock);
@@ -1559,7 +1569,7 @@ mod tests {
         |_| {}
     }
 
-    // ---------------------------------------------------------------- поиск
+    // ---------------------------------------------------------------- search
 
     #[test]
     fn candidates_cover_package_manual_and_steamos() {
@@ -1610,8 +1620,8 @@ mod tests {
         for (fs, want) in cases {
             assert_eq!(locate_helper(&fs, &cands), Located::BadOwner(want));
         }
-        // Первый найденный решает: плохой в /usr/lib не обходится хорошим
-        // в /usr/local/lib.
+        // The first one found decides: a bad one in /usr/lib is not bypassed by a
+        // good one in /usr/local/lib.
         let both = FakeFs::base()
             .file(HELPER, 1000, 0o755)
             .file("/usr/local/lib/rexon-priv-helper", 0, 0o755);
@@ -1621,13 +1631,13 @@ mod tests {
     #[test]
     fn helper_symlink_refused_and_dir_symlink_checked_by_target() {
         let cands = helper_candidates();
-        // Сам помощник — ссылка: нельзя.
+        // The helper itself is a symlink: not allowed.
         let fs = FakeFs::base().link(HELPER, "/home/u/x");
         assert_eq!(
             locate_helper(&fs, &cands),
             Located::BadOwner(OwnerProblem::NotRegular(HELPER.into()))
         );
-        // Каталог-ссылка в пользовательский каталог: цель проверяется.
+        // A directory symlink into the user's directory: the target is checked.
         let fs = FakeFs::default()
             .dir("/", 0, 0o755)
             .dir("/usr", 0, 0o755)
@@ -1660,20 +1670,20 @@ mod tests {
 
     #[test]
     fn real_fs_root_binary_passes_user_file_fails() {
-        // Настоящая ФС: системный бинарь root проходит, свой файл — нет.
+        // Real file system: a system binary owned by root passes, our own file does not.
         let sys = Path::new("/usr/bin/env");
         if RealFs.lstat(sys).map(|m| m.kind == FileKind::Regular && m.uid == 0).unwrap_or(false) {
             assert_eq!(check_ownership(&RealFs, sys), Ok(()));
         }
-        // Файл в дереве пользователя: цепочка рвётся на его каталоге.
+        // A file in the user's tree: the chain breaks at its directory.
         let mine = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"));
         let res = check_ownership(&RealFs, mine);
-        // Если тесты идут от root, владельца не проверить.
-        // SAFETY: getuid без аргументов.
+        // If the tests run as root, the owner cannot be checked.
+        // SAFETY: getuid without arguments.
         if unsafe { libc::getuid() } != 0 {
             assert!(matches!(res, Err(OwnerProblem::NotRoot(_))), "{res:?}");
         }
-        // /tmp (1777) — запись для всех: помощник оттуда не годится.
+        // /tmp (1777) is writable by all: a helper from there is no good.
         assert_eq!(
             check_chain(&RealFs, Path::new("/tmp/rexon-priv-helper"))
                 .err()
@@ -1694,7 +1704,7 @@ mod tests {
     #[test]
     fn argv_carries_lang_like_old_helpers() {
         let p = Path::new(HELPER);
-        // Тот же вид, что у прежних помощников (`system_l10n::lang_arg_for`).
+        // The same form as for the former helpers (`system_l10n::lang_arg_for`).
         let old = crate::system_l10n::lang_arg_for("ru", Some(crate::system_l10n::LANG_MARKER));
         assert_eq!(old.as_deref(), Some("--lang=ru"));
         assert_eq!(
@@ -1702,11 +1712,11 @@ mod tests {
             ["pkexec", HELPER, "--session", "2", "--lang=ru"]
         );
         assert_eq!(helper_argv(p, None, Some("de")), ["pkexec", HELPER, "--lang=de"]);
-        // Английский, мусор и язык вне каталога — без аргумента.
+        // English, garbage and a language outside the catalog — no argument.
         for bad in ["en", "", "../x", "RU", "ru;id", "xx"] {
             assert_eq!(helper_argv(p, None, Some(bad)), ["pkexec", HELPER], "{bad}");
         }
-        // Помощник (Б4) понимает ровно этот вид.
+        // The helper (B4) understands exactly this form.
         let argv = helper_argv(p, Some("c2"), Some("ru"));
         let args = crate::privilege::helper::parse_args(&argv[2..]).expect("помощник принял");
         assert_eq!(args.lang.as_deref(), Some("ru"));
@@ -1725,7 +1735,7 @@ mod tests {
         );
     }
 
-    // ---------------------------------------------------------------- сеанс
+    // ---------------------------------------------------------------- session
 
     #[test]
     fn missing_and_bad_owner_allow_raw_path_without_spawning() {
@@ -1769,7 +1779,7 @@ mod tests {
             build_only: vec![],
             replace: false,
         };
-        // Без файла — негодный запрос, сеанс даже не поднимается.
+        // Without a file — an invalid request, the session is not even raised.
         let e = c.request(&built, vec![], &mut no_progress()).unwrap_err();
         assert!(matches!(e, ClientError::InvalidRequest(_)));
         assert!(!c.has_session());
@@ -1795,14 +1805,15 @@ mod tests {
         let e = c.request(&op(), vec![], &mut no_progress()).unwrap_err();
         assert_eq!(e, ClientError::BuildMismatch { helper_build: None });
         assert!(!e.raw_fallback_allowed());
-        // Второй раз пароль не спрашивается: Rexon надо перезапустить.
+        // The password is not asked a second time: Rexon must be restarted.
         let e = c.request(&op(), vec![], &mut no_progress()).unwrap_err();
         assert!(matches!(e, ClientError::BuildMismatch { .. }));
         assert_eq!(calls.lock().unwrap().len(), 1);
     }
 
-    /// Помощник другой сборки узнан до `pkexec`: окна пароля нет, путь
-    /// «как сейчас» разрешён (окно из дерева разработки при пакете в системе).
+    /// A helper of another build was recognized before `pkexec`: there is no
+    /// password dialog, the "as now" path is allowed (a window from the development
+    /// tree with the package installed in the system).
     #[test]
     fn other_build_found_before_password_allows_old_path() {
         let (mut c, calls) = client_probing(FakeFs::good(), Some("0.4.9+old"), |_| 0);
@@ -1810,12 +1821,12 @@ mod tests {
         assert_eq!(e, ClientError::HelperOtherBuild { helper_build: "0.4.9+old".into() });
         assert!(e.raw_fallback_allowed());
         assert!(calls.lock().unwrap().is_empty(), "пароль не спрашивался");
-        // И в следующий раз — снова прежним путём, без «Rexon обновлён».
+        // And next time — again via the old path, without "Rexon was updated".
         let again = c.request(&op(), vec![], &mut no_progress()).unwrap_err();
         assert!(matches!(again, ClientError::HelperOtherBuild { .. }));
     }
 
-    /// Своя сборка по `--build-id` — обычный сеанс, одно окно пароля.
+    /// Our own build per `--build-id` — an ordinary session, one password dialog.
     #[test]
     fn own_build_by_probe_starts_session() {
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -1824,7 +1835,7 @@ mod tests {
         assert_eq!(calls.lock().unwrap().len(), 1);
     }
 
-    /// Живой `--build-id`: настоящая программа печатает отпечаток.
+    /// Live `--build-id`: the real program prints the fingerprint.
     #[test]
     fn live_probe_reads_first_line_and_rejects_failure() {
         let dir = std::env::temp_dir().join(format!("rexon-probe-{}", std::process::id()));
@@ -1865,7 +1876,7 @@ mod tests {
             assert_eq!(e, ClientError::NotAuthorized { code });
             assert!(!e.raw_fallback_allowed(), "отказ человека — не повод для сырого pkexec");
             assert!(!c.has_session());
-            // Следующий запрос снова спросит пароль.
+            // The next request will ask for the password again.
             let _ = c.request(&op(), vec![], &mut no_progress());
             assert_eq!(calls.lock().unwrap().len(), 2);
         }
@@ -1925,7 +1936,7 @@ mod tests {
             accept_hello(&sock);
             let _: ClientMsg<PrivOp> = proto::recv_msg(sock.as_fd()).unwrap().unwrap();
             proto::send_frame(sock.as_fd(), b"{\"v\":1,\"msg\":{\"what\":1}}").unwrap();
-            // Ждём, пока окно закроет канал.
+            // We wait until the window closes the channel.
             let _ = proto::recv_frame(sock.as_fd());
             0
         });
@@ -1942,7 +1953,7 @@ mod tests {
             let n = r.fetch_add(1, Ordering::SeqCst);
             accept_hello(&sock);
             if n == 0 {
-                // Право отозвано простоем ещё до первой операции.
+                // The privilege was revoked by inactivity even before the first operation.
                 send(
                     &sock,
                     HelperMsg::Error {
@@ -1961,7 +1972,7 @@ mod tests {
             0
         });
         c.ensure_session().unwrap();
-        // Дождаться, пока поток сеанса прочтёт отзыв.
+        // Wait until the session thread reads the revocation.
         for _ in 0..200 {
             if !c.has_session() {
                 break;
@@ -2000,7 +2011,7 @@ mod tests {
             accept_hello(&sock);
             while let Ok(Some(msg)) = proto::recv_msg::<ClientMsg<PrivOp>>(sock.as_fd()) {
                 match msg {
-                    // Операцию не завершаем сами: ждём Cancel.
+                    // We do not finish the operation ourselves: we wait for Cancel.
                     ClientMsg::Request { .. } => {}
                     ClientMsg::Cancel { id } => send(
                         &sock,
@@ -2019,10 +2030,10 @@ mod tests {
         let second = c.submit(&op(), vec![]).unwrap();
         let session = c.session().unwrap();
         assert!(first.id() < second.id());
-        // Второй ещё в очереди: снимается без помощника.
+        // The second one is still in the queue: it is removed without the helper.
         assert!(session.cancel(second.id()));
         assert_eq!(second.wait(&mut no_progress()), Err(ClientError::Cancelled));
-        // Первый у помощника (ждём, пока поток его отдаст).
+        // The first one is with the helper (we wait until the thread hands it out).
         let mut sent = false;
         for _ in 0..200 {
             if session.shared.lock().current.is_some() {
@@ -2043,7 +2054,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let (mut c, _) = client_with(FakeFs::good(), move |sock| {
             accept_hello(&sock);
-            // Окно закрыло сеанс — помощник видит EOF.
+            // The window closed the session — the helper sees EOF.
             let eof = matches!(proto::recv_frame(sock.as_fd()), Ok(None));
             tx.send(eof).unwrap();
             0
@@ -2052,20 +2063,20 @@ mod tests {
         c.shutdown();
         assert!(rx.recv_timeout(Duration::from_secs(5)).unwrap());
         assert!(!session.is_alive());
-        // Закрытая ручка новых операций не берёт.
+        // A closed handle does not take new operations.
         assert_eq!(session.submit(99, vec![1], vec![]).err(), Some(ClientError::Closed));
     }
 
-    // ---------------------------------------------------------------- З3
+    // ---------------------------------------------------------------- Z3
 
     fn inode(fd: BorrowedFd<'_>) -> u64 {
-        // SAFETY: fstat в нулевую структуру по живому fd.
+        // SAFETY: fstat into a zeroed structure on a live fd.
         let mut st: libc::stat = unsafe { std::mem::zeroed() };
         assert_eq!(unsafe { libc::fstat(fd.as_raw_fd(), &mut st) }, 0);
         st.st_ino as u64
     }
 
-    /// Номера сокетов, открытых у процесса: fd → inode.
+    /// Numbers of the sockets open in the process: fd → inode.
     fn socket_fds(pid: u32) -> HashMap<i32, u64> {
         let mut out = HashMap::new();
         for entry in std::fs::read_dir(format!("/proc/{pid}/fd")).unwrap().flatten() {
@@ -2085,16 +2096,17 @@ mod tests {
         let ours_ino = inode(ours.as_fd());
         let theirs_ino = inode(theirs.as_fd());
 
-        // «Помощник» — настоящий процесс через CommandSpawner: сокет на 0 и 1.
+        // The "helper" is a real process via CommandSpawner: the socket on 0 and 1.
         let mut helper = CommandSpawner
             .spawn(&["sleep".into(), "30".into()], theirs)
             .unwrap();
-        // Посторонний потомок окна при открытом сокете.
+        // An unrelated descendant of the window while the socket is open.
         let mut other = Command::new("sleep").arg("30").spawn().unwrap();
-        // И настоящий `true`: запускается и выходит без сокета.
+        // And a real `true`: it starts and exits without the socket.
         assert!(Command::new("true").status().unwrap().success());
 
-        // pid «помощника» не знаем через трейт — ищем среди своих детей.
+        // We do not know the "helper's" pid through the trait — we look for it among
+        // our children.
         let other_socks = socket_fds(other.id());
         assert!(
             !other_socks.values().any(|&i| i == ours_ino || i == theirs_ino),
@@ -2110,26 +2122,26 @@ mod tests {
         assert!(!hs.values().any(|&i| i == ours_ino), "конец окна утёк помощнику");
         assert_eq!(hs.values().filter(|&&i| i == theirs_ino).count(), 2, "лишние копии");
 
-        // У окна своей копии конца помощника не осталось.
+        // The window has no copy of the helper's end left.
         let mine = socket_fds(std::process::id());
         assert!(!mine.values().any(|&i| i == theirs_ino), "окно держит конец помощника");
 
         other.kill().ok();
         other.wait().ok();
-        // SAFETY: kill своего дочернего процесса.
+        // SAFETY: kill of our own child process.
         unsafe { libc::kill(helper_pid as i32, libc::SIGKILL) };
         helper.wait().ok();
         drop(ours);
     }
 
-    /// Прямые потомки этого процесса.
+    /// Direct descendants of this process.
     fn child_pids() -> Vec<u32> {
         let me = std::process::id();
         let mut out = Vec::new();
         for entry in std::fs::read_dir("/proc").unwrap().flatten() {
             let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else { continue };
             let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { continue };
-            // Поле 4 — ppid; имя процесса в скобках может содержать пробелы.
+            // Field 4 is the ppid; the process name in parentheses may contain spaces.
             let Some(rest) = stat.rsplit_once(')').map(|(_, r)| r) else { continue };
             if rest.split_whitespace().nth(1).and_then(|p| p.parse::<u32>().ok()) == Some(me) {
                 out.push(pid);
@@ -2139,8 +2151,8 @@ mod tests {
     }
 }
 
-/// Тексты человеку (Б13): у каждой ошибки и ключа помощника — своя фраза,
-/// без служебных слов, с переводом в `po/ru.po` и `po/de.po`.
+/// Texts for the person (B13): every error and helper key has its own phrase,
+/// without technical words, with a translation in `po/ru.po` and `po/de.po`.
 #[cfg(test)]
 mod human_text_tests {
     use super::*;
@@ -2157,7 +2169,7 @@ mod human_text_tests {
         Reason::RevokedByUser,
     ];
 
-    /// Ключи отказов помощника: проверка аргументов, распаковка, `.PKGINFO`.
+    /// Keys of helper refusals: argument check, unpacking, `.PKGINFO`.
     const REFUSED: &[&str] = &[
         "wayland-session-missing.plasmax11", "session-set-elsewhere.plasmax11",
         "empty", "too-long", "too-many", "operand", "package-name", "item-name", "family",
@@ -2174,7 +2186,7 @@ mod human_text_tests {
         "no-setpriv",
     ];
 
-    /// Служебные слова, которых покупатель видеть не должен (нижний регистр).
+    /// Technical words the buyer must not see (lower case).
     const JARGON: &[&str] = &[
         "pkexec", "polkit", "helper", "помощник", "сеанс прав", "root", "sudo", "build", "сборк",
         "refused.", "revoked.", "session", "socket", "сокет", "handshake", "рукопожат", "dbus",
@@ -2231,7 +2243,7 @@ mod human_text_tests {
         let t = |k: &str| key_text(&format!("refused.{k}"));
         assert_eq!(t("vital"), "Rexon refused: this package is needed by the system.");
         assert!(t("current-desktop").contains("using this desktop"));
-        // Незнакомый ключ — общий отказ, сам ключ человеку не показан.
+        // An unknown key gives a general refusal; the key itself is not shown to the person.
         assert_eq!(t("brand-new"), "Rexon refused to make this change — nothing was changed.");
         assert!(!key_text("revoked.idle").contains("idle"));
         assert!(key_text("revoked.idle").contains("15 minutes"));
@@ -2253,14 +2265,15 @@ mod human_text_tests {
         assert_eq!(Reason::from_code("nope"), None);
     }
 
-    /// Каждая фраза (английский `msgid`) переведена в ru и de, перевод без
-    /// служебных слов. Составная фраза отзыва проверяется по частям.
+    /// Every phrase (the English `msgid`) is translated into ru and de, and the
+    /// translation has no technical words. A compound revocation phrase is checked
+    /// in parts.
     #[test]
     fn texts_are_translated_without_jargon() {
         english();
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../po");
-        // Отказы «сеанс держится на пакете» — готовый текст с именами
-        // сеансов; сверяются их шаблоны.
+        // Refusals "the session relies on a package" — a ready text with session
+        // names; their templates are checked.
         let filled = |e: &ClientError| {
             matches!(e, ClientError::Refused { message_key } if message_key.starts_with("refused.orphan-in-use.")
                 || message_key.starts_with("refused.orphan-login-default.")

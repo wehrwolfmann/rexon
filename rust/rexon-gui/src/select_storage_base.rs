@@ -1,52 +1,56 @@
-// Общая часть хранилищ выбора страницы «Обои»: база `SelectStorage`
-// (qextra) плюс надстройка `WallpaperSelectStorage` вендора.
+// The shared part of the selection storages of the "Wallpapers" page: the
+// `SelectStorage` base (qextra) plus the vendor's `WallpaperSelectStorage`
+// layer.
 //
-// Это та же замена Qt-наследования, что `query_base.rs` для запросов:
-// cxx-qt не умеет наследование Rust-QObject от Rust-QObject, а у вендора
-// хранилищ ДВА и второе наследует первому —
-// `PlaylistItemSelectStorage : WallpaperSelectStorage : SelectStorage`
-// (`ui/src/model/wallpaper_select_storage.cppm` v0.3.7). Макрос печатает
-// то, что у оригинала давали два базовых класса, а различия остаются в
-// файлах-мостах.
+// This is the same replacement for Qt inheritance as `query_base.rs` for
+// queries: cxx-qt cannot make a Rust QObject inherit from a Rust QObject,
+// while the vendor has TWO storages and the second inherits from the first
+// — `PlaylistItemSelectStorage : WallpaperSelectStorage : SelectStorage`
+// (`ui/src/model/wallpaper_select_storage.cppm` v0.3.7). The macro emits
+// what the original got from two base classes, and the differences stay in
+// the bridge files.
 //
-// Модуль НЕ мост: `macro_rules!` в файле с `#[cxx_qt::bridge]` жил бы
-// вместе с ним, а нужен он обоим мостам сразу. Один движок на крейт, а не
-// копия в каждом (правило #12).
+// The module is NOT a bridge: a `macro_rules!` in a file with
+// `#[cxx_qt::bridge]` would live together with it, while both bridges need
+// it at once. One engine per crate, not a copy in each (rule #12).
 //
-// Что тип-мост обязан дать сам:
+// What the bridge type must provide by itself:
 //
-//   * Rust-структуру с полями `state: SelectState`,
-//     `model: *mut qobject::QObject` и
-//     `model_watch: Vec<cxx_qt::QMetaObjectConnectionGuard>` (подписки на
-//     модель, waywallen 0.4.4);
-//   * в мосте — свойства `model`/`selectionMode`/`anchorIndex`/
+//   * a Rust struct with the fields `state: SelectState`,
+//     `model: *mut qobject::QObject` and
+//     `model_watch: Vec<cxx_qt::QMetaObjectConnectionGuard>` (model
+//     subscriptions, waywallen 0.4.4);
+//   * in the bridge — the properties `model`/`selectionMode`/`anchorIndex`/
 //     `selectedCount`/`active`/`removableSelectedCount`/
-//     `hiddenSelectedCount` с их сигналами;
-//   * `fn keep_active(&self) -> bool` — `keepActiveWithoutSelection`
-//     оригинала. Виртуальная в C++, поэтому и здесь своя у каждого:
-//     у надстройки обоей это «правят плейлист», у надстройки состава —
-//     «плейлист задан»;
-//   * `fn after_selected_count_changed(self: Pin<&mut Self>)` — то, что у
-//     оригинала висит на `selectedCountChanged` собственным connect'ом
-//     подкласса (у состава плейлиста это пересчёт порядка добавленных);
-//   * `fn clear(...)` — инвокабл `clear()`. Он виртуальный у оригинала:
-//     подкласс делает своё и зовёт `clear_base()` отсюда.
+//     `hiddenSelectedCount` with their signals;
+//   * `fn keep_active(&self) -> bool` — the original's
+//     `keepActiveWithoutSelection`. It is virtual in C++, so here too each
+//     has its own: for the wallpaper layer it is "a playlist is being
+//     edited", for the contents layer — "a playlist is set";
+//   * `fn after_selected_count_changed(self: Pin<&mut Self>)` — what in the
+//     original hangs on `selectedCountChanged` through the subclass's own
+//     connect (for the playlist contents this is recomputing the order of
+//     the added items);
+//   * `fn clear(...)` — the `clear()` invokable. It is virtual in the
+//     original: the subclass does its own thing and calls `clear_base()`
+//     from here.
 
-/// Qt-слой базы `SelectStorage` + `WallpaperSelectStorage`.
+/// Qt layer of the `SelectStorage` + `WallpaperSelectStorage` base.
 ///
-/// `$ty` — имя типа в мосте, `$cast` — имя C++-шима `qobject_cast` к
-/// модели библиотеки (у каждого моста своё: одно и то же объявление
-/// `extern "C++"` в двух мостах даёт `duplicate symbol` на линковке).
+/// `$ty` is the type name in the bridge, `$cast` is the name of the C++
+/// `qobject_cast` shim to the library model (each bridge has its own: the
+/// same `extern "C++"` declaration in two bridges gives a `duplicate symbol`
+/// at link time).
 #[macro_export]
 macro_rules! impl_select_storage_base {
     ($ty:ident, $cast:ident) => {
         impl qobject::$ty {
-            // ── доступ к модели ───────────────────────────────────────────
+            // ── model access ──────────────────────────────────────────────
 
-            /// Модель как Rust-тип. `None` — модель не задана.
+            /// The model as a Rust type. `None` means no model is set.
             ///
-            /// ⚠️ Приведение уже проверено `qobject_cast` в момент записи
-            /// свойства, поэтому здесь остаётся только каст указателя.
+            /// Warning: the cast was already checked with `qobject_cast` when the
+            /// property was written, so only a pointer cast remains here.
             fn list_model(
                 &self,
             ) -> ::core::option::Option<
@@ -62,14 +66,13 @@ macro_rules! impl_select_storage_base {
                 })
             }
 
-            /// Модель как изменяемая ссылка. Отдельным методом, а не через
-            /// `self`: указатель на модель НЕ выводится из `self`, поэтому
-            /// пока модель правится, хранилище можно продолжать читать и
-            /// слать его собственные сигналы.
+            /// The model as a mutable reference. A separate method rather than through
+            /// `self`: the model pointer is NOT derived from `self`, so while the model
+            /// is being edited, the storage can still be read and send its own signals.
             ///
             /// # Safety
-            /// `self.model` — либо nullptr, либо живая `WallpaperListModel`
-            /// (приведение проверено `qobject_cast` при записи свойства).
+            /// `self.model` is either nullptr or a live `WallpaperListModel` (the cast
+            /// was checked with `qobject_cast` when the property was written).
             unsafe fn list_model_pin<'a>(
                 &self,
             ) -> ::core::option::Option<
@@ -93,17 +96,17 @@ macro_rules! impl_select_storage_base {
                 self.model
             }
 
-            /// Запись свойства `model`. Зовёт её QML — оттуда приходит
-            /// сырой `QObject*`, и проверить его на стороне Rust нечем.
+            /// Writing the `model` property. QML calls it — a raw `QObject*` comes from
+            /// there, and there is no way to check it on the Rust side.
             ///
             /// # Safety
-            /// `model` — либо nullptr, либо живой QObject: шим
-            /// `qobject_cast` читает мета-объект по этому адресу.
+            /// `model` is either nullptr or a live QObject: the `qobject_cast` shim
+            /// reads the metaobject at this address.
             pub unsafe fn set_model(
                 mut self: ::core::pin::Pin<&mut Self>,
                 model: *mut qobject::QObject,
             ) {
-                // Чужая модель не принимается — как qobject_cast оригинала.
+                // A foreign model is not accepted — like the original's qobject_cast.
                 let next = unsafe { qobject::$cast(model) };
                 if self.model == next {
                     return;
@@ -128,39 +131,39 @@ macro_rules! impl_select_storage_base {
                     .unwrap_or(0)
             }
 
-            /// waywallen 0.4.4: сколько выбранных обоев скрыто.
+            /// waywallen 0.4.4: how many of the selected wallpapers are hidden.
             pub fn hidden_selected_count(&self) -> i32 {
                 self.list_model()
                     .map(|m| m.hidden_selected_count_value())
                     .unwrap_or(0)
             }
 
-            /// Подписки на модель — порт лямбды конструктора
-            /// `WallpaperSelectStorage` v0.4.4: при смене модели старая
-            /// связь рвётся, к новой цепляется `dataChanged` →
-            /// `selectedHiddenCountChanged`.
+            /// Model subscriptions — a port of the `WallpaperSelectStorage` v0.4.4
+            /// constructor lambda: when the model changes, the old connection is
+            /// broken, and `dataChanged` → `selectedHiddenCountChanged` is hooked to the
+            /// new one.
             ///
-            /// Сверх оригинала — `selectionChanged` модели → полный
-            /// пересчёт (`onModelSelectionChanged`). У оригинала признак
-            /// «скрыта» меняется правкой строки на месте (`dataChanged`), а
-            /// наша модель перестраивается целиком (`reset_rows`), и
-            /// `dataChanged` при этом не бывает; о сохранившемся выборе
-            /// она сообщает именно `selectionChanged`. Без этой связи
-            /// счётчики выбора застывали бы после пересборки списка.
+            /// Beyond the original — the model's `selectionChanged` → a full recompute
+            /// (`onModelSelectionChanged`). In the original the "hidden" flag changes by
+            /// editing a row in place (`dataChanged`), while our model is rebuilt
+            /// entirely (`reset_rows`), and there is no `dataChanged` then; it reports
+            /// the preserved selection precisely with `selectionChanged`. Without this
+            /// connection the selection counters would freeze after the list is
+            /// rebuilt.
             ///
-            /// ⚠️ Обработчик `dataChanged` ТОЛЬКО шлёт сигнал и состояния не
-            /// трогает: его поднимает сама модель внутри `set_selected`,
-            /// который зовёт это же хранилище. `selectionChanged` модель
-            /// шлёт лишь из `reset_rows` (его зовёт запрос списка, не
-            /// хранилище), там полный пересчёт безопасен.
+            /// Warning: the `dataChanged` handler ONLY sends a signal and does not touch
+            /// the state: it is raised by the model itself inside `set_selected`, which
+            /// is called by this same storage. The model sends `selectionChanged` only
+            /// from `reset_rows` (called by the list query, not by the storage); a full
+            /// recompute is safe there.
             fn watch_model(mut self: ::core::pin::Pin<&mut Self>) {
                 ::cxx_qt::CxxQtType::rust_mut(self.as_mut()).model_watch.clear();
-                /// Адрес хранилища для обработчиков. Связь живёт не дольше
-                /// хранилища: сторожа лежат в его же поле и при Drop её
-                /// рвут; связь прямая, отложенных вызовов нет.
+                /// Storage address for the handlers. The connection lives no longer than
+                /// the storage: the guards lie in its own field and break it on Drop; the
+                /// connection is direct, with no deferred calls.
                 struct Owner(*mut qobject::$ty);
-                // SAFETY: связи прямые (`AutoConnection` в потоке GUI), из
-                // другого потока обработчик не зовётся.
+                // SAFETY: the connections are direct (`AutoConnection` in the GUI thread);
+                // the handler is not called from another thread.
                 unsafe impl Send for Owner {}
                 let raw: *mut qobject::$ty = unsafe { self.as_mut().get_unchecked_mut() };
                 let ::core::option::Option::Some(mut model) = (unsafe { self.list_model_pin() })
@@ -184,7 +187,7 @@ macro_rules! impl_select_storage_base {
                 rust.model_watch.push(on_selection);
             }
 
-            // ── свойства базы ─────────────────────────────────────────────
+            // ── base properties ───────────────────────────────────────────
 
             pub fn selection_mode(&self) -> bool {
                 self.state.selection_mode
@@ -215,7 +218,7 @@ macro_rules! impl_select_storage_base {
                 self.state.selection_mode || self.selected_count() > 0 || self.keep_active()
             }
 
-            // ── инвокаблы ─────────────────────────────────────────────────
+            // ── invokables ────────────────────────────────────────────────
 
             pub fn begin(mut self: ::core::pin::Pin<&mut Self>, row: i32) -> bool {
                 if self.model.is_null() {
@@ -290,8 +293,9 @@ macro_rules! impl_select_storage_base {
                 changed
             }
 
-            /// Тело `SelectStorage::clear()` оригинала. Инвокабл `clear()`
-            /// у оригинала виртуальный: подкласс делает своё и зовёт это.
+            /// The body of the original's `SelectStorage::clear()`. The `clear()`
+            /// invokable is virtual in the original: the subclass does its own thing
+            /// and calls this.
             pub fn clear_base(mut self: ::core::pin::Pin<&mut Self>) {
                 if let ::core::option::Option::Some(model) = (unsafe { self.list_model_pin() })
                 {
@@ -367,27 +371,25 @@ macro_rules! impl_select_storage_base {
                 self.notify_active_changed();
             }
 
-            // ── внутреннее ────────────────────────────────────────────────
+            // ── internals ─────────────────────────────────────────────────
 
-            /// Выбор в модели поменялся: разослать оба счётчика и дать
-            /// подклассу его собственный обработчик
-            /// `selectedCountChanged` (у оригинала — connect в
-            /// конструкторе подкласса).
+            /// The selection in the model changed: send both counters and give the
+            /// subclass its own `selectedCountChanged` handler (in the original — a
+            /// connect in the subclass constructor).
             ///
-            /// Сначала сигналы, потом обработчик: у оригинала это слот, а
-            /// слоты выполняются после того, как сигнал разошёлся по
-            /// привязкам QML.
+            /// Signals first, then the handler: in the original it is a slot, and slots
+            /// run after the signal has propagated through the QML bindings.
             fn notify_selected_count(mut self: ::core::pin::Pin<&mut Self>) {
                 self.as_mut().selected_count_changed();
                 self.as_mut().selected_removable_count_changed();
-                // waywallen 0.4.4: `selectedCountChanged` и `modelChanged` →
-                // `selectedHiddenCountChanged` (цепочки конструктора).
+                // waywallen 0.4.4: `selectedCountChanged` and `modelChanged` →
+                // `selectedHiddenCountChanged` (the constructor's chains).
                 self.as_mut().selected_hidden_count_changed();
                 self.after_selected_count_changed();
             }
 
-            /// `cancelIfEmpty` оригинала: выбор опустел — выходим из
-            /// режима выбора.
+            /// The original's `cancelIfEmpty`: the selection became empty — leave
+            /// selection mode.
             fn cancel_if_empty(mut self: ::core::pin::Pin<&mut Self>) {
                 if self.selected_count() > 0 || self.keep_active() {
                     self.notify_active_changed();
@@ -398,8 +400,7 @@ macro_rules! impl_select_storage_base {
                 self.notify_active_changed();
             }
 
-            /// `notifyActiveChanged` оригинала: сигнал только на реальном
-            /// перевороте.
+            /// The original's `notifyActiveChanged`: the signal only on a real flip.
             fn notify_active_changed(mut self: ::core::pin::Pin<&mut Self>) {
                 let next = self.active();
                 if self.state.active == next {

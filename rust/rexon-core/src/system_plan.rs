@@ -1,106 +1,109 @@
-//! Исполняющий слой `rexon/system.py` как ЧИСТЫЕ «планы команд» —
-//! продолжение порта system.py (первая часть — `system.rs`).
+//! The executing layer of `rexon/system.py` as PURE "command plans": the
+//! continuation of the system.py port (the first part is `system.rs`).
 //!
-//! Здесь НИЧЕГО не выполняется: каждая функция по входным данным строит
-//! последовательность шагов (`PlanStep`) — команда, аргументы, нужен-ли-root,
-//! таймаут, окружение (LANG=C), описание. Исполнитель (пока живой Python
-//! через мост, позже rexon-gui) просто прогоняет план. Эталон паритета —
-//! ЗАПИСАННЫЕ вызовы safe_run/subprocess.run живого Python (argv/timeout/env)
-//! на тех же входах: план обязан совпасть 1-в-1 (см. `system_plan_parity.rs`).
+//! NOTHING is executed here: each function builds, from its inputs, a
+//! sequence of steps (`PlanStep`): the command, arguments, whether root is
+//! needed, timeout, environment (LANG=C), description. The executor (live
+//! Python through the bridge for now, rexon-gui later) simply runs the plan.
+//! The parity reference is the RECORDED safe_run/subprocess.run calls of live
+//! Python (argv/timeout/env) on the same inputs: the plan must match 1-to-1
+//! (see `system_plan_parity.rs`).
 //!
-//! Портировано:
-//!   * таблицы команд per `PkgFamily` (11 семейств): `install_cmd` /
+//! Ported:
+//!   * command tables per `PkgFamily` (11 families): `install_cmd` /
 //!     `remove_cmd` / `query_cmd` / `update_db_cmd` / `pkg_manager_name`
-//!     (+ тексты RuntimeError для UNKNOWN — как в Python);
-//!   * `LOCK_PATHS` + шаг-примитив `WaitPkgLock` (poll 2 с, таймаут 300 с —
-//!     snap-pac post-hooks держат лок после соседней транзакции);
-//!   * `install_argv` — ЕДИНСТВЕННЫЙ ответ на «какой командой поставить эти
-//!     пакеты»: таблица флагов плюс выбор «именованный путь org.rexon.pkg или
-//!     сырой pkexec» (и NixOS без root). Спрашивают его и `install_plan`, и
-//!     доустановка видеозависимостей (`wallpaper_engine`), и починка
-//!     соответствия (`compliance`) — обе последние держали СВОИ таблицы и
-//!     обе успели с движком разойтись;
-//!   * планы `update_db_plan` / `install_plan` / `remove_plan` (полный
-//!     пайплайн remove: раскрытие групп → query установленности → forbidden
-//!     set → транзитивное замыкание → команда удаления) /
-//!     `install_batch_plan` (legacy `pkexec bash <tmp_sh>` со скриптом и
-//!     обёрткой с chown-граблей fs.protected_regular, helper-путь
-//!     rexon-de-helper, SteamOS steamos-readonly, NixOS/immutable ранние
-//!     выходы, Gentoo overlay, AUR-хвост без root);
-//!   * оркестрация DE: `dm_enable_step` (пары пакет/юнит, `--force` для
-//!     Plasma Login Manager), `remove_de_decision` (2-уровневая защита от
-//!     удаления активного DE, force-флаг — правило архитектуры #13),
-//!     `switch_de_guard`, `logout_cmds` (подбор команд логаута по окружению);
-//!   * polkit-слой: генерация ТЕКСТОВ привилегированных helper-скриптов
+//!     (+ RuntimeError texts for UNKNOWN, as in Python);
+//!   * `LOCK_PATHS` + the `WaitPkgLock` step primitive (poll 2 s, timeout
+//!     300 s: snap-pac post-hooks hold the lock after a neighbouring transaction);
+//!   * `install_argv`: the ONLY answer to "which command installs these
+//!     packages": the flag table plus the choice "named org.rexon.pkg path or
+//!     raw pkexec" (and NixOS without root). It is asked by `install_plan`,
+//!     by installing video dependencies (`wallpaper_engine`) and by compliance
+//!     repair (`compliance`): the last two kept THEIR OWN tables and both had
+//!     drifted from the engine;
+//!   * the plans `update_db_plan` / `install_plan` / `remove_plan` (the full
+//!     remove pipeline: group expansion → installed query → forbidden set →
+//!     transitive closure → removal command) / `install_batch_plan` (legacy
+//!     `pkexec bash <tmp_sh>` with the script and a wrapper with the
+//!     fs.protected_regular chown pitfall, the rexon-de-helper path, SteamOS
+//!     steamos-readonly, NixOS/immutable early exits, Gentoo overlay, the AUR
+//!     tail without root);
+//!   * DE orchestration: `dm_enable_step` (package/unit pairs, `--force` for
+//!     Plasma Login Manager), `remove_de_decision` (2-level protection against
+//!     removing the active DE, the force flag: architecture rule #13),
+//!     `switch_de_guard`, `logout_cmds` (choosing logout commands by environment);
+//!   * the polkit layer: generating the TEXTS of the privileged helper scripts
 //!     (rexon-de-helper / rexon-pkg-helper / rexon-stage-helper), policy XML,
-//!     passwordless-правила org.rexon.*, `privileged_pkg_cmd` /
-//!     `privileged_stage_cmd` (named-действия vs сырой pkexec) и
-//!     `de_helper_supports`. Тексты сверены с Python текст-в-текст.
-//!   * версия пакета в репозиториях: `clean_pkg_version`, `valid_pkg_name`,
-//!     `repo_version_query` (команда + бинарь + LANG=C + таймаут 10 с),
-//!     `parse_repo_version` (поля Version/Candidate по семейству);
-//!   * установленный пакет — ещё два САМОСТОЯТЕЛЬНЫХ вопроса к движку (не
-//!     «установлен ли» и не «что в репозиториях»): `installed_version_query`
-//!     + `parse_installed_version` (версия того, что стоит на машине) и
-//!     `package_files_query` + `package_files_output` + `package_file_paths`
-//!     (список файлов пакета и его разбор — единственный на весь проект),
-//!     `installed_packages_query` + `parse_installed_packages` (перечислить
-//!     ВСЁ установленное — вопрос без аргумента-пакета),
-//!     `installed_meta_query` (`pacman -Qi`, сырьё разбора полей) и
-//!     `repo_target_exists` (есть ли цель в репозиториях — по исходу того же
-//!     запроса, что и версия);
-//!   * ожидание замка пакетного менеджера: `lock_wait_step` — чистый шаг
-//!     цикла (свободен / сказать человеку / подождать / не дождались),
-//!     общий для установки пакетов и для пересборки оформления;
-//!   * откат тяжёлых форков Plasma: `filter_plasma_forks`,
-//!     `fork_stock_candidates` + `fork_stock_target` (сток из живых
-//!     provides/replaces, проверенный на существование в репозиториях),
+//!     passwordless org.rexon.* rules, `privileged_pkg_cmd` /
+//!     `privileged_stage_cmd` (named actions vs raw pkexec) and
+//!     `de_helper_supports`. The texts are checked against Python text for text.
+//!   * package version in the repositories: `clean_pkg_version`,
+//!     `valid_pkg_name`, `repo_version_query` (command + binary + LANG=C +
+//!     10 s timeout), `parse_repo_version` (Version/Candidate fields by family);
+//!   * an installed package: two more INDEPENDENT questions to the engine (not
+//!     "is it installed" and not "what is in the repositories"):
+//!     `installed_version_query` + `parse_installed_version` (the version of
+//!     what is on the machine) and `package_files_query` +
+//!     `package_files_output` + `package_file_paths` (the package's file list
+//!     and its parsing, the only one in the whole project),
+//!     `installed_packages_query` + `parse_installed_packages` (list
+//!     EVERYTHING installed: a question without a package argument),
+//!     `installed_meta_query` (`pacman -Qi`, raw material for field parsing)
+//!     and `repo_target_exists` (whether a target is in the repositories: by
+//!     the outcome of the same query as the version);
+//!   * waiting for the package manager lock: `lock_wait_step`, a pure loop
+//!     step (free / tell the person / wait / gave up), shared by package
+//!     installs and the look rebuild;
+//!   * rollback of heavy Plasma forks: `filter_plasma_forks`,
+//!     `fork_stock_candidates` + `fork_stock_target` (stock from live
+//!     provides/replaces, checked for existence in the repositories),
 //!     `plasma_fork_split`, `plasma_fork_recovery_command`,
 //!     `plasma_fork_unresolved_message`, `plasma_fork_failure_message`,
-//!     `plasma_fork_reset_plan` (одна pkexec-транзакция `-Rns` + `-S`,
-//!     либо отказ `Blocked`, если возвращать нечего), `plasma_fork_preview`
-//!     (что будет сделано, без транзакции), `plasma_fork_reset_outcome`
-//!     (разбор исхода pkexec) и `TargetExistsMemo` (память пробы);
+//!     `plasma_fork_reset_plan` (one pkexec transaction `-Rns` + `-S`, or a
+//!     `Blocked` refusal if there is nothing to restore), `plasma_fork_preview`
+//!     (what will be done, without a transaction), `plasma_fork_reset_outcome`
+//!     (parsing the pkexec outcome) and `TargetExistsMemo` (probe memory);
 //!   * Plymouth: `plymouth_theme_from_link`, `plymouth_theme_from_output`,
-//!     `plymouth_theme_candidates` + `plymouth_installed_themes` (что считать
-//!     установленной темой), `plymouth_theme_file`, `plymouth_package_default`,
-//!     `target_plymouth_theme` (брендинг дистро → дефолт пакета → запасные),
-//!     `plymouth_reset_command`, `plymouth_reset_plan` (выбор
+//!     `plymouth_theme_candidates` + `plymouth_installed_themes` (what counts
+//!     as an installed theme), `plymouth_theme_file`, `plymouth_package_default`,
+//!     `target_plymouth_theme` (distro branding → package default → fallbacks),
+//!     `plymouth_reset_command`, `plymouth_reset_plan` (choosing
 //!     plymouth-set-default-theme vs update-alternatives),
-//!     `plymouth_reset_decision` + `plymouth_reset_outcome` и тексты ответов;
+//!     `plymouth_reset_decision` + `plymouth_reset_outcome` and the answer texts;
 //!   * SDDM: `sddm_conf_read_order`, `sddm_conf_entries`,
 //!     `sddm_kde_settings_path`, `sddm_files_to_remove`,
 //!     `sddm_current_theme_from`,
 //!     `sddm_distro_default_theme`, `sddm_reset_plan`, `sddm_reset_command`,
 //!     `sddm_reset_outcome`,
-//!     тексты сообщений (`sddm_reset_success_message`,
+//!     message texts (`sddm_reset_success_message`,
 //!     `pkexec_denied_message`);
-//!   * детект экрана входа: таблицы юнитов (`KNOWN_DM_UNITS` —
-//!     17 DM, с 15.11.2026 и DDM, `LOGIN_MANAGER_PROBE_UNITS`, `DM_ENABLED_STATES`),
-//!     `dm_unit_from_symlink`, `active_login_manager_from`,
-//!     `display_manager_present_from` (сами `systemctl is-enabled` — колбэком).
-//!   * живой ход установки: `parse_pacman_line` — строка вывода pacman в
-//!     стадию и готовое русское сообщение (шаги, хуки, скачивание, итоги,
-//!     разделы, ошибки, «уже установлено» у `--needed`).
-//!   * итог установки и её ход: `batch_main_result` (объяснения про отказ
-//!     pkexec и отсутствующий polkit-агент), `batch_aur_intro` /
-//!     `batch_aur_result`, `install_de_fraction` (доля полосы по стадии),
+//!   * login screen detection: unit tables (`KNOWN_DM_UNITS`: 17 DMs, DDM
+//!     included since 15.11.2026, `LOGIN_MANAGER_PROBE_UNITS`,
+//!     `DM_ENABLED_STATES`), `dm_unit_from_symlink`, `active_login_manager_from`,
+//!     `display_manager_present_from` (`systemctl is-enabled` itself via a callback).
+//!   * live install progress: `parse_pacman_line`: a pacman output line into
+//!     a stage and a ready localized message (steps, hooks, downloads,
+//!     results, sections, errors, "already installed" from `--needed`).
+//!   * install result and progress: `batch_main_result` (explanations about a
+//!     pkexec refusal and a missing polkit agent), `batch_aur_intro` /
+//!     `batch_aur_result`, `install_de_fraction` (bar share by stage),
 //!     `pick_aur_helper`, `pkg_lock_timeout_message`, `gentoo_overlay_for`,
 //!     `extra_packages_texts`;
-//!   * идиот-защита экрана входа: `SDDM_PKG_FOR_FAMILY` + `ensure_dm_plan`
-//!     (что ставить, чем ставить, чем включать и что сказать);
-//!   * пост-установка MATE: подписи «Общих задач» по языку, карта snap-путей,
-//!     gschema-оверрайд и оба привилегированных скрипта, списки пакетов
-//!     сверх дистрибутива, тексты итога.
+//!   * the login screen foolproof guard: `SDDM_PKG_FOR_FAMILY` + `ensure_dm_plan`
+//!     (what to install, with what, what to enable with and what to say);
+//!   * MATE post-install: "Common tasks" captions by language, the snap path
+//!     map, the gschema override and both privileged scripts, package lists
+//!     beyond the distribution, result texts.
 //!
-//! НЕ портировано (граница — исполнение при подключении к живому Python):
-//!   реальный запуск команд/pkexec и чтение их вывода, tail-поток лог-файла
-//!   установки (сам разбор строк — `parse_pacman_line`), проба
-//!   polkit-агента (вызов `gdbus` к polkit), походы наружу пост-установки MATE (git clone,
-//!   копирование файлов, gsettings), `ensure_gentoo_overlay` (сам шаг в
-//!   плане есть — `EnsureGentooOverlay`), `active_login_manager`, наличие
-//!   привилегированных хелперов (подаётся параметром), оркестрация
-//!   install_de/switch_de вокруг Python-модулей (PlasmaProtector,
+//! NOT ported (the boundary is execution when connected to live Python):
+//!   actually running commands/pkexec and reading their output, the install
+//!   log tail thread (the line parsing itself is `parse_pacman_line`), the
+//!   polkit agent probe (a `gdbus` call to polkit), the trips outside of the
+//!   MATE post-install (git clone, copying files, gsettings),
+//!   `ensure_gentoo_overlay` (the step itself is in the plan:
+//!   `EnsureGentooOverlay`), `active_login_manager`, the presence of the
+//!   privileged helpers (passed as a parameter), the install_de/switch_de
+//!   orchestration around Python modules (PlasmaProtector,
 //!   SystemDefaultsProtector, DEAppSwitcher, RexonBridge, BackupManager).
 
 use std::collections::HashMap;
@@ -114,20 +117,20 @@ use crate::system::{
 };
 
 // ============================================================================
-// Шаги плана
+// Plan steps
 // ============================================================================
 
-/// Команда исполнителю — то, что Python передаёт в `safe_run`.
+/// A command for the executor: what Python passes to `safe_run`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Cmd {
     pub argv: Vec<String>,
-    /// None → таймаут ПО КЛАССУ команды (`utils::default_timeout_secs`):
-    /// опрос 30 с, установка из репозиториев 30 мин, сборка из исходников
-    /// 4 ч. Своё число ставим только там, где по argv класс не виден —
-    /// прежде всего за `pkexec bash <скрипт>`.
+    /// None → timeout BY COMMAND CLASS (`utils::default_timeout_secs`): query
+    /// 30 s, install from repositories 30 min, build from source 4 h. We set our
+    /// own number only where the class cannot be seen from argv: above all
+    /// behind `pkexec bash <script>`.
     pub timeout_secs: Option<u64>,
-    /// Добавить LANG=C, LC_ALL=C поверх окружения (парсящие шаги — русская
-    /// локаль ломает разбор вывода pacman).
+    /// Add LANG=C, LC_ALL=C on top of the environment (parsing steps: a Russian
+    /// locale breaks parsing pacman output).
     pub lang_c: bool,
 }
 
@@ -137,65 +140,65 @@ impl Cmd {
     }
 }
 
-/// Машинный признак шага [`PlanStep::Run`] — по нему исполнитель узнаёт,
-/// ЧТО это за запуск, и не заглядывает в подпись для человека.
+/// Machine identifier of a [`PlanStep::Run`] step: by it the executor learns
+/// WHAT kind of run this is, without looking at the caption for the person.
 ///
-/// ⚠️ ЗАЧЕМ ОТДЕЛЬНОЕ ПОЛЕ. Исполнитель разбирал шаги сравнением с русской
-/// строкой `description` («Установка пакетов (один pkexec)» и соседние).
-/// Из-за этого переименование подписи — правка чисто косметическая, ровно
-/// та, которую поощряет правило про человеческий язык, — МОЛЧА ломало
-/// установку рабочего стола: главный привилегированный шаг терял живой
-/// прогресс из лог-файла и проверку результата, а план при этом оставался
-/// верным и сверки ничего не замечали. Подпись теперь только для показа
-/// человеку и переименовывается свободно; ветвление идёт по `id`.
+/// ⚠️ WHY A SEPARATE FIELD. The executor used to tell steps apart by
+/// comparing with the Russian `description` string (the "install packages
+/// (one pkexec)" one and its neighbours). Because of this, renaming a caption
+/// (a purely cosmetic change, exactly the one the plain language rule
+/// encourages) SILENTLY broke the desktop install: the main privileged step
+/// lost the live progress from the log file and the result check, while the
+/// plan stayed correct and the parity checks noticed nothing. The caption is
+/// now only for showing to the person and can be renamed freely; branching
+/// goes by `id`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum RunStepId {
-    /// Обновление базы пакетов (`update_db`, и тот же шаг внутри nix-ветки).
+    /// Package database update (`update_db`, and the same step inside the nix branch).
     #[serde(rename = "pkg.update_db")]
     PkgUpdateDb,
-    /// Одиночная установка пакетов (`install`, без пакетной обвязки).
+    /// A single package install (`install`, without the batch wrapper).
     #[serde(rename = "pkg.install")]
     PkgInstall,
-    /// ГЛАВНЫЙ привилегированный шаг пакетной установки: `pkexec` поверх
-    /// скрипта-обёртки (обычный путь и SteamOS) либо rexon-de-helper.
-    /// Исполнитель показывает по нему живой ход из лог-файла и проверяет
-    /// результат.
+    /// The MAIN privileged step of the batch install: `pkexec` over the wrapper
+    /// script (the regular path and SteamOS) or rexon-de-helper. By it the
+    /// executor shows live progress from the log file and checks the result.
     #[serde(rename = "pkg.main")]
     PkgMain,
-    /// Главный шаг пакетной установки на Nix (без pkexec и без лог-файла).
+    /// The main batch install step on Nix (no pkexec and no log file).
     #[serde(rename = "pkg.nix")]
     PkgNix,
-    /// Хвост установки из AUR через помощника (yay/paru).
+    /// The AUR install tail via a helper (yay/paru).
     #[serde(rename = "pkg.aur")]
     PkgAur,
-    /// Удаление пакетов.
+    /// Package removal.
     #[serde(rename = "pkg.remove")]
     PkgRemove,
-    /// Проба «что входит в группу» (раскрытие групп при удалении).
+    /// Probe "what is in the group" (group expansion on removal).
     #[serde(rename = "pkg.query_group")]
     PkgQueryGroup,
-    /// Проба «пакет установлен?».
+    /// Probe "is the package installed?".
     #[serde(rename = "pkg.query")]
     PkgQuery,
-    /// Проба «кому нужен пакет» при сборе запретного множества.
+    /// Probe "who needs the package" while gathering the forbidden set.
     #[serde(rename = "pkg.required_by")]
     PkgRequiredBy,
-    /// Проба «кому нужен пакет» на проходе транзитивного замыкания.
+    /// Probe "who needs the package" on a transitive closure pass.
     #[serde(rename = "pkg.closure")]
     PkgClosure,
-    /// Повторная проба «кому нужен пакет» ради пояснения к пропущенному.
+    /// A repeated "who needs the package" probe for the note on a skipped one.
     #[serde(rename = "pkg.skip_note")]
     PkgSkipNote,
-    /// Установка самого Rexon в систему (один пароль).
+    /// Installing Rexon itself into the system (one password).
     #[serde(rename = "app.install")]
     AppInstall,
-    /// Удаление самого Rexon из системы.
+    /// Removing Rexon itself from the system.
     #[serde(rename = "app.uninstall")]
     AppUninstall,
 }
 
 impl RunStepId {
-    /// Строковый вид признака — тот же, что уходит в план для исполнителя.
+    /// String form of the identifier: the same one that goes into the plan for the executor.
     pub fn as_str(self) -> &'static str {
         match self {
             RunStepId::PkgUpdateDb => "pkg.update_db",
@@ -215,8 +218,8 @@ impl RunStepId {
     }
 }
 
-/// Все признаки шагов `Run` — исполнителю, чтобы сверять план со своим
-/// разбором и не молчать о незнакомом шаге.
+/// All `Run` step identifiers: for the executor, to check the plan against
+/// its own parsing and not stay silent about an unknown step.
 pub const RUN_STEP_IDS: &[RunStepId] = &[
     RunStepId::PkgUpdateDb,
     RunStepId::PkgInstall,
@@ -233,37 +236,38 @@ pub const RUN_STEP_IDS: &[RunStepId] = &[
     RunStepId::AppUninstall,
 ];
 
-/// Шаг плана. Исполнение — при подключении к живому Python.
+/// A plan step. Execution happens when connected to live Python.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "step")]
 pub enum PlanStep {
-    /// Запустить команду (safe_run). `needs_root` = argv начинается с pkexec.
-    /// `id` — машинный признак для исполнителя, `description` — подпись
-    /// человеку (менять свободно, ветвиться по ней НЕЛЬЗЯ).
+    /// Run a command (safe_run). `needs_root` = argv starts with pkexec. `id` is
+    /// the machine identifier for the executor, `description` the caption for
+    /// the person (change freely, NEVER branch on it).
     Run { id: RunStepId, cmd: Cmd, needs_root: bool, description: String },
-    /// Подождать освобождения lock-файла пакетного менеджера (poll 2 с;
-    /// пустой `paths` — для family без лока — означает «свободен сразу»).
+    /// Wait for the package manager lock file to be released (poll 2 s; an empty
+    /// `paths`, for a family without a lock, means "free right away").
     WaitPkgLock { paths: Vec<String>, timeout_secs: u64, poll_secs: u64 },
-    /// Записать файл (сгенерированный скрипт/лог) с правами `mode`.
+    /// Write a file (a generated script/log) with permissions `mode`.
     WriteFile { path: String, content: String, mode: u32 },
-    /// Удалить временные файлы (ошибки игнорируются).
+    /// Delete temporary files (errors are ignored).
     RemoveFiles { paths: Vec<String> },
-    /// Подключить Gentoo overlay (`ensure_gentoo_overlay` — исполнение
-    /// при подключении к живому Python).
+    /// Enable the Gentoo overlay (`ensure_gentoo_overlay`: executed when
+    /// connected to live Python).
     EnsureGentooOverlay { overlay: String },
 }
 
-/// Отсечка стандартного ввода для КАЖДОГО скрипта, под которым работает
-/// пакетный менеджер (обёртка legacy-пути, обёртка SteamOS, rexon-de-helper).
+/// Cutting off standard input for EVERY script under which the package
+/// manager runs (the legacy path wrapper, the SteamOS wrapper, rexon-de-helper).
 ///
-/// ⚠️ Заведено после опыта: `pacman -S <группа>` без `--noconfirm` и с живым,
-/// но молчащим stdin висит на «Enter a selection (default=all):» вечно —
-/// проверено в песочнице (`fakeroot pacman -r …`, stdin = незакрытая труба:
-/// вопрос напечатан, дальше тишина до убийства по таймауту). С `--noconfirm`
-/// pacman отвечает себе сам и не читает ввод — но полагаться на то, что
-/// флаг никогда не потеряется в одиннадцати таблицах команд, нельзя. Из
-/// интерфейса Rexon терминала нет, повиснуть там некому и заметить некому:
-/// человек полчаса смотрит на замерший ход установки.
+/// ⚠️ Introduced after experience: `pacman -S <group>` without `--noconfirm`
+/// and with a live but silent stdin hangs on "Enter a selection
+/// (default=all):" forever: checked in a sandbox (`fakeroot pacman -r …`,
+/// stdin = an unclosed pipe: the question is printed, then silence until the
+/// timeout kill). With `--noconfirm` pacman answers itself and does not read
+/// input, but one cannot rely on the flag never getting lost in eleven
+/// command tables. The Rexon UI has no terminal, there is nobody to hang
+/// there and nobody to notice: the person stares at frozen install progress
+/// for half an hour.
 const STDIN_GUARD: &str = "exec </dev/null\n";
 
 fn run_step(id: RunStepId, argv: Vec<String>, timeout: Option<u64>,
@@ -278,15 +282,15 @@ fn run_step(id: RunStepId, argv: Vec<String>, timeout: Option<u64>,
 }
 
 // ============================================================================
-// Таблицы команд per family — порт _install_cmd/_remove_cmd/_query_cmd/
+// Command tables per family: port of _install_cmd/_remove_cmd/_query_cmd/
 // _update_db_cmd/get_pkg_manager_name
 // ============================================================================
 
 fn unknown_family_error(verb: &str, tail: &str) -> String {
-    // Текст RuntimeError в Python: f"Пакетный менеджер не определён
-    // ({self.family}). {Verb} … вручную: {…}". Достижимо только для UNKNOWN
-    // (остальные семейства есть в таблицах); f-string от (str, Enum) даёт
-    // "PkgFamily.UNKNOWN" — сверено golden-эталоном.
+    // The RuntimeError text in Python: an f-string "package manager not
+    // detected ({self.family}). {Verb} … by hand: {…}". Reachable only for
+    // UNKNOWN (the other families are in the tables); an f-string of (str, Enum)
+    // gives "PkgFamily.UNKNOWN": checked by a golden reference.
     trf(
         // TRANSLATORS: %1 is an instruction like “Install the packages
         // manually:”, %2 the package names. PkgFamily.UNKNOWN stays as is.
@@ -295,12 +299,12 @@ fn unknown_family_error(verb: &str, tail: &str) -> String {
     )
 }
 
-/// Проверка имён перед сборкой ЛЮБОЙ команды пакетного менеджера.
+/// Name check before assembling ANY package manager command.
 ///
-/// ⛔ Стоит в общей таблице команд, а не только перед привилегированным
-/// помощником: сырой откат того же плана (`pkexec apt-get install …`)
-/// поставил бы подсунутый ЛОКАЛЬНЫЙ ФАЙЛ от root ровно так же, как это
-/// делал помощник до починки 25.09.2026. Правило — [`is_safe_pkg_arg`].
+/// ⛔ It sits in the common command table, not only before the privileged
+/// helper: the raw fallback of the same plan (`pkexec apt-get install …`)
+/// would install a smuggled LOCAL FILE as root exactly as the helper did
+/// before the fix of 25.09.2026. The rule is [`is_safe_pkg_arg`].
 fn check_pkg_names(family: PkgFamily, packages: &[String]) -> Result<(), String> {
     match packages.iter().find(|p| !is_safe_pkg_arg(family, p)) {
         Some(bad) => Err(bad_pkg_name_error(bad)),
@@ -308,7 +312,7 @@ fn check_pkg_names(family: PkgFamily, packages: &[String]) -> Result<(), String>
     }
 }
 
-/// Команда установки пакетов — порт `PackageManager._install_cmd`.
+/// Package install command: port of `PackageManager._install_cmd`.
 pub fn install_cmd(family: PkgFamily, packages: &[String]) -> Result<Vec<String>, String> {
     check_pkg_names(family, packages)?;
     let head: &[&str] = match family {
@@ -339,10 +343,10 @@ pub fn install_cmd(family: PkgFamily, packages: &[String]) -> Result<Vec<String>
     Ok(cmd)
 }
 
-/// Команда удаления пакетов — порт `PackageManager._remove_cmd`.
+/// Package removal command: port of `PackageManager._remove_cmd`.
 pub fn remove_cmd(family: PkgFamily, packages: &[String]) -> Result<Vec<String>, String> {
     check_pkg_names(family, packages)?;
-    // Жизненно важное не снимается ни одним путём, сырой `pkexec` тоже.
+    // Vital packages are not removed by any path, raw `pkexec` included.
     if let Some(v) = packages.iter().find(|p| is_vital_package(p)) {
         return Err(vital_remove_error(v));
     }
@@ -370,29 +374,29 @@ pub fn remove_cmd(family: PkgFamily, packages: &[String]) -> Result<Vec<String>,
     Ok(cmd)
 }
 
-/// Установлен ли пакет — разбор ИСХОДА команды [`query_cmd`].
+/// Whether a package is installed: parsing the OUTCOME of the [`query_cmd`] command.
 ///
-/// `None` = команду не удалось запустить вовсе (`safe_run` вернул None: нет
-/// такого пакетного менеджера либо таймаут); `Some(false)` — завершилась не
-/// нулём. Вывод команды не читается никем: ответ даёт только код возврата,
-/// поэтому мусор в stdout ни на что не влияет.
+/// `None` = the command could not be run at all (`safe_run` returned None: no
+/// such package manager or a timeout); `Some(false)`: it exited non-zero.
+/// Nobody reads the command output: only the exit code gives the answer, so
+/// garbage in stdout affects nothing.
 ///
-/// Единственное место, где этот вывод делается. Одну и ту же строку
-/// `r is not None and r.returncode == 0` проект держал ЧЕТЫРЬМЯ копиями:
-/// `PackageManager.is_installed`, `_is_pkg_installed` у Plymouth,
-/// `ComplianceCheck._pkg_state` и фильтр «сверх дистрибутива»
+/// The only place where this conclusion is drawn. The project kept the same
+/// line `r is not None and r.returncode == 0` in FOUR copies:
+/// `PackageManager.is_installed`, Plymouth's `_is_pkg_installed`,
+/// `ComplianceCheck._pkg_state` and the "beyond the distribution" filter
 /// (`_ensure_extra_packages`).
 pub fn pkg_installed_from_run(ok: Option<bool>) -> bool {
     ok == Some(true)
 }
 
-/// То же по коду возврата — форма для Python-шима, который отдаёт
-/// `r.returncode` (или `None`, если `safe_run` вернул None).
+/// The same by exit code: the form for the Python shim, which passes
+/// `r.returncode` (or `None` if `safe_run` returned None).
 pub fn pkg_installed_from_rc(returncode: Option<i32>) -> bool {
     pkg_installed_from_run(returncode.map(|c| c == 0))
 }
 
-/// Команда проверки установленности — порт `PackageManager._query_cmd`.
+/// Installed check command: port of `PackageManager._query_cmd`.
 pub fn query_cmd(family: PkgFamily, package: &str) -> Result<Vec<String>, String> {
     let head: &[&str] = match family {
         PkgFamily::Arch => &["pacman", "-Q"],
@@ -417,8 +421,8 @@ pub fn query_cmd(family: PkgFamily, package: &str) -> Result<Vec<String>, String
     Ok(cmd)
 }
 
-/// Команда обновления БД пакетов — порт `PackageManager._update_db_cmd`
-/// (None для UNKNOWN — Python `cmds.get` → None → «нечего делать»).
+/// Package database update command: port of `PackageManager._update_db_cmd`
+/// (None for UNKNOWN: Python's `cmds.get` → None → "nothing to do").
 pub fn update_db_cmd(family: PkgFamily) -> Option<Vec<String>> {
     let cmd: &[&str] = match family {
         PkgFamily::Arch => &["pacman", "-Sy", "--noconfirm"],
@@ -437,13 +441,13 @@ pub fn update_db_cmd(family: PkgFamily) -> Option<Vec<String>> {
     Some(cmd.iter().map(|s| s.to_string()).collect())
 }
 
-/// Годится ли имя репозитория для вопроса [`sync_repo_cmd`].
+/// Whether a repository name fits the [`sync_repo_cmd`] question.
 ///
-/// Пустое имя и ведущий `-` отсекаются первыми: имя уходит менеджеру
-/// позиционным аргументом, и `--root` вместо имени уехало бы ключом. Дальше —
-/// узкий allowlist: имена репозиториев Gentoo состоят из букв, цифр, `_`, `-`
-/// и точки (`guru`, `cosmic-overlay`, `sarahmiaoverlay`); ни пробела, ни
-/// перевода строки, ни `/` в них не бывает.
+/// An empty name and a leading `-` are cut off first: the name goes to the
+/// manager as a positional argument, and `--root` instead of a name would go
+/// as an option. Then a narrow allowlist: Gentoo repository names consist of
+/// letters, digits, `_`, `-` and a dot (`guru`, `cosmic-overlay`,
+/// `sarahmiaoverlay`); there is never a space, newline or `/` in them.
 fn valid_repo_name(repo: &str) -> bool {
     !repo.is_empty()
         && !repo.starts_with('-')
@@ -452,37 +456,38 @@ fn valid_repo_name(repo: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
 
-/// Команда «синхронизировать ОДИН репозиторий» — девятый самостоятельный
-/// вопрос движка пакетов.
+/// The "sync ONE repository" command: the package engine's ninth independent
+/// question.
 ///
-/// Ни к одному прежнему он не сводится. [`update_db_cmd`] обновляет ВСЁ:
-/// `emerge --sync` тянет и дерево портежей, и каждый подключённый overlay, —
-/// а предмет этого вопроса один названный репозиторий, только что
-/// подключённый и потому ещё пустой. Спрашивает его `ensure_gentoo_overlay`
-/// (`rexon/system.py`), где команда прежде была зашита.
+/// It does not reduce to any earlier one. [`update_db_cmd`] updates
+/// EVERYTHING: `emerge --sync` pulls both the portage tree and every enabled
+/// overlay, while the subject of this question is one named repository, just
+/// enabled and therefore still empty. It is asked by `ensure_gentoo_overlay`
+/// (`rexon/system.py`), where the command used to be hardcoded.
 ///
-/// Ответ — ПОЛНАЯ команда, вместе с `pkexec`, в отличие от [`update_db_cmd`],
-/// который отдаёт голый argv и оставляет выбор «именованный путь или сырой»
-/// за [`update_db_plan`]. Выбирать здесь не из чего: rexon-pkg-helper знает
-/// четыре операции ([`PKG_HELPER_OPS`]), и такой среди них нет — его `update`
-/// синхронизирует всё и позиционных аргументов не принимает вовсе. Заводить
-/// пятую операцию значит менять файл, уже разложенный по чужим машинам, ради
-/// одного семейства; поэтому путь один — сырой `pkexec`, ровно как было.
+/// The answer is a FULL command, `pkexec` included, unlike [`update_db_cmd`],
+/// which returns a bare argv and leaves the "named path or raw" choice to
+/// [`update_db_plan`]. There is nothing to choose from here: rexon-pkg-helper
+/// knows four operations ([`PKG_HELPER_OPS`]), and this is not among them:
+/// its `update` syncs everything and takes no positional arguments at all.
+/// Adding a fifth operation would mean changing a file already deployed on
+/// other people's machines for the sake of one family; so there is one path,
+/// raw `pkexec`, exactly as before.
 ///
-/// `None` у всех прочих семейств, и это не лень: репозиторий, подключаемый
-/// ОТДЕЛЬНО от набора дистрибутива, есть только у Gentoo — это и есть
-/// overlay, и только он бывает пустым сразу после подключения.
-/// * У pacman пообъектного обновления нет вовсе: `-Sy` обновляет все базы
-///   разом, имени репозитория команда не принимает.
-/// * У apt то же самое: `apt-get update` читает весь `sources.list`. Сузить
-///   его можно лишь подменой `Dir::Etc::sourcelist`, то есть подсовыванием
-///   другого файла настроек, а это не операция «обнови вот этот».
-/// * У dnf (`--repo`) и zypper (`refresh <алиас>`) синтаксис есть, но задавать
-///   им этот вопрос некому: ни один путь Rexon не подключает репозиториев на
-///   этих семействах — ни `add-apt-repository`, ни `dnf config-manager
-///   --add-repo`, ни `zypper ar` в дереве не встречаются, — так что имени
-///   репозитория взять неоткуда. Привилегированная команда, ни разу нами не
-///   выполненная и никем не спрашиваемая, хуже честного «не знаю».
+/// `None` for all other families, and this is not laziness: a repository
+/// enabled SEPARATELY from the distribution set exists only on Gentoo: that
+/// is what an overlay is, and only it can be empty right after enabling.
+/// * pacman has no per-repository update at all: `-Sy` updates all
+///   databases at once, the command takes no repository name.
+/// * apt is the same: `apt-get update` reads the whole `sources.list`. It can
+///   only be narrowed by overriding `Dir::Etc::sourcelist`, i.e. slipping in
+///   another settings file, and that is not an "update this one" operation.
+/// * dnf (`--repo`) and zypper (`refresh <alias>`) have the syntax, but there
+///   is nobody to ask them this question: no Rexon path enables repositories
+///   on these families (neither `add-apt-repository`, nor `dnf config-manager
+///   --add-repo`, nor `zypper ar` occur in the tree), so there is nowhere to
+///   take a repository name from. A privileged command we never ran and
+///   nobody asks for is worse than an honest "I do not know".
 pub fn sync_repo_cmd(family: PkgFamily, repo: &str) -> Option<Vec<String>> {
     if family != PkgFamily::Gentoo || !valid_repo_name(repo) {
         return None;
@@ -496,7 +501,7 @@ pub fn sync_repo_cmd(family: PkgFamily, repo: &str) -> Option<Vec<String>> {
     ])
 }
 
-/// Имя пакетного менеджера — порт `get_pkg_manager_name`.
+/// Package manager name: port of `get_pkg_manager_name`.
 pub fn pkg_manager_name(family: PkgFamily, aur_helper: Option<&str>) -> String {
     match family {
         PkgFamily::Arch => match aur_helper {
@@ -517,8 +522,8 @@ pub fn pkg_manager_name(family: PkgFamily, aur_helper: Option<&str>) -> String {
     }
 }
 
-/// Lock-файлы пакетных менеджеров — порт `_LOCK_PATHS`. Удерживаются и
-/// транзакцией, и post-hooks (snap-pac → snapper → btrfs snapshot).
+/// Package manager lock files: port of `_LOCK_PATHS`. Held both by the
+/// transaction and by post-hooks (snap-pac → snapper → btrfs snapshot).
 pub fn lock_paths(family: PkgFamily) -> &'static [&'static str] {
     match family {
         PkgFamily::Arch => &["/var/lib/pacman/db.lck"],
@@ -533,24 +538,25 @@ pub fn lock_paths(family: PkgFamily) -> &'static [&'static str] {
     }
 }
 
-/// Каталог базы pacman по умолчанию — тот, что берёт сам pacman, когда в
-/// `/etc/pacman.conf` нет `DBPath`.
+/// The default pacman database directory: the one pacman itself takes when
+/// `/etc/pacman.conf` has no `DBPath`.
 pub const PACMAN_DEFAULT_DBPATH: &str = "/var/lib/pacman/";
 
-/// Имя замка внутри каталога базы pacman.
+/// The lock name inside the pacman database directory.
 pub const PACMAN_LOCK_NAME: &str = "db.lck";
 
-/// Замок pacman по выводу `pacman-conf DBPath`. Чистая.
+/// The pacman lock from the `pacman-conf DBPath` output. Pure.
 ///
-/// ЗАЧЕМ. Каталог базы у pacman настраивается (`DBPath` в `/etc/pacman.conf`),
-/// и замок лежит в нём. Жёсткий `/var/lib/pacman/db.lck` при своём `DBPath`
-/// смотрел мимо: занятая база выглядела свободной, и установка падала
-/// «база занята» вместо того, чтобы подождать.
+/// WHY. pacman's database directory is configurable (`DBPath` in
+/// `/etc/pacman.conf`), and the lock lives in it. A hardcoded
+/// `/var/lib/pacman/db.lck` with a custom `DBPath` looked in the wrong place:
+/// a busy database looked free, and the install failed with "database busy"
+/// instead of waiting.
 ///
-/// `conf_stdout` — stdout `pacman-conf DBPath`; `None` — команды нет, она
-/// упала или не уложилась. Годится только одна непустая строка с
-/// абсолютным путём без управляющих знаков; иначе (пусто, сообщение об
-/// ошибке, несколько строк) — запасной [`PACMAN_DEFAULT_DBPATH`].
+/// `conf_stdout` is the stdout of `pacman-conf DBPath`; `None`: no command,
+/// it failed or timed out. Only one non-empty line with an absolute path
+/// without control characters is accepted; otherwise (empty, an error
+/// message, several lines) the fallback [`PACMAN_DEFAULT_DBPATH`].
 pub fn pacman_lock_path(conf_stdout: Option<&str>) -> String {
     let dbpath = conf_stdout
         .and_then(|out| {
@@ -570,12 +576,12 @@ pub fn pacman_lock_path(conf_stdout: Option<&str>) -> String {
     }
 }
 
-/// Lock-файлы пакетного менеджера на ЖИВОЙ машине.
+/// Package manager lock files on the LIVE machine.
 ///
-/// Как [`lock_paths`], но замок pacman — из настоящего `DBPath`
-/// (`pacman-conf DBPath`, разбор — [`pacman_lock_path`]). Ответ pacman-conf
-/// кэшируется на процесс: настройка не меняется за время работы, а ждать
-/// замка зовут на каждой установке.
+/// Like [`lock_paths`], but the pacman lock comes from the real `DBPath`
+/// (`pacman-conf DBPath`, parsed by [`pacman_lock_path`]). The pacman-conf
+/// answer is cached per process: the setting does not change while running,
+/// and the lock is waited for on every install.
 pub fn lock_paths_live(family: PkgFamily) -> Vec<String> {
     match family {
         PkgFamily::Arch => vec![pacman_lock_path_live().to_string()],
@@ -603,7 +609,7 @@ fn pacman_lock_path_live() -> &'static str {
     })
 }
 
-/// Шаг ожидания lock — porт `_wait_for_pkg_lock` (poll 2 с, максимум 300 с).
+/// Lock wait step: port of `_wait_for_pkg_lock` (poll 2 s, at most 300 s).
 fn wait_lock_step(family: PkgFamily) -> PlanStep {
     PlanStep::WaitPkgLock {
         paths: lock_paths(family).iter().map(|s| s.to_string()).collect(),
@@ -613,16 +619,16 @@ fn wait_lock_step(family: PkgFamily) -> PlanStep {
 }
 
 // ============================================================================
-// update_db / install — порт PackageManager.update_db / install
+// update_db / install: port of PackageManager.update_db / install
 // ============================================================================
 
-/// Семейства, где update_db идёт под root (все кроме NIX/UNKNOWN) — как
-/// кортеж `privileged` в Python.
+/// Families where update_db runs as root (all but NIX/UNKNOWN): like the
+/// `privileged` tuple in Python.
 fn update_db_privileged(family: PkgFamily) -> bool {
     !matches!(family, PkgFamily::Nix | PkgFamily::Unknown)
 }
 
-/// План `update_db`: пустой план = «нечего делать, успех».
+/// The `update_db` plan: an empty plan = "nothing to do, success".
 pub fn update_db_plan(family: PkgFamily, pkg_helper_available: bool) -> Vec<PlanStep> {
     let Some(cmd) = update_db_cmd(family) else {
         return Vec::new();
@@ -639,18 +645,19 @@ pub fn update_db_plan(family: PkgFamily, pkg_helper_available: bool) -> Vec<Plan
     } else {
         cmd
     };
-    // 120 с не хватало на медленном зеркале: обновление базы — сеть.
+    // 120 s was not enough on a slow mirror: a database update is network work.
     vec![run_step(RunStepId::PkgUpdateDb, full, Some(600), false,
               "Обновление базы пакетов")]
 }
 
-/// Привилегированная команда установки: именованный путь через
-/// rexon-pkg-helper, иначе сырой `pkexec` поверх [`install_cmd`].
+/// The privileged install command: the named path via rexon-pkg-helper,
+/// otherwise raw `pkexec` over [`install_cmd`].
 ///
-/// Выбор один на все места, где Rexon ставит пакеты. Рукописная копия этого
-/// «иначе» и была тем, как в `ensure_gentoo_overlay` завёлся ТРЕТИЙ вариант
-/// команды Gentoo — `emerge --ask=n` без `--quiet`, расходящийся и с таблицей
-/// [`install_cmd`], и со встроенным шаблоном самого helper'а.
+/// One choice for all places where Rexon installs packages. A handwritten
+/// copy of this "otherwise" is exactly how a THIRD Gentoo command variant
+/// appeared in `ensure_gentoo_overlay`: `emerge --ask=n` without `--quiet`,
+/// diverging both from the [`install_cmd`] table and from the helper's own
+/// built-in template.
 fn privileged_install_argv(
     family: PkgFamily,
     packages: &[String],
@@ -665,10 +672,10 @@ fn privileged_install_argv(
     argv
 }
 
-/// Выбор пути установки поверх уже собранной [`install_cmd`]: NixOS ставит
-/// пакеты в профиль ПОЛЬЗОВАТЕЛЯ (`nix-env -iA`) и root'а не спрашивает —
-/// `pkexec` там не нужен и был бы прямой ошибкой; остальные десять семейств
-/// идут привилегированно.
+/// Choosing the install path on top of an already assembled [`install_cmd`]:
+/// NixOS installs packages into the USER profile (`nix-env -iA`) and does
+/// not ask for root: `pkexec` is not needed there and would be an outright
+/// error; the other ten families go privileged.
 fn choose_install_argv(
     family: PkgFamily,
     packages: &[String],
@@ -681,22 +688,22 @@ fn choose_install_argv(
     privileged_install_argv(family, packages, base, helper_available)
 }
 
-/// **Единственный** ответ движка на вопрос «какой командой поставить вот эти
-/// пакеты» — от таблицы флагов до выбора «именованный путь или сырой pkexec».
+/// The engine's **only** answer to "which command installs these packages":
+/// from the flag table to the choice "named path or raw pkexec".
 ///
-/// Отдельная точка входа рядом с [`install_plan`] нужна тем местам, которым
-/// нужна одна команда, а не план с шагами, таймаутом и подсказкой sudo:
-/// доустановка видеозависимостей движка обоев
-/// ([`crate::wallpaper_engine::install_deps_argv`]) и починка соответствия
-/// ([`crate::compliance::pkg_install_arch`]). Обе прежде держали СВОИ таблицы
-/// и обе успели с движком разойтись.
+/// A separate entry point next to [`install_plan`] is needed by places that
+/// need one command, not a plan with steps, a timeout and a sudo hint:
+/// installing the wallpaper engine's video dependencies
+/// ([`crate::wallpaper_engine::install_deps_argv`]) and compliance repair
+/// ([`crate::compliance::pkg_install_arch`]). Both used to keep THEIR OWN
+/// tables and both had drifted from the engine.
 ///
-/// `None` — команды нет и выдумывать её нельзя:
-/// * список пакетов пуст — «поставить ничего» командой не выражается, а
-///   `pacman -S --needed --noconfirm` без единого имени вернул бы ошибку
-///   использования от имени root;
-/// * семейство `UNKNOWN` — менеджер не опознан, и вызывающий говорит человеку,
-///   что доустановить руками.
+/// `None`: there is no command and one must not be invented:
+/// * the package list is empty: "install nothing" cannot be expressed as a
+///   command, and `pacman -S --needed --noconfirm` without a single name
+///   would return a usage error as root;
+/// * the `UNKNOWN` family: the manager was not recognised, and the caller
+///   tells the person what to install by hand.
 pub fn install_argv(
     family: PkgFamily,
     packages: &[String],
@@ -709,17 +716,17 @@ pub fn install_argv(
     Some(choose_install_argv(family, packages, &base, helper_available))
 }
 
-/// План `install` + подсказка sudo при отказе pkexec.
+/// The `install` plan + a sudo hint on a pkexec refusal.
 pub struct InstallPlan {
     pub steps: Vec<PlanStep>,
-    /// Ранний выход без шагов: (ok, message).
+    /// An early exit without steps: (ok, message).
     pub early_result: Option<(bool, String)>,
-    /// Текст ошибки «Пароль администратора не подтверждён…» (Python показывает его при
+    /// The "administrator password not confirmed…" error text (Python shows it on
     /// returncode 126 / "Not authorized").
     pub sudo_hint: String,
 }
 
-/// Порт `PackageManager.install`.
+/// Port of `PackageManager.install`.
 pub fn install_plan(
     family: PkgFamily,
     packages: &[String],
@@ -742,8 +749,8 @@ pub fn install_plan(
     };
     let argv = match aur_argv {
         Some(v) => v,
-        // Тот же выбор, что отдаёт `install_argv` наружу: второй копии
-        // «pkexec или именованный путь, и Nix без root» быть не должно.
+        // The same choice `install_argv` gives out: there must not be a second copy
+        // of "pkexec or the named path, and Nix without root".
         None => choose_install_argv(family, packages, &base_cmd, pkg_helper_available),
     };
     let sudo_hint = trf(
@@ -759,31 +766,31 @@ pub fn install_plan(
 }
 
 // ============================================================================
-// remove — порт PackageManager.remove (полный пайплайн как план)
+// remove: port of PackageManager.remove (the full pipeline as a plan)
 // ============================================================================
 
-/// План `remove`. Пробные шаги (`phase` в description: qg / query /
-/// required-by / closure / skip-note) идут в порядке Python; порядок
-/// closure-фазы в Python недетерминирован (итерация set) — паритет-тест
-/// сортирует этот сегмент с обеих сторон.
+/// The `remove` plan. Probe steps (`phase` in the description: qg / query /
+/// required-by / closure / skip-note) go in Python's order; the closure phase
+/// order in Python is nondeterministic (set iteration): the parity test sorts
+/// this segment on both sides.
 pub struct RemovePlan {
     pub steps: Vec<PlanStep>,
-    /// Результат, если исполняющих шагов (wait+remove) нет: (ok, message).
+    /// The result if there are no executing steps (wait+remove): (ok, message).
     pub result_without_exec: Option<(bool, String)>,
     pub safe: Vec<String>,
     pub skipped: Vec<String>,
-    /// Аннотации skipped: "pkg (требуется: a, b)" / "(нужен другому skipped
-    /// пакету)".
+    /// Annotations of skipped packages: "pkg (required by: a, b)" / "(needed by
+    /// another skipped package)".
     pub skipped_annotated: Vec<String>,
-    /// Добавка к stdout при успехе ("\n\nПропущено…" или "").
+    /// Addition to stdout on success (a "\n\nSkipped…" note or "").
     pub success_note: String,
-    /// Текст ошибки при отказе pkexec.
+    /// Error text on a pkexec refusal.
     pub sudo_hint: String,
 }
 
-/// Порт `PackageManager.remove`. Вывод pacman подаётся замыканиями
-/// (как в `system.rs`): `qg`/`qi` — stdout при rc==0, `query_installed` —
-/// установлен ли пакет (rc==0 query-команды).
+/// Port of `PackageManager.remove`. The pacman output is passed as closures
+/// (as in `system.rs`): `qg`/`qi` are stdout on rc==0, `query_installed` is
+/// whether the package is installed (rc==0 of the query command).
 pub fn remove_plan(
     family: PkgFamily,
     packages: &[String],
@@ -806,9 +813,9 @@ pub fn remove_plan(
         return Ok(plan);
     }
 
-    // 1. Раскрыть группы (шаг «qg» на каждый входной пакет). Команду задаёт
-    //    движок пакетов: он же решает, у какого семейства вопрос «что входит
-    //    в группу» вообще есть — где его нет, шага не будет.
+    // 1. Expand groups (a "qg" step per input package). The command is set by
+    //    the package engine: it also decides which family has the "what is in
+    //    the group" question at all; where there is none, there is no step.
     for p in packages {
         if let Some(q) = package_group_query(family, p) {
             plan.steps.push(run_step(
@@ -817,14 +824,14 @@ pub fn remove_plan(
             ));
         }
     }
-    // Жизненно важное (член группы — тоже) из набора выпадает молча:
-    // снимать его не станет ни помощник, ни сырой путь (`remove_cmd`).
+    // Vital packages (group members too) silently drop out of the set: neither
+    // the helper nor the raw path (`remove_cmd`) would remove them.
     let expanded: Vec<String> = expand_groups(family, packages, qg)
         .into_iter()
         .filter(|p| !is_vital_package(p))
         .collect();
 
-    // 2. Отфильтровать не установленные (query-команда на каждый).
+    // 2. Filter out the not installed ones (a query command for each).
     let mut installed: Vec<String> = Vec::new();
     for p in &expanded {
         plan.steps.push(run_step(RunStepId::PkgQuery, query_cmd(family, p)?,
@@ -839,8 +846,8 @@ pub fn remove_plan(
         return Ok(plan);
     }
 
-    // 3. Forbidden set + транзитивное замыкание (шаги -Qi; та же логика, что
-    //    system::filter_removable_transitive, но с записью шагов плана).
+    // 3. Forbidden set + transitive closure (-Qi steps; the same logic as
+    //    system::filter_removable_transitive, but recording plan steps).
     let candidate: std::collections::HashSet<String> =
         installed.iter().cloned().collect();
     let mut forbidden: std::collections::HashSet<String> =
@@ -861,8 +868,8 @@ pub fn remove_plan(
                 forbidden.insert(p.clone());
             }
         }
-        // Замыкание — снапшот forbidden на каждый проход (list(forbidden)
-        // в Python); порядок прохода здесь — по installed (детерминирован).
+        // Closure: a snapshot of forbidden on each pass (list(forbidden) in
+        // Python); the pass order here is by installed (deterministic).
         let mut changed = true;
         while changed {
             changed = false;
@@ -900,7 +907,7 @@ pub fn remove_plan(
         .cloned()
         .collect();
 
-    // Аннотации skipped (повторные -Qi «Required By» — как в Python).
+    // Skipped annotations (repeated -Qi "Required By", as in Python).
     for p in &plan.skipped {
         plan.steps.push(run_step(
             RunStepId::PkgSkipNote,
@@ -938,7 +945,7 @@ pub fn remove_plan(
         return Ok(plan);
     }
 
-    // 4. Ожидание lock + команда удаления (timeout 600).
+    // 4. Waiting for the lock + the removal command (timeout 600).
     plan.steps.push(wait_lock_step(family));
     let base_cmd = remove_cmd(family, &plan.safe)?;
     let argv = if family == PkgFamily::Nix {
@@ -969,8 +976,7 @@ pub fn remove_plan(
             trf("Skipped (needed by other desktops):\n%1", &[&bullets.join("\n")])
         );
     }
-    // ⭐ Починка: подсказка отказа при УДАЛЕНИИ говорила «Установите из
-    // терминала».
+    // ⭐ Fix: the refusal hint on REMOVAL said "Install from a terminal".
     plan.sudo_hint = trf(
         "The administrator password wasn't confirmed.\nYou can remove from a terminal: sudo %1",
         &[&base_cmd.join(" ")],
@@ -979,10 +985,10 @@ pub fn remove_plan(
 }
 
 // ============================================================================
-// install_batch — порт PackageManager.install_batch (план + тексты скриптов)
+// install_batch: port of PackageManager.install_batch (plan + script texts)
 // ============================================================================
 
-/// NixOS: сниппеты для configuration.nix — порт `_NIXOS_DE_SNIPPETS`.
+/// NixOS: snippets for configuration.nix: port of `_NIXOS_DE_SNIPPETS`.
 pub const NIXOS_DE_SNIPPETS: &[(&str, &str)] = &[
     ("kde", "services.desktopManager.plasma6.enable = true;\nservices.displayManager.sddm.enable = true;"),
     ("gnome", "services.xserver.desktopManager.gnome.enable = true;\nservices.xserver.displayManager.gdm.enable = true;"),
@@ -990,24 +996,25 @@ pub const NIXOS_DE_SNIPPETS: &[(&str, &str)] = &[
     ("cinnamon-mint", "services.xserver.desktopManager.cinnamon.enable = true;\nservices.displayManager.lightdm.enable = true;"),
     ("mate", "services.xserver.desktopManager.mate.enable = true;\nservices.displayManager.lightdm.enable = true;"),
     ("budgie", "services.xserver.desktopManager.budgie.enable = true;\nservices.displayManager.lightdm.enable = true;"),
-    // Модуль nixpkgs `nixos/modules/services/desktop-managers/pantheon.nix`
-    // (`config.services.desktopManager.pantheon`) сам включает приветствие
-    // Pantheon, но требует lightdm и предупреждает, если тот выключен.
+    // The nixpkgs module `nixos/modules/services/desktop-managers/pantheon.nix`
+    // (`config.services.desktopManager.pantheon`) enables the Pantheon greeter
+    // itself, but requires lightdm and warns if it is off.
     ("pantheon", "services.xserver.enable = true;\nservices.xserver.displayManager.lightdm.enable = true;\nservices.desktopManager.pantheon.enable = true;"),
     ("cosmic", "services.desktopManager.cosmic.enable = true;\nservices.displayManager.cosmic-greeter.enable = true;"),
     ("hyprland", "programs.hyprland.enable = true;"),
     ("lxqt", "services.xserver.desktopManager.lxqt.enable = true;\nservices.displayManager.sddm.enable = true;"),
 ];
 
-/// Приписки к сниппетам [`NIXOS_DE_SNIPPETS`] — комментарий `# + …` в конце
-/// сниппета. Это подсказка человеку, поэтому она из каталога перевода, а
-/// сам сниппет (код configuration.nix) не переводится.
+/// Notes to the [`NIXOS_DE_SNIPPETS`] snippets: a `# + …` comment at the end
+/// of a snippet. It is a hint for the person, so it comes from the
+/// translation catalog, while the snippet itself (configuration.nix code) is
+/// not translated.
 pub const NIXOS_DE_NOTES: &[(&str, &str)] = &[
     ("hyprland", n_("set up waybar, wofi, kitty, etc.")),
 ];
 
-/// Сниппет configuration.nix для стола вместе с припиской на языке
-/// интерфейса; `None` — стол на NixOS через Rexon не ставится.
+/// The configuration.nix snippet for a desktop together with the note in the
+/// UI language; `None`: the desktop is not installed on NixOS via Rexon.
 pub fn nixos_de_snippet(de: &str) -> Option<String> {
     let snippet = table_get(NIXOS_DE_SNIPPETS, de)?;
     Some(match table_get(NIXOS_DE_NOTES, de) {
@@ -1016,44 +1023,44 @@ pub fn nixos_de_snippet(de: &str) -> Option<String> {
     })
 }
 
-/// Строка `echo '…'` сценария установки: вывод сценария идёт в журнал окна,
-/// поэтому текст — из каталога перевода, а одинарная кавычка в переводе
-/// экранируется для оболочки.
+/// An `echo '…'` line of the install script: the script output goes to the
+/// window log, so the text comes from the translation catalog, and a single
+/// quote in the translation is escaped for the shell.
 fn echo_line(text: &str) -> String {
     format!("echo '{}'", text.replace('\'', "'\\''"))
 }
 
-/// Какие DE требуют overlay на Gentoo — порт `_GENTOO_OVERLAYS`.
+/// Which DEs need an overlay on Gentoo: port of `_GENTOO_OVERLAYS`.
 pub const GENTOO_OVERLAYS: &[(&str, &str)] = &[
     ("budgie", "sarahmiaoverlay"),
     ("cosmic", "cosmic-overlay"),
 ];
 
-/// Пакет, дающий подкоманду `eselect repository`: без него overlay нечем
-/// подключить. Имя жило зашитым в `ensure_gentoo_overlay` (`rexon/system.py`),
-/// а место ему здесь — рядом с таблицей overlay'ев, где лежат остальные
-/// данные о них.
+/// The package providing the `eselect repository` subcommand: without it
+/// there is nothing to enable an overlay with. The name used to live
+/// hardcoded in `ensure_gentoo_overlay` (`rexon/system.py`), and its place is
+/// here, next to the overlay table, where the rest of the data about them lives.
 pub const GENTOO_OVERLAY_TOOL_PACKAGE: &str = "app-eselect/eselect-repository";
 
 fn table_get<'a>(table: &'a [(&str, &str)], key: &str) -> Option<&'a str> {
     table.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
 }
 
-/// План `install_batch` + тексты сгенерированных скриптов.
+/// The `install_batch` plan + the texts of the generated scripts.
 pub struct BatchPlan {
     pub steps: Vec<PlanStep>,
-    /// Ранний выход (пусто / NixOS с de_id / иммутабельный): (ok, message).
+    /// An early exit (empty / NixOS with de_id / immutable): (ok, message).
     pub early_result: Option<(bool, String)>,
-    /// Основные пакеты ставились через rexon-de-helper (DM уже включён в том
-    /// же сеансе авторизации — install_de не делает 2-й pkexec).
+    /// The main packages were installed via rexon-de-helper (the DM is already
+    /// enabled in the same authorization session: install_de does not do a 2nd pkexec).
     pub used_de_helper: bool,
-    /// Итоговое сообщение при успехе.
+    /// The final message on success.
     pub final_message: String,
 }
 
-/// Порт `PackageManager.install_batch`. Пути tmp-файлов подаются параметрами
-/// (исполнитель создаёт их через mkstemp) — поэтому argv и тексты скриптов
-/// детерминированы и сверяемы с Python.
+/// Port of `PackageManager.install_batch`. The tmp file paths are passed as
+/// parameters (the executor creates them via mkstemp), so argv and the
+/// script texts are deterministic and comparable with Python.
 #[allow(clippy::too_many_arguments)]
 pub fn install_batch_plan(
     family: PkgFamily,
@@ -1073,9 +1080,9 @@ pub fn install_batch_plan(
     )
 }
 
-/// Строка скрипта установки: пометить `deps` установленными как
-/// зависимости (`pacman -D --asdeps`), чтобы удаление стола (`-Rns`) их
-/// сняло. Только Arch; пусто — строки нет.
+/// An install script line: mark `deps` as installed as dependencies
+/// (`pacman -D --asdeps`), so that removing the desktop (`-Rns`) removes
+/// them. Arch only; empty: no line.
 pub fn mark_deps_line(family: PkgFamily, deps: &[String]) -> Result<Option<String>, String> {
     if family != PkgFamily::Arch || deps.is_empty() {
         return Ok(None);
@@ -1084,14 +1091,14 @@ pub fn mark_deps_line(family: PkgFamily, deps: &[String]) -> Result<Option<Strin
     Ok(Some(format!("pacman -D --asdeps {}", deps.join(" "))))
 }
 
-/// [`install_batch_plan`] и `deps_only` — пакеты из `packages`, которые
-/// транзакция ставит лишь как зависимости набора (DKMS-модуль и заголовки
-/// под стоящие ядра, [`InstallPreview::deps_only`]). Помечаются в том же
-/// скрипте, после успешной установки, — без второго пароля. `replace` —
-/// установленные пакеты, которые человек согласился заменить
-/// ([`conflict_swap_approved`]): та же транзакция снимает их
-/// ([`install_cmd_replacing`]), и идёт она обёрткой, а не помощником —
-/// у его именованного действия согласия на замену нет.
+/// [`install_batch_plan`] and `deps_only`: packages from `packages` that the
+/// transaction installs only as dependencies of the set (a DKMS module and
+/// headers for the installed kernels, [`InstallPreview::deps_only`]). They
+/// are marked in the same script, after a successful install, without a
+/// second password. `replace`: installed packages the person agreed to
+/// replace ([`conflict_swap_approved`]): the same transaction removes them
+/// ([`install_cmd_replacing`]), and it goes through the wrapper, not the
+/// helper: its named action has no replacement consent.
 #[allow(clippy::too_many_arguments)]
 pub fn install_batch_plan_with_deps(
     family: PkgFamily,
@@ -1120,7 +1127,7 @@ pub fn install_batch_plan_with_deps(
         return Ok(plan);
     }
 
-    // ── NixOS: DE ставится через configuration.nix, не через nix-env ──
+    // ── NixOS: a DE is installed via configuration.nix, not via nix-env ──
     if family == PkgFamily::Nix {
         if let Some(de) = de_id {
             let msg = match nixos_de_snippet(de) {
@@ -1143,7 +1150,7 @@ pub fn install_batch_plan_with_deps(
         }
     }
 
-    // ── SteamOS: установка через steamos-readonly ──
+    // ── SteamOS: install via steamos-readonly ──
     if detector.is_steamos() {
         let update = update_db_cmd(family);
         let install = install_cmd_replacing(family, packages, replace)?;
@@ -1151,11 +1158,11 @@ pub fn install_batch_plan_with_deps(
         let mut script_lines: Vec<String> = vec![
             "#!/bin/bash".into(),
             "set -e".into(),
-            // Вывод pacman разбирает парсер хода установки (`parse_pacman_line`):
-            // «warning:», «error:», «is up to date -- skipping». Как у обычного
-            // пути ниже: иначе на русской или немецкой системе разбор не
-            // находит ничего. `LC_ALL=C` заодно глушит и `LANGUAGE`, которую
-            // окно Rexon ставит своим языком: gettext при C-локали её не читает.
+            // pacman output is parsed by the install progress parser
+            // (`parse_pacman_line`): "warning:", "error:", "is up to date -- skipping".
+            // As on the regular path below: otherwise on a Russian or German system the
+            // parser finds nothing. `LC_ALL=C` also silences `LANGUAGE`, which the Rexon
+            // window sets to its language: gettext does not read it under the C locale.
             "export LC_ALL=C LANG=C".into(),
             String::new(),
             "# ── Шаг 1: Отключение read-only ──".into(),
@@ -1197,9 +1204,9 @@ pub fn install_batch_plan_with_deps(
         ]);
         let script_body = script_lines.join("\n") + "\n";
 
-        // chown в начале — fs.protected_regular=1 блокирует root от truncate
-        // файлов, owned by обычного юзера, в /tmp (sticky-bit). Только chmod
-        // 0o666 не помогает — ядро смотрит на владельца, не на права.
+        // chown at the start: fs.protected_regular=1 blocks root from truncating
+        // files owned by a regular user in /tmp (sticky bit). chmod 0o666 alone
+        // does not help: the kernel looks at the owner, not the permissions.
         let wrapper = format!(
             "#!/bin/bash\n\
              {STDIN_GUARD}\
@@ -1237,7 +1244,7 @@ pub fn install_batch_plan_with_deps(
         plan.steps.push(PlanStep::RemoveFiles {
             paths: vec![tmp_sh.to_string(), tmp_log.to_string()],
         });
-        // AUR на SteamOS — сразу, без ожидания lock (как в Python).
+        // AUR on SteamOS: right away, without waiting for the lock (as in Python).
         if !aur_packages.is_empty() {
             if let Some(helper) = aur_helper {
                 let argv = crate::aur_install::install_argv(helper, aur_packages, false);
@@ -1249,7 +1256,7 @@ pub fn install_batch_plan_with_deps(
         return Ok(plan);
     }
 
-    // ── Иммутабельные (ostree) дистрибутивы ──
+    // ── Immutable (ostree) distributions ──
     if detector.is_immutable() && detector.distro_id() != "nixos" {
         let distro_id = detector.distro_id();
         let pkg_str = packages.join(" ");
@@ -1295,7 +1302,7 @@ pub fn install_batch_plan_with_deps(
         return Ok(plan);
     }
 
-    // ── 0. Gentoo: подключить overlay если нужен ──
+    // ── 0. Gentoo: enable the overlay if needed ──
     if family == PkgFamily::Gentoo {
         if let Some(de) = de_id {
             if let Some(overlay) = table_get(GENTOO_OVERLAYS, de) {
@@ -1306,13 +1313,13 @@ pub fn install_batch_plan_with_deps(
         }
     }
 
-    // ── 1. Основные пакеты (один pkexec) ──
+    // ── 1. Main packages (one pkexec) ──
     if !packages.is_empty() {
         let update = update_db_cmd(family);
         let install = install_cmd_replacing(family, packages, replace)?;
 
         if family == PkgFamily::Nix {
-            // Nix не использует pkexec.
+            // Nix does not use pkexec.
             if update_first {
                 if let Some(upd) = update {
                     plan.steps.push(run_step(RunStepId::PkgUpdateDb, upd,
@@ -1320,17 +1327,16 @@ pub fn install_batch_plan_with_deps(
                                              "Обновление базы пакетов"));
                 }
             }
-            // nix умеет собирать из исходников — класс команды это знает.
+            // nix can build from source: the command class knows that.
             plan.steps.push(run_step(RunStepId::PkgNix, install, None, false,
                                      "Установка пакетов (nix-env)"));
         } else {
-            // Часть B: именованное действие rexon-de-helper (auth_admin_keep:
-            // подтверждённый пароль держится несколько минут и только для
-            // окна Rexon); иначе legacy `pkexec bash <tmp_sh>` (пароль каждый
-            // раз).
-            // Помощник ставит набор из СВОЕЙ таблицы, а не переданный: если
-            // набор поправлен (выкинут член группы, добавлен DKMS-модуль под
-            // стоящее ядро, вариант Deepin на Treeland), ставит обёртка.
+            // Part B: the named rexon-de-helper action (auth_admin_keep: a confirmed
+            // password holds for a few minutes and only for the Rexon window);
+            // otherwise legacy `pkexec bash <tmp_sh>` (a password every time).
+            // The helper installs the set from ITS OWN table, not the one passed: if
+            // the set was adjusted (a group member dropped, a DKMS module added for the
+            // installed kernel, the Deepin on Treeland variant), the wrapper installs.
             let use_de_helper = de_id
                 .map(|de| de_helper_available
                      && de_helper_supports(de, family.as_str())
@@ -1341,8 +1347,8 @@ pub fn install_batch_plan_with_deps(
             plan.used_de_helper = use_de_helper;
 
             if !use_de_helper {
-                // Один bash-скрипт → один pkexec (legacy-путь). LC_ALL=C —
-                // стабильный английский вывод pacman для парсера прогресса.
+                // One bash script → one pkexec (the legacy path). LC_ALL=C: stable English
+                // pacman output for the progress parser.
                 let mut script_lines: Vec<String> = vec![
                     "#!/bin/bash".into(),
                     "set -e".into(),
@@ -1361,8 +1367,8 @@ pub fn install_batch_plan_with_deps(
                 script_lines.extend(mark_deps.clone());
                 let script_body = script_lines.join("\n") + "\n";
 
-                // Обёртка: весь вывод pacman → лог-файл; chown-грабля
-                // fs.protected_regular (root:root в начале, PKEXEC_UID в конце).
+                // The wrapper: all pacman output → the log file; the fs.protected_regular
+                // chown pitfall (root:root at the start, PKEXEC_UID at the end).
                 let wrapper = format!(
                     "#!/bin/bash\n\
                      {STDIN_GUARD}\
@@ -1383,7 +1389,7 @@ pub fn install_batch_plan_with_deps(
                     mode: 0o755,
                 });
             }
-            // Лог: очистить и дать доступ root (fs.protected_regular=2).
+            // Log: clear it and give root access (fs.protected_regular=2).
             plan.steps.push(PlanStep::WriteFile {
                 path: tmp_log.to_string(),
                 content: String::new(),
@@ -1392,7 +1398,7 @@ pub fn install_batch_plan_with_deps(
             plan.steps.push(wait_lock_step(family));
             let pkexec_argv = if use_de_helper {
                 let mut argv = vec!["pkexec".to_string(), de_helper_path().to_string()];
-                // Язык сообщений помощника (решение 30.09.2026).
+                // Helper message language (decision of 30.09.2026).
                 argv.extend(crate::system_l10n::lang_args(de_helper_path()));
                 argv.extend([
                     de_id.unwrap_or_default().to_string(),
@@ -1403,8 +1409,8 @@ pub fn install_batch_plan_with_deps(
                 vec!["pkexec".to_string(), "bash".to_string(),
                      tmp_sh.to_string()]
             };
-            // За `pkexec bash <скрипт>` стоит установка целого стола:
-            // 600 с хватало не всегда, и это скачивание, а не опрос.
+            // Behind `pkexec bash <script>` is the install of a whole desktop: 600 s
+            // was not always enough, and this is downloading, not a query.
             plan.steps.push(run_step(RunStepId::PkgMain, pkexec_argv,
                                      Some(crate::utils::DOWNLOAD_TIMEOUT_SECS),
                                      false, "Установка пакетов (один pkexec)"));
@@ -1417,18 +1423,18 @@ pub fn install_batch_plan_with_deps(
         }
     }
 
-    // ── 2. AUR пакеты (через yay/paru — без pkexec) ──
+    // ── 2. AUR packages (via yay/paru, without pkexec) ──
     if !aur_packages.is_empty() {
         if let Some(helper) = aur_helper {
-            // snap-pac post-hook от завершённого pacman -S может держать lock.
+            // A snap-pac post-hook of the finished pacman -S may hold the lock.
             plan.steps.push(wait_lock_step(family));
-            // Права — окном polkit, вопросы помощника отвечены заранее:
-            // у окна нет терминала (`aur_install::install_argv`).
+            // Privileges via the polkit window, the helper's questions answered in
+            // advance: the window has no terminal (`aur_install::install_argv`).
             let argv = crate::aur_install::install_argv(helper, aur_packages, false);
-            // None = по классу команды: помощник AUR СОБИРАЕТ из исходников,
-            // и меряется это часами, а не полуминутным дефолтом. Ровно здесь
-            // 2026-09-01 умерла установка стола MATE — девять пакетов сняли
-            // по таймауту 30 с, и человек прочитал «не установились».
+            // None = by command class: the AUR helper BUILDS from source, and that is
+            // measured in hours, not a half-minute default. Exactly here on 2026-09-01
+            // the MATE desktop install died: nine packages were killed by a 30 s
+            // timeout, and the person read "not installed".
             plan.steps.push(run_step(RunStepId::PkgAur, argv, None, false,
                                          "Установка AUR"));
         }
@@ -1437,43 +1443,43 @@ pub fn install_batch_plan_with_deps(
 }
 
 // ============================================================================
-// Оркестрация DE: dm-enable / remove_de / switch_de / logout
+// DE orchestration: dm-enable / remove_de / switch_de / logout
 // ============================================================================
 
-/// Пары (имя ПАКЕТА, имя ЮНИТА) display-manager'ов — порт `dm_pairs` из
-/// `install_de`. Обычно совпадают; Plasma Login Manager (Arch, Plasma 6.6+) —
-/// исключение: пакет plasma-login-manager, юнит plasmalogin. Порядок =
-/// приоритет.
+/// (PACKAGE name, UNIT name) pairs of display managers: port of `dm_pairs`
+/// from `install_de`. Usually the same; Plasma Login Manager (Arch, Plasma
+/// 6.6+) is the exception: the package plasma-login-manager, the unit
+/// plasmalogin. Order = priority.
 pub const DM_PAIRS: &[(&str, &str)] = &[
     ("plasma-login-manager", "plasmalogin"),
     ("cosmic-greeter", "cosmic-greeter"),
     ("lightdm", "lightdm"),
     ("gdm", "gdm"),
     ("sddm", "sddm"),
-    // Debian: пакет и юнит gdm3 (GNOME там ставится с ним).
+    // Debian: the gdm3 package and unit (GNOME is installed with it there).
     ("gdm3", "gdm3"),
     ("lxdm", "lxdm"),
 ];
 
-/// DM-юниты, требующие `systemctl enable --force` (не Provides
-/// display-manager.service) — порт `_DM_FORCE_ENABLE`.
+/// DM units requiring `systemctl enable --force` (they do not Provide
+/// display-manager.service): port of `_DM_FORCE_ENABLE`.
 pub const DM_FORCE_ENABLE: &[&str] = &["plasmalogin"];
 
-/// Маппинг ИМЯ-ЮНИТА → ИМЯ-ПАКЕТА — порт `_DM_PKG_FOR_UNIT`.
+/// UNIT NAME → PACKAGE NAME mapping: port of `_DM_PKG_FOR_UNIT`.
 pub const DM_PKG_FOR_UNIT: &[(&str, &str)] = &[("plasmalogin", "plasma-login-manager")];
 
-/// Шаг включения display-manager'а после установки DE — порт dm-ветки
-/// `install_de`. None — если DM в пакет-листе не найден, ИЛИ основные пакеты
-/// шли через rexon-de-helper (он уже разобрался с экраном входа в том же
-/// сеансе авторизации), ИЛИ включённый экран входа в системе уже есть.
-/// Возвращает (имя юнита, команда с timeout 30).
+/// The step enabling the display manager after a DE install: port of the dm
+/// branch of `install_de`. None if no DM was found in the package list, OR
+/// the main packages went via rexon-de-helper (it already handled the login
+/// screen in the same authorization session), OR an enabled login screen
+/// already exists in the system. Returns (unit name, command with timeout 30).
 ///
-/// ⚠️ `dm_present` (ответ `display_manager_present_from`) — то самое правило
-/// «чужой экран входа не трогаем»: подмена настроенного DM заметна человеку
-/// и не делается заодно с установкой стола. Установить свой DM можно только
-/// там, где экрана входа нет вовсе — иначе после перезагрузки не будет входа
-/// в графику. Правило одно на все пути: здесь, в rexon-de-helper и в
-/// `ensure_dm_plan`.
+/// ⚠️ `dm_present` (the `display_manager_present_from` answer) is exactly the
+/// "do not touch someone else's login screen" rule: replacing a configured
+/// DM is noticeable to the person and is not done along with a desktop
+/// install. Our own DM may be installed only where there is no login screen
+/// at all, otherwise there will be no graphical login after a reboot. One
+/// rule for all paths: here, in rexon-de-helper and in `ensure_dm_plan`.
 pub fn dm_enable_step(
     family: PkgFamily,
     installed_pkgs: &[String],
@@ -1493,7 +1499,7 @@ pub fn dm_enable_step(
             ) {
                 Some(named) => named,
                 None => {
-                    // --force: PLM не Provides display-manager.service.
+                    // --force: PLM does not Provide display-manager.service.
                     let mut raw = vec![
                         "pkexec".to_string(), "systemctl".to_string(),
                         "enable".to_string(),
@@ -1511,18 +1517,18 @@ pub fn dm_enable_step(
     None
 }
 
-/// Решение `remove_de` — 2-уровневая защита от удаления активного DE
-/// (правило архитектуры #13: backend отказывает при force=false, UI обязан
-/// дополнительно блокировать кнопку).
+/// The `remove_de` decision: 2-level protection against removing the active
+/// DE (architecture rule #13: the backend refuses with force=false, the UI
+/// must additionally lock the button).
 pub enum RemoveDeDecision {
-    /// Отказ: текст ошибки.
+    /// Refusal: the error text.
     Refused(String),
-    /// Можно удалять: полный список пакетов (основные + AUR — иначе
-    /// AUR-расширения блокируют удаление основных через зависимости).
+    /// Removal allowed: the full package list (main + AUR, otherwise AUR
+    /// extensions block the removal of the main ones through dependencies).
     Proceed(Vec<String>),
 }
 
-/// Порт guard-части `remove_de`.
+/// Port of the guard part of `remove_de`.
 pub fn remove_de_decision(
     de_id: &str,
     display_name: &str,
@@ -1532,8 +1538,8 @@ pub fn remove_de_decision(
     aur: &[String],
 ) -> RemoveDeDecision {
     if !force && de_id == current_de {
-        // Текст на «вы» и без служебных слов («DE», «logout»): прежде он
-        // говорил покупателю «переключись» (исправлено 13.09.2026).
+        // A polite text without technical words ("DE", "logout"): previously it
+        // bossed the user around with "switch" (fixed 13.09.2026).
         return RemoveDeDecision::Refused(trf(
             "You can't remove your current desktop (%1): after you log out \
              there would be nothing to log in to. Switch to another installed \
@@ -1551,7 +1557,7 @@ pub fn remove_de_decision(
     RemoveDeDecision::Proceed(all)
 }
 
-/// Guard-часть `switch_de`: None — можно переключаться, Some — текст ошибки.
+/// Guard part of `switch_de`: None means switching is allowed, Some is the error text.
 pub fn switch_de_guard(
     current_de_name: &str,
     target_name: &str,
@@ -1566,8 +1572,8 @@ pub fn switch_de_guard(
     None
 }
 
-/// Команды завершения сессии — порт `logout_session` (выбор по окружению;
-/// исполнитель пробует по порядку до первой успешной, timeout 5 c у каждой).
+/// Session end commands: port of `logout_session` (chosen by environment;
+/// the executor tries them in order until the first success, timeout 5 s each).
 pub fn logout_cmds(
     xdg_current_desktop: &str,
     desktop_session: &str,
@@ -1599,16 +1605,16 @@ pub fn logout_cmds(
     } else if de.split(':').any(|t| t == "dde" || t == "deepin")
         || session_env.contains("deepin")
     {
-        // Deepin v23/v25: выход без вопроса — `Logout` менеджера сеанса
-        // dde-session (`RequestLogout` показал бы окно выбора).
+        // Deepin v23/v25: logout without a question: the dde-session session
+        // manager's `Logout` (`RequestLogout` would show a choice window).
         cmds.push(vec!["dbus-send", "--session", "--type=method_call",
                        "--dest=org.deepin.dde.SessionManager1",
                        "/org/deepin/dde/SessionManager1",
                        "org.deepin.dde.SessionManager1.Logout"]);
     } else if de.contains("gnome")
         || session_env.contains("gnome")
-        // Сеанс Pantheon ведёт gnome-session (`Exec=gnome-session
-        // --session=pantheon`), он же и выходит.
+        // The Pantheon session is run by gnome-session (`Exec=gnome-session
+        // --session=pantheon`), and it is what logs out.
         || de.contains("pantheon")
         || session_env.contains("pantheon")
     {
@@ -1636,7 +1642,7 @@ pub fn logout_cmds(
 }
 
 // ============================================================================
-// Polkit-слой: named-действия org.rexon.*, тексты helper-скриптов и политик
+// Polkit layer: named org.rexon.* actions, helper script and policy texts
 // ============================================================================
 
 pub const DE_INSTALL_ACTION: &str = "org.rexon.de-install";
@@ -1654,77 +1660,78 @@ pub const STAGE_HELPER_PATH: &str = "/usr/local/lib/rexon-stage-helper";
 pub const STAGE_POLICY_PATH: &str =
     "/usr/share/polkit-1/actions/org.rexon.stage.policy";
 
-// ── Сеанс прав окна («один пароль на запуск», вариант «Б», пункт Б11) ──
+// ── Window privilege session ("one password per launch", option "B", item B11) ──
 //
-// Действие помощника [`crate::privilege`]: окно поднимает его одним
-// `pkexec` на сеанс. ⛔ `auth_admin` БЕЗ `_keep` — пароль держит сам
-// помощник (он живёт, пока открыто окно), а не polkit: пятиминутное окно
-// polkit отдало бы второй сеанс любому процессу Rexon без пароля. Действие
-// ⛔ не стоит в [`PASSWORDLESS_ACTIONS`], ⛔ не входит в чужой `imply` и
-// ⛔ само ничего не `imply`: тихой цепочки к сеансу нет ни с одной стороны.
-// Сторож — `session_action_tests`.
+// The [`crate::privilege`] helper action: the window brings it up with one
+// `pkexec` per session. ⛔ `auth_admin` WITHOUT `_keep`: the password is held
+// by the helper itself (it lives while the window is open), not by polkit:
+// polkit's five-minute window would hand a second session to any Rexon
+// process without a password. The action ⛔ is not in
+// [`PASSWORDLESS_ACTIONS`], ⛔ is not in anyone else's `imply` and ⛔ does not
+// `imply` anything itself: there is no silent chain to the session from
+// any side. Guarded by `session_action_tests`.
 pub const SESSION_ACTION: &str = "org.rexon.session";
-/// Имя помощника сеанса — одно с клиентом ([`crate::privilege::client::HELPER_NAME`]).
+/// Session helper name: the same as the client's ([`crate::privilege::client::HELPER_NAME`]).
 pub const SESSION_HELPER_NAME: &str = crate::privilege::client::HELPER_NAME;
-/// Путь помощника сеанса у РУЧНОЙ установки (пакет кладёт его в
-/// [`HELPER_DIR_PACKAGE`]; клиент ищет по [`HELPER_DIRS`] и проверяет
-/// владение сам).
+/// Session helper path for a MANUAL install (the package puts it into
+/// [`HELPER_DIR_PACKAGE`]; the client searches [`HELPER_DIRS`] and checks
+/// ownership itself).
 pub const SESSION_HELPER_PATH: &str = "/usr/local/lib/rexon-priv-helper";
 pub const SESSION_POLICY_PATH: &str =
     "/usr/share/polkit-1/actions/org.rexon.session.policy";
 
-// ── Где физически лежат помощники: ОДНА правда на две раскладки ──────
+// ── Where the helpers physically live: ONE truth for two layouts ─────
 //
-// Раскладок две, и обе живые:
-//   * пакет дистрибутива кладёт помощников в [`HELPER_DIR_PACKAGE`]
-//     (`/usr/lib`) — нормы Arch запрещают пакету писать в `/usr/local`, а
-//     файлы вне базы pacman не снял бы `pacman -R`;
-//   * ручная установка (`installer_exec`) кладёт их в
-//     [`HELPER_DIR_SYSTEM`] (`/usr/local`), как раньше.
+// There are two layouts, and both are live:
+//   * the distribution package puts the helpers into [`HELPER_DIR_PACKAGE`]
+//     (`/usr/lib`): Arch rules forbid a package to write into `/usr/local`,
+//     and `pacman -R` would not remove files outside its database;
+//   * the manual install (`installer_exec`) puts them into
+//     [`HELPER_DIR_SYSTEM`] (`/usr/local`), as before.
 //
-// ⚠️ Дефект, который это закрывает: путь был прибит к `/usr/local/lib`
-// одной строкой, помощников в пакете не было вовсе — и у человека с
-// пакетом КАЖДАЯ системная операция спрашивала пароль сырым `pkexec`
-// (вариант «один пароль за сессию» не включался никогда).
+// ⚠️ The defect this closes: the path was nailed to `/usr/local/lib` in one
+// line, the package had no helpers at all, and for a person with the
+// package EVERY system operation asked for the password via raw `pkexec`
+// (the "one password per session" option never kicked in).
 //
-// Правда одна: имя помощника + список каталогов. Константы
-// `*_HELPER_PATH` ниже остаются путями РУЧНОЙ установки — по ним
-// установщик кладёт файлы и по ним же пишет `exec.path` своей политики.
-// Куда смотреть при запуске, отвечают [`de_helper_path`],
-// [`pkg_helper_path`] и [`stage_helper_path`].
+// There is one truth: the helper name + a list of directories. The
+// `*_HELPER_PATH` constants below remain the MANUAL install paths: the
+// installer puts files by them and writes its policy's `exec.path` by them.
+// Where to look at run time is answered by [`de_helper_path`],
+// [`pkg_helper_path`] and [`stage_helper_path`].
 
-/// Имя помощника установки рабочих столов.
+/// Name of the desktop install helper.
 pub const DE_HELPER_NAME: &str = "rexon-de-helper";
-/// Имя помощника операций пакетного менеджера.
+/// Name of the package manager operations helper.
 pub const PKG_HELPER_NAME: &str = "rexon-pkg-helper";
-/// Имя помощника раскладки файлов в `/usr/share`.
+/// Name of the helper placing files into `/usr/share`.
 pub const STAGE_HELPER_NAME: &str = "rexon-stage-helper";
 
-/// Каталог помощников у пакета дистрибутива.
+/// Helper directory of the distribution package.
 pub const HELPER_DIR_PACKAGE: &str = "/usr/lib";
-/// Каталог помощников у ручной установки в систему.
+/// Helper directory of a manual system install.
 pub const HELPER_DIR_SYSTEM: &str = "/usr/local/lib";
 
-/// Каталоги помощников по убыванию предпочтения: пакет раньше ручной
-/// установки — его файлы разложил пакетный менеджер, и его же политика
-/// лежит в `/usr/share/polkit-1/actions`.
+/// Helper directories in descending preference: the package before the
+/// manual install: its files were placed by the package manager, and its
+/// policy is in `/usr/share/polkit-1/actions`.
 pub const HELPER_DIRS: [&str; 2] = [HELPER_DIR_PACKAGE, HELPER_DIR_SYSTEM];
 
-/// Полный путь помощника в заданном каталоге.
+/// Full helper path in the given directory.
 pub fn helper_path_in(dir: &str, name: &str) -> String {
     format!("{}/{name}", dir.trim_end_matches('/'))
 }
 
-/// Все места, где помощник может лежать, по убыванию предпочтения.
+/// All places where the helper may be, in descending preference.
 pub fn helper_candidates(name: &str) -> Vec<String> {
     HELPER_DIRS.iter().map(|d| helper_path_in(d, name)).collect()
 }
 
-/// Выбрать путь помощника пробой файловой системы: первый исполняемый
-/// кандидат, а если ни одного нет — путь ручной установки (чтобы путь в
-/// сообщениях и журнале оставался определённым).
+/// Choose the helper path by probing the file system: the first executable
+/// candidate, and if there is none, the manual install path (so that the
+/// path in messages and the log stays defined).
 ///
-/// Проба приходит снаружи: решение остаётся чистым и проверяемым.
+/// The probe comes from outside: the decision stays pure and testable.
 pub fn pick_helper_path(name: &str, is_exec: &dyn Fn(&str) -> bool) -> String {
     helper_candidates(name)
         .into_iter()
@@ -1732,13 +1739,13 @@ pub fn pick_helper_path(name: &str, is_exec: &dyn Fn(&str) -> bool) -> String {
         .unwrap_or_else(|| helper_path_in(HELPER_DIR_SYSTEM, name))
 }
 
-/// Живой ответ по этой машине, посчитанный один раз за процесс.
+/// The live answer for this machine, computed once per process.
 fn helper_path_live(slot: &'static std::sync::OnceLock<String>, name: &str) -> &'static str {
     slot.get_or_init(|| pick_helper_path(name, &|p| is_exec_file(p)))
 }
 
-/// Существующий файл с битом запуска. Наружу — чтобы проверка «помощник
-/// развёрнут» спрашивала ровно то же, что и выбор пути.
+/// An existing file with the exec bit. Public, so that the "helper is
+/// deployed" check asks exactly the same as the path choice.
 pub fn is_exec_file(path: &str) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path)
@@ -1746,44 +1753,44 @@ pub fn is_exec_file(path: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Где на этой машине лежит помощник установки рабочих столов.
+/// Where the desktop install helper lives on this machine.
 pub fn de_helper_path() -> &'static str {
     static SLOT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     helper_path_live(&SLOT, DE_HELPER_NAME)
 }
 
-/// Где на этой машине лежит помощник пакетного менеджера.
+/// Where the package manager helper lives on this machine.
 pub fn pkg_helper_path() -> &'static str {
     static SLOT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     helper_path_live(&SLOT, PKG_HELPER_NAME)
 }
 
-/// Где на этой машине лежит помощник раскладки файлов.
+/// Where the file placing helper lives on this machine.
 pub fn stage_helper_path() -> &'static str {
     static SLOT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     helper_path_live(&SLOT, STAGE_HELPER_NAME)
 }
 
-/// Переписать в эталонном тексте путь помощника на тот, который выбирает
-/// ЭТА машина.
+/// Rewrite the helper path in a reference text to the one THIS machine
+/// chooses.
 ///
-/// ⚠️ Зачем. Каталога у помощников два, и оба законны ([`HELPER_DIRS`]):
-/// пакет дистрибутива кладёт их в `/usr/lib`, ручная установка — в
-/// `/usr/local/lib`, а [`pick_helper_path`] выбирает пробой файловой
-/// системы. Эталоны golden-сверок сняты с живого Python на машине, где
-/// пакета не было, и держат `/usr/local/lib`. Стоило поставить свой же
-/// пакет — и 16 сверок покраснели разом (18.09.2026), причём не на
-/// дефекте, а на состоянии машины: зелёные до установки, красные после.
-/// Ровно такой мины и не должно быть — сверка, зависящая от живой
-/// машины, обязана либо не зависеть, либо быть помечена
-/// `isolated-checks` (уговор в `rust/.cargo/config.toml`).
+/// ⚠️ Why. The helpers have two directories, and both are legitimate
+/// ([`HELPER_DIRS`]): the distribution package puts them into `/usr/lib`, the
+/// manual install into `/usr/local/lib`, and [`pick_helper_path`] chooses by
+/// probing the file system. The golden check references were taken from live
+/// Python on a machine without the package and hold `/usr/local/lib`. It was
+/// enough to install our own package, and 16 checks turned red at once
+/// (18.09.2026), not on a defect but on the machine state: green before the
+/// install, red after. Exactly such a mine must not exist: a check that
+/// depends on the live machine must either not depend on it or be marked
+/// `isolated-checks` (the agreement in `rust/.cargo/config.toml`).
 ///
-/// Что пин при этом проверяет, не меняется: «идём ИМЕНОВАННЫМ помощником,
-/// а не сырым `pkexec`, и ровно с этими аргументами». Сырой откат
-/// (`pkexec pacman -S …`) и любая правка набора аргументов по-прежнему
-/// валят сверку — подменяется ТОЛЬКО каталог помощника, и только на
-/// второй законный. На машине без пакета замена вообще тождественна:
-/// живой ответ и есть `/usr/local/lib`.
+/// What the pin checks does not change: "we go through a NAMED helper, not
+/// raw `pkexec`, and with exactly these arguments". A raw fallback
+/// (`pkexec pacman -S …`) and any change to the argument set still fail the
+/// check: ONLY the helper directory is substituted, and only with the second
+/// legitimate one. On a machine without the package the substitution is the
+/// identity: the live answer is `/usr/local/lib`.
 pub fn retarget_helper_paths(text: &str) -> String {
     let mut out = text.to_string();
     for (name, live) in [
@@ -1800,21 +1807,21 @@ pub fn retarget_helper_paths(text: &str) -> String {
     out
 }
 
-/// Вставить за путём помощника в `pkexec`-команде эталона (JSON-массив
-/// `"pkexec", "<помощник>", …`) аргумент языка, который ЭТА машина
-/// передала бы при действующем языке интерфейса
-/// ([`crate::system_l10n::lang_args`]).
+/// Insert, after the helper path in a reference `pkexec` command (a JSON
+/// array `"pkexec", "<helper>", …`), the language argument THIS machine would
+/// pass with the current UI language ([`crate::system_l10n::lang_args`]).
 ///
-/// ⚠️ Зачем. `--lang=<код>` идёт помощнику, только если язык не английский
-/// И в установленном файле помощника есть отметка «понимаю `--lang`». Эталоны
-/// сняты там, где такого помощника не было, — и стоило поставить свой пакет
-/// с новыми помощниками, как сверки команд покраснели на состоянии машины,
-/// а не на дефекте (04.10.2026; тот же класс, что с каталогом помощника
-/// выше). Пин по-прежнему ловит сырой `pkexec` и любую правку остальных
-/// аргументов; подставляется ТОЛЬКО то, что зависит от машины.
+/// ⚠️ Why. `--lang=<code>` goes to the helper only if the language is not
+/// English AND the installed helper file carries the "I understand `--lang`"
+/// mark. The references were taken where there was no such helper, and it
+/// was enough to install our own package with new helpers for the command
+/// checks to turn red on the machine state, not on a defect (04.10.2026; the
+/// same class as with the helper directory above). The pin still catches a
+/// raw `pkexec` and any change to the other arguments; ONLY what depends on
+/// the machine is substituted.
 ///
-/// Язык берётся действующий: сверка обязана закрепить его (`i18n_pin`) ДО
-/// разбора эталона.
+/// The current language is used: the check must pin it (`i18n_pin`) BEFORE
+/// parsing the reference.
 fn insert_live_lang_arg(text: &str, live: &str) -> String {
     let args = crate::system_l10n::lang_args(live);
     if args.is_empty() {
@@ -1836,12 +1843,12 @@ fn insert_live_lang_arg(text: &str, live: &str) -> String {
     out
 }
 
-/// Семейства, для которых DE-helper умеет ставить из официальных репо без AUR.
+/// Families for which the DE helper can install from official repos without the AUR.
 pub const DE_HELPER_FAMILIES: &[&str] = &[
     "arch", "debian", "fedora", "suse", "alpine", "void", "solus", "clear", "alt",
 ];
 
-/// install-команда DE-helper'а per family ({PKGS} подставляет сам helper).
+/// DE helper install command per family ({PKGS} is substituted by the helper itself).
 const DE_HELPER_PKGCMD: &[(&str, &str)] = &[
     ("arch", "pacman -S --needed --noconfirm --noprogressbar --color never {PKGS}"),
     ("debian", "apt-get install -y --no-install-recommends {PKGS}"),
@@ -1854,7 +1861,7 @@ const DE_HELPER_PKGCMD: &[(&str, &str)] = &[
     ("alt", "apt-get install -y {PKGS}"),
 ];
 
-/// update-команда DE-helper'а per family.
+/// DE helper update command per family.
 const DE_HELPER_UPDCMD: &[(&str, &str)] = &[
     ("arch", "pacman -Sy --noconfirm --noprogressbar --color never"),
     ("debian", "apt-get update -q"),
@@ -1867,21 +1874,21 @@ const DE_HELPER_UPDCMD: &[(&str, &str)] = &[
     ("alt", "apt-get update -q"),
 ];
 
-/// DM'ы, которые helper'ы умеют включать — порт `_DE_HELPER_DISPLAY_MANAGERS`.
+/// DMs the helpers can enable: port of `_DE_HELPER_DISPLAY_MANAGERS`.
 pub const DE_HELPER_DISPLAY_MANAGERS: &[&str] = &[
     "plasmalogin", "cosmic-greeter", "lightdm", "gdm", "sddm",
 ];
 
-/// Операции rexon-pkg-helper — порт `_PKG_HELPER_OPS`.
+/// rexon-pkg-helper operations: port of `_PKG_HELPER_OPS`.
 ///
-/// `build-deps` и `install-built` — шаги пересборки по рецепту Arch
-/// ([`crate::repo_rebuild`]); их argv строит она сама, [`privileged_pkg_cmd`]
-/// их не собирает.
+/// `build-deps` and `install-built` are the rebuild steps of the Arch recipe
+/// ([`crate::repo_rebuild`]); it builds their argv itself, [`privileged_pkg_cmd`]
+/// does not assemble them.
 pub const PKG_HELPER_OPS: &[&str] = &[
     "install", "remove", "update", "enable-dm", "switch-dm", "build-deps", "install-built",
 ];
 
-/// Семейства rexon-pkg-helper (NIX исключён намеренно) — порт
+/// rexon-pkg-helper families (NIX deliberately excluded): port of
 /// `_PKG_HELPER_FAMILIES`.
 pub const PKG_HELPER_FAMILIES: &[&str] = &[
     "arch", "debian", "fedora", "suse", "gentoo",
@@ -1925,56 +1932,58 @@ const PKG_HELPER_UPDATE: &[(&str, &str)] = &[
     ("alt", "apt-get update -q"),
 ];
 
-/// Категории file-staging — порт `_STAGE_CATEGORIES`.
+/// File staging categories: port of `_STAGE_CATEGORIES`.
 pub const STAGE_CATEGORIES: &[&str] = &[
     "gdm-bg", "lightdm-bg", "cosmic-greeter", "login-bg", "lightdm-webkit", "mate-layouts",
 ];
 
-/// Корневые каталоги-назначения dir-категорий — порт `_STAGE_DIR_ROOT`.
+/// Destination root directories of the dir categories: port of `_STAGE_DIR_ROOT`.
 ///
-/// ⚠️ Правило #16: путь тем webkit-приветствия был неверен ДАЖЕ на Arch —
-/// пакет `lightdm-webkit2-greeter` кладёт темы в `/usr/share/lightdm-webkit`,
-/// каталога `lightdm-webkit2-greeter` не существует нигде. Тема уезжала в
-/// несуществующий каталог, а пользователь получал «установлено».
-/// Преемник greeter'а (`web-greeter`) держит темы у себя, поэтому корней
-/// два и выбирается тот, что реально есть в системе.
+/// ⚠️ Rule #16: the webkit greeter theme path was wrong EVEN on Arch: the
+/// `lightdm-webkit2-greeter` package puts themes into
+/// `/usr/share/lightdm-webkit`, a `lightdm-webkit2-greeter` directory exists
+/// nowhere. The theme went into a nonexistent directory, and the user got
+/// "installed". The greeter's successor (`web-greeter`) keeps themes in its
+/// own place, so there are two roots and the one that really exists in the
+/// system is chosen.
 pub const STAGE_DIR_ROOT: &[(&str, &str)] = &[
     ("lightdm-webkit", "/usr/share/lightdm-webkit/themes"),
     ("mate-layouts", "/usr/share/mate-panel/layouts"),
 ];
 
-/// Второй корень тем webkit-приветствия — преемник `web-greeter`.
+/// The second webkit greeter themes root: the `web-greeter` successor.
 pub const WEB_GREETER_ROOT: &str = "/usr/share/web-greeter/themes";
 
-/// Все 8 layout'ов Ubuntu MATE — порт `MATE_LAYOUTS`.
+/// All 8 Ubuntu MATE layouts: port of `MATE_LAYOUTS`.
 pub const MATE_LAYOUTS: &[&str] = &[
     "familiar", "redmond", "cupertino", "mutiny",
     "pantheon", "contemporary", "netbook", "traditional",
 ];
 
-// ── Имя пакета — ИМЯ, а не путь: ОДНА проверка на все пути ───────────
+// ── A package name is a NAME, not a path: ONE check for all paths ───
 //
-// ⛔ ДЫРА, ЗАКРЫТАЯ 25.09.2026. Прежние две проверки (`is_safe_pkg_name`
-// здесь и `is_safe_helper_arg` ниже) разрешали в имени пакета символ `/`:
+// ⛔ HOLE CLOSED ON 25.09.2026. The two former checks (`is_safe_pkg_name`
+// here and `is_safe_helper_arg` below) allowed the `/` character in a
+// package name:
 //
 //     s.chars().all(|c| c.is_ascii_alphanumeric()
 //                       || matches!(c, '@'|'.'|'_'|'+'|':'|'/'|'-'))
 //
-// а привилегированный помощник собирал команду через `eval`. Вместе это
-// значило: `pkexec rexon-pkg-helper debian install /tmp/evil.deb` —
-// apt-get (и точно так же dnf, zypper) ставит ЛОКАЛЬНЫЙ ФАЙЛ, а его
-// сценарии установки идут ОТ ROOT. Тот же `/` пролезал и в сырой откат
-// (`pkexec apt-get install …`), поэтому проверка стоит в самих таблицах
-// команд ([`install_cmd`], [`remove_cmd`]), а не только перед помощником.
+// and the privileged helper assembled the command via `eval`. Together this
+// meant: `pkexec rexon-pkg-helper debian install /tmp/evil.deb`: apt-get
+// (and likewise dnf, zypper) installs a LOCAL FILE, and its install scripts
+// run AS ROOT. The same `/` also slipped into the raw fallback
+// (`pkexec apt-get install …`), so the check sits in the command tables
+// themselves ([`install_cmd`], [`remove_cmd`]), not only before the helper.
 //
-// Правда одна и здесь: атом имени пакета. Путь в него не складывается ни
-// одним способом, а место, где путь ДЕЙСТВИТЕЛЬНО нужен (раскладка файлов
-// оформления), — это отдельное действие `org.rexon.stage` со своей
-// проверкой категории и корня, а не поблажка в общем имени.
+// There is one truth here too: the package name atom. A path cannot be
+// composed into it in any way, and the place where a path is REALLY needed
+// (placing look files) is a separate `org.rexon.stage` action with its own
+// category and root check, not an exception in the common name.
 
-/// Атом имени пакета: начинается с буквы или цифры, дальше — только
-/// `A-Za-z0-9._+:-`. Ни `/` (путь), ни ведущего `-` (подмена пакета на
-/// флаг), ни ведущей точки, ни `..`, ни хвоста файла пакета.
+/// Package name atom: starts with a letter or digit, followed only by
+/// `A-Za-z0-9._+:-`. No `/` (a path), no leading `-` (swapping a package for
+/// a flag), no leading dot, no `..`, no package file suffix.
 fn is_pkg_atom(s: &str) -> bool {
     match s.chars().next() {
         Some(c) if c.is_ascii_alphanumeric() => {}
@@ -1987,10 +1996,11 @@ fn is_pkg_atom(s: &str) -> bool {
         })
 }
 
-/// Хвост файла пакета или архива. Нужно ОТДЕЛЬНО от запрета `/`: `dnf
-/// install evil.rpm` и `zypper install evil.rpm` берут файл из ТЕКУЩЕГО
-/// каталога, а его помощнику задаёт вызывающий процесс (pkexec рабочий
-/// каталог не меняет) — слэша в таком аргументе нет вовсе.
+/// A package or archive file suffix. Needed SEPARATELY from the `/` ban:
+/// `dnf install evil.rpm` and `zypper install evil.rpm` take the file from
+/// the CURRENT directory, and the helper's current directory is set by the
+/// calling process (pkexec does not change the working directory): such an
+/// argument has no slash at all.
 fn looks_like_package_file(s: &str) -> bool {
     const EXT: &[&str] = &[
         ".deb", ".rpm", ".apk", ".eopkg", ".xbps", ".tar", ".tgz", ".txz",
@@ -2000,14 +2010,14 @@ fn looks_like_package_file(s: &str) -> bool {
     EXT.iter().any(|e| low.ends_with(e))
 }
 
-/// Допустимое имя пакета для привилегированной операции — с поправкой на
-/// семейство, и ровно на две:
-///   * Fedora: ведущее `@` — группа dnf (`@gnome-desktop`), и это
-///     единственное законное `@` во всём проекте;
-///   * Gentoo: атом Portage `категория/имя` — РОВНО один `/`, обе половины
-///     сами атомы. Ни ведущего `/` (абсолютный путь), ни `@` (наборы вида
-///     `@world`, которым `emerge --unmerge` снёс бы систему).
-/// Остальным семействам `/` не нужен нигде и запрещён.
+/// A valid package name for a privileged operation, adjusted for the family,
+/// and in exactly two ways:
+///   * Fedora: a leading `@` is a dnf group (`@gnome-desktop`), and it is the
+///     only legitimate `@` in the whole project;
+///   * Gentoo: a Portage atom `category/name`: EXACTLY one `/`, both halves
+///     atoms themselves. No leading `/` (an absolute path), no `@` (sets like
+///     `@world`, with which `emerge --unmerge` would wipe the system).
+/// The other families need `/` nowhere, and it is forbidden.
 pub fn is_safe_pkg_arg(family: PkgFamily, s: &str) -> bool {
     if s.is_empty() {
         return false;
@@ -2025,14 +2035,14 @@ pub fn is_safe_pkg_arg(family: PkgFamily, s: &str) -> bool {
     is_pkg_atom(body)
 }
 
-/// Текст отказа снять жизненно важный пакет ([`is_vital_package`]) — один
-/// на все пути снятия.
+/// Refusal text for removing a vital package ([`is_vital_package`]): one for
+/// all removal paths.
 pub fn vital_remove_error(name: &str) -> String {
     trf("Rexon does not remove %1: the system needs it to work", &[&name])
 }
 
-/// Текст отказа для имени, которое не имя: один на все пути, чтобы человек
-/// видел одну и ту же причину и в плане, и в журнале.
+/// Refusal text for a name that is not a name: one for all paths, so that the
+/// person sees the same reason both in the plan and in the log.
 fn bad_pkg_name_error(name: &str) -> String {
     trf(
         "Invalid package name: %1. A package name is expected, not a file path.",
@@ -2040,16 +2050,16 @@ fn bad_pkg_name_error(name: &str) -> String {
     )
 }
 
-/// Жизненно важные пакеты: удалять их помощник не станет никогда.
+/// Vital packages: the helper will never remove them.
 ///
-/// ⛔ Вторая половина той же дыры: `remove` проверял имя ТОЛЬКО на символы,
-/// а идёт оно от root и с «не спрашивай». Одной строки
-/// `pkexec rexon-pkg-helper arch remove linux` хватало, чтобы оставить
-/// машину без загрузки, а `… remove polkit` — чтобы отобрать у человека
-/// сам механизм подтверждения. Ни одного из этих имён нет ни в одном
-/// рабочем столе базы Rexon (сверка
+/// ⛔ The second half of the same hole: `remove` checked the name ONLY for
+/// characters, while it runs as root and with "do not ask". One line
+/// `pkexec rexon-pkg-helper arch remove linux` was enough to leave the
+/// machine unbootable, and `… remove polkit` to take away the confirmation
+/// mechanism itself. None of these names is in any desktop of the Rexon
+/// database (the check
 /// `вечный_список_не_пересекается_с_рабочими_столами`),
-/// поэтому запрет не мешает ни одному честному сценарию.
+/// so the ban does not get in the way of a single honest scenario.
 pub const PKG_HELPER_VITAL: &[&str] = &[
     "base", "base-files", "filesystem", "glibc", "gcc-libs", "bash",
     "coreutils", "util-linux", "systemd", "systemd-libs",
@@ -2061,39 +2071,39 @@ pub const PKG_HELPER_VITAL: &[&str] = &[
     "polkit", "polkit-qt5", "sudo", "openssl", "zlib", "rexon",
 ];
 
-/// Добавка к [`PKG_HELPER_VITAL`] — семейства, которые точными именами не
-/// перечислить: ядра (`linux-cachyos`, `linux-image-…`, `kernel-modules`),
-/// драйверы видео (`nvidia-…`, `mesa`, `vulkan-…`, `xf86-video-…`),
-/// прошивки и микрокод, сборщики initramfs.
+/// An addition to [`PKG_HELPER_VITAL`]: families that cannot be listed by
+/// exact names: kernels (`linux-cachyos`, `linux-image-…`, `kernel-modules`),
+/// video drivers (`nvidia-…`, `mesa`, `vulkan-…`, `xf86-video-…`), firmware
+/// and microcode, initramfs builders.
 ///
-/// ⛔ Дыра, которую это закрыло (28.10.2026): вечный список знал только
-/// точные имена — `linux`, `linux-lts`, `linux-zen`, `linux-hardened`, — и
-/// `rexon-pkg-helper arch remove linux-cachyos` (а равно `nvidia-utils`,
-/// `mesa`, `amd-ucode`, `linux-image-amd64`) проходил. Ни одно имя таблиц
-/// столов сюда не попадает (сверка `вечное_не_задевает_столы`), поэтому
-/// удалению стола добавка не мешает.
+/// ⛔ The hole this closed (28.10.2026): the permanent list knew only exact
+/// names (`linux`, `linux-lts`, `linux-zen`, `linux-hardened`), and
+/// `rexon-pkg-helper arch remove linux-cachyos` (as well as `nvidia-utils`,
+/// `mesa`, `amd-ucode`, `linux-image-amd64`) went through. No name from the
+/// desktop tables falls in here (the check `вечное_не_задевает_столы`), so
+/// the addition does not get in the way of desktop removal.
 pub const VITAL_PREFIXES: &[&str] = &[
     "linux-", "kernel-", "gentoo-kernel", "gentoo-sources", "systemd-", "glibc-",
     "grub-", "sudo-", "opendoas", "polkit-qt", "pacman-", "nvidia", "lib32-nvidia",
     "mesa", "lib32-mesa", "vulkan-", "lib32-vulkan-", "xf86-video-", "firmware-",
     "mkinitcpio", "dracut", "booster",
 ];
-/// Хвосты имён жизненно важного: прошивки, микрокод, модули DKMS.
+/// Name suffixes of vital packages: firmware, microcode, DKMS modules.
 pub const VITAL_SUFFIXES: &[&str] = &["-firmware", "-ucode", "-dkms"];
 
-/// Имя для сверки с вечным списком: без группы dnf (`@`) и без категории
-/// Gentoo (`sys-kernel/gentoo-kernel` → `gentoo-kernel`) — как `vital_key`
-/// в `rexon-pkg-helper`.
+/// The name for matching against the permanent list: without the dnf group
+/// (`@`) and without the Gentoo category (`sys-kernel/gentoo-kernel` →
+/// `gentoo-kernel`), like `vital_key` in `rexon-pkg-helper`.
 pub fn vital_key(name: &str) -> &str {
     let n = name.strip_prefix('@').unwrap_or(name);
     n.rsplit('/').next().unwrap_or(n)
 }
 
-/// Жизненно важный пакет: из [`PKG_HELPER_VITAL`] или из семейств ядра,
-/// драйверов, прошивок и загрузки ([`VITAL_PREFIXES`], [`VITAL_SUFFIXES`]).
-/// ОДНО правило на все пути снятия: помощник пакетов (тот же список в его
-/// bash-тексте), план удаления [`remove_plan`], [`remove_cmd`], снятие
-/// пакетов «Как в дистрибутиве» и проверки помощника «Б».
+/// A vital package: from [`PKG_HELPER_VITAL`] or from the kernel, driver,
+/// firmware and boot families ([`VITAL_PREFIXES`], [`VITAL_SUFFIXES`]). ONE
+/// rule for all removal paths: the package helper (the same list in its bash
+/// text), the removal plan [`remove_plan`], [`remove_cmd`], removing packages
+/// of «Distro looks» and the checks of helper "B".
 pub fn is_vital_package(name: &str) -> bool {
     let key = vital_key(name);
     PKG_HELPER_VITAL.contains(&key)
@@ -2101,9 +2111,9 @@ pub fn is_vital_package(name: &str) -> bool {
         || VITAL_SUFFIXES.iter().any(|s| key.ends_with(s))
 }
 
-/// То же правило шаблоном `case` для bash-помощника: точные имена,
-/// `префикс*`, `*хвост`. Имена — из констант ядра (буквы, цифры, `-`), ни
-/// одного символа шаблона в них нет (сверка в тестах).
+/// The same rule as a `case` pattern for the bash helper: exact names,
+/// `prefix*`, `*suffix`. The names come from core constants (letters,
+/// digits, `-`), none of them contains a pattern character (checked in tests).
 fn vital_case_pattern() -> String {
     PKG_HELPER_VITAL
         .iter()
@@ -2114,23 +2124,24 @@ fn vital_case_pattern() -> String {
         .join("|")
 }
 
-/// Белый список операции `install` помощника пакетов для семейства: все
-/// таблицы ядра, по которым Rexon ставит пакеты через помощник, — столы
-/// (основные и AUR), экраны входа ([`DM_PAIRS`], [`SDDM_PKG_FOR_FAMILY`]),
-/// починка соответствия, видеозависимости обоев, yt-dlp, инструмент
-/// overlay Gentoo, оболочки, программы виджетов Conky и распаковщик 7z
-/// (`utils::TOOL_PACKAGES`), Conky, части раскладок MATE, значки и курсоры
-/// тем, образы «Как в дистрибутиве». Вшивается в текст помощника
-/// ([`pkg_helper_script`]): имя вне списка помощник от root не ставит.
+/// Whitelist of the package helper's `install` operation for a family: all
+/// core tables by which Rexon installs packages through the helper: desktops
+/// (main and AUR), login screens ([`DM_PAIRS`], [`SDDM_PKG_FOR_FAMILY`]),
+/// compliance repair, wallpaper video dependencies, yt-dlp, the Gentoo
+/// overlay tool, shells, Conky widget programs and the 7z unpacker
+/// (`utils::TOOL_PACKAGES`), Conky, parts of the MATE layouts, theme icons
+/// and cursors, «Distro looks» images. Embedded into the helper text
+/// ([`pkg_helper_script`]): the root helper does not install a name outside
+/// the list.
 ///
-/// ⛔ Дыра, которую это закрыло (28.10.2026): `install` принимал любое имя
-/// пакета, и любой процесс сеанса с паролем администратора на 5 минут
-/// (`auth_admin_keep`) мог поставить что угодно из подключённых
-/// репозиториев — со сценариями установки от root.
+/// ⛔ The hole this closed (28.10.2026): `install` accepted any package name,
+/// and any session process with the administrator password for 5 minutes
+/// (`auth_admin_keep`) could install anything from the enabled repositories,
+/// with install scripts running as root.
 ///
-/// ⚠️ Новое место, которое ставит пакеты через помощник, обязано брать
-/// имена из таблицы и добавить её сюда — иначе помощник откажет. Сверка
-/// `белый_список_покрывает_все_таблицы` держит перечень.
+/// ⚠️ A new place that installs packages through the helper must take the
+/// names from a table and add that table here, otherwise the helper refuses.
+/// The check `белый_список_покрывает_все_таблицы` keeps the inventory.
 pub fn pkg_helper_install_allowlist(family: PkgFamily) -> Vec<String> {
     let fam = family.as_str();
     let mut out: Vec<String> = Vec::new();
@@ -2189,7 +2200,7 @@ pub fn pkg_helper_install_allowlist(family: PkgFamily) -> Vec<String> {
     out
 }
 
-/// Ветки `case "$family"` белого списка установки для текста помощника.
+/// `case "$family"` branches of the install whitelist for the helper text.
 fn install_allow_cases() -> String {
     PKG_HELPER_FAMILIES
         .iter()
@@ -2205,8 +2216,8 @@ fn install_allow_cases() -> String {
         .join("\n")
 }
 
-/// Пакеты столов для защиты текущего стола в помощнике: `"<de>|<семейство>")
-/// echo …` — основные и AUR по таблице ядра.
+/// Desktop packages for protecting the current desktop in the helper:
+/// `"<de>|<family>") echo …`: main and AUR by the core table.
 fn desktop_protect_cases() -> String {
     let mut lines: Vec<String> = Vec::new();
     for (de_id, _) in crate::system::DE_DATABASE {
@@ -2227,8 +2238,8 @@ fn desktop_protect_cases() -> String {
     lines.join("\n")
 }
 
-/// Стол по `Desktop=` сеанса logind — та же таблица, что у
-/// [`crate::system::detect_current_de`]: точный токен, затем подстрока.
+/// The desktop by the logind session's `Desktop=`: the same table as
+/// [`crate::system::detect_current_de`]: the exact token, then a substring.
 fn desktop_token_cases() -> (String, String) {
     let table = crate::system::XDG_TOKEN_TO_DE;
     let exact = table
@@ -2244,8 +2255,8 @@ fn desktop_token_cases() -> (String, String) {
     (exact, substr)
 }
 
-/// Пакет экрана входа по юниту для помощника (`семейство|юнит`): Debian —
-/// [`DM_DEBIAN_PKG_FOR_UNIT`], остальные — [`DM_PKG_FOR_UNIT`].
+/// Login screen package by unit for the helper (`family|unit`): Debian uses
+/// [`DM_DEBIAN_PKG_FOR_UNIT`], the others [`DM_PKG_FOR_UNIT`].
 fn dm_protect_map() -> String {
     DM_DEBIAN_PKG_FOR_UNIT
         .iter()
@@ -2261,49 +2272,51 @@ fn is_safe_de_id(s: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
 
-/// Действия, которые по СОГЛАСИЮ человека идут без повторного пароля
-/// (правило [`passwordless_rules_js`], ставит его установка Rexon в систему
-/// только при включённом согласии).
+/// Actions that, with the person's CONSENT, go without a repeated password
+/// (the [`passwordless_rules_js`] rule, installed by the Rexon system install
+/// only when consent is given).
 ///
-/// ⭐⭐ Починка 15.09.2026: прежнее правило (`rexon_polkit_rules_js`, удалено
-/// 25.09.2026 вместе с генератором — см. ниже) молча отдавало ВСЁ
-/// семейство `org.rexon.*`, включая `org.rexon.pkg` — установку
-/// и УДАЛЕНИЕ любых пакетов по имени. Без пароля это мог бы сделать любой
-/// процесс сеанса (`pkexec rexon-pkg-helper arch remove linux`). Теперь
-/// разрешено одно действие, которое не принимает произвольного ввода:
-///   * `org.rexon.de-install` — установка рабочего стола только из таблицы
-///     ядра (набор пакетов зашит в помощника, имя пакета не принимается).
+/// ⭐⭐ Fixed 15.09.2026: the old rule (`rexon_polkit_rules_js`, removed on
+/// 25.09.2026 together with its generator, see below) silently gave away the
+/// WHOLE `org.rexon.*` family, including `org.rexon.pkg`: installing and
+/// REMOVING any packages by name. Any session process could have done this
+/// without a password (`pkexec rexon-pkg-helper arch remove linux`). Now one
+/// action is allowed that takes no arbitrary input:
+///   * `org.rexon.de-install`: installing a desktop only from the core table
+///     (the package set is built into the helper, a package name is not accepted).
 ///
-/// ⛔ 28.09.2026 (решение Wehrwolfmann по плану «один пароль»): из правила
-/// сняты `org.rexon.system-install` (темы SDDM и Plymouth) и
-/// `org.rexon.stage` (фон и темы экранов входа, раскладки MATE). Оба берут
-/// СОДЕРЖИМОЕ из каталога пользователя и кладут его в `/usr/share`, а тема
-/// Plymouth грузится от root при загрузке: строку `ModuleName` plymouth
-/// превращает в путь модуля без проверки `../`, и тема с `.so` внутри была
-/// бы кодом от root — без пароля, из любого процесса сеанса. Помощник тем
-/// такое теперь отвергает, но «без пароля» для этих действий не вернётся:
-/// после перехода на «один пароль на запуск» правило снимается целиком.
+/// ⛔ 28.09.2026 (Wehrwolfmann's decision on the "one password" plan): removed
+/// from the rule were `org.rexon.system-install` (SDDM and Plymouth themes)
+/// and `org.rexon.stage` (login screen backgrounds and themes, MATE layouts).
+/// Both take CONTENT from the user's directory and put it into `/usr/share`,
+/// and a Plymouth theme is loaded as root at boot: plymouth turns the
+/// `ModuleName` line into a module path without checking `../`, and a theme
+/// with a `.so` inside would be code running as root, without a password,
+/// from any session process. The theme helper now rejects this, but
+/// "without password" will not come back for these actions: after moving to
+/// "one password per launch" the rule is removed entirely.
 ///
-/// `org.rexon.pkg` сюда НЕ входит никогда и спрашивает пароль как обычно
-/// (`auth_admin_keep` — пять минут на процесс окна). Он же — «зонтик»
-/// ([`PKG_IMPLIES`]): направление `imply` только от него к остальным.
+/// `org.rexon.pkg` is NEVER included here and asks for the password as usual
+/// (`auth_admin_keep`: five minutes per window process). It is also the
+/// "umbrella" ([`PKG_IMPLIES`]): the `imply` direction is only from it to
+/// the others.
 ///
-/// ⛔ 25.09.2026 генератор прежнего правила удалён совсем. Он оставался
-/// мёртвым кодом (Rust его не звал, Python писал в файл, который ядро при
-/// отсутствии согласия тут же снимало `rm -f`), но лежал готовой миной:
-/// один вызов — и `org.rexon.pkg` уходит без пароля. Восстанавливать его
-/// нельзя ни в каком виде: правило «без пароля» знает ТОЛЬКО список
-/// [`PASSWORDLESS_ACTIONS`].
+/// ⛔ On 25.09.2026 the old rule's generator was removed completely. It had
+/// stayed as dead code (Rust did not call it, Python wrote a file that the
+/// core immediately removed with `rm -f` when there was no consent), but it
+/// lay there as a ready mine: one call, and `org.rexon.pkg` goes without a
+/// password. It must not be restored in any form: the "without password"
+/// rule knows ONLY the [`PASSWORDLESS_ACTIONS`] list.
 pub const PASSWORDLESS_ACTIONS: &[&str] = &[DE_INSTALL_ACTION];
 
-/// Группы администраторов, которым polkit дистрибутива разрешает действия
-/// администратора (`addAdminRule` / `AdminIdentities`).
+/// Administrator groups the distribution's polkit allows administrator
+/// actions to (`addAdminRule` / `AdminIdentities`).
 ///
-/// ⭐ Починка 15.09.2026: правило знало только `wheel`, а в Debian и Ubuntu
-/// администраторы состоят в группе `sudo` (в старых Ubuntu — ещё `admin`),
-/// в Solus — тоже `sudo`. Там правило не срабатывало никогда. Незнакомое
-/// семейство получает `wheel` — лишний раз спросить пароль безопаснее, чем
-/// угадать чужую группу.
+/// ⭐ Fixed 15.09.2026: the rule knew only `wheel`, while on Debian and
+/// Ubuntu administrators are in the `sudo` group (on old Ubuntu also
+/// `admin`), on Solus also `sudo`. There the rule never fired. An unknown
+/// family gets `wheel`: asking for the password once more is safer than
+/// guessing someone else's group.
 pub fn polkit_admin_groups(family: PkgFamily) -> &'static [&'static str] {
     match family {
         PkgFamily::Debian => &["sudo", "admin"],
@@ -2312,10 +2325,10 @@ pub fn polkit_admin_groups(family: PkgFamily) -> &'static [&'static str] {
     }
 }
 
-/// Правило polkit «без повторного пароля» для [`PASSWORDLESS_ACTIONS`]:
-/// администратор (по [`polkit_admin_groups`] семейства) в активной
-/// локальной сессии. Кладётся по [`REXON_POLKIT_RULES_PATH`] — тем же путём,
-/// что прежнее, поэтому удаление Rexon его снимает.
+/// The polkit "without repeated password" rule for [`PASSWORDLESS_ACTIONS`]:
+/// an administrator (by the family's [`polkit_admin_groups`]) in an active
+/// local session. Placed at [`REXON_POLKIT_RULES_PATH`], the same path as
+/// the old one, so removing Rexon removes it.
 pub fn passwordless_rules_js(family: PkgFamily) -> String {
     let actions = PASSWORDLESS_ACTIONS
         .iter()
@@ -2342,9 +2355,10 @@ pub fn passwordless_rules_js(family: PkgFamily) -> String {
     )
 }
 
-/// bash case-таблица `de_id|family → packages` — порт `_de_helper_pkg_table`.
-/// ЕДИНЫЙ ИСТОЧНИК ПРАВДЫ — DE_DATABASE (см. system.rs), helper не «дрейфует»
-/// от основной БД. Имена safe (allowlist) → shlex.quote в Python — no-op.
+/// bash case table `de_id|family → packages`: port of `_de_helper_pkg_table`.
+/// THE SINGLE SOURCE OF TRUTH is DE_DATABASE (see system.rs), the helper does
+/// not "drift" from the main database. Names are safe (allowlist) →
+/// shlex.quote in Python is a no-op.
 pub fn de_helper_pkg_table() -> String {
     let mut lines: Vec<String> = Vec::new();
     for (de_id, packages) in crate::system::de_database_packages() {
@@ -2373,15 +2387,16 @@ pub fn de_helper_pkg_table() -> String {
     lines.join("\n")
 }
 
-/// Столы, которых в таблице помощника нет вовсе. Deepin: группа `deepin`
-/// тянет `deepin-session` с `deepin-kwin`, а Rexon ставит Deepin только на
-/// Treeland — набором без них, обёрткой (`crate::deepin_treeland`). Помощник
-/// от root не должен уметь поставить группу целиком.
+/// Desktops that are not in the helper table at all. Deepin: the `deepin`
+/// group pulls in `deepin-session` with `deepin-kwin`, while Rexon installs
+/// Deepin only on Treeland: as a set without them, via the wrapper
+/// (`crate::deepin_treeland`). The root helper must not be able to install
+/// the whole group.
 fn de_helper_allowed(de_id: &str) -> bool {
     de_id != crate::deepin_treeland::DE_ID
 }
 
-/// Умеет ли DE-helper ставить пару de_id|family — порт `_de_helper_supports`.
+/// Whether the DE helper can install the de_id|family pair: port of `_de_helper_supports`.
 pub fn de_helper_supports(de_id: &str, family: &str) -> bool {
     if !DE_HELPER_FAMILIES.contains(&family) || !de_helper_allowed(de_id) {
         return false;
@@ -2399,11 +2414,12 @@ pub fn de_helper_supports(de_id: &str, family: &str) -> bool {
     }
 }
 
-/// Поставит ли помощник всё из `packages`: пакеты стола он берёт из
-/// встроенной таблицы ([`de_helper_pkg_table`]), а не из аргументов. Набор
-/// из её же имён (весь или часть — как было всегда) он покрывает; имя не из
-/// таблицы (DKMS-модуль, раскрытый член группы, AUR-пакет из репозитория)
-/// помощник молча не поставил бы.
+/// Whether the helper will install everything from `packages`: it takes the
+/// desktop packages from the built-in table ([`de_helper_pkg_table`]), not
+/// from the arguments. A set of names from that table (all or part, as it
+/// always was) it covers; a name not from the table (a DKMS module, an
+/// expanded group member, an AUR package from a repository) the helper would
+/// silently not install.
 pub fn de_helper_covers(de_id: &str, family: PkgFamily, packages: &[String]) -> bool {
     let Some(table) = de_entry_packages_for(de_id, family.as_str()) else {
         return false;
@@ -2413,11 +2429,11 @@ pub fn de_helper_covers(de_id: &str, family: PkgFamily, packages: &[String]) -> 
         .all(|p| table.iter().any(|t| *t == p.as_str() && is_safe_pkg_arg(family, t)))
 }
 
-/// Тело rexon-de-helper — порт `_de_helper_script` (шаблон + подстановки).
+/// Body of rexon-de-helper: port of `_de_helper_script` (template + substitutions).
 pub fn de_helper_script() -> String {
     let pkg_table = de_helper_pkg_table();
-    // Команды — МАССИВАМИ аргументов: `eval` из помощника убран целиком
-    // (25.09.2026, вместе с дырой в rexon-pkg-helper).
+    // Commands as ARRAYS of arguments: `eval` was removed from the helper
+    // entirely (25.09.2026, together with the hole in rexon-pkg-helper).
     let fam_cases = DE_HELPER_FAMILIES
         .iter()
         .map(|f| {
@@ -2447,9 +2463,9 @@ pub fn de_helper_script() -> String {
         .collect::<Vec<_>>()
         .join(" | ");
     let dm_list = DE_HELPER_DISPLAY_MANAGERS.join(" ");
-    // Список известных экранов входа и «включённых» состояний — тот же, по
-    // которому Rexon отвечает на вопрос «экран входа есть?»: helper обязан
-    // видеть чужой DM ровно так же, иначе подменит его молча.
+    // The list of known login screens and "enabled" states is the same one
+    // Rexon uses to answer "is there a login screen?": the helper must see a
+    // foreign DM in exactly the same way, otherwise it would silently replace it.
     let dm_known = KNOWN_DM_UNITS.join(" ");
     let dm_states = DM_ENABLED_STATES.join("|");
     let text = DE_HELPER_SCRIPT_TMPL
@@ -2465,7 +2481,7 @@ pub fn de_helper_script() -> String {
     crate::system_l10n::localize_script(DE_HELPER_NAME, &text)
 }
 
-/// Шаблон rexon-de-helper (текст-в-текст с Python `_de_helper_script`).
+/// The rexon-de-helper template (text for text with Python's `_de_helper_script`).
 const DE_HELPER_SCRIPT_TMPL: &str = r#"#!/bin/bash
 # Rexon DE helper — привилегированная установка/восстановление DE.
 # Запускается ИСКЛЮЧИТЕЛЬНО через pkexec (polkit action org.rexon.de-install,
@@ -2644,8 +2660,8 @@ fi
 exit 0
 "#;
 
-// Подписи окна пароля (polkit): все языки каталога сразу (`xml:lang`),
-// polkit выбирает сам по локали сеанса ([`crate::system_l10n`]).
+// Password window captions (polkit): all catalog languages at once
+// (`xml:lang`), polkit picks by the session locale itself ([`crate::system_l10n`]).
 // TRANSLATORS: Name of the system action in the password dialog (polkit).
 const DE_POLICY_DESCRIPTION: &str = n_("Install or repair a desktop environment");
 // TRANSLATORS: Text of the system password dialog (polkit).
@@ -2661,19 +2677,19 @@ const SESSION_POLICY_DESCRIPTION: &str = n_("Allow Rexon system changes while it
 // TRANSLATORS: Text of the system password dialog (polkit): one password for all system changes until the Rexon window is closed.
 const SESSION_POLICY_MESSAGE: &str = n_("Authentication is required to let Rexon make system changes until its window is closed");
 
-/// XML polkit-политики DE_INSTALL_ACTION — порт `_de_policy_xml`.
+/// XML of the DE_INSTALL_ACTION polkit policy: port of `_de_policy_xml`.
 ///
-/// Путь ручной установки: по нему установщик кладёт помощника, его же и
-/// annotate'ит. Пакет печатает свою политику [`de_policy_xml_for`] — у него
-/// помощник лежит в [`HELPER_DIR_PACKAGE`].
+/// The manual install path: the installer puts the helper there and
+/// annotates it with the same path. The package prints its own policy
+/// [`de_policy_xml_for`]: its helper lives in [`HELPER_DIR_PACKAGE`].
 pub fn de_policy_xml() -> String {
     de_policy_xml_for(DE_HELPER_PATH)
 }
 
-/// XML той же политики для помощника, лежащего по заданному пути.
+/// XML of the same policy for a helper at the given path.
 ///
-/// `exec.path` — договор с polkit: не совпал с тем, что реально
-/// запускается, и pkexec наше действие не выберет (пароль каждый раз).
+/// `exec.path` is a contract with polkit: if it does not match what is
+/// really run, pkexec will not pick our action (a password every time).
 pub fn de_policy_xml_for(helper_path: &str) -> String {
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
@@ -2702,13 +2718,13 @@ pub fn de_policy_xml_for(helper_path: &str) -> String {
     )
 }
 
-/// Ветки `case` «ID из os-release → семейство» для помощника: ОДНА правда
-/// с ядром ([`crate::system::ID_MAP`]).
+/// `case` branches "os-release ID → family" for the helper: ONE truth with
+/// the core ([`crate::system::ID_MAP`]).
 ///
-/// Зачем генерировать, а не писать руками: помощник обязан узнавать
-/// машину ТАК ЖЕ, как её узнаёт Rexon. Второй список молча разошёлся бы —
-/// и на каком-нибудь производном дистрибутиве помощник отказал бы там, где
-/// движок уверен, что всё поддержано.
+/// Why generate instead of writing by hand: the helper must recognise the
+/// machine THE SAME way Rexon does. A second list would silently diverge,
+/// and on some derivative distribution the helper would refuse where the
+/// engine is sure everything is supported.
 fn id_map_cases() -> String {
     let mut by_family: Vec<(&str, Vec<&str>)> = Vec::new();
     for (id, fam) in crate::system::ID_MAP {
@@ -2727,9 +2743,9 @@ fn id_map_cases() -> String {
         .join("\n")
 }
 
-/// Ветки `case` «семейство → бинарник пакетного менеджера» — хвост той же
-/// детекции, что у ядра (`DistroDetector.family`): дистрибутив, которого
-/// нет в [`crate::system::ID_MAP`], узнаётся по установленному менеджеру.
+/// `case` branches "family → package manager binary": the tail of the same
+/// detection as the core's (`DistroDetector.family`): a distribution that is
+/// not in [`crate::system::ID_MAP`] is recognised by the installed manager.
 const HELPER_BIN_PROBE: &[(&str, &str)] = &[
     ("pacman", "arch"),
     ("dnf", "fedora"),
@@ -2742,9 +2758,9 @@ const HELPER_BIN_PROBE: &[(&str, &str)] = &[
     ("swupd", "clear"),
 ];
 
-/// Одна ветка `case`: команда семейства — МАССИВОМ аргументов, без
-/// оболочки и без `eval`. `{PKGS}` из таблицы уходит: пакеты помощник
-/// добавляет сам, отдельными аргументами.
+/// One `case` branch: the family command as an ARRAY of arguments, without a
+/// shell and without `eval`. `{PKGS}` from the table is dropped: the helper
+/// adds the packages itself, as separate arguments.
 fn fam_cmd_case(table: &[(&str, &str)], fam: &str, indent: &str) -> String {
     let tmpl = table_get(table, fam).expect("family в таблице");
     let args: Vec<&str> = tmpl
@@ -2752,8 +2768,8 @@ fn fam_cmd_case(table: &[(&str, &str)], fam: &str, indent: &str) -> String {
         .filter(|t| *t != "{PKGS}")
         .collect();
     for a in &args {
-        // Массив bash — не оболочка, но слово с метасимволом всё равно
-        // означало бы, что таблица команд перестала быть таблицей.
+        // A bash array is not a shell, but a word with a metacharacter would still
+        // mean the command table has stopped being a table.
         assert!(
             a.chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '=' | '.' | '_' | '/' | ':')),
@@ -2763,15 +2779,17 @@ fn fam_cmd_case(table: &[(&str, &str)], fam: &str, indent: &str) -> String {
     format!("{indent}{fam}) cmd=({}) ;;", args.join(" "))
 }
 
-/// Тело rexon-pkg-helper.
+/// Body of rexon-pkg-helper.
 ///
-/// ⛔ ЗДЕСЬ ЗАКРЫТА ДЫРА 25.09.2026 (подробности — в шапке самого скрипта).
-/// Три правила, которые нельзя ослаблять ни одной правкой:
-///   1. семейство пакетного менеджера скрипт определяет САМ по машине
-///      ([`id_map_cases`], [`HELPER_BIN_PROBE`]), а не берёт из аргумента;
-///   2. имя пакета — ИМЯ, а не путь ([`is_safe_pkg_arg`]): `/` только в
-///      атоме Gentoo, файл пакета не принимается даже без `/`;
-///   3. команда собирается МАССИВОМ аргументов — `eval` в помощнике нет.
+/// ⛔ A HOLE WAS CLOSED HERE ON 25.09.2026 (details in the script's own header).
+/// Three rules that no edit may weaken:
+///   1. the script determines the package manager family ITSELF from the
+///      machine ([`id_map_cases`], [`HELPER_BIN_PROBE`]), it does not take it
+///      from an argument;
+///   2. a package name is a NAME, not a path ([`is_safe_pkg_arg`]): `/` only
+///      in a Gentoo atom, a package file is not accepted even without `/`;
+///   3. the command is assembled as an ARRAY of arguments: there is no `eval`
+///      in the helper.
 pub fn pkg_helper_script() -> String {
     let fam_install = PKG_HELPER_FAMILIES
         .iter()
@@ -2834,28 +2852,27 @@ pub fn pkg_helper_script() -> String {
     crate::system_l10n::localize_script(PKG_HELPER_NAME, &text)
 }
 
-/// Записи помощника пакетов «что поставил build-deps» (по файлу на
-/// вызвавшего, root 0700/0600; `/run` чистится при перезагрузке).
+/// Package helper records "what build-deps installed" (one file per caller,
+/// root 0700/0600; `/run` is cleared on reboot).
 pub const REBUILD_REC_DIR: &str = "/run/rexon-rebuild";
 
-// ── switch-dm: страховка и файлы на диске ────────────────────────────────
+// ── switch-dm: the safety net and files on disk ──────────────────────────
 
-/// Каталог Rexon в `/etc`: подсказка для консоли и данные страховки.
+/// The Rexon directory in `/etc`: the console hint and the safety net data.
 pub const DM_FALLBACK_DIR: &str = "/etc/rexon";
-/// Подсказка «какой экран входа был и как его вернуть» — читается из
-/// текстовой консоли командой `cat` (решение Wehrwolfmann 20.10.2026).
+/// The hint "which login screen it was and how to restore it": read from a
+/// text console with `cat` (Wehrwolfmann's decision of 20.10.2026).
 pub const PREVIOUS_DM_FILE: &str = "/etc/rexon/previous-display-manager";
-/// Сценарий службы-отката.
+/// The fallback service script.
 pub const DM_FALLBACK_SCRIPT_PATH: &str = "/etc/rexon/dm-fallback";
-/// Служба-откат: её зовёт `OnFailure=` нового экрана входа.
+/// The fallback service: called by `OnFailure=` of the new login screen.
 pub const DM_FALLBACK_SERVICE: &str = "rexon-dm-fallback.service";
-/// Drop-in нового экрана входа с `OnFailure=`.
+/// The new login screen's drop-in with `OnFailure=`.
 pub const DM_FALLBACK_DROPIN: &str = "50-rexon-fallback.conf";
-/// Выбранное человеком приветствие LightDM.
+/// The LightDM greeter chosen by the person.
 pub const LIGHTDM_GREETER_CONF: &str = "/etc/lightdm/lightdm.conf.d/50-rexon-greeter.conf";
 
-/// Экраны входа, которые помощник умеет делать основными
-/// ([`DmSpec::switchable`]).
+/// Login screens the helper can make the default ([`DmSpec::switchable`]).
 pub fn dm_switch_units() -> Vec<&'static str> {
     LOGIN_MANAGER_SPECS.iter().filter(|s| s.switchable).map(|s| s.unit).collect()
 }
@@ -2869,8 +2886,8 @@ fn dm_switch_pam_cases() -> String {
         .join("\n")
 }
 
-/// Пакет экрана входа на Debian (вопрос debconf и `dpkg-reconfigure`):
-/// там, где имя юнита с пакетом не совпадает.
+/// Login screen package on Debian (the debconf question and
+/// `dpkg-reconfigure`): where the unit name does not match the package.
 pub const DM_DEBIAN_PKG_FOR_UNIT: &[(&str, &str)] =
     &[("gdm", "gdm3"), ("plasmalogin", "plasma-login-manager")];
 
@@ -2882,9 +2899,9 @@ fn dm_debian_pkg_cases() -> String {
         .join("\n")
 }
 
-/// Юнит службы-отката. `StartLimitIntervalSec=0`: `OnFailure=` зовёт её на
-/// каждом падении экрана входа, и без этого она сама упёрлась бы в предел
-/// запусков (5 за 10 с) раньше последнего, решающего вызова.
+/// The fallback service unit. `StartLimitIntervalSec=0`: `OnFailure=` calls
+/// it on every crash of the login screen, and without this it would hit the
+/// start limit itself (5 in 10 s) before the last, decisive call.
 pub fn dm_fallback_unit() -> String {
     format!(
         "[Unit]\n\
@@ -2899,21 +2916,21 @@ pub fn dm_fallback_unit() -> String {
     )
 }
 
-/// Сценарий службы-отката: запускается systemd через `OnFailure=` нового
-/// экрана входа, когда тот упал при загрузке (в том числе после
-/// `start-limit-hit`, как Plasma Login Manager 08.10.2026).
+/// The fallback service script: started by systemd through `OnFailure=` of
+/// the new login screen when it crashed at boot (including after
+/// `start-limit-hit`, like Plasma Login Manager on 08.10.2026).
 ///
-/// systemd зовёт `OnFailure=` и на падении, после которого сам перезапустит
-/// юнит (замер на стенде archlinux 20.10.2026): такие вызовы пропускаются —
-/// откат только когда юнит окончательно `failed`.
+/// systemd calls `OnFailure=` also on a crash after which it restarts the
+/// unit itself (measured on an archlinux bench on 20.10.2026): such calls are
+/// skipped: the fallback happens only when the unit is finally `failed`.
 ///
-/// Защита от зацикливания: отметка `dm-fallback.done` — откат делается один
-/// раз; drop-in снимается с нового экрана входа, а у прежнего его не было,
-/// так что, если упадёт и прежний, ничего больше не запустится — останется
-/// текстовая консоль и подсказка в [`PREVIOUS_DM_FILE`]. Не срабатывает при
-/// выключении машины и если основным уже выбран другой экран входа.
-/// Данные — из `dm-fallback.conf`, значения проверяются ещё раз; ничего не
-/// исполняется из файла.
+/// Loop protection: the `dm-fallback.done` mark: the fallback is done once;
+/// the drop-in is removed from the new login screen, and the previous one
+/// never had it, so if the previous one crashes too, nothing more runs: the
+/// text console and the hint in [`PREVIOUS_DM_FILE`] remain. It does not fire
+/// when the machine is shutting down or if another login screen has already
+/// been made the default. The data comes from `dm-fallback.conf`, the values
+/// are checked once more; nothing from the file is executed.
 pub const DM_FALLBACK_SCRIPT: &str = r#"#!/bin/bash
 # Rexon: bring back the previous login screen when the new one failed to
 # start (systemd OnFailure= of the new login screen). Runs once.
@@ -3943,13 +3960,13 @@ esac
 exit 0
 "#;
 
-/// XML polkit-политики STAGE_ACTION — порт `_stage_policy_xml` (путь ручной
-/// установки; пакет печатает [`stage_policy_xml_for`]).
+/// XML of the STAGE_ACTION polkit policy: port of `_stage_policy_xml` (the
+/// manual install path; the package prints [`stage_policy_xml_for`]).
 pub fn stage_policy_xml() -> String {
     stage_policy_xml_for(STAGE_HELPER_PATH)
 }
 
-/// XML той же политики для помощника, лежащего по заданному пути.
+/// XML of the same policy for a helper at the given path.
 pub fn stage_policy_xml_for(helper_path: &str) -> String {
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
@@ -3978,16 +3995,16 @@ pub fn stage_policy_xml_for(helper_path: &str) -> String {
     )
 }
 
-/// XML polkit-политики [`SESSION_ACTION`] (путь ручной установки; пакет
-/// печатает [`session_policy_xml_for`]).
+/// XML of the [`SESSION_ACTION`] polkit policy (the manual install path; the
+/// package prints [`session_policy_xml_for`]).
 pub fn session_policy_xml() -> String {
     session_policy_xml_for(SESSION_HELPER_PATH)
 }
 
-/// XML политики сеанса прав для помощника, лежащего по заданному пути.
+/// XML of the privilege session policy for a helper at the given path.
 ///
-/// ⛔ `allow_active` — `auth_admin`, не `auth_admin_keep`: один пароль на
-/// сеанс окна держит помощник. Аннотации `imply` нет намеренно.
+/// ⛔ `allow_active` is `auth_admin`, not `auth_admin_keep`: the helper holds
+/// one password per window session. There is deliberately no `imply` annotation.
 pub fn session_policy_xml_for(helper_path: &str) -> String {
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
@@ -4016,9 +4033,9 @@ pub fn session_policy_xml_for(helper_path: &str) -> String {
     )
 }
 
-/// pkexec-команда операции пакетного менеджера — порт `privileged_pkg_cmd`.
-/// None → вызывающий код откатывается на сырой `pkexec <pm> …` (graceful
-/// fallback; наличие helper'а — параметр, файлы не проверяем).
+/// pkexec command of a package manager operation: port of `privileged_pkg_cmd`.
+/// None → the calling code falls back to raw `pkexec <pm> …` (graceful
+/// fallback; the helper's presence is a parameter, files are not checked).
 pub fn privileged_pkg_cmd(
     family: PkgFamily,
     op: &str,
@@ -4036,7 +4053,7 @@ pub fn privileged_pkg_cmd(
         return None;
     }
     let mut args = vec![pkg_helper_path().to_string()];
-    // Язык сообщений помощника (решение 30.09.2026) — сразу за его путём.
+    // Helper message language (decision of 30.09.2026), right after its path.
     args.extend(crate::system_l10n::lang_args(pkg_helper_path()));
     args.extend([fam.to_string(), op.to_string()]);
     if matches!(op, "install" | "remove" | "enable-dm") {
@@ -4044,9 +4061,9 @@ pub fn privileged_pkg_cmd(
             return None;
         }
         for p in packages {
-            // ⛔ Отказ здесь НЕ откат на сырой путь: сырой путь для таких
-            // имён тоже закрыт — [`install_cmd`] и [`remove_cmd`] отдают
-            // ошибку раньше, чем план дойдёт до `pkexec`.
+            // ⛔ A refusal here is NOT a fallback to the raw path: the raw path is
+            // closed for such names too: [`install_cmd`] and [`remove_cmd`] return an
+            // error before the plan reaches `pkexec`.
             if p.starts_with('-') || !is_safe_pkg_arg(family, p) {
                 return None;
             }
@@ -4060,8 +4077,8 @@ pub fn privileged_pkg_cmd(
         }
         args.extend(packages.iter().cloned());
     } else if op == "switch-dm" {
-        // Юнит из списка умеющих; приветствие — только для LightDM и только
-        // имя файла (его наличие помощник проверит сам).
+        // A unit from the supported list; a greeter only for LightDM and only a
+        // file name (the helper checks its existence itself).
         let (unit, greeter) = match packages {
             [u] => (u, None),
             [u, g] => (u, Some(g)),
@@ -4084,9 +4101,9 @@ pub fn privileged_pkg_cmd(
     Some(cmd)
 }
 
-/// pkexec-команда file-staging — порт `privileged_stage_cmd`. Файловые
-/// проверки Python (`os.path.isdir`, `os.path.realpath`) вынесены в
-/// параметры `staged_is_dir` / `staged_realpath` (None = не существует).
+/// pkexec command of file staging: port of `privileged_stage_cmd`. Python's
+/// file checks (`os.path.isdir`, `os.path.realpath`) are moved into the
+/// parameters `staged_is_dir` / `staged_realpath` (None = does not exist).
 pub fn privileged_stage_cmd(
     category: &str,
     name: &str,
@@ -4119,19 +4136,19 @@ pub fn privileged_stage_cmd(
         return None;
     }
     let mut cmd = vec!["pkexec".to_string(), stage_helper_path().to_string()];
-    // Язык сообщений помощника (решение 30.09.2026) — сразу за его путём.
+    // Helper message language (decision of 30.09.2026), right after its path.
     cmd.extend(crate::system_l10n::lang_args(stage_helper_path()));
     cmd.extend([category.to_string(), name.to_string(), staged.to_string()]);
     Some(cmd)
 }
 
 // ============================================================================
-// Версия пакета в репозиториях — порт `_clean_pkg_version`/`query_repo_version`
+// Package version in the repositories: port of `_clean_pkg_version`/`query_repo_version`
 // ============================================================================
 
-/// Порт `_clean_pkg_version`: снять epoch (`1:50.3` → `50.3`) и
-/// pkgrel/debian-ревизию (`6.7.3-1.1` → `6.7.3`). Пользователь ждёт
-/// апстрим-версию, а не служебные счётчики порядка обновлений.
+/// Port of `_clean_pkg_version`: strip the epoch (`1:50.3` → `50.3`) and the
+/// pkgrel/debian revision (`6.7.3-1.1` → `6.7.3`). The user expects the
+/// upstream version, not service counters of the update order.
 pub fn clean_pkg_version(raw: &str) -> String {
     let mut v = raw.trim();
     if let Some((_, rest)) = v.split_once(':') {
@@ -4143,9 +4160,9 @@ pub fn clean_pkg_version(raw: &str) -> String {
     v.trim().to_string()
 }
 
-/// Порт валидации имени пакета в `query_repo_version`
-/// (`re.fullmatch(r"[A-Za-z0-9@._+-]+")`): защита от подстановки аргументов
-/// даже без shell.
+/// Port of the package name validation in `query_repo_version`
+/// (`re.fullmatch(r"[A-Za-z0-9@._+-]+")`): protection against argument
+/// injection even without a shell.
 pub fn valid_pkg_name(pkg: &str) -> bool {
     !pkg.is_empty()
         && pkg
@@ -4153,21 +4170,21 @@ pub fn valid_pkg_name(pkg: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '@' | '.' | '_' | '+' | '-'))
 }
 
-/// Запрос версии пакета в репозиториях — чистая часть `query_repo_version`.
+/// Query for a package version in the repositories: the pure part of `query_repo_version`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RepoVersionQuery {
-    /// Бинарь, наличие которого оригинал проверяет `shutil.which` ДО запуска
-    /// (нет бинаря → None, команда не выполняется).
+    /// The binary whose presence the original checks with `shutil.which` BEFORE
+    /// running (no binary → None, the command is not run).
     pub binary: String,
     pub cmd: Cmd,
-    /// `apt-cache policy` в оригинале НЕ сверяет returncode (нет пакета →
-    /// пустой stdout → и так None), у остальных `returncode != 0` = None.
+    /// In the original `apt-cache policy` does NOT check the returncode (no
+    /// package → empty stdout → None anyway), for the others `returncode != 0` = None.
     pub check_returncode: bool,
 }
 
-/// Команда за версией пакета для семейства. None — семейство без запроса
-/// (gentoo/void/nix/alpine/solus/clear/unknown: UI просто скроет строку) либо
-/// имя пакета не прошло валидацию.
+/// The command for a package version for the family. None: a family without
+/// a query (gentoo/void/nix/alpine/solus/clear/unknown: the UI simply hides
+/// the line) or the package name failed validation.
 pub fn repo_version_query(family: PkgFamily, package: &str) -> Option<RepoVersionQuery> {
     let pkg = package.trim();
     if !valid_pkg_name(pkg) {
@@ -4186,25 +4203,25 @@ pub fn repo_version_query(family: PkgFamily, package: &str) -> Option<RepoVersio
     };
     Some(RepoVersionQuery {
         binary: binary.to_string(),
-        // LANG=C обязателен: на русской локали менеджеры печатают «Версия»
-        // вместо «Version» и парсер поля ничего не находит.
+        // LANG=C is mandatory: in a Russian locale the managers print a translated
+        // field name instead of "Version", and the field parser finds nothing.
         cmd: Cmd::new(argv.into_iter().map(String::from).collect(), Some(10), true),
         check_returncode,
     })
 }
 
-/// Разбор вывода запроса версии. None — поля нет / значение пустое /
-/// `(none)` у apt.
+/// Parsing the version query output. None: no field / an empty value /
+/// `(none)` from apt.
 pub fn parse_repo_version(family: PkgFamily, stdout: &str) -> Option<String> {
     let non_empty = |v: String| if v.is_empty() { None } else { Some(v) };
     match family {
         PkgFamily::Arch => {
             for line in stdout.lines() {
-                // Оригинал не обрезает строку: `pacman -Si` печатает поля с
-                // нулевой колонки.
+                // The original does not trim the line: `pacman -Si` prints fields from
+                // column zero.
                 if line.starts_with("Version") {
-                    // В оригинале строка без ':' роняет IndexError, внешний
-                    // `except` отдаёт None — здесь тот же None, без паники.
+                    // In the original a line without ':' raises IndexError, the outer `except`
+                    // returns None: here the same None, without a panic.
                     let (_, rest) = line.split_once(':')?;
                     return non_empty(clean_pkg_version(rest));
                 }
@@ -4237,19 +4254,21 @@ pub fn parse_repo_version(family: PkgFamily, stdout: &str) -> Option<String> {
     }
 }
 
-/// Есть ли такая цель в подключённых репозиториях — ответ по ИСХОДУ той же
-/// команды, что и у [`repo_version_query`]: второго похода к менеджеру этот
-/// вопрос не требует.
+/// Whether such a target is in the enabled repositories: the answer by the
+/// OUTCOME of the same command as [`repo_version_query`]: this question does
+/// not need a second trip to the manager.
 ///
-/// `returncode` = `None`, когда команду запустить не удалось (менеджера нет,
-/// таймаут) — тогда и ответ `None`. `None` и `Some(false)` РАЗНЫЕ: по `false`
-/// цель бракуется и откат форков не запускается, по `None` решение остаётся
-/// прежним, иначе на не-Arch мы отказывали бы на ровном месте.
+/// `returncode` = `None` when the command could not be run (no manager, a
+/// timeout): then the answer is `None` too. `None` and `Some(false)` are
+/// DIFFERENT: on `false` the target is rejected and the fork rollback does
+/// not run, on `None` the decision stays as before, otherwise on non-Arch we
+/// would refuse for no reason.
 ///
-/// Читать код возврата можно НЕ у всех: `apt-cache policy` отвечает нулём и
-/// на несуществующий пакет (потому у [`RepoVersionQuery`] и есть поле
-/// `check_returncode`), поэтому у Debian/ALT ответ даёт наличие версии в
-/// выводе. Семейства без запроса вовсе отвечают `None` — «не знаю».
+/// The exit code cannot be read for everyone: `apt-cache policy` answers
+/// zero even for a nonexistent package (which is why [`RepoVersionQuery`] has
+/// the `check_returncode` field), so for Debian/ALT the answer is given by
+/// the presence of a version in the output. Families without a query at all
+/// answer `None`: "I do not know".
 pub fn repo_target_exists(family: PkgFamily, returncode: Option<i32>, stdout: &str) -> Option<bool> {
     let rc = returncode?;
     match family {
@@ -4262,38 +4281,39 @@ pub fn repo_target_exists(family: PkgFamily, returncode: Option<i32>, stdout: &s
 }
 
 // ============================================================================
-// Установленный пакет: ВЕРСИЯ и СПИСОК ФАЙЛОВ
+// Installed package: VERSION and FILE LIST
 // ============================================================================
 //
-// Это два САМОСТОЯТЕЛЬНЫХ вопроса к движку пакетов, и ни один из них не
-// сводится к уже имеющимся:
-//   * «установлен ли» — [`query_cmd`] + [`pkg_installed_from_run`], ответ
-//     даёт только код возврата, вывод не читается вовсе;
-//   * «какая версия в РЕПОЗИТОРИЯХ» — [`repo_version_query`] +
-//     [`parse_repo_version`], спрашивается у сети/кэша репозиториев.
-// Здесь — «что стоит НА МАШИНЕ»: версия установленного пакета и список его
-// файлов. Раньше оба вопроса задавались зашитым `pacman` мимо движка
-// (`_pacman_version` / `_pacman_file_list` в `rexon/system.py`).
+// These are two INDEPENDENT questions to the package engine, and neither
+// reduces to the existing ones:
+//   * "is it installed": [`query_cmd`] + [`pkg_installed_from_run`], the
+//     answer is only the exit code, the output is not read at all;
+//   * "which version is in the REPOSITORIES": [`repo_version_query`] +
+//     [`parse_repo_version`], asked of the network/repository cache.
+// Here it is "what is ON THE MACHINE": the installed package's version and
+// its file list. Both questions used to be asked with a hardcoded `pacman`
+// bypassing the engine (`_pacman_version` / `_pacman_file_list` in
+// `rexon/system.py`).
 
-/// Запрос к пакетному менеджеру об установленном пакете.
+/// A query to the package manager about an installed package.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InstalledPkgQuery {
-    /// Бинарь, наличие которого проверяется ДО запуска.
+    /// The binary whose presence is checked BEFORE running.
     pub binary: String,
     pub cmd: Cmd,
 }
 
-/// Как в выводе команды лежит версия.
+/// How the version appears in the command output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VersionShape {
-    /// `<имя> <версия>` — так печатает `pacman -Q`.
+    /// `<name> <version>`: how `pacman -Q` prints it.
     NameThenVersion,
-    /// Одна только версия — так печатают `dpkg-query -W -f` и `rpm -q --qf`.
+    /// The version alone: how `dpkg-query -W -f` and `rpm -q --qf` print it.
     Bare,
 }
 
-/// Форма вывода команды [`installed_version_query`] для семейства.
+/// Output form of the [`installed_version_query`] command for the family.
 fn installed_version_shape(family: PkgFamily) -> VersionShape {
     match family {
         PkgFamily::Arch => VersionShape::NameThenVersion,
@@ -4301,14 +4321,14 @@ fn installed_version_shape(family: PkgFamily) -> VersionShape {
     }
 }
 
-/// Команда за версией УСТАНОВЛЕННОГО пакета.
+/// The command for the version of an INSTALLED package.
 ///
-/// `None` — спросить нечем, и выдумывать команду мы не будем: у gentoo,
-/// alpine, void, nix, solus и clear формат ответа руками не проверен, а
-/// молча разобрать чужой вывод неверно хуже, чем честно ответить «не знаю»
-/// (тот же приём, что у [`repo_version_query`], который для этих семейств
-/// тоже отдаёт None). Прежний код спрашивал зашитый `pacman` и на всех
-/// не-Arch отвечал None и так.
+/// `None`: nothing to ask with, and we will not invent a command: for gentoo,
+/// alpine, void, nix, solus and clear the answer format was not checked by
+/// hand, and silently misparsing foreign output is worse than honestly
+/// answering "I do not know" (the same trick as [`repo_version_query`], which
+/// also returns None for these families). The old code asked a hardcoded
+/// `pacman` and answered None on all non-Arch anyway.
 pub fn installed_version_query(family: PkgFamily, package: &str) -> Option<InstalledPkgQuery> {
     let pkg = package.trim();
     if !valid_pkg_name(pkg) {
@@ -4328,17 +4348,18 @@ pub fn installed_version_query(family: PkgFamily, package: &str) -> Option<Insta
     };
     Some(InstalledPkgQuery {
         binary: binary.to_string(),
-        // Таймаут по классу команды (опрос, 30 с) — как и было у прежнего
-        // safe_run без явного числа. LANG=C: на русской локали менеджеры
-        // печатают локализованные поля и ошибки, и разбор их не находит.
+        // Timeout by command class (query, 30 s), as the old safe_run had without an
+        // explicit number. LANG=C: in a Russian locale the managers print localized
+        // fields and errors, and the parser does not find them.
         cmd: Cmd::new(argv.into_iter().map(String::from).collect(), None, true),
     })
 }
 
-/// Версия установленного пакета из вывода [`installed_version_query`].
+/// The installed package version from the [`installed_version_query`] output.
 ///
-/// `ok` — команда завершилась нулём (не запустилась вовсе → false). Пустой
-/// вывод и вывод без версии дают None: «не знаю», а не пустую строку.
+/// `ok`: the command exited with zero (did not start at all → false). An
+/// empty output and an output without a version give None: "I do not know",
+/// not an empty string.
 pub fn parse_installed_version(family: PkgFamily, ok: bool, stdout: &str) -> Option<String> {
     if !ok {
         return None;
@@ -4354,8 +4375,8 @@ pub fn parse_installed_version(family: PkgFamily, ok: bool, stdout: &str) -> Opt
     }
 }
 
-/// Команда за списком файлов установленного пакета. `None` — семейство, чей
-/// формат ответа не проверен (см. [`installed_version_query`]).
+/// The command for the installed package's file list. `None`: a family whose
+/// answer format was not checked (see [`installed_version_query`]).
 pub fn package_files_query(family: PkgFamily, package: &str) -> Option<InstalledPkgQuery> {
     let pkg = package.trim();
     if !valid_pkg_name(pkg) {
@@ -4373,13 +4394,13 @@ pub fn package_files_query(family: PkgFamily, package: &str) -> Option<Installed
     })
 }
 
-/// Сырой вывод [`package_files_query`] либо None.
+/// Raw output of [`package_files_query`] or None.
 ///
-/// ⚠️ Пустой вывод при нулевом коде — это НЕ ошибка: так отвечает метапакет,
-/// у которого своих файлов нет вовсе (проверено на живой машине: `pacman -Ql
-/// base` печатает ноль байт с кодом 0). Прежний Python отдавал здесь `""`
-/// (`r.stdout or ""`) — то же самое, и это правильно: «файлов нет» и
-/// «спросить не вышло» должны различаться.
+/// ⚠️ An empty output with a zero code is NOT an error: that is how a
+/// metapackage with no files of its own answers (checked on a live machine:
+/// `pacman -Ql base` prints zero bytes with code 0). The old Python returned
+/// `""` here (`r.stdout or ""`): the same thing, and that is right: "no
+/// files" and "could not ask" must differ.
 pub fn package_files_output(ok: bool, stdout: &str) -> Option<String> {
     if ok {
         Some(stdout.to_string())
@@ -4388,13 +4409,13 @@ pub fn package_files_output(ok: bool, stdout: &str) -> Option<String> {
     }
 }
 
-/// Пути файлов пакета из вывода [`package_files_query`].
+/// Package file paths from the [`package_files_query`] output.
 ///
-/// Единственный разбор этого вывода на весь проект. Формы две: `pacman -Ql`
-/// печатает `<пакет> <путь>`, а `dpkg -L` и `rpm -ql` — один только путь.
-/// Общий фильтр обоих: берём абсолютные пути и выбрасываем каталоги (у них
-/// хвост «/») — так же отсеиваются и служебные заголовки вроде
-/// «package diverts others to:».
+/// The only parser of this output in the whole project. There are two forms:
+/// `pacman -Ql` prints `<package> <path>`, while `dpkg -L` and `rpm -ql`
+/// print only the path. A common filter for both: we take absolute paths and
+/// drop directories (they end with "/"): this also filters out service
+/// headers like "package diverts others to:".
 pub fn package_file_paths(family: PkgFamily, output: &str) -> Vec<String> {
     output
         .lines()
@@ -4407,16 +4428,17 @@ pub fn package_file_paths(family: PkgFamily, output: &str) -> Vec<String> {
         .collect()
 }
 
-/// Команда «перечислить ВСЁ, что установлено» — вопрос БЕЗ аргумента-пакета.
+/// The "list EVERYTHING installed" command: a question WITHOUT a package argument.
 ///
-/// Четвёртый самостоятельный вопрос движка: `query_cmd` спрашивает про один
-/// названный пакет, а здесь имя заранее неизвестно. Проект держал этот вопрос
-/// двумя копиями зашитого `pacman -Qq` мимо движка — в `detect_plasma_forks`
-/// (`rexon/system.py`) и в `aur_client.installed_set`; обе теперь ходят сюда.
+/// The engine's fourth independent question: `query_cmd` asks about one
+/// named package, while here the name is not known in advance. The project
+/// kept this question as two copies of a hardcoded `pacman -Qq` bypassing
+/// the engine, in `detect_plasma_forks` (`rexon/system.py`) and in
+/// `aur_client.installed_set`; both now come here.
 ///
-/// `None` — семейство, чей формат ответа руками не проверен (тот же приём,
-/// что у [`installed_version_query`]): выдумать команду и молча разобрать
-/// чужой вывод хуже, чем честно ответить «не знаю».
+/// `None`: a family whose answer format was not checked by hand (the same
+/// trick as [`installed_version_query`]): inventing a command and silently
+/// parsing foreign output is worse than honestly answering "I do not know".
 pub fn installed_packages_query(family: PkgFamily) -> Option<InstalledPkgQuery> {
     let (binary, argv): (&str, Vec<&str>) = match family {
         PkgFamily::Arch => ("pacman", vec!["pacman", "-Qq"]),
@@ -4435,12 +4457,12 @@ pub fn installed_packages_query(family: PkgFamily) -> Option<InstalledPkgQuery> 
     })
 }
 
-/// Имена установленных пакетов из вывода [`installed_packages_query`].
+/// Installed package names from the [`installed_packages_query`] output.
 ///
-/// `ok` — команда завершилась нулём (не запустилась вовсе → false). Разбор
-/// один на все семейства: команды выше печатают по имени в строке, а `split`
-/// по пробелам переживает и лишние пустые строки. Порядок сохраняется — его
-/// задают те, кому ответ нужен ([`filter_plasma_forks`] сортирует сам).
+/// `ok`: the command exited with zero (did not start at all → false). One
+/// parser for all families: the commands above print one name per line, and
+/// `split` on whitespace also survives extra empty lines. The order is kept:
+/// it is set by those who need the answer ([`filter_plasma_forks`] sorts itself).
 pub fn parse_installed_packages(ok: bool, stdout: &str) -> Vec<String> {
     if !ok {
         return Vec::new();
@@ -4448,13 +4470,15 @@ pub fn parse_installed_packages(ok: bool, stdout: &str) -> Vec<String> {
     stdout.split_whitespace().map(str::to_string).collect()
 }
 
-/// Команда за МЕТАДАННЫМИ установленного пакета (`pacman -Qi`) — сырьё для
-/// [`fork_stock_candidates`] и прочих читателей полей `Provides`/`Replaces`.
+/// The command for the METADATA of an installed package (`pacman -Qi`): raw
+/// material for [`fork_stock_candidates`] and other readers of the
+/// `Provides`/`Replaces` fields.
 ///
-/// Только Arch, и это не лень: разбор полей ([`crate::system::parse_qi_field`])
-/// написан под формат `pacman -Qi`; у `dpkg -s` и `rpm -qi` поля называются
-/// иначе, и отдать их тому же разбору значило бы молча получать пустые
-/// списки. На прочих семействах ответ честный — `None`.
+/// Arch only, and this is not laziness: the field parser
+/// ([`crate::system::parse_qi_field`]) is written for the `pacman -Qi`
+/// format; `dpkg -s` and `rpm -qi` name the fields differently, and giving
+/// them to the same parser would silently produce empty lists. On other
+/// families the honest answer is `None`.
 pub fn installed_meta_query(family: PkgFamily, package: &str) -> Option<InstalledPkgQuery> {
     let pkg = package.trim();
     if family != PkgFamily::Arch || !valid_pkg_name(pkg) {
@@ -4470,25 +4494,28 @@ pub fn installed_meta_query(family: PkgFamily, package: &str) -> Option<Installe
     })
 }
 
-/// Команда за составом ГРУППЫ пакетов — шестой самостоятельный вопрос движка.
+/// The command for the members of a package GROUP: the engine's sixth
+/// independent question.
 ///
-/// Ни к одному из пяти прежних он не сводится: `query_cmd` и
-/// [`installed_version_query`] спрашивают про НАЗВАННЫЙ пакет,
-/// [`installed_packages_query`] — про всё сразу, а здесь предмет вопроса —
-/// группа, и ответом служит список её членов. Проект держал этот вопрос
-/// зашитым `pacman -Qg` мимо движка в двух местах: колбэк
-/// `PackageManager._pacman_query_stdout` в `rexon/system.py` и шаг «qg»
-/// плана удаления здесь же, в [`remove_plan`]; обе копии теперь ходят сюда.
+/// It does not reduce to any of the five earlier ones: `query_cmd` and
+/// [`installed_version_query`] ask about a NAMED package,
+/// [`installed_packages_query`] about everything at once, while here the
+/// subject is a group, and the answer is the list of its members. The project
+/// kept this question as a hardcoded `pacman -Qg` bypassing the engine in two
+/// places: the `PackageManager._pacman_query_stdout` callback in
+/// `rexon/system.py` and the "qg" step of the removal plan right here in
+/// [`remove_plan`]; both copies now come here.
 ///
-/// Только Arch, и это не лень. Понятие «группа пакетов» есть далеко не у
-/// всех: у Debian его нет вовсе (метапакет — это обычный пакет, и он уже
-/// отвечается [`query_cmd`]), а у dnf и zypper группы называются иначе
-/// (`dnf group info`, `zypper info --type pattern`), спрашиваются другими
-/// подкомандами и печатают совсем другой формат, руками не проверенный.
-/// Выдумать команду и молча скормить чужой вывод разбору, написанному под
-/// строки «группа член», значило бы тихо получать пустые списки вместо
-/// ответа. Честный ответ этих семейств — `None`, и по нему спрашивающий
-/// оставляет имя как есть: там оно и есть обычный пакет.
+/// Arch only, and this is not laziness. Far from every family has the notion
+/// of a "package group": Debian has none at all (a metapackage is an
+/// ordinary package, already answered by [`query_cmd`]), and dnf and zypper
+/// call groups differently (`dnf group info`, `zypper info --type pattern`),
+/// ask with other subcommands and print a completely different format, not
+/// checked by hand. Inventing a command and silently feeding foreign output
+/// to a parser written for "group member" lines would quietly give empty
+/// lists instead of an answer. The honest answer of these families is
+/// `None`, and on it the asker leaves the name as is: there it is an
+/// ordinary package.
 pub fn package_group_query(family: PkgFamily, group: &str) -> Option<InstalledPkgQuery> {
     let name = group.trim();
     if family != PkgFamily::Arch || !valid_pkg_name(name) {
@@ -4505,134 +4532,141 @@ pub fn package_group_query(family: PkgFamily, group: &str) -> Option<InstalledPk
 }
 
 // ============================================================================
-// Предпросмотр установки: что РЕАЛЬНО поставится (pacman -Sg / -Sp)
+// Install preview: what will REALLY be installed (pacman -Sg / -Sp)
 // ============================================================================
 //
-// ЗАЧЕМ. Карточка стола считала ИМЕНА из базы ядра: у Pantheon это
-// «pantheon lightdm lightdm-gtk-greeter» — «К установке 3 пакета», хотя
-// `pantheon` — группа из 63 пакетов, а с зависимостями на чистой системе
-// ставится больше 80. И установка падала целиком, когда ОДИН необязательный
-// член группы в репозитории не ставится (08.10.2026:
-// switchboard-plug-online-accounts ждёт пересборки под новый
-// evolution-data-server), — человек узнавал об этом только из журнала
-// pacman после пароля.
+// WHY. The desktop card counted the NAMES from the core database: for
+// Pantheon that is "pantheon lightdm lightdm-gtk-greeter", "3 packages to
+// install", although `pantheon` is a group of 63 packages, and with
+// dependencies more than 80 get installed on a clean system. And the install
+// failed entirely when ONE optional group member in the repository could not
+// be installed (08.10.2026: switchboard-plug-online-accounts was waiting for
+// a rebuild against the new evolution-data-server): the person only learned
+// about it from the pacman log after the password.
 //
-// Обе беды лечит один вопрос без прав root: `pacman -Sp --needed` печатает
-// ровно то, что поставит транзакция (группы раскрыты, зависимости взяты,
-// стоящее пропущено), а на неразрешимой зависимости называет виновника.
-// Только Arch: у остальных семейств такой «пробной» транзакции без прав
-// нет или её вывод не проверен руками — там честный ответ `None`, и
-// карточка остаётся при прежнем счёте имён.
+// Both troubles are cured by one question without root: `pacman -Sp
+// --needed` prints exactly what the transaction will install (groups
+// expanded, dependencies taken, installed ones skipped), and on an
+// unresolvable dependency it names the culprit. Arch only: the other
+// families have no such unprivileged "trial" transaction or its output was
+// not checked by hand: there the honest answer is `None`, and the card keeps
+// the old name count.
 
-/// Сколько раз выкидывать неустановимых членов групп и спрашивать снова.
-/// Каждый круг выкидывает всех найденных разом; круг больше трёх означал бы
-/// цепочку поломок, которую карточка всё равно не опишет.
+/// How many times to drop uninstallable group members and ask again. Each
+/// round drops all found ones at once; more than three rounds would mean a
+/// chain of breakages the card could not describe anyway.
 const PREVIEW_MAX_ROUNDS: usize = 4;
 
-/// Итог предпросмотра установки набора пакетов.
+/// Result of the install preview of a package set.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct InstallPreview {
-    /// Группы набора и число их членов (без повторов между репозиториями).
+    /// The set's groups and the number of their members (without repeats across repositories).
     pub groups: Vec<(String, usize)>,
-    /// Что отдавать пакетному менеджеру. Совпадает с исходным набором, пока
-    /// выкидывать нечего; иначе группы раскрыты в члены без [`Self::skipped`].
+    /// What to give the package manager. The same as the original set while
+    /// there is nothing to drop; otherwise groups are expanded into members
+    /// without [`Self::skipped`].
     pub targets: Vec<String>,
-    /// Пакеты набора после раскрытия групп (то, что человек «получит» как
-    /// стол, без зависимостей и без [`Self::skipped`]).
+    /// The set's packages after expanding groups (what the person "gets" as the
+    /// desktop, without dependencies and without [`Self::skipped`]).
     pub members: Vec<String>,
-    /// Что транзакция поставит ЗАНОВО: члены набора и их зависимости, которых
-    /// в системе нет. Пусто — всё на месте.
+    /// What the transaction installs ANEW: set members and their dependencies
+    /// that are not in the system. Empty: everything is in place.
     pub new_packages: Vec<String>,
-    /// Что транзакция ОБНОВИТ: пакеты из её плана, которые уже установлены, —
-    /// для них в репозитории вышла новая сборка (`--needed` пропускает только
-    /// стоящее той же версии). Пропажей это не считается: установлен ли пакет,
-    /// решает список установленного ([`installed_packages_query`]), а не план
-    /// транзакции.
+    /// What the transaction UPDATES: packages from its plan that are already
+    /// installed: a new build of them came out in the repository (`--needed`
+    /// skips only the same version). This does not count as missing: whether a
+    /// package is installed is decided by the installed list
+    /// ([`installed_packages_query`]), not by the transaction plan.
     pub updates: Vec<String>,
-    /// Установленные пакеты набора, у которых СВОЯ сборка новее репозитория
-    /// (собранная руками или из AUR, с правкой, которой в репозитории ещё
-    /// нет). `pacman -S --needed` пропускает только ту же версию и такой
-    /// пакет ОТКАТИЛ бы к репозиторной — поэтому из транзакции он выкинут,
-    /// а обновлением не называется. Живой случай 08.11.2026: наша Caja
-    /// 1.28.0-6.100 с прозрачным фоном под живые обои против 1.28.0-6.1.
+    /// Installed packages of the set whose OWN build is newer than the
+    /// repository (built by hand or from the AUR, with a patch the repository
+    /// does not have yet). `pacman -S --needed` skips only the same version and
+    /// would ROLL such a package BACK to the repository one, so it is dropped
+    /// from the transaction and not called an update. Live case of 08.11.2026:
+    /// our Caja 1.28.0-6.100 with a transparent background for live wallpapers
+    /// versus 1.28.0-6.1.
     pub kept_local: Vec<String>,
-    /// Необязательные члены групп, которые сейчас не ставятся (неразрешимая
-    /// зависимость или нет в репозитории): из установки выкинуты.
+    /// Optional group members that cannot be installed now (an unresolvable
+    /// dependency or not in the repository): dropped from the install.
     pub skipped: Vec<String>,
-    /// Пакеты, без которых установка не пройдёт: названы в наборе прямо
-    /// либо поломка глубже, в зависимостях. Непусто — ставить нельзя.
+    /// Packages without which the install will not go through: named in the set
+    /// directly, or the breakage is deeper, in the dependencies. Non-empty: the
+    /// install is not possible.
     pub blocked: Vec<String>,
-    /// Что из встающего конфликтует с установленным (`Conflicts With` с
-    /// любой стороны). Непусто — ставить нельзя: pacman с `--noconfirm`
-    /// откажется удалять установленное, а удалять чужой стол Rexon сам не
-    /// берётся ([`conflict_explanation`]).
+    /// What of the incoming conflicts with the installed (`Conflicts With` from
+    /// either side). Non-empty: the install is not possible: pacman with
+    /// `--noconfirm` refuses to remove what is installed, and Rexon does not
+    /// take it upon itself to remove someone else's desktop ([`conflict_explanation`]).
     pub conflicts: Vec<PkgConflict>,
-    /// Необязательные члены групп, выкинутые из установки, потому что тянут
-    /// пакет, конфликтующий с установленным (экран входа Pantheon тянет
-    /// mutter49, а mutter 51 держат GNOME и Budgie). Стол встаёт без них, а
-    /// человеку говорится, чего не будет и почему
-    /// ([`conflict_skip_explanation`]). Обязательное (сеанс стола и всё, что
-    /// он тянет) сюда не попадает никогда — тогда [`Self::conflicts`].
+    /// Optional group members dropped from the install because they pull in a
+    /// package that conflicts with an installed one (the Pantheon login screen
+    /// pulls in mutter49, while mutter 51 is held by GNOME and Budgie). The
+    /// desktop is installed without them, and the person is told what will be
+    /// missing and why ([`conflict_skip_explanation`]). Mandatory parts (the
+    /// desktop session and everything it pulls in) never get here: then it is
+    /// [`Self::conflicts`].
     pub conflict_skipped: Vec<ConflictSkip>,
-    /// Пакеты из [`Self::targets`], которые транзакция ставит ЗАНОВО лишь как
-    /// зависимости набора: DKMS-модуль и заголовки под стоящие ядра
-    /// ([`kernel_module_extras`]). Ставятся помеченными `--asdeps`, чтобы
-    /// удаление стола их сняло; уже стоявшие сюда не входят.
+    /// Packages from [`Self::targets`] that the transaction installs ANEW only as
+    /// dependencies of the set: a DKMS module and headers for the installed
+    /// kernels ([`kernel_module_extras`]). Installed marked `--asdeps`, so that
+    /// removing the desktop removes them; already installed ones are not included.
     pub deps_only: Vec<String>,
-    /// Что из встающего ЗАНОВО заработает только после перезагрузки: ядро и
-    /// модули ядра (DKMS или готовые сборки под ядро) — [`restart_packages`].
-    /// Пусто — хватит выйти из сеанса.
+    /// What of the newly installed takes effect only after a reboot: the kernel
+    /// and kernel modules (DKMS or prebuilt for a kernel): [`restart_packages`].
+    /// Empty: logging out is enough.
     pub restart_packages: Vec<String>,
 }
 
-/// Конфликт пакетов: что встанет — и с чем установленным не уживается.
+/// A package conflict: what is being installed, and which installed package
+/// it cannot coexist with.
 ///
-/// Кроме имён — чьи это пакеты: человеку говорится «Pantheon нельзя рядом с
-/// Budgie», а не «mutter49 конфликтует с mutter». Пустые поля — сведений нет
-/// (разбор упавшей транзакции): тогда стол угадывается по таблице ключевых
-/// пакетов.
+/// Besides the names, whose packages these are: the person is told "Pantheon
+/// cannot go next to Budgie", not "mutter49 conflicts with mutter". Empty
+/// fields mean no information (parsing a failed transaction): then the
+/// desktop is guessed by the key packages table.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct PkgConflict {
     pub new_package: String,
     pub installed: String,
-    /// Версии из `pacman -Si`/`-Qi` (как их пишет pacman), пусто — неизвестна.
+    /// Versions from `pacman -Si`/`-Qi` (as pacman writes them), empty: unknown.
     pub new_version: String,
     pub installed_version: String,
-    /// Это одна программа разных версий (`mutter49` и `mutter`): тогда
-    /// объяснение говорит о версиях, а не о «конфликте пакетов».
+    /// It is one program in different versions (`mutter49` and `mutter`): then
+    /// the explanation talks about versions, not about a "package conflict".
     pub same_program: bool,
-    /// Столы, ради которых встаёт `new_package` (по `Depends On` набора).
+    /// Desktops `new_package` is installed for (by the set's `Depends On`).
     pub new_desktops: Vec<String>,
-    /// Столы, которые держат установленный пакет (по `Required By`).
+    /// Desktops that hold the installed package (by `Required By`).
     pub installed_desktops: Vec<String>,
-    /// Кто требует установленный пакет напрямую (`Required By`).
+    /// Who directly requires the installed package (`Required By`).
     pub required_by: Vec<String>,
-    /// «Установленный» на деле тоже встаёт в этой же транзакции (на машине
-    /// без mutter группа `pantheon` тянет и mutter от gala, и mutter49 от
-    /// экрана входа): `-Sp` такого не ловит, а настоящая транзакция падает.
-    /// Тогда [`Self::installed_desktops`] — столы набора, которым он нужен.
+    /// The "installed" one is actually also being installed in this same
+    /// transaction (on a machine without mutter the `pantheon` group pulls in
+    /// both mutter from gala and mutter49 from the login screen): `-Sp` does not
+    /// catch this, and the real transaction fails. Then
+    /// [`Self::installed_desktops`] are the set's desktops that need it.
     pub installed_is_new: bool,
 }
 
-/// Член группы, который не ставится из-за конфликта
+/// A group member that is not installed because of a conflict
 /// ([`InstallPreview::conflict_skipped`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct ConflictSkip {
-    /// Выкинутый член группы (`lightdm-pantheon-greeter`).
+    /// The dropped group member (`lightdm-pantheon-greeter`).
     pub package: String,
-    /// Стол, к которому он относится (`Pantheon`); пусто — не узнать.
+    /// The desktop it belongs to (`Pantheon`); empty: cannot be found out.
     pub desktop: String,
-    /// Конфликт, из-за которого он выкинут (`mutter49` против `mutter`).
+    /// The conflict it was dropped for (`mutter49` versus `mutter`).
     pub conflict: PkgConflict,
 }
 
 impl InstallPreview {
-    /// Установка пройдёт (возможно, без [`Self::skipped`]).
+    /// The install will go through (possibly without [`Self::skipped`]).
     pub fn installable(&self) -> bool {
         self.blocked.is_empty() && self.conflicts.is_empty()
     }
 
-    /// Пакеты набора, которых в системе нет (ставятся заново).
+    /// Set packages not in the system (installed anew).
     pub fn missing_members(&self) -> Vec<String> {
         self.members
             .iter()
@@ -4641,20 +4675,21 @@ impl InstallPreview {
             .collect()
     }
 
-    /// Сколько пакетов набора уже стоит.
+    /// How many set packages are already installed.
     pub fn installed_members(&self) -> usize {
         self.members.len() - self.missing_members().len()
     }
 
-    /// Сколько зависимостей транзакция добавит сверх набора.
+    /// How many dependencies the transaction adds on top of the set.
     pub fn dependency_count(&self) -> usize {
         self.new_packages.len() - self.missing_members().len()
     }
 }
 
-/// Вопрос о составе групп в РЕПОЗИТОРИЯХ (`pacman -Sg имена…`). Не-группы
-/// pacman отклоняет строкой в stderr и кодом 1, но группы из того же вызова
-/// всё равно печатает — поэтому код возврата разбору не важен.
+/// The question about group members in the REPOSITORIES (`pacman -Sg
+/// names…`). pacman rejects non-groups with a stderr line and code 1, but
+/// still prints the groups from the same call, so the exit code does not
+/// matter to the parser.
 pub fn sync_groups_cmd(family: PkgFamily, names: &[String]) -> Option<Cmd> {
     if family != PkgFamily::Arch || names.is_empty() || !names.iter().all(|n| valid_pkg_name(n)) {
         return None;
@@ -4664,8 +4699,8 @@ pub fn sync_groups_cmd(family: PkgFamily, names: &[String]) -> Option<Cmd> {
     Some(Cmd::new(argv, None, true))
 }
 
-/// Пробная транзакция без прав root: `pacman -Sp --needed` печатает по
-/// имени в строке всё, что поставится, и ничего не трогает.
+/// A trial transaction without root: `pacman -Sp --needed` prints, one name
+/// per line, everything that will be installed, and touches nothing.
 pub fn sync_preview_cmd(family: PkgFamily, targets: &[String]) -> Option<Cmd> {
     if family != PkgFamily::Arch || targets.is_empty() || !targets.iter().all(|n| valid_pkg_name(n)) {
         return None;
@@ -4682,9 +4717,9 @@ pub fn sync_preview_cmd(family: PkgFamily, targets: &[String]) -> Option<Cmd> {
     Some(Cmd::new(argv, None, true))
 }
 
-/// Группы из вывода `pacman -Sg`: «группа член» в строке, члены без повторов
-/// (одна и та же группа приходит из нескольких репозиториев), порядок
-/// первого появления.
+/// Groups from the `pacman -Sg` output: "group member" per line, members
+/// without repeats (the same group comes from several repositories), in
+/// order of first appearance.
 pub fn parse_sync_groups(stdout: &str) -> Vec<(String, Vec<String>)> {
     let mut out: Vec<(String, Vec<String>)> = Vec::new();
     for line in stdout.lines() {
@@ -4709,9 +4744,10 @@ pub fn parse_sync_groups(stdout: &str) -> Vec<(String, Vec<String>)> {
     out
 }
 
-/// Виновники отказа пробной транзакции (вывод под LANG=C): пакет, чья
-/// зависимость неразрешима («unable to satisfy dependency 'x' required by
-/// ПАКЕТ»), и имя, которого нет в репозиториях («target not found: ИМЯ»).
+/// Culprits of a trial transaction refusal (output under LANG=C): the
+/// package whose dependency is unresolvable ("unable to satisfy dependency
+/// 'x' required by PACKAGE"), and a name not in the repositories ("target
+/// not found: NAME").
 pub fn parse_preview_culprits(stderr: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for line in stderr.lines() {
@@ -4729,20 +4765,20 @@ pub fn parse_preview_culprits(stderr: &str) -> Vec<String> {
     out
 }
 
-/// Ответ команды для предпросмотра: (код, stdout, stderr); `None` — команда
-/// не ответила вовсе.
+/// A command answer for the preview: (code, stdout, stderr); `None`: the
+/// command did not answer at all.
 pub type PreviewAnswer = Option<(i32, String, String)>;
 
-/// Что поставит установка набора `packages` — и можно ли её начинать.
+/// What installing the `packages` set will install, and whether it can start.
 ///
-/// `run` исполняет команду (живой запуск либо подставной ответ в сверке).
-/// `None` — спросить не вышло (не Arch, нет pacman, команда молчит): тогда
-/// зовущий остаётся при прежнем поведении, ничего не выдумывая.
+/// `run` executes the command (a live run or a fake answer in a check).
+/// `None`: could not ask (not Arch, no pacman, the command is silent): then
+/// the caller keeps the old behaviour, inventing nothing.
 ///
-/// Неустановимый член ГРУППЫ выкидывается: группа — это набор «по вкусу»,
-/// и стол без одного модуля настроек лучше, чем никакого стола. Названный
-/// в наборе прямо пакет (сеанс, экран входа) и поломка в зависимостях
-/// выкидываться не могут — тогда [`InstallPreview::blocked`].
+/// An uninstallable GROUP member is dropped: a group is a set "to taste",
+/// and a desktop without one settings module is better than no desktop. A
+/// package named in the set directly (session, login screen) and a breakage
+/// in the dependencies cannot be dropped: then [`InstallPreview::blocked`].
 pub fn install_preview(
     family: PkgFamily,
     packages: &[String],
@@ -4757,7 +4793,7 @@ pub fn install_preview(
         .into_iter()
         .filter(|(g, _)| packages.iter().any(|p| p == g))
         .collect();
-    // Набор после раскрытия групп: прямые имена плюс члены групп.
+    // The set after expanding groups: direct names plus group members.
     let mut expanded: Vec<String> = Vec::new();
     for p in packages {
         match groups.iter().find(|(g, _)| g == p) {
@@ -4786,9 +4822,9 @@ pub fn install_preview(
         members: expanded.clone(),
         ..InstallPreview::default()
     };
-    // Модули ядра под стоящие ядра ([`kernel_module_extras`]): добавляются
-    // в транзакцию один раз, переживают выкидывание членов групп и в
-    // «пакеты стола» (`members`) не входят — это зависимости.
+    // Kernel modules for the installed kernels ([`kernel_module_extras`]): added
+    // to the transaction once, survive dropping group members and are not part
+    // of the "desktop packages" (`members`): they are dependencies.
     let mut kernel_extras: Vec<String> = Vec::new();
     for _ in 0..=PREVIEW_MAX_ROUNDS {
         let cmd = sync_preview_cmd(family, &preview.targets)?;
@@ -4814,8 +4850,8 @@ pub fn install_preview(
                 }
             }
             let (updates, new_packages) = split_installed(planned, installed.clone());
-            // Своя сборка новее репозитория: в план она попала только потому,
-            // что версия не совпала, — выкидываем и пересчитываем план.
+            // An own build newer than the repository: it got into the plan only because
+            // the version did not match: drop it and recompute the plan.
             let newer_local = locally_newer(&updates, run);
             if newer_local.iter().any(|p| !preview.kept_local.contains(p)) {
                 for p in newer_local {
@@ -4829,15 +4865,15 @@ pub fn install_preview(
                 }
                 continue;
             }
-            // ⚠️ `-Sp` конфликтов с установленным НЕ проверяет (замер
-            // 19.10.2026: Deepin при стоящем KWin — код 0), а настоящая
-            // транзакция на них падает. Спрашиваем `Conflicts With` сами.
+            // ⚠️ `-Sp` does NOT check conflicts with installed packages (measured
+            // 19.10.2026: Deepin with KWin installed gives code 0), while the real
+            // transaction fails on them. We ask `Conflicts With` ourselves.
             let mut new_info: Vec<PkgInfo> = Vec::new();
             if let Some(installed) = &installed {
                 let (conflicts, info) = package_conflicts(family, &new_packages, installed, run);
-                // Конфликт, который тянет лишь необязательный член группы
-                // (экран входа, приложение), стол не держит: член выкидывается,
-                // и план пересчитывается без него. Обязательное — отказ.
+                // A conflict pulled in only by an optional group member (a login screen, an
+                // app) does not hold the desktop: the member is dropped, and the plan is
+                // recomputed without it. A mandatory one means a refusal.
                 let drops = conflict_drops(&conflicts, &expanded, packages, &is_group_member, &info);
                 if !drops.is_empty() {
                     for d in drops {
@@ -4861,13 +4897,13 @@ pub fn install_preview(
             preview.updates = updates;
             return Some(preview);
         }
-        // ⚠️ Строку «error: …» pacman пишет в stderr, а сами «:: unable to
-        // satisfy dependency … required by …» — в stdout (замер 08.10.2026):
-        // разбираются оба потока.
+        // ⚠️ pacman writes the "error: …" line to stderr, and the ":: unable to
+        // satisfy dependency … required by …" lines themselves to stdout (measured
+        // 08.10.2026): both streams are parsed.
         let culprits = parse_preview_culprits(&format!("{stdout}\n{stderr}"));
         if culprits.is_empty() {
-            // Отказ, которого разбор не понимает (база заперта, нет сети к
-            // зеркалу и т.п.): ничего не утверждать.
+            // A refusal the parser does not understand (database locked, no network to
+            // the mirror, etc.): claim nothing.
             return None;
         }
         let (droppable, hard): (Vec<String>, Vec<String>) =
@@ -4889,9 +4925,9 @@ pub fn install_preview(
     None
 }
 
-/// Цели транзакции заново: набор после раскрытия групп без выкинутого
-/// (неустановимое, своя сборка новее, конфликтное необязательное) плюс
-/// модули ядра под стоящие ядра.
+/// Transaction targets anew: the set after expanding groups without what was
+/// dropped (uninstallable, own build newer, conflicting optional) plus kernel
+/// modules for the installed kernels.
 fn rebuild_targets(preview: &mut InstallPreview, expanded: &[String], kernel_extras: &[String]) {
     preview.targets = expanded
         .iter()
@@ -4909,16 +4945,19 @@ fn rebuild_targets(preview: &mut InstallPreview, expanded: &[String], kernel_ext
     }
 }
 
-/// Какие члены групп выкинуть, чтобы снять конфликты `conflicts`.
+/// Which group members to drop to resolve the `conflicts` conflicts.
 ///
-/// Обязательное ядро стола — пакеты, названные в наборе прямо, ключевые
-/// пакеты столов (сеанс из базы столов — `pantheon-session`, оконный
-/// менеджер — `gala`, таблица [`CONFLICT_DESKTOP_PACKAGES`]) и всё, что они
-/// тянут по `Depends On`. Конфликтный пакет внутри ядра — снять конфликт
-/// нечем, член не выкидывается (отказ, [`conflict_explanation`]). Иначе
-/// выкидываются члены групп вне ядра, которые его тянут: экран входа
-/// Pantheon (`lightdm-pantheon-greeter` → `mutter49`) при стоящем mutter 51.
-/// `info` — сведения `pacman -Si` о встающем; связи берутся только по ним.
+/// The mandatory core of a desktop: packages named in the set directly, the
+/// desktops' key packages (the session from the desktop database,
+/// `pantheon-session`, the window manager `gala`, the
+/// [`CONFLICT_DESKTOP_PACKAGES`] table) and everything they pull in by
+/// `Depends On`. A conflicting package inside the core: there is nothing to
+/// resolve the conflict with, the member is not dropped (a refusal,
+/// [`conflict_explanation`]). Otherwise group members outside the core that
+/// pull it in are dropped: the Pantheon login screen
+/// (`lightdm-pantheon-greeter` → `mutter49`) with mutter 51 installed.
+/// `info` is the `pacman -Si` information about the incoming packages;
+/// relations are taken only from it.
 fn conflict_drops(
     conflicts: &[PkgConflict],
     expanded: &[String],
@@ -4929,7 +4968,7 @@ fn conflict_drops(
     if conflicts.is_empty() {
         return Vec::new();
     }
-    // Прямые зависимости по `Depends On`, с учётом `Provides`.
+    // Direct dependencies by `Depends On`, taking `Provides` into account.
     let deps = |name: &str| -> Vec<&str> {
         let Some(i) = info.iter().find(|i| i.name == name) else { return Vec::new() };
         info.iter()
@@ -4956,8 +4995,8 @@ fn conflict_drops(
     let core = closure(expanded.iter().map(String::as_str).filter(|m| essential(m) || !is_group_member(m)).collect());
     let mut out: Vec<ConflictSkip> = Vec::new();
     for c in conflicts {
-        // Конфликт внутри набора объявляет любая из сторон: выкидывать
-        // можно ту, что вне ядра, — и объяснять с её стороны.
+        // A conflict inside the set is declared by either side: the one outside the
+        // core can be dropped, and explained from its side.
         let c = if !core.contains(&c.new_package) {
             c.clone()
         } else if c.installed_is_new && !core.contains(&c.installed) {
@@ -4979,8 +5018,8 @@ fn conflict_drops(
             .filter(|m| closure(vec![m.as_str()]).contains(&c.new_package))
             .collect();
         if pullers.is_empty() {
-            // Конфликтный пакет не тянет никто из необязательного: снимать
-            // нечем, остаётся отказ.
+            // Nothing optional pulls in the conflicting package: nothing to remove, the
+            // refusal stays.
             return Vec::new();
         }
         for m in pullers {
@@ -4997,27 +5036,28 @@ fn conflict_drops(
     out
 }
 
-// ── Модули ядра под стоящие ядра ──────────────────────────────────────────
+// ── Kernel modules for the installed kernels ──────────────────────────────
 //
-// Часть пакетов Arch зависит от виртуального модуля ядра
-// (`DEEPIN-ANYTHING-MODULE`, `VHBA-MODULE`, `NVIDIA-MODULE`), а дают его два
-// поставщика: готовая сборка под штатное ядро (`deepin-anything-arch`,
-// `Depends On: linux`) и DKMS-вариант. pacman с `--noconfirm` берёт первого
-// — и на машине с другим ядром (CachyOS: `linux-cachyos`) ставит лишнее
-// ядро `linux`, которое потом висит в загрузчике (20.10.2026, Deepin).
-// Поэтому: если транзакция тянет `linux`, а его нет среди стоящих ядер, —
-// каждый пакет, которому нужен именно `linux`, заменяется DKMS-вариантом,
-// а к нему идут заголовки КАЖДОГО стоящего ядра (иначе DKMS не соберёт).
+// Some Arch packages depend on a virtual kernel module
+// (`DEEPIN-ANYTHING-MODULE`, `VHBA-MODULE`, `NVIDIA-MODULE`), and it has two
+// providers: a prebuilt module for the stock kernel (`deepin-anything-arch`,
+// `Depends On: linux`) and a DKMS variant. pacman with `--noconfirm` takes
+// the first, and on a machine with another kernel (CachyOS: `linux-cachyos`)
+// installs an extra `linux` kernel that then hangs around in the boot loader
+// (20.10.2026, Deepin). So: if the transaction pulls in `linux` and it is
+// not among the installed kernels, each package that needs exactly `linux`
+// is replaced by the DKMS variant, and headers for EACH installed kernel go
+// with it (otherwise DKMS cannot build).
 
-/// Штатное ядро Arch: от него зависят готовые сборки модулей.
+/// The stock Arch kernel: prebuilt modules depend on it.
 const ARCH_KERNEL: &str = "linux";
 
-/// Готовые сборки модулей, чей DKMS-вариант назван не по правилу
-/// «имя-dkms» / «имя без -arch, плюс -dkms».
+/// Prebuilt modules whose DKMS variant is not named by the rule "name-dkms" /
+/// "name without -arch, plus -dkms".
 const DKMS_ALTERNATIVES: &[(&str, &str)] = &[("virtualbox-host-modules-arch", "virtualbox-host-dkms")];
 
-/// Кандидаты на DKMS-замену готовой сборки модуля `name` — по порядку
-/// предпочтения; какие из них есть в репозиториях, решает зовущий.
+/// Candidates for the DKMS replacement of the prebuilt module `name`, in
+/// order of preference; which of them are in the repositories is up to the caller.
 pub fn dkms_candidates(name: &str) -> Vec<String> {
     let mut out: Vec<String> = DKMS_ALTERNATIVES
         .iter()
@@ -5032,14 +5072,15 @@ pub fn dkms_candidates(name: &str) -> Vec<String> {
     out
 }
 
-/// Нужна ли замена: транзакция тянет штатное ядро, а стоят другие.
-/// Ядра не узнать (контейнер без ядра, `find` молчит) — не трогаем:
-/// собирать DKMS-модуль не под что.
+/// Whether a replacement is needed: the transaction pulls in the stock kernel
+/// while others are installed. If the kernels cannot be found out (a
+/// container without a kernel, `find` is silent), we do not touch it: there
+/// is nothing to build a DKMS module for.
 pub fn needs_dkms_modules(planned: &[String], kernels: &[String]) -> bool {
     planned.iter().any(|p| p == ARCH_KERNEL) && !kernels.is_empty() && !kernels.iter().any(|k| k == ARCH_KERNEL)
 }
 
-/// Готовые сборки модулей из плана: пакеты, зависящие от штатного ядра.
+/// Prebuilt modules from the plan: packages depending on the stock kernel.
 pub fn prebuilt_module_packages(planned_info: &[PkgInfo]) -> Vec<String> {
     planned_info
         .iter()
@@ -5048,7 +5089,7 @@ pub fn prebuilt_module_packages(planned_info: &[PkgInfo]) -> Vec<String> {
         .collect()
 }
 
-/// Заголовки стоящих ядер, которых ещё нет (`linux-cachyos` →
+/// Headers of installed kernels that are not there yet (`linux-cachyos` →
 /// `linux-cachyos-headers`).
 pub fn missing_kernel_headers(kernels: &[String], installed: Option<&[String]>) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -5061,8 +5102,9 @@ pub fn missing_kernel_headers(kernels: &[String], installed: Option<&[String]>) 
     out
 }
 
-/// Стоящие ядра — пакеты, которым принадлежат `/usr/lib/modules/*/pkgbase`
-/// (так их узнают mkinitcpio и kernel-install). Пусто — узнать не вышло.
+/// Installed kernels: the packages owning `/usr/lib/modules/*/pkgbase` (that
+/// is how mkinitcpio and kernel-install recognise them). Empty: could not
+/// find out.
 fn installed_kernels(run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Vec<String> {
     let find = Cmd::new(
         names_argv(&["find", "/usr/lib/modules", "-mindepth", "2", "-maxdepth", "2", "-name", "pkgbase"]),
@@ -5083,8 +5125,8 @@ fn installed_kernels(run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Vec<String> {
     }
     let mut argv = names_argv(&["pacman", "-Qqo"]);
     argv.extend(files);
-    // Чужой файл (ядро поставлено мимо pacman) pacman отвергает в stderr с
-    // кодом 1, а владельцев остальных всё равно печатает.
+    // A foreign file (a kernel installed bypassing pacman) is rejected by pacman
+    // in stderr with code 1, but it still prints the owners of the rest.
     let Some((_, owners, _)) = run(&Cmd::new(argv, None, true)) else {
         return Vec::new();
     };
@@ -5101,9 +5143,10 @@ fn names_argv(list: &[&str]) -> Vec<String> {
     list.iter().map(|s| s.to_string()).collect()
 }
 
-/// Что добавить в транзакцию `planned`, чтобы модули ядра встали под
-/// стоящие ядра, а не потянули штатное `linux`: DKMS-варианты и заголовки.
-/// Пусто — менять нечего (или заменить нечем: тогда как было).
+/// What to add to the `planned` transaction so that kernel modules fit the
+/// installed kernels instead of pulling in the stock `linux`: DKMS variants
+/// and headers. Empty: nothing to change (or nothing to replace with: then
+/// as it was).
 pub fn kernel_module_extras(
     family: PkgFamily,
     planned: &[String],
@@ -5137,21 +5180,21 @@ pub fn kernel_module_extras(
         match dkms_candidates(p).into_iter().find(|c| available.contains(c)) {
             Some(c) if !out.contains(&c) => out.push(c),
             Some(_) => {}
-            // Заменить нечем — оставить pacman его выбор целиком.
+            // Nothing to replace with: leave pacman its choice entirely.
             None => return Vec::new(),
         }
     }
-    // Заголовков своего ядра в репозиториях нет (ядро из AUR) — DKMS под
-    // него не соберёт, но и лишнего ядра не будет.
+    // There are no headers for the own kernel in the repositories (a kernel
+    // from the AUR): DKMS will not build for it, but there will be no extra kernel either.
     out.extend(headers.into_iter().filter(|h| available.contains(h)));
     out
 }
 
-/// Имена из поля `Conflicts With` по блокам вывода `pacman -Si` / `-Qi`
-/// (LANG=C): (пакет, с чем конфликтует). Ограничения версией (`foo<2`)
-/// пропускаются: решить их без сравнения версий нельзя, а ложный отказ хуже
-/// пропуска — настоящая транзакция всё равно скажет своё, и
-/// [`parse_transaction_conflicts`] это объяснит.
+/// Names from the `Conflicts With` field per block of `pacman -Si` / `-Qi`
+/// output (LANG=C): (package, what it conflicts with). Version constraints
+/// (`foo<2`) are skipped: they cannot be decided without comparing versions,
+/// and a false refusal is worse than a miss: the real transaction will say
+/// its piece anyway, and [`parse_transaction_conflicts`] will explain it.
 pub fn parse_info_conflicts(stdout: &str) -> Vec<(String, Vec<String>)> {
     parse_pkg_info(stdout)
         .into_iter()
@@ -5160,25 +5203,25 @@ pub fn parse_info_conflicts(stdout: &str) -> Vec<(String, Vec<String>)> {
         .collect()
 }
 
-/// Сведения о пакете из блока `pacman -Si` / `-Qi` (LANG=C) — то, что нужно,
-/// чтобы назвать конфликт столом: версия, группы, что даёт, от чего зависит,
-/// кто его требует.
+/// Package information from a `pacman -Si` / `-Qi` block (LANG=C): what is
+/// needed to name a conflict by desktop: the version, groups, what it
+/// provides, what it depends on, who requires it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PkgInfo {
     pub name: String,
     pub version: String,
     pub groups: Vec<String>,
-    /// `Provides` без версий (`libmutter-17.so=0-64` → `libmutter-17.so`).
+    /// `Provides` without versions (`libmutter-17.so=0-64` → `libmutter-17.so`).
     pub provides: Vec<String>,
-    /// `Depends On` без ограничений версией.
+    /// `Depends On` without version constraints.
     pub depends: Vec<String>,
     pub required_by: Vec<String>,
-    /// `Conflicts With`; ограниченные версией (`foo<2`) пропущены.
+    /// `Conflicts With`; version-constrained ones (`foo<2`) skipped.
     pub conflicts: Vec<String>,
 }
 
-/// Блоки `pacman -Si` / `-Qi` (LANG=C). Один пакет из двух репозиториев —
-/// одна запись: версия и связи от первого блока, конфликты сливаются.
+/// `pacman -Si` / `-Qi` blocks (LANG=C). One package from two repositories is
+/// one entry: the version and relations from the first block, conflicts are merged.
 pub fn parse_pkg_info(stdout: &str) -> Vec<PkgInfo> {
     fn names(values: &str, strip_version: bool) -> Vec<String> {
         values
@@ -5231,7 +5274,7 @@ pub fn parse_pkg_info(stdout: &str) -> Vec<PkgInfo> {
     };
     for line in stdout.lines() {
         if line.starts_with(char::is_whitespace) && !line.trim().is_empty() {
-            // Перенос длинного поля: продолжение того, что было выше.
+            // A wrapped long field: the continuation of what was above.
             let key = field.clone();
             apply(&mut cur, &key, line);
             continue;
@@ -5256,12 +5299,13 @@ pub fn parse_pkg_info(stdout: &str) -> Vec<PkgInfo> {
     out
 }
 
-/// Конфликты того, что встанет (`new_packages`), с установленным: в обе
-/// стороны — объявленные встающими пакетами (`pacman -Si`) и объявленные
-/// установленными (`pacman -Qi`). Только Arch; не ответила команда — пусто
-/// (как и было: проверить не вышло — ничего не утверждаем).
-/// Отдаёт ещё и сведения `pacman -Si` о встающем — по ним
-/// [`restart_packages`] решает, нужна ли перезагрузка, без второго запроса.
+/// Conflicts of what will be installed (`new_packages`) with the installed:
+/// both ways: declared by the incoming packages (`pacman -Si`) and declared by
+/// the installed ones (`pacman -Qi`). Arch only; if the command did not
+/// answer, empty (as before: the check failed, we claim nothing).
+/// Also returns the `pacman -Si` information about the incoming packages:
+/// [`restart_packages`] uses it to decide whether a reboot is needed, without
+/// a second query.
 fn package_conflicts(
     family: PkgFamily,
     new_packages: &[String],
@@ -5305,8 +5349,8 @@ fn package_conflicts(
             }
         }
     }
-    // Чьи это пакеты: встающий — по `Depends On` набора (кто из него его
-    // тянет), установленный — по `Required By`.
+    // Whose packages these are: the incoming one by the set's `Depends On` (who
+    // in it pulls it in), the installed one by `Required By`.
     let find = |list: &[PkgInfo], name: &str| list.iter().position(|i| i.name == name);
     for c in &mut out {
         if let Some(i) = find(&new_info, &c.new_package) {
@@ -5350,13 +5394,14 @@ fn package_conflicts(
     (out, new_info)
 }
 
-/// Что из встающего заново (`new_packages`) требует перезагрузки: само ядро
-/// и модули ядра — DKMS (`*-dkms`, зависимость от `dkms`) и готовые сборки
-/// под штатное ядро (зависимость от `linux`). Модуль собирается при
-/// установке, а грузится при старте (Deepin: `deepin-anything-dkms`), новое
-/// ядро — тем более. Всё прочее (сам стол, его службы, группы) подхватывает
-/// новый вход в сеанс. `new_info` — сведения `pacman -Si` о встающем (может
-/// быть пуст: тогда решают одни имена).
+/// What of the newly installed (`new_packages`) requires a reboot: the kernel
+/// itself and kernel modules: DKMS (`*-dkms`, a dependency on `dkms`) and
+/// prebuilt ones for the stock kernel (a dependency on `linux`). A module is
+/// built at install time but loaded at boot (Deepin: `deepin-anything-dkms`),
+/// a new kernel all the more so. Everything else (the desktop itself, its
+/// services, groups) is picked up by a new login. `new_info` is the
+/// `pacman -Si` information about the incoming packages (may be empty: then
+/// the names alone decide).
 pub fn restart_packages(new_packages: &[String], new_info: &[PkgInfo]) -> Vec<String> {
     new_packages
         .iter()
@@ -5370,8 +5415,9 @@ pub fn restart_packages(new_packages: &[String], new_info: &[PkgInfo]) -> Vec<St
         .collect()
 }
 
-/// Одна ли это программа разных версий: `mutter49` против `mutter`
-/// (имя без хвостовых цифр) либо встающий пакет даёт имя установленного.
+/// Whether it is one program in different versions: `mutter49` versus
+/// `mutter` (the name without trailing digits), or the incoming package
+/// provides the installed one's name.
 fn same_program(c: &PkgConflict, new_info: Option<&PkgInfo>) -> bool {
     let bare = |s: &str| s.trim_end_matches(|ch: char| ch.is_ascii_digit()).to_string();
     bare(&c.new_package) == c.installed
@@ -5379,12 +5425,12 @@ fn same_program(c: &PkgConflict, new_info: Option<&PkgInfo>) -> bool {
         || new_info.is_some_and(|i| i.provides.contains(&c.installed))
 }
 
-/// Группы pacman, по которым пакет — часть стола, сверх имён столов и их
-/// наборов в базе (`system::get_packages`).
+/// pacman groups by which a package is part of a desktop, on top of the
+/// desktop names and their sets in the database (`system::get_packages`).
 const DESKTOP_GROUPS: &[(&str, &str)] = &[("plasma", "kde")];
 
-/// Стол, к которому пакет относится сам: ключевой пакет стола либо член его
-/// группы.
+/// The desktop the package itself belongs to: a key package of the desktop
+/// or a member of its group.
 fn own_desktop(name: &str, info: Option<&PkgInfo>) -> Option<&'static str> {
     if let Some(d) = conflict_desktop(name) {
         return Some(d);
@@ -5404,11 +5450,11 @@ fn own_desktop(name: &str, info: Option<&PkgInfo>) -> Option<&'static str> {
     None
 }
 
-/// Столы, которые держат пакет: обход «кто его требует» (`parents`) до
-/// первого пакета, принадлежащего столу. Никто не требует — пакет стоит сам
-/// по себе, и стол угадывается по нему самому. Требуют, но не столы —
-/// пусто: табличное «mutter — это GNOME» соврало бы, если mutter держит
-/// Budgie.
+/// Desktops that hold a package: walking "who requires it" (`parents`) up to
+/// the first package belonging to a desktop. Nobody requires it: the package
+/// stands on its own, and the desktop is guessed by the package itself. It is
+/// required, but not by desktops: empty: a table-based "mutter is GNOME"
+/// would lie if mutter is held by Budgie.
 fn holding_desktops(start: &str, infos: &[PkgInfo], parents: &dyn Fn(&str) -> Vec<String>) -> Vec<String> {
     let info = |n: &str| infos.iter().find(|i| i.name == n);
     let first = parents(start);
@@ -5434,9 +5480,9 @@ fn holding_desktops(start: &str, infos: &[PkgInfo], parents: &dyn Fn(&str) -> Ve
     found
 }
 
-/// Конфликты из вывода НАСТОЯЩЕЙ транзакции pacman (LANG=C):
+/// Conflicts from the output of a REAL pacman transaction (LANG=C):
 /// `:: deepin-kwin-6.0.8-12.1 and kwin-6.8.0-1.1 are in conflict…`.
-/// Версия (`-версия-сборка`) отрезается.
+/// The version (`-version-build`) is cut off.
 pub fn parse_transaction_conflicts(text: &str) -> Vec<PkgConflict> {
     fn strip_version(s: &str) -> &str {
         let mut parts = s.rsplitn(3, '-');
@@ -5462,9 +5508,9 @@ pub fn parse_transaction_conflicts(text: &str) -> Vec<PkgConflict> {
     out
 }
 
-/// Ключевые пакеты столов на Arch: по ним конфликт называется столом, а не
-/// именем пакета. Только то, без чего стола нет (оконный менеджер, оболочка,
-/// сеанс): по библиотеке стол не угадывается.
+/// Key desktop packages on Arch: by them a conflict is named by desktop, not
+/// by package name. Only what the desktop cannot exist without (window
+/// manager, shell, session): a desktop is not guessed by a library.
 const CONFLICT_DESKTOP_PACKAGES: &[(&str, &str)] = &[
     ("kwin", "kde"),
     ("kwin-x11", "kde"),
@@ -5491,14 +5537,14 @@ const CONFLICT_DESKTOP_PACKAGES: &[(&str, &str)] = &[
     ("hyprland", "hyprland"),
     ("sway", "sway"),
     ("niri", "niri"),
-    // river-classic и river 0.4+ взаимно исключают друг друга
-    // (`conflicts=('river')`): обе стороны конфликта — стол River.
+    // river-classic and river 0.4+ exclude each other (`conflicts=('river')`):
+    // both sides of the conflict are the River desktop.
     ("river-classic", "river"),
     ("river", "river"),
     ("wayfire", "wayfire"),
 ];
 
-/// Как назвать пакет человеку: роль (переводится) или собственное имя.
+/// How to name a package to the person: a role (translated) or a proper name.
 const CONFLICT_PACKAGE_ROLES: &[(&str, &str)] = &[("deepin-kwin", n_("the Deepin window manager"))];
 const CONFLICT_PACKAGE_NAMES: &[(&str, &str)] = &[
     ("kwin", "KWin"),
@@ -5510,30 +5556,31 @@ const CONFLICT_PACKAGE_NAMES: &[(&str, &str)] = &[
     ("gala", "Gala"),
 ];
 
-/// Конфликт, который Rexon снимает ЗАМЕНОЙ — только с согласия человека.
+/// A conflict Rexon resolves by REPLACEMENT, only with the person's consent.
 ///
-/// Обычный конфликт — чужой стол или чужая программа, и удалять их Rexon сам
-/// не берётся ([`conflict_explanation`]). Здесь другое: установленный пакет —
-/// другая ветка той же программы, которую ставит стол, и рядом им не
-/// ужиться. Тогда карточка объясняет, что стоит и почему его надо заменить,
-/// и предлагает кнопку замены ([`conflict_swaps`]); по «Да» pacman снимает
-/// установленное и ставит набор в ОДНОЙ транзакции ([`install_cmd_replacing`]).
+/// An ordinary conflict is someone else's desktop or program, and Rexon does
+/// not take it upon itself to remove them ([`conflict_explanation`]). This is
+/// different: the installed package is another branch of the same program
+/// the desktop installs, and they cannot coexist. Then the card explains
+/// what is installed and why it has to be replaced, and offers a replace
+/// button ([`conflict_swaps`]); on «Yes» pacman removes the installed one and
+/// installs the set in ONE transaction ([`install_cmd_replacing`]).
 struct ConflictSwapRule {
     new_package: &'static str,
     installed: &'static str,
-    /// Как назвать установленное человеку (к имени дописывается версия).
+    /// How to name the installed package to the person (the version is appended to the name).
     installed_name: &'static str,
-    /// Объяснение на карточке. %1 — установленное с версией («River 0.5»).
+    /// Explanation on the card. %1 is the installed one with its version ("River 0.5").
     notice: &'static str,
-    /// Приписка к вопросу «Заменить?» (пусто — нет). %1 — как в `notice`.
+    /// Addition to the «Replace?» question (empty: none). %1 as in `notice`.
     confirm_note: &'static str,
 }
 
 const CONFLICT_SWAPS: &[ConflictSwapRule] = &[
-    // River 0.4+ из extra — «немонолитная» ветка без своего тайлинга
-    // (`system.rs`, запись `river`), Rexon ставит river-classic. Пакеты
-    // взаимно объявляют `Conflicts With`; `Provides` у river нет, и снятие
-    // его ничего не ломает, пока его никто не требует.
+    // River 0.4+ from extra is the "non-monolithic" branch without its own
+    // tiling (`system.rs`, the `river` entry), Rexon installs river-classic. The
+    // packages declare `Conflicts With` on each other; river has no `Provides`,
+    // and removing it breaks nothing as long as nobody requires it.
     ConflictSwapRule {
         new_package: "river-classic",
         installed: "river",
@@ -5557,15 +5604,15 @@ fn swap_rule(c: &PkgConflict) -> Option<&'static ConflictSwapRule> {
         .find(|r| r.new_package == c.new_package && r.installed == c.installed)
 }
 
-/// Короткая версия для человека: `1:0.5.0-1.1` → `0.5`.
+/// A short version for the person: `1:0.5.0-1.1` → `0.5`.
 fn short_version(v: &str) -> String {
     let v = v.split_once(':').map(|(_, rest)| rest).unwrap_or(v);
     let v = v.split('-').next().unwrap_or(v);
     v.split('.').take(2).collect::<Vec<_>>().join(".")
 }
 
-/// Установленное в замене — именем с версией («River 0.5»); версии нет —
-/// именем пакета.
+/// The installed package in a replacement, as a name with a version ("River
+/// 0.5"); without a version, as the package name.
 fn swap_label(c: &PkgConflict) -> String {
     match swap_rule(c) {
         Some(r) if !c.installed_version.is_empty() => {
@@ -5575,10 +5622,11 @@ fn swap_label(c: &PkgConflict) -> String {
     }
 }
 
-/// Конфликты пробы, которые снимаются заменой с согласия человека. Пусто —
-/// замена не поможет: есть конфликт не из таблицы замен, установленное
-/// кто-то требует (pacman снял бы и его) или набор не встанет и без
-/// конфликта ([`InstallPreview::blocked`]).
+/// Probe conflicts that are resolved by a replacement with the person's
+/// consent. Empty: a replacement will not help: there is a conflict not from
+/// the replacements table, someone requires the installed package (pacman
+/// would remove it too), or the set would not install even without the
+/// conflict ([`InstallPreview::blocked`]).
 pub fn conflict_swaps(p: &InstallPreview) -> Vec<PkgConflict> {
     let all = !p.conflicts.is_empty()
         && p.blocked.is_empty()
@@ -5590,9 +5638,9 @@ pub fn conflict_swaps(p: &InstallPreview) -> Vec<PkgConflict> {
     }
 }
 
-/// Согласие на замену покрывает все конфликты пробы: тогда установка идёт
-/// с заменой ([`install_cmd_replacing`]). `replace` — установленные пакеты,
-/// которые человек согласился заменить.
+/// The replacement consent covers all probe conflicts: then the install goes
+/// with replacement ([`install_cmd_replacing`]). `replace` is the installed
+/// packages the person agreed to replace.
 pub fn conflict_swap_approved(p: &InstallPreview, replace: &[String]) -> bool {
     let swaps = conflict_swaps(p);
     !swaps.is_empty() && swaps.iter().all(|c| replace.contains(&c.installed))
@@ -5609,13 +5657,13 @@ fn swap_labels(swaps: &[PkgConflict]) -> String {
     labels.join(", ")
 }
 
-/// Подпись кнопки замены на карточке стола.
+/// Caption of the replace button on the desktop card.
 pub fn conflict_swap_button(swaps: &[PkgConflict]) -> String {
     // TRANSLATORS: %1 is the installed program being replaced (e.g. “River 0.5”).
     trf("🔁 Replace %1", &[&swap_labels(swaps)])
 }
 
-/// Пояснение под кнопкой замены.
+/// Explanation under the replace button.
 pub fn conflict_swap_hint(swaps: &[PkgConflict]) -> String {
     let new: Vec<&str> = swaps.iter().map(|c| c.new_package.as_str()).collect();
     trf(
@@ -5627,14 +5675,14 @@ pub fn conflict_swap_hint(swaps: &[PkgConflict]) -> String {
     )
 }
 
-/// Заголовок вопроса и окна операции замены.
+/// Title of the replacement question and operation window.
 pub fn conflict_swap_title(swaps: &[PkgConflict]) -> String {
     // TRANSLATORS: %1 is the installed program being replaced (e.g. “River 0.5”).
     trf("Replace %1", &[&swap_labels(swaps)])
 }
 
-/// Вопрос «Заменить?»: что снимется, что встанет и что будет со столом
-/// `desktop`.
+/// The «Replace?» question: what will be removed, what will be installed and
+/// what happens to the desktop `desktop`.
 pub fn conflict_swap_confirm_text(swaps: &[PkgConflict], desktop: &str) -> String {
     let new: Vec<&str> = swaps.iter().map(|c| c.new_package.as_str()).collect();
     let installed: Vec<&str> = swaps.iter().map(|c| c.installed.as_str()).collect();
@@ -5662,13 +5710,13 @@ pub fn conflict_swap_confirm_text(swaps: &[PkgConflict], desktop: &str) -> Strin
     text
 }
 
-/// Команда установки с заменой конфликтующего: тот же `pacman -S`, что
-/// [`install_cmd`], плюс `--ask=4` — ответ «да» на вопрос pacman «X и Y
-/// конфликтуют. Удалить Y?» (ALPM_QUESTION_CONFLICT_PKG = 1 << 2) при
-/// `--noconfirm`. Снятие и установка идут одной транзакцией: не встал
-/// набор — установленное остаётся. Только Arch; `replace` пуст — ровно
-/// [`install_cmd`]. Какие конфликты снимаются, решено до пароля
-/// ([`conflict_swap_approved`]).
+/// The install command replacing a conflicting package: the same `pacman -S`
+/// as [`install_cmd`], plus `--ask=4`: a "yes" answer to pacman's question
+/// "X and Y are in conflict. Remove Y?" (ALPM_QUESTION_CONFLICT_PKG = 1 << 2)
+/// under `--noconfirm`. Removal and install go in one transaction: if the
+/// set does not install, the installed one stays. Arch only; with an empty
+/// `replace` exactly [`install_cmd`]. Which conflicts are resolved is decided
+/// before the password ([`conflict_swap_approved`]).
 pub fn install_cmd_replacing(family: PkgFamily, packages: &[String], replace: &[String]) -> Result<Vec<String>, String> {
     let mut cmd = install_cmd(family, packages)?;
     if replace.is_empty() {
@@ -5688,13 +5736,13 @@ fn conflict_desktop(package: &str) -> Option<&'static str> {
     crate::system::DE_META.iter().find(|m| m.id == id).map(|m| m.display_name)
 }
 
-/// Объяснение конфликта для человека — одно на отказ до пароля, карточку
-/// стола и разбор упавшей транзакции.
+/// A conflict explanation for the person: one for the refusal before the
+/// password, the desktop card and parsing a failed transaction.
 pub fn conflict_explanation(conflicts: &[PkgConflict]) -> String {
     let mut lines: Vec<String> = Vec::new();
     for c in conflicts.iter().take(3) {
-        // Другая ветка той же программы — своё объяснение (замена с
-        // согласия, [`conflict_swaps`]).
+        // Another branch of the same program has its own explanation (replacement
+        // with consent, [`conflict_swaps`]).
         if let Some(rule) = swap_rule(c) {
             let line = trf(rule.notice, &[&swap_label(c)]);
             if !lines.contains(&line) {
@@ -5704,8 +5752,8 @@ pub fn conflict_explanation(conflicts: &[PkgConflict]) -> String {
         }
         let join = |v: &[String]| (!v.is_empty()).then(|| v.join(", "));
         let target = join(&c.new_desktops).or_else(|| conflict_desktop(&c.new_package).map(str::to_string));
-        // Кто-то требует установленный пакет, но не стол — по таблице стол не
-        // угадываем (mutter держит Budgie, а не GNOME).
+        // Someone requires the installed package, but not a desktop: we do not
+        // guess the desktop by the table (mutter is held by Budgie, not GNOME).
         let other = join(&c.installed_desktops).or_else(|| {
             c.required_by.is_empty().then(|| conflict_desktop(&c.installed).map(str::to_string)).flatten()
         });
@@ -5776,9 +5824,9 @@ pub fn conflict_explanation(conflicts: &[PkgConflict]) -> String {
     lines.join("\n")
 }
 
-/// Что из набора не ставится из-за конфликта и почему
-/// ([`InstallPreview::conflict_skipped`]): по строке на выкинутый пакет.
-/// Стол при этом ставится — текст предупреждает, а не отказывает.
+/// What from the set is not installed because of a conflict and why
+/// ([`InstallPreview::conflict_skipped`]): one line per dropped package.
+/// The desktop is still installed: the text warns, it does not refuse.
 pub fn conflict_skip_explanation(skips: &[ConflictSkip]) -> String {
     let mut lines: Vec<String> = Vec::new();
     for s in skips.iter().take(3) {
@@ -5835,8 +5883,8 @@ pub fn conflict_skip_explanation(skips: &[ConflictSkip]) -> String {
     lines.join("\n")
 }
 
-/// Программа, двух версий которой касается конфликт (`mutter49` против
-/// `mutter` → `Mutter`), именем для человека.
+/// The program whose two versions the conflict involves (`mutter49` versus
+/// `mutter` → `Mutter`), as a name for the person.
 fn conflict_program_name(c: &PkgConflict) -> String {
     let bare = |s: &str| s.trim_end_matches(|ch: char| ch.is_ascii_digit()).to_string();
     let program = if bare(&c.new_package) == c.installed { c.installed.clone() } else { bare(&c.installed) };
@@ -5847,25 +5895,25 @@ fn conflict_program_name(c: &PkgConflict) -> String {
         .unwrap_or(program)
 }
 
-/// Старшая часть версии для человека: `1:49.8-1.1` → `49`.
+/// The major part of a version for the person: `1:49.8-1.1` → `49`.
 fn major_version(v: &str) -> String {
     let v = v.split_once(':').map(|(_, rest)| rest).unwrap_or(v);
     v.split(['.', '-', '+']).next().unwrap_or(v).to_string()
 }
 
-/// Имена установленных пакетов через тот же `run`, что и пробная
-/// транзакция. `None` — спросить не вышло: тогда никто не объявляется
-/// установленным.
+/// Names of installed packages via the same `run` as the trial transaction.
+/// `None`: could not ask: then nobody is declared installed.
 fn installed_names(family: PkgFamily, run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Option<Vec<String>> {
     let query = installed_packages_query(family)?;
     let (rc, stdout, _) = run(&query.cmd)?;
     Some(parse_installed_packages(rc == 0, &stdout)).filter(|names| !names.is_empty())
 }
 
-/// Какие из установленных пакетов плана НЕ обновляются, а откатились бы:
-/// `pacman -Qu` перечисляет только те, у которых репозиторная сборка новее
-/// (сравнение версий — самого pacman), остальные установленные из плана —
-/// своя сборка новее или иная. Ответа нет — никого не выкидываем.
+/// Which installed packages of the plan are NOT updated but would be rolled
+/// back: `pacman -Qu` lists only those whose repository build is newer (the
+/// version comparison is pacman's own), the other installed ones from the
+/// plan are an own build that is newer or different. No answer: nothing is
+/// dropped.
 pub fn locally_newer(installed_planned: &[String], run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Vec<String> {
     if installed_planned.is_empty() {
         return Vec::new();
@@ -5874,8 +5922,9 @@ pub fn locally_newer(installed_planned: &[String], run: &dyn Fn(&Cmd) -> Preview
     let Some((rc, stdout, stderr)) = run(&cmd) else {
         return Vec::new();
     };
-    // Код 1 без вывода и без ошибки — «обновлений нет вовсе»; иное (база
-    // заперта, ошибка чтения) — ответ не понят, никого не выкидываем.
+    // Code 1 without output and without an error means "no updates at all";
+    // anything else (database locked, read error) is an answer not understood,
+    // nothing is dropped.
     if rc != 0 && !(rc == 1 && stdout.trim().is_empty() && stderr.trim().is_empty()) {
         return Vec::new();
     }
@@ -5890,8 +5939,8 @@ pub fn locally_newer(installed_planned: &[String], run: &dyn Fn(&Cmd) -> Preview
         .collect()
 }
 
-/// Разделить план транзакции на (установленные — обновления, новые).
-/// Без списка установленного всё остаётся новым.
+/// Split the transaction plan into (installed: updates, new). Without the
+/// installed list everything stays new.
 pub fn split_installed(planned: Vec<String>, installed: Option<Vec<String>>) -> (Vec<String>, Vec<String>) {
     let Some(installed) = installed else {
         return (Vec::new(), planned);
@@ -5900,8 +5949,8 @@ pub fn split_installed(planned: Vec<String>, installed: Option<Vec<String>>) -> 
     planned.into_iter().partition(|name| installed.contains(name))
 }
 
-/// Живой предпросмотр: команды идут через `utils::run` (LANG=C). Тихо, без
-/// паники: ошибка запуска — `None`.
+/// Live preview: commands go through `utils::run` (LANG=C). Quietly, without
+/// panics: a run error gives `None`.
 pub fn install_preview_live(family: PkgFamily, packages: &[String]) -> Option<InstallPreview> {
     crate::utils::which("pacman", None)?;
     install_preview(family, packages, &|cmd: &Cmd| {
@@ -5924,17 +5973,18 @@ pub fn install_preview_live(family: PkgFamily, packages: &[String]) -> Option<In
     })
 }
 
-/// Разделить пакеты, помеченные в базе столов как AUR, по ФАКТУ: что есть в
-/// подключённых репозиториях этой машины, а что только в AUR.
+/// Split the packages marked as AUR in the desktop database by FACT: what is
+/// in this machine's enabled repositories, and what is only in the AUR.
 ///
-/// Метка «AUR» в таблице — свойство чистого Arch, а не машины: на CachyOS
-/// темы и значки Mint лежат в репозитории `cachyos`. Без этой сверки на
-/// машине без yay/paru такие пакеты молча выпадали бы вместе с AUR-списком,
-/// хотя pacman поставил бы их сам. Вопрос — тот же `pacman -Si`, что у
-/// [`repo_version_query`]; ответ «не знаю» (`None`, команда не ответила)
-/// оставляет пакет в AUR, как было.
+/// The "AUR" mark in the table is a property of plain Arch, not of the
+/// machine: on CachyOS the Mint themes and icons are in the `cachyos`
+/// repository. Without this check, on a machine without yay/paru such
+/// packages would silently drop out together with the AUR list, although
+/// pacman would install them itself. The question is the same `pacman -Si`
+/// as in [`repo_version_query`]; an "I do not know" answer (`None`, the
+/// command did not answer) leaves the package in the AUR, as before.
 ///
-/// Возвращает (из репозиториев, только AUR), порядок сохраняется.
+/// Returns (from repositories, AUR only), the order is kept.
 pub fn split_repo_available(
     family: PkgFamily,
     names: &[String],
@@ -5956,100 +6006,103 @@ pub fn split_repo_available(
     (repo, aur)
 }
 
-/// Команда за пакетами НЕ ИЗ РЕПОЗИТОРИЕВ — седьмой самостоятельный вопрос
-/// движка.
+/// The command for packages NOT FROM THE REPOSITORIES: the engine's seventh
+/// independent question.
 ///
-/// Предмет вопроса — ПРОИСХОЖДЕНИЕ уже установленного: собран ли пакет на
-/// месте (AUR, свои сборки) или пришёл из репозитория дистрибутива. Ни к
-/// одному прежнему вопросу он не сводится: [`installed_packages_query`]
-/// перечисляет всё установленное, ничего не говоря о происхождении, а
-/// [`repo_version_query`] спрашивает про НАЗВАННЫЙ пакет и ходит в базу
-/// репозиториев. Спрашивает его один читатель — классификация тем
-/// «Системные / AUR» во вкладке «Оформление»
-/// (`rexon/appearance/installed_scan.py`), разбор ответа —
-/// [`crate::installed_scan::parse_qm_output`], политика повторов при занятой
-/// базе — [`crate::installed_scan::foreign_pkgs_from_attempts`].
+/// The subject of the question is the ORIGIN of what is already installed:
+/// whether the package was built locally (AUR, own builds) or came from the
+/// distribution repository. It does not reduce to any earlier question:
+/// [`installed_packages_query`] lists everything installed, saying nothing
+/// about the origin, and [`repo_version_query`] asks about a NAMED package
+/// and goes to the repository database. It is asked by one reader: the
+/// "System / AUR" theme classification in the «Appearance» tab
+/// (`rexon/appearance/installed_scan.py`), the answer is parsed by
+/// [`crate::installed_scan::parse_qm_output`], the retry policy on a busy
+/// database is [`crate::installed_scan::foreign_pkgs_from_attempts`].
 ///
-/// Только Arch, и это не лень: понятия «пакет не из репозиториев» у
-/// остальных семейств в том же смысле НЕТ.
-/// * У Debian его нет вовсе. `dpkg` знает лишь то, что пакет установлен, и
-///   не помнит, откуда он взялся; а `dpkg --print-foreign-architectures` —
-///   ложный друг: «foreign» там про АРХИТЕКТУРУ (i386 рядом с amd64), а не
-///   про происхождение. Ближайший по смыслу ответ дают `aptitude search
-///   '~i!~ODebian'` и `apt-forktracer`, но ни того, ни другого в базовой
-///   установке нет.
-/// * У dnf ответ есть — `dnf repoquery --extras`, — но печатает он полные
-///   NEVRA (`имя-версия-релиз.арх`), а не «имя версия», и разбор, писанный
-///   под `pacman -Qm`, молча вернул бы имена с версией внутри.
-/// * У zypper ближайшее — `zypper packages --orphaned`, и это другой вопрос
-///   («пакет, которого больше нет ни в одном репозитории»), да и формат —
-///   таблица с рамками.
-/// Выдумать команду и скормить чужой вывод чужому разбору значило бы тихо
-/// зачислить AUR-темы в «Системные» — ровно то, от чего исключение AUR и
-/// заводилось. Честный ответ этих семейств — `None`, и по нему спрашивающий
-/// не показывает «Системные» вовсе.
+/// Arch only, and this is not laziness: the other families have NO notion of
+/// a "package not from the repositories" in the same sense.
+/// * Debian has none at all. `dpkg` only knows that a package is installed
+///   and does not remember where it came from; and
+///   `dpkg --print-foreign-architectures` is a false friend: "foreign" there
+///   is about the ARCHITECTURE (i386 next to amd64), not the origin. The
+///   closest answer comes from `aptitude search '~i!~ODebian'` and
+///   `apt-forktracer`, but neither is in a base install.
+/// * dnf has an answer, `dnf repoquery --extras`, but it prints full NEVRA
+///   (`name-version-release.arch`), not "name version", and a parser written
+///   for `pacman -Qm` would silently return names with the version inside.
+/// * For zypper the closest is `zypper packages --orphaned`, and that is a
+///   different question ("a package no longer in any repository"), and the
+///   format is a table with borders.
+/// Inventing a command and feeding someone else's output to someone else's
+/// parser would quietly count AUR themes as "System", exactly what the AUR
+/// exclusion was introduced against. The honest answer of these families is
+/// `None`, and on it the asker does not show "System" at all.
 pub fn foreign_packages_query(family: PkgFamily) -> Option<InstalledPkgQuery> {
     if family != PkgFamily::Arch {
         return None;
     }
     Some(InstalledPkgQuery {
         binary: "pacman".to_string(),
-        // Таймаут по классу команды (опрос, 30 с). LANG=C: русская локаль
-        // переводит сообщение о занятой базе, а политика повторов ищет в нём
-        // "lck"/"lock" — без LANG=C повтор молча не случался бы.
+        // Timeout by command class (query, 30 s). LANG=C: a Russian locale
+        // translates the busy database message, and the retry policy looks for
+        // "lck"/"lock" in it: without LANG=C the retry would silently not happen.
         cmd: Cmd::new(vec!["pacman".into(), "-Qm".into()], None, true),
     })
 }
 
-/// Сколько путей уходит в ОДИН вопрос о владельце файла.
+/// How many paths go into ONE file owner question.
 ///
-/// Число — защита от ARG_MAX, а не от менеджера: сотни коротких путей в него
-/// не упираются, но на машине с тысячами тем упереться можно. Резать на
-/// пачки — дело того, кто собирает argv, поэтому число живёт здесь, рядом с
-/// командой (прежде оно было константой `_QO_BATCH` у исполнителя, в
-/// `rexon/appearance/installed_scan.py`).
+/// The number guards against ARG_MAX, not against the manager: hundreds of
+/// short paths do not hit it, but on a machine with thousands of themes they
+/// can. Cutting into batches is the job of whoever assembles argv, so the
+/// number lives here, next to the command (it used to be the `_QO_BATCH`
+/// constant of the executor, in `rexon/appearance/installed_scan.py`).
 pub const FILE_OWNER_BATCH: usize = 200;
 
-/// Таймаут ОДНОГО вопроса о владельце файла, секунды.
+/// Timeout of ONE file owner question, seconds.
 ///
-/// Здесь своё число, а не класс: класс «опрос» (30 с) откалиброван на вопрос
-/// об ОДНОМ пакете, а эта команда отвечает сразу про две сотни путей. Число
-/// взято из оригинала (`subprocess.run(..., timeout=60)`), измеренная работа
-/// на этой машине — около 0,12 с на пачку.
+/// A number of its own here, not a class: the "query" class (30 s) is
+/// calibrated for a question about ONE package, while this command answers
+/// about two hundred paths at once. The number is taken from the original
+/// (`subprocess.run(..., timeout=60)`); measured work on this machine is
+/// about 0.12 s per batch.
 pub const FILE_OWNER_TIMEOUT_SECS: u64 = 60;
 
-/// Годится ли путь для вопроса о владельце файла.
+/// Whether a path is fit for the file owner question.
 ///
-/// Абсолютный: относительный менеджер считал бы от текущего каталога, а он у
-/// нас не задан. Тем же условием отсекается и ведущий `-` — иначе путь уехал
-/// бы менеджеру как ключ. Перенос строки разорвал бы строку ответа надвое, и
-/// разбор молча приписал бы файл чужому пакету; нулевой байт argv не
-/// переживёт вовсе.
+/// Absolute: the manager would resolve a relative one from the current
+/// directory, which we do not set. The same condition cuts off a leading
+/// `-`, otherwise the path would go to the manager as an option. A newline
+/// would split the answer line in two, and the parser would silently assign
+/// the file to someone else's package; a NUL byte would not survive argv at all.
 fn valid_owner_path(path: &str) -> bool {
     path.starts_with('/') && !path.contains('\n') && !path.contains('\0')
 }
 
-/// Команды за ВЛАДЕЛЬЦЕМ файлов — восьмой самостоятельный вопрос движка.
+/// Commands for the file OWNER: the engine's eighth independent question.
 ///
-/// Предмет вопроса — ПУТЬ, а не имя пакета, и ответ идёт в обратную сторону:
-/// [`package_files_query`] спрашивает «какие файлы у этого пакета», здесь —
-/// «чей этот файл». Спрашивает его тот же единственный читатель, что и
-/// [`foreign_packages_query`]; разбор ответа —
+/// The subject of the question is a PATH, not a package name, and the answer
+/// goes the other way: [`package_files_query`] asks "which files does this
+/// package have", here it is "whose file is this". It is asked by the same
+/// single reader as [`foreign_packages_query`]; the answer is parsed by
 /// [`crate::installed_scan::parse_qo_output`].
 ///
-/// Ответ — СПИСОК команд: путей бывают тысячи, и режет их на пачки по
-/// [`FILE_OWNER_BATCH`] тот, кто собирает argv. Пустой список значит «годных
-/// путей не осталось» и запускать нечего; `None` — семейство, которое этого
-/// вопроса не понимает, и это разные вещи.
+/// The answer is a LIST of commands: there may be thousands of paths, and
+/// whoever assembles argv cuts them into batches of [`FILE_OWNER_BATCH`]. An
+/// empty list means "no valid paths left" and there is nothing to run;
+/// `None` is a family that does not understand this question, and these are
+/// different things.
 ///
-/// Только Arch, и это не лень: формат ответа у остальных другой, а разбор на
-/// весь проект один. `dpkg -S` печатает «пакет: путь» — порядок обратный, и
-/// на путь-символическую ссылку отвечает несколькими строками; `rpm -qf`
-/// печатает только NEVRA пакета, вовсе без пути, так что сопоставить ответ с
-/// вопросом можно лишь по порядку строк. Ни то, ни другое руками не
-/// проверено, и молча скормить их разбору, писанному под «путь is owned by
-/// пакет версия», значило бы получать пустую карту владельцев — то есть
-/// пустой список «Системных» вместо ответа. Честный ответ — `None`.
+/// Arch only, and this is not laziness: the other families have a different
+/// answer format, and there is one parser for the whole project. `dpkg -S`
+/// prints "package: path", the reverse order, and answers several lines for
+/// a symlink path; `rpm -qf` prints only the package NEVRA, with no path at
+/// all, so the answer can only be matched to the question by line order.
+/// Neither was checked by hand, and silently feeding them to a parser
+/// written for "path is owned by package version" would give an empty owner
+/// map, i.e. an empty "System" list instead of an answer. The honest answer
+/// is `None`.
 pub fn file_owner_queries(
     family: PkgFamily,
     paths: &[String],
@@ -6065,8 +6118,8 @@ pub fn file_owner_queries(
                 argv.extend(chunk.iter().map(|p| (*p).clone()));
                 InstalledPkgQuery {
                     binary: "pacman".to_string(),
-                    // LANG=C обязателен: на русской локали ответ звучит
-                    // «принадлежит пакету», и разбор не находит ничего.
+                    // LANG=C is mandatory: in a Russian locale the answer is translated (no
+                    // "is owned by" in it), and the parser finds nothing.
                     cmd: Cmd::new(argv, Some(FILE_OWNER_TIMEOUT_SECS), true),
                 }
             })
@@ -6075,49 +6128,50 @@ pub fn file_owner_queries(
 }
 
 // ============================================================================
-// Ожидание замка пакетного менеджера — чистый шаг цикла
+// Waiting for the package manager lock: a pure loop step
 // ============================================================================
 
-/// Как часто перепроверять замок (секунды). Меньше нельзя: hook'и snap-pac
-/// держат замок ещё около полуминуты после конца транзакции, и опрос чаще
-/// только греет процессор.
+/// How often to recheck the lock (seconds). Not less: snap-pac hooks hold the
+/// lock for about half a minute after the transaction ends, and polling more
+/// often only heats the CPU.
 pub const PKG_LOCK_POLL_SECS: u64 = 2;
-/// Сколько всего ждать замок (секунды).
+/// How long to wait for the lock in total (seconds).
 pub const PKG_LOCK_TIMEOUT_SECS: u64 = 300;
-/// Стадия, под которой ожидание показывается в окне прогресса.
+/// Stage under which the wait is shown in the progress window.
 pub const PKG_LOCK_WAIT_STAGE: &str = "wait_lock";
-/// Что сказать человеку, когда ждём чужую транзакцию.
+/// What to tell the person while we wait for someone else's transaction.
 pub fn pkg_lock_wait_message() -> String {
     tr("⏳ Waiting for the package manager to become free (another transaction \
         is still running its hooks)…")
 }
-/// Ответ «замок свободен» — им же отвечают семейства без замка вовсе.
+/// The "lock is free" answer: families without a lock at all answer it too.
 pub const PKG_LOCK_OK: &str = "ok";
 
-/// Что делать на очередном обороте ожидания замка.
+/// What to do on the next round of waiting for the lock.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum LockWaitStep {
-    /// Замок свободен — идти дальше.
+    /// The lock is free: go on.
     Ready { message: String },
-    /// Не дождались: отдать отказ с этим текстом.
+    /// Gave up waiting: return a refusal with this text.
     TimedOut { message: String },
-    /// Сказать человеку, что ждём, и подождать. Говорится ОДИН раз.
+    /// Tell the person we are waiting, and wait. Said ONCE.
     Notify {
         stage: String,
         message: String,
         poll_secs: u64,
     },
-    /// Просто подождать.
+    /// Just wait.
     Wait { poll_secs: u64 },
 }
 
-/// Чистый шаг ожидания замка — общий для установки пакетов и для пересборки
-/// оформления (правило «один класс — один движок»: копий цикла было две).
+/// A pure lock wait step, shared by package installs and the look rebuild
+/// (the "one class, one engine" rule: there were two copies of the loop).
 ///
-/// `locked` — существует ли хоть один файл из [`lock_paths`] (для семейства
-/// без замка вызывающий передаёт false и получает `Ready` сразу);
-/// `elapsed_secs` — сколько уже ждём; `notified` — говорили ли уже человеку.
+/// `locked`: whether at least one file from [`lock_paths`] exists (for a
+/// family without a lock the caller passes false and gets `Ready` right
+/// away); `elapsed_secs`: how long we have been waiting; `notified`: whether
+/// the person was already told.
 pub fn lock_wait_step(
     locked: bool,
     elapsed_secs: f64,
@@ -6146,32 +6200,34 @@ pub fn lock_wait_step(
     }
 }
 
-/// Побочные действия ожидания замка: посмотреть ФС, поспать, сказать человеку.
+/// Side effects of waiting for the lock: look at the file system, sleep, tell
+/// the person.
 ///
-/// Ядро само в ФС не лезет и само не спит — тот же приём, что у `DaemonFs`:
-/// снаружи транспорт, внутри порядок. Благодаря этому цикл ожидания
-/// проверяется без единой настоящей секунды сна.
+/// The core does not touch the file system and does not sleep by itself:
+/// the same trick as `DaemonFs`: transport outside, order inside. Thanks to
+/// this the wait loop is tested without a single real second of sleep.
 pub trait LockWaitIo {
-    /// Существует ли хоть один из lock-файлов.
+    /// Whether at least one of the lock files exists.
     fn any_locked(&mut self, paths: &[String]) -> bool;
-    /// Сколько секунд прошло с начала ожидания.
+    /// How many seconds have passed since the wait began.
     fn elapsed_secs(&mut self) -> f64;
-    /// Поспать перед следующим оборотом.
+    /// Sleep before the next round.
     fn sleep_secs(&mut self, secs: u64);
-    /// Сказать человеку, что ждём чужую транзакцию. Зовётся ОДИН раз.
+    /// Tell the person we are waiting for someone else's transaction. Called ONCE.
     fn notify(&mut self, stage: &str, message: &str);
 }
 
-/// Ждать освобождения замка пакетного менеджера. → `(свободен, сообщение)`.
+/// Wait for the package manager lock to be released. → `(free, message)`.
 ///
-/// ЗАЧЕМ ЭТО ЗДЕСЬ, А НЕ В PYTHON. Решение (`lock_wait_step`) жило в ядре
-/// давно, а крутил цикл шим: `os.path.exists` в списковом выражении и
-/// `time.sleep`. Пока это так, ни один Rust-потребитель — включая хозяина
-/// главного окна — не мог дождаться замка сам и упирался в границу.
+/// WHY THIS IS HERE AND NOT IN PYTHON. The decision (`lock_wait_step`) has
+/// lived in the core for a long time, but a shim ran the loop: `os.path.exists`
+/// in a list comprehension and `time.sleep`. As long as that was so, no Rust
+/// consumer (including the main window host) could wait for the lock itself
+/// and ran into the boundary.
 ///
-/// ⚠️ Ждать приходится по-настоящему: snap-pac держит `/var/lib/pacman/db.lck`
-/// ещё около тридцати секунд ПОСЛЕ того, как транзакция закончилась (post-hook
-/// снимает снимок btrfs). Установка, начатая сразу, падала бы «база занята».
+/// ⚠️ The wait is real: snap-pac holds `/var/lib/pacman/db.lck` for about
+/// thirty seconds AFTER the transaction finished (a post-hook takes a btrfs
+/// snapshot). An install started right away would fail with "database busy".
 pub fn wait_for_pkg_lock(
     io: &mut dyn LockWaitIo,
     paths: &[String],
@@ -6179,7 +6235,7 @@ pub fn wait_for_pkg_lock(
 ) -> (bool, String) {
     let mut notified = false;
     loop {
-        // Семейство без замка: `paths` пуст — ответ «свободен» на первом обороте.
+        // A family without a lock: `paths` is empty, the answer is "free" on the first round.
         let locked = !paths.is_empty() && io.any_locked(paths);
         match lock_wait_step(locked, io.elapsed_secs(), timeout_secs, notified) {
             LockWaitStep::Ready { message } => return (true, message),
@@ -6198,17 +6254,17 @@ pub fn wait_for_pkg_lock(
     }
 }
 
-/// Живые побочные действия ожидания: настоящие ФС, часы и сон.
+/// Live side effects of the wait: the real file system, clock and sleep.
 ///
-/// `notify` — куда сказать человеку; у потребителя без окна прогресса это
-/// пустое замыкание.
+/// `notify` is where to tell the person; for a consumer without a progress
+/// window it is an empty closure.
 pub struct LiveLockWait<N: FnMut(&str, &str)> {
     start: std::time::Instant,
     notify: N,
 }
 
 impl<N: FnMut(&str, &str)> LiveLockWait<N> {
-    /// Отсчёт времени начинается здесь.
+    /// The time count starts here.
     pub fn new(notify: N) -> Self {
         Self {
             start: std::time::Instant::now(),
@@ -6236,49 +6292,50 @@ impl<N: FnMut(&str, &str)> LockWaitIo for LiveLockWait<N> {
 }
 
 // ============================================================================
-// Живой ход установки: чтение растущего журнала
+// Live install progress: reading a growing log
 // ============================================================================
 //
-// ЗАЧЕМ. Главный шаг установки идёт под `pkexec` с захваченным выводом: пока
-// он не кончится, человек не видит ни строки и не отличает работу от
-// зависания. Поэтому вывод уходит в файл, а отдельный поток дочитывает его на
-// ходу и выносит наверх строки-стадии.
+// WHY. The main install step runs under `pkexec` with captured output: until
+// it ends, the person sees not a single line and cannot tell work from a
+// hang. So the output goes to a file, and a separate thread reads it on the
+// fly and brings stage lines up.
 //
-// ⚠️ ЧИТАТЕЛЕЙ БЫЛО ДВА, И ЭТО БЫЛА ОДНА И ТА ЖЕ РАБОТА, НАПИСАННАЯ ДВАЖДЫ:
-// установка из репозиториев (`_tail_pkg_log`) и сборка из AUR
-// (`_run_aur_with_progress`) держали каждый свой поток, свой буфер, свой
-// разбор остатка и свой интервал опроса. Различались они ровно одним — тем,
-// что делать с очередной СТРОКОЙ. Здесь движок один, а различие вынесено в
-// [`LogTailKind`] (правило «один класс — один движок»).
+// ⚠️ THERE WERE TWO READERS, AND IT WAS THE SAME WORK WRITTEN TWICE: the
+// install from repositories (`_tail_pkg_log`) and the AUR build
+// (`_run_aur_with_progress`) each kept their own thread, their own buffer,
+// their own tail parsing and their own poll interval. They differed in
+// exactly one thing: what to do with the next LINE. Here there is one
+// engine, and the difference is moved into [`LogTailKind`] (the "one class,
+// one engine" rule).
 
-/// Маркеры строк сборки AUR, которые стоит показать человеку: заголовки
-/// стадий `makepkg` (`==>`), сообщения помощника (`::`) и переходы (` -> `).
-/// Всё остальное — шум компилятора на десятки тысяч строк.
+/// Markers of AUR build lines worth showing the person: `makepkg` stage
+/// headers (`==>`), helper messages (`::`) and transitions (` -> `).
+/// Everything else is compiler noise of tens of thousands of lines.
 pub const AUR_PROGRESS_MARKERS: &[&str] = &["==>", "::", " -> "];
 
-/// Служебная метка кода возврата в журнале установки: она для скрипта, а не
-/// для человека.
+/// The exit code service mark in the install log: it is for the script, not
+/// for the person.
 pub const LOG_EXIT_MARKER: &str = "__REXON_EXIT__";
 
-/// Чей журнал читаем — от этого зависит, что делать со строкой.
+/// Whose log we read: this decides what to do with a line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogTailKind {
-    /// Установка из репозиториев: строка разбирается на стадию и сообщение,
-    /// неразобранная показывается как есть.
+    /// Install from repositories: a line is parsed into a stage and a message,
+    /// an unparsed one is shown as is.
     Pacman,
-    /// Сборка из AUR: показываются только строки-стадии, остальное — шум.
+    /// AUR build: only stage lines are shown, the rest is noise.
     Aur,
-    /// Пересборка оформления AeroShell: каждая непустая строка сборщика
-    /// идёт в окно хода как есть (`aeroshell::rebuild_line`), как у Python.
+    /// AeroShell look rebuild: each non-empty builder line goes to the progress
+    /// window as is (`aeroshell::rebuild_line`), as in Python.
     Build,
-    /// Каждая непустая строка как есть — для того, кто разбирает вывод сам
-    /// (стадии установки AUR, `aur_install::stage_of_line`: строки pacman
-    /// «loading packages...», «installing x...» меток `Aur` не несут).
+    /// Each non-empty line as is, for whoever parses the output themselves (AUR
+    /// install stages, `aur_install::stage_of_line`: pacman's "loading
+    /// packages...", "installing x..." lines carry no `Aur` marks).
     Raw,
 }
 
 impl LogTailKind {
-    /// Имя для моста в Python.
+    /// Name for the bridge to Python.
     pub fn as_str(self) -> &'static str {
         match self {
             LogTailKind::Pacman => "pacman",
@@ -6288,7 +6345,7 @@ impl LogTailKind {
         }
     }
 
-    /// Как часто заглядывать в файл, миллисекунды.
+    /// How often to look into the file, milliseconds.
     pub fn poll_ms(self) -> u64 {
         match self {
             LogTailKind::Pacman => 100,
@@ -6297,7 +6354,7 @@ impl LogTailKind {
     }
 }
 
-/// Строка журнала → `(стадия, сообщение)` либо `None` — показывать нечего.
+/// Log line → `(stage, message)` or `None`: nothing to show.
 pub fn log_tail_line(kind: LogTailKind, raw: &str) -> Option<(String, String)> {
     match kind {
         LogTailKind::Pacman => {
@@ -6320,17 +6377,17 @@ pub fn log_tail_line(kind: LogTailKind, raw: &str) -> Option<(String, String)> {
     }
 }
 
-/// Стадия строки «уже установлено» у `--needed` ([`parse_pacman_line`]).
+/// Stage of the "already installed" line from `--needed` ([`parse_pacman_line`]).
 pub const LOG_STAGE_SKIP: &str = "skip";
 
-/// Живой читатель растущего журнала. Останавливается [`LogTail::stop`].
+/// Live reader of a growing log. Stopped by [`LogTail::stop`].
 pub struct LogTail {
     done: std::sync::Arc<std::sync::atomic::AtomicBool>,
     handle: Option<std::thread::JoinHandle<Vec<String>>>,
 }
 
 impl LogTail {
-    /// Остановить чтение, дочитать остаток и отдать показанные строки.
+    /// Stop reading, read the rest and return the shown lines.
     pub fn stop(&mut self) -> Vec<String> {
         self.done.store(true, std::sync::atomic::Ordering::SeqCst);
         match self.handle.take() {
@@ -6341,8 +6398,8 @@ impl LogTail {
 }
 
 impl Drop for LogTail {
-    /// Забытый читатель не должен пережить установку: поток демонический по
-    /// смыслу, но висящий файловый дескриптор нам не нужен.
+    /// A forgotten reader must not outlive the install: the thread is a daemon
+    /// in spirit, but we do not need a dangling file descriptor.
     fn drop(&mut self) {
         if self.handle.is_some() {
             self.stop();
@@ -6350,13 +6407,13 @@ impl Drop for LogTail {
     }
 }
 
-/// Запустить чтение растущего журнала. `emit` зовётся на каждую показываемую
-/// строку `(стадия, сообщение)`.
+/// Start reading a growing log. `emit` is called for each shown line
+/// `(stage, message)`.
 ///
-/// ⚠️ Файл читается БАЙТАМИ и режется по `\n`: чтение текстом с произвольной
-/// позиции — неопределённое поведение, а очередной кусок может оборваться
-/// посреди многобайтового символа. Хвост без перевода строки остаётся в
-/// буфере до следующего оборота и дочитывается в самом конце.
+/// ⚠️ The file is read as BYTES and split on `\n`: reading text from an
+/// arbitrary position is undefined behaviour, and the next chunk may end in
+/// the middle of a multibyte character. A tail without a newline stays in the
+/// buffer until the next round and is read at the very end.
 pub fn tail_log(
     path: &str,
     kind: LogTailKind,
@@ -6391,9 +6448,9 @@ pub fn tail_log(
             for part in raw.split(|b| *b == b'\n') {
                 let line = String::from_utf8_lossy(part);
                 if let Some((stage, message)) = log_tail_line(kind, &line) {
-                    // «✅ уже установлено: openbox» дважды — пакет пришёл и
-                    // членом группы, и именем в наборе стола: повтор журналу
-                    // ничего не добавляет (любой стол, любой путь установки).
+                    // "✅ already installed: openbox" twice: the package came both as a group
+                    // member and as a name in the desktop set: a repeat adds nothing to the log
+                    // (any desktop, any install path).
                     if stage == LOG_STAGE_SKIP && shown.contains(&message) {
                         continue;
                     }
@@ -6412,7 +6469,7 @@ pub fn tail_log(
                 buf = rest;
             }
             if stopping {
-                // Последний оборот: хвост без перевода строки тоже показываем.
+                // The last round: a tail without a newline is shown too.
                 flush(&buf, &mut shown, &mut emit);
                 return shown;
             }
@@ -6426,22 +6483,23 @@ pub fn tail_log(
 }
 
 // ============================================================================
-// Тяжёлые форки Plasma (AeroThemePlasma / AeroShell) — детект и откат на сток
+// Heavy Plasma forks (AeroThemePlasma / AeroShell): detection and rollback to stock
 // ============================================================================
 //
-// Форки ЗАМЕНЯЮТ бинарники/QML Plasma, поэтому сброс темы их не убирает —
-// лечится только pacman'ом. Провайдера стокового пакета нельзя `-R` (его
-// держат обратные зависимости), нужен `pacman -S <сток>` одной транзакцией.
+// The forks REPLACE Plasma binaries/QML, so a theme reset does not remove
+// them: only pacman cures it. The provider of a stock package cannot be
+// `-R`'d (reverse dependencies hold it), a `pacman -S <stock>` in one
+// transaction is needed.
 
-/// Префиксы имён пакетов-форков (покрывают -git/-x11-git варианты).
+/// Fork package name prefixes (covering the -git/-x11-git variants).
 pub const PLASMA_FORK_PREFIXES: &[&str] = &["aerothemeplasma-", "aeroshell-"];
-/// Известные форки вне префиксов.
+/// Known forks outside the prefixes.
 pub const PLASMA_FORK_EXTRA: &[&str] = &["uac-polkit-agent-git"];
-/// ЗАПАСНАЯ карта «стоковый пакет ← префиксы форков-провайдеров». Основной
-/// путь (`fork_stock_candidates`) берёт имена из живых provides/replaces
-/// pacman; карта добавляет своего кандидата последним — на случай, когда
-/// метаданные форка пусты. Любое имя отсюда всё равно проходит проверку
-/// существования в репозиториях, поэтому устареть незаметно оно не может.
+/// FALLBACK map "stock package ← provider fork prefixes". The main path
+/// (`fork_stock_candidates`) takes names from pacman's live provides/replaces;
+/// the map adds its candidate last, for when the fork's metadata is empty.
+/// Any name from here still passes the repository existence check, so it
+/// cannot go stale unnoticed.
 pub const PLASMA_FORK_STOCK_REPLACEMENTS: &[(&str, &[&str])] = &[
     ("libplasma", &["aeroshell-libplasma"]),
     ("polkit-kde-agent", &["uac-polkit-agent"]),
@@ -6452,8 +6510,8 @@ fn is_plasma_fork_name(name: &str) -> bool {
         || PLASMA_FORK_EXTRA.contains(&name)
 }
 
-/// Порт `filter_plasma_forks`: отобрать форки из списка имён установленных
-/// пакетов. Отсортировано, без дедупликации (как `sorted(генератор)`).
+/// Port of `filter_plasma_forks`: pick the forks from a list of installed
+/// package names. Sorted, without deduplication (like `sorted(generator)`).
 pub fn filter_plasma_forks(package_names: &[String]) -> Vec<String> {
     let mut out: Vec<String> = package_names
         .iter()
@@ -6464,9 +6522,10 @@ pub fn filter_plasma_forks(package_names: &[String]) -> Vec<String> {
     out
 }
 
-/// Значения поля `pacman -Qi <pkg>` для module-level функций откатa форков —
-/// порт `_pacman_qi_field`/`_qi_field` (вне экземпляра менеджера, поэтому
-/// семейство фиксировано Arch: на прочих pacman'а нет и колбэк отдаёт None).
+/// Values of a `pacman -Qi <pkg>` field for the module-level fork rollback
+/// functions: port of `_pacman_qi_field`/`_qi_field` (outside a manager
+/// instance, so the family is fixed to Arch: elsewhere there is no pacman and
+/// the callback returns None).
 fn pacman_qi_field(
     package: &str,
     field: &str,
@@ -6475,21 +6534,21 @@ fn pacman_qi_field(
     qi_field(PkgFamily::Arch, package, field, qi_output)
 }
 
-/// Имена-кандидаты в стоковую замену форку, в порядке доверия.
+/// Candidate names for the stock replacement of a fork, in order of trust.
 ///
-/// ⭐ Порядок именно такой, и это главное место всей починки:
-///   1. `Provides` — что форк подменяет СЕЙЧАС. Сборка форка обязана держать
-///      это поле в актуальном виде, иначе её собственные обратные зависимости
-///      не разрешатся, — значит имя здесь живое по построению.
-///   2. `Replaces` — список ИСТОРИЧЕСКИХ имён: он копится годами и хранит
-///      мёртвые названия. Ровно на этом сломался откат: AeroShell тащит
-///      `replaces=(plasma-framework)` с времён Plasma 5, KDE давно
-///      переименовала пакет в `libplasma`, и `pacman -S plasma-framework`
-///      падал «не найдена цель».
-///   3. Запасная карта — только если метаданных не оказалось вовсе.
+/// ⭐ The order is exactly this, and it is the key point of the whole fix:
+///   1. `Provides`: what the fork replaces NOW. The fork build must keep this
+///      field up to date, otherwise its own reverse dependencies would not
+///      resolve, so the name here is live by construction.
+///   2. `Replaces`: a list of HISTORICAL names: it accumulates over the years
+///      and keeps dead names. This is exactly where the rollback broke:
+///      AeroShell carries `replaces=(plasma-framework)` from Plasma 5 times,
+///      KDE renamed the package to `libplasma` long ago, and
+///      `pacman -S plasma-framework` failed with "target not found".
+///   3. The fallback map, only if there was no metadata at all.
 ///
-/// Отсеиваются сам форк и любые имена его же семейства (`aeroshell-…`):
-/// стоком они быть не могут. Дубликаты убираются с сохранением порядка.
+/// The fork itself and any names of its own family (`aeroshell-…`) are
+/// filtered out: they cannot be stock. Duplicates are removed keeping order.
 pub fn fork_stock_candidates(
     fork: &str,
     qi_output: &dyn Fn(&str) -> Option<String>,
@@ -6516,27 +6575,28 @@ pub fn fork_stock_candidates(
     out
 }
 
-/// Чем закончился поиск стокового пакета под конкретный форк.
+/// How the search for a stock package for a specific fork ended.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum ForkStockTarget {
-    /// Автономный форк: стокового аналога нет, снимается прямым `-Rns`.
+    /// A standalone fork: there is no stock counterpart, it is removed by a direct `-Rns`.
     Standalone,
-    /// Сток найден И существует в подключённых репозиториях.
+    /// Stock found AND exists in the enabled repositories.
     Found { package: String },
-    /// Форк объявляет замену, но НИ ОДНОГО из имён репозитории не знают.
-    /// Откат по такому форку невозможен — вернуть будет нечего.
+    /// The fork declares a replacement, but the repositories know NONE of the
+    /// names. A rollback for such a fork is impossible: there would be nothing
+    /// to restore.
     Unresolved { candidates: Vec<String> },
 }
 
-/// Стоковый пакет, которым форк заменяется при откате.
+/// The stock package that replaces a fork on rollback.
 ///
-/// `target_exists(имя)` — существует ли такая цель в репозиториях:
-/// `Some(true)` есть, `Some(false)` нет, `None` — проверить НЕ УДАЛОСЬ
-/// (pacman недоступен, база не синхронизирована). Непроверяемого кандидата
-/// не бракуем: без pacman мы всё равно ничего не запустим, а на слепой
-/// отказ пользователь ругаться будет справедливо. Бракуем только тогда, когда
-/// pacman ответил внятно и ответ отрицательный по ВСЕМ именам.
+/// `target_exists(name)`: whether such a target is in the repositories:
+/// `Some(true)` it is, `Some(false)` it is not, `None` the check FAILED
+/// (pacman unavailable, the database not synced). An uncheckable candidate is
+/// not rejected: without pacman we would not run anything anyway, and the
+/// user would rightly complain about a blind refusal. We reject only when
+/// pacman answered clearly and the answer is negative for ALL names.
 pub fn fork_stock_target(
     fork: &str,
     qi_output: &dyn Fn(&str) -> Option<String>,
@@ -6564,29 +6624,28 @@ pub fn fork_stock_target(
     }
 }
 
-/// Форк, под который сток не нашёлся, — с именами, которые он предлагал.
+/// A fork for which no stock was found, with the names it offered.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UnresolvedFork {
     pub fork: String,
     pub candidates: Vec<String>,
 }
 
-/// Разбиение набора форков на шаги отката.
+/// Splitting a set of forks into rollback steps.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PlasmaForkSplit {
-    /// Автономные форки — прямое `pacman -Rns`.
+    /// Standalone forks: a direct `pacman -Rns`.
     pub removable: Vec<String>,
-    /// Стоковые пакеты под форки-провайдеры — `pacman -S` (провайдера нельзя
-    /// `-R`: его держат обратные зависимости, транзакция оборвётся).
+    /// Stock packages for provider forks: `pacman -S` (a provider cannot be
+    /// `-R`'d: reverse dependencies hold it, the transaction would abort).
     pub stock: Vec<String>,
-    /// Форки, для которых сток не нашёлся: откат по ним запрещён.
+    /// Forks for which no stock was found: rolling them back is forbidden.
     pub unresolved: Vec<UnresolvedFork>,
 }
 
-/// Порт `_plasma_fork_split`. Решение по КАЖДОМУ форку берётся из его
-/// метаданных pacman и проверяется по репозиториям, поэтому новый
-/// форк-провайдер (и следующее переименование в KDE) обрабатывается верно
-/// без правки кода.
+/// Port of `_plasma_fork_split`. The decision for EACH fork is taken from its
+/// pacman metadata and checked against the repositories, so a new provider
+/// fork (and the next KDE rename) is handled correctly without code changes.
 pub fn plasma_fork_split(
     forks: &[String],
     qi_output: &dyn Fn(&str) -> Option<String>,
@@ -6622,11 +6681,10 @@ pub fn plasma_fork_split(
     out
 }
 
-/// Порт `plasma_fork_recovery_command`: человекочитаемая команда полного
-/// отката (для показа в UI/CLI). None — форков нет либо действий нет.
-/// В команду попадают только существующие цели: показать пользователю
-/// `pacman -S` с несуществующим пакетом — это и есть тот мусор, который он
-/// увидел в диалоге.
+/// Port of `plasma_fork_recovery_command`: a human-readable full rollback
+/// command (for display in the UI/CLI). None: no forks or no actions. Only
+/// existing targets go into the command: showing the user a `pacman -S` with
+/// a nonexistent package is exactly the garbage they saw in the dialog.
 pub fn plasma_fork_recovery_command(
     forks: &[String],
     qi_output: &dyn Fn(&str) -> Option<String>,
@@ -6650,8 +6708,8 @@ pub fn plasma_fork_recovery_command(
     }
 }
 
-/// Объяснение отказа: почему откат не запускается и что делать человеку.
-/// Без единого слова из вывода pacman — пользователю оно ничего не говорит.
+/// Refusal explanation: why the rollback does not start and what the person
+/// should do. Without a single word from pacman's output: it tells the user nothing.
 pub fn plasma_fork_unresolved_message(unresolved: &[UnresolvedFork]) -> String {
     let mut s = format!(
         "{}\n\n",
@@ -6680,9 +6738,9 @@ pub fn plasma_fork_unresolved_message(unresolved: &[UnresolvedFork]) -> String {
     s
 }
 
-/// Объяснение поверх сырого вывода pacman, когда транзакция всё же упала.
-/// `remaining` — команда, которую осталось выполнить (пересчитанная ПОСЛЕ
-/// падения: часть шагов могла пройти).
+/// An explanation on top of pacman's raw output when the transaction did
+/// fail. `remaining` is the command left to run (recomputed AFTER the failure:
+/// some steps may have gone through).
 pub fn plasma_fork_failure_message(raw: &str, remaining: Option<&str>) -> String {
     let raw = raw.trim();
     let mut s = format!("{}\n\n", tr("pacman didn't finish the rollback."));
@@ -6702,28 +6760,28 @@ pub fn plasma_fork_failure_message(raw: &str, remaining: Option<&str>) -> String
     s
 }
 
-/// Решение `remove_plasma_forks` без исполнения. Все варианты, кроме `Run`,
-/// несут ГОТОВЫЙ ответ человеку (`ok` + `message`): исполнителю остаётся
-/// отдать его как есть, своих текстов и своего разбора «хорошо это или
-/// плохо» у него нет.
+/// The `remove_plasma_forks` decision without execution. All variants except
+/// `Run` carry a READY answer for the person (`ok` + `message`): the executor
+/// only has to pass it on as is, it has no texts of its own and no "is this
+/// good or bad" parsing of its own.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum PlasmaForkReset {
-    /// Форков нет вовсе — «уже так, как надо» (`ok = true`).
+    /// No forks at all: "already as it should be" (`ok = true`).
     NoForks { ok: bool, message: String },
-    /// Форки есть, но split не дал ни одного шага — тоже `ok = true`.
+    /// There are forks, but the split gave no steps: also `ok = true`.
     NoActions { ok: bool, message: String },
-    /// ⛔ Хотя бы под один форк сток не нашёлся — НЕ ЗАПУСКАЕМ НИЧЕГО.
-    /// `-Rns` необратим, а вернуть сток взамен нечем: именно так владелец и
-    /// остался с наполовину снятым оформлением. Отказ до pacman'а, целиком.
+    /// ⛔ No stock was found for at least one fork: WE RUN NOTHING. `-Rns` is
+    /// irreversible, and there is nothing to restore stock with: exactly how the
+    /// owner ended up with a half-removed look. A refusal before pacman, entirely.
     Blocked {
         ok: bool,
         unresolved: Vec<UnresolvedFork>,
         message: String,
     },
-    /// Один `pkexec sh -c` (один запрос пароля). `shell` — тело БЕЗ префикса
-    /// `set -e; ` (как в PlymouthReset/SddmReset), `removable`/`stock` — для
-    /// лога.
+    /// One `pkexec sh -c` (one password prompt). `shell` is the body WITHOUT the
+    /// `set -e; ` prefix (as in PlymouthReset/SddmReset), `removable`/`stock` are
+    /// for the log.
     Run {
         cmd: Cmd,
         shell: String,
@@ -6732,16 +6790,17 @@ pub enum PlasmaForkReset {
     },
 }
 
-/// Порт решающей части `remove_plasma_forks`. Восстановительную команду для
-/// сообщения об отказе pkexec оригинал считает ЛЕНИВО (повторный проход по
-/// pacman), поэтому здесь её нет — зови `plasma_fork_recovery_command`
-/// в ветке ошибки, как в оригинале.
+/// Port of the deciding part of `remove_plasma_forks`. The original computes
+/// the recovery command for the pkexec refusal message LAZILY (a second pass
+/// over pacman), so it is not here: call `plasma_fork_recovery_command` in
+/// the error branch, as in the original.
 ///
-/// Порядок шагов (`-Rns`, затем `-S`) менять НЕЛЬЗЯ: автономные форки
-/// (`aeroshell-workspace-git`, `aeroshell-kwin-components-git`) зависят от
-/// провайдера `aeroshell-libplasma`, и `pacman -S libplasma` первым шагом
-/// оборвался бы на «ломает зависимость». Поэтому единственная защита от
-/// «удалили, а вернуть нечем» — проверка целей ДО транзакции, ветка `Blocked`.
+/// The order of steps (`-Rns`, then `-S`) MUST NOT be changed: standalone
+/// forks (`aeroshell-workspace-git`, `aeroshell-kwin-components-git`) depend
+/// on the `aeroshell-libplasma` provider, and `pacman -S libplasma` as the
+/// first step would abort with "breaks dependency". So the only protection
+/// against "removed, and nothing to restore" is checking the targets BEFORE
+/// the transaction: the `Blocked` branch.
 pub fn plasma_fork_reset_plan(
     forks: &[String],
     qi_output: &dyn Fn(&str) -> Option<String>,
@@ -6783,7 +6842,7 @@ pub fn plasma_fork_reset_plan(
     }
     let shell = steps.join("; ");
     PlasmaForkReset::Run {
-        // set -e: если -Rns упал, сток поверх битого состояния не ставим.
+        // set -e: if -Rns failed, we do not install stock on top of a broken state.
         cmd: Cmd::new(
             vec![
                 "pkexec".into(),
@@ -6800,15 +6859,15 @@ pub fn plasma_fork_reset_plan(
     }
 }
 
-/// Память ответов пробы «есть ли цель в репозиториях» — порт
+/// Memory of "is the target in the repositories" probe answers: port of
 /// `_target_exists_probe`.
 ///
-/// Один и тот же стоковый пакет всплывает у нескольких форков (`libplasma`
-/// объявляют и `aeroshell-libplasma-git`, и запасная карта), а полный откат
-/// проходит по набору форков ДВАЖДЫ — планом и человекочитаемой командой.
-/// Без памяти `pacman -Si` дёргался бы на каждое повторение. Решение
-/// «спрашивать или взять из памяти» — здесь; сам поход наружу подаётся
-/// колбэком.
+/// The same stock package shows up for several forks (`libplasma` is
+/// declared both by `aeroshell-libplasma-git` and by the fallback map), and a
+/// full rollback goes over the set of forks TWICE: as the plan and as the
+/// human-readable command. Without memory `pacman -Si` would be called for
+/// every repeat. The "ask or take from memory" decision is here; the trip
+/// outside itself is passed as a callback.
 #[derive(Debug, Default, Clone)]
 pub struct TargetExistsMemo {
     seen: HashMap<String, Option<bool>>,
@@ -6819,9 +6878,9 @@ impl TargetExistsMemo {
         Self::default()
     }
 
-    /// Ответ по имени: спрашивает пробу ТОЛЬКО о том, чего ещё не спрашивал.
-    /// Запоминается и `None` («спросить не удалось») — переспрашивать нечего,
-    /// ответ не изменится, а лишний запуск pacman стоит секунд.
+    /// Answer by name: asks the probe ONLY about what it has not asked yet.
+    /// `None` ("could not ask") is remembered too: there is nothing to re-ask,
+    /// the answer will not change, and an extra pacman run costs seconds.
     pub fn answer(
         &mut self,
         package: &str,
@@ -6835,49 +6894,50 @@ impl TargetExistsMemo {
         answer
     }
 
-    /// Сколько РАЗНЫХ имён уже спрошено (для проверок числа запусков).
+    /// How many DIFFERENT names have been asked (for run count checks).
     pub fn asked(&self) -> usize {
         self.seen.len()
     }
 }
 
-/// Форков в системе нет — предпросмотру откатывать нечего.
+/// No forks in the system: the preview has nothing to roll back.
 pub fn plasma_fork_nothing_message() -> String {
     tr("No Plasma forks found — nothing to roll back.")
 }
-/// Форки есть, но команда отката не собралась.
+/// There are forks, but the rollback command did not come together.
 pub fn plasma_fork_no_command_message() -> String {
     tr("Couldn't build the rollback command.")
 }
-/// Идемпотентный ответ `remove_plasma_forks`, когда форков нет вовсе.
+/// Idempotent answer of `remove_plasma_forks` when there are no forks at all.
 pub fn plasma_fork_none_message() -> String {
     tr("No Plasma forks found")
 }
-/// Форки есть, но ни одного шага отката из них не вышло.
+/// There are forks, but not a single rollback step came out of them.
 pub fn plasma_fork_no_actions_message() -> String {
     tr("Nothing to do")
 }
-/// Чем подменяется пустой вывод удавшейся транзакции.
+/// What replaces the empty output of a successful transaction.
 pub fn plasma_fork_reset_done_message() -> String {
     tr("Forks removed, stock packages restored.")
 }
 
-/// Ответ операции над форками человеку: получилось ли и что сказать.
+/// The answer of a fork operation to the person: whether it worked and what to say.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PlasmaForkAnswer {
     pub ok: bool,
     pub message: String,
 }
 
-/// Порт `plasma_fork_reset_preview`: что будет сделано — БЕЗ транзакции.
+/// Port of `plasma_fork_reset_preview`: what will be done, WITHOUT a transaction.
 ///
-/// `(true, команда)` — откат возможен, и это ровно то, что выполнится;
-/// `(false, объяснение)` — откатывать нечем либо нечего, и человеку сказано
-/// почему по-русски, а не выводом pacman.
+/// `(true, command)`: a rollback is possible, and this is exactly what will
+/// run; `(false, explanation)`: there is nothing to roll back with or
+/// nothing to roll back, and the person is told why in plain language, not
+/// with pacman's output.
 ///
-/// Пробу существования цели оборачиваем [`TargetExistsMemo`]: план и
-/// человекочитаемая команда проходят по форкам дважды, и без памяти `pacman
-/// -Si` спрашивался бы по два раза на каждое имя.
+/// The target existence probe is wrapped in [`TargetExistsMemo`]: the plan
+/// and the human-readable command go over the forks twice, and without
+/// memory `pacman -Si` would be asked twice for each name.
 pub fn plasma_fork_preview(
     forks: &[String],
     qi_output: &dyn Fn(&str) -> Option<String>,
@@ -6907,22 +6967,25 @@ pub fn plasma_fork_preview(
     }
 }
 
-/// Порт разбирающей части `remove_plasma_forks`: чем закончился pkexec.
+/// Port of the parsing part of `remove_plasma_forks`: how pkexec ended.
 ///
-/// Внешнего здесь нет: Python отдаёт код возврата и оба потока, решение и
-/// текст — тут. `returncode` = `None`, когда pkexec не нашёлся вовсе.
+/// Nothing external here: Python passes the exit code and both streams, the
+/// decision and the text are here. `returncode` = `None` when pkexec was not
+/// found at all.
 ///
-/// Обе восстановительные команды считаются ЛЕНИВО и РАЗНЫЕ, как в оригинале:
-///   * `planned_command` — то, что собирались выполнить; нужна только при
-///     отказе авторизации, когда система не тронута;
-///   * `remaining_command` — пересчёт по ЖИВОМУ состоянию после падения:
-///     часть шагов могла пройти, и человеку нужен остаток, а не исходная
-///     команда.
+/// Both recovery commands are computed LAZILY and are DIFFERENT, as in the
+/// original:
+///   * `planned_command`: what we were going to run; needed only on an
+///     authorization refusal, when the system is untouched;
+///   * `remaining_command`: recomputed from the LIVE state after a failure:
+///     some steps may have gone through, and the person needs the remainder,
+///     not the original command.
 ///
-/// ⭐ Починка при переносе: оригинал подставлял в подсказку `str(None)` и
-/// показывал человеку «Выполни вручную в терминале: None», если команда
-/// отката не собралась. Здесь на её месте тело самой транзакции —
-/// `sudo <shell>`, ровно то же, что делает общий [`pkexec_failure_message`].
+/// ⭐ Fixed in the port: the original put `str(None)` into the hint and
+/// showed the person "Run by hand in a terminal: None" if the rollback
+/// command did not come together. Here its place is taken by the body of the
+/// transaction itself, `sudo <shell>`, exactly what the shared
+/// [`pkexec_failure_message`] does.
 pub fn plasma_fork_reset_outcome(
     shell: &str,
     returncode: Option<i32>,
@@ -6938,7 +7001,7 @@ pub fn plasma_fork_reset_outcome(
         };
     };
     if rc == 0 {
-        // Вывод pacman НЕ обрезается: оригинал отдаёт его как есть.
+        // pacman's output is NOT trimmed: the original passes it as is.
         return PlasmaForkAnswer {
             ok: true,
             message: if stdout.is_empty() {
@@ -6960,19 +7023,19 @@ pub fn plasma_fork_reset_outcome(
 }
 
 // ============================================================================
-// Каталоги: общий отбор записей
+// Directories: common selection of entries
 // ============================================================================
 
-/// Что берём из перечисления каталога и в каком порядке. Вход — сырой список
-/// `(имя, годится ли)`: перечисляет каталог и проверяет признак Python
-/// (`os.listdir`, `os.path.isdir`), а решение — здесь.
+/// What we take from a directory listing and in what order. The input is a
+/// raw list of `(name, is it fit)`: Python lists the directory and checks the
+/// attribute (`os.listdir`, `os.path.isdir`), and the decision is here.
 ///
-/// Порядок задаётся ЗДЕСЬ и только здесь: обход каталога в файловой системе
-/// произволен, а обеим сторонам нужен лексикографический — SDDM так мёрджит
-/// свои `*.conf` (поздние перекрывают ранние), а список тем Plymouth так
-/// показывается человеку. Признак «годится» у форматов разный (у SDDM —
-/// суффикс имени, у Plymouth — что это подкаталог), поэтому он подаётся
-/// готовым, а общими остаются отбор и порядок.
+/// The order is set HERE and only here: directory traversal in the file
+/// system is arbitrary, and both sides need a lexicographic one: SDDM merges
+/// its `*.conf` that way (later ones override earlier ones), and the list of
+/// Plymouth themes is shown to the person that way. The "fit" attribute
+/// differs per format (for SDDM a name suffix, for Plymouth that it is a
+/// subdirectory), so it is passed ready, and the selection and order stay common.
 pub fn dir_entries_selected(entries: &[(String, bool)]) -> Vec<String> {
     let mut out: Vec<String> = entries
         .iter()
@@ -6984,29 +7047,31 @@ pub fn dir_entries_selected(entries: &[(String, bool)]) -> Vec<String> {
 }
 
 // ============================================================================
-// Plymouth (загрузочная заставка) — детект, выбор дистро-дефолта, сброс
+// Plymouth (boot splash): detection, choosing the distro default, reset
 // ============================================================================
 //
-// Plymouth — СИСТЕМНЫЙ уровень (root, /etc + initramfs), сброс Plasma-темы его
-// не трогает. Сброс пересобирает initramfs → только из явного recovery-шага.
+// Plymouth is SYSTEM level (root, /etc + initramfs), a Plasma theme reset
+// does not touch it. A reset rebuilds the initramfs → only from an explicit
+// recovery step.
 
 pub const PLYMOUTH_THEMES_DIR: &str = "/usr/share/plymouth/themes";
 pub const PLYMOUTH_DEFAULTS: &str = "/usr/share/plymouth/plymouthd.defaults";
-/// Тема брендинга дистро → пакет-поставщик. Если пакет установлен — это «как
-/// на стоке дистро» и приоритетнее общего дефолта пакета plymouth (bgrt,
-/// который показывает BGRT-логотип ПРОШИВКИ).
+/// Distro branding theme → provider package. If the package is installed,
+/// that is "as on the distro stock" and takes priority over the general
+/// default of the plymouth package (bgrt, which shows the FIRMWARE BGRT logo).
 pub const PLYMOUTH_DISTRO_BRANDING: &[(&str, &str)] =
     &[("cachyos-bootanimation", "cachyos-plymouth-bootanimation")];
-/// Запасные кандидаты, если ни брендинг, ни дефолт пакета не подошли.
+/// Fallback candidates if neither the branding nor the package default fits.
 pub const PLYMOUTH_FALLBACK_CANDIDATES: &[&str] = &["bgrt", "spinner"];
 
-/// Порт `_plymouth_theme_from_default_link`: имя темы из цели симлинка
-/// `default.plymouth` (путь для дистро без бинаря plymouth-set-default-theme,
-/// напр. Ubuntu). `realpath_existing` — realpath ссылки, если такой путь
-/// существует (None = ссылки нет / цель битая / OSError).
+/// Port of `_plymouth_theme_from_default_link`: the theme name from the
+/// `default.plymouth` symlink target (the path for distros without the
+/// plymouth-set-default-theme binary, e.g. Ubuntu). `realpath_existing` is
+/// the link's realpath if such a path exists (None = no link / broken target
+/// / OSError).
 pub fn plymouth_theme_from_link(realpath_existing: Option<&str>) -> Option<String> {
     let target = realpath_existing?;
-    // basename(dirname(target)) — каталог темы.
+    // basename(dirname(target)): the theme directory.
     let dir = target.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
     let name = dir.rsplit('/').next().unwrap_or("");
     if name.is_empty() {
@@ -7016,19 +7081,21 @@ pub fn plymouth_theme_from_link(realpath_existing: Option<&str>) -> Option<Strin
     }
 }
 
-/// Путь к описанию темы — `<каталог тем>/<тема>/<тема>.plymouth`. Именно этот
-/// файл делает подкаталог темой: без него `plymouth-set-default-theme` тему не
-/// видит и `update-alternatives` ссылаться не на что. Одна склейка на весь
-/// модуль: раньше та же строка стояла тремя копиями.
+/// Path to the theme description: `<themes dir>/<theme>/<theme>.plymouth`.
+/// Exactly this file makes a subdirectory a theme: without it
+/// `plymouth-set-default-theme` does not see the theme and
+/// `update-alternatives` has nothing to point to. One join for the whole
+/// module: the same string used to exist in three copies.
 pub fn plymouth_theme_file(theme: &str) -> String {
     plymouth_theme_file_in(PLYMOUTH_THEMES_DIR, theme)
 }
 
-/// То же в ЗАДАННОМ каталоге тем. Каталог подаётся аргументом, чтобы
-/// предпросмотр и тесты не уходили в живой `/usr/share/plymouth/themes`:
-/// у `list_plymouth_themes` каталог свой (`_PLYMOUTH_THEMES_DIR`), и проба
-/// файла обязана идти в ТОТ ЖЕ каталог, который перечислили. На боевом пути
-/// (`themes_dir` = [`PLYMOUTH_THEMES_DIR`]) ответ прежний.
+/// The same in a GIVEN themes directory. The directory is passed as an
+/// argument so that the preview and tests do not go to the live
+/// `/usr/share/plymouth/themes`: `list_plymouth_themes` has its own directory
+/// (`_PLYMOUTH_THEMES_DIR`), and the file probe must go to THE SAME directory
+/// that was listed. On the production path (`themes_dir` =
+/// [`PLYMOUTH_THEMES_DIR`]) the answer is the same as before.
 pub fn plymouth_theme_file_in(themes_dir: &str, theme: &str) -> String {
     let dir = themes_dir.trim_end_matches('/');
     if dir.is_empty() {
@@ -7037,35 +7104,36 @@ pub fn plymouth_theme_file_in(themes_dir: &str, theme: &str) -> String {
     format!("{dir}/{theme}/{theme}.plymouth")
 }
 
-/// Первая половина `list_plymouth_themes`: какие записи каталога тем вообще
-/// стоит проверять. Вход — сырое перечисление парами `(имя, это каталог?)`.
+/// The first half of `list_plymouth_themes`: which entries of the themes
+/// directory are worth checking at all. The input is the raw listing as
+/// `(name, is it a directory?)` pairs.
 pub fn plymouth_theme_candidates(entries: &[(String, bool)]) -> Vec<String> {
     dir_entries_selected(entries)
 }
 
-/// Вторая половина `list_plymouth_themes`: установленные темы из проб
-/// `(имя, есть ли <тема>.plymouth)`.
+/// The second half of `list_plymouth_themes`: installed themes from the
+/// probes `(name, whether <theme>.plymouth exists)`.
 ///
-/// ⚠️ Починка при порте. Оригинал отдавал ВСЕ подкаталоги
-/// `/usr/share/plymouth/themes` и уверял в комментарии, что это «тот же
-/// результат», что и `plymouth-set-default-theme --list`. Это неправда: сам
-/// plymouth перечисляет только каталоги с `<тема>.plymouth` внутри. Пустой
-/// каталог остаётся после удаления пакета темы (в нём лежит чужой файл или
-/// просто ничего), и такая «тема» проходила в
-/// [`target_plymouth_theme`] как установленная: если её звали `bgrt` или
-/// `spinner`, Rexon объявлял её родным дефолтом дистрибутива и сбрасывал
-/// заставку на несуществующее — `plymouth-set-default-theme bgrt -R`
-/// перебирал initramfs впустую. Тот же модуль на пути alternatives файл темы
-/// проверял ([`PlymouthReset::MissingThemeFile`]) — проверка была, но только
-/// в одной ветке из двух. Теперь список честен для обеих.
+/// ⚠️ Fixed in the port. The original returned ALL subdirectories of
+/// `/usr/share/plymouth/themes` and claimed in a comment that this was "the
+/// same result" as `plymouth-set-default-theme --list`. That is not true:
+/// plymouth itself lists only directories with `<theme>.plymouth` inside. An
+/// empty directory remains after the theme package is removed (with someone
+/// else's file in it or just nothing), and such a "theme" passed into
+/// [`target_plymouth_theme`] as installed: if it was called `bgrt` or
+/// `spinner`, Rexon declared it the distribution's native default and reset
+/// the splash to something nonexistent: `plymouth-set-default-theme bgrt -R`
+/// rebuilt the initramfs for nothing. The same module did check the theme
+/// file on the alternatives path ([`PlymouthReset::MissingThemeFile`]): the
+/// check existed, but only in one branch of two. Now the list is honest for both.
 pub fn plymouth_installed_themes(probes: &[(String, bool)]) -> Vec<String> {
     dir_entries_selected(probes)
 }
 
-/// Порт разбора вывода `plymouth-set-default-theme` без аргументов: он
-/// печатает имя текущей темы. `None` в ответе — имени нет (бинарь не
-/// запустился, упал или промолчал), вызывающий идёт к `default.plymouth`.
-/// `returncode` = `None`, когда `safe_run` вернул None.
+/// Port of parsing the output of `plymouth-set-default-theme` without
+/// arguments: it prints the current theme name. `None` in the answer: no name
+/// (the binary did not start, crashed or stayed silent), the caller goes to
+/// `default.plymouth`. `returncode` = `None` when `safe_run` returned None.
 pub fn plymouth_theme_from_output(returncode: Option<i32>, stdout: &str) -> Option<String> {
     if returncode != Some(0) {
         return None;
@@ -7078,26 +7146,27 @@ pub fn plymouth_theme_from_output(returncode: Option<i32>, stdout: &str) -> Opti
     }
 }
 
-/// Порт `_plymouth_package_default`: строка `Theme=` из plymouthd.defaults
-/// (None — файла нет либо значение пустое).
+/// Port of `_plymouth_package_default`: the `Theme=` line from
+/// plymouthd.defaults (None: no file or an empty value).
 pub fn plymouth_package_default(defaults_text: Option<&str>) -> Option<String> {
     let text = defaults_text?;
     for line in text.lines() {
         let line = line.trim();
         let bytes = line.as_bytes();
         if bytes.len() >= 6 && bytes[..6].eq_ignore_ascii_case(b"theme=") {
-            // Первые 6 байт — ASCII, срез по границе символа безопасен.
+            // The first 6 bytes are ASCII, slicing at a character boundary is safe.
             let v = line[6..].trim();
-            // Оригинал возвращает с ПЕРВОЙ подходящей строки, даже пустую.
+            // The original returns from the FIRST matching line, even an empty one.
             return if v.is_empty() { None } else { Some(v.to_string()) };
         }
     }
     None
 }
 
-/// Порт `target_plymouth_theme`: родной дефолт дистрибутива, без хардкода
-/// «только cachyos». `pkg_installed` и `package_default` вызываются ЛЕНИВО
-/// в порядке оригинала (брендинг → plymouthd.defaults → запасные).
+/// Port of `target_plymouth_theme`: the distribution's native default,
+/// without hardcoding "cachyos only". `pkg_installed` and `package_default`
+/// are called LAZILY in the original's order (branding → plymouthd.defaults →
+/// fallbacks).
 pub fn target_plymouth_theme(
     installed_themes: &[String],
     pkg_installed: &dyn Fn(&str) -> bool,
@@ -7125,9 +7194,9 @@ pub fn target_plymouth_theme(
     None
 }
 
-/// Порт `plymouth_reset_command`: человекочитаемая команда сброса (для показа).
-/// Способ — по факту наличия инструмента, а не по семейству (на Ubuntu бинаря
-/// нет вовсе, тему переключают только alternatives).
+/// Port of `plymouth_reset_command`: a human-readable reset command (for
+/// display). The method is chosen by the presence of the tool, not by family
+/// (Ubuntu has no binary at all, the theme is switched only by alternatives).
 pub fn plymouth_reset_command(target: &str, has_set_default_theme: bool) -> Option<String> {
     if target.is_empty() {
         return None;
@@ -7145,28 +7214,28 @@ pub fn plymouth_reset_command(target: &str, has_set_default_theme: bool) -> Opti
     ))
 }
 
-/// Решение `reset_plymouth_to_default` без исполнения.
+/// The `reset_plymouth_to_default` decision without execution.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum PlymouthReset {
-    /// `(False, "Не удалось определить родной дефолт Plymouth")`.
+    /// `(False, <"Could not determine the native Plymouth default">)`.
     NoTarget,
-    /// Идемпотентность: текущая тема уже целевая.
+    /// Idempotence: the current theme is already the target.
     AlreadyDefault { target: String },
-    /// Путь alternatives, но в теме нет `<тема>.plymouth`.
+    /// The alternatives path, but the theme has no `<theme>.plymouth`.
     MissingThemeFile { target: String, path: String },
-    /// Нечем переключить: ни plymouth-set-default-theme, ни
+    /// Nothing to switch with: neither plymouth-set-default-theme nor
     /// update-alternatives.
     NoTool,
-    /// Один `pkexec sh -c "set -e; …"`; `shell` — тело для текста ошибки.
+    /// One `pkexec sh -c "set -e; …"`; `shell` is the body for the error text.
     Run { cmd: Cmd, shell: String, target: String },
 }
 
-/// Порт решающей части `reset_plymouth_to_default`.
+/// Port of the deciding part of `reset_plymouth_to_default`.
 ///
-/// `current` оригинал читает ТОЛЬКО после того, как цель определена, — шим
-/// обязан сохранить эту ленивость (`None`, пока цели нет).
-/// `theme_file_exists(path)` — `os.path.isfile` для пути alternatives.
+/// The original reads `current` ONLY after the target is determined: the
+/// shim must keep this laziness (`None` while there is no target).
+/// `theme_file_exists(path)` is `os.path.isfile` for the alternatives path.
 pub fn plymouth_reset_plan(
     target: Option<&str>,
     current: Option<&str>,
@@ -7214,32 +7283,32 @@ pub fn plymouth_reset_plan(
     }
 }
 
-/// Не удалось определить родной дефолт дистрибутива — сбрасывать некуда.
+/// Could not determine the distribution's native default: nothing to reset to.
 pub fn plymouth_no_target_message() -> String {
     tr("Couldn't determine the distribution's default Plymouth theme")
 }
-/// Ни `plymouth-set-default-theme`, ни `update-alternatives` в системе нет.
+/// Neither `plymouth-set-default-theme` nor `update-alternatives` is in the system.
 pub fn plymouth_no_tool_message() -> String {
     tr("Nothing to switch the boot splash with: neither \
         plymouth-set-default-theme nor update-alternatives was found")
 }
-/// Текст, которым подменяется пустой вывод упавшего pkexec.
+/// Text that replaces the empty output of a failed pkexec.
 pub fn plymouth_reset_failed_message() -> String {
     tr("Couldn't reset Plymouth")
 }
 
-/// Идемпотентный ответ: тема уже та, к которой сбрасывают.
+/// Idempotent answer: the theme is already the one being reset to.
 pub fn plymouth_already_default_message(target: &str) -> String {
     trf("Plymouth is already on the default theme “%1”", &[&target])
 }
 
-/// Путь alternatives, а описания темы в каталоге нет.
+/// The alternatives path, but the theme description is not in the directory.
 pub fn plymouth_missing_theme_file_message(target: &str) -> String {
     // TRANSLATORS: %1 is a theme name; “%1.plymouth” is its file name.
     trf("The “%1” theme has no %1.plymouth file", &[&target])
 }
 
-/// Успех: initramfs пересобран, увидится после перезагрузки.
+/// Success: the initramfs was rebuilt, it will be visible after a reboot.
 pub fn plymouth_reset_success_message(target: &str) -> String {
     trf(
         "Plymouth reset to “%1” (initramfs rebuilt; takes effect after a restart).",
@@ -7247,16 +7316,17 @@ pub fn plymouth_reset_success_message(target: &str) -> String {
     )
 }
 
-/// Итог `reset_plymouth_to_default` — `(ok, сообщение)`.
+/// Result of `reset_plymouth_to_default`: `(ok, message)`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PlymouthResetOutcome {
     pub ok: bool,
     pub message: String,
 }
 
-/// Ответ, который вызывающий получает БЕЗ запуска pkexec. `None` только у
-/// [`PlymouthReset::Run`]: там ответ даёт [`plymouth_reset_outcome`] по коду
-/// возврата. Раньше эти четыре текста жили строками в Python.
+/// The answer the caller gets WITHOUT running pkexec. `None` only for
+/// [`PlymouthReset::Run`]: there the answer comes from
+/// [`plymouth_reset_outcome`] by the exit code. These four texts used to
+/// live as strings in Python.
 pub fn plymouth_reset_precheck(plan: &PlymouthReset) -> Option<PlymouthResetOutcome> {
     let (ok, message) = match plan {
         PlymouthReset::NoTarget => (false, plymouth_no_target_message()),
@@ -7272,19 +7342,19 @@ pub fn plymouth_reset_precheck(plan: &PlymouthReset) -> Option<PlymouthResetOutc
     Some(PlymouthResetOutcome { ok, message })
 }
 
-/// План сброса вместе с готовым ответом для исходов, где идти наружу не за
-/// чем. Python на этом не решает ничего: либо отдаёт `(ok, message)`, либо
-/// запускает `cmd` и зовёт [`plymouth_reset_outcome`].
+/// The reset plan together with a ready answer for outcomes where there is
+/// no reason to go outside. Python decides nothing here: it either returns
+/// `(ok, message)` or runs `cmd` and calls [`plymouth_reset_outcome`].
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PlymouthResetDecision {
     #[serde(flatten)]
     pub plan: PlymouthReset,
-    /// `None` = решение требует запуска (`kind` = `Run`).
+    /// `None` = the decision requires a run (`kind` = `Run`).
     pub ok: Option<bool>,
     pub message: Option<String>,
 }
 
-/// [`plymouth_reset_plan`] вместе с текстом ответа — то, что уезжает в мост.
+/// [`plymouth_reset_plan`] together with the answer text: what goes into the bridge.
 pub fn plymouth_reset_decision(
     target: Option<&str>,
     current: Option<&str>,
@@ -7307,12 +7377,13 @@ pub fn plymouth_reset_decision(
     }
 }
 
-/// Разбор результата pkexec для `reset_plymouth_to_default`. Внешнего здесь
-/// нет: Python отдаёт код возврата и оба потока, решение и текст — тут.
+/// Parsing the pkexec result for `reset_plymouth_to_default`. Nothing
+/// external here: Python passes the exit code and both streams, the decision
+/// and the text are here.
 ///
-/// `returncode` = `None`, когда pkexec не нашёлся (`safe_run` вернул `None`).
-/// `shell` — тело команды из [`PlymouthReset::Run`], оно же идёт в подсказку
-/// «выполни вручную».
+/// `returncode` = `None` when pkexec was not found (`safe_run` returned
+/// `None`). `shell` is the command body from [`PlymouthReset::Run`], it also
+/// goes into the "run it by hand" hint.
 pub fn plymouth_reset_outcome(
     target: &str,
     shell: &str,
@@ -7345,22 +7416,24 @@ pub fn plymouth_reset_outcome(
 }
 
 // ============================================================================
-// SDDM (экран входа) — detect-driven сброс к СТОКУ ДИСТРИБУТИВА
+// SDDM (login screen): detect-driven reset to the DISTRIBUTION STOCK
 // ============================================================================
 //
-// Rexon никогда не пишет в чужие файлы SDDM: свою тему он кладёт в собственный
-// оверрайд /etc/sddm.conf.d/zz-rexon-theme.conf. SDDM мёрджит
-// /etc/sddm.conf.d/*.conf поверх дистро-дефолтов /usr/lib/sddm/sddm.conf.d/,
-// поэтому «вернуть как из коробки» = просто УДАЛИТЬ наш оверрайд и файлы-следы
-// форков — без хардкода темы и без перезаписи kde_settings.conf.
+// Rexon never writes into other people's SDDM files: it puts its theme into
+// its own override /etc/sddm.conf.d/zz-rexon-theme.conf. SDDM merges
+// /etc/sddm.conf.d/*.conf on top of the distro defaults in
+// /usr/lib/sddm/sddm.conf.d/, so "back to out of the box" = simply DELETE
+// our override and the fork trace files: without hardcoding a theme and
+// without overwriting kde_settings.conf.
 
 pub const SDDM_CONF_D: &str = "/etc/sddm.conf.d";
 pub const SDDM_DISTRO_CONF_D: &str = "/usr/lib/sddm/sddm.conf.d";
-/// Оверрайды, которые создаёт сам Rexon (всегда безопасно удалить).
+/// Overrides created by Rexon itself (always safe to delete).
 pub const SDDM_REXON_FILES: &[&str] = &["zz-rexon-theme.conf"];
-/// Токены форк-тем в имени файла ИЛИ содержимом оверрайда. Оригинальный
-/// `_SDDM_FORK_RE` — альтернация литералов с `re.I`, что эквивалентно поиску
-/// подстроки без учёта регистра (свой regex-движок в ядро не тянем).
+/// Fork theme tokens in the file name OR the override contents. The original
+/// `_SDDM_FORK_RE` is an alternation of literals with `re.I`, which is
+/// equivalent to a case-insensitive substring search (we do not pull our own
+/// regex engine into the core).
 pub const SDDM_FORK_TOKENS: &[&str] = &[
     "wackyideas", "sevenstart", "aeroshell", "aerothemeplasma", "se7enaero", "win7os",
 ];
@@ -7370,10 +7443,10 @@ fn has_sddm_fork_token(s: &str) -> bool {
     SDDM_FORK_TOKENS.iter().any(|t| low.contains(t))
 }
 
-/// Порт `_sddm_files_to_remove`. Вход: (basename, содержимое). Удаляем свои
-/// оверрайды по имени + файлы-следы форков (токен в ИМЕНИ или СОДЕРЖИМОМ);
-/// kde_settings.conf (файл KDE/дистро) и прочие пользовательские конфиги не
-/// трогаем.
+/// Port of `_sddm_files_to_remove`. Input: (basename, contents). We delete
+/// our own overrides by name + fork trace files (a token in the NAME or the
+/// CONTENTS); kde_settings.conf (the KDE/distro file) and other user configs
+/// are not touched.
 pub fn sddm_files_to_remove(entries: &[(String, String)]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for (name, content) in entries {
@@ -7391,9 +7464,9 @@ pub fn sddm_files_to_remove(entries: &[(String, String)]) -> Vec<String> {
     out
 }
 
-/// `[Theme] Current` из текста конфига. Порт `configparser(strict=False)`:
-/// имена секций регистрозависимы, ключи — нет; при дубликатах ключа
-/// побеждает последний.
+/// `[Theme] Current` from a config text. Port of `configparser(strict=False)`:
+/// section names are case-sensitive, keys are not; with duplicate keys the
+/// last one wins.
 fn ini_theme_current(text: &str) -> Option<String> {
     let mut in_section = false;
     let mut found: Option<String> = None;
@@ -7419,9 +7492,10 @@ fn ini_theme_current(text: &str) -> Option<String> {
     found
 }
 
-/// Тема SDDM по набору конфигов — общее ядро `_sddm_read_current_theme`.
-/// Вход должен быть отсортирован по имени: SDDM мёрджит лексикографически,
-/// поздние файлы перекрывают. Пустое значение НЕ сбрасывает найденное ранее.
+/// SDDM theme from a set of configs: the common core of
+/// `_sddm_read_current_theme`. The input must be sorted by name: SDDM merges
+/// lexicographically, later files override. An empty value does NOT reset
+/// what was found earlier.
 pub fn sddm_current_theme_from(entries: &[(String, String)]) -> Option<String> {
     let mut result: Option<String> = None;
     for (name, content) in entries {
@@ -7437,9 +7511,10 @@ pub fn sddm_current_theme_from(entries: &[(String, String)]) -> Option<String> {
     result
 }
 
-/// Порт `sddm_distro_default_theme`: дистро-дефолты пакета sddm, поверх них —
-/// `/etc/sddm.conf.d/kde_settings.conf` (его ставит KDE/дистро, это «как из
-/// коробки», НЕ Rexon). None — определить не удалось.
+/// Port of `sddm_distro_default_theme`: the sddm package's distro defaults,
+/// with `/etc/sddm.conf.d/kde_settings.conf` on top (it is installed by
+/// KDE/the distro, it is "out of the box", NOT Rexon). None: could not be
+/// determined.
 pub fn sddm_distro_default_theme(
     distro_entries: &[(String, String)],
     kde_settings: Option<&str>,
@@ -7455,15 +7530,15 @@ pub fn sddm_distro_default_theme(
     result
 }
 
-/// Порт `sddm_reset_plan`: что удалим и какая тема станет дефолтом.
+/// Port of `sddm_reset_plan`: what we delete and which theme becomes the default.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SddmResetPlan {
     pub to_remove: Vec<String>,
     pub default_theme: Option<String>,
 }
 
-/// `conf_entries` — (имя, содержимое) файлов /etc/sddm.conf.d в порядке
-/// сортировки; фильтр `.conf` применяется здесь (как в оригинале).
+/// `conf_entries` is (name, contents) of the /etc/sddm.conf.d files in sort
+/// order; the `.conf` filter is applied here (as in the original).
 pub fn sddm_reset_plan(
     conf_entries: &[(String, String)],
     distro_entries: &[(String, String)],
@@ -7480,13 +7555,13 @@ pub fn sddm_reset_plan(
     }
 }
 
-/// Решение `reset_sddm_to_default` без исполнения.
+/// The `reset_sddm_to_default` decision without execution.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum SddmReset {
-    /// Идемпотентный no-op — `(True, "…уже на стоковом конфиге", [])`.
+    /// Idempotent no-op: `(True, <"…already on the stock config">, [])`.
     AlreadyStock,
-    /// Один `pkexec sh -c "set -e; rm -f …"`; `shell` — тело для текста ошибки.
+    /// One `pkexec sh -c "set -e; rm -f …"`; `shell` is the body for the error text.
     Run {
         cmd: Cmd,
         shell: String,
@@ -7495,8 +7570,8 @@ pub enum SddmReset {
     },
 }
 
-/// Порт решающей части `reset_sddm_to_default`. `conf_d` — каталог, к которому
-/// приклеиваются basename'ы из плана (по умолчанию [`SDDM_CONF_D`]).
+/// Port of the deciding part of `reset_sddm_to_default`. `conf_d` is the
+/// directory the plan's basenames are joined to (by default [`SDDM_CONF_D`]).
 pub fn sddm_reset_command(plan: &SddmResetPlan, conf_d: &str) -> SddmReset {
     if plan.to_remove.is_empty() {
         return SddmReset::AlreadyStock;
@@ -7525,7 +7600,7 @@ pub fn sddm_reset_command(plan: &SddmResetPlan, conf_d: &str) -> SddmReset {
     }
 }
 
-/// Текст успеха `reset_sddm_to_default` (сверяется текст-в-текст с Python).
+/// Success text of `reset_sddm_to_default` (compared text for text with Python).
 pub fn sddm_reset_success_message(removed: &[String], default_theme: Option<&str>) -> String {
     let tail = match default_theme {
         Some(t) if !t.is_empty() => trf(
@@ -7540,21 +7615,22 @@ pub fn sddm_reset_success_message(removed: &[String], default_theme: Option<&str
     )
 }
 
-/// Имя файла KDE/дистро внутри `/etc/sddm.conf.d`. Его кладёт установка KDE —
-/// это «как из коробки», НЕ Rexon: он читается отдельно от общего скана и
-/// никогда не попадает в список удаления.
+/// Name of the KDE/distro file inside `/etc/sddm.conf.d`. It is put there by
+/// the KDE install: it is "out of the box", NOT Rexon: it is read separately
+/// from the common scan and never gets into the removal list.
 pub const SDDM_KDE_SETTINGS_FILE: &str = "kde_settings.conf";
 
-/// Путь к `kde_settings.conf` внутри заданного каталога — порт склейки
-/// `os.path.join` из `_sddm_kde_settings_text`.
+/// Path to `kde_settings.conf` inside the given directory: port of the
+/// `os.path.join` from `_sddm_kde_settings_text`.
 ///
-/// ⚠️ Починка при порте: оригинал склеивал путь с ЖЁСТКО зашитым
-/// `_SDDM_CONF_D` и не смотрел на аргумент `conf_d`, который принимают
-/// `sddm_reset_plan` и `_sddm_read_current_theme`. Из-за этого предпросмотр
-/// или тест на подставленном каталоге всё равно читал настоящий
-/// `/etc/sddm.conf.d/kde_settings.conf` живой машины и мог объявить
-/// дистро-дефолтом тему, которой в этом каталоге нет. Теперь каталог задаётся
-/// аргументом; на боевом пути (`conf_d` = [`SDDM_CONF_D`]) ответ прежний.
+/// ⚠️ Fixed in the port: the original joined the path with a HARDCODED
+/// `_SDDM_CONF_D` and ignored the `conf_d` argument that `sddm_reset_plan`
+/// and `_sddm_read_current_theme` accept. Because of this a preview or a
+/// test on a substituted directory still read the live machine's real
+/// `/etc/sddm.conf.d/kde_settings.conf` and could declare as the distro
+/// default a theme that is not in that directory. Now the directory is set
+/// by the argument; on the production path (`conf_d` = [`SDDM_CONF_D`]) the
+/// answer is the same as before.
 pub fn sddm_kde_settings_path(conf_d: &str) -> String {
     let dir = conf_d.trim_end_matches('/');
     if dir.is_empty() {
@@ -7563,14 +7639,14 @@ pub fn sddm_kde_settings_path(conf_d: &str) -> String {
     format!("{dir}/{SDDM_KDE_SETTINGS_FILE}")
 }
 
-/// Какие файлы каталога SDDM читать и в каком порядке — чистая часть
-/// `_sddm_conf_entries`. Вход — сырое перечисление каталога.
+/// Which files of the SDDM directory to read and in what order: the pure
+/// part of `_sddm_conf_entries`. The input is the raw directory listing.
 ///
-/// Порядок обязателен: SDDM мёрджит `*.conf` лексикографически, поздние
-/// перекрывают ранние. Всё, что не `*.conf`, каталогом настроек не считается.
-/// Оригинал считал то же самое верно (`sorted(os.listdir(...))`) — правило
-/// переехало сюда не как починка, а чтобы жить в одном месте с разбором,
-/// который от этого порядка зависит.
+/// The order is mandatory: SDDM merges `*.conf` lexicographically, later
+/// ones override earlier ones. Anything that is not `*.conf` does not count
+/// as a settings directory entry. The original computed the same correctly
+/// (`sorted(os.listdir(...))`): the rule moved here not as a fix, but to
+/// live in one place with the parsing that depends on this order.
 pub fn sddm_conf_read_order(names: &[String]) -> Vec<String> {
     let entries: Vec<(String, bool)> = names
         .iter()
@@ -7579,10 +7655,10 @@ pub fn sddm_conf_read_order(names: &[String]) -> Vec<String> {
     dir_entries_selected(&entries)
 }
 
-/// Сборка пар (имя, содержимое) из результатов чтения — вторая чистая часть
-/// `_sddm_conf_entries`. `None` = файл не прочитался: он всё равно остаётся в
-/// списке с ПУСТЫМ содержимым, потому что может опознаться по одному ИМЕНИ
-/// (токен форка), как в оригинале.
+/// Assembling (name, contents) pairs from the read results: the second pure
+/// part of `_sddm_conf_entries`. `None` = the file could not be read: it
+/// still stays in the list with EMPTY contents, because it can be recognised
+/// by its NAME alone (a fork token), as in the original.
 pub fn sddm_conf_entries(reads: &[(String, Option<String>)]) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = reads
         .iter()
@@ -7594,46 +7670,46 @@ pub fn sddm_conf_entries(reads: &[(String, Option<String>)]) -> Vec<(String, Str
 }
 
 // ============================================================================
-// Сеанс по умолчанию у экрана входа: X11-сеанс → его пара на Wayland
+// The login screen's default session: an X11 session → its Wayland pair
 // ============================================================================
 //
-// Защита от дурака: экран входа сам открывает (автовход) или предлагает
-// первым сеанс X11, который уходит из системы (Plasma (X11) при Plasma 6.8),
-// — человек застревает на входе. Rexon переводит ТОЛЬКО ключи сеанса на
-// пару из таблицы; автовход не включает и не выключает, прочие ключи и
-// строки файлов не трогает. Новая пара — новая запись таблицы.
+// Foolproof guard: the login screen opens by itself (autologin) or offers
+// first an X11 session that is leaving the system (Plasma (X11) with Plasma
+// 6.8): the person gets stuck at login. Rexon moves ONLY the session keys
+// to the pair from the table; it neither enables nor disables autologin,
+// and does not touch other keys and lines of the files. A new pair is a new
+// table entry.
 //
-// Где экраны входа держат сеанс (по их исходникам и man-страницам):
-// * SDDM — `[Autologin] Session=` (sddm.conf(5): файлы
-//   `/usr/lib/sddm/sddm.conf.d/*.conf`, затем `/etc/sddm.conf.d/*.conf` по
-//   имени, последним `/etc/sddm.conf`; поздний перекрывает) и последний
-//   выбранный `[Last] Session=` в `state.conf` домашнего каталога
-//   пользователя sddm — полный путь файла сеанса; его приветствие
-//   предлагает первым, а пустой `[Autologin] Session=` при автовходе
-//   берёт его же.
-// * Plasma Login Manager — `[Autologin] Session=` (демон) и
-//   `[Greeter] PreselectedSession=` (приветствие; перекрывает последний
-//   выбранный). Главный файл `/etc/plasmalogin.conf` (его целиком пишет
-//   модуль «Параметров системы») перекрывает каталоги
-//   `/usr/lib/plasmalogin/plasmalogin.conf.d`, затем `/etc/plasmalogin.conf.d`.
-//   Последний выбранный сеанс приветствие хранит у себя (файл состояния
-//   пользователя plasmalogin, по человеку) — его Rexon не пишет: туда даже
-//   модуль настроек ходит, сбросив права до этого пользователя, а сеанс
-//   там сменится сам при первом входе в Wayland.
+// Where login screens keep the session (from their sources and man pages):
+// * SDDM: `[Autologin] Session=` (sddm.conf(5): the files
+//   `/usr/lib/sddm/sddm.conf.d/*.conf`, then `/etc/sddm.conf.d/*.conf` by
+//   name, `/etc/sddm.conf` last; a later one overrides) and the last chosen
+//   `[Last] Session=` in `state.conf` in the sddm user's home directory, the
+//   full path of the session file; its greeter offers it first, and an empty
+//   `[Autologin] Session=` with autologin takes the same one.
+// * Plasma Login Manager: `[Autologin] Session=` (the daemon) and
+//   `[Greeter] PreselectedSession=` (the greeter; overrides the last chosen
+//   one). The main file `/etc/plasmalogin.conf` (written in full by the
+//   «System Settings» module) overrides the directories
+//   `/usr/lib/plasmalogin/plasmalogin.conf.d`, then `/etc/plasmalogin.conf.d`.
+//   The greeter keeps the last chosen session itself (the plasmalogin
+//   user's state file, per person): Rexon does not write it: even the
+//   settings module goes there after dropping privileges to that user, and
+//   the session there changes by itself at the first Wayland login.
 
-/// X11-сеанс, у которого есть пара на Wayland.
+/// An X11 session that has a Wayland pair.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SessionSuccessor {
-    /// Имя файла X11-сеанса без `.desktop` (`/usr/share/xsessions/<имя>`).
+    /// X11 session file name without `.desktop` (`/usr/share/xsessions/<name>`).
     pub x11: &'static str,
-    /// Имя файла пары в [`WAYLAND_SESSIONS_DIR`] без `.desktop`.
+    /// Pair file name in [`WAYLAND_SESSIONS_DIR`] without `.desktop`.
     pub wayland: &'static str,
-    /// Имена для человека — как в списке экрана входа (не переводятся).
+    /// Names for the person, as in the login screen list (not translated).
     pub x11_name: &'static str,
     pub wayland_name: &'static str,
 }
 
-/// X11-сеансы, которые уходят из систем, и их пары на Wayland.
+/// X11 sessions that are leaving systems, and their Wayland pairs.
 pub const X11_SESSION_SUCCESSORS: &[SessionSuccessor] = &[SessionSuccessor {
     x11: "plasmax11",
     wayland: "plasma",
@@ -7641,21 +7717,21 @@ pub const X11_SESSION_SUCCESSORS: &[SessionSuccessor] = &[SessionSuccessor {
     wayland_name: "Plasma (Wayland)",
 }];
 
-/// Каталог сеансов Wayland (общий у SDDM и Plasma Login Manager).
+/// Wayland sessions directory (shared by SDDM and Plasma Login Manager).
 pub const WAYLAND_SESSIONS_DIR: &str = "/usr/share/wayland-sessions";
 
-/// Последний выбранный сеанс SDDM (`[Last] Session=`).
+/// SDDM's last chosen session (`[Last] Session=`).
 pub const SDDM_STATE_FILE: &str = "/var/lib/sddm/state.conf";
 
-/// Ключ сеанса в группе настроек экрана входа.
+/// Session key in a login screen settings group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SessionKey {
     pub group: &'static str,
     pub key: &'static str,
 }
 
-/// Источник настроек экрана входа: каталоги `*.conf` по порядку чтения,
-/// затем файл (поздний перекрывает) и ключи сеанса в них.
+/// A source of login screen settings: `*.conf` directories in reading order,
+/// then a file (a later one overrides), and the session keys in them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SessionSource {
     pub dirs: &'static [&'static str],
@@ -7663,7 +7739,7 @@ pub struct SessionSource {
     pub keys: &'static [SessionKey],
 }
 
-/// Все места, где экраны входа держат сеанс по умолчанию.
+/// All places where login screens keep the default session.
 pub const LOGIN_SESSION_SOURCES: &[SessionSource] = &[
     SessionSource {
         dirs: &[SDDM_DISTRO_CONF_D, SDDM_CONF_D],
@@ -7681,19 +7757,19 @@ pub const LOGIN_SESSION_SOURCES: &[SessionSource] = &[
     },
 ];
 
-/// Пара для значения `Session=` (`plasmax11`, `plasmax11.desktop`, полный
-/// путь) — по имени файла сеанса.
+/// The pair for a `Session=` value (`plasmax11`, `plasmax11.desktop`, a full
+/// path), by the session file name.
 pub fn session_successor(value: &str) -> Option<&'static SessionSuccessor> {
     let name = crate::update_guard::session_file_name(value);
     X11_SESSION_SUCCESSORS.iter().find(|s| s.x11 == name)
 }
 
-/// Файл сеанса-пары на Wayland.
+/// The Wayland pair session file.
 pub fn wayland_session_file(s: &SessionSuccessor) -> String {
     format!("{WAYLAND_SESSIONS_DIR}/{}.desktop", s.wayland)
 }
 
-/// Файлы источника по порядку чтения (`list` — имена в каталоге).
+/// Source files in reading order (`list` gives the names in a directory).
 fn source_files(src: &SessionSource, list: &dyn Fn(&str) -> Vec<String>) -> Vec<String> {
     let mut out = Vec::new();
     for dir in src.dirs {
@@ -7703,8 +7779,8 @@ fn source_files(src: &SessionSource, list: &dyn Fn(&str) -> Vec<String>) -> Vec<
     out
 }
 
-/// Сеансы, которые экраны входа открывают или предлагают сами: итоговое
-/// значение каждого ключа каждого источника (пустые отброшены).
+/// Sessions the login screens open or offer by themselves: the resulting
+/// value of each key of each source (empty ones dropped).
 pub fn login_session_values(read: &dyn Fn(&str) -> Option<String>, list: &dyn Fn(&str) -> Vec<String>) -> Vec<String> {
     let mut out = Vec::new();
     for src in LOGIN_SESSION_SOURCES {
@@ -7717,13 +7793,13 @@ pub fn login_session_values(read: &dyn Fn(&str) -> Option<String>, list: &dyn Fn
     out
 }
 
-/// Сеанс X11 из таблицы, который экран входа открывает или предлагает сам.
+/// An X11 session from the table that the login screen opens or offers by itself.
 pub fn x11_login_default(values: &[String]) -> Option<&'static SessionSuccessor> {
     values.iter().find_map(|v| session_successor(v))
 }
 
-/// Новое значение в том же виде, что старое: полный путь — полным путём,
-/// с `.desktop` — с ним, голое имя — именем.
+/// The new value in the same form as the old one: a full path as a full
+/// path, with `.desktop` with it, a bare name as a name.
 fn successor_value(old: &str, s: &SessionSuccessor) -> String {
     let old = old.trim();
     if old.contains('/') {
@@ -7735,9 +7811,9 @@ fn successor_value(old: &str, s: &SessionSuccessor) -> String {
     }
 }
 
-/// Текст файла, где ключи `keys`, указывающие на `s.x11`, переведены на
-/// пару. Меняется только значение таких строк — прочие строки, отступы,
-/// комментарии и концы строк остаются байт в байт. `None` — менять нечего.
+/// File text where the `keys` keys pointing to `s.x11` are moved to the
+/// pair. Only the value of such lines changes: other lines, indents,
+/// comments and line endings stay byte for byte. `None`: nothing to change.
 pub fn retarget_session(text: &str, keys: &[SessionKey], s: &SessionSuccessor) -> Option<String> {
     rewrite_ini_values(
         text,
@@ -7747,10 +7823,10 @@ pub fn retarget_session(text: &str, keys: &[SessionKey], s: &SessionSuccessor) -
     )
 }
 
-/// Общая правка настроек экрана входа: у строк `ключ=значение` из `keys`
-/// (группа — по последнему заголовку `[…]`), чьё значение `hit`, значение
-/// заменяется на `new(старое)`. Прочие строки, отступы, комментарии и концы
-/// строк остаются байт в байт. `None` — ни одна строка не изменилась.
+/// Common edit of login screen settings: for `key=value` lines from `keys`
+/// (the group is by the last `[…]` header) whose value matches `hit`, the
+/// value is replaced with `new(old)`. Other lines, indents, comments and line
+/// endings stay byte for byte. `None`: no line changed.
 pub fn rewrite_ini_values(
     text: &str,
     keys: &[SessionKey],
@@ -7794,36 +7870,36 @@ pub fn rewrite_ini_values(
     changed.then_some(out)
 }
 
-/// Файл, который правка вправе переписать: настройки в `/etc` и файл
-/// последнего сеанса SDDM. Файлы пакетов (`/usr/lib/…`) — нет: их вернёт
-/// следующее обновление.
+/// A file the edit is allowed to rewrite: settings in `/etc` and SDDM's last
+/// session file. Package files (`/usr/lib/…`) are not: the next update would
+/// bring them back.
 pub fn session_file_writable(path: &str) -> bool {
     path.starts_with("/etc/") || path == SDDM_STATE_FILE
 }
 
-/// Правка одного файла: путь и новый текст.
+/// Edit of one file: the path and the new text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionEdit {
     pub path: String,
     pub text: String,
 }
 
-/// Решение «сделать пару сеансом по умолчанию».
+/// The "make the pair the default session" decision.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionSwitch {
-    /// Переписать эти файлы — после них экран входа сам X11-сеанс не
-    /// открывает и не предлагает.
+    /// Rewrite these files: after them the login screen neither opens nor
+    /// offers the X11 session by itself.
     Edits(Vec<SessionEdit>),
-    /// Менять нечего: X11-сеанс нигде не по умолчанию.
+    /// Nothing to change: the X11 session is not the default anywhere.
     Nothing,
-    /// X11-сеанс задан там, где Rexon не правит (файл пакета), — ничего
-    /// не менять.
+    /// The X11 session is set where Rexon does not edit (a package file): change
+    /// nothing.
     Elsewhere,
 }
 
-/// Что переписать, чтобы экран входа перестал сам открывать `s.x11`.
-/// Сверка итога — тем же чтением, что у сторожа обновлений
-/// ([`login_session_values`]) поверх новых текстов.
+/// What to rewrite so that the login screen stops opening `s.x11` by itself.
+/// The result is checked with the same reading as the update watchdog's
+/// ([`login_session_values`]) on top of the new texts.
 pub fn plan_wayland_default(
     s: &SessionSuccessor,
     read: &dyn Fn(&str) -> Option<String>,
@@ -7851,44 +7927,45 @@ pub fn plan_wayland_default(
     }
 }
 
-/// Тема экрана входа SDDM — `[Theme] Current=` в тех же настройках и том же
-/// порядке чтения, что сеанс: каталог пакета, каталог `/etc`, затем
-/// `/etc/sddm.conf` — он читается ПОСЛЕДНИМ и перекрывает все `*.conf`.
+/// SDDM login screen theme: `[Theme] Current=` in the same settings and the
+/// same reading order as the session: the package directory, the `/etc`
+/// directory, then `/etc/sddm.conf`, which is read LAST and overrides all `*.conf`.
 pub const SDDM_THEME_SOURCE: SessionSource = SessionSource {
     dirs: &[SDDM_DISTRO_CONF_D, SDDM_CONF_D],
     file: "/etc/sddm.conf",
     keys: &[SessionKey { group: "Theme", key: "Current" }],
 };
 
-/// Свой файл темы SDDM: пишется, только когда ни один файл `/etc` тему не
-/// задаёт (`zz-` — после `kde_settings.conf` и прочих в порядке чтения).
+/// Our own SDDM theme file: written only when no `/etc` file sets the theme
+/// (`zz-`: after `kde_settings.conf` and others in reading order).
 pub const SDDM_REXON_THEME_CONF: &str = "/etc/sddm.conf.d/zz-rexon-theme.conf";
 
-/// Файлы, из которых SDDM берёт тему, в его порядке чтения (последний
-/// выигрывает): каталог пакета, каталог `/etc`, затем `/etc/sddm.conf`.
-/// `list` — имена в каталоге. По ним же «Оформление» узнаёт текущую тему
-/// экрана входа (`installed_scan::LiveScan::active_map`).
+/// Files SDDM takes the theme from, in its reading order (the last one wins):
+/// the package directory, the `/etc` directory, then `/etc/sddm.conf`.
+/// `list` gives the names in a directory. «Appearance» uses the same files
+/// to learn the current login screen theme (`installed_scan::LiveScan::active_map`).
 pub fn sddm_theme_files(list: &dyn Fn(&str) -> Vec<String>) -> Vec<String> {
     source_files(&SDDM_THEME_SOURCE, list)
 }
 
-/// Тема, которую SDDM покажет при таких настройках (`None` — встроенная).
+/// The theme SDDM shows with such settings (`None`: the built-in one).
 pub fn sddm_effective_theme(read: &dyn Fn(&str) -> Option<String>, list: &dyn Fn(&str) -> Vec<String>) -> Option<String> {
     let texts: Vec<String> = source_files(&SDDM_THEME_SOURCE, list).iter().filter_map(|p| read(p)).collect();
     crate::login_rescue::ini_value(&texts, "Theme", "Current")
 }
 
-/// Что переписать, чтобы SDDM показал тему `theme` (кнопка «Применить» у
-/// установленной темы экрана входа).
+/// What to rewrite so that SDDM shows the theme `theme` (the «Apply» button
+/// of an installed login screen theme).
 ///
-/// ⭐ Дефект 30.10.2026: прежде помощник писал только свой
-/// [`SDDM_REXON_THEME_CONF`]. Но `/etc/sddm.conf` SDDM читает после всех
-/// `*.conf`, и `Current=` в нём (так у CachyOS: `Current=breeze`) молча
-/// перекрывал выбор — «Применено», а экран входа прежний. Теперь значение
-/// меняется в КАЖДОМ файле `/etc`, где ключ уже есть (и настройки KDE
-/// `kde_settings.conf` показывают ту же тему), а свой файл пишется, только
-/// если итог без него не тот. Итог сверяется тем же чтением, что у SDDM.
-/// Файлы пакетов (`/usr/lib/…`) не правятся: их перекрывает `/etc`.
+/// ⭐ Defect of 30.10.2026: previously the helper wrote only our own
+/// [`SDDM_REXON_THEME_CONF`]. But SDDM reads `/etc/sddm.conf` after all the
+/// `*.conf`, and a `Current=` in it (as on CachyOS: `Current=breeze`)
+/// silently overrode the choice: "Applied", yet the login screen was the old
+/// one. Now the value is changed in EVERY `/etc` file where the key already
+/// exists (and the KDE settings `kde_settings.conf` show the same theme),
+/// and our own file is written only if the result is wrong without it. The
+/// result is checked with the same reading as SDDM's. Package files
+/// (`/usr/lib/…`) are not edited: `/etc` overrides them.
 pub fn plan_sddm_theme(
     theme: &str,
     read: &dyn Fn(&str) -> Option<String>,
@@ -7934,59 +8011,62 @@ pub fn plan_sddm_theme(
     }
 }
 
-// ── Экран входа SDDM: фон темы и перенос оформления стола ─────────────────
+// ── SDDM login screen: theme background and transferring the desktop look ──
 //
-// Паритет с модулем KDE «Экран входа (SDDM)» (sddm-kcm 6.8.2: `src/sddmkcm.cpp`
-// `save`/`synchronizeSettings`/`resetSyncronizedSettings`, `sddmauthhelper.cpp`,
-// `src/themesmodel.cpp`, `src/ui/main.qml`):
-// * «Изменить фон» темы: картинка копируется в каталог темы, её имя — ключ
-//   `[General] background=` файла `<ConfigFile>.user` рядом с файлом
-//   настроек темы (`ConfigFile=` в `metadata.desktop`), плюс `type=image`.
-//   Тема без файла настроек фон не принимает (`supportsBackground`).
-// * «Применить параметры Plasma»: тема и размер курсора (`[Theme]
-//   CursorTheme/CursorSize`), шрифт (`[Theme] Font`), NumLock (`[General]
-//   Numlock`), DPI (`[X11] ServerArguments=-dpi N`) — в
-//   `/etc/sddm.conf.d/kde_settings.conf` (тот же ключ из `/etc/sddm.conf`
-//   снимается); файлы `kdeglobals` (цвета), `plasmarc` (тема Plasma),
-//   `kcminputrc`, `kwinoutputconfig.json` (мониторы на Wayland) и fontconfig
-//   — в `~sddm/.config`, кэш `~sddm/.cache` стирается. «Сбросить» снимает
-//   ключи и файлы.
+// Parity with the KDE module «Login Screen (SDDM)» (sddm-kcm 6.8.2:
+// `src/sddmkcm.cpp` `save`/`synchronizeSettings`/`resetSyncronizedSettings`,
+// `sddmauthhelper.cpp`, `src/themesmodel.cpp`, `src/ui/main.qml`):
+// * the theme's «Change background»: the picture is copied into the theme
+//   directory, its name is the `[General] background=` key of the
+//   `<ConfigFile>.user` file next to the theme settings file (`ConfigFile=`
+//   in `metadata.desktop`), plus `type=image`. A theme without a settings
+//   file does not accept a background (`supportsBackground`).
+// * «Apply Plasma Settings»: the cursor theme and size (`[Theme]
+//   CursorTheme/CursorSize`), the font (`[Theme] Font`), NumLock (`[General]
+//   Numlock`), DPI (`[X11] ServerArguments=-dpi N`) go into
+//   `/etc/sddm.conf.d/kde_settings.conf` (the same key from `/etc/sddm.conf`
+//   is removed); the files `kdeglobals` (colours), `plasmarc` (the Plasma
+//   theme), `kcminputrc`, `kwinoutputconfig.json` (monitors on Wayland) and
+//   fontconfig go into `~sddm/.config`, the `~sddm/.cache` cache is wiped.
+//   «Reset» removes the keys and files.
 //
-// Отличия от kcm — намеренные:
-// * картинка ложится под своим именем [`SDDM_BACKGROUND_STEM`], только PNG
-//   или JPEG (по сигнатуре); прежняя удаляется, только если она наша (kcm
-//   удаляет файл по прежнему значению ключа — и абсолютный путь вне темы);
-// * «Фон темы» возвращает фон самой темы (у kcm «Clear Image» ставит
-//   `type=color` — сплошной цвет);
-// * `-dpi N` дописывается к прежним аргументам X-сервера, а не заменяет их
-//   (kcm затирает `-nolisten tcp` из настроек пакета); при `forceFontDPI=0`
-//   (масштаб не задан) DPI не трогается, у kcm уходит `-dpi 0`;
-// * ключ пишется туда, откуда SDDM его действительно прочтёт (как
-//   [`plan_sddm_theme`]), итог сверяется тем же чтением;
-// * файлы в домашнем каталоге `sddm` пишутся от имени `sddm`, не root (так
-//   делает Plasma Login Manager с 6.7 после CVE-2026-25710);
-// * fontconfig — только `fonts.conf` (как у Plasma Login Manager);
-//   раскладка мониторов X11 (`~/.local/share/kscreen`) не переносится, при
-//   «Сбросить» снимается.
+// Deliberate differences from the kcm:
+// * the picture is stored under our own name [`SDDM_BACKGROUND_STEM`], only
+//   PNG or JPEG (by signature); the previous one is deleted only if it is
+//   ours (the kcm deletes the file by the key's previous value, even an
+//   absolute path outside the theme);
+// * «Theme background» restores the theme's own background (the kcm's
+//   «Clear Image» sets `type=color`, a solid colour);
+// * `-dpi N` is appended to the previous X server arguments instead of
+//   replacing them (the kcm wipes `-nolisten tcp` from the package
+//   settings); with `forceFontDPI=0` (no scale set) DPI is not touched,
+//   while the kcm sends `-dpi 0`;
+// * the key is written where SDDM will really read it (like
+//   [`plan_sddm_theme`]), the result is checked with the same reading;
+// * files in the `sddm` home directory are written as `sddm`, not root
+//   (Plasma Login Manager does so since 6.7 after CVE-2026-25710);
+// * fontconfig: only `fonts.conf` (as in Plasma Login Manager); the X11
+//   monitor layout (`~/.local/share/kscreen`) is not transferred, and is
+//   removed on «Reset».
 
-/// Настройки, которые пишет модуль KDE «Экран входа (SDDM)».
+/// Settings written by the KDE module «Login Screen (SDDM)».
 pub const SDDM_KDE_SETTINGS_CONF: &str = "/etc/sddm.conf.d/kde_settings.conf";
-/// Имя картинки фона, которую Rexon кладёт в каталог темы (расширение — по
-/// сигнатуре файла).
+/// Name of the background picture Rexon puts into the theme directory (the
+/// extension by the file signature).
 pub const SDDM_BACKGROUND_STEM: &str = "rexon-background";
-/// Предел картинки фона.
+/// Background picture size limit.
 pub const SDDM_BACKGROUND_MAX_BYTES: u64 = 64 * 1024 * 1024;
-/// Предел одного файла настроек стола, переносимого на экран входа (у
-/// Plasma Login Manager — тот же 1 МиБ на конфиг).
+/// Limit of one desktop settings file transferred to the login screen
+/// (Plasma Login Manager uses the same 1 MiB per config).
 pub const SDDM_LOOK_FILE_MAX_BYTES: u64 = 1024 * 1024;
-/// Системная учётная запись приветствия SDDM.
+/// The SDDM greeter's system account.
 pub const SDDM_USER: &str = "sddm";
-/// Файлы стола, которые переносятся в `~sddm/.config` (путь — внутри
-/// `.config` и пользователя, и `sddm`). Других помощник не примет.
+/// Desktop files transferred into `~sddm/.config` (the path is inside
+/// `.config` of both the user and `sddm`). The helper accepts no others.
 pub const SDDM_LOOK_FILES: &[&str] =
     &["kdeglobals", "plasmarc", "kcminputrc", "kwinoutputconfig.json", "fontconfig/fonts.conf"];
-/// Что снимает «Сбросить» в домашнем каталоге `sddm` (кроме кэша): файлы
-/// переноса и раскладка мониторов kscreen, которую клал kcm.
+/// What «Reset» removes in the `sddm` home directory (besides the cache): the
+/// transferred files and the kscreen monitor layout the kcm put there.
 pub const SDDM_LOOK_RESET_PATHS: &[&str] = &[
     ".config/kdeglobals",
     ".config/plasmarc",
@@ -7996,7 +8076,7 @@ pub const SDDM_LOOK_RESET_PATHS: &[&str] = &[
     ".local/share/kscreen",
 ];
 
-/// Ключи настроек SDDM, которые трогает перенос оформления (как у kcm).
+/// SDDM settings keys touched by the look transfer (as in the kcm).
 pub const SDDM_LOOK_KEYS: &[SessionKey] = &[
     SessionKey { group: "Theme", key: "CursorTheme" },
     SessionKey { group: "Theme", key: "CursorSize" },
@@ -8008,7 +8088,7 @@ pub const SDDM_LOOK_KEYS: &[SessionKey] = &[
 const SDDM_LOOK_SOURCE: SessionSource =
     SessionSource { dirs: &[SDDM_DISTRO_CONF_D, SDDM_CONF_D], file: "/etc/sddm.conf", keys: SDDM_LOOK_KEYS };
 
-/// NumLock при входе (`[General] Numlock` SDDM).
+/// NumLock at login (SDDM's `[General] Numlock`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SddmNumlock {
@@ -8018,7 +8098,7 @@ pub enum SddmNumlock {
 }
 
 impl SddmNumlock {
-    /// Значение ключа SDDM.
+    /// SDDM key value.
     pub fn value(self) -> &'static str {
         match self {
             SddmNumlock::On => "on",
@@ -8027,8 +8107,8 @@ impl SddmNumlock {
         }
     }
 
-    /// Из `kcminputrc [Keyboard] NumLock` Plasma (0 — включить, 1 —
-    /// выключить, 2 — не трогать), как переводит kcm.
+    /// From Plasma's `kcminputrc [Keyboard] NumLock` (0: turn on, 1: turn off,
+    /// 2: leave alone), as the kcm translates it.
     pub fn from_kcminput(v: &str) -> Option<Self> {
         match v.trim() {
             "0" => Some(SddmNumlock::On),
@@ -8039,8 +8119,9 @@ impl SddmNumlock {
     }
 }
 
-/// Значения стола для экрана входа. `None` у курсора — «убрать» (как kcm,
-/// когда в Plasma ключа нет); у шрифта, NumLock и DPI — «не трогать».
+/// Desktop values for the login screen. `None` for the cursor means "remove"
+/// (as the kcm does when Plasma has no key); for the font, NumLock and DPI,
+/// "leave alone".
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SddmLook {
@@ -8051,8 +8132,8 @@ pub struct SddmLook {
     pub dpi: Option<u32>,
 }
 
-/// Аргументы X-сервера с `-dpi N`: прежнее `-dpi …` убирается, новое
-/// дописывается (`None` — только убрать).
+/// X server arguments with `-dpi N`: the previous `-dpi …` is removed, the
+/// new one appended (`None`: only remove).
 pub fn server_args_with_dpi(current: &str, dpi: Option<u32>) -> String {
     let words: Vec<&str> = current.split_whitespace().collect();
     let mut out: Vec<String> = Vec::new();
@@ -8072,9 +8153,9 @@ pub fn server_args_with_dpi(current: &str, dpi: Option<u32>) -> String {
     out.join(" ")
 }
 
-/// Каким должен стать ключ `k` (итог чтения SDDM `current`): `None` — не
-/// трогать, `Some(None)` — убрать из файлов `/etc`, `Some(Some(v))` —
-/// значение. `look: None` — «Сбросить».
+/// What key `k` should become (SDDM's reading result `current`): `None`:
+/// leave alone, `Some(None)`: remove from the `/etc` files, `Some(Some(v))`:
+/// the value. `look: None` means «Reset».
 fn sddm_look_want(k: &SessionKey, look: Option<&SddmLook>, current: Option<&str>) -> Option<Option<String>> {
     let nonempty = |s: String| (!s.trim().is_empty()).then_some(s);
     match (look, k.key) {
@@ -8091,11 +8172,12 @@ fn sddm_look_want(k: &SessionKey, look: Option<&SddmLook>, current: Option<&str>
     }
 }
 
-/// Текст без строк `ключ=…` из `keys` (группа — по последнему заголовку).
-/// Группа, которая от этого опустела (ни одного ключа, только пустые
-/// строки и заголовок), снимается целиком. `None` — таких строк не было.
+/// The text without the `key=…` lines from `keys` (the group by the last
+/// header). A group that became empty because of this (not a single key,
+/// only empty lines and the header) is removed entirely. `None`: there were
+/// no such lines.
 pub fn drop_ini_keys(text: &str, keys: &[SessionKey]) -> Option<String> {
-    // Разбор на группы: (заголовок или пусто для начала файла, строки).
+    // Split into groups: (the header, or empty for the start of the file, the lines).
     let mut groups: Vec<(String, Vec<&str>)> = vec![(String::new(), Vec::new())];
     for line in text.split_inclusive('\n') {
         let t = line.trim();
@@ -8134,9 +8216,9 @@ pub fn drop_ini_keys(text: &str, keys: &[SessionKey]) -> Option<String> {
     changed.then_some(out)
 }
 
-/// Записать `[group] key=value` в текст (`None` — файла нет): значение
-/// правится на месте; новый ключ встаёт после последнего ключа группы (до
-/// пустых строк перед следующей); группы нет — дописывается в конец.
+/// Write `[group] key=value` into the text (`None`: no file): the value is
+/// edited in place; a new key goes after the group's last key (before the
+/// empty lines preceding the next one); no group: appended at the end.
 pub(crate) fn ini_put(existing: Option<&str>, group: &str, key: &str, value: &str) -> String {
     let text = existing.unwrap_or("");
     if text.trim().is_empty() {
@@ -8189,12 +8271,12 @@ pub(crate) fn ini_put(existing: Option<&str>, group: &str, key: &str, value: &st
     out
 }
 
-/// Что переписать, чтобы экран входа SDDM получил значения стола `look`
-/// (`None` — «Сбросить»: ключи переноса снимаются, из аргументов X-сервера
-/// уходит только `-dpi`). Как [`plan_sddm_theme`]: правятся файлы `/etc`,
-/// где ключ уже задан; если итог чтения SDDM не тот —
-/// [`SDDM_KDE_SETTINGS_CONF`]. Файлы пакетов не правятся. `Elsewhere` —
-/// значение перекрыто там, где Rexon не правит.
+/// What to rewrite so that the SDDM login screen gets the desktop values
+/// `look` (`None` is «Reset»: the transfer keys are removed, and only `-dpi`
+/// leaves the X server arguments). Like [`plan_sddm_theme`]: the `/etc` files
+/// where the key is already set are edited; if SDDM's reading result is
+/// wrong, [`SDDM_KDE_SETTINGS_CONF`]. Package files are not edited.
+/// `Elsewhere`: the value is overridden where Rexon does not edit.
 pub fn plan_sddm_look(
     look: Option<&SddmLook>,
     read: &dyn Fn(&str) -> Option<String>,
@@ -8229,9 +8311,9 @@ pub fn plan_sddm_look(
     for k in SDDM_LOOK_KEYS {
         let current = effective(&edits, k);
         let Some(mut want) = sddm_look_want(k, look, current.as_deref()) else { continue };
-        // «Сбросить»: если без строк `/etc` ключ и так даёт нужное (`-dpi`
-        // ушло, осталось значение пакета), строки убираются, а не
-        // переписываются копией значения пакета.
+        // «Reset»: if without the `/etc` lines the key already gives the right
+        // thing (`-dpi` is gone, the package value remains), the lines are removed
+        // rather than rewritten with a copy of the package value.
         if look.is_none() && want.is_some() {
             let mut trial = edits.clone();
             for path in files_after(&trial).into_iter().filter(|p| p.starts_with("/etc/")) {
@@ -8270,8 +8352,8 @@ pub fn plan_sddm_look(
     }
 }
 
-/// Имя файла настроек темы SDDM (`[SddmGreeterTheme] ConfigFile=` в
-/// `metadata.desktop`) — только простое имя в каталоге темы.
+/// Name of the SDDM theme settings file (`[SddmGreeterTheme] ConfigFile=` in
+/// `metadata.desktop`): only a simple name inside the theme directory.
 pub fn sddm_theme_config_name(metadata: &str) -> Option<String> {
     let v = crate::login_rescue::ini_value(&[metadata.to_string()], "SddmGreeterTheme", "ConfigFile")?;
     let ok = !v.is_empty()
@@ -8282,37 +8364,36 @@ pub fn sddm_theme_config_name(metadata: &str) -> Option<String> {
     ok.then_some(v)
 }
 
-/// Фон темы SDDM, как его видит kcm (`ThemesModel::add`).
+/// SDDM theme background as the kcm sees it (`ThemesModel::add`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct SddmBackground {
-    /// Тема принимает свой фон: у неё есть файл настроек.
+    /// The theme accepts its own background: it has a settings file.
     pub supported: bool,
-    /// Полный путь файла настроек темы (пусто — нет).
+    /// Full path of the theme settings file (empty: none).
     pub config: String,
-    /// Полный путь картинки, которую тема покажет (пусто — не задана).
+    /// Full path of the picture the theme will show (empty: not set).
     pub image: String,
-    /// Фон задан поверх темы (`<ConfigFile>.user`).
+    /// The background is set on top of the theme (`<ConfigFile>.user`).
     pub custom: bool,
-    /// Этот фон положил Rexon ([`SDDM_BACKGROUND_STEM`]).
+    /// This background was put by Rexon ([`SDDM_BACKGROUND_STEM`]).
     pub ours: bool,
-    /// «Показывать часы» (`showClock` из `.user` поверх файла темы; нет —
-    /// да, как у kcm `ThemesModel::add`).
+    /// «Show clock» (`showClock` from `.user` on top of the theme file; missing
+    /// means yes, as in the kcm's `ThemesModel::add`).
     pub clock: bool,
-    /// Qt приветствия темы ([`sddm_theme_qt_version`]).
+    /// The theme greeter's Qt ([`sddm_theme_qt_version`]).
     pub qt: u32,
-    /// Приветствие этой темы покажет WebP: у его Qt есть модуль WebP
-    /// ([`qt_has_webp`]). Заполняет вызывающий — по файлам темы не узнать.
+    /// This theme's greeter will show WebP: its Qt has the WebP module
+    /// ([`qt_has_webp`]). Filled by the caller: it cannot be learned from the theme files.
     pub webp: bool,
-    /// Своя копия Rexon ([`kept_login_background`]); пусто — нет. Заполняет
-    /// вызывающий.
+    /// Rexon's own copy ([`kept_login_background`]); empty: none. Filled by the
+    /// caller.
     pub kept: String,
-    /// Файл `image` читается этим пользователем. Заполняет вызывающий.
+    /// The `image` file is readable by this user. Filled by the caller.
     pub readable: bool,
 }
 
-/// Значение флага так, как его читает KConfig (`readEntry(…, bool)`):
-/// `true`/`on`/`yes`/`1` — да, `false`/`off`/`no`/`0` — нет, прочее —
-/// не задано.
+/// A flag value as KConfig reads it (`readEntry(…, bool)`): `true`/`on`/
+/// `yes`/`1` is yes, `false`/`off`/`no`/`0` is no, anything else is unset.
 pub fn kconfig_bool(v: &str) -> Option<bool> {
     match v.trim().to_ascii_lowercase().as_str() {
         "true" | "on" | "yes" | "1" => Some(true),
@@ -8321,8 +8402,8 @@ pub fn kconfig_bool(v: &str) -> Option<bool> {
     }
 }
 
-/// Qt приветствия темы SDDM: `[SddmGreeterTheme] QtVersion` (нет или не
-/// число — 5, как `ThemeMetadata` SDDM 0.21).
+/// The SDDM theme greeter's Qt: `[SddmGreeterTheme] QtVersion` (missing or
+/// not a number means 5, as in SDDM 0.21's `ThemeMetadata`).
 pub fn sddm_theme_qt_version(metadata: &str) -> u32 {
     crate::login_rescue::ini_value(&[metadata.to_string()], "SddmGreeterTheme", "QtVersion")
         .and_then(|v| v.trim().parse::<u32>().ok())
@@ -8330,7 +8411,7 @@ pub fn sddm_theme_qt_version(metadata: &str) -> u32 {
         .unwrap_or(5)
 }
 
-/// Фон темы в каталоге `theme_dir` по её файлам.
+/// The background of the theme in `theme_dir` by its files.
 pub fn sddm_theme_background(theme_dir: &str, read: &dyn Fn(&str) -> Option<String>) -> SddmBackground {
     let dir = theme_dir.trim_end_matches('/');
     let metadata = read(&format!("{dir}/metadata.desktop"));
@@ -8344,7 +8425,7 @@ pub fn sddm_theme_background(theme_dir: &str, read: &dyn Fn(&str) -> Option<Stri
     };
     let user = read(&format!("{config}.user"));
     let user_bg = user.as_ref().and_then(|u| crate::login_rescue::ini_value(&[u.clone()], "General", "background"));
-    // Как KConfig с каскадом: значение `.user` сильнее файла темы.
+    // As KConfig with cascading: the `.user` value is stronger than the theme file.
     let clock = user
         .as_ref()
         .and_then(|u| crate::login_rescue::ini_value(&[u.clone()], "General", "showClock"))
@@ -8364,22 +8445,22 @@ pub fn sddm_theme_background(theme_dir: &str, read: &dyn Fn(&str) -> Option<Stri
     SddmBackground { supported: true, config, image, custom, ours, clock, qt, ..SddmBackground::default() }
 }
 
-/// Имя файла — картинка фона, положенная Rexon (`rexon-background.png`).
+/// The file name is a background picture put by Rexon (`rexon-background.png`).
 pub fn sddm_background_is_ours(name: &str) -> bool {
     name.strip_prefix(SDDM_BACKGROUND_STEM)
         .and_then(|r| r.strip_prefix('.'))
         .is_some_and(|ext| matches!(ext, "png" | "jpg" | "webp"))
 }
 
-/// Новый текст `<ConfigFile>.user` с «Показывать часы» = `show` (как kcm:
-/// ключ `showClock` пишется явно и при «да»). `None` — менять нечего.
+/// New `<ConfigFile>.user` text with «Show clock» = `show` (as the kcm: the
+/// `showClock` key is written explicitly even for "yes"). `None`: nothing to change.
 pub fn sddm_clock_user_text(existing: Option<&str>, show: bool) -> Option<String> {
     let t = ini_put(existing, "General", "showClock", if show { "true" } else { "false" });
     (existing != Some(t.as_str())).then_some(t)
 }
 
-/// Где у Qt `qt` лежит модуль чтения WebP (`imageformats/libqwebp.so`):
-/// раскладки Arch, Fedora/openSUSE и Debian/Ubuntu.
+/// Where Qt `qt` keeps the WebP reader module (`imageformats/libqwebp.so`):
+/// the Arch, Fedora/openSUSE and Debian/Ubuntu layouts.
 pub fn qt_webp_plugin_paths(qt: u32) -> Vec<String> {
     let triplet = format!("{}-linux-gnu", std::env::consts::ARCH);
     let dirs: Vec<String> = if qt == 5 {
@@ -8398,20 +8479,20 @@ pub fn qt_webp_plugin_paths(qt: u32) -> Vec<String> {
     dirs.into_iter().map(|d| format!("{d}/imageformats/libqwebp.so")).collect()
 }
 
-/// Покажет ли приветствие на Qt `qt` картинку WebP: модуль есть хоть в
-/// одной из раскладок ([`qt_webp_plugin_paths`]).
+/// Whether a greeter on Qt `qt` shows a WebP picture: the module exists in
+/// at least one of the layouts ([`qt_webp_plugin_paths`]).
 pub fn qt_has_webp(qt: u32, exists: &dyn Fn(&str) -> bool) -> bool {
     qt_webp_plugin_paths(qt).iter().any(|p| exists(p))
 }
 
-/// [`qt_has_webp`] на живой машине.
+/// [`qt_has_webp`] on the live machine.
 pub fn qt_has_webp_live(qt: u32) -> bool {
     qt_has_webp(qt, &|p| std::path::Path::new(p).is_file())
 }
 
-/// Новый текст `<ConfigFile>.user`: `image` — имя картинки в каталоге темы
-/// (`background=`, `type=image`); `None` — вернуть фон темы (оба ключа
-/// снимаются). `None` в ответе — менять нечего.
+/// New `<ConfigFile>.user` text: `image` is the picture name in the theme
+/// directory (`background=`, `type=image`); `None` restores the theme
+/// background (both keys are removed). `None` in the answer: nothing to change.
 pub fn sddm_background_user_text(existing: Option<&str>, image: Option<&str>) -> Option<String> {
     match image {
         Some(name) => {
@@ -8426,8 +8507,8 @@ pub fn sddm_background_user_text(existing: Option<&str>, image: Option<&str>) ->
     }
 }
 
-/// Расширение картинки по сигнатуре: PNG или JPEG — то, что приветствие
-/// SDDM на Qt покажет без дополнительных модулей изображений.
+/// Picture extension by signature: PNG or JPEG, what an SDDM greeter on Qt
+/// shows without extra image modules.
 pub fn login_image_ext(head: &[u8]) -> Option<&'static str> {
     if head.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
         Some("png")
@@ -8438,20 +8519,20 @@ pub fn login_image_ext(head: &[u8]) -> Option<&'static str> {
     }
 }
 
-/// Сигнатура WebP: `RIFF`, размер, `WEBP`.
+/// WebP signature: `RIFF`, size, `WEBP`.
 pub fn is_webp(head: &[u8]) -> bool {
     head.len() >= 12 && head.starts_with(b"RIFF") && &head[8..12] == b"WEBP"
 }
 
-/// Как [`login_image_ext`], но `webp` — приветствие покажет и WebP (у его
-/// Qt есть модуль, [`qt_has_webp`]).
+/// Like [`login_image_ext`], but `webp`: the greeter shows WebP too (its Qt
+/// has the module, [`qt_has_webp`]).
 pub fn login_image_ext_with(head: &[u8], webp: bool) -> Option<&'static str> {
     login_image_ext(head).or_else(|| (webp && is_webp(head)).then_some("webp"))
 }
 
-/// Отказ до пароля: файл — не картинка, которую покажет экран входа.
-/// `webp` — модуль WebP у Qt приветствия есть; `qt` — версия Qt (для
-/// подсказки, какого модуля не хватает).
+/// Refusal before the password: the file is not a picture the login screen
+/// will show. `webp`: the greeter's Qt has the WebP module; `qt` is the Qt
+/// version (for the hint about which module is missing).
 pub fn login_image_refusal(head: &[u8], webp: bool, qt: u32) -> String {
     if is_webp(head) && !webp {
         // TRANSLATORS: %1 is a Qt major version, e.g. "6"; "WebP" and "Qt" are names, keep them as is.
@@ -8468,28 +8549,28 @@ pub fn login_image_refusal(head: &[u8], webp: bool, qt: u32) -> String {
     }
 }
 
-// ── Своя копия картинки фона экрана входа ───────────────────────────────
+// ── Our own copy of the login screen background picture ─────────────────
 //
-// Картинку, поставленную на экран входа через Rexon, Rexon держит и у
-// себя: `<данные>/rexon/login-background/<вид>.<расширение>` плюс отметка
-// `<вид>.json` (какой файл выбран и когда). Зачем: дом `plasmalogin` закрыт
-// (0750) — копию в нём окно не прочтёт ни для превью, ни для повторной
-// отправки помощнику PLM; у SDDM — то же правило для единообразия. Вид —
-// [`LOGIN_BG_SDDM`] или [`LOGIN_BG_PLM`]. «Вернуть стандартный фон» копию
-// убирает.
+// A picture set on the login screen through Rexon is also kept by Rexon:
+// `<data>/rexon/login-background/<kind>.<extension>` plus a `<kind>.json`
+// mark (which file was chosen and when). Why: the `plasmalogin` home is
+// closed (0750): the window cannot read a copy there, neither for the
+// preview nor for resending to the PLM helper; SDDM follows the same rule
+// for uniformity. The kind is [`LOGIN_BG_SDDM`] or [`LOGIN_BG_PLM`].
+// «Restore default background» removes the copy.
 
-/// Вид копии фона: экран входа SDDM.
+/// Background copy kind: the SDDM login screen.
 pub const LOGIN_BG_SDDM: &str = "sddm";
-/// Вид копии фона: Plasma Login Manager.
+/// Background copy kind: Plasma Login Manager.
 pub const LOGIN_BG_PLM: &str = "plm";
 
-/// Каталог копий в корне данных пользователя `data_home`.
+/// Copies directory in the user's data root `data_home`.
 pub fn login_background_keep_dir(data_home: &str) -> String {
     format!("{}/rexon/login-background", data_home.trim_end_matches('/'))
 }
 
-/// Отметка копии: имя файла в каталоге, откуда взята картинка и когда
-/// (секунды Unix).
+/// Copy mark: the file name in the directory, where the picture came from
+/// and when (Unix seconds).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct KeptBackground {
     pub file: String,
@@ -8497,14 +8578,13 @@ pub struct KeptBackground {
     pub set_at: u64,
 }
 
-/// Текст отметки `<вид>.json`.
+/// Text of the `<kind>.json` mark.
 pub fn kept_background_marker(kept: &KeptBackground) -> String {
     serde_json::json!({"file": kept.file, "source": kept.source, "set_at": kept.set_at}).to_string() + "\n"
 }
 
-/// Копия вида `kind` в каталоге `dir`: путь к картинке и отметка. Нет
-/// отметки, файл не наш по имени (`<вид>.<png|jpg|webp>`) или его нет —
-/// `None`.
+/// Copy of kind `kind` in directory `dir`: the picture path and the mark. No
+/// mark, a file not ours by name (`<kind>.<png|jpg|webp>`) or missing: `None`.
 pub fn kept_login_background(
     dir: &str,
     kind: &str,
@@ -8526,8 +8606,8 @@ pub fn kept_login_background(
     Some((path, kept))
 }
 
-/// Положить копию картинки `source` (расширение `ext` — по сигнатуре) как
-/// вид `kind` в каталог `dir` с отметкой; прежние копии этого вида уходят.
+/// Put a copy of picture `source` (extension `ext` by signature) as kind
+/// `kind` into directory `dir` with a mark; previous copies of this kind go.
 pub fn keep_login_background_in(dir: &str, kind: &str, source: &str, ext: &str, now: u64) -> std::io::Result<String> {
     drop_login_background_in(dir, kind);
     std::fs::create_dir_all(dir)?;
@@ -8539,29 +8619,30 @@ pub fn keep_login_background_in(dir: &str, kind: &str, source: &str, ext: &str, 
     Ok(path)
 }
 
-/// Убрать копию вида `kind` (картинки всех расширений и отметку).
+/// Remove the copy of kind `kind` (pictures of all extensions and the mark).
 pub fn drop_login_background_in(dir: &str, kind: &str) {
     for name in ["png", "jpg", "webp", "json"].map(|e| format!("{dir}/{kind}.{e}")) {
         let _ = std::fs::remove_file(name);
     }
 }
 
-/// Каталог копий на живой машине (`$XDG_DATA_HOME` или `~/.local/share`).
+/// Copies directory on the live machine (`$XDG_DATA_HOME` or `~/.local/share`).
 pub fn login_background_keep_dir_live() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let xdg = std::env::var("XDG_DATA_HOME").ok().filter(|v| !v.is_empty());
     login_background_keep_dir(&crate::utils::data_home(xdg.as_deref(), &home))
 }
 
-/// Путь своей копии вида `kind` на живой машине.
+/// Path of our own copy of kind `kind` on the live machine.
 pub fn kept_login_background_live(kind: &str) -> Option<String> {
     let dir = login_background_keep_dir_live();
     kept_login_background(&dir, kind, &|p| std::fs::read_to_string(p).ok(), &|p| std::path::Path::new(p).is_file())
         .map(|(p, _)| p)
 }
 
-/// После удачной смены фона: картинка `image` — положить копию (сбой копии
-/// не отменяет смену, только пишется в журнал), `None` — убрать копию.
+/// After a successful background change: picture `image` means put a copy (a
+/// copy failure does not cancel the change, it is only logged), `None` means
+/// remove the copy.
 pub fn sync_kept_login_background_live(kind: &str, image: Option<&str>, webp: bool) {
     use std::io::Read;
     let dir = login_background_keep_dir_live();
@@ -8580,11 +8661,11 @@ pub fn sync_kept_login_background_live(kind: &str, image: Option<&str>, webp: bo
     }
 }
 
-/// Превью и подпись своего фона (задан поверх стандартного/темы). `ours` —
-/// картинку положил Rexon (`rexon-background.*`); `current` — путь, на
-/// который указывает настройка; `kept` — своя копия Rexon; `readable` —
-/// можно ли прочесть файл. Чужой или нечитаемый — честная подпись без
-/// превью.
+/// Preview and caption of a custom background (set on top of the default or
+/// the theme). `ours`: the picture was put by Rexon (`rexon-background.*`);
+/// `current`: the path the setting points to; `kept`: Rexon's own copy;
+/// `readable`: whether the file can be read. A foreign or unreadable one gets
+/// an honest caption without a preview.
 pub fn custom_background_preview(
     ours: bool,
     current: &str,
@@ -8607,7 +8688,7 @@ pub fn custom_background_preview(
     }
 }
 
-/// Фильтр окна выбора фона экрана входа.
+/// Filter of the login screen background file dialog.
 pub fn login_image_filter(webp: bool) -> String {
     if webp {
         // TRANSLATORS: file dialog filter; keep the patterns in parentheses as is.
@@ -8618,9 +8699,9 @@ pub fn login_image_filter(webp: bool) -> String {
     }
 }
 
-/// Что с этого стола уйдёт на экран входа: значения, файлы
-/// (имя из [`SDDM_LOOK_FILES`] → путь у пользователя) и подписи для
-/// человека — что переносится и чего нет.
+/// What from this desktop goes to the login screen: values, files (a name
+/// from [`SDDM_LOOK_FILES`] → the user's path) and captions for the person:
+/// what is transferred and what is not.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DesktopLook {
     pub look: SddmLook,
@@ -8629,8 +8710,8 @@ pub struct DesktopLook {
     pub missing: Vec<String>,
 }
 
-/// Курсор и шрифт вне Plasma — как их читает «Оформление» для этого стола
-/// (шрифт — строкой стола: «Noto Sans 11» или запись Qt).
+/// Cursor and font outside Plasma, as «Appearance» reads them for this
+/// desktop (the font as the desktop's string: "Noto Sans 11" or a Qt entry).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OtherDesktopLook {
     pub cursor_theme: Option<String>,
@@ -8663,11 +8744,11 @@ fn look_item_screens() -> String {
     tr("Screen configuration (Wayland only)")
 }
 
-/// Значения и файлы стола для экрана входа. `plasma` — сеанс Plasma:
-/// тогда всё как у kcm (`kcminputrc`, `kdeglobals`, `kcmfonts` в
-/// `config_home`); иначе курсор и шрифт — из `other`, а из файлов —
-/// только цвета Qt (`kdeglobals`) и `fontconfig`, если они есть.
-/// `exists` — есть ли файл у пользователя.
+/// Desktop values and files for the login screen. `plasma`: a Plasma
+/// session: then everything as in the kcm (`kcminputrc`, `kdeglobals`,
+/// `kcmfonts` in `config_home`); otherwise the cursor and font come from
+/// `other`, and of the files only Qt colours (`kdeglobals`) and
+/// `fontconfig`, if present. `exists`: whether the user has the file.
 pub fn desktop_greeter_look(
     plasma: bool,
     config_home: &str,
@@ -8717,7 +8798,7 @@ pub fn desktop_greeter_look(
         rows.push((look_item_dpi(), out.look.dpi.is_some()));
         rows.push((look_item_screens(), has("kwinoutputconfig.json")));
     } else {
-        // Вне Plasma этого у стола нет в виде, понятном экрану входа.
+        // Outside Plasma the desktop has this in no form the login screen understands.
         for item in [look_item_plasma_theme(), look_item_numlock(), look_item_dpi(), look_item_screens()] {
             rows.push((item, false));
         }
@@ -8732,18 +8813,18 @@ pub fn desktop_greeter_look(
     out
 }
 
-/// Раздел «Фон и оформление экрана входа» при SDDM — данные для окна.
+/// The «Login screen background and look» section with SDDM: data for the window.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SddmGreeterView {
-    /// Экран входа — SDDM, тема известна.
+    /// The login screen is SDDM, the theme is known.
     pub visible: bool,
     pub title: String,
-    /// «Тема: Breeze».
+    /// «Theme: Breeze».
     pub theme: String,
-    /// Можно менять (не SteamOS и не неизменяемая система).
+    /// Can be changed (not SteamOS and not an immutable system).
     pub can_change: bool,
-    /// Почему нельзя (серым, до пароля).
+    /// Why it cannot (in grey, before the password).
     pub blocked: String,
     pub background: SddmBackgroundView,
     pub look: SddmLookView,
@@ -8751,8 +8832,8 @@ pub struct SddmGreeterView {
     pub preview: GreeterPreviewView,
 }
 
-/// Галочка «Показывать часы» (у SDDM — `showClock` темы, у Plasma Login
-/// Manager — `[Greeter] ShowClock`).
+/// The «Show clock» checkbox (for SDDM the theme's `showClock`, for Plasma
+/// Login Manager `[Greeter] ShowClock`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GreeterClockView {
@@ -8761,25 +8842,25 @@ pub struct GreeterClockView {
     pub label: String,
 }
 
-/// Кнопка живого превью экрана входа (тестовый режим приветствия).
+/// The live login screen preview button (the greeter's test mode).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GreeterPreviewView {
-    /// Показать можно; иначе кнопка заперта и `note` — почему.
+    /// Can be shown; otherwise the button is locked and `note` says why.
     pub available: bool,
     pub label: String,
-    /// Подпись той же кнопки, пока превью открыто.
+    /// Caption of the same button while the preview is open.
     pub close: String,
     pub tooltip: String,
     pub note: String,
 }
 
-/// Потолок жизни превью экрана входа: дольше Rexon его не держит (выйти из
-/// тестового режима приветствия самому бывает нечем).
+/// Lifetime cap of the login screen preview: Rexon does not keep it longer
+/// (there may be no way to leave the greeter's test mode by oneself).
 pub const LOGIN_PREVIEW_MAX_SECS: u64 = 120;
 
-/// Кнопка превью: `plm` — Plasma Login Manager (выход — подставной вход,
-/// его надо назвать); `problem` — почему показать нельзя.
+/// Preview button: `plm` is Plasma Login Manager (exit is a fake login, it
+/// has to be named); `problem` is why it cannot be shown.
 pub fn greeter_preview_view(plm: bool, problem: Option<String>) -> GreeterPreviewView {
     let tooltip = if plm {
         tr("Shows the login screen full screen without logging you out; nothing is changed. To close it, \
@@ -8799,7 +8880,7 @@ pub fn greeter_preview_view(plm: bool, problem: Option<String>) -> GreeterPrevie
     }
 }
 
-/// Галочка «Показывать часы».
+/// The «Show clock» checkbox.
 pub fn greeter_clock_view(supported: bool, checked: bool) -> GreeterClockView {
     GreeterClockView { supported, checked, label: tr("Show clock") }
 }
@@ -8808,17 +8889,17 @@ pub fn greeter_clock_view(supported: bool, checked: bool) -> GreeterClockView {
 #[serde(rename_all = "camelCase")]
 pub struct SddmBackgroundView {
     pub supported: bool,
-    /// Картинка для превью (`file:` — забота окна); пусто — не задана.
+    /// Picture for the preview (`file:` is the window's business); empty: not set.
     pub image: String,
-    /// Подпись под превью: «свой» или «фон темы».
+    /// Caption under the preview: "custom" or "theme background".
     pub state: String,
-    /// Почему фон не сменить (тема без файла настроек).
+    /// Why the background cannot be changed (a theme without a settings file).
     pub note: String,
     pub choose: String,
-    /// «Фон темы» — только когда задан свой.
+    /// «Theme background» only when a custom one is set.
     pub reset: String,
     pub can_reset: bool,
-    /// Фильтр окна выбора файла.
+    /// File dialog filter.
     pub filter: String,
     pub dialog_title: String,
 }
@@ -8833,10 +8914,10 @@ pub struct SddmLookView {
     pub reset_confirm: String,
 }
 
-/// Решение раздела по фактам: `theme` — тема SDDM (`None` — встроенная),
-/// `name` — её название из `metadata.desktop`, `background` —
-/// [`sddm_theme_background`], `look` — [`desktop_greeter_look`], `blocked`
-/// — причина, по которой системные файлы не меняются (пусто — можно).
+/// The section decision from facts: `theme` is the SDDM theme (`None`: the
+/// built-in one), `name` its title from `metadata.desktop`, `background` is
+/// [`sddm_theme_background`], `look` is [`desktop_greeter_look`], `blocked`
+/// is the reason system files are not changed (empty: allowed).
 pub fn sddm_greeter_view(
     theme: Option<&str>,
     name: Option<&str>,
@@ -8912,7 +8993,7 @@ pub fn sddm_greeter_view(
     }
 }
 
-/// Системный шрифт стола `de` строкой его хранилища (вне Plasma).
+/// The system font of desktop `de` as its storage string (outside Plasma).
 fn live_desktop_font(de: &str, config_home: &str) -> Option<String> {
     use crate::qt_settings as qs;
     let raw = match qs::font_plan(de, "system").primary {
@@ -8942,7 +9023,7 @@ fn live_desktop_font(de: &str, config_home: &str) -> Option<String> {
     (!v.is_empty()).then_some(v)
 }
 
-/// [`desktop_greeter_look`] на живой машине для стола `de` (`kde` — Plasma).
+/// [`desktop_greeter_look`] on the live machine for desktop `de` (`kde` is Plasma).
 pub fn desktop_greeter_look_live(de: &str) -> DesktopLook {
     let home = std::env::var("HOME").unwrap_or_default();
     let xdg = std::env::var("XDG_CONFIG_HOME").ok().filter(|v| !v.is_empty());
@@ -8967,8 +9048,8 @@ pub fn desktop_greeter_look_live(de: &str) -> DesktopLook {
     )
 }
 
-/// Тема, которую SDDM покажет сейчас (`None` — встроенная), — тем же
-/// чтением, что у самого SDDM.
+/// The theme SDDM shows now (`None`: the built-in one), with the same reading
+/// as SDDM itself.
 pub fn sddm_current_theme_live() -> Option<String> {
     let read = |p: &str| std::fs::read_to_string(p).ok();
     let list = |d: &str| -> Vec<String> {
@@ -8979,8 +9060,8 @@ pub fn sddm_current_theme_live() -> Option<String> {
     sddm_effective_theme(&read, &list).filter(|t| !t.trim().is_empty())
 }
 
-/// [`sddm_greeter_view`] на живой машине: тема SDDM — тем же чтением, что
-/// у самого SDDM; на SteamOS менять нельзя (причина ядра).
+/// [`sddm_greeter_view`] on the live machine: the SDDM theme with the same
+/// reading as SDDM itself; on SteamOS it cannot be changed (the core's reason).
 pub fn sddm_greeter_view_live(de: &str, look: &DesktopLook) -> SddmGreeterView {
     let read = |p: &str| std::fs::read_to_string(p).ok();
     let theme = sddm_current_theme_live();
@@ -9006,8 +9087,8 @@ pub fn sddm_greeter_view_live(de: &str, look: &DesktopLook) -> SddmGreeterView {
     view
 }
 
-/// Итог операции сеанса прав для человека: `Ok(done)` при коде 0, иначе
-/// готовый текст отказа помощника или `failed`.
+/// Result of a privilege session operation for the person: `Ok(done)` on
+/// code 0, otherwise the helper's ready refusal text or `failed`.
 fn greeter_outcome(out: Option<crate::system_exec::RunOut>, done: String, failed: String) -> Result<String, String> {
     let Some(out) = out else {
         return Err(crate::privilege::client::ClientError::HelperMissing.human_text());
@@ -9019,12 +9100,13 @@ fn greeter_outcome(out: Option<crate::system_exec::RunOut>, done: String, failed
     Err(why.unwrap_or(failed))
 }
 
-/// Сменить фон темы SDDM `theme` на картинку `image` (`None` — вернуть фон
-/// темы) через сеанс прав окна ([`crate::privilege::op::PrivOp::SddmBackground`]).
-/// До пароля — проверка картинки по первым байтам (`head`): заведомый отказ
-/// пароля не стоит. Всё остальное помощник от root проверяет сам; сырого
-/// пути через `pkexec` нет (З5).
-/// `webp`/`qt` — покажет ли приветствие темы WebP и на каком оно Qt
+/// Change the background of SDDM theme `theme` to picture `image` (`None`:
+/// restore the theme background) through the window's privilege session
+/// ([`crate::privilege::op::PrivOp::SddmBackground`]). Before the password,
+/// the picture is checked by its first bytes (`head`): a certain refusal is
+/// not worth a password. Everything else the root helper checks itself;
+/// there is no raw path via `pkexec` (Z5).
+/// `webp`/`qt`: whether the theme's greeter shows WebP and which Qt it is on
 /// ([`qt_has_webp`]).
 pub fn sddm_background_with(
     theme: &str,
@@ -9054,7 +9136,7 @@ pub fn sddm_background_with(
     greeter_outcome(run(&op, &files), done, tr("Couldn't change the login screen background."))
 }
 
-/// [`sddm_background_with`] на живой машине.
+/// [`sddm_background_with`] on the live machine.
 pub fn sddm_background_live(theme: &str, image: Option<&str>) -> Result<String, String> {
     use std::io::Read;
     let qt = std::fs::read_to_string(format!("{SDDM_THEMES_DIR}/{theme}/metadata.desktop"))
@@ -9077,8 +9159,9 @@ pub fn sddm_background_live(theme: &str, image: Option<&str>) -> Result<String, 
     Ok(done)
 }
 
-/// «Показывать часы» у темы SDDM `theme` (`showClock` в `<ConfigFile>.user`,
-/// как kcm) через сеанс прав окна ([`crate::privilege::op::PrivOp::SddmClock`]).
+/// «Show clock» for SDDM theme `theme` (`showClock` in `<ConfigFile>.user`,
+/// as the kcm) through the window's privilege session
+/// ([`crate::privilege::op::PrivOp::SddmClock`]).
 pub fn sddm_clock_with(
     theme: &str,
     show: bool,
@@ -9093,29 +9176,30 @@ pub fn sddm_clock_with(
     greeter_outcome(run(&op, &[]), done, tr("Couldn't change the login screen clock."))
 }
 
-/// [`sddm_clock_with`] на живой машине.
+/// [`sddm_clock_with`] on the live machine.
 pub fn sddm_clock_live(theme: &str, show: bool) -> Result<String, String> {
     sddm_clock_with(theme, show, &mut |op, files| crate::privilege::run::run_live(op, files, None, &mut |_| {}))
 }
 
-// ── Живое превью экрана входа ────────────────────────────────────────────
+// ── Live login screen preview ────────────────────────────────────────────
 //
-// Сверено с исходниками SDDM 0.21 (`src/greeter/GreeterApp.cpp`,
+// Checked against the SDDM 0.21 sources (`src/greeter/GreeterApp.cpp`,
 // `src/daemon/Greeter.cpp`, `src/common/ThemeMetadata.cpp`):
-//   * приветствие темы — `sddm-greeter` для тем на Qt 5 и `sddm-greeter-qt6`
-//     для `[SddmGreeterTheme] QtVersion=6` (нет ключа — 5); лежит рядом с
-//     `sddm` (`BIN_INSTALL_DIR`);
-//   * тестовый режим — `--test-mode --theme <каталог темы>`: без демона и
-//     без входа, от обычного пользователя, окно во весь экран на каждом
-//     мониторе; тема читает `theme.conf` и `theme.conf.user` сама;
-//   * закрытое окно процесс не завершает (`setQuitOnLastWindowClosed(false)`),
-//     поэтому превью держит и гасит Rexon ([`run_greeter_preview`]).
-// Модуль KDE 6.8 (sddm-kcm) кнопки превью не имеет — она сверх него.
+//   * the theme greeter is `sddm-greeter` for Qt 5 themes and
+//     `sddm-greeter-qt6` for `[SddmGreeterTheme] QtVersion=6` (no key means
+//     5); it lives next to `sddm` (`BIN_INSTALL_DIR`);
+//   * test mode is `--test-mode --theme <theme dir>`: no daemon and no
+//     login, as a regular user, a fullscreen window on every monitor; the
+//     theme reads `theme.conf` and `theme.conf.user` itself;
+//   * a closed window does not end the process
+//     (`setQuitOnLastWindowClosed(false)`), so Rexon holds and kills the
+//     preview ([`run_greeter_preview`]).
+// The KDE 6.8 module (sddm-kcm) has no preview button: this goes beyond it.
 
-/// Каталог, где SDDM держит свои программы.
+/// Directory where SDDM keeps its programs.
 pub const SDDM_BIN_DIR: &str = "/usr/bin";
 
-/// Приветствие SDDM для тем на Qt `qt` (как `Greeter::greeterPathForQt`).
+/// SDDM greeter for themes on Qt `qt` (like `Greeter::greeterPathForQt`).
 pub fn sddm_greeter_bin(qt: u32) -> String {
     if qt == 5 {
         format!("{SDDM_BIN_DIR}/sddm-greeter")
@@ -9124,7 +9208,7 @@ pub fn sddm_greeter_bin(qt: u32) -> String {
     }
 }
 
-/// Имя темы — простое имя каталога.
+/// The theme name is a simple directory name.
 fn plain_theme_name(theme: &str) -> bool {
     !theme.is_empty()
         && theme != "."
@@ -9134,9 +9218,9 @@ fn plain_theme_name(theme: &str) -> bool {
         && !theme.chars().any(|c| c.is_control())
 }
 
-/// Команда превью темы SDDM `theme` из [`SDDM_THEMES_DIR`]. `read` — текст
-/// файла, `executable` — можно ли запустить программу. `Err` — почему
-/// показать нельзя (для человека).
+/// Preview command of SDDM theme `theme` from [`SDDM_THEMES_DIR`]. `read` is
+/// the file text, `executable` whether the program can be run. `Err`: why it
+/// cannot be shown (for the person).
 pub fn sddm_preview_argv(
     theme: &str,
     read: &dyn Fn(&str) -> Option<String>,
@@ -9158,21 +9242,21 @@ pub fn sddm_preview_argv(
     Ok(vec![bin, "--test-mode".into(), "--theme".into(), dir])
 }
 
-/// Можно ли запустить файл `path` (обычный файл с битом исполнения).
+/// Whether file `path` can be run (a regular file with the exec bit).
 pub fn is_executable_live(path: &str) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }
 
-/// [`sddm_preview_argv`] на живой машине.
+/// [`sddm_preview_argv`] on the live machine.
 pub fn sddm_preview_argv_live(theme: &str) -> Result<Vec<String>, String> {
     sddm_preview_argv(theme, &|p| std::fs::read_to_string(p).ok(), &is_executable_live)
 }
 
-/// Превью не удалось; `lines` — последние строки, что сказала программа.
+/// The preview failed; `lines` are the last lines the program said.
 pub fn login_preview_failed(lines: &[String]) -> String {
     let head = tr("Couldn't show the login screen preview.");
-    // Строка длиннее 300 знаков — обрезается: человеку нужна причина, а не дамп.
+    // A line longer than 300 characters is cut: the person needs the reason, not a dump.
     let tail: Vec<String> = lines
         .iter()
         .map(|l| l.trim())
@@ -9186,12 +9270,12 @@ pub fn login_preview_failed(lines: &[String]) -> String {
     }
 }
 
-/// Показать превью экрана входа `argv` и дождаться конца: сам закрылся,
-/// `stop` поднят (кнопка «Закрыть предпросмотр») или прошло `max`. Rexon
-/// умер — превью гаснет с ним (`PR_SET_PDEATHSIG`; поэтому звать из потока,
-/// который живёт до конца показа). Вывод программы читается всё время (иначе
-/// болтливое приветствие встанет на полном канале), в отказ идут последние
-/// строки. Закрытие нами — не ошибка.
+/// Show the login screen preview `argv` and wait for the end: it closed by
+/// itself, `stop` was raised (the «Close preview» button) or `max` passed.
+/// If Rexon dies, the preview dies with it (`PR_SET_PDEATHSIG`; so call it
+/// from a thread that lives until the end of the show). The program's output
+/// is read all the time (otherwise a chatty greeter stalls on a full pipe),
+/// the last lines go into the refusal. Being closed by us is not an error.
 pub fn run_greeter_preview(argv: &[String], stop: &std::sync::atomic::AtomicBool, max: std::time::Duration) -> Result<(), String> {
     use std::io::BufRead;
     use std::os::unix::process::CommandExt;
@@ -9204,7 +9288,7 @@ pub fn run_greeter_preview(argv: &[String], stop: &std::sync::atomic::AtomicBool
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped());
-    // SAFETY: между fork и exec — только async-signal-safe prctl.
+    // SAFETY: between fork and exec only the async-signal-safe prctl.
     unsafe {
         cmd.pre_exec(|| {
             libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
@@ -9236,7 +9320,7 @@ pub fn run_greeter_preview(argv: &[String], stop: &std::sync::atomic::AtomicBool
         }
         if !ours && (stop.load(Ordering::SeqCst) || started.elapsed() >= max) {
             ours = true;
-            // SAFETY: процесс — наш ещё не собранный потомок, номер не занят другим.
+            // SAFETY: the process is our not yet reaped child, the pid is not taken by another.
             unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGTERM) };
             let soft = std::time::Instant::now();
             while soft.elapsed() < std::time::Duration::from_secs(3) {
@@ -9260,9 +9344,9 @@ pub fn run_greeter_preview(argv: &[String], stop: &std::sync::atomic::AtomicBool
     Err(login_preview_failed(&lines))
 }
 
-/// Команда превью экрана входа по знаку кнопки: `sddm:<тема>` — тема SDDM
-/// с плитки; пусто — то, что покажет экран входа сейчас (Plasma Login
-/// Manager или текущая тема SDDM).
+/// Login screen preview command by the button's sign: `sddm:<theme>` is an
+/// SDDM theme from a tile; empty means what the login screen will show now
+/// (Plasma Login Manager or the current SDDM theme).
 pub fn login_preview_argv_live(token: &str) -> Result<Vec<String>, String> {
     if let Some(theme) = token.strip_prefix("sddm:") {
         return sddm_preview_argv_live(theme);
@@ -9276,10 +9360,10 @@ pub fn login_preview_argv_live(token: &str) -> Result<Vec<String>, String> {
     }
 }
 
-/// Перенести оформление стола на экран входа SDDM (`look: Some`) или
-/// «Сбросить» (`None`) через сеанс прав окна
-/// ([`crate::privilege::op::PrivOp::SddmLook`]). Файл больше
-/// [`SDDM_LOOK_FILE_MAX_BYTES`] не отправляется (`size` — его размер).
+/// Transfer the desktop look to the SDDM login screen (`look: Some`) or
+/// «Reset» (`None`) through the window's privilege session
+/// ([`crate::privilege::op::PrivOp::SddmLook`]). A file larger than
+/// [`SDDM_LOOK_FILE_MAX_BYTES`] is not sent (`size` is its size).
 pub fn sddm_look_with(
     look: Option<&DesktopLook>,
     size: &dyn Fn(&str) -> Option<u64>,
@@ -9314,7 +9398,7 @@ pub fn sddm_look_with(
     greeter_outcome(run(&op, &files), done, tr("Couldn't change the login screen settings."))
 }
 
-/// [`sddm_look_with`] на живой машине.
+/// [`sddm_look_with`] on the live machine.
 pub fn sddm_look_live(look: Option<&DesktopLook>) -> Result<String, String> {
     sddm_look_with(
         look,
@@ -9323,9 +9407,9 @@ pub fn sddm_look_live(look: Option<&DesktopLook>) -> Result<String, String> {
     )
 }
 
-/// [`x11_login_default`] на живой машине — по тому, что окно может
-/// прочесть (последний сеанс SDDM закрыт от пользователя; его помощник от
-/// root сверит сам). Пара предлагается, только если её сеанс установлен.
+/// [`x11_login_default`] on the live machine, by what the window can read
+/// (SDDM's last session is closed to the user; the root helper checks it
+/// itself). A pair is offered only if its session is installed.
 pub fn x11_login_default_live() -> Option<&'static SessionSuccessor> {
     let read = |p: &str| std::fs::read_to_string(p).ok();
     let list = |d: &str| -> Vec<String> {
@@ -9337,9 +9421,9 @@ pub fn x11_login_default_live() -> Option<&'static SessionSuccessor> {
         .filter(|s| std::path::Path::new(&wayland_session_file(s)).is_file())
 }
 
-/// Начало ключа отказа «пары нет в системе» (+ имя X11-сеанса).
+/// Start of the refusal key "the pair is not in the system" (+ the X11 session name).
 pub const WAYLAND_SESSION_MISSING: &str = "refused.wayland-session-missing.";
-/// Начало ключа отказа «сеанс задан в файле пакета» (+ имя X11-сеанса).
+/// Start of the refusal key "the session is set in the package file" (+ the X11 session name).
 pub const SESSION_SET_ELSEWHERE: &str = "refused.session-set-elsewhere.";
 
 // TRANSLATORS: %1 is a session name as shown on the login screen, e.g. "Plasma (Wayland)".
@@ -9367,7 +9451,7 @@ const T_SESSION_SET_ELSEWHERE: &str = n_(
 );
 const T_WAYLAND_DEFAULT_FAILED: &str = n_("Rexon couldn't change the default session. Nothing was changed.");
 
-/// Строки «сеанса по умолчанию» — шаблоны (для сверки переводов).
+/// "Default session" lines as templates (for checking translations).
 pub const WAYLAND_DEFAULT_TEXTS: &[&str] = &[
     T_WAYLAND_DEFAULT_BUTTON,
     T_WAYLAND_DEFAULT_CONFIRM,
@@ -9378,54 +9462,54 @@ pub const WAYLAND_DEFAULT_TEXTS: &[&str] = &[
     T_WAYLAND_DEFAULT_FAILED,
 ];
 
-/// Кнопка и заголовок окна подтверждения.
+/// Button and confirmation dialog title.
 pub fn wayland_default_button(s: &SessionSuccessor) -> String {
     trf(T_WAYLAND_DEFAULT_BUTTON, &[&s.wayland_name])
 }
 
-/// Текст подтверждения.
+/// Confirmation text.
 pub fn wayland_default_confirm(s: &SessionSuccessor) -> String {
     trf(T_WAYLAND_DEFAULT_CONFIRM, &[&s.x11_name, &s.wayland_name])
 }
 
-/// Полоса в разделе экрана входа.
+/// Banner in the login screen section.
 pub fn wayland_default_banner(s: &SessionSuccessor) -> String {
     trf(T_WAYLAND_DEFAULT_BANNER, &[&s.x11_name, &s.wayland_name])
 }
 
-/// Итог: пара стала сеансом по умолчанию.
+/// Result: the pair became the default session.
 pub fn wayland_default_done(s: &SessionSuccessor) -> String {
     trf(T_WAYLAND_DEFAULT_DONE, &[&s.wayland_name])
 }
 
-/// Отказ помощника: пары нет в системе.
+/// Helper refusal: the pair is not in the system.
 pub fn wayland_session_missing_text(s: &SessionSuccessor) -> String {
     trf(T_WAYLAND_SESSION_MISSING, &[&s.wayland_name])
 }
 
-/// Отказ помощника: X11-сеанс задан в файле пакета.
+/// Helper refusal: the X11 session is set in the package file.
 pub fn session_set_elsewhere_text(s: &SessionSuccessor) -> String {
     trf(T_SESSION_SET_ELSEWHERE, &[&s.x11_name])
 }
 
-/// Общий провал (помощник не ответил, запись не удалась).
+/// General failure (the helper did not answer, writing failed).
 pub fn wayland_default_failed() -> String {
     tr(T_WAYLAND_DEFAULT_FAILED)
 }
 
-/// Полоса «сеанс по умолчанию уходит» для раздела экрана входа.
+/// The "default session is going away" banner for the login screen section.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WaylandDefaultOffer {
-    /// Имя X11-сеанса из таблицы — его окно вернёт в
-    /// `makeWaylandDefaultSession` (помощник сверит с таблицей сам).
+    /// X11 session name from the table: the window passes it back to
+    /// `makeWaylandDefaultSession` (the helper checks it against the table itself).
     pub x11: String,
     pub text: String,
     pub button: String,
     pub confirm: String,
 }
 
-/// Подписи полосы для пары `s`.
+/// Banner captions for pair `s`.
 pub fn wayland_default_offer(s: &SessionSuccessor) -> WaylandDefaultOffer {
     WaylandDefaultOffer {
         x11: s.x11.to_string(),
@@ -9435,11 +9519,12 @@ pub fn wayland_default_offer(s: &SessionSuccessor) -> WaylandDefaultOffer {
     }
 }
 
-/// Сделать пару сеансом по умолчанию через сеанс прав окна
-/// ([`crate::privilege`]): что меняется ровно ключ сеанса, что пара
-/// установлена и что после правки экран входа X11-сеанс сам не открывает,
-/// проверяет помощник от root; окну он не верит. Сырого пути через `pkexec`
-/// нет намеренно. `Ok` — итог для человека, `Err` — готовый текст отказа.
+/// Make the pair the default session through the window's privilege session
+/// ([`crate::privilege`]): that exactly the session key changes, that the
+/// pair is installed and that after the edit the login screen does not open
+/// the X11 session by itself is checked by the root helper; it does not
+/// trust the window. There is deliberately no raw path via `pkexec`. `Ok` is
+/// the result for the person, `Err` a ready refusal text.
 pub fn make_wayland_default_with(
     s: &SessionSuccessor,
     run: &mut dyn FnMut(&crate::privilege::op::PrivOp) -> Option<crate::system_exec::RunOut>,
@@ -9455,44 +9540,45 @@ pub fn make_wayland_default_with(
     Err(why.unwrap_or_else(wayland_default_failed))
 }
 
-/// [`make_wayland_default_with`] на живой машине.
+/// [`make_wayland_default_with`] on the live machine.
 pub fn make_wayland_default_live(s: &SessionSuccessor) -> Result<String, String> {
     make_wayland_default_with(s, &mut |op| crate::privilege::run::run_live(op, &[], None, &mut |_| {}))
 }
 
-/// Идемпотентный ответ `reset_sddm_to_default`, когда удалять нечего.
+/// Idempotent answer of `reset_sddm_to_default` when there is nothing to delete.
 pub fn sddm_already_stock_message() -> String {
     tr("The login screen (SDDM) already uses the stock configuration")
 }
-/// Текст, которым подменяется пустой вывод упавшего pkexec.
+/// Text that replaces the empty output of a failed pkexec.
 pub fn sddm_reset_failed_message() -> String {
     tr("Couldn't reset SDDM")
 }
-/// `safe_run` не нашёл pkexec — команда не запускалась вовсе.
+/// `safe_run` did not find pkexec: the command did not run at all.
 ///
-/// ⭐ Починка 15.09.2026: прежде было «pkexec не найден» — служебное слово
-/// и ни слова о том, что делать. Имена пакетов во второй строке — не слова,
-/// а то, что надо поставить: в Arch, Fedora и openSUSE программа запроса
-/// пароля лежит в пакете polkit, в Debian и Ubuntu — в отдельном pkexec.
+/// ⭐ Fixed 15.09.2026: it used to say "pkexec not found": a technical word
+/// and nothing about what to do. The package names in the second line are
+/// not words but what has to be installed: on Arch, Fedora and openSUSE the
+/// password prompt program is in the polkit package, on Debian and Ubuntu in
+/// a separate pkexec.
 pub fn pkexec_missing_message() -> String {
     tr("Couldn't ask for the administrator password: a component needed for \
         that is missing on this system. Nothing was changed.\n\
         Install the polkit package (pkexec on Debian and Ubuntu) and try again.")
 }
 
-/// Отказ авторизации polkit опознаётся одинаково во всех recovery-операциях
-/// (форки Plasma, Plymouth, SDDM): либо текст агента, либо код 126.
+/// A polkit authorization refusal is recognised the same way in all recovery
+/// operations (Plasma forks, Plymouth, SDDM): either the agent text or code 126.
 pub fn pkexec_auth_denied(returncode: i32, err: &str) -> bool {
     err.contains("Not authorized") || returncode == 126
 }
 
-/// Что показать человеку, когда pkexec вернул НЕ ноль. Общее для всех
-/// recovery-операций (Plymouth, SDDM): выбрать поток, обрезать пробелы, а
-/// отказ авторизации подменить подсказкой «выполни вручную».
+/// What to show the person when pkexec returned NON-zero. Shared by all
+/// recovery operations (Plymouth, SDDM): choose the stream, trim whitespace,
+/// and replace an authorization refusal with a "run it by hand" hint.
 ///
-/// Порт `(r.stderr or r.stdout or "<запасной текст>").strip()`: пустая строка
-/// в Python ложна, поэтому пустой stderr уступает stdout, а пустые оба —
-/// запасному тексту операции.
+/// Port of `(r.stderr or r.stdout or "<fallback text>").strip()`: an empty
+/// string is falsy in Python, so an empty stderr gives way to stdout, and
+/// both empty give way to the operation's fallback text.
 pub fn pkexec_failure_message(
     returncode: i32,
     stdout: &str,
@@ -9515,7 +9601,7 @@ pub fn pkexec_failure_message(
     }
 }
 
-/// Итог `reset_sddm_to_default` — `(ok, сообщение, удалённые)`.
+/// Result of `reset_sddm_to_default`: `(ok, message, removed)`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SddmResetOutcome {
     pub ok: bool,
@@ -9523,12 +9609,13 @@ pub struct SddmResetOutcome {
     pub removed: Vec<String>,
 }
 
-/// Разбор результата pkexec для `reset_sddm_to_default`. Внешнего здесь нет:
-/// Python отдаёт код возврата и оба потока, решение и текст — тут.
+/// Parsing the pkexec result for `reset_sddm_to_default`. Nothing external
+/// here: Python passes the exit code and both streams, the decision and the
+/// text are here.
 ///
-/// `returncode` = `None`, когда pkexec не нашёлся (`safe_run` вернул `None`).
-/// `shell` — тело команды из [`SddmReset::Run`], оно же идёт в подсказку
-/// «выполни вручную».
+/// `returncode` = `None` when pkexec was not found (`safe_run` returned
+/// `None`). `shell` is the command body from [`SddmReset::Run`], it also goes
+/// into the "run it by hand" hint.
 pub fn sddm_reset_outcome(
     removed: &[String],
     default_theme: Option<&str>,
@@ -9564,16 +9651,16 @@ pub fn sddm_reset_outcome(
     }
 }
 
-/// Текст отказа авторизации pkexec: одинаков для всех recovery-операций
-/// (плазма-форки/plymouth/SDDM) — «не подтверждён, сделать можно вручную
-/// <команда>».
+/// pkexec authorization refusal text: the same for all recovery operations
+/// (Plasma forks/plymouth/SDDM): "not confirmed, it can be done by hand
+/// <command>".
 ///
-/// ⭐ Починка 15.09.2026: прежде было «Авторизация pkexec отклонена.» —
-/// служебные слова для покупателя и неверный смысл: код 126 приходит и
-/// тогда, когда человек сам закрыл окно пароля, ничего ему не «отклоняли».
-/// Первая строка — та же, что у отказов установки и удаления
-/// (`install_plan`, `remove_plan`, `batch_main_result`). Команда для
-/// терминала остаётся как есть: это не слова, а то, что надо набрать.
+/// ⭐ Fixed 15.09.2026: it used to say "pkexec authorization rejected.":
+/// technical words for the user and the wrong meaning: code 126 also comes
+/// when the person closed the password window themselves, nobody "rejected"
+/// anything. The first line is the same as for the install and removal
+/// refusals (`install_plan`, `remove_plan`, `batch_main_result`). The
+/// terminal command stays as is: it is not words but what has to be typed.
 pub fn pkexec_denied_message(manual_cmd: &str) -> String {
     trf(
         "The administrator password wasn't confirmed.\nYou can do this by hand in a terminal:\n%1",
@@ -9582,44 +9669,45 @@ pub fn pkexec_denied_message(manual_cmd: &str) -> String {
 }
 
 // ============================================================================
-// Детект экрана входа — порт `active_login_manager`/`_display_manager_present`
+// Login screen detection: port of `active_login_manager`/`_display_manager_present`
 // ============================================================================
 
-/// Стандартный systemd-симлинк активного DM.
+/// The standard systemd symlink of the active DM.
 pub const DM_SYMLINK: &str = "/etc/systemd/system/display-manager.service";
-/// ШИРОКИЙ список известных DM-юнитов — порт `_KNOWN_DM_UNITS`. Нужен честному
-/// ответу «экран входа есть/нет» (идиот-защита `ensure_display_manager`:
-/// ставить SDDM ТОЛЬКО когда DM реально отсутствует).
+/// A WIDE list of known DM units: port of `_KNOWN_DM_UNITS`. Needed for an
+/// honest "is there a login screen" answer (the `ensure_display_manager`
+/// foolproof guard: install SDDM ONLY when a DM is really missing).
 pub const KNOWN_DM_UNITS: &[&str] = &[
     "display-manager", "plasmalogin", "sddm", "gdm", "gdm3", "lightdm",
     "lxdm", "greetd", "ly", "cosmic-greeter", "slim", "nodm", "xdm",
     "entrance", "emptty", "ddm", "tbsm",
 ];
-/// Порядок опроса в `active_login_manager` (Plasma Login Manager первым: у
-/// ранних его выпусков `Provides: None`, симлинка могло не быть вовсе; на
-/// живой машине 03.09.2026 юнит уже несёт `Alias=display-manager.service`).
+/// Query order in `active_login_manager` (Plasma Login Manager first: its
+/// early releases had `Provides: None`, the symlink might not exist at all;
+/// on a live machine on 03.09.2026 the unit already carries
+/// `Alias=display-manager.service`).
 pub const LOGIN_MANAGER_PROBE_UNITS: &[&str] =
     &["plasmalogin", "sddm", "gdm", "lightdm", "cosmic-greeter"];
-/// Состояния `systemctl is-enabled`, означающие «стартует при загрузке».
+/// `systemctl is-enabled` states meaning "starts at boot".
 pub const DM_ENABLED_STATES: &[&str] =
     &["enabled", "enabled-runtime", "alias", "indirect", "static"];
-/// Дефолт `active_login_manager`, когда определить нечем.
+/// Default of `active_login_manager` when there is nothing to determine it with.
 pub const DEFAULT_LOGIN_MANAGER: &str = "sddm";
-/// Юнит Plasma Login Manager (Plasma 6.6+) — экрана входа БЕЗ тем: вид у
-/// него один, собранный в сам бинарь, и QML-темы SDDM он не грузит.
+/// Plasma Login Manager unit (Plasma 6.6+): a login screen WITHOUT themes: it
+/// has one look, built into the binary, and it does not load SDDM QML themes.
 pub const PLASMA_LOGIN_UNIT: &str = "plasmalogin";
 
-/// Рисует ли экран входа Plasma Login Manager — по ответу
-/// [`active_login_manager_from`]. Одно решение на продукт: его спрашивают и
-/// раздел «Оформления» (какую полку показать), и отметка активной темы
-/// SDDM, и последний отказ перед установкой SDDM-темы.
+/// Whether Plasma Login Manager draws the login screen, by the
+/// [`active_login_manager_from`] answer. One decision for the product: it is
+/// asked by the «Appearance» section (which shelf to show), by the active
+/// SDDM theme mark, and by the last refusal before installing an SDDM theme.
 pub fn is_plasma_login(active_unit: &str) -> bool {
     active_unit.trim() == PLASMA_LOGIN_UNIT
 }
 
-/// Юнит из цели симлинка display-manager.service: basename без `.service`.
-/// None — цели нет либо имя пустое. Живость цели здесь не проверяется —
-/// это забота `dm_symlink_unit`.
+/// The unit from the display-manager.service symlink target: the basename
+/// without `.service`. None: no target or an empty name. Target liveness is
+/// not checked here: that is `dm_symlink_unit`'s job.
 pub fn dm_unit_from_symlink(realpath_target: Option<&str>) -> Option<String> {
     let target = realpath_target?;
     let base = target.rsplit('/').next().unwrap_or(target);
@@ -9631,25 +9719,25 @@ pub fn dm_unit_from_symlink(realpath_target: Option<&str>) -> Option<String> {
     }
 }
 
-/// Означает ли вывод `systemctl is-enabled` «стартует при загрузке».
+/// Whether `systemctl is-enabled` output means "starts at boot".
 pub fn dm_state_is_enabled(state: &str) -> bool {
     DM_ENABLED_STATES.contains(&state.trim())
 }
 
-/// Юнит, на который ЖИВЫМ симлинком указывает display-manager.service.
+/// The unit display-manager.service points to with a LIVE symlink.
 ///
-/// `symlink_target` — realpath симлинка (None = симлинка нет),
-/// `target_exists` — существует ли файл юнита по этому пути.
+/// `symlink_target` is the symlink realpath (None = no symlink),
+/// `target_exists` is whether the unit file exists at that path.
 ///
-/// ⚠️ Починка при порте. Висячий симлинк — обычное состояние после
-/// удаления пакета экрана входа: `systemctl enable sddm` кладёт симлинк в
-/// /etc, а `pacman -R sddm` (в том числе наш `remove_de` для KDE и LXQt,
-/// где sddm стоит в списке пакетов) его не трогает. Python считал такой
-/// симлинк живым DM (`islink or exists`): `_display_manager_present` отвечал
-/// «есть», идиот-защита `ensure_display_manager` пропускала установку, и
-/// после перезагрузки человек оставался без входа в графику — ровно та беда,
-/// от которой защита заведена. Висячий симлинк теперь — «симлинка нет»:
-/// решение уходит к опросу `systemctl is-enabled`.
+/// ⚠️ Fixed in the port. A dangling symlink is the normal state after the
+/// login screen package is removed: `systemctl enable sddm` puts a symlink
+/// into /etc, and `pacman -R sddm` (including our `remove_de` for KDE and
+/// LXQt, where sddm is in the package list) does not touch it. Python treated
+/// such a symlink as a live DM (`islink or exists`): `_display_manager_present`
+/// answered "present", the `ensure_display_manager` foolproof guard skipped
+/// the install, and after a reboot the person was left without a graphical
+/// login: exactly the trouble the guard exists for. A dangling symlink now
+/// means "no symlink": the decision goes to the `systemctl is-enabled` query.
 pub fn dm_symlink_unit(symlink_target: Option<&str>, target_exists: bool) -> Option<String> {
     if !target_exists {
         return None;
@@ -9657,9 +9745,9 @@ pub fn dm_symlink_unit(symlink_target: Option<&str>, target_exists: bool) -> Opt
     dm_unit_from_symlink(symlink_target)
 }
 
-/// Порт `active_login_manager`. `is_enabled(unit)` — stdout
-/// `systemctl is-enabled <unit>.service` либо None (команда не дала ответа);
-/// вызывается ЛЕНИВО и только пока не найден первый включённый юнит.
+/// Port of `active_login_manager`. `is_enabled(unit)` is the stdout of
+/// `systemctl is-enabled <unit>.service` or None (the command gave no
+/// answer); called LAZILY and only until the first enabled unit is found.
 pub fn active_login_manager_from(
     symlink_target: Option<&str>,
     target_exists: bool,
@@ -9677,21 +9765,21 @@ pub fn active_login_manager_from(
     .unwrap_or_else(|| DEFAULT_LOGIN_MANAGER.to_string())
 }
 
-/// Состояния `systemctl is-enabled`, при которых юнит экрана входа ДЕЙСТВИТЕЛЬНО
-/// стартует при загрузке как display-manager.service. Уже, чем
-/// [`DM_ENABLED_STATES`]: `static` и `indirect` у юнита DM не значат, что он
-/// встанет на место display-manager.service, и для подписи «основной» не
-/// годятся (для честного «экран входа есть» широкий список остаётся).
+/// `systemctl is-enabled` states in which a login screen unit REALLY starts
+/// at boot as display-manager.service. Narrower than [`DM_ENABLED_STATES`]:
+/// `static` and `indirect` for a DM unit do not mean it will take the place
+/// of display-manager.service, and they are not fit for the "default"
+/// caption (the wide list stays for an honest "there is a login screen").
 pub const DM_ACTIVE_STATES: &[&str] = &["enabled", "enabled-runtime", "alias"];
 
-/// Означает ли вывод `systemctl is-enabled`, что юнит — основной экран входа.
+/// Whether `systemctl is-enabled` output means the unit is the default login screen.
 pub fn dm_state_is_active(state: &str) -> bool {
     DM_ACTIVE_STATES.contains(&state.trim())
 }
 
-/// Порядок опроса для [`active_login_manager_opt`]: сначала узкий список
-/// прежнего детекта (тот же приоритет), затем остальные известные юниты —
-/// иначе включённый `gdm3` на Debian без симлинка остался бы «не найден».
+/// Query order for [`active_login_manager_opt`]: first the narrow list of
+/// the old detection (the same priority), then the other known units:
+/// otherwise an enabled `gdm3` on Debian without a symlink would stay "not found".
 pub fn active_probe_units() -> Vec<&'static str> {
     let mut out: Vec<&'static str> = LOGIN_MANAGER_PROBE_UNITS.to_vec();
     for unit in KNOWN_DM_UNITS {
@@ -9702,8 +9790,8 @@ pub fn active_probe_units() -> Vec<&'static str> {
     out
 }
 
-/// Общее ядро детекта активного экрана входа: живой симлинк, затем ленивый
-/// опрос `units` до первого юнита, чьё состояние принимает `accept`.
+/// Common core of active login screen detection: a live symlink, then a lazy
+/// query of `units` until the first unit whose state `accept` accepts.
 fn login_manager_by<'a>(
     symlink_target: Option<&str>,
     target_exists: bool,
@@ -9727,16 +9815,16 @@ fn login_manager_by<'a>(
     None
 }
 
-/// Активный экран входа БЕЗ подстановки: `None` — определить нечем (нет
-/// живого симлинка и ни один известный юнит не включён, или нет systemctl).
+/// The active login screen WITHOUT substitution: `None` means nothing to
+/// determine it with (no live symlink and no known unit enabled, or no systemctl).
 ///
-/// Для подписи «сейчас основной» нужен именно этот ответ: прежний
-/// [`active_login_manager_from`] в таком случае отвечает `sddm`, и человек
-/// увидел бы чужой экран входа как свой. Прежний остаётся для старых
-/// потребителей (выбор полки тем и т. п.) и ведёт себя как раньше.
+/// The "default now" caption needs exactly this answer: the old
+/// [`active_login_manager_from`] answers `sddm` in that case, and the person
+/// would see someone else's login screen as theirs. The old one stays for old
+/// consumers (choosing the theme shelf, etc.) and behaves as before.
 ///
-/// Отличия от прежнего: включённым считается только [`DM_ACTIVE_STATES`] и
-/// опрашивается широкий список [`active_probe_units`].
+/// Differences from the old one: only [`DM_ACTIVE_STATES`] count as enabled,
+/// and the wide list [`active_probe_units`] is queried.
 pub fn active_login_manager_opt(
     symlink_target: Option<&str>,
     target_exists: bool,
@@ -9753,61 +9841,60 @@ pub fn active_login_manager_opt(
     )
 }
 
-/// Приветствие (greeter) экрана входа, между которыми выбирает человек —
-/// у LightDM это файл `/usr/share/xgreeters/<id>.desktop`.
+/// A login screen greeter the person chooses between: for LightDM it is the
+/// file `/usr/share/xgreeters/<id>.desktop`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DmGreeter {
-    /// Имя файла без `.desktop` — то, что пишется в `greeter-session=`.
+    /// File name without `.desktop`: what is written into `greeter-session=`.
     pub id: String,
-    /// `Name=` из файла (пусто — не задано).
+    /// `Name=` from the file (empty: not set).
     pub name: String,
-    /// Первое слово `Exec=` — программа приветствия.
+    /// The first word of `Exec=`: the greeter program.
     pub exec: String,
 }
 
-/// Готов ли экран входа стать основным.
+/// Whether a login screen is ready to become the default.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", content = "detail", rename_all = "snake_case")]
 pub enum DmReadiness {
-    /// Всё нужное на месте.
+    /// Everything needed is in place.
     Ready,
-    /// Работать будет, но сначала человек выбирает приветствие из
-    /// установленных.
+    /// It will work, but first the person chooses a greeter from the installed ones.
     NeedsGreeterChoice(Vec<DmGreeter>),
-    /// Нельзя: причина для человека.
+    /// Not possible: the reason for the person.
     Blocked(String),
-    /// Rexon этот экран входа (или эту систему) переключать не умеет.
+    /// Rexon cannot switch this login screen (or this system).
     Unsupported,
 }
 
-/// Один установленный экран входа — строка будущего списка в разделе
-/// «Экран входа в систему».
+/// One installed login screen: a row of the future list in the «Login
+/// screen» section.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LoginManagerInfo {
-    /// Юнит без `.service` (`plasmalogin`, `sddm`…).
+    /// Unit without `.service` (`plasmalogin`, `sddm`…).
     pub unit: String,
-    /// Человеческое имя; пусто — незнакомый экран входа.
+    /// Human name; empty: an unknown login screen.
     pub label: String,
-    /// Программа из `ExecStart` юнита (как написано в юните).
+    /// Program from the unit's `ExecStart` (as written in the unit).
     pub binary: Option<String>,
-    /// Юнит найден и его программа на месте.
+    /// The unit was found and its program is in place.
     pub present: bool,
-    /// Основной: на него указывает display-manager.service.
+    /// Default: display-manager.service points to it.
     pub active: bool,
     pub readiness: DmReadiness,
-    /// Предупреждения, не мешающие переключению (для человека).
+    /// Warnings that do not prevent switching (for the person).
     pub warnings: Vec<String>,
 }
 
-/// Порт `_display_manager_present` — ЧЕСТНЫЙ булев ответ «экран входа есть».
+/// Port of `_display_manager_present`: an HONEST boolean "there is a login screen".
 ///
-/// Без systemd (`has_systemctl == false`) — true: авто-enable там невозможен, а
-/// экраном входа управляет сам init, вмешиваться нельзя (иначе наплодим второй
-/// DM).
+/// Without systemd (`has_systemctl == false`): true: auto-enable is
+/// impossible there, and init itself manages the login screen, we must not
+/// interfere (otherwise we would add a second DM).
 ///
-/// Симлинк display-manager.service считается ТОЛЬКО с живой целью (см.
-/// `dm_symlink_unit`): висячий после `pacman -R sddm` означает «экрана входа
-/// нет», и ответ берётся из опроса юнитов.
+/// The display-manager.service symlink counts ONLY with a live target (see
+/// `dm_symlink_unit`): a dangling one after `pacman -R sddm` means "no login
+/// screen", and the answer comes from querying the units.
 pub fn display_manager_present_from(
     symlink_target: Option<&str>,
     target_exists: bool,
@@ -9830,11 +9917,12 @@ pub fn display_manager_present_from(
     false
 }
 
-// ── Установленные экраны входа: юниты с Alias=display-manager.service ────
+// ── Installed login screens: units with Alias=display-manager.service ────
 
-/// Каталоги юнитов systemd в порядке приоритета: файл из `/etc` перекрывает
-/// одноимённый пакетный. `/lib/systemd/system` — старые Debian без слияния
-/// `/usr` (там, где слияние есть, это ссылка и одноимённые файлы отсеются).
+/// systemd unit directories in priority order: a file from `/etc` overrides
+/// the package one with the same name. `/lib/systemd/system` is for old
+/// Debian without the `/usr` merge (where the merge exists, it is a link and
+/// same-named files are filtered out).
 pub const DM_UNIT_DIRS: &[&str] = &[
     "/etc/systemd/system",
     "/usr/local/lib/systemd/system",
@@ -9842,17 +9930,18 @@ pub const DM_UNIT_DIRS: &[&str] = &[
     "/lib/systemd/system",
 ];
 
-/// Алиас, по которому systemd запускает экран входа.
+/// The alias systemd starts the login screen by.
 pub const DM_ALIAS: &str = "display-manager.service";
 
-/// Имя юнита без `.service` по пути файла; `None` — не `.service`.
+/// Unit name without `.service` by file path; `None`: not a `.service`.
 pub fn unit_name_from_path(path: &str) -> Option<&str> {
     let base = path.rsplit('/').next().unwrap_or(path);
     base.strip_suffix(".service").filter(|n| !n.is_empty())
 }
 
-/// Может ли юнит с таким именем быть экраном входа в списке: сам алиас,
-/// шаблоны `@` и устаревший `display-manager-legacy` (openSUSE) — нет.
+/// Whether a unit with this name can be a login screen in the list: the
+/// alias itself, `@` templates and the obsolete `display-manager-legacy`
+/// (openSUSE) cannot.
 pub fn dm_unit_name_listable(name: &str) -> bool {
     !(name == "display-manager"
         || name.starts_with("display-manager-")
@@ -9860,9 +9949,9 @@ pub fn dm_unit_name_listable(name: &str) -> bool {
         || name.contains('@'))
 }
 
-/// Значения ключа секции юнит-файла с правилами systemd: ключ может стоять
-/// несколько раз, значение — список через пробел, пустое присваивание
-/// сбрасывает накопленное.
+/// Values of a unit file section key with systemd rules: the key may appear
+/// several times, the value is a space-separated list, an empty assignment
+/// resets what was accumulated.
 pub fn unit_values(text: &str, section: &str, key: &str) -> Vec<String> {
     let mut here = false;
     let mut out: Vec<String> = Vec::new();
@@ -9892,8 +9981,8 @@ pub fn unit_values(text: &str, section: &str, key: &str) -> Vec<String> {
     out
 }
 
-/// `ExecStart` юнита словами, без префиксов systemd (`-`, `@`, `:`, `+`,
-/// `!`) и кавычек. `None` — строки нет. Последняя непустая побеждает.
+/// The unit's `ExecStart` as words, without systemd prefixes (`-`, `@`, `:`,
+/// `+`, `!`) and quotes. `None`: no line. The last non-empty one wins.
 pub fn unit_exec_start(text: &str) -> Option<Vec<String>> {
     let mut here = false;
     let mut found: Option<String> = None;
@@ -9923,15 +10012,15 @@ pub fn unit_exec_start(text: &str) -> Option<Vec<String>> {
     (!words.is_empty()).then_some(words)
 }
 
-/// Установленные экраны входа по юнит-файлам: те, у кого в `[Install]`
-/// стоит `Alias=display-manager.service`. Это ловит и экраны входа, которых
-/// нет в наших таблицах.
+/// Installed login screens by unit files: those with
+/// `Alias=display-manager.service` in `[Install]`. This also catches login
+/// screens that are not in our tables.
 ///
-/// `files` — `(путь, текст)` в порядке приоритета каталогов
-/// ([`DM_UNIT_DIRS`]): из одноимённых решает ПЕРВЫЙ, как у systemd (свой
-/// файл в `/etc` перекрывает пакетный). Отсеваются алиас, шаблоны и
-/// `-legacy`. Порядок ответа — порядок [`KNOWN_DM_UNITS`], незнакомые —
-/// за ними по алфавиту.
+/// `files` is `(path, text)` in directory priority order ([`DM_UNIT_DIRS`]):
+/// among same-named ones the FIRST decides, as in systemd (an own file in
+/// `/etc` overrides the package one). The alias, templates and `-legacy` are
+/// filtered out. The answer order is the [`KNOWN_DM_UNITS`] order, unknown
+/// ones after them alphabetically.
 pub fn dm_units_from_unit_files(files: &[(String, String)]) -> Vec<String> {
     let mut seen: Vec<&str> = Vec::new();
     let mut out: Vec<String> = Vec::new();
@@ -9953,34 +10042,34 @@ pub fn dm_units_from_unit_files(files: &[(String, String)]) -> Vec<String> {
     out
 }
 
-/// Что нужно экрану входа, чтобы на нём был рабочий вход: одна строка на
-/// юнит. Таблица общая для подписи, проверок готовности и (дальше) помощника.
+/// What a login screen needs for a working login: one row per unit. The
+/// table is shared by the caption, the readiness checks and (later) the helper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DmSpec {
-    /// Юнит без `.service`.
+    /// Unit without `.service`.
     pub unit: &'static str,
-    /// Человеческое имя (латиницей — это имя программы).
+    /// Human name (in Latin script: it is a program name).
     pub label: &'static str,
-    /// Имя программы экрана входа (каталог у дистрибутивов разный — путь
-    /// берётся из `ExecStart` юнита).
+    /// Login screen program name (the directory differs between distributions:
+    /// the path is taken from the unit's `ExecStart`).
     pub binary: &'static str,
-    /// Пакет (имя на Arch; у Debian свои имена — `gdm3` отдельной строкой).
+    /// Package (the Arch name; Debian has its own names: `gdm3` as a separate row).
     pub package: &'static str,
-    /// Системный пользователь, от которого работает приветствие; `None` —
-    /// своего пользователя нет или он задаётся конфигом (greetd).
+    /// System user the greeter runs as; `None`: there is no own user or it is
+    /// set by the config (greetd).
     pub user: Option<&'static str>,
-    /// Файл службы PAM (`/etc/pam.d` или `/usr/lib/pam.d`).
+    /// PAM service file (`/etc/pam.d` or `/usr/lib/pam.d`).
     pub pam: &'static str,
-    /// Приветствие всегда на X — без Xorg не поднимется. У SDDM зависит от
-    /// `DisplayServer=` — решает проверка готовности.
+    /// The greeter always runs on X: it will not come up without Xorg. For SDDM
+    /// it depends on `DisplayServer=`: the readiness check decides.
     pub needs_xorg: bool,
-    /// Rexon умеет проверить готовность и предложить «Сделать основным».
-    /// Остальные только показываются в списке.
+    /// Rexon can check readiness and offer «Make default». The others are only
+    /// shown in the list.
     pub switchable: bool,
 }
 
-/// Таблица экранов входа. Порядок — порядок [`KNOWN_DM_UNITS`] (без
-/// алиаса и tbsm, у которого нет своего входа в графику).
+/// The login screen table. The order is the [`KNOWN_DM_UNITS`] order (without
+/// the alias and tbsm, which has no graphical login of its own).
 pub const LOGIN_MANAGER_SPECS: &[DmSpec] = &[
     DmSpec {
         unit: PLASMA_LOGIN_UNIT, label: "Plasma Login Manager", binary: "plasmalogin",
@@ -10040,81 +10129,83 @@ pub const LOGIN_MANAGER_SPECS: &[DmSpec] = &[
         unit: "emptty", label: "emptty", binary: "emptty", package: "emptty",
         user: None, pam: "emptty", needs_xorg: false, switchable: false,
     },
-    // Свой экран входа Deepin (форк SDDM, пакет ddm 0.4): окно входа рисует
-    // сам Treeland (`treeland.service` от имени `dde`), рядом обязательна
-    // служба мест `dde-seatd` (`Requires=` юнита — её проверяет готовность,
-    // [`DmFacts::missing_units`]). Без него Treeland 0.11 не поднимает сеанс
-    // (treeland#1656), см. [`DESKTOP_DM_RULES`]. Запускает ли он другие
-    // столы — на стенде не проверено: об этом честно говорят
-    // [`dm_warnings`] и окно подтверждения.
+    // Deepin's own login screen (an SDDM fork, the ddm 0.4 package): the login
+    // window is drawn by Treeland itself (`treeland.service` as user `dde`), and
+    // the `dde-seatd` seat service is mandatory next to it (the unit's
+    // `Requires=`: checked by readiness, [`DmFacts::missing_units`]). Without it
+    // Treeland 0.11 does not bring up the session (treeland#1656), see
+    // [`DESKTOP_DM_RULES`]. Whether it starts other desktops was not checked on
+    // a test bench: [`dm_warnings`] and the confirmation dialog say so honestly.
     DmSpec {
         unit: DDM_UNIT, label: "DDM", binary: "ddm", package: "ddm",
         user: Some("dde"), pam: "ddm", needs_xorg: false, switchable: true,
     },
 ];
 
-/// Юнит своего экрана входа Deepin.
+/// The unit of Deepin's own login screen.
 pub const DDM_UNIT: &str = "ddm";
 
-// ── Какой экран входа нужен какому столу ──────────────────────────────────
+// ── Which login screen which desktop needs ────────────────────────────────
 //
-// Экран входа один на компьютер и запускается раньше, чем человек выбирает
-// стол. Большинству столов всё равно, какой он; ДВА стола привязаны к
-// своему по имени и без него теряют главное (исследование 15.11.2026):
-//   * GNOME → GDM: gnome-shell включает экран блокировки, только если GDM
-//     ответил по D-Bus (`org.gnome.DisplayManager`); под другим экраном входа
-//     блокировки нет совсем — ни Super+L, ни по простою, ни перед сном;
-//   * Deepin на Treeland → DDM: Treeland 0.11 создаёт сеанс человека только
-//     по сообщениям DDM (treeland#1656); под другим экраном входа виден фон
-//     без панели.
-// KDE Plasma, Cinnamon, MATE и Xfce под Plasma Login / SDDM / LightDM
-// работают одинаково, а под GDM теряют «Сменить пользователя» (GDM не даёт
-// `org.freedesktop.DisplayManager`), Plasma — ещё и вход в KWallet (в PAM
-// GDM нет `pam_kwallet5`).
+// There is one login screen per computer, and it starts before the person
+// chooses a desktop. Most desktops do not care which one it is; TWO
+// desktops are tied to their own by name and lose the main thing without it
+// (research of 15.11.2026):
+//   * GNOME → GDM: gnome-shell enables the lock screen only if GDM answered
+//     over D-Bus (`org.gnome.DisplayManager`); under another login screen
+//     there is no locking at all: no Super+L, no idle lock, no lock before sleep;
+//   * Deepin on Treeland → DDM: Treeland 0.11 creates the person's session
+//     only on DDM messages (treeland#1656); under another login screen one
+//     sees the background without a panel.
+// KDE Plasma, Cinnamon, MATE and Xfce work the same under Plasma Login /
+// SDDM / LightDM, and under GDM lose «Switch user» (GDM does not provide
+// `org.freedesktop.DisplayManager`), Plasma also loses the KWallet login
+// (GDM's PAM has no `pam_kwallet5`).
 
-/// Что стол требует от экрана входа.
+/// What a desktop requires from the login screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DmNeed {
-    /// Нужен ровно этот экран входа (юниты — его варианты: `gdm`/`gdm3`);
-    /// под другим стол теряет главное.
+    /// Exactly this login screen is needed (the units are its variants:
+    /// `gdm`/`gdm3`); under another one the desktop loses the main thing.
     Required(&'static [&'static str]),
-    /// Годится любой, но под этими экранами входа часть функций пропадает.
+    /// Any will do, but under these login screens some features are lost.
     Avoid(&'static [&'static str]),
-    /// Годится любой.
+    /// Any will do.
     Any,
 }
 
-/// Насколько плохо столу под экраном входа.
+/// How bad it is for a desktop under a login screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DmHarm {
-    /// Пропадает часть функций (смена пользователя, KWallet).
+    /// Some features are lost (switching users, KWallet).
     Minor,
-    /// Стол без блокировки экрана или не запускается вовсе.
+    /// The desktop has no screen lock or does not start at all.
     Critical,
 }
 
-/// Строка таблицы «стол → экран входа».
+/// A row of the "desktop → login screen" table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DesktopDmRule {
-    /// Стол в базе ядра (как в `system::de_installed_binaries`).
+    /// Desktop in the core database (as in `system::de_installed_binaries`).
     pub de_id: &'static str,
-    /// Имя стола для человека (имя продукта — латиницей).
+    /// Desktop name for the person (the product name, in Latin script).
     pub label: &'static str,
-    /// Стол установлен, если на месте ВСЕ эти программы. У Deepin — сам
-    /// Treeland: обычному Deepin на X11 (без Treeland) DDM не нужен.
+    /// The desktop is installed if ALL these programs are in place. For Deepin
+    /// it is Treeland itself: regular Deepin on X11 (without Treeland) does not
+    /// need DDM.
     pub binaries: &'static [&'static str],
     pub need: DmNeed,
-    /// Что пропадает под «не тем» экраном входа (английский ключ каталога,
-    /// переводится при показе); `%1` — имя экрана входа.
+    /// What is lost under the "wrong" login screen (an English catalog key,
+    /// translated when shown); `%1` is the login screen name.
     pub harm_text: &'static str,
 }
 
 const GDM_UNITS: &[&str] = &["gdm", "gdm3"];
 const DDM_UNITS: &[&str] = &[DDM_UNIT];
 
-/// Таблица требований. Столы, которых здесь нет, работают под любым
-/// экраном входа ([`desktop_dm_need`] → [`DmNeed::Any`]).
+/// The requirements table. Desktops not listed here work under any login
+/// screen ([`desktop_dm_need`] → [`DmNeed::Any`]).
 pub const DESKTOP_DM_RULES: &[DesktopDmRule] = &[
     DesktopDmRule {
         de_id: "gnome", label: "GNOME", binaries: &["gnome-shell"], need: DmNeed::Required(GDM_UNITS),
@@ -10148,19 +10239,19 @@ pub const DESKTOP_DM_RULES: &[DesktopDmRule] = &[
     },
 ];
 
-/// Строка таблицы по столу; `None` — столу всё равно.
+/// Table row by desktop; `None`: the desktop does not care.
 pub fn desktop_dm_rule(de_id: &str) -> Option<&'static DesktopDmRule> {
     let de_id = de_id.trim();
     DESKTOP_DM_RULES.iter().find(|r| r.de_id == de_id)
 }
 
-/// Что стол требует от экрана входа.
+/// What a desktop requires from the login screen.
 pub fn desktop_dm_need(de_id: &str) -> DmNeed {
     desktop_dm_rule(de_id).map_or(DmNeed::Any, |r| r.need)
 }
 
-/// Насколько плохо столу под экраном входа `dm_unit`; `None` — ничего не
-/// теряет.
+/// How bad it is for a desktop under login screen `dm_unit`; `None`: it
+/// loses nothing.
 pub fn desktop_dm_harm(de_id: &str, dm_unit: &str) -> Option<DmHarm> {
     let dm = dm_unit.trim();
     match desktop_dm_need(de_id) {
@@ -10170,7 +10261,7 @@ pub fn desktop_dm_harm(de_id: &str, dm_unit: &str) -> Option<DmHarm> {
     }
 }
 
-/// Одна проблема совместимости «стол — экран входа» для человека.
+/// One "desktop vs login screen" compatibility problem for the person.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DmCompatIssue {
     pub de_id: String,
@@ -10178,9 +10269,10 @@ pub struct DmCompatIssue {
     pub text: String,
 }
 
-/// Чем плох экран входа `dm_unit` для установленных столов `installed`
-/// (ид из базы ядра): сначала то, без чего стол не работает, потом мелочи;
-/// внутри — порядок таблицы. Только решение, без системы.
+/// What is bad about login screen `dm_unit` for the installed desktops
+/// `installed` (ids from the core database): first what the desktop cannot
+/// work without, then minor things; inside, the table order. Decision only,
+/// no system access.
 pub fn dm_compat_issues(dm_unit: &str, installed: &[String]) -> Vec<DmCompatIssue> {
     let dm = dm_unit.trim();
     if dm.is_empty() {
@@ -10199,71 +10291,72 @@ pub fn dm_compat_issues(dm_unit: &str, installed: &[String]) -> Vec<DmCompatIssu
     out
 }
 
-/// DDM с другими столами на стенде ещё не проверен — пометка под его
-/// строкой в разделе «Менеджер входа» и в окне подтверждения.
+/// DDM with other desktops has not been checked on a test bench yet: a note
+/// under its row in the «Login manager» section and in the confirmation dialog.
 pub fn ddm_untested_warning() -> String {
     tr("DDM is Deepin's own login screen. Rexon hasn't checked yet whether it starts other desktops. \
         If yours doesn't start, sign in to Deepin and make the previous login screen the default here again.")
 }
 
-/// Строка таблицы по юниту; `None` — незнакомый экран входа.
+/// Table row by unit; `None`: an unknown login screen.
 pub fn login_manager_spec(unit: &str) -> Option<&'static DmSpec> {
     let unit = unit.trim();
     LOGIN_MANAGER_SPECS.iter().find(|s| s.unit == unit)
 }
 
-// ── Как на этой системе выбирается экран входа ─────────────────────────────
+// ── How the login screen is chosen on this system ──────────────────────────
 
-/// Механизм выбора экрана входа на системе — от него зависит, может ли
-/// Rexon предложить «Сделать основным» и какие шаги понадобятся.
+/// The login screen selection mechanism of the system: it decides whether
+/// Rexon can offer «Make default» and which steps will be needed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", content = "init", rename_all = "snake_case")]
 pub enum DmSwitchBackend {
-    /// Только ссылка display-manager.service (Arch, Fedora и т. п.).
+    /// Only the display-manager.service link (Arch, Fedora, etc.).
     Systemd,
-    /// systemd + `/etc/X11/default-display-manager` и debconf (Debian,
-    /// Ubuntu, Mint): файл и ссылка обязаны совпадать.
+    /// systemd + `/etc/X11/default-display-manager` and debconf (Debian,
+    /// Ubuntu, Mint): the file and the link must match.
     SystemdDebian,
-    /// openSUSE: `display-manager.service` — обычный файл, выбор через
+    /// openSUSE: `display-manager.service` is a regular file, selection via
     /// `update-alternatives default-displaymanager`.
     SystemdSuseAlternatives,
-    /// NixOS: экран входа задаётся в configuration.nix.
+    /// NixOS: the login screen is set in configuration.nix.
     NixosDeclarative,
-    /// Без systemd: экраном входа управляет своя init (имя для человека;
-    /// пусто — не опознали).
+    /// Without systemd: the login screen is managed by its own init (the name
+    /// for the person; empty: not recognised).
     Unsupported(String),
 }
 
 impl DmSwitchBackend {
-    /// Даёт ли Rexon кнопку «Сделать основным». Первая версия (решение
-    /// Wehrwolfmann 20.10.2026): только systemd-системы Arch-семейства,
-    /// Fedora и Debian/Ubuntu; openSUSE — после проверки на стенде.
+    /// Whether Rexon offers the «Make default» button. The first version
+    /// (Wehrwolfmann's decision of 20.10.2026): only systemd systems of the Arch
+    /// family, Fedora and Debian/Ubuntu; openSUSE after testing on a bench.
     pub fn switch_supported(&self) -> bool {
         matches!(self, DmSwitchBackend::Systemd | DmSwitchBackend::SystemdDebian)
     }
 }
 
-/// Пробы системы для [`dm_switch_backend`] — собирает обвязка, только чтение.
+/// System probes for [`dm_switch_backend`]: gathered by the glue code, read only.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DmBackendProbe {
-    /// systemd — PID 1: есть `/run/systemd/system` (так проверяет и сам
-    /// systemd). Одного `systemctl` в PATH мало: в Artix он бывает без systemd.
+    /// systemd is PID 1: `/run/systemd/system` exists (systemd itself checks it
+    /// this way). `systemctl` in PATH alone is not enough: on Artix it may exist
+    /// without systemd.
     pub systemd_running: bool,
-    /// Есть `systemctl`.
+    /// `systemctl` is present.
     pub has_systemctl: bool,
-    /// Есть `/etc/X11/default-display-manager`.
+    /// `/etc/X11/default-display-manager` is present.
     pub x11_default_dm_file: bool,
-    /// `display-manager.service` в `/etc/systemd/system` или
-    /// `/usr/lib/systemd/system` — обычный файл, а не ссылка (openSUSE).
+    /// `display-manager.service` in `/etc/systemd/system` or
+    /// `/usr/lib/systemd/system` is a regular file, not a link (openSUSE).
     pub dm_service_is_regular_file: bool,
-    /// Есть альтернатива `default-displaymanager` (`/etc/alternatives`).
+    /// The `default-displaymanager` alternative exists (`/etc/alternatives`).
     pub suse_dm_alternative: bool,
-    /// Опознанная init без systemd (`OpenRC`, `runit`, `s6`, `dinit`,
-    /// `SysVinit`); пусто — не опознали.
+    /// A recognised init without systemd (`OpenRC`, `runit`, `s6`, `dinit`,
+    /// `SysVinit`); empty: not recognised.
     pub other_init: String,
 }
 
-/// Механизм выбора экрана входа по семейству дистрибутива и пробам.
+/// Login screen selection mechanism by distribution family and probes.
 pub fn dm_switch_backend(family: PkgFamily, probe: &DmBackendProbe) -> DmSwitchBackend {
     if family == PkgFamily::Nix {
         return DmSwitchBackend::NixosDeclarative;
@@ -10280,8 +10373,8 @@ pub fn dm_switch_backend(family: PkgFamily, probe: &DmBackendProbe) -> DmSwitchB
     }
 }
 
-/// Имя init без systemd по найденным признакам (порядок — от точных к
-/// общим). `has(path)` — есть ли путь, `which(name)` — есть ли программа.
+/// Name of a non-systemd init by the signs found (order: from precise to
+/// general). `has(path)` is whether a path exists, `which(name)` whether a program does.
 pub fn other_init_name(has: &dyn Fn(&str) -> bool, which: &dyn Fn(&str) -> bool) -> String {
     let name = if has("/run/openrc") || which("openrc") || which("rc-update") {
         "OpenRC"
@@ -10299,9 +10392,9 @@ pub fn other_init_name(has: &dyn Fn(&str) -> bool, which: &dyn Fn(&str) -> bool)
     name.to_string()
 }
 
-/// Команда для ручного переключения на системе без systemd — её показывают
-/// вместо кнопки. `None` — для этой init готовой команды нет. Это не слова
-/// для перевода, а то, что набирают в терминале.
+/// The command for manual switching on a system without systemd: shown
+/// instead of the button. `None`: there is no ready command for this init.
+/// These are not words for translation but what is typed in a terminal.
 pub fn dm_manual_switch_command(init: &str, family: PkgFamily, unit: &str) -> Option<String> {
     let dm = unit.trim();
     if dm.is_empty() || !dm.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) {
@@ -10319,31 +10412,31 @@ pub fn dm_manual_switch_command(init: &str, family: PkgFamily, unit: &str) -> Op
     })
 }
 
-/// Стоит ли читать юнит-файл ради списка экранов входа: имя знакомое либо
-/// текст упоминает алиас. Решение для обвязки, чтобы не держать в памяти
-/// сотни чужих юнитов.
+/// Whether a unit file is worth reading for the login screen list: a known
+/// name or the text mentions the alias. A decision for the glue code, so as
+/// not to keep hundreds of foreign units in memory.
 pub fn dm_unit_file_candidate(name: &str, text: &str) -> bool {
     dm_unit_name_listable(name) && (KNOWN_DM_UNITS.contains(&name) || text.contains(DM_ALIAS))
 }
 
-// ── Готовность: LightDM и его приветствия ──────────────────────────────────
+// ── Readiness: LightDM and its greeters ────────────────────────────────────
 
-/// Каталог приветствий LightDM: `<id>.desktop`, `greeter-session=<id>`.
+/// LightDM greeter directory: `<id>.desktop`, `greeter-session=<id>`.
 pub const XGREETERS_DIR: &str = "/usr/share/xgreeters";
-/// Вшитое умолчание LightDM, собранного без правок дистрибутива.
+/// The built-in default of a LightDM built without distribution patches.
 pub const LIGHTDM_UPSTREAM_DEFAULT_GREETER: &str = "example-gtk-gnome";
-/// Приветствие, которое Rexon предлагает первым, когда выбирать приходится
-/// человеку: Slick — то, что по умолчанию стоит в Linux Mint.
+/// The greeter Rexon suggests first when the person has to choose: Slick,
+/// which is the default in Linux Mint.
 pub const LIGHTDM_SUGGESTED_GREETER: &str = "lightdm-slick-greeter";
-/// Его программа — на случай, если файл назван иначе.
+/// Its program, in case the file is named differently.
 const LIGHTDM_SUGGESTED_GREETER_EXEC: &str = "slick-greeter";
-/// Имя-альтернатива Debian (`update-alternatives lightdm-greeter`): ссылка
-/// на одно из настоящих приветствий, отдельным пунктом не показывается.
+/// The Debian alternative name (`update-alternatives lightdm-greeter`): a
+/// link to one of the real greeters, not shown as a separate item.
 const LIGHTDM_DEBIAN_ALT_GREETER: &str = "lightdm-greeter";
 
-/// `greeter-session` из вывода `lightdm --show-config` (секция `[Seat:*]`,
-/// старое имя `[SeatDefaults]`). Строки там вида `A  ключ=значение`: буква —
-/// метка файла-источника. `None` — не задано.
+/// `greeter-session` from the `lightdm --show-config` output (the `[Seat:*]`
+/// section, old name `[SeatDefaults]`). Lines there look like
+/// `A  key=value`: the letter marks the source file. `None`: not set.
 pub fn lightdm_greeter_from_show_config(text: &str) -> Option<String> {
     let mut here = false;
     let mut found = None;
@@ -10365,9 +10458,9 @@ pub fn lightdm_greeter_from_show_config(text: &str) -> Option<String> {
     found
 }
 
-/// Приветствие, которое LightDM берёт, когда `greeter-session` не задан:
-/// вшито при сборке и у дистрибутивов разное. `None` — не подтверждено
-/// (тогда выбирает человек).
+/// The greeter LightDM takes when `greeter-session` is not set: built in at
+/// build time and different between distributions. `None`: not confirmed
+/// (then the person chooses).
 pub fn lightdm_default_greeter(family: PkgFamily) -> Option<&'static str> {
     match family {
         PkgFamily::Arch => Some("lightdm-gtk-greeter"),
@@ -10379,11 +10472,11 @@ pub fn lightdm_default_greeter(family: PkgFamily) -> Option<&'static str> {
     }
 }
 
-/// Установленные приветствия LightDM по файлам `XGREETERS_DIR/*.desktop`:
-/// `(путь, текст)`. Берутся только те, чья программа из `Exec=` есть
-/// (`exec_exists`); `Hidden=true` отсеивается. Альтернатива Debian
-/// `lightdm-greeter` с той же программой, что у настоящего, второй раз не
-/// показывается. Порядок — по `id`.
+/// Installed LightDM greeters by the `XGREETERS_DIR/*.desktop` files:
+/// `(path, text)`. Only those whose `Exec=` program exists are taken
+/// (`exec_exists`); `Hidden=true` is filtered out. The Debian alternative
+/// `lightdm-greeter` with the same program as a real one is not shown a
+/// second time. Order by `id`.
 pub fn xgreeters_from(
     files: &[(String, String)],
     exec_exists: &dyn Fn(&str) -> bool,
@@ -10410,8 +10503,7 @@ pub fn xgreeters_from(
         }
         all.push(DmGreeter { id: id.to_string(), name: value(text, "Name"), exec });
     }
-    // Альтернатива — в конец, чтобы при совпадении программы остался
-    // настоящий файл.
+    // The alternative goes last, so that on a program match the real file stays.
     all.sort_by(|a, b| {
         (a.id == LIGHTDM_DEBIAN_ALT_GREETER)
             .cmp(&(b.id == LIGHTDM_DEBIAN_ALT_GREETER))
@@ -10428,7 +10520,7 @@ pub fn xgreeters_from(
     out
 }
 
-/// Предвыбор в списке приветствий: Slick, если установлен, иначе первое.
+/// Preselection in the greeter list: Slick if installed, otherwise the first.
 pub fn suggested_greeter(greeters: &[DmGreeter]) -> Option<&DmGreeter> {
     greeters
         .iter()
@@ -10436,16 +10528,16 @@ pub fn suggested_greeter(greeters: &[DmGreeter]) -> Option<&DmGreeter> {
         .or_else(|| greeters.first())
 }
 
-/// Готовность LightDM по приветствию.
+/// LightDM readiness by greeter.
 ///
-/// * задано (`greeter-session`) и установлено — `Ready`;
-/// * не задано, умолчание дистрибутива установлено и оно единственное —
+/// * set (`greeter-session`) and installed: `Ready`;
+/// * not set, the distribution default is installed and it is the only one:
 ///   `Ready`;
-/// * задано, но не установлено; не задано и умолчание не подтверждено; или
-///   приветствий несколько — `NeedsGreeterChoice` (предвыбор —
-///   [`suggested_greeter`]): иначе LightDM упадёт на несуществующем
-///   приветствии или покажет не то, что человек ждёт;
-/// * приветствий нет вовсе — `Blocked`.
+/// * set but not installed; not set and the default not confirmed; or
+///   several greeters: `NeedsGreeterChoice` (preselection:
+///   [`suggested_greeter`]): otherwise LightDM fails on a nonexistent greeter
+///   or shows something other than the person expects;
+/// * no greeters at all: `Blocked`.
 pub fn lightdm_greeter_readiness(
     greeter_session: Option<&str>,
     default_greeter: Option<&str>,
@@ -10467,31 +10559,31 @@ pub fn lightdm_greeter_readiness(
     }
 }
 
-// ── Готовность: greetd ─────────────────────────────────────────────────────
+// ── Readiness: greetd ──────────────────────────────────────────────────────
 
-/// Конфиг greetd, если юнит не передал свой (`--config`).
+/// greetd config if the unit did not pass its own (`--config`).
 pub const GREETD_DEFAULT_CONFIG: &str = "/etc/greetd/config.toml";
-/// Приветствия greetd, которые дают только текстовый вход (вход в
-/// оболочку, а не в рабочий стол): встроенный `agreety` и голые оболочки.
+/// greetd greeters that give only a text login (login into a shell, not
+/// into a desktop): the built-in `agreety` and bare shells.
 pub const GREETD_TEXT_GREETERS: &[&str] =
     &["agreety", "login", "sh", "bash", "dash", "zsh", "fish"];
 
-/// Что запускает greetd как приветствие (`[default_session] command`).
+/// What greetd runs as the greeter (`[default_session] command`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", content = "program", rename_all = "snake_case")]
 pub enum GreetdCommand {
-    /// Графическое или TUI-приветствие, запускающее рабочий стол
-    /// (`tuigreet`, `regreet`, `gtkgreet`, `nwg-hello`, обёртки вроде
-    /// `cage`): программа — первое слово команды.
+    /// A graphical or TUI greeter that starts a desktop (`tuigreet`, `regreet`,
+    /// `gtkgreet`, `nwg-hello`, wrappers like `cage`): the program is the first
+    /// word of the command.
     Graphical(String),
-    /// Текстовый вход прямо в оболочку (`agreety`).
+    /// A text login straight into a shell (`agreety`).
     Text(String),
-    /// Команды нет.
+    /// No command.
     Missing,
 }
 
-/// Путь конфига greetd по словам `ExecStart` (`--config X`, `-c X`,
-/// `--config=X`); иначе [`GREETD_DEFAULT_CONFIG`].
+/// greetd config path from the `ExecStart` words (`--config X`, `-c X`,
+/// `--config=X`); otherwise [`GREETD_DEFAULT_CONFIG`].
 pub fn greetd_config_path(exec_start: &[String]) -> String {
     let mut it = exec_start.iter().skip(1);
     while let Some(w) = it.next() {
@@ -10507,8 +10599,8 @@ pub fn greetd_config_path(exec_start: &[String]) -> String {
     GREETD_DEFAULT_CONFIG.to_string()
 }
 
-/// Строковое значение ключа в секции TOML-файла greetd (простая форма
-/// `ключ = "значение"`, достаточная для его конфигов).
+/// String value of a key in a section of greetd's TOML file (the simple form
+/// `key = "value"`, enough for its configs).
 pub fn toml_string_value(text: &str, section: &str, key: &str) -> Option<String> {
     let mut here = false;
     let mut found = None;
@@ -10541,8 +10633,8 @@ pub fn toml_string_value(text: &str, section: &str, key: &str) -> Option<String>
     found.filter(|s| !s.trim().is_empty())
 }
 
-/// Разбор `[default_session] command` конфига greetd. Присваивания
-/// `ИМЯ=значение` и обёртка `env` перед программой пропускаются.
+/// Parsing greetd's `[default_session] command`. `NAME=value` assignments
+/// and an `env` wrapper before the program are skipped.
 pub fn greetd_command_kind(config_toml: &str) -> GreetdCommand {
     let Some(cmd) = toml_string_value(config_toml, "default_session", "command") else {
         return GreetdCommand::Missing;
@@ -10563,21 +10655,21 @@ pub fn greetd_command_kind(config_toml: &str) -> GreetdCommand {
     }
 }
 
-/// Пользователь приветствия greetd (`[default_session] user`).
+/// The greetd greeter user (`[default_session] user`).
 pub fn greetd_session_user(config_toml: &str) -> Option<String> {
     toml_string_value(config_toml, "default_session", "user")
 }
 
-// ── Готовность: SDDM ───────────────────────────────────────────────────────
+// ── Readiness: SDDM ────────────────────────────────────────────────────────
 
-/// Каталог тем SDDM по умолчанию (`[Theme] ThemeDir`).
+/// Default SDDM theme directory (`[Theme] ThemeDir`).
 pub const SDDM_THEMES_DIR: &str = "/usr/share/sddm/themes";
-/// Приветствие SDDM для тем Qt 6 и для тем без `QtVersion=6` (Qt 5).
+/// SDDM greeter for Qt 6 themes and for themes without `QtVersion=6` (Qt 5).
 pub const SDDM_GREETER_QT6: &str = "sddm-greeter-qt6";
 pub const SDDM_GREETER_QT5: &str = "sddm-greeter";
 
-/// Значение ключа по файлам конфигурации в порядке чтения: последний
-/// непустой выигрывает (так сливает свои файлы SDDM).
+/// Key value across config files in reading order: the last non-empty one
+/// wins (that is how SDDM merges its files).
 pub fn ini_last_value(texts: &[&str], group: &str, key: &str) -> Option<String> {
     texts
         .iter()
@@ -10585,7 +10677,7 @@ pub fn ini_last_value(texts: &[&str], group: &str, key: &str) -> Option<String> 
         .last()
 }
 
-/// Нужен ли SDDM Xorg: `[General] DisplayServer` (по умолчанию `x11`).
+/// Whether SDDM needs Xorg: `[General] DisplayServer` (default `x11`).
 pub fn sddm_uses_x11(confs: &[&str]) -> bool {
     !matches!(
         ini_last_value(confs, "General", "DisplayServer").as_deref(),
@@ -10593,32 +10685,32 @@ pub fn sddm_uses_x11(confs: &[&str]) -> bool {
     )
 }
 
-/// Программа-компоситор для приветствия SDDM на Wayland
-/// (`[Wayland] CompositorCommand`, по умолчанию `weston`).
+/// Compositor program for the SDDM greeter on Wayland
+/// (`[Wayland] CompositorCommand`, default `weston`).
 pub fn sddm_wayland_compositor(confs: &[&str]) -> String {
     ini_last_value(confs, "Wayland", "CompositorCommand")
         .and_then(|c| c.split_whitespace().next().map(String::from))
         .unwrap_or_else(|| "weston".to_string())
 }
 
-/// Состояние темы SDDM.
+/// SDDM theme state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SddmThemeState {
-    /// `Current=` пуст — встроенная запасная тема, это рабочий вариант.
+    /// `Current=` is empty: the built-in fallback theme, a working option.
     Builtin,
-    /// Тема на месте, приветствие под её Qt есть.
+    /// The theme is in place, a greeter for its Qt exists.
     Ready { theme: String },
-    /// Каталога темы или `metadata.desktop` нет: SDDM покажет запасную —
-    /// не смертельно, но человека стоит предупредить.
+    /// No theme directory or `metadata.desktop`: SDDM shows the fallback: not
+    /// fatal, but the person should be warned.
     Missing { theme: String },
-    /// Тема есть, а приветствия под её версию Qt нет.
+    /// The theme exists, but there is no greeter for its Qt version.
     NeedsGreeter { theme: String, greeter: String },
 }
 
-/// Готова ли тема SDDM. `metadata_text` — `metadata.desktop` темы (`None` —
-/// нет каталога или файла); `has_greeter(имя)` — есть ли программа
-/// приветствия.
+/// Whether the SDDM theme is ready. `metadata_text` is the theme's
+/// `metadata.desktop` (`None`: no directory or file); `has_greeter(name)` is
+/// whether the greeter program exists.
 pub fn sddm_theme_ready(
     current: Option<&str>,
     metadata_text: Option<&str>,
@@ -10641,11 +10733,10 @@ pub fn sddm_theme_ready(
     }
 }
 
-// ── Готовность: общие проверки ─────────────────────────────────────────────
+// ── Readiness: common checks ───────────────────────────────────────────────
 
-/// Объявляет ли файл `sysusers.d` пользователя (`u имя …`): тогда
-/// `systemd-sysusers` создаст его при загрузке, и его отсутствие сейчас —
-/// не блокировка.
+/// Whether a `sysusers.d` file declares the user (`u name …`): then
+/// `systemd-sysusers` creates it at boot, and its absence now is not a blocker.
 pub fn sysusers_declares(text: &str, user: &str) -> bool {
     text.lines().any(|l| {
         let mut w = l.split_whitespace();
@@ -10653,28 +10744,28 @@ pub fn sysusers_declares(text: &str, user: &str) -> bool {
     })
 }
 
-/// Есть ли пользователь в тексте `/etc/passwd`.
+/// Whether the user is in the `/etc/passwd` text.
 pub fn passwd_has_user(passwd: &str, user: &str) -> bool {
     passwd.lines().any(|l| l.split(':').next() == Some(user))
 }
 
-/// Данные о greetd для проверки готовности.
+/// greetd data for the readiness check.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GreetdFacts {
     pub command: GreetdCommand,
-    /// Есть ли программа из `command` (для `Graphical`).
+    /// Whether the program from `command` exists (for `Graphical`).
     pub program_exists: bool,
 }
 
-/// Данные о SDDM для проверки готовности.
+/// SDDM data for the readiness check.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SddmFacts {
     pub theme: SddmThemeState,
-    /// Приветствие на Wayland: `(компоситор, есть ли он)`; `None` — на X.
+    /// Greeter on Wayland: `(compositor, whether it exists)`; `None`: on X.
     pub wayland_compositor: Option<(String, bool)>,
 }
 
-/// Данные о LightDM для проверки готовности.
+/// LightDM data for the readiness check.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LightdmFacts {
     pub greeter_session: Option<String>,
@@ -10682,30 +10773,29 @@ pub struct LightdmFacts {
     pub greeters: Vec<DmGreeter>,
 }
 
-/// Заранее собранные ответы о системе для [`dm_readiness`] — всё без root.
+/// Pre-gathered answers about the system for [`dm_readiness`], all without root.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DmFacts {
-    /// Юнит без `.service` (`sddm`, `ddm`…); пусто — не задан.
+    /// Unit without `.service` (`sddm`, `ddm`…); empty: not set.
     pub unit: String,
-    /// Программа из `ExecStart` юнита на месте.
+    /// The program from the unit's `ExecStart` is in place.
     pub binary_exists: bool,
-    /// Службы из `Requires=` юнита, которых нет или которые замаскированы
-    /// (у DDM — `dde-seatd.service`): без них systemd экран входа не
-    /// запустит.
+    /// Services from the unit's `Requires=` that are missing or masked (for DDM,
+    /// `dde-seatd.service`): without them systemd will not start the login screen.
     pub missing_units: Vec<String>,
-    /// Юнит замаскирован (`/etc/systemd/system/<юнит>.service → /dev/null`).
+    /// The unit is masked (`/etc/systemd/system/<unit>.service → /dev/null`).
     pub masked: bool,
-    /// Пользователь приветствия; `None` — проверять некого.
+    /// Greeter user; `None`: nobody to check.
     pub user: Option<String>,
-    /// Пользователь есть или его создаст `systemd-sysusers`.
+    /// The user exists or `systemd-sysusers` will create it.
     pub user_ok: bool,
-    /// Файл PAM службы (имя) и есть ли он в `/etc/pam.d` или `/usr/lib/pam.d`.
+    /// The service's PAM file (name) and whether it is in `/etc/pam.d` or `/usr/lib/pam.d`.
     pub pam: String,
     pub pam_exists: bool,
-    /// Приветствие на X — нужен Xorg.
+    /// The greeter is on X: Xorg is needed.
     pub needs_xorg: bool,
     pub xorg: bool,
-    /// Число сеансов в `xsessions` и `wayland-sessions`.
+    /// Number of sessions in `xsessions` and `wayland-sessions`.
     pub x_sessions: usize,
     pub wayland_sessions: usize,
     pub lightdm: Option<LightdmFacts>,
@@ -10713,11 +10803,12 @@ pub struct DmFacts {
     pub sddm: Option<SddmFacts>,
 }
 
-/// Готов ли экран входа стать основным: первая найденная причина отказа
-/// для человека, выбор приветствия (LightDM) или `Ready`. `Unsupported` —
-/// Rexon на этой системе или для этого экрана входа кнопку не даёт.
+/// Whether the login screen is ready to become the default: the first
+/// refusal reason found for the person, a greeter choice (LightDM) or
+/// `Ready`. `Unsupported`: Rexon does not offer the button on this system or
+/// for this login screen.
 ///
-/// Проба здоровья бинарей Qt (`ldd -r`) сюда пока не входит.
+/// The Qt binary health probe (`ldd -r`) is not included here yet.
 pub fn dm_readiness(
     spec: Option<&DmSpec>,
     backend: &DmSwitchBackend,
@@ -10802,7 +10893,7 @@ pub fn dm_readiness(
     DmReadiness::Ready
 }
 
-/// Предупреждения, которые не мешают переключению.
+/// Warnings that do not prevent switching.
 pub fn dm_warnings(facts: &DmFacts) -> Vec<String> {
     let mut out = Vec::new();
     if let Some(SddmFacts { theme: SddmThemeState::Missing { theme }, .. }) = &facts.sddm {
@@ -10818,10 +10909,10 @@ pub fn dm_warnings(facts: &DmFacts) -> Vec<String> {
     out
 }
 
-/// Экран входа на системе без systemd по файлам выбора init: OpenRC —
-/// `DISPLAYMANAGER=` в `/etc/conf.d/display-manager`, Devuan — путь к
-/// программе в `/etc/X11/default-display-manager`. Ответ — юнит из таблицы
-/// по имени программы; `None` — не определить.
+/// The login screen on a system without systemd by the init selection files:
+/// OpenRC: `DISPLAYMANAGER=` in `/etc/conf.d/display-manager`, Devuan: the
+/// program path in `/etc/X11/default-display-manager`. The answer is the
+/// unit from the table by program name; `None`: cannot be determined.
 pub fn dm_from_init_files(conf_d: Option<&str>, x11_default: Option<&str>) -> Option<String> {
     let from_conf = conf_d.and_then(|t| {
         t.lines().rev().find_map(|l| {
@@ -10842,7 +10933,7 @@ pub fn dm_from_init_files(conf_d: Option<&str>, x11_default: Option<&str>) -> Op
 }
 
 impl DmReadiness {
-    /// Приветствие, предлагаемое по умолчанию, когда выбирать человеку.
+    /// Greeter suggested by default when the person has to choose.
     pub fn suggested_greeter(&self) -> Option<&DmGreeter> {
         match self {
             DmReadiness::NeedsGreeterChoice(list) => suggested_greeter(list),
@@ -10852,25 +10943,25 @@ impl DmReadiness {
 }
 
 impl LoginManagerInfo {
-    /// Приветствие, предлагаемое по умолчанию (см. [`DmReadiness::suggested_greeter`]).
+    /// Greeter suggested by default (see [`DmReadiness::suggested_greeter`]).
     pub fn suggested_greeter(&self) -> Option<&DmGreeter> {
         self.readiness.suggested_greeter()
     }
 }
 
-// ── «Сделать основным»: команда и тексты ──────────────────────────────────
+// ── «Make default»: command and texts ─────────────────────────────────────
 
-/// Имя приветствия LightDM — имя файла без `.desktop`, без путей и флагов.
+/// LightDM greeter name: the file name without `.desktop`, without paths and flags.
 pub fn greeter_name_ok(name: &str) -> bool {
     let mut chars = name.chars();
     chars.next().is_some_and(|c| c.is_ascii_alphanumeric())
         && chars.all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
 }
 
-/// `pkexec rexon-pkg-helper … switch-dm <юнит> [<приветствие>]`. `None` —
-/// помощника нет или аргументы не прошли проверку: сырого `pkexec
-/// systemctl` нет намеренно — он не повторил бы проверок и не откатил бы
-/// ошибку (тогда интерфейс говорит [`login_manager_needs_helper`]).
+/// `pkexec rexon-pkg-helper … switch-dm <unit> [<greeter>]`. `None`: no
+/// helper or the arguments failed the check: there is deliberately no raw
+/// `pkexec systemctl`: it would not repeat the checks and would not roll back
+/// an error (then the UI says [`login_manager_needs_helper`]).
 pub fn switch_dm_cmd(
     family: PkgFamily,
     unit: &str,
@@ -10882,8 +10973,8 @@ pub fn switch_dm_cmd(
     privileged_pkg_cmd(family, "switch-dm", &args, helper_available)
 }
 
-/// Команда, которой из текстовой консоли возвращают прежний экран входа.
-/// Та же строка, что помощник пишет в [`PREVIOUS_DM_FILE`].
+/// The command that restores the previous login screen from a text console.
+/// The same line the helper writes into [`PREVIOUS_DM_FILE`].
 pub fn dm_rollback_command(old_unit: &str, backend: &DmSwitchBackend) -> Option<String> {
     let old = old_unit.trim();
     if !greeter_name_ok(old) {
@@ -10908,14 +10999,14 @@ fn dm_label(unit: &str) -> String {
     if label.is_empty() { unit.trim().to_string() } else { label.to_string() }
 }
 
-/// Заголовок окна подтверждения.
+/// Confirmation dialog title.
 pub fn login_manager_switch_title(new_unit: &str) -> String {
     // TRANSLATORS: %1 is a login screen name (SDDM, LightDM, …).
     trf("Make %1 the login screen?", &[&dm_label(new_unit)])
 }
 
-/// Подсказка «как вернуть прежний экран входа из консоли». `None` — для
-/// этого механизма команды нет.
+/// Hint "how to restore the previous login screen from the console". `None`:
+/// this mechanism has no command.
 pub fn login_manager_rollback_hint(old_unit: &str, backend: &DmSwitchBackend) -> Option<String> {
     let cmd = dm_rollback_command(old_unit, backend)?;
     Some(trf(
@@ -10925,9 +11016,9 @@ pub fn login_manager_rollback_hint(old_unit: &str, backend: &DmSwitchBackend) ->
     ))
 }
 
-/// Текст окна подтверждения (до пароля, правило #13 — условие названо
-/// заранее): что станет основным, какое приветствие, когда появится и как
-/// вернуть. `old_unit` — нынешний основной (`None` — не определён).
+/// Confirmation dialog text (before the password, rule #13: the condition is
+/// named in advance): what becomes the default, which greeter, when it
+/// appears and how to revert. `old_unit` is the current default (`None`: unknown).
 pub fn login_manager_switch_confirm(
     old_unit: Option<&str>,
     new_unit: &str,
@@ -10959,13 +11050,13 @@ pub fn login_manager_switch_confirm(
     parts.join("\n\n")
 }
 
-/// Итог «сделано».
+/// Result "done".
 pub fn login_manager_switch_done(new_unit: &str) -> String {
     // TRANSLATORS: %1 is a login screen name.
     trf("Done: %1 will be the login screen after a restart.", &[&dm_label(new_unit)])
 }
 
-/// Итог «не вышло» с причиной от помощника.
+/// Result "failed" with the reason from the helper.
 pub fn login_manager_switch_failed(reason: &str) -> String {
     let reason = reason.trim();
     if reason.is_empty() {
@@ -10976,14 +11067,14 @@ pub fn login_manager_switch_failed(reason: &str) -> String {
     }
 }
 
-/// Помощника нет — переключать нечем.
+/// No helper: nothing to switch with.
 pub fn login_manager_needs_helper() -> String {
     tr("Changing the login screen needs the Rexon helper, and it isn't installed. Reinstall Rexon to add it.")
 }
 
-/// Ответ помощника на `switch-dm`: `(сделано, текст для человека)`. Причина
-/// отказа — его последняя строка без имени помощника; код 126/127 —
-/// пароль не подтверждён.
+/// The helper's answer to `switch-dm`: `(done, text for the person)`. The
+/// refusal reason is its last line without the helper name; code 126/127
+/// means the password was not confirmed.
 pub fn switch_dm_outcome(
     returncode: Option<i32>,
     stdout: &str,
@@ -11008,8 +11099,8 @@ pub fn switch_dm_outcome(
     (false, login_manager_switch_failed(&reason))
 }
 
-/// Пояснение вместо кнопки там, где Rexon экран входа не переключает.
-/// `manual_cmd` — команда для этой init ([`dm_manual_switch_command`]).
+/// An explanation instead of the button where Rexon does not switch the login
+/// screen. `manual_cmd` is the command for this init ([`dm_manual_switch_command`]).
 pub fn login_manager_unsupported_note(
     backend: &DmSwitchBackend,
     manual_cmd: Option<&str>,
@@ -11038,25 +11129,25 @@ pub fn login_manager_unsupported_note(
 }
 
 // ============================================================================
-// Живой разбор вывода pacman (порт `PackageManager._parse_pacman_line`)
+// Live parsing of pacman output (port of `PackageManager._parse_pacman_line`)
 // ============================================================================
 //
-// Установка рабочего стола показывает ход дела построчно: хвост лог-файла
-// читает Python, а СМЫСЛ строки — какой это шаг, какой пакет, какое
-// сообщение показать человеку — считается здесь. Раньше смысл считали семь
-// регулярок в Python; регулярки перенесены разбором «по буквам», потому что
-// ядро обходится без крейта regex.
+// The desktop install shows progress line by line: Python reads the log file
+// tail, and the MEANING of a line (which step, which package, which message
+// to show the person) is computed here. The meaning used to be computed by
+// seven regexes in Python; they were ported as "letter by letter" parsing,
+// because the core does without the regex crate.
 //
-// Разбор чистый: ни файлов, ни процессов. Эталон — записанные ответы живого
-// Python на тех же строках (`golden/system_plan_texts.json`, ключ
-// `pacman_progress`).
+// The parsing is pure: no files, no processes. The reference is the recorded
+// answers of live Python on the same lines (`golden/system_plan_texts.json`,
+// the `pacman_progress` key).
 //
-// ⚠️ Починка при порте: у Python-версии был параметр `total_packages`,
-// который не читала ни одна ветка. Он не перенесён — вызывающему коду он
-// тоже был не нужен.
+// ⚠️ Fixed in the port: the Python version had a `total_packages` parameter
+// that no branch read. It was not ported: the calling code did not need it
+// either.
 
-/// Разобранная строка вывода pacman: стадия, готовое сообщение для человека
-/// и разложенные поля (там, где они есть).
+/// A parsed line of pacman output: the stage, a ready message for the person
+/// and the split fields (where present).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PacmanLine {
     pub stage: String,
@@ -11090,12 +11181,12 @@ impl PacmanLine {
     }
 }
 
-/// `\w` Python: буква, цифра или подчёркивание (Unicode-осведомлённо).
+/// Python's `\w`: a letter, digit or underscore (Unicode-aware).
 fn is_word_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
-/// Регистронезависимое «строка начинается с»: возвращает хвост.
+/// Case-insensitive "string starts with": returns the tail.
 fn ci_strip_prefix<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
     let mut si = s.char_indices();
     for pc in prefix.chars() {
@@ -11107,7 +11198,7 @@ fn ci_strip_prefix<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
     Some(&s[si.next().map(|(i, _)| i).unwrap_or(s.len())..])
 }
 
-/// `\s+` в начале: хвост после хотя бы одного пробельного символа.
+/// `\s+` at the start: the tail after at least one whitespace character.
 fn strip_ws1(s: &str) -> Option<&str> {
     let t = s.trim_start();
     if t.len() == s.len() {
@@ -11117,7 +11208,7 @@ fn strip_ws1(s: &str) -> Option<&str> {
     }
 }
 
-/// `(.+?)\.{3}\s*$` — тело до завершающего многоточия (непустое).
+/// `(.+?)\.{3}\s*$`: the body up to the trailing ellipsis (non-empty).
 fn strip_ellipsis(s: &str) -> Option<&str> {
     let body = s.trim_end().strip_suffix("...")?;
     if body.is_empty() {
@@ -11127,7 +11218,7 @@ fn strip_ellipsis(s: &str) -> Option<&str> {
     }
 }
 
-/// `^\((\d+)/(\d+)\)\s+` — счётчик шага и хвост строки после него.
+/// `^\((\d+)/(\d+)\)\s+`: the step counter and the rest of the line after it.
 fn counter_prefix(line: &str) -> Option<(u64, u64, &str)> {
     let rest = line.strip_prefix('(')?;
     let close = rest.find(')')?;
@@ -11146,22 +11237,22 @@ fn counter_prefix(line: &str) -> Option<(u64, u64, &str)> {
     ))
 }
 
-/// Разделить «действие \s+ имя» ровно так, как это делала жадная `\s+` с
-/// откатом: имя — всё после пробелов, а если после них пусто, откатываемся
-/// на один пробельный символ (он и станет именем).
+/// Split "action \s+ name" exactly as the greedy `\s+` with backtracking did:
+/// the name is everything after the spaces, and if nothing follows them we
+/// back off by one whitespace character (it becomes the name).
 fn split_after_action(rest: &str) -> Option<String> {
     let name = rest.trim_start();
     if name.len() == rest.len() {
-        return None; // `\s+` требует хотя бы один пробел
+        return None; // `\s+` requires at least one space
     }
     if !name.is_empty() {
         return Some(name.to_string());
     }
-    // Только пробелы: последний из них и есть `(.+?)`.
+    // Only spaces: the last of them is the `(.+?)`.
     rest.chars().next_back().map(|c| c.to_string())
 }
 
-/// Действие и пакет из хвоста строки `(N/M) …`, либо None.
+/// Action and package from the tail of a `(N/M) …` line, or None.
 fn operation_action(payload: &str) -> Option<(String, String)> {
     for act in [
         "installing",
@@ -11176,8 +11267,8 @@ fn operation_action(payload: &str) -> Option<(String, String)> {
             }
         }
     }
-    // `checking \w[\w ]*` / `loading \w[\w ]*` — жадный набор слов и
-    // пробелов, откат до места, где остаётся ещё хотя бы одно слово.
+    // `checking \w[\w ]*` / `loading \w[\w ]*`: a greedy run of words and
+    // spaces, backing off to where at least one more word remains.
     for act in ["checking ", "loading "] {
         let Some(rest) = payload.strip_prefix(act) else {
             continue;
@@ -11205,7 +11296,7 @@ fn operation_action(payload: &str) -> Option<(String, String)> {
     None
 }
 
-/// `^Packages\s+\((\d+)\)` — сколько всего пакетов в транзакции.
+/// `^Packages\s+\((\d+)\)`: how many packages there are in the transaction.
 fn packages_count(line: &str) -> Option<u64> {
     let rest = strip_ws1(ci_strip_prefix(line, "Packages")?)?;
     let inner = rest.strip_prefix('(')?;
@@ -11217,7 +11308,7 @@ fn packages_count(line: &str) -> Option<u64> {
     digits.parse().ok()
 }
 
-/// `^<заголовок>:\s+([\d.]+)\s+(\w+)` — размер и единица измерения.
+/// `^<header>:\s+([\d.]+)\s+(\w+)`: the size and the unit.
 fn total_size(line: &str, header: &str) -> Option<String> {
     let rest = strip_ws1(ci_strip_prefix(line, header)?)?;
     let num_len = rest
@@ -11239,8 +11330,8 @@ fn total_size(line: &str, header: &str) -> Option<String> {
     Some(format!("{} {}", &rest[..num_len], &unit_rest[..unit_len]))
 }
 
-/// `^(\S+)\s+is up to date\s*--\s*skipping` — имя пакета, который pacman
-/// пропустил как уже установленный (`--needed`).
+/// `^(\S+)\s+is up to date\s*--\s*skipping`: the name of a package pacman
+/// skipped as already installed (`--needed`).
 fn skip_package(body: &str) -> Option<&str> {
     let name_len = body.chars().take_while(|c| !c.is_whitespace()).count();
     let name_len: usize = body
@@ -11260,34 +11351,36 @@ fn skip_package(body: &str) -> Option<&str> {
     Some(&body[..name_len])
 }
 
-// ── Про пересортировку зеркал (решено 2026-09-01, НЕ делаем) ────────────
+// ── About re-sorting mirrors (decided 2026-09-01, we do NOT do it) ──────
 //
-// Соблазн: увидели подряд несколько отказов зеркал — предложить человеку
-// перетасовать список (`cachyos-rate-mirrors`, `rate-mirrors`, `reflector` —
-// на машине Wehrwolfmann есть все три). Отказано, и вот почему.
+// The temptation: after several mirror failures in a row, offer the person
+// to reshuffle the list (`cachyos-rate-mirrors`, `rate-mirrors`,
+// `reflector`; Wehrwolfmann's machine has all three). Rejected, and here is why.
 //
-// 1. Чинить нечего. Отказ зеркала, после которого транзакция ЗАВЕРШИЛАСЬ
-//    удачей, — это не поломка, а штатная работа запасного списка: 12 зеркал
-//    в cachyos-mirrorlist и 66 в mirrorlist ровно для этого и лежат. Звать
-//    человека чинить то, что само себя починило, — худший род ложной тревоги.
-// 2. Цена ошибки несимметрична. Список зеркал — общесистемный, root-овый, и
-//    им пользуется ВСЯ система, а не одна наша установка. Неудачная
-//    пересортировка ломает любое будущее обновление, включая наше
-//    собственное. Выигрыш — минуты, проигрыш — работающий пакетный менеджер.
-// 3. Файлы чужие. `/etc/pacman.d/cachyos-mirrorlist` принадлежит пакету
-//    cachyos-mirrorlist, `/etc/pacman.d/mirrorlist` — пакету
-//    pacman-mirrorlist. Переписав их, мы получаем .pacnew при каждом
-//    обновлении и спорим с инструментами самого дистрибутива.
-// 4. Это медленно и требует сети. Пересортировка сама ходит по десяткам
-//    зеркал; делать её посреди установки стола значит удлинить успешную
-//    операцию ради симптома, которого уже нет.
+// 1. There is nothing to fix. A mirror failure after which the transaction
+//    ENDED in success is not a breakage but normal operation of the fallback
+//    list: the 12 mirrors in cachyos-mirrorlist and 66 in mirrorlist are
+//    there exactly for that. Calling the person to fix what fixed itself is
+//    the worst kind of false alarm.
+// 2. The cost of a mistake is asymmetric. The mirror list is system-wide,
+//    root-owned, and the WHOLE system uses it, not just our install. A bad
+//    re-sort breaks any future update, including our own. The gain is
+//    minutes, the loss is a working package manager.
+// 3. The files are not ours. `/etc/pacman.d/cachyos-mirrorlist` belongs to
+//    the cachyos-mirrorlist package, `/etc/pacman.d/mirrorlist` to the
+//    pacman-mirrorlist package. Rewriting them, we get a .pacnew on every
+//    update and fight the distribution's own tools.
+// 4. It is slow and needs the network. Re-sorting itself visits dozens of
+//    mirrors; doing it in the middle of a desktop install means lengthening a
+//    successful operation for a symptom that is already gone.
 //
-// Что делаем вместо: говорим правду построчно (ниже) и не красим переживаемое
-// красным. Если загрузка провалится ПО-НАСТОЯЩЕМУ, человек увидит настоящую
-// ошибку pacman и решит сам — совет про зеркала уместен там, а не здесь.
+// What we do instead: tell the truth line by line (below) and do not paint
+// survivable things red. If the download fails FOR REAL, the person sees the
+// real pacman error and decides themselves: advice about mirrors fits
+// there, not here.
 
-/// Загрузка провалилась ПО-НАСТОЯЩЕМУ: pacman объявил, что часть файлов так
-/// и не скачалась ни с одного зеркала, и транзакцию не начинал.
+/// The download failed FOR REAL: pacman announced that some files could not
+/// be downloaded from any mirror, and did not start the transaction.
 pub fn download_failed(output: &str) -> bool {
     output.lines().any(|line| {
         let line = line.trim().to_ascii_lowercase();
@@ -11296,21 +11389,21 @@ pub fn download_failed(output: &str) -> bool {
     })
 }
 
-/// Что сказать человеку, когда пакеты не скачались: что случилось, что
-/// ничего не сломано и что делать. Сырой текст pacman остаётся в журнале.
+/// What to tell the person when packages did not download: what happened,
+/// that nothing is broken and what to do. The raw pacman text stays in the log.
 pub fn download_failed_message() -> String {
     tr("Couldn't download the packages: the package servers didn't respond. \
         The internet connection may have dropped.\n\
         Nothing was changed — check the connection and try again.")
 }
 
-/// Итог упавшей транзакции без разобранной причины: только строки ошибок.
+/// Result of a failed transaction without a parsed reason: only the error lines.
 ///
-/// ⭐ Починка 08.11.2026: прежде в окно уходил ВЕСЬ вывод pacman — сводка
-/// пакетов, ход загрузки и «warning: … is up to date -- skipping» под
-/// красным крестом, хотя каждая строка уже показана в журнале построчно
-/// и по-человечески. Строк `error:` нет — отдаём вывод как есть, чтобы не
-/// потерять единственное объяснение.
+/// ⭐ Fixed 08.11.2026: previously the window got ALL of pacman's output: the
+/// package summary, download progress and "warning: … is up to date --
+/// skipping" under a red cross, although each line was already shown in the
+/// log line by line and in human terms. If there are no `error:` lines, we
+/// pass the output as is, so as not to lose the only explanation.
 pub fn manager_error_lines(output: &str) -> String {
     let errors: Vec<&str> = output
         .lines()
@@ -11325,23 +11418,24 @@ pub fn manager_error_lines(output: &str) -> String {
     }
 }
 
-/// `failed retrieving file '<файл>' from <зеркало> : <причина>` — имя зеркала.
+/// `failed retrieving file '<file>' from <mirror> : <reason>`: the mirror name.
 ///
-/// Это ПЕРЕЖИВАЕМЫЙ сбой: pacman тут же берёт следующее зеркало из списка, и
-/// установка идёт дальше. Настоящий отказ загрузки pacman объявляет ОТДЕЛЬНОЙ
-/// строкой (`failed to retrieve some files` / `failed to commit transaction`),
-/// поэтому опознать одно по другому можно построчно, не дожидаясь итога.
+/// This is a SURVIVABLE failure: pacman takes the next mirror from the list
+/// right away, and the install goes on. A real download failure is announced
+/// by pacman on a SEPARATE line (`failed to retrieve some files` / `failed to
+/// commit transaction`), so one can be told from the other line by line,
+/// without waiting for the result.
 fn mirror_retrieve_failure(body: &str) -> Option<&str> {
     let rest = ci_strip_prefix(body, "failed retrieving file")?;
     let rest = strip_ws1(rest)?;
-    // Имя файла в кавычках — само по себе не нужно: без него одинаковые
-    // отказы одного зеркала сворачиваются в одну строку.
+    // The quoted file name is not needed by itself: without it identical
+    // failures of one mirror collapse into one line.
     let rest = rest.strip_prefix('\'')?;
     let close = rest.find('\'')?;
     let rest = strip_ws1(&rest[close + 1..])?;
     let rest = ci_strip_prefix(rest, "from")?;
     let rest = strip_ws1(rest)?;
-    // Хвост «<зеркало> : <причина>»: имя зеркала — до первого пробела.
+    // The tail "<mirror> : <reason>": the mirror name is up to the first space.
     let host_len: usize = rest
         .chars()
         .take_while(|c| !c.is_whitespace())
@@ -11353,9 +11447,9 @@ fn mirror_retrieve_failure(body: &str) -> Option<&str> {
     Some(&rest[..host_len])
 }
 
-/// `too many errors from <зеркало>, skipping for the remainder of this
-/// transaction` — имя зеркала, которое pacman вычеркнул до конца транзакции.
-/// Тоже переживаемо: список зеркал на то и список.
+/// `too many errors from <mirror>, skipping for the remainder of this
+/// transaction`: the name of a mirror pacman crossed out until the end of the
+/// transaction. Also survivable: a mirror list is a list for a reason.
 fn mirror_skipped(body: &str) -> Option<&str> {
     let rest = ci_strip_prefix(body, "too many errors from")?;
     let rest = strip_ws1(rest)?;
@@ -11368,16 +11462,17 @@ fn mirror_skipped(body: &str) -> Option<&str> {
     Some(host)
 }
 
-/// `There are <N> <вид> ... <предмет>:` — разбор шапки интерактивного вопроса
-/// pacman. Возвращает (N, предмет) для вопроса нужного вида.
+/// `There are <N> <kind> ... <subject>:`: parsing the header of an
+/// interactive pacman question. Returns (N, subject) for a question of the
+/// requested kind.
 ///
-/// Вопросов ДВА, и оба pacman задаёт сам:
-///   * `There are 24 members in group lxqt:` — какие члены группы ставить;
-///   * `There are 2 providers available for libQt6Xdg.so=4-64:` — чей пакет
-///     закрывает зависимость.
-/// При `--noconfirm` (а мы зовём pacman только так) ни один из них ввода НЕ
-/// ждёт: вопрос печатается, берётся значение по умолчанию. Но в журнале он
-/// выглядел загадкой — человек видел вопрос и не видел ответа.
+/// There are TWO questions, and pacman asks both itself:
+///   * `There are 24 members in group lxqt:`: which group members to install;
+///   * `There are 2 providers available for libQt6Xdg.so=4-64:`: whose package
+///     satisfies the dependency.
+/// With `--noconfirm` (and we only call pacman that way) neither waits for
+/// input: the question is printed and the default is taken. But in the log
+/// it looked like a riddle: the person saw the question and not the answer.
 fn there_are_question<'a>(line: &'a str, kind: &str) -> Option<(u64, &'a str)> {
     let rest = strip_ws1(ci_strip_prefix(line, "There are")?)?;
     let num_len: usize = rest
@@ -11399,12 +11494,13 @@ fn there_are_question<'a>(line: &'a str, kind: &str) -> Option<(u64, &'a str)> {
     Some((count, subject))
 }
 
-/// Тело строки `:: …`, на которую при `--noconfirm` pacman отвечает себе сам
-/// и в которой человеку читать нечего: шапка меню выбора
-/// (`Repository extra`) и согласие на транзакцию (`Proceed with
-/// installation? [Y/n]`, `Proceed with download? [Y/n]`). Вопросы со смыслом
-/// (`Remove kwin? [y/N]`, `Import PGP key …? [Y/n]`, `Replace …?`) сюда НЕ
-/// входят: их ответ решает исход, и строку человек видеть должен.
+/// Body of a `:: …` line that pacman answers itself under `--noconfirm` and
+/// in which there is nothing for the person to read: the selection menu
+/// header (`Repository extra`) and the transaction consent (`Proceed with
+/// installation? [Y/n]`, `Proceed with download? [Y/n]`). Meaningful
+/// questions (`Remove kwin? [y/N]`, `Import PGP key …? [Y/n]`, `Replace …?`)
+/// are NOT included: their answer decides the outcome, and the person must
+/// see the line.
 fn is_self_answered_question(body: &str) -> bool {
     if let Some(rest) = ci_strip_prefix(body, "Repository").and_then(strip_ws1) {
         let name = rest.trim_end();
@@ -11418,10 +11514,10 @@ fn is_self_answered_question(body: &str) -> bool {
         && (rest.ends_with("[Y/n]") || rest.ends_with("[y/N]"))
 }
 
-/// Пункт меню выбора pacman: `1) gsettings-qt5` или в одну строку
-/// `1) a  2) b  3) c` (ведущие пробелы срезаны): строго чередование «номер)»
-/// и имени пакета — нумерованный текст скрипта установки («1) Do this»)
-/// под это не подпадает и остаётся видимым.
+/// A pacman selection menu item: `1) gsettings-qt5` or on one line
+/// `1) a  2) b  3) c` (leading spaces stripped): strictly alternating
+/// "number)" and a package name: numbered text of an install script
+/// ("1) Do this") does not match this and stays visible.
 fn is_menu_item(line: &str) -> bool {
     let tokens: Vec<&str> = line.split_whitespace().collect();
     !tokens.is_empty()
@@ -11435,7 +11531,7 @@ fn is_menu_item(line: &str) -> bool {
         })
 }
 
-/// `re.sub(r'-[^-\s]+-[^-\s]+$', '', name)` — отрезать «-<версия>-<релиз>».
+/// `re.sub(r'-[^-\s]+-[^-\s]+$', '', name)`: cut off "-<version>-<release>".
 fn strip_version_suffix(name: &str) -> &str {
     let ok = |seg: &str| !seg.is_empty() && !seg.contains(|c: char| c == '-' || c.is_whitespace());
     let Some(last) = name.rfind('-') else {
@@ -11453,11 +11549,11 @@ fn strip_version_suffix(name: &str) -> &str {
     &name[..prev]
 }
 
-/// Разобрать одну строку вывода pacman: стадия + сообщение для человека.
-/// None — строка ничего не значит для показа хода дела.
-/// Служебный заголовок транзакции pacman (`:: Running pre-transaction
-/// hooks...`, `:: Processing package changes...`): за ним идут строки хода
-/// со своим смыслом, сам он человеку ничего не говорит.
+/// Parse one line of pacman output: the stage + a message for the person.
+/// None: the line means nothing for the progress display.
+/// A pacman transaction service header (`:: Running pre-transaction
+/// hooks...`, `:: Processing package changes...`): it is followed by progress
+/// lines with their own meaning, and it tells the person nothing by itself.
 fn is_transaction_header(body: &str) -> bool {
     let b = body.to_lowercase();
     [
@@ -11475,14 +11571,14 @@ fn is_transaction_header(body: &str) -> bool {
     .any(|h| b.starts_with(h))
 }
 
-/// Вывод пакетов и хуков вокруг транзакции, который окну не нужен (см.
-/// [`parse_pacman_line`]). `raw` — строка с ведущим отступом.
+/// Package and hook output around the transaction that the window does not
+/// need (see [`parse_pacman_line`]). `raw` is the line with its leading indent.
 fn is_package_chatter(raw: &str) -> bool {
     let line = raw.trim();
     if line.starts_with("Optional dependencies for ") || line.starts_with("===>") {
         return true;
     }
-    // `==> root: 1488` (snap-pac: конфиг и номер снимка).
+    // `==> root: 1488` (snap-pac: the config and the snapshot number).
     if let Some(rest) = line.strip_prefix("==> ") {
         if let Some((cfg, num)) = rest.split_once(": ") {
             if !cfg.is_empty() && !cfg.contains(' ') && !num.is_empty() && num.chars().all(|c| c.is_ascii_digit()) {
@@ -11494,8 +11590,8 @@ fn is_package_chatter(raw: &str) -> bool {
     if lower.starts_with("performing snapper ") || lower.starts_with("waiting for limine-snapper-sync") {
         return true;
     }
-    // Строка необязательной зависимости: отступ, имя пакета, дальше
-    // «: описание» и/или «[installed]»/«[pending]».
+    // An optional dependency line: indent, package name, then ": description"
+    // and/or "[installed]"/"[pending]".
     if raw.starts_with("    ") {
         let head = line.split([':', ' ']).next().unwrap_or("");
         let name_ok = !head.is_empty()
@@ -11512,7 +11608,7 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
         return None;
     }
 
-    // (N/M) installing|upgrading|… <пакет>...
+    // (N/M) installing|upgrading|… <package>...
     if let Some((cur, total, rest)) = counter_prefix(line) {
         if let Some(payload) = strip_ellipsis(rest) {
             if let Some((action, pkg)) = operation_action(payload) {
@@ -11528,8 +11624,8 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
                 return Some(PacmanLine {
                     stage: (if check { "check" } else { "pkg_install" }).to_string(),
                     message: if check {
-                        // Что именно сверяет pacman (ключи, конфликты, место)
-                        // — по-английски и человеку не нужно; счётчик — да.
+                        // What exactly pacman checks (keys, conflicts, space) is in English and not
+                        // needed by the person; the counter is.
                         trf("🔍 (%1/%2) Checking the packages…", &[&cur, &total])
                     } else {
                         format!("📦 ({}/{}) {}: {}", cur, total, label, pkg)
@@ -11545,7 +11641,7 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
         }
     }
 
-    // downloading <файл>...
+    // downloading <file>...
     if let Some(rest) = ci_strip_prefix(line, "downloading") {
         if let Some(rest) = strip_ws1(rest) {
             if let Some(name) = strip_ellipsis(rest) {
@@ -11574,11 +11670,11 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
         return Some(PacmanLine::plain("summary", trf("💾 Installed size: %1", &[&size])));
     }
 
-    // :: Заголовок раздела — но сперва два интерактивных вопроса pacman,
-    // которые он же сам себе и отвечает при `--noconfirm`.
+    // :: A section header, but first the two interactive pacman questions that
+    // it answers itself under `--noconfirm`.
     if let Some(rest) = line.strip_prefix("::") {
         if let Some(body) = strip_ws1(rest) {
-            // «There are N members in group G:» — ставим всю группу.
+            // "There are N members in group G:": we install the whole group.
             if let Some((count, group)) = there_are_question(body, "members in group") {
                 let mut ev = PacmanLine::plain(
                     "prompt",
@@ -11596,12 +11692,12 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
                 ev.package = Some(group.to_string());
                 return Some(ev);
             }
-            // «There are N providers available for X:» — берём поставщика из
-            // репозитория с наивысшим приоритетом. Это НЕ случайность порядка:
-            // pacman перечисляет поставщиков в порядке репозиториев из
-            // pacman.conf, а первым там стоит тот, который человек (или его
-            // дистрибутив) объявил главным. Ровно это же взял бы `pacman -S`
-            // из терминала, поэтому решать за него мы не вправе.
+            // "There are N providers available for X:": we take the provider from the
+            // repository with the highest priority. This is NOT an accident of order:
+            // pacman lists providers in the repository order of pacman.conf, and first
+            // there is the one the person (or their distribution) declared primary.
+            // Exactly this would be taken by `pacman -S` from a terminal, so we have no
+            // right to decide for it.
             if let Some((count, subject)) =
                 there_are_question(body, "providers available for")
             {
@@ -11619,18 +11715,18 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
                 ev.package = Some(subject.to_string());
                 return Some(ev);
             }
-            // Остальное от тех же вопросов, на что pacman при `--noconfirm`
-            // отвечает себе сам: «Repository <имя>» — шапка меню поставщиков
-            // и членов группы, «Proceed with installation/download? [Y/n]» —
-            // согласие. Человеку тут нечего прочесть: ответ уже назван строкой
-            // выше (или это просто «да»). Пустое сообщение — см. «Enter a …».
+            // The rest from the same questions that pacman answers itself under
+            // `--noconfirm`: "Repository <name>" is the header of the providers and group
+            // members menu, "Proceed with installation/download? [Y/n]" is the consent.
+            // There is nothing here for the person to read: the answer was already named
+            // a line above (or it is just "yes"). An empty message: see "Enter a …".
             if is_self_answered_question(body) {
                 return Some(PacmanLine::plain("prompt", String::new()));
             }
-            // Служебные заголовки транзакции — не английским «📌 …»:
-            // загрузка — своей строкой, остальное человеку не нужно (ход
-            // пакетов и хуков идёт своими строками следом). Живьём 08.11.2026,
-            // «Проверить / Восстановить» MATE.
+            // Transaction service headers, not as an English "📌 …": the download gets
+            // its own line, the rest the person does not need (package and hook
+            // progress follows in its own lines). Live on 08.11.2026, «Check / Repair»
+            // for MATE.
             if body.to_lowercase().starts_with("retrieving packages") {
                 return Some(PacmanLine::plain("download", tr("⬇️  Downloading packages…")));
             }
@@ -11643,14 +11739,14 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
         }
     }
 
-    // «Enter a selection (default=all):» / «Enter a number (default=1):» —
-    // хвост уже объяснённого вопроса. Показывать его нечего: ответ назван
-    // строкой выше, а сам вопрос ввода не ждёт.
+    // "Enter a selection (default=all):" / "Enter a number (default=1):": the
+    // tail of an already explained question. There is nothing to show: the
+    // answer was named a line above, and the question itself does not wait for input.
     //
-    // ⚠️ Именно ПУСТОЕ сообщение, а не `None`: `None` у этого разбора значит
-    // «строка мне незнакома», и исполнитель показывает её сырой (этап
-    // `raw`). Поймано показом журнала целиком: вопрос был объяснён строкой
-    // выше и тут же напечатан по-английски ещё раз.
+    // ⚠️ Exactly an EMPTY message, not `None`: `None` from this parser means
+    // "I do not know this line", and the executor shows it raw (the `raw`
+    // stage). Caught by showing the whole log: the question was explained a
+    // line above and immediately printed again in English.
     if let Some(rest) = ci_strip_prefix(line, "Enter a") {
         if let Some(rest) = strip_ws1(rest) {
             if (ci_strip_prefix(rest, "selection").is_some()
@@ -11661,7 +11757,7 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
             }
         }
     }
-    // «   1) gsettings-qt5» / «   1) a  2) b  3) c» — пункты того же меню.
+    // "   1) gsettings-qt5" / "   1) a  2) b  3) c": items of the same menu.
     if is_menu_item(line) {
         return Some(PacmanLine::plain("prompt", String::new()));
     }
@@ -11670,14 +11766,12 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
     if let Some(rest) = ci_strip_prefix(line, "error:") {
         if let Some(body) = strip_ws1(rest) {
             if !body.is_empty() {
-                // ⚠️ Сбой ОДНОГО зеркала — не наша беда: pacman берёт
-                // следующее и доводит установку до конца. Красный крест на
-                // такой строке говорил покупателю «всё сломалось» там, где
-                // всё в порядке. Мерило: транзакция кончилась удачей →
-                // крестов в журнале нет вовсе; настоящий отказ загрузки
-                // pacman объявляет отдельно («failed to retrieve some
-                // files», «failed to commit transaction»), и он остаётся
-                // красным.
+                // ⚠️ A failure of ONE mirror is not our problem: pacman takes the next one
+                // and completes the install. A red cross on such a line told the user
+                // "everything broke" where everything is fine. The yardstick: the
+                // transaction ended in success → no crosses in the log at all; a real
+                // download failure is announced by pacman separately ("failed to retrieve
+                // some files", "failed to commit transaction"), and it stays red.
                 if let Some(host) = mirror_retrieve_failure(body) {
                     let mut ev = PacmanLine::plain(
                         "mirror",
@@ -11693,12 +11787,11 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
     if let Some(rest) = ci_strip_prefix(line, "warning:") {
         if let Some(body) = strip_ws1(rest) {
             if !body.is_empty() {
-                // «<pkg>-<ver> is up to date -- skipping» — это не беда, а
-                // нормальный ответ `--needed` в режиме «Проверить /
-                // Восстановить»: показываем дружелюбным «уже установлено».
-                // «too many errors from <зеркало>, skipping…» — из того же
-                // класса, что и отказ загрузки выше: список зеркал на то и
-                // список. Показываем спокойно, той же строкой.
+                // "<pkg>-<ver> is up to date -- skipping" is not a problem but the normal
+                // answer of `--needed` in «Check / Repair» mode: we show a friendly
+                // "already installed". "too many errors from <mirror>, skipping…" is of the
+                // same class as the download failure above: a mirror list is a list for a
+                // reason. We show it calmly, with the same line.
                 if let Some(host) = mirror_skipped(body) {
                     let mut ev = PacmanLine::plain(
                         "mirror",
@@ -11725,14 +11818,14 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
         }
     }
 
-    // (N/M) <хук>... — пост-транзакционные хуки pacman
+    // (N/M) <hook>... : pacman's post-transaction hooks
     if let Some((cur, total, rest)) = counter_prefix(line) {
         if let Some(hook) = strip_ellipsis(rest) {
             return Some(PacmanLine {
                 stage: "hook".to_string(),
-                // Имя хука — английская фраза чужого пакета («Checking the
-                // local deepin-session-treeland build…», «Arming
-                // ConditionNeedsUpdate»): в окно — счётчик, имя — в журнал.
+                // The hook name is an English phrase from someone else's package
+                // ("Checking the local deepin-session-treeland build…", "Arming
+                // ConditionNeedsUpdate"): the window gets the counter, the name goes to the log.
                 message: {
                     crate::log_info!("pkg", "хук pacman ({cur}/{total}): {hook}");
                     trf("🔧 (%1/%2) Finishing the installation…", &[&cur, &total])
@@ -11747,9 +11840,10 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
         }
     }
 
-    // Ход транзакции без счётчика (вывод не в терминал): «installing x...»
-    // — по-русски; «checking keyring...», «resolving dependencies...» и
-    // прочие проверки — скрыть (живьём 08.11.2026, lxqt-wayland-session).
+    // Transaction progress without a counter (output not to a terminal):
+    // "installing x..." is said in the UI language; "checking keyring...",
+    // "resolving dependencies..." and other checks are hidden (live on
+    // 08.11.2026, lxqt-wayland-session).
     if let Some(payload) = strip_ellipsis(line) {
         if let Some((action, pkg)) = operation_action(payload) {
             if !(action.starts_with("checking") || action.starts_with("loading")) {
@@ -11774,19 +11868,19 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
     {
         return Some(PacmanLine::plain("check", String::new()));
     }
-    // «Optional dependencies for x» и его строки «    labwc [installed]»,
-    // «    river: описание»; сообщения установочных скриптов пакетов
-    // («===> For a working … please install …»); болтовня хуков snapper и
-    // limine («Performing snapper pre snapshots…», «==> root: 1488»,
-    // «Waiting for limine-snapper-sync to finish»). Человеку не нужны и
-    // часто вводят в заблуждение (просят поставить уже стоящее) — только в
-    // журнал Rexon.
+    // "Optional dependencies for x" and its lines "    labwc [installed]",
+    // "    river: description"; messages of package install scripts ("===> For
+    // a working … please install …"); the chatter of snapper and limine hooks
+    // ("Performing snapper pre snapshots…", "==> root: 1488", "Waiting for
+    // limine-snapper-sync to finish"). The person does not need them and they
+    // often mislead (asking to install what is already installed): only to the
+    // Rexon log.
     if is_package_chatter(raw) {
         crate::log_info!("pkg", "{line}");
         return Some(PacmanLine::plain("chatter", String::new()));
     }
-    // «there is nothing to do» (`--needed`, всё уже стоит): итог скажет это
-    // по-русски сам (`system_de_exec::main_already_installed`).
+    // "there is nothing to do" (`--needed`, everything already installed): the
+    // result says it itself in the UI language (`system_de_exec::main_already_installed`).
     if line.eq_ignore_ascii_case("there is nothing to do") {
         return Some(PacmanLine::plain("nothing", String::new()));
     }
@@ -11800,22 +11894,23 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
 }
 
 // ============================================================================
-// Идиот-защита «экран входа обязан быть» (порт `ensure_display_manager`)
+// Foolproof guard "there must be a login screen" (port of `ensure_display_manager`)
 // ============================================================================
 //
-// Установка тайлового WM (niri/sway/Hyprland) сама display-manager не тянет:
-// sddm намеренно убран из их пакет-листов, потому что экран входа —
-// общесистемная сущность, а не часть конкретного стола. Без этой защиты
-// человек после перезагрузки остаётся без входа в графику.
+// Installing a tiling WM (niri/sway/Hyprland) does not pull in a display
+// manager by itself: sddm was deliberately removed from their package lists,
+// because the login screen is a system-wide entity, not part of a specific
+// desktop. Without this guard the person is left without a graphical login
+// after a reboot.
 //
-// Решение целиком здесь: есть ли что ставить, чем ставить, чем включать и
-// что при этом сказать. Живые пробы (есть ли DM, есть ли systemctl, развёрнут
-// ли привилегированный helper) подаются параметрами, запуск команд — за
-// исполнителем.
+// The whole decision is here: whether there is anything to install, what to
+// install with, what to enable with and what to say. Live probes (is there
+// a DM, is there systemctl, is the privileged helper deployed) are passed as
+// parameters, running commands is up to the executor.
 
-/// Имя ПАКЕТА sddm по семейству. Gentoo — категория. NIX исключён (там
-/// декларативная сборка, не pkexec-путь), CLEAR — sddm не поставляется
-/// отдельным bundle; на них автоустановка мягко пропускается.
+/// sddm PACKAGE name by family. Gentoo: with the category. NIX is excluded
+/// (a declarative build there, not the pkexec path), CLEAR does not ship sddm
+/// as a separate bundle; on them the auto-install is softly skipped.
 pub const SDDM_PKG_FOR_FAMILY: &[(&str, &str)] = &[
     ("arch", "sddm"),
     ("debian", "sddm"),
@@ -11828,16 +11923,17 @@ pub const SDDM_PKG_FOR_FAMILY: &[(&str, &str)] = &[
     ("alt", "sddm"),
 ];
 
-/// Что делать с экраном входа после установки рабочего стола.
+/// What to do with the login screen after a desktop install.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum EnsureDmPlan {
-    /// Включённый экран входа уже есть — не вмешиваемся.
+    /// An enabled login screen already exists: we do not interfere.
     Present { message: String, code: String },
-    /// Ставить нечего или нечем: не systemd, нет имени пакета для семейства,
-    /// нет команды установки. Не ошибка — установка стола не рушится.
+    /// Nothing to install or nothing to install with: not systemd, no package
+    /// name for the family, no install command. Not an error: the desktop install
+    /// does not fail.
     Skipped { message: Option<String>, code: String },
-    /// Экрана входа нет: ставим SDDM и включаем его юнит.
+    /// No login screen: install SDDM and enable its unit.
     Install {
         message: String,
         fraction: f64,
@@ -11850,12 +11946,12 @@ pub enum EnsureDmPlan {
     },
 }
 
-/// Решение и команды идиот-защиты экрана входа.
+/// Decision and commands of the login screen foolproof guard.
 ///
-/// `dm_present` — ответ `display_manager_present_from`, `has_systemctl` —
-/// наличие systemd, `pkg_helper_available` — развёрнут ли rexon-pkg-helper
-/// (с ним обе команды идут именованными действиями org.rexon.* и не просят
-/// пароль второй раз).
+/// `dm_present` is the `display_manager_present_from` answer, `has_systemctl`
+/// is the presence of systemd, `pkg_helper_available` is whether
+/// rexon-pkg-helper is deployed (with it both commands go as named
+/// org.rexon.* actions and do not ask for the password a second time).
 pub fn ensure_dm_plan(
     family: PkgFamily,
     dm_present: bool,
@@ -11869,7 +11965,7 @@ pub fn ensure_dm_plan(
         };
     }
     if !has_systemctl {
-        // Не systemd: экраном входа заведует сам init, второй DM не плодим.
+        // Not systemd: init itself manages the login screen, we do not add a second DM.
         return EnsureDmPlan::Skipped { message: None, code: "skipped".to_string() };
     }
     let fam = family.as_str();
@@ -11885,7 +11981,7 @@ pub fn ensure_dm_plan(
     let install_argv = match privileged_pkg_cmd(family, "install", &pkgs, pkg_helper_available) {
         Some(argv) => argv,
         None => {
-            // Сырой pkexec по общей install-таблице семейства.
+            // Raw pkexec by the family's common install table.
             let Some(tmpl) = table_get(PKG_HELPER_INSTALL, fam) else {
                 return EnsureDmPlan::Skipped {
                     message: None,
@@ -11925,14 +12021,14 @@ pub fn ensure_dm_plan(
 }
 
 // ============================================================================
-// Мелочи установки, жившие в Python: AUR-хелпер, доли прогресса, тексты итога
+// Install odds and ends that lived in Python: AUR helper, progress shares, result texts
 // ============================================================================
 
-/// Помощники AUR в порядке предпочтения — порт `_find_aur_helper`.
+/// AUR helpers in order of preference: port of `_find_aur_helper`.
 pub const AUR_HELPERS: &[&str] = &["yay", "paru", "trizen", "pikaur", "aurman"];
 
-/// Первый найденный помощник AUR (только Arch), либо None.
-/// `has` — живая проверка наличия бинаря (`shutil.which`).
+/// The first AUR helper found (Arch only), or None.
+/// `has` is a live check for the binary (`shutil.which`).
 pub fn pick_aur_helper(
     family: PkgFamily,
     has: &dyn Fn(&str) -> bool,
@@ -11946,20 +12042,20 @@ pub fn pick_aur_helper(
         .map(|h| h.to_string())
 }
 
-/// Overlay Gentoo, нужный этому рабочему столу (либо None).
+/// The Gentoo overlay this desktop needs (or None).
 pub fn gentoo_overlay_for(de_id: &str) -> Option<&'static str> {
     table_get(GENTOO_OVERLAYS, de_id)
 }
 
-/// Команда, которой ставится инструмент подключения overlay'ев.
+/// The command that installs the overlay management tool.
 ///
-/// Собрана из двух вещей движка: имени [`GENTOO_OVERLAY_TOOL_PACKAGE`] и
-/// таблицы [`install_cmd`]; выбор именованного или сырого пути — общий
-/// ([`privileged_install_argv`]). Прежде всё это было переписано руками в
-/// `ensure_gentoo_overlay`, и копия успела разойтись с движком: потеряла
-/// `--quiet`.
+/// Assembled from two pieces of the engine: the name
+/// [`GENTOO_OVERLAY_TOOL_PACKAGE`] and the [`install_cmd`] table; the choice
+/// between the named and the raw path is shared ([`privileged_install_argv`]).
+/// Previously all of this was rewritten by hand in `ensure_gentoo_overlay`,
+/// and the copy had already diverged from the engine: it lost `--quiet`.
 ///
-/// `None` — не Gentoo: overlay'ев там нет, и ставить нечего.
+/// `None`: not Gentoo: there are no overlays there, nothing to install.
 pub fn gentoo_overlay_tool_install_cmd(
     family: PkgFamily,
     helper_available: bool,
@@ -11972,7 +12068,7 @@ pub fn gentoo_overlay_tool_install_cmd(
     Some(privileged_install_argv(family, &packages, &base, helper_available))
 }
 
-/// Текст отказа, когда замок пакетного менеджера так и не освободился.
+/// Refusal text when the package manager lock never got released.
 pub fn pkg_lock_timeout_message(timeout_secs: u64) -> String {
     trf(
         // TRANSLATORS: %1 is a number of seconds.
@@ -11983,7 +12079,7 @@ pub fn pkg_lock_timeout_message(timeout_secs: u64) -> String {
     )
 }
 
-/// Первый счётчик вида «(N/M)» в тексте — порт `re.search(r"\((\d+)/(\d+)\)")`.
+/// The first "(N/M)" counter in a text: port of `re.search(r"\((\d+)/(\d+)\)")`.
 fn find_counter(text: &str) -> Option<(u64, u64)> {
     let bytes = text.as_bytes();
     for (i, b) in bytes.iter().enumerate() {
@@ -12007,12 +12103,12 @@ fn find_counter(text: &str) -> Option<(u64, u64)> {
     None
 }
 
-/// Доля выполнения установки рабочего стола по стадии и сообщению.
+/// Desktop install progress share by stage and message.
 ///
-/// Порт замыкания `_pkg_cb` из `install_de`: шаги пакетного менеджера
-/// занимают 5–65 % полосы, пост-транзакционные хуки 70–75 %, хвост AUR
-/// доводит до 85 %. Счётчик «(N/M)» берётся из готового сообщения — того
-/// самого, что собрал `parse_pacman_line`.
+/// Port of the `_pkg_cb` closure from `install_de`: package manager steps take
+/// 5–65 % of the bar, post-transaction hooks 70–75 %, the AUR tail brings it
+/// to 85 %. The "(N/M)" counter is taken from the ready message, the very one
+/// `parse_pacman_line` assembled.
 pub fn install_de_fraction(stage: &str, message: &str) -> Option<f64> {
     let ratio = || -> Option<f64> {
         let (cur, total) = find_counter(message)?;
@@ -12028,29 +12124,29 @@ pub fn install_de_fraction(stage: &str, message: &str) -> Option<f64> {
     }
 }
 
-/// Итог главного шага пакетной установки: успех со строками журнала либо
-/// отказ с объяснением для человека.
+/// Result of the main batch install step: success with log lines, or a
+/// refusal with an explanation for the person.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BatchMainOutcome {
     pub ok: bool,
     pub message: String,
-    /// Пары (стадия, текст) для колбэка прогресса.
+    /// (stage, text) pairs for the progress callback.
     pub logs: Vec<(String, String)>,
 }
 
-/// Где лежат программы окна пароля (агенты polkit) — по спискам файлов
-/// пакетов: Arch (`polkit-gnome`, `polkit-kde-agent`, `mate-polkit`,
-/// `lxqt-policykit`, `lxsession`, `xfce-polkit` из AUR), Debian/Ubuntu
+/// Where the password window programs (polkit agents) live, per package file
+/// lists: Arch (`polkit-gnome`, `polkit-kde-agent`, `mate-polkit`,
+/// `lxqt-policykit`, `lxsession`, `xfce-polkit` from the AUR), Debian/Ubuntu
 /// (`policykit-1-gnome`, `polkit-kde-agent-1`, `mate-polkit`), Fedora
-/// (`polkit-gnome` до 40, `polkit-kde`, `mate-polkit`, `lxqt-policykit`,
-/// `xfce-polkit`) и openSUSE Tumbleweed. Подсказка называет первый
-/// найденный на машине.
+/// (`polkit-gnome` up to 40, `polkit-kde`, `mate-polkit`, `lxqt-policykit`,
+/// `xfce-polkit`) and openSUSE Tumbleweed. The hint names the first one found
+/// on the machine.
 pub const POLKIT_AGENT_PATHS: &[&str] = &[
-    // polkit-gnome: Arch; Debian и Ubuntu; Fedora и openSUSE.
+    // polkit-gnome: Arch; Debian and Ubuntu; Fedora and openSUSE.
     "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1",
     "/usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1",
     "/usr/libexec/polkit-gnome-authentication-agent-1",
-    // polkit-kde-agent: Arch; Debian и Ubuntu; Fedora; openSUSE.
+    // polkit-kde-agent: Arch; Debian and Ubuntu; Fedora; openSUSE.
     "/usr/lib/polkit-kde-authentication-agent-1",
     "/usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1",
     "/usr/lib/aarch64-linux-gnu/libexec/polkit-kde-authentication-agent-1",
@@ -12069,24 +12165,24 @@ pub const POLKIT_AGENT_PATHS: &[&str] = &[
     "/usr/bin/lxpolkit",
 ];
 
-/// Сеанс входа, к которому polkit привяжет окно пароля: свой сеанс
-/// процесса, а у процесса вне сеанса — графический сеанс пользователя
-/// (`auto` в logind; так же выбирает и сам polkit).
+/// The login session polkit will attach the password window to: the
+/// process's own session, and for a process outside a session the user's
+/// graphical session (`auto` in logind; polkit itself chooses the same way).
 pub fn login_session_argv() -> Vec<String> {
     ["loginctl", "show-session", "auto", "-p", "Id", "--value"].iter().map(|s| s.to_string()).collect()
 }
 
-/// Проба «запущено ли окно пароля (агент polkit) для сеанса `session_id`».
+/// Probe "is a password window (polkit agent) running for session `session_id`".
 ///
-/// Спрашиваем сам polkit, а не ищем процессы по имени: агентов много
-/// (polkit-gnome, polkit-kde-agent, mate-polkit, xfce-polkit,
-/// lxqt-policykit, lxpolkit), а оболочки Noctalia и DankMaterialShell
-/// держат агент внутри своего процесса quickshell — по имени его не найти.
-/// Зато любой агент регистрируется у polkit на сеанс, и вторую регистрацию
-/// на тот же сеанс polkit отклоняет («already exists»). Это и есть ответ.
-/// Если агента нет, регистрация проходит — и снимается самим polkit, как
-/// только процесс `gdbus` завершится и уйдёт с шины (так же pkexec
-/// поднимает свой текстовый агент на время одной команды).
+/// We ask polkit itself instead of looking for processes by name: there are
+/// many agents (polkit-gnome, polkit-kde-agent, mate-polkit, xfce-polkit,
+/// lxqt-policykit, lxpolkit), and the Noctalia and DankMaterialShell shells
+/// keep the agent inside their quickshell process: it cannot be found by
+/// name. But any agent registers with polkit per session, and polkit rejects
+/// a second registration for the same session ("already exists"). That is
+/// the answer. If there is no agent, the registration goes through and is
+/// removed by polkit itself as soon as the `gdbus` process exits and leaves
+/// the bus (the same way pkexec brings up its text agent for one command).
 pub fn polkit_agent_probe_argv(session_id: &str) -> Vec<String> {
     vec![
         "gdbus".into(),
@@ -12104,14 +12200,14 @@ pub fn polkit_agent_probe_argv(session_id: &str) -> Vec<String> {
     ]
 }
 
-/// Годится ли идентификатор сеанса для пробы (logind даёт `2`, `c1`).
+/// Whether a session id is fit for the probe (logind gives `2`, `c1`).
 pub fn login_session_id_ok(id: &str) -> bool {
     !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
-/// Ответ пробы: `Some(true)` — агент уже есть, `Some(false)` — агента нет,
-/// `None` — спросить не вышло (нет `gdbus`, сеанс не тот и т. п.). Текст
-/// ошибки polkit не переводит.
+/// Probe answer: `Some(true)`: an agent already exists, `Some(false)`: no
+/// agent, `None`: could not ask (no `gdbus`, wrong session, etc.). polkit
+/// does not translate the error text.
 pub fn polkit_agent_probe_answer(rc: Option<i32>, stderr: &str) -> Option<bool> {
     match rc {
         Some(0) => Some(false),
@@ -12120,16 +12216,16 @@ pub fn polkit_agent_probe_answer(rc: Option<i32>, stderr: &str) -> Option<bool> 
     }
 }
 
-/// Порт `_batch_main_result`: разбор кода возврата главного pkexec-шага.
+/// Port of `_batch_main_result`: parsing the exit code of the main pkexec step.
 ///
-/// `result` — None, если команду не удалось даже запустить. Проверку
-/// «работает ли polkit-агент» зовём ЛЕНИВО, только в ветке отказа
-/// авторизации, — ровно как оригинал.
+/// `result` is None if the command could not even be started. The "is a
+/// polkit agent running" check is called LAZILY, only in the authorization
+/// refusal branch, exactly as in the original.
 ///
-/// ⚠️ Починка при порте: если семейство неизвестно, оригинал падал прямо
-/// в ветке ошибки (`_install_cmd` бросает RuntimeError вместо подсказки
-/// «поставьте из терминала»). Теперь вместо падения человек видит тот же
-/// текст объяснением.
+/// ⚠️ Fixed in the port: if the family is unknown, the original crashed
+/// right in the error branch (`_install_cmd` raises RuntimeError instead of
+/// the "install from a terminal" hint). Now instead of a crash the person
+/// sees the same text as an explanation.
 pub fn batch_main_result(
     result: Option<(i32, &str, &str)>,
     main_seen: bool,
@@ -12157,17 +12253,17 @@ pub fn batch_main_result(
     };
     if code != 0 {
         let err = if !stderr.is_empty() { stderr } else { stdout };
-        // pkexec без агента polkit (голые sway, niri и прочие тайловые его
-        // не запускают): код 127 и своя фраза, слов «Not authorized» нет.
+        // pkexec without a polkit agent (bare sway, niri and other tiling ones do
+        // not start one): code 127 and its own phrase, no "Not authorized" words.
         let no_agent = ["No authentication agent found", "Агент аутентификации не найден"]
             .iter()
             .any(|n| err.contains(n));
         if err.contains("Not authorized") || code == 126 || no_agent {
-            // Подсказка «поставьте руками»: обычно это готовая команда, а на
-            // неизвестном семействе — объяснение, почему команды нет.
-            // ⚠️ Починка при порте: оригинал строил её ДО ветвления и на
-            // неизвестном семействе падал RuntimeError вместо любого из
-            // объяснений ниже — включая случаи, где команда не нужна вовсе.
+            // The "install it by hand" hint: usually a ready command, and on an unknown
+            // family an explanation of why there is no command.
+            // ⚠️ Fixed in the port: the original built it BEFORE branching and on an
+            // unknown family crashed with RuntimeError instead of any of the
+            // explanations below, including cases where no command is needed at all.
             let hint = |lead: &str| match install_cmd(family, packages) {
                 Ok(argv) => format!("{}\n  sudo {}", lead, argv.join(" ")),
                 Err(e) => e,
@@ -12192,10 +12288,9 @@ pub fn batch_main_result(
             }
             if no_agent || !polkit_agent_running() {
                 let or_install = hint(&tr("Or install from a terminal:"));
-                // Путь — команда для терминала, не слово для человека: без
-                // него нечего было бы запустить. Берём найденный на этой
-                // машине: у одного и того же агента он свой в каждом
-                // дистрибутиве ([`POLKIT_AGENT_PATHS`]).
+                // The path is a terminal command, not a word for the person: without it
+                // there would be nothing to run. We take the one found on this machine: the
+                // same agent has its own path in each distribution ([`POLKIT_AGENT_PATHS`]).
                 return fail(match installed_agent() {
                     Some(agent) => trf(
                         // TRANSLATORS: %1 is the path of the program to start, %2 a hint
@@ -12226,17 +12321,16 @@ pub fn batch_main_result(
                 &[&hint(&tr("Try installing from a terminal:"))],
             ));
         }
-        // Конфликт с установленным (pacman с `--noconfirm` ответил «N» и ничего
-        // не удалил) — объяснить, а не показывать сырой английский текст.
+        // Conflict with an installed package (pacman with `--noconfirm` answered "N"
+        // and removed nothing): explain instead of showing the raw English text.
         let both = format!("{stdout}\n{stderr}");
         let conflicts = parse_transaction_conflicts(&both);
         if !conflicts.is_empty() {
             return fail(conflict_explanation(&conflicts));
         }
-        // Ни одно зеркало не отдало файл (пропала сеть или DNS): pacman
-        // ничего не поставил. Человеку — что случилось и что делать, а не
-        // английская простыня (живой случай 08.11.2026, «Проверить /
-        // Восстановить» Budgie при обрыве сети).
+        // No mirror served the file (network or DNS gone): pacman installed nothing.
+        // To the person: what happened and what to do, not an English wall of text
+        // (live case of 08.11.2026, «Check / Repair» for Budgie with the network down).
         if download_failed(&both) {
             return fail(download_failed_message());
         }
@@ -12269,7 +12363,7 @@ pub fn batch_main_result(
     )])
 }
 
-/// Вступительная строка AUR-хвоста установки — порт начала `_batch_run_aur`.
+/// Intro line of the install's AUR tail: port of the start of `_batch_run_aur`.
 pub fn batch_aur_intro(steamos: bool, count: usize) -> (String, String) {
     (
         "aur".to_string(),
@@ -12285,17 +12379,17 @@ pub fn batch_aur_intro(steamos: bool, count: usize) -> (String, String) {
     )
 }
 
-/// Итог AUR-хвоста: что сказать после попытки поставить пакеты из AUR.
+/// Result of the AUR tail: what to say after trying to install packages from the AUR.
 ///
-/// `failed` / `installed` — разбор по живому `is_installed`, который делает
-/// исполнитель; на SteamOS оригинал в этот разбор не ходит вовсе, поэтому
-/// списки там не нужны.
+/// `failed` / `installed` are sorted by the live `is_installed` the executor
+/// does; on SteamOS the original does not do this sorting at all, so the
+/// lists are not needed there.
 ///
-/// `timed_out` — помощник AUR не уложился в отведённое время. Отказ по
-/// времени ОБЯЗАН называть себя: «не установились» и «не дождались сборки»
-/// — разные новости, и делать с ними человеку надо разное. 2026-09-01
-/// покупатель прочитал «⚠️ Не установились AUR (9 из 9)» там, где на деле
-/// сборку убили через полминуты.
+/// `timed_out`: the AUR helper did not fit into the allotted time. A timeout
+/// refusal MUST name itself: "did not install" and "did not wait for the
+/// build" are different news, and the person has to do different things
+/// about them. On 2026-09-01 a user read "⚠️ AUR not installed (9 of 9)"
+/// where in fact the build was killed after half a minute.
 pub fn batch_aur_result(
     steamos: bool,
     succeeded: bool,
@@ -12327,7 +12421,7 @@ pub fn batch_aur_result(
         return out;
     }
     if failed.is_empty() {
-        // yay иногда отдаёт ненулевой код, поставив всё до единого.
+        // yay sometimes returns a non-zero code after installing every single package.
         return vec![("aur_done".into(), tr("✅ AUR packages installed"))];
     }
     let mut out = vec![(
@@ -12347,8 +12441,8 @@ pub fn batch_aur_result(
     out
 }
 
-/// Отказ по времени — отдельным текстом, чтобы его нельзя было спутать с
-/// «пакеты не встали». Человеку сразу говорим, чем продолжить вручную.
+/// A timeout refusal as a separate text, so it cannot be confused with
+/// "packages did not install". We tell the person right away how to continue by hand.
 pub fn aur_timeout_message(total: usize) -> String {
     ntr(
         "⏳ The AUR build ran out of time (%n package) — this is NOT an \
@@ -12359,12 +12453,13 @@ pub fn aur_timeout_message(total: usize) -> String {
     )
 }
 
-/// Отметка в окне прогресса о начале установки пакетов — порт двух строк
-/// исполнителя плана (`📦 Установка …` и её вариант для SteamOS).
+/// The progress window mark about the start of the package install: port of
+/// two lines of the plan executor (`📦 Installing …` and its SteamOS variant).
 ///
-/// ⭐ Починка при переносе: обе показывали покупателю «пакет(ов)» и
-/// «1 пакетов» вместо русского слова. Склонение в проекте уже было
-/// (каталог перевода, `ntr`), эти две строки им просто не пользовались.
+/// ⭐ Fixed in the port: both showed the user a broken plural ("package(s)",
+/// "1 packages") instead of a proper word form. The project already had
+/// plural forms (the translation catalog, `ntr`), these two lines simply did
+/// not use them.
 pub fn pkg_install_start_message(packages: usize, steamos: bool) -> String {
     let n = packages as u64;
     if steamos {
@@ -12379,19 +12474,19 @@ pub fn pkg_install_start_message(packages: usize, steamos: bool) -> String {
 }
 
 // ============================================================================
-// Пост-установка MATE: данные и тексты (порт `_post_install_mate`)
+// MATE post-install: data and texts (port of `_post_install_mate`)
 // ============================================================================
 //
-// Доводка MATE до вида Ubuntu MATE — единственный пост-установочный хук в
-// проекте. Сам он состоит из походов наружу (git clone, копирование файлов,
-// gsettings, pkexec), но всё, ЧТО именно копируется и пишется, — это данные:
-// подписи «Общих задач» на разных языках, карта snap-путей, содержимое
-// gschema-оверрайда, тексты обоих привилегированных скриптов и списки
-// пакетов, которых нет в обычных репозиториях. Данные живут здесь, походы —
-// у исполнителя.
+// Bringing MATE to the Ubuntu MATE look is the only post-install hook in the
+// project. It consists of trips outside (git clone, copying files,
+// gsettings, pkexec), but everything WHAT exactly is copied and written is
+// data: the "Common tasks" captions in different languages, the snap path
+// map, the gschema override contents, the texts of both privileged scripts
+// and the lists of packages not in the regular repositories. The data lives
+// here, the trips with the executor.
 
-/// Подписи «Общих задач» Центра управления MATE по языку интерфейса.
-/// Ключ сверяется префиксом переменной LANG, как в оригинале.
+/// The MATE Control Center "Common tasks" captions by UI language. The key is
+/// matched by the prefix of the LANG variable, as in the original.
 pub const MATE_LOCALE_ACTIONS: &[(&str, &str)] = &[
     (
         "ru",
@@ -12407,7 +12502,7 @@ pub const MATE_LOCALE_ACTIONS: &[(&str, &str)] = &[
     ),
 ];
 
-/// Язык интерфейса → (ключ локали, значение cc-actions-list), либо None.
+/// UI language → (locale key, cc-actions-list value), or None.
 pub fn mate_locale_actions(lang: &str) -> Option<(&'static str, &'static str)> {
     MATE_LOCALE_ACTIONS
         .iter()
@@ -12415,7 +12510,7 @@ pub fn mate_locale_actions(lang: &str) -> Option<(&'static str, &'static str)> {
         .map(|(k, v)| (*k, *v))
 }
 
-/// Ярлыки snap-сборок Ubuntu → их обычные имена на Arch/CachyOS.
+/// Ubuntu snap build shortcuts → their usual names on Arch/CachyOS.
 pub const MATE_SNAP_MAP: &[(&str, &str)] = &[
     ("firefox_firefox.desktop", "firefox.desktop"),
     ("thunderbird_thunderbird.desktop", "thunderbird.desktop"),
@@ -12427,7 +12522,7 @@ pub const MATE_SNAP_MAP: &[(&str, &str)] = &[
     ("software-properties-drivers.desktop", "cachyos-hello.desktop"),
 ];
 
-/// Переписать snap-пути в тексте раскладки панели на обычные.
+/// Rewrite snap paths in the panel layout text to the usual ones.
 pub fn mate_layout_fix_snap_paths(text: &str) -> String {
     let mut out = text.to_string();
     for (snap, native) in MATE_SNAP_MAP {
@@ -12439,53 +12534,54 @@ pub fn mate_layout_fix_snap_paths(text: &str) -> String {
     out
 }
 
-/// Куда ложится gschema-оверрайд Rexon.
+/// Where the Rexon gschema override goes.
 pub const MATE_GSCHEMA_PATH: &str =
     "/usr/share/glib-2.0/schemas/90_rexon-mate-settings.gschema.override";
 
-// ── Умолчания MATE строятся ТОЛЬКО из того, что реально лежит на диске ──
+// ── MATE defaults are built ONLY from what is really on disk ──
 //
-// ЗАЧЕМ. Оверрайд прописывал `Yaru-MATE-dark` темой по умолчанию ДО того,
-// как пакет с темой пробовали поставить, — и не проверял результат. Пакета
-// `yaru-mate-gtk-theme` в AUR не существует вовсе, установка падала, а стол
-// оставался настроен на несуществующую тему (дефект 2026-09-01). Класс шире
-// одной темы: в умолчания нельзя писать то, чего мы не поставили.
+// WHY. The override set `Yaru-MATE-dark` as the default theme BEFORE the
+// theme package was even tried, and did not check the result. The package
+// `yaru-mate-gtk-theme` does not exist in the AUR at all, the install
+// failed, and the desktop stayed configured for a nonexistent theme (defect
+// of 2026-09-01). The class is wider than one theme: nothing we did not
+// install may be written into the defaults.
 //
-// Поэтому имя каждой темы выбирается из цепочки предпочтений по СПИСКУ
-// РЕАЛЬНО ПРИСУТСТВУЮЩИХ (его собирает исполнитель, обходя каталоги тем), а
-// про каждую подмену человеку говорится вслух.
+// So each theme name is chosen from a preference chain against the LIST OF
+// WHAT IS REALLY PRESENT (gathered by the executor by walking the theme
+// directories), and each substitution is said out loud to the person.
 //
-// ⚠️ Marco отдельной цепочкой, и это не придирка: у темы `Yaru-MATE-dark`
-// нет каталога `metacity-1` — оконному менеджеру она не тема вовсе, и
-// прежний оверрайд просил Marco о том, чего не бывает даже после успешной
-// установки.
+// ⚠️ Marco has a separate chain, and this is not nitpicking: the
+// `Yaru-MATE-dark` theme has no `metacity-1` directory: it is not a theme
+// for the window manager at all, and the old override asked Marco for
+// something that does not exist even after a successful install.
 
-/// Оформление GTK — по убыванию предпочтения.
+/// GTK look, in descending preference.
 pub const MATE_GTK_THEME_CHAIN: &[&str] = &[
     "Yaru-MATE-dark", "Yaru-MATE", "Yaru-dark", "Yaru",
     "BlackMATE", "Menta", "Adwaita-dark", "Adwaita",
 ];
 
-/// Оформление рамок окон (Marco). Нужен каталог `metacity-1`.
+/// Window frame look (Marco). Needs a `metacity-1` directory.
 pub const MATE_MARCO_THEME_CHAIN: &[&str] = &[
     "Yaru-MATE-dark", "Yaru-dark", "YaruOk", "YaruGreen",
     "BlackMATE", "Menta", "TraditionalOk", "Adwaita",
 ];
 
-/// Набор значков.
+/// Icon set.
 pub const MATE_ICON_THEME_CHAIN: &[&str] = &[
     "Yaru-MATE-dark", "Yaru-MATE", "Yaru", "menta", "mate", "Adwaita",
 ];
 
-/// Указатель мыши.
+/// Mouse pointer.
 pub const MATE_CURSOR_THEME_CHAIN: &[&str] = &["Yaru", "mate", "Adwaita"];
 
-/// Первое ПРИСУТСТВУЮЩЕЕ имя из цепочки предпочтений.
+/// The first PRESENT name from a preference chain.
 ///
-/// ЕДИНАЯ точка ответа на вопрос «что из желаемого у нас на самом деле
-/// есть». Заведена вместо россыпи `if os.path.isdir(...)`: пропущенная
-/// проверка оставляет умолчание, указывающее в пустоту, а человек видит
-/// сломанный стол без единого слова о причине.
+/// The SINGLE point answering "what of what we want do we really have".
+/// Introduced instead of a scatter of `if os.path.isdir(...)`: a missed check
+/// leaves a default pointing into the void, and the person sees a broken
+/// desktop without a single word about the cause.
 pub fn first_present<'a>(chain: &[&'a str], available: &[String]) -> Option<&'a str> {
     chain
         .iter()
@@ -12493,21 +12589,21 @@ pub fn first_present<'a>(chain: &[&'a str], available: &[String]) -> Option<&'a 
         .copied()
 }
 
-/// Что реально можно записать в умолчания MATE — собирается исполнителем
-/// обходом каталогов ПОСЛЕ установки пакетов.
+/// What can really be written into the MATE defaults: gathered by the
+/// executor by walking directories AFTER the packages are installed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MateLookInput {
-    /// Имена тем с каталогом `gtk-3.0`.
+    /// Names of themes with a `gtk-3.0` directory.
     pub gtk_themes: Vec<String>,
-    /// Имена тем с каталогом `metacity-1` (их понимает Marco).
+    /// Names of themes with a `metacity-1` directory (Marco understands them).
     pub marco_themes: Vec<String>,
     pub icon_themes: Vec<String>,
     pub cursor_themes: Vec<String>,
-    /// Стоит ли семейство шрифтов Ubuntu.
+    /// Whether the Ubuntu font family is installed.
     pub ubuntu_font: bool,
 }
 
-/// Проверенное оформление MATE + что пришлось заменить.
+/// The verified MATE look + what had to be replaced.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MateLook {
     pub gtk_theme: Option<String>,
@@ -12515,11 +12611,11 @@ pub struct MateLook {
     pub icon_theme: Option<String>,
     pub cursor_theme: Option<String>,
     pub ubuntu_font: bool,
-    /// Строки для человека о каждой подмене и о каждом пропуске.
+    /// Lines for the person about each substitution and each omission.
     pub notes: Vec<String>,
 }
 
-/// Выбрать оформление из наличного и объяснить каждую замену.
+/// Choose the look from what is present and explain each replacement.
 pub fn mate_look(input: &MateLookInput) -> MateLook {
     let mut notes = Vec::new();
     let mut pick = |what: String, chain: &[&str], available: &[String]| -> Option<String> {
@@ -12576,20 +12672,20 @@ pub fn mate_look(input: &MateLookInput) -> MateLook {
     }
 }
 
-/// Настройки MATE, которые Rexon ставит пользователю: (схема, ключ,
-/// значение) — ровно те, что прежде уезжали в общесистемный оверрайд схем.
+/// MATE settings Rexon sets for the user: (schema, key, value), exactly
+/// those that used to go into the system-wide schema override.
 ///
-/// ЗАЧЕМ ПОЛЬЗОВАТЕЛЮ, А НЕ В СИСТЕМУ. Прежде эти же значения ложились в
-/// `/usr/share/glib-2.0/schemas/90_rexon-mate-settings.gschema.override` —
-/// файл root'а, ничей по учёту пакетов. Он действовал на ВСЕ окружения и
-/// всех людей за машиной, его нельзя было отменить сменой стола, и он
-/// переживал удаление самого Rexon: человек снёс программу, а её след
-/// оставался в системе навсегда. Настройка стола — про пользователя, а не
-/// про машину, поэтому пишем в его же слой (`gsettings`), откуда любое
-/// значение отменяется штатным `gsettings reset`.
+/// WHY FOR THE USER AND NOT THE SYSTEM. Previously these same values went into
+/// `/usr/share/glib-2.0/schemas/90_rexon-mate-settings.gschema.override`, a
+/// root file owned by no package. It affected ALL environments and all people
+/// at the machine, could not be undone by switching desktops, and survived
+/// the removal of Rexon itself: the person uninstalled the program, and its
+/// trace stayed in the system forever. A desktop setting is about the user,
+/// not the machine, so we write into the user's own layer (`gsettings`),
+/// where any value is undone by the stock `gsettings reset`.
 ///
-/// `look` — уже ПРОВЕРЕННОЕ оформление: имён несуществующих тем здесь не
-/// появляется вовсе.
+/// `look` is an ALREADY VERIFIED look: names of nonexistent themes do not
+/// appear here at all.
 pub fn mate_user_settings(look: &MateLook) -> Vec<(String, String, String)> {
     let mut out: Vec<(String, String, String)> = Vec::new();
     let mut put = |schema: &str, key: &str, value: &str| {
@@ -12655,7 +12751,7 @@ pub fn mate_user_settings(look: &MateLook) -> Vec<(String, String, String)> {
     out
 }
 
-/// argv вызовов `gsettings set` для `mate_user_settings`.
+/// argv of the `gsettings set` calls for `mate_user_settings`.
 pub fn mate_user_settings_argv(look: &MateLook) -> Vec<Vec<String>> {
     mate_user_settings(look)
         .into_iter()
@@ -12665,11 +12761,11 @@ pub fn mate_user_settings_argv(look: &MateLook) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// Привилегированная уборка ЧУЖОГО следа прошлых версий: общесистемный
-/// оверрайд схем, который Rexon клал до перехода на пользовательский слой.
+/// Privileged cleanup of a FOREIGN trace of past versions: the system-wide
+/// schema override Rexon used to put before moving to the user layer.
 ///
-/// Оставлять его нельзя даже безвредным: файл ничей по учёту пакетов, он
-/// объявляет умолчания для всей машины и переживает удаление продукта.
+/// It cannot be left even as harmless: the file belongs to no package, it
+/// declares defaults for the whole machine and survives the product's removal.
 pub fn mate_gschema_cleanup_script() -> String {
     format!(
         "#!/bin/bash\nset -e\nrm -f '{}'\n\
@@ -12678,9 +12774,9 @@ glib-compile-schemas /usr/share/glib-2.0/schemas/\n",
     )
 }
 
-/// Сырой (без named-действия) скрипт раскладки файлов панели в системный
-/// каталог. Все пути экранируются — имена файлов приходят из чужого
-/// репозитория и под root подставлять их в bash как есть нельзя.
+/// Raw (no named action) script that places panel files into the system
+/// directory. All paths are escaped: file names come from a foreign
+/// repository and must not be substituted into bash as is under root.
 pub fn mate_layouts_stage_script(dst: &str, staged_files: &[String]) -> String {
     let qdst = shlex_quote(dst);
     let mut lines = vec![
@@ -12699,18 +12795,19 @@ pub fn mate_layouts_stage_script(dst: &str, staged_files: &[String]) -> String {
     format!("{}\n", lines.join("\n"))
 }
 
-/// Пакеты «сверх дистрибутива», которых нет в обычных репозиториях:
-/// (метка для журнала ошибок, заголовок шага — `msgid` каталога, переводится
-/// в месте показа, — список пакетов).
+/// Packages "beyond the distribution" that are not in the regular
+/// repositories: (label for the error log, step title as a catalog `msgid`,
+/// translated where shown, the package list).
 pub const MATE_EXTRA_PACKAGES: &[(&str, &str, &[&str])] = &[
-    // ⛔ Прежние имена `yaru-mate-gtk-theme` / `yaru-mate-icon-theme` НЕ
-    // существуют — ни в AUR, ни в репозиториях (проверено RPC 2026-09-01,
-    // resultcount 0). Установка падала каждый раз, а оверрайд при этом уже
-    // объявил `Yaru-MATE-dark` темой по умолчанию. Настоящие поставщики тем
-    // Ubuntu MATE в AUR — `ubuntu-mate-themes` (даёт /usr/share/themes/
-    // Yaru-MATE, Yaru-MATE-dark, Yaru-MATE-light) и `ubuntu-mate-icon-themes`
-    // (даёт Yaru, Yaru-MATE-dark, Yaru-MATE-light). Значки Yaru-MATE
-    // наследуются от Humanity — без `humanity-icon-theme` набор почти пуст.
+    // ⛔ The old names `yaru-mate-gtk-theme` / `yaru-mate-icon-theme` do NOT
+    // exist, neither in the AUR nor in the repositories (checked via RPC
+    // 2026-09-01, resultcount 0). The install failed every time, while the
+    // override had already declared `Yaru-MATE-dark` the default theme. The real
+    // providers of Ubuntu MATE themes in the AUR are `ubuntu-mate-themes`
+    // (gives /usr/share/themes/Yaru-MATE, Yaru-MATE-dark, Yaru-MATE-light) and
+    // `ubuntu-mate-icon-themes` (gives Yaru, Yaru-MATE-dark, Yaru-MATE-light).
+    // The Yaru-MATE icons inherit from Humanity: without `humanity-icon-theme`
+    // the set is almost empty.
     (
         "yaru-mate",
         n_("🎨 Checking the Ubuntu MATE themes (Yaru-MATE)…"),
@@ -12730,13 +12827,13 @@ pub const MATE_EXTRA_PACKAGES: &[(&str, &str, &[&str])] = &[
     (
         "vala-panel-appmenu",
         n_("📋 Checking the global menu in the panel (vala-panel-appmenu)…"),
-        // Не общий `vala-panel-appmenu` — он тянет budgie-desktop и vala-panel.
+        // Not the common `vala-panel-appmenu`: it pulls in budgie-desktop and vala-panel.
         &["vala-panel-appmenu-mate", "vala-panel-appmenu-registrar"],
     ),
 ];
 
-/// Строки журнала о записанном оформлении — перечисляют то, что
-/// действительно записано, а не то, что хотелось записать.
+/// Log lines about the written look: they list what was really written, not
+/// what we wanted to write.
 pub fn mate_gschema_success_lines(look: &MateLook) -> Vec<String> {
     let mut out = vec![format!(
         "  {}",
@@ -12764,7 +12861,7 @@ pub fn mate_gschema_success_lines(look: &MateLook) -> Vec<String> {
     out
 }
 
-/// Итог пост-установки MATE: строки журнала и текст результата.
+/// Result of the MATE post-install: log lines and the result text.
 pub fn mate_post_install_summary(errors: usize) -> (Vec<String>, String) {
     if errors > 0 {
         return (
@@ -12793,24 +12890,25 @@ pub fn mate_post_install_summary(errors: usize) -> (Vec<String>, String) {
     )
 }
 
-/// Строка журнала пост-установки MATE: экран блокировки показывает обои
-/// стола вместо штатных «полосок».
+/// MATE post-install log line: the lock screen shows the desktop wallpaper
+/// instead of the stock "stripes".
 pub fn mate_lock_follows_desktop_line() -> String {
     tr("🔒 Lock screen: shows your desktop wallpaper")
 }
 
 // ============================================================================
-// Пост-установка river: стартовый init
+// river post-install: the starter init
 // ============================================================================
 //
-// river-classic без исполняемого `$XDG_CONFIG_HOME/river/init` стартует
-// БЕЗ ЕДИНОЙ привязки клавиш: ни терминала, ни выхода — только Ctrl+Alt+F1…F12.
-// Пример init river-classic кладёт в /usr/share как образец и сам его не
-// читает. Поэтому после установки Rexon кладёт свой стартовый init — но только
-// если файла ещё нет: чужие (и свои прежние) настройки не трогаются никогда.
+// river-classic without an executable `$XDG_CONFIG_HOME/river/init` starts
+// WITHOUT A SINGLE key binding: no terminal, no exit, only Ctrl+Alt+F1…F12.
+// river-classic puts its example init into /usr/share as a template and does
+// not read it itself. So after the install Rexon puts its own starter init,
+// but only if the file does not exist yet: other people's (and our own
+// earlier) settings are never touched.
 
-/// Где river ищет init: `$XDG_CONFIG_HOME/river/init`, без него —
-/// `$HOME/.config/river/init` (river(1), раздел CONFIGURATION).
+/// Where river looks for init: `$XDG_CONFIG_HOME/river/init`, without it
+/// `$HOME/.config/river/init` (river(1), the CONFIGURATION section).
 pub fn river_init_path(xdg_config_home: &str, home: &str) -> String {
     let base = if xdg_config_home.is_empty() {
         format!("{}/.config", home.trim_end_matches('/'))
@@ -12820,20 +12918,22 @@ pub fn river_init_path(xdg_config_home: &str, home: &str) -> String {
     format!("{base}/river/init")
 }
 
-/// Права стартового init: river запускает его как программу.
+/// Permissions of the starter init: river runs it as a program.
 pub const RIVER_INIT_MODE: u32 = 0o755;
 
-/// Стартовый init river: клавиши как у соседних тайловых (Super+Enter —
-/// терминал, Super+D — меню программ, Super+Q — закрыть окно,
-/// Super+Shift+Esc — заблокировать экран, как в примере Wayfire), панель
-/// waybar, уведомления mako, окно пароля polkit и раскладка rivertile.
-/// Блокировку по простою (5 минут), перед сном и по `loginctl lock-session`
-/// ведёт swayidle — та же строка [`SWAYIDLE_LOCK`], что у Wayfire.
-/// Программы — ровно те, что ставит запись `river` базы столов.
+/// The river starter init: keys like the neighbouring tiling ones
+/// (Super+Enter: terminal, Super+D: app menu, Super+Q: close window,
+/// Super+Shift+Esc: lock the screen, as in the Wayfire example), the waybar
+/// panel, mako notifications, the polkit password window and the rivertile
+/// layout. Locking on idle (5 minutes), before sleep and on
+/// `loginctl lock-session` is handled by swayidle: the same [`SWAYIDLE_LOCK`]
+/// line as for Wayfire. The programs are exactly those the `river` entry of
+/// the desktop database installs.
 ///
-/// `XDG_CURRENT_DESKTOP` river-classic сам не выставляет, а по нему
-/// xdg-desktop-portal выбирает портал (wlr: `UseIn=…;river;…`) и Rexon
-/// узнаёт стол. Поэтому имя кладётся и в окружение служб пользователя.
+/// river-classic does not set `XDG_CURRENT_DESKTOP` itself, but
+/// xdg-desktop-portal picks the portal by it (wlr: `UseIn=…;river;…`) and
+/// Rexon recognises the desktop by it. So the name also goes into the user
+/// services' environment.
 pub fn river_starter_init() -> &'static str {
     r#"#!/bin/sh
 # Starter river setup written by Rexon. It is yours now: change it freely,
@@ -12899,19 +12999,19 @@ rivertile -view-padding 6 -outer-padding 6 &
 "#
 }
 
-/// Строка журнала: стартовый init river записан.
+/// Log line: the river starter init was written.
 pub fn river_init_written(path: &str) -> String {
     // TRANSLATORS: %1 is a file path.
     trf("✅ River: starter settings written (%1) — Super+Enter opens a terminal, Super+D the app menu", &[&path])
 }
 
-/// Строка журнала: init river уже был — оставлен как есть.
+/// Log line: a river init already existed and was left as is.
 pub fn river_init_kept(path: &str) -> String {
     // TRANSLATORS: %1 is a file path.
     trf("ℹ️ River: your own settings are kept (%1)", &[&path])
 }
 
-/// Строка журнала: записать стартовый init river не вышло.
+/// Log line: writing the river starter init failed.
 pub fn river_init_failed(path: &str, why: &str) -> String {
     // TRANSLATORS: %1 is a file path, %2 the reason.
     trf("⚠️ River: couldn't write the starter settings (%1): %2. Without them River starts with no keyboard shortcuts.", &[&path, &why])
@@ -12928,8 +13028,8 @@ mod river_init_tests {
         assert_eq!(river_init_path("/x/cfg/", "/home/t"), "/x/cfg/river/init");
     }
 
-    /// Стартовый init зовёт только то, что ставит запись `river` базы
-    /// столов (на Arch), и `rivertile`/`riverctl` из самого river-classic.
+    /// The starter init calls only what the `river` entry of the desktop
+    /// database installs (on Arch), and `rivertile`/`riverctl` from river-classic itself.
     #[test]
     fn starter_init_uses_only_installed_programs() {
         let init = river_starter_init();
@@ -12942,43 +13042,44 @@ mod river_init_tests {
         assert!(arch.iter().any(|p| p == "river-classic"));
         assert!(init.contains("riverctl default-layout rivertile"));
         assert!(init.contains("export XDG_CURRENT_DESKTOP=river"));
-        // Выход из сеанса есть всегда — иначе из River не выбраться.
+        // There is always a way to log out, otherwise there is no getting out of River.
         assert!(init.contains("Super+Shift E exit"));
-        // Блокировка: клавиша и простой — той же командой, что у Wayfire.
+        // Locking: by key and on idle, with the same command as for Wayfire.
         assert!(init.contains(&format!("Super+Shift Escape spawn '{LOCK_COMMAND}'\n")));
         assert!(init.contains(&format!("riverctl spawn \"{SWAYIDLE_LOCK}\"\n")));
     }
 }
 
 // ============================================================================
-// Пост-установка: блокировка экрана (Wayfire, LXQt)
+// Post-install: screen lock (Wayfire, LXQt)
 // ============================================================================
 //
-// Чужой конфиг правится только ДОПИСЫВАНИЕМ и только там, где блокировку
-// человек ещё не настроил: своя клавиша, свой блокировщик или свой swayidle
-// остаются как есть.
+// Someone else's config is edited only by APPENDING and only where the
+// person has not set up locking yet: their own key, locker or swayidle stay
+// as they are.
 
-/// Чем запирать экран в сеансах wlroots: swaylock уходит в фон, когда экран
-/// уже заперт (`-f`), — вызвавшему (привязке, swayidle, lxqt-leave) не нужно
-/// ждать разблокировки, а код возврата 0 значит «заперто».
+/// What to lock the screen with in wlroots sessions: swaylock goes to the
+/// background once the screen is locked (`-f`): the caller (a binding,
+/// swayidle, lxqt-leave) does not have to wait for unlocking, and exit code 0
+/// means "locked".
 pub const LOCK_COMMAND: &str = "swaylock -f";
 
-/// Блокировка по простою (5 минут), перед сном и по `loginctl lock-session`
-/// (событие `lock`). `-w` — сон ждёт, пока экран запрётся.
+/// Locking on idle (5 minutes), before sleep and on `loginctl lock-session`
+/// (the `lock` event). `-w`: sleep waits until the screen is locked.
 pub const SWAYIDLE_LOCK: &str =
     "swayidle -w timeout 300 'swaylock -f' before-sleep 'swaylock -f' lock 'swaylock -f'";
 
-/// Клавиша блокировки Wayfire — та же, что в примере `wayfire.ini` из
-/// документации самого Wayfire.
+/// The Wayfire lock key: the same as in the `wayfire.ini` example from
+/// Wayfire's own documentation.
 pub const WAYFIRE_LOCK_BINDING: &str = "<super> <shift> KEY_ESC";
 
-/// Блокировка X11 у LXQt: «Заблокировать» и Ctrl+Alt+L доходят до
-/// xscreensaver, который lxqt-session поднимает сам. Явная команда, а не
-/// умолчание `xdg-screensaver lock`: тот выбирает блокировщик по тому, чьё
-/// имя занято на шине, и при запущенном mate-screensaver ушёл бы к нему.
+/// LXQt X11 locking: «Lock» and Ctrl+Alt+L reach xscreensaver, which
+/// lxqt-session starts itself. An explicit command rather than the default
+/// `xdg-screensaver lock`: that one picks the locker by whose name is owned
+/// on the bus, and with mate-screensaver running it would go to it.
 pub const LXQT_X11_LOCK_COMMAND: &str = "xscreensaver-command -lock";
 
-/// Метка дописанных строк в чужом конфиге.
+/// Mark of appended lines in someone else's config.
 const LOCK_HEADER: &str = "Screen lock (added by Rexon; change freely)";
 
 fn ini_section_name(line: &str) -> Option<&str> {
@@ -12986,7 +13087,7 @@ fn ini_section_name(line: &str) -> Option<&str> {
     t.strip_prefix('[')?.strip_suffix(']').map(str::trim)
 }
 
-/// `(ключ, значение)` строки INI; комментарии и строки без `=` — `None`.
+/// `(key, value)` of an INI line; comments and lines without `=` are `None`.
 fn ini_pair(line: &str) -> Option<(&str, &str)> {
     let t = line.trim();
     if t.starts_with('#') || t.starts_with(';') {
@@ -12996,7 +13097,7 @@ fn ini_pair(line: &str) -> Option<(&str, &str)> {
     Some((k.trim(), v.trim()))
 }
 
-/// Строки `(ключ, значение)` раздела `[section]` (все вхождения раздела).
+/// `(key, value)` lines of the `[section]` section (all occurrences of the section).
 fn ini_section_pairs<'a>(text: &'a str, section: &str) -> Vec<(&'a str, &'a str)> {
     let mut inside = false;
     let mut out = Vec::new();
@@ -13014,8 +13115,8 @@ fn ini_section_pairs<'a>(text: &'a str, section: &str) -> Vec<(&'a str, &'a str)
     out
 }
 
-/// Дописать строки в начало раздела `[section]` (первого вхождения), а нет
-/// раздела — новым разделом в конец.
+/// Insert lines at the start of the `[section]` section (the first
+/// occurrence), or, if there is no such section, as a new section at the end.
 fn ini_insert(text: &str, section: &str, new: &[String]) -> String {
     let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
     match lines.iter().position(|l| ini_section_name(l) == Some(section)) {
@@ -13035,20 +13136,20 @@ fn ini_insert(text: &str, section: &str, new: &[String]) -> String {
     out
 }
 
-/// Какая-то программа блокировки в строке команды.
+/// Some lock program in the command line.
 fn mentions_locker(value: &str) -> bool {
     const LOCKERS: &[&str] = &["swaylock", "wf-locker", "gtklock", "waylock", "hyprlock", "loginctl lock-session"];
     LOCKERS.iter().any(|l| value.contains(l))
 }
 
-/// Блокировка экрана в `wayfire.ini`: клавиша Super+Shift+Esc в `[command]`
-/// и swayidle в `[autostart]`. Каждая часть — только если человек её не
-/// задал сам (своя клавиша/команда блокировки или свой swayidle и ключ
-/// `idle`). `None` — дописывать нечего, файл не трогается.
+/// Screen lock in `wayfire.ini`: the Super+Shift+Esc key in `[command]` and
+/// swayidle in `[autostart]`. Each part only if the person has not set it
+/// themselves (their own lock key/command or their own swayidle and the
+/// `idle` key). `None`: nothing to append, the file is not touched.
 ///
-/// Без этого на чистой машине блокировки у Wayfire нет вовсе: в его
-/// умолчаниях (`command.xml`) привязок нет, а пример с swaylock лежит лишь
-/// в документации.
+/// Without this, on a clean machine Wayfire has no locking at all: its
+/// defaults (`command.xml`) have no bindings, and the swaylock example is
+/// only in the documentation.
 pub fn wayfire_lock_edit(ini: &str) -> Option<String> {
     let command = ini_section_pairs(ini, "command");
     let has_binding = command
@@ -13074,15 +13175,15 @@ pub fn wayfire_lock_edit(ini: &str) -> Option<String> {
     (text != ini).then_some(text)
 }
 
-/// Команды блокировки в `~/.config/lxqt/session.conf` (раздел `[General]` —
-/// туда же их пишет окно «Настройки сеанса LXQt»): `lock_command` для X11 и
-/// `lock_command_wayland` для Wayland. Остальные ключи файла LXQt берёт из
-/// системного `session.conf`, поэтому файл из одних этих строк — законный.
-/// Заданную человеком команду не трогаем; `None` — писать нечего.
+/// Lock commands in `~/.config/lxqt/session.conf` (the `[General]` section,
+/// where the «LXQt Session Settings» window writes them too): `lock_command`
+/// for X11 and `lock_command_wayland` for Wayland. LXQt takes the file's
+/// other keys from the system `session.conf`, so a file of only these lines
+/// is valid. A command set by the person is not touched; `None`: nothing to write.
 ///
-/// Без этого «Заблокировать» не работало ни в одном сеансе: в X11 оно
-/// падало на `xdg-screensaver lock` без xscreensaver, в Wayland
-/// `lock_command_wayland` пуст, и LXQt молча ничего не делал.
+/// Without this «Lock» did not work in any session: in X11 it failed on
+/// `xdg-screensaver lock` without xscreensaver, in Wayland
+/// `lock_command_wayland` is empty, and LXQt silently did nothing.
 pub fn lxqt_lock_edit(existing: Option<&str>) -> Option<String> {
     let text = existing.unwrap_or("");
     let general = ini_section_pairs(text, "General");
@@ -13096,20 +13197,239 @@ pub fn lxqt_lock_edit(existing: Option<&str>) -> Option<String> {
     out.filter(|t| Some(t.as_str()) != existing)
 }
 
-/// Строка журнала: блокировка экрана настроена.
+// ── Tiling desktops: sway, Hyprland, niri ──────────────────────────────────
+//
+// Same config the keyboard layout edits (`keyboard_layout::load_config`):
+// the user's main file, or, when missing, `include` of the system config for
+// sway and the package sample for Hyprland and niri. The user's own settings
+// are looked for in included files too.
+
+/// sway lock key — the same Super+Shift+Esc as on Wayfire and River (free
+/// in `/etc/sway/config`). `Mod4`, not `$mod`: the user's variable may be
+/// unset or mean something else.
+pub const SWAY_LOCK_BINDING: &str = "Mod4+Shift+Escape";
+
+/// Hyprland's locker and idle daemon.
+pub const HYPR_LOCK_COMMAND: &str = "hyprlock";
+pub const HYPR_IDLE_COMMAND: &str = "hypridle";
+
+/// Idle daemons: any of them in the config means idle locking is the user's own.
+const IDLE_DAEMONS: &[&str] = &["swayidle", "hypridle"];
+
+fn mentions_idle(code: &str) -> bool {
+    IDLE_DAEMONS.iter().any(|d| code.contains(d))
+}
+
+/// Live (non-comment) lines of all texts.
+fn live_lines<'a>(texts: &[&'a str], code: fn(&str) -> &str) -> Vec<&'a str> {
+    texts.iter().flat_map(|t| t.lines()).map(code).filter(|c| !c.is_empty()).collect()
+}
+
+/// A key combination as a set: `Mod4+Shift+Escape` → {escape, mod4, shift};
+/// `$mod`, `$mainMod`, `SUPER` are the same Mod4.
+fn key_combo(keys: &str, seps: &[char]) -> Vec<String> {
+    let mut v: Vec<String> = keys
+        .split(|c: char| seps.contains(&c))
+        .map(|k| k.trim().to_ascii_lowercase())
+        .filter(|k| !k.is_empty())
+        .map(|k| if matches!(k.as_str(), "$mod" | "$mainmod" | "super" | "mainmod" | "win") { "mod4".to_string() } else { k })
+        .collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+fn is_super_shift_escape(combo: &[String]) -> bool {
+    combo == ["escape", "mod4", "shift"]
+}
+
+/// Screen lock in the sway config: the Super+Shift+Esc key and swayidle
+/// (5 minutes idle, before sleep, `loginctl lock-session`). Each part only
+/// if the user hasn't set it: the key — if there is neither a binding to a
+/// locker nor an own Super+Shift+Esc; swayidle — if it isn't in the config
+/// and `idle_elsewhere` (an own systemd unit) is false. `None` — nothing to
+/// add.
+///
+/// Without this sway doesn't lock at all on a clean machine:
+/// `/etc/sway/config` has no binding, and swayidle is only in a commented
+/// out example.
+pub fn sway_lock_edit(main: &str, included: &[String], idle_elsewhere: bool) -> Option<String> {
+    let mut all: Vec<&str> = vec![main];
+    all.extend(included.iter().map(String::as_str));
+    let lines = live_lines(&all, crate::keyboard_layout::hash_code);
+    let has_binding = lines.iter().any(|l| {
+        let mut words = l.split_whitespace();
+        let Some(first) = words.next() else { return false };
+        if first != "bindsym" && first != "bindcode" {
+            return false;
+        }
+        let combo = words.find(|w| !w.starts_with("--")).map(|k| key_combo(k, &['+'])).unwrap_or_default();
+        mentions_locker(l) || is_super_shift_escape(&combo)
+    });
+    let has_idle = idle_elsewhere || lines.iter().any(|l| mentions_idle(l));
+    let mut block = Vec::new();
+    if !has_binding {
+        block.push(format!("bindsym {SWAY_LOCK_BINDING} exec {LOCK_COMMAND}"));
+    }
+    if !has_idle {
+        block.push(format!("exec {SWAYIDLE_LOCK}"));
+    }
+    if block.is_empty() {
+        return None;
+    }
+    let snippet = format!("# {LOCK_HEADER}\n{}\n", block.join("\n"));
+    Some(crate::keyboard_layout::append(main, &snippet))
+}
+
+/// What to add to the Hyprland config for the lock. `idle` — whether the
+/// hypridle autostart was added: then `hypridle.conf` ([`hypridle_conf`])
+/// is needed next to it unless the user has one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HyprLockEdit {
+    pub text: String,
+    pub idle: bool,
+}
+
+/// Screen lock in the Hyprland config (`hyprland.conf`, or `hyprland.lua`
+/// with `lua`): Super+Shift+Esc → hyprlock and hypridle started at login.
+/// Same "user's own" rules as [`sway_lock_edit`]; `None` — nothing to add.
+///
+/// The Hyprland sample config has neither a hyprlock binding nor a
+/// hypridle autostart: the packages are installed, yet the screen locks
+/// neither by key nor when idle.
+pub fn hypr_lock_edit(lua: bool, main: &str, included: &[String], idle_elsewhere: bool) -> Option<HyprLockEdit> {
+    let mut all: Vec<&str> = vec![main];
+    all.extend(included.iter().map(String::as_str));
+    let code = if lua { crate::keyboard_layout::lua_code } else { crate::keyboard_layout::hash_code };
+    let lines = live_lines(&all, code);
+    let has_binding = lines.iter().any(|l| {
+        if lua {
+            if !l.contains("hl.bind") {
+                return false;
+            }
+            let low = l.to_ascii_lowercase();
+            mentions_locker(l) || (low.contains("escape") && low.contains("shift") && (low.contains("super") || low.contains("mainmod")))
+        } else {
+            let Some((k, v)) = l.split_once('=') else { return false };
+            if !k.trim().starts_with("bind") {
+                return false;
+            }
+            let mut fields = v.split(',');
+            let mods = fields.next().unwrap_or("");
+            let key = fields.next().unwrap_or("");
+            let mut combo = key_combo(mods, &[' ', '_', '+', '&']);
+            combo.push(key.trim().to_ascii_lowercase());
+            combo.sort();
+            combo.dedup();
+            mentions_locker(v) || is_super_shift_escape(&combo)
+        }
+    });
+    let has_idle = idle_elsewhere || lines.iter().any(|l| mentions_idle(l));
+    let mut block = Vec::new();
+    if !has_binding {
+        block.push(if lua {
+            format!("hl.bind(\"SUPER + SHIFT + Escape\", hl.dsp.exec_cmd(\"{HYPR_LOCK_COMMAND}\"))")
+        } else {
+            format!("bind = SUPER SHIFT, Escape, exec, {HYPR_LOCK_COMMAND}")
+        });
+    }
+    if !has_idle {
+        block.push(if lua {
+            format!("hl.on(\"hyprland.start\", function()\n    hl.exec_cmd(\"{HYPR_IDLE_COMMAND}\")\nend)")
+        } else {
+            format!("exec-once = {HYPR_IDLE_COMMAND}")
+        });
+    }
+    if block.is_empty() {
+        return None;
+    }
+    let mark = if lua { "--" } else { "#" };
+    let snippet = format!("{mark} {LOCK_HEADER}\n{}\n", block.join("\n"));
+    Some(HyprLockEdit { text: crate::keyboard_layout::append(main, &snippet), idle: !has_idle })
+}
+
+/// Minimal `hypridle.conf`: lock after 5 minutes idle, before sleep and on
+/// `loginctl lock-session` (the `lock` event, which `before_sleep_cmd` also
+/// sends). Without a file hypridle doesn't know what to do. The screen comes
+/// back with the first key press after sleep: the `dpms` lines of the
+/// hypridle sample depend on the Hyprland version, so they are left out.
+pub fn hypridle_conf() -> String {
+    format!(
+        "# {LOCK_HEADER}\n\
+general {{\n    lock_cmd = pidof {HYPR_LOCK_COMMAND} || {HYPR_LOCK_COMMAND}\n    before_sleep_cmd = loginctl lock-session\n}}\n\n\
+listener {{\n    timeout = 300\n    on-timeout = loginctl lock-session\n}}\n"
+    )
+}
+
+/// swayidle autostart for niri (`spawn-at-startup` takes one argument per
+/// word; swayidle passes its lock commands to `sh -c` itself).
+fn niri_swayidle_node() -> String {
+    let args = ["swayidle", "-w", "timeout", "300", LOCK_COMMAND, "before-sleep", LOCK_COMMAND, "lock", LOCK_COMMAND];
+    let quoted: Vec<String> = args.iter().map(|a| format!("\"{a}\"")).collect();
+    format!("spawn-at-startup {}", quoted.join(" "))
+}
+
+/// Idle locking in niri's `config.kdl`. The key (Super+Alt+L → swaylock) is
+/// already in the niri sample; only swayidle is missing, so it is added
+/// unless the user has one (in the config, in included files, as a systemd
+/// unit). A disabled `/-…` node doesn't count. `None` — nothing to add.
+pub fn niri_idle_edit(main: &str, included: &[String], idle_elsewhere: bool) -> Option<String> {
+    if idle_elsewhere {
+        return None;
+    }
+    let live = |t: &str| {
+        let mut in_block = false;
+        t.lines().any(|l| {
+            let c = crate::keyboard_layout::kdl_strip(l, &mut in_block);
+            let c = c.trim();
+            !c.starts_with("/-") && mentions_idle(c)
+        })
+    };
+    if live(main) || included.iter().any(|t| live(t)) {
+        return None;
+    }
+    let snippet = format!("// {LOCK_HEADER}\n{}\n", niri_swayidle_node());
+    Some(crate::keyboard_layout::append(main, &snippet))
+}
+
+/// User systemd units through which the user may have enabled the idle
+/// daemon (`systemctl --user enable swayidle`/`hypridle`): then a second
+/// start from the config isn't needed. `config_home` — `XDG_CONFIG_HOME`.
+pub fn idle_service_paths(config_home: &str, daemon: &str) -> Vec<String> {
+    let base = format!("{}/systemd/user", config_home.trim_end_matches('/'));
+    let mut v = vec![format!("{base}/{daemon}.service")];
+    for target in ["graphical-session", "default", "sway-session", "hyprland-session", "niri"] {
+        v.push(format!("{base}/{target}.target.wants/{daemon}.service"));
+    }
+    v
+}
+
+/// Log line: lock programs aren't installed — nothing to set up with.
+pub fn lock_setup_no_program(desktop: &str, programs: &str) -> String {
+    // TRANSLATORS: %1 is a desktop (Hyprland…), %2 program names (“hyprlock, hypridle”).
+    trf("ℹ️ %1: screen lock programs are missing (%2) — your distribution may not have them; the screen lock wasn't set up", &[&desktop, &programs])
+}
+
+/// Log line: the desktop has no config yet, nowhere to add to.
+pub fn lock_setup_no_config(desktop: &str, path: &str) -> String {
+    // TRANSLATORS: %1 is a desktop (Hyprland, niri…), %2 a file path.
+    trf("ℹ️ %1: there is no settings file yet (%2). Log in once, then run “Check / Repair” and Rexon will set up the screen lock.", &[&desktop, &path])
+}
+
+/// Log line: screen lock configured.
 pub fn lock_setup_written(desktop: &str, keys: &str, path: &str) -> String {
     // TRANSLATORS: %1 is a desktop (Wayfire, LXQt…), %2 a key combination,
     // %3 a file path.
     trf("🔒 %1: screen lock set up (%3) — lock it with %2", &[&desktop, &keys, &path])
 }
 
-/// Строка журнала: блокировку человек уже настроил сам.
+/// Log line: the person already set up locking themselves.
 pub fn lock_setup_kept(desktop: &str, path: &str) -> String {
     // TRANSLATORS: %1 is a desktop, %2 a file path.
     trf("ℹ️ %1: the screen lock is already set up in your settings (%2) — left as is", &[&desktop, &path])
 }
 
-/// Строка журнала: записать настройку блокировки не вышло.
+/// Log line: writing the lock setting failed.
 pub fn lock_setup_failed(desktop: &str, path: &str, why: &str) -> String {
     // TRANSLATORS: %1 is a desktop, %2 a file path, %3 the reason.
     trf("⚠️ %1: couldn't set up the screen lock in %2: %3. Locking the screen may not work.", &[&desktop, &path, &why])
@@ -13125,10 +13445,10 @@ mod lock_setup_tests {
         assert!(out.contains(&format!("[command]\n# {LOCK_HEADER}\n")), "{out}");
         assert!(out.contains("binding_lock = <super> <shift> KEY_ESC\ncommand_lock = swaylock -f\n"), "{out}");
         assert!(out.contains(&format!("[autostart]\n# {LOCK_HEADER}\nidle = {SWAYIDLE_LOCK}\n")), "{out}");
-        // Второй прогон ничего не меняет.
+        // A second run changes nothing.
         assert_eq!(wayfire_lock_edit(&out), None);
 
-        // Свои разделы: строки встают в них же, прежнее цело.
+        // Own sections: the lines go into them, what was there stays intact.
         let ini = "[input]\nxkb_layout = us,ru\n\n[command]\nbinding_terminal = <super> KEY_ENTER\ncommand_terminal = foot\n";
         let out = wayfire_lock_edit(ini).unwrap();
         assert!(out.starts_with(&format!("[input]\nxkb_layout = us,ru\n\n[command]\n# {LOCK_HEADER}\n")), "{out}");
@@ -13138,17 +13458,96 @@ mod lock_setup_tests {
 
     #[test]
     fn wayfire_own_lock_is_kept() {
-        // Пример из документации Wayfire: и клавиша, и swayidle уже есть.
+        // The example from the Wayfire documentation: both the key and swayidle are already there.
         let ini = "[autostart]\nidle = swayidle before-sleep swaylock\n\n[command]\nbinding_lock = <super> <shift> KEY_ESC\ncommand_lock = swaylock\n";
         assert_eq!(wayfire_lock_edit(ini), None);
-        // Свой блокировщик под другим именем — клавиша не добавляется, swayidle — да.
+        // Own locker under another name: the key is not added, swayidle is.
         let ini = "[command]\nbinding_mylock = <super> KEY_L\ncommand_mylock = wf-locker\n";
         let out = wayfire_lock_edit(ini).unwrap();
         assert!(!out.contains("binding_lock"), "{out}");
         assert!(out.contains("idle = swayidle"), "{out}");
-        // Закомментированный пример — не настройка.
+        // A commented-out example is not a setting.
         let out = wayfire_lock_edit("[command]\n# command_lock = swaylock\n").unwrap();
         assert!(out.contains("command_lock = swaylock -f"), "{out}");
+    }
+
+    #[test]
+    fn sway_gets_lock_key_and_idle_once() {
+        let out = sway_lock_edit("include /etc/sway/config\n", &[], false).unwrap();
+        assert_eq!(
+            out,
+            format!("include /etc/sway/config\n\n# {LOCK_HEADER}\nbindsym Mod4+Shift+Escape exec swaylock -f\nexec {SWAYIDLE_LOCK}\n")
+        );
+        assert_eq!(sway_lock_edit(&out, &[], false), None);
+        // A commented out example from /etc/sway/config is not a setting.
+        let system = "# exec swayidle -w \\\n#   timeout 300 'swaylock -f -c 000000'\nbindsym $mod+Shift+e exec swaynag\n".to_string();
+        assert!(sway_lock_edit("include /etc/sway/config\n", &[system], false).unwrap().contains("exec swayidle"));
+        // Own locker on another key — no key is added.
+        let out = sway_lock_edit("bindsym --to-code $mod+l exec gtklock\n", &[], false).unwrap();
+        assert!(!out.contains("bindsym Mod4") && out.contains("exec swayidle"), "{out}");
+        // Super+Shift+Esc taken by something else — not overridden.
+        let out = sway_lock_edit("bindsym $mod+Shift+Escape exec foot\n", &[], false).unwrap();
+        assert!(!out.contains("bindsym Mod4"), "{out}");
+        // swayidle in an included file or as a unit — the user's own.
+        let inc = vec!["exec_always swayidle -w before-sleep gtklock\n".to_string()];
+        let out = sway_lock_edit("x\n", &inc, false).unwrap();
+        assert!(!out.contains("exec swayidle"), "{out}");
+        assert!(!sway_lock_edit("x\n", &[], true).unwrap().contains("exec swayidle"));
+        assert_eq!(sway_lock_edit("bindsym Mod4+x exec swaylock\n", &[], true), None);
+    }
+
+    #[test]
+    fn hyprland_conf_and_lua_get_lock_once() {
+        let edit = hypr_lock_edit(false, "bind = $mainMod, Q, exec, kitty\n", &[], false).unwrap();
+        assert!(edit.idle);
+        assert!(edit.text.ends_with(&format!("# {LOCK_HEADER}\nbind = SUPER SHIFT, Escape, exec, hyprlock\nexec-once = hypridle\n")), "{}", edit.text);
+        assert_eq!(hypr_lock_edit(false, &edit.text, &[], false), None);
+        // Own hyprlock on Super+L and hypridle as a unit — nothing to add.
+        assert_eq!(hypr_lock_edit(false, "bind = $mainMod, L, exec, hyprlock\n", &[], true), None);
+        // Super+Shift+Esc taken — no key added, hypridle is.
+        let edit = hypr_lock_edit(false, "bind = SUPER_SHIFT, escape, exec, foot\n", &[], false).unwrap();
+        assert!(!edit.text.contains("hyprlock") && edit.text.contains("exec-once = hypridle"), "{}", edit.text);
+        // Commented out — not the user's own.
+        assert!(hypr_lock_edit(false, "# exec-once = hypridle\n", &[], false).unwrap().idle);
+        // hypridle in an included file.
+        let edit = hypr_lock_edit(false, "source = ~/.config/hypr/auto.conf\n", &["exec-once = hypridle\n".into()], false).unwrap();
+        assert!(!edit.idle && edit.text.contains("bind = SUPER SHIFT, Escape"), "{}", edit.text);
+
+        let lua = "local mainMod = \"SUPER\"\n-- hl.exec_cmd(\"hypridle\")\n";
+        let edit = hypr_lock_edit(true, lua, &[], false).unwrap();
+        assert!(edit.idle);
+        assert!(edit.text.ends_with(&format!(
+            "-- {LOCK_HEADER}\nhl.bind(\"SUPER + SHIFT + Escape\", hl.dsp.exec_cmd(\"hyprlock\"))\nhl.on(\"hyprland.start\", function()\n    hl.exec_cmd(\"hypridle\")\nend)\n"
+        )), "{}", edit.text);
+        assert_eq!(hypr_lock_edit(true, &edit.text, &[], false), None);
+        let own = "hl.bind(mainMod .. \" + L\", hl.dsp.exec_cmd(\"hyprlock\"))\nhl.on(\"hyprland.start\", function() hl.exec_cmd(\"hypridle\") end)\n";
+        assert_eq!(hypr_lock_edit(true, own, &[], false), None);
+
+        let conf = hypridle_conf();
+        assert!(conf.contains("lock_cmd = pidof hyprlock || hyprlock\n") && conf.contains("timeout = 300\n"), "{conf}");
+    }
+
+    #[test]
+    fn niri_gets_swayidle_once() {
+        let kdl = "spawn-at-startup \"waybar\"\n";
+        let out = niri_idle_edit(kdl, &[], false).unwrap();
+        assert_eq!(
+            out,
+            format!("{kdl}\n// {LOCK_HEADER}\nspawn-at-startup \"swayidle\" \"-w\" \"timeout\" \"300\" \"swaylock -f\" \"before-sleep\" \"swaylock -f\" \"lock\" \"swaylock -f\"\n")
+        );
+        assert_eq!(niri_idle_edit(&out, &[], false), None);
+        // A disabled node and a comment don't count; an included file and a
+        // unit do.
+        assert!(niri_idle_edit("/-spawn-at-startup \"swayidle\"\n// swayidle\n", &[], false).is_some());
+        assert_eq!(niri_idle_edit(kdl, &["spawn-sh-at-startup \"swayidle -w\"\n".into()], false), None);
+        assert_eq!(niri_idle_edit(kdl, &[], true), None);
+    }
+
+    #[test]
+    fn idle_services_are_looked_up_in_config_home() {
+        let v = idle_service_paths("/home/t/.config/", "swayidle");
+        assert!(v.contains(&"/home/t/.config/systemd/user/swayidle.service".to_string()), "{v:?}");
+        assert!(v.contains(&"/home/t/.config/systemd/user/graphical-session.target.wants/swayidle.service".to_string()), "{v:?}");
     }
 
     #[test]
@@ -13159,25 +13558,25 @@ mod lock_setup_tests {
         assert!(out.contains("lock_command_wayland=swaylock -f\n"), "{out}");
         assert_eq!(lxqt_lock_edit(Some(&out)), None);
 
-        // Своя команда X11 цела, недостающая Wayland дописывается; соседние
-        // ключи файла не трогаются.
+        // Own X11 command intact, the missing Wayland one is appended; neighbouring
+        // keys of the file are not touched.
         let mine = "[General]\nwindow_manager=openbox\nlock_command=i3lock\n\n[Mouse]\ncursor_size=24\n";
         let out = lxqt_lock_edit(Some(mine)).unwrap();
         assert!(out.contains("lock_command=i3lock\n") && !out.contains("xscreensaver"), "{out}");
         assert!(out.contains("lock_command_wayland=swaylock -f\n"), "{out}");
         assert!(out.contains("window_manager=openbox\n") && out.ends_with("[Mouse]\ncursor_size=24\n"), "{out}");
-        // Пустое значение — не настройка (так пишет окно настроек LXQt).
+        // An empty value is not a setting (the LXQt settings window writes it like that).
         let out = lxqt_lock_edit(Some("[General]\nlock_command=\n")).unwrap();
         assert!(out.contains("lock_command=xscreensaver-command -lock\n"), "{out}");
         assert!(!out.contains("lock_command=\n"), "{out}");
     }
 }
 
-/// Тексты и команда шага «доустановить пакеты сверх дистрибутива»
-/// (порт `_ensure_extra_packages`).
+/// Texts and the command of the "install packages beyond the distribution"
+/// step (port of `_ensure_extra_packages`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ExtraPkgTexts {
-    /// Не Arch: собирать эти пакеты больше негде — честно говорим и уходим.
+    /// Not Arch: there is nowhere else to build these packages: we say so honestly and leave.
     pub not_arch: String,
     pub already: String,
     pub no_helper: String,
@@ -13186,15 +13585,15 @@ pub struct ExtraPkgTexts {
     pub done: String,
     pub failed: String,
     pub failed_error: String,
-    /// Отдельный текст на случай, когда сборка не уложилась во время.
+    /// A separate text for when the build did not fit into the time limit.
     pub failed_timeout: String,
     pub failed_timeout_error: String,
-    /// Команда помощника AUR (пусто, если помощника нет).
+    /// AUR helper command (empty if there is no helper).
     pub argv: Vec<String>,
     pub timeout_secs: u64,
 }
 
-/// Собрать всё, что шаг доустановки может сказать и запустить.
+/// Gather everything the install-extras step may say and run.
 pub fn extra_packages_texts(
     tag: &str,
     missing: &[String],
@@ -13231,8 +13630,8 @@ pub fn extra_packages_texts(
         ),
         failed_timeout_error: format!("{} install timed out", tag),
         argv,
-        // Сборка из исходников — класс `build`: 1800 с не хватало уже на
-        // среднем наборе, а время здесь задаёт машина, а не мы.
+        // Building from source is the `build` class: 1800 s was already not enough
+        // for an average set, and the time here is set by the machine, not by us.
         timeout_secs: crate::utils::BUILD_TIMEOUT_SECS,
     }
 }
@@ -13241,9 +13640,9 @@ pub fn extra_packages_texts(
 mod helper_path_tests {
     use super::*;
 
-    /// Константы ручной установки обязаны быть тем же, что склеивает
-    /// [`helper_path_in`] из имени и каталога: иначе правда о пути снова
-    /// раздвоится, и политика разойдётся с argv.
+    /// The manual install constants must be the same as what [`helper_path_in`]
+    /// joins from the name and directory: otherwise the truth about the path
+    /// splits again, and the policy diverges from argv.
     #[test]
     fn константы_ручной_установки_склеиваются_из_имени() {
         assert_eq!(DE_HELPER_PATH, helper_path_in(HELPER_DIR_SYSTEM, DE_HELPER_NAME));
@@ -13254,8 +13653,8 @@ mod helper_path_tests {
         );
     }
 
-    /// Пакет предпочитается ручной установке, а без файлов ответ —
-    /// путь ручной установки (определённый, а не пустой).
+    /// The package is preferred over the manual install, and without files the
+    /// answer is the manual install path (a defined one, not empty).
     #[test]
     fn выбор_пути_помощника() {
         let pkg = helper_path_in(HELPER_DIR_PACKAGE, PKG_HELPER_NAME);
@@ -13277,12 +13676,12 @@ mod helper_path_tests {
 mod no_polkit_agent_tests {
     use super::*;
 
-    /// Нет агента polkit (голые sway и niri его сами не запускают): pkexec
-    /// отвечает кодом 127 и «No authentication agent found» — без слов «Not
-    /// authorized». Прежде человек получал сырую строку pkexec вместо
-    /// объяснения, что окна пароля нет и как его поднять. Проверка `pgrep`
-    /// тут не помощник: под шаблон `polkitd` попадает системная служба,
-    /// которая работает всегда.
+    /// No polkit agent (bare sway and niri do not start one themselves): pkexec
+    /// answers with code 127 and "No authentication agent found", without the
+    /// words "Not authorized". Previously the person got the raw pkexec line
+    /// instead of an explanation that there is no password window and how to
+    /// bring one up. A `pgrep` check does not help here: the `polkitd` pattern
+    /// matches the system service, which always runs.
     #[test]
     fn missing_agent_is_explained() {
         let pkgs = vec!["noctalia".to_string()];
@@ -13304,21 +13703,21 @@ mod no_polkit_agent_tests {
 }
 
 // ============================================================================
-// Укус привилегированного помощника: имя пакета против пути
+// Biting the privileged helper: package name versus path
 // ============================================================================
 //
-// ⛔ Эти сверки стоят на месте настоящей дыры (25.09.2026): помощник
-// `org.rexon.pkg` принимал `/` в имени пакета, брал семейство пакетного
-// менеджера из аргумента и собирал команду через `eval`. Строка
-// `pkexec rexon-pkg-helper debian install /tmp/evil.deb` давала исполнение
-// чужого кода ОТ ROOT на любой машине с apt-get/dnf/zypper. Ослабить любую
-// из проверок ниже — значит открыть её заново.
+// ⛔ These checks stand on the site of a real hole (25.09.2026): the
+// `org.rexon.pkg` helper accepted `/` in a package name, took the package
+// manager family from an argument and assembled the command via `eval`. The
+// line `pkexec rexon-pkg-helper debian install /tmp/evil.deb` gave execution
+// of foreign code AS ROOT on any machine with apt-get/dnf/zypper. Weakening
+// any of the checks below means opening it again.
 
 #[cfg(test)]
 mod pkg_arg_security_tests {
     use super::*;
 
-    /// Всё, чем можно подсунуть путь или команду вместо имени пакета.
+    /// Everything that could smuggle in a path or a command instead of a package name.
     const ATTACKS: &[&str] = &[
         "/tmp/evil.deb",
         "/tmp/evil.rpm",
@@ -13349,23 +13748,23 @@ mod pkg_arg_security_tests {
         "",
     ];
 
-    /// Наборы Portage: `emerge --unmerge @world` снёс бы систему целиком.
-    /// Отдельным списком, потому что ведущее `@` законно РОВНО в одном
-    /// месте — группа dnf на Fedora (`@gnome-desktop`).
+    /// Portage sets: `emerge --unmerge @world` would wipe the whole system. A
+    /// separate list because a leading `@` is valid in EXACTLY one place: a dnf
+    /// group on Fedora (`@gnome-desktop`).
     const SET_ATTACKS: &[&str] = &["@world", "@system", "@installed", "@profile"];
 
-    /// Слэш посреди имени: относительный путь. Законен РОВНО у Portage —
-    /// это его атом `категория/имя` (`x11-misc/sddm`), и там он проверяется
-    /// половина за половиной.
+    /// A slash in the middle of a name: a relative path. Valid in EXACTLY
+    /// Portage: it is its `category/name` atom (`x11-misc/sddm`), and there it is
+    /// checked half by half.
     const SLASH_ATTACKS: &[&str] = &["a/b", "usr/bin/id", "tmp/evil"];
 
-    /// Ни одно семейство не принимает путь, файл пакета, флаг или
-    /// метасимвол — ни в allowlist'е, ни в таблице команд, ни в argv
-    /// привилегированного помощника.
+    /// No family accepts a path, a package file, a flag or a metacharacter:
+    /// neither in the allowlist, nor in the command table, nor in the privileged
+    /// helper's argv.
     ///
-    /// Таблицы команд проверяются отдельно от помощника намеренно: отказ
-    /// помощника означал бы «откат на сырой `pkexec apt-get install …`», а
-    /// это та же дыра без помощника.
+    /// The command tables are checked separately from the helper on purpose: a
+    /// helper refusal would mean "fall back to raw `pkexec apt-get install …`",
+    /// and that is the same hole without the helper.
     #[test]
     fn путь_вместо_имени_пакета_отвергнут() {
         let families = [
@@ -13397,13 +13796,13 @@ mod pkg_arg_security_tests {
                     privileged_pkg_cmd(family, "remove", &pkgs, true).is_none(),
                     "{}: помощник позван с {bad:?}", family.as_str()
                 );
-                // Честное имя рядом с подложенным не отмывает его.
+                // An honest name next to a planted one does not launder it.
                 let mixed = vec!["mate".to_string(), (*bad).to_string()];
                 assert!(install_cmd(family, &mixed).is_err(), "{bad:?} в хвосте");
             }
             for bad in SLASH_ATTACKS {
                 if family == PkgFamily::Gentoo {
-                    continue; // атом Portage — единственное законное '/'
+                    continue; // a Portage atom is the only valid '/'
                 }
                 let pkgs = vec![(*bad).to_string()];
                 assert!(
@@ -13418,7 +13817,7 @@ mod pkg_arg_security_tests {
             }
             for bad in SET_ATTACKS {
                 if family == PkgFamily::Fedora {
-                    continue; // у dnf `@имя` — группа пакетов, и только она
+                    continue; // in dnf `@name` is a package group, and only that
                 }
                 let pkgs = vec![(*bad).to_string()];
                 assert!(
@@ -13434,8 +13833,8 @@ mod pkg_arg_security_tests {
         }
     }
 
-    /// Обратная половина: честные имена проходят КАК БЫЛИ — сверка не о
-    /// строгости, а о том, что продукт остался рабочим.
+    /// The other half: honest names pass AS THEY WERE: the check is not about
+    /// strictness but about the product staying functional.
     #[test]
     fn честные_имена_пакетов_проходят() {
         let cases: &[(PkgFamily, &[&str])] = &[
@@ -13475,8 +13874,8 @@ mod pkg_arg_security_tests {
                     "{}: имя {n:?} не попало в команду целиком", family.as_str()
                 );
             }
-            // Жизненно важное (`gcc-libs`, `lib32-mesa`) сырой путь удаления
-            // не снимет; остальное — снимет.
+            // Vital packages (`gcc-libs`, `lib32-mesa`) are not removed by the raw
+            // removal path; the rest is.
             let removable: Vec<String> =
                 pkgs.iter().filter(|p| !is_vital_package(p)).cloned().collect();
             remove_cmd(*family, &removable).expect("удаление честных имён");
@@ -13496,9 +13895,9 @@ mod pkg_arg_security_tests {
         }
     }
 
-    /// Пакеты рабочих столов Rexon и вечный список не пересекаются: значит
-    /// запрет на удаление жизненно важного не ломает ни одного честного
-    /// сценария (единственный, кто зовёт `remove`, — удаление стола).
+    /// Rexon desktop packages and the permanent list do not intersect: so the
+    /// ban on removing vital packages does not break a single honest scenario
+    /// (the only caller of `remove` is desktop removal).
     #[test]
     fn вечный_список_не_пересекается_с_рабочими_столами() {
         for (de_id, packages) in crate::system::de_database_packages() {
@@ -13516,14 +13915,14 @@ mod pkg_arg_security_tests {
         }
     }
 
-    /// Текст помощников: ни `eval`, ни семейства из аргумента, ни прежнего
-    /// allowlist'а с `/`.
+    /// Helper text: no `eval`, no family from an argument, no old allowlist with `/`.
     #[test]
     fn помощники_без_eval_и_без_семейства_из_аргумента() {
         let pkg = pkg_helper_script();
         let de = de_helper_script();
-        // Смотрим КОД, а не комментарии: и `eval`, и прежний allowlist
-        // названы в шапках помощников как раз затем, чтобы их не вернули.
+        // We look at the CODE, not the comments: both `eval` and the old allowlist
+        // are mentioned in the helper headers precisely so that they are not
+        // brought back.
         let code = |s: &str| -> String {
             s.lines()
                 .filter(|l| !l.trim_start().starts_with('#'))
@@ -13541,7 +13940,7 @@ mod pkg_arg_security_tests {
                 "{name}-helper вернул allowlist с '/' в имени пакета"
             );
         }
-        // Семейство помощник определяет САМ — по той же таблице, что ядро.
+        // The helper determines the family ITSELF, by the same table as the core.
         assert!(pkg.contains("detect_family"), "нет детекции семейства");
         assert!(
             pkg.contains("family=\"$(detect_family"),
@@ -13555,7 +13954,7 @@ mod pkg_arg_security_tests {
             assert!(pkg.contains(id), "ID {id} потерян в детекции помощника");
             assert!(pkg.contains(fam.as_str()), "семейство {} потеряно", fam.as_str());
         }
-        // Команда — массив аргументов, а не строка для оболочки.
+        // The command is an array of arguments, not a string for the shell.
         for f in PKG_HELPER_FAMILIES {
             assert!(
                 pkg.contains(&format!("{f}) cmd=(")),
@@ -13564,7 +13963,7 @@ mod pkg_arg_security_tests {
         }
         assert!(de.contains("PKG_CMD=("), "de-helper: команда не массивом");
         assert!(de.contains("UPD_CMD=("), "de-helper: обновление не массивом");
-        // Имя пакета проверяется тем же правилом, что в ядре.
+        // The package name is checked by the same rule as in the core.
         assert!(
             pkg.contains("'^[A-Za-z0-9][A-Za-z0-9._+:-]*$'"),
             "в помощнике нет проверки атома имени"
@@ -13575,10 +13974,10 @@ mod pkg_arg_security_tests {
         }
     }
 
-    /// ⭐ УКУС ЖИВЬЁМ: помощник запускается системным bash и обязан
-    /// ОТКАЗАТЬ на каждой попытке подсунуть путь. root здесь не нужен и не
-    /// участвует: отказ случается до любого вызова пакетного менеджера, а
-    /// честный прогон уходит в подставные бинарники из своего каталога.
+    /// ⭐ A LIVE BITE: the helper is run by the system bash and must REFUSE
+    /// every attempt to smuggle in a path. root is neither needed nor involved
+    /// here: the refusal happens before any package manager call, and the honest
+    /// run goes to fake binaries from its own directory.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
     fn помощник_живьём_отказывает_на_пути() {
@@ -13589,8 +13988,8 @@ mod pkg_arg_security_tests {
             .join(format!("rexon_pkg_helper_stand_{}", std::process::id()));
         let stub = dir.join("stub");
         std::fs::create_dir_all(&stub).expect("каталог стенда");
-        // Подставные менеджеры пакетов: печатают argv и ничего не делают.
-        // Настоящий менеджер в этой сверке не запускается ни разу.
+        // Fake package managers: they print argv and do nothing. The real manager
+        // is not run even once in this check.
         for bin in ["pacman", "apt-get", "dpkg", "rpm", "dnf", "yum", "zypper",
                     "emerge", "apk", "xbps-install", "eopkg", "swupd",
                     "systemctl"] {
@@ -13601,7 +14000,7 @@ mod pkg_arg_security_tests {
             drop(f);
             set_exec(&p);
         }
-        // Утилиты, которыми помощник разбирает os-release и имена.
+        // Utilities the helper uses to parse os-release and names.
         for tool in ["sed", "grep", "head", "tr", "basename", "bash", "cat"] {
             for root in ["/usr/bin", "/bin", "/usr/sbin", "/sbin"] {
                 let from = std::path::Path::new(root).join(tool);
@@ -13611,13 +14010,13 @@ mod pkg_arg_security_tests {
                 }
             }
         }
-        // Копия помощника со ОДНОЙ правкой: PATH стенда вместо системного.
-        // Правка обязана примениться — иначе сверка молча мерила бы не то.
-        // Та же строка есть и у сценария отката экрана входа
-        // (`DM_FALLBACK_SCRIPT`): помощник встраивает его целиком и по
-        // `switch-dm` пишет в `DM_FALLBACK_SCRIPT_PATH`. Подменяется только
-        // СВОЯ строка помощника — первая, до встроенного сценария; у отката
-        // PATH остаётся системным.
+        // A copy of the helper with ONE edit: the bench PATH instead of the system
+        // one. The edit must apply, otherwise the check would silently measure the
+        // wrong thing. The same line is in the login screen fallback script
+        // (`DM_FALLBACK_SCRIPT`): the helper embeds it whole and on `switch-dm`
+        // writes it to `DM_FALLBACK_SCRIPT_PATH`. Only the helper's OWN line is
+        // replaced, the first one, before the embedded script; the fallback keeps
+        // the system PATH.
         let src = pkg_helper_script();
         let want = "export PATH=/usr/sbin:/usr/bin:/sbin:/bin";
         assert_eq!(PKG_HELPER_SCRIPT_TMPL.matches(want).count(), 1, "строка PATH помощника изменилась");
@@ -13644,8 +14043,8 @@ mod pkg_arg_security_tests {
             )
         };
 
-        // 1. Путь, файл пакета, обход каталогов, метасимволы, флаг — отказ 2,
-        //    и ни одного STUB в выводе (менеджер не запускался).
+        // 1. A path, a package file, directory traversal, metacharacters, a flag:
+        //    refusal 2, and not a single STUB in the output (the manager did not run).
         for (op, arg) in [
             ("install", "/tmp/evil.deb"),
             ("install", "/tmp/evil.rpm"),
@@ -13682,13 +14081,13 @@ mod pkg_arg_security_tests {
             }
         }
 
-        // 2. Честные имена (из таблиц ядра — белый список установки с
-        //    28.10.2026) проходят и уходят ОТДЕЛЬНЫМИ аргументами.
+        // 2. Honest names (from the core's tables: the install whitelist since
+        //    28.10.2026) pass and go out as SEPARATE arguments.
         let (code, out, err) =
             run(&["arch", "install", "konsole", "sddm", "mpv"]);
         if err.contains("unsupported family") {
-            // NixOS и незнакомые машины: помощник честно отказывается, и это
-            // ровно то, что должно быть, — сверять argv тогда не на чем.
+            // NixOS and unknown machines: the helper honestly refuses, and that is
+            // exactly what should happen: there is no argv to compare then.
             assert_eq!(code, 2);
         } else {
             assert_eq!(code, 0, "честные имена отвергнуты: {err}");
@@ -13700,8 +14099,8 @@ mod pkg_arg_security_tests {
             );
         }
 
-        // 3. Соврать про семейство больше нельзя: выбирается определённое по
-        //    машине, а не то, что назвал вызывающий.
+        // 3. Lying about the family is no longer possible: the one determined from
+        //    the machine is chosen, not the one the caller named.
         let (_, out_true, _) = run(&["arch", "update"]);
         let (_, out_lie, _) = run(&["debian", "update"]);
         assert_eq!(
@@ -13721,7 +14120,7 @@ mod pkg_arg_security_tests {
 }
 
 // ============================================================================
-// «Зонтик» polkit: одно окно пароля на четыре помощника (М1, 28.09.2026)
+// polkit "umbrella": one password window for four helpers (M1, 28.09.2026)
 // ============================================================================
 
 #[cfg(test)]
@@ -13731,7 +14130,7 @@ mod imply_umbrella_tests {
 
     const IMPLY_KEY: &str = "org.freedesktop.policykit.imply";
 
-    /// Все политики Rexon: (действие, XML ручной установки, XML пакета).
+    /// All Rexon policies: (action, manual install XML, package XML).
     fn policies() -> Vec<(&'static str, String, String)> {
         let pkg_dir = |name| helper_path_in(HELPER_DIR_PACKAGE, name);
         vec![
@@ -13746,8 +14145,8 @@ mod imply_umbrella_tests {
         ]
     }
 
-    /// `org.rexon.pkg` покрывает три остальных действия — и в пакете, и в
-    /// ручной установке.
+    /// `org.rexon.pkg` covers the three other actions, both in the package and
+    /// in the manual install.
     #[test]
     fn pkg_policy_carries_the_umbrella() {
         let want = format!(
@@ -13763,11 +14162,11 @@ mod imply_umbrella_tests {
         assert!(!PKG_IMPLIES.contains(&PKG_ACTION));
     }
 
-    /// ⛔ Направление `imply` одно: от действия, которое никогда не бывает
-    /// «без пароля», к остальным. `imply` у действия из правила «без
-    /// пароля» сделал бы БЕЗ пароля и всё, что оно покрывает, — для любого
-    /// процесса сеанса. Поэтому аннотация есть ровно у одной политики, и эта
-    /// политика в правило не входит.
+    /// ⛔ The `imply` direction is one-way: from the action that is never
+    /// "without password" to the others. An `imply` on an action from the
+    /// "without password" rule would make everything it covers password-free
+    /// too, for any process of the session. So exactly one policy has the
+    /// annotation, and that policy is not in the rule.
     #[test]
     fn imply_umbrella_never_hangs_on_passwordless_action() {
         assert!(!PASSWORDLESS_ACTIONS.contains(&PKG_ACTION));
@@ -13783,8 +14182,8 @@ mod imply_umbrella_tests {
         }
     }
 
-    /// Решение Wehrwolfmann 28.09.2026: темы экрана входа и загрузки и фон
-    /// экрана входа из правила «без пароля» сняты.
+    /// Wehrwolfmann's decision of 28.09.2026: login and boot screen themes and
+    /// the login screen background were removed from the "without password" rule.
     #[test]
     fn passwordless_rule_no_longer_covers_login_and_boot_screens() {
         assert_eq!(PASSWORDLESS_ACTIONS, &[DE_INSTALL_ACTION]);
@@ -13798,7 +14197,7 @@ mod imply_umbrella_tests {
 }
 
 // ============================================================================
-// Действие сеанса прав org.rexon.session (Б11)
+// The org.rexon.session privilege session action (B11)
 // ============================================================================
 
 #[cfg(test)]
@@ -13808,16 +14207,16 @@ mod session_action_tests {
 
     const IMPLY_KEY: &str = "org.freedesktop.policykit.imply";
 
-    /// Значение элемента `<tag>…</tag>` (первое вхождение).
+    /// Value of the `<tag>…</tag>` element (first occurrence).
     fn elem<'a>(xml: &'a str, tag: &str) -> &'a str {
         let open = format!("<{tag}>");
         let at = xml.find(&open).unwrap_or_else(|| panic!("нет <{tag}>")) + open.len();
         &xml[at..at + xml[at..].find('<').unwrap()]
     }
 
-    /// ⛔ Пароль на КАЖДЫЙ подъём сеанса: `auth_admin` во всех трёх полях,
-    /// без `_keep` (его держит помощник, а не polkit), путь — тот, по
-    /// которому помощник лежит, окно пароля в графике.
+    /// ⛔ A password for EVERY session start: `auth_admin` in all three fields,
+    /// without `_keep` (the helper holds it, not polkit), the path is where the
+    /// helper lives, a graphical password window.
     #[test]
     fn session_policy_asks_password_every_time_and_points_to_helper() {
         let pkg = helper_path_in(HELPER_DIR_PACKAGE, SESSION_HELPER_NAME);
@@ -13840,8 +14239,8 @@ mod session_action_tests {
         }
     }
 
-    /// ⛔ Ни одной тихой дороги к сеансу: действия нет в правиле «без
-    /// пароля», его не покрывает ничей `imply`, и само оно ничего не `imply`.
+    /// ⛔ Not a single silent road to the session: the action is not in the
+    /// "without password" rule, nobody's `imply` covers it, and it `imply`s nothing itself.
     #[test]
     fn session_action_is_not_passwordless_and_not_implied() {
         assert!(!PASSWORDLESS_ACTIONS.contains(&SESSION_ACTION));
@@ -13854,15 +14253,15 @@ mod session_action_tests {
             assert!(!xml.contains(SESSION_ACTION), "чужая политика упоминает {SESSION_ACTION}:\n{xml}");
         }
         assert!(!session_policy_xml().contains(IMPLY_KEY));
-        // И обратно: сеанс не тянет за собой прежние действия.
+        // And the other way: the session does not pull in the old actions.
         let own = session_policy_xml();
         for other in [DE_INSTALL_ACTION, PKG_ACTION, STAGE_ACTION, SYSTEM_INSTALL_ACTION] {
             assert!(!own.contains(other), "{other} в политике сеанса");
         }
     }
 
-    /// Подписи окна пароля переведены на языки каталога тем же механизмом,
-    /// что у остальных политик (`xml:lang`).
+    /// Password window captions are translated into the catalog languages by
+    /// the same mechanism as the other policies (`xml:lang`).
     #[test]
     fn session_policy_texts_are_translated() {
         let xml = session_policy_xml();
@@ -13876,7 +14275,7 @@ mod session_action_tests {
 }
 
 // ============================================================================
-// Журнал помощника установки стола пишет не root (28.09.2026)
+// The desktop install helper's log is not written by root (28.09.2026)
 // ============================================================================
 
 #[cfg(test)]
@@ -13884,9 +14283,9 @@ mod de_helper_log_tests {
     use super::*;
     use std::process::Command;
 
-    /// Помощник до выбора пакетов, затем отметка и код 3. Гоняется от
-    /// обычного пользователя с подменным `setpriv` (без прав root он и
-    /// нужен-то только как «запусти остальное»).
+    /// The helper up to package selection, then a mark and code 3. Run as a
+    /// regular user with a fake `setpriv` (without root it is only needed as
+    /// "run the rest").
     fn run_log_part(tag: &str, log_path: &str) -> (i32, String) {
         let full = de_helper_script();
         let cut = full.find("# Пакеты для пары").expect("раздел пакетов в помощнике");
@@ -13932,8 +14331,8 @@ mod de_helper_log_tests {
         assert!(err.contains("outside /tmp"), "{err}");
     }
 
-    /// ⛔ Ни chown, ни записи в файл пользователя от root: владелец файла по
-    /// строке пути — то, что пользователь успевает подменить.
+    /// ⛔ No chown and no writes into a user file as root: the file owner by a
+    /// path string is something the user has time to swap.
     #[test]
     fn помощник_стола_не_меняет_владельца_и_не_пишет_журнал_от_root() {
         let text = de_helper_script();
@@ -13946,7 +14345,7 @@ mod de_helper_log_tests {
 }
 
 // ============================================================================
-// Помощник раскладки берёт свою копию каталога (28.09.2026)
+// The layout helper takes its own copy of the directory (28.09.2026)
 // ============================================================================
 
 #[cfg(test)]
@@ -13970,8 +14369,8 @@ mod stage_helper_copy_tests {
             .to_string()
     }
 
-    /// Помощник до раскладки по категориям, затем отметка. От обычного
-    /// пользователя — в систему ничего не пишется.
+    /// The helper up to placing by category, then a mark. As a regular user:
+    /// nothing is written into the system.
     fn run(staged: &Path, pkexec_uid: &str) -> (bool, String) {
         let full = stage_helper_script();
         let cut = full.find("# ── Обработка по category").expect("раздел раскладки");
@@ -14021,12 +14420,12 @@ mod stage_helper_copy_tests {
 }
 
 // ============================================================================
-// Помощник пакетов: шаги пересборки (build-deps, install-built), 28.10.2026
+// Package helper: rebuild steps (build-deps, install-built), 28.10.2026
 // ============================================================================
 
-/// Помощник целиком, от обычного пользователя, с подставными `pacman`,
-/// `getent` и `chown` (настоящий pacman не зовётся ни разу), своим
-/// os-release (`ID=arch`) и своим рабочим каталогом вместо `/var/tmp`.
+/// The whole helper, as a regular user, with fake `pacman`, `getent` and
+/// `chown` (the real pacman is never called), its own os-release
+/// (`ID=arch`) and its own work directory instead of `/var/tmp`.
 #[cfg(test)]
 mod pkg_helper_rebuild_tests {
     use super::*;
@@ -14067,10 +14466,10 @@ mod pkg_helper_rebuild_tests {
         for d in [&stub, &home.join(".cache/rexon/rebuild/foo"), &work] {
             std::fs::create_dir_all(d).unwrap();
         }
-        // pacman: печатает argv; у `-U` — содержимое и права полученного
-        // файла (это должна быть копия помощника, не файл пользователя).
-        // База пакетов — два файла стенда: всё установленное и «зависимости».
-        // `-S` дописывает поставленное в обе (как `--asdeps`).
+        // pacman: prints argv; for `-U`, the contents and permissions of the file it
+        // got (it must be the helper's copy, not the user's file). The package
+        // database is two bench files: everything installed and "dependencies".
+        // `-S` appends what it installed to both (like `--asdeps`).
         exec(
             &stub.join("pacman"),
             "#!/bin/bash\n\
@@ -14099,7 +14498,7 @@ mod pkg_helper_rebuild_tests {
             assert!(text.contains(from), "строка помощника изменилась: {from}");
             text = text.replacen(from, &to, 1);
         }
-        // Каталог записей build-deps — везде (он и в комментарии шапки).
+        // The build-deps record directory everywhere (it is also in the header comment).
         assert!(text.contains(&format!("REC_DIR=\"{REBUILD_REC_DIR}\"")));
         text = text.replace(REBUILD_REC_DIR, &root.join("rec").display().to_string());
         let script = root.join("rexon-pkg-helper");
@@ -14172,41 +14571,41 @@ mod pkg_helper_rebuild_tests {
         assert!(out.contains("STUB pacman -U --noconfirm --ask=4 -- "), "{out}");
         assert!(!out.contains("-Rns"), "{out}");
 
-        // Сборочные не снялись — не ошибка, но вслух.
+        // Build deps not removed: not an error, but said out loud.
         st.run(&["arch", "build-deps", "gperf"]);
         let (code, out, err) = st.run_env(&["arch", "install-built", "plain", &f, "gperf"], Some(&uid()), &[("FAKE_R_RC", "1")]);
         assert_eq!(code, 0, "{err}");
         assert!(out.contains("build-only packages kept"), "{out}");
-        // Не встал — код pacman, сборочные не трогаются.
+        // Did not install: pacman's code, build deps are not touched.
         let (code, out, _) = st.run_env(&["arch", "install-built", "plain", &f, "vala"], Some(&uid()), &[("FAKE_U_RC", "1")]);
         assert_eq!(code, 1);
         assert!(!out.contains("-Rns"), "{out}");
     }
 
-    /// Ничего, кроме своего файла makepkg из своего каталога пересборок:
-    /// каждый отказ — код 2 и ни одного вызова pacman.
+    /// Nothing but its own makepkg file from its own rebuild directory: each
+    /// refusal is code 2 and not a single pacman call.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
     fn чужой_внешний_ссылка_и_не_пакет_отвергнуты() {
         let st = stand("bad");
         let good = st.rebuild().join("foo-1-1-x86_64.pkg.tar.zst");
         std::fs::write(&good, "PKG").unwrap();
-        // Снаружи каталога пересборок.
+        // Outside the rebuild directory.
         let outside = st.root.join("foo-1-1-x86_64.pkg.tar.zst");
         std::fs::write(&outside, "EVIL").unwrap();
-        // Ссылка внутри каталога на файл снаружи.
+        // A link inside the directory to a file outside.
         let link = st.rebuild().join("bar-1-1-x86_64.pkg.tar.zst");
         symlink(&outside, &link).unwrap();
-        // Ссылка-каталог внутри корня пересборок, ведущая наружу.
+        // A directory link inside the rebuild root leading outside.
         let evil_dir = st.root.join("evil");
         std::fs::create_dir_all(&evil_dir).unwrap();
         std::fs::write(evil_dir.join("foo-1-1-x86_64.pkg.tar.zst"), "EVIL").unwrap();
         symlink(&evil_dir, st.home.join(".cache/rexon/rebuild/evil")).unwrap();
-        // Не файл пакета по имени.
+        // Not a package file by name.
         for name in ["foo.tar.gz", "foo.sh", "foo.pkg.tar.zst.sig", ".foo-1-1-x86_64.pkg.tar.zst"] {
             std::fs::write(st.rebuild().join(name), "EVIL").unwrap();
         }
-        // Каталог с именем пакета.
+        // A directory with a package name.
         std::fs::create_dir_all(st.rebuild().join("dir-1-1-x86_64.pkg.tar.zst")).unwrap();
 
         let p = |path: &Path| path.to_string_lossy().into_owned();
@@ -14234,11 +14633,11 @@ mod pkg_helper_rebuild_tests {
             assert!(!out.contains("STUB"), "{rest:?}: pacman позван: {out}");
             assert!(err.contains(why), "{rest:?}: ждали «{why}»: {err}");
         }
-        // Режим только из двух слов.
+        // Mode of exactly two words only.
         let (code, out, _) = st.run(&["arch", "install-built", "--ask=4", &p(&good)]);
         assert_eq!(code, 2);
         assert!(!out.contains("STUB"));
-        // Не через pkexec и чужой вызвавший (каталог не его).
+        // Not via pkexec and a foreign caller (the directory is not theirs).
         let (code, out, err) = st.run_env(&["arch", "install-built", "plain", &p(&good)], None, &[]);
         assert!(code == 2 && !out.contains("STUB") && err.contains("pkexec"), "{err}");
         let other = (uid().parse::<u64>().unwrap() + 1).to_string();
@@ -14247,9 +14646,9 @@ mod pkg_helper_rebuild_tests {
         assert!(st.work_is_clean());
     }
 
-    /// ⛔ Через install-built не снять посторонний пакет: только то, что
-    /// поставил build-deps ЭТОГО вызвавшего, и только с пометкой
-    /// «зависимость». Без записи — не снимается ничего.
+    /// ⛔ install-built cannot remove an unrelated package: only what build-deps
+    /// installed for THIS caller, and only with the "dependency" mark. Without a
+    /// record nothing is removed.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
     fn посторонний_пакет_не_снимается() {
@@ -14257,23 +14656,23 @@ mod pkg_helper_rebuild_tests {
         let file = st.rebuild().join("foo-1-1-x86_64.pkg.tar.zst");
         std::fs::write(&file, "PKG").unwrap();
         let f = file.to_string_lossy().into_owned();
-        // Записи нет вовсе: firefox (установлен, даже «зависимость») остаётся.
+        // No record at all: firefox (installed, even as a "dependency") stays.
         let (code, out, err) = st.run(&["arch", "install-built", "plain", &f, "firefox", "gimp"]);
         assert_eq!(code, 0, "{err}");
         assert!(out.contains("STUB pacman -U"), "{out}");
         assert!(!out.contains("-Rns"), "снято без записи: {out}");
         assert!(out.contains("firefox was not installed for this build"), "{out}");
-        // Запись есть, но в ней только vala: посторонние не снимаются.
+        // There is a record, but it only has vala: unrelated ones are not removed.
         st.run(&["arch", "build-deps", "vala"]);
         let (code, out, _) = st.run(&["arch", "install-built", "plain", &f, "vala", "firefox", "gimp"]);
         assert_eq!(code, 0);
         assert!(out.contains("STUB pacman -Rns --noconfirm -- vala\n"), "{out}");
-        // Поставлено build-deps, но пометку «зависимость» сняли — остаётся.
+        // Installed by build-deps, but the "dependency" mark was removed: it stays.
         st.run(&["arch", "build-deps", "meson"]);
         std::fs::write(st.root.join("deps"), "firefox\n").unwrap();
         let (_, out, _) = st.run(&["arch", "install-built", "plain", &f, "meson"]);
         assert!(!out.contains("-Rns"), "{out}");
-        // Чужая запись (другой вызвавший) не годится.
+        // Someone else's record (a different caller) does not count.
         st.run(&["arch", "build-deps", "ninja"]);
         let rec = st.root.join("rec");
         std::fs::rename(rec.join(uid()), rec.join("999999")).unwrap();
@@ -14300,7 +14699,7 @@ mod pkg_helper_rebuild_tests {
         assert!(code == 2 && !out.contains("STUB"));
     }
 
-    /// Не Arch — обе операции отказывают сразу.
+    /// Not Arch: both operations refuse right away.
     #[test]
     #[cfg_attr(feature = "isolated-checks", ignore = "нужен системный bash")]
     fn шаги_пересборки_только_на_arch() {
@@ -14370,8 +14769,8 @@ mod pacman_lock_path_tests {
 mod install_preview_tests {
     use super::*;
 
-    /// Как pacman делит отказ по потокам (замер 08.10.2026): «error:» — в
-    /// stderr, перечень неразрешимых зависимостей — в stdout.
+    /// How pacman splits a refusal across streams (measured 08.10.2026):
+    /// "error:" goes to stderr, the list of unresolvable dependencies to stdout.
     const ERR_ONLINE_ACCOUNTS: &str = "error: failed to prepare transaction (could not satisfy dependencies)\n";
     const OUT_ONLINE_ACCOUNTS: &str = ":: unable to satisfy dependency 'libcamel-1.2.so=67-64' required by switchboard-plug-online-accounts\n\
         :: unable to satisfy dependency 'libedataserver-1.2.so=27-64' required by switchboard-plug-online-accounts\n";
@@ -14380,8 +14779,8 @@ mod install_preview_tests {
         list.iter().map(|s| s.to_string()).collect()
     }
 
-    /// Подставной pacman по записанному 08.10.2026 поведению: группа
-    /// `pantheon` (повтор из двух репозиториев), сломанный член группы.
+    /// Fake pacman with the behaviour recorded on 08.10.2026: the `pantheon`
+    /// group (a repeat from two repositories), a broken group member.
     fn pantheon(cmd: &Cmd) -> PreviewAnswer {
         let a = &cmd.argv;
         if a[1] == "-Sg" {
@@ -14397,7 +14796,7 @@ mod install_preview_tests {
             return Some((0, "glibc\n".into(), String::new()));
         }
         if a[1] == "-Si" || a[1] == "-Qi" {
-            // Сверка конфликтов: у этого набора их нет.
+            // Conflict check: this set has none.
             return Some((0, String::new(), String::new()));
         }
         assert_eq!(&a[..6], &names(&["pacman", "-Sp", "--needed", "--noconfirm", "--print-format", "%n"])[..]);
@@ -14412,8 +14811,8 @@ mod install_preview_tests {
         c.iter().map(|c| (c.new_package.as_str(), c.installed.as_str())).collect()
     }
 
-    /// Записано 19.10.2026 (CachyOS, KDE Plasma 6.8): `LC_ALL=C pacman -Si
-    /// deepin-kwin` — блок из cachyos-extra-znver4 и блок из extra.
+    /// Recorded 19.10.2026 (CachyOS, KDE Plasma 6.8): `LC_ALL=C pacman -Si
+    /// deepin-kwin`, a block from cachyos-extra-znver4 and a block from extra.
     const SI_DEEPIN_KWIN: &str = "Repository      : cachyos-extra-znver4\n\
         Name            : deepin-kwin\n\
         Version         : 6.0.8-12.1\n\
@@ -14435,11 +14834,12 @@ mod install_preview_tests {
         Name            : lightdm\n\
         Conflicts With  : None\n";
 
-    /// Установка Deepin на машине с KDE Plasma (живой случай владельца
-    /// 19.10.2026): пробная транзакция `-Sp` конфликтов НЕ видит (код 0), а
-    /// настоящая падает на «deepin-kwin and kwin are in conflict». Конфликт
-    /// находится заранее по `Conflicts With` того, что встанет, и ставить
-    /// нельзя. Ограничение версией (`deepin-session-ui<5`) не считается.
+    /// Installing Deepin on a machine with KDE Plasma (the owner's live case of
+    /// 19.10.2026): the `-Sp` trial transaction does NOT see conflicts (code 0),
+    /// while the real one fails on "deepin-kwin and kwin are in conflict". The
+    /// conflict is found in advance via `Conflicts With` of what will be
+    /// installed, and installing is not allowed. A version constraint
+    /// (`deepin-session-ui<5`) does not count.
     fn deepin_on_kde(cmd: &Cmd) -> PreviewAnswer {
         let a: Vec<&str> = cmd.argv.iter().map(String::as_str).collect();
         assert!(cmd.lang_c, "вывод pacman разбирается только под LANG=C: {a:?}");
@@ -14477,8 +14877,8 @@ mod install_preview_tests {
         assert!(p.blocked.is_empty());
     }
 
-    /// Обратная сторона: конфликт объявлен у УСТАНОВЛЕННОГО пакета
-    /// (`tuned-ppd` против `power-profiles-daemon`, которого ждёт COSMIC).
+    /// The reverse side: the conflict is declared by an INSTALLED package
+    /// (`tuned-ppd` versus `power-profiles-daemon`, which COSMIC expects).
     #[test]
     fn conflict_declared_by_installed_package_blocks_install() {
         let run = |cmd: &Cmd| -> PreviewAnswer {
@@ -14513,10 +14913,10 @@ mod install_preview_tests {
         assert!(!p.installable());
     }
 
-    /// Записано 20.10.2026 (CachyOS, MATE; рядом стоит Budgie):
-    /// `LC_ALL=C pacman -Si mutter49 gala lightdm` и `pacman -Qi` — mutter 51
-    /// на машине держит budgie-desktop, а Pantheon (gala) нужен mutter49,
-    /// объявляющий `Conflicts With: mutter`.
+    /// Recorded 20.10.2026 (CachyOS, MATE; Budgie installed next to it):
+    /// `LC_ALL=C pacman -Si mutter49 gala lightdm` and `pacman -Qi`: mutter 51
+    /// on the machine is held by budgie-desktop, while Pantheon (gala) needs
+    /// mutter49, which declares `Conflicts With: mutter`.
     const SI_PANTHEON_MUTTER49: &str = "Repository      : cachyos-extra-znver4\n\
         Name            : mutter49\n\
         Version         : 49.8-1.1\n\
@@ -14572,10 +14972,10 @@ mod install_preview_tests {
         }
     }
 
-    /// Конфликт называется СТОЛАМИ, а не пакетами: mutter стоит потому, что
-    /// его требует budgie-desktop (Required By), а mutter49 тянет gala из
-    /// группы pantheon (Depends On). Табличное «mutter — это GNOME» здесь
-    /// было бы враньём: GNOME на машине нет.
+    /// The conflict is named by DESKTOPS, not packages: mutter is installed
+    /// because budgie-desktop requires it (Required By), and mutter49 is pulled
+    /// in by gala from the pantheon group (Depends On). A table-based "mutter is
+    /// GNOME" would be a lie here: there is no GNOME on the machine.
     #[test]
     fn conflict_names_desktops_through_required_by() {
         let p = install_preview(PkgFamily::Arch, &names(&["gala", "lightdm"]), &pantheon_on_budgie).unwrap();
@@ -14590,8 +14990,8 @@ mod install_preview_tests {
         assert!(c.same_program);
     }
 
-    /// Записано 24.10.2026 (CachyOS): `LC_ALL=C pacman -Si river-classic` и
-    /// `pacman -Qi river` при установленном River 0.5 из extra.
+    /// Recorded 24.10.2026 (CachyOS): `LC_ALL=C pacman -Si river-classic` and
+    /// `pacman -Qi river` with River 0.5 from extra installed.
     const SI_RIVER_CLASSIC: &str = "Repository      : cachyos-extra-znver4\n\
         Name            : river-classic\n\
         Version         : 0.3.17-2.1\n\
@@ -14612,8 +15012,8 @@ mod install_preview_tests {
         Name            : glibc\n\
         Conflicts With  : None\n";
 
-    /// Проба набора River на машине с River 0.5; `required_by` — кто
-    /// требует установленный river (пусто — никто).
+    /// Probe of the River set on a machine with River 0.5; `required_by` is who
+    /// requires the installed river (empty: nobody).
     fn river_over_05(required_by: &'static str) -> impl Fn(&Cmd) -> PreviewAnswer {
         move |cmd: &Cmd| {
             let a: Vec<&str> = cmd.argv.iter().map(String::as_str).collect();
@@ -14632,8 +15032,9 @@ mod install_preview_tests {
         }
     }
 
-    /// River 0.5 стоит: набор не ставится молча (отказ с понятным текстом
-    /// про ветки River), но конфликт снимается заменой с согласия.
+    /// River 0.5 is installed: the set is not installed silently (a refusal with
+    /// a clear text about the River branches), but the conflict is resolved by a
+    /// replacement with consent.
     #[test]
     fn river_05_conflict_is_explained_and_offered_for_replacement() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -14650,14 +15051,14 @@ mod install_preview_tests {
         let confirm = conflict_swap_confirm_text(&swaps, "River");
         assert!(confirm.contains("River 0.5 (package river)") && confirm.contains("~/.config/river/init"), "{confirm}");
 
-        // Без согласия — замены нет; согласие на чужое имя — тоже.
+        // Without consent there is no replacement; consent to a different name neither.
         assert!(!conflict_swap_approved(&p, &[]));
         assert!(!conflict_swap_approved(&p, &names(&["kwin"])));
         assert!(conflict_swap_approved(&p, &names(&["river"])));
     }
 
-    /// Установленный river кто-то требует — pacman снял бы и его: замену не
-    /// предлагаем, остаётся отказ.
+    /// Someone requires the installed river: pacman would remove it too, so we
+    /// do not offer a replacement, the refusal stays.
     #[test]
     fn river_05_needed_by_another_package_is_not_offered_for_replacement() {
         let p = install_preview(PkgFamily::Arch, &names(&["river-classic", "waybar"]), &river_over_05("kwm")).unwrap();
@@ -14666,7 +15067,7 @@ mod install_preview_tests {
         assert!(!conflict_swap_approved(&p, &names(&["river"])));
     }
 
-    /// Чужой стол заменой не снимается: Deepin рядом с KDE Plasma.
+    /// Another desktop is not resolved by replacement: Deepin next to KDE Plasma.
     #[test]
     fn foreign_desktop_conflict_is_never_offered_for_replacement() {
         let p = install_preview(PkgFamily::Arch, &names(&["deepin", "lightdm"]), &deepin_on_kde).unwrap();
@@ -14681,8 +15082,8 @@ mod install_preview_tests {
         assert_eq!(short_version("7-1"), "7");
     }
 
-    /// Замена — та же транзакция `pacman -S` с ответом «да» на вопрос о
-    /// конфликте; только Arch, имена проверяются как у установки.
+    /// The replacement is the same `pacman -S` transaction with a "yes" answer to
+    /// the conflict question; Arch only, names are checked as for the install.
     #[test]
     fn install_cmd_replacing_answers_the_conflict_question() {
         let pkgs = names(&["river-classic", "waybar"]);
@@ -14695,8 +15096,8 @@ mod install_preview_tests {
         assert!(install_cmd_replacing(PkgFamily::Arch, &pkgs, &names(&["/tmp/x.pkg.tar.zst"])).is_err());
     }
 
-    /// С заменой набор идёт обёрткой (у помощника согласия нет), и в её
-    /// скрипте — установка с `--ask=4`.
+    /// With a replacement the set goes through the wrapper (the helper has no
+    /// consent), and its script installs with `--ask=4`.
     #[test]
     fn batch_plan_with_replacement_skips_the_helper() {
         let det = DistroDetector::from_os_release_files(Some("ID=cachyos\nNAME=CachyOS\n"), None);
@@ -14711,7 +15112,7 @@ mod install_preview_tests {
         assert!(script.contains("pacman -S --needed --noconfirm --noprogressbar --color never --ask=4 river-classic"), "{script}");
     }
 
-    /// Владелец установленного пакета — не стол: называем, кто его требует.
+    /// The owner of the installed package is not a desktop: we name who requires it.
     #[test]
     fn conflict_names_requiring_packages_when_no_desktop_holds_it() {
         let qi = QI_BUDGIE_MUTTER
@@ -14730,8 +15131,8 @@ mod install_preview_tests {
         assert_eq!(c.required_by, names(&["some-app"]));
     }
 
-    /// Вывод настоящей транзакции владельца 19.10.2026 (`--noconfirm`
-    /// отвечает «N», ничего не удаляется).
+    /// Output of the owner's real transaction of 19.10.2026 (`--noconfirm`
+    /// answers "N", nothing is removed).
     #[test]
     fn transaction_conflict_is_parsed() {
         let out = ":: deepin-kwin-6.0.8-12.1 and kwin-6.8.0-1.1 are in conflict. Remove kwin? [y/N] \n\
@@ -14742,7 +15143,7 @@ mod install_preview_tests {
             parse_transaction_conflicts(out),
             vec![PkgConflict { new_package: "deepin-kwin".into(), installed: "kwin".into(), ..PkgConflict::default() }]
         );
-        // Конфликт через «предоставляет» и эпоха в версии.
+        // Conflict via "provides" and an epoch in the version.
         assert_eq!(
             parse_transaction_conflicts(":: pipewire-pulse-1:1.4.9-1 and pulseaudio-17.0-3 are in conflict (pulseaudio). Remove pulseaudio? [y/N]"),
             vec![PkgConflict { new_package: "pipewire-pulse".into(), installed: "pulseaudio".into(), ..PkgConflict::default() }]
@@ -14763,9 +15164,9 @@ mod install_preview_tests {
         assert_eq!(p.installed_members(), 0);
     }
 
-    /// Записано 15.11.2026 (CachyOS): `LC_ALL=C pacman -Si` членов группы
-    /// `pantheon` (сокращено до нужного). gala 8.6.2-4 перешёл на mutter 51;
-    /// mutter49 из всей группы тянет один `lightdm-pantheon-greeter`.
+    /// Recorded 15.11.2026 (CachyOS): `LC_ALL=C pacman -Si` of the members of
+    /// the `pantheon` group (trimmed to what is needed). gala 8.6.2-4 moved to
+    /// mutter 51; of the whole group only `lightdm-pantheon-greeter` pulls in mutter49.
     fn si_pantheon_block(name: &str, gala_on_mutter49: bool) -> Option<String> {
         let block = match name {
             "pantheon-session" => "Name            : pantheon-session\nVersion         : 8.1.0-1\nGroups          : pantheon\n\
@@ -14799,8 +15200,8 @@ mod install_preview_tests {
         Some(block)
     }
 
-    /// Подставной pacman: группа `pantheon` из четырёх членов; `with_mutter`
-    /// — mutter 51 уже стоит (его держат GNOME и Budgie).
+    /// Fake pacman: the `pantheon` group of four members; `with_mutter`: mutter 51
+    /// is already installed (held by GNOME and Budgie).
     fn pantheon_real(with_mutter: bool, gala_on_mutter49: bool) -> impl Fn(&Cmd) -> PreviewAnswer {
         move |cmd: &Cmd| {
             let a: Vec<&str> = cmd.argv.iter().map(String::as_str).collect();
@@ -14858,9 +15259,10 @@ mod install_preview_tests {
         }
     }
 
-    /// Живой дефект 15.11.2026: Pantheon при стоящих GNOME и Budgie
-    /// блокировался целиком, хотя mutter49 тянет один экран входа Pantheon.
-    /// Теперь стол ставится без него, а человеку сказано, чего не будет.
+    /// A live defect of 15.11.2026: Pantheon with GNOME and Budgie installed was
+    /// blocked entirely, although only the Pantheon login screen pulls in
+    /// mutter49. Now the desktop is installed without it, and the person is told
+    /// what will be missing.
     #[test]
     fn optional_member_conflict_is_dropped_not_blocking() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -14886,10 +15288,11 @@ mod install_preview_tests {
         assert_eq!(crate::qt_desktops::packages_notice(&p), conflict_skip_explanation(&p.conflict_skipped));
     }
 
-    /// На машине без mutter та же группа тянет И mutter (gala), И mutter49
-    /// (экран входа): `-Sp` молчит, а настоящая транзакция упала бы на
-    /// «mutter49 and mutter are in conflict». Конфликт внутри набора
-    /// ловится так же и снимается тем же выкидыванием экрана входа.
+    /// On a machine without mutter the same group pulls in BOTH mutter (gala)
+    /// AND mutter49 (the login screen): `-Sp` stays silent, and the real
+    /// transaction would fail on "mutter49 and mutter are in conflict". A
+    /// conflict inside the set is caught the same way and resolved by the same
+    /// dropping of the login screen.
     #[test]
     fn conflict_inside_the_set_drops_optional_member() {
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
@@ -14907,8 +15310,9 @@ mod install_preview_tests {
         ));
     }
 
-    /// Без конфликта ставится вся группа, экран входа тоже (весь стол на
-    /// mutter49, mutter на машине нет — так было до gala 8.6.2-4).
+    /// Without a conflict the whole group is installed, the login screen too
+    /// (the whole desktop on mutter49, no mutter on the machine: that is how it
+    /// was before gala 8.6.2-4).
     #[test]
     fn group_without_conflict_installs_whole() {
         let p = install_preview(PkgFamily::Arch, &names(&["pantheon", "lightdm"]), &pantheon_real(false, true)).unwrap();
@@ -14921,8 +15325,8 @@ mod install_preview_tests {
         assert!(crate::qt_desktops::packages_notice(&p).is_empty());
     }
 
-    /// Конфликт в обязательном (оконный менеджер стола на mutter49, как было
-    /// до gala 8.6.2-4) — прежний честный отказ: выкинуть его нельзя.
+    /// A conflict in a mandatory member (the desktop's window manager on
+    /// mutter49, as before gala 8.6.2-4) is the old honest refusal: it cannot be dropped.
     #[test]
     fn essential_member_conflict_still_blocks() {
         let p = install_preview(PkgFamily::Arch, &names(&["pantheon", "lightdm"]), &pantheon_real(true, true)).unwrap();
@@ -14959,11 +15363,11 @@ mod install_preview_tests {
         assert_eq!(p.installed_members(), 2);
     }
 
-    /// 19.10.2026, MATE: `pacman -Sp --needed` печатает и УСТАНОВЛЕННЫЕ
-    /// пакеты, для которых вышла новая сборка (mate-applets 1.28.1-3.1 при
-    /// стоящей 1.28.1-2.1), — карточка писала «Не хватает 2 пакетов».
-    /// Установлен ли пакет, решает список установленного, а не план
-    /// транзакции: такие пакеты — обновления, а не пропажа.
+    /// 19.10.2026, MATE: `pacman -Sp --needed` also prints INSTALLED packages
+    /// that have a new build (mate-applets 1.28.1-3.1 with 1.28.1-2.1
+    /// installed), and the card said "2 packages missing". Whether a package is
+    /// installed is decided by the installed list, not by the transaction plan:
+    /// such packages are updates, not missing ones.
     #[test]
     fn outdated_installed_members_are_updates_not_missing() {
         let run = |cmd: &Cmd| -> PreviewAnswer {
@@ -14981,10 +15385,11 @@ mod install_preview_tests {
         assert_eq!(p.dependency_count(), 1);
     }
 
-    /// Своя сборка новее репозитория (живой случай 08.11.2026: Caja
-    /// 1.28.0-6.100 с прозрачным фоном против 1.28.0-6.1): `pacman -Qu` её не
-    /// называет, значит `-S --needed` ОТКАТИЛ бы её. Из транзакции она
-    /// выкинута, группа раскрыта в члены без неё, обновлением не названа.
+    /// Own build newer than the repository (live case of 08.11.2026: Caja
+    /// 1.28.0-6.100 with a transparent background versus 1.28.0-6.1):
+    /// `pacman -Qu` does not name it, so `-S --needed` would ROLL IT BACK. It is
+    /// dropped from the transaction, the group is expanded into members without
+    /// it, and it is not named as an update.
     #[test]
     fn own_build_newer_than_repo_is_kept_not_downgraded() {
         let run = |cmd: &Cmd| -> PreviewAnswer {
@@ -14993,8 +15398,8 @@ mod install_preview_tests {
                 "-Sg" => Some((0, "mate caja\nmate mate-panel\nmate mate-applets\n".into(), String::new())),
                 "-Qq" => Some((0, "caja\nmate-applets\nglibc\n".into(), String::new())),
                 "-Qu" => Some((0, "mate-applets\n".into(), String::new())),
-                // Первый проход идёт по группе — в план попадает и своя Caja;
-                // после раскрытия группы без неё — только остальные.
+                // The first pass goes over the group: our own Caja gets into the plan too;
+                // after expanding the group without it, only the others.
                 _ if has("mate") || has("caja") => Some((0, "caja\nmate-applets\nmate-panel\n".into(), String::new())),
                 _ => Some((0, "mate-applets\nmate-panel\n".into(), String::new())),
             }
@@ -15006,7 +15411,7 @@ mod install_preview_tests {
         assert_eq!(p.new_packages, names(&["mate-panel"]));
     }
 
-    /// `pacman -Qu` не ответил — никого не выкидываем (прежнее поведение).
+    /// `pacman -Qu` did not answer: nothing is dropped (the old behaviour).
     #[test]
     fn locally_newer_without_answer_keeps_nothing() {
         let none = |_: &Cmd| -> PreviewAnswer { None };
@@ -15017,8 +15422,8 @@ mod install_preview_tests {
         assert!(locally_newer(&names(&["caja"]), &broken).is_empty());
     }
 
-    /// Список установленного не получен — прежнее поведение: всё, что
-    /// поставит транзакция, считается новым (ничего не выдумываем).
+    /// The installed list was not obtained: the old behaviour: everything the
+    /// transaction installs counts as new (we invent nothing).
     #[test]
     fn without_installed_list_everything_counts_as_new() {
         let run = |cmd: &Cmd| -> PreviewAnswer {
@@ -15046,21 +15451,21 @@ mod install_preview_tests {
         assert!(install_preview(PkgFamily::Arch, &names(&["bad name"]), &run).is_none());
     }
 
-    // ── Модули ядра под стоящие ядра (Deepin на CachyOS, 20.10.2026) ──
+    // ── Kernel modules for the installed kernels (Deepin on CachyOS, 20.10.2026) ──
 
     #[test]
     fn dkms_modules_only_without_the_arch_kernel() {
         let plan = names(&["deepin-file-manager", "deepin-anything", "deepin-anything-arch", "linux"]);
-        // Стоит штатное ядро — готовая сборка годится.
+        // The stock kernel is installed: the prebuilt module works.
         assert!(!needs_dkms_modules(&plan, &names(&["linux"])));
         assert!(!needs_dkms_modules(&plan, &names(&["linux", "linux-cachyos"])));
-        // Только чужие ядра — штатное в транзакцию не пускаем.
+        // Only other kernels: the stock one is not let into the transaction.
         assert!(needs_dkms_modules(&plan, &names(&["linux-cachyos"])));
         assert!(needs_dkms_modules(&plan, &names(&["linux-cachyos", "linux-cachyos-lts"])));
         assert!(needs_dkms_modules(&plan, &names(&["linux-lts"])));
-        // Ядер не узнать — как было.
+        // Kernels unknown: as before.
         assert!(!needs_dkms_modules(&plan, &[]));
-        // `linux` не тянется — менять нечего.
+        // `linux` is not pulled in: nothing to change.
         assert!(!needs_dkms_modules(&names(&["deepin-anything-dkms", "dkms"]), &names(&["linux-cachyos"])));
     }
 
@@ -15083,9 +15488,9 @@ mod install_preview_tests {
         assert_eq!(prebuilt_module_packages(&info), names(&["deepin-anything-arch"]));
     }
 
-    /// Подставной pacman машины владельца: ядра `kernels` (+ `-headers` из
-    /// `headers_installed`), набор `deepin` тянет `deepin-anything-arch` и
-    /// `linux`, пока в целях нет `deepin-anything-dkms`.
+    /// Fake pacman of the owner's machine: kernels `kernels` (+ `-headers` from
+    /// `headers_installed`), the `deepin` set pulls in `deepin-anything-arch` and
+    /// `linux` while `deepin-anything-dkms` is not among the targets.
     fn deepin_machine(kernels: &'static [&'static str], installed_extra: &'static [&'static str]) -> impl Fn(&Cmd) -> PreviewAnswer {
         move |cmd: &Cmd| {
             let a: Vec<&str> = cmd.argv.iter().map(String::as_str).collect();
@@ -15147,12 +15552,12 @@ mod install_preview_tests {
         assert_eq!(p.targets, names(&["deepin", "lightdm", "deepin-anything-dkms", "linux-cachyos-lts-headers"]));
         assert!(!p.new_packages.iter().any(|n| n == "linux" || n == "deepin-anything-arch"), "{:?}", p.new_packages);
         assert!(p.new_packages.iter().any(|n| n == "deepin-anything-dkms"));
-        // Это зависимости, а не пакеты стола; уже стоявшие заголовки
-        // (`linux-cachyos-headers`) в пометку не попадают.
+        // These are dependencies, not desktop packages; already installed headers
+        // (`linux-cachyos-headers`) do not get the mark.
         assert!(!p.members.iter().any(|n| n == "deepin-anything-dkms"));
         assert_eq!(p.deps_only, names(&["deepin-anything-dkms", "linux-cachyos-lts-headers"]));
-        // Модуль ядра грузится при старте — после установки нужна
-        // перезагрузка; заголовки и сам `dkms` её не требуют.
+        // A kernel module loads at boot: a reboot is needed after the install; the
+        // headers and `dkms` itself do not require one.
         assert_eq!(p.restart_packages, names(&["deepin-anything-dkms"]));
     }
 
@@ -15164,14 +15569,14 @@ mod install_preview_tests {
             assert_eq!(p.targets, names(&["deepin", "lightdm"]));
             assert!(p.new_packages.iter().any(|n| n == "deepin-anything-arch"));
             assert!(p.deps_only.is_empty());
-            // Готовая сборка модуля под штатное ядро — тоже перезагрузка.
+            // A prebuilt module for the stock kernel: also a reboot.
             assert_eq!(p.restart_packages, names(&["deepin-anything-arch"]));
         }
     }
 
-    /// Перезагрузку требуют только ядро и модули ядра; стол, его службы и
-    /// экран входа — нет. Решают зависимости из `pacman -Si`, а без них —
-    /// имена.
+    /// Only a kernel and kernel modules require a reboot; the desktop, its
+    /// services and the login screen do not. The dependencies from `pacman -Si`
+    /// decide, and without them the names.
     #[test]
     fn restart_packages_are_kernels_and_kernel_modules() {
         let info = |name: &str, deps: &[&str]| PkgInfo {
@@ -15189,9 +15594,9 @@ mod install_preview_tests {
             info("linux-headers", &["pahole"]),
         ];
         assert_eq!(restart_packages(&new, &infos), names(&["nvidia", "zfs-dkms", "linux"]));
-        // Сведений нет — решают имена: `*-dkms` и само ядро.
+        // No information: the names decide: `*-dkms` and the kernel itself.
         assert_eq!(restart_packages(&new, &[]), names(&["zfs-dkms", "linux"]));
-        // Обычный стол (River 24.10.2026) — хватит выйти из сеанса.
+        // An ordinary desktop (River 24.10.2026): logging out is enough.
         assert!(restart_packages(&names(&["river", "foot"]), &infos).is_empty());
     }
 
@@ -15209,14 +15614,14 @@ mod install_preview_tests {
         let mut more = table.clone();
         more.push("vhba-module-dkms".into());
         assert!(!de_helper_covers("pantheon", PkgFamily::Arch, &more));
-        // Часть таблицы помощник ставит, как всегда (сверка с Python,
-        // кейс arch-de-helper-kde).
+        // The helper installs its part of the table as always (Python parity,
+        // the arch-de-helper-kde case).
         assert!(de_helper_covers("pantheon", PkgFamily::Arch, &table[1..]));
         assert!(!de_helper_covers("pantheon", PkgFamily::Arch, &names(&["gala"])));
     }
 
-    /// Группу `deepin` (с deepin-session и deepin-kwin) помощник от root не
-    /// ставит: Deepin — только на Treeland, обёрткой.
+    /// The root helper does not install the `deepin` group (with deepin-session
+    /// and deepin-kwin): Deepin only on Treeland, via the wrapper.
     #[test]
     fn de_helper_has_no_deepin() {
         assert!(!de_helper_supports("deepin", "arch"));
@@ -15238,13 +15643,13 @@ mod install_preview_tests {
     fn kernel_module_deps_are_marked_in_the_same_script() {
         let det = DistroDetector::from_os_release_files(Some("ID=cachyos\nNAME=CachyOS\n"), None);
         let pkgs = names(&["deepin", "lightdm", "deepin-anything-dkms", "linux-cachyos-lts-headers"]);
-        // Чужое имя в пометке (не из набора) отбрасывается.
+        // A foreign name in the mark (not from the set) is dropped.
         let deps = names(&["deepin-anything-dkms", "linux-cachyos-lts-headers", "linux"]);
         let plan = install_batch_plan_with_deps(
             PkgFamily::Arch, &det, &pkgs, &deps, &[], &[], None, true, Some("deepin"), true, "/tmp/a.sh", "/tmp/a.log",
         )
         .unwrap();
-        // Набор не из таблицы помощника — обёртка, один pkexec.
+        // A set not from the helper's table: the wrapper, one pkexec.
         assert!(!plan.used_de_helper);
         let script = script_of(&plan, "/tmp/a.sh");
         let install = script.find("pacman -S --needed").expect(&script);
@@ -15254,14 +15659,14 @@ mod install_preview_tests {
         let pkexecs = plan.steps.iter().filter(|s| matches!(s, PlanStep::Run { needs_root: true, .. })).count();
         assert_eq!(pkexecs, 1);
 
-        // Без пометки — как было: набор из таблицы идёт помощником.
+        // Without a mark, as before: a set from the table goes through the helper.
         let table = names(crate::system::de_entry_packages_for("pantheon", "arch").unwrap());
         let plan = install_batch_plan_with_deps(
             PkgFamily::Arch, &det, &table, &[], &[], &[], None, true, Some("pantheon"), true, "/tmp/a.sh", "/tmp/a.log",
         )
         .unwrap();
         assert!(plan.used_de_helper);
-        // Deepin — никогда помощником, даже набором из таблицы.
+        // Deepin never via the helper, even as a set from the table.
         let table = names(crate::system::de_entry_packages_for("deepin", "arch").unwrap());
         let plan = install_batch_plan_with_deps(
             PkgFamily::Arch, &det, &table, &[], &[], &[], None, true, Some("deepin"), true, "/tmp/a.sh", "/tmp/a.log",
@@ -15293,8 +15698,8 @@ mod wayland_default_session_tests {
     fn только_значение_ключа_сеанса_и_в_прежнем_виде() {
         let s = &X11_SESSION_SUCCESSORS[0];
         let keys = LOGIN_SESSION_SOURCES[2].keys;
-        // Голое имя, с `.desktop`, полный путь; чужие ключи и группы, тот же
-        // ключ в чужой группе, комментарий — не трогаются.
+        // Bare name, with `.desktop`, a full path; foreign keys and groups, the
+        // same key in a foreign group, a comment are not touched.
         let text = "# Session=plasmax11\n[Autologin]\nUser=me\nSession=plasmax11\n[Greeter]\nPreselectedSession =  plasmax11.desktop\n\
                     Session=plasmax11\n[Other]\nSession=plasmax11\n[Autologin][seat1]\nSession=plasmax11";
         assert_eq!(
@@ -15307,7 +15712,7 @@ mod wayland_default_session_tests {
             retarget_session(sddm_state, LOGIN_SESSION_SOURCES[1].keys, s).unwrap(),
             "[Last]\nSession=/usr/share/wayland-sessions/plasma.desktop\n"
         );
-        // Уже Wayland либо другой X11-сеанс — менять нечего.
+        // Already Wayland or another X11 session: nothing to change.
         assert_eq!(retarget_session("[Autologin]\nSession=plasma\n", keys, s), None);
         assert_eq!(retarget_session("[Autologin]\nSession=xfce\n", keys, s), None);
     }
@@ -15322,8 +15727,8 @@ mod wayland_default_session_tests {
 
     #[test]
     fn тема_sddm_перекрытая_etc_sddm_conf_меняется_и_там() {
-        // Как на CachyOS: тема в `/etc/sddm.conf` (читается последним) и в
-        // настройках KDE. Правятся оба, свой файл не нужен, прочее — байт в байт.
+        // As on CachyOS: the theme in `/etc/sddm.conf` (read last) and in the KDE
+        // settings. Both are edited, no own file is needed, the rest byte for byte.
         let files = fs(&[
             ("/etc/sddm.conf.d/kde_settings.conf", "[Autologin]\nSession=plasma\n\n[Theme]\nCurrent=breeze\nCursorTheme=breeze_cursors\n"),
             ("/etc/sddm.conf", "[General]\nX=1\n\n[Theme]\nCurrent=breeze\nCursorSize=32\n"),
@@ -15339,7 +15744,7 @@ mod wayland_default_session_tests {
                 SessionEdit { path: "/etc/sddm.conf".into(), text: "[General]\nX=1\n\n[Theme]\nCurrent=sugar-dark\nCursorSize=32\n".into() },
             ]
         );
-        // Итог — по тому же чтению, что у SDDM.
+        // The result is by the same reading as SDDM's.
         let mut after = files.clone();
         for x in e {
             after.insert(x.path, x.text);
@@ -15351,17 +15756,17 @@ mod wayland_default_session_tests {
 
     #[test]
     fn тема_sddm_без_ключа_в_etc_свой_файл() {
-        // Нигде не задана — свой файл.
+        // Not set anywhere: an own file.
         assert_eq!(
             theme_on("t", &fs(&[])),
             SessionSwitch::Edits(vec![SessionEdit { path: SDDM_REXON_THEME_CONF.into(), text: "[Theme]\nCurrent=t\n".into() }])
         );
-        // Только в файле пакета — его не трогаем, перекрываем своим.
+        // Only in the package file: we do not touch it, we override it with ours.
         let SessionSwitch::Edits(e) = theme_on("t", &fs(&[("/usr/lib/sddm/sddm.conf.d/default.conf", "[Theme]\nCurrent=\n")])) else {
             panic!()
         };
         assert_eq!(e.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(), [SDDM_REXON_THEME_CONF]);
-        // Ключ в чужой группе и в комментарии — не тема.
+        // The key in a foreign group and in a comment is not a theme.
         let SessionSwitch::Edits(e) = theme_on("t", &fs(&[("/etc/sddm.conf", "# Current=x\n[General]\nCurrent=x\n")])) else {
             panic!()
         };
@@ -15371,8 +15776,8 @@ mod wayland_default_session_tests {
     #[test]
     fn тема_sddm_уже_выбрана_или_свой_файл_правится_на_месте() {
         assert_eq!(theme_on("t", &fs(&[("/etc/sddm.conf", "[Theme]\nCurrent=t\n")])), SessionSwitch::Nothing);
-        // Прежний свой файл — правится, второго не появляется; пустое
-        // `Current=` в `/etc/sddm.conf` (встроенная тема) — тоже значение.
+        // The previous own file is edited, no second one appears; an empty
+        // `Current=` in `/etc/sddm.conf` (the built-in theme) is a value too.
         let SessionSwitch::Edits(e) = theme_on(
             "new",
             &fs(&[(SDDM_REXON_THEME_CONF, "[Theme]\nCurrent=old\n"), ("/etc/sddm.conf", "[Theme]\nCurrent=\n")]),
@@ -15390,10 +15795,10 @@ mod wayland_default_session_tests {
 
     #[test]
     fn правит_только_etc_и_состояние_sddm_и_сверяет_итог() {
-        // Пусто — менять нечего.
+        // Empty: nothing to change.
         assert_eq!(plan_on(&fs(&[])), SessionSwitch::Nothing);
-        // `/etc` и последний сеанс SDDM — правятся; файл пакета без X11 —
-        // не трогается.
+        // `/etc` and SDDM's last session are edited; the package file without X11
+        // is not touched.
         let SessionSwitch::Edits(e) = plan_on(&fs(&[
             ("/usr/lib/sddm/sddm.conf.d/default.conf", "[Autologin]\nRelogin=false\n"),
             ("/etc/sddm.conf.d/kde_settings.conf", "[Autologin]\nSession=plasmax11.desktop\n"),
@@ -15408,7 +15813,7 @@ mod wayland_default_session_tests {
             paths,
             ["/etc/sddm.conf.d/kde_settings.conf", "/etc/sddm.conf", SDDM_STATE_FILE, "/etc/plasmalogin.conf.d/10.conf"]
         );
-        // X11 — в файле пакета, и `/etc` его не перекрывает: ничего не менять.
+        // X11 is in the package file, and `/etc` does not override it: change nothing.
         assert_eq!(
             plan_on(&fs(&[
                 ("/usr/lib/plasmalogin/plasmalogin.conf.d/x.conf", "[Autologin]\nSession=plasmax11\n"),
@@ -15416,7 +15821,7 @@ mod wayland_default_session_tests {
             ])),
             SessionSwitch::Elsewhere
         );
-        // Перекрыт поздним файлом `/etc` — тогда правится он, и итог чист.
+        // Overridden by a later `/etc` file: then that one is edited, and the result is clean.
         assert!(matches!(
             plan_on(&fs(&[
                 ("/usr/lib/sddm/sddm.conf.d/x.conf", "[Autologin]\nSession=plasmax11\n"),
@@ -15458,7 +15863,7 @@ mod wayland_default_session_tests {
         let found = |v: &[&str]| x11_login_default(&v.iter().map(|s| s.to_string()).collect::<Vec<_>>()).map(|s| s.x11);
         assert_eq!(found(&["plasma", "/usr/share/xsessions/plasmax11.desktop"]), Some("plasmax11"));
         assert_eq!(found(&["plasma.desktop", "xfce"]), None);
-        // Каждая пара — разная, и X11-сеанс не совпадает со своей парой.
+        // Each pair is different, and the X11 session does not match its own pair.
         for s in X11_SESSION_SUCCESSORS {
             assert_ne!(s.x11, s.wayland);
         }
@@ -15473,9 +15878,9 @@ mod pacman_self_answered_tests {
         parse_pacman_line(line).is_some_and(|p| p.stage == "prompt" && p.message.is_empty())
     }
 
-    /// Всё, что pacman при `--noconfirm` спрашивает и сам же отвечает, —
-    /// пустое сообщение этапа `prompt` (в журнал человека не идёт). Строки
-    /// сняты с живой установки Deepin (журнал build-deps, 02.11.2026).
+    /// Everything pacman asks and answers itself under `--noconfirm` is an empty
+    /// message of the `prompt` stage (it does not go to the person's log). The
+    /// lines were taken from a live Deepin install (the build-deps log, 02.11.2026).
     #[test]
     fn self_answered_menu_and_consent_are_hidden() {
         for line in [
@@ -15490,13 +15895,13 @@ mod pacman_self_answered_tests {
         ] {
             assert!(hidden(line), "{line}");
         }
-        // Шапка вопроса остаётся — с ответом, который выбран.
+        // The question header stays, with the answer that was chosen.
         let head = parse_pacman_line(":: There are 2 providers available for gsettings-qt:").unwrap();
         assert_eq!(head.stage, "prompt");
         assert!(!head.message.is_empty());
     }
 
-    /// Вопросы, ответ на которые решает исход, и обычный текст не прячутся.
+    /// Questions whose answer decides the outcome, and ordinary text, are not hidden.
     #[test]
     fn meaningful_lines_stay_visible() {
         for line in [

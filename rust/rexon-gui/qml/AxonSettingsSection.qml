@@ -1,11 +1,12 @@
-// Блок «Razer Axon» в «⚙️ Настройках» раздела «Обои HD»: наши настройки
-// показа обоев из библиотеки Razer Axon — «Подготавливать обои заранее» и
-// «Вернуть оригинальные описания», папка библиотеки. Настройки самого Axon
-// здесь не меняются. Блок есть, только если Axon найден
+// The "Razer Axon" block in "⚙️ Settings" of the "HD Wallpapers" section:
+// our settings for showing wallpapers from the Razer Axon library —
+// "Prepare wallpapers in advance" and "Restore original descriptions", the
+// library folder. Axon's own settings are not changed here. The block
+// exists only if Axon is found
 // (`appearance_page::CatalogView::section_settings_panels`).
 //
-// Только разметка: подписи и состояние — ядро (`axon_prepare`,
-// `axon_window`) через `AxonActions` (rust/rexon-gui/src/axon_actions.rs).
+// Markup only: labels and state — the core (`axon_prepare`, `axon_window`)
+// through `AxonActions` (rust/rexon-gui/src/axon_actions.rs).
 
 pragma ComponentBehavior: Bound
 
@@ -43,7 +44,8 @@ Rectangle {
 
     Component.onCompleted: section.reload()
 
-    // Фоновая подготовка идёт сама — строку итога освежаем, пока блок виден.
+    // Background preparation runs by itself — we refresh the summary line
+    // while the block is visible.
     Timer {
         interval: 3000
         repeat: true
@@ -151,8 +153,8 @@ Rectangle {
             Item { Layout.fillWidth: true }
         }
 
-        // Возврат описаний необратим для уже расшифрованных обоев — сначала
-        // предупреждение словами, потом действие.
+        // Restoring descriptions is irreversible for wallpapers already decrypted —
+        // first a warning in words, then the action.
         Rectangle {
             Layout.fillWidth: true
             visible: section.confirmRestore

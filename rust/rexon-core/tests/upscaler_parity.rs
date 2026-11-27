@@ -1,17 +1,18 @@
-//! Golden-сверка порта `upscaler.rs` с оригиналом
+//! Golden check of the `upscaler.rs` port against the original
 //! `rexon/extensions/upscaler.py`.
 //!
-//! Эталон снят с ЖИВОГО Python read-only: одноразовый harness исполнял
-//! настоящий `WallpaperUpscaler`, перехватывая subprocess.run/shutil.which/
-//! os.path.*/os.remove/os.listdir/os.replace прокси над виртуальной ФС —
-//! НИЧЕГО реально не выполнялось (апскейл/identify/скачивание не
-//! запускались). Каждый вызов записан в журнал с аргументами и результатом
+//! The reference was captured from LIVE Python read-only: a one-off harness
+//! ran the real `WallpaperUpscaler`, intercepting subprocess.run/shutil.which/
+//! os.path.*/os.remove/os.listdir/os.replace with proxies over a virtual FS —
+//! NOTHING was really executed (upscale/identify/download were not run).
+//! Every call is recorded in the log with arguments and result
 //! (`golden/upscaler_cases.json`).
 //!
-//! Здесь журнал реплеится: [`MockIo`] на каждый вызов Rust-порта сверяет op и
-//! аргументы (argv/timeout байт-в-байт) с очередной записью эталона (порядок
-//! обязан совпасть 1-в-1) и возвращает записанный результат. В конце — журнал
-//! исчерпан, итог совпал. Плюс — чистые таблицы `suggest_scale`/`needs_upscale`.
+//! Here the log is replayed: for every Rust port call [`MockIo`] checks op and
+//! arguments (argv/timeout byte for byte) against the next reference record
+//! (the order must match 1:1) and returns the recorded result. At the end the
+//! log is exhausted and the outcome matched. Plus the pure tables
+//! `suggest_scale`/`needs_upscale`.
 
 use rexon_core::upscaler::{
     needs_upscale, process_wallpapers_in_dir, suggest_scale, upscale, RunResult,
@@ -23,7 +24,7 @@ fn fx() -> Value {
     serde_json::from_str(include_str!("golden/upscaler_cases.json")).unwrap()
 }
 
-/// Декодер base64 (стандартный алфавит) для поля `stdout_b64`.
+/// base64 decoder (standard alphabet) for the `stdout_b64` field.
 fn b64d(s: &str) -> Vec<u8> {
     const AL: &[u8; 64] =
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -46,7 +47,7 @@ fn b64d(s: &str) -> Vec<u8> {
     out
 }
 
-/// Реплей журнала: каждый вызов трейта проверяется против очередной записи.
+/// Log replay: every trait call is checked against the next record.
 struct MockIo {
     journal: Vec<Value>,
     pos: usize,
@@ -182,8 +183,8 @@ fn min_desktop_width_matches() {
 
 #[test]
 fn needs_upscale_size_table() {
-    // needs_upscale через identify: для чистой таблицы моделируем identify,
-    // возвращающий заданный размер, и сверяем булев результат.
+    // needs_upscale via identify: for the pure table we model identify returning
+    // the given size and compare the boolean result.
     let d = fx();
     for row in d["needs_upscale_size"].as_array().unwrap() {
         let r = row.as_array().unwrap();
@@ -202,7 +203,7 @@ fn needs_upscale_size_table() {
     }
 }
 
-/// base64-энкодер для локальной сборки stdout в таблице needs_upscale.
+/// base64 encoder for building stdout locally in the needs_upscale table.
 fn b64e(data: &[u8]) -> String {
     const AL: &[u8; 64] =
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -259,13 +260,13 @@ fn scenarios_replay() {
     }
 }
 
-/// Исполнитель, умеющий мерить размер сам (в живом мосте это Pillow из
-/// `WallpaperUpscaler.get_image_size`): ядро обязано взять его ответ и НЕ
-/// запускать `identify` вовсе.
+/// An executor that can measure the size itself (in the live bridge this is
+/// Pillow from `WallpaperUpscaler.get_image_size`): the core must take its
+/// answer and NOT run `identify` at all.
 ///
-/// Это и есть закрытая при аудите дыра: без хука `image_size` порт на машине
-/// без ImageMagick (SteamOS) всегда получал (0, 0) и апскейл молча не делался,
-/// тогда как Python-фолбэк работал через Pillow.
+/// This is the hole closed during the audit: without the `image_size` hook the
+/// port on a machine without ImageMagick (SteamOS) always got (0, 0) and the
+/// upscale was silently skipped, while the Python fallback worked via Pillow.
 struct SizeIo {
     size: Option<(i64, i64)>,
     runs: usize,
@@ -303,23 +304,23 @@ impl UpIo for SizeIo {
 
 #[test]
 fn image_size_hook_replaces_identify() {
-    // 640×480 — меньше 1024, апскейл нужен; identify не звался ни разу.
+    // 640×480 — less than 1024, upscale needed; identify was never called.
     let mut io = SizeIo { size: Some((640, 480)), runs: 0 };
     assert!(needs_upscale(&mut io, "/img.png"));
     assert_eq!(io.runs, 0, "identify не должен запускаться при своём размере");
 
-    // 1920×1080 — уже достаточно.
+    // 1920×1080 — already enough.
     let mut io = SizeIo { size: Some((1920, 1080)), runs: 0 };
     assert!(!needs_upscale(&mut io, "/img.png"));
     assert_eq!(io.runs, 0);
 
-    // (0, 0) от исполнителя — ответ окончательный (Python уже попробовал и
-    // Pillow, и identify), повторного запуска нет.
+    // (0, 0) from the executor is final (Python already tried both Pillow and
+    // identify), no repeated run.
     let mut io = SizeIo { size: Some((0, 0)), runs: 0 };
     assert!(!needs_upscale(&mut io, "/img.png"));
     assert_eq!(io.runs, 0);
 
-    // Исполнитель не умеет — запасной путь через identify (одна попытка).
+    // The executor cannot — fallback via identify (one attempt).
     let mut io = SizeIo { size: None, runs: 0 };
     assert!(!needs_upscale(&mut io, "/img.png"));
     assert_eq!(io.runs, 1, "без хука ядро обязано звать identify");

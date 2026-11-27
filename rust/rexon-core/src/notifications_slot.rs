@@ -1,68 +1,73 @@
-//! Запрет подмены приложения уведомлений: кто отвечает на имя
-//! `org.freedesktop.Notifications`, когда столов стоит несколько.
+//! Preventing the notification application from being hijacked: who answers
+//! to the name `org.freedesktop.Notifications` when several desktops are
+//! installed.
 //!
-//! ЗАЧЕМ. Rexon ставит много рабочих столов сразу, и у каждого свой демон
-//! уведомлений со своим файлом D-Bus-активации на ОДНО и то же имя шины
+//! WHY. Rexon installs many desktops at once, and each has its own notification
+//! daemon with its own D-Bus activation file for ONE AND THE SAME bus name
 //! (`fr.emersion.mako.service`, `org.freedesktop.mate.Notifications.service`,
 //! `org.kde.plasma.Notifications.service`,
-//! `org.xfce.xfce4-notifyd.Notifications.service`…). Шина из таких дублей
-//! берёт первый по алфавиту и пишет в журнал «Ignoring duplicate name
-//! 'org.freedesktop.Notifications' in service file …». Итог, пойманный на
-//! машине Wehrwolfmann 12.11.2026: в Plasma, MATE и XFCE уведомление,
-//! пришедшее до старта родной оболочки, рисует чужой mako — сверху справа,
-//! в чужом виде.
+//! `org.xfce.xfce4-notifyd.Notifications.service`…). Faced with such duplicates
+//! the bus takes the first one alphabetically and logs "Ignoring duplicate name
+//! 'org.freedesktop.Notifications' in service file …". The result, caught on
+//! Wehrwolfmann's machine on 12.11.2026: in Plasma, MATE and XFCE a
+//! notification that arrived before the native shell started was drawn by a
+//! foreign mako — top right, in a foreign look.
 //!
-//! ЛЕЧЕНИЕ. Пользовательский каталог `$XDG_DATA_HOME/dbus-1/services`
-//! главнее системных, а файл, названный по имени шины, шина берёт прежде
-//! прочих. Кладём туда `org.freedesktop.Notifications.service`, который
-//! выбирает демон по `$XDG_CURRENT_DESKTOP`: ветки — только для РЕАЛЬНО
-//! установленных демонов (команда берётся из их собственного системного
-//! файла, так что пути дистрибутива угадывать не нужно), всё остальное —
-//! ожидание, пока имя заберёт оболочка (`plasma_waitforname`, если он есть,
-//! иначе активация просто не удаётся). GNOME, Cinnamon, Budgie, Deepin и
-//! COSMIC держат имя в самой оболочке — им достаточно не мешать.
+//! THE CURE. The user directory `$XDG_DATA_HOME/dbus-1/services` takes
+//! precedence over the system ones, and a file named after the bus name is
+//! taken before all others. We put `org.freedesktop.Notifications.service`
+//! there, which picks the daemon by `$XDG_CURRENT_DESKTOP`: branches exist only
+//! for ACTUALLY installed daemons (the command is taken from their own system
+//! file, so there is no need to guess the distribution's paths); everything
+//! else waits until the shell takes the name (`plasma_waitforname` if it is
+//! present, otherwise activation simply fails). GNOME, Cinnamon, Budgie, Deepin
+//! and COSMIC hold the name in the shell itself — it is enough not to get in
+//! their way.
 //!
-//! ПРАВИЛА:
-//! * файл нужен, только если в системных каталогах БОЛЬШЕ ОДНОГО файла на
-//!   это имя; стал один (стол удалили) — наш файл убирается;
-//! * файл без нашей метки в первой строке ([`MARKER`]) — чужой (его
-//!   положил человек) и не трогается никогда; байт-в-байт равный нашему
-//!   тексту — наш по определению (метка в нём та же);
-//! * ничего не убиваем: после смены файла шина только перечитывает
-//!   конфигурацию (`ReloadConfig`), живой демон доживает до конца сеанса.
+//! RULES:
+//! * the file is needed only if the system directories have MORE THAN ONE file
+//!   for this name; once there is one (a desktop was removed), our file is
+//!   removed;
+//! * a file without our marker in the first line ([`MARKER`]) is foreign (the
+//!   person put it there) and is never touched; a file byte-for-byte equal to
+//!   our text is ours by definition (it carries the same marker);
+//! * we kill nothing: after the file changes, the bus only reloads its
+//!   configuration (`ReloadConfig`), and the running daemon lives until the end
+//!   of the session.
 //!
-//! Где зовётся: после любой операции над столами во вкладке «Рабочие
-//! столы» и при старте окна Rexon ([`sync_live`]); удаление Rexon убирает
-//! наш файл (`installer_exec::release_session_guard`).
+//! Where it is called: after any operation on desktops in the "Desktops" tab
+//! and when the Rexon window starts ([`sync_live`]); uninstalling Rexon removes
+//! our file (`installer_exec::release_session_guard`).
 
 use std::path::{Path, PathBuf};
 
 use crate::{log_info, log_warn};
 
-/// Имя шины, которое делят демоны уведомлений.
+/// The bus name shared by notification daemons.
 pub const BUS_NAME: &str = "org.freedesktop.Notifications";
 
-/// Первая строка нашего файла — по ней файл узнаётся как наш.
+/// First line of our file — the file is recognized as ours by it.
 pub const MARKER: &str = "# Rexon: notifications-slot";
 
-/// Системные каталоги файлов D-Bus-активации сеансовой шины.
+/// System directories of session-bus D-Bus activation files.
 pub const SYSTEM_SERVICE_DIRS: &[&str] = &["/usr/share/dbus-1/services", "/usr/local/share/dbus-1/services"];
 
-/// Демон уведомлений: имя его программы (последний сегмент пути в `Exec=`)
-/// и значения `$XDG_CURRENT_DESKTOP`, на которых он родной.
+/// A notification daemon: the name of its program (the last path segment in
+/// `Exec=`) and the `$XDG_CURRENT_DESKTOP` values on which it is native.
 ///
-/// Одна таблица на продукт (правило #12): новый демон — строкой здесь.
-/// Порядок важен: если на один стол претендуют двое (mako и dunst под
-/// Hyprland), ветку получает тот, кто выше.
+/// One table for the product (rule #12): a new daemon is a line here.
+/// Order matters: if two daemons claim one desktop (mako and dunst under
+/// Hyprland), the branch goes to the one listed higher.
 pub struct DaemonInfo {
     pub binary: &'static str,
     pub desktops: &'static [&'static str],
 }
 
-/// Ожидатель имени оболочкой Plasma — он же запасная ветка для прочих столов.
+/// Plasma's shell name waiter — also the fallback branch for other desktops.
 pub const SHELL_WAITER: &str = "plasma_waitforname";
 
-/// Столы на wlroots и родне, где демон уведомлений — отдельная программа.
+/// Desktops on wlroots and relatives, where the notification daemon is a
+/// separate program.
 const WLROOTS_DESKTOPS: &[&str] = &["Hyprland", "sway", "labwc", "niri", "river", "wlroots", "Wayfire"];
 
 pub const DAEMONS: &[DaemonInfo] = &[
@@ -75,26 +80,26 @@ pub const DAEMONS: &[DaemonInfo] = &[
     DaemonInfo { binary: "dunst", desktops: WLROOTS_DESKTOPS },
 ];
 
-/// Один системный файл активации на [`BUS_NAME`].
+/// One system activation file for [`BUS_NAME`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Provider {
-    /// Имя файла (для журнала и порядка).
+    /// File name (for the log and for ordering).
     pub file: String,
-    /// Строка `Exec=` как есть.
+    /// The `Exec=` line as is.
     pub exec: String,
-    /// Программа из `Exec=` существует на диске.
+    /// The program from `Exec=` exists on disk.
     pub installed: bool,
 }
 
 impl Provider {
-    /// Последний сегмент пути программы из `Exec=`.
+    /// The last path segment of the program from `Exec=`.
     pub fn binary(&self) -> &str {
         let first = self.exec.split_whitespace().next().unwrap_or("");
         first.rsplit('/').next().unwrap_or(first)
     }
 }
 
-/// Разбор файла активации: `(Name, Exec)` из раздела `[D-BUS Service]`.
+/// Parsing an activation file: `(Name, Exec)` from the `[D-BUS Service]` section.
 pub fn parse_service(text: &str) -> (Option<String>, Option<String>) {
     let mut in_section = false;
     let (mut name, mut exec) = (None, None);
@@ -116,19 +121,19 @@ pub fn parse_service(text: &str) -> (Option<String>, Option<String>) {
     (name, exec)
 }
 
-/// Наш ли это файл: первая строка — метка.
+/// Whether this is our file: the first line is the marker.
 pub fn is_ours(text: &str) -> bool {
     text.lines().next().map(str::trim_end) == Some(MARKER)
 }
 
-/// Команду можно вставить в `sh -c '…'` как есть: без одинарных кавычек
-/// (иначе она разорвала бы обёртку) и без переводов строки.
+/// The command can be inserted into `sh -c '…'` as is: without single quotes
+/// (otherwise it would break the wrapper) and without line breaks.
 fn exec_is_safe(exec: &str) -> bool {
     !exec.is_empty() && !exec.contains('\'') && !exec.contains('\n')
 }
 
-/// Текст нашего файла по найденным провайдерам. `None` — делать нечего
-/// (провайдер один или ни одного): тогда шина и без нас не ошибётся.
+/// Text of our file for the providers found. `None` — nothing to do (one
+/// provider or none): then the bus will not go wrong without us.
 pub fn render(providers: &[Provider]) -> Option<String> {
     if providers.len() < 2 {
         return None;
@@ -151,13 +156,13 @@ pub fn render(providers: &[Provider]) -> Option<String> {
         let pattern: Vec<String> = desktops.iter().map(|d| format!("*:{d}:*")).collect();
         branches.push(format!("{}) exec {};;", pattern.join("|"), provider.exec));
     }
-    // Ни одного знакомого демона: наш файл только отнял бы имя у всех —
-    // пусть шина выбирает сама.
+    // Not a single known daemon: our file would only take the name away from
+    // everyone — let the bus choose by itself.
     if branches.is_empty() {
         return None;
     }
-    // Прочие столы: ждать, пока имя заберёт оболочка. Без ожидателя Plasma —
-    // активация просто не удаётся (имя держит сама оболочка стола).
+    // Other desktops: wait until the shell takes the name. Without Plasma's
+    // waiter, activation simply fails (the desktop's shell holds the name itself).
     let fallback = match by_binary(SHELL_WAITER) {
         Some(p) => format!("exec {}", p.exec),
         None => "exit 1".to_string(),
@@ -178,18 +183,19 @@ pub fn render(providers: &[Provider]) -> Option<String> {
     ))
 }
 
-/// Что сделать с пользовательским файлом.
+/// What to do with the user file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    /// Всё уже как надо либо файл чужой.
+    /// Everything is already as it should be, or the file is foreign.
     Nothing,
-    /// Записать этот текст.
+    /// Write this text.
     Write(String),
-    /// Убрать наш файл: дублей больше нет.
+    /// Remove our file: there are no more duplicates.
     Remove,
 }
 
-/// Решение по провайдерам и нынешнему содержимому файла (`None` — нет файла).
+/// Decision based on the providers and the file's current contents (`None` —
+/// no file).
 pub fn decide(providers: &[Provider], existing: Option<&str>) -> Action {
     let desired = render(providers);
     match (existing, desired) {
@@ -202,7 +208,7 @@ pub fn decide(providers: &[Provider], existing: Option<&str>) -> Action {
     }
 }
 
-/// Где искать и куда писать.
+/// Where to look and where to write.
 #[derive(Debug, Clone)]
 pub struct SlotPaths {
     pub system_dirs: Vec<PathBuf>,
@@ -210,7 +216,7 @@ pub struct SlotPaths {
 }
 
 impl SlotPaths {
-    /// Пути живого сеанса: `$XDG_DATA_HOME` (или `~/.local/share`).
+    /// Paths of the live session: `$XDG_DATA_HOME` (or `~/.local/share`).
     pub fn from_env(home: &str, xdg_data_home: &str) -> Self {
         let data = crate::utils::data_home(Some(xdg_data_home).filter(|v| v.starts_with('/')), home);
         SlotPaths {
@@ -220,8 +226,8 @@ impl SlotPaths {
     }
 }
 
-/// Системные файлы активации на [`BUS_NAME`]. Файл, совпадающий по имени в
-/// нескольких каталогах, считается один раз (первый каталог главнее).
+/// System activation files for [`BUS_NAME`]. A file with the same name in
+/// several directories counts once (the first directory takes precedence).
 pub fn scan_providers(dirs: &[PathBuf]) -> Vec<Provider> {
     let mut out: Vec<Provider> = Vec::new();
     for dir in dirs {
@@ -254,8 +260,8 @@ pub fn scan_providers(dirs: &[PathBuf]) -> Vec<Provider> {
     out
 }
 
-/// Привести пользовательский файл к решению. `Ok(action)` — что сделано
-/// (`Nothing` — ничего не менялось).
+/// Bring the user file in line with the decision. `Ok(action)` — what was done
+/// (`Nothing` — nothing changed).
 pub fn sync(paths: &SlotPaths) -> Result<Action, String> {
     let providers = scan_providers(&paths.system_dirs);
     let existing = std::fs::read(&paths.user_file).ok().map(|raw| String::from_utf8_lossy(&raw).into_owned());
@@ -276,7 +282,7 @@ pub fn sync(paths: &SlotPaths) -> Result<Action, String> {
     Ok(action)
 }
 
-/// Убрать наш файл (удаление Rexon). `true` — файл был нашим и убран.
+/// Remove our file (Rexon uninstall). `true` — the file was ours and was removed.
 pub fn release(user_file: &Path) -> bool {
     match std::fs::read(user_file) {
         Ok(raw) if is_ours(&String::from_utf8_lossy(&raw)) => std::fs::remove_file(user_file).is_ok(),
@@ -284,8 +290,8 @@ pub fn release(user_file: &Path) -> bool {
     }
 }
 
-/// Живой сеанс: привести файл в порядок и, если он поменялся, попросить
-/// шину перечитать конфигурацию. Ничего не убивает. Сбой — только в журнал.
+/// Live session: put the file in order and, if it changed, ask the bus to
+/// reload its configuration. Kills nothing. A failure goes only to the log.
 pub fn sync_live() {
     let paths = SlotPaths::from_env(
         &std::env::var("HOME").unwrap_or_default(),
@@ -305,7 +311,7 @@ pub fn sync_live() {
     }
 }
 
-/// `ReloadConfig` сеансовой шины — та же команда, что у FileManager1.
+/// `ReloadConfig` of the session bus — the same command as for FileManager1.
 pub fn reload_bus_live() {
     let spec = crate::utils::RunSpec {
         argv: crate::appdefaults::busctl_reload_cmd(),
@@ -327,7 +333,7 @@ mod tests {
         d
     }
 
-    /// Стенд: системный каталог с файлами и программами внутри стенда.
+    /// Test stand: a system directory with files and programs inside the stand.
     struct Bench {
         root: PathBuf,
         paths: SlotPaths,
@@ -346,7 +352,7 @@ mod tests {
             Bench { root, paths }
         }
 
-        /// Файл активации `file` на программу `bin` (с аргументами `args`).
+        /// Activation file `file` for program `bin` (with arguments `args`).
         fn provider(&self, file: &str, bin: &str, args: &str, with_binary: bool) -> String {
             let program = self.root.join("bin").join(bin);
             if with_binary {
@@ -408,7 +414,7 @@ mod tests {
     fn render_without_plasma_falls_back_to_failure() {
         let text = render(&[p("a.service", "/usr/bin/mako"), p("b.service", "/usr/bin/dunst")]).unwrap();
         assert!(text.contains("*) exit 1;;"));
-        // На один стол двое: ветку берёт тот, кто выше в таблице.
+        // Two for one desktop: the branch goes to the one higher in the table.
         assert!(text.contains("exec /usr/bin/mako;;"));
         assert!(!text.contains("exec /usr/bin/dunst"));
     }
@@ -423,7 +429,7 @@ mod tests {
     #[test]
     fn single_provider_needs_no_file() {
         assert_eq!(render(&[p("a.service", "/usr/bin/mako")]), None);
-        // Двое, но оба незнакомы — файл только отнял бы имя у всех.
+        // Two, but both unknown — the file would only take the name away from everyone.
         assert_eq!(render(&[p("a.service", "/usr/bin/foo"), p("b.service", "/usr/bin/bar")]), None);
         assert_eq!(decide(&[p("a.service", "/usr/bin/mako")], None), Action::Nothing);
     }
@@ -434,11 +440,11 @@ mod tests {
         let ours = render(&two).unwrap();
         assert_eq!(decide(&two, None), Action::Write(ours.clone()));
         assert_eq!(decide(&two, Some(&ours)), Action::Nothing);
-        // Чужой файл — не трогаем ни при дублях, ни без них.
+        // A foreign file is not touched, with or without duplicates.
         let foreign = "[D-BUS Service]\nName=org.freedesktop.Notifications\nExec=/usr/bin/mako\n";
         assert_eq!(decide(&two, Some(foreign)), Action::Nothing);
         assert_eq!(decide(&two[..1], Some(foreign)), Action::Nothing);
-        // Наш устаревший — переписываем; дублей не стало — убираем.
+        // Our outdated one is rewritten; once the duplicates are gone, it is removed.
         let stale = format!("{MARKER}\n[D-BUS Service]\nExec=/bin/false\n");
         assert_eq!(decide(&two, Some(&stale)), Action::Write(ours));
         assert_eq!(decide(&two[..1], Some(&stale)), Action::Remove);
@@ -456,7 +462,7 @@ mod tests {
         let b = Bench::new("sync");
         let mako = b.provider("fr.emersion.mako.service", "mako", "", true);
         let notifyd = b.provider("org.xfce.xfce4-notifyd.Notifications.service", "xfce4-notifyd", "", true);
-        // Посторонний файл на другое имя — не провайдер.
+        // An unrelated file for another name is not a provider.
         std::fs::write(b.paths.system_dirs[0].join("org.other.service"), "[D-BUS Service]\nName=org.other\nExec=/x\n").unwrap();
         assert_eq!(scan_providers(&b.paths.system_dirs).len(), 2);
 
@@ -464,10 +470,10 @@ mod tests {
         let text = b.user_text().unwrap();
         assert!(text.contains(&format!("exec {mako};;")));
         assert!(text.contains(&format!("*:XFCE:*) exec {notifyd};;")));
-        // Повторный прогон ничего не меняет.
+        // A repeated run changes nothing.
         assert_eq!(sync(&b.paths).unwrap(), Action::Nothing);
 
-        // Стол удалили: дублей нет — наш файл уходит.
+        // A desktop was removed: no duplicates — our file goes away.
         std::fs::remove_file(b.paths.system_dirs[0].join("fr.emersion.mako.service")).unwrap();
         assert_eq!(sync(&b.paths).unwrap(), Action::Remove);
         assert!(b.user_text().is_none());

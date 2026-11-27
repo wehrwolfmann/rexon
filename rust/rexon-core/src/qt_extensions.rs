@@ -1,41 +1,42 @@
-//! Порт `rexon/qt_extensions/window.py` — вкладка «Расширения».
+//! Port of `rexon/qt_extensions/window.py` — the "Extensions" tab.
 //!
-//! Вкладка была ЕДИНСТВЕННОЙ крупной Qt-вкладкой, не подключённой к ядру
-//! вовсе: в её файле не было ни одного обращения к `rexon_py`, хотя вся
-//! механика расширений давно живёт в [`crate::ext_manager`],
-//! [`crate::extension`], [`crate::ext_utils`] и [`crate::constants`]. Поэтому
-//! переносить надо было не логику, а ИНТЕРФЕЙС — и заодно подключить его к
-//! тому, что уже есть.
+//! The tab was the ONLY large Qt tab not connected to the core at all: its file
+//! had not a single call to `rexon_py`, although all the extension machinery has
+//! long lived in [`crate::ext_manager`], [`crate::extension`],
+//! [`crate::ext_utils`] and [`crate::constants`]. So what had to be moved was
+//! not the logic but the INTERFACE — and, along the way, connecting it to what
+//! already exists.
 //!
-//! Что решает этот модуль: какие подписи показать, какие фильтры собрать по
-//! составу установленного, что написать в статистике и в пустом состоянии,
-//! из чего состоит карточка, строка списка, подробный разбор и справка
-//! «как собрать своё расширение», какие файлы принимать перетаскиванием и
-//! какой текст показать в строке состояния после каждого действия.
+//! What this module decides: which labels to show, which filters to build from
+//! the set of installed items, what to write in the statistics and in the empty
+//! state, what a card, a list row, the detailed view and the "how to build your
+//! own extension" help consist of, which files to accept by drag-and-drop and
+//! what text to show in the status line after each action.
 //!
-//! Чего здесь НЕТ: самих расширений (их читает [`installed`] с диска через
-//! [`crate::extension::Extension`]) и побочных действий — установка,
-//! удаление и переключение ходят в систему и остаются у исполнителя
-//! (сейчас `rexon/extensions/manager.py`).
+//! What is NOT here: the extensions themselves ([`installed`] reads them from
+//! disk through [`crate::extension::Extension`]) and side actions — installing,
+//! removing and toggling go to the system and stay with the executor (currently
+//! `rexon/extensions/manager.py`).
 //!
-//! ⚠️ Починки оригинала (правило #16 — баги при порте чиним, не
-//! консервируем), каждая помечена `Починка:` по месту:
-//!   1. имя, автор, описание, теги и README вставлялись в HTML БЕЗ
-//!      экранирования: расширение с `<` в описании ломало разбор подписи, а
-//!      README с угловыми скобками терял куски текста прямо на витрине;
-//!   2. вторичные подписи (тип, автор, статистика, путь, тех. данные,
-//!      строка состояния) были прибиты к `color: #ffffff` при любой теме —
-//!      на светлой это белым по белому. Цвет теперь приходит парой из
-//!      [`crate::ui_base`], как требует правило #9;
-//!   3. в светлой теме у выключенной кнопки блока «Установить» стоял
-//!      `color: rgba(255,255,255,0.55)` — «Steam Workshop» был неразличим;
-//!   4. нажатие на кнопку фильтра при ПУСТОМ списке расширений прятало
-//!      подсказку «Расширений ещё нет» вместо того, чтобы её показать
-//!      (в `_refresh` та же ветка работала правильно). Пустое состояние
-//!      теперь одно — [`empty_text`].
+//! Warning — fixes to the original (rule #16 — bugs are fixed during the port,
+//! not preserved), each marked `Fix:` in place:
+//!   1. the name, author, description, tags and README were inserted into HTML
+//!      WITHOUT escaping: an extension with `<` in its description broke label
+//!      parsing, and a README with angle brackets lost pieces of text right in
+//!      the storefront;
+//!   2. secondary labels (type, author, statistics, path, technical data, the
+//!      status line) were hard-wired to `color: #ffffff` in any theme — on a
+//!      light one that is white on white. The color now comes as a pair from
+//!      [`crate::ui_base`], as rule #9 requires;
+//!   3. in the light theme the disabled button of the "Install" block had
+//!      `color: rgba(255,255,255,0.55)` — "Steam Workshop" was indistinguishable;
+//!   4. pressing a filter button with an EMPTY extension list hid the "No
+//!      extensions yet" hint instead of showing it (in `_refresh` the same
+//!      branch worked correctly). There is now a single empty state —
+//!      [`empty_text`].
 //!
-//! Сверка — `rust/rexon-core/tests/qt_extensions_parity.rs` по снимку живого
-//! Python-пути (`tests/golden/qt_extensions_cases.json`).
+//! The check is `rust/rexon-core/tests/qt_extensions_parity.rs` against a
+//! snapshot of the live Python path (`tests/golden/qt_extensions_cases.json`).
 
 use std::path::{Path, PathBuf};
 
@@ -48,11 +49,12 @@ use crate::extension::Extension;
 use crate::i18n::{tr, trc, trf};
 
 // ============================================================================
-// Неизменные подписи и размеры вкладки
+// Fixed labels and sizes of the tab
 // ============================================================================
 
-// Подписи — функции, а не константы: язык интерфейса выбирается при запуске,
-// и функцию, в отличие от константы, нельзя забыть перевести.
+// Labels are functions rather than constants: the interface language is chosen
+// at start-up, and a function, unlike a constant, cannot be forgotten when
+// translating.
 
 pub fn window_title() -> String {
     tr("Rexon — Extensions")
@@ -65,11 +67,11 @@ pub fn header_title() -> String {
 pub const HEADER_TITLE_POINT_SIZE: i32 = 20;
 pub const SECTION_POINT_SIZE: i32 = 14;
 
-/// Ширина плитки расширения. ПОСТОЯННАЯ: по ней движок сеток считает
-/// столбцы. Вилка «220…280» давала карточки разной ширины в одном ряду, и
-/// расчёт столбцов врал — «ширины карточки» попросту не существовало.
+/// Width of an extension tile. CONSTANT: the grid engine computes columns from
+/// it. A range of "220…280" produced cards of different widths in one row, and
+/// the column computation lied — a "card width" simply did not exist.
 pub const CARD_W: i32 = 260;
-/// Ширина подписей внутри плитки: минус поля компоновки (8+8).
+/// Width of the labels inside the tile: minus the layout margins (8+8).
 pub const CARD_TEXT_W: i32 = CARD_W - 16;
 pub const PREVIEW_H: i32 = 120;
 
@@ -89,8 +91,8 @@ pub fn view_list_tooltip() -> String {
     trc("extensions view", "List")
 }
 
-/// Идентификаторы режима показа. Строками, а не числами: их же кладут в
-/// роли модели и читает разметка.
+/// Display mode identifiers. Strings rather than numbers: they are put into the
+/// model roles and read by the markup.
 pub const VIEW_GRID: &str = "grid";
 pub const VIEW_LIST: &str = "list";
 
@@ -119,18 +121,18 @@ pub fn empty_no_match() -> String {
 }
 
 pub const UNINSTALL_ICON: &str = "🗑️";
-/// Подпись кнопки удаления НА ПЛИТКЕ и в подробном разборе.
+/// Label of the remove button ON THE TILE and in the detailed view.
 ///
-/// ⚠️ Отступление от виджетного эталона, сделанное намеренно (правило #13).
-/// На плитке у оригинала стоит голая корзина шириной 40 точек, и живая
-/// проверка 06.09 показала ровно то, чего это правило не допускает: у
-/// НЕОБРАТИМОГО действия нет подписи, значок покупателю приходится
-/// угадывать, а подсказка появляется только под курсором — на геймпаде и в
-/// Big Picture её не существует вовсе. Место на плитке есть: ширина 260
-/// минус поля 8+8 даёт 244, а самая тесная пара кнопок («▶ Включить» и
-/// «🗑 Удалить») занимает около 214.
-/// В СТРОКЕ СПИСКА подпись не ставится: там компактный вид, и выключатель
-/// рядом тоже нарисован одним значком — обе кнопки объясняет подсказка.
+/// Warning: a deliberate departure from the widget reference (rule #13). On the
+/// tile the original has a bare trash can 40 points wide, and the live check of
+/// 06.09 showed exactly what this rule does not allow: an IRREVERSIBLE action
+/// has no label, the buyer has to guess the icon, and the tooltip appears only
+/// under the cursor — on a gamepad and in Big Picture it does not exist at all.
+/// There is room on the tile: a width of 260 minus the 8+8 margins gives 244,
+/// and the tightest pair of buttons ("▶ Enable" and "🗑 Remove") takes about 214.
+/// In a LIST ROW the label is not set: the view is compact there, and the
+/// toggle next to it is also drawn as a single icon — the tooltip explains both
+/// buttons.
 pub fn uninstall_text() -> String {
     tr("🗑️ Remove")
 }
@@ -158,17 +160,18 @@ pub fn state_enabled_text() -> String {
 pub fn state_disabled_text() -> String {
     trc("extension state", "⏸️ Disabled")
 }
-/// Цвет отметки «активно» и голубой заголовок группы/тегов. Пишутся здесь, а
-/// не в .qml: своих цветов у разметки быть не должно.
+/// Color of the "active" mark and the light-blue heading of a group/tags. They
+/// are written here and not in the .qml: the markup must not have colors of its
+/// own.
 pub const STATE_ENABLED_COLOR: &str = "#4ade80";
 pub const STATE_DISABLED_COLOR: &str = "#888888";
 pub const ACCENT_INFO_COLOR: &str = "#6cb4ff";
-/// Красная подложка кнопки удаления (в виджетах — `rgba(220,80,80,0.2)`).
+/// The red background of the remove button (in widgets — `rgba(220,80,80,0.2)`).
 pub const DANGER_COLOR: &str = "#dc5050";
 pub const DANGER_FILL_ALPHA: f64 = 0.2;
 pub const DANGER_FILL_HOVER_ALPHA: f64 = 0.4;
 
-/// Заголовок и фильтр окна выбора файла.
+/// Title and filter of the file chooser dialog.
 pub fn file_dialog_title() -> String {
     tr("Choose an .rxn file")
 }
@@ -180,7 +183,7 @@ Windows themes (*.themepack *.deskthemepack *.theme *.msstyles);;\
 All files (*)")
 }
 
-/// Расширения файлов, которые вкладка принимает перетаскиванием.
+/// File extensions the tab accepts by drag-and-drop.
 pub const DROP_EXTENSIONS: &[&str] = &[
     ".rxn",
     ".themepack",
@@ -194,7 +197,7 @@ pub const DROP_EXTENSIONS: &[&str] = &[
     ".7tsp",
 ];
 
-/// Принимаем ли этот файл перетаскиванием (сравнение суффикса без регистра).
+/// Whether we accept this file by drag-and-drop (case-insensitive suffix comparison).
 pub fn is_supported_drop(path: &str) -> bool {
     let lower = path.to_lowercase();
     let suffix = match lower.rfind('.') {
@@ -205,47 +208,47 @@ pub fn is_supported_drop(path: &str) -> bool {
 }
 
 // ============================================================================
-// Раскладка и оформление, которого нет в палитре скина
+// Layout and styling that the skin palette does not have
 // ============================================================================
 //
-// Числа и краски виджетной вкладки, разбросанные по её компоновкам и таблицам
-// стилей. QML-разметка своих не заводит: всё приходит отсюда картой `styles`
-// (rust/rexon-gui/src/extensions_page.rs) — тем же набором, каким красится
-// виджетная версия.
+// The numbers and paints of the widget tab, scattered across its layouts and
+// stylesheets. The QML markup does not create its own: everything comes from
+// here as the `styles` map (rust/rexon-gui/src/extensions_page.rs) — the same
+// set the widget version is painted with.
 
-/// Поля страницы и шаг между её блоками.
+/// Page margins and the spacing between its blocks.
 pub const PAGE_MARGIN: i32 = 24;
 pub const PAGE_SPACING: i32 = 14;
 
-/// Кнопки вида (⊞ / ☰): кегль значка и наименьшая ширина содержимого.
+/// View buttons (⊞ / ☰): icon font size and the minimum content width.
 pub const VIEW_BUTTON_POINT_SIZE: i32 = 14;
 pub const VIEW_BUTTON_MIN_WIDTH: i32 = 32;
-/// Поля чипа (кнопки вида и фильтры) по горизонтали и по вертикали,
-/// скругление — общее с чипами Steam.
+/// Chip padding (view buttons and filters) horizontally and vertically; the
+/// rounding is shared with the Steam chips.
 pub const CHIP_PADDING_H: i32 = 10;
 pub const CHIP_PADDING_V: i32 = 4;
 pub const CHIP_RADIUS: i32 = crate::qt_steam::BTN_RADIUS;
-/// Зазор между кнопками фильтров.
+/// Gap between filter buttons.
 pub const FILTER_SPACING: i32 = 4;
 
-/// Шаг сетки плиток. Тем же шагом идут строки и заголовки групп списка: у
-/// виджетной вкладки оба вида живут в одной сетке.
+/// Spacing of the tile grid. List rows and group headings follow the same
+/// spacing: in the widget tab both views live in one grid.
 pub const GRID_SPACING: i32 = 10;
-/// Плитка: поле компоновки, шаг строк, скругление, зазор между кнопками.
-/// Ширины кнопки удаления здесь больше нет: с подписью (`UNINSTALL_TEXT`)
-/// кнопка меряется по содержимому, как и соседний выключатель.
+/// Tile: layout margin, row spacing, rounding, gap between buttons. The width of
+/// the remove button is no longer here: with a label (`UNINSTALL_TEXT`) the
+/// button is sized by its contents, like the neighboring toggle.
 pub const CARD_MARGIN: i32 = 8;
 pub const CARD_SPACING: i32 = 6;
 pub const CARD_RADIUS: i32 = 6;
 pub const CARD_BUTTON_SPACING: i32 = 4;
-/// Кегль значка-заглушки на месте превью.
+/// Font size of the placeholder icon in place of the preview.
 pub const PLACEHOLDER_POINT_SIZE: i32 = 32;
 
-/// Строка списка: поля компоновки (по горизонтали и вертикали), добавка
-/// таблицы стилей (`padding: 4px` ложится ПОВЕРХ полей компоновки — строка
-/// у виджетов на 8 точек выше, чем подсказывают одни поля), шаг между
-/// значком, подписями и кнопками, скругление, ширина и кегль значка,
-/// ширина кнопок «⏸»/«🗑».
+/// List row: layout margins (horizontal and vertical), the stylesheet addition
+/// (`padding: 4px` goes ON TOP of the layout margins — a widget row is 8 points
+/// taller than the margins alone suggest), the spacing between the icon, the
+/// labels and the buttons, the rounding, the width and font size of the icon,
+/// the width of the "⏸"/"🗑" buttons.
 pub const LIST_ROW_MARGIN_H: i32 = 10;
 pub const LIST_ROW_MARGIN_V: i32 = 6;
 pub const LIST_ROW_PADDING: i32 = 4;
@@ -254,29 +257,29 @@ pub const LIST_ROW_RADIUS: i32 = 4;
 pub const LIST_ICON_WIDTH: i32 = 36;
 pub const LIST_ICON_POINT_SIZE: i32 = 18;
 pub const LIST_BUTTON_WIDTH: i32 = 36;
-/// Заголовок группы списка: отступ сверху и снизу (`padding: 6px 0 2px 0`).
+/// List group heading: top and bottom padding (`padding: 6px 0 2px 0`).
 pub const GROUP_HEADER_PADDING_TOP: i32 = 6;
 pub const GROUP_HEADER_PADDING_BOTTOM: i32 = 2;
 
-/// Поле вокруг подсказки пустого состояния (`padding: 16px`).
+/// Padding around the empty-state hint (`padding: 16px`).
 pub const EMPTY_PADDING: i32 = 16;
 
-/// Кнопки блока «⬇ Установить»: зазор, скругление, поле вокруг подписи.
+/// Buttons of the "⬇ Install" block: gap, rounding, padding around the label.
 pub const INSTALL_SOURCE_SPACING: i32 = 10;
 pub const INSTALL_SOURCE_RADIUS: i32 = 6;
 pub const INSTALL_SOURCE_PADDING: i32 = 10;
 
-/// Тройка «фон, рамка, рамка под курсором» плитки.
+/// The "background, border, border under the cursor" triple of a tile.
 ///
-/// Та же, что у карточек витрины Steam: таблицы стилей обеих вкладок были
-/// набраны одними числами (0.04 / 0.12 / 0.30 на тёмной, 0.03 / 0.15 / 0.35
-/// на светлой), и второй копии в ядре не место (правило #12). Под курсором
-/// у плитки меняется ТОЛЬКО рамка, фон остаётся.
+/// The same as for the Steam storefront cards: the stylesheets of both tabs
+/// were typed with the same numbers (0.04 / 0.12 / 0.30 on dark, 0.03 / 0.15 /
+/// 0.35 on light), and a second copy has no place in the core (rule #12). Under
+/// the cursor ONLY the tile's border changes, the background stays.
 pub fn card_colors(dark: bool) -> (String, String, String) {
     crate::qt_steam::card_colors(false, dark)
 }
 
-/// Пара «фон, цвет значка» заглушки на месте превью.
+/// The "background, icon color" pair of the placeholder in place of the preview.
 pub fn placeholder_colors(dark: bool) -> (String, String) {
     if dark {
         ("rgba(255,255,255,0.06)".to_string(), "#aaaaaa".to_string())
@@ -285,12 +288,12 @@ pub fn placeholder_colors(dark: bool) -> (String, String) {
     }
 }
 
-/// Пара «фон, фон под курсором» строки списка.
+/// The "background, background under the cursor" pair of a list row.
 ///
-/// Починка №5 (правило #16): у оригинала строка красилась белым с
-/// прозрачностью при ЛЮБОЙ теме — на светлой это «светлее светлого», то есть
-/// невидимая строка. Светлой теме — чёрный с той же прозрачностью, как у
-/// плитки.
+/// Fix No. 5 (rule #16): the original painted the row white with transparency
+/// in ANY theme — on a light one that is "lighter than light", i.e. an
+/// invisible row. The light theme gets black with the same transparency, as for
+/// the tile.
 pub fn list_row_colors(dark: bool) -> (String, String) {
     if dark {
         (
@@ -302,7 +305,8 @@ pub fn list_row_colors(dark: bool) -> (String, String) {
     }
 }
 
-/// Тройка «фон, фон под курсором, рамка» крупной кнопки блока «Установить».
+/// The "background, background under the cursor, border" triple of a large
+/// button of the "Install" block.
 pub fn install_source_colors(dark: bool) -> (String, String, String) {
     if dark {
         (
@@ -319,45 +323,47 @@ pub fn install_source_colors(dark: bool) -> (String, String, String) {
     }
 }
 
-/// Четвёрка «рамка, фон выбранного, рамка выбранного, фон под курсором»
-/// чипа — кнопок вида и фильтров.
+/// The "border, selected background, selected border, background under the
+/// cursor" quadruple of a chip — the view buttons and filters.
 ///
-/// Чип один на продукт (`qt_steam::switch_chip_colors`): выбранное состояние
-/// у виджетных «Расширений» набрано теми же `rgba(59,130,246,0.4)` и
-/// `rgba(59,130,246,0.6)`, что у подвкладок Steam.
+/// There is one chip for the product (`qt_steam::switch_chip_colors`): the
+/// selected state in the widget "Extensions" was typed with the same
+/// `rgba(59,130,246,0.4)` and `rgba(59,130,246,0.6)` as the Steam subtabs.
 pub fn chip_colors() -> (String, String, String, String) {
     crate::qt_steam::switch_chip_colors()
 }
 
 // ============================================================================
-// Типы расширений: включаемые, фильтры, группы
+// Extension types: toggleable, filters, groups
 // ============================================================================
 
-/// Тип, у которого есть выключатель: скриптовые (`plugin`, `desktop-tool`).
+/// A type that has a toggle: scripted ones (`plugin`, `desktop-tool`).
 ///
-/// У оформления выключателя нет и быть не может — оно либо стоит в системе,
-/// либо нет. Ответ берётся из ядра (`SCRIPTED_TYPES`), а не повторяется
-/// парой строк в UI: типов со скриптами может стать больше.
+/// Appearance items have no toggle and cannot have one — they are either
+/// installed on the system or not. The answer is taken from the core
+/// (`SCRIPTED_TYPES`) rather than repeated as a couple of lines in the UI:
+/// there may be more scripted types.
 pub fn is_toggleable(ext_type: &str) -> bool {
     constants::is_scripted(ext_type)
-        // Дополнения окружений (скрипты и эффекты KWin, расширения GNOME,
-        // апплеты/десклеты/расширения Cinnamon, действия Nemo) включает и
-        // выключает человек: установка их больше не включает (04.10.2026).
+        // Environment add-ons (KWin scripts and effects, GNOME extensions, Cinnamon
+        // applets/desklets/extensions, Nemo actions) are enabled and disabled by the
+        // person: installation no longer enables them (04.10.2026).
         || crate::de_apply::mode(ext_type).map(crate::de_apply::Mode::button)
             == Some(crate::de_apply::Button::Toggle)
 }
 
-/// Кнопка фильтра: идентификатор типа и подпись.
+/// A filter button: the type identifier and the label.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FilterItem {
     pub id: String,
     pub label: String,
 }
 
-/// Кнопки фильтров по СОСТАВУ установленного: «Все» плюс только те типы,
-/// что реально стоят, в порядке таблицы подписей.
+/// Filter buttons by the SET of installed items: "All" plus only the types that
+/// are actually installed, in the order of the label table.
 ///
-/// Новый тип попадает в фильтр сам, без правки этого места (правило #12).
+/// A new type gets into the filter by itself, without editing this place (rule
+/// #12).
 pub fn filter_items(installed_types: &[String]) -> Vec<FilterItem> {
     let mut items = vec![FilterItem {
         id: FILTER_ALL_ID.to_string(),
@@ -378,11 +384,11 @@ pub fn filter_items(installed_types: &[String]) -> Vec<FilterItem> {
     items
 }
 
-/// Остаётся ли выбранный фильтр допустимым при этом составе кнопок.
+/// Whether the selected filter stays valid with this set of buttons.
 ///
-/// Если кнопок кроме «Все» не осталось (расширения удалили), выбор
-/// сбрасывается — иначе витрина молча показывала бы пустоту по фильтру,
-/// которого на экране уже нет.
+/// If no buttons other than "All" are left (the extensions were removed), the
+/// choice is reset — otherwise the storefront would silently show emptiness by
+/// a filter that is no longer on the screen.
 pub fn normalize_filter(filter_type: &str, items: &[FilterItem]) -> String {
     if items.iter().any(|i| i.id == filter_type) {
         filter_type.to_string()
@@ -392,13 +398,13 @@ pub fn normalize_filter(filter_type: &str, items: &[FilterItem]) -> String {
 }
 
 // ============================================================================
-// Строка статистики и заголовки
+// Statistics line and headings
 // ============================================================================
 
-/// Строка статистики: «Установлено · Активных · по типам» (только ненулевые).
+/// Statistics line: "Installed · Active · by type" (non-zero only).
 ///
-/// На вход — готовый ответ [`ext_manager::stats`], чтобы счёт был один на
-/// продукт: ту же карту показывает и Python-путь.
+/// The input is the ready answer of [`ext_manager::stats`], so that there is a
+/// single count for the product: the Python path shows the same map.
 pub fn stats_line(stats: &Map<String, Value>) -> String {
     let num = |key: &str| stats.get(key).and_then(Value::as_u64).unwrap_or(0);
     let mut parts = vec![
@@ -423,9 +429,9 @@ pub fn stats_line(stats: &Map<String, Value>) -> String {
     parts.join("  •  ")
 }
 
-/// Заголовок «Мои расширения (отфильтровано/всего)».
+/// The heading "My extensions (filtered/total)".
 ///
-/// `None` — расширений нет вовсе: заголовок над пустотой прячется.
+/// `None` — there are no extensions at all: the heading above emptiness is hidden.
 pub fn my_header(filtered: usize, total: usize) -> Option<String> {
     if total == 0 {
         return None;
@@ -437,10 +443,10 @@ pub fn my_header(filtered: usize, total: usize) -> Option<String> {
     }
 }
 
-/// Текст пустого состояния, либо `None`, если показывать нечего.
+/// Text of the empty state, or `None` if there is nothing to show.
 ///
-/// Починка №4: одна функция на обе ветки. В оригинале обработчик фильтра
-/// прятал подсказку «Расширений ещё нет», хотя список был пуст.
+/// Fix No. 4: one function for both branches. In the original the filter
+/// handler hid the "No extensions yet" hint although the list was empty.
 pub fn empty_text(filtered: usize, total: usize) -> Option<String> {
     if total == 0 {
         Some(empty_no_extensions())
@@ -452,13 +458,13 @@ pub fn empty_text(filtered: usize, total: usize) -> Option<String> {
 }
 
 // ============================================================================
-// Блок «Установить»
+// The "Install" block
 // ============================================================================
 
-/// Кнопка блока «⬇ Установить».
+/// A button of the "⬇ Install" block.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InstallSource {
-    /// Что делать по нажатию: `file` | `workshop` | `create`.
+    /// What to do on click: `file` | `workshop` | `create`.
     pub kind: String,
     pub icon: String,
     pub label: String,
@@ -467,7 +473,7 @@ pub struct InstallSource {
 }
 
 impl InstallSource {
-    /// Подпись кнопки целиком: значок, перевод строки, название.
+    /// The whole button label: the icon, a line break, the name.
     pub fn text(&self) -> String {
         format!("{}\n{}", self.icon, self.label)
     }
@@ -477,7 +483,8 @@ pub const INSTALL_SOURCE_MIN_HEIGHT: i32 = 70;
 pub const INSTALL_SOURCE_MIN_WIDTH: i32 = 160;
 pub const INSTALL_SOURCE_MAX_WIDTH: i32 = 220;
 
-/// Три источника расширений: файл, Мастерская Steam (пока выключена), своё.
+/// Three sources of extensions: a file, the Steam Workshop (disabled for now),
+/// your own.
 pub fn install_sources() -> Vec<InstallSource> {
     vec![
         InstallSource {
@@ -490,9 +497,9 @@ pub fn install_sources() -> Vec<InstallSource> {
         InstallSource {
             kind: "workshop".into(),
             icon: "🎮".into(),
-            // Кнопка неактивна, а подсказку на неактивной не увидеть:
-            // причина стоит прямо в подписи, иначе серая плитка без слов
-            // читалась поломкой.
+            // The button is disabled, and a tooltip on a disabled one cannot be
+            // seen: the reason is right in the label, otherwise a gray tile without
+            // words would read as breakage.
             label: tr("Steam Workshop — coming soon"),
             tooltip: tr("Coming soon — Steam Workshop integration"),
             enabled: false,
@@ -508,14 +515,14 @@ pub fn install_sources() -> Vec<InstallSource> {
 }
 
 // ============================================================================
-// Строка состояния
+// Status line
 // ============================================================================
 
-/// Обрезка текста ошибки, как в оригинале: 200 символов.
+/// Truncation of the error text, as in the original: 200 characters.
 ///
-/// ⚠️ Считаем СИМВОЛЫ, а не байты: в Python срез `msg[:200]` посимвольный, а
-/// в Rust `&s[..200]` на русском тексте просто уронил бы процесс на границе
-/// многобайтового символа.
+/// Warning: we count CHARACTERS, not bytes: in Python the slice `msg[:200]` is by
+/// characters, while in Rust `&s[..200]` on Russian text would simply crash the
+/// process at a multi-byte character boundary.
 fn clip(msg: &str) -> String {
     msg.chars().take(200).collect()
 }
@@ -535,14 +542,14 @@ pub fn status_installed(name: &str) -> String {
     trf("✅ Installed: %1", &[&name])
 }
 
-/// Имя установленного расширения ПЛЮС то, о чём человек обязан узнать.
+/// The name of the installed extension PLUS what the person must learn about.
 ///
-/// Установка прошла, но часть необязательных шагов могла быть пропущена
-/// (нет конвертера, нечем измерить обои). Молчать об этом нельзя: покупатель
-/// решит, что программа так и работает, или что тема плохая. Строка
-/// состояния переносится по словам, поэтому каждое предупреждение идёт своей
-/// строкой. Предупреждений нет — возвращается одно имя, и вид сообщения не
-/// меняется ни на символ.
+/// The installation went through, but some optional steps may have been skipped
+/// (no converter, nothing to measure the wallpapers with). Keeping silent about
+/// it is not allowed: the buyer would decide that the program just works this
+/// way, or that the theme is bad. The status line wraps by words, so each
+/// warning goes on its own line. If there are no warnings, only the name is
+/// returned, and the message does not change by a single character.
 pub fn installed_with_notes(name: &str, notes: &[String]) -> String {
     crate::importers::with_skipped_notes(name, notes)
 }
@@ -576,19 +583,19 @@ pub fn status_toggle_error(msg: &str) -> String {
 }
 
 // ============================================================================
-// Подтверждения
+// Confirmations
 // ============================================================================
 
 pub fn confirm_title() -> String {
     tr("Remove Extension?")
 }
 
-/// Подтверждение удаления с витрины: коротко, без подробностей.
+/// Removal confirmation from the storefront: short, without details.
 pub fn confirm_uninstall(name: &str) -> String {
     trf("Remove “%1”?", &[&name])
 }
 
-/// Подтверждение удаления из подробного разбора: с указанием каталога.
+/// Removal confirmation from the detailed view: with the directory named.
 pub fn confirm_uninstall_detailed(name: &str, dir: &str) -> String {
     trf(
         "Remove “%1”?\n\nThe files in %2 will be deleted permanently.",
@@ -597,14 +604,15 @@ pub fn confirm_uninstall_detailed(name: &str, dir: &str) -> String {
 }
 
 // ============================================================================
-// Экранирование
+// Escaping
 // ============================================================================
 
-/// Экранировать текст для вставки в подпись с разметкой.
+/// Escape text for insertion into a label with markup.
 ///
-/// Починка №1: оригинал подставлял имя, автора, описание, теги и README в
-/// HTML как есть. Расширение с `<` в описании ломало подпись, а README с
-/// угловыми скобками терял на витрине куски текста.
+/// Fix No. 1: the original substituted the name, author, description, tags and
+/// README into HTML as is. An extension with `<` in its description broke the
+/// label, and a README with angle brackets lost pieces of text in the
+/// storefront.
 pub fn escape_html(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
@@ -621,24 +629,24 @@ pub fn escape_html(text: &str) -> String {
 }
 
 // ============================================================================
-// Плоский разбор расширения
+// Flat view of an extension
 // ============================================================================
 
-/// Расширение, разложенное по полям, которые нужны витрине.
+/// An extension broken down into the fields the storefront needs.
 ///
-/// В ядре [`Extension`] — это каталог, манифест и флаг включения; всё
-/// остальное достаётся из манифеста запросами. Витрине нужен плоский набор,
-/// причём ровно тот же, что видел Python (`get_info`), поэтому собирается он
-/// из `get_info()`, а не вторым разбором манифеста.
+/// In the core an [`Extension`] is a directory, a manifest and an enabled flag;
+/// everything else is obtained from the manifest by queries. The storefront
+/// needs a flat set, and exactly the same one Python saw (`get_info`), so it is
+/// built from `get_info()` rather than by a second parse of the manifest.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct ExtView {
     pub ext_id: String,
     pub name: String,
     pub version: String,
     pub author: String,
-    /// Автор указан в манифесте. ПРИЗНАК, а не сравнение с подписью: раньше
-    /// «автор неизвестен» узнавался по тексту «Неизвестно», который с
-    /// переводом у каждого языка свой.
+    /// The author is specified in the manifest. A FLAG, not a comparison with a
+    /// label: previously "author unknown" was recognized by the text «Неизвестно»
+    /// ("Unknown"), which differs in every language once translated.
     pub author_known: bool,
     pub description: String,
     pub ext_type: String,
@@ -678,8 +686,8 @@ fn map_list(info: &Map<String, Value>, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Значение манифеста как строка «для показа»: строки как есть, числа без
-/// кавычек, отсутствующее — пустая строка.
+/// A manifest value as a string "for display": strings as is, numbers without
+/// quotes, a missing one — an empty string.
 fn manifest_display(manifest: &Map<String, Value>, key: &str) -> String {
     match manifest.get(key) {
         None | Some(Value::Null) => String::new(),
@@ -691,12 +699,12 @@ fn manifest_display(manifest: &Map<String, Value>, key: &str) -> String {
 }
 
 impl ExtView {
-    /// Разложить ядровое расширение по полям витрины.
+    /// Break a core extension down into storefront fields.
     pub fn from_extension(ext: &Extension) -> Self {
         let info = ext.get_info();
         let manifest = &ext.manifest;
-        // Оригинал спрашивал сначала `rexon_min_version`, потом
-        // `min_rexon_version` — оба имени встречались в чужих манифестах.
+        // The original first asked for `rexon_min_version`, then for
+        // `min_rexon_version` — both names occurred in foreign manifests.
         let mut rexon_min = manifest_display(manifest, "rexon_min_version");
         if rexon_min.is_empty() {
             rexon_min = manifest_display(manifest, "min_rexon_version");
@@ -728,17 +736,17 @@ impl ExtView {
         }
     }
 
-    /// Показывать ли автора: пустой и не указанный не сообщают ничего.
+    /// Whether to show the author: an empty or unspecified one tells nothing.
     pub fn has_author(&self) -> bool {
         self.author_known && !self.author.is_empty()
     }
 
-    /// Есть ли выключатель (скриптовый тип).
+    /// Whether there is a toggle (a scripted type).
     pub fn toggleable(&self) -> bool {
         is_toggleable(&self.ext_type)
     }
 
-    /// Картинка карточки: превью, иначе иконка, иначе ничего.
+    /// The card picture: the preview, otherwise the icon, otherwise nothing.
     pub fn card_image(&self) -> &str {
         if !self.preview_path.is_empty() {
             &self.preview_path
@@ -747,11 +755,11 @@ impl ExtView {
         }
     }
 
-    /// Совпадает ли расширение с поисковым запросом.
+    /// Whether the extension matches the search query.
     ///
-    /// Запрос уже приведён к нижнему регистру и обрезан по краям вызывающим
-    /// (см. [`normalize_query`]). Ищем по названию, автору, описанию и тегам
-    /// — ровно тот же набор полей, что и в оригинале.
+    /// The query has already been lower-cased and trimmed at the edges by the caller
+    /// (see [`normalize_query`]). We search by name, author, description and tags —
+    /// exactly the same set of fields as in the original.
     pub fn matches(&self, query: &str) -> bool {
         if query.is_empty() {
             return true;
@@ -766,12 +774,12 @@ impl ExtView {
     }
 }
 
-/// Привести поисковый запрос к виду, в котором его сравнивают.
+/// Bring a search query to the form in which it is compared.
 pub fn normalize_query(text: &str) -> String {
     text.trim().to_lowercase()
 }
 
-/// Отобрать расширения по типу и запросу — порядок исходного списка.
+/// Select extensions by type and query — in the order of the source list.
 pub fn apply_filters<'a>(exts: &'a [ExtView], filter_type: &str, query: &str) -> Vec<&'a ExtView> {
     let q = normalize_query(query);
     exts.iter()
@@ -781,22 +789,22 @@ pub fn apply_filters<'a>(exts: &'a [ExtView], filter_type: &str, query: &str) ->
 }
 
 // ============================================================================
-// Карточка
+// Card
 // ============================================================================
 
-/// Содержимое плитки расширения.
+/// Contents of an extension tile.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Card {
-    /// Путь к картинке (пусто — рисуем значок типа).
+    /// Path to the picture (empty — we draw the type icon).
     pub image: String,
-    /// Значок-заглушка, если картинки нет.
+    /// Placeholder icon if there is no picture.
     pub placeholder: String,
-    /// «значок Тип · vВерсия».
+    /// "icon Type · vVersion".
     pub type_line: String,
     pub name: String,
-    /// Полное имя в подсказке: подпись может быть обрезана многоточием.
+    /// The full name in the tooltip: the label may be truncated with an ellipsis.
     pub name_tooltip: String,
-    /// «👤 Автор» либо пусто.
+    /// "👤 Author" or empty.
     pub author_line: String,
     pub has_toggle: bool,
     pub state_text: String,
@@ -804,7 +812,7 @@ pub struct Card {
     pub toggle_text: String,
 }
 
-/// Собрать плитку.
+/// Build the tile.
 pub fn card(ext: &ExtView) -> Card {
     Card {
         image: ext.card_image().to_string(),
@@ -840,16 +848,16 @@ pub fn card(ext: &ExtView) -> Card {
 }
 
 // ============================================================================
-// Строка режима «список»
+// A row of the "list" mode
 // ============================================================================
 
-/// Компактная строка расширения.
+/// A compact extension row.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ListRow {
     pub icon: String,
-    /// «<b>Имя</b>  <small>vВерсия</small>».
+    /// "<b>Name</b>  <small>vVersion</small>".
     pub title_html: String,
-    /// «Тип  ·  👤 Автор» либо пусто.
+    /// "Type  ·  👤 Author" or empty.
     pub subtitle: String,
     pub has_toggle: bool,
     pub toggle_icon: String,
@@ -883,22 +891,22 @@ pub fn list_row(ext: &ExtView) -> ListRow {
     }
 }
 
-/// Группа режима «список»: заголовок типа и номера строк внутри.
+/// A group of the "list" mode: the type heading and the row numbers inside it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ListGroup {
     pub ext_type: String,
-    /// «<b>значок Подпись (N)</b>».
+    /// "<b>icon Label (N)</b>".
     pub header_html: String,
-    /// Номера в переданном списке — порядок внутри группы сохраняется.
+    /// Numbers in the passed list — the order within the group is preserved.
     pub rows: Vec<usize>,
 }
 
-/// Разложить расширения по типам в порядке таблицы подписей.
+/// Break extensions down by type in the order of the label table.
 ///
-/// Типы, которых в таблице нет, уходят в конец — как `index(t) if t in
-/// type_order else 99` у оригинала, но без его потолка: с 35 типами в
-/// таблице «99» просто совпало с «в конец», а на большем числе типов
-/// сортировка молча перемешала бы хвост.
+/// Types missing from the table go to the end — like the original's
+/// `index(t) if t in type_order else 99`, but without its ceiling: with 35
+/// types in the table "99" just happened to coincide with "at the end", while
+/// with more types the sorting would silently shuffle the tail.
 pub fn list_groups(exts: &[&ExtView]) -> Vec<ListGroup> {
     let order: Vec<&str> = constants::type_labels_ordered()
         .iter()
@@ -939,7 +947,7 @@ pub fn list_groups(exts: &[&ExtView]) -> Vec<ListGroup> {
 }
 
 // ============================================================================
-// Подробный разбор расширения
+// Detailed view of an extension
 // ============================================================================
 
 pub const DETAIL_MIN_SIZE: (u32, u32) = (680, 540);
@@ -951,7 +959,8 @@ pub fn detail_fallback_title() -> String {
 pub fn detail_open_folder_text() -> String {
     tr("📁 Open Folder")
 }
-/// Подпись та же, что на плитке: второй копии текста здесь быть не должно.
+/// The label is the same as on the tile: there must be no second copy of the
+/// text here.
 pub fn detail_uninstall_text() -> String {
     uninstall_text()
 }
@@ -961,75 +970,79 @@ pub fn detail_close_text() -> String {
 pub fn detail_no_description() -> String {
     tr("<i>No description</i>")
 }
-/// Сколько тегов показываем: длинный хвост распирал окно.
+/// How many tags we show: a long tail stretched the window.
 pub const DETAIL_TAGS_LIMIT: usize = 20;
 
-// ── Раскладка обоих модальных окон вкладки ─────────────────────────────
+// ── Layout of both modal windows of the tab ─────────────────────────────
 //
-// Разбор и справка «Создать своё» — окна одного покроя: поле 16, заголовок,
-// прокручиваемое тело, ряд кнопок внизу. Числа те же, какими набраны
-// компоновки виджетных окон; QML-разметка своих не заводит и берёт их
-// картой `styles` ключом `dialog`.
+// The detailed view and the "Create your own" help are windows of the same cut:
+// a margin of 16, a title, a scrollable body, a row of buttons at the bottom.
+// The numbers are the same as in the layouts of the widget windows; the QML
+// markup does not create its own and takes them from the `styles` map under the
+// `dialog` key.
 
-/// Поле вокруг содержимого обоих окон (`setContentsMargins(16, 16, 16, 16)`).
+/// Margin around the contents of both windows (`setContentsMargins(16, 16, 16, 16)`).
 pub const DIALOG_MARGIN: i32 = 16;
-/// Шаг между блоками подробного разбора (`layout.setSpacing(10)`).
+/// Spacing between the blocks of the detailed view (`layout.setSpacing(10)`).
 pub const DETAIL_SPACING: i32 = 10;
-/// Шаг между блоками справки: своего она не задаёт вовсе и работает на шаге
-/// компоновки по умолчанию — 6 точек (замерено на живом окне под скином).
+/// Spacing between the blocks of the help: it sets none of its own and works on
+/// the layout's default spacing — 6 points (measured on a live window under the
+/// skin).
 pub const CREATE_SPACING: i32 = 6;
-/// Отступ технической строки разбора сверху и снизу (`padding: 4px 0`).
+/// Top and bottom padding of the detailed view's technical line (`padding: 4px 0`).
 pub const DETAIL_TECH_PADDING_V: i32 = 4;
-/// Прозрачность заливки кнопки «🗑 Удалить» В РАЗБОРЕ. У неё своя, гуще
-/// плиточной: 0,25 против [`DANGER_FILL_ALPHA`] = 0,2. Под курсором обе
-/// приходят к 0,4 ([`DANGER_FILL_HOVER_ALPHA`]).
+/// Fill opacity of the "🗑 Remove" button IN THE DETAILED VIEW. It has its own,
+/// denser than the tile's: 0.25 versus [`DANGER_FILL_ALPHA`] = 0.2. Under the
+/// cursor both reach 0.4 ([`DANGER_FILL_HOVER_ALPHA`]).
 pub const DETAIL_DANGER_FILL_ALPHA: f64 = 0.25;
 
-/// Область описания (README, справка): рамка, скругление и внутреннее поле.
+/// The description area (README, help): border, rounding and inner padding.
 ///
-/// У виджетных окон это `QTextBrowser` — рамка в две точки от стиля,
-/// скругление угла около трёх (замерено по снимку) и поле документа 4.
-/// Фон области — роль `Base` палитры скина (`bg_secondary`), то есть НЕ фон
-/// окна: без него текст висит прямо на подложке окна и рамки области не
-/// видно вовсе.
+/// In the widget windows this is a `QTextBrowser` — a two-point border from the
+/// style, a corner rounding of about three (measured from a screenshot) and a
+/// document margin of 4. The area's background is the `Base` role of the skin
+/// palette (`bg_secondary`), i.e. NOT the window background: without it the
+/// text hangs right on the window background and the area's border cannot be
+/// seen at all.
 pub const BODY_BORDER_WIDTH: i32 = 1;
 pub const BODY_RADIUS: i32 = 3;
 pub const BODY_PADDING: i32 = 4;
-/// Ниже этого область описания не сжимается — `minimumSizeHint`
-/// `QTextBrowser` под скином продукта (замер: 83×83).
+/// The description area does not shrink below this — the `minimumSizeHint` of a
+/// `QTextBrowser` under the product skin (measured: 83×83).
 ///
-/// Число здесь НЕ ради красоты: на окне, ужатом до минимума, компоновка
-/// делит нехватку места по этой границе. У виджетного окна описание
-/// остаётся читаемым, а превью уступает; без границы вся нехватка падала на
-/// описание, и оно схлопывалось в полоску (замер снимком 04.09.2026:
-/// 21 точка против 85 у виджетов).
+/// This number is NOT for beauty: in a window shrunk to the minimum, the layout
+/// distributes the lack of space along this boundary. In the widget window the
+/// description stays readable while the preview gives way; without the boundary
+/// the whole shortage fell on the description, and it collapsed into a strip
+/// (measured from a screenshot on 04.09.2026: 21 points versus 85 in the
+/// widgets).
 pub const BODY_MIN_HEIGHT: i32 = 83;
 
-/// Подробный разбор одного расширения.
+/// Detailed view of one extension.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Detail {
-    /// Заголовок окна.
+    /// Window title.
     pub window_title: String,
-    /// «<b>значок Имя</b>».
+    /// "<b>icon Name</b>".
     pub heading_html: String,
-    /// «📦 Тип · vВерсия · 👤 Автор · 🖥 столы».
+    /// "📦 Type · vVersion · 👤 Author · 🖥 desktops".
     pub meta_line: String,
-    /// Картинка превью (пусто — не показываем).
+    /// Preview picture (empty — not shown).
     pub preview: String,
-    /// README, описание либо «Нет описания» — уже разметкой.
+    /// README, description or "No description" — already as markup.
     pub body_html: String,
-    /// «#тег #тег» либо пусто.
+    /// "#tag #tag" or empty.
     pub tags_line: String,
-    /// Технические сведения одной строкой разметки.
+    /// Technical information as one line of markup.
     pub tech_html: String,
-    /// «📁 путь» с домашним каталогом, свёрнутым в `~`.
+    /// "📁 path" with the home directory collapsed to `~`.
     pub path_html: String,
-    /// Каталог расширения — для кнопки «Открыть папку».
+    /// The extension directory — for the "Open folder" button.
     pub dir: String,
     pub ext_id: String,
 }
 
-/// Свернуть домашний каталог в `~`, как показывал оригинал.
+/// Collapse the home directory to `~`, as the original showed it.
 pub fn shorten_home(path: &str, home: &str) -> String {
     if home.is_empty() {
         return path.to_string();
@@ -1037,7 +1050,7 @@ pub fn shorten_home(path: &str, home: &str) -> String {
     path.replace(home, "~")
 }
 
-/// Собрать подробный разбор. `readme` — уже прочитанный текст либо `None`.
+/// Build the detailed view. `readme` — the already read text or `None`.
 pub fn detail(ext: &ExtView, readme: Option<&str>, home: &str) -> Detail {
     let mut meta = vec![
         format!("📦 {}", ext.type_label),
@@ -1051,7 +1064,7 @@ pub fn detail(ext: &ExtView, readme: Option<&str>, home: &str) -> Detail {
     }
 
     let body_html = match readme {
-        // Переносимый <pre>: строки README длиннее окна иначе обрезались.
+        // A wrapping <pre>: otherwise README lines longer than the window were cut off.
         Some(text) if !text.is_empty() => crate::ui_base::dialog_pre(&escape_html(text)),
         _ if !ext.description.is_empty() => {
             format!("<p>{}</p>", escape_html(&ext.description))
@@ -1070,9 +1083,10 @@ pub fn detail(ext: &ExtView, readme: Option<&str>, home: &str) -> Detail {
             .join("  ")
     };
 
-    // Служебный номер пакета и версия формата `.rxn` сюда не идут: человеку
-    // они ни о чём не говорят, а «Формат: v3» читался как версия самой темы
-    // (вопрос Wehrwolfmann 10.10.2026). Версия темы — в строке под названием.
+    // The internal package number and the `.rxn` format version do not go here:
+    // they say nothing to a person, and "Format: v3" read as the version of the
+    // theme itself (Wehrwolfmann's question of 10.10.2026). The theme version is
+    // in the line under the title.
     let mut tech: Vec<String> = Vec::new();
     if !ext.rexon_min_version.is_empty() {
         tech.push(trf(
@@ -1114,7 +1128,7 @@ pub fn detail(ext: &ExtView, readme: Option<&str>, home: &str) -> Detail {
 }
 
 // ============================================================================
-// Справка «Создать своё»
+// The "Create your own" help
 // ============================================================================
 
 pub fn create_title() -> String {
@@ -1128,16 +1142,16 @@ pub fn create_close_text() -> String {
     tr("Close")
 }
 
-/// Справка по сборке своего расширения — та же, что показывала виджетная
-/// вкладка. Разметку держит ядро: это продуктовый текст, а не оформление.
+/// Help on building your own extension — the same one the widget tab showed.
+/// The core holds the markup: it is product text, not styling.
 pub fn create_body_html() -> String {
     // TRANSLATORS: help page in HTML. Keep the tags, the file names, the
     // JSON keys and the type names (theme-gtk, plugin…) as they are;
     // translate the prose and the sample values of "name", "author" and
     // "description". The <pre> blocks stay left-to-right in every language,
     // so keep their arrows ← as they are.
-    // Без ведущего перевода строки: xgettext срезает его у msgid, и
-    // строка в коде разошлась бы с ключом каталога.
+    // No leading line break: xgettext strips it from the msgid, and the
+    // string in the code would diverge from the catalog key.
     let body = tr(r#"<p>A Rexon extension is a plain <b>ZIP archive</b> with the <code>.rxn</code> extension.
 Every type has the same layout:</p>
 
@@ -1201,48 +1215,49 @@ zip -r ../my-extension.rxn .
 <p>In the Rexon sources: <code>extensions/constants.py</code> has the full list
 of types and install paths.</p>
 "#);
-    // Дерево архива, JSON и команды — слева направо при любом языке.
+    // The archive tree, JSON and commands — left to right in any language.
     crate::ui_base::pre_left_to_right(&body)
 }
 
 // ============================================================================
-// Живой диск: где лежат расширения и что там стоит
+// The live disk: where extensions lie and what is installed there
 // ============================================================================
 
-// Где лежат расширения, решает ЕДИНАЯ точка ядра
-// ([`crate::utils::rexon_config_dir`]), а не своя склейка `~/.config`: она
-// стоила бы витрине содержимого. Исполнитель (`rexon/extensions/manager.py`)
-// считает свой путь через `utils.expand_user`, то есть С УЧЁТОМ
-// `$XDG_CONFIG_HOME`, — и на машине с нестандартным корнем конфигов
-// установка шла в один каталог, а витрина читала другой и оставалась
-// пустой (правило #12).
+// Where extensions lie is decided by the SINGLE point of the core
+// ([`crate::utils::rexon_config_dir`]), not by a custom gluing of `~/.config`:
+// that would cost the storefront its contents. The executor
+// (`rexon/extensions/manager.py`) computes its path via `utils.expand_user`,
+// i.e. HONORING `$XDG_CONFIG_HOME` — and on a machine with a non-standard
+// config root the installation went into one directory while the storefront
+// read another and stayed empty (rule #12).
 
-/// `$XDG_CONFIG_HOME/rexon/extensions` — тот же каталог, что у Python-менеджера.
+/// `$XDG_CONFIG_HOME/rexon/extensions` — the same directory as the Python manager's.
 pub fn extensions_dir() -> PathBuf {
     crate::utils::rexon_config_dir().join("extensions")
 }
 
-/// `$XDG_CONFIG_HOME/rexon/extensions_state.json` — карта «включено ли».
+/// `$XDG_CONFIG_HOME/rexon/extensions_state.json` — the "is it enabled" map.
 pub fn state_file() -> PathBuf {
     crate::utils::rexon_config_dir().join("extensions_state.json")
 }
 
-/// Прочитать карту состояний с диска (отсутствие файла — пустая карта).
+/// Read the state map from disk (a missing file — an empty map).
 pub fn load_state() -> Map<String, Value> {
     let text = std::fs::read_to_string(state_file()).ok();
     ext_manager::load_state(text.as_deref())
 }
 
-/// Прочитать установленные расширения С ДИСКА.
+/// Read the installed extensions FROM DISK.
 ///
-/// Сестра [`ext_manager::discover`] для живой файловой системы — так же, как
-/// [`Extension::load_from_dir`] приходится сестрой `from_manifest`. Семантика
-/// та же: каталог с разбираемым `manifest.json`, дубли по `id`
-/// перезаписываются последним, порядок — порядок первого появления `id`.
+/// The sibling of [`ext_manager::discover`] for the live file system — just as
+/// [`Extension::load_from_dir`] is a sibling of `from_manifest`. The semantics
+/// are the same: a directory with a parsable `manifest.json`, duplicates by `id`
+/// are overwritten by the last one, the order is the order of the first
+/// appearance of the `id`.
 ///
-/// ⚠️ Имена каталогов сортируются: `read_dir` отдаёт их в порядке файловой
-/// системы, а `os.scandir` у Python — в своём. Без сортировки витрина
-/// меняла бы порядок карточек от машины к машине.
+/// Warning: the directory names are sorted: `read_dir` returns them in file
+/// system order, and Python's `os.scandir` in its own. Without sorting the
+/// storefront would change the order of cards from machine to machine.
 pub fn installed_in(dir: &Path, state: &Map<String, Value>) -> Vec<Extension> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -1275,15 +1290,15 @@ pub fn installed_in(dir: &Path, state: &Map<String, Value>) -> Vec<Extension> {
         .collect()
 }
 
-/// Установленные расширения из штатного каталога, уже разложенные по полям.
+/// Installed extensions from the standard directory, already broken down into fields.
 pub fn installed() -> Vec<ExtView> {
     let state = load_state();
     installed_in(&extensions_dir(), &state)
         .iter()
         .map(|ext| {
             let mut view = ExtView::from_extension(ext);
-            // У дополнения окружения «включено» — правда окружения, а не
-            // отметка Rexon: человек мог переключить его в настройках стола.
+            // For an environment add-on "enabled" is the environment's truth, not a
+            // Rexon mark: the person may have toggled it in the desktop's settings.
             if !crate::ext_exec::de_addon_objects(ext).is_empty() {
                 view.enabled = crate::ext_exec::de_addon_enabled(ext);
             }
@@ -1292,9 +1307,9 @@ pub fn installed() -> Vec<ExtView> {
         .collect()
 }
 
-/// Прочитать README расширения (для подробного разбора).
+/// Read the extension's README (for the detailed view).
 ///
-/// В ядре был только путь (`readme_path`), а сам текст читал Python.
+/// The core had only the path (`readme_path`), and Python read the text itself.
 pub fn read_readme(ext: &ExtView) -> Option<String> {
     if ext.readme_path.is_empty() {
         return None;
@@ -1302,7 +1317,7 @@ pub fn read_readme(ext: &ExtView) -> Option<String> {
     std::fs::read_to_string(&ext.readme_path).ok()
 }
 
-/// Статистика по разложенным расширениям — счёт один на продукт.
+/// Statistics over the broken-down extensions — a single count for the product.
 pub fn stats(exts: &[ExtView]) -> Map<String, Value> {
     let pairs: Vec<(String, bool)> = exts
         .iter()
@@ -1311,7 +1326,7 @@ pub fn stats(exts: &[ExtView]) -> Map<String, Value> {
     ext_manager::stats(&pairs)
 }
 
-/// Типы, которые реально стоят — вход для [`filter_items`].
+/// The types that are actually installed — the input of [`filter_items`].
 pub fn installed_types(exts: &[ExtView]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for e in exts {

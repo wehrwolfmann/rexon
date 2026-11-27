@@ -1,34 +1,35 @@
-// Сторож моста «значок в лотке ↔ главное окно».
+// Guard of the «tray icon ↔ main window» bridge.
 //
-// ЧТО ИМЕННО ОХРАНЯЕТСЯ. Значок, флаг `--tray`, «крестик прячет окно» и
-// «второй запуск поднимает окно первого» держались на трёх допущениях шима
-// (`rust/rexon-gui/cpp/rexon_tray.cpp`), и все три были неверны для процесса
-// с окном на QML:
+// WHAT EXACTLY IS GUARDED. The icon, the `--tray` flag, «the close button
+// hides the window» and «a second launch raises the first one's window»
+// rested on three assumptions of the shim
+// (`rust/rexon-gui/cpp/rexon_tray.cpp`), and all three were wrong for a
+// process with a QML window:
 //
-//   1. главное окно — QWidget, его дают `QApplication::topLevelWidgets()`;
-//   2. «объект приложения есть» = «QApplication есть» (а виджеты Qt без
-//      QApplication не создаёт вовсе и гасит процесс);
-//   3. окно трогают только из потока GUI, поэтому подъём окна слушателем
-//      второго запуска невозможен в принципе.
+//   1. the main window is a QWidget, given by `QApplication::topLevelWidgets()`;
+//   2. «an application object exists» = «a QApplication exists» (and Qt does
+//      not create widgets at all without a QApplication and kills the process);
+//   3. the window is touched only from the GUI thread, so raising the window
+//      from the second-launch listener is impossible in principle.
 //
-// Проверять это прогоном нельзя: ядро собирается без Qt, а живой лоток и
-// живое окно есть только на экране (там их проверяет стенд
-// `rexon-tray-probe`). Здесь сторож читает ИСХОДНИК шима и кусается, если
-// любое из трёх допущений вернётся — молча и незаметно, как оно и жило.
+// This cannot be checked by a run: the core builds without Qt, and a live
+// tray and a live window exist only on screen (there the `rexon-tray-probe`
+// stand checks them). Here the guard reads the shim SOURCE and bites if any
+// of the three assumptions returns — silently and unnoticed, as it lived.
 //
-// ⚠️ ПРОВЕРКА НА УКУС у самого сторожа — сделана, а не обещана. Каждый раз
-// правка вносилась в дерево, сторож обязан был покраснеть, после чего правка
-// откатывалась:
-//   • `topLevelWindows` → `topLevelWidgets` в шиме — покраснел;
-//   • `use cxx_qt_lib_extras as _;` в rexon-gui/src/lib.rs закомментирован —
-//     покраснел;
-//   • `drop(engine)` перед выходом закомментирован — покраснел;
-//   • `QApplication::new()` → `QGuiApplication::new()` в главном окне —
-//     покраснел.
-// Первая же попытка сторожа была ЛОЖНО зелёной: проверки стояли на
-// `contains` по всему файлу, а закомментированная строка подстроку содержит
-// — сторож ловил только удаление, но не отключение кода. Отсюда
-// `has_live_line` ниже.
+// ⚠️ The BITE TEST of the guard itself was done, not promised. Each time a
+// change was made in the tree, the guard had to go red, after which the
+// change was reverted:
+//   • `topLevelWindows` → `topLevelWidgets` in the shim — went red;
+//   • `use cxx_qt_lib_extras as _;` in rexon-gui/src/lib.rs commented out —
+//     went red;
+//   • `drop(engine)` before exit commented out — went red;
+//   • `QApplication::new()` → `QGuiApplication::new()` in the main window —
+//     went red.
+// The guard's very first attempt was FALSELY green: the checks used
+// `contains` over the whole file, and a commented-out line contains the
+// substring — the guard caught only removal, not disabling of code. Hence
+// `has_live_line` below.
 
 use std::path::{Path, PathBuf};
 
@@ -39,12 +40,12 @@ fn repo_root() -> PathBuf {
         .expect("не нашёл корень репозитория")
 }
 
-/// Есть ли в тексте ЖИВАЯ строка, начинающаяся с этого куска.
+/// Whether the text has a LIVE line starting with this piece.
 ///
-/// Построчно и с отсечкой комментария нарочно: `contains` по всему файлу
-/// зеленел и на закомментированной строке — сторож с такой проверкой ловил
-/// только удаление кода, а не его отключение, то есть самый частый способ
-/// «на минутку выключу и забуду».
+/// Line by line and with the comment cut off on purpose: `contains` over the
+/// whole file went green on a commented-out line too — a guard with such a
+/// check caught only code removal, not its disabling, i.e. the most common
+/// way of «I'll turn it off for a minute and forget».
 fn has_live_line(text: &str, needle: &str) -> bool {
     text.lines()
         .map(str::trim_start)
@@ -58,7 +59,7 @@ fn shim_source() -> String {
         .unwrap_or_else(|e| panic!("не прочитал шим значка ({}): {e}", path.display()))
 }
 
-/// Окно на QML шим обязан искать среди окон, а не среди виджетов.
+/// The shim must look for a QML window among windows, not among widgets.
 #[test]
 fn шим_ищет_окно_среди_окон_а_не_только_виджетов() {
     let src = shim_source();
@@ -72,15 +73,15 @@ fn шим_ищет_окно_среди_окон_а_не_только_видже�
         src.contains("QPointer<QWindow> g_qwindow"),
         "шим не держит найденное окно на QML"
     );
-    // Всплывающие окна отсеиваются: без этого крестиком однажды спрячется
-    // выпадающий список вместо главного окна.
+    // Popup windows are filtered out: without this, the close button would one
+    // day hide a drop-down list instead of the main window.
     assert!(
         src.contains("Qt::Popup") && src.contains("transientParent"),
         "шим перестал отсеивать всплывающие окна при поиске главного"
     );
 }
 
-/// Виджетный путь обязан спрашивать НАСТОЯЩИЙ QApplication.
+/// The widget path must ask the REAL QApplication.
 #[test]
 fn шим_не_создаёт_виджеты_без_qapplication() {
     let src = shim_source();
@@ -96,7 +97,7 @@ fn шим_не_создаёт_виджеты_без_qapplication() {
     );
 }
 
-/// Двери окна обязаны переноситься в поток GUI сами.
+/// The window's doors must move into the GUI thread by themselves.
 #[test]
 fn двери_окна_переносятся_в_поток_gui() {
     let src = shim_source();
@@ -122,8 +123,8 @@ fn двери_окна_переносятся_в_поток_gui() {
     }
 }
 
-/// QApplication на Rust берётся из cxx-qt-lib-extras — без этой зависимости
-/// у бинаря главного окна значка быть не может.
+/// QApplication in Rust comes from cxx-qt-lib-extras — without this dependency
+/// the main window binary cannot have an icon.
 #[test]
 fn крейт_gui_объявляет_qapplication_на_rust() {
     let path = repo_root().join("rust/rexon-gui/Cargo.toml");
@@ -135,8 +136,8 @@ fn крейт_gui_объявляет_qapplication_на_rust() {
     );
 }
 
-/// Ссылка на крейт QApplication в корне rexon-gui — та строка, без которой
-/// не линкуется ВЕСЬ пакет, включая чужие бинари.
+/// The reference to the QApplication crate in the rexon-gui root — the line
+/// without which the WHOLE package fails to link, including other binaries.
 #[test]
 fn крейт_gui_ссылается_на_qapplication_из_кода() {
     let path = repo_root().join("rust/rexon-gui/src/lib.rs");
@@ -152,7 +153,7 @@ fn крейт_gui_ссылается_на_qapplication_из_кода() {
     );
 }
 
-/// Главное окно обязано строить QApplication и снимать сцену до выхода.
+/// The main window must build a QApplication and tear down the scene before exit.
 #[test]
 fn главное_окно_строит_qapplication_и_снимает_сцену() {
     let path = repo_root().join("rust/rexon-gui/src/bin/main_window.rs");
@@ -162,7 +163,7 @@ fn главное_окно_строит_qapplication_и_снимает_сцен�
         "главное окно снова строит QGuiApplication — значка в лотке у него \
          тогда нет вовсе (QMenu без QApplication не создаётся)"
     );
-    // Роспуск обязан стоять ДО выхода из процесса, а не «где-нибудь в файле».
+    // The teardown must come BEFORE the process exits, not «somewhere in the file».
     let lines: Vec<&str> = src.lines().map(str::trim_start).collect();
     let live = |needle: &str| {
         lines
@@ -187,7 +188,7 @@ fn главное_окно_строит_qapplication_и_снимает_сцен�
     );
 }
 
-/// Раздел из меню значка переключается и у окна на QML.
+/// A section from the icon menu switches in the QML window too.
 #[test]
 fn переход_к_разделу_умеет_полосу_на_qml() {
     let src = shim_source();

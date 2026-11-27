@@ -1,28 +1,29 @@
-//! Модели данных каталога оформления — порт `rexon/appearance/models.py`.
+//! Data models of the appearance catalog — port of `rexon/appearance/models.py`.
 //!
-//! `ThemeItem`     — один элемент контента OCS (тема/иконки/курсор/…).
-//! `ThemeCategory` — категория каталога (cat_id, путь установки, apply-команда).
+//! `ThemeItem`     — one OCS content item (theme/icons/cursor/…).
+//! `ThemeCategory` — a catalog category (cat_id, install path, apply command).
 //!
-//! Порядок полей `ThemeItem` совпадает с объявлением dataclass — от него
-//! зависит порядок ключей в `favorites.json` (`dataclasses.asdict`), поэтому
-//! он load-bearing и сверяется побайтово (golden-тест `models_parity.rs`).
+//! The field order of `ThemeItem` matches the dataclass declaration — the key
+//! order in `favorites.json` (`dataclasses.asdict`) depends on it, so it is
+//! load-bearing and checked byte for byte (golden test `models_parity.rs`).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Один элемент контента из OCS API.
+/// One content item from the OCS API.
 ///
-/// Все поля с дефолтами (`#[serde(default)]`): при десериализации отсутствующие
-/// заполняются как в Python-dataclass, а неизвестные ключи serde молча
-/// отбрасывает — точный аналог `ThemeItem(**{k: v ... if k in _FIELDS})`.
+/// All fields have defaults (`#[serde(default)]`): on deserialization missing
+/// ones are filled in as in the Python dataclass, and serde silently drops
+/// unknown keys — an exact analogue of
+/// `ThemeItem(**{k: v ... if k in _FIELDS})`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ThemeItem {
-    /// content_id на store.kde.org
+    /// content_id on store.kde.org
     pub id: String,
     pub name: String,
     pub description: String,
-    /// перевод (argos, после MVP)
+    /// translation (argos, after the MVP)
     pub description_translated: String,
     pub author: String,
     pub license: String,
@@ -30,53 +31,54 @@ pub struct ThemeItem {
     /// 0-100 (OCS score)
     pub rating: i64,
     pub downloads: i64,
-    /// URL большого превью
+    /// URL of the large preview
     pub preview_url: String,
-    /// ВСЕ скриншоты previewpic1..12 (галерея детального вида)
+    /// ALL screenshots previewpic1..12 (gallery of the detail view)
     pub preview_urls: Vec<String>,
-    /// путь к скачанному превью (кеш)
+    /// path to the downloaded preview (cache)
     pub preview_local: String,
-    /// URL для скачивания архива
+    /// URL for downloading the archive
     pub download_url: String,
-    /// имя файла архива
+    /// archive file name
     pub download_name: String,
-    /// размер архива в КиБ — как отдаёт магазин (`downloadsize1`)
+    /// archive size in KiB — as the store reports it (`downloadsize1`)
     pub download_size: i64,
     /// OCS typeid (cat_id)
     pub category_id: i64,
-    /// дата создания (ISO)
+    /// creation date (ISO)
     pub created: String,
-    /// дата обновления (ISO)
+    /// update date (ISO)
     pub updated: String,
-    /// установлен локально?
+    /// installed locally?
     pub installed: bool,
-    /// Применён ли ПРЯМО СЕЙЧАС (совпадает с активной темой своего вида).
-    /// Установка и применение — РАЗНЫЕ состояния: тему можно скачать кнопкой
-    /// «Только скачать» и не включать.
+    /// Whether it is applied RIGHT NOW (matches the active theme of its kind).
+    /// Installed and applied are DIFFERENT states: a theme can be downloaded with
+    /// the "Download only" button and not enabled.
     pub applied: bool,
-    /// путь установки (если installed)
+    /// install path (if installed)
     pub install_path: String,
-    /// Все скачиваемые файлы (для выбора при мульти-архивах)
+    /// All downloadable files (for choosing among multiple archives)
     pub download_links: Vec<Value>,
 
-    /// Рантайм-атрибут `_local_kind` из Python: не сериализуется (аналог
-    /// подчёркнутого поля, которого нет в `dataclasses.fields`). Заполняется
-    /// в `favorites::list_favorite_items` для локальных тем.
+    /// The runtime attribute `_local_kind` from Python: not serialized (the
+    /// analogue of an underscored field that is absent from `dataclasses.fields`).
+    /// Filled in by `favorites::list_favorite_items` for local themes.
     #[serde(skip)]
     pub local_kind: Option<String>,
 
-    /// Имя темы с диска БЕЗ перевода (`Name=` без языка): «High Contrast»
-    /// у карточки «Высококонтрастная». Нужно только поиску — человек ищет и
-    /// по тому, что видит, и по тому, как тему зовут в оригинале. Пусто,
-    /// когда совпадает с показанным именем или темы на диске нет. В файлы не
-    /// пишется (порядок полей `favorites.json` load-bearing), между потоками
-    /// вкладки едет отдельным ключом `sourceName`.
+    /// Name of the theme on disk WITHOUT translation (`Name=` without a language):
+    /// "High Contrast" for the card «Высококонтрастная». Needed only by search — a
+    /// person searches both by what they see and by what the theme is called in
+    /// the original. Empty when it matches the displayed name or there is no theme
+    /// on disk. Not written to files (the field order of `favorites.json` is
+    /// load-bearing); between the tab's threads it travels as a separate
+    /// `sourceName` key.
     #[serde(skip)]
     pub source_name: String,
 }
 
 impl ThemeItem {
-    /// Описание для показа: перевод если есть, иначе оригинал.
+    /// Description for display: the translation if there is one, otherwise the original.
     pub fn display_description(&self) -> &str {
         if self.description_translated.is_empty() {
             &self.description
@@ -85,19 +87,19 @@ impl ThemeItem {
         }
     }
 
-    /// Рейтинг 0-100 → 0.0-5.0 звёзд, как Python `round(rating / 20.0, 1)`.
+    /// Rating 0-100 → 0.0-5.0 stars, like Python's `round(rating / 20.0, 1)`.
     ///
-    /// Python round округляет к ближайшему с привязкой к чётному по ИСТИННОМУ
-    /// значению double (напр. rating=25 → 1.25 → 1.2, а rating=1 → 0.05-как-
-    /// double чуть больше 0.05 → 0.1). Rust `format!("{:.1}", …)` использует ту
-    /// же семантику (round-half-to-even на истинном значении), поэтому
-    /// форматирование с обратным парсингом даёт байт-в-байт те же числа —
-    /// сверено на всех 101 значениях (golden-тест).
+    /// Python's round rounds to nearest with ties to even based on the TRUE value
+    /// of the double (e.g. rating=25 → 1.25 → 1.2, while rating=1 → 0.05, which as
+    /// a double is slightly above 0.05 → 0.1). Rust's `format!("{:.1}", …)` uses
+    /// the same semantics (round-half-to-even on the true value), so formatting
+    /// followed by parsing back gives byte-for-byte the same numbers — checked on
+    /// all 101 values (golden test).
     pub fn rating_stars(&self) -> f64 {
         Self::stars_of(self.rating)
     }
 
-    /// Звёзды, если у товара есть оценка; `None` — голосов нет
+    /// Stars if the product has a rating; `None` — there are no votes
     /// ([`crate::ocs::UNRATED_SCORE`]).
     pub fn rated_stars(&self) -> Option<f64> {
         (self.rating != crate::ocs::UNRATED_SCORE).then(|| self.rating_stars())
@@ -110,43 +112,43 @@ impl ThemeItem {
     }
 }
 
-/// Категория каталога оформления.
+/// A category of the appearance catalog.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ThemeCategory {
-    /// OCS cat_id (0 = виртуальная)
+    /// OCS cat_id (0 = virtual)
     pub id: i64,
-    /// внутренний ключ (popular/new/global/…)
+    /// internal key (popular/new/global/…)
     pub key: String,
-    /// человекочитаемое имя (RU)
+    /// human-readable name (RU)
     pub name: String,
-    /// emoji для сайдбара
+    /// emoji for the sidebar
     pub icon: String,
-    /// путь установки (~ раскрывается)
+    /// install path (~ is expanded)
     pub install_dir: String,
-    /// тип apply (global/plasma/colors/…)
+    /// apply type (global/plasma/colors/…)
     pub apply_kind: String,
-    /// нужен ли pkexec (SDDM/Plymouth)
+    /// whether pkexec is needed (SDDM/Plymouth)
     pub requires_root: bool,
-    /// Виртуальные категории сайдбара (popular/new/active/downloaded/system)
-    /// не имеют своего cat_id и не ходят в сеть.
+    /// Virtual sidebar categories (popular/new/active/downloaded/system) have no
+    /// cat_id of their own and do not go to the network.
     ///
-    /// В Python поле называется `virtual` (зарезервировано в Rust) — при
-    /// сериализации переименовываем обратно, чтобы `asdict`-вывод совпадал
-    /// побайтово (golden-тест `categories_parity.rs`).
+    /// In Python the field is called `virtual` (reserved in Rust) — on
+    /// serialization we rename it back so that the `asdict` output matches byte for
+    /// byte (golden test `categories_parity.rs`).
     #[serde(rename = "virtual")]
     pub virtual_: bool,
-    /// Откуда раздел берёт онлайн-каталог ([`CatalogSource`]). Номер
-    /// раздела (`id`) об этом больше ничего не говорит: у раздела «Рамки
-    /// окон (XFCE)» номер 906 (на нём держатся журнал и избранное), а
-    /// каталог — категория магазина 138.
+    /// Where the section gets its online catalog from ([`CatalogSource`]). The
+    /// section number (`id`) no longer says anything about it: the "Window borders
+    /// (XFCE)" section has number 906 (the journal and favorites rely on it), while
+    /// its catalog is store category 138.
     pub store: CatalogSource,
-    /// Для popular/new — сортировка по умолчанию: new|down|high|alpha
+    /// For popular/new — the default sort: new|down|high|alpha
     pub default_sort: String,
 }
 
 impl ThemeCategory {
-    /// Создать категорию с обязательными полями; остальные — дефолты
-    /// dataclass (пустые пути/флаги, `default_sort = "new"`).
+    /// Create a category with the required fields; the rest are dataclass defaults
+    /// (empty paths/flags, `default_sort = "new"`).
     pub fn new(id: i64, key: &str, name: &str, icon: &str) -> Self {
         Self {
             id,
@@ -162,14 +164,14 @@ impl ThemeCategory {
         }
     }
 
-    /// Раздел без онлайн-каталога: показывает только то, что лежит на диске.
+    /// A section without an online catalog: it shows only what is on disk.
     pub fn local_only(&self) -> bool {
         self.store == CatalogSource::None
     }
 
-    /// Номера категорий магазина OCS, из которых собран каталог раздела
-    /// (несколько — «зонт»: OCS принимает «id1,id2»). Пусто — каталог не
-    /// из OCS или его нет.
+    /// Numbers of the OCS store categories the section's catalog is made of
+    /// (several — an "umbrella": OCS accepts "id1,id2"). Empty — the catalog is not
+    /// from OCS or there is none.
     pub fn ocs_cats(&self) -> &[i64] {
         match &self.store {
             CatalogSource::Ocs(cats) => cats,
@@ -178,28 +180,27 @@ impl ThemeCategory {
     }
 }
 
-/// Источник онлайн-каталога раздела «Оформления».
+/// Source of the online catalog of an "Appearance" section.
 ///
-/// AUR — не источник раздела, а дополнительная полка ВНУТРИ
-/// раздела с каталогом (переключатель «Магазин:»,
-/// `appearance_page::source_keys_for`).
+/// AUR is not a section source but an additional shelf INSIDE a section that
+/// has a catalog (the "Store:" switch, `appearance_page::source_keys_for`).
 ///
-/// Cinnamon Spices есть у пяти разделов Cinnamon (`crate::cinnamon_spices`),
-/// extensions.gnome.org — у раздела «Расширения GNOME» (`crate::gnome_ego`).
-/// ⚠️ cosmic-themes.org пока только назван: клиента у него в странице ещё
-/// нет, и ни один раздел его не получает. Раздел с таким источником
-/// вкладка сочла бы сетевым — заводить его можно только вместе с клиентом.
+/// Cinnamon Spices is used by five Cinnamon sections (`crate::cinnamon_spices`),
+/// extensions.gnome.org by the "GNOME Extensions" section (`crate::gnome_ego`).
+/// Warning: cosmic-themes.org is only named for now: the page has no client for
+/// it yet, and no section gets it. The tab would consider a section with such a
+/// source a network one — it may only be added together with the client.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CatalogSource {
-    /// Каталога нет — только диск.
+    /// No catalog — disk only.
     None,
-    /// Магазин OCS (KDE Store, pling): номера категорий.
+    /// OCS store (KDE Store, pling): category numbers.
     Ocs(Vec<i64>),
-    /// Сборная витрина «Популярные»/«Новые»: ходовые категории OCS этого
-    /// окружения (`categories::aggregate_cats`).
+    /// The combined "Popular"/"New" storefront: the commonly used OCS categories of
+    /// this environment (`categories::aggregate_cats`).
     OcsShowcase,
-    /// Cinnamon Spices (`cinnamon-spices.linuxmint.com`): вид каталога —
+    /// Cinnamon Spices (`cinnamon-spices.linuxmint.com`): the catalog kind —
     /// `themes`, `applets`, `desklets`, `extensions`, `actions`.
     Spices(String),
     /// extensions.gnome.org (`crate::gnome_ego`).
@@ -208,13 +209,14 @@ pub enum CatalogSource {
     CosmicThemes,
 }
 
-/// Сериализация в JSON с отступом в 1 пробел — как Python
-/// `json.dumps(obj, ensure_ascii=False, indent=1)` (формат `favorites.json`).
+/// Serialization to JSON with a 1-space indent — like Python's
+/// `json.dumps(obj, ensure_ascii=False, indent=1)` (the `favorites.json` format).
 ///
-/// serde_json `to_string_pretty` жёстко зашивает 2 пробела, а стор избранного
-/// пишется с `indent=1`, поэтому нужен `PrettyFormatter::with_indent(b" ")`.
-/// Разделитель ключ-значение `": "` и элементов `,\n` у serde совпадают с
-/// Python при заданном indent (кириллица не экранируется — `ensure_ascii=False`).
+/// serde_json's `to_string_pretty` hard-codes 2 spaces, while the favorites
+/// store is written with `indent=1`, so `PrettyFormatter::with_indent(b" ")` is
+/// needed. The key-value separator `": "` and the item separator `,\n` in serde
+/// match Python with an indent set (Cyrillic is not escaped —
+/// `ensure_ascii=False`).
 pub fn to_json_indent1(value: &Value) -> String {
     let mut buf = Vec::new();
     let formatter = serde_json::ser::PrettyFormatter::with_indent(b" ");

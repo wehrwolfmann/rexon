@@ -1,62 +1,63 @@
-//! Порт чистой части `rexon/ui_base.py` — контракт оформления UI.
+//! Port of the pure part of `rexon/ui_base.py` — the UI look contract.
 //!
-//! В Python модуль наполовину состоит из Qt-кода (палитра приложения,
-//! QGraphicsDropShadowEffect, регистрация шрифтов, guard над QMessageBox).
-//! Сюда переехало всё, что от Qt НЕ зависит: таблицы цветов и скинов,
-//! сборка QSS-фрагментов, детект и экранирование rich-text, SVG-галочка
-//! индикаторов. Наблюдения среды (тёмная ли активная тема) приходят
-//! параметром, запись файла галочки остаётся исполнителю.
+//! In Python the module is half Qt code (the application palette,
+//! QGraphicsDropShadowEffect, font registration, a guard over QMessageBox).
+//! Everything that does NOT depend on Qt moved here: color and skin tables,
+//! building QSS fragments, rich-text detection and escaping, the indicator
+//! SVG check mark. Environment observations (whether the active theme is
+//! dark) come in as a parameter, writing the check mark file stays with the
+//! executor.
 //!
-//! Мотивация single-source: скин `steam_dark` — стандарт оформления ВСЕХ
-//! приложений проекта (правило #17), и его палитра не должна расходиться
-//! между Rexon и остальными.
+//! Single-source motivation: the `steam_dark` skin is the look standard of
+//! ALL the project's applications (rule #17), and its palette must not
+//! diverge between Rexon and the others.
 
 use std::collections::BTreeMap;
 
 use crate::i18n::{n_, tr, trf};
 
 // ============================================================================
-// Цвета текста
+// Text colors
 // ============================================================================
 
-/// Основной текст тёмной темы. Только белый: иерархия задаётся весом и
-/// размером шрифта, не цветом (серые/бежевые оттенки сливались с фоном).
+/// Main text of the dark theme. White only: the hierarchy is set by font
+/// weight and size, not color (grey/beige shades blended into the background).
 pub const DARK_PRIMARY: &str = "#ffffff";
-/// Вторичный текст тёмной темы.
+/// Secondary text of the dark theme.
 pub const DARK_SECONDARY: &str = "#ffffff";
-/// Приглушённый текст тёмной темы.
+/// Muted text of the dark theme.
 pub const DARK_MUTED: &str = "#ffffff";
-/// Основной текст светлой темы.
+/// Main text of the light theme.
 pub const LIGHT_PRIMARY: &str = "#1f2326";
-/// Вторичный текст светлой темы.
+/// Secondary text of the light theme.
 pub const LIGHT_SECONDARY: &str = "#3d4147";
-/// Приглушённый текст светлой темы.
+/// Muted text of the light theme.
 pub const LIGHT_MUTED: &str = "#5d6166";
 
-/// Цвет основного текста; `dark` — тёмная ли активная тема (наблюдение
-/// исполнителя: в Python это яркость `palette(Window)`).
+/// Main text color; `dark` — whether the active theme is dark (an executor
+/// observation: in Python it is the brightness of `palette(Window)`).
 pub fn primary_text_color(dark: bool) -> &'static str {
     if dark { DARK_PRIMARY } else { LIGHT_PRIMARY }
 }
 
-/// Цвет вторичного текста.
+/// Secondary text color.
 pub fn secondary_text_color(dark: bool) -> &'static str {
     if dark { DARK_SECONDARY } else { LIGHT_SECONDARY }
 }
 
-/// Цвет приглушённого текста.
+/// Muted text color.
 pub fn muted_text_color(dark: bool) -> &'static str {
     if dark { DARK_MUTED } else { LIGHT_MUTED }
 }
 
-/// Насыщенность вторичного и приглушённого текста по шкале CSS/Qt6
-/// (400 — обычный, 600 — полужирный). Тонкое начертание нечитаемо на
-/// тёмном фоне даже белым. Одно число на обе обёртки: виджеты получают его
-/// строкой QSS (`font-weight: 600`), QML-вкладки — свойством `font.weight`
-/// из палитры страницы; второе число в разметке разводило бы вкладки молча.
+/// Weight of secondary and muted text on the CSS/Qt6 scale (400 — regular,
+/// 600 — semibold). A thin face is unreadable on a dark background even in
+/// white. One number for both wrappers: widgets get it as a QSS string
+/// (`font-weight: 600`), QML tabs — as the `font.weight` property from the
+/// page palette; a second number in markup would silently set the tabs apart.
 pub const SECONDARY_TEXT_WEIGHT: i32 = 600;
 
-/// Общая сборка QSS-фрагмента текста: база + необязательные свойства.
+/// Shared assembly of a text QSS fragment: base + optional properties.
 fn text_qss(base: &str, extra: &str) -> String {
     if extra.is_empty() {
         base.to_string()
@@ -65,9 +66,9 @@ fn text_qss(base: &str, extra: &str) -> String {
     }
 }
 
-/// QSS вторичного текста. Цвет — через `palette(window-text)`, а не
-/// запечённый hex: иначе при ЖИВОЙ смене скина цвет застревал в прежнем
-/// (тёмный текст на тёмном фоне = невидим).
+/// QSS of secondary text. The color goes through `palette(window-text)`, not
+/// a baked hex: otherwise on a LIVE skin change the color got stuck in the
+/// previous one (dark text on a dark background = invisible).
 pub fn secondary_text_qss(extra: &str) -> String {
     text_qss(
         &format!("color: palette(window-text); font-weight: {SECONDARY_TEXT_WEIGHT};"),
@@ -75,7 +76,7 @@ pub fn secondary_text_qss(extra: &str) -> String {
     )
 }
 
-/// QSS приглушённого текста (то же основание — см. [`secondary_text_qss`]).
+/// QSS of muted text (same reasoning — see [`secondary_text_qss`]).
 pub fn muted_text_qss(extra: &str) -> String {
     text_qss(
         &format!("color: palette(window-text); font-weight: {SECONDARY_TEXT_WEIGHT};"),
@@ -83,33 +84,35 @@ pub fn muted_text_qss(extra: &str) -> String {
     )
 }
 
-/// QSS основного текста (заголовки страниц и секций).
+/// QSS of main text (page and section headings).
 pub fn primary_text_qss(extra: &str) -> String {
     text_qss("color: palette(window-text);", extra)
 }
 
-/// Нейтральный полупрозрачный серый — hover, рамки, разделители. Средне-серый
-/// с альфой одинаково читается на тёмной и светлой теме.
+/// Neutral semi-transparent grey — hover, borders, separators. A mid grey with
+/// alpha reads equally well on dark and light themes.
 ///
-/// Формат альфы — как `%g` в Python: без хвостовых нулей, целое без точки.
+/// Alpha format — like `%g` in Python: no trailing zeros, an integer without
+/// a point.
 pub fn neutral_rgba(alpha: f64) -> String {
     format!("rgba(127,127,127,{})", format_g(alpha))
 }
 
-/// CSS-цвет из QSS (`rgba(r,g,b,a)` либо `rgb(r,g,b)`) строкой `#AARRGGBB`.
+/// A CSS color from QSS (`rgba(r,g,b,a)` or `rgb(r,g,b)`) as a `#AARRGGBB` string.
 ///
-/// ЗАЧЕМ. Краски продукта набраны так, как их понимает QSS виджетов, — и в
-/// этом же виде их до сих пор отдавали QML-страницам. QML такой записи не
-/// знает вовсе: `color: "rgba(59,130,246,0.85)"` он молча читает как
-/// НЕДОПУСТИМЫЙ цвет и рисует ЧЁРНЫМ. Молча — потому и жило долго: страница
-/// собирается, ошибки нет, а бейджи, чипы и звёздочки на ней чёрные
-/// (поймано на вкладке «Steam» 01.09.2026 попиксельной сверкой с
-/// оригиналом: бейдж карточки (0,0,0) против (57,119,219)).
+/// WHY. The product's colors are written the way widget QSS understands them,
+/// and in this same form they were handed to QML pages until now. QML does not
+/// know such notation at all: `color: "rgba(59,130,246,0.85)"` it silently
+/// reads as an INVALID color and paints it BLACK. Silently — that is why it
+/// lived so long: the page builds, there is no error, but the badges, chips
+/// and stars on it are black (caught on the «Steam» tab 01.09.2026 by a
+/// pixel comparison with the original: the card badge (0,0,0) vs
+/// (57,119,219)).
 ///
-/// Чинить это в каждом мосте отдельно нельзя (правило #12): цвет один и
-/// тот же, а переводчик обязан быть один. Всё, чего перевести нельзя
-/// (`#rrggbb`, `white`, `transparent`), возвращается как есть — такие
-/// записи QML понимает сам.
+/// This must not be fixed in each bridge separately (rule #12): the color is
+/// the same, and there must be one translator. Everything that cannot be
+/// translated (`#rrggbb`, `white`, `transparent`) is returned as is — QML
+/// understands such notation by itself.
 pub fn css_color_to_qml(css: &str) -> String {
     match parse_css_rgba(css) {
         Some((r, g, b, a)) => format!("#{a:02x}{r:02x}{g:02x}{b:02x}"),
@@ -117,25 +120,26 @@ pub fn css_color_to_qml(css: &str) -> String {
     }
 }
 
-/// Разобрать запись QSS `rgba(r,g,b,доля)` либо `rgb(r,g,b)` в готовые
-/// восьмибитные каналы. `None` — запись не та (именованный цвет, `#rrggbb`,
-/// мусор).
+/// Parse a QSS `rgba(r,g,b,fraction)` or `rgb(r,g,b)` notation into ready
+/// 8-bit channels. `None` — wrong notation (a named color, `#rrggbb`,
+/// garbage).
 ///
-/// ⚠️ ДОЛЯ ПРОЗРАЧНОСТИ УСЕКАЕТСЯ, А НЕ ОКРУГЛЯЕТСЯ. Это не вкусовщина: так
-/// читает долю сам разбор таблиц стилей Qt, а виджетная часть — эталон.
-/// Опыт 04.09 (одна накладка на фоне `#1b2838`, доля против целой альфы
-/// «вниз» и «вверх»): 0.85 даёт (220,222,225) — как альфа 216, а не 217;
-/// 0.45 → (129,136,145) — как 114, не 115; 0.14 → (58,70,83) — как 35, не
-/// 36; 0.25 → (83,93,105) — как 63, не 64; 0.03 → (33,46,61) — как 7, не 8;
-/// 0.12 → (54,65,79) — как 30, не 31. Шесть долей из семи различают способ,
-/// и все шесть за усечение.
+/// ⚠️ THE ALPHA FRACTION IS TRUNCATED, NOT ROUNDED. This is not a matter of
+/// taste: that is how Qt's own style sheet parser reads the fraction, and the
+/// widget side is the reference. Experiment 04.09 (one overlay on a `#1b2838`
+/// background, fraction vs integer alpha «down» and «up»): 0.85 gives
+/// (220,222,225) — like alpha 216, not 217; 0.45 → (129,136,145) — like 114,
+/// not 115; 0.14 → (58,70,83) — like 35, not 36; 0.25 → (83,93,105) — like
+/// 63, not 64; 0.03 → (33,46,61) — like 7, not 8; 0.12 → (54,65,79) — like
+/// 30, not 31. Six fractions of seven tell the methods apart, and all six
+/// vote for truncation.
 ///
-/// Пока здесь стояло округление, КАЖДАЯ такая краска приезжала в QML на
-/// ступень гуще виджетной, то есть на тёмном фоне — на ступень светлее.
-/// Порог стенда (24 уровня) этого не показывал, и класс жил долго: дважды
-/// его ловили поимённо (подложка полосы 2916fcc, выбранный пункт рейла
-/// 5ac5d42), каждый раз убирая долю из одной разметки, — а корень был
-/// общий и лежал в переводчике.
+/// While rounding stood here, EVERY such color arrived in QML one step denser
+/// than the widget one, i.e. on a dark background one step lighter. The test
+/// bench threshold (24 levels) did not show it, and the class lived long:
+/// twice it was caught by name (the strip backing 2916fcc, the selected rail
+/// item 5ac5d42), each time removing the fraction from one markup — while
+/// the root was shared and lay in the translator.
 pub fn parse_css_rgba(css: &str) -> Option<(u8, u8, u8, u8)> {
     let text = css.trim();
     let body = text
@@ -149,8 +153,8 @@ pub fn parse_css_rgba(css: &str) -> Option<(u8, u8, u8, u8)> {
     let mut rgb = [0u8; 3];
     for (i, part) in parts[..3].iter().enumerate() {
         match part.parse::<f64>() {
-            // Дробные доли в QSS законны у альфы, но не у составляющих;
-            // округляем так же, как это сделал бы Qt.
+            // Fractional values in QSS are legal for alpha but not for the
+            // components; we round the same way Qt would.
             Ok(v) if (0.0..=255.0).contains(&v) => rgb[i] = v.round() as u8,
             _ => return None,
         }
@@ -165,8 +169,8 @@ pub fn parse_css_rgba(css: &str) -> Option<(u8, u8, u8, u8)> {
     Some((rgb[0], rgb[1], rgb[2], alpha))
 }
 
-/// Питоновский `%g` для значений альфы (0..1): до 6 значащих цифр,
-/// хвостовые нули и точка убираются.
+/// Python's `%g` for alpha values (0..1): up to 6 significant digits,
+/// trailing zeros and the point are removed.
 fn format_g(v: f64) -> String {
     if v == 0.0 {
         return "0".to_string();
@@ -179,14 +183,14 @@ fn format_g(v: f64) -> String {
 }
 
 // ============================================================================
-// Rich-text: детект и экранирование
+// Rich text: detection and escaping
 // ============================================================================
 
-/// Есть ли в тексте HTML-тег — значит автор рассчитывал на rich-text.
+/// Whether the text has an HTML tag — then the author counted on rich text.
 ///
-/// Порт регулярного выражения `<\s*/?\s*[a-zA-Z][\w-]*(\s[^<>]*)?/?>`
-/// без движка регулярок: сравнение посимвольное. В отличие от Qt-эвристики
-/// `mightBeRichText()` НЕ обрывается на первом переводе строки.
+/// Port of the regular expression `<\s*/?\s*[a-zA-Z][\w-]*(\s[^<>]*)?/?>`
+/// without a regex engine: character-by-character comparison. Unlike the Qt
+/// heuristic `mightBeRichText()` it does NOT stop at the first line break.
 pub fn looks_like_rich_text(text: &str) -> bool {
     let b: Vec<char> = text.chars().collect();
     let n = b.len();
@@ -206,13 +210,13 @@ pub fn looks_like_rich_text(text: &str) -> bool {
         while j < n && b[j].is_whitespace() {
             j += 1;
         }
-        // имя тега: первая буква ASCII, дальше [\w-]
+        // tag name: first an ASCII letter, then [\w-]
         if j < n && b[j].is_ascii_alphabetic() {
             j += 1;
             while j < n && (b[j].is_alphanumeric() || b[j] == '_' || b[j] == '-') {
                 j += 1;
             }
-            // необязательные атрибуты: пробел, затем что угодно кроме < >
+            // optional attributes: a space, then anything except < >
             let mut k = j;
             if k < n && b[k].is_whitespace() {
                 k += 1;
@@ -235,37 +239,38 @@ pub fn looks_like_rich_text(text: &str) -> bool {
     false
 }
 
-/// Моноширинный блок rich-text диалога (пути, перечни пакетов, README),
-/// который ПЕРЕНОСИТСЯ по ширине окна.
+/// A monospace rich-text block of a dialog (paths, package lists, README)
+/// that WRAPS to the window width.
 ///
-/// Голый `<pre>` у Qt не переносится вовсе (`white-space: pre`): строка
-/// длиннее окна уходит за правый край, и её хвост обрезается рамкой. Так
-/// окно удаления прятало конец пути, который удалится (снимок 30.09.2026,
-/// «…/home-en-appearance/.config/rex»), а окно расширения — длинные строки
-/// README. `pre-wrap` держит переводы строк и отступы как `<pre>`, но
-/// лишнее переносит. Путь без пробелов переносится, только если у текста
-/// стоит `Text.Wrap` (по словам, а слово длиннее строки — где придётся).
+/// A bare `<pre>` in Qt does not wrap at all (`white-space: pre`): a line
+/// longer than the window runs past the right edge, and its tail is cut off
+/// by the frame. That is how the removal window hid the end of the path to be
+/// removed (screenshot 30.09.2026, «…/home-en-appearance/.config/rex»), and
+/// the extension window — long README lines. `pre-wrap` keeps line breaks and
+/// indents like `<pre>`, but wraps the excess. A path without spaces wraps
+/// only if the text has `Text.Wrap` (by words, and a word longer than the
+/// line — wherever it falls).
 ///
-/// `inner` — уже экранированная разметка: функция её не трогает.
+/// `inner` — already escaped markup: the function does not touch it.
 pub fn dialog_pre(inner: &str) -> String {
     format!("<pre {PRE_LTR_ATTRS} style=\"white-space: pre-wrap\">{inner}</pre>")
 }
 
-/// Атрибуты моноширинного блока: код, пути, деревья файлов и JSON читаются
-/// слева направо и стоят у левого края при ЛЮБОМ языке интерфейса.
+/// Attributes of a monospace block: code, paths, file trees and JSON read
+/// left to right and stand at the left edge in ANY interface language.
 ///
-/// Rich text Qt («Supported HTML Subset») понимает у блочных элементов, и
-/// у `<pre>` тоже, `dir="ltr|rtl"` и `align`. Проверено сборкой против
-/// Qt 6.12 (06.11.2026): `dir="ltr"` даёт блоку направление слева направо
-/// (порядок знаков), но место блока в документе, выровненном под письмо
-/// справа налево, остаётся у правого края; `align="left"` Qt ставит как
-/// `AlignLeft | AlignAbsolute` — физически слева. Нужны оба.
+/// Qt rich text («Supported HTML Subset») understands `dir="ltr|rtl"` and
+/// `align` on block elements, `<pre>` included. Checked with a build against
+/// Qt 6.12 (06.11.2026): `dir="ltr"` gives the block a left-to-right
+/// direction (character order), but the block's place in a document aligned
+/// for right-to-left script stays at the right edge; `align="left"` Qt sets
+/// as `AlignLeft | AlignAbsolute` — physically on the left. Both are needed.
 pub const PRE_LTR_ATTRS: &str = "dir=\"ltr\" align=\"left\"";
 
-/// Дописать [`PRE_LTR_ATTRS`] каждому `<pre>` готовой разметки, где
-/// направление не задано: в переведённой справке (`<pre>` стоит в строке
-/// каталога, и переводчику помнить про атрибуты незачем), в описаниях из
-/// магазинов. `<pre>` с уже заданным `dir` не трогается.
+/// Append [`PRE_LTR_ATTRS`] to every `<pre>` of ready markup where the
+/// direction is not set: in translated help (`<pre>` sits in a catalog
+/// string, and the translator has no reason to remember the attributes), in
+/// store descriptions. A `<pre>` with `dir` already set is not touched.
 pub fn pre_left_to_right(html: &str) -> String {
     let lower = html.to_ascii_lowercase();
     let mut out = String::with_capacity(html.len() + 64);
@@ -277,7 +282,7 @@ pub fn pre_left_to_right(html: &str) -> String {
         let Some(end) = lower[after..].find('>').map(|p| after + p) else { break };
         search = end;
         if !matches!(next, Some(b'>' | b' ' | b'\t' | b'\n' | b'\r' | b'/')) {
-            continue; // `<prefix>` и прочие теги на «pre…»
+            continue; // `<prefix>` and other tags starting with «pre…»
         }
         if lower[after..end].contains("dir=") {
             continue;
@@ -291,12 +296,12 @@ pub fn pre_left_to_right(html: &str) -> String {
     out
 }
 
-/// Экранировать динамический текст для вставки в rich-text диалог.
+/// Escape dynamic text for insertion into a rich-text dialog.
 ///
-/// Порт `html.escape(text, quote=False)` + замена перевода строки на `<br>`:
-/// вывод pacman, пути и сообщения ошибок содержат `<`, `&`, `>`, которые
-/// иначе съедаются разметкой, а переводы строк rich-text схлопывает в пробел.
-/// Кавычки НЕ экранируются (quote=False у оригинала).
+/// Port of `html.escape(text, quote=False)` + replacing line breaks with
+/// `<br>`: pacman output, paths and error messages contain `<`, `&`, `>`,
+/// which would otherwise be eaten by markup, and rich text collapses line
+/// breaks into a space. Quotes are NOT escaped (quote=False in the original).
 pub fn escape_dialog_text(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
@@ -312,12 +317,12 @@ pub fn escape_dialog_text(text: &str) -> String {
 }
 
 // ============================================================================
-// Скроллбар
+// Scrollbar
 // ============================================================================
 
-/// QSS заметного скроллбара (правило единого механизма): handle виден в покое,
-/// ярче на hover и нажатии. Основа цвета берётся от темы, поэтому одинаково
-/// читается и на тёмной, и на светлой. `track` — фон дорожки.
+/// QSS of a visible scrollbar (single-mechanism rule): the handle is visible
+/// at rest, brighter on hover and press. The color base comes from the theme,
+/// so it reads equally on dark and light. `track` — the track background.
 pub fn scrollbar_qss(track: &str, dark: bool) -> String {
     let base = if dark { "255,255,255" } else { "0,0,0" };
     format!(
@@ -354,11 +359,12 @@ pub fn scrollbar_qss(track: &str, dark: bool) -> String {
     )
 }
 
-/// SVG-галочка индикаторов чек/радио. Текст файла строит ядро, запись в
-/// `~/.cache/rexon/ui` остаётся исполнителю (I/O-граница).
+/// SVG check mark of check/radio indicators. The core builds the file text,
+/// writing it to `~/.cache/rexon/ui` stays with the executor (I/O boundary).
 ///
-/// Нужна потому, что Qt QSS не рисует галочку в индикаторе, который скин
-/// перекрасил заливкой — без неё выбранный пункт выглядит цветным пятном.
+/// Needed because Qt QSS does not draw a check mark in an indicator the skin
+/// recolored with a fill — without it the selected item looks like a colored
+/// blot.
 pub fn indicator_check_svg(color: &str) -> String {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 14 14\">\
@@ -368,20 +374,20 @@ pub fn indicator_check_svg(color: &str) -> String {
     )
 }
 
-/// Имя файла галочки для данного цвета (`#` в начале отбрасывается).
+/// Check mark file name for the given color (a leading `#` is dropped).
 pub fn indicator_check_filename(color: &str) -> String {
     format!("indicator-check-{}.svg", color.trim_start_matches('#'))
 }
 
 // ============================================================================
-// Скины интерфейса
+// Interface skins
 // ============================================================================
 
-/// Токены Synthwave / Neon Space Retro.
+/// Synthwave / Neon Space Retro tokens.
 ///
-/// ⚠️ Qt QSS не поддерживает box-shadow и text-shadow — настоящего свечения
-/// в QSS нет. «Неон» здесь приближён яркой рамкой и скруглением; точечный
-/// программный glow навешивает исполнитель.
+/// ⚠️ Qt QSS does not support box-shadow and text-shadow — there is no real
+/// glow in QSS. «Neon» is approximated here by a bright border and rounding;
+/// the executor attaches a targeted programmatic glow.
 pub const SW_TOKENS: &[(&str, &str)] = &[
         ("violet", "#1a0533"),
         ("navy", "#0d1b2a"),
@@ -394,9 +400,9 @@ pub const SW_TOKENS: &[(&str, &str)] = &[
         ("text", "#eaf6ff"),
 ];
 
-/// Токены вкладки «Оформление» по умолчанию (историческая Steam-палитра).
-/// Гарантируют полный набор ключей: частичный набор скина не должен ломать
-/// подстановку в локальный QSS вкладки.
+/// Default «Appearance» tab tokens (the historical Steam palette). They
+/// guarantee a full key set: a partial skin set must not break substitution
+/// into the tab's local QSS.
 pub const APPEARANCE_STEAM_COLORS: &[(&str, &str)] = &[
         ("bg_primary", "#1b2838"),
         ("bg_secondary", "#16202d"),
@@ -414,28 +420,28 @@ pub const APPEARANCE_STEAM_COLORS: &[(&str, &str)] = &[
         ("scrollbar", "255,255,255"),
 ];
 
-/// Скин по умолчанию — стандарт оформления приложений проекта.
+/// Default skin — the look standard of the project's applications.
 pub const DEFAULT_SKIN: &str = "steam_dark";
 
-/// Затемнение фона под тем, что перехватило внимание, RGBA — ОДНО на весь
-/// продукт. Гасят фон две подсистемы: обучение (`onboarding`, накладка с
-/// вырезом вокруг подсвеченного места) и модальные окна вкладок на QML.
-/// Держать у каждой свой оттенок значило показывать покупателю два разных
-/// «выключенных» фона в одном окне, поэтому число тут одно, а обе стороны
-/// только берут его: `onboarding::DIM_COLOR` и палитра QML-вкладки
-/// (ключ `modal_dim`).
+/// Dimming of the background under whatever grabbed attention, RGBA — ONE for
+/// the whole product. Two subsystems dim the background: onboarding
+/// (`onboarding`, an overlay with a cut-out around the highlighted spot) and
+/// the QML tabs' modal windows. Keeping a shade of its own for each would mean
+/// showing the customer two different «disabled» backgrounds in one window,
+/// so the number here is one, and both sides only take it:
+/// `onboarding::DIM_COLOR` and the QML tab palette (key `modal_dim`).
 pub const MODAL_DIM_RGBA: (u8, u8, u8, u8) = (0, 0, 0, 170);
 
-/// То же затемнение строкой `#AARRGGBB` — в этом виде цвет понимает QML
-/// (у QtWidgets на руках `QColor(r, g, b, a)`, у QML — строка).
+/// The same dimming as a `#AARRGGBB` string — QML understands a color in this
+/// form (QtWidgets have `QColor(r, g, b, a)` at hand, QML a string).
 pub fn modal_dim_argb_hex() -> String {
     let (r, g, b, a) = MODAL_DIM_RGBA;
     format!("#{a:02x}{r:02x}{g:02x}{b:02x}")
 }
 
 
-/// Шаблон QSS-оверлея Synthwave. Подстановки помечены `%ТОКЕН%` — вместо
-/// форматирования: сам QSS насыщен фигурными скобками.
+/// Template of the Synthwave QSS overlay. Substitutions are marked `%TOKEN%`
+/// instead of formatting: QSS itself is full of curly braces.
 const SYNTHWAVE_TEMPLATE: &str = r#"
 /* ── Synthwave / Neon Space Retro (application overlay) ── */
 QWidget {
@@ -554,8 +560,8 @@ QScrollBar::add-line, QScrollBar::sub-line {
 QScrollBar::add-page, QScrollBar::sub-page { background: none; }
 "#;
 
-/// QSS-оверлей скина Synthwave. `check_url` — путь SVG-галочки индикаторов
-/// (его файл пишет исполнитель, см. [`indicator_check_svg`]).
+/// QSS overlay of the Synthwave skin. `check_url` — path of the indicator SVG
+/// check mark (the executor writes its file, see [`indicator_check_svg`]).
 pub fn synthwave_qss(check_url: &str) -> String {
     let mut out = SYNTHWAVE_TEMPLATE.to_string();
     for (key, value) in SW_TOKENS {
@@ -565,35 +571,35 @@ pub fn synthwave_qss(check_url: &str) -> String {
 }
 
 
-/// Описание скина: палитра ролей Qt, необязательный QSS-оверлей и токены
-/// вкладки «Оформление».
+/// Skin description: the Qt role palette, an optional QSS overlay and the
+/// «Appearance» tab tokens.
 pub struct Skin {
-    /// Признак скина: его пишет настройка `ui_skin`, по нему сравнивает код.
-    /// Не переводится и не меняется — иначе сохранённый выбор пропадёт.
+    /// Skin identifier: the `ui_skin` setting stores it, code compares by it.
+    /// It is not translated and not changed — otherwise the saved choice is lost.
     pub id: &'static str,
-    /// Подпись в списке — `msgid` каталога; показывать через `tr`
+    /// Label in the list — a catalog `msgid`; show it through `tr`
     /// ([`available_skins`]).
     pub label: &'static str,
-    /// Описание под списком — `msgid` каталога ([`skin_description`]).
+    /// Description under the list — a catalog `msgid` ([`skin_description`]).
     pub description: &'static str,
-    /// `None` — сброс к палитре приложения (скин «Системный»).
+    /// `None` — reset to the application palette (the «System» skin).
     pub palette: Option<&'static [(&'static str, &'static str)]>,
-    /// `None` — токены вкладки совпадают с [`APPEARANCE_STEAM_COLORS`].
+    /// `None` — the tab tokens match [`APPEARANCE_STEAM_COLORS`].
     pub colors_override: Option<&'static [(&'static str, &'static str)]>,
-    /// Есть ли у скина application-level QSS-оверлей.
+    /// Whether the skin has an application-level QSS overlay.
     pub has_qss: bool,
-    /// Файл бандл-шрифта заголовков (в `rexon/assets/fonts`), если скин
-    /// рисует заголовки своим шрифтом. Регистрирует файл исполнитель.
+    /// File of the bundled heading font (in `rexon/assets/fonts`), if the skin
+    /// draws headings with its own font. The executor registers the file.
     pub heading_font: Option<&'static str>,
-    /// Программное свечение заголовка `(цвет, радиус размытия)`: Qt QSS не
-    /// умеет text-shadow, свечение навешивает исполнитель эффектом.
+    /// Programmatic heading glow `(color, blur radius)`: Qt QSS cannot do
+    /// text-shadow, the executor attaches the glow as an effect.
     pub glow: Option<(&'static str, u32)>,
-    /// Цвет штриха SVG-галочки индикаторов для QSS-оверлея. `None` — оверлея
-    /// нет, галочку рисовать незачем (и файл в кеш писать не нужно).
+    /// Stroke color of the indicator SVG check mark for the QSS overlay. `None` —
+    /// no overlay, no need to draw the check mark (nor to write the file to cache).
     pub check_color: Option<&'static str>,
 }
 
-/// Все скины в порядке показа в комбобоксе настроек.
+/// All skins in the order shown in the settings combo box.
 pub const SKINS: &[Skin] = &[
     Skin {
         id: "system",
@@ -675,7 +681,7 @@ pub const SKINS: &[Skin] = &[
     },
     Skin {
         id: "synthwave",
-        // Имя стиля — латиницей на всех языках, поэтому без `n_`.
+        // The style name is in Latin script in all languages, hence no `n_`.
         label: "Synthwave / Neon Space Retro",
         // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         description: n_("Neon retro: a purple→blue gradient, pink/green/cyan accents, neon borders and rounded corners. The glow is approximated (Qt QSS doesn't support box-shadow)."),
@@ -711,21 +717,22 @@ pub const SKINS: &[Skin] = &[
             ("scrollbar", "0,240,255"),
         ]),
         has_qss: true,
-        // Tektur (OFL) — квадратный sci-fi С КИРИЛЛИЦЕЙ. Прежний Orbitron
-        // кириллицы не имел: русские заголовки рисовал системный запасной
-        // шрифт, блёкло и слипшимися буквами.
+        // Tektur (OFL) — a square sci-fi face WITH CYRILLIC. The former
+        // Orbitron had no Cyrillic: Russian headings were drawn by the
+        // system fallback font, faded and with letters run together.
         heading_font: Some("Tektur-VariableFont_wdth_wght.ttf"),
         glow: Some(("#00f0ff", 18)),
-        // Тёмный штрих: индикатор залит неон-зелёным.
+        // Dark stroke: the indicator is filled with neon green.
         check_color: Some("#0d1b2a"),
     },
-    // Схема самого waywallen. Вкладка Wallpaper Engine по умолчанию
-    // красится скином Rexon (`we_window::vendor_theme`), а этот скин
-    // возвращает ей родные цвета waywallen и его собственные настройки
-    // «Тема» и «Акцент». Остальное окно получает те же краски Material:
-    // тёмная схема QmlMaterial (тип палитры «нейтральный», как у
-    // waywallen) от его акцента по умолчанию #6750A4 — снято с самого
-    // плагина `Qcm.Material` (`MD.Token.color` при этих настройках).
+    // waywallen's own scheme. The Wallpaper Engine tab is painted with
+    // the Rexon skin by default (`we_window::vendor_theme`), and this
+    // skin gives it back waywallen's native colors and its own «Theme»
+    // and «Accent» settings. The rest of the window gets the same
+    // Material colors: the dark QmlMaterial scheme (palette type
+    // «neutral», like waywallen) from its default accent #6750A4 —
+    // taken from the `Qcm.Material` plugin itself (`MD.Token.color`
+    // with these settings).
     Skin {
         id: VENDOR_SCHEME_SKIN,
         // TRANSLATORS: skin name, a pair to “Dark (Steam)”; Material is the design style of the waywallen interface.
@@ -765,11 +772,11 @@ pub const SKINS: &[Skin] = &[
     },
 ];
 
-/// Скин, при котором вкладка Wallpaper Engine показывает схему самого
-/// waywallen, а не цвета Rexon (см. `we_window::vendor_theme`).
+/// The skin with which the Wallpaper Engine tab shows waywallen's own scheme
+/// rather than Rexon's colors (see `we_window::vendor_theme`).
 pub const VENDOR_SCHEME_SKIN: &str = "waywallen";
 
-/// Скин по id; неизвестный id — как в оригинале, откат к скину по умолчанию.
+/// Skin by id; an unknown id — as in the original, falls back to the default skin.
 pub fn skin(skin_id: &str) -> &'static Skin {
     SKINS
         .iter()
@@ -778,25 +785,25 @@ pub fn skin(skin_id: &str) -> &'static Skin {
         .expect("скин по умолчанию обязан быть в таблице")
 }
 
-/// Список `(id, подпись)` для комбобокса настроек. Подпись — на языке
-/// интерфейса; выбор сохраняется по `id`, поэтому смена языка сохранённый
-/// скин не теряет.
+/// A list of `(id, label)` for the settings combo box. The label is in the
+/// interface language; the choice is saved by `id`, so a language change does
+/// not lose the saved skin.
 pub fn available_skins() -> Vec<(&'static str, String)> {
     SKINS.iter().map(|s| (s.id, tr(s.label))).collect()
 }
 
-/// Краткое описание скина на языке интерфейса.
+/// Short skin description in the interface language.
 pub fn skin_description(skin_id: &str) -> String {
     tr(skin(skin_id).description)
 }
 
-/// Известен ли скин.
+/// Whether the skin is known.
 pub fn is_valid_skin(skin_id: &str) -> bool {
     SKINS.iter().any(|s| s.id == skin_id)
 }
 
-/// Токены вкладки «Оформление» для скина: база плюс переопределения скина.
-/// Полный набор ключей гарантирован.
+/// «Appearance» tab tokens for the skin: the base plus the skin's overrides.
+/// A full key set is guaranteed.
 pub fn skin_colors(skin_id: &str) -> BTreeMap<String, String> {
     let mut out: BTreeMap<String, String> = APPEARANCE_STEAM_COLORS
         .iter()
@@ -810,13 +817,14 @@ pub fn skin_colors(skin_id: &str) -> BTreeMap<String, String> {
     out
 }
 
-/// Действующий скин по СОХРАНЁННОМУ значению настройки `ui_skin`.
+/// The effective skin from the SAVED value of the `ui_skin` setting.
 ///
-/// Решение одно на весь продукт: незнакомое или отсутствующее имя (файл
-/// настроек от будущей версии, правка руками, снятый скин) откатывается к
-/// [`DEFAULT_SKIN`]. Раньше эта развилка жила отдельной копией в
-/// `rexon/ui_base.py::_current_skin_id`, и вторая копия молчала бы при
-/// расхождении — окно красилось бы одним скином, а вкладка другим.
+/// One decision for the whole product: an unknown or missing name (a settings
+/// file from a future version, a hand edit, a removed skin) falls back to
+/// [`DEFAULT_SKIN`]. Previously this fork lived as a separate copy in
+/// `rexon/ui_base.py::_current_skin_id`, and the second copy would stay silent
+/// on divergence — the window would be painted with one skin and the tab with
+/// another.
 pub fn active_skin_id_from(saved: Option<&str>) -> &'static str {
     match saved {
         Some(id) => skin(id).id,
@@ -824,31 +832,31 @@ pub fn active_skin_id_from(saved: Option<&str>) -> &'static str {
     }
 }
 
-/// Действующий скин: читает `ui_skin` из настроек и применяет
-/// [`active_skin_id_from`]. Каталог настроек НЕ создаётся — это чтение.
+/// The effective skin: reads `ui_skin` from settings and applies
+/// [`active_skin_id_from`]. The settings directory is NOT created — this is a read.
 pub fn active_skin_id() -> &'static str {
     let settings = crate::settings::load_settings(&crate::settings::settings_file());
     active_skin_id_from(settings.get("ui_skin").and_then(|v| v.as_str()))
 }
 
-/// Токены цвета ДЕЙСТВУЮЩЕГО скина — то, чем красятся страницы на QML.
+/// Color tokens of the EFFECTIVE skin — what QML pages are painted with.
 ///
-/// ⚠️ Именно этим, а не `skin_colors(DEFAULT_SKIN)`: вкладки на виджетах
-/// красятся выбранным скином (`apply_skin`), и запечённое имя стандартного
-/// скина оставляло бы перенесённые вкладки тёмно-синими в окне, где
-/// покупатель выбрал «Светлый» или «Synthwave».
+/// ⚠️ Exactly this, not `skin_colors(DEFAULT_SKIN)`: widget tabs are painted
+/// with the chosen skin (`apply_skin`), and a baked name of the standard skin
+/// would leave the migrated tabs dark blue in a window where the customer
+/// chose «Light» or «Synthwave».
 pub fn active_skin_colors() -> BTreeMap<String, String> {
     skin_colors(active_skin_id())
 }
 
-/// Палитра ролей Qt для скина (`None` — сброс к палитре приложения).
+/// Qt role palette for the skin (`None` — reset to the application palette).
 pub fn skin_palette(skin_id: &str) -> Option<&'static [(&'static str, &'static str)]> {
     skin(skin_id).palette
 }
 
-/// Цвет РОЛИ палитры Qt у скина (`Base`, `Window`, `Button`…), если скин
-/// палитру задаёт. `None` — системный скин: роли остаются системными, и
-/// ядру их знать неоткуда.
+/// Color of a Qt palette ROLE for the skin (`Base`, `Window`, `Button`…), if
+/// the skin sets a palette. `None` — the system skin: roles stay system ones,
+/// and the core has no way to know them.
 pub fn skin_role_color(skin_id: &str, role: &str) -> Option<&'static str> {
     skin_palette(skin_id)?
         .iter()
@@ -856,64 +864,67 @@ pub fn skin_role_color(skin_id: &str, role: &str) -> Option<&'static str> {
         .map(|(_, hex)| *hex)
 }
 
-/// Цвет ссылок в форматированном тексте (роли `Link` и `LinkVisited`
-/// палитры приложения) для скина: его роль `Link`. `None` — системный скин,
-/// ссылки остаются цвета системной темы.
+/// Link color in formatted text (the `Link` and `LinkVisited` roles of the
+/// application palette) for the skin: its `Link` role. `None` — the system
+/// skin, links keep the system theme's color.
 ///
-/// ⚠️ Почему палитра приложения, а не `linkColor` у элемента. У `Text` из
-/// QML `linkColor` действует только на `Text.StyledText`; в `Text.RichText`
-/// (описания и комментарии тем, «О программе», окна расширений) ссылку
-/// красит разборщик HTML самой Qt — ролью `Link` палитры ПРИЛОЖЕНИЯ, в
-/// момент разбора текста. Не заданная роль — это `#0000ff`, на тёмных
-/// скинах нечитаемый (дефект 01.11.2026, коммит 504655a9 его не лечил).
+/// ⚠️ Why the application palette and not the element's `linkColor`. For a QML
+/// `Text`, `linkColor` only affects `Text.StyledText`; in `Text.RichText`
+/// (theme descriptions and comments, «About», extension windows) the link is
+/// painted by Qt's own HTML parser — with the `Link` role of the APPLICATION
+/// palette, at the moment the text is parsed. An unset role is `#0000ff`,
+/// unreadable on dark skins (defect 01.11.2026, commit 504655a9 did not cure
+/// it).
 pub fn skin_link_rgb(skin_id: &str) -> Option<(u8, u8, u8)> {
     skin_role_color(skin_id, "Link").and_then(parse_hex)
 }
 
-/// То же для ДЕЙСТВУЮЩЕГО скина.
+/// The same for the EFFECTIVE skin.
 pub fn active_skin_link_rgb() -> Option<(u8, u8, u8)> {
     skin_link_rgb(active_skin_id())
 }
 
 // ============================================================================
-// Поверхности скина: ГОТОВАЯ краска для QML
+// Skin surfaces: a READY color for QML
 // ============================================================================
 //
-// ЗАЧЕМ ЦЕЛЫЙ РАЗДЕЛ. Поверхность — это заливка, которую у виджетной части
-// кладёт НЕ разметка вкладки: поле ввода красит сама Qt по роли палитры
-// (`Base`), карточку — полупрозрачная накладка из таблицы стилей. У QML ни
-// ролей палитры, ни каскада таблиц стилей нет, и страницы выбирали похожий
-// токен скина на глаз. Похожий — не тот же: на стандартном скине поле
-// выходило `bg_card` (#1e2d3d, (30,45,61)) там, где Qt красит роль `Base`
-// (#16202d, (22,32,45)), то есть на ступень светлее оригинала, и так на
-// четырёх вкладках сразу. Лечится не переписыванием разметки по одной
-// (правило #12), а тем, что краску поверхности целиком собирает ЯДРО и
-// отдаёт готовой строкой, а разметка её только кладёт.
+// WHY A WHOLE SECTION. A surface is a fill that on the widget side is NOT
+// laid by the tab's markup: Qt itself paints an input field by a palette role
+// (`Base`), a card — by a semi-transparent overlay from the style sheet. QML
+// has neither palette roles nor a style sheet cascade, and pages picked a
+// similar skin token by eye. Similar is not the same: on the standard skin
+// the field came out `bg_card` (#1e2d3d, (30,45,61)) where Qt paints the
+// `Base` role (#16202d, (22,32,45)), i.e. one step lighter than the
+// original, and that on four tabs at once. It is cured not by rewriting the
+// markup one by one (rule #12), but by the CORE assembling the surface color
+// entirely and handing it over as a ready string, while the markup only lays
+// it.
 
-/// Заливка карточки поверх фона страницы — ТА ЖЕ запись, какой красит
-/// карточку таблица стилей виджетов (`qt_steam::card_colors`,
+/// Card fill over the page background — THE SAME notation the widget style
+/// sheet paints the card with (`qt_steam::card_colors`,
 /// `qt_compare::card_qss`, `qt_extensions::_card_qss`).
 pub const CARD_FILL_DARK: &str = "rgba(255,255,255,0.04)";
 pub const CARD_FILL_LIGHT: &str = "rgba(0,0,0,0.03)";
-/// Обводка обычной кнопки и поля ввода: её рисует САМ стиль Qt, а не роль
-/// палитры, — ровно так же, как рукоятку сплиттера
-/// (`qt_desktops::split_handle_qss`). Замер 05.09 на живой Qt (стиль
-/// breeze, скин steam_dark): кнопка «Быстрых пар» «Сравнения» залита
-/// (42,64,85) ролью `Button` и обведена (85,102,119) — это ровно накладка
-/// белого 0.20 поверх заливки (42+0,2*213 = 85, 64+0,2*191 = 102,
-/// 85+0,2*170 = 119). Ни одна роль палитры такого цвета не даёт.
-/// У ПОЛЯ ввода та же накладка ложится на фон страницы, а не на заливку
-/// поля: рамка стоит по краю, куда заливка не заходит.
+/// Border of a normal button and input field: the Qt style ITSELF draws it,
+/// not a palette role — exactly like the splitter handle
+/// (`qt_desktops::split_handle_qss`). Measured 05.09 on live Qt (breeze
+/// style, steam_dark skin): the «Quick pairs» button on «Compare» is filled
+/// (42,64,85) with the `Button` role and bordered (85,102,119) — that is
+/// exactly a white 0.20 overlay over the fill (42+0.2*213 = 85,
+/// 64+0.2*191 = 102, 85+0.2*170 = 119). No palette role gives such a color.
+/// For an input FIELD the same overlay lies on the page background, not on
+/// the field's fill: the border stands at the edge where the fill does not
+/// reach.
 pub const CONTROL_OUTLINE_DARK: &str = "rgba(255,255,255,0.20)";
 pub const CONTROL_OUTLINE_LIGHT: &str = "rgba(0,0,0,0.20)";
 
-/// Положить полупрозрачную накладку QSS на непрозрачную краску и вернуть
-/// ГОТОВЫЙ `#rrggbb` — ровно то, что покупатель увидит на экране.
+/// Lay a semi-transparent QSS overlay over an opaque color and return a READY
+/// `#rrggbb` — exactly what the customer will see on screen.
 ///
-/// Считает так же, как Qt: долю прозрачности разбор таблицы стилей УСЕКАЕТ
-/// (см. [`parse_css_rgba`]), а смешивание растр округляет до ближайшего
-/// уровня. Сверено с экраном: белая накладка 0.04 на `#1b2838` даёт
-/// (36,48,64) и там, и там. Неразобранная накладка возвращается как есть.
+/// Computes the same way Qt does: the style sheet parser TRUNCATES the alpha
+/// fraction (see [`parse_css_rgba`]), and the rasterizer rounds blending to
+/// the nearest level. Checked against the screen: a white 0.04 overlay on
+/// `#1b2838` gives (36,48,64) in both. An unparsed overlay is returned as is.
 pub fn blend_css_over(base: &str, overlay: &str) -> String {
     let (Some((br, bg, bb)), Some((r, g, b, a))) = (parse_hex(base), parse_css_rgba(overlay))
     else {
@@ -929,29 +940,31 @@ pub fn blend_css_over(base: &str, overlay: &str) -> String {
     )
 }
 
-/// Поверхности, которые ядро отдаёт QML готовой краской: ключ для разметки
-/// и роль палитры Qt, по которой ту же поверхность красит Qt у виджетов.
-/// Запасной токен нужен системному скину, у которого ролей ядро не видит.
+/// Surfaces the core hands to QML as a ready color: a key for markup and the
+/// Qt palette role by which Qt paints the same surface for widgets. The
+/// fallback token is needed for the system skin, whose roles the core cannot
+/// see.
 pub const QML_SURFACES: &[(&str, &str, &str)] = &[
-    // Поле ввода, выпадающий список и его список пунктов: `QLineEdit`,
-    // `QComboBox`, `QAbstractItemView` — всё это Qt красит ролью `Base`.
+    // Input field, combo box and its item list: `QLineEdit`, `QComboBox`,
+    // `QAbstractItemView` — Qt paints all of these with the `Base` role.
     ("surface_field", "Base", "bg_secondary"),
-    // Чередующаяся строка списка.
+    // Alternating list row.
     ("surface_field_alt", "AlternateBase", "bg_card"),
-    // Кнопка и НЕРЕДАКТИРУЕМЫЙ выпадающий список: и то и другое Qt красит
-    // ролью `Button`, а не `Base`. Замер 04.09 на живой Qt при ролях
-    // steam_dark: `QLineEdit` даёт (22,32,45) роли `Base`, а `QComboBox` —
-    // (42,64,85) роли `Button`, и по всей своей высоте.
+    // Button and NON-EDITABLE combo box: Qt paints both with the `Button`
+    // role, not `Base`. Measured 04.09 on live Qt with steam_dark roles:
+    // `QLineEdit` gives (22,32,45) of the `Base` role, and `QComboBox` —
+    // (42,64,85) of the `Button` role, over its whole height.
     ("surface_button", "Button", "border"),
-    // Фон страницы.
+    // Page background.
     ("surface_page", "Window", "bg_primary"),
 ];
 
-/// Готовые краски всех поверхностей скина.
+/// Ready colors of all the skin's surfaces.
 ///
-/// Карточки тут нет среди ролей: её краску даёт не палитра, а накладка
-/// поверх фона страницы, — поэтому она считается [`blend_css_over`] по тем
-/// же литералам, что стоят в таблице стилей виджетной карточки.
+/// The card is not among the roles here: its color is given not by the
+/// palette but by an overlay over the page background — so it is computed by
+/// [`blend_css_over`] from the same literals as in the widget card's style
+/// sheet.
 pub fn skin_surface_colors(skin_id: &str) -> BTreeMap<String, String> {
     let tokens = skin_colors(skin_id);
     let token = |name: &str| tokens.get(name).cloned().unwrap_or_default();
@@ -972,8 +985,8 @@ pub fn skin_surface_colors(skin_id: &str) -> BTreeMap<String, String> {
         .unwrap_or(true);
     let fill = if dark { CARD_FILL_DARK } else { CARD_FILL_LIGHT };
     out.insert("surface_card".to_string(), blend_css_over(&page, fill));
-    // Обводка кнопки и поля: накладка поверх ИХ заливки, а не поверх фона
-    // страницы, — стиль обводит каждый контрол по его собственной краске.
+    // Button and field border: an overlay over THEIR fill, not over the page
+    // background — the style borders each control by its own color.
     let outline = if dark {
         CONTROL_OUTLINE_DARK
     } else {
@@ -987,11 +1000,11 @@ pub fn skin_surface_colors(skin_id: &str) -> BTreeMap<String, String> {
         "surface_button_outline".to_string(),
         blend_css_over(&button, outline),
     );
-    // ⚠️ Обводка ПОЛЯ считается поверх фона страницы, а не поверх заливки
-    // поля: заливка под рамку не заходит. Замер 05.09 (поле поиска
-    // «Расширений», скин steam_dark): фон страницы (27,40,56), заливка поля
-    // (22,32,45), рамка (73,83,96) — это 0,20 белого поверх ФОНА
-    // (27+0,2*228 = 73), а поверх заливки вышло бы (69,77,87).
+    // ⚠️ The FIELD border is computed over the page background, not over the
+    // field's fill: the fill does not go under the frame. Measured 05.09 (the
+    // «Extensions» search field, steam_dark skin): page background (27,40,56),
+    // field fill (22,32,45), frame (73,83,96) — that is 0.20 white over the
+    // BACKGROUND (27+0.2*228 = 73), while over the fill it would be (69,77,87).
     out.insert(
         "surface_field_outline".to_string(),
         blend_css_over(&page, outline),
@@ -999,56 +1012,56 @@ pub fn skin_surface_colors(skin_id: &str) -> BTreeMap<String, String> {
     out
 }
 
-/// Краска НЕАКТИВНОГО текста — ровно та, что скин пишет в группу `Disabled`
-/// палитры Qt (см. [`palette_plan`]), записью `#aarrggbb`.
+/// Color of INACTIVE text — exactly what the skin writes into the `Disabled`
+/// group of the Qt palette (see [`palette_plan`]), as `#aarrggbb`.
 ///
-/// ⚠️ ЗАЧЕМ ОНА В QML. Виджетная часть выключенную кнопку НЕ гасит целиком:
-/// заливка и рамка остаются прежними, а Qt приглушает одну надпись цветом
-/// группы `Disabled`. Ровно то же говорят таблицы стилей вкладок там, где
-/// они пишут это правило руками: `#PageBtn:disabled` у «Оформления» и
-/// `QPushButton:disabled` у блока «Установить» «Расширений» — оба ставят
-/// прозрачность 0.55, которую разбор таблицы стилей усекает до 140, то есть
-/// до [`DISABLED_TEXT_ALPHA`]. Разметка QML вместо этого гасила ВСЮ кнопку
-/// прозрачностью 0.45 и меняла цвет заливки: замер 05.09 на «Расширениях» —
-/// 10 108 точек.
+/// ⚠️ WHY IT IS IN QML. The widget side does NOT dim a disabled button as a
+/// whole: the fill and frame stay the same, and Qt mutes only the label with
+/// the `Disabled` group color. Tab style sheets say exactly the same where
+/// they write this rule by hand: `#PageBtn:disabled` on «Appearance» and
+/// `QPushButton:disabled` in the «Install» block of «Extensions» — both set
+/// opacity 0.55, which the style sheet parser truncates to 140, i.e. to
+/// [`DISABLED_TEXT_ALPHA`]. The QML markup instead dimmed the WHOLE button
+/// with opacity 0.45 and changed the fill color: measured 05.09 on
+/// «Extensions» — 10,108 pixels.
 pub fn disabled_text_color(skin_id: &str) -> String {
-    // Тот же источник, что у `palette_plan`: роль `WindowText` скина, а у
-    // скина без своей палитры — белый форс тёмной системной темы.
+    // The same source as `palette_plan`: the skin's `WindowText` role, and for
+    // a skin without its own palette — the forced white of the dark system theme.
     let hex = skin_role_color(skin_id, "WindowText").unwrap_or("#ffffff");
     let (r, g, b) = parse_hex(hex).unwrap_or((255, 255, 255));
     format!("#{DISABLED_TEXT_ALPHA:02x}{r:02x}{g:02x}{b:02x}")
 }
 
-/// Палитра, которую ядро отдаёт QML-странице: токены скина ПЛЮС готовые
-/// краски поверхностей. Одна дверь на все страницы — иначе новая вкладка
-/// снова выберет токен на глаз.
+/// The palette the core hands to a QML page: skin tokens PLUS ready surface
+/// colors. One door for all pages — otherwise a new tab will again pick a
+/// token by eye.
 pub fn qml_palette(skin_id: &str) -> BTreeMap<String, String> {
     let mut out = skin_colors(skin_id);
     out.extend(skin_surface_colors(skin_id));
-    // Не поверхность, а КРАСКА ТЕКСТА, поэтому кладётся рядом, а не в
-    // таблицу поверхностей: у неё есть прозрачность, и `parse_hex` её не
-    // разбирает по замыслу.
+    // Not a surface but a TEXT COLOR, so it is placed alongside rather than
+    // in the surface table: it has opacity, and `parse_hex` deliberately does
+    // not parse it.
     out.insert("text_disabled".to_string(), disabled_text_color(skin_id));
-    // Подложка неактивной части ползунка (`RexonSlider` читает `pal.track`):
-    // нейтральная заливка виджетных карточек, читается на любом скине. Здесь,
-    // а не у отдельных страниц: прежде ключ клали только «Настройки» и
-    // «Steam», и ползунки «Оформления» (Conky, «Эффекты экрана», «Анимация»)
-    // получали `undefined` — Qt ругался «Unable to assign [undefined] to
-    // QColor». ⚠️ Через переводчик: `rgba(...)` QML читает как недопустимый
-    // цвет и рисует ЧЁРНЫМ ([`css_color_to_qml`]).
+    // Backing of the slider's inactive part (`RexonSlider` reads `pal.track`):
+    // the neutral fill of widget cards, readable on any skin. Here rather than
+    // in individual pages: previously only «Settings» and «Steam» set the key,
+    // and the «Appearance» sliders (Conky, «Screen effects», «Animation») got
+    // `undefined` — Qt complained «Unable to assign [undefined] to QColor».
+    // ⚠️ Through the translator: QML reads `rgba(...)` as an invalid color and
+    // paints it BLACK ([`css_color_to_qml`]).
     out.insert("track".to_string(), css_color_to_qml(&neutral_rgba(SLIDER_TRACK_ALPHA)));
     out
 }
 
-/// Плотность подложки ползунка (доля [`neutral_rgba`]).
+/// Density of the slider backing (fraction of [`neutral_rgba`]).
 pub const SLIDER_TRACK_ALPHA: f64 = 0.18;
 
-/// То же для ДЕЙСТВУЮЩЕГО скина.
+/// The same for the EFFECTIVE skin.
 pub fn active_qml_palette() -> BTreeMap<String, String> {
     qml_palette(active_skin_id())
 }
 
-/// QSS-оверлей скина; пустая строка, если оверлея нет.
+/// The skin's QSS overlay; an empty string if there is no overlay.
 pub fn skin_qss(skin_id: &str, check_url: &str) -> String {
     let s = skin(skin_id);
     if !s.has_qss {
@@ -1057,38 +1070,38 @@ pub fn skin_qss(skin_id: &str, check_url: &str) -> String {
     synthwave_qss(check_url)
 }
 
-/// Скругление плашки тоста, точек.
+/// Toast plate corner radius, points.
 pub const TOAST_RADIUS: i32 = 8;
-/// Толщина рамки плашки, точек.
+/// Plate border width, points.
 pub const TOAST_BORDER_WIDTH: i32 = 1;
-/// Поле слева и справа внутри плашки, точек.
+/// Left and right padding inside the plate, points.
 pub const TOAST_PADDING_H: i32 = 14;
-/// Поле сверху и снизу внутри плашки, точек.
+/// Top and bottom padding inside the plate, points.
 pub const TOAST_PADDING_V: i32 = 10;
 
-/// Краски всплывающего тоста записями QSS `rgba(...)`.
+/// Pop-up toast colors as QSS `rgba(...)` notation.
 ///
-/// Имена полей — не токены скина, а готовые краски: плашка накладывается
-/// поверх содержимого и обязана оставаться читаемой на ЛЮБОМ скине, поэтому
-/// её тон задан прямо и зависит только от тёмности темы.
+/// The field names are not skin tokens but ready colors: the plate is laid
+/// over the content and must stay readable on ANY skin, so its tone is set
+/// directly and depends only on how dark the theme is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ToastSkin {
-    /// Заливка плашки (полупрозрачная).
+    /// Plate fill (semi-transparent).
     pub background: &'static str,
-    /// Рамка плашки.
+    /// Plate border.
     pub border: &'static str,
-    /// Надпись.
+    /// Label.
     pub text: &'static str,
 }
 
-/// Краски тоста для тёмной либо светлой темы.
+/// Toast colors for a dark or light theme.
 ///
-/// ⚠️ ОДНА ДВЕРЬ НА ОБА ПУТИ. Отсюда их берёт и виджетная таблица стилей
-/// ([`toast_qss`]), и QML-разметка (через карту `styles` вкладки). Пока
-/// числа лежат здесь, у плашки не может завестись второй набор красок «на
-/// глаз»: в QML тост рисовался токенами `bg_secondary`/`border`/
-/// `text_primary` и получался НЕПРОЗРАЧНЫМ, другого скругления и в другом
-/// углу, чем у виджетной версии.
+/// ⚠️ ONE DOOR FOR BOTH PATHS. Both the widget style sheet ([`toast_qss`])
+/// and the QML markup (through the tab's `styles` map) take them from here.
+/// While the numbers live here, the plate cannot acquire a second set of
+/// colors «by eye»: in QML the toast was drawn with the
+/// `bg_secondary`/`border`/`text_primary` tokens and came out OPAQUE, with a
+/// different corner radius and in a different corner than the widget version.
 pub fn toast_colors(dark: bool) -> ToastSkin {
     if dark {
         ToastSkin {
@@ -1105,9 +1118,9 @@ pub fn toast_colors(dark: bool) -> ToastSkin {
     }
 }
 
-/// QSS всплывающего тоста-накладки — полупрозрачная плашка с рамкой.
-/// `dark` — тёмная ли активная тема (наблюдение исполнителя, как у
-/// [`primary_text_color`]).
+/// QSS of the pop-up overlay toast — a semi-transparent plate with a border.
+/// `dark` — whether the active theme is dark (an executor observation, like
+/// for [`primary_text_color`]).
 pub fn toast_qss(dark: bool) -> String {
     let c = toast_colors(dark);
     let (bg, border, fg) = (c.background, c.border, c.text);
@@ -1120,10 +1133,10 @@ pub fn toast_qss(dark: bool) -> String {
     )
 }
 
-/// `(обводка, заливка, ширина)` заголовка скина либо `None`.
+/// `(outline, fill, width)` of the skin's heading, or `None`.
 ///
-/// Обводка тонкая и светлая намеренно: при реальном кегле заголовка толстая
-/// тёмная обводка съедала букву и текст выглядел нечитаемым.
+/// The outline is thin and light on purpose: at the real heading size a thick
+/// dark outline ate the letter and the text looked unreadable.
 pub fn heading_outline_colors(skin_id: &str) -> Option<(&'static str, &'static str, u32)> {
     if skin_id == "synthwave" {
         Some(("#2bd83a", "#9dff7a", 1))
@@ -1132,57 +1145,58 @@ pub fn heading_outline_colors(skin_id: &str) -> Option<(&'static str, &'static s
     }
 }
 
-/// Обводка заголовка по умолчанию `(обводка, заливка, ширина)` — какой её
-/// заводит сам виджет заголовка до включения скином.
+/// Default heading outline `(outline, fill, width)` — the way the heading
+/// widget itself sets it up before a skin turns it on.
 pub fn heading_default_outline() -> (&'static str, &'static str, u32) {
     ("#ff2d95", "#eaf6ff", 2)
 }
 
-/// Файл бандл-шрифта заголовков скина (в `rexon/assets/fonts`) либо `None`.
-/// Регистрирует файл в шрифтовой базе Qt исполнитель.
+/// File of the skin's bundled heading font (in `rexon/assets/fonts`) or
+/// `None`. The executor registers the file in the Qt font database.
 pub fn skin_heading_font(skin_id: &str) -> Option<&'static str> {
     skin(skin_id).heading_font
 }
 
-/// Свечение заголовка скина `(цвет, радиус размытия)` либо `None` — тяжёлый
-/// эффект вешается только там, где он часть оформления.
+/// Glow of the skin's heading `(color, blur radius)` or `None` — the heavy
+/// effect is attached only where it is part of the look.
 pub fn skin_glow(skin_id: &str) -> Option<(&'static str, u32)> {
     skin(skin_id).glow
 }
 
-/// Цвет штриха галочки индикаторов для QSS-оверлея скина либо `None`.
+/// Stroke color of the indicator check mark for the skin's QSS overlay, or `None`.
 ///
-/// `None` означает и «оверлея нет»: файл галочки в кеш писать незачем.
-/// Раньше цвет был вписан в Python рядом с вызовом, и скину без оверлея всё
-/// равно готовился SVG-файл.
+/// `None` also means «no overlay»: no need to write the check mark file to
+/// cache. Previously the color was written in Python next to the call, and an
+/// SVG file was prepared even for a skin without an overlay.
 pub fn skin_indicator_check_color(skin_id: &str) -> Option<&'static str> {
     skin(skin_id).check_color
 }
 
 // ============================================================================
-// Тёмная ли активная тема
+// Whether the active theme is dark
 // ============================================================================
 
-/// Порог яркости, ниже которого тема считается тёмной.
+/// Brightness threshold below which a theme counts as dark.
 pub const DARK_LEVEL: u32 = 128;
 
-/// Тёмная ли тема при таком цвете фона окна.
+/// Whether the theme is dark with such a window background color.
 ///
-/// Единственное место, где живёт этот критерий: средняя яркость каналов ниже
-/// половины. До переноса вкладки решали по-разному — часть считала среднее по
-/// каналам, часть спрашивала у Qt `lightness()` (полусумму крайних каналов), и
-/// на насыщенном цвете ответы расходились: жёлтый `#ffff00` даёт среднее 170
-/// (светлая) и `lightness` 127 (тёмная). Правило #12 — критерий один на весь
-/// продукт, наблюдение (сам цвет) приходит параметром.
+/// The only place this criterion lives: the average channel brightness is
+/// below half. Before the port the tabs decided differently — some computed
+/// the channel average, some asked Qt for `lightness()` (half the sum of the
+/// extreme channels), and on a saturated color the answers diverged: yellow
+/// `#ffff00` gives an average of 170 (light) and `lightness` 127 (dark). Rule
+/// #12 — one criterion for the whole product, the observation (the color
+/// itself) comes in as a parameter.
 pub fn is_dark_rgb(r: u8, g: u8, b: u8) -> bool {
     u32::from(r) + u32::from(g) + u32::from(b) < 3 * DARK_LEVEL
 }
 
-/// Тёмный ли ДЕЙСТВУЮЩИЙ скин — по его основному фону и общим критерием
-/// [`is_dark_rgb`], а не по имени: скин выбирает покупатель, и «Светлый»
-/// обязан считаться светлым. Одно место на все QML-страницы, которым краски
-/// вкладки нужны парой «тёмная/светлая» («Steam», «Расширения»); до этого
-/// каждая держала свою копию в мосте.
+/// Whether the EFFECTIVE skin is dark — by its main background and the shared
+/// criterion [`is_dark_rgb`], not by name: the customer picks the skin, and
+/// «Light» must count as light. One place for all QML pages that need the
+/// tab colors as a «dark/light» pair («Steam», «Extensions»); before that
+/// each kept its own copy in the bridge.
 pub fn active_skin_is_dark() -> bool {
     active_skin_colors()
         .get("bg_primary")
@@ -1191,13 +1205,14 @@ pub fn active_skin_is_dark() -> bool {
         .unwrap_or(true)
 }
 
-/// Цвет плейсхолдера (`QPalette::PlaceholderText`) скина — им виджетные
-/// вкладки красят невыбираемые заголовки секций списков. У скина с палитрой
-/// роль задана явно; у системного скина роль остаётся системной, и ближайший
-/// ответ ядра — вторичный текст с той прозрачностью, какой план палитры
-/// красит плейсхолдер на тёмной базе (`SYSTEM_PLACEHOLDER_ALPHA`).
-/// Одно место на все QML-страницы: до этого страница брала вторичный текст
-/// с прозрачностью 0.7 — своё число вместо числа ядра.
+/// The skin's placeholder color (`QPalette::PlaceholderText`) — widget tabs
+/// paint unselectable list section headings with it. For a skin with a
+/// palette the role is set explicitly; for the system skin the role stays a
+/// system one, and the core's closest answer is secondary text with the
+/// opacity the palette plan paints the placeholder with on a dark base
+/// (`SYSTEM_PLACEHOLDER_ALPHA`). One place for all QML pages: before that the
+/// page took secondary text with opacity 0.7 — its own number instead of the
+/// core's.
 pub fn placeholder_text_color(skin_id: &str) -> String {
     if let Some(spec) = skin_palette(skin_id) {
         if let Some((_, hex)) = spec.iter().find(|(role, _)| *role == "PlaceholderText") {
@@ -1212,33 +1227,34 @@ pub fn placeholder_text_color(skin_id: &str) -> String {
     format!("#{SYSTEM_PLACEHOLDER_ALPHA:02x}{r:02x}{g:02x}{b:02x}")
 }
 
-/// То же для ДЕЙСТВУЮЩЕГО скина.
+/// The same for the EFFECTIVE skin.
 pub fn active_placeholder_text_color() -> String {
     placeholder_text_color(active_skin_id())
 }
 
 // ============================================================================
-// Палитра приложения: план присваиваний
+// Application palette: assignment plan
 // ============================================================================
 //
-// Сама QPalette собирается Qt-исполнителем, но ЧТО в неё писать — решение, и
-// оно живёт здесь: какие роли, в каких группах, какой прозрачности. Иначе
-// правило «неактивный текст приглушаем» и форс белого на тёмной системной
-// теме лежали бы в Python второй копией знания о скинах.
+// The QPalette itself is assembled by the Qt executor, but WHAT to write
+// into it is a decision, and it lives here: which roles, in which groups,
+// with what opacity. Otherwise the rule «mute inactive text» and the forced
+// white on a dark system theme would lie in Python as a second copy of the
+// knowledge about skins.
 
-/// Группы палитры Qt, в которые скин пишет цвета.
+/// Qt palette groups the skin writes colors into.
 pub const PALETTE_GROUPS: &[&str] = &["Active", "Inactive", "Disabled"];
 
-/// Роли текста, которым приглушается неактивное (disabled) состояние.
+/// Text roles muted for the inactive (disabled) state.
 pub const TEXT_ROLES: &[&str] = &["WindowText", "Text", "ButtonText"];
 
-/// Прозрачность приглушённого текста: читаемая индикация неактивного.
+/// Opacity of muted text: a readable indication of inactivity.
 pub const DISABLED_TEXT_ALPHA: u8 = 140;
 
-/// Прозрачность плейсхолдера при форсе белого на тёмной системной теме.
+/// Placeholder opacity with forced white on a dark system theme.
 pub const SYSTEM_PLACEHOLDER_ALPHA: u8 = 190;
 
-/// Одно присваивание цвета в палитре: группа, роль, цвет с прозрачностью.
+/// One color assignment in the palette: group, role, color with opacity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PaletteAssign {
     pub group: &'static str,
@@ -1246,9 +1262,9 @@ pub struct PaletteAssign {
     pub rgba: (u8, u8, u8, u8),
 }
 
-/// Разобрать `#rgb` или `#rrggbb` в каналы. Другие формы (именованные цвета,
-/// `#aarrggbb`) не поддерживаются намеренно: в таблицах скинов их нет, а
-/// сторож [`skin_palettes_parse`] следит, чтобы не появились.
+/// Parse `#rgb` or `#rrggbb` into channels. Other forms (named colors,
+/// `#aarrggbb`) are deliberately unsupported: skin tables do not have them,
+/// and the guard [`skin_palettes_parse`] makes sure they do not appear.
 pub fn parse_hex(value: &str) -> Option<(u8, u8, u8)> {
     let s = value.strip_prefix('#')?;
     let d = |c: char| c.to_digit(16).map(|v| v as u8);
@@ -1266,13 +1282,13 @@ pub fn parse_hex(value: &str) -> Option<(u8, u8, u8)> {
     }
 }
 
-/// Осветлить цвет подмешиванием белого — общий приём наведения на элемент
-/// в акцентном цвете.
+/// Lighten a color by mixing in white — the shared trick for hovering over
+/// an element in the accent color.
 ///
-/// Своего оттенка «наведено» у скинов нет, и заводить его четырьмя ручными
-/// значениями значило бы, что пятый скин снова про него забудет. `k` — доля
-/// белого, 0.0 оставляет цвет как есть, 1.0 даёт белый; неразобранный цвет
-/// возвращается без изменений, чтобы наведение не гасило кнопку в пустоту.
+/// Skins have no «hovered» shade of their own, and adding it as four manual
+/// values would mean a fifth skin forgets it again. `k` — the share of white,
+/// 0.0 leaves the color as is, 1.0 gives white; an unparsed color is returned
+/// unchanged, so that hover does not fade the button into nothing.
 pub fn lighten_hex(value: &str, k: f64) -> String {
     let Some((r, g, b)) = parse_hex(value) else {
         return value.to_string();
@@ -1284,16 +1300,16 @@ pub fn lighten_hex(value: &str, k: f64) -> String {
     format!("#{:02x}{:02x}{:02x}", mix(r), mix(g), mix(b))
 }
 
-/// Что скин пишет в палитру приложения поверх системной.
+/// What the skin writes into the application palette on top of the system one.
 ///
-/// `base_is_dark` — тёмная ли палитра, какой её отдала система при старте
-/// (наблюдение исполнителя; см. [`is_dark_rgb`]). Порядок присваиваний
-/// значим: последнее по роли и группе побеждает.
+/// `base_is_dark` — whether the palette is dark the way the system handed it
+/// over at startup (an executor observation; see [`is_dark_rgb`]). The order
+/// of assignments matters: the last one for a role and group wins.
 ///
-/// Скин «Системный» (без своей палитры) не навязывает ничего, кроме
-/// исторического форса белого текста на тёмной системной теме: Breeze Dark
-/// отдаёт сероватый `WindowText`, и подписи сливались с фоном. На светлой
-/// системной теме план пустой — палитра остаётся такой, как её дала система.
+/// The «System» skin (without its own palette) imposes nothing except the
+/// historical forced white text on a dark system theme: Breeze Dark gives a
+/// greyish `WindowText`, and labels blended into the background. On a light
+/// system theme the plan is empty — the palette stays as the system gave it.
 pub fn palette_plan(skin_id: &str, base_is_dark: bool) -> Vec<PaletteAssign> {
     let mut out: Vec<PaletteAssign> = Vec::new();
     let mut push = |group: &'static str, role: &'static str, rgba| {
@@ -1309,8 +1325,8 @@ pub fn palette_plan(skin_id: &str, base_is_dark: bool) -> Vec<PaletteAssign> {
                 push("Inactive", role, (255, 255, 255, 255));
                 push("Disabled", role, (255, 255, 255, DISABLED_TEXT_ALPHA));
             }
-            // Плейсхолдер задаётся сразу во всех группах (в Qt это форма
-            // `setColor(role, color)` без указания группы).
+            // The placeholder is set in all groups at once (in Qt that is the
+            // `setColor(role, color)` form without a group).
             for group in PALETTE_GROUPS {
                 push(
                     group,
@@ -1328,8 +1344,8 @@ pub fn palette_plan(skin_id: &str, base_is_dark: bool) -> Vec<PaletteAssign> {
                     push(group, role, (r, g, b, 255));
                 }
             }
-            // Незаданные роли остаются системными — скин перечисляет только
-            // то, что меняет.
+            // Unset roles stay system ones — the skin lists only what it
+            // changes.
             let win = spec
                 .iter()
                 .find(|(k, _)| *k == "WindowText")
@@ -1345,75 +1361,76 @@ pub fn palette_plan(skin_id: &str, base_is_dark: bool) -> Vec<PaletteAssign> {
 }
 
 // ============================================================================
-// Всплывающий тост
+// Pop-up toast
 // ============================================================================
 //
-// Куда и какого размера лечь плашке — арифметика, и она вся здесь: Qt только
-// мерит текст и переносит виджет. До переноса расчёт лежал в Python внутри
-// `_reposition`, и каждый его край («не выше видимой области», «не уже 160»)
-// был отдельной строкой без теста.
+// Where and how big the plate should be is arithmetic, and all of it is
+// here: Qt only measures the text and moves the widget. Before the port the
+// calculation lay in Python inside `_reposition`, and each of its edges («not
+// above the visible area», «not narrower than 160») was a separate line
+// without a test.
 
-/// Отступ тоста от краёв родителя.
+/// Toast margin from the parent's edges.
 pub const TOAST_MARGIN: i32 = 12;
-/// Сколько тост держится по умолчанию, миллисекунды (0 — до снятия вручную).
+/// How long a toast stays by default, milliseconds (0 — until dismissed by hand).
 pub const TOAST_TIMEOUT_MS: u32 = 5000;
-/// Сколько мс на символ даём прочесть длинный тост сверх обычного срока.
-/// Взрослый читает около 15 знаков в секунду; 60 мс — с запасом.
+/// How many ms per character we give to read a long toast beyond the usual
+/// time. An adult reads about 15 characters a second; 60 ms leaves a margin.
 pub const TOAST_READ_MS_PER_CHAR: u32 = 60;
-/// Дольше этого информационный тост не держится даже при длинном тексте:
-/// плашка лежит поверх кнопок и не должна закрывать их надолго.
+/// An informational toast does not stay longer than this even with a long
+/// text: the plate lies over buttons and must not cover them for long.
 pub const TOAST_MAX_TIMEOUT_MS: u32 = 12_000;
 
-/// Срок жизни информационного тоста с этим текстом, мс.
+/// Lifetime of an informational toast with this text, ms.
 ///
-/// Короткий — общий [`TOAST_TIMEOUT_MS`], как у всех плашек Rexon; длинный
-/// получает время прочесть (символы × [`TOAST_READ_MS_PER_CHAR`] плюс
-/// секунда на то, чтобы заметить), но не больше [`TOAST_MAX_TIMEOUT_MS`].
-/// Никогда не 0: ноль значит «висеть до закрытия», а это удел ошибок, по
-/// которым человеку есть что сделать (дефект 30.10.2026 — сообщение об
-/// откате обоев висело больше минуты поверх фильтра).
+/// A short one gets the shared [`TOAST_TIMEOUT_MS`], like all Rexon plates; a
+/// long one gets time to be read (characters × [`TOAST_READ_MS_PER_CHAR`]
+/// plus a second to notice it), but no more than [`TOAST_MAX_TIMEOUT_MS`].
+/// Never 0: zero means «stay until closed», and that is reserved for errors
+/// the person can do something about (defect 30.10.2026 — a message about a
+/// wallpaper rollback hung for over a minute over the filter).
 pub fn toast_timeout_for_text(text: &str) -> u32 {
     let chars = u32::try_from(text.chars().count()).unwrap_or(u32::MAX);
     let read = chars.saturating_mul(TOAST_READ_MS_PER_CHAR).saturating_add(1000);
     read.clamp(TOAST_TIMEOUT_MS, TOAST_MAX_TIMEOUT_MS)
 }
 
-/// Минимальная ширина, ниже которой плашку не жмём.
+/// Minimum width below which the plate is not squeezed.
 pub const TOAST_MIN_WIDTH: i32 = 160;
-/// Наибольшая ширина плашки: длинный ответ переносится, а не тянет тост во
-/// всю страницу.
+/// Maximum plate width: a long answer wraps rather than stretching the toast
+/// across the whole page.
 pub const TOAST_MAX_WIDTH: i32 = 520;
-/// Запас к измеренной ширине текста, точек.
+/// Margin added to the measured text width, points.
 ///
-/// ⚠️ Не вкусовщина. И `QTextDocument::idealWidth` у виджетной метки, и
-/// `implicitWidth` у форматированного текста в QML отдают ДРОБНОЕ число, а
-/// в расчёт оно попадает целым (усечением). Без запаса строка, которая
-/// влезала целиком, переносилась на вторую: замер 08.09.2026 — текст
-/// «✅ Копия панели сохранена» мерился как 173,59, плашка выходила по 173, и
-/// последнее слово уезжало вниз.
+/// ⚠️ Not a matter of taste. Both `QTextDocument::idealWidth` of a widget
+/// label and `implicitWidth` of formatted text in QML return a FRACTIONAL
+/// number, and it enters the calculation as an integer (by truncation).
+/// Without the margin a line that fit entirely wrapped onto a second one:
+/// measured 08.09.2026 — the text «✅ Panel copy saved» measured 173.59, the
+/// plate came out at 173, and the last word moved down.
 pub const TOAST_TEXT_SLACK: i32 = 4;
-/// Минимальная высота видимой области родителя, на которую рассчитываем.
+/// Minimum height of the parent's visible area we count on.
 pub const TOAST_MIN_VISIBLE_HEIGHT: i32 = 48;
-/// Минимальная высота самой плашки.
+/// Minimum height of the plate itself.
 pub const TOAST_MIN_HEIGHT: i32 = 24;
 
-/// Ширина плашки: ширина текста в одну строку, но не шире максимума и не
-/// шире родителя за вычетом полей.
+/// Plate width: the width of the text in one line, but no wider than the
+/// maximum and no wider than the parent minus margins.
 ///
-/// `ideal_w` — ширина текста в одну строку, `hint_w` — подсказка виджета
-/// (у метки с переносом она «квадратная», поэтому одной её мало).
+/// `ideal_w` — the width of the text in one line, `hint_w` — the widget's
+/// hint (for a wrapping label it is «square», so it alone is not enough).
 pub fn toast_width(parent_w: i32, ideal_w: i32, hint_w: i32, max_w: i32) -> i32 {
     let avail = (parent_w - 2 * TOAST_MARGIN).max(TOAST_MIN_WIDTH);
     ideal_w.max(hint_w).min(max_w).min(avail)
 }
 
-/// Высота ВИДИМОЙ части родителя.
+/// Height of the VISIBLE part of the parent.
 ///
-/// `chain` — цепочка `(смещение узла внутри родителя, высота родителя)` от
-/// самого родителя тоста вверх до окна. Считать по высоте одного родителя
-/// нельзя: вкладка бывает выше отведённого ей места (её окно тянет свой
-/// минимальный размер), нижние пиксели обрезаются, и двухстрочный тост
-/// уезжал за край окна.
+/// `chain` — a chain of `(node offset inside the parent, parent height)` from
+/// the toast's parent up to the window. Counting by one parent's height is
+/// not possible: a tab can be taller than the space allotted to it (its
+/// window enforces its minimum size), the bottom pixels are clipped, and a
+/// two-line toast went off the window's edge.
 pub fn toast_visible_height(parent_h: i32, chain: &[(i32, i32)]) -> i32 {
     let mut view = parent_h;
     let mut offset = 0;
@@ -1424,12 +1441,13 @@ pub fn toast_visible_height(parent_h: i32, chain: &[(i32, i32)]) -> i32 {
     view.max(TOAST_MIN_VISIBLE_HEIGHT)
 }
 
-/// Место и высота плашки: `(x, y, высота)`.
+/// Position and height of the plate: `(x, y, height)`.
 ///
-/// `height_for_width` — высота текста при выбранной ширине (её меряет Qt с
-/// учётом переноса строк); неположительное значение означает «мерить нечем»,
-/// тогда берётся подсказка виджета `hint_h`. Длинный текст лучше подрезать,
-/// чем увести тост за границу окна, поэтому высота зажата видимой областью.
+/// `height_for_width` — the text height at the chosen width (Qt measures it
+/// taking line wrapping into account); a non-positive value means «nothing
+/// to measure with», then the widget's hint `hint_h` is taken. A long text is
+/// better clipped than moving the toast past the window border, so the
+/// height is clamped by the visible area.
 pub fn toast_placement(visible_h: i32, height_for_width: i32, hint_h: i32) -> (i32, i32, i32) {
     let mut h = if height_for_width > 0 {
         height_for_width
@@ -1445,31 +1463,32 @@ pub fn toast_placement(visible_h: i32, height_for_width: i32, hint_h: i32) -> (i
 }
 
 // ============================================================================
-// Сообщения Qt в журнал
+// Qt messages to the log
 // ============================================================================
 //
-// ⛔ Обработчика сообщений на Python здесь нет и быть не может: PySide6
-// захватывает GIL в том потоке, который печатает, а Qt печатает и из
-// QQmlThread — приложение встаёт намертво. Печатает штатный обработчик Qt на
-// C++, мы лишь задаём ему формат и направление переменными окружения.
+// ⛔ There is no Python message handler here and there cannot be one:
+// PySide6 takes the GIL in the thread that prints, and Qt also prints from
+// QQmlThread — the application deadlocks. The stock Qt C++ handler prints;
+// we only set its format and destination through environment variables.
 
-/// Формат сообщений Qt — 1-в-1 формат строк общего журнала Rexon
-/// (`crate::applog::format_line`: «время.мс [процесс] УРОВЕНЬ область:
-/// текст», уровень ровно в пять знаков), чтобы строки Qt не выбивались из
-/// файла. Область — `qt`; категория Qt (`qt.qml`, `qt.quick`…) идёт перед
-/// текстом, если задана. Номер процесса обязателен: в тот же файл пишут и
-/// окно, и хост обоев, и строки Qt иначе не отличить.
+/// Qt message format — 1:1 the line format of the shared Rexon log
+/// (`crate::applog::format_line`: «time.ms [process] LEVEL area: text», the
+/// level exactly five characters), so that Qt lines do not stand out in the
+/// file. The area is `qt`; the Qt category (`qt.qml`, `qt.quick`…) goes
+/// before the text if set. The process number is mandatory: the window and
+/// the wallpaper host write to the same file, and Qt lines could not be told
+/// apart otherwise.
 pub const QT_MESSAGE_PATTERN: &str = "%{time yyyy-MM-dd hh:mm:ss.zzz} [%{pid}] \
      %{if-debug}DEBUG%{endif}%{if-info}INFO %{endif}\
      %{if-warning}WARN %{endif}%{if-critical}ERROR%{endif}\
      %{if-fatal}ERROR%{endif} qt: \
      %{if-category}%{category}: %{endif}%{message}";
 
-/// Переменные окружения, которыми Qt направляется в журнал Rexon.
+/// Environment variables that route Qt into the Rexon log.
 ///
-/// `QT_FORCE_STDERR_LOGGING` нужен потому, что Qt на многих дистрибутивах
-/// (CachyOS среди них) собран с journald и по умолчанию шлёт сообщения в
-/// системный журнал мимо stderr.
+/// `QT_FORCE_STDERR_LOGGING` is needed because on many distributions (CachyOS
+/// among them) Qt is built with journald and by default sends messages to the
+/// system journal bypassing stderr.
 pub fn qt_logging_env() -> Vec<(&'static str, &'static str)> {
     vec![
         ("QT_FORCE_STDERR_LOGGING", "1"),
@@ -1477,12 +1496,13 @@ pub fn qt_logging_env() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-/// Заводить ли дескриптор 2 в файл журнала.
+/// Whether to redirect descriptor 2 into the log file.
 ///
-/// Да — только при запуске без консоли (ярлык «Пуск», systemd-юнит): stderr
-/// там либо сокет journald, либо символьное устройство `/dev/null`. Терминал,
-/// файл и пайп — явный выбор запустившего, его не перехватываем, иначе
-/// разработчик перестанет видеть сообщения там, где ожидает.
+/// Yes — only when launched without a console (a «Start» menu shortcut, a
+/// systemd unit): stderr there is either a journald socket or the character
+/// device `/dev/null`. A terminal, a file and a pipe are an explicit choice of
+/// whoever launched it; we do not intercept them, otherwise a developer would
+/// stop seeing messages where they expect them.
 pub fn should_redirect_stderr(
     stderr_is_tty: bool,
     fd_is_socket: bool,
@@ -1496,24 +1516,25 @@ pub fn should_redirect_stderr(
 }
 
 // ============================================================================
-// Сетевые сбои человеческим языком
+// Network failures in human language
 // ============================================================================
 
-/// Сырая ошибка сети → фраза, понятная покупателю (правило #13).
+/// A raw network error → a phrase the customer understands (rule #13).
 ///
-/// Показывать человеку `<urlopen error https://aur.archlinux.org/rpc/v5/...:
-/// Network Error: Unexpected EOF>` нельзя: он видит скобки, URL и английский
-/// жаргон и решает, что сломалась программа. Техническая строка нужна в
-/// журнале, а на экране — что случилось и что с этим делать.
+/// Showing a person `<urlopen error https://aur.archlinux.org/rpc/v5/...:
+/// Network Error: Unexpected EOF>` is not allowed: they see brackets, a URL
+/// and English jargon and decide the program broke. The technical line
+/// belongs in the log, and on screen — what happened and what to do about it.
 ///
-/// `source` — человеческое имя каталога («AUR», «KDE Store»), чтобы было
-/// видно, ЧТО именно недоступно: остальные разделы могут работать. Имя
-/// магазина не склоняется, склоняется слово «каталог».
+/// `source` — the human name of the catalog («AUR», «KDE Store»), so it is
+/// clear WHAT exactly is unavailable: other sections may be working. The
+/// store name is not inflected; the word «catalog» is.
 pub fn humanize_network_error(raw: &str, source: &str) -> String {
     let low = raw.to_lowercase();
-    // Фразы целиком, по две на причину — с именем каталога и без: падеж
-    // слова «каталог» зависит от места во фразе, и склеивать его из кусков
-    // значило бы навязать русский порядок слов всем языкам.
+    // Whole phrases, two per cause — with the catalog name and without: the
+    // grammatical case of the word «catalog» depends on its place in the
+    // phrase, and gluing it from pieces would force Russian word order on
+    // all languages.
     let named = !source.is_empty();
 
     const DNS: &[&str] = &[
@@ -1589,17 +1610,17 @@ pub fn humanize_network_error(raw: &str, source: &str) -> String {
     }
 }
 
-/// Трёхзначный код ответа HTTP в сыром тексте ошибки: «HTTP Error 503: ...»,
-/// «status 429», «status code 429».
+/// The three-digit HTTP response code in the raw error text: «HTTP Error
+/// 503: ...», «status 429», «status code 429».
 ///
-/// Порт регулярки `\b(?:HTTP\s*Error|status(?:\s*code)?)\s*[:=]?\s*(\d{3})\b`
-/// без движка регулярок. Границы слова считаются как в Python: буква любого
-/// алфавита, цифра и подчёркивание — часть слова.
+/// Port of the regex `\b(?:HTTP\s*Error|status(?:\s*code)?)\s*[:=]?\s*(\d{3})\b`
+/// without a regex engine. Word boundaries are computed as in Python: a
+/// letter of any alphabet, a digit and an underscore are part of a word.
 pub fn http_status_code(raw: &str) -> Option<String> {
     let cs: Vec<char> = raw.chars().collect();
     let n = cs.len();
     let word = |c: char| c.is_alphanumeric() || c == '_';
-    // Ключевое слово без учёта регистра; отдаёт позицию за ним.
+    // Case-insensitive keyword; returns the position after it.
     let eat = |mut i: usize, kw: &str| -> Option<usize> {
         for k in kw.chars() {
             if i >= n || cs[i].to_lowercase().next() != Some(k) {
@@ -1617,10 +1638,10 @@ pub fn http_status_code(raw: &str) -> Option<String> {
     };
     for start in 0..n {
         if start > 0 && word(cs[start - 1]) {
-            continue; // не на границе слова
+            continue; // not at a word boundary
         }
-        // Варианты префикса; для «status» пробуем сначала с «code» (как
-        // жадная группа регулярки), затем без него.
+        // Prefix variants; for «status» we first try with «code» (like the
+        // regex's greedy group), then without it.
         let mut heads: Vec<usize> = Vec::new();
         if let Some(i) = eat(start, "http") {
             if let Some(j) = eat(spaces(i), "error") {
@@ -1643,7 +1664,7 @@ pub fn http_status_code(raw: &str) -> Option<String> {
                 continue;
             }
             if i + 3 < n && word(cs[i + 3]) {
-                continue; // «5031» — не код ответа
+                continue; // «5031» is not a response code
             }
             return Some(cs[i..i + 3].iter().collect());
         }
@@ -1652,28 +1673,28 @@ pub fn http_status_code(raw: &str) -> Option<String> {
 }
 
 // ============================================================================
-// Адаптивная сетка карточек
+// Adaptive card grid
 // ============================================================================
 //
-// Сколько карточек фиксированной ширины влезает в полосу — чистая
-// арифметика, и она одна на все вкладки с сетками (правило #12). Раньше
-// каждая вкладка считала по-своему: «Оформление» делила ширину на ширину
-// карточки, «Расширения» — ступенями по ширине окна, вкладка Steam вообще
-// держала число столбцов константой. Наблюдения (ширина viewport'а,
-// ширина карточки, промежуток) приходят параметрами — Qt отсюда не видно.
+// How many fixed-width cards fit in a strip is pure arithmetic, and it is one
+// for all tabs with grids (rule #12). Previously each tab computed it its own
+// way: «Appearance» divided the width by the card width, «Extensions» — in
+// steps by window width, the Steam tab kept the column count a constant
+// altogether. Observations (viewport width, card width, spacing) come in as
+// parameters — Qt is not visible from here.
 
-/// Сколько столбцов карточек шириной `card_width` влезает в полосу
-/// `viewport_width` при промежутке `spacing` и суммарных полях `margins`.
+/// How many columns of cards `card_width` wide fit in the strip
+/// `viewport_width` with spacing `spacing` and total margins `margins`.
 ///
-/// Результат зажат в `[min_cols, max_cols]` и никогда не меньше единицы:
-/// пустая сетка бесполезна, а карточка шире полосы всё равно показывается
-/// (её обрежет скроллбар, но пользователь увидит содержимое).
+/// The result is clamped to `[min_cols, max_cols]` and is never less than one:
+/// an empty grid is useless, and a card wider than the strip is shown anyway
+/// (the scrollbar clips it, but the user sees the contents).
 ///
-/// Вырожденные наблюдения не считаются ошибкой — окно спрашивает ширину и
-/// до первого показа, когда её ещё нет:
-/// * `viewport_width <= 0` (окно не разложено) → `min_cols`;
-/// * `card_width <= 0` (карточка без размера) → `max_cols`, потому что
-///   делить не на что, а прижимать к одному столбцу заведомо неверно.
+/// Degenerate observations are not counted as an error — the window asks for
+/// the width even before it is first shown, when there is none yet:
+/// * `viewport_width <= 0` (the window is not laid out) → `min_cols`;
+/// * `card_width <= 0` (a card without a size) → `max_cols`, because there is
+///   nothing to divide by, and pinning to one column is surely wrong.
 pub fn grid_columns(
     viewport_width: i32,
     card_width: i32,
@@ -1695,33 +1716,33 @@ pub fn grid_columns(
     if usable < card_width as i64 {
         return lo;
     }
-    // n карточек влезают, если n*card + (n-1)*gap <= usable.
+    // n cards fit if n*card + (n-1)*gap <= usable.
     let fit = (usable + gap) / (card_width as i64 + gap);
     (fit.clamp(lo as i64, hi as i64)) as u32
 }
 
-/// Размер страницы сетки при `cols` столбцах и `rows` рядах.
+/// Grid page size with `cols` columns and `rows` rows.
 ///
-/// Пагинация задаётся рядами, а не числом предметов: иначе при пяти
-/// столбцах страница из 25 штук ровно пятирядная, а при четырёх —
-/// шесть рядов и «хвост» в один элемент.
+/// Pagination is set by rows, not by the number of items: otherwise with five
+/// columns a page of 25 items is exactly five rows, and with four — six rows
+/// and a one-item «tail».
 pub fn grid_page_size(cols: u32, rows: u32) -> u32 {
     cols.max(1) * rows.max(1)
 }
 
-/// Номер страницы (с нуля), на которой лежит элемент `index` при размере
-/// страницы `page_size`.
+/// Page number (from zero) that holds element `index` at page size
+/// `page_size`.
 ///
-/// Нужен при смене числа столбцов: страница меняет размер, и чтобы
-/// пользователь не потерял место, номер пересчитывают по индексу первого
-/// элемента прежней страницы.
+/// Needed when the column count changes: the page changes size, and so the
+/// user does not lose their place, the number is recomputed from the index of
+/// the first element of the previous page.
 pub fn grid_page_for_index(index: u32, page_size: u32) -> u32 {
     index / page_size.max(1)
 }
 
-/// Сколько всего страниц у `total` элементов при размере страницы
-/// `page_size`. Пустой список — одна (пустая) страница, чтобы подпись
-/// «Страница 1 / 1» не превращалась в «1 / 0».
+/// How many pages in total for `total` elements at page size `page_size`. An
+/// empty list is one (empty) page, so that the label «Page 1 / 1» does not
+/// turn into «1 / 0».
 pub fn grid_page_count(total: u32, page_size: u32) -> u32 {
     let size = page_size.max(1);
     if total == 0 {
@@ -1737,13 +1758,13 @@ mod grid_tests {
 
     #[test]
     fn fits_by_exact_arithmetic() {
-        // 3 карточки по 180 + 2 промежутка по 12 = 564, плюс поля 16 = 580.
+        // 3 cards of 180 + 2 gaps of 12 = 564, plus margins 16 = 580.
         assert_eq!(grid_columns(580, 180, 12, 16, 1, 12), 3);
-        // На пиксель меньше — третья уже не влезает.
+        // One pixel less — the third no longer fits.
         assert_eq!(grid_columns(579, 180, 12, 16, 1, 12), 2);
-        // На пиксель больше — по-прежнему три, четвёртой нужно ещё 192.
+        // One pixel more — still three, the fourth needs another 192.
         assert_eq!(grid_columns(581, 180, 12, 16, 1, 12), 3);
-        // Ровно на границе четвёртой: 4*180 + 3*12 + 16 = 772.
+        // Exactly at the fourth's boundary: 4*180 + 3*12 + 16 = 772.
         assert_eq!(grid_columns(772, 180, 12, 16, 1, 12), 4);
     }
 
@@ -1757,9 +1778,9 @@ mod grid_tests {
     #[test]
     fn card_wider_than_viewport_still_shows_one() {
         assert_eq!(grid_columns(100, 180, 12, 16, 1, 12), 1);
-        // Карточка ровно в полосу без полей — уже влезает.
+        // A card exactly the strip width without margins — already fits.
         assert_eq!(grid_columns(180, 180, 12, 0, 1, 12), 1);
-        // ...а с полями — нет, но столбец всё равно один.
+        // ...and with margins it does not, but there is still one column.
         assert_eq!(grid_columns(180, 180, 12, 16, 1, 12), 1);
     }
 
@@ -1773,9 +1794,9 @@ mod grid_tests {
     fn clamped_to_range() {
         assert_eq!(grid_columns(4000, 180, 12, 16, 1, 5), 5);
         assert_eq!(grid_columns(300, 180, 12, 16, 3, 8), 3);
-        // Перепутанные границы не роняют расчёт: max подтягивается к min.
+        // Swapped bounds do not break the calculation: max is pulled up to min.
         assert_eq!(grid_columns(4000, 180, 12, 16, 4, 2), 4);
-        // Нулевой минимум означает «хотя бы один».
+        // A zero minimum means «at least one».
         assert_eq!(grid_columns(0, 180, 12, 16, 0, 5), 1);
     }
 
@@ -1783,7 +1804,7 @@ mod grid_tests {
     fn zero_spacing_is_plain_division() {
         assert_eq!(grid_columns(900, 180, 0, 0, 1, 99), 5);
         assert_eq!(grid_columns(899, 180, 0, 0, 1, 99), 4);
-        // Отрицательный промежуток трактуется как нулевой.
+        // Negative spacing is treated as zero.
         assert_eq!(grid_columns(900, 180, -20, 0, 1, 99), 5);
     }
 
@@ -1797,10 +1818,10 @@ mod grid_tests {
 
     #[test]
     fn page_recomputed_from_first_visible_item() {
-        // Была страница 3 из 25 (элементы 50..74) — первый элемент 50.
-        // При четырёх столбцах страница стала 20, элемент 50 попал на 2-ю.
+        // It was page 3 of 25 (elements 50..74) — the first element is 50.
+        // With four columns the page became 20, element 50 landed on page 2.
         assert_eq!(grid_page_for_index(50, 20), 2);
-        // Обратно к пяти столбцам — элемент 40 (первый второй страницы).
+        // Back to five columns — element 40 (the first of the second page).
         assert_eq!(grid_page_for_index(40, 25), 1);
         assert_eq!(grid_page_for_index(0, 25), 0);
         assert_eq!(grid_page_for_index(7, 0), 7);
@@ -1823,8 +1844,8 @@ mod skin_extras_tests {
 
     #[test]
     fn skin_palettes_parse() {
-        // Сторож формата: в таблицах допускаются только #rgb/#rrggbb, иначе
-        // роль молча выпала бы из плана и цвет остался системным.
+        // Format guard: only #rgb/#rrggbb are allowed in the tables, otherwise
+        // the role would silently drop out of the plan and the color stay system.
         for s in SKINS {
             if let Some(spec) = s.palette {
                 for (role, hex) in spec {
@@ -1852,17 +1873,17 @@ mod skin_extras_tests {
     fn dark_criterion_is_channel_average() {
         assert!(is_dark_rgb(0x1b, 0x28, 0x38)); // steam_dark
         assert!(is_dark_rgb(0x1a, 0x05, 0x33)); // synthwave
-        assert!(!is_dark_rgb(0xf4, 0xf5, 0xf6)); // светлый
-        // Ровно на пороге: 128,128,128 — среднее 128, уже НЕ тёмная.
+        assert!(!is_dark_rgb(0xf4, 0xf5, 0xf6)); // light
+        // Exactly at the threshold: 128,128,128 — average 128, NOT dark anymore.
         assert!(!is_dark_rgb(128, 128, 128));
         assert!(is_dark_rgb(127, 128, 128));
-        // Насыщенный жёлтый — там расходились прежние два критерия.
+        // Saturated yellow — where the two former criteria diverged.
         assert!(!is_dark_rgb(255, 255, 0));
     }
 
-    /// Каждый скин со своей палитрой задаёт цвет ссылок, и он отличим от
-    /// фона: иначе ссылки в форматированном тексте выходят системными
-    /// `#0000ff` (дефект 01.11.2026 на «Тёмном (Steam)»).
+    /// Every skin with its own palette sets the link color, and it is
+    /// distinguishable from the background: otherwise links in formatted text
+    /// come out as the system `#0000ff` (defect 01.11.2026 on «Dark (Steam)»).
     #[test]
     fn every_palette_skin_has_readable_link() {
         assert_eq!(skin_link_rgb("system"), None);
@@ -1885,7 +1906,7 @@ mod skin_extras_tests {
     fn system_skin_forces_white_only_on_dark() {
         assert!(palette_plan("system", false).is_empty());
         let plan = palette_plan("system", true);
-        // Три роли текста × три группы + плейсхолдер в трёх группах.
+        // Three text roles × three groups + the placeholder in three groups.
         assert_eq!(plan.len(), 12);
         let dis: Vec<_> = plan
             .iter()
@@ -1906,11 +1927,11 @@ mod skin_extras_tests {
         let plan = palette_plan("steam_dark", true);
         let spec = skin_palette("steam_dark").unwrap();
         assert_eq!(plan.len(), spec.len() * 3 + TEXT_ROLES.len());
-        // Окно — во всех трёх группах ровно тем цветом, что в таблице.
+        // Window — in all three groups exactly the color from the table.
         let win: Vec<_> = plan.iter().filter(|a| a.role == "Window").collect();
         assert_eq!(win.len(), 3);
         assert!(win.iter().all(|a| a.rgba == (0x1b, 0x28, 0x38, 255)));
-        // Приглушённый текст — последним словом, поверх записи из таблицы.
+        // Muted text — last, over the entry from the table.
         let last = plan
             .iter()
             .rev()
@@ -1918,7 +1939,7 @@ mod skin_extras_tests {
             .unwrap();
         assert_eq!(last.rgba, (255, 255, 255, DISABLED_TEXT_ALPHA));
         assert_eq!(plan.last().unwrap().role, "ButtonText");
-        // Светлый скин приглушает СВОИМ цветом текста, а не белым.
+        // The light skin mutes with ITS OWN text color, not white.
         let light = palette_plan("light", true);
         let dim = light
             .iter()
@@ -1926,7 +1947,7 @@ mod skin_extras_tests {
             .find(|a| a.group == "Disabled" && a.role == "Text")
             .unwrap();
         assert_eq!(dim.rgba, (0x1f, 0x23, 0x26, DISABLED_TEXT_ALPHA));
-        // Неизвестный скин — как везде, откат к умолчанию.
+        // Unknown skin — as everywhere, fall back to the default.
         assert_eq!(palette_plan("нет-такого", true), plan);
     }
 
@@ -1942,14 +1963,14 @@ mod skin_extras_tests {
         assert_eq!(skin_indicator_check_color("synthwave"), Some("#0d1b2a"));
         assert_eq!(skin_indicator_check_color("light"), None);
         assert_eq!(heading_default_outline(), ("#ff2d95", "#eaf6ff", 2));
-        // Галочка нужна ровно тем скинам, у которых есть оверлей.
+        // The check mark is needed exactly by the skins that have an overlay.
         for s in SKINS {
             assert_eq!(s.has_qss, s.check_color.is_some(), "скин {}", s.id);
         }
     }
 
-    /// Информационный тост гаснет всегда: коротко — общий срок, длинно —
-    /// время прочесть, но не дольше предела.
+    /// An informational toast always goes out: short — the shared time, long —
+    /// time to read, but no longer than the limit.
     #[test]
     fn info_toast_timeout_reads_and_never_sticks() {
         assert_eq!(toast_timeout_for_text(""), TOAST_TIMEOUT_MS);
@@ -1963,58 +1984,58 @@ mod skin_extras_tests {
 
     #[test]
     fn toast_width_clamped_by_parent_and_maximum() {
-        // Обычный случай: текст в одну строку короче и максимума, и полосы.
+        // The usual case: one-line text shorter than both the maximum and the strip.
         assert_eq!(toast_width(900, 400, 300, 520), 400);
-        // Подсказка виджета шире идеальной ширины — берём её.
+        // The widget hint is wider than the ideal width — take it.
         assert_eq!(toast_width(900, 200, 300, 520), 300);
-        // Максимум режет.
+        // The maximum cuts.
         assert_eq!(toast_width(900, 800, 300, 520), 520);
-        // Узкое окно режет сильнее максимума.
+        // A narrow window cuts more than the maximum.
         assert_eq!(toast_width(300, 800, 300, 520), 276);
-        // Совсем узкое окно — не уже минимума.
+        // A very narrow window — not narrower than the minimum.
         assert_eq!(toast_width(50, 800, 300, 520), TOAST_MIN_WIDTH);
     }
 
     #[test]
     fn toast_visible_height_takes_the_smallest_ancestor() {
-        // Один родитель — его высота.
+        // One parent — its height.
         assert_eq!(toast_visible_height(400, &[]), 400);
-        // Вкладка выше отведённого места: родитель 800, окно даёт 500.
+        // The tab is taller than its allotted space: parent 800, the window gives 500.
         assert_eq!(toast_visible_height(800, &[(0, 500)]), 500);
-        // Смещение узла внутри родителя вычитается.
+        // The node offset inside the parent is subtracted.
         assert_eq!(toast_visible_height(800, &[(40, 500)]), 460);
-        // Цепочка складывает смещения.
+        // The chain adds up offsets.
         assert_eq!(toast_visible_height(800, &[(40, 700), (10, 500)]), 450);
-        // Вырожденное окно — не ниже минимума.
+        // Degenerate window — not below the minimum.
         assert_eq!(toast_visible_height(10, &[]), TOAST_MIN_VISIBLE_HEIGHT);
         assert_eq!(toast_visible_height(800, &[(0, 0)]), TOAST_MIN_VISIBLE_HEIGHT);
     }
 
     #[test]
     fn toast_placement_keeps_plate_inside_window() {
-        // Двухстрочный тост в обычном окне.
+        // A two-line toast in a normal window.
         assert_eq!(toast_placement(400, 56, 30), (12, 332, 56));
-        // Мерить нечем — берём подсказку виджета.
+        // Nothing to measure with — take the widget hint.
         assert_eq!(toast_placement(400, 0, 30), (12, 358, 30));
         assert_eq!(toast_placement(400, -1, 30), (12, 358, 30));
-        // Текст выше видимой области: подрезаем, а не уезжаем за край.
+        // Text taller than the visible area: clip it rather than going off the edge.
         let (x, y, h) = toast_placement(100, 400, 30);
         assert_eq!((x, y, h), (12, 12, 76));
         assert!(y + h + TOAST_MARGIN <= 100);
-        // Совсем плоская область — плашка не ниже минимума, но и не выше края.
+        // A very flat area — the plate is not below the minimum, but not above the edge either.
         assert_eq!(toast_placement(40, 400, 30), (12, 12, TOAST_MIN_HEIGHT));
     }
 
     #[test]
     fn stderr_redirected_only_without_console() {
-        // Ярлык «Пуск»: /dev/null — символьное устройство, не терминал.
+        // A «Start» menu shortcut: /dev/null is a character device, not a terminal.
         assert!(should_redirect_stderr(false, false, true, false));
-        // systemd-юнит: сокет journald.
+        // systemd unit: a journald socket.
         assert!(should_redirect_stderr(false, true, false, false));
-        // Терминал — не перехватываем.
+        // Terminal — not intercepted.
         assert!(!should_redirect_stderr(true, false, true, false));
         assert!(!should_redirect_stderr(false, false, true, true));
-        // Файл или пайп (ни сокет, ни устройство) — явный выбор запустившего.
+        // A file or a pipe (neither a socket nor a device) — an explicit choice of whoever launched it.
         assert!(!should_redirect_stderr(false, false, false, false));
     }
 
@@ -2032,7 +2053,7 @@ mod skin_extras_tests {
 
     #[test]
     fn network_error_classified_by_cause() {
-        // Язык исходный: русский текст сторожит `tests/ui_base_parity.rs`.
+        // Source language: the Russian text is guarded by `tests/ui_base_parity.rs`.
         crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
         let t = |s: &str| humanize_network_error(s, "AUR");
         assert!(t("<urlopen error timed out>").starts_with("⚠️ The AUR catalog didn't respond"));
@@ -2046,7 +2067,7 @@ mod skin_extras_tests {
         assert!(t("HTTP Error 503: Service Unavailable").contains("returned error 503"));
         assert!(t("status code 429").contains("returned error 429"));
         assert!(t("нечто непонятное").contains("Couldn't contact the AUR catalog"));
-        // Без имени каталога — своя фраза, а не дыра на месте имени.
+        // Without a catalog name — a phrase of its own, not a hole where the name was.
         assert!(humanize_network_error("", "").contains("contact the catalog."));
         assert!(humanize_network_error("timed out", "").starts_with("⚠️ The catalog didn't respond"));
     }
@@ -2055,23 +2076,24 @@ mod skin_extras_tests {
     fn http_code_found_like_the_original_regex() {
         assert_eq!(http_status_code("HTTP Error 503: nope").as_deref(), Some("503"));
         assert_eq!(http_status_code("http error 404").as_deref(), Some("404"));
-        // Пробел между словами необязателен и может быть двойным — как у
-        // регулярки оригинала (`HTTP\s*Error`).
+        // The space between words is optional and may be double — like the
+        // original's regex (`HTTP\s*Error`).
         assert_eq!(http_status_code("HTTPError: 500").as_deref(), Some("500"));
         assert_eq!(http_status_code("HTTP  Error  301").as_deref(), Some("301"));
         assert_eq!(http_status_code("status 429").as_deref(), Some("429"));
         assert_eq!(http_status_code("status code 429").as_deref(), Some("429"));
         assert_eq!(http_status_code("status=418").as_deref(), Some("418"));
-        // Четыре цифры — не код ответа (у оригинала `\d{3}\b`).
+        // Four digits are not a response code (the original has `\d{3}\b`).
         assert_eq!(http_status_code("HTTP Error 5031").as_deref(), None);
-        // Двух цифр мало.
+        // Two digits are not enough.
         assert_eq!(http_status_code("status 42").as_deref(), None);
-        // Слово должно начинаться на границе.
+        // The word must start at a boundary.
         assert_eq!(http_status_code("substatus 429").as_deref(), None);
-        // «codes» — не «code»: после него цифр нет, и откат к короткому
-        // варианту тоже не находит кода (проверено на регулярке оригинала).
+        // «codes» is not «code»: there are no digits after it, and falling back to
+        // the short variant does not find a code either (checked on the original's
+        // regex).
         assert_eq!(http_status_code("status codes 429").as_deref(), None);
-        // Русский текст вокруг не мешает и не ломает границы слова.
+        // Russian text around does not interfere and does not break word boundaries.
         assert_eq!(
             http_status_code("ответ сервера: HTTP Error 502 — плохо").as_deref(),
             Some("502")
@@ -2088,11 +2110,11 @@ mod tests {
     fn pre_blocks_read_left_to_right() {
         assert_eq!(pre_left_to_right("<p>a</p><pre>\n{ }\n</pre>"), "<p>a</p><pre dir=\"ltr\" align=\"left\">\n{ }\n</pre>");
         assert_eq!(pre_left_to_right("<PRE class=\"cmd\">x</PRE>"), "<PRE dir=\"ltr\" align=\"left\" class=\"cmd\">x</PRE>");
-        // Уже с направлением, чужие теги на «pre» и текст без тегов — как есть.
+        // Already with a direction, foreign tags starting with «pre» and text without tags — as is.
         for same in ["<pre dir=\"rtl\">x</pre>", "<prefix>x</prefix>", "<preview/>", "текст", "", "<pre"] {
             assert_eq!(pre_left_to_right(same), same);
         }
-        // Повторный проход ничего не добавляет.
+        // A repeated pass adds nothing.
         let once = pre_left_to_right("<pre>a</pre><pre>b</pre>");
         assert_eq!(once.matches("dir=").count(), 2);
         assert_eq!(pre_left_to_right(&once), once);

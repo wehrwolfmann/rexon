@@ -1,36 +1,37 @@
-//! Журнал виджета Conky: что conky написал при запуске и в работе.
+//! The Conky widget log: what conky wrote at startup and while running.
 //!
-//! ЗАЧЕМ. Виджет, который «не запустился», раньше оставлял человека с
-//! одной фразой «файл настроек, возможно, повреждён»: вывод conky уходил в
-//! никуда, а узнать причину можно было только из терминала. Теперь кнопка
-//! «Запустить» отдаёт вывод conky в файл ([`log_path`]), карточка виджета
-//! показывает его последние строки ([`tail`]), а сообщение о неудаче
-//! называет причину словами самого conky ([`failure_reason`]).
+//! WHY. A widget that "failed to start" used to leave the person with a single
+//! phrase, "the settings file may be corrupted": conky's output went nowhere,
+//! and the cause could only be found from a terminal. Now the "Start" button
+//! sends conky's output to a file ([`log_path`]), the widget card shows its last
+//! lines ([`tail`]), and the failure message names the cause in conky's own
+//! words ([`failure_reason`]).
 //!
-//! Почему файл, а не канал: conky с `-d` уходит в фон и держит унаследованный
-//! вывод до конца жизни — с каналом кнопка ждала бы его выхода. Файл
-//! открывается на дописывание ([`open_for_start`]): Rexon может укоротить
-//! разросшийся журнал ([`trim_if_large`]), и conky продолжит писать в его
-//! новый конец, а не в дыру на старом месте.
+//! Why a file and not a pipe: conky with `-d` goes into the background and
+//! keeps the inherited output for its whole life — with a pipe the button would
+//! wait for it to exit. The file is opened for appending ([`open_for_start`]):
+//! Rexon may truncate a log that has grown too large ([`trim_if_large`]), and
+//! conky keeps writing at its new end rather than into a hole at the old
+//! position.
 //!
-//! Строка conky 1.2x: `[2026-10-19 00:21:46.186] [warn ] [src/conky.cc:2059]
-//! syntax error (…) while reading config file 'bad.conf'`; старые выпуски и
-//! последняя строка перед выходом — `conky: …`. Замер на conky 1.25.2 под
+//! A conky 1.2x line: `[2026-10-19 00:21:46.186] [warn ] [src/conky.cc:2059]
+//! syntax error (…) while reading config file 'bad.conf'`; older releases, and
+//! the last line before exit, use `conky: …`. Measured on conky 1.25.2 under
 //! Xvfb, 19.10.2026.
 
 use std::io::Write;
 
 use crate::de_apply::Ctx;
 
-/// Сколько последних строк журнала показывать в карточке.
+/// How many of the last log lines to show in the card.
 pub const TAIL_LINES: usize = 12;
 
-/// Журнал больше этого укорачивается до [`KEEP_BYTES`] последних байт:
-/// виджет с ошибкой в `${exec}` пишет её на каждом обновлении.
+/// A log larger than this is truncated to its last [`KEEP_BYTES`] bytes: a
+/// widget with an error in `${exec}` writes it on every update.
 pub const MAX_LOG_BYTES: u64 = 1024 * 1024;
 pub const KEEP_BYTES: usize = 64 * 1024;
 
-/// Каталог журналов: `$XDG_STATE_HOME/rexon/conky` (по умолчанию
+/// The log directory: `$XDG_STATE_HOME/rexon/conky` (by default
 /// `~/.local/state/rexon/conky`).
 pub fn log_dir(ctx: &Ctx, xdg_state_home: Option<&str>) -> String {
     let base = match xdg_state_home.filter(|v| !v.is_empty()) {
@@ -40,9 +41,9 @@ pub fn log_dir(ctx: &Ctx, xdg_state_home: Option<&str>) -> String {
     format!("{base}/rexon/conky")
 }
 
-/// Имя файла журнала для файла настроек `conf`: путь целиком, с `%` и `/`
-/// закодированными, — у частей одного виджета журналы свои, и два виджета
-/// с одинаковым именем в разных местах не делят один файл.
+/// The log file name for the settings file `conf`: the whole path, with `%`
+/// and `/` encoded — the parts of one widget get their own logs, and two
+/// widgets with the same name in different places do not share one file.
 pub fn log_name(conf: &str) -> String {
     let mut out = String::new();
     for c in conf.trim_start_matches('/').chars() {
@@ -55,19 +56,20 @@ pub fn log_name(conf: &str) -> String {
     format!("{out}.log")
 }
 
-/// Журнал запуска файла настроек `conf`.
+/// The startup log of the settings file `conf`.
 pub fn log_path(ctx: &Ctx, xdg_state_home: Option<&str>, conf: &str) -> String {
     format!("{}/{}", log_dir(ctx, xdg_state_home), log_name(conf))
 }
 
-/// Живой путь журнала (`$XDG_STATE_HOME` из окружения).
+/// The live log path (`$XDG_STATE_HOME` from the environment).
 pub fn live_log_path(ctx: &Ctx, conf: &str) -> String {
     log_path(ctx, std::env::var("XDG_STATE_HOME").ok().as_deref(), conf)
 }
 
-/// Открыть журнал для нового запуска: прежний текст стирается (журнал —
-/// про этот запуск), файл открывается на дописывание. `None` — каталог или
-/// файл не завести (тогда conky запускается без журнала, как раньше).
+/// Opens the log for a new start: the previous text is erased (the log is
+/// about this start), and the file is opened for appending. `None` means the
+/// directory or the file could not be created (then conky starts without a
+/// log, as before).
 pub fn open_for_start(path: &str) -> Option<std::fs::File> {
     if let Some(dir) = std::path::Path::new(path).parent() {
         std::fs::create_dir_all(dir).ok()?;
@@ -78,8 +80,8 @@ pub fn open_for_start(path: &str) -> Option<std::fs::File> {
     Some(file)
 }
 
-/// Укоротить журнал, если он разросся: оставить последние [`KEEP_BYTES`].
-/// `true` — укоротили.
+/// Truncates the log if it has grown too large, keeping the last
+/// [`KEEP_BYTES`]. Returns `true` if it was truncated.
 pub fn trim_if_large(path: &str) -> bool {
     let Ok(meta) = std::fs::metadata(path) else { return false };
     if meta.len() <= MAX_LOG_BYTES {
@@ -87,7 +89,7 @@ pub fn trim_if_large(path: &str) -> bool {
     }
     let Ok(bytes) = std::fs::read(path) else { return false };
     let mut start = bytes.len().saturating_sub(KEEP_BYTES);
-    // С начала строки, а не с середины.
+    // From the start of a line, not from the middle.
     if let Some(nl) = bytes[start..].iter().position(|b| *b == b'\n') {
         start += nl + 1;
     }
@@ -104,8 +106,8 @@ pub fn trim_if_large(path: &str) -> bool {
         .is_ok()
 }
 
-/// Уровень строки conky 1.2x (`info`, `warn`, `error`, `critical`…);
-/// `None` — строка без метки (старый формат, продолжение сообщения).
+/// The level of a conky 1.2x line (`info`, `warn`, `error`, `critical`…);
+/// `None` means a line without a tag (the old format, a message continuation).
 pub fn level(line: &str) -> Option<&str> {
     let rest = line.trim_start().strip_prefix('[')?;
     let (_, rest) = rest.split_once("] [")?;
@@ -113,12 +115,12 @@ pub fn level(line: &str) -> Option<&str> {
     Some(lvl.trim())
 }
 
-/// Текст строки без отметки времени, уровня и места в исходниках conky, и
-/// без приставки `conky: ` старого формата.
+/// The line text without the timestamp, the level and the conky source
+/// location, and without the `conky: ` prefix of the old format.
 pub fn clean_line(line: &str) -> String {
     let mut s = line.trim();
     if level(s).is_some() {
-        // `[время] [уровень] [src/файл.cc:строка] текст` — три скобки.
+        // `[time] [level] [src/file.cc:line] text` — three bracket groups.
         for _ in 0..3 {
             match s.strip_prefix('[').and_then(|r| r.split_once(']')) {
                 Some((_, rest)) => s = rest.trim_start(),
@@ -129,15 +131,15 @@ pub fn clean_line(line: &str) -> String {
     s.strip_prefix("conky: ").unwrap_or(s).trim().to_string()
 }
 
-/// Почему conky не запустился — словами самого conky. Порядок важности:
-/// 1. синтаксическая ошибка файла настроек (после неё conky пробует старый
-///    синтаксис и падает уже на этой попытке — та, последняя, строка о
-///    причине не говорит);
-/// 2. последняя строка уровня `critical` / `error`;
-/// 3. последняя строка старого формата `conky: …`;
-/// 4. последнее предупреждение.
+/// Why conky failed to start, in conky's own words. Order of importance:
+/// 1. a syntax error in the settings file (after it conky tries the old
+///    syntax and fails on that attempt too — that last line does not tell
+///    the cause);
+/// 2. the last line of level `critical` / `error`;
+/// 3. the last old-format line `conky: …`;
+/// 4. the last warning.
 ///
-/// `None` — conky ничего полезного не написал.
+/// `None` means conky wrote nothing useful.
 pub fn failure_reason(text: &str) -> Option<String> {
     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
     let pick = |pred: &dyn Fn(&str) -> bool, last: bool| {
@@ -151,7 +153,7 @@ pub fn failure_reason(text: &str) -> Option<String> {
         .or_else(|| pick(&|l| matches!(level(l), Some("warn" | "warning")), true))
 }
 
-/// Последние `n` строк журнала для карточки — очищенные от служебных меток.
+/// The last `n` log lines for the card, cleaned of the service tags.
 pub fn tail(text: &str, n: usize) -> String {
     let lines: Vec<String> = text
         .lines()
@@ -163,9 +165,9 @@ pub fn tail(text: &str, n: usize) -> String {
     lines[start..].join("\n")
 }
 
-/// Журнал виджета для карточки: из журналов его частей (`confs`) — самый
-/// свежий (последний запуск). `(файл журнала, последние строки)`; `None` —
-/// виджет из Rexon ещё не запускали.
+/// The widget log for the card: the freshest one (the last start) among the
+/// logs of its parts (`confs`). Returns `(log file, last lines)`; `None` means
+/// the widget has not been started from Rexon yet.
 pub fn widget_log(ctx: &Ctx, confs: &[String]) -> Option<(String, String)> {
     let mut best: Option<(std::time::SystemTime, String)> = None;
     for conf in confs {
@@ -185,7 +187,7 @@ pub fn widget_log(ctx: &Ctx, confs: &[String]) -> Option<(String, String)> {
 mod tests {
     use super::*;
 
-    /// Вывод conky 1.25.2 на сломанном файле (стенд Xvfb 19.10.2026).
+    /// Output of conky 1.25.2 on a broken file (Xvfb stand, 19.10.2026).
     const BROKEN: &str = "\
 [2026-10-19 00:21:46.185] [info ] [src/system-details.cc:177] 'unknown' X11 session running
 [2026-10-19 00:21:46.186] [warn ] [src/conky.cc:2059] syntax error (bad.conf:2: '}' expected (to close '{' at line 1) near '=') while reading config file 'bad.conf'
@@ -206,7 +208,7 @@ conky: [string \"...\"]:148: attempt to index a nil value (local 'settings')
             Some("syntax error (bad.conf:2: '}' expected (to close '{' at line 1) near '=') while reading config file 'bad.conf'")
         );
         assert_eq!(failure_reason(MISSING_LUA).as_deref(), Some("lua script './missing.lua' not found"));
-        // Старый формат conky (1.10–1.19).
+        // The old conky format (1.10–1.19).
         assert_eq!(failure_reason("conky: can't open display: \n").as_deref(), Some("can't open display:"));
         assert_eq!(failure_reason("[2026-10-19 00:00:00.000] [info ] [src/a.cc:1] ok\n"), None);
         assert_eq!(failure_reason(""), None);
@@ -229,8 +231,8 @@ conky: [string \"...\"]:148: attempt to index a nil value (local 'settings')
         assert_ne!(log_name("/a/b_c"), log_name("/a_b/c"));
     }
 
-    /// Журнал на дописывание: после укорачивания запись идёт в новый конец,
-    /// а не в дыру на старом месте.
+    /// The log is opened for appending: after truncation, writes go to the new
+    /// end rather than into a hole at the old position.
     #[test]
     fn trimmed_log_keeps_the_tail_and_appends_at_end() {
         let dir = std::env::temp_dir().join(format!("rexon-conky-log-{}", std::process::id()));
@@ -247,7 +249,7 @@ conky: [string \"...\"]:148: attempt to index a nil value (local 'settings')
         assert!(text.len() <= KEEP_BYTES + 10, "{}", text.len());
         assert!(!text.contains('\0'), "дыра от записи по старому смещению");
         assert!(text.ends_with("after\n") && text.starts_with('x'));
-        // Новый запуск стирает прежний журнал.
+        // A new start erases the previous log.
         drop(f);
         drop(open_for_start(&path));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "");

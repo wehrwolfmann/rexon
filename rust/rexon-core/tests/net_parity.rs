@@ -1,38 +1,38 @@
-//! Golden-сверка СЕТЕВОГО слоя каталогов тем с оригиналами
-//! `rexon/appearance/ocs_client.py` и `rexon/appearance/aur_client.py`.
+//! Golden check of the NETWORK layer of the theme catalogs against the originals
+//! `rexon/appearance/ocs_client.py` and `rexon/appearance/aur_client.py`.
 //!
-//! Эталон `golden/net_cases.json` снят с ЖИВОГО Python
-//! одноразовым генератором: монипатчатся ровно границы — `urlopen`,
-//! кеш (`get_cache`), `PREVIEW_DIR`, журнал, — а решения принимает сам
-//! оригинал. Ответы подставляются из записанных фикстур (`ocs_list.xml`,
-//! `ocs_comments.xml`, `aur_search_raw.json`), поэтому эталон снимается без
-//! сети: `aur.archlinux.org` из среды разработки недоступен в принципе.
+//! The golden `golden/net_cases.json` was captured from LIVE Python
+//! by a one-off generator: exactly the boundaries are monkeypatched — `urlopen`,
+//! the cache (`get_cache`), `PREVIEW_DIR`, the log — while the decisions are made by the
+//! original itself. Answers are substituted from recorded fixtures (`ocs_list.xml`,
+//! `ocs_comments.xml`, `aur_search_raw.json`), so the golden is captured without
+//! a network: `aur.archlinux.org` is unreachable from the development environment in principle.
 //!
-//! Сверяется ВЕСЬ наблюдаемый след: какие URL запрошены, с каким
-//! User-Agent и таймаутом, что записано в журнал, какие методы кеша вызваны
-//! и в каком порядке, что осталось на диске и что вернулось наверх.
+//! The WHOLE observable trace is compared: which URLs were requested, with which
+//! User-Agent and timeout, what was written to the log, which cache methods were called
+//! and in which order, what remained on disk and what was returned upward.
 //!
-//! Четыре места, где Rust НАМЕРЕННО расходится с эталоном (проверяются
-//! отдельными утверждениями, а не побайтово):
-//!   * текст ошибки разбора XML — у Python внутри сообщения диагностика
-//!     `ElementTree` («unclosed token: line 1, column 0»), которой у нас нет;
-//!     сверяется префикс и уровень;
-//!   * текст ошибки разбора JSON — то же самое для `json.loads`;
-//!   * имя заголовка — эталон пишет `User-agent` (так его нормализует
-//!     `urllib`), мы передаём каноническое `User-Agent`; сверяется значение;
-//!   * ⭐ ПОВТОРЫ при временном сбое — Python пробовал ровно один раз и на
-//!     первом же обрыве соединения отдавал пустую страницу каталога либо
-//!     несостоявшуюся установку темы. Ядро повторяет
-//!     ([`rexon_core::net::with_retry`]), поэтому эталонный след запросов
-//!     размножается на число попыток ([`assert_requests_retried`]), а
-//!     извещения о повторах снимаются с журнала отдельно
-//!     ([`assert_retries`]) — окончательный отказ по-прежнему оформляется
-//!     тем же текстом и уровнем, что у оригинала.
+//! Four places where Rust DELIBERATELY differs from the golden (checked by
+//! separate assertions, not byte-wise):
+//!   * the XML parse error text — Python's message contains the `ElementTree`
+//!     diagnostics («unclosed token: line 1, column 0»), which we do not have;
+//!     the prefix and level are compared;
+//!   * the JSON parse error text — the same for `json.loads`;
+//!   * the header name — the golden writes `User-agent` (that is how `urllib`
+//!     normalizes it), we pass the canonical `User-Agent`; the value is compared;
+//!   * ⭐ RETRIES on a transient failure — Python tried exactly once and on
+//!     the very first connection drop returned an empty catalog page or
+//!     a failed theme install. The core retries
+//!     ([`rexon_core::net::with_retry`]), so the golden request trace
+//!     is multiplied by the number of attempts ([`assert_requests_retried`]), and
+//!     the retry notices are taken off the log separately
+//!     ([`assert_retries`]) — the final refusal is still worded
+//!     with the same text and level as the original's.
 
 use rexon_core::aur;
 
-// Тексты ошибок AUR переводятся; эталон Python — русский, сверка идёт на
-// каталоге `po/ru.po`.
+// AUR error texts are translated; the Python golden is Russian, the check runs on
+// the `po/ru.po` catalog.
 mod i18n_pin;
 use rexon_core::models::ThemeItem;
 use rexon_core::net::{LogLevel, NetError, NetIo};
@@ -47,23 +47,23 @@ const LIST_XML: &[u8] = include_bytes!("golden/ocs_list.xml");
 const COMMENTS_XML: &[u8] = include_bytes!("golden/ocs_comments.xml");
 const AUR_RAW: &[u8] = include_bytes!("golden/aur_search_raw.json");
 
-/// Тело, которым генератор кормил скачивание: 102 400 байт = два куска по
-/// 65 536 и остаток.
+/// The body the generator fed to the download: 102 400 bytes = two chunks of
+/// 65 536 and a remainder.
 fn body() -> Vec<u8> {
     (0..256u16).map(|b| b as u8).cycle().take(102_400).collect()
 }
 
 // ============================================================================
-// Фальшивый транспорт: отдаёт записанные ответы, ведёт журнал вызовов
+// Fake transport: returns recorded answers, keeps a log of calls
 // ============================================================================
 
-/// Заготовленный ответ на очередной запрос.
+/// A prepared answer to the next request.
 enum Reply {
-    /// Тело + значение заголовка Content-Length (`None` — заголовка нет).
+    /// Body + the value of the Content-Length header (`None` — no header).
     Ok(Vec<u8>, Option<i64>),
-    /// Соединение не состоялось (`URLError` оригинала).
+    /// The connection did not happen (the original's `URLError`).
     Fail(NetError),
-    /// Соединение открылось, но чтение оборвалось (голый `OSError`).
+    /// The connection opened, but reading broke off (a bare `OSError`).
     BrokenRead(Vec<u8>, Option<i64>, NetError),
 }
 
@@ -74,22 +74,22 @@ struct FakeNet {
     requests: Vec<(String, String, u64)>,
     logs: Vec<(LogLevel, String)>,
     progress: Vec<(i64, i64)>,
-    /// след файловых операций: `mkdir:…`, `create:…`, `write:N`, `close`,
+    /// trace of file operations: `mkdir:…`, `create:…`, `write:N`, `close`,
     /// `remove:…`
     fs: Vec<String>,
-    /// «диск»: путь → сколько байт записано
+    /// "disk": path → how many bytes were written
     files: std::collections::HashMap<String, usize>,
     stream: Option<(Vec<u8>, usize, Option<NetError>)>,
-    /// `Content-Type` открытого ответа (у голден-случаев каталога не смотрится).
+    /// `Content-Type` of the opened response (not looked at in the catalog golden cases).
     ctype: String,
     open_file: Option<String>,
-    /// Паузы перед повторами в миллисекундах — по одной на повтор.
-    /// Настоящего ожидания в сверке нет: важен факт и длительность.
+    /// Pauses before retries in milliseconds — one per retry.
+    /// There is no real waiting in the check: the fact and the duration matter.
     slept: Vec<u64>,
-    // кеш
+    // cache
     lists: Vec<Option<(Vec<ThemeItem>, i64)>>,
     items: Vec<Option<ThemeItem>>,
-    /// Ответы `get_item_detail` (свежие полные детали).
+    /// `get_item_detail` answers (fresh full details).
     details: Vec<Option<ThemeItem>>,
     previews: Vec<Option<String>>,
     cache: Vec<Value>,
@@ -100,8 +100,8 @@ impl FakeNet {
         FakeNet { replies: replies.into_iter().rev().collect(), ..Default::default() }
     }
 
-    /// Один и тот же временный сбой на ВСЕ попытки ядра: так проверяется
-    /// окончательный отказ (эталонный след Python повторяется целиком).
+    /// One and the same transient failure for ALL of the core's attempts: this checks
+    /// the final refusal (the Python golden trace is repeated in full).
     fn always_failing(detail: &str) -> Self {
         Self::with(
             (0..ATTEMPTS)
@@ -115,7 +115,7 @@ impl FakeNet {
         self.replies.pop().expect("лишний сетевой запрос")
     }
 
-    /// Журнал БЕЗ извещений о повторах — то, что сверяется с эталоном Python.
+    /// The log WITHOUT retry notices — what is compared with the Python golden.
     fn final_log_texts(&self) -> Vec<&str> {
         self.logs
             .iter()
@@ -267,29 +267,29 @@ impl OcsCacheIo for FakeNet {
 }
 
 // ============================================================================
-// Помощники сверки
+// Check helpers
 // ============================================================================
 
-/// Сколько ВСЕГО попыток делает ядро на временный сбой (первая + повторы).
+/// How many attempts IN TOTAL the core makes on a transient failure (the first + retries).
 const ATTEMPTS: usize = rexon_core::net::RETRY_ATTEMPTS as usize;
 
-/// Паузы, которые ядро выдерживает между попытками обычного (не 429) сбоя.
+/// The pauses the core keeps between attempts on an ordinary (not 429) failure.
 const WAITS: &[u64] = &[700, 1400];
 
-/// Строка журнала о повторе — НАШЕ добавление, у эталона её нет.
+/// The log line about a retry — OUR addition, the golden does not have it.
 fn is_retry_notice(msg: &str) -> bool {
     msg.contains("— повтор через")
 }
 
-/// Один запрос совпал с эталоном: URL, User-Agent и таймаут.
-/// Имя заголовка эталон пишет как `User-agent` (нормализация `urllib`) —
-/// сверяется ЗНАЧЕНИЕ, регистр имени на проводе не значим.
+/// One request matched the golden: URL, User-Agent and timeout.
+/// The golden writes the header name as `User-agent` (`urllib` normalization) —
+/// the VALUE is compared, the case of the name on the wire does not matter.
 fn assert_requests(io: &FakeNet, want: &Value, ctx: &str) {
     assert_requests_retried(io, want, ctx, 1);
 }
 
-/// То же, но эталонный след повторён `attempts` раз: временный сбой ядро
-/// пробует заново, Python пробовал один раз (осознанное расхождение).
+/// The same, but the golden trace repeated `attempts` times: the core retries a transient failure,
+/// Python tried once (a deliberate deviation).
 fn assert_requests_retried(io: &FakeNet, want: &Value, ctx: &str, attempts: usize) {
     let want = want["requests"].as_array().unwrap();
     assert_eq!(
@@ -309,8 +309,8 @@ fn assert_requests_retried(io: &FakeNet, want: &Value, ctx: &str, attempts: usiz
     }
 }
 
-/// Повторы отработали ровно так, как задумано: столько-то извещений в журнал,
-/// столько-то пауз и ровно такой длины.
+/// Retries worked exactly as intended: so many notices in the log,
+/// so many pauses, and of exactly this length.
 fn assert_retries(io: &FakeNet, ctx: &str, retries: usize) {
     let notices = io.logs.iter().filter(|l| is_retry_notice(&l.1)).count();
     assert_eq!(notices, retries, "{ctx}: извещений о повторе");
@@ -325,8 +325,8 @@ fn assert_cache(io: &FakeNet, want: &Value, ctx: &str) {
     );
 }
 
-/// Журнал БЕЗ извещений о повторах совпадает с эталоном: окончательный отказ
-/// оформляется тем же текстом и уровнем, что у Python.
+/// The log WITHOUT retry notices matches the golden: the final refusal
+/// is worded with the same text and level as Python's.
 fn assert_logs(io: &FakeNet, want: &Value, ctx: &str) {
     let want = want["logs"].as_array().unwrap();
     let logs: Vec<&(LogLevel, String)> =
@@ -344,7 +344,7 @@ fn assert_logs(io: &FakeNet, want: &Value, ctx: &str) {
     }
 }
 
-/// Полная сверка следа (запросы + журнал + кеш).
+/// Full trace check (requests + log + cache).
 fn assert_trace(io: &FakeNet, want: &Value, ctx: &str) {
     assert_requests(io, want, ctx);
     assert_logs(io, want, ctx);
@@ -381,8 +381,8 @@ fn cached_item(id: &str, name: &str, category_id: i64) -> ThemeItem {
 // OCS: search
 // ============================================================================
 
-/// Сеть отвечает РЕАЛЬНЫМ ответом каталога: тот же URL, тот же ключ кеша,
-/// те же элементы и totalitems, страница легла в кеш.
+/// The network answers with a REAL catalog answer: the same URL, the same cache key,
+/// the same items and totalitems, the page landed in the cache.
 #[test]
 fn search_network_ok_matches_python() {
     let want = cases()["search_network_ok"].clone();
@@ -408,7 +408,7 @@ fn search_network_ok_matches_python() {
     assert_trace(&c.into_io(), &want, "search_network_ok");
 }
 
-/// Свежий кеш — сети не касаемся вовсе.
+/// Fresh cache — we do not touch the network at all.
 #[test]
 fn search_cache_hit_matches_python() {
     let want = cases()["search_cache_hit"].clone();
@@ -419,15 +419,15 @@ fn search_cache_hit_matches_python() {
 
     assert_eq!(total, 42);
     assert_eq!(ids(&items), want_ids(&want));
-    // comment_count через SQLite не проходит: у Python это отсутствующий
-    // атрибут (null в эталоне), у нас — ноль, ровно как видит интерфейс.
+    // comment_count does not pass through SQLite: in Python it is a missing
+    // attribute (null in the golden), for us it is zero, exactly as the interface sees it.
     assert!(want["items"][0]["comment_count"].is_null());
     assert_eq!(items[0].comment_count, 0);
     assert_trace(&c.into_io(), &want, "search_cache_hit");
 }
 
-/// Сеть упала — в дело идёт УСТАРЕВШИЙ кеш (второй `get_list` тем же ключом),
-/// в журнал уходит предупреждение с URL и текстом ошибки.
+/// The network fell — the STALE cache is used (a second `get_list` with the same key),
+/// a warning with the URL and error text goes to the log.
 #[test]
 fn search_net_fail_falls_back_to_stale_cache() {
     let want = cases()["search_net_fail_stale"].clone();
@@ -445,7 +445,7 @@ fn search_net_fail_falls_back_to_stale_cache() {
     assert_cache(&io, &want, "search_net_fail_stale");
 }
 
-/// Сеть упала и кеша нет — пусто, страница в кеш НЕ кладётся.
+/// The network fell and there is no cache — empty, the page is NOT put in the cache.
 #[test]
 fn search_net_fail_without_cache_is_empty() {
     let want = cases()["search_net_fail_empty"].clone();
@@ -463,10 +463,10 @@ fn search_net_fail_without_cache_is_empty() {
     assert_cache(&io, &want, "search_net_fail_empty");
 }
 
-/// `status != ok`: пустой результат и предупреждение с кодом — как у
-/// оригинала. ⚠️ Расхождение с эталоном намеренное: отказ магазина НЕ ложится
-/// в кеш пустой страницей (Python клал — и час после сбоя раздел стоял
-/// пустым, хотя магазин уже ожил); вместо записи — второй взгляд в кеш.
+/// `status != ok`: an empty result and a warning with the code — as in
+/// the original. ⚠️ The deviation from the golden is deliberate: a store refusal is NOT put
+/// into the cache as an empty page (Python did — and for an hour after a failure the section stood
+/// empty, although the store had already come back); instead of writing — a second look into the cache.
 #[test]
 fn search_status_not_ok_matches_python() {
     let want = cases()["search_status_not_ok"].clone();
@@ -484,8 +484,8 @@ fn search_status_not_ok_matches_python() {
     assert_no_list_written(&io, "search_status_not_ok");
 }
 
-/// Битый XML: пустой результат и сообщение уровня error. Текст расходится
-/// намеренно — внутри Python-сообщения диагностика `ElementTree`.
+/// Broken XML: an empty result and an error-level message. The text differs
+/// deliberately — the Python message contains the `ElementTree` diagnostics.
 #[test]
 fn search_broken_xml_matches_python() {
     let want = cases()["search_broken_xml"].clone();
@@ -498,7 +498,7 @@ fn search_broken_xml_matches_python() {
     assert_eq!(total, 0);
     let io = c.into_io();
     assert_requests(&io, &want, "search_broken_xml");
-    // Нечитаемый ответ — не «товаров нет»: в кеш не пишется (см. выше).
+    // An unreadable answer is not "no items": it is not written to the cache (see above).
     assert_no_list_written(&io, "search_broken_xml");
     assert_eq!(io.logs.len(), 1);
     assert_eq!(io.logs[0].0, LogLevel::Error);
@@ -507,8 +507,8 @@ fn search_broken_xml_matches_python() {
     assert!(io.logs[0].1.starts_with(prefix), "{}", io.logs[0].1);
 }
 
-/// Категория-зонт «716,488»: URL и ключ кеша совпадают с оригиналом, а вот
-/// пустой typeid ПОЧИНЕН — Python клал в целочисленное поле строку.
+/// The umbrella category "716,488": the URL and cache key match the original, but
+/// the empty typeid is FIXED — Python put a string into an integer field.
 #[test]
 fn search_umbrella_category_fixes_string_in_int_field() {
     let want = cases()["search_umbrella_category"].clone();
@@ -520,15 +520,15 @@ fn search_umbrella_category_fixes_string_in_int_field() {
 
     assert_eq!(total, 1);
     assert_eq!(ids(&items), want_ids(&want));
-    // эталон: строка «716,488» в поле типа int
+    // golden: the string "716,488" in an int field
     assert_eq!(want["items"][0]["category_id_type"], "str");
     assert_eq!(want["items"][0]["category_id"], "716,488");
-    // починка: неразбираемый зонт оставляет 0
+    // fix: an unparsable umbrella leaves 0
     assert_eq!(items[0].item.category_id, 0);
     assert_trace(&c.into_io(), &want, "search_umbrella_category");
 }
 
-/// `cached_search` — только кеш, без единого запроса.
+/// `cached_search` — only the cache, without a single request.
 #[test]
 fn cached_search_never_touches_network() {
     let mut io = FakeNet::with(vec![]);
@@ -570,14 +570,14 @@ fn get_item_net_fail_falls_back_to_cache() {
     assert_requests_retried(&io, &want, "get_item_net_fail", ATTEMPTS);
     assert_retries(&io, "get_item_net_fail", ATTEMPTS - 1);
     assert_cache(&io, &want, "get_item_net_fail");
-    // предупреждение _http_get здесь тоже пишется — сверх извещений о повторах
+    // the _http_get warning is written here too — on top of the retry notices
     assert_eq!(io.final_log_texts().len(), 1);
 }
 
-/// Счётчик скачиваний у деталей магазина — другое число, чем у того же товара
-/// в списке (Candy icons 08.11.2026: 3 118 105 в списке, 759 в деталях).
-/// Детали держат число плитки, иначе плитка и панель расходятся, а запись в
-/// кеше затирает счётчик плитки; без записи в кеше — число деталей.
+/// The download counter in store details is a different number than for the same item
+/// in the list (Candy icons 08.11.2026: 3 118 105 in the list, 759 in the details).
+/// Details keep the tile's number, otherwise the tile and the panel diverge, and the cache
+/// entry overwrites the tile counter; without a cache entry — the details' number.
 #[test]
 fn get_item_keeps_the_list_download_count() {
     let mut io = FakeNet::with(vec![Reply::Ok(LIST_XML.to_vec(), None)]);
@@ -594,7 +594,7 @@ fn get_item_keeps_the_list_download_count() {
     assert_eq!(c.get_item("1352754").expect("элемент").item.downloads, raw);
 }
 
-/// Детали для показа: свежие из кеша — БЕЗ сети; промах — обычный запрос.
+/// Details for display: fresh ones from the cache — WITHOUT network; a miss — an ordinary request.
 #[test]
 fn get_item_cached_uses_fresh_detail_and_skips_network() {
     use rexon_core::ocs::DETAIL_TTL_SECS;
@@ -616,7 +616,7 @@ fn get_item_cached_uses_fresh_detail_and_skips_network() {
     io.details = vec![None];
     let mut c = client(io);
     let got = c.get_item_cached("2358391", DETAIL_TTL_SECS).expect("из сети");
-    // Фикстура — ответ-список: разбор деталей берёт первый товар ответа.
+    // The fixture is a list answer: details parsing takes the first item of the answer.
     assert_eq!(got.item.id, "1352754");
     let io = c.into_io();
     assert_eq!(io.requests.len(), 1, "промах кеша — один сетевой запрос");
@@ -624,7 +624,7 @@ fn get_item_cached_uses_fresh_detail_and_skips_network() {
     assert_eq!(io.cache.last().unwrap()["call"], "put_item");
 }
 
-/// Ответ не разобрать (нет `<data>`) → кеш; кеш пуст → None.
+/// The answer cannot be parsed (no `<data>`) → cache; the cache is empty → None.
 #[test]
 fn get_item_malformed_falls_back_to_cache() {
     let want = cases()["get_item_malformed"].clone();
@@ -635,7 +635,7 @@ fn get_item_malformed_falls_back_to_cache() {
     assert_trace(&c.into_io(), &want, "get_item_malformed");
 }
 
-/// Разобрано, но `id` пуст → None БЕЗ обращения к кешу.
+/// Parsed, but `id` is empty → None WITHOUT touching the cache.
 #[test]
 fn get_item_empty_id_skips_cache() {
     let want = cases()["get_item_empty_id"].clone();
@@ -672,7 +672,7 @@ fn comments_net_fail_is_none() {
     assert_cache(&io, &want, "comments_net_fail");
 }
 
-/// Код 101 — «комментариев нет», а не ошибка: пустой список и ни слова в журнал.
+/// Code 101 means "no comments", not an error: an empty list and not a word in the log.
 #[test]
 fn comments_101_is_empty_list() {
     let want = cases()["comments_101"].clone();
@@ -683,7 +683,7 @@ fn comments_101_is_empty_list() {
     assert_trace(&c.into_io(), &want, "comments_101");
 }
 
-/// Прочий неуспешный код — None и предупреждение.
+/// Any other unsuccessful code — None and a warning.
 #[test]
 fn comments_bad_status_is_none() {
     let want = cases()["comments_status_bad"].clone();
@@ -695,7 +695,7 @@ fn comments_bad_status_is_none() {
 }
 
 // ============================================================================
-// OCS: превью и скачивание
+// OCS: previews and downloads
 // ============================================================================
 
 const PREVIEW_URL: &str = "https://images.pling.com/cache/770x540-4/img/00/00/1.jpg";
@@ -713,8 +713,8 @@ fn preview_cache_hit_skips_download() {
     assert_trace(&c.into_io(), &want, "preview_cache_hit");
 }
 
-/// Промах кеша → скачивание с ТЕМ ЖЕ именем файла (sha1 URL + расширение),
-/// таймаутом 20 с и записью в кеш.
+/// A cache miss → a download with THE SAME file name (sha1 of the URL + extension),
+/// a 20 s timeout and a write to the cache.
 #[test]
 fn preview_download_matches_python() {
     let want = cases()["preview_download_ok"].clone();
@@ -733,7 +733,7 @@ fn preview_download_matches_python() {
         Some(want["fs"]["size"].as_u64().unwrap() as usize),
         "размер записанного файла"
     );
-    // прогресс у превью не запрашивается (on_progress=None у оригинала)
+    // no progress is requested for previews (on_progress=None in the original)
     assert!(io.progress.is_empty());
 }
 
@@ -776,8 +776,8 @@ fn theme_with_links() -> ThemeItem {
     }
 }
 
-/// Автовыбор линка: Windows-сборка отбрасывается, берётся `.tar.xz`, пробел в
-/// имени файла экранируется, прогресс идёт кусками по 65 536.
+/// Automatic link choice: the Windows build is discarded, `.tar.xz` is taken, the space in
+/// the file name is escaped, progress comes in chunks of 65 536.
 #[test]
 fn download_picks_best_link_and_reports_progress() {
     let want = cases()["download_best_link"].clone();
@@ -800,7 +800,7 @@ fn download_picks_best_link_and_reports_progress() {
     assert!(io.fs.contains(&"mkdir:/tmp/rexon-test/sub".to_string()));
 }
 
-/// Явный индекс перебивает автовыбор.
+/// An explicit index overrides the automatic choice.
 #[test]
 fn download_explicit_link_matches_python() {
     let want = cases()["download_explicit_link"].clone();
@@ -813,8 +813,8 @@ fn download_explicit_link_matches_python() {
     assert!(io.progress.is_empty(), "без колбэка прогресс не зовётся");
 }
 
-/// Файл, выбранный руками в панели деталей, доходит до скачивания: качается
-/// он, а не автоматический (здесь — даже Windows-сборка, раз её выбрали).
+/// A file picked by hand in the details panel reaches the download: it is the one
+/// downloaded, not the automatic one (here even the Windows build, since it was chosen).
 #[test]
 fn download_takes_the_file_chosen_by_name() {
     let item = theme_with_links();
@@ -827,7 +827,7 @@ fn download_takes_the_file_chosen_by_name() {
     assert_eq!(io.requests.len(), 1);
     assert_eq!(io.requests[0].0, "https://pling.com/p/1/Bibata-Windows.zip");
 
-    // Имени нет среди файлов — автоматический выбор, как у плитки.
+    // The name is not among the files — the automatic choice, as for the tile.
     let io = FakeNet::with(vec![Reply::Ok(b.clone(), Some(b.len() as i64))]);
     let mut c = client(io);
     let idx = ocs::file_index_for(&item, "");
@@ -835,7 +835,7 @@ fn download_takes_the_file_chosen_by_name() {
     assert_eq!(c.into_io().requests[0].0, "https://pling.com/p/1/Bibata%20Modern%20Ice.tar.xz");
 }
 
-/// Линков нет — берётся download_url.
+/// No links — download_url is taken.
 #[test]
 fn download_falls_back_to_download_url() {
     let want = cases()["download_url_fallback"].clone();
@@ -852,7 +852,7 @@ fn download_falls_back_to_download_url() {
     assert_trace(&c.into_io(), &want, "download_url_fallback");
 }
 
-/// Ни линков, ни URL — false без единого запроса.
+/// Neither links nor a URL — false without a single request.
 #[test]
 fn download_without_url_is_false() {
     let want = cases()["download_no_url"].clone();
@@ -863,7 +863,7 @@ fn download_without_url_is_false() {
     assert_trace(&c.into_io(), &want, "download_no_url");
 }
 
-/// Content-Length больше потолка — файл даже не создаётся.
+/// Content-Length above the ceiling — the file is not even created.
 #[test]
 fn download_too_big_by_header_matches_python() {
     let want = cases()["download_too_big_header"].clone();
@@ -882,8 +882,8 @@ fn download_too_big_by_header_matches_python() {
     assert!(io.fs.is_empty(), "ни одной файловой операции");
 }
 
-/// Заголовка нет, а тело переросло потолок — недокачанный файл удаляется,
-/// в журнал при этом НИЧЕГО не пишется (страховочная ветка оригинала).
+/// No header, but the body outgrew the ceiling — the partial file is removed,
+/// and NOTHING is written to the log (a safety branch of the original).
 #[test]
 fn download_overrun_body_removes_file() {
     let want = cases()["download_overrun_body"].clone();
@@ -904,7 +904,7 @@ fn download_overrun_body_removes_file() {
     assert!(io.fs.contains(&format!("remove:{dest}")));
 }
 
-/// Обрыв чтения посередине — сообщение об ошибке и удаление огрызка.
+/// Reading breaks off in the middle — an error message and removal of the stub.
 #[test]
 fn download_broken_stream_removes_file() {
     let want = cases()["download_broken_stream"].clone();
@@ -928,20 +928,20 @@ fn download_broken_stream_removes_file() {
     assert!(!io.files.contains_key(dest), "огрызок удалён");
 }
 
-/// Обрыв на середине архива → вторая попытка скачивает его ЦЕЛИКОМ, а не
-/// дописывает хвост к огрызку: файл создаётся заново и на диске ровно столько
-/// байт, сколько в теле. Регресс к «тема не установилась из-за одного обрыва».
+/// A break in the middle of an archive → the second attempt downloads it IN FULL, rather than
+/// appending the tail to the stub: the file is created anew and the disk holds exactly as many
+/// bytes as the body. Regression of "the theme did not install because of a single break".
 #[test]
 fn download_retries_whole_file_after_broken_stream() {
     let b = body();
     let mut io = FakeNet::with(vec![
-        // Первая попытка: ответ открылся, а чтение тела оборвалось.
+        // First attempt: the response opened, but reading the body broke off.
         Reply::BrokenRead(
             b[..b.len() / 2].to_vec(),
             Some(b.len() as i64),
             NetError::Transport { detail: "соединение разорвано".into() },
         ),
-        // Вторая: сервер отдаёт всё.
+        // Second: the server sends everything.
         Reply::Ok(b.clone(), Some(b.len() as i64)),
     ]);
     let dest = "/tmp/rexon-test/retry.tar.xz";
@@ -959,20 +959,20 @@ fn download_retries_whole_file_after_broken_stream() {
         Some(b.len()),
         "файл должен быть ровно один целый, а не полтора"
     );
-    // Огрызок затирается созданием файла заново, а не дописывается.
+    // The stub is overwritten by creating the file anew, not appended to.
     assert_eq!(
         io.fs.iter().filter(|s| s.starts_with("create:")).count(),
         2,
         "каждая попытка создаёт файл заново"
     );
     assert_retries(&io, "download_retry", 1);
-    // Окончательного «OCS download failed» быть не должно — тема доехала.
+    // There must be no final "OCS download failed" — the theme arrived.
     assert!(io.final_log_texts().is_empty(), "успех не пишет об ошибке");
 }
 
-/// Отмена (покупатель ушёл с категории) повтором НЕ считается: один запрос,
-/// ни одной паузы. Иначе отмена, ради которой освобождали канал, тут же
-/// занимала бы его снова.
+/// Cancellation (the buyer left the category) does NOT count as a retry: one request,
+/// no pauses. Otherwise the cancellation that freed the channel would immediately
+/// occupy it again.
 #[test]
 fn cancelled_request_is_not_retried() {
     let mut io = FakeNet::with(vec![Reply::Fail(NetError::Transport {
@@ -983,8 +983,8 @@ fn cancelled_request_is_not_retried() {
     assert!(io.slept.is_empty(), "и ждать перед несделанным повтором тоже");
 }
 
-/// Форма текста, доезжающего до покупателя: скобки `<urlopen error …>` ставит
-/// транспорт (сбой соединения), а код ответа печатается как у `HTTPError`.
+/// The shape of the text that reaches the buyer: the `<urlopen error …>` brackets are added by
+/// the transport (connection failure), and the response code is printed as by `HTTPError`.
 #[test]
 fn error_texts_match_python() {
     let want = cases()["exception_texts"].clone();
@@ -994,8 +994,8 @@ fn error_texts_match_python() {
     assert_eq!(status.to_string(), want["http_error"].as_str().unwrap());
 }
 
-/// Человеческие формулировки — наше дополнение; по-русски дословно как
-/// было до перевода.
+/// The human wording is our addition; in Russian word for word as
+/// before the translation.
 #[test]
 fn russian_human_errors_read_as_before() {
     let _lang = i18n_pin::ru();
@@ -1010,7 +1010,7 @@ fn russian_human_errors_read_as_before() {
     );
 }
 
-/// Те же формулировки по-английски — без единой русской буквы.
+/// The same wording in English — without a single Russian letter.
 #[test]
 fn english_human_errors_have_no_russian() {
     let _lang = i18n_pin::en();
@@ -1051,8 +1051,8 @@ fn aur_search_matches_python() {
     assert_requests(&io, &want, "aur_search_ok");
 }
 
-/// Многословный запрос: в RPC уходит самое длинное слово, остальные — местный
-/// AND-фильтр; `limit` режет хвост.
+/// A multi-word query: the longest word goes to the RPC, the rest are a local
+/// AND filter; `limit` cuts the tail.
 #[test]
 fn aur_search_multiword_limit_matches_python() {
     let want = cases()["aur_search_multiword_limit"].clone();
@@ -1070,8 +1070,8 @@ fn aur_search_empty_query_skips_network() {
     assert_requests(&io, &want, "aur_search_empty_query");
 }
 
-/// Категория: три запроса по именному соглашению, дедуп по имени, у всех
-/// пакетов проставлен ключ категории.
+/// A category: three requests by naming convention, dedup by name, every
+/// package has the category key set.
 #[test]
 fn aur_category_matches_python() {
     let want = cases()["aur_category_cursor"].clone();
@@ -1091,9 +1091,9 @@ fn aur_unknown_category_skips_network() {
     assert_requests(&io, &want, "aur_category_unknown");
 }
 
-/// Раздел без запроса: выдача категории и сверху её курируемые пакеты.
-/// Подборка просится ОДНИМ `/info` и только именами своего раздела; не
-/// ответил `/info` — раздел показывается своей выдачей, без ошибки.
+/// A section without a query: the category results with its curated packages on top.
+/// The selection is requested with ONE `/info` and only with its own section's names; if
+/// `/info` did not answer, the section is shown with its own results, without an error.
 #[test]
 fn aur_category_pins_curated_of_its_section() {
     let search = |names: &[&str]| -> Vec<u8> {
@@ -1119,7 +1119,7 @@ fn aur_category_pins_curated_of_its_section() {
     assert!(last.contains("/info?") && last.contains("aerothemeplasma-sounds-git"), "{last}");
     assert!(!last.contains("icons"), "в /info только пакеты своего раздела: {last}");
 
-    // /info упал — выдача раздела без подборки.
+    // /info failed — the section's results without the selection.
     let mut io = FakeNet::with(
         std::iter::repeat_with(|| Reply::Ok(search(&["ocean-sound-theme"]), None))
             .take(3)
@@ -1129,14 +1129,14 @@ fn aur_category_pins_curated_of_its_section() {
     let got = aur::fetch_category_with_curated(&mut io, "sounds").unwrap();
     assert_eq!(names(&got), ["ocean-sound-theme"]);
 
-    // Раздел без подборки в /info не ходит.
+    // A section without a selection does not go to /info.
     let mut io = FakeNet::with((0..2).map(|_| Reply::Ok(search(&[]), None)).collect());
     assert!(aur::fetch_category_with_curated(&mut io, "colors").unwrap().is_empty());
     assert_eq!(io.requests.len(), 2);
 }
 
-/// Виртуальные popular/new: агрегация пяти категорий (12 запросов) в том же
-/// порядке, дедуп и разные сортировки.
+/// Virtual popular/new: aggregation of five categories (12 requests) in the same
+/// order, dedup and different sort orders.
 #[test]
 fn aur_virtual_categories_match_python() {
     for (key, case) in [("popular", "aur_category_popular"), ("new", "aur_category_new")] {
@@ -1157,7 +1157,7 @@ fn aur_curated_matches_python() {
     assert_requests(&io, &want, "aur_curated");
 }
 
-/// Не-JSON: тот же префикс сообщения (диагностика разборщика своя).
+/// Not JSON: the same message prefix (the parser's diagnostics are its own).
 #[test]
 fn aur_not_json_message_matches_python() {
     let _lang = i18n_pin::ru();
@@ -1170,7 +1170,7 @@ fn aur_not_json_message_matches_python() {
     assert_requests(&io, &want, "aur_not_json");
 }
 
-/// Не-объект: имя типа по-питоновски, текст побайтово как у оригинала.
+/// Not an object: the type name Python-style, the text byte-for-byte as in the original.
 #[test]
 fn aur_not_object_messages_match_python() {
     let _lang = i18n_pin::ru();
@@ -1189,7 +1189,7 @@ fn aur_not_object_messages_match_python() {
     }
 }
 
-/// Те же ошибки на исходном языке.
+/// The same errors in the source language.
 #[test]
 fn aur_shape_errors_in_english() {
     let _lang = i18n_pin::en();
@@ -1201,7 +1201,7 @@ fn aur_shape_errors_in_english() {
     assert!(err.to_string().starts_with("AUR RPC returned something other than JSON: "), "{err}");
 }
 
-/// Ошибка уровня RPC пробрасывается наверх с текстом сервера (или заглушкой).
+/// An RPC-level error is passed upward with the server's text (or a placeholder).
 #[test]
 fn aur_rpc_error_messages_match_python() {
     for (case, body) in [
@@ -1215,8 +1215,8 @@ fn aur_rpc_error_messages_match_python() {
     }
 }
 
-/// Сетевой сбой у AUR НЕ глотается (в отличие от OCS) — уходит наверх с тем
-/// же текстом, который увидит покупатель.
+/// A network failure in AUR is NOT swallowed (unlike OCS) — it goes upward with the same
+/// text the buyer will see.
 #[test]
 fn aur_net_fail_propagates() {
     let want = cases()["aur_net_fail"].clone();
@@ -1232,19 +1232,19 @@ fn aur_net_fail_propagates() {
 }
 
 // ============================================================================
-// OCS: отказ магазина ≠ «товаров нет» (20.10.2026)
+// OCS: a store refusal ≠ "no items" (20.10.2026)
 // ============================================================================
 //
-// 20.10.2026 api.kde-look.org/api.opendesktop.org на любой запрос каталога
-// отвечали HTTP 200 с телом «status failed, statuscode 999, unknown request»,
-// а раздел писал «ничего не найдено», будто товаров нет. Ниже — ЗАПИСАННЫЕ
-// ответы того дня (XML — то, что приходит на наш запрос; JSON — то же при
+// On 20.10.2026 api.kde-look.org/api.opendesktop.org answered any catalog request
+// with HTTP 200 and the body "status failed, statuscode 999, unknown request",
+// and the section wrote "nothing found", as if there were no items. Below are the RECORDED
+// answers of that day (XML — what comes back to our request; JSON — the same with
 // `format=json`).
 
 const FAILED_999_XML: &[u8] = b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ocs><meta><status>failed</status><statuscode>999</statuscode><message>unknown request</message></meta></ocs>\n";
 const FAILED_999_JSON: &[u8] = br#"{"status":"failed","statuscode":999,"message":"unknown request"}"#;
 
-/// Ни одной записи страницы в кеш — ответом-ошибкой хороший кеш не затирается.
+/// Not a single page entry in the cache — an error answer does not overwrite a good cache.
 fn assert_no_list_written(io: &FakeNet, ctx: &str) {
     assert!(
         !io.cache.iter().any(|c| c["call"] == "put_list"),
@@ -1269,7 +1269,7 @@ fn store_refusal_999_is_an_error_not_an_empty_page() {
     }
 }
 
-/// Отказ магазина при живом кеше той же страницы: показываем кеш, не ошибку.
+/// A store refusal with a live cache of the same page: we show the cache, not the error.
 #[test]
 fn store_refusal_keeps_cached_page() {
     let mut io = FakeNet::with(vec![Reply::Ok(FAILED_999_XML.to_vec(), None)]);
@@ -1281,7 +1281,7 @@ fn store_refusal_keeps_cached_page() {
     assert_no_list_written(&c.into_io(), "кеш при отказе");
 }
 
-/// Сеть упала и кеша нет — это сбой связи, а не пустой раздел.
+/// The network fell and there is no cache — this is a connection failure, not an empty section.
 #[test]
 fn store_network_failure_is_reported() {
     let mut io = FakeNet::always_failing("<urlopen error boom>");
@@ -1293,7 +1293,7 @@ fn store_network_failure_is_reported() {
     }
 }
 
-/// Настоящий пустой ответ (status ok, товаров 0) — по-прежнему пусто, не ошибка.
+/// A real empty answer (status ok, 0 items) — still empty, not an error.
 #[test]
 fn store_ok_empty_is_not_an_error() {
     let xml = br#"<?xml version="1.0"?><ocs><meta><status>ok</status><statuscode>100</statuscode><totalitems>0</totalitems></meta><data/></ocs>"#;
@@ -1305,7 +1305,7 @@ fn store_ok_empty_is_not_an_error() {
     assert_eq!(total, 0);
 }
 
-/// Подпись для человека — по-русски дословно, на «вы».
+/// The label for a person — in Russian word for word, with the formal address.
 #[test]
 fn store_refusal_text_in_russian() {
     let _lang = i18n_pin::ru();

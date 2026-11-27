@@ -1,34 +1,38 @@
-// Util — QML-синглтон платформенных мелочей вкладки Wallpaper Engine.
+// Util — the QML singleton of platform odds and ends for the Wallpaper
+// Engine tab.
 //
-// Порт
-// `ui/src/util.cpp` waywallen (MIT, (c) hypengw; атрибуция в NOTICE).
+// A port of waywallen's `ui/src/util.cpp` (MIT, (c) hypengw; attribution in
+// NOTICE).
 //
-// Логики здесь нет: детект рабочего стола, BBCode→HTML и проводной цвет WE
-// считает ядро (`rexon_core::we_util`, прикрыто `we_util_parity.rs`). Мосту
-// остаётся оболочка QObject и перевод QColor ↔ компоненты — ровно та
-// граница, что была у Python-шима.
+// There is no logic here: desktop detection, BBCode→HTML and the WE wire
+// colour are computed by the core (`rexon_core::we_util`, covered by
+// `we_util_parity.rs`). The bridge is left with the QObject wrapper and
+// the QColor ↔ components conversion — exactly the boundary the Python
+// shim had.
 //
-// ⚠️ Чего в оригинале нет и что оставлено Rexon'ом:
-//   * `wpTypeLabel` — единственная точка перевода ПОКАЗА типа обоины.
-//     Технические строки («scene»/«video»/…) уходят в запросы и фильтры,
-//     подменять их нельзя, поэтому переводится только вывод, и каталог
-//     живёт в одном месте (`rexon_core::remote_l10n`, правило #12).
-//   * `isFlatpak` отдаёт true не потому, что мы во Flatpak: в вендорном QML
-//     этим свойством закрыт ЕДИНСТВЕННЫЙ переключатель — «Запускать при
-//     входе» (SettingsPage.qml:115/127/400). Автозапуск Rexon делает
-//     нативно (systemd user unit / XDG), поэтому свитч обязан быть виден.
-//     ⚠️ При обновлении вендора перепроверять использования isFlatpak.
+// Warning: what the original does not have and Rexon keeps:
+//   * `wpTypeLabel` — the only point where the DISPLAY of a wallpaper type
+//     is translated. Technical strings ("scene"/"video"/…) go into queries
+//     and filters and must not be replaced, so only the output is
+//     translated, and the catalogue lives in one place
+//     (`rexon_core::remote_l10n`, rule #12).
+//   * `isFlatpak` returns true not because we are in Flatpak: in the
+//     vendored QML this property hides the ONLY switch — "Start at login"
+//     (SettingsPage.qml:115/127/400). Rexon does autostart natively
+//     (systemd user unit / XDG), so the switch must be visible.
+//     Warning: when updating the vendor, re-check the uses of isFlatpak.
 //
-// Здесь же — синглтон `UpdateChecker` (у апстрима `ui/src/update_checker.cppm`,
-// с 0.4.4): проверка нового выпуска waywallen на GitHub. Внутри Rexon она не
-// нужна — движок едет в пакете Rexon и обновляется вместе с ним. Поэтому
-// синглтон — заглушка ровно того вида, какой даёт сборка апстрима без
-// `update-check`: `supported` = false, `enabled` всегда false (запись
-// пропускается), `check()` ничего не делает, сети нет. Разметка новее 0.4.4
-// по `supported` сама прячет кнопки и выключатель, и правка разметки
-// (patches/0005) с ней не нужна.
+// Also here is the `UpdateChecker` singleton (upstream
+// `ui/src/update_checker.cppm`, since 0.4.4): checking for a new waywallen
+// release on GitHub. Inside Rexon it is not needed — the engine ships in
+// the Rexon package and is updated together with it. So the singleton is a
+// stub of exactly the kind an upstream build without `update-check`
+// provides: `supported` = false, `enabled` is always false (writes are
+// skipped), `check()` does nothing, no network. Markup newer than 0.4.4
+// hides the buttons and the switch by itself based on `supported`, and the
+// markup edit (patches/0005) is not needed with it.
 
-/// Мост cxx-qt: синглтон `Util`.
+/// cxx-qt bridge: the `Util` singleton.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -45,8 +49,8 @@ pub mod qobject {
         type QDateTime = cxx_qt_lib::QDateTime;
     }
 
-    /// Рабочий стол, под которым идёт интерфейс. Значения — из оригинала
-    /// (`util.cppm`), их читает вендорный QML как `Util.Desktop.Kde`.
+    /// The desktop the interface runs under. The values come from the original
+    /// (`util.cppm`); the vendored QML reads them as `Util.Desktop.Kde`.
     #[qenum(Util)]
     enum Desktop {
         Unknown,
@@ -68,9 +72,9 @@ pub mod qobject {
                     READ = is_flatpak, CONSTANT)]
         type Util = super::UtilRust;
 
-        /// Заглушка проверки обновлений waywallen (шапка файла). Имена и
-        /// сигналы — как у апстрима, чтобы разметка любой версии
-        /// связывалась без ошибок.
+        /// Stub of the waywallen update check (see the file header). Names and
+        /// signals are as upstream, so that markup of any version binds without
+        /// errors.
         #[qobject]
         #[qml_element]
         #[qml_singleton]
@@ -101,8 +105,9 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "lastCheckTimeChanged"]
         fn last_check_time_changed(self: Pin<&mut UpdateChecker>);
-        /// У апстрима — конец проверки. Здесь проверок нет, и сигнал не
-        /// испускается никогда; объявлен ради `Connections` в разметке.
+        /// Upstream — the end of a check. Here there are no checks and the signal
+        /// is never emitted; it is declared for the sake of `Connections` in the
+        /// markup.
         #[qsignal]
         #[cxx_name = "checkFinished"]
         fn check_finished(self: Pin<&mut UpdateChecker>, ok: bool);
@@ -123,7 +128,7 @@ pub mod qobject {
         #[cxx_name = "lastCheckTime"]
         fn last_check_time(self: &UpdateChecker) -> QDateTime;
 
-        /// У апстрима — проверить сейчас. Здесь ничего не делает.
+        /// Upstream — check now. Here it does nothing.
         #[qinvokable]
         fn check(self: Pin<&mut UpdateChecker>);
     }
@@ -135,15 +140,15 @@ pub mod qobject {
         #[cxx_name = "isFlatpak"]
         fn is_flatpak(self: &Util) -> bool;
 
-        /// Описание Workshop (BBCode) → подмножество HTML для Qt.StyledText.
+        /// Workshop description (BBCode) → a subset of HTML for Qt.StyledText.
         ///
-        /// ⚠️ В ядре тут починен баг апстрима: авто-ссылки заворачивали уже
-        /// готовый якорь из `[url]` во второй `<a>`.
+        /// Warning: an upstream bug is fixed in the core here: auto-links wrapped an
+        /// already finished anchor from `[url]` into a second `<a>`.
         #[qinvokable]
         #[cxx_name = "bbcodeToHtml"]
         fn bbcode_to_html(self: &Util, src: &QString) -> QString;
 
-        /// Проводной цвет WE («r g b [a]», числа 0..1) → QColor.
+        /// WE wire colour ("r g b [a]", numbers 0..1) → QColor.
         #[qinvokable]
         #[cxx_name = "colorFromWire"]
         fn color_from_wire(self: &Util, s: &QString) -> QColor;
@@ -156,7 +161,7 @@ pub mod qobject {
         #[cxx_name = "colorHasAlpha"]
         fn color_has_alpha(self: &Util, s: &QString) -> bool;
 
-        /// Тип обоины по-русски. Добавлено Rexon (см. шапку файла).
+        /// Wallpaper type in Russian. Added by Rexon (see the file header).
         #[qinvokable]
         #[cxx_name = "wpTypeLabel"]
         fn wp_type_label(self: &Util, wp_type: &QString) -> QString;
@@ -168,8 +173,8 @@ use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QColor, QDateTime, QString, QUrl};
 
-/// Состояние синглтона: рабочий стол считается ОДИН раз на старте, как в
-/// оригинале (`Util::Util` читает `XDG_CURRENT_DESKTOP` в конструкторе).
+/// Singleton state: the desktop is computed ONCE at start-up, as in the
+/// original (`Util::Util` reads `XDG_CURRENT_DESKTOP` in the constructor).
 pub struct UtilRust {
     desktop: i32,
 }
@@ -193,7 +198,7 @@ impl qobject::Util {
     }
 
     pub fn is_flatpak(&self) -> bool {
-        // Осознанная развилка Rexon, разобранная в шапке файла.
+        // A deliberate Rexon divergence, analysed in the file header.
         true
     }
 
@@ -227,7 +232,7 @@ impl qobject::Util {
     }
 }
 
-/// Состояния у заглушки нет: всё, что она отдаёт, — постоянные.
+/// The stub has no state: everything it returns is constant.
 #[derive(Default)]
 pub struct UpdateCheckerRust;
 
@@ -240,8 +245,8 @@ impl qobject::UpdateChecker {
         false
     }
 
-    /// Как у апстрима без `update-check`: запись пропускается молча, и
-    /// `enabledChanged` не испускается (значение не изменилось).
+    /// As upstream without `update-check`: the write is skipped silently, and
+    /// `enabledChanged` is not emitted (the value did not change).
     pub fn set_enabled(self: Pin<&mut Self>, _enabled: bool) {}
 
     pub fn checking(&self) -> bool {

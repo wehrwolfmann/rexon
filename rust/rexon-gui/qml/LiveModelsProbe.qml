@@ -1,40 +1,44 @@
-// Живые модели в настоящем QML — то, чего не видит ни `cargo test`, ни
-// безоконные стенды `--remote-selftest` / `--discover-selftest`.
+// Live models in real QML — what neither `cargo test` nor the windowless
+// test benches `--remote-selftest` / `--discover-selftest` can see.
 //
-// Сценарии жили в стенд-окне `qml/Main.qml` (бинарь `rexon-gui-demo`) и
-// сняты вместе с ним коммитом a669701. Сюда они вернулись без окна-витрины:
-// один документ, сценарий выбирается начальным свойством `scenario`, после
-// приговора процесс выходит сам (`Qt.exit`). Бегун — `src/bin/selftest.rs`,
-// ключи `--remote-model-signals-selftest`, `--user-property-selftest`,
-// `--toast-selftest`, `--image-viewer-selftest`; в `cargo test -p rexon-gui`
-// их зовёт
+// The scenarios used to live in the test bench window `qml/Main.qml` (the
+// `rexon-gui-demo` binary) and were removed together with it in commit
+// a669701. They came back here without a showcase window: one document,
+// the scenario is chosen with the `scenario` initial property, and after
+// the verdict the process exits by itself (`Qt.exit`). The runner is
+// `src/bin/selftest.rs`, options `--remote-model-signals-selftest`,
+// `--user-property-selftest`, `--toast-selftest`, `--image-viewer-selftest`;
+// in `cargo test -p rexon-gui` they are called by
 // `tests/selftest_scenarios.rs`.
 //
-// Что сторожится и почему только здесь:
-//   * `remote` — сетка Discover над `RemoteListModel`: СТРУКТУРНЫЕ сигналы
-//     `modelReset`/`rowsInserted` при подаче и догрузке страниц (у Qt они
-//     приватные, из Rust на них не подписаться, а из QML можно), точечные
-//     `dataChanged` с одной ролью и перепривязка ролей в ЖИВОМ делегате
-//     карточки после подписки и после дозаполнения авторов;
-//   * `userprop` — редактор свойств обоев над `UserPropertyListModel`: все
-//     строки по всем ролям доезжают до QML, `dataChanged` несёт ровно две
-//     зависимые от значения роли, `valueChanged`/`resetRequested` доходят до
-//     QML, правка и сброс перепривязывают живой делегат;
-//   * `toast` — плашка состояния `RexonToast` гаснет сама (дефект «сообщение
-//     не гаснет никогда» заводился трижды);
-//   * `storefiles` — выбор файла у товара магазина (`StoreFileChoice`):
-//     по умолчанию выбран автоматический файл ядра и помечен «будет
-//     установлен», настоящий щелчок выбирает другой (`differs`), новый
-//     список возвращает автоматический выбор, у одного файла блока нет;
-//   * `viewer` — крупный просмотр картинки (`RexonImageViewer` +
-//     `RexonZoomArea`): настоящий щелчок по миниатюре открывает просмотр и
-//     не доходит до карточки, ← → и кнопки листают, Esc и щелчок мимо
-//     картинки закрывают, у карточки с занятым щелчком просмотр открывает
-//     только лупа, с клавиатуры — Enter.
+// What is guarded and why only here:
+//   * `remote` — the Discover grid over `RemoteListModel`: STRUCTURAL
+//     signals `modelReset`/`rowsInserted` when pages are delivered and
+//     loaded further (in Qt they are private, Rust cannot subscribe to
+//     them, but QML can), targeted `dataChanged` with a single role and
+//     role rebinding in a LIVE card delegate after subscribing and after
+//     authors are filled in;
+//   * `userprop` — the wallpaper property editor over
+//     `UserPropertyListModel`: all rows with all roles reach QML,
+//     `dataChanged` carries exactly the two value-dependent roles,
+//     `valueChanged`/`resetRequested` reach QML, editing and resetting
+//     rebind the live delegate;
+//   * `toast` — the `RexonToast` status banner hides by itself (the defect
+//     "the message never goes away" was introduced three times);
+//   * `storefiles` — choosing a file of a store item (`StoreFileChoice`):
+//     by default the core's automatic file is selected and marked "will be
+//     installed", a real click selects another one (`differs`), a new list
+//     restores the automatic choice, with a single file there is no block;
+//   * `viewer` — the large picture view (`RexonImageViewer` +
+//     `RexonZoomArea`): a real click on a thumbnail opens the view and does
+//     not reach the card, ← → and the buttons page through, Esc and a click
+//     outside the picture close it, for a card whose click is taken only
+//     the magnifier opens the view, from the keyboard — Enter.
 //
-// Окно видимое намеренно: делегаты ListView/GridView создаются в цикле
-// отрисовки, у невидимого окна их нет вовсе. Бегун ставит offscreen сам,
-// если платформа не задана, — на живой стол окно не попадает.
+// The window is visible on purpose: ListView/GridView delegates are created
+// in the render loop, and an invisible window has none at all. The runner
+// sets offscreen by itself if no platform is given — the window never
+// reaches the live desktop.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -49,17 +53,17 @@ Window {
     title: "Rexon · проверка живых моделей"
     color: "#1b2838"
 
-    /// Какой сценарий гонять: "remote" | "userprop" | "toast" | "viewer" |
-    /// "storefiles" | "steambg" | "steamwiz". Ставится
-    /// бегуном через setInitialProperties — до первой привязки.
+    /// Which scenario to run: "remote" | "userprop" | "toast" | "viewer" |
+    /// "storefiles" | "steambg" | "steamwiz". Set by the runner through
+    /// setInitialProperties — before the first binding.
     property string scenario: ""
 
-    /// Строки блока выбора файла от ядра (`ap::store_file_choices_json`):
-    /// два файла и один. Ставит бегун.
+    /// Rows of the file choice block from the core
+    /// (`ap::store_file_choices_json`): two files and one. Set by the runner.
     property string storeFilesJson: "[]"
     property string storeFilesSingleJson: "[]"
 
-    /// Список провалов: пусто — зелёно.
+    /// List of failures: empty means green.
     property var failures: []
 
     function check(condition, message) {
@@ -72,11 +76,12 @@ Window {
                    + "», ожидалось «" + expected + "»");
     }
 
-    // ── ⭐ Сторож пустоты: «пустая выборка = провал» ───────────────────────
-    // Стенд, который сравнивает «столько же, сколько строк» на нуле строк,
-    // зеленеет, не проверив ничего (найдено 19.09 на сценарии Мастерской).
-    // Поэтому сравнение счётчиков само краснеет, когда сравнивать нечего, а
-    // каждый сценарий объявляет выборку, и ноль в ней валит прогон.
+    // ── Emptiness guard: "an empty sample = a failure" ─────────────────────
+    // A test bench that compares "as many as there are rows" on zero rows goes
+    // green without checking anything (found on 19.09 in the Workshop
+    // scenario). So a counter comparison turns red by itself when there is
+    // nothing to compare, and every scenario declares its sample, and a zero
+    // in it fails the run.
 
     function checkCount(actual, expected, message) {
         if (expected <= 0) {
@@ -107,9 +112,9 @@ Window {
         Qt.exit(ok ? 0 : 1);
     }
 
-    // Сторож срока внутри цикла событий: сценарий, застрявший на шаге,
-    // обязан покраснеть, а не висеть. У бегуна свой сторож — на случай,
-    // если QML не загрузился вовсе.
+    // Deadline guard inside the event loop: a scenario stuck on a step must
+    // turn red, not hang. The runner has its own guard — in case QML did not
+    // load at all.
     Timer {
         interval: 20000
         running: true
@@ -124,8 +129,8 @@ Window {
             remote.applyPageJson(JSON.stringify(root.remotePageOne), true, false);
             remoteSteps.running = true;
         } else if (root.scenario === "userprop") {
-            // Схема ставится до шагов: модель собирает строки в сеттере
-            // свойства, ровно как привязка вендорного QML к
+            // The schema is set before the steps: the model builds rows in the
+            // property setter, exactly like the vendored QML binding to
             // wallpaper.userPropertiesSchema.
             props.schemaJson = JSON.stringify(root.schemaFixture);
             propSteps.running = true;
@@ -145,14 +150,14 @@ Window {
         }
     }
 
-    // ══ Редактор свойств обоев ═════════════════════════════════════════════
+    // ══ Wallpaper property editor ══════════════════════════════════════════
 
     UserPropertyListModel { id: props }
 
-    // Схема-образец — ровно та, на которой снят голден
-    // tests/golden/user_property_cases.json (случай «полная схема без
-    // оверрайдов»); ожидания ниже взяты оттуда, то есть Qt-слой сверяется не
-    // сам с собой.
+    // The sample schema is exactly the one the golden file
+    // tests/golden/user_property_cases.json was taken from (the case "full
+    // schema without overrides"); the expectations below come from there, so
+    // the Qt layer is not checked against itself.
     readonly property var schemaFixture: ({
         "waywallen.scheme_color": { "text": "Цвет схемы", "type": "color",
                                     "value": [0.2, 0.4, 0.6, 1.0] },
@@ -173,9 +178,10 @@ Window {
         "combo_empty": { "text": "Пустой список", "type": "combo", "value": "x", "order": 6 }
     })
 
-    // Ожидаемое содержимое ВСЕХ строк и ВСЕХ ролей, порядок строк тоже.
-    // ⚠️ Секции — технические ключи вендора (`user_property_model::SECTION_*`),
-    // а не подписи: по ним сравнивают, а показывают перевод.
+    // Expected content of ALL rows and ALL roles, the row order too.
+    // Warning: sections are the vendor's technical keys
+    // (`user_property_model::SECTION_*`), not labels: comparison uses them,
+    // while the display shows a translation.
     readonly property var expectedRows: [
         { key: "waywallen.scheme_color", label: "Цвет схемы", type: "color",
           section: "property", kind: "property", supported: true,
@@ -227,18 +233,18 @@ Window {
           optionLabels: [], optionValues: [] }
     ]
 
-    // Роли, которые обязаны приезжать в dataChanged редактора: ровно две
-    // зависимые от значения, ни больше ни меньше.
+    // Roles that must arrive in the editor's dataChanged: exactly the two
+    // value-dependent ones, no more and no less.
     readonly property int currentValueRole: props.roleNumber("currentValue")
     readonly property int hasAlphaRole: props.roleNumber("hasAlpha")
 
-    property int propPointUpdates: 0   // dataChanged по ОДНОЙ строке
-    property int propRangeUpdates: 0   // dataChanged по диапазону строк
-    property int propWideUpdates: 0    // не ровно две ожидаемые роли — провал
+    property int propPointUpdates: 0   // dataChanged for ONE row
+    property int propRangeUpdates: 0   // dataChanged for a range of rows
+    property int propWideUpdates: 0    // not exactly the two expected roles — failure
     property int propValueChanged: 0
     property var propValueLast: ["", ""]
     property var propResetKeys: []
-    // Значение, прочитанное из ЖИВОГО делегата строки «tint».
+    // Value read from the LIVE delegate of the "tint" row.
     property string tintDelegateValue: "(делегат не создан)"
     property int tintDelegateUpdates: 0
     property int propStep: 0
@@ -288,9 +294,9 @@ Window {
         }
     }
 
-    // Шаги разнесены по таймеру: между ними обязан прокрутиться цикл
-    // событий, иначе делегаты не успевают перепривязаться и проверка «дошло
-    // до вида» ничего не значит.
+    // The steps are spread out with a timer: the event loop must turn between
+    // them, otherwise the delegates do not get to rebind and the "reached the
+    // view" check means nothing.
     Timer {
         id: propSteps
         interval: 150
@@ -309,11 +315,11 @@ Window {
                             "до оверрайдов: hasPredefinedPropertyOverrides");
             root.checkEqual(props.hasUserPropertyOverrides, false,
                             "до оверрайдов: hasUserPropertyOverrides");
-            // Значение делегата ДО правок не проверяется: сработает ли
-            // onCurrentValueChanged при создании делегата — деталь
-            // инициализации QML. Детерминированы ИЗМЕНЕНИЯ — правка и сброс.
-            // Оверрайды приходят от демона строкой; пустая строка у caption —
-            // валидное значение, а не сброс.
+            // The delegate value BEFORE the edits is not checked: whether
+            // onCurrentValueChanged fires when the delegate is created is a QML
+            // initialization detail. The CHANGES are deterministic — the edit and the
+            // reset. Overrides arrive from the daemon as a string; an empty string for
+            // caption is a valid value, not a reset.
             props.overridesJson = JSON.stringify({
                 "waywallen.scheme_color": "1.0000 0.0000 0.0000 0.5000",
                 "caption": ""
@@ -339,8 +345,8 @@ Window {
                             "valueChanged · значение");
             root.checkEqual(props.roleValue(3, "hasAlpha"), true,
                             "hasAlpha после правки цвета с альфой");
-            // Главное доказательство Qt-слоя: значение доехало до ЖИВОГО
-            // делегата, а не только до модели.
+            // The main proof of the Qt layer: the value reached the LIVE delegate, not
+            // only the model.
             root.checkEqual(root.tintDelegateValue, "0.9000 0.8000 0.7000 0.6000",
                             "делегат строки tint после правки");
             props.resetUserProperties();
@@ -359,8 +365,8 @@ Window {
                             "сброс пользовательских НЕ трогает предопределённые");
             root.checkEqual(root.tintDelegateValue, "0.1 0.2 0.3",
                             "делегат строки tint после сброса");
-            // Две перепривязки минимум — правка и сброс; больше допустимо
-            // (при создании делегата QML может прислать ещё одну).
+            // At least two rebindings — edit and reset; more is acceptable (QML may
+            // send one more when the delegate is created).
             root.check(root.tintDelegateUpdates >= 2,
                        "делегат строки tint получил меньше двух перепривязок: "
                        + root.tintDelegateUpdates);
@@ -387,8 +393,9 @@ Window {
         }
     }
 
-    // Упрощённый двойник панели деталей вендорного QML: те же роли, те же
-    // секции. Редакторов по типам нет — проверяется мост, а не виджеты.
+    // A simplified double of the vendored QML details panel: the same roles,
+    // the same sections. There are no per-type editors — the bridge is tested,
+    // not the widgets.
     ListView {
         id: propList
         x: 10
@@ -397,8 +404,8 @@ Window {
         height: root.height - 20
         clip: true
         model: root.scenario === "userprop" ? props : null
-        // Все строки обязаны быть живыми: иначе перепривязку в делегате
-        // нижней строки проверить нечем.
+        // All rows must be live: otherwise there is no way to check rebinding in
+        // the delegate of the bottom row.
         cacheBuffer: 100000
 
         section.property: "section"
@@ -436,12 +443,12 @@ Window {
         }
     }
 
-    // ══ Выдача Discover ════════════════════════════════════════════════════
+    // ══ Discover results ═══════════════════════════════════════════════════
 
     RemoteListModel { id: remote }
 
-    // Две страницы «как от источника»: первая с догрузкой, вторая
-    // закрывающая. acquisitionState 1/2 — «подписаться»/«отписаться».
+    // Two pages "as if from the source": the first with more to load, the
+    // second closing. acquisitionState 1/2 — "subscribe"/"unsubscribe".
     readonly property var remotePageOne: [
         { itemId: "w1", sourceId: "workshop", title: "Ночной город",
           previewUrl: "https://example.invalid/w1.jpg", author: "",
@@ -467,15 +474,17 @@ Window {
 
     readonly property int acquisitionRole: remote.roleNumber("acquisitionState")
     readonly property int remoteAuthorRole: remote.roleNumber("author")
-    // Журнал сигналов модели В ПОРЯДКЕ ПРИХОДА — включая структурные.
+    // Log of the model's signals IN ORDER OF ARRIVAL — including structural ones.
     property var remoteJournal: []
-    property int remotePointUpdates: 0   // dataChanged по одной строке
-    property int remoteWideUpdates: 0    // не одна ожидаемая роль — провал
+    property int remotePointUpdates: 0   // dataChanged for one row
+    property int remoteWideUpdates: 0    // not exactly one expected role — failure
     property int remoteFetchRequests: 0
-    // true, если догрузку запросил САМ вид, а не сценарий.
+    // true if the further load was requested by the view ITSELF, not by the
+    // scenario.
     property bool remoteAutoFetch: false
     property int remoteStep: 0
-    // Снято с ЖИВОГО делегата карточки «Космический лифт» (w3).
+    // Taken from the LIVE delegate of the "Космический лифт" ("Space
+    // elevator") card (w3).
     property int remoteCardState: -1
     property int remoteCardStateUpdates: 0
     property string remoteCardAuthor: "(делегат не создан)"
@@ -499,8 +508,8 @@ Window {
             root.remoteJournal.push("reqFetchMore(" + row + ")");
             root.remoteFetchRequests += 1;
             root.remoteAutoFetch = true;
-            // Ровно то, что делает RemoteSearchQuery.fetchMore: подать
-            // следующую страницу выдачи.
+            // Exactly what RemoteSearchQuery.fetchMore does: deliver the next page of
+            // results.
             remote.applyPageJson(JSON.stringify(root.remotePageTwo), false, true);
         }
         function onDataChanged(topLeft, bottomRight, roles) {
@@ -527,14 +536,15 @@ Window {
         onTriggered: root.remotePageStep()
     }
 
-    // Ожидаемый журнал после подачи ПЕРВОЙ страницы.
+    // Expected log after delivering the FIRST page.
     //
-    // Если вид сам попросил догрузку, порядок не тот, какого ждёшь от чтения
-    // кода модели, и это НАСТОЯЩЕЕ поведение GridView: canFetchMore/fetchMore
-    // он спрашивает прямо из обработчика modelReset, то есть РЕЕНТРАНТНО —
-    // ещё внутри endResetModel(), до хвоста сброса (countChanged,
-    // hasMoreChanged). Вторая страница уезжает в модель раньше, чем первая
-    // договорит, а хвостовой hasMoreChanged приходит уже с ЛОЖЬЮ.
+    // If the view itself asked for more, the order is not the one you would
+    // expect from reading the model code, and this is REAL GridView behaviour:
+    // it asks canFetchMore/fetchMore right from the modelReset handler, i.e.
+    // REENTRANTLY — still inside endResetModel(), before the tail of the reset
+    // (countChanged, hasMoreChanged). The second page goes into the model
+    // before the first one has finished, and the trailing hasMoreChanged
+    // already arrives with FALSE.
     function expectedFirstPageJournal() {
         if (!root.remoteAutoFetch)
             return ["modelReset", "countChanged", "hasMoreChanged(true)"];
@@ -548,8 +558,8 @@ Window {
     function remotePageStep() {
         root.remoteStep += 1;
         if (root.remoteStep === 1) {
-            // Структурный сигнал полной замены обязан быть modelReset: строк
-            // может стать любое число.
+            // The structural signal of a full replacement must be modelReset: the
+            // number of rows may become anything.
             root.checkEqual(JSON.stringify(root.remoteJournal),
                             JSON.stringify(root.expectedFirstPageJournal()),
                             "выдача: сигналы первой страницы");
@@ -567,7 +577,8 @@ Window {
                             "выдача: роль acquisitionState");
             root.checkEqual(remote.roleNumber("такойРолиНет"), -1,
                             "выдача: несуществующая роль");
-            // Две пустоты сравнивать бессмысленно: сперва строка вообще отдана.
+            // Comparing two empties is pointless: first, a row must be handed out at
+            // all.
             root.check(Object.keys(remote.item(2)).length > 0,
                        "выдача: item() вернул пустую строку — сравнивать нечего");
             root.checkEqual(JSON.stringify(remote.item(2)), JSON.stringify(remote.get(2)),
@@ -575,9 +586,9 @@ Window {
             root.checkEqual(remote.item(2).title, "Космический лифт",
                             "выдача: item() отдаёт строку целиком");
         } else if (root.remoteStep === 2) {
-            // Догрузку у оригинала запрашивает САМ вид (canFetchMore/
-            // fetchMore). Если вид этого не сделал — сценарий подаёт её сам,
-            // а в отчёт уходит autoFetchMore=false.
+            // In the original the further load is requested by the view ITSELF
+            // (canFetchMore/fetchMore). If the view did not do it, the scenario
+            // delivers it itself, and autoFetchMore=false goes into the report.
             if (root.remoteFetchRequests === 0)
                 remote.applyPageJson(JSON.stringify(root.remotePageTwo), false, true);
         } else if (root.remoteStep === 3) {
@@ -586,9 +597,10 @@ Window {
             root.checkEqual(remote.hasMore, false, "выдача: hasMore после догрузки");
             root.checkCount(remoteGrid.count, total,
                             "выдача: делегатов после догрузки меньше строк");
-            // Догрузка обязана прийти ВСТАВКОЙ строк, а не сбросом модели:
-            // сброс уронил бы прокрутку Discover в начало списка. Сброс за
-            // весь сценарий ровно один — тот, которым подана первая страница.
+            // The further load must arrive as a row INSERT, not a model reset: a reset
+            // would throw Discover's scroll position back to the top of the list.
+            // There is exactly one reset in the whole scenario — the one that
+            // delivered the first page.
             var inserted = "rowsInserted(" + root.remotePageOne.length + "," + (total - 1) + ")";
             root.checkEqual(root.remoteJournal.filter(function (e) {
                                 return e === inserted;
@@ -598,16 +610,16 @@ Window {
                             }).length, 1, "выдача: сбросов модели за сценарий");
             root.checkEqual(remote.roleValue(4, "itemId"), "w5",
                             "выдача: первая строка второй страницы");
-            // Подписка через ОБЩИЙ склад — так же, как её шлёт запрос
-            // подписки: не в конкретную модель, а во все живые.
+            // Subscribing through the SHARED store — the same way the subscribe
+            // request sends it: not into a particular model but into all live ones.
             root.checkEqual(remote.publishAcquisitionState("workshop", "w3", 2), 1,
                             "склад: рассылка не дошла ни до одной модели");
         } else if (root.remoteStep === 4) {
             root.checkEqual(root.remotePointUpdates, 1, "подписка: точечных dataChanged");
             root.checkEqual(remote.roleValue(2, "acquisitionState"), 2,
                             "подписка: состояние строки не изменилось");
-            // Ради чего склад общий: карточка перерисовалась сразу, без
-            // перезагрузки страницы.
+            // What the shared store is for: the card redrew at once, without
+            // reloading the page.
             root.checkEqual(root.remoteCardState, 2,
                             "подписка: делегат карточки не увидел новое состояние");
             root.check(root.remoteCardStateUpdates >= 1,
@@ -646,10 +658,9 @@ Window {
         }
     }
 
-    // Сетка карточек — та же форма вида, что у вендорной страницы
-    // (MD.VerticalGridView поверх searchQuery.model). Карточка читает роли
-    // как required property и перерисовывается ТОЛЬКО от точечного
-    // dataChanged.
+    // Card grid — the same view shape as on the vendored page
+    // (MD.VerticalGridView over searchQuery.model). The card reads roles as
+    // required properties and redraws ONLY on a targeted dataChanged.
     GridView {
         id: remoteGrid
         x: 450
@@ -694,18 +705,20 @@ Window {
         }
     }
 
-    // ══ Плашка состояния гаснет сама ═══════════════════════════════════════
+    // ══ The status banner hides by itself ══════════════════════════════════
     //
-    // Числа СВОИ и мелкие: проверяется механизм гашения, а не продуктовый
-    // срок (тот берётся из ядра и сторожится в Rust, `toast::timeout_ms`).
+    // The numbers are OUR OWN and small: the hiding mechanism is tested, not
+    // the product timeout (that one comes from the core and is guarded in
+    // Rust, `toast::timeout_ms`).
 
-    /// Срок жизни пробной плашки: заметно больше затухания (150 мс), иначе
-    /// «ушла сама» и «ещё затухает» неразличимы.
+    /// Lifetime of the test banner: noticeably longer than the fade (150 ms),
+    /// otherwise "went away by itself" and "still fading" cannot be told apart.
     readonly property int toastProbeTimeout: 450
 
-    /// Ящик за краем окна, а не `visible: false`: видимость наследуется, и в
-    /// спрятанном ящике плашка была бы невидимой ВСЕГДА — проверка «погасла
-    /// и больше не ловит щелчки» зеленела бы на сломанном коде.
+    /// A box beyond the window edge rather than `visible: false`: visibility is
+    /// inherited, and in a hidden box the banner would be invisible ALWAYS —
+    /// the check "faded and no longer catches clicks" would go green on broken
+    /// code.
     Item {
         id: toastProbeHost
         x: -5000
@@ -741,8 +754,8 @@ Window {
 
     Timer {
         id: toastSteps
-        // Шаг длиннее затухания: приговор выносится, когда движение уже
-        // закончилось, а не посреди него.
+        // The step is longer than the fade: the verdict is given when the motion
+        // is already over, not in the middle of it.
         interval: 150
         repeat: true
         running: false
@@ -760,11 +773,11 @@ Window {
             root.checkEqual(toastProbe.message, "проба", "плашка: чужой текст");
             break;
         case 3:
-            // Свой срок ещё не вышел — уходить рано.
+            // Its own lifetime has not run out yet — too early to leave.
             root.check(toastProbe.shown, "плашка: ушла раньше своего срока");
             break;
         case 7:
-            // ⭐ Ради этого сторож и заведён.
+            // This is what the guard was set up for.
             root.check(!toastProbe.shown, "плашка: не погасла сама");
             root.check(!toastProbe.visible,
                        "плашка: погасла, но осталась видимой и ловит щелчки");
@@ -776,7 +789,7 @@ Window {
             root.check(toastProbe.shown, "плашка: не поднялась второй раз");
             break;
         case 10:
-            // Пустое сообщение — не «показать пустоту», а «сказать нечего».
+            // An empty message does not mean "show emptiness" but "nothing to say".
             toastProbe.show("");
             break;
         case 12:
@@ -792,7 +805,7 @@ Window {
         }
     }
 
-    // ══ Выбор файла у товара магазина ══════════════════════════════════════
+    // ══ Choosing a file of a store item ════════════════════════════════════
 
     property int storeFilesStep: 0
 
@@ -848,7 +861,8 @@ Window {
             root.check(storeFilesProbe.visible, "файлы: два файла, а блока нет");
             root.check(root.storeFileRow(0) !== null && root.storeFileRow(1) !== null,
                        "файлы: строки не построены");
-            // Автоматический выбор ядра — тема, а не «Extra»; он же выбран.
+            // The core's automatic choice is the theme, not "Extra"; it is also the
+            // selected one.
             root.checkEqual(storeFilesProbe.autoName, "McOS-MJV-Gnome-3.30-1.1.tar.xz",
                             "файлы: автоматический выбор");
             root.checkEqual(storeFilesProbe.selectedName, storeFilesProbe.autoName,
@@ -870,12 +884,12 @@ Window {
             root.check(storeFilesProbe.differs, "файлы: выбран другой, а «differs» ложно");
             root.check(root.storeFileMarked(0) && !root.storeFileMarked(1),
                        "файлы: пометка не переехала на выбранный");
-            // Один файл — выбирать не из чего.
+            // One file — nothing to choose from.
             storeFilesProbe.filesJson = root.storeFilesSingleJson;
             break;
         case 4:
             root.check(!storeFilesProbe.visible, "файлы: у одного файла виден блок выбора");
-            // Снова два файла (другой товар) — выбор опять автоматический.
+            // Two files again (a different item) — the choice is automatic again.
             storeFilesProbe.filesJson = root.storeFilesJson;
             break;
         case 5:
@@ -893,18 +907,20 @@ Window {
         }
     }
 
-    // ══ Крупный просмотр картинки ══════════════════════════════════════════
+    // ══ Large picture view ═════════════════════════════════════════════════
     //
-    // Щелчки и клавиши НАСТОЯЩИЕ: их шлёт в окно `TestEvent` из модуля
-    // QtTest. Модуль поднимается только в этом сценарии и только здесь —
-    // продукту он не нужен, поэтому в импортах документа его нет.
+    // Clicks and keys are REAL: they are sent into the window by `TestEvent`
+    // from the QtTest module. The module is loaded only in this scenario and
+    // only here — the product does not need it, so it is not among the
+    // document's imports.
 
     readonly property var viewerProbeItems: [
         { "key": "a", "title": "Первая", "subtitle": "Игра А" },
         { "key": "b", "title": "Вторая", "subtitle": "Игра Б", "badge": "отметка" },
         { "key": "c", "title": "Третья", "subtitle": "Игра В" }
     ]
-    /// Сколько щелчков дошло до самих карточек (мимо лупы и миниатюры).
+    /// How many clicks reached the cards themselves (past the magnifier and
+    /// the thumbnail).
     property int viewerCardTaps: 0
     property var viewerEvents: null
     property int viewerStep: 0
@@ -940,8 +956,8 @@ Window {
                     RexonZoomArea {
                         id: viewerCardZoom
                         anchors.fill: parent
-                        // У третьей карточки щелчок «занят»: открывает
-                        // только лупа.
+                        // On the third card the click is "taken": only the magnifier opens the
+                        // view.
                         badgeOnly: viewerCard.index === 2
                         onActivated: viewerProbe.show(root.viewerProbeItems, viewerCard.index)
                     }
@@ -989,8 +1005,9 @@ Window {
 
     Timer {
         id: viewerSteps
-        // Шаг длиннее защиты от двойного щелчка (450 мс) быть не обязан:
-        // где она важна, сценарий пережидает её несколькими шагами.
+        // A step does not have to be longer than the double-click protection
+        // (450 ms): where it matters, the scenario waits it out over several
+        // steps.
         interval: 120
         repeat: true
         running: false
@@ -1044,7 +1061,7 @@ Window {
             break;
         case 8:
             root.check(!viewerProbe.opened, "просмотр: Esc его не закрыл");
-            // Карточка с занятым щелчком: по картинке — мимо просмотра.
+            // Card with a taken click: a click on the picture misses the view.
             root.viewerClick(area2, 40, 60);
             break;
         case 9:
@@ -1061,8 +1078,8 @@ Window {
             root.check(viewerProbe.opened, "просмотр: лупа его не открыла");
             root.checkEqual(viewerProbe.index, 2, "просмотр: лупа открыла не ту карточку");
             root.checkEqual(root.viewerCardTaps, 1, "просмотр: щелчок по лупе дошёл до карточки");
-            // Сразу после открытия щелчок мимо картинки НЕ закрывает: это
-            // вторая половина двойного щелчка.
+            // Right after opening, a click outside the picture does NOT close it: it
+            // is the second half of a double click.
             root.viewerClick(viewerProbe.contentItem, 3, 3);
             break;
         case 12:
@@ -1070,13 +1087,13 @@ Window {
                        "просмотр: закрылся второй половиной двойного щелчка");
             break;
         case 17:
-            // Щелчок по самой картинке не закрывает…
+            // A click on the picture itself does not close it…
             root.viewerClick(viewerProbe.contentItem, viewerProbe.width / 2,
                              viewerProbe.height / 2);
             break;
         case 18:
             root.check(viewerProbe.opened, "просмотр: закрылся щелчком по картинке");
-            // …а мимо неё — закрывает.
+            // …but a click outside it does.
             root.viewerClick(viewerProbe.contentItem, 3, 3);
             break;
         case 19:
@@ -1102,18 +1119,18 @@ Window {
         }
     }
 
-    // ══ Вкладка Steam: сетка фонов ════════════════════════════════════════
+    // ══ Steam tab: background grid ════════════════════════════════════════
     //
-    // Настоящая страница на подставном Steam (его собирает бегун до старта
-    // окна: каталог Steam с учётной записью и кэш списка из пяти фонов, два
-    // из них анимированные). Проверяется то, что видит человек: три кнопки
-    // вида со счётчиками, отметка на миниатюре, отбор настоящим щелчком,
-    // отметка в крупном просмотре, строка «анимированные не показаны» с
-    // причиной и кнопка «Повторить».
+    // The real page on a fake Steam (the runner builds it before the window
+    // starts: a Steam directory with an account and a cached list of five
+    // backgrounds, two of them animated). What is checked is what a human
+    // sees: three view buttons with counters, the badge on the thumbnail,
+    // filtering with a real click, the badge in the large view, the line
+    // "animated ones are not shown" with the reason, and the "Retry" button.
 
     property var steamBgModel: null
-    /// Что модель успела показать после «Повторить»: снятую причину и
-    /// подпись «обновляю» — оба состояния живут доли секунды.
+    /// What the model managed to show after "Retry": the cleared reason and
+    /// the "updating" label — both states live for a fraction of a second.
     property bool steamBgSawNoNote: false
     property bool steamBgSawUpdating: false
 
@@ -1127,9 +1144,10 @@ Window {
         }
     }
 
-    // Бегун сценариев страницы Steam: шаги плана по одному на тик. Шаг,
-    // ответивший `false`, повторяется — так сценарий ЖДЁТ итог щелчка или
-    // фоновой работы, а не угадывает срок; дольше 80 тиков не ждёт никто.
+    // Runner of the Steam page scenarios: plan steps one per tick. A step
+    // that answered `false` is repeated — that is how the scenario WAITS for
+    // the result of a click or background work rather than guessing a
+    // timeout; nobody waits longer than 80 ticks.
     property var steamPlan: []
     property string steamPlanName: ""
     property int steamPlanAt: 0
@@ -1173,8 +1191,8 @@ Window {
         }
     }
 
-    /// Все объекты с данным именем под страницей: зримые потомки и
-    /// невизуальные (модель, всплывающий просмотр).
+    /// All objects with the given name under the page: visible descendants and
+    /// non-visual ones (the model, the pop-up viewer).
     function steamBgAll(name) {
         const out = [];
         const seen = [];
@@ -1197,8 +1215,9 @@ Window {
         return out;
     }
 
-    /// Первый ВИДИМЫЙ объект с этим именем (у карточек шагов помощника
-    /// одноимённые кнопки есть в каждой, видна одна); видимого нет — любой.
+    /// The first VISIBLE object with this name (every helper step card has
+    /// buttons with the same name, only one is visible); if none is visible —
+    /// any.
     function steamBgOne(name) {
         const all = root.steamBgAll(name);
         for (let i = 0; i < all.length; i++) {
@@ -1216,32 +1235,32 @@ Window {
         return root.steamBgOne("bgKindChip_" + key);
     }
 
-    /// Подкрутить страницу так, чтобы элемент попал в окно. Страница сама
-    /// подкручивается к сфокусированному контролу, поэтому где элемент
-    /// окажется к моменту щелчка, заранее не известно, а щелчок мимо окна
-    /// до него не доходит.
+    /// Scroll the page so that the element gets into the window. The page
+    /// scrolls itself to the focused control, so where the element will be at
+    /// the moment of the click is not known in advance, and a click outside
+    /// the window does not reach it.
     function steamReveal(item) {
-        // Прокручиваемых предков может быть несколько (раздел в своей
-        // области, та — в области страницы): подкручиваем каждую.
+        // There may be several scrollable ancestors (a section in its own area,
+        // that one in the page area): scroll each of them.
         for (let p = item.parent; p; p = p.parent) {
             if (p.contentY === undefined || !p.contentItem || p.contentHeight === undefined)
                 continue;
             const at = item.mapToItem(p.contentItem, 0, 0);
             if (at.y < p.contentY + 20 || at.y + item.height > p.contentY + p.height - 20)
                 p.contentY = Math.max(0, Math.min(at.y - 80, p.contentHeight - p.height));
-            // И по ширине: страница не уже своей наименьшей ширины, и в
-            // узком окне правый край уходит за него.
+            // And horizontally: the page is no narrower than its minimum width, and
+            // in a narrow window its right edge goes past the window.
             if (at.x < p.contentX || at.x + item.width > p.contentX + p.width)
                 p.contentX = Math.max(0, Math.min(at.x + item.width + 20 - p.width,
                                                   p.contentWidth - p.width));
         }
     }
 
-    /// Настоящий щелчок мышью по середине элемента.
+    /// A real mouse click in the middle of the element.
     function steamBgClick(item) {
         root.steamReveal(item);
-        // Куда щелчок пришёлся — в журнал прогона: по нему видно, если
-        // элемент оказался за краем окна или под чужим слоем.
+        // Where the click landed goes to the run log: it shows whether the
+        // element ended up beyond the window edge or under someone else's layer.
         const at = item.mapToItem(null, item.width / 2, item.height / 2);
         console.log("REXON-LIVE-CLICK " + item.objectName + " @" + Math.round(at.x) + ","
                     + Math.round(at.y) + " окно " + root.width + "×" + root.height
@@ -1268,13 +1287,13 @@ Window {
                 return false;
             root.steamBgModel.setSection("bg");
         },
-        // Ответ о владеемых фонах приходит из фоновой задачи.
+        // The answer about owned backgrounds comes from a background task.
         () => root.steamBgModel.bgAnimatedNote !== "" && root.steamBgChip("animated") !== null,
-        // Узкое окно (живая проверка r1434, 16.10.2026): длинный путь к
-        // Steam в шапке делал страницу шире окна — «Повторить» уезжала за
-        // правый край, внизу висела горизонтальная прокрутка. Путь прогона
-        // длинный сам (каталог прогона в HOME), при 640 точках он обязан
-        // сократиться, а страница — уложиться в окно.
+        // Narrow window (live check r1434, 16.10.2026): a long path to Steam in
+        // the header made the page wider than the window — "Retry" moved past the
+        // right edge, and a horizontal scroll bar hung at the bottom. The run's
+        // path is long by itself (the run directory in HOME); at 640 pixels it
+        // must be shortened, and the page must fit into the window.
         () => { root.width = 640; },
         () => root.width === 640 && root.steamBgOne("headerFoundPath") !== null
               && root.steamBgOne("headerFoundPath").width < 640,
@@ -1293,12 +1312,12 @@ Window {
                        "узкое окно: «Повторить» за правым краем (" + Math.round(right)
                        + " при окне " + root.width + ")");
         },
-        // Длинная сетка фонов прокручивается (живьём r1439, 16.10.2026: 37
-        // анимированных фонов уходили за нижний край окна без ползунка, колесо
-        // не крутило). У единственного ребёнка области не было
-        // `implicitHeight`, и `contentHeight` оставался -1 — область считала
-        // содержимое равным себе. В узком окне пять карточек встают столбиком
-        // и в полосу не влезают: этим и проверяется.
+        // A long background grid scrolls (live r1439, 16.10.2026: 37 animated
+        // backgrounds went past the bottom edge of the window without a scroll
+        // bar, and the wheel did not scroll). The single child of the area had no
+        // `implicitHeight`, and `contentHeight` stayed -1 — the area considered
+        // its content equal to itself. In a narrow window five cards stack in a
+        // column and do not fit into the strip: that is what checks it.
         () => {
             const scroll = root.steamBgOne("bgScroll");
             const flick = scroll.contentItem;
@@ -1311,8 +1330,8 @@ Window {
                        "прокрутка фонов: высота содержимого " + Math.round(scroll.contentHeight)
                        + " при видимых " + Math.round(scroll.availableHeight)
                        + " и группе " + Math.round(group.height) + " — прокручивать нечего");
-            // Присоединённый `ScrollBar` извне не читается; ту же долю
-            // видимого, что задаёт размер ползунка, даёт сама полоса.
+            // An attached `ScrollBar` cannot be read from outside; the same visible
+            // fraction that sets the size of the handle is given by the bar itself.
             root.check(flick.visibleArea.heightRatio < 0.99,
                        "прокрутка фонов: видна вся высота — ползунку нечего показывать (доля "
                        + flick.visibleArea.heightRatio + ")");
@@ -1325,8 +1344,8 @@ Window {
                 root.viewerEvents.mouseWheel(scroll, scroll.width / 2, scroll.height / 2,
                                              Qt.NoButton, Qt.NoModifier, 0, -120, -1);
         },
-        // Колесо прокручивает плавно — ждём, пока сдвинется и встанет: иначе
-        // дальнейшие щелчки попадут в едущую полосу.
+        // The wheel scrolls smoothly — wait until it moves and stops: otherwise
+        // further clicks land on a moving strip.
         () => {
             const flick = root.steamBgOne("bgScroll").contentItem;
             return flick.contentY > 0 && !flick.moving;
@@ -1368,7 +1387,7 @@ Window {
         () => root.steamBgModel.bgCards.length === 3,
         () => {
             root.checkEqual(root.steamBgMarks(), 0, "фоны: отметка у статичного фона");
-            // Поиск и вид вместе: счётчики считаются по найденному.
+            // Search and view together: the counters count what was found.
             root.steamBgModel.setBgSearch("half-life");
         },
         () => {
@@ -1379,8 +1398,8 @@ Window {
             root.checkEqual(root.steamBgModel.bgCards.length, 2, "фоны: статичные из найденного");
             root.steamBgModel.setBgSearch("");
         },
-        // Кнопки после смены поиска построены заново — щелчок отдельным
-        // шагом, когда они уже разложены.
+        // After the search changes the buttons are rebuilt — the click is a
+        // separate step, once they are laid out.
         () => { root.steamBgClick(root.steamBgChip("")); },
         () => root.steamBgModel.bgCards.length === 5,
         () => { steamBgLoader.item.openBackgroundViewer("2"); },
@@ -1393,9 +1412,9 @@ Window {
         () => root.steamBgSubtitle().indexOf("Animated background") < 0,
         () => { root.viewerEvents.keyClick(Qt.Key_Escape, Qt.NoModifier, -1); },
         () => !root.steamBgViewerOpen(),
-        // Просмотр уходит с экрана не мгновенно — щелчок по странице под
-        // ним отдельным шагом. «Повторить»: прежний приговор снимается,
-        // список из кэша остаётся, причина возвращается с новым ответом.
+        // The viewer does not leave the screen instantly — a click on the page
+        // under it is a separate step. "Retry": the previous verdict is cleared,
+        // the cached list stays, the reason comes back with the new answer.
         () => {
             root.steamBgSawNoNote = false;
             root.steamBgSawUpdating = false;
@@ -1408,15 +1427,14 @@ Window {
         },
     ]
 
-    // ══ Вкладка Steam: помощник загрузки витрин ═══════════════════════════
+    // ══ Steam tab: showcase upload helper ═════════════════════════════════
     //
-    // Тот же подставной Steam, в «Изображениях» лежит набор из двух частей.
-    // Проверяется путь человека: вернуться к набору → «Скопировать
-    // название» (текст действительно в буфере обмена) → отметить части
-    // загруженными → «Готово» → «Проверить мой профиль» при глухой сети:
-    // помощник обязан сказать словами, что не вышло, и не закрыть шаг.
-    // Кнопки «Открыть страницу загрузки» и «Открыть редактор профиля» не
-    // нажимаются: они запускают чужие программы.
+    // The same fake Steam, with a set of two parts in "Pictures". The user's
+    // path is checked: return to the set → "Copy name" (the text really is on
+    // the clipboard) → mark the parts as uploaded → "Done" → "Check my
+    // profile" with a dead network: the helper must say in words what went
+    // wrong and not close the step. The "Open upload page" and "Open profile
+    // editor" buttons are not pressed: they launch other programs.
 
     property var steamWizActions: null
     property string steamWizDir: ""
@@ -1480,7 +1498,7 @@ Window {
             root.steamWizReveal("showcaseCopyTitle_0");
         },
         () => { root.steamWizClick("showcaseCopyTitle_0"); },
-        // «Скопировать название»: текст действительно в буфере обмена.
+        // "Copy name": the text really is on the clipboard.
         () => root.steamWizPasted() === "probe-set — main",
         () => { root.steamWizClick("showcaseCopyBlank"); },
         () => root.steamWizPasted() === "\u2800",
@@ -1502,7 +1520,7 @@ Window {
         () => root.steamWizState().step === "check",
         () => { root.steamWizReveal("showcaseCheck"); },
         () => { root.steamWizClick("showcaseCheck"); },
-        // Сеть глухая: проверка обязана кончиться и назвать причину.
+        // The network is dead: the check must finish and name the reason.
         () => {
             const check = JSON.parse(root.steamWizActions.poll()).check;
             return check.done === true && root.steamBgOne("showcaseCheckText").text !== "";

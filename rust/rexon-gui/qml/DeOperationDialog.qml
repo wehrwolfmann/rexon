@@ -1,17 +1,19 @@
-// Окно операции над рабочим столом — ОДНО на все вкладки, которые ставят,
-// проверяют, меняют и удаляют стол («Рабочие столы» и «Сравнение DE»).
+// Desktop operation window — ONE for all tabs that install, check, change
+// and remove a desktop ("Desktops" and "DE comparison").
 //
-// Один мастер-диалог на операцию (архитектурное правило #16: цепочки окон
-// неудобны в Big Picture): вопрос или отказ → (шаг пароля SteamOS) → ход
-// дела → итог. Состояние и
-// все подписи — карта `actions.operation` от Rust-объекта `DesktopsActions`
-// (исполнитель — `rexon_core::system_de_exec`), своих букв здесь нет.
+// One wizard dialog per operation (architecture rule #16: chains of
+// windows are awkward in Big Picture): question or refusal → (SteamOS
+// password step) → progress → result. The state and all labels come from
+// the `actions.operation` map of the Rust object `DesktopsActions` (the
+// executor is `rexon_core::system_de_exec`); there are no texts of our own
+// here.
 //
-// У Python-хозяина вкладок такого свойства нет — окно тогда просто не
-// показывается, а вопросы рисует он сам (`qt_main.de_progress`).
+// The Python tab host has no such property — then the window is simply
+// not shown, and the host draws the questions itself
+// (`qt_main.de_progress`).
 //
-// Подключение: `DeOperationDialog { anchors.fill: parent; actions: …;
-// pal: …; onDesktopsChanged: <пересчитать состав столов> }`.
+// Hook-up: `DeOperationDialog { anchors.fill: parent; actions: …;
+// pal: …; onDesktopsChanged: <recompute the set of desktops> }`.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -21,14 +23,14 @@ import QtQuick.Layouts
 Item {
     id: root
 
-    /// Объект побочных действий страницы.
+    /// The page's side-actions object.
     property var actions: null
 
-    /// Палитра скина страницы (тоны кнопок берутся, если они в ней есть).
+    /// Page skin palette (button tones are taken if they are in it).
     property var pal: ({})
 
-    /// Операция кончилась удачей — состав установленных столов мог
-    /// измениться, страница пересчитает себя.
+    /// The operation succeeded — the set of installed desktops may have
+    /// changed; the page will recompute itself.
     signal desktopsChanged()
 
     readonly property var op: (root.actions && root.actions.operation !== undefined)
@@ -48,13 +50,14 @@ Item {
         function onDesktopsChanged() { root.desktopsChanged(); }
     }
 
-    // Журнал операции: pacman шлёт десятки строк в секунду. Добавление по
-    // одной строке перекладывало весь текст поля на каждую строку и тянуло
-    // вид вниз — прокрутка вырывалась из рук, главный поток не успевал, и
-    // оболочка предлагала закрыть «зависшее» окно (16.11.2026, Cinnamon).
-    // Поэтому строки копятся и уходят в поле пачкой раз в logFlush.interval,
-    // в поле держится только хвост (полный журнал — в rexon.log), а вниз вид
-    // идёт, только если человек и так стоял внизу.
+    // Operation log: pacman sends dozens of lines per second. Appending one
+    // line at a time re-laid out the whole text of the field on every line
+    // and pulled the view down — scrolling was wrenched out of the user's
+    // hands, the main thread could not keep up, and the shell offered to close
+    // the "frozen" window (16.11.2026, Cinnamon). So lines accumulate and go
+    // into the field as a batch once per logFlush.interval, the field keeps
+    // only the tail (the full log is in rexon.log), and the view moves down
+    // only if the user was already at the bottom.
     readonly property int logKeepLines: 2000
     property var logPending: []
     property int logLines: 0
@@ -77,8 +80,8 @@ Item {
         opLog.append(chunk);
         root.logLines += added;
         if (root.logLines > root.logKeepLines + 500) {
-            // Обрезка редкая (раз в 500 строк) — перекладка всего текста
-            // здесь допустима.
+            // Trimming is rare (once per 500 lines) — re-laying out the whole text is
+            // acceptable here.
             const all = opLog.text.split("\n");
             opLog.text = all.slice(all.length - root.logKeepLines).join("\n");
             root.logLines = root.logKeepLines;
@@ -107,7 +110,7 @@ Item {
             root.resetLog();
         else if (root.opPhase === "done")
             root.flushLog();
-        // Пароль в полях не живёт дольше шага.
+        // The password does not live in the fields longer than the step.
         if (root.opPhase !== "password") {
             pwNew.clear();
             pwRepeat.clear();
@@ -117,7 +120,7 @@ Item {
     }
 
     function focusOperation() {
-        // Безопасный ответ под фокусом: случайный Enter ничего не запускает.
+        // The safe answer has focus: an accidental Enter starts nothing.
         if (root.opPhase === "confirm")
             opNo.forceActiveFocus();
         else if (root.opPhase === "password")
@@ -144,9 +147,9 @@ Item {
 
         parent: root
         modal: true
-        // Страница, спрятанная хозяином (вторая страница раздела), своё
-        // окно не показывает: иначе у двух страниц одного объекта действий
-        // встали бы два одинаковых окна друг на друге.
+        // A page hidden by its host (the second page of a section) does not show
+        // its window: otherwise two pages of the same actions object would put
+        // up two identical windows on top of each other.
         visible: root.opPhase !== "" && root.visible
         closePolicy: Popup.NoAutoClose
         anchors.centerIn: parent
@@ -179,7 +182,7 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            // Вопрос, отказ или объяснение шага пароля.
+            // Question, refusal or explanation of the password step.
             RexonText {
                 Layout.fillWidth: true
                 visible: root.opPhase === "confirm" || root.opPhase === "blocked"
@@ -191,9 +194,9 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            // Переключатели вариантов вопроса (стиль образа «Как в SteamOS»:
-            // Vapor или VGUI2): подпись и варианты — из карты, выбранный
-            // подсвечен. Щелчок пересобирает вопрос — текст выше меняется.
+            // Question option switches (style of the "Like SteamOS" look: Vapor or
+            // VGUI2): label and options come from the map, the selected one is
+            // highlighted. A click rebuilds the question — the text above changes.
             Repeater {
                 model: (root.opPhase === "confirm" && root.op && root.op.choices !== undefined)
                        ? root.op.choices : []
@@ -211,10 +214,10 @@ Item {
                         font.weight: Font.DemiBold
                     }
 
-                    // Варианты с пояснением (сеанс стола: X11 / Wayland /
-                    // оба) — карточками друг под другом: подпись-кнопка и
-                    // под ней пояснение. Недоступный вариант виден, но
-                    // нажать его нельзя — почему, сказано в пояснении.
+                    // Options with an explanation (the desktop session: X11 / Wayland / both)
+                    // as cards one below another: a label button and the explanation under
+                    // it. An unavailable option is visible but cannot be pressed — why is
+                    // said in the explanation.
                     readonly property bool described: choiceRow.modelData.options.length > 0
                         && choiceRow.modelData.options[0].description !== undefined
                         && choiceRow.modelData.options[0].description !== ""
@@ -254,7 +257,7 @@ Item {
                                     checkedTone: root.primaryTone
                                     text: (choiceCard.picked ? "◉  " : "○  ") + choiceCard.modelData.label
                                     onClicked: {
-                                        // Выбранное — от карты, а не от щелчка.
+                                        // The selection comes from the map, not from the click.
                                         cardButton.checked = Qt.binding(function () {
                                             return choiceCard.picked;
                                         });
@@ -294,7 +297,7 @@ Item {
                                 checkedTone: root.primaryTone
                                 text: choiceButton.modelData.label
                                 onClicked: {
-                                    // Выбранное — от карты, а не от щелчка.
+                                    // The selection comes from the map, not from the click.
                                     choiceButton.checked = Qt.binding(function () {
                                         return choiceRow.modelData.current === choiceButton.modelData.value;
                                     });
@@ -308,9 +311,9 @@ Item {
                 }
             }
 
-            // Галочка «по желанию» вопроса (игровой режим образа «Как в
-            // SteamOS»): есть, только когда её подпись пришла в карте.
-            // Переключение пересобирает вопрос — текст выше меняется.
+            // Optional check box of the question (the game mode of the "Like SteamOS"
+            // look): present only when its label came in the map. Toggling rebuilds
+            // the question — the text above changes.
             RexonCheckBox {
                 id: opOption
                 objectName: "desktopsOperationOption"
@@ -322,8 +325,8 @@ Item {
                 checked: root.op ? root.op.optionChecked === true : false
                 onToggled: {
                     const want = opOption.checked;
-                    // Состояние галочки — от карты, а не от щелчка: щелчок
-                    // рвёт привязку, и следующий вопрос показал бы старое.
+                    // The check box state comes from the map, not from the click: a click
+                    // breaks the binding, and the next question would show the old state.
                     opOption.checked = Qt.binding(function () {
                         return root.op ? root.op.optionChecked === true : false;
                     });
@@ -353,8 +356,9 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            // Шаг пароля SteamOS: у «deck» пароля нет, без него системное
-            // окно пароля не пройти. Два поля, слова ядра под ними.
+            // SteamOS password step: the "deck" user has no password, and without one
+            // the system password window cannot be passed. Two fields, the core's
+            // words below them.
             RexonTextField {
                 id: pwNew
                 objectName: "desktopsPasswordNew"
@@ -389,7 +393,7 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            // Ход дела.
+            // Progress.
             RexonText {
                 Layout.fillWidth: true
                 visible: root.opPhase === "running" || root.opPhase === "done"
@@ -399,7 +403,7 @@ Item {
                 font.weight: Font.DemiBold
             }
 
-            // Полоса своей разметкой: стиль Basic палитре не следует.
+            // The bar uses our own markup: the Basic style does not follow the palette.
             Rectangle {
                 Layout.fillWidth: true
                 visible: root.opPhase === "running" || root.opPhase === "done"
@@ -437,13 +441,13 @@ Item {
                     id: opLog
                     objectName: "desktopsOperationLog"
                     readOnly: true
-                    // По словам; в любом месте — только длинный путь.
+                    // By words; anywhere only for a long path.
                     wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
-                    // Журнал операции — вывод программ и пути —
-                    // читается слева направо при любом языке интерфейса, поэтому
-                    // поле физически слева: явное `AlignLeft` зеркалирование
-                    // перевернуло бы вправо, а `AlignRight` при зеркалировании даёт
-                    // левый край (как окно PKGBUILD в «Оформлении»).
+                    // The operation log — program output and paths — reads left to right in
+                    // any interface language, so the field is physically on the left:
+                    // mirroring would flip an explicit `AlignLeft` to the right, while
+                    // `AlignRight` under mirroring gives the left edge (like the PKGBUILD
+                    // window in "Appearance").
                     horizontalAlignment: LayoutMirroring.enabled ? TextEdit.AlignRight
                                                                  : TextEdit.AlignLeft
                     color: root.pal.text_primary
@@ -453,8 +457,8 @@ Item {
                         color: root.pal.bg_primary
                         border.color: root.pal.border
                     }
-                    // Вид на хвост — только из flushLog и только если
-                    // человек не прокрутил журнал вверх.
+                    // The view moves to the tail only from flushLog and only if the user has
+                    // not scrolled the log up.
                 }
             }
 
@@ -481,7 +485,7 @@ Item {
                     visible: root.opPhase === "confirm" || root.opPhase === "password"
                     enabled: !root.passwordBusy
                     pal: root.pal
-                    // Необратимое (удаление) — красным, остальное — синим.
+                    // Irreversible (removal) in red, everything else in blue.
                     tone: (root.op && root.op.danger) ? root.dangerTone : root.primaryTone
                     text: root.op ? root.op.yesText : ""
                     onClicked: {

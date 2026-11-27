@@ -1,9 +1,9 @@
-// Ползунок QML-вкладок Rexon в стандартном скине приложения.
-// Причина отдельного типа — та же, что у RexonButton: стиль Basic не следует
-// палитре приложения.
+// Slider for Rexon QML tabs in the application's standard skin.
+// The reason for a separate type is the same as for RexonButton: the Basic
+// style does not follow the application palette.
 
-// Делегат делений обращается к id самого ползунка; без прагмы проверка QML
-// справедливо ругается на неквалифицированный доступ.
+// The tick delegate refers to the id of the slider itself; without the
+// pragma, QML lint rightly complains about unqualified access.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -12,12 +12,12 @@ import QtQuick.Controls
 Slider {
     id: control
 
-    /// Палитра скина.
+    /// Skin palette.
     property var pal: null
 
-    /// Шаг делений под дорожкой (в единицах значения); 0 — делений нет.
-    /// Пара к `QSlider.TicksBelow` виджетной версии: у ползунка силы
-    /// размытия деления стоят на каждом шаге.
+    /// Tick step under the groove (in value units); 0 means no ticks.
+    /// Counterpart of `QSlider.TicksBelow` in the widget version: the blur
+    /// strength slider has a tick at every step.
     property real tickStep: 0
 
     readonly property color colTrack: control.pal ? control.pal.track
@@ -37,10 +37,10 @@ Slider {
         radius: 3
         color: control.colTrack
 
-        // Заливка — от НАЧАЛА шкалы до ручки: слева направо от левого края,
-        // при языке справа налево от правого. Ширина по `position`, а не по
-        // `visualPosition`: в зеркальном ползунке второе равно 1 − position,
-        // и от левого края залилась бы не та сторона.
+        // The fill goes from the START of the scale to the handle: from the left
+        // edge for left to right, from the right edge for right to left. The width
+        // follows `position`, not `visualPosition`: in a mirrored slider the latter
+        // equals 1 − position, and the wrong side would be filled from the left edge.
         Rectangle {
             x: control.mirrored ? parent.width - width : 0
             width: control.position * parent.width
@@ -50,7 +50,7 @@ Slider {
         }
     }
 
-    // Деления: короткие штрихи под дорожкой, по одному на шаг, цветом рамки.
+    // Ticks: short strokes under the groove, one per step, in the border colour.
     Repeater {
         model: control.tickStep > 0
                ? Math.floor((control.to - control.from) / control.tickStep) + 1
@@ -60,8 +60,8 @@ Slider {
             required property int index
             readonly property real ratio: control.tickStep * index
                                           / (control.to - control.from)
-            // Место штриха на экране: зеркальный ползунок отсчитывает шкалу
-            // от правого края, как и ручку (`visualPosition`).
+            // On-screen position of a tick: a mirrored slider counts the scale from
+            // the right edge, just like the handle (`visualPosition`).
             readonly property real visualRatio: control.mirrored ? 1 - ratio : ratio
             x: control.leftPadding + control.handle.width / 2
                + visualRatio * (control.availableWidth - control.handle.width) - width / 2

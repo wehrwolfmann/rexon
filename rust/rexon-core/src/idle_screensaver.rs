@@ -1,61 +1,62 @@
-//! Заставка при простое на рабочем столе: решения ядра.
+//! Idle screensaver on the desktop: the core's decisions.
 //!
-//! Заставка внутри самого Steam Big Picture — отдельный модуль
-//! [`crate::steam_screensaver`]; здесь — своя заставка Rexon на любом столе.
+//! The screensaver inside Steam Big Picture itself is a separate module,
+//! [`crate::steam_screensaver`]; here is Rexon's own screensaver on any desktop.
 //!
-//! ЧТО ЗДЕСЬ. Только решения, без шины, без Wayland и без окон:
-//! * [`route`] — каким путём в этом сеансе узнать о простое и чем показать
-//!   картинку поверх всего: штатным модулем хранителя экрана (MATE, XFCE,
-//!   Deepin, xscreensaver), своим слоем OVERLAY на Wayland, окном
-//!   override-redirect на X11, нашим расширением оболочки (GNOME/Cinnamon на
-//!   Wayland) — или честное «здесь нельзя» с причиной;
-//! * [`show_policy`] — как исполнитель показа обязан вести себя на этом пути
-//!   (страж безопасности экрана блокировки, см. ниже);
-//! * [`may_start`] / [`must_stop`] — когда показ можно начать и когда его
-//!   надо снять немедленно;
-//! * [`read_timers`] и парсеры конфигов окружений — когда окружение само
-//!   затемнит, погасит и заблокирует экран ([`DesktopTimers`]), чтобы
-//!   заставка вставала раньше ([`order_problem`], [`suggested_delay`]).
+//! WHAT IS HERE. Only decisions, without the bus, without Wayland and without
+//! windows:
+//! * [`route`] — by which route this session learns about idleness and what
+//!   shows the picture on top of everything: the stock screensaver module (MATE,
+//!   XFCE, Deepin, xscreensaver), our own OVERLAY layer on Wayland, an
+//!   override-redirect window on X11, our shell extension (GNOME/Cinnamon on
+//!   Wayland) — or an honest "not possible here" with a reason;
+//! * [`show_policy`] — how the display executor must behave on this route (the
+//!   lock screen safety guard, see below);
+//! * [`may_start`] / [`must_stop`] — when the display may start and when it must
+//!   be taken down immediately;
+//! * [`read_timers`] and the environments' config parsers — when the environment
+//!   itself will dim, blank and lock the screen ([`DesktopTimers`]), so that the
+//!   screensaver comes up earlier ([`order_problem`], [`suggested_delay`]).
 //!
-//! Исполнители — слушатель простоя в лотке рядом с мостом
-//! `screensaver_bridge` и режим показа `rexon-wallpaper-host --screensaver`
-//! (оба в `rexon-gui`) — приносят наблюдения сюда параметрами и делают то,
-//! что ответило ядро.
+//! The executors — the idle listener in the tray next to the
+//! `screensaver_bridge` bridge and the display mode
+//! `rexon-wallpaper-host --screensaver` (both in `rexon-gui`) — bring their
+//! observations here as parameters and do what the core answered.
 //!
-//! ⛔ БЕЗОПАСНОСТЬ ЭКРАНА БЛОКИРОВКИ.
-//! * X11: хранитель экрана блокирует, только если сумеет захватить
-//!   клавиатуру и мышь. Заставка, взявшая захват сама, оставит машину
-//!   НЕЗАБЛОКИРОВАННОЙ. Окно, поднимаемое наверх по таймеру, перекроет окно
-//!   блокировки. Поэтому на X11 — ни захвата ввода, ни подъёма циклом: ввод
-//!   слушается сырыми событиями XInput2 с корня (захвата они не требуют),
-//!   окно поднимается один раз при показе и только если хранитель не активен.
-//!   В [`RaisePolicy`] варианта «периодически» нет намеренно — его нельзя
-//!   даже выразить.
-//! * Wayland: поверхности блокировки по протоколу выше слоя OVERLAY; вред
-//!   один — заставка останется висеть после разблокировки. Поэтому уход по
-//!   первому же сигналу блокировки ([`must_stop`]).
-//! * Заставка НИКОГДА не держит экран (`Inhibit`, `XResetScreenSaver`,
-//!   `idle-inhibit` на своей поверхности): иначе перестанут гаснуть монитор
-//!   и засыпать ноутбук.
+//! Never: LOCK SCREEN SAFETY.
+//! * X11: the screensaver daemon locks only if it manages to grab the keyboard
+//!   and mouse. A screensaver that took the grab itself will leave the machine
+//!   UNLOCKED. A window raised to the top on a timer will cover the lock window.
+//!   So on X11 — neither an input grab nor a raise loop: input is listened to
+//!   as raw XInput2 events from the root (they need no grab), the window is
+//!   raised once when shown and only if the screensaver daemon is not active.
+//!   [`RaisePolicy`] deliberately has no "periodically" variant — it cannot even
+//!   be expressed.
+//! * Wayland: lock surfaces are above the OVERLAY layer by protocol; the only
+//!   harm is that the screensaver stays up after unlocking. So it leaves on the
+//!   very first lock signal ([`must_stop`]).
+//! * The screensaver NEVER holds the screen (`Inhibit`, `XResetScreenSaver`,
+//!   `idle-inhibit` on its surface): otherwise the monitor would stop blanking
+//!   and the laptop would stop going to sleep.
 
 use crate::animations::{LookCtx, LookIo};
 use crate::screensaver_bridge::{self as bridge, Upstream, UpstreamKind, WaylandFacts};
 
 // ============================================================================
-// Сеанс
+// Session
 // ============================================================================
 
-/// Какой графический сеанс.
+/// Which graphical session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionKind {
     Wayland,
     X11,
-    /// Ни Wayland, ни X11 (консоль, ssh): показывать некуда.
+    /// Neither Wayland nor X11 (console, ssh): there is nowhere to show.
     None,
 }
 
-/// Вид сеанса по переменным окружения (не задана — пустая строка).
-/// Признак Wayland в Rexon один — [`crate::wallpaper_backend::is_wayland_session`].
+/// Session kind by environment variables (unset — an empty string). Rexon has a
+/// single Wayland sign — [`crate::wallpaper_backend::is_wayland_session`].
 pub fn session_kind(xdg_session_type: &str, wayland_display: &str, display: &str) -> SessionKind {
     if crate::wallpaper_backend::is_wayland_session(xdg_session_type, wayland_display) {
         SessionKind::Wayland
@@ -67,27 +68,27 @@ pub fn session_kind(xdg_session_type: &str, wayland_display: &str, display: &str
 }
 
 // ============================================================================
-// Маршрут
+// Route
 // ============================================================================
 
-/// Штатный модуль хранителя экрана: заставка Rexon встаёт в его список тем,
-/// и порядок «заставка → блокировка» держит сам хранитель.
+/// The stock screensaver module: the Rexon screensaver goes into its list of
+/// themes, and the daemon itself keeps the "screensaver → lock" order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NativeModule {
-    /// mate-screensaver: тема — `.desktop` с `Categories=Screensaver;`,
-    /// окно приходит в `XSCREENSAVER_WINDOW`.
+    /// mate-screensaver: a theme is a `.desktop` with `Categories=Screensaver;`, the
+    /// window comes in `XSCREENSAVER_WINDOW`.
     Mate,
-    /// xfce4-screensaver: то же устройство, меню garcon.
+    /// xfce4-screensaver: the same structure, the garcon menu.
     Xfce,
-    /// deepin-screensaver: модуль QML или исполняемый файл в каталоге модулей.
+    /// deepin-screensaver: a QML module or an executable in the module directory.
     Deepin,
-    /// xscreensaver: «хак» в списке `programs:`, окно в `-window-id` /
+    /// xscreensaver: a "hack" in the `programs:` list, the window in `-window-id` /
     /// `XSCREENSAVER_WINDOW`.
     XScreenSaver,
 }
 
 impl NativeModule {
-    /// Идентификатор для настроек и журнала.
+    /// Identifier for the settings and the log.
     pub fn id(self) -> &'static str {
         match self {
             NativeModule::Mate => "mate-screensaver",
@@ -97,94 +98,94 @@ impl NativeModule {
         }
     }
 
-    /// Порядок предпочтения, если в сеансе живут несколько хранителей.
+    /// Order of preference if several screensaver daemons live in the session.
     pub fn all() -> &'static [NativeModule] {
         &[NativeModule::Mate, NativeModule::Xfce, NativeModule::Deepin, NativeModule::XScreenSaver]
     }
 
-    /// Имя хранителя на шине сеанса, если оно у него есть. Имена — из общей
-    /// таблицы моста ([`bridge::COMPANIONS`]), не своей копией.
+    /// The daemon's name on the session bus, if it has one. The names come from the
+    /// bridge's shared table ([`bridge::COMPANIONS`]), not from a copy of our own.
     pub fn bus_name(self) -> Option<&'static str> {
         let wanted = match self {
             NativeModule::Mate => "org.mate.ScreenSaver",
             NativeModule::Xfce => "org.xfce.ScreenSaver",
-            // deepin-screensaver и xscreensaver узнаются по процессу.
+            // deepin-screensaver and xscreensaver are recognized by process.
             NativeModule::Deepin | NativeModule::XScreenSaver => return None,
         };
         bridge::COMPANIONS.iter().map(|c| c.service).find(|s| *s == wanted)
     }
 }
 
-/// Откуда слушатель узнаёт о простое.
+/// Where the listener learns about idleness from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdleSource {
-    /// Wayland `ext_idle_notifier_v1.get_idle_notification` (версия 1:
-    /// учитывает запреты простоя — пока видео держит idle-inhibit, `idled`
-    /// не придёт).
+    /// Wayland `ext_idle_notifier_v1.get_idle_notification` (version 1: takes idle
+    /// inhibitors into account — while a video holds idle-inhibit, `idled` will not
+    /// come).
     ExtIdleNotify,
-    /// D-Bus `org.gnome.Mutter.IdleMonitor` (GNOME). Запреты менеджера сеанса
-    /// он не видит — их проверяет [`may_start`].
+    /// D-Bus `org.gnome.Mutter.IdleMonitor` (GNOME). It does not see the session
+    /// manager's inhibitors — [`may_start`] checks them.
     MutterIdleMonitor,
-    /// Тот же монитор у Muffin (Cinnamon).
+    /// The same monitor in Muffin (Cinnamon).
     MuffinIdleMonitor,
-    /// X11 MIT-SCREEN-SAVER (`XScreenSaverQueryInfo`), опрос раз в 5–10 с.
+    /// X11 MIT-SCREEN-SAVER (`XScreenSaverQueryInfo`), polled every 5–10 s.
     XScreenSaverExt,
 }
 
-/// Наше расширение оболочки, которое показывает заставку само.
+/// Our shell extension, which shows the screensaver itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShellExtension {
     Gnome,
     Cinnamon,
 }
 
-/// Чем показать картинку поверх всего.
+/// What shows the picture on top of everything.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShowMethod {
-    /// wlr-layer-shell, слой OVERLAY, поверхность на каждый вывод.
+    /// wlr-layer-shell, the OVERLAY layer, a surface per output.
     LayerShellOverlay,
-    /// X11: окно override-redirect на каждый монитор.
+    /// X11: an override-redirect window per monitor.
     X11OverrideRedirect,
-    /// Полноэкранный актёр нашего расширения оболочки (Mutter/Muffin на
-    /// Wayland: layer-shell там нет).
+    /// A full-screen actor of our shell extension (Mutter/Muffin on Wayland: there
+    /// is no layer-shell there).
     ShellExtension(ShellExtension),
 }
 
-/// Почему в этом сеансе своей заставки быть не может. Для честной подписи
-/// на вкладке, а не для молчаливого «не работает».
+/// Why there can be no screensaver of our own in this session. For an honest
+/// label in the tab, not for a silent "does not work".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Unsupported {
-    /// Графического сеанса нет.
+    /// There is no graphical session.
     NoDisplay,
-    /// Сеанс Wayland, но композитор не ответил (слушатель не смог
-    /// подключиться): решать не по чему.
+    /// A Wayland session, but the compositor did not answer (the listener could
+    /// not connect): there is nothing to decide by.
     NoCompositorFacts,
-    /// GNOME/Cinnamon на Wayland без включённого расширения Rexon: путь есть,
-    /// но нужен один шаг человека («включить расширение»).
+    /// GNOME/Cinnamon on Wayland without the Rexon extension enabled: the route
+    /// exists, but one step by the person is needed ("enable the extension").
     ShellExtensionOff(ShellExtension),
-    /// Pantheon на Wayland: Gala не даёт ни layer-shell, ни расширений.
+    /// Pantheon on Wayland: Gala gives neither layer-shell nor extensions.
     PantheonWayland,
-    /// Композитор не объявил нужных глобалов (имена — какие).
+    /// The compositor did not announce the needed globals (names — which ones).
     MissingGlobals(Vec<&'static str>),
 }
 
-/// Решение: каким путём здесь работает заставка.
+/// Decision: by which route the screensaver works here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Route {
-    /// Игровой режим SteamOS (gamescope): простой и заставку ведёт сам
-    /// Steam; своё окно поверх gamescope не показываем. Заставка Rexon там —
-    /// папка в `uioverrides` ([`crate::steam_screensaver`]).
+    /// SteamOS game mode (gamescope): Steam itself handles idleness and the
+    /// screensaver; we do not show our own window on top of gamescope. The Rexon
+    /// screensaver there is a folder in `uioverrides` ([`crate::steam_screensaver`]).
     SteamOnly,
-    /// Штатный модуль хранителя экрана.
+    /// The stock screensaver module.
     Native(NativeModule),
-    /// Свой показ: слушатель простоя + исполнитель показа.
+    /// Our own display: the idle listener + the display executor.
     Own { idle: IdleSource, show: ShowMethod },
-    /// Здесь нельзя — с причиной.
+    /// Not possible here — with a reason.
     Unsupported(Unsupported),
 }
 
-/// Какие хранители экрана живут в сеансе. Добывает исполнитель: имена на
-/// шине — [`NativeSavers::from_bus`], процессы — сам.
+/// Which screensaver daemons live in the session. Obtained by the executor:
+/// names on the bus — [`NativeSavers::from_bus`], processes — by itself.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NativeSavers {
     pub mate: bool,
@@ -194,7 +195,7 @@ pub struct NativeSavers {
 }
 
 impl NativeSavers {
-    /// Хранители с именем на шине — по `has_owner`; прочие — фактами.
+    /// Daemons with a name on the bus — by `has_owner`; the others — by facts.
     pub fn from_bus(has_owner: impl Fn(&str) -> bool, deepin: bool, xscreensaver: bool) -> Self {
         let on_bus = |m: NativeModule| m.bus_name().is_some_and(&has_owner);
         NativeSavers {
@@ -215,29 +216,29 @@ impl NativeSavers {
     }
 }
 
-/// Наблюдения за сеансом для [`route`].
+/// Observations of the session for [`route`].
 #[derive(Debug, Clone, Copy)]
 pub struct RouteFacts<'a> {
-    /// Ответ [`crate::system::detect_current_de`].
+    /// The answer of [`crate::system::detect_current_de`].
     pub de: Option<&'a str>,
     pub session: SessionKind,
-    /// Что объявил композитор (тот же снимок, что у моста:
+    /// What the compositor announced (the same snapshot as the bridge's:
     /// `rexon-gui::screensaver_bridge::wayland_idle::probe`).
     pub wayland: Option<&'a WaylandFacts>,
-    /// Задан `GAMESCOPE_WAYLAND_DISPLAY` (игровой режим SteamOS).
+    /// `GAMESCOPE_WAYLAND_DISPLAY` is set (SteamOS game mode).
     pub gamescope: bool,
     pub savers: NativeSavers,
-    /// Включено ли наше расширение оболочки (GNOME/Cinnamon), разбор —
+    /// Whether our shell extension is enabled (GNOME/Cinnamon); parsing —
     /// [`crate::wallpaper_engine::parse_shell_ext_state`].
     pub shell_extension_enabled: bool,
 }
 
-/// Глобалы композитора, без которых своего показа на Wayland нет.
+/// Compositor globals without which there is no display of our own on Wayland.
 pub const OVERLAY_GLOBALS_NEEDED: [&str; 2] = ["zwlr_layer_shell_v1", "ext_idle_notifier_v1"];
 
-/// Расширение оболочки для окружения — по той же таблице, что у обоев
-/// ([`crate::wallpaper_engine::mutter_family_wayland`]): нужно ровно там,
-/// где Mutter/Muffin на Wayland.
+/// A shell extension for the environment — by the same table as for wallpapers
+/// ([`crate::wallpaper_engine::mutter_family_wayland`]): needed exactly where
+/// Mutter/Muffin runs on Wayland.
 fn shell_extension_for(de: &str, session: SessionKind) -> Option<ShellExtension> {
     let session_type = if session == SessionKind::Wayland { "wayland" } else { "x11" };
     if !crate::wallpaper_engine::mutter_family_wayland(de, session_type) {
@@ -246,21 +247,22 @@ fn shell_extension_for(de: &str, session: SessionKind) -> Option<ShellExtension>
     Some(if de == "gnome" { ShellExtension::Gnome } else { ShellExtension::Cinnamon })
 }
 
-/// Каким путём здесь работает заставка (таблица окружений — раздел 2.2
-/// плана; там, где можно, решение выводится из фактов, а не из имени стола:
-/// поддержку ext-idle-notify и layer-shell композитор объявляет сам).
+/// By which route the screensaver works here (the environment table is section
+/// 2.2 of the plan; where possible the decision is derived from facts rather than
+/// from the desktop's name: the compositor itself announces support for
+/// ext-idle-notify and layer-shell).
 pub fn route(f: &RouteFacts) -> Route {
     match f.session {
         SessionKind::None => Route::Unsupported(Unsupported::NoDisplay),
         SessionKind::X11 => {
-            // Штатный модуль — у живого хранителя. Под MATE это
-            // mate-screensaver, под XFCE — xfce4-screensaver, под LXQt-X11 —
-            // обычно xscreensaver; порядок — [`NativeModule::all`].
+            // The stock module — for a live daemon. Under MATE this is
+            // mate-screensaver, under XFCE xfce4-screensaver, under LXQt-X11
+            // usually xscreensaver; the order — [`NativeModule::all`].
             if let Some(m) = NativeModule::all().iter().copied().find(|m| f.savers.has(*m)) {
                 return Route::Native(m);
             }
-            // KDE-X11, GNOME-X11, Cinnamon (cinnamon-screensaver без
-            // хаков), Budgie-X11, Pantheon-X11, XFCE с light-locker…
+            // KDE-X11, GNOME-X11, Cinnamon (cinnamon-screensaver without
+            // hacks), Budgie-X11, Pantheon-X11, XFCE with light-locker…
             Route::Own { idle: IdleSource::XScreenSaverExt, show: ShowMethod::X11OverrideRedirect }
         }
         SessionKind::Wayland => {
@@ -298,65 +300,65 @@ pub fn route(f: &RouteFacts) -> Route {
 }
 
 // ============================================================================
-// Как вести себя при показе (страж блокировки)
+// How to behave while showing (the lock guard)
 // ============================================================================
 
-/// Когда исполнитель показа может поднять своё окно наверх.
+/// When the display executor may raise its window to the top.
 ///
-/// ⛔ Варианта «периодически» нет и быть не должно: окно, которое
-/// поднимается по таймеру, перекрывает окно блокировки на X11.
+/// Never: there is no "periodically" variant and there must not be one: a window
+/// raised on a timer covers the lock window on X11.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RaisePolicy {
-    /// Никогда: порядок слоёв держит протокол (OVERLAY), хранитель экрана
-    /// (своё окно) или оболочка (расширение).
+    /// Never: the layer order is kept by the protocol (OVERLAY), the screensaver
+    /// daemon (its own window) or the shell (the extension).
     Never,
-    /// Один раз при показе — и только если хранитель экрана не активен
-    /// (`GetActive` = false у всех [`lock_signal_services`]).
+    /// Once when shown — and only if the screensaver daemon is not active
+    /// (`GetActive` = false for all [`lock_signal_services`]).
     OnceIfSaverInactive,
 }
 
-/// Чем ловить ввод, который снимает заставку.
+/// What catches the input that takes the screensaver down.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputWatch {
-    /// Клавиатура слоя OVERLAY в режиме exclusive: первое нажатие не уходит
-    /// в программу под заставкой. Это не захват X11: экран блокировки
-    /// Wayland всё равно выше.
+    /// The OVERLAY layer's keyboard in exclusive mode: the first key press does not
+    /// go to the program under the screensaver. This is not an X11 grab: the
+    /// Wayland lock screen is above anyway.
     LayerExclusiveKeyboard,
-    /// X11: сырые события XInput2 (`XI_RawKeyPress`, `XI_RawButtonPress`,
-    /// `XI_RawMotion`) с корневого окна — без захвата.
+    /// X11: raw XInput2 events (`XI_RawKeyPress`, `XI_RawButtonPress`,
+    /// `XI_RawMotion`) from the root window — without a grab.
     XInput2Raw,
-    /// Ввод ведёт хозяин окна (хранитель экрана, оболочка); исполнитель
-    /// уходит по его сигналу или SIGTERM.
+    /// Input is handled by the window's owner (the screensaver daemon, the shell);
+    /// the executor leaves on its signal or SIGTERM.
     Owner,
 }
 
-/// Правила поведения исполнителя показа на выбранном пути.
+/// Behavior rules of the display executor on the chosen route.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShowPolicy {
-    /// XGrabKeyboard / xcb_grab_keyboard и любые их обёртки.
+    /// XGrabKeyboard / xcb_grab_keyboard and any of their wrappers.
     pub grab_keyboard: bool,
-    /// XGrabPointer и обёртки.
+    /// XGrabPointer and wrappers.
     pub grab_pointer: bool,
     pub raise: RaisePolicy,
     pub input: InputWatch,
-    /// Держать экран (`Inhibit`, `XResetScreenSaver`, `SimulateUserActivity`,
-    /// idle-inhibit на поверхности). Всегда `false`.
+    /// Holding the screen (`Inhibit`, `XResetScreenSaver`, `SimulateUserActivity`,
+    /// idle-inhibit on a surface). Always `false`.
     pub hold_screen: bool,
-    /// Съесть первое нажатие или клик, которым будят заставку.
+    /// Swallow the first key press or click that wakes the screensaver.
     pub eat_wake_input: bool,
-    /// Первый кадр не нарисован за это время — выйти (невидимая стена).
+    /// If the first frame is not drawn within this time — exit (an invisible wall).
     pub first_frame_timeout_ms: u32,
-    /// Непрерывный показ дольше — выйти (сторож зависшего слушателя).
+    /// A continuous display longer than this — exit (the watchdog of a hung listener).
     pub max_show_s: u32,
 }
 
-/// Сторож первого кадра (раздел 5 плана, п. 2).
+/// The first frame watchdog (section 5 of the plan, item 2).
 pub const FIRST_FRAME_TIMEOUT_MS: u32 = 2_000;
-/// Самый долгий непрерывный показ: 4 часа.
+/// The longest continuous display: 4 hours.
 pub const MAX_SHOW_S: u32 = 4 * 60 * 60;
 
-/// Правила показа для пути; `None` — показывает не Rexon (Steam) или
-/// показывать нечем.
+/// Display rules for a route; `None` — it is not Rexon that shows (Steam), or
+/// there is nothing to show with.
 pub fn show_policy(r: &Route) -> Option<ShowPolicy> {
     let base = ShowPolicy {
         grab_keyboard: false,
@@ -370,8 +372,9 @@ pub fn show_policy(r: &Route) -> Option<ShowPolicy> {
     };
     match r {
         Route::SteamOnly | Route::Unsupported(_) => None,
-        // Окно дал хранитель: над ним он сам держит блокировку и гасит нас
-        // SIGTERM-ом. Ни поднимать, ни ловить ввод не нужно.
+        // The window was given by the screensaver daemon: above it the daemon
+        // itself keeps the lock and kills us with SIGTERM. Neither raising nor
+        // catching input is needed.
         Route::Native(_) => Some(base),
         Route::Own { show, .. } => Some(match show {
             ShowMethod::LayerShellOverlay => ShowPolicy {
@@ -379,8 +382,8 @@ pub fn show_policy(r: &Route) -> Option<ShowPolicy> {
                 eat_wake_input: true,
                 ..base
             },
-            // Клик достаётся нашему окну, потому что оно сверху; под ним никто
-            // ничего не получает. Если сверху уже блокировка — клик её.
+            // The click goes to our window because it is on top; nobody under it
+            // gets anything. If the lock is already on top, the click is the lock's.
             ShowMethod::X11OverrideRedirect => ShowPolicy {
                 raise: RaisePolicy::OnceIfSaverInactive,
                 input: InputWatch::XInput2Raw,
@@ -393,27 +396,28 @@ pub fn show_policy(r: &Route) -> Option<ShowPolicy> {
 }
 
 // ============================================================================
-// Сигналы блокировки и запреты простоя: откуда их брать
+// Lock signals and idle inhibitors: where to get them
 // ============================================================================
 
-/// Службы, у которых слушаем `ActiveChanged(true)` и спрашиваем `GetActive`:
-/// `org.freedesktop.ScreenSaver` (KDE и те, кто его держит) и хранители
-/// окружений из общей таблицы моста.
+/// Services whose `ActiveChanged(true)` we listen to and whose `GetActive` we
+/// ask: `org.freedesktop.ScreenSaver` (KDE and whoever holds it) and the
+/// environments' screensaver daemons from the bridge's shared table.
 pub fn lock_signal_services() -> Vec<&'static str> {
     let mut out = vec![bridge::SERVICE];
     out.extend(bridge::COMPANIONS.iter().map(|c| c.service));
     out
 }
 
-/// logind: сигнал `Session.Lock`, свойство `Session.LockedHint` и
-/// `Manager.PrepareForSleep` — общие для всех окружений (wlroots-блокировщики
-/// дают только `LockedHint`, и то не все).
+/// logind: the `Session.Lock` signal, the `Session.LockedHint` property and
+/// `Manager.PrepareForSleep` — common to all environments (wlroots lockers give
+/// only `LockedHint`, and not all of them).
 pub const LOGIN1_SERVICE: &str = "org.freedesktop.login1";
 pub const LOGIN1_SESSION_IFACE: &str = "org.freedesktop.login1.Session";
 pub const LOGIN1_MANAGER_IFACE: &str = "org.freedesktop.login1.Manager";
 
-/// Как спросить у службы, держит ли кто-нибудь экран сейчас: метод и флаг.
-/// Службы — те же, куда мост пробрасывает удержания ([`bridge::UPSTREAMS`]).
+/// How to ask a service whether anyone holds the screen right now: the method
+/// and the flag. The services are the same ones the bridge forwards inhibitors
+/// to ([`bridge::UPSTREAMS`]).
 pub fn inhibit_query(u: &Upstream) -> Option<(&'static str, Option<u32>)> {
     match u.kind {
         UpstreamKind::GnomeSession => Some(("IsInhibited", Some(bridge::GSM_INHIBIT_IDLE))),
@@ -423,20 +427,20 @@ pub fn inhibit_query(u: &Upstream) -> Option<(&'static str, Option<u32>)> {
 }
 
 // ============================================================================
-// Когда можно начать и когда уходить
+// When to start and when to leave
 // ============================================================================
 
-/// Настройки заставки, которые влияют на решения.
+/// Screensaver settings that affect the decisions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Settings {
-    /// Через сколько секунд простоя от сети.
+    /// After how many seconds of idleness on AC power.
     pub idle_after_ac_s: u32,
-    /// Через сколько на батарее; `None` — на батарее не показывать
-    /// (по умолчанию, как у Valve: батарея дороже).
+    /// After how many on battery; `None` — do not show on battery (the default, as
+    /// with Valve: the battery is more precious).
     pub idle_after_battery_s: Option<u32>,
-    /// Показывать поверх окна на весь экран и запущенной игры Steam. По
-    /// умолчанию нет: игра на геймпаде простоем выглядит, а заставка посреди
-    /// неё — худшее, что можно сделать.
+    /// Show over a full-screen window and a running Steam game. Off by default: a
+    /// game played with a gamepad looks idle, and a screensaver in the middle of it
+    /// is the worst thing one could do.
     pub show_over_fullscreen: bool,
 }
 
@@ -447,7 +451,7 @@ impl Default for Settings {
 }
 
 impl Settings {
-    /// Порог простоя сейчас; `None` — сейчас не показывать вовсе.
+    /// The idle threshold now; `None` — do not show at all now.
     pub fn threshold_s(&self, on_battery: bool) -> Option<u32> {
         if on_battery {
             self.idle_after_battery_s
@@ -457,14 +461,14 @@ impl Settings {
     }
 }
 
-/// Кто держит экран прямо сейчас.
+/// Who holds the screen right now.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Inhibits {
     /// `org.gnome.SessionManager.IsInhibited(8)` (GNOME, Cinnamon, MATE, Budgie).
     pub session_idle: bool,
     /// `org.freedesktop.PowerManagement.Inhibit.HasInhibit()` (KDE, XFCE).
     pub power_management: bool,
-    /// Удержаний в книге нашего моста (`screensaver_bridge::Book::active`).
+    /// Inhibitors in our bridge's book (`screensaver_bridge::Book::active`).
     pub bridge_holds: usize,
 }
 
@@ -474,47 +478,45 @@ impl Inhibits {
     }
 }
 
-/// Снимок сеанса в момент, когда слушатель решает, показывать ли.
+/// Snapshot of the session at the moment the listener decides whether to show.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Moment {
-    /// Простой в мс (для ext-idle-notify — порог, на котором пришёл `idled`).
+    /// Idle time in ms (for ext-idle-notify — the threshold at which `idled` came).
     pub idle_ms: u64,
     pub on_battery: bool,
-    /// `LockedHint` logind или `GetActive` = true у любого хранителя.
+    /// logind's `LockedHint` or `GetActive` = true for any screensaver daemon.
     pub locked: bool,
-    /// Экран погашен (DPMS off).
+    /// The screen is blanked (DPMS off).
     pub display_off: bool,
-    /// Пришёл `PrepareForSleep(true)`, сна ещё не было.
+    /// `PrepareForSleep(true)` has arrived, sleep has not happened yet.
     pub preparing_sleep: bool,
-    /// Сеанс активен (logind `Active`): не переключились на другой VT или
-    /// пользователя.
+    /// The session is active (logind `Active`): no switch to another VT or user.
     pub session_active: bool,
     pub inhibits: Inhibits,
-    /// Окно в фокусе — на весь экран.
+    /// The focused window is full-screen.
     pub fullscreen_focused: bool,
-    /// Запущена игра Steam.
+    /// A Steam game is running.
     pub steam_game_running: bool,
 }
 
-/// Почему показ сейчас не начинаем.
+/// Why we do not start the display now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     Locked,
     PreparingSleep,
     SessionInactive,
     DisplayOff,
-    /// Кто-то держит экран (видео).
+    /// Someone holds the screen (a video).
     Inhibited,
-    /// На батарее заставка выключена.
+    /// The screensaver is off on battery.
     OnBattery,
     Fullscreen,
     SteamGame,
     NotIdleYet,
 }
 
-/// Можно ли начать показ сейчас. Порядок проверок — сначала безопасность
-/// (блокировка, сон, чужой сеанс), потом вежливость (видео, батарея, игра),
-/// потом время.
+/// Whether the display may start now. The order of checks — safety first (lock,
+/// sleep, a foreign session), then politeness (video, battery, game), then time.
 pub fn may_start(m: &Moment, s: &Settings) -> Result<(), Refusal> {
     safety_check(m)?;
     if m.inhibits.any() {
@@ -537,8 +539,9 @@ pub fn may_start(m: &Moment, s: &Settings) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// Предпросмотр по кнопке: простой, видео, батарея и игра не важны (человек
-/// сам нажал), но поверх блокировки, во сне и в чужом сеансе — никогда.
+/// A preview on a button: idleness, video, battery and game do not matter (the
+/// person pressed it themselves), but never over the lock, during sleep or in a
+/// foreign session.
 pub fn may_preview(m: &Moment) -> Result<(), Refusal> {
     safety_check(m)
 }
@@ -559,41 +562,41 @@ fn safety_check(m: &Moment) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// Событие во время показа.
+/// An event during the display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
-    /// Нажатие, клик, движение мыши.
+    /// A key press, a click, mouse movement.
     Input,
-    /// Источник простоя сообщил «пользователь вернулся» (`resumed`,
-    /// `AddUserActiveWatch`, idle MIT-SCREEN-SAVER сбросился).
+    /// The idle source reported "the user is back" (`resumed`,
+    /// `AddUserActiveWatch`, MIT-SCREEN-SAVER idle reset).
     IdleResumed,
-    /// `ActiveChanged(b)` любой из [`lock_signal_services`].
+    /// `ActiveChanged(b)` of any of the [`lock_signal_services`].
     SaverActiveChanged(bool),
-    /// Свойство logind `LockedHint`.
+    /// The logind `LockedHint` property.
     LockedHint(bool),
-    /// Сигнал logind `Session.Lock`.
+    /// The logind `Session.Lock` signal.
     SessionLock,
     /// `PrepareForSleep(b)`.
     PrepareForSleep(bool),
-    /// Экран включён (`true`) или погашен (`false`).
+    /// The screen is on (`true`) or blanked (`false`).
     DisplayPower(bool),
-    /// Сеанс стал активным / неактивным (смена VT, пользователя).
+    /// The session became active / inactive (VT or user switch).
     SessionActive(bool),
-    /// Переход на батарею (`true`) или на сеть (`false`).
+    /// Switching to battery (`true`) or to AC (`false`).
     OnBattery(bool),
-    /// Появилось удержание экрана (запустили видео по расписанию).
+    /// A screen inhibitor appeared (a scheduled video was started).
     InhibitAdded,
-    /// Исполнитель простоя пропал (лоток упал).
+    /// The idle executor disappeared (the tray crashed).
     ListenerGone,
-    /// Первый кадр не нарисован за [`FIRST_FRAME_TIMEOUT_MS`].
+    /// The first frame was not drawn within [`FIRST_FRAME_TIMEOUT_MS`].
     FirstFrameTimeout,
-    /// Показ длится дольше [`MAX_SHOW_S`].
+    /// The display lasts longer than [`MAX_SHOW_S`].
     ShownTooLong,
 }
 
-/// Снять ли показ немедленно. `preview` — показ по кнопке «Предпросмотр»:
-/// его не снимают батарея и удержания (человек сам попросил), всё прочее —
-/// снимает.
+/// Whether to take the display down immediately. `preview` — a display by the
+/// "Preview" button: battery and inhibitors do not take it down (the person
+/// asked for it themselves), everything else does.
 pub fn must_stop(e: &Event, s: &Settings, preview: bool) -> bool {
     match *e {
         Event::Input
@@ -620,32 +623,33 @@ pub fn must_stop(e: &Event, s: &Settings, preview: bool) -> bool {
 
 
 // ============================================================================
-// Таймеры окружения: когда оно затемнит, погасит и заблокирует экран
+// Environment timers: when it will dim, blank and lock the screen
 // ============================================================================
 //
-// Свой показ обязан встать РАНЬШЕ, чем окружение затемнит экран, погасит его
-// или заблокирует: иначе заставку никто не увидит. Здесь — чтение этих
-// таймеров (только чтение: чужую политику питания Rexon не меняет). Разбор —
-// чистые функции над текстом конфигов и значениями gsettings/xfconf;
-// значения добывают обёртки над [`LookIo`] ([`gsettings_reader`],
-// [`xfconf_reader`]), в тестах — подделки.
+// Our own display must come up EARLIER than the environment dims, blanks or
+// locks the screen: otherwise nobody will see the screensaver. Here is the
+// reading of these timers (reading only: Rexon does not change someone else's
+// power policy). Parsing is pure functions over config text and
+// gsettings/xfconf values; the values are obtained by wrappers over [`LookIo`]
+// ([`gsettings_reader`], [`xfconf_reader`]), in tests — by fakes.
 //
-// Умолчания и единицы — по схемам самих окружений (gschema, kcfg, заголовки
-// xfconf-ключей) и их документации; где у окружения умолчание считается в
-// коде, это сказано у функции.
+// Defaults and units follow the environments' own schemas (gschema, kcfg,
+// xfconf key headers) and their documentation; where an environment computes a
+// default in code, the function says so.
 
-/// Шаг, которым окружение уводит экран от заставки.
+/// A step by which the environment takes the screen away from the screensaver.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Stage {
-    /// Затемнение подсветки.
+    /// Dimming the backlight.
     Dim,
-    /// Экран гаснет любым способом: DPMS, хранитель экрана окружения, сон.
+    /// The screen goes dark in any way: DPMS, the environment's screensaver, sleep.
     Blank,
-    /// Блокировка.
+    /// Locking.
     Lock,
 }
 
-/// Таймеры простоя окружения, секунды от начала простоя; `None` — шага нет.
+/// The environment's idle timers, seconds from the start of idleness; `None` —
+/// there is no step.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DesktopTimers {
     pub dim_s: Option<u32>,
@@ -654,7 +658,7 @@ pub struct DesktopTimers {
 }
 
 impl DesktopTimers {
-    /// Самый ранний шаг (при равенстве — более жёсткий: блокировка важнее).
+    /// The earliest step (on a tie — the harsher one: locking matters more).
     pub fn first(&self) -> Option<(Stage, u32)> {
         [(Stage::Dim, self.dim_s), (Stage::Blank, self.blank_s), (Stage::Lock, self.lock_s)]
             .into_iter()
@@ -672,17 +676,17 @@ impl DesktopTimers {
     }
 }
 
-/// Нарушен ли порядок «заставка → затемнение/гашение/блокировка» при
-/// задержке заставки `t_ss`: какой шаг окружения наступит раньше или
-/// одновременно. Это подсказка для вкладки, не ошибка. Только для своего
-/// показа: у штатного модуля порядок держит сам хранитель экрана.
+/// Whether the order "screensaver → dim/blank/lock" is broken with a screensaver
+/// delay of `t_ss`: which environment step comes earlier or at the same time.
+/// This is a hint for the tab, not an error. Only for our own display: with the
+/// stock module the screensaver daemon itself keeps the order.
 pub fn order_problem(t_ss: u32, timers: &DesktopTimers) -> Option<(Stage, u32)> {
     timers.first().filter(|(_, t)| *t <= t_ss)
 }
 
-/// Задержка заставки, которая точно успеет до первого шага окружения:
-/// на 20 % раньше (но не меньше чем на 10 с и не короче минуты). Если
-/// окружение ничего не делает — умолчание [`Settings`].
+/// A screensaver delay that is sure to come before the environment's first step:
+/// 20 % earlier (but by no less than 10 s and no shorter than a minute). If the
+/// environment does nothing — the [`Settings`] default.
 pub fn suggested_delay(timers: &DesktopTimers) -> u32 {
     let default = Settings::default().idle_after_ac_s;
     let Some((_, first)) = timers.first() else {
@@ -692,7 +696,7 @@ pub fn suggested_delay(timers: &DesktopTimers) -> u32 {
     first.saturating_sub(margin).clamp(60, default.max(60))
 }
 
-/// Профиль питания KDE (группы `powerdevilrc`).
+/// A KDE power profile (`powerdevilrc` groups).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PowerProfile {
     Ac,
@@ -738,12 +742,13 @@ fn minutes(v: u32) -> u32 {
 
 /// Plasma 6: `kscreenlockerrc` + `powerdevilrc`.
 ///
-/// * `[Daemon] Autolock` (да) и `Timeout` — МИНУТЫ, дробные (5);
-/// * `[<профиль>][Display] DimDisplayWhenIdle` (да) +
-///   `DimDisplayIdleTimeoutSec`, `TurnOffDisplayWhenIdle` (да) +
-///   `TurnOffDisplayIdleTimeoutSec`, `LockBeforeTurnOffDisplay` (да только
-///   на «мобильных»). Умолчания секунд PowerDevil считает в коде по профилю
-///   и признаку «мобильное устройство» — они повторены в [`kde_defaults`].
+/// * `[Daemon] Autolock` (yes) and `Timeout` — MINUTES, fractional (5);
+/// * `[<profile>][Display] DimDisplayWhenIdle` (yes) +
+///   `DimDisplayIdleTimeoutSec`, `TurnOffDisplayWhenIdle` (yes) +
+///   `TurnOffDisplayIdleTimeoutSec`, `LockBeforeTurnOffDisplay` (yes only on
+///   "mobile" devices). PowerDevil computes the default seconds in code by
+///   profile and the "mobile device" flag — they are repeated in
+///   [`kde_defaults`].
 pub fn kde_timers(
     kscreenlockerrc: Option<&str>,
     powerdevilrc: Option<&str>,
@@ -774,7 +779,7 @@ pub fn kde_timers(
     t
 }
 
-/// Умолчания PowerDevil (затемнение, гашение), секунды.
+/// PowerDevil defaults (dimming, blanking), seconds.
 pub fn kde_defaults(profile: PowerProfile, is_mobile: bool) -> (i64, i64) {
     match (profile, is_mobile) {
         (PowerProfile::Ac, _) => (300, 600),
@@ -787,32 +792,32 @@ pub fn kde_defaults(profile: PowerProfile, is_mobile: bool) -> (i64, i64) {
 
 // ── gsettings: GNOME, Cinnamon, MATE, Budgie ─────────────────────────────────
 
-/// Источник значений «схема/канал, ключ → строка» (gsettings или xfconf).
+/// Source of "schema/channel, key → string" values (gsettings or xfconf).
 pub type Get<'a> = &'a dyn Fn(&str, &str) -> Option<String>;
 
-/// Значения gsettings через уже принятый в Rexon способ
-/// ([`crate::animations::gsettings_get`]: `gsettings get`, типовая приставка
-/// `uint32` срезается).
+/// gsettings values via the method already adopted in Rexon
+/// ([`crate::animations::gsettings_get`]: `gsettings get`, the `uint32` type
+/// prefix is stripped).
 pub fn gsettings_reader(io: &dyn LookIo) -> impl Fn(&str, &str) -> Option<String> + '_ {
     move |schema, key| crate::animations::gsettings_get(io, schema, key)
 }
 
-/// Значения xfconf ([`crate::animations::xfconf_get`]).
+/// xfconf values ([`crate::animations::xfconf_get`]).
 pub fn xfconf_reader(io: &dyn LookIo) -> impl Fn(&str, &str) -> Option<String> + '_ {
     move |channel, prop| crate::animations::xfconf_get(io, channel, prop)
 }
 
 /// GNOME (gnome-shell + gnome-settings-daemon).
 ///
-/// * `org.gnome.desktop.session idle-delay` (с, 300; 0 — никогда) — щит
-///   экрана: экран гаснет;
-/// * блокировка — `idle-delay + org.gnome.desktop.screensaver lock-delay`
-///   (с, 0), если `lock-enabled` (да) и не `org.gnome.desktop.lockdown
+/// * `org.gnome.desktop.session idle-delay` (s, 300; 0 — never) — the screen
+///   shield: the screen goes dark;
+/// * locking — `idle-delay + org.gnome.desktop.screensaver lock-delay` (s, 0),
+///   if `lock-enabled` (yes) and not `org.gnome.desktop.lockdown
 ///   disable-lock-screen`;
-/// * затемнение — если `org.gnome.settings-daemon.plugins.power idle-dim`
-///   (да): на половине `idle-delay` (короче 10 с — не затемняет), а при
-///   `idle-delay` = 0 — через 60 с. Режим энергосбережения затемняет через
-///   30 с — его не видно в настройках, не учитываем.
+/// * dimming — if `org.gnome.settings-daemon.plugins.power idle-dim` (yes): at
+///   half of `idle-delay` (shorter than 10 s — it does not dim), and with
+///   `idle-delay` = 0 — after 60 s. Power saving mode dims after 30 s — it is not
+///   visible in the settings, we do not take it into account.
 pub fn gnome_timers(get: Get) -> DesktopTimers {
     let idle = parse_int(get("org.gnome.desktop.session", "idle-delay")).unwrap_or(300).max(0) as u32;
     let mut t = DesktopTimers { blank_s: positive(idle.into()), ..Default::default() };
@@ -823,9 +828,9 @@ pub fn gnome_timers(get: Get) -> DesktopTimers {
     t
 }
 
-/// Блокировка у наследников gnome-screensaver: `<prefix>.screensaver
-/// lock-enabled` / `lock-delay` (в `unit` секундах) после активации в
-/// `idle_s`, если её не запретил `<prefix>.lockdown disable-lock-screen`.
+/// Locking in the descendants of gnome-screensaver: `<prefix>.screensaver
+/// lock-enabled` / `lock-delay` (in `unit` seconds) after activation at
+/// `idle_s`, unless `<prefix>.lockdown disable-lock-screen` forbids it.
 fn gnome_family_lock(get: Get, prefix: &str, idle_s: u32, unit: u32) -> Option<u32> {
     if idle_s == 0 {
         return None;
@@ -842,14 +847,12 @@ fn gnome_family_lock(get: Get, prefix: &str, idle_s: u32, unit: u32) -> Option<u
 
 /// Cinnamon (cinnamon-screensaver + cinnamon-settings-daemon).
 ///
-/// * `org.cinnamon.desktop.session idle-delay` (с, 900) — включается
-///   хранитель, если `org.cinnamon.desktop.screensaver
-///   idle-activation-enabled` (да);
-/// * блокировка — плюс `lock-delay` (с, 0), если `lock-enabled` (да);
-/// * `org.cinnamon.settings-daemon.plugins.power`: затемнение
-///   `idle-dim-ac` (нет) / `idle-dim-battery` (да) через `idle-dim-time`
-///   (с, 90); гашение `sleep-display-ac` / `sleep-display-battery` (с, 1800;
-///   0 — никогда).
+/// * `org.cinnamon.desktop.session idle-delay` (s, 900) — the screensaver
+///   starts if `org.cinnamon.desktop.screensaver idle-activation-enabled` (yes);
+/// * locking — plus `lock-delay` (s, 0), if `lock-enabled` (yes);
+/// * `org.cinnamon.settings-daemon.plugins.power`: dimming `idle-dim-ac` (no) /
+///   `idle-dim-battery` (yes) after `idle-dim-time` (s, 90); blanking
+///   `sleep-display-ac` / `sleep-display-battery` (s, 1800; 0 — never).
 pub fn cinnamon_timers(get: Get, on_battery: bool) -> DesktopTimers {
     let idle = parse_int(get("org.cinnamon.desktop.session", "idle-delay")).unwrap_or(900).max(0) as u32;
     let activates =
@@ -866,13 +869,13 @@ pub fn cinnamon_timers(get: Get, on_battery: bool) -> DesktopTimers {
 
 /// MATE (mate-screensaver + mate-power-manager).
 ///
-/// * `org.mate.session idle-delay` — МИНУТЫ (5) — включается хранитель, если
-///   `org.mate.screensaver idle-activation-enabled` (да);
-/// * блокировка — плюс `lock-delay` — МИНУТЫ (0), если `lock-enabled` (да)
-///   и не `org.mate.lockdown disable-lock-screen`;
-/// * `org.mate.power-manager`: затемнение `idle-dim-ac` (нет) /
-///   `idle-dim-battery` (да) через `idle-dim-time` (с, 10); гашение
-///   `sleep-display-ac` (с, 1800) / `sleep-display-battery` (с, 600).
+/// * `org.mate.session idle-delay` — MINUTES (5) — the screensaver starts if
+///   `org.mate.screensaver idle-activation-enabled` (yes);
+/// * locking — plus `lock-delay` — MINUTES (0), if `lock-enabled` (yes) and not
+///   `org.mate.lockdown disable-lock-screen`;
+/// * `org.mate.power-manager`: dimming `idle-dim-ac` (no) / `idle-dim-battery`
+///   (yes) after `idle-dim-time` (s, 10); blanking `sleep-display-ac` (s, 1800)
+///   / `sleep-display-battery` (s, 600).
 pub fn mate_timers(get: Get, on_battery: bool) -> DesktopTimers {
     let idle_min = parse_int(get("org.mate.session", "idle-delay")).unwrap_or(5).max(0) as u32;
     let activates = parse_bool(get("org.mate.screensaver", "idle-activation-enabled")).unwrap_or(true);
@@ -886,8 +889,8 @@ pub fn mate_timers(get: Get, on_battery: bool) -> DesktopTimers {
     t
 }
 
-/// Общая часть менеджеров питания семейства gnome-power-manager (MATE и
-/// Cinnamon): затемнение и гашение экрана, секунды.
+/// The common part of the gnome-power-manager family of power managers (MATE and
+/// Cinnamon): dimming and blanking the screen, seconds.
 fn power_dim_and_sleep(
     get: Get,
     schema: &str,
@@ -912,15 +915,16 @@ fn power_dim_and_sleep(
     }
 }
 
-/// Budgie. На X11 (10.9) — хранитель на схемах GNOME и gnome-settings-daemon,
-/// таймеры как у [`gnome_timers`]. На Wayland (10.10, labwc) budgie-daemon
-/// сам собирает строку `swayidle -w` из тех же схем:
-/// * затемнение — `com.solus-project.budgie-wm dimming-delay` (с; 0 — нет;
-///   сжимается в 30…1800), если `org.gnome.settings-daemon.plugins.power
-///   idle-dim` (да). ⚠️ budgie-daemon ставит его, только когда доступна
-///   подсветка, — этого отсюда не видно;
-/// * гашение — `org.gnome.desktop.session idle-delay` (с, 300);
-/// * блокировка — `idle-delay + lock-delay`, как у GNOME.
+/// Budgie. On X11 (10.9) — the screensaver on GNOME schemas and
+/// gnome-settings-daemon, timers as in [`gnome_timers`]. On Wayland (10.10,
+/// labwc) budgie-daemon itself assembles a `swayidle -w` line from the same
+/// schemas:
+/// * dimming — `com.solus-project.budgie-wm dimming-delay` (s; 0 — none; clamped
+///   to 30…1800), if `org.gnome.settings-daemon.plugins.power idle-dim` (yes).
+///   Warning: budgie-daemon sets it only when a backlight is available — that is
+///   not visible from here;
+/// * blanking — `org.gnome.desktop.session idle-delay` (s, 300);
+/// * locking — `idle-delay + lock-delay`, as in GNOME.
 pub fn budgie_timers(get: Get, wayland: bool) -> DesktopTimers {
     if !wayland {
         return gnome_timers(get);
@@ -941,18 +945,17 @@ pub fn budgie_timers(get: Get, wayland: bool) -> DesktopTimers {
 
 // ── XFCE: xfconf ────────────────────────────────────────────────────────────
 
-/// XFCE: канал `xfce4-screensaver` (если хранитель стоит) и канал
-/// `xfce4-power-manager` (если стоит менеджер питания).
+/// XFCE: the `xfce4-screensaver` channel (if the screensaver is installed) and
+/// the `xfce4-power-manager` channel (if the power manager is installed).
 ///
-/// * `/saver/enabled` (да), `/saver/idle-activation/enabled` (да),
-///   `/saver/idle-activation/delay` — МИНУТЫ (5);
-/// * блокировка: `/lock/enabled` (да), `/lock/saver-activation/enabled` (да),
-///   `/lock/saver-activation/delay` — МИНУТЫ (0) после хранителя;
-/// * `/xfce4-power-manager/dpms-enabled` (да): `dpms-on-ac-sleep` /
-///   `-off` (мин, 10/15), `dpms-on-battery-sleep` / `-off` (мин, 5/10);
-///   0 — никогда;
-/// * затемнение `brightness-on-ac` / `brightness-on-battery` (с, 9/300),
-///   значение 9 — «никогда».
+/// * `/saver/enabled` (yes), `/saver/idle-activation/enabled` (yes),
+///   `/saver/idle-activation/delay` — MINUTES (5);
+/// * locking: `/lock/enabled` (yes), `/lock/saver-activation/enabled` (yes),
+///   `/lock/saver-activation/delay` — MINUTES (0) after the screensaver;
+/// * `/xfce4-power-manager/dpms-enabled` (yes): `dpms-on-ac-sleep` / `-off`
+///   (min, 10/15), `dpms-on-battery-sleep` / `-off` (min, 5/10); 0 — never;
+/// * dimming `brightness-on-ac` / `brightness-on-battery` (s, 9/300), the value 9
+///   means "never".
 pub fn xfce_timers(get: Get, saver_installed: bool, power_manager_installed: bool, on_battery: bool) -> DesktopTimers {
     let mut t = DesktopTimers::default();
     if saver_installed {
@@ -994,22 +997,21 @@ pub fn xfce_timers(get: Get, saver_installed: bool, power_manager_installed: boo
     t
 }
 
-/// У xfce4-power-manager наименьшее значение ползунка затемнения значит
-/// «никогда».
+/// In xfce4-power-manager the lowest value of the dimming slider means "never".
 const XFPM_BRIGHTNESS_NEVER: i64 = 9;
 
 // ── hypridle, swayidle ──────────────────────────────────────────────────────
 
-/// Одно правило «через N секунд простоя выполнить команду».
+/// One rule "after N seconds of idleness run a command".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IdleRule {
     pub timeout_s: u32,
     pub command: String,
 }
 
-/// Что делает команда простоя: опознаём по общеизвестным программам.
-/// `lock_cmd` — команда блокировки самого демона (`general:lock_cmd` у
-/// hypridle, событие `lock` у swayidle): ею кончается `loginctl lock-session`.
+/// What an idle command does: we recognize it by well-known programs.
+/// `lock_cmd` — the daemon's own lock command (`general:lock_cmd` in hypridle,
+/// the `lock` event in swayidle): `loginctl lock-session` ends in it.
 pub fn classify_idle_command(cmd: &str, lock_cmd: Option<&str>) -> Option<Stage> {
     const LOCK: &[&str] = &["lock-session", "hyprlock", "swaylock", "gtklock", "waylock", "i3lock", "xsecurelock"];
     const BLANK: &[&str] = &[
@@ -1042,7 +1044,7 @@ pub fn classify_idle_command(cmd: &str, lock_cmd: Option<&str>) -> Option<Stage>
     None
 }
 
-/// Таймеры из правил демона простоя.
+/// Timers from the idle daemon's rules.
 pub fn timers_from_rules(rules: &[IdleRule], lock_cmd: Option<&str>) -> DesktopTimers {
     let mut t = DesktopTimers::default();
     for r in rules {
@@ -1056,9 +1058,9 @@ pub fn timers_from_rules(rules: &[IdleRule], lock_cmd: Option<&str>) -> DesktopT
     t
 }
 
-/// Разбор `hypridle.conf` (синтаксис hyprlang): блоки `listener { timeout =
-/// N; on-timeout = … }` и `general { lock_cmd = … }`. Комментарии — `#`
-/// (`##` — сама решётка). Переменные `$имя = …` подставляются.
+/// Parsing `hypridle.conf` (hyprlang syntax): `listener { timeout = N;
+/// on-timeout = … }` and `general { lock_cmd = … }` blocks. Comments are `#`
+/// (`##` is the hash itself). Variables `$name = …` are substituted.
 pub fn parse_hypridle(text: &str) -> (Vec<IdleRule>, Option<String>) {
     let mut vars: Vec<(String, String)> = Vec::new();
     let mut rules = Vec::new();
@@ -1138,14 +1140,14 @@ fn strip_hypr_comment(line: &str) -> String {
     out
 }
 
-/// Таймеры hypridle.
+/// hypridle timers.
 pub fn hypridle_timers(text: &str) -> DesktopTimers {
     let (rules, lock_cmd) = parse_hypridle(text);
     timers_from_rules(&rules, lock_cmd.as_deref())
 }
 
-/// Слова командной строки по правилам sh: одинарные кавычки — буквально,
-/// двойные — с `\`, вне кавычек `\` экранирует следующий знак.
+/// Words of a command line by sh rules: single quotes — literally, double quotes
+/// — with `\`, outside quotes `\` escapes the next character.
 pub fn split_shell_words(s: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
@@ -1203,18 +1205,19 @@ pub fn split_shell_words(s: &str) -> Vec<String> {
     out
 }
 
-/// Аргументы swayidle из строки запуска (`exec swayidle -w timeout 300 …`
-/// в конфиге sway/river/niri/Hyprland, `Exec=` автозапуска, строка
-/// процесса) — всё после слова `swayidle`; `None` — swayidle в строке нет.
+/// swayidle arguments from a launch line (`exec swayidle -w timeout 300 …` in a
+/// sway/river/niri/Hyprland config, an autostart `Exec=`, a process line) —
+/// everything after the word `swayidle`; `None` — there is no swayidle in the
+/// line.
 pub fn swayidle_args_in_line(line: &str) -> Option<Vec<String>> {
     let words = split_shell_words(line);
     let at = words.iter().position(|w| w.rsplit('/').next() == Some("swayidle"))?;
     Some(words[at + 1..].to_vec())
 }
 
-/// Аргументы из файла конфигурации swayidle (`-C`, по умолчанию
-/// `$XDG_CONFIG_HOME/swayidle/config`): строки — те же команды, что в
-/// командной строке, `#` — комментарий.
+/// Arguments from the swayidle configuration file (`-C`, by default
+/// `$XDG_CONFIG_HOME/swayidle/config`): lines are the same commands as on the
+/// command line, `#` is a comment.
 pub fn parse_swayidle_config(text: &str) -> Vec<String> {
     text.lines()
         .map(str::trim)
@@ -1223,15 +1226,15 @@ pub fn parse_swayidle_config(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Файл из `-C <путь>`, если он задан.
+/// The file from `-C <path>`, if it is given.
 pub fn swayidle_config_arg(args: &[String]) -> Option<&str> {
     args.iter().position(|a| a == "-C").and_then(|i| args.get(i + 1)).map(String::as_str)
 }
 
-/// Правила swayidle: `timeout <с> <команда> [resume <команда>]`, событие
-/// `lock <команда>` (им кончается `loginctl lock-session`); прочие события
-/// (`before-sleep`, `after-resume`, `unlock`, `idlehint`) и ключи (`-w`,
-/// `-d`, `-C`, `-S`) таймеров простоя не дают.
+/// swayidle rules: `timeout <s> <command> [resume <command>]`, the event
+/// `lock <command>` (`loginctl lock-session` ends in it); other events
+/// (`before-sleep`, `after-resume`, `unlock`, `idlehint`) and options (`-w`,
+/// `-d`, `-C`, `-S`) give no idle timers.
 pub fn parse_swayidle(args: &[String]) -> (Vec<IdleRule>, Option<String>) {
     let mut rules = Vec::new();
     let mut lock_cmd = None;
@@ -1260,14 +1263,14 @@ pub fn parse_swayidle(args: &[String]) -> (Vec<IdleRule>, Option<String>) {
     (rules, lock_cmd)
 }
 
-/// Таймеры swayidle.
+/// swayidle timers.
 pub fn swayidle_timers(args: &[String]) -> DesktopTimers {
     let (rules, lock_cmd) = parse_swayidle(args);
     timers_from_rules(&rules, lock_cmd.as_deref())
 }
 
-/// Wayfire, плагин `idle` в `wayfire.ini`: `dpms_timeout` и
-/// `screensaver_timeout` (своя «заставка»-куб) — секунды, −1 — выключено.
+/// Wayfire, the `idle` plugin in `wayfire.ini`: `dpms_timeout` and
+/// `screensaver_timeout` (its own cube "screensaver") — seconds, −1 — off.
 pub fn wayfire_timers(ini: &str) -> DesktopTimers {
     let mut t = DesktopTimers::default();
     for k in ["dpms_timeout", "screensaver_timeout"] {
@@ -1278,12 +1281,12 @@ pub fn wayfire_timers(ini: &str) -> DesktopTimers {
     t
 }
 
-// ── общий вход ──────────────────────────────────────────────────────────────
+// ── shared entry point ──────────────────────────────────────────────────────
 
-/// Таймеры текущего окружения по его конфигам. swayidle сюда не входит: его
-/// аргументы знает только процесс (слушатель берёт их из строки процесса и
-/// зовёт [`swayidle_timers`]). `None` — окружение ведёт простой само
-/// неизвестным способом (COSMIC, LXQt, niri без swayidle…).
+/// Timers of the current environment from its configs. swayidle is not included
+/// here: only the process knows its arguments (the listener takes them from the
+/// process line and calls [`swayidle_timers`]). `None` — the environment handles
+/// idleness itself in an unknown way (COSMIC, LXQt, niri without swayidle…).
 pub fn read_timers(io: &dyn LookIo, ctx: &LookCtx, on_battery: bool) -> Option<DesktopTimers> {
     let gs = gsettings_reader(io);
     Some(match ctx.de.as_str() {
@@ -1449,12 +1452,13 @@ mod tests {
         assert_eq!(NativeModule::Xfce.bus_name(), Some("org.xfce.ScreenSaver"));
         let s = NativeSavers::from_bus(|n| n == "org.mate.ScreenSaver", false, true);
         assert_eq!(s, NativeSavers { mate: true, xfce: false, deepin: false, xscreensaver: true });
-        // У cinnamon-screensaver и gnome-shell хаков нет — штатным модулем они не становятся.
+        // cinnamon-screensaver and gnome-shell have no hacks — they do not become a
+        // stock module.
         let s = NativeSavers::from_bus(|n| n == "org.cinnamon.ScreenSaver" || n == "org.gnome.ScreenSaver", false, false);
         assert_eq!(s, NativeSavers::default());
     }
 
-    /// Все маршруты, какие умеет [`route`], — для стражей.
+    /// All routes [`route`] knows — for the guards.
     fn every_route() -> Vec<Route> {
         let mut out = vec![Route::SteamOnly, Route::Unsupported(Unsupported::NoDisplay)];
         out.extend(NativeModule::all().iter().map(|m| Route::Native(*m)));
@@ -1476,8 +1480,8 @@ mod tests {
         out
     }
 
-    /// ⛔ Страж (раздел 0 п. 3 и раздел 5 п. 1 плана): ни на одном пути
-    /// заставка не захватывает ввод и не держит экран.
+    /// Never — guard (section 0 item 3 and section 5 item 1 of the plan): on no
+    /// route does the screensaver grab input or hold the screen.
     #[test]
     fn guard_no_grab_and_no_screen_hold_anywhere() {
         for r in every_route() {
@@ -1490,9 +1494,9 @@ mod tests {
         }
     }
 
-    /// ⛔ Страж X11: на каждом X11-пути, до которого доходит [`route`], окно
-    /// поднимается не более одного раза и только при неактивном хранителе,
-    /// ввод — сырыми событиями без захвата.
+    /// Never — X11 guard: on every X11 route [`route`] reaches, the window is raised
+    /// no more than once and only with an inactive screensaver daemon, input —
+    /// through raw events without a grab.
     #[test]
     fn guard_x11_never_raises_over_lock() {
         let mut x11_routes = Vec::new();
@@ -1526,17 +1530,17 @@ mod tests {
                 other => panic!("на X11 неожиданный путь {other:?}"),
             }
         }
-        // На Wayland поднимать нечего: слой держит протокол.
+        // On Wayland there is nothing to raise: the protocol keeps the layer.
         let w = full_wl("sway");
         let p = show_policy(&route(&facts("sway", SessionKind::Wayland, Some(&w)))).unwrap();
         assert_eq!(p.raise, RaisePolicy::Never);
         assert_eq!(p.input, InputWatch::LayerExclusiveKeyboard);
     }
 
-    /// ⛔ Страж исходников будущих исполнителей показа и простоя в rexon-gui
-    /// (`idle_screensaver*` / `screensaver_show*` в `src/` и `cpp/`): в них не
-    /// должно появиться ни захвата ввода, ни удержания экрана. Каталоги
-    /// обязаны существовать — иначе страж молча ничего не проверял бы.
+    /// Never — a guard over the sources of the future display and idle executors in
+    /// rexon-gui (`idle_screensaver*` / `screensaver_show*` in `src/` and `cpp/`):
+    /// neither an input grab nor screen holding may appear in them. The directories
+    /// must exist — otherwise the guard would silently check nothing.
     #[test]
     fn guard_gui_sources_have_no_grab_or_hold() {
         const FORBIDDEN: &[&str] = &[
@@ -1570,7 +1574,7 @@ mod tests {
                 checked += 1;
             }
         }
-        // Пока исполнителей нет, проверять нечего; число — для журнала.
+        // While there are no executors, there is nothing to check; the number is for the log.
         eprintln!("исходников исполнителей заставки проверено: {checked}");
     }
 
@@ -1699,7 +1703,7 @@ mod timer_tests {
     use super::*;
     use std::collections::HashMap;
 
-    /// Подделка gsettings/xfconf: `(схема, ключ) → значение`.
+    /// A gsettings/xfconf fake: `(schema, key) → value`.
     fn fake(pairs: &[(&str, &str, &str)]) -> impl Fn(&str, &str) -> Option<String> {
         let map: HashMap<(String, String), String> =
             pairs.iter().map(|(s, k, v)| ((s.to_string(), k.to_string()), v.to_string())).collect();
@@ -1735,7 +1739,7 @@ mod timer_tests {
     fn kde_defaults_without_files() {
         assert_eq!(kde_timers(None, None, PowerProfile::Ac, false), t(Some(300), Some(600), Some(300)));
         assert_eq!(kde_timers(None, None, PowerProfile::Battery, false), t(Some(120), Some(300), Some(300)));
-        // На «мобильном» блокировка — не позже гашения.
+        // On a "mobile" device locking comes no later than blanking.
         assert_eq!(kde_timers(None, None, PowerProfile::LowBattery, true), t(Some(30), Some(60), Some(60)));
     }
 
@@ -1818,8 +1822,8 @@ mod timer_tests {
         ]);
         let from_gsettings = budgie_timers(&b, true);
         assert_eq!(from_gsettings, t(Some(30), Some(600), Some(630)), "затемнение сжато до 30 с");
-        // Та же строка, которую budgie-daemon собирает для swayidle (образец
-        // составлен вручную по описанию его логики).
+        // The same line budgie-daemon assembles for swayidle (the sample was composed
+        // by hand from the description of its logic).
         let line = "swayidle -w timeout 30 'dbus-send --type=method_call --dest=org.buddiesofbudgie.BudgieScreenlock \
                     /org/buddiesofbudgie/Screenlock org.buddiesofbudgie.BudgieScreenlock.Dim' resume 'dbus-send x.Undim' \
                     timeout 600 'dbus-send a.ScreenPowerSuspend && wlopm --off \\*' resume 'wlopm --on \\*' \
@@ -1911,8 +1915,8 @@ mod timer_tests {
         assert_eq!(wayfire_timers("[core]\n"), DesktopTimers::default());
     }
 
-    /// Обёртки ходят в gsettings и xfconf тем же способом, что остальной
-    /// Rexon, — проверка на подделке [`LookIo`] (ничего не запускается).
+    /// The wrappers go to gsettings and xfconf the same way as the rest of Rexon —
+    /// checked on a [`LookIo`] fake (nothing is launched).
     struct FakeIo {
         files: HashMap<String, String>,
         tools: Vec<&'static str>,
@@ -1961,7 +1965,7 @@ mod timer_tests {
         let io = FakeIo { files, tools: vec![] };
         assert_eq!(read_timers(&io, &ctx("kde"), false), Some(t(Some(300), Some(600), Some(600))));
         assert_eq!(read_timers(&io, &ctx("hyprland"), false), Some(t(None, None, Some(200))));
-        // Без gsettings в PATH — умолчания схем, а не паника.
+        // Without gsettings in PATH — schema defaults, not a panic.
         assert_eq!(read_timers(&io, &ctx("gnome"), false), Some(gnome_timers(&fake(&[]))));
     }
 }

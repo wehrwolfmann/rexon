@@ -1,9 +1,9 @@
-// Раздел «Отклик при запуске» вкладки «Оформление»: как курсор и панель
-// задач показывают, что программа запускается, и когда анимация гаснет —
-// как окно «Отклик при запуске» модуля «Курсоры» KDE. Вне KDE такой
-// настройки нет — раздел говорит это прямо.
+// The "Launch feedback" section of the "Appearance" tab: how the cursor
+// and the task bar show that a program is starting, and when the animation
+// stops — like the "Launch Feedback" window of the KDE "Cursors" module.
+// Outside KDE there is no such setting — the section says so plainly.
 //
-// Только разметка: снимок и запись — `LaunchFeedbackActions`
+// Markup only: snapshot and writing — `LaunchFeedbackActions`
 // (rust/rexon-gui/src/launch_feedback_actions.rs → rexon_core::launch_feedback).
 
 pragma ComponentBehavior: Bound

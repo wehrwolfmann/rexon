@@ -1,28 +1,28 @@
-//! Golden-сверка protobuf-порта (prost) с оригиналом `control_pb2.py`/
+//! Golden check of the protobuf port (prost) against the original `control_pb2.py`/
 //! `filter_pb2.py` (google.protobuf).
 //!
-//! Эталон `golden/proto_cases.json` снят с самого Python: те же сообщения
-//! сериализованы `SerializeToString(deterministic=True)`, hex записан в
-//! фикстуру. Для КАЖДОГО кейса Rust:
-//!   1) декодирует эталонные байты в prost-структуру и проверяет поля
-//!      (структурная сверка — что декод семантически верен, а не «байты как
-//!      байты»);
-//!   2) заново кодирует и для сообщений БЕЗ `map` сверяет байты один-в-один с
-//!      эталоном (round-trip). У proto3 обе реализации пишут поля по
-//!      возрастанию номера и опускают дефолты, поэтому байты совпадают.
+//! The golden `golden/proto_cases.json` was captured from Python itself: the same messages
+//! were serialized with `SerializeToString(deterministic=True)`, the hex was written to
+//! the fixture. For EVERY case Rust:
+//!   1) decodes the golden bytes into a prost struct and checks the fields
+//!      (a structural check — that the decoding is semantically correct, not "bytes as
+//!      bytes");
+//!   2) encodes again and, for messages WITHOUT a `map`, compares the bytes one-to-one with
+//!      the golden (round-trip). In proto3 both implementations write fields in
+//!      ascending number order and omit defaults, so the bytes match.
 //!
-//! ⚠️ `map`-поля (`renderer_spawn_map`) НЕ байт-детерминированы: prost хранит
-//! map в `HashMap`, порядок ключей на проводе произволен. Для них — только
-//! структурная сверка (содержимое map по ключам), байтовая НЕ применяется.
+//! ⚠️ `map` fields (`renderer_spawn_map`) are NOT byte-deterministic: prost keeps
+//! a map in a `HashMap`, the key order on the wire is arbitrary. For them — only
+//! the structural check (map contents by key), the byte check is NOT applied.
 
 use prost::Message;
 use rexon_core::proto::control::{self as pb, FillMode, Rotation, Align, Status, ErrorCode};
 use rexon_core::proto::control::{PlaylistMode};
-use rexon_core::proto::control as filt; // filter.proto тоже в пакете control.v1
+use rexon_core::proto::control as filt; // filter.proto is in the control.v1 package too
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-/// Все hex-эталоны из фикстуры.
+/// All hex goldens from the fixture.
 fn golden() -> BTreeMap<String, Vec<u8>> {
     let v: Value = serde_json::from_str(include_str!("golden/proto_cases.json")).unwrap();
     v.as_object()
@@ -43,7 +43,7 @@ fn bytes(name: &str) -> Vec<u8> {
     golden().get(name).unwrap_or_else(|| panic!("нет кейса {name}")).clone()
 }
 
-/// Проверка: декод → поля верны И перекодирование даёт те же байты (round-trip).
+/// Check: decode → the fields are correct AND re-encoding gives the same bytes (round-trip).
 fn assert_roundtrip<M: Message + Default + PartialEq>(name: &str, expect: &M) {
     let raw = bytes(name);
     let decoded = M::decode(&raw[..]).expect("prost декодирует эталонные байты");
@@ -156,9 +156,9 @@ fn playlist_summary_int64_enum() {
         interval_secs: 300,
         item_count: 3,
         entry_ids: vec!["x".into(), "y".into(), "z".into()],
-        // Поля протокола 0.3.7 (ревизия и общий выбор обоев) в эталоне
-        // нулевые: фикстура снята с Python до их появления, и proto3 такие
-        // поля на провод не пишет — round-trip обязан остаться байт-в-байт.
+        // Protocol 0.3.7 fields (revision and the shared wallpaper choice) are
+        // zero in the golden: the fixture was captured from Python before they appeared, and proto3 does not
+        // write such fields to the wire — the round-trip must stay byte-for-byte.
         ..Default::default()
     };
     assert_roundtrip("playlist_summary", &expect);
@@ -183,8 +183,8 @@ fn gpu_info_many_fields() {
     assert_roundtrip("gpu_info", &expect);
 }
 
-/// map-сообщение: байт-сверка НЕ применяется (порядок ключей произволен),
-/// только структурная — что декод восстановил все поля и содержимое map.
+/// A map message: the byte check is NOT applied (the key order is arbitrary),
+/// only the structural one — that decoding restored all fields and the map contents.
 #[test]
 fn renderer_spawn_map_structural_only() {
     let raw = bytes("renderer_spawn_map");
@@ -196,38 +196,38 @@ fn renderer_spawn_map_structural_only() {
     assert_eq!(decoded.metadata.get("k1").map(String::as_str), Some("v1"));
     assert_eq!(decoded.metadata.get("k2").map(String::as_str), Some("v2"));
     assert_eq!(decoded.metadata.len(), 2);
-    // Round-trip остаётся валидным (снова декодируется в то же), даже если
-    // байты map-поля могут переставиться.
+    // The round-trip stays valid (decodes into the same thing again), even though
+    // the bytes of the map field may be reordered.
     let re = pb::RendererSpawnRequest::decode(&decoded.encode_to_vec()[..]).unwrap();
     assert_eq!(re, decoded);
 }
 
 // ============================================================================
-// ЖИВЫЕ кадры демона (golden/we_live_frames.json)
+// LIVE daemon frames (golden/we_live_frames.json)
 // ============================================================================
 //
-// Кейсы выше собраны из синтетических сообщений: они проверяют кодек на
-// отдельных типах полей, но не на том, что реально шлёт демон (глубокая
-// вложенность, повторяющиеся сообщения на сотни байт, незнакомые нам поля
-// более новой версии протокола). Здесь — кадры, снятые с ЖИВОГО waywallen
-// 0.2.6 по WebSocket ТОЛЬКО читающими запросами (обои пользователя не
-// тронуты; ни apply, ни renderer_kill, ни scan, ни settings_set).
+// The cases above are built from synthetic messages: they check the codec on
+// individual field types, but not on what the daemon really sends (deep
+// nesting, repeated messages of hundreds of bytes, fields of a newer protocol version
+// unknown to us). Here are frames captured from LIVE waywallen
+// 0.2.6 over WebSocket with READ-ONLY requests (the user's wallpapers were not
+// touched; no apply, renderer_kill, scan or settings_set).
 //
-// Эталон двойной: `frame_hex` — байты с провода, `reserialized_hex` — их
-// пересборка `google.protobuf` после разбора (`deterministic=True`). Сверка
-// prost'а именно со ВТОРЫМ и есть кросс-реализационный паритет: если из тех
-// же входных байт обе реализации собирают одно и то же, значит обе разобрали
-// кадр одинаково. Флаг `byte_stable` в фикстуре говорит, совпала ли
-// пересборка с проводом (не совпадает у `settings_get` — там `map`).
+// The golden is twofold: `frame_hex` is the bytes from the wire, `reserialized_hex` is their
+// reassembly by `google.protobuf` after parsing (`deterministic=True`). Comparing
+// prost with exactly the SECOND one is the cross-implementation parity: if from the
+// same input bytes both implementations assemble the same thing, then both parsed
+// the frame the same way. The `byte_stable` flag in the fixture says whether the
+// reassembly matched the wire (it does not for `settings_get` — there is a `map`).
 
-/// Кадры живого демона.
+/// Frames of the live daemon.
 fn live() -> Value {
     serde_json::from_str(include_str!("golden/we_live_frames.json")).unwrap()
 }
 
-/// Общая проверка одного живого кадра: разбор prost'ом → пересборка →
-/// сверка с пересборкой google.protobuf (при `byte_stable` — ещё и с
-/// проводными байтами).
+/// The common check of one live frame: parsing by prost → reassembly →
+/// comparison with the google.protobuf reassembly (with `byte_stable` — also with
+/// the wire bytes).
 fn assert_live_frame(name: &str, case: &Value) {
     let raw = hex_bytes(case["frame_hex"].as_str().unwrap());
     let expect_re = hex_bytes(case["reserialized_hex"].as_str().unwrap());
@@ -258,8 +258,8 @@ fn assert_live_frame(name: &str, case: &Value) {
                 case["message"].as_str().unwrap(),
                 "{name}: message"
             );
-            // `payload: null` в фикстуре = ответ без полезной нагрузки
-            // (у нас это реальная ошибка демона на autostart_get).
+            // `payload: null` in the fixture = an answer without a payload
+            // (for us this is a real daemon error on autostart_get).
             assert_eq!(
                 r.payload.is_some(),
                 !case["payload"].is_null(),
@@ -279,7 +279,7 @@ fn assert_live_frame(name: &str, case: &Value) {
         );
         assert_eq!(re, raw, "{name}: пересборка расходится с проводом");
     } else {
-        // map-поле: порядок ключей произволен, сверяем структурно.
+        // A map field: the key order is arbitrary, we compare structurally.
         let a = pb::ServerFrame::decode(&re[..]).unwrap();
         let b = pb::ServerFrame::decode(&expect_re[..]).unwrap();
         assert_eq!(a, b, "{name}: структурная сверка с google.protobuf");
@@ -287,13 +287,13 @@ fn assert_live_frame(name: &str, case: &Value) {
     }
 }
 
-/// Все живые ОТВЕТЫ демона разбираются и пересобираются как у Python.
+/// All live daemon ANSWERS are parsed and reassembled as in Python.
 #[test]
 fn живые_ответы_демона_паритетны() {
     let g = live();
     let cases = g["responses"].as_object().unwrap();
-    // Фикстура должна быть непустой и покрывать читающие запросы вкладки —
-    // иначе тест «зелёный ни о чём».
+    // The fixture must be non-empty and cover the tab's read requests —
+    // otherwise the test is "green about nothing".
     assert!(cases.len() >= 18, "мало живых кейсов: {}", cases.len());
     for want in [
         "health",
@@ -320,7 +320,7 @@ fn живые_ответы_демона_паритетны() {
     }
 }
 
-/// Server-push `Event` — их демон присылает сам, без запроса.
+/// Server-push `Event`s — the daemon sends them by itself, without a request.
 #[test]
 fn живые_события_демона_паритетны() {
     let g = live();
@@ -331,10 +331,10 @@ fn живые_события_демона_паритетны() {
     }
 }
 
-/// Живой кадр ОШИБКИ демона: `status`/`error_code` читаются, payload'а нет.
-/// Такой ответ приходит на `autostart_get` (демон вне Flatpak его не
-/// поддерживает) — ветка «ошибка без payload» в разборе ответов должна быть
-/// покрыта настоящим кадром, а не выдуманным.
+/// A live ERROR frame of the daemon: `status`/`error_code` are read, there is no payload.
+/// Such an answer comes for `autostart_get` (the daemon outside Flatpak does not
+/// support it) — the "error without payload" branch in answer parsing must be
+/// covered by a real frame, not a made-up one.
 #[test]
 fn живой_кадр_ошибки_демона() {
     let g = live();
@@ -349,10 +349,10 @@ fn живой_кадр_ошибки_демона() {
     assert!(!r.message.is_empty(), "демон обязан объяснить ошибку");
 }
 
-/// Живые ЗАПРОСЫ, которыми снимались ответы: те же байты собирает и prost.
-/// Заодно это проверка таблицы номеров полей на реальном проводе — кадр
-/// `subscription_status` (поле 70, добавлено апстримом после рукописной
-/// таблицы) демон принял и ответил.
+/// The live REQUESTS with which the answers were captured: prost assembles the same bytes.
+/// This is also a check of the field number table on the real wire — the
+/// `subscription_status` frame (field 70, added upstream after the handwritten
+/// table) was accepted and answered by the daemon.
 #[test]
 fn живые_запросы_собираются_prost() {
     let g = live();

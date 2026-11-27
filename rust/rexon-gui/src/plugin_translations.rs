@@ -1,29 +1,32 @@
-// PluginTranslations — QML-синглтон подписей плагинов демона waywallen.
+// PluginTranslations — the QML singleton of waywallen daemon plugin labels.
 //
-// Появился в waywallen 0.3.7 вместе с локализуемыми подписями: плагин
-// отдаёт подпись парой `PluginMessage{plugin_id, msgid}`, а перевод демон
-// присылает каталогами `.po` на запрос `plugin_translation_list`. Вендорный
-// `I18n.qml` (0.3.7) состоит ровно из обращения к этому типу, и без него не
-// компилируется ни он, ни семь страниц, которые его зовут.
+// It appeared in waywallen 0.3.7 together with localizable labels: a
+// plugin gives a label as a `PluginMessage{plugin_id, msgid}` pair, and the
+// daemon sends the translation as `.po` catalogues on a
+// `plugin_translation_list` request. The vendored `I18n.qml` (0.3.7)
+// consists exactly of a call to this type, and without it neither it nor
+// the seven pages that call it compile.
 //
-// ⭐ У НАС он не замена нашему русскому слою, а его продолжение. Порядок
-// разрешения подписи — в ядре (`rexon_core::plugin_l10n`, там же его
-// обоснование и тесты):
+// ⭐ For US it is not a replacement for our Russian layer but its
+// continuation. The order of resolving a label is in the core
+// (`rexon_core::plugin_l10n`, together with its rationale and tests):
 //
-//   1. каталог самого плагина (перевод его автора);
-//   2. наш `remote_l10n`;
-//   3. сам `msgid`.
+//   1. the plugin's own catalogue (its author's translation);
+//   2. our `remote_l10n`;
+//   3. the `msgid` itself.
 //
-// Замер на живом демоне 0.3.7: русский каталог есть у `wallhaven`, `image`,
-// `video`, а у `org.waywallen.open-wallpaper-engine` (Мастерская Steam) —
-// только zh-CN. То есть без пункта 2 весь русский Мастерской пропал бы, а
-// без пункта 1 мы молча перебивали бы перевод автора плагина своим.
+// Measured on a live 0.3.7 daemon: a Russian catalogue exists for
+// `wallhaven`, `image`, `video`, while
+// `org.waywallen.open-wallpaper-engine` (Steam Workshop) has only zh-CN.
+// So without item 2 all the Workshop Russian would be lost, and without
+// item 1 we would silently override the plugin author's translation with
+// our own.
 //
-// Логики здесь нет (правило крейта): разбор `.po`, метки локали и сам
-// порядок — в ядре. Мосту остаётся оболочка QObject, запрос к демону и
-// приём ответа.
+// There is no logic here (the crate rule): parsing `.po`, locale tags and
+// the order itself are in the core. The bridge is left with the QObject
+// wrapper, the request to the daemon and receiving the answer.
 
-/// Мост cxx-qt: синглтон `PluginTranslations`.
+/// cxx-qt bridge: the `PluginTranslations` singleton.
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -41,14 +44,14 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[qml_singleton]
-        /// Счётчик обновлений каталогов. Вендорный `I18n.tr()` читает его
-        /// ПЕРВОЙ строкой именно ради зависимости привязки: пришёл каталог
-        /// — все подписи пересчитались сами.
-        /// ⚠️ `f64`, а не `i64`: 64-битное целое наружу в QML не выпускаем
-        /// (разбор — `src/qvalue.rs`). Счётчик внутри остаётся `i64`.
+        /// Catalogue update counter. The vendored `I18n.tr()` reads it on the FIRST
+        /// line precisely for the binding dependency: a catalogue arrived — all
+        /// labels recompute by themselves.
+        /// Warning: `f64`, not `i64`: we do not expose a 64-bit integer to QML (the
+        /// analysis is in `src/qvalue.rs`). The counter inside stays `i64`.
         #[qproperty(f64, revision, READ = revision, NOTIFY = revision_changed)]
-        /// Язык интерфейса (`ru`, `ru-RU`, `zh-CN`). По умолчанию берётся
-        /// из окружения.
+        /// Interface language (`ru`, `ru-RU`, `zh-CN`). Taken from the environment
+        /// by default.
         #[qproperty(QString, locale, READ = locale, WRITE = set_locale,
                     NOTIFY = locale_changed)]
         type PluginTranslations = super::PluginTranslationsRust;
@@ -65,15 +68,15 @@ pub mod qobject {
         #[cxx_name = "setLocale"]
         fn set_locale(self: Pin<&mut PluginTranslations>, value: &QString);
 
-        /// Подпись для покупателя по `PluginMessage` из протокола.
+        /// A label for the customer from a protocol `PluginMessage`.
         ///
-        /// Принимает то, что кладёт в модель наш мост: карту
-        /// `{pluginId, msgid}` (или `plugin_id`/`msg_id` — на случай иной
-        /// раскладки ключей), голую строку и пустое значение.
+        /// Accepts what our bridge puts into the model: a map `{pluginId, msgid}`
+        /// (or `plugin_id`/`msg_id` — in case of a different key layout), a bare
+        /// string and an empty value.
         #[qinvokable]
         fn translate(self: Pin<&mut PluginTranslations>, value: &QVariant) -> QString;
 
-        /// Запросить каталоги у демона.
+        /// Request the catalogues from the daemon.
         #[qinvokable]
         fn reload(self: Pin<&mut PluginTranslations>);
 
@@ -96,19 +99,19 @@ use serde_json::Value;
 
 use crate::qvalue::variant_to_json;
 
-/// Состояние синглтона.
+/// Singleton state.
 pub struct PluginTranslationsRust {
-    /// Разобранные каталоги: `plugin_id` → `locale` → сообщения.
+    /// Parsed catalogues: `plugin_id` → `locale` → messages.
     catalogs: Catalogs,
-    /// Поколение каталогов у демона (его же `generation`).
+    /// The daemon's catalogue generation (its own `generation`).
     generation: u64,
-    /// Счётчик обновлений для привязок QML.
+    /// Update counter for QML bindings.
     revision: i64,
-    /// Язык интерфейса.
+    /// Interface language.
     locale: String,
-    /// Запрос уже отправлен на нынешнем соединении.
+    /// A request has already been sent on the current connection.
     requested: bool,
-    /// Токен отправленного запроса (чужие ответы игнорируются).
+    /// Token of the sent request (other answers are ignored).
     pending: Option<i64>,
 }
 
@@ -125,25 +128,28 @@ impl Default for PluginTranslationsRust {
     }
 }
 
-/// Язык интерфейса из окружения: `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, `LANG`.
+/// Interface language from the environment: `LANGUAGE`, `LC_ALL`,
+/// `LC_MESSAGES`, `LANG`.
 ///
-/// Своей копии цикла здесь больше нет: та же локаль нужна и человеческим
-/// именам тем в сканере установленного, а две копии одного чтения окружения
-/// расходятся молча — движок один, в ядре.
+/// There is no copy of the loop of our own here any more: the same locale
+/// is needed for the human-readable theme names in the installed items
+/// scanner, and two copies of one environment read drift apart silently —
+/// the engine is one, in the core.
 fn env_locale() -> String {
     rexon_core::utils::env_locale()
 }
 
-/// Разобрать значение из QML в тройку `(plugin_id, msgid, наш перевод)`.
+/// Parse a value from QML into a triple `(plugin_id, msgid, our
+/// translation)`.
 ///
-/// `rexonFallback` — НАШЕ поле в той же карте: подпись, посчитанная по
-/// ключу (`rexon_core::remote_l10n::translate_source`). Ключа сортировки
-/// или фильтра в `PluginMessage` нет вовсе, а наши таблицы для них
-/// ключевые — без этого поля русский пропал бы у всех сортировок и
-/// заголовков фильтров разом.
+/// `rexonFallback` is OUR field in the same map: a label computed by key
+/// (`rexon_core::remote_l10n::translate_source`). A `PluginMessage` has no
+/// sort or filter key at all, while our tables are keyed for them — without
+/// this field the Russian would be lost for all sorts and filter titles at
+/// once.
 ///
-/// Голая строка — это `msgid` без плагина: каталога у неё нет, и подпись
-/// пойдёт сразу нашим слоем. Так же ведёт себя и `null`/пустое.
+/// A bare string is a `msgid` without a plugin: it has no catalogue, and
+/// the label goes straight through our layer. `null`/empty behave the same.
 fn message_parts(value: &Value) -> (String, String, String, Vec<String>) {
     let text = |v: Option<&Value>| -> String {
         v.and_then(Value::as_str).unwrap_or_default().to_string()
@@ -167,9 +173,9 @@ fn message_parts(value: &Value) -> (String, String, String, Vec<String>) {
                     by_plain
                 }
             };
-            // waywallen 0.3.8: подпись может нести подстановки `%1`, `%2` —
-            // их подставляют ПОСЛЕ перевода, чтобы в каталоге искался
-            // шаблон, а не склеенная строка.
+            // waywallen 0.3.8: a label may carry substitutions `%1`, `%2` — they are
+            // substituted AFTER translation, so that the catalogue is searched for the
+            // template, not for the glued string.
             let arguments = map
                 .get("arguments")
                 .and_then(Value::as_array)
@@ -202,19 +208,19 @@ impl qobject::PluginTranslations {
         }
         self.as_mut().rust_mut().locale = value;
         self.as_mut().locale_changed();
-        // Каталоги уже на руках, менять их не нужно — но подписи выбираются
-        // по языку, значит привязки обязаны пересчитаться.
+        // The catalogues are already at hand and do not need changing — but labels
+        // are chosen by language, so the bindings must recompute.
         self.bump_revision();
     }
 
-    /// Подпись по `PluginMessage`.
+    /// A label by `PluginMessage`.
     ///
-    /// ⚠️ Зовётся на КАЖДУЮ подпись страницы, поэтому здесь только поиск по
-    /// карте: разбор `.po` сделан один раз, при приёме ответа.
+    /// Warning: it is called for EVERY label of the page, so there is only a
+    /// map lookup here: `.po` parsing is done once, when the answer is received.
     pub fn translate(mut self: Pin<&mut Self>, value: &QVariant) -> QString {
-        // Дешёвый сторож ленивой загрузки: пока соединения нет — ждём, а на
-        // новом соединении просим каталоги заново. Проверка стоит одного
-        // чтения атомика, запрос уходит один раз за соединение.
+        // A cheap lazy loading guard: while there is no connection — wait, and on
+        // a new connection ask for the catalogues again. The check costs one
+        // atomic read, and the request goes out once per connection.
         self.as_mut().ensure_requested();
 
         let (plugin_id, msgid, fallback, arguments) =
@@ -241,12 +247,12 @@ impl qobject::PluginTranslations {
         }
         self.as_mut().rust_mut().pending = None;
 
-        // ⚠️ Транспорт отдаёт СЫРОЙ кадр сервера (`ServerFrame`), а не
-        // `Response` внутри него — как и всем запросам вкладки.
+        // Warning: the transport hands over the RAW server frame (`ServerFrame`),
+        // not the `Response` inside it — as for all queries of the tab.
         //
-        // Демон постарше запроса не знает — ответ придёт ошибкой или не
-        // разберётся вовсе. Это НЕ авария: вкладка обязана подняться, а
-        // подписи возьмёт наш слой (пункты 2-3 порядка).
+        // An older daemon does not know the request — the answer will come as an
+        // error or will not parse at all. This is NOT a failure: the tab must come
+        // up, and the labels will be taken by our layer (items 2-3 of the order).
         let Ok(server_frame) = pb::ServerFrame::decode(frame.as_slice()) else {
             return;
         };
@@ -257,7 +263,7 @@ impl qobject::PluginTranslations {
             return;
         };
         if list.generation == self.generation && !self.catalogs.is_empty() {
-            // Каталоги те же — привязки дёргать незачем.
+            // The catalogues are the same — there is no reason to poke the bindings.
             return;
         }
         let catalogs = plugin_l10n::build_catalogs(
@@ -273,25 +279,27 @@ impl qobject::PluginTranslations {
         self.bump_revision();
     }
 
-    /// Поднять счётчик обновлений и сказать об этом QML.
+    /// Bump the update counter and tell QML about it.
     ///
-    /// ⚠️ Одного `revisionChanged` мало. Привязка вендорного `I18n.tr()`
-    /// читает `revision` первой строкой и пересчитывается сама, а вот те,
-    /// кто переводит подпись НЕ в QML, а у себя (роли моделей), про смену
-    /// каталогов узнать неоткуда: их значение Qt закэшировал в делегате.
-    /// Поэтому здесь же будятся подписчики — см. `subscribers`.
+    /// Warning: a single `revisionChanged` is not enough. The binding of the
+    /// vendored `I18n.tr()` reads `revision` on its first line and recomputes by
+    /// itself, but those who translate a label NOT in QML but on their own side
+    /// (model roles) have no way to learn about the catalogue change: Qt cached
+    /// their value in the delegate. So the subscribers are woken up right here
+    /// — see `subscribers`.
     fn bump_revision(mut self: Pin<&mut Self>) {
         self.as_mut().rust_mut().revision += 1;
         self.revision_changed();
         subscribers::dispatch();
     }
 
-    /// Спросить каталоги, если соединение есть, а запроса ещё не было.
+    /// Ask for the catalogues if there is a connection and no request has been
+    /// made yet.
     fn ensure_requested(mut self: Pin<&mut Self>) {
         if !crate::discover_queries::connected() {
-            // Соединение пропало — следующее подключение начнёт заново:
-            // демон мог смениться вместе с набором плагинов. Пишем только
-            // когда есть что менять: сюда заходят на КАЖДУЮ подпись.
+            // The connection was lost — the next connection will start over: the
+            // daemon may have changed together with the set of plugins. We write only
+            // when there is something to change: we get here for EVERY label.
             if self.requested {
                 self.as_mut().rust_mut().requested = false;
             }
@@ -304,7 +312,7 @@ impl qobject::PluginTranslations {
         self.send_list_request();
     }
 
-    /// Кадр `plugin_translation_list` в общий транспорт вкладки.
+    /// The `plugin_translation_list` frame into the tab's shared transport.
     fn send_list_request(mut self: Pin<&mut Self>) {
         if !crate::discover_queries::connected() {
             return;
@@ -318,35 +326,37 @@ impl qobject::PluginTranslations {
             return;
         };
         self.as_mut().rust_mut().pending = Some(token);
-        // Владельца токена запоминаем ДО отправки: ответ может прийти
-        // раньше, чем мы вернёмся (так же, как в `impl_query_base`).
+        // The token owner is remembered BEFORE sending: the answer may arrive
+        // before we return (the same as in `impl_query_base`).
         let raw: *mut Self = unsafe { Pin::get_unchecked_mut(self.as_mut()) };
         unsafe { crate::we_transport::remember(token, raw.cast::<std::ffi::c_void>()) };
         crate::we_transport::send(token, FIELD, &bytes);
     }
 }
 
-/// Подписчики на смену каталогов подписей.
+/// Subscribers to label catalogue changes.
 ///
-/// Зачем это есть. Каталоги плагинов грузятся ЛЕНИВО: первый же вопрос
-/// «как это называется по-русски» только отправляет запрос демону и
-/// возвращает запасной текст — сам `msgid`, то есть английское слово.
-/// Ответ приезжает спустя доли секунды, и `revisionChanged` заставляет
-/// пересчитаться привязки QML, которые зовут `I18n.tr()`.
+/// Why this exists. Plugin catalogues are loaded LAZILY: the very first
+/// question "what is this called in Russian" only sends a request to the
+/// daemon and returns the fallback text — the `msgid` itself, that is, an
+/// English word. The answer arrives a fraction of a second later, and
+/// `revisionChanged` makes the QML bindings that call `I18n.tr()`
+/// recompute.
 ///
-/// Но подпись, посчитанную в Rust и отданную наружу РОЛЬЮ модели, никакая
-/// привязка не пересчитает: Qt прочитал роль один раз, когда создавал
-/// делегат, и больше не спросит, пока модель не скажет `dataChanged`.
-/// Такая модель обязана подписаться здесь и разослать `dataChanged` сама.
+/// But a label computed in Rust and handed out as a model ROLE will not be
+/// recomputed by any binding: Qt read the role once, when it created the
+/// delegate, and will not ask again until the model says `dataChanged`.
+/// Such a model must subscribe here and send `dataChanged` itself.
 ///
-/// Реестр общий (правило #12) и устроен ровно как реестр скина
-/// (`crate::skin`): следующей модели с подписями из Rust хватит `watch` в
-/// `initialize` и `unwatch` в `Drop`.
+/// The registry is shared (rule #12) and built exactly like the skin
+/// registry (`crate::skin`): the next model with labels from Rust needs only
+/// `watch` in `initialize` and `unwatch` in `Drop`.
 pub mod subscribers {
     use core::pin::Pin;
     use std::sync::{Mutex, OnceLock};
 
-    /// Толчок одному подписчику. `Err(())` — объект умер, запись пора снять.
+    /// A push to one subscriber. `Err(())` means the object died and the entry
+    /// should be removed.
     type Notify = Box<dyn Fn() -> Result<(), ()> + Send>;
 
     #[derive(Default)]
@@ -360,13 +370,13 @@ pub mod subscribers {
         REGISTRY.get_or_init(|| Mutex::new(Registry::default()))
     }
 
-    /// Подписать живой объект на приход каталогов. Возвращает номер записи —
-    /// его подписчик обязан снять в `Drop`.
+    /// Subscribe a live object to catalogue arrivals. Returns the entry number —
+    /// the subscriber must remove it in `Drop`.
     ///
-    /// Доставка идёт через `CxxQtThread::queue`: на умершем объекте она
-    /// возвращает `ObjectDestroyed`, а не падает, поэтому ни `unwrap()`, ни
-    /// предварительной проверки живости здесь нет — между проверкой и
-    /// постановкой объект успевает умереть.
+    /// Delivery goes through `CxxQtThread::queue`: on a dead object it returns
+    /// `ObjectDestroyed` rather than crashing, so there is neither `unwrap()`
+    /// nor a preceding liveness check here — between the check and the queueing
+    /// the object may die.
     pub fn watch<T>(handle: cxx_qt::CxxQtThread<T>, notify: fn(Pin<&mut T>)) -> u64
     where
         T: cxx_qt::Threading + 'static,
@@ -385,7 +395,8 @@ pub mod subscribers {
         id
     }
 
-    /// Снять подписку. Идемпотентно: `0` — объект не подписывался.
+    /// Remove a subscription. Idempotent: `0` means the object never
+    /// subscribed.
     pub fn unwatch(id: u64) {
         if id == 0 {
             return;
@@ -394,7 +405,7 @@ pub mod subscribers {
         reg.entries.retain(|(entry, _)| *entry != id);
     }
 
-    /// Сколько объектов сейчас подписано (для проверок).
+    /// How many objects are subscribed right now (for checks).
     pub fn watching() -> usize {
         registry()
             .lock()
@@ -403,9 +414,8 @@ pub mod subscribers {
             .len()
     }
 
-    /// Толкнуть всех живых подписчиков: каталоги сменились, подписи
-    /// пересчитать. Возвращает число оповещённых; мёртвые записи снимаются
-    /// заодно.
+    /// Push all live subscribers: the catalogues changed, recompute the labels.
+    /// Returns the number notified; dead entries are removed along the way.
     pub fn dispatch() -> usize {
         let mut told = 0usize;
         let mut reg = registry().lock().expect("реестр подписей не отравлен");
@@ -461,8 +471,8 @@ mod tests {
         );
     }
 
-    /// Пустое значение не должно превращаться в подпись: у вендорного QML
-    /// на этот случай свой запасной текст.
+    /// An empty value must not turn into a label: the vendored QML has its own
+    /// fallback text for that case.
     #[test]
     fn пустое_остаётся_пустым() {
         assert_eq!(
@@ -475,8 +485,9 @@ mod tests {
         );
     }
 
-    /// waywallen 0.3.8: подстановки едут отдельным списком и подставляются
-    /// уже ПОСЛЕ перевода — иначе в каталоге искалась бы склеенная строка.
+    /// waywallen 0.3.8: substitutions travel as a separate list and are
+    /// substituted AFTER translation — otherwise the catalogue would be searched
+    /// for the glued string.
     #[test]
     fn подстановки_читаются_и_ставятся_после_перевода() {
         let v = json!({
@@ -493,8 +504,8 @@ mod tests {
                 vec!["Wehrwolfmann".to_string()]
             )
         );
-        // Сама подстановка живёт в ядре — здесь проверяется, что мост
-        // отдаёт ей ровно то, что пришло.
+        // The substitution itself lives in the core — here we check that the
+        // bridge passes it exactly what arrived.
         assert_eq!(
             rexon_core::plugin_l10n::format_message(
                 "Вход выполнен как %1",
@@ -502,19 +513,19 @@ mod tests {
             ),
             "Вход выполнен как Wehrwolfmann"
         );
-        // Процент без цифры — не подстановка.
+        // A percent sign without a digit is not a substitution.
         assert_eq!(
             rexon_core::plugin_l10n::format_message("Готово на 100%", &["x".to_string()]),
             "Готово на 100%"
         );
-        // Номер вне диапазона остаётся как был.
+        // A number out of range stays as it was.
         assert_eq!(
             rexon_core::plugin_l10n::format_message("%2 и %1", &["один".to_string()]),
             "%2 и один"
         );
     }
 
-    /// Наш ключевой перевод приезжает в карте отдельным полем.
+    /// Our keyed translation arrives in the map as a separate field.
     #[test]
     fn ключевой_перевод_читается_из_карты() {
         let v = json!({
@@ -535,7 +546,7 @@ mod tests {
 
     #[test]
     fn локаль_из_окружения_не_пустая() {
-        // «C» и пустая переменная не должны становиться меткой языка.
+        // "C" and an empty variable must not become a language tag.
         assert!(!env_locale().is_empty());
     }
 }

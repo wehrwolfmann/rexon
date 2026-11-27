@@ -1,18 +1,18 @@
-//! Сверка порта `we_util.rs` с оригиналом `ui/src/util.cpp` waywallen.
+//! Check of the `we_util.rs` port against the original waywallen `ui/src/util.cpp`.
 //!
-//! Эталон — сам исходник апстрима (MIT):
-//! их C++ здесь не собирается, поэтому ожидания выписаны из алгоритма
-//! построчно, а спорные места (авто-ссылки) дополнительно проверены
-//! симуляцией их регулярок на PCRE-совместимом движке.
+//! The reference is the upstream source itself (MIT):
+//! their C++ is not built here, so the expectations were written out of the
+//! algorithm line by line, and disputed spots (auto-links) were additionally
+//! verified by simulating their regexes on a PCRE-compatible engine.
 //!
-//! Отдельными тестами закреплены ПОЧИНКИ: (а) наш прежний Python-мост
-//! был заглушкой (BBCode как есть, цвет как имя Qt) — теперь семантика
-//! апстрима; (б) баг самого апстрима: авто-ссылки заворачивали уже
-//! готовый якорь `[url]` во вложенный мусор.
+//! Separate tests pin the FIXES: (a) our former Python bridge was a stub
+//! (BBCode as is, colour as a Qt name) — now upstream semantics; (b) a bug of
+//! upstream itself: auto-links wrapped an already built `[url]` anchor into
+//! nested garbage.
 
 use rexon_core::we_util as u;
 
-// ── рабочий стол ─────────────────────────────────────────────────────
+// ── desktop ─────────────────────────────────────────────────────
 
 #[test]
 fn desktop_detection() {
@@ -24,7 +24,7 @@ fn desktop_detection() {
     assert_eq!(u::detect_desktop("ubuntu:GNOME"), u::DESKTOP_GNOME);
     assert_eq!(u::detect_desktop(""), u::DESKTOP_UNKNOWN);
     assert_eq!(u::detect_desktop("XFCE"), u::DESKTOP_UNKNOWN);
-    // пустые токены пропускаются, регистр не важен, лишние пробелы тоже
+    // empty tokens are skipped, case does not matter, extra spaces neither
     assert_eq!(u::detect_desktop("::  KdE  :x"), u::DESKTOP_KDE);
 }
 
@@ -57,7 +57,7 @@ fn bbcode_escapes_raw_html() {
 #[test]
 fn bbcode_inline_marks() {
     assert_eq!(u::bbcode_to_html("[b]жир[/b]"), "<b>жир</b>");
-    assert_eq!(u::bbcode_to_html("[I]кур[/i]"), "<i>кур</i>"); // регистр
+    assert_eq!(u::bbcode_to_html("[I]кур[/i]"), "<i>кур</i>"); // case
     assert_eq!(u::bbcode_to_html("[u]под[/u]"), "<u>под</u>");
     assert_eq!(u::bbcode_to_html("[s]зач[/s]"), "<s>зач</s>");
     assert_eq!(u::bbcode_to_html("[strike]зач[/strike]"), "<s>зач</s>");
@@ -66,9 +66,9 @@ fn bbcode_inline_marks() {
         u::bbcode_to_html("[spoiler]тс[/spoiler]"),
         "<font color=\"#888888\">тс</font>"
     );
-    // нежадность: ближайший закрывающий тег
+    // non-greedy: the nearest closing tag
     assert_eq!(u::bbcode_to_html("[b]a[/b]x[b]b[/b]"), "<b>a</b>x<b>b</b>");
-    // незакрытый тег остаётся текстом
+    // an unclosed tag stays text
     assert_eq!(u::bbcode_to_html("[b]висит"), "[b]висит");
 }
 
@@ -117,15 +117,15 @@ fn bbcode_autolink_bare_url() {
     );
     assert_eq!(
         u::bbcode_to_html("https://a.b/c?d=1&e=2"),
-        // & экранируется раньше авто-ссылки — как в оригинале
+        // & is escaped before the auto-link — as in the original
         "<a href=\"https://a.b/c?d=1&amp;e=2\">https://a.b/c?d=1&amp;e=2</a>"
     );
 }
 
-/// ⚠️ Починка бага АПСТРИМА: их последний проход шёл по всему тексту и
-/// заворачивал адрес внутри уже собранного `<a href="…">…</a>` ещё раз —
-/// на выходе получался `<a href="<a href="http://x">http://x">…</a></a>`
-/// (проверено симуляцией их регулярки). Здесь якорь остаётся целым.
+/// ⚠️ Fix of an UPSTREAM bug: their last pass went over the whole text and
+/// wrapped the address inside an already built `<a href="…">…</a>` again —
+/// the output was `<a href="<a href="http://x">http://x">…</a></a>`
+/// (verified by simulating their regex). Here the anchor stays intact.
 #[test]
 fn fix_autolink_does_not_touch_existing_anchor() {
     assert_eq!(
@@ -136,12 +136,12 @@ fn fix_autolink_does_not_touch_existing_anchor() {
         u::bbcode_to_html("[url=http://x]http://x[/url]"),
         "<a href=\"http://x\">http://x</a>"
     );
-    // картинка с адресом внутри атрибута — тоже не заворачивается
+    // an image with the address inside an attribute — not wrapped either
     assert_eq!(
         u::bbcode_to_html("[img]https://y/p.png[/img]"),
         "<img src=\"https://y/p.png\">"
     );
-    // соседний голый адрес при этом ссылкой стать обязан
+    // a neighbouring bare address must still become a link
     assert_eq!(
         u::bbcode_to_html("[url]http://x[/url] и http://y"),
         "<a href=\"http://x\">http://x</a> и <a href=\"http://y\">http://y</a>"
@@ -150,17 +150,17 @@ fn fix_autolink_does_not_touch_existing_anchor() {
 
 #[test]
 fn bbcode_noparse_and_newlines() {
-    // тело [noparse] не разбирается, но экранируется
+    // the [noparse] body is not parsed, but is escaped
     assert_eq!(
         u::bbcode_to_html("[noparse][b]x[/b] & <i>[/noparse]"),
         "[b]x[/b] &amp; &lt;i&gt;"
     );
-    // переводы строк — последними, тело тега со своим \n доживает
+    // line breaks last, a tag body with its own \n survives
     assert_eq!(u::bbcode_to_html("a\r\nb\nc"), "a<br>b<br>c");
     assert_eq!(u::bbcode_to_html("[b]a\nb[/b]"), "<b>a<br>b</b>");
 }
 
-// ── проводной цвет ───────────────────────────────────────────────────
+// ── wire colour ───────────────────────────────────────────────────
 
 #[test]
 fn wire_color_parse() {
@@ -178,7 +178,7 @@ fn wire_color_parse() {
 fn wire_color_from() {
     assert_eq!(u::color_from_wire("1 0 0"), [1.0, 0.0, 0.0, 1.0]);
     assert_eq!(u::color_from_wire("0 0 0 0.5"), [0.0, 0.0, 0.0, 0.5]);
-    // выход за 0..1 подрезается, мусор и нехватка чисел → чёрный
+    // values outside 0..1 are clamped, garbage and missing numbers → black
     assert_eq!(u::color_from_wire("2 -1 0.5"), [1.0, 0.0, 0.5, 1.0]);
     assert_eq!(u::color_from_wire("1 0"), [0.0, 0.0, 0.0, 1.0]);
     assert_eq!(u::color_from_wire("#ff0000"), [0.0, 0.0, 0.0, 1.0]);
@@ -193,10 +193,10 @@ fn wire_color_to() {
     );
     assert!(u::color_has_alpha("0 0 0 1"));
     assert!(!u::color_has_alpha("0 0 0"));
-    assert!(!u::color_has_alpha("#ff000000")); // не hex, а числа
+    assert!(!u::color_has_alpha("#ff000000")); // not hex, but numbers
 }
 
-/// Круговой ход значения демона: строка → цвет → строка.
+/// Round trip of a daemon value: string → colour → string.
 #[test]
 fn wire_color_roundtrip() {
     let c = u::color_from_wire("0.2500 0.5000 0.7500 0.1250");
@@ -206,25 +206,26 @@ fn wire_color_roundtrip() {
     );
 }
 
-// ── подпись дисплея ──────────────────────────────────────────────────
+// ── display label ──────────────────────────────────────────────────
 
-/// Порт `Display::displayLabel` (waywallen 0.4.4, `display.cppm`): номер
-/// дисплея приписывается ВСЕГДА, а не только тёзкам. Пойман на странице
-/// «Мониторы»: у автора «HEADLESS-2 (#1)», у нас было «HEADLESS-2».
+/// Port of `Display::displayLabel` (waywallen 0.4.4, `display.cppm`): the
+/// display number is ALWAYS appended, not only for namesakes. Caught on the
+/// «Monitors» page: the author has «HEADLESS-2 (#1)», we had «HEADLESS-2».
 #[test]
 fn display_label_always_carries_the_id() {
     assert_eq!(u::display_label("", "HEADLESS-2", 1), "HEADLESS-2 (#1)");
-    // псевдоним важнее имени выхода
+    // the alias beats the output name
     assert_eq!(u::display_label("Левый", "DP-1", 7), "Левый (#7)");
-    // единственный дисплей — номер всё равно есть
+    // a single display — the number is still there
     assert_eq!(u::display_label("", "eDP-1", 0), "eDP-1 (#0)");
-    // ни имени, ни псевдонима: строка автора без перевода
+    // neither name nor alias: the author's string without translation
     assert_eq!(u::display_label("", "", 3), "Display #3");
 }
 
-/// Сторож: объект `Display` вкладки берёт подпись из ядра и оповещает о её
-/// смене при смене имени или псевдонима; у `Canvas` подпись — само имя
-/// (у автора `Q_PROPERTY(QString displayLabel READ name NOTIFY changed)`).
+/// Guard: the tab's `Display` object takes the label from the core and
+/// notifies about its change when the name or alias changes; for `Canvas` the
+/// label is the name itself (the author has
+/// `Q_PROPERTY(QString displayLabel READ name NOTIFY changed)`).
 #[test]
 fn display_object_takes_its_label_from_core() {
     const OBJMODEL_RS: &str = include_str!("../../rexon-gui/src/we_objmodel.rs");

@@ -1,33 +1,36 @@
-//! Подготовка обоев Razer Axon заранее — прямо в библиотеке Axon.
+//! Preparing Razer Axon wallpapers in advance, right inside the Axon library.
 //!
-//! Скачанные обои Axon лежат контейнером ZIP (см. [`crate::axon_extract`]).
-//! Чтобы «Применить» в Rexon срабатывало сразу, фоновая подготовка
-//! расшифровывает контейнер заранее и кладёт ролик ПОД ТЕМ ЖЕ ИМЕНЕМ на то же
-//! место, а из `ResourceConfig.txt` убирает два поля —
-//! `SourceEncryptedTypes` и `SourceEncryptedLevel`. Опыт 31.10.2026 на
-//! Axon 2.11.1.0: Axon проверяет только наличие файлов, и обои с таким
-//! описанием он отдаёт плееру напрямую, как старые нешифрованные, — показ у
-//! него не ломается и перекачки нет.
+//! Downloaded Axon wallpapers are stored as a ZIP container (see
+//! [`crate::axon_extract`]). So that "Apply" in Rexon works instantly, the
+//! background preparation decrypts the container in advance and puts the
+//! video UNDER THE SAME NAME in the same place, and removes two fields from
+//! `ResourceConfig.txt`: `SourceEncryptedTypes` and `SourceEncryptedLevel`.
+//! Experiment of 31.10.2026 on Axon 2.11.1.0: Axon only checks that the files
+//! exist, and it hands wallpapers with such a description to the player
+//! directly, like old unencrypted ones — its display does not break and there
+//! is no re-download.
 //!
-//! Порядок для одних обоев:
-//! 1. исходное описание — в резервную копию
+//! The order for a single wallpaper:
+//! 1. the original description goes into a backup
 //!    `~/.local/share/rexon/axon-originals/<Id>/ResourceConfig.txt`
-//!    (рядом `origin.json` — откуда оно); после правки описания пароль
-//!    контейнера другой, и «как было» без этой копии не вернуть;
-//! 2. по настройке [`KEEP_ORIGINALS_KEY`] (по умолчанию выкл.) туда же —
-//!    зашифрованный файл (жёсткая ссылка, без неё — копия);
-//! 3. расшифровка во временный файл в той же папке → fsync → rename поверх
-//!    контейнера;
-//! 4. описание без двух полей — так же атомарно, остальное байт в байт (BOM,
-//!    переводы строк, отступы, порядок полей).
+//!    (next to it `origin.json`, where it came from); after editing the
+//!    description the container password is different, and "as it was"
+//!    cannot be restored without this copy;
+//! 2. depending on the [`KEEP_ORIGINALS_KEY`] setting (off by default), the
+//!    encrypted file goes there too (a hard link, or a copy without one);
+//! 3. decryption into a temporary file in the same folder → fsync → rename
+//!    over the container;
+//! 4. the description without the two fields, just as atomically, everything
+//!    else byte for byte (BOM, line endings, indentation, field order).
 //!
-//! Оборвалось между 3 и 4 (ролик уже расшифрован, описание старое) —
-//! следующий проход это узнаёт по резервной копии и дописывает шаг 4.
+//! If it was interrupted between 3 and 4 (the video is already decrypted, the
+//! description is old), the next pass recognizes this by the backup and
+//! finishes step 4.
 //!
-//! Обои, которые Axon показывает сейчас (`Playing` в библиотеке, текущие в
-//! плейлисте или файл открыт каким-то процессом — `/proc/*/fd`), не
-//! трогаются: попытка позже. Старые обои без шифрования и уже подготовленные
-//! пропускаются.
+//! Wallpapers Axon is showing right now (`Playing` in the library, current in
+//! the playlist, or the file is open in some process — `/proc/*/fd`) are not
+//! touched: they are retried later. Old unencrypted wallpapers and already
+//! prepared ones are skipped.
 
 use std::collections::HashSet;
 use std::fs::{self, File};
@@ -43,25 +46,25 @@ use crate::axon_extract::{self, ExtractError};
 use crate::axon_library::{self as ax, AxonEnv, AxonExtractor, AxonKind, AxonLibrary, AxonWallpaper, Prepared};
 use crate::i18n::{tr, trf};
 
-/// Настройка: готовить обои заранее (по умолчанию — да).
+/// Setting: prepare wallpapers in advance (on by default).
 pub const PREPARE_AHEAD_KEY: &str = "axon_prepare_ahead";
-/// Настройка: хранить ли зашифрованный оригинал ролика в резервной копии
-/// (по умолчанию — нет: остаётся только расшифрованный).
+/// Setting: whether to keep the encrypted original video in the backup (off
+/// by default: only the decrypted one remains).
 pub const KEEP_ORIGINALS_KEY: &str = "axon_keep_encrypted_originals";
-/// Поля описания, которые убирает подготовка.
+/// The description fields the preparation removes.
 pub const ENCRYPTION_FIELDS: &[&str] = &["SourceEncryptedTypes", "SourceEncryptedLevel"];
-/// Откуда резервная копия (каталог обоев и путь файла показа).
+/// Where the backup came from (the wallpaper directory and the display file path).
 pub const ORIGIN_FILE: &str = "origin.json";
 
-/// Задержка фонового прохода после запуска Rexon.
+/// The delay of the background pass after Rexon starts.
 pub const STARTUP_DELAY: Duration = Duration::from_secs(45);
-/// Пауза между обоями в фоне.
+/// The pause between wallpapers in the background.
 const PAUSE_BETWEEN: Duration = Duration::from_secs(2);
-/// Через сколько повторить обои, которые были заняты.
+/// How soon to retry wallpapers that were busy.
 const RETRY_BUSY_AFTER: Duration = Duration::from_secs(600);
 
 // ============================================================================
-// Правка описания
+// Editing the description
 // ============================================================================
 
 fn skip_ws(b: &[u8], mut i: usize) -> usize {
@@ -71,7 +74,7 @@ fn skip_ws(b: &[u8], mut i: usize) -> usize {
     i
 }
 
-/// `b[i]` — открывающая кавычка; конец строки (после закрывающей).
+/// `b[i]` is the opening quote; returns the end of the string (after the closing quote).
 fn scan_string(b: &[u8], i: usize) -> Option<usize> {
     if b.get(i) != Some(&b'"') {
         return None;
@@ -87,7 +90,7 @@ fn scan_string(b: &[u8], i: usize) -> Option<usize> {
     None
 }
 
-/// Конец значения JSON, начинающегося в `i`.
+/// The end of the JSON value starting at `i`.
 fn scan_value(b: &[u8], i: usize) -> Option<usize> {
     match *b.get(i)? {
         b'"' => scan_string(b, i),
@@ -123,7 +126,7 @@ fn scan_value(b: &[u8], i: usize) -> Option<usize> {
     }
 }
 
-/// Член верхнего объекта: начало ключа, конец значения, ключ.
+/// A member of the top-level object: key start, value end, key.
 struct Member {
     key_start: usize,
     value_end: usize,
@@ -166,18 +169,19 @@ fn parse_loose(b: &[u8]) -> Option<Value> {
     serde_json::from_slice(b).ok()
 }
 
-/// Описание без полей шифрования: все остальные байты как были (BOM,
-/// переводы строк, отступы, порядок). `Ok(None)` — полей нет, править
-/// нечего. Ошибка — описание не разобрать (или итог не сошёлся с ожиданием).
+/// The description without the encryption fields: all other bytes as they
+/// were (BOM, line endings, indentation, order). `Ok(None)` means the fields
+/// are absent and there is nothing to edit. An error means the description
+/// cannot be parsed (or the result did not match the expectation).
 pub fn strip_encryption_fields(raw: &[u8]) -> Result<Option<Vec<u8>>, String> {
     let members = top_members(raw).ok_or_else(|| "ResourceConfig.txt: not a JSON object".to_string())?;
     let gone = |m: &Member| ENCRYPTION_FIELDS.contains(&m.key.as_str());
     if !members.iter().any(gone) {
         return Ok(None);
     }
-    // Вырезаемые куски. Есть оставшийся член раньше — режем от конца
-    // значения предыдущего члена (с его запятой) до конца своего значения;
-    // нет — от своего ключа до ключа следующего (вместе с запятой).
+    // The pieces to cut out. If there is a remaining member before it, cut from
+    // the end of the previous member's value (with its comma) to the end of our
+    // value; otherwise from our key to the next key (together with the comma).
     let mut cuts: Vec<(usize, usize)> = Vec::new();
     let mut kept_before = false;
     for (i, m) in members.iter().enumerate() {
@@ -201,7 +205,7 @@ pub fn strip_encryption_fields(raw: &[u8]) -> Result<Option<Vec<u8>>, String> {
     }
     out.extend_from_slice(&raw[pos..]);
 
-    // Сверка: итог — тот же объект без двух полей.
+    // Check: the result is the same object without the two fields.
     let mut want = parse_loose(raw).ok_or_else(|| "ResourceConfig.txt: bad JSON".to_string())?;
     if let Some(o) = want.as_object_mut() {
         for k in ENCRYPTION_FIELDS {
@@ -215,11 +219,11 @@ pub fn strip_encryption_fields(raw: &[u8]) -> Result<Option<Vec<u8>>, String> {
 }
 
 // ============================================================================
-// Запись на диск
+// Writing to disk
 // ============================================================================
 
-/// Записать `data` в `target` атомарно: временный файл в той же папке →
-/// fsync → rename → fsync папки. Права — как у прежнего файла.
+/// Writes `data` to `target` atomically: a temporary file in the same folder →
+/// fsync → rename → fsync of the folder. Permissions are those of the old file.
 pub fn write_bytes_atomically(target: &Path, data: &[u8]) -> io::Result<()> {
     let dir = target.parent().unwrap_or(Path::new("."));
     let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("out");
@@ -244,7 +248,7 @@ pub fn write_bytes_atomically(target: &Path, data: &[u8]) -> io::Result<()> {
     res
 }
 
-/// Сохранить копию `src` в `dst`: жёсткая ссылка, иначе копия с fsync.
+/// Saves a copy of `src` to `dst`: a hard link, otherwise a copy with fsync.
 fn keep_copy(src: &Path, dst: &Path) -> io::Result<()> {
     let _ = fs::remove_file(dst);
     if fs::hard_link(src, dst).is_ok() {
@@ -262,8 +266,8 @@ fn keep_copy(src: &Path, dst: &Path) -> io::Result<()> {
     res
 }
 
-/// Вернуть `src` на место `dst` атомарно (переносом, через другую ФС —
-/// копией во временный файл рядом с `dst` и переносом).
+/// Puts `src` back in place of `dst` atomically (by renaming; across file
+/// systems, by copying into a temporary file next to `dst` and renaming).
 fn put_back(src: &Path, dst: &Path) -> io::Result<()> {
     if fs::rename(src, dst).is_ok() {
         return Ok(());
@@ -283,8 +287,8 @@ fn put_back(src: &Path, dst: &Path) -> io::Result<()> {
     res
 }
 
-/// Убрать брошенные временные файлы подготовки рядом с `file`
-/// (`.<имя>.tmp-<pid>` — Rexon оборвался посреди записи).
+/// Removes abandoned temporary preparation files next to `file`
+/// (`.<name>.tmp-<pid>`: Rexon was interrupted in the middle of a write).
 fn clean_stale_temps(file: &Path) {
     let (Some(dir), Some(name)) = (file.parent(), file.file_name().and_then(|n| n.to_str())) else {
         return;
@@ -301,26 +305,26 @@ fn clean_stale_temps(file: &Path) {
 }
 
 // ============================================================================
-// Одни обои
+// A single wallpaper
 // ============================================================================
 
-/// Как подготовка разложила одни обои.
+/// How the preparation handled a single wallpaper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
-    /// Расшифрованы в этот раз (или дописано оборванное описание).
+    /// Decrypted this time (or an interrupted description was finished).
     Prepared,
-    /// Шифрования нет: подготовлены раньше либо старые обои — не трогаем.
+    /// No encryption: prepared earlier, or an old wallpaper — left alone.
     NotEncrypted,
 }
 
-/// Каталог резервной копии обоев.
+/// The wallpaper's backup directory.
 pub fn backup_dir(originals_root: &Path, w: &AxonWallpaper) -> PathBuf {
     originals_root.join(w.cache_key())
 }
 
-/// Подготовить каталог обоев `resource_dir` на месте. `backup` — каталог
-/// резервной копии этих обоев; `keep_media` — хранить там и зашифрованный
-/// оригинал. Ошибка — текст для журнала.
+/// Prepares the wallpaper directory `resource_dir` in place. `backup` is the
+/// backup directory of this wallpaper; `keep_media` means also keeping the
+/// encrypted original there. An error is a text for the log.
 pub fn prepare_dir_with_key(
     key: &[u8],
     resource_dir: &Path,
@@ -347,8 +351,8 @@ pub fn prepare_dir_with_key(
 
     let is_zip = axon_extract::is_zip_file(&container).map_err(|e| format!("{}: {e}", container.display()))?;
     if !is_zip {
-        // Ролик уже расшифрован, описание старое: оборвалось перед шагом 4.
-        // Дописываем, только если описание то самое, что в копии.
+        // The video is already decrypted, the description is old: interrupted before
+        // step 4. We finish only if the description is exactly the one in the backup.
         if fs::read(&backup_config).ok().as_deref() == Some(raw.as_slice()) {
             write_bytes_atomically(&config_path, &stripped)
                 .map_err(|e| format!("{}: {e}", config_path.display()))?;
@@ -358,7 +362,7 @@ pub fn prepare_dir_with_key(
         return Err(format!("{}: not a ZIP container", container.display()));
     }
 
-    // 1. Резервная копия описания (и откуда оно).
+    // 1. Backup of the description (and where it came from).
     fs::create_dir_all(backup).map_err(|e| format!("{}: {e}", backup.display()))?;
     write_bytes_atomically(&backup_config, &raw).map_err(|e| format!("{}: {e}", backup_config.display()))?;
     let origin = serde_json::json!({
@@ -368,31 +372,31 @@ pub fn prepare_dir_with_key(
     write_bytes_atomically(&backup.join(ORIGIN_FILE), origin.to_string().as_bytes())
         .map_err(|e| format!("{}: {e}", backup.display()))?;
 
-    // 2. Зашифрованный оригинал — по настройке.
+    // 2. The encrypted original, depending on the setting.
     if keep_media {
         keep_copy(&container, &backup.join(&info.file_name))
             .map_err(|e| format!("{}: {e}", backup.display()))?;
     }
 
-    // 3. Расшифровка поверх контейнера.
+    // 3. Decryption over the container.
     clean_stale_temps(&container);
     axon_extract::decrypt_resource_with_key(key, &raw, &container, &container).map_err(|e| match e {
         ExtractError::Config(m) | ExtractError::Format(m) | ExtractError::Write(m) => m,
     })?;
 
-    // 4. Описание без полей шифрования.
+    // 4. The description without the encryption fields.
     write_bytes_atomically(&config_path, &stripped).map_err(|e| format!("{}: {e}", config_path.display()))?;
     Ok(Outcome::Prepared)
 }
 
-/// Что с обоями сейчас.
+/// The state of a wallpaper right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
-    /// Зашифрованы — ждут подготовки.
+    /// Encrypted: waiting for preparation.
     Encrypted,
-    /// Подготовлены Rexon (есть резервная копия описания).
+    /// Prepared by Rexon (a backup of the description exists).
     Prepared,
-    /// Не наше дело: не скачаны, веб, старые без шифрования, не читаются.
+    /// Not our business: not downloaded, web, old without encryption, unreadable.
     Other,
 }
 
@@ -408,7 +412,7 @@ pub fn state_of(w: &AxonWallpaper, originals_root: &Path) -> State {
     }
 }
 
-/// Готовый файл прямо в библиотеке Axon, если обои подготовлены заранее.
+/// The finished file right in the Axon library, if the wallpaper was prepared in advance.
 pub fn ready_in_place(w: &AxonWallpaper, originals_root: &Path) -> Option<PathBuf> {
     if state_of(w, originals_root) != State::Prepared {
         return None;
@@ -420,8 +424,8 @@ pub fn ready_in_place(w: &AxonWallpaper, originals_root: &Path) -> Option<PathBu
     }
 }
 
-/// Подготовить обои к «Применить»: подготовленные заранее — файл прямо из
-/// `Resource/`, остальные — прежним путём через кэш.
+/// Prepares a wallpaper for "Apply": one prepared in advance gives the file
+/// straight from `Resource/`, the others go the old way through the cache.
 pub fn prepare_for_apply(
     w: &AxonWallpaper,
     extractor: Option<&dyn AxonExtractor>,
@@ -437,11 +441,11 @@ pub fn prepare_for_apply(
 }
 
 // ============================================================================
-// Занятость
+// Busy state
 // ============================================================================
 
-/// Файлы, открытые процессами пользователя (`/proc/*/fd`), — только те, что
-/// лежат под одной из `roots`.
+/// Files opened by the user's processes (`/proc/*/fd`), only those lying under
+/// one of `roots`.
 pub fn open_files_under(roots: &[PathBuf]) -> HashSet<PathBuf> {
     let mut out = HashSet::new();
     let Ok(procs) = fs::read_dir("/proc") else { return out };
@@ -461,7 +465,7 @@ pub fn open_files_under(roots: &[PathBuf]) -> HashSet<PathBuf> {
     out
 }
 
-/// Показывает ли Axon (или кто-то ещё) эти обои сейчас.
+/// Whether Axon (or anyone else) is showing this wallpaper right now.
 pub fn is_busy(w: &AxonWallpaper, open: &HashSet<PathBuf>) -> bool {
     if w.playing || w.status.eq_ignore_ascii_case("Playing") {
         return true;
@@ -472,10 +476,10 @@ pub fn is_busy(w: &AxonWallpaper, open: &HashSet<PathBuf>) -> bool {
 }
 
 // ============================================================================
-// Проход по библиотеке
+// A pass over the library
 // ============================================================================
 
-/// Настройки подготовки.
+/// Preparation settings.
 #[derive(Debug, Clone)]
 pub struct Options {
     pub originals_root: PathBuf,
@@ -493,12 +497,12 @@ impl Options {
     }
 }
 
-/// Включена ли подготовка заранее.
+/// Whether advance preparation is enabled.
 pub fn enabled(settings: &serde_json::Map<String, Value>) -> bool {
     settings.get(PREPARE_AHEAD_KEY).and_then(Value::as_bool).unwrap_or(true)
 }
 
-/// Итог прохода.
+/// The result of a pass.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PassReport {
     pub prepared: usize,
@@ -506,8 +510,9 @@ pub struct PassReport {
     pub failed: usize,
 }
 
-/// Один проход по библиотеке: по одним обоям, без параллели. `busy` —
-/// заняты ли обои сейчас; `stop` — прервать проход (выключили, выходим).
+/// A single pass over the library: one wallpaper at a time, no parallelism.
+/// `busy` tells whether a wallpaper is busy right now; `stop` interrupts the
+/// pass (disabled, or we are exiting).
 pub fn run_pass_with_key(
     key: &[u8],
     lib: &AxonLibrary,
@@ -550,7 +555,7 @@ pub fn run_pass_with_key(
     report
 }
 
-/// Сколько подготовлено и сколько осталось.
+/// How many have been prepared and how many remain.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Counts {
     pub prepared: usize,
@@ -570,22 +575,22 @@ pub fn counts(lib: &AxonLibrary, originals_root: &Path) -> Counts {
 }
 
 // ============================================================================
-// Возврат исходных описаний
+// Restoring the original descriptions
 // ============================================================================
 
-/// Итог возврата.
+/// The result of restoring.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RestoreReport {
-    /// Описаний возвращено.
+    /// Descriptions restored.
     pub restored: usize,
-    /// Из них вместе с зашифрованным оригиналом ролика.
+    /// Of these, together with the encrypted original video.
     pub with_media: usize,
     pub failed: usize,
 }
 
-/// Вернуть исходные `ResourceConfig.txt` из резервных копий (и ролики,
-/// если оригиналы хранились). Обои, у которых описание и так исходное,
-/// пропускаются.
+/// Restores the original `ResourceConfig.txt` files from the backups (and the
+/// videos, if the originals were kept). Wallpapers whose description is
+/// already the original are skipped.
 pub fn restore_originals(originals_root: &Path) -> RestoreReport {
     let _guard = WORK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut r = RestoreReport::default();
@@ -610,7 +615,7 @@ pub fn restore_originals(originals_root: &Path) -> RestoreReport {
     r
 }
 
-/// `Ok(None)` — возвращать нечего; `Ok(Some(с роликом?))`.
+/// `Ok(None)` means there is nothing to restore; `Ok(Some(with the video?))`.
 fn restore_one(backup: &Path) -> Result<Option<bool>, String> {
     let origin = fs::read(backup.join(ORIGIN_FILE)).map_err(|e| format!("{ORIGIN_FILE}: {e}"))?;
     let origin: Value = serde_json::from_slice(&origin).map_err(|e| format!("{ORIGIN_FILE}: {e}"))?;
@@ -624,7 +629,7 @@ fn restore_one(backup: &Path) -> Result<Option<bool>, String> {
     }
     let info = axon_extract::parse_config(&current).map_err(|e| e.to_string())?;
     if info.zip_encrypted.is_some() {
-        // Описание снова с шифрованием — Axon скачал обои заново.
+        // The description has encryption again: Axon downloaded the wallpaper anew.
         return Ok(None);
     }
     let container = dir.join(source);
@@ -638,10 +643,10 @@ fn restore_one(backup: &Path) -> Result<Option<bool>, String> {
 }
 
 // ============================================================================
-// Фон
+// Background
 // ============================================================================
 
-/// Одна подготовка или возврат за раз.
+/// One preparation or restore at a time.
 static WORK_LOCK: Mutex<()> = Mutex::new(());
 
 struct Bg {
@@ -652,17 +657,17 @@ struct Bg {
 static BG: Mutex<Bg> = Mutex::new(Bg { running: false, rerun: false });
 static STOP: AtomicBool = AtomicBool::new(false);
 
-/// Идёт ли фоновая подготовка.
+/// Whether background preparation is running.
 pub fn is_running() -> bool {
     BG.lock().map(|b| b.running).unwrap_or(false)
 }
 
-/// Прервать фоновую подготовку после текущих обоев.
+/// Interrupts background preparation after the current wallpaper.
 pub fn request_stop() {
     STOP.store(true, Ordering::SeqCst);
 }
 
-/// Окружение живого процесса с папками из настроек Rexon.
+/// The live process environment with folders from Rexon's settings.
 pub fn live_env() -> (AxonEnv, serde_json::Map<String, Value>) {
     let settings = crate::settings::load_settings(&crate::settings::settings_file());
     let mut env = AxonEnv::from_process();
@@ -670,9 +675,9 @@ pub fn live_env() -> (AxonEnv, serde_json::Map<String, Value>) {
     (env, settings)
 }
 
-/// Низкий приоритет своему потоку: nice 19 и ввод-вывод «idle».
+/// Low priority for our own thread: nice 19 and "idle" I/O.
 fn lower_priority() {
-    // SAFETY: системные вызовы над своим же потоком, без указателей.
+    // SAFETY: system calls on our own thread, without pointers.
     unsafe {
         let tid = libc::syscall(libc::SYS_gettid) as libc::id_t;
         libc::setpriority(libc::PRIO_PROCESS, tid, 19);
@@ -681,13 +686,14 @@ fn lower_priority() {
     }
 }
 
-/// Запустить фоновую подготовку через `delay` (уже идёт — пройти ещё раз
-/// после текущего прохода). Выключена в настройках — поток сразу выходит.
+/// Starts background preparation after `delay` (if it is already running,
+/// another pass follows the current one). If disabled in the settings, the
+/// thread exits immediately.
 pub fn spawn_background(delay: Duration) {
     {
         let mut bg = BG.lock().unwrap_or_else(|e| e.into_inner());
-        // Новый запрос отменяет прежнюю остановку — и для идущего потока,
-        // иначе включение во время его работы потерялось бы.
+        // A new request cancels the previous stop — for the running thread too,
+        // otherwise enabling it while it is working would be lost.
         STOP.store(false, Ordering::SeqCst);
         if bg.running {
             bg.rerun = true;
@@ -723,8 +729,8 @@ fn background_loop() {
                 .into_iter()
                 .collect();
             let stop = || STOP.load(Ordering::SeqCst) || !enabled(&crate::settings::load_settings(&crate::settings::settings_file()));
-            // Открытые файлы смотрим перед каждыми обоями: плеер мог
-            // переключиться, пока готовились прошлые.
+            // Open files are checked before each wallpaper: the player may have
+            // switched while the previous ones were being prepared.
             let busy = |w: &AxonWallpaper| is_busy(w, &open_files_under(&roots));
             let report = run_pass_with_key(axon_extract::RAZER_HMAC_KEY, &lib, &opts, &busy, &stop);
             if report != PassReport::default() {
@@ -739,7 +745,7 @@ fn background_loop() {
             wait_busy = report.busy > 0;
         }
         if wait_busy {
-            // Занятые — попробовать позже; ранний перезапуск — сразу.
+            // Busy ones: try later; an early restart: right away.
             let mut waited = Duration::ZERO;
             while waited < RETRY_BUSY_AFTER && !STOP.load(Ordering::SeqCst) {
                 if BG.lock().map(|b| b.rerun).unwrap_or(false) {
@@ -760,10 +766,10 @@ fn background_loop() {
 }
 
 // ============================================================================
-// Тексты
+// Texts
 // ============================================================================
 
-/// Переключатель блока «Razer Axon» в «⚙️ Настройках» раздела обоев.
+/// The switch of the "Razer Axon" block in the "⚙️ Settings" of the wallpaper section.
 pub fn toggle_text() -> String {
     tr("Prepare wallpapers in advance")
 }
@@ -773,7 +779,7 @@ pub fn toggle_tooltip() -> String {
         library, so that “Apply” starts at once. Razer Axon keeps showing them.")
 }
 
-/// Строка итога.
+/// The summary line.
 pub fn status_text(c: Counts, running: bool) -> String {
     // TRANSLATORS: %1 and %2 are numbers of Razer Axon wallpapers.
     let line = trf("Prepared: %1, remaining: %2.", &[&c.prepared, &c.remaining]);
@@ -788,7 +794,7 @@ pub fn restore_button_text() -> String {
     tr("Restore original descriptions")
 }
 
-/// Честное предупреждение перед возвратом.
+/// An honest warning before restoring.
 pub fn restore_warning_text() -> String {
     tr("The original ResourceConfig.txt files saved before preparation will be put back. \
         The wallpaper files themselves are already decrypted: unless the encrypted originals were kept, \
@@ -838,7 +844,7 @@ mod tests {
         let raw = br#"{ "SourceEncryptedLevel":"LOW" , "SourceEncryptedTypes":"ZIP", "Title":"a } \" , b", "Source":"x"}"#;
         let out = strip_encryption_fields(raw).unwrap().unwrap();
         assert_eq!(out, br#"{ "Title":"a } \" , b", "Source":"x"}"#);
-        // Только эти поля — пустой объект.
+        // Only these fields: an empty object.
         let only = br#"{"SourceEncryptedTypes":"ZIP","SourceEncryptedLevel":"LOW"}"#;
         assert_eq!(strip_encryption_fields(only).unwrap().unwrap(), b"{}");
     }
@@ -848,7 +854,7 @@ mod tests {
         assert_eq!(strip_encryption_fields(br#"{"Source":"x"}"#).unwrap(), None);
         assert!(strip_encryption_fields(b"[1]").is_err());
         assert!(strip_encryption_fields(b"{\"a\":").is_err());
-        // Поле глубже верхнего уровня не трогаем.
+        // A field deeper than the top level is left alone.
         assert_eq!(strip_encryption_fields(br#"{"x":{"SourceEncryptedTypes":"ZIP"}}"#).unwrap(), None);
     }
 

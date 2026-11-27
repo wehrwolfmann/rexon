@@ -1,58 +1,59 @@
-//! Менеджер GTK-тем, тем иконок и курсоров — порт `rexon/themes.py`
-//! (класс `ThemeManager`).
+//! Manager of GTK themes, icon themes and cursors — port of `rexon/themes.py`
+//! (the `ThemeManager` class).
 //!
-//! Обнаружение / применение GTK-тем, наборов иконок, курсоров (и KDE-тем
-//! Plasma) для всех поддерживаемых DE. Каталог популярных тем грузится из
-//! встроенного `rexon/themes.json` + пользовательского
-//! `~/.config/rexon/themes.json` (перекрывает/дополняет по семантике
-//! `dict.update`).
+//! Discovery / applying of GTK themes, icon sets, cursors (and Plasma KDE
+//! themes) for all supported DEs. The catalog of popular themes is loaded from
+//! the built-in `rexon/themes.json` + the user's `~/.config/rexon/themes.json`
+//! (overrides/extends with `dict.update` semantics).
 //!
-//! Принцип порта (как `system.rs` / `installed_scan.rs` / `defaults.rs`):
-//! ВСЯ чистая логика — детерминированные функции вход→выход. Побочные эффекты
-//! (реальный `subprocess`/`safe_run` gsettings/xfconf/kwriteconfig/dbus/
-//! plasma-apply/hyprctl, чтение каталогов ФС, запись `settings.ini` /
-//! `~/.icons/default` / истории) НЕ исполняются в ядре. Они выражаются:
-//!   * ПЛАНАМИ команд/записей ([`ApplyStep`], [`Cmd`], [`Plan`],
-//!     [`KvantumPlan`]) — исполнитель прогоняет их и сам считает `ok`;
-//!   * снимком файловой системы ([`crate::installed_scan::FsSnapshot`]) для
-//!     сканеров установленных тем;
-//!   * готовыми значениями источников (вывод gsettings/kreadconfig6,
-//!     содержимое конфигов) для сборки «текущих тем».
+//! Porting principle (as in `system.rs` / `installed_scan.rs` / `defaults.rs`):
+//! ALL pure logic is deterministic input→output functions. Side effects (real
+//! `subprocess`/`safe_run` of gsettings/xfconf/kwriteconfig/dbus/
+//! plasma-apply/hyprctl, reading file system directories, writing
+//! `settings.ini` / `~/.icons/default` / history) are NOT executed in the core.
+//! They are expressed as:
+//!   * PLANS of commands/writes ([`ApplyStep`], [`Cmd`], [`Plan`],
+//!     [`KvantumPlan`]) — the executor runs them and computes `ok` itself;
+//!   * a file system snapshot ([`crate::installed_scan::FsSnapshot`]) for the
+//!     installed theme scanners;
+//!   * ready source values (gsettings/kreadconfig6 output, config contents) for
+//!     building the "current themes".
 //!
-//! Паритет БАЙТ-В-БАЙТ с Python: та же логика слияния каталога (порядок,
-//! перекрытие ключей `dict.update`), тот же argv команд и порядок шагов, тот
-//! же разбор `index.theme` / `kcminputrc` / `settings.ini`, та же генерация
-//! `settings.ini`. Эталоны сняты с ЖИВОГО Python read-only (safe_run/
-//! subprocess замоканы, HOME — временный каталог, реальный `rexon/themes.json`
-//! как встроенный каталог) — `tests/themes_parity.rs`.
+//! BYTE-FOR-BYTE parity with Python: the same catalog merge logic (order,
+//! `dict.update` key overriding), the same command argv and step order, the
+//! same parsing of `index.theme` / `kcminputrc` / `settings.ini`, the same
+//! `settings.ini` generation. The references were taken from LIVE Python
+//! read-only (safe_run/subprocess mocked, HOME a temporary directory, the real
+//! `rexon/themes.json` as the built-in catalog) — `tests/themes_parity.rs`.
 //!
-//! Сохранённые квирки оригинала (намеренное расхождение НЕ вводится, паритет):
-//!   * [`resolve_schemas`] РЕГИСТРОЗАВИСИМА к ключам SCHEMAS/(«xfce»/«kde»),
-//!     а [`is_generic_wm`] — регистронезависима (`de.lower()`); асимметрия
-//!     оригинала сохранена;
-//!   * `hyprland` НЕ входит в `_NATIVE_DES` → [`is_generic_wm`] для него
-//!     `true`: apply пишет `settings.ini` вдобавок к gsettings;
-//!   * `lxqt` входит в `_NATIVE_DES`, но не в SCHEMAS → gsettings по общему
-//!     GTK-пути, но `settings.ini` НЕ пишется (не generic-wm);
-//!   * [`update_gtk_settings_ini`] заменяет строку `{key}=` в ЛЮБОЙ секции
-//!     (без проверки `[Settings]`) — квирк оригинала сохранён;
-//!   * [`kde_font_to_display`] при непарсибельном размере даёт `10` (как
+//! Preserved quirks of the original (no intentional divergence, parity):
+//!   * [`resolve_schemas`] is CASE-SENSITIVE to the SCHEMAS keys/("xfce"/"kde"),
+//!     while [`is_generic_wm`] is case-insensitive (`de.lower()`); the
+//!     original's asymmetry is kept;
+//!   * `hyprland` is NOT in `_NATIVE_DES` → [`is_generic_wm`] is `true` for it:
+//!     apply writes `settings.ini` in addition to gsettings;
+//!   * `lxqt` is in `_NATIVE_DES` but not in SCHEMAS → gsettings via the
+//!     generic GTK path, but `settings.ini` is NOT written (not generic-wm);
+//!   * [`update_gtk_settings_ini`] replaces the `{key}=` line in ANY section
+//!     (without checking `[Settings]`) — the original's quirk is kept;
+//!   * [`kde_font_to_display`] gives `10` for an unparsable size (like
 //!     `except ValueError`).
 //!
-//! Дополнение 2026-07-30: портированы решения `install_theme_from_archive`
-//! ([`pick_archive_dir`], [`archive_install_dest`]), argv и текстовый разбор
-//! `_kde_get` ([`kde_read_cmd`], [`kdeglobals_value`]) и все пользовательские
-//! сообщения каталога/архива (`msg_*`).
+//! Addition 2026-07-30: ported the decisions of `install_theme_from_archive`
+//! ([`pick_archive_dir`], [`archive_install_dest`]), the argv and text parsing
+//! of `_kde_get` ([`kde_read_cmd`], [`kdeglobals_value`]) and all user messages
+//! of the catalog/archive (`msg_*`).
 //!
-//! ⚠ Правило #16: [`pick_archive_dir`] берёт первую папку архива ПО АЛФАВИТУ —
-//! оригинал брал `os.scandir()[0]`, т.е. при нескольких папках устанавливал
-//! случайную (порядок задаёт файловая система).
+//! ⚠ Rule #16: [`pick_archive_dir`] takes the first folder of the archive
+//! ALPHABETICALLY — the original took `os.scandir()[0]`, i.e. with several
+//! folders it installed a random one (the order is set by the file system).
 //!
-//! НЕ портировано (исполнение — при подключении к живому Python / будущему
-//! мосту): реальные `safe_run`/`safe_check_command`, `os.scandir`,
-//! `os.makedirs`, чтение/запись `settings.ini` / `~/.icons/default` /
-//! `theme_history.json`, сама распаковка архивов тем и `copytree`,
-//! вызов `pkg_manager.install`, санитайзер курсоров из живой ФС, логирование.
+//! NOT ported (execution — when connected to the live Python / a future
+//! bridge): the real `safe_run`/`safe_check_command`, `os.scandir`,
+//! `os.makedirs`, reading/writing `settings.ini` / `~/.icons/default` /
+//! `theme_history.json`, the actual unpacking of theme archives and `copytree`,
+//! calling `pkg_manager.install`, the cursor sanitizer on the live file system,
+//! logging.
 
 use std::collections::BTreeMap;
 
@@ -63,15 +64,15 @@ use crate::i18n::{tr, trc, trf};
 use crate::installed_scan::FsSnapshot;
 
 // ============================================================================
-// Каталоги поиска (live-значения строятся исполнителем из $HOME)
+// Search directories (live values are built by the executor from $HOME)
 // ============================================================================
 
-/// `GTK_THEME_DIRS` — где искать GTK-темы (live: usr + `~/.themes`).
+/// `GTK_THEME_DIRS` — where to look for GTK themes (live: usr + `~/.themes`).
 pub fn gtk_theme_dirs(home: &str) -> [String; 2] {
     ["/usr/share/themes".to_string(), format!("{home}/.themes")]
 }
 
-/// `ICON_DIRS` — где искать иконки/курсоры (live: usr + `~/.local/share/icons`).
+/// `ICON_DIRS` — where to look for icons/cursors (live: usr + `~/.local/share/icons`).
 pub fn icon_dirs(home: &str) -> [String; 2] {
     [
         "/usr/share/icons".to_string(),
@@ -79,18 +80,19 @@ pub fn icon_dirs(home: &str) -> [String; 2] {
     ]
 }
 
-/// Путь встроенного каталога тем — порт `_BUILTIN_JSON` (рядом с `themes.py`).
-/// `pkg_dir` — каталог пакета `rexon` (live: каталог `themes.py`).
+/// Path of the built-in theme catalog — port of `_BUILTIN_JSON` (next to
+/// `themes.py`). `pkg_dir` is the `rexon` package directory (live: the
+/// directory of `themes.py`).
 pub fn builtin_json_path(pkg_dir: &str) -> String {
     format!("{pkg_dir}/themes.json")
 }
 
-/// Путь пользовательского каталога тем — порт `_USER_JSON`.
+/// Path of the user theme catalog — port of `_USER_JSON`.
 pub fn user_json_path(home: &str) -> String {
     user_json_path_xdg(None, home)
 }
 
-/// То же с учётом `$XDG_CONFIG_HOME`.
+/// The same, honoring `$XDG_CONFIG_HOME`.
 pub fn user_json_path_xdg(xdg_config_home: Option<&str>, home: &str) -> String {
     format!(
         "{}/rexon/themes.json",
@@ -99,44 +101,44 @@ pub fn user_json_path_xdg(xdg_config_home: Option<&str>, home: &str) -> String {
 }
 
 // ============================================================================
-// Каталог популярных тем: слияние встроенного + пользовательского JSON
+// Catalog of popular themes: merging the built-in + user JSON
 // ============================================================================
 
-/// Порт `_load_themes_catalog`: `themes = {}` → `update(builtin["themes"])`
-/// → `update(user["themes"])`. Семантика `dict.update`: существующий ключ
-/// заменяется по месту (порядок сохраняется), новый — дописывается в конец.
+/// Port of `_load_themes_catalog`: `themes = {}` → `update(builtin["themes"])`
+/// → `update(user["themes"])`. `dict.update` semantics: an existing key is
+/// replaced in place (the order is kept), a new one is appended at the end.
 ///
-/// `builtin`/`user` — содержимое файлов (None = файла нет). Битый JSON,
-/// не-объект верхнего уровня или `themes`, не являющийся объектом, —
-/// пропускаются (как `except`/`data.get("themes", {})` в оригинале).
+/// `builtin`/`user` are the file contents (None = no file). Broken JSON, a
+/// non-object top level or `themes` that is not an object are skipped (like
+/// `except`/`data.get("themes", {})` in the original).
 pub fn merge_catalogs(builtin: Option<&str>, user: Option<&str>) -> Map<String, Value> {
     let mut out = Map::new();
     for content in [builtin, user] {
         let Some(text) = content else { continue };
         let Ok(Value::Object(root)) = serde_json::from_str::<Value>(text) else {
-            continue; // битый JSON / не-объект → пропуск файла
+            continue; // broken JSON / not an object → skip the file
         };
         if let Some(Value::Object(themes)) = root.get("themes") {
             for (k, v) in themes {
-                out.insert(k.clone(), v.clone()); // IndexMap: замена по месту / дозапись
+                out.insert(k.clone(), v.clone()); // IndexMap: replace in place / append
             }
         }
     }
     out
 }
 
-/// `json.dumps(catalog, indent=2, ensure_ascii=False)` — для сверки байт-в-байт.
+/// `json.dumps(catalog, indent=2, ensure_ascii=False)` — for byte-for-byte comparison.
 pub fn serialize_catalog(catalog: &Map<String, Value>) -> String {
     serde_json::to_string_pretty(&Value::Object(catalog.clone())).expect("Value сериализуется")
 }
 
 // ============================================================================
-// Разрешение gsettings-схем по DE — порт SCHEMAS / _GENERIC_WM_SCHEMAS /
+// Resolving gsettings schemas by DE — port of SCHEMAS / _GENERIC_WM_SCHEMAS /
 // _NATIVE_DES / _resolve_schemas / _is_generic_wm
 // ============================================================================
 
-/// (role, schema, prop) — роли `gtk`/`icons`/`cursor`/`font`. Порядок ролей
-/// = порядок ключей в Python-словаре (важен для `get_current_themes`).
+/// (role, schema, prop) — roles `gtk`/`icons`/`cursor`/`font`. The role order
+/// = the key order in the Python dict (matters for `get_current_themes`).
 pub type SchemaEntry = (&'static str, &'static str, &'static str);
 
 const GNOME_STACK: &[SchemaEntry] = &[
@@ -153,7 +155,7 @@ const CINNAMON_STACK: &[SchemaEntry] = &[
     ("font", "org.cinnamon.desktop.interface", "font-name"),
 ];
 
-// MATE: курсор — отдельная схема org.mate.peripherals-mouse (не interface!).
+// MATE: the cursor is a separate schema org.mate.peripherals-mouse (not interface!).
 const MATE_STACK: &[SchemaEntry] = &[
     ("gtk", "org.mate.interface", "gtk-theme"),
     ("icons", "org.mate.interface", "icon-theme"),
@@ -161,46 +163,46 @@ const MATE_STACK: &[SchemaEntry] = &[
     ("font", "org.mate.interface", "font-name"),
 ];
 
-/// Универсальный GTK-путь для тайловых / wlroots WM — порт `_GENERIC_WM_SCHEMAS`.
+/// Generic GTK path for tiling / wlroots WMs — port of `_GENERIC_WM_SCHEMAS`.
 const GENERIC_WM_STACK: &[SchemaEntry] = GNOME_STACK;
 
-/// Таблица `SCHEMAS` (де → набор ролей). budgie/cosmic/hyprland опираются на
-/// GNOME-стек; cinnamon-mint — алиас cinnamon.
+/// The `SCHEMAS` table (de → set of roles). budgie/cosmic/hyprland rely on the
+/// GNOME stack; cinnamon-mint is an alias of cinnamon.
 const SCHEMAS: &[(&str, &[SchemaEntry])] = &[
     ("gnome", GNOME_STACK),
     ("cinnamon", CINNAMON_STACK),
     ("cinnamon-mint", CINNAMON_STACK),
     ("mate", MATE_STACK),
     ("budgie", GNOME_STACK),
-    // Pantheon читает ключи GNOME (pantheon-default-settings переопределяет
-    // именно org.gnome.desktop.interface gtk-theme/icon-theme/cursor-theme/
-    // font-name для `:Pantheon`). ⚠️ gtk-theme при входе, смене акцента и —
-    // при акценте «авто» — смене обоев перезаписывает io.elementary.
-    // settings-daemon; условие названо человеку оговоркой матрицы.
+    // Pantheon reads the GNOME keys (pantheon-default-settings overrides exactly
+    // org.gnome.desktop.interface gtk-theme/icon-theme/cursor-theme/font-name for
+    // `:Pantheon`). ⚠️ gtk-theme is overwritten by io.elementary.settings-daemon
+    // at login, on accent change and — with the "auto" accent — on wallpaper
+    // change; the condition is told to the person as a matrix caveat.
     ("pantheon", GNOME_STACK),
     ("cosmic", GNOME_STACK),
     ("hyprland", GNOME_STACK),
 ];
 
-/// DE со своим механизмом (не generic-WM) — порт `_NATIVE_DES` (нижний регистр).
+/// DEs with their own mechanism (not generic-WM) — port of `_NATIVE_DES` (lowercase).
 const NATIVE_DES: &[&str] = &[
     "kde", "gnome", "cinnamon", "cinnamon-mint", "mate", "budgie", "pantheon",
     "cosmic", "lxqt", "xfce", "deepin",
 ];
 
-/// Результат `_resolve_schemas`: gsettings-набор ролей или «не-gsettings»
-/// бэкенд (xfce → xfconf, kde → kdeglobals, deepin → только чтение DConfig,
-/// запись — стоп [`ApplyStep::DdeTreelandGate`], см. [`crate::dde`]).
+/// Result of `_resolve_schemas`: a gsettings set of roles or a "non-gsettings"
+/// backend (xfce → xfconf, kde → kdeglobals, deepin → DConfig read-only,
+/// writing — stop [`ApplyStep::DdeTreelandGate`], see [`crate::dde`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Schemas {
-    /// Набор ролей (native-DE из SCHEMAS либо общий GTK-путь для тайлового WM).
+    /// A set of roles (a native DE from SCHEMAS or the generic GTK path for a tiling WM).
     Gsettings(&'static [SchemaEntry]),
-    /// xfce / kde — управляются не через gsettings.
+    /// xfce / kde — not managed via gsettings.
     NonGsettings,
 }
 
 impl Schemas {
-    /// `schemas["role"]` → (schema, prop). None для роли, которой нет / не-gsettings.
+    /// `schemas["role"]` → (schema, prop). None for a missing role / non-gsettings.
     pub fn role(&self, role: &str) -> Option<(&'static str, &'static str)> {
         match self {
             Schemas::Gsettings(list) => list
@@ -212,9 +214,10 @@ impl Schemas {
     }
 }
 
-/// Порт `_resolve_schemas` (РЕГИСТРОЗАВИСИМ, как оригинал `SCHEMAS.get(de)`):
-/// набор из SCHEMAS; для «xfce»/«kde» — [`Schemas::NonGsettings`]; иначе —
-/// общий GTK-путь для тайловых/wlroots WM.
+/// Port of `_resolve_schemas` (CASE-SENSITIVE, like the original
+/// `SCHEMAS.get(de)`): the set from SCHEMAS; for "xfce"/"kde" —
+/// [`Schemas::NonGsettings`]; otherwise the generic GTK path for tiling/wlroots
+/// WMs.
 pub fn resolve_schemas(de: &str) -> Schemas {
     if let Some((_, list)) = SCHEMAS.iter().find(|(k, _)| *k == de) {
         return Schemas::Gsettings(list);
@@ -225,18 +228,18 @@ pub fn resolve_schemas(de: &str) -> Schemas {
     Schemas::Gsettings(GENERIC_WM_STACK)
 }
 
-/// Порт `_is_generic_wm` (РЕГИСТРОНЕЗАВИСИМ: `(de or "").lower()`).
+/// Port of `_is_generic_wm` (CASE-INSENSITIVE: `(de or "").lower()`).
 pub fn is_generic_wm(de: &str) -> bool {
     let low = de.to_lowercase();
     !NATIVE_DES.contains(&low.as_str())
 }
 
 // ============================================================================
-// План применения темы — argv/ini/файлы (исполнение при подключении к мосту)
+// Theme apply plan — argv/ini/files (executed when connected to the bridge)
 // ============================================================================
 
-/// Команда для `safe_run` — argv + опциональный timeout (сек; None =
-/// дефолтные 30с). Порт вызовов `safe_run([...], timeout=...)`.
+/// A command for `safe_run` — argv + an optional timeout (sec; None = the
+/// default 30 s). Port of the `safe_run([...], timeout=...)` calls.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Cmd {
     pub argv: Vec<String>,
@@ -250,70 +253,70 @@ fn cmd(argv: &[&str], timeout: Option<u64>) -> Cmd {
     }
 }
 
-/// Шаг плана применения. Тег кодирует условность исполнения; сам порядок
-/// шагов детерминирован по (theme, de). Исполнитель ведёт флаг `ok`.
-/// ⚠️ Теги вариантов и имена полей — это ФОРМА, которую читает исполнитель
-/// плана (шим `defaults_set_terminal_plan`/`themes_apply_*_plan` и Python за
-/// ним). Она объявлена здесь, у самого типа, а не переписана веткой на
-/// каждое поле в мосту: новый вариант доезжает до исполнителя сам.
+/// A step of the apply plan. The tag encodes the execution condition; the step
+/// order itself is deterministic by (theme, de). The executor keeps the `ok` flag.
+/// ⚠️ The variant tags and field names are the SHAPE read by the plan executor
+/// (the shim `defaults_set_terminal_plan`/`themes_apply_*_plan` and Python
+/// behind it). It is declared here, at the type itself, and not rewritten as a
+/// branch per field in the bridge: a new variant reaches the executor by itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "op")]
 pub enum ApplyStep {
-    /// Основной вызов, чей returncode определяет `ok`.
+    /// The main call whose returncode determines `ok`.
     #[serde(rename = "primary")]
     Primary(Cmd),
-    /// Вспомогательный вызов, `ok` не меняющий (kde-gtk gsettings и т.п.).
+    /// An auxiliary call that doesn't change `ok` (kde-gtk gsettings etc.).
     #[serde(rename = "besteffort")]
     BestEffort(Cmd),
-    /// Выполняется, только если `ok` уже true (kde-icon dbus-уведомление).
+    /// Runs only if `ok` is already true (kde-icon dbus notification).
     #[serde(rename = "ifok")]
     IfOk(Cmd),
-    /// Выполняется, только если `ok` ещё false; успех любого делает `ok=true`
-    /// (kde-cursor fallback: kwriteconfig6 в kcminputrc/kdeglobals).
+    /// Runs only if `ok` is still false; success of any makes `ok=true`
+    /// (kde-cursor fallback: kwriteconfig6 into kcminputrc/kdeglobals).
     #[serde(rename = "ifnotok")]
     IfNotOk(Cmd),
-    /// Обновить `settings.ini` (read-modify-write через
-    /// [`update_gtk_settings_ini`]); на `ok` не влияет.
+    /// Update `settings.ini` (read-modify-write via [`update_gtk_settings_ini`]);
+    /// doesn't affect `ok`.
     #[serde(rename = "gtkini")]
     GtkIni { path: String, key: String, value: String },
-    /// Hyprland-курсор (только при наличии `hyprctl`): прочитать размер
-    /// (`gsettings get org.gnome.desktop.interface cursor-size`, дефолт «24»),
-    /// затем `hyprctl setcursor <theme> <size>` и
-    /// `hyprctl keyword env XCURSOR_THEME,<theme>`. На `ok` не влияет.
+    /// Hyprland cursor (only if `hyprctl` is present): read the size
+    /// (`gsettings get org.gnome.desktop.interface cursor-size`, default "24"),
+    /// then `hyprctl setcursor <theme> <size>` and
+    /// `hyprctl keyword env XCURSOR_THEME,<theme>`. Doesn't affect `ok`.
     ///
-    /// `size` задан — берётся он, а `gsettings get` не нужен. Удался
-    /// `setcursor` — это «сменилось сейчас» в [`CursorReport::live`].
+    /// With `size` set, it is used and `gsettings get` is not needed. A successful
+    /// `setcursor` is "changed now" in [`CursorReport::live`].
     #[serde(rename = "hyprctl_cursor")]
     HyprctlCursor { theme: String, size: Option<String> },
-    /// Команда «сменить в работающем сеансе» (`swaymsg …`): на `ok` не
-    /// влияет, её успех идёт в [`CursorReport::live`]. Сеанса нет — команда
-    /// просто не удаётся.
+    /// A "change in the running session" command (`swaymsg …`): doesn't affect
+    /// `ok`, its success goes into [`CursorReport::live`]. No session — the command
+    /// simply fails.
     #[serde(rename = "live")]
     Live(Cmd),
-    /// Записать НАШ файл (каталог создаётся); удалось — `ok = true`. Для
-    /// окружений без своей настройки, где этот файл и есть настоящий эффект
-    /// (вместо прежнего безусловного `ForceOk`).
+    /// Write OUR file (the directory is created); success — `ok = true`. For
+    /// desktops without their own setting, where this file is the real effect
+    /// (instead of the former unconditional `ForceOk`).
     #[serde(rename = "write_setsok")]
     WriteSetsOk {
         dir: String,
         path: String,
         content: String,
     },
-    /// Курсор в конфиг тайлового композитора управляемым блоком — см.
-    /// [`WmConfigPlan`]. На `ok` не влияет; итог — в [`CursorReport::wm`].
+    /// Cursor into the tiling compositor's config as a managed block — see
+    /// [`WmConfigPlan`]. Doesn't affect `ok`; the result goes into [`CursorReport::wm`].
     #[serde(rename = "wm_config")]
     WmConfig(WmConfigPlan),
-    /// `ok = true` безусловно (kde-gtk и тайловые/wlroots WM: `settings.ini`
-    /// авторитетен, запись не падает молча).
+    /// `ok = true` unconditionally (kde-gtk and tiling/wlroots WMs: `settings.ini`
+    /// is authoritative, the write doesn't fail silently).
     #[serde(rename = "forceok")]
     ForceOk,
-    /// Deepin: исполнитель здесь останавливает план — `ok = false`, ни
-    /// одной записи. В сеансе Treeland темы задаёт только Центр управления,
-    /// другие сеансы Deepin Rexon не поддерживает; причина —
+    /// Deepin: the executor stops the plan here — `ok = false`, not a single write.
+    /// In a Treeland session themes are set only by the Control Center, Rexon
+    /// doesn't support other Deepin sessions; the reason is
     /// [`crate::dde::refusal`].
     #[serde(rename = "dde_treeland_gate")]
     DdeTreelandGate,
-    /// Только при `ok`: `makedirs(dir)` + запись `index_path` (для Xorg-курсора
+    /// Only with `ok`: `makedirs(dir)` + write `index_path` (for the Xorg cursor
     /// `~/.icons/default/index.theme`).
     #[serde(rename = "write_ifok")]
     WriteIfOk {
@@ -321,10 +324,10 @@ pub enum ApplyStep {
         path: String,
         content: String,
     },
-    /// Только при `ok`: правка ключа в ini-файле по месту
-    /// ([`crate::defaults::set_ini_value`]) — чужие настройки в файле
-    /// сохраняются. Нужна там, где конфиг ведёт не Rexon (`lxqt.conf`,
-    /// `qt6ct.conf`). `section` — со скобками (`"[Qt]"`).
+    /// Only with `ok`: edit a key in an ini file in place
+    /// ([`crate::defaults::set_ini_value`]) — other settings in the file are kept.
+    /// Needed where the config is not maintained by Rexon (`lxqt.conf`,
+    /// `qt6ct.conf`). `section` — with brackets (`"[Qt]"`).
     #[serde(rename = "iniset_ifok")]
     IniSetIfOk {
         path: String,
@@ -332,10 +335,10 @@ pub enum ApplyStep {
         key: String,
         value: String,
     },
-    /// Только при `ok`: правка ключа в чужом ini-файле С УСЛОВИЕМ (см.
-    /// [`ini_guarded_text`]): `only_if_file` — файла нет, значит программа
-    /// не настроена, и заводить его не нужно; `keep_existing` — ключ уже
-    /// задан человеком, не перебивать. Нужна для `qt6ct.conf`.
+    /// Only with `ok`: edit a key in someone else's ini file WITH A CONDITION (see
+    /// [`ini_guarded_text`]): `only_if_file` — no file means the program is not
+    /// configured, and there is no need to create it; `keep_existing` — the key is
+    /// already set by the person, don't override. Needed for `qt6ct.conf`.
     #[serde(rename = "iniset_guarded")]
     IniSetGuarded {
         path: String,
@@ -345,32 +348,32 @@ pub enum ApplyStep {
         only_if_file: bool,
         keep_existing: bool,
     },
-    /// Только при `ok`: убрать ключ из `settings.ini` GTK
-    /// ([`remove_gtk_settings_key`]) — тогда GTK берёт значение окружения.
-    /// Возврат к стандартному курсору ([`standard_cursor_plan`]).
+    /// Only with `ok`: remove a key from the GTK `settings.ini`
+    /// ([`remove_gtk_settings_key`]) — then GTK takes the desktop's value.
+    /// Return to the standard cursor ([`standard_cursor_plan`]).
     #[serde(rename = "gtk_ini_unset_ifok")]
     GtkIniUnsetIfOk { path: String, key: String },
-    /// Только при `ok`: удалить НАШ файл (переменные курсора в
-    /// `environment.d`); файла нет — не ошибка.
+    /// Only with `ok`: delete OUR file (cursor variables in `environment.d`); no
+    /// file is not an error.
     #[serde(rename = "remove_ifok")]
     RemoveIfOk { path: String },
-    /// Файлы `paths` перепишут следующие команды плана (`kwriteconfig6
-    /// --file …`, сценарий правки ini): снять копию «что было» под откатом
-    /// нажатия, а заведённые командами — отметить после прогона. Так
-    /// «Применить», которое пишет командами, оставляет снимок и запись
-    /// `applied`, как и запись своими руками. На `ok` не влияет.
+    /// Files `paths` will be rewritten by the following plan commands
+    /// (`kwriteconfig6 --file …`, the ini editing script): take a "what was" copy
+    /// under the click's undo, and mark the ones created by the commands after the
+    /// run. So an «Apply» that writes via commands leaves a snapshot and an
+    /// `applied` record, just like writing by our own hands. Doesn't affect `ok`.
     #[serde(rename = "guard")]
     Guard { paths: Vec<String> },
-    /// Прочитать обратно (`read`) то, что записали команды: `ok = true`,
-    /// только если команда удалась и её ответ (без кавычек `gsettings`)
-    /// равен `expect`; иначе `ok = false`. `kwriteconfig6` и `gsettings`
-    /// умеют завершаться нулём, ничего не записав.
+    /// Read back (`read`) what the commands wrote: `ok = true` only if the command
+    /// succeeded and its answer (without the `gsettings` quotes) equals `expect`;
+    /// otherwise `ok = false`. `kwriteconfig6` and `gsettings` can exit with zero
+    /// having written nothing.
     #[serde(rename = "readback_setsok")]
     ReadBackSetsOk { read: Cmd, expect: String },
 }
 
-/// `settings.ini` GTK без строк ключа `key` (остальное — байт в байт).
-/// `None` — ключа нет, переписывать файл незачем.
+/// The GTK `settings.ini` without the lines of key `key` (the rest byte for
+/// byte). `None` — no such key, no reason to rewrite the file.
 pub fn remove_gtk_settings_key(existing: &str, key: &str) -> Option<String> {
     let key_eq = format!("{key}=");
     let mut found = false;
@@ -385,8 +388,8 @@ pub fn remove_gtk_settings_key(existing: &str, key: &str) -> Option<String> {
     found.then_some(kept)
 }
 
-/// Есть ли в ini-тексте ключ `key` с непустым значением в секции `section`
-/// (со скобками, `"[Appearance]"`).
+/// Whether the ini text has the key `key` with a non-empty value in section
+/// `section` (with brackets, `"[Appearance]"`).
 pub fn ini_has_key(text: &str, section: &str, key: &str) -> bool {
     let mut inside = false;
     for line in text.lines() {
@@ -406,8 +409,8 @@ pub fn ini_has_key(text: &str, section: &str, key: &str) -> bool {
     false
 }
 
-/// Решение шага [`ApplyStep::IniSetGuarded`]: новый текст файла или `None`
-/// (ничего не писать). `existing` — текущий текст, `None` — файла нет.
+/// Decision of the [`ApplyStep::IniSetGuarded`] step: the new file text or
+/// `None` (write nothing). `existing` is the current text, `None` — no file.
 pub fn ini_guarded_text(
     existing: Option<&str>,
     section: &str,
@@ -425,18 +428,18 @@ pub fn ini_guarded_text(
     Some(crate::defaults::set_ini_value(existing, section, key, value))
 }
 
-/// Откуда прочитать тему значков, которую окружение отдаёт программам
-/// сейчас (её получает новый конфиг qt6ct — см. [`KvantumEnv::icon_theme`]).
+/// Where to read the icon theme the desktop currently gives to programs (the
+/// new qt6ct config gets it — see [`KvantumEnv::icon_theme`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IconThemeSource {
-    /// Команда чтения: `gsettings get …` или `xfconf-query …`.
+    /// Read command: `gsettings get …` or `xfconf-query …`.
     Cmd(Cmd),
-    /// `settings.ini` GTK, ключ `gtk-icon-theme-name`.
+    /// The GTK `settings.ini`, key `gtk-icon-theme-name`.
     GtkIni(String),
 }
 
-/// Источник текущей темы значков — те же ключи, в которые её пишет
-/// [`apply_icon_plan_xdg`].
+/// Source of the current icon theme — the same keys [`apply_icon_plan_xdg`]
+/// writes it to.
 pub fn current_icon_theme_source(de: &str, home: &str, xdg_config_home: Option<&str>) -> IconThemeSource {
     match resolve_schemas(de) {
         s @ Schemas::Gsettings(_) => {
@@ -461,21 +464,20 @@ pub fn current_icon_theme_source(de: &str, home: &str, xdg_config_home: Option<&
     IconThemeSource::GtkIni(gtk_ini_path(home, xdg_config_home, "gtk-3.0"))
 }
 
-/// Роли, которые окружение со своим хранилищем оформления держит у себя:
-/// по ним карта активных тем спрашивает само окружение
-/// ([`native_role_read_cmd`]).
+/// Roles that a desktop with its own looks storage keeps itself: for them the
+/// active themes map asks the desktop itself ([`native_role_read_cmd`]).
 pub const NATIVE_STORE_ROLES: &[&str] = &["gtk", "icons", "cursor"];
 
-/// Команда чтения роли `gtk`/`icons`/`cursor` из РОДНОГО хранилища окружения
-/// — того же ключа, в который пишут планы применения
+/// Command to read the role `gtk`/`icons`/`cursor` from the desktop's NATIVE
+/// storage — the same key the apply plans write to
 /// ([`apply_gtk_plan_xdg`], [`apply_icon_plan_xdg`], [`apply_cursor_plan_sized`]):
-/// gsettings по таблице схем (GNOME, Cinnamon, MATE, Budgie, Pantheon, COSMIC),
-/// xfconf у XFCE, DConfig у Deepin.
+/// gsettings by the schemas table (GNOME, Cinnamon, MATE, Budgie, Pantheon,
+/// COSMIC), xfconf for XFCE, DConfig for Deepin.
 ///
-/// `None` — у окружения такого хранилища нет или оно не главное: KDE
-/// (kdeglobals читает карта сама), LXQt и тайловые WM (их gsettings — лишь
-/// подсказка GTK-программам, главное у них — `settings.ini`, конфиг
-/// композитора и переменные окружения).
+/// `None` — the desktop has no such storage or it isn't the main one: KDE (the
+/// map reads kdeglobals itself), LXQt and tiling WMs (their gsettings is only a
+/// hint for GTK programs, the main thing for them is `settings.ini`, the
+/// compositor config and environment variables).
 pub fn native_role_read_cmd(de: &str, role: &str) -> Option<Cmd> {
     if !NATIVE_STORE_ROLES.contains(&role) || is_generic_wm(de) || de == "lxqt" {
         return None;
@@ -505,16 +507,17 @@ pub fn native_role_read_cmd(de: &str, role: &str) -> Option<Cmd> {
     }
 }
 
-/// Команда, которая назовёт СТАНДАРТНУЮ тему роли `role` окружения `de` —
-/// ту, что стоит, пока человек ничего не выбирал: умолчание схемы вместе с
-/// поправками дистрибутива (`GSETTINGS_BACKEND=memory` читает схему мимо
-/// записанных значений). Так это значение и узнаётся, а не нашей таблицей
-/// догадок: у Cinnamon на CachyOS значки по умолчанию — Papirus, а не
-/// Adwaita из исходной схемы.
+/// A command that names the STANDARD theme of role `role` of desktop `de` —
+/// the one in place while the person hasn't chosen anything: the schema
+/// default together with distribution overrides (`GSETTINGS_BACKEND=memory`
+/// reads the schema bypassing written values). This is how the value is found
+/// out, not by our table of guesses: Cinnamon on CachyOS has Papirus icons by
+/// default, not Adwaita from the upstream schema.
 ///
-/// `None` — у окружения нет схемы gsettings для роли (KDE, XFCE, Deepin,
-/// LXQt, тайловые WM): там стандартные темы (Breeze, elementary) не скрыты и
-/// не попадают под защиту курсоров, особой обработки не нужно.
+/// `None` — the desktop has no gsettings schema for the role (KDE, XFCE,
+/// Deepin, LXQt, tiling WMs): there the standard themes (Breeze, elementary)
+/// are not hidden and don't fall under the cursor protection, no special
+/// handling is needed.
 pub fn standard_theme_read_cmd(de: &str, role: &str) -> Option<Cmd> {
     if !NATIVE_STORE_ROLES.contains(&role) || is_generic_wm(de) || de == "lxqt" {
         return None;
@@ -523,9 +526,9 @@ pub fn standard_theme_read_cmd(de: &str, role: &str) -> Option<Cmd> {
     Some(cmd(&["env", "GSETTINGS_BACKEND=memory", "gsettings", "get", schema, key], Some(5)))
 }
 
-/// Ответ [`native_role_read_cmd`] → имя темы: кавычки gsettings и подпись
-/// типа `dde-dconfig` снимаются (`'Menta'\n` → `Menta`, `s "Papirus"` →
-/// `Papirus`).
+/// Answer of [`native_role_read_cmd`] → theme name: gsettings quotes and the
+/// `dde-dconfig` type signature are stripped (`'Menta'\n` → `Menta`,
+/// `s "Papirus"` → `Papirus`).
 pub fn parse_native_role_output(de: &str, raw: &str) -> String {
     if de == "deepin" {
         crate::dde::parse_value(raw)
@@ -534,25 +537,25 @@ pub fn parse_native_role_output(de: &str, raw: &str) -> String {
     }
 }
 
-/// Ответ команды чтения → имя темы (`'Papirus'\n` → `Papirus`).
+/// Answer of the read command → theme name (`'Papirus'\n` → `Papirus`).
 pub fn parse_icon_theme_output(raw: &str) -> String {
     raw.trim().trim_matches(|c| c == '\'' || c == '"').trim().to_string()
 }
 
-/// Конфиги переключателей стиля Qt, в которые уходит выбор значков:
-/// без `icon_theme` Qt-программы под ними берут `hicolor`.
+/// Configs of the Qt style switchers that get the icon choice: without
+/// `icon_theme` Qt programs under them take `hicolor`.
 pub const QT_PLATFORM_THEME_TOOLS: &[&str] = &["qt6ct", "qt5ct"];
 
-/// План применения темы: шаги + вид записи истории (`_add_history` kind).
+/// Theme apply plan: steps + the kind of history record (`_add_history` kind).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Plan {
     pub steps: Vec<ApplyStep>,
     pub history_kind: &'static str,
 }
 
-/// План темы для Deepin: один стоп до записи ([`ApplyStep::DdeTreelandGate`]) —
-/// в Treeland темы задаёт только Центр управления, другие сеансы Deepin
-/// Rexon не поддерживает.
+/// Theme plan for Deepin: one stop before writing ([`ApplyStep::DdeTreelandGate`])
+/// — in Treeland themes are set only by the Control Center, Rexon doesn't
+/// support other Deepin sessions.
 fn deepin_plan(history_kind: &'static str) -> Plan {
     Plan { steps: vec![ApplyStep::DdeTreelandGate], history_kind }
 }
@@ -578,8 +581,8 @@ fn gtk_ini_step(
     }
 }
 
-/// Правка ключа в конфиге LXQt (`~/.config/lxqt/<file>`) по месту — файл ведёт
-/// LXQt, чужие ключи в нём сохраняются.
+/// Edit a key in the LXQt config (`~/.config/lxqt/<file>`) in place — the file
+/// is maintained by LXQt, other keys in it are kept.
 fn lxqt_ini_step(
     home: &str,
     xdg_config_home: Option<&str>,
@@ -596,12 +599,12 @@ fn lxqt_ini_step(
     }
 }
 
-/// Порт `apply_gtk_theme`. `home` раскрывает `~`.
+/// Port of `apply_gtk_theme`. `home` expands `~`.
 pub fn apply_gtk_plan(theme: &str, de: &str, home: &str) -> Plan {
     apply_gtk_plan_xdg(theme, de, home, None)
 }
 
-/// То же с учётом `$XDG_CONFIG_HOME` (пути `settings.ini` GTK).
+/// The same, honoring `$XDG_CONFIG_HOME` (the GTK `settings.ini` paths).
 pub fn apply_gtk_plan_xdg(
     theme: &str,
     de: &str,
@@ -611,44 +614,44 @@ pub fn apply_gtk_plan_xdg(
     apply_gtk_plan_scheme(theme, de, home, xdg_config_home, None)
 }
 
-/// Схема и ключ светлого/тёмного режима программ: `org.gnome.desktop.
-/// interface color-scheme` — его читают libadwaita и портал оформления
-/// (`org.freedesktop.appearance color-scheme`). Ставится там, где тема GTK
-/// пишется в ту же схему GNOME (GNOME, Budgie, Pantheon, COSMIC, тайловые
-/// WM): тёмная тема GTK при светлом режиме оставляла программы libadwaita
-/// светлыми (проверка GNOME, 16.10.2026). У Cinnamon, MATE, XFCE и KDE режим
-/// ведёт само окружение (KDE — по цветовой схеме), его не трогаем.
+/// Schema and key of the programs' light/dark mode: `org.gnome.desktop.
+/// interface color-scheme` — read by libadwaita and the appearance portal
+/// (`org.freedesktop.appearance color-scheme`). Set where the GTK theme is
+/// written into the same GNOME schema (GNOME, Budgie, Pantheon, COSMIC, tiling
+/// WMs): a dark GTK theme in light mode left libadwaita programs light (GNOME
+/// check, 16.10.2026). In Cinnamon, MATE, XFCE and KDE the mode is managed by
+/// the desktop itself (KDE — by the color scheme), we don't touch it.
 pub const COLOR_SCHEME_KEY: (&str, &str) = ("org.gnome.desktop.interface", "color-scheme");
 
-/// Значение [`COLOR_SCHEME_KEY`] для темы: тёмная — `prefer-dark`, светлая —
-/// `default` (так и пишут «Настройки GNOME → Оформление»: «Светлый» — это
-/// `default`, а не `prefer-light`).
+/// The [`COLOR_SCHEME_KEY`] value for a theme: dark — `prefer-dark`, light —
+/// `default` (this is what "GNOME Settings → Appearance" writes: "Default" is
+/// `default`, not `prefer-light`).
 pub fn color_scheme_value(dark: bool) -> &'static str {
     if dark { "prefer-dark" } else { "default" }
 }
 
-/// Pantheon: схема и ключ режима у службы io.elementary.settings-daemon —
-/// его пишет «Параметры → Рабочий стол → Оформление» (switchboard-plug-
-/// pantheon-shell, `Appearance.vala`). Служба раздаёт значение в
-/// AccountsService (оттуда режим берут Gala, панель и программы elementary)
-/// и в [`COLOR_SCHEME_KEY`]; запись одного ключа GNOME оставляла оболочку
-/// светлой, а по расписанию тёмного режима служба возвращала его назад.
+/// Pantheon: the mode schema and key of the io.elementary.settings-daemon
+/// service — written by "System Settings → Desktop → Appearance"
+/// (switchboard-plug-pantheon-shell, `Appearance.vala`). The service passes the
+/// value to AccountsService (Gala, the panel and elementary programs take the
+/// mode from there) and to [`COLOR_SCHEME_KEY`]; writing the single GNOME key
+/// left the shell light, and on a dark mode schedule the service reverted it.
 pub const PANTHEON_COLOR_SCHEME_KEY: (&str, &str) =
     ("io.elementary.settings-daemon.prefers-color-scheme", "color-scheme");
 
-/// Значение [`PANTHEON_COLOR_SCHEME_KEY`]: «По умолчанию» (светлый) у
-/// elementary — `no-preference`.
+/// The [`PANTHEON_COLOR_SCHEME_KEY`] value: "Default" (light) in elementary is
+/// `no-preference`.
 pub fn pantheon_color_scheme_value(dark: bool) -> &'static str {
     if dark { "prefer-dark" } else { "no-preference" }
 }
 
-/// Тёмная ли тема GTK. Первым — цвет фона окна из её таблицы стилей GTK 3
-/// (`@define-color theme_bg_color …`, по ссылкам `@bg_color`/
-/// `@window_bg_color` в том же файле) общим критерием продукта
-/// [`crate::ui_base::is_dark_rgb`]; цвета в файле нет (стили лежат в
-/// ресурсе GTK или подключаются `@import`) — по имени: «dark» в нём
-/// (`Adwaita-dark`, `WhiteSur-Dark-nord`). Цвет важнее имени: у «Windows
-/// XP Royale Dark» фон окна светлый.
+/// Whether a GTK theme is dark. First — the window background color from its
+/// GTK 3 stylesheet (`@define-color theme_bg_color …`, following the
+/// `@bg_color`/`@window_bg_color` references in the same file) by the
+/// product's common criterion [`crate::ui_base::is_dark_rgb`]; no color in the
+/// file (the styles are in a GTK resource or included via `@import`) — by name:
+/// "dark" in it (`Adwaita-dark`, `WhiteSur-Dark-nord`). The color matters more
+/// than the name: "Windows XP Royale Dark" has a light window background.
 pub fn gtk_theme_is_dark(name: &str, gtk_css: Option<&str>) -> bool {
     if let Some((r, g, b)) = gtk_css.and_then(gtk_css_window_bg) {
         return crate::ui_base::is_dark_rgb(r, g, b);
@@ -656,8 +659,8 @@ pub fn gtk_theme_is_dark(name: &str, gtk_css: Option<&str>) -> bool {
     name.to_lowercase().contains("dark")
 }
 
-/// Цвет фона окна из `gtk.css`: `theme_bg_color`, ссылки `@имя` — по
-/// `@define-color` того же файла (не глубже 8 шагов, от зацикливания).
+/// Window background color from `gtk.css`: `theme_bg_color`, `@name` references
+/// resolved by `@define-color` of the same file (at most 8 steps, against loops).
 fn gtk_css_window_bg(css: &str) -> Option<(u8, u8, u8)> {
     let mut colors: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
     for line in css.lines() {
@@ -677,8 +680,8 @@ fn gtk_css_window_bg(css: &str) -> Option<(u8, u8, u8)> {
     None
 }
 
-/// Как [`apply_gtk_plan_xdg`], и с режимом программ: `dark` — тёмная ли
-/// тема ([`gtk_theme_is_dark`]); `None` — режим не трогать.
+/// Like [`apply_gtk_plan_xdg`], plus the programs' mode: `dark` — whether the
+/// theme is dark ([`gtk_theme_is_dark`]); `None` — don't touch the mode.
 pub fn apply_gtk_plan_scheme(
     theme: &str,
     de: &str,
@@ -692,14 +695,14 @@ pub fn apply_gtk_plan_scheme(
     let mut plan = apply_gtk_plan_steps(theme, de, home, xdg_config_home);
     let gnome_schema = resolve_schemas(de).role("gtk").is_some_and(|(s, _)| s == COLOR_SCHEME_KEY.0);
     if let (Some(dark), true) = (dark, gnome_schema) {
-        // Только если тема записалась; на ok не влияет.
+        // Only if the theme was written; doesn't affect ok.
         plan.steps.push(ApplyStep::IfOk(cmd(
             &["gsettings", "set", COLOR_SCHEME_KEY.0, COLOR_SCHEME_KEY.1, color_scheme_value(dark)],
             None,
         )));
         if de == "pantheon" {
-            // Схемы нет (служба elementary не стоит) — шаг просто не
-            // удаётся; на ok он не влияет.
+            // No schema (the elementary service is not installed) — the step
+            // simply fails; it doesn't affect ok.
             plan.steps.push(ApplyStep::IfOk(cmd(
                 &[
                     "gsettings", "set", PANTHEON_COLOR_SCHEME_KEY.0, PANTHEON_COLOR_SCHEME_KEY.1,
@@ -742,13 +745,13 @@ fn apply_gtk_plan_steps(
                     &["gsettings", "set", "org.gnome.desktop.interface", "gtk-theme", theme],
                     None,
                 )));
-                // Модуль Plasma `gtkconfig` (kded) раздаёт тему GTK запущенным
-                // программам — через xsettingsd (X11/XWayland) и GSettings. О
-                // ручной записи `settings.ini` он не узнаёт: живой kded6
-                // оставлял `Net/ThemeName "Breeze"` до перезахода (Д4, проверка
-                // окружений 02.10.2026). Тот же вызов делает страница «Стиль
-                // приложений → GTK» Параметров системы. Нет kded — шаг просто
-                // не удаётся, файлы выше уже записаны.
+                // The Plasma `gtkconfig` module (kded) hands the GTK theme to
+                // running programs — via xsettingsd (X11/XWayland) and GSettings.
+                // It doesn't learn about a manual write of `settings.ini`: a live
+                // kded6 kept `Net/ThemeName "Breeze"` until re-login (D4, desktops
+                // check 02.10.2026). The same call is made by the "Application
+                // Style → GTK" page of System Settings. No kded — the step simply
+                // fails, the files above are already written.
                 steps.push(ApplyStep::BestEffort(cmd(
                     &[
                         "dbus-send", "--session", "--print-reply", "--dest=org.kde.GtkConfig",
@@ -760,9 +763,9 @@ fn apply_gtk_plan_steps(
             }
         }
     }
-    // LXQt своего хранилища темы GTK не имеет: lxqt-config-appearance пишет
-    // `settings.ini` gtk-3.0/gtk-4.0 (и тот же gsettings, что выше). Без
-    // xsettingsd GTK-программы на LXQt читают именно файл — он и авторитетен.
+    // LXQt has no GTK theme storage of its own: lxqt-config-appearance writes the
+    // gtk-3.0/gtk-4.0 `settings.ini` (and the same gsettings as above). Without
+    // xsettingsd, GTK programs on LXQt read exactly the file — it is authoritative.
     if is_generic_wm(de) || de == "lxqt" {
         for v in ["gtk-3.0", "gtk-4.0"] {
             steps.push(gtk_ini_step(home, xdg_config_home, v, "gtk-theme-name", theme));
@@ -772,13 +775,13 @@ fn apply_gtk_plan_steps(
     Plan { steps, history_kind: "gtk" }
 }
 
-/// Порт `apply_icon_theme`. `valid` — результат [`is_valid_icon_theme`]
-/// (pre-flight): при `false` Python отказывает — здесь `None` (плана нет).
+/// Port of `apply_icon_theme`. `valid` is the result of [`is_valid_icon_theme`]
+/// (pre-flight): with `false` Python refuses — here `None` (no plan).
 pub fn apply_icon_plan(theme: &str, de: &str, home: &str, valid: bool) -> Option<Plan> {
     apply_icon_plan_xdg(theme, de, home, None, valid)
 }
 
-/// То же с учётом `$XDG_CONFIG_HOME`.
+/// The same, honoring `$XDG_CONFIG_HOME`.
 pub fn apply_icon_plan_xdg(
     theme: &str,
     de: &str,
@@ -809,12 +812,12 @@ pub fn apply_icon_plan_xdg(
                     None,
                 )));
             } else if de == "kde" {
-                // `--notify`: модуль Plasma `gtkconfig` и запущенные
-                // KDE-программы следят за kdeglobals через KConfigWatcher, а
-                // сигнал уходит только при записи с уведомлением. Без него
-                // GTK-программы под Plasma получали новые значки лишь после
-                // перезахода (Д4, проверка окружений 02.10.2026: с `--notify`
-                // `org.gnome.desktop.interface icon-theme` сменился сразу).
+                // `--notify`: the Plasma `gtkconfig` module and running KDE
+                // programs watch kdeglobals via KConfigWatcher, and the signal
+                // is sent only on a write with notification. Without it GTK
+                // programs under Plasma got the new icons only after re-login
+                // (D4, desktops check 02.10.2026: with `--notify`
+                // `org.gnome.desktop.interface icon-theme` changed at once).
                 steps.push(ApplyStep::Primary(cmd(
                     &[
                         "kwriteconfig6", "--file", "kdeglobals", "--group", "Icons", "--key", "Theme",
@@ -830,37 +833,37 @@ pub fn apply_icon_plan_xdg(
         }
     }
     if de == "cosmic" {
-        // Панель, cosmic-files и прочие программы libcosmic берут значки не
-        // из gsettings, а из своего ключа — туда же их пишет «Настройки
-        // COSMIC → Оформление» (cosmic-settings `drawer.rs`:
-        // `tk_config.set::<String>("icon_theme", …)`). Удалась запись —
-        // значки сменились и у них, даже если gsettings выше не ответил.
+        // The panel, cosmic-files and other libcosmic programs take icons not from
+        // gsettings but from their own key — "COSMIC Settings → Appearance" writes
+        // them there too (cosmic-settings `drawer.rs`:
+        // `tk_config.set::<String>("icon_theme", …)`). A successful write means the
+        // icons changed for them too, even if gsettings above didn't answer.
         if let Some(step) = cosmic_icon_theme_step(theme, home, xdg_config_home) {
             steps.push(step);
         }
     }
-    // На любом DE — gtk-3.0 и gtk-4.0 settings.ini.
+    // On any DE — gtk-3.0 and gtk-4.0 settings.ini.
     for v in ["gtk-3.0", "gtk-4.0"] {
         steps.push(gtk_ini_step(home, xdg_config_home, v, "gtk-icon-theme-name", theme));
     }
-    // У тайловых и LXQt авторитетны файлы, а не gsettings: без dconf он
-    // падает, и прежде `ForceOk` стоял ПОСЛЕ записей «если ok» — qt6ct и
-    // kdeglobals ниже тогда молча пропускались. Поэтому — до них.
+    // For tiling WMs and LXQt the files are authoritative, not gsettings: without
+    // dconf it fails, and previously `ForceOk` stood AFTER the "if ok" writes — qt6ct
+    // and kdeglobals below were then silently skipped. Hence — before them.
     if is_generic_wm(de) || de == "lxqt" {
         steps.push(ApplyStep::ForceOk);
     }
     if de == "lxqt" {
-        // Qt-часть LXQt (панель, pcmanfm-qt, lxqt-*) берёт значки из своего
-        // `lxqt.conf [General] icon_theme` — туда же пишет lxqt-config-appearance,
-        // и LXQt подхватывает файл на лету. gsettings выше — только для GTK.
+        // The Qt part of LXQt (panel, pcmanfm-qt, lxqt-*) takes icons from its
+        // `lxqt.conf [General] icon_theme` — lxqt-config-appearance writes there too,
+        // and LXQt picks up the file on the fly. gsettings above is only for GTK.
         steps.push(lxqt_ini_step(home, xdg_config_home, "lxqt.conf", "[General]", "icon_theme", theme));
     }
     let cfg = crate::utils::config_home(xdg_config_home, home);
     if de != "kde" {
-        // Программы KDE (Dolphin, Kate, Okular — KIconThemes) и вне Plasma
-        // берут набор значков из `kdeglobals [Icons] Theme`; без этой записи
-        // они оставались на Breeze в любом окружении, кроме KDE. Тот же ключ
-        // пишет Plasma, поэтому файл правится точечно, чужое не трогается.
+        // KDE programs (Dolphin, Kate, Okular — KIconThemes) also outside Plasma
+        // take the icon set from `kdeglobals [Icons] Theme`; without this write
+        // they stayed on Breeze in any desktop except KDE. Plasma writes the same
+        // key, so the file is edited pointwise, other things are not touched.
         steps.push(ApplyStep::IniSetGuarded {
             path: format!("{cfg}/kdeglobals"),
             section: "[Icons]".into(),
@@ -870,10 +873,10 @@ pub fn apply_icon_plan_xdg(
             keep_existing: false,
         });
     }
-    // Qt-программы под qt6ct/qt5ct берут значки из их конфига, а не из
-    // окружения: без этой записи выбор значков до Qt не доходил (Д2,
-    // проверка окружений 02.10.2026). Только если конфиг уже есть — как у
-    // шрифтов: нет файла, значит переключатель не настроен.
+    // Qt programs under qt6ct/qt5ct take icons from their config, not from the
+    // desktop: without this write the icon choice didn't reach Qt (D2, desktops
+    // check 02.10.2026). Only if the config already exists — as with fonts: no
+    // file means the switcher is not configured.
     for tool in QT_PLATFORM_THEME_TOOLS {
         steps.push(ApplyStep::IniSetGuarded {
             path: format!("{cfg}/{tool}/{tool}.conf"),
@@ -887,18 +890,17 @@ pub fn apply_icon_plan_xdg(
     Some(Plan { steps, history_kind: "icons" })
 }
 
-/// Ключ `cosmic-config` с темой значков libcosmic — путь от
-/// `$XDG_CONFIG_HOME`. Сверено с libcosmic `src/config/mod.rs`
-/// (`ID = "com.system76.CosmicTk"`, `#[version = 1]`, поле `icon_theme:
-/// String`) и `cosmic-config` (`Config::new`: `<config>/cosmic/<ID>/v<версия>`,
-/// один ключ — один файл).
+/// The `cosmic-config` key with the libcosmic icon theme — a path from
+/// `$XDG_CONFIG_HOME`. Checked against libcosmic `src/config/mod.rs`
+/// (`ID = "com.system76.CosmicTk"`, `#[version = 1]`, field `icon_theme:
+/// String`) and `cosmic-config` (`Config::new`: `<config>/cosmic/<ID>/v<version>`,
+/// one key — one file).
 pub const COSMIC_TK_ICON_THEME_REL: &str = "cosmic/com.system76.CosmicTk/v1/icon_theme";
 
-/// Строка в записи RON — так её пишет `cosmic-config`
-/// (`ron::ser::to_string_pretty`): в двойных кавычках, `\` и `"`
-/// экранированы. Управляющие символы (перевод строки и т.п.) в имени темы
-/// или пути — `None`: такого значения COSMIC не прочтёт как задумано, и
-/// писать его не будем.
+/// A string in a RON record — as `cosmic-config` writes it
+/// (`ron::ser::to_string_pretty`): in double quotes, `\` and `"` escaped.
+/// Control characters (newline etc.) in the theme name or path — `None`: COSMIC
+/// would not read such a value as intended, and we won't write it.
 pub fn cosmic_ron_string(value: &str) -> Option<String> {
     if value.is_empty() || value.chars().any(char::is_control) {
         return None;
@@ -906,7 +908,7 @@ pub fn cosmic_ron_string(value: &str) -> Option<String> {
     Some(format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\"")))
 }
 
-/// Шаг записи темы значков в ключ COSMIC ([`COSMIC_TK_ICON_THEME_REL`]).
+/// Step that writes the icon theme into the COSMIC key ([`COSMIC_TK_ICON_THEME_REL`]).
 fn cosmic_icon_theme_step(theme: &str, home: &str, xdg_config_home: Option<&str>) -> Option<ApplyStep> {
     let content = cosmic_ron_string(theme)?;
     let cfg = crate::utils::config_home(xdg_config_home, home);
@@ -915,13 +917,13 @@ fn cosmic_icon_theme_step(theme: &str, home: &str, xdg_config_home: Option<&str>
     Some(ApplyStep::WriteSetsOk { dir, path, content })
 }
 
-/// Порт `apply_cursor_theme`. `safe` — результат [`cursor_preflight_ok`]
-/// (санитайзер): при `false` Python отказывает — здесь `None`.
+/// Port of `apply_cursor_theme`. `safe` is the result of [`cursor_preflight_ok`]
+/// (the sanitizer): with `false` Python refuses — here `None`.
 pub fn apply_cursor_plan(theme: &str, de: &str, home: &str, safe: bool) -> Option<Plan> {
     apply_cursor_plan_xdg(theme, de, home, None, safe)
 }
 
-/// То же с учётом `$XDG_CONFIG_HOME`. Размер курсора не трогается — см.
+/// The same, honoring `$XDG_CONFIG_HOME`. The cursor size is not touched — see
 /// [`apply_cursor_plan_sized`].
 pub fn apply_cursor_plan_xdg(
     theme: &str,
@@ -934,51 +936,52 @@ pub fn apply_cursor_plan_xdg(
 }
 
 // ============================================================================
-// Курсор во всех окружениях: тема + размер
+// Cursor in all desktops: theme + size
 // ============================================================================
 //
-// Кто что читает (сверено с первоисточниками 30.09.2026):
-//   * KDE — `kcminputrc [Mouse] cursorTheme/cursorSize`, пишет их
-//     `plasma-apply-cursortheme [--size N]` (справка установленного бинаря);
+// Who reads what (checked against primary sources 30.09.2026):
+//   * KDE — `kcminputrc [Mouse] cursorTheme/cursorSize`, written by
+//     `plasma-apply-cursortheme [--size N]` (help of the installed binary);
 //   * GNOME/Budgie/Pantheon/COSMIC — `org.gnome.desktop.interface
-//     cursor-theme/size` (Gala — тот же Mutter),
+//     cursor-theme/size` (Gala is the same Mutter),
 //     Cinnamon — `org.cinnamon.desktop.interface`, MATE —
 //     `org.mate.peripherals-mouse`; XFCE — xsettings `/Gtk/CursorThemeName`
-//     и `/Gtk/CursorThemeSize` (строки xfsettingsd); LXQt —
-//     `session.conf [Mouse] cursor_theme/cursor_size` (читает lxqt-session при
-//     входе);
+//     and `/Gtk/CursorThemeSize` (xfsettingsd strings); LXQt —
+//     `session.conf [Mouse] cursor_theme/cursor_size` (read by lxqt-session at
+//     login);
 //   * sway — `seat <name> xcursor_theme <theme> [<size>]` (sway-input(5));
-//     seat0 заодно отдаёт XCURSOR_THEME/XCURSOR_SIZE своим детям и XWayland;
-//     `include <path>` (sway(5)) — последний задавший побеждает;
-//   * niri — `cursor { xcursor-theme "…"; xcursor-size N }` (вики niri,
-//     Configuration: Miscellaneous), `include "file.kdl"` с 25.11
-//     позиционный, разделы сливаются; конфиг перечитывается сам, курсор
-//     меняется на лету (niri.rs: `cursor_manager.reload`);
-//   * Hyprland — свой указатель при старте берёт из HYPRCURSOR_THEME/SIZE, а
-//     если такой hyprcursor-темы нет — из XCURSOR_THEME/SIZE
-//     (CursorManager.cpp v0.56.2); `hyprctl setcursor` меняет его в текущем
-//     сеансе и для XCursor-тем тоже (откат на XCursor с тем же именем).
-//     Конфиг 0.56 — `hyprland.lua`, если он есть, иначе старый
-//     `hyprland.conf` (Jeremy.cpp v0.56.2); в Lua другие файлы подключаются
-//     `require` (вики: Configuring → Core), в старом — `source =`;
-//   * всё остальное (Qt без платформенной темы, Electron, XWayland-программы)
-//     — XCURSOR_THEME/XCURSOR_SIZE, а без них тема `default`, то есть
-//     `~/.icons/default/index.theme`. Переменные кладём в
-//     `~/.config/environment.d` тем же механизмом, что у терминала и стиля Qt.
+//     seat0 also gives XCURSOR_THEME/XCURSOR_SIZE to its children and XWayland;
+//     `include <path>` (sway(5)) — the last one to set it wins;
+//   * niri — `cursor { xcursor-theme "…"; xcursor-size N }` (niri wiki,
+//     Configuration: Miscellaneous), `include "file.kdl"` is positional since
+//     25.11, sections are merged; the config is reread by itself, the cursor
+//     changes on the fly (niri.rs: `cursor_manager.reload`);
+//   * Hyprland — its own pointer at start takes HYPRCURSOR_THEME/SIZE, and if
+//     there is no such hyprcursor theme — XCURSOR_THEME/SIZE
+//     (CursorManager.cpp v0.56.2); `hyprctl setcursor` changes it in the
+//     current session for XCursor themes too (fallback to XCursor with the same
+//     name). The 0.56 config is `hyprland.lua` if it exists, otherwise the old
+//     `hyprland.conf` (Jeremy.cpp v0.56.2); in Lua other files are included
+//     with `require` (wiki: Configuring → Core), in the old one with `source =`;
+//   * everything else (Qt without a platform theme, Electron, XWayland
+//     programs) — XCURSOR_THEME/XCURSOR_SIZE, and without them the `default`
+//     theme, i.e. `~/.icons/default/index.theme`. We put the variables into
+//     `~/.config/environment.d` by the same mechanism as for the terminal and
+//     the Qt style.
 
-/// Размеры курсора на выбор — как в настройках KDE и GNOME.
+/// Cursor sizes to choose from — as in the KDE and GNOME settings.
 pub const CURSOR_SIZES: &[u32] = &[24, 32, 40, 48, 64, 96];
 
-/// Размер, когда его не задал никто.
+/// The size when nobody set it.
 pub const CURSOR_DEFAULT_SIZE: u32 = 24;
 
-/// Файл переменных окружения Rexon для курсора (рядом с `rexon-qt-style.conf`).
+/// Rexon environment variables file for the cursor (next to `rexon-qt-style.conf`).
 pub const CURSOR_ENV_FILE: &str = "rexon-cursor.conf";
 
-/// Метка управляемого блока Rexon в чужом конфиге композитора.
+/// Marker of the Rexon managed block in someone else's compositor config.
 pub const CURSOR_BLOCK_TAG: &str = "cursor";
 
-/// Тайловый композитор, у которого свой указатель задаётся в его конфиге.
+/// A tiling compositor whose own pointer is set in its config.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CursorWm {
@@ -988,7 +991,7 @@ pub enum CursorWm {
 }
 
 impl CursorWm {
-    /// По идентификатору окружения (`system::detect_current_de`).
+    /// By desktop identifier (`system::detect_current_de`).
     pub fn from_de(de: &str) -> Option<Self> {
         match de.to_lowercase().as_str() {
             "sway" => Some(CursorWm::Sway),
@@ -998,7 +1001,7 @@ impl CursorWm {
         }
     }
 
-    /// Имя для человека.
+    /// Human-readable name.
     pub fn label(self) -> &'static str {
         match self {
             CursorWm::Sway => "sway",
@@ -1008,8 +1011,8 @@ impl CursorWm {
     }
 }
 
-/// Синтаксис конфига композитора — от него зависят комментарий, строка
-/// подключения нашего файла и сам наш файл.
+/// Syntax of the compositor config — the comment, the include line of our file
+/// and our file itself depend on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WmSyntax {
@@ -1020,7 +1023,7 @@ pub enum WmSyntax {
 }
 
 impl WmSyntax {
-    /// Начало строчного комментария.
+    /// Start of a line comment.
     pub fn comment(self) -> &'static str {
         match self {
             WmSyntax::Sway | WmSyntax::HyprConf => "#",
@@ -1030,37 +1033,38 @@ impl WmSyntax {
     }
 }
 
-/// Один возможный конфиг композитора и наш файл рядом с ним.
+/// One possible compositor config and our file next to it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WmConfigFile {
-    /// Конфиг композитора (его ведёт человек; мы добавляем одну строку).
+    /// The compositor config (maintained by the person; we add one line).
     pub path: String,
     pub syntax: WmSyntax,
-    /// Наш файл (его ведём мы и переписываем целиком).
+    /// Our file (we maintain it and rewrite it whole).
     pub own_path: String,
     pub own_content: String,
-    /// Строка подключения нашего файла — единственное, что попадает в
-    /// конфиг человека (внутри управляемого блока).
+    /// The include line of our file — the only thing that goes into the person's
+    /// config (inside the managed block).
     pub include_line: String,
 }
 
-/// Запись курсора в конфиг тайлового композитора — что делает исполнитель
-/// [`ApplyStep::WmConfig`]:
-///   1. `min_version`: есть бинарь и он старше — ничего не трогаем
-///      (`include` у niri появился в 25.11, старый niri конфиг с ним не
-///      прочитает);
-///   2. берётся первый СУЩЕСТВУЮЩИЙ файл из `candidates` (порядок поиска
-///      самого композитора). Нет ни одного: если есть файл из `foreign`
-///      (sway читает конфиг i3, а i3 не знает команды `seat`) — не трогаем;
-///      иначе, если есть `seed` (системный конфиг sway), он копируется на
-///      место личного — так рекомендует сам sway, поведение не меняется;
-///      иначе — личного конфига нет, композитор создаст его сам при первом
-///      запуске, а курсор до тех пор придёт через `~/.icons/default`;
-///   3. пишется наш файл, затем в конфиг — управляемый блок
-///      ([`upsert_managed_block`]); до первой правки рядом кладётся копия
-///      `<конфиг>.rexon-bak`;
-///   4. `validate` (argv, путь конфига дописывается в конец): если конфиг
-///      был исправен, а после правки нет — исходный текст возвращается.
+/// Writing the cursor into a tiling compositor's config — what the
+/// [`ApplyStep::WmConfig`] executor does:
+///   1. `min_version`: the binary exists and is older — touch nothing (`include`
+///      appeared in niri 25.11, an old niri won't read a config with it);
+///   2. the first EXISTING file from `candidates` is taken (the compositor's own
+///      search order). None exists: if there is a file from `foreign` (sway
+///      reads the i3 config, and i3 doesn't know the `seat` command) — don't
+///      touch; otherwise, if there is a `seed` (the system sway config), it is
+///      copied in place of the personal one — sway itself recommends this, the
+///      behaviour doesn't change; otherwise there is no personal config, the
+///      compositor creates it itself on first start, and until then the cursor
+///      comes via `~/.icons/default`;
+///   3. our file is written, then a managed block goes into the config
+///      ([`upsert_managed_block`]); before the first edit a copy
+///      `<config>.rexon-bak` is put next to it;
+///   4. `validate` (argv, the config path is appended at the end): if the
+///      config was valid and isn't after the edit — the original text is
+///      restored.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WmConfigPlan {
     pub wm: CursorWm,
@@ -1071,65 +1075,65 @@ pub struct WmConfigPlan {
     pub min_version: Option<WmVersionGate>,
 }
 
-/// Чем засеять отсутствующий личный конфиг.
+/// What to seed a missing personal config with.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WmSeed {
     pub from: String,
-    /// Индекс в `candidates`, на место которого ложится копия.
+    /// Index in `candidates` whose place the copy takes.
     pub candidate: usize,
 }
 
-/// Минимальная версия композитора: argv спроса версии и порог (год, месяц).
+/// Minimal compositor version: argv of the version query and the threshold (year, month).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WmVersionGate {
     pub argv: Vec<String>,
     pub min: (u32, u32),
 }
 
-/// Чем кончилась запись в конфиг композитора.
+/// How writing into the compositor config ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WmConfigOutcome {
-    /// Блок на месте (записан сейчас или уже был).
+    /// The block is in place (written now or was already there).
     Written,
-    /// Личного конфига нет — композитор заведёт его сам при первом запуске.
+    /// No personal config — the compositor will create it itself on first start.
     NoConfig,
-    /// Конфиг чужой (sway на конфиге i3) — не трогали.
+    /// The config is foreign (sway on the i3 config) — not touched.
     Foreign,
-    /// Композитор слишком старый для `include`.
+    /// The compositor is too old for `include`.
     TooOld,
-    /// Записать не вышло (права, диск, ссылка в только-читаемое хранилище).
+    /// Writing failed (permissions, disk, a link into read-only storage).
     Failed,
-    /// Записали, проверка композитора конфиг отвергла — вернули как было.
+    /// Written, the compositor's check rejected the config — restored as it was.
     RolledBack,
 }
 
-/// Итог исполнения плана курсора: общий `ok` плюс то, что нужно, чтобы
-/// честно сказать человеку, где и когда курсор сменится.
+/// Result of running the cursor plan: the overall `ok` plus what is needed to
+/// honestly tell the person where and when the cursor will change.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CursorReport {
     pub ok: bool,
-    /// Удалась ли команда «сменить сейчас» (`swaymsg`, `hyprctl setcursor`);
-    /// `None` — такой команды в плане не было.
+    /// Whether the "change now" command succeeded (`swaymsg`, `hyprctl setcursor`);
+    /// `None` — there was no such command in the plan.
     pub live: Option<bool>,
-    /// Запись в конфиг композитора: композитор, итог, путь конфига.
+    /// Write into the compositor config: compositor, result, config path.
     pub wm: Option<(CursorWm, WmConfigOutcome, String)>,
-    /// Почему не применилось, если причина известна точно (Deepin:
-    /// [`crate::dde::refusal`]). Её и показываем вместо общего «не применено».
+    /// Why it wasn't applied, if the reason is known exactly (Deepin:
+    /// [`crate::dde::refusal`]). It is shown instead of the generic "not applied".
     pub reason: Option<String>,
 }
 
-/// Можно ли вписать имя темы в конфиг композитора как есть. Имена тем — это
-/// имена каталогов; кавычки, обратная косая, запятая (разделитель `env =` у
-/// Hyprland) и управляющие символы в них не встречаются, а встретятся — в
-/// конфиг человека мы такое не понесём.
+/// Whether a theme name can be put into the compositor config as is. Theme names
+/// are directory names; quotes, backslash, comma (the `env =` separator in
+/// Hyprland) and control characters don't occur in them, and if they do — we
+/// won't carry such a thing into the person's config.
 pub fn wm_safe_theme_name(theme: &str) -> bool {
     !theme.is_empty()
         && !theme.starts_with('-')
         && !theme.chars().any(|c| c.is_control() || matches!(c, '"' | '\\' | ',' | '\'' | '$' | '`'))
 }
 
-/// Имя темы в команде sway: в кавычках, если в нём есть пробел.
+/// Theme name in a sway command: in quotes if it contains a space.
 fn sway_quote(theme: &str) -> String {
     if theme.contains(' ') {
         format!("\"{theme}\"")
@@ -1138,15 +1142,15 @@ fn sway_quote(theme: &str) -> String {
     }
 }
 
-/// Путь в `include` sway. Аргумент проходит у sway три обработки: с него
-/// снимаются ВСЕ неэкранированные кавычки, потом снимается экранирование
-/// `\`, `$имя` подменяется переменной (`$$` — сам `$`), и только после этого
-/// путь уходит в wordexp, который режет по пробелам. Поэтому кавычки для
-/// wordexp пишутся экранированными (`\'`), а весь аргумент — в двойных
-/// кавычках, чтобы sway не разрезал его раньше. Проверено `sway --validate`
-/// (1.12) на пути с пробелом, апострофом и `$`.
+/// A path in a sway `include`. The argument goes through three passes in sway:
+/// ALL unescaped quotes are stripped from it, then `\` escaping is removed,
+/// `$name` is replaced by a variable (`$$` is `$` itself), and only after that
+/// the path goes to wordexp, which splits on spaces. So the quotes for wordexp
+/// are written escaped (`\'`), and the whole argument is in double quotes so
+/// that sway doesn't split it earlier. Verified with `sway --validate` (1.12)
+/// on a path with a space, an apostrophe and `$`.
 pub fn sway_path(path: &str) -> String {
-    // Буквы любого алфавита (`~/Загрузки`) ни sway, ни wordexp не трогают.
+    // Letters of any alphabet (`~/Загрузки`) are touched by neither sway nor wordexp.
     if path.chars().all(|c| c.is_alphanumeric() || "/._-+".contains(c)) {
         return path.to_string();
     }
@@ -1159,7 +1163,7 @@ pub fn sway_path(path: &str) -> String {
     format!("\"{escaped}\"")
 }
 
-/// Наш файл и строка подключения для конфига композитора.
+/// Our file and the include line for the compositor config.
 fn wm_config_file(
     syntax: WmSyntax,
     path: String,
@@ -1184,7 +1188,7 @@ fn wm_config_file(
             let name = own_path.rsplit('/').next().unwrap_or(&own_path).to_string();
             (
                 format!("{head}cursor {{\n    xcursor-theme \"{theme}\"\n{size}}}\n"),
-                // Относительно самого config.kdl: наш файл лежит рядом.
+                // Relative to config.kdl itself: our file lies next to it.
                 format!("include \"{name}\""),
             )
         }
@@ -1197,8 +1201,8 @@ fn wm_config_file(
                     "hl.env(\"XCURSOR_SIZE\", \"{s}\")\nhl.env(\"HYPRCURSOR_SIZE\", \"{s}\")\n"
                 ));
             }
-            // `pcall`: пропади наш файл — конфиг человека грузится дальше
-            // (голый `require` несуществующего модуля обрывает весь конфиг).
+            // `pcall`: should our file vanish, the person's config keeps loading
+            // (a bare `require` of a missing module aborts the whole config).
             (body, "pcall(require, \"rexon-cursor\")".to_string())
         }
         WmSyntax::HyprConf => {
@@ -1213,7 +1217,7 @@ fn wm_config_file(
     WmConfigFile { path, syntax, own_path, own_content, include_line }
 }
 
-/// План записи курсора в конфиг композитора (см. [`WmConfigPlan`]).
+/// Plan for writing the cursor into the compositor config (see [`WmConfigPlan`]).
 pub fn wm_cursor_config_plan(
     wm: CursorWm,
     theme: &str,
@@ -1227,7 +1231,7 @@ pub fn wm_cursor_config_plan(
     match wm {
         CursorWm::Sway => WmConfigPlan {
             wm,
-            // Порядок поиска sway(1): ~/.sway/config, $XDG_CONFIG_HOME/sway/config.
+            // sway(1) search order: ~/.sway/config, $XDG_CONFIG_HOME/sway/config.
             candidates: vec![
                 file(WmSyntax::Sway, format!("{home}/.sway/config"), format!("{home}/.sway/rexon-cursor.conf")),
                 file(WmSyntax::Sway, format!("{cfg}/sway/config"), format!("{cfg}/sway/rexon-cursor.conf")),
@@ -1254,7 +1258,7 @@ pub fn wm_cursor_config_plan(
         },
         CursorWm::Hyprland => WmConfigPlan {
             wm,
-            // Hyprland 0.56: hyprland.lua, если есть, иначе hyprland.conf.
+            // Hyprland 0.56: hyprland.lua if it exists, otherwise hyprland.conf.
             candidates: vec![
                 file(WmSyntax::HyprLua, format!("{cfg}/hypr/hyprland.lua"), format!("{cfg}/hypr/rexon-cursor.lua")),
                 file(WmSyntax::HyprConf, format!("{cfg}/hypr/hyprland.conf"), format!("{cfg}/hypr/rexon-cursor.conf")),
@@ -1267,7 +1271,7 @@ pub fn wm_cursor_config_plan(
     }
 }
 
-/// Версия «год.месяц» из вывода `niri --version` (`niri 26.04 (8ed0da4)`).
+/// The "year.month" version from the `niri --version` output (`niri 26.04 (8ed0da4)`).
 pub fn parse_wm_version(out: &str) -> Option<(u32, u32)> {
     let word = out.split_whitespace().find(|w| w.chars().next().is_some_and(|c| c.is_ascii_digit()))?;
     let mut parts = word.split('.');
@@ -1287,12 +1291,12 @@ fn block_markers(comment: &str, tag: &str) -> (String, String) {
     )
 }
 
-/// Вставить или обновить управляемый блок Rexon в чужом конфиге.
+/// Insert or update the Rexon managed block in someone else's config.
 ///
-/// Блок стоит в КОНЦЕ файла: у sway, niri и Hyprland побеждает последнее
-/// заданное значение, а всё, что человек написал до него, остаётся как было.
-/// Уже стоящий блок переписывается на месте (повторное применение не плодит
-/// строк). Всё вне маркеров не меняется ни на байт.
+/// The block goes at the END of the file: in sway, niri and Hyprland the last
+/// set value wins, and everything the person wrote before it stays as it was.
+/// An existing block is rewritten in place (applying again doesn't breed
+/// lines). Everything outside the markers doesn't change by a single byte.
 pub fn upsert_managed_block(existing: &str, comment: &str, tag: &str, body: &str) -> String {
     let (begin, end) = block_markers(comment, tag);
     let block = format!("{begin}\n{}\n{end}\n", body.trim_end());
@@ -1314,8 +1318,8 @@ pub fn upsert_managed_block(existing: &str, comment: &str, tag: &str, body: &str
     out
 }
 
-/// Откат: убрать управляемый блок Rexon (вместе с пустой строкой, которую
-/// добавил [`upsert_managed_block`]). Нет блока — текст как есть.
+/// Undo: remove the Rexon managed block (together with the empty line added by
+/// [`upsert_managed_block`]). No block — the text as is.
 pub fn remove_managed_block(existing: &str, comment: &str, tag: &str) -> String {
     let (begin, end) = block_markers(comment, tag);
     let (Some(b), Some(e)) = (existing.find(&begin), existing.find(&end)) else {
@@ -1331,7 +1335,7 @@ pub fn remove_managed_block(existing: &str, comment: &str, tag: &str) -> String 
     format!("{before}{after}")
 }
 
-/// Содержимое `environment.d/rexon-cursor.conf`.
+/// Contents of `environment.d/rexon-cursor.conf`.
 pub fn cursor_env_content(theme: &str, size: Option<u32>) -> String {
     let mut s = format!("XCURSOR_THEME={theme}\n");
     if let Some(n) = size {
@@ -1340,16 +1344,16 @@ pub fn cursor_env_content(theme: &str, size: Option<u32>) -> String {
     s
 }
 
-/// План применения курсора: тема и (если задан) размер — во всех окружениях.
+/// Cursor apply plan: the theme and (if set) the size — in all desktops.
 ///
-/// `size == None` — размер не трогается (так зовёт старый путь Python).
+/// `size == None` — the size is not touched (this is how the old Python path calls it).
 ///
-/// Где `ok` берётся из родного ключа окружения (KDE, gsettings, xfconf),
-/// там он им и остаётся. У тайловых композиторов и прочих окружений без
-/// своей настройки курсора прежний безусловный `ForceOk` убран: `ok` даёт
-/// запись НАШЕГО файла переменных окружения (он и есть настоящий эффект —
-/// после перезахода), а что сменилось сразу и где, исполнитель собирает в
-/// [`CursorReport`] для честного сообщения ([`cursor_apply_message`]).
+/// Where `ok` comes from the desktop's native key (KDE, gsettings, xfconf), it
+/// stays so. For tiling compositors and other desktops without their own cursor
+/// setting the former unconditional `ForceOk` is removed: `ok` comes from
+/// writing OUR environment variables file (it is the real effect — after
+/// re-login), and what changed at once and where, the executor collects into
+/// [`CursorReport`] for an honest message ([`cursor_apply_message`]).
 pub fn apply_cursor_plan_sized(
     theme: &str,
     size: Option<u32>,
@@ -1372,13 +1376,13 @@ pub fn apply_cursor_plan_sized(
         s @ Schemas::Gsettings(_) => {
             if let Some((schema, key)) = s.role("cursor") {
                 let set_theme = cmd(&["gsettings", "set", schema, key, theme], None);
-                // У тайловых gsettings — лишь подсказка GTK-программам через
-                // портал; без dconf он падает, а курсор композитора от этого
-                // не зависит. Решает не он.
+                // For tiling WMs gsettings is only a hint for GTK programs via the
+                // portal; without dconf it fails, and the compositor's cursor
+                // doesn't depend on it. It doesn't decide.
                 steps.push(if generic { ApplyStep::BestEffort(set_theme) } else { ApplyStep::Primary(set_theme) });
                 if let Some(n) = &size_s {
-                    // Размер — в той же схеме, что тема (у MATE это
-                    // `org.mate.peripherals-mouse`, а не interface).
+                    // The size is in the same schema as the theme (for MATE it is
+                    // `org.mate.peripherals-mouse`, not interface).
                     steps.push(ApplyStep::BestEffort(cmd(&["gsettings", "set", schema, "cursor-size", n], None)));
                 }
             }
@@ -1390,7 +1394,7 @@ pub fn apply_cursor_plan_sized(
                     None,
                 )));
                 if let Some(n) = &size_s {
-                    // `-n -t int`: свойства может ещё не быть (размер не меняли).
+                    // `-n -t int`: the property may not exist yet (the size was never changed).
                     steps.push(ApplyStep::BestEffort(cmd(
                         &["xfconf-query", "-c", "xsettings", "-p", "/Gtk/CursorThemeSize", "-n", "-t", "int", "-s", n],
                         None,
@@ -1419,7 +1423,7 @@ pub fn apply_cursor_plan_sized(
             }
         }
     }
-    // На любом DE — gtk-3.0 и gtk-4.0 settings.ini.
+    // On any DE — gtk-3.0 and gtk-4.0 settings.ini.
     for v in ["gtk-3.0", "gtk-4.0"] {
         steps.push(gtk_ini_step(home, xdg_config_home, v, "gtk-cursor-theme-name", theme));
         if let Some(n) = &size_s {
@@ -1427,18 +1431,18 @@ pub fn apply_cursor_plan_sized(
         }
     }
     if de == "lxqt" {
-        // Родной ключ LXQt — `session.conf [Mouse] cursor_theme` (его пишут
-        // lxqt-config-appearance и lxqt-config-input, читает lxqt-session при
-        // входе): курсор всего сеанса сменится после перезахода.
+        // The native LXQt key is `session.conf [Mouse] cursor_theme` (written by
+        // lxqt-config-appearance and lxqt-config-input, read by lxqt-session at
+        // login): the cursor of the whole session changes after re-login.
         steps.push(ApplyStep::ForceOk);
         steps.push(lxqt_ini_step(home, xdg_config_home, "session.conf", "[Mouse]", "cursor_theme", theme));
         if let Some(n) = &size_s {
             steps.push(lxqt_ini_step(home, xdg_config_home, "session.conf", "[Mouse]", "cursor_size", n));
         }
     }
-    // Переменные окружения — всем, кроме KDE: Plasma при входе сама ставит
-    // XCURSOR_* из kcminputrc, наш файл там был бы вторым, отстающим
-    // источником.
+    // Environment variables — for everyone except KDE: Plasma sets XCURSOR_* from
+    // kcminputrc itself at login, our file there would be a second, lagging
+    // source.
     if de != "kde" {
         let env = (
             format!("{cfg}/environment.d"),
@@ -1452,11 +1456,11 @@ pub fn apply_cursor_plan_sized(
         });
     }
     if de.eq_ignore_ascii_case("river") {
-        // river: своя команда меняет указатель сеанса сейчас и отдаёт
-        // XCURSOR_THEME/XCURSOR_SIZE программам, которые он запустит дальше
-        // (riverctl(1), `xcursor-theme <тема> [размер]`). При следующем входе
-        // river без своей строки в `init` грузит тему `default` — это
-        // `~/.icons/default` ниже.
+        // river: its own command changes the session pointer now and gives
+        // XCURSOR_THEME/XCURSOR_SIZE to the programs it launches afterwards
+        // (riverctl(1), `xcursor-theme <theme> [size]`). On the next login
+        // river without its own line in `init` loads the `default` theme —
+        // that is `~/.icons/default` below.
         let mut argv = vec!["riverctl", "xcursor-theme", theme];
         if let Some(n) = &size_s {
             argv.push(n);
@@ -1464,12 +1468,12 @@ pub fn apply_cursor_plan_sized(
         steps.push(ApplyStep::Live(cmd(&argv, Some(5))));
     }
     if de.eq_ignore_ascii_case("wayfire") {
-        // Wayfire: родной ключ `[input] cursor_theme`/`cursor_size`; конфиг он
-        // перечитывает сам и тут же грузит курсор заново (`config_reloaded` →
-        // `init_xcursor` в `seat/cursor.cpp`). Только в существующий конфиг:
-        // без него Wayfire берёт тему `default`, то есть `~/.icons/default`.
-        // Какой из двух файлов он читает, решает наличие `wayfire/wayfire.ini`
-        // — правится тот, что есть.
+        // Wayfire: the native key `[input] cursor_theme`/`cursor_size`; it rereads
+        // the config itself and reloads the cursor right away (`config_reloaded` →
+        // `init_xcursor` in `seat/cursor.cpp`). Only into an existing config:
+        // without it Wayfire takes the `default` theme, i.e. `~/.icons/default`.
+        // Which of the two files it reads is decided by whether
+        // `wayfire/wayfire.ini` exists — the existing one is edited.
         for path in [format!("{cfg}/wayfire/wayfire.ini"), format!("{cfg}/wayfire.ini")] {
             let mut keys = vec![("cursor_theme", theme.to_string())];
             if let Some(n) = &size_s {
@@ -1488,7 +1492,7 @@ pub fn apply_cursor_plan_sized(
         }
     }
     if let Some(wm) = CursorWm::from_de(de) {
-        // Сейчас — в работающем сеансе.
+        // Now — in the running session.
         match wm {
             CursorWm::Sway => {
                 let mut argv = vec!["swaymsg", "seat", "*", "xcursor_theme"];
@@ -1502,21 +1506,21 @@ pub fn apply_cursor_plan_sized(
             CursorWm::Hyprland => {
                 steps.push(ApplyStep::HyprctlCursor { theme: theme.to_string(), size: size_s.clone() });
             }
-            // niri перечитывает конфиг сам — отдельной команды не нужно. С
-            // 25.11 (с тех пор, как есть `include`) его сторож раз в 0,5 с
-            // сверяет время изменения и ВКЛЮЧЁННЫХ файлов тоже, поэтому
-            // переписанного `rexon-cursor.kdl` без касания config.kdl хватает
-            // (проверено по исходникам 25.11 и 26.04, `src/utils/watcher.rs`).
+            // niri rereads the config itself — no separate command needed.
+            // Since 25.11 (ever since there is `include`) its watcher checks
+            // the modification time of INCLUDED files too every 0.5 s, so a
+            // rewritten `rexon-cursor.kdl` without touching config.kdl is
+            // enough (checked in the 25.11 and 26.04 sources, `src/utils/watcher.rs`).
             CursorWm::Niri => {}
         }
-        // И навсегда — в конфиге композитора.
+        // And for good — in the compositor config.
         if wm_safe_theme_name(theme) {
             steps.push(ApplyStep::WmConfig(wm_cursor_config_plan(wm, theme, size, home, xdg_config_home)));
         }
     }
-    // Финал: при ok — ~/.icons/default/index.theme (тема `default`, её берут
-    // все, кому никто не сказал другого: X11, XWayland, композитор без
-    // своей настройки).
+    // Final: with ok — ~/.icons/default/index.theme (the `default` theme, taken by
+    // everyone who wasn't told otherwise: X11, XWayland, a compositor without its
+    // own setting).
     let dir = format!("{home}/.icons/default");
     steps.push(ApplyStep::WriteIfOk {
         path: format!("{dir}/index.theme"),
@@ -1526,22 +1530,22 @@ pub fn apply_cursor_plan_sized(
     Some(Plan { steps, history_kind: "cursor" })
 }
 
-/// Вернуть стандартный курсор окружения — тот, что назвала
-/// [`standard_theme_read_cmd`]. Нужен для тем из [`UNSAFE_CURSOR_THEMES`]:
-/// Adwaita — курсор по умолчанию в GNOME, Budgie, Cinnamon, и отказ «тема
-/// небезопасна» оставлял человека без пути назад (проверки GNOME и
-/// Cinnamon, 16.10.2026).
+/// Restore the desktop's standard cursor — the one named by
+/// [`standard_theme_read_cmd`]. Needed for themes from [`UNSAFE_CURSOR_THEMES`]:
+/// Adwaita is the default cursor in GNOME, Budgie, Cinnamon, and the "theme is
+/// unsafe" refusal left the person with no way back (GNOME and Cinnamon checks,
+/// 16.10.2026).
 ///
-/// Защита из-за которой список вводили, сохранена: имя небезопасной темы
-/// нигде не пишется явно. Родной ключ окружения СБРАСЫВАЕТСЯ к умолчанию
-/// схемы (`gsettings reset` — его ставит само окружение и с ним живёт), а
-/// наши прежние явные указания убираются: `gtk-cursor-theme-name` из
-/// `settings.ini` GTK (GTK берёт курсор окружения) и наш файл переменных
-/// `environment.d` (XCURSOR_* ставит само окружение). `~/.icons/default`
-/// не трогается: его мог положить не Rexon, а GTK и окружение берут курсор
-/// из своего ключа. `None` — у окружения нет родного ключа курсора в
-/// gsettings (KDE, XFCE, тайловые WM): там Adwaita стандартом не является,
-/// и прежний отказ остаётся.
+/// The protection the list was introduced for is kept: the name of an unsafe
+/// theme is never written explicitly. The desktop's native key is RESET to the
+/// schema default (`gsettings reset` — the desktop itself sets it and lives
+/// with it), and our former explicit settings are removed:
+/// `gtk-cursor-theme-name` from the GTK `settings.ini` (GTK takes the desktop's
+/// cursor) and our `environment.d` variables file (the desktop sets XCURSOR_*
+/// itself). `~/.icons/default` is not touched: it may have been put there not
+/// by Rexon, and GTK and the desktop take the cursor from their own key.
+/// `None` — the desktop has no native gsettings cursor key (KDE, XFCE, tiling
+/// WMs): there Adwaita is not the standard, and the former refusal stays.
 pub fn standard_cursor_plan(
     de: &str,
     size: Option<u32>,
@@ -1568,8 +1572,8 @@ pub fn standard_cursor_plan(
     Some(Plan { steps, history_kind: "cursor" })
 }
 
-/// Что сказать человеку после применения курсора — правду о том, где он уже
-/// сменился, а где сменится после перезахода.
+/// What to tell the person after applying the cursor — the truth about where it
+/// has already changed and where it will change after re-login.
 pub fn cursor_apply_message(de: &str, report: &CursorReport) -> String {
     if let (false, Some(reason)) = (report.ok, &report.reason) {
         return reason.clone();
@@ -1628,14 +1632,14 @@ pub fn cursor_apply_message(de: &str, report: &CursorReport) -> String {
     match de.to_lowercase().as_str() {
         "kde" => tr("Cursor applied"),
         "lxqt" => tr("Cursor applied. LXQt switches the whole session to it after you log in again."),
-        // Живая команда композитора удалась (river: `riverctl xcursor-theme`)
-        // — сменился и его собственный указатель.
+        // The compositor's live command succeeded (river: `riverctl xcursor-theme`)
+        // — its own pointer changed too.
         d if is_generic_wm(d) && report.live == Some(true) => {
             tr("Cursor applied. Some Qt and Electron apps pick it up after you log in again.")
         }
-        // COSMIC: своей настройки указателя нет, но cosmic-comp при входе
-        // берёт XCURSOR_THEME, а без неё — тему `default` (`~/.icons/default`),
-        // и то и другое Rexon уже записал.
+        // COSMIC: it has no pointer setting of its own, but cosmic-comp at login
+        // takes XCURSOR_THEME, and without it the `default` theme (`~/.icons/default`),
+        // and Rexon has already written both.
         d if d == "cosmic" || is_generic_wm(d) => tr(
             "Cursor applied for apps. The compositor's own pointer and some Qt and \
              Electron apps change after you log in again.",
@@ -1644,21 +1648,21 @@ pub fn cursor_apply_message(de: &str, report: &CursorReport) -> String {
     }
 }
 
-/// Откуда прочитать текущую тему или размер курсора — по порядку, первое
-/// непустое.
+/// Where to read the current cursor theme or size from — in order, the first
+/// non-empty one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CursorQuery {
-    /// Команда; ответ — её вывод без кавычек и пробелов.
+    /// A command; the answer is its output without quotes and spaces.
     Cmd(Cmd),
-    /// Ключ ini-файла (`section` без скобок).
+    /// An ini file key (`section` without brackets).
     Ini { path: String, section: String, key: String },
-    /// Переменная из файла `environment.d`.
+    /// A variable from an `environment.d` file.
     EnvFile { path: String, key: String },
-    /// Переменная окружения процесса.
+    /// A process environment variable.
     Env(String),
 }
 
-/// Где взять текущую тему (`size == false`) или размер (`true`) курсора.
+/// Where to get the current cursor theme (`size == false`) or size (`true`).
 pub fn cursor_queries(de: &str, home: &str, xdg_config_home: Option<&str>, size: bool) -> Vec<CursorQuery> {
     let cfg = crate::utils::config_home(xdg_config_home, home);
     let ini = |path: String, section: &str, key: &str| CursorQuery::Ini {
@@ -1687,7 +1691,7 @@ pub fn cursor_queries(de: &str, home: &str, xdg_config_home: Option<&str>, size:
         Schemas::NonGsettings if de == "deepin" => {
             let key = if size { crate::dde::CURSOR_SIZE } else { crate::dde::CURSOR_THEME };
             out.push(CursorQuery::Cmd(Cmd { argv: crate::dde::dconfig_get_argv(key), timeout: Some(5) }));
-            // Служба оформления пишет курсор и в settings.ini GTK.
+            // The appearance service also writes the cursor into the GTK settings.ini.
             out.push(ini(
                 gtk_ini_path(home, xdg_config_home, "gtk-3.0"),
                 "Settings",
@@ -1708,8 +1712,8 @@ pub fn cursor_queries(de: &str, home: &str, xdg_config_home: Option<&str>, size:
                 out.push(ini(format!("{cfg}/lxqt/session.conf"), "Mouse", if size { "cursor_size" } else { "cursor_theme" }));
             }
             if is_generic_wm(de) {
-                // Последний выбор, сделанный в Rexon, — он же в конфиге
-                // композитора.
+                // The last choice made in Rexon — the same one is in the compositor
+                // config.
                 out.push(env_file.clone());
             }
             if let Some((schema, _)) = s.role("cursor") {
@@ -1725,8 +1729,8 @@ pub fn cursor_queries(de: &str, home: &str, xdg_config_home: Option<&str>, size:
     out
 }
 
-/// Значение из ответа источника: без кавычек, пробелов и типа gsettings
-/// (`uint32 24`). Пусто — `None`.
+/// The value from a source's answer: without quotes, spaces and the gsettings
+/// type (`uint32 24`). Empty — `None`.
 pub fn clean_cursor_value(raw: &str) -> Option<String> {
     let v = raw.trim();
     let v = v.strip_prefix("uint32 ").or_else(|| v.strip_prefix("int32 ")).unwrap_or(v);
@@ -1738,7 +1742,7 @@ pub fn clean_cursor_value(raw: &str) -> Option<String> {
     }
 }
 
-/// Значение ключа ini-файла в секции (`section` без скобок).
+/// Value of an ini file key in a section (`section` without brackets).
 pub fn ini_key_value(content: &str, section: &str, key: &str) -> Option<String> {
     let mut here = false;
     for line in content.lines() {
@@ -1759,7 +1763,7 @@ pub fn ini_key_value(content: &str, section: &str, key: &str) -> Option<String> 
     None
 }
 
-/// Значение переменной из файла `environment.d` (`ИМЯ=значение`).
+/// Value of a variable from an `environment.d` file (`NAME=value`).
 pub fn env_file_key_value(content: &str, key: &str) -> Option<String> {
     content
         .lines()
@@ -1769,14 +1773,14 @@ pub fn env_file_key_value(content: &str, key: &str) -> Option<String> {
         .and_then(clean_cursor_value)
 }
 
-/// Размер курсора из ответа источника — только разумные числа.
+/// Cursor size from a source's answer — only reasonable numbers.
 pub fn parse_cursor_size(raw: &str) -> Option<u32> {
     clean_cursor_value(raw)?.parse::<u32>().ok().filter(|n| (8..=512).contains(n))
 }
 
-/// argv двух `hyprctl`-вызовов при известном размере — раскрытие
-/// [`ApplyStep::HyprctlCursor`] (для сверки; сам `gsettings get` cursor-size
-/// исполнитель делает отдельно, когда размер в плане не задан).
+/// argv of the two `hyprctl` calls with a known size — the expansion of
+/// [`ApplyStep::HyprctlCursor`] (for tests; the executor does the
+/// `gsettings get` cursor-size itself separately when the plan has no size).
 pub fn hyprctl_cursor_cmds(theme: &str, size: &str) -> [Cmd; 2] {
     [
         cmd(&["hyprctl", "setcursor", theme, size], None),
@@ -1784,22 +1788,22 @@ pub fn hyprctl_cursor_cmds(theme: &str, size: &str) -> [Cmd; 2] {
     ]
 }
 
-/// argv чтения размера курсора — часть [`ApplyStep::HyprctlCursor`].
+/// argv for reading the cursor size — part of [`ApplyStep::HyprctlCursor`].
 pub fn cursor_size_get_cmd() -> Cmd {
     cmd(&["gsettings", "get", "org.gnome.desktop.interface", "cursor-size"], None)
 }
 
 // ============================================================================
-// update_gtk_settings_ini — чистая read-modify-write трансформация
+// update_gtk_settings_ini — a pure read-modify-write transformation
 // ============================================================================
 
-/// Порт `_update_gtk_settings_ini`. `existing` — содержимое файла (None =
-/// файла нет). КВИРК оригинала сохранён: строка `{key}=` заменяется в ЛЮБОЙ
-/// секции (без проверки, что мы в `[Settings]`). Заголовок `[Settings]`
-/// дописывается в начало, если его нет; ключ — в конец, если не найден.
+/// Port of `_update_gtk_settings_ini`. `existing` is the file contents (None =
+/// no file). The original's QUIRK is kept: the `{key}=` line is replaced in ANY
+/// section (without checking that we are in `[Settings]`). The `[Settings]`
+/// header is prepended if missing; the key is appended if not found.
 pub fn update_gtk_settings_ini(existing: Option<&str>, key: &str, value: &str) -> String {
-    // Python читает f.readlines() — строки С завершающим '\n' (кроме, быть
-    // может, последней). split_inclusive воспроизводит это.
+    // Python reads f.readlines() — lines WITH the trailing '\n' (except maybe the
+    // last one). split_inclusive reproduces this.
     let lines: Vec<&str> = match existing {
         Some(text) => text.split_inclusive('\n').collect(),
         None => Vec::new(),
@@ -1834,14 +1838,14 @@ pub fn update_gtk_settings_ini(existing: Option<&str>, key: &str, value: &str) -
 }
 
 // ============================================================================
-// Обнаружение установленных тем — разбор index.theme (чистые функции)
+// Discovering installed themes — parsing index.theme (pure functions)
 // ============================================================================
 
-/// Порт `_is_valid_icon_theme`: тема валидна, если её `index.theme` содержит
-/// НЕПУСТОЙ `Directories=`. Курсорные темы такого ключа не имеют.
+/// Port of `_is_valid_icon_theme`: a theme is valid if its `index.theme` has a
+/// NON-EMPTY `Directories=`. Cursor themes don't have this key.
 ///
-/// Решает ПЕРВЫЙ из `icon_dirs`, где есть `{dir}/{name}/index.theme` (как в
-/// оригинале). `fs` — снимок ФС; пустое `name` → false.
+/// The FIRST of `icon_dirs` that has `{dir}/{name}/index.theme` decides (as in
+/// the original). `fs` is a file system snapshot; an empty `name` → false.
 pub fn is_valid_icon_theme(fs: &FsSnapshot, name: &str, icon_dirs: &[String]) -> bool {
     if name.is_empty() {
         return false;
@@ -1851,9 +1855,9 @@ pub fn is_valid_icon_theme(fs: &FsSnapshot, name: &str, icon_dirs: &[String]) ->
         if !fs.is_file(&idx) {
             continue;
         }
-        // Первый каталог с index.theme решает исход.
+        // The first directory with index.theme decides the outcome.
         let Some(content) = fs.read_text(&idx) else {
-            return false; // читаем как OSError → False
+            return false; // unreadable as OSError → False
         };
         for line in content.lines() {
             let s = line.trim();
@@ -1866,8 +1870,8 @@ pub fn is_valid_icon_theme(fs: &FsSnapshot, name: &str, icon_dirs: &[String]) ->
     false
 }
 
-/// Порт `list_gtk_themes`: подпапки `GTK_THEME_DIRS` с `gtk-3.0/` или
-/// `gtk-2.0/`. Результат отсортирован и дедуплицирован (как `sorted(set)`).
+/// Port of `list_gtk_themes`: subfolders of `GTK_THEME_DIRS` with `gtk-3.0/` or
+/// `gtk-2.0/`. The result is sorted and deduplicated (like `sorted(set)`).
 pub fn list_gtk_themes(fs: &FsSnapshot, home: &str) -> Vec<String> {
     let mut themes: Vec<String> = Vec::new();
     for d in gtk_theme_dirs(home) {
@@ -1887,8 +1891,9 @@ pub fn list_gtk_themes(fs: &FsSnapshot, home: &str) -> Vec<String> {
     sorted_set(themes)
 }
 
-/// Порт `list_icon_themes`: подпапки `ICON_DIRS` с `index.theme`, прошедшие
-/// [`is_valid_icon_theme`] (курсорные темы без `Directories=` отсеиваются).
+/// Port of `list_icon_themes`: subfolders of `ICON_DIRS` with `index.theme` that
+/// pass [`is_valid_icon_theme`] (cursor themes without `Directories=` are
+/// filtered out).
 pub fn list_icon_themes(fs: &FsSnapshot, home: &str) -> Vec<String> {
     let dirs = icon_dirs(home);
     let mut icons: Vec<String> = Vec::new();
@@ -1913,7 +1918,7 @@ pub fn list_icon_themes(fs: &FsSnapshot, home: &str) -> Vec<String> {
     sorted_set(icons)
 }
 
-/// Порт `list_cursor_themes`: подпапки `ICON_DIRS` с `cursors/`.
+/// Port of `list_cursor_themes`: subfolders of `ICON_DIRS` with `cursors/`.
 pub fn list_cursor_themes(fs: &FsSnapshot, home: &str) -> Vec<String> {
     let mut cursors: Vec<String> = Vec::new();
     for d in icon_dirs(home) {
@@ -1937,10 +1942,10 @@ fn sorted_set(mut v: Vec<String>) -> Vec<String> {
 }
 
 // ============================================================================
-// KDE Plasma темы: сканеры каталогов + apply-планы
+// KDE Plasma themes: directory scanners + apply plans
 // ============================================================================
 
-/// Каталоги look-and-feel (global) — порт `_KDE_DIRS["global"]`.
+/// look-and-feel (global) directories — port of `_KDE_DIRS["global"]`.
 pub fn kde_global_dirs(home: &str) -> [String; 2] {
     [
         format!("{home}/.local/share/plasma/look-and-feel"),
@@ -1948,7 +1953,7 @@ pub fn kde_global_dirs(home: &str) -> [String; 2] {
     ]
 }
 
-/// Каталоги Plasma Style — порт `_KDE_DIRS["plasma_style"]`.
+/// Plasma Style directories — port of `_KDE_DIRS["plasma_style"]`.
 pub fn kde_plasma_style_dirs(home: &str) -> [String; 2] {
     [
         format!("{home}/.local/share/plasma/desktoptheme"),
@@ -1956,7 +1961,7 @@ pub fn kde_plasma_style_dirs(home: &str) -> [String; 2] {
     ]
 }
 
-/// Каталоги цветовых схем — порт `_KDE_DIRS["colors"]`.
+/// Color scheme directories — port of `_KDE_DIRS["colors"]`.
 pub fn kde_color_dirs(home: &str) -> [String; 2] {
     [
         format!("{home}/.local/share/color-schemes"),
@@ -1964,12 +1969,12 @@ pub fn kde_color_dirs(home: &str) -> [String; 2] {
     ]
 }
 
-/// Каталоги Kvantum — порт `_KDE_DIRS["kvantum"]`.
+/// Kvantum directories — port of `_KDE_DIRS["kvantum"]`.
 pub fn kde_kvantum_dirs(home: &str) -> [String; 2] {
     kde_kvantum_dirs_xdg(None, home)
 }
 
-/// То же с учётом `$XDG_CONFIG_HOME`.
+/// The same, honoring `$XDG_CONFIG_HOME`.
 pub fn kde_kvantum_dirs_xdg(xdg_config_home: Option<&str>, home: &str) -> [String; 2] {
     [
         format!("{}/Kvantum", crate::utils::config_home(xdg_config_home, home)),
@@ -1977,20 +1982,21 @@ pub fn kde_kvantum_dirs_xdg(xdg_config_home: Option<&str>, home: &str) -> [Strin
     ]
 }
 
-/// Порт `list_kde_global_themes`: подпапки с `metadata.json` ИЛИ
-/// `metadata.desktop`. КВИРК приоритета операторов Python сохранён:
-/// условие `is_dir and isfile(json) or isfile(desktop)` — при наличии
-/// `metadata.desktop` тема добавляется ДАЖЕ если запись не каталог.
+/// Port of `list_kde_global_themes`: subfolders with `metadata.json` OR
+/// `metadata.desktop`. The Python operator precedence QUIRK is kept: the
+/// condition `is_dir and isfile(json) or isfile(desktop)` — with
+/// `metadata.desktop` present the theme is added EVEN if the entry is not a
+/// directory.
 pub fn list_kde_global_themes(fs: &FsSnapshot, home: &str) -> Vec<String> {
     kde_lnf_like_scan(fs, &kde_global_dirs(home))
 }
 
-/// Порт `list_kde_plasma_styles` (та же логика операторов, что global).
+/// Port of `list_kde_plasma_styles` (the same operator logic as global).
 pub fn list_kde_plasma_styles(fs: &FsSnapshot, home: &str) -> Vec<String> {
     kde_lnf_like_scan(fs, &kde_plasma_style_dirs(home))
 }
 
-// Общий обход для global/plasma_style: `(is_dir and isfile(A)) or isfile(B)`.
+// Common traversal for global/plasma_style: `(is_dir and isfile(A)) or isfile(B)`.
 fn kde_lnf_like_scan(fs: &FsSnapshot, dirs: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for d in dirs {
@@ -2010,7 +2016,7 @@ fn kde_lnf_like_scan(fs: &FsSnapshot, dirs: &[String]) -> Vec<String> {
     sorted_set(out)
 }
 
-/// Порт `list_kde_color_schemes`: файлы `*.colors` (без суффикса).
+/// Port of `list_kde_color_schemes`: `*.colors` files (without the suffix).
 pub fn list_kde_color_schemes(fs: &FsSnapshot, home: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for d in kde_color_dirs(home) {
@@ -2029,10 +2035,10 @@ pub fn list_kde_color_schemes(fs: &FsSnapshot, home: &str) -> Vec<String> {
     sorted_set(out)
 }
 
-/// Порт `list_kvantum_themes`: подпапки, где есть файл `*.kvconfig`.
-/// `kv_files` — для каждой темы список имён файлов внутри (порт
-/// `os.listdir(entry.path)` + `f.endswith(".kvconfig")`); отсутствует —
-/// считается пустым.
+/// Port of `list_kvantum_themes`: subfolders that have a `*.kvconfig` file.
+/// `kv_files` — for each theme, the list of file names inside (port of
+/// `os.listdir(entry.path)` + `f.endswith(".kvconfig")`); missing — counted as
+/// empty.
 pub fn list_kvantum_themes<F>(fs: &FsSnapshot, home: &str, dir_files: F) -> Vec<String>
 where
     F: Fn(&str) -> Vec<String>,
@@ -2055,8 +2061,8 @@ where
     sorted_set(out)
 }
 
-/// План чтения текущих KDE-тем — порт `get_current_kde_themes` (три
-/// `kreadconfig6`-вызова; исполнитель читает stdout, `"—"` при пустом/ошибке).
+/// Plan for reading the current KDE themes — port of `get_current_kde_themes`
+/// (three `kreadconfig6` calls; the executor reads stdout, `"—"` on empty/error).
 pub fn get_current_kde_cmds() -> [Cmd; 3] {
     [
         cmd(&["kreadconfig6", "--file", "kdeglobals", "--group", "KDE", "--key", "LookAndFeelPackage"], None),
@@ -2065,7 +2071,7 @@ pub fn get_current_kde_cmds() -> [Cmd; 3] {
     ]
 }
 
-/// Порт `apply_kde_global_theme` (timeout=15, history «kde-global»).
+/// Port of `apply_kde_global_theme` (timeout=15, history "kde-global").
 pub fn apply_kde_global_plan(theme: &str) -> Plan {
     Plan {
         steps: vec![ApplyStep::Primary(cmd(&["plasma-apply-lookandfeel", "-a", theme], Some(15)))],
@@ -2073,34 +2079,35 @@ pub fn apply_kde_global_plan(theme: &str) -> Plan {
     }
 }
 
-// ── Глобальная тема: «Применить «X»?» — оформление и расположение ─────────
+// ── Global theme: «Apply “X”?» — appearance and layout ───────────────────
 //
-// Plasma 6.8 перед применением глобальной темы спрашивает, ЧТО из неё
-// взять: «Оформление» (цвета, стили, значки, курсоры, шрифты, заставка,
-// обои, рамки) и «Расположение рабочего стола и виджетов» (раскладка
-// панелей и виджетов из `contents/layouts`, кнопки заголовка из
-// `contents/layouts/defaults`, размещение окон). Расположение по умолчанию
-// НЕ отмечено: оно сносит нынешние панели и виджеты.
+// Plasma 6.8, before applying a global theme, asks WHAT to take from it:
+// «Appearance» (colors, styles, icons, cursors, fonts, splash, wallpaper,
+// borders) and «Desktop and widget layout» (the panel and widget layout from
+// `contents/layouts`, title bar buttons from `contents/layouts/defaults`,
+// window placement). The layout is NOT checked by default: it wipes the
+// current panels and widgets.
 //
-// Расположение есть у ЛЮБОЙ темы с оформлением, как в KDE: недостающие
-// файлы темы Plasma берёт из запасного пакета, и это всегда Breeze —
-// `org.kde.breeze.desktop`, зашитый в структуру пакета глобальной темы, а не
-// тема по умолчанию из kdeglobals. Раскладка панелей у темы без своей —
-// раскладка Breeze, и подпись флажка говорит это прямо
-// ([`LnfLayout::desktop`] ложно). Отметка плитки «Содержит расположение
-// виджетов» — только у темы со своей раскладкой.
+// ANY theme with appearance has a layout, as in KDE: Plasma takes the theme's
+// missing files from the fallback package, and that is always Breeze —
+// `org.kde.breeze.desktop`, hard-coded in the global theme package structure,
+// not the default theme from kdeglobals. The panel layout of a theme without
+// its own is the Breeze layout, and the checkbox caption says so directly
+// ([`LnfLayout::desktop`] is false). The tile mark «Contains desktop layout»
+// is only for a theme with its own layout.
 
-/// Расположение, которое несёт глобальная тема.
+/// The layout a global theme carries.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct LnfLayout {
-    /// Есть сценарий `contents/layouts/*.js` — своя раскладка панелей и виджетов.
+    /// There is a `contents/layouts/*.js` script — its own panel and widget layout.
     pub desktop: bool,
-    /// Кнопки заголовка (`layouts/defaults`, `[kwinrc][org.kde.kdecoration2]`).
+    /// Title bar buttons (`layouts/defaults`, `[kwinrc][org.kde.kdecoration2]`).
     pub buttons: Option<(String, String)>,
-    /// Размещение окон (`defaults`, `[kwinrc][Windows] Placement`).
+    /// Window placement (`defaults`, `[kwinrc][Windows] Placement`).
     pub placement: Option<String>,
-    /// `BorderlessMaximizedWindows` из `layouts/defaults`; `Some("")` — файл
-    /// есть, ключа нет (Plasma тогда выключает «без рамки»), `None` — файла нет.
+    /// `BorderlessMaximizedWindows` from `layouts/defaults`; `Some("")` — the file
+    /// exists, the key doesn't (Plasma then turns "borderless" off), `None` — no
+    /// file.
     pub borderless: Option<String>,
 }
 
@@ -2110,10 +2117,10 @@ impl LnfLayout {
     }
 }
 
-/// Часть глобальной темы — флаг `KLookAndFeelManager::ContentFlags`
-/// Plasma 6.8 (значения [`LnfPart::bit`] те же). Окно «Выбрать, что
-/// применить…» показывает их флажками; обои ([`LnfPart::Wallpaper`]) Plasma
-/// 6.8 распознаёт, но не применяет и не показывает.
+/// A part of a global theme — a `KLookAndFeelManager::ContentFlags` flag of
+/// Plasma 6.8 (the [`LnfPart::bit`] values are the same). The «Choose What to
+/// Apply…» window shows them as checkboxes; Plasma 6.8 recognizes the wallpaper
+/// ([`LnfPart::Wallpaper`]) but neither applies nor shows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LnfPart {
@@ -2133,17 +2140,17 @@ pub enum LnfPart {
     WindowPlacement,
 }
 
-/// Все части оформления (`AppearanceSettings` Plasma).
+/// All appearance parts (Plasma `AppearanceSettings`).
 pub const LNF_APPEARANCE_MASK: u32 = (1 << 12) - 1;
-/// Все части расположения (`LayoutSettings` Plasma).
+/// All layout parts (Plasma `LayoutSettings`).
 pub const LNF_LAYOUT_MASK: u32 = (1 << 20) - (1 << 16);
-/// Части, которые после себя просят KWin перечитать настройки
-/// (`KWinSettings` Plasma).
+/// Parts that afterwards ask KWin to reread the settings (Plasma
+/// `KWinSettings`).
 const LNF_KWIN_MASK: u32 = (1 << 7) | (1 << 2) | (1 << 18) | (1 << 17) | (1 << 11);
 
 impl LnfPart {
-    /// Порядок окна Plasma 6.8 (`MoreOptions.qml`), обои — после
-    /// оформления, расположение — последним.
+    /// The order of the Plasma 6.8 window (`MoreOptions.qml`), wallpaper after
+    /// appearance, layout last.
     pub const ALL: [LnfPart; 14] = [
         LnfPart::Colors,
         LnfPart::WidgetStyle,
@@ -2161,7 +2168,7 @@ impl LnfPart {
         LnfPart::WindowPlacement,
     ];
 
-    /// Флаг Plasma.
+    /// Plasma flag.
     pub fn bit(self) -> u32 {
         match self {
             LnfPart::Colors => 1 << 0,
@@ -2185,7 +2192,7 @@ impl LnfPart {
         self.bit() & LNF_LAYOUT_MASK != 0
     }
 
-    /// Подпись флажка — тексты окна Plasma 6.8.
+    /// Checkbox caption — the texts of the Plasma 6.8 window.
     pub fn label(self) -> String {
         match self {
             LnfPart::Colors => trc("global theme part", "Colors"),
@@ -2205,32 +2212,32 @@ impl LnfPart {
     }
 }
 
-/// Маска списка частей.
+/// Mask of a list of parts.
 pub fn lnf_mask(parts: &[LnfPart]) -> u32 {
     parts.iter().fold(0, |m, p| m | p.bit())
 }
 
-/// Части маски по порядку [`LnfPart::ALL`].
+/// Parts of a mask in the [`LnfPart::ALL`] order.
 pub fn lnf_parts_of(mask: u32) -> Vec<LnfPart> {
     LnfPart::ALL.into_iter().filter(|p| mask & p.bit() != 0).collect()
 }
 
-/// Что несёт глобальная тема. `appearance` и `layout` — без подмены
-/// недостающего из Breeze (подпись флажка и отметка плитки); `parts` и
-/// `values` — как их видит Plasma: файла `defaults`, `layouts/defaults`,
-/// заставки или раскладки нет у темы — он берётся из запасного пакета
-/// ([`LNF_FALLBACK_PACKAGE`]), если тот есть на диске.
+/// What a global theme carries. `appearance` and `layout` — without filling the
+/// missing parts from Breeze (the checkbox caption and the tile mark); `parts`
+/// and `values` — as Plasma sees them: if the theme lacks the `defaults` file,
+/// `layouts/defaults`, the splash or the layout, it is taken from the fallback
+/// package ([`LNF_FALLBACK_PACKAGE`]) if that one is on disk.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct LnfContents {
-    /// Хоть одна настройка оформления.
+    /// At least one appearance setting.
     pub appearance: bool,
     pub layout: LnfLayout,
-    /// Части темы (`KLookAndFeelManager::packageContents`).
+    /// Theme parts (`KLookAndFeelManager::packageContents`).
     pub parts: Vec<LnfPart>,
-    /// Значения, которые части пишут: «группа/…/ключ» файла `defaults`
-    /// (`kdeglobals/General/ColorScheme`), только непустые.
+    /// The values the parts write: "group/…/key" of the `defaults` file
+    /// (`kdeglobals/General/ColorScheme`), non-empty only.
     pub values: BTreeMap<String, String>,
-    /// У темы свой файл цветов (`contents/colors`).
+    /// The theme has its own colors file (`contents/colors`).
     pub own_colors: bool,
 }
 
@@ -2248,7 +2255,7 @@ impl LnfContents {
     }
 }
 
-/// Ключи `defaults`, которые читают части (`KLookAndFeelManager::save`).
+/// `defaults` keys read by the parts (`KLookAndFeelManager::save`).
 const LNF_VALUE_KEYS: &[(&str, &str)] = &[
     ("kdeglobals/General", "ColorScheme"),
     ("kdeglobals/KDE", "widgetStyle"),
@@ -2270,8 +2277,8 @@ const LNF_VALUE_KEYS: &[(&str, &str)] = &[
     ("Wallpaper", "Image"),
 ];
 
-/// Каталог глобальной темы `theme`: сперва свой, потом системный — тот же
-/// порядок, что у Plasma. `None` — темы нет.
+/// Directory of global theme `theme`: first the user's, then the system one —
+/// the same order as Plasma's. `None` — no such theme.
 pub fn lnf_package_dir(io: &dyn crate::animations::LookIo, home: &str, theme: &str) -> Option<String> {
     if theme.is_empty() || theme.contains('/') {
         return None;
@@ -2282,43 +2289,43 @@ pub fn lnf_package_dir(io: &dyn crate::animations::LookIo, home: &str, theme: &s
         .find(|dir| !io.list_dir(dir).is_empty())
 }
 
-/// Значение ключа во вложенной группе файла `defaults` темы: путь групп
-/// «kdeglobals/General» — заголовок `[kdeglobals][General]`.
+/// Value of a key in a nested group of the theme's `defaults` file: the group
+/// path "kdeglobals/General" is the header `[kdeglobals][General]`.
 fn lnf_value(text: &str, group_path: &str, key: &str) -> Option<String> {
     let group = group_path.replace('/', "][");
     crate::shell_palette::ini_get(text, &group, key).filter(|v| !v.is_empty())
 }
 
-/// Состав глобальной темы в каталоге `dir` — те же признаки, по которым
-/// Plasma 6.8 решает, что тема несёт (без запасного пакета).
+/// Contents of the global theme in directory `dir` — the same signs by which
+/// Plasma 6.8 decides what the theme carries (without the fallback package).
 pub fn lnf_contents(io: &dyn crate::animations::LookIo, dir: &str) -> LnfContents {
     lnf_contents_with(io, dir, None)
 }
 
-/// Состав темы `theme` на машине `io`, как его видит Plasma: недостающие
-/// файлы — из запасного пакета ([`LNF_FALLBACK_PACKAGE`]). `None` — темы
-/// нет на диске.
+/// Contents of theme `theme` on machine `io` as Plasma sees them: missing files
+/// come from the fallback package ([`LNF_FALLBACK_PACKAGE`]). `None` — the theme
+/// is not on disk.
 pub fn lnf_contents_live(io: &dyn crate::animations::LookIo, home: &str, theme: &str) -> Option<LnfContents> {
     let dir = lnf_package_dir(io, home, theme)?;
     let fallback = lnf_package_dir(io, home, LNF_FALLBACK_PACKAGE).filter(|f| *f != dir);
     Some(lnf_contents_with(io, &dir, fallback.as_deref()))
 }
 
-/// [`lnf_contents`] с запасным пакетом в каталоге `fallback`.
+/// [`lnf_contents`] with the fallback package in directory `fallback`.
 ///
-/// Признаки частей — `KLookAndFeelManager::packageContents` Plasma 6.8:
-/// цвета — `ColorScheme` или свой файл `colors` (только при `defaults`),
-/// рамка — `library` или `NoPlugin`, размер рамки — `BorderSize`, шрифты —
-/// любой шрифт `[kdeglobals][General]` или `[kdeglobals][WM] activeFont`
-/// (и перепутанные группы, по которым ищет Plasma), заставка — `splash/Splash.qml`, раскладка —
-/// каталог `layouts`, кнопки заголовка — `layouts/defaults`.
+/// The part signs are Plasma 6.8 `KLookAndFeelManager::packageContents`:
+/// colors — `ColorScheme` or its own `colors` file (only with `defaults`),
+/// border — `library` or `NoPlugin`, border size — `BorderSize`, fonts — any
+/// font in `[kdeglobals][General]` or `[kdeglobals][WM] activeFont`
+/// (and the swapped groups Plasma searches in), splash — `splash/Splash.qml`, layout —
+/// the `layouts` directory, title bar buttons — `layouts/defaults`.
 pub fn lnf_contents_with(io: &dyn crate::animations::LookIo, dir: &str, fallback: Option<&str>) -> LnfContents {
     let contents = format!("{dir}/contents");
     let top = io.list_dir(&contents);
     let has = |name: &str| top.iter().any(|n| n == name);
     let defaults = io.read(&format!("{contents}/defaults"));
     let layout_defaults = io.read(&format!("{contents}/layouts/defaults"));
-    // Файл темы, а нет его — запасного пакета (так ищет KPackage).
+    // The theme's file, and if it's missing — the fallback package's (this is how KPackage looks).
     let fb = |rel: &str| fallback.and_then(|f| io.read(&format!("{f}/contents/{rel}")));
     let fb_has = |rel: &str, name: &str| {
         fallback.is_some_and(|f| {
@@ -2358,11 +2365,11 @@ pub fn lnf_contents_with(io: &dyn crate::animations::LookIo, dir: &str, fallback
         put(LnfPart::WindowSwitcher, provides("kwinrc/WindowSwitcher", &["LayoutName"]));
         put(LnfPart::WindowDecoration, provides(deco, &["library", "NoPlugin"]));
         put(LnfPart::BorderSize, provides(deco, &["BorderSize"]));
-        // ⭐ Починка: Plasma 6.8 ищет шрифты в перепутанных группах
-        // (`[WM] font…`, `[General] activeFont`), а пишет из тех, где они
-        // лежат у тем (`[General] font…`, `[WM] activeFont`), — у такой темы
-        // флажка «Шрифты» в Plasma нет, и шрифты не применяются. Здесь
-        // признаются оба места.
+        // ⭐ Fix: Plasma 6.8 looks for fonts in swapped groups
+        // (`[WM] font…`, `[General] activeFont`), but writes from where themes
+        // keep them (`[General] font…`, `[WM] activeFont`) — such a theme has no
+        // «Fonts» checkbox in Plasma, and the fonts are not applied. Here both
+        // places are recognized.
         let fonts = ["font", "fixed", "smallestReadableFont", "toolBarFont", "menuFont"];
         put(
             LnfPart::Fonts,
@@ -2379,8 +2386,8 @@ pub fn lnf_contents_with(io: &dyn crate::animations::LookIo, dir: &str, fallback
         .filter_map(|(group, key)| lnf_value(d, group, key).map(|v| (format!("{group}/{key}"), v)))
         .collect();
 
-    // Оформление и расположение — по файлам самой темы (подпись флажка
-    // «из Breeze», отметка плитки), как прежде.
+    // Appearance and layout — by the theme's own files (the "from Breeze"
+    // checkbox caption, the tile mark), as before.
     let own = defaults.as_deref().unwrap_or("");
     let own_provides = |group: &str, keys: &[&str]| keys.iter().any(|k| lnf_value(own, group, k).is_some());
     let appearance = own_splash
@@ -2396,8 +2403,8 @@ pub fn lnf_contents_with(io: &dyn crate::animations::LookIo, dir: &str, fallback
         || own_provides("kdeglobals/WM", &["font", "fixed", "smallestReadableFont", "toolBarFont", "menuFont"])
         || lnf_mask(&parts) & LNF_APPEARANCE_MASK != 0;
 
-    // Кнопки, «без рамки» и размещение окон — из файлов пакета (с запасным),
-    // как их читает `KLookAndFeelManager::save`.
+    // Buttons, "borderless" and window placement — from the package files (with
+    // the fallback), as `KLookAndFeelManager::save` reads them.
     let ld = pkg_layout_defaults.as_deref().unwrap_or("");
     let deco = "kwinrc/org.kde.kdecoration2";
     let buttons = match (lnf_value(ld, deco, "ButtonsOnLeft"), lnf_value(ld, deco, "ButtonsOnRight")) {
@@ -2415,24 +2422,24 @@ pub fn lnf_contents_with(io: &dyn crate::animations::LookIo, dir: &str, fallback
     LnfContents { appearance, layout, parts, values, own_colors }
 }
 
-/// Есть ли у темы своя раскладка панелей и виджетов — отметка плитки
-/// «Содержит расположение виджетов».
+/// Whether the theme has its own panel and widget layout — the tile mark
+/// «Contains desktop layout».
 ///
-/// Своя раскладка — сценарий `*.js` в `contents/layouts`: одни кнопки
-/// заголовка (`layouts/defaults`, так их несёт тема, сохранённая вне
-/// Plasma) раскладкой панелей не считаются.
+/// Its own layout is a `*.js` script in `contents/layouts`: title bar buttons
+/// alone (`layouts/defaults`, this is how a theme saved outside Plasma carries
+/// them) don't count as a panel layout.
 pub fn lnf_has_desktop_layout(io: &dyn crate::animations::LookIo, dir: &str) -> bool {
     io.list_dir(&format!("{dir}/contents/layouts")).iter().any(|n| n.ends_with(".js"))
 }
 
-/// Подпись плитки темы со своей раскладкой.
+/// Tile caption of a theme with its own layout.
 pub fn lnf_layout_badge() -> String {
     tr("Contains desktop layout")
 }
 
-/// Отметка плитки темы с диска: у глобальной темы со своей раскладкой
-/// (`item_id` — `local:global:…`, `install_path` — её каталог) —
-/// «Содержит расположение виджетов», у прочих — пусто.
+/// Mark of a theme tile from disk: for a global theme with its own layout
+/// (`item_id` is `local:global:…`, `install_path` is its directory) —
+/// «Contains desktop layout», for others — empty.
 pub fn lnf_tile_badge(item_id: &str, install_path: &str) -> String {
     if item_id.starts_with("local:global:")
         && !install_path.is_empty()
@@ -2446,30 +2453,30 @@ pub fn lnf_tile_badge(item_id: &str, install_path: &str) -> String {
     }
 }
 
-/// Что человек отметил в окне «Применить «X»?».
+/// What the person checked in the «Apply “X”?» window.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 pub struct GlobalChoice {
     pub appearance: bool,
     pub layout: bool,
-    /// Подробный вид окна («Выбрать, что применить…»): отмеченные части
-    /// маской [`LnfPart::bit`]. `None` — простой вид: оформление и
-    /// расположение целиком.
+    /// The detailed view of the window («Choose What to Apply…»): the checked parts
+    /// as an [`LnfPart::bit`] mask. `None` — the simple view: appearance and layout
+    /// as a whole.
     pub parts: Option<u32>,
 }
 
-/// Выбор вместе с составом темы — то, из чего собирается план.
+/// The choice together with the theme contents — what the plan is built from.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct GlobalPress {
     pub choice: GlobalChoice,
     pub contents: LnfContents,
-    /// Части, которые включает план раздела Rexon, а не ключ темы
-    /// ([`lnf_section_parts`]): шаги или причина, почему не вышло. Собирает
-    /// живой установщик теми же пробами, что у кнопки раздела.
+    /// Parts included by the plan of a Rexon section rather than the theme key
+    /// ([`lnf_section_parts`]): the steps or the reason why it failed. Built by
+    /// the live installer with the same probes as the section button.
     #[serde(skip)]
     pub sections: BTreeMap<LnfPart, Result<Vec<ApplyStep>, String>>,
 }
 
-/// Строка окна: флажок, строка-пункт без флажка или ничего.
+/// A window row: a checkbox, an item line without a checkbox, or nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GlobalRow {
@@ -2478,25 +2485,25 @@ pub enum GlobalRow {
     Hidden,
 }
 
-/// Флажок части в подробном виде окна.
+/// A part checkbox in the detailed view of the window.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalPartRow {
     pub id: LnfPart,
-    /// Что включает флажок: «Расположение рабочего стола» — вместе с
-    /// размещением окон, как в Plasma.
+    /// What the checkbox includes: "Desktop layout" — together with window
+    /// placement, as in Plasma.
     pub mask: u32,
     pub text: String,
-    /// Часть расположения (группа «Расположение:»), иначе оформления.
+    /// A layout part (the "Layout:" group), otherwise an appearance part.
     pub layout: bool,
     pub checked: bool,
-    /// Вне Plasma часть может не переноситься: флажок выключен, `reason` —
-    /// почему.
+    /// Outside Plasma a part may not carry over: the checkbox is disabled, `reason`
+    /// says why.
     pub enabled: bool,
     pub reason: String,
 }
 
-/// Окно «Применить «X»?» — всё, что рисует страница.
+/// The «Apply “X”?» window — everything the page draws.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalQuestion {
@@ -2508,34 +2515,34 @@ pub struct GlobalQuestion {
     pub layout_row: GlobalRow,
     pub layout_text: String,
     pub layout_checked: bool,
-    /// Показывается, пока отмечено расположение.
+    /// Shown while the layout is checked.
     pub layout_warning: String,
-    /// Тема не несёт ничего: окно объясняет, «Применить» выключена.
+    /// The theme carries nothing: the window explains, «Apply» is disabled.
     pub empty_text: String,
     pub apply_text: String,
     pub cancel_text: String,
-    /// Подробный вид: флажки частей, сначала расположение, потом
-    /// оформление (как в Plasma); частей, которых в теме нет, в списке нет.
+    /// Detailed view: part checkboxes, first layout, then appearance (as in
+    /// Plasma); parts the theme doesn't have are not in the list.
     pub parts: Vec<GlobalPartRow>,
     pub layout_heading: String,
     pub appearance_heading: String,
-    /// Кнопка «Выбрать, что применить…» / «Меньше параметров…»; доступна,
-    /// когда в теме есть оформление (как в Plasma).
+    /// The «Choose What to Apply…» / «Fewer Options…» button; available when the
+    /// theme has appearance (as in Plasma).
     pub more_text: String,
     pub fewer_text: String,
     pub more_enabled: bool,
-    /// Открыть сразу подробный вид — вне Plasma, где видно, что переносится.
+    /// Open the detailed view at once — outside Plasma, where it shows what carries over.
     pub detailed: bool,
-    /// Вне Plasma: как применяется тема на этом столе.
+    /// Outside Plasma: how the theme is applied on this desktop.
     pub outside_note: String,
 }
 
-/// Запасная глобальная тема Plasma: из неё берётся всё, чего в теме нет,
-/// в том числе раскладка панелей и виджетов.
+/// The fallback Plasma global theme: everything the theme lacks is taken from
+/// it, including the panel and widget layout.
 pub const LNF_FALLBACK_PACKAGE: &str = "org.kde.breeze.desktop";
 
-/// Части, доступные в окне: части темы, а у темы с оформлением — ещё и
-/// расположение (недостающее даёт Breeze).
+/// Parts available in the window: the theme's parts, and for a theme with
+/// appearance also the layout (Breeze supplies what is missing).
 pub fn lnf_available_mask(contents: &LnfContents) -> u32 {
     let mut mask = contents.mask();
     if contents.appearance || contents.layout.any() {
@@ -2544,9 +2551,9 @@ pub fn lnf_available_mask(contents: &LnfContents) -> u32 {
     mask
 }
 
-/// Почему часть темы не переносится на стол `de` (не Plasma); `None` —
-/// переносится. Переносится то, что у Rexon есть для любого стола: цвета
-/// (слой Qt), стиль приложений, значки, курсоры, шрифты, кнопки заголовка.
+/// Why a theme part doesn't carry over to desktop `de` (not Plasma); `None` —
+/// it carries over. What carries over is what Rexon has for any desktop: colors
+/// (the Qt layer), application style, icons, cursors, fonts, title bar buttons.
 pub fn lnf_part_outside(part: LnfPart, contents: &LnfContents, de: &str) -> Option<String> {
     use crate::de_customization::{de_from_id, De};
     let deepin = de_from_id(de) == Some(De::Deepin);
@@ -2572,13 +2579,13 @@ pub fn lnf_part_outside(part: LnfPart, contents: &LnfContents, de: &str) -> Opti
     }
 }
 
-/// Цвета темы — только своим файлом, без имени схемы: их вносит лишь
-/// применение темы целиком (`plasma-apply-lookandfeel`).
+/// Theme colors — only as its own file, without a scheme name: they are brought
+/// in only by applying the whole theme (`plasma-apply-lookandfeel`).
 fn lnf_own_colors_reason() -> String {
     tr("the theme keeps its colors only in its own file, which only applying the whole theme in Plasma brings in")
 }
 
-/// Части, которые можно отметить на столе `de`.
+/// Parts that can be checked on desktop `de`.
 fn lnf_allowed_mask(contents: &LnfContents, de: &str) -> u32 {
     if de == "kde" {
         return u32::MAX;
@@ -2586,10 +2593,10 @@ fn lnf_allowed_mask(contents: &LnfContents, de: &str) -> u32 {
     LnfPart::ALL.into_iter().filter(|p| lnf_part_outside(*p, contents, de).is_none()).fold(0, |m, p| m | p.bit())
 }
 
-/// Части, которые включает план раздела Rexon — те же шаги, что у кнопки
-/// «Применить» в разделе «Значки», «Курсоры»…: в Plasma — значки и курсоры
-/// (их план проверяет тему), вне Plasma — ещё цвета (слой Qt), стиль
-/// приложений и кнопки заголовка.
+/// Parts included by the plan of a Rexon section — the same steps as the
+/// «Apply» button in the «Icons», «Cursors»… sections: in Plasma — icons and
+/// cursors (their plan checks the theme), outside Plasma — also colors (the Qt
+/// layer), application style and title bar buttons.
 pub fn lnf_section_parts(de: &str) -> &'static [LnfPart] {
     if de == "kde" {
         &[LnfPart::Icons, LnfPart::Cursors]
@@ -2598,9 +2605,8 @@ pub fn lnf_section_parts(de: &str) -> &'static [LnfPart] {
     }
 }
 
-/// Имя, которое часть передаёт плану раздела: схема, стиль, тема значков
-/// или курсоров. Стиль `breeze` со строчной — `Breeze`, как поправляет
-/// Plasma.
+/// The name a part passes to the section plan: scheme, style, icon or cursor
+/// theme. The lowercase style `breeze` becomes `Breeze`, as Plasma corrects it.
 pub fn lnf_section_value(contents: &LnfContents, part: LnfPart) -> Option<String> {
     let key = match part {
         LnfPart::Colors => "kdeglobals/General/ColorScheme",
@@ -2613,27 +2619,27 @@ pub fn lnf_section_value(contents: &LnfContents, part: LnfPart) -> Option<String
     Some(if part == LnfPart::WidgetStyle && v == "breeze" { "Breeze".to_string() } else { v.to_string() })
 }
 
-/// Окно для темы `display` с составом `contents` в Plasma. `plasma_locked`
-/// — виджеты Plasma закреплены (`org.kde.PlasmaShell.immutable`): флажка
-/// расположения тогда нет, как и в Plasma.
+/// The window for theme `display` with contents `contents` in Plasma.
+/// `plasma_locked` — Plasma widgets are locked (`org.kde.PlasmaShell.immutable`):
+/// then there is no layout checkbox, just as in Plasma.
 pub fn global_question(display: &str, contents: &LnfContents, plasma_locked: bool) -> GlobalQuestion {
     global_question_in(display, contents, plasma_locked, "kde")
 }
 
-/// Окно для стола `de`. Вне Plasma окно сразу подробное: части, которые
-/// сюда не переносятся, стоят выключенными с причиной.
+/// The window for desktop `de`. Outside Plasma the window is detailed at once:
+/// parts that don't carry over here are disabled with a reason.
 pub fn global_question_in(display: &str, contents: &LnfContents, plasma_locked: bool, de: &str) -> GlobalQuestion {
     let outside = de != "kde";
     let avail = lnf_available_mask(contents);
     let allowed = lnf_allowed_mask(contents, de);
     let a = contents.appearance;
-    // Расположение доступно у любой темы с оформлением (недостающее — из
-    // Breeze); тема без оформления — только когда своё расположение есть.
+    // The layout is available for any theme with appearance (the missing parts
+    // from Breeze); a theme without appearance — only when it has its own layout.
     let l = a || contents.layout.any();
     let carried = avail & allowed;
     let (appearance_row, layout_row) = if outside {
-        // Вне Plasma расположение не переносится; оформление — одной
-        // строкой: «то, что переносится» (список — в подробном виде).
+        // Outside Plasma the layout doesn't carry over; appearance — as one line:
+        // "what carries over" (the list is in the detailed view).
         (if carried & LNF_APPEARANCE_MASK != 0 { GlobalRow::Bullet } else { GlobalRow::Hidden }, GlobalRow::Hidden)
     } else {
         (
@@ -2650,7 +2656,7 @@ pub fn global_question_in(display: &str, contents: &LnfContents, plasma_locked: 
         )
     };
 
-    // Подробный вид — флажки `MoreOptions.qml` Plasma 6.8.
+    // Detailed view — the checkboxes of the Plasma 6.8 `MoreOptions.qml`.
     let mut parts = Vec::new();
     let has_app_parts = avail & LNF_APPEARANCE_MASK & !LnfPart::Wallpaper.bit() != 0;
     let mut row = |part: LnfPart, mask: u32| {
@@ -2659,8 +2665,8 @@ pub fn global_question_in(display: &str, contents: &LnfContents, plasma_locked: 
         }
         let reason = if outside { lnf_part_outside(part, contents, de) } else { None };
         let enabled = reason.is_none();
-        // По умолчанию — всё, что тема несёт, кроме расположения при
-        // оформлении (`resetSelectedContents`).
+        // By default — everything the theme carries, except the layout when there is
+        // appearance (`resetSelectedContents`).
         let checked = enabled && (!part.is_layout() || !has_app_parts);
         parts.push(GlobalPartRow {
             id: part,
@@ -2697,8 +2703,8 @@ pub fn global_question_in(display: &str, contents: &LnfContents, plasma_locked: 
         heading: tr("The following will be applied by this Global Theme:"),
         appearance_row,
         appearance_text: tr("Appearance settings"),
-        // Оформление отмечено всегда, когда оно есть; расположение — только
-        // когда кроме него в теме ничего нет.
+        // Appearance is always checked when present; layout — only when the theme
+        // has nothing else.
         appearance_checked: if outside { appearance_row != GlobalRow::Hidden } else { a },
         layout_row,
         layout_text: if contents.layout.desktop {
@@ -2729,13 +2735,13 @@ pub fn global_question_in(display: &str, contents: &LnfContents, plasma_locked: 
     }
 }
 
-/// Закреплены ли виджеты Plasma: ответ `dbus-send --print-reply` на
-/// `org.kde.PlasmaShell.immutable` («boolean true»).
+/// Whether Plasma widgets are locked: the `dbus-send --print-reply` answer to
+/// `org.kde.PlasmaShell.immutable` ("boolean true").
 pub fn parse_plasma_immutable(reply: &str) -> bool {
     reply.split_whitespace().last() == Some("true")
 }
 
-/// argv вопроса «закреплены ли виджеты».
+/// argv of the "are the widgets locked" query.
 pub fn plasma_immutable_argv() -> Vec<String> {
     [
         "dbus-send",
@@ -2750,8 +2756,8 @@ pub fn plasma_immutable_argv() -> Vec<String> {
     .collect()
 }
 
-/// Окно для темы `theme` на машине `io` и столе `de`. `None` — темы нет
-/// на диске.
+/// The window for theme `theme` on machine `io` and desktop `de`. `None` — the
+/// theme is not on disk.
 pub fn global_question_live(
     io: &dyn crate::animations::LookIo,
     home: &str,
@@ -2767,9 +2773,9 @@ pub fn global_question_live(
     Some(global_question_in(display, &contents, locked, de))
 }
 
-/// Что применить: отмеченное ∩ то, что тема несёт ∩ то, что переносится
-/// на стол `de` (как у Plasma, флажок части, которой нет, ничего не
-/// включает).
+/// What to apply: checked ∩ what the theme carries ∩ what carries over to
+/// desktop `de` (as in Plasma, a checkbox of a part that isn't there includes
+/// nothing).
 pub fn global_selection(press: &GlobalPress, de: &str) -> u32 {
     let c = &press.choice;
     let want = c.parts.unwrap_or_else(|| {
@@ -2778,19 +2784,19 @@ pub fn global_selection(press: &GlobalPress, de: &str) -> u32 {
     want & lnf_available_mask(&press.contents) & lnf_allowed_mask(&press.contents, de)
 }
 
-/// План по выбору человека и что из отмеченного не вышло (часть — причина).
+/// The plan by the person's choice and what of the checked failed (part — reason).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlobalPlan {
     pub plan: Plan,
     pub skipped: Vec<String>,
 }
 
-/// План «Применить» глобальной темы в Plasma. `None` — не отмечено ничего.
+/// The «Apply» plan of a global theme in Plasma. `None` — nothing is checked.
 pub fn apply_kde_global_choice_plan(theme: &str, press: &GlobalPress) -> Option<Plan> {
     apply_global_choice_plan(theme, press, "kde").map(|g| g.plan)
 }
 
-/// `kwriteconfig6 … --notify` — так части пишет `KLookAndFeelManager`.
+/// `kwriteconfig6 … --notify` — this is how `KLookAndFeelManager` writes the parts.
 fn lnf_kwrite(file: &str, group: &str, key: &str, value: &str, notify: bool) -> Cmd {
     let mut argv = vec!["kwriteconfig6", "--file", file, "--group", group, "--key", key];
     if notify {
@@ -2800,7 +2806,7 @@ fn lnf_kwrite(file: &str, group: &str, key: &str, value: &str, notify: bool) -> 
     cmd(&argv, None)
 }
 
-/// Команды подряд: первая решает `ok`, следующие — только при её успехе.
+/// Commands in a row: the first decides `ok`, the next ones only on its success.
 fn lnf_chain(cmds: Vec<Cmd>) -> Vec<ApplyStep> {
     cmds.into_iter()
         .enumerate()
@@ -2808,9 +2814,9 @@ fn lnf_chain(cmds: Vec<Cmd>) -> Vec<ApplyStep> {
         .collect()
 }
 
-/// Шаги одной части оформления в Plasma — те же ключи и команды, что у
-/// `KLookAndFeelManager::save` Plasma 6.8; значки и курсоры — план раздела
-/// ([`GlobalPress::sections`]). `Err` — почему часть не применится.
+/// Steps of one appearance part in Plasma — the same keys and commands as in
+/// Plasma 6.8 `KLookAndFeelManager::save`; icons and cursors — the section plan
+/// ([`GlobalPress::sections`]). `Err` — why the part won't be applied.
 fn kde_part_steps(theme: &str, press: &GlobalPress, part: LnfPart) -> Result<Vec<ApplyStep>, String> {
     let c = &press.contents;
     let deco = "org.kde.kdecoration2";
@@ -2877,15 +2883,15 @@ fn kde_part_steps(theme: &str, press: &GlobalPress, part: LnfPart) -> Result<Vec
                 lnf_kwrite("ksplashrc", "KSplash", "Engine", "KSplashQML", false),
             ])
         }
-        // Обои Plasma 6.8 из темы не применяет; части расположения — в
+        // Plasma 6.8 doesn't apply the wallpaper from a theme; layout parts are in
         // [`kde_layout_steps`].
         _ => Vec::new(),
     })
 }
 
-/// Шаги расположения `lay` — как в Plasma: раскладка через plasmashell (без
-/// своей — Breeze подставит сама Plasma), кнопки заголовка, «без рамки» у
-/// развёрнутых, размещение окон.
+/// Steps of layout `lay` — as in Plasma: the layout via plasmashell (without
+/// its own, Plasma substitutes Breeze itself), title bar buttons,
+/// "borderless" for maximized windows, window placement.
 fn kde_layout_steps(theme: &str, c: &LnfContents, lay: u32) -> Vec<ApplyStep> {
     let lay_bits = &c.layout;
     let kwrite = |file: &str, group: &str, key: &str, value: &str| ApplyStep::IfOk(lnf_kwrite(file, group, key, value, true));
@@ -2921,27 +2927,27 @@ fn kde_layout_steps(theme: &str, c: &LnfContents, lay: u32) -> Vec<ApplyStep> {
     steps
 }
 
-/// «KWin, перечитай настройки» — один раз в конце, как у Plasma.
+/// "KWin, reread the settings" — once at the end, as in Plasma.
 fn kwin_reload_step() -> ApplyStep {
     ApplyStep::IfOk(cmd(&["dbus-send", "--session", "--type=signal", "/KWin", "org.kde.KWin.reloadConfig"], None))
 }
 
-/// План «Применить» глобальной темы по выбору человека на столе `de`.
-/// `None` — не отмечено ничего.
+/// The «Apply» plan of a global theme by the person's choice on desktop `de`.
+/// `None` — nothing is checked.
 ///
 /// Plasma (`apply_kde_global_choice_plan`):
-/// * всё оформление темы — `plasma-apply-lookandfeel -a` (тот же
-///   `KLookAndFeelManager::save`, что у окна Plasma); всё расположение —
-///   плюс `--resetLayout`, часть расположения — её шаги следом;
-/// * часть оформления — у `plasma-apply-lookandfeel` такого режима нет,
-///   поэтому шаги те же, что делает сама Plasma для каждой отмеченной
-///   части: тема записывается выбранной, каждая часть — своими ключами и
-///   командами (`plasma-apply-colorscheme`, `plasma-apply-desktoptheme`,
-///   значки и курсоры — планом раздела), затем KWin перечитывает настройки.
+/// * all of the theme's appearance — `plasma-apply-lookandfeel -a` (the same
+///   `KLookAndFeelManager::save` as in the Plasma window); the whole layout —
+///   plus `--resetLayout`, a part of the layout — its steps after that;
+/// * a part of the appearance — `plasma-apply-lookandfeel` has no such mode,
+///   so the steps are the same Plasma itself does for each checked part: the
+///   theme is recorded as chosen, each part is written with its own keys and
+///   commands (`plasma-apply-colorscheme`, `plasma-apply-desktoptheme`, icons
+///   and cursors — by the section plan), then KWin rereads the settings.
 ///
-/// Вне Plasma — те же части, что у «Как в дистрибутиве»: цвета — слоем Qt,
-/// стиль приложений, значки, курсоры и кнопки заголовка — планом раздела
-/// Rexon для этого стола, шрифты — родными ключами стола.
+/// Outside Plasma — the same parts as in «Distro Looks»: colors via the Qt
+/// layer, application style, icons, cursors and title bar buttons — by the
+/// Rexon section plan for this desktop, fonts — by the desktop's native keys.
 pub fn apply_global_choice_plan(theme: &str, press: &GlobalPress, de: &str) -> Option<GlobalPlan> {
     let sel = global_selection(press, de);
     if sel == 0 {
@@ -2955,8 +2961,8 @@ pub fn apply_global_choice_plan(theme: &str, press: &GlobalPress, de: &str) -> O
     let selectable = avail & LNF_APPEARANCE_MASK & !LnfPart::Wallpaper.bit();
     let app = sel & LNF_APPEARANCE_MASK & !LnfPart::Wallpaper.bit();
     let lay = sel & LNF_LAYOUT_MASK;
-    // Всё оформление темы (у темы с одними обоями — и они: Plasma их не
-    // применяет, но и `-a` на такой теме ничего лишнего не делает).
+    // The whole appearance of the theme (for a theme with only a wallpaper — that
+    // too: Plasma doesn't apply it, but `-a` on such a theme does nothing extra).
     if sel & LNF_APPEARANCE_MASK != 0 && app == selectable {
         let mut plan = apply_kde_global_plan(theme);
         if lay != 0 && lay == avail & LNF_LAYOUT_MASK {
@@ -2989,14 +2995,14 @@ pub fn apply_global_choice_plan(theme: &str, press: &GlobalPress, de: &str) -> O
     Some(GlobalPlan { plan: Plan { steps, history_kind: "kde-global" }, skipped })
 }
 
-/// Шрифт KDE (`Семейство,10,-1,5,…`) — семейство, кегль и начертание
-/// (жирность и наклон из полей QFont).
+/// A KDE font (`Family,10,-1,5,…`) — family, size and style (weight and slant
+/// from the QFont fields).
 fn kde_font_parts(raw: &str) -> Option<(String, i32, crate::qt_settings::FontFace)> {
     let (family, size, face) = crate::qt_settings::parse_font_spec_face(raw);
     (!family.is_empty() && size > 0).then_some((family, size, face))
 }
 
-/// Вне Plasma: шаги отмеченных частей одна за другой.
+/// Outside Plasma: the steps of the checked parts one after another.
 fn outside_global_plan(press: &GlobalPress, de: &str, sel: u32) -> GlobalPlan {
     let c = &press.contents;
     let mut steps = Vec::new();
@@ -3004,9 +3010,9 @@ fn outside_global_plan(press: &GlobalPress, de: &str, sel: u32) -> GlobalPlan {
     for part in lnf_parts_of(sel) {
         let got = match part {
             LnfPart::Fonts => {
-                // Интерфейс, моноширинный и заголовок — у каждого стола свои
-                // ключи ([`crate::qt_settings::font_write_argv_face`]);
-                // жирность и наклон уходят туда словами Pango.
+                // Interface, monospace and title — each desktop has its own
+                // keys ([`crate::qt_settings::font_write_argv_face`]); weight
+                // and slant go there as Pango words.
                 let mut cmds = Vec::new();
                 for (key, target) in
                     [("kdeglobals/General/font", "system"), ("kdeglobals/General/fixed", "mono"), ("kdeglobals/WM/activeFont", "title")]
@@ -3035,10 +3041,10 @@ fn outside_global_plan(press: &GlobalPress, de: &str, sel: u32) -> GlobalPlan {
     GlobalPlan { plan: Plan { steps, history_kind: "kde-global" }, skipped }
 }
 
-/// Шаги общего движка «Внешнего вида» ([`crate::animations::LookStep`]) —
-/// шагами плана применения: так кнопки заголовка из раздела «Кнопки
-/// заголовка» входят в одно нажатие глобальной темы. `Err` — шаг, которого
-/// план применения не умеет (подключение к конфигу композитора).
+/// Steps of the shared looks engine ([`crate::animations::LookStep`]) as steps
+/// of the apply plan: this is how title bar buttons from the «Window title bar
+/// buttons» section join a single global theme click. `Err` — a step the apply
+/// plan can't do (an include into the compositor config).
 pub fn look_steps_as_apply(steps: &[crate::animations::LookStep], config_home: &str) -> Result<Vec<ApplyStep>, String> {
     use crate::animations::LookStep;
     let mut out = Vec::new();
@@ -3067,17 +3073,17 @@ pub fn look_steps_as_apply(steps: &[crate::animations::LookStep], config_home: &
                 let dir = std::path::Path::new(path).parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
                 out.push(ApplyStep::WriteSetsOk { dir, path: path.clone(), content: content.clone() });
             }
-            // Снятие каталога (брошенная копия расширения у эффектов экрана)
-            // глобальной теме не нужно — плана для него нет.
+            // Removing a directory (an abandoned extension copy of screen
+            // effects) is not needed by a global theme — there is no plan for it.
             LookStep::Wm(_) | LookStep::RemoveTree { .. } => return Err(tr("not applied")),
         }
     }
     Ok(out)
 }
 
-/// Кнопки заголовка темы (`ButtonsOnLeft`/`ButtonsOnRight`, буквы KWin) на
-/// столе из `ctx` — тот же план, что у раздела «Кнопки заголовка»
-/// ([`crate::window_buttons::plan_layout`]). `Err` — почему нет.
+/// The theme's title bar buttons (`ButtonsOnLeft`/`ButtonsOnRight`, KWin
+/// letters) on the desktop from `ctx` — the same plan as the «Window title bar
+/// buttons» section ([`crate::window_buttons::plan_layout`]). `Err` — why not.
 pub fn lnf_buttons_steps(
     io: &dyn crate::animations::LookIo,
     ctx: &crate::animations::LookCtx,
@@ -3094,7 +3100,7 @@ pub fn lnf_buttons_steps(
     look_steps_as_apply(&wb::plan_layout(io, &wm, &layout), &ctx.config_home)
 }
 
-/// Порт `apply_kde_plasma_style` (timeout=10, history «kde-plasma»).
+/// Port of `apply_kde_plasma_style` (timeout=10, history "kde-plasma").
 pub fn apply_kde_plasma_plan(theme: &str) -> Plan {
     Plan {
         steps: vec![ApplyStep::Primary(cmd(&["plasma-apply-desktoptheme", theme], Some(10)))],
@@ -3102,7 +3108,7 @@ pub fn apply_kde_plasma_plan(theme: &str) -> Plan {
     }
 }
 
-/// Порт `apply_kde_color_scheme` (timeout=10, history «kde-colors»).
+/// Port of `apply_kde_color_scheme` (timeout=10, history "kde-colors").
 pub fn apply_kde_color_plan(scheme: &str) -> Plan {
     Plan {
         steps: vec![ApplyStep::Primary(cmd(&["plasma-apply-colorscheme", scheme], Some(10)))],
@@ -3111,42 +3117,44 @@ pub fn apply_kde_color_plan(scheme: &str) -> Plan {
 }
 
 // ============================================================================
-// Kvantum: тема плюс движок стиля Qt
+// Kvantum: a theme plus the Qt style engine
 // ============================================================================
 //
-// `kvantummanager --set` записывает только ВЫБОР Kvantum (kvantum.kvconfig);
-// движок стиля Qt он не переключает. Вторым шагом нужно сказать Qt, что стиль
-// теперь Kvantum, — и вот тут окружения расходятся. Сам Kvantum при этом
-// работает везде: это обычный плагин стилей Qt (`libkvantum.so`), красит любое
-// Qt-приложение независимо от оболочки.
+// `kvantummanager --set` writes only the Kvantum CHOICE (kvantum.kvconfig); it
+// doesn't switch the Qt style engine. The second step is to tell Qt that the
+// style is now Kvantum — and this is where desktops differ. Kvantum itself
+// works everywhere: it is a regular Qt style plugin (`libkvantum.so`) that
+// paints any Qt application regardless of the shell.
 
-/// Чем в этом окружении выбирается движок стиля Qt.
+/// How the Qt style engine is chosen in this desktop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QtStyleWay {
-    /// KDE: `widgetStyle` в `kdeglobals` плюс уведомление Plasma. Переменную
-    /// окружения тут ставить НЕЛЬЗЯ — она перебьёт штатный выбор стиля.
+    /// KDE: `widgetStyle` in `kdeglobals` plus a Plasma notification. The
+    /// environment variable must NOT be set here — it would override the stock
+    /// style choice.
     Kdeglobals,
-    /// LXQt: `[Qt] style` в `~/.config/lxqt/lxqt.conf` — то же место, куда
-    /// пишет lxqt-config-appearance.
+    /// LXQt: `[Qt] style` in `~/.config/lxqt/lxqt.conf` — the same place
+    /// lxqt-config-appearance writes to.
     LxqtConf,
-    /// Остальные: своего переключателя стиля Qt нет. Полный путь — `qt6ct`
-    /// (стиль, шрифты и значки для Qt-приложений), запасной — переменная
-    /// `QT_STYLE_OVERRIDE`.
+    /// Others: no Qt style switcher of their own. The full path is `qt6ct` (style,
+    /// fonts and icons for Qt applications), the fallback is the
+    /// `QT_STYLE_OVERRIDE` variable.
     PlatformTheme,
-    /// Deepin: программы DTK (и прочие Qt-программы через тему платформы
-    /// самого Deepin) рисуются его стилем Chameleon. Любая переменная на
-    /// весь сеанс — `QT_QPA_PLATFORMTHEME=qt6ct` или `QT_STYLE_OVERRIDE` —
-    /// отняла бы Chameleon у Центра управления, файлового менеджера и прочих
-    /// программ Deepin. Стиль Qt здесь не переключаем: план пуст, применение
-    /// честно не удаётся, а раздел в Deepin скрыт с объяснением
+    /// Deepin: DTK programs (and other Qt programs via Deepin's own platform theme)
+    /// are drawn with its Chameleon style. Any session-wide variable —
+    /// `QT_QPA_PLATFORMTHEME=qt6ct` or `QT_STYLE_OVERRIDE` — would take Chameleon
+    /// away from the Control Center, the file manager and other Deepin programs.
+    /// The Qt style is not switched here: the plan is empty, applying honestly
+    /// fails, and the section is hidden in Deepin with an explanation
     /// (`de_customization::unavailable_note`).
     Deepin,
 }
 
-/// Как в этом рабочем столе переключается стиль Qt.
+/// How the Qt style is switched on this desktop.
 ///
-/// Неизвестный идентификатор — общий путь: переменную окружения понимает сам
-/// Qt, а не оболочка, поэтому она сработает и там, где мы не узнали стол.
+/// An unknown identifier — the generic path: the environment variable is
+/// understood by Qt itself, not the shell, so it works even where we didn't
+/// recognize the desktop.
 pub fn qt_style_way(de_id: &str) -> QtStyleWay {
     use crate::de_customization::{de_from_id, De};
     match de_from_id(de_id) {
@@ -3157,17 +3165,18 @@ pub fn qt_style_way(de_id: &str) -> QtStyleWay {
     }
 }
 
-/// Бинарь полноценного переключателя стиля Qt (он же ключ в таблице пакетов).
+/// Binary of the full Qt style switcher (also the key in the packages table).
 pub const QT_STYLE_TOOL: &str = "qt6ct";
 
-/// Имя пакета переключателя стиля Qt для семейства дистрибутива.
+/// Package name of the Qt style switcher for the distribution family.
 ///
-/// Таблица имён — общая, `utils::TOOL_PACKAGES` (там же живут imagemagick,
-/// icoutils и прочие): заводить вторую таблицу «пакет по семейству» было бы
-/// ровно тем размножением, которое запрещает правило #12.
+/// The names table is shared, `utils::TOOL_PACKAGES` (imagemagick, icoutils and
+/// others live there too): starting a second "package by family" table would be
+/// exactly the duplication rule #12 forbids.
 ///
-/// `None` — ставить нечем: в NixOS пакеты ставятся правкой конфигурации, в
-/// Clear Linux бандла нет. Это не отказ — тема применится запасным путём.
+/// `None` — nothing to install with: in NixOS packages are installed by editing
+/// the configuration, Clear Linux has no bundle. This is not a refusal — the
+/// theme is applied by the fallback path.
 pub fn qt_style_helper_pkg(pkg_family: &str) -> Option<String> {
     let pkg = crate::utils::tool_package_name(QT_STYLE_TOOL, pkg_family);
     if pkg.is_empty() {
@@ -3177,43 +3186,45 @@ pub fn qt_style_helper_pkg(pkg_family: &str) -> Option<String> {
     }
 }
 
-/// Файл переменных окружения Rexon для стиля Qt (рядом с `rexon-terminal.conf`
-/// — тот же механизм `~/.config/environment.d`, что у терминала).
+/// Rexon environment variables file for the Qt style (next to
+/// `rexon-terminal.conf` — the same `~/.config/environment.d` mechanism as the
+/// terminal's).
 pub const QT_STYLE_ENV_FILE: &str = "rexon-qt-style.conf";
 
-/// Окружение для плана применения Kvantum-темы.
+/// Environment for the Kvantum theme apply plan.
 pub struct KvantumEnv<'a> {
-    /// Идентификатор рабочего стола (`system::detect_current_de`).
+    /// Desktop identifier (`system::detect_current_de`).
     pub de_id: &'a str,
     pub home: &'a str,
-    /// `$XDG_CONFIG_HOME` (пусто — `~/.config`).
+    /// `$XDG_CONFIG_HOME` (empty — `~/.config`).
     pub xdg_config_home: &'a str,
-    /// Имя РАБОТАЮЩЕГО переключателя стиля Qt (`qt6ct`/`qt5ct`), если он в
-    /// системе есть. Пусто — идём запасным путём через `QT_STYLE_OVERRIDE`:
-    /// человек не остаётся без результата, просто без шрифтов и значков.
+    /// Name of a WORKING Qt style switcher (`qt6ct`/`qt5ct`), if the system has
+    /// one. Empty — we take the fallback path via `QT_STYLE_OVERRIDE`: the person
+    /// isn't left without a result, just without fonts and icons.
     pub platform_theme: &'a str,
-    /// Тема значков, которую окружение отдаёт программам сейчас (пусто —
-    /// неизвестна). Ложится в конфиг qt6ct, если там своей ещё нет: без неё
-    /// Qt-программы под qt6ct теряют значки (Papirus → hicolor, Д2).
+    /// The icon theme the desktop currently gives to programs (empty — unknown).
+    /// Goes into the qt6ct config if it has none of its own yet: without it Qt
+    /// programs under qt6ct lose their icons (Papirus → hicolor, D2).
     pub icon_theme: String,
 }
 
-/// План применения Kvantum-темы — порт `apply_kvantum_theme`, доведённый до
-/// всех окружений.
+/// Kvantum theme apply plan — port of `apply_kvantum_theme`, extended to all
+/// desktops.
 ///
-/// Первый шаг общий: `kvantummanager --set` (он же определяет `ok` и запись
-/// истории). Второй зависит от [`qt_style_way`]:
-///   * KDE — `kdeglobals` + уведомление Plasma (как было);
-///   * LXQt — `[Qt] style` в его же `lxqt.conf`;
-///   * остальные — `~/.config/environment.d`: `QT_QPA_PLATFORMTHEME=qt6ct`
-///     плюс стиль в конфиге qt6ct, если он есть, иначе `QT_STYLE_OVERRIDE`.
+/// The first step is common: `kvantummanager --set` (it also determines `ok`
+/// and the history record). The second depends on [`qt_style_way`]:
+///   * KDE — `kdeglobals` + a Plasma notification (as before);
+///   * LXQt — `[Qt] style` in its own `lxqt.conf`;
+///   * others — `~/.config/environment.d`: `QT_QPA_PLATFORMTHEME=qt6ct` plus
+///     the style in the qt6ct config if there is one, otherwise
+///     `QT_STYLE_OVERRIDE`.
 ///
-/// ⚠️ Переменные окружения читаются при входе в сеанс — эффект будет после
-/// перезахода. Сказать об этом человеку обязательно (`condition_note` матрицы).
+/// ⚠️ Environment variables are read at session login — the effect comes after
+/// re-login. The person must be told so (the matrix's `condition_note`).
 pub fn apply_kvantum_plan(theme: &str, env: &KvantumEnv) -> Plan {
     if qt_style_way(env.de_id) == QtStyleWay::Deepin {
-        // Выбор темы в Kvantum без переключения стиля ничего не покажет —
-        // «Применено» было бы неправдой (см. [`QtStyleWay::Deepin`]).
+        // Choosing a theme in Kvantum without switching the style shows nothing —
+        // "Applied" would be a lie (see [`QtStyleWay::Deepin`]).
         return Plan { steps: Vec::new(), history_kind: "kvantum" };
     }
     let mut steps = vec![ApplyStep::Primary(cmd(
@@ -3224,26 +3235,26 @@ pub fn apply_kvantum_plan(theme: &str, env: &KvantumEnv) -> Plan {
     Plan { steps, history_kind: "kvantum" }
 }
 
-/// План выбора стиля Qt по имени (раздел «Стиль приложений»: Breeze, Fusion,
-/// kvantum…) — во ВСЕХ окружениях, той же развилкой [`qt_style_way`], что у
-/// Kvantum. Раньше раздел писал только `kdeglobals`, а его вне Plasma читают
-/// лишь программы с платформенной темой KDE: «Применить» было зелёным, а стиль
-/// не менялся.
+/// Plan for choosing a Qt style by name (the «Application Style» section:
+/// Breeze, Fusion, kvantum…) — in ALL desktops, by the same [`qt_style_way`]
+/// branching as Kvantum. Previously the section wrote only `kdeglobals`, and
+/// outside Plasma only programs with the KDE platform theme read it: «Apply»
+/// was green, but the style didn't change.
 ///
-/// `env` — то же окружение, что у Kvantum (имя типа историческое).
-/// Вне KDE и LXQt стиль появится после перезахода — как и у Kvantum.
+/// `env` is the same environment as Kvantum's (the type name is historical).
+/// Outside KDE and LXQt the style appears after re-login — as with Kvantum.
 pub fn apply_qt_style_plan(style: &str, env: &KvantumEnv) -> Plan {
     Plan { steps: qt_style_switch_steps(style, env, false), history_kind: "widget-style" }
 }
 
-/// Шаги «сказать Qt, какой стиль брать» — общие для Kvantum и «Стиля
-/// приложений» (правило #12: одна развилка на всех).
+/// Steps "tell Qt which style to take" — shared by Kvantum and «Application
+/// Style» (rule #12: one branching for all).
 ///
-/// `after_primary` — перед этими шагами уже был свой `Primary` (у Kvantum —
-/// `kvantummanager --set`), и они выполняются только при его успехе. Если нет,
-/// первым делом становится сама запись стиля: на KDE — `kwriteconfig6`
-/// (`Primary`), в остальных окружениях запись идёт в файл, который ведём
-/// мы сами, поэтому `ForceOk`.
+/// `after_primary` — these steps were already preceded by their own `Primary`
+/// (for Kvantum — `kvantummanager --set`), and they run only on its success. If
+/// not, the style write itself comes first: on KDE — `kwriteconfig6`
+/// (`Primary`), in other desktops the write goes into a file we maintain
+/// ourselves, hence `ForceOk`.
 fn qt_style_switch_steps(style: &str, env: &KvantumEnv, after_primary: bool) -> Vec<ApplyStep> {
     let cfg = crate::utils::config_home(
         if env.xdg_config_home.is_empty() { None } else { Some(env.xdg_config_home) },
@@ -3262,10 +3273,10 @@ fn qt_style_switch_steps(style: &str, env: &KvantumEnv, after_primary: bool) -> 
             );
             steps.push(if after_primary { ApplyStep::IfOk(write) } else { ApplyStep::Primary(write) });
             // `notifyChange(2, 0)` — StyleChanged (KGlobalSettings::ChangeType:
-            // 0 — палитра, 1 — шрифт, 2 — стиль). Раньше слался 0, и
-            // запущенные Qt-программы стиль не меняли до перезапуска
-            // (Д3, проверка окружений 02.10.2026: после 0 программа осталась
-            // на breeze, после 2 — перешла на fusion).
+            // 0 — palette, 1 — font, 2 — style). Previously 0 was sent, and
+            // running Qt programs didn't change the style until restart
+            // (D3, desktops check 02.10.2026: after 0 the program stayed
+            // on breeze, after 2 it switched to fusion).
             steps.push(ApplyStep::IfOk(cmd(
                 &[
                     "dbus-send", "--type=signal", "/KGlobalSettings",
@@ -3291,22 +3302,22 @@ fn qt_style_switch_steps(style: &str, env: &KvantumEnv, after_primary: bool) -> 
             }
             let tool = env.platform_theme;
             let content = if tool.is_empty() {
-                // Запасной путь: Qt читает эту переменную сам, без всяких
-                // пакетов. Стиль будет, шрифтов и значков — нет.
+                // The fallback path: Qt reads this variable itself, without any
+                // packages. There will be a style, but no fonts and icons.
                 format!("QT_STYLE_OVERRIDE={style}\n")
             } else {
-                // Полный путь: стиль выбирается в конфиге qt6ct, поэтому
-                // QT_STYLE_OVERRIDE не пишем — иначе человек сменит стиль в
-                // qt6ct, а переменная его молча перебьёт.
+                // The full path: the style is chosen in the qt6ct config, so
+                // QT_STYLE_OVERRIDE is not written — otherwise the person changes
+                // the style in qt6ct, and the variable silently overrides it.
                 steps.push(ApplyStep::IniSetIfOk {
                     path: format!("{cfg}/{tool}/{tool}.conf"),
                     section: "[Appearance]".into(),
                     key: "style".into(),
                     value: style.into(),
                 });
-                // Свой выбор значков qt6ct не перебиваем; нет его — кладём
-                // нынешние значки окружения, иначе после перезахода
-                // Qt-программы останутся с `hicolor` (Д2).
+                // We don't override qt6ct's own icon choice; if there is none,
+                // we put the desktop's current icons, otherwise after re-login
+                // Qt programs stay with `hicolor` (D2).
                 if !env.icon_theme.is_empty() {
                     steps.push(ApplyStep::IniSetGuarded {
                         path: format!("{cfg}/{tool}/{tool}.conf"),
@@ -3325,111 +3336,113 @@ fn qt_style_switch_steps(style: &str, env: &KvantumEnv, after_primary: bool) -> 
                 content,
             });
         }
-        // Ни переменной, ни «успеха» — см. [`QtStyleWay::Deepin`].
+        // Neither a variable nor "success" — see [`QtStyleWay::Deepin`].
         QtStyleWay::Deepin => {}
     }
     steps
 }
 
-// Текстов «поставить пакет?» здесь нет намеренно. Покупатель не должен
-// видеть вопрос про дополнительную библиотеку и разбираться, почему выбор
-// темы просит пароль: это ровно тот вопрос, где ответ «нет» даёт худший
-// результат (правило #13, защита от дурака — как SDDM, который при установке
-// тайлового стола ставится САМ). Пакет приезжает двумя молчаливыми путями —
-// `depends` пакета Rexon и системный установщик
-// (`installer::qt_style_install_cmd`), а если его нет в репозиториях вовсе,
-// работает `QT_STYLE_OVERRIDE`. Единственное, о чём мы говорим человеку, —
-// что изменения появятся после перезахода (оговорка раздела в матрице).
+// There are deliberately no "install the package?" texts here. The customer
+// should not see a question about an extra library and figure out why choosing
+// a theme asks for a password: this is exactly the question where the answer
+// "no" gives the worst result (rule #13, foolproofing — like SDDM, which gets
+// installed BY ITSELF when a tiling desktop is installed). The package arrives
+// by two silent paths — the `depends` of the Rexon package and the system
+// installer (`installer::qt_style_install_cmd`), and if it is not in the
+// repositories at all, `QT_STYLE_OVERRIDE` works. The only thing we tell the
+// person is that the changes appear after re-login (the section caveat in the
+// matrix).
 
 // ============================================================================
-// Что тема просит в придачу: набор иконок и курсор (чистая часть)
+// What a theme asks for in addition: an icon set and a cursor (pure part)
 // ============================================================================
 //
-// GTK-тема с метатемой (`index.theme`, секция `[X-GNOME-Metatheme]` или
-// `[Desktop Entry]`) называет набор иконок (`IconTheme=`) и курсор
-// (`CursorTheme=`), с которыми её задумал автор. Окружения сами эти ключи не
-// читают: `gsettings set … gtk-theme` меняет только виджеты. Поэтому
-// «Применить» у такой темы применяет и их — тем же планом, что кнопки
-// разделов «Иконки» и «Курсоры» ([`apply_icon_plan_xdg`],
-// [`apply_cursor_plan_sized`]), то есть во всех окружениях сразу.
+// A GTK theme with a metatheme (`index.theme`, section `[X-GNOME-Metatheme]`
+// or `[Desktop Entry]`) names the icon set (`IconTheme=`) and the cursor
+// (`CursorTheme=`) its author intended it with. Desktops don't read these keys
+// themselves: `gsettings set … gtk-theme` changes only the widgets. So «Apply»
+// of such a theme applies them too — with the same plan as the buttons of the
+// «Icons» and «Cursors» sections ([`apply_icon_plan_xdg`],
+// [`apply_cursor_plan_sized`]), i.e. in all desktops at once.
 //
-// ⛔ Имя, которого на диске нет, в настройки окружения НЕ пишется: GTK
-// молча откатится на hicolor/Adwaita, а Rexon показал бы «применено».
-// Нет набора — честное предупреждение, текущие иконки и курсор остаются.
+// ⛔ A name that is not on disk is NOT written into the desktop settings: GTK
+// would silently fall back to hicolor/Adwaita, and Rexon would show "applied".
+// No set — an honest warning, the current icons and cursor stay.
 
-/// Что именно тема просит: набор иконок или курсор.
+/// What exactly the theme asks for: an icon set or a cursor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DepRole {
     Icons,
     Cursor,
 }
 
-/// Набор иконок и курсор, которые тема просит в придачу (`None` — не просит).
+/// The icon set and cursor the theme asks for in addition (`None` — doesn't ask).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ThemeDeps {
     pub icons: Option<String>,
     pub cursor: Option<String>,
 }
 
-/// Где метатема держит свои ключи. Порядок — как у mate-appearance и
-/// gnome-control-center прежних лет: основная секция, потом общая.
+/// Where a metatheme keeps its keys. The order is as in mate-appearance and
+/// gnome-control-center of former years: the main section, then the common one.
 const DEPS_SECTIONS: [&str; 2] = ["X-GNOME-Metatheme", "Desktop Entry"];
 
-/// Значения, которые просьбой о наборе не считаются: `hicolor` — запасной
-/// набор, на который откатывается любой (его же пишет наш импорт
-/// `.msstyles`, когда своих иконок у темы нет), `default` — не имя набора, а
-/// ссылка на выбранный курсор.
+/// Values that don't count as a request for a set: `hicolor` is the fallback
+/// set any set falls back to (our `.msstyles` import also writes it when the
+/// theme has no icons of its own), `default` is not a set name but a link to
+/// the chosen cursor.
 const NOT_A_REQUEST: &[&str] = &["hicolor", "default"];
 
-/// Что тема просит в придачу — разбор её `index.theme`.
+/// What the theme asks for in addition — parsing its `index.theme`.
 pub fn theme_deps(index_theme: &str) -> ThemeDeps {
     let get = |key: &str| {
         DEPS_SECTIONS
             .iter()
             .find_map(|section| ini_key_value(index_theme, section, key))
             .filter(|v| !NOT_A_REQUEST.iter().any(|n| n.eq_ignore_ascii_case(v)))
-            // Имя набора — имя каталога, не путь: «../x» из чужого
-            // index.theme ушло бы в поиск, скачивание и настройки.
+            // A set name is a directory name, not a path: "../x" from someone
+            // else's index.theme would go into search, download and settings.
             .filter(|v| !v.contains('/') && v != "." && v != "..")
     };
     ThemeDeps { icons: get("IconTheme"), cursor: get("CursorTheme") }
 }
 
-/// Известный набор: под какими именами он встречается и каким пакетом
-/// ставится в каждом семействе дистрибутивов (пусто — пакета нет или он
-/// нам не известен).
+/// A known set: under which names it occurs and which package installs it in
+/// each distribution family (empty — no package or we don't know it).
 struct KnownSet {
     role: DepRole,
-    /// Имена одного и того же набора. Первое — основное. Разные
-    /// дистрибутивы кладут один курсор под разными именами: тема просит
-    /// «DMZ-White», а пакет Arch `xcursor-vanilla-dmz` ставит «Vanilla-DMZ».
+    /// Names of one and the same set. The first is the main one. Different
+    /// distributions put the same cursor under different names: the theme asks for
+    /// "DMZ-White", while the Arch package `xcursor-vanilla-dmz` installs
+    /// "Vanilla-DMZ".
     names: &'static [&'static str],
-    /// Набор с вариантами («Papirus-Dark», «WhiteSur-dark»): тот же пакет
-    /// приносит и имена `<имя>-<вариант>`.
+    /// A set with variants ("Papirus-Dark", "WhiteSur-dark"): the same package also
+    /// brings the `<name>-<variant>` names.
     variants: bool,
     arch: &'static str,
     debian: &'static str,
     fedora: &'static str,
     suse: &'static str,
-    /// Откуда набор можно положить в домашний каталог без пароля и без
-    /// сборки ([`dep_home_source`]).
+    /// Where the set can be put into the home directory from, without a password
+    /// and without a build ([`dep_home_source`]).
     home: HomeSource,
 }
 
-/// Готовый набор, который ставится в `~/.local/share/icons` простой
-/// распаковкой — без пароля, без сборки и без чужих сценариев установки.
+/// A ready set that is installed into `~/.local/share/icons` by plain
+/// unpacking — without a password, without a build and without third-party
+/// install scripts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HomeSource {
-    /// Только системный пакет (или ничего).
+    /// Only a system package (or nothing).
     None,
-    /// Товар магазина KDE (OCS): его номер и имя файла среди ссылок товара.
-    /// `names` — какие наборы архив несёт на деле (регистр не важен):
-    /// вариант, которого в архиве нет, отсюда не ставится.
+    /// A KDE store item (OCS): its number and the file name among the item's links.
+    /// `names` — which sets the archive actually carries (case-insensitive): a
+    /// variant missing from the archive is not installed from here.
     Ocs { content_id: &'static str, file: &'static str, names: &'static [&'static str] },
 }
 
-/// Откуда набор ставится в домашний каталог ([`HomeSource`]). `None` —
-/// набор нам неизвестен или его так не поставить.
+/// Where the set is installed into the home directory from ([`HomeSource`]).
+/// `None` — the set is unknown to us or can't be installed this way.
 pub fn dep_home_source(role: DepRole, wanted: &str) -> Option<HomeSource> {
     KNOWN_SETS
         .iter()
@@ -3441,14 +3454,13 @@ pub fn dep_home_source(role: DepRole, wanted: &str) -> Option<HomeSource> {
         })
 }
 
-/// Таблица известных наборов. Имена пакетов сверены 16.10.2026: Arch —
-/// `pacman -Si` и AUR RPC (`whitesur-*` и `mint-y-icons` на чистом Arch
-/// только в AUR, в CachyOS `mint-y-icons` есть в репозитории — путь
-/// выбирает исполнитель по факту); Debian/Ubuntu (trixie, noble) —
-/// списки файлов packages.debian.org/packages.ubuntu.com; Fedora (f43,
-/// f44) — mdapi, `dmz-cursor-themes` оттуда снят; openSUSE (Tumbleweed,
-/// Leap 16.0) — rpm из download.opensuse.org. WhiteSur нет ни в одном
-/// из трёх.
+/// Table of known sets. Package names were checked on 16.10.2026: Arch —
+/// `pacman -Si` and AUR RPC (`whitesur-*` and `mint-y-icons` on plain Arch are
+/// only in the AUR, in CachyOS `mint-y-icons` is in the repository — the
+/// executor picks the path by fact); Debian/Ubuntu (trixie, noble) — file lists
+/// of packages.debian.org/packages.ubuntu.com; Fedora (f43, f44) — mdapi,
+/// `dmz-cursor-themes` was dropped there; openSUSE (Tumbleweed, Leap 16.0) — rpm
+/// from download.opensuse.org. WhiteSur is in none of the three.
 const KNOWN_SETS: &[KnownSet] = &[
     KnownSet {
         role: DepRole::Cursor,
@@ -3498,12 +3510,12 @@ const KNOWN_SETS: &[KnownSet] = &[
         debian: "",
         fedora: "",
         suse: "",
-        // Товар магазина KDE «WhiteSur cursors» (автор тот же): архив
-        // WhiteSur-cursors.tar.xz несёт собранную тему WhiteSur-cursors
-        // (проверено распаковкой 25.10.2026).
+        // The KDE store item "WhiteSur cursors" (same author): the archive
+        // WhiteSur-cursors.tar.xz carries the built WhiteSur-cursors theme
+        // (checked by unpacking 25.10.2026).
         home: HomeSource::Ocs { content_id: "1411743", file: "WhiteSur-cursors.tar.xz", names: &["WhiteSur-cursors"] },
     },
-    // «gnome» — имя набора иконок GNOME 2; в GNOME 3 его сменил Adwaita.
+    // "gnome" is the name of the GNOME 2 icon set; in GNOME 3 Adwaita replaced it.
     KnownSet {
         role: DepRole::Icons,
         names: &["Adwaita", "gnome"],
@@ -3524,8 +3536,8 @@ const KNOWN_SETS: &[KnownSet] = &[
         suse: "kf6-breeze-icons",
         home: HomeSource::None,
     },
-    // В Fedora варианты Papirus — отдельные подпакеты; записи стоят раньше
-    // общей, потому что поиск берёт первое совпадение.
+    // In Fedora the Papirus variants are separate subpackages; the entries come
+    // before the general one because the search takes the first match.
     KnownSet {
         role: DepRole::Icons,
         names: &["Papirus-Dark"],
@@ -3574,9 +3586,9 @@ const KNOWN_SETS: &[KnownSet] = &[
         debian: "",
         fedora: "",
         suse: "",
-        // Товар магазина KDE «WhiteSur icon theme» (автор тот же): архив
-        // 01-WhiteSur.tar.xz несёт WhiteSur, WhiteSur-dark и WhiteSur-light
-        // (проверено распаковкой 17.10.2026). Цветные варианты — другими файлами.
+        // The KDE store item "WhiteSur icon theme" (same author): the archive
+        // 01-WhiteSur.tar.xz carries WhiteSur, WhiteSur-dark and WhiteSur-light
+        // (checked by unpacking 17.10.2026). The color variants are other files.
         home: HomeSource::Ocs {
             content_id: "1405756",
             file: "01-WhiteSur.tar.xz",
@@ -3585,8 +3597,9 @@ const KNOWN_SETS: &[KnownSet] = &[
     },
 ];
 
-/// Подходит ли набор из таблицы под просьбу темы. Регистр не важен: тема
-/// WhiteSur просит «WhiteSur-Dark», а пакет ставит «WhiteSur-dark».
+/// Whether a set from the table fits the theme's request. Case doesn't matter:
+/// the WhiteSur theme asks for "WhiteSur-Dark", and the package installs
+/// "WhiteSur-dark".
 fn known_set_matches(set: &KnownSet, role: DepRole, wanted: &str) -> bool {
     if set.role != role {
         return false;
@@ -3598,8 +3611,8 @@ fn known_set_matches(set: &KnownSet, role: DepRole, wanted: &str) -> bool {
     })
 }
 
-/// Под какими именами искать набор на диске: сама просьба, потом другие
-/// имена того же набора ([`KNOWN_SETS`]). Без повторов.
+/// Under which names to look for the set on disk: the request itself, then other
+/// names of the same set ([`KNOWN_SETS`]). Without repeats.
 pub fn dep_aliases(role: DepRole, wanted: &str) -> Vec<String> {
     let mut out = vec![wanted.to_string()];
     for set in KNOWN_SETS.iter().filter(|s| !s.variants && known_set_matches(s, role, wanted)) {
@@ -3612,8 +3625,8 @@ pub fn dep_aliases(role: DepRole, wanted: &str) -> Vec<String> {
     out
 }
 
-/// Пакет, который ставит набор, в семействе `pkg_family` (`arch`, `debian`,
-/// `fedora`, `suse`). `None` — набор нам неизвестен или пакета нет.
+/// The package that installs the set in family `pkg_family` (`arch`, `debian`,
+/// `fedora`, `suse`). `None` — the set is unknown to us or there is no package.
 pub fn dep_package(role: DepRole, wanted: &str, pkg_family: &str) -> Option<String> {
     let set = KNOWN_SETS.iter().find(|s| known_set_matches(s, role, wanted))?;
     let pkg = match pkg_family.to_lowercase().as_str() {
@@ -3626,9 +3639,9 @@ pub fn dep_package(role: DepRole, wanted: &str, pkg_family: &str) -> Option<Stri
     (!pkg.is_empty()).then(|| pkg.to_string())
 }
 
-/// Все пакеты наборов таблицы для семейства `pkg_family` — белый список
-/// установки помощника пакетов (`system_plan::pkg_helper_install_allowlist`):
-/// значки и курсор темы он ставит только отсюда.
+/// All packages of the table's sets for family `pkg_family` — the install
+/// whitelist of the package helper (`system_plan::pkg_helper_install_allowlist`):
+/// it installs a theme's icons and cursor only from here.
 pub fn known_set_packages(pkg_family: &str) -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();
     for set in KNOWN_SETS {
@@ -3646,14 +3659,14 @@ pub fn known_set_packages(pkg_family: &str) -> Vec<&'static str> {
     out
 }
 
-/// Каталоги, где ищутся иконки и курсоры, — по спецификации XDG: `~/.icons`,
-/// `$XDG_DATA_HOME/icons`, затем `<каждый из $XDG_DATA_DIRS>/icons`.
+/// Directories where icons and cursors are looked for — per the XDG spec:
+/// `~/.icons`, `$XDG_DATA_HOME/icons`, then `<each of $XDG_DATA_DIRS>/icons`.
 pub fn dep_search_roots(home: &str, data_home: &str, xdg_data_dirs: &str) -> Vec<String> {
     xdg_search_roots(home, ".icons", data_home, xdg_data_dirs, "icons")
 }
 
-/// Каталоги GTK-тем в порядке поиска GTK: `~/.themes`,
-/// `$XDG_DATA_HOME/themes`, затем `<каждый из $XDG_DATA_DIRS>/themes`.
+/// GTK theme directories in GTK's search order: `~/.themes`,
+/// `$XDG_DATA_HOME/themes`, then `<each of $XDG_DATA_DIRS>/themes`.
 pub fn gtk_theme_search_roots(home: &str, data_home: &str, xdg_data_dirs: &str) -> Vec<String> {
     xdg_search_roots(home, ".themes", data_home, xdg_data_dirs, "themes")
 }
@@ -3679,10 +3692,10 @@ fn xdg_search_roots(home: &str, legacy: &str, data_home: &str, xdg_data_dirs: &s
     out
 }
 
-/// Годен ли каталог `dir` как набор роли `role`: у курсора есть `cursors/`,
-/// у иконок — `index.theme` с непустым `Directories=` (то же мерило, что у
-/// [`is_valid_icon_theme`]: курсорная тема с одним `index.theme` набором
-/// иконок не считается).
+/// Whether directory `dir` is fit as a set of role `role`: a cursor has
+/// `cursors/`, icons have `index.theme` with a non-empty `Directories=` (the
+/// same measure as [`is_valid_icon_theme`]: a cursor theme with just an
+/// `index.theme` doesn't count as an icon set).
 fn dep_dir_usable(role: DepRole, dir: &str, is_dir: &dyn Fn(&str) -> bool, read: &dyn Fn(&str) -> Option<String>) -> bool {
     match role {
         DepRole::Cursor => is_dir(&format!("{dir}/cursors")),
@@ -3692,9 +3705,9 @@ fn dep_dir_usable(role: DepRole, dir: &str, is_dir: &dyn Fn(&str) -> bool, read:
     }
 }
 
-/// Имя установленного набора, которое закрывает просьбу темы: точное имя,
-/// другое имя того же набора, затем то же без учёта регистра. `None` —
-/// ничего подходящего на диске нет.
+/// Name of an installed set that satisfies the theme's request: the exact name,
+/// another name of the same set, then the same case-insensitively. `None` —
+/// nothing suitable on disk.
 pub fn find_installed_dep(
     role: DepRole,
     wanted: &str,
@@ -3721,18 +3734,18 @@ pub fn find_installed_dep(
     None
 }
 
-/// Состояние одной просьбы темы.
+/// State of one request of a theme.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DepState {
-    /// Набор стоит — под этим именем его и применять.
+    /// The set is installed — apply it under this name.
     Installed(String),
-    /// Набора нет, но его ставит этот пакет.
+    /// The set is missing, but this package installs it.
     Installable(String),
-    /// Набора нет, и где его взять, Rexon не знает.
+    /// The set is missing, and Rexon doesn't know where to get it.
     Missing,
 }
 
-/// Просьба темы и что с ней.
+/// A theme's request and what about it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DepItem {
     pub role: DepRole,
@@ -3740,8 +3753,8 @@ pub struct DepItem {
     pub state: DepState,
 }
 
-/// Что делать с просьбами темы: `find` ищет установленный набор
-/// ([`find_installed_dep`]), пакет — по таблице для `pkg_family`.
+/// What to do with the theme's requests: `find` looks for an installed set
+/// ([`find_installed_dep`]), the package — by the table for `pkg_family`.
 pub fn plan_theme_deps(
     deps: &ThemeDeps,
     pkg_family: &str,
@@ -3762,7 +3775,7 @@ pub fn plan_theme_deps(
     out
 }
 
-/// «набор иконок «X»» / «курсор «X»» — для фраз ниже.
+/// "the icon set “X”" / "the cursor “X”" — for the phrases below.
 pub fn dep_label(role: DepRole, name: &str) -> String {
     match role {
         // TRANSLATORS: part of a sentence, %1 is an icon set name.
@@ -3772,12 +3785,13 @@ pub fn dep_label(role: DepRole, name: &str) -> String {
     }
 }
 
-/// Что ставить перед «Применить» у GTK-темы — САМО, без вопроса «Да/Нет»
-/// (решение владельца 24.10; защита — окно пароля polkit): чего нет на
-/// диске, но можно поставить пакетом или скачать в домашний каталог.
-/// Значки — только когда человек выбрал «Скачать и включить» (`icons_ok`,
-/// решение 3а). Чего взять негде ([`DepState::Missing`] без домашнего
-/// источника) — не здесь: тема применяется, а итог говорит, чего нет.
+/// What to install before «Apply» of a GTK theme — BY ITSELF, without a
+/// "Yes/No" question (the owner's decision 24.10; the protection is the polkit
+/// password window): what is not on disk but can be installed as a package or
+/// downloaded into the home directory. Icons — only when the person chose
+/// «Download and turn on» (`icons_ok`, decision 3a). What can't be got anywhere
+/// ([`DepState::Missing`] without a home source) is not handled here: the theme
+/// is applied, and the result says what is missing.
 pub fn deps_to_prepare(items: &[DepItem], icons_ok: bool) -> Vec<DepItem> {
     items
         .iter()
@@ -3788,10 +3802,11 @@ pub fn deps_to_prepare(items: &[DepItem], icons_ok: bool) -> Vec<DepItem> {
         .collect()
 }
 
-/// Отказ «Применить»: то, с чем идёт тема, не поставилось («всё или
-/// ничего» — тема без своего курсора не применяется). `why` — причина
-/// сбоя; окно пароля закрыто ([`crate::appearance_installer::password_not_confirmed`])
-/// — «передумал»: совет нажать «Применить» ещё раз и ввести пароль.
+/// «Apply» refusal: what comes with the theme didn't install ("all or nothing"
+/// — a theme without its own cursor is not applied). `why` is the failure
+/// reason; the password window was closed
+/// ([`crate::appearance_installer::password_not_confirmed`]) — "changed their
+/// mind": advice to press «Apply» again and enter the password.
 pub fn deps_refusal(theme: &str, missing: &[DepItem], why: &str) -> String {
     let what: Vec<String> = missing.iter().map(|i| dep_label(i.role, &i.wanted)).collect();
     if why == crate::appearance_installer::password_not_confirmed() {
@@ -3815,34 +3830,33 @@ pub fn deps_refusal(theme: &str, missing: &[DepItem], why: &str) -> String {
     )
 }
 
-// ── Значки темы: спросить, а не включать молча ─────────────────────────────
+// ── Theme icons: ask, don't turn on silently ───────────────────────────────
 //
-// Решение Wehrwolfmann 20.10.2026 (3а): тема, рассчитанная на свой набор
-// значков (образ «как Windows XP»), прежде молча докачивала его и включала
-// вместо выбранного человеком. Теперь — один вопрос «Скачать и включить» /
-// «Оставить мои» (у стоящего набора — «Включить»). Ответ запоминается для
-// этой темы (настройка [`THEME_ICONS_CHOICE_KEY`], по имени темы): при
-// следующем применении той же темы не спрашиваем. «Оставить мои» — тема
-// применяется целиком, кроме значков.
+// Decision of Wehrwolfmann 20.10.2026 (3a): a theme designed for its own icon
+// set (the "like Windows XP" look) used to silently download it and turn it on
+// instead of the one the person chose. Now — one question «Download and turn
+// on» / «Keep mine» («Turn on» for an installed set). The answer is remembered
+// for this theme (setting [`THEME_ICONS_CHOICE_KEY`], by theme name): on the
+// next apply of the same theme we don't ask. «Keep mine» — the theme is
+// applied whole except the icons.
 
-/// Настройка Rexon: ответы на вопрос о значках темы, `{тема: включать?}`.
+/// Rexon setting: answers to the theme icons question, `{theme: turn on?}`.
 pub const THEME_ICONS_CHOICE_KEY: &str = "theme_icons_choice";
 
-/// Запомненный ответ для темы `theme` из значения настройки
-/// [`THEME_ICONS_CHOICE_KEY`]; `None` — не спрашивали.
+/// The remembered answer for theme `theme` from the [`THEME_ICONS_CHOICE_KEY`]
+/// setting value; `None` — not asked.
 pub fn icons_choice_of(value: Option<&Value>, theme: &str) -> Option<bool> {
     value?.get(theme)?.as_bool()
 }
 
-/// Значение настройки с ответом `yes` для темы `theme` (прочие ответы
-/// остаются).
+/// The setting value with answer `yes` for theme `theme` (other answers stay).
 pub fn icons_choice_with(value: Option<&Value>, theme: &str, yes: bool) -> Value {
     let mut map = value.and_then(Value::as_object).cloned().unwrap_or_default();
     map.insert(theme.to_string(), Value::Bool(yes));
     Value::Object(map)
 }
 
-/// Вопрос о значках темы: заголовок, текст, подписи «да» и «нет».
+/// The theme icons question: title, text, "yes" and "no" captions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IconsQuestion {
     pub title: String,
@@ -3851,11 +3865,11 @@ pub struct IconsQuestion {
     pub no: String,
 }
 
-/// Спросить ли о значках темы `theme` при её применении. `items` — план
-/// [`plan_theme_deps`], `current` — значки, что стоят сейчас, `remembered` —
-/// [`icons_choice_of`]. `None` — спрашивать не о чем: тема значков не
-/// просит, их нигде нет (о них скажет итог), они и так стоят, либо ответ
-/// уже дан.
+/// Whether to ask about the icons of theme `theme` when applying it. `items` is
+/// the [`plan_theme_deps`] plan, `current` — the icons in place now,
+/// `remembered` — [`icons_choice_of`]. `None` — nothing to ask: the theme
+/// doesn't ask for icons, they exist nowhere (the result will say so), they are
+/// already in place, or the answer has already been given.
 pub fn icons_question(theme: &str, items: &[DepItem], current: &str, remembered: Option<bool>) -> Option<IconsQuestion> {
     if remembered.is_some() {
         return None;
@@ -3884,13 +3898,13 @@ pub fn icons_question(theme: &str, items: &[DepItem], current: &str, remembered:
     Some(IconsQuestion { title: tr("Theme icons"), text, yes, no: tr("Keep mine") })
 }
 
-/// Строка итога: значки темы не включены по ответу «Оставить мои».
+/// Result line: the theme icons were not turned on per the «Keep mine» answer.
 pub fn dep_icons_kept_line(wanted: &str) -> String {
     // TRANSLATORS: %1 is an icon set name.
     trf("Your icons stay — the theme's icons “%1” were not turned on.", &[&wanted])
 }
 
-/// Строка итога: набор применён вместе с темой.
+/// Result line: the set was applied together with the theme.
 pub fn dep_applied_line(role: DepRole, applied: &str, wanted: &str) -> String {
     if applied == wanted {
         trf("Also applied %1 that the theme comes with.", &[&dep_label(role, applied)])
@@ -3903,7 +3917,7 @@ pub fn dep_applied_line(role: DepRole, applied: &str, wanted: &str) -> String {
     }
 }
 
-/// Строка итога: набора нет, и взять его негде.
+/// Result line: the set is missing, and there is nowhere to get it.
 pub fn dep_missing_line(role: DepRole, wanted: &str) -> String {
     let (what, place) = match role {
         DepRole::Icons => (tr("Your current icons stay."), crate::i18n::trc("appearance section", "Icons")),
@@ -3917,7 +3931,7 @@ pub fn dep_missing_line(role: DepRole, wanted: &str) -> String {
     )
 }
 
-/// Строка итога: набор не поставлен (отказ от установки или сбой).
+/// Result line: the set was not installed (install declined or failed).
 pub fn dep_not_installed_line(role: DepRole, wanted: &str, failure: Option<&str>) -> String {
     let what = match role {
         DepRole::Icons => tr("Your current icons stay."),
@@ -3937,18 +3951,18 @@ pub fn dep_not_installed_line(role: DepRole, wanted: &str, failure: Option<&str>
     }
 }
 
-/// Строка итога: набор стоит, но применить его не удалось.
+/// Result line: the set is installed, but applying it failed.
 pub fn dep_apply_failed_line(role: DepRole, name: &str) -> String {
     trf("⚠️ Couldn't apply %1 that the theme comes with.", &[&dep_label(role, name)])
 }
 
 // ============================================================================
-// Установка темы из каталога — разрешение имени пакета (чистая часть)
+// Installing a theme from the catalog — resolving the package name (pure part)
 // ============================================================================
 
-/// Порт разрешения пакета из `install_popular_theme`. Возвращает
-/// (pkg_name, aur_name) для данного `pkg_family` (нижний регистр). Fallback
-/// на `pkg_debian` для не-arch семейств сохранён.
+/// Port of the package resolution from `install_popular_theme`. Returns
+/// (pkg_name, aur_name) for the given `pkg_family` (lowercase). The fallback to
+/// `pkg_debian` for non-arch families is kept.
 pub fn resolve_install(meta: &Value, pkg_family: &str) -> (String, String) {
     let family = pkg_family.to_lowercase();
     let key = match family.as_str() {
@@ -3966,7 +3980,7 @@ pub fn resolve_install(meta: &Value, pkg_family: &str) -> (String, String) {
     let meta_str = |k: &str| meta.get(k).and_then(Value::as_str).unwrap_or("").to_string();
 
     let mut pkg_name = if key.is_empty() { String::new() } else { meta_str(key) };
-    // Fallback: pkg_debian для не-arch (Fedora/SUSE часто совпадают).
+    // Fallback: pkg_debian for non-arch (Fedora/SUSE often match).
     if pkg_name.is_empty() && family != "arch" {
         pkg_name = meta_str("pkg_debian");
     }
@@ -3974,10 +3988,10 @@ pub fn resolve_install(meta: &Value, pkg_family: &str) -> (String, String) {
     (pkg_name, aur_name)
 }
 
-/// argv установки из AUR — порт `[aur_helper, "-S", "--needed", "--noconfirm", aur]`.
+/// argv of an AUR install — port of `[aur_helper, "-S", "--needed", "--noconfirm", aur]`.
 pub fn aur_install_cmd(aur_helper: &str, aur_name: &str) -> Cmd {
-    // Одна команда на весь Rexon (права окном polkit, ответы на вопросы
-    // помощника) — `aur_install::install_argv`.
+    // One command for all of Rexon (privileges via the polkit window, answers
+    // to the helper's questions) — `aur_install::install_argv`.
     Cmd {
         argv: crate::aur_install::install_argv(aur_helper, &[aur_name.to_string()], false),
         timeout: None,
@@ -3985,15 +3999,15 @@ pub fn aur_install_cmd(aur_helper: &str, aur_name: &str) -> Cmd {
 }
 
 // ============================================================================
-// Текущие темы (для отображения) — сборка из готовых значений источников
+// Current themes (for display) — built from ready source values
 // ============================================================================
 
-/// Готовые значения источников `get_current_themes` (исполнитель заполняет
-/// только ветку своего DE). gsettings/xfconf-значения — уже без кавычек/пробелов
-/// (как `r.stdout.strip().strip("'\"")`); None = ключ не получен.
+/// Ready source values of `get_current_themes` (the executor fills only its
+/// DE's branch). gsettings/xfconf values are already without quotes/spaces
+/// (like `r.stdout.strip().strip("'\"")`); None = the key was not obtained.
 #[derive(Default)]
 pub struct CurrentSources<'a> {
-    // gsettings-ветка (роли gtk/icons/cursor/font).
+    // gsettings branch (roles gtk/icons/cursor/font).
     pub gs_gtk: Option<&'a str>,
     pub gs_icons: Option<&'a str>,
     pub gs_cursor: Option<&'a str>,
@@ -4010,12 +4024,12 @@ pub struct CurrentSources<'a> {
     pub kde_kcminput_cursor: &'a str,
     pub xcursor_env: &'a str,
     pub kde_font: Option<&'a str>,
-    /// `_system_font_fallback()` — уже вычисленный шрифт по умолчанию.
+    /// `_system_font_fallback()` — the already computed default font.
     pub font_fallback: &'a str,
 }
 
-/// Порт `get_current_themes`: собрать `{gtk, icons, cursor, font}` из готовых
-/// значений источников. Ветвление по DE — как в оригинале.
+/// Port of `get_current_themes`: build `{gtk, icons, cursor, font}` from ready
+/// source values. Branching by DE — as in the original.
 pub fn get_current_themes(de: &str, src: &CurrentSources) -> Map<String, Value> {
     let mut result = Map::new();
     let put = |m: &mut Map<String, Value>, k: &str, v: &str| {
@@ -4047,8 +4061,8 @@ pub fn get_current_themes(de: &str, src: &CurrentSources) -> Map<String, Value> 
             put(&mut result, "gtk", src.kde_widget_style.unwrap_or("—"));
             put(&mut result, "icons", src.kde_icons.unwrap_or("—"));
             // cursor: Mouse/cursorTheme → kcminputrc → $XCURSOR_THEME → breeze_cursors
-            // (семантика Python `a or b or c or "breeze_cursors"` — пустая строка
-            // считается ложью и уходит дальше по цепочке).
+            // (Python `a or b or c or "breeze_cursors"` semantics — an empty string
+            // counts as false and moves on along the chain).
             let cursor = match src.kde_cursor_mouse {
                 Some(s) if !s.is_empty() => s,
                 _ if !src.kde_kcminput_cursor.is_empty() => src.kde_kcminput_cursor,
@@ -4067,8 +4081,8 @@ pub fn get_current_themes(de: &str, src: &CurrentSources) -> Map<String, Value> 
     result
 }
 
-/// Порт `_kde_kcminput_cursor`: `cursorTheme=` из секции `[Mouse]` файла
-/// `kcminputrc`. `content` — содержимое (None = файла нет) → пусто.
+/// Port of `_kde_kcminput_cursor`: `cursorTheme=` from the `[Mouse]` section of
+/// `kcminputrc`. `content` is the contents (None = no file) → empty.
 pub fn kde_kcminput_cursor(content: Option<&str>) -> String {
     let Some(text) = content else {
         return String::new();
@@ -4087,8 +4101,8 @@ pub fn kde_kcminput_cursor(content: Option<&str>) -> String {
     String::new()
 }
 
-/// Порт `_kde_font_to_display`: QFont `"Family,Size,-1,5,..."` → `"Family Size"`.
-/// Пусто → пусто; без запятой → как есть; непарсибельный размер → 10.
+/// Port of `_kde_font_to_display`: QFont `"Family,Size,-1,5,..."` → `"Family Size"`.
+/// Empty → empty; no comma → as is; an unparsable size → 10.
 pub fn kde_font_to_display(raw: &str) -> String {
     if raw.is_empty() {
         return String::new();
@@ -4107,10 +4121,10 @@ pub fn kde_font_to_display(raw: &str) -> String {
     format!("{family} {size}")
 }
 
-/// Порт `_system_font_fallback`: `gtk-font-name=` из gtk-4.0, затем gtk-3.0
-/// `settings.ini`; иначе вывод `fc-match`; иначе `"Sans 10"`. `gtk4_ini` /
-/// `gtk3_ini` — содержимое файлов (None = нет); `fc_match` — stdout (None/
-/// пусто = недоступно).
+/// Port of `_system_font_fallback`: `gtk-font-name=` from gtk-4.0, then gtk-3.0
+/// `settings.ini`; otherwise the `fc-match` output; otherwise `"Sans 10"`.
+/// `gtk4_ini` / `gtk3_ini` are the file contents (None = none); `fc_match` is
+/// stdout (None/empty = unavailable).
 pub fn system_font_fallback(
     gtk4_ini: Option<&str>,
     gtk3_ini: Option<&str>,
@@ -4138,19 +4152,19 @@ pub fn system_font_fallback(
 }
 
 // ============================================================================
-// Санитайзер курсоров — порт gtk_sanitizer (pre-flight apply_cursor_theme)
+// Cursor sanitizer — port of gtk_sanitizer (pre-flight of apply_cursor_theme)
 // ============================================================================
 
-/// Небезопасные курсорные темы — порт `UNSAFE_CURSOR_THEMES` (GTK4 4.22
-/// SIGSEGV: нет `cursor.theme`, Inherits в icon-тему без `cursors/`).
+/// Unsafe cursor themes — port of `UNSAFE_CURSOR_THEMES` (GTK4 4.22 SIGSEGV:
+/// no `cursor.theme`, Inherits into an icon theme without `cursors/`).
 pub const UNSAFE_CURSOR_THEMES: &[&str] = &["Adwaita", "AdwaitaLegacy"];
 
-/// Порт `_is_cursor_theme_chain_safe`: цепочка Inherits не уводит GTK4 в
-/// рекурсию. `theme_dir` — каталог темы; `parent_has_cursors` — есть ли у
-/// родителя `cursors/` (проверяется исполнителем по /usr/share/icons и
-/// ~/.local/share/icons). Безопасна, если: есть `cursor.theme`; нет
-/// `index.theme`; нет `Inherits=`; или хоть один не-`hicolor` родитель имеет
-/// `cursors/`.
+/// Port of `_is_cursor_theme_chain_safe`: the Inherits chain doesn't lead GTK4
+/// into recursion. `theme_dir` is the theme directory; `parent_has_cursors` —
+/// whether the parent has `cursors/` (checked by the executor in
+/// /usr/share/icons and ~/.local/share/icons). Safe if: there is
+/// `cursor.theme`; no `index.theme`; no `Inherits=`; or at least one
+/// non-`hicolor` parent has `cursors/`.
 pub fn is_cursor_theme_chain_safe<F>(
     fs: &FsSnapshot,
     theme_dir: &str,
@@ -4164,10 +4178,10 @@ where
     }
     let idx = format!("{theme_dir}/index.theme");
     if !fs.is_file(&idx) {
-        return true; // самодостаточная, без наследования
+        return true; // self-contained, no inheritance
     }
     let Some(content) = fs.read_text(&idx) else {
-        return true; // OSError при чтении → безопасна (как оригинал)
+        return true; // OSError on read → safe (as in the original)
     };
     let mut parents: Vec<String> = Vec::new();
     for line in content.lines() {
@@ -4182,7 +4196,7 @@ where
     }
     for parent in &parents {
         if parent == "hicolor" {
-            continue; // терминатор для иконок, тупик для курсоров
+            continue; // a terminator for icons, a dead end for cursors
         }
         if parent_has_cursors(parent) {
             return true;
@@ -4191,11 +4205,11 @@ where
     false
 }
 
-/// Порт pre-flight `apply_cursor_theme`: отказать unsafe-теме. `theme` в
-/// [`UNSAFE_CURSOR_THEMES`] → false; иначе для первого каталога (из
-/// `/usr/share/icons`, `~/.local/share/icons`), где есть `<theme>/cursors/`,
-/// проверить [`is_cursor_theme_chain_safe`]. `parent_has_cursors` — тот же
-/// колбэк. Возвращает `true` = применять можно.
+/// Port of the `apply_cursor_theme` pre-flight: refuse an unsafe theme. `theme`
+/// in [`UNSAFE_CURSOR_THEMES`] → false; otherwise for the first directory (of
+/// `/usr/share/icons`, `~/.local/share/icons`) that has `<theme>/cursors/`,
+/// check [`is_cursor_theme_chain_safe`]. `parent_has_cursors` is the same
+/// callback. Returns `true` = may be applied.
 pub fn cursor_preflight_ok<F>(
     fs: &FsSnapshot,
     theme: &str,
@@ -4221,11 +4235,11 @@ where
 }
 
 // ============================================================================
-// История применений — порт _add_history / _save_history / get_recent
+// Apply history — port of _add_history / _save_history / get_recent
 // ============================================================================
 
-/// Порт записи `_add_history`: `{"kind","theme","de","ts"}`. `ts` (isoformat
-/// timespec=seconds) недетерминирован → подаётся параметром.
+/// Port of the `_add_history` record: `{"kind","theme","de","ts"}`. `ts`
+/// (isoformat timespec=seconds) is non-deterministic → passed as a parameter.
 pub fn history_entry(kind: &str, theme: &str, de: &str, ts: &str) -> Value {
     let mut m = Map::new();
     m.insert("kind".into(), Value::from(kind));
@@ -4235,7 +4249,7 @@ pub fn history_entry(kind: &str, theme: &str, de: &str, ts: &str) -> Value {
     Value::Object(m)
 }
 
-/// Порт `_add_history`: вставить в начало, обрезать до 50.
+/// Port of `_add_history`: insert at the beginning, truncate to 50.
 pub fn push_history(history: &[Value], entry: Value) -> Vec<Value> {
     let mut out = Vec::with_capacity(history.len() + 1);
     out.push(entry);
@@ -4244,31 +4258,31 @@ pub fn push_history(history: &[Value], entry: Value) -> Vec<Value> {
     out
 }
 
-/// `json.dump(history, indent=2, ensure_ascii=False)` — порт `_save_history`.
+/// `json.dump(history, indent=2, ensure_ascii=False)` — port of `_save_history`.
 pub fn serialize_history(history: &[Value]) -> String {
     serde_json::to_string_pretty(&Value::Array(history.to_vec())).expect("Value сериализуется")
 }
 
-/// Порт `get_recent`: `history[:n]`.
+/// Port of `get_recent`: `history[:n]`.
 pub fn get_recent(history: &[Value], n: usize) -> Vec<Value> {
     history.iter().take(n).cloned().collect()
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  Установка темы из архива (порт `install_theme_from_archive`)
+//  Installing a theme from an archive (port of `install_theme_from_archive`)
 // ══════════════════════════════════════════════════════════════════════════
 
-/// Куда распаковывать тему из архива: `base` — корень («~/.themes» или
-/// «~/.local/share/icons»), `dest` — конечный каталог темы.
+/// Where to unpack a theme from an archive: `base` is the root ("~/.themes" or
+/// "~/.local/share/icons"), `dest` is the final theme directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchiveDest {
     pub base: String,
     pub dest: String,
 }
 
-/// Порт выбора места установки в `install_theme_from_archive`: `kind == "gtk"`
-/// → `~/.themes` (вне XDG — там его читают GTK/Qt), иначе — каталог иконок
-/// в XDG-корне данных.
+/// Port of choosing the install location in `install_theme_from_archive`:
+/// `kind == "gtk"` → `~/.themes` (outside XDG — GTK/Qt read it there),
+/// otherwise the icons directory in the XDG data root.
 pub fn archive_install_dest(
     kind: &str,
     name: &str,
@@ -4289,51 +4303,52 @@ pub fn archive_install_dest(
     ArchiveDest { base, dest }
 }
 
-/// Папка темы внутри распакованного архива.
+/// The theme folder inside the unpacked archive.
 ///
-/// ⚠ Правило #16: оригинал брал `[e for e in os.scandir(tmp) if e.is_dir()][0]`
-/// — порядок `scandir` задаёт ФС, поэтому у архива с несколькими папками
-/// устанавливалась СЛУЧАЙНАЯ. Порт берёт первую по алфавиту: тот же результат
-/// для нормального архива (одна папка) и предсказуемый — для остальных.
+/// ⚠ Rule #16: the original took `[e for e in os.scandir(tmp) if e.is_dir()][0]`
+/// — the `scandir` order is set by the file system, so for an archive with
+/// several folders a RANDOM one was installed. The port takes the first one
+/// alphabetically: the same result for a normal archive (one folder) and a
+/// predictable one for the rest.
 pub fn pick_archive_dir(names: &[String]) -> Option<String> {
     names.iter().min().cloned()
 }
 
-/// `install_theme_from_archive`: в архиве нет ни одной папки.
+/// `install_theme_from_archive`: the archive has no folders at all.
 pub fn msg_archive_no_dirs() -> String {
     crate::i18n::tr("The archive contains no folders")
 }
-/// Начало сообщения о неудачной распаковке (дальше — текст исключения).
+/// Start of the failed unpacking message (followed by the exception text).
 pub fn msg_extract_failed_prefix() -> String {
     format!("{}: ", crate::i18n::tr("Unpacking error"))
 }
-/// `install_popular_theme`: темы нет во встроенном каталоге.
+/// `install_popular_theme`: the theme is not in the built-in catalog.
 pub fn msg_theme_not_in_catalog_prefix() -> String {
     format!("{}: ", crate::i18n::tr("Theme not found in the catalog"))
 }
-/// `install_popular_theme`: поставили из репозитория дистрибутива.
+/// `install_popular_theme`: installed from the distribution repository.
 pub fn msg_installed_from_repo_prefix() -> String {
     format!("{}: ", crate::i18n::tr("Theme installed from the repository"))
 }
-/// `install_popular_theme`: поставили из AUR.
+/// `install_popular_theme`: installed from the AUR.
 pub fn msg_installed_from_aur_prefix() -> String {
     format!("{}: ", crate::i18n::tr("Theme installed from AUR"))
 }
-/// `install_popular_theme`: для этого дистрибутива пакета нет.
+/// `install_popular_theme`: there is no package for this distribution.
 pub fn msg_no_package_prefix() -> String {
     format!("{}: ", crate::i18n::tr("No package for this distribution"))
 }
-/// `install_popular_theme`: установка не удалась, дальше — что пробовать руками.
+/// `install_popular_theme`: the install failed, followed by what to try by hand.
 pub fn msg_install_failed_prefix() -> String {
     format!("{}: ", crate::i18n::tr("Couldn't install. Try it manually"))
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  Чтение kdeglobals (порт `_kde_get`)
+//  Reading kdeglobals (port of `_kde_get`)
 // ══════════════════════════════════════════════════════════════════════════
 
-/// argv `kreadconfig6` для ключа kdeglobals — путь через KDE, чтобы подхватить
-/// системные defaults и активный Look-and-Feel (не только файл в ~/.config).
+/// argv of `kreadconfig6` for a kdeglobals key — the path through KDE, to pick up
+/// the system defaults and the active Look-and-Feel (not only the file in ~/.config).
 pub fn kde_read_cmd(section: &str, key: &str) -> Cmd {
     Cmd {
         argv: vec![
@@ -4351,13 +4366,13 @@ pub fn kde_read_cmd(section: &str, key: &str) -> Cmd {
     }
 }
 
-/// Фолбэк `_kde_get`: значение ключа прямо из текста kdeglobals.
+/// Fallback of `_kde_get`: a key value straight from the kdeglobals text.
 ///
-/// Повторяет `configparser(strict=False)` на данных KDE: последнее вхождение
-/// ключа в секции побеждает (дубликаты в kdeglobals — норма), значение
-/// обрезается по краям, комментарии `#`/`;` вне значений пропускаются,
-/// интерполяция `%(...)s` НЕ выполняется (как `configparser.get` без vars —
-/// у KDE-значений вида `%d` она и так не сработала бы).
+/// Mirrors `configparser(strict=False)` on KDE data: the last occurrence of a
+/// key in a section wins (duplicates in kdeglobals are normal), the value is
+/// trimmed at the edges, `#`/`;` comments outside values are skipped,
+/// `%(...)s` interpolation is NOT performed (like `configparser.get` without
+/// vars — it wouldn't have worked for KDE values like `%d` anyway).
 pub fn kdeglobals_value(content: &str, section: &str, key: &str) -> Option<String> {
     let mut cur = String::new();
     let mut found: Option<String> = None;
@@ -4374,7 +4389,7 @@ pub fn kdeglobals_value(content: &str, section: &str, key: &str) -> Option<Strin
             continue;
         }
         if let Some((k, v)) = line.split_once('=') {
-            // configparser сравнивает ключи без учёта регистра (optionxform).
+            // configparser compares keys case-insensitively (optionxform).
             if k.trim().eq_ignore_ascii_case(key) {
                 found = Some(v.trim().to_string());
             }
@@ -4384,43 +4399,44 @@ pub fn kdeglobals_value(content: &str, section: &str, key: &str) -> Option<Strin
 }
 
 // ============================================================================
-// «Настроить…» у стиля приложений — как в модуле KDE «Стиль приложений»
+// «Configure…» of an application style — as in the KDE "Application Style" module
 // ============================================================================
 //
-// KDE (plasma-workspace 6.8.2, `kcms/style`): у стиля есть свои настройки,
-// когда в его описании `kstyle/themes/<стиль>.themerc` стоит
-// `[Misc] ConfigPage=<плагин>` (Breeze — `kstyle_config/breezestyleconfig`,
-// Oxygen — `kstyle_config/kstyle_oxygen_config`); модуль грузит этот плагин
-// (`allocate_kstyle_config`) и показывает его окном «Настроить …». Только у
-// таких стилей кнопка и есть. Тот же плагин без модуля показывают отдельные
-// программы самих стилей — `breeze-settings6` и `oxygen-settings6`; их Rexon
-// и зовёт, они работают и вне KDE. Плагин без своей программы открывается
-// из самого модуля (`kcmshell6 kcm_style`). Kvantum — свой стиль без
-// `.themerc`: его настройки — `kvantummanager`; у `qt6ct-style`/`qt5ct-style`
-// — сами qt6ct/qt5ct.
+// KDE (plasma-workspace 6.8.2, `kcms/style`): a style has its own settings
+// when its description `kstyle/themes/<style>.themerc` has
+// `[Misc] ConfigPage=<plugin>` (Breeze — `kstyle_config/breezestyleconfig`,
+// Oxygen — `kstyle_config/kstyle_oxygen_config`); the module loads this plugin
+// (`allocate_kstyle_config`) and shows it in a "Configure …" window. Only such
+// styles have the button. The same plugin without the module is shown by the
+// styles' own standalone programs — `breeze-settings6` and
+// `oxygen-settings6`; Rexon calls them, they work outside KDE too. A plugin
+// without its own program is opened from the module itself
+// (`kcmshell6 kcm_style`). Kvantum is its own style without a `.themerc`: its
+// settings are `kvantummanager`; for `qt6ct-style`/`qt5ct-style` — qt6ct/qt5ct
+// themselves.
 
-/// Программы, которые показывают плагин настроек стиля без модуля KDE.
+/// Programs that show the style settings plugin without the KDE module.
 const STYLE_CONFIG_PROGRAMS: &[(&str, &str)] = &[
     ("kstyle_config/breezestyleconfig", "breeze-settings6"),
     ("kstyle_config/kstyle_oxygen_config", "oxygen-settings6"),
 ];
 
-/// Чем открываются настройки стиля.
+/// What opens the style settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StyleConfigButton {
-    /// Показывать ли кнопку (только у стилей приложений и тем Kvantum).
+    /// Whether to show the button (only for application styles and Kvantum themes).
     pub visible: bool,
-    /// Можно ли нажать: есть чем открыть.
+    /// Whether it can be pressed: there is something to open it with.
     pub enabled: bool,
     pub text: String,
-    /// Что откроется — или честная причина, почему нечем.
+    /// What will open — or an honest reason why there is nothing to open it with.
     pub tooltip: String,
-    /// Команда (пусто — нажать нельзя).
+    /// Command (empty — can't be pressed).
     pub argv: Vec<String>,
 }
 
-/// `ConfigPage` стилей по описаниям `.themerc`: ключ — имя стиля
-/// (`[KDE] WidgetStyle`) в нижнем регистре.
+/// `ConfigPage` of styles from the `.themerc` descriptions: the key is the style
+/// name (`[KDE] WidgetStyle`) in lowercase.
 pub fn style_config_pages(themercs: &[String]) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
     for text in themercs {
@@ -4435,7 +4451,7 @@ pub fn style_config_pages(themercs: &[String]) -> std::collections::HashMap<Stri
     out
 }
 
-/// Каталоги `kstyle/themes` по XDG (свой первым, как у QStandardPaths).
+/// `kstyle/themes` directories per XDG (the user's first, as in QStandardPaths).
 pub fn style_themerc_dirs(home: &str, xdg_data_home: Option<&str>, xdg_data_dirs: Option<&str>) -> Vec<String> {
     let mut out = Vec::new();
     let data_home = xdg_data_home
@@ -4450,10 +4466,10 @@ pub fn style_themerc_dirs(home: &str, xdg_data_home: Option<&str>, xdg_data_dirs
     out
 }
 
-/// Кнопка «Настроить…» плитки раздела «Стиль приложений». `kind` — вид
-/// плитки (`widgetstyle` — стиль Qt, `kvantum` — тема Kvantum), `name` —
-/// имя стиля или темы, `pages` — [`style_config_pages`], `has` — есть ли
-/// программа в PATH.
+/// The «Configure…» button of a tile in the «Application Style» section. `kind`
+/// is the tile kind (`widgetstyle` — a Qt style, `kvantum` — a Kvantum theme),
+/// `name` — the style or theme name, `pages` — [`style_config_pages`], `has` —
+/// whether the program is in PATH.
 pub fn style_config_button(
     kind: &str,
     name: &str,
@@ -4485,7 +4501,7 @@ pub fn style_config_button(
         tooltip: reason,
         argv: Vec::new(),
     };
-    // Kvantum: и сам движок (`kvantum`, `kvantum-dark`), и его темы.
+    // Kvantum: both the engine itself (`kvantum`, `kvantum-dark`) and its themes.
     if kind == "kvantum" || low.starts_with("kvantum") {
         return if has("kvantummanager") {
             open(vec!["kvantummanager".into()], tr("Kvantum Manager"))
@@ -4519,8 +4535,8 @@ pub fn style_config_button(
     missing(tr("The settings of this style open only from KDE System Settings, and they aren't installed."))
 }
 
-/// [`style_config_button`] на живой системе: описания стилей с диска,
-/// программы — по PATH.
+/// [`style_config_button`] on the live system: style descriptions from disk,
+/// programs by PATH.
 pub fn style_config_button_live(kind: &str, name: &str) -> StyleConfigButton {
     let home = std::env::var("HOME").unwrap_or_default();
     let dirs = style_themerc_dirs(
@@ -4545,7 +4561,7 @@ pub fn style_config_button_live(kind: &str, name: &str) -> StyleConfigButton {
     style_config_button(kind, name, &pages, &|p| crate::utils::which(p, path.as_deref()).is_some())
 }
 
-/// Значение ключа INI без учёта регистра имени группы и ключа.
+/// INI key value, case-insensitive in group and key names.
 fn ini_value_ci(text: &str, group: &str, key: &str) -> Option<String> {
     let mut here = false;
     for line in text.lines() {
@@ -4569,9 +4585,9 @@ fn ini_value_ci(text: &str, group: &str, key: &str) -> Option<String> {
 mod deps_tests {
     use super::*;
 
-    /// Решение 3а: о значках темы — один вопрос; запомненный ответ, стоящие
-    /// уже значки и набор, которого нет нигде, вопроса не дают; у стоящего
-    /// набора — «Включить», у недостающего — «Скачать и включить».
+    /// Decision 3a: one question about the theme icons; a remembered answer, icons
+    /// already in place and a set that exists nowhere give no question; for an
+    /// installed set — «Turn on», for a missing one — «Download and turn on».
     #[test]
     fn theme_icons_are_asked_once_and_remembered() {
         let icons = |state: DepState| vec![DepItem { role: DepRole::Icons, wanted: "Windows XP".into(), state }];
@@ -4580,21 +4596,21 @@ mod deps_tests {
         assert_eq!(q.yes, tr("Download and turn on"));
         assert_eq!(q.no, tr("Keep mine"));
         assert!(q.text.contains("Luna") && q.text.contains("Windows XP"), "{}", q.text);
-        // Ответ запомнен — не спрашивать, каким бы он ни был.
+        // The answer is remembered — don't ask, whatever it was.
         assert_eq!(icons_question("Luna", &pkg, "breeze", Some(true)), None);
         assert_eq!(icons_question("Luna", &pkg, "breeze", Some(false)), None);
-        // Набор уже стоит — тот же вопрос, но «Включить».
+        // The set is already installed — the same question, but «Turn on».
         let here = icons(DepState::Installed("Windows XP".into()));
         assert_eq!(icons_question("Luna", &here, "breeze", None).expect("спросить").yes, tr("Turn on"));
-        // Он и так включён — спрашивать не о чем.
+        // It is already on — nothing to ask.
         assert_eq!(icons_question("Luna", &here, "Windows XP", None), None);
-        // Нет нигде — о нём скажет итог, не вопрос.
+        // Exists nowhere — the result will tell about it, not a question.
         assert_eq!(icons_question("Luna", &icons(DepState::Missing), "breeze", None), None);
-        // Тема о значках не просит.
+        // The theme doesn't ask for icons.
         let cursor = vec![DepItem { role: DepRole::Cursor, wanted: "DMZ-White".into(), state: DepState::Missing }];
         assert_eq!(icons_question("Luna", &cursor, "breeze", None), None);
 
-        // Память — по имени темы, прочие ответы не теряются.
+        // Memory by theme name, other answers are not lost.
         let v = icons_choice_with(None, "Luna", false);
         assert_eq!(icons_choice_of(Some(&v), "Luna"), Some(false));
         let v = icons_choice_with(Some(&v), "Royale", true);
@@ -4604,10 +4620,10 @@ mod deps_tests {
         assert_eq!(icons_choice_of(None, "Luna"), None);
     }
 
-    /// Домашний архив WhiteSur несёт только WhiteSur, -dark и -light:
-    /// цветной вариант из него не достать — его и не качаем (иначе три
-    /// ненужных набора в ~/.local/share/icons и «не принесла» при каждом
-    /// «Применить»).
+    /// The WhiteSur home archive carries only WhiteSur, -dark and -light: a color
+    /// variant can't be got from it — so it isn't downloaded (otherwise three
+    /// needless sets in ~/.local/share/icons and "didn't bring it" on every
+    /// «Apply»).
     #[test]
     fn home_archive_is_offered_only_for_names_it_brings() {
         for name in ["WhiteSur", "WhiteSur-Dark", "whitesur-light"] {
@@ -4616,11 +4632,11 @@ mod deps_tests {
         for name in ["WhiteSur-purple-dark", "WhiteSur-nord"] {
             assert_eq!(dep_home_source(DepRole::Icons, name), None, "{name}");
         }
-        // Пакет при этом по-прежнему знает варианты.
+        // The package still knows the variants meanwhile.
         assert!(KNOWN_SETS.iter().any(|s| known_set_matches(s, DepRole::Icons, "WhiteSur-nord")));
     }
 
-    /// Имя набора из чужого index.theme — одно имя каталога, не путь.
+    /// A set name from someone else's index.theme is a single directory name, not a path.
     #[test]
     fn theme_deps_ignore_path_like_names() {
         let d = theme_deps("[Desktop Entry]\nIconTheme=WhiteSur-/../../x\nCursorTheme=../c\n");
@@ -4628,7 +4644,7 @@ mod deps_tests {
     }
     use std::collections::{HashMap, HashSet};
 
-    /// Мнимый диск: каталоги и файлы с текстом.
+    /// A fake disk: directories and files with text.
     struct Disk {
         dirs: HashSet<String>,
         files: HashMap<String, String>,
@@ -4676,11 +4692,11 @@ mod deps_tests {
             theme_deps(LUNA),
             ThemeDeps { icons: Some("Windows XP".into()), cursor: Some("DMZ-White".into()) }
         );
-        // Ключи в [Desktop Entry] (так пишут часть тем) — тоже просьба.
+        // Keys in [Desktop Entry] (some themes write them so) — also a request.
         let de = theme_deps("[Desktop Entry]\nName=X\nIconTheme=Papirus-Dark\n");
         assert_eq!(de.icons.as_deref(), Some("Papirus-Dark"));
         assert_eq!(de.cursor, None);
-        // Пустое значение, hicolor (наш импорт .msstyles) и чужая секция — не просьба.
+        // An empty value, hicolor (our .msstyles import) and a foreign section — not a request.
         let none = theme_deps("[X-GNOME-Metatheme]\nIconTheme=hicolor\nCursorTheme=\n[Other]\nIconTheme=Papirus\n");
         assert_eq!(none, ThemeDeps::default());
     }
@@ -4691,7 +4707,7 @@ mod deps_tests {
             dep_search_roots("/h", "/h/.local/share", "/opt/share:/usr/share/"),
             vec!["/h/.icons", "/h/.local/share/icons", "/opt/share/icons", "/usr/share/icons"]
         );
-        // Без XDG_DATA_DIRS — значение по спецификации.
+        // Without XDG_DATA_DIRS — the value per the spec.
         assert_eq!(
             gtk_theme_search_roots("/h", "/d", ""),
             vec!["/h/.themes", "/d/themes", "/usr/local/share/themes", "/usr/share/themes"]
@@ -4700,12 +4716,12 @@ mod deps_tests {
 
     #[test]
     fn dmz_white_is_vanilla_dmz() {
-        // Тема просит «DMZ-White», пакет Arch поставил «Vanilla-DMZ».
+        // The theme asks for "DMZ-White", the Arch package installed "Vanilla-DMZ".
         let disk = Disk::new(&["/usr/share/icons/Vanilla-DMZ", "/usr/share/icons/Vanilla-DMZ/cursors"], &[]);
         assert_eq!(disk.find(DepRole::Cursor, "DMZ-White", &roots()).as_deref(), Some("Vanilla-DMZ"));
-        // Чёрный DMZ — другой набор: белым его не закрыть.
+        // Black DMZ is a different set: the white one can't stand in for it.
         assert_eq!(disk.find(DepRole::Cursor, "DMZ-Black", &roots()), None);
-        // Точное имя выигрывает у псевдонима.
+        // The exact name beats the alias.
         let both = Disk::new(
             &[
                 "/usr/share/icons/Vanilla-DMZ",
@@ -4724,7 +4740,7 @@ mod deps_tests {
             &["/h/.local/share/icons/WhiteSur-dark", "/h/.icons/Cursorish", "/h/.icons/Cursorish/cursors"],
             &[
                 ("/h/.local/share/icons/WhiteSur-dark/index.theme", "[Icon Theme]\nName=WhiteSur-dark\nDirectories=48x48/apps\n"),
-                // Курсорная тема с index.theme без Directories= — не набор иконок.
+                // A cursor theme with an index.theme without Directories= is not an icon set.
                 ("/h/.icons/Cursorish/index.theme", "[Icon Theme]\nName=Cursorish\n"),
             ],
         );
@@ -4752,17 +4768,18 @@ mod deps_tests {
                 },
             ]
         );
-        // Ничего не стоит, семейство без пакета — честное «нет».
+        // Nothing installed, a family without a package — an honest "no".
         let empty = Disk::new(&[], &[]);
         let find = |role: DepRole, wanted: &str| empty.find(role, wanted, &roots());
         let plan = plan_theme_deps(&theme_deps(LUNA), "gentoo", &find);
         assert!(plan.iter().all(|i| i.state == DepState::Missing));
-        // Ставится само только то, что можно поставить.
+        // Only what can be installed gets installed by itself.
         assert!(deps_to_prepare(&plan, true).iter().all(|i| dep_home_source(i.role, &i.wanted).is_some()));
     }
 
-    /// «Применить» у GTK-темы: курсор ставится сам, без вопроса; значки — по
-    /// ответу «Скачать и включить»; не встало — тема не применяется.
+    /// «Apply» of a GTK theme: the cursor is installed by itself, without a
+    /// question; the icons — per the «Download and turn on» answer; if something
+    /// didn't install, the theme is not applied.
     #[test]
     fn theme_deps_install_without_question_all_or_nothing() {
         let cursor = DepItem { role: DepRole::Cursor, wanted: "DMZ-White".into(), state: DepState::Installable("xcursor-vanilla-dmz".into()) };
@@ -4772,12 +4789,12 @@ mod deps_tests {
         let items = vec![cursor.clone(), icons.clone(), have, nowhere];
         assert_eq!(deps_to_prepare(&items, false), vec![cursor.clone()]);
         assert_eq!(deps_to_prepare(&items, true), vec![cursor.clone(), icons.clone()]);
-        // Пароль не подтверждён — совет повторить; причина не повторяется.
+        // The password was not confirmed — advice to retry; the reason is not repeated.
         let pw = crate::appearance_installer::password_not_confirmed();
         let text = deps_refusal("Luna", &[cursor.clone()], &pw);
         assert!(text.contains("Luna") && text.contains("DMZ-White") && !text.contains(&pw), "{text}");
-        // Пакета нет в официальных репозиториях (только AUR) — тема не
-        // применяется, и сказано, чего нет.
+        // The package is not in the official repositories (only the AUR) — the theme
+        // is not applied, and it is said what is missing.
         let text = deps_refusal("Luna", &[icons], "not in the official repositories: mint-y-icons");
         assert!(text.contains("Mint-Y") && text.contains("mint-y-icons"), "{text}");
     }
@@ -4796,7 +4813,7 @@ mod deps_tests {
         assert_eq!(dep_package(DepRole::Icons, "Windows XP", "arch"), None);
         assert_eq!(dep_package(DepRole::Icons, "Mint-Y-Dark", "debian").as_deref(), Some("mint-y-icons"));
         assert_eq!(dep_package(DepRole::Icons, "WhiteSur", "debian"), None);
-        // «Papirusoid» — не вариант Papirus.
+        // "Papirusoid" is not a Papirus variant.
         assert_eq!(dep_package(DepRole::Icons, "Papirusoid", "arch"), None);
     }
 }

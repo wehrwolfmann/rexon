@@ -1,54 +1,58 @@
-//! Договор с C++-частью waywallen: `module.qmltypes` апстрима против того,
-//! что Rexon регистрирует в модуле `waywallen.ui`.
+//! The contract with waywallen's C++ part: upstream's `module.qmltypes`
+//! against what Rexon registers in the `waywallen.ui` module.
 //!
-//! ЗАЧЕМ. Вендорный QML waywallen зовёт типы, которые у апстрима печатает
-//! C++ (`W.WallpaperListQuery`, синглтон `W.Notify`, …), а у нас их пишет
-//! Rust (`rexon-gui`, `rexon-qt-filter`) и регистрирует
-//! `cpp/rexon_register_we.cpp`. Сверка по именам `W.*` в разметке (шаг
-//! `[types]` в `scripts/sync-waywallen-qml.py`) ловит только новое ИМЯ
-//! типа. Новое свойство, метод или сигнал у старого типа она не видит, и
-//! такая поломка вылезает только на экране — пустой подписью или «undefined».
+//! WHY. waywallen's vendored QML calls types that upstream emits in C++
+//! (`W.WallpaperListQuery`, the `W.Notify` singleton, …), while for us they
+//! are written in Rust (`rexon-gui`, `rexon-qt-filter`) and registered by
+//! `cpp/rexon_register_we.cpp`. Checking the `W.*` names in the markup (the
+//! `[types]` step in `scripts/sync-waywallen-qml.py`) catches only a new type
+//! NAME. It does not see a new property, method or signal of an old type,
+//! and such a breakage shows up only on screen — as an empty label or
+//! «undefined».
 //!
-//! `module.qmltypes` — это опись C++-типов, которую генератор QML-модуля
-//! апстрима (lito-qt, qmltyperegistrar) кладёт рядом с модулем: имена,
-//! синглтоны, свойства, методы, сигналы. Описывает, но не регистрирует —
-//! регистрировать обязан процесс-потребитель, то есть мы. Свою опись
-//! cxx-qt-build делает тем же qmltyperegistrar (`OUT_DIR`, модуль
-//! `org.rexon.gui`), поэтому сравниваются два файла одного формата.
+//! `module.qmltypes` is the inventory of C++ types that upstream's QML module
+//! generator (lito-qt, qmltyperegistrar) puts next to the module: names,
+//! singletons, properties, methods, signals. It describes but does not
+//! register — the consuming process, that is, we, must register them.
+//! cxx-qt-build makes its own inventory with the same qmltyperegistrar
+//! (`OUT_DIR`, the `org.rexon.gui` module), so two files of the same format
+//! are compared.
 //!
-//! Что проверяется:
-//!   * каждый тип апстрима, который мы регистрируем, имеет у нас все его
-//!     свойства, методы и сигналы (с унаследованными внутри описи), которые
-//!     вендорный QML упоминает хотя бы словом. Член, имени которого в
-//!     разметке нет вовсе (внутренние слоты D-Bus, `load_settings`, …),
-//!     печатается списком, но не краснеет: зовут его только из C++
-//!     апстрима. Проверка по слову, а не по `W.Тип.член`, нарочно грубая —
-//!     разметка обращается и через нетипизированные свойства
-//!     (`details?.author`), и лишнее совпадение безопаснее пропуска;
-//!     лишнее у нас допустимо;
-//!   * синглтон у апстрима — синглтон и у нас, и наоборот;
-//!   * тип апстрима, который мы НЕ регистрируем, вендорный QML не зовёт
-//!     по имени (`W.Имя`).
-//! Известные расхождения перечислены в `KNOWN_GAPS` поимённо, с причиной.
+//! What is checked:
+//!   * every upstream type we register has all its properties, methods and
+//!     signals (including those inherited inside the inventory) that the
+//!     vendored QML mentions by at least a word. A member whose name does not
+//!     appear in the markup at all (internal D-Bus slots, `load_settings`, …)
+//!     is printed as a list but does not turn red: only upstream's C++ calls
+//!     it. Checking by word rather than by `W.Type.member` is deliberately
+//!     coarse — the markup also accesses things through untyped properties
+//!     (`details?.author`), and an extra match is safer than a miss; extras
+//!     on our side are allowed;
+//!   * a singleton upstream is a singleton for us too, and vice versa;
+//!   * an upstream type that we do NOT register is not called by name by the
+//!     vendored QML (`W.Name`).
+//! Known divergences are listed in `KNOWN_GAPS` by name, with a reason.
 //!
-//! Опись апстрима — `data/qt_wallpaper_engine/qml_ui/waywallen/ui/module.qmltypes`
-//! (того же тега, что вендорный QML, см. `UPSTREAM_TAG`). Прогнать против
-//! другой описи, например сборки следующего выпуска, — переменная
-//! `REXON_WW_QMLTYPES=<путь к module.qmltypes>`. Чтобы список «не хватает»
-//! был точным ДО синхронизации разметки, рядом задаётся и разметка того же
-//! выпуска: `REXON_WW_QML_DIR=<каталог ui/qml апстрима>` (иначе слова берутся
-//! из вендорного QML дерева — прежнего выпуска).
+//! The upstream inventory is
+//! `data/qt_wallpaper_engine/qml_ui/waywallen/ui/module.qmltypes` (of the same
+//! tag as the vendored QML, see `UPSTREAM_TAG`). To run against another
+//! inventory, for example a build of the next release, use the variable
+//! `REXON_WW_QMLTYPES=<path to module.qmltypes>`. For the "missing" list to be
+//! accurate BEFORE syncing the markup, the markup of the same release is set
+//! alongside: `REXON_WW_QML_DIR=<upstream's ui/qml directory>` (otherwise the
+//! words are taken from the vendored QML of the tree — the previous
+//! release).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 const MODULE: &str = "waywallen.ui";
 
-/// Расхождения, о которых знаем: (тип, член, почему так).
+/// Divergences we know about: (type, member, why it is so).
 const KNOWN_GAPS: &[(&str, &str, &str)] = &[];
 
 // ---------------------------------------------------------------------------
-// Разбор qmltypes (формат QtQuick.tooling: объекты `Имя { ключ: значение }`)
+// Parsing qmltypes (the QtQuick.tooling format: objects `Name { key: value }`)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
@@ -123,7 +127,7 @@ impl Obj {
     }
 }
 
-/// Объект с позиции `pos`, где стоит `Имя {`.
+/// The object from position `pos`, where `Name {` stands.
 fn parse_obj(toks: &[Tok], pos: &mut usize) -> Obj {
     let kind = match &toks[*pos] {
         Tok::Ident(s) => s.clone(),
@@ -175,7 +179,7 @@ fn parse_obj(toks: &[Tok], pos: &mut usize) -> Obj {
     }
 }
 
-/// Один C++-тип описи.
+/// One C++ type of the inventory.
 #[derive(Debug, Default)]
 struct Comp {
     name: String,
@@ -220,13 +224,14 @@ fn parse_qmltypes(text: &str) -> Vec<Comp> {
         .collect()
 }
 
-/// Последний сегмент имени C++ (`waywallen::model::X` → `X`).
+/// The last segment of a C++ name (`waywallen::model::X` → `X`).
 fn short(name: &str) -> &str {
     name.rsplit("::").next().unwrap_or(name)
 }
 
-/// Члены типа вместе с унаследованными — по цепочке прототипов ВНУТРИ описи
-/// (базовые классы Qt в описи модуля не лежат и не сравниваются).
+/// The type's members together with inherited ones — along the prototype
+/// chain INSIDE the inventory (Qt base classes do not lie in the module
+/// inventory and are not compared).
 fn members_with_bases(comps: &[Comp], comp: &Comp) -> BTreeSet<(&'static str, String)> {
     let mut out = comp.members.clone();
     let mut seen = BTreeSet::new();
@@ -251,7 +256,7 @@ fn members_with_bases(comps: &[Comp], comp: &Comp) -> BTreeSet<(&'static str, St
 }
 
 // ---------------------------------------------------------------------------
-// Наши регистрации
+// Our registrations
 // ---------------------------------------------------------------------------
 
 #[derive(Debug)]
@@ -261,8 +266,8 @@ struct Reg {
     file: String,
 }
 
-/// `qmlRegister{Type,SingletonType}<Класс>("waywallen.ui", 1, 0, "Имя", …)`
-/// из исходников регистраций обоих крейтов.
+/// `qmlRegister{Type,SingletonType}<Class>("waywallen.ui", 1, 0, "Name", …)`
+/// from the registration sources of both crates.
 fn registrations(crate_dir: &Path) -> BTreeMap<String, Reg> {
     let dirs = [
         crate_dir.join("cpp"),
@@ -310,9 +315,10 @@ fn registrations(crate_dir: &Path) -> BTreeMap<String, Reg> {
     out
 }
 
-/// Члены модели фильтров: rexon-qt-filter — не QML-модуль cxx-qt, своей
-/// описи у него нет, поэтому имена берутся из моста (`#[qproperty]`,
-/// `#[qinvokable]`, `#[qsignal]`; имя для QML — `cxx_name`, иначе имя Rust).
+/// Members of the filter model: rexon-qt-filter is not a cxx-qt QML module and
+/// has no inventory of its own, so the names are taken from the bridge
+/// (`#[qproperty]`, `#[qinvokable]`, `#[qsignal]`; the name for QML is
+/// `cxx_name`, otherwise the Rust name).
 fn filter_model_members(crate_dir: &Path) -> BTreeSet<(&'static str, String)> {
     let path = crate_dir.join("../rexon-qt-filter/src/filter_rule_model.rs");
     let text = std::fs::read_to_string(&path).unwrap();
@@ -322,7 +328,7 @@ fn filter_model_members(crate_dir: &Path) -> BTreeSet<(&'static str, String)> {
     while i < lines.len() {
         let line = lines[i];
         if let Some(rest) = line.strip_prefix("#[qproperty(") {
-            // Свойство может быть разбито на несколько строк.
+            // A property may be split over several lines.
             let mut decl = rest.to_string();
             let mut j = i;
             while !decl.contains(")]") && j + 1 < lines.len() {
@@ -365,8 +371,8 @@ fn filter_model_members(crate_dir: &Path) -> BTreeSet<(&'static str, String)> {
     out
 }
 
-/// Имена `W.Имя`, которые зовёт вендорный QML, и все слова-идентификаторы
-/// разметки.
+/// The `W.Name` names the vendored QML calls, and all identifier words of the
+/// markup.
 fn vendor_uses(qml_dir: &Path) -> (BTreeSet<String>, BTreeSet<String>) {
     let mut out = BTreeSet::new();
     let mut words = BTreeSet::new();
@@ -539,8 +545,9 @@ fn rexon_provides_what_upstream_module_qmltypes_describes() {
         .filter(|(t, m, _)| !used_gaps.contains(&(t.to_string(), m.to_string())))
         .map(|(t, m, _)| format!("{t}.{m}"))
         .collect();
-    // Устаревшая запись в списке известных расхождений краснеет только против
-    // своей описи: против чужой (переменная) список и не обязан сходиться.
+    // A stale entry in the list of known divergences turns red only against its
+    // own inventory: against another one (the variable) the list is not obliged
+    // to match.
     if std::env::var_os("REXON_WW_QMLTYPES").is_none() && !stale.is_empty() {
         problems.push(format!(
             "KNOWN_GAPS: расхождения больше нет, убрать запись: {}",
@@ -586,12 +593,13 @@ Module {
     assert!(all.contains(&("метод", "run".to_string())));
 }
 
-/// Вендорный `qmldir` — того же вида, что пишет генератор QML-модуля апстрима
-/// (lito-qt `qt.qml_module` с `prefer_resources = false`): `module`, затем
-/// `typeinfo module.qmltypes`, компоненты с версией модуля апстрима, в конце
-/// `depends`; строки `prefer` нет (с ней Qt ищет файлы в ресурсах чужого
-/// бинаря). Тогда вендорная копия и модуль, установленный самим waywallen,
-/// взаимозаменяемы: Rexon может грузить любой из них одним и тем же путём.
+/// The vendored `qmldir` is of the same kind that upstream's QML module
+/// generator writes (lito-qt `qt.qml_module` with `prefer_resources = false`):
+/// `module`, then `typeinfo module.qmltypes`, components with upstream's
+/// module version, `depends` at the end; there is no `prefer` line (with it Qt
+/// looks for files in the resources of someone else's binary). Then the
+/// vendored copy and the module installed by waywallen itself are
+/// interchangeable: Rexon can load either of them by the same path.
 #[test]
 fn vendor_qmldir_has_the_shape_lito_qt_writes() {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
