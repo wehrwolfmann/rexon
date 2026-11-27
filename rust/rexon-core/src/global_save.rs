@@ -270,7 +270,9 @@ fn snapshot_outside(env: &SaveEnv) -> Snapshot {
             .or_else(|| Some((env.env)("XCURSOR_THEME")).filter(|v| !v.trim().is_empty())),
     );
 
-    // Шрифты: интерфейс, моноширинный, заголовок — из родных ключей стола.
+    // Шрифты: интерфейс, моноширинный, заголовок — из родных ключей стола;
+    // маленький, панели инструментов и меню — из нашего блока в gtk.css
+    // (родного ключа у них вне KDE нет), если они заданы.
     if crate::qt_settings::font_refusal_live(de).is_none() {
         let wm = crate::qt_settings::session_title_wm(
             de,
@@ -280,7 +282,15 @@ fn snapshot_outside(env: &SaveEnv) -> Snapshot {
             &|p| env.io.read(p),
         );
         let kde_tool = ["kreadconfig6", "kreadconfig5"].into_iter().find(|t| env.io.have(t)).unwrap_or("");
-        for (target, key) in [("system", FONT_GENERAL), ("mono", FONT_FIXED), ("title", FONT_TITLE)] {
+        let targets = [
+            ("system", FONT_GENERAL),
+            ("mono", FONT_FIXED),
+            ("small", FONT_KEYS[2]),
+            ("toolbar", FONT_KEYS[3]),
+            ("menu", FONT_KEYS[4]),
+            ("title", FONT_TITLE),
+        ];
+        for (target, key) in targets {
             if !crate::qt_settings::font_target_available_wm(de, target, wm) {
                 continue;
             }
@@ -419,16 +429,13 @@ pub struct SaveDialog {
 /// Подпись того, что стоит сейчас.
 fn part_value(s: &Snapshot, part: LnfPart) -> String {
     match part {
+        // С начертанием: «DejaVu Sans Bold 10» (поля QFont → слова Pango).
         LnfPart::Fonts => FONT_KEYS
             .iter()
             .find_map(|k| s.get(k))
             .map(|f| {
-                let mut it = f.split(',');
-                let family = it.next().unwrap_or("").trim();
-                match it.next().and_then(|v| v.trim().parse::<f64>().ok()) {
-                    Some(size) => format!("{family} {}", size.round() as i64),
-                    None => family.to_string(),
-                }
+                let (family, size, face) = crate::qt_settings::parse_font_spec_face(f);
+                crate::qt_settings::font_face_spec(family.trim(), size, face)
             })
             .unwrap_or_default(),
         LnfPart::WindowDecoration => {
@@ -1146,6 +1153,43 @@ mod tests {
         let colors = d.parts.iter().find(|p| p.id == LnfPart::Colors).unwrap();
         assert!(!colors.enabled && !colors.reason.is_empty());
         assert!(d.parts.iter().all(|p| !matches!(p.id, LnfPart::PlasmaTheme | LnfPart::DesktopLayout)));
+    }
+
+    /// MATE: шрифты меню, панели инструментов и маленький — из нашего
+    /// блока в gtk.css, с начертанием (Bold Italic у меню), в пакет
+    /// темы полями QFont; метка прежних версий (без начертания) читается
+    /// обычным шрифтом. Подпись в окне сохранения — с начертанием.
+    #[test]
+    fn вне_plasma_шрифты_меню_панели_и_маленький_с_начертанием() {
+        use crate::qt_settings::{FontFace, FontFile};
+        let mut io = Fake { tools: vec!["gsettings"], ..Default::default() };
+        io.answers.insert("gsettings get org.mate.interface font-name".into(), "'DejaVu Sans Bold 10'\n".into());
+        let menu = FontFile::GtkCss { version: "3.0".into(), target: "menu".into() };
+        let toolbar = FontFile::GtkCss { version: "3.0".into(), target: "toolbar".into() };
+        let css = menu.try_new_text_face(None, "Noto Sans", 9, FontFace { weight: 700, italic: true }).unwrap();
+        let css = toolbar.try_new_text_face(Some(&css), "Inter", 10, FontFace { weight: 400, italic: false }).unwrap();
+        // Метка прежней версии: без поля начертания.
+        let css = css.replace("/* <<< Rexon: fonts */", "/* rexon:font small 8 Cantarell */\n/* <<< Rexon: fonts */");
+        io.files.borrow_mut().insert("/h/.config/gtk-3.0/gtk.css".into(), css);
+        let env = SaveEnv { io: &io, ctx: ctx("mate"), env: &no_env };
+        let s = snapshot(&env);
+        assert_eq!(s.get(FONT_KEYS[4]), Some("Noto Sans,9,-1,5,700,1,0,0,0,0,0,0,0,0,0,1"));
+        assert_eq!(s.get(FONT_KEYS[3]), Some("Inter,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"));
+        assert_eq!(s.get(FONT_KEYS[2]), Some("Cantarell,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"));
+        let d = dialog("mate", &s, "Wehrwolfmann");
+        let fonts = d.parts.iter().find(|p| p.id == LnfPart::Fonts).unwrap();
+        assert_eq!(fonts.value, "DejaVu Sans Bold 10");
+        let m = Manifest { id: "t".into(), name: "t".into(), ..Default::default() };
+        let files: HashMap<String, String> = package_files(&m, &s, parts_for("mate")).into_iter().collect();
+        let defaults = &files["contents/defaults"];
+        assert!(defaults.contains("menuFont=Noto Sans,9,-1,5,700,1,0,0,0,0,0,0,0,0,0,1"), "{defaults}");
+        assert!(defaults.contains("toolBarFont=Inter,10,-1,5,400,0,"), "{defaults}");
+        assert!(defaults.contains("smallestReadableFont=Cantarell,8,-1,5,400,0,"), "{defaults}");
+        // Не заданы — в пакет не попадают.
+        let mut bare = Fake { tools: vec!["gsettings"], ..Default::default() };
+        bare.answers.insert("gsettings get org.mate.interface font-name".into(), "'Ubuntu 11'\n".into());
+        let s = snapshot(&SaveEnv { io: &bare, ctx: ctx("mate"), env: &no_env });
+        assert!(FONT_KEYS[2..5].iter().all(|k| s.get(k).is_none()));
     }
 
     /// Все команды плана применения — одной строкой каждая.

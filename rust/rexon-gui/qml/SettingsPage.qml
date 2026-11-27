@@ -419,6 +419,21 @@ Item {
                 }
             }
 
+            // «Эффекты экрана» — только в «Оформлении» (во вкладке их не было).
+            Loader {
+                Layout.fillWidth: true
+                Layout.preferredHeight: item ? item.implicitHeight : 0
+                active: root.panel === "screeneffects"
+                visible: active
+                sourceComponent: Component {
+                    ScreenEffectsSection {
+                        pal: root.pal
+                        sty: root.sty
+                        onMessage: text => root.say(text)
+                    }
+                }
+            }
+
             // Все эффекты KWin — только в KDE (раздел сам прячется в других).
             Loader {
                 Layout.fillWidth: true

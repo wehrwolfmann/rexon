@@ -160,7 +160,7 @@ msgstr "Свой цвет"
 msgid "Choose a color…"
 msgstr "Выбрать цвет…"
 
-#: rust/rexon-core/src/accent.rs
+#: rust/rexon-core/src/accent.rs rust/rexon-gui/qml/ScreenEffectsSection.qml
 msgid "Restore as it was"
 msgstr "Вернуть как было"
 
@@ -170,6 +170,7 @@ msgstr "Открыть настройки COSMIC"
 
 #
 #: rust/rexon-core/src/accent.rs rust/rexon-core/src/animations.rs
+#: rust/rexon-core/src/screen_effects.rs
 msgid "The program %1 is not installed."
 msgstr "Программа %1 не установлена."
 
@@ -1395,11 +1396,11 @@ msgstr "Не удалось удалить (код %1): %2"
 
 #: rust/rexon-core/src/appearance_installer.rs
 msgid "Global Theme applied"
-msgstr "Global Theme применена"
+msgstr "Глобальная тема применена"
 
 #: rust/rexon-core/src/appearance_installer.rs
 msgid "Couldn't apply the Global Theme"
-msgstr "Не удалось применить Global Theme"
+msgstr "Не удалось применить глобальную тему"
 
 #: rust/rexon-core/src/appearance_installer.rs
 msgid "Plasma Style applied"
@@ -2520,9 +2521,9 @@ msgid ""
 "lock screen part is applied, not the whole theme. Not every Global Theme has "
 "its own lock screen — then the default look is used."
 msgstr ""
-"Темы экрана блокировки (QML-гриттер) живут внутри Global Themes. Применяется "
-"ТОЛЬКО компонент блокировки, не вся тема. Не у каждой Global Theme есть свой "
-"экран блокировки — тогда применится оформление по умолчанию."
+"Темы экрана блокировки (QML-гриттер) живут внутри глобальных тем. "
+"Применяется ТОЛЬКО компонент блокировки, не вся тема. Не у каждой глобальной "
+"темы есть свой экран блокировки — тогда применится оформление по умолчанию."
 
 #: rust/rexon-core/src/appearance_page.rs
 msgid "🖼️ Lock Screen Wallpaper"
@@ -3659,7 +3660,7 @@ msgstr "Сохранённой копии панели пока нет."
 #: rust/rexon-core/src/categories.rs
 msgctxt "appearance section"
 msgid "Global Themes"
-msgstr "Global Themes"
+msgstr "Глобальные темы"
 
 #: rust/rexon-core/src/categories.rs
 msgctxt "appearance section"
@@ -3881,6 +3882,11 @@ msgstr "Анимация"
 #: rust/rexon-gui/qml/DesktopEffectsSection.qml
 msgid "Desktop effects"
 msgstr "Эффекты рабочего стола"
+
+#: rust/rexon-core/src/categories.rs
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgid "Screen effects"
+msgstr "Эффекты экрана"
 
 #. TRANSLATORS: link in the Settings tab to a section that moved; %1 is the section name.
 #: rust/rexon-core/src/categories.rs
@@ -5654,6 +5660,7 @@ msgstr "Запоминает виджеты, запущенные сейчас, 
 #: rust/rexon-core/src/themes.rs rust/rexon-core/src/widget_shot.rs
 #: rust/rexon-gui/qml/LoginManagerSection.qml
 #: rust/rexon-gui/qml/MatePanelSection.qml
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
 msgid "Apply"
 msgstr "Применить"
 
@@ -8670,7 +8677,7 @@ msgstr "🗂️ Установлена вручную"
 #: rust/rexon-core/src/installed_scan.rs
 msgctxt "theme kind"
 msgid "Global Theme"
-msgstr "Global Theme"
+msgstr "Глобальная тема"
 
 #: rust/rexon-core/src/installed_scan.rs
 msgctxt "theme kind"
@@ -11310,7 +11317,7 @@ msgstr "Желейные окна и куб рабочих столов → Wayf
 
 #: rust/rexon-core/src/qt_compare.rs
 msgid "🧰 Toolkit"
-msgstr "🧰 Тулкит"
+msgstr "🧰 Библиотека интерфейса"
 
 #: rust/rexon-core/src/qt_compare.rs
 msgid "🖥️ Session"
@@ -11366,7 +11373,7 @@ msgstr "<b>Настройка:</b>  %1"
 
 #: rust/rexon-core/src/qt_compare.rs
 msgid "<b>Gaming:</b>  %1"
-msgstr "<b>Гейминг:</b>  %1"
+msgstr "<b>Игры:</b>  %1"
 
 #: rust/rexon-core/src/qt_compare.rs
 msgctxt "desktop spec"
@@ -11381,12 +11388,12 @@ msgstr "Настройка"
 #: rust/rexon-core/src/qt_compare.rs
 msgctxt "desktop spec"
 msgid "Gaming"
-msgstr "Гейминг"
+msgstr "Игры"
 
 #: rust/rexon-core/src/qt_compare.rs
 msgctxt "desktop spec"
 msgid "Toolkit"
-msgstr "Тулкит"
+msgstr "Библиотека интерфейса"
 
 #: rust/rexon-core/src/qt_compare.rs
 msgctxt "desktop spec"
@@ -11933,6 +11940,133 @@ msgstr ""
 "Перезагрузите компьютер и выберите этот рабочий стол на экране входа."
 
 #: rust/rexon-core/src/qt_desktops.rs
+msgid "X11 — proven"
+msgstr "X11 — проверенный"
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "Wayland — experimental, from the AUR"
+msgstr "Wayland — экспериментально, из AUR"
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "Wayland — newer"
+msgstr "Wayland — новее"
+
+#. TRANSLATORS: %1 is a session option such as "X11 — proven".
+#. TRANSLATORS: an item in a list of missing programs.
+#: rust/rexon-core/src/qt_desktops.rs rust/rexon-core/src/wallpaper_engine.rs
+msgid "%1 (recommended)"
+msgstr "%1 (рекомендуется)"
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "How the desktop will run"
+msgstr "Как будет работать стол"
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"%1 can also run on Wayland, but that version exists only in the AUR, and to "
+"install from there Rexon needs yay or paru. For now %1 will be installed in "
+"the proven X11 version."
+msgstr ""
+"%1 умеет работать и на Wayland, но этот вариант есть только в AUR, а чтобы "
+"ставить оттуда, Rexon нужен yay или paru. Пока %1 встанет в проверенном "
+"варианте — X11."
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"<b>X11</b> is the proven version: this is how the desktop has worked for "
+"years, and all programs and settings work as expected."
+msgstr ""
+"<b>X11</b> — проверенный вариант: так этот стол работает уже много лет, и "
+"все программы и настройки ведут себя как положено."
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"<b>Wayland</b> is newer: the picture is smoother and sharper on high-"
+"resolution screens. But for %1 it's still experimental — some programs, "
+"panel applets and settings may not work."
+msgstr ""
+"<b>Wayland</b> — новее: картинка плавнее и чётче на экранах с высоким "
+"разрешением. Но у %1 он пока экспериментальный — часть программ, апплетов "
+"панели и настроек может не работать."
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"<b>Wayland</b> is newer: the picture is smoother and sharper on high-"
+"resolution screens."
+msgstr ""
+"<b>Wayland</b> — новее: картинка плавнее и чётче на экранах с высоким "
+"разрешением."
+
+#. TRANSLATORS: %1 is a program name (labwc, Wayfire).
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"Windows there are handled by %1, so some of the usual window settings won't "
+"apply."
+msgstr ""
+"Окнами там управляет %1, поэтому часть привычных настроек окон не "
+"подействует."
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"The X11 version stays too: you can choose either one on the login screen."
+msgstr ""
+"Вариант X11 тоже останется: на экране входа можно будет выбрать любой из "
+"двух."
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"⚠️ For %1, the Wayland version comes only from the AUR — packages from users "
+"that are built on your computer and aren't checked by your distribution. "
+"Expect problems."
+msgstr ""
+"⚠️ Для %1 вариант Wayland есть только в AUR — это пакеты от самих "
+"пользователей: они собираются прямо на вашем компьютере, и дистрибутив их не "
+"проверяет. Будьте готовы к неполадкам."
+
+#. TRANSLATORS: %1 is the session name as the login screen shows it.
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "On the login screen, choose the “%1” session."
+msgstr "На экране входа выберите сеанс «%1»."
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "➕ Add the Wayland version"
+msgstr "➕ Добавить вариант Wayland"
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"%1 can also run on Wayland — newer and smoother, but still experimental. "
+"Rexon can add it, and the X11 version will stay."
+msgstr ""
+"%1 умеет работать и на Wayland — это новее и плавнее, но пока "
+"экспериментально. Rexon может его добавить, а вариант X11 останется."
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "Add the Wayland version?"
+msgstr "Добавить вариант Wayland?"
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "Rexon will ask for the administrator password."
+msgstr "Rexon попросит пароль администратора."
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "Adding Wayland to %1"
+msgstr "Добавление Wayland для %1"
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "The Wayland version of <b>%1</b> is installed."
+msgstr "Вариант Wayland для <b>%1</b> установлен."
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"The Wayland version of %1 comes only from the AUR, and Rexon needs yay or "
+"paru to install it — neither is installed. Choose the X11 version or install "
+"yay or paru first."
+msgstr ""
+"Вариант Wayland для %1 есть только в AUR, а чтобы его поставить, Rexon нужен "
+"yay или paru — ни того, ни другого в системе нет. Выберите вариант X11 или "
+"сначала установите yay или paru."
+
+#: rust/rexon-core/src/qt_desktops.rs
 msgid "Check and Repair?"
 msgstr "Проверить и восстановить?"
 
@@ -12221,10 +12355,6 @@ msgstr "Пакеты уже установлены — пароль не пон�
 #: rust/rexon-core/src/qt_desktops.rs
 msgid "Packages to install: %1."
 msgstr "Будут установлены пакеты: %1."
-
-#: rust/rexon-core/src/qt_desktops.rs
-msgid "Rexon will ask for the administrator password."
-msgstr "Rexon попросит пароль администратора."
 
 #. TRANSLATORS: %1 is a desktop shell, %2 a compositor.
 #: rust/rexon-core/src/qt_desktops.rs
@@ -15282,6 +15412,7 @@ msgstr ""
 "pillow</tt>)"
 
 #: rust/rexon-core/src/qt_settings.rs
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
 msgid "Strength:"
 msgstr "Сила:"
 
@@ -17360,7 +17491,8 @@ msgid ""
 msgstr ""
 "Действует на весь экран через шейдер экрана Hyprland. Подвижные эффекты "
 "заставляют Hyprland перерисовывать весь экран каждый кадр — это заметно "
-"нагружает видеокарту; на скорости 0 эффект замирает и почти ничего не стоит."
+"нагружает видеокарту; на отметке «Замерло» эффект стоит на месте и почти "
+"ничего не стоит."
 
 #. TRANSLATORS: Screen effects support note for KDE Plasma.
 #: rust/rexon-core/src/screen_effects.rs
@@ -17450,6 +17582,24 @@ msgstr "Здесь эффекты экрана работают только в 
 #: rust/rexon-core/src/screen_effects.rs
 msgid "Rexon doesn't know how to add screen effects on this desktop."
 msgstr "Rexon не знает, как добавить эффекты экрана в этом окружении."
+
+#: rust/rexon-core/src/screen_effects.rs
+msgid ""
+"The Rexon shell extension is left over from an older version and doesn't "
+"know screen effects yet. Reinstall it in “%1” and try again."
+msgstr ""
+"Расширение оболочки Rexon осталось от прежней версии и ещё не умеет эффекты "
+"экрана. Переустановите его в «%1» и попробуйте снова."
+
+#: rust/rexon-core/src/screen_effects.rs
+msgid ""
+"The Rexon shell extension isn't running in this session, so screen effects "
+"can't be shown. Log out and back in; if that doesn't help, reinstall it in "
+"“%1”."
+msgstr ""
+"Расширение оболочки Rexon в этом сеансе не запущено, поэтому эффекты экрана "
+"показать нельзя. Выйдите из сеанса и войдите снова; если не поможет — "
+"переустановите его в «%1»."
 
 #. TRANSLATORS: Toast after screen effects were changed.
 #: rust/rexon-core/src/screen_effects.rs
@@ -18890,6 +19040,18 @@ msgstr "Среднее"
 msgctxt "CPU load"
 msgid "High"
 msgstr "Высокое"
+
+#: rust/rexon-core/src/system.rs
+msgid "X11 + Wayland"
+msgstr "X11 + Wayland"
+
+#: rust/rexon-core/src/system.rs
+msgid "X11 + Wayland (experimental)"
+msgstr "X11 + Wayland (экспериментально)"
+
+#: rust/rexon-core/src/system.rs
+msgid "X11 + Wayland (experimental, AUR)"
+msgstr "X11 + Wayland (экспериментально, AUR)"
 
 #: rust/rexon-core/src/system.rs
 msgid "🍃 The Cinnamon desktop with the full set of Linux Mint components"
@@ -21904,12 +22066,12 @@ msgid ""
 "This Global Theme provides no settings that can be applied. It may be broken "
 "— please tell its author."
 msgstr ""
-"В этой Global Theme нет ни одной настройки, которую можно применить. "
+"В этой глобальной теме нет ни одной настройки, которую можно применить. "
 "Возможно, она повреждена — сообщите об этом её автору."
 
 #: rust/rexon-core/src/themes.rs
 msgid "The following will be applied by this Global Theme:"
-msgstr "Будет применено из этой Global Theme:"
+msgstr "Будет применено из этой глобальной темы:"
 
 #: rust/rexon-core/src/themes.rs
 msgid "Appearance settings"
@@ -23062,11 +23224,6 @@ msgstr "не разобрана картинка %1: %2"
 #: rust/rexon-core/src/wallpaper_engine.rs
 msgid "couldn't create the cache folder: %1"
 msgstr "не создан каталог кеша: %1"
-
-#. TRANSLATORS: an item in a list of missing programs.
-#: rust/rexon-core/src/wallpaper_engine.rs
-msgid "%1 (recommended)"
-msgstr "%1 (рекомендуется)"
 
 #. TRANSLATORS: an item in a list of missing programs.
 #: rust/rexon-core/src/wallpaper_engine.rs
@@ -24772,6 +24929,7 @@ msgid "Slow"
 msgstr "Медленно"
 
 #: rust/rexon-gui/qml/AnimationsSection.qml
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
 msgid "Fast"
 msgstr "Быстро"
 
@@ -24910,6 +25068,7 @@ msgstr ""
 "изменится сразу, без перезахода."
 
 #: rust/rexon-gui/qml/MatePanelSection.qml
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
 msgid "(current)"
 msgstr "(сейчас)"
 
@@ -24936,6 +25095,64 @@ msgstr "⏳ Загружается полный размер…"
 #: rust/rexon-gui/qml/RexonZoomArea.qml rust/rexon-gui/qml/SteamPage.qml
 msgid "Open large view"
 msgstr "Открыть крупно"
+
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgid ""
+"Make the screen look like an old tube monitor, a worn video tape or a film "
+"print. Pick an effect and press “Apply”; “Off” returns the screen to normal."
+msgstr ""
+"Экран как старый кинескопный монитор, затёртая видеокассета или киноплёнка. "
+"Выберите эффект и нажмите «Применить»; «Выключено» возвращает обычный экран."
+
+#. TRANSLATORS: %1 is what must be installed, e.g. "picom instead of the built-in compositor".
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgid "Needs: %1"
+msgstr "Нужно: %1"
+
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgctxt "screen effect"
+msgid "Off"
+msgstr "Выключено"
+
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgid "Subtle"
+msgstr "Слабее"
+
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgid "Strong"
+msgstr "Сильнее"
+
+#
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgid "Motion speed:"
+msgstr "Скорость движения:"
+
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgid "Still"
+msgstr "Замерло"
+
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgid ""
+"Moving effects keep the graphics card busy all the time. At “Still” the "
+"picture stays the same and costs almost nothing."
+msgstr ""
+"Движущиеся эффекты всё время нагружают видеокарту. На отметке «Замерло» "
+"картинка не меняется и почти ничего не стоит."
+
+#. TRANSLATORS: %1 is the number of seconds left.
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgid "Keep this effect? Otherwise the screen goes back as it was in %1 s."
+msgstr "Оставить этот эффект? Иначе через %1 с экран вернётся как был."
+
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgctxt "screen effect"
+msgid "Keep"
+msgstr "Оставить"
+
+#: rust/rexon-gui/qml/ScreenEffectsSection.qml
+msgctxt "screen effect"
+msgid "Revert"
+msgstr "Вернуть"
 
 #: rust/rexon-gui/qml/SteamShowcaseSection.qml
 msgid "As on your profile: %1×%2 px"

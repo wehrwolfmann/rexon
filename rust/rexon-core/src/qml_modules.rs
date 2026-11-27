@@ -566,7 +566,8 @@ pub const SYSTEM_MODULE_DIRS: [&str; 3] = [
 ///
 /// Порядок намеренный: пользовательская сборка (её делает разработчик и
 /// именно её он ждёт увидеть) → каталоги данных из `$XDG_DATA_DIRS` →
-/// системные фиксированные → мультиарх-каталоги.
+/// системные фиксированные → мультиарх-каталоги. Это порядок РАЗРАБОТКИ:
+/// у пакета и установки его переставляет [`order_module_dirs`].
 ///
 /// `xdg_data_home` — `$XDG_DATA_HOME` (Починка 3), `xdg_data_dirs` — сырое
 /// значение `$XDG_DATA_DIRS` через двоеточие, `multiarch` — уже развёрнутый
@@ -609,6 +610,279 @@ pub fn module_dirs(
         }
     });
     dirs
+}
+
+// ============================================================================
+// Пользовательская сборка против пакетной
+// ============================================================================
+//
+// ⚠️ Зачем (поймано 02.11.2026). [`module_dirs`] ставит пользовательский
+// каталог (`~/.local/share/rexon/qml_modules`, туда пишут
+// `tools/build_qml_*.sh`) ПЕРВЫМ — это порядок разработчика. Но тот же
+// порядок действовал и у пакета дистрибутива: на машине, где когда-то
+// собирали модули руками, установленный Rexon брал `QExtra`, `Qcm.Material` и
+// `waywallen.control` из старой ручной сборки, а не из своего пакета. Пока
+// ревизии совпадают, это незаметно; после обновления пакета в ход пошла бы
+// устаревшая копия, которую пакетный менеджер не обновляет никогда.
+//
+// Правило: пользовательский каталог главнее только при запуске из дерева
+// исходников (разработка). У пакета и у установки главнее своя копия, а
+// пользовательская берётся, лишь когда пакетной копии модуля нет. Файлы
+// пользователя не удаляются — это его ручная сборка; журнал говорит, что
+// она пропущена и чем отличается.
+
+/// Отметка ревизии `Qcm.Material` рядом с модулем; пишет
+/// `tools/build_qml_material.sh` (и сборка пакета им же).
+pub const QCM_MATERIAL_PIN_REL: &str = "Qcm/QML_MATERIAL_PIN";
+
+/// Отметка ревизии `QExtra` рядом с модулем; пишет `tools/build_qml_qextra.sh`.
+pub const QEXTRA_PIN_REL: &str = "QExtra/QEXTRA_PIN";
+
+/// Что сверяется у одного модуля: имя для журнала, файл плагина и отметки
+/// рядом с ним (подпись, путь в каталоге модулей).
+struct ComparedModule {
+    name: &'static str,
+    plugin_rel: &'static str,
+    stamps: &'static [(&'static str, &'static str)],
+}
+
+/// Все три модуля вкладки обоев, которые кладут и `tools/build_qml_*.sh`, и
+/// пакет. Новый модуль добавляется строкой сюда (правило #12).
+const COMPARED_MODULES: [ComparedModule; 3] = [
+    ComparedModule {
+        name: "Qcm.Material",
+        plugin_rel: QCM_MATERIAL_REL,
+        stamps: &[("ревизия", QCM_MATERIAL_PIN_REL)],
+    },
+    ComparedModule {
+        name: "waywallen.control",
+        plugin_rel: WAYWALLEN_CONTROL_REL,
+        stamps: &[("протокол", CONTROL_STAMP_REL)],
+    },
+    ComparedModule {
+        name: "QExtra",
+        plugin_rel: QEXTRA_PLUGIN_REL,
+        stamps: &[("ревизия", QEXTRA_PIN_REL), ("отметка Qt", QEXTRA_QT_STAMP_REL)],
+    },
+];
+
+/// Каталоги пользовательской сборки — те же первые кандидаты, что у
+/// [`module_dirs`]: `$XDG_DATA_HOME` и `~/.local/share`, без повторов.
+pub fn user_module_dirs(xdg_data_home: Option<&str>, home: &str) -> Vec<String> {
+    let mut out = vec![format!("{}/{MODULES_REL}", data_home(xdg_data_home, home))];
+    let plain = format!("{}/{MODULES_REL}", data_home(None, home));
+    if !out.contains(&plain) {
+        out.push(plain);
+    }
+    out
+}
+
+/// Главнее ли пользовательская сборка модулей: только у запуска из дерева
+/// исходников, и только если лаунчер пакета не сказал «пакет»
+/// (`installer::PACKAGED_ENV`).
+pub fn user_modules_first(packaged: bool, dev_tree: bool) -> bool {
+    dev_tree && !packaged
+}
+
+/// Чем модуль пользовательской сборки отличается от пакетного.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleDiff {
+    pub module: &'static str,
+    /// Что отличается: «ревизия», «протокол», «отметка Qt», «Qt сборки».
+    pub what: &'static str,
+    /// Значение у пользователя; «нет», когда отметки нет.
+    pub user: String,
+    pub package: String,
+}
+
+/// Что сделано с пользовательским каталогом модулей.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserCopyUse {
+    /// Запуск из дерева исходников — каталог остаётся первым.
+    DevTree,
+    /// Пакетной копии нет ни у одного его модуля — берётся он.
+    NoPackageCopy,
+    /// Часть модулей есть только у него — оставлен ПОЗАДИ пакетных каталогов:
+    /// общие модули идут из пакета.
+    OnlyHere(Vec<&'static str>),
+    /// Всё, что в нём есть, даёт пакет — каталог не используется.
+    Skipped,
+}
+
+/// Решение по одному пользовательскому каталогу — для строки журнала.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserCopyNote {
+    pub dir: String,
+    /// Первый не пользовательский каталог, где нашлась копия его модулей.
+    pub package_dir: Option<String>,
+    pub diffs: Vec<ModuleDiff>,
+    pub used: UserCopyUse,
+}
+
+/// Порядок каталогов модулей и решения по пользовательским каталогам.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleOrder {
+    pub dirs: Vec<String>,
+    pub notes: Vec<UserCopyNote>,
+}
+
+/// Значение отметки: первое слово файла.
+fn stamp_value<FS: ModuleFs>(fs: &mut FS, dir: &str, rel: &str) -> Option<String> {
+    fs.read_text(&plugin_path(dir, rel))
+        .and_then(|t| t.split_whitespace().next().map(str::to_ascii_lowercase))
+}
+
+/// Чем модуль `m` в каталоге `user` отличается от него же в `package`.
+/// Отметки и версия Qt плагина сверяются, только когда у пакета они есть:
+/// сравнивать не с чем — не отличие.
+fn module_diffs<FS: ModuleFs>(
+    fs: &mut FS,
+    m: &ComparedModule,
+    user: &str,
+    package: &str,
+) -> Vec<ModuleDiff> {
+    let mut out = Vec::new();
+    for (what, rel) in m.stamps {
+        let Some(pkg) = stamp_value(fs, package, rel) else { continue };
+        let usr = stamp_value(fs, user, rel);
+        if usr.as_deref() != Some(pkg.as_str()) {
+            out.push(ModuleDiff {
+                module: m.name,
+                what,
+                user: usr.unwrap_or_else(|| "нет".to_string()),
+                package: pkg,
+            });
+        }
+    }
+    let fmt = |v: (u32, u32)| format!("{}.{}", v.0, v.1);
+    if let Some(pkg) = fs.plugin_qt_version(&plugin_path(package, m.plugin_rel)) {
+        let usr = fs.plugin_qt_version(&plugin_path(user, m.plugin_rel));
+        if usr != Some(pkg) {
+            out.push(ModuleDiff {
+                module: m.name,
+                what: "Qt сборки",
+                user: usr.map(fmt).unwrap_or_else(|| "нет".to_string()),
+                package: fmt(pkg),
+            });
+        }
+    }
+    out
+}
+
+/// Расставить каталоги модулей ([`module_dirs`]) по тому, откуда запущен
+/// Rexon. `user_dirs` — [`user_module_dirs`], `user_first` —
+/// [`user_modules_first`].
+///
+/// * `user_first` — порядок не меняется (разработка: своя сборка главнее);
+///   отличия от пакетной копии всё равно попадают в заметки.
+/// * иначе пакетные каталоги идут первыми. Пользовательский каталог
+///   выбрасывается, если всё, что в нём лежит, есть в пакете (совпадает или
+///   устарело — неважно, главнее пакет); оставляется В КОНЦЕ списка, если
+///   хотя бы одного его модуля в пакете нет.
+pub fn order_module_dirs<FS: ModuleFs>(
+    fs: &mut FS,
+    dirs: &[String],
+    user_dirs: &[String],
+    user_first: bool,
+) -> ModuleOrder {
+    let package: Vec<String> = dirs.iter().filter(|d| !user_dirs.contains(d)).cloned().collect();
+    let mut kept_users: Vec<String> = Vec::new();
+    let mut notes = Vec::new();
+    for user in dirs.iter().filter(|d| user_dirs.contains(d)) {
+        let mut present = 0usize;
+        let mut only_here = Vec::new();
+        let mut diffs = Vec::new();
+        let mut package_dir: Option<String> = None;
+        for m in &COMPARED_MODULES {
+            if !fs.is_file(&plugin_path(user, m.plugin_rel)) {
+                continue;
+            }
+            present += 1;
+            let pkg = package
+                .iter()
+                .find(|p| fs.is_file(&plugin_path(p, m.plugin_rel)))
+                .cloned();
+            match pkg {
+                Some(pkg) => {
+                    diffs.extend(module_diffs(fs, m, user, &pkg));
+                    package_dir.get_or_insert(pkg);
+                }
+                None => only_here.push(m.name),
+            }
+        }
+        if present == 0 {
+            // Пустой каталог ничему не мешает и ничего не даёт.
+            if user_first {
+                kept_users.push(user.clone());
+            }
+            continue;
+        }
+        let used = if user_first {
+            UserCopyUse::DevTree
+        } else if only_here.len() == present {
+            UserCopyUse::NoPackageCopy
+        } else if !only_here.is_empty() {
+            UserCopyUse::OnlyHere(only_here)
+        } else {
+            UserCopyUse::Skipped
+        };
+        if used != UserCopyUse::Skipped {
+            kept_users.push(user.clone());
+        }
+        notes.push(UserCopyNote { dir: user.clone(), package_dir, diffs, used });
+    }
+    let dirs = if user_first {
+        dirs.iter()
+            .filter(|d| !user_dirs.contains(d) || kept_users.contains(d))
+            .cloned()
+            .collect()
+    } else {
+        package.into_iter().chain(kept_users).collect()
+    };
+    ModuleOrder { dirs, notes }
+}
+
+/// Строка журнала о пользовательском каталоге модулей и уровень: `true` —
+/// предупреждение (копия отличается от пакетной), `false` — сведение.
+/// `None` — сказать нечего (разработка без отличий).
+pub fn user_copy_note_line(note: &UserCopyNote) -> Option<(bool, String)> {
+    let diffs = note
+        .diffs
+        .iter()
+        .map(|d| format!("{} — {}: у пользователя {}, в пакете {}", d.module, d.what, d.user, d.package))
+        .collect::<Vec<_>>()
+        .join("; ");
+    let pkg = note.package_dir.as_deref().unwrap_or("?");
+    let warn = !note.diffs.is_empty();
+    let line = match &note.used {
+        UserCopyUse::DevTree if warn => format!(
+            "пользовательская сборка модулей {} отличается от пакетной ({pkg}): {diffs}; \
+             запуск из дерева исходников — берётся пользовательская",
+            note.dir
+        ),
+        UserCopyUse::DevTree => return None,
+        UserCopyUse::NoPackageCopy => format!(
+            "пакетной копии QML-модулей нет — берётся пользовательская сборка {}",
+            note.dir
+        ),
+        UserCopyUse::OnlyHere(names) => format!(
+            "пользовательская сборка модулей {} оставлена позади пакетной ({pkg}): только в ней есть {}{}",
+            note.dir,
+            names.join(", "),
+            if warn { format!("; общие модули отличаются и берутся из пакета: {diffs}") } else { String::new() }
+        ),
+        UserCopyUse::Skipped if warn => format!(
+            "пользовательская сборка модулей {} устарела относительно пакетной ({pkg}) и не используется: \
+             {diffs}. Файлы не тронуты; если сборка не нужна, каталог можно удалить вручную",
+            note.dir
+        ),
+        UserCopyUse::Skipped => format!(
+            "пользовательская сборка модулей {} не используется: Rexon поставлен пакетом, \
+             берётся пакетная копия {pkg}",
+            note.dir
+        ),
+    };
+    Some((warn, line))
 }
 
 // ============================================================================

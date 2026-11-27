@@ -164,7 +164,8 @@
     "gentoo": [
      "gnome-extra/cinnamon",
      "x11-misc/lightdm",
-     "gnome-extra/nemo"
+     "gnome-extra/nemo",
+     "x11-terms/gnome-terminal"
     ],
     "alpine": [
      "cinnamon",
@@ -176,6 +177,7 @@
     "solus": [
      "cinnamon",
      "nemo",
+     "gnome-terminal",
      "lightdm",
      "lightdm-gtk-greeter"
     ],
@@ -409,6 +411,7 @@
      "gnome-shell",
      "gnome-control-center",
      "nautilus",
+     "gnome-console",
      "gdm"
     ],
     "void": [
@@ -419,6 +422,7 @@
      "gnome-shell",
      "gnome-desktop-branding",
      "gnome-control-center",
+     "gnome-console",
      "gdm"
     ],
     "clear": [
@@ -429,6 +433,7 @@
      "gnome-control-center",
      "gnome-tweaks",
      "nautilus",
+     "gnome-console",
      "gdm"
     ]
    },
@@ -497,6 +502,7 @@
     ],
     "solus": [
      "plasma-desktop",
+     "konsole",
      "sddm"
     ],
     "clear": [
@@ -544,41 +550,127 @@
      "budgie-desktop-view",
      "budgie-extras",
      "network-manager-applet",
-     "nautilus",
+     "nemo",
+     "nemo-fileroller",
+     "xfce4-terminal",
+     "gedit",
+     "gthumb",
+     "vlc",
+     "lollypop",
+     "atril",
+     "mate-calc",
+     "mate-system-monitor",
+     "gnome-disk-utility",
      "lightdm",
      "lightdm-gtk-greeter"
     ],
     "debian": [
      "budgie-desktop",
      "budgie-extras",
+     "nemo",
+     "nemo-fileroller",
+     "xfce4-terminal",
+     "gedit",
+     "gthumb",
+     "vlc",
+     "lollypop",
+     "atril",
+     "mate-calc",
+     "mate-system-monitor",
+     "gnome-disk-utility",
      "lightdm",
      "lightdm-gtk-greeter"
     ],
     "fedora": [
      "@budgie-desktop-environment",
+     "nemo",
+     "nemo-fileroller",
+     "xfce4-terminal",
+     "gedit",
+     "gthumb",
+     "vlc",
+     "lollypop",
+     "atril",
+     "mate-calc",
+     "mate-system-monitor",
+     "gnome-disk-utility",
      "lightdm"
     ],
     "suse": [
      "patterns-budgie-budgie",
+     "nemo",
+     "nemo-extension-fileroller",
+     "xfce4-terminal",
+     "gedit",
+     "gthumb",
+     "vlc",
+     "lollypop",
+     "atril",
+     "mate-calc",
+     "mate-system-monitor",
+     "gnome-disk-utility",
      "lightdm"
     ],
     "gentoo": [
      "budgie-base/budgie-desktop",
      "budgie-base/budgie-desktop-view",
+     "gnome-extra/nemo",
+     "gnome-extra/nemo-fileroller",
+     "x11-terms/xfce4-terminal",
+     "app-editors/gedit",
+     "media-gfx/gthumb",
+     "media-video/vlc",
+     "media-sound/lollypop",
+     "app-text/atril",
+     "mate-extra/mate-calc",
+     "mate-extra/mate-system-monitor",
+     "sys-apps/gnome-disk-utility",
      "x11-misc/lightdm"
     ],
     "void": [
      "budgie-desktop",
+     "nemo",
+     "nemo-fileroller",
+     "xfce4-terminal",
+     "gedit",
+     "gthumb",
+     "vlc",
+     "lollypop",
+     "atril",
+     "mate-calc",
+     "mate-system-monitor",
+     "gnome-disk-utility",
      "lightdm",
      "lightdm-gtk3-greeter"
     ],
     "solus": [
      "budgie-desktop",
+     "nemo",
+     "nemo-fileroller",
+     "xfce4-terminal",
+     "gedit",
+     "gthumb",
+     "vlc",
+     "lollypop",
+     "atril",
+     "mate-calc",
+     "mate-system-monitor",
+     "gnome-disk-utility",
      "lightdm"
     ],
     "alt": [
      "budgie-desktop",
-     "nautilus",
+     "nemo",
+     "nemo-fileroller",
+     "xfce4-terminal",
+     "gedit",
+     "gthumb",
+     "vlc",
+     "lollypop",
+     "mate-document-viewer",
+     "mate-calc",
+     "mate-system-monitor",
+     "gnome-disk-utility",
      "lightdm",
      "lightdm-gtk-greeter"
     ]
@@ -624,6 +716,7 @@
    "packages": {
     "arch": [
      "deepin",
+     "deepin-terminal",
      "lightdm"
     ]
    },
@@ -1344,7 +1437,7 @@
    "customizable": 3,
    "gaming_friendly": 3,
    "toolkit": "GTK4",
-   "session_type": "Wayland + X11",
+   "session_type": "Wayland",
    "compositor": "Mutter",
    "panel_type": "GNOME Shell",
    "file_manager": "Nautilus",
@@ -1360,7 +1453,7 @@
    "customizable": 5,
    "gaming_friendly": 5,
    "toolkit": "Qt6",
-   "session_type": "Wayland + X11",
+   "session_type": "Wayland",
    "compositor": "KWin",
    "panel_type": "Plasma Panel",
    "file_manager": "Dolphin",
@@ -1375,12 +1468,12 @@
    "cpu_usage": "Среднее",
    "customizable": 3,
    "gaming_friendly": 3,
-   "toolkit": "GTK3 → GTK4",
-   "session_type": "X11 (Wayland WIP)",
-   "compositor": "Budgie WM / Magpie",
+   "toolkit": "GTK3",
+   "session_type": "Wayland",
+   "compositor": "labwc",
    "panel_type": "Budgie Panel",
-   "file_manager": "Nautilus",
-   "terminal": "GNOME Terminal"
+   "file_manager": "Nemo",
+   "terminal": "xfce4-terminal"
   },
   {
    "id": "pantheon",
@@ -1392,7 +1485,7 @@
    "customizable": 2,
    "gaming_friendly": 3,
    "toolkit": "GTK3 + GTK4 (Granite)",
-   "session_type": "X11 + Wayland",
+   "session_type": "Wayland",
    "compositor": "Gala (Mutter)",
    "panel_type": "Wingpanel + Plank",
    "file_manager": "Pantheon Files",
@@ -1440,7 +1533,7 @@
    "customizable": 4,
    "gaming_friendly": 4,
    "toolkit": "Qt6",
-   "session_type": "X11 (Wayland WIP)",
+   "session_type": "X11",
    "compositor": "нет (Openbox WM; labwc опц.)",
    "panel_type": "LXQt Panel",
    "file_manager": "PCManFM-Qt",
@@ -1691,7 +1784,8 @@
    "get_packages": [
     "gnome-extra/cinnamon",
     "x11-misc/lightdm",
-    "gnome-extra/nemo"
+    "gnome-extra/nemo",
+    "x11-terms/gnome-terminal"
    ],
    "is_available": true,
    "get_aur_packages": []
@@ -1733,6 +1827,7 @@
    "get_packages": [
     "cinnamon",
     "nemo",
+    "gnome-terminal",
     "lightdm",
     "lightdm-gtk-greeter"
    ],
@@ -2092,6 +2187,7 @@
     "gnome-shell",
     "gnome-control-center",
     "nautilus",
+    "gnome-console",
     "gdm"
    ],
    "is_available": true,
@@ -2121,6 +2217,7 @@
     "gnome-shell",
     "gnome-desktop-branding",
     "gnome-control-center",
+    "gnome-console",
     "gdm"
    ],
    "is_available": true,
@@ -2143,6 +2240,7 @@
     "gnome-control-center",
     "gnome-tweaks",
     "nautilus",
+    "gnome-console",
     "gdm"
    ],
    "is_available": true,
@@ -2249,6 +2347,7 @@
    "family": "solus",
    "get_packages": [
     "plasma-desktop",
+    "konsole",
     "sddm"
    ],
    "is_available": true,
@@ -2291,7 +2390,17 @@
     "budgie-desktop-view",
     "budgie-extras",
     "network-manager-applet",
-    "nautilus",
+    "nemo",
+    "nemo-fileroller",
+    "xfce4-terminal",
+    "gedit",
+    "gthumb",
+    "vlc",
+    "lollypop",
+    "atril",
+    "mate-calc",
+    "mate-system-monitor",
+    "gnome-disk-utility",
     "lightdm",
     "lightdm-gtk-greeter"
    ],
@@ -2304,6 +2413,17 @@
    "get_packages": [
     "budgie-desktop",
     "budgie-extras",
+    "nemo",
+    "nemo-fileroller",
+    "xfce4-terminal",
+    "gedit",
+    "gthumb",
+    "vlc",
+    "lollypop",
+    "atril",
+    "mate-calc",
+    "mate-system-monitor",
+    "gnome-disk-utility",
     "lightdm",
     "lightdm-gtk-greeter"
    ],
@@ -2315,6 +2435,17 @@
    "family": "fedora",
    "get_packages": [
     "@budgie-desktop-environment",
+    "nemo",
+    "nemo-fileroller",
+    "xfce4-terminal",
+    "gedit",
+    "gthumb",
+    "vlc",
+    "lollypop",
+    "atril",
+    "mate-calc",
+    "mate-system-monitor",
+    "gnome-disk-utility",
     "lightdm"
    ],
    "is_available": true,
@@ -2325,6 +2456,17 @@
    "family": "suse",
    "get_packages": [
     "patterns-budgie-budgie",
+    "nemo",
+    "nemo-extension-fileroller",
+    "xfce4-terminal",
+    "gedit",
+    "gthumb",
+    "vlc",
+    "lollypop",
+    "atril",
+    "mate-calc",
+    "mate-system-monitor",
+    "gnome-disk-utility",
     "lightdm"
    ],
    "is_available": true,
@@ -2336,6 +2478,17 @@
    "get_packages": [
     "budgie-base/budgie-desktop",
     "budgie-base/budgie-desktop-view",
+    "gnome-extra/nemo",
+    "gnome-extra/nemo-fileroller",
+    "x11-terms/xfce4-terminal",
+    "app-editors/gedit",
+    "media-gfx/gthumb",
+    "media-video/vlc",
+    "media-sound/lollypop",
+    "app-text/atril",
+    "mate-extra/mate-calc",
+    "mate-extra/mate-system-monitor",
+    "sys-apps/gnome-disk-utility",
     "x11-misc/lightdm"
    ],
    "is_available": true,
@@ -2353,6 +2506,17 @@
    "family": "void",
    "get_packages": [
     "budgie-desktop",
+    "nemo",
+    "nemo-fileroller",
+    "xfce4-terminal",
+    "gedit",
+    "gthumb",
+    "vlc",
+    "lollypop",
+    "atril",
+    "mate-calc",
+    "mate-system-monitor",
+    "gnome-disk-utility",
     "lightdm",
     "lightdm-gtk3-greeter"
    ],
@@ -2371,6 +2535,17 @@
    "family": "solus",
    "get_packages": [
     "budgie-desktop",
+    "nemo",
+    "nemo-fileroller",
+    "xfce4-terminal",
+    "gedit",
+    "gthumb",
+    "vlc",
+    "lollypop",
+    "atril",
+    "mate-calc",
+    "mate-system-monitor",
+    "gnome-disk-utility",
     "lightdm"
    ],
    "is_available": true,
@@ -2388,7 +2563,17 @@
    "family": "alt",
    "get_packages": [
     "budgie-desktop",
-    "nautilus",
+    "nemo",
+    "nemo-fileroller",
+    "xfce4-terminal",
+    "gedit",
+    "gthumb",
+    "vlc",
+    "lollypop",
+    "mate-document-viewer",
+    "mate-calc",
+    "mate-system-monitor",
+    "gnome-disk-utility",
     "lightdm",
     "lightdm-gtk-greeter"
    ],

@@ -295,6 +295,7 @@ pub fn install_app_translator() -> bool {
 /// картинки, установка, применение и удаление тем. До него страница
 /// получала `actions` только от Python.
 pub mod animations_actions;
+pub mod screen_effects_actions;
 pub mod app_widgets_actions;
 pub mod appearance_actions;
 pub mod appearance_page;

@@ -305,7 +305,44 @@ pub const DE_NATIVE_APPS: &[(&str, &[(&str, &str)])] = &[
             ("audio/flac", "com.system76.CosmicPlayer.desktop"),
         ],
     ),
-    ("budgie", &[]),   // использует GNOME
+    // Budgie: программы Ubuntu Budgie 26.04 по её `/etc/budgie-desktop/defaults.list`
+    // (их ставит набор `budgie` в `system::DE_DATABASE`). Музыка — Lollypop
+    // целиком, как в `appdefaults` (у Ubuntu Budgie MP3/M4A/WAV открывает VLC).
+    (
+        "budgie",
+        &[
+            ("inode/directory", "nemo.desktop"),
+            ("text/plain", "org.gnome.gedit.desktop"),
+            ("application/pdf", "atril.desktop"),
+            ("image/jpeg", "org.gnome.gThumb.desktop"),
+            ("image/png", "org.gnome.gThumb.desktop"),
+            ("image/gif", "org.gnome.gThumb.desktop"),
+            ("image/svg+xml", "org.gnome.gThumb.desktop"),
+            ("image/heif", "org.gnome.gThumb.desktop"),
+            ("image/tiff", "org.gnome.gThumb.desktop"),
+            ("image/bmp", "org.gnome.gThumb.desktop"),
+            ("image/jxl", "org.gnome.gThumb.desktop"),
+            ("video/mp4", "vlc.desktop"),
+            ("video/x-matroska", "vlc.desktop"),
+            ("video/webm", "vlc.desktop"),
+            ("video/mpeg", "vlc.desktop"),
+            ("video/ogg", "vlc.desktop"),
+            ("video/quicktime", "vlc.desktop"),
+            ("audio/mpeg", "org.gnome.Lollypop.desktop"),
+            ("audio/flac", "org.gnome.Lollypop.desktop"),
+            ("audio/ogg", "org.gnome.Lollypop.desktop"),
+            ("audio/mp4", "org.gnome.Lollypop.desktop"),
+            ("audio/x-wav", "org.gnome.Lollypop.desktop"),
+            ("application/zip", "org.gnome.FileRoller.desktop"),
+            ("application/gzip", "org.gnome.FileRoller.desktop"),
+            ("application/x-7z-compressed", "org.gnome.FileRoller.desktop"),
+            ("application/x-rar", "org.gnome.FileRoller.desktop"),
+            ("application/x-tar", "org.gnome.FileRoller.desktop"),
+            ("application/x-compressed-tar", "org.gnome.FileRoller.desktop"),
+            ("image/vnd.djvu", "atril.desktop"),
+            ("text/xml", "org.gnome.gedit.desktop"),
+        ],
+    ),
     (
         "pantheon",
         &[
@@ -825,6 +862,23 @@ pub fn terminal_home(desktop: &str) -> TerminalHome {
     }
 }
 
+/// Места терминала сверх родного [`terminal_home`]: их читают программы
+/// набора стола, а не он сам. Budgie ставится с Nemo (как в Ubuntu Budgie),
+/// а «Открыть в терминале» Nemo берёт терминал из схемы Cinnamon
+/// (`eel-gnome-extensions.c`); Ubuntu Budgie задаёт там тот же терминал
+/// (`25_budgie-desktop-environment.gschema.override`). Без этого Nemo
+/// звал бы `gnome-terminal`, которого в наборе Budgie нет.
+pub fn terminal_extra_homes(desktop: &str) -> &'static [TerminalHome] {
+    use crate::de_customization::{de_from_id, De};
+    let de = de_from_id(desktop).or_else(|| {
+        crate::system::detect_current_de(desktop, "", false).and_then(|id| de_from_id(&id))
+    });
+    match de {
+        Some(De::Budgie) => &[TerminalHome::Cinnamon],
+        _ => &[],
+    }
+}
+
 /// Имя программы терминала по его `.desktop` — для `exec` в gsettings,
 /// `TerminalApplication` KDE и помощника XFCE. Там, где имя бинаря не
 /// совпадает с хвостом идентификатора, — явная таблица; иначе хвост после
@@ -1079,6 +1133,9 @@ pub fn set_terminal_plan_with(
     // ── РОДНОЕ МЕСТО ОКРУЖЕНИЯ ── (GNOME/Budgie уже записаны общим слоем.)
     if de_home != TerminalHome::Gnome {
         steps.extend(terminal_home_steps_with(de_home, terminal_desktop, &cfg, xfce_helper_exists));
+    }
+    for extra in terminal_extra_homes(desktop) {
+        steps.extend(terminal_home_steps_with(*extra, terminal_desktop, &cfg, xfce_helper_exists));
     }
 
     steps

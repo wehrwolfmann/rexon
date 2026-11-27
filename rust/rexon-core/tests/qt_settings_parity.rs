@@ -1090,6 +1090,75 @@ fn extra_fonts_gtk_css_block() {
     assert!(w[0].text.starts_with("@import url(\"file:///home/u/.themes/My%20Theme/gtk-3.0/gtk.css\");\n"), "{}", w[0].text);
 }
 
+/// Начертание шрифтов меню, панелей инструментов и маленького в нашем
+/// блоке: круг «запись → чтение» (Bold Italic, Semi-Bold, Italic), обычное
+/// после жирного — без `font-weight`/`font-style` (толщина темы не
+/// сбивается), невыбранное начертание оставляет прежнее, метки прежних
+/// версий без поля начертания читаются обычным шрифтом. «Изменить все
+/// шрифты» переносит прочитанное начертание дальше — в блок и в kdeglobals.
+#[test]
+fn extra_fonts_keep_face() {
+    use qs::{FontFace, FontFile, FontStore, SoundBackend};
+    let norm = |(f, s, face): (String, i32, FontFace)| (f, s, if face.weight == 0 { 400 } else { face.weight }, face.italic);
+    let bold_italic = FontFace { weight: 700, italic: true };
+    for file in [
+        FontFile::GtkCss { version: "3.0".to_string(), target: "menu".to_string() },
+        FontFile::GtkCss { version: "4.0".to_string(), target: "toolbar".to_string() },
+        FontFile::QtCtQss { tool: "qt6ct".to_string(), target: "small".to_string() },
+    ] {
+        let mut text: Option<String> = None;
+        for face in [
+            bold_italic,
+            FontFace { weight: 600, italic: false },
+            FontFace { weight: 400, italic: true },
+            FontFace { weight: 400, italic: false },
+        ] {
+            let written = file.try_new_text_face(text.as_deref(), "Noto Sans", 9, face).unwrap();
+            assert_eq!(
+                norm(qs::parse_font_spec_face(&file.read_spec(&written))),
+                ("Noto Sans".to_string(), 9, face.weight, face.italic),
+                "{file:?} {face:?}: {written}"
+            );
+            assert_eq!(written.contains("font-weight:"), face.weight != 400, "{written}");
+            assert_eq!(written.contains("font-style: italic;"), face.italic, "{written}");
+            text = Some(written);
+        }
+        let bold = file.try_new_text_face(text.as_deref(), "Noto Sans", 9, bold_italic).unwrap();
+        assert_eq!(file.read_spec(&bold), "Noto Sans Bold Italic 9");
+        assert!(bold.contains("/* rexon:font ") && bold.contains(" 9 face=700,1 Noto Sans */"), "{bold}");
+        assert!(bold.contains("  font-size: 9pt;\n  font-weight: 700;\n  font-style: italic;\n}"), "{bold}");
+        // Начертание не выбрано (старый вызов без окна) — остаётся прежнее.
+        let kept = file.try_new_text(Some(&bold), "Inter", 10).unwrap();
+        assert_eq!(file.read_spec(&kept), "Inter Bold Italic 10");
+        // «Изменить все шрифты»: начертание прочитано из блока и записано
+        // с новым семейством — и в блок, и в kdeglobals.
+        let (_, _, face) = qs::parse_font_spec_face(&file.read_spec(&bold));
+        let changed = file.try_new_text_face(Some(&bold), "Fira Sans", 11, face).unwrap();
+        assert_eq!(file.read_spec(&changed), "Fira Sans Bold Italic 11");
+        let kde = FontStore::Cmd(SoundBackend::KConfig {
+            file: "kdeglobals".to_string(),
+            group: "General".to_string(),
+            key: "menuFont".to_string(),
+        });
+        let argv = qs::font_store_write_argv_face(&kde, "Fira Sans", 11, face, "kwriteconfig6").unwrap();
+        assert_eq!(argv.last().map(String::as_str), Some("Fira Sans,11,-1,5,700,1,0,0,0,0,0,0,0,0,0,1"));
+    }
+    // QSS: свойства, которые понимают таблицы стилей Qt.
+    let qss = FontFile::QtCtQss { tool: "qt6ct".to_string(), target: "toolbar".to_string() };
+    let t = qss.try_new_text_face(None, "Inter", 10, FontFace { weight: 600, italic: true }).unwrap();
+    assert!(t.contains("QToolButton {\n  font-family: \"Inter\";\n  font-size: 10pt;\n  font-weight: 600;\n  font-style: italic;\n}"), "{t}");
+    // Метка прежней версии — без начертания; соседняя новая — с ним.
+    let old = "/* >>> Rexon: fonts (managed by Rexon, edits are overwritten) */\n/* rexon:font menu 9 Noto Sans */\nmenu {}\n/* rexon:font small 8 face=300,0 Cantarell Light */\n/* <<< Rexon: fonts */\n";
+    let fonts = qs::extra_fonts_parse(old);
+    assert_eq!(fonts.len(), 2);
+    assert_eq!((fonts[0].family.as_str(), fonts[0].size, fonts[0].face), ("Noto Sans", 9, FontFace::default()));
+    assert_eq!((fonts[1].family.as_str(), fonts[1].face), ("Cantarell Light", FontFace { weight: 300, italic: false }));
+    let menu = FontFile::GtkCss { version: "3.0".to_string(), target: "menu".to_string() };
+    assert_eq!(menu.read_spec(old), "Noto Sans 9");
+    // Испорченное поле начертания — часть семейства, как у старых меток.
+    assert_eq!(qs::extra_fonts_parse("/* >>> Rexon: fonts */\n/* rexon:font menu 9 face=x Odd */\n/* <<< Rexon: fonts */")[0].family, "face=x Odd");
+}
+
 /// qt6ct: таблица пишется, только если qt6ct настроен (`qt6ct.conf` есть);
 /// её путь дописывается в `[Interface] stylesheets` к чужим, повторно — нет.
 #[test]

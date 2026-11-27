@@ -150,9 +150,10 @@ pub fn all_wallpaper_exts() -> Vec<&'static str> {
 pub fn fm_label(short: &str) -> (&'static str, &'static str) {
     match short {
         "auto" => ("⚙️", n_("Automatic (follows the desktop)")),
-        "nemo" => ("🍃", "Nemo (Cinnamon)"),
-        // Budgie своего файлового менеджера не имеет — берёт Nautilus.
-        "nautilus" => ("🦶", "Nautilus (GNOME, Budgie)"),
+        // Budgie своего файлового менеджера не имеет — берёт Nemo, как
+        // Ubuntu Budgie (набор пакетов `budgie` в `system::DE_DATABASE`).
+        "nemo" => ("🍃", "Nemo (Cinnamon, Budgie)"),
+        "nautilus" => ("🦶", "Nautilus (GNOME)"),
         "thunar" => ("🐭", "Thunar (XFCE)"),
         "caja" => ("🦣", "Caja (MATE)"),
         "dolphin" => ("💎", "Dolphin (KDE)"),
@@ -1092,10 +1093,12 @@ impl FontFile {
             FontFile::QtIni { group, key, .. } => ini_value(text, group, key)
                 .map(|v| v.trim_matches('"').to_string())
                 .unwrap_or_default(),
+            // Начертание — словами Pango («Noto Sans Bold Italic 9»), как
+            // у rc.xml: строку читает [`parse_font_spec_face`].
             FontFile::GtkCss { target, .. } | FontFile::QtCtQss { target, .. } => extra_fonts_parse(text)
                 .into_iter()
                 .find(|f| f.target == *target)
-                .map(|f| gnome_font_spec(&f.family, f.size))
+                .map(|f| font_face_spec(&f.family, f.size, f.face))
                 .unwrap_or_default(),
             // Начертание — словами Pango («Sans Bold 10»): строку читает
             // [`parse_font_spec_face`].
@@ -1126,8 +1129,10 @@ impl FontFile {
 
     /// То же с начертанием из окна выбора (жирность, наклон): его держат
     /// `FontConfig` COSMIC, запись QFont (LXQt, qt6ct), `rc.xml` Openbox и
-    /// labwc (`<weight>`, `<slant>`) и строка `font` sway; блоки `gtk.css` и
-    /// `.qss` — только семейство и кегль.
+    /// labwc (`<weight>`, `<slant>`), строка `font` sway и наш блок в
+    /// `gtk.css`/`.qss` (строка-метка и `font-weight`/`font-style`,
+    /// [`extra_fonts_block`]). Начертание не выбрано ([`FontFace::default`])
+    /// — у блока остаётся прежнее, как у `rc.xml`.
     pub fn try_new_text_face(&self, existing: Option<&str>, family: &str, size: i32, face: FontFace) -> Option<String> {
         match self {
             FontFile::CosmicTk { .. } => Some(cosmic_font_ron_face(family, face)),
@@ -1140,12 +1145,12 @@ impl FontFile {
             FontFile::GtkCss { version, target } => {
                 let dialect = if version == "4.0" { ExtraFontDialect::Gtk4 } else { ExtraFontDialect::Gtk3 };
                 let text = existing.unwrap_or_default();
-                let fonts = with_extra_font(extra_fonts_parse(text), target, family, size);
+                let fonts = with_extra_font(extra_fonts_parse(text), target, family, size, face);
                 text_with_extra_fonts_block(existing, &extra_fonts_block(dialect, &fonts))
             }
             FontFile::QtCtQss { target, .. } => {
                 // Файл целиком наш: в нём только блок.
-                let fonts = with_extra_font(extra_fonts_parse(existing.unwrap_or_default()), target, family, size);
+                let fonts = with_extra_font(extra_fonts_parse(existing.unwrap_or_default()), target, family, size, face);
                 Some(extra_fonts_block(ExtraFontDialect::Qss, &fonts))
             }
             FontFile::RcXml { wm } => rc_xml_with_title_font_face(existing, *wm, family, size, face),
@@ -1244,8 +1249,10 @@ impl FontFile {
 //   документации GTK (имена CSS-узлов у `GtkMenu`/`GtkMenuItem`/`GtkMenuBar`/
 //   `GtkToolbar`/`GtkStatusbar`/`GtkPopoverMenu` в GTK 3; `menubar > item`,
 //   `popover.menu`, `modelbutton` и классы `.toolbar`, `.caption` в GTK 4).
-//   Пишутся только `font-family` и `font-size` — не сокращение `font`, чтобы
-//   не сбить толщину, которую тема задаёт, например, `.caption-heading`.
+//   Пишутся `font-family` и `font-size` — не сокращение `font`, чтобы не
+//   сбить толщину, которую тема задаёт, например, `.caption-heading`;
+//   `font-weight`/`font-style` — только у необычного начертания (жирного,
+//   тонкого, наклонного), обычное толщину темы не трогает.
 // * Qt-программы на виджетах вне KDE — таблица стилей qt6ct/qt5ct
 //   (`[Interface] stylesheets`): её платформенная тема qt6ct читает при
 //   запуске программы и ставит перед таблицей самой программы
@@ -1298,7 +1305,24 @@ pub struct ExtraFont {
     pub target: String,
     pub family: String,
     pub size: i32,
+    /// Начертание; обычное (`weight` 0 или 400 без наклона) в блок не
+    /// пишется.
+    pub face: FontFace,
 }
+
+/// Обычное ли начертание: жирность не выбрана или 400, без наклона. Такое
+/// в блок не пишется, чтобы не перебить толщину, которую задаёт тема.
+fn face_is_plain(face: FontFace) -> bool {
+    (face.weight <= 0 || face.weight == 400) && !face.italic
+}
+
+/// Жирность для CSS/QSS: ступень 100–900; `None` — обычная (не писать).
+fn extra_font_css_weight(face: FontFace) -> Option<i32> {
+    (face.weight > 0 && face.weight != 400).then(|| ((face.weight as f64 / 100.0).round() as i32).clamp(1, 9) * 100)
+}
+
+/// Поле начертания в строке-метке: `face=<жирность>,<наклон>`.
+const EXTRA_FACE_PREFIX: &str = "face=";
 
 /// Строка CSS: кавычки и обратная косая черта экранируются, переводов строк
 /// в имени шрифта не бывает.
@@ -1322,14 +1346,33 @@ fn css_file_url(path: &str) -> String {
 
 /// Наш блок шрифтов: на каждый шрифт — строка-метка (по ней блок читается
 /// обратно) и правило.
+///
+/// Метка — `/* rexon:font <цель> <кегль> [face=<жирность>,<наклон>]
+/// <семейство> */`; поле начертания есть только у необычного начертания, а
+/// метки без него (их писали прежние версии) читаются как обычное. В
+/// правило необычное начертание уходит свойствами `font-weight` (ступень
+/// 100–900) и `font-style: italic` — их понимают и CSS GTK 3/4, и таблицы
+/// стилей Qt.
 pub fn extra_fonts_block(dialect: ExtraFontDialect, fonts: &[ExtraFont]) -> String {
     let mut out = format!("{EXTRA_BLOCK_BEGIN}\n");
     for target in EXTRA_FONT_TARGETS {
         let Some(f) = fonts.iter().find(|f| f.target == *target) else { continue };
         let label: String = f.family.chars().filter(|c| !c.is_control()).collect::<String>().replace("*/", "* /");
-        out.push_str(&format!("{EXTRA_ENTRY_PREFIX}{target} {} {label} */\n", f.size));
+        let face_label = if face_is_plain(f.face) {
+            String::new()
+        } else {
+            format!("{EXTRA_FACE_PREFIX}{},{} ", f.face.weight.max(0), i32::from(f.face.italic))
+        };
+        out.push_str(&format!("{EXTRA_ENTRY_PREFIX}{target} {} {face_label}{label} */\n", f.size));
+        let mut face_rules = String::new();
+        if let Some(weight) = extra_font_css_weight(f.face) {
+            face_rules.push_str(&format!("  font-weight: {weight};\n"));
+        }
+        if f.face.italic {
+            face_rules.push_str("  font-style: italic;\n");
+        }
         out.push_str(&format!(
-            "{} {{\n  font-family: {};\n  font-size: {}pt;\n}}\n",
+            "{} {{\n  font-family: {};\n  font-size: {}pt;\n{face_rules}}}\n",
             extra_font_selectors(dialect, target),
             css_string(&f.family),
             f.size
@@ -1361,15 +1404,36 @@ pub fn extra_fonts_parse(text: &str) -> Vec<ExtraFont> {
         else {
             continue;
         };
+        // Начертание — необязательное поле перед семейством (у меток
+        // прежних версий его нет).
+        let family = family.trim();
+        let (face, family) = match family.strip_prefix(EXTRA_FACE_PREFIX).and_then(|r| r.split_once(' ')) {
+            Some((spec, rest)) => match spec.split_once(',') {
+                Some((w, i)) if w.parse::<i32>().is_ok() && matches!(i, "0" | "1") => (
+                    FontFace { weight: w.parse::<i32>().unwrap_or(0).clamp(0, 1000), italic: i == "1" },
+                    rest.trim(),
+                ),
+                _ => (FontFace::default(), family),
+            },
+            None => (FontFace::default(), family),
+        };
         out.retain(|f| f.target != *target);
-        out.push(ExtraFont { target: target.to_string(), family: family.trim().to_string(), size });
+        out.push(ExtraFont { target: target.to_string(), family: family.to_string(), size, face });
     }
     out
 }
 
-fn with_extra_font(mut fonts: Vec<ExtraFont>, target: &str, family: &str, size: i32) -> Vec<ExtraFont> {
+/// Шрифты блока с новым шрифтом цели `target`. Начертание не выбрано
+/// ([`FontFace::default`], старые вызовы без окна выбора) — остаётся
+/// прежнее начертание этой цели.
+fn with_extra_font(mut fonts: Vec<ExtraFont>, target: &str, family: &str, size: i32, face: FontFace) -> Vec<ExtraFont> {
+    let face = if face == FontFace::default() {
+        fonts.iter().find(|f| f.target == target).map(|f| f.face).unwrap_or_default()
+    } else {
+        face
+    };
     fonts.retain(|f| f.target != target);
-    fonts.push(ExtraFont { target: target.to_string(), family: family.to_string(), size });
+    fonts.push(ExtraFont { target: target.to_string(), family: family.to_string(), size, face });
     fonts
 }
 

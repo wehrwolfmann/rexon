@@ -20,7 +20,11 @@
 //!   2. подсветка шапки и подложка полосы памяти зависят от темы;
 //!   3. в диалоге сравнения обе кнопки установки выделены одинаково;
 //!   4. оценки в таблице пары — значками (⭐/🎮 и ☆), как в легенде и
-//!      карточках, а не полоской «█░» (`sanctioned_divergences`).
+//!      карточках, а не полоской «█░» (`sanctioned_divergences`);
+//!   5. слова «Игры» и «Библиотека интерфейса» вместо «Гейминг» и «Тулкит»;
+//!   6. подписи сеанса по пакетам Arch на 02.11.2026 (`SESSION_SANCTION`);
+//!   7. библиотека интерфейса, композитор и терминал Budgie 10.10
+//!      (`SPEC_SANCTION`), его файловый менеджер (`FM_SANCTION`).
 //!
 //! ГЕЙТ «голден обязан ловить регрессию» проверен мутацией: семь точечных
 //! поломок реализации (порог зелёного сдвинут на 0.36; `stars` не обрезает
@@ -247,12 +251,12 @@ fn card_headers_and_bodies_match_python() {
         let is_installed = installed.iter().any(|i| i == de_id);
         assert_eq!(
             qc::card_header(de_id, false, is_installed).expect("шапка"),
-            want["collapsed"].as_str().unwrap(),
+            sanction_specs(want["collapsed"].as_str().unwrap()),
             "шапка свёрнутой карточки {de_id}"
         );
         assert_eq!(
             qc::card_header(de_id, true, is_installed).expect("шапка"),
-            want["expanded"].as_str().unwrap(),
+            sanction_specs(want["expanded"].as_str().unwrap()),
             "шапка раскрытой карточки {de_id}"
         );
 
@@ -269,6 +273,8 @@ fn card_headers_and_bodies_match_python() {
         let py: Vec<String> =
             serde_json::from_value(want["body_labels"].clone()).expect("body_labels");
         let py: Vec<String> = py.iter().map(|t| sanctioned_divergences(t)).collect();
+        let py = sanction_sessions(py, &[de_id.as_str()]);
+        let py = sanction_fms(py, &[de_id.as_str()]);
         assert_eq!(ours, py, "подписи тела карточки {de_id}");
 
         let py_btns: Vec<String> =
@@ -281,6 +287,215 @@ fn card_headers_and_bodies_match_python() {
     }
 }
 
+/// Санкция 6: подписи сеанса устарели вместе с самими столами, а не по ошибке
+/// порта. Факт на 02.11.2026 (пакеты Arch): Plasma 6.8 (`plasma-workspace`
+/// кладёт только `plasma.desktop`, `plasma-x11-session` из репозиториев
+/// убран), GNOME 51 (`gnome-session` — только `gnome.desktop`), Budgie 10.10
+/// (Wayland через labwc) — только Wayland. У Cinnamon, Xfce, LXQt и MATE есть
+/// выбор сеанса при установке, и подпись выводится из таблицы вариантов
+/// `system::SESSION_VARIANTS` (`DeMeta::session_text`). Пометку
+/// «экспериментально» подпись берёт из признака зрелости Wayland там же: на
+/// 03.11.2026 зрелый только у LXQt (проект снял пометку в LXQt 2.3.0).
+/// Pantheon в эталоне нет — его сеанс сверяется в `system_de_db.json`.
+///
+/// Стол → (значение в эталоне оригинала, значение теперь, по-русски).
+const SESSION_SANCTION: &[(&str, &str, &str)] = &[
+    ("cinnamon-mint", "X11", "X11 + Wayland (экспериментально)"),
+    ("xfce", "X11", "X11 + Wayland (экспериментально)"),
+    ("mate", "X11", "X11 + Wayland (экспериментально, AUR)"),
+    ("lxqt", "X11 (Wayland WIP)", "X11 + Wayland"),
+    ("kde", "Wayland + X11", "Wayland"),
+    ("gnome", "Wayland + X11", "Wayland"),
+    ("budgie", "X11 (Wayland WIP)", "Wayland"),
+];
+
+/// Значение сеанса стола после санкции 6. Санкция точечная: в эталоне
+/// обязано стоять ровно записанное старое значение — иначе она устарела.
+fn session_now(de_id: &str, original: &str) -> String {
+    match SESSION_SANCTION.iter().find(|(id, _, _)| *id == de_id) {
+        Some((_, old, new)) => {
+            assert_eq!(original, *old, "санкция сеанса стола {de_id} не совпала с эталоном");
+            new.to_string()
+        }
+        None => original.to_string(),
+    }
+}
+
+/// Санкция 6 в списке подписей: значение после строки «🖥️ Сессия». Строки
+/// сеанса идут по одной на карточку, в порядке `order`.
+fn sanction_sessions(labels: Vec<String>, order: &[&str]) -> Vec<String> {
+    let mut des = order.iter();
+    let mut pending: Option<&str> = None;
+    let mut out = Vec::with_capacity(labels.len());
+    for text in labels {
+        if let Some(de_id) = pending.take() {
+            let value = text
+                .strip_prefix("<b>")
+                .and_then(|t| t.strip_suffix("</b>"))
+                .expect("значение сеанса — <b>…</b>");
+            out.push(format!("<b>{}</b>", session_now(de_id, value)));
+            continue;
+        }
+        if text == "🖥️ Сессия" {
+            pending = Some(des.next().expect("строк сеанса больше, чем карточек"));
+        }
+        out.push(text);
+    }
+    assert!(des.next().is_none(), "у карточки потерялась строка сеанса");
+    out
+}
+
+/// Санкция 6 в таблице пары «X против Y»: строка «Сессия».
+fn sanction_pair_session(html: &str, a: &str, b: &str) -> String {
+    const HEAD: &str = "<tr><td><b>Сессия</b></td><td>";
+    html.split_inclusive("</tr>")
+        .map(|row| match row.strip_prefix(HEAD) {
+            Some(rest) => {
+                let (va, vb) = rest
+                    .strip_suffix("</td></tr>")
+                    .and_then(|r| r.split_once("</td><td>"))
+                    .expect("строка сеанса пары");
+                format!("{HEAD}{}</td><td>{}</td></tr>", session_now(a, va), session_now(b, vb))
+            }
+            None => row.to_string(),
+        })
+        .collect()
+}
+
+/// Санкция 6 жива: каждая запись нужна (стол есть в эталоне) и совпадает с
+/// тем, что показывает ядро; у столов «только Wayland» — ровно «Wayland».
+#[test]
+fn session_sanction_is_current() {
+    let _lang = i18n_pin::ru();
+    let g = golden();
+    for (de_id, _, new) in SESSION_SANCTION {
+        assert!(g["cards"].get(*de_id).is_some(), "стола {de_id} нет в эталоне — запись лишняя");
+        let m = DE_META.iter().find(|m| m.id == *de_id).expect("стол в DE_META");
+        assert_eq!(m.session_text(), *new, "сеанс {de_id}");
+    }
+    for de_id in ["kde", "gnome", "budgie", "pantheon", "cosmic", "deepin"] {
+        let m = DE_META.iter().find(|m| m.id == de_id).expect("стол в DE_META");
+        assert_eq!(m.session_text(), "Wayland", "сеанс {de_id}");
+    }
+}
+
+/// Санкция 7: ТТХ Budgie устарели вместе с самим столом. Факт на 02.11.2026
+/// (Arch, `budgie-desktop` 10.10.2): окнами управляет labwc — сеанс
+/// `budgie-desktop.desktop` запускает `startbudgielabwc`, пакет зависит от
+/// `labwc`; Budgie WM на Mutter ушёл вместе с X11, Magpie так и не вышел.
+/// Сам стол — на GTK3: в зависимостях `gtk3`, GTK4 нет («GTK3 → GTK4» —
+/// обещание, а не состояние).
+///
+/// Терминал — `xfce4-terminal`, а не «GNOME Terminal»: его ставит набор
+/// пакетов Budgie (сам `budgie-desktop` терминала не тянет) и назначает
+/// программа по умолчанию, как в Ubuntu Budgie на 10.10
+/// (`ubuntu-budgie-desktop` рекомендует `xfce4-terminal`).
+///
+/// Стол → (значение в эталоне оригинала, значение теперь). Значения в
+/// эталоне есть только у этого стола, поэтому замена — по тексту.
+const SPEC_SANCTION: &[(&str, &str, &str)] = &[
+    ("budgie", "GTK3 → GTK4", "GTK3"),
+    ("budgie", "Budgie WM / Magpie", "labwc"),
+    ("budgie", "GNOME Terminal", "xfce4-terminal"),
+];
+
+/// Санкция 7 в любом тексте эталона: шапке, теле карточки, таблице пары.
+fn sanction_specs(original: &str) -> String {
+    SPEC_SANCTION.iter().fold(original.to_string(), |t, (_, old, new)| t.replace(old, new))
+}
+
+/// Санкция 7 жива: старое значение стоит в эталоне (в шапке и теле карточки
+/// своего стола), новое — в мете стола.
+#[test]
+fn spec_sanction_is_current() {
+    let g = golden();
+    for (de_id, old, new) in SPEC_SANCTION {
+        let card = g["cards"].get(*de_id).expect("стол санкции есть в эталоне").to_string();
+        assert!(card.contains(old), "в эталоне карточки {de_id} нет «{old}» — санкция устарела");
+        let m = DE_META.iter().find(|m| m.id == *de_id).expect("стол в DE_META");
+        assert!(
+            m.toolkit == *new || m.compositor == *new || m.terminal == *new,
+            "у стола {de_id} в мете нет «{new}»"
+        );
+    }
+}
+
+/// Санкция 7, файловый менеджер Budgie: Nemo, а не Nautilus. Набор пакетов
+/// Budgie и его программы по умолчанию приведены к Ubuntu Budgie 26.04
+/// (`ubuntu-budgie-desktop-minimal` рекомендует `nemo`, её `defaults.list`
+/// открывает им папки). «Nautilus» в эталоне стоит и у GNOME, поэтому замена
+/// не по тексту, а по столу: значение после «📁 Файловый менеджер» в
+/// карточке и столбец стола в строке «Файлы» таблицы пары.
+///
+/// Стол → (значение в эталоне оригинала, значение теперь).
+const FM_SANCTION: &[(&str, &str, &str)] = &[("budgie", "Nautilus", "Nemo")];
+
+/// Файловый менеджер стола после санкции. Точечная: в эталоне обязано стоять
+/// ровно записанное старое значение — иначе она устарела.
+fn fm_now(de_id: &str, original: &str) -> String {
+    match FM_SANCTION.iter().find(|(id, _, _)| *id == de_id) {
+        Some((_, old, new)) => {
+            assert_eq!(original, *old, "санкция файлового менеджера {de_id} не совпала с эталоном");
+            new.to_string()
+        }
+        None => original.to_string(),
+    }
+}
+
+/// Санкция в списке подписей: значение после «📁 Файловый менеджер», по
+/// одной строке на карточку в порядке `order`.
+fn sanction_fms(labels: Vec<String>, order: &[&str]) -> Vec<String> {
+    let mut des = order.iter();
+    let mut pending: Option<&str> = None;
+    let mut out = Vec::with_capacity(labels.len());
+    for text in labels {
+        if let Some(de_id) = pending.take() {
+            let value = text
+                .strip_prefix("<b>")
+                .and_then(|t| t.strip_suffix("</b>"))
+                .expect("значение файлового менеджера — <b>…</b>");
+            out.push(format!("<b>{}</b>", fm_now(de_id, value)));
+            continue;
+        }
+        if text == "📁 Файловый менеджер" {
+            pending = Some(des.next().expect("строк файлового менеджера больше, чем карточек"));
+        }
+        out.push(text);
+    }
+    assert!(des.next().is_none(), "у карточки потерялась строка файлового менеджера");
+    out
+}
+
+/// Санкция в таблице пары «X против Y»: строка «Файлы».
+fn sanction_pair_fm(html: &str, a: &str, b: &str) -> String {
+    const HEAD: &str = "<tr><td><b>Файлы</b></td><td>";
+    html.split_inclusive("</tr>")
+        .map(|row| match row.strip_prefix(HEAD) {
+            Some(rest) => {
+                let (va, vb) = rest
+                    .strip_suffix("</td></tr>")
+                    .and_then(|r| r.split_once("</td><td>"))
+                    .expect("строка «Файлы» пары");
+                format!("{HEAD}{}</td><td>{}</td></tr>", fm_now(a, va), fm_now(b, vb))
+            }
+            None => row.to_string(),
+        })
+        .collect()
+}
+
+/// Санкция файлового менеджера жива: стол есть в эталоне, новое значение —
+/// в мете стола.
+#[test]
+fn fm_sanction_is_current() {
+    let g = golden();
+    for (de_id, old, new) in FM_SANCTION {
+        let card = g["cards"].get(*de_id).expect("стол санкции есть в эталоне").to_string();
+        assert!(card.contains(old), "в эталоне карточки {de_id} нет «{old}» — санкция устарела");
+        let m = DE_META.iter().find(|m| m.id == *de_id).expect("стол в DE_META");
+        assert_eq!(m.file_manager, *new, "файловый менеджер {de_id} в мете");
+    }
+}
+
 /// Санкционированные расхождения с оригиналом: слово «DE» и значки оценок в таблице пары.
 ///
 /// Оригинал говорил «📊 Сравнение DE» и «Новый Wayland-native DE от System76»
@@ -290,7 +505,7 @@ fn card_headers_and_bodies_match_python() {
 /// переснимается из blob'а оригинала (`rexon-golden-update qt_compare`),
 /// поэтому правится не он, а ожидание, и ровно эти две фразы.
 fn sanctioned_divergences(original: &str) -> String {
-    let text = original
+    let text = sanction_specs(original)
         .replace("📊 Сравнение DE", "📊 Сравнение рабочих столов")
         .replace("Wayland-native DE от System76", "Wayland-native рабочий стол от System76");
     // Санкция 4: оценки в таблице пары — значками, как в легенде и
@@ -300,7 +515,11 @@ fn sanctioned_divergences(original: &str) -> String {
             let emoji = if row.contains("<td><b>Гейминг</b></td>") { "🎮" } else { "⭐" };
             (0..=5u8).fold(row.to_string(), |r, n| r.replace(&legacy_bar5(n), &qc::stars(n, emoji)))
         })
-        .collect()
+        .collect::<String>()
+        // Санкция 5: слова как во всём Rexon — «Игры», а не «Гейминг»;
+        // «Библиотека интерфейса», а не жаргонное «Тулкит».
+        .replace("Гейминг", "Игры")
+        .replace("Тулкит", "Библиотека интерфейса")
 }
 
 #[test]
@@ -365,6 +584,9 @@ fn window_texts_match_python() {
         .iter()
         .filter_map(|e| e.get("text").and_then(|t| t.as_str()).map(sanctioned_divergences))
         .collect();
+    let order: Vec<&str> = order.iter().map(String::as_str).collect();
+    let py = sanction_sessions(py, &order);
+    let py = sanction_fms(py, &order);
     assert_eq!(ours, py, "дерево подписей окна разошлось");
 }
 
@@ -400,7 +622,9 @@ fn pair_html_and_title_match_python() {
     for (key, want) in html {
         let (a, b) = key.split_once('|').expect("ключ пары");
         let view = qc::pair_view(a, b, true, true).expect("пара");
-        assert_eq!(view.html, sanctioned_divergences(want.as_str().unwrap()), "таблица пары {key}");
+        let want = sanction_pair_fm(want.as_str().unwrap(), a, b);
+        let want = sanctioned_divergences(&sanction_pair_session(&want, a, b));
+        assert_eq!(view.html, want, "таблица пары {key}");
     }
     let titles = g["pair_title"].as_object().expect("pair_title");
     for (key, want) in titles {
@@ -437,12 +661,11 @@ fn wayland_wip_is_not_green() {
         qc::spec_value_qss("Wayland + X11"),
         format!("color: {};", qc::GOOD_COLOR)
     );
-    // и починка видна на витрине: у Budgie и LXQt сессия перестала быть
-    // зелёной, а у KDE и GNOME осталась
+    // и починка видна на витрине: сеанс зелёный только у готового Wayland;
+    // столы с экспериментальным Wayland рядом с X11 (санкция 6) — не зелёные
     for m in DE_META {
-        let green = !qc::spec_value_qss(m.session_type).is_empty();
-        let expect_green =
-            m.session_type.contains("Wayland") && !m.session_type.contains("WIP");
+        let green = !qc::specs(m.id)[1].color.is_empty();
+        let expect_green = m.session_type == "Wayland";
         assert_eq!(green, expect_green, "цвет сессии стола {}", m.id);
     }
 }

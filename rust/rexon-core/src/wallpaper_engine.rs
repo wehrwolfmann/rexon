@@ -1404,7 +1404,7 @@ pub fn swf_shell_ext_plan(de: &str, path: &str, host: &str) -> Option<ShellExtPl
 /// Где в окне Rexon лежит расширение оболочки: раздел «Оформления», а не
 /// вкладка «Расширения» — там только пакеты .rxn (живая проверка на
 /// gnome-shell 51.1, 16.10.2026: подсказка отправляла не туда).
-fn shell_ext_place(de: &str) -> String {
+pub(crate) fn shell_ext_place(de: &str) -> String {
     let section = if de == "gnome" {
         trc("appearance section", "GNOME Extensions")
     } else {

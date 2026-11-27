@@ -402,7 +402,7 @@ pub struct CardAction {
 pub struct CardBody {
     pub ram_label: String,
     pub ram_bar: RamBar,
-    /// Подписи «Настройка: ⭐…» и «Гейминг: 🎮…».
+    /// Подписи «Настройка: ⭐…» и «Игры: 🎮…».
     pub stars_labels: Vec<String>,
     pub specs: Vec<SpecRow>,
     pub description: String,
@@ -441,7 +441,10 @@ pub fn specs(de_id: &str) -> Vec<SpecRow> {
     // Имена программ сравниваются как текст, нагрузка — по признаку.
     let values: [(String, &'static str); 7] = [
         (m.toolkit.to_string(), spec_value_color(m.toolkit)),
-        (m.session_type.to_string(), spec_value_color(m.session_type)),
+        // Подпись сеанса — из таблицы вариантов, цвет — по сеансу по
+        // умолчанию: экспериментальный Wayland рядом с X11 — ещё не готовый
+        // Wayland, зелёным не красим (та же мысль, что в починке 1).
+        (m.session_text(), spec_value_color(m.session_type)),
         (m.compositor_text(), spec_value_color(m.compositor)),
         (m.panel_type.to_string(), spec_value_color(m.panel_type)),
         (m.file_manager.to_string(), spec_value_color(m.file_manager)),
@@ -604,8 +607,8 @@ fn pair_table(a: &DeMeta, b: &DeMeta) -> String {
         (trc("desktop spec", "Toolkit"), a.toolkit.to_string(), b.toolkit.to_string()),
         (
             trc("desktop spec", "Session"),
-            a.session_type.to_string(),
-            b.session_type.to_string(),
+            a.session_text(),
+            b.session_text(),
         ),
         (trc("desktop spec", "Compositor"), a.compositor_text(), b.compositor_text()),
         (

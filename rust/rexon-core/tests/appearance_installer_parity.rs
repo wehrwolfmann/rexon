@@ -432,7 +432,7 @@ fn apply_action_and_messages() {
     assert_eq!(ai::apply_action_for(Some(&global), "x"), ai::ApplyAction::KdeGlobal);
     assert_eq!(
         ai::apply_message(&ai::ApplyAction::KdeGlobal, true),
-        "Global Theme применена"
+        "Глобальная тема применена"
     );
     assert_eq!(
         ai::apply_message(&ai::ApplyAction::Cursor, false),

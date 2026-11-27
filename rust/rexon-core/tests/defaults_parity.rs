@@ -316,9 +316,25 @@ fn terminal_written_to_native_place_of_every_desktop() {
             ]
         )
     );
-    // GNOME и Budgie: родное место = общий слой, повторов нет.
-    for de in ["GNOME", "Budgie:GNOME", "ubuntu:GNOME", "budgie"] {
+    // GNOME: родное место = общий слой, повторов нет.
+    for de in ["GNOME", "ubuntu:GNOME"] {
         assert_eq!(term_table(de, "org.gnome.Console.desktop"), common("kgx", "-e", "org.gnome.Console.desktop"), "{de}");
+    }
+    // Budgie: родное место то же, что у GNOME, плюс схема Cinnamon — её
+    // «Открыть в терминале» читает Nemo, файловый менеджер набора Budgie
+    // (`defaults::terminal_extra_homes`).
+    for de in ["Budgie:GNOME", "budgie"] {
+        assert_eq!(
+            term_table(de, "xfce4-terminal.desktop"),
+            with(
+                common("xfce4-terminal", "-e", "xfce4-terminal.desktop"),
+                &[
+                    "run:org.cinnamon.desktop.default-applications.terminal exec xfce4-terminal",
+                    "run:org.cinnamon.desktop.default-applications.terminal exec-arg -e",
+                ]
+            ),
+            "{de}"
+        );
     }
     assert_eq!(
         term_table("KDE", "org.kde.konsole.desktop"),

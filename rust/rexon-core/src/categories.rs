@@ -402,8 +402,9 @@ pub fn sidebar(home: &Path) -> Vec<ThemeCategory> {
     // «Анимация» — последним разделом «Внешнего вида», как в KDE 6.8
     // (`kcm_animations`, вес 40 в категории `appearance`); «Эффекты
     // рабочего стола» — рядом с ней: в KDE они в «Управлении окнами», а
-    // такой вкладки у Rexon нет.
-    .chain(["animations", "desktopeffects"].into_iter().map(settings_panel))
+    // такой вкладки у Rexon нет. «Эффекты экрана» (02.11.2026) — между
+    // ними: тоже «как выглядит весь стол», и в KDE ближе всего к ним.
+    .chain(["animations", SCREEN_EFFECTS_KEY, "desktopeffects"].into_iter().map(settings_panel))
     .collect()
 }
 
@@ -422,7 +423,13 @@ pub const SETTINGS_PANELS: &[(i64, &str)] = &[
     (924, "fontsettings"),
     (925, "animations"),
     (926, "desktopeffects"),
+    (928, SCREEN_EFFECTS_KEY),
 ];
+
+/// Ключ раздела «Эффекты экрана» (`screen_effects`). Во вкладке
+/// «Настройки» его никогда не было — ссылки «Оформление → …» на него нет
+/// ([`moved_settings_links`]).
+pub const SCREEN_EFFECTS_KEY: &str = "screeneffects";
 
 /// Ключ раздела «Кнопки заголовка окна» (с размером рамки и флажками рамок).
 pub const WINDOW_BUTTONS_KEY: &str = "windowbuttons";
@@ -453,6 +460,7 @@ fn settings_panel_name(key: &str) -> String {
             .unwrap_or_default(),
         "animations" => tr("Animation"),
         "desktopeffects" => tr("Desktop effects"),
+        SCREEN_EFFECTS_KEY => tr("Screen effects"),
         other => other.to_string(),
     }
 }
@@ -471,6 +479,7 @@ fn settings_panel(key: &str) -> ThemeCategory {
         "appwidgets" => "🛠️",
         "fontsettings" => "🔠",
         "animations" => "💫",
+        SCREEN_EFFECTS_KEY => "📺",
         _ => "🪄",
     };
     ThemeCategory {
@@ -488,7 +497,7 @@ fn settings_panel(key: &str) -> ThemeCategory {
 pub fn moved_settings_links(de_id: &str) -> Vec<(String, String)> {
     grouped_sidebar(&sidebar(Path::new("/")), de_id)
         .into_iter()
-        .filter(|c| is_settings_panel(&c.key) && category_available(&c.key, de_id))
+        .filter(|c| is_settings_panel(&c.key) && c.key != SCREEN_EFFECTS_KEY && category_available(&c.key, de_id))
         // TRANSLATORS: link in the Settings tab to a section that moved; %1 is the section name.
         .map(|c| (c.key.clone(), crate::i18n::trf("Appearance → %1", &[&c.name])))
         .collect()
@@ -518,7 +527,8 @@ fn settings_panel_available(key: &str, de_id: &str) -> bool {
 
 /// Ключ раздела рамок Openbox и labwc.
 pub const OPENBOX_KEY: &str = "openbox";
-/// Его номер (синтетический, после разделов настроек 921–926).
+/// Его номер (синтетический, после разделов настроек 921–926; 928 —
+/// «Эффекты экрана», заведены позже).
 pub const OPENBOX_SECTION_ID: i64 = 927;
 
 /// Где раздел рамок Openbox виден: в LXQt (Openbox — его менеджер окон на

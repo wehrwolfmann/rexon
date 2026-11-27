@@ -167,31 +167,35 @@
   "budgie": [
    [
     "file_manager",
-    "org.gnome.Nautilus.desktop"
+    "nemo.desktop"
    ],
    [
     "terminal",
-    "org.gnome.Console.desktop"
+    "xfce4-terminal.desktop"
    ],
    [
     "text_editor",
-    "org.gnome.TextEditor.desktop"
+    "org.gnome.gedit.desktop"
    ],
    [
     "image_viewer",
-    "org.gnome.Loupe.desktop"
+    "org.gnome.gThumb.desktop"
    ],
    [
     "video_player",
-    "org.gnome.Showtime.desktop"
+    "vlc.desktop"
    ],
    [
     "pdf_viewer",
-    "org.gnome.Papers.desktop"
+    "atril.desktop"
    ],
    [
     "archive_manager",
     "org.gnome.FileRoller.desktop"
+   ],
+   [
+    "music_player",
+    "org.gnome.Lollypop.desktop"
    ]
   ],
   "lxqt": [
@@ -663,7 +667,7 @@
   {
    "de": "budgie",
    "which": [],
-   "result": "nautilus"
+   "result": "nemo"
   },
   {
    "de": null,
@@ -762,8 +766,8 @@
    "outcome": {
     "kind": "write",
     "filename": "budgie-mimeapps.list",
-    "content": "[Default Applications]\napplication/gzip=org.gnome.FileRoller.desktop\napplication/javascript=org.gnome.TextEditor.desktop\napplication/json=org.gnome.TextEditor.desktop\napplication/pdf=org.gnome.Papers.desktop\napplication/toml=org.gnome.TextEditor.desktop\napplication/vnd.rar=org.gnome.FileRoller.desktop\napplication/x-7z-compressed=org.gnome.FileRoller.desktop\napplication/x-bzip-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-pdf=org.gnome.Papers.desktop\napplication/x-tar=org.gnome.FileRoller.desktop\napplication/x-xz-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-yaml=org.gnome.TextEditor.desktop\napplication/x-zstd-compressed-tar=org.gnome.FileRoller.desktop\napplication/xml=org.gnome.TextEditor.desktop\napplication/zip=org.gnome.FileRoller.desktop\nimage/avif=org.gnome.Loupe.desktop\nimage/bmp=org.gnome.Loupe.desktop\nimage/gif=org.gnome.Loupe.desktop\nimage/heif=org.gnome.Loupe.desktop\nimage/jpeg=org.gnome.Loupe.desktop\nimage/jxl=org.gnome.Loupe.desktop\nimage/png=org.gnome.Loupe.desktop\nimage/svg+xml=org.gnome.Loupe.desktop\nimage/tiff=org.gnome.Loupe.desktop\nimage/vnd.microsoft.icon=org.gnome.Loupe.desktop\nimage/webp=org.gnome.Loupe.desktop\nimage/x-icon=org.gnome.Loupe.desktop\ninode/directory=org.gnome.Nautilus.desktop\ntext/css=org.gnome.TextEditor.desktop\ntext/csv=org.gnome.TextEditor.desktop\ntext/markdown=org.gnome.TextEditor.desktop\ntext/plain=org.gnome.TextEditor.desktop\ntext/x-csrc=org.gnome.TextEditor.desktop\ntext/x-python=org.gnome.TextEditor.desktop\ntext/x-shellscript=org.gnome.TextEditor.desktop\ntext/xml=org.gnome.TextEditor.desktop\nvideo/3gpp=org.gnome.Showtime.desktop\nvideo/mp2t=org.gnome.Showtime.desktop\nvideo/mp4=org.gnome.Showtime.desktop\nvideo/mpeg=org.gnome.Showtime.desktop\nvideo/ogg=org.gnome.Showtime.desktop\nvideo/quicktime=org.gnome.Showtime.desktop\nvideo/webm=org.gnome.Showtime.desktop\nvideo/x-flv=org.gnome.Showtime.desktop\nvideo/x-matroska=org.gnome.Showtime.desktop\nvideo/x-ms-wmv=org.gnome.Showtime.desktop\nvideo/x-msvideo=org.gnome.Showtime.desktop\n",
-    "count": 48
+    "content": "[Default Applications]\napplication/gzip=org.gnome.FileRoller.desktop\napplication/javascript=org.gnome.gedit.desktop\napplication/json=org.gnome.gedit.desktop\napplication/pdf=atril.desktop\napplication/toml=org.gnome.gedit.desktop\napplication/vnd.rar=org.gnome.FileRoller.desktop\napplication/x-7z-compressed=org.gnome.FileRoller.desktop\napplication/x-bzip-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-pdf=atril.desktop\napplication/x-tar=org.gnome.FileRoller.desktop\napplication/x-xz-compressed-tar=org.gnome.FileRoller.desktop\napplication/x-yaml=org.gnome.gedit.desktop\napplication/x-zstd-compressed-tar=org.gnome.FileRoller.desktop\napplication/xml=org.gnome.gedit.desktop\napplication/zip=org.gnome.FileRoller.desktop\naudio/aac=org.gnome.Lollypop.desktop\naudio/flac=org.gnome.Lollypop.desktop\naudio/mp4=org.gnome.Lollypop.desktop\naudio/mpeg=org.gnome.Lollypop.desktop\naudio/ogg=org.gnome.Lollypop.desktop\naudio/opus=org.gnome.Lollypop.desktop\naudio/x-vorbis+ogg=org.gnome.Lollypop.desktop\naudio/x-wav=org.gnome.Lollypop.desktop\nimage/avif=org.gnome.gThumb.desktop\nimage/bmp=org.gnome.gThumb.desktop\nimage/gif=org.gnome.gThumb.desktop\nimage/heif=org.gnome.gThumb.desktop\nimage/jpeg=org.gnome.gThumb.desktop\nimage/jxl=org.gnome.gThumb.desktop\nimage/png=org.gnome.gThumb.desktop\nimage/svg+xml=org.gnome.gThumb.desktop\nimage/tiff=org.gnome.gThumb.desktop\nimage/vnd.microsoft.icon=org.gnome.gThumb.desktop\nimage/webp=org.gnome.gThumb.desktop\nimage/x-icon=org.gnome.gThumb.desktop\ninode/directory=nemo.desktop\ntext/css=org.gnome.gedit.desktop\ntext/csv=org.gnome.gedit.desktop\ntext/markdown=org.gnome.gedit.desktop\ntext/plain=org.gnome.gedit.desktop\ntext/x-csrc=org.gnome.gedit.desktop\ntext/x-python=org.gnome.gedit.desktop\ntext/x-shellscript=org.gnome.gedit.desktop\ntext/xml=org.gnome.gedit.desktop\nvideo/3gpp=vlc.desktop\nvideo/mp2t=vlc.desktop\nvideo/mp4=vlc.desktop\nvideo/mpeg=vlc.desktop\nvideo/ogg=vlc.desktop\nvideo/quicktime=vlc.desktop\nvideo/webm=vlc.desktop\nvideo/x-flv=vlc.desktop\nvideo/x-matroska=vlc.desktop\nvideo/x-ms-wmv=vlc.desktop\nvideo/x-msvideo=vlc.desktop\n",
+    "count": 56
    }
   },
   {
@@ -1175,7 +1179,7 @@
       "set",
       "org.gnome.desktop.default-applications.terminal",
       "exec",
-      "kgx"
+      "xfce4-terminal"
      ],
      [
       "gsettings",
@@ -1183,11 +1187,25 @@
       "org.gnome.desktop.default-applications.terminal",
       "exec-arg",
       "-e"
+     ],
+     [
+      "gsettings",
+      "set",
+      "org.cinnamon.desktop.default-applications.terminal",
+      "exec",
+      "xfce4-terminal"
+     ],
+     [
+      "gsettings",
+      "set",
+      "org.cinnamon.desktop.default-applications.terminal",
+      "exec-arg",
+      "-e"
      ]
     ],
     "helpers_rc": null,
     "logs": [
-     "✅ GNOME терминал: kgx"
+     "✅ GNOME терминал: xfce4-terminal"
     ]
    }
   },
@@ -1412,8 +1430,7 @@
     ]
    },
    "result": [
-    "gnome",
-    "budgie"
+    "gnome"
    ]
   },
   {
@@ -1428,7 +1445,8 @@
    "result": [
     "mate",
     "cosmic",
-    "cinnamon-mint"
+    "cinnamon-mint",
+    "budgie"
    ]
   }
  ],

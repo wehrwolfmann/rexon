@@ -44,6 +44,9 @@ const QML_FILES: &[&str] = &[
     "qml/AnimationsSection.qml",
     // «Эффекты рабочего стола» (все эффекты KWin) — только в KDE.
     "qml/DesktopEffectsSection.qml",
+    // «Эффекты экрана» (кинескоп, видеокассета…) — раздел «Оформления»;
+    // плитки рисуются шейдером предпросмотра (`bake_preview_shader`).
+    "qml/ScreenEffectsSection.qml",
     "qml/WindowButtonsSection.qml",
     // «Отклик при запуске» (как в модуле «Курсоры» KDE) — там же.
     "qml/LaunchFeedbackSection.qml",
@@ -159,6 +162,7 @@ const BRIDGE_FILES: &[&str] = &[
     // Разделы «Анимация» и «Кнопки заголовка окна»: снимок и запись — ядро
     // (`animations`, `window_buttons`).
     "src/animations_actions.rs",
+    "src/screen_effects_actions.rs",
     "src/app_widgets_actions.rs",
     "src/window_buttons_actions.rs",
     // «Отклик при запуске»: снимок и запись — ядро (`launch_feedback`).
@@ -273,6 +277,7 @@ fn main() {
     write_manifest(QML_MANIFEST, QML_FILES);
     write_manifest(BRIDGE_MANIFEST, BRIDGE_FILES);
     build_translations();
+    let preview_shader = bake_preview_shader();
 
     // Собирать против того же Qt6, что использует PySide6, — на время
     // strangler-миграции Rust-модели живут в одном процессе с Python, ABI
@@ -341,6 +346,9 @@ fn main() {
     // (`qrc:/waywallen/ui/assets/…`): без этого их страницы ищут файлы в
     // ресурсах чужого бинаря и не находят. Разбор — в самом .qrc.
     .qrc("waywallen_assets.qrc")
+    // Шейдер плиток «Эффектов экрана»: рядом с разметкой модуля, QML берёт
+    // его относительным адресом `shaders/screen-effects.frag.qsb`.
+    .qrc(&preview_shader)
     // Flash-режим хоста обоев берёт wl_surface окна через
     // `qpa/qplatformnativeinterface.h` (cpp/rexon_wallpaper_host.cpp): этот
     // заголовок лежит в каталогах с номером версии Qt, которых нет в
@@ -437,6 +445,53 @@ fn qt_private_include_dirs() -> Vec<std::path::PathBuf> {
 /// Сама сборка — в `scripts/i18n-update.sh --build` (одна дверь для
 /// сборки, пакета и человека). Нет программ перевода — сборка встаёт с
 /// объяснением, а не молча выпускает продукт без языков.
+/// Собрать шейдер предпросмотра «Эффектов экрана» в `.qsb` (формат
+/// `ShaderEffect` Qt 6) из `qml/shaders/screen-effects.frag`. Сам `.frag`
+/// порождает ядро (`rexon_core::screen_effects::preview_glsl`), его
+/// свежесть сверяет тест ядра `preview_shader_is_current`. `qsb` — из
+/// qt6-shadertools (он уже в makedepends пакета). Кладёт в OUT_DIR `.qsb` и
+/// `.qrc` для него (адрес в ресурсах —
+/// `qrc:/qt/qml/org/rexon/gui/qml/shaders/screen-effects.frag.qsb`) и
+/// возвращает путь к этому `.qrc`.
+fn bake_preview_shader() -> std::path::PathBuf {
+    let manifest = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let src = manifest.join("qml/shaders/screen-effects.frag");
+    println!("cargo:rerun-if-changed={}", src.display());
+    let out = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("screen-effects.frag.qsb");
+    // qsb лежит рядом с прочими инструментами Qt: спрашиваем qmake, затем
+    // обычные места.
+    let mut cands: Vec<std::path::PathBuf> = Vec::new();
+    for qmake in ["/usr/bin/qmake6", "/usr/lib/qt6/bin/qmake"] {
+        if let Ok(o) = std::process::Command::new(qmake).args(["-query", "QT_HOST_BINS"]).output() {
+            let dir = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !dir.is_empty() {
+                cands.push(std::path::Path::new(&dir).join("qsb"));
+            }
+        }
+    }
+    cands.extend(["/usr/lib/qt6/bin/qsb", "/usr/bin/qsb6", "/usr/bin/qsb"].map(std::path::PathBuf::from));
+    let qsb = cands
+        .into_iter()
+        .find(|p| p.is_file())
+        .expect("не найден qsb (пакет qt6-shadertools): без него не собрать плитки «Эффектов экрана»");
+    let status = std::process::Command::new(&qsb)
+        .args(["--glsl", "100 es,120,150", "--hlsl", "50", "--msl", "12", "-o"])
+        .arg(&out)
+        .arg(&src)
+        .status()
+        .expect("qsb запускается");
+    assert!(status.success(), "qsb не собрал {}", src.display());
+    let qrc = out.with_file_name("screen_effects_preview.qrc");
+    let body = format!(
+        "<RCC>\n    <qresource prefix=\"/qt/qml/org/rexon/gui\">\n        <file alias=\"qml/shaders/screen-effects.frag.qsb\">{}</file>\n    </qresource>\n</RCC>\n",
+        out.display()
+    );
+    if std::fs::read_to_string(&qrc).ok().as_deref() != Some(body.as_str()) {
+        std::fs::write(&qrc, body).expect("не удалось записать .qrc шейдера");
+    }
+    qrc
+}
+
 fn build_translations() {
     let manifest = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let root = manifest.join("../..");

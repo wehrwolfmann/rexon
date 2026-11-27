@@ -46,7 +46,7 @@ use serde::Serialize;
 use crate::animations::{
     argv, parse_state_line, run_steps, state_line, without_block, wm_include, wm_targets, LookCtx, LookIo, LookStep,
 };
-use crate::i18n::{n_, tr};
+use crate::i18n::{n_, tr, trf};
 use crate::themes::WmSyntax;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -683,8 +683,8 @@ pub fn support(de: &str, wayland: bool) -> Support {
         note: tr(note),
     };
     match de {
-        "gnome" => row(Screen, Some(Host::Cogl), false, false, "", N_GNOME),
-        "cinnamon-mint" => row(Screen, Some(Host::Cogl), false, false, "", N_CINNAMON),
+        "gnome" => row(Screen, Some(Host::Cogl), false, true, "", N_GNOME),
+        "cinnamon-mint" => row(Screen, Some(Host::Cogl), false, true, "", N_CINNAMON),
         "hyprland" => row(Screen, Some(Host::Hyprland), false, true, "", N_HYPRLAND),
         "kde" => row(Windows, Some(Host::KWin), true, false, "", N_KDE),
         "mate" | "xfce" | "lxqt" if !wayland => row(Windows, Some(Host::Picom), false, false, NEED_PICOM, N_PICOM),
@@ -811,9 +811,14 @@ fn params_from_state(map: &BTreeMap<String, String>) -> EffectParams {
 /// Снимок: что сейчас включено. Сила и скорость помнятся и у выключенного
 /// эффекта (из нашего файла), чтобы ползунки не сбрасывались.
 pub fn read_settings(io: &dyn LookIo, ctx: &LookCtx) -> EffectSettings {
-    if ctx.de != "hyprland" {
-        return EffectSettings::default();
+    match ctx.de.as_str() {
+        "hyprland" => read_hyprland(io, ctx),
+        "gnome" | "cinnamon-mint" => read_gnome_cinnamon(io, ctx),
+        _ => EffectSettings::default(),
     }
+}
+
+fn read_hyprland(io: &dyn LookIo, ctx: &LookCtx) -> EffectSettings {
     let targets = wm_targets(ctx, "hyprland", SE_STEM, &|_| String::new());
     let Some(target) = targets.iter().find(|t| io.read(&t.config).is_some()) else {
         return EffectSettings::default();
@@ -828,16 +833,241 @@ pub fn read_settings(io: &dyn LookIo, ctx: &LookCtx) -> EffectSettings {
     EffectSettings { preset, params }
 }
 
+// ── GNOME и Cinnamon: через свои расширения Rexon ─────────────────────────
+//
+// Расширение `rexon-wallpaper@rexon.app` (оно ставится всегда, вместе с
+// программой) кладёт шейдер `Host::Cogl` на `Main.uiGroup` — весь экран — и
+// само ведёт часы движущихся эффектов. Договор:
+// * ключ [`SHELL_EFFECT_KEY`] схемы расширения — путь к файлу шейдера,
+//   пусто — эффект выключен (по умолчанию);
+// * файл — объявления сниппета, строка [`COGL_CODE_MARKER`], код сниппета
+//   ([`cogl_file_content`]);
+// * файлов два, по очереди ([`shell_shader_slots`]): новый шейдер пишется в
+//   тот, на который ключ сейчас НЕ указывает, и только потом переключается
+//   ключ. Переключение — одна запись, поэтому откат «как было» даром:
+//   сорвалась запись — ключ смотрит на прежний целый файл; выключение —
+//   ключ пуст, и расширение снимает эффект, возвращая экран к прежнему виду;
+// * сила, скорость и пресет помнятся в нашем файле состояния
+//   ([`shell_state_path`]) и у выключенного эффекта — ползунки не
+//   сбрасываются.
+// Перезапуск оболочки не нужен: расширение следит за ключом.
+
+/// Ключ схемы расширения с путём к файлу шейдера (пусто — выключено).
+pub const SHELL_EFFECT_KEY: &str = "effect-shader";
+/// Строка между объявлениями и кодом сниппета в файле шейдера.
+pub const COGL_CODE_MARKER: &str = "//@rexon-cogl-code";
+
+/// Текст файла шейдера для расширения GNOME/Cinnamon.
+pub fn cogl_file_content(shader: &Shader) -> String {
+    let code = shader.cogl_code.as_deref().unwrap_or_default();
+    format!("{}\n{COGL_CODE_MARKER}\n{code}", shader.source.trim_end())
+}
+
+/// Два места под файл шейдера: новый пишется туда, куда ключ не смотрит.
+pub fn shell_shader_slots(ctx: &LookCtx) -> [String; 2] {
+    [ctx.cfg("rexon/screen-effects/shell-a.glsl"), ctx.cfg("rexon/screen-effects/shell-b.glsl")]
+}
+
+/// Наш файл состояния (пресет, сила, скорость).
+pub fn shell_state_path(ctx: &LookCtx) -> String {
+    ctx.cfg("rexon/screen-effects/shell.state")
+}
+
+/// Строка GVariant `'…'` для `gsettings set`.
+fn gvariant_str(s: &str) -> String {
+    format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'"))
+}
+
+/// Ответ `gsettings get` на строковый ключ → сама строка.
+fn parse_gvariant_str(out: &str) -> String {
+    let t = out.trim();
+    let t = t.strip_prefix("@s ").unwrap_or(t);
+    let quoted = (t.starts_with('\'') && t.ends_with('\'')) || (t.starts_with('"') && t.ends_with('"'));
+    if t.len() < 2 || !quoted {
+        return t.to_string();
+    }
+    let mut res = String::new();
+    let mut chars = t[1..t.len() - 1].chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(n) = chars.next() {
+                res.push(n);
+            }
+        } else {
+            res.push(c);
+        }
+    }
+    res
+}
+
+/// `gsettings` со схемой из каталога самого расширения, если она там
+/// собрана (в общем каталоге схем её может не быть — то же, что у обоев,
+/// [`crate::wallpaper_engine::shell_ext_schema_dirs`]).
+fn shell_gsettings(io: &dyn LookIo, ctx: &LookCtx) -> Option<(Vec<String>, &'static str)> {
+    let schema = crate::wallpaper_engine::shell_ext_schema(&ctx.de)?;
+    let dirs = crate::wallpaper_engine::shell_ext_schema_dirs(&ctx.de, &ctx.home, &ctx.data_home, &ctx.data_dirs.join(":"));
+    let mut cmd = vec!["gsettings".to_string()];
+    if let Some(dir) = dirs.into_iter().find(|d| io.list_dir(d).iter().any(|n| n == "gschemas.compiled")) {
+        cmd.push("--schemadir".to_string());
+        cmd.push(dir);
+    }
+    Some((cmd, schema))
+}
+
+/// Куда сейчас смотрит ключ эффекта. `None` — ключа нет (расширение от
+/// прежней версии или не поставлено) либо `gsettings` не ответил.
+fn shell_current_path(io: &dyn LookIo, ctx: &LookCtx) -> Option<String> {
+    let (mut cmd, schema) = shell_gsettings(io, ctx)?;
+    if !io.have("gsettings") {
+        return None;
+    }
+    cmd.extend(argv(&["get", schema, SHELL_EFFECT_KEY]));
+    let (ok, out) = io.run(&cmd);
+    ok.then(|| parse_gvariant_str(&out))
+}
+
+fn shell_state_content(preset: Option<Preset>, params: EffectParams) -> String {
+    let p = params.clamped();
+    let mut state = BTreeMap::new();
+    if let Some(preset) = preset {
+        state.insert("preset".to_string(), preset.id().to_string());
+    }
+    state.insert("strength".to_string(), fmt_num(p.strength));
+    state.insert("speed".to_string(), fmt_num(p.speed));
+    let mut out = state_line("#", &state);
+    out.push_str("# Rexon: screen effects on GNOME/Cinnamon. Rewritten by Rexon.\n");
+    out
+}
+
+/// Что сейчас включено в GNOME или Cinnamon.
+pub fn read_gnome_cinnamon(io: &dyn LookIo, ctx: &LookCtx) -> EffectSettings {
+    let state = io.read(&shell_state_path(ctx)).map(|t| parse_state_line(&t)).unwrap_or_default();
+    let params = params_from_state(&state);
+    let on = shell_current_path(io, ctx).is_some_and(|p| !p.is_empty() && io.read(&p).is_some());
+    let preset = if on { state.get("preset").and_then(|id| Preset::from_id(id)) } else { None };
+    EffectSettings { preset, params }
+}
+
+// TRANSLATORS: Screen effects on GNOME/Cinnamon. %1 is the place in Rexon, e.g. “Appearance → GNOME Extensions”.
+const MSG_SHELL_EXT_OLD: &str = n_(
+    "The Rexon shell extension is left over from an older version and doesn't know screen effects yet. \
+     Reinstall it in “%1” and try again.",
+);
+// TRANSLATORS: Screen effects on GNOME/Cinnamon. %1 is the place in Rexon, e.g. “Appearance → GNOME Extensions”.
+const MSG_SHELL_EXT_NOT_RUNNING: &str = n_(
+    "The Rexon shell extension isn't running in this session, so screen effects can't be shown. \
+     Log out and back in; if that doesn't help, reinstall it in “%1”.",
+);
+
+/// Шаг «включить наше расширение», если оно выключено. Включённое и
+/// неотвеченное — без шагов; не загруженное, с ошибкой или не той версии —
+/// отказ с объяснением: эффект там не покажется, и «готово» было бы ложью.
+fn shell_enable_steps(io: &dyn LookIo, ctx: &LookCtx) -> Result<Vec<LookStep>, String> {
+    use crate::wallpaper_engine::{self as wpe, ShellExtState};
+    let probe = wpe::shell_ext_state_argv(&ctx.de);
+    let out = if io.have(&probe[0]) {
+        let (ok, out) = io.run(&probe);
+        ok.then_some(out)
+    } else {
+        None
+    };
+    match wpe::parse_shell_ext_state(&ctx.de, out.as_deref()) {
+        ShellExtState::Enabled | ShellExtState::Unknown => Ok(Vec::new()),
+        ShellExtState::Disabled if ctx.de == "gnome" => {
+            Ok(vec![LookStep::Cmd(argv(&["gnome-extensions", "enable", wpe::SHELL_EXT_ID]))])
+        }
+        ShellExtState::Disabled => {
+            // Cinnamon: дописать себя в список включённых — оболочка
+            // подхватывает расширение сразу, без перезапуска.
+            let mut list: Vec<String> = out
+                .as_deref()
+                .unwrap_or_default()
+                .split('\'')
+                .skip(1)
+                .step_by(2)
+                .map(str::to_string)
+                .collect();
+            list.push(wpe::SHELL_EXT_ID.to_string());
+            Ok(vec![LookStep::Cmd(vec![
+                "gsettings".to_string(),
+                "set".to_string(),
+                "org.cinnamon".to_string(),
+                "enabled-extensions".to_string(),
+                wpe::gvariant_string_array(&list),
+            ])])
+        }
+        ShellExtState::NotLoaded | ShellExtState::Error | ShellExtState::OutOfDate => {
+            Err(trf(MSG_SHELL_EXT_NOT_RUNNING, &[&wpe::shell_ext_place(&ctx.de)]))
+        }
+    }
+}
+
+/// План записи для GNOME или Cinnamon. `Err` — готовая фраза, почему нельзя.
+pub fn plan_gnome_cinnamon(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings) -> Result<Vec<LookStep>, String> {
+    let Some((gsettings, schema)) = shell_gsettings(io, ctx) else {
+        return Err(support(&ctx.de, ctx.wayland).note);
+    };
+    let set_key = |value: &str| {
+        let mut cmd = gsettings.clone();
+        cmd.extend(argv(&["set", schema, SHELL_EFFECT_KEY]));
+        cmd.push(gvariant_str(value));
+        LookStep::Cmd(cmd)
+    };
+    let params = new.params.clamped();
+    let state_path = shell_state_path(ctx);
+    let current = shell_current_path(io, ctx);
+    let Some(preset) = new.preset else {
+        // Выключение: ключ пуст — расширение снимает эффект. Ключа нет —
+        // выключать нечего. Сила и скорость помнятся.
+        let mut steps = Vec::new();
+        if current.as_deref().is_some_and(|p| !p.is_empty()) {
+            steps.push(set_key(""));
+        }
+        let state = shell_state_content(None, params);
+        if io.read(&state_path).as_deref() != Some(state.as_str()) {
+            steps.push(LookStep::WriteFile { path: state_path, content: state });
+        }
+        return Ok(steps);
+    };
+    let Some(current) = current else {
+        if !io.have("gsettings") {
+            return Err(trf("The program %1 is not installed.", &[&"gsettings"]));
+        }
+        return Err(trf(MSG_SHELL_EXT_OLD, &[&crate::wallpaper_engine::shell_ext_place(&ctx.de)]));
+    };
+    let enable = shell_enable_steps(io, ctx)?;
+    let content = cogl_file_content(&generate(Host::Cogl, preset, params));
+    let state = shell_state_content(Some(preset), params);
+    let state_same = io.read(&state_path).as_deref() == Some(state.as_str());
+    let mut steps = Vec::new();
+    // Тот же шейдер уже показан — файл и ключ не трогаем.
+    if current.is_empty() || io.read(&current).as_deref() != Some(content.as_str()) {
+        let [a, b] = shell_shader_slots(ctx);
+        let slot = if current == a { b } else { a };
+        steps.push(LookStep::WriteFile { path: slot.clone(), content });
+        steps.push(set_key(&slot));
+    }
+    if !state_same {
+        steps.push(LookStep::WriteFile { path: state_path, content: state });
+    }
+    steps.extend(enable);
+    Ok(steps)
+}
+
 fn hypr_reload() -> LookStep {
     LookStep::Notify(vec![argv(&["hyprctl", "reload"])])
 }
 
 /// План записи. `Err` — готовая фраза, почему здесь нельзя.
 pub fn plan_settings(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings) -> Result<Vec<LookStep>, String> {
-    let sup = support(&ctx.de, std::env::var("WAYLAND_DISPLAY").is_ok());
-    if ctx.de != "hyprland" {
-        return Err(sup.note);
+    match ctx.de.as_str() {
+        "hyprland" => plan_hyprland(io, ctx, new),
+        "gnome" | "cinnamon-mint" => plan_gnome_cinnamon(io, ctx, new),
+        _ => Err(support(&ctx.de, ctx.wayland).note),
     }
+}
+
+fn plan_hyprland(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings) -> Result<Vec<LookStep>, String> {
     let mut steps = Vec::new();
     let Some(preset) = new.preset else {
         // Выключение: снять наш блок из каждого конфига, где он есть.
@@ -899,6 +1129,124 @@ pub fn apply(io: &dyn LookIo, ctx: &LookCtx, new: &EffectSettings) -> String {
         Err(e) => e,
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Раздел окна «Оформление → Эффекты экрана»
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Плитка пресета.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PresetTile {
+    pub id: &'static str,
+    pub label: String,
+    /// Номер в шейдере предпросмотра ([`preview_glsl`], униформа `rx_preset`).
+    pub index: usize,
+    pub animated: bool,
+    pub warps: bool,
+}
+
+/// Снимок раздела для окна.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ScreenEffectsState {
+    pub de: String,
+    pub coverage: Coverage,
+    /// Rexon умеет здесь включать эффекты: есть «Применить».
+    pub can_apply: bool,
+    /// Честное пояснение из таблицы [`support`].
+    pub note: String,
+    /// Что нужно поставить (пусто — ничего).
+    pub needs: String,
+    /// Эффект ляжет на каждое окно: предпросмотр без кривизны и виньетки.
+    pub per_window: bool,
+    /// Движущиеся эффекты здесь живут (иначе застывают).
+    pub moving: bool,
+    /// Включённый пресет (`""` — выключено).
+    pub preset: String,
+    pub strength: f64,
+    pub speed: f64,
+    pub max_speed: f64,
+    pub presets: Vec<PresetTile>,
+}
+
+/// Снимок раздела: таблица поддержки окружения и то, что включено сейчас.
+pub fn read_state(io: &dyn LookIo, ctx: &LookCtx) -> ScreenEffectsState {
+    let sup = support(&ctx.de, ctx.wayland);
+    let cur = read_settings(io, ctx);
+    let p = cur.params.clamped();
+    ScreenEffectsState {
+        de: ctx.de.clone(),
+        coverage: sup.coverage,
+        can_apply: sup.ready,
+        note: sup.note,
+        needs: sup.needs,
+        per_window: sup.host.is_some_and(Host::per_window),
+        moving: sup.animated,
+        preset: cur.preset.map(|p| p.id().to_string()).unwrap_or_default(),
+        strength: p.strength,
+        speed: p.speed,
+        max_speed: MAX_SPEED,
+        presets: Preset::ALL
+            .iter()
+            .enumerate()
+            .map(|(index, p)| PresetTile {
+                id: p.id(),
+                label: p.label(),
+                index,
+                animated: p.animated(),
+                warps: p.warps(),
+            })
+            .collect(),
+    }
+}
+
+/// «Применить» из окна: пресет по имени (`""` — выключить), сила и скорость.
+/// Ответ — готовая фраза для всплывающего сообщения.
+pub fn apply_from_ui(io: &dyn LookIo, ctx: &LookCtx, preset: &str, strength: f64, speed: f64) -> String {
+    let new = EffectSettings { preset: Preset::from_id(preset), params: EffectParams { strength, speed } };
+    apply(io, ctx, &new)
+}
+
+/// Шейдер предпросмотра для окна (QML `ShaderEffect`): все пресеты в одном
+/// файле, выбор — униформой `rx_preset` (номер в [`Preset::ALL`]); сила
+/// `rx_s`, оконный режим `rx_window`, время `rx_time` (уже помноженное на
+/// скорость) и размер `rx_res` задаёт плитка. Диалект — GLSL 4.40 под Qt RHI;
+/// окно получает его собранным `qsb` (`rexon-gui/build.rs`). Файл
+/// [`PREVIEW_SHADER_REL`] сверяется с этим генератором тестом.
+pub fn preview_glsl() -> String {
+    let mut s = String::new();
+    s.push_str("#version 440\n");
+    s.push_str("// Rexon screen effects preview: generated by rexon_core::screen_effects::preview_glsl (Rexon, Apache-2.0).\n");
+    s.push_str("// Do not edit by hand: REXON_WRITE_PREVIEW_SHADER=1 cargo test -p rexon-core preview_shader_is_current\n");
+    s.push_str("layout(location = 0) in vec2 qt_TexCoord0;\n");
+    s.push_str("layout(location = 0) out vec4 fragColor;\n");
+    s.push_str("layout(std140, binding = 0) uniform buf {\n");
+    // Имена униформ — свойства ShaderEffect, а свойство QML не может
+    // начинаться с заглавной: ядро зовёт их RX_S/RX_WINDOW — подставляем.
+    s.push_str("    mat4 qt_Matrix;\n    float qt_Opacity;\n    float rx_preset;\n    float rx_s;\n    float rx_window;\n    float rx_time;\n    vec2 rx_res;\n};\n");
+    s.push_str("#define RX_S rx_s\n#define RX_WINDOW rx_window\n");
+    s.push_str("layout(binding = 1) uniform sampler2D source;\n");
+    s.push_str("vec4 rx_tex(vec2 uv) {\n    return texture(source, uv);\n}\n");
+    s.push_str(CORE_HELPERS);
+    for (i, p) in Preset::ALL.iter().enumerate() {
+        s.push_str(&p.body().replace("vec4 rx_effect(", &format!("vec4 rx_effect_{i}(")));
+    }
+    s.push_str("\nvoid main() {\n    vec2 uv = qt_TexCoord0;\n    vec4 c;\n");
+    for i in 0..Preset::ALL.len() {
+        let call = format!("c = rx_effect_{i}(uv, rx_res, rx_time);");
+        if i == 0 {
+            s.push_str(&format!("    if (rx_preset < 0.5) {{\n        {call}\n"));
+        } else if i + 1 < Preset::ALL.len() {
+            s.push_str(&format!("    }} else if (rx_preset < {}.5) {{\n        {call}\n", i));
+        } else {
+            s.push_str(&format!("    }} else {{\n        {call}\n    }}\n"));
+        }
+    }
+    s.push_str("    fragColor = c * qt_Opacity;\n}\n");
+    s
+}
+
+/// Где лежит шейдер предпросмотра (от корня `rust/`).
+pub const PREVIEW_SHADER_REL: &str = "rexon-gui/qml/shaders/screen-effects.frag";
 
 #[cfg(test)]
 mod tests {
@@ -1093,9 +1441,9 @@ mod tests {
         // Время есть только там, где хост его даёт.
         assert!(support("hyprland", true).animated && support("gnome", true).animated);
         assert!(!support("kde", true).animated && !support("wayfire", true).animated);
-        // Пока применяется только Hyprland.
+        // Применяется: GNOME и Cinnamon (свои расширения), Hyprland.
         let ready: Vec<_> = support_table().into_iter().filter(|s| s.ready).map(|s| s.de).collect();
-        assert_eq!(ready, vec!["hyprland".to_string()]);
+        assert_eq!(ready, vec!["gnome".to_string(), "cinnamon-mint".to_string(), "hyprland".to_string()]);
         for s in support_table() {
             assert!(!s.note.is_empty(), "{}", s.de);
             // На оконных способах кривизна выключена — и пояснение об этом говорит.
@@ -1231,9 +1579,300 @@ mod tests {
         assert_eq!(apply(&io, &k, &on(Preset::Crt, 0.5, 1.0)), support("sway", true).note);
     }
 
+    // ── окно ───────────────────────────────────────────────────────────────
+
+    /// Файл шейдера предпросмотра в дереве совпадает с генератором.
+    /// Пересобрать: `REXON_WRITE_PREVIEW_SHADER=1 cargo test -p rexon-core preview_shader_is_current`.
+    #[test]
+    fn preview_shader_is_current() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(PREVIEW_SHADER_REL);
+        let want = preview_glsl();
+        if std::env::var_os("REXON_WRITE_PREVIEW_SHADER").is_some() {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, &want).unwrap();
+        }
+        let have = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(have == want, "{} устарел: REXON_WRITE_PREVIEW_SHADER=1 cargo test -p rexon-core preview_shader_is_current", path.display());
+        assert_eq!(count(&want, "rx_effect_"), 2 * Preset::ALL.len());
+        assert_eq!(count(&want, "{"), count(&want, "}"));
+        assert!(!want.contains("RX_TINT_VALUE") && !want.contains("const float RX_S"));
+    }
+
+    /// Шейдер предпросмотра собирается glslangValidator (если он стоит) как
+    /// Vulkan-GLSL — тем же диалектом, что принимает qsb.
+    #[test]
+    fn preview_shader_compiles() {
+        let Some(tool) = crate::utils::which("glslangValidator", std::env::var("PATH").ok().as_deref()) else {
+            eprintln!("glslangValidator нет — пропуск");
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("rexon-se-preview-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("preview.frag");
+        std::fs::write(&path, preview_glsl()).unwrap();
+        let out = std::process::Command::new(&tool).arg("-G").arg(&path).arg("-o").arg(dir.join("p.spv")).output().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    }
+
+    /// Снимок окна: Hyprland — с «Применить» и включённым пресетом; sway —
+    /// без кнопки, с пояснением; плитки — все пресеты по порядку.
+    #[test]
+    fn window_state_and_apply() {
+        crate::i18n::set_language(Some("en"));
+        let io = FakeIo::default();
+        let c = hypr();
+        io.files.borrow_mut().insert("/h/.config/hypr/hyprland.conf".into(), "# mine\n".into());
+        let st = read_state(&io, &c);
+        assert!(st.can_apply && st.preset.is_empty() && st.moving && !st.per_window);
+        assert_eq!(st.presets.iter().map(|t| t.id).collect::<Vec<_>>(), Preset::ALL.map(Preset::id));
+        assert!(st.presets.iter().enumerate().all(|(i, t)| t.index == i));
+        assert_eq!(apply_from_ui(&io, &c, "crt-amber", 0.4, 0.0), "Screen effects applied.");
+        let st = read_state(&io, &c);
+        assert_eq!((st.preset.as_str(), st.strength, st.speed), ("crt-amber", 0.4, 0.0));
+        assert_eq!(apply_from_ui(&io, &c, "", 0.4, 0.0), "Screen effects applied.");
+        assert_eq!(io.files.borrow()["/h/.config/hypr/hyprland.conf"], "# mine\n");
+        assert!(read_state(&io, &c).preset.is_empty());
+
+        let k = LookCtx::new("kde", "/h", Some("/h/.config"));
+        let st = read_state(&io, &k);
+        assert!(!st.can_apply && st.per_window && !st.moving && st.note.contains("KWin"));
+        let sway = read_state(&io, &LookCtx::new("sway", "/h", Some("/h/.config")));
+        assert_eq!(sway.coverage, Coverage::None);
+        assert!(!sway.can_apply);
+    }
+
     /// Путь шейдера с кавычкой и обратной косой не ломает строку Lua.
     #[test]
     fn lua_path_is_escaped() {
         assert_eq!(lua_string(r#"/home/a"b\c"#), r#""/home/a\"b\\c""#);
+    }
+}
+
+#[cfg(test)]
+mod shell_ext_tests {
+    //! GNOME и Cinnamon: план записи для расширения и договор с его JS.
+    use super::*;
+    use std::cell::RefCell;
+    use std::collections::{HashMap, HashSet};
+
+    const GNOME_JS: &str = include_str!("../../../data/gnome-extension/rexon-wallpaper@rexon.app/extension.js");
+    const CINNAMON_JS: &str = include_str!("../../../data/cinnamon-extension/rexon-wallpaper@rexon.app/extension.js");
+    const GNOME_SCHEMA: &str = include_str!(
+        "../../../data/gnome-extension/rexon-wallpaper@rexon.app/schemas/org.gnome.shell.extensions.rexon-wallpaper.gschema.xml"
+    );
+    const CINNAMON_SCHEMA: &str = include_str!(
+        "../../../data/cinnamon-extension/rexon-wallpaper@rexon.app/schemas/org.cinnamon.extensions.rexon-wallpaper.gschema.xml"
+    );
+
+    /// Подставная машина: файлы и gsettings в памяти, ответ оболочки о
+    /// состоянии расширения задаётся.
+    #[derive(Default)]
+    struct ShellIo {
+        files: RefCell<HashMap<String, String>>,
+        gs: RefCell<HashMap<String, String>>,
+        dirs: HashMap<String, Vec<String>>,
+        tools: HashSet<&'static str>,
+        /// Ответ `gdbus call … GetExtensionInfo` (GNOME).
+        gdbus: Option<String>,
+        ran: RefCell<Vec<Vec<String>>>,
+    }
+
+    impl LookIo for ShellIo {
+        fn run(&self, a: &[String]) -> (bool, String) {
+            self.ran.borrow_mut().push(a.to_vec());
+            match a[0].as_str() {
+                "gsettings" => {
+                    let a: Vec<&String> = if a[1] == "--schemadir" { a[3..].iter().collect() } else { a[1..].iter().collect() };
+                    let k = format!("{} {}", a[1], a[2]);
+                    let mut gs = self.gs.borrow_mut();
+                    match (a[0].as_str(), gs.get(&k).cloned()) {
+                        ("get", Some(v)) => (true, v),
+                        ("set", Some(_)) => {
+                            gs.insert(k, a[3].clone());
+                            (true, String::new())
+                        }
+                        _ => (false, "No such key".to_string()),
+                    }
+                }
+                "gdbus" => match &self.gdbus {
+                    Some(out) => (true, out.clone()),
+                    None => (false, String::new()),
+                },
+                _ => (true, String::new()),
+            }
+        }
+        fn have(&self, tool: &str) -> bool {
+            self.tools.contains(tool)
+        }
+        fn read(&self, path: &str) -> Option<String> {
+            self.files.borrow().get(path).cloned()
+        }
+        fn write(&self, path: &str, text: &str) -> bool {
+            self.files.borrow_mut().insert(path.to_string(), text.to_string());
+            true
+        }
+        fn list_dir(&self, path: &str) -> Vec<String> {
+            self.dirs.get(path).cloned().unwrap_or_default()
+        }
+    }
+
+    const GNOME_SCHEMA_ID: &str = "org.gnome.shell.extensions.rexon-wallpaper";
+    const CINNAMON_SCHEMA_ID: &str = "org.cinnamon.extensions.rexon-wallpaper";
+    const GNOME_ON: &str = "({'uuid': <'rexon-wallpaper@rexon.app'>, 'state': <1.0>},)";
+    const GNOME_OFF: &str = "({'uuid': <'rexon-wallpaper@rexon.app'>, 'state': <2.0>},)";
+    const GNOME_NOT_LOADED: &str = "(@a{sv} {},)";
+
+    fn ctx(de: &str) -> LookCtx {
+        LookCtx::new(de, "/home/u", None)
+    }
+
+    /// Машина с установленным расширением (схема собрана в каталоге
+    /// расширения у пользователя) и пустым ключом эффекта.
+    fn machine(de: &str, gdbus: Option<&str>) -> ShellIo {
+        let c = ctx(de);
+        let sub = if de == "gnome" { "gnome-shell" } else { "cinnamon" };
+        let dir = format!("{}/{sub}/extensions/rexon-wallpaper@rexon.app/schemas", c.data_home);
+        let schema = if de == "gnome" { GNOME_SCHEMA_ID } else { CINNAMON_SCHEMA_ID };
+        let io = ShellIo {
+            dirs: HashMap::from([(dir, vec!["gschemas.compiled".to_string()])]),
+            tools: HashSet::from(["gsettings", "gdbus", "gnome-extensions"]),
+            gdbus: gdbus.map(str::to_string),
+            ..Default::default()
+        };
+        io.gs.borrow_mut().insert(format!("{schema} {SHELL_EFFECT_KEY}"), "''".to_string());
+        io.gs.borrow_mut().insert("org.cinnamon enabled-extensions".to_string(), "['rexon-wallpaper@rexon.app']".to_string());
+        io
+    }
+
+    fn on(preset: Preset) -> EffectSettings {
+        EffectSettings { preset: Some(preset), params: EffectParams { strength: 0.5, speed: 1.0 } }
+    }
+
+    fn key(io: &ShellIo, schema: &str) -> String {
+        parse_gvariant_str(&io.gs.borrow()[&format!("{schema} {SHELL_EFFECT_KEY}")])
+    }
+
+    fn apply_ok(io: &ShellIo, c: &LookCtx, s: &EffectSettings) {
+        let steps = plan_settings(io, c, s).expect("план");
+        run_steps(io, c, &steps).expect("исполнение");
+    }
+
+    #[test]
+    fn cogl_file_splits_at_marker() {
+        for preset in Preset::ALL {
+            let shader = generate(Host::Cogl, preset, EffectParams::default());
+            let text = cogl_file_content(&shader);
+            assert_eq!(text.matches(COGL_CODE_MARKER).count(), 1, "{preset:?}");
+            let (decl, code) = text.split_once(COGL_CODE_MARKER).unwrap();
+            assert!(decl.contains("vec4 rx_effect(") && decl.contains("uniform vec2 rx_res;"));
+            assert!(code.contains("cogl_color_out = rx_effect("));
+            // Часы расширение заводит по `rx_time` в коде — ровно у движущихся.
+            assert_eq!(code.contains("rx_time"), shader.animated, "{preset:?}");
+        }
+    }
+
+    /// Договор с JS: имя ключа и метка — те же, общий блок эффекта в обоих
+    /// расширениях одинаков посимвольно, схемы несут ключ с пустым
+    /// значением по умолчанию (эффект выключен), смена ключа эффекта не
+    /// перезапускает обои.
+    #[test]
+    fn shell_extensions_share_screen_effect() {
+        let block = |src: &str, de: &str| {
+            let begin = "[rexon-wp:screen-effect:begin]";
+            let from = src.find(begin).unwrap_or_else(|| panic!("{de}: нет начала блока эффекта")) + begin.len();
+            let to = src[from..].find("[rexon-wp:screen-effect:end]").unwrap_or_else(|| panic!("{de}: нет конца блока")) + from;
+            src[from..to].to_string()
+        };
+        let g = block(GNOME_JS, "GNOME");
+        let c = block(CINNAMON_JS, "Cinnamon");
+        assert_eq!(g, c, "блоки эффекта экрана в расширениях GNOME и Cinnamon разошлись");
+        assert!(g.contains(&format!("const EFFECT_KEY = '{SHELL_EFFECT_KEY}';")));
+        assert!(g.contains(&format!("const EFFECT_CODE_MARKER = '{COGL_CODE_MARKER}';")));
+        for (de, src, schema) in [("GNOME", GNOME_JS, GNOME_SCHEMA), ("Cinnamon", CINNAMON_JS, CINNAMON_SCHEMA)] {
+            assert!(src.contains("key === EFFECT_KEY"), "{de}: смена эффекта перезапускала бы обои");
+            assert!(src.contains("new ScreenEffect(") && src.contains("target: Main.uiGroup"), "{de}");
+            assert!(src.contains("effectShaderPath("), "{de}: ключ читается мимо проверки схемы");
+            let at = schema.find(&format!("<key name=\"{SHELL_EFFECT_KEY}\" type=\"s\">")).unwrap_or_else(|| panic!("{de}: в схеме нет ключа"));
+            assert!(schema[at..].contains("<default>\"\"</default>"), "{de}: эффект обязан быть выключен по умолчанию");
+        }
+    }
+
+    #[test]
+    fn gvariant_strings_round_trip() {
+        for s in ["", "/home/u/.config/rexon/screen-effects/shell-a.glsl", "/дом/it's \\ x"] {
+            assert_eq!(parse_gvariant_str(&gvariant_str(s)), s);
+        }
+        assert_eq!(parse_gvariant_str("@s ''\n"), "");
+    }
+
+    #[test]
+    fn gnome_on_change_same_off() {
+        let c = ctx("gnome");
+        let io = machine("gnome", Some(GNOME_ON));
+        let [a, b] = shell_shader_slots(&c);
+        assert_eq!(read_settings(&io, &c).preset, None, "по умолчанию выключено");
+
+        apply_ok(&io, &c, &on(Preset::Crt));
+        assert_eq!(key(&io, GNOME_SCHEMA_ID), a);
+        assert!(io.read(&a).unwrap().contains(COGL_CODE_MARKER));
+        // Пишется через схему из каталога расширения.
+        assert!(io.ran.borrow().iter().any(|r| r[0] == "gsettings" && r[1] == "--schemadir" && r.contains(&"set".to_string())));
+        let now = read_settings(&io, &c);
+        assert_eq!((now.preset, now.params.strength), (Some(Preset::Crt), 0.5));
+
+        // Смена: новый шейдер в другой файл, прежний остаётся целым до
+        // переключения ключа.
+        let before_a = io.read(&a).unwrap();
+        apply_ok(&io, &c, &on(Preset::Vhs));
+        assert_eq!(key(&io, GNOME_SCHEMA_ID), b);
+        assert_eq!(io.read(&a).unwrap(), before_a);
+        assert!(io.read(&b).unwrap().contains("rx_time"));
+
+        // То же самое ещё раз — делать нечего.
+        assert!(plan_settings(&io, &c, &on(Preset::Vhs)).unwrap().is_empty());
+
+        // Выключение: ключ пуст, сила и скорость помнятся.
+        let off = EffectSettings { preset: None, params: EffectParams { strength: 0.5, speed: 1.0 } };
+        apply_ok(&io, &c, &off);
+        assert_eq!(key(&io, GNOME_SCHEMA_ID), "");
+        let now = read_settings(&io, &c);
+        assert_eq!((now.preset, now.params.strength), (None, 0.5));
+        assert!(plan_settings(&io, &c, &off).unwrap().is_empty());
+    }
+
+    #[test]
+    fn turned_off_extension_is_turned_on() {
+        let c = ctx("gnome");
+        let io = machine("gnome", Some(GNOME_OFF));
+        let steps = plan_settings(&io, &c, &on(Preset::Scanlines)).unwrap();
+        assert!(steps.iter().any(|s| matches!(s, LookStep::Cmd(a) if a[..2] == ["gnome-extensions", "enable"])));
+
+        let c = ctx("cinnamon-mint");
+        let io = machine("cinnamon-mint", None);
+        io.gs.borrow_mut().insert("org.cinnamon enabled-extensions".to_string(), "['other@x']".to_string());
+        apply_ok(&io, &c, &on(Preset::Film));
+        assert_eq!(io.gs.borrow()["org.cinnamon enabled-extensions"], "[\"other@x\",\"rexon-wallpaper@rexon.app\"]");
+        assert_eq!(key(&io, CINNAMON_SCHEMA_ID), shell_shader_slots(&c)[0]);
+        assert_eq!(read_settings(&io, &c).preset, Some(Preset::Film));
+    }
+
+    #[test]
+    fn refusals_write_nothing() {
+        // Расширение не загружено (GNOME до перезахода) — честный отказ.
+        let c = ctx("gnome");
+        let io = machine("gnome", Some(GNOME_NOT_LOADED));
+        let err = plan_settings(&io, &c, &on(Preset::Crt)).unwrap_err();
+        assert!(err.contains("Log out"), "{err}");
+        assert!(io.files.borrow().is_empty());
+
+        // Расширение от прежней версии: ключа эффекта в схеме нет.
+        let io = machine("gnome", Some(GNOME_ON));
+        io.gs.borrow_mut().clear();
+        let err = plan_settings(&io, &c, &on(Preset::Crt)).unwrap_err();
+        assert!(err.contains("older version"), "{err}");
+        // А выключать там нечего — без ошибки.
+        assert!(plan_settings(&io, &c, &EffectSettings::default()).unwrap().iter().all(|s| matches!(s, LookStep::WriteFile { .. })));
+        assert_eq!(read_settings(&io, &c).preset, None);
     }
 }

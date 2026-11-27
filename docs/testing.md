@@ -88,6 +88,7 @@ rexon --recover-kde         # аварийный откат KDE-темы
 # QML. ⚠️ Продукт запускается по-прежнему `rexon` и этого бинаря не знает.
 rust/target/release/rexon-main-window                    # окно целиком
 rust/target/release/rexon-main-window --section=steam    # сразу нужный раздел
+rust/target/release/rexon-main-window --section=appearance/screeneffects  # раздел «Оформления»
 QT_QPA_PLATFORM=offscreen rust/target/release/rexon-main-window --selftest
 #   0 — проверки прошли, 1 — провал (печатает строки REXON-MAINWINDOW-FAIL),
 #   2 — окно не отчиталось за 30 с. Проверка стенда на укус: тот же прогон с
