@@ -87,9 +87,13 @@ pub fn start_section(args: &[String]) -> Option<(String, String)> {
         return Some(("settings".to_string(), String::new()));
     }
     if let Some(id) = args.iter().find_map(|a| a.strip_prefix(SECTION_FLAG)) {
+        // `--section=appearance/screeneffects` — сразу и подраздел (ключ
+        // раздела боковой панели «Оформления»): так стенд открывает нужный
+        // раздел без щелчков.
+        let (id, sub) = id.split_once('/').unwrap_or((id, ""));
         let id = id.trim();
         if !id.is_empty() {
-            return Some((id.to_string(), String::new()));
+            return Some((id.to_string(), sub.trim().to_string()));
         }
     }
     if let Route::SingleTab { module } = crate::app::route(args) {
@@ -100,7 +104,8 @@ pub fn start_section(args: &[String]) -> Option<(String, String)> {
     crate::app::start_page(args).map(|(s, p)| (s.to_string(), p.to_string()))
 }
 
-/// Флаг раздела: `--section=appearance`.
+/// Флаг раздела: `--section=appearance` (с подразделом —
+/// `--section=appearance/screeneffects`).
 pub const SECTION_FLAG: &str = "--section=";
 
 // ============================================================================
@@ -873,6 +878,10 @@ mod tests {
     #[test]
     fn пустой_section_не_считается_разделом() {
         assert_eq!(start_section(&argv(&["--section="])), None);
+        assert_eq!(
+            start_section(&argv(&["--section=appearance/screeneffects"])),
+            Some(("appearance".to_string(), "screeneffects".to_string()))
+        );
         assert_eq!(
             start_section(&argv(&["--section=  ", "--page=install"])),
             Some(("desktops".into(), String::new()))

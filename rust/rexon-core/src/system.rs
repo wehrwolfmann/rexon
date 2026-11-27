@@ -395,6 +395,10 @@ pub struct DeMeta {
     pub customizable: u8,
     pub gaming_friendly: u8,
     pub toolkit: &'static str,
+    /// Сеанс стола. У столов с выбором X11/Wayland при установке
+    /// ([`SESSION_VARIANTS`]) это исходная запись меты (по ней цвет в
+    /// «Сравнении»); на витрину идёт [`DeMeta::session_text`], а выбор по
+    /// умолчанию — [`SessionVariants::default_session`], оба из той же таблицы.
     pub session_type: &'static str,
     pub compositor: &'static str,
     pub panel_type: &'static str,
@@ -411,6 +415,23 @@ impl DeMeta {
     /// Композитор на языке интерфейса (у большинства — имя программы).
     pub fn compositor_text(&self) -> String {
         crate::i18n::tr(self.compositor)
+    }
+
+    /// Сеанс на языке интерфейса — для «Сравнения» и карточек.
+    ///
+    /// Если у стола есть выбор сеанса ([`SESSION_VARIANTS`]), подпись
+    /// выводится из таблицы вариантов, а не пишется второй раз руками: так
+    /// витрина не разойдётся с окном установки. Таблица описана для Arch —
+    /// по нему и составлена мета столов.
+    pub fn session_text(&self) -> String {
+        match session_variants(self.id, PkgFamily::Arch).map(|v| v.maturity) {
+            Some(WaylandMaturity::Mature) => crate::i18n::tr("X11 + Wayland"),
+            Some(WaylandMaturity::Experimental) => crate::i18n::tr("X11 + Wayland (experimental)"),
+            Some(WaylandMaturity::ExperimentalAur) => {
+                crate::i18n::tr("X11 + Wayland (experimental, AUR)")
+            }
+            None => self.session_type.to_string(),
+        }
     }
 }
 
@@ -498,12 +519,16 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
             ]),
             (PkgFamily::Gentoo, &[
                 "gnome-extra/cinnamon", "x11-misc/lightdm", "gnome-extra/nemo",
+                "x11-terms/gnome-terminal",
             ]),
             (PkgFamily::Alpine, &[
                 "cinnamon", "nemo", "gnome-terminal", "lightdm",
                 "lightdm-gtk-greeter",
             ]),
-            (PkgFamily::Solus, &["cinnamon", "nemo", "lightdm", "lightdm-gtk-greeter"]),
+            (PkgFamily::Solus, &[
+                "cinnamon", "nemo", "gnome-terminal", "lightdm",
+                "lightdm-gtk-greeter",
+            ]),
             (PkgFamily::Void, &["cinnamon-all", "lightdm", "lightdm-gtk3-greeter"]),
             (PkgFamily::Alt, &[
                 "cinnamon", "nemo", "gnome-terminal", "lightdm",
@@ -615,17 +640,17 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
             (PkgFamily::Gentoo, &["gnome-base/gnome", "gnome-base/gdm"]),
             (PkgFamily::Alpine, &[
                 "gnome-desktop", "gnome-shell", "gnome-control-center",
-                "nautilus", "gdm",
+                "nautilus", "gnome-console", "gdm",
             ]),
             (PkgFamily::Void, &["gnome", "gdm"]),
             (PkgFamily::Solus, &[
                 "gnome-shell", "gnome-desktop-branding",
-                "gnome-control-center", "gdm",
+                "gnome-control-center", "gnome-console", "gdm",
             ]),
             (PkgFamily::Clear, &["desktop-gnome-apps"]),
             (PkgFamily::Alt, &[
                 "gnome-shell", "gnome-control-center", "gnome-tweaks",
-                "nautilus", "gdm",
+                "nautilus", "gnome-console", "gdm",
             ]),
         ],
         aur: &[],
@@ -649,7 +674,7 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
             (PkgFamily::Gentoo, &["kde-plasma/plasma-meta", "x11-misc/sddm"]),
             (PkgFamily::Alpine, &["plasma-desktop-meta", "konsole", "dolphin", "sddm"]),
             (PkgFamily::Void, &["kde-plasma", "konsole", "dolphin", "sddm"]),
-            (PkgFamily::Solus, &["plasma-desktop", "sddm"]),
+            (PkgFamily::Solus, &["plasma-desktop", "konsole", "sddm"]),
             (PkgFamily::Clear, &["desktop-kde-apps"]),
             (PkgFamily::Alt, &["kde5", "plasma5-workspace", "konsole", "dolphin", "sddm"]),
         ],
@@ -667,25 +692,72 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
     // budgie
     ("budgie", DeEntry {
         packages: &[
+            // Набор программ — как в Ubuntu Budgie 26.04 на Budgie 10.10
+            // (сиды `ubuntu-budgie.resolute`, метапакет `ubuntu-budgie-desktop`
+            // и его `/etc/budgie-desktop/defaults.list`): файлы — Nemo
+            // (с `nemo-fileroller`, он тянет архиватор File Roller), терминал —
+            // `xfce4-terminal` (Tilix убран с 24.10), текст — gedit, картинки —
+            // gThumb, видео — VLC, музыка — Lollypop, PDF — Atril, калькулятор и
+            // монитор — из MATE, диски — GNOME Disks. Сам `budgie-desktop` из
+            // этого не тянет ничего: без строчек ниже поставивший один Budgie
+            // остаётся без терминала и программ. Офис, игры, браузер, торренты
+            // и подкасты Ubuntu Budgie не берём — это не часть стола.
+            // Arch — все пакеты в extra (03.11.2026); остальные семейства
+            // сверены по их базам пакетов (Debian trixie, Fedora rawhide,
+            // openSUSE Factory, Gentoo, Void, Solus, ALT Sisyphus) без
+            // установки.
             (PkgFamily::Arch, &[
                 "budgie-desktop", "budgie-desktop-view", "budgie-extras",
-                "network-manager-applet", "nautilus", "lightdm",
-                "lightdm-gtk-greeter",
+                "network-manager-applet", "nemo", "nemo-fileroller",
+                "xfce4-terminal", "gedit", "gthumb", "vlc", "lollypop", "atril",
+                "mate-calc", "mate-system-monitor", "gnome-disk-utility",
+                "lightdm", "lightdm-gtk-greeter",
             ]),
             (PkgFamily::Debian, &[
-                "budgie-desktop", "budgie-extras", "lightdm",
-                "lightdm-gtk-greeter",
+                "budgie-desktop", "budgie-extras", "nemo", "nemo-fileroller",
+                "xfce4-terminal", "gedit", "gthumb", "vlc", "lollypop", "atril",
+                "mate-calc", "mate-system-monitor", "gnome-disk-utility",
+                "lightdm", "lightdm-gtk-greeter",
             ]),
-            (PkgFamily::Fedora, &["@budgie-desktop-environment", "lightdm"]),
-            (PkgFamily::Suse, &["patterns-budgie-budgie", "lightdm"]),
+            (PkgFamily::Fedora, &[
+                "@budgie-desktop-environment", "nemo", "nemo-fileroller",
+                "xfce4-terminal", "gedit", "gthumb", "vlc", "lollypop", "atril",
+                "mate-calc", "mate-system-monitor", "gnome-disk-utility",
+                "lightdm",
+            ]),
+            // openSUSE: дополнение Nemo к File Roller — `nemo-extension-fileroller`.
+            (PkgFamily::Suse, &[
+                "patterns-budgie-budgie", "nemo", "nemo-extension-fileroller",
+                "xfce4-terminal", "gedit", "gthumb", "vlc", "lollypop", "atril",
+                "mate-calc", "mate-system-monitor", "gnome-disk-utility",
+                "lightdm",
+            ]),
             (PkgFamily::Gentoo, &[
                 "budgie-base/budgie-desktop",
-                "budgie-base/budgie-desktop-view", "x11-misc/lightdm",
+                "budgie-base/budgie-desktop-view", "gnome-extra/nemo",
+                "gnome-extra/nemo-fileroller", "x11-terms/xfce4-terminal",
+                "app-editors/gedit", "media-gfx/gthumb", "media-video/vlc",
+                "media-sound/lollypop", "app-text/atril", "mate-extra/mate-calc",
+                "mate-extra/mate-system-monitor", "sys-apps/gnome-disk-utility",
+                "x11-misc/lightdm",
             ]),
-            (PkgFamily::Void, &["budgie-desktop", "lightdm", "lightdm-gtk3-greeter"]),
-            (PkgFamily::Solus, &["budgie-desktop", "lightdm"]),
+            (PkgFamily::Void, &[
+                "budgie-desktop", "nemo", "nemo-fileroller", "xfce4-terminal",
+                "gedit", "gthumb", "vlc", "lollypop", "atril", "mate-calc",
+                "mate-system-monitor", "gnome-disk-utility", "lightdm",
+                "lightdm-gtk3-greeter",
+            ]),
+            (PkgFamily::Solus, &[
+                "budgie-desktop", "nemo", "nemo-fileroller", "xfce4-terminal",
+                "gedit", "gthumb", "vlc", "lollypop", "atril", "mate-calc",
+                "mate-system-monitor", "gnome-disk-utility", "lightdm",
+            ]),
+            // ALT: Atril собран пакетом `mate-document-viewer`.
             (PkgFamily::Alt, &[
-                "budgie-desktop", "nautilus", "lightdm", "lightdm-gtk-greeter",
+                "budgie-desktop", "nemo", "nemo-fileroller", "xfce4-terminal",
+                "gedit", "gthumb", "vlc", "lollypop", "mate-document-viewer",
+                "mate-calc", "mate-system-monitor", "gnome-disk-utility",
+                "lightdm", "lightdm-gtk-greeter",
             ]),
         ],
         // `budgie-extras` лежит в extra — ставится pacman'ом вместе с
@@ -741,7 +813,8 @@ pub const DE_DATABASE: &[(&str, DeEntry)] = &[
             // deepin-daemon сам задаёт `greeter-session=lightdm-deepin-greeter`.
             // lightdm назван явно, чтобы защита «нет включённого экрана входа»
             // знала, какой включать (ddm из группы — ранний и без X11).
-            (PkgFamily::Arch, &["deepin", "lightdm"]),
+            // `deepin-terminal` лежит в `deepin-extra`, не в группе `deepin`.
+            (PkgFamily::Arch, &["deepin", "deepin-terminal", "lightdm"]),
         ],
         aur: &[],
         check_package: "deepin-session",
@@ -1119,7 +1192,7 @@ pub const DE_META: &[DeMeta] = &[
         customizable: 3,
         gaming_friendly: 3,
         toolkit: "GTK4",
-        session_type: "Wayland + X11",
+        session_type: "Wayland",
         compositor: "Mutter",
         panel_type: "GNOME Shell",
         file_manager: "Nautilus",
@@ -1135,7 +1208,7 @@ pub const DE_META: &[DeMeta] = &[
         customizable: 5,
         gaming_friendly: 5,
         toolkit: "Qt6",
-        session_type: "Wayland + X11",
+        session_type: "Wayland",
         compositor: "KWin",
         panel_type: "Plasma Panel",
         file_manager: "Dolphin",
@@ -1150,12 +1223,16 @@ pub const DE_META: &[DeMeta] = &[
         cpu_usage: CpuLoad::Medium,
         customizable: 3,
         gaming_friendly: 3,
-        toolkit: "GTK3 → GTK4",
-        session_type: "X11 (Wayland WIP)",
-        compositor: "Budgie WM / Magpie",
+        // Budgie 10.10 (Arch, 02.11.2026): сеанс только Wayland, окнами
+        // управляет labwc (`startbudgielabwc`, зависимость `labwc` у
+        // `budgie-desktop`); сам стол — на GTK3 (`gtk3`, GTK4 в зависимостях нет).
+        toolkit: "GTK3",
+        session_type: "Wayland",
+        compositor: "labwc",
         panel_type: "Budgie Panel",
-        file_manager: "Nautilus",
-        terminal: "GNOME Terminal",
+        // Nemo — как в Ubuntu Budgie (набор пакетов `budgie` выше).
+        file_manager: "Nemo",
+        terminal: "xfce4-terminal",
     },
     DeMeta {
         id: "pantheon",
@@ -1167,7 +1244,7 @@ pub const DE_META: &[DeMeta] = &[
         customizable: 2,
         gaming_friendly: 3,
         toolkit: "GTK3 + GTK4 (Granite)",
-        session_type: "X11 + Wayland",
+        session_type: "Wayland",
         compositor: "Gala (Mutter)",
         panel_type: "Wingpanel + Plank",
         file_manager: "Pantheon Files",
@@ -1215,7 +1292,7 @@ pub const DE_META: &[DeMeta] = &[
         customizable: 4,
         gaming_friendly: 4,
         toolkit: "Qt6",
-        session_type: "X11 (Wayland WIP)",
+        session_type: "X11",
         compositor: n_("none (Openbox WM; labwc optional)"),
         panel_type: "LXQt Panel",
         file_manager: "PCManFM-Qt",
@@ -2073,14 +2150,231 @@ pub fn required_by_outside(
 
 /// Пакеты стола по таблице ядра: основные и AUR — тот же набор, что
 /// удаляет `remove_de` (`system_plan::remove_de_decision`).
+///
+/// Сюда же входит добавка сеанса Wayland ([`SESSION_VARIANTS`]): это тоже
+/// пакеты стола — их ставит та же кнопка «Установить», их проверяет сеанс
+/// прав по таблице, и пока стол текущий, удаление соседнего их не снимет
+/// (общий `labwc` у Xfce и Budgie).
 pub fn desktop_packages(de_id: &str, family: PkgFamily) -> Vec<String> {
     let mut all = get_packages(de_id, family);
-    for p in get_aur_packages(de_id, family) {
+    let extra = session_packages(de_id, family, SessionKind::Wayland)
+        .into_iter()
+        .chain(get_aur_packages(de_id, family))
+        .chain(session_aur_packages(de_id, family, SessionKind::Wayland));
+    for p in extra {
         if !all.contains(&p) {
             all.push(p);
         }
     }
     all
+}
+
+// ============================================================================
+// Сеанс X11 или Wayland — выбор при установке
+// ============================================================================
+//
+// Факты на 02.11.2026 (пакеты Arch/CachyOS, списки файлов archlinux.org):
+//   * KDE Plasma 6.8 — только Wayland: `plasma-workspace` кладёт один
+//     `wayland-sessions/plasma.desktop` и конфликтует с `plasma-x11-session`,
+//     которого в репозиториях больше нет;
+//   * GNOME 51 — только Wayland (`gnome-session`: один `gnome.desktop`);
+//   * Budgie 10.10 — только Wayland (зависит от labwc);
+//   * Pantheon 8 (`pantheon-session` 8.1) — только `pantheon-wayland.desktop`;
+//   * COSMIC и Deepin на Treeland — только Wayland.
+// Выбирать есть из чего у четырёх:
+//   * Cinnamon 6.6 — оба сеанса в самом пакете `cinnamon`
+//     (`cinnamon.desktop` и `cinnamon-wayland.desktop`); Wayland пока
+//     экспериментальный (Mint обещает снять пометку со следующего выпуска);
+//   * Xfce 4.20 — `xfce-wayland.desktop` лежит в `xfce4-session`, но
+//     `startxfce4 --wayland` без композитора labwc не запустится
+//     (необязательная зависимость пакета: «recommended compositor for the
+//     experimental Wayland session»);
+//   * LXQt 2.4 — `lxqt-wayland-session` (extra) и композитор; первым
+//     `startlxqtwayland` берёт labwc. Пометку «experimental» с сеанса
+//     Wayland проект снял в LXQt 2.3.0 (lxqt-project.org, «How to Enable
+//     Wayland in Lubuntu 26.04», 01.05.2026) — Wayland зрелый;
+//   * MATE 1.28 — Wayland только из AUR (`mate-wayland-session`, сеанс на
+//     Wayfire), один голос и пометка «устарел» с 17.04.2026.
+// Описано только для Arch: в других семействах набор не проверен, там
+// выбора нет и ставится как раньше.
+
+/// Сеанс на экране входа.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionKind {
+    X11,
+    Wayland,
+}
+
+impl SessionKind {
+    /// Значение для переключателя окна вопроса.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SessionKind::X11 => "x11",
+            SessionKind::Wayland => "wayland",
+        }
+    }
+
+    /// Обратно к [`Self::as_str`]; незнакомое → `None`.
+    pub fn from_value(s: &str) -> Option<Self> {
+        match s {
+            "x11" => Some(SessionKind::X11),
+            "wayland" => Some(SessionKind::Wayland),
+            _ => None,
+        }
+    }
+}
+
+/// Насколько готов сеанс Wayland стола. От этого — выбор по умолчанию
+/// ([`SessionVariants::default_session`]) и подписи в окне и «Сравнении».
+/// Пересматривать, когда проект снимает с Wayland пометку «experimental».
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WaylandMaturity {
+    /// Проект больше не зовёт сеанс экспериментальным — он и ставится
+    /// по умолчанию.
+    Mature,
+    /// Из репозиториев дистрибутива, но сам проект зовёт его
+    /// экспериментальным.
+    Experimental,
+    /// Экспериментальный и только из AUR (собирается на машине).
+    ExperimentalAur,
+}
+
+/// Два сеанса одного стола: что доставить для Wayland и как сеансы
+/// называются на экране входа (поле `Name=` их `.desktop`).
+pub struct SessionVariants {
+    pub family: PkgFamily,
+    /// Сверх основного набора — для сеанса Wayland (из репозиториев).
+    pub wayland_packages: &'static [&'static str],
+    /// Сверх основного набора — для сеанса Wayland из AUR.
+    pub wayland_aur: &'static [&'static str],
+    /// Что из добавки снимается вместе со столом: связка сеанса держит
+    /// пакеты стола зависимостью. Композиторы (labwc, Wayfire) — нет: они
+    /// бывают нужны другим столам или ставились сами по себе.
+    pub remove_with_desktop: &'static [&'static str],
+    pub maturity: WaylandMaturity,
+    pub x11_session_name: &'static str,
+    pub wayland_session_name: &'static str,
+    /// Кто в сеансе Wayland управляет окнами вместо привычного оконного
+    /// менеджера стола (пусто — тот же, что в X11).
+    pub wayland_compositor: &'static str,
+    /// Файл сеанса Wayland — по нему и [`Self::wayland_binaries`] видно,
+    /// что войти в Wayland уже можно.
+    pub wayland_session_file: &'static str,
+    /// Нужен хотя бы один из этих исполняемых файлов.
+    pub wayland_binaries: &'static [&'static str],
+}
+
+pub const SESSION_VARIANTS: &[(&str, SessionVariants)] = &[
+    ("cinnamon-mint", SessionVariants {
+        family: PkgFamily::Arch,
+        // Оба сеанса — в пакете `cinnamon`; Xwayland тянет muffin.
+        wayland_packages: &[],
+        wayland_aur: &[],
+        remove_with_desktop: &[],
+        maturity: WaylandMaturity::Experimental,
+        x11_session_name: "Cinnamon",
+        wayland_session_name: "Cinnamon (Wayland)",
+        wayland_compositor: "",
+        wayland_session_file: "/usr/share/wayland-sessions/cinnamon-wayland.desktop",
+        wayland_binaries: &["cinnamon-session-cinnamon"],
+    }),
+    ("xfce", SessionVariants {
+        family: PkgFamily::Arch,
+        wayland_packages: &["labwc", "xorg-xwayland"],
+        wayland_aur: &[],
+        remove_with_desktop: &[],
+        maturity: WaylandMaturity::Experimental,
+        x11_session_name: "Xfce Session",
+        wayland_session_name: "Xfce Session (Wayland)",
+        wayland_compositor: "labwc",
+        wayland_session_file: "/usr/share/wayland-sessions/xfce-wayland.desktop",
+        // `startxfce4 --wayland` без аргументов зовёт только labwc.
+        wayland_binaries: &["labwc"],
+    }),
+    ("lxqt", SessionVariants {
+        family: PkgFamily::Arch,
+        wayland_packages: &["lxqt-wayland-session", "labwc", "xorg-xwayland"],
+        wayland_aur: &[],
+        remove_with_desktop: &["lxqt-wayland-session"],
+        maturity: WaylandMaturity::Mature,
+        x11_session_name: "LXQt Desktop",
+        wayland_session_name: "LXQt (Wayland)",
+        wayland_compositor: "labwc",
+        wayland_session_file: "/usr/share/wayland-sessions/lxqt-wayland.desktop",
+        // Композиторы, которые `startlxqtwayland` умеет сам.
+        wayland_binaries: &["labwc", "niri", "kwin_wayland", "wayfire", "Hyprland", "sway"],
+    }),
+    ("mate", SessionVariants {
+        family: PkgFamily::Arch,
+        wayland_packages: &["wayfire", "xorg-xwayland"],
+        wayland_aur: &["mate-wayland-session"],
+        remove_with_desktop: &["mate-wayland-session"],
+        maturity: WaylandMaturity::ExperimentalAur,
+        x11_session_name: "MATE",
+        wayland_session_name: "MATE (Wayland)",
+        wayland_compositor: "Wayfire",
+        wayland_session_file: "/usr/share/wayland-sessions/MATE.desktop",
+        wayland_binaries: &["wayfire"],
+    }),
+];
+
+impl SessionVariants {
+    /// Что выбрано, пока человек не тронул переключатель: зрелый Wayland —
+    /// Wayland, экспериментальный — проверенный X11.
+    pub fn default_session(&self) -> SessionKind {
+        match self.maturity {
+            WaylandMaturity::Mature => SessionKind::Wayland,
+            WaylandMaturity::Experimental | WaylandMaturity::ExperimentalAur => SessionKind::X11,
+        }
+    }
+
+    /// Wayland у стола ещё экспериментальный.
+    pub fn wayland_experimental(&self) -> bool {
+        self.maturity != WaylandMaturity::Mature
+    }
+}
+
+/// Есть ли у стола выбор сеанса в этом семействе.
+pub fn session_variants(de_id: &str, family: PkgFamily) -> Option<&'static SessionVariants> {
+    SESSION_VARIANTS
+        .iter()
+        .find(|(id, v)| *id == de_id && v.family == family)
+        .map(|(_, v)| v)
+}
+
+/// Пакеты сверх основного набора для сеанса `kind` (из репозиториев).
+pub fn session_packages(de_id: &str, family: PkgFamily, kind: SessionKind) -> Vec<String> {
+    match (kind, session_variants(de_id, family)) {
+        (SessionKind::Wayland, Some(v)) => v.wayland_packages.iter().map(|p| p.to_string()).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Пакеты из AUR сверх основного набора для сеанса `kind`.
+pub fn session_aur_packages(de_id: &str, family: PkgFamily, kind: SessionKind) -> Vec<String> {
+    match (kind, session_variants(de_id, family)) {
+        (SessionKind::Wayland, Some(v)) => v.wayland_aur.iter().map(|p| p.to_string()).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Что из добавки Wayland снимается вместе со столом.
+pub fn session_removal_packages(de_id: &str, family: PkgFamily) -> Vec<String> {
+    session_variants(de_id, family)
+        .map(|v| v.remove_with_desktop.iter().map(|p| p.to_string()).collect())
+        .unwrap_or_default()
+}
+
+/// Можно ли уже войти в сеанс Wayland стола: файл сеанса есть и есть
+/// композитор. `None` — выбора у стола нет.
+pub fn wayland_session_ready(
+    de_id: &str,
+    family: PkgFamily,
+    file_exists: &dyn Fn(&str) -> bool,
+    in_path: &dyn Fn(&str) -> bool,
+) -> Option<bool> {
+    let v = session_variants(de_id, family)?;
+    Some(file_exists(v.wayland_session_file) && v.wayland_binaries.iter().any(|b| in_path(b)))
 }
 
 /// Пакет экрана входа по имени его юнита: обычно совпадают; исключения —

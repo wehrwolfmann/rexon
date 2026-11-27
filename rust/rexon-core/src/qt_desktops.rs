@@ -1680,6 +1680,233 @@ pub fn install_texts(display_name: &str) -> OpTexts {
     }
 }
 
+// ── Сеанс X11 или Wayland ────────────────────────────────────────────────
+//
+// У четырёх столов есть оба сеанса (`system::SESSION_VARIANTS`). Выбор —
+// переключателем в том же окне «Установить?»: по умолчанию проверенный X11,
+// как ставилось всегда; Wayland добавляет к набору свою добавку, и сеанс X11
+// при этом остаётся — на экране входа будут оба.
+
+/// Имя переключателя сеанса в окне вопроса (`setOperationChoice`).
+pub const SESSION_CHOICE_NAME: &str = "session";
+
+/// Можно ли предложить Wayland: у MATE он только в AUR, и без помощника AUR
+/// (yay, paru) поставить его нечем.
+fn wayland_offerable(v: &crate::system::SessionVariants, aur_helper: bool) -> bool {
+    v.wayland_aur.is_empty() || aur_helper
+}
+
+/// Переключатель «Сеанс: X11 / Wayland» для окна установки. `None` — выбора
+/// нет (у стола один сеанс, другое семейство или Wayland сейчас не
+/// поставить).
+pub fn session_choice(
+    de_id: &str,
+    family: PkgFamily,
+    current: crate::system::SessionKind,
+    aur_helper: bool,
+) -> Option<LookSelect> {
+    use crate::system::SessionKind;
+    let v = crate::system::session_variants(de_id, family)?;
+    if !wayland_offerable(v, aur_helper) {
+        return None;
+    }
+    let label = |kind: SessionKind| -> String {
+        let base = match kind {
+            SessionKind::X11 => tr("X11 — proven"),
+            // Из AUR — честно на самой кнопке, а не только в тексте выше.
+            SessionKind::Wayland if v.maturity == crate::system::WaylandMaturity::ExperimentalAur => {
+                tr("Wayland — experimental, from the AUR")
+            }
+            SessionKind::Wayland => tr("Wayland — newer"),
+        };
+        if kind == v.default_session() {
+            // TRANSLATORS: %1 is a session option such as "X11 — proven".
+            trf("%1 (recommended)", &[&base])
+        } else {
+            base
+        }
+    };
+    Some(LookSelect {
+        name: SESSION_CHOICE_NAME.to_string(),
+        label: tr("How the desktop will run"),
+        options: [SessionKind::X11, SessionKind::Wayland]
+            .into_iter()
+            .map(|k| LookSelectOption {
+                value: k.as_str().to_string(),
+                label: label(k),
+            })
+            .collect(),
+        current: current.as_str().to_string(),
+    })
+}
+
+/// Сеанс по умолчанию для окна установки (`None` — выбора нет).
+pub fn session_default(de_id: &str, family: PkgFamily) -> Option<crate::system::SessionKind> {
+    crate::system::session_variants(de_id, family).map(|v| v.default_session())
+}
+
+/// Пояснение к выбранному сеансу — дописывается к вопросу «Установить?»
+/// (простой HTML). `aur_risk` — признаки риска пакетов AUR (как на плитке
+/// AUR в «Оформлении»), пусто — нечего сказать.
+pub fn session_choice_html(
+    de_id: &str,
+    family: PkgFamily,
+    kind: crate::system::SessionKind,
+    aur_helper: bool,
+    aur_risk: &str,
+) -> String {
+    use crate::system::{SessionKind, WaylandMaturity};
+    let Some(v) = crate::system::session_variants(de_id, family) else {
+        return String::new();
+    };
+    let name = display_name(de_id);
+    if !wayland_offerable(v, aur_helper) {
+        return trf(
+            "%1 can also run on Wayland, but that version exists only in the AUR, \
+             and to install from there Rexon needs yay or paru. For now %1 will \
+             be installed in the proven X11 version.",
+            &[&name],
+        );
+    }
+    match kind {
+        SessionKind::X11 => tr(
+            "<b>X11</b> is the proven version: this is how the desktop has worked \
+             for years, and all programs and settings work as expected.",
+        ),
+        SessionKind::Wayland => {
+            let mut out = if v.wayland_experimental() {
+                trf(
+                    "<b>Wayland</b> is newer: the picture is smoother and sharper on \
+                     high-resolution screens. But for %1 it's still experimental — \
+                     some programs, panel applets and settings may not work.",
+                    &[&name],
+                )
+            } else {
+                tr("<b>Wayland</b> is newer: the picture is smoother and sharper on \
+                    high-resolution screens.")
+            };
+            if !v.wayland_compositor.is_empty() {
+                out.push(' ');
+                out.push_str(&trf(
+                    // TRANSLATORS: %1 is a program name (labwc, Wayfire).
+                    "Windows there are handled by %1, so some of the usual window \
+                     settings won't apply.",
+                    &[&v.wayland_compositor],
+                ));
+            }
+            out.push_str("<br>");
+            out.push_str(&tr(
+                "The X11 version stays too: you can choose either one on the login screen.",
+            ));
+            if v.maturity == WaylandMaturity::ExperimentalAur {
+                out.push_str("<br><br>");
+                out.push_str(&trf(
+                    "⚠️ For %1, the Wayland version comes only from the AUR — packages \
+                     from users that are built on your computer and aren't checked by \
+                     your distribution. Expect problems.",
+                    &[&name],
+                ));
+                if !aur_risk.is_empty() {
+                    out.push_str("<br>");
+                    out.push_str(&aur_risk.replace('\n', "<br>"));
+                }
+            }
+            out
+        }
+    }
+}
+
+/// Строка итога: какой сеанс выбрать на экране входа.
+pub fn session_done_line(de_id: &str, family: PkgFamily, kind: crate::system::SessionKind) -> String {
+    use crate::system::SessionKind;
+    let Some(v) = crate::system::session_variants(de_id, family) else {
+        return String::new();
+    };
+    let session = match kind {
+        SessionKind::X11 => v.x11_session_name,
+        SessionKind::Wayland => v.wayland_session_name,
+    };
+    // TRANSLATORS: %1 is the session name as the login screen shows it.
+    trf("On the login screen, choose the “%1” session.", &[&session])
+}
+
+/// Вопрос установки с выбранным сеансом: к обычным текстам дописаны
+/// пояснение и строка итога.
+pub fn install_texts_with_session(
+    de_id: &str,
+    family: PkgFamily,
+    kind: crate::system::SessionKind,
+    aur_helper: bool,
+    aur_risk: &str,
+) -> OpTexts {
+    let mut t = install_texts(display_name(de_id));
+    let explain = session_choice_html(de_id, family, kind, aur_helper, aur_risk);
+    if !explain.is_empty() {
+        // Пояснение — сразу под вопросом, строка про пароль — последней.
+        t.confirm_html = match t.confirm_html.split_once("<br><br>") {
+            Some((question, rest)) => format!("{question}<br><br>{explain}<br><br>{rest}"),
+            None => format!("{}<br><br>{explain}", t.confirm_html),
+        };
+    }
+    // Без помощника AUR Wayland у MATE не предлагался — ставится X11.
+    let kind = match crate::system::session_variants(de_id, family) {
+        Some(v) if !wayland_offerable(v, aur_helper) => crate::system::SessionKind::X11,
+        _ => kind,
+    };
+    let line = session_done_line(de_id, family, kind);
+    if !line.is_empty() {
+        t.done_text = format!("{}\n{line}", t.done_text);
+        t.done_text_restart = format!("{}\n{line}", t.done_text_restart);
+    }
+    t
+}
+
+/// Кнопка на карточке установленного стола без сеанса Wayland.
+pub fn session_offer_button() -> String {
+    tr("➕ Add the Wayland version")
+}
+
+/// Пояснение под этой кнопкой.
+pub fn session_offer_hint(de_id: &str) -> String {
+    trf(
+        "%1 can also run on Wayland — newer and smoother, but still experimental. \
+         Rexon can add it, and the X11 version will stay.",
+        &[&display_name(de_id)],
+    )
+}
+
+/// Вопрос, ход и итог «добавить сеанс Wayland» к установленному столу.
+pub fn session_add_texts(de_id: &str, family: PkgFamily, aur_helper: bool, aur_risk: &str) -> OpTexts {
+    use crate::system::SessionKind;
+    let name = display_name(de_id);
+    let explain = session_choice_html(de_id, family, SessionKind::Wayland, aur_helper, aur_risk);
+    OpTexts {
+        confirm_title: tr("Add the Wayland version?"),
+        confirm_html: format!(
+            "{explain}<br><br>{}",
+            tr("Rexon will ask for the administrator password.")
+        ),
+        operation_title: trf("Adding Wayland to %1", &[&name]),
+        done_title: tr("Installation Complete"),
+        done_text: format!(
+            "{}\n{}",
+            trf("The Wayland version of <b>%1</b> is installed.", &[&name]),
+            session_done_line(de_id, family, SessionKind::Wayland)
+        ),
+        done_text_restart: String::new(),
+    }
+}
+
+/// Отказ исполнителя: сеанс Wayland только из AUR, а помощника AUR нет.
+pub fn session_no_aur_helper_text(display_name: &str) -> String {
+    trf(
+        "The Wayland version of %1 comes only from the AUR, and Rexon needs yay \
+         or paru to install it — neither is installed. Choose the X11 version \
+         or install yay or paru first.",
+        &[&display_name],
+    )
+}
+
 /// Проверка и восстановление стола.
 ///
 /// «Восстановление» — это повторный запуск штатной установки на уже

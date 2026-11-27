@@ -23,5 +23,10 @@
       <summary>Target FPS</summary>
       <description>Frames per second for the wallpaper renderer.</description>
     </key>
+    <key name="effect-shader" type="s">
+      <default>""</default>
+      <summary>Screen effect shader file</summary>
+      <description>Absolute path to the screen effect shader written by Rexon (Cogl snippet: declarations, the marker line, then the snippet code). The extension lays it over the whole screen and follows changes of this key without restarting the shell. Empty means screen effects are off (the default).</description>
+    </key>
   </schema>
 </schemalist>

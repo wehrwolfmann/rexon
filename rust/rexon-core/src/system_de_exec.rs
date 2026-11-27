@@ -691,11 +691,31 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
     /// (`plan::conflict_swap_approved`). Любой другой конфликт — прежний
     /// отказ до пароля.
     pub fn install_de_replacing(&self, de_id: &str, current_de: &str, replace: &[String]) -> DeOpOutcome {
-        let result = self.install_de_steps(de_id, current_de, replace);
+        self.install_de_session(de_id, current_de, replace, None)
+    }
+
+    /// [`Self::install_de_replacing`] с выбранным сеансом
+    /// (`system::SESSION_VARIANTS`): для Wayland к набору добавляется его
+    /// добавка (композитор, связка сеанса, из AUR — у MATE). `None` и X11 —
+    /// набор как раньше.
+    pub fn install_de_session(
+        &self,
+        de_id: &str,
+        current_de: &str,
+        replace: &[String],
+        session: Option<system::SessionKind>,
+    ) -> DeOpOutcome {
+        let result = self.install_de_steps(de_id, current_de, replace, session);
         self.finish(result)
     }
 
-    fn install_de_steps(&self, de_id: &str, current_de: &str, replace: &[String]) -> Step<String> {
+    fn install_de_steps(
+        &self,
+        de_id: &str,
+        current_de: &str,
+        replace: &[String],
+        session: Option<system::SessionKind>,
+    ) -> Step<String> {
         let Some(meta) = system::DE_META.iter().find(|m| m.id == de_id) else {
             return Err(Stop::Failed(unknown_de_message(de_id)));
         };
@@ -731,11 +751,24 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         } else {
             system::get_packages(de_id, family)
         };
+        // Добавка выбранного сеанса (Wayland у Xfce, LXQt, MATE).
+        let session = session.unwrap_or(system::SessionKind::X11);
+        for p in system::session_packages(de_id, family, session) {
+            if !main_pkgs.contains(&p) {
+                main_pkgs.push(p);
+            }
+        }
+        let mut aur_wanted = system::get_aur_packages(de_id, family);
+        for p in system::session_aur_packages(de_id, family, session) {
+            if !aur_wanted.contains(&p) {
+                aur_wanted.push(p);
+            }
+        }
         // Помеченное в базе как AUR, но лежащее в подключённых репозиториях
         // (CachyOS: темы и значки Mint в `cachyos`), ставит pacman в общей
         // транзакции — и без AUR-помощника тоже.
         let (aur_in_repo, aur_pkgs) =
-            plan::split_repo_available(family, &system::get_aur_packages(de_id, family), &|cmd: &plan::Cmd| {
+            plan::split_repo_available(family, &aur_wanted, &|cmd: &plan::Cmd| {
                 let r = self.io.run(&cmd.argv, cmd.timeout_secs, cmd.lang_c);
                 r.rc().map(|rc| (rc, r.stdout.clone(), r.stderr.clone()))
             });
@@ -745,6 +778,15 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             }
         }
         let aur_helper = plan::pick_aur_helper(family, &|h| self.io.which(h));
+        // Сеанс Wayland, который бывает только в AUR (MATE): без помощника
+        // AUR он молча не встал бы, и человек искал бы его на экране входа.
+        // Отказ — до пароля и до первого действия.
+        let session_aur = system::session_aur_packages(de_id, family, session);
+        if aur_helper.is_none() && session_aur.iter().any(|p| aur_pkgs.contains(p)) {
+            let text = crate::qt_desktops::session_no_aur_helper_text(display);
+            self.emit(de_progress::STAGE_ERROR, &text, None);
+            return Err(Stop::Failed(text));
+        }
 
         // 1а. Пробная транзакция без прав root (Arch): если необязательный
         //     член группы в репозитории сейчас не ставится (08.10.2026 —
@@ -1047,7 +1089,15 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
         let family = self.sys.family();
         let packages = system::get_packages(de_id, family);
-        let aur = system::get_aur_packages(de_id, family);
+        // Связка сеанса Wayland (lxqt-wayland-session, mate-wayland-session)
+        // держит пакеты стола зависимостью — снимается вместе с ним;
+        // неустановленное отсеет план удаления.
+        let mut aur = system::get_aur_packages(de_id, family);
+        for p in system::session_removal_packages(de_id, family) {
+            if !packages.contains(&p) && !aur.contains(&p) {
+                aur.push(p);
+            }
+        }
         let all = match plan::remove_de_decision(
             de_id,
             meta.display_name,
@@ -3415,11 +3465,13 @@ pub fn rebuild_aeroshell_with<IO: DeOpsIo + ?Sized>(
 }
 
 /// Установка стола на живой машине одним вызовом — то, чем пользуется окно.
+/// `session` — выбранный в окне вопроса сеанс (`None` — выбора не было).
 pub fn install_de_live(
     sink: Arc<dyn DeOpSink>,
     cancel: CancelToken,
     de_id: &str,
     current_de: &str,
+    session: Option<system::SessionKind>,
 ) -> DeOpOutcome {
     // SteamOS (Steam Deck и Steam Machine): пакетами не ставим — стол
     // собирается образом systemd-sysext (`crate::steamos_sysext`).
@@ -3429,6 +3481,10 @@ pub fn install_de_live(
     // Deepin — только на Treeland: сначала своя сборка deepin-session.
     if de_id == crate::deepin_treeland::DE_ID {
         return crate::deepin_treeland::install_from_card_live(sink, cancel, current_de);
+    }
+    if session.is_some() {
+        let io = LiveDeOpsIo::new();
+        return DeOpsExec::new(&io, sink, cancel).install_de_session(de_id, current_de, &[], session);
     }
     install_de_packages_live(sink, cancel, de_id, current_de)
 }
@@ -3453,6 +3509,7 @@ pub fn install_de_replacing_live(
     de_id: &str,
     current_de: &str,
     replace: &[String],
+    session: Option<system::SessionKind>,
 ) -> DeOpOutcome {
     if dc::running_on_steamos() {
         return crate::steamos_sysext::install_live(sink, cancel, de_id);
@@ -3462,7 +3519,7 @@ pub fn install_de_replacing_live(
         return crate::deepin_treeland::install_from_card_live(sink, cancel, current_de);
     }
     let io = LiveDeOpsIo::new();
-    DeOpsExec::new(&io, sink, cancel).install_de_replacing(de_id, current_de, replace)
+    DeOpsExec::new(&io, sink, cancel).install_de_session(de_id, current_de, replace, session)
 }
 
 /// Удаление стола на живой машине одним вызовом (защита ядра — внутри).
@@ -4623,6 +4680,86 @@ pub(crate) mod tests {
         assert_eq!(source, &PkgSource::Desktop { de_id: "xfce".into() });
         assert!(io.index_of("priv_log: /tmp/rexon_install_").is_some(), "{:#?}", io.calls.borrow());
         assert_eq!(rec.stages().last().map(String::as_str), Some("done"));
+    }
+
+    /// Набор, ушедший помощнику сеанса одной операцией `PkgInstall`.
+    fn session_install_set(io: &FakeIo) -> Vec<String> {
+        let ops = io.priv_ops.borrow();
+        ops.iter()
+            .find_map(|op| match op {
+                PrivOp::PkgInstall { packages, source: PkgSource::Desktop { .. }, .. } => Some(packages.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{ops:?}"))
+    }
+
+    fn run_install_session(io: &FakeIo, de: &str, session: Option<system::SessionKind>) -> (DeOpOutcome, Arc<Recorder>) {
+        let rec = Arc::new(Recorder::default());
+        let sink: Arc<dyn DeOpSink> = rec.clone();
+        let outcome = DeOpsExec::new(io, sink, CancelToken::new()).install_de_session(de, "kde", &[], session);
+        (outcome, rec)
+    }
+
+    /// Выбор «Wayland» у Xfce добавляет к набору labwc и Xwayland, и набор
+    /// по-прежнему проходит правило сеанса прав как набор стола (не
+    /// `DeInstallSet`); «X11» и «без выбора» — набор как раньше.
+    #[test]
+    fn install_session_choice_changes_the_set() {
+        let base = system::get_packages("xfce", PkgFamily::Arch);
+        for (session, want_labwc) in [
+            (None, false),
+            (Some(system::SessionKind::X11), false),
+            (Some(system::SessionKind::Wayland), true),
+        ] {
+            let io = with_session(FakeIo::arch(Box::new(healthy)), out(0, "", ""));
+            let (outcome, _) = run_install_session(&io, "xfce", session);
+            assert!(outcome.ok, "{session:?}: {outcome:?}");
+            let set = session_install_set(&io);
+            for p in &base {
+                assert!(set.contains(p), "{session:?}: {set:?}");
+            }
+            for extra in ["labwc", "xorg-xwayland"] {
+                assert_eq!(set.iter().any(|p| p == extra), want_labwc, "{session:?}: {set:?}");
+            }
+        }
+        // LXQt: своя связка сеанса.
+        let io = with_session(FakeIo::arch(Box::new(healthy)), out(0, "", ""));
+        let (outcome, _) = run_install_session(&io, "lxqt", Some(system::SessionKind::Wayland));
+        assert!(outcome.ok, "{outcome:?}");
+        assert!(session_install_set(&io).iter().any(|p| p == "lxqt-wayland-session"));
+    }
+
+    /// MATE на Wayland — только из AUR: без помощника AUR отказ ДО пароля
+    /// (иначе сеанс молча не встал бы), с помощником — Wayfire в общей
+    /// транзакции, `mate-wayland-session` — помощником AUR.
+    #[test]
+    fn install_mate_wayland_needs_aur_helper() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let not_in_repo = |argv: &[String]| -> RunOut {
+            let a: Vec<&str> = argv.iter().map(String::as_str).collect();
+            match a.as_slice() {
+                ["pacman", "-Si", _] => out(1, "", "error: package 'x' was not found"),
+                _ => healthy(argv),
+            }
+        };
+        let io = with_session(FakeIo::arch(Box::new(not_in_repo)), out(0, "", ""));
+        let (outcome, rec) = run_install_session(&io, "mate", Some(system::SessionKind::Wayland));
+        assert!(!outcome.ok);
+        assert!(outcome.message.contains("yay or paru"), "{}", outcome.message);
+        assert!(io.priv_ops.borrow().is_empty(), "{:?}", io.priv_ops.borrow());
+        assert!(pkexec_runs(&io).is_empty(), "{:#?}", io.runs());
+        assert_eq!(rec.count(de_progress::STAGE_ERROR), 1);
+
+        let mut io = with_session(FakeIo::arch(Box::new(not_in_repo)), out(0, "", ""));
+        io.bins.insert("paru".to_string());
+        let (outcome, _) = run_install_session(&io, "mate", Some(system::SessionKind::Wayland));
+        assert!(outcome.ok, "{outcome:?}");
+        assert!(session_install_set(&io).iter().any(|p| p == "wayfire"));
+        assert!(
+            io.runs().iter().any(|r| r.starts_with("paru") && r.contains("mate-wayland-session")),
+            "{:#?}",
+            io.runs()
+        );
     }
 
     /// Защита «нет экрана входа» через сеанс: SDDM из таблицы экранов

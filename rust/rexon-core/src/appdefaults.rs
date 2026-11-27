@@ -104,15 +104,20 @@ const XFCE_APPS: AppTable = &[
     ("archive_manager", "xarchiver.desktop"),
 ];
 
-// Budgie использует GNOME-приложения (тот же набор, что и gnome).
+// Budgie: программы Ubuntu Budgie 26.04 (её `defaults.list`), их ставит набор
+// пакетов `budgie` в `system::DE_DATABASE`. Имена `.desktop` сверены со
+// списками файлов пакетов Arch. Музыка у Ubuntu Budgie поделена: FLAC/OGG —
+// Lollypop, MP3/M4A/WAV — VLC; у нас одна категория, и в ней — музыкальная
+// программа стола, Lollypop.
 const BUDGIE_APPS: AppTable = &[
-    ("file_manager", "org.gnome.Nautilus.desktop"),
-    ("terminal", "org.gnome.Console.desktop"),
-    ("text_editor", "org.gnome.TextEditor.desktop"),
-    ("image_viewer", "org.gnome.Loupe.desktop"),
-    ("video_player", "org.gnome.Showtime.desktop"),
-    ("pdf_viewer", "org.gnome.Papers.desktop"),
+    ("file_manager", "nemo.desktop"),
+    ("terminal", "xfce4-terminal.desktop"),
+    ("text_editor", "org.gnome.gedit.desktop"),
+    ("image_viewer", "org.gnome.gThumb.desktop"),
+    ("video_player", "vlc.desktop"),
+    ("pdf_viewer", "atril.desktop"),
     ("archive_manager", "org.gnome.FileRoller.desktop"),
+    ("music_player", "org.gnome.Lollypop.desktop"),
 ];
 
 // Pantheon: родные программы elementary из группы `pantheon` (идентификаторы
@@ -565,7 +570,17 @@ pub fn apply_de_specific(
         "cinnamon-mint" => apply_cinnamon(terminal, which),
         "xfce" => apply_xfce(&apps, xfce_helpers_existing),
         "lxqt" => apply_lxqt(terminal),
-        "budgie" => apply_gnome(terminal, which), // Budgie использует gsettings
+        // Budgie: схема GNOME, а также схема Cinnamon — её читает Nemo
+        // (`crate::defaults::terminal_extra_homes`).
+        "budgie" => {
+            let mut out = apply_gnome(terminal, which);
+            if let (Some(term), true) = (terminal, which("gsettings")) {
+                for extra in crate::defaults::terminal_extra_homes(de_id) {
+                    out.commands.extend(terminal_commands(*extra, term));
+                }
+            }
+            out
+        }
         // Pantheon: своего ключа терминала в схемах io.elementary.* нет —
         // родное место то же, что у GNOME.
         "pantheon" => apply_gnome(terminal, which),

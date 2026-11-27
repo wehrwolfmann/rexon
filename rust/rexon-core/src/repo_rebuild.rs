@@ -641,13 +641,47 @@ pub fn rebuild_root(cache_dir: &str) -> String {
 /// Срез, в котором идут сборки (`scripts/build-queue` и пересборки).
 pub const BUILD_SLICE: &str = "rexon-build.slice";
 
+/// Строка вывода root-шага (pacman под `LC_ALL=C`) для журнала человека.
+/// Разбор — общий с установкой рабочих столов
+/// ([`crate::system_plan::parse_pacman_line`]): вопрос, на который pacman при
+/// `--noconfirm` отвечает себе сам, либо заменяется объяснением выбора
+/// («поставщиков 2 — берём из первого репозитория…»), либо не показывается
+/// вовсе (меню, «Enter a number», «Proceed with installation? [Y/n]»).
+/// Прочие строки — как есть. `None` — не показывать. Полный вывод остаётся в
+/// файловом журнале шага.
+pub fn pacman_log_line(raw: &str) -> Option<String> {
+    match crate::system_plan::parse_pacman_line(raw) {
+        Some(p) if p.stage == "prompt" => (!p.message.is_empty()).then_some(p.message),
+        _ => Some(raw.to_string()),
+    }
+}
+
+/// Куда makepkg отображает каталог исходников в собранном (`__FILE__`,
+/// отладочные сведения) — то же место, что даёт сам makepkg при
+/// `options=(debug)` (`/usr/share/makepkg/buildenv/debugflags.sh`).
+const DEBUG_SRC_ROOT: &str = "/usr/src/debug";
+
 /// Сборка от пользователя. `slice` — обернуть в `systemd-run --user
 /// --scope` среза [`BUILD_SLICE`] (нужен пользовательский systemd).
 /// `-C` — чистая сборка даже поверх прошлой неудачной. `PKGDEST` — каталог
 /// рецепта (makepkg берёт его из окружения поверх `makepkg.conf`): файл
 /// ложится в каталог пересборок, откуда его примет помощник пакетов, даже
 /// если у человека в `makepkg.conf` свой `PKGDEST`.
-pub fn build_argv(dir: &str, slice: bool) -> Vec<String> {
+///
+/// Локаль `C.UTF-8`, а не `C`: вывод остаётся английским (его разбирает
+/// [`build_failure`]), но инструменты Qt (`moc`, `qdbusxml2cpp`) при `C`
+/// жалуются на кодировку ANSI_X3.4-1968 на каждый вызов. `C.UTF-8` в glibc
+/// встроена и есть всегда.
+///
+/// `BUILDDIR` — тоже каталог рецепта: так `$srcdir` makepkg — ровно
+/// `<dir>/src`, и его можно назвать флагом. `-ffile-prefix-map=<dir>/src=
+/// /usr/src/debug/<pkgbase>` в `CFLAGS`/`CXXFLAGS` (дописывается аргументом
+/// makepkg после `makepkg.conf`) убирает из бинарей пути сборки (`__FILE__`
+/// в журналах Qt и т. п.) — иначе makepkg предупреждает «Package contains
+/// reference to $srcdir». Arch собирает с `options=(debug)`, и makepkg
+/// добавляет этот флаг сам; у CachyOS в `makepkg.conf` `!debug`. Путь с
+/// пробелом флагом не передать (CFLAGS режется по пробелам) — тогда без него.
+pub fn build_argv(dir: &str, pkgbase: &str, slice: bool) -> Vec<String> {
     let mut argv: Vec<String> = Vec::new();
     if slice {
         argv.extend(
@@ -655,7 +689,12 @@ pub fn build_argv(dir: &str, slice: bool) -> Vec<String> {
                 .map(String::from),
         );
     }
-    argv.extend(["env".to_string(), "LC_ALL=C".to_string(), format!("PKGDEST={dir}")]);
+    argv.extend([
+        "env".to_string(),
+        "LC_ALL=C.UTF-8".to_string(),
+        format!("PKGDEST={dir}"),
+        format!("BUILDDIR={dir}"),
+    ]);
     argv.extend(
         [
             "nice", "-n", "19", "ionice", "-c", "3", "makepkg", "-D", dir, "-f", "-C",
@@ -663,6 +702,14 @@ pub fn build_argv(dir: &str, slice: bool) -> Vec<String> {
         ]
         .map(String::from),
     );
+    // Имя pkgbase по правилам pacman: не с дефиса/точки (иначе флаг
+    // компилятора из имени не собрать).
+    let base_ok = valid_pkg_name(pkgbase) && pkgbase.starts_with(|c: char| c.is_ascii_alphanumeric());
+    if !dir.contains(char::is_whitespace) && base_ok {
+        let map = format!("-ffile-prefix-map={dir}/src={DEBUG_SRC_ROOT}/{pkgbase}");
+        argv.push(format!("CFLAGS+= {map}"));
+        argv.push(format!("CXXFLAGS+= {map}"));
+    }
     argv
 }
 
@@ -695,7 +742,7 @@ pub fn pick_package_file(list: &str, pkgname: &str) -> Option<String> {
     .map(str::to_string)
 }
 
-/// Почему не собралось — по журналу makepkg (LC_ALL=C).
+/// Почему не собралось — по журналу makepkg (LC_ALL=C.UTF-8, английский).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildFailure {
     /// Суммы исходников не сошлись.
@@ -1181,6 +1228,18 @@ impl Run<'_> {
         Arc::new(move |line: &str| sink.progress(STAGE_RAW, line, None))
     }
 
+    /// Строки root-шагов (pacman): то же, что [`Run::line_sink`], но через
+    /// [`pacman_log_line`] — вопросы, на которые pacman отвечает себе сам,
+    /// человеку не показываются. Файловый журнал шага остаётся полным.
+    fn pacman_line_sink(&self) -> Arc<dyn Fn(&str) + Send + Sync> {
+        let sink = self.sink.clone();
+        Arc::new(move |line: &str| {
+            if let Some(text) = pacman_log_line(line) {
+                sink.progress(STAGE_RAW, &text, None);
+            }
+        })
+    }
+
     fn wait_lock(&self) -> Result<(), Stop> {
         let paths = self.io.lock_paths();
         let mut waited = 0u64;
@@ -1317,14 +1376,14 @@ impl Run<'_> {
             // Сеанс прав окна (один пароль на всё время окна); его нет —
             // прежний путь: помощник пакетов, иначе `pkexec /bin/bash`.
             let op = PrivOp::BuildDeps { names: missing.clone() };
-            let r = match self.io.run_priv(&op, &[], &log, self.line_sink()) {
+            let r = match self.io.run_priv(&op, &[], &log, self.pacman_line_sink()) {
                 Some(r) => r,
                 None => {
                     let argv = match &self.ctx.pkg_helper {
                         Some(helper) => helper_deps_argv(helper, &missing),
                         None => deps_install_argv(&missing),
                     };
-                    self.io.run_logged(&argv, Some(INSTALL_TIMEOUT_SECS), &log, self.line_sink())
+                    self.io.run_logged(&argv, Some(INSTALL_TIMEOUT_SECS), &log, self.pacman_line_sink())
                 }
             };
             if denied(r.rc()) {
@@ -1367,7 +1426,7 @@ impl Run<'_> {
         self.emit("rebuild", &msg_build(built_name), at(0.3));
         let log = format!("{root}/{base}.log");
         let built = self.io.run_logged(
-            &build_argv(&dir, self.ctx.slice),
+            &build_argv(&dir, &base, self.ctx.slice),
             Some(crate::utils::BUILD_TIMEOUT_SECS),
             &log,
             self.line_sink(),
@@ -1412,14 +1471,14 @@ impl Run<'_> {
                 build_only: helper_build_only_names(&build_only_list),
                 replace,
             };
-            self.io.run_priv(&op, std::slice::from_ref(&file), &install_log, self.line_sink())
+            self.io.run_priv(&op, std::slice::from_ref(&file), &install_log, self.pacman_line_sink())
         } else {
             None
         };
         let session_used = via_session.is_some();
         let r = match via_session {
             Some(r) => r,
-            None => self.io.run_logged(&argv, Some(INSTALL_TIMEOUT_SECS), &install_log, self.line_sink()),
+            None => self.io.run_logged(&argv, Some(INSTALL_TIMEOUT_SECS), &install_log, self.pacman_line_sink()),
         };
         if denied(r.rc()) {
             return Err(Stop::Failed(self.denied_message(&format!("sudo pacman -U {file}"))));
@@ -1431,12 +1490,12 @@ impl Run<'_> {
         let remove_log = format!("{root}/{base}-remove.log");
         if session_used && !edit_remove.is_empty() {
             let op = PrivOp::PkgRemove { family: PkgFamily::Arch, packages: edit_remove.clone() };
-            if self.io.run_priv(&op, &[], &remove_log, self.line_sink()).is_some() {
+            if self.io.run_priv(&op, &[], &remove_log, self.pacman_line_sink()).is_some() {
                 return Ok(());
             }
         }
         if let Some(argv) = then_remove {
-            let _ = self.io.run_logged(&argv, Some(INSTALL_TIMEOUT_SECS), &remove_log, self.line_sink());
+            let _ = self.io.run_logged(&argv, Some(INSTALL_TIMEOUT_SECS), &remove_log, self.pacman_line_sink());
         }
         Ok(())
     }
@@ -1956,6 +2015,7 @@ pkgname = switchboard-plug-online-accounts\n";
             self.timeouts.borrow_mut().push((argv.join(" "), timeout));
             let r = self.reply(argv);
             line("строка журнала");
+            line(FAKE_PROMPT);
             r
         }
         fn read_text(&self, path: &str) -> Option<String> {
@@ -1991,6 +2051,9 @@ pkgname = switchboard-plug-online-accounts\n";
             Some(out(0, ""))
         }
     }
+
+    /// Вопрос pacman, который стенд печатает в каждом шаге.
+    const FAKE_PROMPT: &str = ":: Proceed with installation? [Y/n]";
 
     #[derive(Default)]
     struct Sink(Mutex<Vec<(String, String)>>);
@@ -2102,13 +2165,87 @@ pkgname = switchboard-plug-online-accounts\n";
 
     #[test]
     fn build_runs_as_user_in_build_slice_at_low_priority() {
-        let argv = build_argv(DIR, true);
+        let argv = build_argv(DIR, PKG, true);
         let line = argv.join(" ");
         assert!(line.starts_with("systemd-run --user --scope --quiet --slice=rexon-build.slice -- "));
-        assert!(line.contains(&format!("env LC_ALL=C PKGDEST={DIR} nice -n 19 ionice -c 3 makepkg -D")), "{line}");
+        assert!(
+            line.contains(&format!("env LC_ALL=C.UTF-8 PKGDEST={DIR} BUILDDIR={DIR} nice -n 19 ionice -c 3 makepkg -D")),
+            "{line}"
+        );
         assert_eq!(packagelist_argv(DIR).join(" "), format!("env PKGDEST={DIR} makepkg -D {DIR} --packagelist"));
         assert!(!argv.iter().any(|a| a == "pkexec" || a == "sudo" || a == "-s" || a == "--syncdeps"));
-        assert!(!build_argv(DIR, false).iter().any(|a| a == "systemd-run"));
+        assert!(!build_argv(DIR, PKG, false).iter().any(|a| a == "systemd-run"));
+    }
+
+    /// Локаль сборки — UTF-8 (инструменты Qt молчат о кодировке), но не
+    /// переведённая: [`build_failure`] разбирает английский вывод makepkg.
+    #[test]
+    fn build_locale_is_utf8_but_untranslated() {
+        let argv = build_argv(DIR, PKG, false);
+        assert!(argv.iter().any(|a| a == "LC_ALL=C.UTF-8"), "{argv:?}");
+        assert!(!argv.iter().any(|a| a == "LC_ALL=C" || a.starts_with("LANG=")), "{argv:?}");
+    }
+
+    /// Пути сборки отображаются туда же, куда их отображает makepkg при
+    /// `options=(debug)`, и только если `$srcdir` известен точно
+    /// (`BUILDDIR` = каталог рецепта) и путь без пробелов.
+    #[test]
+    fn build_maps_srcdir_like_makepkg_debug() {
+        let argv = build_argv(DIR, PKG, false);
+        let map = format!("-ffile-prefix-map={DIR}/src=/usr/src/debug/{PKG}");
+        let n = argv.len();
+        assert_eq!(argv[n - 2], format!("CFLAGS+= {map}"));
+        assert_eq!(argv[n - 1], format!("CXXFLAGS+= {map}"));
+        assert!(argv.contains(&format!("BUILDDIR={DIR}")));
+        // Присваивания — после всех ключей makepkg: он берёт их хвостом.
+        let pos = argv.iter().position(|a| a == "--noprogressbar").unwrap();
+        assert_eq!(pos, n - 3);
+        let spaced = build_argv("/home/a b/.cache/rexon/rebuild/x", "x", false);
+        assert!(!spaced.iter().any(|a| a.contains("file-prefix-map")), "{spaced:?}");
+        assert!(!build_argv(DIR, "-bad", false).iter().any(|a| a.contains("file-prefix-map")));
+    }
+
+    /// Вопросы, на которые pacman отвечает себе сам, в журнал человека не
+    /// идут; выбор поставщика объяснён; прочее — как есть. Строки — с живой
+    /// установки Deepin (`deepin-session-deps.log`, 02.11.2026).
+    #[test]
+    fn pacman_self_answered_questions_are_not_shown() {
+        for hidden in [
+            ":: Repository cachyos-extra-znver4",
+            "   1) gsettings-qt5",
+            ":: Repository extra",
+            "   2) gsettings-qt5",
+            "Enter a number (default=1): ",
+            ":: Proceed with installation? [Y/n] ",
+        ] {
+            assert_eq!(pacman_log_line(hidden), None, "{hidden}");
+        }
+        let head = pacman_log_line(":: There are 2 providers available for gsettings-qt:").unwrap();
+        assert!(head.contains("gsettings-qt") && !head.contains("There are"), "{head}");
+        for shown in [
+            "resolving dependencies...",
+            "cachyos-extra-znver4/gsettings-qt5               1.1.1-2.1             0.10 MiB       0.03 MiB",
+            ":: Retrieving packages...",
+            ":: deepin-kwin-6.0.8-12.1 and kwin-6.8.0-1.1 are in conflict. Remove kwin? [y/N]",
+            "rexon: build-only packages kept",
+        ] {
+            assert_eq!(pacman_log_line(shown).as_deref(), Some(shown));
+        }
+    }
+
+    /// Фильтр стоит только на root-шагах (pacman): у сборки (makepkg)
+    /// строки идут как есть. Стенд печатает вопрос pacman в каждом шаге —
+    /// в журнал человека он попадает ровно раз, от сборки.
+    #[test]
+    fn only_root_steps_are_filtered() {
+        let f = pantheon_fake();
+        let (outcome, log) = rebuild(&f, &CancelToken::new());
+        assert!(outcome.ok, "{}", outcome.message);
+        let steps = f.timeouts.borrow().len();
+        assert!(steps >= 3, "зависимости, сборка, установка: {steps}");
+        let count = |m: &str| log.iter().filter(|(s, l)| s == STAGE_RAW && l == m).count();
+        assert_eq!(count("строка журнала"), steps);
+        assert_eq!(count(FAKE_PROMPT), 1, "{log:?}");
     }
 
     /// Замена конфликтующего — только `--ask=4` у `pacman -U` собранного
@@ -2125,7 +2262,7 @@ pkgname = switchboard-plug-online-accounts\n";
     #[test]
     fn no_command_skips_dependency_checks() {
         let all = [
-            build_argv(DIR, true),
+            build_argv(DIR, PKG, true),
             deps_install_argv(&["vala".to_string()]),
             install_argv("/x/f.pkg.tar.zst", &["vala".to_string()], false),
             install_argv("/x/f.pkg.tar.zst", &[], true),

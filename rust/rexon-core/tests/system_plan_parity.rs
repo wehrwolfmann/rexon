@@ -208,6 +208,19 @@ fn scripts_match_python_verbatim() {
     // Переснято 31.10.2026 (pkg-помощник): в белом списке Arch — compiz,
     // пакет образа «Как в Garuda» (эффекты окон на MATE); список пакетов
     // образов вливается туда сам (`distro_looks::builtin_package_names`).
+    // Переснято 02.11.2026 (pkg-помощник): в пакеты Xfce, LXQt и MATE (Arch)
+    // вошла добавка сеанса Wayland (`system::SESSION_VARIANTS`) — в белом
+    // списке и в защите текущего стола.
+    // Переснято 02.11.2026 (de- и pkg-помощник): в наборы столов вошёл их
+    // терминал там, где его не тянул сам стол: Budgie — xfce4-terminal во
+    // всех семействах, Deepin (Arch) — deepin-terminal, GNOME (Alpine, Solus,
+    // ALT) — gnome-console, Cinnamon (Gentoo, Solus) — gnome-terminal,
+    // Plasma (Solus) — konsole.
+    // Переснято 03.11.2026 (de- и pkg-помощник): набор Budgie приведён к
+    // Ubuntu Budgie 26.04 во всех семействах — Nemo с nemo-fileroller вместо
+    // Nautilus, gedit, gThumb, VLC, Lollypop, Atril (ALT —
+    // mate-document-viewer), mate-calc, mate-system-monitor, GNOME Disks; в
+    // белом списке и в защите текущего стола.
     assert_eq!(
         json!(de_helper_pkg_table()),
         s["de_helper_pkg_table"],
@@ -1963,7 +1976,9 @@ fn live_machine_is_on_plasma_login_manager() {
 ///     транзакция кончилась удачей → крестов в журнале нет вовсе;
 ///   * два интерактивных вопроса pacman (члены группы и выбор поставщика) —
 ///     этап `prompt` с ответом, который pacman даёт себе сам, и глухота к
-///     строке «Enter a …», у которой смысла для человека нет.
+///     строке «Enter a …», у которой смысла для человека нет. С 02.11.2026
+///     так же глухи «:: Repository <имя>» (шапка меню) и «:: Proceed with
+///     installation? [Y/n]» — эталон этих двух строк поправлен намеренно.
 #[test]
 #[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
 fn pacman_progress_lines_match_python() {

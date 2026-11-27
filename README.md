@@ -1,3 +1,5 @@
+English | [Русский](README.ru.md) | [Deutsch](README.de.md)
+
 # Rexon
 
 Rexon is a free desktop environment manager for Linux. In one window it installs,
@@ -59,8 +61,9 @@ and test platform is Arch Linux / CachyOS.
 - Windows cursors (`.cur` / `.ani`) converted to Xcursor.
 - Login screen (SDDM) and boot splash (Plymouth) themes.
 - Conky widgets with previews.
-- Screen effects (scanlines, CRT, VHS, film and others) where the compositor allows a
-  shader.
+- Screen effects (scanlines, CRT, VHS, film and others) with live previews. Rexon applies
+  them to the whole screen on Hyprland, GNOME and Cinnamon; on other desktops the section
+  says honestly what the compositor allows there.
 - Backups of desktop settings and an emergency "Recover desktop appearance" menu
   entry (KDE) for when a theme breaks the desktop.
 - Extensions: GNOME Shell and Cinnamon extensions, and Rexon's own `.rxn` packages.

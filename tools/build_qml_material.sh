@@ -93,10 +93,16 @@ for lib in "$WORK"/build/libqml_material*.so; do
     cp "$lib" "$DEST/Qcm/Material/"
 done
 # у подмодулей (Layouts) свой каталог с плагином — общая библиотека нужна
-# и там; каталоги без плагина (assets, qml) не трогаем
+# и там; каталоги без плагина (assets, qml) не трогаем. Кладём не копию, а
+# относительную ссылку на библиотеку уровнем выше: вторая копия
+# libqml_material.so — это +20,8 МиБ в пакете (6–7 МиБ в сжатом), а
+# загрузчик всё равно держит одну библиотеку на SONAME, так что копия
+# ничего не давала. rpath $ORIGIN плагина находит ссылку как обычный файл.
 for plug in "$DEST"/Qcm/Material/*/*plugin.so; do
     [ -e "$plug" ] || continue
-    cp "$WORK"/build/libqml_material*.so "$(dirname "$plug")/"
+    for lib in "$WORK"/build/libqml_material*.so; do
+        ln -sfn "../$(basename "$lib")" "$(dirname "$plug")/$(basename "$lib")"
+    done
 done
 # Отметка собранной редакции рядом с модулем. ⚠️ Без неё «пин уехал с
 # вендором, а модуль остался вчерашний» никак не увидеть: сам модуль своей

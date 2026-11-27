@@ -327,14 +327,29 @@ fn multiarch_dirs() -> Vec<String> {
 }
 
 /// Все каталоги, где могут лежать собранные QML-плагины, по убыванию
-/// предпочтения. Состав и порядок — ядро.
+/// предпочтения. Состав и порядок — ядро: пользовательская сборка
+/// (`tools/build_qml_*.sh`) главнее только при запуске из дерева исходников,
+/// у пакета главнее пакетная копия (`qml_modules::order_module_dirs`).
 pub fn qml_module_dirs() -> Vec<String> {
-    rexon_core::qml_modules::module_dirs(
-        xdg_data_home().as_deref(),
-        &home(),
-        &xdg_data_dirs(),
-        &multiarch_dirs(),
-    )
+    use rexon_core::qml_modules as qm;
+    let xdg = xdg_data_home();
+    let home = home();
+    let all = qm::module_dirs(xdg.as_deref(), &home, &xdg_data_dirs(), &multiarch_dirs());
+    let user = qm::user_module_dirs(xdg.as_deref(), &home);
+    let user_first =
+        qm::user_modules_first(rexon_packaged(), !rexon_core::cli::repo_root().is_empty());
+    let order = qm::order_module_dirs(&mut ModuleProbe, &all, &user, user_first);
+    static LOGGED: std::sync::Once = std::sync::Once::new();
+    LOGGED.call_once(|| {
+        for note in &order.notes {
+            match qm::user_copy_note_line(note) {
+                Some((true, line)) => rexon_core::log_warn!("wallpaper", "{line}"),
+                Some((false, line)) => rexon_core::log_info!("wallpaper", "{line}"),
+                None => {}
+            }
+        }
+    });
+    order.dirs
 }
 
 // ============================================================================

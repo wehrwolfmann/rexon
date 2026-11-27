@@ -10892,6 +10892,42 @@ fn there_are_question<'a>(line: &'a str, kind: &str) -> Option<(u64, &'a str)> {
     Some((count, subject))
 }
 
+/// Тело строки `:: …`, на которую при `--noconfirm` pacman отвечает себе сам
+/// и в которой человеку читать нечего: шапка меню выбора
+/// (`Repository extra`) и согласие на транзакцию (`Proceed with
+/// installation? [Y/n]`, `Proceed with download? [Y/n]`). Вопросы со смыслом
+/// (`Remove kwin? [y/N]`, `Import PGP key …? [Y/n]`, `Replace …?`) сюда НЕ
+/// входят: их ответ решает исход, и строку человек видеть должен.
+fn is_self_answered_question(body: &str) -> bool {
+    if let Some(rest) = ci_strip_prefix(body, "Repository").and_then(strip_ws1) {
+        let name = rest.trim_end();
+        return !name.is_empty() && !name.contains(char::is_whitespace);
+    }
+    let Some(rest) = ci_strip_prefix(body, "Proceed with").and_then(strip_ws1) else {
+        return false;
+    };
+    let rest = rest.trim_end();
+    (ci_strip_prefix(rest, "installation?").is_some() || ci_strip_prefix(rest, "download?").is_some())
+        && (rest.ends_with("[Y/n]") || rest.ends_with("[y/N]"))
+}
+
+/// Пункт меню выбора pacman: `1) gsettings-qt5` или в одну строку
+/// `1) a  2) b  3) c` (ведущие пробелы срезаны): строго чередование «номер)»
+/// и имени пакета — нумерованный текст скрипта установки («1) Do this»)
+/// под это не подпадает и остаётся видимым.
+fn is_menu_item(line: &str) -> bool {
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    !tokens.is_empty()
+        && tokens.len() % 2 == 0
+        && tokens.chunks(2).all(|pair| {
+            let num = pair[0].strip_suffix(')').unwrap_or("");
+            !num.is_empty()
+                && num.chars().all(|c| c.is_ascii_digit())
+                && pair[1].chars().next().is_some_and(|c| c.is_ascii_alphanumeric())
+                && pair[1].chars().all(|c| c.is_ascii_alphanumeric() || "@._+-".contains(c))
+        })
+}
+
 /// `re.sub(r'-[^-\s]+-[^-\s]+$', '', name)` — отрезать «-<версия>-<релиз>».
 fn strip_version_suffix(name: &str) -> &str {
     let ok = |seg: &str| !seg.is_empty() && !seg.contains(|c: char| c == '-' || c.is_whitespace());
@@ -11023,6 +11059,14 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
                 ev.package = Some(subject.to_string());
                 return Some(ev);
             }
+            // Остальное от тех же вопросов, на что pacman при `--noconfirm`
+            // отвечает себе сам: «Repository <имя>» — шапка меню поставщиков
+            // и членов группы, «Proceed with installation/download? [Y/n]» —
+            // согласие. Человеку тут нечего прочесть: ответ уже назван строкой
+            // выше (или это просто «да»). Пустое сообщение — см. «Enter a …».
+            if is_self_answered_question(body) {
+                return Some(PacmanLine::plain("prompt", String::new()));
+            }
             if !body.is_empty() {
                 return Some(PacmanLine::plain("section", format!("📌 {}", body)));
             }
@@ -11046,6 +11090,10 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
                 return Some(PacmanLine::plain("prompt", String::new()));
             }
         }
+    }
+    // «   1) gsettings-qt5» / «   1) a  2) b  3) c» — пункты того же меню.
+    if is_menu_item(line) {
+        return Some(PacmanLine::plain("prompt", String::new()));
     }
 
     // error: / warning:
@@ -14345,6 +14393,54 @@ mod wayland_default_session_tests {
         // Каждая пара — разная, и X11-сеанс не совпадает со своей парой.
         for s in X11_SESSION_SUCCESSORS {
             assert_ne!(s.x11, s.wayland);
+        }
+    }
+}
+
+#[cfg(test)]
+mod pacman_self_answered_tests {
+    use super::*;
+
+    fn hidden(line: &str) -> bool {
+        parse_pacman_line(line).is_some_and(|p| p.stage == "prompt" && p.message.is_empty())
+    }
+
+    /// Всё, что pacman при `--noconfirm` спрашивает и сам же отвечает, —
+    /// пустое сообщение этапа `prompt` (в журнал человека не идёт). Строки
+    /// сняты с живой установки Deepin (журнал build-deps, 02.11.2026).
+    #[test]
+    fn self_answered_menu_and_consent_are_hidden() {
+        for line in [
+            ":: Proceed with installation? [Y/n] ",
+            ":: Proceed with download? [Y/n]",
+            ":: Repository cachyos-extra-znver4",
+            ":: Repository extra",
+            "   1) gsettings-qt5",
+            "   2) gsettings-qt5",
+            "   1) lxqt-about  2) lxqt-admin  3) lxqt-config",
+            "Enter a number (default=1): ",
+        ] {
+            assert!(hidden(line), "{line}");
+        }
+        // Шапка вопроса остаётся — с ответом, который выбран.
+        let head = parse_pacman_line(":: There are 2 providers available for gsettings-qt:").unwrap();
+        assert_eq!(head.stage, "prompt");
+        assert!(!head.message.is_empty());
+    }
+
+    /// Вопросы, ответ на которые решает исход, и обычный текст не прячутся.
+    #[test]
+    fn meaningful_lines_stay_visible() {
+        for line in [
+            ":: deepin-kwin-6.0.8-12.1 and kwin-6.8.0-1.1 are in conflict. Remove kwin? [y/N]",
+            ":: Import PGP key ABCD? [Y/n]",
+            ":: Retrieving packages...",
+            ":: Repository extra is broken",
+            "1) Do this first",
+            "1) Do this now",
+            "(1/3) installing kwin...",
+        ] {
+            assert!(!hidden(line), "{line}");
         }
     }
 }

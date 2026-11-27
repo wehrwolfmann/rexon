@@ -958,3 +958,155 @@ fn material_script_fails_instead_of_shipping_lfs_pointers() {
     assert!(log.contains("указатель git-lfs"), "провал — на проверке шрифтов, а не где-то ещё:\n{log}");
     assert!(built.is_none(), "модуль с указателями не собирается: {built:?}");
 }
+
+// ============================================================================
+// Пользовательская сборка против пакетной (02.11.2026)
+// ============================================================================
+
+/// ФС с текстами отметок и версиями Qt плагинов.
+struct PkgFs {
+    files: Vec<(String, Option<String>)>,
+    qt: Vec<(String, (u32, u32))>,
+}
+
+impl qm::ModuleFs for PkgFs {
+    fn is_file(&mut self, path: &str) -> bool {
+        self.files.iter().any(|(p, _)| p == path)
+    }
+    fn read_text(&mut self, path: &str) -> Option<String> {
+        self.files.iter().find(|(p, _)| p == path).and_then(|(_, t)| t.clone())
+    }
+    fn plugin_qt_version(&mut self, path: &str) -> Option<(u32, u32)> {
+        self.qt.iter().find(|(p, _)| p == path).map(|(_, v)| *v)
+    }
+    fn running_qt_version(&mut self) -> Option<(u32, u32)> {
+        Some((6, 12))
+    }
+}
+
+/// Все три модуля с отметками в каталоге: ревизия, протокол, Qt.
+fn full_dir(fs: &mut PkgFs, dir: &str, pin: &str, qt: (u32, u32)) {
+    let qt_text = format!("{}.{}.0\n", qt.0, qt.1);
+    for (rel, text) in [
+        (qm::QCM_MATERIAL_REL, None),
+        (qm::QCM_MATERIAL_PIN_REL, Some(format!("{pin}\n"))),
+        (qm::WAYWALLEN_CONTROL_REL, None),
+        (qm::CONTROL_STAMP_REL, Some(qm::control_proto_stamp().to_string())),
+        (qm::QEXTRA_PLUGIN_REL, None),
+        (qm::QEXTRA_PIN_REL, Some(format!("{pin}\n"))),
+        (qm::QEXTRA_QT_STAMP_REL, Some(qt_text)),
+    ] {
+        fs.files.push((qm::plugin_path(dir, rel), text));
+    }
+    for rel in [qm::QCM_MATERIAL_REL, qm::WAYWALLEN_CONTROL_REL, qm::QEXTRA_PLUGIN_REL] {
+        fs.qt.push((qm::plugin_path(dir, rel), qt));
+    }
+}
+
+fn layout() -> (Vec<String>, Vec<String>, String, String) {
+    let (dirs, user, sys) = user_and_sys();
+    (dirs, qm::user_module_dirs(None, HOME), user, sys)
+}
+
+#[test]
+fn user_modules_first_only_in_dev_tree_without_package_flag() {
+    assert!(qm::user_modules_first(false, true));
+    assert!(!qm::user_modules_first(true, true));
+    assert!(!qm::user_modules_first(false, false));
+    assert!(!qm::user_modules_first(true, false));
+    // $XDG_DATA_HOME и ~/.local/share — оба пользовательские, без повторов.
+    assert_eq!(
+        qm::user_module_dirs(Some("/data/xdg"), HOME),
+        vec!["/data/xdg/rexon/qml_modules".to_string(), format!("{HOME}/.local/share/rexon/qml_modules")]
+    );
+    assert_eq!(qm::user_module_dirs(None, HOME).len(), 1);
+}
+
+#[test]
+fn package_copy_wins_over_same_user_build() {
+    let (dirs, user_dirs, user, sys) = layout();
+    let mut fs = PkgFs { files: vec![], qt: vec![] };
+    full_dir(&mut fs, &user, "aaaa", (6, 12));
+    full_dir(&mut fs, &sys, "aaaa", (6, 12));
+    let order = qm::order_module_dirs(&mut fs, &dirs, &user_dirs, false);
+    assert_eq!(order.dirs.first(), Some(&sys));
+    assert!(!order.dirs.contains(&user), "пользовательский каталог не нужен: {:?}", order.dirs);
+    assert_eq!(order.notes.len(), 1);
+    assert_eq!(order.notes[0].used, qm::UserCopyUse::Skipped);
+    assert!(order.notes[0].diffs.is_empty());
+    let (warn, line) = qm::user_copy_note_line(&order.notes[0]).unwrap();
+    assert!(!warn);
+    assert!(line.contains(&sys) && line.contains(&user), "{line}");
+    // Вниз по течению: QExtra и import-пути — из пакета.
+    let rhi = true;
+    match qm::choose_qextra(&mut fs, &order.dirs, rhi) {
+        qm::QExtraChoice::Real { dir, .. } => assert_eq!(dir, sys),
+        other => panic!("ждали настоящий плагин из пакета: {other:?}"),
+    }
+}
+
+#[test]
+fn dev_tree_keeps_user_build_first() {
+    let (dirs, user_dirs, user, sys) = layout();
+    let mut fs = PkgFs { files: vec![], qt: vec![] };
+    full_dir(&mut fs, &user, "aaaa", (6, 12));
+    full_dir(&mut fs, &sys, "aaaa", (6, 12));
+    let order = qm::order_module_dirs(&mut fs, &dirs, &user_dirs, true);
+    assert_eq!(order.dirs, dirs, "у разработки порядок прежний");
+    assert_eq!(order.notes[0].used, qm::UserCopyUse::DevTree);
+    assert_eq!(qm::user_copy_note_line(&order.notes[0]), None);
+}
+
+#[test]
+fn user_build_used_when_package_has_no_copy() {
+    let (dirs, user_dirs, user, _sys) = layout();
+    let mut fs = PkgFs { files: vec![], qt: vec![] };
+    full_dir(&mut fs, &user, "aaaa", (6, 12));
+    let order = qm::order_module_dirs(&mut fs, &dirs, &user_dirs, false);
+    assert!(order.dirs.contains(&user));
+    assert_eq!(order.notes[0].used, qm::UserCopyUse::NoPackageCopy);
+    assert!(qm::qml_plugins_ready(&mut fs, &order.dirs));
+    assert_eq!(qm::import_dirs(&mut fs, &order.dirs), vec![user.clone()]);
+}
+
+#[test]
+fn outdated_user_build_is_skipped_and_named_in_log() {
+    let (dirs, user_dirs, user, sys) = layout();
+    let mut fs = PkgFs { files: vec![], qt: vec![] };
+    full_dir(&mut fs, &user, "old0", (6, 11));
+    full_dir(&mut fs, &sys, "new1", (6, 12));
+    let order = qm::order_module_dirs(&mut fs, &dirs, &user_dirs, false);
+    assert!(!order.dirs.contains(&user));
+    let note = &order.notes[0];
+    assert_eq!(note.used, qm::UserCopyUse::Skipped);
+    assert_eq!(note.package_dir.as_deref(), Some(sys.as_str()));
+    // Отличие по каждому модулю, где оно есть: ревизии, отметка Qt, Qt сборки.
+    let has = |m: &str, w: &str| note.diffs.iter().any(|d| d.module == m && d.what == w);
+    assert!(has("Qcm.Material", "ревизия") && has("Qcm.Material", "Qt сборки"));
+    assert!(has("QExtra", "ревизия") && has("QExtra", "отметка Qt"));
+    assert!(has("waywallen.control", "Qt сборки") && !has("waywallen.control", "протокол"));
+    let (warn, line) = qm::user_copy_note_line(note).unwrap();
+    assert!(warn);
+    assert!(line.contains("устарела") && line.contains("old0") && line.contains("new1"), "{line}");
+
+    // То же в дереве исходников: берётся своя сборка, но отличие названо.
+    let order = qm::order_module_dirs(&mut fs, &dirs, &user_dirs, true);
+    assert_eq!(order.dirs.first(), Some(&user));
+    let (warn, line) = qm::user_copy_note_line(&order.notes[0]).unwrap();
+    assert!(warn && line.contains("дерева исходников"), "{line}");
+}
+
+#[test]
+fn user_only_module_kept_behind_package() {
+    // В пакете нет QExtra, у пользователя есть — каталог остаётся, но позади.
+    let (dirs, user_dirs, user, sys) = layout();
+    let mut fs = PkgFs { files: vec![], qt: vec![] };
+    full_dir(&mut fs, &user, "aaaa", (6, 12));
+    full_dir(&mut fs, &sys, "aaaa", (6, 12));
+    fs.files.retain(|(p, _)| !p.starts_with(&format!("{sys}/QExtra/")));
+    let order = qm::order_module_dirs(&mut fs, &dirs, &user_dirs, false);
+    let pos = |d: &str| order.dirs.iter().position(|x| x == d).unwrap();
+    assert!(pos(&sys) < pos(&user));
+    assert_eq!(order.notes[0].used, qm::UserCopyUse::OnlyHere(vec!["QExtra"]));
+    assert_eq!(qm::import_dirs(&mut fs, &order.dirs).first(), Some(&sys));
+}

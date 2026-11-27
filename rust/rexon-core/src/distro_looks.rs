@@ -2264,11 +2264,13 @@ fn launcher_candidates(role: &str, de: &str) -> Vec<&'static str> {
     let native: &[&str] = match (role, de) {
         ("terminal", "mate") => &["mate-terminal"],
         ("terminal", "xfce") => &["xfce4-terminal"],
-        ("terminal", "cinnamon" | "gnome" | "budgie") => &["org.gnome.Terminal", "org.gnome.Console"],
+        ("terminal", "cinnamon" | "gnome") => &["org.gnome.Terminal", "org.gnome.Console"],
+        // Budgie — набор Ubuntu Budgie (`system::DE_DATABASE`).
+        ("terminal", "budgie") => &["xfce4-terminal"],
         ("file-manager", "mate") => &["caja-browser", "caja"],
         ("file-manager", "xfce") => &["thunar"],
-        ("file-manager", "cinnamon") => &["nemo"],
-        ("system-monitor", "mate") => &["mate-system-monitor"],
+        ("file-manager", "cinnamon" | "budgie") => &["nemo"],
+        ("system-monitor", "mate" | "budgie") => &["mate-system-monitor"],
         ("system-monitor", "xfce") => &["xfce4-taskmanager"],
         ("settings", "mate") => &["matecc"],
         ("settings", "xfce") => &["xfce-settings-manager"],

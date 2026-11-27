@@ -3,7 +3,7 @@
   {
    "id": 722,
    "key": "global",
-   "name": "Global Themes",
+   "name": "Глобальные темы",
    "icon": "💎",
    "install_dir": "/home/tester/.local/share/plasma/look-and-feel",
    "apply_kind": "global",
@@ -414,7 +414,7 @@
   {
    "id": 722,
    "key": "global",
-   "name": "Global Themes",
+   "name": "Глобальные темы",
    "icon": "💎",
    "install_dir": "/home/tester/.local/share/plasma/look-and-feel",
    "apply_kind": "global",

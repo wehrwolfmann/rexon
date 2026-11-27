@@ -485,7 +485,7 @@ fn mate_sidebar_is_grouped_by_what_it_changes() {
     // Глобальные темы — первыми, как в KDE (вне Plasma — по частям,
     // 01.11.2026); кнопки заголовка — сразу за рамками Marco, анимация —
     // последней (разделы настроек, 01.11.2026).
-    assert_eq!(keys(SidebarGroup::Desktop), ["global", "marco", "windowbuttons", "mate-panel", "animations"]);
+    assert_eq!(keys(SidebarGroup::Desktop), ["global", "marco", "windowbuttons", "mate-panel", "animations", "screeneffects"]);
     assert_eq!(
         keys(SidebarGroup::AllApps),
         ["icons", "cursor", "launchfeedback", "gtk", "appwidgets", "wallpapers", "fontsettings", "fonts", "sounds"]
@@ -861,6 +861,7 @@ fn settings_panels_stand_where_kde_keeps_them() {
             "kwinscripts",
             "kwineffects",
             "animations",
+            "screeneffects",
             "desktopeffects"
         ]
     );
@@ -881,7 +882,7 @@ fn settings_panels_stand_where_kde_keeps_them() {
         let known = rexon_core::de_customization::de_from_id(de).is_some();
         assert_eq!(category_available("desktopeffects", de), de == "kde" || !known, "{de}");
         assert_eq!(category_available("appwidgets", de), de != "deepin", "{de}");
-        for k in ["windowbuttons", "launchfeedback", "fontsettings", "animations"] {
+        for k in ["windowbuttons", "launchfeedback", "fontsettings", "animations", "screeneffects"] {
             assert!(category_available(k, de), "{k} в {de}");
         }
     }
@@ -900,6 +901,7 @@ fn settings_panels_stand_where_kde_keeps_them() {
             ("fontsettings", "Системные шрифты"),
             ("animations", "Анимация"),
             ("desktopeffects", "Эффекты рабочего стола"),
+            ("screeneffects", "Эффекты экрана"),
         ]
         .map(|(k, n)| (k.to_string(), n.to_string()))
     );
@@ -931,4 +933,6 @@ fn settings_tab_links_to_moved_panels() {
     assert!(!keys("deepin").contains(&"appwidgets".to_string()));
     let links = moved_settings_links("kde");
     assert_eq!(links[1].1, "Оформление → Анимация");
+    // «Эффектов экрана» во вкладке «Настройки» не было никогда — и ссылки нет.
+    assert!(!keys("hyprland").contains(&"screeneffects".to_string()));
 }

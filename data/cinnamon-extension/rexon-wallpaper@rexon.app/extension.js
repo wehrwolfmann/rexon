@@ -14,11 +14,18 @@
 // 2. Этот extension ставит по актёру на каждый монитор между фоном и
 //    окнами (где именно и почему — у `_installActors`) и каждый tick
 //    (~30 FPS) кладёт в них кадр как Clutter.Image.
+// 3. Эффект экрана (строки развёртки, кинескоп и т. п.) — отдельно от обоев:
+//    шейдер, который пишет Rexon (ключ `effect-shader`), ложится
+//    Cinnamon.GLSLEffect на Main.uiGroup — окна, панели, стол. Всплывающие
+//    меню приложений Cinnamon держит выше uiGroup, прямо на сцене, их
+//    эффект не задевает. Работает и на X11, и на Wayland.
 //
 // Cinnamon JS API: classic imports (НЕ ESM как GNOME 45+).
 
 const GLib = imports.gi.GLib;
 const Gio = imports.gi.Gio;
+const GObject = imports.gi.GObject;
+const Cinnamon = imports.gi.Cinnamon;
 const Clutter = imports.gi.Clutter;
 const Cogl = imports.gi.Cogl;
 const Meta = imports.gi.Meta;
@@ -44,20 +51,41 @@ let _frame_h = 0;
 let _meta = null;
 let _gio_settings = null;
 let _settings_changed_id = 0;
+let _effect = null;        // ScreenEffect — эффект экрана поверх uiGroup
 
 function init(metadata) {
     _meta = metadata;
 }
 
 function enable() {
+    _effect = new ScreenEffect({
+        target: Main.uiGroup,
+        base: Cinnamon.GLSLEffect,
+        hook: Cinnamon.SnippetHook.FRAGMENT,
+        log: function(text) { global.log(text); },
+        logError: function(text) { global.logError(text); },
+        unredirect: function(allow) {
+            if (allow)
+                Meta.enable_unredirect_for_display(global.display);
+            else
+                Meta.disable_unredirect_for_display(global.display);
+        },
+    });
     _reload();
-    // Rexon меняет обои, записывая настройки расширения. Без подписки новые
-    // обои появлялись бы только после перезахода в сеанс.
+    // Rexon меняет обои и эффект экрана, записывая настройки расширения.
+    // Без подписки новое появлялось бы только после перезахода в сеанс.
+    // Ключ эффекта обои НЕ перезапускает: иначе смена эффекта гасила бы и
+    // заново поднимала хост обоев.
     if (_gio_settings && !_settings_changed_id) {
-        _settings_changed_id = _gio_settings.connect('changed', function() {
-            _reload();
+        _settings_changed_id = _gio_settings.connect('changed', function(_s, key) {
+            if (key === EFFECT_KEY) {
+                if (_effect) _effect.queue(function() { return effectShaderPath(_gio_settings); });
+            } else {
+                _reload();
+            }
         });
     }
+    _effect.apply(effectShaderPath(_gio_settings));
     global.log('[rexon-wp] enabled, daemon pid=' + _daemon_pid);
 }
 
@@ -86,6 +114,11 @@ function disable() {
         _gio_settings.disconnect(_settings_changed_id);
         _settings_changed_id = 0;
     }
+    _gio_settings = null;
+    if (_effect) {
+        _effect.destroy();
+        _effect = null;
+    }
     _stopTick();
     _removeActors();
     _killDaemon();
@@ -111,8 +144,13 @@ function _loadSettings() {
             global.logError('[rexon-wp] schema не найдена');
             return null;
         }
-        const s = new Gio.Settings({ settings_schema: schema });
-        _gio_settings = s;   // нужен живым для подписки на 'changed'
+        // Объект настроек ОДИН на всё время включения: на нём висит
+        // подписка на 'changed'. Прежде каждый _reload заводил новый —
+        // подписка оставалась на первом (тот мог уйти в сборку мусора и
+        // замолчать), а disable() отписывал её номер от другого объекта.
+        if (!_gio_settings)
+            _gio_settings = new Gio.Settings({ settings_schema: schema });
+        const s = _gio_settings;   // нужен живым для подписки на 'changed'
         // Ключ появился позже самого расширения: у оставшегося от прежней
         // версии его нет, и падать из-за этого нельзя — иначе обои
         // перестанут работать вовсе. Пусто = «Rexon ничего не присылал».
@@ -265,6 +303,211 @@ function readWholeFrame(framePath, expected) {
     return data;
 }
 // [rexon-wp:frame-read:end]
+
+
+// ─── ОБЩИЙ БЛОК ЭФФЕКТА ЭКРАНА ──────────────────────────────────────
+//
+// Дословно одинаков в расширениях GNOME и Cinnamon, сторож —
+// `shell_extensions_share_screen_effect` в
+// `rust/rexon-core/src/screen_effects.rs`. Правку — В ОБА ФАЙЛА. Разница
+// оболочек (класс эффекта, хук сниппета, журнал, полноэкранные окна)
+// приходит снаружи объектом `host`.
+// [rexon-wp:screen-effect:begin]
+// Договор с ядром (`rexon-core::screen_effects`): ключ настроек — путь к
+// файлу шейдера, пусто — эффект выключен. Файл: объявления сниппета Cogl,
+// строка-метка, код сниппета (хук FRAGMENT с заменой). Файл пишется ДО
+// смены ключа, и путь у нового шейдера другой, поэтому расширение никогда
+// не читает недописанный файл.
+const EFFECT_KEY = 'effect-shader';
+const EFFECT_CODE_MARKER = '//@rexon-cogl-code';
+const EFFECT_NAME = 'rexon-screen-effect';
+// Часы движущихся эффектов: ~30 кадров в секунду.
+const EFFECT_TICK_MS = 33;
+// Время в шейдере идёт по кругу: на больших числах float теряет точность,
+// и шум застывает полосами.
+const EFFECT_TIME_WRAP = 3600;
+// Rexon пишет файл и ключ отдельными командами — ждём, пока уляжется.
+const EFFECT_SETTLE_MS = 150;
+
+// Путь из настроек. Наличие ключа спрашиваем У СХЕМЫ: чтение ключа,
+// которого в схеме нет, гасит саму оболочку (см. `daemon-argv`).
+function effectShaderPath(settings) {
+    const schema = settings ? settings.settings_schema : null;
+    return (schema && schema.has_key(EFFECT_KEY)) ? settings.get_string(EFFECT_KEY) : '';
+}
+
+// Разобрать файл шейдера. Бросает исключение с понятной причиной.
+function readEffectShader(path) {
+    const bytes = GLib.file_get_contents(path)[1];
+    const text = new TextDecoder().decode(bytes);
+    const at = text.indexOf(EFFECT_CODE_MARKER);
+    if (at < 0)
+        throw new Error('в файле нет строки-метки кода: ' + path);
+    const code = text.slice(at + EFFECT_CODE_MARKER.length);
+    return {
+        text: text,
+        declarations: text.slice(0, at),
+        code: code,
+        animated: code.indexOf('rx_time') >= 0,
+    };
+}
+
+// Класс эффекта под шейдер. Конвейер GLSLEffect строится ОДИН раз на
+// класс (`build_pipeline` зовётся у первого экземпляра, дальше копия), так
+// что новому шейдеру нужен новый класс. Типы GObject не снимаются, поэтому
+// классы помнятся по тексту шейдера и переиспользуются.
+const effectClasses = new Map();
+let effectClassSerial = 0;
+
+function effectClassFor(base, hook, shader) {
+    let klass = effectClasses.get(shader.text);
+    if (klass)
+        return klass;
+    effectClassSerial += 1;
+    // Имя типа уникально и после выключения-включения расширения: модуль
+    // перечитывается, а типы прежних классов в процессе остаются.
+    const typeName = 'RexonScreenEffect_' + GLib.get_monotonic_time() + '_' + effectClassSerial;
+    klass = GObject.registerClass({ GTypeName: typeName },
+        class RexonScreenEffect extends base {
+            vfunc_build_pipeline() {
+                this.add_glsl_snippet(hook, shader.declarations, shader.code, true);
+            }
+        });
+    effectClasses.set(shader.text, klass);
+    return klass;
+}
+
+// Эффект на актёре всего экрана.
+// host: { target, base, hook, log(text), logError(text), unredirect(bool) }.
+class ScreenEffect {
+    constructor(host) {
+        this._host = host;
+        this._effect = null;
+        this._text = '';
+        this._resLoc = -1;
+        this._timeLoc = -1;
+        this._tickId = 0;
+        this._settleId = 0;
+        this._sizeIds = [];
+        this._unredirectBlocked = false;
+        this._start = 0;
+    }
+
+    // Настройки сменились: применить, когда Rexon допишет всё.
+    queue(readPath) {
+        if (this._settleId)
+            GLib.source_remove(this._settleId);
+        this._settleId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, EFFECT_SETTLE_MS, () => {
+            this._settleId = 0;
+            this.apply(readPath());
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    apply(path) {
+        if (!path) {
+            if (this._effect)
+                this._host.log('[rexon-fx] эффект экрана выключен');
+            this._remove();
+            return;
+        }
+        let shader;
+        try {
+            shader = readEffectShader(path);
+        } catch (e) {
+            // Без шейдера экран остаётся как есть — ничего не накладываем.
+            this._host.logError('[rexon-fx] шейдер не прочитан: ' + e.message);
+            this._remove();
+            return;
+        }
+        if (this._effect && shader.text === this._text)
+            return;
+        this._remove();
+        try {
+            const Klass = effectClassFor(this._host.base, this._host.hook, shader);
+            const effect = new Klass();
+            this._resLoc = effect.get_uniform_location('rx_res');
+            this._timeLoc = shader.animated ? effect.get_uniform_location('rx_time') : -1;
+            this._effect = effect;
+            this._text = shader.text;
+            this._start = GLib.get_monotonic_time();
+            this._setUniforms();
+            this._host.target.add_effect_with_name(EFFECT_NAME, effect);
+            // Полноэкранное окно (игра, видео) оболочка отдаёт на экран
+            // мимо себя — эффект там пропал бы. Пока эффект включён, этого
+            // не делаем.
+            this._host.unredirect(false);
+            this._unredirectBlocked = true;
+            const target = this._host.target;
+            for (const prop of ['notify::width', 'notify::height'])
+                this._sizeIds.push(target.connect(prop, () => this._setUniforms()));
+            if (this._timeLoc >= 0) {
+                this._tickId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, EFFECT_TICK_MS, () => {
+                    this._setUniforms();
+                    if (this._effect)
+                        this._effect.queue_repaint();
+                    return GLib.SOURCE_CONTINUE;
+                });
+            }
+            this._host.log('[rexon-fx] эффект экрана включён: ' + path +
+                (this._tickId ? ' (движущийся)' : ''));
+        } catch (e) {
+            this._host.logError('[rexon-fx] эффект не наложен: ' + e.message);
+            this._remove();
+        }
+    }
+
+    _setUniforms() {
+        const effect = this._effect;
+        if (!effect)
+            return;
+        const target = this._host.target;
+        let w = target.width;
+        let h = target.height;
+        if (!w || !h) {
+            w = global.stage.width;
+            h = global.stage.height;
+        }
+        if (this._resLoc >= 0)
+            effect.set_uniform_float(this._resLoc, 2, [w, h]);
+        if (this._timeLoc >= 0) {
+            const t = ((GLib.get_monotonic_time() - this._start) / 1e6) % EFFECT_TIME_WRAP;
+            effect.set_uniform_float(this._timeLoc, 1, [t]);
+        }
+    }
+
+    // Снять эффект: экран ровно такой, каким был до него.
+    _remove() {
+        if (this._tickId) {
+            GLib.source_remove(this._tickId);
+            this._tickId = 0;
+        }
+        const target = this._host.target;
+        for (const id of this._sizeIds)
+            target.disconnect(id);
+        this._sizeIds = [];
+        if (this._effect) {
+            target.remove_effect(this._effect);
+            this._effect = null;
+        }
+        if (this._unredirectBlocked) {
+            this._host.unredirect(true);
+            this._unredirectBlocked = false;
+        }
+        this._text = '';
+        this._resLoc = -1;
+        this._timeLoc = -1;
+    }
+
+    destroy() {
+        if (this._settleId) {
+            GLib.source_remove(this._settleId);
+            this._settleId = 0;
+        }
+        this._remove();
+    }
+}
+// [rexon-wp:screen-effect:end]
 
 // Сказать об отказе ОБА раза: в журнал (там подробности для разбора) и
 // всплывающим сообщением оболочки — иначе покупатель видит только, что
